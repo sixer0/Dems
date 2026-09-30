@@ -1,0 +1,47 @@
+{
+  "expo": {
+    "name": "DEMS Tablet Demo",
+    "slug": "dems-tablet-demo",
+    "version": "0.1.0",
+    "orientation": "default",
+    "icon": "./assets/images/icon.png",
+    "scheme": "demsdemo",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#0B0D0F",
+    "ios": {
+      "icon": "./assets/expo.icon"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0B0D0F",
+        "foregroundImage": "./assets/images/android-icon-foreground.png",
+        "backgroundImage": "./assets/images/android-icon-background.png",
+        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "package": "com.dems.demo.tablet"
+    },
+    "web": {
+      "output": "static",
+      "favicon": "./assets/images/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#0B0D0F",
+          "image": "./assets/images/splash-icon.png",
+          "imageWidth": 76
+        }
+      ],
+      "expo-video",
+      "expo-font",
+      "expo-status-bar"
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    }
+  }
+}

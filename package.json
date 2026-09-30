@@ -1,0 +1,39 @@
+{
+  "name": "dems-demo",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "npm@11.19.1",
+  "engines": {
+    "node": ">=26.8.2 <27"
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "overrides": {
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "react-test-renderer": "19.2.3",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.7"
+  },
+  "scripts": {
+    "theme:gen": "npm run build -w @dems/shared",
+    "dev:mock": "npm run dev -w @dems/mock-core",
+    "dev:web": "npm run dev -w @dems/core-web",
+    "dev:mobile": "npm run dev -w @dems/mobile",
+    "android": "npm run android -w @dems/mobile",
+    "emulator": "emulator -avd dems_tablet -no-metrics -gpu host -no-boot-anim",
+    "emulator:phone": "emulator -avd dems_phone -no-metrics -gpu host -no-boot-anim",
+    "mobile:reverse": "npm run reverse -w @dems/mobile",
+    "probe:ws": "npm run probe:ws -w @dems/mock-core --",
+    "build": "npm run build -w @dems/shared -w @dems/mock-core -w @dems/core-web",
+    "build:android": "npm run build -w @dems/mobile",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present"
+  },
+  "allowScripts": {
+    "@shopify/react-native-skia@2.6.2": true
+  }
+}

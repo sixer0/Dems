@@ -1,0 +1,9 @@
+/* masterplan/01_specs.md §5.3. Kit styles first, then the generated design theme. */
+@import 'tailwindcss';
+@import 'uniwind';
+@import 'heroui-native/styles';
+@import '@dems/shared/theme/heroui-native.css';
+
+/* HeroUI Native class sources (root-hoisted node_modules) and the shared tone recipes. */
+@source '../../../node_modules/heroui-native/lib';
+@source '../../../packages/shared/src';

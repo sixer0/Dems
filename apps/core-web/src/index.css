@@ -1,0 +1,15 @@
+/* masterplan/01_specs.md §4.3. @heroui/styles already imports Tailwind v4 and tw-animate-css. */
+@import "@heroui/styles";
+@import "@dems/shared/theme/heroui-web.css";
+
+/* Class recipes that live in @dems/shared (status-tone Chip classes, §2.10). */
+@source "../../../packages/shared/src";
+
+@layer base {
+  html,
+  body,
+  #root {
+    min-height: 100%;
+    background-color: var(--background);
+  }
+}
