@@ -41,11 +41,12 @@ Source of truth for step definitions: `identification/02_structured.md` (Structu
 | Wave | Steps | Status |
 |---|---|---|
 | Pre-gate | 19 (coder) ∥ 26 (verifier) | done (both PASS; D42, D43) |
-| W1 | 25 (git baseline commit; adds .locks/ to .gitignore) | in progress |
-| W2 | 27 (npm) → 67 (npm+Gradle, boots AVDs); 28 (image-specialist); 29; 30; 68; 71; 69 (after 30); 90 (Maestro) | pending |
-| W3 | web A: 31→32 · B: 36, 37, 39 · C: 34, 35, 38, 33 · mobile: 69 → 70 | pending |
-| W4 | 41, 42, 44 · 70, 72 (Gradle), 73 · 40 (CP-1 review) | pending |
-| W5 | 43, 46, 47 · 75, 77, 79 · 45 (CP-2 verifier) · 74 (CP-M1 review) | pending |
+| W1 | 25 (git baseline commit; adds .locks/ to .gitignore) | done — 33e4c95 |
+| W2 | 27 (npm) → 67 (npm+Gradle, boots AVDs); 28 (image-specialist); 29; 30; 68; 71; 69 (after 30); 90 (Maestro) | done (27, 28, 29, 30, 67, 68, 69, 71, 90) |
+| W3 | web A: 31→32 · B: 36, 37, 39 · C: 34, 35, 38, 33 · mobile: 69 → 70 | done: 31, 34, 35, 36, 38 · running: 32, 33, 37, 70, 92 · waiting: 39 (on 92) |
+| W4 | 41, 42, 44 · 70, 72 (Gradle), 73 · 40 (CP-1 review) | done: 41, 70, 72, 73, 92, 93, 93b · running: 39 · waiting: 40, 42, 44 (on 39) |
+| W5–W8 (merged by D71/D72) | web 42, 43, 44, 47, 48, 49, 51 · mobile 75, 77, 78, 79, 83 · audits 40, 74 | running (12 coders + 2 reviewers = 14 in flight) |
+| queue | web 50, 52, 53, 46 (after 44), 45 audit (after 42, 44) · mobile 76, 80, 81, 82, 84–89 | waiting for coder slots |
 | W6 | 48, 49, 50 · 76, 78, 80 | pending |
 | W7 | 51, 52, 53 · 81, 82, 83 | pending |
 | W8 | 54 (cond.) · 84–89 | pending |
@@ -55,4 +56,48 @@ Source of truth for step definitions: `identification/02_structured.md` (Structu
 | W12 | 61, 62, 64 · 63, 65 | pending |
 | W13 | 66 (final commit) | pending |
 
+Added in rev 4 (D50/D51): 92 demo media (deps 29, 31) → 93 demo evidence (deps 31, 92); launch 92 the moment 31 lands.
+
+Parallelism raised (D71): ≤12 coder-execution, ≤16 in flight; guards P14 shared Vite 5176 (refcounted), P15 browser.lock, P16 --maxWorkers=1, P17 AVD locks/≤2 Metro, P18 memory_pressure check before each batch. Step 45 no longer gates 48–53.
+
 Scheduling rule: launch a step as soon as all its Depends On are complete and the P1–P12 limits allow (≤6 coder-execution, ≤8 in flight); waves are guidance, dependencies are binding.
+
+## CHECKPOINT — session usage limit reached (2026-10-01 ~07:00 WIB)
+
+**Done and gated (PASS):** 1–10, 12–19, 25–44 (except 45), 48, 49, 55, 67–74, 79, 90, 92, 93, 93b. Baseline commit 33e4c95 (local). Decisions D1–D81, Drift DR-01..DR-41 in decisions/decisions.md.
+
+**In flight at checkpoint (launched, NOT yet gated — on resume, read each log + progress file, verify files exist, then record):**
+web 46 (Start Session flow), 50 (Network & Time), 52 (System + Demo Control) [47 Evidence finished after checkpoint — PASS, D84] [51 finished after checkpoint — PASS, D82] · mobile 75 (Login), 78 (Start Session) [77 Home finished after checkpoint — PASS, D83], 80 (Finalize/Summary), 83 (Evidence) · host 74b (emulator priority).
+Expected logs: implementation/25, 26, 29, 30, 31, 47, 49, 50, 52, 55, 67_*.md; progress files delegation_progress/coder_execution_step_<N>.md. A step whose log is missing or incomplete = INCOMPLETE_DOCS_MISSING → re-delegate that step (fast lane, D75).
+
+**Not started (queue, in order):** web 53 (API Reference; owns vite.config.ts test.include widening, D74 M7), 45 (visual audit, parallel) · mobile 76, 81, 82, 84, 85, 86, 87, 88, 89 · 54 (sim gap closure — REQUIRED, scope in D74/D77/D79/D80/D81 + all SIM-GAP-W*) → 91 (mobile gap closure, scope D69/D73/D78) → end pass 56, 57, 58, 59, 60 (README + THIRD_PARTY_NOTICES fixes, D74), 61, 62, 63, 64, 65 → 66 final local commit → report/report.md + memory persistence.
+
+**Resume rules:** master-controller protocol; autonomy D39 still applies; concurrency D71/D72 (≤12 coders, ≤16 in flight, push to limit); fast lane D75; emulator rule D78 (never kill; reboot only with -no-snapshot-load -no-snapshot-save + reinstall step-72 APK); shared Vite 127.0.0.1:5178 refcounted (P14); never ports 5174/5175 (other project).
+
+## RESUMED (2026-10-01 ~09:15 WIB, D85)
+In flight: resumed 46, 50, 52, 74b, 75, 78, 80, 83 · new 53, 76, 81, 82 · audit 45.
+Queue: mobile 84, 85, 86, 87, 88, 89 → 54 → 91 → end pass 56–65 → 66 → report.
+
+## FAST-TRACK CLOSE (2026-10-01, D112 → D131)
+
+| Step | Status | Evidence |
+|---|---|---|
+| All web pages (42–44, 46–53) + visual audit 45/45b | done | D76–D91, D96, D101, D109 |
+| All mobile screens (75–89) | done | D83–D114 |
+| 54 sim gap closure · 91a mobile tests | done | D115, D119 |
+| 100 Core origin + CSP | done | D113 |
+| 94 / 94b / 94c release APK | done — APK final, SHA-256 `0009f33d…5ecd` | D117, D126, D130 |
+| 95 web packages → 96 verification | 96: APK PASS, web FAIL (F96-1) | D118, D127 |
+| T1 tagline "SECURE BY DESIGN. TRUSTED BY LAW." | done | D128, D129 |
+| 95b web packages rebuilt (11:45 WIB) | done — DR-95b-1 accepted | D131 |
+| 96b short re-verification of the rebuilt web packages | done — PASS 7/7 | verification/13_package_reverification.md; D132 |
+| 60 / 60b README + notices · 61 verification · 62 / 63 security | done (PASS-WITH-CAUTIONS / CAUTION, no critical or high) | D120–D125 |
+| 66 final local commit | done — `acaff20` (2026-10-04, retry after the session break) | implementation/34_git_final_commit.md; D133, D134 |
+| report/report.md + memory persistence | done 2026-10-04 | report/report.md; memory `project-dems-demo-state` |
+| Deferred as known issues (D112): 56–59 full end pass, 64/65 deep code reviews, 91 remainder, Maestro/tablet passes | recorded | verification/01_verification.md KI-01..KI-29 |
+
+Manual-test servers left running for the user (D122): mock-core 127.0.0.1:4400, Vite 127.0.0.1:5173, Metro 127.0.0.1:8081; emulators dems_phone / dems_phone2 / dems_tablet stay up.
+
+## CLOSED (2026-10-04)
+
+Status chain: FINAL_VERIFICATION → MEMORY_PERSISTENCE → COMPLETE. Follow-up task: `docs/2026-10-04_dems_backend_rbac_pairing/`.
