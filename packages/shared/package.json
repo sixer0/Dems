@@ -10,8 +10,13 @@
     "./realtime": "./src/realtime/index.ts",
     "./tokens": "./src/tokens/index.ts",
     "./sim": "./src/sim/index.ts",
+    "./i18n": "./src/i18n/index.ts",
+    "./brand": "./src/brand/index.ts",
+    "./demo-data": "./src/demo-data/index.ts",
+    "./assets/*": "./assets/*",
     "./theme/heroui-web.css": "./theme/heroui-web.css",
     "./theme/heroui-native.css": "./theme/heroui-native.css",
+    "./theme/scalar.css": "./theme/scalar.css",
     "./package.json": "./package.json"
   },
   "scripts": {
@@ -19,12 +24,15 @@
     "build": "tsx scripts/gen-theme.ts && tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint",
-    "test": "vitest run"
+    "test": "vitest run",
+    "openapi:gen": "tsx scripts/gen-openapi.ts",
+    "gen:topo": "tsx scripts/gen-topo.ts"
   },
   "peerDependencies": {
     "react": "19.2.3"
   },
   "devDependencies": {
+    "@scalar/openapi-parser": "0.29.9",
     "@types/node": "26.6.3",
     "@types/react": "19.2.18",
     "oxlint": "1.86.0",
@@ -34,6 +42,8 @@
     "vitest": "5.0.3"
   },
   "dependencies": {
-    "zod": "4.6.5"
+    "@noble/hashes": "2.4.0",
+    "zod": "4.6.5",
+    "zustand": "5.0.15"
   }
 }

@@ -32,6 +32,9 @@ apps/mobile/ios/
 *.jks
 .gradle/
 local.properties
+*.p12
+*.pfx
+*.key
 
 # Environment files (keep the committed template)
 .env
@@ -54,3 +57,9 @@ coverage/
 
 # Workspace coordination locks and PID files (D35, D42; blueprint step 25)
 .locks/
+
+# Release packages and the DEMO signing material (06_packaging_spec §2.2, §4.1; step 100).
+# `/release/` is anchored to the repo root: an unanchored `release/` would also ignore the
+# packager sources in scripts/release/ (step 95).
+/release/
+apps/mobile/signing/

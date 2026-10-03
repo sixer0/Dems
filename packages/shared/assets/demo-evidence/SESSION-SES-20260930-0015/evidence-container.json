@@ -1,0 +1,45 @@
+{
+  "schema": "dems.evidence-container/1",
+  "demo": true,
+  "notice": "DEMO - synthetic evidence package for the DEMS demo stack. Not evidence and not for production: it is signed with a DEMO key derived from a published seed. This descriptor stands in for the encrypted media payload: the demo stores the media unencrypted so it can be played.",
+  "evidenceId": "EV-20260930-0005",
+  "sessionId": "SES-20260930-0015",
+  "payload": {
+    "format": "Independent track files (design book §6.3, §11.1): two H.264 video tracks, two AAC audio tracks",
+    "encryption": {
+      "algorithm": "AES-256-GCM",
+      "applied": false
+    },
+    "pathsRelativeTo": "packages/shared/assets",
+    "tracks": [
+      {
+        "trackId": "VIDEO-01",
+        "file": "VIDEO-01.mp4",
+        "mediaType": "video/mp4",
+        "path": "demo-media/evidence/0005/VIDEO-01.mp4",
+        "bytes": 909750
+      },
+      {
+        "trackId": "VIDEO-02",
+        "file": "VIDEO-02.mp4",
+        "mediaType": "video/mp4",
+        "path": "demo-media/evidence/0005/VIDEO-02.mp4",
+        "bytes": 882147
+      },
+      {
+        "trackId": "AUDIO-01",
+        "file": "AUDIO-01.m4a",
+        "mediaType": "audio/mp4",
+        "path": "demo-media/evidence/0005/AUDIO-01.m4a",
+        "bytes": 262067
+      },
+      {
+        "trackId": "AUDIO-02",
+        "file": "AUDIO-02.m4a",
+        "mediaType": "audio/mp4",
+        "path": "demo-evidence/SESSION-SES-20260930-0015/media/AUDIO-02.m4a",
+        "bytes": 262307
+      }
+    ]
+  }
+}

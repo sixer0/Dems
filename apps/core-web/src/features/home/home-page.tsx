@@ -13,6 +13,7 @@ import {
 } from '@dems/shared/tokens'
 import { HeartbeatStateLabel } from '@dems/shared/domain'
 import { BorderBeam } from '@/components/ui/border-beam'
+import { useAmbientLoop } from '@/motion'
 import { SlidingNumber } from '@/components/ui/sliding-number'
 import { TONE_ICONS } from '@/lib/tone-icons'
 import { enterTransition, enterVariants, type MotionMode } from './motion-variants'
@@ -92,8 +93,22 @@ function HeroCard() {
           Show test toast
         </Button>
       </Card.Footer>
-      <BorderBeam size={220} duration={8} colorFrom={palette.gold} colorTo={palette.bronze} />
+      <StackCheckBeam />
     </Card>
+  )
+}
+
+/**
+ * The stack-check BorderBeam (step 54; review 40 m10): an ambient loop registered with the ambient
+ * registry, so it counts against the ≤ 4 loops per viewport, pauses off screen and in a hidden tab,
+ * and never runs under reduced motion (the beam is unmounted, not just paused).
+ */
+function StackCheckBeam() {
+  const loop = useAmbientLoop('stack-check-border-beam')
+  return (
+    <span aria-hidden="true" className="contents" data-testid="stack-check-beam" {...loop.attrs}>
+      {loop.running ? <BorderBeam size={220} duration={8} colorFrom={palette.gold} colorTo={palette.bronze} /> : null}
+    </span>
   )
 }
 

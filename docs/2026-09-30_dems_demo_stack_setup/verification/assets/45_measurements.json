@@ -1,0 +1,2328 @@
+{
+ "gpu-result": {
+  "at": "2026-10-01T02:36:04.481Z",
+  "checks": {
+   "env": {
+    "inner": [
+     1710,
+     931
+    ],
+    "screen": [
+     1710,
+     1112
+    ],
+    "dpr": 2,
+    "visibility": "visible",
+    "focus": true,
+    "renderer": "ANGLE (Apple, ANGLE Metal Renderer: Apple M5, Unspecified Version)"
+   },
+   "viewportOverride": true,
+   "smPerf10": {
+    "fps": 60,
+    "worstFrameMs": 34,
+    "longTasks": 0,
+    "longTaskMs": []
+   },
+   "smSoak30": {
+    "fps": 60,
+    "worstFrameMs": 18,
+    "longTasks": 0,
+    "longTaskMs": []
+   },
+   "smOverlay": {
+    "running": 4,
+    "requested": 4,
+    "breach": "false",
+    "fpsAvg": 61,
+    "longTasks": 2,
+    "longTasksAfterWarmup": 1,
+    "meters": "{\"AUDIO-01\":40,\"AUDIO-02\":40}",
+    "list": "clock-colon, secure-dot, topo-drift, banner-dot, feed-frame-glow, rec-pulse"
+   },
+   "smVisibility": "visible",
+   "dashRecording10": {
+    "fps": 30,
+    "worstFrameMs": 34,
+    "longTasks": 0,
+    "longTaskMs": []
+   },
+   "dashRecordingOverlay": {
+    "running": 4,
+    "requested": 4,
+    "breach": "false",
+    "fpsAvg": 31,
+    "longTasks": 1,
+    "longTasksAfterWarmup": 0,
+    "meters": "{\"AUDIO-01\":20,\"AUDIO-02\":20}",
+    "list": "clock-colon, secure-dot, topo-drift, rec-pulse, ring-rotate, ring-rec-pulse, hero-ken-burns, rec-pulse"
+   },
+   "dashIdle10": {
+    "fps": 30,
+    "worstFrameMs": 34,
+    "longTasks": 0,
+    "longTaskMs": []
+   },
+   "dashIdleOverlay": {
+    "running": 4,
+    "requested": 5,
+    "breach": "false",
+    "fpsAvg": 31,
+    "longTasks": 1,
+    "longTasksAfterWarmup": 0,
+    "meters": "{\"AUDIO-01\":20,\"AUDIO-02\":20}",
+    "list": "ring-rotate, ring-breath, hero-ken-burns, ripple, shine-border | paused: clock-colon, secure-dot, topo-drift"
+   },
+   "videos": [
+    {
+     "ready": 4,
+     "paused": false,
+     "w": 1280
+    },
+    {
+     "ready": 4,
+     "paused": false,
+     "w": 1280
+    }
+   ]
+  },
+  "errors": [],
+  "browser": {
+   "pid": 69406,
+   "product": "Chrome/153.0.8010.12",
+   "ua": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36"
+  }
+ },
+ "gpu2-result": {
+  "at": "2026-10-01T02:38:04.991Z",
+  "checks": {
+   "a_native": {
+    "size": [
+     1710,
+     931,
+     2
+    ],
+    "fps": 30,
+    "worstFrameMs": 34
+   },
+   "b_override": {
+    "fps": 30,
+    "worstFrameMs": 34
+   },
+   "c_override_videosPaused": {
+    "fps": 60,
+    "worstFrameMs": 18,
+    "paused": [
+     true,
+     true
+    ]
+   },
+   "d_override_videosHidden": {
+    "fps": 60.1,
+    "worstFrameMs": 18
+   },
+   "e_override_heroHidden": {
+    "fps": 30.1,
+    "worstFrameMs": 34
+   },
+   "f_override_reduced": {
+    "fps": 60.1,
+    "worstFrameMs": 18,
+    "loops": 0
+   },
+   "g_override_again": {
+    "fps": 30,
+    "worstFrameMs": 34,
+    "loops": 4
+   },
+   "h_sm_idle_override": {
+    "fps": 60,
+    "worstFrameMs": 18
+   }
+  },
+  "errors": []
+ },
+ "probe-ac74": {
+  "name": "ac74",
+  "at": "2026-10-01T02:34:26.598Z",
+  "checks": {
+   "sim": {
+    "id": "SES-20261001-0024",
+    "case": "LP/2026/1001-0007",
+    "investigator": "AKP Budi Santoso",
+    "startedAt": 1790820945598
+   },
+   "dashboardD": "ACTIVE SESSION REC : : REC 00:18:45 Session ID SES-20261001-0024 Case Number LP/2026/1001-0007 Investigator AKP Budi Santoso Subject Tersangka \u00b7 Ahmad Fauzi Start Time 1 Oct 2026 09:15:45 UTC+07:00 Open Session Monitor",
+   "topBar": "DEMS EDGE CLIENT Digital Evidence Recording Controller Thu, 1 Oct 2026 09:34:3: : Device ID DEMS-IR-01 Interview Room 1 BS Logged in as AKP Budi Santoso SECURE All systems operational",
+   "smM": "Session ID SES-20261001-0024 Case Number LP/2026/1001-0007 Investigator AKP Budi Santoso Subject Type Tersangka Subject Ahmad Fauzi Interview Room Interview Room 1 Start Time 1 Oct 2026 09:15:45 Duration 00:18:48 Recording Profile Standard (1080p / 25 fps)",
+   "smTimes": {
+    "zoneLabels": 1,
+    "clockTimes": 45
+   },
+   "evidence": {
+    "hasSession": false,
+    "zoneLabels": [],
+    "firstRows": [
+     "TOTAL",
+     "13",
+     "SEALED",
+     "10",
+     "RECORDED",
+     "1",
+     "EXPORTED",
+     "1",
+     "PENDING",
+     "1",
+     "All",
+     "13"
+    ]
+   },
+   "evidenceHasCase": false,
+   "evidenceHasRecording": {
+    "rec": true,
+    "sessionId": false
+   }
+  },
+  "console": [],
+  "errors": []
+ },
+ "probe-evidence-detail": {
+  "name": "evidence-detail",
+  "at": "2026-10-01T02:35:16.631Z",
+  "checks": {
+   "header": "Sealed DEMO package EV-20261001-0013 1 Oct 2026 08:22:41 \u2013 09:10:17 Case Number LP/2026/0930-0006 Subject Wahyu Saputra Tersangka Investigator AKP Budi Santoso Location Interview Room 1 Duration 00:47:36 File Size 6.5 GB Status Sealed Session SES-20261001-0023 Play Export More",
+   "hasSessionId": true,
+   "zone": 0
+  },
+  "console": [],
+  "errors": []
+ },
+ "probe-fault-demo": {
+  "name": "fault-demo",
+  "at": "2026-10-01T02:33:47.531Z",
+  "checks": {
+   "state": {
+    "session": "RECORDING",
+    "faults": [
+     "CAMERA_LOSS:VIDEO-02",
+     "MIC_CLIP:AUDIO-02",
+     "GNSS_LOSS:NTP"
+    ],
+    "cams": [
+     "VIDEO-01:READY:on:",
+     "VIDEO-02:FAULT:off:"
+    ]
+   },
+   "loops": {
+    "running": 4,
+    "requested": 5,
+    "breach": "false",
+    "fpsAvg": 61,
+    "longTasks": 1,
+    "longTasksAfterWarmup": 0,
+    "meters": "{\"AUDIO-01\":20,\"AUDIO-02\":20}",
+    "list": "ring-rotate, ring-breath, hero-ken-burns, rec-pulse | paused: clock-colon, secure-beam, secure-dot, topo-drift"
+   },
+   "running": [
+    "glow-ring <svg ticks>",
+    "glow-ring <svg bracket-glow>",
+    "hero-media <div dems-dash-hero-media>",
+    "rec-indicator <span relative inline-flex size-2.5 items-center justify>"
+   ],
+   "recIndicators": [
+    {
+     "panel": "D",
+     "ambient": "running",
+     "text": "6 7 8 9 REC 00:18:46"
+    }
+   ],
+   "pill": {
+    "state": "CRITICAL",
+    "beam": "paused",
+    "mounted": false
+   },
+   "sm": {
+    "loops": {
+     "running": 4,
+     "requested": 4,
+     "breach": "false",
+     "fpsAvg": 62,
+     "longTasks": 0,
+     "longTasksAfterWarmup": 0,
+     "meters": "{\"AUDIO-01\":40,\"AUDIO-02\":40}",
+     "list": "clock-colon, secure-beam, secure-dot, topo-drift, banner-dot, feed-frame-glow, rec-pulse"
+    },
+    "pill": {
+     "state": "CRITICAL",
+     "beam": "running",
+     "mounted": true
+    },
+    "banner": "FAULT Recording continues \u2022 Camera signal lost",
+    "phase": "RECORDING"
+   }
+  },
+  "console": [],
+  "errors": []
+ },
+ "probe-handoff-reduced": {
+  "name": "handoff-reduced",
+  "at": "2026-10-01T02:42:03.138Z",
+  "checks": {
+   "frames": [
+    {
+     "t": 5,
+     "login": 1,
+     "card": 1,
+     "brand": 1,
+     "backdrop": 1,
+     "backdropImg": 1,
+     "ringStage": 1,
+     "ringParent": 1,
+     "emblemEff": 1,
+     "wordEff": 1,
+     "topbg": null,
+     "nav": null,
+     "route": null,
+     "routeTf": null,
+     "emblem": [
+      197,
+      311,
+      170
+     ]
+    },
+    {
+     "t": 638,
+     "login": 1,
+     "card": 0.98,
+     "brand": 1,
+     "backdrop": 0.98,
+     "backdropImg": 1,
+     "ringStage": 1,
+     "ringParent": 1,
+     "emblemEff": 0,
+     "wordEff": 0.98,
+     "topbg": null,
+     "nav": null,
+     "route": null,
+     "routeTf": null,
+     "emblem": [
+      197,
+      311,
+      170
+     ]
+    },
+    {
+     "t": 655,
+     "login": 1,
+     "card": 0.92,
+     "brand": 1,
+     "backdrop": 0.92,
+     "backdropImg": 1,
+     "ringStage": 1,
+     "ringParent": 1,
+     "emblemEff": 0,
+     "wordEff": 0.92,
+     "topbg": null,
+     "nav": null,
+     "route": null,
+     "routeTf": null,
+     "emblem": [
+      197,
+      311,
+      170
+     ]
+    },
+    {
+     "t": 671,
+     "login": 1,
+     "card": 0.85,
+     "brand": 1,
+     "backdrop": 0.85,
+     "backdropImg": 1,
+     "ringStage": 1,
+     "ringParent": 1,
+     "emblemEff": 0,
+     "wordEff": 0.85,
+     "topbg": null,
+     "nav": null,
+     "route": null,
+     "routeTf": null,
+     "emblem": [
+      197,
+      311,
+      170
+     ]
+    },
+    {
+     "t": 688,
+     "login": 1,
+     "card": 0.75,
+     "brand": 1,
+     "backdrop": 0.75,
+     "backdropImg": 1,
+     "ringStage": 1,
+     "ringParent": 1,
+     "emblemEff": 0,
+     "wordEff": 0.75,
+     "topbg": null,
+     "nav": null,
+     "route": null,
+     "routeTf": null,
+     "emblem": [
+      197,
+      311,
+      170
+     ]
+    },
+    {
+     "t": 705,
+     "login": 1,
+     "card": 0.65,
+     "brand": 1,
+     "backdrop": 0.65,
+     "backdropImg": 1,
+     "ringStage": 1,
+     "ringParent": 1,
+     "emblemEff": 0,
+     "wordEff": 0.65,
+     "topbg": null,
+     "nav": null,
+     "route": null,
+     "routeTf": null,
+     "emblem": [
+      197,
+      311,
+      170
+     ]
+    },
+    {
+     "t": 721,
+     "login": 1,
+     "card": 0.52,
+     "brand": 1,
+     "backdrop": 0.52,
+     "backdropImg": 1,
+     "ringStage": 1,
+     "ringParent": 1,
+     "emblemEff": 0,
+     "wordEff": 0.52,
+     "topbg": null,
+     "nav": null,
+     "route": null,
+     "routeTf": null,
+     "emblem": [
+      197,
+      311,
+      170
+     ]
+    },
+    {
+     "t": 738,
+     "login": 1,
+     "card": 0.39,
+     "brand": 1,
+     "backdrop": 0.39,
+     "backdropImg": 1,
+     "ringStage": 1,
+     "ringParent": 1,
+     "emblemEff": 0,
+     "wordEff": 0.39,
+     "topbg": null,
+     "nav": null,
+     "route": null,
+     "routeTf": null,
+     "emblem": [
+      197,
+      311,
+      170
+     ]
+    },
+    {
+     "t": 755,
+     "login": 1,
+     "card": 0.25,
+     "brand": 1,
+     "backdrop": 0.25,
+     "backdropImg": 1,
+     "ringStage": 1,
+     "ringParent": 1,
+     "emblemEff": 0,
+     "wordEff": 0.25,
+     "topbg": null,
+     "nav": null,
+     "route": null,
+     "routeTf": null,
+     "emblem": [
+      197,
+      311,
+      170
+     ]
+    },
+    {
+     "t": 771,
+     "login": 1,
+     "card": 0.09,
+     "brand": 1,
+     "backdrop": 0.09,
+     "backdropImg": 1,
+     "ringStage": 1,
+     "ringParent": 1,
+     "emblemEff": 0,
+     "wordEff": 0.09,
+     "topbg": null,
+     "nav": null,
+     "route": null,
+     "routeTf": null,
+     "emblem": [
+      197,
+      311,
+      170
+     ]
+    },
+    {
+     "t": 788,
+     "login": null,
+     "card": null,
+     "brand": null,
+     "backdrop": null,
+     "backdropImg": null,
+     "ringStage": null,
+     "ringParent": null,
+     "emblemEff": null,
+     "wordEff": null,
+     "topbg": 0,
+     "nav": 0,
+     "route": 0,
+     "routeTf": "none",
+     "emblem": [
+      20,
+      16,
+      48
+     ]
+    },
+    {
+     "t": 838,
+     "login": null,
+     "card": null,
+     "brand": null,
+     "backdrop": null,
+     "backdropImg": null,
+     "ringStage": null,
+     "ringParent": null,
+     "emblemEff": null,
+     "wordEff": null,
+     "topbg": 0.23,
+     "nav": 0.23,
+     "route": 0.23,
+     "routeTf": "none",
+     "emblem": [
+      20,
+      16,
+      48
+     ]
+    },
+    {
+     "t": 855,
+     "login": null,
+     "card": null,
+     "brand": null,
+     "backdrop": null,
+     "backdropImg": null,
+     "ringStage": null,
+     "ringParent": null,
+     "emblemEff": null,
+     "wordEff": null,
+     "topbg": 0.56,
+     "nav": 0.56,
+     "route": 0.56,
+     "routeTf": "none",
+     "emblem": [
+      20,
+      16,
+      48
+     ]
+    },
+    {
+     "t": 871,
+     "login": null,
+     "card": null,
+     "brand": null,
+     "backdrop": null,
+     "backdropImg": null,
+     "ringStage": null,
+     "ringParent": null,
+     "emblemEff": null,
+     "wordEff": null,
+     "topbg": 0.73,
+     "nav": 0.73,
+     "route": 0.73,
+     "routeTf": "none",
+     "emblem": [
+      20,
+      16,
+      48
+     ]
+    },
+    {
+     "t": 888,
+     "login": null,
+     "card": null,
+     "brand": null,
+     "backdrop": null,
+     "backdropImg": null,
+     "ringStage": null,
+     "ringParent": null,
+     "emblemEff": null,
+     "wordEff": null,
+     "topbg": 0.83,
+     "nav": 0.83,
+     "route": 0.83,
+     "routeTf": "none",
+     "emblem": [
+      20,
+      16,
+      48
+     ]
+    },
+    {
+     "t": 905,
+     "login": null,
+     "card": null,
+     "brand": null,
+     "backdrop": null,
+     "backdropImg": null,
+     "ringStage": null,
+     "ringParent": null,
+     "emblemEff": null,
+     "wordEff": null,
+     "topbg": 0.9,
+     "nav": 0.9,
+     "route": 0.9,
+     "routeTf": "none",
+     "emblem": [
+      20,
+      16,
+      48
+     ]
+    },
+    {
+     "t": 921,
+     "login": null,
+     "card": null,
+     "brand": null,
+     "backdrop": null,
+     "backdropImg": null,
+     "ringStage": null,
+     "ringParent": null,
+     "emblemEff": null,
+     "wordEff": null,
+     "topbg": 0.94,
+     "nav": 0.94,
+     "route": 0.94,
+     "routeTf": "none",
+     "emblem": [
+      20,
+      16,
+      48
+     ]
+    },
+    {
+     "t": 938,
+     "login": null,
+     "card": null,
+     "brand": null,
+     "backdrop": null,
+     "backdropImg": null,
+     "ringStage": null,
+     "ringParent": null,
+     "emblemEff": null,
+     "wordEff": null,
+     "topbg": 0.97,
+     "nav": 0.97,
+     "route": 0.97,
+     "routeTf": "none",
+     "emblem": [
+      20,
+      16,
+      48
+     ]
+    },
+    {
+     "t": 955,
+     "login": null,
+     "card": null,
+     "brand": null,
+     "backdrop": null,
+     "backdropImg": null,
+     "ringStage": null,
+     "ringParent": null,
+     "emblemEff": null,
+     "wordEff": null,
+     "topbg": 0.99,
+     "nav": 0.99,
+     "route": 0.99,
+     "routeTf": "none",
+     "emblem": [
+      20,
+      16,
+      48
+     ]
+    },
+    {
+     "t": 971,
+     "login": null,
+     "card": null,
+     "brand": null,
+     "backdrop": null,
+     "backdropImg": null,
+     "ringStage": null,
+     "ringParent": null,
+     "emblemEff": null,
+     "wordEff": null,
+     "topbg": 1,
+     "nav": 1,
+     "route": 1,
+     "routeTf": "none",
+     "emblem": [
+      20,
+      16,
+      48
+     ]
+    }
+   ],
+   "landed": "/dashboard"
+  },
+  "console": [],
+  "errors": []
+ },
+ "probe-overflow": {
+  "name": "overflow",
+  "at": "2026-10-01T02:33:59.604Z",
+  "checks": {
+   "900": {
+    "mainSW": 976,
+    "mainCW": 900,
+    "overflowX": "hidden",
+    "offenders": [
+     {
+      "tag": "svg",
+      "tid": "panel-a",
+      "cls": "[object SVGAnimatedString]",
+      "right": 976,
+      "w": 929
+     }
+    ]
+   },
+   "1200": {
+    "mainSW": 1128,
+    "mainCW": 1128,
+    "overflowX": "hidden",
+    "offenders": [
+     {
+      "tag": "img",
+      "tid": "hero-media",
+      "cls": "dems-dash-hero-img",
+      "right": 1201,
+      "w": 747
+     }
+    ]
+   }
+  },
+  "console": [],
+  "errors": []
+ },
+ "result-dashboard-1440": {
+  "phase": "dashboard",
+  "width": 1440,
+  "height": 900,
+  "at": "2026-10-01T02:26:41.073Z",
+  "checks": {
+   "idle": {
+    "panels": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ],
+    "rows": {
+     "A": {
+      "x": 228,
+      "y": 84,
+      "w": 291,
+      "h": 275.7
+     },
+     "D": {
+      "x": 228,
+      "y": 372,
+      "w": 493,
+      "h": 212.7
+     },
+     "F": {
+      "x": 228,
+      "y": 596,
+      "w": 392,
+      "h": 153.6
+     },
+     "I": {
+      "x": 228,
+      "y": 762,
+      "w": 594,
+      "h": 126
+     }
+    },
+    "fit": {
+     "mainSH": 828,
+     "mainCH": 828,
+     "mainSW": 1224,
+     "mainCW": 1224,
+     "docSH": 900,
+     "docSW": 1440,
+     "innerH": 900,
+     "innerW": 1440
+    },
+    "loops": {
+     "running": 4,
+     "requested": 5,
+     "breach": "false",
+     "fpsAvg": 32,
+     "longTasks": 0,
+     "longTasksAfterWarmup": 0,
+     "meters": "{\"AUDIO-01\":20,\"AUDIO-02\":20}",
+     "list": "ring-rotate, ring-breath, hero-ken-burns, ripple, shine-border | paused: clock-colon, secure-dot, topo-drift"
+    },
+    "storage": {
+     "valuetext": "20% used, 3.2 TB free of 4.0 TB",
+     "valuenow": "20",
+     "text": "STORAGE & EVIDENCE View Storage 20% USED 3.2 TB Free of 4.0 TB Used 804 GB Free 3.2 TB Sealed Evidence 7 Pending 1"
+    },
+    "pill": {
+     "state": "SECURE",
+     "text": "SECURE All systems operational",
+     "beamAmbient": "paused",
+     "beamMounted": false
+    },
+    "videos": [
+     {
+      "ready": 4,
+      "paused": false,
+      "w": 1280
+     },
+     {
+      "ready": 4,
+      "paused": false,
+      "w": 1280
+     }
+    ],
+    "shot": "verification/assets/45_1440_dashboard_idle.png"
+   },
+   "idlePerf": {
+    "fps": 30.1,
+    "worstFrameMs": 34,
+    "longTasks": 0,
+    "longTaskMs": []
+   },
+   "idleTimestamps": {
+    "utcTags": [
+     "UTC+07:00",
+     "UTC+07:00"
+    ],
+    "timeCount": 10
+   },
+   "idleFanStall": {
+    "pill": {
+     "state": "ATTENTION",
+     "text": "ATTENTION Some checks need attention",
+     "beamAmbient": "running",
+     "beamMounted": true
+    },
+    "loops": {
+     "running": 4,
+     "requested": 4,
+     "breach": "false",
+     "fpsAvg": 31,
+     "longTasks": 0,
+     "longTasksAfterWarmup": 0,
+     "meters": "{\"AUDIO-01\":20,\"AUDIO-02\":20}",
+     "list": "clock-colon, secure-dot, topo-drift, ring-rotate, ring-breath, hero-ken-burns, secure-beam"
+    },
+    "ring": "ATTENTION",
+    "shot": "verification/assets/45_1440_dashboard_idle_fanstall_debug.png"
+   },
+   "idleCritical": {
+    "pill": {
+     "state": "CRITICAL",
+     "text": "CRITICAL An integrity check failed",
+     "beamAmbient": "running",
+     "beamMounted": true
+    },
+    "loops": {
+     "running": 4,
+     "requested": 4,
+     "breach": "false",
+     "fpsAvg": 32,
+     "longTasks": 0,
+     "longTasksAfterWarmup": 0,
+     "meters": "{\"AUDIO-01\":20,\"AUDIO-02\":20}",
+     "list": "clock-colon, secure-dot, topo-drift, ring-rotate, ring-breath, hero-ken-burns, secure-beam"
+    }
+   },
+   "idleRecovered": {
+    "pill": {
+     "state": "SECURE",
+     "text": "SECURE All systems operational",
+     "beamAmbient": "paused",
+     "beamMounted": false
+    },
+    "loops": {
+     "running": 4,
+     "requested": 5,
+     "breach": "false",
+     "fpsAvg": 32,
+     "longTasks": 0,
+     "longTasksAfterWarmup": 0,
+     "meters": "{\"AUDIO-01\":20,\"AUDIO-02\":20}",
+     "list": "ring-rotate, ring-breath, hero-ken-burns, ripple, shine-border | paused: clock-colon, secure-dot, topo-drift"
+    }
+   },
+   "recording": {
+    "sim": {
+     "id": "SES-20261001-0024",
+     "case": "LP/2026/1001-0007",
+     "investigator": "AKP Budi Santoso",
+     "subject": "Ahmad Fauzi",
+     "state": "RECORDING"
+    },
+    "panelD": "ACTIVE SESSION REC 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 : 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 : 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 REC 00:18:46 Session ID SES-20261001-0024 Case Number LP/2026/1001-0007 Investigator AKP Budi Santoso Subject Tersangka \u00b7 Ahmad Fauzi Start Time 1 Oct 2026 09:08:20 UTC+07:00 Open Session Monitor",
+    "loops": {
+     "running": 4,
+     "requested": 4,
+     "breach": "false",
+     "fpsAvg": 32,
+     "longTasks": 0,
+     "longTasksAfterWarmup": 0,
+     "meters": "{\"AUDIO-01\":20,\"AUDIO-02\":20}",
+     "list": "clock-colon, secure-dot, topo-drift, rec-pulse, ring-rotate, ring-rec-pulse, hero-ken-burns, rec-pulse"
+    },
+    "pill": {
+     "state": "SECURE",
+     "text": "SECURE All systems operational",
+     "beamAmbient": "paused",
+     "beamMounted": false
+    },
+    "fit": {
+     "mainSH": 828,
+     "mainCH": 828,
+     "mainSW": 1224,
+     "mainCW": 1224,
+     "docSH": 900,
+     "docSW": 1440,
+     "innerH": 900,
+     "innerW": 1440
+    },
+    "shot": "verification/assets/45_1440_dashboard_recording.png"
+   },
+   "recordingPerf": {
+    "fps": 30,
+    "worstFrameMs": 34,
+    "longTasks": 0,
+    "longTaskMs": []
+   },
+   "recordingFanStall": {
+    "pill": {
+     "state": "SECURE",
+     "text": "SECURE All systems operational",
+     "beamAmbient": "paused",
+     "beamMounted": false
+    },
+    "loops": {
+     "running": 4,
+     "requested": 4,
+     "breach": "false",
+     "fpsAvg": 31,
+     "longTasks": 0,
+     "longTasksAfterWarmup": 0,
+     "meters": "{\"AUDIO-01\":20,\"AUDIO-02\":20}",
+     "list": "clock-colon, secure-dot, topo-drift, rec-pulse, ring-rotate, ring-rec-pulse, hero-ken-burns, rec-pulse"
+    }
+   },
+   "recordingMicClip": {
+    "pill": {
+     "state": "SECURE",
+     "text": "SECURE All systems operational",
+     "beamAmbient": "paused",
+     "beamMounted": false
+    },
+    "loops": {
+     "running": 4,
+     "requested": 4,
+     "breach": "false",
+     "fpsAvg": 32,
+     "longTasks": 0,
+     "longTasksAfterWarmup": 0,
+     "meters": "{\"AUDIO-01\":20,\"AUDIO-02\":20}",
+     "list": "clock-colon, secure-dot, topo-drift, rec-pulse, ring-rotate, ring-rec-pulse, hero-ken-burns, rec-pulse"
+    },
+    "ring": "RECORDING",
+    "flags": [
+     "AUDIO-01:READY",
+     "AUDIO-02:CLIP+latched"
+    ],
+    "shot": "verification/assets/45_1440_dashboard_recording_micclip_debug.png"
+   },
+   "faultDemo": {
+    "pill": {
+     "state": "CRITICAL",
+     "text": "CRITICAL An integrity check failed",
+     "beamAmbient": "paused",
+     "beamMounted": false
+    },
+    "loops": {
+     "running": 4,
+     "requested": 5,
+     "breach": "false",
+     "fpsAvg": 62,
+     "longTasks": 0,
+     "longTasksAfterWarmup": 0,
+     "meters": "{\"AUDIO-01\":20,\"AUDIO-02\":20}",
+     "list": "ring-rotate, ring-breath, hero-ken-burns, rec-pulse | paused: clock-colon, secure-beam, secure-dot, topo-drift"
+    }
+   }
+  },
+  "console": [],
+  "errors": [],
+  "browser": {
+   "pid": 61078,
+   "product": "HeadlessChrome/153.0.8010.12"
+  }
+ },
+ "result-dashboard-1920": {
+  "phase": "dashboard",
+  "width": 1920,
+  "height": 1080,
+  "at": "2026-10-01T02:24:44.363Z",
+  "checks": {
+   "idle": {
+    "panels": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ],
+    "rows": {
+     "A": {
+      "x": 248,
+      "y": 96,
+      "w": 402,
+      "h": 338.5
+     },
+     "D": {
+      "x": 248,
+      "y": 451,
+      "w": 680.7,
+      "h": 254.9
+     },
+     "F": {
+      "x": 248,
+      "y": 721,
+      "w": 541.3,
+      "h": 179.2
+     },
+     "I": {
+      "x": 248,
+      "y": 917,
+      "w": 820,
+      "h": 147.3
+     }
+    },
+    "fit": {
+     "mainSH": 1000,
+     "mainCH": 1000,
+     "mainSW": 1688,
+     "mainCW": 1688,
+     "docSH": 1080,
+     "docSW": 1920,
+     "innerH": 1080,
+     "innerW": 1920
+    },
+    "loops": {
+     "running": 4,
+     "requested": 5,
+     "breach": "false",
+     "fpsAvg": 32,
+     "longTasks": 0,
+     "longTasksAfterWarmup": 0,
+     "meters": "{\"AUDIO-01\":20,\"AUDIO-02\":20}",
+     "list": "ring-rotate, ring-breath, hero-ken-burns, ripple, shine-border | paused: clock-colon, secure-dot, topo-drift"
+    },
+    "storage": {
+     "valuetext": "20% used, 3.2 TB free of 4.0 TB",
+     "valuenow": "20",
+     "text": "STORAGE & EVIDENCE View Storage 20% USED 3.2 TB Free of 4.0 TB Used 804 GB Free 3.2 TB Sealed Evidence 7 Pending 1"
+    },
+    "pill": {
+     "state": "SECURE",
+     "text": "SECURE All systems operational",
+     "beamAmbient": "paused",
+     "beamMounted": false
+    },
+    "videos": [
+     {
+      "ready": 4,
+      "paused": false,
+      "w": 1280
+     },
+     {
+      "ready": 4,
+      "paused": false,
+      "w": 1280
+     }
+    ],
+    "shot": "verification/assets/45_1920_dashboard_idle.png"
+   },
+   "idlePerf": {
+    "fps": 30.1,
+    "worstFrameMs": 33,
+    "longTasks": 0,
+    "longTaskMs": []
+   },
+   "idleTimestamps": {
+    "utcTags": [
+     "UTC+07:00",
+     "UTC+07:00"
+    ],
+    "timeCount": 10
+   },
+   "idleFanStall": {
+    "pill": {
+     "state": "ATTENTION",
+     "text": "ATTENTION Some checks need attention",
+     "beamAmbient": "running",
+     "beamMounted": true
+    },
+    "loops": {
+     "running": 4,
+     "requested": 4,
+     "breach": "false",
+     "fpsAvg": 31,
+     "longTasks": 0,
+     "longTasksAfterWarmup": 0,
+     "meters": "{\"AUDIO-01\":20,\"AUDIO-02\":20}",
+     "list": "clock-colon, secure-dot, topo-drift, ring-rotate, ring-breath, hero-ken-burns, secure-beam"
+    },
+    "ring": "ATTENTION",
+    "shot": "verification/assets/45_1920_dashboard_idle_fanstall_debug.png"
+   },
+   "idleCritical": {
+    "pill": {
+     "state": "CRITICAL",
+     "text": "CRITICAL An integrity check failed",
+     "beamAmbient": "running",
+     "beamMounted": true
+    },
+    "loops": {
+     "running": 4,
+     "requested": 4,
+     "breach": "false",
+     "fpsAvg": 32,
+     "longTasks": 0,
+     "longTasksAfterWarmup": 0,
+     "meters": "{\"AUDIO-01\":20,\"AUDIO-02\":20}",
+     "list": "clock-colon, secure-dot, topo-drift, ring-rotate, ring-breath, hero-ken-burns, secure-beam"
+    }
+   },
+   "idleRecovered": {
+    "pill": {
+     "state": "SECURE",
+     "text": "SECURE All systems operational",
+     "beamAmbient": "paused",
+     "beamMounted": false
+    },
+    "loops": {
+     "running": 4,
+     "requested": 5,
+     "breach": "false",
+     "fpsAvg": 32,
+     "longTasks": 0,
+     "longTasksAfterWarmup": 0,
+     "meters": "{\"AUDIO-01\":20,\"AUDIO-02\":20}",
+     "list": "ring-rotate, ring-breath, hero-ken-burns, ripple, shine-border | paused: clock-colon, secure-dot, topo-drift"
+    }
+   },
+   "recording": {
+    "sim": {
+     "id": "SES-20261001-0024",
+     "case": "LP/2026/1001-0007",
+     "investigator": "AKP Budi Santoso",
+     "subject": "Ahmad Fauzi",
+     "state": "RECORDING"
+    },
+    "panelD": "ACTIVE SESSION REC 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 : 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 : 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 REC 00:18:46 Session ID SES-20261001-0024 Case Number LP/2026/1001-0007 Investigator AKP Budi Santoso Subject Tersangka \u00b7 Ahmad Fauzi Start Time 1 Oct 2026 09:06:23 UTC+07:00 Open Session Monitor",
+    "loops": {
+     "running": 4,
+     "requested": 4,
+     "breach": "false",
+     "fpsAvg": 31,
+     "longTasks": 0,
+     "longTasksAfterWarmup": 0,
+     "meters": "{\"AUDIO-01\":20,\"AUDIO-02\":20}",
+     "list": "clock-colon, secure-dot, topo-drift, rec-pulse, ring-rotate, ring-rec-pulse, hero-ken-burns, rec-pulse"
+    },
+    "pill": {
+     "state": "SECURE",
+     "text": "SECURE All systems operational",
+     "beamAmbient": "paused",
+     "beamMounted": false
+    },
+    "fit": {
+     "mainSH": 1000,
+     "mainCH": 1000,
+     "mainSW": 1688,
+     "mainCW": 1688,
+     "docSH": 1080,
+     "docSW": 1920,
+     "innerH": 1080,
+     "innerW": 1920
+    },
+    "shot": "verification/assets/45_1920_dashboard_recording.png"
+   },
+   "recordingPerf": {
+    "fps": 30.1,
+    "worstFrameMs": 34,
+    "longTasks": 0,
+    "longTaskMs": []
+   },
+   "recordingFanStall": {
+    "pill": {
+     "state": "SECURE",
+     "text": "SECURE All systems operational",
+     "beamAmbient": "paused",
+     "beamMounted": false
+    },
+    "loops": {
+     "running": 4,
+     "requested": 4,
+     "breach": "false",
+     "fpsAvg": 31,
+     "longTasks": 0,
+     "longTasksAfterWarmup": 0,
+     "meters": "{\"AUDIO-01\":20,\"AUDIO-02\":20}",
+     "list": "clock-colon, secure-dot, topo-drift, rec-pulse, ring-rotate, ring-rec-pulse, hero-ken-burns, rec-pulse"
+    }
+   },
+   "recordingMicClip": {
+    "pill": {
+     "state": "SECURE",
+     "text": "SECURE All systems operational",
+     "beamAmbient": "paused",
+     "beamMounted": false
+    },
+    "loops": {
+     "running": 4,
+     "requested": 4,
+     "breach": "false",
+     "fpsAvg": 32,
+     "longTasks": 0,
+     "longTasksAfterWarmup": 0,
+     "meters": "{\"AUDIO-01\":20,\"AUDIO-02\":20}",
+     "list": "clock-colon, secure-dot, topo-drift, rec-pulse, ring-rotate, ring-rec-pulse, hero-ken-burns, rec-pulse"
+    },
+    "ring": "RECORDING",
+    "flags": [
+     "AUDIO-01:READY",
+     "AUDIO-02:CLIP+latched"
+    ],
+    "shot": "verification/assets/45_1920_dashboard_recording_micclip_debug.png"
+   },
+   "faultDemo": {
+    "pill": {
+     "state": "CRITICAL",
+     "text": "CRITICAL An integrity check failed",
+     "beamAmbient": "paused",
+     "beamMounted": false
+    },
+    "loops": {
+     "running": 4,
+     "requested": 5,
+     "breach": "false",
+     "fpsAvg": 62,
+     "longTasks": 0,
+     "longTasksAfterWarmup": 0,
+     "meters": "{\"AUDIO-01\":20,\"AUDIO-02\":20}",
+     "list": "ring-rotate, ring-breath, hero-ken-burns, rec-pulse | paused: clock-colon, secure-beam, secure-dot, topo-drift"
+    }
+   }
+  },
+  "console": [],
+  "errors": [],
+  "browser": {
+   "pid": 59286,
+   "product": "HeadlessChrome/153.0.8010.12"
+  }
+ },
+ "result-login-1440": {
+  "phase": "login",
+  "width": 1440,
+  "height": 900,
+  "at": "2026-10-01T02:31:45.814Z",
+  "checks": {
+   "idle": {
+    "state": "idle",
+    "coreLink": "online",
+    "strip": "DEVICE DEMS-IR-01 ROOM Interview Room 1 TIME 09:31:50 UTC+07:00 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 : 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 : 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 GNSS Synchronized CORE LINK Online SECURITY SECURE",
+    "loops": {
+     "running": 4,
+     "requested": 4,
+     "breach": "false",
+     "fpsAvg": 62,
+     "longTasks": 0,
+     "longTasksAfterWarmup": 0,
+     "meters": "{}",
+     "list": "ken-burns, particles, ring-rotate, ring-breath, border-beam-lap"
+    },
+    "fit": {
+     "mainSH": 900,
+     "mainCH": 900,
+     "mainSW": 1440,
+     "mainCW": 1440,
+     "docSH": 900,
+     "docSW": 1440,
+     "innerH": 900,
+     "innerW": 1440
+    },
+    "grade": "baked",
+    "shot": "verification/assets/45_1440_login_idle.png"
+   },
+   "idlePerf": {
+    "fps": 59.4,
+    "worstFrameMs": 33,
+    "longTasks": 0,
+    "longTaskMs": []
+   },
+   "flight": {
+    "successAtMs": 603,
+    "lastLoginFrame": {
+     "t": 1070,
+     "who": "login",
+     "x": 166,
+     "y": 240,
+     "w": 160,
+     "state": "success",
+     "both": false
+    },
+    "firstShellFrame": {
+     "t": 1086,
+     "who": "shell",
+     "x": 166,
+     "y": 240,
+     "w": 160,
+     "state": null,
+     "both": false
+    },
+    "handoffPauseMs": 16,
+    "settledFrame": {
+     "t": 1770,
+     "who": "shell",
+     "x": 20,
+     "y": 14,
+     "w": 44,
+     "state": null,
+     "both": false
+    },
+    "flightMs": 684,
+    "handoffTotalMs": 1167,
+    "maxFrameStepPx": 22,
+    "noneFrames": 0,
+    "bothFrames": 0,
+    "landed": "/dashboard",
+    "entrance": "handoff",
+    "shot": "verification/assets/45_1440_handoff_end.png"
+   },
+   "afterLogin": {
+    "pill": {
+     "state": "SECURE",
+     "text": "SECURE All systems operational",
+     "beamAmbient": "paused",
+     "beamMounted": false
+    },
+    "loops": {
+     "running": 4,
+     "requested": 5,
+     "breach": "false",
+     "fpsAvg": 57,
+     "longTasks": 1,
+     "longTasksAfterWarmup": 1,
+     "meters": "{\"AUDIO-01\":20,\"AUDIO-02\":20}",
+     "list": "ring-rotate, ring-breath, hero-ken-burns, ripple, shine-border | paused: clock-colon, secure-dot, topo-drift"
+    }
+   }
+  },
+  "console": [],
+  "errors": [],
+  "browser": {
+   "pid": 65297,
+   "product": "HeadlessChrome/153.0.8010.12"
+  }
+ },
+ "result-login-1920": {
+  "phase": "login",
+  "width": 1920,
+  "height": 1080,
+  "at": "2026-10-01T02:31:04.967Z",
+  "checks": {
+   "idle": {
+    "state": "idle",
+    "coreLink": "online",
+    "strip": "DEVICE DEMS-IR-01 ROOM Interview Room 1 TIME 09:31:09 UTC+07:00 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 : 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 : 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 GNSS Synchronized CORE LINK Online SECURITY SECURE",
+    "loops": {
+     "running": 4,
+     "requested": 4,
+     "breach": "false",
+     "fpsAvg": 63,
+     "longTasks": 0,
+     "longTasksAfterWarmup": 0,
+     "meters": "{}",
+     "list": "ken-burns, particles, ring-rotate, ring-breath, border-beam-lap"
+    },
+    "fit": {
+     "mainSH": 1080,
+     "mainCH": 1080,
+     "mainSW": 1920,
+     "mainCW": 1920,
+     "docSH": 1080,
+     "docSW": 1920,
+     "innerH": 1080,
+     "innerW": 1920
+    },
+    "grade": "baked",
+    "shot": "verification/assets/45_1920_login_idle.png"
+   },
+   "idlePerf": {
+    "fps": 58.9,
+    "worstFrameMs": 33,
+    "longTasks": 0,
+    "longTaskMs": []
+   },
+   "flight": {
+    "successAtMs": 616,
+    "lastLoginFrame": {
+     "t": 1066,
+     "who": "login",
+     "x": 197,
+     "y": 311,
+     "w": 170,
+     "state": "success",
+     "both": false
+    },
+    "firstShellFrame": {
+     "t": 1083,
+     "who": "shell",
+     "x": 197,
+     "y": 311,
+     "w": 170,
+     "state": null,
+     "both": false
+    },
+    "handoffPauseMs": 17,
+    "settledFrame": {
+     "t": 1800,
+     "who": "shell",
+     "x": 20,
+     "y": 16,
+     "w": 48,
+     "state": null,
+     "both": false
+    },
+    "flightMs": 717,
+    "handoffTotalMs": 1184,
+    "maxFrameStepPx": 28,
+    "noneFrames": 0,
+    "bothFrames": 0,
+    "landed": "/dashboard",
+    "entrance": "handoff",
+    "shot": "verification/assets/45_1920_handoff_end.png"
+   },
+   "afterLogin": {
+    "pill": {
+     "state": "SECURE",
+     "text": "SECURE All systems operational",
+     "beamAmbient": "paused",
+     "beamMounted": false
+    },
+    "loops": {
+     "running": 4,
+     "requested": 5,
+     "breach": "false",
+     "fpsAvg": 55,
+     "longTasks": 2,
+     "longTasksAfterWarmup": 2,
+     "meters": "{\"AUDIO-01\":20,\"AUDIO-02\":20}",
+     "list": "ring-rotate, ring-breath, hero-ken-burns, ripple, shine-border | paused: clock-colon, secure-dot, topo-drift"
+    }
+   }
+  },
+  "console": [],
+  "errors": [],
+  "browser": {
+   "pid": 64836,
+   "product": "HeadlessChrome/153.0.8010.12"
+  }
+ },
+ "result-reduced-1920": {
+  "phase": "reduced",
+  "width": 1920,
+  "height": 1080,
+  "at": "2026-10-01T02:32:20.137Z",
+  "checks": {
+   "dashboard": {
+    "html": "reduced",
+    "running": 0,
+    "paused": 12,
+    "reducedMarks": 24,
+    "layoutIds": 0,
+    "videos": [
+     true,
+     true
+    ],
+    "anims": 0,
+    "loops": {
+     "running": 0,
+     "requested": 0,
+     "breach": "false",
+     "fpsAvg": 61,
+     "longTasks": 0,
+     "longTasksAfterWarmup": 0,
+     "meters": "{\"AUDIO-01\":10,\"AUDIO-02\":10}",
+     "list": ""
+    },
+    "perf": {
+     "fps": 60,
+     "worstFrameMs": 17,
+     "longTasks": 0,
+     "longTaskMs": []
+    },
+    "shot": "verification/assets/45_1920_dashboard_reduced.png"
+   },
+   "sm": {
+    "html": "reduced",
+    "running": 0,
+    "paused": 7,
+    "reducedMarks": 19,
+    "layoutIds": 0,
+    "videos": [
+     true,
+     true,
+     true
+    ],
+    "anims": 0,
+    "loops": {
+     "running": 0,
+     "requested": 0,
+     "breach": "false",
+     "fpsAvg": 61,
+     "longTasks": 0,
+     "longTasksAfterWarmup": 0,
+     "meters": "{\"AUDIO-01\":20,\"AUDIO-02\":20}",
+     "list": ""
+    },
+    "perf": {
+     "fps": 60.2,
+     "worstFrameMs": 17,
+     "longTasks": 0,
+     "longTaskMs": []
+    },
+    "shot": "verification/assets/45_1920_sm_reduced.png"
+   },
+   "login": {
+    "html": "reduced",
+    "running": 0,
+    "paused": 6,
+    "reducedMarks": 9,
+    "layoutIds": 0,
+    "videos": [],
+    "anims": 0,
+    "loops": {
+     "running": 0,
+     "requested": 0,
+     "breach": "false",
+     "fpsAvg": 60,
+     "longTasks": 0,
+     "longTasksAfterWarmup": 0,
+     "meters": "{}",
+     "list": ""
+    },
+    "perf": {
+     "fps": 60.2,
+     "worstFrameMs": 17,
+     "longTasks": 0,
+     "longTaskMs": []
+    },
+    "shot": "verification/assets/45_1920_login_reduced.png"
+   },
+   "handoffReduced": {
+    "landed": "/dashboard",
+    "firstShell": {
+     "t": 786,
+     "who": "shell",
+     "x": 20,
+     "w": 48,
+     "shellOp": "1.00"
+    },
+    "shellXs": [
+     20
+    ],
+    "opacityRamp": [
+     "1.00",
+     "1.00",
+     "1.00",
+     "1.00",
+     "1.00",
+     "1.00",
+     "1.00",
+     "1.00",
+     "1.00",
+     "1.00",
+     "1.00",
+     "1.00"
+    ],
+    "shot": "verification/assets/45_1920_handoff_reduced_end.png"
+   }
+  },
+  "console": [
+   "warning: You have Reduced Motion enabled on your device. Animations may not appear as expected.. For more information and steps for solving, visit https://motion.dev/troubleshooting/reduced-motion-disabled",
+   "warning: You have Reduced Motion enabled on your device. Animations may not appear as expected.. For more information and steps for solving, visit https://motion.dev/troubleshooting/reduced-motion-disabled",
+   "warning: You have Reduced Motion enabled on your device. Animations may not appear as expected.. For more information and steps for solving, visit https://motion.dev/troubleshooting/reduced-motion-disabled"
+  ],
+  "errors": [],
+  "browser": {
+   "pid": 65727,
+   "product": "HeadlessChrome/153.0.8010.12"
+  }
+ },
+ "result-shell-1920": {
+  "phase": "shell",
+  "width": 1920,
+  "height": 1080,
+  "at": "2026-10-01T02:24:09.226Z",
+  "checks": {
+   "ac59": [
+    {
+     "viewport": "1920x1080",
+     "navWidth": 232,
+     "navVisible": true,
+     "topBarHeight": 80,
+     "hamburger": true,
+     "fit": {
+      "mainSH": 1000,
+      "mainCH": 1000,
+      "mainSW": 1688,
+      "mainCW": 1688,
+      "docSH": 1080,
+      "docSW": 1920,
+      "innerH": 1080,
+      "innerW": 1920
+     }
+    },
+    {
+     "viewport": "1440x900",
+     "navWidth": 216,
+     "navVisible": true,
+     "topBarHeight": 72,
+     "hamburger": true,
+     "fit": {
+      "mainSH": 828,
+      "mainCH": 828,
+      "mainSW": 1224,
+      "mainCW": 1224,
+      "docSH": 900,
+      "docSW": 1440,
+      "innerH": 900,
+      "innerW": 1440
+     }
+    },
+    {
+     "viewport": "1200x800",
+     "navWidth": 72,
+     "navVisible": true,
+     "topBarHeight": 72,
+     "hamburger": true,
+     "fit": {
+      "mainSH": 1999,
+      "mainCH": 728,
+      "mainSW": 1128,
+      "mainCW": 1128,
+      "docSH": 800,
+      "docSW": 1200,
+      "innerH": 800,
+      "innerW": 1200
+     }
+    },
+    {
+     "viewport": "900x800",
+     "navWidth": 0,
+     "navVisible": false,
+     "topBarHeight": 64,
+     "hamburger": true,
+     "fit": {
+      "mainSH": 2758,
+      "mainCH": 736,
+      "mainSW": 976,
+      "mainCW": 900,
+      "docSH": 800,
+      "docSW": 900,
+      "innerH": 800,
+      "innerW": 900
+     }
+    }
+   ],
+   "shellLoopsOnEvidence": {
+    "running": 1,
+    "requested": 1,
+    "breach": "false",
+    "fpsAvg": 119,
+    "longTasks": 1,
+    "longTasksAfterWarmup": 0,
+    "meters": "{}",
+    "list": "clock-colon, secure-dot, topo-drift"
+   },
+   "routeForward": {
+    "newKeyAtMs": null,
+    "direction": null,
+    "firstNewFrame": null,
+    "viewTransitionMs": [
+     63,
+     330
+    ],
+    "settledAtMs": null,
+    "maxGapMs": 100
+   },
+   "routeBack": {
+    "newKeyAtMs": 137,
+    "direction": "back",
+    "firstNewFrame": {
+     "t": 137,
+     "key": "/dashboard",
+     "dir": "back",
+     "op": 0,
+     "tf": "0, -12)",
+     "vt": true
+    },
+    "viewTransitionMs": [
+     4,
+     303
+    ],
+    "settledAtMs": 870,
+    "maxGapMs": 133
+   },
+   "coreLinkProbe": 200
+  },
+  "console": [],
+  "errors": [],
+  "browser": {
+   "pid": 58846,
+   "product": "HeadlessChrome/153.0.8010.12"
+  }
+ },
+ "result-sm-1440": {
+  "phase": "sm",
+  "width": 1440,
+  "height": 900,
+  "at": "2026-10-01T02:29:26.220Z",
+  "checks": {
+   "recording": {
+    "panels": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ],
+    "timer": [
+     {
+      "t": 0,
+      "duration": "00:18:46",
+      "rec": "REC 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 : 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 : 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 REC 00:18:46"
+     },
+     {
+      "t": 500,
+      "duration": "00:18:46",
+      "rec": "REC 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 : 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 : 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 REC 00:18:46"
+     },
+     {
+      "t": 1000,
+      "duration": "00:18:47",
+      "rec": "REC 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 : 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 : 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 REC 00:18:47"
+     },
+     {
+      "t": 1500,
+      "duration": "00:18:47",
+      "rec": "REC 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 : 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 : 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 REC 00:18:47"
+     },
+     {
+      "t": 2000,
+      "duration": "00:18:48",
+      "rec": "REC 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 : 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 : 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 REC 00:18:48"
+     },
+     {
+      "t": 2500,
+      "duration": "00:18:48",
+      "rec": "REC 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 : 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 : 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 REC 00:18:48"
+     },
+     {
+      "t": 3000,
+      "duration": "00:18:49",
+      "rec": "REC 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 : 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 : 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 REC 00:18:49"
+     },
+     {
+      "t": 3500,
+      "duration": "00:18:49",
+      "rec": "REC 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 : 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 : 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 REC 00:18:49"
+     },
+     {
+      "t": 4000,
+      "duration": "00:18:50",
+      "rec": "REC 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 : 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 : 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 REC 00:18:50"
+     }
+    ],
+    "loops": {
+     "running": 4,
+     "requested": 4,
+     "breach": "false",
+     "fpsAvg": 62,
+     "longTasks": 0,
+     "longTasksAfterWarmup": 0,
+     "meters": "{\"AUDIO-01\":40,\"AUDIO-02\":40}",
+     "list": "clock-colon, secure-dot, topo-drift, banner-dot, feed-frame-glow, rec-pulse"
+    },
+    "details": "Session ID SES-20261001-0024 Case Number LP/2026/1001-0007 Investigator AKP Budi Santoso Subject Type Tersangka Subject Ahmad Fauzi Interview Room Interview Room 1 Start Time 1 Oct 2026 09:10:45 Duration 00:18:52 Recording Profile Standard (1080p / 25 fps)",
+    "sim": {
+     "id": "SES-20261001-0024",
+     "case": "LP/2026/1001-0007",
+     "investigator": "AKP Budi Santoso",
+     "state": "RECORDING"
+    },
+    "fit": {
+     "mainSH": 828,
+     "mainCH": 828,
+     "mainSW": 1224,
+     "mainCW": 1224,
+     "docSH": 900,
+     "docSW": 1440,
+     "innerH": 900,
+     "innerW": 1440
+    },
+    "pill": {
+     "state": "SECURE",
+     "text": "SECURE All systems operational",
+     "beamAmbient": "paused",
+     "beamMounted": false
+    },
+    "banner": {
+     "kind": "ACTIVE",
+     "tone": "success",
+     "text": "SESSION ACTIVE & SECURE Recording in progress \u2022 All integrity checks passing"
+    },
+    "rows": {
+     "L": {
+      "x": 228,
+      "y": 162,
+      "w": 594,
+      "h": 347.7
+     },
+     "M": {
+      "x": 834,
+      "y": 162,
+      "w": 291,
+      "h": 347.7
+     },
+     "N": {
+      "x": 1137,
+      "y": 162,
+      "w": 291,
+      "h": 176.2
+     },
+     "O": {
+      "x": 1137,
+      "y": 350,
+      "w": 291,
+      "h": 159.5
+     },
+     "P": {
+      "x": 228,
+      "y": 521,
+      "w": 1200,
+      "h": 54
+     },
+     "Q": {
+      "x": 228,
+      "y": 587,
+      "w": 493,
+      "h": 300.7
+     },
+     "R": {
+      "x": 733,
+      "y": 587,
+      "w": 392,
+      "h": 167.8
+     },
+     "S": {
+      "x": 733,
+      "y": 767,
+      "w": 392,
+      "h": 120.8
+     },
+     "T": {
+      "x": 1137,
+      "y": 587,
+      "w": 291,
+      "h": 300.7
+     }
+    },
+    "shot": "verification/assets/45_1440_sm_recording.png"
+   },
+   "recordingPerf10": {
+    "fps": 60.1,
+    "worstFrameMs": 17,
+    "longTasks": 0,
+    "longTaskMs": []
+   },
+   "soak30": {
+    "fps": 60,
+    "worstFrameMs": 17,
+    "longTasks": 0,
+    "longTaskMs": [],
+    "overlay": {
+     "running": 4,
+     "requested": 4,
+     "breach": "false",
+     "fpsAvg": 61,
+     "longTasks": 0,
+     "longTasksAfterWarmup": 0,
+     "meters": "{\"AUDIO-01\":40,\"AUDIO-02\":40}",
+     "list": "clock-colon, secure-dot, topo-drift, banner-dot, feed-frame-glow, rec-pulse"
+    }
+   },
+   "micClip": {
+    "pill": {
+     "state": "SECURE",
+     "text": "SECURE All systems operational",
+     "beamAmbient": "paused",
+     "beamMounted": false
+    },
+    "loops": {
+     "running": 4,
+     "requested": 4,
+     "breach": "false",
+     "fpsAvg": 61,
+     "longTasks": 0,
+     "longTasksAfterWarmup": 0,
+     "meters": "{\"AUDIO-01\":40,\"AUDIO-02\":40}",
+     "list": "clock-colon, secure-dot, topo-drift, banner-dot, feed-frame-glow, rec-pulse"
+    },
+    "banner": {
+     "kind": "ATTENTION",
+     "tone": "warning",
+     "text": "ATTENTION Recording continues \u2022 Microphone clipping"
+    },
+    "shot": "verification/assets/45_1440_sm_micclip_pill.png"
+   },
+   "fanStall": {
+    "pill": {
+     "state": "SECURE",
+     "text": "SECURE All systems operational",
+     "beamAmbient": "paused",
+     "beamMounted": false
+    },
+    "loops": {
+     "running": 4,
+     "requested": 4,
+     "breach": "false",
+     "fpsAvg": 61,
+     "longTasks": 0,
+     "longTasksAfterWarmup": 0,
+     "meters": "{\"AUDIO-01\":40,\"AUDIO-02\":40}",
+     "list": "clock-colon, secure-dot, topo-drift, banner-dot, feed-frame-glow, rec-pulse"
+    }
+   },
+   "end": {
+    "dialogOpened": true,
+    "transitions": [
+     {
+      "ms": 90,
+      "s": "STOPPING"
+     },
+     {
+      "ms": 1550,
+      "s": "FINALIZING"
+     },
+     {
+      "ms": 7439,
+      "s": "SEALED"
+     }
+    ],
+    "sealedAfterMs": 7439,
+    "modal": {
+     "mode": "finalization",
+     "state": "SEALED",
+     "sealedIn": "Sealed 7.3 s after the recording ended",
+     "pkg": "package"
+    },
+    "sealedEvidence": {
+     "id": "EV-20261001-0014",
+     "status": "SEALED",
+     "sessionId": "SES-20261001-0024",
+     "case": "LP/2026/1001-0007"
+    },
+    "shot": "verification/assets/45_1440_sm_sealed_stamp.png",
+    "evidenceRow": {
+     "found": true,
+     "text": " EV-20261001-0014 1 Oct 2026 \u00b7 09:10 Ahmad Fauzi Tersangka LP/2026/1001-0007 AKP Budi Santoso 00:19:43 2.7 GB Sealed ",
+     "chipColor": "rgb(167, 139, 250)",
+     "chipBg": "rgba(0, 0, 0, 0)",
+     "chipClass": "chip__label"
+    }
+   },
+   "idle": {
+    "loops": {
+     "running": 2,
+     "requested": 2,
+     "breach": "false",
+     "fpsAvg": 61,
+     "longTasks": 0,
+     "longTasksAfterWarmup": 0,
+     "meters": "{\"AUDIO-01\":40,\"AUDIO-02\":40}",
+     "list": "clock-colon, secure-dot, topo-drift, ring-breath"
+    },
+    "fit": {
+     "mainSH": 828,
+     "mainCH": 828,
+     "mainSW": 1224,
+     "mainCW": 1224,
+     "docSH": 900,
+     "docSW": 1440,
+     "innerH": 900,
+     "innerW": 1440
+    },
+    "banner": "NO_SESSION",
+    "shot": "verification/assets/45_1440_sm_idle.png"
+   }
+  },
+  "console": [],
+  "errors": [],
+  "browser": {
+   "pid": 63488,
+   "product": "HeadlessChrome/153.0.8010.12"
+  }
+ },
+ "result-sm-1920": {
+  "phase": "sm",
+  "width": 1920,
+  "height": 1080,
+  "at": "2026-10-01T02:27:33.140Z",
+  "checks": {
+   "recording": {
+    "panels": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ],
+    "timer": [
+     {
+      "t": 0,
+      "duration": "00:18:46",
+      "rec": "REC 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 : 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 : 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 REC 00:18:46"
+     },
+     {
+      "t": 500,
+      "duration": "00:18:47",
+      "rec": "REC 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 : 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 : 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 REC 00:18:47"
+     },
+     {
+      "t": 1000,
+      "duration": "00:18:47",
+      "rec": "REC 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 : 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 : 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 REC 00:18:47"
+     },
+     {
+      "t": 1500,
+      "duration": "00:18:48",
+      "rec": "REC 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 : 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 : 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 REC 00:18:48"
+     },
+     {
+      "t": 2000,
+      "duration": "00:18:48",
+      "rec": "REC 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 : 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 : 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 REC 00:18:48"
+     },
+     {
+      "t": 2500,
+      "duration": "00:18:49",
+      "rec": "REC 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 : 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 : 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 REC 00:18:49"
+     },
+     {
+      "t": 3000,
+      "duration": "00:18:49",
+      "rec": "REC 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 : 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 : 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 REC 00:18:49"
+     },
+     {
+      "t": 3500,
+      "duration": "00:18:50",
+      "rec": "REC 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 : 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 : 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 REC 00:18:50"
+     },
+     {
+      "t": 4000,
+      "duration": "00:18:50",
+      "rec": "REC 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 : 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 : 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 REC 00:18:50"
+     }
+    ],
+    "loops": {
+     "running": 4,
+     "requested": 4,
+     "breach": "false",
+     "fpsAvg": 62,
+     "longTasks": 0,
+     "longTasksAfterWarmup": 0,
+     "meters": "{\"AUDIO-01\":40,\"AUDIO-02\":40}",
+     "list": "clock-colon, secure-dot, topo-drift, banner-dot, feed-frame-glow, rec-pulse"
+    },
+    "details": "Session ID SES-20261001-0024 Case Number LP/2026/1001-0007 Investigator AKP Budi Santoso Subject Type Tersangka Subject Ahmad Fauzi Interview Room Interview Room 1 Start Time 1 Oct 2026 09:08:51 Duration 00:18:52 Recording Profile Standard (1080p / 25 fps)",
+    "sim": {
+     "id": "SES-20261001-0024",
+     "case": "LP/2026/1001-0007",
+     "investigator": "AKP Budi Santoso",
+     "state": "RECORDING"
+    },
+    "fit": {
+     "mainSH": 1000,
+     "mainCH": 1000,
+     "mainSW": 1688,
+     "mainCW": 1688,
+     "docSH": 1080,
+     "docSW": 1920,
+     "innerH": 1080,
+     "innerW": 1920
+    },
+    "pill": {
+     "state": "SECURE",
+     "text": "SECURE All systems operational",
+     "beamAmbient": "paused",
+     "beamMounted": false
+    },
+    "banner": {
+     "kind": "ACTIVE",
+     "tone": "success",
+     "text": "SESSION ACTIVE & SECURE Recording in progress \u2022 All integrity checks passing"
+    },
+    "rows": {
+     "L": {
+      "x": 248,
+      "y": 180,
+      "w": 820,
+      "h": 423.5
+     },
+     "M": {
+      "x": 1084,
+      "y": 180,
+      "w": 402,
+      "h": 423.5
+     },
+     "N": {
+      "x": 1502,
+      "y": 180,
+      "w": 402,
+      "h": 213.9
+     },
+     "O": {
+      "x": 1502,
+      "y": 410,
+      "w": 402,
+      "h": 193.6
+     },
+     "P": {
+      "x": 248,
+      "y": 620,
+      "w": 1656,
+      "h": 62
+     },
+     "Q": {
+      "x": 248,
+      "y": 698,
+      "w": 680.7,
+      "h": 366.5
+     },
+     "R": {
+      "x": 945,
+      "y": 698,
+      "w": 541.3,
+      "h": 203.8
+     },
+     "S": {
+      "x": 945,
+      "y": 917,
+      "w": 541.3,
+      "h": 146.7
+     },
+     "T": {
+      "x": 1502,
+      "y": 698,
+      "w": 402,
+      "h": 366.5
+     }
+    },
+    "shot": "verification/assets/45_1920_sm_recording.png"
+   },
+   "recordingPerf10": {
+    "fps": 60,
+    "worstFrameMs": 33,
+    "longTasks": 0,
+    "longTaskMs": []
+   },
+   "soak30": {
+    "fps": 60,
+    "worstFrameMs": 17,
+    "longTasks": 0,
+    "longTaskMs": [],
+    "overlay": {
+     "running": 4,
+     "requested": 4,
+     "breach": "false",
+     "fpsAvg": 61,
+     "longTasks": 0,
+     "longTasksAfterWarmup": 0,
+     "meters": "{\"AUDIO-01\":40,\"AUDIO-02\":40}",
+     "list": "clock-colon, secure-dot, topo-drift, banner-dot, feed-frame-glow, rec-pulse"
+    }
+   },
+   "micClip": {
+    "pill": {
+     "state": "SECURE",
+     "text": "SECURE All systems operational",
+     "beamAmbient": "paused",
+     "beamMounted": false
+    },
+    "loops": {
+     "running": 4,
+     "requested": 4,
+     "breach": "false",
+     "fpsAvg": 61,
+     "longTasks": 0,
+     "longTasksAfterWarmup": 0,
+     "meters": "{\"AUDIO-01\":40,\"AUDIO-02\":40}",
+     "list": "clock-colon, secure-dot, topo-drift, banner-dot, feed-frame-glow, rec-pulse"
+    },
+    "banner": {
+     "kind": "ATTENTION",
+     "tone": "warning",
+     "text": "ATTENTION Recording continues \u2022 Microphone clipping"
+    },
+    "shot": "verification/assets/45_1920_sm_micclip_pill.png"
+   },
+   "fanStall": {
+    "pill": {
+     "state": "SECURE",
+     "text": "SECURE All systems operational",
+     "beamAmbient": "paused",
+     "beamMounted": false
+    },
+    "loops": {
+     "running": 4,
+     "requested": 4,
+     "breach": "false",
+     "fpsAvg": 61,
+     "longTasks": 0,
+     "longTasksAfterWarmup": 0,
+     "meters": "{\"AUDIO-01\":40,\"AUDIO-02\":40}",
+     "list": "clock-colon, secure-dot, topo-drift, banner-dot, feed-frame-glow, rec-pulse"
+    }
+   },
+   "end": {
+    "dialogOpened": true,
+    "transitions": [
+     {
+      "ms": 68,
+      "s": "STOPPING"
+     },
+     {
+      "ms": 1602,
+      "s": "FINALIZING"
+     },
+     {
+      "ms": 7369,
+      "s": "SEALED"
+     }
+    ],
+    "sealedAfterMs": 7369,
+    "modal": {
+     "mode": "finalization",
+     "state": "SEALED",
+     "sealedIn": "Sealed 7.3 s after the recording ended",
+     "pkg": "package"
+    },
+    "sealedEvidence": {
+     "id": "EV-20261001-0014",
+     "status": "SEALED",
+     "sessionId": "SES-20261001-0024",
+     "case": "LP/2026/1001-0007"
+    },
+    "shot": "verification/assets/45_1920_sm_sealed_stamp.png",
+    "evidenceRow": {
+     "found": true,
+     "text": " EV-20261001-0014 1 Oct 2026 \u00b7 09:08 Ahmad Fauzi Tersangka LP/2026/1001-0007 AKP Budi Santoso 00:19:43 2.7 GB Sealed ",
+     "chipColor": "rgb(167, 139, 250)",
+     "chipBg": "rgba(0, 0, 0, 0)",
+     "chipClass": "chip__label"
+    }
+   },
+   "idle": {
+    "loops": {
+     "running": 2,
+     "requested": 2,
+     "breach": "false",
+     "fpsAvg": 120,
+     "longTasks": 0,
+     "longTasksAfterWarmup": 0,
+     "meters": "{\"AUDIO-01\":40,\"AUDIO-02\":40}",
+     "list": "clock-colon, secure-dot, topo-drift, ring-breath"
+    },
+    "fit": {
+     "mainSH": 1000,
+     "mainCH": 1000,
+     "mainSW": 1688,
+     "mainCW": 1688,
+     "docSH": 1080,
+     "docSW": 1920,
+     "innerH": 1080,
+     "innerW": 1920
+    },
+    "banner": "NO_SESSION",
+    "shot": "verification/assets/45_1920_sm_idle.png"
+   }
+  },
+  "console": [],
+  "errors": [],
+  "browser": {
+   "pid": 61923,
+   "product": "HeadlessChrome/153.0.8010.12"
+  }
+ }
+}

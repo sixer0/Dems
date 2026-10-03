@@ -1,0 +1,352 @@
+{
+  "origin": "http://127.0.0.1:4420",
+  "steps": [
+    {
+      "name": "login page renders",
+      "ok": true,
+      "detail": "path=/login"
+    },
+    {
+      "name": "Login hero tagline (D128)",
+      "ok": true,
+      "detail": "tagline=\"SECURE BY DESIGN.TRUSTED BY LAW.\""
+    },
+    {
+      "name": "Core link Online on login (Sign In enabled; same-origin heartbeat)",
+      "ok": true,
+      "detail": "label=\"CORE LINK Online\""
+    },
+    {
+      "name": "Login -> Dashboard",
+      "ok": true,
+      "detail": "path=/dashboard"
+    },
+    {
+      "name": "Dashboard hero tagline (D128)",
+      "ok": true,
+      "detail": "hero=\"SECURE BY DESIGN.TRUSTED BY LAW.Secure interview recording, evidence handling and integrit\""
+    },
+    {
+      "name": "page /dashboard",
+      "ok": true,
+      "detail": "path=/dashboard h1=\"Dashboard\" csp=0"
+    },
+    {
+      "name": "page /session",
+      "ok": true,
+      "detail": "path=/session h1=\"SESSION MONITORSESSION MONITOR\" csp=0"
+    },
+    {
+      "name": "page /session/new",
+      "ok": true,
+      "detail": "path=/session/new h1=\"START NEW SESSIONSTART NEW SESSION\" csp=0"
+    },
+    {
+      "name": "page /evidence",
+      "ok": true,
+      "detail": "path=/evidence h1=\"EVIDENCEEVIDENCE\" csp=0"
+    },
+    {
+      "name": "page /devices",
+      "ok": true,
+      "detail": "path=/devices h1=\"DEVICES & INPUTSDEVICES & INPUTS\" csp=0"
+    },
+    {
+      "name": "page /storage",
+      "ok": true,
+      "detail": "path=/storage h1=\"STORAGESTORAGE\" csp=0"
+    },
+    {
+      "name": "page /network-time",
+      "ok": true,
+      "detail": "path=/network-time h1=\"NETWORK & TIMENETWORK & TIME\" csp=0"
+    },
+    {
+      "name": "page /security-audit",
+      "ok": true,
+      "detail": "path=/security-audit h1=\"SECURITY & AUDITSECURITY & AUDIT\" csp=0"
+    },
+    {
+      "name": "page /system",
+      "ok": true,
+      "detail": "path=/system h1=\"SYSTEM & MAINTENANCESYSTEM & MAINTENANCE\" csp=0"
+    },
+    {
+      "name": "stack-check heartbeat chip",
+      "ok": true,
+      "detail": "chip=\"Live\""
+    },
+    {
+      "name": "page /stack-check",
+      "ok": true,
+      "detail": "path=/stack-check h1=\"Stack CheckStack Check\" csp=0"
+    },
+    {
+      "name": "page /developer/api",
+      "ok": true,
+      "detail": "path=/developer/api h1=\"API REFERENCEAPI REFERENCE\""
+    },
+    {
+      "name": "API Reference service banner",
+      "ok": true,
+      "detail": "ONLINE | MOCK-CORE ONLINE • v0.1.0 • WS 1 HzLIVE try-it goes to 127.0.0.1:4420; SIMULATED try-it is answered in this browser"
+    },
+    {
+      "name": "Scalar Try-it health (Test Request -> Send)",
+      "ok": true,
+      "detail": "opened=section sent=2 healthRequestsAfterSend=2 statuses=200"
+    },
+    {
+      "name": "page /developer/api CSP",
+      "ok": true,
+      "detail": "csp=0"
+    },
+    {
+      "name": "Evidence EV-20260929-0001 Verify -> PASS, 8 of 8",
+      "ok": true,
+      "detail": "verdict=PASS pass=8/8 label=\"DEMO - recomputed\" csp=0"
+    },
+    {
+      "name": "Evidence EV-20260930-0005 Verify -> FAIL on AUDIO-02 only",
+      "ok": true,
+      "detail": "verdict=FAIL failed=[track:AUDIO-02] unfinished=[] checks=8 label=\"DEMO - recomputed\" csp=0"
+    },
+    {
+      "name": "Sign in as andi.pratama",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Export EV-20260930-0004 as andi.pratama downloads the zip",
+      "ok": true,
+      "detail": "exportId=EXP-000032 source=PASS zipCheck=true file=EXP-000031.zip bytes=2276249 sha256=d888f5449d1eb552… manifestSha=d888f5449d1eb552… csp=0"
+    },
+    {
+      "name": "no external requests",
+      "ok": true,
+      "detail": "external=0 hosts=http://127.0.0.1:4420, ws://127.0.0.1:4420 requests=1923"
+    },
+    {
+      "name": "zero CSP reports (page securitypolicyviolation events)",
+      "ok": true,
+      "detail": "count=0"
+    },
+    {
+      "name": "zero CSP issues (CDP Audits domain)",
+      "ok": true,
+      "detail": "count=0"
+    }
+  ],
+  "cspViolations": [],
+  "pages": [
+    {
+      "requested": "/dashboard",
+      "path": "/dashboard",
+      "h1": "Dashboard",
+      "cspViolations": 0
+    },
+    {
+      "requested": "/session",
+      "path": "/session",
+      "h1": "SESSION MONITORSESSION MONITOR",
+      "cspViolations": 0
+    },
+    {
+      "requested": "/session/new",
+      "path": "/session/new",
+      "h1": "START NEW SESSIONSTART NEW SESSION",
+      "cspViolations": 0
+    },
+    {
+      "requested": "/evidence",
+      "path": "/evidence",
+      "h1": "EVIDENCEEVIDENCE",
+      "cspViolations": 0
+    },
+    {
+      "requested": "/devices",
+      "path": "/devices",
+      "h1": "DEVICES & INPUTSDEVICES & INPUTS",
+      "cspViolations": 0
+    },
+    {
+      "requested": "/storage",
+      "path": "/storage",
+      "h1": "STORAGESTORAGE",
+      "cspViolations": 0
+    },
+    {
+      "requested": "/network-time",
+      "path": "/network-time",
+      "h1": "NETWORK & TIMENETWORK & TIME",
+      "cspViolations": 0
+    },
+    {
+      "requested": "/security-audit",
+      "path": "/security-audit",
+      "h1": "SECURITY & AUDITSECURITY & AUDIT",
+      "cspViolations": 0
+    },
+    {
+      "requested": "/system",
+      "path": "/system",
+      "h1": "SYSTEM & MAINTENANCESYSTEM & MAINTENANCE",
+      "cspViolations": 0
+    },
+    {
+      "requested": "/stack-check",
+      "path": "/stack-check",
+      "h1": "Stack CheckStack Check",
+      "cspViolations": 0
+    },
+    {
+      "requested": "/developer/api",
+      "path": "/developer/api",
+      "h1": "API REFERENCEAPI REFERENCE"
+    }
+  ],
+  "loginCoreLink": "CORE LINK Online",
+  "verifyEv0001": {
+    "ready": true,
+    "verdict": "PASS",
+    "checks": [
+      {
+        "id": "track:VIDEO-01",
+        "phase": "pass",
+        "source": "computed"
+      },
+      {
+        "id": "track:VIDEO-02",
+        "phase": "pass",
+        "source": "computed"
+      },
+      {
+        "id": "track:AUDIO-01",
+        "phase": "pass",
+        "source": "computed"
+      },
+      {
+        "id": "track:AUDIO-02",
+        "phase": "pass",
+        "source": "computed"
+      },
+      {
+        "id": "manifest",
+        "phase": "pass",
+        "source": "computed"
+      },
+      {
+        "id": "signature",
+        "phase": "pass",
+        "source": "computed"
+      },
+      {
+        "id": "certificate",
+        "phase": "pass",
+        "source": "computed"
+      },
+      {
+        "id": "auditChain",
+        "phase": "pass",
+        "source": "computed"
+      }
+    ],
+    "label": "DEMO - recomputed",
+    "csp": 0
+  },
+  "verifyEv0005": {
+    "ready": true,
+    "verdict": "FAIL",
+    "checks": [
+      {
+        "id": "track:VIDEO-01",
+        "phase": "pass",
+        "source": "computed"
+      },
+      {
+        "id": "track:VIDEO-02",
+        "phase": "pass",
+        "source": "computed"
+      },
+      {
+        "id": "track:AUDIO-01",
+        "phase": "pass",
+        "source": "computed"
+      },
+      {
+        "id": "track:AUDIO-02",
+        "phase": "fail",
+        "source": "computed"
+      },
+      {
+        "id": "manifest",
+        "phase": "pass",
+        "source": "computed"
+      },
+      {
+        "id": "signature",
+        "phase": "pass",
+        "source": "computed"
+      },
+      {
+        "id": "certificate",
+        "phase": "pass",
+        "source": "computed"
+      },
+      {
+        "id": "auditChain",
+        "phase": "pass",
+        "source": "computed"
+      }
+    ],
+    "label": "DEMO - recomputed",
+    "csp": 0
+  },
+  "export": {
+    "body": true,
+    "denied": "",
+    "source": "PASS",
+    "exportId": "EXP-000032",
+    "zipCheck": "true",
+    "download": {
+      "file": "EXP-000031.zip",
+      "bytes": 2276249,
+      "sha256": "d888f5449d1eb552c9113cb98a144aa7a9d21f14fa393a2de9c52efcea059e97",
+      "zipMagic": "504b0304"
+    },
+    "manifestSha256": "d888f5449d1eb552c9113cb98a144aa7a9d21f14fa393a2de9c52efcea059e97",
+    "csp": 0
+  },
+  "requestCount": 1923,
+  "dataUrlRequests": 1,
+  "hosts": [
+    "http://127.0.0.1:4420",
+    "ws://127.0.0.1:4420"
+  ],
+  "externalRequests": 0,
+  "cspAuditIssues": [],
+  "healthStatuses": [
+    200
+  ],
+  "wsSockets": [
+    "ws://127.0.0.1:4420/ws",
+    "ws://127.0.0.1:4420/ws",
+    "ws://127.0.0.1:4420/ws",
+    "ws://127.0.0.1:4420/ws",
+    "ws://127.0.0.1:4420/ws",
+    "ws://127.0.0.1:4420/ws",
+    "ws://127.0.0.1:4420/ws",
+    "ws://127.0.0.1:4420/ws",
+    "ws://127.0.0.1:4420/ws",
+    "ws://127.0.0.1:4420/ws",
+    "ws://127.0.0.1:4420/ws",
+    "ws://127.0.0.1:4420/ws",
+    "ws://127.0.0.1:4420/ws",
+    "ws://127.0.0.1:4420/ws",
+    "ws://127.0.0.1:4420/ws",
+    "ws://127.0.0.1:4420/ws",
+    "ws://127.0.0.1:4420/ws"
+  ],
+  "logs": [],
+  "otherLogs": []
+}

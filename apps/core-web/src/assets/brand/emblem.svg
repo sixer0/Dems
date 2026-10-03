@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" fill="none">
+  <!--
+    DEMS emblem: shield + fingerprint. Hand-authored vector, original work in this repo
+    (01_specs rev 3 §14.10; blueprint step 28). No raster source is embedded or traced.
+
+    Animation contract (03_motion_spec M-APP-01, M-APP-03, M-PG-LOGIN, M-C-22; AC-68):
+      emblem-shield  one path, two closed subpaths (outer rim + inner rim = the double stroke).
+                     Both subpaths start at the top peak, so a pathLength draw runs from the top.
+      emblem-arc-1   innermost fingerprint ridge (the core loop and its stem)
+      emblem-arc-2..5  concentric ridges around centre (64 64), radii 7.6 / 12.6 / 17.6 / 22.6,
+                     drawn from the bottom of the left leg, over the top, wrapping to the right
+      emblem-arc-6   outermost "roof" ridge, a peaked chevron that echoes the shield top
+    Scan order = arc-1 (core) outwards to arc-6 (roof).
+
+    Colour: one vertical gradient in user space, so all seven strokes share it.
+    Stops #FFE2A6 -> #FFC86B (token colors.gold) -> #C9802F. Glow is CSS drop-shadow, not in this file.
+    Keep every d attribute on one line: packages/shared/src/brand/emblem.ts (step 35) mirrors them.
+  -->
+  <defs>
+    <linearGradient id="emblem-gradient" gradientUnits="userSpaceOnUse" x1="0" y1="6" x2="0" y2="122">
+      <stop offset="0" stop-color="#FFE2A6"/>
+      <stop offset="0.5" stop-color="#FFC86B"/>
+      <stop offset="1" stop-color="#C9802F"/>
+    </linearGradient>
+  </defs>
+  <g stroke="url(#emblem-gradient)" stroke-linecap="round" stroke-linejoin="round">
+    <path id="emblem-shield" stroke-width="3.2" d="M64 6Q41 16.5 14 19.5V58C14 88 37 109.5 64 121.5C91 109.5 114 88 114 58V19.5Q87 16.5 64 6ZM64 11.6Q43.5 21 19 23.9V58C19 85 39.5 104.3 64 115.9C88.5 104.3 109 85 109 58V23.9Q84.5 21 64 11.6Z"/>
+    <path id="emblem-arc-1" stroke-width="2.6" d="M61.4 94V64A2.6 2.6 0 0 1 66.6 64V66"/>
+    <path id="emblem-arc-2" stroke-width="2.6" d="M56.4 84V64A7.6 7.6 0 0 1 71.6 64A7.6 7.6 0 0 1 69.82 68.89"/>
+    <path id="emblem-arc-3" stroke-width="2.6" d="M51.4 90V64A12.6 12.6 0 0 1 76.6 64A12.6 12.6 0 0 1 72.1 73.65"/>
+    <path id="emblem-arc-4" stroke-width="2.6" d="M46.4 82V64A17.6 17.6 0 0 1 81.6 64A17.6 17.6 0 0 1 74.09 78.42"/>
+    <path id="emblem-arc-5" stroke-width="2.6" d="M41.4 88V64A22.6 22.6 0 0 1 86.6 64A22.6 22.6 0 0 1 71.73 85.24"/>
+    <path id="emblem-arc-6" stroke-width="2.6" d="M37 51.5C37 48 39.4 46.6 43.5 46C52 44.8 57.6 41.8 64 35.8C70.4 41.8 76 44.8 84.5 46C88.6 46.6 91 48 91 51.5"/>
+  </g>
+</svg>

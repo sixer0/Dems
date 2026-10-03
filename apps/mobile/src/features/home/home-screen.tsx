@@ -1,4 +1,3 @@
-import * as Haptics from 'expo-haptics';
 import { useKeepAwake } from 'expo-keep-awake';
 import { Button, Card, Chip, Skeleton, Surface, useToast } from 'heroui-native';
 import { Activity } from 'lucide-react-native';
@@ -19,6 +18,7 @@ import {
   toneTextHex,
 } from '@dems/shared/tokens';
 import { TONE_ICONS } from '@/lib/tone-icons';
+import { triggerHaptic } from '@/motion';
 import { PulseRing } from './pulse-ring';
 import { useHealth } from './use-health';
 
@@ -163,7 +163,7 @@ function HeroCard() {
         <Button
           variant="primary"
           onPress={() => {
-            void Haptics.selectionAsync();
+            triggerHaptic('stackCheckTap');
             toast.show({ label: 'Toasts ready', description: 'HeroUI Native toast is wired.' });
           }}
         >

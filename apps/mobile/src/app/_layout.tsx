@@ -7,30 +7,39 @@ import { Inter_700Bold } from '@expo-google-fonts/inter/700Bold';
 import { JetBrainsMono_400Regular } from '@expo-google-fonts/jetbrains-mono/400Regular';
 import { JetBrainsMono_500Medium } from '@expo-google-fonts/jetbrains-mono/500Medium';
 import { Orbitron_700Bold } from '@expo-google-fonts/orbitron/700Bold';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useFonts } from 'expo-font';
-import { Stack, type ErrorBoundaryProps } from 'expo-router';
+import { type ErrorBoundaryProps } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { Button, Card, HeroUINativeProvider } from 'heroui-native';
-import { useEffect } from 'react';
 import { View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { SafeAreaProvider, initialWindowMetrics } from 'react-native-safe-area-context';
 import { Uniwind } from 'uniwind';
-import { HeartbeatProvider, useRetryCooldown } from '@dems/shared/realtime';
+import { useRetryCooldown } from '@dems/shared/realtime';
 import { palette } from '@dems/shared/tokens';
-import { HEALTH_QUERY_KEY } from '@/features/home/use-health';
+import { i18n } from '@/i18n';
+import { MotionPolicyProvider } from '@/motion';
+import { RootNavigator } from '@/navigation';
+import { AppProviders, BootGate, heroUIConfig } from '@/providers';
 
 void SplashScreen.preventAutoHideAsync();
 Uniwind.setTheme('dark');
 
-const queryClient = new QueryClient();
-
-/** Scaffold stand-in for the §5.5/§5.6 resync: refresh health after a WS reconnect. */
-function resync() {
-  void queryClient.invalidateQueries({ queryKey: HEALTH_QUERY_KEY });
-}
-
+/**
+ * Root layout (04_mobile_specs §3.2, §3.3; 01S §5.4). Fonts load first while the native splash
+ * stays up. Then, outermost first:
+ *
+ * 1. `MotionPolicyProvider` (step 69): OS reduce motion, the Settings override, the deep-link
+ *    switches (`?motion=off|slow|full`, `?debug=1|0`), `ReducedMotionConfig` and the `?debug=1`
+ *    overlay. Its render prop hands the policy to the providers (D57), because a component cannot
+ *    read, through a hook, a provider that it renders itself;
+ * 2. `AppProviders` (step 68, then 73) with `reducedMotion` → HeroUI `animation: 'disable-all'`;
+ * 3. `BootGate`: the splash stays up until the runtime has hydrated (at most 2 s, then a Skeleton);
+ * 4. `RootNavigator` (step 70): the root stack with the `Stack.Protected` auth guard.
+ *
+ * Owner: step 70 (P6).
+ */
 export default function RootLayout() {
   // masterplan/01_specs.md §5.4: the object keys become the family names used by the theme.
   const [fontsLoaded, fontError] = useFonts({
@@ -43,52 +52,65 @@ export default function RootLayout() {
     JetBrainsMono_500Medium,
   });
 
-  useEffect(() => {
-    if (fontsLoaded || fontError) void SplashScreen.hideAsync();
-  }, [fontsLoaded, fontError]);
-
+  // Until the fonts load (or fail: then render anyway, as row 18) the native splash stays up;
+  // from then on BootGate decides when it hides.
   if (!fontsLoaded && !fontError) return null;
 
   return (
+    <MotionPolicyProvider>
+      {(policy) => (
+        <AppProviders reducedMotion={policy === 'reduced'}>
+          <BootGate>
+            <RootNavigator />
+          </BootGate>
+          <StatusBar style="light" />
+        </AppProviders>
+      )}
+    </MotionPolicyProvider>
+  );
+}
+
+/**
+ * Expo Router error boundary: friendly message and a rate-limited retry (3 s → 6 s → 12 s, max 3).
+ * Expo Router renders it INSTEAD of this layout, so none of the layout's providers exist here; it
+ * mounts the few the kit needs itself (without them the HeroUI Card threw on the device, step 70).
+ */
+export function ErrorBoundary(props: ErrorBoundaryProps) {
+  return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <QueryClientProvider client={queryClient}>
-        <HeartbeatProvider onResync={resync}>
-          <HeroUINativeProvider config={{ textProps: { maxFontSizeMultiplier: 1.2 } }}>
-            <Stack
-              screenOptions={{
-                headerShown: false,
-                animation: 'fade',
-                contentStyle: { backgroundColor: palette.black },
-              }}
-            />
-            <StatusBar style="light" />
-          </HeroUINativeProvider>
-        </HeartbeatProvider>
-      </QueryClientProvider>
+      <SafeAreaProvider initialMetrics={initialWindowMetrics}>
+        <HeroUINativeProvider config={heroUIConfig(false)}>
+          <RouteErrorFallback {...props} />
+        </HeroUINativeProvider>
+      </SafeAreaProvider>
     </GestureHandlerRootView>
   );
 }
 
-/** Expo Router error boundary: friendly message and a rate-limited retry (3 s → 6 s → 12 s, max 3). */
-export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
+function RouteErrorFallback({ error, retry }: ErrorBoundaryProps) {
   const { retry: guardedRetry, cooldown, exhausted, canRetry } = useRetryCooldown(() => {
     void retry();
   });
   if (__DEV__) {
-    // No client-log endpoint exists in the mock-core scaffold (D3/D4); dev console only.
+    // No client-log endpoint exists in the mock-core scaffold (D3/D4, D41(g)); dev console only.
     console.error('[mobile] route error', { message: error.message, stack: error.stack });
   }
+  // `i18n.t` (not the hook): the boundary can render outside the provider tree.
   return (
     <View style={{ flex: 1, justifyContent: 'center', padding: 24, backgroundColor: palette.black }}>
       <Card className="rounded-xl">
         <Card.Header>
-          <Card.Title>Something went wrong</Card.Title>
-          <Card.Description>This screen could not be displayed. Try again in a moment.</Card.Description>
+          <Card.Title>{i18n.t('mobile.errorBoundary.title')}</Card.Title>
+          <Card.Description>{i18n.t('mobile.errorBoundary.description')}</Card.Description>
         </Card.Header>
         <Card.Footer>
           <Button variant="primary" isDisabled={!canRetry} onPress={guardedRetry}>
             <Button.Label>
-              {exhausted ? 'Restart the app' : cooldown > 0 ? `Retry in ${cooldown}s` : 'Try again'}
+              {exhausted
+                ? i18n.t('mobile.errorBoundary.restart')
+                : cooldown > 0
+                  ? i18n.t('mobile.errorBoundary.retryIn', { seconds: cooldown })
+                  : i18n.t('mobile.errorBoundary.retry')}
             </Button.Label>
           </Button>
         </Card.Footer>

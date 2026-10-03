@@ -1,0 +1,153 @@
+{
+  "schema": "dems.evidence-manifest/1",
+  "demo": true,
+  "notice": "DEMO - synthetic evidence package for the DEMS demo stack. Not evidence and not for production: it is signed with a DEMO key derived from a published seed.",
+  "evidenceId": "EV-20261001-0010",
+  "sessionId": "SES-20261001-0020",
+  "device": {
+    "deviceId": "DEMS-IR-01",
+    "name": "Interview Room 1",
+    "serialNumber": "DEC-2026-IR01-000117",
+    "hardwareUuid": "157db69a-cc30-5125-a739-14c9bc62a4fd",
+    "softwareVersion": "2.4.1",
+    "certificate": {
+      "subject": "CN=DEMS-IR-01 (DEMO — NOT FOR PRODUCTION), OU=DEMO — NOT FOR PRODUCTION, O=DEMS Demo (synthetic), serialNumber=DEC-2026-IR01-000117, C=ID",
+      "serialNumber": "70EF9B0B8CD04EE8A2E02DBF5634FE7B",
+      "sha256": "760be9296d40f7d89320fdc65f767a4b9a3788f4b6a5caf8d405a9d698a5779a"
+    }
+  },
+  "operator": {
+    "investigatorId": "OPR-002",
+    "displayName": "AKP Andi Pratama",
+    "role": "SUPERVISOR"
+  },
+  "subject": {
+    "name": "Sri Wahyuni",
+    "type": "LAINNYA",
+    "authorization": "Name and subject type only, as entered at session creation (synthetic DEMO person)"
+  },
+  "caseReference": "LP/2026/0930-0005",
+  "timestamps": {
+    "timezone": "+07:00",
+    "createdAt": "2026-10-01T08:12:28.000+07:00",
+    "startedAt": "2026-10-01T08:13:58.000+07:00",
+    "stoppedAt": "2026-10-01T08:28:34.000+07:00",
+    "sealedAt": "2026-10-01T08:28:43.000+07:00",
+    "recordingDurationMs": 876000
+  },
+  "timeSource": {
+    "source": "GNSS",
+    "state": "LOCKED",
+    "stratum": 1,
+    "fallbackOrder": [
+      "GNSS",
+      "NTP",
+      "RTC"
+    ]
+  },
+  "cameras": [
+    {
+      "trackId": "VIDEO-01",
+      "deviceId": "CAM-01",
+      "name": "Camera 1",
+      "model": "Dual-lens IP camera DL-2 (lens 1)",
+      "firmware": "3.8.14"
+    },
+    {
+      "trackId": "VIDEO-02",
+      "deviceId": "CAM-02",
+      "name": "Camera 2",
+      "model": "Dual-lens IP camera DL-2 (lens 2)",
+      "firmware": "3.8.14"
+    }
+  ],
+  "microphones": [
+    {
+      "trackId": "AUDIO-01",
+      "deviceId": "MIC-01",
+      "name": "MIC 1 – Interviewer",
+      "channel": 1,
+      "role": "Interviewer"
+    },
+    {
+      "trackId": "AUDIO-02",
+      "deviceId": "MIC-02",
+      "name": "MIC 2 – Subject",
+      "channel": 2,
+      "role": "Subject"
+    }
+  ],
+  "tracks": [
+    {
+      "trackId": "VIDEO-01",
+      "label": "Camera 1",
+      "file": "VIDEO-01.mp4",
+      "mediaType": "video/mp4",
+      "codec": "H.264 High 1280x720 25 fps",
+      "bytes": 700649,
+      "durationMs": 31000,
+      "hashAlgorithm": "SHA-256",
+      "sha256": "340bead14dfeeec5f267f3d1c4717f859437d6c4e8a247f6e3a63889a089162a"
+    },
+    {
+      "trackId": "VIDEO-02",
+      "label": "Camera 2",
+      "file": "VIDEO-02.mp4",
+      "mediaType": "video/mp4",
+      "codec": "H.264 High 1280x720 25 fps",
+      "bytes": 692016,
+      "durationMs": 31000,
+      "hashAlgorithm": "SHA-256",
+      "sha256": "58fd653baa3954a42807761f3e1407fd612de021a8c119434b98c02281f81201"
+    },
+    {
+      "trackId": "AUDIO-01",
+      "label": "MIC 1 – Interviewer",
+      "file": "AUDIO-01.m4a",
+      "mediaType": "audio/mp4",
+      "codec": "AAC-LC mono 48 kHz",
+      "bytes": 194000,
+      "durationMs": 31000,
+      "hashAlgorithm": "SHA-256",
+      "sha256": "1a71fcc872715bec68819377c56523aaf9afb2440603fae6bc3560a1b0d70a1c"
+    },
+    {
+      "trackId": "AUDIO-02",
+      "label": "MIC 2 – Subject",
+      "file": "AUDIO-02.m4a",
+      "mediaType": "audio/mp4",
+      "codec": "AAC-LC mono 48 kHz",
+      "bytes": 194201,
+      "durationMs": 31000,
+      "hashAlgorithm": "SHA-256",
+      "sha256": "08bc76719a160782a34be70c6bcf0e46bd0c29f350c5e3403fbd80030c77d5eb"
+    }
+  ],
+  "encryption": {
+    "algorithm": "AES-256-GCM",
+    "applied": false,
+    "keyReference": "KEY-SESSION-SES-20261001-0020 (DEMO: not generated)",
+    "note": "DEMO: the payload is stored unencrypted so the demo can play it; a production Core encrypts it before signing (design book §12.2 step 8)."
+  },
+  "signature": {
+    "algorithm": "Ed25519",
+    "keyId": "DEMO-KEY-EVSIGN-01",
+    "purpose": "SEAL",
+    "file": "signature.sig",
+    "covers": "The SHA-256 digest (32 raw bytes) of this manifest.json file",
+    "certificate": {
+      "file": "device-certificate.pem",
+      "sha256": "760be9296d40f7d89320fdc65f767a4b9a3788f4b6a5caf8d405a9d698a5779a",
+      "serialNumber": "70EF9B0B8CD04EE8A2E02DBF5634FE7B"
+    },
+    "chain": [
+      "device-certificate.pem: self-signed DEMO device certificate (no CA)"
+    ],
+    "demo": true
+  },
+  "finalizationStatus": "SEALED",
+  "excerpt": {
+    "durationMs": 31000,
+    "rule": "DEMO media: each track file is an excerpt from the recording start (step 92 excerpt rule); the hashes cover these files."
+  }
+}

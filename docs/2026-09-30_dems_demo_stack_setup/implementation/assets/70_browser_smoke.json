@@ -1,0 +1,420 @@
+{
+  "origin": "http://127.0.0.1:4410",
+  "steps": [
+    {
+      "name": "login page renders",
+      "ok": true,
+      "detail": "path=/login"
+    },
+    {
+      "name": "Core link LIVE on login (Sign In enabled; same-origin heartbeat)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Login -> Dashboard",
+      "ok": true,
+      "detail": "path=/dashboard"
+    },
+    {
+      "name": "page /dashboard",
+      "ok": false,
+      "detail": "path=/dashboard h1=\"Dashboard\" csp=2"
+    },
+    {
+      "name": "page /session",
+      "ok": false,
+      "detail": "path=/session h1=\"SESSION MONITORSESSION MONITORSESSION MONITOR\" csp=2"
+    },
+    {
+      "name": "page /session/new",
+      "ok": false,
+      "detail": "path=/session/new h1=\"START NEW SESSIONSTART NEW SESSION\" csp=2"
+    },
+    {
+      "name": "page /evidence",
+      "ok": false,
+      "detail": "path=/evidence h1=\"EVIDENCEEVIDENCE\" csp=2"
+    },
+    {
+      "name": "page /devices",
+      "ok": false,
+      "detail": "path=/devices h1=\"DEVICES & INPUTSDEVICES & INPUTS\" csp=2"
+    },
+    {
+      "name": "page /storage",
+      "ok": false,
+      "detail": "path=/storage h1=\"STORAGESTORAGE\" csp=2"
+    },
+    {
+      "name": "page /network-time",
+      "ok": false,
+      "detail": "path=/network-time h1=\"NETWORK & TIMENETWORK & TIME\" csp=2"
+    },
+    {
+      "name": "page /security-audit",
+      "ok": false,
+      "detail": "path=/security-audit h1=\"SECURITY & AUDITSECURITY & AUDIT\" csp=2"
+    },
+    {
+      "name": "page /system",
+      "ok": false,
+      "detail": "path=/system h1=\"SYSTEM & MAINTENANCESYSTEM & MAINTENANCE\" csp=2"
+    },
+    {
+      "name": "page /stack-check",
+      "ok": false,
+      "detail": "path=/stack-check h1=\"Stack CheckStack Check\" csp=2"
+    },
+    {
+      "name": "stack-check heartbeat chip",
+      "ok": true,
+      "detail": "chip=\"Live\""
+    },
+    {
+      "name": "page /developer/api",
+      "ok": false,
+      "detail": "path=/developer/api h1=\"API REFERENCEAPI REFERENCE\" csp=2"
+    },
+    {
+      "name": "API Reference service banner",
+      "ok": true,
+      "detail": "ONLINE | MOCK-CORE ONLINE • v0.1.0 • WS 1 HzLIVE try-it goes to 127.0.0.1:4410; SIMULATED try-it is answered in this browser"
+    },
+    {
+      "name": "Scalar Try-it health (Test Request -> Send)",
+      "ok": true,
+      "detail": "opened=section sent=2 healthRequestsAfterSend=2 statuses=200"
+    },
+    {
+      "name": "no external requests",
+      "ok": true,
+      "detail": "hosts=http://127.0.0.1:4410, ws://127.0.0.1:4410 requests=1247"
+    },
+    {
+      "name": "zero CSP violations",
+      "ok": false,
+      "detail": "count=28"
+    }
+  ],
+  "cspViolations": [
+    {
+      "where": "/login",
+      "dir": "script-src",
+      "blocked": "eval",
+      "src": "http://127.0.0.1:4410/assets/clsx-5EdaupDn.js",
+      "line": 1,
+      "sample": ""
+    },
+    {
+      "where": "/login",
+      "dir": "script-src",
+      "blocked": "eval",
+      "src": "http://127.0.0.1:4410/assets/clsx-5EdaupDn.js",
+      "line": 1,
+      "sample": ""
+    },
+    {
+      "where": "/dashboard",
+      "dir": "script-src",
+      "blocked": "eval",
+      "src": "http://127.0.0.1:4410/assets/clsx-5EdaupDn.js",
+      "line": 1,
+      "sample": ""
+    },
+    {
+      "where": "/dashboard",
+      "dir": "script-src",
+      "blocked": "eval",
+      "src": "http://127.0.0.1:4410/assets/clsx-5EdaupDn.js",
+      "line": 1,
+      "sample": ""
+    },
+    {
+      "where": "/dashboard",
+      "dir": "script-src",
+      "blocked": "eval",
+      "src": "http://127.0.0.1:4410/assets/clsx-5EdaupDn.js",
+      "line": 1,
+      "sample": ""
+    },
+    {
+      "where": "/dashboard",
+      "dir": "script-src",
+      "blocked": "eval",
+      "src": "http://127.0.0.1:4410/assets/clsx-5EdaupDn.js",
+      "line": 1,
+      "sample": ""
+    },
+    {
+      "where": "/session",
+      "dir": "script-src",
+      "blocked": "eval",
+      "src": "http://127.0.0.1:4410/assets/clsx-5EdaupDn.js",
+      "line": 1,
+      "sample": ""
+    },
+    {
+      "where": "/session",
+      "dir": "script-src",
+      "blocked": "eval",
+      "src": "http://127.0.0.1:4410/assets/clsx-5EdaupDn.js",
+      "line": 1,
+      "sample": ""
+    },
+    {
+      "where": "/session/new",
+      "dir": "script-src",
+      "blocked": "eval",
+      "src": "http://127.0.0.1:4410/assets/clsx-5EdaupDn.js",
+      "line": 1,
+      "sample": ""
+    },
+    {
+      "where": "/session/new",
+      "dir": "script-src",
+      "blocked": "eval",
+      "src": "http://127.0.0.1:4410/assets/clsx-5EdaupDn.js",
+      "line": 1,
+      "sample": ""
+    },
+    {
+      "where": "/evidence",
+      "dir": "script-src",
+      "blocked": "eval",
+      "src": "http://127.0.0.1:4410/assets/clsx-5EdaupDn.js",
+      "line": 1,
+      "sample": ""
+    },
+    {
+      "where": "/evidence",
+      "dir": "script-src",
+      "blocked": "eval",
+      "src": "http://127.0.0.1:4410/assets/clsx-5EdaupDn.js",
+      "line": 1,
+      "sample": ""
+    },
+    {
+      "where": "/devices",
+      "dir": "script-src",
+      "blocked": "eval",
+      "src": "http://127.0.0.1:4410/assets/clsx-5EdaupDn.js",
+      "line": 1,
+      "sample": ""
+    },
+    {
+      "where": "/devices",
+      "dir": "script-src",
+      "blocked": "eval",
+      "src": "http://127.0.0.1:4410/assets/clsx-5EdaupDn.js",
+      "line": 1,
+      "sample": ""
+    },
+    {
+      "where": "/storage",
+      "dir": "script-src",
+      "blocked": "eval",
+      "src": "http://127.0.0.1:4410/assets/clsx-5EdaupDn.js",
+      "line": 1,
+      "sample": ""
+    },
+    {
+      "where": "/storage",
+      "dir": "script-src",
+      "blocked": "eval",
+      "src": "http://127.0.0.1:4410/assets/clsx-5EdaupDn.js",
+      "line": 1,
+      "sample": ""
+    },
+    {
+      "where": "/network-time",
+      "dir": "script-src",
+      "blocked": "eval",
+      "src": "http://127.0.0.1:4410/assets/clsx-5EdaupDn.js",
+      "line": 1,
+      "sample": ""
+    },
+    {
+      "where": "/network-time",
+      "dir": "script-src",
+      "blocked": "eval",
+      "src": "http://127.0.0.1:4410/assets/clsx-5EdaupDn.js",
+      "line": 1,
+      "sample": ""
+    },
+    {
+      "where": "/security-audit",
+      "dir": "script-src",
+      "blocked": "eval",
+      "src": "http://127.0.0.1:4410/assets/clsx-5EdaupDn.js",
+      "line": 1,
+      "sample": ""
+    },
+    {
+      "where": "/security-audit",
+      "dir": "script-src",
+      "blocked": "eval",
+      "src": "http://127.0.0.1:4410/assets/clsx-5EdaupDn.js",
+      "line": 1,
+      "sample": ""
+    },
+    {
+      "where": "/system",
+      "dir": "script-src",
+      "blocked": "eval",
+      "src": "http://127.0.0.1:4410/assets/clsx-5EdaupDn.js",
+      "line": 1,
+      "sample": ""
+    },
+    {
+      "where": "/system",
+      "dir": "script-src",
+      "blocked": "eval",
+      "src": "http://127.0.0.1:4410/assets/clsx-5EdaupDn.js",
+      "line": 1,
+      "sample": ""
+    },
+    {
+      "where": "/stack-check",
+      "dir": "script-src",
+      "blocked": "eval",
+      "src": "http://127.0.0.1:4410/assets/clsx-5EdaupDn.js",
+      "line": 1,
+      "sample": ""
+    },
+    {
+      "where": "/stack-check",
+      "dir": "script-src",
+      "blocked": "eval",
+      "src": "http://127.0.0.1:4410/assets/clsx-5EdaupDn.js",
+      "line": 1,
+      "sample": ""
+    },
+    {
+      "where": "/developer/api",
+      "dir": "script-src",
+      "blocked": "eval",
+      "src": "http://127.0.0.1:4410/assets/clsx-5EdaupDn.js",
+      "line": 1,
+      "sample": ""
+    },
+    {
+      "where": "/developer/api",
+      "dir": "script-src",
+      "blocked": "eval",
+      "src": "http://127.0.0.1:4410/assets/clsx-5EdaupDn.js",
+      "line": 1,
+      "sample": ""
+    },
+    {
+      "where": "/developer/api (try-it)",
+      "dir": "script-src",
+      "blocked": "eval",
+      "src": "http://127.0.0.1:4410/assets/clsx-5EdaupDn.js",
+      "line": 1,
+      "sample": ""
+    },
+    {
+      "where": "/developer/api (try-it)",
+      "dir": "script-src",
+      "blocked": "eval",
+      "src": "http://127.0.0.1:4410/assets/clsx-5EdaupDn.js",
+      "line": 1,
+      "sample": ""
+    }
+  ],
+  "pages": [
+    {
+      "requested": "/dashboard",
+      "path": "/dashboard",
+      "h1": "Dashboard",
+      "cspViolations": 2
+    },
+    {
+      "requested": "/session",
+      "path": "/session",
+      "h1": "SESSION MONITORSESSION MONITORSESSION MONITOR",
+      "cspViolations": 2
+    },
+    {
+      "requested": "/session/new",
+      "path": "/session/new",
+      "h1": "START NEW SESSIONSTART NEW SESSION",
+      "cspViolations": 2
+    },
+    {
+      "requested": "/evidence",
+      "path": "/evidence",
+      "h1": "EVIDENCEEVIDENCE",
+      "cspViolations": 2
+    },
+    {
+      "requested": "/devices",
+      "path": "/devices",
+      "h1": "DEVICES & INPUTSDEVICES & INPUTS",
+      "cspViolations": 2
+    },
+    {
+      "requested": "/storage",
+      "path": "/storage",
+      "h1": "STORAGESTORAGE",
+      "cspViolations": 2
+    },
+    {
+      "requested": "/network-time",
+      "path": "/network-time",
+      "h1": "NETWORK & TIMENETWORK & TIME",
+      "cspViolations": 2
+    },
+    {
+      "requested": "/security-audit",
+      "path": "/security-audit",
+      "h1": "SECURITY & AUDITSECURITY & AUDIT",
+      "cspViolations": 2
+    },
+    {
+      "requested": "/system",
+      "path": "/system",
+      "h1": "SYSTEM & MAINTENANCESYSTEM & MAINTENANCE",
+      "cspViolations": 2
+    },
+    {
+      "requested": "/stack-check",
+      "path": "/stack-check",
+      "h1": "Stack CheckStack Check",
+      "cspViolations": 2
+    },
+    {
+      "requested": "/developer/api",
+      "path": "/developer/api",
+      "h1": "API REFERENCEAPI REFERENCE",
+      "cspViolations": 2
+    }
+  ],
+  "tryItResponseExcerpt": "r GET/api/v1/health Shell Curl curl http://127.0.0.1:4410/api/v1/health Test Request (get /api/v1/health) STATUS: 200 THE SERVICE IS UP. Show Schema mock-core is up { \"status\": \"ok\", \"service\": \"dems-mock-core\", \"version\": \"0.1.0\", \"apiVersion\": \"v1\", \"serverTime\": \"2026-10-01T03:00:00.00",
+  "requestCount": 1247,
+  "hosts": [
+    "http://127.0.0.1:4410",
+    "ws://127.0.0.1:4410"
+  ],
+  "healthStatuses": [
+    200
+  ],
+  "wsSockets": [
+    "ws://127.0.0.1:4410/ws",
+    "ws://127.0.0.1:4410/ws",
+    "ws://127.0.0.1:4410/ws",
+    "ws://127.0.0.1:4410/ws",
+    "ws://127.0.0.1:4410/ws",
+    "ws://127.0.0.1:4410/ws",
+    "ws://127.0.0.1:4410/ws",
+    "ws://127.0.0.1:4410/ws",
+    "ws://127.0.0.1:4410/ws",
+    "ws://127.0.0.1:4410/ws",
+    "ws://127.0.0.1:4410/ws",
+    "ws://127.0.0.1:4410/ws",
+    "ws://127.0.0.1:4410/ws"
+  ],
+  "logs": [],
+  "otherLogs": []
+}

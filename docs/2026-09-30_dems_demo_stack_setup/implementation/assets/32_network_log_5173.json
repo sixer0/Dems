@@ -1,0 +1,2080 @@
+{
+ "requestCount": 411,
+ "hosts": {
+  "127.0.0.1:5173": 405,
+  "blob:": 1,
+  "127.0.0.1:4400": 5
+ },
+ "webSockets": [
+  "ws://127.0.0.1:5173/?token=4ffS28Gstr3w",
+  "ws://127.0.0.1:4400/ws",
+  "ws://127.0.0.1:4400/ws",
+  "ws://127.0.0.1:5173/?token=4ffS28Gstr3w",
+  "ws://127.0.0.1:4400/ws",
+  "ws://127.0.0.1:4400/ws",
+  "ws://127.0.0.1:4400/ws",
+  "ws://127.0.0.1:4400/ws"
+ ],
+ "performanceResourceHosts": [
+  "127.0.0.1:5173",
+  "127.0.0.1:4400"
+ ],
+ "nonLocal": [],
+ "requests": [
+  {
+   "url": "http://127.0.0.1:5173/",
+   "method": "GET",
+   "type": "Document"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@vite/client",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/main.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@react-refresh",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/node_modules/@fontsource-variable/orbitron/index.css",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/node_modules/@fontsource-variable/inter/index.css",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/node_modules/@fontsource-variable/jetbrains-mono/index.css",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/index.css",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/node_modules/.vite/deps/react.js?v=ddd382c5",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/node_modules/.vite/deps/react-dom_client.js?v=ddd382c5",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/node_modules/.vite/deps/@tanstack_react-query.js?v=ddd382c5",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/node_modules/.vite/deps/@tanstack_react-router.js?v=ddd382c5",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/index.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/i18n.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/router.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/node_modules/.vite/deps/react_jsx-dev-runtime.js?v=ddd382c5",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/node_modules/.vite/deps/rolldown-runtime-DC62tzP2.js?v=ddd382c5",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/node_modules/.vite/deps/react_jsx-runtime.js?v=ddd382c5",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/node_modules/.vite/deps/with-selector-B2QvWTxs.js?v=ddd382c5",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/constants.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/vocabulary.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/types.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/errors.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/rng.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/clock.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/events.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/evidence.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/dataset.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/auth.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/platform.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/initial-state.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/store.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/selectors.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/derive.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/session-machine.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/faults.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/audio.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/health.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/generator.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/maintenance.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/evidence-actions.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/pairing.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/scenarios.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/api.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/actions.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/engine.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/react.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/node_modules/.vite/deps/i18next.js?v=ddd382c5",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/node_modules/.vite/deps/react-i18next.js?v=ddd382c5",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/index.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/components/shell/route-view-transition.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/routeTree.gen.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/node_modules/.vite/deps/react-dom.js?v=ddd382c5",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/node_modules/.vite/deps/shim-Zj6jh50b.js?v=ddd382c5",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/domain/index.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/node_modules/.vite/deps/@noble_hashes_sha2__js.js?v=ddd382c5",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/node_modules/.vite/deps/@noble_hashes_utils__js.js?v=ddd382c5",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/node_modules/.vite/deps/zustand_middleware.js?v=ddd382c5",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/node_modules/.vite/deps/zustand_vanilla.js?v=ddd382c5",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/node_modules/.vite/deps/zustand.js?v=ddd382c5",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/node_modules/.vite/deps/zustand_react_shallow.js?v=ddd382c5",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/api-reference.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/common.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/dashboard.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/devices.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/evidence.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/login.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/network-time.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/security-audit.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/session.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/session-new.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/shell.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/storage.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/system.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/resource-tree.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/routes/__root.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/routes/_app.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/routes/login.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/routes/_app/index.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/routes/_app/dashboard.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/routes/_app/devices.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/routes/_app/network-time.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/routes/_app/security-audit.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/routes/_app/stack-check.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/routes/_app/storage.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/routes/_app/system.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/routes/_app/developer/api.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/routes/_app/evidence/index.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/routes/_app/evidence/$evidenceId.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/routes/_app/session/index.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/routes/_app/session/new.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/node_modules/vite/dist/client/env.mjs",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/domain/ids.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/domain/enums.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/domain/entities.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/node_modules/.vite/deps/zod.js?v=ddd382c5",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/routes/-search.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/node_modules/.vite/deps/@heroui_react.js?v=ddd382c5",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/node_modules/.vite/deps/motion_react.js?v=ddd382c5",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/index.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/realtime/index.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/components/shell/shell-entrance.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/motion/index.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/components/shell/shell.css",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/node_modules/.vite/deps/zod-DbJ75KGc.js?v=ddd382c5",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/realtime/heartbeat-client.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/realtime/heartbeat-context.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/realtime/use-heartbeat.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/realtime/format.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/realtime/use-retry-cooldown.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/constants.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/health.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/realtime-messages.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/patterns.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/session-schema.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/core-api.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/examples.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/openapi.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/motion/motion-policy-provider.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/motion/use-motion-policy.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/motion/use-ambient-loop.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/motion/ambient-registry.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/motion/glow-layer.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/motion/glow.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/motion/debug-overlay-gate.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/motion/debug-metrics.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/motion/variants.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/motion/transitions.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/motion/policy.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/motion/use-media-query.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/tokens/tokens.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/motion/motion.css",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/tokens/index.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/lib/utils.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/tokens/status-tones.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/node_modules/.vite/deps/clsx.js?v=ddd382c5",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/node_modules/.vite/deps/tailwind-merge.js?v=ddd382c5",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/node_modules/.vite/deps/DateFormatter-BaZr6xpv.js?v=ddd382c5",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/routes/login.tsx?tsr-split=component",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/features/login/index.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/features/login/auth-card.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/features/login/brand-panel.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/features/login/login-choreography.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/features/login/login-model.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/features/login/login-motion.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/features/login/report.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/features/login/sim-adapter.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/features/login/use-login-controller.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/features/login/use-login-tier.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/features/login/login.css",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/hero/room-2560.jpg?import&url",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/components/composed/glow-ring.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/components/shell/shared-layout-ids.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/components/ui/particles.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/components/ui/text-effect.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/features/login/device-strip.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/features/login/graded-still.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/features/login/login-emblem.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/node_modules/.vite/deps/lucide-react.js?v=ddd382c5",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/components/ui/border-beam.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/features/login/login-alert.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/lib/presentation-mode.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/brand/index.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/components/ui/sliding-number.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/components/ui/animated-number.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/components/media/rec-indicator.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/components/composed/glow-ring.math.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/brand/emblem.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/brand/topo.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/node_modules/.vite/deps/react-use-measure.js?v=ddd382c5",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/components/media/use-sim-clock.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/node_modules/@fontsource-variable/jetbrains-mono/files/jetbrains-mono-latin-wght-normal.woff2",
+   "method": "GET",
+   "type": "Font"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/assets/brand/topo.svg",
+   "method": "GET",
+   "type": "Image"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/node_modules/@fontsource-variable/inter/files/inter-latin-wght-normal.woff2",
+   "method": "GET",
+   "type": "Font"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/node_modules/@fontsource-variable/orbitron/files/orbitron-latin-wght-normal.woff2",
+   "method": "GET",
+   "type": "Font"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/hero/room-2560.jpg",
+   "method": "GET",
+   "type": "Image"
+  },
+  {
+   "url": "blob:http://127.0.0.1:5173/2d00d86d-ec5f-485e-b02e-8d0e531ec6db",
+   "method": "GET",
+   "type": "Image"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/routes/_app.tsx?tsr-split=component",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/components/shell/app-layout.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/components/shell/app-shell.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/components/shell/exit-guard.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/components/shell/route-transition.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/components/shell/bottom-tabs.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/components/shell/nav-drawer.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/components/shell/shell-choreography.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/components/shell/shell-motion-context.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/components/shell/sidebar.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/components/shell/top-bar.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/components/shell/use-shell-layout.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/components/shell/nav-items.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/components/shell/brand-emblem.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/assets/brand/topo.svg?import",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/components/ui/animated-background.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/components/shell/notifications-bell.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/components/shell/secure-pill.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/components/shell/user-menu.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/components/shell/integrity-checks.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/developer/api",
+   "method": "GET",
+   "type": "Document"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@vite/client",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/main.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@react-refresh",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/node_modules/@fontsource-variable/orbitron/index.css",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/node_modules/@fontsource-variable/inter/index.css",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/node_modules/@fontsource-variable/jetbrains-mono/index.css",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/index.css",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/node_modules/.vite/deps/react.js?v=ddd382c5",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/node_modules/.vite/deps/react-dom_client.js?v=ddd382c5",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/node_modules/.vite/deps/@tanstack_react-query.js?v=ddd382c5",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/node_modules/.vite/deps/@tanstack_react-router.js?v=ddd382c5",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/index.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/i18n.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/router.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/node_modules/.vite/deps/react_jsx-dev-runtime.js?v=ddd382c5",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/node_modules/.vite/deps/rolldown-runtime-DC62tzP2.js?v=ddd382c5",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/node_modules/.vite/deps/react-dom.js?v=ddd382c5",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/node_modules/.vite/deps/react_jsx-runtime.js?v=ddd382c5",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/node_modules/.vite/deps/with-selector-B2QvWTxs.js?v=ddd382c5",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/node_modules/.vite/deps/shim-Zj6jh50b.js?v=ddd382c5",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/node_modules/vite/dist/client/env.mjs",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/constants.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/vocabulary.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/types.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/errors.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/rng.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/clock.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/events.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/evidence.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/dataset.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/auth.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/platform.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/initial-state.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/store.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/selectors.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/derive.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/session-machine.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/faults.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/audio.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/health.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/generator.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/maintenance.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/evidence-actions.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/pairing.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/scenarios.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/api.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/actions.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/engine.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/react.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/node_modules/.vite/deps/i18next.js?v=ddd382c5",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/node_modules/.vite/deps/react-i18next.js?v=ddd382c5",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/index.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/components/shell/route-view-transition.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/routeTree.gen.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/node_modules/.vite/deps/@noble_hashes_sha2__js.js?v=ddd382c5",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/node_modules/.vite/deps/@noble_hashes_utils__js.js?v=ddd382c5",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/domain/index.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/node_modules/.vite/deps/zustand_middleware.js?v=ddd382c5",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/node_modules/.vite/deps/zustand_vanilla.js?v=ddd382c5",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/node_modules/.vite/deps/zustand.js?v=ddd382c5",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/node_modules/.vite/deps/zustand_react_shallow.js?v=ddd382c5",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/api-reference.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/common.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/dashboard.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/devices.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/evidence.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/login.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/network-time.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/security-audit.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/session.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/session-new.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/shell.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/storage.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/system.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/resource-tree.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/domain/ids.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/domain/enums.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/domain/entities.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/routes/__root.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/routes/_app.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/routes/login.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/routes/_app/index.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/routes/_app/dashboard.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/routes/_app/devices.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/routes/_app/network-time.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/routes/_app/security-audit.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/routes/_app/stack-check.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/routes/_app/storage.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/routes/_app/system.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/routes/_app/developer/api.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/routes/_app/evidence/index.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/routes/_app/evidence/$evidenceId.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/routes/_app/session/index.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/routes/_app/session/new.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/node_modules/.vite/deps/@heroui_react.js?v=ddd382c5",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/node_modules/.vite/deps/motion_react.js?v=ddd382c5",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/index.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/realtime/index.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/components/shell/shell-entrance.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/motion/index.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/components/shell/shell.css",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/node_modules/.vite/deps/zod.js?v=ddd382c5",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/routes/-search.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/node_modules/.vite/deps/clsx.js?v=ddd382c5",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/node_modules/.vite/deps/DateFormatter-BaZr6xpv.js?v=ddd382c5",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/node_modules/.vite/deps/zod-DbJ75KGc.js?v=ddd382c5",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/constants.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/health.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/realtime-messages.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/patterns.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/session-schema.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/core-api.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/examples.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/openapi.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/realtime/heartbeat-client.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/realtime/heartbeat-context.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/realtime/use-heartbeat.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/realtime/format.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/realtime/use-retry-cooldown.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/motion/motion-policy-provider.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/motion/use-motion-policy.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/motion/use-ambient-loop.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/motion/ambient-registry.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/motion/glow-layer.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/motion/glow.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/motion/debug-overlay-gate.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/motion/debug-metrics.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/motion/variants.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/motion/transitions.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/motion/policy.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/motion/use-media-query.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/tokens/tokens.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/motion/motion.css",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/tokens/index.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/lib/utils.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/tokens/status-tones.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/node_modules/.vite/deps/tailwind-merge.js?v=ddd382c5",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/routes/_app.tsx?tsr-split=component",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/routes/_app/developer/api.tsx?tsr-split=component",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/components/shell/app-layout.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/components/shell/app-shell.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/components/shell/exit-guard.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/components/shell/route-transition.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/components/shell/bottom-tabs.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/components/shell/nav-drawer.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/components/shell/shell-choreography.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/components/shell/shell-motion-context.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/components/shell/sidebar.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/components/shell/top-bar.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/components/shell/use-shell-layout.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/features/api-reference/index.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/node_modules/.vite/deps/lucide-react.js?v=ddd382c5",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/components/shell/nav-items.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/components/shell/brand-emblem.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/assets/brand/topo.svg?import",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/components/ui/animated-background.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/components/ui/sliding-number.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/components/shell/notifications-bell.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/components/shell/secure-pill.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/components/shell/shared-layout-ids.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/components/shell/user-menu.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/brand/index.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/node_modules/.vite/deps/react-use-measure.js?v=ddd382c5",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/brand/emblem.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/brand/topo.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/components/ui/border-beam.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/components/shell/integrity-checks.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/components/shell/page-header.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/features/api-reference/api-document.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/features/api-reference/realtime-panel.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/features/api-reference/renderer-panel.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/features/api-reference/server-strip.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/features/api-reference/service-banner.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/features/api-reference/sim-fetch.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/features/api-reference/api-reference.css",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/components/ui/text-effect.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/demo-data/index.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/components/shell/index.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/features/api-reference/choreography.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/features/api-reference/panel.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/features/api-reference/scalar-config.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/features/api-reference/scalar-theme.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/components/ui/animated-list.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/features/api-reference/actions.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/features/api-reference/use-realtime-feed.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/features/api-reference/sim-adapter.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/features/api-reference/log.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/demo-data/documents.generated.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/demo-data/packages.generated.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/demo-data/types.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/demo-data/verify.ts",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/theme/scalar.css?raw",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/assets/brand/topo.svg",
+   "method": "GET",
+   "type": "Image"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/node_modules/@fontsource-variable/jetbrains-mono/files/jetbrains-mono-latin-wght-normal.woff2",
+   "method": "GET",
+   "type": "Font"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/node_modules/@fontsource-variable/inter/files/inter-latin-wght-normal.woff2",
+   "method": "GET",
+   "type": "Font"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/node_modules/@fontsource-variable/orbitron/files/orbitron-latin-wght-normal.woff2",
+   "method": "GET",
+   "type": "Font"
+  },
+  {
+   "url": "http://127.0.0.1:4400/api/v1/health",
+   "method": "GET",
+   "type": "Fetch"
+  },
+  {
+   "url": "http://127.0.0.1:5173/src/features/api-reference/scalar-renderer.tsx",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/node_modules/.vite/deps/@scalar_api-reference-react.js?v=ddd382c5",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/@fs/Users/gsp-budi/Documents/DEMS/node_modules/@scalar/api-reference-react/dist/style.css",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/node_modules/.vite/deps/slugger-DZn0ZAmc.js?v=ddd382c5",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/node_modules/.vite/deps/client-BxOyEYmJ.js?v=ddd382c5",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/node_modules/.vite/deps/workspace-events-Dhs7czJh.js?v=ddd382c5",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/node_modules/.vite/deps/vue.runtime.esm-bundler-CiX4CwX4.js?v=ddd382c5",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/node_modules/.vite/deps/add-scalar-classes-C_pFg0x9.js?v=ddd382c5",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/node_modules/.vite/deps/markdown-DXGivTRM.js?v=ddd382c5",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/node_modules/.vite/deps/browser-D5XRc7BF.js?v=ddd382c5",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:5173/node_modules/.vite/deps/interface-content-folder.svg-B0_NaqXh.js?v=ddd382c5",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:4400/api/v1/health",
+   "method": "GET",
+   "type": "Fetch"
+  },
+  {
+   "url": "http://127.0.0.1:4400/api/v1/health",
+   "method": "GET",
+   "type": "Fetch"
+  },
+  {
+   "url": "http://127.0.0.1:5173/node_modules/.vite/deps/modal-BqQXrJEH.js?v=ddd382c5",
+   "method": "GET",
+   "type": "Script"
+  },
+  {
+   "url": "http://127.0.0.1:4400/api/v1/health",
+   "method": "GET",
+   "type": "Fetch"
+  },
+  {
+   "url": "http://127.0.0.1:4400/api/v1/health",
+   "method": "GET",
+   "type": "Fetch"
+  }
+ ]
+}

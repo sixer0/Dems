@@ -1,32 +1,108 @@
-import { Button, Card, Surface, ToastProvider } from '@heroui/react'
-import { createRootRoute, Outlet, type ErrorComponentProps } from '@tanstack/react-router'
-import { MotionConfig } from 'motion/react'
-import { useRetryCooldown } from '@dems/shared/realtime'
+import { useCallback, useEffect } from 'react'
+import {
+  RouterProvider as AriaRouterProvider,
+  Button,
+  Card,
+  Surface,
+  ToastProvider,
+} from '@heroui/react'
+import { QueryClientProvider } from '@tanstack/react-query'
+import {
+  createRootRouteWithContext,
+  Link,
+  Outlet,
+  useRouter,
+  useRouterState,
+  type ErrorComponentProps,
+} from '@tanstack/react-router'
+import { LayoutGroup } from 'motion/react'
+import { I18nextProvider, useTranslation } from 'react-i18next'
+import { HEALTH_QUERY_KEY } from '@dems/shared/api'
+import { HeartbeatProvider, useRetryCooldown } from '@dems/shared/realtime'
+import { SimProvider } from '@dems/shared/sim'
+import { noteTopLevelRoute } from '@/components/shell/shell-entrance'
+import { i18n } from '@/i18n'
+import { coreWsUrl } from '@/lib/core-endpoint'
+import { MotionPolicyProvider } from '@/motion'
+import type { RouterContext } from '@/router'
+import '@/components/shell/shell.css'
 
-export const Route = createRootRoute({
+/**
+ * Root route (masterplan/01_specs.md §14.2): the app-wide providers. Order, outermost first:
+ * Query → Heartbeat (one WS client) → Sim (started after mount, stopped on unmount) → i18n →
+ * React Aria router bridge (kit links and menu items navigate client-side) → MotionPolicyProvider →
+ * the full-viewport surface with the toast region. `/login` and the `_app` shell render inside.
+ *
+ * Motion (step 41; 03_motion_spec §4, §8, §9.5; D59):
+ * - `MotionPolicyProvider` (step 36) replaces the bare `MotionConfig reducedMotion="user"`: it
+ *   resolves the policy (OS setting, the in-app switch, `?motion=`), provides the motion kit,
+ *   marks `<html data-motion>`, and mounts the `?debug=1` overlay.
+ * - One root `LayoutGroup` scopes the R5 shared-element IDs (`brand-emblem` for the Login ↔ shell
+ *   flight, and the page IDs such as `feed-<cameraId>`).
+ * - H-M1 (keep the exiting route mounted in a keyed `AnimatePresence`) does not hold for TanStack
+ *   Router 1.170: an exiting copy's `<Outlet />` re-renders with the new route. So the top level
+ *   is not wrapped in a keyed `AnimatePresence`; M-APP-01/02 use the two-phase fallback (each side
+ *   plays its own exit before navigating) and the emblem still flies through the shared layoutId.
+ *   Evidence: implementation/21_shell_motion.md §3 and `src/test/shell-motion.test.tsx`.
+ */
+export const Route = createRootRouteWithContext<RouterContext>()({
   component: RootLayout,
   errorComponent: RootError,
   notFoundComponent: NotFound,
 })
 
-/** Full-viewport shell (masterplan/01_specs.md §4.1). HeroUI v3 needs no provider besides toasts. */
 function RootLayout() {
+  const { sim, queryClient, socketFactory } = Route.useRouteContext()
+  const router = useRouter()
+  // Refresh health after a WS reconnect (01_specs §5.5/§5.6 resync).
+  const resync = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: HEALTH_QUERY_KEY })
+  }, [queryClient])
+  const navigate = useCallback((href: string) => {
+    void router.navigate({ href })
+  }, [router])
+  // The shell reads which top-level route it replaced (M-APP-01 hand-off vs M-APP-03 cold entry).
+  const topLevelRouteId = useRouterState({ select: (state) => state.matches[1]?.routeId })
+  useEffect(() => {
+    noteTopLevelRoute(router, topLevelRouteId)
+  }, [router, topLevelRouteId])
+
   return (
-    <MotionConfig reducedMotion="user">
-      <Surface variant="transparent" className="min-h-dvh bg-background text-foreground">
-        <Outlet />
-        <ToastProvider />
-      </Surface>
-    </MotionConfig>
+    <QueryClientProvider client={queryClient}>
+      <HeartbeatProvider url={coreWsUrl()} onResync={resync} {...(socketFactory ? { socketFactory } : {})}>
+        <SimProvider sim={sim} autoStart>
+          <I18nextProvider i18n={i18n}>
+            <AriaRouterProvider navigate={navigate} useHref={identityHref}>
+              <MotionPolicyProvider>
+                <Surface variant="transparent" className="min-h-dvh bg-background text-foreground">
+                  <LayoutGroup id="dems">
+                    <Outlet />
+                  </LayoutGroup>
+                  <ToastProvider />
+                </Surface>
+              </MotionPolicyProvider>
+            </AriaRouterProvider>
+          </I18nextProvider>
+        </SimProvider>
+      </HeartbeatProvider>
+    </QueryClientProvider>
   )
+}
+
+/** App paths are absolute and the app has no basepath, so an href is already a URL. */
+function identityHref(href: string): string {
+  return href
 }
 
 /** Router-level error boundary: friendly message, rate-limited retry, reload as last resort. */
 function RootError({ error, reset }: ErrorComponentProps) {
+  const { t } = useTranslation()
   const { retry, cooldown, exhausted, canRetry } = useRetryCooldown(reset)
   if (import.meta.env.DEV) {
-    // No client-log endpoint exists in the mock-core scaffold (D3/D4); dev console only.
+    // No client-log endpoint exists on mock-core (D3/D4, D41(g)); dev console only.
     console.error('[core-web] route error', {
+      level: 'error',
+      source: 'routes/__root.RootError',
       message: error instanceof Error ? error.message : String(error),
       stack: error instanceof Error ? error.stack : undefined,
     })
@@ -35,17 +111,19 @@ function RootError({ error, reset }: ErrorComponentProps) {
     <Surface variant="transparent" className="flex min-h-dvh items-center justify-center bg-background p-6">
       <Card className="w-full max-w-md rounded-xl">
         <Card.Header>
-          <Card.Title>Something went wrong</Card.Title>
-          <Card.Description>
-            This screen could not be displayed. Try again, or reload the console.
-          </Card.Description>
+          <Card.Title>{t('common.errors.panelTitle')}</Card.Title>
+          <Card.Description>{t('common.errors.generic')}</Card.Description>
         </Card.Header>
         <Card.Footer className="gap-3">
           <Button variant="primary" isDisabled={!canRetry} onPress={retry}>
-            {exhausted ? 'Retry limit reached' : cooldown > 0 ? `Retry in ${cooldown}s` : 'Try again'}
+            {exhausted
+              ? t('common.errors.maxRetries')
+              : cooldown > 0
+                ? t('common.actions.retryIn', { seconds: cooldown })
+                : t('common.actions.retry')}
           </Button>
           <Button variant="outline" onPress={() => window.location.reload()}>
-            Reload
+            {t('common.actions.refresh')}
           </Button>
         </Card.Footer>
       </Card>
@@ -54,13 +132,23 @@ function RootError({ error, reset }: ErrorComponentProps) {
 }
 
 function NotFound() {
+  const { t } = useTranslation()
   return (
-    <Surface variant="transparent" className="flex min-h-dvh items-center justify-center bg-background p-6">
+    <Surface
+      variant="transparent"
+      className="flex min-h-dvh items-center justify-center bg-background p-6"
+      data-testid="page-not-found"
+    >
       <Card className="w-full max-w-md rounded-xl">
         <Card.Header>
-          <Card.Title>Page not found</Card.Title>
-          <Card.Description>This console route does not exist.</Card.Description>
+          <Card.Title>{t('common.errors.notFoundTitle')}</Card.Title>
+          <Card.Description>{t('common.errors.notFoundBody')}</Card.Description>
         </Card.Header>
+        <Card.Footer>
+          <Link to="/dashboard" className="text-link underline-offset-4 hover:underline">
+            {t('shell.nav.dashboard')}
+          </Link>
+        </Card.Footer>
       </Card>
     </Surface>
   )

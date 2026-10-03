@@ -1,0 +1,650 @@
+{
+ "step": "45b",
+ "gpu45b": {
+  "at": "2026-10-01T03:14:50.891Z",
+  "checks": {
+   "env": {
+    "inner": [
+     1710,
+     931
+    ],
+    "dpr": 2,
+    "visibility": "visible",
+    "focus": true,
+    "renderer": "ANGLE (Apple, ANGLE Metal Renderer: Apple M5, Unspecified Version)"
+   },
+   "dashIdle": {
+    "fps": 60,
+    "worstFrameMs": 18,
+    "media": {
+     "feeds": [
+      "VIDEO-01:tile:live",
+      "VIDEO-02:tile:standby"
+     ],
+     "videos": [
+      {
+       "paused": false,
+       "ready": 4
+      },
+      {
+       "paused": true,
+       "ready": 4
+      }
+     ],
+     "overlayVideos": "1/2",
+     "standbyRunning": [
+      "paused"
+     ]
+    },
+    "loops": {
+     "running": 4,
+     "requested": 6,
+     "breach": "false",
+     "fpsAvg": 61,
+     "longTasks": 0,
+     "longTasksAfterWarmup": 0,
+     "meters": "{\"AUDIO-01\":19,\"AUDIO-02\":19}",
+     "list": "ring-rotate, ring-breath, hero-ken-burns, ripple, shine-border | paused: clock-colon, secure-dot, topo-drift, camera-standby"
+    }
+   },
+   "dashHoverCam2": {
+    "fps": 60,
+    "worstFrameMs": 18,
+    "media": {
+     "feeds": [
+      "VIDEO-01:tile:standby",
+      "VIDEO-02:tile:live"
+     ],
+     "videos": [
+      {
+       "paused": true,
+       "ready": 4
+      },
+      {
+       "paused": false,
+       "ready": 4
+      }
+     ],
+     "overlayVideos": "1/2",
+     "standbyRunning": [
+      "paused"
+     ]
+    }
+   },
+   "dashRecording": {
+    "fps": 59.9,
+    "worstFrameMs": 33,
+    "media": {
+     "feeds": [
+      "VIDEO-01:thumb:off",
+      "VIDEO-01:tile:live",
+      "VIDEO-02:tile:standby"
+     ],
+     "videos": [
+      {
+       "paused": true,
+       "ready": 4
+      },
+      {
+       "paused": false,
+       "ready": 4
+      },
+      {
+       "paused": true,
+       "ready": 4
+      }
+     ],
+     "overlayVideos": "1/3",
+     "standbyRunning": [
+      "paused"
+     ]
+    },
+    "loops": {
+     "running": 4,
+     "requested": 5,
+     "breach": "false",
+     "fpsAvg": 61,
+     "longTasks": 2,
+     "longTasksAfterWarmup": 1,
+     "meters": "{\"AUDIO-01\":20,\"AUDIO-02\":20}",
+     "list": "clock-colon, secure-dot, topo-drift, rec-pulse, ring-rotate, ring-rec-pulse, hero-ken-burns, rec-pulse | paused: camera-standby"
+    }
+   },
+   "dashFaultDemo": {
+    "fps": 60.1,
+    "worstFrameMs": 18,
+    "media": {
+     "feeds": [
+      "VIDEO-01:thumb:off",
+      "VIDEO-01:tile:live",
+      "VIDEO-02:tile:off"
+     ],
+     "videos": [
+      {
+       "paused": true,
+       "ready": 4
+      },
+      {
+       "paused": false,
+       "ready": 4
+      },
+      {
+       "paused": true,
+       "ready": 4
+      }
+     ],
+     "overlayVideos": "1/3",
+     "standbyRunning": []
+    },
+    "loops": {
+     "running": 4,
+     "requested": 5,
+     "breach": "false",
+     "fpsAvg": 61,
+     "longTasks": 2,
+     "longTasksAfterWarmup": 0,
+     "meters": "{\"AUDIO-01\":20,\"AUDIO-02\":20}",
+     "list": "clock-colon, secure-beam, secure-dot, topo-drift, ring-rotate, ring-breath, rec-pulse | paused: hero-ken-burns"
+    },
+    "pill": {
+     "state": "CRITICAL",
+     "beam": "running",
+     "mounted": true
+    },
+    "caption": "Recording continues. A critical fault needs attention."
+   },
+   "devIdle": {
+    "fps": 60,
+    "worstFrameMs": 18,
+    "media": {
+     "feeds": [
+      "VIDEO-01:tile:live",
+      "VIDEO-02:tile:standby"
+     ],
+     "videos": [
+      {
+       "paused": false,
+       "ready": 4
+      },
+      {
+       "paused": true,
+       "ready": 4
+      }
+     ],
+     "overlayVideos": "1/2",
+     "standbyRunning": [
+      "running"
+     ]
+    },
+    "loops": {
+     "running": 2,
+     "requested": 2,
+     "breach": "false",
+     "fpsAvg": 61,
+     "longTasks": 1,
+     "longTasksAfterWarmup": 0,
+     "meters": "{\"AUDIO-01\":20,\"AUDIO-02\":20}",
+     "list": "clock-colon, secure-dot, topo-drift, camera-standby"
+    }
+   },
+   "devRecording": {
+    "fps": 60.1,
+    "worstFrameMs": 18,
+    "media": {
+     "feeds": [
+      "VIDEO-01:tile:live",
+      "VIDEO-02:tile:standby"
+     ],
+     "videos": [
+      {
+       "paused": false,
+       "ready": 4
+      },
+      {
+       "paused": true,
+       "ready": 4
+      }
+     ],
+     "overlayVideos": "1/2",
+     "standbyRunning": [
+      "running"
+     ]
+    },
+    "loops": {
+     "running": 3,
+     "requested": 3,
+     "breach": "false",
+     "fpsAvg": 61,
+     "longTasks": 1,
+     "longTasksAfterWarmup": 0,
+     "meters": "{\"AUDIO-01\":20,\"AUDIO-02\":20}",
+     "list": "clock-colon, secure-dot, topo-drift, camera-standby, rec-lamp"
+    }
+   },
+   "smRecording": {
+    "fps": 60,
+    "worstFrameMs": 18,
+    "media": {
+     "feeds": [
+      "VIDEO-01:feed:live",
+      "VIDEO-01:thumb:off",
+      "VIDEO-02:thumb:off"
+     ],
+     "videos": [
+      {
+       "paused": false,
+       "ready": 4
+      },
+      {
+       "paused": true,
+       "ready": 4
+      },
+      {
+       "paused": true,
+       "ready": 4
+      }
+     ],
+     "overlayVideos": "1/3",
+     "standbyRunning": []
+    }
+   }
+  },
+  "errors": [],
+  "browser": {
+   "pid": 8604,
+   "product": "Chrome/153.0.8010.12"
+  }
+ },
+ "shots45b": {
+  "at": "2026-10-01T03:13:54.485Z",
+  "checks": {
+   "sealed1920": {
+    "text": "Items sealed today",
+    "height": 15,
+    "lineHeight": 15,
+    "lines": 1,
+    "fit": {
+     "mainSH": 1000,
+     "mainCH": 1000,
+     "mainSW": 1688,
+     "mainCW": 1688,
+     "docSH": 1080,
+     "docSW": 1920,
+     "innerH": 1080,
+     "innerW": 1920
+    }
+   },
+   "faultCaption1920": {
+    "caption": "Recording continues. A critical fault needs attention.",
+    "srCaptions": [],
+    "status": "3 ISSUES"
+   },
+   "sealed1440": {
+    "text": "Items sealed today",
+    "height": 15,
+    "lineHeight": 15,
+    "lines": 1,
+    "fit": {
+     "mainSH": 828,
+     "mainCH": 828,
+     "mainSW": 1224,
+     "mainCW": 1224,
+     "docSH": 900,
+     "docSW": 1440,
+     "innerH": 900,
+     "innerW": 1440
+    }
+   },
+   "faultCaption1440": {
+    "caption": null,
+    "srCaptions": [
+     "Recording continues. A critical fault needs attention."
+    ],
+    "status": "3 ISSUES"
+   },
+   "arc900": {
+    "arcDisplay": "none",
+    "arcWidth": 0,
+    "tier": "sm",
+    "fit": {
+     "mainSH": 2258,
+     "mainCH": 736,
+     "mainSW": 900,
+     "mainCW": 900,
+     "docSH": 800,
+     "docSW": 900,
+     "innerH": 800,
+     "innerW": 900
+    }
+   },
+   "arc1200": {
+    "arcDisplay": "block",
+    "arcWidth": 382,
+    "tier": "md",
+    "fit": {
+     "mainSH": 1751,
+     "mainCH": 728,
+     "mainSW": 1128,
+     "mainCW": 1128,
+     "docSH": 800,
+     "docSW": 1200,
+     "innerH": 800,
+     "innerW": 1200
+    }
+   },
+   "smOverflow1920": [],
+   "smStart1920": {
+    "text": "Start Time1 Oct 2026 09:55:38 UTC+07:00",
+    "valueOverflow": false,
+    "zoneVisible": true,
+    "rowHeight": 41,
+    "kvOverflow": 0,
+    "title": "1 Oct 2026 09:55:38 UTC+07:00",
+    "fit": {
+     "mainSH": 1000,
+     "mainCH": 1000,
+     "mainSW": 1688,
+     "mainCW": 1688,
+     "docSH": 1080,
+     "docSW": 1920,
+     "innerH": 1080,
+     "innerW": 1920
+    }
+   },
+   "smOverflow1440": [
+    "pointer-events-none absolute inset-0 r=1464"
+   ],
+   "smStart1440": {
+    "text": "Start Time1 Oct 2026 09:55:41 UTC+07:00",
+    "valueOverflow": false,
+    "zoneVisible": true,
+    "rowHeight": 39,
+    "kvOverflow": 0,
+    "title": "1 Oct 2026 09:55:41 UTC+07:00",
+    "fit": {
+     "mainSH": 828,
+     "mainCH": 828,
+     "mainSW": 1248,
+     "mainCW": 1224,
+     "docSH": 900,
+     "docSW": 1440,
+     "innerH": 900,
+     "innerW": 1440
+    }
+   },
+   "evidence1920": {
+    "header": "Evidence ID \u00b7 Recorded UTC+07:00",
+    "headerHeight": 36,
+    "preview": "1 Oct 2026 09:32:59 \u2013 09:49:26 UTC+07:00"
+   },
+   "evidence1440": {
+    "header": "Evidence ID \u00b7 Recorded UTC+07:00",
+    "headerHeight": 52,
+    "preview": "1 Oct 2026 09:33:03 \u2013 09:49:30 UTC+07:00"
+   },
+   "evidenceDetail": "1 Oct 2026 09:33:03 \u2013 09:49:30 UTC+07:00"
+  },
+  "console": [],
+  "errors": []
+ },
+ "audio_before": {
+  "at": "2026-10-01T03:06:46.409Z",
+  "checks": {
+   "sm1440": [
+    {
+     "channel": "AUDIO-01",
+     "half": {
+      "top": 391.8,
+      "bottom": 499.3,
+      "h": 107.5
+     },
+     "name": {
+      "top": 397.8,
+      "bottom": 411.5,
+      "h": 13.6
+     },
+     "meterArea": {
+      "top": 417.5,
+      "bottom": 493.3,
+      "h": 75.8
+     },
+     "stack": {
+      "top": 407.4,
+      "bottom": 503.4,
+      "h": 96
+     },
+     "meter": {
+      "top": 407.4,
+      "bottom": 471.4,
+      "h": 64
+     },
+     "overlapPx": 4.1,
+     "stackBelowHalf": 4.1
+    },
+    {
+     "channel": "AUDIO-02",
+     "half": {
+      "top": 391.8,
+      "bottom": 499.3,
+      "h": 107.5
+     },
+     "name": {
+      "top": 397.8,
+      "bottom": 411.5,
+      "h": 13.6
+     },
+     "meterArea": {
+      "top": 417.5,
+      "bottom": 493.3,
+      "h": 75.8
+     },
+     "stack": {
+      "top": 407.4,
+      "bottom": 503.4,
+      "h": 96
+     },
+     "meter": {
+      "top": 407.4,
+      "bottom": 471.4,
+      "h": 64
+     },
+     "overlapPx": 4.1,
+     "stackBelowHalf": 4.1
+    }
+   ],
+   "sm1920": [
+    {
+     "channel": "AUDIO-01",
+     "half": {
+      "top": 455.9,
+      "bottom": 591.5,
+      "h": 135.6
+     },
+     "name": {
+      "top": 464.9,
+      "bottom": 483.8,
+      "h": 18.8
+     },
+     "meterArea": {
+      "top": 489.8,
+      "bottom": 582.5,
+      "h": 92.7
+     },
+     "stack": {
+      "top": 488.2,
+      "bottom": 584.2,
+      "h": 96
+     },
+     "meter": {
+      "top": 488.2,
+      "bottom": 552.2,
+      "h": 64
+     },
+     "overlapPx": -4.4,
+     "stackBelowHalf": -7.3
+    },
+    {
+     "channel": "AUDIO-02",
+     "half": {
+      "top": 455.9,
+      "bottom": 591.5,
+      "h": 135.6
+     },
+     "name": {
+      "top": 464.9,
+      "bottom": 483.8,
+      "h": 18.8
+     },
+     "meterArea": {
+      "top": 489.8,
+      "bottom": 582.5,
+      "h": 92.7
+     },
+     "stack": {
+      "top": 488.2,
+      "bottom": 584.2,
+      "h": 96
+     },
+     "meter": {
+      "top": 488.2,
+      "bottom": 552.2,
+      "h": 64
+     },
+     "overlapPx": -4.4,
+     "stackBelowHalf": -7.3
+    }
+   ]
+  },
+  "errors": []
+ },
+ "audio_after": {
+  "at": "2026-10-01T03:07:37.188Z",
+  "checks": {
+   "sm1440": [
+    {
+     "channel": "AUDIO-01",
+     "half": {
+      "top": 391.8,
+      "bottom": 499.3,
+      "h": 107.5
+     },
+     "name": {
+      "top": 397.8,
+      "bottom": 415.1,
+      "h": 17.3
+     },
+     "meterArea": {
+      "top": 421.1,
+      "bottom": 493.3,
+      "h": 72.2
+     },
+     "stack": {
+      "top": 421.2,
+      "bottom": 493.2,
+      "h": 72
+     },
+     "meter": {
+      "top": 421.2,
+      "bottom": 469.2,
+      "h": 48
+     },
+     "overlapPx": -6.1,
+     "stackBelowHalf": -6.1
+    },
+    {
+     "channel": "AUDIO-02",
+     "half": {
+      "top": 391.8,
+      "bottom": 499.3,
+      "h": 107.5
+     },
+     "name": {
+      "top": 397.8,
+      "bottom": 415.1,
+      "h": 17.3
+     },
+     "meterArea": {
+      "top": 421.1,
+      "bottom": 493.3,
+      "h": 72.2
+     },
+     "stack": {
+      "top": 421.2,
+      "bottom": 493.2,
+      "h": 72
+     },
+     "meter": {
+      "top": 421.2,
+      "bottom": 469.2,
+      "h": 48
+     },
+     "overlapPx": -6.1,
+     "stackBelowHalf": -6.1
+    }
+   ],
+   "sm1920": [
+    {
+     "channel": "AUDIO-01",
+     "half": {
+      "top": 455.9,
+      "bottom": 591.5,
+      "h": 135.6
+     },
+     "name": {
+      "top": 464.9,
+      "bottom": 483.8,
+      "h": 18.8
+     },
+     "meterArea": {
+      "top": 489.8,
+      "bottom": 582.5,
+      "h": 92.7
+     },
+     "stack": {
+      "top": 488.2,
+      "bottom": 584.2,
+      "h": 96
+     },
+     "meter": {
+      "top": 488.2,
+      "bottom": 552.2,
+      "h": 64
+     },
+     "overlapPx": -4.4,
+     "stackBelowHalf": -7.3
+    },
+    {
+     "channel": "AUDIO-02",
+     "half": {
+      "top": 455.9,
+      "bottom": 591.5,
+      "h": 135.6
+     },
+     "name": {
+      "top": 464.9,
+      "bottom": 483.8,
+      "h": 18.8
+     },
+     "meterArea": {
+      "top": 489.8,
+      "bottom": 582.5,
+      "h": 92.7
+     },
+     "stack": {
+      "top": 488.2,
+      "bottom": 584.2,
+      "h": 96
+     },
+     "meter": {
+      "top": 488.2,
+      "bottom": 552.2,
+      "h": 64
+     },
+     "overlapPx": -4.4,
+     "stackBelowHalf": -7.3
+    }
+   ]
+  },
+  "errors": []
+ }
+}

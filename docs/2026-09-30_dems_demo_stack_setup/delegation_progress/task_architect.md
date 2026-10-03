@@ -1,80 +1,59 @@
-# Delegation progress: task-architect (blueprint rows 6 and 55)
+# Delegation progress: task-architect (blueprint rows 6 and 55; revs 4, 5 and 6)
 
 Parallel-run file. The controller synthesises it into `status_tasks.md`, `delegation_progress_report.md` and `decisions/decisions.md`. This agent did not write those shared files.
 
 | Item | Value |
 |---|---|
-| Rows | 6 (rev 2, accepted as D36) and 55 (rev 3, this pass: mobile merge with D38 applied). Design only; nothing executed |
+| Passes | Rev 2 (D36), rev 3 (D40), rev 4 (D50), rev 5 (D97), **rev 6 (D104 packaging spec, step 100, history rows 101 and 102; during live execution)** |
 | Status | **complete** |
-| Output | `identification/02_structured.md` rev 3 (91 steps; Refinement Log RL-01..RL-65) |
-| B.9 class | **MAJOR** overall. The rev 3 driver is RL-41, the mobile build steps 67–91. Everything else in rev 3 (RL-40, RL-42..RL-65) is MINOR |
-| Self-check | V1–V7 PASS: 91 rows × 7 columns (grep count 91; 0 rows with stray pipes); 91/91 valid agent and phase; every Depends On resolves within 1–91 and the graph is acyclic |
-| Shape | 91 steps; 67 left to delegate (35 web, 29 mobile, plus 19, 25, 26; conditional: 54, 91); 13 waves after the gate; peak 8 agents in flight (W5); at most 6 `coder-execution` at once |
+| Output | `identification/02_structured.md` rev 6 (102 steps; Refinement Log RL-01..RL-95) |
+| B.9 class | **MINOR** for rev 6 (RL-85..RL-95). Step 100 and the spec details implement the D94 scope already approved and classed MAJOR in rev 5; rows 101 and 102 are history rows. Overall task classification stays MAJOR |
+| Self-check | V1–V7 PASS: 102 rows × 7 single-line columns (grep 102); 0 rows with stray pipes; 102/102 valid agent and phase; every Depends On within 1–102; acyclic |
 
-## Milestones
+## Changes (rev 6)
 
-- **The step-55 placeholder is replaced by steps 67–91:**
-  - 05's M-01..M-15 and M-17, split by feature folder for atomicity.
-  - CP-M1 (step 74).
-  - A conditional mobile SIM-gap closure (step 91).
-- **05 rows mapped onto existing end-pass steps:**
+- **New step 100** (RUNNING): the same-origin Core address via `VITE_DEMS_CORE_ORIGIN`, plus the CSP, per 06 §3.4. Output `implementation/73_web_core_origin.md`; depends on 38 and 53.
+- **History rows** (Step must be an integer):
 
-  | 05 row | Step |
-  |---|---|
-  | M-16 | 57 |
-  | M-18 | 59 |
-  | M-19 | 63 |
-  | M-20 | 65 |
-  | M-21 | 60 |
-  | M-22 | 66 |
+  | Step | Controller ID | Status | Log |
+  |---|---|---|---|
+  | 101 | 45b | RUNNING (D96) | 71_visual_audit_fixes.md |
+  | 102 | 67c | RUNNING (D100) | 72_second_phone_avd.md |
 
-- **SCR-01..SCR-07 folded into the shared web steps:**
-
-  | Request | Step(s) |
-  |---|---|
-  | SCR-01, SCR-02 | 31, 32 |
-  | SCR-03 | 28, 35 |
-  | SCR-04 | 29 |
-  | SCR-05 | 27, 34 |
-  | SCR-06 | 35 |
-  | SCR-07 | 30 |
-
-- **Parallel Execution Protocol** rewritten as P1–P12 with 05 §5:
-  - one npm slot (27, then 67);
-  - Gradle lock (rebuilds only in 67 and 72);
-  - fixed AVD ports 5554 and 5556;
-  - lockf device sessions;
-  - Metro lanes 8081–8086;
-  - mock-core reference counting;
-  - per-feature mobile i18n files.
-- **Combined waves** W1–W13, with the end-pass halves paired.
-- **One combined final commit** (step 66).
-- **The gate section** is renamed "Combined Approval Gate (D22 + D33) — APPROVED D38" and records the decisions.
-
-## Blockers
-
-None.
+- **Depends On changes:**
+  - 56, 58, 61 and 95 add 100.
+  - 58 adds 101.
+  - 57, 59 and 61 add 102.
+- **Spec row additions applied:**
+  - 94: three ABIs, Simulated-only, the keystore and password file under apps/mobile/signing/, versionName 0.1.0 and versionCode 100, release/android/, AC-PK-A1..A7 and A9.
+  - 95: six packages (SEA for macOS arm64, Windows x64 and Linux x64; Intel-Mac official-node bundle; Windows official-node fallback; any-OS zip replacing the static zip), launcher on port 4410, AC-PK-W3..W8.
+  - 96: aligned with 06 §5.
+  - 91: Heartbeat disabled in release builds.
+  - 60: "Release packages" section with adb-first guidance.
+  - 66: provenance check (no source newer than BUILD-INFO.txt) and signing ignore checks.
+  - 62–65: the 06 §6.2 review additions.
+- **Rows synced with recorded rulings:** 57, 58, 59 and 91 (D76, D95, D96, D99, D100, D101, D102, D103).
+- **Protocol and records:** P3 (dems_phone2, device-session targets, debug-handle sign-in, time-boxed checks, wall-clock watchdog), P6 and the single-writer scan (06 §6.1 write sets), P9 (step 100), live wave row W8b, risks R51–R53, R44 resolved.
 
 ## Decisions for the controller to record
 
-1. D37 (Q-M7 yes) and D38 (combined gate approved; Q-M1..Q-M8 as recommended; D28 defaults). Neither is on `decisions.md` yet.
-2. SCR folding as tabled above. As part of it, the events and hash-chain module moves into step 31, because the biometric and auth audit rows need it.
-3. AC-67 is now checked at `packages/shared/assets/hero/` (SCR-04). The spec wording needs a MINOR update.
-4. D35 mechanics per P1–P12:
-   - `lockf` instead of `flock`;
-   - fixed AVD serials;
-   - **session-scoped emulators** (step 67 boots them, step 61 stops them) as an explicit exception to D35 rule 6;
-   - the Metro lanes of 05 §5.3;
-   - checks that stop mock-core (AC-42, MA-10) run only when they are its sole user.
-5. One combined final commit, not per-lane commits. Only the combined tree is ever verified (step 61), and step 91 can still change `packages/shared` after the web steps finish.
-6. Output names: mobile implementation logs 40–63; `test/02_mobile_test_report.md`; `verification/08`–`11` for mobile. These supersede 05's `test/03` and `verification/07`–`09`, which would collide with `verification/07_visual_checkpoint.md`.
-7. **Scope check against D38**: no product scope was added. Two process steps were added beyond 05; each can be dropped as a MINOR change:
-   - step 74, the mobile foundation checkpoint;
-   - step 91, the conditional mobile gap closure (anticipated by 05 §9 and §10).
+1. **History rows 101 and 102 stand for 45b and 67c.**
+2. **The .gitignore lines for release/ and apps/mobile/signing/ come from step 100** (06 §6.1 and §7.3 #6). Step 94 appends them only if missing; step 95 never touches .gitignore.
+3. **Step 100's dependencies are 38 and 53**, as you specified. The spec had proposed 53, 54 and 91.
+
+## Flags
+
+- **R52: steps 100 and 54 are both running and both touch packages/shared/src/api.** Step 100 changes openapi.ts and health.ts (backward-compatible options); step 54 holds the core-api and openapi hand-over and regenerates openapi.json (D101). Serialise those edits: one writer at a time, and the second re-runs the openapi drift test.
+- **If step 100's delegation omitted the .gitignore lines**, step 94 adds them before creating the keystore.
+- **For the final report:**
+  - A free Google developer registration would remove the 24-hour advanced install flow from Android developer verification in Indonesia (from 30 Sep 2026). It needs an account (D5, D6), so it is the user's decision.
+  - A global App Nap opt-out (D87).
+  - Keep the Mac awake while agents run (D98).
+- **Row 99's tag still reads RUNNING**, because rows of finished steps are not edited; the status note records it as done (D98).
 
 ## Files created or updated
 
-- `docs/2026-09-30_dems_demo_stack_setup/identification/02_structured.md` (updated to rev 3)
+- `docs/2026-09-30_dems_demo_stack_setup/identification/02_structured.md` (rev 6)
 - `docs/2026-09-30_dems_demo_stack_setup/delegation_progress/task_architect.md` (updated)
 
 ---

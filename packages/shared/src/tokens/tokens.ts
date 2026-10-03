@@ -59,7 +59,7 @@ export const derived = {
   separator: '#FFFFFF14',
   /** gray at 25% (neutral form-field outlines) */
   fieldBorder: '#9CA3AF40',
-  /** white labels on red fills ("Stop Session") — AA-large only (3.76:1), see Q-D5 */
+  /** white labels on red fills ("End Session") — AA-large only (3.76:1), see Q-D5 */
   dangerForeground: '#FFFFFF',
 } as const;
 
@@ -198,6 +198,26 @@ export const typography = {
 } as const satisfies Record<string, TypeStyle>;
 export type TypographyToken = keyof typeof typography;
 
+/**
+ * The typography token names as Tailwind `text-*` font-size utilities (`text-display`,
+ * `text-h1`, …), derived from `typography` so the list cannot drift from the generated
+ * `--text-*` variables. tailwind-merge only knows T-shirt sizes, so it treats `text-display` as a
+ * colour and drops it next to `text-accent` (D41(d), row 17 finding S17-1).
+ */
+export const TYPOGRAPHY_FONT_SIZE_CLASSES = Object.freeze(
+  Object.keys(typography) as TypographyToken[],
+) as readonly TypographyToken[];
+
+/**
+ * Ready-made class-group registration for the apps' class helpers (D41(d)): pass it to
+ * `extendTailwindMerge({ extend: { classGroups: TYPOGRAPHY_TW_MERGE_CLASS_GROUPS } })`, or merge
+ * it into tailwind-variants' `defaultConfig.twMergeConfig.classGroups`. Plain data, so this
+ * package needs no tailwind-merge dependency.
+ */
+export const TYPOGRAPHY_TW_MERGE_CLASS_GROUPS = Object.freeze({
+  'font-size': [{ text: TYPOGRAPHY_FONT_SIZE_CLASSES }],
+} as const);
+
 // ---------------------------------------------------------------------------------------------
 // Spacing, radius, stroke (design §11)
 // ---------------------------------------------------------------------------------------------
@@ -236,7 +256,17 @@ export const kitShadows = {
 } as const;
 
 // ---------------------------------------------------------------------------------------------
-// Motion (Claude-owned per D15)
+// Motion (Claude-owned per D15). 01_specs §2.7 plus the NEW tokens of 03_motion_spec §2.3
+// (SCR-07: shared with the mobile motion kit, step 69).
+//
+// Stable API for both apps (every value is a plain number, or a { stiffness, damping, mass }
+// object of plain numbers, so Motion, Reanimated, Skia and CSS generators read them alike):
+//   motion.duration.*      ms              motion.easing.*     cubic-bezier control points
+//   motion.spring.*        SpringToken     motion.choreography.* ms
+//   motion.ambient.*       ms loop periods motion.distance.*   px
+//   motion.scale.*         unitless        motion.blur.*       px (small elements only)
+//   motion.threshold.*     Hz, counts, ms  motion.proofSlowFactor
+// Keys are only ever added here, never renamed or removed, so web and mobile stay in step.
 // ---------------------------------------------------------------------------------------------
 
 export type CubicBezier = readonly [number, number, number, number];
@@ -272,6 +302,12 @@ export const motion = {
     snappy: { stiffness: 420, damping: 34, mass: 0.9 },
     /** ζ ≈ 0.56 — success confirmations only */
     bouncy: { stiffness: 260, damping: 18, mass: 1 },
+    /** NEW (03M §2.3), ζ ≈ 1.05 — AnimatedNumber KPI ticks */
+    counter: { stiffness: 90, damping: 20, mass: 1 },
+    /** NEW (03M §2.3) — smoothing 20 Hz meter samples to 60 fps */
+    meter: { stiffness: 600, damping: 40, mass: 0.6 },
+    /** NEW (03M §2.3), ζ ≈ 0.92 — sidebar and tab indicators */
+    indicator: { stiffness: 380, damping: 36, mass: 1 },
   },
   choreography: {
     /** ms */
@@ -281,6 +317,7 @@ export const motion = {
   },
   /** Motion proof mode (`?motion=slow`) multiplies durations and stagger by this factor. */
   proofSlowFactor: 10,
+  /** ms loop periods */
   ambient: {
     /** ms loop: elevation 2 ↔ 3 on "SYSTEM READY" and "SECURE" */
     glowBreath: 2400,
@@ -288,6 +325,66 @@ export const motion = {
     recPulse: 1200,
     /** ms: 20 Hz audio-meter update target */
     meterFrameMs: 50,
+    /** NEW (03M §2.3) ms: ring rotation */
+    ringRotate: 60000,
+    /** NEW (03M §2.3) ms: hero and camera push-in (scale 1.00 → 1.06) */
+    kenBurns: 30000,
+    /** NEW (03M §2.3) ms: topographic drift */
+    topoDrift: 40000,
+    /** NEW (03M §2.3) ms: one light sweep */
+    sheen: 700,
+    /** NEW (03M §2.3) ms: camera scanline period */
+    scanline: 6000,
+    /** NEW (03M §2.3) ms: camera scanline sweep inside each period */
+    scanlineSweep: 1200,
+    /** NEW (03M §2.3) ms: clock colon breath */
+    colonBreath: 1000,
+    /** NEW (03M §2.3) ms: pulse on every mock-core heartbeat (1 Hz) */
+    heartbeatPulse: 600,
+  },
+  /** NEW (03M §2.3) px */
+  distance: {
+    /** row reveal */
+    riseSm: 6,
+    /** panel enter */
+    rise: 12,
+    /** hero element enter */
+    riseLg: 24,
+    /** card hover */
+    hoverLift: 2,
+    /** exit offset */
+    exitDrop: 8,
+  },
+  /** NEW (03M §2.3) unitless scale factors */
+  scale: {
+    /** pressed buttons and cards */
+    press: 0.98,
+    /** media tiles only */
+    hover: 1.01,
+    /** panel and dialog enter */
+    enterFrom: 0.98,
+    /** SEALED stamp */
+    stampFrom: 1.2,
+  },
+  /** NEW (03M §2.3) px; small elements only (web; mobile uses opacity + scale instead) */
+  blur: {
+    /** rack-focus text enter */
+    focusIn: 6,
+    /** camera tile first paint */
+    mediaIn: 8,
+  },
+  /** NEW (03M §2.3) limits the motion system enforces */
+  threshold: {
+    /** Hz: nothing flashes faster (P8, WCAG 2.3.1) */
+    flashMaxHz: 3,
+    /** Hz: fast-changing number text updates at most this often (P8) */
+    numberTextMaxHz: 4,
+    /** count: ambient loops per viewport (P3) */
+    ambientMaxPerViewport: 4,
+    /** ms: list insertions closer than this coalesce into one group (R9) */
+    insertionMinGapMs: 400,
+    /** count: staggered items; later items enter with the last one (R1) */
+    staggerCap: 8,
   },
 } as const satisfies {
   duration: Record<string, number>;
@@ -296,7 +393,17 @@ export const motion = {
   choreography: Record<string, number>;
   proofSlowFactor: number;
   ambient: Record<string, number>;
+  distance: Record<string, number>;
+  scale: Record<string, number>;
+  blur: Record<string, number>;
+  threshold: Record<string, number>;
 };
+
+export type MotionTokens = typeof motion;
+export type DurationToken = keyof MotionTokens['duration'];
+export type EasingToken = keyof MotionTokens['easing'];
+export type SpringTokenName = keyof MotionTokens['spring'];
+export type AmbientToken = keyof MotionTokens['ambient'];
 
 /** Everything, for consumers that want one import. */
 export const tokens = {

@@ -1,0 +1,1334 @@
+/*
+ * AppShell styles (masterplan/01_specs.md §14.3–§14.4; research/04 §1.3–§1.6, §2; D28/Q6, D49, D53).
+ *
+ * Sizes are CSS variables on `.dems-shell`, switched by `data-shell-tier` (xl ≥1600, lg 1280–1599,
+ * md 1024–1279, sm 768–1023, xs <768) and `data-sidebar` (full | rail | drawer | tabs), both set by
+ * `use-shell-layout.ts`. Page rows may read --shell-pad, --shell-gutter, --shell-topbar-h and
+ * --shell-sidebar-w.
+ *
+ * Layering: rules sit in `@layer components` (after the kit's own component layer, so they restyle
+ * kit parts at equal specificity) and Tailwind utilities still override them. The focus ring sits
+ * in `@layer base` so kit components keep their own `status-focused` ring.
+ *
+ * Shell motion (step 41; 03_motion_spec §4 M-SH-01..08, M-APP-04, M-C-25, §8, §9) lives in the
+ * "Motion" sections below. Rules of the house:
+ * - only `transform` and `opacity` animate (plus the focus glow's colour custom property, §9.2);
+ *   glow changes are opacity on pre-rendered layers, never `box-shadow` itself;
+ * - CSS loops carry `data-ambient` from `useAmbientLoop` (motion.css pauses them when the loop is
+ *   not granted and stops them under `data-motion="reduced"`);
+ * - every duration multiplies by `--motion-time-scale` (10 in `?motion=slow` proof mode);
+ * - the literals in `:root` below mirror the motion tokens; `src/test/shell-motion.test.tsx`
+ *   fails if they drift from `@dems/shared/tokens`.
+ */
+
+/* M-C-25: the focus glow is a registered colour custom property, so it can fade (not box-shadow). */
+@property --dems-focus-glow {
+  syntax: '<number>';
+  inherits: false;
+  initial-value: 0;
+}
+
+@layer base {
+  /* Shell colours that portaled parts (Drawer, popovers) also read, so they live on :root. */
+  :root {
+    --shell-hairline: rgb(255 200 107 / 0.16);
+    --shell-lift: #0f0d0b;
+
+    /* Motion tokens used by CSS (mirrors of @dems/shared/tokens `motion`; checked by a test). */
+    --dems-dur-instant: 90ms; /* duration.instant */
+    --dems-dur-fast: 160ms; /* duration.fast */
+    --dems-dur-base: 240ms; /* duration.base */
+    --dems-ease-standard: cubic-bezier(0.2, 0, 0, 1); /* easing.standard */
+    --dems-ease-luxe: cubic-bezier(0.22, 1, 0.36, 1); /* easing.luxe */
+    --dems-ease-exit: cubic-bezier(0.4, 0, 1, 1); /* easing.exit */
+    --dems-ease-sine: cubic-bezier(0.37, 0, 0.63, 1); /* "sine" of the ambient loops (easeInOutSine) */
+    --dems-sheen-ms: 700ms; /* ambient.sheen */
+    --dems-glow-breath-ms: 2400ms; /* ambient.glowBreath */
+    --dems-colon-breath-ms: 1000ms; /* ambient.colonBreath */
+    --dems-topo-drift-ms: 40000ms; /* ambient.topoDrift */
+    --dems-topo-drift-px: -12px; /* M-SH-07 drift distance (spec literal) */
+    --dems-focus-glow-ms: 120ms; /* M-C-25 glow fade (spec literal) */
+    --dems-status-colour-ms: 400ms; /* M-SH-05 colour transition (spec literal) */
+  }
+
+  /* 2 px gold focus ring on every interactive element (01_specs §14.4 "Focus"; 04 §1.6). */
+  :where(
+      a[href],
+      button,
+      [role='button'],
+      [role='link'],
+      [role='menuitem'],
+      [role='tab'],
+      input,
+      select,
+      textarea,
+      summary,
+      [tabindex]:not([tabindex='-1'])
+    ):focus-visible {
+    /* M-C-25: the 2 px ring appears at once (never a transition on outline-*); only the outer e2
+       glow fades in over 120 ms, as the alpha of a registered custom property. */
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+    --dems-focus-glow: 1;
+    box-shadow:
+      0 0 0 1px rgb(255 159 61 / calc(0.5 * var(--dems-focus-glow))),
+      0 0 20px 0 rgb(255 159 61 / calc(0.22 * var(--dems-focus-glow)));
+    transition: --dems-focus-glow calc(var(--dems-focus-glow-ms) * var(--motion-time-scale, 1)) var(--dems-ease-standard);
+  }
+
+  /* §8 reduced: instant ring, no glow fade (the glow is simply there). */
+  :root[data-motion='reduced'] :focus-visible {
+    transition: none;
+  }
+}
+
+@layer components {
+  /* ── Frame ─────────────────────────────────────────────────────────────────────────────── */
+  .dems-shell {
+    --shell-topbar-h: 80px;
+    --shell-sidebar-full: 232px;
+    --shell-sidebar-rail: 72px;
+    --shell-sidebar-w: var(--shell-sidebar-full);
+    --shell-pad: 16px;
+    --shell-gutter: 16px;
+    --shell-nav-h: 56px;
+    --shell-nav-pitch: 64px;
+    --shell-nav-inset: 12px;
+    --shell-tabbar-h: 0px;
+
+    position: relative;
+    display: grid;
+    grid-template-rows: var(--shell-topbar-h) minmax(0, 1fr);
+    height: 100dvh;
+    overflow: hidden;
+    color: var(--foreground);
+    background:
+      radial-gradient(1200px 520px at 18% -8%, rgb(255 159 61 / 0.07), transparent 62%),
+      radial-gradient(900px 600px at 100% 0%, rgb(255 200 107 / 0.04), transparent 60%),
+      var(--background);
+  }
+
+  .dems-shell[data-shell-tier='lg'],
+  .dems-shell[data-shell-tier='md'] {
+    --shell-topbar-h: 72px;
+    --shell-sidebar-full: 216px;
+    --shell-pad: 12px;
+    --shell-gutter: 12px;
+    --shell-nav-h: 48px;
+    --shell-nav-pitch: 54px;
+    --shell-nav-inset: 8px;
+  }
+
+  .dems-shell[data-shell-tier='sm'],
+  .dems-shell[data-shell-tier='xs'] {
+    --shell-topbar-h: 64px;
+    --shell-pad: 12px;
+    --shell-gutter: 12px;
+    --shell-nav-h: 48px;
+    --shell-nav-pitch: 54px;
+    --shell-nav-inset: 8px;
+  }
+
+  .dems-shell[data-shell-tier='xs'] {
+    --shell-gutter: 8px;
+    --shell-tabbar-h: 64px;
+  }
+
+  .dems-shell[data-sidebar='rail'] {
+    --shell-sidebar-w: var(--shell-sidebar-rail);
+  }
+
+  .dems-shell[data-sidebar='drawer'],
+  .dems-shell[data-sidebar='tabs'] {
+    --shell-sidebar-w: 0px;
+  }
+
+  .dems-shell-body {
+    display: flex;
+    min-height: 0;
+  }
+
+  .dems-content {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    padding: var(--shell-pad);
+    padding-bottom: calc(var(--shell-pad) + var(--shell-tabbar-h));
+    scroll-padding-top: var(--shell-pad);
+    outline: none;
+  }
+
+  /* Page root helper for page rows: a column with the shell gutter. */
+  .dems-page {
+    display: flex;
+    flex-direction: column;
+    gap: var(--shell-gutter);
+    min-height: 100%;
+  }
+
+  .dems-skip-link {
+    position: absolute;
+    top: 8px;
+    left: 12px;
+    z-index: 100;
+    padding: 8px 14px;
+    border-radius: 8px;
+    background: var(--accent);
+    color: var(--accent-foreground);
+    font-weight: 600;
+    text-decoration: none;
+    transform: translateY(-200%);
+  }
+
+  .dems-skip-link:focus,
+  .dems-skip-link:focus-visible {
+    transform: none;
+  }
+
+  /* ── Top bar (04 §2.1) ─────────────────────────────────────────────────────────────────── */
+  .dems-topbar {
+    position: relative;
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+    height: var(--shell-topbar-h);
+    padding-inline: 20px 12px;
+  }
+
+  /* The bar's surface is its own layer, so the M-APP-01 drop-in can move it without the emblem. */
+  .dems-topbar-bg {
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background:
+      linear-gradient(90deg, rgb(255 159 61 / 0.1) 0%, rgb(255 159 61 / 0.035) 24%, transparent 42%),
+      linear-gradient(180deg, #15110d 0%, #0d0c0b 100%);
+    box-shadow: inset 0 -1px 0 var(--shell-hairline);
+  }
+
+  .dems-topbar-start {
+    display: inline-flex;
+    flex: none;
+  }
+
+  .dems-topbar-spacer {
+    flex: 1 1 auto;
+    min-width: 8px;
+  }
+
+  .dems-topbar-cluster {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .dems-topbar-sep.separator--vertical,
+  .dems-topbar-sep {
+    align-self: center;
+    width: 1px;
+    height: 36px;
+    background-color: rgb(255 200 107 / 0.22);
+  }
+
+  .dems-lockup {
+    display: flex;
+    flex: 0 1 auto;
+    align-items: center;
+    gap: 14px;
+    min-width: 0;
+    border-radius: 8px;
+    color: inherit;
+    text-decoration: none;
+  }
+
+  .dems-lockup-emblem {
+    display: inline-flex;
+    flex: none;
+  }
+
+  .dems-lockup-emblem svg {
+    width: 48px;
+    height: 48px;
+  }
+
+  .dems-emblem {
+    filter: drop-shadow(0 0 6px rgb(255 159 61 / 0.55));
+  }
+
+  .dems-lockup-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  .dems-wordmark {
+    font-family: var(--font-display);
+    font-size: 28px;
+    font-weight: 800;
+    line-height: 1.15;
+    letter-spacing: 0.03em;
+    white-space: nowrap;
+    color: transparent;
+    background: linear-gradient(180deg, #ffffff 30%, var(--accent) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+  }
+
+  .dems-tagline {
+    font-size: 15px;
+    line-height: 20px;
+    white-space: nowrap;
+    color: var(--color-foreground-2, #d8cec6);
+  }
+
+  .dems-topbar-date {
+    font-size: 16px;
+    line-height: 24px;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+    color: var(--foreground);
+  }
+
+  .dems-topbar-clock {
+    display: inline-flex;
+    align-items: center;
+    font-family: var(--font-mono);
+    font-size: 26px;
+    font-weight: 600;
+    line-height: 32px;
+    letter-spacing: 0.02em;
+    font-variant-numeric: tabular-nums;
+    color: var(--accent);
+    text-shadow: 0 0 12px rgb(255 159 61 / 0.35);
+  }
+
+  .dems-device-block {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 2px 4px;
+    border-radius: 8px;
+    cursor: default;
+  }
+
+  .dems-device-icon {
+    flex: none;
+    color: var(--color-foreground-2, #d8cec6);
+  }
+
+  .dems-device-text,
+  .dems-user-text,
+  .dems-secure-text {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    text-align: left;
+  }
+
+  .dems-device-caption,
+  .dems-device-room,
+  .dems-user-caption {
+    font-size: 12px;
+    line-height: 16px;
+    color: var(--muted);
+  }
+
+  .dems-device-id {
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 20px;
+    color: var(--foreground);
+  }
+
+  .dems-icon-button {
+    color: var(--color-foreground-2, #d8cec6);
+  }
+
+  /* The kit sizes button icons with a (0,2,2) selector; these (0,3,1) rules restore the mockup sizes. */
+  .dems-shell .dems-icon-button svg.lucide {
+    width: 22px;
+    height: 22px;
+  }
+
+  .dems-shell .dems-secure-pill svg.dems-secure-icon {
+    width: 24px;
+    height: 24px;
+    margin: 0;
+  }
+
+  .dems-shell .dems-user-trigger svg.dems-user-chevron {
+    width: 18px;
+    height: 18px;
+  }
+
+  .dems-bell {
+    display: inline-flex;
+  }
+
+  /* The M-SH-06 animation scope around the kit Badge.Anchor; it adds no box of its own. */
+  .dems-bell-scope {
+    display: contents;
+  }
+
+  /* M-SH-06 swing pivots near the top of the bell. */
+  .dems-bell-swing {
+    display: inline-flex;
+    transform-origin: 50% 12%;
+  }
+
+  /* M-SH-06 badge pop: the CSS `scale` property composes with the kit's placement `translate`. */
+  .dems-bell [data-shell-slot='bell-badge'] {
+    scale: var(--dems-badge-scale, 1);
+  }
+
+  .dems-user-trigger {
+    height: auto;
+    gap: 10px;
+    padding: 6px 8px;
+    border-radius: 10px;
+    color: var(--foreground);
+  }
+
+  .dems-user-name {
+    font-size: 16px;
+    font-weight: 500;
+    line-height: 22px;
+    white-space: nowrap;
+  }
+
+  .dems-user-chevron {
+    color: var(--color-foreground-2, #d8cec6);
+  }
+
+  /* SECURE pill (04 §2.1 #11): gold outline, soft glow, status dot at the right. */
+  .dems-secure-pill {
+    position: relative;
+    height: auto;
+    min-height: 52px;
+    gap: 12px;
+    padding: 6px 14px 6px 12px;
+    overflow: hidden;
+    border: 1.5px solid rgb(255 200 107 / 0.72);
+    border-radius: 10px;
+    background: linear-gradient(180deg, rgb(255 159 61 / 0.14), rgb(255 159 61 / 0.04));
+    box-shadow: 0 0 14px rgb(255 159 61 / 0.22);
+    color: var(--accent);
+  }
+
+  .dems-secure-pill[data-state='ATTENTION'] {
+    border-color: rgb(245 158 11 / 0.8);
+    color: var(--warning-soft-foreground, #fbbf24);
+  }
+
+  .dems-secure-pill[data-state='CRITICAL'] {
+    border-color: rgb(239 68 68 / 0.85);
+    color: var(--danger-soft-foreground, #f87171);
+    box-shadow: 0 0 16px rgb(239 68 68 / 0.28);
+  }
+
+  .dems-secure-pill[data-state='UNKNOWN'] {
+    border-color: rgb(156 163 175 / 0.5);
+    color: var(--muted);
+    box-shadow: none;
+  }
+
+  .dems-secure-beam {
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+  }
+
+  .dems-secure-icon {
+    width: 24px;
+    height: 24px;
+    flex: none;
+  }
+
+  .dems-secure-title {
+    font-size: 16px;
+    font-weight: 600;
+    line-height: 20px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .dems-secure-subtitle {
+    font-size: 11px;
+    line-height: 14px;
+    white-space: nowrap;
+    color: var(--color-foreground-2, #d8cec6);
+  }
+
+  /* M-SH-05: the dot's colour transitions over 400 ms; its glow is a pre-rendered layer (::after)
+     that breathes 0.55 ↔ 1 over `glowBreath` (2.4 s) while the `shell` ambient slot is granted. */
+  .dems-status-dot {
+    position: relative;
+    width: 10px;
+    height: 10px;
+    flex: none;
+    border-radius: 9999px;
+    background-color: var(--success);
+    color: rgb(34 197 94);
+    transition: background-color calc(var(--dems-status-colour-ms) * var(--motion-time-scale, 1)) var(--dems-ease-standard);
+  }
+
+  .dems-status-dot::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    box-shadow:
+      0 0 0 3px rgb(34 197 94 / 0.22),
+      0 0 10px rgb(34 197 94 / 0.6);
+    animation: dems-glow-breath calc(var(--dems-glow-breath-ms) / 2 * var(--motion-time-scale, 1)) var(--dems-ease-sine) infinite alternate both;
+  }
+
+  .dems-status-dot[data-tone='ATTENTION'] {
+    background-color: var(--warning);
+    color: rgb(245 158 11);
+  }
+
+  .dems-status-dot[data-tone='ATTENTION']::after {
+    box-shadow:
+      0 0 0 3px rgb(245 158 11 / 0.22),
+      0 0 10px rgb(245 158 11 / 0.6);
+  }
+
+  .dems-status-dot[data-tone='CRITICAL'] {
+    background-color: var(--danger);
+    color: rgb(239 68 68);
+  }
+
+  .dems-status-dot[data-tone='CRITICAL']::after {
+    box-shadow:
+      0 0 0 3px rgb(239 68 68 / 0.22),
+      0 0 10px rgb(239 68 68 / 0.6);
+  }
+
+  .dems-status-dot[data-tone='UNKNOWN'] {
+    background-color: var(--muted);
+  }
+
+  .dems-status-dot[data-tone='UNKNOWN']::after {
+    box-shadow: none;
+    animation: none;
+  }
+
+  /* M-SH-05 escalation ring: one pulse, scale 1 → 1.6 and opacity 0.5 → 0 (Motion, transform only). */
+  .dems-status-dot-ring {
+    position: absolute;
+    inset: -1px;
+    border: 1.5px solid currentColor;
+    border-radius: inherit;
+    pointer-events: none;
+  }
+
+  /* Popovers opened from the top bar. */
+  .dems-popover-heading {
+    margin-bottom: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .dems-check-list,
+  .dems-alert-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .dems-check-row,
+  .dems-alert-row {
+    display: grid;
+    grid-template-columns: 16px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 2px;
+    font-size: 13px;
+    line-height: 18px;
+    border-bottom: 1px solid var(--separator);
+  }
+
+  .dems-check-row:last-child,
+  .dems-alert-row:last-child {
+    border-bottom: 0;
+  }
+
+  .dems-check-icon,
+  .dems-alert-icon {
+    color: var(--success);
+  }
+
+  .dems-check-row[data-status='ATTENTION'] .dems-check-icon,
+  .dems-alert-row[data-severity='WARNING'] .dems-alert-icon {
+    color: var(--warning);
+  }
+
+  .dems-check-row[data-status='CRITICAL'] .dems-check-icon,
+  .dems-alert-row[data-severity='CRITICAL'] .dems-alert-icon {
+    color: var(--danger);
+  }
+
+  .dems-check-row[data-status='UNKNOWN'] .dems-check-icon,
+  .dems-alert-row[data-severity='INFO'] .dems-alert-icon {
+    color: var(--muted);
+  }
+
+  .dems-check-status,
+  .dems-alert-time {
+    font-size: 12px;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+
+  .dems-alert-time {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .dems-popover-empty {
+    margin: 4px 0;
+    font-size: 13px;
+    color: var(--muted);
+  }
+
+  .dems-popover-link {
+    display: inline-block;
+    margin-top: 10px;
+    border-radius: 4px;
+    font-size: 13px;
+    color: var(--link);
+    text-underline-offset: 4px;
+  }
+
+  .dems-popover-link:hover {
+    text-decoration: underline;
+  }
+
+  /* ── Sidebar (04 §2.2; D28/Q6 inset active card; D49 active colours) ──────────────────── */
+  .dems-sidebar {
+    position: relative;
+    display: flex;
+    flex: 0 0 var(--shell-sidebar-w);
+    flex-direction: column;
+    width: var(--shell-sidebar-w);
+    min-height: 0;
+    padding-top: var(--shell-pad);
+    overflow-x: hidden;
+    overflow-y: auto;
+    scrollbar-width: none;
+    background:
+      linear-gradient(180deg, rgb(255 159 61 / 0.035), rgb(255 159 61 / 0) 45%),
+      var(--shell-lift);
+    box-shadow: inset -1px 0 0 var(--shell-hairline);
+  }
+
+  .dems-sidebar[hidden] {
+    display: none;
+  }
+
+  .dems-nav-list {
+    display: flex;
+    flex: none;
+    flex-direction: column;
+    padding-inline: var(--shell-nav-inset);
+  }
+
+  .dems-nav-group {
+    display: flex;
+    flex-direction: column;
+    gap: calc(var(--shell-nav-pitch) - var(--shell-nav-h));
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  /* AnimatedBackground (M-SH-01) clones each <li> and wraps its content in a `.z-10` div. */
+  .dems-nav-group > li > div {
+    display: flex;
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  /* M-SH-01 hover-follow background (MP AnimatedBackground, `indicator` spring). */
+  .dems-nav-hover {
+    border-radius: 8px;
+    background-color: rgb(255 159 61 / 0.07);
+    pointer-events: none;
+  }
+
+  .dems-nav-item {
+    position: relative;
+    display: flex;
+    flex: 1 1 auto;
+    min-width: 0;
+    align-items: center;
+    gap: 14px;
+    height: var(--shell-nav-h);
+    padding-inline: 14px;
+    border-radius: 8px;
+    font-size: 15px;
+    font-weight: 500;
+    line-height: 19px;
+    color: var(--color-foreground-2, #d8cec6);
+    text-decoration: none;
+    transition: color var(--dems-dur-fast) var(--dems-ease-standard);
+  }
+
+  /* Item content paints above every active card and hover layer, including one in flight (M-SH-02). */
+  .dems-nav-item > :where(.dems-nav-icon, .dems-nav-label, .dems-nav-chip) {
+    position: relative;
+    z-index: 1;
+  }
+
+  .dems-shell .dems-nav-item {
+    gap: 12px;
+    padding-inline: 12px;
+  }
+
+  .dems-shell:is([data-shell-tier='lg'], [data-shell-tier='md']) .dems-nav-item {
+    font-size: 14px;
+  }
+
+  .dems-nav-item:hover {
+    color: var(--foreground);
+  }
+
+  .dems-nav-icon {
+    width: 22px;
+    height: 22px;
+    flex: none;
+    color: rgb(255 200 107 / 0.82);
+    /* M-SH-01 icon brightens (`fast`); M-SH-02 active icon colour cross-fades (`base`). */
+    transition: color var(--dems-dur-fast) var(--dems-ease-standard);
+  }
+
+  .dems-nav-item:hover .dems-nav-icon {
+    color: var(--accent);
+  }
+
+  /* M-SH-01 one-shot light sweep across the hovered item (`sheen` 700 ms, `luxe`; transform only). */
+  .dems-nav-sheen {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    overflow: hidden;
+    border-radius: inherit;
+    pointer-events: none;
+  }
+
+  .dems-nav-sheen::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      100deg,
+      transparent 20%,
+      rgb(255 200 107 / 0.12) 45%,
+      rgb(255 236 200 / 0.18) 50%,
+      rgb(255 200 107 / 0.12) 55%,
+      transparent 80%
+    );
+    transform: translateX(-100%);
+  }
+
+  .dems-nav-item:hover .dems-nav-sheen::before {
+    animation: dems-sheen calc(var(--dems-sheen-ms) * var(--motion-time-scale, 1)) var(--dems-ease-luxe) 1 both;
+  }
+
+  :root[data-motion='reduced'] .dems-nav-item .dems-nav-sheen::before {
+    animation: none;
+  }
+
+  .dems-nav-label {
+    min-width: 0;
+  }
+
+  .dems-shell .dems-nav-item[data-group='developer'],
+  .dems-drawer-body .dems-nav-item[data-group='developer'] {
+    gap: 8px;
+  }
+
+  .dems-nav-item[data-group='developer'] .dems-nav-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .dems-nav-item[data-status='active'] {
+    color: var(--accent);
+  }
+
+  .dems-nav-item[data-status='active'] .dems-nav-icon {
+    color: var(--accent);
+    transition-duration: var(--dems-dur-base);
+  }
+
+  /* The active card (M-SH-02, `layoutId="nav-active"`): #251C14 fill, gold 1 px border, glow-2
+     (D49). It sits under the item content (z 0 vs 1), so in flight it never covers other labels. */
+  .dems-nav-active {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    border: 1px solid rgb(255 200 107 / 0.9);
+    border-radius: 8px;
+    background-color: var(--surface-tertiary);
+    box-shadow:
+      0 0 0 1px rgb(255 159 61 / 0.35),
+      0 0 20px 0 rgb(255 159 61 / 0.22);
+  }
+
+  /* M-SH-02 "glow trail": a pre-rendered e3 layer; only its opacity moves while the card travels. */
+  .dems-nav-active-trail {
+    position: absolute;
+    inset: -1px;
+    border-radius: inherit;
+    opacity: 0;
+    pointer-events: none;
+    box-shadow:
+      0 0 0 1.5px rgb(255 200 107 / 0.65),
+      0 0 28px 2px rgb(255 159 61 / 0.35);
+  }
+
+  .dems-nav-item[data-group='developer']:not([data-status='active']) .dems-nav-icon {
+    color: var(--muted);
+  }
+
+  .dems-nav-chip {
+    margin-left: auto;
+  }
+
+  .dems-nav-separator {
+    margin: 12px 14px;
+  }
+
+  .dems-nav-group-label {
+    margin: 0 14px 6px;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 16px;
+    letter-spacing: 0.22em;
+    color: var(--muted);
+  }
+
+  /* Rail: icons only; labels stay in the accessibility tree (visually hidden). */
+  .dems-shell .dems-nav-list[data-nav-mode='rail'] .dems-nav-item {
+    justify-content: center;
+    padding-inline: 0;
+  }
+
+  .dems-nav-list[data-nav-mode='rail'] .dems-nav-label,
+  .dems-nav-list[data-nav-mode='rail'] .dems-nav-group-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .dems-nav-list[data-nav-mode='rail'] .dems-nav-chip {
+    display: none;
+  }
+
+  .dems-nav-list[data-nav-mode='rail'] .dems-nav-separator {
+    margin-inline: 8px;
+  }
+
+  .dems-rail-toggle {
+    display: flex;
+    flex: none;
+    justify-content: flex-end;
+    padding: 8px var(--shell-nav-inset) 0;
+  }
+
+  .dems-sidebar[data-mode='rail'] .dems-rail-toggle {
+    justify-content: center;
+    margin-top: auto;
+    padding-bottom: 12px;
+  }
+
+  /* Topographic texture and brand footer (04 §2.2, §7; D53 CSS glow allowed). */
+  .dems-sidebar-foot {
+    position: relative;
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    justify-content: flex-end;
+    min-height: 0;
+  }
+
+  .dems-topo {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: 300px;
+    overflow: hidden;
+    pointer-events: none;
+  }
+
+  .dems-topo img {
+    display: block;
+    width: 100%;
+    /* 12 px taller than the frame, so the M-SH-07 drift never uncovers an edge. */
+    height: calc(100% - var(--dems-topo-drift-px));
+    object-fit: cover;
+    object-position: center bottom;
+    filter: drop-shadow(0 0 3px rgb(255 159 61 / 0.45));
+    user-select: none;
+    /* M-SH-07 drift + shimmer: translateY 0 ↔ -12 px, layer opacity 0.625 ↔ 1 (REC-35-1),
+       over `topoDrift` 40 s (20 s each way), sine. Paused / stopped through data-ambient. */
+    animation: dems-topo-drift calc(var(--dems-topo-drift-ms) / 2 * var(--motion-time-scale, 1)) var(--dems-ease-sine) infinite alternate both;
+  }
+
+  .dems-brand-footer {
+    display: flex;
+    flex: none;
+    flex-direction: column;
+    gap: 2px;
+    padding: 8px 24px 20px;
+    color: var(--muted);
+  }
+
+  .dems-brand-footer p {
+    margin: 0;
+  }
+
+  .dems-brand-footer-product {
+    font-size: 13px;
+    line-height: 18px;
+    letter-spacing: 0.18em;
+  }
+
+  .dems-brand-footer .dems-brand-footer-version {
+    margin-bottom: 10px;
+    font-size: 11px;
+    line-height: 16px;
+  }
+
+  .dems-brand-footer-triplet {
+    display: flex;
+    flex-direction: column;
+    font-size: 10px;
+    line-height: 15px;
+    letter-spacing: 0.25em;
+  }
+
+  .dems-brand-footer-rule {
+    width: 24px;
+    height: 2px;
+    margin-top: 8px;
+    border-radius: 1px;
+    background-color: var(--accent);
+  }
+
+  /* ── Drawer (< 1024) and bottom tab bar (< 768) ───────────────────────────────────────── */
+  .dems-drawer-dialog {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    background:
+      linear-gradient(180deg, rgb(255 159 61 / 0.05), rgb(255 159 61 / 0) 40%),
+      var(--shell-lift);
+  }
+
+  .dems-drawer-header {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 10px;
+    padding-right: 40px;
+  }
+
+  .dems-drawer-heading {
+    flex: 1 1 auto;
+    font-family: var(--font-display);
+    font-size: 16px;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    color: var(--accent);
+  }
+
+  .dems-drawer-body {
+    display: flex;
+    flex-direction: column;
+    --shell-nav-h: 48px;
+    --shell-nav-pitch: 54px;
+    --shell-nav-inset: 0px;
+  }
+
+  .dems-drawer-nav {
+    flex: none;
+  }
+
+  .dems-drawer-body .dems-sidebar-foot {
+    flex: none;
+    margin-top: 16px;
+  }
+
+  .dems-drawer-body .dems-topo {
+    flex: none;
+    height: 160px;
+  }
+
+  .dems-bottom-tabs {
+    position: fixed;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 30;
+    height: var(--shell-tabbar-h);
+    padding-bottom: env(safe-area-inset-bottom);
+    background: #0f0d0b;
+    box-shadow: inset 0 1px 0 var(--shell-hairline);
+  }
+
+  .dems-bottom-tabs ul {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    height: 100%;
+    margin: 0;
+    padding: 0 4px;
+    list-style: none;
+  }
+
+  .dems-bottom-tabs li {
+    display: flex;
+    align-items: stretch;
+    padding: 4px 2px;
+  }
+
+  .dems-bottom-tab {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    border-radius: 8px;
+    font-size: 11px;
+    line-height: 14px;
+    color: var(--color-foreground-2, #d8cec6);
+    text-decoration: none;
+  }
+
+  .dems-bottom-tab[data-status='active'] {
+    color: var(--accent);
+    background-color: var(--surface-tertiary);
+  }
+
+  /* ── Page header template (04 §3.2 K) ─────────────────────────────────────────────────── */
+  .dems-page-header {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--shell-gutter);
+    padding: 4px 4px 4px 8px;
+  }
+
+  .dems-page-header-main {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    min-width: 0;
+  }
+
+  .dems-page-header-icon {
+    width: 44px;
+    height: 44px;
+    flex: none;
+    color: var(--accent);
+    filter: drop-shadow(0 0 8px rgb(255 159 61 / 0.45));
+  }
+
+  .dems-page-header-text {
+    min-width: 0;
+  }
+
+  .dems-page-title {
+    display: inline-block;
+    margin: 0;
+    padding-right: 0.3em;
+    font-family: var(--font-display);
+    font-size: clamp(24px, 2.2vw, 32px);
+    font-weight: 800;
+    line-height: 1.25;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    color: transparent;
+    background: linear-gradient(180deg, #ffffff 35%, var(--accent) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    transform: skewX(-9deg);
+    transform-origin: left bottom;
+  }
+
+  .dems-page-subtitle {
+    margin: 2px 0 0;
+    font-size: 16px;
+    line-height: 24px;
+    color: var(--color-foreground-2, #d8cec6);
+  }
+
+  .dems-page-header-status {
+    flex: none;
+    max-width: 100%;
+  }
+
+  /* ── Responsive top bar (04 §2.5) ─────────────────────────────────────────────────────── */
+  .dems-shell[data-shell-tier='lg'] .dems-lockup-emblem svg,
+  .dems-shell[data-shell-tier='md'] .dems-lockup-emblem svg {
+    width: 44px;
+    height: 44px;
+  }
+
+  .dems-shell[data-shell-tier='lg'] .dems-wordmark,
+  .dems-shell[data-shell-tier='md'] .dems-wordmark {
+    font-size: 24px;
+  }
+
+  .dems-shell[data-shell-tier='lg'] .dems-topbar-clock,
+  .dems-shell[data-shell-tier='md'] .dems-topbar-clock {
+    font-size: 24px;
+  }
+
+  .dems-shell[data-shell-tier='sm'] .dems-lockup-emblem svg,
+  .dems-shell[data-shell-tier='xs'] .dems-lockup-emblem svg {
+    width: 36px;
+    height: 36px;
+  }
+
+  .dems-shell[data-shell-tier='sm'] .dems-wordmark {
+    font-size: 20px;
+  }
+
+  .dems-shell[data-shell-tier='sm'] .dems-topbar-clock,
+  .dems-shell[data-shell-tier='xs'] .dems-topbar-clock {
+    font-size: 20px;
+  }
+
+  .dems-shell[data-shell-tier='sm'] .dems-topbar,
+  .dems-shell[data-shell-tier='xs'] .dems-topbar {
+    gap: 8px;
+    padding-inline: 8px;
+  }
+
+  .dems-shell[data-shell-tier='sm'] .dems-topbar-cluster,
+  .dems-shell[data-shell-tier='xs'] .dems-topbar-cluster {
+    gap: 8px;
+  }
+
+  /* Below 1366: no tagline and no room subline. */
+  @media (width < 1366px) {
+    .dems-tagline,
+    .dems-device-room {
+      display: none;
+    }
+  }
+
+  /* md and below: no date; the user block is the avatar; the SECURE pill is icon + dot. */
+  .dems-shell:is([data-shell-tier='md'], [data-shell-tier='sm'], [data-shell-tier='xs']) .dems-hide-below-lg,
+  .dems-shell:is([data-shell-tier='md'], [data-shell-tier='sm'], [data-shell-tier='xs']) .dems-user-text,
+  .dems-shell:is([data-shell-tier='md'], [data-shell-tier='sm'], [data-shell-tier='xs']) .dems-user-chevron,
+  .dems-shell:is([data-shell-tier='md'], [data-shell-tier='sm'], [data-shell-tier='xs']) .dems-secure-text {
+    display: none;
+  }
+
+  .dems-shell:is([data-shell-tier='md'], [data-shell-tier='sm'], [data-shell-tier='xs']) .dems-secure-pill {
+    min-height: 44px;
+    padding-inline: 10px;
+  }
+
+  /* sm and below: no Device ID block. */
+  .dems-shell:is([data-shell-tier='sm'], [data-shell-tier='xs']) .dems-hide-below-md {
+    display: none;
+  }
+
+  /* xs: emblem only in the lockup; fewer separators. */
+  .dems-shell[data-shell-tier='xs'] .dems-hide-below-sm,
+  .dems-shell[data-shell-tier='xs'] .dems-lockup-text {
+    display: none;
+  }
+}
+
+/* ── Motion (step 41) ────────────────────────────────────────────────────────────────────── */
+@layer components {
+  /* M-SH-04: the clock face (SlidingNumber digit groups) and the breathing colons. */
+  .dems-clock-face {
+    display: inline-flex;
+    align-items: center;
+    line-height: 1;
+  }
+
+  .dems-clock-group {
+    display: inline-flex;
+  }
+
+  .dems-clock-colon {
+    display: inline-block;
+    /* 1 ↔ 0.55 over `colonBreath` (1 s per cycle, 0.5 s each way), sine; never a hard blink (P8). */
+    animation: dems-colon-breath calc(var(--dems-colon-breath-ms) / 2 * var(--motion-time-scale, 1)) var(--dems-ease-sine) infinite alternate both;
+  }
+
+  /* M-SH-08: hamburger lines (6 px apart) that morph to × in Motion (transform and opacity only). */
+  .dems-burger {
+    position: relative;
+    display: inline-block;
+    width: 22px;
+    height: 22px;
+  }
+
+  .dems-burger-line {
+    position: absolute;
+    left: 3px;
+    width: 16px;
+    height: 2px;
+    border-radius: 1px;
+    background-color: currentColor;
+  }
+
+  .dems-burger-line:nth-child(1) {
+    top: 4px;
+  }
+
+  .dems-burger-line:nth-child(2) {
+    top: 10px;
+  }
+
+  .dems-burger-line:nth-child(3) {
+    top: 16px;
+  }
+
+  /* M-APP-04: TextEffect title. A parent's background-clip: text cannot reach words that animate
+     on their own layer, so the gradient moves onto each word (same vertical gradient per line). */
+  .dems-page-title[data-text-effect] {
+    color: var(--foreground);
+    background: none;
+  }
+
+  .dems-page-title[data-text-effect] [aria-hidden='true'] {
+    color: transparent;
+    background: linear-gradient(180deg, #ffffff 35%, var(--accent) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+  }
+
+  /* M-APP-04 routed-content wrapper: fills the content area like the page root it holds. */
+  .dems-route {
+    display: flex;
+    flex-direction: column;
+    min-height: 100%;
+  }
+
+  .dems-route > .dems-page {
+    flex: 1 0 auto;
+  }
+}
+
+/*
+ * Unlayered on purpose: Tailwind's `.z-10` utility (on the wrapper that AnimatedBackground puts
+ * inside each nav <li>) would make every item its own stacking context, and a travelling active
+ * card (M-SH-02) would then paint over the labels of the items it passes. Unlayered CSS outranks
+ * every layer, so this one override keeps a single stacking context for the whole list.
+ */
+.dems-nav-group > li > .z-10 {
+  z-index: auto;
+}
+
+/*
+ * M-APP-04 exit (View Transitions API, started by the router with the `dems-route` type):
+ * only the content area is a snapshot group; the root (the shell) is not animated, so it stays
+ * still and live. The old content fades out over `fast` with the `exit` curve; the new content is
+ * shown live at once and its Motion enter waits for the exit (RouteTransition). The overlay passes
+ * pointer events through, so nothing blocks input while it animates (R6).
+ * Browsers without typed view transitions never match these selectors and never name the group.
+ */
+:root:active-view-transition-type(dems-route) .dems-content {
+  view-transition-name: dems-route;
+}
+
+::view-transition {
+  pointer-events: none;
+}
+
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+}
+
+:root:active-view-transition-type(dems-route)::view-transition-group(dems-route) {
+  animation: none;
+}
+
+:root:active-view-transition-type(dems-route)::view-transition-old(dems-route) {
+  animation: dems-route-exit calc(var(--dems-dur-fast) * var(--motion-time-scale, 1)) var(--dems-ease-exit) both;
+  mix-blend-mode: normal;
+}
+
+:root:active-view-transition-type(dems-route)::view-transition-new(dems-route) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+/* Keyframes (opacity and transform only). */
+@keyframes dems-route-exit {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes dems-sheen {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes dems-topo-drift {
+  from {
+    transform: translateY(0);
+    opacity: 0.625;
+  }
+  to {
+    transform: translateY(var(--dems-topo-drift-px));
+    opacity: 1;
+  }
+}
+
+@keyframes dems-glow-breath {
+  from {
+    opacity: 0.55;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes dems-colon-breath {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0.55;
+  }
+}

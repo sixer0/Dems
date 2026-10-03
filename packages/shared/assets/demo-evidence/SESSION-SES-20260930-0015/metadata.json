@@ -1,0 +1,76 @@
+{
+  "schema": "dems.evidence-metadata/1",
+  "demo": true,
+  "notice": "DEMO - synthetic evidence package for the DEMS demo stack. Not evidence and not for production: it is signed with a DEMO key derived from a published seed.",
+  "evidenceId": "EV-20260930-0005",
+  "sessionId": "SES-20260930-0015",
+  "caseNumber": "LP/2026/0930-0005",
+  "origin": "DATASET",
+  "status": "SEALED",
+  "lifecycleStage": "SEALED_LOCAL_EVIDENCE",
+  "session": {
+    "outcome": "SEALED",
+    "room": "Interview Room 1",
+    "recordingProfile": {
+      "id": "STANDARD_1080P25",
+      "label": "Standard (1080p / 25 fps)",
+      "codec": "H.264",
+      "bitrateMbps": 18.3
+    },
+    "createdAt": "2026-09-30T13:20:00.000+07:00",
+    "startedAt": "2026-09-30T13:22:00.000+07:00",
+    "endedAt": "2026-09-30T13:51:00.000+07:00",
+    "sealedAt": "2026-09-30T13:51:09.000+07:00",
+    "durationMs": 1740000,
+    "recordingSizeBytes": 3963333333,
+    "stopReason": "Statement recorded"
+  },
+  "subject": {
+    "name": "Dewi Anggraini",
+    "type": "LAINNYA"
+  },
+  "investigator": {
+    "id": "OPR-002",
+    "displayName": "AKP Andi Pratama",
+    "role": "SUPERVISOR"
+  },
+  "device": {
+    "id": "DEMS-IR-01",
+    "name": "Interview Room 1",
+    "serialNumber": "DEC-2026-IR01-000117",
+    "softwareVersion": "2.4.1"
+  },
+  "custody": [
+    {
+      "at": "2026-09-30T13:22:00.000+07:00",
+      "action": "RECORDING_STARTED",
+      "actorId": "OPR-002",
+      "actorName": "AKP Andi Pratama",
+      "detail": null
+    },
+    {
+      "at": "2026-09-30T13:51:09.000+07:00",
+      "action": "SEALED",
+      "actorId": null,
+      "actorName": "System",
+      "detail": null
+    }
+  ],
+  "media": {
+    "excerptDurationMs": 42000,
+    "note": "DEMO media are excerpts from the recording start; a player maps position p to p mod excerptDurationMs (step 92 rule).",
+    "mediaIndex": "demo-media/media-index.json"
+  },
+  "package": {
+    "items": [
+      "evidence-container.json",
+      "metadata.json",
+      "manifest.json",
+      "signature.sig",
+      "device-certificate.pem",
+      "audit-session-extract.jsonl"
+    ],
+    "generator": "packages/shared/scripts/gen-demo-evidence.ts",
+    "asOf": "2026-10-01T10:00"
+  }
+}

@@ -1,0 +1,2506 @@
+{
+  "schema": "dems.demo-media/1",
+  "demo": true,
+  "notice": "DEMO - synthetic media for the DEMS demo stack; not evidence",
+  "generator": "packages/shared/scripts/gen-demo-media.ts",
+  "asOf": "2026-10-01T10:00",
+  "datasetNow": "2026-10-01T10:00:00.000+07:00",
+  "timezone": "+07:00",
+  "tools": {
+    "ffmpeg": "9.0.2",
+    "voice": "espeak-ng 1.52.0"
+  },
+  "video": {
+    "codec": "h264",
+    "profile": "High",
+    "width": 1280,
+    "height": 720,
+    "fps": 25,
+    "audio": false
+  },
+  "audio": {
+    "codec": "aac",
+    "channels": 1,
+    "sampleRate": 48000,
+    "bitrateKbps": 48
+  },
+  "mobile": {
+    "width": 640,
+    "height": 360,
+    "fps": 25,
+    "videoProfile": "Main",
+    "audioSampleRate": 24000,
+    "audioBitrateKbps": 32
+  },
+  "source": {
+    "still": "packages/shared/assets/hero/room-2560.jpg",
+    "licence": "Pexels License (Pexels 3906592, Leandro Alamino; THIRD_PARTY_NOTICES.md)",
+    "cameras": [
+      {
+        "track": "VIDEO-01",
+        "deviceId": "CAM-01",
+        "label": "Camera 1 (wide)"
+      },
+      {
+        "track": "VIDEO-02",
+        "deviceId": "CAM-02",
+        "label": "Camera 2 (reverse angle, mirrored crop)"
+      }
+    ]
+  },
+  "joinKey": "evidenceSuffix",
+  "excerptRule": "Media cover [0, excerpt.durationMs) of each recording (the full length is sessionDurationMs). A player that shows the full timeline maps position p to p mod excerpt.durationMs and labels playback as a DEMO excerpt. The four tracks of an item always share one duration, so VIDEO-01, VIDEO-02, AUDIO-01 and AUDIO-02 stay in sync under that rule. Live loops (live.excerpt.loop = true) repeat seamlessly. Join media to the simulator by evidenceSuffix (the numeric suffix of EV-YYYYMMDD-NNNN); the live loop by live.sessionSeq, which equals RECORDING_SCENARIO.sessionSeq, and by live.evidenceSuffixWhenSealed once the scenario session is sealed.",
+  "evidence": [
+    {
+      "mediaKey": "0001",
+      "sessionSeq": 11,
+      "sessionSuffix": "0011",
+      "sessionId": "SES-20260929-0011",
+      "evidenceId": "EV-20260929-0001",
+      "evidenceSuffix": "0001",
+      "subjectName": "Siti Rahma",
+      "subjectType": "SAKSI",
+      "investigatorId": "OPR-001",
+      "investigatorName": "AKP Budi Santoso",
+      "outcome": "SEALED",
+      "live": false,
+      "loop": false,
+      "startedAt": "2026-09-29T09:17:00.000+07:00",
+      "sessionDurationMs": 2520000,
+      "excerpt": {
+        "offsetMs": 0,
+        "durationMs": 40000,
+        "loop": false
+      },
+      "voices": {
+        "AUDIO-01": {
+          "role": "Interviewer",
+          "mic": "MIC 1",
+          "engine": "espeak",
+          "variant": "m3",
+          "pitch": 38,
+          "speed": 148,
+          "female": false
+        },
+        "AUDIO-02": {
+          "role": "Subject",
+          "mic": "MIC 2",
+          "engine": "espeak",
+          "variant": "Andrea",
+          "pitch": 59,
+          "speed": 157,
+          "female": true
+        }
+      },
+      "tracks": {
+        "VIDEO-01": {
+          "path": "evidence/0001/VIDEO-01.mp4",
+          "bytes": 851765,
+          "sha256": "4fd641768c8fa4090bd93cc9aa43e0c3f7480fbf46bbf28dc9e34ee80d57ad45",
+          "durationSec": 40
+        },
+        "VIDEO-02": {
+          "path": "evidence/0001/VIDEO-02.mp4",
+          "bytes": 831247,
+          "sha256": "5eb356957e5a227bd3c6f38f66fe655c4980d99d46aa4b0dd1de86806e914871",
+          "durationSec": 40
+        },
+        "AUDIO-01": {
+          "path": "evidence/0001/AUDIO-01.m4a",
+          "bytes": 250029,
+          "sha256": "08b09d7cb0483148e3f54fdd6400ce095e50ea26e0c94b12f0b90cd436eb76f8",
+          "durationSec": 40
+        },
+        "AUDIO-02": {
+          "path": "evidence/0001/AUDIO-02.m4a",
+          "bytes": 249856,
+          "sha256": "95c3acf73ab4db2974c82e4ffbb077011dee4a5f44f0f7a39d5111a46d74b0a0",
+          "durationSec": 40
+        }
+      },
+      "posters": {
+        "VIDEO-01": {
+          "path": "evidence/0001/VIDEO-01.poster.jpg",
+          "bytes": 57856,
+          "sha256": "ae38be3720ad4f8d17c2e566a4ffc4bf0f4ce1ab06acdd338bd02ad84c9ef0d1"
+        },
+        "VIDEO-02": {
+          "path": "evidence/0001/VIDEO-02.poster.jpg",
+          "bytes": 58620,
+          "sha256": "f013608a4b45ed2ef564bb141488b25d10d960778e00e95f39d34f8b49186b5b"
+        }
+      },
+      "thumbnails": {
+        "VIDEO-01": {
+          "path": "evidence/0001/VIDEO-01.thumb.jpg",
+          "bytes": 7515,
+          "sha256": "85a5fb0cc8db75587bd5fb74491c230764037d83cf8dd62b1bdac085a17fe3a8"
+        },
+        "VIDEO-02": {
+          "path": "evidence/0001/VIDEO-02.thumb.jpg",
+          "bytes": 7607,
+          "sha256": "ce4703a8f2aedcef27d439c0bb7f110f557c29284fad731a58017084cf6c1ec8"
+        }
+      },
+      "mobile": {
+        "tracks": {
+          "VIDEO-01": {
+            "path": "mobile/evidence_0001_video_01.mp4",
+            "bytes": 286708,
+            "sha256": "22a09989e420f08c0c07cfc6d257501248ee08c0aed45d66a260422211311002",
+            "durationSec": 40
+          },
+          "VIDEO-02": {
+            "path": "mobile/evidence_0001_video_02.mp4",
+            "bytes": 288346,
+            "sha256": "8b3ccd1c0c2539d7a860827e1189838ba3639f5937cc2ba2534f23e7dc8f0c99",
+            "durationSec": 40
+          },
+          "AUDIO-01": {
+            "path": "mobile/evidence_0001_audio_01.m4a",
+            "bytes": 171480,
+            "sha256": "4a277a1e9dab279d11262bc650701ac65e709f47bc637bab9c45a0c21e8ec775",
+            "durationSec": 40
+          },
+          "AUDIO-02": {
+            "path": "mobile/evidence_0001_audio_02.m4a",
+            "bytes": 167477,
+            "sha256": "cd78cccc5e9491c0f205f58f28ba01bf9f5d93658af653da65cecd1c1a41ad6d",
+            "durationSec": 40
+          }
+        },
+        "posters": {
+          "VIDEO-01": {
+            "path": "mobile/evidence_0001_video_01_poster.jpg",
+            "bytes": 19342,
+            "sha256": "c1c5e807df69d378c141deacd8f8c35d44500159f59aecd101cc5c1fd29eac62"
+          },
+          "VIDEO-02": {
+            "path": "mobile/evidence_0001_video_02_poster.jpg",
+            "bytes": 19653,
+            "sha256": "bf26e1f824d6f45985a4a472660467dbc44fb27a9543728af3e1903ec07572b7"
+          }
+        }
+      },
+      "transcript": [
+        {
+          "speaker": "interviewer",
+          "track": "AUDIO-01",
+          "text": "Rekaman ini adalah simulasi untuk demonstrasi. Saya AKP Budi Santoso. Silakan sebutkan nama Anda.",
+          "startSec": 0.8,
+          "endSec": 9.829
+        },
+        {
+          "speaker": "subject",
+          "track": "AUDIO-02",
+          "text": "Nama saya Siti Rahma.",
+          "startSec": 10.577,
+          "endSec": 12.001
+        },
+        {
+          "speaker": "interviewer",
+          "track": "AUDIO-01",
+          "text": "Ibu Siti, silakan ceritakan apa yang Ibu lihat di pasar pagi itu.",
+          "startSec": 12.969,
+          "endSec": 18.705
+        },
+        {
+          "speaker": "subject",
+          "track": "AUDIO-02",
+          "text": "Sekitar jam delapan, saya melihat sebuah dompet cokelat jatuh di dekat kios sayur.",
+          "startSec": 19.252,
+          "endSec": 24.623
+        },
+        {
+          "speaker": "interviewer",
+          "track": "AUDIO-01",
+          "text": "Apa yang Ibu lakukan setelah itu?",
+          "startSec": 25.535,
+          "endSec": 28.332
+        },
+        {
+          "speaker": "subject",
+          "track": "AUDIO-02",
+          "text": "Saya mengambilnya dan langsung menyerahkannya ke pos keamanan pasar.",
+          "startSec": 28.938,
+          "endSec": 32.993
+        },
+        {
+          "speaker": "interviewer",
+          "track": "AUDIO-01",
+          "text": "Baik, terima kasih. Keterangan Ibu sudah kami catat.",
+          "startSec": 33.936,
+          "endSec": 38.721
+        }
+      ]
+    },
+    {
+      "mediaKey": "0002",
+      "sessionSeq": 12,
+      "sessionSuffix": "0012",
+      "sessionId": "SES-20260929-0012",
+      "evidenceId": "EV-20260929-0002",
+      "evidenceSuffix": "0002",
+      "subjectName": "Budi Hartono",
+      "subjectType": "SAKSI",
+      "investigatorId": "OPR-002",
+      "investigatorName": "AKP Andi Pratama",
+      "outcome": "SEALED",
+      "live": false,
+      "loop": false,
+      "startedAt": "2026-09-29T13:42:00.000+07:00",
+      "sessionDurationMs": 3300000,
+      "excerpt": {
+        "offsetMs": 0,
+        "durationMs": 40000,
+        "loop": false
+      },
+      "voices": {
+        "AUDIO-01": {
+          "role": "Interviewer",
+          "mic": "MIC 1",
+          "engine": "espeak",
+          "variant": "m7",
+          "pitch": 44,
+          "speed": 152,
+          "female": false
+        },
+        "AUDIO-02": {
+          "role": "Subject",
+          "mic": "MIC 2",
+          "engine": "espeak",
+          "variant": "m2",
+          "pitch": 46,
+          "speed": 148,
+          "female": false
+        }
+      },
+      "tracks": {
+        "VIDEO-01": {
+          "path": "evidence/0002/VIDEO-01.mp4",
+          "bytes": 853614,
+          "sha256": "795e3a3fb8f380eb46ad3da367224910c8cd556189643f3d76d1befc75cb8e42",
+          "durationSec": 40
+        },
+        "VIDEO-02": {
+          "path": "evidence/0002/VIDEO-02.mp4",
+          "bytes": 834463,
+          "sha256": "82168ab7d607975c5c51b15ee2640302bbd2805ed75871e8dd4e070d7d54d6ef",
+          "durationSec": 40
+        },
+        "AUDIO-01": {
+          "path": "evidence/0002/AUDIO-01.m4a",
+          "bytes": 249988,
+          "sha256": "593819ad4fdf8a920f1619f09c2fe8b0144467b728108d22d718b58f432be7e6",
+          "durationSec": 40
+        },
+        "AUDIO-02": {
+          "path": "evidence/0002/AUDIO-02.m4a",
+          "bytes": 251249,
+          "sha256": "83e23faedc2f3705a427660c050cee1bf24c41998e9b1f45d7b1a1cbc9235915",
+          "durationSec": 40
+        }
+      },
+      "posters": {
+        "VIDEO-01": {
+          "path": "evidence/0002/VIDEO-01.poster.jpg",
+          "bytes": 57997,
+          "sha256": "cc0c18a54a16fba06cf02931763d57f636dde52c64fdb23ff1f23c282944d222"
+        },
+        "VIDEO-02": {
+          "path": "evidence/0002/VIDEO-02.poster.jpg",
+          "bytes": 59018,
+          "sha256": "a8bbbeeeb29ab7a9a822fc8e88ebb73105606f1312bbca91b2bd98505ec8b0ab"
+        }
+      },
+      "thumbnails": {
+        "VIDEO-01": {
+          "path": "evidence/0002/VIDEO-01.thumb.jpg",
+          "bytes": 7497,
+          "sha256": "21eb4ddf14af748da9e5a76dd4886ae0a8d6b80ceba5820ddcab9b5ff429f591"
+        },
+        "VIDEO-02": {
+          "path": "evidence/0002/VIDEO-02.thumb.jpg",
+          "bytes": 7588,
+          "sha256": "8f67a2e3948fde6befe0d00481ed7e85e0cd121e7014cd45345865dc361894b4"
+        }
+      },
+      "mobile": {
+        "tracks": {
+          "VIDEO-01": {
+            "path": "mobile/evidence_0002_video_01.mp4",
+            "bytes": 286981,
+            "sha256": "9657fd4f9a9011789ebf3ea33fd8b66fb36097d773f94e17a0ac80765c59e8f8",
+            "durationSec": 40
+          },
+          "VIDEO-02": {
+            "path": "mobile/evidence_0002_video_02.mp4",
+            "bytes": 287509,
+            "sha256": "9162a7092877106c83b24ca528a0baca247ca70aa08613e3c4afce96f4223017",
+            "durationSec": 40
+          },
+          "AUDIO-01": {
+            "path": "mobile/evidence_0002_audio_01.m4a",
+            "bytes": 171071,
+            "sha256": "b3ece8c23b6ab47873d7e24f3c59fa4a66c0ff2f9668df213af2562a13e9518a",
+            "durationSec": 40
+          },
+          "AUDIO-02": {
+            "path": "mobile/evidence_0002_audio_02.m4a",
+            "bytes": 168740,
+            "sha256": "0fda4ea7fe7f957bde9313a62a3a707bd7964b91c32973c7adb812c2f3a1066b",
+            "durationSec": 40
+          }
+        },
+        "posters": {
+          "VIDEO-01": {
+            "path": "mobile/evidence_0002_video_01_poster.jpg",
+            "bytes": 19335,
+            "sha256": "fbebac3fa8a81ab6a5e78e1fb412af4b9f10683543fb6a8e6f5c55ccdd485695"
+          },
+          "VIDEO-02": {
+            "path": "mobile/evidence_0002_video_02_poster.jpg",
+            "bytes": 19687,
+            "sha256": "ee4c80593de4f4832c0022e14eddeed98db31f57ed21c12af0361741146b27d9"
+          }
+        }
+      },
+      "transcript": [
+        {
+          "speaker": "interviewer",
+          "track": "AUDIO-01",
+          "text": "Rekaman ini adalah simulasi untuk demonstrasi. Saya AKP Andi Pratama. Silakan sebutkan nama Anda.",
+          "startSec": 0.8,
+          "endSec": 9.605
+        },
+        {
+          "speaker": "subject",
+          "track": "AUDIO-02",
+          "text": "Nama saya Budi Hartono.",
+          "startSec": 10.205,
+          "endSec": 12.316
+        },
+        {
+          "speaker": "interviewer",
+          "track": "AUDIO-01",
+          "text": "Pak Budi, apa yang Bapak lihat di area parkir?",
+          "startSec": 13.306,
+          "endSec": 17.18
+        },
+        {
+          "speaker": "subject",
+          "track": "AUDIO-02",
+          "text": "Sebuah mobil putih mundur pelan dan menyenggol spion sepeda motor.",
+          "startSec": 17.709,
+          "endSec": 22.898
+        },
+        {
+          "speaker": "interviewer",
+          "track": "AUDIO-01",
+          "text": "Apakah ada yang terluka?",
+          "startSec": 23.702,
+          "endSec": 25.658
+        },
+        {
+          "speaker": "subject",
+          "track": "AUDIO-02",
+          "text": "Tidak ada. Pengemudinya langsung turun dan meminta maaf kepada pemilik motor.",
+          "startSec": 26.195,
+          "endSec": 32.542
+        },
+        {
+          "speaker": "interviewer",
+          "track": "AUDIO-01",
+          "text": "Terima kasih, Pak. Keterangan Bapak sudah kami catat.",
+          "startSec": 33.448,
+          "endSec": 38.221
+        }
+      ]
+    },
+    {
+      "mediaKey": "0003",
+      "sessionSeq": 13,
+      "sessionSuffix": "0013",
+      "sessionId": "SES-20260930-0013",
+      "evidenceId": "EV-20260930-0003",
+      "evidenceSuffix": "0003",
+      "subjectName": "Rudi Setiawan",
+      "subjectType": "TERSANGKA",
+      "investigatorId": "OPR-001",
+      "investigatorName": "AKP Budi Santoso",
+      "outcome": "SEALED",
+      "live": false,
+      "loop": false,
+      "startedAt": "2026-09-30T08:52:00.000+07:00",
+      "sessionDurationMs": 4080000,
+      "excerpt": {
+        "offsetMs": 0,
+        "durationMs": 47000,
+        "loop": false
+      },
+      "voices": {
+        "AUDIO-01": {
+          "role": "Interviewer",
+          "mic": "MIC 1",
+          "engine": "espeak",
+          "variant": "m3",
+          "pitch": 38,
+          "speed": 148,
+          "female": false
+        },
+        "AUDIO-02": {
+          "role": "Subject",
+          "mic": "MIC 2",
+          "engine": "espeak",
+          "variant": "m4",
+          "pitch": 53,
+          "speed": 153,
+          "female": false
+        }
+      },
+      "tracks": {
+        "VIDEO-01": {
+          "path": "evidence/0003/VIDEO-01.mp4",
+          "bytes": 1021580,
+          "sha256": "badc84701511ee50ac2becf68f0a27613674fd71db89cea14a06e3329a87047f",
+          "durationSec": 47
+        },
+        "VIDEO-02": {
+          "path": "evidence/0003/VIDEO-02.mp4",
+          "bytes": 999302,
+          "sha256": "f6098d477be0e8a42cd5555c60d550bba6efe08d22ca5a0a88416370254753ec",
+          "durationSec": 47
+        },
+        "AUDIO-01": {
+          "path": "evidence/0003/AUDIO-01.m4a",
+          "bytes": 294010,
+          "sha256": "9fbae8c4de68d80a2477f0e94b8617c16bba8c33a515b67729f288191b67538a",
+          "durationSec": 47
+        },
+        "AUDIO-02": {
+          "path": "evidence/0003/AUDIO-02.m4a",
+          "bytes": 293610,
+          "sha256": "36630d5cfbf2b30cb7af2484ec59e1a7bcf2720f15aee0528e4d466a2d3b60c6",
+          "durationSec": 47
+        }
+      },
+      "posters": {
+        "VIDEO-01": {
+          "path": "evidence/0003/VIDEO-01.poster.jpg",
+          "bytes": 58318,
+          "sha256": "05e12ffcfc99395d43cb12be562e6ce5075b7e29d0c8660e0c1cb178f754fa2f"
+        },
+        "VIDEO-02": {
+          "path": "evidence/0003/VIDEO-02.poster.jpg",
+          "bytes": 59027,
+          "sha256": "69645fbb0ebfae69ceddbfeaeb1f441ffe6865720069af9ad2f8e2f616e30ce2"
+        }
+      },
+      "thumbnails": {
+        "VIDEO-01": {
+          "path": "evidence/0003/VIDEO-01.thumb.jpg",
+          "bytes": 7530,
+          "sha256": "0275d91614f78d3e10dd963bb3c9207a23f4eec1b4b12b7989ddc0b23da2e0f2"
+        },
+        "VIDEO-02": {
+          "path": "evidence/0003/VIDEO-02.thumb.jpg",
+          "bytes": 7634,
+          "sha256": "94f4e53c5375d00948384121c1ce7580359bd0c950d0c7022302bd3bedc90b55"
+        }
+      },
+      "mobile": {
+        "tracks": {
+          "VIDEO-01": {
+            "path": "mobile/evidence_0003_video_01.mp4",
+            "bytes": 346793,
+            "sha256": "72444636a1df5f2803d8e85ccec99aa041a5aa9f8b974c6026af22375c08fe37",
+            "durationSec": 47
+          },
+          "VIDEO-02": {
+            "path": "mobile/evidence_0003_video_02.mp4",
+            "bytes": 346172,
+            "sha256": "955be95054fe483ff76bba996795e63e4b5451ef1d55d51cb3af93a0de262174",
+            "durationSec": 47
+          },
+          "AUDIO-01": {
+            "path": "mobile/evidence_0003_audio_01.m4a",
+            "bytes": 200566,
+            "sha256": "3866007a4291aae5f4785590fa587f1547c0d96565c9eac33da93b32d227f771",
+            "durationSec": 47
+          },
+          "AUDIO-02": {
+            "path": "mobile/evidence_0003_audio_02.m4a",
+            "bytes": 198473,
+            "sha256": "6cba5d70d05d53aeee2de8bbb3b65468ddfe6881ca4edfbae7de92f8dc7d08e1",
+            "durationSec": 47
+          }
+        },
+        "posters": {
+          "VIDEO-01": {
+            "path": "mobile/evidence_0003_video_01_poster.jpg",
+            "bytes": 19321,
+            "sha256": "84cd21cf005fa323e732b43ade668a9c06134d512469f91404f7dce4746a8efd"
+          },
+          "VIDEO-02": {
+            "path": "mobile/evidence_0003_video_02_poster.jpg",
+            "bytes": 19560,
+            "sha256": "c6a7ac298c5ff2b84b962d57578b782df78dab78762e8716fda1d3289db4d400"
+          }
+        }
+      },
+      "transcript": [
+        {
+          "speaker": "interviewer",
+          "track": "AUDIO-01",
+          "text": "Rekaman ini adalah simulasi untuk demonstrasi. Saya AKP Budi Santoso. Silakan sebutkan nama Anda.",
+          "startSec": 0.8,
+          "endSec": 9.829
+        },
+        {
+          "speaker": "subject",
+          "track": "AUDIO-02",
+          "text": "Nama saya Rudi Setiawan.",
+          "startSec": 10.507,
+          "endSec": 12.655
+        },
+        {
+          "speaker": "interviewer",
+          "track": "AUDIO-01",
+          "text": "Pak Rudi, kami meminta klarifikasi tentang kejadian di halaman parkir kantor pos.",
+          "startSec": 13.4,
+          "endSec": 20.143
+        },
+        {
+          "speaker": "subject",
+          "track": "AUDIO-02",
+          "text": "Benar, Pak. Saat memundurkan mobil, bemper belakang saya menyentuh pagar besi.",
+          "startSec": 20.723,
+          "endSec": 27.654
+        },
+        {
+          "speaker": "interviewer",
+          "track": "AUDIO-01",
+          "text": "Apakah Bapak melaporkannya kepada petugas?",
+          "startSec": 28.563,
+          "endSec": 31.996
+        },
+        {
+          "speaker": "subject",
+          "track": "AUDIO-02",
+          "text": "Ya, saya langsung melapor ke petugas parkir dan bersedia mengganti biaya perbaikan.",
+          "startSec": 32.71,
+          "endSec": 39.404
+        },
+        {
+          "speaker": "interviewer",
+          "track": "AUDIO-01",
+          "text": "Baik. Keterangan Bapak kami catat untuk proses selanjutnya.",
+          "startSec": 40.118,
+          "endSec": 45.161
+        }
+      ]
+    },
+    {
+      "mediaKey": "0004",
+      "sessionSeq": 14,
+      "sessionSuffix": "0014",
+      "sessionId": "SES-20260930-0014",
+      "evidenceId": "EV-20260930-0004",
+      "evidenceSuffix": "0004",
+      "subjectName": "Maya Lestari",
+      "subjectType": "SAKSI",
+      "investigatorId": "OPR-001",
+      "investigatorName": "AKP Budi Santoso",
+      "outcome": "SEALED",
+      "live": false,
+      "loop": false,
+      "startedAt": "2026-09-30T10:37:00.000+07:00",
+      "sessionDurationMs": 2220000,
+      "excerpt": {
+        "offsetMs": 0,
+        "durationMs": 41000,
+        "loop": false
+      },
+      "voices": {
+        "AUDIO-01": {
+          "role": "Interviewer",
+          "mic": "MIC 1",
+          "engine": "espeak",
+          "variant": "m3",
+          "pitch": 38,
+          "speed": 148,
+          "female": false
+        },
+        "AUDIO-02": {
+          "role": "Subject",
+          "mic": "MIC 2",
+          "engine": "espeak",
+          "variant": "Andrea",
+          "pitch": 56,
+          "speed": 144,
+          "female": true
+        }
+      },
+      "tracks": {
+        "VIDEO-01": {
+          "path": "evidence/0004/VIDEO-01.mp4",
+          "bytes": 888860,
+          "sha256": "8a118ca0627b9a008ee1152edad540be884e5a232eb2515805912da9deb2c04a",
+          "durationSec": 41
+        },
+        "VIDEO-02": {
+          "path": "evidence/0004/VIDEO-02.mp4",
+          "bytes": 867740,
+          "sha256": "a904438e454e860add759306c5de9ced90e05d4e153ed0cf26b8c2909b59dbd9",
+          "durationSec": 41
+        },
+        "AUDIO-01": {
+          "path": "evidence/0004/AUDIO-01.m4a",
+          "bytes": 256172,
+          "sha256": "ad6aa4e1591259a027c832793f8f784d67fd59f0a092937c059de1caa0577c78",
+          "durationSec": 41
+        },
+        "AUDIO-02": {
+          "path": "evidence/0004/AUDIO-02.m4a",
+          "bytes": 255781,
+          "sha256": "728b535907b3cb993941be4554b997d1d26a41301cfc7f5cdd977f8dc16aed0d",
+          "durationSec": 41
+        }
+      },
+      "posters": {
+        "VIDEO-01": {
+          "path": "evidence/0004/VIDEO-01.poster.jpg",
+          "bytes": 58131,
+          "sha256": "b2c86b31d07a868dcd43615213afbacf1405130b0999e49d13402cd396612caa"
+        },
+        "VIDEO-02": {
+          "path": "evidence/0004/VIDEO-02.poster.jpg",
+          "bytes": 58718,
+          "sha256": "8d2840eea0a81a20189a57524a6a7cf7074ad5eee9fc33f5cb85f7e84054f5e7"
+        }
+      },
+      "thumbnails": {
+        "VIDEO-01": {
+          "path": "evidence/0004/VIDEO-01.thumb.jpg",
+          "bytes": 7503,
+          "sha256": "8a999ad7f3e0a6a8fa735bcd9f0d9cc185e3c3670d127030030c96dd9d02381d"
+        },
+        "VIDEO-02": {
+          "path": "evidence/0004/VIDEO-02.thumb.jpg",
+          "bytes": 7598,
+          "sha256": "15afae5710309853a3483ff43d49b984afb592cbb493f016c01a9eb53168a8cd"
+        }
+      },
+      "mobile": {
+        "tracks": {
+          "VIDEO-01": {
+            "path": "mobile/evidence_0004_video_01.mp4",
+            "bytes": 302553,
+            "sha256": "dbe51db0eac38ed73a6922154d7888a0084840f43e44f79f88e67ad880e2a874",
+            "durationSec": 41
+          },
+          "VIDEO-02": {
+            "path": "mobile/evidence_0004_video_02.mp4",
+            "bytes": 302950,
+            "sha256": "d91693563c286a9ce54620caddefd9d0a3310366a9d6f9c7088f21b2bd4ae4e5",
+            "durationSec": 41
+          },
+          "AUDIO-01": {
+            "path": "mobile/evidence_0004_audio_01.m4a",
+            "bytes": 175073,
+            "sha256": "ff58da8784bf560d34f65b1ab44958b12b37c9ea8b482f1b9173ac6371883795",
+            "durationSec": 41
+          },
+          "AUDIO-02": {
+            "path": "mobile/evidence_0004_audio_02.m4a",
+            "bytes": 171019,
+            "sha256": "bc99e90b58ea166dfd3fcb3d6f8a2f527de6e575596197c77eab459bdadbd464",
+            "durationSec": 41
+          }
+        },
+        "posters": {
+          "VIDEO-01": {
+            "path": "mobile/evidence_0004_video_01_poster.jpg",
+            "bytes": 19406,
+            "sha256": "69f5d55257f1286cb5d54df71a458687d82b5c202c4b93ce19f5d9f941d1c88e"
+          },
+          "VIDEO-02": {
+            "path": "mobile/evidence_0004_video_02_poster.jpg",
+            "bytes": 19605,
+            "sha256": "ecd433be18095932e86588cd9f8f71a50f4b1ff6cf1c5b930cae70b8bba0cf87"
+          }
+        }
+      },
+      "transcript": [
+        {
+          "speaker": "interviewer",
+          "track": "AUDIO-01",
+          "text": "Rekaman ini adalah simulasi untuk demonstrasi. Saya AKP Budi Santoso. Silakan sebutkan nama Anda.",
+          "startSec": 0.8,
+          "endSec": 9.829
+        },
+        {
+          "speaker": "subject",
+          "track": "AUDIO-02",
+          "text": "Nama saya Maya Lestari.",
+          "startSec": 10.587,
+          "endSec": 12.217
+        },
+        {
+          "speaker": "interviewer",
+          "track": "AUDIO-01",
+          "text": "Ibu Maya, ceritakan kembali kejadian di dalam bus kota.",
+          "startSec": 12.93,
+          "endSec": 17.695
+        },
+        {
+          "speaker": "subject",
+          "track": "AUDIO-02",
+          "text": "Seorang penumpang lupa membawa telepon genggamnya ketika turun di halte terminal.",
+          "startSec": 18.203,
+          "endSec": 23.431
+        },
+        {
+          "speaker": "interviewer",
+          "track": "AUDIO-01",
+          "text": "Lalu apa yang terjadi dengan telepon itu?",
+          "startSec": 24.363,
+          "endSec": 27.529
+        },
+        {
+          "speaker": "subject",
+          "track": "AUDIO-02",
+          "text": "Saya memberikannya kepada sopir bus, dan sopir menyimpannya di kotak barang temuan.",
+          "startSec": 28.064,
+          "endSec": 33.88
+        },
+        {
+          "speaker": "interviewer",
+          "track": "AUDIO-01",
+          "text": "Terima kasih, Bu. Keterangan Ibu sudah kami catat.",
+          "startSec": 34.564,
+          "endSec": 39.278
+        }
+      ]
+    },
+    {
+      "mediaKey": "0005",
+      "sessionSeq": 15,
+      "sessionSuffix": "0015",
+      "sessionId": "SES-20260930-0015",
+      "evidenceId": "EV-20260930-0005",
+      "evidenceSuffix": "0005",
+      "subjectName": "Dewi Anggraini",
+      "subjectType": "LAINNYA",
+      "investigatorId": "OPR-002",
+      "investigatorName": "AKP Andi Pratama",
+      "outcome": "SEALED",
+      "live": false,
+      "loop": false,
+      "startedAt": "2026-09-30T13:22:00.000+07:00",
+      "sessionDurationMs": 1740000,
+      "excerpt": {
+        "offsetMs": 0,
+        "durationMs": 42000,
+        "loop": false
+      },
+      "voices": {
+        "AUDIO-01": {
+          "role": "Interviewer",
+          "mic": "MIC 1",
+          "engine": "espeak",
+          "variant": "m7",
+          "pitch": 44,
+          "speed": 152,
+          "female": false
+        },
+        "AUDIO-02": {
+          "role": "Subject",
+          "mic": "MIC 2",
+          "engine": "espeak",
+          "variant": "f4",
+          "pitch": 63,
+          "speed": 149,
+          "female": true
+        }
+      },
+      "tracks": {
+        "VIDEO-01": {
+          "path": "evidence/0005/VIDEO-01.mp4",
+          "bytes": 909750,
+          "sha256": "3c36139fc5d946d2290bd89d12e2a657a46a01a628ae0cb7776cd619794da903",
+          "durationSec": 42
+        },
+        "VIDEO-02": {
+          "path": "evidence/0005/VIDEO-02.mp4",
+          "bytes": 882147,
+          "sha256": "91da7d0ea99c345ec08e57b645b9931c3fb9e0d97ab4d08a30b057230a8d9a70",
+          "durationSec": 42
+        },
+        "AUDIO-01": {
+          "path": "evidence/0005/AUDIO-01.m4a",
+          "bytes": 262067,
+          "sha256": "d7e83d202d1fbb8652f1266461523488ee39f66237d268ba2b8e105a4fff5f2e",
+          "durationSec": 42
+        },
+        "AUDIO-02": {
+          "path": "evidence/0005/AUDIO-02.m4a",
+          "bytes": 262307,
+          "sha256": "bb3af24347c7a036a7263bd660b1a37cd53bae699d885c3527eeac4394cd0d0c",
+          "durationSec": 42
+        }
+      },
+      "posters": {
+        "VIDEO-01": {
+          "path": "evidence/0005/VIDEO-01.poster.jpg",
+          "bytes": 58329,
+          "sha256": "9ca1f6380e8ec83b5ee78f15c6013be9fc4c712805fda5398b80b5d9dee05132"
+        },
+        "VIDEO-02": {
+          "path": "evidence/0005/VIDEO-02.poster.jpg",
+          "bytes": 58979,
+          "sha256": "88132c0249f3acc0aca9816e9da7d215133a748db1e3c2b35fb78adcf330e02c"
+        }
+      },
+      "thumbnails": {
+        "VIDEO-01": {
+          "path": "evidence/0005/VIDEO-01.thumb.jpg",
+          "bytes": 7532,
+          "sha256": "64f4cb0b375f28f89d3224b794733157ef953345694a2fdbcaaea9e625702a86"
+        },
+        "VIDEO-02": {
+          "path": "evidence/0005/VIDEO-02.thumb.jpg",
+          "bytes": 7617,
+          "sha256": "04435fbaaae1931bbd0a952608d9cd69813b21d0ea4fd3d5adeb9b590262190d"
+        }
+      },
+      "mobile": {
+        "tracks": {
+          "VIDEO-01": {
+            "path": "mobile/evidence_0005_video_01.mp4",
+            "bytes": 306691,
+            "sha256": "c91cb192f516aa164f1ec3647a8f4828a4187874085a614a85972b43cd615330",
+            "durationSec": 42
+          },
+          "VIDEO-02": {
+            "path": "mobile/evidence_0005_video_02.mp4",
+            "bytes": 306892,
+            "sha256": "764723194d2b35aba9d00c8d9952bd9e175af68aa7801b4fdaa92732e17d1006",
+            "durationSec": 42
+          },
+          "AUDIO-01": {
+            "path": "mobile/evidence_0005_audio_01.m4a",
+            "bytes": 179685,
+            "sha256": "a441e43d5e766e5d51e7b37bd5a1930b07e6c83af9b90eedbb04916fd0f038fa",
+            "durationSec": 42
+          },
+          "AUDIO-02": {
+            "path": "mobile/evidence_0005_audio_02.m4a",
+            "bytes": 174308,
+            "sha256": "89ca9c8826ef22d993769789ddeb07ec7c12562d3ccb21d11029dc7c447ab059",
+            "durationSec": 42
+          }
+        },
+        "posters": {
+          "VIDEO-01": {
+            "path": "mobile/evidence_0005_video_01_poster.jpg",
+            "bytes": 19328,
+            "sha256": "b1c6c50906ba8b9aac91f8d3aee0e57976a1466611c714a9f0e1486cb052fcf8"
+          },
+          "VIDEO-02": {
+            "path": "mobile/evidence_0005_video_02_poster.jpg",
+            "bytes": 19660,
+            "sha256": "c25f466f00f195e409986b384cfc50c8a56bd0b953dd7fc5330bfee1ccb66d57"
+          }
+        }
+      },
+      "transcript": [
+        {
+          "speaker": "interviewer",
+          "track": "AUDIO-01",
+          "text": "Rekaman ini adalah simulasi untuk demonstrasi. Saya AKP Andi Pratama. Silakan sebutkan nama Anda.",
+          "startSec": 0.8,
+          "endSec": 9.605
+        },
+        {
+          "speaker": "subject",
+          "track": "AUDIO-02",
+          "text": "Nama saya Dewi Anggraini, pengelola gedung.",
+          "startSec": 10.215,
+          "endSec": 13.644
+        },
+        {
+          "speaker": "interviewer",
+          "track": "AUDIO-01",
+          "text": "Ibu Dewi, bagaimana dua paket kiriman itu bisa tertukar?",
+          "startSec": 14.331,
+          "endSec": 18.99
+        },
+        {
+          "speaker": "subject",
+          "track": "AUDIO-02",
+          "text": "Kurir meletakkan dua paket dengan nama yang mirip di meja resepsionis.",
+          "startSec": 19.706,
+          "endSec": 25.04
+        },
+        {
+          "speaker": "interviewer",
+          "track": "AUDIO-01",
+          "text": "Apakah paket tersebut sudah dikembalikan?",
+          "startSec": 25.851,
+          "endSec": 29.138
+        },
+        {
+          "speaker": "subject",
+          "track": "AUDIO-02",
+          "text": "Sudah, Pak. Kedua paket diterima oleh pemiliknya masing-masing pada sore itu.",
+          "startSec": 29.72,
+          "endSec": 36.444
+        },
+        {
+          "speaker": "interviewer",
+          "track": "AUDIO-01",
+          "text": "Baik, terima kasih atas keterangannya.",
+          "startSec": 37.307,
+          "endSec": 40.445
+        }
+      ]
+    },
+    {
+      "mediaKey": "0006",
+      "sessionSeq": 16,
+      "sessionSuffix": "0016",
+      "sessionId": "SES-20260930-0016",
+      "evidenceId": "EV-20260930-0006",
+      "evidenceSuffix": "0006",
+      "subjectName": "Hendra Wijaya",
+      "subjectType": "SAKSI",
+      "investigatorId": "OPR-001",
+      "investigatorName": "AKP Budi Santoso",
+      "outcome": "INCOMPLETE",
+      "live": false,
+      "loop": false,
+      "startedAt": "2026-09-30T15:47:00.000+07:00",
+      "sessionDurationMs": 1440000,
+      "excerpt": {
+        "offsetMs": 0,
+        "durationMs": 43000,
+        "loop": false
+      },
+      "voices": {
+        "AUDIO-01": {
+          "role": "Interviewer",
+          "mic": "MIC 1",
+          "engine": "espeak",
+          "variant": "m3",
+          "pitch": 38,
+          "speed": 148,
+          "female": false
+        },
+        "AUDIO-02": {
+          "role": "Subject",
+          "mic": "MIC 2",
+          "engine": "espeak",
+          "variant": "m4",
+          "pitch": 50,
+          "speed": 154,
+          "female": false
+        }
+      },
+      "tracks": {
+        "VIDEO-01": {
+          "path": "evidence/0006/VIDEO-01.mp4",
+          "bytes": 941274,
+          "sha256": "ff94675b03a1a8907c0ec7e9ddda52ae063dbb6ed03f26797512a5d1ef52676e",
+          "durationSec": 43
+        },
+        "VIDEO-02": {
+          "path": "evidence/0006/VIDEO-02.mp4",
+          "bytes": 905239,
+          "sha256": "4e4cc30765df1155981929a0a1ad36c7aeed6f6040ed9ebfb6e0838792035c86",
+          "durationSec": 43
+        },
+        "AUDIO-01": {
+          "path": "evidence/0006/AUDIO-01.m4a",
+          "bytes": 268380,
+          "sha256": "60986fe9c14537f731af493d26af6627d3ed476cb60a8d2a6c873ed6b934fcb8",
+          "durationSec": 43
+        },
+        "AUDIO-02": {
+          "path": "evidence/0006/AUDIO-02.m4a",
+          "bytes": 268675,
+          "sha256": "8ee568223913ff0e7b8048299419e61cc12dc815b821b43aef4b2586444783cb",
+          "durationSec": 43
+        }
+      },
+      "posters": {
+        "VIDEO-01": {
+          "path": "evidence/0006/VIDEO-01.poster.jpg",
+          "bytes": 57860,
+          "sha256": "19e2191310739f80c8b8e0e96af3b51eec82b74523421f1d6ea248a7667a4129"
+        },
+        "VIDEO-02": {
+          "path": "evidence/0006/VIDEO-02.poster.jpg",
+          "bytes": 58628,
+          "sha256": "b298a64126491e575d146362b7dfa269a2e1dba8f6da57a22f21b2a4efde72ef"
+        }
+      },
+      "thumbnails": {
+        "VIDEO-01": {
+          "path": "evidence/0006/VIDEO-01.thumb.jpg",
+          "bytes": 7520,
+          "sha256": "1794075cb299c3362f99b30a83be07ac1511fef41116a32031a29aacb337d375"
+        },
+        "VIDEO-02": {
+          "path": "evidence/0006/VIDEO-02.thumb.jpg",
+          "bytes": 7595,
+          "sha256": "caaf533f46314f67d6432ff19173534be82b4cac54bd576bb6d2027b99a026b4"
+        }
+      },
+      "mobile": {
+        "tracks": {
+          "VIDEO-01": {
+            "path": "mobile/evidence_0006_video_01.mp4",
+            "bytes": 316571,
+            "sha256": "0989a334c210b0c6fd3a61bf88e762534d0abc49957026a66b0b59cf0fb1b2a8",
+            "durationSec": 43
+          },
+          "VIDEO-02": {
+            "path": "mobile/evidence_0006_video_02.mp4",
+            "bytes": 316064,
+            "sha256": "55c227a3245d88db1bb82c4085e08ab8a649e5a100ae4e62b60b577bc674e5dd",
+            "durationSec": 43
+          },
+          "AUDIO-01": {
+            "path": "mobile/evidence_0006_audio_01.m4a",
+            "bytes": 183694,
+            "sha256": "227da86dcf0a53ee172e6ac4742b275faccb66444cb4058d14b9686e0313ec6e",
+            "durationSec": 43
+          },
+          "AUDIO-02": {
+            "path": "mobile/evidence_0006_audio_02.m4a",
+            "bytes": 181808,
+            "sha256": "cb741ac66968ee934b0bb45748bd35636b5c7ded123092e995686b2f6ea4c64c",
+            "durationSec": 43
+          }
+        },
+        "posters": {
+          "VIDEO-01": {
+            "path": "mobile/evidence_0006_video_01_poster.jpg",
+            "bytes": 19400,
+            "sha256": "cef5306af2646ded8f6302ddaa996185f54dd94676f6b965459b1063ca6c9c7c"
+          },
+          "VIDEO-02": {
+            "path": "mobile/evidence_0006_video_02_poster.jpg",
+            "bytes": 19610,
+            "sha256": "205137076df1adb940edc3352e8ab083e091a2f2c3b945c7e20c5a5891fcaf42"
+          }
+        }
+      },
+      "transcript": [
+        {
+          "speaker": "interviewer",
+          "track": "AUDIO-01",
+          "text": "Rekaman ini adalah simulasi untuk demonstrasi. Saya AKP Budi Santoso. Silakan sebutkan nama Anda.",
+          "startSec": 0.8,
+          "endSec": 9.829
+        },
+        {
+          "speaker": "subject",
+          "track": "AUDIO-02",
+          "text": "Nama saya Hendra Wijaya.",
+          "startSec": 10.577,
+          "endSec": 12.707
+        },
+        {
+          "speaker": "interviewer",
+          "track": "AUDIO-01",
+          "text": "Pak Hendra, apa yang Bapak lihat di parkiran swalayan?",
+          "startSec": 13.414,
+          "endSec": 17.938
+        },
+        {
+          "speaker": "subject",
+          "track": "AUDIO-02",
+          "text": "Sebuah troli belanja terdorong angin dan menggores pintu mobil biru.",
+          "startSec": 18.615,
+          "endSec": 23.763
+        },
+        {
+          "speaker": "interviewer",
+          "track": "AUDIO-01",
+          "text": "Apakah pemilik mobil ada di lokasi?",
+          "startSec": 24.517,
+          "endSec": 27.396
+        },
+        {
+          "speaker": "subject",
+          "track": "AUDIO-02",
+          "text": "Ada, Pak. Petugas swalayan membantu mencatat kejadian itu bersama pemilik mobil.",
+          "startSec": 27.907,
+          "endSec": 34.902
+        },
+        {
+          "speaker": "interviewer",
+          "track": "AUDIO-01",
+          "text": "Terima kasih. Kita lanjutkan dengan beberapa pertanyaan tambahan.",
+          "startSec": 35.874,
+          "endSec": 41.35
+        }
+      ]
+    },
+    {
+      "mediaKey": "0007",
+      "sessionSeq": 17,
+      "sessionSuffix": "0017",
+      "sessionId": "SES-20261001-0017",
+      "evidenceId": "EV-20261001-0007",
+      "evidenceSuffix": "0007",
+      "subjectName": "Rahmat Hidayat",
+      "subjectType": "SAKSI",
+      "investigatorId": "OPR-001",
+      "investigatorName": "AKP Budi Santoso",
+      "outcome": "SEALED",
+      "live": false,
+      "loop": false,
+      "startedAt": "2026-10-01T07:06:12.000+07:00",
+      "sessionDurationMs": 956000,
+      "excerpt": {
+        "offsetMs": 0,
+        "durationMs": 34000,
+        "loop": false
+      },
+      "voices": {
+        "AUDIO-01": {
+          "role": "Interviewer",
+          "mic": "MIC 1",
+          "engine": "espeak",
+          "variant": "m3",
+          "pitch": 38,
+          "speed": 148,
+          "female": false
+        },
+        "AUDIO-02": {
+          "role": "Subject",
+          "mic": "MIC 2",
+          "engine": "espeak",
+          "variant": "m6",
+          "pitch": 57,
+          "speed": 145,
+          "female": false
+        }
+      },
+      "tracks": {
+        "VIDEO-01": {
+          "path": "evidence/0007/VIDEO-01.mp4",
+          "bytes": 733213,
+          "sha256": "ef9f0bb4f830af6b5edcee942f2dd9039e30b95a1f3c03ce24b02cd4e83f7ad6",
+          "durationSec": 34
+        },
+        "VIDEO-02": {
+          "path": "evidence/0007/VIDEO-02.mp4",
+          "bytes": 732690,
+          "sha256": "e13ed9e80284575a29a25feb3daa84e51a3b90df2e5421e50b78cd3a4c0243b7",
+          "durationSec": 34
+        },
+        "AUDIO-01": {
+          "path": "evidence/0007/AUDIO-01.m4a",
+          "bytes": 212436,
+          "sha256": "bede1c1040decfddf43d2be29b273b2e605d6b7863b700d7babfb6bd31394234",
+          "durationSec": 34
+        },
+        "AUDIO-02": {
+          "path": "evidence/0007/AUDIO-02.m4a",
+          "bytes": 214921,
+          "sha256": "dd0f58076da977cf5bab2571b2221337eeda9dd533e326110cfc15bb91eeca17",
+          "durationSec": 34
+        }
+      },
+      "posters": {
+        "VIDEO-01": {
+          "path": "evidence/0007/VIDEO-01.poster.jpg",
+          "bytes": 58117,
+          "sha256": "c9f41c2ebd831712dc4d64400371150c431aa6dcb22e1d61f166ae0286bff96b"
+        },
+        "VIDEO-02": {
+          "path": "evidence/0007/VIDEO-02.poster.jpg",
+          "bytes": 58516,
+          "sha256": "92aa4018737b8b0cbad7b3e1d020bbbba75c7aaac0a83c4bdaf45e7d5741910d"
+        }
+      },
+      "thumbnails": {
+        "VIDEO-01": {
+          "path": "evidence/0007/VIDEO-01.thumb.jpg",
+          "bytes": 7508,
+          "sha256": "9077f0284bb35a2410fcc8db4789439ebbb9d33ba6a54d31cb6c5e5c0d4c8ade"
+        },
+        "VIDEO-02": {
+          "path": "evidence/0007/VIDEO-02.thumb.jpg",
+          "bytes": 7627,
+          "sha256": "ce27841ffd6c24a87637d1b1b35fed79077d09bab50f39010f322b1a7d9ebe7d"
+        }
+      },
+      "mobile": {
+        "tracks": {
+          "VIDEO-01": {
+            "path": "mobile/evidence_0007_video_01.mp4",
+            "bytes": 248292,
+            "sha256": "833f3c449878ce5f3a4a5161f6f6a180f6a210860e465e41e3f03b3b1dee5f80",
+            "durationSec": 34
+          },
+          "VIDEO-02": {
+            "path": "mobile/evidence_0007_video_02.mp4",
+            "bytes": 252381,
+            "sha256": "3882f1afa13e4b7836a9209340a48c025b6a864c37c725f67bb58a9959f77274",
+            "durationSec": 34
+          },
+          "AUDIO-01": {
+            "path": "mobile/evidence_0007_audio_01.m4a",
+            "bytes": 145031,
+            "sha256": "988debfbde0317b7989dd355087692a1929c517774046c7eeb0e996cbc6c7269",
+            "durationSec": 34
+          },
+          "AUDIO-02": {
+            "path": "mobile/evidence_0007_audio_02.m4a",
+            "bytes": 143232,
+            "sha256": "84a65f35e1dc9e859f1b1c252f404f3d57422efc24a249323cb5fe1f62b5e0f7",
+            "durationSec": 34
+          }
+        },
+        "posters": {
+          "VIDEO-01": {
+            "path": "mobile/evidence_0007_video_01_poster.jpg",
+            "bytes": 19336,
+            "sha256": "c17c90ec67a84cf0beab67c056b3cd2fac3ee5e51f80566ae5faaccb430c7334"
+          },
+          "VIDEO-02": {
+            "path": "mobile/evidence_0007_video_02_poster.jpg",
+            "bytes": 19653,
+            "sha256": "b394f28f1d9b86f14e0d958d1af90325317a225dd7ea49dba9ebd0e55cbff6b8"
+          }
+        }
+      },
+      "transcript": [
+        {
+          "speaker": "interviewer",
+          "track": "AUDIO-01",
+          "text": "Rekaman ini adalah simulasi untuk demonstrasi. Ini pemeriksaan lanjutan. Silakan sebutkan nama Anda.",
+          "startSec": 0.8,
+          "endSec": 9.531
+        },
+        {
+          "speaker": "subject",
+          "track": "AUDIO-02",
+          "text": "Nama saya Rahmat Hidayat, petugas parkir kantor pos.",
+          "startSec": 10.251,
+          "endSec": 14.889
+        },
+        {
+          "speaker": "interviewer",
+          "track": "AUDIO-01",
+          "text": "Pak Rahmat, apa yang Bapak lihat saat itu?",
+          "startSec": 15.864,
+          "endSec": 19.485
+        },
+        {
+          "speaker": "subject",
+          "track": "AUDIO-02",
+          "text": "Mobil itu mundur pelan dan menyentuh pagar besi. Pengemudinya langsung melapor kepada saya.",
+          "startSec": 20.205,
+          "endSec": 27.682
+        },
+        {
+          "speaker": "interviewer",
+          "track": "AUDIO-01",
+          "text": "Terima kasih, Pak. Keterangan Bapak kami catat.",
+          "startSec": 28.361,
+          "endSec": 32.736
+        }
+      ]
+    },
+    {
+      "mediaKey": "0008",
+      "sessionSeq": 18,
+      "sessionSuffix": "0018",
+      "sessionId": "SES-20261001-0018",
+      "evidenceId": "EV-20261001-0008",
+      "evidenceSuffix": "0008",
+      "subjectName": "Nur Aini",
+      "subjectType": "SAKSI",
+      "investigatorId": "OPR-002",
+      "investigatorName": "AKP Andi Pratama",
+      "outcome": "SEALED",
+      "live": false,
+      "loop": false,
+      "startedAt": "2026-10-01T07:31:00.000+07:00",
+      "sessionDurationMs": 797000,
+      "excerpt": {
+        "offsetMs": 0,
+        "durationMs": 34000,
+        "loop": false
+      },
+      "voices": {
+        "AUDIO-01": {
+          "role": "Interviewer",
+          "mic": "MIC 1",
+          "engine": "espeak",
+          "variant": "m7",
+          "pitch": 44,
+          "speed": 152,
+          "female": false
+        },
+        "AUDIO-02": {
+          "role": "Subject",
+          "mic": "MIC 2",
+          "engine": "espeak",
+          "variant": "f4",
+          "pitch": 60,
+          "speed": 150,
+          "female": true
+        }
+      },
+      "tracks": {
+        "VIDEO-01": {
+          "path": "evidence/0008/VIDEO-01.mp4",
+          "bytes": 731404,
+          "sha256": "48a6f8f8dfce29e962141eeb5f8aea2e1ba7acef4db70db8fac34958acc72170",
+          "durationSec": 34
+        },
+        "VIDEO-02": {
+          "path": "evidence/0008/VIDEO-02.mp4",
+          "bytes": 732304,
+          "sha256": "4b5ff94209d540448dd180bf69d8b47f35f20d36bfa2ea87d3d069249340abe0",
+          "durationSec": 34
+        },
+        "AUDIO-01": {
+          "path": "evidence/0008/AUDIO-01.m4a",
+          "bytes": 212398,
+          "sha256": "1410695eda3e034fcd7ef2244f1532789190dcfbb255937b10ba44d514a27b15",
+          "durationSec": 34
+        },
+        "AUDIO-02": {
+          "path": "evidence/0008/AUDIO-02.m4a",
+          "bytes": 212764,
+          "sha256": "99cca094504b308759b257bedc230652d369539be887b5edf204994393d5f186",
+          "durationSec": 34
+        }
+      },
+      "posters": {
+        "VIDEO-01": {
+          "path": "evidence/0008/VIDEO-01.poster.jpg",
+          "bytes": 57827,
+          "sha256": "5dfc099067809934981730882e7435b705bdce1f7fa36f519f3127feb44f37f0"
+        },
+        "VIDEO-02": {
+          "path": "evidence/0008/VIDEO-02.poster.jpg",
+          "bytes": 58498,
+          "sha256": "bbfb79997e32cf48d5f22f80a5987839bc6d2bbd19ec89b35c075e58c656aa45"
+        }
+      },
+      "thumbnails": {
+        "VIDEO-01": {
+          "path": "evidence/0008/VIDEO-01.thumb.jpg",
+          "bytes": 7513,
+          "sha256": "aa473686c9c89c1a82abf9875f74d59cdce2d137b973a456fbeffd7b50815b0c"
+        },
+        "VIDEO-02": {
+          "path": "evidence/0008/VIDEO-02.thumb.jpg",
+          "bytes": 7607,
+          "sha256": "4f9c36f9ec67aca4e25a58264981bf86d80fa257f8c1646fd9a301245513ea2a"
+        }
+      },
+      "mobile": {
+        "tracks": {
+          "VIDEO-01": {
+            "path": "mobile/evidence_0008_video_01.mp4",
+            "bytes": 249006,
+            "sha256": "b9939463befa815e2e8d7031ef56c9edbdeef68ebced51ab1f5679e1cb560d0d",
+            "durationSec": 34
+          },
+          "VIDEO-02": {
+            "path": "mobile/evidence_0008_video_02.mp4",
+            "bytes": 251581,
+            "sha256": "05673f2db9d39fc86aba4e4333b4f972ff2e4fd68e644b7904dcdb1c36da3052",
+            "durationSec": 34
+          },
+          "AUDIO-01": {
+            "path": "mobile/evidence_0008_audio_01.m4a",
+            "bytes": 145805,
+            "sha256": "e23dab35bf3be48791d0316296da3ebe496e87fc6f30302fa92b2e4e520e9690",
+            "durationSec": 34
+          },
+          "AUDIO-02": {
+            "path": "mobile/evidence_0008_audio_02.m4a",
+            "bytes": 141108,
+            "sha256": "f766dcbfc3db97053b742c51bb42858fa03f13085c7fe3e24d28fa6d89dd8caa",
+            "durationSec": 34
+          }
+        },
+        "posters": {
+          "VIDEO-01": {
+            "path": "mobile/evidence_0008_video_01_poster.jpg",
+            "bytes": 19269,
+            "sha256": "2735756f7d0ecf88035485f6ea41e5605171dc0eefaa87f8c735363253754d0d"
+          },
+          "VIDEO-02": {
+            "path": "mobile/evidence_0008_video_02_poster.jpg",
+            "bytes": 19700,
+            "sha256": "4adcd05c1c6e5566622e0738f6994c921afae5caa15b10d9381578a2ca3bacb7"
+          }
+        }
+      },
+      "transcript": [
+        {
+          "speaker": "interviewer",
+          "track": "AUDIO-01",
+          "text": "Rekaman ini adalah simulasi untuk demonstrasi. Ini pemeriksaan lanjutan. Silakan sebutkan nama Anda.",
+          "startSec": 0.8,
+          "endSec": 9.322
+        },
+        {
+          "speaker": "subject",
+          "track": "AUDIO-02",
+          "text": "Nama saya Nur Aini, petugas pos keamanan pasar.",
+          "startSec": 9.997,
+          "endSec": 14.191
+        },
+        {
+          "speaker": "interviewer",
+          "track": "AUDIO-01",
+          "text": "Ibu Nur, apa yang terjadi dengan dompet yang diserahkan kepada Ibu?",
+          "startSec": 14.952,
+          "endSec": 20.264
+        },
+        {
+          "speaker": "subject",
+          "track": "AUDIO-02",
+          "text": "Dompet itu kami simpan di loker, lalu pemiliknya datang mengambilnya siang harinya.",
+          "startSec": 21.015,
+          "endSec": 27.571
+        },
+        {
+          "speaker": "interviewer",
+          "track": "AUDIO-01",
+          "text": "Terima kasih, Bu. Keterangan Ibu kami catat.",
+          "startSec": 28.245,
+          "endSec": 32.387
+        }
+      ]
+    },
+    {
+      "mediaKey": "0009",
+      "sessionSeq": 19,
+      "sessionSuffix": "0019",
+      "sessionId": "SES-20261001-0019",
+      "evidenceId": "EV-20261001-0009",
+      "evidenceSuffix": "0009",
+      "subjectName": "Yusuf Pratomo",
+      "subjectType": "TERSANGKA",
+      "investigatorId": "OPR-001",
+      "investigatorName": "AKP Budi Santoso",
+      "outcome": "SEALED",
+      "live": false,
+      "loop": false,
+      "startedAt": "2026-10-01T07:49:09.000+07:00",
+      "sessionDurationMs": 1036000,
+      "excerpt": {
+        "offsetMs": 0,
+        "durationMs": 34000,
+        "loop": false
+      },
+      "voices": {
+        "AUDIO-01": {
+          "role": "Interviewer",
+          "mic": "MIC 1",
+          "engine": "espeak",
+          "variant": "m3",
+          "pitch": 38,
+          "speed": 148,
+          "female": false
+        },
+        "AUDIO-02": {
+          "role": "Subject",
+          "mic": "MIC 2",
+          "engine": "espeak",
+          "variant": "m4",
+          "pitch": 47,
+          "speed": 155,
+          "female": false
+        }
+      },
+      "tracks": {
+        "VIDEO-01": {
+          "path": "evidence/0009/VIDEO-01.mp4",
+          "bytes": 735398,
+          "sha256": "89666bcd21875a249075523bfdbc1a27a376152a96869ef8bc158876783739ff",
+          "durationSec": 34
+        },
+        "VIDEO-02": {
+          "path": "evidence/0009/VIDEO-02.mp4",
+          "bytes": 733734,
+          "sha256": "5e8f12a1037767efae78fd69d20b2392f986de9eb01c723572214903cfffb79b",
+          "durationSec": 34
+        },
+        "AUDIO-01": {
+          "path": "evidence/0009/AUDIO-01.m4a",
+          "bytes": 212813,
+          "sha256": "755bebea2718ae8d18e7c1f9e3a217acc102188620a842fb8c8f19e23cc5052c",
+          "durationSec": 34
+        },
+        "AUDIO-02": {
+          "path": "evidence/0009/AUDIO-02.m4a",
+          "bytes": 212481,
+          "sha256": "86d4e288908f1f5365cdaa6ac560ce484660c7106e15e2434318d95f64baafb8",
+          "durationSec": 34
+        }
+      },
+      "posters": {
+        "VIDEO-01": {
+          "path": "evidence/0009/VIDEO-01.poster.jpg",
+          "bytes": 58076,
+          "sha256": "c86a187988317d6462893adcfc9c106315f3e26d16d637beca977f5d7c993a74"
+        },
+        "VIDEO-02": {
+          "path": "evidence/0009/VIDEO-02.poster.jpg",
+          "bytes": 58610,
+          "sha256": "7ae21a63a6c58198deba1f66db46fd49b20509fe0e994aa0cefb90457e017fbe"
+        }
+      },
+      "thumbnails": {
+        "VIDEO-01": {
+          "path": "evidence/0009/VIDEO-01.thumb.jpg",
+          "bytes": 7515,
+          "sha256": "22b1afe59bdc2eb1bbcd2847fe29cf7f9ce7ab632cbed3f949dd1e4c598c3350"
+        },
+        "VIDEO-02": {
+          "path": "evidence/0009/VIDEO-02.thumb.jpg",
+          "bytes": 7592,
+          "sha256": "bb0b32196af4f5879fe3a63a0c2ebfd233384787d2d3cad47c4762f94517648d"
+        }
+      },
+      "mobile": {
+        "tracks": {
+          "VIDEO-01": {
+            "path": "mobile/evidence_0009_video_01.mp4",
+            "bytes": 247147,
+            "sha256": "00d5457ab0b2b83f612c00a0adc20e906ec81c78a52d0ecf2cbcf6f51fa2a403",
+            "durationSec": 34
+          },
+          "VIDEO-02": {
+            "path": "mobile/evidence_0009_video_02.mp4",
+            "bytes": 252062,
+            "sha256": "c06fa34de442f4c7a17ad8414eadb94c365d57e8664e4ada4e19e83c8591e78e",
+            "durationSec": 34
+          },
+          "AUDIO-01": {
+            "path": "mobile/evidence_0009_audio_01.m4a",
+            "bytes": 146350,
+            "sha256": "9cef03dae2d8f812320e133262b167159e695fba38eef7f7ee3fc9772414c7c2",
+            "durationSec": 34
+          },
+          "AUDIO-02": {
+            "path": "mobile/evidence_0009_audio_02.m4a",
+            "bytes": 143450,
+            "sha256": "1ec936d1446306731313ded0a29a92f24f97221f1067c028a5b9750cdd742b6c",
+            "durationSec": 34
+          }
+        },
+        "posters": {
+          "VIDEO-01": {
+            "path": "mobile/evidence_0009_video_01_poster.jpg",
+            "bytes": 19285,
+            "sha256": "429f2cd02148a39b4abc5683baee569240ce811ce832be68b68cdf4af434a3f0"
+          },
+          "VIDEO-02": {
+            "path": "mobile/evidence_0009_video_02_poster.jpg",
+            "bytes": 19604,
+            "sha256": "f424daf514643ab3967532db60764a6b3d907893ebaadd687529bab398f1d9be"
+          }
+        }
+      },
+      "transcript": [
+        {
+          "speaker": "interviewer",
+          "track": "AUDIO-01",
+          "text": "Rekaman ini adalah simulasi untuk demonstrasi. Ini pemeriksaan lanjutan. Silakan sebutkan nama Anda.",
+          "startSec": 0.8,
+          "endSec": 9.531
+        },
+        {
+          "speaker": "subject",
+          "track": "AUDIO-02",
+          "text": "Nama saya Yusuf Pratomo.",
+          "startSec": 10.2,
+          "endSec": 12.274
+        },
+        {
+          "speaker": "interviewer",
+          "track": "AUDIO-01",
+          "text": "Pak Yusuf, kami meminta klarifikasi tentang posisi mobil Bapak di halaman parkir kantor pos.",
+          "startSec": 13.079,
+          "endSec": 20.73
+        },
+        {
+          "speaker": "subject",
+          "track": "AUDIO-02",
+          "text": "Mobil saya diparkir di dekat pagar. Saya tidak melihat kejadiannya secara langsung.",
+          "startSec": 21.276,
+          "endSec": 28.293
+        },
+        {
+          "speaker": "interviewer",
+          "track": "AUDIO-01",
+          "text": "Baik. Keterangan Bapak kami catat.",
+          "startSec": 29.035,
+          "endSec": 32.103
+        }
+      ]
+    },
+    {
+      "mediaKey": "0010",
+      "sessionSeq": 20,
+      "sessionSuffix": "0020",
+      "sessionId": "SES-20261001-0020",
+      "evidenceId": "EV-20261001-0010",
+      "evidenceSuffix": "0010",
+      "subjectName": "Sri Wahyuni",
+      "subjectType": "LAINNYA",
+      "investigatorId": "OPR-002",
+      "investigatorName": "AKP Andi Pratama",
+      "outcome": "SEALED",
+      "live": false,
+      "loop": false,
+      "startedAt": "2026-10-01T08:13:58.000+07:00",
+      "sessionDurationMs": 876000,
+      "excerpt": {
+        "offsetMs": 0,
+        "durationMs": 31000,
+        "loop": false
+      },
+      "voices": {
+        "AUDIO-01": {
+          "role": "Interviewer",
+          "mic": "MIC 1",
+          "engine": "espeak",
+          "variant": "m7",
+          "pitch": 44,
+          "speed": 152,
+          "female": false
+        },
+        "AUDIO-02": {
+          "role": "Subject",
+          "mic": "MIC 2",
+          "engine": "espeak",
+          "variant": "Andrea",
+          "pitch": 62,
+          "speed": 146,
+          "female": true
+        }
+      },
+      "tracks": {
+        "VIDEO-01": {
+          "path": "evidence/0010/VIDEO-01.mp4",
+          "bytes": 700649,
+          "sha256": "340bead14dfeeec5f267f3d1c4717f859437d6c4e8a247f6e3a63889a089162a",
+          "durationSec": 31
+        },
+        "VIDEO-02": {
+          "path": "evidence/0010/VIDEO-02.mp4",
+          "bytes": 692016,
+          "sha256": "58fd653baa3954a42807761f3e1407fd612de021a8c119434b98c02281f81201",
+          "durationSec": 31
+        },
+        "AUDIO-01": {
+          "path": "evidence/0010/AUDIO-01.m4a",
+          "bytes": 194000,
+          "sha256": "1a71fcc872715bec68819377c56523aaf9afb2440603fae6bc3560a1b0d70a1c",
+          "durationSec": 31
+        },
+        "AUDIO-02": {
+          "path": "evidence/0010/AUDIO-02.m4a",
+          "bytes": 194201,
+          "sha256": "08bc76719a160782a34be70c6bcf0e46bd0c29f350c5e3403fbd80030c77d5eb",
+          "durationSec": 31
+        }
+      },
+      "posters": {
+        "VIDEO-01": {
+          "path": "evidence/0010/VIDEO-01.poster.jpg",
+          "bytes": 57766,
+          "sha256": "c051fcc1f9c13d31d0c64cd9cbf5c8056df772c8cbb48cefcbc220fe035ba06a"
+        },
+        "VIDEO-02": {
+          "path": "evidence/0010/VIDEO-02.poster.jpg",
+          "bytes": 58536,
+          "sha256": "d2057dfcbc6816a6952472f2636906982be37c1b1f443811d0cdbe7946683216"
+        }
+      },
+      "thumbnails": {
+        "VIDEO-01": {
+          "path": "evidence/0010/VIDEO-01.thumb.jpg",
+          "bytes": 7512,
+          "sha256": "b0cd1a4df79800224c1145872daf71950f843bfd10a51e53e9184fd26779771d"
+        },
+        "VIDEO-02": {
+          "path": "evidence/0010/VIDEO-02.thumb.jpg",
+          "bytes": 7604,
+          "sha256": "c8dab5b87016f13114dada756547aa962069847fee9552c77d85eb8508822cc9"
+        }
+      },
+      "mobile": {
+        "tracks": {
+          "VIDEO-01": {
+            "path": "mobile/evidence_0010_video_01.mp4",
+            "bytes": 237152,
+            "sha256": "18168bcfa0e5cb50d12d8bf9407dd8a569d4db9b79a0ec2300d818ac79c5db50",
+            "durationSec": 31
+          },
+          "VIDEO-02": {
+            "path": "mobile/evidence_0010_video_02.mp4",
+            "bytes": 238159,
+            "sha256": "0a7efb1279263a241fe834ef4b373a5e9cad51e5563997973de68858be55b910",
+            "durationSec": 31
+          },
+          "AUDIO-01": {
+            "path": "mobile/evidence_0010_audio_01.m4a",
+            "bytes": 133428,
+            "sha256": "6bf33084bab8b911fbc89d639b310d7cbb730e3a3ce1c2c748fc7fc151faba5b",
+            "durationSec": 31
+          },
+          "AUDIO-02": {
+            "path": "mobile/evidence_0010_audio_02.m4a",
+            "bytes": 129593,
+            "sha256": "0668ab8d76ab6fa61fc0909bdcf7807fdb7001e7640bc9e9cdfa5321a0cbf42e",
+            "durationSec": 31
+          }
+        },
+        "posters": {
+          "VIDEO-01": {
+            "path": "mobile/evidence_0010_video_01_poster.jpg",
+            "bytes": 19325,
+            "sha256": "2ee897ce5d56460ce28ca585807a5afb9169ec9b4a09ca8ae22e0557c1fda0a5"
+          },
+          "VIDEO-02": {
+            "path": "mobile/evidence_0010_video_02_poster.jpg",
+            "bytes": 19698,
+            "sha256": "de5c22cd9716a7eca152ea624d69b0b05f52c48622e9381596d967fdfd494dea"
+          }
+        }
+      },
+      "transcript": [
+        {
+          "speaker": "interviewer",
+          "track": "AUDIO-01",
+          "text": "Rekaman ini adalah simulasi untuk demonstrasi. Ini pemeriksaan lanjutan. Silakan sebutkan nama Anda.",
+          "startSec": 0.8,
+          "endSec": 9.322
+        },
+        {
+          "speaker": "subject",
+          "track": "AUDIO-02",
+          "text": "Nama saya Sri Wahyuni, resepsionis gedung.",
+          "startSec": 10.037,
+          "endSec": 13.044
+        },
+        {
+          "speaker": "interviewer",
+          "track": "AUDIO-01",
+          "text": "Ibu Sri, bagaimana paket-paket itu dicatat di meja resepsionis?",
+          "startSec": 13.711,
+          "endSec": 18.898
+        },
+        {
+          "speaker": "subject",
+          "track": "AUDIO-02",
+          "text": "Setiap paket dicatat di buku tamu. Dua nama penerimanya memang hampir sama.",
+          "startSec": 19.551,
+          "endSec": 24.89
+        },
+        {
+          "speaker": "interviewer",
+          "track": "AUDIO-01",
+          "text": "Terima kasih, Bu. Keterangan Ibu kami catat.",
+          "startSec": 25.589,
+          "endSec": 29.731
+        }
+      ]
+    },
+    {
+      "mediaKey": "0011",
+      "sessionSeq": 21,
+      "sessionSuffix": "0021",
+      "sessionId": "SES-20261001-0021",
+      "evidenceId": "EV-20261001-0011",
+      "evidenceSuffix": "0011",
+      "subjectName": "Fajar Nugroho",
+      "subjectType": "SAKSI",
+      "investigatorId": "OPR-001",
+      "investigatorName": "AKP Budi Santoso",
+      "outcome": "SEALED",
+      "live": false,
+      "loop": false,
+      "startedAt": "2026-10-01T08:37:52.000+07:00",
+      "sessionDurationMs": 770000,
+      "excerpt": {
+        "offsetMs": 0,
+        "durationMs": 34000,
+        "loop": false
+      },
+      "voices": {
+        "AUDIO-01": {
+          "role": "Interviewer",
+          "mic": "MIC 1",
+          "engine": "espeak",
+          "variant": "m3",
+          "pitch": 38,
+          "speed": 148,
+          "female": false
+        },
+        "AUDIO-02": {
+          "role": "Subject",
+          "mic": "MIC 2",
+          "engine": "espeak",
+          "variant": "m2",
+          "pitch": 49,
+          "speed": 151,
+          "female": false
+        }
+      },
+      "tracks": {
+        "VIDEO-01": {
+          "path": "evidence/0011/VIDEO-01.mp4",
+          "bytes": 734746,
+          "sha256": "24be015112b2ad42ca00687cd96cabe018e293284fcd0eef03986bf3271b525b",
+          "durationSec": 34
+        },
+        "VIDEO-02": {
+          "path": "evidence/0011/VIDEO-02.mp4",
+          "bytes": 734400,
+          "sha256": "dcf8b9485349da4262b14a5bf486227a235c908cb512bf0d85e8cfc4ad0a8514",
+          "durationSec": 34
+        },
+        "AUDIO-01": {
+          "path": "evidence/0011/AUDIO-01.m4a",
+          "bytes": 212350,
+          "sha256": "bee6e4f8d19a2d9d5ecb6a8419d2a3d5c3e76ec51d2051b66cd17e072ce10338",
+          "durationSec": 34
+        },
+        "AUDIO-02": {
+          "path": "evidence/0011/AUDIO-02.m4a",
+          "bytes": 213188,
+          "sha256": "8042ce550917ae8d661015b2d19b81d46cfc4ca9dc28449de382a25523a4acc1",
+          "durationSec": 34
+        }
+      },
+      "posters": {
+        "VIDEO-01": {
+          "path": "evidence/0011/VIDEO-01.poster.jpg",
+          "bytes": 57974,
+          "sha256": "94a6dbdbbfad3b1c75b5836b11275c4a5db8e3d9c36e2c76152e25f2bb9b93c4"
+        },
+        "VIDEO-02": {
+          "path": "evidence/0011/VIDEO-02.poster.jpg",
+          "bytes": 58750,
+          "sha256": "736158607c55b27bd6ef9a2893f008bf80527780012fe17b4204290e10c767e5"
+        }
+      },
+      "thumbnails": {
+        "VIDEO-01": {
+          "path": "evidence/0011/VIDEO-01.thumb.jpg",
+          "bytes": 7516,
+          "sha256": "1514092f23f782488abccc60532cd4109deeb193c6a1f5d8ca0ebc07ff24e8fb"
+        },
+        "VIDEO-02": {
+          "path": "evidence/0011/VIDEO-02.thumb.jpg",
+          "bytes": 7611,
+          "sha256": "3ea51eaf839c5f4d245c770d78af22fb916db02e755b38cf8d13c17c2d97a931"
+        }
+      },
+      "mobile": {
+        "tracks": {
+          "VIDEO-01": {
+            "path": "mobile/evidence_0011_video_01.mp4",
+            "bytes": 249095,
+            "sha256": "71ca3c3a0349bfe341d87c014dff9b48e6524e53eb6d1c2b46488aa853cc49ab",
+            "durationSec": 34
+          },
+          "VIDEO-02": {
+            "path": "mobile/evidence_0011_video_02.mp4",
+            "bytes": 252962,
+            "sha256": "c08ecf753d6acb52ccd54d308597b8d73d4005c8e4843d39183f1d85b3364483",
+            "durationSec": 34
+          },
+          "AUDIO-01": {
+            "path": "mobile/evidence_0011_audio_01.m4a",
+            "bytes": 145346,
+            "sha256": "7608a1d4fa481b1fa5f70f809e6f52cd815817de0f1d25a3df61233e0e771be4",
+            "durationSec": 34
+          },
+          "AUDIO-02": {
+            "path": "mobile/evidence_0011_audio_02.m4a",
+            "bytes": 144010,
+            "sha256": "46c56cf2d183aa435335b2939a43a6074a6c3021d02779227281894faf0fed96",
+            "durationSec": 34
+          }
+        },
+        "posters": {
+          "VIDEO-01": {
+            "path": "mobile/evidence_0011_video_01_poster.jpg",
+            "bytes": 19334,
+            "sha256": "3dd1ccd9d41d8fa8dcdce2ae5e7d0456eab582bebf97d0008e21a1d6a01bba3b"
+          },
+          "VIDEO-02": {
+            "path": "mobile/evidence_0011_video_02_poster.jpg",
+            "bytes": 19592,
+            "sha256": "ae50d52ba988ef8094604079f568d189ff3eb3a60bfd805b3ddcad59ca3f355b"
+          }
+        }
+      },
+      "transcript": [
+        {
+          "speaker": "interviewer",
+          "track": "AUDIO-01",
+          "text": "Rekaman ini adalah simulasi untuk demonstrasi. Ini pemeriksaan lanjutan. Silakan sebutkan nama Anda.",
+          "startSec": 0.8,
+          "endSec": 9.531
+        },
+        {
+          "speaker": "subject",
+          "track": "AUDIO-02",
+          "text": "Nama saya Fajar Nugroho, pemilik sepeda motor itu.",
+          "startSec": 10.077,
+          "endSec": 14.497
+        },
+        {
+          "speaker": "interviewer",
+          "track": "AUDIO-01",
+          "text": "Pak Fajar, bagaimana kondisi spion motor Bapak?",
+          "startSec": 15.405,
+          "endSec": 19.32
+        },
+        {
+          "speaker": "subject",
+          "track": "AUDIO-02",
+          "text": "Hanya tergores sedikit. Pengemudi mobil sudah meminta maaf, dan masalahnya selesai dengan baik.",
+          "startSec": 19.882,
+          "endSec": 27.58
+        },
+        {
+          "speaker": "interviewer",
+          "track": "AUDIO-01",
+          "text": "Terima kasih, Pak. Keterangan Bapak kami catat.",
+          "startSec": 28.451,
+          "endSec": 32.825
+        }
+      ]
+    },
+    {
+      "mediaKey": "0012",
+      "sessionSeq": 22,
+      "sessionSuffix": "0022",
+      "sessionId": "SES-20261001-0022",
+      "evidenceId": "EV-20261001-0012",
+      "evidenceSuffix": "0012",
+      "subjectName": "Indah Permata",
+      "subjectType": "SAKSI",
+      "investigatorId": "OPR-002",
+      "investigatorName": "AKP Andi Pratama",
+      "outcome": "SEALED",
+      "live": false,
+      "loop": false,
+      "startedAt": "2026-10-01T08:56:15.000+07:00",
+      "sessionDurationMs": 996000,
+      "excerpt": {
+        "offsetMs": 0,
+        "durationMs": 34000,
+        "loop": false
+      },
+      "voices": {
+        "AUDIO-01": {
+          "role": "Interviewer",
+          "mic": "MIC 1",
+          "engine": "espeak",
+          "variant": "m7",
+          "pitch": 44,
+          "speed": 152,
+          "female": false
+        },
+        "AUDIO-02": {
+          "role": "Subject",
+          "mic": "MIC 2",
+          "engine": "espeak",
+          "variant": "Annie",
+          "pitch": 64,
+          "speed": 156,
+          "female": true
+        }
+      },
+      "tracks": {
+        "VIDEO-01": {
+          "path": "evidence/0012/VIDEO-01.mp4",
+          "bytes": 737298,
+          "sha256": "888da63e64caaa6b1767bc533b2c89809c0daffc3a72a6eadd74c6e548f0dde8",
+          "durationSec": 34
+        },
+        "VIDEO-02": {
+          "path": "evidence/0012/VIDEO-02.mp4",
+          "bytes": 733242,
+          "sha256": "d2bb76b9e99b00da6247cc0356dab0824ae6cb47b15b809b037b07f8a7894cb7",
+          "durationSec": 34
+        },
+        "AUDIO-01": {
+          "path": "evidence/0012/AUDIO-01.m4a",
+          "bytes": 212545,
+          "sha256": "4157c42ebc366aef17f9a83afa91c5daf3e1fff7d001268b133bc340cf3f7fb6",
+          "durationSec": 34
+        },
+        "AUDIO-02": {
+          "path": "evidence/0012/AUDIO-02.m4a",
+          "bytes": 212455,
+          "sha256": "337f5b628348ad57ab913e627134448fe5401ea04f94eed83a526a5d4d8e80eb",
+          "durationSec": 34
+        }
+      },
+      "posters": {
+        "VIDEO-01": {
+          "path": "evidence/0012/VIDEO-01.poster.jpg",
+          "bytes": 58189,
+          "sha256": "a305e355f339b1a3b0e370d50cc0a1f03932e958e6589e8a1c5e780951b3f901"
+        },
+        "VIDEO-02": {
+          "path": "evidence/0012/VIDEO-02.poster.jpg",
+          "bytes": 58696,
+          "sha256": "7acf9c1c2217e25a53dc3005c98c862a55c0a540a58f68d302247f3a6127b866"
+        }
+      },
+      "thumbnails": {
+        "VIDEO-01": {
+          "path": "evidence/0012/VIDEO-01.thumb.jpg",
+          "bytes": 7498,
+          "sha256": "942f0cf74a02a4b6769a6a68f405328977042aa3d0867663f3ad33220c4b8665"
+        },
+        "VIDEO-02": {
+          "path": "evidence/0012/VIDEO-02.thumb.jpg",
+          "bytes": 7601,
+          "sha256": "94fe5846f6e993c4a3ad2fac0836d4ffaa308c2a4ea9915794a2e66208c9bcca"
+        }
+      },
+      "mobile": {
+        "tracks": {
+          "VIDEO-01": {
+            "path": "mobile/evidence_0012_video_01.mp4",
+            "bytes": 249421,
+            "sha256": "ea1a0909c40dd9f36862815e1ef1233379b2c69138140b6b75a9d55856c1ccbd",
+            "durationSec": 34
+          },
+          "VIDEO-02": {
+            "path": "mobile/evidence_0012_video_02.mp4",
+            "bytes": 251834,
+            "sha256": "faf7acf18a986b818082df418ac0eac2d579be49ee9751a4f2f9bbc7030498df",
+            "durationSec": 34
+          },
+          "AUDIO-01": {
+            "path": "mobile/evidence_0012_audio_01.m4a",
+            "bytes": 144653,
+            "sha256": "85074411ee590698345097e8096616c7d4fbdf818017fbec3fe99b220bddf00d",
+            "durationSec": 34
+          },
+          "AUDIO-02": {
+            "path": "mobile/evidence_0012_audio_02.m4a",
+            "bytes": 141820,
+            "sha256": "f9c383148604eaa30bba4d0bcb1bcfa4fc968c4c71a078d01196ceb168c3a27e",
+            "durationSec": 34
+          }
+        },
+        "posters": {
+          "VIDEO-01": {
+            "path": "mobile/evidence_0012_video_01_poster.jpg",
+            "bytes": 19301,
+            "sha256": "72e99e510d1851eaad60c71e38fd0b4593b6ef511b6b6566a2d6d9aa7c7b34bc"
+          },
+          "VIDEO-02": {
+            "path": "mobile/evidence_0012_video_02_poster.jpg",
+            "bytes": 19636,
+            "sha256": "53ad2c24a80e15b77b1318c6296d17a372d3f4fe44ea9bc8181bd759df42d6d9"
+          }
+        }
+      },
+      "transcript": [
+        {
+          "speaker": "interviewer",
+          "track": "AUDIO-01",
+          "text": "Rekaman ini adalah simulasi untuk demonstrasi. Ini pemeriksaan lanjutan. Silakan sebutkan nama Anda.",
+          "startSec": 0.8,
+          "endSec": 9.322
+        },
+        {
+          "speaker": "subject",
+          "track": "AUDIO-02",
+          "text": "Nama saya Indah Permata. Telepon yang tertinggal itu milik saya.",
+          "startSec": 10.066,
+          "endSec": 15.113
+        },
+        {
+          "speaker": "interviewer",
+          "track": "AUDIO-01",
+          "text": "Ibu Indah, bagaimana telepon itu kembali kepada Ibu?",
+          "startSec": 16.025,
+          "endSec": 20.332
+        },
+        {
+          "speaker": "subject",
+          "track": "AUDIO-02",
+          "text": "Saya menghubungi terminal, lalu mengambilnya di kotak barang temuan keesokan harinya.",
+          "startSec": 20.857,
+          "endSec": 27.118
+        },
+        {
+          "speaker": "interviewer",
+          "track": "AUDIO-01",
+          "text": "Terima kasih, Bu. Keterangan Ibu kami catat.",
+          "startSec": 27.896,
+          "endSec": 32.038
+        }
+      ]
+    },
+    {
+      "mediaKey": "0013",
+      "sessionSeq": 23,
+      "sessionSuffix": "0023",
+      "sessionId": "SES-20261001-0023",
+      "evidenceId": "EV-20261001-0013",
+      "evidenceSuffix": "0013",
+      "subjectName": "Wahyu Saputra",
+      "subjectType": "TERSANGKA",
+      "investigatorId": "OPR-001",
+      "investigatorName": "AKP Budi Santoso",
+      "outcome": "SEALED",
+      "live": false,
+      "loop": false,
+      "startedAt": "2026-10-01T09:19:57.000+07:00",
+      "sessionDurationMs": 903000,
+      "excerpt": {
+        "offsetMs": 0,
+        "durationMs": 34000,
+        "loop": false
+      },
+      "voices": {
+        "AUDIO-01": {
+          "role": "Interviewer",
+          "mic": "MIC 1",
+          "engine": "espeak",
+          "variant": "m3",
+          "pitch": 38,
+          "speed": 148,
+          "female": false
+        },
+        "AUDIO-02": {
+          "role": "Subject",
+          "mic": "MIC 2",
+          "engine": "espeak",
+          "variant": "m6",
+          "pitch": 51,
+          "speed": 147,
+          "female": false
+        }
+      },
+      "tracks": {
+        "VIDEO-01": {
+          "path": "evidence/0013/VIDEO-01.mp4",
+          "bytes": 733105,
+          "sha256": "449aac33a83d9232ce0a98a61839442af6956e93ad130bc7863256bbbbe81744",
+          "durationSec": 34
+        },
+        "VIDEO-02": {
+          "path": "evidence/0013/VIDEO-02.mp4",
+          "bytes": 734328,
+          "sha256": "e796c6afcfee10513a750d9a0a35bb9ae2d1d3493d7760e1c3884a0010d534d8",
+          "durationSec": 34
+        },
+        "AUDIO-01": {
+          "path": "evidence/0013/AUDIO-01.m4a",
+          "bytes": 212675,
+          "sha256": "f5e493bc42072e7ab543f40e9dda4e4deaa2f66c91eff9c62c0578bf891c233c",
+          "durationSec": 34
+        },
+        "AUDIO-02": {
+          "path": "evidence/0013/AUDIO-02.m4a",
+          "bytes": 213947,
+          "sha256": "f06a3a4a2079249da092fc5da22cb4ff5f9eaabca8fc936574c5d9a80855b46a",
+          "durationSec": 34
+        }
+      },
+      "posters": {
+        "VIDEO-01": {
+          "path": "evidence/0013/VIDEO-01.poster.jpg",
+          "bytes": 57832,
+          "sha256": "e049551be46ac4539fc4197a090c5efe5b1c747172708ffceb44ff7c5098d3d7"
+        },
+        "VIDEO-02": {
+          "path": "evidence/0013/VIDEO-02.poster.jpg",
+          "bytes": 58599,
+          "sha256": "da85c69770061ecb9d2315252641e34703e63f9d84986f7abd1d7c943da74b7e"
+        }
+      },
+      "thumbnails": {
+        "VIDEO-01": {
+          "path": "evidence/0013/VIDEO-01.thumb.jpg",
+          "bytes": 7541,
+          "sha256": "0c331654c777abd5271189020618014543e24432df9147a37c4f92bdb17af6b6"
+        },
+        "VIDEO-02": {
+          "path": "evidence/0013/VIDEO-02.thumb.jpg",
+          "bytes": 7609,
+          "sha256": "7db83d49dd2d243eb2ce0ec20a25d100a54268d5bd719ccfb320bb4d85369257"
+        }
+      },
+      "mobile": {
+        "tracks": {
+          "VIDEO-01": {
+            "path": "mobile/evidence_0013_video_01.mp4",
+            "bytes": 248049,
+            "sha256": "ace3d138ee9590c040297a271beb261bbd7cb6f3903f8c76e4cd3ec6a9fc278d",
+            "durationSec": 34
+          },
+          "VIDEO-02": {
+            "path": "mobile/evidence_0013_video_02.mp4",
+            "bytes": 252548,
+            "sha256": "6d80bb3ee1ceb79237b58d848712c32d8c12a508cd8546d4bff58c53cb43e02b",
+            "durationSec": 34
+          },
+          "AUDIO-01": {
+            "path": "mobile/evidence_0013_audio_01.m4a",
+            "bytes": 146350,
+            "sha256": "1042673c6b2d7140ffef2fb428c0368d511dec5d477fd189bbebc2e7d3b59851",
+            "durationSec": 34
+          },
+          "AUDIO-02": {
+            "path": "mobile/evidence_0013_audio_02.m4a",
+            "bytes": 143090,
+            "sha256": "106f7ea0f3b93a387fed79864197a5844f49d3f3e9910e215835901e62373cf5",
+            "durationSec": 34
+          }
+        },
+        "posters": {
+          "VIDEO-01": {
+            "path": "mobile/evidence_0013_video_01_poster.jpg",
+            "bytes": 19421,
+            "sha256": "d7592f253c0be3d8350cff8fd8552449c9081e0798c716476026095179913329"
+          },
+          "VIDEO-02": {
+            "path": "mobile/evidence_0013_video_02_poster.jpg",
+            "bytes": 19610,
+            "sha256": "b6c4c190cf0aff3ea4c75707796c0580c5f9663e8535ef2c571c1d0677e8bf19"
+          }
+        }
+      },
+      "transcript": [
+        {
+          "speaker": "interviewer",
+          "track": "AUDIO-01",
+          "text": "Rekaman ini adalah simulasi untuk demonstrasi. Ini pemeriksaan lanjutan. Silakan sebutkan nama Anda.",
+          "startSec": 0.8,
+          "endSec": 9.531
+        },
+        {
+          "speaker": "subject",
+          "track": "AUDIO-02",
+          "text": "Nama saya Wahyu Saputra.",
+          "startSec": 10.049,
+          "endSec": 12.164
+        },
+        {
+          "speaker": "interviewer",
+          "track": "AUDIO-01",
+          "text": "Pak Wahyu, kami meminta klarifikasi tentang troli belanja di parkiran swalayan.",
+          "startSec": 13.043,
+          "endSec": 19.431
+        },
+        {
+          "speaker": "subject",
+          "track": "AUDIO-02",
+          "text": "Troli itu saya tinggalkan sebentar di dekat mobil saya, lalu terdorong angin.",
+          "startSec": 20.154,
+          "endSec": 26.37
+        },
+        {
+          "speaker": "interviewer",
+          "track": "AUDIO-01",
+          "text": "Baik. Keterangan Bapak kami catat untuk proses selanjutnya.",
+          "startSec": 27.318,
+          "endSec": 32.362
+        }
+      ]
+    }
+  ],
+  "live": {
+    "mediaKey": "0024",
+    "sessionSeq": 24,
+    "sessionSuffix": "0024",
+    "sessionId": "SES-20261001-0024",
+    "evidenceId": null,
+    "evidenceSuffix": null,
+    "evidenceSuffixWhenSealed": "0014",
+    "subjectName": "Ahmad Fauzi",
+    "subjectType": "TERSANGKA",
+    "investigatorId": "OPR-001",
+    "investigatorName": "AKP Budi Santoso",
+    "outcome": "RECORDING",
+    "live": true,
+    "loop": true,
+    "startedAt": null,
+    "sessionDurationMs": null,
+    "excerpt": {
+      "offsetMs": 0,
+      "durationMs": 38000,
+      "loop": true
+    },
+    "voices": {
+      "AUDIO-01": {
+        "role": "Interviewer",
+        "mic": "MIC 1",
+        "engine": "espeak",
+        "variant": "m3",
+        "pitch": 38,
+        "speed": 148,
+        "female": false
+      },
+      "AUDIO-02": {
+        "role": "Subject",
+        "mic": "MIC 2",
+        "engine": "espeak",
+        "variant": "m2",
+        "pitch": 46,
+        "speed": 152,
+        "female": false
+      }
+    },
+    "tracks": {
+      "VIDEO-01": {
+        "path": "live/VIDEO-01.loop.mp4",
+        "bytes": 727931,
+        "sha256": "f151cb58ac54afdb9d3c33c251a598479adf19d505f8df973880ee23dcec3e86",
+        "durationSec": 38
+      },
+      "VIDEO-02": {
+        "path": "live/VIDEO-02.loop.mp4",
+        "bytes": 719560,
+        "sha256": "a4bfcf70cdd6db70bcbf4819e3b9317cce62cdf7f5260ffdfb6b0110f515f10f",
+        "durationSec": 38
+      },
+      "AUDIO-01": {
+        "path": "live/AUDIO-01.loop.m4a",
+        "bytes": 237640,
+        "sha256": "674d96b979f7ca6fc914bcc2dab1b856602faeae13c297037e81c667eb48b541",
+        "durationSec": 38
+      },
+      "AUDIO-02": {
+        "path": "live/AUDIO-02.loop.m4a",
+        "bytes": 238252,
+        "sha256": "e4ceb553e450cb8b3b29a8e31ab4b0d023b02753af4248dbf9f7d4e369db89d2",
+        "durationSec": 38
+      }
+    },
+    "posters": {
+      "VIDEO-01": {
+        "path": "live/VIDEO-01.poster.jpg",
+        "bytes": 45617,
+        "sha256": "e13fb472f071730402fdaed1c32251b241d21bf20b2a9eac5a8704b114df2ce0"
+      },
+      "VIDEO-02": {
+        "path": "live/VIDEO-02.poster.jpg",
+        "bytes": 45603,
+        "sha256": "72b4bac07b4889a7dd8b11b9648828b73a71d73103d10440b3f8856eb6e7ba14"
+      }
+    },
+    "thumbnails": {
+      "VIDEO-01": {
+        "path": "live/VIDEO-01.thumb.jpg",
+        "bytes": 5903,
+        "sha256": "cc3561fc583fbc6038b096d8927349332a73ae0665e6a1c4f59500d4c7507602"
+      },
+      "VIDEO-02": {
+        "path": "live/VIDEO-02.thumb.jpg",
+        "bytes": 6117,
+        "sha256": "b054a3b1e303148243fba205103c7447f8c61a9be1bf7c272ac42786d7a9a0a3"
+      }
+    },
+    "mobile": {
+      "tracks": {
+        "VIDEO-01": {
+          "path": "mobile/live_video_01_loop.mp4",
+          "bytes": 238469,
+          "sha256": "a4178dc9c9c9e5271197d1c753dae32fc173700f21bb8f7a1a346c5a30b57ebd",
+          "durationSec": 38
+        },
+        "VIDEO-02": {
+          "path": "mobile/live_video_02_loop.mp4",
+          "bytes": 236000,
+          "sha256": "c737970500ac5e984e9372d59205b4a4a9e3867a695b6e772ee6f78f483dcc96",
+          "durationSec": 38
+        },
+        "AUDIO-01": {
+          "path": "mobile/live_audio_01_loop.m4a",
+          "bytes": 162537,
+          "sha256": "3e60e96b93f2f4881aa571bd63e0720800e8ddeda65f4c1fbe2823ea9de61eda",
+          "durationSec": 38
+        },
+        "AUDIO-02": {
+          "path": "mobile/live_audio_02_loop.m4a",
+          "bytes": 161407,
+          "sha256": "f4e5e460b5ecbd43381270ca2f1a56ac113f51f1eaa2cd71b1619657e5941e3b",
+          "durationSec": 38
+        }
+      },
+      "posters": {
+        "VIDEO-01": {
+          "path": "mobile/live_video_01_poster.jpg",
+          "bytes": 15140,
+          "sha256": "ddc604dad68ddbf61feeb032787bfcc7fe7d45f4bb0be4ac39960d2fc5bae846"
+        },
+        "VIDEO-02": {
+          "path": "mobile/live_video_02_poster.jpg",
+          "bytes": 15465,
+          "sha256": "60642102be02527170e93b9fc85bbf9f328000e72b12690f9b187fb19c943f1f"
+        }
+      }
+    },
+    "transcript": [
+      {
+        "speaker": "interviewer",
+        "track": "AUDIO-01",
+        "text": "Rekaman ini adalah simulasi untuk demonstrasi. Pak Ahmad, mohon jelaskan kejadian di persimpangan kemarin sore.",
+        "startSec": 0.8,
+        "endSec": 10.011
+      },
+      {
+        "speaker": "subject",
+        "track": "AUDIO-02",
+        "text": "Lampu sudah hijau, Pak. Motor saya bergerak pelan, lalu menyentuh bemper mobil di depan saya.",
+        "startSec": 10.72,
+        "endSec": 18.66
+      },
+      {
+        "speaker": "interviewer",
+        "track": "AUDIO-01",
+        "text": "Apakah Bapak dan pengemudi mobil sudah bertemu setelah kejadian itu?",
+        "startSec": 19.648,
+        "endSec": 24.985
+      },
+      {
+        "speaker": "subject",
+        "track": "AUDIO-02",
+        "text": "Sudah. Kami sepakat mengurus perbaikan bersama dan saling bertukar nomor telepon.",
+        "startSec": 25.5,
+        "endSec": 31.991
+      },
+      {
+        "speaker": "interviewer",
+        "track": "AUDIO-01",
+        "text": "Baik. Keterangan Ahmad Fauzi kami catat.",
+        "startSec": 32.726,
+        "endSec": 36.326
+      }
+    ]
+  }
+}

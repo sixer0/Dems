@@ -5,10 +5,12 @@
   "main": "expo-router/entry",
   "scripts": {
     "dev": "EXPO_NO_TELEMETRY=1 NODE_OPTIONS=--dns-result-order=ipv4first expo start --localhost --port 8081",
+    "start:lane": "EXPO_NO_TELEMETRY=1 NODE_OPTIONS=--dns-result-order=ipv4first expo start --localhost --port ${METRO_PORT:-8081}",
     "build": "EXPO_NO_TELEMETRY=1 expo prebuild --platform android --no-install && cd android && ./gradlew assembleDebug",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test": "jest",
+    "e2e": "MAESTRO_CLI_NO_ANALYTICS=true MAESTRO_CLI_ANALYSIS_NOTIFICATION_DISABLED=true \"$HOME/.maestro/bin/maestro\" ${ANDROID_SERIAL:+--device $ANDROID_SERIAL} test e2e/maestro",
     "android": "EXPO_NO_TELEMETRY=1 expo run:android",
     "prebuild": "EXPO_NO_TELEMETRY=1 expo prebuild --platform android --no-install",
     "doctor": "EXPO_NO_TELEMETRY=1 expo-doctor",
@@ -23,6 +25,7 @@
     "@expo/ui": "~57.0.21",
     "@gorhom/bottom-sheet": "5.2.14",
     "@hookform/resolvers": "5.9.1",
+    "@react-native-async-storage/async-storage": "2.2.0",
     "@shopify/flash-list": "2.0.2",
     "@shopify/react-native-skia": "2.6.2",
     "@tanstack/react-query": "5.104.0",
@@ -54,6 +57,7 @@
     "react-i18next": "17.0.15",
     "react-native": "0.86.3",
     "react-native-gesture-handler": "~2.32.0",
+    "react-native-keyboard-controller": "1.21.9",
     "react-native-reanimated": "4.5.1",
     "react-native-safe-area-context": "~5.7.0",
     "react-native-screens": "~4.26.0",
@@ -78,17 +82,5 @@
     "jest-expo": "~57.0.5",
     "react-test-renderer": "19.2.3",
     "typescript": "6.0.3"
-  },
-  "jest": {
-    "preset": "jest-expo",
-    "setupFilesAfterEnv": [
-      "./jest.setup.ts"
-    ],
-    "transformIgnorePatterns": [
-      "node_modules/(?!((jest-)?react-native|@react-native(-community)?)|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|react-navigation|@react-navigation/.*|react-native-svg|heroui-native|uniwind|@shopify/.*|@gorhom/.*|lucide-react-native|victory-native|@dems/.*)"
-    ],
-    "moduleNameMapper": {
-      "^lucide-react-native$": "<rootDir>/../../node_modules/lucide-react-native/dist/cjs/lucide-react-native.js"
-    }
   }
 }

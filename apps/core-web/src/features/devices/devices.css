@@ -1,0 +1,1191 @@
+/*
+ * Devices & Inputs styles (step 48; 01_specs §14.5.4; research/04 §1.3–§1.6, §4, §5.2).
+ *
+ * Visual language: the Dashboard / AssetSample panels (warm L2 surface, bronze hairline with a
+ * soft glow, gold icons, tracked uppercase titles, inset L3 tiles) plus an appliance "twin"
+ * (front panel with the 800×480 LCD and LEDs, rear panel with the port LEDs).
+ *
+ * Layering and motion rules as in shell.css: rules sit in `@layer components` so Tailwind
+ * utilities still win; only `opacity` and `transform` animate (colour transitions on small chips
+ * per M-C-10); CSS loops carry `data-ambient` from `useAmbientLoop`, so motion.css pauses them
+ * when their slot is not granted and removes them under reduced motion; every loop duration
+ * multiplies by `--motion-time-scale` (proof mode).
+ */
+@layer components {
+  /* ── Tones ───────────────────────────────────────────────────────────────────────────── */
+  :is(.dev-page, .dev-drawer) [data-tone='success'] {
+    --dev-tone: var(--success);
+    --dev-tone-text: var(--success-soft-foreground);
+  }
+  :is(.dev-page, .dev-drawer) [data-tone='warning'] {
+    --dev-tone: var(--warning);
+    --dev-tone-text: var(--warning-soft-foreground);
+  }
+  :is(.dev-page, .dev-drawer) [data-tone='danger'] {
+    --dev-tone: var(--danger);
+    --dev-tone-text: var(--danger-soft-foreground);
+  }
+  :is(.dev-page, .dev-drawer) [data-tone='default'] {
+    --dev-tone: var(--muted);
+    --dev-tone-text: var(--muted);
+  }
+
+  /* ── Grid (12 columns ≥ 1280, 8 at 1024–1279, 1 below; 01_specs §14.3) ─────────────── */
+  .dev-grid {
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    gap: var(--shell-gutter, 16px);
+    align-items: stretch;
+  }
+
+  .dev-panel {
+    display: flex;
+    min-width: 0;
+  }
+
+  .dev-panel-cameras,
+  .dev-panel-audio {
+    grid-column: span 8;
+  }
+
+  .dev-panel-summary,
+  .dev-panel-other {
+    grid-column: span 4;
+  }
+
+  .dev-panel-front {
+    grid-column: span 5;
+  }
+
+  .dev-panel-ports {
+    grid-column: span 7;
+  }
+
+  .dems-shell[data-shell-tier='md'] .dev-grid {
+    grid-template-columns: repeat(8, minmax(0, 1fr));
+  }
+
+  .dems-shell[data-shell-tier='md'] .dev-panel {
+    grid-column: span 8;
+  }
+
+  .dems-shell[data-shell-tier='md'] .dev-summary {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .dems-shell[data-shell-tier='sm'] .dev-grid,
+  .dems-shell[data-shell-tier='xs'] .dev-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dems-shell[data-shell-tier='sm'] .dev-panel,
+  .dems-shell[data-shell-tier='xs'] .dev-panel {
+    grid-column: auto;
+  }
+
+  .dems-shell[data-shell-tier='xs'] .dev-cams,
+  .dems-shell[data-shell-tier='xs'] .dev-audios,
+  .dems-shell[data-shell-tier='sm'] .dev-audios {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dems-shell[data-shell-tier='xs'] .dev-front-face {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* ── Panel card ──────────────────────────────────────────────────────────────────────── */
+  .dev-card {
+    flex: 1 1 auto;
+    min-width: 0;
+    gap: 12px;
+    padding: 14px 16px 16px;
+    border-radius: 12px;
+    background-color: var(--surface);
+    /* The glow is GlowLayer level 1 (opacity-only changes, §2.2); the kit shadow would double it. */
+    box-shadow: none;
+  }
+
+  .dev-card-header {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+  }
+
+  .dev-card-icon {
+    width: 20px;
+    height: 20px;
+    flex: none;
+    color: var(--accent);
+    filter: drop-shadow(0 0 6px rgb(255 159 61 / 0.45));
+  }
+
+  .dev-card-heading {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  .dev-card-title {
+    margin: 0;
+    font-size: 13px;
+    line-height: 18px;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--foreground);
+  }
+
+  .dev-card-subtitle {
+    margin: 0;
+    font-size: 12px;
+    line-height: 16px;
+    color: var(--color-foreground-2);
+  }
+
+  .dev-card-action {
+    margin-left: auto;
+  }
+
+  .dev-card-body {
+    position: relative;
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 0;
+  }
+
+  .dev-panel-fallback {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 12px;
+  }
+
+  /* ── Header banner ───────────────────────────────────────────────────────────────────── */
+  .dev-banner {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    min-width: min(420px, 100%);
+    padding: 12px 20px 12px 16px;
+    border: 1px solid color-mix(in srgb, var(--dev-tone) 45%, transparent);
+    border-radius: 12px;
+    background: linear-gradient(90deg, rgb(20 14 8 / 0.95), rgb(20 14 8 / 0.75));
+    box-shadow: 0 0 22px color-mix(in srgb, var(--dev-tone) 16%, transparent);
+    transition: border-color 400ms cubic-bezier(0.2, 0, 0, 1);
+  }
+
+  .dev-banner[data-tone='success'] {
+    --dev-tone: var(--success);
+    --dev-tone-text: var(--success-soft-foreground);
+  }
+  .dev-banner[data-tone='warning'] {
+    --dev-tone: var(--warning);
+    --dev-tone-text: var(--warning-soft-foreground);
+  }
+  .dev-banner[data-tone='danger'] {
+    --dev-tone: var(--danger);
+    --dev-tone-text: var(--danger-soft-foreground);
+  }
+
+  .dev-banner-dot {
+    position: relative;
+    width: 24px;
+    height: 24px;
+    flex: none;
+  }
+
+  .dev-banner-dot-glow {
+    position: absolute;
+    inset: -6px;
+    border-radius: 9999px;
+    background: radial-gradient(circle, color-mix(in srgb, var(--dev-tone) 55%, transparent) 0%, transparent 70%);
+  }
+
+  .dev-banner-dot-core {
+    position: absolute;
+    inset: 4px;
+    border-radius: 9999px;
+    background: var(--dev-tone);
+    box-shadow: 0 0 10px var(--dev-tone);
+    transition: background-color 400ms cubic-bezier(0.2, 0, 0, 1);
+  }
+
+  .dev-banner-dot-halo {
+    position: absolute;
+    inset: 0;
+    border: 2px solid var(--dev-tone);
+    border-radius: 9999px;
+  }
+
+  .dev-banner-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  .dev-banner-title {
+    font-size: 15px;
+    line-height: 20px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--dev-tone-text);
+  }
+
+  .dev-banner-detail {
+    font-size: 12px;
+    line-height: 16px;
+    color: var(--color-foreground-2);
+  }
+
+  /* ── Status dot and chip (AS #4, #6; M-C-10) ─────────────────────────────────────────── */
+  .dev-dot {
+    width: 10px;
+    height: 10px;
+    flex: none;
+    border-radius: 9999px;
+    background: var(--dev-tone, var(--success));
+    box-shadow:
+      0 0 0 3px rgb(0 0 0 / 0.45),
+      0 0 10px var(--dev-tone, var(--success));
+    transition: background-color 400ms cubic-bezier(0.2, 0, 0, 1);
+  }
+
+  .dev-chip-wrap {
+    position: relative;
+    display: inline-flex;
+    flex: none;
+  }
+
+  .dev-chip {
+    gap: 6px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    transition:
+      background-color 400ms cubic-bezier(0.2, 0, 0, 1),
+      color 400ms cubic-bezier(0.2, 0, 0, 1),
+      border-color 400ms cubic-bezier(0.2, 0, 0, 1);
+  }
+
+  .dev-chip-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 9999px;
+    background: currentColor;
+    box-shadow: 0 0 6px currentColor;
+  }
+
+  .dev-chip-halo {
+    position: absolute;
+    inset: -2px;
+    border: 1.5px solid var(--dev-tone);
+    border-radius: 9999px;
+    pointer-events: none;
+  }
+
+  .dev-rec-chip {
+    font-weight: 600;
+  }
+
+  /* ── Tiles (cameras, audio inputs) ───────────────────────────────────────────────────── */
+  .dev-tile-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+  }
+
+  .dev-tile-titles {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  .dev-tile-name {
+    overflow: hidden;
+    font-size: 14px;
+    line-height: 20px;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--foreground);
+  }
+
+  .dev-tile-sub {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    line-height: 16px;
+    letter-spacing: 0.02em;
+    color: var(--color-foreground-2);
+  }
+
+  .dev-tile-chips {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .dev-kebab {
+    flex: none;
+    color: var(--color-foreground-2);
+  }
+
+  .dev-cams,
+  .dev-audios {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    flex: 1 1 auto;
+  }
+
+  .dev-cam,
+  .dev-audio {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-width: 0;
+    padding: 12px;
+    border: 1px solid rgb(255 159 61 / 0.18);
+    border-radius: 10px;
+    background-color: var(--surface-secondary);
+    transition: border-color 400ms cubic-bezier(0.2, 0, 0, 1);
+  }
+
+  .dev-cam[data-status='FAULT'] {
+    border-color: rgb(239 68 68 / 0.45);
+  }
+
+  .dev-audio[data-tone='warning'] {
+    border-color: rgb(245 158 11 / 0.45);
+  }
+
+  .dev-cam-media {
+    position: relative;
+    display: block;
+    width: 100%;
+    padding: 0;
+    border: 0;
+    border-radius: 8px;
+    background: none;
+    cursor: pointer;
+    text-align: left;
+  }
+
+  .dev-cam-meta {
+    display: grid;
+    grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) minmax(0, 0.8fr);
+    gap: 8px;
+    margin: auto 0 0;
+  }
+
+  .dev-cam-meta dt,
+  .dev-fact dt {
+    font-size: 10px;
+    line-height: 14px;
+    font-weight: 500;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .dev-cam-meta dd {
+    margin: 2px 0 0;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 16px;
+    overflow-wrap: anywhere;
+    color: var(--foreground);
+  }
+
+  /* 1024–1599 px: the ADC format moves to the drawer so the facts keep two readable columns. */
+  .dems-shell[data-shell-tier='lg'] .dev-fact[data-fact='adc'],
+  .dems-shell[data-shell-tier='md'] .dev-fact[data-fact='adc'] {
+    display: none;
+  }
+
+  /* Audio: the large meter beside a dBFS scale, then the channel facts. */
+  .dev-audio-body {
+    display: flex;
+    align-items: stretch;
+    gap: 16px;
+    min-width: 0;
+  }
+
+  .dev-audio-meter {
+    display: flex;
+    flex: none;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 10px 14px 10px 10px;
+    border: 1px solid rgb(255 255 255 / 0.05);
+    border-radius: 8px;
+    background: rgb(0 0 0 / 0.28);
+  }
+
+  .dev-audio-scale {
+    display: flex;
+    flex-direction: column-reverse;
+    gap: 4px;
+    height: 192px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--color-foreground-2);
+  }
+
+  .dev-audio-scale li {
+    display: flex;
+    flex: 1 1 0;
+    align-items: center;
+    justify-content: flex-end;
+    min-width: 24px;
+  }
+
+  .dev-audio-scale li[data-zone='amber'] {
+    color: var(--warning-soft-foreground);
+  }
+
+  .dev-audio-scale li[data-zone='red'] {
+    color: var(--danger-soft-foreground);
+  }
+
+  .dev-audio-facts {
+    display: grid;
+    flex: 1 1 auto;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-content: start;
+    gap: 12px 14px;
+    min-width: 0;
+    margin: 0;
+  }
+
+  .dev-fact dd {
+    margin: 4px 0 0;
+    font-size: 13px;
+    line-height: 18px;
+    color: var(--foreground);
+  }
+
+  .dev-readonly {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border-radius: 6px;
+    cursor: help;
+  }
+
+  .dev-readonly svg {
+    color: var(--muted);
+  }
+
+  .dev-audio-hint {
+    margin: 0;
+    padding: 8px 10px;
+    border: 1px solid rgb(245 158 11 / 0.25);
+    border-radius: 8px;
+    background: rgb(245 158 11 / 0.08);
+    font-size: 12px;
+    line-height: 16px;
+    color: var(--warning-soft-foreground);
+  }
+
+  /* Identify blink (an audited IDENTIFY command since step 54): only its opacity moves. */
+  .dev-identify-ring {
+    position: absolute;
+    inset: -3px;
+    z-index: 3;
+    border: 2px solid var(--accent);
+    border-radius: 12px;
+    box-shadow: 0 0 16px rgb(255 200 107 / 0.55);
+    pointer-events: none;
+  }
+
+  /* ── Summary metric cards (AS #7) ────────────────────────────────────────────────────── */
+  .dev-summary {
+    display: grid;
+    flex: 1 1 auto;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .dev-metric-cell {
+    display: flex;
+    min-width: 0;
+  }
+
+  .dev-metric {
+    flex: 1 1 auto;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 14px;
+    border: 1px solid rgb(255 159 61 / 0.2);
+    border-radius: 10px;
+    box-shadow: none;
+  }
+
+  .dev-metric-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .dev-metric-icon {
+    width: 24px;
+    height: 24px;
+    flex: none;
+    color: var(--accent);
+    filter: drop-shadow(0 0 6px rgb(255 159 61 / 0.4));
+  }
+
+  .dev-metric-label {
+    font-size: 12px;
+    line-height: 16px;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--color-foreground-2);
+  }
+
+  .dev-metric-value {
+    font-family: var(--font-mono);
+    font-size: 38px;
+    line-height: 44px;
+    font-weight: 700;
+    color: var(--foreground);
+  }
+
+  .dev-metric-total {
+    margin-left: 2px;
+    font-size: 16px;
+    font-weight: 500;
+    color: var(--color-foreground-2);
+  }
+
+  .dev-metric-detail {
+    padding-top: 8px;
+    border-top: 1px solid var(--separator);
+    font-size: 11px;
+    line-height: 15px;
+    color: var(--muted);
+  }
+
+  .dev-metric-state {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    line-height: 16px;
+    color: var(--dev-tone-text);
+  }
+
+  /* ── Other devices ───────────────────────────────────────────────────────────────────── */
+  .dev-other {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .dev-other-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 0;
+  }
+
+  .dev-other-list .dev-other-item {
+    padding: 0;
+    border-radius: 10px;
+    background: transparent;
+    cursor: pointer;
+    outline: none;
+  }
+
+  .dev-other-row {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid rgb(255 159 61 / 0.14);
+    border-radius: 10px;
+    background-color: var(--surface-secondary);
+    transition: border-color 200ms cubic-bezier(0.2, 0, 0, 1);
+  }
+
+  .dev-other-item[data-hovered] .dev-other-row,
+  .dev-other-item[data-focus-visible] .dev-other-row {
+    border-color: rgb(255 159 61 / 0.5);
+  }
+
+  .dev-other-item[data-focus-visible] .dev-other-row {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+  }
+
+  .dev-other-icon {
+    display: grid;
+    width: 34px;
+    height: 34px;
+    flex: none;
+    place-items: center;
+    border-radius: 8px;
+    background: rgb(255 200 107 / 0.08);
+    color: var(--accent);
+  }
+
+  .dev-other-icon[data-tone='warning'] {
+    background: rgb(245 158 11 / 0.1);
+    color: var(--warning-soft-foreground);
+  }
+
+  .dev-other-icon[data-tone='danger'] {
+    background: rgb(239 68 68 / 0.1);
+    color: var(--danger-soft-foreground);
+  }
+
+  .dev-other-text {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  .dev-other-name {
+    font-size: 13px;
+    line-height: 18px;
+    font-weight: 600;
+    color: var(--foreground);
+  }
+
+  .dev-other-detail {
+    overflow: hidden;
+    font-size: 12px;
+    line-height: 16px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--color-foreground-2);
+  }
+
+  .dev-other-trailing {
+    display: inline-flex;
+    flex: none;
+  }
+
+  .dev-other-chevron {
+    flex: none;
+    color: var(--muted);
+  }
+
+  /* The room lamp "SEDANG MEREKAM" (M-C-23): the glow layer breathes while lit. */
+  .dev-lamp {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 10px;
+    border: 1px solid rgb(239 68 68 / 0.28);
+    border-radius: 6px;
+    background: #1a0d0b;
+  }
+
+  .dev-lamp-glow {
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: radial-gradient(ellipse at center, rgb(239 68 68 / 0.6) 0%, rgb(239 68 68 / 0.2) 70%);
+    box-shadow: 0 0 14px rgb(239 68 68 / 0.6);
+    opacity: 0;
+    transition: opacity 400ms cubic-bezier(0.2, 0, 0, 1);
+  }
+
+  .dev-lamp-text {
+    position: relative;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    line-height: 16px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    color: rgb(248 113 113 / 0.35);
+    transition: color 400ms cubic-bezier(0.2, 0, 0, 1);
+  }
+
+  .dev-lamp[data-lit='true'] .dev-lamp-glow {
+    opacity: 1;
+    animation: dev-breathe calc(2400ms * var(--motion-time-scale, 1)) ease-in-out infinite alternate;
+  }
+
+  .dev-lamp[data-lit='true'] .dev-lamp-text {
+    color: #fff1f1;
+    text-shadow: 0 0 6px rgb(239 68 68 / 0.9);
+  }
+
+  .dev-other-alert {
+    margin-top: 2px;
+  }
+
+  /* ── Front panel (book §4.2) ─────────────────────────────────────────────────────────── */
+  .dev-front {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .dev-front-face {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 148px;
+    gap: 14px;
+    padding: 14px;
+    border: 1px solid rgb(255 159 61 / 0.22);
+    border-radius: 12px;
+    background: linear-gradient(180deg, #1c140d, #100a05);
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.04);
+  }
+
+  .dev-front-lcd {
+    position: relative;
+    align-self: center;
+  }
+
+  .dev-lcd {
+    display: block;
+    width: 100%;
+    height: auto;
+    border-radius: 10px;
+    box-shadow:
+      0 0 0 1px rgb(0 0 0 / 0.7),
+      0 0 0 5px #0b0806,
+      0 0 0 6px rgb(255 159 61 / 0.18);
+  }
+
+  .dev-lcd-text {
+    font-family: var(--font-mono);
+  }
+
+  .dev-front-side {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .dev-leds {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .dev-led-trigger {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 3px 4px;
+    border-radius: 6px;
+    cursor: default;
+  }
+
+  .dev-led-light {
+    position: relative;
+    width: 12px;
+    height: 12px;
+    flex: none;
+    border-radius: 9999px;
+    background: #2a2521;
+    box-shadow: inset 0 1px 2px rgb(0 0 0 / 0.8);
+  }
+
+  .dev-led-glow {
+    position: absolute;
+    inset: -1px;
+    border-radius: 9999px;
+    background: var(--dev-led, transparent);
+    box-shadow:
+      0 0 2px var(--dev-led, transparent),
+      0 0 10px var(--dev-led, transparent);
+    opacity: 0;
+    transition: opacity 400ms cubic-bezier(0.2, 0, 0, 1);
+  }
+
+  .dev-led-halo {
+    position: absolute;
+    inset: -4px;
+    border: 1.5px solid var(--dev-led, var(--accent));
+    border-radius: 9999px;
+  }
+
+  .dev-led[data-state='on'],
+  .dev-led[data-state='activity'] {
+    --dev-led: var(--success);
+  }
+  .dev-led[data-state='rec'],
+  .dev-led[data-state='fault'] {
+    --dev-led: var(--danger);
+  }
+  .dev-led[data-state='warn'] {
+    --dev-led: var(--warning);
+  }
+
+  .dev-led:not([data-state='off']) .dev-led-glow {
+    opacity: 1;
+  }
+
+  /* NETWORK: link-activity flicker, 1 Hz idle and 2 Hz while recording streams flow (≤ 2 Hz, P8). */
+  .dev-led[data-state='activity'] .dev-led-glow {
+    animation: dev-flicker calc(1000ms * var(--motion-time-scale, 1)) ease-in-out infinite;
+  }
+  .dev-led[data-state='activity'] .dev-led-light[data-rate='fast'] .dev-led-glow {
+    animation-duration: calc(500ms * var(--motion-time-scale, 1));
+  }
+
+  /* RECORD: breathes over glowBreath while recording. */
+  .dev-led[data-state='rec'] .dev-led-glow {
+    animation: dev-breathe calc(2400ms * var(--motion-time-scale, 1)) ease-in-out infinite alternate;
+  }
+
+  .dev-led-label {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    line-height: 16px;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    color: var(--color-foreground-2);
+  }
+
+  .dev-front-buttons {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .dev-nav-btn {
+    min-width: 0;
+    justify-content: center;
+    gap: 4px;
+    padding-inline: 6px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+  }
+
+  .dev-front-plate {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 4px 12px;
+    margin: 0;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    line-height: 14px;
+    font-weight: 600;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: rgb(216 206 198 / 0.5);
+  }
+
+  /* ── Rear panel port map (book §4.2) ─────────────────────────────────────────────────── */
+  .dev-ports {
+    display: grid;
+    flex: 1 1 auto;
+    grid-template-columns: repeat(auto-fill, minmax(122px, 1fr));
+    align-content: center;
+    gap: 10px;
+    margin: 0;
+    padding: 14px;
+    border: 1px solid rgb(255 159 61 / 0.18);
+    border-radius: 12px;
+    background: linear-gradient(180deg, #15100b, #0d0805);
+    list-style: none;
+  }
+
+  .dev-port {
+    display: flex;
+    min-width: 0;
+  }
+
+  .dev-port-button {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    align-items: center;
+    gap: 7px;
+    width: 100%;
+    height: auto;
+    min-height: 0;
+    padding: 12px 8px 10px;
+    border: 1px solid rgb(255 255 255 / 0.06);
+    border-radius: 10px;
+    background: rgb(0 0 0 / 0.25);
+    white-space: normal;
+    color: var(--foreground);
+  }
+
+  .dev-port[data-link='down'] .dev-port-button {
+    border-color: rgb(239 68 68 / 0.35);
+  }
+
+  .dev-port-led {
+    position: relative;
+    width: 10px;
+    height: 10px;
+    border-radius: 9999px;
+    background: #2a2521;
+    box-shadow: inset 0 1px 2px rgb(0 0 0 / 0.8);
+  }
+
+  .dev-port-led-glow {
+    position: absolute;
+    inset: -1px;
+    border-radius: 9999px;
+    background: var(--dev-led, transparent);
+    box-shadow: 0 0 8px var(--dev-led, transparent);
+    opacity: 0;
+    transition: opacity 400ms cubic-bezier(0.2, 0, 0, 1);
+  }
+
+  .dev-port-led[data-link='up'] {
+    --dev-led: var(--success);
+  }
+  .dev-port-led[data-link='down'] {
+    --dev-led: var(--danger);
+  }
+  .dev-port-led[data-link='up'] .dev-port-led-glow,
+  .dev-port-led[data-link='down'] .dev-port-led-glow {
+    opacity: 1;
+  }
+
+  /* Link activity (M-C-23, ≤ 2 Hz): 1 Hz idle, 2 Hz while recording streams flow. */
+  .dev-port-led[data-activity='slow'] .dev-port-led-glow {
+    animation: dev-flicker calc(1000ms * var(--motion-time-scale, 1)) ease-in-out infinite;
+  }
+  .dev-port-led[data-activity='fast'] .dev-port-led-glow {
+    animation: dev-flicker calc(500ms * var(--motion-time-scale, 1)) ease-in-out infinite;
+  }
+
+  .dev-port-icon {
+    color: var(--accent);
+  }
+
+  .dev-port[data-link='spare'] .dev-port-icon,
+  .dev-port[data-link='disabled'] .dev-port-icon {
+    color: var(--muted);
+  }
+
+  .dev-port-chip {
+    max-width: 100%;
+    font-size: 10px;
+    letter-spacing: 0.04em;
+  }
+
+  .dev-port-state {
+    font-size: 11px;
+    line-height: 14px;
+    color: var(--color-foreground-2);
+  }
+
+  /* ── Drawer ──────────────────────────────────────────────────────────────────────────── */
+  .dev-drawer {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    height: 100%;
+    padding: 20px;
+  }
+
+  .dev-drawer-header {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+    padding-right: 36px;
+  }
+
+  .dev-drawer-icon {
+    display: grid;
+    width: 42px;
+    height: 42px;
+    flex: none;
+    place-items: center;
+    border-radius: 10px;
+    background: rgb(255 200 107 / 0.1);
+    color: var(--accent);
+  }
+
+  .dev-drawer-titles {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .dev-drawer-heading {
+    margin: 0;
+    font-size: 16px;
+    line-height: 22px;
+    font-weight: 600;
+  }
+
+  .dev-drawer-sub {
+    margin: 2px 0 0;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 16px;
+    color: var(--color-foreground-2);
+  }
+
+  .dev-drawer-body {
+    min-height: 0;
+    flex: 1 1 auto;
+    overflow-y: auto;
+  }
+
+  .dev-tab-panel {
+    padding-top: 14px;
+    outline: none;
+  }
+
+  .dev-facts {
+    display: grid;
+    margin: 0;
+  }
+
+  .dev-facts-row {
+    display: grid;
+    grid-template-columns: 136px minmax(0, 1fr);
+    gap: 12px;
+    padding: 9px 0;
+    border-bottom: 1px solid var(--separator);
+  }
+
+  .dev-facts-row dt {
+    font-size: 12px;
+    line-height: 18px;
+    color: var(--color-foreground-2);
+  }
+
+  .dev-facts-row dd {
+    margin: 0;
+    font-size: 13px;
+    line-height: 18px;
+    color: var(--foreground);
+    overflow-wrap: anywhere;
+  }
+
+  .dev-facts-leds {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+  }
+
+  .dev-facts-led[data-state='warn'] {
+    color: var(--warning-soft-foreground);
+  }
+  .dev-facts-led[data-state='fault'],
+  .dev-facts-led[data-state='rec'] {
+    color: var(--danger-soft-foreground);
+  }
+  .dev-facts-led[data-state='off'] {
+    color: var(--muted);
+  }
+
+  .dev-health {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .dev-health-head {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .dev-health-metric {
+    font-size: 12px;
+    line-height: 16px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--color-foreground-2);
+  }
+
+  .dev-health-now {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+  }
+
+  .dev-health-now-label {
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .dev-health-now-value {
+    font-size: 22px;
+    line-height: 28px;
+    font-weight: 600;
+    color: var(--accent);
+  }
+
+  .dev-health-chart {
+    padding: 8px 4px 0 0;
+    border: 1px solid rgb(255 159 61 / 0.16);
+    border-radius: 10px;
+    background: rgb(0 0 0 / 0.22);
+  }
+
+  .dev-health-empty,
+  .dev-health-source {
+    margin: 0;
+    font-size: 12px;
+    line-height: 16px;
+    color: var(--muted);
+  }
+
+  .dev-log-scroll {
+    max-height: calc(100vh - 240px);
+  }
+
+  .dev-log-event {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .dev-log-event .dev-dot {
+    width: 8px;
+    height: 8px;
+  }
+}
+
+@keyframes dev-breathe {
+  from {
+    opacity: 0.55;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes dev-flicker {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}

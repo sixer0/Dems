@@ -1,0 +1,422 @@
+/**
+ * Finalization (04_mobile_specs §4.6; module 10; book §12.2) at `/session/finalizing`; step 80
+ * (05_mobile_plan M-11 part a). Replaces step 70's stub; the export name and the
+ * `SafeScreen id="session-finalizing"` root stay (T-M02, MA-04).
+ *
+ * After End Session the simulator runs STOPPING (1.5 s) and then the six `FinalizationStep`s at
+ * 0.6–1.2 s each (about 8.7 s in all), then SEALED. This screen draws that as a full-screen centred
+ * card: title "Finalizing evidence", the session ID in mono, the progress line and the C-4 Stepper
+ * `pipeline` (Spinner → check per step, durations as descriptions). A second card carries the
+ * session's case, subject, recording length and evidence ID (below on phones, beside on tablet
+ * landscape, 04 §2.4 "Card 720 dp + side summary").
+ *
+ * Hand-off: the runtime's route sync (step 73) replaces this route with
+ * `/session/summary/<id>` as soon as the state turns SEALED, so the SEALED stamp lands on the
+ * Summary's hero (F-80-1). When that has not happened (a deep link, or the sync was not mounted),
+ * this screen shows the sealed chip and opens the Summary itself 1.2 s after the seal, on the
+ * simulator clock (04 §4.6).
+ *
+ * Non-dismissible (§3.6): while STOPPING or FINALIZING a hardware Back is consumed and a toast says
+ * "Finalizing — please wait"; there is no back arrow, the stack's back gesture is off for an active
+ * session (step 70), and Back never leaves the app mid-session (F-79-1). A fault (FAULT, RECOVERY)
+ * turns the running step red once and shows a calm Alert with the way to the Recovery status (P7).
+ */
+import { useIsFocused, useRouter, type Href } from 'expo-router';
+import { Alert, Button, Spinner, useToast } from 'heroui-native';
+import { useCallback, useEffect, useRef, type ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
+import { BackHandler, ScrollView, StyleSheet, Text, View } from 'react-native';
+import Animated from 'react-native-reanimated';
+import { formatDuration } from '@dems/shared/sim';
+import { fontFamily, palette, spacing, typography } from '@dems/shared/tokens';
+import { KeyValueList, SectionCard, SubjectTypeChip, type KeyValueItem } from '@/components/kit';
+import { Pane, SafeScreen, useLayoutClass, type LayoutClass } from '@/layout';
+import { enterRise, useMotionSettings } from '@/motion';
+import { sessionResyncHref } from '@/navigation';
+import { reportRuntimeIssue } from '@/runtime';
+import { FinalizationPipeline } from './finalization-pipeline';
+import {
+  finalizingPhase,
+  isFinalizingBusy,
+  pipelinePercent,
+  pipelineSeconds,
+  pipelineStatuses,
+  sealedAfterSeconds,
+  type FinalizingPhase,
+} from './finalizing.model';
+import { FlowBoundary } from './flow-boundary';
+import { SealedStamp } from './sealed-stamp';
+import { useFinalizationSteps, useFinalizingSession, useSealedHandOffDue, type FinalizingSession } from './use-finalizing';
+
+/** 04 §2.4 "Finalizing, Summary, Recovery": centred card widths per layout class (dp). */
+const CARD_MAX_WIDTH: Readonly<Record<LayoutClass, number | undefined>> = {
+  compact: undefined,
+  'compact-landscape': 560,
+  medium: 640,
+  expanded: 720,
+};
+/** Expanded: the side summary next to the 720 dp card. */
+const SIDE_WIDTH = 360;
+/** One "please wait" toast per this many ms, however often Back is pressed. */
+const BLOCKED_TOAST_GAP_MS = 2_000;
+
+export function SessionFinalizingScreen() {
+  const { t } = useTranslation();
+  const focused = useIsFocused();
+  const { layoutClass } = useLayoutClass();
+  const session = useFinalizingSession();
+  const steps = useFinalizationSteps();
+  const phase = finalizingPhase(session.state);
+  const busy = isFinalizingBusy(phase);
+  const summaryHref: Href | null = session.id ? (`/session/summary/${session.id}` as Href) : null;
+
+  useFinalizingBack({ busy, focused, exitHref: phase === 'sealed' && summaryHref ? summaryHref : '/home' });
+
+  // 04 §4.6: the Summary opens 1.2 s after SEALED (simulator clock) unless the route sync already did.
+  const handOff = useSealedHandOffDue(phase === 'sealed' && session.summaryPending ? session.sealedAt : null);
+  const go = useNavigate();
+  useEffect(() => {
+    if (handOff && focused && summaryHref) go(summaryHref, 'handOff');
+  }, [handOff, focused, summaryHref, go]);
+
+  const sideBySide = layoutClass === 'expanded';
+  const maxWidth = CARD_MAX_WIDTH[layoutClass];
+
+  let body: ReactNode;
+  if (phase === 'idle' || phase === 'open') {
+    const resume = phase === 'open' ? sessionResyncHref(session.state, { sessionId: session.id }) : null;
+    body = (
+      <NoticeCard
+        testID={`finalizing-${phase}`}
+        title={t(phase === 'idle' ? 'features.session-finalizing.idle.title' : 'features.session-finalizing.notEnded.title')}
+        body={t(phase === 'idle' ? 'features.session-finalizing.idle.body' : 'features.session-finalizing.notEnded.body')}
+        actionLabel={resume ? t('features.session-finalizing.notEnded.open') : t('features.session-finalizing.goHome')}
+        onAction={() => go((resume ?? '/home') as Href, 'notice')}
+      />
+    );
+  } else {
+    body = (
+      <View style={[styles.cards, sideBySide ? styles.cardsRow : null]}>
+        <View style={sideBySide ? styles.mainColumn : styles.fullWidth}>
+          {phase === 'interrupted' ? <InterruptedAlert faultKind={session.faultKind} onOpen={() => go('/session/recovery', 'recovery')} /> : null}
+          <FlowBoundary scope="session-finalizing" name="pipeline">
+            <PipelineCard session={session} phase={phase} steps={steps} onOpenSummary={summaryHref ? () => go(summaryHref, 'openSummary') : null} />
+          </FlowBoundary>
+        </View>
+        <View style={sideBySide ? styles.sideColumn : styles.fullWidth}>
+          <FlowBoundary scope="session-finalizing" name="session">
+            <SessionCard session={session} />
+          </FlowBoundary>
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <SafeScreen id="session-finalizing">
+      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+        <View style={[styles.centre, maxWidth !== undefined ? { maxWidth: sideBySide ? maxWidth + SIDE_WIDTH + spacing[4] : maxWidth } : null]}>{body}</View>
+      </ScrollView>
+    </SafeScreen>
+  );
+}
+
+// ---------------------------------------------------------------------------------------------
+// Navigation helpers
+// ---------------------------------------------------------------------------------------------
+
+/** `router.replace` with the failure written to the persistent runtime log (never swallowed). */
+function useNavigate(): (href: Href, reason: string) => void {
+  const router = useRouter();
+  const { toast } = useToast();
+  const { t } = useTranslation();
+  return useCallback(
+    (href: Href, reason: string) => {
+      try {
+        router.replace(href);
+      } catch (error) {
+        toast.show({ variant: 'danger', label: t('features.session-finalizing.actionFailed') });
+        reportRuntimeIssue('error', `features.sessionFinalizing.navigate.${reason}`, error, { to: String(href) });
+      }
+    },
+    [router, toast, t],
+  );
+}
+
+interface FinalizingBackOptions {
+  busy: boolean;
+  focused: boolean;
+  /** Where Back goes once the pipeline is over and no route sits below (Summary or Home). */
+  exitHref: Href;
+}
+
+/**
+ * 04 §3.6 "Blocked: a toast explains 'Finalizing — please wait'; no dialog". A screen-level
+ * BackHandler (newer listeners run first, so it precedes the navigator's) consumes Back while busy.
+ * No `usePreventRemove` here on purpose: it would also hold the route sync's own `replace` to the
+ * Summary at the FINALIZING → SEALED edge (the guard flag updates one commit late). Once the
+ * pipeline is over, Back pops if a route sits below; with none (after a resync replace) it goes to
+ * `exitHref` instead of leaving the app (F-79-1).
+ */
+function useFinalizingBack({ busy, focused, exitHref }: FinalizingBackOptions): void {
+  const { t } = useTranslation();
+  const { toast } = useToast();
+  const router = useRouter();
+  const go = useNavigate();
+  const lastToastAt = useRef(0);
+
+  useEffect(() => {
+    if (!focused) return undefined;
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (busy) {
+        const now = Date.now();
+        if (now - lastToastAt.current >= BLOCKED_TOAST_GAP_MS) {
+          lastToastAt.current = now;
+          toast.show({ variant: 'default', label: t('mobile.backGuard.finalizing') });
+        }
+        return true;
+      }
+      if (router.canGoBack()) return false;
+      go(exitHref, 'back');
+      return true;
+    });
+    return () => subscription.remove();
+  }, [focused, busy, exitHref, router, toast, t, go]);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Regions
+// ---------------------------------------------------------------------------------------------
+
+interface PipelineCardProps {
+  session: FinalizingSession;
+  phase: FinalizingPhase;
+  steps: ReturnType<typeof useFinalizationSteps>;
+  onOpenSummary: (() => void) | null;
+}
+
+function PipelineCard({ session, phase, steps, onOpenSummary }: PipelineCardProps) {
+  const { t } = useTranslation();
+  const settings = useMotionSettings();
+  const statuses = pipelineStatuses(steps, phase);
+  const seconds = pipelineSeconds(steps);
+  const percent = pipelinePercent(statuses);
+  const sealed = phase === 'sealed';
+  const sealedIn = sealedAfterSeconds(session.stoppedAt, session.sealedAt);
+
+  return (
+    <Animated.View entering={enterRise(0, settings)}>
+      <Pane name="finalization">
+        <SectionCard testID="finalizing-card">
+          <View style={styles.cardHead}>
+            <Text accessibilityRole="header" maxFontSizeMultiplier={1.2} style={styles.title} testID="finalizing-title">
+              {t(sealed ? 'session.finalization.sealedTitle' : 'session.finalization.title')}
+            </Text>
+            {session.id ? (
+              <Text maxFontSizeMultiplier={1.2} selectable style={styles.sessionId} testID="finalizing-session-id">
+                {session.id}
+              </Text>
+            ) : null}
+          </View>
+
+          <View style={styles.statusLine} accessibilityLiveRegion="polite" testID="finalizing-status">
+            {phase === 'stopping' ? (
+              <>
+                <Spinner size="sm" color={palette.gold} />
+                <Text maxFontSizeMultiplier={1.2} style={styles.statusText}>
+                  {t('session.finalization.stopping')}
+                </Text>
+              </>
+            ) : phase === 'finalizing' ? (
+              <Text maxFontSizeMultiplier={1.2} style={styles.statusText} testID="finalizing-progress">
+                {t('session.finalization.progress', { percent })}
+              </Text>
+            ) : sealed ? (
+              <View style={styles.sealedBlock}>
+                {/* The animated stamp belongs to the Summary (F-80-1); here the chip is static. */}
+                <SealedStamp
+                  play={false}
+                  label={t('session.finalization.sealed')}
+                  accessibilityLabel={t('features.session-finalizing.stampLabel')}
+                  testID="finalizing-sealed"
+                />
+                {session.evidenceId ? (
+                  <Text maxFontSizeMultiplier={1.2} style={styles.statusText}>
+                    {t('session.finalization.sealedBody', { evidenceId: session.evidenceId })}
+                  </Text>
+                ) : null}
+                {sealedIn ? (
+                  <Text maxFontSizeMultiplier={1.2} style={styles.caption}>
+                    {t('session.finalization.sealedIn', { seconds: sealedIn })}
+                  </Text>
+                ) : null}
+              </View>
+            ) : null}
+          </View>
+
+          <View accessibilityLabel={t('features.session-finalizing.pipelineLabel')}>
+            <FinalizationPipeline statuses={statuses} seconds={seconds} />
+          </View>
+
+          {isFinalizingBusy(phase) ? (
+            <Text maxFontSizeMultiplier={1.2} style={styles.caption} testID="finalizing-keep-open">
+              {t('features.session-finalizing.keepOpen')}
+            </Text>
+          ) : null}
+          {sealed ? (
+            <View style={styles.sealedFooter}>
+              {session.summaryPending ? (
+                <Text maxFontSizeMultiplier={1.2} style={styles.caption}>
+                  {t('features.session-finalizing.openingSummary')}
+                </Text>
+              ) : null}
+              {onOpenSummary ? (
+                <Button testID="finalizing-open-summary" variant="primary" size="lg" onPress={onOpenSummary}>
+                  <Button.Label>{t('features.session-finalizing.openSummary')}</Button.Label>
+                </Button>
+              ) : null}
+            </View>
+          ) : null}
+        </SectionCard>
+      </Pane>
+    </Animated.View>
+  );
+}
+
+function SessionCard({ session }: { session: FinalizingSession }) {
+  const { t } = useTranslation();
+  const settings = useMotionSettings();
+  const length =
+    session.startedAt !== null && session.stoppedAt !== null ? formatDuration(session.stoppedAt - session.startedAt) : null;
+  const items: KeyValueItem[] = [
+    { id: 'case', label: t('session.details.caseNumber'), value: session.caseNumber ?? '—', mono: true, testID: 'finalizing-case' },
+    {
+      id: 'subject',
+      label: t('session.details.subject'),
+      value: (
+        <View style={styles.subject}>
+          <Text maxFontSizeMultiplier={1.2} numberOfLines={1} style={styles.value}>
+            {session.subjectName ?? '—'}
+          </Text>
+          {session.subjectType ? <SubjectTypeChip type={session.subjectType} size="sm" /> : null}
+        </View>
+      ),
+      testID: 'finalizing-subject',
+    },
+    { id: 'length', label: t('features.session-finalizing.recordingLength'), value: length ?? '—', mono: true, testID: 'finalizing-length' },
+    {
+      id: 'evidence',
+      label: t('session.details.evidenceId'),
+      value: session.evidenceId ?? t('features.session-finalizing.evidencePending'),
+      mono: session.evidenceId !== null,
+      testID: 'finalizing-evidence',
+    },
+  ];
+  return (
+    <Animated.View entering={enterRise(1, settings)}>
+      <Pane name="session">
+        <SectionCard title={t('features.session-finalizing.sessionCard')} testID="finalizing-session-card">
+          <KeyValueList items={items} />
+        </SectionCard>
+      </Pane>
+    </Animated.View>
+  );
+}
+
+function InterruptedAlert({ faultKind, onOpen }: { faultKind: FinalizingSession['faultKind']; onOpen: () => void }) {
+  const { t } = useTranslation();
+  const settings = useMotionSettings();
+  const fault = faultKind ? t(`common.faultKind.${faultKind}`) : t('features.session-finalizing.interrupted.unknownFault');
+  return (
+    <Animated.View entering={enterRise(0, settings)} style={styles.alert} testID="finalizing-interrupted">
+      <Alert status="danger">
+        <Alert.Indicator />
+        <Alert.Content>
+          <Alert.Title>{t('features.session-finalizing.interrupted.title')}</Alert.Title>
+          <Alert.Description>{t('features.session-finalizing.interrupted.body', { fault })}</Alert.Description>
+          <View style={styles.alertAction}>
+            <Button testID="finalizing-open-recovery" variant="outline" size="sm" onPress={onOpen}>
+              <Button.Label>{t('features.session-finalizing.interrupted.open')}</Button.Label>
+            </Button>
+          </View>
+        </Alert.Content>
+      </Alert>
+    </Animated.View>
+  );
+}
+
+interface NoticeCardProps {
+  testID: string;
+  title: string;
+  body: string;
+  actionLabel: string;
+  onAction: () => void;
+}
+
+function NoticeCard({ testID, title, body, actionLabel, onAction }: NoticeCardProps) {
+  const settings = useMotionSettings();
+  return (
+    <Animated.View entering={enterRise(0, settings)}>
+      <SectionCard testID={testID}>
+        <Text accessibilityRole="header" maxFontSizeMultiplier={1.2} style={styles.title}>
+          {title}
+        </Text>
+        <Text maxFontSizeMultiplier={1.2} style={styles.statusText}>
+          {body}
+        </Text>
+        <Button testID={`${testID}-action`} variant="primary" size="lg" onPress={onAction}>
+          <Button.Label>{actionLabel}</Button.Label>
+        </Button>
+      </SectionCard>
+    </Animated.View>
+  );
+}
+
+const styles = StyleSheet.create({
+  scroll: { flexGrow: 1, justifyContent: 'center', padding: spacing[3] },
+  centre: { width: '100%', alignSelf: 'center' },
+  cards: { gap: spacing[3] },
+  cardsRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing[4] },
+  mainColumn: { flex: 1, minWidth: 0, gap: spacing[3] },
+  sideColumn: { width: SIDE_WIDTH },
+  fullWidth: { alignSelf: 'stretch', gap: spacing[3] },
+  cardHead: { gap: spacing[0] },
+  title: {
+    fontFamily: fontFamily.native.semibold,
+    fontSize: typography.h2.size,
+    lineHeight: typography.h2.lineHeight,
+    color: palette.foreground,
+  },
+  sessionId: {
+    fontFamily: fontFamily.native.mono,
+    fontSize: typography.data.size,
+    lineHeight: typography.data.lineHeight,
+    color: palette.gray,
+  },
+  statusLine: { flexDirection: 'row', alignItems: 'center', gap: spacing[1], minHeight: 24 },
+  statusText: {
+    flexShrink: 1,
+    fontFamily: fontFamily.native.medium,
+    fontSize: typography.body.size,
+    lineHeight: typography.body.lineHeight,
+    color: palette.foreground,
+  },
+  caption: {
+    fontFamily: fontFamily.native.normal,
+    fontSize: typography.caption.size,
+    lineHeight: typography.caption.lineHeight,
+    color: palette.gray,
+  },
+  sealedBlock: { gap: spacing[1], flex: 1 },
+  sealedFooter: { gap: spacing[1] },
+  subject: { flexDirection: 'row', alignItems: 'center', gap: spacing[1], flexShrink: 1 },
+  value: {
+    flexShrink: 1,
+    fontFamily: fontFamily.native.normal,
+    fontSize: typography.body.size,
+    lineHeight: typography.body.lineHeight,
+    color: palette.foreground,
+  },
+  alert: { alignSelf: 'stretch' },
+  alertAction: { flexDirection: 'row', marginTop: spacing[1] },
+});

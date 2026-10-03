@@ -1,9 +1,17 @@
 import { useLocalSearchParams } from 'expo-router';
-import { HomeScreen, type MotionMode } from '@/features/home/home-screen';
+import { BootRedirect, StackCheckRoute, firstParam, hasMotionParam } from '@/navigation';
 
-/** Route `/`. `demsdemo://?motion=slow` opens the Motion proof mode (masterplan/01_specs.md §5.6). */
-export default function Index() {
-  const { motion } = useLocalSearchParams<{ motion?: string }>();
-  const motionMode: MotionMode = motion === 'slow' ? 'slow' : 'normal';
-  return <HomeScreen motionMode={motionMode} />;
+/**
+ * Route `/`: the boot router (04_mobile_specs §3.1).
+ *
+ * - With `?motion=` it renders the row-18 proof screen, so `demsdemo://?motion=slow` keeps opening
+ *   Motion proof mode (AC-31, M-PX-02; 01_specs §5.6).
+ * - Otherwise it redirects: `/login` while signed out; after sign-in the session resync target,
+ *   else the pending href, else `/home` (§3.3). It is also the guard's anchor: when sign-in or
+ *   sign-out removes the current group, Expo Router lands here and this picks the next screen.
+ */
+export default function BootRoute() {
+  const params = useLocalSearchParams<{ motion?: string }>();
+  if (hasMotionParam(params)) return <StackCheckRoute motion={firstParam(params.motion)} />;
+  return <BootRedirect />;
 }

@@ -212,18 +212,5 @@ export const HeartbeatStateIcon = {
   OFFLINE: 'Circle',
 } as const satisfies Record<HeartbeatState, ToneIconName>;
 
-/**
- * Typography token names as Tailwind `text-*` font-size utilities. tailwind-merge only knows
- * T-shirt sizes, so it classifies `text-display` as a colour and drops it next to `text-accent`.
- * Apps register these names with `extendTailwindMerge` (see core-web `src/lib/utils.ts`).
- */
-export const TYPOGRAPHY_FONT_SIZE_CLASSES = [
-  'display',
-  'h1',
-  'h2',
-  'h3',
-  'body',
-  'caption',
-  'label',
-  'data',
-] as const;
+// TYPOGRAPHY_FONT_SIZE_CLASSES moved to ./tokens.ts (step 30), derived from `typography`;
+// still exported from `@dems/shared/tokens`, together with TYPOGRAPHY_TW_MERGE_CLASS_GROUPS.

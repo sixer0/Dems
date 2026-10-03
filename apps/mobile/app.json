@@ -4,7 +4,7 @@
     "slug": "dems-tablet-demo",
     "version": "0.1.0",
     "orientation": "default",
-    "icon": "./assets/images/icon.png",
+    "icon": "./assets/images/brand/icon-foreground-1024.png",
     "scheme": "demsdemo",
     "userInterfaceStyle": "dark",
     "backgroundColor": "#0B0D0F",
@@ -14,12 +14,18 @@
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#0B0D0F",
-        "foregroundImage": "./assets/images/android-icon-foreground.png",
-        "backgroundImage": "./assets/images/android-icon-background.png",
-        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+        "foregroundImage": "./assets/images/brand/icon-foreground-1024.png",
+        "monochromeImage": "./assets/images/brand/icon-monochrome-1024.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.dems.demo.tablet"
+      "package": "com.dems.demo.tablet",
+      "versionCode": 100,
+      "allowBackup": false,
+      "blockedPermissions": [
+        "android.permission.SYSTEM_ALERT_WINDOW",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE"
+      ]
     },
     "web": {
       "output": "static",
@@ -31,13 +37,15 @@
         "expo-splash-screen",
         {
           "backgroundColor": "#0B0D0F",
-          "image": "./assets/images/splash-icon.png",
-          "imageWidth": 76
+          "image": "./assets/images/brand/splash-1024.png",
+          "imageWidth": 288
         }
       ],
       "expo-video",
       "expo-font",
-      "expo-status-bar"
+      "expo-status-bar",
+      "expo-local-authentication",
+      "./plugins/with-dems-release-signing"
     ],
     "experiments": {
       "typedRoutes": true,

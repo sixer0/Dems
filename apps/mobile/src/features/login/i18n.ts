@@ -1,0 +1,49 @@
+import type { ResourceTree } from '@/i18n/resources';
+
+/**
+ * English copy of the `login` feature, mounted at `features.login.*` through
+ * `src/i18n/features.ts` (04_mobile_specs §9). Step 75 is its only writer (P6).
+ *
+ * The Login screen reuses shared copy first: `login.*` (fields, Sign In, errors, notices, demo
+ * operators, all from `@dems/shared/i18n`, 01_specs §14.8), `common.brand.*`, `common.roles.*`,
+ * and the mobile namespace `mobile.biometric.*` / `mobile.pairing.*` (§6.3, §4.1 L11). This tree
+ * holds only what the mobile Login alone says.
+ */
+export const loginEn = {
+  // L3 (MB 1): the wordmark on two lines.
+  wordmark: {
+    top: 'DEMS',
+    bottom: 'EDGE CLIENT',
+  },
+  // Accessible name of the brand block (the ring + emblem is one image).
+  brandLabel: 'DEMS Edge Client emblem',
+  // L9: the countdown line of the lockout Alert, for screen readers (the visual uses C-6).
+  lockout: {
+    a11y: 'Too many attempts. Try again in {{seconds}} seconds.',
+  },
+  // L9: a sign-in the runtime could not complete (not a credential error).
+  unavailable: {
+    title: 'Sign-in unavailable',
+    body: 'Sign-in could not be completed. Try again in a moment.',
+  },
+  // L9 Core offline: the Retry control after its three rate-limited attempts (3 s, 6 s, 12 s).
+  retryExhausted: 'Still unreachable. Restart the app to try again.',
+  // L7 (§6.3): biometric states beyond the shared `mobile.biometric.*` copy.
+  biometric: {
+    notBound: 'Sign in with your password once to enable biometric sign-in on this tablet.',
+    boundTo: 'Biometric sign-in for {{name}}',
+    failedTitle: 'Fingerprint not recognised',
+    error: 'Biometric sign-in is not available right now. Use your password.',
+  },
+  // L10: the pairing code shown with the demo operators (04 §4.2), hidden in presentation mode.
+  demo: {
+    pairingCode: 'Demo pairing code: {{code}}',
+    fillHint: 'Fills the form as {{name}}',
+  },
+  // L11: the Core link chip.
+  coreChip: {
+    ONLINE: 'Core online',
+    STALE: 'Core link stale',
+    OFFLINE: 'Core offline',
+  },
+} as const satisfies ResourceTree;

@@ -1,0 +1,200 @@
+# Step 74 (CP-M1) cold-start evidence, dems_phone (emulator-5554), Metro lane 8084, 2026-10-01 05:08-05:26 WIB
+# Raw scratch: /private/tmp/claude-501/-Users-gsp-budi-Documents-DEMS/0d71fd65-4a51-4019-9c48-5c92d11bbdaf/scratchpad/s74 (run_*, runB_*, runC_*, runD_*, runE_*). Every launch: am force-stop, logcat -c, am start -d 'demsdemo:///stack-check?motion=off' (L3/R: /login?motion=off).
+
+## Phase table (seconds, from device logcat timestamps)
+# columns: launch | Start proc->class loader | class loader->loadJSBundleFromMetro | bundle download (->Creating BundleLoader) | Loading JS Bundle->Running "main" | Running main->runtime.sim.hydrated | hydrated->Displayed | TOTAL START->Displayed | START->splash view removed
+L1_coldmetro         1.06 | 1.02 | 1.45 | 2.64 | 4.93 | 0.45 | 12.04 | 12.82
+L2_warmmetro         1.54 | 0.91 | 1.57 | 1.15 | 5.54 | 0.33 | 11.58 | 12.24
+L3_warmmetro_login   1.32 | 0.88 | 1.54 | 3.80 | 5.06 | 0.04 | 13.17 | 13.87
+W                    1.54 | 1.04 | 1.39 | 2.46 | 4.23 | 0.13 | 11.29 | 12.12
+P                    0.34 | 0.29 | 0.33 | 0.75 | 1.20 | 0.10 | 3.13 | 3.64
+R                    0.33 | 0.18 | 0.31 | 0.59 | 1.01 | 0.00 | 2.51 | 2.99
+C1_first             0.82 | 0.19 | 1.23 | 2.95 | 5.60 | 0.15 | 11.43 | 12.26
+C2_back2back         1.13 | 0.71 | 1.23 | 2.84 | 5.03 | 0.29 | 11.71 | 12.32
+C3_back2back         0.87 | 0.70 | 1.11 | 0.61 | 1.16 | 0.09 | 4.85 | 5.36
+C4_after45sIdle      1.49 | 0.90 | 1.03 | 1.39 | 4.44 | 0.16 | 9.81 | 10.77
+C5_back2back         1.40 | 1.02 | 1.57 | 2.79 | 5.97 | 0.21 | 13.43 | 14.15
+
+## Session A timeline (05:08:56-05:10:22)
+== L1_coldmetro 05:09:00 host
+10-01 05:09:00.120   655   669 I ActivityTaskManager: START u0 {act=android.intent.action.VIEW dat=demsdemo:///... flg=0x10000000 xflg=0x4 pkg=com.dems.demo.tablet cmp=com.dems.demo.tablet/.MainActivity} with LAUNCH_SINGLE_TASK from uid 2000 (BAL_ALLOW_PERMISS
+10-01 05:09:06.782 18384 18416 I ReactNativeJS: Running "main" with {"rootTag":1,"initialProps":{},"fabric":true}
+10-01 05:09:11.710 18384 18416 I ReactNativeJS:   source: 'runtime.sim.hydrated',
+10-01 05:09:12.163   655   675 I ActivityTaskManager: Displayed com.dems.demo.tablet/.MainActivity for user 0: +12s46ms
+Starting: Intent { act=android.intent.action.VIEW dat=demsdemo:///... pkg=com.dems.demo.tablet }
+Status: timeout
+LaunchState: UNKNOWN (-1)
+Activity: com.dems.demo.tablet/.MainActivity
+WaitTime: 11649
+Complete
+Android Bundled 950ms node_modules/expo-router/entry.js (5436 modules)
+== L2_warmmetro 05:09:31 host
+10-01 05:09:30.856   655  1870 I ActivityTaskManager: START u0 {act=android.intent.action.VIEW dat=demsdemo:///... flg=0x10000000 xflg=0x4 pkg=com.dems.demo.tablet cmp=com.dems.demo.tablet/.MainActivity} with LAUNCH_SINGLE_TASK from uid 2000 (BAL_ALLOW_PERMISS
+10-01 05:09:36.576 18475 18508 I ReactNativeJS: Running "main" with {"rootTag":1,"initialProps":{},"fabric":true}
+10-01 05:09:42.112 18475 18508 I ReactNativeJS:   source: 'runtime.sim.hydrated',
+10-01 05:09:42.437   655   675 I ActivityTaskManager: Displayed com.dems.demo.tablet/.MainActivity for user 0: +11s595ms
+Starting: Intent { act=android.intent.action.VIEW dat=demsdemo:///... pkg=com.dems.demo.tablet }
+Status: ok
+LaunchState: COLD
+Activity: com.dems.demo.tablet/.MainActivity
+TotalTime: 11595
+WaitTime: 11611
+Complete
+Android Bundled 950ms node_modules/expo-router/entry.js (5436 modules)
+Android Bundled 55ms node_modules/expo-router/entry.js (1 module)
+== L3_warmmetro_login 05:09:55 host
+10-01 05:09:55.430   655  1029 I ActivityTaskManager: START u0 {act=android.intent.action.VIEW dat=demsdemo:///... flg=0x10000000 xflg=0x4 pkg=com.dems.demo.tablet cmp=com.dems.demo.tablet/.MainActivity} with LAUNCH_SINGLE_TASK from uid 2000 (BAL_ALLOW_PERMISS
+10-01 05:10:03.496 18559 18591 I ReactNativeJS: Running "main" with {"rootTag":1,"initialProps":{},"fabric":true}
+10-01 05:10:08.558 18559 18591 I ReactNativeJS:   source: 'runtime.sim.hydrated',
+10-01 05:10:08.595   655   675 I ActivityTaskManager: Displayed com.dems.demo.tablet/.MainActivity for user 0: +13s171ms
+Starting: Intent { act=android.intent.action.VIEW dat=demsdemo:///... pkg=com.dems.demo.tablet }
+Status: timeout
+LaunchState: UNKNOWN (-1)
+Activity: com.dems.demo.tablet/.MainActivity
+WaitTime: 11894
+Complete
+Android Bundled 950ms node_modules/expo-router/entry.js (5436 modules)
+Android Bundled 55ms node_modules/expo-router/entry.js (1 module)
+Android Bundled 36ms node_modules/expo-router/entry.js (1 module)
+bundle url: http://127.0.0.1:8084/node_modules/expo-router/entry.bundle//&platform=android&dev=true&lazy=true&minify=false&app=com.dems.demo.tablet&modulesOnly=false&runModule=true&excludeSource=true&sourcePaths=url-server&transform.routerRoot=src%2Fapp&transform.reactCompiler=true&transform.engine=hermes&transform.bytecode=1&unstable_transformProfile=hermes-stable
+bytes=22082958 time=0.059162
+
+## Session A rnStartupTiming / LAUNCH_ID markers (performance.now ms; LAUNCH_ID = Date.now() when src/runtime/log.ts was evaluated)
+L1_coldmetro rnStartupTiming {'endTime': 11766177, 'executeJavaScriptBundleEntryPointStart': 11763541, 'initializeRuntimeStart': 11763542, 'startTime': 11763542} last record ['2026-09-30T22:09:11.691Z', 'info', 'runtime.sim.hydrated', 'Simulator ready', 'Lmuonqshs']
+L2_warmmetro rnStartupTiming {'endTime': 11795971, 'executeJavaScriptBundleEntryPointStart': 11794825, 'initializeRuntimeStart': 11794825, 'startTime': 11794825} last record ['2026-09-30T22:09:42.096Z', 'info', 'runtime.sim.hydrated', 'Simulator ready', 'Lmuonrfg4']
+L3_warmmetro_login rnStartupTiming {'endTime': 11822891, 'executeJavaScriptBundleEntryPointStart': 11819097, 'initializeRuntimeStart': 11819097, 'startTime': 11819097} last record ['2026-09-30T22:10:08.537Z', 'info', 'runtime.sim.hydrated', 'Simulator ready', 'Lmuons0lu']
+
+## Session B timeline (05:12:42-05:13:41)
+== W 05:12:45
+10-01 05:12:45.185   655  1184 I ActivityTaskManager: START u0 {act=android.intent.action.VIEW dat=demsdemo:///... flg=0x10000000 xflg=0x4 pkg=com.dems.demo.tablet cmp=com.dems.demo.tablet/.MainActivi
+10-01 05:12:52.114 18664 18696 I ReactNativeJS: Running "main" with {"rootTag":1,"initialProps":{},"fabric":true}
+10-01 05:12:56.343 18664 18696 I ReactNativeJS:   source: 'runtime.sim.hydrated',
+10-01 05:12:56.478   655   675 I ActivityTaskManager: Displayed com.dems.demo.tablet/.MainActivity for user 0: +11s302ms
+10-01 05:12:57.302 18664 18664 D SplashScreenView: remove starting view
+== P 05:13:08
+10-01 05:13:07.773   655   724 I ActivityTaskManager: START u0 {act=android.intent.action.VIEW dat=demsdemo:///... flg=0x10000000 xflg=0x4 pkg=com.dems.demo.tablet cmp=com.dems.demo.tablet/.MainActivi
+10-01 05:13:09.601 18744 18775 I ReactNativeJS: Running "main" with {"rootTag":1,"initialProps":{},"fabric":true}
+10-01 05:13:10.798 18744 18775 I ReactNativeJS:   source: 'runtime.sim.hydrated',
+10-01 05:13:10.902   655   675 I ActivityTaskManager: Displayed com.dems.demo.tablet/.MainActivity for user 0: +3s131ms
+10-01 05:13:11.411 18744 18744 D SplashScreenView: remove starting view
+{"target":"353c3ff090fa41bcec7628c0bd6f5950262a1d03-1","attachedAt":1790806390414,"startedAt":1790806390512,"enable":false,"start":"ok","clock":"{\"now\":12009885.461308,\"date\":1790806390489}","samples":1301,"nodes":2341,"startTime":12009256405,"endTime":12023890302}
+bundle bytes=22085212
+== R 05:13:31
+10-01 05:13:31.276   655  1356 I ActivityTaskManager: START u0 {act=android.intent.action.VIEW dat=demsdemo:///... flg=0x10000000 xflg=0x4 pkg=com.dems.demo.tablet cmp=com.dems.demo.tablet/.MainActivi
+10-01 05:13:32.780 18827 18858 I ReactNativeJS: Running "main" with {"rootTag":1,"initialProps":{},"fabric":true}
+10-01 05:13:33.791 18827 18858 I ReactNativeJS:   source: 'runtime.sim.hydrated',
+10-01 05:13:33.791   655   675 I ActivityTaskManager: Displayed com.dems.demo.tablet/.MainActivity for user 0: +2s518ms
+10-01 05:13:34.263 18827 18827 D SplashScreenView: remove starting view
+Starting: Intent { act=android.intent.action.VIEW dat=demsdemo:///... pkg=com.dems.demo.tablet }
+Status: ok
+LaunchState: COLD
+Activity: com.dems.demo.tablet/.MainActivity
+TotalTime: 2518
+WaitTime: 2519
+Complete
+Android Bundled 851ms node_modules/expo-router/entry.js (5436 modules)
+Android Bundled 46ms node_modules/expo-router/entry.js (1 module)
+Android Bundled 43ms node_modules/expo-router/entry.js (1 module)
+Android Bundled 30ms node_modules/expo-router/entry.js (1 module)
+
+## Session C timeline with host and guest load (05:16:09-05:18:38)
+== C1_first 05:16:12 (idle 2s before)
+  host loadavg { 2.68 2.38 3.81 } | qemu%cpu 2.3 4.2  | top host: 78.0:Google 30.4:WindowServer 21.6:Google 
+  guest loadavg 0.11 0.31 0.81 1/2776 18963 | MemAvailable: 1586608 kB Cached: 882184 kB SwapFree: 1611804 kB 
+  during(+4s): { 3.11 2.48 3.84 } qemu 104.0 guest 0.18 0.32 0.81 7/2817 19025
+  phases: procToClassLoader 0.87 | soloader→loadJS 0.14 | bundleDownload 1.23 | bundleLoad→main 2.95 | main→hydrated 5.60 | hydrated→Displayed 0.15 | TOTAL Displayed 11.43 | splashRemoved 12.25
+== C2_back2back 05:16:33 (idle 2s before)
+  host loadavg { 3.06 2.50 3.82 } | qemu%cpu 4.6 8.8  | top host: 30.2:Claude 25.4:WindowServer 12.7:Claude 
+  guest loadavg 0.73 0.44 0.84 1/2771 19050 | MemAvailable: 1550728 kB Cached: 885168 kB SwapFree: 1611804 kB 
+  during(+4s): { 3.38 2.57 3.84 } qemu 116.0 guest 0.83 0.46 0.85 4/2806 19103
+  phases: procToClassLoader 1.18 | soloader→loadJS 0.54 | bundleDownload 1.23 | bundleLoad→main 2.84 | main→hydrated 5.03 | hydrated→Displayed 0.29 | TOTAL Displayed 11.71 | splashRemoved 12.32
+== C3_back2back 05:16:54 (idle 2s before)
+  host loadavg { 3.14 2.56 3.81 } | qemu%cpu 5.8 10.9  | top host: 18.4:WindowServer 10.9:qemu-system-aarch64 6.3:Claude 
+  guest loadavg 0.85 0.49 0.85 1/2771 19140 | MemAvailable: 1528332 kB Cached: 886384 kB SwapFree: 1611804 kB 
+  during(+4s): { 3.13 2.57 3.81 } qemu 111.5 guest 1.02 0.53 0.86 3/2817 19208
+  phases: procToClassLoader 0.90 | soloader→loadJS 0.51 | bundleDownload 1.11 | bundleLoad→main 0.61 | main→hydrated 1.16 | hydrated→Displayed 0.09 | TOTAL Displayed 4.85 | splashRemoved 5.36
+== C4_after45sIdle 05:17:57 (idle 45s before)
+  host loadavg { 2.81 2.61 3.74 } | qemu%cpu 3.1 7.1  | top host: 42.4:chrome-headless-shell 24.2:WindowServer 10.5:WhatsApp 
+  guest loadavg 0.78 0.60 0.87 1/2770 19230 | MemAvailable: 1594312 kB Cached: 869236 kB SwapFree: 1611804 kB 
+  during(+4s): { 3.07 2.66 3.75 } qemu 145.7 guest 0.88 0.62 0.87 2/2804 19282
+  phases: procToClassLoader 1.55 | soloader→loadJS 0.62 | bundleDownload 1.03 | bundleLoad→main 1.39 | main→hydrated 4.44 | hydrated→Displayed 0.16 | TOTAL Displayed 9.81 | splashRemoved 10.77
+== C5_back2back 05:18:18 (idle 2s before)
+  host loadavg { 3.32 2.74 3.76 } | qemu%cpu 5.0 4.2  | top host: 97.0:node 20.0:WindowServer 6.5:Claude 
+  guest loadavg 1.06 0.68 0.89 1/2771 19320 | MemAvailable: 1558936 kB Cached: 883420 kB SwapFree: 1611804 kB 
+  during(+4s): { 3.53 2.80 3.77 } qemu 140.8 guest 1.38 0.75 0.91 4/2800 19367
+  phases: procToClassLoader 1.45 | soloader→loadJS 0.79 | bundleDownload 1.58 | bundleLoad→main 2.79 | main→hydrated 5.97 | hydrated→Displayed 0.21 | TOTAL Displayed 13.43 | splashRemoved 14.15
+  Native Heap   583259   583248        4       33   584192   622208   590010    23095
+  Dalvik Heap     9507     9452       24       97    10536    19328     9664     9664
+         Native Heap:   583248                         584192
+                Code:    79144                         185764
+            Graphics:        0                              0
+       Private Other:   108604
+              System:    20375
+           TOTAL PSS:   813743            TOTAL RSS:   926076       TOTAL SWAP PSS:      225
+Android Bundled 909ms node_modules/expo-router/entry.js (5436 modules)
+Android Bundled 36ms node_modules/expo-router/entry.js (1 module)
+Android Bundled 42ms node_modules/expo-router/entry.js (1 module)
+Android Bundled 551ms node_modules/expo-router/entry.js (1 module)
+Android Bundled 667ms node_modules/expo-router/entry.js (1 module)
+
+## Session D: guest single-thread shell benchmark (150k iterations) and state sizes (05:21:47-05:22:49)
+bench  1 05:21:49 0.860 s | host loadavg { 3.39 3.09 3.67 }
+bench  2 05:21:52 0.874 s | host loadavg { 3.28 3.07 3.66 }
+bench  3 05:21:55 1.039 s | host loadavg { 3.28 3.07 3.66 }
+bench  4 05:21:58 0.980 s | host loadavg { 3.17 3.05 3.65 }
+bench  5 05:22:01 0.914 s | host loadavg { 3.08 3.03 3.65 }
+bench  6 05:22:04 0.956 s | host loadavg { 3.08 3.03 3.65 }
+bench  7 05:22:07 0.866 s | host loadavg { 3.07 3.03 3.64 }
+bench  8 05:22:10 0.903 s | host loadavg { 3.07 3.03 3.64 }
+bench  9 05:22:13 0.881 s | host loadavg { 3.07 3.03 3.64 }
+bench 10 05:22:16 0.902 s | host loadavg { 3.14 3.05 3.64 }
+bench 11 05:22:19 0.914 s | host loadavg { 3.14 3.05 3.64 }
+bench 12 05:22:22 1.011 s | host loadavg { 3.13 3.04 3.64 }
+Starting: Intent { act=android.intent.action.VIEW dat=demsdemo:///... pkg=com.dems.demo.tablet }
+Status: timeout
+LaunchState: UNKNOWN (-1)
+Activity: com.dems.demo.tablet/.MainActivity
+WaitTime: 12125
+Complete
+"{\"simId\":4153,\"createSimMs\":275.1,\"stringifyStateMs\":2.1,\"stateJsonBytes\":81190,\"stateKeys\":[[\"audit\",35716],[\"evidence\",19555],[\"events\",12149],[\"sessionHistory\",5011],[\"storage\",1462],[\"security\",1203],[\"services\",987],[\"device\",694],[\"cameras\",555],[\"operators\",436]],\"asId\":4197,\"asKeys\":[\"dems.mobile.log.v1\",\"dems.mobile.prefs.v1\",\"dems.sim.v1\"],\"snapBytes\":104981,\"parseSnapMs\":1.8,\"getItemSnapMs\":2.9,\"logBytes\":13834,\"prefs\":\"{\\\"coreLinkSource\\\":\\\"SIMULATED\\\"}\",\"auth\":null,\"i18nErr\":\"Error: Cannot find module\",\"sha256x100_1KB_ms\":295.7}"
+
+
+## Session E: emulator host CPU during launch windows (05:24:13-05:26:22; the Displayed poll timed out, so each window is ~24 s)
+E1 Displayed  | wall 23.94 s | host qemu CPU 25.84 s (1.08 cores avg) | guest app CPU 17.28 s | host loadavg { 2.45 2.65 3.37 }
+E2 Displayed  | wall 24.29 s | host qemu CPU 24.34 s (1.00 cores avg) | guest app CPU 15.99 s | host loadavg { 2.80 2.73 3.38 }
+E3 Displayed  | wall 24.16 s | host qemu CPU 23.53 s (0.97 cores avg) | guest app CPU 14.65 s | host loadavg { 2.84 2.73 3.35 }
+E4 Displayed  | wall 24.30 s | host qemu CPU 29.57 s (1.22 cores avg) | guest app CPU 19.87 s | host loadavg { 3.20 2.82 3.36 }
+
+## Module initialisation after a cold start (session B, __r.getModules())
+modules 5436 initialized 5207
+flags {'packages/shared/src/api/index.ts': True, 'packages/shared/src/i18n/index.ts': True, 'packages/shared/src/sim/index.ts': True, 'src/app/dev-gallery.tsx': True, 'src/components/composed/dbfs-meter.tsx': True, 'src/components/composed/glow-ring.tsx': True, 'src/components/media/camera-feed.tsx': True, 'src/components/media/demo-media.ts': True, 'src/components/media/index.ts': True, 'src/features/home/home-screen.tsx': True, 'src/features/login/login-screen.tsx': True, 'src/navigation/index.ts': True}
+top packages [modules, initialized]: [['lucide-react-native', [1872, 1872]], ['react-native', [540, 383]], ['expo-router', [396, 386]], ['heroui-native', [366, 366]], ['other', [319, 319]], ['react-native-reanimated', [296, 296]], ['@shopify/react-native-skia', [251, 251]], ['culori', [151, 151]], ['react-native-svg', [112, 110]], ['@gorhom/bottom-sheet', [97, 97]], ['zod', [95, 95]], ['react-native-gesture-handler', [84, 84]]]
+
+## Host scheduling state of the emulators (05:36:09 WIB; Apple M5: 4 Super + 6 Efficiency cores, hw.ncpu 10)
+$ ps -Ao pid,pri,nice,etime,args | grep qemu-system
+51262   4  5    03:39:36 /Users/gsp-budi/Library/Android/sdk/emulator/qemu/darwin-aarch64/qemu-system-aarch64 -avd dems_phone -port 5554 -no-metrics -
+51273   4  5    03:39:34 /Users/gsp-budi/Library/Android/sdk/emulator/qemu/darwin-aarch64/qemu-system-aarch64 -avd dems_tablet -port 5556 -no-metrics 
+$ ps -o pid,pri,nice,comm -p <this reviewer shell>
+  PID PRI NI COMM
+71604  31  0 /bin/zsh
+$ ps -Ao pid,pri,nice,comm | emulator children
+ 1316  31  0 /Applications/Visual Studio Code.app/Contents/Frameworks/Electron Framework.framework/Helpers/chrome_crashp
+ 1494  31  0 /Applications/Claude.app/Contents/Frameworks/Electron Framework.framework/Helpers/chrome_crashpad_handler
+51266  31  5 /Users/gsp-budi/Library/Android/sdk/emulator/crashpad_handler
+51267  31  5 /Users/gsp-budi/Library/Android/sdk/emulator/netsimd
+51277  31  5 /Users/gsp-budi/Library/Android/sdk/emulator/crashpad_handler
+$ lsappinfo list (qemu entries)
+87) "qemu-system-aarch64" ASN:0x0-0xc1ac1a: 
+    bundle path="/Users/gsp-budi/Library/Android/sdk/emulator/qemu/darwin-aarch64/qemu-system-aarch64"
+    executable path="/Users/gsp-budi/Library/Android/sdk/emulator/qemu/darwin-aarch64/qemu-system-aarch64"
+    pid = 51262 token=[sess=100016 pid=51262 uid:501,501,501 g:20,20 pV:1698870] type="Foreground" flavor=2 Version=[ NULL ]  fileType="????" creator="????" Arch=ARM64 
+88) "qemu-system-aarch64" ASN:0x0-0xc1bc1b: 
+    bundle path="/Users/gsp-budi/Library/Android/sdk/emulator/qemu/darwin-aarch64/qemu-system-aarch64"
+    executable path="/Users/gsp-budi/Library/Android/sdk/emulator/qemu/darwin-aarch64/qemu-system-aarch64"
+    pid = 51273 token=[sess=100016 pid=51273 uid:501,501,501 g:20,20 pV:1698896] type="Foreground" flavor=2 Version=[ NULL ]  fileType="????" creator="????" Arch=ARM64 
+$ sysctl -n vm.loadavg
+{ 4.77 4.04 3.72 }
+$ ps -M -p 51262 | grep -oE ' [0-9]+[TRF] ' | sort | uniq -c   # scheduling priority of every thread
+ 119  4T 
+$ ps -M -p 51273 | grep -oE ' [0-9]+[TRF] ' | sort | uniq -c   # scheduling priority of every thread
+  85  4T 

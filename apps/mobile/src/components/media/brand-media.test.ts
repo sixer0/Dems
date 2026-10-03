@@ -1,0 +1,120 @@
+// Step 72 asset wiring (05 M-05; MA-24; D46, D48, D50, D53, D61): the bundled brand PNGs, the hero
+// still and the demo media are byte copies of their shared sources, the static require map covers
+// exactly the bundled media, and app.json points the launcher icon and splash at the brand PNGs.
+import { describe, expect, it } from '@jest/globals';
+import { createHash } from 'node:crypto';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import path from 'node:path';
+import { TOPO_SVG, emblem } from '@dems/shared/brand';
+import { palette } from '@dems/shared/tokens';
+import { EMBLEM_SHARED, HERO_FOCUS, TOPO_XML } from './brand-assets';
+import { DEMO_EVIDENCE_SUFFIXES, DEMO_MEDIA_EVIDENCE, DEMO_MEDIA_LIVE, demoMediaForEvidence } from './demo-media';
+
+const APP = path.resolve(__dirname, '../../..');
+const SHARED = path.dirname(require.resolve('@dems/shared/package.json'));
+const MEDIA_DIR = path.join(APP, 'assets/media');
+const SHARED_MEDIA_DIR = path.join(SHARED, 'assets/demo-media/mobile');
+
+const sha256 = (file: string) => createHash('sha256').update(readFileSync(file)).digest('hex');
+const listFiles = (dir: string) => readdirSync(dir).filter((f) => !f.startsWith('.')).sort();
+
+describe('brand data (SCR-03, SCR-06)', () => {
+  it('adapts the shared emblem module without changing it (D48 stroke widths, one gradient ramp)', () => {
+    expect(EMBLEM_SHARED).toEqual({
+      viewBox: { width: 128, height: 128 },
+      shield: { outer: emblem.shield },
+      arcs: emblem.arcs,
+      stops: emblem.gradient.stops,
+      strokeWidth: { shield: 3.2, arc: 2.6 },
+      gradient: { x1: 0, y1: 6, x2: 0, y2: 122 },
+      source: 'shared',
+    });
+  });
+
+  it('uses the shared topographic texture as is, and D46 framing for the still', () => {
+    expect(TOPO_XML).toBe(TOPO_SVG);
+    expect(HERO_FOCUS).toEqual({ left: '62%', top: '45%' });
+  });
+});
+
+describe('bundled files are byte copies of their shared sources', () => {
+  it('brand PNGs (step 28) and the hero still (step 29; MA-24)', () => {
+    for (const name of ['icon-foreground-1024.png', 'icon-monochrome-1024.png', 'splash-1024.png']) {
+      expect(sha256(path.join(APP, 'assets/images/brand', name))).toBe(sha256(path.join(SHARED, 'assets/brand', name)));
+    }
+    expect(sha256(path.join(APP, 'assets/images/hero/room-1600.jpg'))).toBe(
+      sha256(path.join(SHARED, 'assets/hero/room-1600.jpg')),
+    );
+  });
+
+  it('the demo media: the same 84 files as the step-92 mobile subset, byte for byte', () => {
+    const bundled = listFiles(MEDIA_DIR);
+    expect(bundled).toEqual(listFiles(SHARED_MEDIA_DIR));
+    expect(bundled).toHaveLength(84);
+    for (const name of bundled) {
+      expect(`${name} ${sha256(path.join(MEDIA_DIR, name))}`).toBe(`${name} ${sha256(path.join(SHARED_MEDIA_DIR, name))}`);
+    }
+  });
+});
+
+describe('static require map (demo-media.ts)', () => {
+  const source = readFileSync(path.join(__dirname, 'demo-media.ts'), 'utf8');
+  const required = [...source.matchAll(/require\('\.\.\/\.\.\/\.\.\/assets\/media\/([^']+)'\)/g)].map((m) => m[1]);
+
+  it('requires every bundled file exactly once and nothing else', () => {
+    expect([...required].sort()).toEqual(listFiles(MEDIA_DIR));
+    expect(new Set(required).size).toBe(required.length);
+    for (const name of required) expect(existsSync(path.join(MEDIA_DIR, name))).toBe(true);
+  });
+
+  it('keys each file by evidence suffix and track, in the step-92 naming', () => {
+    // Walk the map's source in order: every entry's key and file name must agree.
+    const entries = [...source.matchAll(/'(VIDEO|AUDIO)-0([12])': require\('\.\.\/\.\.\/\.\.\/assets\/media\/([^']+)'\)/g)];
+    expect(entries).toHaveLength(84);
+    for (const [, kind, n, file] of entries) {
+      expect(file).toMatch(new RegExp(`_${kind.toLowerCase()}_0${n}(_loop\\.(mp4|m4a)|_poster\\.jpg|\\.(mp4|m4a))$`));
+    }
+    const blocks = source.split(/\n  '(\d{4})': \{/).slice(1);
+    for (let i = 0; i < blocks.length; i += 2) {
+      const suffix = blocks[i];
+      const files = [...blocks[i + 1].matchAll(/assets\/media\/([^']+)'/g)].map((m) => m[1]);
+      expect(files).toHaveLength(6);
+      for (const file of files) expect(file.startsWith(`evidence_${suffix}_`)).toBe(true);
+    }
+  });
+
+  it('covers EV 0001–0013 plus the live loops (D61 join by evidence number)', () => {
+    expect(DEMO_EVIDENCE_SUFFIXES).toEqual(
+      Array.from({ length: 13 }, (_, i) => String(i + 1).padStart(4, '0')),
+    );
+    expect(Object.keys(DEMO_MEDIA_EVIDENCE)).toEqual([...DEMO_EVIDENCE_SUFFIXES]);
+    expect(Object.keys(DEMO_MEDIA_LIVE)).toEqual(['video', 'audio', 'poster']);
+    expect(demoMediaForEvidence('0007')).toBe(DEMO_MEDIA_EVIDENCE['0007']);
+    expect(demoMediaForEvidence('0014')).toBeUndefined();
+    expect(demoMediaForEvidence('')).toBeUndefined();
+  });
+});
+
+describe('app.json launcher icon and splash (05 M-05; D48 background = the canvas black token)', () => {
+  const app = JSON.parse(readFileSync(path.join(APP, 'app.json'), 'utf8')).expo;
+  const splash = app.plugins.find((p: unknown) => Array.isArray(p) && p[0] === 'expo-splash-screen')[1];
+
+  it('points every icon and splash key at the bundled brand PNGs', () => {
+    expect(app.icon).toBe('./assets/images/brand/icon-foreground-1024.png');
+    expect(app.android.adaptiveIcon).toEqual({
+      backgroundColor: palette.black,
+      foregroundImage: './assets/images/brand/icon-foreground-1024.png',
+      monochromeImage: './assets/images/brand/icon-monochrome-1024.png',
+    });
+    expect(splash).toEqual({ backgroundColor: palette.black, image: './assets/images/brand/splash-1024.png', imageWidth: 288 });
+    for (const file of [app.icon, app.android.adaptiveIcon.foregroundImage, app.android.adaptiveIcon.monochromeImage, splash.image]) {
+      expect(existsSync(path.join(APP, file))).toBe(true);
+    }
+  });
+
+  it('keeps step 67 plugins, including expo-video for the feed', () => {
+    const names = app.plugins.map((p: unknown) => (Array.isArray(p) ? p[0] : p));
+    // Step 94 (06_packaging_spec §2.2) appends the local DEMO release-signing plugin.
+    expect(names).toEqual(['expo-router', 'expo-splash-screen', 'expo-video', 'expo-font', 'expo-status-bar', 'expo-local-authentication', './plugins/with-dems-release-signing']);
+  });
+});

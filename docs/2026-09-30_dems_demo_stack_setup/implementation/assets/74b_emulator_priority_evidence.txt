@@ -1,0 +1,206 @@
+# Step 74b (D73, F74-01) emulator priority evidence, host Apple M5 (4 Super + 6 Efficiency, hw.ncpu 10)
+# Tool: /usr/sbin/taskpolicy; PIDs from .locks/dems_phone.pid and .locks/dems_tablet.pid
+
+## BEFORE taskpolicy -B (2026-10-01 06:44:54 WIB)
+$ sysctl -n vm.loadavg
+{ 12.85 19.44 21.35 }
+$ ps -o pid,ppid,pri,nice,etime,comm -p 95964   # .locks/dems_phone.pid
+  PID  PPID PRI NI ELAPSED ARGS
+95964     1  97  0   37:41 /Users/gsp-budi/Library/Android/sdk/emulator/qemu/darwin-aarch64/qemu-system-aarch64 -avd dems_phone -port 5554 -no-metrics -gpu host -no-boot-anim -no-snapshot-save
+$ ps -M -p 95964 | head -6
+USER       PID   TT   %CPU STAT PRI     STIME     UTIME COMMAND
+gsp-budi 95964   ??    0.0 S    46T   0:10.45   0:10.52 /Users/gsp-budi/Library/Android/sdk/emulator/qemu/darwin-aarch64
+         95964         0.0 S    31T   0:00.00   0:00.00 
+         95964         0.0 S    31T   0:00.00   0:00.00 
+         95964         0.0 S    31T   0:00.01   0:00.01 
+         95964         0.0 S    31T   0:00.01   0:00.00 
+threads by priority (ps -M -p 95964):  103 31T 3 46T 1 97R 1 47R  | total threads 108
+$ ps -o pid,ppid,pri,nice,etime,comm -p 92922   # .locks/dems_tablet.pid
+  PID  PPID PRI NI ELAPSED ARGS
+92922     1  97  0   40:29 /Users/gsp-budi/Library/Android/sdk/emulator/qemu/darwin-aarch64/qemu-system-aarch64 -avd dems_tablet -port 5556 -no-metrics -gpu host -no-boot-anim -no-snapshot-save
+$ ps -M -p 92922 | head -6
+USER       PID   TT   %CPU STAT PRI     STIME     UTIME COMMAND
+gsp-budi 92922   ??    0.1 S    46T   0:24.91   0:31.95 /Users/gsp-budi/Library/Android/sdk/emulator/qemu/darwin-aarch64
+         92922         0.0 S    31T   0:00.00   0:00.00 
+         92922         0.0 S    31T   0:00.00   0:00.00 
+         92922         0.0 S    31T   0:00.01   0:00.01 
+         92922         0.0 S    31T   0:00.00   0:00.00 
+threads by priority (ps -M -p 92922):  81 31T 2 46T 2 20T 1 97R  | total threads 86
+
+## Identity check before acting
+PID 95964 = qemu-system-aarch64 -avd dems_phone (uid 501, ours) -> OK
+PID 92922 = qemu-system-aarch64 -avd dems_tablet (uid 501, ours) -> OK
+
+## Apply
+$ taskpolicy -B -p 95964   # dems_phone
+exit 0
+$ taskpolicy -B -p 92922   # dems_tablet
+exit 0
+
+## AFTER taskpolicy -B (2026-10-01 06:44:56 WIB)
+$ sysctl -n vm.loadavg
+{ 12.85 19.44 21.35 }
+$ ps -o pid,ppid,pri,nice,etime,comm -p 95964   # .locks/dems_phone.pid
+  PID  PPID PRI NI ELAPSED ARGS
+95964     1  97  0   37:43 /Users/gsp-budi/Library/Android/sdk/emulator/qemu/darwin-aarch64/qemu-system-aarch64 -avd dems_phone -port 5554 -no-metrics -gpu host -no-boot-anim -no-snapshot-save
+$ ps -M -p 95964 | head -6
+USER       PID   TT   %CPU STAT PRI     STIME     UTIME COMMAND
+gsp-budi 95964   ??    0.0 S    46T   0:10.45   0:10.52 /Users/gsp-budi/Library/Android/sdk/emulator/qemu/darwin-aarch64
+         95964         0.0 S    31T   0:00.00   0:00.00 
+         95964         0.0 S    31T   0:00.00   0:00.00 
+         95964         0.0 S    31T   0:00.01   0:00.01 
+         95964         0.0 S    31T   0:00.01   0:00.00 
+threads by priority (ps -M -p 95964):  103 31T 3 46T 1 97R 1 47R  | total threads 108
+$ ps -o pid,ppid,pri,nice,etime,comm -p 92922   # .locks/dems_tablet.pid
+  PID  PPID PRI NI ELAPSED ARGS
+92922     1  97  0   40:31 /Users/gsp-budi/Library/Android/sdk/emulator/qemu/darwin-aarch64/qemu-system-aarch64 -avd dems_tablet -port 5556 -no-metrics -gpu host -no-boot-anim -no-snapshot-save
+$ ps -M -p 92922 | head -6
+USER       PID   TT   %CPU STAT PRI     STIME     UTIME COMMAND
+gsp-budi 92922   ??    0.0 S    46T   0:24.91   0:31.95 /Users/gsp-budi/Library/Android/sdk/emulator/qemu/darwin-aarch64
+         92922         0.0 S    31T   0:00.00   0:00.00 
+         92922         0.0 S    31T   0:00.00   0:00.00 
+         92922         0.0 S    31T   0:00.01   0:00.01 
+         92922         0.0 S    31T   0:00.00   0:00.00 
+threads by priority (ps -M -p 92922):  83 31T 2 46T 1 97R  | total threads 86
+
+## Why the step-19 emulators were at nice 5 / 4T: priority is inherited from the launching shell (06:47-06:49 WIB)
+# Agent shells in this environment do not all run at the same priority:
+$ ps -o pid,ppid,pri,nice,comm (phone-lock queue at 06:47)
+ 7736     1  31  5  /usr/bin/lockf ... device-session.sh __inner phone     (holder; nice 5)
+14298  7736  31  5  /bin/sh device-session.sh __inner phone                 (nice 5)
+18782     1  26  5  /bin/zsh -c ... (agent shell reparented to launchd; nice 5)
+20075  1345  31  0  /bin/zsh -c ... (agent shell under claude PID 1345; nice 0)
+24427  1345  31  0  /bin/zsh -c ... (this step's queued session; nice 0)
+# An emulator that device-session.sh (or any recipe) boots inherits the nice value and PRIO_DARWIN_BG of that shell.
+# Throwaway test on a /bin/sleep this step started and stopped (not an emulator):
+shell 25404:  31  0
+start (/usr/bin/nice -n 5 /bin/sleep 30): pri/nice  31 10 thread 31T
+/usr/bin/renice -n 0 -p <sleep>: exit 0 -> pri/nice  31 10      (unprivileged users cannot lower nice; silently unchanged)
+taskpolicy -b -p <sleep>       ->   4 10 thread 4T              (PRIO_DARWIN_BG = the F74-01 signature)
+taskpolicy -B -p <sleep>       ->  31 10 thread 31T             (-B removes the background band; nice stays)
+
+## Controller relay D78: live PIDs vs .pid files (06:47:30 WIB)
+$ pgrep -fl 'qemu-system.*dems_'
+92922 /Users/gsp-budi/Library/Android/sdk/emulator/qemu/darwin-aarch64/qemu-system-aarch64 -avd dems_tablet -port 5556 -no-metrics -gpu host -no-boot-
+95964 /Users/gsp-budi/Library/Android/sdk/emulator/qemu/darwin-aarch64/qemu-system-aarch64 -avd dems_phone -port 5554 -no-metrics -gpu host -no-boot-a
+phone:  pgrep 95964 = .locks/dems_phone.pid 95964; tablet: pgrep 92922 = .locks/dems_tablet.pid 92922 -> .pid files current, not rewritten; 51262/51273 no longer exist
+-> the 06:44 taskpolicy -B already targeted the live PIDs
+
+## Measurement session (dems_phone, Metro 8086, phone lock 06:58:56-07:05:46 WIB, SESSION_MAX_SECS=480; script scratchpad/s74b/session74b.sh)
+$ METRO_PORT=8086 LOCK_WAIT=3600 SESSION_MAX_SECS=480 apps/mobile/scripts/device-session.sh phone 'sh scratchpad/s74b/session74b.sh'
+OUT=/private/tmp/claude-501/-Users-gsp-budi-Documents-DEMS/0d71fd65-4a51-4019-9c48-5c92d11bbdaf/scratchpad/s74b/run_emulator-5554_065858
+# session start 2026-10-01 06:58:58 WIB serial emulator-5554 metro 8086 phone PID 95964 tablet PID 92922
+app:  versionName=0.1.0  lastUpdateTime=2026-10-01 06:07:21 
+phone threads at start:  106 4T 
+== W0_warmup 06:59:00 host loadavg { 3.38 5.21 10.89 } | qemu phone pri/nice  4 0
+  +3s: phone threads  104 4T | qemu %cpu 124.3 | guest 1.32 1.29 3.01 2/2676 13019
+  phases: procToClassLoader 1.02 | bundleDownload 1.36 | bundleLoad->main 2.11 | main->hydrated 5.08 | hydrated->Displayed 0.20 | TOTAL START->Displayed 10.67 | splashRemoved 11.32
+10-01 06:59:11.182   655   675 I ActivityTaskManager: Displayed com.dems.demo.tablet/.MainActivity for user 0: +10s675ms
+== M1 06:59:37 host loadavg { 4.59 5.31 10.70 } | qemu phone pri/nice  4 0
+  +3s: phone threads  104 4T | qemu %cpu 236.7 | guest 1.95 1.45 3.00 2/2671 13267
+  phases: procToClassLoader 1.26 | bundleDownload 1.39 | bundleLoad->main 3.22 | main->hydrated 5.15 | hydrated->Displayed 0.30 | TOTAL START->Displayed 12.52 | splashRemoved 13.29
+10-01 06:59:49.734   655   675 I ActivityTaskManager: Displayed com.dems.demo.tablet/.MainActivity for user 0: +12s533ms
+== M2 07:00:13 host loadavg { 3.99 5.09 10.40 } | qemu phone pri/nice  4 0
+  +3s: phone threads  103 4T | qemu %cpu 170.9 | guest 1.59 1.40 2.92 2/2678 13530
+  phases: procToClassLoader 1.15 | bundleDownload 1.08 | bundleLoad->main 2.92 | main->hydrated 5.60 | hydrated->Displayed 0.26 | TOTAL START->Displayed 12.11 | splashRemoved 12.78
+10-01 07:00:25.808   655   675 I ActivityTaskManager: Displayed com.dems.demo.tablet/.MainActivity for user 0: +12s117ms
+== M3 07:00:50 host loadavg { 4.21 5.01 10.13 } | qemu phone pri/nice  4 0
+  +3s: phone threads  104 4T | qemu %cpu 152.8 | guest 1.87 1.52 2.90 2/2676 13780
+  phases: procToClassLoader 1.03 | bundleDownload 1.06 | bundleLoad->main 2.79 | main->hydrated 6.22 | hydrated->Displayed 0.31 | TOTAL START->Displayed 12.41 | splashRemoved 13.21
+10-01 07:01:03.333   655   675 I ActivityTaskManager: Displayed com.dems.demo.tablet/.MainActivity for user 0: +12s420ms
+== M4 07:01:28 host loadavg { 3.98 4.85 9.86 } | qemu phone pri/nice  4 0
+  +3s: phone threads  103 4T | qemu %cpu 225.3 | guest 1.89 1.57 2.87 2/2669 14028
+  phases: procToClassLoader 1.15 | bundleDownload 1.28 | bundleLoad->main 3.05 | main->hydrated 5.81 | hydrated->Displayed 0.27 | TOTAL START->Displayed 12.71 | splashRemoved 13.32
+10-01 07:01:40.863   655   675 I ActivityTaskManager: Displayed com.dems.demo.tablet/.MainActivity for user 0: +12s724ms
+== M5 07:02:05 host loadavg { 4.25 4.79 9.61 } | qemu phone pri/nice  4 0
+  +3s: phone threads  105 4T | qemu %cpu 252.0 | guest 3.90 2.05 2.97 3/2672 14286
+  phases: procToClassLoader 1.30 | bundleDownload 1.33 | bundleLoad->main 3.10 | main->hydrated 5.73 | hydrated->Displayed 0.17 | TOTAL START->Displayed 12.91 | splashRemoved 13.41
+10-01 07:02:18.255   655   675 I ActivityTaskManager: Displayed com.dems.demo.tablet/.MainActivity for user 0: +12s919ms
+MEDIAN_M (taskpolicy -B only) = 12.52 s
+median > 4.5 s (or unknown): applying throughput/latency QoS tier 0 to both emulators 07:02:40
+$ taskpolicy -t 0 -l 0 -p 95964
+exit 0
+$ taskpolicy -t 0 -l 0 -p 92922
+exit 0
+phone threads after -t 0 -l 0:  103 4T 
+tablet threads after -t 0 -l 0:  123 4T 
+== Q1 07:02:42 host loadavg { 4.81 4.88 9.44 } | qemu phone pri/nice  4 0
+  +3s: phone threads  102 4T | qemu %cpu 156.6 | guest 2.83 1.99 2.92 3/2671 14542
+  phases: procToClassLoader 1.14 | bundleDownload 1.14 | bundleLoad->main 3.44 | main->hydrated 6.57 | hydrated->Displayed 0.31 | TOTAL START->Displayed 13.72 | splashRemoved 14.51
+10-01 07:02:56.242   655   675 I ActivityTaskManager: Displayed com.dems.demo.tablet/.MainActivity for user 0: +13s734ms
+== Q2 07:03:19 host loadavg { 5.92 5.15 9.36 } | qemu phone pri/nice  4 0
+  +3s: phone threads  114 4T | qemu %cpu 246.6 | guest 2.35 1.95 2.87 4/2669 14791
+  phases: procToClassLoader 1.42 | bundleDownload 1.57 | bundleLoad->main 3.27 | main->hydrated 6.21 | hydrated->Displayed 0.23 | TOTAL START->Displayed 14.09 | splashRemoved 14.75
+10-01 07:03:33.491   655   675 I ActivityTaskManager: Displayed com.dems.demo.tablet/.MainActivity for user 0: +14s112ms
+== Q3 07:03:56 host loadavg { 5.21 5.06 9.13 } | qemu phone pri/nice  4 0
+  +3s: phone threads  116 4T | qemu %cpu 227.2 | guest 2.54 2.06 2.87 4/2669 15046
+  phases: procToClassLoader 1.45 | bundleDownload 1.48 | bundleLoad->main 3.22 | main->hydrated 6.57 | hydrated->Displayed 0.36 | TOTAL START->Displayed 14.28 | splashRemoved 15.00
+10-01 07:04:10.860   655   675 I ActivityTaskManager: Displayed com.dems.demo.tablet/.MainActivity for user 0: +14s282ms
+== Q4 07:04:33 host loadavg { 4.84 5.00 8.94 } | qemu phone pri/nice  4 0
+  +3s: phone threads  140 4T | qemu %cpu 247.2 | guest 1.78 1.93 2.79 3/2674 15311
+  phases: procToClassLoader 1.73 | bundleDownload 1.93 | bundleLoad->main 4.07 | main->hydrated 7.48 | hydrated->Displayed 0.52 | TOTAL START->Displayed 17.34 | splashRemoved 18.16
+10-01 07:04:50.787   655   675 I ActivityTaskManager: Displayed com.dems.demo.tablet/.MainActivity for user 0: +17s354ms
+== Q5 07:05:10 host loadavg { 7.49 5.63 8.99 } | qemu phone pri/nice  4 0
+  +3s: phone threads  126 4T | qemu %cpu 224.2 | guest 1.57 1.84 2.73 5/2676 15567
+  phases: procToClassLoader 1.43 | bundleDownload 1.98 | bundleLoad->main 4.24 | main->hydrated 7.63 | hydrated->Displayed 0.40 | TOTAL START->Displayed 17.32 | splashRemoved 18.10
+10-01 07:05:28.052   655   675 I ActivityTaskManager: Displayed com.dems.demo.tablet/.MainActivity for user 0: +17s337ms
+MEDIAN_Q (taskpolicy -B + -t 0 -l 0) = 14.28 s
+# session end 2026-10-01 07:05:46 WIB host loadavg { 8.37 6.06 9.01 }
+Android Bundled 957ms node_modules/expo-router/entry.js (5512 modules)
+[device-session phone 07:05:46] Metro 36106 stopped
+[device-session phone 07:05:46] session ended with status 0
+exit 0 at 07:05:46
+
+## Band-return sampling after re-applying taskpolicy -B (07:06:12-07:08:30 WIB; 2 s samples, printed on change)
+07:06:12 (before any command): phone   4 0 [ 120 4T ] tablet   4 0 [ 113 4T 1 0T ]
+07:06:24 before: phone [ 126 31T 2 46T 1 97R 1 47R ] tablet [ 114 4T ]
+taskpolicy -B -p 95964 exit 0
+taskpolicy -B -p 92922 exit 0
++0s 07:06:24 phone 97 [ 126 31T 2 46T 1 97R 1 47R ] | tablet 4 [ 114 4T ]
++2s 07:06:26 phone 47 [ 126 31T 2 46T 1 47R ] | tablet 4 [ 114 4T ]
++4s 07:06:28 phone 97 [ 125 31T 3 46T 1 97R 1 47R ] | tablet 4 [ 114 4T ]
++10s 07:06:34 phone 47 [ 125 31T 3 46T 1 47R ] | tablet 4 [ 114 4T ]
++12s 07:06:36 phone 97 [ 126 31T 2 46T 1 97R 1 47R ] | tablet 4 [ 114 4T ]
++14s 07:06:38 phone 97 [ 126 31T 2 46T 1 97R 1 47R ] | tablet 4 [ 113 4T 1 0T ]
++16s 07:06:40 phone 97 [ 126 31T 2 46T 1 97R 1 47R ] | tablet 4 [ 114 4T ]
++20s 07:06:44 phone 47 [ 126 31T 2 46T 1 47R ] | tablet 4 [ 114 4T ]
++22s 07:06:46 phone 97 [ 125 31T 3 46T 1 97R 1 47R ] | tablet 4 [ 114 4T ]
++26s 07:06:50 phone 47 [ 125 31T 3 46T 1 47R ] | tablet 4 [ 114 4T ]
++28s 07:06:52 phone 97 [ 126 31T 2 46T 1 97R 1 47R ] | tablet 4 [ 114 4T ]
++30s 07:06:54 phone 47 [ 125 31T 3 46T 1 47R ] | tablet 4 [ 114 4T ]
++32s 07:06:56 phone 4 [ 126 4T ] | tablet 4 [ 114 4T ]
++34s 07:06:58 phone 4 [ 127 4T ] | tablet 4 [ 113 4T 1 0T ]
++38s 07:07:02 phone 4 [ 122 4T ] | tablet 4 [ 113 4T ]
++51s 07:07:15 phone 4 [ 122 4T ] | tablet 4 [ 112 4T 1 0T ]
++53s 07:07:17 phone 4 [ 122 4T ] | tablet 4 [ 113 4T ]
++61s 07:07:25 phone 97 [ 121 31T 2 46T 1 97R 1 47R ] | tablet 4 [ 113 4T ]
++63s 07:07:27 phone 61 [ 119 31T 2 47R 2 46T 1 61R ] | tablet 4 [ 113 4T ]
++65s 07:07:29 phone 47 [ 120 31T 3 46T 1 47R ] | tablet 4 [ 112 4T 1 0T ]
++67s 07:07:31 phone 4 [ 124 4T ] | tablet 4 [ 112 4T 1 46T ]
++69s 07:07:33 phone 4 [ 123 4T ] | tablet 4 [ 113 4T ]
++93s 07:07:57 phone 4 [ 113 4T 1 0T ] | tablet 4 [ 112 4T ]
++95s 07:07:59 phone 4 [ 114 4T ] | tablet 4 [ 112 4T ]
++98s 07:08:02 phone 4 [ 111 4T 3 1T ] | tablet 4 [ 108 4T 2 0T 1 3T 1 1T ]
++100s 07:08:04 phone 4 [ 116 4T ] | tablet 4 [ 112 4T ]
++108s 07:08:12 phone 4 [ 114 4T ] | tablet 4 [ 111 4T 1 0T ]
++110s 07:08:14 phone 4 [ 112 4T ] | tablet 4 [ 112 4T ]
++116s 07:08:20 phone 4 [ 105 4T 1 46T ] | tablet 4 [ 112 4T ]
++118s 07:08:22 phone 4 [ 106 4T ] | tablet 4 [ 112 4T ]
++122s 07:08:26 phone 46 [ 102 31T 3 46T ] | tablet 46 [ 109 31T 3 46T ]
++124s 07:08:28 phone 4 [ 105 4T ] | tablet 4 [ 111 4T 1 0T ]
++126s 07:08:30 phone 4 [ 103 4T ] | tablet 4 [ 112 4T ]
+
+
+## taskpolicy -B -t 0 -l 0 re-sample (09:16:13-09:16:51 WIB; load { 5.09 6.24 8.03 })
+09:16:13 before: phone [ 90 31T 3 46T 1 20T ] tablet [ 121 31T 3 46T ]
+taskpolicy -B -t 0 -l 0 -p 95964 exit 0 ; taskpolicy -B -t 0 -l 0 -p 92922 exit 0
++0..+4s phone 46 [ 87-90 31T 3 46T ] | tablet 46 [ 121 31T 3 46T ]
++6s     phone  4 [ 91 4T ]            | tablet  4 [ 124 4T ]     (both flip together)
++8..+38s both stay 4 [ all 4T ]
+
+## Who assigns the band (09:17-09:18 WIB, read-only)
+/usr/bin/log show --last 3m --predicate '(process == "runningboardd" OR process == "launchservicesd") AND (PIDs or qemu)': no entries at default level
+lsappinfo visibleProcessList: both qemu ASNs (0x1258257 phone, 0x122021f tablet) listed; front app WhatsApp (user active)
+09:17:25 front=WhatsApp phone=4T tablet=4T ; 09:17:43 front=WhatsApp phone=31T tablet=4T (no front-app change)
+qemu PPID 1 for both (setsid detached boot), nice 0 (booted 06:04/06:07 by step 75's helper from a nice-0 shell)
+agent shells 09:18:12: under claude PID 1345 -> pri 31 nice 0 [31T]; reparented to launchd (ppid 1) -> pri 26 nice 5 [26T] (e.g. zsh 49968, the phone-lock holder). No agent shell at 4T.

@@ -9,50 +9,351 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as IndexRouteImport } from './routes/index'
+import { Route as AppRouteImport } from './routes/_app'
+import { Route as LoginRouteImport } from './routes/login'
+import { Route as AppIndexRouteImport } from './routes/_app/index'
+import { Route as AppDashboardRouteImport } from './routes/_app/dashboard'
+import { Route as AppDevicesRouteImport } from './routes/_app/devices'
+import { Route as AppNetworkTimeRouteImport } from './routes/_app/network-time'
+import { Route as AppSecurityAuditRouteImport } from './routes/_app/security-audit'
+import { Route as AppStackCheckRouteImport } from './routes/_app/stack-check'
+import { Route as AppStorageRouteImport } from './routes/_app/storage'
+import { Route as AppSystemRouteImport } from './routes/_app/system'
+import { Route as AppDeveloperApiRouteImport } from './routes/_app/developer/api'
+import { Route as AppEvidenceIndexRouteImport } from './routes/_app/evidence/index'
+import { Route as AppEvidenceEvidenceIdRouteImport } from './routes/_app/evidence/$evidenceId'
+import { Route as AppSessionIndexRouteImport } from './routes/_app/session/index'
+import { Route as AppSessionNewRouteImport } from './routes/_app/session/new'
 
-const IndexRoute = IndexRouteImport.update({
+const AppRoute = AppRouteImport.update({
+  id: '/_app',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AppIndexRoute = AppIndexRouteImport.update({
   id: '/',
   path: '/',
-  getParentRoute: () => rootRouteImport,
+  getParentRoute: () => AppRoute,
+} as any)
+const AppDashboardRoute = AppDashboardRouteImport.update({
+  id: '/dashboard',
+  path: '/dashboard',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppDevicesRoute = AppDevicesRouteImport.update({
+  id: '/devices',
+  path: '/devices',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppNetworkTimeRoute = AppNetworkTimeRouteImport.update({
+  id: '/network-time',
+  path: '/network-time',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppSecurityAuditRoute = AppSecurityAuditRouteImport.update({
+  id: '/security-audit',
+  path: '/security-audit',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppStackCheckRoute = AppStackCheckRouteImport.update({
+  id: '/stack-check',
+  path: '/stack-check',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppStorageRoute = AppStorageRouteImport.update({
+  id: '/storage',
+  path: '/storage',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppSystemRoute = AppSystemRouteImport.update({
+  id: '/system',
+  path: '/system',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppDeveloperApiRoute = AppDeveloperApiRouteImport.update({
+  id: '/developer/api',
+  path: '/developer/api',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppEvidenceIndexRoute = AppEvidenceIndexRouteImport.update({
+  id: '/evidence/',
+  path: '/evidence/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppEvidenceEvidenceIdRoute = AppEvidenceEvidenceIdRouteImport.update({
+  id: '/evidence/$evidenceId',
+  path: '/evidence/$evidenceId',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppSessionIndexRoute = AppSessionIndexRouteImport.update({
+  id: '/session/',
+  path: '/session/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppSessionNewRoute = AppSessionNewRouteImport.update({
+  id: '/session/new',
+  path: '/session/new',
+  getParentRoute: () => AppRoute,
 } as any)
 
 export interface FileRoutesByFullPath {
-  '/': typeof IndexRoute
+  '/': typeof AppIndexRoute
+  '/login': typeof LoginRoute
+  '/dashboard': typeof AppDashboardRoute
+  '/devices': typeof AppDevicesRoute
+  '/network-time': typeof AppNetworkTimeRoute
+  '/security-audit': typeof AppSecurityAuditRoute
+  '/stack-check': typeof AppStackCheckRoute
+  '/storage': typeof AppStorageRoute
+  '/system': typeof AppSystemRoute
+  '/developer/api': typeof AppDeveloperApiRoute
+  '/evidence/$evidenceId': typeof AppEvidenceEvidenceIdRoute
+  '/session/new': typeof AppSessionNewRoute
+  '/evidence/': typeof AppEvidenceIndexRoute
+  '/session/': typeof AppSessionIndexRoute
 }
 export interface FileRoutesByTo {
-  '/': typeof IndexRoute
+  '/login': typeof LoginRoute
+  '/dashboard': typeof AppDashboardRoute
+  '/devices': typeof AppDevicesRoute
+  '/network-time': typeof AppNetworkTimeRoute
+  '/security-audit': typeof AppSecurityAuditRoute
+  '/stack-check': typeof AppStackCheckRoute
+  '/storage': typeof AppStorageRoute
+  '/system': typeof AppSystemRoute
+  '/': typeof AppIndexRoute
+  '/developer/api': typeof AppDeveloperApiRoute
+  '/evidence/$evidenceId': typeof AppEvidenceEvidenceIdRoute
+  '/session/new': typeof AppSessionNewRoute
+  '/evidence': typeof AppEvidenceIndexRoute
+  '/session': typeof AppSessionIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
-  '/': typeof IndexRoute
+  '/_app': typeof AppRouteWithChildren
+  '/login': typeof LoginRoute
+  '/_app/dashboard': typeof AppDashboardRoute
+  '/_app/devices': typeof AppDevicesRoute
+  '/_app/network-time': typeof AppNetworkTimeRoute
+  '/_app/security-audit': typeof AppSecurityAuditRoute
+  '/_app/stack-check': typeof AppStackCheckRoute
+  '/_app/storage': typeof AppStorageRoute
+  '/_app/system': typeof AppSystemRoute
+  '/_app/': typeof AppIndexRoute
+  '/_app/developer/api': typeof AppDeveloperApiRoute
+  '/_app/evidence/$evidenceId': typeof AppEvidenceEvidenceIdRoute
+  '/_app/session/new': typeof AppSessionNewRoute
+  '/_app/evidence/': typeof AppEvidenceIndexRoute
+  '/_app/session/': typeof AppSessionIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths:
+    | '/'
+    | '/login'
+    | '/dashboard'
+    | '/devices'
+    | '/network-time'
+    | '/security-audit'
+    | '/stack-check'
+    | '/storage'
+    | '/system'
+    | '/developer/api'
+    | '/evidence/$evidenceId'
+    | '/session/new'
+    | '/evidence/'
+    | '/session/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to:
+    | '/login'
+    | '/dashboard'
+    | '/devices'
+    | '/network-time'
+    | '/security-audit'
+    | '/stack-check'
+    | '/storage'
+    | '/system'
+    | '/'
+    | '/developer/api'
+    | '/evidence/$evidenceId'
+    | '/session/new'
+    | '/evidence'
+    | '/session'
+  id:
+    | '__root__'
+    | '/_app'
+    | '/login'
+    | '/_app/dashboard'
+    | '/_app/devices'
+    | '/_app/network-time'
+    | '/_app/security-audit'
+    | '/_app/stack-check'
+    | '/_app/storage'
+    | '/_app/system'
+    | '/_app/'
+    | '/_app/developer/api'
+    | '/_app/evidence/$evidenceId'
+    | '/_app/session/new'
+    | '/_app/evidence/'
+    | '/_app/session/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
-  IndexRoute: typeof IndexRoute
+  AppRoute: typeof AppRouteWithChildren
+  LoginRoute: typeof LoginRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/': {
-      id: '/'
+    '/_app': {
+      id: '/_app'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof AppRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_app/': {
+      id: '/_app/'
       path: '/'
       fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
-      parentRoute: typeof rootRouteImport
+      preLoaderRoute: typeof AppIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/dashboard': {
+      id: '/_app/dashboard'
+      path: '/dashboard'
+      fullPath: '/dashboard'
+      preLoaderRoute: typeof AppDashboardRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/devices': {
+      id: '/_app/devices'
+      path: '/devices'
+      fullPath: '/devices'
+      preLoaderRoute: typeof AppDevicesRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/network-time': {
+      id: '/_app/network-time'
+      path: '/network-time'
+      fullPath: '/network-time'
+      preLoaderRoute: typeof AppNetworkTimeRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/security-audit': {
+      id: '/_app/security-audit'
+      path: '/security-audit'
+      fullPath: '/security-audit'
+      preLoaderRoute: typeof AppSecurityAuditRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/stack-check': {
+      id: '/_app/stack-check'
+      path: '/stack-check'
+      fullPath: '/stack-check'
+      preLoaderRoute: typeof AppStackCheckRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/storage': {
+      id: '/_app/storage'
+      path: '/storage'
+      fullPath: '/storage'
+      preLoaderRoute: typeof AppStorageRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/system': {
+      id: '/_app/system'
+      path: '/system'
+      fullPath: '/system'
+      preLoaderRoute: typeof AppSystemRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/developer/api': {
+      id: '/_app/developer/api'
+      path: '/developer/api'
+      fullPath: '/developer/api'
+      preLoaderRoute: typeof AppDeveloperApiRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/evidence/': {
+      id: '/_app/evidence/'
+      path: '/evidence'
+      fullPath: '/evidence/'
+      preLoaderRoute: typeof AppEvidenceIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/evidence/$evidenceId': {
+      id: '/_app/evidence/$evidenceId'
+      path: '/evidence/$evidenceId'
+      fullPath: '/evidence/$evidenceId'
+      preLoaderRoute: typeof AppEvidenceEvidenceIdRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/session/': {
+      id: '/_app/session/'
+      path: '/session'
+      fullPath: '/session/'
+      preLoaderRoute: typeof AppSessionIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/session/new': {
+      id: '/_app/session/new'
+      path: '/session/new'
+      fullPath: '/session/new'
+      preLoaderRoute: typeof AppSessionNewRouteImport
+      parentRoute: typeof AppRoute
     }
   }
 }
 
+interface AppRouteChildren {
+  AppDashboardRoute: typeof AppDashboardRoute
+  AppDevicesRoute: typeof AppDevicesRoute
+  AppNetworkTimeRoute: typeof AppNetworkTimeRoute
+  AppSecurityAuditRoute: typeof AppSecurityAuditRoute
+  AppStackCheckRoute: typeof AppStackCheckRoute
+  AppStorageRoute: typeof AppStorageRoute
+  AppSystemRoute: typeof AppSystemRoute
+  AppIndexRoute: typeof AppIndexRoute
+  AppDeveloperApiRoute: typeof AppDeveloperApiRoute
+  AppEvidenceEvidenceIdRoute: typeof AppEvidenceEvidenceIdRoute
+  AppSessionNewRoute: typeof AppSessionNewRoute
+  AppEvidenceIndexRoute: typeof AppEvidenceIndexRoute
+  AppSessionIndexRoute: typeof AppSessionIndexRoute
+}
+
+const AppRouteChildren: AppRouteChildren = {
+  AppDashboardRoute: AppDashboardRoute,
+  AppDevicesRoute: AppDevicesRoute,
+  AppNetworkTimeRoute: AppNetworkTimeRoute,
+  AppSecurityAuditRoute: AppSecurityAuditRoute,
+  AppStackCheckRoute: AppStackCheckRoute,
+  AppStorageRoute: AppStorageRoute,
+  AppSystemRoute: AppSystemRoute,
+  AppIndexRoute: AppIndexRoute,
+  AppDeveloperApiRoute: AppDeveloperApiRoute,
+  AppEvidenceEvidenceIdRoute: AppEvidenceEvidenceIdRoute,
+  AppSessionNewRoute: AppSessionNewRoute,
+  AppEvidenceIndexRoute: AppEvidenceIndexRoute,
+  AppSessionIndexRoute: AppSessionIndexRoute,
+}
+
+const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
-  IndexRoute: IndexRoute,
+  AppRoute: AppRouteWithChildren,
+  LoginRoute: LoginRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

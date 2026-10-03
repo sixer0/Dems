@@ -1,0 +1,352 @@
+import { useEffect, useState, type CSSProperties } from 'react'
+import { Button, buttonVariants, Chip, Modal, ProgressBar, Spinner } from '@heroui/react'
+import { Link } from '@tanstack/react-router'
+import { AnimatePresence, motion } from 'motion/react'
+import { FileLock2, LifeBuoy } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+import { BootRecoveryState, SessionState } from '@dems/shared/domain'
+import { useSim } from '@dems/shared/sim'
+import { Stepper, StepperStamp, type StepperStep } from '@/components/composed'
+import { GlowLayer, useMotionPolicy } from '@/motion'
+import { logSessionMonitorError } from './log'
+import { shortHash } from './model'
+
+export type OverlayMode = 'finalization' | 'recovery'
+
+export interface FinalizationModalProps {
+  mode: OverlayMode
+  isOpen: boolean
+  /** The session whose finalization or recovery this overlay follows. */
+  sessionId: string
+  onClose: () => void
+}
+
+interface PackageInfo {
+  manifestSha256: string
+  keyId: string
+}
+
+type PackageState = { status: 'idle' } | { status: 'loading' } | { status: 'missing' } | { status: 'ready'; info: PackageInfo }
+
+/** The sealed item as the simulator knows it (the M4 join guard and the "simulated" fallback). */
+interface SealedItem {
+  evidenceId: string
+  caseNumber: string
+  subjectName: string
+  sessionId: string
+  simulatedManifestHash: string | null
+}
+
+/**
+ * The finalization overlay (01_specs §14.5.2 "Finalization overlay"; 03_motion_spec M-C-09,
+ * M-PG-SM "End Session"): a non-dismissible kit Modal that follows the simulator from STOPPING
+ * (1.5 s) through the six FinalizationSteps (0.6–1.2 s each) to SEALED (≤ 8.7 s after the stop,
+ * implementation/13_sim_engine.md §2.2). The Stepper `pipeline` resolves each step (Spinner → check
+ * draw, connector fill), a transform-only progress bar tracks it, and at SEALED the violet stamp
+ * lands on the `bouncy` spring with one e3 glow flash and a hairline ring: the page's completion
+ * moment (P4). The sealed item then shows its DEMO evidence package digest (step 93, loaded on
+ * demand; D67(c): integrity views show package data) and the CTA "View in Evidence".
+ *
+ * `recovery` mode follows FAULT → RECOVERY (RECOVERY_SCAN → INCOMPLETE_SESSION_ANALYSIS, 3 s) and
+ * ends with the INCOMPLETE notice (SYS-008): the session is never sealed.
+ */
+export function FinalizationModal({ mode, isOpen, sessionId, onClose }: FinalizationModalProps) {
+  const { t } = useTranslation()
+  const state = useSim((s) => (s.session?.id === sessionId ? s.session.state : null))
+  const sealed = mode === 'finalization' && state === SessionState.SEALED
+  const recoveryDone = mode === 'recovery' && state === null
+  const closable = sealed || recoveryDone || (mode === 'finalization' && state === null)
+
+  return (
+    <Modal.Backdrop
+      isOpen={isOpen}
+      onOpenChange={(open) => {
+        if (!open && closable) onClose()
+      }}
+      isDismissable={closable}
+      isKeyboardDismissDisabled={!closable}
+      variant="blur"
+    >
+      <Modal.Container size="md" placement="center">
+        <Modal.Dialog
+          aria-label={mode === 'finalization' ? t('session.finalization.title') : t('session.recovery.title')}
+          className="sm-final-dialog"
+          data-testid="finalization-modal"
+          data-mode={mode}
+          data-state={state ?? 'NONE'}
+        >
+          {mode === 'finalization' ? (
+            <FinalizationBody sessionId={sessionId} state={state} onClose={onClose} />
+          ) : (
+            <RecoveryBody state={state} onClose={onClose} />
+          )}
+        </Modal.Dialog>
+      </Modal.Container>
+    </Modal.Backdrop>
+  )
+}
+
+function FinalizationBody({ sessionId, state, onClose }: { sessionId: string; state: SessionState | null; onClose: () => void }) {
+  const { t } = useTranslation()
+  const m = useMotionPolicy()
+  const steps = useSim((s) => (s.session?.id === sessionId ? s.session.finalization.steps : null))
+  const evidenceId = useSim((s) => (s.session?.id === sessionId ? s.session.evidenceId : null))
+  const stoppedAt = useSim((s) => (s.session?.id === sessionId ? s.session.stoppedAt : null))
+  const sealedAt = useSim((s) => (s.session?.id === sessionId ? s.session.sealedAt : null))
+  const sealed = state === SessionState.SEALED
+  const stopping = state === SessionState.STOPPING
+
+  const stepperSteps: StepperStep[] = (steps ?? []).map((step) => ({
+    id: step.id,
+    label: t(`common.enums.finalizationStep.${step.id}`),
+    status: step.status,
+    description:
+      step.status === 'done' && step.durationMs !== null
+        ? t('session.finalization.stepDuration', { seconds: (step.durationMs / 1000).toFixed(1) })
+        : undefined,
+  }))
+  const total = stepperSteps.length || 6
+  const done = stepperSteps.filter((step) => step.status === 'done').length
+  const percent = sealed ? 100 : Math.round((done / total) * 100)
+  const caseNumber = useSim((s) => (s.session?.id === sessionId ? s.session.input.caseNumber : null))
+  const subjectName = useSim((s) => (s.session?.id === sessionId ? s.session.input.subjectName : null))
+  const simulatedManifestHash = useSim((s) =>
+    evidenceId ? (s.evidence.find((item) => item.id === evidenceId)?.manifestHash ?? null) : null,
+  )
+  const item: SealedItem | null =
+    sealed && evidenceId && caseNumber !== null && subjectName !== null
+      ? { evidenceId, caseNumber, subjectName, sessionId, simulatedManifestHash }
+      : null
+  const pkg = useDemoPackage(item)
+
+  return (
+    <>
+      <Modal.Header className="sm-final-header">
+        <span className="sm-final-icon" data-sealed={sealed ? 'true' : undefined} aria-hidden="true">
+          <FileLock2 className="size-5" />
+        </span>
+        <span className="flex min-w-0 flex-col">
+          <Modal.Heading className="sm-final-title">
+            {sealed ? t('session.finalization.sealedTitle') : t('session.finalization.title')}
+          </Modal.Heading>
+          <span className="sm-final-subtitle font-mono">{t('session.finalization.subtitle', { sessionId })}</span>
+        </span>
+      </Modal.Header>
+      <Modal.Body className="sm-final-body">
+        <ProgressBar
+          aria-label={t('session.finalization.progress', { percent })}
+          value={percent}
+          color={sealed ? 'success' : 'accent'}
+          size="sm"
+          className="sm-final-progress"
+          style={{ '--sm-progress': String(percent / 100) } as CSSProperties}
+          data-testid="sm-final-progress"
+        >
+          <span className="sm-final-progress-label">{t('session.finalization.progress', { percent })}</span>
+          <ProgressBar.Track>
+            <ProgressBar.Fill />
+          </ProgressBar.Track>
+        </ProgressBar>
+
+        <AnimatePresence initial={false}>
+          {stopping ? (
+            <motion.p
+              key="stopping"
+              className="sm-final-stopping"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={m.transitions.crossFade}
+            >
+              <Spinner size="sm" color="current" aria-hidden="true" />
+              {t('session.finalization.stopping')}
+            </motion.p>
+          ) : null}
+        </AnimatePresence>
+
+        <Stepper
+          ariaLabel={t('session.finalization.title')}
+          orientation="vertical"
+          variant="pipeline"
+          steps={stepperSteps}
+          className="sm-final-stepper"
+        />
+
+        <AnimatePresence>
+          {sealed ? (
+            <motion.div
+              key="sealed"
+              className="sm-final-sealed"
+              data-testid="sm-final-sealed"
+              variants={m.variants.fade}
+              initial="hidden"
+              animate="visible"
+            >
+              <span className="sm-final-stamp-wrap">
+                <GlowLayer level={0} tone="sealed" pulseKey={evidenceId ?? 'sealed'} />
+                <StepperStamp show label={t('session.finalization.sealed')} className="sm-final-stamp" />
+              </span>
+              <div className="sm-final-sealed-text">
+                <p className="sm-final-sealed-title">{t('session.finalization.sealedBody', { evidenceId: evidenceId ?? '—' })}</p>
+                {stoppedAt !== null && sealedAt !== null ? (
+                  <p className="sm-final-sealed-meta" data-testid="sm-sealed-in">
+                    {t('session.finalization.sealedIn', { seconds: ((sealedAt - stoppedAt) / 1000).toFixed(1) })}
+                  </p>
+                ) : null}
+              </div>
+              <PackageBlock pkg={pkg} simulatedManifestHash={simulatedManifestHash} />
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
+      </Modal.Body>
+      <Modal.Footer className="sm-final-footer">
+        {sealed || state === null ? (
+          <Button variant="ghost" onPress={onClose} data-testid="sm-final-close">
+            {t('session.finalization.close')}
+          </Button>
+        ) : null}
+        {sealed && evidenceId ? (
+          <Link
+            to="/evidence/$evidenceId"
+            params={{ evidenceId }}
+            className={buttonVariants({ variant: 'primary' })}
+            data-testid="sm-final-view-evidence"
+          >
+            {t('session.finalization.viewEvidence')}
+          </Link>
+        ) : null}
+      </Modal.Footer>
+    </>
+  )
+}
+
+function PackageBlock({ pkg, simulatedManifestHash }: { pkg: PackageState; simulatedManifestHash: string | null }) {
+  const { t } = useTranslation()
+  if (pkg.status === 'idle') return null
+  if (pkg.status === 'loading') return <p className="sm-final-package-note">{t('session.finalization.loadingPackage')}</p>
+  if (pkg.status === 'missing') {
+    // No guarded DEMO package joins (review 40 M4/R3): the simulator's hash, labelled simulated.
+    return (
+      <dl className="sm-final-package" data-testid="sm-final-package" data-source="simulated">
+        <div className="sm-final-package-head">
+          <span>{t('session.finalization.manifestDigest')}</span>
+          <Chip size="sm" variant="soft" color="default">
+            <Chip.Label>{t('common.simulated.chip')}</Chip.Label>
+          </Chip>
+        </div>
+        {simulatedManifestHash ? (
+          <div>
+            <dt className="sr-only">{t('session.finalization.manifestDigest')}</dt>
+            <dd className="font-mono" title={simulatedManifestHash}>
+              {shortHash(simulatedManifestHash, 24)}…
+            </dd>
+          </div>
+        ) : null}
+        <p className="sm-final-package-note">{t('session.finalization.noPackage')}</p>
+      </dl>
+    )
+  }
+  return (
+    <dl className="sm-final-package" data-testid="sm-final-package" data-source="package">
+      <div className="sm-final-package-head">
+        <span>{t('session.finalization.packageTitle')}</span>
+        <Chip size="sm" variant="soft" color="warning">
+          <Chip.Label>DEMO</Chip.Label>
+        </Chip>
+      </div>
+      <div>
+        <dt>{t('session.finalization.manifestDigest')}</dt>
+        <dd className="font-mono" title={pkg.info.manifestSha256}>
+          {shortHash(pkg.info.manifestSha256, 24)}…
+        </dd>
+      </div>
+      <div>
+        <dt>{t('session.finalization.signature')}</dt>
+        <dd className="font-mono">{t('session.finalization.signatureValue', { keyId: pkg.info.keyId })}</dd>
+      </div>
+      <p className="sm-final-package-note">{t('session.finalization.demoNote')}</p>
+    </dl>
+  )
+}
+
+/**
+ * The step-93 DEMO package of a sealed item, loaded on demand so the 270 KB index never weighs on
+ * the page chunk (review 40 m12). Joined with the shared `matchDemoPackage` (D84): evidence suffix,
+ * session suffix, case sequence and subject (review 40 M4/R2): a session the presenter creates live
+ * also seals as EV-…-0014 but is another interview.
+ */
+function useDemoPackage(item: SealedItem | null): PackageState {
+  const evidenceId = item?.evidenceId ?? null
+  const caseNumber = item?.caseNumber ?? null
+  const subjectName = item?.subjectName ?? null
+  const sessionId = item?.sessionId ?? null
+  const [state, setState] = useState<{ id: string | null; value: PackageState }>({ id: null, value: { status: 'idle' } })
+  useEffect(() => {
+    if (!evidenceId) return undefined
+    let active = true
+    import('@dems/shared/demo-data')
+      .then((module) => {
+        if (!active) return
+        // D84 (step 54): the shared join (case sequence + subject + session suffix), any demo day.
+        const pkg = module.matchDemoPackage({ id: evidenceId, caseNumber: caseNumber ?? '', subjectName: subjectName ?? '' }, sessionId)
+        setState({
+          id: evidenceId,
+          value: pkg ? { status: 'ready', info: { manifestSha256: pkg.files.manifest.sha256, keyId: pkg.signature.keyId } } : { status: 'missing' },
+        })
+      })
+      .catch((error: unknown) => {
+        logSessionMonitorError('FinalizationModal.loadPackage', error, { evidenceId })
+        if (active) setState({ id: evidenceId, value: { status: 'missing' } })
+      })
+    return () => {
+      active = false
+    }
+  }, [evidenceId, caseNumber, subjectName, sessionId])
+  if (!evidenceId) return { status: 'idle' }
+  return state.id === evidenceId ? state.value : { status: 'loading' }
+}
+
+function RecoveryBody({ state, onClose }: { state: SessionState | null; onClose: () => void }) {
+  const { t } = useTranslation()
+  const stage = useSim((s) => s.session?.recovery?.stage ?? null)
+  const done = state === null
+  const statusOf = (id: BootRecoveryState): StepperStep['status'] => {
+    if (done) return 'done'
+    if (stage === id) return 'active'
+    if (stage === BootRecoveryState.INCOMPLETE_SESSION_ANALYSIS && id === BootRecoveryState.RECOVERY_SCAN) return 'done'
+    return 'pending'
+  }
+  const steps: StepperStep[] = [BootRecoveryState.RECOVERY_SCAN, BootRecoveryState.INCOMPLETE_SESSION_ANALYSIS].map((id) => ({
+    id,
+    label: t(`common.enums.bootRecoveryState.${id}`),
+    status: statusOf(id),
+  }))
+  return (
+    <>
+      <Modal.Header className="sm-final-header">
+        <span className="sm-final-icon sm-final-icon-warning" aria-hidden="true">
+          <LifeBuoy className="size-5" />
+        </span>
+        <Modal.Heading className="sm-final-title">{t('session.recovery.title')}</Modal.Heading>
+      </Modal.Header>
+      <Modal.Body className="sm-final-body">
+        <Stepper ariaLabel={t('session.recovery.stagesLabel')} orientation="vertical" variant="pipeline" steps={steps} />
+        {done ? (
+          <p className="sm-final-incomplete" role="status" data-testid="sm-recovery-done">
+            <Chip size="sm" variant="soft" color="warning">
+              <Chip.Label>{t('common.sessionOutcome.INCOMPLETE')}</Chip.Label>
+            </Chip>
+            {t('session.recovery.incomplete')}
+          </p>
+        ) : null}
+      </Modal.Body>
+      <Modal.Footer className="sm-final-footer">
+        {done ? (
+          <Button variant="primary" onPress={onClose}>
+            {t('session.recovery.acknowledge')}
+          </Button>
+        ) : null}
+      </Modal.Footer>
+    </>
+  )
+}

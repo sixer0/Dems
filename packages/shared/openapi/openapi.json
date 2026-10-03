@@ -1,0 +1,2873 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "DEMS Core API",
+    "version": "0.1.0",
+    "summary": "Core API v1 of the DEMS Edge Client demo: one live endpoint on the local mock-core, nine simulated in the browser.",
+    "description": "Reference for the Core API v1 of the **DEMS Edge Client demo** (device DEMS-IR-01). The design book (§21.2) names nine endpoints; this document adds their request and response bodies, plus the local service-liveness endpoint.\n\n### Live and simulated\n\n| Badge | Meaning |\n|---|---|\n| **LIVE** | Served over the network by mock-core at `http://127.0.0.1:4400`. |\n| **SIMULATED** | Answered in the browser by the demo simulator. Responses carry `x-dems-simulated: 1`; no request leaves the machine. |\n| **RBAC + AUDIT** | The simulator checks the role of the operator signed in to this console and writes a tamper-evident audit row. |\n\nEvery operation also states `x-dems-mode: live` or `x-dems-mode: simulated`.\n\n### Not defined in the design book\n\nThe design book names the endpoint concepts only. It does not define:\n- authentication or login, pairing, metadata submission, evidence list, audit list or verification endpoints (left out here on purpose);\n- a WebSocket path or message schema (`/ws` and the heartbeat message are this demo's choice; see the Realtime tag);\n- request or response bodies (every body in this document is a demo definition);\n- an authentication scheme (the simulated endpoints act as the operator signed in to this console).\n\n### Examples\n\nExamples are frozen at 2026-10-01 10:00:00 WIB and follow the canonical demo dataset: session SES-20261001-0024 (case LP/2026/1001-0007, 00:18:42 into the recording) and evidence EV-20260930-0004, exported by the SUPERVISOR operator. Simulated responses write times at UTC+07:00 (WIB); mock-core writes UTC. The live simulator dates IDs from its own clock, so only the date part differs from these examples. All data is synthetic."
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:4400",
+      "description": "Local mock-core. It serves GET /api/v1/health and WS /ws; the simulated endpoints are answered in the browser."
+    }
+  ],
+  "tags": [
+    {
+      "name": "Service",
+      "description": "Liveness of the local mock-core service. **LIVE.**"
+    },
+    {
+      "name": "Session",
+      "description": "Session lifecycle (book §6.2): CREATE → PRECHECK → ARMED → RECORDING → STOPPING → FINALIZING → SEALED. **SIMULATED.**"
+    },
+    {
+      "name": "Device",
+      "description": "Device health, audio channels and video tracks (book §6.1, §21.2). **SIMULATED.**"
+    },
+    {
+      "name": "Storage",
+      "description": "Evidence storage capacity and state. **SIMULATED.**"
+    },
+    {
+      "name": "Evidence",
+      "description": "Authorized export with chain of custody (book §19.2, §19.3). **SIMULATED**, RBAC + audit."
+    },
+    {
+      "name": "Realtime",
+      "description": "**LIVE** WebSocket `ws://127.0.0.1:4400/ws` served by mock-core. OpenAPI 3.1 cannot describe a socket, so it is documented here and shown live in the Realtime panel next to this reference.\n\n- Server to client only: one JSON `Heartbeat` message (see the Heartbeat model) per text frame every 1000 ms, plus one immediately after connecting.\n- `seq` counts ticks since the server started. `sessionState` is `null` in this demo phase.\n- Upgrades from origins other than the web dev origins and the service's own origins are refused with 403.\n- Clients show the link as STALE after 2500 ms without a heartbeat and reconnect after 0.5 s, 1 s, 2 s, 4 s, 8 s (the last delay repeats), plus up to 250 ms of jitter.\n- Messages sent by clients are ignored.\n\nExample message:\n\n```json\n{\n  \"type\": \"heartbeat\",\n  \"v\": 1,\n  \"seq\": 5400,\n  \"serverTime\": \"2026-10-01T03:00:00.000Z\",\n  \"uptimeMs\": 5400012,\n  \"intervalMs\": 1000,\n  \"clients\": 2,\n  \"sessionState\": null\n}\n```",
+      "x-dems-mode": "live"
+    }
+  ],
+  "paths": {
+    "/api/v1/health": {
+      "get": {
+        "operationId": "getServiceHealth",
+        "tags": [
+          "Service"
+        ],
+        "summary": "Service liveness",
+        "description": "Liveness of the local mock-core service. **Live**: served by mock-core on 127.0.0.1:4400 (CORS allows the web dev origins). This is not the device health snapshot; that is `GET /api/v1/device/health`.",
+        "responses": {
+          "200": {
+            "description": "The service is up.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                },
+                "examples": {
+                  "live": {
+                    "summary": "mock-core is up",
+                    "value": {
+                      "status": "ok",
+                      "service": "dems-mock-core",
+                      "version": "0.1.0",
+                      "apiVersion": "v1",
+                      "serverTime": "2026-10-01T03:00:00.000Z",
+                      "uptimeMs": 5400000,
+                      "ws": {
+                        "path": "/ws",
+                        "heartbeatIntervalMs": 1000,
+                        "clients": 2
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-badges": [
+          {
+            "name": "LIVE",
+            "position": "after",
+            "color": "#22C55E"
+          }
+        ],
+        "x-dems-mode": "live",
+        "x-dems-source": "masterplan/01_specs.md §2.5, §3.2 (demo; not in the design book)"
+      }
+    },
+    "/api/v1/session": {
+      "post": {
+        "operationId": "createSession",
+        "tags": [
+          "Session"
+        ],
+        "summary": "Create session",
+        "description": "Creates a session and returns its Session ID; the session enters **CREATE** (book §6.2, §12.2 steps 1-2).\n\nIdempotent (S26): the same input while that session is still open returns it with `200` and `created: false`.\n\nRequires a signed-in operator holding SESSION_START; writes the SESSION_CREATED audit row.\n\nSimulated: \"Try it\" is answered in the browser by the demo simulator (header `x-dems-simulated: 1`). Nothing leaves the machine.",
+        "responses": {
+          "200": {
+            "description": "The same input was already created: the open session is returned.",
+            "headers": {
+              "x-dems-simulated": {
+                "$ref": "#/components/headers/XDemsSimulated"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionCommandResponse"
+                },
+                "examples": {
+                  "replay": {
+                    "summary": "Same input again: the open session",
+                    "value": {
+                      "sessionId": "SES-20261001-0024",
+                      "state": "CREATE",
+                      "created": false
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Session created (state CREATE).",
+            "headers": {
+              "x-dems-simulated": {
+                "$ref": "#/components/headers/XDemsSimulated"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionCommandResponse"
+                },
+                "examples": {
+                  "created": {
+                    "summary": "Created in state CREATE",
+                    "value": {
+                      "sessionId": "SES-20261001-0024",
+                      "state": "CREATE",
+                      "created": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not a JSON object (INVALID_JSON).",
+            "headers": {
+              "x-dems-simulated": {
+                "$ref": "#/components/headers/XDemsSimulated"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "invalidJson": {
+                    "summary": "Not a JSON object",
+                    "value": {
+                      "error": {
+                        "code": "INVALID_JSON",
+                        "message": "The request body must be a JSON object."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No operator is signed in (NOT_SIGNED_IN).",
+            "headers": {
+              "x-dems-simulated": {
+                "$ref": "#/components/headers/XDemsSimulated"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "notSignedIn": {
+                    "summary": "Signed out",
+                    "value": {
+                      "error": {
+                        "code": "NOT_SIGNED_IN",
+                        "message": "Sign in first."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The operator lacks SESSION_START (NOT_PERMITTED).",
+            "headers": {
+              "x-dems-simulated": {
+                "$ref": "#/components/headers/XDemsSimulated"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "notPermitted": {
+                    "summary": "TECHNICIAN cannot start sessions",
+                    "value": {
+                      "error": {
+                        "code": "NOT_PERMITTED",
+                        "message": "Session not created."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Another session is open (SESSION_ACTIVE).",
+            "headers": {
+              "x-dems-simulated": {
+                "$ref": "#/components/headers/XDemsSimulated"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "sessionActive": {
+                    "summary": "Another session is open",
+                    "value": {
+                      "error": {
+                        "code": "SESSION_ACTIVE",
+                        "message": "Session SES-20261001-0024 is active."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is incomplete or invalid (INVALID_INPUT).",
+            "headers": {
+              "x-dems-simulated": {
+                "$ref": "#/components/headers/XDemsSimulated"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "invalidInput": {
+                    "summary": "Incomplete input",
+                    "value": {
+                      "error": {
+                        "code": "INVALID_INPUT",
+                        "message": "Session not created."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-badges": [
+          {
+            "name": "SIMULATED",
+            "position": "after",
+            "color": "#F59E0B"
+          }
+        ],
+        "x-dems-mode": "simulated",
+        "x-dems-source": "Design book §21.2",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionCreateRequest"
+              },
+              "examples": {
+                "recordingScenario": {
+                  "summary": "The recording scenario session",
+                  "value": {
+                    "caseNumber": "LP/2026/1001-0007",
+                    "subjectType": "TERSANGKA",
+                    "subjectName": "Ahmad Fauzi",
+                    "investigatorId": "OPR-001",
+                    "room": "Interview Room 1",
+                    "profileId": "STANDARD_1080P25"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-dems-rbac": {
+          "permission": "SESSION_START",
+          "roles": [
+            "INVESTIGATOR",
+            "SUPERVISOR"
+          ],
+          "audit": [
+            "SESSION_CREATED"
+          ]
+        }
+      }
+    },
+    "/api/v1/session/{id}/start": {
+      "post": {
+        "operationId": "startSession",
+        "tags": [
+          "Session"
+        ],
+        "summary": "Start recording",
+        "description": "Runs the Core pre-check (book §5.3: 8 checks) and starts recording.\n\n- From **CREATE**: begins the pre-check and answers `202` with state **PRECHECK**. Poll `GET /api/v1/session/current` and call again once it is **ARMED**.\n- From **ARMED**: starts recording and answers `200` with state **RECORDING**.\n- Pre-check ended with **WARN**: send `{\"acknowledgeWarnings\": true}` to acknowledge and start; without it the answer is `409 PRECHECK_WARNINGS`.\n- Pre-check with a **BLOCK** (Core offline, lens fault, storage full, security fault): `409 PRECHECK_BLOCKED` with the reasons.\n\nRequires a signed-in operator holding SESSION_START; the audit rows name that operator.\n\nSimulated: \"Try it\" is answered in the browser by the demo simulator (header `x-dems-simulated: 1`). Nothing leaves the machine.",
+        "responses": {
+          "200": {
+            "description": "Recording started (state RECORDING).",
+            "headers": {
+              "x-dems-simulated": {
+                "$ref": "#/components/headers/XDemsSimulated"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionCommandResponse"
+                },
+                "examples": {
+                  "recording": {
+                    "summary": "ARMED → RECORDING",
+                    "value": {
+                      "sessionId": "SES-20261001-0024",
+                      "state": "RECORDING"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Pre-check started (state PRECHECK).",
+            "headers": {
+              "x-dems-simulated": {
+                "$ref": "#/components/headers/XDemsSimulated"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionCommandResponse"
+                },
+                "examples": {
+                  "precheck": {
+                    "summary": "CREATE → PRECHECK",
+                    "value": {
+                      "sessionId": "SES-20261001-0024",
+                      "state": "PRECHECK"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not a JSON object (INVALID_JSON).",
+            "headers": {
+              "x-dems-simulated": {
+                "$ref": "#/components/headers/XDemsSimulated"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "invalidJson": {
+                    "summary": "Not a JSON object",
+                    "value": {
+                      "error": {
+                        "code": "INVALID_JSON",
+                        "message": "The request body must be a JSON object."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No operator is signed in (NOT_SIGNED_IN).",
+            "headers": {
+              "x-dems-simulated": {
+                "$ref": "#/components/headers/XDemsSimulated"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "notSignedIn": {
+                    "summary": "Signed out",
+                    "value": {
+                      "error": {
+                        "code": "NOT_SIGNED_IN",
+                        "message": "Sign in first."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The operator lacks SESSION_START (NOT_PERMITTED).",
+            "headers": {
+              "x-dems-simulated": {
+                "$ref": "#/components/headers/XDemsSimulated"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "notPermitted": {
+                    "summary": "TECHNICIAN cannot control sessions",
+                    "value": {
+                      "error": {
+                        "code": "NOT_PERMITTED",
+                        "message": "Your role cannot control sessions (RBAC)."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "This ID is not the open session (NOT_FOUND).",
+            "headers": {
+              "x-dems-simulated": {
+                "$ref": "#/components/headers/XDemsSimulated"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "notFound": {
+                    "summary": "Not the open session",
+                    "value": {
+                      "error": {
+                        "code": "NOT_FOUND",
+                        "message": "Session SES-20261001-0099 is not the current session."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Not startable now (PRECHECK_RUNNING, PRECHECK_WARNINGS, PRECHECK_BLOCKED, INVALID_STATE).",
+            "headers": {
+              "x-dems-simulated": {
+                "$ref": "#/components/headers/XDemsSimulated"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "precheckBlocked": {
+                    "summary": "Storage full blocks the start",
+                    "value": {
+                      "error": {
+                        "code": "PRECHECK_BLOCKED",
+                        "message": "Start blocked: Storage FULL"
+                      }
+                    }
+                  },
+                  "precheckRunning": {
+                    "summary": "Checks still running",
+                    "value": {
+                      "error": {
+                        "code": "PRECHECK_RUNNING",
+                        "message": "Pre-recording checks are still running."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-badges": [
+          {
+            "name": "SIMULATED",
+            "position": "after",
+            "color": "#F59E0B"
+          }
+        ],
+        "x-dems-mode": "simulated",
+        "x-dems-source": "Design book §21.2",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Session ID of the open session.",
+            "schema": {
+              "type": "string",
+              "pattern": "^SES-\\d{8}-\\d{4}$"
+            },
+            "example": "SES-20261001-0024"
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionStartRequest"
+              },
+              "examples": {
+                "acknowledgeWarnings": {
+                  "summary": "Acknowledge WARN and start",
+                  "value": {
+                    "acknowledgeWarnings": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-dems-rbac": {
+          "permission": "SESSION_START",
+          "roles": [
+            "INVESTIGATOR",
+            "SUPERVISOR"
+          ],
+          "audit": [
+            "PRECHECK_PASSED",
+            "RECORDING_STARTED"
+          ]
+        }
+      }
+    },
+    "/api/v1/session/{id}/stop": {
+      "post": {
+        "operationId": "stopSession",
+        "tags": [
+          "Session"
+        ],
+        "summary": "Stop recording",
+        "description": "Stops the recording with a mandatory reason and moves the session to finalization: **STOPPING** → **FINALIZING** (hashes, manifest, encryption, signature) → **SEALED** (book §6.2, §12.2 steps 5-10).\n\nAnswers `202` at STOPPING; poll `GET /api/v1/session/current` for the seal.\n\nRequires a signed-in operator holding SESSION_START; the RECORDING_STOPPED row names that operator.\n\nSimulated: \"Try it\" is answered in the browser by the demo simulator (header `x-dems-simulated: 1`). Nothing leaves the machine.",
+        "responses": {
+          "202": {
+            "description": "Stop accepted (state STOPPING); finalization follows.",
+            "headers": {
+              "x-dems-simulated": {
+                "$ref": "#/components/headers/XDemsSimulated"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionCommandResponse"
+                },
+                "examples": {
+                  "stopping": {
+                    "summary": "RECORDING → STOPPING",
+                    "value": {
+                      "sessionId": "SES-20261001-0024",
+                      "state": "STOPPING"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not a JSON object (INVALID_JSON).",
+            "headers": {
+              "x-dems-simulated": {
+                "$ref": "#/components/headers/XDemsSimulated"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "invalidJson": {
+                    "summary": "Not a JSON object",
+                    "value": {
+                      "error": {
+                        "code": "INVALID_JSON",
+                        "message": "The request body must be a JSON object."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No operator is signed in (NOT_SIGNED_IN).",
+            "headers": {
+              "x-dems-simulated": {
+                "$ref": "#/components/headers/XDemsSimulated"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "notSignedIn": {
+                    "summary": "Signed out",
+                    "value": {
+                      "error": {
+                        "code": "NOT_SIGNED_IN",
+                        "message": "Sign in first."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The operator lacks SESSION_START (NOT_PERMITTED).",
+            "headers": {
+              "x-dems-simulated": {
+                "$ref": "#/components/headers/XDemsSimulated"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "notPermitted": {
+                    "summary": "TECHNICIAN cannot control sessions",
+                    "value": {
+                      "error": {
+                        "code": "NOT_PERMITTED",
+                        "message": "Your role cannot control sessions (RBAC)."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "This ID is not the open session (NOT_FOUND).",
+            "headers": {
+              "x-dems-simulated": {
+                "$ref": "#/components/headers/XDemsSimulated"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "notFound": {
+                    "summary": "Not the open session",
+                    "value": {
+                      "error": {
+                        "code": "NOT_FOUND",
+                        "message": "Session SES-20261001-0099 is not the current session."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The session is not RECORDING (INVALID_STATE).",
+            "headers": {
+              "x-dems-simulated": {
+                "$ref": "#/components/headers/XDemsSimulated"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "invalidState": {
+                    "summary": "Not recording",
+                    "value": {
+                      "error": {
+                        "code": "INVALID_STATE",
+                        "message": "Session SES-20261001-0024 is ARMED."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The reason is shorter than 5 characters (INVALID_REASON).",
+            "headers": {
+              "x-dems-simulated": {
+                "$ref": "#/components/headers/XDemsSimulated"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "invalidReason": {
+                    "summary": "Reason too short",
+                    "value": {
+                      "error": {
+                        "code": "INVALID_REASON",
+                        "message": "A stop reason of at least 5 characters is required."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-badges": [
+          {
+            "name": "SIMULATED",
+            "position": "after",
+            "color": "#F59E0B"
+          }
+        ],
+        "x-dems-mode": "simulated",
+        "x-dems-source": "Design book §21.2",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Session ID of the recording session.",
+            "schema": {
+              "type": "string",
+              "pattern": "^SES-\\d{8}-\\d{4}$"
+            },
+            "example": "SES-20261001-0024"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionStopRequest"
+              },
+              "examples": {
+                "completed": {
+                  "summary": "Interview completed",
+                  "value": {
+                    "reason": "Interview completed"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-dems-rbac": {
+          "permission": "SESSION_START",
+          "roles": [
+            "INVESTIGATOR",
+            "SUPERVISOR"
+          ],
+          "audit": [
+            "RECORDING_STOPPED"
+          ]
+        }
+      }
+    },
+    "/api/v1/session/current": {
+      "get": {
+        "operationId": "getCurrentSession",
+        "tags": [
+          "Session"
+        ],
+        "summary": "Current session",
+        "description": "Returns the open session, or `null` when idle. The tablet calls it after a reconnect to resynchronise (book §5.5, §5.6).\n\nSimulated: \"Try it\" is answered in the browser by the demo simulator (header `x-dems-simulated: 1`). Nothing leaves the machine.",
+        "responses": {
+          "200": {
+            "description": "The current session state.",
+            "headers": {
+              "x-dems-simulated": {
+                "$ref": "#/components/headers/XDemsSimulated"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurrentSessionResponse"
+                },
+                "examples": {
+                  "recording": {
+                    "summary": "Recording, 00:18:42 in",
+                    "value": {
+                      "session": {
+                        "id": "SES-20261001-0024",
+                        "state": "RECORDING",
+                        "caseNumber": "LP/2026/1001-0007",
+                        "subjectType": "TERSANGKA",
+                        "subjectName": "Ahmad Fauzi",
+                        "investigatorId": "OPR-001",
+                        "room": "Interview Room 1",
+                        "profileId": "STANDARD_1080P25",
+                        "investigatorName": "AKP Budi Santoso",
+                        "createdAt": "2026-10-01T09:40:48.000+07:00",
+                        "startedAt": "2026-10-01T09:41:18.000+07:00",
+                        "stoppedAt": null,
+                        "sealedAt": null,
+                        "elapsedMs": 1122000,
+                        "bytesWritten": 2555666667,
+                        "evidenceId": null,
+                        "precheck": {
+                          "outcome": "PASS",
+                          "items": [
+                            {
+                              "id": "CORE",
+                              "status": "PASS",
+                              "value": "ONLINE",
+                              "reason": null
+                            },
+                            {
+                              "id": "LENS_1",
+                              "status": "PASS",
+                              "value": "READY",
+                              "reason": null
+                            },
+                            {
+                              "id": "LENS_2",
+                              "status": "PASS",
+                              "value": "READY",
+                              "reason": null
+                            },
+                            {
+                              "id": "MIC_1",
+                              "status": "PASS",
+                              "value": "READY",
+                              "reason": null
+                            },
+                            {
+                              "id": "MIC_2",
+                              "status": "PASS",
+                              "value": "READY",
+                              "reason": null
+                            },
+                            {
+                              "id": "STORAGE",
+                              "status": "PASS",
+                              "value": "READY",
+                              "reason": null
+                            },
+                            {
+                              "id": "TIME",
+                              "status": "PASS",
+                              "value": "GNSS",
+                              "reason": null
+                            },
+                            {
+                              "id": "SECURITY",
+                              "status": "PASS",
+                              "value": "READY",
+                              "reason": null
+                            }
+                          ]
+                        },
+                        "fault": null
+                      },
+                      "serverTime": "2026-10-01T10:00:00.000+07:00"
+                    }
+                  },
+                  "sealed": {
+                    "summary": "Just sealed",
+                    "value": {
+                      "session": {
+                        "id": "SES-20261001-0024",
+                        "state": "SEALED",
+                        "caseNumber": "LP/2026/1001-0007",
+                        "subjectType": "TERSANGKA",
+                        "subjectName": "Ahmad Fauzi",
+                        "investigatorId": "OPR-001",
+                        "room": "Interview Room 1",
+                        "profileId": "STANDARD_1080P25",
+                        "investigatorName": "AKP Budi Santoso",
+                        "createdAt": "2026-10-01T09:40:48.000+07:00",
+                        "startedAt": "2026-10-01T09:41:18.000+07:00",
+                        "stoppedAt": "2026-10-01T10:05:00.000+07:00",
+                        "sealedAt": "2026-10-01T10:05:07.000+07:00",
+                        "elapsedMs": 1422000,
+                        "bytesWritten": 3239000000,
+                        "evidenceId": "EV-20261001-0014",
+                        "precheck": {
+                          "outcome": "PASS",
+                          "items": [
+                            {
+                              "id": "CORE",
+                              "status": "PASS",
+                              "value": "ONLINE",
+                              "reason": null
+                            },
+                            {
+                              "id": "LENS_1",
+                              "status": "PASS",
+                              "value": "READY",
+                              "reason": null
+                            },
+                            {
+                              "id": "LENS_2",
+                              "status": "PASS",
+                              "value": "READY",
+                              "reason": null
+                            },
+                            {
+                              "id": "MIC_1",
+                              "status": "PASS",
+                              "value": "READY",
+                              "reason": null
+                            },
+                            {
+                              "id": "MIC_2",
+                              "status": "PASS",
+                              "value": "READY",
+                              "reason": null
+                            },
+                            {
+                              "id": "STORAGE",
+                              "status": "PASS",
+                              "value": "READY",
+                              "reason": null
+                            },
+                            {
+                              "id": "TIME",
+                              "status": "PASS",
+                              "value": "GNSS",
+                              "reason": null
+                            },
+                            {
+                              "id": "SECURITY",
+                              "status": "PASS",
+                              "value": "READY",
+                              "reason": null
+                            }
+                          ]
+                        },
+                        "fault": null
+                      },
+                      "serverTime": "2026-10-01T10:05:10.000+07:00"
+                    }
+                  },
+                  "idle": {
+                    "summary": "Idle (no session)",
+                    "value": {
+                      "session": null,
+                      "serverTime": "2026-10-01T10:00:00.000+07:00"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-badges": [
+          {
+            "name": "SIMULATED",
+            "position": "after",
+            "color": "#F59E0B"
+          }
+        ],
+        "x-dems-mode": "simulated",
+        "x-dems-source": "Design book §21.2"
+      }
+    },
+    "/api/v1/device/health": {
+      "get": {
+        "operationId": "getDeviceHealth",
+        "tags": [
+          "Device"
+        ],
+        "summary": "Device health snapshot",
+        "description": "Health of camera, audio, storage, time and security (book §6.1, §21.2), used by the pre-check and diagnostics. Distinct from the service liveness `GET /api/v1/health`.\n\nSimulated: \"Try it\" is answered in the browser by the demo simulator (header `x-dems-simulated: 1`). Nothing leaves the machine.",
+        "responses": {
+          "200": {
+            "description": "The health snapshot.",
+            "headers": {
+              "x-dems-simulated": {
+                "$ref": "#/components/headers/XDemsSimulated"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceHealthResponse"
+                },
+                "examples": {
+                  "idle": {
+                    "summary": "Idle, all green",
+                    "value": {
+                      "device": {
+                        "id": "DEMS-IR-01",
+                        "name": "Interview Room 1",
+                        "softwareVersion": "2.4.1"
+                      },
+                      "systemState": "READY",
+                      "flags": [],
+                      "cameras": [
+                        {
+                          "trackId": "VIDEO-01",
+                          "deviceId": "CAM-01",
+                          "name": "Camera 1",
+                          "lens": "READY",
+                          "online": true,
+                          "recState": null,
+                          "resolution": "1080p",
+                          "fps": 25,
+                          "codec": "H.264",
+                          "bitrateMbps": 9
+                        },
+                        {
+                          "trackId": "VIDEO-02",
+                          "deviceId": "CAM-02",
+                          "name": "Camera 2",
+                          "lens": "READY",
+                          "online": true,
+                          "recState": null,
+                          "resolution": "1080p",
+                          "fps": 25,
+                          "codec": "H.264",
+                          "bitrateMbps": 9
+                        }
+                      ],
+                      "audio": [
+                        {
+                          "trackId": "AUDIO-01",
+                          "deviceId": "MIC-01",
+                          "name": "MIC 1 – Interviewer",
+                          "state": "READY",
+                          "recState": null,
+                          "dbfs": -52,
+                          "peak": -52,
+                          "clip": false,
+                          "noSignal": false,
+                          "gainDb": 32,
+                          "phantom": true
+                        },
+                        {
+                          "trackId": "AUDIO-02",
+                          "deviceId": "MIC-02",
+                          "name": "MIC 2 – Subject",
+                          "state": "READY",
+                          "recState": null,
+                          "dbfs": -52,
+                          "peak": -52,
+                          "clip": false,
+                          "noSignal": false,
+                          "gainDb": 32,
+                          "phantom": true
+                        }
+                      ],
+                      "storage": {
+                        "state": "READY",
+                        "totalBytes": 4000000000000,
+                        "usedBytes": 804000000000,
+                        "freeBytes": 3196000000000,
+                        "usedPercent": 20,
+                        "estimatedRemainingMs": 1403121951,
+                        "writeBytesPerSec": 0,
+                        "bitrateMbps": 18.3,
+                        "volumes": [
+                          {
+                            "id": "NVME-SYS",
+                            "kind": "SYSTEM",
+                            "label": "NVMe (system)",
+                            "totalBytes": 2000000000000,
+                            "usedBytes": 212000000000
+                          },
+                          {
+                            "id": "HDD-EVIDENCE",
+                            "kind": "EVIDENCE",
+                            "label": "HDD (evidence)",
+                            "totalBytes": 4000000000000,
+                            "usedBytes": 804000000000
+                          }
+                        ],
+                        "retention": {
+                          "policy": "DAYS_90",
+                          "days": 90,
+                          "autoArchive": true
+                        }
+                      },
+                      "time": {
+                        "source": "GNSS",
+                        "locked": true,
+                        "stratum": 1,
+                        "offsetMs": 3,
+                        "lastSyncAt": "2026-10-01T09:59:48.000+07:00"
+                      },
+                      "security": {
+                        "state": "READY",
+                        "posture": "SECURE",
+                        "tpmOk": true,
+                        "secureBoot": true,
+                        "tamper": false
+                      },
+                      "services": [
+                        {
+                          "id": "SVC-01",
+                          "name": "API Gateway",
+                          "status": "RUNNING"
+                        },
+                        {
+                          "id": "SVC-02",
+                          "name": "Authentication Service",
+                          "status": "RUNNING"
+                        },
+                        {
+                          "id": "SVC-03",
+                          "name": "Session Manager",
+                          "status": "RUNNING"
+                        },
+                        {
+                          "id": "SVC-04",
+                          "name": "Video Management Service",
+                          "status": "RUNNING"
+                        },
+                        {
+                          "id": "SVC-05",
+                          "name": "Recording Engine",
+                          "status": "RUNNING"
+                        },
+                        {
+                          "id": "SVC-06",
+                          "name": "Audio Capture Service",
+                          "status": "RUNNING"
+                        },
+                        {
+                          "id": "SVC-07",
+                          "name": "AV Synchronization",
+                          "status": "RUNNING"
+                        },
+                        {
+                          "id": "SVC-08",
+                          "name": "Metadata Manager",
+                          "status": "RUNNING"
+                        },
+                        {
+                          "id": "SVC-09",
+                          "name": "Time Service",
+                          "status": "RUNNING"
+                        },
+                        {
+                          "id": "SVC-10",
+                          "name": "Storage Manager",
+                          "status": "RUNNING"
+                        },
+                        {
+                          "id": "SVC-11",
+                          "name": "Security Manager",
+                          "status": "RUNNING"
+                        },
+                        {
+                          "id": "SVC-12",
+                          "name": "Evidence Manager",
+                          "status": "RUNNING"
+                        },
+                        {
+                          "id": "SVC-13",
+                          "name": "Relay/GPIO Service",
+                          "status": "RUNNING"
+                        },
+                        {
+                          "id": "SVC-14",
+                          "name": "LCD Display Service",
+                          "status": "RUNNING"
+                        },
+                        {
+                          "id": "SVC-15",
+                          "name": "Health Monitor",
+                          "status": "RUNNING"
+                        },
+                        {
+                          "id": "SVC-16",
+                          "name": "Audit Service",
+                          "status": "RUNNING"
+                        }
+                      ],
+                      "serverTime": "2026-10-01T10:00:00.000+07:00"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-badges": [
+          {
+            "name": "SIMULATED",
+            "position": "after",
+            "color": "#F59E0B"
+          }
+        ],
+        "x-dems-mode": "simulated",
+        "x-dems-source": "Design book §21.2"
+      }
+    },
+    "/api/v1/audio/status": {
+      "get": {
+        "operationId": "getAudioStatus",
+        "tags": [
+          "Device"
+        ],
+        "summary": "Audio status",
+        "description": "Per-channel levels and faults for AUDIO-01 (MIC 1) and AUDIO-02 (MIC 2), reported separately (book §21.2, SYS-003).\n\nSimulated: \"Try it\" is answered in the browser by the demo simulator (header `x-dems-simulated: 1`). Nothing leaves the machine.",
+        "responses": {
+          "200": {
+            "description": "Both audio channels.",
+            "headers": {
+              "x-dems-simulated": {
+                "$ref": "#/components/headers/XDemsSimulated"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AudioStatusResponse"
+                },
+                "examples": {
+                  "recording": {
+                    "summary": "Interviewer speaking",
+                    "value": {
+                      "channels": [
+                        {
+                          "trackId": "AUDIO-01",
+                          "deviceId": "MIC-01",
+                          "name": "MIC 1 – Interviewer",
+                          "state": "READY",
+                          "recState": "REC",
+                          "dbfs": -18.4,
+                          "peak": -12.1,
+                          "clip": false,
+                          "noSignal": false,
+                          "gainDb": 32,
+                          "phantom": true
+                        },
+                        {
+                          "trackId": "AUDIO-02",
+                          "deviceId": "MIC-02",
+                          "name": "MIC 2 – Subject",
+                          "state": "READY",
+                          "recState": "REC",
+                          "dbfs": -51.7,
+                          "peak": -23.9,
+                          "clip": false,
+                          "noSignal": false,
+                          "gainDb": 32,
+                          "phantom": true
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-badges": [
+          {
+            "name": "SIMULATED",
+            "position": "after",
+            "color": "#F59E0B"
+          }
+        ],
+        "x-dems-mode": "simulated",
+        "x-dems-source": "Design book §21.2"
+      }
+    },
+    "/api/v1/video/status": {
+      "get": {
+        "operationId": "getVideoStatus",
+        "tags": [
+          "Device"
+        ],
+        "summary": "Video status",
+        "description": "Per-track status for VIDEO-01 and VIDEO-02 (book §21.2).\n\nSimulated: \"Try it\" is answered in the browser by the demo simulator (header `x-dems-simulated: 1`). Nothing leaves the machine.",
+        "responses": {
+          "200": {
+            "description": "Both video tracks.",
+            "headers": {
+              "x-dems-simulated": {
+                "$ref": "#/components/headers/XDemsSimulated"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VideoStatusResponse"
+                },
+                "examples": {
+                  "recording": {
+                    "summary": "Both tracks recording",
+                    "value": {
+                      "tracks": [
+                        {
+                          "trackId": "VIDEO-01",
+                          "deviceId": "CAM-01",
+                          "name": "Camera 1",
+                          "lens": "READY",
+                          "online": true,
+                          "recState": "REC",
+                          "resolution": "1080p",
+                          "fps": 25,
+                          "codec": "H.264",
+                          "bitrateMbps": 9
+                        },
+                        {
+                          "trackId": "VIDEO-02",
+                          "deviceId": "CAM-02",
+                          "name": "Camera 2",
+                          "lens": "READY",
+                          "online": true,
+                          "recState": "REC",
+                          "resolution": "1080p",
+                          "fps": 25,
+                          "codec": "H.264",
+                          "bitrateMbps": 9
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-badges": [
+          {
+            "name": "SIMULATED",
+            "position": "after",
+            "color": "#F59E0B"
+          }
+        ],
+        "x-dems-mode": "simulated",
+        "x-dems-source": "Design book §21.2"
+      }
+    },
+    "/api/v1/storage/status": {
+      "get": {
+        "operationId": "getStorageStatus",
+        "tags": [
+          "Storage"
+        ],
+        "summary": "Storage status",
+        "description": "Capacity and health of the evidence storage, including the LOW and FULL states (book §21.2).\n\nSimulated: \"Try it\" is answered in the browser by the demo simulator (header `x-dems-simulated: 1`). Nothing leaves the machine.",
+        "responses": {
+          "200": {
+            "description": "Storage capacity and state.",
+            "headers": {
+              "x-dems-simulated": {
+                "$ref": "#/components/headers/XDemsSimulated"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StorageStatusResponse"
+                },
+                "examples": {
+                  "atLoad": {
+                    "summary": "20 % used, 3.2 TB free",
+                    "value": {
+                      "state": "READY",
+                      "totalBytes": 4000000000000,
+                      "usedBytes": 804000000000,
+                      "freeBytes": 3196000000000,
+                      "usedPercent": 20,
+                      "estimatedRemainingMs": 1403121951,
+                      "writeBytesPerSec": 0,
+                      "bitrateMbps": 18.3,
+                      "volumes": [
+                        {
+                          "id": "NVME-SYS",
+                          "kind": "SYSTEM",
+                          "label": "NVMe (system)",
+                          "totalBytes": 2000000000000,
+                          "usedBytes": 212000000000
+                        },
+                        {
+                          "id": "HDD-EVIDENCE",
+                          "kind": "EVIDENCE",
+                          "label": "HDD (evidence)",
+                          "totalBytes": 4000000000000,
+                          "usedBytes": 804000000000
+                        }
+                      ],
+                      "retention": {
+                        "policy": "DAYS_90",
+                        "days": 90,
+                        "autoArchive": true
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-badges": [
+          {
+            "name": "SIMULATED",
+            "position": "after",
+            "color": "#F59E0B"
+          }
+        ],
+        "x-dems-mode": "simulated",
+        "x-dems-source": "Design book §21.2"
+      }
+    },
+    "/api/v1/evidence/{id}/export": {
+      "post": {
+        "operationId": "exportEvidence",
+        "tags": [
+          "Evidence"
+        ],
+        "summary": "Authorized export",
+        "description": "**RBAC + audit required** (book §19.3, §21.2). The simulator applies the role of the operator signed in to this console; the design book defines no authentication endpoint, so no token travels on the wire.\n\n- SUPERVISOR (holds EVIDENCE_EXPORT): `202`, and an EVIDENCE_EXPORTED audit row (the ExportEvent).\n- INVESTIGATOR or TECHNICIAN: `403 FORBIDDEN`, and an EXPORT_DENIED audit row (EVT-26).\n\nOnly SEALED, UNDER_REVIEW or EXPORTED evidence can be exported, and the sealed source is never modified (book §19.3 rule 1).\n\nSimulated: \"Try it\" is answered in the browser by the demo simulator (header `x-dems-simulated: 1`). Nothing leaves the machine.",
+        "responses": {
+          "202": {
+            "description": "Export accepted and audited.",
+            "headers": {
+              "x-dems-simulated": {
+                "$ref": "#/components/headers/XDemsSimulated"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceExportAccepted"
+                },
+                "examples": {
+                  "accepted": {
+                    "summary": "SUPERVISOR: accepted and audited",
+                    "value": {
+                      "exportId": "EXP-000031",
+                      "evidenceId": "EV-20260930-0004",
+                      "status": "EXPORTED"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not a JSON object (INVALID_JSON).",
+            "headers": {
+              "x-dems-simulated": {
+                "$ref": "#/components/headers/XDemsSimulated"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "invalidJson": {
+                    "summary": "Not a JSON object",
+                    "value": {
+                      "error": {
+                        "code": "INVALID_JSON",
+                        "message": "The request body must be a JSON object."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No operator is signed in (NOT_SIGNED_IN).",
+            "headers": {
+              "x-dems-simulated": {
+                "$ref": "#/components/headers/XDemsSimulated"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "notSignedIn": {
+                    "summary": "Signed out",
+                    "value": {
+                      "error": {
+                        "code": "NOT_SIGNED_IN",
+                        "message": "Sign in first."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The role lacks EVIDENCE_EXPORT (FORBIDDEN); an EXPORT_DENIED audit row is written.",
+            "headers": {
+              "x-dems-simulated": {
+                "$ref": "#/components/headers/XDemsSimulated"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "forbidden": {
+                    "summary": "INVESTIGATOR: denied and audited",
+                    "value": {
+                      "error": {
+                        "code": "FORBIDDEN",
+                        "message": "Your role cannot export evidence (RBAC). The attempt was audited."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown evidence ID (NOT_FOUND).",
+            "headers": {
+              "x-dems-simulated": {
+                "$ref": "#/components/headers/XDemsSimulated"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "notFound": {
+                    "summary": "Unknown evidence",
+                    "value": {
+                      "error": {
+                        "code": "NOT_FOUND",
+                        "message": "Evidence not found."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The evidence is not sealed, or security is in FAULT (NOT_SEALED, SECURITY_FAULT).",
+            "headers": {
+              "x-dems-simulated": {
+                "$ref": "#/components/headers/XDemsSimulated"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "notSealed": {
+                    "summary": "EV-20260930-0006: incomplete session, never sealed",
+                    "value": {
+                      "error": {
+                        "code": "NOT_SEALED",
+                        "message": "Only sealed evidence can be exported."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The reason is shorter than 5 characters (INVALID_REASON).",
+            "headers": {
+              "x-dems-simulated": {
+                "$ref": "#/components/headers/XDemsSimulated"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "invalidReason": {
+                    "summary": "Reason too short",
+                    "value": {
+                      "error": {
+                        "code": "INVALID_REASON",
+                        "message": "An export reason of at least 5 characters is required."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-badges": [
+          {
+            "name": "SIMULATED",
+            "position": "after",
+            "color": "#F59E0B"
+          },
+          {
+            "name": "RBAC + AUDIT",
+            "position": "after",
+            "color": "#EF4444"
+          }
+        ],
+        "x-dems-mode": "simulated",
+        "x-dems-source": "Design book §21.2, §19.2, §19.3",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Evidence ID `EV-{YYYYMMDD}-NNNN`.",
+            "schema": {
+              "type": "string",
+              "pattern": "^EV-\\d{8}-\\d{4}$"
+            },
+            "example": "EV-20260930-0004"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvidenceExportRequest"
+              },
+              "examples": {
+                "handover": {
+                  "summary": "Export for prosecutor review",
+                  "value": {
+                    "reason": "Case file handover for prosecutor review",
+                    "destination": "Case file transfer (simulated)"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-dems-rbac": {
+          "permission": "EVIDENCE_EXPORT",
+          "roles": [
+            "SUPERVISOR"
+          ],
+          "audit": [
+            "EVIDENCE_EXPORTED",
+            "EXPORT_DENIED"
+          ]
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "HealthResponse": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "ok"
+          },
+          "service": {
+            "type": "string",
+            "const": "dems-mock-core"
+          },
+          "version": {
+            "type": "string",
+            "minLength": 1
+          },
+          "apiVersion": {
+            "type": "string",
+            "const": "v1"
+          },
+          "serverTime": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "uptimeMs": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "ws": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "const": "/ws"
+              },
+              "heartbeatIntervalMs": {
+                "type": "number",
+                "const": 1000
+              },
+              "clients": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "path",
+              "heartbeatIntervalMs",
+              "clients"
+            ]
+          }
+        },
+        "required": [
+          "status",
+          "service",
+          "version",
+          "apiVersion",
+          "serverTime",
+          "uptimeMs",
+          "ws"
+        ]
+      },
+      "SessionCreateRequest": {
+        "type": "object",
+        "properties": {
+          "caseNumber": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^LP\\/\\d{4}\\/(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\\d|3[01])-\\d{4}$",
+            "description": "Case reference number (book §11.3 field 5), format `LP/YYYY/MMDD-NNNN`."
+          },
+          "subjectType": {
+            "type": "string",
+            "enum": [
+              "TERSANGKA",
+              "SAKSI",
+              "LAINNYA"
+            ],
+            "description": "Subject type, Indonesian terms verbatim: TERSANGKA (suspect), SAKSI (witness), LAINNYA (other)."
+          },
+          "subjectName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120,
+            "description": "Subject or witness name (book §11.3 field 4). Synthetic in the demo."
+          },
+          "investigatorId": {
+            "type": "string",
+            "pattern": "^OPR-\\d{3}$",
+            "description": "Operator ID of the investigator (book §11.3 field 3), e.g. `OPR-001`. The simulator also requires that the operator exists and holds SESSION_START."
+          },
+          "room": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80,
+            "description": "Room or location. The form defaults to \"Interview Room 1\"."
+          },
+          "profileId": {
+            "type": "string",
+            "enum": [
+              "STANDARD_1080P25"
+            ],
+            "description": "Recording profile. STANDARD_1080P25 = \"Standard (1080p / 25 fps)\", H.264, 2 video + 2 audio tracks."
+          },
+          "notes": {
+            "description": "Optional context for the interview.",
+            "type": "string",
+            "maxLength": 2000
+          }
+        },
+        "required": [
+          "caseNumber",
+          "subjectType",
+          "subjectName",
+          "investigatorId",
+          "room",
+          "profileId"
+        ],
+        "description": "Session Info (step 1 of Start New Session). The request body of `POST /api/v1/session`."
+      },
+      "SessionStartRequest": {
+        "type": "object",
+        "properties": {
+          "acknowledgeWarnings": {
+            "description": "Send `true` to acknowledge a pre-check that ended with WARN and start recording.",
+            "type": "boolean"
+          }
+        },
+        "description": "Optional request body of `POST /api/v1/session/{id}/start`."
+      },
+      "SessionStopRequest": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "minLength": 5,
+            "description": "Why the recording stops (at least 5 characters after trimming; S21)."
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "description": "Request body of `POST /api/v1/session/{id}/stop`."
+      },
+      "SessionCommandResponse": {
+        "type": "object",
+        "properties": {
+          "sessionId": {
+            "type": "string",
+            "pattern": "^SES-\\d{8}-\\d{4}$"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "CREATE",
+              "PRECHECK",
+              "ARMED",
+              "RECORDING",
+              "STOPPING",
+              "FINALIZING",
+              "SEALED",
+              "FAULT",
+              "RECOVERY"
+            ],
+            "description": "The session state after the command."
+          },
+          "created": {
+            "description": "Create only: false when the same input returned the open session (S26).",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "sessionId",
+          "state"
+        ],
+        "description": "Result of a session command (create, start, stop)."
+      },
+      "PrecheckItem": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "enum": [
+              "CORE",
+              "LENS_1",
+              "LENS_2",
+              "MIC_1",
+              "MIC_2",
+              "STORAGE",
+              "TIME",
+              "SECURITY"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "RUNNING",
+              "PASS",
+              "WARN",
+              "BLOCK"
+            ]
+          },
+          "value": {
+            "description": "Live device state, e.g. ONLINE, READY, NO_SIGNAL, GNSS.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reason": {
+            "description": "Why the check warns or blocks.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "value",
+          "reason"
+        ],
+        "description": "One of the 8 book §5.3 pre-recording checks."
+      },
+      "SessionResource": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^SES-\\d{8}-\\d{4}$",
+            "description": "Session ID `SES-{YYYYMMDD}-NNNN` (the sim clock date, UTC+07:00)."
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "CREATE",
+              "PRECHECK",
+              "ARMED",
+              "RECORDING",
+              "STOPPING",
+              "FINALIZING",
+              "SEALED",
+              "FAULT",
+              "RECOVERY"
+            ],
+            "description": "Book §6.2 state. FAULT and RECOVERY are demo assumptions (01 G4)."
+          },
+          "caseNumber": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Case reference, `LP/YYYY/MMDD-NNNN` when created through the form."
+          },
+          "subjectType": {
+            "type": "string",
+            "enum": [
+              "TERSANGKA",
+              "SAKSI",
+              "LAINNYA"
+            ]
+          },
+          "subjectName": {
+            "type": "string",
+            "minLength": 1
+          },
+          "investigatorId": {
+            "type": "string",
+            "pattern": "^OPR-\\d{3}$"
+          },
+          "investigatorName": {
+            "type": "string",
+            "description": "Rank and name, e.g. \"AKP Budi Santoso\"."
+          },
+          "room": {
+            "type": "string",
+            "minLength": 1
+          },
+          "profileId": {
+            "type": "string",
+            "enum": [
+              "STANDARD_1080P25"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "startedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "stoppedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sealedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "elapsedMs": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Recording time so far (0 before RECORDING), derived from the clock."
+          },
+          "bytesWritten": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "evidenceId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^EV-\\d{8}-\\d{4}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Set once finalization creates the evidence object."
+          },
+          "precheck": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "outcome": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "PASS",
+                          "WARN",
+                          "BLOCK"
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Null while checks run."
+                  },
+                  "items": {
+                    "minItems": 8,
+                    "maxItems": 8,
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/PrecheckItem"
+                    }
+                  }
+                },
+                "required": [
+                  "outcome",
+                  "items"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null before the pre-check starts."
+          },
+          "fault": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "CAMERA_LOSS",
+                      "MIC_NO_SIGNAL",
+                      "MIC_CLIP",
+                      "STORAGE_LOW",
+                      "STORAGE_FULL",
+                      "GNSS_LOSS",
+                      "TAMPER",
+                      "FAN_STALL",
+                      "POWER_FAIL",
+                      "TPM_FAILURE",
+                      "SECURITY_FAULT",
+                      "AUDIT_TAMPER"
+                    ]
+                  },
+                  "at": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "fromState": {
+                    "type": "string",
+                    "enum": [
+                      "CREATE",
+                      "PRECHECK",
+                      "ARMED",
+                      "RECORDING",
+                      "STOPPING",
+                      "FINALIZING",
+                      "SEALED",
+                      "FAULT",
+                      "RECOVERY"
+                    ]
+                  }
+                },
+                "required": [
+                  "kind",
+                  "at",
+                  "fromState"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The critical fault that moved the session to FAULT, if any."
+          }
+        },
+        "required": [
+          "id",
+          "state",
+          "caseNumber",
+          "subjectType",
+          "subjectName",
+          "investigatorId",
+          "investigatorName",
+          "room",
+          "profileId",
+          "createdAt",
+          "startedAt",
+          "stoppedAt",
+          "sealedAt",
+          "elapsedMs",
+          "bytesWritten",
+          "evidenceId",
+          "precheck",
+          "fault"
+        ],
+        "description": "The open session."
+      },
+      "CurrentSessionResponse": {
+        "type": "object",
+        "properties": {
+          "session": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SessionResource"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null when no session is open (IDLE)."
+          },
+          "serverTime": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "session",
+          "serverTime"
+        ],
+        "description": "Response of `GET /api/v1/session/current` (the tablet resynchronises with it after a reconnect, book §5.6)."
+      },
+      "VideoTrackStatus": {
+        "type": "object",
+        "properties": {
+          "trackId": {
+            "type": "string",
+            "enum": [
+              "VIDEO-01",
+              "VIDEO-02"
+            ]
+          },
+          "deviceId": {
+            "type": "string",
+            "minLength": 1,
+            "description": "e.g. CAM-01."
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "lens": {
+            "type": "string",
+            "enum": [
+              "READY",
+              "FAULT"
+            ]
+          },
+          "online": {
+            "type": "boolean"
+          },
+          "recState": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "REC",
+                  "DEGRADED",
+                  "LOST"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null when not recording."
+          },
+          "resolution": {
+            "type": "string",
+            "const": "1080p"
+          },
+          "fps": {
+            "type": "number",
+            "const": 25
+          },
+          "codec": {
+            "type": "string",
+            "const": "H.264"
+          },
+          "bitrateMbps": {
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "trackId",
+          "deviceId",
+          "name",
+          "lens",
+          "online",
+          "recState",
+          "resolution",
+          "fps",
+          "codec",
+          "bitrateMbps"
+        ],
+        "description": "One video track (VIDEO-01 or VIDEO-02)."
+      },
+      "AudioChannelStatus": {
+        "type": "object",
+        "properties": {
+          "trackId": {
+            "type": "string",
+            "enum": [
+              "AUDIO-01",
+              "AUDIO-02"
+            ]
+          },
+          "deviceId": {
+            "type": "string",
+            "minLength": 1,
+            "description": "e.g. MIC-01."
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "description": "e.g. \"MIC 1 – Interviewer\"."
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "READY",
+              "NO_SIGNAL",
+              "CLIP"
+            ]
+          },
+          "recState": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "REC",
+                  "DEGRADED",
+                  "LOST"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "dbfs": {
+            "type": "number",
+            "minimum": -90,
+            "maximum": 0,
+            "description": "Ballistic level in dBFS; -90 means no signal."
+          },
+          "peak": {
+            "type": "number",
+            "minimum": -90,
+            "maximum": 0,
+            "description": "Peak hold in dBFS (1.5 s, then 20 dB/s decay)."
+          },
+          "clip": {
+            "type": "boolean",
+            "description": "CLIP latch (EVT-07), kept until reset."
+          },
+          "noSignal": {
+            "type": "boolean"
+          },
+          "gainDb": {
+            "type": "number",
+            "description": "Read-only in the UI (G13)."
+          },
+          "phantom": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "trackId",
+          "deviceId",
+          "name",
+          "state",
+          "recState",
+          "dbfs",
+          "peak",
+          "clip",
+          "noSignal",
+          "gainDb",
+          "phantom"
+        ],
+        "description": "One audio channel (AUDIO-01 = MIC 1, AUDIO-02 = MIC 2)."
+      },
+      "VideoStatusResponse": {
+        "type": "object",
+        "properties": {
+          "tracks": {
+            "minItems": 2,
+            "maxItems": 2,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VideoTrackStatus"
+            }
+          }
+        },
+        "required": [
+          "tracks"
+        ],
+        "description": "Per-track video status (VIDEO-01, VIDEO-02)."
+      },
+      "AudioStatusResponse": {
+        "type": "object",
+        "properties": {
+          "channels": {
+            "minItems": 2,
+            "maxItems": 2,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AudioChannelStatus"
+            },
+            "description": "AUDIO-01 and AUDIO-02, never merged (SYS-003)."
+          }
+        },
+        "required": [
+          "channels"
+        ],
+        "description": "Per-channel audio snapshot. Meters use it as their initial value; live levels run at 20 Hz in-process."
+      },
+      "StorageStatusResponse": {
+        "type": "object",
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "READY",
+              "LOW",
+              "FULL"
+            ],
+            "description": "READY, LOW (≥ 85 % used) or FULL (≥ 98 % used); the thresholds are demo assumptions (G8)."
+          },
+          "totalBytes": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Evidence volume capacity (decimal bytes)."
+          },
+          "usedBytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "freeBytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "usedPercent": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "estimatedRemainingMs": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Free space ÷ 8.2 GB/h, rounded."
+          },
+          "writeBytesPerSec": {
+            "type": "number",
+            "minimum": 0
+          },
+          "bitrateMbps": {
+            "type": "number",
+            "minimum": 0
+          },
+          "volumes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "enum": [
+                    "NVME-SYS",
+                    "HDD-EVIDENCE"
+                  ]
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "SYSTEM",
+                    "EVIDENCE"
+                  ]
+                },
+                "label": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "totalBytes": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "usedBytes": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "required": [
+                "id",
+                "kind",
+                "label",
+                "totalBytes",
+                "usedBytes"
+              ]
+            }
+          },
+          "retention": {
+            "type": "object",
+            "properties": {
+              "policy": {
+                "type": "string",
+                "enum": [
+                  "DAYS_30",
+                  "DAYS_90",
+                  "YEAR_1",
+                  "CASE_CLOSURE"
+                ]
+              },
+              "days": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "autoArchive": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "policy",
+              "days",
+              "autoArchive"
+            ]
+          }
+        },
+        "required": [
+          "state",
+          "totalBytes",
+          "usedBytes",
+          "freeBytes",
+          "usedPercent",
+          "estimatedRemainingMs",
+          "writeBytesPerSec",
+          "bitrateMbps",
+          "volumes",
+          "retention"
+        ],
+        "description": "Storage capacity and health, including the LOW and FULL states."
+      },
+      "DeviceHealthResponse": {
+        "type": "object",
+        "properties": {
+          "device": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "description": "e.g. DEMS-IR-01."
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "softwareVersion": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "softwareVersion"
+            ]
+          },
+          "systemState": {
+            "type": "string",
+            "enum": [
+              "READY",
+              "ATTENTION",
+              "CRITICAL",
+              "UNKNOWN",
+              "RECORDING"
+            ],
+            "description": "Overall state (the Dashboard ring)."
+          },
+          "flags": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "severity": {
+                  "type": "string",
+                  "enum": [
+                    "INFO",
+                    "SUCCESS",
+                    "WARNING",
+                    "CRITICAL"
+                  ]
+                },
+                "message": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "id",
+                "severity",
+                "message"
+              ]
+            },
+            "description": "What makes the state ATTENTION or CRITICAL."
+          },
+          "cameras": {
+            "minItems": 2,
+            "maxItems": 2,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VideoTrackStatus"
+            }
+          },
+          "audio": {
+            "minItems": 2,
+            "maxItems": 2,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AudioChannelStatus"
+            }
+          },
+          "storage": {
+            "$ref": "#/components/schemas/StorageStatusResponse"
+          },
+          "time": {
+            "type": "object",
+            "properties": {
+              "source": {
+                "type": "string",
+                "enum": [
+                  "GNSS",
+                  "NTP",
+                  "RTC"
+                ],
+                "description": "Active source, priority GNSS → NTP → RTC."
+              },
+              "locked": {
+                "type": "boolean"
+              },
+              "stratum": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "offsetMs": {
+                "type": "number"
+              },
+              "lastSyncAt": {
+                "type": "string",
+                "format": "date-time"
+              }
+            },
+            "required": [
+              "source",
+              "locked",
+              "stratum",
+              "offsetMs",
+              "lastSyncAt"
+            ]
+          },
+          "security": {
+            "type": "object",
+            "properties": {
+              "state": {
+                "type": "string",
+                "enum": [
+                  "READY",
+                  "FAULT"
+                ]
+              },
+              "posture": {
+                "type": "string",
+                "enum": [
+                  "SECURE",
+                  "ATTENTION",
+                  "CRITICAL",
+                  "UNKNOWN"
+                ]
+              },
+              "tpmOk": {
+                "type": "boolean",
+                "description": "TPM 2.0 present and healthy."
+              },
+              "secureBoot": {
+                "type": "boolean"
+              },
+              "tamper": {
+                "type": "boolean",
+                "description": "Enclosure tamper switch tripped (EVT-12)."
+              }
+            },
+            "required": [
+              "state",
+              "posture",
+              "tpmOk",
+              "secureBoot",
+              "tamper"
+            ]
+          },
+          "services": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "name": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "RUNNING",
+                    "DEGRADED",
+                    "STOPPED"
+                  ]
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "status"
+              ]
+            },
+            "description": "The 16 book §6.1 Core services."
+          },
+          "serverTime": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "device",
+          "systemState",
+          "flags",
+          "cameras",
+          "audio",
+          "storage",
+          "time",
+          "security",
+          "services",
+          "serverTime"
+        ],
+        "description": "Device health snapshot: camera, audio, storage, time and security, plus services."
+      },
+      "EvidenceExportRequest": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "minLength": 5,
+            "description": "Purpose of the export (book §19.2 item 8; at least 5 characters after trimming)."
+          },
+          "destination": {
+            "description": "Destination or approved media identifier (book §19.2 item 6). Empty means \"Case file transfer (simulated)\"; text beyond 120 characters is cut.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "description": "Request body of `POST /api/v1/evidence/{id}/export`."
+      },
+      "EvidenceExportAccepted": {
+        "type": "object",
+        "properties": {
+          "exportId": {
+            "type": "string",
+            "pattern": "^EXP-\\d{6}$"
+          },
+          "evidenceId": {
+            "type": "string",
+            "pattern": "^EV-\\d{8}-\\d{4}$"
+          },
+          "status": {
+            "type": "string",
+            "const": "EXPORTED"
+          }
+        },
+        "required": [
+          "exportId",
+          "evidenceId",
+          "status"
+        ],
+        "description": "Export accepted. The ExportEvent (book §19.2: operator, time, destination, reason) is the EVIDENCE_EXPORTED audit row it wrote."
+      },
+      "ApiError": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "pattern": "^[A-Z][A-Z0-9_]*$",
+                "description": "Machine-readable code: INVALID_JSON, NOT_SIGNED_IN, NOT_PERMITTED, FORBIDDEN, NOT_FOUND, METHOD_NOT_ALLOWED, SESSION_ACTIVE, INVALID_INPUT, INVALID_STATE, PRECHECK_RUNNING, PRECHECK_WARNINGS, PRECHECK_BLOCKED, INVALID_REASON, NOT_SEALED, SECURITY_FAULT, SIMULATOR_ERROR."
+              },
+              "message": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Operator-safe English text. Never contains credentials."
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ]
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "description": "Error body of every 4xx and 5xx response."
+      },
+      "Heartbeat": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "heartbeat"
+          },
+          "v": {
+            "type": "number",
+            "const": 1
+          },
+          "seq": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "serverTime": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "uptimeMs": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "intervalMs": {
+            "type": "number",
+            "const": 1000
+          },
+          "clients": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "sessionState": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "CREATE",
+                  "PRECHECK",
+                  "ARMED",
+                  "RECORDING",
+                  "STOPPING",
+                  "FINALIZING",
+                  "SEALED",
+                  "FAULT",
+                  "RECOVERY"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "type",
+          "v",
+          "seq",
+          "serverTime",
+          "uptimeMs",
+          "intervalMs",
+          "clients",
+          "sessionState"
+        ]
+      }
+    },
+    "headers": {
+      "XDemsSimulated": {
+        "description": "Present on every simulated response: the in-browser simulator answered, not the network.",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "const": "1"
+        }
+      }
+    }
+  }
+}
