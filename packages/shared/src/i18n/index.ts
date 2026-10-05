@@ -20,6 +20,8 @@
  * | `securityAudit` | `en/security-audit.ts`   | /security-audit                 |
  * | `system`        | `en/system.ts`           | /system                         |
  * | `apiReference`  | `en/api-reference.ts`    | /developer/api                  |
+ * | `usersRoles`    | `en/users-roles.ts`      | /admin/users (Live mode only)   |
+ * | `pairedDevices` | `en/paired-devices.ts`   | /admin/devices (Live mode only) |
  *
  * Keys are camelCase paths such as `dashboard.systemRing.caption.READY`; enum-keyed maps
  * use the wire values from `src/domain/enums.ts`. Interpolation is i18next `{{name}}`;
@@ -43,12 +45,14 @@ import { devices } from './en/devices';
 import { evidence } from './en/evidence';
 import { login } from './en/login';
 import { networkTime } from './en/network-time';
+import { pairedDevices } from './en/paired-devices';
 import { securityAudit } from './en/security-audit';
 import { session } from './en/session';
 import { sessionNew } from './en/session-new';
 import { shell } from './en/shell';
 import { storage } from './en/storage';
 import { system } from './en/system';
+import { usersRoles } from './en/users-roles';
 import type { ResourceTree } from './resource-tree';
 
 export const en = {
@@ -65,6 +69,8 @@ export const en = {
   securityAudit,
   system,
   apiReference,
+  usersRoles,
+  pairedDevices,
 } satisfies ResourceTree;
 
 export type EnResources = typeof en;
@@ -85,10 +91,12 @@ export {
   evidence,
   login,
   networkTime,
+  pairedDevices,
   securityAudit,
   session,
   sessionNew,
   shell,
   storage,
   system,
+  usersRoles,
 };

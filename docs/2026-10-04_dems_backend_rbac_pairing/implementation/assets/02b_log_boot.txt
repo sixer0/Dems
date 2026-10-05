@@ -1,0 +1,97 @@
+== W02b step 6 phone 2026-10-04 10:38:45 WIB
+$ NO_METRO=1 BOOT_WAIT=600 apps/mobile/scripts/device-session.sh phone '<read-only state commands>'
+[device-session phone 10:38:45] lock held; hard cap 900 s, until 10:53:45 (watchdog PID 68166)
+[device-session phone 10:38:45] session serial: emulator-5554 (dems2_phone)
+[device-session phone 10:38:45] dems2_phone (emulator-5554) is down; booting it cold the P3/D78 way (-no-snapshot-load -no-snapshot-save)
+[device-session phone 10:38:45] dems2_phone PID 68181 written to .locks/dems2_phone.pid
+[device-session phone 10:39:22] dems2_phone booted cold; D78: reinstall the current step-72 debug APK (hash-verified) before testing
+[device-session phone 10:39:22] emulator-5554: screen awake, no keyguard
+[device-session phone 10:39:22] no Metro (NO_METRO=1); tcp:4400 -> tcp:4400 on emulator-5554
+in session: AVD_NAME=dems2_phone SERIAL=emulator-5554
+emu avd name: dems2_phone
+sys.boot_completed=1
+isKeyguardShowing=false
+uptime: 32.09 66.98
+[device-session phone 10:39:23] session ended with status 0
+session exit=0
+== W02b step 6 tablet 2026-10-04 10:39:31 WIB
+$ NO_METRO=1 BOOT_WAIT=600 apps/mobile/scripts/device-session.sh tablet '<read-only state commands>'
+[device-session tablet 10:39:31] lock held; hard cap 900 s, until 10:54:31 (watchdog PID 68861)
+[device-session tablet 10:39:31] session serial: emulator-5556 (dems2_tablet)
+[device-session tablet 10:39:31] dems2_tablet (emulator-5556) is down; booting it cold the P3/D78 way (-no-snapshot-load -no-snapshot-save)
+[device-session tablet 10:39:31] dems2_tablet PID 68876 written to .locks/dems2_tablet.pid
+[device-session tablet 10:40:33] dems2_tablet booted cold; D78: reinstall the current step-72 debug APK (hash-verified) before testing
+[device-session tablet 10:40:33] emulator-5556: screen awake, no keyguard
+[device-session tablet 10:40:34] no Metro (NO_METRO=1); tcp:4400 -> tcp:4400 on emulator-5556
+in session: AVD_NAME=dems2_tablet SERIAL=emulator-5556
+emu avd name: dems2_tablet
+sys.boot_completed=1
+isKeyguardShowing=false
+uptime: 60.43 115.64
+[device-session tablet 10:40:34] session ended with status 0
+session exit=0
+== W02b step 6 phone2 2026-10-04 10:40:35 WIB
+$ NO_METRO=1 BOOT_WAIT=600 apps/mobile/scripts/device-session.sh phone2 '<read-only state commands>'
+[device-session phone2 10:40:35] lock held; hard cap 900 s, until 10:55:35 (watchdog PID 70087)
+[device-session phone2 10:40:35] session serial: emulator-5558 (dems2_phone2)
+[device-session phone2 10:40:35] dems2_phone2 (emulator-5558) is down; booting it cold the P3/D78 way (-no-snapshot-load -no-snapshot-save)
+[device-session phone2 10:40:35] dems2_phone2 PID 70102 written to .locks/dems2_phone2.pid
+[device-session phone2 10:41:47] dems2_phone2 booted cold; D78: reinstall the current step-72 debug APK (hash-verified) before testing
+[device-session phone2 10:41:48] emulator-5558: screen awake, no keyguard
+[device-session phone2 10:41:49] no Metro (NO_METRO=1); tcp:4400 -> tcp:4400 on emulator-5558
+in session: AVD_NAME=dems2_phone2 SERIAL=emulator-5558
+emu avd name: dems2_phone2
+sys.boot_completed=1
+isKeyguardShowing=false
+uptime: 70.88 131.18
+[device-session phone2 10:41:49] session ended with status 0
+session exit=0
+== 10:42:21 processes, PID files, cold-boot evidence
+dems2_phone.pid=68181
+  PID  PPID NI ELAPSED COMMAND
+68181     1  0   03:36 /Users/gsp-budi/Library/Android/sdk/emulator/qemu/darwin-aarch64/qemu-system-aarch64 -avd dems2_phone -port 5554 -no-metrics -gpu host -no-boot-anim -no-snapshot-load -no-snapshot-save
+  log (/Users/gsp-budi/Documents/DEMS/.locks/dems2_phone.emulator.log):
+    USER_INFO    | Emulator is performing a full startup. This may take upto two minutes, or more.
+    INFO         | Boot completed in 36393 ms
+dems2_tablet.pid=68876
+  PID  PPID NI ELAPSED COMMAND
+68876     1  0   02:50 /Users/gsp-budi/Library/Android/sdk/emulator/qemu/darwin-aarch64/qemu-system-aarch64 -avd dems2_tablet -port 5556 -no-metrics -gpu host -no-boot-anim -no-snapshot-load -no-snapshot-save
+  log (/Users/gsp-budi/Documents/DEMS/.locks/dems2_tablet.emulator.log):
+    USER_INFO    | Emulator is performing a full startup. This may take upto two minutes, or more.
+    INFO         | Boot completed in 61148 ms
+dems2_phone2.pid=70102
+  PID  PPID NI ELAPSED COMMAND
+70102     1  0   01:46 /Users/gsp-budi/Library/Android/sdk/emulator/qemu/darwin-aarch64/qemu-system-aarch64 -avd dems2_phone2 -port 5558 -no-metrics -gpu host -no-boot-anim -no-snapshot-load -no-snapshot-save
+  log (/Users/gsp-budi/Documents/DEMS/.locks/dems2_phone2.emulator.log):
+    USER_INFO    | Emulator is performing a full startup. This may take upto two minutes, or more.
+    INFO         | Boot completed in 71093 ms
+$ pgrep -fl with the script pattern (default prefix)
+68181 /Users/gsp-budi/Library/Android/sdk/emulator/qemu/darwin-aarch64/qemu-system-aarch64 -avd dems2_phone -port 5554 -
+68876 /Users/gsp-budi/Library/Android/sdk/emulator/qemu/darwin-aarch64/qemu-system-aarch64 -avd dems2_tablet -port 5556 
+70102 /Users/gsp-budi/Library/Android/sdk/emulator/qemu/darwin-aarch64/qemu-system-aarch64 -avd dems2_phone2 -port 5558 
+$ pgrep with the old prefix (must find nothing)
+(end)
+$ new config.ini after first boot: hashes
+74c9f92c4f43cc2e40aab82066994c56e05ef4604bdd969c219e463cd8f51b02  /Users/gsp-budi/.android/avd/dems2_phone.avd/config.ini
+74c9f92c4f43cc2e40aab82066994c56e05ef4604bdd969c219e463cd8f51b02  /Users/gsp-budi/.android/avd/dems2_phone2.avd/config.ini
+9b5639d5c7f7f53be4e0e53b17d62e51c117b34d7694996082aa4eee138a6112  /Users/gsp-budi/.android/avd/dems2_tablet.avd/config.ini
+$ ls -la .locks (dems*)
+-rw-r--r--@  1 gsp-budi  staff   8148 Oct  4 10:39 dems2_phone.emulator.log
+-rw-r--r--@  1 gsp-budi  staff      6 Oct  4 10:38 dems2_phone.pid
+-rw-r--r--@  1 gsp-budi  staff   8155 Oct  4 10:41 dems2_phone2.emulator.log
+-rw-r--r--@  1 gsp-budi  staff      6 Oct  4 10:40 dems2_phone2.pid
+-rw-r--r--@  1 gsp-budi  staff   8155 Oct  4 10:40 dems2_tablet.emulator.log
+-rw-r--r--@  1 gsp-budi  staff      6 Oct  4 10:39 dems2_tablet.pid
+-rw-r--r--@  1 gsp-budi  staff  20945 Oct  1 16:45 dems_phone.emulator.log
+-rw-r--r--@  1 gsp-budi  staff      0 Oct  1 10:42 dems_phone.lock
+-rw-r--r--@  1 gsp-budi  staff      6 Oct  4 06:27 dems_phone.pid
+-rw-r--r--@  1 gsp-budi  staff   8891 Oct  1 16:45 dems_phone2.emulator.log
+-rw-r--r--@  1 gsp-budi  staff      0 Oct  1 11:26 dems_phone2.lock
+-rw-r--r--@  1 gsp-budi  staff      6 Oct  4 06:28 dems_phone2.pid
+-rw-r--r--@  1 gsp-budi  staff  14177 Oct  1 16:45 dems_tablet.emulator.log
+-rw-r--r--@  1 gsp-budi  staff      0 Oct  1 10:51 dems_tablet.lock
+-rw-r--r--@  1 gsp-budi  staff      6 Oct  4 06:27 dems_tablet.pid
+$ du -sk new AVD folders
+1778688	/Users/gsp-budi/.android/avd/dems2_phone.avd
+1270464	/Users/gsp-budi/.android/avd/dems2_tablet.avd
+1041088	/Users/gsp-budi/.android/avd/dems2_phone2.avd

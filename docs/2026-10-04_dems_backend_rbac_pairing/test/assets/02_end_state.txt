@@ -1,0 +1,11 @@
+# End state of step 69 (W47), 2026-10-04 18:51:53
+session: role=dems_owner database=postgres server=18.4 port=4432 postmaster started 2026-10-04 07:14:26.046351+07
+databases with this row's prefix (dems_test_step_69_*): 0
+test databases of all rows at this moment: 0
+project databases: dems_demo, dems_lane_1, dems_lane_2, dems_lane_3
+sessions on this row's databases still open: 0
+.locks/postgres.pid: 19121
+files of this row in the tree:
+-rw-r--r--@ 1 gsp-budi  staff  25210 Oct  4 18:19 /Users/gsp-budi/Documents/DEMS/apps/core-server/test/acceptance/rbac-matrix.support.ts
+-rw-r--r--@ 1 gsp-budi  staff  82107 Oct  4 18:44 /Users/gsp-budi/Documents/DEMS/apps/core-server/test/acceptance/rbac-matrix.test.ts
+processes started by this row and still running: none (every run was a foreground or background test command that has ended; no listener, no server, no emulator command)

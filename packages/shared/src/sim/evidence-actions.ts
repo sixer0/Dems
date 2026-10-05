@@ -17,6 +17,7 @@ import { SimErrorCode, SimNotFoundError, SimPermissionError, SimTransitionError 
 import { recordActivity, verifyAuditChain } from './events';
 import { EVIDENCE_STATUS_STAGE, verifyEvidenceItem } from './evidence';
 import { signedInOperatorId } from './session-machine';
+import { cutText } from './text-cut';
 import type {
   AuditExportRequest,
   EpochMs,
@@ -155,7 +156,7 @@ export function exportEvidenceTransition(
   }
   const destination =
     typeof request.destination === 'string' && request.destination.trim()
-      ? request.destination.trim().slice(0, 120)
+      ? cutText(request.destination.trim(), 120) // code units; never splits a surrogate pair (SIM-GAP-1)
       : DEFAULT_EXPORT_DESTINATION;
   const { id: exportId, meta } = nextExportId(state.meta);
   const exported: EvidenceItem = {
@@ -272,7 +273,7 @@ export function exportAuditTransition(
     request === undefined
       ? null
       : typeof request.destination === 'string' && request.destination.trim()
-        ? request.destination.trim().slice(0, 120)
+        ? cutText(request.destination.trim(), 120) // code units; never splits a surrogate pair (SIM-GAP-1)
         : DEFAULT_AUDIT_EXPORT_DESTINATION;
   const { id: exportId, meta } = nextExportId(state.meta);
   const chain = verifyAuditChain(state.audit);

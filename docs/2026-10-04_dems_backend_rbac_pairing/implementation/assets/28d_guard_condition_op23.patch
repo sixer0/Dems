@@ -1,0 +1,828 @@
+--- a/apps/core-server/src/plugins/permission-guard/decision.ts
++++ b/apps/core-server/src/plugins/permission-guard/decision.ts
+@@ -14,7 +14,7 @@
+  *
+  *   access kind      ANONYMOUS      retired device     DEVICE         OPERATOR, web        OPERATOR, device
+  *   PUBLIC           allow          403 REVOKED *      allow          allow                allow
+- *   DEVICE           401            403 REVOKED *      allow          403 NOT_PAIRED       allow
++ *   DEVICE           401            403 REVOKED *      allow          403 NOT_PAIRED       allow †
+  *   AUTHENTICATED    401            403 REVOKED *      401            allow                allow
+  *   a permission     401            403 REVOKED *      401            holds it: allow; else 403 NOT_PERMITTED *
+  *   any-of           401            403 REVOKED *      401            holds one: allow; else 403 NOT_PERMITTED *
+@@ -22,11 +22,23 @@
+  *   * audited: exactly one row, inside the denial budget. Every other refusal writes none.
+  *     A retired device is let through on what it may still call (health, the pairing redeem,
+  *     the socket handshake): it is then an ANONYMOUS caller.
++ *   † unless the rule carries the condition `DEVICE_CREDENTIAL`: then 403 NOT_PAIRED with the
++ *     reason `DEVICE_CREDENTIAL_REQUIRED`, and no row. The DEVICE itself is allowed.
+  *
+  * Then, for a caller the table allows, the conditions of the rule, in this order (spec §7.3
+- * line 7): `CONSOLE_IDENTITY` and `DEVICE_SESSION` answer 403 `DEVICE_NOT_PAIRED`, `DEMO_FLAG`
+- * answers 403 `DEMO_DISABLED`. None of the three writes a row. The permission comes before the
+- * demo flag, so a caller without `DEMO_CONTROL` gets `NOT_PERMITTED` whatever the flag (DC-1).
++ * line 7): `CONSOLE_IDENTITY`, `DEVICE_SESSION` and `DEVICE_CREDENTIAL` answer 403
++ * `DEVICE_NOT_PAIRED`, `DEMO_FLAG` answers 403 `DEMO_DISABLED`. None of the four writes a row.
++ * The permission comes before the demo flag, so a caller without `DEMO_CONTROL` gets
++ * `NOT_PERMITTED` whatever the flag (DC-1).
++ *
++ * `DEVICE_CREDENTIAL` (finding CPS1-3 of the security checkpoint; decisions D113, D118): the
++ * request presented the device credential itself, so the caller is the DEVICE principal. The
++ * session of an operator who is signed in on the device does not hold it: a session ends by
++ * itself, and it must not be able to leave behind something that does not end. Nothing here
++ * names an operation: whichever rule of the registry carries the condition gets this decision.
++ *
++ * A condition that has no case here is never passed over: the request is refused (it throws),
++ * and the type check of this file fails when the vocabulary gains a member without a case.
+  */
+ import { CoreApiAccessCondition, CoreApiAccessKind } from '@dems/shared/api';
+ import type { OperatorRole } from '@dems/shared/sim';
+@@ -52,7 +64,10 @@
+   DEVICE_REVOKED: 'DEVICE_REVOKED',
+   /** 403 with one row that names actor, operation, permission and role (RB-4, RB-5). */
+   NOT_PERMITTED: 'NOT_PERMITTED',
+-  /** 403, no row: no console identity, or a device-only operation called by a web session. */
++  /**
++   * 403, no row: no console identity, a device-only operation called by a web session, or an
++   * operation that needs the device's own credential called with a session of the device.
++   */
+   DEVICE_NOT_PAIRED: 'DEVICE_NOT_PAIRED',
+   /** 403, no row: a demo operation while the demo flag is off (DC-2). */
+   DEMO_DISABLED: 'DEMO_DISABLED',
+@@ -76,8 +91,15 @@
+     }
+   | {
+       readonly kind: typeof AccessRefusalKind.DEVICE_NOT_PAIRED;
+-      /** `DEVICE_OPERATION`: an operation of access kind DEVICE called by a web console session. */
+-      readonly cause: typeof CoreApiAccessCondition.CONSOLE_IDENTITY | typeof CoreApiAccessCondition.DEVICE_SESSION | 'DEVICE_OPERATION';
++      /**
++       * The condition that does not hold, or `DEVICE_OPERATION`: an operation of access kind
++       * DEVICE called by a web console session (the marker itself, before any condition).
++       */
++      readonly cause:
++        | typeof CoreApiAccessCondition.CONSOLE_IDENTITY
++        | typeof CoreApiAccessCondition.DEVICE_SESSION
++        | typeof CoreApiAccessCondition.DEVICE_CREDENTIAL
++        | 'DEVICE_OPERATION';
+     }
+   | { readonly kind: typeof AccessRefusalKind.DEMO_DISABLED };
+ 
+@@ -144,9 +166,19 @@
+           return refuse({ kind: AccessRefusalKind.DEVICE_NOT_PAIRED, cause: condition });
+         }
+         break;
++      case CoreApiAccessCondition.DEVICE_CREDENTIAL:
++        // The device itself, by its own credential, and nobody else: whoever else the access
++        // kind let through (the session of an operator on a paired device) does not hold it.
++        if (principal.kind !== 'DEVICE') return refuse({ kind: AccessRefusalKind.DEVICE_NOT_PAIRED, cause: condition });
++        break;
+       case CoreApiAccessCondition.DEMO_FLAG:
+         if (!caller.demoControls) return refuse({ kind: AccessRefusalKind.DEMO_DISABLED });
+         break;
++      default: {
++        // A condition without a case above: nobody is let through on a rule that was not decided.
++        const unevaluated: never = condition;
++        throw new Error(`the access rule of ${rule.operationId} carries a condition that stage 6 does not evaluate: ${String(unevaluated)}`);
++      }
+     }
+   }
+   return ALLOW;
+--- a/apps/core-server/src/plugins/permission-guard/denial.ts
++++ b/apps/core-server/src/plugins/permission-guard/denial.ts
+@@ -17,13 +17,20 @@
+  * (`EVIDENCE_REVIEW_OR_MAINTENANCE`). The answer carries the same `operationId`, `permission`
+  * and `role` in `error.details`.
+  *
++ * THE ANSWERS OF `DEVICE_NOT_PAIRED`, none of which writes a row or takes a place in the denial
++ * budget: the sign-in text for a caller without a console identity; "available on a paired
++ * device only" for a web console session on a device operation and for a session that is not
++ * bound to a device; and, for the condition `DEVICE_CREDENTIAL` (finding CPS1-3, decisions D113
++ * and D118), "needs the device's own credential" with `details.reason`
++ * `DEVICE_CREDENTIAL_REQUIRED`: that caller's device IS paired, so the reason tells the two apart.
++ *
+  * WHAT A ROW NEVER HOLDS: a request body, a query string, a header, a token, a credential. The
+  * one value taken from the request is the evidence ID in the path of `exportEvidence`, and only
+  * when it has the form of an evidence ID (the registry's own pattern); otherwise the row names
+  * no evidence. It is what the simulator's `EXPORT_DENIED` row names, and what the custody view
+  * of both clients reads.
+  */
+-import { ApiErrorCode, CoreApiAccessCondition } from '@dems/shared/api';
++import { ApiErrorCode, CoreApiAccessCondition, DEVICE_CREDENTIAL_REQUIRED_REASON } from '@dems/shared/api';
+ import { AuditEventKind } from '@dems/shared/domain';
+ import { AuditType, Severity, SimEventType } from '@dems/shared/sim';
+ import type { AuditEntry, EventEntry } from '../../core';
+@@ -40,6 +47,8 @@
+ const EXPORT_FORBIDDEN_TEXT = 'Your role cannot export evidence (RBAC). The attempt was audited.';
+ const DEVICE_CREDENTIAL_TEXT = 'This operation needs the credential of a paired device.';
+ const DEVICE_ONLY_TEXT = 'This operation is available on a paired device only.';
++/** The text of the contract's example for this refusal (`ERROR_EXAMPLES.deviceCredentialRequired`). */
++const OWN_CREDENTIAL_TEXT = "This operation needs the device's own credential.";
+ const DEMO_DISABLED_TEXT = 'Demo controls are not enabled on this server.';
+ 
+ /** The answer of a refusal. Every text is fixed: none repeats anything the caller sent. */
+@@ -57,9 +66,11 @@
+         { details: { operationId: rule.operationId, permission: refusal.denial.permission, role: refusal.role } },
+       );
+     case AccessRefusalKind.DEVICE_NOT_PAIRED:
+-      return refusal.cause === CoreApiAccessCondition.CONSOLE_IDENTITY
+-        ? deviceNotPaired()
+-        : new ApiFailure(403, ApiErrorCode.DEVICE_NOT_PAIRED, DEVICE_ONLY_TEXT);
++      if (refusal.cause === CoreApiAccessCondition.CONSOLE_IDENTITY) return deviceNotPaired();
++      if (refusal.cause === CoreApiAccessCondition.DEVICE_CREDENTIAL) {
++        return new ApiFailure(403, ApiErrorCode.DEVICE_NOT_PAIRED, OWN_CREDENTIAL_TEXT, { details: { reason: DEVICE_CREDENTIAL_REQUIRED_REASON } });
++      }
++      return new ApiFailure(403, ApiErrorCode.DEVICE_NOT_PAIRED, DEVICE_ONLY_TEXT);
+     case AccessRefusalKind.DEMO_DISABLED:
+       return new ApiFailure(403, ApiErrorCode.DEMO_DISABLED, DEMO_DISABLED_TEXT);
+   }
+--- a/apps/core-server/src/plugins/permission-guard/index.ts
++++ b/apps/core-server/src/plugins/permission-guard/index.ts
+@@ -282,7 +282,9 @@
+         access: rule.marker,
+         principal: principalReference(request.principal),
+         ...(refusal.kind === AccessRefusalKind.DEVICE_REVOKED ? { deviceId: refusal.deviceId } : {}),
+-        ...(refusal.kind === AccessRefusalKind.DEVICE_NOT_PAIRED ? { cause: refusal.cause } : {}),
++        // What refused: a condition of the rule, or the marker DEVICE itself. Under a key of its
++        // own: a log line has no member named `cause` or `reason` (standing rule M14).
++        ...(refusal.kind === AccessRefusalKind.DEVICE_NOT_PAIRED ? { refusedBy: refusal.cause } : {}),
+         audited,
+       },
+       REFUSED,
+--- a/apps/core-server/src/plugins/permission-guard/__tests__/access-rules.test.ts
++++ b/apps/core-server/src/plugins/permission-guard/__tests__/access-rules.test.ts
+@@ -89,9 +89,23 @@
+     }
+   });
+ 
+-  it('the conditions are CONSOLE_IDENTITY on signIn, DEVICE_SESSION on setBiometricEnrollment and DEMO_FLAG on the five demo operations', () => {
++  it('the conditions are those of the registry, in its order: CONSOLE_IDENTITY on signIn, DEVICE_SESSION on setBiometricEnrollment, DEVICE_CREDENTIAL on rotateDeviceCredential, DEMO_FLAG on the five demo operations', () => {
+     const conditioned = compiled.filter((rule) => rule.conditions.length > 0).map((rule) => [rule.operationId, ...rule.conditions]);
+-    expect(conditioned).toEqual([
++    // The registry is the one source: a rule carries exactly the conditions of its entry, in the registry's order.
++    expect(conditioned).toEqual(
++      CORE_API_OPERATIONS.filter((operation) => (operation.access.conditions ?? []).length > 0).map((operation) => [operation.operationId, ...(operation.access.conditions ?? [])]),
++    );
++    // Finding CPS1-3, decision D113: operation 23 needs the device's own credential, and it stands
++    // between setBiometricEnrollment and the demo operations. Decision D118 puts the same condition
++    // on another DEVICE operation in a later step, so the holders of THIS condition are asked for
++    // by name and by their marker, not as a closed list (the registry's own test closes it).
++    const order = conditioned.map(([operationId]) => operationId);
++    expect(order.indexOf('setBiometricEnrollment')).toBeLessThan(order.indexOf('rotateDeviceCredential'));
++    expect(order.indexOf('rotateDeviceCredential')).toBeLessThan(order.indexOf('getDemoStatus'));
++    const ownCredential = conditioned.filter(([, condition]) => condition === CoreApiAccessCondition.DEVICE_CREDENTIAL);
++    expect(ownCredential).toContainEqual(['rotateDeviceCredential', CoreApiAccessCondition.DEVICE_CREDENTIAL]);
++    for (const [operationId] of ownCredential) expect(ruleOf(operationId ?? '').kind, operationId).toBe(CoreApiAccessKind.DEVICE);
++    expect(conditioned.filter(([, condition]) => condition !== CoreApiAccessCondition.DEVICE_CREDENTIAL)).toEqual([
+       ['signIn', CoreApiAccessCondition.CONSOLE_IDENTITY],
+       ['setBiometricEnrollment', CoreApiAccessCondition.DEVICE_SESSION],
+       ['getDemoStatus', CoreApiAccessCondition.DEMO_FLAG],
+--- a/apps/core-server/src/plugins/permission-guard/__tests__/decision.test.ts
++++ b/apps/core-server/src/plugins/permission-guard/__tests__/decision.test.ts
+@@ -60,7 +60,12 @@
+   if (access.kind === CoreApiAccessKind.PUBLIC) return 'ALLOW';
+   if (access.kind === CoreApiAccessKind.DEVICE) {
+     if (principal.kind === 'DEVICE') return 'ALLOW';
+-    if (principal.kind === 'OPERATOR') return principal.deviceId === null ? '403 DEVICE_NOT_PAIRED' : 'ALLOW';
++    if (principal.kind === 'OPERATOR') {
++      if (principal.deviceId === null) return '403 DEVICE_NOT_PAIRED';
++      // Whichever operation needs the device's own credential (decision D113): an operator's
++      // session is not the device, on the device or not. Read from the registry, none is named.
++      return (access.conditions ?? []).includes(CoreApiAccessCondition.DEVICE_CREDENTIAL) ? '403 DEVICE_NOT_PAIRED' : 'ALLOW';
++    }
+     return '401';
+   }
+   if (principal.kind !== 'OPERATOR') return '401';
+@@ -271,15 +276,21 @@
+     expect(outcomeOf(decideAccess(rule, granted(DEVICE)))).toBe('401');
+   });
+ 
+-  it('a DEVICE operation called by a web console session answers 403 DEVICE_NOT_PAIRED', () => {
+-    for (const operationId of ['signInWithBiometric', 'reportBiometricFailure', 'getDeviceRegistration', 'unpairDevice', 'rotateDeviceCredential']) {
++  it('a DEVICE operation called by a web console session answers 403 DEVICE_NOT_PAIRED; the device is allowed, and so is an operator on the device unless the rule needs the device\'s own credential', () => {
++    const deviceOperations = CORE_API_OPERATIONS.filter((operation) => operation.access.kind === CoreApiAccessKind.DEVICE);
++    expect(deviceOperations.map((operation) => operation.operationId)).toEqual(['signInWithBiometric', 'reportBiometricFailure', 'getDeviceRegistration', 'unpairDevice', 'rotateDeviceCredential']);
++    for (const { operationId, access } of deviceOperations) {
+       expect(decideAccess(ruleOf(operationId), granted(operator('SUPERVISOR', null)))).toEqual({
+         allowed: false,
+         refusal: { kind: AccessRefusalKind.DEVICE_NOT_PAIRED, cause: 'DEVICE_OPERATION' },
+       });
+       expect(decideAccess(ruleOf(operationId), granted(DEVICE)).allowed).toBe(true);
+-      expect(decideAccess(ruleOf(operationId), granted(operator('SUPERVISOR', 'DEV-0001'))).allowed).toBe(true);
++      const ownCredential = (access.conditions ?? []).includes(CoreApiAccessCondition.DEVICE_CREDENTIAL);
++      expect(decideAccess(ruleOf(operationId), granted(operator('SUPERVISOR', 'DEV-0001'))).allowed, operationId).toBe(!ownCredential);
+     }
++    // Today that is the session operations of a device without the rotation (decision D113).
++    expect(decideAccess(ruleOf('unpairDevice'), granted(operator('SUPERVISOR', 'DEV-0001'))).allowed).toBe(true);
++    expect(decideAccess(ruleOf('rotateDeviceCredential'), granted(operator('SUPERVISOR', 'DEV-0001'))).allowed).toBe(false);
+   });
+ 
+   it('DC-1, DC-2: the permission is decided before the demo flag; a permitted caller gets DEMO_DISABLED while the flag is off', () => {
+@@ -316,3 +327,79 @@
+     expect(outcomeOf(decideAccess(broken, granted(ANONYMOUS)))).toBe('401');
+   });
+ });
++
++describe("DEVICE_CREDENTIAL: an operation that needs the device's own credential (finding CPS1-3; decisions D113, D118)", () => {
++  /** Whatever the registry puts the condition on. No test below names an operation to decide it. */
++  const OWN_CREDENTIAL = CORE_API_OPERATIONS.filter((operation) => (operation.access.conditions ?? []).includes(CoreApiAccessCondition.DEVICE_CREDENTIAL)).map(
++    (operation) => operation.operationId,
++  );
++  const REFUSED: AccessDecision = { allowed: false, refusal: { kind: AccessRefusalKind.DEVICE_NOT_PAIRED, cause: CoreApiAccessCondition.DEVICE_CREDENTIAL } };
++
++  it('operation 23 carries it, and every operation that carries it is a DEVICE operation', () => {
++    expect(OWN_CREDENTIAL).toContain('rotateDeviceCredential');
++    for (const operationId of OWN_CREDENTIAL) {
++      expect(ruleOf(operationId).kind, operationId).toBe(CoreApiAccessKind.DEVICE);
++      expect(ruleOf(operationId).conditions, operationId).toEqual([CoreApiAccessCondition.DEVICE_CREDENTIAL]);
++    }
++  });
++
++  it('the device itself holds it; the session of an operator who is signed in on the device does not, whatever the role and whatever it is granted; the refusal is not audited', () => {
++    for (const operationId of OWN_CREDENTIAL) {
++      const rule = ruleOf(operationId);
++      expect(decideAccess(rule, granted(DEVICE)), operationId).toEqual({ allowed: true });
++      for (const role of ROLES) {
++        const decision = decideAccess(rule, granted(operator(role, 'DEV-0001')));
++        expect(decision, `${operationId} as ${role}`).toEqual(REFUSED);
++        expect(!decision.allowed && isAudited(decision.refusal)).toBe(false);
++      }
++      // The condition asks who the caller IS: holding every permission of the vocabulary changes nothing.
++      expect(decideAccess(rule, granted(operator('SUPERVISOR', 'DEV-0001', Object.values(Permission)))), operationId).toEqual(REFUSED);
++    }
++  });
++
++  it('the order of stage 6 is unchanged: a retired device, a caller without a principal and a web console session are answered by the marker, before the condition', () => {
++    for (const operationId of OWN_CREDENTIAL) {
++      const rule = ruleOf(operationId);
++      expect(decideAccess(rule, granted(RETIRED)), operationId).toEqual({ allowed: false, refusal: { kind: AccessRefusalKind.DEVICE_REVOKED, deviceId: 'DEV-0009' } });
++      expect(decideAccess(rule, granted(ANONYMOUS)), operationId).toEqual({ allowed: false, refusal: { kind: AccessRefusalKind.NOT_SIGNED_IN, needs: 'DEVICE' } });
++      expect(decideAccess(rule, granted(operator('SUPERVISOR', null))), operationId).toEqual({
++        allowed: false,
++        refusal: { kind: AccessRefusalKind.DEVICE_NOT_PAIRED, cause: 'DEVICE_OPERATION' },
++      });
++    }
++  });
++
++  it('nothing else is asked: the console identity and the demo flag change no answer', () => {
++    for (const operationId of OWN_CREDENTIAL) {
++      const rule = ruleOf(operationId);
++      for (const consoleIdentity of [false, true]) {
++        for (const demoControls of [false, true]) {
++          expect(decideAccess(rule, { principal: DEVICE, consoleIdentity, demoControls })).toEqual({ allowed: true });
++          expect(decideAccess(rule, { principal: operator('INVESTIGATOR', 'DEV-0001'), consoleIdentity, demoControls })).toEqual(REFUSED);
++        }
++      }
++    }
++  });
++
++  it('decision D118: the evaluation names no operation. Any other DEVICE rule that is given the condition is decided the same way, with no change of the source', () => {
++    const others = CORE_API_OPERATIONS.filter((operation) => operation.access.kind === CoreApiAccessKind.DEVICE && !OWN_CREDENTIAL.includes(operation.operationId));
++    for (const { operationId } of others) {
++      const today = ruleOf(operationId);
++      // Without the condition the marker DEVICE takes the session of an operator on the device.
++      expect(decideAccess(today, granted(operator('INVESTIGATOR', 'DEV-0001'))).allowed, operationId).toBe(true);
++      const withCondition: AccessRule = { ...today, conditions: [CoreApiAccessCondition.DEVICE_CREDENTIAL] };
++      expect(decideAccess(withCondition, granted(DEVICE)), operationId).toEqual({ allowed: true });
++      expect(decideAccess(withCondition, granted(operator('INVESTIGATOR', 'DEV-0001'))), operationId).toEqual(REFUSED);
++      expect(outcomeOf(decideAccess(withCondition, granted(operator('INVESTIGATOR', null)))), operationId).toBe('403 DEVICE_NOT_PAIRED');
++      expect(outcomeOf(decideAccess(withCondition, granted(ANONYMOUS))), operationId).toBe('401');
++    }
++  });
++
++  it('a condition that stage 6 does not evaluate lets nobody through: it throws, and the refusals of the marker still come first', () => {
++    const unevaluated = { ...ruleOf('getDeviceRegistration'), conditions: ['A_CONDITION_OF_TOMORROW'] } as unknown as AccessRule;
++    expect(() => decideAccess(unevaluated, granted(DEVICE))).toThrow(/a condition that stage 6 does not evaluate: A_CONDITION_OF_TOMORROW/);
++    expect(() => decideAccess(unevaluated, granted(operator('SUPERVISOR', 'DEV-0001')))).toThrow(/does not evaluate/);
++    expect(outcomeOf(decideAccess(unevaluated, granted(ANONYMOUS)))).toBe('401');
++    expect(outcomeOf(decideAccess(unevaluated, granted(RETIRED)))).toBe('403 DEVICE_REVOKED');
++  });
++});
+--- a/apps/core-server/src/plugins/permission-guard/__tests__/denial.test.ts
++++ b/apps/core-server/src/plugins/permission-guard/__tests__/denial.test.ts
+@@ -1,6 +1,13 @@
+ // What a refusal of stage 6 answers and writes (plan row W28; spec §4.6 RB-4 to RB-6, §7.2,
+ // §13.1; SR-45; decisions D13 DEPARTURE-3, D64 DN-12, D78 DN-9). Pure: no app, no database.
+-import { ApiErrorSchema, CORE_API_OPERATIONS, validateCoreApiResponse } from '@dems/shared/api';
++import {
++  ApiErrorSchema,
++  CORE_API_EXAMPLES,
++  CORE_API_OPERATIONS,
++  CoreApiAccessCondition,
++  DEVICE_CREDENTIAL_REQUIRED_REASON,
++  validateCoreApiResponse,
++} from '@dems/shared/api';
+ import { AuditType, DEMO_OPERATOR_PASSWORD, OPERATORS, OperatorRole, ROLE_PERMISSIONS, createManualClock, createSim, type Permission } from '@dems/shared/sim';
+ import { describe, expect, it } from 'vitest';
+ import { detailRulesOf, looksLikeSecret } from '../../../core';
+@@ -108,6 +115,33 @@
+       expect(answer).toMatchObject({ statusCode: 403, code: 'DEVICE_NOT_PAIRED', message: 'This operation is available on a paired device only.' });
+       expect(answer.details).toBeUndefined();
+     }
++  });
++
++  it("CPS1-3: the device's own credential is needed: 403 DEVICE_NOT_PAIRED with the contract's text and details.reason; no row; a web console session keeps the marker's answer, without the reason", () => {
++    const operationId = 'rotateDeviceCredential';
++    const refusal = refusalOf(operationId, { principal: operator('INVESTIGATOR', 'DEV-0001') });
++    expect(refusal).toEqual({ kind: AccessRefusalKind.DEVICE_NOT_PAIRED, cause: CoreApiAccessCondition.DEVICE_CREDENTIAL });
++
++    const answer = refusalAnswer(ruleOf(operationId), refusal);
++    expect(answer).toMatchObject({ statusCode: 403, code: 'DEVICE_NOT_PAIRED', message: "This operation needs the device's own credential." });
++    expect(answer.details).toEqual({ reason: DEVICE_CREDENTIAL_REQUIRED_REASON });
++    expect(DEVICE_CREDENTIAL_REQUIRED_REASON).toBe('DEVICE_CREDENTIAL_REQUIRED');
++    // The same code, message and details as the example the contract documents for the operation.
++    const body = bodyOf(answer) as { error: { code: string; message: string; details?: unknown } };
++    const example = CORE_API_EXAMPLES[operationId]?.responses[403]?.['deviceCredentialRequired']?.value as { error: { code: string; message: string; details?: unknown } };
++    expect([body.error.code, body.error.message, body.error.details]).toEqual([example.error.code, example.error.message, example.error.details]);
++    expect(validateCoreApiResponse(operationId, 403, body)).toEqual({ ok: true });
++    // Like every other DEVICE_NOT_PAIRED: no row, so no place in the denial budget.
++    expect(isAudited(refusal)).toBe(false);
++    expect(denialRecordOf(ruleOf(operationId), refusal, null)).toBeNull();
++
++    // The marker's own refusal, of a web console session, is the old one: another text, no details.
++    const web = refusalAnswer(ruleOf(operationId), refusalOf(operationId, { principal: operator('SUPERVISOR') }));
++    expect(web).toMatchObject({ statusCode: 403, code: 'DEVICE_NOT_PAIRED', message: 'This operation is available on a paired device only.' });
++    expect(web.details).toBeUndefined();
++    // And the answer depends on the cause alone, not on the operation: the same for any rule.
++    const elsewhere = refusalAnswer(ruleOf('getDeviceRegistration'), refusal);
++    expect([elsewhere.statusCode, elsewhere.code, elsewhere.message, elsewhere.details]).toEqual([answer.statusCode, answer.code, answer.message, answer.details]);
+   });
+ 
+   it('DEMO_DISABLED: 403 for a permitted caller while the flag is off', () => {
+--- a/apps/core-server/src/plugins/permission-guard/__tests__/guard.test.ts
++++ b/apps/core-server/src/plugins/permission-guard/__tests__/guard.test.ts
+@@ -485,8 +485,46 @@
+     const response = await built.app.inject({ method: 'POST', url: '/api/v1/auth/sign-in', payload: { username: 'someone', password: 'not-a-password' } });
+     expect([response.statusCode, errorOf(response).code]).toEqual([403, 'DEVICE_NOT_PAIRED']);
+     const lines = built.log.lines().filter((line) => line['msg'] === 'request refused by the access rule');
+-    expect(lines).toEqual([expect.objectContaining({ code: 'DEVICE_NOT_PAIRED', operationId: 'signIn', access: 'PUBLIC', cause: 'CONSOLE_IDENTITY', audited: false })]);
++    expect(lines).toEqual([expect.objectContaining({ code: 'DEVICE_NOT_PAIRED', operationId: 'signIn', access: 'PUBLIC', refusedBy: 'CONSOLE_IDENTITY', audited: false })]);
++    expect(built.database.committed.auditSeqs).toEqual([]);
++  });
++
++  it("CPS1-3: an operation that needs the device's own credential refuses the session of an operator on the device: 403 DEVICE_NOT_PAIRED with its reason, no row, no unit, no place in the budget; the device itself reaches the handler", async () => {
++    const built = await withStandIns({ routes: (instance, reached) => void registryRoutes(instance, ['rotateDeviceCredential'], reached) });
++    const rotate = { method: 'POST', url: '/api/v1/pairing/device/credential' } as const;
++    const units = built.app.pipeline.snapshot().completed;
++
++    built.actAs(operator('INVESTIGATOR', 'DEV-0001'));
++    const refused = await built.app.inject(rotate);
++    expect(refused.statusCode).toBe(403);
++    expect(errorOf(refused)).toMatchObject({ code: 'DEVICE_NOT_PAIRED', message: "This operation needs the device's own credential.", details: { reason: 'DEVICE_CREDENTIAL_REQUIRED' } });
++    expect(built.reached).toEqual([]);
+     expect(built.database.committed.auditSeqs).toEqual([]);
++    expect(built.app.pipeline.snapshot().completed).toBe(units);
++    expect(await throttleControl(built.app).inspect('operator:OPR-001')).toMatchObject({ used: 0 });
++    // One warn line of the stage. What refused stands under a key of its own: a log line has no
++    // member named `reason` or `cause` (standing rule M14); `details.reason` is the answer's.
++    const lines = built.log.lines().filter((line) => line['msg'] === 'request refused by the access rule');
++    expect(lines).toEqual([
++      expect.objectContaining({ level: 40, code: 'DEVICE_NOT_PAIRED', operationId: 'rotateDeviceCredential', access: 'DEVICE', refusedBy: 'DEVICE_CREDENTIAL', audited: false }),
++    ]);
++    expect(Object.keys(lines[0] ?? {}).filter((key) => ['reason', 'cause', 'error', 'e'].includes(key))).toEqual([]);
++
++    // A web console session: the refusal of the marker DEVICE, as before, without the reason.
++    built.actAs(operator('SUPERVISOR'));
++    const web = await built.app.inject(rotate);
++    expect([web.statusCode, errorOf(web).code, errorOf(web).message, errorOf(web).details]).toEqual([403, 'DEVICE_NOT_PAIRED', 'This operation is available on a paired device only.', undefined]);
++    // A retired device: refused before the condition, with its one row.
++    built.actAs({ kind: 'ANONYMOUS', retiredDeviceId: 'DEV-0001' });
++    expect(errorOf(await built.app.inject(rotate)).code).toBe('DEVICE_REVOKED');
++    expect(built.database.committed.auditSeqs).toHaveLength(1);
++    expect(built.reached).toEqual([]);
++
++    // The device itself, by its own credential.
++    built.actAs({ kind: 'DEVICE', deviceId: 'DEV-0001' });
++    expect((await built.app.inject(rotate)).statusCode).toBe(200);
++    expect(built.reached).toEqual(['rotateDeviceCredential']);
++    expect(built.database.committed.auditSeqs).toHaveLength(1);
+   });
+ 
+   it('with the demo flag on, a holder of DEMO_CONTROL reaches the demo operation', async () => {
+--- a/apps/core-server/src/plugins/permission-guard/__tests__/pipeline.db.test.ts
++++ b/apps/core-server/src/plugins/permission-guard/__tests__/pipeline.db.test.ts
+@@ -269,7 +269,7 @@
+     const before = (await readTrail(owner)).length;
+     // Stage 6 itself refuses, not only the identity module's own check behind it: the stage's line says so.
+     const refusedByStage = (): number =>
+-      guard.log.lines().filter((line) => line['msg'] === 'request refused by the access rule' && line['operationId'] === 'signIn' && line['cause'] === 'CONSOLE_IDENTITY').length;
++      guard.log.lines().filter((line) => line['msg'] === 'request refused by the access rule' && line['operationId'] === 'signIn' && line['refusedBy'] === 'CONSOLE_IDENTITY').length;
+     const linesBefore = refusedByStage();
+     for (const body of [{ username: SUPERVISOR.username, password: DEMO_OPERATOR_PASSWORD }, { username: 'x' }, 'not json at all {']) {
+       const response = await send({
+--- a/apps/core-server/src/modules/rbac/__tests__/matrix.db.test.ts
++++ b/apps/core-server/src/modules/rbac/__tests__/matrix.db.test.ts
+@@ -155,7 +155,12 @@
+   function expected(operation: CoreApiRegistryOperation, principal: Extract<Principal, { kind: 'OPERATOR' }>): string {
+     const { access } = operation;
+     if (access.kind === CoreApiAccessKind.PUBLIC) return 'ALLOW';
+-    if (access.kind === CoreApiAccessKind.DEVICE) return principal.deviceId === null ? 'DEVICE_NOT_PAIRED' : 'ALLOW';
++    if (access.kind === CoreApiAccessKind.DEVICE) {
++      // An operator on a device holds the marker; the device's own credential (finding CPS1-3,
++      // decision D113) an operator's session never holds. Read from the registry entry.
++      const ownCredential = (access.conditions ?? []).includes(CoreApiAccessCondition.DEVICE_CREDENTIAL);
++      return principal.deviceId === null || ownCredential ? 'DEVICE_NOT_PAIRED' : 'ALLOW';
++    }
+     if (access.kind === CoreApiAccessKind.AUTHENTICATED) {
+       return (access.conditions ?? []).includes(CoreApiAccessCondition.DEVICE_SESSION) && principal.deviceId === null ? 'DEVICE_NOT_PAIRED' : 'ALLOW';
+     }
+--- a/apps/core-server/src/modules/pairing/__tests__/routes.test.ts
++++ b/apps/core-server/src/modules/pairing/__tests__/routes.test.ts
+@@ -125,7 +125,10 @@
+     const rules = new Map(permissionGuard(app).registeredRules().map((rule) => [rule.operationId, rule]));
+     for (const operationId of PORTAL) expect(rules.get(operationId), operationId).toMatchObject({ kind: CoreApiAccessKind.PERMISSION, permissions: ['PAIRING_MANAGE'], conditions: [] });
+     expect(rules.get('redeemPairingCode')).toMatchObject({ kind: CoreApiAccessKind.PUBLIC, permissions: [], conditions: [], denial: null });
+-    for (const operationId of DEVICE_ONLY) expect(rules.get(operationId), operationId).toMatchObject({ kind: CoreApiAccessKind.DEVICE, permissions: [], conditions: [] });
++    // By design (finding CPS1-3, decision D113): operation 23 also needs the device's own credential.
++    for (const operationId of DEVICE_ONLY) {
++      expect(rules.get(operationId), operationId).toMatchObject({ kind: CoreApiAccessKind.DEVICE, permissions: [], conditions: operationId === 'rotateDeviceCredential' ? ['DEVICE_CREDENTIAL'] : [] });
++    }
+     expect(rules.get('revokeDevice')?.url).toBe(`${PAIRING}/devices/:id/revoke`);
+   });
+ 
+--- a/apps/core-server/src/modules/pairing/__tests__/devices.db.test.ts
++++ b/apps/core-server/src/modules/pairing/__tests__/devices.db.test.ts
+@@ -533,8 +533,11 @@
+     const device = await pairDevice(pairing, cookie);
+     const token = await tokenOf(device, INVESTIGATOR.username);
+     const first = ((await devicePost(pairing.app, ROTATE, device.credential)).json() as { deviceCredential: string }).deviceCredential;
+-    // Through the operator's session of the device this time.
+-    const second = ((await devicePost(pairing.app, ROTATE, token)).json() as { deviceCredential: string }).deviceCredential;
++    // By design (finding CPS1-3, decision D113): the operator's session of the device cannot
++    // rotate. It is refused, and the pending credential is not replaced by it.
++    expect(outcomeOf(await devicePost(pairing.app, ROTATE, token))).toEqual([403, 'DEVICE_NOT_PAIRED']);
++    // The second rotation is the device's own, like the first.
++    const second = ((await devicePost(pairing.app, ROTATE, device.credential)).json() as { deviceCredential: string }).deviceCredential;
+     expect(new Set([device.credential, first, second]).size).toBe(3);
+ 
+     expect(outcomeOf(await deviceGet(pairing.app, DEVICE, first))).toEqual([401, 'NOT_SIGNED_IN']);
+--- a/apps/core-server/src/modules/pairing/__tests__/concurrency.db.test.ts
++++ b/apps/core-server/src/modules/pairing/__tests__/concurrency.db.test.ts
+@@ -384,6 +384,8 @@
+       portalPost(pairing.app, revokeUrl(device.deviceId), cookie, { reason: 'Revoked a second time' }),
+       deviceGet(pairing.app, DEVICE, device.credential),
+       devicePost(pairing.app, TOUCH, token),
++      // By design (decision D118): one more racer, at the end so that no index moves: a rotation with the device credential.
++      devicePost(pairing.app, ROTATE, device.credential),
+     ]);
+     const [, , , revokeOne, , , revokeTwo] = answers;
+     expect([revokeOne?.statusCode, revokeTwo?.statusCode].sort()).toEqual([200, 409]);
+@@ -391,7 +393,11 @@
+       if (index === 3 || index === 6) continue;
+       // In flight (2xx), refused as a retired device (403), or its session ended under it (401).
+       expect([200, 401, 403], `answer ${index}`).toContain(answer.statusCode);
+-      if (answer.statusCode === 403) expect(errorOf(answer).code).toBe('DEVICE_REVOKED');
++      // By design (finding CPS1-3, decisions D113 and D118): answer 5 is the rotation with the
++      // operator's SESSION token. Decided before the revoke commits it is the refusal of the
++      // condition (DEVICE_NOT_PAIRED), after it DEVICE_REVOKED; it is never a 200, whoever wins.
++      if (index === 5) expect(answer.statusCode, 'a session token never rotates').not.toBe(200);
++      if (answer.statusCode === 403) expect(index === 5 ? ['DEVICE_REVOKED', 'DEVICE_NOT_PAIRED'] : ['DEVICE_REVOKED']).toContain(errorOf(answer).code);
+     }
+ 
+     const rows = await trailSince(before);
+@@ -412,6 +418,16 @@
+       await devicePost(pairing.app, TOUCH, token),
+     ]) {
+       expect(outcomeOf(call)).toEqual([403, 'DEVICE_REVOKED']);
++    }
++    // By design (decision D118): the appended racer is answered in flight (200) or refused as a
++    // retired device. A credential it returned succeeds no more than the old one: presented once,
++    // it is refused (403 DEVICE_REVOKED; 401 if another rotation in flight replaced it).
++    const appended = answers[9];
++    expect([200, 403]).toContain(appended?.statusCode);
++    if (appended?.statusCode === 200) {
++      const [status, code] = outcomeOf(await deviceGet(pairing.app, DEVICE, (appended.json() as { deviceCredential: string }).deviceCredential));
++      expect([401, 403]).toContain(status);
++      if (status === 403) expect(code).toBe('DEVICE_REVOKED');
+     }
+     expect(await sessionOfToken(owner, token)).toEqual(stored);
+     await expectChainVerifies();
+--- a/docs/2026-10-04_dems_backend_rbac_pairing/masterplan/01_specs.md
++++ b/docs/2026-10-04_dems_backend_rbac_pairing/masterplan/01_specs.md
+@@ -61,6 +61,7 @@
+ | 2 | 2026-10-04 | The rulings of row 20 stated as decided; the 17 accepted residual risks listed; the gap register updated (GS-20 to GS-29); the traceability of SD-01 to SD-29; the choices made while folding, two conflicts (CF-1, CF-2) and one open point (OP-1), all ruled by D18 | D16 | 0, 1.3, 1.6 to 1.8, 17.1 to 17.3, 17.7, 18.1, 18.2, 19.5, 19.6 |
+ | 2.1 | 2026-10-04 | Text-only patch after the masterplan consistency check (`gateway_check/02_masterplan_consistency.md`). CF-1, CF-2, OP-1, GS-24 and GS-25 marked DECIDED and their open wording removed; the superuser is used at provisioning only (trial step T5-j; removal needs no connection); the reset routine (HB-3) lives in `db/reset/` and HB-13 in two folders; binding decisions D1 to D20; every cited provisional blueprint row is followed by its work rows, as [PL:§21] maps them. No rule, ID or count changed | Consistency-check findings C-01, C-03, C-04, C-11, C-12; D17 to D20 | Front matter; 0; 1.3; 1.6; 2.1 (C-6); 2.2; 3.3 (E-26); 5.2 (ID-1); 12.4; 14.1; SR-78; AC-B-72, AC-B-76, AC-B-80, AC-B-87; 18.1 (GS-24, GS-25, GS-28, GS-29); 19.6; row citations throughout |
+ | 2.2 | 2026-10-04 | Text-only patch (controller row 20c): work-row citations aligned with plan rev 2.1 §21; shell variable name `DEMS_CORE_HOST_PORT` (the name does not occur in this file; plan section 3.4 pins it and the client specification uses it). Row 25 is cited as W03, W08, because the password-hash wrapper W09 belongs to row 32; the supply-chain records of SU-2 and AC-B-91 are cited as W03, W07, W08, W13, W14. No rule, ID or count changed | Plan rev 2.1 §21 and §3.4 (C-13); controller row 20c | Front matter; 1.8 (SA-13); 14.2 (OR-9); 14.3 (SU-2); 16.10 (AC-B-91); 19.5 ("Row 18" item 6); 19.6 (item 10) |
++| 2.2 | 2026-10-04 | Rule patch after the security checkpoint CP-S1 (the revision number is not raised): operation 23 `rotateDeviceCredential` needs the device's own credential; a session token of the device is refused with 403 `DEVICE_NOT_PAIRED` and `details.reason: DEVICE_CREDENTIAL_REQUIRED`, without an audit row (registry condition `DEVICE_CREDENTIAL`) | CPS1-3, D113, D118 | 4.2, 6.3 (T7 and the note on operation 23), 7.2, 7.7 (row 23) |
+ 
+ ## 0. Reading guide
+ 
+@@ -401,7 +402,7 @@
+ | Marker | Meaning | Reason it exists |
+ |---|---|---|
+ | `PUBLIC` | Any caller on loopback | Health, and the two entry points that create a credential (pairing redeem, sign-in). Sign-in and its status read add the console rule ID-1 |
+-| `DEVICE` | A DEVICE principal, or an OPERATOR bound to a device | What a paired device may do before or without a sign-in (biometric sign-in, its own registration, unpair, credential rotation) |
++| `DEVICE` | A DEVICE principal, or an OPERATOR bound to a device | What a paired device may do before or without a sign-in (biometric sign-in, its own registration, unpair, credential rotation). Credential rotation needs the device's own credential: the session of an OPERATOR bound to the device does not hold it (registry condition `DEVICE_CREDENTIAL`; finding CPS1-3, decision D113) |
+ | `AUTHENTICATED` | Any OPERATOR | Reads that every role sees today, and actions that are display preferences or housekeeping. Each use states its reason in the operation tables |
+ | a permission | An OPERATOR whose role holds it | Everything else |
+ | `ANY-OF(a, b)` | An OPERATOR whose role holds either | Exactly one operation, `setStoragePolicy`, as the simulator does (`packages/shared/src/sim/types.ts:1072-1073`; [AN:406]) |
+@@ -650,13 +651,13 @@
+ | # | From | To | Trigger | Actor | Audit type | Effect |
+ |---|---|---|---|---|---|---|
+ | T6 | (none) | PAIRED | T2 succeeds | The device | `PAIRING_SUCCESS` (existing), with the new device ID; event `PAIRED` | The device receives its ID and its credential once |
+-| T7 | PAIRED | PAIRED | `rotateDeviceCredential` | The device | `DEVICE_CREDENTIAL_ROTATED` (new) | Two-phase: the new hash is stored as "next" and promoted at its first use; then the old credential is refused. A lost answer leaves the old one valid |
++| T7 | PAIRED | PAIRED | `rotateDeviceCredential` | The device, with its own credential (not the session of an operator who is signed in on it) | `DEVICE_CREDENTIAL_ROTATED` (new) | Two-phase: the new hash is stored as "next" and promoted at its first use; then the old credential is refused. A lost answer leaves the old one valid. A session token of the device is refused with 403 `DEVICE_NOT_PAIRED` (`details.reason: DEVICE_CREDENTIAL_REQUIRED`), and nothing is stored |
+ | T8 | PAIRED | REVOKED | `revokeDevice` with a reason of at least 5 characters | Operator with `PAIRING_MANAGE` | `DEVICE_REVOKED` (new); event `UNPAIRED` | Section 4.7 |
+ | T9 | PAIRED | UNPAIRED | `unpairDevice` | The device (and the signed-in operator, if any) | `UNPAIRED` (existing); event `UNPAIRED` | Sessions and biometric tokens of the device are ended; the app deletes its credential |
+ 
+ REVOKED and UNPAIRED are final. Pairing again creates a **new** device row with a new ID. The link changes of a paired device are audited separately as `TABLET_LINK_CHANGED` (section 6.8).
+ 
+-**Operation 23 in this task.** `rotateDeviceCredential` is registered and tested on the server, but neither client calls it ([CL:MP-8a]). A `DEVICE_CREDENTIAL_ROTATED` row outside the server's own tests is therefore unexpected: it would mean that a holder of a copied device credential rotated it, which also locks the real device out. The row makes that visible, and revoking the device ends it [SDR:SD-29] (residual R-06).
++**Operation 23 in this task.** `rotateDeviceCredential` is registered and tested on the server, but neither client calls it ([CL:MP-8a]). A `DEVICE_CREDENTIAL_ROTATED` row outside the server's own tests is therefore unexpected: it would mean that a holder of a copied device credential rotated it, which also locks the real device out. The row makes that visible, and revoking the device ends it [SDR:SD-29] (residual R-06). **Who may rotate** (finding CPS1-3 of the security checkpoint CP-S1; decisions D113 and D118): only the device itself, with the device credential as the bearer value. The session token of an operator who is signed in on the device is refused at stage 6 with 403 `DEVICE_NOT_PAIRED` and `details.reason: DEVICE_CREDENTIAL_REQUIRED`, without an audit row and without a place in the denial budget: a session ends when it is idle and at its absolute limit, and it must not be able to leave behind a credential that never expires. In the registry this is the condition `DEVICE_CREDENTIAL` on the marker `DEVICE`.
+ 
+ ### 6.4 The flow
+ 
+@@ -752,7 +753,7 @@
+ | 403 | `NOT_PERMITTED` | The operator's role lacks the permission; one audit row | documented |
+ | 403 | `FORBIDDEN` | `exportEvidence` refused (existing code, RB-5) | documented |
+ | 403 | `ORIGIN_NOT_ALLOWED` | Origin guard: the decision table of section 14.2 | new |
+-| 403 | `DEVICE_NOT_PAIRED` | Sign-in without a console identity (ID-1), which includes a caller whose `Origin` is one of the instance's own; a device-only operation called by a web session | new |
++| 403 | `DEVICE_NOT_PAIRED` | Sign-in without a console identity (ID-1), which includes a caller whose `Origin` is one of the instance's own; a device-only operation called by a web session; an operation that needs the device's own credential, called with a session of the device (`details.reason: DEVICE_CREDENTIAL_REQUIRED`) | new |
+ | 403 | `DEVICE_REVOKED` | The credential or the session belongs to a device that is REVOKED or UNPAIRED | new |
+ | 403 | `DEMO_DISABLED` | A demo operation while the demo flag is off | new |
+ | 404 | `NOT_FOUND` | Unknown route, or unknown resource | documented for resources; **the unknown-route case is missing from the document** [R2:169] |
+@@ -856,7 +857,7 @@
+ | 20 | `revokeDevice` | POST `/api/v1/pairing/devices/{id}/revoke` | `PAIRING_MANAGE` | `DEVICE_REVOKED` (new) | `{ reason }` (at least 5 characters) | 200 `PairedDevice` | 404, 409 `INVALID_STATE`, 422 `INVALID_REASON` | none |
+ | 21 | `getDeviceRegistration` | GET `/api/v1/pairing/device` | `DEVICE` (the device reads its own registration at start) | `NONE-R` | none | 200 `DeviceRegistration` | 403 `DEVICE_REVOKED` | reads `pairing` |
+ | 22 | `unpairDevice` | POST `/api/v1/pairing/device/unpair` | `DEVICE` | `UNPAIRED` | none | 204 | — | `unpair` |
+-| 23 | `rotateDeviceCredential` | POST `/api/v1/pairing/device/credential` | `DEVICE` | `DEVICE_CREDENTIAL_ROTATED` (new) | none | 200 `{ deviceCredential, rotatedAt }` | — | none |
++| 23 | `rotateDeviceCredential` | POST `/api/v1/pairing/device/credential` | `DEVICE`; needs the device's own credential | `DEVICE_CREDENTIAL_ROTATED` (new) | none | 200 `{ deviceCredential, rotatedAt }` | — | none |
+ 
+ `{id}` in operation 20 is a device ID (`DEV-NNNN`). The bodies of operations 2, 7, 8, 15, 18 and 23 hold a secret; they are never logged (SR-48), and the API Reference page offers no "Try it" for these six in Live mode ([CL:AR-3a]; [SDR:SD-16]). Operation 23 is called by no client in this task (section 6.3).
+ 
+--- /dev/null
++++ b/apps/core-server/src/plugins/permission-guard/__tests__/device-credential.db.test.ts
+@@ -0,0 +1,275 @@
++// The condition DEVICE_CREDENTIAL through the real pipeline, against PostgreSQL (plan row W28,
++// follow-up; finding CPS1-3 of the security checkpoint CP-S1; decisions D113 and D118; spec
++// §4.2, §6.3 T7, §7.2, §7.7 operation 23).
++//
++// THE REAL APP, every module as it is in the tree, on a clone of the seed template, as
++// `dems_app`: the device is paired through the pairing module, the operator signs in on it
++// through the identity module, and stages 3 to 6 are the server's own. This file registers no
++// route and replaces no stage (standing rule M10).
++//
++// What is proven, for an operation that needs the device's own credential:
++//   - the device credential is let through, and the operation does what it does (200);
++//   - the session token of an operator who is signed in on that device is refused by stage 6
++//     with 403 `DEVICE_NOT_PAIRED` and `details.reason: DEVICE_CREDENTIAL_REQUIRED`, before the
++//     body is read; it writes no row, takes no place in the denial budget and changes nothing;
++//   - a web console session still gets the refusal of the marker `DEVICE`, without the reason;
++//   - a retired device still gets `DEVICE_REVOKED` with its row: the order of stage 6 is as it was.
++//
++// What the rotation itself does (two phases, the promotion, a lost answer) is the pairing
++// module's and is tested there; here it is only shown to be reached.
++//
++// No code, credential, token or hash is printed: a failure names a status, a code, a count, an
++// identifier or a yes/no.
++import { CoreApiAccessCondition, CoreApiAccessKind, DEVICE_CREDENTIAL_REQUIRED_REASON } from '@dems/shared/api';
++import { ROLE_PERMISSIONS, type AuditRow, type Permission } from '@dems/shared/sim';
++import type { LightMyRequestResponse } from 'fastify';
++import type { Pool } from 'pg';
++import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
++import { useTestDatabase } from '../../../../test/helpers/db';
++import { credentialLeaks } from '../../../../test/support/config';
++import { readTrail } from '../../../../test/support/core';
++import { MALFORMED_JSON } from '../../../../test/support/guard';
++import { MINUTE, SESSION, bearer, deviceSignIn, errorOf, type Headers } from '../../../../test/support/identity';
++import {
++  DEVICE,
++  INVESTIGATOR,
++  ROTATE,
++  SUPERVISOR,
++  TECHNICIAN,
++  deviceGet,
++  devicePost,
++  expectContract,
++  forgetLimits,
++  outcomeOf,
++  pairDevice,
++  pairingApp,
++  portalPost,
++  revokeUrl,
++  storedDevice,
++  supervisorCookie,
++  type PairedTestDevice,
++  type PairingApp,
++} from '../../../../test/support/pairing';
++import { throttleControl } from '../../throttle';
++import { permissionGuard, type AccessRule } from '../index';
++
++const db = useTestDatabase({ template: 'seed' });
++let pairing: PairingApp;
++let owner: Pool;
++let cookie: Headers;
++
++const ROTATE_OPERATION = 'rotateDeviceCredential';
++const OWN_CREDENTIAL_TEXT = "This operation needs the device's own credential.";
++const REFUSED_LINE = 'request refused by the access rule';
++
++beforeAll(async () => {
++  owner = db.ownerPool();
++  pairing = await pairingApp(db);
++});
++
++beforeEach(async () => {
++  forgetLimits(pairing);
++  pairing.clock.advance(10 * MINUTE);
++  cookie = await supervisorCookie(pairing);
++});
++
++const trailLength = async (): Promise<number> => (await readTrail(owner)).length;
++const trailSince = async (from: number): Promise<AuditRow[]> => (await readTrail(owner)).slice(from);
++
++/** The session token of an operator who signs in on the device. Held by the test only. */
++async function tokenOf(device: PairedTestDevice, username: string): Promise<string> {
++  const response = await deviceSignIn(pairing.app, device.credential, username);
++  if (response.statusCode !== 200) throw new Error(`the device sign-in answered ${response.statusCode}`);
++  return (response.json() as { sessionToken: string }).sessionToken;
++}
++
++/** What is stored for the credential of a device: bytes that are compared and never printed. */
++interface CredentialRow {
++  readonly current: Buffer;
++  readonly next: Buffer | null;
++  readonly rotatedAt: string | null;
++}
++
++async function credentialRow(deviceId: string): Promise<CredentialRow> {
++  const { rows } = await owner.query<{ current_hash: Buffer; next_hash: Buffer | null; rotated_at: string | null }>(
++    'SELECT current_hash, next_hash, rotated_at FROM public.device_credentials WHERE device_id = $1',
++    [deviceId],
++  );
++  const row = rows[0];
++  if (row === undefined) throw new Error(`no stored credential for ${deviceId}`);
++  return { current: row.current_hash, next: row.next_hash, rotatedAt: row.rotated_at };
++}
++
++/** True when two stored credential rows are the same, byte for byte. */
++function sameCredential(one: CredentialRow, other: CredentialRow): boolean {
++  const sameNext = one.next === null ? other.next === null : other.next !== null && one.next.equals(other.next);
++  return one.current.equals(other.current) && sameNext && one.rotatedAt === other.rotatedAt;
++}
++
++/** The rules the server registered with the condition. No test below names an operation to find them. */
++const ownCredentialRules = (): AccessRule[] =>
++  permissionGuard(pairing.app)
++    .registeredRules()
++    .filter((rule) => rule.conditions.includes(CoreApiAccessCondition.DEVICE_CREDENTIAL));
++
++/** The stage's own lines for refused calls of one operation, written since `from`. */
++const refusedLines = (from: number, operationId: string): Array<Record<string, unknown>> =>
++  pairing.log
++    .lines()
++    .slice(from)
++    .filter((line) => line['msg'] === REFUSED_LINE && line['operationId'] === operationId);
++
++describe("finding CPS1-3: operation 23 needs the device's own credential (the real app, stages 3 to 6 as the server has them)", () => {
++  it('the rule the server registered for operation 23 is the marker DEVICE with the condition, and no permission', () => {
++    const rule = permissionGuard(pairing.app)
++      .registeredRules()
++      .find((candidate) => candidate.operationId === ROTATE_OPERATION);
++    expect(rule).toMatchObject({ kind: CoreApiAccessKind.DEVICE, method: 'POST', url: ROTATE, conditions: [CoreApiAccessCondition.DEVICE_CREDENTIAL], permissions: [], denial: null });
++    expect(ownCredentialRules().map((candidate) => candidate.operationId)).toContain(ROTATE_OPERATION);
++    for (const candidate of ownCredentialRules()) expect(candidate.kind, candidate.operationId).toBe(CoreApiAccessKind.DEVICE);
++  });
++
++  it('the session token of an operator who is signed in on the device is refused: 403 DEVICE_NOT_PAIRED with the reason; no row, no place in the denial budget, nothing changed', async () => {
++    const device = await pairDevice(pairing, cookie);
++    const token = await tokenOf(device, INVESTIGATOR.username);
++    const key = `operator:${INVESTIGATOR.id}` as const;
++    const before = await trailLength();
++    const stored = await credentialRow(device.deviceId);
++    const linesBefore = pairing.log.lines().length;
++
++    for (let attempt = 0; attempt < 3; attempt += 1) {
++      const refused = await devicePost(pairing.app, ROTATE, token);
++      expect(outcomeOf(refused)).toEqual([403, 'DEVICE_NOT_PAIRED']);
++      expect(errorOf(refused)).toMatchObject({ message: OWN_CREDENTIAL_TEXT, details: { reason: DEVICE_CREDENTIAL_REQUIRED_REASON } });
++      expectContract(ROTATE_OPERATION, refused);
++      // The answer is the error envelope and nothing else: no credential comes back.
++      expect(Object.keys(refused.json() as Record<string, unknown>)).toEqual(['error']);
++    }
++
++    // No row, and no place in the denial budget.
++    expect(await trailSince(before)).toEqual([]);
++    expect(await throttleControl(pairing.app).inspect(key)).toMatchObject({ used: 0 });
++    // Nothing changed: the stored credential and its "next" are the same bytes, and no rotation is recorded.
++    expect(sameCredential(stored, await credentialRow(device.deviceId))).toBe(true);
++    expect(await storedDevice(owner, device.deviceId)).toMatchObject({ state: 'PAIRED', hasNextHash: false, rotatedAt: null });
++    // The session is as it was: it answers elsewhere, also on a DEVICE operation without the
++    // condition; and the device credential is as valid as before.
++    expect((await deviceGet(pairing.app, SESSION, token)).json()).toMatchObject({ deviceId: device.deviceId, operator: { id: INVESTIGATOR.id } });
++    expect((await deviceGet(pairing.app, DEVICE, token)).statusCode).toBe(200);
++    expect((await deviceGet(pairing.app, DEVICE, device.credential)).statusCode).toBe(200);
++
++    // What the stage logged: one warn line per refusal, naming the condition under a key of its
++    // own (standing rule M14: no log member `reason` or `cause`), and nothing of a credential.
++    const lines = refusedLines(linesBefore, ROTATE_OPERATION);
++    expect(lines.map((line) => [line['level'], line['code'], line['access'], line['refusedBy'], line['audited']])).toEqual(
++      [0, 1, 2].map(() => [40, 'DEVICE_NOT_PAIRED', 'DEVICE', CoreApiAccessCondition.DEVICE_CREDENTIAL, false]),
++    );
++    for (const line of lines) expect(Object.keys(line).filter((name) => ['reason', 'cause', 'error', 'e'].includes(name))).toEqual([]);
++    expect(credentialLeaks(pairing.log.text())).toEqual([]);
++
++    // Positive control of "no place": the budget of this very session counts. A refusal that IS
++    // audited (an operation whose permission the role lacks, whichever the server registered)
++    // takes one place and writes one row; a further rotation attempt adds neither.
++    const held: readonly Permission[] = ROLE_PERMISSIONS[INVESTIGATOR.role];
++    const lacking = permissionGuard(pairing.app)
++      .registeredRules()
++      .find((rule) => rule.method === 'GET' && !rule.url.includes(':') && rule.denial !== null && rule.denial.export === null && !rule.permissions.some((permission) => held.includes(permission)));
++    if (lacking === undefined) throw new Error('the server registered no read that the role lacks the permission for');
++    const audited = await deviceGet(pairing.app, lacking.url, token);
++    expect([lacking.operationId, ...outcomeOf(audited)]).toEqual([lacking.operationId, 403, 'NOT_PERMITTED']);
++    expect((await trailSince(before)).map((row) => [row.type, row.actorId, row.deviceId, row.details['operationId']])).toEqual([
++      ['ACCESS_DENIED', INVESTIGATOR.id, device.deviceId, lacking.operationId],
++    ]);
++    expect(await throttleControl(pairing.app).inspect(key)).toMatchObject({ used: 1 });
++    expect(outcomeOf(await devicePost(pairing.app, ROTATE, token))).toEqual([403, 'DEVICE_NOT_PAIRED']);
++    expect(await trailSince(before)).toHaveLength(1);
++    expect(await throttleControl(pairing.app).inspect(key)).toMatchObject({ used: 1 });
++  });
++
++  it('the refusal is decided before the body is read, on every route the server registered with the condition: the session gets 403, the device passes stage 6 (400 for a body that is no JSON)', async () => {
++    const device = await pairDevice(pairing, cookie);
++    const token = await tokenOf(device, SUPERVISOR.username);
++    const before = await trailLength();
++    const stored = await credentialRow(device.deviceId);
++    const send = (rule: AccessRule, credential: string): Promise<LightMyRequestResponse> =>
++      pairing.app.inject({ method: rule.method, url: rule.url, headers: { ...bearer(credential), ...MALFORMED_JSON.headers }, payload: MALFORMED_JSON.payload });
++
++    let asked = 0;
++    for (const rule of ownCredentialRules()) {
++      if (rule.method !== 'POST') continue;
++      asked += 1;
++      const bySession = await send(rule, token);
++      expect([rule.operationId, ...outcomeOf(bySession), errorOf(bySession).details]).toEqual([rule.operationId, 403, 'DEVICE_NOT_PAIRED', { reason: DEVICE_CREDENTIAL_REQUIRED_REASON }]);
++      // The device itself is past stage 6: stage 7 answers for the body, and no handler runs.
++      const byDevice = await send(rule, device.credential);
++      expect([rule.operationId, ...outcomeOf(byDevice)]).toEqual([rule.operationId, 400, 'INVALID_JSON']);
++    }
++    expect(asked).toBeGreaterThan(0);
++    // The role does not matter (this session is the supervisor's), and nothing was written or changed.
++    expect(await trailSince(before)).toEqual([]);
++    expect(sameCredential(stored, await credentialRow(device.deviceId))).toBe(true);
++  });
++
++  it('the device credential rotates: 200 and the one row of the rotation, with an operator signed in on the device or not; the open session is not touched and still cannot rotate', async () => {
++    const device = await pairDevice(pairing, cookie);
++    const token = await tokenOf(device, TECHNICIAN.username);
++    const before = await trailLength();
++    const stored = await credentialRow(device.deviceId);
++
++    const rotated = await devicePost(pairing.app, ROTATE, device.credential);
++    expect(rotated.statusCode).toBe(200);
++    expectContract(ROTATE_OPERATION, rotated);
++    expect((await trailSince(before)).map((row) => [row.type, row.actorId, row.deviceId])).toEqual([['DEVICE_CREDENTIAL_ROTATED', null, device.deviceId]]);
++    expect(await storedDevice(owner, device.deviceId)).toMatchObject({ state: 'PAIRED', hasNextHash: true });
++    expect(sameCredential(stored, await credentialRow(device.deviceId))).toBe(false);
++
++    // The operator's session of the device is open as before, and is still refused.
++    expect((await deviceGet(pairing.app, SESSION, token)).statusCode).toBe(200);
++    const pending = await credentialRow(device.deviceId);
++    expect(outcomeOf(await devicePost(pairing.app, ROTATE, token))).toEqual([403, 'DEVICE_NOT_PAIRED']);
++    expect(sameCredential(pending, await credentialRow(device.deviceId))).toBe(true);
++    expect(await trailSince(before)).toHaveLength(1);
++
++    // A device nobody is signed in on rotates the same way.
++    const idle = await pairDevice(pairing, cookie, 'Tablet without a session');
++    expect((await devicePost(pairing.app, ROTATE, idle.credential)).statusCode).toBe(200);
++    expect((await storedDevice(owner, idle.deviceId)).hasNextHash).toBe(true);
++  });
++
++  it('a web console session still gets the refusal of the marker DEVICE: the same code, the old text, no reason, no row, no place', async () => {
++    const before = await trailLength();
++    const linesBefore = pairing.log.lines().length;
++    const refused = await portalPost(pairing.app, ROTATE, cookie);
++    expect(outcomeOf(refused)).toEqual([403, 'DEVICE_NOT_PAIRED']);
++    expect(errorOf(refused).message).toBe('This operation is available on a paired device only.');
++    expect(errorOf(refused).details).toBeUndefined();
++    expectContract(ROTATE_OPERATION, refused);
++    expect(await trailSince(before)).toEqual([]);
++    expect(await throttleControl(pairing.app).inspect(`operator:${SUPERVISOR.id}`)).toMatchObject({ used: 0 });
++    // It never reached the condition: the marker refused.
++    expect(refusedLines(linesBefore, ROTATE_OPERATION).map((line) => [line['code'], line['refusedBy'], line['audited']])).toEqual([['DEVICE_NOT_PAIRED', 'DEVICE_OPERATION', false]]);
++  });
++
++  it('a retired device still gets 403 DEVICE_REVOKED with its one row: it is refused before the condition is looked at, and its former session never gets the condition\'s answer', async () => {
++    const device = await pairDevice(pairing, cookie);
++    const token = await tokenOf(device, INVESTIGATOR.username);
++    expect((await portalPost(pairing.app, revokeUrl(device.deviceId), cookie, { reason: 'Tablet reported lost by the investigator' })).statusCode).toBe(200);
++    const before = await trailLength();
++
++    const byDevice = await devicePost(pairing.app, ROTATE, device.credential);
++    expect(outcomeOf(byDevice)).toEqual([403, 'DEVICE_REVOKED']);
++    expect(errorOf(byDevice).details).toEqual({ reason: 'DEVICE_REVOKED' });
++    expectContract(ROTATE_OPERATION, byDevice);
++    expect((await trailSince(before)).map((row) => [row.type, row.actorId, row.deviceId, row.details])).toEqual([
++      ['ACCESS_DENIED', null, device.deviceId, { operationId: ROTATE_OPERATION, reason: 'DEVICE_REVOKED' }],
++    ]);
++
++    // The session that was open on the device ended with it. Whatever its token is answered now
++    // (that is the identity module's), it is not the refusal of the condition, and nothing rotates.
++    const bySession = await devicePost(pairing.app, ROTATE, token);
++    expect([401, 403]).toContain(bySession.statusCode);
++    if (bySession.statusCode === 403) expect(errorOf(bySession).code).toBe('DEVICE_REVOKED');
++    expect(errorOf(bySession).details?.['reason'] === DEVICE_CREDENTIAL_REQUIRED_REASON).toBe(false);
++    expect(await storedDevice(owner, device.deviceId)).toMatchObject({ state: 'REVOKED', hasNextHash: false });
++  });
++});

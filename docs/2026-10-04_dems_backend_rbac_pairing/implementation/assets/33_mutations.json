@@ -1,0 +1,646 @@
+[
+ {
+  "id": "M01",
+  "file": "src/modules/admin/rule.ts",
+  "from": "operators.filter((operator) => operator.enabled && administratorRoles.has(operator.role))",
+  "to": "operators.filter((operator) => administratorRoles.has(operator.role))",
+  "note": "a DISABLED holder counts as an administrator"
+ },
+ {
+  "id": "M02",
+  "file": "src/modules/admin/rule.ts",
+  "from": "operators.filter((operator) => operator.enabled && administratorRoles.has(operator.role))",
+  "to": "operators.filter((operator) => operator.enabled)",
+  "note": "every enabled operator counts, whatever the role"
+ },
+ {
+  "id": "M03",
+  "file": "src/modules/admin/rule.ts",
+  "from": "administratorRoles).length === 0;",
+  "to": "administratorRoles).length < 0;",
+  "note": "the rule never refuses"
+ },
+ {
+  "id": "M04",
+  "file": "src/modules/admin/rule.ts",
+  "from": "administratorRoles).length === 0;",
+  "to": "administratorRoles).length <= 1;",
+  "note": "the rule refuses while one administrator would stay"
+ },
+ {
+  "id": "M05",
+  "file": "src/modules/admin/rule.ts",
+  "from": "return change.kind === 'ROLE' ? { ...operator, role: change.role } : { ...operator, enabled: false };",
+  "to": "return change.kind === 'ROLE' ? { ...operator, role: change.role } : operator;",
+  "note": "a disable is not applied before counting: disabling the last administrator passes"
+ },
+ {
+  "id": "M06",
+  "file": "src/modules/admin/rule.ts",
+  "from": "return change.kind === 'ROLE' ? { ...operator, role: change.role } : { ...operator, enabled: false };",
+  "to": "return change.kind === 'ROLE' ? operator : { ...operator, enabled: false };",
+  "note": "a role change is not applied before counting: demoting the last administrator passes"
+ },
+ {
+  "id": "M07",
+  "file": "src/modules/admin/rule.ts",
+  "from": "if (operator.id !== change.operatorId) return operator;",
+  "to": "if (operator.id === change.operatorId) return operator;",
+  "note": "the change is applied to every OTHER operator"
+ },
+ {
+  "id": "M08",
+  "file": "src/modules/admin/changes.ts",
+  "from": "    const target = operators.find((operator) => operator.id === operatorId);\n    if (target === undefined) throw unknownOperator();\n    if (target.role === role) return { user: await userOf(unit, operatorId), changed: false };",
+  "to": "    const target = operators.find((operator) => operator.id === operatorId) ?? operators[0]!;\n    if (target.role === role) return { user: await userOf(unit, operatorId), changed: false };",
+  "note": "assignUserRole: an unknown operator is not refused with 404"
+ },
+ {
+  "id": "M09",
+  "file": "src/modules/admin/changes.ts",
+  "from": "    if (target.role === role) return { user: await userOf(unit, operatorId), changed: false };",
+  "to": "",
+  "note": "assignUserRole: the role the operator already has is written again (a row, a publication)"
+ },
+ {
+  "id": "M10",
+  "file": "src/modules/admin/changes.ts",
+  "from": "    if (leavesNoAdministrator(operators, administratorRoles, { kind: 'ROLE', operatorId, role })) throw lastAdministrator();",
+  "to": "",
+  "note": "assignUserRole: the last-administrator rule is not asked"
+ },
+ {
+  "id": "M11",
+  "file": "src/modules/admin/changes.ts",
+  "from": "    if (leavesNoAdministrator(operators, administratorRoles, { kind: 'ROLE', operatorId, role })) throw lastAdministrator();\n\n    if (!(await assignRole(unit, operatorId, role, now, target.role))) throw lockedRowChanged();",
+  "to": "    if (!(await assignRole(unit, operatorId, role, now, target.role))) throw lockedRowChanged();\n    if (leavesNoAdministrator(operators, administratorRoles, { kind: 'ROLE', operatorId, role })) throw lastAdministrator();",
+  "note": "assignUserRole: the write is sent BEFORE the rule is asked (the refusal then relies on the rollback)"
+ },
+ {
+  "id": "M12",
+  "file": "src/modules/admin/changes.ts",
+  "from": "    if (leavesNoAdministrator(operators, administratorRoles, { kind: 'ROLE', operatorId, role })) throw lastAdministrator();",
+  "to": "    if (leavesNoAdministrator(operators, administratorRoles, { kind: 'ROLE', operatorId, role })) return { user: await userOf(unit, operatorId), changed: false };",
+  "note": "assignUserRole: a refused change answers 200 unchanged instead of 409"
+ },
+ {
+  "id": "M13",
+  "file": "src/modules/admin/changes.ts",
+  "from": "await assignRole(unit, operatorId, role, now, target.role)",
+  "to": "await assignRole(unit, operatorId, target.role, now, target.role)",
+  "note": "assignUserRole: the old role is written"
+ },
+ {
+  "id": "M14",
+  "file": "src/modules/admin/changes.ts",
+  "from": "      message: `Role of ${operatorId} changed from ${target.role} to ${role}`,\n      actorId: actor.operatorId,",
+  "to": "      message: `Role of ${operatorId} changed from ${target.role} to ${role}`,\n      actorId: operatorId,",
+  "note": "ROLE_CHANGED names the target as the actor"
+ },
+ {
+  "id": "M15",
+  "file": "src/modules/admin/changes.ts",
+  "from": "      message: `Role of ${operatorId} changed from ${target.role} to ${role}`,\n      actorId: actor.operatorId,\n      deviceId: actor.deviceId,",
+  "to": "      message: `Role of ${operatorId} changed from ${target.role} to ${role}`,\n      actorId: actor.operatorId,\n      deviceId: null,",
+  "note": "ROLE_CHANGED drops the device of the caller's session"
+ },
+ {
+  "id": "M16",
+  "file": "src/modules/admin/changes.ts",
+  "from": "details: { targetOperatorId: operatorId, from: target.role, to: role, ...reasonDetail(reason) },",
+  "to": "details: { targetOperatorId: operatorId, from: role, to: target.role, ...reasonDetail(reason) },",
+  "note": "ROLE_CHANGED swaps the old and the new role"
+ },
+ {
+  "id": "M17",
+  "file": "src/modules/admin/changes.ts",
+  "from": "details: { targetOperatorId: operatorId, from: target.role, to: role, ...reasonDetail(reason) },",
+  "to": "details: { targetOperatorId: operatorId, from: target.role, to: role },",
+  "note": "ROLE_CHANGED drops the reason"
+ },
+ {
+  "id": "M18",
+  "file": "src/modules/admin/changes.ts",
+  "from": "details: { targetOperatorId: operatorId, from: target.role, to: role, ...reasonDetail(reason) },",
+  "to": "details: { targetOperatorId: actor.operatorId, from: target.role, to: role, ...reasonDetail(reason) },",
+  "note": "ROLE_CHANGED names the actor as the target"
+ },
+ {
+  "id": "M19",
+  "file": "src/modules/admin/changes.ts",
+  "from": "      app.publish({ kind: 'session.updated', operatorId, role, permissions });\n",
+  "to": "",
+  "note": "a role change does not publish session.updated"
+ },
+ {
+  "id": "M20",
+  "file": "src/modules/admin/changes.ts",
+  "from": "      app.publish({ kind: 'session.updated', operatorId, role, permissions });\n      app.publish({ kind: 'admin.changed', resource: 'USERS' });",
+  "to": "      app.publish({ kind: 'session.updated', operatorId, role, permissions });",
+  "note": "a role change does not publish admin.changed"
+ },
+ {
+  "id": "M21",
+  "file": "src/modules/admin/changes.ts",
+  "from": "      app.publish({ kind: 'session.updated', operatorId, role, permissions });\n      app.publish({ kind: 'admin.changed', resource: 'USERS' });",
+  "to": "      app.publish({ kind: 'admin.changed', resource: 'USERS' });\n      app.publish({ kind: 'session.updated', operatorId, role, permissions });",
+  "note": "a role change publishes admin.changed before session.updated"
+ },
+ {
+  "id": "M22",
+  "file": "src/modules/admin/changes.ts",
+  "from": "    unit.afterCommit(() => {\n      // The sessions stay (spec \u00a74.7): their sockets learn the new role, then the lists follow.\n      app.publish({ kind: 'session.updated', operatorId, role, permissions });\n      app.publish({ kind: 'admin.changed', resource: 'USERS' });\n    });",
+  "to": "    app.publish({ kind: 'session.updated', operatorId, role, permissions });\n    app.publish({ kind: 'admin.changed', resource: 'USERS' });",
+  "note": "a role change publishes INSIDE the unit, before the commit"
+ },
+ {
+  "id": "M23",
+  "file": "src/modules/admin/changes.ts",
+  "from": "app.publish({ kind: 'session.updated', operatorId, role, permissions });",
+  "to": "app.publish({ kind: 'session.updated', operatorId, role: target.role, permissions });",
+  "note": "session.updated carries the OLD role"
+ },
+ {
+  "id": "M24",
+  "file": "src/modules/admin/changes.ts",
+  "from": "    const permissions = await readRolePermissions(unit, role);",
+  "to": "    const permissions = await readRolePermissions(unit, target.role);",
+  "note": "session.updated carries the permissions of the OLD role"
+ },
+ {
+  "id": "M25",
+  "file": "src/modules/admin/changes.ts",
+  "from": "    const user = await userOf(unit, operatorId);\n    unit.afterCommit(() => {\n      // The sessions stay",
+  "to": "    const user = await userOf(unit, operatorId);\n    return { user, changed: false };\n    unit.afterCommit(() => {\n      // The sessions stay",
+  "note": "a role change reports itself as unchanged: no publication, no mirror"
+ },
+ {
+  "id": "M26",
+  "file": "src/modules/admin/changes.ts",
+  "from": "    const now = app.clock.now();\n    const operators = await lockOperators(unit);\n    const target = operators.find((operator) => operator.id === operatorId);\n    if (target === undefined) throw unknownOperator();\n    if (target.role === role)",
+  "to": "    const now = app.clock.now() + 1;\n    const operators = await lockOperators(unit);\n    const target = operators.find((operator) => operator.id === operatorId);\n    if (target === undefined) throw unknownOperator();\n    if (target.role === role)",
+  "note": "assignUserRole stamps a time that is not the server clock's"
+ },
+ {
+  "id": "M27",
+  "file": "src/modules/admin/changes.ts",
+  "from": "    if (!target.enabled) return { user: await userOf(unit, operatorId), changed: false };",
+  "to": "",
+  "note": "disableUser: an operator that is disabled already is disabled again"
+ },
+ {
+  "id": "M28",
+  "file": "src/modules/admin/changes.ts",
+  "from": "    if (leavesNoAdministrator(operators, administratorRoles, { kind: 'DISABLE', operatorId })) throw lastAdministrator();",
+  "to": "",
+  "note": "disableUser: the last-administrator rule is not asked"
+ },
+ {
+  "id": "M29",
+  "file": "src/modules/admin/changes.ts",
+  "from": "    if (leavesNoAdministrator(operators, administratorRoles, { kind: 'DISABLE', operatorId })) throw lastAdministrator();\n\n    if (!(await disableOperator(unit, operatorId, now))) throw lockedRowChanged();",
+  "to": "    if (!(await disableOperator(unit, operatorId, now))) throw lockedRowChanged();\n    if (leavesNoAdministrator(operators, administratorRoles, { kind: 'DISABLE', operatorId })) throw lastAdministrator();",
+  "note": "disableUser: the write is sent BEFORE the rule is asked"
+ },
+ {
+  "id": "M30",
+  "file": "src/modules/admin/changes.ts",
+  "from": "    const sessionIds = await app.sessionRegistry.endForOperator(unit, operatorId, 'USER_DISABLED');",
+  "to": "    const sessionIds: readonly string[] = [];",
+  "note": "disableUser: the sessions are not ended"
+ },
+ {
+  "id": "M31",
+  "file": "src/modules/admin/changes.ts",
+  "from": "    await revokeBiometricTokens(unit, operatorId, now);\n",
+  "to": "",
+  "note": "disableUser: the biometric tokens are not revoked"
+ },
+ {
+  "id": "M32",
+  "file": "src/modules/admin/changes.ts",
+  "from": "details: { targetOperatorId: operatorId, sessionsEnded: sessionIds.length, ...reasonDetail(reason) },",
+  "to": "details: { targetOperatorId: operatorId, sessionsEnded: 0, ...reasonDetail(reason) },",
+  "note": "USER_DISABLED does not count the sessions ended"
+ },
+ {
+  "id": "M33",
+  "file": "src/modules/admin/changes.ts",
+  "from": "details: { targetOperatorId: operatorId, sessionsEnded: sessionIds.length, ...reasonDetail(reason) },",
+  "to": "details: { targetOperatorId: operatorId, sessionsEnded: sessionIds.length },",
+  "note": "USER_DISABLED drops the reason"
+ },
+ {
+  "id": "M34",
+  "file": "src/modules/admin/changes.ts",
+  "from": "      severity: 'WARNING',\n",
+  "to": "",
+  "note": "USER_DISABLED is written with the default severity"
+ },
+ {
+  "id": "M35",
+  "file": "src/modules/admin/changes.ts",
+  "from": "      message: `Operator ${operatorId} disabled; sessions ended: ${sessionIds.length}`,\n      severity: 'WARNING',\n      actorId: actor.operatorId,",
+  "to": "      message: `Operator ${operatorId} disabled; sessions ended: ${sessionIds.length}`,\n      severity: 'WARNING',\n      actorId: operatorId,",
+  "note": "USER_DISABLED names the target as the actor"
+ },
+ {
+  "id": "M36",
+  "file": "src/modules/admin/changes.ts",
+  "from": "      if (sessionIds.length > 0) app.publish({ kind: 'session.ended', sessionIds, reason: 'USER_DISABLED' });\n",
+  "to": "",
+  "note": "a disable does not publish session.ended"
+ },
+ {
+  "id": "M37",
+  "file": "src/modules/admin/changes.ts",
+  "from": "      if (sessionIds.length > 0) app.publish(",
+  "to": "      if (sessionIds.length >= 0) app.publish(",
+  "note": "a disable publishes session.ended also when no session was ended"
+ },
+ {
+  "id": "M38",
+  "file": "src/modules/admin/changes.ts",
+  "from": "      if (sessionIds.length > 0) app.publish({ kind: 'session.ended', sessionIds, reason: 'USER_DISABLED' });\n      app.publish({ kind: 'admin.changed', resource: 'USERS' });",
+  "to": "      if (sessionIds.length > 0) app.publish({ kind: 'session.ended', sessionIds, reason: 'USER_DISABLED' });",
+  "note": "a disable does not publish admin.changed"
+ },
+ {
+  "id": "M39",
+  "file": "src/modules/admin/changes.ts",
+  "from": "    unit.afterCommit(() => {\n      if (sessionIds.length > 0) app.publish({ kind: 'session.ended', sessionIds, reason: 'USER_DISABLED' });\n      app.publish({ kind: 'admin.changed', resource: 'USERS' });\n    });",
+  "to": "    if (sessionIds.length > 0) app.publish({ kind: 'session.ended', sessionIds, reason: 'USER_DISABLED' });\n    app.publish({ kind: 'admin.changed', resource: 'USERS' });",
+  "note": "a disable publishes INSIDE the unit, before the commit"
+ },
+ {
+  "id": "M40",
+  "file": "src/modules/admin/changes.ts",
+  "from": "    if (target === null) throw unknownOperator();",
+  "to": "    if (target === null) return { user: (await readUser(unit, 'OPR-002'))!, changed: false };",
+  "note": "enableUser: an unknown operator is not refused with 404"
+ },
+ {
+  "id": "M41",
+  "file": "src/modules/admin/changes.ts",
+  "from": "    if (target.enabled) return { user: await userOf(unit, operatorId), changed: false };",
+  "to": "",
+  "note": "enableUser: an operator that is enabled already is enabled again"
+ },
+ {
+  "id": "M42",
+  "file": "src/modules/admin/changes.ts",
+  "from": "      message: `Operator ${operatorId} enabled`,\n      actorId: actor.operatorId,",
+  "to": "      message: `Operator ${operatorId} enabled`,\n      actorId: null,",
+  "note": "USER_ENABLED has no actor"
+ },
+ {
+  "id": "M43",
+  "file": "src/modules/admin/changes.ts",
+  "from": "details: { targetOperatorId: operatorId, ...reasonDetail(reason) },",
+  "to": "details: { targetOperatorId: operatorId },",
+  "note": "USER_ENABLED drops the reason"
+ },
+ {
+  "id": "M44",
+  "file": "src/modules/admin/changes.ts",
+  "from": "    unit.afterCommit(() => {\n      app.publish({ kind: 'admin.changed', resource: 'USERS' });\n    });",
+  "to": "",
+  "note": "an enable does not publish admin.changed"
+ },
+ {
+  "id": "M45",
+  "file": "src/modules/admin/changes.ts",
+  "from": "    if (!(await enableOperator(unit, operatorId, now))) throw lockedRowChanged();\n",
+  "to": "",
+  "note": "enableUser: the flag is not written"
+ },
+ {
+  "id": "M46",
+  "file": "src/modules/admin/changes.ts",
+  "from": "new ApiFailure(404, ApiErrorCode.NOT_FOUND,",
+  "to": "new ApiFailure(409, ApiErrorCode.NOT_FOUND,",
+  "note": "an unknown operator answers 409"
+ },
+ {
+  "id": "M47",
+  "file": "src/modules/admin/changes.ts",
+  "from": "new ApiFailure(409, ApiErrorCode.LAST_ADMIN,",
+  "to": "new ApiFailure(409, ApiErrorCode.INVALID_STATE,",
+  "note": "the rule answers 409 INVALID_STATE, not LAST_ADMIN"
+ },
+ {
+  "id": "M48",
+  "file": "src/modules/admin/changes.ts",
+  "from": "new ApiFailure(409, ApiErrorCode.LAST_ADMIN,",
+  "to": "new ApiFailure(403, ApiErrorCode.LAST_ADMIN,",
+  "note": "the rule answers 403"
+ },
+ {
+  "id": "M49",
+  "file": "src/modules/admin/changes.ts",
+  "from": "export const ADMINISTRATION_PERMISSION = Permission.USER_ADMIN;",
+  "to": "export const ADMINISTRATION_PERMISSION = Permission.PAIRING_MANAGE;",
+  "note": "the rule protects the holders of another permission (the same roles in the seeded matrix)"
+ },
+ {
+  "id": "M50",
+  "file": "src/modules/admin/changes.ts",
+  "from": "const reasonDetail = (reason: string | undefined): { reason?: string } => (reason === undefined ? {} : { reason });",
+  "to": "const reasonDetail = (reason: string | undefined): { reason?: string } => (reason === undefined ? {} : { reason: reason.toUpperCase() });",
+  "note": "the reason is stored changed"
+ },
+ {
+  "id": "M51",
+  "file": "src/modules/admin/statements.ts",
+  "from": "export const LOCK_OPERATORS = 'SELECT id, role_id, enabled FROM public.operators ORDER BY id FOR UPDATE';",
+  "to": "export const LOCK_OPERATORS = 'SELECT id, role_id, enabled FROM public.operators ORDER BY id';",
+  "note": "LOCK_OPERATORS takes no lock: the lock point of the rule is gone"
+ },
+ {
+  "id": "M52",
+  "file": "src/modules/admin/statements.ts",
+  "from": "export const LOCK_OPERATORS = 'SELECT id, role_id, enabled FROM public.operators ORDER BY id FOR UPDATE';",
+  "to": "export const LOCK_OPERATORS = 'SELECT id, role_id, enabled FROM public.operators ORDER BY id FOR SHARE';",
+  "note": "LOCK_OPERATORS takes a shared lock: two units pass the lock point together"
+ },
+ {
+  "id": "M53",
+  "file": "src/modules/admin/statements.ts",
+  "from": "export const LOCK_OPERATORS = 'SELECT id, role_id, enabled FROM public.operators ORDER BY id FOR UPDATE';",
+  "to": "export const LOCK_OPERATORS = 'SELECT id, role_id, enabled FROM public.operators FOR UPDATE';",
+  "note": "LOCK_OPERATORS locks in no stated order"
+ },
+ {
+  "id": "M54",
+  "file": "src/modules/admin/statements.ts",
+  "from": "export const LOCK_OPERATOR = 'SELECT id, role_id, enabled FROM public.operators WHERE id = $1 FOR UPDATE';",
+  "to": "export const LOCK_OPERATOR = 'SELECT id, role_id, enabled FROM public.operators WHERE id = $1';",
+  "note": "LOCK_OPERATOR takes no lock"
+ },
+ {
+  "id": "M55",
+  "file": "src/modules/admin/statements.ts",
+  "from": "WHERE id = $1 AND role_id = $4 RETURNING id';",
+  "to": "WHERE id = $1 AND role_id <> $4 RETURNING id';",
+  "note": "ASSIGN_ROLE expects any role but the one that was read"
+ },
+ {
+  "id": "M56",
+  "file": "src/modules/admin/statements.ts",
+  "from": "'UPDATE public.operators SET role_id = $2, role_changed_at = $3, updated_at = $3 WHERE",
+  "to": "'UPDATE public.operators SET role_id = $2, updated_at = $3 WHERE",
+  "note": "ASSIGN_ROLE does not stamp role_changed_at"
+ },
+ {
+  "id": "M57",
+  "file": "src/modules/admin/statements.ts",
+  "from": "'UPDATE public.operators SET role_id = $2, role_changed_at = $3, updated_at = $3 WHERE",
+  "to": "'UPDATE public.operators SET role_id = $2, role_changed_at = $3 WHERE",
+  "note": "ASSIGN_ROLE does not stamp updated_at"
+ },
+ {
+  "id": "M58",
+  "file": "src/modules/admin/statements.ts",
+  "from": "export const DISABLE_OPERATOR = 'UPDATE public.operators SET enabled = false, updated_at = $2 WHERE id = $1 AND enabled RETURNING id';",
+  "to": "export const DISABLE_OPERATOR = 'UPDATE public.operators SET enabled = false, updated_at = $2 WHERE id = $1 RETURNING id';",
+  "note": "DISABLE_OPERATOR is not compare-and-set"
+ },
+ {
+  "id": "M59",
+  "file": "src/modules/admin/statements.ts",
+  "from": "export const ENABLE_OPERATOR = 'UPDATE public.operators SET enabled = true, updated_at = $2 WHERE id = $1 AND NOT enabled RETURNING id';",
+  "to": "export const ENABLE_OPERATOR = 'UPDATE public.operators SET enabled = true, updated_at = $2 WHERE id = $1 RETURNING id';",
+  "note": "ENABLE_OPERATOR is not compare-and-set"
+ },
+ {
+  "id": "M60",
+  "file": "src/modules/admin/statements.ts",
+  "from": "'WHERE operator_id = $1 AND used_at IS NULL AND revoked_at IS NULL RETURNING id';",
+  "to": "'WHERE operator_id = $1 AND revoked_at IS NULL RETURNING id';",
+  "note": "REVOKE_BIOMETRIC_TOKENS also revokes tokens that were used"
+ },
+ {
+  "id": "M61",
+  "file": "src/modules/admin/statements.ts",
+  "from": "'WHERE operator_id = $1 AND used_at IS NULL AND revoked_at IS NULL RETURNING id';",
+  "to": "'WHERE operator_id <> $1 AND used_at IS NULL AND revoked_at IS NULL RETURNING id';",
+  "note": "REVOKE_BIOMETRIC_TOKENS revokes the tokens of everybody else"
+ },
+ {
+  "id": "M62",
+  "file": "src/modules/admin/statements.ts",
+  "from": "\"UPDATE public.biometric_tokens SET revoked_at = $2, revoke_reason = 'USER_DISABLED' \"",
+  "to": "\"UPDATE public.biometric_tokens SET revoked_at = $2, revoke_reason = 'DISABLED' \"",
+  "note": "REVOKE_BIOMETRIC_TOKENS writes another reason"
+ },
+ {
+  "id": "M63",
+  "file": "src/modules/admin/statements.ts",
+  "from": "export const LIST_USERS = `SELECT ${USER_COLUMNS} FROM public.operators o ORDER BY o.id`;",
+  "to": "export const LIST_USERS = `SELECT ${USER_COLUMNS} FROM public.operators o ORDER BY o.username`;",
+  "note": "LIST_USERS is not in operator ID order"
+ },
+ {
+  "id": "M64",
+  "file": "src/modules/admin/statements.ts",
+  "from": "WHERE s.operator_id = o.id AND s.ended_at IS NULL) AS active_sessions';",
+  "to": "WHERE s.operator_id = o.id) AS active_sessions';",
+  "note": "activeSessions counts ended sessions too"
+ },
+ {
+  "id": "M65",
+  "file": "src/modules/admin/statements.ts",
+  "from": "WHERE s.operator_id = o.id AND s.ended_at IS NULL) AS active_sessions';",
+  "to": "WHERE s.ended_at IS NULL) AS active_sessions';",
+  "note": "activeSessions counts every operator's open sessions"
+ },
+ {
+  "id": "M66",
+  "file": "src/modules/admin/statements.ts",
+  "from": "export const READ_ROLES_HOLDING = 'SELECT role_id FROM public.role_permissions WHERE permission_id = $1';",
+  "to": "export const READ_ROLES_HOLDING = 'SELECT role_id FROM public.role_permissions WHERE permission_id <> $1';",
+  "note": "READ_ROLES_HOLDING reads the roles that hold any OTHER permission"
+ },
+ {
+  "id": "M67",
+  "file": "src/modules/admin/statements.ts",
+  "from": "'WHERE rp.role_id = $1 ORDER BY p.sort_order';",
+  "to": "'WHERE rp.role_id = $1 ORDER BY p.sort_order DESC';",
+  "note": "READ_ROLE_PERMISSIONS is in reverse order"
+ },
+ {
+  "id": "M68",
+  "file": "src/modules/admin/statements.ts",
+  "from": "  lastSignInAt: optionalTime(row.last_sign_in_at),",
+  "to": "  lastSignInAt: optionalTime(row.role_changed_at),",
+  "note": "lastSignInAt answers the time of the role change"
+ },
+ {
+  "id": "M69",
+  "file": "src/modules/admin/statements.ts",
+  "from": "  enabled: row.enabled,",
+  "to": "  enabled: true,",
+  "note": "an AdminUser is always answered as enabled"
+ },
+ {
+  "id": "M70",
+  "file": "src/modules/admin/index.ts",
+  "from": "    if (outcome.changed) await mirrorOperators(request, source);",
+  "to": "",
+  "note": "the engine is never asked to mirror the operators"
+ },
+ {
+  "id": "M71",
+  "file": "src/modules/admin/index.ts",
+  "from": "    if (outcome.changed) await mirrorOperators(request, source);",
+  "to": "    await mirrorOperators(request, source);",
+  "note": "the engine is asked to mirror also when nothing changed"
+ },
+ {
+  "id": "M72",
+  "file": "src/modules/admin/index.ts",
+  "from": "    if (outcome.changed) await mirrorOperators(request, source);\n    withStateRevision(reply);",
+  "to": "    if (outcome.changed) await mirrorOperators(request, source);",
+  "note": "the two headers of API-7 are not set"
+ },
+ {
+  "id": "M73",
+  "file": "src/modules/admin/index.ts",
+  "from": "    if (outcome.changed) await mirrorOperators(request, source);\n    withStateRevision(reply);",
+  "to": "    withStateRevision(reply);\n    if (outcome.changed) await mirrorOperators(request, source);",
+  "note": "the headers are taken BEFORE the mirror: the revision does not hold the operators slice"
+ },
+ {
+  "id": "M74",
+  "file": "src/modules/admin/index.ts",
+  "from": "void reply.header(EPOCH_HEADER_NAME, app.engine.epoch).header(REVISION_HEADER_NAME, app.engine.revision);",
+  "to": "void reply.header(EPOCH_HEADER_NAME, app.engine.revision).header(REVISION_HEADER_NAME, app.engine.epoch);",
+  "note": "the two headers are swapped"
+ },
+ {
+  "id": "M75",
+  "file": "src/modules/admin/index.ts",
+  "from": "    } catch (error) {\n      const description = describeError(error);\n      const code = error instanceof ApiFailure",
+  "to": "    } catch (error) {\n      throw error;\n      const description = describeError(error);\n      const code = error instanceof ApiFailure",
+  "note": "a failed mirror fails the request although the change is committed"
+ },
+ {
+  "id": "M76",
+  "file": "src/modules/admin/index.ts",
+  "from": "      request.log.error({ code, source }, MIRROR_FAILED);\n",
+  "to": "",
+  "note": "a failed mirror is not logged"
+ },
+ {
+  "id": "M77",
+  "file": "src/modules/admin/index.ts",
+  "from": "      app.errorLog.append({ level: 'error', source, message: MIRROR_FAILED, ...description, code, context: { requestId: request.id } });\n",
+  "to": "",
+  "note": "a failed mirror is not written to the error log"
+ },
+ {
+  "id": "M78",
+  "file": "src/modules/admin/index.ts",
+  "from": "  if (reason === undefined || reason === '') return undefined;",
+  "to": "  if (reason === undefined) return undefined;",
+  "note": "an empty reason is handed to the audit row"
+ },
+ {
+  "id": "M79",
+  "file": "src/modules/admin/index.ts",
+  "from": "  if (looksLikeSecret(reason)) throw invalidInput('body');\n",
+  "to": "",
+  "note": "a reason in the form of a credential is not refused as input"
+ },
+ {
+  "id": "M80",
+  "file": "src/modules/admin/index.ts",
+  "from": "  if (principal.kind !== 'OPERATOR') throw notSignedIn();\n  return { operatorId: principal.operatorId, deviceId: principal.deviceId };",
+  "to": "  return { operatorId: (principal as { operatorId: string }).operatorId, deviceId: (principal as { deviceId: string | null }).deviceId };",
+  "note": "the backstop of a caller that is no operator is gone"
+ },
+ {
+  "id": "M81",
+  "file": "src/modules/admin/index.ts",
+  "from": "  return { operatorId: principal.operatorId, deviceId: principal.deviceId };",
+  "to": "  return { operatorId: principal.operatorId, deviceId: null };",
+  "note": "the actor loses the device of its session"
+ },
+ {
+  "id": "M82",
+  "file": "src/modules/admin/index.ts",
+  "from": "  return z.object({ id: z.string().regex(operation.pathParam.pattern) });",
+  "to": "  return z.object({ id: z.string() });",
+  "note": "the path parameter is not held against the registry's pattern"
+ },
+ {
+  "id": "M83",
+  "file": "src/modules/admin/index.ts",
+  "from": "schema: { params: operatorParams(role), body: UserRoleRequestSchema, response: { 200: AdminUserSchema } },",
+  "to": "schema: { params: operatorParams(role), body: UserStatusRequestSchema, response: { 200: AdminUserSchema } },",
+  "note": "assignUserRole validates its body with the wrong schema"
+ },
+ {
+  "id": "M84",
+  "file": "src/modules/admin/index.ts",
+  "from": "schema: { params: operatorParams(disable), body: UserStatusRequestSchema, response: { 200: AdminUserSchema } },",
+  "to": "schema: { params: operatorParams(disable), response: { 200: AdminUserSchema } },",
+  "note": "disableUser does not validate its body"
+ },
+ {
+  "id": "M85",
+  "file": "src/modules/admin/index.ts",
+  "from": "schema: { params: operatorParams(enable), body: UserStatusRequestSchema, response: { 200: AdminUserSchema } },",
+  "to": "schema: { body: UserStatusRequestSchema, response: { 200: AdminUserSchema } },",
+  "note": "enableUser does not validate its path parameter"
+ },
+ {
+  "id": "M86",
+  "file": "src/modules/admin/index.ts",
+  "from": "      const outcome = await enableUser(app, actorOf(request), request.params.id, reasonOf(request.body.reason));",
+  "to": "      const outcome = await disableUser(app, actorOf(request), request.params.id, reasonOf(request.body.reason));",
+  "note": "the enable route disables"
+ },
+ {
+  "id": "M87",
+  "file": "src/modules/admin/index.ts",
+  "from": "      const outcome = await disableUser(app, actorOf(request), request.params.id, reasonOf(request.body.reason));\n      return answer(request, reply, 'admin.disableUser', outcome);",
+  "to": "      const outcome = await enableUser(app, actorOf(request), request.params.id, reasonOf(request.body.reason));\n      return answer(request, reply, 'admin.disableUser', outcome);",
+  "note": "the disable route enables"
+ },
+ {
+  "id": "M88",
+  "file": "src/modules/admin/index.ts",
+  "from": "        void app.db.probe({ fresh: true });\n        throw notReady();",
+  "to": "        throw notReady();",
+  "note": "a failed read of the list does not tell readiness"
+ },
+ {
+  "id": "M89",
+  "file": "src/modules/admin/index.ts",
+  "from": "        void app.db.probe({ fresh: true });\n        throw notReady();",
+  "to": "        void app.db.probe({ fresh: true });\n        throw error;",
+  "note": "a failed read of the list answers 500 with the driver's error"
+ },
+ {
+  "id": "M90",
+  "file": "src/modules/admin/index.ts",
+  "from": "        request.log.error({ code: description.code ?? description.errorName, source: 'admin.listUsers' }, READ_FAILED);\n",
+  "to": "",
+  "note": "a failed read of the list is not logged"
+ },
+ {
+  "id": "M91",
+  "file": "src/modules/admin/index.ts",
+  "from": "        app.errorLog.append({ level: 'error', source: 'admin.listUsers', message: READ_FAILED, ...description, context: { requestId: request.id } });\n",
+  "to": "",
+  "note": "a failed read of the list is not written to the error log"
+ },
+ {
+  "id": "M92",
+  "file": "src/modules/admin/index.ts",
+  "from": "        request.log.error({ code: description.code ?? description.errorName, source: 'admin.listUsers' }, READ_FAILED);",
+  "to": "        request.log.error({ code: description.code ?? description.errorName, source: 'admin.listUsers', error }, READ_FAILED);",
+  "note": "M14: the driver's error is logged under the key `error`"
+ }
+]

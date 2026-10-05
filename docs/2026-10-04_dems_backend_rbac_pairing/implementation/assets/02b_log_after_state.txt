@@ -1,0 +1,210 @@
+== W02b step 10 AFTER STATE 2026-10-04 10:48:49 WIB
+$ adb devices
+List of devices attached
+emulator-5554	device
+emulator-5556	device
+emulator-5558	device
+
+$ ps (emulator processes)
+68181     1  0       10:04 3451968 /Users/gsp-budi/Library/Android/sdk/emulator/qemu/darwin-aarch64/qemu-system-aarch64 -avd dems2_phone -port 5554 -no-metrics -gpu host -no-boot-anim -no-snapshot-load -no-snapshot-save
+68876     1  0       09:18 1506720 /Users/gsp-budi/Library/Android/sdk/emulator/qemu/darwin-aarch64/qemu-system-aarch64 -avd dems2_tablet -port 5556 -no-metrics -gpu host -no-boot-anim -no-snapshot-load -no-snapshot-save
+70102     1  0       08:14 3415488 /Users/gsp-budi/Library/Android/sdk/emulator/qemu/darwin-aarch64/qemu-system-aarch64 -avd dems2_phone2 -port 5558 -no-metrics -gpu host -no-boot-anim -no-snapshot-load -no-snapshot-save
+$ PID files
+dems2_phone.pid=68181 alive=yes
+dems2_tablet.pid=68876 alive=yes
+dems2_phone2.pid=70102 alive=yes
+dems_phone.pid=84074 alive=no   (old AVD; stale, left as it is)
+dems_tablet.pid=84299 alive=no   (old AVD; stale, left as it is)
+dems_phone2.pid=84494 alive=no   (old AVD; stale, left as it is)
+=== emulator-5554 avd=dems2_phone boot_completed=1 isKeyguardShowing=false State: RUNNING_UNLOCKED
+    locksettings get-disabled=true  trust: deviceLocked=0  fingerprints: "count":0
+    app: versionCode=100 minSdk=24 targetSdk=36 firstInstallTime=2026-10-04 10:43:16 
+    base.apk sha256: d89c9be31fb43e2b46361c26e357db1ffc7a4d9ba46e56af5230f7d57f8a14ec
+    app process: []  reverse --list: [;]
+=== emulator-5556 avd=dems2_tablet boot_completed=1 isKeyguardShowing=false State: RUNNING_UNLOCKED
+    locksettings get-disabled=true  trust: deviceLocked=0  fingerprints: "count":0
+    app: versionCode=100 minSdk=24 targetSdk=36 firstInstallTime=2026-10-04 10:43:24 
+    base.apk sha256: d89c9be31fb43e2b46361c26e357db1ffc7a4d9ba46e56af5230f7d57f8a14ec
+    app process: []  reverse --list: [;]
+=== emulator-5558 avd=dems2_phone2 boot_completed=1 isKeyguardShowing=false State: RUNNING_UNLOCKED
+    locksettings get-disabled=true  trust: deviceLocked=0  fingerprints: "count":0
+    app: versionCode=100 minSdk=24 targetSdk=36 firstInstallTime=2026-10-04 10:43:32 
+    base.apk sha256: d89c9be31fb43e2b46361c26e357db1ffc7a4d9ba46e56af5230f7d57f8a14ec
+    app process: []  reverse --list: [;]
+$ Metro / expo processes
+(end)
+$ lsof listeners 8081-8089
+(end)
+$ lsof listeners 5554-5559
+COMMAND PID NAME
+qemu-syst 68181 127.0.0.1:5555
+qemu-syst 68181 [::1]:5555
+qemu-syst 68181 127.0.0.1:5554
+qemu-syst 68181 [::1]:5554
+qemu-syst 68876 127.0.0.1:5557
+qemu-syst 68876 [::1]:5557
+qemu-syst 68876 127.0.0.1:5556
+qemu-syst 68876 [::1]:5556
+qemu-syst 70102 127.0.0.1:5559
+qemu-syst 70102 [::1]:5559
+qemu-syst 70102 127.0.0.1:5558
+qemu-syst 70102 [::1]:5558
+$ device-session leftovers (lockf, watchdog, session shells)
+(end)
+$ PostgreSQL 4432 (not touched)
+COMMAND PID NAME
+postgres 19121 127.0.0.1:4432
+postgres.pid=19121 alive=yes
+$ uptime
+10:48  up 2 days, 18:01, 1 user, load averages: 4.81 9.88 8.78
+$ vm_stat | head -8
+Mach Virtual Memory Statistics: (page size of 16384 bytes)
+Pages free:                                     8988.
+Pages active:                                 525656.
+Pages inactive:                               523264.
+Pages speculative:                              1656.
+Pages throttled:                                   0.
+Pages wired down:                             160276.
+Pages purgeable:                                2574.
+$ memory_pressure | tail -1
+System-wide memory free percentage: 69%
+$ sysctl vm.swapusage
+vm.swapusage: total = 3072.00M  used = 1987.44M  free = 1084.56M  (encrypted)
+$ df -h /System/Volumes/Data
+Filesystem      Size    Used   Avail Capacity iused ifree %iused  Mounted on
+/dev/disk3s5   926Gi   234Gi   663Gi    27%    2.4M  7.0G    0%   /System/Volumes/Data
+$ du -sk new AVD folders
+2106368	/Users/gsp-budi/.android/avd/dems2_phone.avd
+1827520	/Users/gsp-budi/.android/avd/dems2_tablet.avd
+2204352	/Users/gsp-budi/.android/avd/dems2_phone2.avd
+$ du -sk old AVD folders
+6241008	/Users/gsp-budi/.android/avd/dems_phone.avd
+7401248	/Users/gsp-budi/.android/avd/dems_tablet.avd
+2438144	/Users/gsp-budi/.android/avd/dems_phone2.avd
+$ ls -la ~/.android/avd
+total 48
+drwxr-xr-x@ 14 gsp-budi  staff  448 Oct  4 10:37 .
+drwxr-xr-x@ 14 gsp-budi  staff  448 Oct  4 10:40 ..
+drwxr-xr-x@ 22 gsp-budi  staff  704 Oct  4 10:39 dems2_phone.avd
+-rw-r--r--@  1 gsp-budi  staff  120 Oct  4 10:37 dems2_phone.ini
+drwxr-xr-x@ 22 gsp-budi  staff  704 Oct  4 10:41 dems2_phone2.avd
+-rw-r--r--@  1 gsp-budi  staff  122 Oct  4 10:37 dems2_phone2.ini
+drwxr-xr-x@ 22 gsp-budi  staff  704 Oct  4 10:40 dems2_tablet.avd
+-rw-r--r--@  1 gsp-budi  staff  122 Oct  4 10:37 dems2_tablet.ini
+drwxr-xr-x@ 24 gsp-budi  staff  768 Oct  4 10:38 dems_phone.avd
+-rw-r--r--@  1 gsp-budi  staff  118 Oct  1 00:08 dems_phone.ini
+drwxr-xr-x@ 23 gsp-budi  staff  736 Oct  4 10:38 dems_phone2.avd
+-rw-r--r--@  1 gsp-budi  staff  120 Oct  1 10:04 dems_phone2.ini
+drwxr-xr-x@ 24 gsp-budi  staff  768 Oct  4 10:38 dems_tablet.avd
+-rw-r--r--@  1 gsp-budi  staff  120 Oct  1 00:06 dems_tablet.ini
+$ zsh -l -c 'avdmanager list avd' (names)
+    Name: dems2_phone
+  Device: pixel_10 (Google)
+    Path: /Users/gsp-budi/.android/avd/dems2_phone.avd
+    Name: dems2_phone2
+  Device: pixel_10 (Google)
+    Path: /Users/gsp-budi/.android/avd/dems2_phone2.avd
+    Name: dems2_tablet
+  Device: pixel_tablet (Google)
+    Path: /Users/gsp-budi/.android/avd/dems2_tablet.avd
+    Name: dems_phone
+  Device: pixel_10 (Google)
+    Path: /Users/gsp-budi/.android/avd/dems_phone.avd
+    Name: dems_phone2
+  Device: pixel_10 (Google)
+    Path: /Users/gsp-budi/.android/avd/dems_phone2.avd
+    Name: dems_tablet
+  Device: pixel_tablet (Google)
+    Path: /Users/gsp-budi/.android/avd/dems_tablet.avd
+== 10:49:08 old AVD folders: final state vs the state right after the graceful shutdown (10:38:30)
+--- dems_phone: diff of the file list (name, size in bytes, mtime): after shutdown vs now
+IDENTICAL: 30 files, same names, sizes and mtimes
+    sum of file sizes (bytes): after shutdown 6454588399, now 6454588399, before (10:31) 6454588380
+--- dems_tablet: diff of the file list (name, size in bytes, mtime): after shutdown vs now
+IDENTICAL: 30 files, same names, sizes and mtimes
+    sum of file sizes (bytes): after shutdown 7642678019, now 7642678019, before (10:31) 7642612464
+--- dems_phone2: diff of the file list (name, size in bytes, mtime): after shutdown vs now
+IDENTICAL: 23 files, same names, sizes and mtimes
+    sum of file sizes (bytes): after shutdown 2560475759, now 2560475759, before (10:31) 2560475740
+$ shasum -a 256 config.ini and .ini of the old AVDs (before-state values: 74c9f92c… phone/phone2, 9b5639d5… tablet; d9aecbe2…, 33d34ac0…, 03b1318c…)
+74c9f92c4f43cc2e40aab82066994c56e05ef4604bdd969c219e463cd8f51b02  /Users/gsp-budi/.android/avd/dems_phone.avd/config.ini
+9b5639d5c7f7f53be4e0e53b17d62e51c117b34d7694996082aa4eee138a6112  /Users/gsp-budi/.android/avd/dems_tablet.avd/config.ini
+74c9f92c4f43cc2e40aab82066994c56e05ef4604bdd969c219e463cd8f51b02  /Users/gsp-budi/.android/avd/dems_phone2.avd/config.ini
+d9aecbe20615373cb1de01029d037121753a00428383a13cc9a1052a95df6ba7  /Users/gsp-budi/.android/avd/dems_phone.ini
+33d34ac0eb40c85ee469eb8acb599f057c167c2ec88f1f52bda88a934de0335c  /Users/gsp-budi/.android/avd/dems_tablet.ini
+03b1318c28b7dda3affd26d0d0cdd53eeca9d00355f1582eb77c7e3d89b3329f  /Users/gsp-budi/.android/avd/dems_phone2.ini
+$ stat config.ini mtimes
+/Users/gsp-budi/.android/avd/dems_phone.avd/config.ini 3570 bytes mtime=2026-10-01 00:08:18
+/Users/gsp-budi/.android/avd/dems_phone2.avd/config.ini 3570 bytes mtime=2026-10-01 10:04:39
+/Users/gsp-budi/.android/avd/dems_tablet.avd/config.ini 3572 bytes mtime=2026-10-01 00:07:09
+$ allocated blocks of the big images now (512-byte blocks) vs byte size
+/Users/gsp-budi/.android/avd/dems_phone.avd/userdata-qemu.img.qcow2 size=3124035584 blocks=6101632 (=6101632*512 bytes allocated)
+/Users/gsp-budi/.android/avd/dems_tablet.avd/userdata-qemu.img.qcow2 size=3352166400 blocks=6547200 (=6547200*512 bytes allocated)
+/Users/gsp-budi/.android/avd/dems_phone2.avd/userdata-qemu.img.qcow2 size=2454454272 blocks=4793856 (=4793856*512 bytes allocated)
+/Users/gsp-budi/.android/avd/dems_phone.avd/encryptionkey.img.qcow2 size=87425024 blocks=170752 (=170752*512 bytes allocated)
+$ ls -la dems_phone.avd
+total 6340744
+drwxr-xr-x@ 24 gsp-budi  staff         768 Oct  4 10:38 .
+drwxr-xr-x@ 14 gsp-budi  staff         448 Oct  4 10:37 ..
+-rw-r--r--@  1 gsp-budi  staff         183 Oct  4 06:27 AVD.conf
+-rw-------@  1 gsp-budi  staff           0 Oct  4 06:27 bootcompleted.ini
+-rw-r--r--@  1 gsp-budi  staff    69206016 Oct  1 00:08 cache.img
+-rw-r--r--@  1 gsp-budi  staff      327749 Oct  1 06:07 cache.img.qcow2
+-rw-r--r--@  1 gsp-budi  staff        3570 Oct  1 00:08 config.ini
+drwxr-xr-x@  3 gsp-budi  staff          96 Oct  1 01:26 data
+-rw-r--r--@  1 gsp-budi  staff         241 Oct  4 06:27 emu-launch-params.txt
+-rw-r--r--@  1 gsp-budi  staff         113 Oct  4 10:38 emulator-user.ini
+-rw-r--r--@  1 gsp-budi  staff    18874368 Oct  1 00:08 encryptionkey.img
+-rw-r--r--@  1 gsp-budi  staff    87425024 Oct  4 06:27 encryptionkey.img.qcow2
+-rw-r--r--@  1 gsp-budi  staff        4259 Oct  4 06:27 hardware-qemu.ini
+-rw-r--r--@  1 gsp-budi  staff     2092280 Oct  4 06:27 initrd
+drwxr-xr-x@  7 gsp-budi  staff         224 Oct  1 00:08 modem_simulator
+-rw-r--r--@  1 gsp-budi  staff           0 Oct  4 06:27 multiinstance.lock
+-rw-r--r--@  1 gsp-budi  staff          38 Oct  1 00:08 netsim.ini
+-rw-r--r--@  1 gsp-budi  staff           1 Oct  1 00:08 qemu-version.txt
+-rw-r--r--@  1 gsp-budi  staff           0 Oct  4 06:27 read-snapshot.txt
+drwxr-xr-x@  3 gsp-budi  staff          96 Oct  1 00:08 snapshots
+drwxr-xr-x@  3 gsp-budi  staff          96 Oct  4 06:27 tmpAdbCmds
+-rw-r--r--@  1 gsp-budi  staff     8323072 Oct  1 00:08 userdata-qemu.img
+-rw-r--r--@  1 gsp-budi  staff  3124035584 Oct  4 10:38 userdata-qemu.img.qcow2
+-rw-r--r--@  1 gsp-budi  staff           9 Oct  1 00:08 version_num.cache
+== final script on the devices 2026-10-04 10:50:56 WIB; sha256 f25f3096c35fd3178c6ae9e3bcfbcff99fe6d7ce1871b58402af47089cff93bf
+[device-session phone 10:50:56] lock held; hard cap 120 s, until 10:52:56 (watchdog PID 82591)
+[device-session phone 10:50:56] session serial: emulator-5554 (dems2_phone)
+[device-session phone 10:50:56] emulator-5554: screen awake, no keyguard
+[device-session phone 10:50:56] no Metro (NO_METRO=1); tcp:4400 -> tcp:4400 on emulator-5554
+in session: AVD_NAME=dems2_phone SERIAL=emulator-5554 emu-avd-name=dems2_phone isKeyguardShowing=false
+[device-session phone 10:50:56] session ended with status 0
+session exit=0
+[device-session tablet 10:50:56] lock held; hard cap 120 s, until 10:52:56 (watchdog PID 82657)
+[device-session tablet 10:50:56] session serial: emulator-5556 (dems2_tablet)
+[device-session tablet 10:50:56] emulator-5556: screen awake, no keyguard
+[device-session tablet 10:50:56] no Metro (NO_METRO=1); tcp:4400 -> tcp:4400 on emulator-5556
+in session: AVD_NAME=dems2_tablet SERIAL=emulator-5556 emu-avd-name=dems2_tablet isKeyguardShowing=false
+[device-session tablet 10:50:56] session ended with status 0
+session exit=0
+[device-session phone2 10:50:56] lock held; hard cap 120 s, until 10:52:56 (watchdog PID 82723)
+[device-session phone2 10:50:56] session serial: emulator-5558 (dems2_phone2)
+[device-session phone2 10:50:56] emulator-5558: screen awake, no keyguard
+[device-session phone2 10:50:56] no Metro (NO_METRO=1); tcp:4400 -> tcp:4400 on emulator-5558
+in session: AVD_NAME=dems2_phone2 SERIAL=emulator-5558 emu-avd-name=dems2_phone2 isKeyguardShowing=false
+[device-session phone2 10:50:56] session ended with status 0
+session exit=0
+$ adb devices
+List of devices attached
+emulator-5554	device
+emulator-5556	device
+emulator-5558	device
+
+emulator-5554 reverse --list: [;] app process: [] isKeyguardShowing=false
+emulator-5556 reverse --list: [;] app process: [] isKeyguardShowing=false
+emulator-5558 reverse --list: [;] app process: [] isKeyguardShowing=false
+$ ps emulators
+68181     1  0       12:12 /Users/gsp-budi/Library/Android/sdk/emulator/qemu/darwin-aarch64/qemu-system-aarch64 -avd dems2_phone -port 5554 -no-metrics -gpu host -no-boot-anim -no-snapshot-load -no-snapshot-save
+68876     1  0       11:26 /Users/gsp-budi/Library/Android/sdk/emulator/qemu/darwin-aarch64/qemu-system-aarch64 -avd dems2_tablet -port 5556 -no-metrics -gpu host -no-boot-anim -no-snapshot-load -no-snapshot-save
+70102     1  0       10:22 /Users/gsp-budi/Library/Android/sdk/emulator/qemu/darwin-aarch64/qemu-system-aarch64 -avd dems2_phone2 -port 5558 -no-metrics -gpu host -no-boot-anim -no-snapshot-load -no-snapshot-save
+$ Metro / session leftovers
+(none)
+(no Metro listener)
+$ uptime
+10:50  up 2 days, 18:03, 1 user, load averages: 2.43 7.27 7.88

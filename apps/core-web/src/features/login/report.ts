@@ -8,7 +8,14 @@
  * **Never pass a credential in `context`** (§14.8, design book §20.1 "no credentials in logs").
  * Callers pass only non-secret facts (the method, a storage key, the result reason). The
  * username is not logged either: a typed "username" may be a mistyped password.
+ *
+ * Live mode (backend task, plan row W55): `recordLoginIssue` writes to the page's own log
+ * (`webErrorSink` of `@/runtime`: in memory, printed to the console in a dev build, never sent
+ * anywhere), beside the Live source's own record of every rejected action. Its message is a
+ * fixed sentence chosen by the caller, never the text of an unknown error.
  */
+import type { ErrorSink } from '@/runtime'
+
 export type LoginLogLevel = 'error' | 'warn' | 'info'
 
 export interface LoginLogEntry {
@@ -60,4 +67,19 @@ export function reportLoginIssue(
     sink('[core-web] login', entry)
   }
   return entry
+}
+
+/**
+ * Live mode: one record in the page's own log. `message` is the caller's fixed sentence and
+ * `context` holds non-secret facts only (a code, a status, the class of the error).
+ */
+export function recordLoginIssue(
+  sink: Pick<ErrorSink, 'report'>,
+  level: 'error' | 'warn',
+  source: string,
+  message: string,
+  context: NonNullable<LoginLogEntry['context']>,
+  correlationId: string = newLoginCorrelationId(),
+): void {
+  sink.report({ level, source, message, at: Date.now(), context: { ...context, correlationId } })
 }

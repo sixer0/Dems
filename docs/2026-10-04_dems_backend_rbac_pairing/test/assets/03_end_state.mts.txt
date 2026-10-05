@@ -1,0 +1,9 @@
+// Read-only: the databases of this row's test prefix, as dems_owner on the maintenance database.
+import { maintenancePool } from '/Users/gsp-budi/Documents/DEMS/apps/core-server/test/support/reset.ts';
+const pool = maintenancePool('/Users/gsp-budi/Documents/DEMS/.data');
+const mine = await pool.query("SELECT datname::text AS name FROM pg_database WHERE datname LIKE 'dems\\_test\\_step\\_74\\_%' ORDER BY 1");
+const all = await pool.query("SELECT count(*)::int AS n FROM pg_database WHERE datname LIKE 'dems\\_test\\_%'");
+const who = await pool.query("SELECT current_setting('port') AS port, current_user::text AS role");
+console.log(`databases with the prefix dems_test_step_74_: ${mine.rows.length} ${JSON.stringify(mine.rows.map((row: { name: string }) => row.name))}`);
+console.log(`databases with the prefix dems_test_ (every row's): ${all.rows[0].n}; asked as ${who.rows[0].role} on port ${who.rows[0].port}`);
+await pool.end();

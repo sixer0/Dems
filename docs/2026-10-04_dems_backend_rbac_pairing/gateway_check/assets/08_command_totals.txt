@@ -1,0 +1,67 @@
+== 7. the commands, run by the reviewer on the current tree (2026-10-05, local times) ==
+
+$ npm run test -w @dems/core-web -- --maxWorkers=2
+  Test Files  55 passed (55)
+       Tests  759 passed (759)
+   Duration  56.38s
+  exit 0                                    (ledger: 438 baseline + 160 W50 + 84 W54 + 77 W55 = 759)
+
+$ npm run test -w @dems/shared -- --maxWorkers=2
+  Test Files  68 passed (68)
+       Tests  1814 passed (1814)
+  exit 0
+
+$ npm run typecheck -w @dems/core-web        exit 0 (no output)
+$ npm run lint    -w @dems/core-web          exit 0 (oxlint, no finding)
+$ npm run lint    -w @dems/shared            exit 0 (oxlint, no finding)
+$ npm run test:db                            NOT run (another agent owns the database folder)
+
+$ npm run build -w @dems/core-web            vite part exit 0, 526 modules
+  (the appended --outDir/--emptyOutDir flags were forwarded by npm to `tsc -b`, not to `vite`,
+   so the output went to the default git-ignored apps/core-web/dist, which already existed since
+   Oct 1; no tracked file changed. Disclosed as the reviewer's own deviation, CPW1-15.)
+  files in dist containing 'unsafe-eval'      0
+  files in dist containing 'new Function('    0
+  files in dist mentioning 'jitless'          3   (zod's jitless config is in the bundle)
+  CSP meta tag in dist/index.html             0   (correct: this is not a packaged build)
+  marker profile, identical to W50 section 15:
+    dems.core.mode.v1            1   (the light resolver, expected)
+    Live mode was not started    1   (boot.ts's unreachable branch string, expected)
+    x-dems-revision              1   (a header NAME from @dems/shared/api, expected)
+    dems.live.owedSignOut        0   (the Live source's storage port, absent)
+    browser-cookie               0   (the typed client, absent)
+    createLiveSim                0   (the Live source, absent)
+    live-start                   0   (the chunk name, absent)
+
+== 8. the two mode-switch copies, counted fresh (F76-14 re-measured) ==
+
+  file                                            dialog  confirm  cancel
+  apps/core-web/src/test/live-shell-indicator.test.tsx   11      4      1
+  apps/core-web/src/test/live-shell-notices.test.tsx      1      1      0
+  apps/core-web/src/test/live-shell-admin.test.tsx        1      1      0
+  apps/core-web/src/test/live-login-page.test.tsx         7      4      1
+
+  No test file imports either hook (`rg -n "useModeSwitch|useLoginModeSwitch" apps/core-web/src/test`
+  returns nothing): each file reaches the dialog through the surface it mounts, and pins only the
+  three IDs. Therefore unifying the two copies changes no test file.
+
+  Consumers of the shell copy: components/shell/{mode-indicator,live-notices,live-only-state}.tsx
+  and the barrel components/shell/index.ts:18. Consumers of the login copy: features/login/index.tsx:48,61
+  and the prop types at auth-card.tsx:42 and mode-selector.tsx:13.
+
+  The direction of dependency already runs features -> components/shell in eight folders
+  (e.g. features/session-new/index.tsx:53, features/storage/kpi-cards.tsx:18).
+
+  The static rule that counts the Login folder's files is `expect(production.length)
+  .toBeGreaterThanOrEqual(16)` (live-login-model.test.tsx:233): 18 files now, 17 after the deletion.
+
+== 9. the record sources of the two copies ==
+
+  pinned by a test:  live-shell-indicator.test.tsx:358 -> source 'shell.modeSwitch', message
+                     'the storage is gone' (the raw message of the thrown error)
+  written by the shell copy:  mode-switch.tsx:59 -> reportShellError('shell.modeSwitch', error)
+                              -> shell-report.ts:13  message: error.message   (raw)
+  written by the login copy:  use-mode-switch.tsx:63-71 -> a fixed sentence + context.errorName
+                              ("the text of an unknown error is not trusted to be free of input",
+                              the rule stated at features/login/report.ts:74-76)
+  Nothing pins 'login.modeSwitch'.

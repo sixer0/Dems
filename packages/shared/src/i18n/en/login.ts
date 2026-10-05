@@ -85,4 +85,47 @@ export const login = {
   success: 'Signed in',
   /** Step 43 (additive): polite announcement while the hand-off into the console plays. */
   successAs: 'Signed in as {{name}}. Opening the console…',
+
+  /**
+   * Backend task W55 (04_client_integration_spec §5.5, §5.6, §6.4; additive): the Login page while
+   * the console runs on the Core server (Live mode). No key above is read differently; a screen
+   * that shows server data says nothing about a simulation (§3.2). The words of the data mode
+   * itself, of the link and of a refused call are shared: `common.coreMode`, `common.coreLink`,
+   * `common.coreErrors`.
+   */
+  live: {
+    /** WS-7 (decision Q13): the web console does not pair. Neither "simulated" nor "paired" appears in the line. */
+    trustLine: 'Core server on this computer • web console, no pairing required',
+    trustTooltip:
+      'This console signs in to the Core server with a session cookie. Only mobile devices are paired; see Paired Devices.',
+
+    /** WS-9, condition C1 of SR-63: what the disclosure is, in plain words, above the list. */
+    demoNotice: 'Published demo credentials for synthetic accounts on this local demo. They are not a secret.',
+
+    /** WS-5: an anonymous client receives no Core state, so the strip shows what is public. */
+    deviceStrip: {
+      label: 'Core server status',
+      service: 'Core service',
+      database: 'Database',
+      engine: 'Engine',
+      mode: 'Mode',
+      ready: 'Ready',
+      notReady: 'Not ready',
+      unknown: 'Unknown',
+    },
+
+    errors: {
+      /** §3.5: the Core server answers, but its database or its engine is not ready yet. */
+      startingBody: 'Sign-in is available when its database and its engine are ready.',
+      /** The Core server refused the input itself (422): it is the judge of the bounds. */
+      inputRejected: 'The Core server did not accept this username or password as entered.',
+    },
+
+    notices: {
+      /** WS-14: the absolute limit of a session (8 hours). */
+      absoluteExpired: 'Your session reached its 8-hour limit. Sign in again.',
+      /** §6.4: `session.ended` with `USER_DISABLED`. */
+      userDisabled: 'This account was disabled by an administrator.',
+    },
+  },
 } as const satisfies ResourceTree;

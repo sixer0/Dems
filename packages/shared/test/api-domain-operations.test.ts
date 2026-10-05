@@ -1,0 +1,695 @@
+// Backend task 2026-10-04, plan row W27 (contract C): the schemas of areas 4 to 11 (01_specs §7.8 to
+// §7.15, §7.17, §7.18) against the real simulator. A body carries exactly what the hosted simulator
+// action takes, an answer is exactly what the action returns or the slices the state holds, and a
+// text the simulator would cut is refused before it reaches the engine.
+import { describe, expect, it } from 'vitest';
+import type { z } from 'zod';
+import {
+  ALERT_ID_PATTERN,
+  API_PAGE_LIMIT_DEFAULT,
+  API_PAGE_LIMIT_MAX,
+  AUDIT_CHAIN_LINEAGE_MAX,
+  AUDIT_EXPORT_LIMITS,
+  ActiveCameraRequestSchema,
+  AlertListSchema,
+  AuditChainLineageEntrySchema,
+  AuditChainStatusSchema,
+  AuditExportAcceptedSchema,
+  AuditExportRequestSchema,
+  AuditListQuerySchema,
+  AuditPageSchema,
+  CORE_API_OPERATIONS,
+  CORE_API_SCHEMAS,
+  CaseNumberScanSchema,
+  ChainVerifyResultSchema,
+  DIAGNOSTICS_RUN_ID_PATTERN,
+  DeviceInventorySchema,
+  DiagnosticsRunStartedSchema,
+  EVIDENCE_SEARCH_MAX_LENGTH,
+  EXPORT_DESTINATION_MAX_LENGTH,
+  EXPORT_REASON_MAX_LENGTH,
+  EventListQuerySchema,
+  EventPageSchema,
+  EvidenceDetailSchema,
+  EvidenceExportRequestSchema,
+  EvidenceListQuerySchema,
+  EvidenceMediaRefSchema,
+  EvidencePageSchema,
+  EvidenceVerifyResultSchema,
+  HARDWARE_DEVICE_ID_PATTERN,
+  LIST_CURSOR_PATTERN,
+  MicClipResetRequestSchema,
+  NetworkStatusSchema,
+  PageQuerySchema,
+  RETENTION_DAYS_RANGE,
+  SESSION_TEXT_LIMITS,
+  SIM_ACTION_OPERATIONS,
+  SecurityStatusSchema,
+  ServicesRestartedSchema,
+  SessionHistoryPageSchema,
+  SessionMarkerRequestSchema,
+  SessionNoteRequestSchema,
+  SettingsUpdateRequestSchema,
+  SimActionExecution,
+  StorageDetailSchema,
+  StoragePolicyRequestSchema,
+  SystemStatusSchema,
+  TimeStatusSchema,
+  findCoreApiOperation,
+  simActionsOfOperation,
+  type ActiveCameraRequest,
+  type AlertList,
+  type AuditExportRequestBody,
+  type AuditPage,
+  type CaseNumberScan,
+  type ChainVerifyResultBody,
+  type DeviceInventory,
+  type DiagnosticsRunStarted,
+  type EventPage,
+  type EvidencePage,
+  type EvidenceVerifyResultBody,
+  type MicClipResetRequest,
+  type NetworkStatus,
+  type ServicesRestarted,
+  type SessionHistoryPage,
+  type SessionMarkerRequest,
+  type SessionNoteRequest,
+  type SettingsUpdateRequest,
+  type StorageDetail,
+  type StoragePolicyRequest,
+  type SystemStatus,
+  type TimeStatus,
+} from '../src/api';
+import { EXAMPLE_INSTANT_MS, EXAMPLE_PLACEHOLDERS } from '../src/api/example-parts';
+import { codeUnitBoundMessage } from '../src/api/schema-parts';
+import {
+  DEFAULT_SEED,
+  DEMO_OPERATOR_PASSWORD,
+  PLATFORM_DEVICE_NAMES,
+  ScenarioName,
+  SimTransitionError,
+  buildScenarioState,
+  createIdleState,
+  createManualClock,
+  createSim,
+  type AuditExportRequest,
+  type AuditRow,
+  type ChainVerifyResult,
+  type EvidenceItem,
+  type EvidenceVerifyResult,
+  type SessionHistoryEntry,
+  type SettingsSlice,
+  type SimActions,
+  type SimEvent,
+  type SimState,
+  type StoragePolicy,
+} from '../src/sim';
+
+// ── Compile-time proofs: a body is what the hosted action takes, an answer is what it returns ────
+type Exact<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
+/** Every member name at every depth, optional ones included (`Exact` alone does not see a missing optional member). */
+type MemberPaths<T> = T extends readonly (infer Element)[]
+  ? MemberPaths<Element>
+  : T extends object
+    ? { [Key in keyof T & string]-?: Key | `${Key}.${MemberPaths<NonNullable<T[Key]>>}` }[keyof T & string]
+    : never;
+type Same<A, B> = Exact<A, B> extends true ? Exact<MemberPaths<A>, MemberPaths<B>> : false;
+type Argument<Name extends keyof SimActions, Index extends number = 0> = Parameters<SimActions[Name]>[Index];
+
+/** A member that is `false` does not compile: the schema's type and the simulator's differ. */
+const bodiesAreWhatTheActionsTake: {
+  note: Exact<SessionNoteRequest['text'], Argument<'addNote'>>;
+  marker: Exact<SessionMarkerRequest['label'], Argument<'addMarker'>>;
+  camera: Exact<ActiveCameraRequest['cameraId'], Argument<'setActiveCamera'>>;
+  clip: Exact<MicClipResetRequest['channel'], Argument<'resetClip'>>;
+  policy: Same<StoragePolicyRequest, Argument<'setStoragePolicy'>>;
+  policyIsPartial: Same<StoragePolicyRequest, Partial<StoragePolicy>>;
+  settings: Same<SettingsUpdateRequest, Argument<'updateSettings'>>;
+  settingsIsPartial: Same<SettingsUpdateRequest, Partial<SettingsSlice>>;
+  exportAudit: Same<AuditExportRequestBody, NonNullable<Argument<'exportAudit'>>>;
+  exportLogs: Same<AuditExportRequestBody, NonNullable<Argument<'exportLogs'>>>;
+  exportRequest: Same<AuditExportRequestBody, AuditExportRequest>;
+} = {
+  note: true,
+  marker: true,
+  camera: true,
+  clip: true,
+  policy: true,
+  policyIsPartial: true,
+  settings: true,
+  settingsIsPartial: true,
+  exportAudit: true,
+  exportLogs: true,
+  exportRequest: true,
+};
+
+const answersAreWhatTheActionsReturn: {
+  verify: Same<EvidenceVerifyResultBody, ReturnType<SimActions['verify']>>;
+  verifyIsTheType: Same<EvidenceVerifyResultBody, EvidenceVerifyResult>;
+  chain: Same<ChainVerifyResultBody, ReturnType<SimActions['verifyAuditChain']>>;
+  chainIsTheType: Same<ChainVerifyResultBody, ChainVerifyResult>;
+  caseNumber: Exact<CaseNumberScan['caseNumber'], ReturnType<SimActions['scanCaseNumber']>>;
+  runId: Exact<DiagnosticsRunStarted['runId'], ReturnType<SimActions['runDiagnostics']>>;
+  restarted: Exact<ServicesRestarted['restarted'], ReturnType<SimActions['restartServices']>>;
+} = {
+  verify: true,
+  verifyIsTheType: true,
+  chain: true,
+  chainIsTheType: true,
+  caseNumber: true,
+  runId: true,
+  restarted: true,
+};
+
+/** API-6: a read answers the wire form of the slices it names, and a list the elements of its slice. */
+const readsAreTheSlices: {
+  inventory: Same<DeviceInventory, Pick<SimState, 'device' | 'cameras' | 'mics' | 'otherDevices' | 'ports' | 'activeCameraId' | 'tabletLink'>>;
+  storage: Same<StorageDetail, Pick<SimState, 'storage' | 'storagePolicy'>>;
+  network: Same<NetworkStatus, Pick<SimState, 'network' | 'tabletLink'>>;
+  time: Same<TimeStatus, Pick<SimState, 'time'>>;
+  system: Same<SystemStatus, Pick<SimState, 'device' | 'services' | 'update' | 'diagnostics' | 'settings'>>;
+  alerts: Same<AlertList, Pick<SimState, 'alerts'>>;
+  history: Same<SessionHistoryPage['items'][number], SessionHistoryEntry>;
+  evidence: Same<EvidencePage['items'][number], EvidenceItem>;
+  audit: Same<AuditPage['rows'][number], AuditRow>;
+  events: Same<EventPage['events'][number], SimEvent>;
+} = {
+  inventory: true,
+  storage: true,
+  network: true,
+  time: true,
+  system: true,
+  alerts: true,
+  history: true,
+  evidence: true,
+  audit: true,
+  events: true,
+};
+void [bodiesAreWhatTheActionsTake, answersAreWhatTheActionsReturn, readsAreTheSlices];
+
+// ── The real simulator ───────────────────────────────────────────────────────────────────────────
+
+const AT = EXAMPLE_INSTANT_MS;
+const PAIR = '\u{1F600}'; // one character, two UTF-16 code units
+const NUL = '\u0000';
+const INVESTIGATOR = 'budi.santoso';
+const SUPERVISOR = 'andi.pratama';
+const TECHNICIAN = 'rina.wijaya';
+
+function rig(scenario: ScenarioName = 'idle', username?: string) {
+  const clock = createManualClock(AT);
+  const sim = createSim({ clock, storage: null, authStorage: null, scenario });
+  if (username) expect(sim.actions.signIn(username, DEMO_OPERATOR_PASSWORD)).toMatchObject({ ok: true });
+  return { sim, actions: sim.actions, state: () => sim.store.getState() };
+}
+
+/** What travels: the JSON form of a value. */
+const wire = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
+const states = (): [string, SimState][] => {
+  const idle = createIdleState({ now: AT, seed: DEFAULT_SEED });
+  return [['idle', idle], ...Object.values(ScenarioName).filter((name) => name !== 'idle').map((name) => [name, buildScenarioState(name, createIdleState({ now: AT, seed: DEFAULT_SEED }))] as [string, SimState])];
+};
+
+describe('the state reads answer the slices the state holds (API-6)', () => {
+  const READS: readonly [string, z.ZodType, (state: SimState) => unknown][] = [
+    ['DeviceInventory', DeviceInventorySchema, (s) => ({ device: s.device, cameras: s.cameras, mics: s.mics, otherDevices: s.otherDevices, ports: s.ports, activeCameraId: s.activeCameraId, tabletLink: s.tabletLink })],
+    ['StorageDetail', StorageDetailSchema, (s) => ({ storage: s.storage, storagePolicy: s.storagePolicy })],
+    ['NetworkStatus', NetworkStatusSchema, (s) => ({ network: s.network, tabletLink: s.tabletLink })],
+    ['TimeStatus', TimeStatusSchema, (s) => ({ time: s.time })],
+    ['SecurityStatus', SecurityStatusSchema, (s) => ({ security: s.security, auditHead: s.audit.head, auditTotal: s.audit.total })],
+    ['SystemStatus', SystemStatusSchema, (s) => ({ device: s.device, services: s.services, update: s.update, diagnostics: s.diagnostics, settings: s.settings })],
+    ['AlertList', AlertListSchema, (s) => ({ alerts: s.alerts })],
+    ['SessionHistoryPage', SessionHistoryPageSchema, (s) => ({ items: s.sessionHistory, nextCursor: null })],
+    ['EvidencePage', EvidencePageSchema, (s) => ({ items: s.evidence, nextCursor: null })],
+    ['AuditPage', AuditPageSchema, (s) => ({ rows: s.audit.rows, head: s.audit.head, total: s.audit.total, nextCursor: null })],
+    ['EventPage', EventPageSchema, (s) => ({ events: s.events, nextCursor: null })],
+  ];
+
+  it('each answer schema accepts, unchanged, what the idle state and every scenario hold', () => {
+    let parsed = 0;
+    for (const [label, state] of states()) {
+      for (const [name, schema, build] of READS) {
+        const body = wire(build(state));
+        const result = schema.safeParse(body);
+        expect(result.success, `${name} of ${label}: ${result.success ? '' : JSON.stringify(result.error.issues.slice(0, 2))}`).toBe(true);
+        expect(result.data, `${name} of ${label}`).toEqual(body);
+        parsed += 1;
+      }
+    }
+    expect(parsed).toBe(4 * READS.length);
+  });
+
+  it('each one is strict: a member it does not name is refused, a slice of another read included', () => {
+    const state = createIdleState({ now: AT, seed: DEFAULT_SEED });
+    for (const [name, schema, build] of READS) {
+      const body = wire(build(state)) as Record<string, unknown>;
+      for (const extra of [{ auth: state.auth }, { clock: state.clock }, { pairing: state.pairing }, { operators: state.operators }, { note: 'x' }]) {
+        expect(schema.safeParse({ ...body, ...wire(extra) }).success, `${name} + ${Object.keys(extra)[0]}`).toBe(false);
+      }
+      const [first] = Object.keys(body);
+      const { [first!]: _dropped, ...rest } = body;
+      expect(schema.safeParse(rest).success, `${name} without ${first}`).toBe(false);
+    }
+  });
+
+  it('every evidence item of the dataset is an `evidence` of getEvidence, with a media reference of one of the two forms', () => {
+    const state = createIdleState({ now: AT, seed: DEFAULT_SEED });
+    for (const item of state.evidence) {
+      const suffix = item.id.slice(-4);
+      expect(EvidenceDetailSchema.safeParse(wire({ evidence: item, media: { source: 'DEMO_PACKAGE', packageSuffix: suffix } })).success, item.id).toBe(true);
+      expect(EvidenceDetailSchema.safeParse(wire({ evidence: item, media: { source: 'NONE', packageSuffix: null } })).success, item.id).toBe(true);
+    }
+    // The source and the suffix go together, and the reference holds nothing else: no path, no URL, no file name.
+    const ref = (value: unknown) => EvidenceMediaRefSchema.safeParse(value).success;
+    expect(ref({ source: 'DEMO_PACKAGE', packageSuffix: null })).toBe(false);
+    expect(ref({ source: 'NONE', packageSuffix: '0004' })).toBe(false);
+    expect(ref({ source: 'DEMO_PACKAGE', packageSuffix: '4' })).toBe(false);
+    expect(ref({ source: 'DEMO_PACKAGE', packageSuffix: '../0004' })).toBe(false);
+    expect(ref({ source: 'FILE', packageSuffix: '0004' })).toBe(false);
+    for (const extra of ['path', 'url', 'file', 'href']) expect(ref({ source: 'DEMO_PACKAGE', packageSuffix: '0004', [extra]: '/media/0004.mp4' }), extra).toBe(false);
+  });
+});
+
+describe('the answers of the hosted actions parse with their schemas', () => {
+  it('verify: the verdict of every dataset item, passed and failed', () => {
+    const { actions, state } = rig('idle', SUPERVISOR);
+    let failed = 0;
+    for (const item of state().evidence) {
+      const result = actions.verify(item.id);
+      expect(EvidenceVerifyResultSchema.parse(wire(result)), item.id).toEqual(result);
+      expect(result.tracks.map((track) => track.trackId), item.id).toEqual(['VIDEO-01', 'VIDEO-02', 'AUDIO-01', 'AUDIO-02']);
+      if (!result.ok) failed += 1;
+    }
+    // The dataset has one item whose AUDIO-02 track fails.
+    expect(failed).toBe(1);
+    expect(EvidenceVerifyResultSchema.safeParse({ evidenceId: 'EV-20260930-0004', ok: true, at: AT, tracks: [], manifestOk: true, signatureOk: true, note: 'x' }).success).toBe(false);
+  });
+
+  it('verifyAuditChain: the view result, intact and broken by AUDIT_TAMPER', () => {
+    const { actions, state } = rig('idle');
+    const intact = actions.verifyAuditChain();
+    expect(ChainVerifyResultSchema.parse(wire(intact))).toEqual(intact);
+    expect(intact).toMatchObject({ ok: true, checked: state().audit.rows.length });
+    actions.inject('AUDIT_TAMPER');
+    const broken = actions.verifyAuditChain();
+    expect(ChainVerifyResultSchema.parse(wire(broken))).toEqual(broken);
+    expect(broken).toMatchObject({ ok: false, reason: 'HASH_MISMATCH' });
+    // The two forms do not mix: a result that is `ok` has no reason, a broken one has no head.
+    expect(ChainVerifyResultSchema.safeParse({ ok: true, checked: 1, head: 'a'.repeat(64), reason: 'SEQ_GAP' }).success).toBe(false);
+    expect(ChainVerifyResultSchema.safeParse({ ok: false, checked: 1, head: 'a'.repeat(64) }).success).toBe(false);
+    expect(ChainVerifyResultSchema.safeParse({ ok: false, checked: 1, index: 1, seq: 2, reason: 'ROW_MISSING' }).success).toBe(false);
+  });
+
+  it('AuditChainStatus: the view, the stored chain and the lineage of discarded chains, newest first and at most 20', () => {
+    const { actions, state } = rig('idle');
+    const head = state().audit.head;
+    const entry = { epoch: 0, rows: 82, head, resetAt: AT, actorId: 'OPR-002', scenario: 'idle', reason: 'RESET' } as const;
+    const status = {
+      view: actions.verifyAuditChain(),
+      stored: { ok: true, checked: 82, head, firstBadSeq: null },
+      lineage: [entry, { ...entry, epoch: 1, actorId: null, scenario: 'recording', reason: 'SCENARIO_LOAD' }],
+      lineageTotal: 2,
+    };
+    expect(AuditChainStatusSchema.parse(wire(status))).toEqual(status);
+    expect(Object.keys(AuditChainStatusSchema.shape)).toEqual(['view', 'stored', 'lineage', 'lineageTotal']);
+    expect(Object.keys(AuditChainLineageEntrySchema.shape)).toEqual(['epoch', 'rows', 'head', 'resetAt', 'actorId', 'scenario', 'reason']);
+    expect(Object.keys(AuditChainStatusSchema.shape.stored.shape)).toEqual(['ok', 'checked', 'head', 'firstBadSeq']);
+    // A broken stored chain names its first bad row.
+    expect(AuditChainStatusSchema.safeParse({ ...status, stored: { ok: false, checked: 40, head, firstBadSeq: 41 } }).success).toBe(true);
+    // The lineage is bounded, and both members are required.
+    expect(AUDIT_CHAIN_LINEAGE_MAX).toBe(20);
+    expect(AuditChainStatusSchema.safeParse({ ...status, lineage: Array.from({ length: 20 }, () => entry), lineageTotal: 37 }).success).toBe(true);
+    expect(AuditChainStatusSchema.safeParse({ ...status, lineage: Array.from({ length: 21 }, () => entry), lineageTotal: 37 }).success).toBe(false);
+    const { lineage: _lineage, ...withoutLineage } = status;
+    expect(AuditChainStatusSchema.safeParse(withoutLineage).success).toBe(false);
+    const { lineageTotal: _total, ...withoutTotal } = status;
+    expect(AuditChainStatusSchema.safeParse(withoutTotal).success).toBe(false);
+    // An entry holds integrity values and identifiers only.
+    for (const bad of [{ reason: 'CLI' }, { scenario: 'night' }, { head: 'abc' }, { actorId: 'andi.pratama' }, { rows: -1 }, { resetAt: '2026-10-01T03:00:00.000Z' }, { firstSeq: 1 }]) {
+      expect(AuditChainLineageEntrySchema.safeParse({ ...entry, ...bad }).success, JSON.stringify(bad)).toBe(false);
+    }
+  });
+
+  it('scanCaseNumber, runDiagnostics and restartServices: the values the actions return', () => {
+    const investigator = rig('idle', INVESTIGATOR);
+    const caseNumber = investigator.actions.scanCaseNumber();
+    expect(CaseNumberScanSchema.parse({ caseNumber })).toEqual({ caseNumber });
+    expect(investigator.actions.scanCaseNumber()).not.toBe(caseNumber);
+
+    const technician = rig('idle', TECHNICIAN);
+    const runId = technician.actions.runDiagnostics();
+    expect(DiagnosticsRunStartedSchema.parse({ runId })).toEqual({ runId });
+    expect(runId).toMatch(DIAGNOSTICS_RUN_ID_PATTERN);
+    // A run in progress is returned as it is.
+    expect(technician.actions.runDiagnostics()).toBe(runId);
+    const restarted = technician.actions.restartServices();
+    expect(ServicesRestartedSchema.parse({ restarted })).toEqual({ restarted: 16 });
+    expect(SystemStatusSchema.shape.diagnostics.safeParse(wire(technician.state().diagnostics)).success).toBe(true);
+  });
+
+  it('an accepted audit or log export: the ID of the action, with the rows and the head of its audit row', () => {
+    const { actions, state } = rig('idle', SUPERVISOR);
+    for (const [scope, run] of [['AUDIT', actions.exportAudit], ['LOGS', actions.exportLogs]] as const) {
+      const before = state().audit;
+      const result = run(AuditExportRequestSchema.parse({ reason: 'Quarterly audit review' }));
+      expect(result).toMatchObject({ ok: true, status: 202 });
+      if (!result.ok) throw new Error('the export was refused');
+      const row = state().audit.rows.at(-1)!;
+      expect(row.type).toBe('AUDIT_EXPORTED');
+      const accepted = { exportId: result.exportId, scope, rows: row.details.rows, head: row.details.head };
+      expect(AuditExportAcceptedSchema.parse(accepted)).toEqual({ exportId: result.exportId, scope, rows: before.rows.length, head: before.head });
+    }
+    expect(AuditExportAcceptedSchema.safeParse({ exportId: 'EXP-000032', scope: 'EVIDENCE', rows: 1, head: 'a'.repeat(64) }).success).toBe(false);
+  });
+});
+
+describe('the texts an operator types: bounded in UTF-16 code units, as the simulator counts them', () => {
+  it('a marker label of 80 code units is stored as it was sent; a longer one is refused, never cut', () => {
+    expect(SESSION_TEXT_LIMITS).toEqual({ markerLabelMax: 80, noteMax: 2_000 });
+    const label = (text: string | undefined) => SessionMarkerRequestSchema.safeParse(text === undefined ? {} : { label: text });
+    const widest = `${'m'.repeat(78)}${PAIR}`;
+    expect(widest.length).toBe(80);
+    for (const text of ['Exhibit A shown', 'm'.repeat(80), widest]) {
+      const parsed = label(text);
+      expect(parsed.success, text).toBe(true);
+      const { actions, state } = rig('recording', INVESTIGATOR);
+      actions.addMarker(parsed.data?.label);
+      // The engine kept every code unit: it had nothing to cut.
+      expect(state().audit.rows.at(-1)).toMatchObject({ type: 'MARKER_ADDED', details: { label: text } });
+    }
+    // 81 units: refused. The second is 80 characters and 81 units, which `.max(80)` alone would let through.
+    for (const text of ['m'.repeat(81), `${'m'.repeat(79)}${PAIR}`]) {
+      const parsed = label(text);
+      expect(parsed.success, text).toBe(false);
+      expect([...new Set(parsed.error?.issues.map((issue) => issue.path.join('.')))]).toEqual(['label']);
+    }
+    expect(label(`${'m'.repeat(79)}${PAIR}`).error?.issues.map((issue) => issue.message)).toEqual([codeUnitBoundMessage(80)]);
+    // Trimmed before it is measured; empty or absent means "Marker n".
+    expect(label(`  ${'m'.repeat(80)}  `).data).toEqual({ label: 'm'.repeat(80) });
+    expect(label('   ').data).toEqual({ label: '' });
+    expect(label(undefined).data).toEqual({});
+    const { actions, state } = rig('recording', INVESTIGATOR);
+    actions.addMarker(label('   ').data?.label);
+    expect(String(state().audit.rows.at(-1)?.details.label)).toMatch(/^Marker \d+$/);
+    for (const bad of [`Exhibit${NUL}`, 'Exhibit \ud83d']) expect(label(bad).success, JSON.stringify(bad)).toBe(false);
+  });
+
+  it('a note of 1 to 2,000 code units: what the contract accepts the simulator accepts, and what it refuses the simulator refuses', () => {
+    const note = (text: unknown) => SessionNoteRequestSchema.safeParse({ text });
+    const accepted = ['x', 'Subject confirms the statement.', 'n'.repeat(2_000), PAIR.repeat(1_000), `  ${'n'.repeat(2_000)}  `];
+    for (const text of accepted) {
+      const parsed = note(text);
+      expect(parsed.success, text.slice(0, 20)).toBe(true);
+      const { actions, state } = rig('recording', INVESTIGATOR);
+      actions.addNote(parsed.data!.text);
+      expect(state().session?.notes.at(-1)?.text).toBe(text.trim());
+    }
+    // 2,001 units, in plain characters and as 1,001 characters of two units each (1,001 code points pass `.max(2000)`).
+    for (const text of ['n'.repeat(2_001), PAIR.repeat(1_001), '', '   ']) {
+      expect(note(text).success, `${text.length} units`).toBe(false);
+      const { actions } = rig('recording', INVESTIGATOR);
+      expect(() => actions.addNote(text), `${text.length} units`).toThrow(SimTransitionError);
+    }
+    for (const bad of [`Note${NUL}`, 'Note \ud83d', '\udc00', 42, null]) expect(note(bad).success, JSON.stringify(bad)).toBe(false);
+    expect(SessionNoteRequestSchema.safeParse({}).success).toBe(false);
+  });
+
+  it('an export destination of 120 code units is recorded as it was sent; a longer one is refused by all three export requests', () => {
+    expect(AUDIT_EXPORT_LIMITS).toEqual({ reasonMin: 5, reasonMax: 500, destinationMax: 120 });
+    expect(AUDIT_EXPORT_LIMITS.destinationMax).toBe(EXPORT_DESTINATION_MAX_LENGTH);
+    const reason = 'Quarterly audit review';
+    const widest = `${'d'.repeat(118)}${PAIR}`;
+    expect(widest.length).toBe(120);
+    for (const destination of ['Evidence locker 3', 'd'.repeat(120), widest]) {
+      const { actions, state } = rig('idle', SUPERVISOR);
+      const audit = AuditExportRequestSchema.safeParse({ reason, destination });
+      expect(audit.success, destination).toBe(true);
+      expect(actions.exportAudit(audit.data)).toMatchObject({ ok: true });
+      expect(state().audit.rows.at(-1)).toMatchObject({ type: 'AUDIT_EXPORTED', details: { reason, destination } });
+      expect(actions.exportLogs(audit.data)).toMatchObject({ ok: true });
+      expect(state().audit.rows.at(-1)).toMatchObject({ type: 'AUDIT_EXPORTED', details: { scope: 'LOGS', destination } });
+      const evidence = EvidenceExportRequestSchema.safeParse({ reason, destination });
+      expect(evidence.success, destination).toBe(true);
+      expect(actions.exportEvidence('EV-20260930-0004', { reason, destination })).toMatchObject({ ok: true });
+      expect(state().audit.rows.at(-1)).toMatchObject({ type: 'EVIDENCE_EXPORTED', details: { destination } });
+    }
+    for (const destination of ['d'.repeat(121), `${'d'.repeat(119)}${PAIR}`, `${'d'.repeat(119)}${PAIR} and more`]) {
+      expect(AuditExportRequestSchema.safeParse({ reason, destination }).success, `${destination.length} units`).toBe(false);
+      expect(EvidenceExportRequestSchema.safeParse({ reason, destination }).success, `${destination.length} units`).toBe(false);
+    }
+    // Measured after trimming, like the simulator; the existing request keeps the text as sent.
+    expect(AuditExportRequestSchema.parse({ reason, destination: `  ${'d'.repeat(120)}  ` })).toEqual({ reason, destination: 'd'.repeat(120) });
+    expect(EvidenceExportRequestSchema.parse({ reason, destination: `  ${'d'.repeat(120)}  ` })).toEqual({ reason, destination: `  ${'d'.repeat(120)}  ` });
+    // Omitted or empty: the simulator names its default destination.
+    const { actions, state } = rig('idle', SUPERVISOR);
+    expect(actions.exportAudit(AuditExportRequestSchema.parse({ reason, destination: '  ' }))).toMatchObject({ ok: true });
+    expect(state().audit.rows.at(-1)?.details.destination).toBe('Audit archive (simulated)');
+  });
+
+  it('an export reason of 5 to 500 characters is mandatory in Live mode', () => {
+    const request = (reason: unknown) => AuditExportRequestSchema.safeParse({ reason });
+    for (const reason of ['Audit', '  Audit  ', 'r'.repeat(500)]) {
+      expect(request(reason).success, String(reason).slice(0, 10)).toBe(true);
+      const { actions } = rig('idle', SUPERVISOR);
+      expect(actions.exportAudit(request(reason).data)).toMatchObject({ ok: true });
+    }
+    for (const reason of ['Audi', '    ', 'r'.repeat(501), PAIR.repeat(251), `Audit${NUL}`, undefined]) expect(request(reason).success, String(reason).slice(0, 10)).toBe(false);
+    // The simulator's own bound for a reason that is too short: the server maps it to 422 INVALID_REASON.
+    const { actions } = rig('idle', SUPERVISOR);
+    expect(actions.exportAudit({ reason: 'Audi' })).toMatchObject({ ok: false, status: 422, reason: 'INVALID_REASON' });
+    expect(AuditExportRequestSchema.parse({ reason: '  Quarterly audit  ' })).toEqual({ reason: 'Quarterly audit' });
+  });
+
+  it('all three exports need a body with a reason, so an export record never lacks one (01_specs §7.9, §7.13; 03_database_contract T-20)', () => {
+    // The stored `exports` row has `reason` NOT NULL with at least 5 characters, and a destination of
+    // 1 to 120. The specification makes the reason mandatory for all three, and so does the contract.
+    expect(EXPORT_REASON_MAX_LENGTH).toBe(500);
+    expect(AUDIT_EXPORT_LIMITS.reasonMax).toBe(EXPORT_REASON_MAX_LENGTH);
+    const REQUESTS = { exportEvidence: 'EvidenceExportRequest', exportAudit: 'AuditExportRequest', exportLogs: 'AuditExportRequest' } as const;
+    for (const [operationId, schemaName] of Object.entries(REQUESTS)) {
+      const operation = findCoreApiOperation(operationId);
+      expect(operation?.requestBody, operationId).toEqual({ schema: schemaName, required: true });
+      expect(operation?.audit.denial, operationId).toBe('EXPORT_DENIED');
+      const schema = CORE_API_SCHEMAS[schemaName];
+      const accepts = (body: unknown) => schema.safeParse(body).success;
+      // No reason, an empty one, a blank one, one of four characters: refused.
+      for (const body of [{}, { destination: 'Evidence locker 3' }, { reason: '' }, { reason: '     ' }, { reason: 'Four' }, { reason: null }, { reason: 5 }]) {
+        expect(accepts(body), `${operationId} ${JSON.stringify(body)}`).toBe(false);
+      }
+      // 5 to 500 code units after trimming, with the text rule.
+      expect(accepts({ reason: 'Audit' }), operationId).toBe(true);
+      expect(accepts({ reason: 'r'.repeat(500) }), operationId).toBe(true);
+      expect(accepts({ reason: `  ${'r'.repeat(500)}  ` }), operationId).toBe(true);
+      expect(accepts({ reason: 'r'.repeat(501) }), operationId).toBe(false);
+      expect(accepts({ reason: PAIR.repeat(251) }), operationId).toBe(false);
+      expect(accepts({ reason: `Audit${NUL}` }), operationId).toBe(false);
+      expect(accepts({ reason: 'Audit \ud83d' }), operationId).toBe(false);
+      // The destination is optional: the engine names its default, so the stored one is never empty.
+      expect(accepts({ reason: 'Audit' }), operationId).toBe(true);
+    }
+    // What the engine records for an export without a destination is 1 to 120 characters.
+    const { actions, state } = rig('idle', SUPERVISOR);
+    for (const run of [() => actions.exportAudit({ reason: 'Quarterly audit' }), () => actions.exportLogs({ reason: 'Quarterly audit' }), () => actions.exportEvidence('EV-20260930-0004', { reason: 'Case file transfer', destination: '' })]) {
+      expect(run()).toMatchObject({ ok: true });
+      const { reason, destination } = state().audit.rows.at(-1)!.details;
+      expect(String(reason).trim().length).toBeGreaterThanOrEqual(5);
+      expect(String(destination).length).toBeGreaterThan(0);
+      expect(String(destination).length).toBeLessThanOrEqual(120);
+    }
+  });
+});
+
+describe('the other bodies of areas 4 to 11', () => {
+  it('setStoragePolicy: a partial policy; the days are a whole number from 1 to 3,650, as the simulator checks', () => {
+    expect(RETENTION_DAYS_RANGE).toEqual({ min: 1, max: 3_650 });
+    const body = (value: unknown) => StoragePolicyRequestSchema.safeParse(value);
+    for (const value of [{}, { retentionPolicy: 'YEAR_1' }, { retentionDays: 1 }, { retentionDays: 3_650 }, { autoArchive: false }, { retentionPolicy: 'DAYS_30', retentionDays: 45, autoArchive: true }]) {
+      expect(body(value).success, JSON.stringify(value)).toBe(true);
+      const { actions, state } = rig('idle', TECHNICIAN);
+      actions.setStoragePolicy(body(value).data!);
+      // The answer is the slice after the change.
+      expect(CORE_API_SCHEMAS.StoragePolicySlice.safeParse(wire(state().storagePolicy)).success, JSON.stringify(value)).toBe(true);
+    }
+    const { actions, state } = rig('idle', SUPERVISOR);
+    actions.setStoragePolicy(body({ retentionPolicy: 'YEAR_1' }).data!);
+    expect(state().storagePolicy).toEqual({ retentionPolicy: 'YEAR_1', retentionDays: 365, autoArchive: true });
+    for (const value of [{ retentionDays: 0 }, { retentionDays: 3_651 }, { retentionDays: 1.5 }]) {
+      expect(body(value).success, JSON.stringify(value)).toBe(false);
+      expect(() => actions.setStoragePolicy(value), JSON.stringify(value)).toThrow(SimTransitionError);
+    }
+    for (const value of [{ retentionDays: '90' }, { retentionPolicy: 'FOREVER' }, { autoArchive: 'yes' }]) expect(body(value).success, JSON.stringify(value)).toBe(false);
+    // API-4: an unknown key is dropped.
+    expect(body({ autoArchive: true, owner: 'x' }).data).toEqual({ autoArchive: true });
+  });
+
+  it('updateSettings: the members of the settings slice, each optional; an unknown key is dropped where the slice refuses it', () => {
+    const body = (value: unknown) => SettingsUpdateRequestSchema.safeParse(value);
+    expect(Object.keys(SettingsUpdateRequestSchema.shape)).toEqual(Object.keys(CORE_API_SCHEMAS.SettingsSlice.shape));
+    for (const value of [{}, { presentationMode: true }, { timeFormat: '12', notifyWarnings: false, notifySound: true }]) {
+      expect(body(value).success, JSON.stringify(value)).toBe(true);
+      const { actions, state } = rig('idle', INVESTIGATOR);
+      actions.updateSettings(body(value).data!);
+      expect(state().settings).toMatchObject(value);
+      expect(CORE_API_SCHEMAS.SettingsSlice.parse(wire(state().settings))).toEqual(state().settings);
+    }
+    // `setPresentationMode(true)` of the simulator is this body.
+    const { actions, state } = rig('idle');
+    actions.setPresentationMode(true);
+    expect(state().settings.presentationMode).toBe(body({ presentationMode: true }).data?.presentationMode);
+    for (const value of [{ timeFormat: '13' }, { presentationMode: 'on' }, { notifySound: 1 }]) expect(body(value).success, JSON.stringify(value)).toBe(false);
+    expect(body({ presentationMode: true, theme: 'dark' }).data).toEqual({ presentationMode: true });
+    expect(CORE_API_SCHEMAS.SettingsSlice.safeParse({ ...state().settings, theme: 'dark' }).success).toBe(false);
+  });
+
+  it('setActiveCamera and resetMicClip: one of the two tracks of their kind', () => {
+    for (const cameraId of ['VIDEO-01', 'VIDEO-02']) expect(ActiveCameraRequestSchema.safeParse({ cameraId }).success, cameraId).toBe(true);
+    for (const cameraId of ['AUDIO-01', 'VIDEO-03', 'CAM-01', '', undefined]) expect(ActiveCameraRequestSchema.safeParse({ cameraId }).success, String(cameraId)).toBe(false);
+    for (const channel of ['AUDIO-01', 'AUDIO-02']) expect(MicClipResetRequestSchema.safeParse({ channel }).success, channel).toBe(true);
+    for (const channel of ['VIDEO-01', 'MIC-01', 'AUDIO-03', undefined]) expect(MicClipResetRequestSchema.safeParse({ channel }).success, String(channel)).toBe(false);
+    const { actions, state } = rig('idle', INVESTIGATOR);
+    actions.setActiveCamera(ActiveCameraRequestSchema.parse({ cameraId: 'VIDEO-02' }).cameraId);
+    expect(state().activeCameraId).toBe('VIDEO-02');
+  });
+
+  it('the path parameters: every device, alert and run ID the simulator mints fits its pattern', () => {
+    const { actions, state } = rig('idle', TECHNICIAN);
+    const deviceIds = [...state().cameras.map((camera) => camera.deviceId), ...state().mics.map((mic) => mic.deviceId), ...state().otherDevices.map((device) => device.id), ...Object.keys(PLATFORM_DEVICE_NAMES)];
+    expect(deviceIds).toEqual(['CAM-01', 'CAM-02', 'MIC-01', 'MIC-02', 'POE-SWITCH', 'REC-INDICATOR', 'TABLET', 'GNSS', 'TPM', 'FRONT-PANEL']);
+    for (const id of deviceIds) {
+      expect(id, id).toMatch(HARDWARE_DEVICE_ID_PATTERN);
+      // IDENTIFY is the one command every device accepts.
+      actions.deviceCommand(id, 'IDENTIFY');
+      expect(state().audit.rows.at(-1)).toMatchObject({ type: 'DEVICE_COMMAND', deviceId: id });
+    }
+    for (const bad of ['cam-01', 'CAM 01', '../CAM-01', 'CAM_01', '', '1CAM', `CAM-01${NUL}`, 'C'.repeat(33)]) expect(HARDWARE_DEVICE_ID_PATTERN.test(bad), JSON.stringify(bad)).toBe(false);
+    actions.inject('MIC_NO_SIGNAL', { channel: 'AUDIO-02' });
+    expect(state().alerts[0]?.id).toMatch(ALERT_ID_PATTERN);
+    for (const operationId of ['restartDevice', 'testDeviceSignal', 'identifyDevice']) expect(findCoreApiOperation(operationId)?.pathParam?.pattern, operationId).toBe(HARDWARE_DEVICE_ID_PATTERN);
+    expect(findCoreApiOperation('acknowledgeAlert')?.pathParam?.pattern).toBe(ALERT_ID_PATTERN);
+  });
+});
+
+describe('the list queries (API-9; decision D51)', () => {
+  it('paging: an opaque cursor and a limit from 1 to 200, with 50 as the server\'s default', () => {
+    expect([API_PAGE_LIMIT_DEFAULT, API_PAGE_LIMIT_MAX]).toEqual([50, 200]);
+    expect(PageQuerySchema.parse({})).toEqual({});
+    expect(PageQuerySchema.parse({ cursor: '1790819100000-SES-20261001-0022', limit: 200 })).toEqual({ cursor: '1790819100000-SES-20261001-0022', limit: 200 });
+    // The server parses the text of the URL; a client passes a number. Both give the number.
+    expect(PageQuerySchema.parse({ limit: '20' })).toEqual({ limit: 20 });
+    expect(PageQuerySchema.parse({ limit: 1 })).toEqual({ limit: 1 });
+    for (const limit of [0, 201, 1.5, -1, '', 'ten', '0', '201', null]) expect(PageQuerySchema.safeParse({ limit }).success, JSON.stringify(limit)).toBe(false);
+    for (const cursor of ['', 'a b', 'a/b', 'a_b', 'c'.repeat(129), `81${NUL}`, 'a?b', 42]) expect(PageQuerySchema.safeParse({ cursor }).success, JSON.stringify(cursor)).toBe(false);
+    // No bearer value fits a cursor, so a cursor in a URL is never a credential.
+    for (const secret of [EXAMPLE_PLACEHOLDERS.sessionToken, EXAMPLE_PLACEHOLDERS.deviceCredential, EXAMPLE_PLACEHOLDERS.biometricToken]) {
+      expect(LIST_CURSOR_PATTERN.test(secret), secret.slice(0, 4)).toBe(false);
+    }
+    expect(LIST_CURSOR_PATTERN.test('81')).toBe(true);
+  });
+
+  it('listEvidence: status, case type and a search text', () => {
+    const query = (value: unknown) => EvidenceListQuerySchema.safeParse(value);
+    expect(Object.keys(EvidenceListQuerySchema.shape)).toEqual(['status', 'caseType', 'q', 'cursor', 'limit']);
+    expect(query({ status: 'SEALED', caseType: 'SAKSI', q: '  LP/2026/0930  ', limit: '50' }).data).toEqual({ status: 'SEALED', caseType: 'SAKSI', q: 'LP/2026/0930', limit: 50 });
+    expect(EVIDENCE_SEARCH_MAX_LENGTH).toBe(100);
+    expect(query({ q: 'q'.repeat(100) }).success).toBe(true);
+    for (const value of [{ status: 'OPEN' }, { caseType: 'WITNESS' }, { q: '' }, { q: '   ' }, { q: 'q'.repeat(101) }, { q: PAIR.repeat(51) }, { q: `a${NUL}b` }, { q: 'a\ud83d' }]) {
+      expect(query(value).success, JSON.stringify(value)).toBe(false);
+    }
+  });
+
+  it('listAuditRows: five filters and the order by seq', () => {
+    const query = (value: unknown) => AuditListQuerySchema.safeParse(value);
+    expect(Object.keys(AuditListQuerySchema.shape)).toEqual(['category', 'type', 'actorId', 'sessionId', 'evidenceId', 'order', 'cursor', 'limit']);
+    const full = { category: 'EVIDENCE', type: 'EVIDENCE_EXPORTED', actorId: 'OPR-002', sessionId: 'SES-20260930-0014', evidenceId: 'EV-20260930-0004', order: 'DESC', cursor: '81', limit: 200 };
+    expect(query(full).data).toEqual(full);
+    // The new audit types of the backend task are filter values too.
+    for (const type of ['ACCESS_DENIED', 'ROLE_CHANGED', 'PAIRING_CODE_ISSUED']) expect(query({ type }).success, type).toBe(true);
+    for (const value of [{ category: 'EXPORT' }, { type: 'LOGIN' }, { actorId: 'andi.pratama' }, { sessionId: 'SES-1' }, { evidenceId: 'EV-4' }, { order: 'desc' }, { order: 'NEWEST' }]) {
+      expect(query(value).success, JSON.stringify(value)).toBe(false);
+    }
+  });
+
+  it('listEvents: category, type and severity', () => {
+    const query = (value: unknown) => EventListQuerySchema.safeParse(value);
+    expect(Object.keys(EventListQuerySchema.shape)).toEqual(['category', 'type', 'severity', 'cursor', 'limit']);
+    expect(query({ category: 'EXPORT', type: 'EVIDENCE_SEALED', severity: 'SUCCESS' }).success).toBe(true);
+    for (const value of [{ category: 'PAIRING' }, { type: 'EVIDENCE_EXPORTED_TWICE' }, { severity: 'ERROR' }, { order: 'DESC', limit: 0 }]) {
+      expect(query(value).success, JSON.stringify(value)).toBe(false);
+    }
+    // An event list has one order, by seq; `order` is not one of its members and is dropped.
+    expect(query({ order: 'DESC' }).data).toEqual({});
+  });
+});
+
+describe('the 42 simulator actions and the operations they reach (01_specs §7.17)', () => {
+  const names = Object.keys(SIM_ACTION_OPERATIONS) as (keyof typeof SIM_ACTION_OPERATIONS)[];
+  const byExecution = (execution: string) => names.filter((name) => SIM_ACTION_OPERATIONS[name].execution === execution);
+
+  it('names exactly the actions of the real simulator', () => {
+    const { actions } = rig('idle');
+    expect([...names].sort()).toEqual(Object.keys(actions).sort());
+    expect(names).toHaveLength(42);
+  });
+
+  it('31 are hosted, 9 server-native, 1 is not available and 1 is internal', () => {
+    expect([SimActionExecution.HOSTED, SimActionExecution.SERVER_NATIVE, SimActionExecution.NOT_AVAILABLE, SimActionExecution.INTERNAL].map((execution) => byExecution(execution).length)).toEqual([31, 9, 1, 1]);
+    expect(byExecution('server-native')).toEqual(['signIn', 'signInWithBiometric', 'recordBiometricFailure', 'signOut', 'touch', 'loadScenario', 'resetDemo', 'pair', 'unpair']);
+    // X-1 and X-2: no operation issues a session without a credential, and no client sets the tablet link.
+    expect(byExecution('not-available')).toEqual(['signInWithSecurityKey']);
+    expect(byExecution('internal')).toEqual(['setTabletLink']);
+    for (const name of [...byExecution('not-available'), ...byExecution('internal')]) expect(SIM_ACTION_OPERATIONS[name].operations, name).toEqual([]);
+    expect(CORE_API_OPERATIONS.filter((operation) => /tablet-?link|security-?key/i.test(operation.path))).toEqual([]);
+  });
+
+  it('40 actions reach 41 operations, every one of them in the registry; the other 34 are reads and server functions', () => {
+    const reaching = names.filter((name) => SIM_ACTION_OPERATIONS[name].operations.length > 0);
+    expect(reaching).toHaveLength(40);
+    const reached = [...new Set(reaching.flatMap((name) => [...SIM_ACTION_OPERATIONS[name].operations]))];
+    expect(reached).toHaveLength(41);
+    for (const operationId of reached) expect(findCoreApiOperation(operationId), operationId).toBeDefined();
+    expect(CORE_API_OPERATIONS.length - reached.length).toBe(34);
+    // `deviceCommand` is three operations with one permission each; two settings actions share one.
+    expect(SIM_ACTION_OPERATIONS.deviceCommand.operations).toEqual(['restartDevice', 'testDeviceSignal', 'identifyDevice']);
+    expect(simActionsOfOperation('updateSettings')).toEqual(['setPresentationMode', 'updateSettings']);
+    expect(simActionsOfOperation('listAuditRows')).toEqual([]);
+    // An action is a command, except the chain check, which reads.
+    const gets = reached.filter((operationId) => findCoreApiOperation(operationId)?.method === 'get');
+    expect(gets).toEqual(['verifyAuditChain']);
+  });
+
+  it('an operation of contract C that hosts an action says which, and its permission is the one the simulator checks', () => {
+    const contractC = CORE_API_OPERATIONS.filter((operation) => /§7\.(8|9|10|11|12|13|14|15), /.test(operation.source));
+    expect(contractC).toHaveLength(38);
+    let hosted = 0;
+    for (const operation of contractC) {
+      const actions = simActionsOfOperation(operation.operationId);
+      if (actions.length === 0) {
+        // A read of the state or of a list.
+        expect(operation.method, operation.operationId).toBe('get');
+        expect(operation.description, operation.operationId).toMatch(/In Simulated mode a client reads/);
+        continue;
+      }
+      hosted += 1;
+      expect(operation.description, operation.operationId).toContain('the server runs the shared simulator action `');
+      const named = actions.some((name) => operation.description.includes(`\`${name}`));
+      expect(named, `${operation.operationId}: ${actions.join(', ')}`).toBe(true);
+    }
+    // 26 of the 38 host an action; the other 12 are reads.
+    expect(hosted).toBe(26);
+    // The simulator's own rule for the three device commands and the retention policy (RB-7).
+    const refused = (username: string, run: (actions: SimActions) => void) => {
+      const { actions } = rig('idle', username);
+      try {
+        run(actions);
+        return false;
+      } catch {
+        return true;
+      }
+    };
+    expect(refused(SUPERVISOR, (actions) => actions.deviceCommand('CAM-01', 'RESTART'))).toBe(true);
+    expect(refused(TECHNICIAN, (actions) => actions.deviceCommand('CAM-01', 'RESTART'))).toBe(false);
+    expect(refused(INVESTIGATOR, (actions) => actions.setStoragePolicy({ autoArchive: false }))).toBe(true);
+    expect(refused(SUPERVISOR, (actions) => actions.setStoragePolicy({ autoArchive: false }))).toBe(false);
+    expect(refused(TECHNICIAN, (actions) => actions.setStoragePolicy({ autoArchive: false }))).toBe(false);
+  });
+});

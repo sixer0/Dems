@@ -1,6 +1,8 @@
 // Step 49 Storage page tests (masterplan/01_specs.md §14.5.5, AC-54 and AC-75 in unit form, AC-66).
 // Each test builds the real router (route tree, guard, providers, shell) around its own simulator
 // with in-memory storage and no engine ticks, exactly like src/test/routes.test.tsx (D54(a)).
+// The simulator runs on a manual clock at 2026-10-01 10:00 WIB, so the seeded dataset (and with it
+// "Sealed Evidence 7 today") does not depend on the date or the hour the suite runs at.
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { QueryClient } from '@tanstack/react-query'
 import { createMemoryHistory, RouterProvider } from '@tanstack/react-router'
@@ -9,6 +11,7 @@ import type { HealthResponse } from '@dems/shared/api'
 import type { SocketLike } from '@dems/shared/realtime'
 import {
   ALWAYS_VISIBLE,
+  createManualClock,
   createMemoryAuthStorage,
   createSim,
   OPERATOR_IDS,
@@ -26,6 +29,13 @@ import { createAppRouter } from '@/router'
  * waits get a wider window; assertions after the page is up keep their defaults.
  */
 const PAGE_WAIT = { timeout: 10_000 }
+
+/**
+ * The simulator's fixed "now". Today's seven sealed sessions are scheduled backwards from it
+ * (`todaySchedule`); in the first hours after 00:00 WIB some of them fall on the previous day, so
+ * a simulator on the wall clock shows fewer than 7 there.
+ */
+const DEMO_NOW = Date.parse('2026-10-01T10:00:00+07:00')
 
 const PANEL_IDS = ['capacity', 'kpis', 'usage', 'sealed', 'volumes', 'activity', 'calculator', 'policy'] as const
 
@@ -54,8 +64,9 @@ const sims: Sim[] = []
 
 function mount(scenario: ScenarioName = 'idle', operatorId: string = OPERATOR_IDS.BUDI): Sim {
   const authStorage = createMemoryAuthStorage()
-  authStorage.save({ operatorId, issuedAt: Date.now() })
+  authStorage.save({ operatorId, issuedAt: DEMO_NOW })
   const sim = createSim({
+    clock: createManualClock(DEMO_NOW),
     storage: null,
     authStorage,
     visibility: ALWAYS_VISIBLE,

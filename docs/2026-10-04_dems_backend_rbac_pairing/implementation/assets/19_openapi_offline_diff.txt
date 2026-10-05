@@ -1,0 +1,76 @@
+# openapi.json of the offline scope: baseline acaff20 against plan row W19
+# $ git diff acaff20 -- packages/shared/openapi/openapi.json
+diff --git a/packages/shared/openapi/openapi.json b/packages/shared/openapi/openapi.json
+index 294d93b..7bf1ddb 100644
+--- a/packages/shared/openapi/openapi.json
++++ b/packages/shared/openapi/openapi.json
+@@ -1721,7 +1721,10 @@
+           },
+           "service": {
+             "type": "string",
+-            "const": "dems-mock-core"
++            "enum": [
++              "dems-mock-core",
++              "dems-core-server"
++            ]
+           },
+           "version": {
+             "type": "string",
+@@ -1760,6 +1763,21 @@
+               "heartbeatIntervalMs",
+               "clients"
+             ]
++          },
++          "ready": {
++            "type": "object",
++            "properties": {
++              "database": {
++                "type": "boolean"
++              },
++              "engine": {
++                "type": "boolean"
++              }
++            },
++            "required": [
++              "database",
++              "engine"
++            ]
+           }
+         },
+         "required": [
+@@ -2775,12 +2793,32 @@
+               "code": {
+                 "type": "string",
+                 "pattern": "^[A-Z][A-Z0-9_]*$",
+-                "description": "Machine-readable code: INVALID_JSON, NOT_SIGNED_IN, NOT_PERMITTED, FORBIDDEN, NOT_FOUND, METHOD_NOT_ALLOWED, SESSION_ACTIVE, INVALID_INPUT, INVALID_STATE, PRECHECK_RUNNING, PRECHECK_WARNINGS, PRECHECK_BLOCKED, INVALID_REASON, NOT_SEALED, SECURITY_FAULT, SIMULATOR_ERROR."
++                "description": "Machine-readable code: INVALID_JSON, NOT_SIGNED_IN, NOT_PERMITTED, FORBIDDEN, NOT_FOUND, METHOD_NOT_ALLOWED, SESSION_ACTIVE, INVALID_INPUT, INVALID_STATE, PRECHECK_RUNNING, PRECHECK_WARNINGS, PRECHECK_BLOCKED, INVALID_REASON, NOT_SEALED, SECURITY_FAULT, SIMULATOR_ERROR, INVALID_PATH, INVALID_CREDENTIALS, INVALID_CODE, ORIGIN_NOT_ALLOWED, DEVICE_NOT_PAIRED, DEVICE_REVOKED, DEMO_DISABLED, RECORDING_ACTIVE, COMMAND_UNSUPPORTED, LAST_ADMIN, PAYLOAD_TOO_LARGE, LOCKED, RATE_LIMITED, INTERNAL_ERROR, NOT_READY."
+               },
+               "message": {
+                 "type": "string",
+                 "minLength": 1,
+                 "description": "Operator-safe English text. Never contains credentials."
++              },
++              "details": {
++                "description": "Optional machine-readable context, a flat map: `simCode`, `permission`, `from`, `event`, `attemptsRemaining`, `lockedUntil`, `retryInMs`, `reason`, `in`. Never a credential or a part of the input.",
++                "type": "object",
++                "propertyNames": {
++                  "type": "string"
++                },
++                "additionalProperties": {
++                  "type": [
++                    "string",
++                    "number",
++                    "boolean",
++                    "null"
++                  ]
++                }
++              },
++              "requestId": {
++                "description": "The ID of the request in the answering service's log; the same value as the `x-request-id` header.",
++                "type": "string",
++                "minLength": 1
+               }
+             },
+             "required": [
+
+# sizes: acaff20 95,021 bytes (sha256 405660477abbe63c8bc66f11e5d0e3d3c65937b5e04f8437b55fe652e2192f20); now 96541 bytes (sha256 3d62fa662ad85295c1e207d2670673afd68229db935daa0659da6f8e3a21f6b3)

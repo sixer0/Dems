@@ -2,10 +2,23 @@
 // valid for @scalar/openapi-parser, has 10 operations (health LIVE, the 9 §21.2 endpoints
 // SIMULATED), carries only allowed extensions, matches the committed openapi.json, and agrees with
 // the simulator's handlers (sim/api.ts) and canonical dataset.
+//
+// Backend task (2026-10-04, plan row W19): the registry now holds more operations than these ten.
+// `createOpenApiDocument()` returns the `offline` scope, which is the document this file has always
+// described, so its assertions stand. The one that compared the components with the whole schema
+// registry is narrowed to the scope by design; test/api-openapi-scope.test.ts covers the `all` scope.
+//
+// Plan row W27 (contract C; 01_specs §7.19, AC-B-11): the registry is complete, and two assertions
+// changed by design. The committed openapi.json now holds the `all` scope (75 operations, two
+// security schemes), so the drift check compares the file with that scope. And the five simulated
+// reads and `startSession` document statuses that only the Core server sends, so the comparison
+// with the simulator covers the statuses the simulator can produce. The `x-` check below still runs
+// on the offline document; the `all` scope, where `x-request-id` is a response header name, has
+// its own in test/api-openapi-scope.test.ts.
 import { readFileSync } from 'node:fs';
 import { dereference, validate } from '@scalar/openapi-parser';
 import { describe, expect, it } from 'vitest';
-import { OPENAPI_JSON_PATH, renderOpenApiJson } from '../scripts/gen-openapi';
+import { OPENAPI_COMMITTED_SCOPE, OPENAPI_JSON_PATH, renderOpenApiJson } from '../scripts/gen-openapi';
 import {
   API_BADGES,
   CORE_API_EXAMPLES,
@@ -16,11 +29,13 @@ import {
   EXAMPLE_IDS,
   HEALTH_PATH,
   HeartbeatSchema,
+  CoreApiScope,
   OPENAPI_ALLOWED_EXTENSION,
   OPENAPI_EXAMPLE_INSTANT,
   SIMULATED_HEADER_NAME,
   SIMULATED_HEADER_VALUE,
   createOpenApiDocument,
+  listCoreApiResponseStatuses,
   listOpenApiOperations,
   matchCoreApiOperation,
   serializeOpenApiDocument,
@@ -44,6 +59,28 @@ import {
 } from '../src/sim';
 
 const AT = Date.parse(OPENAPI_EXAMPLE_INSTANT);
+
+/** The 18 components of the ten offline operations: the first 18 entries of `CORE_API_SCHEMAS`. */
+const OFFLINE_SCHEMA_NAMES = [
+  'HealthResponse',
+  'SessionCreateRequest',
+  'SessionStartRequest',
+  'SessionStopRequest',
+  'SessionCommandResponse',
+  'PrecheckItem',
+  'SessionResource',
+  'CurrentSessionResponse',
+  'VideoTrackStatus',
+  'AudioChannelStatus',
+  'VideoStatusResponse',
+  'AudioStatusResponse',
+  'StorageStatusResponse',
+  'DeviceHealthResponse',
+  'EvidenceExportRequest',
+  'EvidenceExportAccepted',
+  'ApiError',
+  'Heartbeat',
+];
 
 /** The nine book §21.2 endpoints, verbatim (research/01_explore.md §21.2). */
 const BOOK_21_2 = [
@@ -133,10 +170,15 @@ describe('AC-56: the OpenAPI document', () => {
     }
   });
 
-  it('matches the committed openapi/openapi.json byte for byte (no drift)', () => {
+  it('the committed openapi/openapi.json matches the builder byte for byte (no drift)', () => {
+    // Changed by design (W27; AC-B-11): the committed file holds the `all` scope, 75 operations.
+    // The document this file describes is the offline one, which the generator still renders.
     const committed = readFileSync(OPENAPI_JSON_PATH, 'utf8');
-    expect(renderOpenApiJson()).toBe(serializeOpenApiDocument(document));
+    expect(OPENAPI_COMMITTED_SCOPE).toBe(CoreApiScope.ALL);
+    expect(renderOpenApiJson()).toBe(serializeOpenApiDocument(createOpenApiDocument({ scope: OPENAPI_COMMITTED_SCOPE })));
     expect(committed).toBe(renderOpenApiJson());
+    expect(listOpenApiOperations(JSON.parse(committed) as typeof document)).toHaveLength(75);
+    expect(renderOpenApiJson(CoreApiScope.OFFLINE)).toBe(serializeOpenApiDocument(document));
   });
 
   it('builds deterministically, and each build is an independent object', () => {
@@ -174,8 +216,12 @@ describe('AC-56: the OpenAPI document', () => {
     expect(document.components.headers.XDemsSimulated?.schema).toEqual({ type: 'string', const: SIMULATED_HEADER_VALUE });
   });
 
-  it('generates one component per contract schema, from the zod schemas', () => {
-    expect(Object.keys(document.components.schemas)).toEqual(Object.keys(CORE_API_SCHEMAS));
+  it('generates one component per contract schema of its scope, from the zod schemas', () => {
+    // Changed by design (W19): the offline document holds the 18 schemas its ten operations use,
+    // in registry order; the `all` scope holds one component per entry of `CORE_API_SCHEMAS`.
+    expect(Object.keys(document.components.schemas)).toEqual(OFFLINE_SCHEMA_NAMES);
+    expect(Object.keys(CORE_API_SCHEMAS).slice(0, OFFLINE_SCHEMA_NAMES.length)).toEqual(OFFLINE_SCHEMA_NAMES);
+    expect(Object.keys(createOpenApiDocument({ scope: 'all' }).components.schemas)).toEqual(Object.keys(CORE_API_SCHEMAS));
     const serialized = JSON.stringify(document.components.schemas);
     expect(serialized).not.toContain('"$schema"');
     expect(serialized).not.toContain('"$id"');
@@ -387,11 +433,21 @@ describe('the contract matches the simulated handlers (sim/api.ts)', () => {
     ).toBe(403);
     b.sim.stop();
 
-    // Every documented status of the simulated operations was produced by the simulator.
+    // Every status of the simulated operations that the simulator can produce was produced by it.
+    // Changed by design (W27; 01_specs §7.19): the five reads document a 401 and a 403, and
+    // `startSession` a 422, that only the Core server sends (`responses[status].services`). The
+    // simulator is not rewritten, so the comparison is limited to the statuses of the offline scope,
+    // and the simulator must never produce one of the others.
+    let coreServerOnly = 0;
     for (const operation of CORE_API_OPERATIONS.filter((o) => o.mode === 'simulated')) {
-      const documented = Object.keys(operation.responses).map(Number).sort();
-      expect([...(seen.get(operation.operationId) ?? [])].sort(), operation.operationId).toEqual(documented);
+      const produced = [...(seen.get(operation.operationId) ?? [])].sort((a, b) => a - b);
+      expect(produced, operation.operationId).toEqual(listCoreApiResponseStatuses(operation, CoreApiScope.OFFLINE));
+      const others = listCoreApiResponseStatuses(operation).filter((status) => !produced.includes(status));
+      for (const status of others) expect(operation.responses[status]?.services, `${operation.operationId} ${status}`).toEqual(['dems-core-server']);
+      coreServerOnly += others.length;
     }
+    // 401 and 403 on five reads, 422 on startSession.
+    expect(coreServerOnly).toBe(11);
   });
 });
 

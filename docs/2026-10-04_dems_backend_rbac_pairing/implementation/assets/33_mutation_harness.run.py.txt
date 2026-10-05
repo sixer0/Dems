@@ -1,0 +1,61 @@
+#!/usr/bin/env python3
+"""Runs mutations of plan row W33 against the row's own tests: the unit project first, the db
+project when the unit project did not detect it. One line per mutation.
+Usage: run.py [id ...]   (no id: the baseline, then every mutation of mutations.json)"""
+import json, os, re, subprocess, sys, time
+M = os.path.dirname(os.path.abspath(__file__))
+ROOT = '/Users/gsp-budi/Documents/DEMS'
+VITEST = f'{ROOT}/node_modules/.bin/vitest'
+SERVER = f'{ROOT}/apps/core-server'
+UNIT = ['src/modules/admin']
+DB = ['src/modules/admin/__tests__/users.db.test.ts', 'src/modules/admin/__tests__/status.db.test.ts', 'src/modules/admin/__tests__/last-admin.db.test.ts',
+      'src/modules/admin/__tests__/sequence.db.test.ts', 'src/modules/admin/__tests__/failures.db.test.ts']
+mutations = json.load(open(f'{M}/mutations.json'))
+
+def run(project, files, mutation):
+    env = dict(os.environ, W33_MUTATION=mutation or '', DEMS_TEST_STEP='55')
+    out = subprocess.run([VITEST, 'run', '--config', f'{M}/vitest.config.mjs', '--root', SERVER, '--project', project, '--maxWorkers=2', *files],
+                         env=env, cwd=ROOT, capture_output=True, text=True)
+    text = out.stdout + out.stderr
+    open(f'{M}/out.{project}.txt', 'w').write(text)
+    tests = re.search(r'^\s+Tests\s+(.*)$', text, re.M)
+    failed = sorted(set(re.findall(r'FAIL\s+\|' + project + r'\|\s+(src/modules/admin/__tests__/[a-z.-]+)', text)))
+    summary = re.sub(r'\s+', ' ', tests.group(1)).strip() if tests else 'NO-SUMMARY'
+    if 'the text to replace is not in' in text: summary = 'TEXT-NOT-FOUND'
+    return out.returncode, summary, [os.path.basename(f) for f in failed]
+
+def line(text):
+    print(text, flush=True)
+    open(f'{M}/mutations.log', 'a').write(text + '\n')
+
+ids = sys.argv[1:]
+if not ids:
+    open(f'{M}/mutations.log', 'w').write('')
+    line(f'# mutation check of plan row W33, started {time.strftime("%H:%M:%S")}')
+    for project, files in (('unit', UNIT), ('db', DB)):
+        code, summary, failed = run(project, files, None)
+        line(f'BASELINE {project}: exit {code}; {summary}')
+        if code != 0: sys.exit(f'the baseline of {project} is not green')
+    ids = [x['id'] for x in mutations]
+detected = 0
+both = 0
+for id in ids:
+    x = next(y for y in mutations if y['id'] == id)
+    results = []
+    problem = False
+    for project, files in (('unit', UNIT), ('db', DB)):
+        code, summary, failed = run(project, files, id)
+        if summary in ('NO-SUMMARY', 'TEXT-NOT-FOUND') and code != 0:
+            problem = True
+            results.append((project, False, f'{project}: HARNESS-PROBLEM {summary}'))
+        elif code != 0:
+            results.append((project, True, f'{project}: {summary} [{", ".join(failed)}]'))
+        else:
+            results.append((project, False, f'{project}: green ({summary})'))
+    hit = [r for r in results if r[1]]
+    verdict = 'PROBLEM' if problem else ('detected' if hit else 'SURVIVED')
+    if verdict == 'detected':
+        detected += 1
+        if len(hit) == 2: both += 1
+    line(f'{id} | {verdict} | {x["file"].split("/")[-1]} | {x["note"]} | ' + ' | '.join(r[2] for r in results))
+line(f'# {detected} of {len(ids)} detected ({both} by both projects); ended {time.strftime("%H:%M:%S")}')

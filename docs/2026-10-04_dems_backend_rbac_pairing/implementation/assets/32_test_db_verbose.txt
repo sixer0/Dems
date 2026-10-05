@@ -1,0 +1,289 @@
+Sun Oct  4 15:32:26 WIB 2026
+
+> @dems/core-server@0.2.0 test:db
+> vitest run --project db --maxWorkers=2 --reporter=verbose src/modules/pairing
+
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/apps/core-server
+
+[test:db] PostgreSQL 18.4 on 127.0.0.1:4432; helper role dems_owner, code under test dems_app; run prefix dems_test_step_54_tmdjq3rs_
+[test:db] stale sweep: dropped 0; kept 5 of younger runs, 0 of live runs, 0 unrecognised; 0 failed
+[test:db] template dems_test_step_54_tmdjq3rs_tpl_schema: built in 291 ms (create 48 ms, hook 141 ms)
+[test:db] template dems_test_step_54_tmdjq3rs_tpl_seed: built in 283 ms (create 92 ms, hook 189 ms)
+stdout | src/modules/pairing/__tests__/sequence.db.test.ts > redeemPairingCode: ONE unit, the attempt taken first, the consuming statement before the comparison (ENG-23 to ENG-25) > a success: the lock, then one transaction: expire, CONSUME, REDEEM, the Core, the device number, the device, its credential, the row, the event
+[w32] redeemPairingCode, the right code (14 round trips):
+  lock.take
+  unit  BEGIN
+  unit  EXPIRE_ACTIVE_CODE
+  unit  CONSUME_REDEEM_ATTEMPT
+  unit  REDEEM_CODE
+  unit  READ_CORE_IDENTITY
+  unit  NEXT_REGISTRY_NUMBER
+  unit  INSERT_DEVICE
+  unit  INSERT_DEVICE_CREDENTIAL
+  unit  INSERT audit_log PAIRING_SUCCESS
+  unit  event number
+  unit  INSERT events PAIRED
+  unit  COMMIT
+  lock.succeed
+
+ ✓ |db| src/modules/pairing/__tests__/sequence.db.test.ts > redeemPairingCode: ONE unit, the attempt taken first, the consuming statement before the comparison (ENG-23 to ENG-25) > a success: the lock, then one transaction: expire, CONSUME, REDEEM, the Core, the device number, the device, its credential, the row, the event 79ms
+stdout | src/modules/pairing/__tests__/sequence.db.test.ts > redeemPairingCode: ONE unit, the attempt taken first, the consuming statement before the comparison (ENG-23 to ENG-25) > a wrong code and an absent code: the same work, step for step (SR-29), and the place in the denial budget is taken before the row
+[w32] redeemPairingCode, a wrong code (an absent, used, cancelled or expired code alike) (9 round trips):
+  lock.take
+  unit  BEGIN
+  unit  EXPIRE_ACTIVE_CODE
+  unit  CONSUME_REDEEM_ATTEMPT
+  lock.fail
+  denialBudget.consume
+  unit  INSERT audit_log PAIRING_FAILED
+  unit  event number
+  unit  INSERT events PAIRING_FAILED
+  unit  COMMIT
+
+stdout | src/modules/pairing/__tests__/sequence.db.test.ts > redeemPairingCode: ONE unit, the attempt taken first, the consuming statement before the comparison (ENG-23 to ENG-25) > the fifth failed attempt of a code: the closing statement after the consuming one, and its row after the failure's
+[w32] redeemPairingCode, the fifth failure of a code (11 round trips):
+  lock.take
+  unit  BEGIN
+  unit  EXPIRE_ACTIVE_CODE
+  unit  CONSUME_REDEEM_ATTEMPT
+  unit  EXHAUST_CODE
+  lock.fail
+  denialBudget.consume
+  unit  INSERT audit_log PAIRING_FAILED
+  unit  event number
+  unit  INSERT events PAIRING_FAILED
+  unit  INSERT audit_log PAIRING_CODE_CLOSED
+  unit  COMMIT
+
+ ✓ |db| src/modules/pairing/__tests__/sequence.db.test.ts > redeemPairingCode: ONE unit, the attempt taken first, the consuming statement before the comparison (ENG-23 to ENG-25) > a wrong code and an absent code: the same work, step for step (SR-29), and the place in the denial budget is taken before the row 45ms
+ ✓ |db| src/modules/pairing/__tests__/sequence.db.test.ts > redeemPairingCode: ONE unit, the attempt taken first, the consuming statement before the comparison (ENG-23 to ENG-25) > the fifth failed attempt of a code: the closing statement after the consuming one, and its row after the failure's 53ms
+stdout | src/modules/pairing/__tests__/sequence.db.test.ts > redeemPairingCode: ONE unit, the attempt taken first, the consuming statement before the comparison (ENG-23 to ENG-25) > an attempt during the lock: no statement names a code; the place in the budget, then one row
+[w32] redeemPairingCode, during the lock (5 round trips):
+  lock.take
+  denialBudget.consume
+  unit  BEGIN
+  unit  INSERT audit_log PAIRING_LOCKED
+  unit  COMMIT
+
+ ✓ |db| src/modules/pairing/__tests__/sequence.db.test.ts > redeemPairingCode: ONE unit, the attempt taken first, the consuming statement before the comparison (ENG-23 to ENG-25) > an attempt during the lock: no statement names a code; the place in the budget, then one row 41ms
+ ✓ |db| src/modules/pairing/__tests__/sequence.db.test.ts > redeemPairingCode: ONE unit, the attempt taken first, the consuming statement before the comparison (ENG-23 to ENG-25) > a code past its time: closed first, with its row, in the same unit 50ms
+ ✓ |db| src/modules/pairing/__tests__/sequence.db.test.ts > redeemPairingCode: ONE unit, the attempt taken first, the consuming statement before the comparison (ENG-23 to ENG-25) > a body that does not validate: nothing is taken and nothing is asked of the database 29ms
+stdout | src/modules/pairing/__tests__/sequence.db.test.ts > the pairing code > issue: the session lookup of stage 4, then one unit: expire, cancel, the code number, the insert, the row
+[w32] issuePairingCode (10 round trips):
+  pool  FIND_SESSION_BY_TRANSPORT.COOKIE
+  unit  BEGIN
+  unit  EXPIRE_ACTIVE_CODE
+  unit  CANCEL_ACTIVE_CODE
+  unit  NEXT_REGISTRY_NUMBER
+  unit  INSERT_CODE
+  unit  INSERT audit_log PAIRING_CODE_ISSUED
+  unit  COMMIT
+
+stdout | src/modules/pairing/__tests__/sequence.db.test.ts > the pairing code > status: the lookup and one read; cancel: one unit with two statements and a row; the sweep: one read, and a unit only when a code is past its time
+[w32] getPairingCodeStatus (2 round trips):
+  pool  FIND_SESSION_BY_TRANSPORT.COOKIE
+  pool  READ_ACTIVE_CODE
+[w32] cancelPairingCode (8 round trips):
+  pool  FIND_SESSION_BY_TRANSPORT.COOKIE
+  unit  BEGIN
+  unit  EXPIRE_ACTIVE_CODE
+  unit  CANCEL_ACTIVE_CODE
+  unit  INSERT audit_log PAIRING_CODE_CLOSED
+  unit  COMMIT
+
+ ✓ |db| src/modules/pairing/__tests__/sequence.db.test.ts > the pairing code > issue: the session lookup of stage 4, then one unit: expire, cancel, the code number, the insert, the row 38ms
+ ✓ |db| src/modules/pairing/__tests__/sequence.db.test.ts > the pairing code > status: the lookup and one read; cancel: one unit with two statements and a row; the sweep: one read, and a unit only when a code is past its time 45ms
+ ✓ |db| src/modules/pairing/__tests__/sequence.db.test.ts > the registry and a device's own operations > a request without a credential asks the database nothing 30ms
+stdout | src/modules/pairing/__tests__/sequence.db.test.ts > the registry and a device's own operations > list: the session lookup and one read. Registration: the credential lookup and two reads
+[w32] listPairedDevices (2 round trips):
+  pool  FIND_SESSION_BY_TRANSPORT.COOKIE
+  pool  READ_REGISTRY
+[w32] getDeviceRegistration (3 round trips):
+  pool  FIND_DEVICE_BY_CREDENTIAL
+  pool  READ_REGISTRATION
+  pool  READ_CORE_IDENTITY
+
+ ✓ |db| src/modules/pairing/__tests__/sequence.db.test.ts > the registry and a device's own operations > list: the session lookup and one read. Registration: the credential lookup and two reads 39ms
+ ✓ |db| src/modules/pairing/__tests__/sequence.db.test.ts > the registry and a device's own operations > a session of a device: the session lookup, then the device's state; once a minute, the unit that records that it was seen 72ms
+stdout | src/modules/pairing/__tests__/sequence.db.test.ts > the registry and a device's own operations > rotate: one unit with the statement that stores the next hash, and the row. The first use of the new credential: the lookup, the promoting unit, the lookup again
+[w32] rotateDeviceCredential (7 round trips):
+  pool  FIND_DEVICE_BY_CREDENTIAL
+  unit  BEGIN
+  unit  SET_NEXT_CREDENTIAL
+  unit  INSERT audit_log DEVICE_CREDENTIAL_ROTATED
+  unit  COMMIT
+
+stdout | src/modules/pairing/__tests__/sequence.db.test.ts > the registry and a device's own operations > rotate: one unit with the statement that stores the next hash, and the row. The first use of the new credential: the lookup, the promoting unit, the lookup again
+[w32] the first use of a rotated credential (getDeviceRegistration) (9 round trips):
+  pool  FIND_DEVICE_BY_CREDENTIAL
+  unit  BEGIN
+  unit  PROMOTE_CREDENTIAL
+  unit  COMMIT
+  pool  FIND_DEVICE_BY_CREDENTIAL
+  pool  READ_REGISTRATION
+  pool  READ_CORE_IDENTITY
+
+stdout | src/modules/pairing/__tests__/sequence.db.test.ts > the registry and a device's own operations > revoke: one unit: the compare-and-set, the device's sessions, its biometric tokens, the row, the event, the answer. Unpair: the same without the read
+[w32] revokeDevice (12 round trips):
+  pool  FIND_SESSION_BY_TRANSPORT.COOKIE
+  unit  BEGIN
+  unit  REVOKE_DEVICE
+  unit  END_SESSIONS_OF_DEVICE
+  unit  REVOKE_BIOMETRIC_TOKENS_OF_DEVICE
+  unit  INSERT audit_log DEVICE_REVOKED
+  unit  event number
+  unit  INSERT events UNPAIRED
+  unit  READ_REGISTRY_DEVICE
+  unit  COMMIT
+[w32] unpairDevice (11 round trips):
+  pool  FIND_DEVICE_BY_CREDENTIAL
+  unit  BEGIN
+  unit  UNPAIR_DEVICE
+  unit  END_SESSIONS_OF_DEVICE
+  unit  REVOKE_BIOMETRIC_TOKENS_OF_DEVICE
+  unit  INSERT audit_log UNPAIRED
+  unit  event number
+  unit  INSERT events UNPAIRED
+  unit  COMMIT
+
+ ✓ |db| src/modules/pairing/__tests__/sequence.db.test.ts > the registry and a device's own operations > rotate: one unit with the statement that stores the next hash, and the row. The first use of the new credential: the lookup, the promoting unit, the lookup again 42ms
+ ✓ |db| src/modules/pairing/__tests__/sequence.db.test.ts > the registry and a device's own operations > revoke: one unit: the compare-and-set, the device's sessions, its biometric tokens, the row, the event, the answer. Unpair: the same without the read 49ms
+[test:db] bulk fixture: dems_test_step_54_tmdjq3rs_tpl_bulk as dems_owner; clock 2026-10-01T03:00:00.000Z; seed 20261004
+[test:db]   table                   minimum   loaded   added  met
+[test:db]   roles                         3        3       0  yes
+[test:db]   permissions                  12       12       0  yes
+[test:db]   role_permissions             18       18       0  yes
+[test:db]   operators                    12       12       9  yes
+[test:db]   operator_credentials         12       12       9  yes
+[test:db]   auth_sessions               300      300     300  yes
+[test:db]   pairing_codes                60       60      60  yes
+[test:db]   paired_devices               40       40      40  yes
+[test:db]   device_credentials           40       40      40  yes
+[test:db]   biometric_tokens             80       83      83  yes
+[test:db]   registry_counters             2        2       0  yes
+[test:db]   audit_log                  5000     5000    4918  yes
+[test:db]   audit_chain_head              1        1       0  yes
+[test:db]   audit_chain_history          25       25      25  yes
+[test:db]   events                     2500     3649    3590  yes
+[test:db]   session_history             520      520     507  yes
+[test:db]   evidence_items              505      515     502  yes
+[test:db]   evidence_tracks            2020     2060    2008  yes
+[test:db]   evidence_custody           1200     1220    1192  yes
+[test:db]   exports                      60       60      59  yes
+[test:db]   alerts                      250      250     250  yes
+[test:db]   health_snapshots           1500     1508    1508  yes
+[test:db]   engine_counters               6        6       1  yes
+[test:db]   active_session                0        0       0  yes
+[test:db]   storage_policy                1        1       0  yes
+[test:db]   console_settings              1        1       0  yes
+[test:db]   core_device                   1        1       0  yes
+[test:db]   core_state                    1        1       0  yes
+[test:db]   hardware_snapshot             1        1       0  yes
+[test:db]   schema_meta                   1        1       0  yes
+[test:db] bulk fixture: every minimum of the 30 tables is met; audit head seq 5000, hash d2d9f9e596ed73d2...; digest 953c92ea4c9e1393...; build 310 ms, write 2074 ms, total 2391 ms
+stdout | src/modules/pairing/__tests__/registry.db.test.ts > operation 19 on 40 fixture devices > lists every device ever paired, newest first, in every state, each valid against the contract and with no hash
+[w32] listPairedDevices on tpl_bulk: 40 devices {"UNPAIRED":10,"PAIRED":20,"REVOKED":10}, 15187 bytes, 7.9 ms in process
+
+ ✓ |db| src/modules/pairing/__tests__/registry.db.test.ts > operation 19 on 40 fixture devices > lists every device ever paired, newest first, in every state, each valid against the contract and with no hash 18ms
+ ✓ |db| src/modules/pairing/__tests__/registry.db.test.ts > operation 19 on 40 fixture devices > every entry equals what the tables hold: the code's issuer, the rotation time, the end of life, and nobody online 7ms
+ ✓ |db| src/modules/pairing/__tests__/registry.db.test.ts > operation 19 on 40 fixture devices > signedInOperatorId is the operator of the newest open session inside its limits, for a PAIRED device only 40ms
+stdout | src/modules/pairing/__tests__/secrets.db.test.ts > the journey itself > ran through every transition of spec §6.2 and §6.3: the rows it wrote, by type
+[w32] secret scan journey: rows {"ACCESS_DENIED":4,"DEVICE_CREDENTIAL_ROTATED":2,"DEVICE_REVOKED":1,"PAIRING_CODE_CLOSED":3,"PAIRING_CODE_ISSUED":5,"PAIRING_FAILED":12,"PAIRING_LOCKED":1,"PAIRING_SUCCESS":2,"UNPAIRED":1}; 8 codes and guesses, 5 credentials and tokens; failing statements answered 503, 500
+
+stdout | src/modules/pairing/__tests__/secrets.db.test.ts > AC-B-41: no audit row, event, publication or refusal of the whole lifecycle holds a code or a credential > the audit rows and the events of the journey
+[w32] AC-B-41 rows: 34 audit rows and 19 events of the journey; 0 codes, 0 credentials
+
+stdout | src/modules/pairing/__tests__/secrets.db.test.ts > AC-B-41: no audit row, event, publication or refusal of the whole lifecycle holds a code or a credential > the answers of every refusal and failure: no code is echoed, no credential, no marker
+[w32] AC-B-41 refusals: 26 answers of a refusal or a failure; 0 codes, 0 credentials, 0 markers
+
+stdout | src/modules/pairing/__tests__/secrets.db.test.ts > SR-28, SR-31 (AC-B-28 for the pairing tables): a full dump of the database after the lifecycle > holds no code and no credential; of each, only the hash it is stored as
+[w32] dump of dems_test_step_54_tmdjq3rs_f01_secrets: 165176 characters; 8 codes and guesses in 4 forms, 5 credentials and tokens in 6 forms: 0 found; 5 code hashes and 3 credential hashes present once each
+
+ ✓ |db| src/modules/pairing/__tests__/registry.db.test.ts > the resolver on fixture rows > answers by the stored state for a device ID; no value can be presented that resolves to a fixture credential 35ms
+ ✓ |db| src/modules/pairing/__tests__/registry.db.test.ts > the module's state changes on rows it did not write > 16 and 15: the fixture's ACTIVE code is read by the status operation (no code in it), and a new issue closes it; the counters continue above the fixture 60ms
+stdout | src/modules/pairing/__tests__/secrets.db.test.ts > AC-B-29: the log of the same lifecycle, captured at level trace > holds no code, no credential, no marker and no hash of either
+[w32] AC-B-29 log capture: 33995 characters, 149 lines, 47 request lines; 0 codes, 0 credentials, 0 markers, 0 hashes
+
+ ✓ |db| src/modules/pairing/__tests__/secrets.db.test.ts > the journey itself > ran through every transition of spec §6.2 and §6.3: the rows it wrote, by type 4ms
+ ✓ |db| src/modules/pairing/__tests__/secrets.db.test.ts > the journey itself > the scan for a code finds one in every form it could be written in, and leaves identifiers, timestamps and hashes alone (positive control) 1ms
+ ✓ |db| src/modules/pairing/__tests__/secrets.db.test.ts > AC-B-41: no audit row, event, publication or refusal of the whole lifecycle holds a code or a credential > the audit rows and the events of the journey 4ms
+ ✓ |db| src/modules/pairing/__tests__/secrets.db.test.ts > AC-B-41: no audit row, event, publication or refusal of the whole lifecycle holds a code or a credential > the publications: what the realtime channel is handed names kinds, resources and device IDs only 1ms
+ ✓ |db| src/modules/pairing/__tests__/secrets.db.test.ts > AC-B-41: no audit row, event, publication or refusal of the whole lifecycle holds a code or a credential > the answers of every refusal and failure: no code is echoed, no credential, no marker 0ms
+ ✓ |db| src/modules/pairing/__tests__/secrets.db.test.ts > SR-28, SR-31 (AC-B-28 for the pairing tables): a full dump of the database after the lifecycle > holds no code and no credential; of each, only the hash it is stored as 19ms
+ ✓ |db| src/modules/pairing/__tests__/secrets.db.test.ts > AC-B-29: the log of the same lifecycle, captured at level trace > holds no code, no credential, no marker and no hash of either 3ms
+ ✓ |db| src/modules/pairing/__tests__/secrets.db.test.ts > AC-B-29: the log of the same lifecycle, captured at level trace > rule M14: the two failing statements are in the log as an error with its code, and nothing of a statement, a parameter or a hash 1ms
+ ✓ |db| src/modules/pairing/__tests__/secrets.db.test.ts > AC-B-29: the log of the same lifecycle, captured at level trace > no request line holds a query string: the route is the registry's pattern 0ms
+ ✓ |db| src/modules/pairing/__tests__/secrets.db.test.ts > AC-B-29: the log of the same lifecycle, captured at level trace > a parse or validation failure of the redeem is logged by its code only 0ms
+ ✓ |db| src/modules/pairing/__tests__/secrets.db.test.ts > AC-B-29: the log of the same lifecycle, captured at level trace > the principal of a request line is an operator ID or a device ID, never a credential 1ms
+ ✓ |db| src/modules/pairing/__tests__/registry.db.test.ts > the module's state changes on rows it did not write > 20: a fixture device with open sessions and a pending rotation is revoked with all of them; a retired one answers 409; an unknown one 404 55ms
+stdout | src/modules/pairing/__tests__/concurrency.db.test.ts > AC-B-76 (SD-04, AT-C2; decision D18 CF-1): concurrent wrong redeems never get more guesses than PR-P4 and PR-P5 allow > of 20 at once exactly three are counted and the other 17 find redeeming locked; after the lock a second burst of 20 counts exactly two more and the code is closed as EXHAUSTED with exactly five
+[w32] AC-B-76 burst 1: 20 concurrent wrong redeems: statuses {"401":2,"423":18}; rows {"PAIRING_FAILED":3,"PAIRING_LOCKED":17}; PAIRING_FAILED attemptsRemaining 2, 1, 0; failed_attempts of the code 3, state ACTIVE
+
+stdout | src/modules/pairing/__tests__/concurrency.db.test.ts > AC-B-76 (SD-04, AT-C2; decision D18 CF-1): concurrent wrong redeems never get more guesses than PR-P4 and PR-P5 allow > of 20 at once exactly three are counted and the other 17 find redeeming locked; after the lock a second burst of 20 counts exactly two more and the code is closed as EXHAUSTED with exactly five
+[w32] AC-B-76 burst 2 (60 s later): statuses {"401":2,"423":18}; rows {"PAIRING_FAILED":3,"PAIRING_CODE_CLOSED":1,"PAIRING_LOCKED":17}; failed_attempts of the code 5, state EXHAUSTED
+
+ ✓ |db| src/modules/pairing/__tests__/concurrency.db.test.ts > AC-B-76 (SD-04, AT-C2; decision D18 CF-1): concurrent wrong redeems never get more guesses than PR-P4 and PR-P5 allow > of 20 at once exactly three are counted and the other 17 find redeeming locked; after the lock a second burst of 20 counts exactly two more and the code is closed as EXHAUSTED with exactly five 207ms
+ ✓ |db| src/modules/pairing/__tests__/concurrency.db.test.ts > AC-B-76 (SD-04, AT-C2; decision D18 CF-1): concurrent wrong redeems never get more guesses than PR-P4 and PR-P5 allow > the right code among a burst is one of the three or is refused by the lock: never a fourth comparison 67ms
+ ✓ |db| src/modules/pairing/__tests__/devices.db.test.ts > AC-B-37: a sign-in on a paired device creates a session bound to it > the answer carries the token in the body and no cookie; AUTH_SUCCESS and the registry name the device and the operator 145ms
+ ✓ |db| src/modules/pairing/__tests__/concurrency.db.test.ts > AC-B-76 (SD-04, AT-C2; decision D18 CF-1): concurrent wrong redeems never get more guesses than PR-P4 and PR-P5 allow > statement level (T-AT-2, the review's wording): of 20 consuming statements on real connections exactly five return a row, with the values 1 to 5; the fifth closes the code 71ms
+ ✓ |db| src/modules/pairing/__tests__/devices.db.test.ts > AC-B-37: a sign-in on a paired device creates a session bound to it > the registry shows the operator of the NEWEST open session that is inside its limits (decision D14) 200ms
+ ✓ |db| src/modules/pairing/__tests__/concurrency.db.test.ts > SR-71: the refusals of a redeem count against the denial budget > of 25 at once the budget lets 20 write a row; the others answer 429 and write none 116ms
+ ✓ |db| src/modules/pairing/__tests__/devices.db.test.ts > AC-B-37: a sign-in on a paired device creates a session bound to it > online follows the presence counter that the realtime channel feeds; nothing of it is stored 49ms
+stdout | src/modules/pairing/__tests__/concurrency.db.test.ts > AC-B-77 (SD-04, AT-C3): two concurrent redeems of the right code > give one 201 and one 401 INVALID_CODE; exactly one device row and one PAIRING_SUCCESS row exist
+[w32] AC-B-77: two concurrent redeems of the right code: [[201,null],[401,"INVALID_CODE"]]; 1 device row, rows {"PAIRING_SUCCESS":1,"PAIRING_FAILED":1}
+
+ ✓ |db| src/modules/pairing/__tests__/concurrency.db.test.ts > SR-71: the refusals of a redeem count against the denial budget > a counted attempt that finds no place in the budget answers 429 and writes no PAIRING_FAILED row, but stays counted: the code is closed at five all the same 117ms
+ ✓ |db| src/modules/pairing/__tests__/concurrency.db.test.ts > AC-B-77 (SD-04, AT-C3): two concurrent redeems of the right code > give one 201 and one 401 INVALID_CODE; exactly one device row and one PAIRING_SUCCESS row exist 53ms
+ ✓ |db| src/modules/pairing/__tests__/devices.db.test.ts > spec §6.5: lastSeenAt is written at most once a minute, by an authenticated request of the device > a request within the minute writes nothing; at 60 s it is written, by the credential and by a session token; a GET is enough 119ms
+ ✓ |db| src/modules/pairing/__tests__/devices.db.test.ts > operation 21 getDeviceRegistration > a paired device reads its own registration and the Core it is paired with; a web session is told that it is no device 92ms
+ ✓ |db| src/modules/pairing/__tests__/concurrency.db.test.ts > AC-B-77 (SD-04, AT-C3): two concurrent redeems of the right code > ten at once pair one device 70ms
+ ✓ |db| src/modules/pairing/__tests__/devices.db.test.ts > AC-B-38: revokeDevice > ends the device's sessions, revokes its live biometric tokens, writes DEVICE_REVOKED with sessionsEnded, publishes device.revoked; the next call of the device answers 403 DEVICE_REVOKED; a new redeem creates a new device 217ms
+ ✓ |db| src/modules/pairing/__tests__/concurrency.db.test.ts > AC-B-77 (SD-04, AT-C3): two concurrent redeems of the right code > statement level (T-AT-3): the second consuming statement waits for the first transaction and then finds no ACTIVE code 197ms
+ ✓ |db| src/modules/pairing/__tests__/devices.db.test.ts > AC-B-38: revokeDevice > spec §6.6: a retired device may call health and redeem; every other operation answers 403 with exactly one ACCESS_DENIED row 73ms
+ ✓ |db| src/modules/pairing/__tests__/concurrency.db.test.ts > two concurrent issues leave exactly one ACTIVE code (PR-P3) > both answer 201 with different code IDs; the first is cancelled by the second; one row is ACTIVE 67ms
+ ✓ |db| src/modules/pairing/__tests__/devices.db.test.ts > AC-B-38: revokeDevice > answers 404 for an unknown device, 409 for one that is not PAIRED, and 422 INVALID_REASON only for a device it could revoke (spec §7.3 line 10) 96ms
+ ✓ |db| src/modules/pairing/__tests__/concurrency.db.test.ts > two concurrent issues leave exactly one ACTIVE code (PR-P3) > statement level: a second ACTIVE row waits for the first transaction and is then refused by the unique index (23505); a second cancel cancels nothing 193ms
+ ✓ |db| src/modules/pairing/__tests__/devices.db.test.ts > operation 22 unpairDevice > by its credential: 204, UNPAIRED with the device and no operator, its sessions ended, device.revoked published; the next call answers 403 93ms
+ ✓ |db| src/modules/pairing/__tests__/concurrency.db.test.ts > a revoke racing requests of that device (SR-34, SR-35) > the device is revoked exactly once; every answer is that of a request in flight or a refusal; nothing of the device succeeds afterwards 137ms
+ ✓ |db| src/modules/pairing/__tests__/devices.db.test.ts > operation 22 unpairDevice > from an operator's session on the device: the row names that operator, and the session that asked is ended with the others 120ms
+ ✓ |db| src/modules/pairing/__tests__/devices.db.test.ts > operation 23 rotateDeviceCredential: two phases (SR-33) > the new credential is returned once and stored as "next"; the old one stays valid until the new one is first used; then the old one is refused 93ms
+ ✓ |db| src/modules/pairing/__tests__/concurrency.db.test.ts > a revoke racing requests of that device (SR-34, SR-35) > a request that stage 4 resolved a moment before the revoke committed: each device operation states the state again, answers 403 DEVICE_REVOKED, changes nothing and writes no row 57ms
+ ✓ |db| src/modules/pairing/__tests__/devices.db.test.ts > operation 23 rotateDeviceCredential: two phases (SR-33) > a second rotation before the first use replaces the pending credential; sessions of the device are not touched by a rotation 93ms
+ ✓ |db| src/modules/pairing/__tests__/concurrency.db.test.ts > a revoke racing requests of that device (SR-34, SR-35) > statement level: an unpair that waits behind a revoke changes nothing; a rotation behind a committed revoke stores nothing 198ms
+ ✓ |db| src/modules/pairing/__tests__/devices.db.test.ts > operation 23 rotateDeviceCredential: two phases (SR-33) > two first uses of the new credential at once promote it once, and both are answered 54ms
+ ✓ |db| src/modules/pairing/__tests__/devices.db.test.ts > the device resolver, per state (the seam app.deviceResolver) > answers PAIRED, RETIRED or nothing; a value of another form costs no query 74ms
+ ✓ |db| src/modules/pairing/__tests__/devices.db.test.ts > the device resolver, per state (the seam app.deviceResolver) > a credential hash that two rows hold names no device: it resolves to nothing (only one row is an answer) 58ms
+ ✓ |db| src/modules/pairing/__tests__/devices.db.test.ts > the device resolver, per state (the seam app.deviceResolver) > a device row without its credential row is no device of the registry: it resolves to nothing 41ms
+stdout | src/modules/pairing/__tests__/concurrency.db.test.ts > AC-B-75 (SD-03, RB-6): retired device credentials share the class bucket > 25 calls that present five different retired credentials write at most 20 rows in all; the other five answer 429; after the window a denied call is audited again
+[w32] AC-B-75: 25 calls with 5 retired device credentials: statuses {"403":20,"429":5}; 20 ACCESS_DENIED rows, all under class:local
+
+ ✓ |db| src/modules/pairing/__tests__/concurrency.db.test.ts > AC-B-75 (SD-03, RB-6): retired device credentials share the class bucket > 25 calls that present five different retired credentials write at most 20 rows in all; the other five answer 429; after the window a denied call is audited again 239ms
+ ✓ |db| src/modules/pairing/__tests__/lifecycle.db.test.ts > AC-B-32: a device without a credential > signIn answers 403 DEVICE_NOT_PAIRED with no Origin and with the instance's own origin alike; health, redeem and getSignInStatus are open; everything else of the area answers 401 and writes no row 100ms
+ ✓ |db| src/modules/pairing/__tests__/lifecycle.db.test.ts > AC-B-33: issuePairingCode > returns six digits once, valid 300 s; writes PAIRING_CODE_ISSUED without the code; the table holds only the hash of the code ID and the code 55ms
+ ✓ |db| src/modules/pairing/__tests__/lifecycle.db.test.ts > AC-B-33: issuePairingCode > the status read shows the active code without the code, and nothing once it is closed 59ms
+ ✓ |db| src/modules/pairing/__tests__/lifecycle.db.test.ts > AC-B-33: issuePairingCode > one code is active at a time: a new issue cancels the one that stands, with its own row 62ms
+ ✓ |db| src/modules/pairing/__tests__/lifecycle.db.test.ts > AC-B-33: issuePairingCode > cancelPairingCode closes the active code; with none active it answers 204 and writes nothing 52ms
+ ✓ |db| src/modules/pairing/__tests__/lifecycle.db.test.ts > AC-B-33: issuePairingCode > who may call is the guard's: an operator without PAIRING_MANAGE gets 403 with one ACCESS_DENIED row on each of the five portal operations 78ms
+ ✓ |db| src/modules/pairing/__tests__/engine.db.test.ts > API-7 and ENG-8 with the engine running > the engine is ready after the boot, with an epoch of at least 1, and runs on the timer this file gave it 1ms
+ ✓ |db| src/modules/pairing/__tests__/engine.db.test.ts > API-7 and ENG-8 with the engine running > each POST answer names the epoch and the revision of the state change that holds its audit row; the module's own publication of a unit comes after that state change 49ms
+ ✓ |db| src/modules/pairing/__tests__/engine.db.test.ts > API-7 and ENG-8 with the engine running > the pairing rows continue the one chain: it verifies over all rows, also after a tick of the engine, which never saw its head diverge 6ms
+ ✓ |db| src/modules/pairing/__tests__/engine.db.test.ts > API-7 and ENG-8 with the engine running > the engine's own slices are not touched by pairing: the replicated state names no paired device, no code and no credential 1ms
+ ✓ |db| src/modules/pairing/__tests__/lifecycle.db.test.ts > AC-B-34: redeemPairingCode > returns a device ID and a credential once; the device is PAIRED in the registry; PAIRING_SUCCESS and the event PAIRED are written; a second redeem answers the generic 401 61ms
+ ✓ |db| src/modules/pairing/__tests__/lifecycle.db.test.ts > AC-B-34: redeemPairingCode > SR-29: a wrong, a used, a cancelled, an expired and an absent code get the same answer, byte for byte apart from the request ID 54ms
+ ✓ |db| src/modules/pairing/__tests__/lifecycle.db.test.ts > AC-B-34: redeemPairingCode > a body that does not match the contract is 422 before any attempt is taken: no row, no count, the code untouched 51ms
+ ✓ |db| src/modules/pairing/__tests__/lifecycle.db.test.ts > AC-B-34: redeemPairingCode > a web console origin, and an operator's session, may redeem too: the row then names the operator 58ms
+ ✓ |db| src/modules/pairing/__tests__/lifecycle.db.test.ts > AC-B-35: a code past its 300 s > redeems until its last millisecond 47ms
+ ✓ |db| src/modules/pairing/__tests__/lifecycle.db.test.ts > AC-B-35: a code past its 300 s > answers 401 INVALID_CODE at 300 s, and a PAIRING_CODE_CLOSED row with reason EXPIRED exists 47ms
+ ✓ |db| src/modules/pairing/__tests__/lifecycle.db.test.ts > AC-B-35: a code past its 300 s > the sweep closes it without a redeem, once; an issue and a cancel record an expired code as EXPIRED, not as cancelled 58ms
+ ✓ |db| src/modules/pairing/__tests__/lifecycle.db.test.ts > AC-B-36: three wrong codes lock redeeming for 60 s; the fifth wrong code closes the active code > 401, 401, then 423 with lockedUntil; during the lock 423 PAIRING_LOCKED and nothing is compared; after the lock two more close the code as EXHAUSTED 97ms
+ ✓ |db| src/modules/pairing/__tests__/lifecycle.db.test.ts > AC-B-36: three wrong codes lock redeeming for 60 s; the fifth wrong code closes the active code > a successful redeem clears the count: two failures, a success, and three more attempts are open 53ms
+
+ Test Files  7 passed (7)
+      Tests  79 passed (79)
+   Start at  15:32:27
+   Duration  13.42s (tests 66%, import 21%, transform 12%)
+
+[test:db] forced drops that needed a retry: 0
+[test:db] teardown: dropped 3 database(s) in 266 ms; 0 remain with the run prefix dems_test_step_54_tmdjq3rs_
+Sun Oct  4 15:32:41 WIB 2026

@@ -1,0 +1,422 @@
+{
+  "browser": {
+    "product": "HeadlessChrome/153.0.8010.12",
+    "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.8010.12 Safari/537.36",
+    "protocolVersion": "1.3",
+    "jsVersion": "15.3.76.4",
+    "headless": true
+  },
+  "steps": {
+    "login": {
+      "loaded": true,
+      "facts": {
+        "href": "http://127.0.0.1:5178/login",
+        "onLoginPage": true,
+        "state": "idle",
+        "coreMode": "LIVE",
+        "coreLink": "online",
+        "trustLine": "Core server on this computer • web console, no pairing required",
+        "trustLineReachable": "true",
+        "securityKeyInDom": false,
+        "dividerInDom": false,
+        "modeSelector": "LIVE",
+        "strip": {
+          "label": "Core server status",
+          "cells": 6,
+          "service": "Core servicedems-core-server 0.2.0",
+          "database": "ready",
+          "engine": "ready",
+          "link": "online",
+          "mode": "ModeLive"
+        },
+        "alertKind": null,
+        "alertText": null,
+        "usernameFieldChars": 0,
+        "passwordFieldChars": 0,
+        "submitDisabled": false,
+        "disclosureExpanded": "false",
+        "saysSimulatedOutsideTheSelectorAndTheDisclosure": false
+      },
+      "session": {
+        "href": "http://127.0.0.1:5178/login",
+        "documentCookieLength": 0,
+        "documentCookieNames": [],
+        "documentCookieShowsSessionCookie": false,
+        "localStorage": {},
+        "sessionStorage": {},
+        "anyStoredValueStartsWithSes": false,
+        "demsAuthWritten": false,
+        "demsSimSnapshotWritten": false,
+        "owedSignOutKeyPresent": false,
+        "pageTestIds": [
+          "page-login"
+        ],
+        "signedInAs": null
+      },
+      "screenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/55_login_live.png",
+      "network": {
+        "api": [
+          {
+            "method": "GET",
+            "url": "http://127.0.0.1:5178/api/v1/auth/session",
+            "status": 401
+          },
+          {
+            "method": "GET",
+            "url": "http://127.0.0.1:5178/api/v1/auth/status",
+            "status": 200
+          },
+          {
+            "method": "GET",
+            "url": "http://127.0.0.1:5178/api/v1/health",
+            "status": 200
+          }
+        ],
+        "origins": [
+          "http://127.0.0.1:5178"
+        ],
+        "sockets": [
+          {
+            "url": "ws://127.0.0.1:5178/ws",
+            "status": 101,
+            "cookieSent": "no",
+            "closed": false,
+            "frameCount": 5,
+            "firstTypes": [
+              "hello",
+              "heartbeat",
+              "heartbeat",
+              "heartbeat"
+            ],
+            "distinctTypes": [
+              "heartbeat",
+              "hello"
+            ]
+          }
+        ],
+        "console": []
+      }
+    },
+    "disclosure": {
+      "notice": "Published demo credentials for synthetic accounts on this local demo. They are not a secret.",
+      "rows": [
+        "login-operator-budi.santoso",
+        "login-operator-andi.pratama",
+        "login-operator-rina.wijaya"
+      ],
+      "roleWordShown": false,
+      "chips": 0,
+      "saysSimulated": false,
+      "expandedAfterwards": "false"
+    },
+    "wrongPassword": {
+      "typed": {
+        "usernameFieldChars": 12,
+        "passwordFieldChars": 24
+      },
+      "facts": {
+        "href": "http://127.0.0.1:5178/login",
+        "onLoginPage": true,
+        "state": "error",
+        "coreMode": "LIVE",
+        "coreLink": "online",
+        "trustLine": "Core server on this computer • web console, no pairing required",
+        "trustLineReachable": "true",
+        "securityKeyInDom": false,
+        "dividerInDom": false,
+        "modeSelector": "LIVE",
+        "strip": {
+          "label": "Core server status",
+          "cells": 6,
+          "service": "Core servicedems-core-server 0.2.0",
+          "database": "ready",
+          "engine": "ready",
+          "link": "online",
+          "mode": "ModeLive"
+        },
+        "alertKind": "invalid",
+        "alertText": "Invalid username or password.4 attempts remaining",
+        "usernameFieldChars": 12,
+        "passwordFieldChars": 0,
+        "submitDisabled": false,
+        "disclosureExpanded": "false",
+        "saysSimulatedOutsideTheSelectorAndTheDisclosure": false
+      },
+      "session": {
+        "href": "http://127.0.0.1:5178/login",
+        "documentCookieLength": 0,
+        "documentCookieNames": [],
+        "documentCookieShowsSessionCookie": false,
+        "localStorage": {},
+        "sessionStorage": {},
+        "anyStoredValueStartsWithSes": false,
+        "demsAuthWritten": false,
+        "demsSimSnapshotWritten": false,
+        "owedSignOutKeyPresent": false,
+        "pageTestIds": [
+          "page-login"
+        ],
+        "signedInAs": null
+      },
+      "screenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/55_login_live_wrong_password.png",
+      "network": {
+        "api": [
+          {
+            "method": "POST",
+            "url": "http://127.0.0.1:5178/api/v1/auth/sign-in",
+            "status": 401
+          }
+        ],
+        "origins": [
+          "http://127.0.0.1:5178"
+        ],
+        "sockets": [],
+        "console": []
+      }
+    },
+    "signIn": {
+      "whileOut": {
+        "state": "submitting",
+        "passwordFieldChars": 0,
+        "onLoginPage": true
+      },
+      "dashboardShown": true,
+      "session": {
+        "href": "http://127.0.0.1:5178/dashboard",
+        "documentCookieLength": 0,
+        "documentCookieNames": [],
+        "documentCookieShowsSessionCookie": false,
+        "localStorage": {},
+        "sessionStorage": {
+          "dems.shell.intro": "1 chars"
+        },
+        "anyStoredValueStartsWithSes": false,
+        "demsAuthWritten": false,
+        "demsSimSnapshotWritten": false,
+        "owedSignOutKeyPresent": false,
+        "pageTestIds": [
+          "page-dashboard"
+        ],
+        "signedInAs": null
+      },
+      "cookies": [
+        {
+          "name": "dems_session_4423",
+          "value": "(47 chars, not recorded)",
+          "domain": "127.0.0.1",
+          "path": "/",
+          "httpOnly": true,
+          "sameSite": "Strict",
+          "secure": false,
+          "session": true,
+          "expires": "none (a browser-session cookie)"
+        }
+      ],
+      "screenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/55_live_signed_in_through_the_form.png",
+      "network": {
+        "api": [
+          {
+            "method": "POST",
+            "url": "http://127.0.0.1:5178/api/v1/auth/sign-in",
+            "status": 200
+          }
+        ],
+        "origins": [
+          "http://127.0.0.1:5178"
+        ],
+        "sockets": [
+          {
+            "url": "ws://127.0.0.1:5178/ws",
+            "status": 101,
+            "cookieSent": "yes (value not recorded)",
+            "closed": false,
+            "frameCount": 83,
+            "firstTypes": [
+              "hello",
+              "snapshot",
+              "heartbeat",
+              "meters"
+            ],
+            "distinctTypes": [
+              "delta",
+              "heartbeat",
+              "hello",
+              "meters",
+              "snapshot"
+            ]
+          }
+        ],
+        "console": []
+      }
+    },
+    "reload": {
+      "loaded": true,
+      "dashboardShown": true,
+      "session": {
+        "href": "http://127.0.0.1:5178/dashboard",
+        "documentCookieLength": 0,
+        "documentCookieNames": [],
+        "documentCookieShowsSessionCookie": false,
+        "localStorage": {},
+        "sessionStorage": {
+          "dems.shell.intro": "1 chars"
+        },
+        "anyStoredValueStartsWithSes": false,
+        "demsAuthWritten": false,
+        "demsSimSnapshotWritten": false,
+        "owedSignOutKeyPresent": false,
+        "pageTestIds": [
+          "page-dashboard"
+        ],
+        "signedInAs": null
+      },
+      "network": {
+        "api": [
+          {
+            "method": "GET",
+            "url": "http://127.0.0.1:5178/api/v1/auth/session",
+            "status": 200
+          }
+        ],
+        "origins": [
+          "http://127.0.0.1:5178"
+        ],
+        "sockets": [
+          {
+            "url": "ws://127.0.0.1:5178/ws",
+            "status": 101,
+            "cookieSent": "yes (value not recorded)",
+            "closed": false,
+            "frameCount": 88,
+            "firstTypes": [
+              "hello",
+              "snapshot",
+              "heartbeat",
+              "meters"
+            ],
+            "distinctTypes": [
+              "delta",
+              "heartbeat",
+              "hello",
+              "meters",
+              "snapshot"
+            ]
+          }
+        ],
+        "console": []
+      }
+    },
+    "signOut": {
+      "signOut": {
+        "status": 204
+      },
+      "loginShown": true,
+      "facts": {
+        "href": "http://127.0.0.1:5178/login",
+        "onLoginPage": true,
+        "state": "signed-out",
+        "coreMode": "LIVE",
+        "coreLink": "online",
+        "trustLine": "Core server on this computer • web console, no pairing required",
+        "trustLineReachable": "true",
+        "securityKeyInDom": false,
+        "dividerInDom": false,
+        "modeSelector": "LIVE",
+        "strip": {
+          "label": "Core server status",
+          "cells": 6,
+          "service": "Core servicedems-core-server 0.2.0",
+          "database": "ready",
+          "engine": "ready",
+          "link": "online",
+          "mode": "ModeLive"
+        },
+        "alertKind": "signed-out",
+        "alertText": "You have been signed out.",
+        "usernameFieldChars": 0,
+        "passwordFieldChars": 0,
+        "submitDisabled": false,
+        "disclosureExpanded": "false",
+        "saysSimulatedOutsideTheSelectorAndTheDisclosure": false
+      },
+      "session": {
+        "href": "http://127.0.0.1:5178/login",
+        "documentCookieLength": 0,
+        "documentCookieNames": [],
+        "documentCookieShowsSessionCookie": false,
+        "localStorage": {},
+        "sessionStorage": {
+          "dems.shell.intro": "1 chars"
+        },
+        "anyStoredValueStartsWithSes": false,
+        "demsAuthWritten": false,
+        "demsSimSnapshotWritten": false,
+        "owedSignOutKeyPresent": false,
+        "pageTestIds": [
+          "page-login"
+        ],
+        "signedInAs": null
+      },
+      "cookieNamesLeft": [],
+      "screenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/55_login_live_signed_out.png",
+      "network": {
+        "api": [
+          {
+            "method": "POST",
+            "url": "http://127.0.0.1:5178/api/v1/auth/sign-out",
+            "status": 204
+          },
+          {
+            "method": "GET",
+            "url": "http://127.0.0.1:5178/api/v1/auth/status",
+            "status": 200
+          },
+          {
+            "method": "GET",
+            "url": "http://127.0.0.1:5178/api/v1/health",
+            "status": 200
+          }
+        ],
+        "origins": [
+          "http://127.0.0.1:5178"
+        ],
+        "sockets": [
+          {
+            "url": "ws://127.0.0.1:5178/ws",
+            "status": 101,
+            "cookieSent": "no",
+            "closed": false,
+            "frameCount": 5,
+            "firstTypes": [
+              "hello",
+              "heartbeat",
+              "heartbeat",
+              "heartbeat"
+            ],
+            "distinctTypes": [
+              "heartbeat",
+              "hello"
+            ]
+          }
+        ],
+        "console": []
+      }
+    },
+    "modeSelector": {
+      "opened": true,
+      "dialog": {
+        "heading": "Switch to Simulated mode?",
+        "text": "Switch to Simulated mode?You will be signed out and the console reloads. Simulated data and Live data are separate.CancelSwitch to Simulated mode"
+      },
+      "screenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/55_login_live_mode_dialog.png",
+      "storedModeAfterCancel": null,
+      "selectorAfterCancel": "LIVE",
+      "network": {
+        "api": [],
+        "origins": [],
+        "sockets": [],
+        "console": []
+      }
+    }
+  }
+}

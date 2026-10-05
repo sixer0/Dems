@@ -15,6 +15,12 @@
  *
  * Credentials never enter this module's outputs: `validateCredentials` only reports which field
  * is empty, and nothing here stores, logs or returns a password (§14.8, design book §20.1).
+ *
+ * Live mode (backend task, plan row W55) adds notice kinds and no rule: `core-starting` (the Core
+ * server answers, its database or engine is not ready), `input-rejected` (the Core server's 422),
+ * `expired-absolute` and `disabled` (two more reasons of a session end). The simulator produces
+ * none of them, so every function answers for the simulator as it did. The Live rules themselves
+ * are in `./login-live-model`.
  */
 import type { HeartbeatSnapshot } from '@dems/shared/realtime'
 import { AuthStatus, SignOutReason, type SimEvent } from '@dems/shared/sim'
@@ -153,7 +159,8 @@ export function hasFieldErrors(errors: FieldErrors): boolean {
 
 // ── Arrival (Signed out / expired) ──────────────────────────────────────────────────────
 
-export type ArrivalNotice = 'signed-out' | 'console-locked' | 'expired' | null
+/** `expired-absolute` and `disabled` are reported by the Core server only (Live mode; §5.6 WS-14, §6.4). */
+export type ArrivalNotice = 'signed-out' | 'console-locked' | 'expired' | 'expired-absolute' | 'disabled' | null
 
 const AUTH_EVENT_TYPES: ReadonlySet<string> = new Set(['AUTH_LOGIN', 'AUTH_LOGOUT', 'AUTH_EXPIRED'])
 
@@ -191,18 +198,27 @@ export type AttemptOutcome =
   | { readonly kind: 'invalid'; readonly attemptsRemaining: number }
   /** Something unexpected failed (logged); the generic copy is shown. */
   | { readonly kind: 'unexpected' }
+  /** Live mode: the attempt got no answer from the Core server (the offline Alert, not "unexpected"). */
+  | { readonly kind: 'core-offline' }
+  /** Live mode: the Core server answered that it is not ready yet (503 `NOT_READY`). */
+  | { readonly kind: 'core-starting' }
+  /** Live mode: the Core server refused the input itself (422). It is the judge of the bounds. */
+  | { readonly kind: 'input-rejected' }
 
 export type LoginNotice =
   | { readonly kind: 'locked'; readonly retryInSeconds: number }
-  | { readonly kind: 'core-offline' }
   | AttemptOutcome
   | { readonly kind: 'signed-out' }
   | { readonly kind: 'console-locked' }
   | { readonly kind: 'expired' }
+  | { readonly kind: 'expired-absolute' }
+  | { readonly kind: 'disabled' }
 
 export interface NoticeInputs {
   lockout: { readonly locked: boolean; readonly retryInSeconds: number }
   coreBlocked: boolean
+  /** Live mode: the block is a Core server that is starting, not one that is unreachable. */
+  coreStarting?: boolean
   lastAttempt: AttemptOutcome | null
   /** The arrival notice, until this page makes its first attempt. */
   arrival: ArrivalNotice
@@ -213,9 +229,9 @@ export interface NoticeInputs {
  * Retry) → the last attempt's error (danger: generic copy + attempts left) → Signed out / Console
  * locked / Expired (accent). A lockout that has ended no longer shows.
  */
-export function noticeFor({ lockout, coreBlocked, lastAttempt, arrival }: NoticeInputs): LoginNotice | null {
+export function noticeFor({ lockout, coreBlocked, coreStarting = false, lastAttempt, arrival }: NoticeInputs): LoginNotice | null {
   if (lockout.locked) return { kind: 'locked', retryInSeconds: lockout.retryInSeconds }
-  if (coreBlocked) return { kind: 'core-offline' }
+  if (coreBlocked) return coreStarting ? { kind: 'core-starting' } : { kind: 'core-offline' }
   if (lastAttempt) return lastAttempt
   if (arrival) return { kind: arrival }
   return null
@@ -228,9 +244,24 @@ export function alertStatusFor(notice: LoginNotice): 'danger' | 'warning' | 'acc
     case 'signed-out':
     case 'console-locked':
     case 'expired':
+    case 'expired-absolute':
       return 'accent'
     default:
       return 'danger'
+  }
+}
+
+/** A notice about why the operator is on this page (it enters last, M-APP-02), not about an attempt. */
+export function isArrivalNotice(notice: LoginNotice | null): boolean {
+  switch (notice?.kind) {
+    case 'signed-out':
+    case 'console-locked':
+    case 'expired':
+    case 'expired-absolute':
+    case 'disabled':
+      return true
+    default:
+      return false
   }
 }
 
@@ -258,8 +289,8 @@ export function displayStateFor({ success, pending, notice, fieldErrors }: Displ
   if (success) return 'success'
   if (pending) return 'submitting'
   if (notice?.kind === 'locked') return 'locked'
-  if (notice?.kind === 'core-offline') return 'offline'
-  if (notice?.kind === 'invalid' || notice?.kind === 'unexpected') return 'error'
+  if (notice?.kind === 'core-offline' || notice?.kind === 'core-starting') return 'offline'
+  if (notice?.kind === 'invalid' || notice?.kind === 'unexpected' || notice?.kind === 'input-rejected') return 'error'
   if (hasFieldErrors(fieldErrors)) return 'validating'
   if (notice) return 'signed-out'
   return 'idle'

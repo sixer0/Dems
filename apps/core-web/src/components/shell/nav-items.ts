@@ -2,6 +2,12 @@
  * Primary navigation (masterplan/01_specs.md §14.4 "Sidebar"; research/04 §2.2; D28/Q12).
  * Eight product pages, then the DEVELOPER group with API Reference. Login is outside the shell
  * and `/stack-check` is a diagnostic reachable by URL only (§14.2), so neither is listed.
+ *
+ * Backend task (04_client_integration_spec §10.1 PG-4; plan row W54): the ADMINISTRATION group
+ * with the two portal pages stands between the product pages and DEVELOPER. Its items carry
+ * `liveOnly` and a `permission`: an item is rendered only in Live mode and only while the Core
+ * server's permission list of the signed-in operator holds that permission (`useVisibleNavItems`
+ * in `sidebar.tsx`). The nine earlier items carry neither and stay visible to every role.
  */
 import {
   Braces,
@@ -13,8 +19,11 @@ import {
   Network,
   Settings,
   ShieldCheck,
+  TabletSmartphone,
+  UsersRound,
   type LucideIcon,
 } from 'lucide-react'
+import { Permission } from '@dems/shared/sim'
 
 export type NavPath =
   | '/dashboard'
@@ -25,6 +34,8 @@ export type NavPath =
   | '/network-time'
   | '/security-audit'
   | '/system'
+  | '/admin/users'
+  | '/admin/devices'
   | '/developer/api'
 
 export type NavLabelKey =
@@ -36,6 +47,8 @@ export type NavLabelKey =
   | 'shell.nav.networkTime'
   | 'shell.nav.securityAudit'
   | 'shell.nav.system'
+  | 'shell.nav.usersRoles'
+  | 'shell.nav.pairedDevices'
   | 'shell.nav.apiReference'
 
 export interface NavItem {
@@ -43,7 +56,11 @@ export interface NavItem {
   to: NavPath
   icon: LucideIcon
   labelKey: NavLabelKey
-  group: 'main' | 'developer'
+  group: 'main' | 'admin' | 'developer'
+  /** Rendered only while the Core server's permission list of the operator holds it (a hint: the server decides every call). */
+  permission?: Permission
+  /** Rendered only in Live mode. */
+  liveOnly?: boolean
 }
 
 export const NAV_ITEMS: readonly NavItem[] = [
@@ -55,10 +72,13 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { id: 'network-time', to: '/network-time', icon: Network, labelKey: 'shell.nav.networkTime', group: 'main' },
   { id: 'security-audit', to: '/security-audit', icon: ShieldCheck, labelKey: 'shell.nav.securityAudit', group: 'main' },
   { id: 'system', to: '/system', icon: Settings, labelKey: 'shell.nav.system', group: 'main' },
+  { id: 'users-roles', to: '/admin/users', icon: UsersRound, labelKey: 'shell.nav.usersRoles', group: 'admin', permission: Permission.USER_ADMIN, liveOnly: true },
+  { id: 'paired-devices', to: '/admin/devices', icon: TabletSmartphone, labelKey: 'shell.nav.pairedDevices', group: 'admin', permission: Permission.PAIRING_MANAGE, liveOnly: true },
   { id: 'api-reference', to: '/developer/api', icon: Braces, labelKey: 'shell.nav.apiReference', group: 'developer' },
 ]
 
 export const MAIN_NAV_ITEMS = NAV_ITEMS.filter((item) => item.group === 'main')
+export const ADMIN_NAV_ITEMS = NAV_ITEMS.filter((item) => item.group === 'admin')
 export const DEVELOPER_NAV_ITEMS = NAV_ITEMS.filter((item) => item.group === 'developer')
 
 export type BottomTabLabelKey =

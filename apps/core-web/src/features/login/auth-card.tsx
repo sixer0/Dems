@@ -15,15 +15,19 @@ import {
   Tooltip,
 } from '@heroui/react'
 import { animate, AnimatePresence, motion, type Variants } from 'motion/react'
-import { Eye, EyeOff, KeyRound, Lock, ShieldCheck, User, Users } from 'lucide-react'
+import { Eye, EyeOff, KeyRound, Lock, ShieldAlert, ShieldCheck, User, Users } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { CoreMode } from '@dems/shared/live'
 import { DEMO_OPERATOR_PASSWORD, useSim, type SimOperator, type SimState } from '@dems/shared/sim'
 import { palette } from '@dems/shared/tokens'
+import type { ModeSwitch } from '@/components/shell/mode-switch'
 import { BorderBeam } from '@/components/ui/border-beam'
 import { GlowLayer, springTransition, tween, useAmbientLoop, useMotionPolicy } from '@/motion'
 import { cn } from '@/lib/utils'
 import { BORDER_BEAM, HANDOFF, LOGIN_ACCENT_LOOP_GROUP, SHEEN_LOOP_MS, type LoginChoreography } from './login-choreography'
 import { LoginAlert } from './login-alert'
+import type { CoreLinkView } from './login-model'
+import { ModeSelector } from './mode-selector'
 import type { LoginController } from './use-login-controller'
 
 export interface AuthCardProps {
@@ -34,6 +38,8 @@ export interface AuthCardProps {
   onExitComplete: () => void
   /** Presentation mode hides the "Demo operators" Disclosure (§14.8, D28/Q14; ruling M8). */
   presentation: boolean
+  /** The data mode of this page load and its confirmed change; no control unless the build offers the choice (MD-4). */
+  modeSwitch: ModeSwitch
   /** The M-C-22 shake target (the page owns the shake so the controller can trigger it). */
   shakeRef: RefObject<HTMLDivElement | null>
   usernameRef: RefObject<HTMLInputElement | null>
@@ -53,6 +59,17 @@ const selectDeviceId = (s: SimState) => s.device.id
  *
  * Credentials: inputs have no `name` and the form posts nowhere (submission is intercepted), so a
  * password can never reach a URL even if a native submit fired (AC-50).
+ *
+ * Live mode (backend task 04_client_integration_spec §5.5; plan row W55), the same card on the
+ * Core server:
+ * - no security-key button and no "or" divider: the server has no such operation (WS-8, Q11);
+ * - the demo operators are the three seeded ones of the shared constant, without a role chip or
+ *   any other server data, under one plain sentence that says what the disclosure is (WS-9, C1,
+ *   C2); hidden in presentation mode as before (C3);
+ * - the trust line says what is true: the console signs in to the Core server and does not pair
+ *   (WS-7, Q13);
+ * - the offline Alert offers "Use Simulated mode" in a build that offers the choice (§3.5).
+ * In a dev build the card also carries the mode selector (§3.2), in both modes.
  */
 export function AuthCard({
   controller,
@@ -60,6 +77,7 @@ export function AuthCard({
   leaving,
   onExitComplete,
   presentation,
+  modeSwitch,
   shakeRef,
   usernameRef,
   passwordRef,
@@ -92,7 +110,7 @@ export function AuthCard({
     paired,
   } = controller
   const formDisabled = pending !== null || accepted !== null || lockout.locked
-  const deviceId = useSim(selectDeviceId)
+  const isLive = controller.mode === CoreMode.LIVE
 
   // R1 enter at t = 1,200 (`gentle`, rise 12); M-APP-01 exit at t = 150 (300, `exit`). The exit's
   // completion is the commit point: the page navigates and the emblem flight starts.
@@ -182,6 +200,7 @@ export function AuthCard({
                 coreRetry={coreRetry}
                 reconnecting={controller.heartbeatState === 'CONNECTING'}
                 arrivalDelayMs={choreography.noticeMs}
+                onUseSimulated={isLive && modeSwitch.selectable ? () => modeSwitch.request(CoreMode.SIMULATED) : null}
               />
               <Form className="dems-login-form" validationBehavior="aria" method="post" onSubmit={onSubmit} aria-labelledby="login-title">
                 <TextField
@@ -261,43 +280,40 @@ export function AuthCard({
 
                 <SubmitButton pending={pending === 'password'} disabled={submitDisabled} />
 
-                <div className="dems-login-divider" aria-hidden="true">
-                  <Separator className="flex-1" />
-                  <span className="text-muted">
-                    <span className="text-caption">{t('login.divider')}</span>
-                  </span>
-                  <Separator className="flex-1" />
-                </div>
+                {/* WS-8: the security key is a simulated alternative; the Core server has no such operation. */}
+                {isLive ? null : (
+                  <>
+                    <div className="dems-login-divider" aria-hidden="true">
+                      <Separator className="flex-1" />
+                      <span className="text-muted">
+                        <span className="text-caption">{t('login.divider')}</span>
+                      </span>
+                      <Separator className="flex-1" />
+                    </div>
 
-                <Button
-                  variant="outline"
-                  fullWidth
-                  className="dems-login-key"
-                  onPress={signInWithSecurityKey}
-                  isDisabled={submitDisabled}
-                  isPending={pending === 'security-key'}
-                  data-testid="login-security-key"
-                >
-                  {pending === 'security-key' ? <Spinner size="sm" color="current" /> : <KeyRound size={18} aria-hidden="true" />}
-                  {pending === 'security-key' ? t('login.securityKey.prompt') : t('login.securityKey.button')}
-                </Button>
+                    <Button
+                      variant="outline"
+                      fullWidth
+                      className="dems-login-key"
+                      onPress={signInWithSecurityKey}
+                      isDisabled={submitDisabled}
+                      isPending={pending === 'security-key'}
+                      data-testid="login-security-key"
+                    >
+                      {pending === 'security-key' ? <Spinner size="sm" color="current" /> : <KeyRound size={18} aria-hidden="true" />}
+                      {pending === 'security-key' ? t('login.securityKey.prompt') : t('login.securityKey.button')}
+                    </Button>
+                  </>
+                )}
               </Form>
 
               {presentation ? null : (
-                <DemoOperators operators={operators} disabled={formDisabled} onPick={fill} />
+                <DemoOperators operators={operators} disabled={formDisabled} onPick={fill} live={isLive} />
               )}
 
-              <Tooltip delay={300}>
-                <Tooltip.Trigger className="dems-login-trust" data-testid="login-trust-line">
-                  <ShieldCheck size={16} aria-hidden="true" className="text-success" />
-                  <span className="text-caption">
-                    {paired ? t('login.trustLine', { deviceId }) : t('login.trustLineUnpaired', { deviceId })}
-                  </span>
-                </Tooltip.Trigger>
-                <Tooltip.Content placement="bottom" offset={8}>
-                  {t('login.trustTooltip')}
-                </Tooltip.Content>
-              </Tooltip>
+              <ModeSelector modeSwitch={modeSwitch} disabled={pending !== null || accepted !== null} />
+
+              {isLive ? <LiveTrustLine coreLink={controller.coreLink} /> : <SimulatedTrustLine paired={paired} />}
             </Card.Content>
           </Card>
           {beam.running && !beamDone ? (
@@ -395,18 +411,69 @@ function PasswordToggle({ shown, disabled, onToggle }: { shown: boolean; disable
   )
 }
 
+/** The §20.1 trust line of the simulator: the console's simulated pairing (the line as it always was). */
+function SimulatedTrustLine({ paired }: { paired: boolean }) {
+  const { t } = useTranslation()
+  const deviceId = useSim(selectDeviceId)
+  return (
+    <Tooltip delay={300}>
+      <Tooltip.Trigger className="dems-login-trust" data-testid="login-trust-line">
+        <ShieldCheck size={16} aria-hidden="true" className="text-success" />
+        <span className="text-caption">
+          {paired ? t('login.trustLine', { deviceId }) : t('login.trustLineUnpaired', { deviceId })}
+        </span>
+      </Tooltip.Trigger>
+      <Tooltip.Content placement="bottom" offset={8}>
+        {t('login.trustTooltip')}
+      </Tooltip.Content>
+    </Tooltip>
+  )
+}
+
+/**
+ * WS-7 (Q13): the trust line on the Core server. The web console signs in with a session cookie
+ * and does not pair, so the line says so; it reads no pairing state. While the Core server cannot
+ * be reached it says that instead, beside the offline Alert (§3.2).
+ */
+function LiveTrustLine({ coreLink }: { coreLink: CoreLinkView }) {
+  const { t } = useTranslation()
+  const reachable = coreLink !== 'offline'
+  return (
+    <Tooltip delay={300}>
+      <Tooltip.Trigger className="dems-login-trust" data-testid="login-trust-line" data-reachable={reachable ? 'true' : 'false'}>
+        {reachable ? (
+          <ShieldCheck size={16} aria-hidden="true" className="text-success" />
+        ) : (
+          <ShieldAlert size={16} aria-hidden="true" className="text-warning" />
+        )}
+        <span className="text-caption">{reachable ? t('login.live.trustLine') : t('common.coreLink.lostTitle')}</span>
+      </Tooltip.Trigger>
+      <Tooltip.Content placement="bottom" offset={8}>
+        {t('login.live.trustTooltip')}
+      </Tooltip.Content>
+    </Tooltip>
+  )
+}
+
 /**
  * "Demo operators" (§14.8, D25, D28/Q14): collapsed by default; each row fills the form with the
  * operator's username and the published demo password. Roles are a demo assumption (book gap G1).
+ *
+ * `live` (WS-9; conditions C1 and C2 of SR-63): one plain sentence above everything says what the
+ * disclosure is, and no row shows a role chip or anything else the Core server holds: a role is
+ * server data and may have changed. The published password is accepted by the Core server only
+ * while every listener is on loopback (C4).
  */
 function DemoOperators({
   operators,
   disabled,
   onPick,
+  live,
 }: {
   operators: readonly SimOperator[]
   disabled: boolean
   onPick: (operator: SimOperator) => void
+  live: boolean
 }) {
   const { t } = useTranslation()
   return (
@@ -420,6 +487,11 @@ function DemoOperators({
       </Disclosure.Heading>
       <Disclosure.Content>
         <Disclosure.Body className="dems-login-demo-body">
+          {live ? (
+            <p className="dems-login-demo-notice" data-testid="login-demo-notice">
+              <span className="text-caption">{t('login.live.demoNotice')}</span>
+            </p>
+          ) : null}
           <p className="text-foreground-2">
             <span className="text-caption">{t('login.demoOperators.hint')}</span>
           </p>
@@ -448,9 +520,11 @@ function DemoOperators({
                       <span className="text-caption font-mono">{operator.username}</span>
                     </span>
                   </span>
-                  <Chip size="sm" variant="soft" color={roleColor(operator.role)} className="ml-auto">
-                    <Chip.Label>{t(`common.roles.${operator.role}`)}</Chip.Label>
-                  </Chip>
+                  {live ? null : (
+                    <Chip size="sm" variant="soft" color={roleColor(operator.role)} className="ml-auto">
+                      <Chip.Label>{t(`common.roles.${operator.role}`)}</Chip.Label>
+                    </Chip>
+                  )}
                 </Button>
               </li>
             ))}

@@ -1,0 +1,41 @@
+#!/bin/sh
+# Runs mutations against the row's own tests, cheapest first, and stops at the first stage that
+# detects one:
+#   1 unit      the three database-free files that test behaviour (routes, secrets, redeem-lock)
+#   2 db-a      lifecycle, devices, concurrency
+#   3 db-b      sequence, secrets, engine, registry
+#   4 static    the static file: its pins of the statement texts (it reads the statements through
+#               an import, so it sees a mutated statement; what it scans from disk it cannot see)
+# Prints one line each. Usage: run.sh <scratch dir> [id ...]   (no id: every mutation of mutations.json)
+# Vitest writes into a file that is read afterwards: no pipe is closed under a running test run.
+# No file of the repository is written: the transform of vitest.config.mjs hands the mutant to Vitest.
+M="$1"; shift
+ROOT=/Users/gsp-budi/Documents/DEMS
+T=src/modules/pairing/__tests__
+V="$ROOT/node_modules/.bin/vitest"
+cd "$ROOT/apps/core-server" || exit 2
+if [ "$#" -eq 0 ]; then set -- $(python3 -c "import json; print(' '.join(x['id'] for x in json.load(open('$M/mutations.json'))))"); fi
+summary() { grep -E "^ +Tests |the text to replace is not in|no mutation " "$1" | sed -n '1p' | sed -e 's/^ *//' -e 's/  */ /g'; }
+for id in "$@"; do
+  note=$(python3 -c "import json,sys; print([x['note'] for x in json.load(open('$M/mutations.json')) if x['id']=='$id'][0])")
+  stage=unit
+  W32_MUTATION="$id" "$V" run --config "$M/vitest.config.mjs" --project unit --maxWorkers=2 $T/routes.test.ts $T/secrets.test.ts $T/redeem-lock.test.ts > "$M/out.txt" 2>&1
+  r=$(summary "$M/out.txt")
+  case "$r" in *failed*) ;; *)
+    stage=db-a
+    W32_MUTATION="$id" DEMS_TEST_STEP=54 "$V" run --config "$M/vitest.config.mjs" --project db --maxWorkers=2 --bail=1 $T/lifecycle.db.test.ts $T/devices.db.test.ts $T/concurrency.db.test.ts > "$M/out.txt" 2>&1
+    r=$(summary "$M/out.txt")
+    case "$r" in *failed*) ;; *)
+      stage=db-b
+      W32_MUTATION="$id" DEMS_TEST_STEP=54 "$V" run --config "$M/vitest.config.mjs" --project db --maxWorkers=2 --bail=1 $T/sequence.db.test.ts $T/secrets.db.test.ts $T/engine.db.test.ts $T/registry.db.test.ts > "$M/out.txt" 2>&1
+      r=$(summary "$M/out.txt")
+      case "$r" in *failed*) ;; *)
+        stage=static
+        W32_MUTATION="$id" "$V" run --config "$M/vitest.config.mjs" --project unit --maxWorkers=2 $T/static.test.ts > "$M/out.txt" 2>&1
+        r=$(summary "$M/out.txt")
+      ;; esac
+    ;; esac
+  ;; esac
+  case "$r" in *failed*) verdict="DETECTED by $stage";; *) verdict="SURVIVED";; esac
+  echo "$id | $note | $verdict | ${r:-NO-SUMMARY}"
+done

@@ -1,0 +1,55 @@
+#!/usr/bin/env python3
+"""Brings other writers' changes of the tree into the scratch copy, and reports conflicts.
+   sync.py [--dry]   A file this round changed in scratch and not yet landed is never overwritten."""
+import hashlib, os, shutil, sys, time
+W = '/private/tmp/claude-501/-Users-gsp-budi-Documents-DEMS/0d71fd65-4a51-4019-9c48-5c92d11bbdaf/scratchpad/cpb1b1'
+S = W + '/tree/apps/core-server'
+T = '/Users/gsp-budi/Documents/DEMS/apps/core-server'
+P = '/Users/gsp-budi/Documents/DEMS/.cache/rollback/CPB1b1'
+dry = '--dry' in sys.argv
+def sha(p):
+    try: return hashlib.sha256(open(p, 'rb').read()).hexdigest()
+    except FileNotFoundError: return None
+def files(root):
+    out = set()
+    for base in ('src', 'test'):
+        for d, dirs, names in os.walk(os.path.join(root, base)):
+            dirs[:] = [x for x in dirs if x != 'node_modules']
+            for n in names:
+                if n == '.DS_Store' or n.endswith('.cpb1b1-new') or n.endswith('.cpb1b1-shim'): continue
+                out.add(os.path.relpath(os.path.join(d, n), root))
+    return out
+known = {}
+kp = W + '/known.sha256'
+if os.path.exists(kp):
+    for line in open(kp):
+        h, _, path = line.rstrip('\n').partition('  ')
+        known[path] = None if h == 'REMOVED' else h
+def k(path):
+    if path in known: return known[path]
+    return sha(os.path.join(P, path))
+log = []
+conflicts = []
+for path in sorted(files(T) | files(S)):
+    t, s, kn = sha(os.path.join(T, path)), sha(os.path.join(S, path)), k(path)
+    if t == s: continue
+    if s == kn and t != kn:
+        # another writer changed the tree; the scratch copy is as this round last knew it
+        if t is None:
+            log.append(f'removed by another writer: {path}')
+            if not dry: os.remove(os.path.join(S, path))
+        else:
+            log.append(f"{'new' if s is None else 'changed'} by another writer: {path}")
+            if not dry:
+                os.makedirs(os.path.dirname(os.path.join(S, path)), exist_ok=True)
+                shutil.copy2(os.path.join(T, path), os.path.join(S, path))
+        if not dry:
+            with open(kp, 'a') as f: f.write(f"{'REMOVED' if t is None else t}  {path}\n")
+    elif t == kn and s != kn:
+        log.append(f'pending in scratch (mine): {path}')
+    else:
+        conflicts.append(f'CONFLICT (both changed): {path}')
+print(time.strftime('%H:%M:%S'), 'sync', '(dry)' if dry else '')
+for line in log + conflicts: print(' ', line)
+print(f'  {len(log)} difference(s), {len(conflicts)} conflict(s)')
+sys.exit(1 if conflicts else 0)

@@ -19,10 +19,17 @@
  * the form renders `t(issue.message)`. Keys marked "(add)" in `SESSION_CREATE_MESSAGES` are not
  * in the resources yet: they are only reachable when a client bypasses the form's `maxLength`
  * and default selections (the API path), and the `/session/new` page step adds them.
+ *
+ * Every text field carries the text rule of the contract (`text.ts`; backend task 2026-10-04
+ * 01_specs API-13): U+0000 and an unpaired surrogate are refused, because the Core server stores
+ * these fields in PostgreSQL and in the audit chain. Its message is the contract's English
+ * sentence (`API_TEXT_RULE_MESSAGE`), not an i18n key: `SESSION_CREATE_MESSAGES` stays the set of
+ * keys the session page has resources for, and a key that is missing renders as its own text.
  */
 import { z } from 'zod';
 import { RecordingProfileId, SubjectType } from '../sim/vocabulary';
 import { CASE_NUMBER_PATTERN, OPERATOR_ID_PATTERN } from './patterns';
+import { API_TEXT_RULE_MESSAGE, isWellFormedText } from './text';
 
 /** Field limits; the sim enforces the same bounds (`isValidSessionInput`). Forms set `maxLength` from these. */
 export const SESSION_INPUT_LIMITS = {
@@ -66,9 +73,15 @@ export const SESSION_CREATE_FORM_MESSAGE_KEYS = [
 
 const M = SESSION_CREATE_MESSAGES;
 
-/** Trim, then collapse inner whitespace runs to one space (the sim's `normalizeSessionInput`). */
+/**
+ * The text rule first (API-13), then trim and collapse inner whitespace runs to one space (the
+ * sim's `normalizeSessionInput`). When the text rule fails it is the only issue of the field.
+ */
 function singleLine(requiredMessage: string) {
-  return z.string({ error: requiredMessage }).overwrite((value) => value.trim().replace(/\s+/g, ' '));
+  return z
+    .string({ error: requiredMessage })
+    .refine(isWellFormedText, { error: API_TEXT_RULE_MESSAGE, abort: true })
+    .overwrite((value) => value.trim().replace(/\s+/g, ' '));
 }
 
 export const sessionCreateSchema = z
@@ -98,6 +111,7 @@ export const sessionCreateSchema = z
       .describe('Recording profile. STANDARD_1080P25 = "Standard (1080p / 25 fps)", H.264, 2 video + 2 audio tracks.'),
     notes: z
       .string()
+      .refine(isWellFormedText, { error: API_TEXT_RULE_MESSAGE, abort: true })
       .overwrite((value) => value.trim())
       .max(SESSION_INPUT_LIMITS.notesMax, { error: M.notesTooLong })
       .optional()

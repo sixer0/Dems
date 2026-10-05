@@ -31,9 +31,29 @@
     "build:android": "npm run build -w @dems/mobile",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
-    "test": "npm run test --workspaces --if-present"
+    "test": "npm run test --workspaces --if-present",
+    "dev:server": "npm run dev -w @dems/core-server --",
+    "start:server": "npm run start -w @dems/core-server --",
+    "db:create": "npm run db:create -w @dems/core-server --",
+    "db:migrate": "npm run db:migrate -w @dems/core-server --",
+    "db:seed": "npm run db:seed -w @dems/core-server --",
+    "db:reset": "npm run db:reset -w @dems/core-server --",
+    "db:status": "npm run db:status -w @dems/core-server --",
+    "test:db": "npm run test:db -w @dems/core-server --",
+    "pg:init": "node scripts/pg/init.mjs",
+    "pg:start": "node scripts/pg/start.mjs",
+    "pg:stop": "node scripts/pg/stop.mjs",
+    "pg:status": "node scripts/pg/status.mjs",
+    "pg:remove-data": "node scripts/pg/remove-data.mjs",
+    "pg:remove": "node scripts/pg/remove.mjs",
+    "test:pg-scripts": "node --test scripts/pg/"
+  },
+  "devDependencies": {
+    "embedded-postgres": "18.4.0-beta.17",
+    "pg": "8.23.1"
   },
   "allowScripts": {
-    "@shopify/react-native-skia@2.6.2": true
+    "@shopify/react-native-skia@2.6.2": true,
+    "@embedded-postgres/darwin-arm64@18.4.0-beta.17": true
   }
 }

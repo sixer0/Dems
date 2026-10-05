@@ -1,0 +1,132 @@
+// Static guard: credentials (database contract T-CR-2; spec SR-68, SR-77, AC-B-86, server part).
+//
+// What must never appear, and where:
+//   (a) the name of the bootstrap superuser's password file: nowhere under `apps/` and
+//       `packages/` (HC-1: only the provisioning scripts read it);
+//   (b) a variable that hands a password to the driver, a connection URL with a user part, or
+//       the Node option that loads an env file: nowhere under `apps/core-server/`;
+//   (c) the name of the owner-role file: under `apps/core-server/src/` only in the reset routine
+//       and the command folder (HC-2, HC-3).
+// Every forbidden text is built from fragments, so that this file does not contain it.
+import { join } from 'node:path';
+import { describe, expect, it } from 'vitest';
+import {
+  REPOSITORY,
+  WORKSPACE,
+  isProductionSource,
+  literal,
+  occurrences,
+  readTree,
+  under,
+  type SourceFile,
+} from './scan';
+
+const SUPERUSER_FILE = ['pg', 'pwfile'].join('.');
+const OWNER_FILE = ['pg', 'owner', 'env'].join('.');
+const PASSWORD_VARIABLE = ['PG', 'PASSWORD'].join('');
+const URL_VARIABLE = ['DATABASE', 'URL'].join('_');
+const ENV_FILE_OPTION = ['--env', 'file'].join('-');
+
+/** A connection URL of either PostgreSQL scheme with a user part, with or without a password. */
+const CONNECTION_URL = new RegExp(`${['postgres', '(?:ql)?:'].join('')}//[^\\s/'"\`@]+@`, 'gi');
+/** A shell `source` (or `.`) of a file under the data directory. */
+const SOURCED_DATA_FILE = new RegExp(`(?:^|[\\s;&|])(?:${['sou', 'rce'].join('')}|\\.)\\s+\\S*\\.data/`, 'gm');
+
+/** Where the owner-role file may be named inside `src/` (database contract T-CR-2 c). */
+const OWNER_FILE_PLACES = ['src/db/reset/', 'src/db/commands/'];
+/** The files of plan row W08: the loader and everything around it never name either file. */
+const SCAFFOLD_PLACES = ['src/index.ts', 'src/app.ts', 'src/config.ts', 'src/plugins/', 'src/modules/health/'];
+
+const server = readTree(WORKSPACE);
+const workspaces = [...readTree(join(REPOSITORY, 'apps')), ...readTree(join(REPOSITORY, 'packages'))];
+
+describe('the scan itself', () => {
+  it('reads the server sources, the tests and the manifest, and no dependency', () => {
+    const paths = server.map((file) => file.path);
+    for (const expected of ['package.json', 'src/app.ts', 'src/config.ts', 'src/index.ts', 'test/static/scan.ts']) {
+      expect(paths, expected).toContain(expected);
+    }
+    expect(paths.filter((path) => path.includes('node_modules'))).toEqual([]);
+    expect(workspaces.length).toBeGreaterThan(server.length);
+  });
+
+  it('finds each forbidden text when it is present (positive control)', () => {
+    const planted: SourceFile[] = [
+      { path: 'src/a.ts', text: `open("${SUPERUSER_FILE}")\nread("${OWNER_FILE}")` },
+      { path: 'src/b.ts', text: `process.env.${PASSWORD_VARIABLE}\nprocess.env.${URL_VARIABLE}` },
+      { path: 'package.json', text: `"start": "node ${ENV_FILE_OPTION}=x src/index.ts"` },
+      { path: 'src/c.ts', text: `const url = "${'postgres'}ql://dems_app:secret@127.0.0.1:4432/dems_demo";` },
+      { path: 'src/d.ts', text: `const url = "${'postgres'}://dems_app@127.0.0.1/dems_demo";` },
+      { path: 'run.sh', text: `${['sou', 'rce'].join('')} ../../.data/pg.env` },
+    ];
+    expect(occurrences(planted, literal(SUPERUSER_FILE))).toEqual(['src/a.ts:1']);
+    expect(occurrences(planted, literal(OWNER_FILE))).toEqual(['src/a.ts:2']);
+    expect(occurrences(planted, literal(PASSWORD_VARIABLE))).toEqual(['src/b.ts:1']);
+    expect(occurrences(planted, literal(URL_VARIABLE))).toEqual(['src/b.ts:2']);
+    expect(occurrences(planted, literal(ENV_FILE_OPTION))).toEqual(['package.json:1']);
+    expect(occurrences(planted, CONNECTION_URL)).toEqual(['src/c.ts:1', 'src/d.ts:1']);
+    expect(occurrences(planted, SOURCED_DATA_FILE)).toEqual(['run.sh:1']);
+    // A URL without a user part is not a credential.
+    expect(occurrences([{ path: 'x.ts', text: `"${'postgres'}://127.0.0.1:4432/dems_demo"` }], CONNECTION_URL)).toEqual([]);
+  });
+});
+
+describe('T-CR-2 (a): the superuser password file', () => {
+  it('is named by no file under apps/ and packages/', () => {
+    expect(occurrences(workspaces, literal(SUPERUSER_FILE))).toEqual([]);
+  });
+});
+
+describe('T-CR-2 (b), AC-B-86: no secret outside the connection file', () => {
+  it.each([
+    ['a password variable of the driver', literal(PASSWORD_VARIABLE)],
+    ['a connection-URL variable', literal(URL_VARIABLE)],
+    ['the Node option that loads an env file', literal(ENV_FILE_OPTION)],
+    ['a connection URL with a user part', CONNECTION_URL],
+    ['a shell that sources a file of the data directory', SOURCED_DATA_FILE],
+  ])('apps/core-server holds no %s', (_label, pattern) => {
+    expect(occurrences(server, pattern)).toEqual([]);
+  });
+
+  it('no npm script of the workspace carries a secret or reads the data directory', () => {
+    const manifest = server.find((file) => file.path === 'package.json');
+    const scripts = (JSON.parse(manifest?.text ?? '{}') as { scripts?: Record<string, string> }).scripts ?? {};
+    expect(Object.keys(scripts).length).toBeGreaterThan(0);
+    const suspicious = Object.entries(scripts)
+      .filter(([, command]) => /passw|secret|token|credential|\.data\//i.test(command))
+      .map(([name]) => name);
+    expect(suspicious).toEqual([]);
+  });
+
+  it('the server runtime starts no child process, so no secret can become a process argument', () => {
+    const childProcess = new RegExp(`['"](?:node:)?${['child', 'process'].join('_')}['"]`, 'g');
+    expect(occurrences(server, childProcess, (path) => isProductionSource(path) && !path.startsWith('src/db/'))).toEqual([]);
+  });
+});
+
+describe('T-CR-2 (c): the owner-role file', () => {
+  it('is named under src/ only by the reset routine and the command folder', () => {
+    const elsewhere = (path: string): boolean => path.startsWith('src/') && !under(path, OWNER_FILE_PLACES);
+    expect(occurrences(server, literal(OWNER_FILE), elsewhere)).toEqual([]);
+  });
+
+  it('the scaffold of plan row W08 names neither of the two other credential files', () => {
+    const scaffold = (path: string): boolean => under(path, SCAFFOLD_PLACES);
+    expect(occurrences(server, literal(OWNER_FILE), scaffold)).toEqual([]);
+    expect(occurrences(server, literal(SUPERUSER_FILE), scaffold)).toEqual([]);
+  });
+
+  it('the loader opens exactly one file of the data directory', () => {
+    const loader = server.filter((file) => file.path.startsWith('src/plugins/config/') && isProductionSource(file.path));
+    expect(loader.map((file) => file.path).sort()).toEqual([
+      'src/plugins/config/connection-file.ts',
+      'src/plugins/config/index.ts',
+      'src/plugins/config/load-config.ts',
+    ]);
+    // One call that reads a file, and it reads the path it was given.
+    const reads = occurrences(loader, /\breadFileSync\(/g);
+    expect(reads).toHaveLength(1);
+    expect(reads[0]).toMatch(/^src\/plugins\/config\/connection-file\.ts:\d+$/);
+    expect(occurrences(loader, /\b(?:readFile|createReadStream|openSync|open)\(/g)).toEqual([]);
+  });
+});

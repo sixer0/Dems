@@ -1,0 +1,48 @@
+// Step 66 (W44): the Live source as the mobile runtime (W51) will use it, compiled under the mobile app's own compiler options.
+import { createCoreClient } from '@dems/shared/client';
+import { coreActionsOf, settle } from '@dems/shared/live';
+import { LIVE_DEVICE_CLEANUP_GAVE_UP_CODE, asSim, createLiveSim, type LiveSecretsPort, type LiveSim } from '@dems/shared/live/source';
+import type { Sim, VisibilityAdapter } from '@dems/shared/sim';
+
+export function mountLive(origin: string, socketUrl: string, vault: { session: string | null; device: string | null }, visibility: VisibilityAdapter): { sim: Sim; live: LiveSim } {
+  const bearer = (): string | null => vault.session ?? vault.device;
+  const secrets: LiveSecretsPort = {
+    sessionIssued: ({ sessionToken }) => {
+      vault.session = sessionToken;
+    },
+    sessionCleared: () => {
+      vault.session = null;
+    },
+    biometricToken: async () => null,
+    devicePaired: async (redeemed) => {
+      vault.device = redeemed.deviceCredential;
+    },
+    deviceUnpaired: () => {
+      vault.device = null;
+      vault.session = null;
+    },
+  };
+  const live = createLiveSim({
+    client: createCoreClient({ baseUrl: origin, credentials: bearer }),
+    socket: { url: socketUrl, headers: () => (bearer() ? { Authorization: `Bearer ${bearer()}` } : null) },
+    secrets,
+    device: () => ({ deviceName: 'Android device', platform: 'android', appVersion: '0.2.0' }),
+    visibility,
+    autoStart: false,
+    // Second fix round (decision D90): the one report that says the device clean-up gave up.
+    onError: (report) => {
+      if (report.source === 'live.secrets' && report.context?.code === LIVE_DEVICE_CLEANUP_GAVE_UP_CODE) vault.device = null;
+    },
+  });
+  const sim = asSim(live);
+  settle(() => coreActionsOf(sim).pair('123456'), { ok: (result) => void result.ok, fail: () => undefined });
+  live.onSessionEnd((end) => {
+    if (end.kind === 'DEVICE_REVOKED' || end.reason === 'TOKEN_REUSE') live.setPairing(null);
+    // Fix round after CP-C1 (decision D80): an end decided on the tablet while the Core could not be told.
+    if (end.source === 'LOCAL' && end.signOut === 'LOCK') vault.session = null;
+  });
+  // The app replaced the stored device credential and says so.
+  live.reconnect('CREDENTIAL');
+  live.start();
+  return { sim, live };
+}

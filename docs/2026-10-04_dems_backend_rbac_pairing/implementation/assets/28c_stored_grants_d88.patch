@@ -1,0 +1,591 @@
+--- a/apps/core-server/src/plugins/permission-guard/access-rules.ts
++++ b/apps/core-server/src/plugins/permission-guard/access-rules.ts
+@@ -57,6 +57,8 @@
+   PERMISSION_NOT_STORED: 'PERMISSION_NOT_STORED',
+   /** The stored roles or permissions are not exactly the shared vocabulary. */
+   STORED_MATRIX_MISMATCH: 'STORED_MATRIX_MISMATCH',
++  /** A stored grant that the shared role table lacks, or a grant of that table that is not stored. */
++  STORED_GRANTS_MISMATCH: 'STORED_GRANTS_MISMATCH',
+ } as const;
+ export type AccessRuleErrorCode = (typeof AccessRuleErrorCode)[keyof typeof AccessRuleErrorCode];
+ 
+--- a/apps/core-server/src/plugins/permission-guard/matrix.ts
++++ b/apps/core-server/src/plugins/permission-guard/matrix.ts
+@@ -4,8 +4,10 @@
+  * role may only read).
+  *
+  * Two uses, and neither is the per-request decision:
+- *   - the boot step `rbac.matrix`: the stored vocabulary must be exactly the shared one, and
+- *     every permission that the access rule of a registered route names must be stored;
++ *   - the boot step `rbac.matrix` (and `reloadMatrix()` after a database swap): every
++ *     permission that the access rule of a registered route names must be stored, the stored
++ *     vocabulary must be exactly the shared one, and the stored grants must be exactly the
++ *     shared role table (decision D88);
+  *   - operation 10 `getRoleMatrix`, which answers what is stored at the moment of the call.
+  *
+  * The decision of stage 6 does NOT read this: it uses the permissions that stage 4 read from
+@@ -15,7 +17,7 @@
+  * Pure functions over a pool; no Fastify instance.
+  */
+ import type { RoleMatrix } from '@dems/shared/api';
+-import { OperatorRole, Permission } from '@dems/shared/sim';
++import { OperatorRole, Permission, ROLE_PERMISSIONS } from '@dems/shared/sim';
+ import { AccessRuleErrorCode, type AccessRule, type AccessRuleProblem } from './access-rules';
+ 
+ /** What reads the matrix: the runtime pool, or a unit's connection. */
+@@ -89,16 +91,53 @@
+     .join('; ');
+ }
+ 
++/** How a stored grant differs from the shared role table. */
++export interface GrantDifference {
++  /** `missing`: the shared table has the grant and it is not stored. `extra`: it is stored and the shared table lacks it. */
++  readonly direction: 'missing' | 'extra';
++  readonly role: string;
++  readonly permission: string;
++}
++
+ /**
++ * The FIRST difference between the stored grants and the shared role table, or null when they
++ * are the same set. The shared table is `ROLE_PERMISSIONS` of `@dems/shared/sim`: the one the
++ * hosted simulator's own checks read (`roleHas`). Order: every grant of the shared table that
++ * is not stored, by role and then by permission in the order of the vocabulary; then every
++ * stored grant the shared table lacks, in the stored order.
++ */
++export function firstGrantDifference(grants: readonly StoredGrant[]): GrantDifference | null {
++  const stored = new Set(grants.map((grant) => `${grant.role} ${grant.permission}`));
++  for (const role of Object.values(OperatorRole)) {
++    const shared: readonly string[] = ROLE_PERMISSIONS[role];
++    for (const permission of SHARED_PERMISSIONS) {
++      if (shared.includes(permission) && !stored.has(`${role} ${permission}`)) return { direction: 'missing', role, permission };
++    }
++  }
++  for (const grant of grants) {
++    const shared: readonly string[] | undefined = Object.hasOwn(ROLE_PERMISSIONS, grant.role) ? ROLE_PERMISSIONS[grant.role as OperatorRole] : undefined;
++    if (shared === undefined || !shared.includes(grant.permission)) return { direction: 'extra', role: grant.role, permission: grant.permission };
++  }
++  return null;
++}
++
++/**
+  * What is wrong with a stored matrix, for the rules of the registered routes; an empty list
+  * when nothing is.
+  *
+  *   - a permission that the access rule of a registered route names is not stored: no role can
+  *     hold it, the operation could never be called, and the problem names the operation;
+- *   - the stored roles, or the stored permissions, are not exactly the shared vocabulary.
++ *   - the stored roles, or the stored permissions, are not exactly the shared vocabulary;
++ *   - the stored grants are not exactly the shared role table (decision D88). Stage 6 decides
++ *     from PostgreSQL, the hosted simulator's own checks from the shared table: with a stored
++ *     grant the shared table lacks, a call would pass the guard and be refused by the hosted
++ *     action without an audit row. No operation of the server changes a grant, so a difference
++ *     means a database that was edited by hand. Only the FIRST difference is named, by its
++ *     direction, its role and its permission, and only once the vocabulary is the shared one
++ *     (a missing role or permission is the cause then, and is what is reported).
+  *
+- * Which role holds which permission is NOT checked: the grants are data (spec §4.4), the seed
+- * writes them, and the test of AC-B-17 compares them with the shared table.
++ * This is a check at boot and at a reload. It is not asked per request: the decision of a
++ * request uses the grants stage 4 read with that request, whatever they are.
+  */
+ export function checkStoredMatrix(matrix: StoredMatrix, rules: readonly AccessRule[]): AccessRuleProblem[] {
+   const problems: AccessRuleProblem[] = [];
+@@ -121,6 +160,17 @@
+   if (permissions !== null) {
+     problems.push({ code: AccessRuleErrorCode.STORED_MATRIX_MISMATCH, operationId: null, route: null, detail: `permissions ${permissions}` });
+   }
++  if (roles === null && permissions === null) {
++    const grant = firstGrantDifference(matrix.grants);
++    if (grant !== null) {
++      problems.push({
++        code: AccessRuleErrorCode.STORED_GRANTS_MISMATCH,
++        operationId: null,
++        route: null,
++        detail: `${grant.direction} grant: ${grant.role} ${grant.permission}`,
++      });
++    }
++  }
+   return problems;
+ }
+ 
+--- a/apps/core-server/src/plugins/permission-guard/index.ts
++++ b/apps/core-server/src/plugins/permission-guard/index.ts
+@@ -122,8 +122,10 @@
+ export {
+   READ_STORED_MATRIX,
+   checkStoredMatrix,
++  firstGrantDifference,
+   readStoredMatrix,
+   roleMatrixOf,
++  type GrantDifference,
+   type MatrixReader,
+   type StoredGrant,
+   type StoredMatrix,
+@@ -157,10 +159,12 @@
+   /** The stored matrix as last loaded; null until the boot step `rbac.matrix` has run. */
+   matrix(): LoadedMatrix | null;
+   /**
+-   * Reads the stored matrix again and checks it against the rules of the registered routes.
+-   * Rejects with an `AccessRuleError` when the stored vocabulary is not the shared one or a
+-   * named permission is not stored (logged and written to the error log), and with the driver's
+-   * error when the database does not answer.
++   * Reads the stored matrix again and checks it against the rules of the registered routes and
++   * against the shared role table. Rejects with an `AccessRuleError` when a named permission is
++   * not stored, when the stored vocabulary is not the shared one, or when the stored grants are
++   * not exactly the shared role table (logged and written to the error log), and with the
++   * driver's error when the database does not answer. The last matrix that passed stays in
++   * `matrix()`.
+    *
+    * The boot step calls it, and the reset row after it has swapped the database. A role change
+    * needs NO call: the decision reads the caller's permissions with every request.
+@@ -202,13 +206,21 @@
+ const STAGE_REPLACED = 'the access rule stage was replaced: the route check is skipped and stage 6 guards no request of this app';
+ const REFUSED = 'request refused by the access rule';
+ 
+-/** Operations and routes of a list of problems, as one text each: identifiers only. */
+-function problemContext(problems: readonly AccessRuleProblem[]): { operations: string; routes: string; codes: string } {
+-  const join = (values: ReadonlyArray<string | null>): string => [...new Set(values.filter((value) => value !== null))].join(', ');
++/**
++ * A list of problems for the persistent error log, as one text per member. Identifiers only:
++ * codes, operations, route patterns, and what each problem says in words, which names
++ * operations, permissions and roles and never anything a caller sent.
++ */
++function problemContext(problems: readonly AccessRuleProblem[]): { codes: string; operations: string; routes: string; details: string } {
++  const join = (values: ReadonlyArray<string | null>, separator = ', '): string => [...new Set(values.filter((value) => value !== null))].join(separator);
+   return {
+     codes: join(problems.map((problem) => problem.code)),
+     operations: join(problems.map((problem) => problem.operationId)),
+     routes: join(problems.map((problem) => problem.route)),
++    details: join(
++      problems.map((problem) => problem.detail),
++      '; ',
++    ),
+   };
+ }
+ 
+--- a/apps/core-server/src/modules/rbac/index.ts
++++ b/apps/core-server/src/modules/rbac/index.ts
+@@ -14,10 +14,12 @@
+  * THE BOOT STEP `rbac.matrix` runs after the database checks and the engine's rehydration (the
+  * order of the units in `app.ts`). First it holds every route of the router against the
+  * registry (`checkRouter`: also a route that was added before the plugins ran). Then it reads
+- * the stored matrix and stops the boot when the stored roles or permissions are not exactly the
+- * shared vocabulary, or when the access rule of a registered route names a permission that is
+- * not stored. The per-request decision does not use what the step loaded: it reads the caller's
+- * permissions with every request.
++ * the stored matrix and stops the boot when the access rule of a registered route names a
++ * permission that is not stored, when the stored roles or permissions are not exactly the
++ * shared vocabulary, or when the stored grants are not exactly the shared role table (decision
++ * D88: the hosted simulator's own checks read that table, so the two must agree). The
++ * per-request decision does not use what the step loaded: it reads the caller's permissions
++ * with every request.
+  *
+  * Its place after the engine's step is of no consequence for a request: the entry point opens
+  * the listener only after the last boot step has passed, so no request can arrive between the
+--- a/apps/core-server/src/plugins/permission-guard/__tests__/support.ts
++++ b/apps/core-server/src/plugins/permission-guard/__tests__/support.ts
+@@ -17,18 +17,24 @@
+  * FOR A TEST OF THE GUARD, or of a module behind it: `guardApp` and `registryRoutes` build the
+  * real app with stand-in handlers for registry operations that have no route in that app.
+  *
+- * THE MODULES LAND ONE BY ONE (decision D85). Nothing here, and no test that uses it, may depend
+- * on WHICH operations a module has registered:
++ * THE MODULES LAND ONE BY ONE (decision D85). No test that uses this file may depend on WHICH
++ * operations a module has registered, and a stand-in route for a registry operation never
++ * stands beside a module's route (rule M10). Two kinds of test app:
+  *
+- *   - `registryRoutes` adds a stand-in only for an operation that has no route in the app. It
+- *     is called from a plugin that runs after the units, so every module's route is there;
+- *   - a test does not assert on a stand-in's handler for an operation a module may own one
+- *     day. What it asks is whether stage 6 let the request through, and the app records
+- *     exactly that (`GuardApp.passed`: a hook after the request stages and before the body is
+- *     read), whatever the route's handler then does;
+- *   - a POST that only has to show "allowed" is sent with a malformed JSON body
+- *     (`MALFORMED_JSON`): refused by stage 6 it answers 401 or 403, let through it answers 400
+- *     `INVALID_JSON` at stage 7, and no handler of any module runs.
++ *   WITHOUT THE DOMAIN MODULES   the test file imports `./without-domain-modules` first. The
++ *                                operations it calls get stand-ins, whose handlers it may
++ *                                assert on (`GuardApp.reached`): no module can own them there.
++ *                                `registryRoutes` still adds a stand-in only where the app has
++ *                                no route, for the operations of the units that stay real;
++ *   THE REAL APP                 the test registers nothing and names no module's operation.
++ *                                It reads what is registered (`registeredRules()`) and asks
++ *                                only what does not depend on a handler: a refusal of stage 6,
++ *                                and whether stage 6 let a request through (`recordPassed`: a
++ *                                hook after the stages and before the body is read). A POST
++ *                                that only has to show "allowed" is sent with a body that is
++ *                                no JSON (`MALFORMED_JSON`): refused by stage 6 it answers 401
++ *                                or 403, let through it answers 400 `INVALID_JSON` at stage 7,
++ *                                and no handler of any module runs.
+  */
+ import type { CoreApiOperation } from '@dems/shared/api';
+ import { CORE_API_OPERATIONS, WS_PATH } from '@dems/shared/api';
+@@ -86,8 +92,9 @@
+  * keeps its real route. Returns the operations a stand-in was added for.
+  *
+  * Call it from a plugin that is registered after the units (`guardApp` does), so that the
+- * routes of every module exist when it looks. At the top level, before the plugins ran, no
+- * module's route exists yet: use it there only for an operation no unit registers.
++ * routes of every unit exist when it looks. At the top level, before the plugins ran, no unit's
++ * route exists yet: use it there only for an operation that no unit of that app registers (a
++ * domain operation, in an app without the domain modules).
+  */
+ export function registryRoutes(app: FastifyInstance, operationIds: readonly string[], reached: string[] = []): string[] {
+   const added: string[] = [];
+--- a/apps/core-server/src/plugins/permission-guard/__tests__/guard.test.ts
++++ b/apps/core-server/src/plugins/permission-guard/__tests__/guard.test.ts
+@@ -188,7 +188,12 @@
+         level: 'fatal',
+         source: 'permissionGuard.routes',
+         code: 'ROUTE_WITHOUT_RULES',
+-        context: { codes: 'ROUTE_WITHOUT_RULES', operations: '', routes: 'GET /api/v1/scratch' },
++        context: {
++          codes: 'ROUTE_WITHOUT_RULES',
++          operations: '',
++          routes: 'GET /api/v1/scratch',
++          details: 'the route is no operation of the contract registry: it has no access rule and no audit rule',
++        },
+       }),
+     ]);
+   });
+--- a/apps/core-server/src/plugins/permission-guard/__tests__/static.test.ts
++++ b/apps/core-server/src/plugins/permission-guard/__tests__/static.test.ts
+@@ -43,6 +43,8 @@
+   `\\.\\s*${'route'}\\s*\\(|\\.\\s*(?:get|post|put|patch|delete|head|options|all)\\s*\\(\\s*(?:['"\`]\\/|[A-Z][A-Z0-9_]*\\s*,)`,
+   'g',
+ );
++const ROLE_NAME = new RegExp(`\\b(?:${'INVESTIGATOR'}|${'SUPERVISOR'}|${'TECHNICIAN'})\\b`, 'g');
++const SHARED_TABLE = new RegExp(`\\b${['ROLE', 'PERMISSIONS'].join('_')}\\b`, 'g');
+ const PERMISSION_NAME = new RegExp(`\\bPermission\\s*\\.\\s*[A-Z_]+\\b|\\b${'permissions'}\\s*\\.\\s*includes\\b|\\b${'role'}Has\\b`, 'g');
+ 
+ describe('the scan itself', () => {
+@@ -138,6 +140,18 @@
+     expect(matrix).not.toMatch(/\$\d/);
+   });
+ 
++  it('decision D88: the grants the stored matrix is compared with have ONE source, the shared role table, and are typed nowhere in the two folders', () => {
++    // The table is imported, in one file, from the package the hosted simulator's own checks read.
++    expect(files(SHARED_TABLE)).toEqual(['src/plugins/permission-guard/matrix.ts']);
++    const matrix = own.find((file) => file.path === 'src/plugins/permission-guard/matrix.ts')?.text ?? '';
++    expect(matrix).toMatch(new RegExp(`import \\{[^}]*\\b${['ROLE', 'PERMISSIONS'].join('_')}\\b[^}]*\\} from '@dems/shared/sim';`));
++    // No role is named in the code of the two folders: a table of role and permission cannot be typed without one.
++    expect(places(ROLE_NAME)).toEqual([]);
++    // Positive control.
++    const sample: SourceFile[] = [{ path: 'src/sample.ts', text: `const GRANTS = { ${'TECHNICIAN'}: ['MAINTENANCE'] }; const t = ${['ROLE', 'PERMISSIONS'].join('_')}.X;` }];
++    expect([occurrences(sample, ROLE_NAME).length, occurrences(sample, SHARED_TABLE).length]).toEqual([1, 1]);
++  });
++
+   it('the RBAC module names no permission and reads none: who may call is the access rule of the registry', () => {
+     const rbac = ownCode.filter((file) => file.path.startsWith('src/modules/rbac/'));
+     expect(places(PERMISSION_NAME, rbac)).toEqual([]);
+--- a/apps/core-server/src/modules/rbac/__tests__/matrix.db.test.ts
++++ b/apps/core-server/src/modules/rbac/__tests__/matrix.db.test.ts
+@@ -317,22 +317,79 @@
+ });
+ 
+ describe('reloadMatrix: the stored matrix read again', () => {
+-  it('takes a changed grant, and keeps the last good matrix when the stored vocabulary no longer fits', async () => {
++  /** What a reload rejects with, or null when it passes. */
++  const reloadError = (): Promise<unknown> =>
++    permissionGuard(guard.app)
++      .reloadMatrix()
++      .then(
++        () => null,
++        (thrown: unknown) => thrown,
++      );
++
++  it('reads the matrix anew and stamps it; decision D88: a grant that was changed is refused at the reload, by its direction, role and permission, and the last good matrix is kept', async () => {
+     const control = permissionGuard(guard.app);
+     const good = control.matrix();
+     guard.clock.advance(5_000);
++    const again = await control.reloadMatrix();
++    expect(again.grants).toEqual(good?.grants);
++    expect(again.loadedAt).toBe(guard.clock.now());
++    expect(control.matrix()).toBe(again);
++
++    // A grant of the shared table that is no longer stored.
+     await owner.query("DELETE FROM public.role_permissions WHERE role_id = 'INVESTIGATOR' AND permission_id = 'SESSION_NOTE'");
+     try {
+-      const reloaded = await control.reloadMatrix();
+-      expect(reloaded.grants).toHaveLength(17);
+-      expect(reloaded.loadedAt).toBe(guard.clock.now());
+-      expect(control.matrix()).toBe(reloaded);
++      const error = await reloadError();
++      expect(error).toBeInstanceOf(AccessRuleError);
++      expect(error).toMatchObject({
++        code: AccessRuleErrorCode.STORED_GRANTS_MISMATCH,
++        problems: [{ code: 'STORED_GRANTS_MISMATCH', operationId: null, route: null, detail: 'missing grant: INVESTIGATOR SESSION_NOTE' }],
++      });
++      expect(control.matrix()).toBe(again);
+     } finally {
+       await owner.query("INSERT INTO public.role_permissions (role_id, permission_id) VALUES ('INVESTIGATOR', 'SESSION_NOTE')");
+     }
++    // A stored grant the shared table lacks.
++    await owner.query("INSERT INTO public.role_permissions (role_id, permission_id) VALUES ('TECHNICIAN', 'USER_ADMIN')");
++    try {
++      expect(await reloadError()).toMatchObject({
++        code: AccessRuleErrorCode.STORED_GRANTS_MISMATCH,
++        problems: [{ detail: 'extra grant: TECHNICIAN USER_ADMIN' }],
++      });
++      expect(control.matrix()).toBe(again);
++    } finally {
++      await owner.query("DELETE FROM public.role_permissions WHERE role_id = 'TECHNICIAN' AND permission_id = 'USER_ADMIN'");
++    }
++    // The log line of a refusal holds the code and the three names, and nothing else of the matrix.
++    const lines = guard.log.lines().filter((line) => line['msg'] === 'the stored role matrix does not fit the access rules');
++    expect(lines.map((line) => [line['level'], line['code'], line['problems']])).toEqual([
++      [50, 'STORED_GRANTS_MISMATCH', [{ code: 'STORED_GRANTS_MISMATCH', operationId: null, route: null, detail: 'missing grant: INVESTIGATOR SESSION_NOTE' }]],
++      [50, 'STORED_GRANTS_MISMATCH', [{ code: 'STORED_GRANTS_MISMATCH', operationId: null, route: null, detail: 'extra grant: TECHNICIAN USER_ADMIN' }]],
++    ]);
+     const restored = await control.reloadMatrix();
+     expect(restored.grants).toEqual(good?.grants);
++  });
++
++  it('the grants assertion is a check at boot and at a reload, not per request: after a grant was changed in the running server, requests are decided by what is stored', async () => {
++    const technician = await webOperator(guard, TECHNICIAN.username);
++    const policy = { method: 'POST', url: '/api/v1/storage/policy', headers: { ...technician, origin: WEB_ORIGIN } } as const;
++    expect((await guard.app.inject(policy)).statusCode).toBe(200);
++    await owner.query("DELETE FROM public.role_permissions WHERE role_id = 'TECHNICIAN' AND permission_id = 'MAINTENANCE'");
++    try {
++      // No reload, no restart: the next request is refused, with its row.
++      expect(outcome(await guard.app.inject(policy))).toEqual([403, 'NOT_PERMITTED']);
++      // And a reload now would refuse the matrix.
++      expect(await reloadError()).toMatchObject({ code: AccessRuleErrorCode.STORED_GRANTS_MISMATCH, problems: [{ detail: 'missing grant: TECHNICIAN MAINTENANCE' }] });
++    } finally {
++      await owner.query("INSERT INTO public.role_permissions (role_id, permission_id) VALUES ('TECHNICIAN', 'MAINTENANCE')");
++    }
++    expect((await guard.app.inject(policy)).statusCode).toBe(200);
++    expect(await reloadError()).toBeNull();
++  });
+ 
++  it('keeps the last good matrix when the stored vocabulary no longer fits', async () => {
++    const control = permissionGuard(guard.app);
++    const restored = await control.reloadMatrix();
++
+     // A permission the server does not know.
+     await owner.query("INSERT INTO public.permissions (id, sort_order) VALUES ('WARP_DRIVE', 13)");
+     try {
+@@ -399,6 +456,31 @@
+     expect(stopped?.cause).toMatchObject({ code: AccessRuleErrorCode.STORED_MATRIX_MISMATCH, problems: [{ detail: 'permissions not stored: DEMO_CONTROL' }] });
+   });
+ 
++  it.each([
++    ['one extra grant', "INSERT INTO public.role_permissions (role_id, permission_id) VALUES ('INVESTIGATOR', 'MAINTENANCE')", 'extra grant: INVESTIGATOR MAINTENANCE'],
++    ['one missing grant', "DELETE FROM public.role_permissions WHERE role_id = 'SUPERVISOR' AND permission_id = 'EVIDENCE_EXPORT'", 'missing grant: SUPERVISOR EVIDENCE_EXPORT'],
++  ])('decision D88: a clone whose grants were changed BEFORE the boot (%s) does not boot: STORED_GRANTS_MISMATCH names the first difference', async (label, change, detail) => {
++    const { target, database } = await clone(`matrix_grants_${label.split(' ')[1]}`);
++    await database.ownerPool().query(change);
++
++    const { app, stopped } = await boot(target, { standIns: ['listUsers', 'setStoragePolicy'] });
++    expect(stopped?.stepId).toBe(RBAC_BOOT_STEP);
++    expect(passedSteps(app)).toEqual(expect.arrayContaining(STEPS_BEFORE));
++    expect(passedSteps(app)).not.toContain(RBAC_BOOT_STEP);
++    expect(stopped?.cause).toBeInstanceOf(AccessRuleError);
++    expect(stopped?.cause).toMatchObject({
++      code: AccessRuleErrorCode.STORED_GRANTS_MISMATCH,
++      problems: [{ code: 'STORED_GRANTS_MISMATCH', operationId: null, route: null, detail }],
++    });
++    expect(app.app.server.listening).toBe(false);
++    expect(permissionGuard(app.app).matrix()).toBeNull();
++    // One log line: the code, the direction, the role and the permission; no other grant, no list.
++    const lines = app.log.lines().filter((entry) => entry['msg'] === 'the stored role matrix does not fit the access rules');
++    expect(lines).toHaveLength(1);
++    expect(lines[0]).toMatchObject({ level: 50, code: 'STORED_GRANTS_MISMATCH', problems: [{ detail }] });
++    expect(JSON.stringify(lines[0])).not.toContain('SESSION_START');
++  });
++
+   it('decision D82: a route that was added before the plugins ran passes app.ready() and stops the boot at rbac.matrix, before any listener', async () => {
+     const { target } = await clone('matrix_scratch_route');
+     const { app, stopped } = await boot(target, {
+--- a/apps/core-server/src/modules/rbac/__tests__/routes.test.ts
++++ b/apps/core-server/src/modules/rbac/__tests__/routes.test.ts
+@@ -3,7 +3,7 @@
+ // factory, and a pool that a test makes answer or fail. The answer against PostgreSQL is in
+ // `rbac.db.test.ts`.
+ import { ADMINISTRATION_OPERATIONS, CORE_API_OPERATIONS, CoreApiAccessKind, CoreApiAuditNone, CoreApiTag, matchCoreApiOperation, validateCoreApiResponse } from '@dems/shared/api';
+-import { ROLE_PERMISSIONS, type OperatorRole } from '@dems/shared/sim';
++import { OperatorRole, Permission, ROLE_PERMISSIONS } from '@dems/shared/sim';
+ import type { FastifyInstance, RouteOptions } from 'fastify';
+ import { afterEach, describe, expect, it } from 'vitest';
+ import { buildApp } from '../../../app';
+@@ -206,6 +206,41 @@
+     expect(line).toMatchObject({ level: 50, code: (error as AccessRuleError).code });
+   });
+ 
++  it('decision D88: reloadMatrix refuses a matrix whose grants are not the shared role table, and passes the one that is', async () => {
++    const roles = Object.values(OperatorRole);
++    const permissions = Object.values(Permission);
++    const grants = roles.flatMap((role) =>
++      permissions.filter((permission) => (ROLE_PERMISSIONS[role] as readonly string[]).includes(permission)).map((permission) => ({ role, permission })),
++    );
++    const good = await build({ rows: [{ roles, permissions, grants }] });
++    await expect(permissionGuard(good.app).reloadMatrix()).resolves.toMatchObject({ roles, permissions, grants });
++
++    const extra = await build({ rows: [{ roles, permissions, grants: [...grants, { role: 'TECHNICIAN', permission: 'PAIRING_MANAGE' }] }] });
++    await expect(permissionGuard(extra.app).reloadMatrix()).rejects.toMatchObject({
++      name: 'AccessRuleError',
++      code: 'STORED_GRANTS_MISMATCH',
++      problems: [{ code: 'STORED_GRANTS_MISMATCH', operationId: null, route: null, detail: 'extra grant: TECHNICIAN PAIRING_MANAGE' }],
++    });
++    expect(permissionGuard(extra.app).matrix()).toBeNull();
++    // What is logged: the code, and the one problem with its direction, role and permission.
++    // No other grant of the stored matrix, and no list of them.
++    const refused = extra.log.lines().filter((entry) => entry['msg'] === 'the stored role matrix does not fit the access rules');
++    expect(refused).toHaveLength(1);
++    expect(refused[0]).toMatchObject({
++      level: 50,
++      code: 'STORED_GRANTS_MISMATCH',
++      problems: [{ code: 'STORED_GRANTS_MISMATCH', operationId: null, route: null, detail: 'extra grant: TECHNICIAN PAIRING_MANAGE' }],
++    });
++    expect(JSON.stringify(refused[0])).not.toMatch(/SESSION_START|EVIDENCE_|INVESTIGATOR|SUPERVISOR|grants"/);
++
++    const missing = await build({ rows: [{ roles, permissions, grants: grants.slice(1) }] });
++    await expect(permissionGuard(missing.app).reloadMatrix()).rejects.toMatchObject({
++      code: 'STORED_GRANTS_MISMATCH',
++      problems: [{ detail: 'missing grant: INVESTIGATOR SESSION_START' }],
++    });
++    expect(permissionGuard(missing.app).matrix()).toBeNull();
++  });
++
+   it('reloadMatrix hands a driver failure on, logged by its code only', async () => {
+     const built = await build({ failure: Object.assign(new Error('connection refused MARK-w28-driver'), { code: 'ECONNREFUSED' }) });
+     await expect(permissionGuard(built.app).reloadMatrix()).rejects.toMatchObject({ code: 'ECONNREFUSED' });
+--- /dev/null
++++ b/apps/core-server/src/plugins/permission-guard/__tests__/matrix.test.ts
+@@ -0,0 +1,136 @@
++// The check of the stored matrix (plan row W28; spec §4.3, §4.4, §4.6 RB-7; decision D88). Pure:
++// no app, no database. The same check against PostgreSQL, at boot and at a reload, is in
++// `src/modules/rbac/__tests__/matrix.db.test.ts`.
++import { OperatorRole, Permission, ROLE_PERMISSIONS } from '@dems/shared/sim';
++import { describe, expect, it } from 'vitest';
++import {
++  AccessRuleErrorCode,
++  checkStoredMatrix,
++  createRuleBook,
++  firstGrantDifference,
++  isAccessRule,
++  roleMatrixOf,
++  type AccessRule,
++  type StoredGrant,
++  type StoredMatrix,
++} from '../index';
++
++const ROLES = Object.values(OperatorRole);
++const PERMISSIONS = Object.values(Permission);
++
++/** The grants of the shared role table, as the stored matrix orders them: by role, then by permission. */
++const SHARED_GRANTS: StoredGrant[] = ROLES.flatMap((role) =>
++  PERMISSIONS.filter((permission) => (ROLE_PERMISSIONS[role] as readonly Permission[]).includes(permission)).map((permission) => ({ role, permission })),
++);
++
++const matrix = (change: Partial<StoredMatrix> = {}): StoredMatrix => ({ roles: ROLES, permissions: PERMISSIONS, grants: SHARED_GRANTS, ...change });
++const without = (role: string, permission: string): StoredGrant[] => SHARED_GRANTS.filter((grant) => !(grant.role === role && grant.permission === permission));
++
++const book = createRuleBook();
++const RULES: AccessRule[] = book.operationIds.map((operationId) => book.ruleOf(operationId)).filter(isAccessRule);
++
++describe('the stored matrix that passes', () => {
++  it('is the shared vocabulary with exactly the 18 grants of the shared role table, for the rules of all 75 operations', () => {
++    expect(SHARED_GRANTS).toHaveLength(18);
++    expect(RULES).toHaveLength(75);
++    expect(checkStoredMatrix(matrix(), RULES)).toEqual([]);
++    expect(firstGrantDifference(SHARED_GRANTS)).toBeNull();
++  });
++
++  it('whatever the order the grants are stored in', () => {
++    expect(firstGrantDifference([...SHARED_GRANTS].reverse())).toBeNull();
++    expect(checkStoredMatrix(matrix({ grants: [...SHARED_GRANTS].reverse() }), RULES)).toEqual([]);
++  });
++});
++
++describe('decision D88: the stored grants must be exactly the shared role table', () => {
++  it('a stored grant the shared table lacks: STORED_GRANTS_MISMATCH, naming the direction, the role and the permission, and nothing else', () => {
++    const problems = checkStoredMatrix(matrix({ grants: [...SHARED_GRANTS, { role: 'INVESTIGATOR', permission: 'MAINTENANCE' }] }), RULES);
++    expect(problems).toEqual([{ code: AccessRuleErrorCode.STORED_GRANTS_MISMATCH, operationId: null, route: null, detail: 'extra grant: INVESTIGATOR MAINTENANCE' }]);
++  });
++
++  it('a grant of the shared table that is not stored: the same code, direction missing', () => {
++    const problems = checkStoredMatrix(matrix({ grants: without('TECHNICIAN', 'MAINTENANCE') }), RULES);
++    expect(problems).toEqual([{ code: AccessRuleErrorCode.STORED_GRANTS_MISMATCH, operationId: null, route: null, detail: 'missing grant: TECHNICIAN MAINTENANCE' }]);
++  });
++
++  it('only the FIRST difference is named: a missing grant before an extra one, by role and then by permission in the order of the vocabulary', () => {
++    expect(firstGrantDifference(without('SUPERVISOR', 'USER_ADMIN').filter((grant) => grant.role !== 'TECHNICIAN'))).toEqual({
++      direction: 'missing',
++      role: 'SUPERVISOR',
++      permission: 'USER_ADMIN',
++    });
++    expect(firstGrantDifference([{ role: 'TECHNICIAN', permission: 'USER_ADMIN' }, ...without('INVESTIGATOR', 'SESSION_NOTE')])).toEqual({
++      direction: 'missing',
++      role: 'INVESTIGATOR',
++      permission: 'SESSION_NOTE',
++    });
++    expect(firstGrantDifference([...SHARED_GRANTS, { role: 'TECHNICIAN', permission: 'USER_ADMIN' }, { role: 'INVESTIGATOR', permission: 'DEMO_CONTROL' }])).toEqual({
++      direction: 'extra',
++      role: 'TECHNICIAN',
++      permission: 'USER_ADMIN',
++    });
++    expect(firstGrantDifference([])).toEqual({ direction: 'missing', role: 'INVESTIGATOR', permission: 'SESSION_START' });
++    // One problem, however many grants differ.
++    expect(checkStoredMatrix(matrix({ grants: [] }), RULES)).toHaveLength(1);
++  });
++
++  it('every single grant of the shared table is needed, and every single other pair is refused', () => {
++    for (const grant of SHARED_GRANTS) {
++      expect(firstGrantDifference(without(grant.role, grant.permission))).toEqual({ direction: 'missing', ...grant });
++    }
++    let extras = 0;
++    for (const role of ROLES) {
++      for (const permission of PERMISSIONS) {
++        if ((ROLE_PERMISSIONS[role] as readonly Permission[]).includes(permission)) continue;
++        extras += 1;
++        expect(firstGrantDifference([...SHARED_GRANTS, { role, permission }])).toEqual({ direction: 'extra', role, permission });
++      }
++    }
++    expect(extras).toBe(3 * 12 - 18);
++  });
++
++  it('a grant of a role or a permission the vocabulary does not hold is an extra one', () => {
++    expect(firstGrantDifference([...SHARED_GRANTS, { role: 'AUDITOR', permission: 'EVIDENCE_VIEW' }])).toEqual({ direction: 'extra', role: 'AUDITOR', permission: 'EVIDENCE_VIEW' });
++    expect(firstGrantDifference([...SHARED_GRANTS, { role: 'SUPERVISOR', permission: 'WARP_DRIVE' }])).toEqual({ direction: 'extra', role: 'SUPERVISOR', permission: 'WARP_DRIVE' });
++    // Nor a name that every object answers to: the role is looked up among the table's OWN members.
++    for (const role of ['constructor', 'toString', '__proto__', 'hasOwnProperty']) {
++      expect(firstGrantDifference([...SHARED_GRANTS, { role, permission: 'EVIDENCE_VIEW' }])).toEqual({ direction: 'extra', role, permission: 'EVIDENCE_VIEW' });
++    }
++  });
++
++  it('the grants are compared only once the vocabulary is the shared one: a missing permission or role is the cause, and is what is reported', () => {
++    const noDemo = matrix({ permissions: PERMISSIONS.filter((permission) => permission !== 'DEMO_CONTROL'), grants: without('SUPERVISOR', 'DEMO_CONTROL') });
++    const problems = checkStoredMatrix(noDemo, []);
++    expect(problems.map((problem) => [problem.code, problem.detail])).toEqual([[AccessRuleErrorCode.STORED_MATRIX_MISMATCH, 'permissions not stored: DEMO_CONTROL']]);
++    const noRole = matrix({ roles: ['INVESTIGATOR', 'SUPERVISOR'], grants: SHARED_GRANTS.filter((grant) => grant.role !== 'TECHNICIAN') });
++    expect(checkStoredMatrix(noRole, []).map((problem) => [problem.code, problem.detail])).toEqual([[AccessRuleErrorCode.STORED_MATRIX_MISMATCH, 'roles not stored: TECHNICIAN']]);
++  });
++});
++
++describe('the other two checks, as before', () => {
++  it('a permission that the rule of a route names is not stored: one problem per route and permission, naming the operation, then the mismatch', () => {
++    const users = RULES.filter((rule) => rule.permissions.includes(Permission.USER_ADMIN));
++    const stored = matrix({ permissions: PERMISSIONS.filter((permission) => permission !== 'USER_ADMIN'), grants: without('SUPERVISOR', 'USER_ADMIN') });
++    const problems = checkStoredMatrix(stored, users);
++    expect(problems.map((problem) => [problem.code, problem.operationId])).toEqual([
++      ...users.map((rule) => [AccessRuleErrorCode.PERMISSION_NOT_STORED, rule.operationId]),
++      [AccessRuleErrorCode.STORED_MATRIX_MISMATCH, null],
++    ]);
++    expect(users.map((rule) => rule.operationId)).toEqual(['listUsers', 'assignUserRole', 'enableUser', 'disableUser']);
++  });
++
++  it('a stored name the server does not know, and an empty matrix', () => {
++    expect(checkStoredMatrix(matrix({ permissions: [...PERMISSIONS, 'WARP_DRIVE'] }), []).map((problem) => problem.detail)).toEqual([
++      'permissions stored and unknown to the server: WARP_DRIVE',
++    ]);
++    expect(checkStoredMatrix({ roles: [], permissions: [], grants: [] }, []).map((problem) => problem.code)).toEqual([
++      AccessRuleErrorCode.STORED_MATRIX_MISMATCH,
++      AccessRuleErrorCode.STORED_MATRIX_MISMATCH,
++    ]);
++  });
++
++  it('roleMatrixOf hands the stored lists on in their order, with editable false', () => {
++    expect(roleMatrixOf(matrix())).toEqual({ roles: ROLES, permissions: PERMISSIONS, grants: SHARED_GRANTS, editable: false });
++  });
++});

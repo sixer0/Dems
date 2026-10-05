@@ -1,6 +1,6 @@
 // Mobile Jest setup: masterplan/01_specs.md §8 (adjusted, M18-7) plus the 04_mobile_specs.md §10.1
 // additions (step 67). Loaded through jest.config.js `setupFilesAfterEnv`.
-import { jest } from '@jest/globals';
+import { beforeEach, jest } from '@jest/globals';
 import 'react-native-gesture-handler/jestSetup';
 
 // Reanimated 4.5 + Worklets 0.10: the native Worklets module cannot load in Jest, so it is replaced
@@ -132,4 +132,193 @@ jest.mock('expo-video', () => {
     setVideoCacheSizeAsync: async () => undefined,
     getCurrentVideoCacheSize: () => 0,
   };
+});
+
+// Backend task W15 (04_client_integration_spec TS-16): expo-secure-store as an in-memory map, with
+// switches for what a PROTECTED operation does, and expo-device with a switchable `isDevice`.
+// A test reaches the switches through two globals, so that no file under `src/` has to name the
+// secure-store package (MP-1: the wrapper `src/runtime/secure-credentials.ts` is its only importer):
+//
+//   __DEMS_SECURE_STORE_MOCK__.protectedRead = 'fail';        // 'prompt' (default) | 'pass' | 'fail'
+//   __DEMS_SECURE_STORE_MOCK__.protectedWrite = 'fail';       // the same three
+//   __DEMS_SECURE_STORE_MOCK__.failure = 'user-canceled';     // what a failing protected operation reports
+//   __DEMS_SECURE_STORE_MOCK__.failNext('write');             // the next write fails, protected or not
+//   __DEMS_SECURE_STORE_MOCK__.prompts                        // one entry per OS prompt "shown"
+//   __DEMS_DEVICE_MOCK__.isDevice = true;                     // default false, as on an emulator
+//
+// 'prompt' records a prompt and then succeeds (a device with an enrolled fingerprint: Android asks
+// at every protected read AND write); 'pass' succeeds without one; 'fail' rejects like the native
+// module (`code: 'ERR_AUTHENTICATION'`), before anything is stored. Both are reset before each test.
+type MockProtectedMode = 'prompt' | 'pass' | 'fail';
+type MockProtectedFailure = 'not-enrolled' | 'no-hardware' | 'user-canceled' | 'lockout';
+type MockStoreOperation = 'read' | 'write' | 'delete';
+interface MockStoreOptions {
+  requireAuthentication?: boolean;
+  authenticationPrompt?: string;
+}
+
+export interface SecureStoreMockControl {
+  protectedRead: MockProtectedMode;
+  protectedWrite: MockProtectedMode;
+  failure: MockProtectedFailure;
+  /** What `canUseBiometricAuthentication()` answers. */
+  canUseBiometricAuthentication: boolean;
+  /** The OS prompts "shown", in order. */
+  readonly prompts: { operation: 'read' | 'write'; key: string; title: string }[];
+  /** Makes the next `count` operations of that kind reject with a non-authentication error. */
+  failNext(operation: MockStoreOperation, count?: number): void;
+  /** Puts an item into the map without going through the module (for example a corrupt one). */
+  seed(key: string, value: string, protectedItem?: boolean): void;
+  has(key: string): boolean;
+  /** Whether the stored item carries the authentication requirement; `null` when it is absent. */
+  isProtected(key: string): boolean | null;
+  /** The stored text; `null` when the item is absent. For assertions on shape only. */
+  peek(key: string): string | null;
+  keys(): string[];
+  reset(): void;
+}
+
+export interface DeviceMockControl {
+  isDevice: boolean;
+  platformApiLevel: number | null;
+  reset(): void;
+}
+
+declare global {
+  var __DEMS_SECURE_STORE_MOCK__: SecureStoreMockControl;
+  var __DEMS_DEVICE_MOCK__: DeviceMockControl;
+}
+
+const MOCK_FAILURE_TEXT: Record<MockProtectedFailure, string> = {
+  'not-enrolled': 'Could not Authenticate the user: No biometrics are currently enrolled',
+  'no-hardware':
+    'Could not Authenticate the user: No hardware available for biometric authentication. Use expo-local-authentication to check if the device supports it',
+  'user-canceled': 'Could not Authenticate the user: User canceled the authentication',
+  lockout: 'Could not Authenticate the user: Lockout',
+};
+
+const mockSecureItems = new Map<string, { value: string; protectedItem: boolean }>();
+const mockSecureFailNext: Record<MockStoreOperation, number> = { read: 0, write: 0, delete: 0 };
+
+const mockSecureStore: SecureStoreMockControl = {
+  protectedRead: 'prompt',
+  protectedWrite: 'prompt',
+  failure: 'not-enrolled',
+  canUseBiometricAuthentication: true,
+  prompts: [],
+  failNext(operation, count = 1) {
+    mockSecureFailNext[operation] = count;
+  },
+  seed(key, value, protectedItem = false) {
+    mockSecureItems.set(key, { value, protectedItem });
+  },
+  has: (key) => mockSecureItems.has(key),
+  isProtected: (key) => mockSecureItems.get(key)?.protectedItem ?? null,
+  peek: (key) => mockSecureItems.get(key)?.value ?? null,
+  keys: () => [...mockSecureItems.keys()].sort(),
+  reset() {
+    mockSecureItems.clear();
+    mockSecureStore.prompts.length = 0;
+    mockSecureStore.protectedRead = 'prompt';
+    mockSecureStore.protectedWrite = 'prompt';
+    mockSecureStore.failure = 'not-enrolled';
+    mockSecureStore.canUseBiometricAuthentication = true;
+    mockSecureFailNext.read = 0;
+    mockSecureFailNext.write = 0;
+    mockSecureFailNext.delete = 0;
+  },
+};
+
+const mockDevice: DeviceMockControl = {
+  isDevice: false,
+  platformApiLevel: 36,
+  reset() {
+    mockDevice.isDevice = false;
+    mockDevice.platformApiLevel = 36;
+  },
+};
+
+globalThis.__DEMS_SECURE_STORE_MOCK__ = mockSecureStore;
+globalThis.__DEMS_DEVICE_MOCK__ = mockDevice;
+
+beforeEach(() => {
+  mockSecureStore.reset();
+  mockDevice.reset();
+});
+
+jest.mock('expo-secure-store', () => {
+  const coded = (message: string, code: string) => Object.assign(new Error(message), { code });
+  /** The native module's own failure of an operation that is not about authentication. */
+  const failIfAsked = (operation: MockStoreOperation, key: string) => {
+    if (mockSecureFailNext[operation] <= 0) return;
+    mockSecureFailNext[operation] -= 1;
+    const [text, code] =
+      operation === 'read'
+        ? [`Could not decrypt the value for key '${key}' under keychain 'key_v1'. Caused by: unknown`, 'ERR_DECRYPT']
+        : operation === 'write'
+          ? [`An error occurred when writing to key: '${key}' under keychain: 'key_v1'. Caused by: unknown`, 'ERR_WRITE']
+          : [`Could not delete the value for key '${key}' under keychain 'key_v1'. Caused by: unknown`, 'ERR_DELETE'];
+    throw coded(text, code);
+  };
+  /** A protected operation: fails, or "shows" the OS prompt, or passes without one. */
+  const authenticate = (mode: MockProtectedMode, operation: 'read' | 'write', key: string, options?: MockStoreOptions) => {
+    if (mode === 'fail') throw coded(MOCK_FAILURE_TEXT[mockSecureStore.failure], 'ERR_AUTHENTICATION');
+    if (mode === 'prompt') mockSecureStore.prompts.push({ operation, key, title: options?.authenticationPrompt ?? '' });
+  };
+  const validKey = (key: string) => {
+    if (typeof key !== 'string' || !/^[\w.-]+$/.test(key)) {
+      throw new Error('Invalid key provided to SecureStore. Keys must not be empty and contain only alphanumeric characters, ".", "-", and "_".');
+    }
+  };
+  const set = (key: string, value: string, options?: MockStoreOptions) => {
+    validKey(key);
+    if (typeof value !== 'string') throw new Error('Invalid value provided to SecureStore. Values must be strings');
+    failIfAsked('write', key);
+    const protectedItem = options?.requireAuthentication === true;
+    if (protectedItem) authenticate(mockSecureStore.protectedWrite, 'write', key, options);
+    mockSecureItems.set(key, { value, protectedItem });
+  };
+  const get = (key: string, options?: MockStoreOptions) => {
+    validKey(key);
+    failIfAsked('read', key);
+    const item = mockSecureItems.get(key);
+    if (!item) return null;
+    // As on Android: the stored item, not the caller's option, says whether the OS check runs.
+    if (item.protectedItem) authenticate(mockSecureStore.protectedRead, 'read', key, options);
+    return item.value;
+  };
+  return {
+    __esModule: true,
+    AFTER_FIRST_UNLOCK: 0,
+    AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY: 1,
+    ALWAYS: 2,
+    WHEN_PASSCODE_SET_THIS_DEVICE_ONLY: 3,
+    ALWAYS_THIS_DEVICE_ONLY: 4,
+    WHEN_UNLOCKED: 5,
+    WHEN_UNLOCKED_THIS_DEVICE_ONLY: 6,
+    isAvailableAsync: jest.fn(async () => true),
+    canUseBiometricAuthentication: jest.fn(() => mockSecureStore.canUseBiometricAuthentication),
+    setItemAsync: jest.fn(async (key: string, value: string, options?: MockStoreOptions) => set(key, value, options)),
+    getItemAsync: jest.fn(async (key: string, options?: MockStoreOptions) => get(key, options)),
+    deleteItemAsync: jest.fn(async (key: string) => {
+      validKey(key);
+      failIfAsked('delete', key);
+      mockSecureItems.delete(key);
+    }),
+    setItem: jest.fn((key: string, value: string, options?: MockStoreOptions) => set(key, value, options)),
+    getItem: jest.fn((key: string, options?: MockStoreOptions) => get(key, options)),
+  };
+});
+
+// jest-expo mocks the native module of expo-device with `isDevice: false`; this adds the switch.
+// Every other export is the package's own.
+jest.mock('expo-device', () => {
+  const actual = jest.requireActual<Record<string, unknown>>('expo-device');
+  const mocked: Record<string, unknown> = { __esModule: true };
+  for (const name of Object.keys(actual)) {
+    if (name !== 'isDevice' && name !== 'platformApiLevel') mocked[name] = actual[name];
+  }
+  Object.defineProperty(mocked, 'isDevice', { enumerable: true, get: () => mockDevice.isDevice });
+  Object.defineProperty(mocked, 'platformApiLevel', { enumerable: true, get: () => mockDevice.platformApiLevel });
+  return mocked;
 });

@@ -1,0 +1,41 @@
+// Scratch runner configuration of plan row W48 (blueprint step 70), outside the repository
+// (rule M15): the workspace's own Vitest configuration plus ONE load-time transform of ONE file,
+// the row's own test file `test/acceptance/pairing-lifecycle.test.ts`. No file of the tree is
+// changed.
+//
+//   W48_MUTATION=<id>   one text of the test file is replaced (mutations.json and probes.json:
+//                       id, note, from, to). The text must occur exactly once. A mutation changes
+//                       the TEST'S INPUT (a step left out, another value presented) or the CLONE
+//                       (a row changed as the owner role), never production code.
+//   W48_REPLACE=<file>  the runner loads the content of a scratch file IN PLACE of the test file
+//                       (a minimal reproduction of a finding; its imports are relative to
+//                       `test/acceptance/`).
+import { readFileSync } from 'node:fs';
+import { mergeConfig } from '/Users/gsp-budi/Documents/DEMS/node_modules/vitest/dist/config.js';
+import base from '/Users/gsp-budi/Documents/DEMS/apps/core-server/vitest.config.ts';
+
+const ROOT = '/Users/gsp-budi/Documents/DEMS/apps/core-server';
+const FILE = `${ROOT}/test/acceptance/pairing-lifecycle.test.ts`;
+const mutations = [...JSON.parse(readFileSync(new URL('./mutations.json', import.meta.url), 'utf8')), ...JSON.parse(readFileSync(new URL('./probes.json', import.meta.url), 'utf8'))];
+const chosen = process.env.W48_MUTATION ?? '';
+const mutation = chosen === '' ? null : mutations.find((entry) => entry.id === chosen);
+if (chosen !== '' && !mutation) throw new Error(`no mutation ${chosen}`);
+const replace = process.env.W48_REPLACE ?? '';
+
+const plugin = {
+  name: 'w48-test-input',
+  enforce: 'pre',
+  load(id) {
+    if (id.split('?')[0] !== FILE) return null;
+    if (replace !== '') return readFileSync(replace, 'utf8');
+    if (mutation === null) return null;
+    const source = readFileSync(FILE, 'utf8');
+    const parts = source.split(mutation.from);
+    if (parts.length !== 2) throw new Error(`mutation ${mutation.id}: the text to replace occurs ${parts.length - 1} time(s), not once`);
+    return parts.join(mutation.to);
+  },
+};
+
+const merged = mergeConfig(base, { root: ROOT, plugins: [plugin] });
+merged.test.projects = merged.test.projects.map((project) => ({ ...project, plugins: [plugin] }));
+export default merged;

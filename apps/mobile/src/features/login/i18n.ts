@@ -46,4 +46,21 @@ export const loginEn = {
     STALE: 'Core link stale',
     OFFLINE: 'Core offline',
   },
+  // Backend task W59 (04_client_integration_spec §9.2, §3.5; additive): what the Login alone says
+  // while the Core server is the Core (LIVE mode, debug builds). No key above is read differently.
+  // A screen that shows server data says nothing about a simulation (§3.2): no text here does.
+  // Shared with the web console, word for word: the disclosure's plain sentence
+  // (`login.live.demoNotice`, condition C1) and "Use Simulated mode" (`common.coreMode.useSimulated`).
+  live: {
+    // L11 (§9.2): the Core, and the Core's ID of this tablet.
+    trust: {
+      paired: 'Core: {{device}} • paired as {{tablet}}',
+      // The Core identity has not reached the replica yet.
+      pairedUnnamed: 'Core server • paired as {{tablet}}',
+      unpaired: 'Core server • not paired',
+      details: 'Pairing details',
+    },
+    // L9, Core offline (§3.5, §9.2). No address: the runtime's adapters alone name it.
+    offlineBody: 'Sign-in needs the Core server. Nothing is sent while it cannot be reached.',
+  },
 } as const satisfies ResourceTree;

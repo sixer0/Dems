@@ -1,0 +1,56 @@
+[
+  {
+    "id": "M1",
+    "note": "the revoke is skipped: the supervisor reads the registry instead of revoking the tablet",
+    "from": "await step('the supervisor revokes tablet 1', () => portalPost(rt.app, revokeUrl(deviceId), supervisor.cookie, { reason: REVOKE_REASON }));",
+    "to": "await step('the supervisor revokes tablet 1', () => get(rt.app, DEVICES, supervisor.cookie));"
+  },
+  {
+    "id": "M2",
+    "note": "a FRESH biometric token (the rotated one) is presented instead of the used one",
+    "from": "await step('the used biometric token is presented again', () => devicePost(rt.app, BIOMETRIC_SIGN_IN, second.credential, { token: usedToken }));",
+    "to": "await step('the used biometric token is presented again', () => devicePost(rt.app, BIOMETRIC_SIGN_IN, second.credential, { token: nextToken }));"
+  },
+  {
+    "id": "M3",
+    "note": "the value of an issued code is planted into a column of the clone as the owner role (paired_devices.name), before the dump is taken",
+    "from": "    const dump = await dumpOf(owner);\n    expect(dump.tables.length).toBeGreaterThanOrEqual(30);",
+    "to": "    await owner.query('UPDATE public.paired_devices SET name = $2 WHERE id = $1', [second.deviceId, 'Tablet ' + (codes.get('code D (redeemed by tablet 1 after the revoke)')?.code ?? '')]);\n    const dump = await dumpOf(owner);\n    expect(dump.tables.length).toBeGreaterThanOrEqual(30);"
+  },
+  {
+    "id": "M4",
+    "note": "the tablet's socket is closed and 6 s pass on the server clock before the recording is created: no paired device holds a socket",
+    "from": "      const created = await mobilePost(first, REC_SESSION, sessionInput(INVESTIGATOR.id, 'LP/2026/1004-0482'));",
+    "to": "      await hangUp(first.wire as Wire);\n      await rt.drive(6 * SECOND);\n      const created = await mobilePost(first, REC_SESSION, sessionInput(INVESTIGATOR.id, 'LP/2026/1004-0482'));"
+  },
+  {
+    "id": "M5",
+    "note": "code A is redeemed one millisecond BEFORE its 300 s have passed",
+    "from": "    rt.clock.advance(1);\n    expect(rt.clock.now()).toBe(codeA.expiresAt);\n    expect(await activeCode(supervisor)).toBeNull();\n",
+    "to": ""
+  },
+  {
+    "id": "M6",
+    "note": "the recording is stopped from the web console by the operator who started it (the investigator), not by another one",
+    "from": "      portalPost(rt.app, onSession(recordingId, 'stop'), supervisor.cookie, { reason: STOP_REASON }),",
+    "to": "      portalPost(rt.app, onSession(recordingId, 'stop'), investigatorOnWeb.cookie, { reason: STOP_REASON }),"
+  },
+  {
+    "id": "M7",
+    "note": "a line that holds a session token is written into the captured log stream before the log is scanned",
+    "from": "    const text = rt.log.text();\n    const lines = rt.log.lines();\n    const found = leaksIn('the log', text);",
+    "to": "    rt.log.stream.write(JSON.stringify({ level: 30, msg: 'request completed', authorization: 'Bearer ' + (tokens.get('tablet 1: session token') ?? '') }) + '\\n');\n    const text = rt.log.text();\n    const lines = rt.log.lines();\n    const found = leaksIn('the log', text);"
+  },
+  {
+    "id": "M8",
+    "note": "the device that never paired opens its socket with the web console origin and the supervisor's cookie: it is no stranger",
+    "from": "    const opened = await online('a device that never paired', mobileHeaders(first));",
+    "to": "    const opened = await online('a device that never paired', webHeaders((await signInOnPortal(SUPERVISOR, 'an extra web session: session token')).cookie));"
+  },
+  {
+    "id": "M9",
+    "note": "an answer of a refusal that echoes the expired code is handed to the test (a stand-in answer; the server sent none such)",
+    "from": "    genericRefusal = refusalOf(refused);\n",
+    "to": "    genericRefusal = refusalOf(refused);\n    outcome({ statusCode: 422, body: JSON.stringify({ error: { code: 'INVALID_INPUT', message: 'The code ' + codeA.code + ' is not valid.' } }), json: () => ({}) } as unknown as LightMyRequestResponse);\n"
+  }
+]

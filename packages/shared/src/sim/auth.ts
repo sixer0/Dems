@@ -57,6 +57,11 @@ export const ROLE_PERMISSIONS = {
     Permission.EVIDENCE_REVIEW,
     Permission.EVIDENCE_EXPORT,
     Permission.AUDIT_EXPORT,
+    // Backend task W16 (2026-10-04 01_specs §4.4, §19.1): additive grants, enforced by the Core
+    // server. No simulator action checks them; a screen that lists a role's grants shows them.
+    Permission.PAIRING_MANAGE,
+    Permission.USER_ADMIN,
+    Permission.DEMO_CONTROL,
   ],
   TECHNICIAN: [
     Permission.EVIDENCE_VIEW,

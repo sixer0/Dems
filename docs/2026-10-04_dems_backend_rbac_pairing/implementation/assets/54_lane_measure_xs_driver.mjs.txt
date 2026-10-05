@@ -1,0 +1,64 @@
+// W54: the top bar at phone widths, measured in a real headless Chromium (Simulated mode; no backend).
+// Usage: node --import tsx .cache/w54/lane/measure-xs-driver.mjs <devtoolsPort> <vitePort> <outJson> <assetsDir>
+// `overflow` is how far the cluster's right edge lies beyond the bar's content box (positive: cut off).
+import { writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { OPERATORS } from '../../../packages/shared/src/sim/dataset.ts'
+
+const [devPort, vitePort, outJson, assetsDir] = process.argv.slice(2)
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+const ORIGIN = `http://127.0.0.1:${vitePort}`
+const supervisor = OPERATORS.find((operator) => operator.role === 'SUPERVISOR')
+const list = await (await fetch(`http://127.0.0.1:${devPort}/json/list`)).json()
+const ws = new WebSocket(list.find((t) => t.type === 'page').webSocketDebuggerUrl)
+await new Promise((r) => ws.addEventListener('open', r, { once: true }))
+let id = 0
+const pending = new Map()
+let loadFired = false
+ws.addEventListener('message', (event) => {
+  const msg = JSON.parse(event.data)
+  if (msg.id && pending.has(msg.id)) {
+    const { resolve, reject } = pending.get(msg.id)
+    pending.delete(msg.id)
+    msg.error ? reject(new Error(`CDP error ${msg.error.code}`)) : resolve(msg.result)
+    return
+  }
+  if (msg.method === 'Page.loadEventFired') loadFired = true
+})
+const send = (method, params = {}) => new Promise((resolve, reject) => { const n = ++id; pending.set(n, { resolve, reject }); ws.send(JSON.stringify({ id: n, method, params })) })
+const evaluate = async (expression, label) => {
+  const result = await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true })
+  if (result.exceptionDetails) throw new Error(`page script failed: ${label}`)
+  return result.result.value
+}
+const go = async (url, settle) => { loadFired = false; await send('Page.navigate', { url }); for (let i = 0; i < 150 && !loadFired; i++) await sleep(100); await sleep(settle) }
+await send('Page.enable'); await send('Runtime.enable')
+await send('Emulation.setDeviceMetricsOverride', { width: 600, height: 900, deviceScaleFactor: 1, mobile: false })
+await go(`${ORIGIN}/login`, 1500)
+await evaluate(`localStorage.setItem('dems.core.mode.v1', 'SIMULATED'); sessionStorage.setItem('dems.auth', JSON.stringify({ operatorId: ${JSON.stringify(supervisor.id)}, issuedAt: Date.now() }))`, 'store')
+await go(`${ORIGIN}/storage`, 5000)
+const measure = () => evaluate(`(() => {
+  const q = (s) => document.querySelector(s)
+  const shown = (el) => el && getComputedStyle(el).display !== 'none'
+  const bar = q('.dems-topbar'); const cluster = q('.dems-topbar-cluster').getBoundingClientRect(); const chip = q('[data-testid="shell-mode"]').getBoundingClientRect(); const pill = q('[data-testid="secure-pill"]').getBoundingClientRect()
+  return { overflow: Math.round(cluster.right - (bar.getBoundingClientRect().right - parseFloat(getComputedStyle(bar).paddingRight))), clock: shown(q('.dems-topbar-clock')), chipInside: chip.left >= 0 && chip.right <= innerWidth, pillInside: pill.right <= innerWidth, pageOverflowsX: document.documentElement.scrollWidth > innerWidth + 1 }
+})()`, 'measure')
+const setMode = (mode, text) => evaluate(`(() => { document.querySelector('[data-testid="app-shell"]').setAttribute('data-core-mode', ${JSON.stringify(mode)}); const chip = document.querySelector('[data-testid="shell-mode"]'); const label = chip.querySelector('span span') ?? chip.querySelector('span'); label.textContent = ${JSON.stringify(text)}; })()`, 'variant')
+const result = {}
+for (const width of [320, 360, 390, 414, 431, 432, 440, 480, 495, 496, 520, 600, 767]) {
+  await send('Emulation.setDeviceMetricsOverride', { width, height: 844, deviceScaleFactor: 1, mobile: false })
+  await sleep(500)
+  const row = {}
+  // The attribute and the label are set for the measurement only (the page runs the simulator); a reload restores them.
+  for (const [name, mode, text] of [['SIMULATED', 'SIMULATED', 'SIMULATED'], ['LIVE', 'LIVE', 'LIVE'], ['LIVE · OFFLINE', 'LIVE', 'LIVE · OFFLINE'], ['LIVE · RECONNECTING', 'LIVE', 'LIVE · RECONNECTING']]) {
+    await setMode(mode, text); await sleep(120)
+    row[name] = await measure()
+  }
+  await setMode('SIMULATED', 'SIMULATED')
+  result[width] = row
+  if (width === 390) { await sleep(150); const { data } = await send('Page.captureScreenshot', { format: 'png' }); writeFileSync(join(assetsDir, '54_layout_simulated_390x844.png'), Buffer.from(data, 'base64')) }
+}
+await evaluate(`localStorage.removeItem('dems.core.mode.v1'); sessionStorage.clear()`, 'remove what this check stored')
+writeFileSync(outJson, `${JSON.stringify(result, null, 1)}\n`)
+for (const [width, row] of Object.entries(result)) console.log(width, Object.entries(row).map(([name, m]) => `${name}: overflow ${m.overflow}, clock ${m.clock}, pill inside ${m.pillInside}`).join(' | '))
+ws.close()

@@ -78,4 +78,85 @@ export const pairingEn = {
     warn: 'needs attention',
     error: 'failed',
   },
+  // Backend task W57 (04_client_integration_spec §9.4, §6.6, §3.2): what the screen says in LIVE
+  // mode, where the Core server is the Core. Every key above is the Simulated wording and is not
+  // changed. Rule of §3.2: a screen that says "simulated" shows simulator data; nothing here does.
+  live: {
+    header: {
+      subtitle: 'Pairs this tablet with the Core server. A supervisor issues the code in the web console.',
+    },
+    connection: {
+      steps: {
+        discover: 'Reach the Core server',
+        verify: 'The Core checks the pairing code',
+        paired: 'The Core registers this tablet and issues its credential',
+      },
+      status: {
+        // An unpaired tablet gets no Core data: no name, no ID, no fingerprint to show.
+        idle: 'Not paired. The Core identity is shown after pairing.',
+        connecting: 'Connecting to the Core server…',
+        offline: 'Core server unreachable.',
+        discovering: 'Checking the link to the Core server…',
+        verifying: 'About to send the code. Cancel now and nothing is sent.',
+        sent: 'The Core is checking the code…',
+        paired: 'Paired with {{device}} as {{tablet}}.',
+        failed: 'The Core did not accept that code.',
+        // The lock is global on the Core: it can come from another device's attempts.
+        locked: 'Pairing is locked on the Core for a short time.',
+        unavailable: 'Pairing is not available right now.',
+      },
+    },
+    identity: {
+      server: 'Core server',
+      serverValue: 'This computer, through adb reverse',
+      link: 'Link',
+      linkState: {
+        online: 'Connected',
+        connecting: 'Connecting…',
+        offline: 'Unreachable',
+      },
+      coreDevice: 'Core device',
+      coreName: 'Core name',
+      tablet: 'This tablet',
+      fingerprintUnknown: 'Shown after pairing',
+    },
+    code: {
+      description: 'Enter the 6-digit pairing code that a supervisor issued for this tablet in the web console.',
+      // `attemptsRemaining` of the Core is the count before the LOCK, not the attempts left of a code.
+      attemptsBeforeLock_one: '{{count}} more attempt before pairing is locked for a short time.',
+      attemptsBeforeLock_other: '{{count}} more attempts before pairing is locked for a short time.',
+      invalidBody: 'Check the code with the supervisor and try again.',
+      unavailableTitle: 'Pairing is not available right now.',
+      unavailable: {
+        OFFLINE: 'The Core server could not be reached. The code was not checked.',
+        NO_ANSWER: 'The Core server did not answer. If this code is refused now, ask a supervisor for a new one.',
+        FAILED: 'The Core server could not complete the request.',
+        STORAGE: 'This tablet could not store its credential and asked the Core to remove the registration. Ask a supervisor for a new pairing code.',
+      },
+      // A 429 is a limit, never a wrong code (decision D116): no attempt was counted.
+      limited: 'The Core server is limiting requests. The code was not checked and no attempt was counted.',
+      wait_one: 'Try again in {{count}} second.',
+      wait_other: 'Try again in {{count}} seconds.',
+      retryExhausted: 'Still not available. Check the Core server, then press Pair to try again.',
+      offlineTitle: 'Core server unreachable',
+      offlineBody: 'Pairing needs the Core server. Nothing is sent while it cannot be reached.',
+      retryLimit: 'Still unreachable. Restart the app to try again.',
+      useSimulated: 'Use Simulated mode',
+    },
+    notice: {
+      revokedTitle: 'Pairing revoked',
+      revoked: "This tablet's pairing was revoked on the Core. Ask a supervisor for a new pairing code.",
+      revokedRecording: 'The recording continues on the Core.',
+      unknownTitle: 'Tablet not registered',
+      unknown: 'This tablet is not registered with this Core. Ask a supervisor for a new pairing code.',
+      unpairedTitle: 'Tablet unpaired',
+      unpaired: 'This tablet was unpaired.',
+    },
+    paired: {
+      body: 'This tablet is registered with {{device}} as {{tablet}}. An operator can now sign in on it.',
+    },
+    unpair: {
+      body: 'You will be signed out. It needs a new pairing code from a supervisor to be used again. A recording in progress continues on the Core.',
+    },
+  },
 } as const satisfies ResourceTree;

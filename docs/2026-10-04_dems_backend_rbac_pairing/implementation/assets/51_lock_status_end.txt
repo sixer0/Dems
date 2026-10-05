@@ -1,0 +1,3 @@
+phone (emulator-5554): AVD dems2_phone, isKeyguardShowing=false, CredentialType=NONE, fingerprint count=0, lock screen disabled=true
+phone2 (emulator-5558): AVD dems2_phone2, isKeyguardShowing=false, CredentialType=NONE, fingerprint count=0, lock screen disabled=true
+tablet (emulator-5556): AVD dems2_tablet, isKeyguardShowing=false, CredentialType=NONE, fingerprint count=0, lock screen disabled=true

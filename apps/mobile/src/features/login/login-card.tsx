@@ -13,6 +13,17 @@
  * The card carries the M-C-22 moments: one shake on a credential error (red borders only under
  * reduced motion), the lock shackle closing on a lockout, one gold glow pulse when the lockout ends,
  * and the one-lap border beam of M-PG-LOGIN.
+ *
+ * LIVE mode (backend task W59; 04_client_integration_spec §9.2, §3.5, §6.5; AC-C-72, AC-C-104):
+ * the Core server is the Core, and every text below that is drawn only then says nothing about a
+ * simulation. Each LIVE branch hangs on `controller.live`; the other modes render what they did.
+ * - L9: the auth layer's notice (`<AuthNoticeAlert />`: `TOKEN_REUSE`, a dead biometric token, a
+ *   disabled account, the 8-hour limit) takes the one Alert slot; the offline Alert names no
+ *   address and offers "Use Simulated mode" beside Retry; a sign-in without an answer shows the
+ *   refusal presenter's sentences in place;
+ * - L10: the plain sentence of condition C1 first, no role chip (a role is the Core's data), no
+ *   pairing-code hint (the simulator's code means nothing to the Core server);
+ * - L11: "Core: DEMS-IR-01 • paired as DEV-0003", and the link reads "Pairing details".
  */
 import { router } from 'expo-router';
 import { Accordion, Alert, Button, Card, FieldError, InputGroup, LinkButton, ListGroup, Spinner, TextField } from 'heroui-native';
@@ -39,6 +50,7 @@ import {
   type SimState,
 } from '@dems/shared/sim';
 import { derived, fontFamily, motion, palette, radius, spacing, statusText, typography } from '@dems/shared/tokens';
+import { AuthNoticeAlert } from '@/auth';
 import { RollingNumber } from '@/components/composed/rolling-number';
 import { StatusChip } from '@/components/kit';
 import { withAlpha } from '@/components/media/color';
@@ -55,7 +67,9 @@ import {
   type MotionPolicy,
   type MotionSettings,
 } from '@/motion';
+import { usePairing } from '@/runtime';
 import { BorderBeam } from './login-ambient';
+import { liveTrustLineFor, liveTrustTextFor } from './login-live-model';
 import {
   alertStatusFor,
   biometricButtonFor,
@@ -127,6 +141,8 @@ export function LoginCard({
     coreRetry,
     overrides,
     rejectSeq,
+    live,
+    switchToSimulated,
   } = controller;
   const usernameRef = useRef<TextInput>(null);
   const passwordRef = useRef<TextInput>(null);
@@ -194,6 +210,8 @@ export function LoginCard({
                 settings={settings}
                 delayMs={alertDelayMs}
                 coreRetry={coreRetry}
+                live={live}
+                onUseSimulated={switchToSimulated}
               />
             ) : null}
 
@@ -327,7 +345,7 @@ export function LoginCard({
       </Animated.View>
 
       <Animated.View style={[styles.companions, companionStyle]}>
-        <DemoOperators onFill={controller.fill} />
+        <DemoOperators onFill={controller.fill} live={live} />
         <TrustLine controller={controller} settings={settings} loopsAllowed={loopsAllowed} />
         <Text style={styles.version} testID="login-version">
           {t('common.brand.version', { version: SOFTWARE_VERSION })}
@@ -346,9 +364,13 @@ interface NoticeAlertProps {
   settings: MotionSettings;
   delayMs: number;
   coreRetry: LoginController['coreRetry'];
+  /** LIVE mode: the Core server is the Core. */
+  live: boolean;
+  /** LIVE, Core offline: "Use Simulated mode". */
+  onUseSimulated: () => void;
 }
 
-function NoticeAlert({ notice, settings, delayMs, coreRetry }: NoticeAlertProps) {
+function NoticeAlert({ notice, settings, delayMs, coreRetry, live, onUseSimulated }: NoticeAlertProps) {
   const { t } = useTranslation();
   const status = alertStatusFor(notice);
   // An Alert present during the entrance waits for its beat (M-APP-02: the "signed out" Alert
@@ -365,6 +387,16 @@ function NoticeAlert({ notice, settings, delayMs, coreRetry }: NoticeAlertProps)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [notice.kind]);
 
+  // LIVE: the auth layer's notice is its own Alert (its sentence and its status are the auth
+  // layer's); this screen gives it the slot and the entrance of every other notice.
+  if (notice.kind === 'auth-notice') {
+    return (
+      <Animated.View key={`auth-notice-${notice.notice}`} entering={entering} testID="login-alert-auth-notice">
+        <AuthNoticeAlert />
+      </Animated.View>
+    );
+  }
+
   let title: string;
   let body: ReactNode = null;
   switch (notice.kind) {
@@ -372,29 +404,51 @@ function NoticeAlert({ notice, settings, delayMs, coreRetry }: NoticeAlertProps)
       title = t('login.errors.lockedTitle');
       body = <LockoutCountdown seconds={notice.retryInSeconds} policy={settings.policy} />;
       break;
-    case 'core-offline':
-      title = t('login.errors.coreOfflineTitle');
-      body = (
+    case 'core-offline': {
+      const retry = (
+        <Button
+          testID="login-core-retry"
+          variant="outline"
+          size="sm"
+          isDisabled={!coreRetry.canRetry}
+          onPress={coreRetry.retry}
+          style={live ? undefined : styles.retry}
+        >
+          <Button.Label>
+            {coreRetry.exhausted
+              ? t('features.login.retryExhausted')
+              : coreRetry.cooldown > 0
+                ? t('common.actions.retryIn', { seconds: coreRetry.cooldown })
+                : t('common.actions.retry')}
+          </Button.Label>
+        </Button>
+      );
+      // LIVE (§3.5): the Core server, no address (the runtime's adapters alone name it), and the
+      // explicit way out. LIVE exists in debug builds only (MD-3), so the second action needs no gate.
+      title = live ? t('mobile.live.refusal.offline') : t('login.errors.coreOfflineTitle');
+      body = live ? (
+        <View style={styles.alertBody}>
+          <Text style={styles.alertText}>{t('features.login.live.offlineBody')}</Text>
+          <View style={styles.alertActions}>
+            {retry}
+            <Button testID="login-use-simulated" variant="ghost" size="sm" onPress={onUseSimulated}>
+              <Button.Label>{t('common.coreMode.useSimulated')}</Button.Label>
+            </Button>
+          </View>
+        </View>
+      ) : (
         <View style={styles.alertBody}>
           <Text style={styles.alertText}>{t('login.errors.coreOfflineBody', { address: coreAddress() })}</Text>
-          <Button
-            testID="login-core-retry"
-            variant="outline"
-            size="sm"
-            isDisabled={!coreRetry.canRetry}
-            onPress={coreRetry.retry}
-            style={styles.retry}
-          >
-            <Button.Label>
-              {coreRetry.exhausted
-                ? t('features.login.retryExhausted')
-                : coreRetry.cooldown > 0
-                  ? t('common.actions.retryIn', { seconds: coreRetry.cooldown })
-                  : t('common.actions.retry')}
-            </Button.Label>
-          </Button>
+          {retry}
         </View>
       );
+      break;
+    }
+    case 'no-answer':
+      // LIVE: the sign-in left and the Core server did not answer. The refusal presenter's own
+      // two sentences (i18n keys), so the Alert and a toast of any other screen say the same.
+      title = t(notice.title.key, notice.title.values ?? {});
+      body = notice.body ? <Text style={styles.alertText}>{t(notice.body.key, notice.body.values ?? {})}</Text> : null;
       break;
     case 'invalid':
       title = t('login.errors.invalid');
@@ -462,7 +516,7 @@ function LockoutCountdown({ seconds, policy }: { seconds: number; policy: Motion
 
 const ROLE_TONE = { INVESTIGATOR: 'accent', SUPERVISOR: 'info', TECHNICIAN: 'default' } as const;
 
-function DemoOperators({ onFill }: { onFill: LoginController['fill'] }) {
+function DemoOperators({ onFill, live }: { onFill: LoginController['fill']; live: boolean }) {
   const { t } = useTranslation();
   const presentation = usePresentationMode();
   // The three demo operators are fixed dataset constants (§6.1), so no store subscription.
@@ -480,6 +534,12 @@ function DemoOperators({ onFill }: { onFill: LoginController['fill'] }) {
           <Accordion.Indicator />
         </Accordion.Trigger>
         <Accordion.Content>
+          {live ? (
+            // Condition C1 (SR-63): the disclosure says in plain words what it is, before anything else.
+            <Text style={styles.demoHint} testID="login-demo-notice">
+              {t('login.live.demoNotice')}
+            </Text>
+          ) : null}
           <Text style={styles.demoHint}>{t('login.demoOperators.hint')}</Text>
           <ListGroup>
             {operators.map((operator) => (
@@ -494,16 +554,22 @@ function DemoOperators({ onFill }: { onFill: LoginController['fill'] }) {
                   <ListGroup.ItemTitle>{operator.displayName}</ListGroup.ItemTitle>
                   <ListGroup.ItemDescription style={styles.mono}>{operator.username}</ListGroup.ItemDescription>
                 </ListGroup.ItemContent>
-                <ListGroup.ItemSuffix>
-                  <StatusChip tone={ROLE_TONE[operator.role]} label={t(`common.roles.${operator.role}`)} icon={null} size="sm" />
-                </ListGroup.ItemSuffix>
+                {live ? null : (
+                  // Condition C2: in LIVE mode a role is the Core's data and may have changed; no chip.
+                  <ListGroup.ItemSuffix>
+                    <StatusChip tone={ROLE_TONE[operator.role]} label={t(`common.roles.${operator.role}`)} icon={null} size="sm" />
+                  </ListGroup.ItemSuffix>
+                )}
               </ListGroup.Item>
             ))}
           </ListGroup>
           <Text style={[styles.demoHint, styles.mono]} testID="login-demo-password">
             {t('login.demoOperators.password', { password: DEMO_OPERATOR_PASSWORD })}
           </Text>
-          <Text style={[styles.demoHint, styles.mono]}>{t('features.login.demo.pairingCode', { code: DEMO_PAIRING_CODE })}</Text>
+          {live ? null : (
+            // The simulator's fixed code means nothing to the Core server (§9.2): not rendered in LIVE mode.
+            <Text style={[styles.demoHint, styles.mono]}>{t('features.login.demo.pairingCode', { code: DEMO_PAIRING_CODE })}</Text>
+          )}
         </Accordion.Content>
       </Accordion.Item>
     </Accordion>
@@ -518,8 +584,11 @@ function TrustLine({ controller, settings, loopsAllowed }: { controller: LoginCo
   const { t } = useTranslation();
   const pairingState = useSim(selectPairingState);
   const device = useSim(selectCoreDeviceId);
+  const gate = usePairing();
   const chip = coreChipFor(controller.coreLink);
-  const paired = pairingState === 'PAIRED';
+  // LIVE (§9.2, AC-C-72): the pairing gate says whether this tablet is paired, and as which device.
+  const liveText = controller.live ? liveTrustTextFor(liveTrustLineFor(gate, device)) : null;
+  const paired = controller.live ? gate.state === 'PAIRED' && gate.deviceId !== null : pairingState === 'PAIRED';
 
   // Core offline: the chip breathes slowly (`glowBreath`, M-C-22); an ambient loop (≤ 4 per screen).
   const breathing = useAmbientLoop('login-core-breath', { active: chip.kind === 'OFFLINE', paused: !loopsAllowed });
@@ -541,10 +610,14 @@ function TrustLine({ controller, settings, loopsAllowed }: { controller: LoginCo
         />
       </Animated.View>
       <Text style={[styles.trustText, !paired && styles.trustUnpaired]} testID="login-trust-text">
-        {paired ? t('mobile.pairing.trustLinePaired', { device }) : t('mobile.pairing.trustLineUnpaired', { device })}
+        {liveText
+          ? t(liveText.textKey, liveText.values)
+          : paired
+            ? t('mobile.pairing.trustLinePaired', { device })
+            : t('mobile.pairing.trustLineUnpaired', { device })}
       </Text>
       <LinkButton size="sm" onPress={() => router.push('/pair')} testID="login-pair-link">
-        <LinkButton.Label>{t('mobile.pairing.link')}</LinkButton.Label>
+        <LinkButton.Label>{t(liveText ? liveText.linkKey : 'mobile.pairing.link')}</LinkButton.Label>
       </LinkButton>
     </View>
   );
@@ -570,6 +643,7 @@ const styles = StyleSheet.create({
     color: derived.foreground2,
   },
   retry: { alignSelf: 'flex-start', marginTop: spacing[0] },
+  alertActions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing[1], marginTop: spacing[0] },
   countdownRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' },
   demo: { borderRadius: CARD_RADIUS, backgroundColor: withAlpha(derived.surface, 0.7) },
   demoTrigger: { flexDirection: 'row', alignItems: 'center', gap: spacing[1], flex: 1 },

@@ -14,6 +14,15 @@
  * Layouts (D17): phones stack the connection card above the code card; from compact-landscape up
  * the two cards are side-by-side panes (`pane-connection` | `pane-code`); tablets (medium, expanded)
  * give the connection pane a hero ring and a vertical stepper with step descriptions.
+ *
+ * **LIVE mode** (backend task W57; 04_client_integration_spec §9.4, MP-5 to MP-8, §3.2). The same
+ * screen, panes, stepper and test IDs, on the Core server: the code a supervisor issued in the web
+ * console is redeemed (operation 18), the runtime writes the device credential to secure storage
+ * before the action settles, and Unpair calls operation 22. The screen never says "simulated" in
+ * LIVE mode, and before pairing it shows no Core identity, because the tablet has none. While the
+ * pairing gate holds (LIVE and not paired) there is nowhere to go back to: the header's back
+ * button is not drawn. A refused unpair (the link is down: nothing is deleted) is worded by the
+ * app's refusal presenter (LB-6). The navigation gate itself is the navigation row's.
  */
 import { Button, useToast } from 'heroui-native';
 import { ArrowLeft } from 'lucide-react-native';
@@ -28,7 +37,7 @@ import { derived, fontFamily, palette, spacing, typography } from '@dems/shared/
 import { TOPO_XML } from '@/components/media';
 import { Pane, PaneLayout, SafeScreen, useLayoutClass, type LayoutClass } from '@/layout';
 import { enterRise, useMotionSettings } from '@/motion';
-import { useAuth } from '@/runtime';
+import { useAuth, useCoreErrorPresenter } from '@/runtime';
 import { PairingCodePanel } from './pairing-code-panel';
 import { PairingConnection } from './pairing-connection';
 import { selectCoreDeviceId } from './pairing-model';
@@ -56,16 +65,35 @@ export function PairingScreen() {
   const { toast } = useToast();
   const flow = usePairingFlow();
   const device = useSim(selectCoreDeviceId);
+  const presentCoreError = useCoreErrorPresenter();
   const [unpairAsked, setUnpairAsked] = useState(false);
+  const [unpairBusy, setUnpairBusy] = useState(false);
   const dialog = useDialogPresence(unpairAsked);
 
   const stacked = layoutClass === 'compact';
   const tablet = layoutClass === 'medium' || layoutClass === 'expanded';
+  // LIVE and not paired: the gate holds, and this is the only working screen (MP-11).
+  const gated = flow.live && flow.blocked;
 
   const confirmUnpair = () => {
-    const ok = flow.unpair();
-    setUnpairAsked(false);
-    toast.show({ variant: ok ? 'success' : 'danger', label: ok ? t('features.pairing.unpair.done') : t('features.pairing.unpair.failed') });
+    // The simulator answers inside `unpair`: its dialog closes in this same turn, as before.
+    setUnpairBusy(true);
+    flow.unpair({
+      ok: () => {
+        setUnpairBusy(false);
+        setUnpairAsked(false);
+        // LIVE mode: the notice above the code card says it ("This tablet was unpaired.").
+        if (!flow.live) toast.show({ variant: 'success', label: t('features.pairing.unpair.done') });
+      },
+      fail: (error) => {
+        setUnpairBusy(false);
+        setUnpairAsked(false);
+        // LIVE mode: a dead link, a limit, a refusal of the Core have one wording for the whole app
+        // (LB-6, LB-10). Simulated mode keeps its own sentence for whatever the simulator threw.
+        if (flow.live && presentCoreError(error)) return;
+        toast.show({ variant: 'danger', label: t('features.pairing.unpair.failed') });
+      },
+    });
   };
 
   return (
@@ -75,16 +103,18 @@ export function PairingScreen() {
         <SvgXml xml={TOPO_XML} width="100%" height="100%" preserveAspectRatio="xMidYMid slice" />
       </View>
 
-      <View style={[styles.header, tablet ? styles.headerLarge : null]} testID="pairing-header">
-        <Button testID="pairing-back" isIconOnly variant="ghost" size="lg" accessibilityLabel={t('features.pairing.header.back')} onPress={flow.cancel}>
-          <ArrowLeft size={24} color={palette.gold} />
-        </Button>
+      <View style={[styles.header, tablet ? styles.headerLarge : null, gated ? styles.headerGated : null]} testID="pairing-header">
+        {gated ? null : (
+          <Button testID="pairing-back" isIconOnly variant="ghost" size="lg" accessibilityLabel={t('features.pairing.header.back')} onPress={flow.cancel}>
+            <ArrowLeft size={24} color={palette.gold} />
+          </Button>
+        )}
         <View style={styles.headerText}>
           <Text accessibilityRole="header" numberOfLines={1} maxFontSizeMultiplier={1.2} style={tablet ? styles.titleLarge : styles.title}>
             {t('mobile.pairing.title')}
           </Text>
           <Text numberOfLines={2} maxFontSizeMultiplier={1.2} style={styles.subtitle}>
-            {t('features.pairing.header.subtitle')}
+            {t(flow.live ? 'features.pairing.live.header.subtitle' : 'features.pairing.header.subtitle')}
           </Text>
         </View>
       </View>
@@ -106,6 +136,7 @@ export function PairingScreen() {
                   split={tablet}
                   ringSize={ringSizeFor(layoutClass)}
                   settings={settings}
+                  live={flow.live ? { link: flow.link ?? 'connecting', sent: flow.sent, outcome: flow.outcome, tabletId: flow.tabletId } : null}
                 />
               </Animated.View>
             </Pane>
@@ -125,7 +156,7 @@ export function PairingScreen() {
       </KeyboardAwareScrollView>
 
       {dialog.mounted ? (
-        <UnpairDialog isOpen={dialog.open} device={device} onOpenChange={setUnpairAsked} onConfirm={confirmUnpair} />
+        <UnpairDialog isOpen={dialog.open} device={device} onOpenChange={setUnpairAsked} onConfirm={confirmUnpair} live={flow.live} busy={unpairBusy} />
       ) : null}
     </SafeScreen>
   );
@@ -135,6 +166,8 @@ const styles = StyleSheet.create({
   topo: { ...StyleSheet.absoluteFill, opacity: 0.22 },
   header: { flexDirection: 'row', alignItems: 'center', gap: spacing[1], minHeight: 56, paddingHorizontal: spacing[1] },
   headerLarge: { minHeight: 64, paddingHorizontal: spacing[3] },
+  // Without the back button the title keeps the screen's side margin.
+  headerGated: { paddingHorizontal: spacing[3] },
   headerText: { flex: 1, gap: 2 },
   title: {
     fontFamily: fontFamily.native.semibold,

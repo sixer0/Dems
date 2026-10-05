@@ -1,0 +1,280 @@
+/**
+ * The expected inventory of the database, read from the database contract ITSELF (not a test
+ * file; plan row W17).
+ *
+ * `parseContract` reads sections 2.4 and 4 of `masterplan/03_database_contract.md`: the value
+ * sets, the format rules, and for each of the 30 tables its column table and its "keys,
+ * constraints, indexes" table. The result is the inventory the catalog test compares the live
+ * catalog with. It is checked in as `contract-inventory.json`, so that the database tests do not
+ * depend on the documents folder; the database-free test `contract-inventory.test.ts` parses the
+ * contract again and fails when the checked-in inventory is stale.
+ *
+ * This file is self-contained (node modules only), so it also runs on its own:
+ *
+ *   node apps/core-server/test/db/contract-inventory.ts --write     regenerates the JSON
+ *
+ * The typed schema is NOT an input here. That is the point: the inventory comes from the
+ * contract's tables, the catalog from the migration files, and the test compares the two.
+ */
+import { readFileSync, writeFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+/** The workspace root of the repository: this folder is four levels below it. */
+export const REPOSITORY_ROOT = resolve(HERE, '..', '..', '..', '..');
+export const CONTRACT_FILE = resolve(
+  REPOSITORY_ROOT,
+  'docs',
+  '2026-10-04_dems_backend_rbac_pairing',
+  'masterplan',
+  '03_database_contract.md',
+);
+export const INVENTORY_FILE = resolve(HERE, 'contract-inventory.json');
+
+export type ConstraintKind = 'PRIMARY KEY' | 'FOREIGN KEY' | 'UNIQUE' | 'UNIQUE INDEX' | 'INDEX' | 'CHECK';
+
+export interface ContractColumn {
+  readonly name: string;
+  /** The PostgreSQL type as the contract writes it: `text`, `bigint`, `double precision`, ... */
+  readonly type: string;
+  readonly notNull: boolean;
+  /** The default as the contract writes it (`true`, `0`, `'{}'`, `gen_random_uuid()`), or null. */
+  readonly default: string | null;
+}
+
+export interface ContractConstraint {
+  readonly name: string;
+  readonly kind: ConstraintKind;
+  /** The definition with every value set and format rule of §2.4 written out. */
+  readonly definition: string;
+}
+
+export interface ContractTable {
+  /** `T-01` to `T-30`. */
+  readonly id: string;
+  readonly name: string;
+  readonly columns: readonly ContractColumn[];
+  readonly constraints: readonly ContractConstraint[];
+}
+
+export interface ContractCounts {
+  readonly tables: number;
+  readonly columns: number;
+  readonly primaryKeys: number;
+  readonly foreignKeys: number;
+  readonly uniques: number;
+  readonly uniqueIndexes: number;
+  readonly indexes: number;
+  readonly checks: number;
+}
+
+export interface ContractInventory {
+  readonly source: string;
+  readonly valueSets: Readonly<Record<string, readonly string[]>>;
+  readonly formats: Readonly<Record<string, string>>;
+  readonly tables: readonly ContractTable[];
+  readonly counts: ContractCounts;
+}
+
+const KINDS: readonly ConstraintKind[] = ['PRIMARY KEY', 'FOREIGN KEY', 'UNIQUE INDEX', 'UNIQUE', 'INDEX', 'CHECK'];
+
+/** The cells of a Markdown table row. A pipe written as `\|` belongs to the cell. */
+function cells(line: string): string[] {
+  const parts = line.split(/(?<!\\)\|/).map((part) => part.trim().replaceAll('\\|', '|'));
+  return parts.slice(1, -1);
+}
+
+const isRow = (line: string): boolean => line.startsWith('|');
+const isSeparator = (line: string): boolean => /^\|[\s:|-]+\|$/.test(line);
+
+/** Every `code span` of a cell, in order. */
+function spans(cell: string): string[] {
+  return [...cell.matchAll(/`([^`]+)`/g)].map((match) => match[1] ?? '');
+}
+
+/** The Markdown tables of a block of lines: each as its header cells and its body rows. */
+function tablesOf(lines: readonly string[]): Array<{ header: string[]; rows: string[][] }> {
+  const found: Array<{ header: string[]; rows: string[][] }> = [];
+  let index = 0;
+  while (index < lines.length) {
+    const line = lines[index] ?? '';
+    const next = lines[index + 1] ?? '';
+    if (isRow(line) && isSeparator(next)) {
+      const header = cells(line);
+      const rows: string[][] = [];
+      index += 2;
+      while (index < lines.length && isRow(lines[index] ?? '')) {
+        rows.push(cells(lines[index] ?? ''));
+        index += 1;
+      }
+      found.push({ header, rows });
+    } else {
+      index += 1;
+    }
+  }
+  return found;
+}
+
+function section(lines: readonly string[], from: RegExp, to: RegExp): string[] {
+  const start = lines.findIndex((line) => from.test(line));
+  if (start < 0) throw new Error(`contract: no heading ${from}`);
+  const length = lines.slice(start + 1).findIndex((line) => to.test(line));
+  return lines.slice(start + 1, length < 0 ? undefined : start + 1 + length);
+}
+
+function parseValueSets(lines: readonly string[]): { valueSets: Record<string, string[]>; formats: Record<string, string> } {
+  const block = section(lines, /^### 2\.4 /, /^### 2\.5 /);
+  const [sets, formats] = tablesOf(block);
+  if (sets === undefined || formats === undefined) throw new Error('contract §2.4: two tables expected');
+
+  const valueSets: Record<string, string[]> = {};
+  for (const row of sets.rows) {
+    const name = spans(row[0] ?? '')[0];
+    // Remarks in parentheses may hold code spans of their own; they are not values.
+    const values = spans((row[1] ?? '').replace(/\([^)]*\)/g, ''));
+    if (name === undefined || values.length === 0) throw new Error(`contract §2.4: unreadable value set row "${row[0]}"`);
+    valueSets[name] = values;
+  }
+
+  const formatRules: Record<string, string> = {};
+  for (const row of formats.rows) {
+    const name = /^([A-Z0-9_]+)\(c\)$/.exec(spans(row[0] ?? '')[0] ?? '')?.[1];
+    const expression = spans(row[1] ?? '')[0];
+    if (name === undefined || expression === undefined) throw new Error(`contract §2.4: unreadable format row "${row[0]}"`);
+    formatRules[name] = expression;
+  }
+  return { valueSets, formats: formatRules };
+}
+
+/** Writes out the value sets and the format rules that a definition names. */
+function expand(definition: string, valueSets: Record<string, string[]>, formats: Record<string, string>): string {
+  let text = definition;
+  text = text.replace(/\bIN \(([A-Z][A-Z0-9_]*)\)/g, (whole, name: string) => {
+    const values = valueSets[name];
+    return values === undefined ? whole : `IN (${values.map((value) => `'${value}'`).join(', ')})`;
+  });
+  text = text.replace(/\b([A-Z][A-Z0-9_]*)\(([a-z_][a-z0-9_]*)\)/g, (whole, name: string, argument: string) => {
+    const expression = formats[name];
+    return expression === undefined ? whole : `(${expression.replace(/\bc\b/, argument)})`;
+  });
+  return text;
+}
+
+function parseTable(heading: string, block: readonly string[], sets: Record<string, string[]>, formats: Record<string, string>): {
+  table: ContractTable;
+  raw: Map<string, string>;
+} {
+  const match = /^### 4\.\d+ (T-\d{2}) `([a-z_]+)`/.exec(heading);
+  if (match === null) throw new Error(`contract §4: unreadable heading "${heading}"`);
+  const id = match[1] ?? '';
+  const name = match[2] ?? '';
+  const tables = tablesOf(block);
+  const columnTable = tables.find((table) => table.header[0] === 'Column');
+  const keyTable = tables.find((table) => table.header[0] === 'Name' && table.header[1] === 'Kind');
+  if (columnTable === undefined || keyTable === undefined) throw new Error(`contract ${id} ${name}: column or key table missing`);
+
+  const columns: ContractColumn[] = [];
+  const rules = new Map<string, string>();
+  for (const row of columnTable.rows) {
+    const names = spans(row[0] ?? '');
+    const type = spans(row[1] ?? '')[0];
+    const nullability = row[2] ?? '';
+    const defaultCell = row[3] ?? '';
+    if (names.length === 0 || type === undefined || (nullability !== 'NOT NULL' && nullability !== 'NULL')) {
+      throw new Error(`contract ${id} ${name}: unreadable column row "${row.join(' | ')}"`);
+    }
+    for (const column of names) {
+      columns.push({ name: column, type, notNull: nullability === 'NOT NULL', default: spans(defaultCell)[0] ?? null });
+      rules.set(column, row[4] ?? '');
+    }
+  }
+
+  // First pass: the definitions as written. "as above" and "as <other check>" are resolved after it.
+  const raw = new Map<string, string>();
+  const entries: Array<{ name: string; kind: ConstraintKind; cell: string }> = [];
+  for (const row of keyTable.rows) {
+    const constraint = spans(row[0] ?? '')[0];
+    const kind = KINDS.find((candidate) => candidate === row[1]);
+    if (constraint === undefined || kind === undefined) {
+      throw new Error(`contract ${id} ${name}: unreadable key row "${row.join(' | ')}"`);
+    }
+    entries.push({ name: constraint, kind, cell: row[2] ?? '' });
+    const written = spans(row[2] ?? '')[0];
+    if (written !== undefined && !(row[2] ?? '').startsWith('as ')) raw.set(constraint, written);
+  }
+
+  const constraints = entries.map(({ name: constraint, kind, cell }): ContractConstraint => {
+    let definition = raw.get(constraint);
+    if (definition === undefined && cell === 'as above') {
+      // The rule cell of the column the check is named after holds the expression.
+      const column = constraint.slice(name.length + 1, -'_check'.length);
+      definition = spans(rules.get(column) ?? '').find((span) => / ~ '/.test(span));
+    } else if (definition === undefined && cell.startsWith('as `')) {
+      // T-16: "as `active_session_time_source_check`, on `start_time_source` and `end_time_source`".
+      const [other, , second] = spans(cell);
+      const base = other === undefined ? undefined : EARLIER.get(other);
+      if (base !== undefined && second !== undefined) definition = base.replaceAll('stop_time_source', second);
+    }
+    if (definition === undefined) throw new Error(`contract ${id} ${name}: no definition for ${constraint} ("${cell}")`);
+    raw.set(constraint, definition);
+    EARLIER.set(constraint, definition);
+    return { name: constraint, kind, definition: kind === 'CHECK' ? expand(definition, sets, formats) : definition };
+  });
+
+  return { table: { id, name, columns, constraints }, raw };
+}
+
+/** Definitions of the tables parsed so far, for a later "as `<check>`" reference. */
+const EARLIER = new Map<string, string>();
+
+export function parseContract(text: string): ContractInventory {
+  EARLIER.clear();
+  const lines = text.split('\n');
+  const { valueSets, formats } = parseValueSets(lines);
+  const body = section(lines, /^## 4\. Tables/, /^## 5\. /);
+
+  const tables: ContractTable[] = [];
+  const starts = body.flatMap((line, index) => (/^### 4\.\d+ T-\d{2} /.test(line) ? [index] : []));
+  starts.forEach((start, position) => {
+    const end = starts[position + 1] ?? body.length;
+    tables.push(parseTable(body[start] ?? '', body.slice(start + 1, end), valueSets, formats).table);
+  });
+
+  const all = tables.flatMap((table) => table.constraints);
+  const count = (kind: ConstraintKind): number => all.filter((constraint) => constraint.kind === kind).length;
+  return {
+    source: 'docs/2026-10-04_dems_backend_rbac_pairing/masterplan/03_database_contract.md (sections 2.4 and 4)',
+    valueSets,
+    formats,
+    tables,
+    counts: {
+      tables: tables.length,
+      columns: tables.reduce((sum, table) => sum + table.columns.length, 0),
+      primaryKeys: count('PRIMARY KEY'),
+      foreignKeys: count('FOREIGN KEY'),
+      uniques: count('UNIQUE'),
+      uniqueIndexes: count('UNIQUE INDEX'),
+      indexes: count('INDEX'),
+      checks: count('CHECK'),
+    },
+  };
+}
+
+export function readContract(): ContractInventory {
+  return parseContract(readFileSync(CONTRACT_FILE, 'utf8'));
+}
+
+export function readInventory(): ContractInventory {
+  return JSON.parse(readFileSync(INVENTORY_FILE, 'utf8')) as ContractInventory;
+}
+
+export function serialise(inventory: ContractInventory): string {
+  return `${JSON.stringify(inventory, null, 2)}\n`;
+}
+
+if (process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const inventory = readContract();
+  if (process.argv.includes('--write')) writeFileSync(INVENTORY_FILE, serialise(inventory));
+  process.stdout.write(`${JSON.stringify(inventory.counts)}\n`);
+}

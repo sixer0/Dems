@@ -1,0 +1,270 @@
+$ DEMS_TEST_STEP=63 npm run test:db -w @dems/core-server -- --maxWorkers=2 --reporter=verbose src/modules/identity/biometric   (16:51:22)
+
+> @dems/core-server@0.2.0 test:db
+> vitest run --project db --maxWorkers=2 --reporter=verbose src/modules/identity/biometric
+
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/apps/core-server
+
+[test:db] PostgreSQL 18.4 on 127.0.0.1:4432; helper role dems_owner, code under test dems_app; run prefix dems_test_step_63_tmdndmx9_
+[test:db] stale sweep: dropped 0; kept 0 of younger runs, 0 of live runs, 0 unrecognised; 0 failed
+[test:db] template dems_test_step_63_tmdndmx9_tpl_schema: built in 188 ms (create 60 ms, hook 124 ms)
+[test:db] template dems_test_step_63_tmdndmx9_tpl_seed: built in 252 ms (create 84 ms, hook 166 ms)
+ ✓ |db| src/modules/identity/biometric/__tests__/sign-in.db.test.ts > AC-B-31: a valid token signs in with method BIOMETRIC and is replaced > answers 200 with a session bound to the device, its token and the NEXT biometric token; the used one is marked, the next is live in the same family; AUTH_SUCCESS names the method 83ms
+ ✓ |db| src/modules/identity/biometric/__tests__/sign-in.db.test.ts > AC-B-31: a valid token signs in with method BIOMETRIC and is replaced > every use hands out the next token of the same family: three sign-ins, three used rows, one live 117ms
+stdout | src/modules/identity/biometric/__tests__/sequence.db.test.ts > signInWithBiometric: ONE unit, the attempt taken first, the claim before anything else is read (ENG-23 to ENG-25) > a success: the lockout, then one transaction: CLAIM, the device, the operator, the permissions, the next token, the session, the row, the event; then the count is cleared
+[w41] signInWithBiometric, a live token (14 round trips):
+  pool  FIND_DEVICE_BY_CREDENTIAL
+  lockout.take
+  unit  BEGIN
+  unit  CLAIM_TOKEN
+  unit  READ_DEVICE_STATE
+  unit  MARK_SIGNED_IN
+  unit  READ_ROLE_PERMISSIONS
+  unit  INSERT_TOKEN
+  unit  INSERT_SESSION
+  unit  INSERT audit_log AUTH_SUCCESS
+  unit  event number
+  unit  INSERT events AUTH_LOGIN
+  unit  COMMIT
+  lockout.succeed
+
+ ✓ |db| src/modules/identity/biometric/__tests__/sequence.db.test.ts > signInWithBiometric: ONE unit, the attempt taken first, the claim before anything else is read (ENG-23 to ENG-25) > a success: the lockout, then one transaction: CLAIM, the device, the operator, the permissions, the next token, the session, the row, the event; then the count is cleared 139ms
+ ✓ |db| src/modules/identity/biometric/__tests__/sequence.db.test.ts > signInWithBiometric: ONE unit, the attempt taken first, the claim before anything else is read (ENG-23 to ENG-25) > a success with a session presented (ID-6): the same, with the session ended as ROTATED before the next token 57ms
+stdout | src/modules/identity/biometric/__tests__/sequence.db.test.ts > signInWithBiometric: ONE unit, the attempt taken first, the claim before anything else is read (ENG-23 to ENG-25) > an unknown token, a token of another device, a revoked one and an expired one: the same work, step for step, and the place in the denial budget is taken before the row
+[w41] signInWithBiometric, a token that is not accepted (unknown, another device, revoked, expired alike) (10 round trips):
+  pool  FIND_DEVICE_BY_CREDENTIAL
+  lockout.take
+  unit  BEGIN
+  unit  CLAIM_TOKEN
+  unit  READ_TOKEN_STATE
+  lockout.fail
+  denialBudget.consume
+  unit  INSERT audit_log AUTH_FAILED
+  unit  event number
+  unit  INSERT events AUTH_FAILED
+  unit  COMMIT
+
+ ✓ |db| src/modules/identity/biometric/__tests__/sequence.db.test.ts > signInWithBiometric: ONE unit, the attempt taken first, the claim before anything else is read (ENG-23 to ENG-25) > an unknown token, a token of another device, a revoked one and an expired one: the same work, step for step, and the place in the denial budget is taken before the row 217ms
+ ✓ |db| src/modules/identity/biometric/__tests__/sign-in.db.test.ts > AC-B-31: a valid token signs in with method BIOMETRIC and is replaced > the token decides who signs in: the request names no operator, and a body that names one beside the token changes nothing 59ms
+ ✓ |db| src/modules/identity/biometric/__tests__/sign-in.db.test.ts > AC-B-31, AC-B-82 (SR-74): a used token presented again > answers the generic 401, revokes the family, ends the BIOMETRIC session with TOKEN_REUSE, publishes session.ended after the commit, writes AUTH_FAILED; every password session of that operator stays open 251ms
+stdout | src/modules/identity/biometric/__tests__/sequence.db.test.ts > signInWithBiometric: ONE unit, the attempt taken first, the claim before anything else is read (ENG-23 to ENG-25) > a REUSE: the same up to the read, then the family and the sessions, both before the failure is counted and audited
+[w41] signInWithBiometric, a token that was used before (12 round trips):
+  pool  FIND_DEVICE_BY_CREDENTIAL
+  lockout.take
+  unit  BEGIN
+  unit  CLAIM_TOKEN
+  unit  READ_TOKEN_STATE
+  unit  REVOKE_TOKENS.FAMILY
+  unit  END_BIOMETRIC_SESSIONS
+  lockout.fail
+  denialBudget.consume
+  unit  INSERT audit_log AUTH_FAILED
+  unit  event number
+  unit  INSERT events AUTH_FAILED
+  unit  COMMIT
+
+ ✓ |db| src/modules/identity/biometric/__tests__/sequence.db.test.ts > signInWithBiometric: ONE unit, the attempt taken first, the claim before anything else is read (ENG-23 to ENG-25) > a REUSE: the same up to the read, then the family and the sessions, both before the failure is counted and audited 60ms
+stdout | src/modules/identity/biometric/__tests__/sequence.db.test.ts > signInWithBiometric: ONE unit, the attempt taken first, the claim before anything else is read (ENG-23 to ENG-25) > an attempt during the lock: no statement names a token; the place in the budget, then one row
+[w41] signInWithBiometric, during the lock (8 round trips):
+  pool  FIND_DEVICE_BY_CREDENTIAL
+  lockout.take
+  denialBudget.consume
+  unit  BEGIN
+  unit  INSERT audit_log AUTH_LOCKED
+  unit  event number
+  unit  INSERT events AUTH_LOCKED
+  unit  COMMIT
+
+ ✓ |db| src/modules/identity/biometric/__tests__/sign-in.db.test.ts > AC-B-31, AC-B-82 (SR-74): a used token presented again > a second replay is a reuse again and changes nothing more: the same answer, a row with sessionsEnded 0, no publication 65ms
+ ✓ |db| src/modules/identity/biometric/__tests__/sign-in.db.test.ts > AC-B-31, AC-B-82 (SR-74): a used token presented again > a used token presented by ANOTHER paired device is a reuse all the same: the sessions of the token's device and operator end; the row names the device that presented it 65ms
+ ✓ |db| src/modules/identity/biometric/__tests__/sequence.db.test.ts > signInWithBiometric: ONE unit, the attempt taken first, the claim before anything else is read (ENG-23 to ENG-25) > an attempt during the lock: no statement names a token; the place in the budget, then one row 73ms
+ ✓ |db| src/modules/identity/biometric/__tests__/sequence.db.test.ts > signInWithBiometric: ONE unit, the attempt taken first, the claim before anything else is read (ENG-23 to ENG-25) > a token whose operator is disabled while it is live: the claim, the device, the operator (no row), the family; then counted and audited 52ms
+ ✓ |db| src/modules/identity/biometric/__tests__/sequence.db.test.ts > signInWithBiometric: ONE unit, the attempt taken first, the claim before anything else is read (ENG-23 to ENG-25) > a body that does not validate, and a caller without a credential: nothing is taken and nothing is asked of the database 8ms
+stdout | src/modules/identity/biometric/__tests__/sequence.db.test.ts > setBiometricEnrollment: one unit; the issue is one statement > on: the session lookup of stage 4, then: revoke what stood, ENROL (the insert that states the session), the row
+[w41] setBiometricEnrollment, enabled: true (9 round trips):
+  pool  FIND_SESSION_BY_TRANSPORT.BEARER
+  pool  FIND_DEVICE
+  unit  BEGIN
+  unit  REVOKE_TOKENS.ENROLMENT
+  unit  ENROL_TOKEN
+  unit  INSERT audit_log BIOMETRIC_ENROLLMENT_CHANGED
+  unit  COMMIT
+
+ ✓ |db| src/modules/identity/biometric/__tests__/sign-in.db.test.ts > no request without a valid token creates a session: every refusal path > an unknown token: nobody is named 9ms
+ ✓ |db| src/modules/identity/biometric/__tests__/sign-in.db.test.ts > no request without a valid token creates a session: every refusal path > a value that has not the form of a token counts as an attempt like any other: the same answer, the same row 36ms
+stdout | src/modules/identity/biometric/__tests__/sequence.db.test.ts > setBiometricEnrollment: one unit; the issue is one statement > on, in a session that was created with a token: the same two statements, the read that says why, and a ROLLBACK
+[w41] setBiometricEnrollment, enabled: true, refused (9 round trips):
+  pool  FIND_SESSION_BY_TRANSPORT.BEARER
+  pool  FIND_DEVICE
+  unit  BEGIN
+  unit  REVOKE_TOKENS.ENROLMENT
+  unit  ENROL_TOKEN
+  unit  READ_ENROLMENT_SESSION
+  unit  ROLLBACK
+
+ ✓ |db| src/modules/identity/biometric/__tests__/sequence.db.test.ts > setBiometricEnrollment: one unit; the issue is one statement > on: the session lookup of stage 4, then: revoke what stood, ENROL (the insert that states the session), the row 41ms
+ ✓ |db| src/modules/identity/biometric/__tests__/sequence.db.test.ts > setBiometricEnrollment: one unit; the issue is one statement > on, in a session that was created with a token: the same two statements, the read that says why, and a ROLLBACK 59ms
+stdout | src/modules/identity/biometric/__tests__/sequence.db.test.ts > setBiometricEnrollment: one unit; the issue is one statement > off: one statement and the row; off again: the one statement and no row
+[w41] setBiometricEnrollment, enabled: false (8 round trips):
+  pool  FIND_SESSION_BY_TRANSPORT.BEARER
+  pool  FIND_DEVICE
+  unit  BEGIN
+  unit  REVOKE_TOKENS.ENROLMENT
+  unit  INSERT audit_log BIOMETRIC_ENROLLMENT_CHANGED
+  unit  COMMIT
+
+ ✓ |db| src/modules/identity/biometric/__tests__/sign-in.db.test.ts > no request without a valid token creates a session: every refusal path > the value is taken as it was sent: a token with a space before or after it, or in another letter case, is another value; the token itself is untouched and then signs in 66ms
+ ✓ |db| src/modules/identity/biometric/__tests__/sign-in.db.test.ts > no request without a valid token creates a session: every refusal path > a token of another device: refused on the device that presents it, and still good on its own 55ms
+stdout | src/modules/identity/biometric/__tests__/sequence.db.test.ts > reportBiometricFailure: one unit; counted before anything is read > an enrolled operator, one who is not and no operator: the same work, step for step
+[w41] reportBiometricFailure (9 round trips):
+  pool  FIND_DEVICE_BY_CREDENTIAL
+  lockout.take
+  lockout.fail
+  unit  BEGIN
+  unit  FIND_ENROLMENT
+  denialBudget.consume
+  unit  INSERT audit_log AUTH_FAILED
+  unit  event number
+  unit  INSERT events AUTH_FAILED
+  unit  COMMIT
+
+ ✓ |db| src/modules/identity/biometric/__tests__/sequence.db.test.ts > setBiometricEnrollment: one unit; the issue is one statement > off: one statement and the row; off again: the one statement and no row 50ms
+ ✓ |db| src/modules/identity/biometric/__tests__/sequence.db.test.ts > reportBiometricFailure: one unit; counted before anything is read > an enrolled operator, one who is not and no operator: the same work, step for step 71ms
+stdout | src/modules/identity/biometric/__tests__/sequence.db.test.ts > reportBiometricFailure: one unit; counted before anything is read > while the device is locked: nothing is counted; the same lookup, the place in the budget, the row
+[w41] reportBiometricFailure, during the lock (9 round trips):
+  pool  FIND_DEVICE_BY_CREDENTIAL
+  lockout.take
+  unit  BEGIN
+  unit  FIND_ENROLMENT
+  denialBudget.consume
+  unit  INSERT audit_log AUTH_LOCKED
+  unit  event number
+  unit  INSERT events AUTH_LOCKED
+  unit  COMMIT
+
+ ✓ |db| src/modules/identity/biometric/__tests__/sign-in.db.test.ts > no request without a valid token creates a session: every refusal path > a token past its 30 days: good one millisecond before, refused at the limit 66ms
+ ✓ |db| src/modules/identity/biometric/__tests__/sign-in.db.test.ts > no request without a valid token creates a session: every refusal path > a family the operator turned off, and a family that a new enrolment replaced 84ms
+ ✓ |db| src/modules/identity/biometric/__tests__/sequence.db.test.ts > reportBiometricFailure: one unit; counted before anything is read > while the device is locked: nothing is counted; the same lookup, the place in the budget, the row 36ms
+ ✓ |db| src/modules/identity/biometric/__tests__/sign-in.db.test.ts > no request without a valid token creates a session: every refusal path > a disabled operator: the administration module revoked the token with the account; enabling the operator again does not bring it back 205ms
+ ✓ |db| src/modules/identity/biometric/__tests__/sign-in.db.test.ts > no request without a valid token creates a session: every refusal path > an operator who is disabled while the token is still live: the claim is made, nobody is signed in, the token stays used and its family ends 72ms
+ ✓ |db| src/modules/identity/biometric/__tests__/sign-in.db.test.ts > no request without a valid token creates a session: every refusal path > a device that stops being PAIRED between stage 4 and the unit: the claim is made, nobody is signed in, the family ends with the device's reason 132ms
+ ✓ |db| src/modules/identity/biometric/__tests__/sign-in.db.test.ts > no request without a valid token creates a session: every refusal path > a retired device never reaches the handler: stage 6 answers 403 DEVICE_REVOKED with its one row; no attempt is taken and no AUTH_FAILED is written 101ms
+ ✓ |db| src/modules/identity/biometric/__tests__/sign-in.db.test.ts > no request without a valid token creates a session: every refusal path > a caller that is no paired device: 401 without a credential, 401 with an unknown one, 403 from a web console session; none takes an attempt or writes a row 87ms
+ ✓ |db| src/modules/identity/biometric/__tests__/sign-in.db.test.ts > no request without a valid token creates a session: every refusal path > a body that breaks the schema answers 422 INVALID_INPUT before anything is taken: no attempt, no row, no session; malformed JSON answers 400 93ms
+ ✓ |db| src/modules/identity/biometric/__tests__/sign-in.db.test.ts > no request without a valid token creates a session: every refusal path > a token of another operator signs in THAT operator, whoever's session is presented with it: the presented session is ended as ROTATED (ID-6), and nobody can choose who a token signs in 115ms
+ ✓ |db| src/modules/identity/biometric/__tests__/sign-in.db.test.ts > ENG-24, ID-5: the attempt is taken from the device's lockout, the one the password sign-in counts on > five refused tokens: four answer 401 with 4, 3, 2 and 1 attempts left, the fifth locks the device and answers 423; its row says so 32ms
+ ✓ |db| src/modules/identity/biometric/__tests__/sign-in.db.test.ts > ENG-24, ID-5: the attempt is taken from the device's lockout, the one the password sign-in counts on > during the lock a VALID token is not looked at: 423, AUTH_LOCKED naming nobody, the token untouched; after 60 s it signs in 83ms
+ ✓ |db| src/modules/identity/biometric/__tests__/sign-in.db.test.ts > ENG-24, ID-5: the attempt is taken from the device's lockout, the one the password sign-in counts on > one counter for both ways in: three refused tokens and two wrong passwords lock the device; a success of either clears it 155ms
+ ✓ |db| src/modules/identity/biometric/__tests__/sign-in.db.test.ts > ENG-24, ID-5: the attempt is taken from the device's lockout, the one the password sign-in counts on > a sign-out ends a BIOMETRIC session like any other and leaves the token family alone 59ms
+ ✓ |db| src/modules/identity/biometric/__tests__/failure.db.test.ts > AC-B-83 (SR-37, SD-11): the row names an operator only where an enrolment of that device exists > an operator with no biometric token on the device: AUTH_FAILED with a null actor and the device ID; the answer is the device's lock state 30ms
+stdout | src/modules/identity/biometric/__tests__/concurrency.db.test.ts > AC-B-78 (SD-04, AT-C4): two concurrent uses of one valid token > issue exactly one session; the other use answers 401 and is handled as a reuse: the family, with the token that was just issued, is revoked and the session that was just issued is ended (25 rounds)
+[w41] AC-B-78: 25 rounds of two concurrent uses of one token: 25 x (one 200, one 401); 25 sessions issued, each ended with TOKEN_REUSE by the other use; the first request won 22 times; 0 live tokens left
+
+ ✓ |db| src/modules/identity/biometric/__tests__/concurrency.db.test.ts > AC-B-78 (SD-04, AT-C4): two concurrent uses of one valid token > issue exactly one session; the other use answers 401 and is handled as a reuse: the family, with the token that was just issued, is revoked and the session that was just issued is ended (25 rounds) 846ms
+ ✓ |db| src/modules/identity/biometric/__tests__/failure.db.test.ts > AC-B-83 (SR-37, SD-11): the row names an operator only where an enrolment of that device exists > an enrolled operator: the row names that operator; before the first use and after a rotation alike 102ms
+stdout | src/modules/identity/biometric/__tests__/concurrency.db.test.ts > AC-B-78 (SD-04, AT-C4): two concurrent uses of one valid token > eight concurrent uses of one token: one session; the seven others are counted on the device: four answer 401, the fifth failure locks, two find the device locked
+[w41] eight concurrent uses of one token: statuses {"200":1,"401":4,"423":3}; rows AUTH_SUCCESS, AUTH_FAILED, AUTH_FAILED, AUTH_FAILED, AUTH_FAILED, AUTH_FAILED, AUTH_LOCKED, AUTH_LOCKED
+
+ ✓ |db| src/modules/identity/biometric/__tests__/concurrency.db.test.ts > AC-B-78 (SD-04, AT-C4): two concurrent uses of one valid token > eight concurrent uses of one token: one session; the seven others are counted on the device: four answer 401, the fifth failure locks, two find the device locked 103ms
+ ✓ |db| src/modules/identity/biometric/__tests__/concurrency.db.test.ts > AC-B-78 (SD-04, AT-C4): two concurrent uses of one valid token > a later replay is the same reuse as the concurrent one: 401, the family revoked, the session ended, AUTH_FAILED with TOKEN_REUSE 65ms
+ ✓ |db| src/modules/identity/biometric/__tests__/failure.db.test.ts > AC-B-83 (SR-37, SD-11): the row names an operator only where an enrolment of that device exists > the enrolment is the DEVICE's: an operator who is enrolled on another device only, another operator, an operator that does not exist and no operator are not named 140ms
+stdout | src/modules/identity/biometric/__tests__/concurrency.db.test.ts > ENG-24 under concurrency: attempts that arrive together are each counted > 20 concurrent refused tokens: exactly five are looked up (five AUTH_FAILED, the fifth marked as locking), the other 15 answer 423 with AUTH_LOCKED; the 20 rows are the device's whole denial budget
+[w41] 20 concurrent refused tokens: statuses {"401":4,"423":16}; 5 AUTH_FAILED (attemptsRemaining 4, 3, 2, 1, 0), 15 AUTH_LOCKED
+
+ ✓ |db| src/modules/identity/biometric/__tests__/failure.db.test.ts > AC-B-83 (SR-37, SD-11): the row names an operator only where an enrolment of that device exists > an enrolment that was turned off, and a family that a reuse revoked, are no enrolment any more 121ms
+ ✓ |db| src/modules/identity/biometric/__tests__/concurrency.db.test.ts > ENG-24 under concurrency: attempts that arrive together are each counted > 20 concurrent refused tokens: exactly five are looked up (five AUTH_FAILED, the fifth marked as locking), the other 15 answer 423 with AUTH_LOCKED; the 20 rows are the device's whole denial budget 124ms
+stdout | src/modules/identity/biometric/__tests__/concurrency.db.test.ts > ENG-24 under concurrency: attempts that arrive together are each counted > SR-71: 25 at once, tokens and failure reports mixed: 20 rows, and five answers 429 without a row; all 25 were counted or found the device locked
+[w41] SR-71: 25 concurrent attempts: statuses {"200":10,"401":2,"423":8,"429":5}; 20 rows
+
+ ✓ |db| src/modules/identity/biometric/__tests__/failure.db.test.ts > AC-B-83 (SR-37, SD-11): the row names an operator only where an enrolment of that device exists > "live or last used": a pair whose live token was revoked with the account still has its used token, and is named 108ms
+ ✓ |db| src/modules/identity/biometric/__tests__/failure.db.test.ts > AC-B-83 (SR-37, SD-11): the row names an operator only where an enrolment of that device exists > the answer says nothing about the operator: an enrolled one, one who is not, one that does not exist and none give the same body 70ms
+ ✓ |db| src/modules/identity/biometric/__tests__/concurrency.db.test.ts > ENG-24 under concurrency: attempts that arrive together are each counted > SR-71: 25 at once, tokens and failure reports mixed: 20 rows, and five answers 429 without a row; all 25 were counted or found the device locked 111ms
+ ✓ |db| src/modules/identity/biometric/__tests__/concurrency.db.test.ts > ENG-24 under concurrency: attempts that arrive together are each counted > a reuse that finds no place in the denial budget still revokes the family, ends the session and WRITES its row: the row of a state change; the answer is the budget's 429 59ms
+ ✓ |db| src/modules/identity/biometric/__tests__/failure.db.test.ts > AC-B-83 (SR-37, SD-11): the row names an operator only where an enrolment of that device exists > it can create nothing: no session, no token, whatever is reported and however often 62ms
+ ✓ |db| src/modules/identity/biometric/__tests__/failure.db.test.ts > the count is the reporting device's, on the lockout the two sign-ins use > five reports lock the device: 4, 3, 2 and 1 attempts left, then locked for 60 s; each answers 200 and writes AUTH_FAILED, the fifth as the locking one 24ms
+ ✓ |db| src/modules/identity/biometric/__tests__/concurrency.db.test.ts > ENG-24 under concurrency: attempts that arrive together are each counted > a SECOND replay changes nothing any more, so with no place in the budget it is a refusal like any other: 429 and no row 53ms
+ ✓ |db| src/modules/identity/biometric/__tests__/concurrency.db.test.ts > ENG-24 under concurrency: attempts that arrive together are each counted > a token that was claimed and signs nobody in (its operator is disabled) and finds no place in the budget: its row is written too, because the token was used up 57ms
+ ✓ |db| src/modules/identity/biometric/__tests__/concurrency.db.test.ts > ENG-24 under concurrency: attempts that arrive together are each counted > a refusal that changed nothing and finds no place in the budget writes NO row and answers 429; it stays counted 36ms
+ ✓ |db| src/modules/identity/biometric/__tests__/failure.db.test.ts > the count is the reporting device's, on the lockout the two sign-ins use > while the device is locked: 200 with the lock state, AUTH_LOCKED with the actor of SR-37, nothing counted; both sign-ins of the device answer 423; 60 s later all is open again 105ms
+ ✓ |db| src/modules/identity/biometric/__tests__/failure.db.test.ts > the count is the reporting device's, on the lockout the two sign-ins use > a device locks itself and nothing else: another device and the web console keep their five attempts; a session of the device counts on the device 110ms
+ ✓ |db| src/modules/identity/biometric/__tests__/failure.db.test.ts > the count is the reporting device's, on the lockout the two sign-ins use > SR-71: every report inside the denial budget of the device is audited, one row each; from the 21st the answer is 429 and no row is written 156ms
+ ✓ |db| src/modules/identity/biometric/__tests__/failure.db.test.ts > who may call is stage 6; what the body holds is stage 7 > no credential: 401; a web console session: 403 DEVICE_NOT_PAIRED; a revoked device: 403 DEVICE_REVOKED with its one ACCESS_DENIED row; nothing is counted 104ms
+ ✓ |db| src/modules/identity/biometric/__tests__/failure.db.test.ts > who may call is stage 6; what the body holds is stage 7 > a body that breaks the schema: 422 INVALID_INPUT; malformed JSON: 400; nothing is counted and no row is written 14ms
+stdout | src/modules/identity/biometric/__tests__/concurrency.db.test.ts > a sign-in racing what retires its token > a revoke of the device: the sign-in first (its session is ended and its next token revoked by the revoke); the revoke first (the sign-in, already past stage 4, answers 401 and issues nothing); and free-running pairs
+[w41] sign-in racing a revoke of its device: sign-in first: 200; revoke first: 401; free: 200; free: 200; free: 200; no open session and no live token of the device after any round
+
+ ✓ |db| src/modules/identity/biometric/__tests__/concurrency.db.test.ts > a sign-in racing what retires its token > a revoke of the device: the sign-in first (its session is ended and its next token revoked by the revoke); the revoke first (the sign-in, already past stage 4, answers 401 and issues nothing); and free-running pairs 504ms
+stdout | src/modules/identity/biometric/__tests__/concurrency.db.test.ts > a sign-in racing what retires its token > a disable of the operator: the sign-in first (the disable ends its session and revokes its next token); the disable first (the sign-in answers 401 and issues nothing); and free-running pairs
+[w41] sign-in racing a disable of its operator: sign-in first: 200; disable first: 401; free: 200; free: 200; free: 200; no open session and no live token of the operator after any round
+
+ ✓ |db| src/modules/identity/biometric/__tests__/concurrency.db.test.ts > a sign-in racing what retires its token > a disable of the operator: the sign-in first (the disable ends its session and revokes its next token); the disable first (the sign-in answers 401 and issues nothing); and free-running pairs 477ms
+ ✓ |db| src/modules/identity/biometric/__tests__/concurrency.db.test.ts > a sign-in racing what retires its token > two enrolments of one session at once: both answer 200, each with a token of its own; one of the two is live, the other was replaced by it 46ms
+ ✓ |db| src/modules/identity/biometric/__tests__/enrolment.db.test.ts > SR-36: a token is issued inside a password session on a paired device > answers 200 with the token ONCE and its expiry; stores its SHA-256 with the device, the operator and a family; writes BIOMETRIC_ENROLLMENT_CHANGED and no event 78ms
+stdout | src/modules/identity/biometric/__tests__/concurrency.db.test.ts > statement level: the claim on real connections of dems_app, as two server processes on one database would run it > two transactions claim one token: the second WAITS for the first; after its commit it gets no row (12 rounds); after its rollback it gets the row
+[w41] statement level: 12 rounds of two transactions claiming one token: the second waited 12 times and got 0 rows 12 times; after a rollback of the first it got the row
+
+ ✓ |db| src/modules/identity/biometric/__tests__/concurrency.db.test.ts > statement level: the claim on real connections of dems_app, as two server processes on one database would run it > two transactions claim one token: the second WAITS for the first; after its commit it gets no row (12 rounds); after its rollback it gets the row 810ms
+stdout | src/modules/identity/biometric/__tests__/concurrency.db.test.ts > statement level: the claim on real connections of dems_app, as two server processes on one database would run it > free-running: 60 rounds of four connections claiming one token at once: one row per round, never two and never none
+[w41] statement level, free-running: 60 rounds x 4 connections: 60 rounds with exactly one row
+
+ ✓ |db| src/modules/identity/biometric/__tests__/enrolment.db.test.ts > SR-36: a token is issued inside a password session on a paired device > enrolling again replaces the enrolment: the earlier token is revoked (REENROLLED), a new family starts, and one token of the pair is usable 75ms
+ ✓ |db| src/modules/identity/biometric/__tests__/concurrency.db.test.ts > statement level: the claim on real connections of dems_app, as two server processes on one database would run it > free-running: 60 rounds of four connections claiming one token at once: one row per round, never two and never none 85ms
+ ✓ |db| src/modules/identity/biometric/__tests__/concurrency.db.test.ts > statement level: the claim on real connections of dems_app, as two server processes on one database would run it > the claim states its whole predicate: another device, a used, a revoked and an expired token give no row and change nothing 6ms
+ ✓ |db| src/modules/identity/biometric/__tests__/enrolment.db.test.ts > SR-36: a token is issued inside a password session on a paired device > a token is bound to ONE device and ONE operator: two operators on one device and one operator on two devices hold four enrolments that do not touch each other 204ms
+ ✓ |db| src/modules/identity/biometric/__tests__/enrolment.db.test.ts > SR-36: a token is issued inside a password session on a paired device > enabled: true in a session that was created with a token: 403 DEVICE_NOT_PAIRED with details.reason; nothing is issued, no row, and the enrolment that stood still stands 71ms
+ ✓ |db| src/modules/identity/biometric/__tests__/enrolment.db.test.ts > spec §5.6 step 8: turning biometric sign-in off revokes the family > revokes every token of the operator on that device (DISABLED), answers { enabled: false } without a token, writes the row; the token then signs nobody in 81ms
+ ✓ |db| src/modules/identity/biometric/__tests__/enrolment.db.test.ts > spec §5.6 step 8: turning biometric sign-in off revokes the family > turning off what is off changes nothing: 200 { enabled: false } and no row 43ms
+ ✓ |db| src/modules/identity/biometric/__tests__/enrolment.db.test.ts > spec §5.6 step 8: turning biometric sign-in off revokes the family > a session that was created with the token may turn it off, and stays open 62ms
+ ✓ |db| src/modules/identity/biometric/__tests__/enrolment.db.test.ts > who may call is stage 6; what the body holds is stage 7 > no credential and a device credential without a session: 401; a web console session: 403 DEVICE_NOT_PAIRED; no row, nothing issued 42ms
+ ✓ |db| src/modules/identity/biometric/__tests__/enrolment.db.test.ts > who may call is stage 6; what the body holds is stage 7 > a session of a device that was revoked: 403 DEVICE_REVOKED from stage 6 with its one row; the pairing module had revoked the device's live token 115ms
+ ✓ |db| src/modules/identity/biometric/__tests__/enrolment.db.test.ts > who may call is stage 6; what the body holds is stage 7 > a body that breaks the schema: 422 INVALID_INPUT; malformed JSON: 400; nothing is issued and no row is written 62ms
+ ✓ |db| src/modules/identity/biometric/__tests__/enrolment.db.test.ts > the issue is one statement: what changed between stage 4 and the unit is seen by it > the session ended meanwhile: 401 NOT_SIGNED_IN; nothing is issued, no row, and the earlier enrolment is not revoked 64ms
+ ✓ |db| src/modules/identity/biometric/__tests__/enrolment.db.test.ts > the issue is one statement: what changed between stage 4 and the unit is seen by it > the operator was disabled meanwhile: 401; the device stopped being PAIRED meanwhile: 403 DEVICE_REVOKED; nothing is issued either time 126ms
+stdout | src/modules/identity/biometric/__tests__/secrets.db.test.ts > the journey itself > ran through every transition of a token: the rows it wrote, by type, and the states it left
+[w41] secret scan journey: rows {"AUTH_FAILED":11,"AUTH_LOCKED":2,"AUTH_SUCCESS":4,"BIOMETRIC_ENROLLMENT_CHANGED":7}; 10 biometric tokens issued, 10 session tokens and device credentials, 1 made-up token; failing statements answered 500, 500, 500
+
+stdout | src/modules/identity/biometric/__tests__/secrets.db.test.ts > SR-36, SR-54: no audit row, event, publication or refusal of the journey holds a token > the audit rows and the events of the journey
+[w41] rows: 33 audit rows and 24 events of the journey; 0 tokens, 0 credentials, 0 hashes
+
+stdout | src/modules/identity/biometric/__tests__/secrets.db.test.ts > SR-36, SR-54: no audit row, event, publication or refusal of the journey holds a token > the answers of every refusal and failure: no token is echoed, no credential, no marker, nothing of a statement
+[w41] refusals: 19 answers of a refusal or a failure; 0 tokens, 0 credentials, 0 markers
+
+stdout | src/modules/identity/biometric/__tests__/secrets.db.test.ts > AC-B-28 for the biometric tokens: a full dump of the database after the journey > holds no token and no credential; of each token that was issued, only the SHA-256 it is stored as, once
+[w41] dump of dems_test_step_63_tmdndmx9_f01_secrets: 171515 characters; 21 tokens and credentials searched in 6 forms each: 0 found; 10 biometric tokens issued, 10 rows in biometric_tokens, each token's SHA-256 present once
+
+stdout | src/modules/identity/biometric/__tests__/secrets.db.test.ts > AC-B-29: the log of the same journey, captured at level trace > holds no token, no credential, no marker and no hash of a token
+[w41] AC-B-29 log capture: 35829 characters, 154 lines, 46 request lines; 0 tokens, 0 credentials, 0 markers, 0 hashes
+
+ ✓ |db| src/modules/identity/biometric/__tests__/secrets.db.test.ts > the journey itself > ran through every transition of a token: the rows it wrote, by type, and the states it left 5ms
+ ✓ |db| src/modules/identity/biometric/__tests__/secrets.db.test.ts > the scan itself > finds a token in every form it could have been written in, and leaves codes and identifiers alone (positive control) 2ms
+ ✓ |db| src/modules/identity/biometric/__tests__/secrets.db.test.ts > SR-36, SR-54: no audit row, event, publication or refusal of the journey holds a token > the audit rows and the events of the journey 5ms
+ ✓ |db| src/modules/identity/biometric/__tests__/secrets.db.test.ts > SR-36, SR-54: no audit row, event, publication or refusal of the journey holds a token > the publications: a session.ended names session IDs and a reason, nothing else 1ms
+ ✓ |db| src/modules/identity/biometric/__tests__/secrets.db.test.ts > SR-36, SR-54: no audit row, event, publication or refusal of the journey holds a token > the answers of every refusal and failure: no token is echoed, no credential, no marker, nothing of a statement 1ms
+ ✓ |db| src/modules/identity/biometric/__tests__/secrets.db.test.ts > SR-36, SR-54: no audit row, event, publication or refusal of the journey holds a token > a token is in an answer ONCE, and only in the two answers the contract names: the other answers of the folder hold none 0ms
+ ✓ |db| src/modules/identity/biometric/__tests__/secrets.db.test.ts > AC-B-28 for the biometric tokens: a full dump of the database after the journey > holds no token and no credential; of each token that was issued, only the SHA-256 it is stored as, once 19ms
+ ✓ |db| src/modules/identity/biometric/__tests__/secrets.db.test.ts > AC-B-29: the log of the same journey, captured at level trace > holds no token, no credential, no marker and no hash of a token 3ms
+ ✓ |db| src/modules/identity/biometric/__tests__/secrets.db.test.ts > AC-B-29: the log of the same journey, captured at level trace > rule M14: the three failing statements are in the log as errors with their code, and nothing of a statement, a parameter or a hash 3ms
+ ✓ |db| src/modules/identity/biometric/__tests__/secrets.db.test.ts > AC-B-29: the log of the same journey, captured at level trace > no request line holds a query string: the route is the registry's pattern 1ms
+ ✓ |db| src/modules/identity/biometric/__tests__/secrets.db.test.ts > AC-B-29: the log of the same journey, captured at level trace > a parse or validation failure of the three operations is logged by its code only 0ms
+ ✓ |db| src/modules/identity/biometric/__tests__/secrets.db.test.ts > AC-B-29: the log of the same journey, captured at level trace > the principal of a request line is an operator ID or a device ID, never a credential; the request line of a sign-in names the device, not the operator the token signed in 1ms
+ ✓ |db| src/modules/identity/biometric/__tests__/revocation.db.test.ts > the four scopes > FAMILY: every row of the family that was not revoked, used rows included, and no row of another family 26ms
+ ✓ |db| src/modules/identity/biometric/__tests__/revocation.db.test.ts > the four scopes > ENROLMENT: every row of the operator on the device that was not revoked, of every family, and no row of another operator or device 8ms
+ ✓ |db| src/modules/identity/biometric/__tests__/revocation.db.test.ts > the four scopes > DEVICE: the tokens of the device that could still be used; a used and a revoked one stay as they are; another device is not touched 7ms
+ ✓ |db| src/modules/identity/biometric/__tests__/revocation.db.test.ts > the four scopes > OPERATOR: the tokens of the operator that could still be used, on every device; another operator is not touched 5ms
+ ✓ |db| src/modules/identity/biometric/__tests__/revocation.db.test.ts > the four scopes > writes the time it is handed and the reason, on the rows it changed, and returns their number 4ms
+ ✓ |db| src/modules/identity/biometric/__tests__/revocation.db.test.ts > the four scopes > runs in the CALLER's unit: it writes no row of its own, publishes nothing, and is undone when the unit rolls back; outside a unit it is refused 15ms
+ ✓ |db| src/modules/identity/biometric/__tests__/revocation.db.test.ts > the two scopes for other modules give what those modules' own statements give today, on equal rows > a device that is revoked through the pairing module, and the scope DEVICE on a second device with the same rows: the same states 183ms
+ ✓ |db| src/modules/identity/biometric/__tests__/revocation.db.test.ts > the two scopes for other modules give what those modules' own statements give today, on equal rows > an operator who is disabled through the administration module, and the scope OPERATOR for a second operator with the same rows: the same states 70ms
+ ✓ |db| src/modules/identity/biometric/__tests__/engine.db.test.ts > API-7 and ENG-8 with the engine running > the engine is ready after the boot, with an epoch of at least 1, and runs on the timer this file gave it 2ms
+ ✓ |db| src/modules/identity/biometric/__tests__/engine.db.test.ts > API-7 and ENG-8 with the engine running > each POST answer names the epoch and the revision of the state change that holds its audit row; session.ended of a reuse comes after the state change with its AUTH_FAILED 98ms
+ ✓ |db| src/modules/identity/biometric/__tests__/engine.db.test.ts > API-7 and ENG-8 with the engine running > the biometric rows continue the one chain: it verifies over all rows, also after a tick of the engine, which never saw its head diverge 28ms
+
+ Test Files  8 passed (8)
+      Tests  98 passed (98)
+   Start at  16:51:22
+   Duration  13.35s (tests 60%, import 28%, transform 11%)
+
+[test:db] forced drops that needed a retry: 0
+[test:db] teardown: dropped 2 database(s) in 118 ms; 0 remain with the run prefix dems_test_step_63_tmdndmx9_
+exit=0

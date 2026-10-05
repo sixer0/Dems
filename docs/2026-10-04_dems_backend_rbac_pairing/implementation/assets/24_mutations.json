@@ -1,0 +1,478 @@
+[
+ {
+  "id": "M01",
+  "file": "src/plugins/authenticate/credentials.ts",
+  "from": "const cookie = cookies[cookieName];",
+  "to": "const cookie = cookies[cookieName] ?? Object.entries(cookies).find(([name]) => name.startsWith('dems_session_'))?.[1];",
+  "note": "any dems_session_ cookie counts as this instance's (D69)"
+ },
+ {
+  "id": "M02",
+  "file": "src/plugins/authenticate/credentials.ts",
+  "from": "if (hasCookie && hasAuthorization) return { kind: 'CONFLICT' };",
+  "to": "",
+  "note": "two credentials are not refused"
+ },
+ {
+  "id": "M03",
+  "file": "src/plugins/authenticate/credentials.ts",
+  "from": "const hasAuthorization = authorization !== undefined;",
+  "to": "const hasAuthorization = bearerValueOf(authorization) !== null;",
+  "note": "the conflict needs a well-formed bearer value"
+ },
+ {
+  "id": "M04",
+  "file": "src/plugins/authenticate/credentials.ts",
+  "from": "SESSION_TOKEN_PATTERN.test(cookie) ? cookie : null",
+  "to": "cookie",
+  "note": "a cookie value of any form is looked up"
+ },
+ {
+  "id": "M05",
+  "file": "src/plugins/authenticate/credentials.ts",
+  "from": "if (SESSION_TOKEN_PATTERN.test(value)) return { kind: 'BEARER_SESSION', token: value };",
+  "to": "if (SESSION_TOKEN_PATTERN.test(value) || value.startsWith('bio_')) return { kind: 'BEARER_SESSION', token: value };",
+  "note": "a biometric token in a header is taken for a session token"
+ },
+ {
+  "id": "M06",
+  "file": "src/plugins/authenticate/index.ts",
+  "from": "app.sessionRegistry.resolve(token, 'COOKIE')",
+  "to": "app.sessionRegistry.resolve(token, 'BEARER')",
+  "note": "the cookie is looked up on the bearer transport"
+ },
+ {
+  "id": "M07",
+  "file": "src/plugins/authenticate/index.ts",
+  "from": "app.sessionRegistry.resolve(token, 'BEARER')",
+  "to": "app.sessionRegistry.resolve(token, 'COOKIE')",
+  "note": "a bearer token is looked up on the cookie transport"
+ },
+ {
+  "id": "M08",
+  "file": "src/plugins/authenticate/index.ts",
+  "from": "if (device === null) return bearer(ANONYMOUS_PRINCIPAL, 'DEVICE_UNKNOWN');",
+  "to": "",
+  "note": "a device session resolves although the registry does not know its device"
+ },
+ {
+  "id": "M09",
+  "file": "src/plugins/authenticate/index.ts",
+  "from": "if (device?.status === 'RETIRED' || endedWithItsDevice(resolution))",
+  "to": "if (endedWithItsDevice(resolution))",
+  "note": "a session of a retired device resolves"
+ },
+ {
+  "id": "M10",
+  "file": "src/plugins/authenticate/index.ts",
+  "from": "if (device.status === 'RETIRED') return bearer(retired(device.deviceId), 'DEVICE_RETIRED');",
+  "to": "",
+  "note": "a retired device credential is a DEVICE principal"
+ },
+ {
+  "id": "M11",
+  "file": "src/plugins/authenticate/index.ts",
+  "from": "new ApiFailure(401, ApiErrorCode.NOT_SIGNED_IN, 'Send one credential per request.'",
+  "to": "new ApiFailure(403, ApiErrorCode.NOT_SIGNED_IN, 'Send one credential per request.'",
+  "note": "the conflict answers 403"
+ },
+ {
+  "id": "M12",
+  "file": "src/plugins/authenticate/index.ts",
+  "from": "details: { reason: CREDENTIAL_CONFLICT_REASON },\n  });",
+  "to": "details: {},\n  });",
+  "note": "the conflict carries no reason"
+ },
+ {
+  "id": "M13",
+  "file": "src/plugins/authenticate/index.ts",
+  "from": "if (request.method !== 'POST') return;",
+  "to": "",
+  "note": "a GET counts as activity"
+ },
+ {
+  "id": "M14",
+  "file": "src/plugins/authenticate/index.ts",
+  "from": "if (app.clock.now() - session.lastSeenAt < SESSION_TOUCH_MIN_INTERVAL_MS) return;",
+  "to": "",
+  "note": "activity is written on every POST"
+ },
+ {
+  "id": "M15",
+  "file": "src/plugins/authenticate/index.ts",
+  "from": "authentications.set(request, { ...authentication, failure: 'ENDED', session: null });\n      throw notSignedIn();",
+  "to": "authentications.set(request, { ...authentication, failure: 'ENDED', session: null });\n      return;",
+  "note": "a command runs although its session ended"
+ },
+ {
+  "id": "M16",
+  "file": "src/plugins/authenticate/index.ts",
+  "from": "export const ACTIVITY_EXEMPT_OPERATIONS: readonly string[] = ['signIn', 'signOut'];",
+  "to": "export const ACTIVITY_EXEMPT_OPERATIONS: readonly string[] = [];",
+  "note": "sign-in and sign-out are touched first"
+ },
+ {
+  "id": "M17",
+  "file": "src/modules/identity/sessions.ts",
+  "from": "if (!found.operatorEnabled) return { status: 'OPERATOR_DISABLED', sessionId: found.id, deviceId: found.deviceId };",
+  "to": "",
+  "note": "a session of a disabled operator resolves"
+ },
+ {
+  "id": "M18",
+  "file": "src/modules/identity/limits.ts",
+  "from": "export const LOCKOUT_MAX_ATTEMPTS = AUTH_MAX_FAILURES;",
+  "to": "export const LOCKOUT_MAX_ATTEMPTS = AUTH_MAX_FAILURES + 1;",
+  "note": "six attempts before the lock"
+ },
+ {
+  "id": "M19",
+  "file": "src/modules/identity/lockout.ts",
+  "from": "if (taken === LOCKOUT_MAX_ATTEMPTS) lock(key, now);",
+  "to": "",
+  "note": "taking the fifth attempt does not lock"
+ },
+ {
+  "id": "M20",
+  "file": "src/modules/identity/limits.ts",
+  "from": "export const LOCKOUT_DURATION_MS = AUTH_LOCKOUT_MS;",
+  "to": "export const LOCKOUT_DURATION_MS = AUTH_LOCKOUT_MS / 2;",
+  "note": "the lock lasts 30 s"
+ },
+ {
+  "id": "M21",
+  "file": "src/modules/identity/lockout.ts",
+  "from": "succeed(key) {\n      locks.delete(key);",
+  "to": "succeed(key) {",
+  "note": "a success does not lift the lock"
+ },
+ {
+  "id": "M22",
+  "file": "src/modules/identity/lockout.ts",
+  "from": "locks.delete(key);\n    windows.forget(key);\n    return null;",
+  "to": "locks.delete(key);\n    return null;",
+  "note": "an ended lock keeps the old count"
+ },
+ {
+  "id": "M23",
+  "file": "src/modules/identity/lockout.ts",
+  "from": "if (window === null || window.id !== ticket.windowId) {",
+  "to": "if (window === null) {",
+  "note": "a stale ticket is counted in a window it was not taken in"
+ },
+ {
+  "id": "M24",
+  "file": "src/modules/identity/limits.ts",
+  "from": "export const LOCKOUT_WINDOW_MS = AUTH_FAILURE_WINDOW_MS;",
+  "to": "export const LOCKOUT_WINDOW_MS = AUTH_FAILURE_WINDOW_MS + 1;",
+  "note": "the window is 1 ms longer"
+ },
+ {
+  "id": "M25",
+  "file": "src/modules/identity/sign-in.ts",
+  "from": "candidate === null\n      ? await hasher.verifyAgainstDummy(input.password)",
+  "to": "candidate === null\n      ? false",
+  "note": "no derivation for an unknown username"
+ },
+ {
+  "id": "M26",
+  "file": "src/modules/identity/session-store.ts",
+  "from": "WHERE id = $1 AND enabled '",
+  "to": "WHERE id = $1 '",
+  "note": "unit 2 does not re-check that the operator is enabled"
+ },
+ {
+  "id": "M27",
+  "file": "src/modules/identity/sign-in.ts",
+  "from": "const replaced = presented === null ? null : await endSession(unit, presented.id, now, 'ROTATED');",
+  "to": "const replaced = presented === null ? null : await endSession(unit, '00000000-0000-4000-8000-000000000000', now, 'ROTATED');",
+  "note": "the presented session is not ended"
+ },
+ {
+  "id": "M28",
+  "file": "src/modules/identity/sign-in.ts",
+  "from": "lockout.succeed(lockoutKey);",
+  "to": "",
+  "note": "a success does not clear the count"
+ },
+ {
+  "id": "M29",
+  "file": "src/modules/identity/sign-in.ts",
+  "from": "? invalidCredentials(failure.attemptsRemaining)",
+  "to": "? (operatorId === null ? new ApiFailure(401, ApiErrorCode.INVALID_CREDENTIALS, 'No such user.', { details: { attemptsRemaining: failure.attemptsRemaining } }) : invalidCredentials(failure.attemptsRemaining))",
+  "note": "an unknown username gets another message"
+ },
+ {
+  "id": "M30",
+  "file": "src/modules/identity/sign-in.ts",
+  "from": "    try {\n      await app.denialBudget.consume(request);\n    } catch (error) {",
+  "to": "    try {\n      await Promise.resolve();\n    } catch (error) {",
+  "note": "a failed attempt takes no place in the denial budget"
+ },
+ {
+  "id": "M31",
+  "file": "src/modules/identity/sign-in.ts",
+  "from": "return username.trim().toLowerCase();",
+  "to": "return username;",
+  "note": "the username is not normalised"
+ },
+ {
+  "id": "M32",
+  "file": "src/modules/identity/sign-in.ts",
+  "from": "  const attempt = await app.pipeline.run('identity.signIn.attempt', () => lockout.take(lockoutKey, app.clock.now()));\n  if (attempt.kind === 'LOCKED') return refuseLocked(attempt);\n",
+  "to": "  const attempt = { kind: 'TAKEN', windowId: 0 } as AttemptTicket;\n",
+  "note": "no attempt is taken before the verification"
+ },
+ {
+  "id": "M33",
+  "file": "src/modules/identity/routes.ts",
+  "from": "return { session: outcome.info };",
+  "to": "return { session: outcome.info, sessionToken: outcome.token };",
+  "note": "the web answer holds the token in its body"
+ },
+ {
+  "id": "M34",
+  "file": "src/modules/identity/routes.ts",
+  "from": "if (consoleIdentity.kind === 'DEVICE') return { session: outcome.info, sessionToken: outcome.token };",
+  "to": "if (consoleIdentity.kind === 'DEVICE') {\n        setSessionCookie(reply, cookieName, outcome.token);\n        return { session: outcome.info, sessionToken: outcome.token };\n      }",
+  "note": "a device sign-in sets a cookie"
+ },
+ {
+  "id": "M35",
+  "file": "src/modules/identity/routes.ts",
+  "from": "if (session.deviceId === null) clearSessionCookie(reply, cookieName);",
+  "to": "clearSessionCookie(reply, cookieName);",
+  "note": "a device sign-out sends Set-Cookie"
+ },
+ {
+  "id": "M36",
+  "file": "src/modules/identity/cookie.ts",
+  "from": "{ httpOnly: true, sameSite: 'strict', path: '/' } as const",
+  "to": "{ httpOnly: true, sameSite: 'strict', path: '/', maxAge: 28_800 } as const",
+  "note": "the cookie has Max-Age"
+ },
+ {
+  "id": "M37",
+  "file": "src/modules/identity/cookie.ts",
+  "from": "sameSite: 'strict', path: '/' } as const",
+  "to": "sameSite: 'lax', path: '/' } as const",
+  "note": "SameSite=Lax"
+ },
+ {
+  "id": "M38",
+  "file": "src/modules/identity/cookie.ts",
+  "from": "{ httpOnly: true, sameSite",
+  "to": "{ httpOnly: false, sameSite",
+  "note": "the cookie is readable by script"
+ },
+ {
+  "id": "M39",
+  "file": "src/modules/identity/console.ts",
+  "from": "if (facts.category === OriginCategory.WEB_CONSOLE && !facts.hasBearer) return WEB_CONSOLE;",
+  "to": "if (facts.category !== OriginCategory.OTHER && !facts.hasBearer) return WEB_CONSOLE;",
+  "note": "the own origin and no Origin count as a web console"
+ },
+ {
+  "id": "M40",
+  "file": "src/modules/identity/routes.ts",
+  "from": "    onRequest: async (request) => {\n      requireConsoleIdentity(app, request);\n    },\n",
+  "to": "",
+  "note": "the console rule runs after the body is read"
+ },
+ {
+  "id": "M41",
+  "file": "src/modules/identity/session-store.ts",
+  "from": "COOKIE: `${FIND_SESSION}s.device_id IS NULL`,",
+  "to": "COOKIE: `${FIND_SESSION}TRUE`,",
+  "note": "the cookie finds a device session"
+ },
+ {
+  "id": "M42",
+  "file": "src/modules/identity/session-store.ts",
+  "from": "BEARER: `${FIND_SESSION}s.device_id IS NOT NULL`,",
+  "to": "BEARER: `${FIND_SESSION}TRUE`,",
+  "note": "a bearer value finds a web session"
+ },
+ {
+  "id": "M43",
+  "file": "src/modules/identity/limits.ts",
+  "from": "export const SESSION_IDLE_TIMEOUT_MS = AUTH_IDLE_TIMEOUT_MS;",
+  "to": "export const SESSION_IDLE_TIMEOUT_MS = AUTH_IDLE_TIMEOUT_MS + 1;",
+  "note": "the idle limit is 1 ms longer"
+ },
+ {
+  "id": "M44",
+  "file": "src/modules/identity/limits.ts",
+  "from": "export const SESSION_ABSOLUTE_TIMEOUT_MS = 8 * 60 * 60_000;",
+  "to": "export const SESSION_ABSOLUTE_TIMEOUT_MS = 8 * 60 * 60_000 + 1;",
+  "note": "the absolute limit is 1 ms longer"
+ },
+ {
+  "id": "M45",
+  "file": "src/modules/identity/sessions.ts",
+  "from": "if (found.endedAt === null && pastLimit(found, app.clock.now())) {",
+  "to": "if (found.endedAt === null && pastLimit(found, 0)) {",
+  "note": "expiry is not checked when a token is presented"
+ },
+ {
+  "id": "M46",
+  "file": "src/modules/identity/session-store.ts",
+  "from": "AND last_seen_at < $2 AND last_seen_at > $3 AND absolute_expires_at > $2 '",
+  "to": "AND last_seen_at < $2 AND $3::bigint IS NOT NULL '",
+  "note": "a touch revives a session past its limit"
+ },
+ {
+  "id": "M47",
+  "file": "src/modules/identity/session-store.ts",
+  "from": "`UPDATE public.auth_sessions SET ended_at = $2, end_reason = $3 WHERE id = $1 AND ended_at IS NULL ${RETURNING_ENDED}`",
+  "to": "`UPDATE public.auth_sessions SET ended_at = $2, end_reason = $3 WHERE id = $1 ${RETURNING_ENDED}`",
+  "note": "ending a session is not compare-and-set"
+ },
+ {
+  "id": "M48",
+  "file": "src/modules/identity/session-store.ts",
+  "from": "'WHERE ended_at IS NULL AND (absolute_expires_at <= $1 OR last_seen_at <= $2)';",
+  "to": "'WHERE (absolute_expires_at <= $1 OR last_seen_at <= $2)';",
+  "note": "expiry is not compare-and-set"
+ },
+ {
+  "id": "M49",
+  "file": "src/modules/identity/session-store.ts",
+  "from": "CASE WHEN absolute_expires_at <= $1 THEN 'ABSOLUTE_EXPIRED' ELSE 'IDLE_EXPIRED' END",
+  "to": "CASE WHEN last_seen_at <= $2 THEN 'IDLE_EXPIRED' ELSE 'ABSOLUTE_EXPIRED' END",
+  "note": "idle wins when both limits hold"
+ },
+ {
+  "id": "M50",
+  "file": "src/modules/identity/sessions.ts",
+  "from": "        publishExpired(unit, ended);\n        return ended;",
+  "to": "        return ended;",
+  "note": "the sweeper publishes nothing"
+ },
+ {
+  "id": "M51",
+  "file": "src/modules/identity/sessions.ts",
+  "from": "    await appendActivity(unit, signedOut({ operatorId: ended.operatorId, deviceId: ended.deviceId, reason }));\n",
+  "to": "",
+  "note": "a sign-out writes no audit row"
+ },
+ {
+  "id": "M52",
+  "file": "src/modules/identity/tokens.ts",
+  "from": "createHash('sha256').update(token, 'utf8')",
+  "to": "createHash('sha256').update(token.slice(4), 'utf8')",
+  "note": "the hash leaves the prefix out"
+ },
+ {
+  "id": "M53",
+  "file": "src/modules/identity/tokens.ts",
+  "from": "export const SESSION_TOKEN_BYTES = 32;",
+  "to": "export const SESSION_TOKEN_BYTES = 16;",
+  "note": "a token of 128 bits"
+ },
+ {
+  "id": "M54",
+  "file": "src/modules/identity/routes.ts",
+  "from": "    schema: { body: SignOutRequestSchema },\n    onRequest: operatorOnly,",
+  "to": "    schema: { body: SignOutRequestSchema },",
+  "note": "sign-out validates the body before it asks who calls"
+ },
+ {
+  "id": "M55",
+  "file": "src/modules/identity/console.ts",
+  "from": "return pairedDeviceOf(request) ?? WEB_CONSOLE_KEY;",
+  "to": "return WEB_CONSOLE_KEY;",
+  "note": "a device reads the web console's lock state"
+ },
+ {
+  "id": "M56",
+  "file": "src/modules/identity/routes.ts",
+  "from": "void reply.header(EPOCH_HEADER_NAME, app.engine.epoch).header(REVISION_HEADER_NAME, app.engine.revision);",
+  "to": "",
+  "note": "no state revision on a POST answer"
+ },
+ {
+  "id": "M57",
+  "file": "src/modules/identity/sign-in.ts",
+  "from": "if (!hasher.needsRehash(candidate.record)) return;",
+  "to": "return;",
+  "note": "a weaker record is never replaced"
+ },
+ {
+  "id": "M58",
+  "file": "src/modules/identity/activity.ts",
+  "from": "...(input.disabled ? { reason: 'USER_DISABLED' } : {}),",
+  "to": "",
+  "note": "a disabled operator's attempt carries no reason"
+ },
+ {
+  "id": "M59",
+  "file": "src/modules/identity/activity.ts",
+  "from": "actorId: input.operatorId,\n      deviceId: input.deviceId,\n      details: {\n        method: input.method,\n        knownOperator",
+  "to": "actorId: null,\n      deviceId: input.deviceId,\n      details: {\n        method: input.method,\n        knownOperator",
+  "note": "a failed attempt never names the operator"
+ },
+ {
+  "id": "M60",
+  "file": "src/modules/identity/sessions.ts",
+  "from": "    unit.afterCommit(() => app.publish({ kind: 'session.ended', sessionIds: [ended.id], reason: 'SIGNED_OUT' }));\n",
+  "to": "",
+  "note": "a sign-out publishes nothing"
+ },
+ {
+  "id": "M61",
+  "file": "src/modules/identity/sign-in.ts",
+  "from": "deviceId, method: PASSWORD, now });",
+  "to": "deviceId: null, method: PASSWORD, now });",
+  "note": "a device sign-in issues a session without the device"
+ },
+ {
+  "id": "M62",
+  "file": "src/modules/identity/lockout.ts",
+  "from": "const failed = Math.min(await count(failures, counterName(key, window)), LOCKOUT_MAX_ATTEMPTS);",
+  "to": "const failed = Math.min((await attempts.get(counterName(key, window)))?.consumedPoints ?? 0, LOCKOUT_MAX_ATTEMPTS);",
+  "note": "attemptsRemaining follows the attempts taken, not the failures"
+ },
+ {
+  "id": "M63",
+  "file": "src/modules/identity/index.ts",
+  "from": "  app.addHook('onListen', async () => {\n    sweeper.start();\n  });",
+  "to": "  sweeper.start();",
+  "note": "the sweeper starts with the app factory"
+ },
+ {
+  "id": "M64",
+  "file": "src/modules/identity/sessions.ts",
+  "from": "      if (!pending) return [];\n",
+  "to": "",
+  "note": "a sweep with nothing to end still takes a unit"
+ },
+ {
+  "id": "M65",
+  "file": "src/modules/identity/sessions.ts",
+  "from": "        if (found.endedAt === null && pastLimit(found, app.clock.now())) {\n          // Open and past a limit",
+  "to": "        if (found.endedAt === null && pastLimit(found, 0)) {\n          // Open and past a limit",
+  "note": "a session past its limit resolves when the expiry statement ended nothing"
+ },
+ {
+  "id": "M66",
+  "file": "src/modules/identity/sessions.ts",
+  "from": "    void app.db.probe({ fresh: true });\n",
+  "to": "",
+  "note": "a failed read does not ask for a probe"
+ },
+ {
+  "id": "M67",
+  "file": "src/modules/identity/sessions.ts",
+  "from": "app.log.error({ err: error, source }, READ_FAILED);",
+  "to": "app.log.error({ err: error, source, detail: String(error) }, READ_FAILED);",
+  "note": "a failed read logs the driver's message"
+ },
+ {
+  "id": "M68",
+  "file": "src/modules/identity/sessions.ts",
+  "from": "    void app.db.probe({ fresh: true });\n    throw notReady();",
+  "to": "    void app.db.probe({ fresh: true });\n    throw error;",
+  "note": "a failed read answers with the raw error"
+ }
+]

@@ -2,6 +2,9 @@
 # DEMS device session: lock + lane helper (Parallel Execution Protocol P3/P4; 05_mobile_plan §5.4).
 # Written and tested by step 67. Hard session cap rewritten by step 67b (D93, incident F-83-6).
 # Second phone (dems_phone2) and the any-phone / any targets added by step 67c (D100).
+# AVD-name prefix (DEMS_AVD_PREFIX, default dems2_) and the screen-lock check (exit 77) added by
+# row W02b of the backend task (its D58); the port guard (exit 69 when another AVD holds the
+# target's port) by that row's follow-up (D63).
 #
 # Run it OUTSIDE the sandbox (adb and the emulator need that, D24), from any directory:
 #
@@ -13,10 +16,17 @@
 #   METRO_PORT=8085 apps/mobile/scripts/device-session.sh both      '<commands>' # steps 57 and 59 only
 #   NO_METRO=1      apps/mobile/scripts/device-session.sh any-phone '<commands>' # no Metro (installs, launcher)
 #
-# Targets, serials and locks:
-#   phone   dems_phone   emulator-5554  .locks/dems_phone.lock
-#   phone2  dems_phone2  emulator-5558  .locks/dems_phone2.lock   (same pixel_10 profile as dems_phone)
-#   tablet  dems_tablet  emulator-5556  .locks/dems_tablet.lock
+# Targets, AVDs, serials and locks. The AVD of a target is "$DEMS_AVD_PREFIX<target>"; the default
+# prefix is dems2_:
+#   phone   dems2_phone   emulator-5554  .locks/dems_phone.lock
+#   phone2  dems2_phone2  emulator-5558  .locks/dems_phone2.lock   (same pixel_10 profile as phone)
+#   tablet  dems2_tablet  emulator-5556  .locks/dems_tablet.lock
+#   The dems2_* AVDs were created without a screen lock (W02b, D58). DEMS_AVD_PREFIX=dems_ addresses
+#   the older AVDs dems_phone, dems_phone2 and dems_tablet on the same ports; those carry a
+#   screen-lock PIN, so a session on them stops with 77 until the user has unlocked them. Lock
+#   files, target names, serials and ports do not depend on the prefix (.locks/dems_<target>.lock in
+#   every case). The two families share the ports, so only one of them can run: stop the emulators
+#   of the other prefix first (this script never stops one).
 #   any-phone  the FIRST FREE of phone, phone2; any  the first free of phone, phone2, tablet.
 #     Each lock is probed without blocking (lockf -k -t 0), and the probe that succeeds already holds
 #     the lock and runs the session, so two lanes can never pick the same device. If every lock is
@@ -24,18 +34,29 @@
 #     (exit 75). The session logs the serial it got, and SERIAL / ANDROID_SERIAL carry it, so
 #     <commands> must use "$SERIAL" (or plain adb), never a hard-coded emulator-5554.
 #
-# Holding .locks/dems_<avd>.lock (for "both": phone first, then tablet), it:
+# Holding .locks/dems_<target>.lock (for "both": phone first, then tablet), it:
 #   1. checks the AVD. If it is down, boots it cold, the P3/D78 way (-port 5554/5558/5556 -no-metrics
 #      -gpu host -no-boot-anim -no-snapshot-load -no-snapshot-save), detached, writes
-#      .locks/dems_<avd>.pid, waits for boot. A running AVD that adb cannot reach is never booted a
-#      second time, and no emulator is ever stopped or rebooted here (P3, D78);
+#      .locks/<AVD name>.pid (dems2_phone.pid, ...) and .locks/<AVD name>.emulator.log, waits for
+#      boot. A running AVD that adb cannot reach is never booted a second time, and no emulator is
+#      ever stopped or rebooted here (P3, D78). Port guard: if the target's port is held by an
+#      emulator of ANOTHER AVD (the two families share the ports), nothing is booted, the PID file
+#      is left as it is and the session stops with 69, naming that AVD and the DEMS_AVD_PREFIX
+#      that addresses it; the same when the serial is answered by another AVD than the session's;
+#   1b. wakes the screen and dismisses a keyguard that has no credential (input keyevent
+#      KEYCODE_WAKEUP, wm dismiss-keyguard), then reads isKeyguardShowing. Still showing means the
+#      device has a secure lock (PIN, pattern, password): the session stops with 77 (no Metro, no
+#      reverse rule, <commands> do not run; only step 5 follows). It types nothing into a lock
+#      screen and changes no lock or security setting; no agent unlocks a device, that is the
+#      user's action (D35, D49 of the backend task);
 #   2. force-stops com.dems.demo.tablet (D43), unless KEEP_APP=1;
 #   3. starts Metro on 127.0.0.1:$METRO_PORT (IPv4 first, D41), waits for packager-status:running,
 #      sets the app's bundler location to localhost:8081 (needed on emulators, see set_bundle_host)
 #      and maps the device side: adb reverse tcp:8081 -> tcp:$METRO_PORT (H-MB-09) and tcp:4400;
 #   4. runs <commands> with /bin/sh in apps/mobile, with these variables exported:
 #        SERIAL, ANDROID_SERIAL  the session serial (single-AVD sessions only)
-#        AVD_NAME                dems_phone, dems_phone2 or dems_tablet (single-AVD sessions only)
+#        AVD_NAME                the AVD's name, prefix included: dems2_phone, dems2_phone2 or
+#                                dems2_tablet by default (single-AVD sessions only)
 #        SERIALS                 every serial of the session ("emulator-5554 emulator-5556" for both)
 #        APP_ID                  com.dems.demo.tablet
 #        METRO_PORT, METRO_LOG   lane port and the Metro log file ("Android Bundled" lines)
@@ -64,20 +85,29 @@
 #   adb -s "$SERIAL" exec-out screencap -p > "$SHOTS/<step>_dems_phone_<name>.png"
 #
 # Environment: METRO_PORT (default 8081; lanes per P4), NO_METRO=1, KEEP_APP=1,
+#   DEMS_CORE_HOST_PORT (optional; 4420-4423, the host port of the Core server or of a lane backend.
+#   Set: the session also maps device tcp:4420 -> host tcp:$DEMS_CORE_HOST_PORT and removes that
+#   rule at the end; the device side is always tcp:4420. Unset or empty: no tcp:4420 rule is set
+#   or removed and the session runs exactly as before. Any other value: exit 64, before any lock),
+#   DEMS_AVD_PREFIX (AVD-name prefix, default dems2_; dems_ = the older, PIN-locked AVDs. Letters,
+#   digits and underscores only; anything else: exit 64, before any lock),
 #   LOCK_WAIT (seconds to wait for a lock, default 1800),
 #   DEVICE_SESSION_MAX_SECONDS (hard cap in seconds, default 1800; SESSION_MAX_SECS is the older
 #   name and is still read when DEVICE_SESSION_MAX_SECONDS is unset),
 #   BOOT_WAIT (seconds to wait for a reboot, default 240), ANDROID_HOME (default ~/Library/Android/sdk).
-# Exit status: that of <commands>; 64 usage; 69 device unavailable; 70 Metro failed or session setup
+# Exit status: that of <commands>; 64 usage; 69 device unavailable, or its port or serial belongs
+#   to another AVD (port guard, step 1); 70 Metro failed or session setup
 #   failed; 75 lock not acquired within LOCK_WAIT (from lockf, or from the any-phone/any wait);
-#   142 session cap reached. If the watchdog has to KILL a hung session shell, lockf reports that
-#   shell's death instead. any-phone/any return the session's status unchanged (a 75 from
-#   <commands> is told apart from "lock busy" by a marker the session writes when it starts).
+#   77 a device of the session shows a secure screen lock (nothing was entered, <commands> did not
+#   run; the user unlocks the device); 142 session cap reached. If the watchdog has to KILL a hung
+#   session shell, lockf reports that shell's death instead. any-phone/any return the session's
+#   status unchanged (a 75 from <commands> is told apart from "lock busy" by a marker the session
+#   writes when it starts).
 
 set -u
 
 usage() {
-  echo "usage: [METRO_PORT=8081..8086] [NO_METRO=1] [DEVICE_SESSION_MAX_SECONDS=1800] $0 any-phone|any|phone|phone2|tablet|both '<commands>'" >&2
+  echo "usage: [METRO_PORT=8081..8086] [NO_METRO=1] [DEMS_CORE_HOST_PORT=4420..4423] [DEMS_AVD_PREFIX=dems2_] [DEVICE_SESSION_MAX_SECONDS=1800] $0 any-phone|any|phone|phone2|tablet|both '<commands>'" >&2
   exit 64
 }
 
@@ -121,6 +151,29 @@ MAX_SECS=${DEVICE_SESSION_MAX_SECONDS:-${SESSION_MAX_SECS:-1800}}
 case "$MAX_SECS" in
   '' | 0* | *[!0-9]*)
     echo "DEVICE_SESSION_MAX_SECONDS must be a whole number of seconds above 0 (got '$MAX_SECS')" >&2
+    exit 64
+    ;;
+esac
+
+# Optional Core server host port (04_client_integration_spec §9.6; plan W13). Checked before any lock
+# is taken. Unset or empty leaves CORE_HOST_PORT empty, and then nothing below runs for it.
+CORE_HOST_PORT=${DEMS_CORE_HOST_PORT:-}
+case "$CORE_HOST_PORT" in
+  '' | 442[0-3]) ;;
+  *)
+    echo "DEMS_CORE_HOST_PORT must be 4420-4423 (P4) (got '$CORE_HOST_PORT')" >&2
+    exit 64
+    ;;
+esac
+
+# AVD-name prefix (row W02b, D58). The AVD of a target is "$AVD_PREFIX<target>": dems2_phone,
+# dems2_phone2 and dems2_tablet by default (created without a screen lock); DEMS_AVD_PREFIX=dems_
+# addresses the older AVDs. Lock files, target names, serials and ports never depend on it. Checked
+# before any lock is taken: the value goes into a pgrep pattern and into file names.
+AVD_PREFIX="${DEMS_AVD_PREFIX:-dems2_}"
+case "$AVD_PREFIX" in
+  *[!A-Za-z0-9_]*)
+    echo "DEMS_AVD_PREFIX must hold only letters, digits and underscores (got '$AVD_PREFIX')" >&2
     exit 64
     ;;
 esac
@@ -195,7 +248,7 @@ is_up() {
 # The emulator process is the source of truth for "is it running", not adb: right after the adb
 # server starts, adb has not found the emulators yet, and a second boot of a running AVD must never
 # happen (step 67 hit exactly that; the emulator then aborts with "multiple emulators").
-avd_process() { pgrep -f -- "(qemu-system-[a-z0-9_]+|emulator) -avd dems_$1( |\$)" 2>/dev/null | head -n 1; }
+avd_process() { pgrep -f -- "(qemu-system-[a-z0-9_]+|emulator) -avd ${AVD_PREFIX}$1( |\$)" 2>/dev/null | head -n 1; }
 
 wait_up() { # $1 = serial, $2 = seconds
   i=0
@@ -206,13 +259,60 @@ wait_up() { # $1 = serial, $2 = seconds
   done
 }
 
+# Port guard (W02b follow-up, D63). The dems_* and dems2_* AVDs use the same ports, so the emulator
+# on a target's port may be the other family's (or one started by `npm run emulator`, which takes
+# the first free port). A session must neither boot its AVD onto a held port nor run on that AVD.
+#   port_process  any emulator process started with "-port <the target's port>", whatever its AVD;
+#   avd_name_of   the AVD name the emulator on a serial reports (read-only; empty: no answer);
+#   prefix_hint   which DEMS_AVD_PREFIX addresses the AVD that was found, for the log line.
+port_process() { pgrep -f -- "^[^ ]*(qemu-system-[a-z0-9_]+|emulator) (.* )?-port $(port_of "$1")( |\$)" 2>/dev/null | head -n 1; }
+avd_name_of() {
+  an=$(adb -s "$1" emu avd name 2>/dev/null | head -n 1 | tr -d '\r')
+  case "$an" in '' | *[!A-Za-z0-9._-]*) ;; *) echo "$an" ;; esac
+}
+prefix_hint() { # $1 = target, $2 = AVD name found on its port (may be empty)
+  case "$2" in
+    ?*"$1")
+      hp=${2%"$1"}
+      case "$hp" in *[!A-Za-z0-9_]*) ;; *)
+        echo "DEMS_AVD_PREFIX=$hp addresses it"
+        return
+        ;;
+      esac
+      ;;
+  esac
+  echo "no DEMS_AVD_PREFIX addresses it as target $1"
+}
+
 ensure_avd() {
   s=$(serial_of "$1")
-  name="dems_$1"
+  name="${AVD_PREFIX}$1"
   adb start-server >/dev/null 2>&1
-  if [ -n "$(avd_process "$1")" ]; then
-    wait_up "$s" 60 && return 0
-    log "$name is running (PID $(avd_process "$1")) but adb cannot reach $s in 60 s; not booting a second copy"
+  p=$(avd_process "$1")
+  on=""
+  [ -n "$p" ] || on=$(avd_name_of "$s")
+  # Running: the AVD's own process exists, or (started in a form avd_process does not match) the
+  # serial already answers with this AVD's name. Either way it is never booted a second time.
+  if [ -n "$p" ] || [ "$on" = "$name" ]; then
+    if wait_up "$s" 60; then
+      on=$(avd_name_of "$s")
+      if [ -n "$on" ] && [ "$on" != "$name" ]; then
+        log "$name runs (PID ${p:-unknown}), but $s is answered by AVD '$on': another emulator holds port $(port_of "$1")"
+        log "$(prefix_hint "$1" "$on"); or stop that emulator first (this script never stops one)"
+        return 1
+      fi
+      return 0
+    fi
+    log "$name is running (PID ${p:-unknown}) but adb cannot reach $s in 60 s; not booting a second copy"
+    return 1
+  fi
+  # Down. Before any boot: does another emulator hold the port? Its process (-port <port>), an
+  # AVD name answering on the serial, or the serial being a device at all is enough.
+  holder=$(port_process "$1")
+  if [ -n "$holder" ] || [ -n "$on" ] || [ "$(adb -s "$s" get-state 2>/dev/null)" = device ]; then
+    [ -n "$on" ] || [ -z "$holder" ] || on=$(ps -o command= -p "$holder" 2>/dev/null | sed -n 's/.* -avd \([^ ]*\).*/\1/p')
+    log "port $(port_of "$1") is held by another emulator: AVD '${on:-unknown}'${holder:+ (PID $holder)}, not $name. Not booting $name; .locks/$name.pid is left as it is"
+    log "$(prefix_hint "$1" "$on"); or stop that emulator first (this script never stops one)"
     return 1
   fi
   log "$name ($s) is down; booting it cold the P3/D78 way (-no-snapshot-load -no-snapshot-save)"
@@ -229,13 +329,21 @@ ensure_avd() {
     log "$name did not finish booting in ${BOOT_WAIT:-240} s (log: .locks/$name.emulator.log)"
     return 1
   fi
-  log "$name booted cold; D78: reinstall the current step-72 debug APK (hash-verified) before testing"
+  # The serial answers: by this AVD? (An emulator adb had not listed yet may have held the port.)
+  on=$(avd_name_of "$s")
+  if [ -n "$on" ] && [ "$on" != "$name" ]; then
+    log "$name was started, but $s is answered by AVD '$on': port $(port_of "$1") was already held, so that start failed (.locks/$name.emulator.log; .locks/$name.pid holds its PID)"
+    log "$(prefix_hint "$1" "$on"); or stop that emulator first (this script never stops one)"
+    return 1
+  fi
+  log "$name booted cold; D78: check that the current debug APK is on it (base.apk SHA-256 = the host APK) before testing"
 }
 
 case "$AVD" in both) AVDS="phone tablet" ;; *) AVDS=$AVD ;; esac
 ALL_SERIALS=""
 for a in $AVDS; do ALL_SERIALS="$ALL_SERIALS $(serial_of "$a")"; done
 if [ "${NO_METRO:-0}" != 1 ]; then PLANNED_REV="8081 4400"; else PLANNED_REV="4400"; fi
+[ -n "$CORE_HOST_PORT" ] && PLANNED_REV="$PLANNED_REV 4420"
 
 # ---- Hard cap: session state and watchdog ------------------------------------------------------
 INNER_PID=$$
@@ -336,7 +444,7 @@ watchdog() {
 watchdog </dev/null &
 WD_PID=$!
 log "lock held; hard cap $MAX_SECS s, until $(date -r "$DEADLINE" '+%H:%M:%S') (watchdog PID $WD_PID)"
-log "session serial:$ALL_SERIALS ($(for a in $AVDS; do printf 'dems_%s ' "$a"; done | sed 's/ $//'))${DEMS_SESSION_TARGET:+; picked by $DEMS_SESSION_TARGET}"
+log "session serial:$ALL_SERIALS ($(for a in $AVDS; do printf '%s%s ' "$AVD_PREFIX" "$a"; done | sed 's/ $//'))${DEMS_SESSION_TARGET:+; picked by $DEMS_SESSION_TARGET}"
 
 METRO_PID=""
 CMD_PID=""
@@ -385,9 +493,37 @@ export SERIALS
 if [ "$AVD" != both ]; then
   SERIAL=$(serial_of "$AVD")
   ANDROID_SERIAL=$SERIAL
-  AVD_NAME=dems_$AVD
+  AVD_NAME=${AVD_PREFIX}$AVD
   export SERIAL ANDROID_SERIAL AVD_NAME
 fi
+
+# Screen lock (row W02b, D58; F33). sys.boot_completed = 1 says nothing about the keyguard: at a
+# secure keyguard user 0 is still RUNNING_LOCKED, no activity resolves and run-as cannot reach the
+# app's data, and until now a session ran on regardless. Credential-free step: wake the screen and
+# dismiss a keyguard that has no credential (swipe). Read-only check after it: a keyguard that is
+# still showing belongs to a secure lock, and the session stops with 77. Nothing is typed into a lock
+# screen and no lock, biometric or other security setting is changed: unlocking a device is the
+# user's action, never an agent's (D35, D49).
+keyguard_state() { adb -s "$1" shell dumpsys window 2>/dev/null | tr -d '\r' | grep -o 'isKeyguardShowing=[a-z]*' | head -n 1; }
+check_keyguard() { # $1 = serial; 0 = no keyguard (or its state cannot be read), 1 = secure lock
+  adb -s "$1" shell input keyevent KEYCODE_WAKEUP >/dev/null 2>&1
+  adb -s "$1" shell wm dismiss-keyguard >/dev/null 2>&1
+  kn=0
+  while kg=$(keyguard_state "$1") && [ "$kg" = "isKeyguardShowing=true" ] && [ "$kn" -lt 10 ]; do
+    sleep 1
+    kn=$((kn + 1))
+  done
+  case "$kg" in
+    isKeyguardShowing=false) log "$1: screen awake, no keyguard" ;;
+    isKeyguardShowing=true)
+      log "$1: LOCKED. The keyguard still shows after wake + dismiss, so this device has a secure screen lock (PIN, pattern or password)"
+      log "$1: no agent unlocks a device; this script enters no credential and changes no lock setting (D35, D49). The user unlocks it, or use a lock-free AVD (DEMS_AVD_PREFIX, default dems2_)"
+      return 1
+      ;;
+    *) log "$1: WARNING could not read the keyguard state (dumpsys window); going on" ;;
+  esac
+}
+for s in $SERIALS; do check_keyguard "$s" || exit 77; done
 
 if [ "${KEEP_APP:-0}" != 1 ]; then
   for s in $SERIALS; do adb -s "$s" shell am force-stop "$APP_ID" >/dev/null 2>&1; done
@@ -457,6 +593,13 @@ else
   REVERSED="4400"
   for s in $SERIALS; do adb -s "$s" reverse tcp:4400 tcp:4400 >/dev/null || exit 69; done
   log "no Metro (NO_METRO=1); tcp:4400 -> tcp:4400 on $SERIALS"
+fi
+# Core server (only with DEMS_CORE_HOST_PORT): the device side is always tcp:4420, the host side is
+# the given port. 4420 joins REVERSED first, so the cleanup removes this session's rule and no other.
+if [ -n "$CORE_HOST_PORT" ]; then
+  REVERSED="$REVERSED 4420"
+  for s in $SERIALS; do adb -s "$s" reverse tcp:4420 "tcp:$CORE_HOST_PORT" >/dev/null || exit 69; done
+  log "Core server: device tcp:4420 -> host tcp:$CORE_HOST_PORT on $SERIALS"
 fi
 
 mkdir -p "$SHOTS"

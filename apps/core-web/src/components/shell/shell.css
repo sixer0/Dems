@@ -345,6 +345,27 @@
     color: var(--foreground);
   }
 
+  /* Mode indicator (backend task 04_client_integration_spec §3.2): a kit Chip in a tooltip trigger,
+     or in a kit Button where the build offers the mode switch. Shown at every width. */
+  .dems-mode-indicator {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    border-radius: 9999px;
+    cursor: default;
+  }
+
+  .dems-shell button.dems-mode-indicator {
+    height: auto;
+    min-width: 0;
+    padding: 4px;
+    cursor: pointer;
+  }
+
+  .dems-mode-chip {
+    white-space: nowrap;
+  }
+
   .dems-icon-button {
     color: var(--color-foreground-2, #d8cec6);
   }
@@ -656,6 +677,13 @@
     list-style: none;
   }
 
+  /* A group with its separator and micro label (ADMINISTRATION, DEVELOPER): one Motion layout node. */
+  .dems-nav-section {
+    display: flex;
+    flex: none;
+    flex-direction: column;
+  }
+
   /* AnimatedBackground (M-SH-01) clones each <li> and wraps its content in a `.z-10` div. */
   .dems-nav-group > li > div {
     display: flex;
@@ -869,6 +897,17 @@
     flex-direction: column;
     justify-content: flex-end;
     min-height: 0;
+  }
+
+  /* With ADMINISTRATION the list is two entries longer. On a short window the brand footer then
+     keeps its own height and the sidebar scrolls, where a footer squeezed to nothing would draw
+     over the entries above it. The texture still takes whatever height is left. */
+  .dems-nav-list[data-admin='true'] ~ .dems-sidebar-foot {
+    flex-shrink: 0;
+  }
+
+  .dems-nav-list[data-admin='true'] ~ .dems-sidebar-foot .dems-topo {
+    flex-basis: 0;
   }
 
   .dems-topo {
@@ -1090,6 +1129,52 @@
     max-width: 100%;
   }
 
+  /* "Live mode only" state of a page without a simulator equivalent (§10.1). */
+  .dems-live-only-card {
+    flex: 1 0 auto;
+    justify-content: center;
+  }
+
+  .dems-live-only {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    padding: 48px 16px;
+    text-align: center;
+  }
+
+  .dems-live-only-icon {
+    width: 40px;
+    height: 40px;
+    color: var(--color-foreground-2, #d8cec6);
+  }
+
+  .dems-live-only-title {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+    line-height: 26px;
+    color: var(--foreground);
+  }
+
+  .dems-live-only-body {
+    max-width: 460px;
+    margin: 0 0 8px;
+    font-size: 14px;
+    line-height: 22px;
+    text-align: center;
+    color: var(--muted);
+  }
+
+  /* Link notice (§3.5): the sentence, then the second action of the toast. */
+  .dems-link-notice {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
   /* ── Responsive top bar (04 §2.5) ─────────────────────────────────────────────────────── */
   .dems-shell[data-shell-tier='lg'] .dems-lockup-emblem svg,
   .dems-shell[data-shell-tier='md'] .dems-lockup-emblem svg {
@@ -1137,6 +1222,38 @@
   @media (width < 1366px) {
     .dems-tagline,
     .dems-device-room {
+      display: none;
+    }
+  }
+
+  /* The date yields to the mode indicator, which is never hidden (backend task
+     04_client_integration_spec §3.2). Measured in the browser (implementation/54 §10): with the
+     date, the lockup and the cluster meet below 1506 px for the chip `SIMULATED`, and below 1657 px
+     for the longest Live label, `LIVE · RECONNECTING`. */
+  @media (width < 1520px) {
+    .dems-topbar-date,
+    .dems-topbar-date + .dems-topbar-sep {
+      display: none;
+    }
+  }
+
+  @media (width < 1664px) {
+    .dems-shell[data-core-mode='LIVE'] .dems-topbar-date,
+    .dems-shell[data-core-mode='LIVE'] .dems-topbar-date + .dems-topbar-sep {
+      display: none;
+    }
+  }
+
+  /* A window as narrow as a phone: the clock yields too (the readable time goes with it). Measured:
+     with the clock, the bar needs 423 px for `SIMULATED` and 486 px for `LIVE · RECONNECTING`. */
+  @media (width < 432px) {
+    .dems-topbar-clock {
+      display: none;
+    }
+  }
+
+  @media (width < 496px) {
+    .dems-shell[data-core-mode='LIVE'] .dems-topbar-clock {
       display: none;
     }
   }

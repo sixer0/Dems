@@ -1,0 +1,18 @@
+// Scratch measurement for plan row W31: what the jest fake timers of the mobile configuration hold back.
+import { expect, it, jest } from '@jest/globals';
+
+it('under jest.useFakeTimers(): a promise job runs, a queueMicrotask callback waits for the fake timers', async () => {
+  jest.useFakeTimers();
+  const ran: string[] = [];
+  queueMicrotask(() => ran.push('queueMicrotask'));
+  void Promise.resolve().then(() => ran.push('promise job'));
+  await Promise.resolve();
+  await Promise.resolve();
+  const beforeAdvance = [...ran];
+  jest.runAllTicks();
+  jest.advanceTimersByTime(0);
+  const afterAdvance = [...ran];
+  jest.useRealTimers();
+  console.log(JSON.stringify({ beforeAdvance, afterAdvance }));
+  expect(beforeAdvance).toContain('promise job');
+});

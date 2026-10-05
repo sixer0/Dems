@@ -11,6 +11,7 @@ import {
   coreAddress,
   countdownParts,
   IDLE_TIMEOUT_MINUTES,
+  isArrivalNotice,
   splitAroundNumber,
   splitAroundToken,
   type LoginNotice,
@@ -26,6 +27,12 @@ export interface LoginAlertProps {
   reconnecting: boolean
   /** The arrival notice ("You have been signed out.") enters last on the page (ms, unscaled). */
   arrivalDelayMs: number
+  /**
+   * Live mode in a build that offers the choice (§3.5): the offline Alert gets a second action,
+   * "Use Simulated mode", which asks for the confirmation of a mode change. Absent or `null`: the
+   * Alert has its one action, as on the simulator.
+   */
+  onUseSimulated?: (() => void) | null
 }
 
 /**
@@ -40,10 +47,14 @@ export interface LoginAlertProps {
  * Accessibility: danger and warning are `role="alert"`, notices are `role="status"`. The live
  * countdown digits are `aria-hidden`; a static sentence carries the time for screen readers, so
  * the Alert is announced once instead of every second.
+ *
+ * Live mode (backend task, plan row W55) adds wording, not structure: a Core server that is
+ * starting (§3.5), the server's refusal of the input (422), the 8-hour limit of a session (WS-14)
+ * and a disabled account (§6.4, danger). No text of this Alert names a simulated value.
  */
-export function LoginAlert({ notice, lockKey, coreRetry, reconnecting, arrivalDelayMs }: LoginAlertProps) {
+export function LoginAlert({ notice, lockKey, coreRetry, reconnecting, arrivalDelayMs, onUseSimulated = null }: LoginAlertProps) {
   const m = useMotionPolicy()
-  const isArrival = notice?.kind === 'signed-out' || notice?.kind === 'console-locked' || notice?.kind === 'expired'
+  const isArrival = isArrivalNotice(notice)
   const enter = m.reduced
     ? tween('fast', 'standard', m.timeScale)
     : { ...tween('base', 'standard', m.timeScale), delay: isArrival ? m.seconds(arrivalDelayMs) : 0 }
@@ -58,7 +69,7 @@ export function LoginAlert({ notice, lockKey, coreRetry, reconnecting, arrivalDe
             animate={{ opacity: 1, y: 0, transition: enter }}
             exit={{ opacity: 0, transition: tween('fast', 'exit', m.timeScale) }}
           >
-            <NoticeAlert notice={notice} lockKey={lockKey} coreRetry={coreRetry} reconnecting={reconnecting} />
+            <NoticeAlert notice={notice} lockKey={lockKey} coreRetry={coreRetry} reconnecting={reconnecting} onUseSimulated={onUseSimulated} />
           </motion.div>
         ) : null}
       </AnimatePresence>
@@ -71,11 +82,13 @@ function NoticeAlert({
   lockKey,
   coreRetry,
   reconnecting,
+  onUseSimulated,
 }: {
   notice: LoginNotice
   lockKey: number
   coreRetry: RetryCooldown
   reconnecting: boolean
+  onUseSimulated: (() => void) | null
 }) {
   const { t } = useTranslation()
   const status = alertStatusFor(notice)
@@ -97,30 +110,46 @@ function NoticeAlert({
         </Alert>
       )
     case 'core-offline':
+    case 'core-starting': {
+      const retry = (
+        <Button
+          size="sm"
+          variant="danger-soft"
+          className="dems-login-retry"
+          isDisabled={!coreRetry.canRetry}
+          onPress={coreRetry.retry}
+          data-testid="login-core-retry"
+        >
+          {reconnecting && coreRetry.retryCount > 0 ? <Spinner size="sm" color="current" /> : null}
+          {coreRetry.exhausted
+            ? t('common.errors.maxRetries')
+            : coreRetry.cooldown > 0
+              ? t('common.actions.retryIn', { seconds: coreRetry.cooldown })
+              : t('common.actions.retry')}
+        </Button>
+      )
       return (
         <Alert status={status} role={role} data-testid="login-alert" data-kind={notice.kind}>
           <Alert.Indicator />
           <Alert.Content>
-            <Alert.Title>{t('login.errors.coreOfflineTitle')}</Alert.Title>
-            <Alert.Description>{t('login.errors.coreOfflineBody', { address: coreAddress() })}</Alert.Description>
+            <Alert.Title>{notice.kind === 'core-starting' ? t('common.coreLink.starting') : t('login.errors.coreOfflineTitle')}</Alert.Title>
+            <Alert.Description>
+              {notice.kind === 'core-starting' ? t('login.live.errors.startingBody') : t('login.errors.coreOfflineBody', { address: coreAddress() })}
+            </Alert.Description>
           </Alert.Content>
-          <Button
-            size="sm"
-            variant="danger-soft"
-            className="dems-login-retry"
-            isDisabled={!coreRetry.canRetry}
-            onPress={coreRetry.retry}
-            data-testid="login-core-retry"
-          >
-            {reconnecting && coreRetry.retryCount > 0 ? <Spinner size="sm" color="current" /> : null}
-            {coreRetry.exhausted
-              ? t('common.errors.maxRetries')
-              : coreRetry.cooldown > 0
-                ? t('common.actions.retryIn', { seconds: coreRetry.cooldown })
-                : t('common.actions.retry')}
-          </Button>
+          {onUseSimulated ? (
+            <div className="dems-login-alert-actions">
+              {retry}
+              <Button size="sm" variant="ghost" className="dems-login-retry" onPress={onUseSimulated} data-testid="login-use-simulated">
+                {t('common.coreMode.useSimulated')}
+              </Button>
+            </div>
+          ) : (
+            retry
+          )}
         </Alert>
       )
+    }
     case 'invalid':
       return (
         <Alert status={status} role={role} data-testid="login-alert" data-kind={notice.kind}>
@@ -142,13 +171,26 @@ function NoticeAlert({
           </Alert.Content>
         </Alert>
       )
+    case 'input-rejected':
+      return (
+        <Alert status={status} role={role} data-testid="login-alert" data-kind={notice.kind}>
+          <Alert.Indicator />
+          <Alert.Content>
+            <Alert.Title>{t('login.live.errors.inputRejected')}</Alert.Title>
+          </Alert.Content>
+        </Alert>
+      )
     default: {
       const text =
         notice.kind === 'expired'
           ? t('login.notices.sessionExpired', { minutes: IDLE_TIMEOUT_MINUTES })
-          : notice.kind === 'console-locked'
-            ? t('login.notices.consoleLocked')
-            : t('login.notices.signedOut')
+          : notice.kind === 'expired-absolute'
+            ? t('login.live.notices.absoluteExpired')
+            : notice.kind === 'disabled'
+              ? t('login.live.notices.userDisabled')
+              : notice.kind === 'console-locked'
+                ? t('login.notices.consoleLocked')
+                : t('login.notices.signedOut')
       return (
         <Alert status={status} role={role} data-testid="login-alert" data-kind={notice.kind}>
           <Alert.Indicator />

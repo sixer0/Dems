@@ -1,0 +1,211 @@
+#!/usr/bin/env python3
+"""W57 mutation check of the Pair screen's Live logic (rule M15: the tree is never edited).
+
+Each mutation changes ONE text of ONE production file IN MEMORY (the jest transformer beside this
+file) and runs the pairing folder's test files. A mutation is DETECTED when jest exits non-zero.
+Nothing in the tree is written; the SHA-256 of every mutated file is compared before and after.
+
+  python3 mutate.py [id ...]      (no id: all)
+"""
+import hashlib, json, os, subprocess, sys, time
+
+ROOT = '/Users/gsp-budi/Documents/DEMS'
+APP = ROOT + '/apps/mobile'
+HERE = os.path.dirname(os.path.abspath(__file__))
+SPEC = HERE + '/spec.json'
+CONFIG = HERE + '/jest.mut.config.cjs'
+D = 'src/features/pairing/'
+TESTS = [D + name for name in (
+    'pairing-model.test.ts', 'pairing-live-model.test.ts', 'pairing-live-static.test.ts',
+    'pairing-screen.test.tsx', 'pairing-live.test.tsx', 'stack-check-service-name.test.tsx',
+)]
+UF = D + 'use-pairing-flow.ts'
+LM = D + 'pairing-live-model.ts'
+PM = D + 'pairing-model.ts'
+CP = D + 'pairing-code-panel.tsx'
+PC = D + 'pairing-connection.tsx'
+PS = D + 'pairing-screen.tsx'
+UD = D + 'unpair-dialog.tsx'
+I18 = D + 'i18n.ts'
+HS = 'src/features/home/home-screen.tsx'
+
+M = [
+  # ── the controller (use-pairing-flow.ts) ──
+  ('F01', UF, "const live = useCoreLink().source === 'LIVE';", "const live = false;", 'the screen never knows it is in LIVE mode'),
+  ('F02', UF, "const live = useCoreLink().source === 'LIVE';", "const live = true;", 'the LIVE wording and rules leak into Simulated mode'),
+  ('F03', UF, "      if (live) setSent(true);\n", "", 'the request is out and the screen does not know: Cancel stays enabled'),
+  ('F04', UF, "    if (sent) return;\n", "", 'cancel() throws the attempt away after the request left'),
+  ('F05', UF, "    if (!blocked) leave();", "    leave();", 'Cancel leaves the screen although the gate holds'),
+  ('F06', UF, "if (next.kind === 'paired' ? live : !keepsCode(next)) setCodeState('');", "if (next.kind === 'paired' ? live : true) setCodeState('');", 'the code is cleared after a limit: the retry has nothing to send'),
+  ('F07', UF, "if (next.kind === 'paired' ? live : !keepsCode(next)) setCodeState('');", "if (next.kind === 'paired' ? live : false) setCodeState('');", 'a refused code stays in the slots'),
+  ('F08', UF, "if (next.kind === 'paired' ? live : !keepsCode(next)) setCodeState('');", "if (next.kind === 'paired' ? false : !keepsCode(next)) setCodeState('');", 'a redeemed code stays in the controller in LIVE mode'),
+  ('F09', UF, "ok: (result) => land(live ? liveOutcomeOf(result, sim.store.getState().clock.now) : outcomeOf(result)),", "ok: (result) => land(outcomeOf(result)),", 'the hand-off counts from the Core\'s pairedAt, not from the answer'),
+  ('F10', UF, "          unjudged.current += 1;\n", "", 'attempts without an answer are not counted: no pacing, Retry never withdrawn'),
+  ('F11', UF, "    unjudged.current = 0;\n    setCodeState(value.replace", "    setCodeState(value.replace", 'a code typed again does not start the pacing anew'),
+  ('F12', UF, "(!live || (link === 'online' && retrySeconds === 0));", "(!live || link === 'online');", 'Pair is open while the wait after a limit runs'),
+  ('F13', UF, "(!live || (link === 'online' && retrySeconds === 0));", "(!live || retrySeconds === 0);", 'Pair is open while the Core is unreachable'),
+  ('F14', UF, "    setNoticeOpen(false);\n", "", 'the gate\'s notice stays after the next attempt'),
+  ('F15', UF, "notice: live && noticeOpen && view !== 'paired' ? gate.notice : null,", "notice: null,", 'the gate\'s notice is never shown'),
+  ('F16', UF, "tabletId: live ? gate.deviceId : null,", "tabletId: null,", 'the tablet\'s device ID is never shown'),
+  ('F17', UF, " && keepsCode(outcome) && !outcome.exhausted,", " && keepsCode(outcome),", 'Retry is offered for ever'),
+  ('F18', UF, " && keepsCode(outcome) && !outcome.exhausted,", " && !outcome.exhausted,", 'Retry is offered for a code that is used up'),
+  ('F19', UF, "      mobileLive?.reconnect('RETRY');", "      void mobileLive;", 'the offline Retry reconnects nothing'),
+  ('F20', UF, "    setCoreLinkSource('SIMULATED');\n", "", '"Use Simulated mode" stores nothing'),
+  ('F21', UF, "    // The runtime mounts the simulator in place of the Live source; the boot router picks the screen.\n    router.replace('/');", "    // (mutated)", '"Use Simulated mode" does not go to the boot router'),
+  ('F22', UF, "setOfflineShown(offlineNoticeAfter(offlineShown, liveLink));", "setOfflineShown(offlineNoticeAfter(false, liveLink));", 'the offline notice goes away while the socket is CONNECTING'),
+  ('F23', UF, "const link = live ? liveLinkViewFor(liveLink, offlineShown) : null;", "const link = live ? liveLinkViewFor(liveLink, false) : null;", 'the offline notice is never shown'),
+  ('F24', UF, "settle(() => actions.unpair(), {", "settle(() => undefined, {", 'unpair calls nothing'),
+  ('F25', UF, "settle(() => actions.pair(sending.code), {", "settle(() => actions.pair(code), {", 'the request carries a stale code of the controller, not the code of the attempt'),
+  ('F26', UF, "  const blocked = isPairingBlocked(gate);", "  const blocked = false;", 'the gate never holds for the screen'),
+  ('F27', UF, "          if (!live) {\n            reportRuntimeIssue('error', 'PairingScreen.pair', error, { phase: 'commit' });\n            land({ kind: 'error' });\n            return;\n          }\n", "", 'Simulated mode maps a thrown error through the Live table'),
+  # ── the pure Live model (pairing-live-model.ts) ──
+  ('M01', LM, "    case LiveLinkState.OFFLINE:\n    case LiveLinkState.STALE:\n      return true;", "    case LiveLinkState.OFFLINE:\n      return true;\n    case LiveLinkState.STALE:\n      return false;", 'a STALE link shows no notice'),
+  ('M02', LM, "    case LiveLinkState.CONNECTING:\n    case LiveLinkState.RESYNCING:\n      return shown;", "    case LiveLinkState.CONNECTING:\n    case LiveLinkState.RESYNCING:\n      return false;", 'CONNECTING hides the notice (flicker)'),
+  ('M03', LM, "    case LiveLinkState.CONNECTING:\n    case LiveLinkState.RESYNCING:\n      return shown;", "    case LiveLinkState.CONNECTING:\n    case LiveLinkState.RESYNCING:\n      return true;", 'the first connect of a start flashes the notice'),
+  ('M04', LM, "return link === LiveLinkState.ONLINE ? 'online' : 'connecting';", "return link !== LiveLinkState.OFFLINE ? 'online' : 'connecting';", 'a link that is still connecting counts as online'),
+  ('M05', LM, "  if (offlineShown) return 'offline';\n", "", 'the link view never says offline'),
+  ('M06', LM, "Math.min(PAIR_RETRY.baseMs * 2 ** (step - 1), PAIR_RETRY.maxMs);", "PAIR_RETRY.baseMs;", 'no back-off: always 3 s'),
+  ('M07', LM, "Math.min(PAIR_RETRY.baseMs * 2 ** (step - 1), PAIR_RETRY.maxMs);", "PAIR_RETRY.baseMs * 2 ** (step - 1);", 'the back-off has no cap'),
+  ('M08', LM, "  return Math.max(paced, asked);", "  return paced;", 'the server\'s retry-after is ignored'),
+  ('M09', LM, "  return Math.max(paced, asked);", "  return asked;", 'only the server\'s retry-after paces a retry'),
+  ('M10', LM, "Math.ceil(retryAfterSeconds) * 1_000 : 0;", "Math.floor(retryAfterSeconds) * 1_000 : 0;", 'retry-after is rounded down'),
+  ('M11', LM, "return result.ok ? { kind: 'paired', pairedAt: now } : outcomeOf(result);", "return outcomeOf(result);", 'the hand-off counts from the Core\'s instant'),
+  ('M12', LM, "  if (shown.kind === 'STOPPED') return null;\n", "", 'a stopped source shows an error'),
+  ('M13', LM, "  if (shown.kind === 'LIMIT') return", "  if (false) return", 'a 429 is not told apart: it reads as a failure'),
+  ('M14', LM, "const exhausted = consecutive >= PAIR_RETRY.maxRetries;", "const exhausted = consecutive > PAIR_RETRY.maxRetries;", 'a fourth paced retry'),
+  ('M15', LM, " || (error instanceof LiveTransportError && error.code === NETWORK_CODE);", ";", 'a lost connection reads as "the code was not checked"'),
+  ('M16', LM, "shown.kind === 'NOT_AVAILABLE' ? 'STORAGE' : 'FAILED';", "shown.kind === 'NOT_AVAILABLE' ? 'FAILED' : 'FAILED';", 'a failed storage reads as a server failure (and the used code is kept)'),
+  ('M17', LM, "  if (shown === null) return { kind: 'error' };", "  if (shown === null) return { kind: 'unavailable', reason: 'FAILED', retryAt: now, exhausted: false };", 'an error that is not the presenter\'s gets the Live wording'),
+  ('M18', LM, "return outcome.kind === 'limited' || (outcome.kind === 'unavailable' && outcome.reason !== 'STORAGE');", "return outcome.kind === 'limited' || outcome.kind === 'unavailable';", 'a used-up code is kept for a retry'),
+  ('M19', LM, "return outcome.kind === 'limited' || (outcome.kind === 'unavailable' && outcome.reason !== 'STORAGE');", "return outcome.kind === 'unavailable' && outcome.reason !== 'STORAGE';", 'the code is cleared after a limit'),
+  ('M20', LM, "return link === 'offline' && view !== 'pairing' && view !== 'paired';", "return link === 'offline';", 'the offline look replaces an attempt in flight and a paired tablet'),
+  ('M21', LM, "  if (view === 'pairing') return sent ? 'sent' : phase === 'discover' ? 'discovering' : 'verifying';", "  if (view === 'pairing') return phase === 'discover' ? 'discovering' : 'verifying';", 'the status line never says the request is out'),
+  ('M22', LM, "  if (link === 'offline') return 'offline';\n", "", 'the status line never says the Core is unreachable'),
+  ('M23', LM, "return outcome?.kind === 'invalid' ? 'failed' : 'unavailable';", "return 'failed';", 'a limit and an outage read "The Core did not accept that code."'),
+  ('M24', LM, "return notice === 'unpaired' ? 'accent' : 'danger';", "return 'danger';", 'an unpair that was asked for is shown as a refusal'),
+  ('M25', LM, "return outcome?.kind === 'limited' || outcome?.kind === 'unavailable' ? outcome.retryAt : null;", "return null;", 'no wait after an attempt without an answer'),
+  ('M26', LM, "retryAt: now + retryWaitMs(consecutive, shown.retryAfterSeconds), exhausted };", "retryAt: now + retryWaitMs(consecutive, null), exhausted };", 'the wait after a 429 ignores retry-after'),
+  # ── the existing model (pairing-model.ts) ──
+  ('P01', PM, " || outcome?.kind === 'limited' || outcome?.kind === 'unavailable') return 'failed';", ") return 'failed';", 'a limit and an outage show no alert at all'),
+  # ── the code card (pairing-code-panel.tsx) ──
+  ('C01', CP, "  const offline = flow.link === 'offline' && !pairing;", "  const offline = false;", 'the slots stay open while the Core is unreachable'),
+  ('C02', CP, "description={t(flow.live ? 'features.pairing.live.code.description' : 'features.pairing.code.description')}", "description={t('features.pairing.code.description')}", 'the code card keeps the Simulated description in LIVE mode'),
+  ('C03', CP, "        {flow.live && flow.blocked && !pairing ? (", "        {false ? (", '"Use Simulated mode" is never offered'),
+  ('C04', CP, "        {flow.live && flow.blocked && !pairing ? (", "        {flow.live && flow.blocked ? (", 'an attempt in flight has no Cancel'),
+  ('C05', CP, "  if (flow.link === 'offline' && flow.view !== 'pairing') {", "  if (false) {", 'no offline Alert'),
+  ('C06', CP, "  if (outcome.kind === 'limited' || outcome.kind === 'unavailable') {", "  if (outcome.kind === 'unavailable') {", 'a limit is drawn as "Code not accepted"'),
+  ('C07', CP, "  if (!live) return t('login.errors.attemptsRemaining', { count: attemptsRemaining });\n", "", 'Simulated mode gets the LIVE wording of the count'),
+  ('C08', CP, "attemptsRemaining > 0 ? t('features.pairing.live.code.attemptsBeforeLock', { count: attemptsRemaining }) : t('features.pairing.live.code.invalidBody');", "t('login.errors.attemptsRemaining', { count: attemptsRemaining });", 'LIVE mode words the lock\'s count as attempts left of the code'),
+  ('C09', CP, "  const recording = notice === 'revoked' && end !== null && end.kind === 'DEVICE_REVOKED' && end.sessionState === 'RECORDING';", "  const recording = false;", 'the notice never says that the recording continues'),
+  ('C10', CP, "  const recording = notice === 'revoked' && end !== null && end.kind === 'DEVICE_REVOKED' && end.sessionState === 'RECORDING';", "  const recording = notice === 'revoked';", 'the notice says "the recording continues" although nothing recorded'),
+  ('C11', CP, "{flow.live ? t('features.pairing.live.paired.body', { device, tablet: flow.tabletId ?? '' }) : t('features.pairing.paired.body', { device })}", "{t('features.pairing.paired.body', { device })}", 'the paired card keeps the Simulated sentence in LIVE mode'),
+  ('C12', CP, "  if (!flow.live) return <CodeEntry flow={flow} settings={settings} />;\n", "", 'Simulated mode gets the LIVE wrapper (still without a notice)'),
+  ('C13', CP, "{limited ? t('features.pairing.live.code.limited') : t(`features.pairing.live.code.unavailable.${outcome.reason}`)}", "{limited ? t('features.pairing.live.code.limited') : t('features.pairing.live.code.unavailable.FAILED')}", 'every outage reads the same'),
+  # ── the connection card (pairing-connection.tsx) ──
+  ('K01', PC, "label={t(live === null ? 'mobile.pairing.simulated' : 'mobile.pairing.live')}", "label={t('mobile.pairing.simulated')}", 'the chip reads SIMULATED in LIVE mode (decision D124, item a)'),
+  ('K02', PC, "label={t(live === null ? 'mobile.pairing.simulated' : 'mobile.pairing.live')}", "label={t('mobile.pairing.live')}", 'the chip reads LIVE in Simulated mode'),
+  ('K03', PC, "const fingerprintKnown = live === null || fingerprint !== '';", "const fingerprintKnown = true;", 'an empty fingerprint is drawn before pairing'),
+  ('K04', PC, "            ...(lastAudit ? [lastAuditItem] : []),", "            lastAuditItem,", 'a paired tablet in LIVE mode says "No pairing event yet"'),
+  ('K05', PC, "value: paired && live?.tabletId ? live.tabletId : t('features.pairing.identity.notPaired'),", "value: t('features.pairing.identity.notPaired'),", 'the tablet\'s device ID is never shown'),
+  ('K06', PC, "              ? t(`features.pairing.connection.steps.${STEP_DESCRIPTION_KEYS[i]}`, { device })\n              : t(`features.pairing.live.connection.steps.${STEP_DESCRIPTION_KEYS[i]}`),", "              ? t(`features.pairing.connection.steps.${STEP_DESCRIPTION_KEYS[i]}`, { device })\n              : t(`features.pairing.connection.steps.${STEP_DESCRIPTION_KEYS[i]}`, { device }),", 'the step descriptions name an empty Core in LIVE mode'),
+  ('K07', PC, "      : t(`features.pairing.live.connection.status.${statusKey.slice('live.'.length)}`, { device, tablet: live.tabletId ?? '' });", "      : t(`features.pairing.connection.status.${statusKeyFor(view, phase)}`, { device });", 'the status line keeps the Simulated sentences in LIVE mode ("Ready to pair with .")'),
+  ('K08', PC, "    live === null\n      ? [\n          { id: 'device', label: t('features.pairing.identity.device'), value: device, mono: true, testID: 'pairing-identity-device' },", "    true\n      ? [\n          { id: 'device', label: t('features.pairing.identity.device'), value: device, mono: true, testID: 'pairing-identity-device' },", 'the identity list shows an empty Core in LIVE mode'),
+  ('K09', PC, "const statuses = live === null ? stepStatusesFor(view, phase) : liveStepStatusesFor(view, phase, live.link);", "const statuses = stepStatusesFor(view, phase);", 'Discover is never in error while the Core is unreachable'),
+  # ── the screen (pairing-screen.tsx) ──
+  ('S01', PS, "  const gated = flow.live && flow.blocked;", "  const gated = false;", 'the back button is drawn while the gate holds'),
+  ('S02', PS, "  const gated = flow.live && flow.blocked;", "  const gated = flow.live;", 'a paired tablet in LIVE mode has no back button'),
+  ('S03', PS, "        if (!flow.live) toast.show({ variant: 'success', label: t('features.pairing.unpair.done') });", "        toast.show({ variant: 'success', label: t('features.pairing.unpair.done') });", 'LIVE mode repeats the notice as a toast'),
+  ('S04', PS, "        if (flow.live && presentCoreError(error)) return;\n", "", 'a refused unpair is not worded by the presenter in LIVE mode'),
+  ('S08', PS, "        if (flow.live && presentCoreError(error)) return;", "        if (presentCoreError(error)) return;", 'Simulated mode words a thrown unpair through the LIVE presenter'),
+  ('S05', PS, "{t(flow.live ? 'features.pairing.live.header.subtitle' : 'features.pairing.header.subtitle')}", "{t('features.pairing.header.subtitle')}", 'the header says "simulated in this demo" in LIVE mode (decision D124, item a)'),
+  ('S06', PS, "live={flow.live ? { link: flow.link ?? 'connecting', sent: flow.sent, outcome: flow.outcome, tabletId: flow.tabletId } : null}", "live={null}", 'the connection card is the Simulated one in LIVE mode'),
+  ('S07', PS, "live={flow.live} busy={unpairBusy} />", "live={false} busy={unpairBusy} />", 'the unpair dialog keeps the Simulated text in LIVE mode'),
+  # ── the unpair dialog ──
+  ('U01', UD, "{live ? t('features.pairing.live.unpair.body') : t('features.pairing.unpair.body', { device })}", "{t('features.pairing.live.unpair.body')}", 'Simulated mode gets the LIVE dialog text'),
+  # ── the copy ──
+  ('T01', I18, "idle: 'Ready to pair with {{device}}.',", "idle: 'Ready to pair.',", 'a text of Simulated mode changed'),
+  ('T02', I18, "subtitle: 'Pairs this tablet with the Core server. A supervisor issues the code in the web console.',", "subtitle: 'Pairs this tablet with the Core server (simulated).',", 'a text of LIVE mode says "simulated"'),
+  ('T03', I18, "retryExhausted: 'Still not available. Check the Core server, then press Pair to try again.',", "retryExhausted: 'The code has expired.',", 'a text of LIVE mode explains a refused code'),
+  # ── the one granted line (features/home/home-screen.tsx:217) ──
+  ('H01', HS, "${health.data.service.replace(/^dems-/, '')} v${health.data.version}", "mock-core v${health.data.version}", 'the line before this row: "mock-core" for whichever service answers'),
+  ('H02', HS, "${health.data.service.replace(/^dems-/, '')} v${health.data.version}", "${health.data.service} v${health.data.version}", 'the raw service name: the Simulated line changes'),
+]
+
+
+def sha(path):
+    return hashlib.sha256(open(path, 'rb').read()).hexdigest()
+
+
+FAST = {
+    LM: [D + 'pairing-live-model.test.ts', D + 'pairing-model.test.ts'],
+    PM: [D + 'pairing-live-model.test.ts', D + 'pairing-model.test.ts'],
+    I18: [D + 'pairing-live-static.test.ts'],
+    HS: [D + 'stack-check-service-name.test.tsx'],
+}
+
+
+def run(spec, tests=None):
+    tests = tests or TESTS
+    env = dict(os.environ)
+    if spec is None:
+        env.pop('W57_MUT_SPEC', None)
+    else:
+        json.dump(spec, open(SPEC, 'w'))
+        env['W57_MUT_SPEC'] = SPEC
+    started = time.time()
+    done = subprocess.run(['npm', 'exec', '-w', '@dems/mobile', '--', 'jest', '--config', CONFIG, '--maxWorkers=2', '--silent', '--forceExit', *tests],
+                          cwd=ROOT, env=env, capture_output=True, text=True)
+    out = done.stdout + done.stderr
+    failed = [line.strip() for line in out.splitlines() if line.strip().startswith('●') and '›' in line]
+    summary = next((line.strip() for line in out.splitlines() if line.startswith('Tests:')), '(no summary)')
+    broken = 'W57 mutation' in out and 'occurs' in out
+    return done.returncode, summary, failed, broken, time.time() - started, out
+
+
+def main():
+    wanted = set(sys.argv[1:])
+    todo = [m for m in M if not wanted or m[0] in wanted]
+    files = sorted({m[1] for m in M})
+    before = {f: sha(APP + '/' + f) for f in files}
+    print(f"## W57 mutation check, {time.strftime('%Y-%m-%d %H:%M:%S')}; {len(TESTS)} test files per run; the tree is not edited")
+    code, summary, failed, _, took, out = run(None)
+    print(f"control (no mutation): exit={code} {summary} ({took:.0f} s)")
+    if code != 0:
+        print(out[-3000:])
+        sys.exit(2)
+    detected = missed = errors = 0
+    for mid, file, old, new, what in todo:
+        spec = {'id': mid, 'file': file, 'from': old, 'to': new}
+        # The file's own unit tests first (seconds); the whole folder only when they do not notice.
+        code, summary, failed, broken, took, out = run(spec, FAST.get(file))
+        if code == 0 and not broken and file in FAST:
+            code, summary, failed, broken, more, out = run(spec)
+            took += more
+        if broken:
+            errors += 1
+            print(f"{mid} ERROR ({file}): the text to change was not found exactly once")
+            continue
+        if summary == '(no summary)' and code == 0:
+            errors += 1
+            print(f"{mid} ERROR ({file}): jest gave no result\n{out[-1500:]}")
+            continue
+        if code != 0:
+            detected += 1
+            first = failed[0][2:140] if failed else 'the file does not run'
+            # A test that only ran out of time under load is no detection: say so.
+            late = ' [A TEST TIMED OUT]' if 'Exceeded timeout' in out else ''
+            print(f"{mid} DETECTED  {file.split('/')[-1]}: {what} -> {len(failed)} failing; first: {first} ({took:.0f} s){late}")
+        else:
+            missed += 1
+            print(f"{mid} NOT DETECTED  {file.split('/')[-1]}: {what} ({summary}; {took:.0f} s)")
+        sys.stdout.flush()
+    after = {f: sha(APP + '/' + f) for f in files}
+    print(f"## {detected} detected, {missed} not detected, {errors} errors, of {len(todo)}")
+    print('## the mutated files in the tree, before and after: ' + ('identical' if before == after else 'CHANGED'))
+    for f in files:
+        print(f"   {before[f][:16]} {'same' if before[f] == after[f] else 'CHANGED'} {f}")
+    if os.path.exists(SPEC):
+        os.remove(SPEC)
+
+
+main()

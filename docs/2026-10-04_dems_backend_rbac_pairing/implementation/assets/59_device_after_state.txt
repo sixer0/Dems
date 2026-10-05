@@ -1,0 +1,13 @@
+W59 device check — state after the session (10:35:56), all read-only queries.
+
+Reverse rules on emulator-5554 (adb reverse --list): empty (device-session.sh removed its own).
+Listeners on 4421 / 8082 (lsof): none (exit 1).
+App com.dems.demo.tablet: not running (pidof exit 1).
+dems.mobile.prefs.v1: {"coreLinkSource":"SIMULATED"} — the default, as before the check.
+Secure-store entries: none before, during or after (the device is unpaired; nothing was stored).
+
+Device lock state identical at start and end (never touched):
+  dems2_phone (emulator-5554): isKeyguardShowing=false, State RUNNING_UNLOCKED, CredentialType=PIN, fingerprint count=1.
+The keyguard, the fingerprint sensor, the PIN and every device setting were left untouched. No emulator was
+killed or rebooted; nothing was uninstalled or wiped. dems2_tablet (emulator-5556) and dems_lane_2 were not used.
+Ports 4420/4422/4423/4400/4432/5173-5178 and phone2 (emulator-5558) were not used and nothing there was stopped.

@@ -1,0 +1,347 @@
+{
+  "browser": "HeadlessChrome/153.0.8010.12",
+  "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.8010.12 Safari/537.36",
+  "page127": {
+    "loaded": true,
+    "script": {
+      "locationOrigin": "http://127.0.0.1:5176",
+      "title": "DEMS Edge Client · Core Console",
+      "signIn": {
+        "status": 200,
+        "epoch": "1",
+        "revision": "105",
+        "retryAfter": "7",
+        "setCookieReadableByScript": null,
+        "body": {
+          "ok": true,
+          "issued": "dems_session_4421"
+        }
+      },
+      "documentCookie": "",
+      "echo": {
+        "status": 200,
+        "revision": "106",
+        "body": {
+          "host": "127.0.0.1:5176",
+          "origin": "http://127.0.0.1:5176",
+          "cookiePresent": true,
+          "cookieEqualsIssued": true,
+          "secFetch": {
+            "sec-fetch-site": "same-origin",
+            "sec-fetch-mode": "cors",
+            "sec-fetch-dest": "empty"
+          },
+          "forwarded": {}
+        }
+      },
+      "health": {
+        "status": 200,
+        "body": {
+          "service": "proof-harness",
+          "port": 4421,
+          "note": "not the Core server"
+        }
+      },
+      "limited": {
+        "status": 429,
+        "retryAfter": "42"
+      },
+      "guarded": {
+        "status": 200,
+        "body": {
+          "ok": true,
+          "origin": "http://127.0.0.1:5176"
+        }
+      },
+      "ws": {
+        "msgs": [
+          "{\"type\":\"hello\",\"origin\":\"http://127.0.0.1:5176\",\"host\":\"127.0.0.1:5176\",\"cookiePresent\":true,\"cookieEqualsIssued\":true}",
+          "echo:ping-1"
+        ],
+        "closeCode": 1000
+      },
+      "wsCloseCode": {
+        "msgs": [
+          "{\"type\":\"hello\",\"origin\":\"http://127.0.0.1:5176\",\"host\":\"127.0.0.1:5176\",\"cookiePresent\":true,\"cookieEqualsIssued\":true}"
+        ],
+        "closeCode": 4403
+      }
+    },
+    "cookieJar": [
+      {
+        "name": "dems_session_4421",
+        "value": "gWLFAA…(32 chars)",
+        "domain": "127.0.0.1",
+        "path": "/",
+        "httpOnly": true,
+        "sameSite": "Strict",
+        "secure": false,
+        "session": true
+      }
+    ],
+    "network": {
+      "http": [
+        {
+          "url": "http://127.0.0.1:5176/api/v1/proof/sign-in",
+          "method": "POST",
+          "sent": {
+            "origin": "http://127.0.0.1:5176",
+            "host": "127.0.0.1:5176",
+            "cookie": null,
+            "secFetchSite": "same-origin",
+            "secFetchMode": "cors"
+          },
+          "status": 200,
+          "received": {
+            "setCookie": "dems_session_4421=gWLFAA…; HttpOnly; SameSite=Strict; Path=/",
+            "epoch": "1",
+            "revision": "105",
+            "retryAfter": "7",
+            "accessControlAllowOrigin": "http://127.0.0.1:5176",
+            "vary": "Origin"
+          }
+        },
+        {
+          "url": "http://127.0.0.1:5176/api/v1/proof/echo",
+          "method": "POST",
+          "sent": {
+            "origin": "http://127.0.0.1:5176",
+            "host": "127.0.0.1:5176",
+            "cookie": "dems_session_4421=gWLFAA…",
+            "secFetchSite": "same-origin",
+            "secFetchMode": "cors"
+          },
+          "status": 200,
+          "received": {
+            "setCookie": null,
+            "epoch": "1",
+            "revision": "106",
+            "retryAfter": null,
+            "accessControlAllowOrigin": "http://127.0.0.1:5176",
+            "vary": "Origin"
+          }
+        },
+        {
+          "url": "http://127.0.0.1:5176/api/v1/health",
+          "method": "GET",
+          "sent": {
+            "origin": null,
+            "host": "127.0.0.1:5176",
+            "cookie": "dems_session_4421=gWLFAA…",
+            "secFetchSite": "same-origin",
+            "secFetchMode": "cors"
+          },
+          "status": 200,
+          "received": {
+            "setCookie": null,
+            "epoch": null,
+            "revision": null,
+            "retryAfter": null,
+            "accessControlAllowOrigin": null,
+            "vary": "Origin"
+          }
+        },
+        {
+          "url": "http://127.0.0.1:5176/api/v1/proof/limited",
+          "method": "POST",
+          "sent": {
+            "origin": "http://127.0.0.1:5176",
+            "host": "127.0.0.1:5176",
+            "cookie": "dems_session_4421=gWLFAA…",
+            "secFetchSite": "same-origin",
+            "secFetchMode": "cors"
+          },
+          "status": 429,
+          "received": {
+            "setCookie": null,
+            "epoch": null,
+            "revision": null,
+            "retryAfter": "42",
+            "accessControlAllowOrigin": "http://127.0.0.1:5176",
+            "vary": "Origin"
+          }
+        },
+        {
+          "url": "http://127.0.0.1:5176/api/v1/proof/guarded",
+          "method": "POST",
+          "sent": {
+            "origin": "http://127.0.0.1:5176",
+            "host": "127.0.0.1:5176",
+            "cookie": "dems_session_4421=gWLFAA…",
+            "secFetchSite": "same-origin",
+            "secFetchMode": "cors"
+          },
+          "status": 200,
+          "received": {
+            "setCookie": null,
+            "epoch": null,
+            "revision": null,
+            "retryAfter": null,
+            "accessControlAllowOrigin": "http://127.0.0.1:5176",
+            "vary": "Origin"
+          }
+        }
+      ],
+      "sockets": [
+        {
+          "url": "ws://127.0.0.1:5176/?token=…",
+          "frames": [
+            "{\"type\":\"connected\"}"
+          ],
+          "sent": {
+            "origin": "http://127.0.0.1:5176",
+            "host": "127.0.0.1:5176",
+            "cookie": null,
+            "protocol": "vite-hmr"
+          },
+          "status": 101,
+          "acceptedProtocol": "vite-hmr"
+        },
+        {
+          "url": "ws://127.0.0.1:4400/ws",
+          "frames": []
+        },
+        {
+          "url": "ws://127.0.0.1:4400/ws",
+          "frames": []
+        },
+        {
+          "url": "ws://127.0.0.1:4400/ws",
+          "frames": []
+        },
+        {
+          "url": "ws://127.0.0.1:5176/ws",
+          "frames": [
+            "{\"type\":\"hello\",\"origin\":\"http://127.0.0.1:5176\",\"host\":\"127.0.0.1:5176\",\"cookiePresent\":true,\"cookieEqualsIssued\":true}",
+            "echo:ping-1"
+          ],
+          "sent": {
+            "origin": "http://127.0.0.1:5176",
+            "host": "127.0.0.1:5176",
+            "cookie": "dems_session_4421=gWLFAA…",
+            "protocol": null
+          },
+          "status": 101,
+          "acceptedProtocol": null
+        },
+        {
+          "url": "ws://127.0.0.1:5176/ws",
+          "frames": [
+            "{\"type\":\"hello\",\"origin\":\"http://127.0.0.1:5176\",\"host\":\"127.0.0.1:5176\",\"cookiePresent\":true,\"cookieEqualsIssued\":true}"
+          ],
+          "sent": {
+            "origin": "http://127.0.0.1:5176",
+            "host": "127.0.0.1:5176",
+            "cookie": "dems_session_4421=gWLFAA…",
+            "protocol": null
+          },
+          "status": 101,
+          "acceptedProtocol": null
+        }
+      ]
+    }
+  },
+  "pageLocalhost": {
+    "loaded": true,
+    "script": {
+      "locationOrigin": "http://localhost:5176",
+      "guarded": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "ORIGIN_NOT_ALLOWED",
+            "message": "proof-harness stand-in for the Origin guard"
+          }
+        }
+      },
+      "echo": {
+        "status": 200,
+        "body": {
+          "host": "localhost:5176",
+          "origin": "http://localhost:5176",
+          "cookiePresent": false,
+          "cookieEqualsIssued": false,
+          "secFetch": {
+            "sec-fetch-site": "same-origin",
+            "sec-fetch-mode": "cors",
+            "sec-fetch-dest": "empty"
+          },
+          "forwarded": {}
+        }
+      }
+    },
+    "network": {
+      "http": [
+        {
+          "url": "http://localhost:5176/api/v1/proof/guarded",
+          "method": "POST",
+          "sent": {
+            "origin": "http://localhost:5176",
+            "host": "localhost:5176",
+            "cookie": null,
+            "secFetchSite": "same-origin",
+            "secFetchMode": "cors"
+          },
+          "status": 403,
+          "received": {
+            "setCookie": null,
+            "epoch": null,
+            "revision": null,
+            "retryAfter": null,
+            "accessControlAllowOrigin": "http://localhost:5176",
+            "vary": "Origin"
+          }
+        },
+        {
+          "url": "http://localhost:5176/api/v1/proof/echo",
+          "method": "POST",
+          "sent": {
+            "origin": "http://localhost:5176",
+            "host": "localhost:5176",
+            "cookie": null,
+            "secFetchSite": "same-origin",
+            "secFetchMode": "cors"
+          },
+          "status": 200,
+          "received": {
+            "setCookie": null,
+            "epoch": "1",
+            "revision": "107",
+            "retryAfter": null,
+            "accessControlAllowOrigin": "http://localhost:5176",
+            "vary": "Origin"
+          }
+        }
+      ],
+      "sockets": [
+        {
+          "url": "ws://localhost:5176/?token=…",
+          "frames": [
+            "{\"type\":\"connected\"}"
+          ],
+          "sent": {
+            "origin": "http://localhost:5176",
+            "host": "localhost:5176",
+            "cookie": null,
+            "protocol": "vite-hmr"
+          },
+          "status": 101,
+          "acceptedProtocol": "vite-hmr"
+        },
+        {
+          "url": "ws://127.0.0.1:4400/ws",
+          "frames": []
+        },
+        {
+          "url": "ws://127.0.0.1:4400/ws",
+          "frames": []
+        },
+        {
+          "url": "ws://127.0.0.1:4400/ws",
+          "frames": []
+        }
+      ]
+    }
+  },
+  "consoleErrors": []
+}

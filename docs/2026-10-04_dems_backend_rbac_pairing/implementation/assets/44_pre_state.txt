@@ -1,0 +1,66 @@
+# Step 66 (W44): state before the first edit (2026-10-04 11:25:46 WIB)
+## git hash-object of every file under packages/shared/test (57 files) and packages/shared/src outside live/source
+31a5c71223ae4f2f0f9a3cf55032034b48da2062  packages/shared/test/api-domain-operations.test.ts
+fcf93837e4e4c8ac0f599aecf4cac76f2282d9c8  packages/shared/test/api-envelope.test.ts
+0e896f1ea820aa08af6cb2a8ff8641581d226955  packages/shared/test/api-examples.test.ts
+de60cbfc752a32662d79a1553a2ee20b27aeb7f7  packages/shared/test/api-openapi-scope.test.ts
+5b89f8e4b771153425dd12301139dc97664a87f8  packages/shared/test/api-realtime.test.ts
+cd1a8bc6ca7b644913050e7c24e7f7a8cc287b82  packages/shared/test/api-registry.test.ts
+5a0a814064a124c17b4cd877a358f5b79b8bb192  packages/shared/test/api-schemas.test.ts
+387ba017116c27708446e9b8a775c7d0a09d88e2  packages/shared/test/api-state-examples.test.ts
+d32cac9c56adbf381fc1467398dc9e4456f36874  packages/shared/test/api-state-slices.test.ts
+678596d0a5ef9bf844a1a95fd61dd837763e45ae  packages/shared/test/api-text-rule.test.ts
+4124761b80b94319cf04a4aa542f2cd696786eeb  packages/shared/test/audio.test.ts
+f2d5271794a1e196259f63d29aa851ee7745a38b  packages/shared/test/auth.test.ts
+ed4744a3913d369a6be37227fa1b9730ef1dbea6  packages/shared/test/brand-sync.test.ts
+8cadb95f64895ce85b26d6e56033e2b428c663d5  packages/shared/test/client-core.test.ts
+401f71dbe36ad4d4b02f36d4c3bd3031bc4c3e00  packages/shared/test/client-platform-neutral.test.ts
+55696ad7b7dd7b55438635a9c589f36de1f6906b  packages/shared/test/client-types.test.ts
+e2a770e11e4513710e0d74c761cbe26de3bc107a  packages/shared/test/contrast.test.ts
+30e0ff2f04755a37beba068ba0746a53b81f0e17  packages/shared/test/demo-evidence.test.ts
+b7b1cf37c10caab744da88300533a6b9d55e4b27  packages/shared/test/format.test.ts
+55ae9703b8e50b26857c40739417a8f88ef1145b  packages/shared/test/hash-chain.test.ts
+19df2df39a415436fac8ac5b33f0f203767732e3  packages/shared/test/heartbeat-client.test.ts
+fd7e3d3770d12335110242ca45cc68f2f9e76191  packages/shared/test/i18n-vocabulary-sync.test.ts
+7bdf12695e6a1bcf00d6907d6aa5bcbaf4da2f0e  packages/shared/test/i18n.test.ts
+618493daade088a567e69e18d450c55465d761d0  packages/shared/test/live-light-constants.test.ts
+dbc6643c6274b10ec1ce21391a4d2ca8b39d7347  packages/shared/test/live-light-core-actions.test.ts
+053923347b9b54bf1b50874b4aef6599b9497df6  packages/shared/test/live-light-errors.test.ts
+69de43c45b61e73d8136bd38253911d490f111de  packages/shared/test/live-light-hooks.test.ts
+74e80e53dd1e610762b9728cb525fcaf44363a65  packages/shared/test/live-light-mode.test.ts
+28cd6a5ffe6717808e1c5dca8341e6bc030cf95a  packages/shared/test/live-light-platform-neutral.test.ts
+6a144999038d566d0bc53fafb19c620004ff1ca0  packages/shared/test/live-light-settle.test.ts
+278633bcd7680edca7c2fb705dabd5dbabcb055b  packages/shared/test/live-testing-fetch.test.ts
+568d70a5dea23c752db7355b8a34bb64462ffd7f  packages/shared/test/live-testing-install.test.ts
+cd967a5f857a2ee97b23f46ea32bd0677042b6a8  packages/shared/test/live-testing-live-socket.test.ts
+0aec9a6558811b4a8f2ea2ff86647a5815962786  packages/shared/test/live-testing-log.test.ts
+755daca6829d36cb1cab4c41bc938c27268bc558  packages/shared/test/live-testing-platform-neutral.test.ts
+5fbe7086b4e0f222e90533602f3b2faaeb627347  packages/shared/test/live-testing-socket.test.ts
+523bdcc3ff34136113744c72cf6afb88dbd4fe42  packages/shared/test/motion-tokens.test.ts
+795b5391b8d035fec05d7c31945261e14734b494  packages/shared/test/openapi.test.ts
+fc141272522ee5564f7ce3a432ff591658191a37  packages/shared/test/realtime-live-platform-neutral.test.ts
+9969a6e17d03b73244335fcbf5af3a4f70f3e408  packages/shared/test/realtime-live-socket.test.ts
+a5c88bdd16d55c9211697fc3c6bf96fec7044825  packages/shared/test/schemas.test.ts
+78344d6787211ec224cd86ac26b9a84db78d7c27  packages/shared/test/session-machine.test.ts
+a2915dedfcc23b28ca7c58758687af9eee8b2b04  packages/shared/test/session-schema.test.ts
+8d88d9f0abf9aec84dedca8d3bf598434bffd866  packages/shared/test/sim-api-validation.test.ts
+0f7efe9700dfe7f071f5fba58b2abd73428f8ca5  packages/shared/test/sim-api.test.ts
+4f1741a24afb46c636e6e2cd658a7d9a5b0f7260  packages/shared/test/sim-contract.test.ts
+310212e09a2869153b010ccc323b73d0d46b2151  packages/shared/test/sim-demo-data-alignment.test.ts
+68029a80edd3a2212bcbf96f2be49714c76c451b  packages/shared/test/sim-determinism.test.ts
+6ad08e80f38e1cb7a0e10b17997f778a4588b858  packages/shared/test/sim-faults-scenarios.test.ts
+e512e375808d68cb7c906a9faf00c54d48e7bbed  packages/shared/test/sim-gap-closure.test.ts
+713a732eb7defbc7917c5142a8887e89d02e0f09  packages/shared/test/sim-mobile-additions.test.ts
+5c9bfd9a363c244bea741578e7e2aca2f17299df  packages/shared/test/sim-platform-neutral.test.ts
+0470734225fe48217563e3a96b70f61799140388  packages/shared/test/sim-selector-stability.test.ts
+c74aee3cd724e3602fb8022b64898f99af6b1c07  packages/shared/test/sim-store.test.ts
+c41a341b4249990137036b00a5fcf0b11d0ec52b  packages/shared/test/sim-text-cut.test.ts
+5c9ee8a77caf45a9c6bef129248df07e2cefdc1b  packages/shared/test/storage-math.test.ts
+1715412cf74ddcc2a7b50c8cfc82b99df5da5f7c  packages/shared/test/theme.test.ts
+## tree digest of packages/shared/src without live/source
+85ee021ba5d9b442e1c7e1ea73971bdb58c303e9b4e69f3ea6ab7c7b11a81105  -
+## files under packages/shared/src/live/source
+total 8
+drwxr-xr-x@  3 gsp-budi  staff   96 Oct  4 06:34 .
+drwxr-xr-x@ 11 gsp-budi  staff  352 Oct  4 08:01 ..
+-rw-r--r--@  1 gsp-budi  staff  114 Oct  4 06:34 index.ts

@@ -2,6 +2,8 @@
 // 03_motion_spec M-PG-DASH, §8, §9.4; review 06 rules R1, R3, R4). Every test builds the real
 // router and shell around its own simulator (in-memory storage, no engine ticks: the tests drive
 // state), as src/test/routes.test.tsx does.
+// The simulator runs on a manual clock at 2026-10-01 10:00 WIB, so the seeded dataset (today's sealed
+// count, the `-2026` evidence IDs) does not depend on the date or the hour the suite runs at.
 import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import { QueryClient } from '@tanstack/react-query'
 import { createMemoryHistory, RouterProvider } from '@tanstack/react-router'
@@ -9,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SocketLike } from '@dems/shared/realtime'
 import {
   ALWAYS_VISIBLE,
+  createManualClock,
   createMemoryAuthStorage,
   createSim,
   FaultKind,
@@ -70,6 +73,13 @@ function stubMatchMedia({ width, reduced }: { width: number; reduced: boolean })
   }) as typeof window.matchMedia
 }
 
+/**
+ * The simulator's fixed "now". Today's seven sealed sessions are scheduled backwards from it
+ * (`todaySchedule`): the newest ends 25 minutes before now, so a simulator on the wall clock has
+ * none sealed today from 00:00 to about 00:25 WIB, and its evidence IDs carry the year of the run.
+ */
+const DEMO_NOW = Date.parse('2026-10-01T10:00:00+07:00')
+
 const sims: Sim[] = []
 const originalMatchMedia = window.matchMedia
 const originalObserver = globalThis.IntersectionObserver
@@ -78,8 +88,9 @@ window.scrollTo = (() => undefined) as typeof window.scrollTo
 
 function mount({ scenario = 'idle', operatorId = OPERATOR_IDS.BUDI }: { scenario?: ScenarioName; operatorId?: string } = {}) {
   const authStorage = createMemoryAuthStorage()
-  authStorage.save({ operatorId, issuedAt: Date.now() })
+  authStorage.save({ operatorId, issuedAt: DEMO_NOW })
   const sim = createSim({
+    clock: createManualClock(DEMO_NOW),
     scenario,
     storage: null,
     authStorage,

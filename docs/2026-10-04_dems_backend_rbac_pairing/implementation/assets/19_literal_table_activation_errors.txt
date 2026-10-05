@@ -1,0 +1,26 @@
+# What the faithful placement of CORE_API_OPERATION_TABLE (an export of core-api.ts) breaks. Measured 2026-10-04 08:27 WIB by a temporary edit of this row's own files, restored afterwards (cmp equal).
+# $ npm run typecheck -w @dems/shared
+test/client-core.test.ts(120,42): error TS2345: Argument of type 'string' is not assignable to parameter of type '"getDemoStatus" | "loadScenario" | "injectFault" | "clearFault" | "resetDemo" | "signIn" | "getSignInStatus" | "getA
+test/client-core.test.ts(132,54): error TS2339: Property 'data' does not exist on type 'CoreCallFailure'.
+test/client-core.test.ts(212,54): error TS2345: Argument of type '"noSuchOperation"' is not assignable to parameter of type '"getDemoStatus" | "loadScenario" | "injectFault" | "clearFault" | "resetDemo" | "signIn" | "getSignInStat
+test/client-core.test.ts(213,76): error TS2345: Argument of type '{ body: { reason: string; destination: string; }; }' is not assignable to parameter of type '{ readonly params: { readonly id: string; }; } & { readonly body: { rea
+test/client-core.test.ts(214,81): error TS2322: Type '{ id: string; }' is not assignable to type 'undefined'.
+test/client-core.test.ts(215,90): error TS2322: Type '{}' is not assignable to type 'undefined'.
+test/client-core.test.ts(216,75): error TS2345: Argument of type '{ params: { id: string; }; }' is not assignable to parameter of type '{ readonly params: { readonly id: string; }; } & { readonly body: { reason: string; destinatio
+test/client-core.test.ts(251,57): error TS2322: Type 'unknown' is not assignable to type '{ caseNumber: string; subjectType: "TERSANGKA" | "SAKSI" | "LAINNYA"; subjectName: string; investigatorId: string; room: string; profileId: 
+test/client-core.test.ts(258,57): error TS2740: Type '{}' is missing the following properties from type '{ caseNumber: string; subjectType: "TERSANGKA" | "SAKSI" | "LAINNYA"; subjectName: string; investigatorId: string; room: stri
+test/client-core.test.ts(264,57): error TS2740: Type '{}' is missing the following properties from type '{ caseNumber: string; subjectType: "TERSANGKA" | "SAKSI" | "LAINNYA"; subjectName: string; investigatorId: string; room: stri
+test/client-core.test.ts(287,57): error TS2740: Type '{}' is missing the following properties from type '{ caseNumber: string; subjectType: "TERSANGKA" | "SAKSI" | "LAINNYA"; subjectName: string; investigatorId: string; room: stri
+test/client-core.test.ts(334,57): error TS2740: Type '{}' is missing the following properties from type '{ caseNumber: string; subjectType: "TERSANGKA" | "SAKSI" | "LAINNYA"; subjectName: string; investigatorId: string; room: stri
+test/client-core.test.ts(344,57): error TS2740: Type '{}' is missing the following properties from type '{ caseNumber: string; subjectType: "TERSANGKA" | "SAKSI" | "LAINNYA"; subjectName: string; investigatorId: string; room: stri
+test/client-core.test.ts(362,57): error TS2740: Type '{}' is missing the following properties from type '{ caseNumber: string; subjectType: "TERSANGKA" | "SAKSI" | "LAINNYA"; subjectName: string; investigatorId: string; room: stri
+test/client-core.test.ts(386,52): error TS2740: Type '{}' is missing the following properties from type '{ caseNumber: string; subjectType: "TERSANGKA" | "SAKSI" | "LAINNYA"; subjectName: string; investigatorId: string; room: stri
+test/client-core.test.ts(412,57): error TS2740: Type '{}' is missing the following properties from type '{ caseNumber: string; subjectType: "TERSANGKA" | "SAKSI" | "LAINNYA"; subjectName: string; investigatorId: string; room: stri
+test/client-core.test.ts(420,53): error TS2740: Type '{}' is missing the following properties from type '{ caseNumber: string; subjectType: "TERSANGKA" | "SAKSI" | "LAINNYA"; subjectName: string; investigatorId: string; room: stri
+test/client-core.test.ts(501,49): error TS2740: Type '{}' is missing the following properties from type '{ caseNumber: string; subjectType: "TERSANGKA" | "SAKSI" | "LAINNYA"; subjectName: string; investigatorId: string; room: stri
+test/client-types.test.ts(123,46): error TS2344: Type '{ code: string; message: string; }' does not satisfy the constraint '{ message: string; code: string; details: "Expected: never, Actual: undefined" | "Expected: never, Actual:
+
+# $ npm run typecheck -w @dems/mobile
+src/runtime/dev-probes.ts(227,58): error TS2322: Type 'unknown' is not assignable to type '{ caseNumber: string; subjectType: "TERSANGKA" | "SAKSI" | "LAINNYA"; subjectName: string; investigatorId: string; room: string; profileId:
+src/runtime/dev-probes.ts(238,5): error TS2322: Type 'unknown' is not assignable to type '{ reason: string; destination?: string | undefined; }'.
+src/runtime/dev-probes.ts(249,5): error TS2322: Type 'unknown' is not assignable to type '{ reason: string; }'.

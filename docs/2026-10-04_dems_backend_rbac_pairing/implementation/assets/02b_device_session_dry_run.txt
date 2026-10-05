@@ -1,0 +1,321 @@
+== W02b dry run 2026-10-04 10:50:01
+pre-image sha256: db4cf1093d1dd0c319436f4ee13fa39e49e8d4f3c09f2252c1c9c9511bd0bdd4
+new       sha256: f25f3096c35fd3178c6ae9e3bcfbcff99fe6d7ce1871b58402af47089cff93bf
+
+---- summary
+old_running_unlocked: exit=0 adb calls=7 commands ran=yes (0 s)
+new_running_unlocked: exit=0 adb calls=10 commands ran=yes (0 s)
+new_running_secure_lock: exit=77 adb calls=17 commands ran=no (11 s)
+new_running_swipe_keyguard: exit=0 adb calls=10 commands ran=yes (0 s)
+new_running_unreadable: exit=0 adb calls=10 commands ran=yes (0 s)
+new_down_default_prefix: exit=0 adb calls=10 commands ran=yes (0 s)
+new_down_old_prefix: exit=0 adb calls=10 commands ran=yes (0 s)
+new_down_tablet: exit=0 adb calls=10 commands ran=yes (1 s)
+new_down_phone2: exit=0 adb calls=10 commands ran=yes (0 s)
+new_both_tablet_locked: exit=77 adb calls=24 commands ran=no (10 s)
+new_secure_lock_keep_app: exit=77 adb calls=16 commands ran=no (10 s)
+new_any_phone_secure_lock: exit=77 adb calls=17 commands ran=no (11 s)
+
+---- old vs new on a running, unlocked device: adb trace diff (expected: only the three added calls)
+3a4,6
+> adb -s emulator-5554 shell input keyevent KEYCODE_WAKEUP
+> adb -s emulator-5554 shell wm dismiss-keyguard
+> adb -s emulator-5554 shell dumpsys window
+(diff exit=1)
+
+=== old_running_unlocked: stub adb trace
+adb start-server
+adb -s emulator-5554 get-state
+adb -s emulator-5554 shell getprop sys.boot_completed
+adb -s emulator-5554 shell am force-stop com.dems.demo.tablet
+adb -s emulator-5554 reverse tcp:4400 tcp:4400
+adb -s emulator-5554 shell am force-stop com.dems.demo.tablet
+adb -s emulator-5554 reverse --remove tcp:4400
+=== old_running_unlocked: stderr (times stripped)
+[device-session phone HH:MM:SS] lock held; hard cap 120 s, until HH:MM:SS (watchdog PID N)
+[device-session phone HH:MM:SS] session serial: emulator-5554 (dems_phone)
+[device-session phone HH:MM:SS] no Metro (NO_METRO=1); tcp:4400 -> tcp:4400 on emulator-5554
+[device-session phone HH:MM:SS] session ended with status 0
+=== old_running_unlocked: stub pgrep calls
+pgrep -f -- (qemu-system-[a-z0-9_]+|emulator) -avd dems_phone( |$)
+=== old_running_unlocked: what <commands> saw
+AVD_NAME=dems_phone SERIAL=emulator-5554
+=== old_running_unlocked: .locks of the scratch root
+dems_phone.lock 
+
+=== new_running_unlocked: stub adb trace
+adb start-server
+adb -s emulator-5554 get-state
+adb -s emulator-5554 shell getprop sys.boot_completed
+adb -s emulator-5554 shell input keyevent KEYCODE_WAKEUP
+adb -s emulator-5554 shell wm dismiss-keyguard
+adb -s emulator-5554 shell dumpsys window
+adb -s emulator-5554 shell am force-stop com.dems.demo.tablet
+adb -s emulator-5554 reverse tcp:4400 tcp:4400
+adb -s emulator-5554 shell am force-stop com.dems.demo.tablet
+adb -s emulator-5554 reverse --remove tcp:4400
+=== new_running_unlocked: stderr (times stripped)
+[device-session phone HH:MM:SS] lock held; hard cap 120 s, until HH:MM:SS (watchdog PID N)
+[device-session phone HH:MM:SS] session serial: emulator-5554 (dems2_phone)
+[device-session phone HH:MM:SS] emulator-5554: screen awake, no keyguard
+[device-session phone HH:MM:SS] no Metro (NO_METRO=1); tcp:4400 -> tcp:4400 on emulator-5554
+[device-session phone HH:MM:SS] session ended with status 0
+=== new_running_unlocked: stub pgrep calls
+pgrep -f -- (qemu-system-[a-z0-9_]+|emulator) -avd dems2_phone( |$)
+=== new_running_unlocked: what <commands> saw
+AVD_NAME=dems2_phone SERIAL=emulator-5554
+=== new_running_unlocked: .locks of the scratch root
+dems_phone.lock 
+
+=== new_running_secure_lock: stub adb trace
+adb start-server
+adb -s emulator-5554 get-state
+adb -s emulator-5554 shell getprop sys.boot_completed
+adb -s emulator-5554 shell input keyevent KEYCODE_WAKEUP
+adb -s emulator-5554 shell wm dismiss-keyguard
+adb -s emulator-5554 shell dumpsys window
+   ... (10 more identical dumpsys window calls: the 10 s poll)
+adb -s emulator-5554 shell am force-stop com.dems.demo.tablet
+=== new_running_secure_lock: stderr (times stripped)
+[device-session phone HH:MM:SS] lock held; hard cap 120 s, until HH:MM:SS (watchdog PID N)
+[device-session phone HH:MM:SS] session serial: emulator-5554 (dems2_phone)
+[device-session phone HH:MM:SS] emulator-5554: LOCKED. The keyguard still shows after wake + dismiss, so this device has a secure screen lock (PIN, pattern or password)
+[device-session phone HH:MM:SS] emulator-5554: no agent unlocks a device; this script enters no credential and changes no lock setting (D35, D49). The user unlocks it, or use a lock-free AVD (DEMS_AVD_PREFIX, default dems2_)
+[device-session phone HH:MM:SS] session ended with status 77
+=== new_running_secure_lock: stub pgrep calls
+pgrep -f -- (qemu-system-[a-z0-9_]+|emulator) -avd dems2_phone( |$)
+=== new_running_secure_lock: .locks of the scratch root
+dems_phone.lock 
+
+=== new_running_swipe_keyguard: stub adb trace
+adb start-server
+adb -s emulator-5554 get-state
+adb -s emulator-5554 shell getprop sys.boot_completed
+adb -s emulator-5554 shell input keyevent KEYCODE_WAKEUP
+adb -s emulator-5554 shell wm dismiss-keyguard
+adb -s emulator-5554 shell dumpsys window
+adb -s emulator-5554 shell am force-stop com.dems.demo.tablet
+adb -s emulator-5554 reverse tcp:4400 tcp:4400
+adb -s emulator-5554 shell am force-stop com.dems.demo.tablet
+adb -s emulator-5554 reverse --remove tcp:4400
+=== new_running_swipe_keyguard: stderr (times stripped)
+[device-session phone HH:MM:SS] lock held; hard cap 120 s, until HH:MM:SS (watchdog PID N)
+[device-session phone HH:MM:SS] session serial: emulator-5554 (dems2_phone)
+[device-session phone HH:MM:SS] emulator-5554: screen awake, no keyguard
+[device-session phone HH:MM:SS] no Metro (NO_METRO=1); tcp:4400 -> tcp:4400 on emulator-5554
+[device-session phone HH:MM:SS] session ended with status 0
+=== new_running_swipe_keyguard: stub pgrep calls
+pgrep -f -- (qemu-system-[a-z0-9_]+|emulator) -avd dems2_phone( |$)
+=== new_running_swipe_keyguard: what <commands> saw
+AVD_NAME=dems2_phone SERIAL=emulator-5554
+=== new_running_swipe_keyguard: .locks of the scratch root
+dems_phone.lock 
+
+=== new_running_unreadable: stub adb trace
+adb start-server
+adb -s emulator-5554 get-state
+adb -s emulator-5554 shell getprop sys.boot_completed
+adb -s emulator-5554 shell input keyevent KEYCODE_WAKEUP
+adb -s emulator-5554 shell wm dismiss-keyguard
+adb -s emulator-5554 shell dumpsys window
+adb -s emulator-5554 shell am force-stop com.dems.demo.tablet
+adb -s emulator-5554 reverse tcp:4400 tcp:4400
+adb -s emulator-5554 shell am force-stop com.dems.demo.tablet
+adb -s emulator-5554 reverse --remove tcp:4400
+=== new_running_unreadable: stderr (times stripped)
+[device-session phone HH:MM:SS] lock held; hard cap 120 s, until HH:MM:SS (watchdog PID N)
+[device-session phone HH:MM:SS] session serial: emulator-5554 (dems2_phone)
+[device-session phone HH:MM:SS] emulator-5554: WARNING could not read the keyguard state (dumpsys window); going on
+[device-session phone HH:MM:SS] no Metro (NO_METRO=1); tcp:4400 -> tcp:4400 on emulator-5554
+[device-session phone HH:MM:SS] session ended with status 0
+=== new_running_unreadable: stub pgrep calls
+pgrep -f -- (qemu-system-[a-z0-9_]+|emulator) -avd dems2_phone( |$)
+=== new_running_unreadable: what <commands> saw
+AVD_NAME=dems2_phone SERIAL=emulator-5554
+=== new_running_unreadable: .locks of the scratch root
+dems_phone.lock 
+
+=== new_down_default_prefix: stub adb trace
+adb start-server
+adb -s emulator-5554 get-state
+adb -s emulator-5554 shell getprop sys.boot_completed
+adb -s emulator-5554 shell input keyevent KEYCODE_WAKEUP
+adb -s emulator-5554 shell wm dismiss-keyguard
+adb -s emulator-5554 shell dumpsys window
+adb -s emulator-5554 shell am force-stop com.dems.demo.tablet
+adb -s emulator-5554 reverse tcp:4400 tcp:4400
+adb -s emulator-5554 shell am force-stop com.dems.demo.tablet
+adb -s emulator-5554 reverse --remove tcp:4400
+=== new_down_default_prefix: stderr (times stripped)
+[device-session phone HH:MM:SS] lock held; hard cap 120 s, until HH:MM:SS (watchdog PID N)
+[device-session phone HH:MM:SS] session serial: emulator-5554 (dems2_phone)
+[device-session phone HH:MM:SS] dems2_phone (emulator-5554) is down; booting it cold the P3/D78 way (-no-snapshot-load -no-snapshot-save)
+[device-session phone HH:MM:SS] dems2_phone PID N written to .locks/dems2_phone.pid
+[device-session phone HH:MM:SS] dems2_phone booted cold; D78: reinstall the current step-72 debug APK (hash-verified) before testing
+[device-session phone HH:MM:SS] emulator-5554: screen awake, no keyguard
+[device-session phone HH:MM:SS] no Metro (NO_METRO=1); tcp:4400 -> tcp:4400 on emulator-5554
+[device-session phone HH:MM:SS] session ended with status 0
+=== new_down_default_prefix: stub pgrep calls
+pgrep -f -- (qemu-system-[a-z0-9_]+|emulator) -avd dems2_phone( |$)
+=== new_down_default_prefix: stub emulator calls
+emulator -avd dems2_phone -port 5554 -no-metrics -gpu host -no-boot-anim -no-snapshot-load -no-snapshot-save
+=== new_down_default_prefix: what <commands> saw
+AVD_NAME=dems2_phone SERIAL=emulator-5554
+=== new_down_default_prefix: .locks of the scratch root
+dems2_phone.emulator.log dems2_phone.pid dems_phone.lock 
+
+=== new_down_old_prefix: stub adb trace
+adb start-server
+adb -s emulator-5554 get-state
+adb -s emulator-5554 shell getprop sys.boot_completed
+adb -s emulator-5554 shell input keyevent KEYCODE_WAKEUP
+adb -s emulator-5554 shell wm dismiss-keyguard
+adb -s emulator-5554 shell dumpsys window
+adb -s emulator-5554 shell am force-stop com.dems.demo.tablet
+adb -s emulator-5554 reverse tcp:4400 tcp:4400
+adb -s emulator-5554 shell am force-stop com.dems.demo.tablet
+adb -s emulator-5554 reverse --remove tcp:4400
+=== new_down_old_prefix: stderr (times stripped)
+[device-session phone HH:MM:SS] lock held; hard cap 120 s, until HH:MM:SS (watchdog PID N)
+[device-session phone HH:MM:SS] session serial: emulator-5554 (dems_phone)
+[device-session phone HH:MM:SS] dems_phone (emulator-5554) is down; booting it cold the P3/D78 way (-no-snapshot-load -no-snapshot-save)
+[device-session phone HH:MM:SS] dems_phone PID N written to .locks/dems_phone.pid
+[device-session phone HH:MM:SS] dems_phone booted cold; D78: reinstall the current step-72 debug APK (hash-verified) before testing
+[device-session phone HH:MM:SS] emulator-5554: screen awake, no keyguard
+[device-session phone HH:MM:SS] no Metro (NO_METRO=1); tcp:4400 -> tcp:4400 on emulator-5554
+[device-session phone HH:MM:SS] session ended with status 0
+=== new_down_old_prefix: stub pgrep calls
+pgrep -f -- (qemu-system-[a-z0-9_]+|emulator) -avd dems_phone( |$)
+=== new_down_old_prefix: stub emulator calls
+emulator -avd dems_phone -port 5554 -no-metrics -gpu host -no-boot-anim -no-snapshot-load -no-snapshot-save
+=== new_down_old_prefix: what <commands> saw
+AVD_NAME=dems_phone SERIAL=emulator-5554
+=== new_down_old_prefix: .locks of the scratch root
+dems_phone.emulator.log dems_phone.lock dems_phone.pid 
+
+=== new_down_tablet: stub adb trace
+adb start-server
+adb -s emulator-5556 get-state
+adb -s emulator-5556 shell getprop sys.boot_completed
+adb -s emulator-5556 shell input keyevent KEYCODE_WAKEUP
+adb -s emulator-5556 shell wm dismiss-keyguard
+adb -s emulator-5556 shell dumpsys window
+adb -s emulator-5556 shell am force-stop com.dems.demo.tablet
+adb -s emulator-5556 reverse tcp:4400 tcp:4400
+adb -s emulator-5556 shell am force-stop com.dems.demo.tablet
+adb -s emulator-5556 reverse --remove tcp:4400
+=== new_down_tablet: stderr (times stripped)
+[device-session tablet HH:MM:SS] lock held; hard cap 120 s, until HH:MM:SS (watchdog PID N)
+[device-session tablet HH:MM:SS] session serial: emulator-5556 (dems2_tablet)
+[device-session tablet HH:MM:SS] dems2_tablet (emulator-5556) is down; booting it cold the P3/D78 way (-no-snapshot-load -no-snapshot-save)
+[device-session tablet HH:MM:SS] dems2_tablet PID N written to .locks/dems2_tablet.pid
+[device-session tablet HH:MM:SS] dems2_tablet booted cold; D78: reinstall the current step-72 debug APK (hash-verified) before testing
+[device-session tablet HH:MM:SS] emulator-5556: screen awake, no keyguard
+[device-session tablet HH:MM:SS] no Metro (NO_METRO=1); tcp:4400 -> tcp:4400 on emulator-5556
+[device-session tablet HH:MM:SS] session ended with status 0
+=== new_down_tablet: stub pgrep calls
+pgrep -f -- (qemu-system-[a-z0-9_]+|emulator) -avd dems2_tablet( |$)
+=== new_down_tablet: stub emulator calls
+emulator -avd dems2_tablet -port 5556 -no-metrics -gpu host -no-boot-anim -no-snapshot-load -no-snapshot-save
+=== new_down_tablet: what <commands> saw
+AVD_NAME=dems2_tablet SERIAL=emulator-5556
+=== new_down_tablet: .locks of the scratch root
+dems2_tablet.emulator.log dems2_tablet.pid dems_tablet.lock 
+
+=== new_down_phone2: stub adb trace
+adb start-server
+adb -s emulator-5558 get-state
+adb -s emulator-5558 shell getprop sys.boot_completed
+adb -s emulator-5558 shell input keyevent KEYCODE_WAKEUP
+adb -s emulator-5558 shell wm dismiss-keyguard
+adb -s emulator-5558 shell dumpsys window
+adb -s emulator-5558 shell am force-stop com.dems.demo.tablet
+adb -s emulator-5558 reverse tcp:4400 tcp:4400
+adb -s emulator-5558 shell am force-stop com.dems.demo.tablet
+adb -s emulator-5558 reverse --remove tcp:4400
+=== new_down_phone2: stderr (times stripped)
+[device-session phone2 HH:MM:SS] lock held; hard cap 120 s, until HH:MM:SS (watchdog PID N)
+[device-session phone2 HH:MM:SS] session serial: emulator-5558 (dems2_phone2)
+[device-session phone2 HH:MM:SS] dems2_phone2 (emulator-5558) is down; booting it cold the P3/D78 way (-no-snapshot-load -no-snapshot-save)
+[device-session phone2 HH:MM:SS] dems2_phone2 PID N written to .locks/dems2_phone2.pid
+[device-session phone2 HH:MM:SS] dems2_phone2 booted cold; D78: reinstall the current step-72 debug APK (hash-verified) before testing
+[device-session phone2 HH:MM:SS] emulator-5558: screen awake, no keyguard
+[device-session phone2 HH:MM:SS] no Metro (NO_METRO=1); tcp:4400 -> tcp:4400 on emulator-5558
+[device-session phone2 HH:MM:SS] session ended with status 0
+=== new_down_phone2: stub pgrep calls
+pgrep -f -- (qemu-system-[a-z0-9_]+|emulator) -avd dems2_phone2( |$)
+=== new_down_phone2: stub emulator calls
+emulator -avd dems2_phone2 -port 5558 -no-metrics -gpu host -no-boot-anim -no-snapshot-load -no-snapshot-save
+=== new_down_phone2: what <commands> saw
+AVD_NAME=dems2_phone2 SERIAL=emulator-5558
+=== new_down_phone2: .locks of the scratch root
+dems2_phone2.emulator.log dems2_phone2.pid dems_phone2.lock 
+
+=== new_both_tablet_locked: stub adb trace
+adb start-server
+adb -s emulator-5554 get-state
+adb -s emulator-5554 shell getprop sys.boot_completed
+adb start-server
+adb -s emulator-5556 get-state
+adb -s emulator-5556 shell getprop sys.boot_completed
+adb -s emulator-5554 shell input keyevent KEYCODE_WAKEUP
+adb -s emulator-5554 shell wm dismiss-keyguard
+adb -s emulator-5554 shell dumpsys window
+adb -s emulator-5556 shell input keyevent KEYCODE_WAKEUP
+adb -s emulator-5556 shell wm dismiss-keyguard
+adb -s emulator-5556 shell dumpsys window
+   ... (10 more identical dumpsys window calls: the 10 s poll)
+adb -s emulator-5554 shell am force-stop com.dems.demo.tablet
+adb -s emulator-5556 shell am force-stop com.dems.demo.tablet
+=== new_both_tablet_locked: stderr (times stripped)
+[device-session both HH:MM:SS] lock held; hard cap 120 s, until HH:MM:SS (watchdog PID N)
+[device-session both HH:MM:SS] session serial: emulator-5554 emulator-5556 (dems2_phone dems2_tablet)
+[device-session both HH:MM:SS] emulator-5554: screen awake, no keyguard
+[device-session both HH:MM:SS] emulator-5556: LOCKED. The keyguard still shows after wake + dismiss, so this device has a secure screen lock (PIN, pattern or password)
+[device-session both HH:MM:SS] emulator-5556: no agent unlocks a device; this script enters no credential and changes no lock setting (D35, D49). The user unlocks it, or use a lock-free AVD (DEMS_AVD_PREFIX, default dems2_)
+[device-session both HH:MM:SS] session ended with status 77
+=== new_both_tablet_locked: stub pgrep calls
+pgrep -f -- (qemu-system-[a-z0-9_]+|emulator) -avd dems2_phone( |$)
+pgrep -f -- (qemu-system-[a-z0-9_]+|emulator) -avd dems2_tablet( |$)
+=== new_both_tablet_locked: .locks of the scratch root
+dems_phone.lock dems_tablet.lock 
+
+=== new_secure_lock_keep_app: stub adb trace
+adb start-server
+adb -s emulator-5554 get-state
+adb -s emulator-5554 shell getprop sys.boot_completed
+adb -s emulator-5554 shell input keyevent KEYCODE_WAKEUP
+adb -s emulator-5554 shell wm dismiss-keyguard
+adb -s emulator-5554 shell dumpsys window
+   ... (10 more identical dumpsys window calls: the 10 s poll)
+=== new_secure_lock_keep_app: stderr (times stripped)
+[device-session phone HH:MM:SS] lock held; hard cap 120 s, until HH:MM:SS (watchdog PID N)
+[device-session phone HH:MM:SS] session serial: emulator-5554 (dems2_phone)
+[device-session phone HH:MM:SS] emulator-5554: LOCKED. The keyguard still shows after wake + dismiss, so this device has a secure screen lock (PIN, pattern or password)
+[device-session phone HH:MM:SS] emulator-5554: no agent unlocks a device; this script enters no credential and changes no lock setting (D35, D49). The user unlocks it, or use a lock-free AVD (DEMS_AVD_PREFIX, default dems2_)
+[device-session phone HH:MM:SS] session ended with status 77
+=== new_secure_lock_keep_app: stub pgrep calls
+pgrep -f -- (qemu-system-[a-z0-9_]+|emulator) -avd dems2_phone( |$)
+=== new_secure_lock_keep_app: .locks of the scratch root
+dems_phone.lock 
+
+=== new_any_phone_secure_lock: stub adb trace
+adb start-server
+adb -s emulator-5554 get-state
+adb -s emulator-5554 shell getprop sys.boot_completed
+adb -s emulator-5554 shell input keyevent KEYCODE_WAKEUP
+adb -s emulator-5554 shell wm dismiss-keyguard
+adb -s emulator-5554 shell dumpsys window
+   ... (10 more identical dumpsys window calls: the 10 s poll)
+adb -s emulator-5554 shell am force-stop com.dems.demo.tablet
+=== new_any_phone_secure_lock: stderr (times stripped)
+[device-session phone HH:MM:SS] lock held; hard cap 120 s, until HH:MM:SS (watchdog PID N)
+[device-session phone HH:MM:SS] session serial: emulator-5554 (dems2_phone); picked by any-phone
+[device-session phone HH:MM:SS] emulator-5554: LOCKED. The keyguard still shows after wake + dismiss, so this device has a secure screen lock (PIN, pattern or password)
+[device-session phone HH:MM:SS] emulator-5554: no agent unlocks a device; this script enters no credential and changes no lock setting (D35, D49). The user unlocks it, or use a lock-free AVD (DEMS_AVD_PREFIX, default dems2_)
+[device-session phone HH:MM:SS] session ended with status 77
+=== new_any_phone_secure_lock: stub pgrep calls
+pgrep -f -- (qemu-system-[a-z0-9_]+|emulator) -avd dems2_phone( |$)
+=== new_any_phone_secure_lock: .locks of the scratch root
+dems_phone.lock 
+

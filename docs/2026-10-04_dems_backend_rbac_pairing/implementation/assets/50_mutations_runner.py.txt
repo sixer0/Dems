@@ -1,0 +1,374 @@
+#!/usr/bin/env python3
+"""W50 mutation check (rule M15: no file of the workspace tree is changed).
+
+Each mutation is ONE text replacement in ONE module, applied in memory by the transform plugin of
+vitest.mutation.config.mts. A mutation is DETECTED when the tests named for its module fail while
+the mutation was really applied (the plugin leaves a marker file). Run from the workspace root:
+
+    python3 .cache/w50/mut/run_mutations.py check      # only verifies that every text occurs exactly once
+    python3 .cache/w50/mut/run_mutations.py run [ids]  # baseline, then every mutation (or the named ones)
+"""
+import json, os, subprocess, sys, time
+
+ROOT = os.getcwd()
+HERE = os.path.join(ROOT, '.cache/w50/mut')
+SRC = os.path.join(ROOT, 'apps/core-web/src')
+CONFIG = '.cache/w50/mut/vitest.mutation.config.mts'
+# Markers are written and removed under TMPDIR only (this row removes nothing outside it).
+APPLIED = os.path.join(os.environ['TMPDIR'], 'w50-mut-applied')
+os.makedirs(APPLIED, exist_ok=True)
+
+T_MODE = 'src/test/live-runtime-mode.test.tsx'
+T_START = 'src/test/live-runtime-startup.test.tsx'
+T_STORE = 'src/test/live-runtime-storage.test.tsx'
+T_BRIDGE = 'src/test/live-runtime-bridge.test.tsx'
+T_SINK = 'src/test/live-runtime-sink.test.tsx'
+T_STATIC = 'src/test/live-runtime-static.test.tsx'
+T_ENDPOINT = 'src/lib/__tests__/live-core-endpoint.test.tsx'
+T_ERRORS = 'src/lib/__tests__/live-core-errors.test.tsx'
+T_SURFACE = 'src/test/live-runtime-surface.test.tsx'
+ALL = [T_MODE, T_START, T_STORE, T_BRIDGE, T_SINK, T_STATIC, T_SURFACE, T_ENDPOINT, T_ERRORS]
+
+TESTS = {
+    'runtime/core-mode.ts': [T_MODE],
+    'runtime/live-host.ts': [T_MODE],
+    'runtime/live-host-refusal.tsx': [T_MODE],
+    'runtime/boot.ts': [T_MODE, T_START],
+    'runtime/owed-sign-out-storage.ts': [T_STORE],
+    'runtime/live-start.ts': [T_STORE, T_START, T_SINK],
+    'runtime/query-bridge.ts': [T_BRIDGE, T_START],
+    'runtime/error-sink.ts': [T_SINK],
+    'lib/core-endpoint.ts': [T_ENDPOINT, T_START],
+    'lib/core-errors.ts': [T_ERRORS],
+    'router.tsx': [T_ENDPOINT, T_BRIDGE, T_START],
+    'routes/__root.tsx': [T_START],
+    'runtime/hooks.ts': [T_SURFACE],
+}
+
+M = []
+def m(id, file, what, find, replace):
+    M.append({'id': id, 'file': file, 'what': what, 'find': find, 'replace': replace})
+
+# ── The mode resolver (MD-2) ─────────────────────────────────────────────────────────────
+F = 'runtime/core-mode.ts'
+m('R01', F, 'rule 1 needs BOTH "not dev" and "packaged"', "if (!input.dev || input.packaged) {", "if (!input.dev && input.packaged) {")
+m('R02', F, 'rule 1 ignores a production build', "if (!input.dev || input.packaged) {", "if (input.packaged) {")
+m('R03', F, 'rule 1 ignores the packaged flag', "if (!input.dev || input.packaged) {", "if (!input.dev) {")
+m('R04', F, 'rule 1 offers the choice', "return { mode: CoreMode.SIMULATED, selectable: false, source: CoreModeSource.BUILD }", "return { mode: CoreMode.SIMULATED, selectable: true, source: CoreModeSource.BUILD }")
+m('R05', F, 'rule 1 answers LIVE', "return { mode: CoreMode.SIMULATED, selectable: false, source: CoreModeSource.BUILD }", "return { mode: CoreMode.LIVE, selectable: false, source: CoreModeSource.BUILD }")
+m('R06', F, 'the stored value is ignored', "const stored = parseCoreMode(input.stored)", "const stored = parseCoreMode(null)")
+m('R07', F, 'the preselection is ignored', "const preselected = parseCoreModeEnv(input.env)", "const preselected = parseCoreModeEnv(undefined)")
+m('R08', F, 'the default is LIVE', "return { mode: DEFAULT_CORE_MODE, selectable: true, source: CoreModeSource.DEFAULT }", "return { mode: CoreMode.LIVE, selectable: true, source: CoreModeSource.DEFAULT }")
+m('R09', F, 'the preselection wins over the stored value', "  const stored = parseCoreMode(input.stored)\n  if (stored !== null) return { mode: stored, selectable: true, source: CoreModeSource.STORED }\n  const preselected = parseCoreModeEnv(input.env)\n  if (preselected !== null) return { mode: preselected, selectable: true, source: CoreModeSource.ENV }", "  const preselected = parseCoreModeEnv(input.env)\n  if (preselected !== null) return { mode: preselected, selectable: true, source: CoreModeSource.ENV }\n  const stored = parseCoreMode(input.stored)\n  if (stored !== null) return { mode: stored, selectable: true, source: CoreModeSource.STORED }")
+m('R10', F, '`live` preselects SIMULATED', "  live: CoreMode.LIVE,", "  live: CoreMode.SIMULATED,")
+m('R11', F, 'an inherited member name passes as a preselection', "return Object.prototype.hasOwnProperty.call(ENV_VALUES, value) ? (ENV_VALUES[value] ?? null) : null", "return ENV_VALUES[value] ?? null")
+m('R12', F, 'the preselection is read without regard to case', "return Object.prototype.hasOwnProperty.call(ENV_VALUES, value) ? (ENV_VALUES[value] ?? null) : null", "return ENV_VALUES[value.trim().toLowerCase()] ?? null")
+m('R13', F, 'another storage key', "export const CORE_MODE_STORAGE_KEY = 'dems.core.mode.v1'", "export const CORE_MODE_STORAGE_KEY = 'dems.core.mode'")
+m('R14', F, 'a storage that throws on read is not contained', "  try {\n    return storage.getItem(CORE_MODE_STORAGE_KEY)\n  } catch {\n    return null\n  }", "  return storage.getItem(CORE_MODE_STORAGE_KEY)")
+m('R15', F, 'a refused write reads as stored', "    storage.setItem(CORE_MODE_STORAGE_KEY, mode)\n    return true\n  } catch {\n    return false\n  }", "    storage.setItem(CORE_MODE_STORAGE_KEY, mode)\n    return true\n  } catch {\n    return true\n  }")
+m('R16', F, 'a write reports "not stored" although it stored', "    storage.setItem(CORE_MODE_STORAGE_KEY, mode)\n    return true", "    storage.setItem(CORE_MODE_STORAGE_KEY, mode)\n    return false")
+
+# ── The localhost refusal (WT-2a) ────────────────────────────────────────────────────────
+F = 'runtime/live-host.ts'
+m('H01', F, 'the host OR the scheme is enough', "if (location.hostname === LIVE_CONSOLE_HOST && location.protocol === LIVE_CONSOLE_PROTOCOL) return null", "if (location.hostname === LIVE_CONSOLE_HOST || location.protocol === LIVE_CONSOLE_PROTOCOL) return null")
+m('H02', F, 'the scheme is not checked', "if (location.hostname === LIVE_CONSOLE_HOST && location.protocol === LIVE_CONSOLE_PROTOCOL) return null", "if (location.hostname === LIVE_CONSOLE_HOST) return null")
+m('H03', F, 'a host that only starts with 127.0.0.1 passes', "if (location.hostname === LIVE_CONSOLE_HOST && location.protocol === LIVE_CONSOLE_PROTOCOL) return null", "if (location.hostname.startsWith(LIVE_CONSOLE_HOST) && location.protocol === LIVE_CONSOLE_PROTOCOL) return null")
+m('H04', F, 'localhost is the accepted host', "export const LIVE_CONSOLE_HOST = '127.0.0.1'", "export const LIVE_CONSOLE_HOST = 'localhost'")
+m('H05', F, 'nothing is refused', "if (location.hostname === LIVE_CONSOLE_HOST && location.protocol === LIVE_CONSOLE_PROTOCOL) return null", "if (location.hostname !== '') return null")
+m('H06', F, 'the address to open loses the query', "href: `${expected}${location.pathname}${location.search}${location.hash}`,", "href: `${expected}${location.pathname}${location.hash}`,")
+m('H07', F, 'the address to open loses the path', "href: `${expected}${location.pathname}${location.search}${location.hash}`,", "href: `${expected}${location.search}${location.hash}`,")
+m('H08', F, 'the address to open loses the port', "${location.port === '' ? '' : `:${location.port}`}", "")
+m('H09', F, 'the refusal names the wrong current address', "    current: location.origin,", "    current: expected,")
+m('H10', F, 'the scheme of the address to open is https', "export const LIVE_CONSOLE_PROTOCOL = 'http:'", "export const LIVE_CONSOLE_PROTOCOL = 'https:'")
+
+F = 'runtime/live-host-refusal.tsx'
+m('H20', F, 'the link opens the refused address', "            href={refusal.href}", "            href={refusal.current}")
+m('H21', F, 'the button does not use Simulated mode', "              if (!onUseSimulated()) setNotStored(true)", "              setNotStored(false)")
+m('H22', F, 'a choice that could not be stored is not said', "          {notStored ? (", "          {false ? (")
+m('H23', F, 'the cause does not name the opened address', "{t('common.liveHost.body', { current: refusal.current, expected: refusal.expected })}", "{t('common.liveHost.body', { current: refusal.expected, expected: refusal.expected })}")
+
+# ── The entry (MD-5, MD-6, §3.3) ────────────────────────────────────────────────────────
+F = 'runtime/boot.ts'
+m('B01', F, 'a page under localhost starts the Live source', "    if (refusal !== null) {", "    if (refusal !== null && false) {")
+m('B02', F, 'a refused page builds the simulator', "      return {\n        kind: 'REFUSED',", "      await (options.loadSimulator ?? (() => import('@dems/shared/sim')))()\n      return {\n        kind: 'REFUSED',")
+m('B03', F, 'the entry does not wait for the bootstrap', "    await runtime.live.ready\n", "")
+m('B04', F, 'a build without the Live module still offers the choice', "const dev = (options.dev ?? import.meta.env.DEV) && loadLive !== null", "const dev = options.dev ?? import.meta.env.DEV")
+m('B05', F, 'a build with no choice reads the stored key', "const storage = selectable ? (options.storage === undefined ? pageLocalStorage() : options.storage) : null", "const storage = options.storage === undefined ? pageLocalStorage() : options.storage")
+m('B06', F, 'the switch does not sign out', "        if (selectIsSignedIn(sim.store.getState())) {", "        if (false) {")
+m('B07', F, 'the switch locks instead of signing out', "await coreActionsOf(sim).signOut(SignOutReason.USER)", "await coreActionsOf(sim).signOut(SignOutReason.LOCK)")
+m('B08', F, 'the switch reloads to another page', "        location.assign('/login')", "        location.assign('/')")
+m('B09', F, 'the switch does not reload', "        location.assign('/login')\n", "")
+m('B10', F, 'the switch does not stop the data source', "        stop()\n        // Step 4", "        // Step 4")
+m('B11', F, 'a build with no choice can switch', "if (!resolution.selectable || next === resolution.mode || switching) return false", "if (next === resolution.mode || switching) return false")
+m('B12', F, 'a switch to the current mode reloads', "if (!resolution.selectable || next === resolution.mode || switching) return false", "if (!resolution.selectable || switching) return false")
+m('B13', F, 'without a storage the session is signed out before the switch fails', "      if (storage === null) {\n        // Asked before", "      if (false) {\n        // Asked before")
+m('B14', F, 'a refused write still reloads', "        if (!writeStoredCoreMode(storage, next)) {\n          reportNotStored(sink, resolution.mode, next)\n          return false\n        }", "        writeStoredCoreMode(storage, next)")
+m('B15', F, 'the switch stores the current mode', "        if (!writeStoredCoreMode(storage, next)) {", "        if (!writeStoredCoreMode(storage, resolution.mode)) {")
+m('B16', F, 'the simulator snapshot is not flushed', "        sim.flush()\n", "")
+m('B17', F, '"Use Simulated mode" stores LIVE', "if (!writeStoredCoreMode(storage, CoreMode.SIMULATED)) return false", "if (!writeStoredCoreMode(storage, CoreMode.LIVE)) return false")
+m('B18', F, '"Use Simulated mode" does not reload', "          location.reload()\n", "")
+m('B19', F, 'the refusal is logged as a warning', "        level: 'error',\n        source: 'runtime.liveHost',", "        level: 'warn',\n        source: 'runtime.liveHost',")
+m('B20', F, 'the refusal record does not name the address to open', " Open ${refusal.href} instead.`,", "`,")
+m('B21', F, 'the simulator gets no error report', "const sim = createSim({ onError: options.onSimError })", "const sim = createSim({})")
+m('B22', F, 'the Live start-up gets no storage', "      location,\n      storage,\n      sink,", "      location,\n      storage: null,\n      sink,")
+m('B23', F, 'a failed store is not reported', "    source: 'runtime.modeSwitch',", "    source: 'runtime.other',")
+
+# ── The storage port (D90, D100) ─────────────────────────────────────────────────────────
+F = 'runtime/owed-sign-out-storage.ts'
+m('S01', F, 'an absent key throws', "      if (text === null) return null\n      let parsed: unknown", "      if (text === null) throw new OwedSignOutUnreadableError('NOT_JSON')\n      let parsed: unknown")
+m('S02', F, 'a text that does not parse reads as "nothing owed"', "      } catch {\n        throw new OwedSignOutUnreadableError('NOT_JSON')\n      }", "      } catch {\n        return null\n      }")
+m('S03', F, 'a stored JSON null reads as "nothing owed"', "      if (parsed === null) throw new OwedSignOutUnreadableError('JSON_NULL')", "      if (parsed === null) return null")
+m('S04', F, 'a storage that throws reads as "nothing owed"', "      const text = storage.getItem(key)\n      if (text === null) return null", "      let text: string | null = null\n      try {\n        text = storage.getItem(key)\n      } catch {\n        return null\n      }\n      if (text === null) return null")
+m('S05', F, 'write stores whatever it is given', "      storage.setItem(key, JSON.stringify(record))", "      storage.setItem(key, JSON.stringify(debt))")
+m('S06', F, 'write is asynchronous', "      storage.setItem(key, JSON.stringify(record))", "      void Promise.resolve().then(() => storage.setItem(key, JSON.stringify(record)))")
+m('S07', F, 'write returns a promise', "      storage.setItem(key, JSON.stringify(record))", "      storage.setItem(key, JSON.stringify(record))\n      return Promise.resolve() as unknown as void")
+m('S08', F, 'clear does nothing', "    clear(): void {\n      storage.removeItem(key)\n    },", "    clear(): void {},")
+m('S09', F, 'clear is asynchronous', "    clear(): void {\n      storage.removeItem(key)\n    },", "    clear(): void {\n      void Promise.resolve().then(() => storage.removeItem(key))\n    },")
+m('S10', F, 'another key', "export const OWED_SIGN_OUT_STORAGE_KEY = 'dems.live.owedSignOut.v1'", "export const OWED_SIGN_OUT_STORAGE_KEY = 'dems.live.owedSignOut'")
+m('S11', F, 'the probe accepts a storage that keeps nothing', "    const kept = storage.getItem(STORAGE_PROBE_KEY) === '1'", "    const kept = true")
+m('S12', F, 'the probe key stays', "    storage.removeItem(STORAGE_PROBE_KEY)\n", "")
+m('S13', F, 'a storage that throws passes the probe', "    return kept\n  } catch {\n    return false\n  }", "    return kept\n  } catch {\n    return true\n  }")
+m('S14', F, 'the probe accepts no storage', "  if (storage === null || storage === undefined) return false", "  if (storage === undefined) return false")
+m('S15', F, 'a reckoned expiry of another tab is followed', "  if (reason !== SignOutReason.USER && reason !== SignOutReason.LOCK) return null\n", "")
+m('S16', F, 'a debt of another session is followed', "    if (session.operator.id !== debt.operatorId || session.issuedAt !== debt.issuedAt) return\n", "")
+m('S17', F, 'only a debt that differs in BOTH members is skipped', "if (session.operator.id !== debt.operatorId || session.issuedAt !== debt.issuedAt) return", "if (session.operator.id !== debt.operatorId && session.issuedAt !== debt.issuedAt) return")
+m('S18', F, 'an event of another key is followed', "    if (event.key !== key) return\n", "")
+m('S19', F, 'an event of another storage area is followed', "    if (event.storageArea !== undefined && event.storageArea !== null && event.storageArea !== storage) return\n", "")
+m('S20', F, 'every followed debt locks', "settle(() => live.actions.signOut(debt.reason), { fail: () => undefined })", "settle(() => live.actions.signOut(SignOutReason.LOCK), { fail: () => undefined })")
+m('S21', F, 'the watch is never ended', "  return () => target.removeEventListener('storage', onStorage)", "  return () => undefined")
+m('S22', F, 'the watch does nothing', "  target.addEventListener('storage', onStorage)\n", "")
+m('S23', F, 'a debt without an issue time is followed', "  if (typeof operatorId !== 'string' || typeof issuedAt !== 'number') return null", "  if (typeof operatorId !== 'string') return null")
+m('S24', F, 'the error message shows nothing of the reason', "    super(`The stored sign-out debt cannot be read (${reason}).`)", "    super('The stored sign-out debt cannot be read.')")
+
+# ── The Live start-up (§5.1) ─────────────────────────────────────────────────────────────
+F = 'runtime/live-start.ts'
+m('L01', F, 'the port is passed without the probe', "const storage = hasUsableStorage(options.storage) ? options.storage : null", "const storage = options.storage ?? null")
+m('L02', F, 'no port is ever passed', "    ...(storage === null ? {} : { owedSignOut: createOwedSignOutPort(storage) }),\n", "")
+m('L03', F, 'the client talks to the Core server directly', "    baseUrl: location.origin,", "    baseUrl: 'http://127.0.0.1:4423',")
+m('L04', F, 'the client sends a bearer value', "    credentials: 'browser-cookie',", "    credentials: () => 'ses_not-a-real-token',")
+m('L05', F, 'the socket goes to the Core server directly', "      url: pageWsUrl(location),", "      url: 'ws://127.0.0.1:4423/ws',")
+m('L06', F, 'the storage event is never watched', "const stopWatch = storage !== null && events !== null ? watchOwedSignOut({ live, storage, target: events }) : () => undefined", "const stopWatch = () => undefined")
+m('L07', F, 'stop leaves the source running', "      stopWatch()\n      live.stop()", "      stopWatch()")
+m('L08', F, 'stop leaves the watch', "      stopWatch()\n      live.stop()", "      live.stop()")
+m('L09', F, 'no word about a missing storage', "  if (storage === null) {\n    sink.report({", "  if (false) {\n    sink.report({")
+m('L10', F, 'the Live source reports nowhere', "    onError: sink.report,\n", "")
+m('L11', F, 'the typed client reports nowhere', "    report: (report) => sink.report(clientRecord(report, now())),\n", "")
+m('L12', F, 'the persisted flag is always true', "    owedSignOutPersisted: storage !== null,", "    owedSignOutPersisted: true,")
+
+# ── The query bridge (PG-6, PG-6a) ───────────────────────────────────────────────────────
+F = 'runtime/query-bridge.ts'
+m('Q01', F, 'a clearing invalidates instead of removing', "  queryClient.removeQueries({ queryKey: CORE_QUERY_KEY })", "  void queryClient.invalidateQueries({ queryKey: CORE_QUERY_KEY })")
+m('Q02', F, 'the mutation cache is kept', "  queryClient.getMutationCache().clear()\n", "")
+m('Q03', F, 'a session end clears nothing', "    known = null\n    clearCoreQueries(queryClient)", "    known = null")
+m('Q04', F, 'a change of operator keeps the lists', "  if (previous.operatorId !== next.operatorId) return true\n", "")
+m('Q05', F, 'a permission that is missing counts as lost, held before or not', "previous.permissions.includes(permission) && !next.permissions.includes(permission)", "!next.permissions.includes(permission)")
+m('Q06', F, 'only the loss of BOTH permissions clears', "return CORE_QUERY_PERMISSIONS.some((permission)", "return CORE_QUERY_PERMISSIONS.every((permission)")
+m('Q07', F, 'PAIRING_MANAGE is not watched', "[Permission.USER_ADMIN, Permission.PAIRING_MANAGE]", "[Permission.USER_ADMIN]")
+m('Q08', F, 'USER_ADMIN is not watched', "[Permission.USER_ADMIN, Permission.PAIRING_MANAGE]", "[Permission.PAIRING_MANAGE]")
+m('Q09', F, 'DEVICES does not refetch the code state', "  [AdminResource.DEVICES]: [CORE_QUERY_KEYS.pairedDevices, CORE_QUERY_KEYS.pairingCode],", "  [AdminResource.DEVICES]: [CORE_QUERY_KEYS.pairedDevices],")
+m('Q10', F, 'every admin.changed refetches everything', "void queryClient.invalidateQueries({ queryKey })", "void queryClient.invalidateQueries({ queryKey: CORE_QUERY_KEY })")
+m('Q11', F, 'admin.changed removes the list', "void queryClient.invalidateQueries({ queryKey })", "queryClient.removeQueries({ queryKey })")
+m('Q12', F, 'admin.changed is ignored', "    if (message.type !== 'admin.changed') return", "    if (message.type === 'admin.changed') return")
+m('Q13', F, 'a session that goes on never clears', "if (previous !== null && next !== null && sessionChangeClearsCoreQueries(previous, next)) clearCoreQueries(queryClient)", "void previous")
+m('Q14', F, 'the earlier session is never renewed', "    const previous = known\n    known = next\n", "    const previous = known\n")
+m('Q15', F, 'a replica that is behind refetches at once', "    if (event.phase !== 'RESYNCED') return\n", "")
+m('Q16', F, 'a resync keeps the health answer', "    void queryClient.invalidateQueries({ queryKey: HEALTH_QUERY_KEY })\n", "")
+m('Q17', F, 'a resync keeps the lists', "    void queryClient.invalidateQueries({ queryKey: HEALTH_QUERY_KEY })\n    void queryClient.invalidateQueries({ queryKey: CORE_QUERY_KEY })", "    void queryClient.invalidateQueries({ queryKey: HEALTH_QUERY_KEY })")
+m('Q18', F, 'detaching keeps the session-end listener', "    stopControl()\n    stopEnd()\n", "    stopControl()\n")
+m('Q19', F, 'detaching keeps the control listener', "    stopControl()\n    stopEnd()\n", "    stopEnd()\n")
+m('Q20', F, 'a core query is repeated once', "export const CORE_QUERY_DEFAULTS = { retry: false } as const", "export const CORE_QUERY_DEFAULTS = { retry: 1 } as const")
+m('Q21', F, 'the defaults cover the users list only', "  queryClient.setQueryDefaults(CORE_QUERY_KEY, CORE_QUERY_DEFAULTS)", "  queryClient.setQueryDefaults(CORE_QUERY_KEYS.users, CORE_QUERY_DEFAULTS)")
+m('Q22', F, 'the features are not told', "  for (const listener of Array.from(clearedListeners.get(queryClient) ?? [])) {", "  for (const listener of [] as (() => void)[]) {")
+m('Q23', F, 'a listener that throws stops the others', "    try {\n      listener()\n    } catch {\n      // One feature's listener must not keep the others from dropping what they hold.\n    }", "    listener()")
+m('Q24', F, 'the unsubscribe of a feature does nothing', "  return () => {\n    listeners.delete(listener)\n  }", "  return () => undefined")
+m('Q25', F, 'the features are told before the cache is empty', "  queryClient.removeQueries({ queryKey: CORE_QUERY_KEY })\n  // The answer of a command", "  for (const early of Array.from(clearedListeners.get(queryClient) ?? [])) early()\n  queryClient.removeQueries({ queryKey: CORE_QUERY_KEY })\n  // The answer of a command")
+m('Q26', F, 'another root key', "export const CORE_QUERY_ROOT = 'core'", "export const CORE_QUERY_ROOT = 'admin'")
+m('Q27', F, 'detaching keeps the change listener', "    stopChange()\n", "")
+m('Q28', F, 'detaching keeps the resync listener', "    stopResync()\n", "")
+
+# ── The error sink ───────────────────────────────────────────────────────────────────────
+F = 'runtime/error-sink.ts'
+m('E01', F, 'a message is kept as it came', "          message: redactCredentials(report.message),", "          message: report.message,")
+m('E02', F, 'a stack is kept as it came', "{ stack: redactCredentials(report.stack) }", "{ stack: report.stack }")
+m('E03', F, 'a context is kept as it came', "{ context: redactValue(report.context, 0) as Record<string, unknown> }", "{ context: report.context as Record<string, unknown> }")
+m('E04', F, 'a device credential is not blanked', "const CREDENTIAL = /\\b(ses|dvc|bio)_[A-Za-z0-9_-]+/g", "const CREDENTIAL = /\\b(ses|bio)_[A-Za-z0-9_-]+/g")
+m('E05', F, 'the log grows without bound', "kept = kept.length >= capacity ? [...kept.slice(kept.length - capacity + 1), record] : [...kept, record]", "kept = [...kept, record]")
+m('E06', F, 'the log keeps one record too many', "kept.length >= capacity ?", "kept.length > capacity ?")
+m('E07', F, 'a build that is not a dev build prints', "        if (!dev) return\n", "")
+m('E08', F, 'an error is printed as a warning', "        if (record.level === 'error') log.error('[core-web] live', record)\n        else log.warn('[core-web] live', record)", "        log.warn('[core-web] live', record)")
+m('E09', F, 'a warning is printed as an error', "        if (record.level === 'error') log.error('[core-web] live', record)\n        else log.warn('[core-web] live', record)", "        log.error('[core-web] live', record)")
+m('E10', F, 'a console that throws fails the caller', "      } catch {\n        // A sink must never fail its caller: the Live source reports from inside its own handlers.\n      }", "      } finally {\n        void 0\n      }")
+m('E11', F, 'the records are handed out by reference', "    records: () => kept.slice(),", "    records: () => kept,")
+m('E12', F, 'nested values are not blanked', "  if (Array.isArray(value)) return value.map((entry) => redactValue(entry, depth + 1))", "  if (Array.isArray(value)) return value")
+m('E13', F, 'another capacity', "export const ERROR_SINK_CAPACITY = 200", "export const ERROR_SINK_CAPACITY = 500")
+m('E14', F, 'clear does nothing', "    clear() {\n      kept = []\n    },", "    clear() {},")
+
+# ── The Live row of the endpoint and the router factory ──────────────────────────────────
+F = 'lib/core-endpoint.ts'
+m('P01', F, 'a production build has a Live row', "  return import.meta.env.DEV && liveDataSource && !isSameOriginCore()", "  return liveDataSource && !isSameOriginCore()")
+m('P02', F, 'the packaged build counts as Live', "  return import.meta.env.DEV && liveDataSource && !isSameOriginCore()", "  return import.meta.env.DEV && liveDataSource")
+m('P03', F, 'the row is selected the wrong way round', "  liveDataSource = mode === 'LIVE'", "  liveDataSource = mode !== 'LIVE'")
+m('P04', F, 'the Live socket is mock-core\'s', "  if (!isPageOriginCore()) return CORE_WS_URL", "  if (!isSameOriginCore()) return CORE_WS_URL")
+m('P05', F, 'the Live allowed origins are the dev list', "  return isPageOriginCore() ? [page(location).origin] : WEB_DEV_ORIGINS", "  return isSameOriginCore() ? [page(location).origin] : WEB_DEV_ORIGINS")
+m('P06', F, 'the Live REST origin is mock-core\'s', "  return isPageOriginCore() ? page(location).origin : CORE_HTTP_ORIGIN", "  return isSameOriginCore() ? page(location).origin : CORE_HTTP_ORIGIN")
+m('P07', F, 'an https page gets a plain socket', "  return `${protocol === 'https:' ? 'wss' : 'ws'}://${host}${WS_PATH}`", "  return `ws://${host}${WS_PATH}`")
+m('P08', F, 'the row reads nothing: always Live in dev', "  return import.meta.env.DEV && liveDataSource && !isSameOriginCore()", "  return import.meta.env.DEV && !isSameOriginCore()")
+
+F = 'router.tsx'
+m('P20', F, 'the router does not select the endpoint row', "  setCoreEndpointMode(mode)\n", "")
+m('P21', F, 'the Core query defaults are set for a simulator too', "  if (mode === CoreMode.LIVE) applyCoreQueryDefaults(context.queryClient)", "  applyCoreQueryDefaults(context.queryClient)")
+m('P22', F, 'the Core query defaults are never set', "  if (mode === CoreMode.LIVE) applyCoreQueryDefaults(context.queryClient)\n", "")
+
+F = 'routes/__root.tsx'
+m('P30', F, 'the root builds a second socket client in Live mode', "      {live ? (\n        <HeartbeatContext.Provider", "      {false && live ? (\n        <HeartbeatContext.Provider")
+m('P31', F, 'the root mounts no bridge', "  useEffect(() => (live ? attachQueryBridge(live, queryClient) : undefined), [live, queryClient])\n", "")
+m('P32', F, 'the provider starts and stops the Live source', "    <SimProvider sim={sim} autoStart={live === null}>", "    <SimProvider sim={sim} autoStart>")
+m('P33', F, 'the provider never starts a simulator', "    <SimProvider sim={sim} autoStart={live === null}>", "    <SimProvider sim={sim} autoStart={false}>")
+m('P34', F, 'the bridge is never detached', "  useEffect(() => (live ? attachQueryBridge(live, queryClient) : undefined), [live, queryClient])", "  useEffect(() => {\n    if (live) attachQueryBridge(live, queryClient)\n  }, [live, queryClient])")
+
+F = 'runtime/hooks.ts'
+m('U01', F, 'the mode control is never handed out', "  return useRouter().options.context.coreMode ?? null", "  return null")
+m('U02', F, 'the Live source is never handed out', "  return useLive<WebLive>()", "  return null")
+
+# ── The refusal presenter (§6.2, LB-6, LB-7, LB-10) ──────────────────────────────────────
+F = 'lib/core-errors.ts'
+m('X01', F, 'a 429 is no limit', "  if (status === 429 || code === ApiErrorCode.RATE_LIMITED) return { kind: CoreErrorNoticeKind.LIMIT, seconds: retryAfterSeconds }\n", "")
+m('X02', F, 'a 429 without the envelope code is no limit', "  if (status === 429 || code === ApiErrorCode.RATE_LIMITED)", "  if (code === ApiErrorCode.RATE_LIMITED)")
+m('X03', F, 'the envelope code alone is no limit', "  if (status === 429 || code === ApiErrorCode.RATE_LIMITED)", "  if (status === 429)")
+m('X04', F, 'the seconds are dropped', "return { kind: CoreErrorNoticeKind.LIMIT, seconds: retryAfterSeconds }", "return { kind: CoreErrorNoticeKind.LIMIT, seconds: null }")
+m('X05', F, 'a limit is shown as a danger toast', "      show.warning(\n        notice.seconds === null", "      show.danger(\n        notice.seconds === null")
+m('X06', F, 'a limit always names seconds', "notice.seconds === null ? t('common.coreErrors.limitedNoTime') : t('common.coreErrors.limited', { seconds: notice.seconds }),", "t('common.coreErrors.limited', { seconds: notice.seconds ?? 0 }),")
+m('X07', F, 'a stopped source shows the outage toast', "  if (code === TransportCode.STOPPED) return { kind: CoreErrorNoticeKind.STOPPED }\n", "")
+m('X08', F, 'a time-out reads as "nothing was changed"', "  if (code === TransportCode.TIMEOUT) return { kind: CoreErrorNoticeKind.TIMED_OUT }\n", "")
+m('X09', F, 'a starting Core reads as an outage', "  if (code === ApiErrorCode.NOT_READY) return { kind: CoreErrorNoticeKind.STARTING }\n", "")
+m('X10', F, 'a missing credential reads as an outage', "  if (code === TransportCode.CREDENTIALS_UNAVAILABLE || code === TransportCode.CREDENTIALS_TIMEOUT) return { kind: CoreErrorNoticeKind.NOT_SENT }\n", "")
+m('X11', F, 'a credential time-out reads as an outage', "  if (code === TransportCode.CREDENTIALS_UNAVAILABLE || code === TransportCode.CREDENTIALS_TIMEOUT)", "  if (code === TransportCode.CREDENTIALS_UNAVAILABLE)")
+m('X12', F, 'a snapshot time-out reads as an outage', "  if (code === TransportCode.SNAPSHOT_TIMEOUT) return { kind: CoreErrorNoticeKind.SNAPSHOT_TIMEOUT }\n", "")
+m('X13', F, 'every other transport failure is an outage', "  if (reason === LiveTransportReason.CORE_OFFLINE) return { kind: CoreErrorNoticeKind.OFFLINE }\n  return { kind: CoreErrorNoticeKind.UNAVAILABLE }", "  return { kind: CoreErrorNoticeKind.OFFLINE }")
+m('X14', F, 'an outage is "could not complete"', "  if (reason === LiveTransportReason.CORE_OFFLINE) return { kind: CoreErrorNoticeKind.OFFLINE }\n", "")
+m('X15', F, 'a starting Core has its own gate', "  [CoreErrorNoticeKind.STARTING]: 'OFFLINE',", "  [CoreErrorNoticeKind.STARTING]: 'STARTING',")
+m('X16', F, 'the limit shares the gate of the outage', "  [CoreErrorNoticeKind.LIMIT]: 'LIMIT',", "  [CoreErrorNoticeKind.LIMIT]: 'OFFLINE',")
+m('X17', F, 'the window is closed at its end', "now - last < LIVE_OFFLINE_TOAST_COALESCE_MS) return false", "now - last <= LIVE_OFFLINE_TOAST_COALESCE_MS) return false")
+m('X18', F, 'nothing is coalesced', "  if (!passesGate(notice.kind, now)) return notice\n", "")
+m('X19', F, 'a coalesced notice counts as not presented', "  if (!passesGate(notice.kind, now)) return notice", "  if (!passesGate(notice.kind, now)) return null")
+m('X20', F, 'a refusal is coalesced', "  [CoreErrorNoticeKind.UNAVAILABLE]: 'UNAVAILABLE',", "  [CoreErrorNoticeKind.UNAVAILABLE]: 'UNAVAILABLE',\n  [CoreErrorNoticeKind.PERMISSION]: 'PERMISSION',")
+m('X21', F, 'the window is 30 s', "export const LIVE_OFFLINE_TOAST_COALESCE_MS = 3_000", "export const LIVE_OFFLINE_TOAST_COALESCE_MS = 30_000")
+m('X22', F, 'a signed-out refusal shows the denied toast', "    if (input.code === SimErrorCode.NOT_SIGNED_IN) return { kind: CoreErrorNoticeKind.SIGNED_OUT }\n", "")
+m('X23', F, 'a 401 of a page call is the page\'s', "  if (code === ApiErrorCode.NOT_SIGNED_IN) return { kind: CoreErrorNoticeKind.SIGNED_OUT }\n", "")
+m('X24', F, 'the most privileged role is named', "const ROLE_ORDER = [OperatorRole.INVESTIGATOR, OperatorRole.SUPERVISOR, OperatorRole.TECHNICIAN] as const", "const ROLE_ORDER = [OperatorRole.TECHNICIAN, OperatorRole.SUPERVISOR, OperatorRole.INVESTIGATOR] as const")
+m('X25', F, 'a role must hold every permission of the label', "wanted.some((name) => (ROLE_PERMISSIONS[role] as readonly string[]).includes(name))", "wanted.every((name) => (ROLE_PERMISSIONS[role] as readonly string[]).includes(name))")
+m('X26', F, 'the permission a page names is ignored', "typeof named === 'string' && named !== '' ? named : (options.permission ?? '')", "typeof named === 'string' && named !== '' ? named : ''")
+m('X27', F, 'the permission of the envelope is ignored', "typeof named === 'string' && named !== '' ? named : (options.permission ?? '')", "options.permission ?? ''")
+m('X28', F, 'FORBIDDEN is the page\'s', "(code === ApiErrorCode.NOT_PERMITTED || code === ApiErrorCode.FORBIDDEN)", "code === ApiErrorCode.NOT_PERMITTED")
+m('X29', F, 'a permission code on any status is a denial', "  if (status === 403 && (code === ApiErrorCode.NOT_PERMITTED || code === ApiErrorCode.FORBIDDEN)) {", "  if (code === ApiErrorCode.NOT_PERMITTED || code === ApiErrorCode.FORBIDDEN) {")
+m('X30', F, 'a denial without a role still has a description', "        notice.role === null ? undefined : { description: t('common.rbac.requiresRole', { role: t(`common.roles.${notice.role}`) }) },", "        { description: t('common.rbac.requiresRole', { role: notice.role === null ? '' : t(`common.roles.${notice.role}`) }) },")
+m('X31', F, 'ORIGIN_NOT_ALLOWED leaves no record', "        source: 'core-errors.originNotAllowed',", "        source: 'core-errors.other',")
+m('X32', F, 'ORIGIN_NOT_ALLOWED names the page\'s own address', "      const address = liveConsoleOrigin(location)", "      const address = location.origin")
+m('X33', F, 'DEMO_DISABLED is a danger toast', "      show.warning(t('common.coreErrors.demoDisabled'))", "      show.danger(t('common.coreErrors.demoDisabled'))")
+m('X34', F, 'NOT_AVAILABLE is the page\'s', "  if (code === NOT_AVAILABLE) return { kind: CoreErrorNoticeKind.NOT_AVAILABLE }\n", "")
+m('X35', F, 'the transport of a page call is ignored', "    if (input.transport !== null) {", "    if (false) {")
+m('X36', F, 'a simulator permission error is the page\'s', "  if (input instanceof SimPermissionError) {", "  if (false) {")
+m('X37', F, 'a transport error is the page\'s', "  if (input instanceof LiveTransportError) return transportNotice(input)\n", "")
+m('X38', F, 'a successful answer counts as a failure', "  return candidate.ok === false && typeof candidate.error", "  return typeof candidate.error")
+m('X39', F, 'the time-out toast is the outage toast', "      show.danger(t('common.coreErrors.timedOut'))", "      show.danger(t('common.coreErrors.offline'))")
+m('X40', F, 'the snapshot time-out is a danger toast', "      show.warning(t('common.coreErrors.snapshotTimeout'))", "      show.danger(t('common.coreErrors.snapshotTimeout'))")
+m('X41', F, 'the hook returns a new function at every render', "  return useCallback((input, options) => presentCoreError(input, { t }, options), [t])", "  return (input, options) => presentCoreError(input, { t }, options)")
+m('X42', F, 'DEMO_DISABLED is the page\'s', "  if (code === ApiErrorCode.DEMO_DISABLED) return { kind: CoreErrorNoticeKind.DEMO_DISABLED }\n", "")
+m('X43', F, 'ORIGIN_NOT_ALLOWED is the page\'s', "  if (code === ApiErrorCode.ORIGIN_NOT_ALLOWED) return { kind: CoreErrorNoticeKind.ORIGIN_NOT_ALLOWED }\n", "")
+
+
+def read(file):
+    with open(os.path.join(SRC, file), encoding='utf8') as handle:
+        return handle.read()
+
+
+def check():
+    bad = []
+    ids = set()
+    for entry in M:
+        if entry['id'] in ids:
+            bad.append(f"{entry['id']}: duplicate id")
+        ids.add(entry['id'])
+        count = read(entry['file']).count(entry['find'])
+        if count != 1:
+            bad.append(f"{entry['id']} ({entry['file']}): the text occurs {count} times")
+        if entry['find'] == entry['replace']:
+            bad.append(f"{entry['id']}: replacement equals the text")
+        if entry['file'] not in TESTS:
+            bad.append(f"{entry['id']}: no tests for {entry['file']}")
+    return bad
+
+
+def vitest(files, mutation=None):
+    env = dict(os.environ)
+    env.pop('W50_MUT', None)
+    env['W50_APPLIED_DIR'] = APPLIED
+    if mutation:
+        env['W50_MUT'] = mutation
+    started = time.time()
+    # One worker: the row's files run one after another, so the check adds little to the load (P9).
+    done = subprocess.run(['npx', 'vitest', 'run', '--config', CONFIG, '--maxWorkers=1', *files], cwd=ROOT, env=env, capture_output=True, text=True)
+    text = done.stdout + done.stderr
+    summary = ' | '.join(line.strip() for line in text.splitlines() if line.strip().startswith(('Test Files', 'Tests ')))
+    return done.returncode, summary, time.time() - started, text
+
+
+def failed_tests(text):
+    """The names of the tests that failed, as the default reporter prints them (lines that start with the cross)."""
+    names = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith('\u00d7 '):
+            name = stripped[2:]
+            # the trailing duration
+            parts = name.rsplit(' ', 1)
+            if len(parts) == 2 and parts[1].endswith('ms'):
+                name = parts[0]
+            names.append(name)
+    return names
+
+
+def timed_out(text):
+    return 'Test timed out' in text or 'Timed out in waitFor' in text
+
+
+def main():
+    mode = sys.argv[1] if len(sys.argv) > 1 else 'check'
+    bad = check()
+    print(f'{len(M)} mutations in {len(set(e["file"] for e in M))} modules; texts that do not occur exactly once: {len(bad)}')
+    for line in bad:
+        print('  ' + line)
+    if bad or mode == 'check':
+        sys.exit(1 if bad else 0)
+    with open(os.path.join(HERE, 'mutations.json'), 'w', encoding='utf8') as handle:
+        json.dump(M, handle, indent=1)
+    wanted = sys.argv[2:]
+    print(time.strftime('## %Y-%m-%d %H:%M:%S %Z') + ' baseline: the nine test files of the row, no mutation')
+    code, summary, seconds, text = vitest(ALL)
+    print(f'baseline exit={code} {summary} ({seconds:.1f} s)')
+    if code != 0:
+        print(text[-3000:])
+        sys.exit(2)
+    survived, invalid = [], []
+    for entry in M:
+        if wanted and entry['id'] not in wanted:
+            continue
+        marker = os.path.join(APPLIED, entry['id'])
+        if os.path.exists(marker):
+            os.remove(marker)
+        code, summary, seconds, text = vitest(TESTS[entry['file']], entry['id'])
+        applied = os.path.exists(marker)
+        verdict = 'DETECTED' if code != 0 and applied else ('NOT APPLIED' if not applied else 'SURVIVED')
+        if verdict == 'SURVIVED':
+            survived.append(entry['id'])
+        if verdict == 'NOT APPLIED':
+            invalid.append(entry['id'])
+        names = failed_tests(text)
+        first = names[0][:150] if names else '-'
+        note = ' TIMEOUT-IN-OUTPUT' if timed_out(text) else ''
+        print(f"{entry['id']} {verdict:11s} exit={code} {entry['file']}: {entry['what']} [{summary}] failed tests: {len(names)}; first: {first}{note} ({seconds:.1f} s)", flush=True)
+    total = len([e for e in M if not wanted or e['id'] in wanted])
+    print(time.strftime('## %Y-%m-%d %H:%M:%S %Z') + f' {total} mutations: {total - len(survived) - len(invalid)} detected, {len(survived)} survived {survived}, {len(invalid)} not applied {invalid}')
+
+
+main()

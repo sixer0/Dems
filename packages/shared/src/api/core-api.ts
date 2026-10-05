@@ -1,11 +1,13 @@
 /**
- * Core API v1 contract: the 10 REST operations the demo documents and the zod schemas of their
- * bodies (masterplan/01_specs.md §14.9; book §21.2; D26, D31).
+ * Core API v1 contract: the registry of its 75 REST operations, and the zod schemas of the ten
+ * operations the demo documented first (masterplan/01_specs.md §14.9; book §21.2; D26, D31).
  *
- * | Mode      | Operations | Answered by |
- * |-----------|------------|-------------|
- * | LIVE      | `GET /api/v1/health` | mock-core on 127.0.0.1:4400 (apps/mock-core/src/app.ts) |
- * | SIMULATED | the 9 §21.2 endpoints | the in-browser simulator: `Sim.request` → `sim/api.ts` `handleSimApiRequest`, header `x-dems-simulated: 1` |
+ * The ten operations of this file, and who answers each:
+ *
+ * | Mode      | Operations | Simulated mode | Live mode |
+ * |-----------|------------|----------------|-----------|
+ * | LIVE      | `GET /api/v1/health` | mock-core, the heartbeat-only service (apps/mock-core/src/app.ts; 127.0.0.1:4400 in a development run, the page's own origin in a packaged one) | the Core server (apps/core-server) |
+ * | SIMULATED | the 9 §21.2 endpoints | the in-app simulator: `Sim.request` → `sim/api.ts` `handleSimApiRequest`, header `x-dems-simulated: 1` | the Core server |
  *
  * The design book names the nine endpoints and their purpose only (01 G6), so every body is a
  * demo definition. The simulated bodies follow the handler types in `sim/api.ts` (step 32
@@ -19,6 +21,36 @@
  *
  * Framework-free: zod, the domain enums and two leaf modules of the simulator (its value sets
  * and constants, which import nothing), so `@dems/shared/api` stays safe for mock-core and Hermes.
+ *
+ * Backend task (2026-10-04 01_specs §7; 02_plan §16; decisions D11 TD-09, D36). The registry
+ * stays the one definition of an operation, and it grows by feature area:
+ *
+ * | Part | Where |
+ * |------|-------|
+ * | The model of an entry: `mode`, `services`, `access`, `audit`, `query` | `contract-model.ts` |
+ * | Area 1 identity, area 2 administration, area 3 pairing, area 13 demo controls: schemas, operations, examples | `identity.ts`, `administration.ts`, `pairing.ts`, `demo-controls.ts` |
+ * | Areas 4 to 11 (plan row W27, contract C): sessions, evidence, devices, storage, network and time, security and audit, system, alerts | `sessions.ts`, `evidence.ts`, `devices.ts`, `storage.ts`, `network-time.ts`, `security-audit.ts`, `system.ts`, `alerts.ts`; their state examples in `state-examples.ts` |
+ * | The 42 simulator actions and the operation each one reaches (01_specs §7.17) | `sim-actions.ts` |
+ * | The text rule API-13 | `text.ts` |
+ * | The Core state on the wire: one schema per replicated slice (plan row W22, contract B) | `state-slices.ts` |
+ * | The messages of WS `/ws`: the union the Core server sends, the client messages, close codes | `realtime-messages.ts`, `realtime-examples.ts` |
+ * | The ten operations above, the error envelope, `CORE_API_SCHEMAS`, the table and its helpers | this file |
+ *
+ * - Every entry carries exactly one access rule and one audit rule (RB-1, API-8); the table is
+ *   declared `as const satisfies readonly CoreApiRegistryOperation[]`, so an entry without them
+ *   does not compile.
+ * - The ten operations above keep their path, method and schemas. They gained `access`, `audit`
+ *   and `services`; `rbac` still feeds their `x-dems-rbac`. With the registry complete they also
+ *   carry what only the Core server needs said (01_specs §7.19): `coreServerDescription`, which
+ *   the `all` scope shows in place of `description`, and the statuses that only the Core server
+ *   sends (`401` and `403` on the five reads, `422` on `startSession`), each marked with
+ *   `services`. The `offline` scope shows neither, so its document is unchanged.
+ * - `mode` keeps its two values: `simulated` for the nine design-book operations (the in-app
+ *   simulator can answer them), `live` for every other one (only a service answers it).
+ *   `listCoreApiOperations('offline')` is what a client can call without the Core server (the
+ *   ten above); `'all'` is every entry: 75 operations, 27 GET and 48 POST.
+ * - `CORE_API_OPERATION_TABLE` (`operation-table.ts`) is the same table with literal types;
+ *   `CORE_API_OPERATIONS` is the widened view.
  */
 import { z } from 'zod';
 import {
@@ -33,6 +65,7 @@ import {
 } from '../domain/enums';
 import { EXPORT_REASON_MIN_LENGTH, STOP_REASON_MIN_LENGTH } from '../sim/constants';
 import {
+  AuditType,
   FaultKind,
   OperatorRole,
   Permission,
@@ -46,9 +79,30 @@ import {
   SubjectType,
   SystemState,
 } from '../sim/vocabulary';
-import { API_BASE_PATH, HEALTH_PATH } from './constants';
+import { ADMINISTRATION_OPERATIONS, ADMINISTRATION_SCHEMAS } from './administration';
+import { ALERT_OPERATIONS, ALERT_SCHEMAS } from './alerts';
+import { ALLOW_HEADER_NAME, API_BASE_PATH, EXPORT_REASON_MAX_LENGTH, HEALTH_PATH, RETRY_AFTER_HEADER_NAME } from './constants';
+import {
+  AUTHENTICATED_ACCESS,
+  CORE_SERVER_ONLY,
+  CoreApiAuditNone,
+  CoreApiMode,
+  CoreApiService,
+  CoreApiTag,
+  PUBLIC_ACCESS,
+  permissionAccess,
+  type CoreApiRegistryOperation,
+  type CoreApiResponseSpec,
+} from './contract-model';
+import { DEMO_OPERATIONS, DEMO_SCHEMAS } from './demo-controls';
+import { DEVICE_OPERATIONS, DEVICE_SCHEMAS } from './devices';
+import { EVIDENCE_OPERATIONS, EVIDENCE_SCHEMAS } from './evidence';
 import { HealthResponseSchema } from './health';
-import { HeartbeatSchema } from './realtime-messages';
+import { IDENTITY_OPERATIONS, IDENTITY_SCHEMAS } from './identity';
+import { NETWORK_TIME_OPERATIONS, NETWORK_TIME_SCHEMAS } from './network-time';
+import { INVALID_INPUT, NOT_SIGNED_IN, forbidden } from './operation-parts';
+import { PAIRING_OPERATIONS, PAIRING_SCHEMAS } from './pairing';
+import { HeartbeatSchema, REALTIME_SCHEMAS } from './realtime-messages';
 import {
   API_ERROR_CODE_PATTERN,
   EVIDENCE_ID_PATTERN,
@@ -56,13 +110,26 @@ import {
   OPERATOR_ID_PATTERN,
   SESSION_ID_PATTERN,
 } from './patterns';
+import { codeUnitBoundMessage } from './schema-parts';
+import { SECURITY_AUDIT_OPERATIONS, SECURITY_AUDIT_SCHEMAS } from './security-audit';
 import { sessionCreateSchema } from './session-schema';
+import { SESSION_OPERATIONS, SESSION_SCHEMAS } from './sessions';
+import { STATE_SCHEMAS } from './state-slices';
+import { STORAGE_OPERATIONS, STORAGE_SCHEMAS } from './storage';
+import { SYSTEM_OPERATIONS, SYSTEM_SCHEMAS } from './system';
+import { apiText } from './text';
+
+export * from './contract-model';
 
 // ═══════════════════════════════════════════════════════════════════════════════════════
 // Building blocks
 // ═══════════════════════════════════════════════════════════════════════════════════════
 
-/** An export destination longer than this is truncated by the simulator. */
+/**
+ * The simulator keeps at most this many UTF-16 code units of an export destination and cuts the
+ * rest. The request schemas refuse a longer one (after trimming), so a server that validates with
+ * them never asks the simulator to cut (decision on finding F-1 of contract B).
+ */
 export const EXPORT_DESTINATION_MAX_LENGTH = 120;
 
 /** ISO-8601 with an offset. The simulator writes UTC+07:00 (`…+07:00`, D28/Q2); `Z` is accepted too. */
@@ -78,16 +145,71 @@ const dbfs = () => z.number().min(-90).max(0);
 // Error body (every 4xx and 5xx)
 // ═══════════════════════════════════════════════════════════════════════════════════════
 
+/**
+ * Every code the document lists: the 16 the simulator's REST layer answers with, then the 15 the
+ * Core server adds (backend task 01_specs §7.2). `code` stays a pattern-checked string, so a code
+ * added later still parses.
+ */
+export const ApiErrorCode = {
+  INVALID_JSON: 'INVALID_JSON',
+  NOT_SIGNED_IN: 'NOT_SIGNED_IN',
+  NOT_PERMITTED: 'NOT_PERMITTED',
+  FORBIDDEN: 'FORBIDDEN',
+  NOT_FOUND: 'NOT_FOUND',
+  METHOD_NOT_ALLOWED: 'METHOD_NOT_ALLOWED',
+  SESSION_ACTIVE: 'SESSION_ACTIVE',
+  INVALID_INPUT: 'INVALID_INPUT',
+  INVALID_STATE: 'INVALID_STATE',
+  PRECHECK_RUNNING: 'PRECHECK_RUNNING',
+  PRECHECK_WARNINGS: 'PRECHECK_WARNINGS',
+  PRECHECK_BLOCKED: 'PRECHECK_BLOCKED',
+  INVALID_REASON: 'INVALID_REASON',
+  NOT_SEALED: 'NOT_SEALED',
+  SECURITY_FAULT: 'SECURITY_FAULT',
+  SIMULATOR_ERROR: 'SIMULATOR_ERROR',
+  // The Core server's 15.
+  INVALID_PATH: 'INVALID_PATH',
+  INVALID_CREDENTIALS: 'INVALID_CREDENTIALS',
+  INVALID_CODE: 'INVALID_CODE',
+  ORIGIN_NOT_ALLOWED: 'ORIGIN_NOT_ALLOWED',
+  DEVICE_NOT_PAIRED: 'DEVICE_NOT_PAIRED',
+  DEVICE_REVOKED: 'DEVICE_REVOKED',
+  DEMO_DISABLED: 'DEMO_DISABLED',
+  RECORDING_ACTIVE: 'RECORDING_ACTIVE',
+  COMMAND_UNSUPPORTED: 'COMMAND_UNSUPPORTED',
+  LAST_ADMIN: 'LAST_ADMIN',
+  PAYLOAD_TOO_LARGE: 'PAYLOAD_TOO_LARGE',
+  LOCKED: 'LOCKED',
+  RATE_LIMITED: 'RATE_LIMITED',
+  INTERNAL_ERROR: 'INTERNAL_ERROR',
+  NOT_READY: 'NOT_READY',
+} as const;
+export type ApiErrorCode = (typeof ApiErrorCode)[keyof typeof ApiErrorCode];
+/** The codes in document order. */
+export const API_ERROR_CODES = Object.values(ApiErrorCode) as readonly ApiErrorCode[];
+
+/** `details.reason` of the 401 that a request with two credentials gets (ID-12). */
+export const CREDENTIAL_CONFLICT_REASON = 'CREDENTIAL_CONFLICT';
+
 export const ApiErrorSchema = z
   .object({
     error: z.object({
       code: z
         .string()
         .regex(API_ERROR_CODE_PATTERN)
-        .describe(
-          'Machine-readable code: INVALID_JSON, NOT_SIGNED_IN, NOT_PERMITTED, FORBIDDEN, NOT_FOUND, METHOD_NOT_ALLOWED, SESSION_ACTIVE, INVALID_INPUT, INVALID_STATE, PRECHECK_RUNNING, PRECHECK_WARNINGS, PRECHECK_BLOCKED, INVALID_REASON, NOT_SEALED, SECURITY_FAULT, SIMULATOR_ERROR.',
-        ),
+        .describe(`Machine-readable code: ${API_ERROR_CODES.join(', ')}.`),
       message: z.string().min(1).describe('Operator-safe English text. Never contains credentials.'),
+      details: z
+        .record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()]))
+        .optional()
+        .describe(
+          'Optional machine-readable context, a flat map: `simCode`, `permission`, `from`, `event`, `attemptsRemaining`, `lockedUntil`, `retryInMs`, `reason`, `in`. Never a credential or a part of the input.',
+        ),
+      requestId: z
+        .string()
+        .min(1)
+        .optional()
+        .describe('The ID of the request in the answering service\'s log; the same value as the `x-request-id` header.'),
     }),
   })
   .describe('Error body of every 4xx and 5xx response.');
@@ -109,8 +231,7 @@ export type SessionStartRequest = z.output<typeof SessionStartRequestSchema>;
 
 export const SessionStopRequestSchema = z
   .object({
-    reason: z
-      .string()
+    reason: apiText()
       .overwrite((value) => value.trim())
       .min(STOP_REASON_MIN_LENGTH)
       .describe(`Why the recording stops (at least ${STOP_REASON_MIN_LENGTH} characters after trimming; S21).`),
@@ -299,13 +420,17 @@ export type DeviceHealthResponse = z.output<typeof DeviceHealthResponseSchema>;
 
 export const EvidenceExportRequestSchema = z
   .object({
-    reason: z
-      .string()
+    reason: apiText()
       .overwrite((value) => value.trim())
       .min(EXPORT_REASON_MIN_LENGTH)
+      // A refinement, like the text rule: the JSON Schema of the component does not change.
+      .refine((value) => value.length <= EXPORT_REASON_MAX_LENGTH, { error: codeUnitBoundMessage(EXPORT_REASON_MAX_LENGTH) })
       .describe(`Purpose of the export (book §19.2 item 8; at least ${EXPORT_REASON_MIN_LENGTH} characters after trimming).`),
-    destination: z
-      .string()
+    destination: apiText()
+      // A refinement, like the text rule: the JSON Schema of the component does not change.
+      .refine((value) => value.trim().length <= EXPORT_DESTINATION_MAX_LENGTH, {
+        error: codeUnitBoundMessage(EXPORT_DESTINATION_MAX_LENGTH),
+      })
       .optional()
       .describe(
         `Destination or approved media identifier (book §19.2 item 6). Empty means "Case file transfer (simulated)"; text beyond ${EXPORT_DESTINATION_MAX_LENGTH} characters is cut.`,
@@ -333,6 +458,13 @@ export type EvidenceExportAccepted = z.output<typeof EvidenceExportAcceptedSchem
  * Every named schema of the contract, keyed by its `components.schemas` name. Nested named
  * schemas become `$ref`s. `Heartbeat` is the WS `/ws` message (OpenAPI cannot model the
  * socket; the Realtime tag describes it).
+ *
+ * The first 18 are the schemas of the ten existing operations, in their order; the document of
+ * the `offline` scope holds exactly these. The schemas of contract A follow, by area (areas 1, 2,
+ * 3 and 13); then the Core state on the wire (`state-slices.ts`: the 28 replicated slices and what
+ * they are made of) and the messages of the Core server's socket (`realtime-messages.ts`); then
+ * the schemas of contract C, by area (areas 4 to 11). The reads of those areas answer the slices
+ * and their rows (API-6), so a slice has one schema for the socket and for REST.
  */
 export const CORE_API_SCHEMAS = {
   HealthResponse: HealthResponseSchema,
@@ -353,6 +485,20 @@ export const CORE_API_SCHEMAS = {
   EvidenceExportAccepted: EvidenceExportAcceptedSchema,
   ApiError: ApiErrorSchema,
   Heartbeat: HeartbeatSchema,
+  ...IDENTITY_SCHEMAS,
+  ...ADMINISTRATION_SCHEMAS,
+  ...PAIRING_SCHEMAS,
+  ...DEMO_SCHEMAS,
+  ...STATE_SCHEMAS,
+  ...REALTIME_SCHEMAS,
+  ...SESSION_SCHEMAS,
+  ...EVIDENCE_SCHEMAS,
+  ...DEVICE_SCHEMAS,
+  ...STORAGE_SCHEMAS,
+  ...NETWORK_TIME_SCHEMAS,
+  ...SECURITY_AUDIT_SCHEMAS,
+  ...SYSTEM_SCHEMAS,
+  ...ALERT_SCHEMAS,
 } as const;
 export type CoreApiSchemaName = keyof typeof CORE_API_SCHEMAS;
 
@@ -360,62 +506,90 @@ export type CoreApiSchemaName = keyof typeof CORE_API_SCHEMAS;
 // Operations
 // ═══════════════════════════════════════════════════════════════════════════════════════
 
-export const CoreApiTag = {
-  SERVICE: 'Service',
-  SESSION: 'Session',
-  DEVICE: 'Device',
-  STORAGE: 'Storage',
-  EVIDENCE: 'Evidence',
-  REALTIME: 'Realtime',
-} as const;
-export type CoreApiTag = (typeof CoreApiTag)[keyof typeof CoreApiTag];
-
-/** LIVE: answered by mock-core over the network. SIMULATED: answered in the browser. */
-export const CoreApiMode = { LIVE: 'live', SIMULATED: 'simulated' } as const;
-export type CoreApiMode = (typeof CoreApiMode)[keyof typeof CoreApiMode];
-
-export type CoreApiMethod = 'get' | 'post';
-
-export interface CoreApiResponseSpec {
-  description: string;
-  /** Body schema; omitted for a response without a body. */
-  schema?: CoreApiSchemaName;
-}
-
-export interface CoreApiRbac {
-  permission: Permission;
-  /** Roles holding the permission (demo RBAC, 12_sim_contract §4). */
-  roles: readonly OperatorRole[];
-  /** Audit row types the call writes (success and denial). */
-  audit: readonly string[];
-}
-
-export interface CoreApiOperation {
-  operationId: string;
-  method: CoreApiMethod;
-  /** OpenAPI path template, e.g. `/api/v1/session/{id}/start`. */
-  path: string;
-  tag: CoreApiTag;
-  mode: CoreApiMode;
-  summary: string;
-  /** Markdown. */
-  description: string;
-  /** Where the endpoint comes from: the design book section or this demo's spec. */
-  source: string;
-  /** The `{id}` path parameter, when the path has one. */
-  pathParam?: { name: 'id'; description: string; pattern: RegExp };
-  requestBody?: { schema: CoreApiSchemaName; required: boolean };
-  /** Keyed by HTTP status. */
-  responses: Readonly<Record<number, CoreApiResponseSpec>>;
-  rbac?: CoreApiRbac;
-}
+// The model of an entry (`CoreApiTag`, `CoreApiMode`, `CoreApiOperation`, the access and audit rules)
+// lives in `contract-model.ts` and is re-exported at the top of this file.
 
 const SIM_NOTE =
   'Simulated: "Try it" is answered in the browser by the demo simulator (header `x-dems-simulated: 1`). Nothing leaves the machine.';
 
 const INVALID_JSON: CoreApiResponseSpec = { description: 'The body is not a JSON object (INVALID_JSON).', schema: 'ApiError' };
 
-export const CORE_API_OPERATIONS: readonly CoreApiOperation[] = [
+/** Refusals by the access rule write ACCESS_DENIED (RB-4); the simulated reads write nothing (API-8). */
+const READ_AUDIT = { success: CoreApiAuditNone.READ, denial: AuditType.ACCESS_DENIED } as const;
+const SESSION_START_ACCESS = permissionAccess(Permission.SESSION_START);
+
+// ── What the `all` scope says about the ten operations (01_specs §7.19) ───────────────────────
+// `description` is the text of the `offline` scope and stays as it was: it speaks of the simulator
+// and of mock-core, which is who answers when the Core server is not there. `coreServerDescription`
+// keeps the paragraphs that hold for both and ends with what the Core server does.
+
+/** Last paragraph of `coreServerDescription` of the nine design-book operations. */
+const CORE_SERVER_ANSWERS =
+  'Answered by the Core server. In Simulated mode the in-app simulator answers the same operation inside the app, without a request, and marks its answer with the header `x-dems-simulated: 1`; the Core server never sends that header.';
+
+/** `coreServerDescription` of the five simulated reads: their access rule is AUTHENTICATED. */
+const READ_FOR_EVERY_ROLE = 'Needs a signed-in operator. Every role may read it: the operation needs no permission.';
+
+/** `coreServerDescription` of the three session commands. */
+const SESSION_START_REFUSAL =
+  'One session is open per Core, and any operator holding SESSION_START may act on it. A caller whose role lacks the permission is refused with `403 NOT_PERMITTED` and one ACCESS_DENIED audit row, before the body is read.';
+
+/**
+ * The statuses only the Core server sends on a read that the in-app simulator answers too: the
+ * simulator's read handlers check no sign-in, the server's access rule does (01_specs §7.2, §7.19).
+ */
+const CORE_SERVER_READ_REFUSALS = {
+  401: { ...NOT_SIGNED_IN, services: CORE_SERVER_ONLY },
+  403: { ...forbidden(), services: CORE_SERVER_ONLY },
+} as const;
+
+const CREATE_SESSION_TEXT = [
+  'Creates a session and returns its Session ID; the session enters **CREATE** (book §6.2, §12.2 steps 1-2).',
+  'Idempotent (S26): the same input while that session is still open returns it with `200` and `created: false`.',
+  'Requires a signed-in operator holding SESSION_START; writes the SESSION_CREATED audit row.',
+];
+
+const START_SESSION_TEXT = [
+  'Runs the Core pre-check (book §5.3: 8 checks) and starts recording.',
+  [
+    '- From **CREATE**: begins the pre-check and answers `202` with state **PRECHECK**. Poll `GET /api/v1/session/current` and call again once it is **ARMED**.',
+    '- From **ARMED**: starts recording and answers `200` with state **RECORDING**.',
+    '- Pre-check ended with **WARN**: send `{"acknowledgeWarnings": true}` to acknowledge and start; without it the answer is `409 PRECHECK_WARNINGS`.',
+    '- Pre-check with a **BLOCK** (Core offline, lens fault, storage full, security fault): `409 PRECHECK_BLOCKED` with the reasons.',
+  ].join('\n'),
+  'Requires a signed-in operator holding SESSION_START; the audit rows name that operator.',
+];
+
+const STOP_SESSION_TEXT = [
+  'Stops the recording with a mandatory reason and moves the session to finalization: **STOPPING** → **FINALIZING** (hashes, manifest, encryption, signature) → **SEALED** (book §6.2, §12.2 steps 5-10).',
+  'Answers `202` at STOPPING; poll `GET /api/v1/session/current` for the seal.',
+  'Requires a signed-in operator holding SESSION_START; the RECORDING_STOPPED row names that operator.',
+];
+
+const CURRENT_SESSION_TEXT = [
+  'Returns the open session, or `null` when idle. The tablet calls it after a reconnect to resynchronise (book §5.5, §5.6).',
+];
+
+const DEVICE_HEALTH_TEXT = [
+  'Health of camera, audio, storage, time and security (book §6.1, §21.2), used by the pre-check and diagnostics. Distinct from the service liveness `GET /api/v1/health`.',
+];
+
+const AUDIO_STATUS_TEXT = [
+  'Per-channel levels and faults for AUDIO-01 (MIC 1) and AUDIO-02 (MIC 2), reported separately (book §21.2, SYS-003).',
+];
+
+const VIDEO_STATUS_TEXT = ['Per-track status for VIDEO-01 and VIDEO-02 (book §21.2).'];
+
+const STORAGE_STATUS_TEXT = ['Capacity and health of the evidence storage, including the LOW and FULL states (book §21.2).'];
+
+const EXPORT_OUTCOMES = [
+  '- SUPERVISOR (holds EVIDENCE_EXPORT): `202`, and an EVIDENCE_EXPORTED audit row (the ExportEvent).',
+  '- INVESTIGATOR or TECHNICIAN: `403 FORBIDDEN`, and an EXPORT_DENIED audit row (EVT-26).',
+].join('\n');
+const EXPORT_SEALED_ONLY =
+  'Only SEALED, UNDER_REVIEW or EXPORTED evidence can be exported, and the sealed source is never modified (book §19.3 rule 1).';
+
+const OPERATION_TABLE = [
   {
     operationId: 'getServiceHealth',
     method: 'get',
@@ -425,10 +599,21 @@ export const CORE_API_OPERATIONS: readonly CoreApiOperation[] = [
     summary: 'Service liveness',
     description:
       'Liveness of the local mock-core service. **Live**: served by mock-core on 127.0.0.1:4400 (CORS allows the web dev origins). This is not the device health snapshot; that is `GET /api/v1/device/health`.',
+    coreServerDescription: [
+      'Liveness of the service that answers. Public: it needs no credential and returns nothing of the Core state.',
+      [
+        '- The Core server answers `service: dems-core-server` with its version and `ready`, which says whether its database and its engine are ready. The status is `200` for as long as the process answers, so a stopped database shows as `ready.database: false`.',
+        '- mock-core, the heartbeat-only service of Simulated mode, answers `service: dems-mock-core` and no `ready`.',
+      ].join('\n'),
+      'This is not the device health snapshot; that is `GET /api/v1/device/health`.',
+    ].join('\n\n'),
     source: 'masterplan/01_specs.md §2.5, §3.2 (demo; not in the design book)',
     responses: {
       200: { description: 'The service is up.', schema: 'HealthResponse' },
     },
+    access: PUBLIC_ACCESS,
+    audit: READ_AUDIT,
+    services: [CoreApiService.MOCK_CORE, CoreApiService.CORE_SERVER],
   },
   {
     operationId: 'createSession',
@@ -437,12 +622,8 @@ export const CORE_API_OPERATIONS: readonly CoreApiOperation[] = [
     tag: CoreApiTag.SESSION,
     mode: CoreApiMode.SIMULATED,
     summary: 'Create session',
-    description: [
-      'Creates a session and returns its Session ID; the session enters **CREATE** (book §6.2, §12.2 steps 1-2).',
-      'Idempotent (S26): the same input while that session is still open returns it with `200` and `created: false`.',
-      'Requires a signed-in operator holding SESSION_START; writes the SESSION_CREATED audit row.',
-      SIM_NOTE,
-    ].join('\n\n'),
+    description: [...CREATE_SESSION_TEXT, SIM_NOTE].join('\n\n'),
+    coreServerDescription: [...CREATE_SESSION_TEXT, SESSION_START_REFUSAL, CORE_SERVER_ANSWERS].join('\n\n'),
     source: 'Design book §21.2',
     requestBody: { schema: 'SessionCreateRequest', required: true },
     responses: {
@@ -459,6 +640,9 @@ export const CORE_API_OPERATIONS: readonly CoreApiOperation[] = [
       roles: [OperatorRole.INVESTIGATOR, OperatorRole.SUPERVISOR],
       audit: ['SESSION_CREATED'],
     },
+    access: SESSION_START_ACCESS,
+    audit: { success: AuditType.SESSION_CREATED, denial: AuditType.ACCESS_DENIED },
+    services: CORE_SERVER_ONLY,
   },
   {
     operationId: 'startSession',
@@ -467,16 +651,12 @@ export const CORE_API_OPERATIONS: readonly CoreApiOperation[] = [
     tag: CoreApiTag.SESSION,
     mode: CoreApiMode.SIMULATED,
     summary: 'Start recording',
-    description: [
-      'Runs the Core pre-check (book §5.3: 8 checks) and starts recording.',
-      [
-        '- From **CREATE**: begins the pre-check and answers `202` with state **PRECHECK**. Poll `GET /api/v1/session/current` and call again once it is **ARMED**.',
-        '- From **ARMED**: starts recording and answers `200` with state **RECORDING**.',
-        '- Pre-check ended with **WARN**: send `{"acknowledgeWarnings": true}` to acknowledge and start; without it the answer is `409 PRECHECK_WARNINGS`.',
-        '- Pre-check with a **BLOCK** (Core offline, lens fault, storage full, security fault): `409 PRECHECK_BLOCKED` with the reasons.',
-      ].join('\n'),
-      'Requires a signed-in operator holding SESSION_START; the audit rows name that operator.',
-      SIM_NOTE,
+    description: [...START_SESSION_TEXT, SIM_NOTE].join('\n\n'),
+    coreServerDescription: [
+      ...START_SESSION_TEXT,
+      SESSION_START_REFUSAL,
+      'A body that does not match its schema answers `422 INVALID_INPUT`. The pre-check and its outcome also have operations of their own: `beginPrecheck`, `retryPrecheck` and `acknowledgePrecheckWarnings`.',
+      CORE_SERVER_ANSWERS,
     ].join('\n\n'),
     source: 'Design book §21.2',
     pathParam: { name: 'id', description: 'Session ID of the open session.', pattern: SESSION_ID_PATTERN },
@@ -492,12 +672,18 @@ export const CORE_API_OPERATIONS: readonly CoreApiOperation[] = [
         description: 'Not startable now (PRECHECK_RUNNING, PRECHECK_WARNINGS, PRECHECK_BLOCKED, INVALID_STATE).',
         schema: 'ApiError',
       },
+      // Only the Core server validates the optional body with its schema; the simulator ignores a wrong member.
+      422: { ...INVALID_INPUT, services: CORE_SERVER_ONLY },
     },
     rbac: {
       permission: Permission.SESSION_START,
       roles: [OperatorRole.INVESTIGATOR, OperatorRole.SUPERVISOR],
       audit: ['PRECHECK_PASSED', 'RECORDING_STARTED'],
     },
+    access: SESSION_START_ACCESS,
+    // The one operation with more than one possible audit type, by the existing contract (01_specs §7.8).
+    audit: { success: AuditType.RECORDING_STARTED, denial: AuditType.ACCESS_DENIED, also: [AuditType.PRECHECK_PASSED] },
+    services: CORE_SERVER_ONLY,
   },
   {
     operationId: 'stopSession',
@@ -506,11 +692,12 @@ export const CORE_API_OPERATIONS: readonly CoreApiOperation[] = [
     tag: CoreApiTag.SESSION,
     mode: CoreApiMode.SIMULATED,
     summary: 'Stop recording',
-    description: [
-      'Stops the recording with a mandatory reason and moves the session to finalization: **STOPPING** → **FINALIZING** (hashes, manifest, encryption, signature) → **SEALED** (book §6.2, §12.2 steps 5-10).',
-      'Answers `202` at STOPPING; poll `GET /api/v1/session/current` for the seal.',
-      'Requires a signed-in operator holding SESSION_START; the RECORDING_STOPPED row names that operator.',
-      SIM_NOTE,
+    description: [...STOP_SESSION_TEXT, SIM_NOTE].join('\n\n'),
+    coreServerDescription: [
+      ...STOP_SESSION_TEXT,
+      SESSION_START_REFUSAL,
+      'The operator who stops a recording need not be the one who started it. A reason that the schema refuses for another cause than its length answers `422 INVALID_INPUT`.',
+      CORE_SERVER_ANSWERS,
     ].join('\n\n'),
     source: 'Design book §21.2',
     pathParam: { name: 'id', description: 'Session ID of the recording session.', pattern: SESSION_ID_PATTERN },
@@ -529,6 +716,9 @@ export const CORE_API_OPERATIONS: readonly CoreApiOperation[] = [
       roles: [OperatorRole.INVESTIGATOR, OperatorRole.SUPERVISOR],
       audit: ['RECORDING_STOPPED'],
     },
+    access: SESSION_START_ACCESS,
+    audit: { success: AuditType.RECORDING_STOPPED, denial: AuditType.ACCESS_DENIED },
+    services: CORE_SERVER_ONLY,
   },
   {
     operationId: 'getCurrentSession',
@@ -537,14 +727,16 @@ export const CORE_API_OPERATIONS: readonly CoreApiOperation[] = [
     tag: CoreApiTag.SESSION,
     mode: CoreApiMode.SIMULATED,
     summary: 'Current session',
-    description: [
-      'Returns the open session, or `null` when idle. The tablet calls it after a reconnect to resynchronise (book §5.5, §5.6).',
-      SIM_NOTE,
-    ].join('\n\n'),
+    description: [...CURRENT_SESSION_TEXT, SIM_NOTE].join('\n\n'),
+    coreServerDescription: [...CURRENT_SESSION_TEXT, READ_FOR_EVERY_ROLE, CORE_SERVER_ANSWERS].join('\n\n'),
     source: 'Design book §21.2',
     responses: {
       200: { description: 'The current session state.', schema: 'CurrentSessionResponse' },
+      ...CORE_SERVER_READ_REFUSALS,
     },
+    access: AUTHENTICATED_ACCESS,
+    audit: READ_AUDIT,
+    services: CORE_SERVER_ONLY,
   },
   {
     operationId: 'getDeviceHealth',
@@ -553,14 +745,16 @@ export const CORE_API_OPERATIONS: readonly CoreApiOperation[] = [
     tag: CoreApiTag.DEVICE,
     mode: CoreApiMode.SIMULATED,
     summary: 'Device health snapshot',
-    description: [
-      'Health of camera, audio, storage, time and security (book §6.1, §21.2), used by the pre-check and diagnostics. Distinct from the service liveness `GET /api/v1/health`.',
-      SIM_NOTE,
-    ].join('\n\n'),
+    description: [...DEVICE_HEALTH_TEXT, SIM_NOTE].join('\n\n'),
+    coreServerDescription: [...DEVICE_HEALTH_TEXT, READ_FOR_EVERY_ROLE, CORE_SERVER_ANSWERS].join('\n\n'),
     source: 'Design book §21.2',
     responses: {
       200: { description: 'The health snapshot.', schema: 'DeviceHealthResponse' },
+      ...CORE_SERVER_READ_REFUSALS,
     },
+    access: AUTHENTICATED_ACCESS,
+    audit: READ_AUDIT,
+    services: CORE_SERVER_ONLY,
   },
   {
     operationId: 'getAudioStatus',
@@ -569,14 +763,16 @@ export const CORE_API_OPERATIONS: readonly CoreApiOperation[] = [
     tag: CoreApiTag.DEVICE,
     mode: CoreApiMode.SIMULATED,
     summary: 'Audio status',
-    description: [
-      'Per-channel levels and faults for AUDIO-01 (MIC 1) and AUDIO-02 (MIC 2), reported separately (book §21.2, SYS-003).',
-      SIM_NOTE,
-    ].join('\n\n'),
+    description: [...AUDIO_STATUS_TEXT, SIM_NOTE].join('\n\n'),
+    coreServerDescription: [...AUDIO_STATUS_TEXT, READ_FOR_EVERY_ROLE, CORE_SERVER_ANSWERS].join('\n\n'),
     source: 'Design book §21.2',
     responses: {
       200: { description: 'Both audio channels.', schema: 'AudioStatusResponse' },
+      ...CORE_SERVER_READ_REFUSALS,
     },
+    access: AUTHENTICATED_ACCESS,
+    audit: READ_AUDIT,
+    services: CORE_SERVER_ONLY,
   },
   {
     operationId: 'getVideoStatus',
@@ -585,11 +781,16 @@ export const CORE_API_OPERATIONS: readonly CoreApiOperation[] = [
     tag: CoreApiTag.DEVICE,
     mode: CoreApiMode.SIMULATED,
     summary: 'Video status',
-    description: ['Per-track status for VIDEO-01 and VIDEO-02 (book §21.2).', SIM_NOTE].join('\n\n'),
+    description: [...VIDEO_STATUS_TEXT, SIM_NOTE].join('\n\n'),
+    coreServerDescription: [...VIDEO_STATUS_TEXT, READ_FOR_EVERY_ROLE, CORE_SERVER_ANSWERS].join('\n\n'),
     source: 'Design book §21.2',
     responses: {
       200: { description: 'Both video tracks.', schema: 'VideoStatusResponse' },
+      ...CORE_SERVER_READ_REFUSALS,
     },
+    access: AUTHENTICATED_ACCESS,
+    audit: READ_AUDIT,
+    services: CORE_SERVER_ONLY,
   },
   {
     operationId: 'getStorageStatus',
@@ -598,14 +799,16 @@ export const CORE_API_OPERATIONS: readonly CoreApiOperation[] = [
     tag: CoreApiTag.STORAGE,
     mode: CoreApiMode.SIMULATED,
     summary: 'Storage status',
-    description: [
-      'Capacity and health of the evidence storage, including the LOW and FULL states (book §21.2).',
-      SIM_NOTE,
-    ].join('\n\n'),
+    description: [...STORAGE_STATUS_TEXT, SIM_NOTE].join('\n\n'),
+    coreServerDescription: [...STORAGE_STATUS_TEXT, READ_FOR_EVERY_ROLE, CORE_SERVER_ANSWERS].join('\n\n'),
     source: 'Design book §21.2',
     responses: {
       200: { description: 'Storage capacity and state.', schema: 'StorageStatusResponse' },
+      ...CORE_SERVER_READ_REFUSALS,
     },
+    access: AUTHENTICATED_ACCESS,
+    audit: READ_AUDIT,
+    services: CORE_SERVER_ONLY,
   },
   {
     operationId: 'exportEvidence',
@@ -616,12 +819,16 @@ export const CORE_API_OPERATIONS: readonly CoreApiOperation[] = [
     summary: 'Authorized export',
     description: [
       '**RBAC + audit required** (book §19.3, §21.2). The simulator applies the role of the operator signed in to this console; the design book defines no authentication endpoint, so no token travels on the wire.',
-      [
-        '- SUPERVISOR (holds EVIDENCE_EXPORT): `202`, and an EVIDENCE_EXPORTED audit row (the ExportEvent).',
-        '- INVESTIGATOR or TECHNICIAN: `403 FORBIDDEN`, and an EXPORT_DENIED audit row (EVT-26).',
-      ].join('\n'),
-      'Only SEALED, UNDER_REVIEW or EXPORTED evidence can be exported, and the sealed source is never modified (book §19.3 rule 1).',
+      EXPORT_OUTCOMES,
+      EXPORT_SEALED_ONLY,
       SIM_NOTE,
+    ].join('\n\n'),
+    coreServerDescription: [
+      '**RBAC + audit required** (book §19.3, §21.2). The Core server applies the role of the operator whose session the request carries, before the body is read.',
+      EXPORT_OUTCOMES,
+      EXPORT_SEALED_ONLY,
+      `The answer holds no file: the server records the export, and a client keeps its bundled export archive (01_specs §11). The reason is mandatory. A reason longer than ${EXPORT_REASON_MAX_LENGTH} UTF-16 code units, a destination longer than ${EXPORT_DESTINATION_MAX_LENGTH}, and any other body that does not match its schema, answers \`422 INVALID_INPUT\`; the server does not cut a text.`,
+      CORE_SERVER_ANSWERS,
     ].join('\n\n'),
     source: 'Design book §21.2, §19.2, §19.3',
     pathParam: { name: 'id', description: 'Evidence ID `EV-{YYYYMMDD}-NNNN`.', pattern: EVIDENCE_ID_PATTERN },
@@ -646,19 +853,177 @@ export const CORE_API_OPERATIONS: readonly CoreApiOperation[] = [
       roles: [OperatorRole.SUPERVISOR],
       audit: ['EVIDENCE_EXPORTED', 'EXPORT_DENIED'],
     },
+    access: permissionAccess(Permission.EVIDENCE_EXPORT),
+    // RB-5: the export operations keep today's denial type.
+    audit: { success: AuditType.EVIDENCE_EXPORTED, denial: AuditType.EXPORT_DENIED },
+    services: CORE_SERVER_ONLY,
   },
-];
+  // Backend task (01_specs §7.5 to §7.16): answered by the Core server only, by area. Areas 1 to 3,
+  // then the 38 of areas 4 to 11 that are not among the ten above, then area 13.
+  ...IDENTITY_OPERATIONS,
+  ...ADMINISTRATION_OPERATIONS,
+  ...PAIRING_OPERATIONS,
+  ...SESSION_OPERATIONS,
+  ...EVIDENCE_OPERATIONS,
+  ...DEVICE_OPERATIONS,
+  ...STORAGE_OPERATIONS,
+  ...NETWORK_TIME_OPERATIONS,
+  ...SECURITY_AUDIT_OPERATIONS,
+  ...SYSTEM_OPERATIONS,
+  ...ALERT_OPERATIONS,
+  ...DEMO_OPERATIONS,
+] as const satisfies readonly CoreApiRegistryOperation[];
+
+/** The type of the table with literal operation IDs and schema names (`CORE_API_OPERATION_TABLE`). */
+export type CoreApiOperationTable = typeof OPERATION_TABLE;
+
+/** The table as a plain list: operation IDs are `string`. The typed view is `CORE_API_OPERATION_TABLE`. */
+export const CORE_API_OPERATIONS: readonly CoreApiRegistryOperation[] = OPERATION_TABLE;
+
+/**
+ * `offline`: the operations a client can call without the Core server, which are the ones the
+ * in-app simulator answers and the ones mock-core serves. `all`: every operation.
+ */
+export const CoreApiScope = { OFFLINE: 'offline', ALL: 'all' } as const;
+export type CoreApiScope = (typeof CoreApiScope)[keyof typeof CoreApiScope];
+
+export function isOfflineCoreApiOperation(operation: CoreApiRegistryOperation): boolean {
+  return operation.mode === CoreApiMode.SIMULATED || operation.services.includes(CoreApiService.MOCK_CORE);
+}
+
+/** The operations of a scope, in table order. */
+export function listCoreApiOperations(scope: CoreApiScope = CoreApiScope.ALL): readonly CoreApiRegistryOperation[] {
+  return scope === CoreApiScope.ALL ? CORE_API_OPERATIONS : CORE_API_OPERATIONS.filter(isOfflineCoreApiOperation);
+}
+
+/**
+ * True for an answer that every answerer of the operation gives, the in-app simulator and
+ * mock-core included. False for a status that names its services: only those send it (the `401`
+ * and the `403` of the five simulated reads, the `422` of `startSession`, which only the Core
+ * server sends).
+ */
+export function isOfflineCoreApiResponse(spec: CoreApiResponseSpec): boolean {
+  return spec.services === undefined;
+}
+
+/**
+ * The documented statuses of an operation in a scope, ascending. `all`: every status. `offline`:
+ * the statuses a client can get without the Core server, which is what the in-app simulator and
+ * mock-core produce (01_specs §7.19).
+ */
+export function listCoreApiResponseStatuses(
+  operation: Pick<CoreApiRegistryOperation, 'responses'>,
+  scope: CoreApiScope = CoreApiScope.ALL,
+): number[] {
+  return Object.keys(operation.responses)
+    .map(Number)
+    .filter((status) => {
+      const spec = operation.responses[status];
+      return spec !== undefined && (scope === CoreApiScope.ALL || isOfflineCoreApiResponse(spec));
+    })
+    .sort((a, b) => a - b);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════
+// Answers defined once for every operation (backend task 01_specs §7.2, §7.3)
+// ═══════════════════════════════════════════════════════════════════════════════════════
+
+/**
+ * `routing`: decided before an operation is matched, so the answer belongs to no operation.
+ * `pipeline`: decided for a matched operation by a stage that treats every operation alike.
+ */
+export const CoreApiEnvelopeStage = { ROUTING: 'routing', PIPELINE: 'pipeline' } as const;
+export type CoreApiEnvelopeStage = (typeof CoreApiEnvelopeStage)[keyof typeof CoreApiEnvelopeStage];
+
+export interface CoreApiEnvelopeResponse {
+  status: number;
+  /** The codes the answer may carry. */
+  codes: readonly ApiErrorCode[];
+  stage: CoreApiEnvelopeStage;
+  description: string;
+  /** `details.reason` the answer must carry. */
+  reason?: string;
+  /** A response header that belongs to the answer. */
+  header?: string;
+}
+
+/**
+ * The answers no operation repeats in its `responses`, in the order of precedence of 01_specs
+ * §7.3. The first seven statuses are the ones §7.2 defines "once at envelope level". The two
+ * refusals of stages 3 and 4 (the Origin guard, two credentials in one request) are listed with
+ * them: both are decided before any access rule, for every operation alike, the health operation
+ * included. An operation that documents 401 or 403 itself still names them there.
+ */
+export const CORE_API_ENVELOPE_RESPONSES = [
+  {
+    status: 400,
+    codes: [ApiErrorCode.INVALID_PATH],
+    stage: CoreApiEnvelopeStage.ROUTING,
+    description: 'The path is malformed, or a path parameter is not valid percent-encoding.',
+  },
+  {
+    status: 404,
+    codes: [ApiErrorCode.NOT_FOUND],
+    stage: CoreApiEnvelopeStage.ROUTING,
+    description: 'No operation has this path.',
+  },
+  {
+    status: 405,
+    codes: [ApiErrorCode.METHOD_NOT_ALLOWED],
+    stage: CoreApiEnvelopeStage.ROUTING,
+    description: 'The path exists, but not with this method.',
+    header: ALLOW_HEADER_NAME,
+  },
+  {
+    status: 503,
+    codes: [ApiErrorCode.NOT_READY],
+    stage: CoreApiEnvelopeStage.PIPELINE,
+    description: 'The database or the engine is not ready, or a demo reset is running. Every operation except health.',
+  },
+  {
+    status: 403,
+    codes: [ApiErrorCode.ORIGIN_NOT_ALLOWED],
+    stage: CoreApiEnvelopeStage.PIPELINE,
+    description: 'The `Origin` header is not on the list that fits the credential the request carries (01_specs §14.2).',
+  },
+  {
+    status: 401,
+    codes: [ApiErrorCode.NOT_SIGNED_IN],
+    stage: CoreApiEnvelopeStage.PIPELINE,
+    description: 'The request carries a session cookie and an `Authorization` header: one credential per request (ID-12).',
+    reason: CREDENTIAL_CONFLICT_REASON,
+  },
+  {
+    status: 429,
+    codes: [ApiErrorCode.RATE_LIMITED],
+    stage: CoreApiEnvelopeStage.PIPELINE,
+    description: 'The request throttle, or the denial budget of the caller\'s key (20 audited refusals in 60 s), is used up.',
+    header: RETRY_AFTER_HEADER_NAME,
+  },
+  {
+    status: 413,
+    codes: [ApiErrorCode.PAYLOAD_TOO_LARGE],
+    stage: CoreApiEnvelopeStage.PIPELINE,
+    description: 'The request body is larger than 65,536 bytes.',
+  },
+  {
+    status: 500,
+    codes: [ApiErrorCode.INTERNAL_ERROR, ApiErrorCode.SIMULATOR_ERROR],
+    stage: CoreApiEnvelopeStage.PIPELINE,
+    description: 'An unexpected failure; the answer holds no detail. SIMULATOR_ERROR is the in-app simulator\'s code.',
+  },
+] as const satisfies readonly CoreApiEnvelopeResponse[];
 
 // ═══════════════════════════════════════════════════════════════════════════════════════
 // Helpers for the simulated handlers, simAwareFetch and tests
 // ═══════════════════════════════════════════════════════════════════════════════════════
 
-export function findCoreApiOperation(operationId: string): CoreApiOperation | undefined {
+export function findCoreApiOperation(operationId: string): CoreApiRegistryOperation | undefined {
   return CORE_API_OPERATIONS.find((operation) => operation.operationId === operationId);
 }
 
 export interface CoreApiMatch {
-  operation: CoreApiOperation;
+  operation: CoreApiRegistryOperation;
   /** Decoded path parameters (`{ id }` when the template has one). */
   params: Readonly<Record<string, string>>;
 }
@@ -678,10 +1043,12 @@ const ROUTES = CORE_API_OPERATIONS.map((operation) => {
 });
 
 /**
- * Matches a method and a URL path (no origin, no query) to an operation. The 10 routes never
- * overlap: the only templated ones are POSTs ending in `/start`, `/stop` or `/export`, so
- * `GET /api/v1/session/current` cannot match them. Returns null for an unknown route, a
- * method the route does not accept, or a parameter that is not valid percent-encoding.
+ * Matches a method and a URL path (no origin, no query) to an operation. The routes never
+ * overlap: a templated route and a literal route of the same method differ in their number of
+ * segments or in a literal segment, so `GET /api/v1/session/current` cannot match
+ * `POST /api/v1/session/{id}/start` (test/api-registry.test.ts checks every pair). Returns null
+ * for an unknown route, a method the route does not accept, or a parameter that is not valid
+ * percent-encoding.
  */
 export function matchCoreApiOperation(method: string, pathname: string): CoreApiMatch | null {
   const verb = method.toLowerCase();
@@ -709,23 +1076,61 @@ export type CoreApiValidation =
   | { ok: true }
   | { ok: false; reason: 'UNKNOWN_OPERATION' | 'UNDOCUMENTED_STATUS' | 'UNEXPECTED_BODY' | 'INVALID_BODY'; issues: string[] };
 
+function invalidBody(error: z.ZodError): CoreApiValidation {
+  return {
+    ok: false,
+    reason: 'INVALID_BODY',
+    issues: error.issues.map((issue) => `${issue.path.join('.') || '(root)'}: ${issue.message}`),
+  };
+}
+
+function checkEnvelopeResponse(entry: CoreApiEnvelopeResponse, body: unknown): CoreApiValidation {
+  const parsed = ApiErrorSchema.safeParse(body);
+  if (!parsed.success) return invalidBody(parsed.error);
+  const { code, details } = parsed.data.error;
+  if (!(entry.codes as readonly string[]).includes(code)) {
+    return { ok: false, reason: 'INVALID_BODY', issues: [`error.code: ${code} is not an envelope-level answer of ${entry.status}`] };
+  }
+  if (entry.reason !== undefined && details?.reason !== entry.reason) {
+    return { ok: false, reason: 'INVALID_BODY', issues: [`error.details.reason: expected ${entry.reason}`] };
+  }
+  return { ok: true };
+}
+
+/**
+ * Checks an answer that belongs to no operation, or to every one: a routing refusal (400
+ * `INVALID_PATH`, 404, 405) or a pipeline refusal (`CORE_API_ENVELOPE_RESPONSES`).
+ */
+export function validateCoreApiEnvelopeResponse(status: number, body: unknown): CoreApiValidation {
+  const entry = CORE_API_ENVELOPE_RESPONSES.find((candidate) => candidate.status === status);
+  if (!entry) return { ok: false, reason: 'UNDOCUMENTED_STATUS', issues: [String(status)] };
+  return checkEnvelopeResponse(entry, body);
+}
+
 /**
  * Checks a response against the contract: the status must be documented for the operation and
- * the body must parse with that status's schema. For the sim handlers' tests and step 40 (CP-1).
+ * the body must parse with that status's schema. A status the operation does not document is
+ * accepted when it is a pipeline answer of `CORE_API_ENVELOPE_RESPONSES` with one of its codes.
+ * For the sim handlers' tests, the typed fake transport and the server's conformance test.
+ *
+ * Every documented status counts, whoever sends it: a status that only the Core server sends
+ * (`responses[status].services`) is valid for the operation. That the simulator never sends one
+ * is what test/openapi.test.ts checks.
  */
 export function validateCoreApiResponse(operationId: string, status: number, body: unknown): CoreApiValidation {
   const operation = findCoreApiOperation(operationId);
   if (!operation) return { ok: false, reason: 'UNKNOWN_OPERATION', issues: [operationId] };
   const spec = operation.responses[status];
-  if (!spec) return { ok: false, reason: 'UNDOCUMENTED_STATUS', issues: [String(status)] };
+  if (!spec) {
+    const entry = CORE_API_ENVELOPE_RESPONSES.find(
+      (candidate) => candidate.status === status && candidate.stage === CoreApiEnvelopeStage.PIPELINE,
+    );
+    if (!entry) return { ok: false, reason: 'UNDOCUMENTED_STATUS', issues: [String(status)] };
+    return checkEnvelopeResponse(entry, body);
+  }
   if (!spec.schema) {
     return body === undefined || body === null ? { ok: true } : { ok: false, reason: 'UNEXPECTED_BODY', issues: [] };
   }
   const parsed = CORE_API_SCHEMAS[spec.schema].safeParse(body);
-  if (parsed.success) return { ok: true };
-  return {
-    ok: false,
-    reason: 'INVALID_BODY',
-    issues: parsed.error.issues.map((issue) => `${issue.path.join('.') || '(root)'}: ${issue.message}`),
-  };
+  return parsed.success ? { ok: true } : invalidBody(parsed.error);
 }

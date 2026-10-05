@@ -1,0 +1,42 @@
+CP-W1 fix round — every file the round wrote, its blob after the round, and its pre-image
+
+2f68bab1bb8df66ba52084dd642c91d5609e6b77  UNTRACKED  apps/core-web/src/components/shell/mode-switch.tsx
+414f1264acdbe544b680b2f0bfaedb322eb8bd9a  UNTRACKED  apps/core-web/src/components/shell/shell-report.ts
+03eebabfacf558380131d5ce637deadea753937b  UNTRACKED  apps/core-web/src/components/shell/mode-indicator.tsx
+493654cf51e028fe5bedd4cf6f748336ef1a5347  UNTRACKED  apps/core-web/src/components/shell/mode-indicator-state.ts
+7ca9c2e671e12f3a3184325c2814fb660af8da87  UNTRACKED  apps/core-web/src/runtime/presentation-follow.ts
+bc0238def8445aa3f612346381913f2f016bf84c  UNTRACKED  apps/core-web/src/runtime/testing/live-harness.ts
+0e8e9cc54cc0e5bd224947ca260ca5cf37c012bb  tracked     apps/core-web/src/features/login/index.tsx
+51d8b40d79ad0a2ff1e63539083a2bd6d7a7cd1d  tracked     apps/core-web/src/features/login/auth-card.tsx
+54f8221e686b19afd0e4567cd49ef54f861fdc71  UNTRACKED  apps/core-web/src/features/login/mode-selector.tsx
+82840ed86386f6df24f8ff96519955917b43ec0b  UNTRACKED  apps/core-web/src/features/login/live-adapter.ts
+78e7c29f33023292c5c7e2eec8401428d2edb053  tracked     apps/core-web/src/routes/__root.tsx
+cc43aedaf901a4347fcdbf84e42461502a5e961e  UNTRACKED  apps/core-web/src/test/live-shell-indicator.test.tsx
+07f592a35d65302ace574a4d2b3c81ba7ba54d52  UNTRACKED  apps/core-web/src/test/live-shell-admin.test.tsx
+bc80c55c965626de78bd45bc282550c6885c3d0b  UNTRACKED  apps/core-web/src/test/live-login-page.test.tsx
+516ee425af18842f4c9717e1e5913f146fc95e37  UNTRACKED  apps/core-web/src/test/live-login-model.test.tsx
+5071c79f8774dd49b427c703681ac2633d8f4c80  UNTRACKED  apps/core-web/src/test/live-login-presentation.test.tsx
+022e778c9a127bf0eb0159336d27e803cb8d67fe  UNTRACKED  apps/core-web/src/test/live-runtime-startup.test.tsx
+
+Deleted by D144(1) (moved out of the tree, nothing destroyed):
+  apps/core-web/src/features/login/use-mode-switch.tsx -> .cache/rollback/CPW1/removed/use-mode-switch.tsx
+  47f36b0fc90dd4a0ffea357c17712013c3ff3b34
+
+Created by D144(4): apps/core-web/src/runtime/presentation-follow.ts (rollback = remove it, R-NEW).
+
+Pre-images:
+  .cache/rollback/CPW1/apps-core-web.pre.patch — `git diff acaff20 -- apps/core-web`, saved before the first
+    edit; it covers every TRACKED file above.
+  File copies under .cache/rollback/CPW1/ for the untracked production files that had none:
+    .cache/rollback/CPW1/mode-switch.tsx
+    .cache/rollback/CPW1/shell-report.ts
+    .cache/rollback/CPW1/mode-indicator.tsx
+    .cache/rollback/CPW1/index.ts
+    .cache/rollback/CPW1/live-adapter.ts
+    .cache/rollback/CPW1/__root.tsx
+  NOT preserved as a pre-image (untracked, edited after the copy pass; each change is quoted
+  before/after in section 22 of this report, which is the reconstruction guide):
+    src/components/shell/mode-indicator-state.ts, src/runtime/testing/live-harness.ts,
+    src/test/live-shell-indicator.test.tsx, live-shell-admin.test.tsx, live-login-page.test.tsx,
+    live-login-model.test.tsx, live-login-presentation.test.tsx, live-runtime-startup.test.tsx.
+  Recorded as deviation DV-a of the round, in the pattern of D139's DV-5 and DV-6.

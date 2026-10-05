@@ -1,0 +1,392 @@
+{
+ "320": {
+  "SIMULATED": {
+   "overflow": 0,
+   "clock": false,
+   "chipInside": true,
+   "pillInside": false,
+   "pageOverflowsX": false
+  },
+  "LIVE": {
+   "overflow": 0,
+   "clock": false,
+   "chipInside": true,
+   "pillInside": false,
+   "pageOverflowsX": false
+  },
+  "LIVE · OFFLINE": {
+   "overflow": 0,
+   "clock": false,
+   "chipInside": true,
+   "pillInside": false,
+   "pageOverflowsX": false
+  },
+  "LIVE · RECONNECTING": {
+   "overflow": 36,
+   "clock": false,
+   "chipInside": true,
+   "pillInside": false,
+   "pageOverflowsX": false
+  }
+ },
+ "360": {
+  "SIMULATED": {
+   "overflow": 0,
+   "clock": false,
+   "chipInside": true,
+   "pillInside": true,
+   "pageOverflowsX": false
+  },
+  "LIVE": {
+   "overflow": 0,
+   "clock": false,
+   "chipInside": true,
+   "pillInside": true,
+   "pageOverflowsX": false
+  },
+  "LIVE · OFFLINE": {
+   "overflow": 0,
+   "clock": false,
+   "chipInside": true,
+   "pillInside": true,
+   "pageOverflowsX": false
+  },
+  "LIVE · RECONNECTING": {
+   "overflow": 12,
+   "clock": false,
+   "chipInside": true,
+   "pillInside": false,
+   "pageOverflowsX": false
+  }
+ },
+ "390": {
+  "SIMULATED": {
+   "overflow": 0,
+   "clock": false,
+   "chipInside": true,
+   "pillInside": true,
+   "pageOverflowsX": false
+  },
+  "LIVE": {
+   "overflow": 0,
+   "clock": false,
+   "chipInside": true,
+   "pillInside": true,
+   "pageOverflowsX": false
+  },
+  "LIVE · OFFLINE": {
+   "overflow": 0,
+   "clock": false,
+   "chipInside": true,
+   "pillInside": true,
+   "pageOverflowsX": false
+  },
+  "LIVE · RECONNECTING": {
+   "overflow": 0,
+   "clock": false,
+   "chipInside": true,
+   "pillInside": true,
+   "pageOverflowsX": false
+  }
+ },
+ "414": {
+  "SIMULATED": {
+   "overflow": 0,
+   "clock": false,
+   "chipInside": true,
+   "pillInside": true,
+   "pageOverflowsX": false
+  },
+  "LIVE": {
+   "overflow": 0,
+   "clock": false,
+   "chipInside": true,
+   "pillInside": true,
+   "pageOverflowsX": false
+  },
+  "LIVE · OFFLINE": {
+   "overflow": 0,
+   "clock": false,
+   "chipInside": true,
+   "pillInside": true,
+   "pageOverflowsX": false
+  },
+  "LIVE · RECONNECTING": {
+   "overflow": 0,
+   "clock": false,
+   "chipInside": true,
+   "pillInside": true,
+   "pageOverflowsX": false
+  }
+ },
+ "431": {
+  "SIMULATED": {
+   "overflow": 0,
+   "clock": false,
+   "chipInside": true,
+   "pillInside": true,
+   "pageOverflowsX": false
+  },
+  "LIVE": {
+   "overflow": 0,
+   "clock": false,
+   "chipInside": true,
+   "pillInside": true,
+   "pageOverflowsX": false
+  },
+  "LIVE · OFFLINE": {
+   "overflow": 0,
+   "clock": false,
+   "chipInside": true,
+   "pillInside": true,
+   "pageOverflowsX": false
+  },
+  "LIVE · RECONNECTING": {
+   "overflow": 0,
+   "clock": false,
+   "chipInside": true,
+   "pillInside": true,
+   "pageOverflowsX": false
+  }
+ },
+ "432": {
+  "SIMULATED": {
+   "overflow": 0,
+   "clock": true,
+   "chipInside": true,
+   "pillInside": true,
+   "pageOverflowsX": false
+  },
+  "LIVE": {
+   "overflow": 0,
+   "clock": false,
+   "chipInside": true,
+   "pillInside": true,
+   "pageOverflowsX": false
+  },
+  "LIVE · OFFLINE": {
+   "overflow": 0,
+   "clock": false,
+   "chipInside": true,
+   "pillInside": true,
+   "pageOverflowsX": false
+  },
+  "LIVE · RECONNECTING": {
+   "overflow": 0,
+   "clock": false,
+   "chipInside": true,
+   "pillInside": true,
+   "pageOverflowsX": false
+  }
+ },
+ "440": {
+  "SIMULATED": {
+   "overflow": 0,
+   "clock": true,
+   "chipInside": true,
+   "pillInside": true,
+   "pageOverflowsX": false
+  },
+  "LIVE": {
+   "overflow": 0,
+   "clock": false,
+   "chipInside": true,
+   "pillInside": true,
+   "pageOverflowsX": false
+  },
+  "LIVE · OFFLINE": {
+   "overflow": 0,
+   "clock": false,
+   "chipInside": true,
+   "pillInside": true,
+   "pageOverflowsX": false
+  },
+  "LIVE · RECONNECTING": {
+   "overflow": 0,
+   "clock": false,
+   "chipInside": true,
+   "pillInside": true,
+   "pageOverflowsX": false
+  }
+ },
+ "480": {
+  "SIMULATED": {
+   "overflow": 0,
+   "clock": true,
+   "chipInside": true,
+   "pillInside": true,
+   "pageOverflowsX": false
+  },
+  "LIVE": {
+   "overflow": 0,
+   "clock": false,
+   "chipInside": true,
+   "pillInside": true,
+   "pageOverflowsX": false
+  },
+  "LIVE · OFFLINE": {
+   "overflow": 0,
+   "clock": false,
+   "chipInside": true,
+   "pillInside": true,
+   "pageOverflowsX": false
+  },
+  "LIVE · RECONNECTING": {
+   "overflow": 0,
+   "clock": false,
+   "chipInside": true,
+   "pillInside": true,
+   "pageOverflowsX": false
+  }
+ },
+ "495": {
+  "SIMULATED": {
+   "overflow": 0,
+   "clock": true,
+   "chipInside": true,
+   "pillInside": true,
+   "pageOverflowsX": false
+  },
+  "LIVE": {
+   "overflow": 0,
+   "clock": false,
+   "chipInside": true,
+   "pillInside": true,
+   "pageOverflowsX": false
+  },
+  "LIVE · OFFLINE": {
+   "overflow": 0,
+   "clock": false,
+   "chipInside": true,
+   "pillInside": true,
+   "pageOverflowsX": false
+  },
+  "LIVE · RECONNECTING": {
+   "overflow": 0,
+   "clock": false,
+   "chipInside": true,
+   "pillInside": true,
+   "pageOverflowsX": false
+  }
+ },
+ "496": {
+  "SIMULATED": {
+   "overflow": 0,
+   "clock": true,
+   "chipInside": true,
+   "pillInside": true,
+   "pageOverflowsX": false
+  },
+  "LIVE": {
+   "overflow": 0,
+   "clock": true,
+   "chipInside": true,
+   "pillInside": true,
+   "pageOverflowsX": false
+  },
+  "LIVE · OFFLINE": {
+   "overflow": 0,
+   "clock": true,
+   "chipInside": true,
+   "pillInside": true,
+   "pageOverflowsX": false
+  },
+  "LIVE · RECONNECTING": {
+   "overflow": 0,
+   "clock": true,
+   "chipInside": true,
+   "pillInside": true,
+   "pageOverflowsX": false
+  }
+ },
+ "520": {
+  "SIMULATED": {
+   "overflow": 0,
+   "clock": true,
+   "chipInside": true,
+   "pillInside": true,
+   "pageOverflowsX": false
+  },
+  "LIVE": {
+   "overflow": 0,
+   "clock": true,
+   "chipInside": true,
+   "pillInside": true,
+   "pageOverflowsX": false
+  },
+  "LIVE · OFFLINE": {
+   "overflow": 0,
+   "clock": true,
+   "chipInside": true,
+   "pillInside": true,
+   "pageOverflowsX": false
+  },
+  "LIVE · RECONNECTING": {
+   "overflow": 0,
+   "clock": true,
+   "chipInside": true,
+   "pillInside": true,
+   "pageOverflowsX": false
+  }
+ },
+ "600": {
+  "SIMULATED": {
+   "overflow": 0,
+   "clock": true,
+   "chipInside": true,
+   "pillInside": true,
+   "pageOverflowsX": false
+  },
+  "LIVE": {
+   "overflow": 0,
+   "clock": true,
+   "chipInside": true,
+   "pillInside": true,
+   "pageOverflowsX": false
+  },
+  "LIVE · OFFLINE": {
+   "overflow": 0,
+   "clock": true,
+   "chipInside": true,
+   "pillInside": true,
+   "pageOverflowsX": false
+  },
+  "LIVE · RECONNECTING": {
+   "overflow": 0,
+   "clock": true,
+   "chipInside": true,
+   "pillInside": true,
+   "pageOverflowsX": false
+  }
+ },
+ "767": {
+  "SIMULATED": {
+   "overflow": 0,
+   "clock": true,
+   "chipInside": true,
+   "pillInside": true,
+   "pageOverflowsX": false
+  },
+  "LIVE": {
+   "overflow": 0,
+   "clock": true,
+   "chipInside": true,
+   "pillInside": true,
+   "pageOverflowsX": false
+  },
+  "LIVE · OFFLINE": {
+   "overflow": 0,
+   "clock": true,
+   "chipInside": true,
+   "pillInside": true,
+   "pageOverflowsX": false
+  },
+  "LIVE · RECONNECTING": {
+   "overflow": 0,
+   "clock": true,
+   "chipInside": true,
+   "pillInside": true,
+   "pageOverflowsX": false
+  }
+ }
+}

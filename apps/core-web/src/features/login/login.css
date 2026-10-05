@@ -565,6 +565,43 @@
     min-width: 0;
   }
 
+  /* Live mode (WS-9 C1): the plain sentence that says what the disclosure is. */
+  .dems-login-demo-notice {
+    margin: 0 0 2px;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface-tertiary);
+    color: var(--foreground);
+  }
+
+  /* Live mode (§3.5): Retry and "Use Simulated mode" of the offline Alert, one under the other. */
+  .dems-login-alert-actions {
+    display: flex;
+    flex: none;
+    flex-direction: column;
+    align-items: stretch;
+    align-self: center;
+    gap: 6px;
+  }
+
+  /* Dev builds (§3.2, MD-4): "Data mode: Simulated | Live", above the trust line. */
+  .dems-login-mode {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    border-top: 1px solid var(--separator);
+    padding-top: 12px;
+  }
+
+  .dems-login-mode-label {
+    font-size: 12px;
+    line-height: 16px;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+  }
+
   .dems-login-trust {
     display: inline-flex;
     align-items: center;

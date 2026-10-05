@@ -1,0 +1,530 @@
+/**
+ * Support of the acceptance test "role-by-endpoint matrix" (plan row W47; not a test file).
+ *
+ * Nothing here builds an app, opens a connection or imports Vitest. Two things only:
+ *
+ *   1. THE SPECIFICATION, READ MECHANICALLY. `readSpecification()` reads
+ *      `docs/2026-10-04_dems_backend_rbac_pairing/masterplan/01_specs.md` as text and takes from
+ *      its tables what the matrix needs: the role matrix of section 4.4, the "enforced at" list
+ *      of section 4.3, the 75 rows of the operation tables of section 7 (number, operation ID,
+ *      method, path, access rule, audit rule), what a retired device may call (section 6.6), the
+ *      three export operations of RB-5, the two limits of the throttle (ID-P12, ID-P13), the
+ *      reason of the refusal "needs the device's own credential" (section 7.2) and the
+ *      denied-cell counts that AC-B-16 states. A table that no longer has the form read here
+ *      stops the test with a message that names it: a changed document is never read as "equal".
+ *
+ *   2. THE EXPECTED ANSWER OF ONE CELL. `expectationOf(operation, caller, grants, demoFlag)`
+ *      derives it from the REGISTRY entry of the operation (its access rule, its conditions, its
+ *      denial type), from what the specification says about the caller (section 4.1, 4.2, 6.3,
+ *      6.6, 7.2, 7.3, 12.1) and from the grants it is given: the stored matrix of the test's own
+ *      database.
+ *      It holds no list of operations and no expectation per operation.
+ *
+ * This file does not import the server's decision function, its rule book or any of their
+ * constants: the expectation is written from the specification, independently of the code under
+ * test.
+ */
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import {
+  CORE_API_EXAMPLES,
+  CoreApiAccessCondition,
+  CoreApiAccessKind,
+  coreApiAccessPermissions,
+  type CoreApiRegistryOperation,
+} from '@dems/shared/api';
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// 1. The specification, read mechanically
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+/** `masterplan/01_specs.md` of the task folder, from the workspace root. */
+export const SPECIFICATION_FILE = fileURLToPath(
+  new URL('../../../../docs/2026-10-04_dems_backend_rbac_pairing/masterplan/01_specs.md', import.meta.url),
+);
+
+/** One row of an operation table of section 7, as the document writes it. */
+export interface SpecOperation {
+  /** The operation number of the specification (1 to 75). */
+  readonly number: number;
+  readonly operationId: string;
+  readonly method: 'GET' | 'POST';
+  readonly path: string;
+  /** The marker of section 4.2: `PUBLIC`, `DEVICE`, `AUTHENTICATED`, a permission, or `ANY-OF(A, B)`. */
+  readonly access: string;
+  /** What the row asks on top of its marker, in the registry's words, sorted. */
+  readonly conditions: readonly string[];
+  /** The success rule: an audit type, `NONE-R` or `NONE-P`. */
+  readonly auditSuccess: string;
+  readonly auditDenial: 'ACCESS_DENIED' | 'EXPORT_DENIED';
+  /** The code of a refusal for a missing permission: `FORBIDDEN` where the row names it (RB-5). */
+  readonly denialCode: 'NOT_PERMITTED' | 'FORBIDDEN';
+  /** The subsection that holds the row, for example `7.16`. */
+  readonly section: string;
+  /** The line of the document, for a message. */
+  readonly line: number;
+}
+
+export interface Specification {
+  readonly revision: string;
+  readonly lines: number;
+  /** The 75 rows of sections 7.4 to 7.16, in the order of their numbers. */
+  readonly operations: readonly SpecOperation[];
+  /** Section 4.4, header row: the roles, in the order of the columns. */
+  readonly roles: readonly string[];
+  /** Section 4.4, first column: the permissions, in the order of the rows. */
+  readonly permissions: readonly string[];
+  /** Section 4.4: `role` holds `permission`. */
+  readonly grants: readonly Grant[];
+  /** Section 4.4, the row "Grants": the count the document states per role. */
+  readonly statedGrantCounts: Readonly<Record<string, number>>;
+  /** Section 4.3: the operation numbers each permission is enforced at. */
+  readonly enforcedAt: Readonly<Record<string, readonly number[]>>;
+  /** Section 6.6: what the credential of a REVOKED device may still call. */
+  readonly retiredDeviceMayCall: readonly string[];
+  /** RB-5: the numbers of the three export operations. */
+  readonly exportOperations: readonly number[];
+  /** Section 5.1, the key table: the operations a DEVICE key counts at the strict limit. */
+  readonly deviceStrictOperations: readonly number[];
+  /** ID-P12: requests per window at the strict limit (the class keys). */
+  readonly strictLimit: number;
+  /** ID-P13: audited refusals per key and window. */
+  readonly denialBudget: number;
+  /** ID-P12 and ID-P13: the window, in milliseconds. */
+  readonly windowMs: number;
+  /** AC-B-16: the denied cells the document states for two roles. */
+  readonly statedDeniedCells: Readonly<Record<string, number>>;
+  /**
+   * Section 7.2, the line of `DEVICE_NOT_PAIRED`: `details.reason` of the refusal of "an operation
+   * that needs the device's own credential, called with a session of the device".
+   */
+  readonly deviceCredentialReason: string;
+}
+
+export interface Grant {
+  readonly role: string;
+  readonly permission: string;
+}
+
+function unreadable(what: string): never {
+  throw new Error(`the specification no longer has the form this test reads: ${what} (${SPECIFICATION_FILE})`);
+}
+
+/** The cells of a table row: the text between the pipes, trimmed. */
+function cellsOf(line: string): string[] {
+  return line.split('|').slice(1, -1).map((cell) => cell.trim());
+}
+
+/** The text between the first pair of backticks of a cell. */
+function firstCode(cell: string | undefined, what: string): string {
+  const found = /`([^`]+)`/.exec(cell ?? '');
+  if (found?.[1] === undefined) unreadable(what);
+  return found[1];
+}
+
+const numbersOf = (text: string): number[] => (text.match(/\d+/g) ?? []).map(Number);
+
+/** The lines from the heading that starts with `from` up to the next heading of the same level. */
+function sectionOf(lines: readonly string[], from: string): Array<{ text: string; line: number }> {
+  const start = lines.findIndex((line) => line.startsWith(from));
+  if (start === -1) unreadable(`heading "${from}"`);
+  const level = /^#+/.exec(from)?.[0] ?? '###';
+  const body: Array<{ text: string; line: number }> = [];
+  for (let index = start + 1; index < lines.length; index += 1) {
+    const text = lines[index] ?? '';
+    if (text.startsWith(`${level} `)) break;
+    body.push({ text, line: index + 1 });
+  }
+  return body;
+}
+
+function readRoleMatrix(lines: readonly string[]): Pick<Specification, 'roles' | 'permissions' | 'grants' | 'statedGrantCounts'> {
+  const section = sectionOf(lines, '### 4.4 ');
+  const header = section.find(({ text }) => text.startsWith('| Permission |'));
+  if (header === undefined) unreadable('the header row of the role matrix (section 4.4)');
+  const roles = cellsOf(header.text).slice(1);
+  const permissions: string[] = [];
+  const grants: Grant[] = [];
+  let statedGrantCounts: Record<string, number> | undefined;
+  for (const { text } of section) {
+    const cells = cellsOf(text);
+    if (text.startsWith('| Grants |')) {
+      statedGrantCounts = Object.fromEntries(roles.map((role, index) => [role, Number(cells[index + 1])]));
+      continue;
+    }
+    if (!text.startsWith('| `')) continue;
+    const permission = firstCode(cells[0], 'a permission of the role matrix (section 4.4)');
+    permissions.push(permission);
+    roles.forEach((role, index) => {
+      const mark = (cells[index + 1] ?? '').replaceAll('*', '');
+      if (mark !== 'yes' && mark !== 'no') unreadable(`the cell ${permission} / ${role} of the role matrix (section 4.4)`);
+      if (mark === 'yes') grants.push({ role, permission });
+    });
+  }
+  if (statedGrantCounts === undefined) unreadable('the row "Grants" of the role matrix (section 4.4)');
+  return { roles, permissions, grants, statedGrantCounts };
+}
+
+function readEnforcedAt(lines: readonly string[]): Record<string, number[]> {
+  const enforcedAt: Record<string, number[]> = {};
+  for (const { text } of sectionOf(lines, '### 4.3 ')) {
+    if (!/^\| +\d+ \| `/.test(text)) continue;
+    const cells = cellsOf(text);
+    enforcedAt[firstCode(cells[1], 'a permission of the permission list (section 4.3)')] = numbersOf(cells[4] ?? '');
+  }
+  if (Object.keys(enforcedAt).length === 0) unreadable('the permission list (section 4.3)');
+  return enforcedAt;
+}
+
+/**
+ * The conditions a row of section 7 states, in the registry's words. Four texts are read:
+ * "plus ID-1" (the console rule of `signIn`), "must be bound to a device" (operation 7), "needs
+ * the device's own credential" (decision D118: any row that says so, whichever operation it is),
+ * and the sentence above the table of section 7.16 ("All five need `DEMO_CONTROL` and the
+ * server-side demo flag"), which holds for every row of that table.
+ */
+function conditionsOf(accessCell: string, demoSection: boolean): string[] {
+  const conditions: string[] = [];
+  if (/plus ID-1/.test(accessCell)) conditions.push(CoreApiAccessCondition.CONSOLE_IDENTITY);
+  if (/must be bound to a device/.test(accessCell)) conditions.push(CoreApiAccessCondition.DEVICE_SESSION);
+  if (/needs the device's own credential/.test(accessCell)) conditions.push(CoreApiAccessCondition.DEVICE_CREDENTIAL);
+  if (demoSection) conditions.push(CoreApiAccessCondition.DEMO_FLAG);
+  return conditions.sort();
+}
+
+function readOperations(lines: readonly string[]): SpecOperation[] {
+  const operations: SpecOperation[] = [];
+  let section = '';
+  let demoSection = false;
+  for (const { text, line } of sectionOf(lines, '## 7. ')) {
+    const heading = /^### (7\.\d+) /.exec(text);
+    if (heading?.[1] !== undefined) {
+      section = heading[1];
+      demoSection = false;
+      continue;
+    }
+    if (text.startsWith('All five need `DEMO_CONTROL` **and** the server-side demo flag')) demoSection = true;
+    const row = /^\| (\d+) \| `(\w+)` \| (GET|POST) `([^`]+)` \|/.exec(text);
+    if (row === null) continue;
+    const cells = cellsOf(text);
+    const accessCell = cells[3] ?? '';
+    const auditCell = cells[4] ?? '';
+    operations.push({
+      number: Number(row[1]),
+      operationId: row[2] ?? '',
+      method: row[3] === 'GET' ? 'GET' : 'POST',
+      path: row[4] ?? '',
+      access: firstCode(accessCell, `the access rule of operation ${row[1]}`),
+      conditions: conditionsOf(accessCell, demoSection),
+      auditSuccess: firstCode(auditCell, `the audit rule of operation ${row[1]}`),
+      auditDenial: /denial `EXPORT_DENIED`/.test(auditCell) ? 'EXPORT_DENIED' : 'ACCESS_DENIED',
+      denialCode: /403 `FORBIDDEN`/.test(text) ? 'FORBIDDEN' : 'NOT_PERMITTED',
+      section,
+      line,
+    });
+  }
+  return operations.sort((a, b) => a.number - b.number);
+}
+
+/** Reads the specification. Every member comes from a table or a rule of the document. */
+export function readSpecification(): Specification {
+  const text = readFileSync(SPECIFICATION_FILE, 'utf8');
+  const lines = text.split('\n');
+  const one = (pattern: RegExp, what: string): RegExpExecArray => pattern.exec(text) ?? unreadable(what);
+
+  const operations = readOperations(lines);
+  const known = new Set(operations.map((operation) => operation.operationId));
+  const retiredRow = lines.find((line) => line.startsWith('| Credential of a REVOKED device |')) ?? unreadable('the row of a REVOKED device (section 6.6)');
+  const retiredDeviceMayCall = [...(cellsOf(retiredRow)[1] ?? '').matchAll(/`(\w+)`/g)].map((found) => found[1] ?? '').filter((name) => known.has(name));
+  const exportRule = one(/\| RB-5 \| For the three export operations \(([\d, ]+)\)/, 'RB-5 (section 4.6)');
+  const deviceKey = one(/\| `device:<device ID>` \| A DEVICE principal \| Operations ([\d, and]+) \(/, 'the key table of the throttle (section 5.1)');
+  const strict = one(/\| Key \| Who \| Counted at (\d+) per (\d+) s \|/, 'the header of the key table of the throttle (section 5.1)');
+  const budget = one(/\| ID-P13 \| Denial budget \| Per throttle key at most \*\*(\d+) audited refusals within (\d+) s\*\*/, 'ID-P13 (section 5.1)');
+  const denied = one(/the matrix gives the INVESTIGATOR (\d+) denied cells and the TECHNICIAN (\d+)/, 'AC-B-16 (section 16.3)');
+  const ownCredential = one(
+    /\| 403 \| `DEVICE_NOT_PAIRED` \|[^\n]*needs the device's own credential[^\n]*\(`details\.reason: (\w+)`\)/,
+    'the reason of "needs the device\'s own credential" in the line of DEVICE_NOT_PAIRED (section 7.2)',
+  );
+  if (strict[2] !== budget[2]) unreadable('one window for the throttle and the denial budget');
+
+  return {
+    revision: one(/^revision: (.+)$/m, 'the revision in the front matter')[1] ?? '',
+    lines: lines.length,
+    operations,
+    ...readRoleMatrix(lines),
+    enforcedAt: readEnforcedAt(lines),
+    retiredDeviceMayCall,
+    exportOperations: numbersOf(exportRule[1] ?? ''),
+    deviceStrictOperations: numbersOf(deviceKey[1] ?? ''),
+    strictLimit: Number(strict[1]),
+    denialBudget: Number(budget[1]),
+    windowMs: Number(budget[2]) * 1000,
+    statedDeniedCells: { INVESTIGATOR: Number(denied[1]), TECHNICIAN: Number(denied[2]) },
+    deviceCredentialReason: ownCredential[1] ?? '',
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// 2. Callers, and the expected answer of one cell
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+/** Who the specification says a caller is once stage 4 has looked at its credential (section 4.1). */
+export type CallerIdentity =
+  /** No credential, or one that resolves to nothing. */
+  | { readonly kind: 'ANONYMOUS' }
+  /** The credential of a device that is no longer PAIRED: not a principal (RB-6). */
+  | { readonly kind: 'RETIRED_DEVICE'; readonly deviceId: string }
+  /** A device credential of a PAIRED device, no operator. */
+  | { readonly kind: 'DEVICE'; readonly deviceId: string }
+  /** An operator's session: on the web console (`deviceId` null) or on a paired device. */
+  | { readonly kind: 'OPERATOR'; readonly operatorId: string; readonly role: string; readonly deviceId: string | null };
+
+/** A refusal that stands before the access rule on every operation (section 7.3, lines 3 and 4). */
+export interface EarlyRefusal {
+  readonly status: number;
+  readonly code: string;
+  /** `error.details.reason` of the answer, where the specification names one. */
+  readonly reason: string | null;
+}
+
+/** What the expectation needs to know about a caller. */
+export interface CallerFacts {
+  readonly identity: CallerIdentity;
+  /**
+   * ID-1 (a): the request carries a web console `Origin` and no `Authorization` header. Read
+   * only for an operation with the condition `CONSOLE_IDENTITY`.
+   */
+  readonly webConsole: boolean;
+  /** Set for a caller the Origin guard or stage 4 refuses whatever the operation. */
+  readonly early: EarlyRefusal | null;
+}
+
+/** The one audit row a refused call must have written. */
+export interface ExpectedRow {
+  readonly type: 'ACCESS_DENIED' | 'EXPORT_DENIED';
+  readonly actorId: string | null;
+  readonly deviceId: string | null;
+  /** The members of `details` the row must name. */
+  readonly details: Readonly<Record<string, string>>;
+}
+
+export type Expectation =
+  | { readonly allowed: true }
+  | {
+      readonly allowed: false;
+      readonly status: number;
+      readonly code: string;
+      /** `error.details` of the answer must hold these members. */
+      readonly details: Readonly<Record<string, string>>;
+      /** Null: the refusal writes no row. */
+      readonly row: ExpectedRow | null;
+    };
+
+const ALLOWED: Expectation = { allowed: true };
+
+function refused(status: number, code: string, details: Record<string, string> = {}, row: ExpectedRow | null = null): Expectation {
+  return { allowed: false, status, code, details, row };
+}
+
+/** 401: the rule needs a principal and the request has none. No row: no actor can be named (RB-6). */
+const NOT_SIGNED_IN = refused(401, 'NOT_SIGNED_IN');
+/** 403, no row: no console identity (ID-1), or a device-only operation called by a web session (section 7.2). */
+const DEVICE_NOT_PAIRED = refused(403, 'DEVICE_NOT_PAIRED');
+/** 403, no row: a demo operation while the demo flag is off, for a caller who holds the permission (DC-2). */
+const DEMO_DISABLED = refused(403, 'DEMO_DISABLED');
+
+/**
+ * How a refusal for a missing permission names the permission (decision D83 DN-1): the one
+ * permission of the rule, or the alternatives of the any-of in registry order joined with `_OR_`.
+ */
+export function denialPermissionOf(operation: CoreApiRegistryOperation): string {
+  return coreApiAccessPermissions(operation.access).join('_OR_');
+}
+
+/** The registry's own example codes of an operation's 403 answers. */
+export function exampleCodesOf(operationId: string, status: number): string[] {
+  const examples = CORE_API_EXAMPLES[operationId]?.responses[status] ?? {};
+  return Object.values(examples)
+    .map((example) => (example.value as { error?: { code?: string } } | undefined)?.error?.code)
+    .filter((code): code is string => typeof code === 'string');
+}
+
+export interface ExpectationInput {
+  readonly operation: CoreApiRegistryOperation;
+  readonly caller: CallerFacts;
+  /** The stored matrix of the database the server runs on. */
+  readonly grants: readonly Grant[];
+  /** The server's demo flag (DC-2). */
+  readonly demoFlag: boolean;
+  /** Section 6.6: the operations a retired device may still call. */
+  readonly retiredDeviceMayCall: readonly string[];
+  /** The code of a refusal for a missing permission on this operation (RB-4, RB-5). */
+  readonly denialCode: 'NOT_PERMITTED' | 'FORBIDDEN';
+  /** Section 7.2: `details.reason` of the refusal of the condition `DEVICE_CREDENTIAL`. */
+  readonly deviceCredentialReason: string;
+}
+
+/**
+ * The answer the specification gives one caller on one operation. In the order of section 7.3:
+ * the early refusals (lines 3 and 4), no principal and a retired device (line 6), the permission,
+ * the console and device conditions, then the demo flag (line 7). A condition is looked at only
+ * for a caller the marker allows: a web console session on a `DEVICE` operation is refused by the
+ * marker (no reason), whatever conditions the operation carries.
+ */
+export function expectationOf(input: ExpectationInput): Expectation {
+  const { operation, caller, grants, demoFlag } = input;
+  const { identity } = caller;
+  const { access } = operation;
+
+  if (caller.early !== null) {
+    return refused(caller.early.status, caller.early.code, caller.early.reason === null ? {} : { reason: caller.early.reason });
+  }
+
+  // Section 6.6, RB-6: a retired device is refused with one row that names the device, on
+  // everything except what it may still call; there it is an ANONYMOUS caller.
+  if (identity.kind === 'RETIRED_DEVICE' && !input.retiredDeviceMayCall.includes(operation.operationId)) {
+    return refused(403, 'DEVICE_REVOKED', { reason: 'DEVICE_REVOKED' }, {
+      type: 'ACCESS_DENIED',
+      actorId: null,
+      deviceId: identity.deviceId,
+      details: { operationId: operation.operationId, reason: 'DEVICE_REVOKED' },
+    });
+  }
+
+  // Section 4.2: the principal the marker names.
+  switch (access.kind) {
+    case CoreApiAccessKind.PUBLIC:
+      break;
+    case CoreApiAccessKind.DEVICE:
+      if (identity.kind === 'OPERATOR' && identity.deviceId === null) return DEVICE_NOT_PAIRED;
+      if (identity.kind !== 'DEVICE' && identity.kind !== 'OPERATOR') return NOT_SIGNED_IN;
+      break;
+    case CoreApiAccessKind.AUTHENTICATED:
+      if (identity.kind !== 'OPERATOR') return NOT_SIGNED_IN;
+      break;
+    case CoreApiAccessKind.PERMISSION:
+    case CoreApiAccessKind.ANY_OF: {
+      if (identity.kind !== 'OPERATOR') return NOT_SIGNED_IN;
+      const needed = coreApiAccessPermissions(access);
+      const holdsOne = grants.some((grant) => grant.role === identity.role && (needed as readonly string[]).includes(grant.permission));
+      if (!holdsOne) {
+        const permission = denialPermissionOf(operation);
+        const named = { operationId: operation.operationId, permission, role: identity.role };
+        return refused(403, input.denialCode, named, {
+          type: operation.audit.denial,
+          actorId: identity.operatorId,
+          deviceId: identity.deviceId,
+          details: named,
+        });
+      }
+      break;
+    }
+  }
+
+  // The conditions of the rule, for a caller the marker allows (section 7.3 line 7). Whichever
+  // operation carries a condition gets its refusal: nothing here names an operation.
+  for (const condition of access.conditions ?? []) {
+    switch (condition) {
+      case CoreApiAccessCondition.CONSOLE_IDENTITY: {
+        // ID-1: a web console, or a caller that speaks for a paired device.
+        const pairedDevice = identity.kind === 'DEVICE' || (identity.kind === 'OPERATOR' && identity.deviceId !== null);
+        if (!caller.webConsole && !pairedDevice) return DEVICE_NOT_PAIRED;
+        break;
+      }
+      case CoreApiAccessCondition.DEVICE_SESSION:
+        if (identity.kind !== 'OPERATOR' || identity.deviceId === null) return DEVICE_NOT_PAIRED;
+        break;
+      case CoreApiAccessCondition.DEVICE_CREDENTIAL:
+        // Section 4.2, 6.3 (T7), 7.2; decision D118: only the device itself, with its own
+        // credential. The session of an operator who is signed in on the device does not hold
+        // it: 403 `DEVICE_NOT_PAIRED` with the reason of section 7.2, no audit row, and so no
+        // place in the denial budget. The reason is what tells this refusal from the marker's.
+        if (identity.kind !== 'DEVICE') return refused(403, 'DEVICE_NOT_PAIRED', { reason: input.deviceCredentialReason });
+        break;
+      case CoreApiAccessCondition.DEMO_FLAG:
+        if (!demoFlag) return DEMO_DISABLED;
+        break;
+      default: {
+        // A condition the registry gained and this file does not know: never read as "allowed".
+        const unknown: never = condition;
+        throw new Error(`the registry entry of ${operation.operationId} carries the condition ${String(unknown)}, for which this test has no expectation`);
+      }
+    }
+  }
+  return ALLOWED;
+}
+
+/** One line for a cell of the printed matrix and for a message: what the specification expects. */
+export function describeExpectation(expectation: Expectation): string {
+  if (expectation.allowed) return 'allowed';
+  return `${expectation.status} ${expectation.code}${expectation.row === null ? '' : ` + 1 ${expectation.row.type}`}`;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// 3. What a cell sends
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+/**
+ * How the request of a cell is built. Always from the registry: the path, the example value of
+ * its `{id}` and the first request example of the operation.
+ *
+ *   READ      a GET. It changes nothing (API-2).
+ *   EXAMPLE   a POST with the registry's example input: the handler runs for a permitted caller.
+ *   ABSENT    a POST with the example input, the digits of the example `{id}` replaced by nines:
+ *             an identifier of the same form that names nothing in the fixture, so the handler
+ *             of a permitted caller answers its documented 404 and changes nothing.
+ *   PROBE     a POST whose body is no JSON: a caller that stage 6 lets through is answered
+ *             400 `INVALID_JSON` by stage 7 and no handler runs.
+ */
+export type CellMode = 'READ' | 'EXAMPLE' | 'ABSENT' | 'PROBE';
+
+/**
+ * Success rows of commands whose permitted call would take a CALLER of this matrix away, change
+ * who it is, or replace the dataset: a sign-out, an unpair, a credential rotation, a revoke, a
+ * disable, a role change, a scenario load or reset. A command with one of these success rows is
+ * never executed with its example input by the matrix.
+ */
+export const DISRUPTIVE_SUCCESS_ROWS: readonly string[] = [
+  'AUTH_SIGNED_OUT',
+  'UNPAIRED',
+  'DEVICE_CREDENTIAL_ROTATED',
+  'DEVICE_REVOKED',
+  'USER_DISABLED',
+  'ROLE_CHANGED',
+  'SCENARIO_LOADED',
+];
+
+/** The mode of an operation's cells, from its registry entry alone. */
+export function cellModeOf(operation: CoreApiRegistryOperation): CellMode {
+  if (operation.method === 'get') return 'READ';
+  if (!DISRUPTIVE_SUCCESS_ROWS.includes(operation.audit.success)) return 'EXAMPLE';
+  return operation.pathParam === undefined ? 'PROBE' : 'ABSENT';
+}
+
+/** A body that is no JSON, with the content type of one. */
+export const NOT_JSON = { contentType: 'application/json', payload: '{"w47": ' } as const;
+
+export interface CellRequest {
+  readonly method: 'GET' | 'POST';
+  readonly url: string;
+  /** The body as an object, the text of a body that is no JSON, or nothing. */
+  readonly body: Record<string, unknown> | typeof NOT_JSON.payload | undefined;
+}
+
+/** The request of an operation's cells in a mode: path, `{id}` and body from the registry. */
+export function cellRequestOf(operation: CoreApiRegistryOperation, mode: CellMode): CellRequest {
+  const examples = CORE_API_EXAMPLES[operation.operationId];
+  let url: string = operation.path;
+  if (operation.pathParam !== undefined) {
+    const example = examples?.pathParams?.[operation.pathParam.name];
+    if (example === undefined) throw new Error(`the registry has no example value for the path parameter of ${operation.operationId}`);
+    const id = mode === 'ABSENT' ? example.replace(/\d/g, '9') : example;
+    if (!operation.pathParam.pattern.test(id)) throw new Error(`${id} does not match the pattern of the path parameter of ${operation.operationId}`);
+    url = url.replace(`{${operation.pathParam.name}}`, id);
+  }
+  if (operation.method === 'get') return { method: 'GET', url, body: undefined };
+  if (mode === 'PROBE') return { method: 'POST', url, body: NOT_JSON.payload };
+  const first = Object.values(examples?.request ?? {})[0];
+  const body = operation.requestBody === undefined || first === undefined ? undefined : (first.value as Record<string, unknown>);
+  return { method: 'POST', url, body };
+}

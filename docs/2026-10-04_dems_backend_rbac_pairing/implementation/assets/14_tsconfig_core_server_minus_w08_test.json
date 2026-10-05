@@ -1,0 +1,10 @@
+{
+  "extends": "/Users/gsp-budi/Documents/DEMS/apps/core-server/tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["node"],
+    "typeRoots": ["/Users/gsp-budi/Documents/DEMS/node_modules/@types"]
+  },
+  "include": ["/Users/gsp-budi/Documents/DEMS/apps/core-server/src", "/Users/gsp-budi/Documents/DEMS/apps/core-server/test", "/Users/gsp-budi/Documents/DEMS/apps/core-server/vitest.config.ts", "/Users/gsp-budi/Documents/DEMS/apps/core-server/drizzle.config.ts"],
+  "exclude": ["/Users/gsp-budi/Documents/DEMS/apps/core-server/src/plugins/response-headers/__tests__/response-headers.test.ts"]
+}

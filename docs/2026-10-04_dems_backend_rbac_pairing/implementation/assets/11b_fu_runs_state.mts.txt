@@ -1,0 +1,72 @@
+// W11b follow-up (decision D111): which test runs have databases in the cluster, and which of them
+// are alive? Reads only, as dems_owner on 127.0.0.1:4432, through the helper's own session.
+//
+// "Alive" is what the helper itself records: the owner of a run holds the advisory lock
+// (442002, k), k derived from the run stamp, for as long as its session exists.
+// Prints names, counts, process numbers and times; never a statement text or a credential.
+import { OwnerSession } from '/Users/gsp-budi/Documents/DEMS/apps/core-server/test/helpers/db/session';
+import { DEFAULT_DATA_DIR, readOwnerCredentials } from '/Users/gsp-budi/Documents/DEMS/apps/core-server/test/helpers/db/credentials';
+import { livenessKey, parseTestDatabaseName } from '/Users/gsp-budi/Documents/DEMS/apps/core-server/test/helpers/db/names';
+import { LOCK_CLASS, STALE_AFTER_SECONDS } from '/Users/gsp-budi/Documents/DEMS/apps/core-server/test/helpers/db/constants';
+
+type Row = Record<string, unknown>;
+const NAMED = process.argv[2] ?? '';
+
+function wib(seconds: number): string {
+  return new Date((seconds + 7 * 3600) * 1000).toISOString().slice(11, 19);
+}
+
+const session = await OwnerSession.open(readOwnerCredentials(DEFAULT_DATA_DIR), { applicationName: 'dems-w11b-runs-state' });
+try {
+  const now = Math.floor(Date.now() / 1000);
+  console.log(`read at ${wib(now)} WIB as ${session.facts.role} on ${session.facts.address}:${session.facts.port}, PostgreSQL ${session.facts.version}`);
+  const databases = await session.run<{ name: string; owner: string; template: boolean; connections: boolean }>(
+    'SELECT d.datname::text AS name, pg_get_userbyid(d.datdba)::text AS owner, d.datistemplate AS template, d.datallowconn AS connections FROM pg_database d ORDER BY 1',
+  );
+  const locks = await session.run<{ key: string; pid: number; granted: boolean; application: string | null; role: string | null }>(
+    "SELECT l.objid::text AS key, l.pid, l.granted, a.application_name AS application, a.usename::text AS role FROM pg_locks l LEFT JOIN pg_stat_activity a ON a.pid = l.pid " +
+      "WHERE l.locktype = 'advisory' AND l.classid = $1 AND l.objsubid = 2 ORDER BY 1",
+    [LOCK_CLASS],
+  );
+  const backends = await session.run<{ database: string; role: string | null; application: string; backends: number }>(
+    "SELECT datname::text AS database, usename::text AS role, coalesce(application_name, '') AS application, count(*)::int AS backends " +
+      "FROM pg_stat_activity WHERE starts_with(datname, 'dems_test_') GROUP BY 1, 2, 3 ORDER BY 1, 2 NULLS FIRST, 3",
+  );
+
+  const others = databases.filter((row) => !row.name.startsWith('dems_test_'));
+  console.log(`pg_database: ${databases.length} row(s); outside the test prefix: ${others.map((row) => `${row.name} (${row.owner})`).join(', ')}`);
+
+  const runs = new Map<string, { stamp: string; started: number; names: string[] }>();
+  const unparsed: string[] = [];
+  for (const row of databases) {
+    if (!row.name.startsWith('dems_test_')) continue;
+    const parsed = parseTestDatabaseName(row.name);
+    if (parsed === null) {
+      unparsed.push(row.name);
+      continue;
+    }
+    const entry = runs.get(parsed.run.prefix) ?? { stamp: parsed.run.stamp, started: parsed.startedAtSeconds, names: [] };
+    entry.names.push(row.name);
+    runs.set(parsed.run.prefix, entry);
+  }
+  console.log(`test runs with a database: ${runs.size}${unparsed.length > 0 ? `; names outside the scheme: ${unparsed.join(', ')}` : ''}`);
+  for (const [prefix, run] of [...runs.entries()].sort((a, b) => a[1].started - b[1].started)) {
+    const key = livenessKey(run.stamp);
+    const holders = locks.filter((lock) => Number(lock.key) === key && lock.granted);
+    const on = backends.filter((row) => row.database.startsWith(prefix));
+    const withRole = on.filter((row) => row.role !== null);
+    const age = now - run.started;
+    const verdict = holders.length > 0 ? 'ALIVE (its liveness lock is held)' : 'no session holds its liveness lock';
+    console.log(
+      `  ${prefix}*  started ${wib(run.started)} (${Math.floor(age / 60)} min ago; the stale sweep takes a dead run after ${STALE_AFTER_SECONDS / 3600} h, at ${wib(run.started + STALE_AFTER_SECONDS)})  databases ${run.names.length}  ${verdict}`,
+    );
+    for (const holder of holders) console.log(`      lock (${LOCK_CLASS}, ${key}) held by backend pid ${holder.pid}, role ${holder.role}, application "${holder.application}"`);
+    console.log(`      client sessions on its databases: ${withRole.length === 0 ? 'none' : withRole.map((row) => `${row.backends} of ${row.role} "${row.application}" on ${row.database.slice(prefix.length)}`).join(', ')}; backends without a role: ${on.filter((row) => row.role === null).reduce((sum, row) => sum + row.backends, 0)}`);
+    if (prefix === NAMED) for (const name of run.names) console.log(`      ${name}`);
+  }
+  if (NAMED !== '' && !runs.has(NAMED)) console.log(`  ${NAMED}*  no database with this prefix exists`);
+  const cloneLock = locks.filter((lock) => lock.key === '0');
+  console.log(`clone lock (${LOCK_CLASS}, 0): ${cloneLock.length === 0 ? 'free' : cloneLock.map((lock) => `${lock.granted ? 'held' : 'awaited'} by pid ${lock.pid}`).join(', ')}; liveness locks held in all: ${locks.filter((lock) => lock.key !== '0' && lock.granted).length}`);
+} finally {
+  await session.close();
+}

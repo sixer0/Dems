@@ -2,27 +2,37 @@ import { Redirect, Stack, useRouter, useSegments, type Href } from 'expo-router'
 import { useEffect, useRef } from 'react';
 import { palette } from '@dems/shared/tokens';
 import { stackAnimation, useMotionSettings } from '@/motion';
-import { useActiveSession, useAuth, type ActiveSessionInfo } from '@/runtime';
+import { isPairingBlocked, useActiveSession, useAuth, usePairing, type ActiveSessionInfo } from '@/runtime';
 import { clearPendingHref, peekPendingHref, setSignedInSnapshot } from './pending-href';
 import { postSignInHref, sessionResyncHref } from './session-routes';
 
 /**
- * The root stack with the auth guard (04_mobile_specs §3.3), rendered by `src/app/_layout.tsx`
- * inside the providers:
+ * The root stack with the auth guard (04_mobile_specs §3.3) and the pairing-required gate
+ * (04_client_integration_spec §9.4 MP-11), rendered by `src/app/_layout.tsx` inside the providers:
  *
  * - public: `/` (boot router), `/stack-check`, `/pair`, plus `/dev-gallery` (debug) and
  *   `+not-found`, which Expo Router adds automatically because they are not listed as protected;
- * - `(auth)` only while signed out, `(app)` only while signed in (`Stack.Protected`, VM-08).
+ * - `(auth)` only while signed out AND not blocked, `(app)` only while signed in AND not blocked,
+ *   `dev-gallery` only while not blocked (`Stack.Protected`, VM-08; MP-11).
  *
- * When the guard removes the current group (sign-in, sign-out, idle expiry, Lock console), Expo
- * Router falls back to the anchor `/`, and the boot router picks the target. One case needs help:
- * `/login` opened over a public screen (a guarded deep link arriving on `/stack-check` or `/pair`,
- * see `+native-intent`). After sign-in that public screen is still underneath, so there is no
- * fallback to `/`; the navigator then replaces it with `/`, so the boot router still applies the
- * §3.3 order (resync target, pending href, Home). Recording is never touched by the guard (§3.3).
+ * `blocked` = `isPairingBlocked(pairing)` (MP-11): true only in LIVE mode while the device is not
+ * PAIRED (also while its stored credential is still being read). In SIMULATED and HEARTBEAT mode
+ * `pairing.required` is false, so `blocked` is false and every guard behaves exactly as before
+ * (AC-C-74): the existing guard tests pass unchanged.
+ *
+ * When a guard removes the current group (sign-in, sign-out, idle expiry, Lock console, a revocation
+ * or an unknown credential), Expo Router falls back to the anchor `/`, and the boot router picks the
+ * target — `/pair` first when blocked (§9.4 route table, AC-C-73, AC-C-78), else the §3.3 order. One
+ * case needs help: `/login` opened over a public screen (a guarded deep link arriving on
+ * `/stack-check` or `/pair`, see `+native-intent`). After sign-in that public screen is still
+ * underneath, so there is no fallback to `/`; the navigator then replaces it with `/`, so the boot
+ * router still applies the order (resync target, pending href, Home). While blocked, `/login` is
+ * itself guarded out, so such a link falls through `/` to `/pair` and stays pending (MP-12).
+ * Recording is never touched by the auth guard (§3.3).
  */
 export function RootNavigator() {
   const { isAuthenticated } = useAuth();
+  const blocked = isPairingBlocked(usePairing());
   const motionSettings = useMotionSettings();
   const segments = useSegments();
   const router = useRouter();
@@ -55,11 +65,17 @@ export function RootNavigator() {
       <Stack.Screen name="index" />
       <Stack.Screen name="stack-check" />
       <Stack.Screen name="pair" />
-      <Stack.Protected guard={!isAuthenticated}>
+      {/* MP-11: the pairing gate adds "and not blocked" to the two auth guards, and guards the
+          debug gallery by "not blocked" alone. `index`, `stack-check` and `pair` stay unguarded, so
+          an unpaired device in LIVE mode still reaches `/pair` and Stack Check. */}
+      <Stack.Protected guard={!isAuthenticated && !blocked}>
         <Stack.Screen name="(auth)" />
       </Stack.Protected>
-      <Stack.Protected guard={isAuthenticated}>
+      <Stack.Protected guard={isAuthenticated && !blocked}>
         <Stack.Screen name="(app)" />
+      </Stack.Protected>
+      <Stack.Protected guard={!blocked}>
+        <Stack.Screen name="dev-gallery" />
       </Stack.Protected>
     </Stack>
   );
@@ -72,8 +88,11 @@ function summaryAcknowledgedOf(session: ActiveSessionInfo): boolean | undefined 
 }
 
 /**
- * The boot router's target (04 §3.1 `index.tsx`, §3.3): `/login` while signed out; after sign-in
- * the resync target (§3.7), else the pending href, else `/home`.
+ * The boot router's target (04 §3.1 `index.tsx`, §3.3; §9.4 MP-11): `/pair` FIRST while the pairing
+ * gate blocks (LIVE mode, device not PAIRED — AC-C-73); else `/login` while signed out; after
+ * sign-in the resync target (§3.7), else the pending href, else `/home`. While blocked the pending
+ * href is neither read nor dropped: a guarded link that arrived meanwhile is used only after both
+ * the pairing and the sign-in (MP-12).
  */
 export function useBootHref(): string {
   // Reads module state (the pending href) during render: opt out of React Compiler memoisation,
@@ -81,6 +100,7 @@ export function useBootHref(): string {
   'use no memo';
   const { isAuthenticated } = useAuth();
   const session = useActiveSession();
+  if (isPairingBlocked(usePairing())) return '/pair';
   if (!isAuthenticated) return '/login';
   const resync = sessionResyncHref(session.state, {
     sessionId: session.sessionId,

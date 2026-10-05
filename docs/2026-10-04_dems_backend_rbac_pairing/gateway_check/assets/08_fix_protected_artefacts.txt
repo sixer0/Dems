@@ -1,0 +1,20 @@
+CP-W1 fix round — the protected artefacts after the round (git hash-object, run 2026-10-05)
+The four of AC-C-35/AC-C-36 and the two files of W01's state (D25, D31).
+
+78c8898ecb89206beda222030c918958143316c3  apps/core-web/src/lib/packaged-csp.ts
+6d0db39e3b918db65f0faff8b6ad7fbb30403fe0  apps/core-web/src/lib/__tests__/packaged-csp.test.ts
+89cab371b658f09788a9350da13d118d4b822493  apps/core-web/src/lib/__tests__/core-endpoint.test.tsx
+7a04c97d66fef15ed36f753a87a91c400f7b9500  apps/core-web/src/test/routes.test.tsx
+9e8b97c80da596e0ae6e9b37aa69b64e99e3bbdd  apps/core-web/src/test/sim-fetch.test.ts
+71f6f0337f2339d8e8d66ef232d7334dc0b67d1d  apps/core-web/src/features/storage/__tests__/storage-page.test.tsx
+
+Recorded by the checkpoint (08_cp_web_runtime.md section 0) and by D25/D31:
+78c8898ecb89206beda222030c918958143316c3  packaged-csp.ts
+6d0db39e3b918db65f0faff8b6ad7fbb30403fe0  packaged-csp.test.ts
+89cab371b658f09788a9350da13d118d4b822493  core-endpoint.test.tsx
+7a04c97d66fef15ed36f753a87a91c400f7b9500  routes.test.tsx
+9e8b97c80da596e0ae6e9b37aa69b64e99e3bbdd  sim-fetch.test.ts (W01's state)
+71f6f0337f2339d8e8d66ef232d7334dc0b67d1d  storage-page.test.tsx (W01's state)
+
+git diff --stat acaff20 over the four protected paths:
+(no lines above = absent from the diff, as CLG (a) asks)

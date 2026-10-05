@@ -1,0 +1,22 @@
+--- a/apps/core-server/src/plugins/origin-guard/__tests__/guard-test-app.ts
++++ b/apps/core-server/src/plugins/origin-guard/__tests__/guard-test-app.ts
+@@ -6,7 +6,7 @@
+  * The app has the real stages 3 and 5. Stage 4 is the scaffold's stub (every caller ANONYMOUS)
+  * until a test puts a stand-in there with `authenticateAs` or `authenticateBySpecification`.
+  */
+-import { ApiErrorSchema, CREDENTIAL_CONFLICT_REASON } from '@dems/shared/api';
++import { ApiErrorSchema, CREDENTIAL_CONFLICT_REASON, REQUEST_ID_HEADER_NAME } from '@dems/shared/api';
+ import { OperatorRole, createManualClock } from '@dems/shared/sim';
+ import type { FastifyInstance, FastifyRequest, LightMyRequestResponse } from 'fastify';
+ import { expect } from 'vitest';
+@@ -27,8 +27,8 @@
+ /** A fixed start for the manual clock: 2026-10-04T00:00:00Z. */
+ export const CLOCK_START = Date.UTC(2026, 9, 4);
+ 
+-/** What a response may carry besides the five headers of OR-9 (the scaffold's own list). */
+-const TRANSPORT_HEADERS = ['content-type', 'content-length', 'date', 'connection', 'allow', 'retry-after'];
++/** What a response may carry besides the five headers of OR-9: the request ID (decision D55), and the scaffold's own list. */
++const TRANSPORT_HEADERS = [REQUEST_ID_HEADER_NAME, 'content-type', 'content-length', 'date', 'connection', 'allow', 'retry-after'];
+ 
+ export const SCRATCH_READ = '/api/v1/scratch/1';
+ export const SCRATCH_COMMAND = '/api/v1/scratch/1';

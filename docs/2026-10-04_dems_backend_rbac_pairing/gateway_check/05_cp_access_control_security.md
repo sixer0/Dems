@@ -1,0 +1,576 @@
+---
+task_id: 2026-10-04_dems_backend_rbac_pairing
+task_slug: dems_backend_rbac_pairing
+date: 2026-10-04
+agent: security-review
+blueprint_step: 67
+plan_row: W45 (CHECKPOINT CP-S1)
+tier: 1
+type: security review of code (read-only; nothing implemented, no source file edited)
+verdict: CAUTION
+reviewed: apps/core-server/src (plugins origin-guard, authenticate, throttle, permission-guard, logger, db, error-envelope, readiness, response-headers; modules identity, identity/biometric, identity/password-hash, pairing, admin, rbac, demo; realtime; core; db/reset, db/commands; engine/actor-scope) as on disk 2026-10-04 17:57 to 18:12 WIB
+must_fix_before_backend_gate: 2 (both already scheduled; no new one)
+last_updated: 2026-10-04 18:17
+---
+
+# CP-S1: security review of the access-control code
+
+**VERDICT: CAUTION.** No defect was found that lets any of the nine attacker positions of the brief read, change or forge something the specification protects, on a clock that moves forward. 0 Critical, 0 High, 2 Medium, 7 Low, 4 Info. The two Medium findings are known, already ruled "fix before the gate", and still open in the tree at 18:12:12: the clock without a floor (F74) and the replaceable stage 6 (CPB1-5). This review adds no new item to the list that blocks the backend gate.
+
+| Severity | Count | IDs |
+|---|--:|---|
+| Critical | 0 | |
+| High | 0 | |
+| Medium | 2 | CPS1-1 (F74, open), CPS1-2 (CPB1-5, carried, open) |
+| Low | 7 | CPS1-3 to CPS1-9 |
+| Info | 4 | CPS1-10 to CPS1-13 |
+
+**Count that must be fixed before step 80 (backend gate): 2** — CPS1-1 (owner: core, fix round B2, decision D110) and CPS1-2 (owners W08 and W28, fix round B, decision D87). Open FAIL: 0.
+
+**Citation convention.** Code is `path:line` relative to `apps/core-server/` unless it starts with another top folder. `[SP:…]` is `masterplan/01_specs.md`, `[DB:…]` is `masterplan/03_database_contract.md`, `[RV:…]` is `gateway_check/03_security_design_review.md`, `[DEC:…]` is `decisions/decisions.md`. Each statement is labelled **read** (established by reading the file at the cited line), **run** (established by a command of this review, section 1.6), or **hypothesis** (neither; the row that can confirm it is named). No credential value appears in this file.
+
+---
+
+## 1. Tier 1 frame
+
+### 1.1 Subject
+
+The access-control code of the DEMS Core server after every backend module has landed: request guards (W23), identity (W24, W09), the RBAC guard (W28), pairing (W32), administration (W33), the biometric token (W41), the realtime channel (W42), and what they rest on (unit of work, audit writers, logger, runtime pool, reset routine as called from the demo module, the engine's actor scope).
+
+### 1.2 Stakeholders
+
+| Stakeholder | What this file gives them |
+|---|---|
+| Controller | The verdict, 15 rulings (section 6), the count that blocks step 80 |
+| Fix rounds B and B2 | What the clock floor must guarantee (CPS1-1) and that CPB1-5 is still open |
+| Owners W24, W32, W41, W42, W08 | Seven Low findings with a concrete change each |
+| Contract close-out W83 | Three wording items (section 5, CPS1-13) |
+| Later security reviews W99, W100 | What was not reviewed here (section 1.9) and what lapses with U4 |
+| The user | Section 8: what is accepted for a local demo |
+
+### 1.3 Timeline (2026-10-04, WIB)
+
+| When | Event | Source |
+|---|---|---|
+| 04:25 | Design review, row 20, CAUTION, SD-01 to SD-29 | [RV] |
+| 12:52 to 17:43 | Gates of W24, W28, W32, W33, W41, W42, W43, W53 | [DEC:D78, D83, D91, D93, D101, D105, D110] |
+| 15:43 | Fix round A landed (logger, search path, unit guard) | [DEC:D96] |
+| 17:57 to 18:17 | This review | `date` printed `18:12:12 WIB` at the final re-check |
+| Next | Fix rounds B / B2, then step 80 | [DEC:D87, D110] |
+
+### 1.4 Scope
+
+- **In scope:** the code of section "reviewed" in the header, against [SP:§15] SR-01 to SR-82, the findings of row 20, [DB:§15.4], GS-22, the standing rules M3, M6, M8, M14, M16.
+- **Boundary accepted by D16, not reported as defects:** one single-user Mac, every listener on 127.0.0.1, plain HTTP on loopback, synthetic data, a published demo password, a hostile local process with the user's uid.
+- **Not done:** no source file edited, no port bound, no server started, no device touched, no SQL written against `dems_demo` or a lane.
+
+### 1.5 Rationale and evidence chain
+
+| Step | Fact | Source |
+|---|---|---|
+| 1 | Every request that matches a route passes five stages in one hook before the body is read; a route without a registry rule stops the boot | `src/app.ts:340-351`; `src/plugins/permission-guard/index.ts:235-242, 379-385` (read); `boot-registry.test.ts:64` (run) |
+| 2 | The decision of stage 6 uses the permissions that stage 4 read from PostgreSQL for that request; nothing is cached | `src/modules/identity/session-store.ts:102-107`; `src/plugins/permission-guard/decision.ts:114-130` (read); `denial.db.test.ts:495` (run) |
+| 3 | Every secret is generated by the platform CSPRNG, returned once and stored as SHA-256 (the password as Argon2id); the two in-process comparisons are constant-time | section 3 rows SR-05 to SR-09, SR-26, SR-31, SR-36 |
+| 4 | Every server-native state change is one unit of the serial pipeline with a compare-and-set statement; the attempt is consumed before it is verified | `src/modules/identity/sign-in.ts:192`, `src/modules/pairing/redeem.ts:122-136`, `src/modules/identity/biometric/sign-in.ts:175-186` (read); concurrency tests (run) |
+| 5 | The audit table is append-only for the runtime role by privilege and for every role by an `ENABLE ALWAYS` trigger; the chain is serialised by a row lock taken as the first statement of every unit | `src/db/migrations/0003_privileges.sql:12-24`, `0002_audit_guards.sql:91-95`, `src/core/unit-of-work.ts:227-236` (read); `test/db/` 233 tests (run) |
+| 6 | What remains are two known hazards with a precondition outside a request (a clock set back between two starts; a code change that replaces a stage) and seven hardening items | section 5 |
+| 7 | Therefore CAUTION: proceed to the gate after the two scheduled fixes | top of this file |
+
+### 1.6 Method
+
+1. Read the reference documents named in the brief ([SP:§2.3, §15], [DB:§6, §7, §15.4], [RV] in full, CP-B1 §4.2, §4.3 CPB1-5, §9, the gate report's rules M1 to M16, decisions D16 to D110 and findings F29 to F74 as listed).
+2. Read the production sources of the header line by line (the files of W23, W24, W28, W32, W33, W41, W42 in full; `core/pipeline.ts`, `unit-of-work.ts`, `unit-statement.ts`, `audit-writer.ts`, `payload-rules.ts`, `audit-details.ts`, `clock.ts`, `windows.ts`; `plugins/logger`, `plugins/db`, `plugins/error-envelope/index.ts`; `modules/demo/{index,host,reset}.ts`; `db/reset/routine.ts:1-140, 425-540`, `names.ts`, `kept-tables.ts:1-130`; `db/commands/owner-connection.ts`; `engine/actor-scope.ts`, `engine/host.ts:528-560`).
+3. The implementation logs of the seven rows were read through their decision records and by search for every item they hand to this review (`grep "W45"` over 19 logs), not line by line. Stated as a gap in 1.9.
+4. Commands run (all read-only; `date` at the end 18:12:12):
+
+| Command | Result |
+|---|---|
+| `npm run typecheck -w @dems/core-server` | exit 0 |
+| `npm run lint -w @dems/core-server` | exit 0 |
+| `npm run test -w @dems/core-server -- --maxWorkers=2` | 141 files, 3,609 tests passed, 18:03:17, 23.27 s, exit 0 |
+| `test:db … test/db/` (`DEMS_TEST_STEP=67`, sandbox bypass) | 9 files, 233 passed, 18:06:36; 0 databases left |
+| `test:db … src/plugins/permission-guard/` | 2 files, 87 passed, 18:07:12 |
+| `test:db … src/realtime/` | 6 files, 90 passed, 18:07:15 |
+| `test:db … src/modules/identity/` | 15 files, 179 passed, 18:07:20 |
+| `test:db … src/modules/pairing/` | 7 files, 79 passed, 18:07:28 |
+| `test:db … src/modules/admin/` | 6 files, 60 passed, 18:07:37 |
+| `npm run db:status -- --database <name>` for `dems_demo`, `dems_lane_1..3` (sandbox bypass) | section 7.3 |
+| `npm audit --omit=dev --json` | **not run: network refused** (the sandbox proxy answered 502 for the registry's advisory endpoint) |
+| `npm ls <advisory packages> -w <workspace> --omit=dev --all` | section 6, ruling 15 |
+| Registry enumeration through `tsx` | 75 operations: 27 GET, 48 POST; no GET has a success audit type |
+| Counts over `.data/postgres.log` (no line printed) | section 5, CPS1-9; section 6, ruling 14 |
+| `grep` searches | named where used |
+
+5. For each of the nine attacker positions: what can be read, changed, forged, replayed, exhausted or hidden (section 4.1).
+
+### 1.7 Alternatives considered
+
+| Alternative | Why not |
+|---|---|
+| FAIL for CPS1-1 | The precondition is a wall clock set back between two starts of one demo computer; the fix is ruled and in flight. It blocks the gate, it does not make the code unsafe on a forward clock |
+| Count the seven Low findings as gate blockers | None is reachable without a credential or a local process, and each has a bounded effect; fixing seven things in flight around five other rows costs more risk than it removes before the gate |
+| Require `REVOKE TEMPORARY` now (F53 option b) | The pin on the connection and in every unit removes the shadowing; the revoke touches three creation paths (ruling 1) |
+| Require CSRF tokens because 127.0.0.1 ports are same-site | The Origin guard refuses every POST and upgrade from another port; what is left is a blind GET (CPS1-11) |
+| Re-check the caller inside every unit (F67) | It would put a second authorisation point into every module, against rule M3 (ruling 4) |
+
+### 1.8 Assumptions
+
+| ID | Assumption | Effect if wrong |
+|---|---|---|
+| A-1 | The files were not changed between 17:57 and 18:12. Checked: the modification time of every file cited in a Medium or Low finding is 17:07:56 or earlier | A finding's line number moves |
+| A-2 | A browser sends cookies with the longer `Path` first and sends no `Origin` on a no-cors GET (hypothesis from the Fetch and cookie specifications; not run in a browser) | CPS1-11 is weaker than stated |
+| A-3 | PostgreSQL lets a role end a backend of the same role (F70; documentation, not run) | Ruling 5 has less to accept |
+| A-4 | The seed writes exactly 82 audit rows ([DB:§9.4]; `db:status` shows 82 in four databases) | Section 6.3 would need a query by type |
+
+### 1.9 Gaps: what was not reviewed
+
+- The handlers of the modules outside the brief (sessions, evidence, devices, storage, network-time, security-audit, system, alerts, health) beyond their `engine.command` call sites and one mapping check (`src/modules/devices/index.ts:128-136`). Their role-by-operation behaviour is the matrix test W47.
+- `engine/host.ts` beyond the command entry and the actor scope; `db/mapping`, `db/seed`, `db/fixtures`, `db/store`; the test helper beyond one file.
+- `scripts/pg/**` as code: only `postgresql.conf`, `pg_hba.conf`, the file modes and three searches.
+- Both clients; SR-16, SR-32 and the conditions C1 to C3 of SR-63 are theirs.
+- A listening server: the two sweepers and the three realtime timers have run only in tests that call their step (the gate W58 runs them for real).
+- The seven implementation logs line by line (method step 3).
+- A browser: A-2.
+- Performance and the measured cost of one unit under a real flood of GETs (security-audit row F-4).
+
+---
+
+## 2. Security-review-gate (five checks)
+
+| Check | Result | Detail |
+|---|---|---|
+| Credential leak | PASS, one Low | No token, credential, code, password or hash in a row, an event, a publication, an answer or a log line of the server (read; dump and log-capture tests run). The PostgreSQL server log holds failing rows with hash columns: CPS1-9 |
+| Destructive operation | PASS | `DROP DATABASE` only through `dropStatement`, whose parameter type accepts a staging or previous name (`src/db/reset/names.ts:188-193`); the reset is behind `DEMO_CONTROL` and the boot-time flag |
+| External call | PASS | No outbound connection in the sources (`test/static/network.test.ts:148`, run) |
+| Injection | PASS | Every statement of the reviewed modules is a constant text with bind parameters; identifiers are checked against a closed list and quoted (section 4.6) |
+| Permission escalation | CAUTION | CPS1-1 (a session that cannot be ended), CPS1-2 (stage 6 replaceable), CPS1-3 (a session token becomes a device credential) |
+| **Overall** | **CAUTION** | |
+
+---
+
+## 3. The requirement table SR-01 to SR-82
+
+"Met" was decided from the code at the cited line, not from a row's log. Test lines are the `describe` or `it` that proves it; all cited test files were in a run of this review unless marked (nr = not run here).
+
+| SR | Status | Code | Test | Note |
+|---|---|---|---|---|
+| 01 | met | `src/config.ts:22`; `src/index.ts:107` | `test/static/network.test.ts:96` | The host is a constant; PostgreSQL's listener is `scripts/pg` |
+| 02 | met, not this code | `.data/postgres/postgresql.conf:892-894`; `pg_hba.conf` six lines, all `scram-sha-256`, loopback only (read) | `scripts/pg/check-hba.test.mjs:15` (nr) | Owner W07 |
+| 03 | met | no client of any network library in `src/` | `test/static/network.test.ts:148` | |
+| 04 | met | no CORS plugin in `src/app.ts:263-285, 336-358` | `origin-guard.test.ts:285`; `response-headers.test.ts:133` | |
+| 05 | met | `src/modules/identity/password-hash/password-hash.ts:42-55, 137-154, 281-292` | `password-hash.test.ts:62, 148` | Argon2id 19,456 KiB, 2, 1, tag 32, salt 16 from `randomBytes` |
+| 06 | met | `password-hash.ts:276-279, 302-306`; `src/modules/identity/sign-in.ts:245-269`; `session-store.ts:387-389` | `sign-in.db.test.ts:560` | `timingSafeEqual` at `:278` |
+| 07 | met | `password-hash.ts:187-196`; the password goes to the wrapper only (`sign-in.ts:200-203`) | `password-hash.test.ts:323`; `secrets.db.test.ts` (identity) | |
+| 08 | met (comparable, not identical) | `sign-in.ts:196-204`; `password-hash.ts:308-313` | `sign-in.db.test.ts:353`; `password-hash.test.ts:260` | Ruling 2 (3) |
+| 09 | met | `src/modules/identity/tokens.ts:17-32`; `session-store.ts:158-160` | `tokens-cookie.test.ts:12` | Looked up by hash; never compared |
+| 10 | met | `sign-in.ts:207-215` | `sign-in.db.test.ts:160, 223` | |
+| 11 | met | `src/modules/identity/sessions.ts:170-172, 206-225, 275-289`; `session-store.ts:237-243`; `sweeper.ts:27-56` | `sessions.db.test.ts:178`; `concurrency.db.test.ts:265` | The timer on a listening server is W58's (ruling 2 (5)) |
+| 12 | **partly met** | `session-store.ts:201-216`; `src/modules/admin/changes.ts:156-160`; `src/modules/pairing/devices.ts:126-136, 146-150` | `status.db.test.ts:143`; `devices.db.test.ts:214`; `concurrency.db.test.ts:220` | Met on a forward clock. Not met after a start whose clock is behind the stored state: CPS1-1 |
+| 13 | met | `session-store.ts:102-107`; `src/plugins/authenticate/index.ts:173-182` | `sessions.db.test.ts:117`; `users.db.test.ts:412` | |
+| 14 | met (accepted deviation) | no renewal on a role change (`changes.ts:125-141`) | `denial.db.test.ts:495` | R-04 |
+| 15 | met | `src/plugins/authenticate/credentials.ts:51-68`; `src/plugins/logger/request-log.ts:52-56` | `authenticate.db.test.ts:157`; `authenticate.test.ts:495` | No query string is read by any stage |
+| 16 | server half met | `src/modules/identity/routes.ts:93-96` | `sign-in.db.test.ts:87` | Client half: W56, W62 |
+| 17 | met | rows of `auth_sessions`; a kept table of the reset (`src/db/reset/kept-tables.ts:69`) | `sessions.db.test.ts:510`; `test/acceptance/restart.test.ts:570` (nr) | |
+| 18 | met | `src/modules/identity/cookie.ts:25-35`; `src/config.ts:73-75` | `tokens-cookie.test.ts:60`; `two-instances.db.test.ts:64` | Accepted deviation; CPS1-11 |
+| 19 | met | `src/plugins/origin-guard/origin-decision.ts:51-58, 104-125`; `index.ts:87-108` | `origin-guard.test.ts:159`; `pipeline.db.test.ts:225`; `upgrade.db.test.ts:285` | |
+| 20 | met | 27 GET operations, none with a success audit type (run) | `origin-decision.test.ts:248` | A GET can cause the bookkeeping writes of stage 4 and one empty unit (ruling 9; section 4.8) |
+| 21 | met | `src/modules/identity/console.ts:43-49`; `permission-guard/index.ts:259-266` | `pipeline.db.test.ts:268` | |
+| 22 | met | `src/modules/identity/lockout.ts:88-165`; `limits.ts:18-24` | `sign-in.db.test.ts:450`; `concurrency.db.test.ts:84` | The key is the console; CPS1-10 |
+| 23 | **partly met** | `sign-in.ts:146-189` | `sign-in.db.test.ts:353`; `sequence.db.test.ts:159` | A verified failure in a burst above the budget writes no row: CPS1-6 |
+| 24 | met | `src/plugins/throttle/index.ts:210-235`; `limits.ts:18-22, 86-92` | `throttle.test.ts:424`; `upgrade.db.test.ts:581` | |
+| 25 | met (accepted) | `lockout.ts:90-94` memory limiters | `lockout.test.ts:167` | R-10 |
+| 26 | met | `src/modules/pairing/secrets.ts:26-28`; `codes.ts:47-63`; `store.ts:141-143` | `secrets.test.ts:32`; `lifecycle.db.test.ts:117` | |
+| 27 | met | `src/modules/pairing/redeem.ts:122-171`; `store.ts:163-180` | `lifecycle.db.test.ts:474`; `concurrency.db.test.ts:88` | |
+| 28 | met | `secrets.ts:31-33, 46-48`; `store.ts:92-94` (no hash selected for an answer) | `secrets.db.test.ts:272, 297` | The PostgreSQL log is CPS1-9 |
+| 29 | met | `redeem.ts:70-72, 181` | `lifecycle.db.test.ts:339` | |
+| 30 | met | registry rule `PAIRING_MANAGE`; `src/modules/pairing/activity.ts:45-156` | `lifecycle.db.test.ts:117, 474` | |
+| 31 | met | `secrets.ts:51-63`; `redeem.ts:142-151` | `secrets.test.ts:100`; `secrets.db.test.ts:272` | |
+| 32 | not in this code | — | — | Mobile row W51 |
+| 33 | met | `src/modules/pairing/store.ts:281-299`; `resolver.ts:93-104`; `devices.ts:177-185` | `devices.db.test.ts:484` | CPS1-3 |
+| 34 | met | `devices.ts:117-152` | `devices.db.test.ts:214`; `concurrency.db.test.ts:362` | |
+| 35 | met | `src/plugins/authenticate/index.ts:212-224` | `concurrency.db.test.ts:362` | |
+| 36 | met | `src/modules/identity/biometric/tokens.ts:18-35`; `store.ts:57-60, 232-237`; `sign-in.ts:186-250` | `enrolment.db.test.ts:81`; `concurrency.db.test.ts:88` (biometric) | CPS1-7 |
+| 37 | met | `src/modules/identity/biometric/failure.ts:69-89`; `store.ts:283` | `failure.db.test.ts:90`; `static.test.ts:142` | CPS1-8 |
+| 38 | met | `src/realtime/index.ts:319-324`; `admission.ts:76-96` | `static.test.ts:106` (realtime); `upgrade.db.test.ts:325` | |
+| 39 | met | upgrade kind in `origin-decision.ts:76-79, 110-116` | `upgrade.db.test.ts:285` | |
+| 40 | met | `admission.ts:138-144`; `src/realtime/hub.ts:533-544` | `upgrade.db.test.ts:325` | |
+| 41 | met | `hub.ts:396-418, 522-531` | `hub.control.test.ts:108, 174`; `control.db.test.ts:220` | Re-validation is by publication from every path that ends a session, the sweep included |
+| 42 | met | `src/realtime/index.ts:259-264`; `limits.ts:18, 23, 26`; `hub.ts:481-484, 634-643` | `upgrade.db.test.ts:532`; `hub.lifetime.test.ts:136` | No cap per principal: CPS1-5 |
+| 43 | met | `permission-guard/index.ts:235-242, 330-353, 379-385`; `access-rules.ts:361-416` | `boot-registry.test.ts:64`; `access-rules.test.ts:268` | CPS1-2 |
+| 44 | met | one `onRequest` hook, `src/app.ts:340-351` | `denial.db.test.ts:306`; `static.test.ts:111` (guard) | |
+| 45 | met | `permission-guard/index.ts:292-312`; `denial.ts:86-158` | `denial.db.test.ts:122`; `guard.test.ts:498` | |
+| 46 | met | `decision.ts:114-130` | `denial.db.test.ts:172` | |
+| 47 | met | `src/modules/admin/changes.ts:115-123, 146-154`; `statements.ts:114` | `status.db.test.ts:302`; `last-admin.db.test.ts:157` | Ruling 4 |
+| 48 | met | `src/plugins/logger/logger-options.ts:38-48, 121-183, 204-238`; `error-envelope/index.ts:91-100` | `log-capture.test.ts:124`; `authenticate.test.ts:495` | An error copied into a plain object is not caught; none exists (ruling 5) |
+| 49 | met | `request-log.ts:25-30, 52-56, 78-89` | `log-capture.test.ts:124`; `upgrade.db.test.ts:406` | |
+| 50 | met | `error-envelope/index.ts:91-100, 148-152` | `error-envelope.test.ts:221` | |
+| 51 | met | `hub.ts:466-469, 477-496` (a refused message is logged by its reason) | `upgrade.db.test.ts:378`; `static.test.ts:189` (realtime) | |
+| 52 | met | `0003_privileges.sql:12-24`; `0002_audit_guards.sql:91-95` | `test/db/audit-guards.db.test.ts:226, 249`; `catalog.db.test.ts:295` | |
+| 53 | met | `src/core/unit-of-work.ts:227-236`; `audit-writer.ts:262-320`; `unit-of-work.ts:90-96` | `audit-chain.db.test.ts:66`; `audit-guards.db.test.ts:102, 150` | |
+| 54 | met | `src/core/payload-rules.ts:58-94, 128-162`; `audit-details.ts:82-121`; `audit-writer.ts:113-146` | `writers.test.ts:137`; `secrets.db.test.ts:235` (biometric) | A failed attempt names an operator by the username that matched, never the username (CPS1-12) |
+| 55 | met for the reviewed modules | the activity builders of identity, pairing, admin, biometric | `sequence.db.test.ts` of each module | The other areas: their module gates and W47 |
+| 56 | met | `src/db/reset/routine.ts:8-19`; `kept-tables.ts:60-71` | `reset.db.test.ts:259, 435`; `security-audit/__tests__/reset.db.test.ts:231` (nr) | |
+| 57 | met | `decision.ts:147-149`; `src/config.ts:196-200` | `routes.test.ts:162` (demo); `gate.db.test.ts:115` (nr) | |
+| 58 | met | `routine.ts:440-449, 462-489`; `owner-connection.ts:120-177` | `guard.db.test.ts:28` (nr); `static.test.ts:228` (demo) | |
+| 59 | met, not this checkpoint | engine faults | `faults.db.test.ts:176` (nr) | |
+| 60 | met, not this code | `stat`: `.data` 700, the three credential files and `postgres.log` 600; `scripts/pg/lib.mjs:205` (32 random bytes) | `scripts/pg/init.test.mjs:45` (nr) | |
+| 61 | met | no `secret` or `associatedData` passed (`password-hash.ts:139-148`) | `static.test.ts:220` (pairing), `:274` (biometric) | |
+| 62 | met, not this checkpoint | seed | `mapping/__tests__/static.test.ts:183` | |
+| 63 | server half met | the seed stores the hash only | `seed.db.test.ts:212` (nr) | C1 to C3: clients and README. C4 holds: SR-01 |
+| 64 | met for the reviewed modules | `src/app.ts:297, 308-309`; route schemas from the registry | `throttle.test.ts:345`; module route tests | |
+| 65 | met | `audit-writer.ts:149-162, 262-270`; actors from `request.principal` (`admin/index.ts:97-101`, `pairing/routes.ts:100-109`) | `audit-chain.db.test.ts:284`; `writers.test.ts:94` | |
+| 66 | not this checkpoint | evidence module | `evidence/__tests__/static.test.ts:226` | |
+| 67 | met for the reviewed code | section 4.6 | `identity/__tests__/static.test.ts:167, 190`; `pairing/__tests__/static.test.ts:276, 304` | |
+| 68 | met | no `pg.pwfile` under `apps/` or `packages/` (search); `owner-connection.ts:30` is the one place of the owner file name | `test/static/credentials.test.ts:15, 48`; `privileges.db.test.ts:334` | |
+| 69 | met | `origin-decision.ts:110-116`; `console.ts:43-49` | `origin-guard.test.ts:501`; `pipeline.db.test.ts:268` | |
+| 70 | met | `src/config.ts:55-60`; `origin-decision.ts:51-58` | `origin-decision.test.ts:28`; `upgrade.db.test.ts:285` | |
+| 71 | met | `src/plugins/throttle/denial-budget.ts:74-92`; `index.ts:229-234` | `denial-budget.test.ts:187, 200` | Rulings 2 (1), 7 |
+| 72 | met | section 1.5 step 4; `src/core/pipeline.ts:376-416` | AC-B-76 to 80: `pairing/concurrency.db.test.ts:88, 230`; `biometric/concurrency.db.test.ts:88`; `last-admin.db.test.ts:157`; `identity/concurrency.db.test.ts:84` | |
+| 73 | met | `credentials.ts:57-67`; `session-store.ts:114-117`; `origin-decision.ts:118-120` | `authenticate.test.ts:270`; `authenticate.db.test.ts:88` | Only this instance's cookie name is a credential |
+| 74 | met | `biometric/sign-in.ts:239-248`; `session-store.ts:214-216`; `hub.ts:396-406` | `sign-in.db.test.ts:214` (biometric); `control.db.test.ts:220` | |
+| 75 | met | `throttle/limits.ts:70-79`; `index.ts:158-159` | `windows-limits.test.ts:39`; `authenticate.test.ts:383` | |
+| 76 | met | `src/plugins/response-headers/index.ts:43-49, 54-72, 86-91`; `error-envelope/index.ts:125-131` | `response-headers.test.ts:95, 235` | |
+| 77 | met | the loader reads one file itself; `Secret` (`src/config.ts:114-136`); no child process | `test/static/credentials.test.ts:80`; `load-config.test.ts:174` | |
+| 78 | met | `0003_privileges.sql:26-27`; `kept-tables.ts:70`; lineage rules in the routine | `audit-guards.db.test.ts:276` | |
+| 79 | met | `src/engine/actor-scope.ts:35-42`; `host.ts:551` | `engine/__tests__/static.test.ts:84`; `commands.db.test.ts:219` (nr) | |
+| 80 | not in this code | install rows | — | `npm audit` not run now (ruling 15) |
+| 81 | met, not this checkpoint | `src/modules/security-audit/stored-chain.ts` | `chain.db.test.ts` (nr) | |
+| 82 | met, not this checkpoint | alerts, system | `alerts/__tests__/routes.test.ts:341` | |
+
+Totals: 82 requirements. Met in the reviewed code: 69. Met by code outside this checkpoint (provisioning scripts, engine, seed, other modules): 6 (SR-02, 59, 60, 62, 81, 82). Server half met, client half elsewhere: 2 (SR-16, SR-63). Partly met: 2 (SR-12, SR-23). Not in this code: 3 (SR-32, SR-66, SR-80). Not met: 0.
+
+**Findings of row 20, as implemented** (each checked in the code):
+
+| Finding | Implemented as its correction said | Where |
+|---|---|---|
+| SD-01 non-superuser owner | yes | `routine.ts:440-449`; boot checks B-4, B-9 (`src/db/schema/boot-checks.ts:466, 470`) |
+| SD-02 two Origin lists | yes | `src/config.ts:55-70`; `origin-decision.ts:110-116` |
+| SD-03 denial budget | yes | `denial-budget.ts`; every audited refusal calls `consume` first (guard `:303`, sign-in `:147, :161`, redeem `:125, :165`, biometric `:177, :254`, failure `:86`) |
+| SD-04 atomic state changes | yes | section 1.5 step 4 |
+| SD-05 route pattern, parse errors by code | yes | `request-log.ts`; `error-envelope/index.ts:97` |
+| SD-06 `ENABLE ALWAYS` | yes | `0002_audit_guards.sql:91-95` |
+| SD-07 no `localhost`, exact match, `null` refused | yes | `config.ts:55-60`; `origin-decision.ts:51-58` |
+| SD-08 cookie name per instance | yes | `config.ts:73-75` |
+| SD-09 one credential, transport bound | yes | `credentials.ts:57-67`; `session-store.ts:114-117` |
+| SD-10 `TOKEN_REUSE` ends sessions | yes | `biometric/sign-in.ts:239-248` |
+| SD-11 failure report names an operator only with an enrolment | yes, with CPS1-8 | `failure.ts:83-87` |
+| SD-12 key is the resolved principal; upgrades counted | yes | `throttle/limits.ts:70-79`; `throttle/index.ts:210-227` |
+| SD-13 anonymous cap | yes | `realtime/limits.ts:23`; `admission.ts:122-125` |
+| SD-14 response headers | yes | `response-headers/index.ts` |
+| SD-19 durable lineage | yes | `kept-tables.ts:70`; SELECT only for `dems_app` |
+| SD-21 always compute; no pepper; salt source | yes | `sign-in.ts:196-204`; `password-hash.ts:139-148, 281-292` |
+| SD-22 actor scope in `finally` | yes | `actor-scope.ts:37-41` |
+| SD-24 no `Max-Age` | yes | `cookie.ts:25` |
+| SD-27 incremental chain check | yes | `stored-chain.ts` |
+| SD-28 two log lines | not this checkpoint | alerts, system |
+| SD-29 operation 23 | yes; the row is written at WARNING (`pairing/activity.ts:205-217`) | CPS1-3 extends it |
+| SD-15, SD-16, SD-17, SD-18, SD-20, SD-23, SD-25, SD-26 | not in this code | `scripts/pg`, the clients, the documents |
+
+**Standing rules checked in the code:** M3 (no permission, role, session or device check decides in a handler of the seven modules; the remaining calls return the actor: `routes.ts:90, 116, 126, 142` identity; `pairing/routes.ts:100-109`; `admin/index.ts:97-101`), M6 (list under SD-03), M8 (only `app.clock`; `Date.now` appears in no file of `src/modules`, `src/plugins`, `src/realtime`, `src/engine` except to format a clock value, search), M14 (every log call that carries a caught value uses `err`; 19 call sites, search), M16 (`unit-statement.ts:139-162`; the pin at `plugins/db/index.ts:59-61, 124` and `unit-of-work.ts:59, 236`). All obeyed.
+
+---
+
+## 4. Own review
+
+### 4.1 By attacker position
+
+| # | Position | Can read | Can change, forge, replay | Can exhaust | Can hide from the audit trail |
+|--:|---|---|---|---|---|
+| 1 | No credential, on loopback | Health; the web console's lock state; `hello` and a heartbeat without session state on a socket (at most 6) | With a forged web `Origin` and the published password: everything an operator can (R-01, accepted). Without the password: nothing | The class bucket (30 a minute), the web lockout (60 s), the redeem lock (60 s), the class's denial budget (20 rows a minute). A socket held for ever through an undecodable path (CPS1-4) | Nothing: a refusal is audited or answered 429 before it is decided |
+| 2 | A paired device's credential | What position 1 reads; its own registration; `device.revoked` on its socket | Sign-in attempts counted on its own key; failure reports that name an operator enrolled on it; its own unpair; a credential rotation | Its own lockout and budget; **all 16 sockets** (CPS1-5) | Nothing |
+| 3 | A revoked device's credential | Health; a socket that gets `hello` with `DEVICE_REVOKED` and close 4403 | A redeem attempt (needs a code). Everything else answers 403 with one row | 20 `ACCESS_DENIED` rows a minute in the class bucket, which then answers 429 to unpaired callers for the rest of the window (R-11) | Nothing |
+| 4 | An INVESTIGATOR's session | Every status page, the audit log, the events, the role matrix (R-12) | What the role's permissions allow. A denied call: one row, 403 | Its own 600 a minute; one pipeline unit per `verifyAuditChain` GET; its own budget (ruling 7) | Nothing: after 20 refusals in 60 s further probing answers 429 without a decision |
+| 5 | A TECHNICIAN's session | As 4 | As 4, with its permissions | As 4 | Nothing |
+| 6 | A page of a foreign origin in the operator's browser | Nothing: no CORS header, `Cross-Origin-Resource-Policy: same-origin` | Every POST and every upgrade carries its `Origin` and is refused at stage 3. From another port of 127.0.0.1: blind GETs with the operator's cookie, and a shadowing cookie (CPS1-11) | Refusals at stage 3 are not counted by the throttle and write two log lines each (CPS1-12) | Nothing |
+| 7 | A second tab of the same browser | Everything the first tab's operator reads | It is the same session by design; a sign-in in one tab ends the session of the other (`ROTATED`, socket closed 4401) | The operator's own key | Nothing |
+| 8 | Read access to the server's log | Operator and device IDs, route patterns, codes, counts. No secret (log-capture tests run). In `.data/postgres.log`: failing rows with hash columns (CPS1-9) | — | — | — |
+| 9 | The `dems_app` role (SQL) | Every table, the hash columns included | Any operator's role, flag and password hash; insert valid audit rows (GD-01, accepted); end backends of its own role (ruling 5) | The chain lock held in an open transaction blocks every unit | It cannot update, delete or truncate `audit_log`, cannot write the lineage, cannot change a grant (run: `test/db/`). It can add rows, not remove them |
+
+### 4.2 Authentication and credential confusion
+
+- **Cookie and bearer.** Presence decides: this instance's cookie together with any `Authorization` header is 401 before anything is resolved (`credentials.ts:57-60`). The Origin guard reads the same two facts (`origin-guard/index.ts:79-85`), so the two stages cannot disagree. Read; `authenticate.test.ts:270` run.
+- **Another instance's cookie** is not read at all (`credentials.ts:57`: one name). `two-instances.db.test.ts:64` run.
+- **`?token=`.** No stage reads a query string; the three modules that read `request.query` are list endpoints (`evidence/index.ts:198`, `sessions/routes.ts:376`, `security-audit/index.ts:206, 254`). The log holds the route pattern. `upgrade.db.test.ts:325` run.
+- **Device versus operator.** A `dvc_` value is a DEVICE, a `ses_` value an OPERATOR bound to a device, and the cookie finds only a session without a device (`session-store.ts:114-117`). A device operation accepts both a DEVICE and an OPERATOR on a device (`decision.ts:104-109`): see CPS1-3.
+
+### 4.3 Sessions
+
+| Question | Answer | Where |
+|---|---|---|
+| Fixation | The token is made by the server at each sign-in and found by its hash; a presented session is ended (`ROTATED`). A page on another port of 127.0.0.1 can plant its own session's cookie: CPS1-11 | `sign-in.ts:207-215` |
+| Expiry | Idle 15 min and absolute 8 h, decided at stage 4 and by the sweep with one compare-and-set statement | `sessions.ts:206-225`; `session-store.ts:237-243` |
+| Activity | Only a POST that reached its handler; a GET and an upgrade never | `authenticate/index.ts:270-287` |
+| Sign-out, disable, revoke | One unit each, with the publication after the commit | section 3, SR-12 |
+| A clock behind the stored state | None of the three works: CPS1-1 | |
+| Survives a restart | Session rows, device credentials, biometric tokens, pairing codes. Not: lockout counters, the redeem lock, throttle and budget counters (R-10) | `lockout.ts:90-94` |
+| Survives a reset | The eight kept tables, sessions and tokens among them; an ACTIVE code is cancelled; operators, roles and the enabled flag are the seed's again. In the same process the memory counters stay | `kept-tables.ts:60-71` |
+
+### 4.4 Guessing bounds, timing, enumeration
+
+- Sign-in: five taken attempts per console and window, taken before the derivation (`lockout.ts:128-137`). The lock is per console and is cleared by any success on it: CPS1-10.
+- Pairing code: the attempt is taken from the code by `CONSUME_REDEEM_ATTEMPT` before the comparison, which is constant-time (`store.ts:163-165`; `secrets.ts:40-43`). Five per code holds under concurrency (run).
+- Biometric token: 256 random bits, a unique-index probe on its hash; the lock of the device applies.
+- Known versus unknown user: one derivation in both cases and the same statements in the refusal (`sign-in.ts:172`). A disabled operator with the right password runs one unit more than one with a wrong password; that tells only somebody who already holds the password.
+- `reportBiometricFailure`: the same statement and the same answer for a known, an unknown and no operator (`failure.ts:83-88`).
+
+### 4.5 The realtime channel
+
+- The three handshake fixes are in place and their tests ran here: F-1 a refused handshake's socket is destroyed in an `onResponse` hook (`realtime/index.ts:304-309`; `upgrade.db.test.ts:439`); F-2 an `error` listener is held until the route takes the socket (`:291-292`; `:483`); F-3 an upgrade on any other route answers 404 before the handler (`:313-317`; `:406`).
+- F-4 is open: CPS1-4.
+- An anonymous socket gets `hello` and heartbeats with `sessionState: null` (`hub.ts:533-537`). A DEVICE socket also gets `device.revoked`, nothing else. `admin.changed` goes only to OPERATOR sockets that hold the resource's permission at that moment (`hub.ts:420-428`).
+- A stalled consumer: an OPERATOR socket is closed with 4408 above 4 MiB of buffer (`hub.ts:262-269`); any socket without a pong is destroyed at the next ping (`:702-716`), so a stalled anonymous socket holds at most 60 s of heartbeats.
+
+### 4.6 SQL
+
+Every statement of identity, biometric, pairing, administration, the guard's matrix and the demo status is an exported constant with bind parameters and schema-qualified table names (static tests run: `identity/__tests__/static.test.ts:167, 190`; `pairing/__tests__/static.test.ts:276, 304`). Text built from values exists in three places, each from a guarded identifier: database names of the reset (`names.ts:155-160`, closed list plus a plain-identifier check and double quotes), table and column names of the carry-over (from the typed schema, `kept-tables.ts:86-119`), and the test support (`test/support/reset.ts:113-117`, a name of the test's own run). No request value reaches a statement text. `pg_terminate_backend` and `pg_cancel_backend` appear in no production source (search).
+
+### 4.7 Audit integrity
+
+| Question | Answer |
+|---|---|
+| Lost | A unit commits its change and its rows together or neither (`src/core/pipeline.ts:162-172`). The one silent loss that existed (F53) is closed by the pinned path (ruling 1); its test is `src/core/__tests__/search-path.db.test.ts:65` (not run here) |
+| Reordered or duplicated | The guard trigger refuses a row that does not continue the head; sequence and both hashes are UNIQUE (`audit-guards.db.test.ts:150`, run) |
+| Stamped out of order | Yes, after a start with the clock behind: CPS1-1 |
+| Wrong actor | The actor is `request.principal` everywhere I read. Two types name an operator who was not authenticated, by specification: CPS1-12. A shadowed cookie makes the victim act as the planted session: CPS1-11 |
+| The budget as a suppression lever | Beyond the budget the request is answered at stage 5 and nothing is decided, so nothing is learned without a row. Two exceptions, both bounded by a lockout to five per window: a verified sign-in failure in a burst (CPS1-6, no row) and a state-changing biometric refusal (a row is written, ruling 8) |
+
+### 4.8 Resource exhaustion
+
+| Resource | Bound | Left open |
+|---|---|---|
+| Pipeline queue | 256 waiting units, then 503 (`core/limits.ts:19`) | A principal's 600 requests a minute is 10 units a second; a unit takes milliseconds |
+| Body | 65,536 bytes (`app.ts:297`) | — |
+| Argon2id | Five derivations per console and window, 19 MiB each | — |
+| Sockets | 16, of which 6 anonymous | One principal may hold all 16: CPS1-5. A socket outside the hub: CPS1-4 |
+| Stage 4 | One indexed read per well-formed credential before the throttle (GS-26, accepted) | — |
+| Log volume | A refusal at stage 3 writes two lines and is not counted | CPS1-12 |
+
+---
+
+## 5. Findings
+
+### CPS1-1 (Medium; must be fixed before the gate; owner: core, fix round B2) — the server clock has no floor: after a start with the clock behind the stored state, sessions cannot be ended
+
+**Evidence (read, 18:12:12).** `src/core/clock.ts:25-33`: `let last = 0`; the clock is monotonic within a process only. `src/modules/identity/session-store.ts:201-216`: the three statements that end sessions set `ended_at = $now`. `src/db/migrations/0001_tables.sql:69`: `auth_sessions_times_check` demands `ended_at >= issued_at`. Reproduced by W53 (test/06, W53-F1, W53-F2).
+
+**What it enables.** With a session issued "in the future", `signOut`, `disableUser`, `revokeDevice` and a rotating sign-in answer 500 and change nothing, and the session keeps answering 200: SR-12 does not hold. This review adds, by reading the same migration: `pairing_codes_times_check` (`:136`, `closed_at >= issued_at`) and `biometric_tokens_times_check` (`:88`, `used_at >= issued_at`). So in the same start an ACTIVE pairing code cannot be cancelled or redeemed and stays valid for the skew plus 300 s, and a biometric token cannot be used. Each of those failures writes the failing row, with its hash column, into the PostgreSQL log (CPS1-9).
+
+**The design of the fix** ("the core clock takes a floor from the stored state at boot", D110) **must guarantee:**
+
+| # | Guarantee | Why |
+|--:|---|---|
+| G1 | `now()` is never below the greatest instant a stored row was written with | Every CHECK above compares with a written instant |
+| G2 | The floor is taken from instants of the PAST only: `audit_log.at`, `events.at`, `auth_sessions.issued_at`, `last_seen_at`, `ended_at`, `pairing_codes.issued_at`, `closed_at`, `paired_devices.paired_at`, `last_seen_at`, `biometric_tokens.issued_at`, `used_at`, the engine's last committed instant. Never from a deadline (`absolute_expires_at`, `expires_at`) | A floor from a deadline would expire every session at the start |
+| G3 | **Time advances at the real rate from the floor.** With the present `Math.max(last, source())` a floored clock stands still until the wall clock has caught up | While it stands still no lock ends, no throttle or budget window ends, no session and no pairing code expires. Twenty failed sign-ins would then answer 429 to every web sign-in for the whole skew, not for 60 s. Suggested form: the floor plus the time elapsed on a monotonic timer, never below the wall clock |
+| G4 | One time base: the engine and the core read the same floored clock | Otherwise W53-F2 (rows stamped before their predecessors) stays |
+| G5 | The floor is in place before the first unit of the boot and before the listener opens; if it cannot be read, the boot stops | A row of the boot itself must not be stamped early |
+| G6 | One log line at the start names the skew in milliseconds, at `warn`, when the floor is above the wall clock | The operator of the demo must learn that the computer's clock is wrong |
+| G7 | The W53 reproduction is the test, extended by: a pairing code issued before the restart can be cancelled after it; audit `at` never decreases over `seq`; a 60 s lock ends 60 s later | G1, G3 |
+| G8 | The floor is read with the runtime role's SELECT and changes no row | No new privilege |
+
+**Alternatives.** Relaxing the three CHECKs: rejected, the audit rows would still go backwards. `GREATEST($now, issued_at)` in each statement: rejected by D110 (many sites; the next statement trips again). Refusing to start when the wall clock is behind: workable and the simplest, but it turns a wrong clock into an outage; acceptable as a fallback if G3 cannot be built before the gate.
+
+### CPS1-2 (Medium; carried from CP-B1 as CPB1-5; must be fixed before the gate; owners W08 and W28, fix round B) — stage 6 can be replaced after the boot, and the boot only warns
+
+**Evidence (read, 18:12:12).** `src/app.ts:182-184`: `replace` is unconditional and the stage is read per request (`:345-347`). `src/plugins/permission-guard/index.ts:331-334, 380-383`: with another handler in the slot, `checkRouter` and `onReady` write one `warn` line and return. No production source calls `replace` (search); the static test is a regular expression (CP-B1). `gateway_check/04b`:400 lists it as not started.
+
+**What it enables.** Nothing for the nine positions of section 4.1. One line of code in any unit switches off the only check of the 23 hosted actions the simulator does not check, and the server starts.
+
+**Remediation.** As CP-B1: `replace` throws unless `buildApp` was given a test option the entry point never passes; or `checkRouter()` throws instead of warning. The second needs no edit of the frozen file and makes "a process that listens has stage 6" true at the boot.
+
+### CPS1-3 (Low; fix later; owner W32 with the contract close-out W83) — a device-bound session token can obtain a new device credential
+
+**Evidence (read).** `src/modules/pairing/routes.ts:103-109`: `deviceOf` accepts a DEVICE or an OPERATOR bound to a device; `:237-245` calls the rotation with it; `src/plugins/permission-guard/decision.ts:104-109` allows both for access kind DEVICE; `src/modules/pairing/devices.ts:177-185` returns the new credential. `devices.db.test.ts:536` ("Through the operator's session of the device this time") shows it is intended.
+
+**What it enables.** A holder of a session token of a device (idle 15 min, absolute 8 h) gets a credential that never expires; its first use makes the real device's credential unknown. [RV:SD-29] and [SP:§6.3] reasoned about a holder of the device credential only. The `DEVICE_CREDENTIAL_ROTATED` row at WARNING shows it and a revoke ends it; no client calls the operation.
+
+**Remediation.** Operation 23 requires the DEVICE principal, the current credential itself (a registry condition, so that stage 6 decides it). Alternative: leave it and say so in [SP:§6.3]. Before any client calls operation 23, and before U4.
+
+### CPS1-4 (Low; fix later; owner W08 for `error-envelope`, or W42) — an upgrade on a path the router cannot decode leaves a socket with no time-out (realtime F-4)
+
+**Evidence (read).** `src/plugins/error-envelope/index.ts:125-131` answers 400 where no hook runs, so the `onResponse` hook of `src/realtime/index.ts:304-309` never sees it; `:284-300` destroys the socket only when the peer ends or errors. Node applies no time-out to a socket it handed over on `upgrade`.
+
+**What it enables.** An unauthenticated local client holds one server socket per such request for as long as it likes, outside the throttle and outside the hub's caps: descriptor exhaustion.
+
+**Remediation.** In `handleFrameworkError`: destroy `request.raw.socket` after the answer when the request carried `Upgrade`. Alternative: `socket.setTimeout` in `onUpgrade`, cleared when the route takes the socket (covers every path that forgets a socket, and can be tested with an injected timer).
+
+### CPS1-5 (Low; fix later; owner W42) — no cap of sockets per principal
+
+**Evidence (read).** `src/realtime/admission.ts:122-125`: the total cap of 16 counts every kind; only ANONYMOUS has a cap of its own. The throttle counts upgrades per minute (600 for a principal), not open sockets.
+
+**What it enables.** One operator session or one paired device's credential opens 16 sockets; every other operator's upgrade is closed with 1013. REST is not affected.
+
+**Remediation.** A cap per operator and per device (for example 4), or the newest socket of a principal displaces its oldest. [RV:SD-13] offered the displacement form for anonymous sockets.
+
+### CPS1-6 (Low; fix later; owner W24) — a verified failed sign-in can answer 429 without an `AUTH_FAILED` row (F62 (1))
+
+**Evidence (read).** `src/modules/identity/sign-in.ts:159-167`: when the budget has no place left the failure is counted and the 429 is thrown, with no row. Reached only by attempts that passed stage 5 together: at most five per lock cycle.
+
+**What it enables.** Five password guesses whose result the caller learns (429 means wrong, 200 means right) without their row; the 20 `AUTH_LOCKED` rows of the same burst are in the trail. SR-23 is partly met.
+
+**Remediation.** A verified failure writes its row whatever the budget says, as the biometric sign-in already does for a refusal that changed something (`biometric/sign-in.ts:255`); the lockout bounds it to five per window and console. Alternatives: reserve the place before the derivation (a success must then give it back), or accept.
+
+### CPS1-7 (Low; fix later; owner W41) — a live biometric token presented by another paired device is refused and stays live (biometric F-3)
+
+**Evidence (read).** `src/modules/identity/biometric/sign-in.ts:111`: `OTHER_DEVICE` with `reused: null`; nothing is revoked.
+
+**What it enables.** The token has left its device; it remains usable by whoever also holds that device's credential. The row names the token's operator and the reason.
+
+**Remediation.** Treat it as a reuse: revoke the family and end the BIOMETRIC sessions of the token's device and operator. Only a holder of the token value can trigger it, so it is no lever for anybody else.
+
+### CPS1-8 (Low; fix later; owner W41) — a failure report can name a disabled operator (biometric F-6)
+
+**Evidence (read).** `src/modules/identity/biometric/store.ts:183`: the scope OPERATOR revokes live tokens only; `:283`: `FIND_ENROLMENT` counts every token that is not revoked, used ones included; `failure.ts:83-87` names the operator on that answer.
+
+**Remediation.** `FIND_ENROLMENT` joins `operators` and asks `enabled`; or the scopes OPERATOR and DEVICE revoke used rows too (the reuse rule looks at `used_at` first, so it still works).
+
+### CPS1-9 (Low; fix later, at the next restart of the cluster; owner W07 `scripts/pg`) — the PostgreSQL server log holds failing rows with hash columns (F38, F41)
+
+**Evidence (run, counts only, no line printed).** `.data/postgres.log`: 38,250,843 bytes, 234,113 lines, mode 600, not rotated. 10,347 `Failing row contains` lines, 2,482 of them with a `bytea` of 16 bytes or more; 6,352 `Key (…)=` lines, 1,202 naming a hash column; 0 lines with bound parameters; 0 values in the form of a token. `postgresql.conf:603`: `log_error_verbosity` is at its default. All from test runs with test values.
+
+**What it enables.** The never-log list [DB:§5.4 NL-1] is not true for this file. For 256-bit secrets a hash is useless. A `code_hash` is SHA-256 over a code ID and six digits: one million tries recover the code. It reaches the log only when a statement on `pairing_codes` violates a constraint while the code is ACTIVE, which CPS1-1 makes possible.
+
+**Remediation and alternatives.** Ruling 14.
+
+### CPS1-10 (Info) — the sign-in lock is per console and any success clears it
+
+`src/modules/identity/lockout.ts:167-170`; `sign-in.ts:220-222`. A caller with one valid account can alternate four guesses against another account with one sign-in of its own; the bound that remains is the denial budget, 20 failures per key and minute. Inside R-16 (no per-account lockout) and R-01. Before U4: a counter per account beside the one per console.
+
+### CPS1-11 (Info) — cookies are scoped by host: what a page on another port of 127.0.0.1 can do
+
+Run: the cookie parser keeps the FIRST value of a repeated name (`{"dems_session_4420":"FIRST"}` for a header with two). Hypothesis A-2 for the browser's half. (a) A no-cors GET carries the operator's cookie and no `Origin`; stage 3 lets a read through (`origin-decision.ts:115`). The answer is unreadable; the request counts against the operator's 600 a minute and, for `verifyAuditChain`, runs one unit. (b) Such a page can set a second cookie with this instance's name and a longer `Path`; the console's requests then resolve to the planted session, and its rows name that operator. It gains nothing the published password does not give. This is the write direction of R-02. Optional hardening, cheap: stage 4 treats this instance's cookie name appearing twice in the `Cookie` header as a credential conflict (401). It lapses with U4, where `__Host-` becomes mandatory anyway.
+
+### CPS1-12 (Info) — two things an unauthenticated caller writes
+
+(a) `AUTH_FAILED` and `AUTH_LOCKED` carry as `actorId` the operator whose username was typed, not an authenticated actor (`sign-in.ts:148, 204`; `activity.ts:98, 133`), by [SP:ID-4] and as the simulator does; bounded by the budget to 20 a minute per key. The audit page should word the column so for these two types (W83, W77). (b) A request refused at stage 3 is not counted and writes two log lines (guard row F-5, DN-8). Accepted: it is the specified stage order and each refusal costs no database work. If the log volume ever matters: one refusal line per origin and window.
+
+### CPS1-13 (Info) — three sentences that are no longer true
+
+`src/db/commands/owner-connection.ts:10` ("The running server never imports this module": the demo module does, through the reset routine; what holds is that it never READS the file with the flag off). [DB:§6.6 LN-6] and T-AO-4 ("`DROP DATABASE` … in the reset routine, in the test helper and in the trial"): also `test/support/reset.ts:117`, which the static test names. [DB:§5.4 NL-1]: see CPS1-9. For the close-out row.
+
+---
+
+## 6. Rulings on the open questions (section C of the brief)
+
+| # | Question | Ruling | Reason |
+|--:|---|---|---|
+| 1 | F53 / CPB1-3: is the pinned `search_path` sufficient? | **Accept as residual; option (b) is not needed.** | The path is pinned in the start-up packet of every pooled connection (`plugins/db/index.ts:59-61, 124`), checked in B-1 (`:221-245`) and after a reset (`modules/demo/host.ts:57-60`), and set again for every unit (`unit-of-work.ts:59, 236`). PostgreSQL then finds `public` before the temporary schema for relations, and both `SECURITY DEFINER` functions pin their own path (`0002_audit_guards.sql:17, 30`). What `TEMPORARY` still allows the runtime role is a private table that shadows nothing. Revoking it means one more statement in three creation paths, the reset among them |
+| 2 (1) | F62: a verified failure without a row | **Fix later**, CPS1-6: the row takes precedence | It makes SR-23 true at the price of at most five rows per lock cycle |
+| 2 (2) | A derivation that fails keeps its attempt and writes no row | **Accept** | It fails closed; the error log has it; a failing derivation is a server fault, not a caller's lever |
+| 2 (3) | Comparable, not identical time | **Accept** | SR-08 asks for comparable; one derivation and the same statements run in both cases |
+| 2 (5) | The sweeper on a listening server | **Not a ruling: a check of the gate W58.** Required evidence: one `AUTH_EXPIRED` row and one `session.ended` within 5 s of a limit, on the listening server | Section 1.9 |
+| 3 | F65: a grant edited by hand in a running server | **Accept** | The runtime role cannot write the matrix (`0003_privileges.sql:17`; `privileges.db.test.ts:83` run); only the owner role or a superuser can. The boot and every reset compare the grants (`matrix.ts:109-121`). In the window the guard and the simulator disagree in the safe direction for a missing grant, and for an extra grant the hosted action refuses without a row: a missing row, not a gained right |
+| 4 | F67: a request past stage 6 completes after its operator was disabled or demoted | **Accept** | The window is one request that was authorised when it arrived. The last-administrator rule is evaluated on locked rows and holds. Closing it everywhere needs a second authorisation point in every unit. If the trail's order (an action after its actor's `USER_DISABLED` row) is ever judged unacceptable, the three administration units can check the caller in the rows they already hold locked (`changes.ts:117, 148`), at no extra statement |
+| 5 | F70: a `dems_app` session ending a backend of its role; `{ ...error }` | **Accept both** | No request value reaches a statement text and neither function is named in a production source, so no request path reaches it. A caller who can run SQL as `dems_app` can already insert rows and hold the chain lock; a killed unit rolls back whole. An error copied into a plain object would leak `query` and `params` (they are enumerable members); no source does it (search: the only spreads of a caught value are `host.ts:725`, an own error class). Optional: add the spread form to the static test |
+| 6 | F74 | **Fix now**, CPS1-1, with guarantees G1 to G8 | |
+| 7 | DN-10: who can fill whose budget? | **Accept: a lever against one's own key only** | The key is `operator:<id>`, `device:<id>` or one of two classes (`throttle/limits.ts:70-79`), never a request value. A refusal is counted under the key of the request that caused it (`throttle/index.ts:175-179`): a sign-in that names B counts under the presenter, a failure report that names B under the reporting device. The two class buckets are shared by unauthenticated callers only: twenty failed web sign-ins answer 429 to every signed-out web console for the window, which is the effect the lockout already has (R-10, R-11). An operator's key is shared by all of that operator's sessions, on the web and on devices |
+| 8 | Biometric DN-1 | **Accept** | Reuse detection cannot tell a duplicate from a thief; the constraint is the client's (F72) |
+| 8 | DN-3 | **Accept** | A row for a change of state outranks the budget; a family is revoked once, so it is one row per family |
+| 8 | F-2 | **Accept** | It fails closed; the effect is the device's own 60 s lock |
+| 8 | F-3 | **Fix later**, CPS1-7 | |
+| 8 | F-6 | **Fix later**, CPS1-8 | |
+| 9 | Pairing DV-1 | **Accept** | Counting first is the order ENG-24 asks for; the row that closes a code is written whatever the budget says (`redeem.ts:169`) |
+| 9 | DN-8: `last_seen_at` at stage 4, also on a GET | **Accept** | It is written only for a bearer credential, which no browser attaches by itself, so SR-20's purpose (no state change by a forged GET) holds; at most one unit a minute per device |
+| 10 | Self-change of role, self-disable | **Accept** | Both lower the caller's own rights; RB-8 is the specification's only rule and it holds under concurrency (run: 60 tests) |
+| 11 | A reset during a recording is not refused | **Accept** | It needs `DEMO_CONTROL` and the flag; the lineage row and `SCENARIO_LOADED` record it; the specification names no refusal |
+| 11 | After a failed resume the server keeps its hold | **Accept** | Serving on a database whose boot checks did not pass would be worse; health still answers; a restart recovers |
+| 11 | Realtime DN-8: stale permissions on a socket after a reset | **Closed in the code.** | `modules/demo/reset.ts:350-354` publishes `session.updated` for every operator whose stored role differs after the reset, and `hub.ts:383-394` updates the sockets. Residual: if that read fails (`:356`, a warn line) a socket keeps its topic membership; it then gets `admin.changed` hints only, and every REST call is decided per request |
+| 12 | Realtime DN-1: 1009 | **Accept** | The library refuses the frame before buffering it; a limit above 65,536 to send 1008 would buffer more. Contract: add 1009 |
+| 12 | DN-4: sockets open while readiness is off | **Accept** | Nothing commits, so nothing but heartbeats is sent; closing them makes every client reconnect into 503 |
+| 12 | F-4 | **Fix later**, CPS1-4 | |
+| 13 | Evidence: the simulator's own `EXPORT_DENIED` row | **Accept** | The call is refused and audited; only the row's details differ, and the caller cannot time a role change |
+| 14 | F38 / F41: is `log_error_verbosity = terse` required before the gate? | **No. Fix later: set it at the next planned restart of the cluster, with a size bound for the file.** | Measured in CPS1-9. Every value in the file is a hash of a random 256-bit secret, a salt and hash of the published password, or synthetic data; the file is mode 600 inside `.data/`. The one hash worth having, a pairing code's, reaches the log only through a constraint violation while the code is ACTIVE, which CPS1-1 removes. `terse` drops DETAIL, HINT, QUERY and CONTEXT and keeps the error line with the constraint's name. It changes one test by design (`scripts/pg/init.test.mjs:106-110`) and the wording of NL-1 and NL-5, and it needs a restart of a cluster that eight rows use: a controller-scheduled moment, not a gate condition. If the controller prefers, the gate's own start is that moment |
+| 15 | F29: `npm audit` | **Not run: network refused.** Triage from the recorded output (implementation/03 Appendix A) against the installed tree: **no entry is on the server's runtime path.** | `npm ls --omit=dev --all` (run) for `undici`, `uuid`, `decode-uri-component`, `braces`, `micromatch`, `node-forge`, `@ai-sdk/provider-utils`, `esbuild`: `@dems/shared` has none; `@dems/core-server` has only `esbuild@0.28.2` under `tsx`, outside the advisory's range `<=0.24.2`. The vulnerable `esbuild` is under `drizzle-kit`, a development tool. The 76 older entries sit under the web console's API Reference renderer and the test and build tooling of the mobile app: W99's triage. A live `npm audit` must be recorded at the gate (SR-80) |
+
+**GS-22** (`redeemPairingCode` is not refused for a web console origin): **accept as residual.** Read: the rule is PUBLIC without a condition and the handler refuses nothing by origin (`pairing/routes.ts:182-191`). A script on the console origin could redeem a code it knows and read the credential, but it cannot use it there (a bearer with a web console origin is refused, `origin-decision.ts:120`), any local process can redeem with no `Origin` anyway, and the pairing is visible (`PAIRING_SUCCESS`, the registry, `admin.changed`) and revocable. Optional before U4: a registry condition that refuses the operation for a web console origin.
+
+**D16, the cookie without `Secure`: the conditions hold.** Every listener is on loopback (`config.ts:22`, `index.ts:107`); the attributes are exactly `HttpOnly; SameSite=Strict; Path=/` (`cookie.ts:25`); the Origin guard, not `SameSite`, is the control against another port of 127.0.0.1 (CPS1-11).
+
+---
+
+## 7. The database re-check list ([DB:§15.4])
+
+### 7.1 HC-1 to HC-5
+
+| Rule | Evidence | Result |
+|---|---|---|
+| HC-1 | Search of `apps/` and `packages/` for `pg.pwfile`: no match (run). `test/static/credentials.test.ts:15-16` (run) | holds |
+| HC-2 | With the flag off stage 6 answers `DEMO_DISABLED` before any handler (`decision.ts:147-149`); the routine is the only reader of the owner file (`routine.ts:470`). `routes.test.ts:162` (demo, run); `gate.db.test.ts:80` (the owner file unreadable, the server boots; not run here) | holds |
+| HC-3 | The fields live in a local variable of one call behind `Secret` (`routine.ts:451, 470`; `owner-connection.ts:152, 190`); no message holds a value; `process.env` only loses `PG*` variables (`:466`) | holds |
+| HC-4 | The pool is built from the runtime configuration only (`src/plugins/db/index.ts:114-128`); B-4 refuses another role (`src/db/schema/boot-checks.ts:466`; `test/db/boot-checks.db.test.ts:331`, run) | holds |
+| HC-5 | By reading: with the flag on, a taken-over server can call the routine or read the owner file itself (same uid). It cannot skip an `ENABLE ALWAYS` trigger or create a role (`audit-guards.db.test.ts:266`, `privileges.db.test.ts:334`, run) | as accepted |
+
+### 7.2 What binds which role, T-AO-4, T-CR-2
+
+| Item | Evidence | Result |
+|---|---|---|
+| `dems_app`: UPDATE, DELETE, TRUNCATE on `audit_log` refused by privilege | T-AO-1 `audit-guards.db.test.ts:226` (run) | 42501 |
+| `dems_owner`: the same refused by trigger | T-AO-2a `:249` (run) | ZA002 |
+| Neither project role can set `session_replication_role` | T-AO-2b `:266` (run) | 42501 |
+| Triggers `ENABLE ALWAYS` | T-AO-2d `catalog.db.test.ts:295` (run); `db:status` of four databases: `audit_chain_history_append_only=A, audit_log_append_only=A, audit_log_chain_guard=A` (run) | 'A' three times |
+| The lineage: no INSERT for `dems_app` | T-AO-3 `:276` (run) | 42501 |
+| The head cannot be moved by `dems_app` | T-CH-3 `:212` (run) | 42501 |
+| The privilege matrix | T-PV-1 `privileges.db.test.ts:83` (run) | equals [DB:§7.3] |
+| The superuser session cannot skip the triggers | T-AO-2c, `scripts/pg/check-superuser-trigger.mjs` | not run here: a provisioning check; its record is W07's |
+| T-AO-4 | `test/static/audit-protection.test.ts:52-91` (run) and this review's search: `DISABLE TRIGGER`, `DROP TRIGGER`, `ALTER SYSTEM`: no match outside `scripts/pg/trial.mjs:142-143` and a comment; `session_replication_role` only in the two database tests that expect its refusal and in the two provisioning scripts; `CREATE OR REPLACE` outside migrations: none; `DROP DATABASE`: the reset routine, the test helper, `test/support/reset.ts` | holds; wording CPS1-13 |
+| T-CR-2 | `test/static/credentials.test.ts:15, 21, 48` (run); `scripts/pg/static.test.mjs:56, 88` (not run here) | holds |
+
+### 7.3 `DEVICE_CREDENTIAL_ROTATED`
+
+Where such a row can be written (search over `src/` and `packages/shared/src/`): `src/modules/pairing/activity.ts:208`, reached only from `devices.ts:182` in the unit of a successful rotation of a PAIRED device; and `src/db/fixtures/identity.ts:543`, the bulk fixture, which writes 14 by design and whose target guard accepts a test database of the helper only (`src/db/fixtures/target.ts:44-70`). Those 14 are test data.
+
+`db:status` (run, 18:05) prints counts per table, not per type:
+
+| Database | `audit_log` | head | `paired_devices` | `device_credentials` | `last_reset_at` | lineage |
+|---|--:|--:|--:|--:|---|--:|
+| `dems_demo` | 82 | 82 | 0 | 0 | never | 0 |
+| `dems_lane_1` | 82 | 82 | 0 | 0 | 04:36:42Z | 0 |
+| `dems_lane_2` | 82 | 82 | 0 | 0 | 04:36:43Z | 0 |
+| `dems_lane_3` | 82 | 82 | 0 | 0 | 04:36:43Z | 0 |
+
+**Established:** no device was ever paired in any of the four (the registry keeps every device, the runtime role cannot delete one, and a reset carries the table over), so the rotation path cannot have written a row; and each chain holds exactly the 82 rows of a seed ([DB:§9.4]). **Not established by a query:** a count by type, which the permitted command does not print. **Unexplained, not a security matter:** the three lanes show a reset time with no lineage row and 82 rows, which fits a first build through `db:reset` (nothing discarded, LN-1); hypothesis.
+
+---
+
+## 8. GDPR and ISO 27001, as applicable to this code
+
+**GDPR.** The dataset is synthetic by requirement (SR-62, U7), so the regulation is not triggered. Observations that would matter with real data: data minimisation holds (a typed unknown username is recorded nowhere; no hardware identifier); there is no erasure, export-of-own-data or retention mechanism and the audit table is never pruned; an operator's free-text reason is stored in audit rows (`audit-details.ts:60-64`).
+
+| Control | Status | Note |
+|---|---|---|
+| A.9 Access control | Met, two fixes scheduled | Deny by default, per-request permissions, lockout, immediate revocation on a forward clock; CPS1-1, CPS1-2; no multi-factor (R-16) |
+| A.10 Cryptography | Met inside the boundary | Argon2id, SHA-256 of 256-bit random values, constant-time comparison; no TLS by boundary |
+| A.12.4 Logging and monitoring | Met, one Low | Hash-chained audit, one row per refusal inside a budget; CPS1-6, CPS1-9 |
+| A.12.6 Vulnerability management | Partly | No server runtime dependency carries a recorded advisory; a live audit was not possible here |
+| A.13 Communications security | Met inside the boundary | Loopback only, Origin guard, no CORS |
+| A.14 Secure development | Met | Static tests hold the rules in place; mutation checks per row |
+| A.16, A.18 | Not applicable | A local demo with synthetic data |
+
+---
+
+## 9. What is accepted for a local demo, in plain terms
+
+- Sign-in demonstrates the mechanism; with a published password it does not protect the data (R-01).
+- Any program on the Mac can lock sign-in or pairing for a minute at a time, fill the realtime channel's sockets, or flood the log (R-11; CPS1-4, CPS1-5, CPS1-12).
+- Another web page served from this Mac's loopback address can make the console act as a session of its choosing (CPS1-11).
+- If the computer's clock is set back between two starts, sessions cannot be ended until the fix of CPS1-1 is in.
+
+Each of these becomes a real defect the day a listener leaves loopback (U4): CPS1-3, CPS1-10 and CPS1-11 then need their change first, beside the conditions of SR-18 and SR-63.
+
+---
+
+## 10. Verification against the row's criteria
+
+| Criterion | Where |
+|---|---|
+| Verdict stated | Top: CAUTION |
+| Every SR-01 to SR-82 met or not met with `file:line` of code and test | Section 3 |
+| Findings of row 20 checked as implemented | Section 3, second table |
+| The re-check list of [DB:§15.4], GS-22, the rotation row | Sections 6 and 7 |
+| Tier 1 block | Section 1 |
+| Nothing written but this report and the progress file | `git status` shows no change under `apps/core-server/` caused by this row; the cited files' times are unchanged |
+| No credential value printed | No line of `.data/postgres.log` and no credential file was printed; counts only |
+
+---
+*Generated: 2026-10-04 18:17*
+*Last Updated: 2026-10-04 18:17*

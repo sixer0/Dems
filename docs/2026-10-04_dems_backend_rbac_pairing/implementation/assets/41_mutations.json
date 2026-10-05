@@ -1,0 +1,807 @@
+[
+ {
+  "id": "M01",
+  "file": "src/modules/identity/biometric/store.ts",
+  "from": "'WHERE token_hash = $1 AND device_id = $3 AND used_at IS NULL AND revoked_at IS NULL AND expires_at > $2 ' +",
+  "to": "'WHERE token_hash = $1 AND $3::text IS NOT NULL AND used_at IS NULL AND revoked_at IS NULL AND expires_at > $2 ' +",
+  "note": "the claim does not state the device: a token of another device signs in"
+ },
+ {
+  "id": "M02",
+  "file": "src/modules/identity/biometric/store.ts",
+  "from": "'WHERE token_hash = $1 AND device_id = $3 AND used_at IS NULL AND revoked_at IS NULL AND expires_at > $2 ' +",
+  "to": "'WHERE token_hash = $1 AND device_id = $3 AND revoked_at IS NULL AND expires_at > $2 ' +",
+  "note": "the claim does not state \"not used\": a used token is claimed again"
+ },
+ {
+  "id": "M03",
+  "file": "src/modules/identity/biometric/store.ts",
+  "from": "'WHERE token_hash = $1 AND device_id = $3 AND used_at IS NULL AND revoked_at IS NULL AND expires_at > $2 ' +",
+  "to": "'WHERE token_hash = $1 AND device_id = $3 AND used_at IS NULL AND expires_at > $2 ' +",
+  "note": "the claim does not state \"not revoked\""
+ },
+ {
+  "id": "M04",
+  "file": "src/modules/identity/biometric/store.ts",
+  "from": "'WHERE token_hash = $1 AND device_id = $3 AND used_at IS NULL AND revoked_at IS NULL AND expires_at > $2 ' +",
+  "to": "'WHERE token_hash = $1 AND device_id = $3 AND used_at IS NULL AND revoked_at IS NULL AND expires_at >= $2 ' +",
+  "note": "the claim accepts a token at the instant it expires"
+ },
+ {
+  "id": "M05",
+  "file": "src/modules/identity/biometric/store.ts",
+  "from": "'WHERE token_hash = $1 AND device_id = $3 AND used_at IS NULL AND revoked_at IS NULL AND expires_at > $2 ' +",
+  "to": "'WHERE token_hash = $1 AND device_id = $3 AND used_at IS NULL AND revoked_at IS NULL AND $2 > 0 ' +",
+  "note": "the claim does not state the expiry"
+ },
+ {
+  "id": "M06",
+  "file": "src/modules/identity/biometric/store.ts",
+  "from": "'UPDATE public.biometric_tokens SET used_at = $2 ' +",
+  "to": "'UPDATE public.biometric_tokens SET used_at = NULL ' +",
+  "note": "the claim marks nothing: the token is never used up"
+ },
+ {
+  "id": "M07",
+  "file": "src/modules/identity/biometric/store.ts",
+  "from": "FAMILY: `${REVOKE}family_id = $3 AND revoked_at IS NULL RETURNING id`,",
+  "to": "FAMILY: `${REVOKE}family_id = $3 AND used_at IS NULL AND revoked_at IS NULL RETURNING id`,",
+  "note": "a family revocation leaves the used rows of the family unrevoked"
+ },
+ {
+  "id": "M08",
+  "file": "src/modules/identity/biometric/store.ts",
+  "from": "FAMILY: `${REVOKE}family_id = $3 AND revoked_at IS NULL RETURNING id`,",
+  "to": "FAMILY: `${REVOKE}family_id = $3 RETURNING id`,",
+  "note": "a family revocation overwrites the time and the reason of a row that was revoked before"
+ },
+ {
+  "id": "M09",
+  "file": "src/modules/identity/biometric/store.ts",
+  "from": "ENROLMENT: `${REVOKE}device_id = $3 AND operator_id = $4 AND revoked_at IS NULL RETURNING id`,",
+  "to": "ENROLMENT: `${REVOKE}device_id = $3 AND $4::text IS NOT NULL AND revoked_at IS NULL RETURNING id`,",
+  "note": "turning off, or enrolling again, revokes the tokens of every operator on the device"
+ },
+ {
+  "id": "M10",
+  "file": "src/modules/identity/biometric/store.ts",
+  "from": "ENROLMENT: `${REVOKE}device_id = $3 AND operator_id = $4 AND revoked_at IS NULL RETURNING id`,",
+  "to": "ENROLMENT: `${REVOKE}$3::text IS NOT NULL AND operator_id = $4 AND revoked_at IS NULL RETURNING id`,",
+  "note": "turning off, or enrolling again, revokes the operator's tokens on every device"
+ },
+ {
+  "id": "M11",
+  "file": "src/modules/identity/biometric/store.ts",
+  "from": "ENROLMENT: `${REVOKE}device_id = $3 AND operator_id = $4 AND revoked_at IS NULL RETURNING id`,",
+  "to": "ENROLMENT: `${REVOKE}device_id = $3 AND operator_id = $4 AND used_at IS NULL AND revoked_at IS NULL RETURNING id`,",
+  "note": "turning off leaves the used rows of the enrolment unrevoked"
+ },
+ {
+  "id": "M12",
+  "file": "src/modules/identity/biometric/store.ts",
+  "from": "DEVICE: `${REVOKE}device_id = $3 AND used_at IS NULL AND revoked_at IS NULL RETURNING id`,",
+  "to": "DEVICE: `${REVOKE}device_id = $3 AND revoked_at IS NULL RETURNING id`,",
+  "note": "the scope DEVICE revokes used rows too (not what the pairing module does)"
+ },
+ {
+  "id": "M13",
+  "file": "src/modules/identity/biometric/store.ts",
+  "from": "OPERATOR: `${REVOKE}operator_id = $3 AND used_at IS NULL AND revoked_at IS NULL RETURNING id`,",
+  "to": "OPERATOR: `${REVOKE}operator_id = $3 AND revoked_at IS NULL RETURNING id`,",
+  "note": "the scope OPERATOR revokes used rows too (not what the administration module does)"
+ },
+ {
+  "id": "M14",
+  "file": "src/modules/identity/biometric/store.ts",
+  "from": "const REVOKE = 'UPDATE public.biometric_tokens SET revoked_at = $1, revoke_reason = $2 WHERE ';",
+  "to": "const REVOKE = 'UPDATE public.biometric_tokens SET revoked_at = $1 + 1, revoke_reason = $2 WHERE ';",
+  "note": "a revocation stamps another time than the one it is handed"
+ },
+ {
+  "id": "M15",
+  "file": "src/modules/identity/biometric/store.ts",
+  "from": "\"WHERE s.id = $3 AND s.ended_at IS NULL AND s.method = 'PASSWORD' AND o.enabled AND d.state = 'PAIRED' \" +",
+  "to": "\"WHERE s.id = $3 AND s.ended_at IS NULL AND o.enabled AND d.state = 'PAIRED' \" +",
+  "note": "a token is issued inside a session that was not created by password"
+ },
+ {
+  "id": "M16",
+  "file": "src/modules/identity/biometric/store.ts",
+  "from": "\"WHERE s.id = $3 AND s.ended_at IS NULL AND s.method = 'PASSWORD' AND o.enabled AND d.state = 'PAIRED' \" +",
+  "to": "\"WHERE s.id = $3 AND s.method = 'PASSWORD' AND o.enabled AND d.state = 'PAIRED' \" +",
+  "note": "a token is issued for a session that has ended"
+ },
+ {
+  "id": "M17",
+  "file": "src/modules/identity/biometric/store.ts",
+  "from": "\"WHERE s.id = $3 AND s.ended_at IS NULL AND s.method = 'PASSWORD' AND o.enabled AND d.state = 'PAIRED' \" +",
+  "to": "\"WHERE s.id = $3 AND s.ended_at IS NULL AND s.method = 'PASSWORD' AND d.state = 'PAIRED' \" +",
+  "note": "a token is issued to a disabled operator"
+ },
+ {
+  "id": "M18",
+  "file": "src/modules/identity/biometric/store.ts",
+  "from": "\"WHERE s.id = $3 AND s.ended_at IS NULL AND s.method = 'PASSWORD' AND o.enabled AND d.state = 'PAIRED' \" +",
+  "to": "\"WHERE s.id = $3 AND s.ended_at IS NULL AND s.method = 'PASSWORD' AND o.enabled \" +",
+  "note": "a token is issued on a device that is not PAIRED"
+ },
+ {
+  "id": "M19",
+  "file": "src/modules/identity/biometric/store.ts",
+  "from": "export const FIND_ENROLMENT = 'SELECT 1 AS found FROM public.biometric_tokens WHERE device_id = $1 AND operator_id = $2 AND revoked_at IS NULL LIMIT 1';",
+  "to": "export const FIND_ENROLMENT = 'SELECT 1 AS found FROM public.biometric_tokens WHERE $1::text IS NOT NULL AND operator_id = $2 AND revoked_at IS NULL LIMIT 1';",
+  "note": "a failure report names an operator who is enrolled on ANOTHER device"
+ },
+ {
+  "id": "M20",
+  "file": "src/modules/identity/biometric/store.ts",
+  "from": "export const FIND_ENROLMENT = 'SELECT 1 AS found FROM public.biometric_tokens WHERE device_id = $1 AND operator_id = $2 AND revoked_at IS NULL LIMIT 1';",
+  "to": "export const FIND_ENROLMENT = 'SELECT 1 AS found FROM public.biometric_tokens WHERE device_id = $1 AND $2::text IS NOT NULL AND revoked_at IS NULL LIMIT 1';",
+  "note": "a failure report names any operator once somebody is enrolled on the device"
+ },
+ {
+  "id": "M21",
+  "file": "src/modules/identity/biometric/store.ts",
+  "from": "export const FIND_ENROLMENT = 'SELECT 1 AS found FROM public.biometric_tokens WHERE device_id = $1 AND operator_id = $2 AND revoked_at IS NULL LIMIT 1';",
+  "to": "export const FIND_ENROLMENT = 'SELECT 1 AS found FROM public.biometric_tokens WHERE device_id = $1 AND operator_id = $2 LIMIT 1';",
+  "note": "a failure report names an operator whose enrolment was revoked"
+ },
+ {
+  "id": "M22",
+  "file": "src/modules/identity/biometric/store.ts",
+  "from": "export const FIND_ENROLMENT = 'SELECT 1 AS found FROM public.biometric_tokens WHERE device_id = $1 AND operator_id = $2 AND revoked_at IS NULL LIMIT 1';",
+  "to": "export const FIND_ENROLMENT = 'SELECT 1 AS found FROM public.biometric_tokens WHERE device_id = $1 AND operator_id = $2 AND used_at IS NULL AND revoked_at IS NULL LIMIT 1';",
+  "note": "a failure report does not name an operator whose remaining token is a used one (\"last used\")"
+ },
+ {
+  "id": "M23",
+  "file": "src/modules/identity/biometric/store.ts",
+  "from": "  return (await db.query(REVOKE_TOKENS[revocation.scope], [now, revocation.reason, ...namedBy(revocation)])).rows.length;",
+  "to": "  await db.query(REVOKE_TOKENS[revocation.scope], [now, revocation.reason, ...namedBy(revocation)]);\n  return 0;",
+  "note": "a revocation reports that it changed nothing"
+ },
+ {
+  "id": "M24",
+  "file": "src/modules/identity/biometric/store.ts",
+  "from": "    expiresAt: time(row.expires_at),",
+  "to": "    expiresAt: time(row.expires_at) + 1,",
+  "note": "the expiry of a stored token is read one millisecond late"
+ },
+ {
+  "id": "M25",
+  "file": "src/modules/identity/biometric/store.ts",
+  "from": "    usedAt: optionalTime(row.used_at),",
+  "to": "    usedAt: null,",
+  "note": "the read after a failed claim never sees that a token was used"
+ },
+ {
+  "id": "M26",
+  "file": "src/modules/identity/biometric/tokens.ts",
+  "from": "export const BIOMETRIC_TOKEN_BYTES = 32;",
+  "to": "export const BIOMETRIC_TOKEN_BYTES = 16;",
+  "note": "a token of 128 bits"
+ },
+ {
+  "id": "M27",
+  "file": "src/modules/identity/biometric/tokens.ts",
+  "from": "export const BIOMETRIC_TOKEN_PREFIX = 'bio_';",
+  "to": "export const BIOMETRIC_TOKEN_PREFIX = 'bia_';",
+  "note": "a token with another prefix"
+ },
+ {
+  "id": "M28",
+  "file": "src/modules/identity/biometric/tokens.ts",
+  "from": "  return createHash('sha256').update(token, 'utf8').digest();",
+  "to": "  return createHash('sha256').update(token.slice(4), 'utf8').digest();",
+  "note": "the hash is taken without the prefix"
+ },
+ {
+  "id": "M29",
+  "file": "src/modules/identity/biometric/tokens.ts",
+  "from": "  return createHash('sha256').update(token, 'utf8').digest();",
+  "to": "  return createHash('sha256').update(token.slice(0, 20), 'utf8').digest();",
+  "note": "the hash is taken of the first 20 characters only"
+ },
+ {
+  "id": "M30",
+  "file": "src/modules/identity/biometric/tokens.ts",
+  "from": "export const BIOMETRIC_TOKEN_LIFETIME_MS = 30 * 24 * 60 * 60_000;",
+  "to": "export const BIOMETRIC_TOKEN_LIFETIME_MS = 31 * 24 * 60 * 60_000;",
+  "note": "a lifetime of 31 days"
+ },
+ {
+  "id": "M31",
+  "file": "src/modules/identity/biometric/tokens.ts",
+  "from": "  return `${BIOMETRIC_TOKEN_PREFIX}${random(BIOMETRIC_TOKEN_BYTES).toString('base64url')}`;",
+  "to": "  return `${BIOMETRIC_TOKEN_PREFIX}${random(BIOMETRIC_TOKEN_BYTES).fill(7, 4).toString('base64url')}`;",
+  "note": "a token with four random bytes"
+ },
+ {
+  "id": "M32",
+  "file": "src/modules/identity/biometric/tokens.ts",
+  "from": "  return randomUUID();",
+  "to": "  return '11111111-1111-4111-8111-111111111111';",
+  "note": "every enrolment is the same family"
+ },
+ {
+  "id": "M33",
+  "file": "src/modules/identity/biometric/sign-in.ts",
+  "from": "    if (attempt.kind === 'LOCKED') {\n      const limited = await placeInBudget();\n      // Not verified",
+  "to": "    if (attempt.kind === 'LOCKED' && now < 0) {\n      const limited = await placeInBudget();\n      // Not verified",
+  "note": "an attempt during the lock is verified all the same"
+ },
+ {
+  "id": "M34",
+  "file": "src/modules/identity/biometric/sign-in.ts",
+  "from": "    const attempt = await lockout.take(deviceId, now);\n    if (attempt.kind === 'LOCKED') {\n      const limited = await placeInBudget();\n      // Not verified",
+  "to": "    const attempt = await lockout.take('web', now);\n    if (attempt.kind === 'LOCKED') {\n      const limited = await placeInBudget();\n      // Not verified",
+  "note": "the attempt of a biometric sign-in is taken from the web console's counter"
+ },
+ {
+  "id": "M35",
+  "file": "src/modules/identity/biometric/sign-in.ts",
+  "from": "    const failure = await lockout.fail(deviceId, attempt, now);",
+  "to": "    const failure = { attemptsRemaining: 4, lockedUntil: null as number | null, retryInMs: 0 };",
+  "note": "a refused token is not counted as a failure"
+ },
+ {
+  "id": "M36",
+  "file": "src/modules/identity/biometric/sign-in.ts",
+  "from": "          lockout.succeed(deviceId);\n",
+  "to": "",
+  "note": "a success does not clear the device's count"
+ },
+ {
+  "id": "M37",
+  "file": "src/modules/identity/biometric/sign-in.ts",
+  "from": "      const operator = deviceState === 'PAIRED' ? await markSignedIn(unit, claimed.operatorId, now) : null;",
+  "to": "      const operator = await markSignedIn(unit, claimed.operatorId, now);",
+  "note": "the unit does not ask whether the device is still PAIRED"
+ },
+ {
+  "id": "M38",
+  "file": "src/modules/identity/biometric/sign-in.ts",
+  "from": "      await revokeBiometricTokens(\n        unit,\n        { scope: 'FAMILY', familyId: claimed.familyId,",
+  "to": "      if (now < 0) await revokeBiometricTokens(\n        unit,\n        { scope: 'FAMILY', familyId: claimed.familyId,",
+  "note": "a claimed token that signs nobody in leaves its family unrevoked"
+ },
+ {
+  "id": "M39",
+  "file": "src/modules/identity/biometric/sign-in.ts",
+  "from": "reason: paired ? 'USER_DISABLED' : deviceState === 'UNPAIRED' ? 'DEVICE_UNPAIRED' : 'DEVICE_REVOKED' },",
+  "to": "reason: paired ? 'USER_DISABLED' : deviceState === 'UNPAIRED' ? 'DEVICE_REVOKED' : 'DEVICE_UNPAIRED' },",
+  "note": "the family of an unpaired device is revoked as \"revoked\""
+ },
+ {
+  "id": "M40",
+  "file": "src/modules/identity/biometric/sign-in.ts",
+  "from": "        reason: paired ? TokenRefusalReason.USER_DISABLED : TokenRefusalReason.DEVICE_NOT_PAIRED,",
+  "to": "        reason: paired ? TokenRefusalReason.DEVICE_NOT_PAIRED : TokenRefusalReason.USER_DISABLED,",
+  "note": "the row of a claimed token names the wrong reason"
+ },
+ {
+  "id": "M41",
+  "file": "src/modules/identity/biometric/sign-in.ts",
+  "from": "        const replaced = presentedSession === null ? null : await endSession(unit, presentedSession.id, now, 'ROTATED');",
+  "to": "        const replaced = presentedSession === null ? null : null as { id: string } | null;",
+  "note": "a session that is presented with a sign-in is not ended (no rotation)"
+ },
+ {
+  "id": "M42",
+  "file": "src/modules/identity/biometric/sign-in.ts",
+  "from": "        await insertToken(unit, {\n          tokenHash: biometricTokenHash(biometricToken),",
+  "to": "        if (now < 0) await insertToken(unit, {\n          tokenHash: biometricTokenHash(biometricToken),",
+  "note": "the next token is handed out and never stored"
+ },
+ {
+  "id": "M43",
+  "file": "src/modules/identity/biometric/sign-in.ts",
+  "from": "          tokenHash: biometricTokenHash(biometricToken),\n          familyId: claimed.familyId,",
+  "to": "          tokenHash: biometricTokenHash(biometricToken),\n          familyId: claimed.id,",
+  "note": "the next token starts a family of its own"
+ },
+ {
+  "id": "M44",
+  "file": "src/modules/identity/biometric/sign-in.ts",
+  "from": "          issuedAt: now,\n          expiresAt: now + BIOMETRIC_TOKEN_LIFETIME_MS,\n        });\n        const issued",
+  "to": "          issuedAt: now,\n          expiresAt: now + 60_000,\n        });\n        const issued",
+  "note": "the next token lives one minute"
+ },
+ {
+  "id": "M45",
+  "file": "src/modules/identity/biometric/sign-in.ts",
+  "from": "method: AuthMethod.BIOMETRIC, now });",
+  "to": "method: AuthMethod.PASSWORD, now });",
+  "note": "the session of a biometric sign-in is stored as a PASSWORD session"
+ },
+ {
+  "id": "M46",
+  "file": "src/modules/identity/biometric/sign-in.ts",
+  "from": "          biometricToken,\n          info: authSessionInfo(",
+  "to": "          biometricToken: presentedToken,\n          info: authSessionInfo(",
+  "note": "the answer hands the presented token back instead of the next one"
+ },
+ {
+  "id": "M47",
+  "file": "src/modules/identity/biometric/sign-in.ts",
+  "from": "replaced: replaced !== null }));",
+  "to": "replaced: false }));",
+  "note": "the row of a sign-in never says that it replaced a session"
+ },
+ {
+  "id": "M48",
+  "file": "src/modules/identity/biometric/sign-in.ts",
+  "from": "          if (replaced !== null) app.publish({ kind: 'session.ended', sessionIds: [replaced.id], reason: 'ROTATED' });\n",
+  "to": "",
+  "note": "the end of a rotated session is not published"
+ },
+ {
+  "id": "M49",
+  "file": "src/modules/identity/biometric/sign-in.ts",
+  "from": "        const revoked = await revokeBiometricTokens(unit, { scope: 'FAMILY', familyId, reason: 'TOKEN_REUSE' }, now);",
+  "to": "        const revoked = now < 0 ? await revokeBiometricTokens(unit, { scope: 'FAMILY', familyId, reason: 'TOKEN_REUSE' }, now) : 0;",
+  "note": "a reuse does not revoke the family"
+ },
+ {
+  "id": "M50",
+  "file": "src/modules/identity/biometric/sign-in.ts",
+  "from": "        const sessionIds = await app.sessionRegistry.endBiometricSessions(unit, tokenDevice, tokenOperator);",
+  "to": "        const sessionIds: readonly string[] = now < 0 ? await app.sessionRegistry.endBiometricSessions(unit, tokenDevice, tokenOperator) : [];",
+  "note": "a reuse does not end the BIOMETRIC sessions"
+ },
+ {
+  "id": "M51",
+  "file": "src/modules/identity/biometric/sign-in.ts",
+  "from": "        const sessionIds = await app.sessionRegistry.endBiometricSessions(unit, tokenDevice, tokenOperator);",
+  "to": "        const sessionIds = await app.sessionRegistry.endBiometricSessions(unit, deviceId, tokenOperator);",
+  "note": "a reuse ends the sessions of the device that PRESENTED the token, not of the token's device"
+ },
+ {
+  "id": "M52",
+  "file": "src/modules/identity/biometric/sign-in.ts",
+  "from": "        const sessionIds = await app.sessionRegistry.endBiometricSessions(unit, tokenDevice, tokenOperator);",
+  "to": "        const sessionIds = await app.sessionRegistry.endForDevice(unit, tokenDevice, 'DEVICE_REVOKED');",
+  "note": "a reuse ends EVERY session of the device, the password sessions included"
+ },
+ {
+  "id": "M53",
+  "file": "src/modules/identity/biometric/sign-in.ts",
+  "from": "        if (sessionIds.length > 0) unit.afterCommit(() => app.publish({ kind: 'session.ended', sessionIds, reason: 'TOKEN_REUSE' }));\n",
+  "to": "",
+  "note": "the sessions a reuse ended are not published"
+ },
+ {
+  "id": "M54",
+  "file": "src/modules/identity/biometric/sign-in.ts",
+  "from": "        if (sessionIds.length > 0) unit.afterCommit(() => app.publish({ kind: 'session.ended', sessionIds, reason: 'TOKEN_REUSE' }));",
+  "to": "        if (sessionIds.length > 0) app.publish({ kind: 'session.ended', sessionIds, reason: 'TOKEN_REUSE' });",
+  "note": "session.ended of a reuse is published BEFORE the commit"
+ },
+ {
+  "id": "M55",
+  "file": "src/modules/identity/biometric/sign-in.ts",
+  "from": "        if (sessionIds.length > 0) unit.afterCommit(() => app.publish({ kind: 'session.ended', sessionIds, reason: 'TOKEN_REUSE' }));",
+  "to": "        unit.afterCommit(() => app.publish({ kind: 'session.ended', sessionIds, reason: 'TOKEN_REUSE' }));",
+  "note": "a reuse that ended nothing publishes an empty session.ended"
+ },
+ {
+  "id": "M56",
+  "file": "src/modules/identity/biometric/sign-in.ts",
+  "from": "          sessionsEnded: sessionIds.length,",
+  "to": "          sessionsEnded: 0,",
+  "note": "the row of a reuse says it ended no session"
+ },
+ {
+  "id": "M57",
+  "file": "src/modules/identity/biometric/sign-in.ts",
+  "from": "          changed: revoked > 0 || sessionIds.length > 0,",
+  "to": "          changed: false,",
+  "note": "a reuse that changed state is treated as a plain refusal (its row is dropped beyond the budget)"
+ },
+ {
+  "id": "M58",
+  "file": "src/modules/identity/biometric/sign-in.ts",
+  "from": "          changed: revoked > 0 || sessionIds.length > 0,",
+  "to": "          changed: true,",
+  "note": "a reuse that changed nothing is audited beyond the budget"
+ },
+ {
+  "id": "M59",
+  "file": "src/modules/identity/biometric/sign-in.ts",
+  "from": "        sessionsEnded: null,\n        changed: true,",
+  "to": "        sessionsEnded: null,\n        changed: false,",
+  "note": "a claimed token that signs nobody in is treated as a plain refusal (its row is dropped beyond the budget)"
+ },
+ {
+  "id": "M60",
+  "file": "src/modules/identity/biometric/sign-in.ts",
+  "from": "        refused = { operatorId: refusal.operatorId, reason: refusal.reason, sessionsEnded: null, changed: false };",
+  "to": "        refused = { operatorId: refusal.operatorId, reason: refusal.reason, sessionsEnded: null, changed: true };",
+  "note": "a plain refusal is audited beyond the budget"
+ },
+ {
+  "id": "M61",
+  "file": "src/modules/identity/biometric/sign-in.ts",
+  "from": "    if (limited === null || refused.changed) {",
+  "to": "    if (limited === null) {",
+  "note": "the row of a refusal that changed state is dropped when the budget has no place"
+ },
+ {
+  "id": "M62",
+  "file": "src/modules/identity/biometric/sign-in.ts",
+  "from": "      if (limited === null) {\n        await appendActivity(unit, lockedOut(",
+  "to": "      {\n        await appendActivity(unit, lockedOut(",
+  "note": "an attempt during the lock is audited beyond the budget"
+ },
+ {
+  "id": "M63",
+  "file": "src/modules/identity/biometric/sign-in.ts",
+  "from": "  if (outcome.limited !== null) throw outcome.limited;",
+  "to": "",
+  "note": "the 429 of the denial budget is not answered"
+ },
+ {
+  "id": "M64",
+  "file": "src/modules/identity/biometric/sign-in.ts",
+  "from": "  throw failure.lockedUntil === null ? tokenNotAccepted(failure.attemptsRemaining) : consoleLocked(failure.lockedUntil, failure.retryInMs);",
+  "to": "  throw tokenNotAccepted(failure.attemptsRemaining);",
+  "note": "the failure that locks the device answers 401 instead of 423"
+ },
+ {
+  "id": "M65",
+  "file": "src/modules/identity/biometric/sign-in.ts",
+  "from": "          operatorId: refused.operatorId,\n          deviceId,",
+  "to": "          operatorId: null,\n          deviceId,",
+  "note": "the row of a refused token never names the operator of the token"
+ },
+ {
+  "id": "M66",
+  "file": "src/modules/identity/biometric/sign-in.ts",
+  "from": "          reason: refused.reason,\n          sessionsEnded: refused.sessionsEnded,",
+  "to": "          reason: null,\n          sessionsEnded: refused.sessionsEnded,",
+  "note": "the row of a refused token carries no reason"
+ },
+ {
+  "id": "M67",
+  "file": "src/modules/identity/biometric/sign-in.ts",
+  "from": "  if (found.usedAt !== null) {",
+  "to": "  if (found.usedAt !== null && found.deviceId === deviceId) {",
+  "note": "a used token presented by another device is no reuse"
+ },
+ {
+  "id": "M68",
+  "file": "src/modules/identity/biometric/sign-in.ts",
+  "from": "  if (found.usedAt !== null) {",
+  "to": "  if (found.usedAt !== null && found.revokedAt === null) {",
+  "note": "a used token of a family that was revoked already is no reuse"
+ },
+ {
+  "id": "M69",
+  "file": "src/modules/identity/biometric/sign-in.ts",
+  "from": "  if (found.deviceId !== deviceId) return { operatorId, reason: TokenRefusalReason.OTHER_DEVICE, reused: null };",
+  "to": "  if (found.deviceId !== deviceId) return { operatorId: null, reason: null, reused: null };",
+  "note": "a token of another device is refused as an unknown one"
+ },
+ {
+  "id": "M70",
+  "file": "src/modules/identity/biometric/sign-in.ts",
+  "from": "    const reason = found.revokeReason === 'USER_DISABLED' ? TokenRefusalReason.USER_DISABLED : TokenRefusalReason.TOKEN_REVOKED;",
+  "to": "    const reason = TokenRefusalReason.TOKEN_REVOKED;",
+  "note": "a token that was revoked with its operator's account is not marked USER_DISABLED"
+ },
+ {
+  "id": "M71",
+  "file": "src/modules/identity/biometric/sign-in.ts",
+  "from": "  if (found.expiresAt <= now) return { operatorId, reason: TokenRefusalReason.TOKEN_EXPIRED, reused: null };",
+  "to": "  if (found.expiresAt < now) return { operatorId, reason: TokenRefusalReason.TOKEN_EXPIRED, reused: null };",
+  "note": "a token at the instant of its expiry is not called expired"
+ },
+ {
+  "id": "M72",
+  "file": "src/modules/identity/biometric/sign-in.ts",
+  "from": "  if (found === null) return { operatorId: null, reason: null, reused: null };\n  const { operatorId } = found;",
+  "to": "  if (found === null) return { operatorId: null, reason: null, reused: null };\n  const operatorId = null as string | null;",
+  "note": "no refusal names the operator of the stored token"
+ },
+ {
+  "id": "M73",
+  "file": "src/modules/identity/biometric/sign-in.ts",
+  "from": "  return new ApiFailure(401, ApiErrorCode.INVALID_CREDENTIALS, 'Biometric sign-in was not accepted. Sign in with the password.', {\n    details: { attemptsRemaining },\n  });",
+  "to": "  return new ApiFailure(401, ApiErrorCode.INVALID_CREDENTIALS, 'Biometric sign-in was not accepted. Sign in with the password.', {\n    details: { attemptsRemaining: attemptsRemaining + 1 },\n  });",
+  "note": "the answer of a refused token miscounts the attempts that remain"
+ },
+ {
+  "id": "M74",
+  "file": "src/modules/identity/biometric/sign-in.ts",
+  "from": "  const tokenHash = biometricTokenHash(presentedToken);",
+  "to": "  const tokenHash = biometricTokenHash(presentedToken.trim());",
+  "note": "the presented value is trimmed before it is hashed"
+ },
+ {
+  "id": "M75",
+  "file": "src/modules/identity/biometric/enrolment.ts",
+  "from": "{ scope: 'ENROLMENT', deviceId, operatorId, reason: 'DISABLED' }",
+  "to": "{ scope: 'ENROLMENT', deviceId, operatorId, reason: 'REENROLLED' }",
+  "note": "turning off stores the reason of a re-enrolment"
+ },
+ {
+  "id": "M76",
+  "file": "src/modules/identity/biometric/enrolment.ts",
+  "from": "      if (revoked > 0) await unit.audit.append(enrolmentChanged({ operatorId, deviceId, enabled: false }));",
+  "to": "      await unit.audit.append(enrolmentChanged({ operatorId, deviceId, enabled: revoked < 0 }));",
+  "note": "turning off what is off writes a row"
+ },
+ {
+  "id": "M77",
+  "file": "src/modules/identity/biometric/enrolment.ts",
+  "from": "      if (revoked > 0) await unit.audit.append(enrolmentChanged({ operatorId, deviceId, enabled: false }));",
+  "to": "      if (revoked < 0) await unit.audit.append(enrolmentChanged({ operatorId, deviceId, enabled: false }));",
+  "note": "turning off writes no row"
+ },
+ {
+  "id": "M78",
+  "file": "src/modules/identity/biometric/enrolment.ts",
+  "from": "    await revokeBiometricTokens(unit, { scope: 'ENROLMENT', deviceId, operatorId, reason: 'REENROLLED' }, now);\n",
+  "to": "",
+  "note": "an enrolment does not revoke the one before it"
+ },
+ {
+  "id": "M79",
+  "file": "src/modules/identity/biometric/enrolment.ts",
+  "from": "    await revokeBiometricTokens(unit, { scope: 'ENROLMENT', deviceId, operatorId, reason: 'REENROLLED' }, now);",
+  "to": "    await revokeBiometricTokens(unit, { scope: 'ENROLMENT', deviceId, operatorId, reason: 'DISABLED' }, now);",
+  "note": "an enrolment revokes the one before it with the reason of a turn-off"
+ },
+ {
+  "id": "M80",
+  "file": "src/modules/identity/biometric/enrolment.ts",
+  "from": "    if (enrolled === null) throw enrolmentRefusal(await readEnrolmentSession(unit, sessionId));",
+  "to": "    if (enrolled === null) return now + BIOMETRIC_TOKEN_LIFETIME_MS;",
+  "note": "a refused enrolment hands out a token that was never stored, and commits the revocation before it"
+ },
+ {
+  "id": "M81",
+  "file": "src/modules/identity/biometric/enrolment.ts",
+  "from": "    await unit.audit.append(enrolmentChanged({ operatorId: enrolled.operatorId, deviceId: enrolled.deviceId, enabled: true }));\n",
+  "to": "",
+  "note": "an enrolment writes no row"
+ },
+ {
+  "id": "M82",
+  "file": "src/modules/identity/biometric/enrolment.ts",
+  "from": "    return now + BIOMETRIC_TOKEN_LIFETIME_MS;\n  });",
+  "to": "    return now;\n  });",
+  "note": "the answer of an enrolment states another expiry than the stored one"
+ },
+ {
+  "id": "M83",
+  "file": "src/modules/identity/biometric/enrolment.ts",
+  "from": "      tokenHash: biometricTokenHash(token),",
+  "to": "      tokenHash: biometricTokenHash(newBiometricToken()),",
+  "note": "the token that is returned is not the token that is stored"
+ },
+ {
+  "id": "M84",
+  "file": "src/modules/identity/biometric/enrolment.ts",
+  "from": "      expiresAt: now + BIOMETRIC_TOKEN_LIFETIME_MS,\n    });",
+  "to": "      expiresAt: now + 2 * BIOMETRIC_TOKEN_LIFETIME_MS,\n    });",
+  "note": "the stored expiry is 60 days"
+ },
+ {
+  "id": "M85",
+  "file": "src/modules/identity/biometric/enrolment.ts",
+  "from": "  if (session.method !== 'PASSWORD') return passwordSessionRequired();",
+  "to": "  if (session.method !== 'PASSWORD') return notSignedIn();",
+  "note": "a session created with a token is told to sign in, not that it needs a password session"
+ },
+ {
+  "id": "M86",
+  "file": "src/modules/identity/biometric/enrolment.ts",
+  "from": "  if (session === null || !session.open || !session.operatorEnabled) return notSignedIn();",
+  "to": "  if (session === null || !session.open) return notSignedIn();",
+  "note": "a refused enrolment of a disabled operator is answered as something else"
+ },
+ {
+  "id": "M87",
+  "file": "src/modules/identity/biometric/enrolment.ts",
+  "from": "  if (session.deviceState !== 'PAIRED') return deviceRevoked();",
+  "to": "  if (session.deviceState === 'REVOKED') return deviceRevoked();",
+  "note": "an unpaired device is not told that it is no longer paired"
+ },
+ {
+  "id": "M88",
+  "file": "src/modules/identity/biometric/enrolment.ts",
+  "from": "    details: { reason: PASSWORD_SESSION_REQUIRED },",
+  "to": "    details: {},",
+  "note": "the 403 for a session that needs a password carries no reason"
+ },
+ {
+  "id": "M89",
+  "file": "src/modules/identity/biometric/failure.ts",
+  "from": "rowFor(enrolled ? believedOperatorId : null)",
+  "to": "rowFor(believedOperatorId)",
+  "note": "a failure report names whoever the device says (SR-37 not applied)"
+ },
+ {
+  "id": "M90",
+  "file": "src/modules/identity/biometric/failure.ts",
+  "from": "rowFor(enrolled ? believedOperatorId : null)",
+  "to": "rowFor(enrolled ? null : believedOperatorId)",
+  "note": "a failure report names the operator exactly when there is NO enrolment"
+ },
+ {
+  "id": "M91",
+  "file": "src/modules/identity/biometric/failure.ts",
+  "from": "rowFor(enrolled ? believedOperatorId : null)",
+  "to": "rowFor(null)",
+  "note": "a failure report never names an operator"
+ },
+ {
+  "id": "M92",
+  "file": "src/modules/identity/biometric/failure.ts",
+  "from": "    const attempt = await lockout.take(deviceId, now);",
+  "to": "    const attempt = await lockout.take('web', now);",
+  "note": "a failure report counts on the web console"
+ },
+ {
+  "id": "M93",
+  "file": "src/modules/identity/biometric/failure.ts",
+  "from": "      const failure = await lockout.fail(deviceId, attempt, now);",
+  "to": "      const failure = { attemptsRemaining: 4, lockedUntil: null as number | null };",
+  "note": "a reported failure takes an attempt and is not recorded as a failure"
+ },
+ {
+  "id": "M94",
+  "file": "src/modules/identity/biometric/failure.ts",
+  "from": "    if (limited === null) await appendActivity(unit, rowFor(",
+  "to": "    await appendActivity(unit, rowFor(",
+  "note": "a report is audited beyond the denial budget"
+ },
+ {
+  "id": "M95",
+  "file": "src/modules/identity/biometric/failure.ts",
+  "from": "  if (outcome.limited !== null) throw outcome.limited;\n",
+  "to": "",
+  "note": "the 429 of the denial budget is not answered for a report"
+ },
+ {
+  "id": "M96",
+  "file": "src/modules/identity/biometric/failure.ts",
+  "from": "    return { status: { ...(await lockout.status(deviceId, now)), serverTime: now }, limited };",
+  "to": "    return { status: { ...(await lockout.status('web', now)), serverTime: now }, limited };",
+  "note": "the answer of a report is the web console's lock state"
+ },
+ {
+  "id": "M97",
+  "file": "src/modules/identity/biometric/failure.ts",
+  "from": "    return { status: { ...(await lockout.status(deviceId, now)), serverTime: now }, limited };",
+  "to": "    return { status: { ...(await lockout.status(deviceId, now)), serverTime: 0 }, limited };",
+  "note": "the answer of a report states no server time"
+ },
+ {
+  "id": "M98",
+  "file": "src/modules/identity/biometric/failure.ts",
+  "from": "      rowFor = (operatorId) => lockedOut({ operatorId, deviceId, lockedUntil: attempt.lockedUntil, retryInMs: attempt.retryInMs });",
+  "to": "      rowFor = () => lockedOut({ operatorId: null, deviceId, lockedUntil: attempt.lockedUntil, retryInMs: attempt.retryInMs });",
+  "note": "a report during the lock never names the enrolled operator"
+ },
+ {
+  "id": "M99",
+  "file": "src/modules/identity/biometric/failure.ts",
+  "from": "    const enrolled = await hasEnrolment(unit, deviceId, believedOperatorId ?? NO_OPERATOR);",
+  "to": "    const enrolled = believedOperatorId !== null && (await hasEnrolment(unit, deviceId, believedOperatorId));",
+  "note": "a report that names nobody skips the lookup (another amount of work)"
+ },
+ {
+  "id": "M100",
+  "file": "src/modules/identity/biometric/activity.ts",
+  "from": "    details: { enabled: input.enabled, deviceId: input.deviceId },",
+  "to": "    details: { enabled: !input.enabled, deviceId: input.deviceId },",
+  "note": "the row of an enrolment change states the opposite"
+ },
+ {
+  "id": "M101",
+  "file": "src/modules/identity/biometric/activity.ts",
+  "from": "    details: { enabled: input.enabled, deviceId: input.deviceId },",
+  "to": "    details: { enabled: input.enabled },",
+  "note": "the row of an enrolment change does not repeat the device in its details"
+ },
+ {
+  "id": "M102",
+  "file": "src/modules/identity/biometric/activity.ts",
+  "from": "        ...(input.reason === null ? {} : { reason: input.reason }),",
+  "to": "",
+  "note": "the row of a refused token drops its reason"
+ },
+ {
+  "id": "M103",
+  "file": "src/modules/identity/biometric/activity.ts",
+  "from": "        ...(input.sessionsEnded === null ? {} : { sessionsEnded: input.sessionsEnded }),",
+  "to": "        ...(input.sessionsEnded === null || input.sessionsEnded === 0 ? {} : { sessionsEnded: input.sessionsEnded }),",
+  "note": "the row of a reuse that ended nothing has no sessionsEnded"
+ },
+ {
+  "id": "M104",
+  "file": "src/modules/identity/biometric/activity.ts",
+  "from": "const BIOMETRIC = AuthMethod.BIOMETRIC;",
+  "to": "const BIOMETRIC = AuthMethod.PASSWORD;",
+  "note": "the rows of the biometric operations say the method was the password"
+ },
+ {
+  "id": "M105",
+  "file": "src/modules/identity/biometric/activity.ts",
+  "from": "    actorId: input.operatorId,\n    deviceId: input.deviceId,\n    details: { enabled",
+  "to": "    actorId: null,\n    deviceId: input.deviceId,\n    details: { enabled",
+  "note": "the row of an enrolment change names nobody"
+ },
+ {
+  "id": "M106",
+  "file": "src/modules/identity/biometric/routes.ts",
+  "from": "        request.body.enabled,\n",
+  "to": "        !request.body.enabled,\n",
+  "note": "the enrolment does the opposite of what was asked"
+ },
+ {
+  "id": "M107",
+  "file": "src/modules/identity/biometric/routes.ts",
+  "from": "      return { session: signedIn.info, sessionToken: signedIn.sessionToken, biometricToken: signedIn.biometricToken };",
+  "to": "      return { session: signedIn.info, sessionToken: signedIn.sessionToken };",
+  "note": "the answer of a biometric sign-in carries no next token"
+ },
+ {
+  "id": "M108",
+  "file": "src/modules/identity/biometric/routes.ts",
+  "from": "      return { session: signedIn.info, sessionToken: signedIn.sessionToken, biometricToken: signedIn.biometricToken };",
+  "to": "      return { session: signedIn.info, biometricToken: signedIn.biometricToken };",
+  "note": "the answer of a biometric sign-in carries no session token"
+ },
+ {
+  "id": "M109",
+  "file": "src/modules/identity/biometric/routes.ts",
+  "from": "deviceOf(request), request.body.operatorId);",
+  "to": "deviceOf(request), null);",
+  "note": "the operator a report names is dropped"
+ },
+ {
+  "id": "M110",
+  "file": "src/modules/identity/biometric/routes.ts",
+  "from": "      const signedIn = await signInWithBiometricToken(app, services, request, deviceOf(request), request.body.token);\n      withStateRevision(reply);",
+  "to": "      const signedIn = await signInWithBiometricToken(app, services, request, deviceOf(request), request.body.token);",
+  "note": "the answer of a biometric sign-in lacks the two headers of API-7"
+ },
+ {
+  "id": "M111",
+  "file": "src/modules/identity/biometric/routes.ts",
+  "from": "        request.body.enabled,\n      );\n      withStateRevision(reply);",
+  "to": "        request.body.enabled,\n      );",
+  "note": "the answer of an enrolment lacks the two headers of API-7"
+ },
+ {
+  "id": "M112",
+  "file": "src/modules/identity/biometric/routes.ts",
+  "from": "request.body.operatorId);\n      withStateRevision(reply);",
+  "to": "request.body.operatorId);",
+  "note": "the answer of a report lacks the two headers of API-7"
+ },
+ {
+  "id": "M113",
+  "file": "src/modules/identity/biometric/routes.ts",
+  "from": "      // A device: both tokens travel in the body, once. No cookie.\n",
+  "to": "      void reply.header('set-cookie', `${app.config.sessionCookieName}=${signedIn.sessionToken}; Path=/; HttpOnly; SameSite=Strict`);\n",
+  "note": "the answer of a biometric sign-in sets the session cookie"
+ },
+ {
+  "id": "M114",
+  "file": "src/modules/identity/biometric/routes.ts",
+  "from": "{ sessionId: session.id, operatorId: session.operatorId, deviceId: session.deviceId },",
+  "to": "{ sessionId: session.id, operatorId: session.operatorId, deviceId: 'DEV-0001' },",
+  "note": "the enrolment acts on a fixed device instead of the session's"
+ },
+ {
+  "id": "M115",
+  "file": "src/modules/identity/biometric/routes.ts",
+  "from": "    void reply.header(EPOCH_HEADER_NAME, app.engine.epoch).header(REVISION_HEADER_NAME, app.engine.revision);",
+  "to": "    void reply.header(EPOCH_HEADER_NAME, app.engine.epoch).header(REVISION_HEADER_NAME, app.engine.revision - 1);",
+  "note": "the revision header names the revision before the command"
+ }
+]

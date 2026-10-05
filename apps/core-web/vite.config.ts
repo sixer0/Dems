@@ -3,19 +3,62 @@ import { fileURLToPath, URL } from 'node:url'
 import tailwindcss from '@tailwindcss/vite'
 import { tanstackRouter } from '@tanstack/router-plugin/vite'
 import react from '@vitejs/plugin-react'
-import { defineConfig } from 'vite'
+import { defineConfig, type ServerOptions } from 'vite'
 import { packagedCspPlugin } from './src/lib/packaged-csp.ts'
+
+/** Ports a Core server listens on: the main instance and lanes 1 to 3 (backend task 02_plan §3.4, §4.2). */
+const CORE_PROXY_PORTS = ['4420', '4421', '4422', '4423']
+
+/**
+ * Live-mode dev proxy (backend task 04_client_integration_spec §4.1, WT-1 to WT-3; 02_plan W05).
+ * With `DEMS_CORE_PROXY_PORT` set, the dev server forwards `/api/v1` and `/ws` to the Core server on
+ * `127.0.0.1:<port>`: the browser talks to one origin, so the session cookie stays same-origin.
+ * Unset (or empty): no proxy, the dev server is as before. Any other value stops the dev server.
+ *
+ * SECURITY (WT-2, SD-07): an entry holds `target` (and `ws`) and NOTHING else. No `headers`, no
+ * `changeOrigin`, no `rewriteWsOrigin`, no `configure`, `bypass` or `rewrite` hook: the Core server's
+ * Origin guard must see the `Origin` and the `Cookie` exactly as the browser sent them.
+ *
+ * CORS (backend task decisions D29, F30): while the proxy is on, the dev server's own CORS layer is
+ * off. It runs before the proxy, so it would add `Access-Control-Allow-Origin` to the Core server's
+ * answers for any loopback origin and answer preflights itself; the Core server sends no such thing
+ * (SR-04, OR-5). Without the variable nothing is returned, so Vite's default stays and Simulated-mode
+ * dev is unchanged.
+ */
+function coreDevProxy(port: string | undefined): Pick<ServerOptions, 'proxy' | 'cors'> {
+  if (port === undefined || port === '') return {}
+  if (!CORE_PROXY_PORTS.includes(port)) {
+    throw new Error(
+      `DEMS_CORE_PROXY_PORT must be one of ${CORE_PROXY_PORTS.join(', ')} (got "${port}"). Unset it to run without the Core proxy.`,
+    )
+  }
+  const target = `http://127.0.0.1:${port}`
+  return {
+    proxy: {
+      '/api/v1': { target },
+      '/ws': { target, ws: true },
+    },
+    cors: false,
+  }
+}
 
 // masterplan/01_specs.md §4.2. The router plugin must come before react() (02 L527).
 // 06_packaging_spec §3.4 (step 100): `base` stays the default `/` and `build.sourcemap` stays off.
 // `packagedCspPlugin` is build-only and acts only with VITE_DEMS_CORE_ORIGIN=same-origin (the
 // packager); dev mode and the default build are unchanged.
-export default defineConfig({
+export default defineConfig(({ command, isPreview }) => ({
   plugins: [tanstackRouter({ target: 'react', autoCodeSplitting: true }), react(), tailwindcss(), packagedCspPlugin()],
   resolve: {
     alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
   },
-  server: { host: '127.0.0.1', port: 5173, strictPort: true },
+  // WT-3: the proxy (with its `cors: false`) exists in the dev server only. `vite build` never reads
+  // the variable, and `vite preview`, which would otherwise inherit both from `server`, gets neither.
+  server: {
+    host: '127.0.0.1',
+    port: 5173,
+    strictPort: true,
+    ...(command === 'serve' && !isPreview ? coreDevProxy(process.env.DEMS_CORE_PROXY_PORT) : {}),
+  },
   preview: { host: '127.0.0.1', port: 4173, strictPort: true },
   // D127 (F96-1): nothing is inlined as a `data:` URI. The app fetches the small demo-evidence files, and the packaged CSP `connect-src` blocks `fetch(data:)`.
   build: { assetsInlineLimit: 0 },
@@ -29,4 +72,4 @@ export default defineConfig({
     // D74 M7 (step 53 hand-over): `.test.ts` files run too.
     include: ['src/**/*.test.{ts,tsx}'],
   },
-})
+}))

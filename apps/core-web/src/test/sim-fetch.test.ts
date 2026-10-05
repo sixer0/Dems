@@ -3,11 +3,14 @@
 // `x-dems-simulated: 1`; export follows the signed-in role (INVESTIGATOR 403 plus an audit row,
 // SUPERVISOR 202); anything else is rejected before it can leave the machine. Also covers the
 // W53-1..4 cases, answered by the simulator itself since step 54 (D101).
+// Every simulator runs on a manual clock pinned to the DEMO packages' `datasetNow`, so the evidence
+// ID of the demo-data export example exists on any calendar day and at any hour.
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { CORE_HTTP_ORIGIN, validateCoreApiResponse, type HealthResponse } from '@dems/shared/api'
 import { DEMO_EVIDENCE_INDEX } from '@dems/shared/demo-data'
 import {
   ALWAYS_VISIBLE,
+  createManualClock,
   createMemoryAuthStorage,
   createSim,
   OPERATOR_IDS,
@@ -15,6 +18,13 @@ import {
   type Sim,
 } from '@dems/shared/sim'
 import { BlockedRequestError, createSimAwareFetch, type FetchLike, type TryItExchange } from '@/features/api-reference/sim-fetch'
+
+/**
+ * The instant the DEMO packages describe (2026-10-01T10:00+07:00). The simulator builds evidence
+ * IDs from its clock (`EV-<YYYYMMDD>-<seq>`), and `apiExamples.evidenceExport` names one of them:
+ * without this pin the ID exists only while the wall-clock date is the packages' date.
+ */
+const DATASET_NOW = Date.parse(DEMO_EVIDENCE_INDEX.datasetNow)
 
 const sims: Sim[] = []
 
@@ -24,8 +34,9 @@ afterEach(() => {
 
 async function makeSim(operatorId: string | null, scenario: ScenarioName = 'idle'): Promise<Sim> {
   const authStorage = createMemoryAuthStorage()
-  if (operatorId) authStorage.save({ operatorId, issuedAt: Date.now() })
+  if (operatorId) authStorage.save({ operatorId, issuedAt: DATASET_NOW })
   const sim = createSim({
+    clock: createManualClock(DATASET_NOW),
     storage: null,
     authStorage,
     visibility: ALWAYS_VISIBLE,

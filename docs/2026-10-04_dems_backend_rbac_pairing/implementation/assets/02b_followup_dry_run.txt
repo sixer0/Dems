@@ -1,0 +1,389 @@
+== W02b follow-up dry run (port guard) 2026-10-04 11:11:02
+before the follow-up sha256: f25f3096c35fd3178c6ae9e3bcfbcff99fe6d7ce1871b58402af47089cff93bf
+new                  sha256: 8baf7a8d51a44495a55357cc8fb1ecc7d0d0a701c08d58b1fe41097952ec0091
+
+---- summary
+-- (2) the session's own AVD is running
+old_own_running: exit=0 adb calls=10 emulator boots=0 commands ran=yes
+new_own_running: exit=0 adb calls=11 emulator boots=0 commands ran=yes
+new_own_running_console_silent: exit=0 adb calls=11 emulator boots=0 commands ran=yes
+new_own_running_secure_lock: exit=77 adb calls=18 emulator boots=0 commands ran=no
+new_own_running_other_form: exit=0 adb calls=12 emulator boots=0 commands ran=yes
+-- (3) nothing on the port
+old_down: exit=0 adb calls=11 emulator boots=1 commands ran=yes; pre-existing PID file: CHANGED
+new_down: exit=0 adb calls=14 emulator boots=1 commands ran=yes; pre-existing PID file: CHANGED
+new_down_tablet: exit=0 adb calls=14 emulator boots=1 commands ran=yes
+new_down_old_prefix: exit=0 adb calls=14 emulator boots=1 commands ran=yes
+-- (1) another emulator holds the port
+new_foreign_process_and_name: exit=69 adb calls=2 emulator boots=0 commands ran=no; pre-existing PID file: UNTOUCHED
+new_foreign_process_console_silent: exit=69 adb calls=2 emulator boots=0 commands ran=no; pre-existing PID file: UNTOUCHED
+new_foreign_no_port_argument: exit=69 adb calls=2 emulator boots=0 commands ran=no; pre-existing PID file: UNTOUCHED
+new_foreign_serial_only: exit=69 adb calls=3 emulator boots=0 commands ran=no; pre-existing PID file: UNTOUCHED
+new_old_prefix_vs_new_emulator: exit=69 adb calls=2 emulator boots=0 commands ran=no; pre-existing PID file: UNTOUCHED
+new_both_tablet_port_foreign: exit=69 adb calls=6 emulator boots=0 commands ran=no
+new_own_process_but_serial_foreign: exit=69 adb calls=4 emulator boots=0 commands ran=no
+new_foreign_seen_only_after_boot: exit=69 adb calls=7 emulator boots=1 commands ran=no
+
+---- (2) old vs new, own AVD running: adb trace diff (expected: one added read-only call)
+3a4
+> adb -s emulator-5554 emu avd name
+(diff exit=1)
+---- (2) old vs new, own AVD running: log lines (times stripped)
+log lines IDENTICAL
+---- (3) old vs new, nothing on the port: adb trace diff (expected: added read-only calls only)
+1a2
+> adb -s emulator-5554 emu avd name
+3a5
+> adb -s emulator-5554 get-state
+4a7
+> adb -s emulator-5554 emu avd name
+(diff exit=1)
+---- (3) old vs new, nothing on the port: emulator call
+emulator call IDENTICAL: emulator -avd dems2_phone -port 5554 -no-metrics -gpu host -no-boot-anim -no-snapshot-load -no-snapshot-save
+
+=== new_own_running: stub adb trace
+adb start-server
+adb -s emulator-5554 get-state
+adb -s emulator-5554 shell getprop sys.boot_completed
+adb -s emulator-5554 emu avd name
+adb -s emulator-5554 shell input keyevent KEYCODE_WAKEUP
+adb -s emulator-5554 shell wm dismiss-keyguard
+adb -s emulator-5554 shell dumpsys window
+adb -s emulator-5554 shell am force-stop com.dems.demo.tablet
+adb -s emulator-5554 reverse tcp:4400 tcp:4400
+adb -s emulator-5554 shell am force-stop com.dems.demo.tablet
+adb -s emulator-5554 reverse --remove tcp:4400
+=== new_own_running: stderr (times stripped)
+[device-session phone HH:MM:SS] lock held; hard cap 120 s, until HH:MM:SS (watchdog PID N)
+[device-session phone HH:MM:SS] session serial: emulator-5554 (dems2_phone)
+[device-session phone HH:MM:SS] emulator-5554: screen awake, no keyguard
+[device-session phone HH:MM:SS] no Metro (NO_METRO=1); tcp:4400 -> tcp:4400 on emulator-5554
+[device-session phone HH:MM:SS] session ended with status 0
+=== new_own_running: stub pgrep calls
+pgrep -f -- (qemu-system-[a-z0-9_]+|emulator) -avd dems2_phone( |$)
+=== new_own_running: stub emulator calls: none
+=== new_own_running: .locks of the scratch root: dems_phone.lock 
+
+=== new_own_running_console_silent: stub adb trace
+adb start-server
+adb -s emulator-5554 get-state
+adb -s emulator-5554 shell getprop sys.boot_completed
+adb -s emulator-5554 emu avd name
+adb -s emulator-5554 shell input keyevent KEYCODE_WAKEUP
+adb -s emulator-5554 shell wm dismiss-keyguard
+adb -s emulator-5554 shell dumpsys window
+adb -s emulator-5554 shell am force-stop com.dems.demo.tablet
+adb -s emulator-5554 reverse tcp:4400 tcp:4400
+adb -s emulator-5554 shell am force-stop com.dems.demo.tablet
+adb -s emulator-5554 reverse --remove tcp:4400
+=== new_own_running_console_silent: stderr (times stripped)
+[device-session phone HH:MM:SS] lock held; hard cap 120 s, until HH:MM:SS (watchdog PID N)
+[device-session phone HH:MM:SS] session serial: emulator-5554 (dems2_phone)
+[device-session phone HH:MM:SS] emulator-5554: screen awake, no keyguard
+[device-session phone HH:MM:SS] no Metro (NO_METRO=1); tcp:4400 -> tcp:4400 on emulator-5554
+[device-session phone HH:MM:SS] session ended with status 0
+=== new_own_running_console_silent: stub pgrep calls
+pgrep -f -- (qemu-system-[a-z0-9_]+|emulator) -avd dems2_phone( |$)
+=== new_own_running_console_silent: stub emulator calls: none
+=== new_own_running_console_silent: .locks of the scratch root: dems_phone.lock 
+
+=== new_own_running_secure_lock: stub adb trace
+adb start-server
+adb -s emulator-5554 get-state
+adb -s emulator-5554 shell getprop sys.boot_completed
+adb -s emulator-5554 emu avd name
+adb -s emulator-5554 shell input keyevent KEYCODE_WAKEUP
+adb -s emulator-5554 shell wm dismiss-keyguard
+adb -s emulator-5554 shell dumpsys window
+   ... (10 more identical dumpsys window calls: the 10 s poll)
+adb -s emulator-5554 shell am force-stop com.dems.demo.tablet
+=== new_own_running_secure_lock: stderr (times stripped)
+[device-session phone HH:MM:SS] lock held; hard cap 120 s, until HH:MM:SS (watchdog PID N)
+[device-session phone HH:MM:SS] session serial: emulator-5554 (dems2_phone)
+[device-session phone HH:MM:SS] emulator-5554: LOCKED. The keyguard still shows after wake + dismiss, so this device has a secure screen lock (PIN, pattern or password)
+[device-session phone HH:MM:SS] emulator-5554: no agent unlocks a device; this script enters no credential and changes no lock setting (D35, D49). The user unlocks it, or use a lock-free AVD (DEMS_AVD_PREFIX, default dems2_)
+[device-session phone HH:MM:SS] session ended with status 77
+=== new_own_running_secure_lock: stub pgrep calls
+pgrep -f -- (qemu-system-[a-z0-9_]+|emulator) -avd dems2_phone( |$)
+=== new_own_running_secure_lock: stub emulator calls: none
+=== new_own_running_secure_lock: .locks of the scratch root: dems_phone.lock 
+
+=== new_own_running_other_form: stub adb trace
+adb start-server
+adb -s emulator-5554 emu avd name
+adb -s emulator-5554 get-state
+adb -s emulator-5554 shell getprop sys.boot_completed
+adb -s emulator-5554 emu avd name
+adb -s emulator-5554 shell input keyevent KEYCODE_WAKEUP
+adb -s emulator-5554 shell wm dismiss-keyguard
+adb -s emulator-5554 shell dumpsys window
+adb -s emulator-5554 shell am force-stop com.dems.demo.tablet
+adb -s emulator-5554 reverse tcp:4400 tcp:4400
+adb -s emulator-5554 shell am force-stop com.dems.demo.tablet
+adb -s emulator-5554 reverse --remove tcp:4400
+=== new_own_running_other_form: stderr (times stripped)
+[device-session phone HH:MM:SS] lock held; hard cap 120 s, until HH:MM:SS (watchdog PID N)
+[device-session phone HH:MM:SS] session serial: emulator-5554 (dems2_phone)
+[device-session phone HH:MM:SS] emulator-5554: screen awake, no keyguard
+[device-session phone HH:MM:SS] no Metro (NO_METRO=1); tcp:4400 -> tcp:4400 on emulator-5554
+[device-session phone HH:MM:SS] session ended with status 0
+=== new_own_running_other_form: stub pgrep calls
+pgrep -f -- (qemu-system-[a-z0-9_]+|emulator) -avd dems2_phone( |$)
+=== new_own_running_other_form: stub emulator calls: none
+=== new_own_running_other_form: .locks of the scratch root: dems_phone.lock 
+
+=== old_down: stub adb trace
+adb start-server
+adb -s emulator-5554 get-state
+adb -s emulator-5554 get-state
+adb -s emulator-5554 shell getprop sys.boot_completed
+adb -s emulator-5554 shell input keyevent KEYCODE_WAKEUP
+adb -s emulator-5554 shell wm dismiss-keyguard
+adb -s emulator-5554 shell dumpsys window
+adb -s emulator-5554 shell am force-stop com.dems.demo.tablet
+adb -s emulator-5554 reverse tcp:4400 tcp:4400
+adb -s emulator-5554 shell am force-stop com.dems.demo.tablet
+adb -s emulator-5554 reverse --remove tcp:4400
+=== old_down: stderr (times stripped)
+[device-session phone HH:MM:SS] lock held; hard cap 120 s, until HH:MM:SS (watchdog PID N)
+[device-session phone HH:MM:SS] session serial: emulator-5554 (dems2_phone)
+[device-session phone HH:MM:SS] dems2_phone (emulator-5554) is down; booting it cold the P3/D78 way (-no-snapshot-load -no-snapshot-save)
+[device-session phone HH:MM:SS] dems2_phone PID N written to .locks/dems2_phone.pid
+[device-session phone HH:MM:SS] dems2_phone booted cold; D78: reinstall the current step-72 debug APK (hash-verified) before testing
+[device-session phone HH:MM:SS] emulator-5554: screen awake, no keyguard
+[device-session phone HH:MM:SS] no Metro (NO_METRO=1); tcp:4400 -> tcp:4400 on emulator-5554
+[device-session phone HH:MM:SS] session ended with status 0
+=== old_down: stub pgrep calls
+pgrep -f -- (qemu-system-[a-z0-9_]+|emulator) -avd dems2_phone( |$)
+=== old_down: stub emulator calls
+emulator -avd dems2_phone -port 5554 -no-metrics -gpu host -no-boot-anim -no-snapshot-load -no-snapshot-save
+=== old_down: .locks of the scratch root: dems2_phone.emulator.log dems2_phone.pid dems_phone.lock 
+
+=== new_down: stub adb trace
+adb start-server
+adb -s emulator-5554 emu avd name
+adb -s emulator-5554 get-state
+adb -s emulator-5554 get-state
+adb -s emulator-5554 get-state
+adb -s emulator-5554 shell getprop sys.boot_completed
+adb -s emulator-5554 emu avd name
+adb -s emulator-5554 shell input keyevent KEYCODE_WAKEUP
+adb -s emulator-5554 shell wm dismiss-keyguard
+adb -s emulator-5554 shell dumpsys window
+adb -s emulator-5554 shell am force-stop com.dems.demo.tablet
+adb -s emulator-5554 reverse tcp:4400 tcp:4400
+adb -s emulator-5554 shell am force-stop com.dems.demo.tablet
+adb -s emulator-5554 reverse --remove tcp:4400
+=== new_down: stderr (times stripped)
+[device-session phone HH:MM:SS] lock held; hard cap 120 s, until HH:MM:SS (watchdog PID N)
+[device-session phone HH:MM:SS] session serial: emulator-5554 (dems2_phone)
+[device-session phone HH:MM:SS] dems2_phone (emulator-5554) is down; booting it cold the P3/D78 way (-no-snapshot-load -no-snapshot-save)
+[device-session phone HH:MM:SS] dems2_phone PID N written to .locks/dems2_phone.pid
+[device-session phone HH:MM:SS] dems2_phone booted cold; D78: check that the current debug APK is on it (base.apk SHA-256 = the host APK) before testing
+[device-session phone HH:MM:SS] emulator-5554: screen awake, no keyguard
+[device-session phone HH:MM:SS] no Metro (NO_METRO=1); tcp:4400 -> tcp:4400 on emulator-5554
+[device-session phone HH:MM:SS] session ended with status 0
+=== new_down: stub pgrep calls
+pgrep -f -- (qemu-system-[a-z0-9_]+|emulator) -avd dems2_phone( |$)
+pgrep -f -- ^[^ ]*(qemu-system-[a-z0-9_]+|emulator) (.* )?-port 5554( |$)
+=== new_down: stub emulator calls
+emulator -avd dems2_phone -port 5554 -no-metrics -gpu host -no-boot-anim -no-snapshot-load -no-snapshot-save
+=== new_down: .locks of the scratch root: dems2_phone.emulator.log dems2_phone.pid dems_phone.lock 
+
+=== new_down_tablet: stub adb trace
+adb start-server
+adb -s emulator-5556 emu avd name
+adb -s emulator-5556 get-state
+adb -s emulator-5556 get-state
+adb -s emulator-5556 get-state
+adb -s emulator-5556 shell getprop sys.boot_completed
+adb -s emulator-5556 emu avd name
+adb -s emulator-5556 shell input keyevent KEYCODE_WAKEUP
+adb -s emulator-5556 shell wm dismiss-keyguard
+adb -s emulator-5556 shell dumpsys window
+adb -s emulator-5556 shell am force-stop com.dems.demo.tablet
+adb -s emulator-5556 reverse tcp:4400 tcp:4400
+adb -s emulator-5556 shell am force-stop com.dems.demo.tablet
+adb -s emulator-5556 reverse --remove tcp:4400
+=== new_down_tablet: stderr (times stripped)
+[device-session tablet HH:MM:SS] lock held; hard cap 120 s, until HH:MM:SS (watchdog PID N)
+[device-session tablet HH:MM:SS] session serial: emulator-5556 (dems2_tablet)
+[device-session tablet HH:MM:SS] dems2_tablet (emulator-5556) is down; booting it cold the P3/D78 way (-no-snapshot-load -no-snapshot-save)
+[device-session tablet HH:MM:SS] dems2_tablet PID N written to .locks/dems2_tablet.pid
+[device-session tablet HH:MM:SS] dems2_tablet booted cold; D78: check that the current debug APK is on it (base.apk SHA-256 = the host APK) before testing
+[device-session tablet HH:MM:SS] emulator-5556: screen awake, no keyguard
+[device-session tablet HH:MM:SS] no Metro (NO_METRO=1); tcp:4400 -> tcp:4400 on emulator-5556
+[device-session tablet HH:MM:SS] session ended with status 0
+=== new_down_tablet: stub pgrep calls
+pgrep -f -- (qemu-system-[a-z0-9_]+|emulator) -avd dems2_tablet( |$)
+pgrep -f -- ^[^ ]*(qemu-system-[a-z0-9_]+|emulator) (.* )?-port 5556( |$)
+=== new_down_tablet: stub emulator calls
+emulator -avd dems2_tablet -port 5556 -no-metrics -gpu host -no-boot-anim -no-snapshot-load -no-snapshot-save
+=== new_down_tablet: .locks of the scratch root: dems2_tablet.emulator.log dems2_tablet.pid dems_tablet.lock 
+
+=== new_down_old_prefix: stub adb trace
+adb start-server
+adb -s emulator-5554 emu avd name
+adb -s emulator-5554 get-state
+adb -s emulator-5554 get-state
+adb -s emulator-5554 get-state
+adb -s emulator-5554 shell getprop sys.boot_completed
+adb -s emulator-5554 emu avd name
+adb -s emulator-5554 shell input keyevent KEYCODE_WAKEUP
+adb -s emulator-5554 shell wm dismiss-keyguard
+adb -s emulator-5554 shell dumpsys window
+adb -s emulator-5554 shell am force-stop com.dems.demo.tablet
+adb -s emulator-5554 reverse tcp:4400 tcp:4400
+adb -s emulator-5554 shell am force-stop com.dems.demo.tablet
+adb -s emulator-5554 reverse --remove tcp:4400
+=== new_down_old_prefix: stderr (times stripped)
+[device-session phone HH:MM:SS] lock held; hard cap 120 s, until HH:MM:SS (watchdog PID N)
+[device-session phone HH:MM:SS] session serial: emulator-5554 (dems_phone)
+[device-session phone HH:MM:SS] dems_phone (emulator-5554) is down; booting it cold the P3/D78 way (-no-snapshot-load -no-snapshot-save)
+[device-session phone HH:MM:SS] dems_phone PID N written to .locks/dems_phone.pid
+[device-session phone HH:MM:SS] dems_phone booted cold; D78: check that the current debug APK is on it (base.apk SHA-256 = the host APK) before testing
+[device-session phone HH:MM:SS] emulator-5554: screen awake, no keyguard
+[device-session phone HH:MM:SS] no Metro (NO_METRO=1); tcp:4400 -> tcp:4400 on emulator-5554
+[device-session phone HH:MM:SS] session ended with status 0
+=== new_down_old_prefix: stub pgrep calls
+pgrep -f -- (qemu-system-[a-z0-9_]+|emulator) -avd dems_phone( |$)
+pgrep -f -- ^[^ ]*(qemu-system-[a-z0-9_]+|emulator) (.* )?-port 5554( |$)
+=== new_down_old_prefix: stub emulator calls
+emulator -avd dems_phone -port 5554 -no-metrics -gpu host -no-boot-anim -no-snapshot-load -no-snapshot-save
+=== new_down_old_prefix: .locks of the scratch root: dems_phone.emulator.log dems_phone.lock dems_phone.pid 
+
+=== new_foreign_process_and_name: stub adb trace
+adb start-server
+adb -s emulator-5554 emu avd name
+=== new_foreign_process_and_name: stderr (times stripped)
+[device-session phone HH:MM:SS] lock held; hard cap 120 s, until HH:MM:SS (watchdog PID N)
+[device-session phone HH:MM:SS] session serial: emulator-5554 (dems2_phone)
+[device-session phone HH:MM:SS] port 5554 is held by another emulator: AVD 'dems_phone' (PID 7001), not dems2_phone. Not booting dems2_phone; .locks/dems2_phone.pid is left as it is
+[device-session phone HH:MM:SS] DEMS_AVD_PREFIX=dems_ addresses it; or stop that emulator first (this script never stops one)
+[device-session phone HH:MM:SS] session ended with status 69
+=== new_foreign_process_and_name: stub pgrep calls
+pgrep -f -- (qemu-system-[a-z0-9_]+|emulator) -avd dems2_phone( |$)
+pgrep -f -- ^[^ ]*(qemu-system-[a-z0-9_]+|emulator) (.* )?-port 5554( |$)
+=== new_foreign_process_and_name: stub emulator calls: none
+=== new_foreign_process_and_name: .locks of the scratch root: dems2_phone.pid dems_phone.lock 
+
+=== new_foreign_process_console_silent: stub adb trace
+adb start-server
+adb -s emulator-5554 emu avd name
+=== new_foreign_process_console_silent: stderr (times stripped)
+[device-session phone HH:MM:SS] lock held; hard cap 120 s, until HH:MM:SS (watchdog PID N)
+[device-session phone HH:MM:SS] session serial: emulator-5554 (dems2_phone)
+[device-session phone HH:MM:SS] port 5554 is held by another emulator: AVD 'dems_phone' (PID 7001), not dems2_phone. Not booting dems2_phone; .locks/dems2_phone.pid is left as it is
+[device-session phone HH:MM:SS] DEMS_AVD_PREFIX=dems_ addresses it; or stop that emulator first (this script never stops one)
+[device-session phone HH:MM:SS] session ended with status 69
+=== new_foreign_process_console_silent: stub pgrep calls
+pgrep -f -- (qemu-system-[a-z0-9_]+|emulator) -avd dems2_phone( |$)
+pgrep -f -- ^[^ ]*(qemu-system-[a-z0-9_]+|emulator) (.* )?-port 5554( |$)
+=== new_foreign_process_console_silent: stub emulator calls: none
+=== new_foreign_process_console_silent: .locks of the scratch root: dems2_phone.pid dems_phone.lock 
+
+=== new_foreign_no_port_argument: stub adb trace
+adb start-server
+adb -s emulator-5554 emu avd name
+=== new_foreign_no_port_argument: stderr (times stripped)
+[device-session phone HH:MM:SS] lock held; hard cap 120 s, until HH:MM:SS (watchdog PID N)
+[device-session phone HH:MM:SS] session serial: emulator-5554 (dems2_phone)
+[device-session phone HH:MM:SS] port 5554 is held by another emulator: AVD 'dems_tablet', not dems2_phone. Not booting dems2_phone; .locks/dems2_phone.pid is left as it is
+[device-session phone HH:MM:SS] no DEMS_AVD_PREFIX addresses it as target phone; or stop that emulator first (this script never stops one)
+[device-session phone HH:MM:SS] session ended with status 69
+=== new_foreign_no_port_argument: stub pgrep calls
+pgrep -f -- (qemu-system-[a-z0-9_]+|emulator) -avd dems2_phone( |$)
+pgrep -f -- ^[^ ]*(qemu-system-[a-z0-9_]+|emulator) (.* )?-port 5554( |$)
+=== new_foreign_no_port_argument: stub emulator calls: none
+=== new_foreign_no_port_argument: .locks of the scratch root: dems2_phone.pid dems_phone.lock 
+
+=== new_foreign_serial_only: stub adb trace
+adb start-server
+adb -s emulator-5554 emu avd name
+adb -s emulator-5554 get-state
+=== new_foreign_serial_only: stderr (times stripped)
+[device-session phone HH:MM:SS] lock held; hard cap 120 s, until HH:MM:SS (watchdog PID N)
+[device-session phone HH:MM:SS] session serial: emulator-5554 (dems2_phone)
+[device-session phone HH:MM:SS] port 5554 is held by another emulator: AVD 'unknown', not dems2_phone. Not booting dems2_phone; .locks/dems2_phone.pid is left as it is
+[device-session phone HH:MM:SS] no DEMS_AVD_PREFIX addresses it as target phone; or stop that emulator first (this script never stops one)
+[device-session phone HH:MM:SS] session ended with status 69
+=== new_foreign_serial_only: stub pgrep calls
+pgrep -f -- (qemu-system-[a-z0-9_]+|emulator) -avd dems2_phone( |$)
+pgrep -f -- ^[^ ]*(qemu-system-[a-z0-9_]+|emulator) (.* )?-port 5554( |$)
+=== new_foreign_serial_only: stub emulator calls: none
+=== new_foreign_serial_only: .locks of the scratch root: dems2_phone.pid dems_phone.lock 
+
+=== new_old_prefix_vs_new_emulator: stub adb trace
+adb start-server
+adb -s emulator-5554 emu avd name
+=== new_old_prefix_vs_new_emulator: stderr (times stripped)
+[device-session phone HH:MM:SS] lock held; hard cap 120 s, until HH:MM:SS (watchdog PID N)
+[device-session phone HH:MM:SS] session serial: emulator-5554 (dems_phone)
+[device-session phone HH:MM:SS] port 5554 is held by another emulator: AVD 'dems2_phone' (PID 7002), not dems_phone. Not booting dems_phone; .locks/dems_phone.pid is left as it is
+[device-session phone HH:MM:SS] DEMS_AVD_PREFIX=dems2_ addresses it; or stop that emulator first (this script never stops one)
+[device-session phone HH:MM:SS] session ended with status 69
+=== new_old_prefix_vs_new_emulator: stub pgrep calls
+pgrep -f -- (qemu-system-[a-z0-9_]+|emulator) -avd dems_phone( |$)
+pgrep -f -- ^[^ ]*(qemu-system-[a-z0-9_]+|emulator) (.* )?-port 5554( |$)
+=== new_old_prefix_vs_new_emulator: stub emulator calls: none
+=== new_old_prefix_vs_new_emulator: .locks of the scratch root: dems_phone.lock dems_phone.pid 
+
+=== new_both_tablet_port_foreign: stub adb trace
+adb start-server
+adb -s emulator-5554 get-state
+adb -s emulator-5554 shell getprop sys.boot_completed
+adb -s emulator-5554 emu avd name
+adb start-server
+adb -s emulator-5556 emu avd name
+=== new_both_tablet_port_foreign: stderr (times stripped)
+[device-session both HH:MM:SS] lock held; hard cap 120 s, until HH:MM:SS (watchdog PID N)
+[device-session both HH:MM:SS] session serial: emulator-5554 emulator-5556 (dems2_phone dems2_tablet)
+[device-session both HH:MM:SS] port 5556 is held by another emulator: AVD 'dems_tablet' (PID 7003), not dems2_tablet. Not booting dems2_tablet; .locks/dems2_tablet.pid is left as it is
+[device-session both HH:MM:SS] DEMS_AVD_PREFIX=dems_ addresses it; or stop that emulator first (this script never stops one)
+[device-session both HH:MM:SS] session ended with status 69
+=== new_both_tablet_port_foreign: stub pgrep calls
+pgrep -f -- (qemu-system-[a-z0-9_]+|emulator) -avd dems2_phone( |$)
+pgrep -f -- (qemu-system-[a-z0-9_]+|emulator) -avd dems2_tablet( |$)
+pgrep -f -- ^[^ ]*(qemu-system-[a-z0-9_]+|emulator) (.* )?-port 5556( |$)
+=== new_both_tablet_port_foreign: stub emulator calls: none
+=== new_both_tablet_port_foreign: .locks of the scratch root: dems_phone.lock dems_tablet.lock 
+
+=== new_own_process_but_serial_foreign: stub adb trace
+adb start-server
+adb -s emulator-5554 get-state
+adb -s emulator-5554 shell getprop sys.boot_completed
+adb -s emulator-5554 emu avd name
+=== new_own_process_but_serial_foreign: stderr (times stripped)
+[device-session phone HH:MM:SS] lock held; hard cap 120 s, until HH:MM:SS (watchdog PID N)
+[device-session phone HH:MM:SS] session serial: emulator-5554 (dems2_phone)
+[device-session phone HH:MM:SS] dems2_phone runs (PID 4242), but emulator-5554 is answered by AVD 'dems_phone': another emulator holds port 5554
+[device-session phone HH:MM:SS] DEMS_AVD_PREFIX=dems_ addresses it; or stop that emulator first (this script never stops one)
+[device-session phone HH:MM:SS] session ended with status 69
+=== new_own_process_but_serial_foreign: stub pgrep calls
+pgrep -f -- (qemu-system-[a-z0-9_]+|emulator) -avd dems2_phone( |$)
+=== new_own_process_but_serial_foreign: stub emulator calls: none
+=== new_own_process_but_serial_foreign: .locks of the scratch root: dems_phone.lock 
+
+=== new_foreign_seen_only_after_boot: stub adb trace
+adb start-server
+adb -s emulator-5554 emu avd name
+adb -s emulator-5554 get-state
+adb -s emulator-5554 get-state
+adb -s emulator-5554 get-state
+adb -s emulator-5554 shell getprop sys.boot_completed
+adb -s emulator-5554 emu avd name
+=== new_foreign_seen_only_after_boot: stderr (times stripped)
+[device-session phone HH:MM:SS] lock held; hard cap 120 s, until HH:MM:SS (watchdog PID N)
+[device-session phone HH:MM:SS] session serial: emulator-5554 (dems2_phone)
+[device-session phone HH:MM:SS] dems2_phone (emulator-5554) is down; booting it cold the P3/D78 way (-no-snapshot-load -no-snapshot-save)
+[device-session phone HH:MM:SS] dems2_phone PID N written to .locks/dems2_phone.pid
+[device-session phone HH:MM:SS] dems2_phone was started, but emulator-5554 is answered by AVD 'dems_phone': port 5554 was already held, so that start failed (.locks/dems2_phone.emulator.log; .locks/dems2_phone.pid holds its PID)
+[device-session phone HH:MM:SS] DEMS_AVD_PREFIX=dems_ addresses it; or stop that emulator first (this script never stops one)
+[device-session phone HH:MM:SS] session ended with status 69
+=== new_foreign_seen_only_after_boot: stub pgrep calls
+pgrep -f -- (qemu-system-[a-z0-9_]+|emulator) -avd dems2_phone( |$)
+pgrep -f -- ^[^ ]*(qemu-system-[a-z0-9_]+|emulator) (.* )?-port 5554( |$)
+=== new_foreign_seen_only_after_boot: stub emulator calls
+emulator -avd dems2_phone -port 5554 -no-metrics -gpu host -no-boot-anim -no-snapshot-load -no-snapshot-save
+=== new_foreign_seen_only_after_boot: .locks of the scratch root: dems2_phone.emulator.log dems2_phone.pid dems_phone.lock 
+

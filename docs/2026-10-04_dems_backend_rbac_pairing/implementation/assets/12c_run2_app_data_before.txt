@@ -1,0 +1,16 @@
+-- app data (before the launch): files of shared_prefs and databases; AsyncStorage keys with the length of each value
+   databases:
+   total 184
+   -rw-rw---- 1 u0_a215 u0_a215 139264 2026-10-04 11:04 RKStorage
+   -rw-rw---- 1 u0_a215 u0_a215      0 2026-10-04 11:04 RKStorage-journal
+   -rw-rw---- 1 u0_a215 u0_a215  32768 2026-10-04 10:46 exoplayer_internal.db
+   -rw-rw---- 1 u0_a215 u0_a215      0 2026-10-04 10:46 exoplayer_internal.db-journal
+   
+   shared_prefs:
+   total 32
+   -rw-rw---- 1 u0_a215 u0_a215 144 2026-10-04 10:46 ExpoVideoCache.xml
+   -rw-rw---- 1 u0_a215 u0_a215 127 2026-10-04 10:46 WebViewChromiumPrefs.xml
+   -rw-rw-rw- 1 u0_a215 u0_a215 129 2026-10-04 11:06 com.dems.demo.tablet_preferences.xml
+   -rw-rw---- 1 u0_a215 u0_a215  65 2026-10-04 10:46 expo.modules.kotlin.PersistentDataManager.xml
+   key: dems.mobile.log.v1|1659
+   key: dems.sim.v1|119905

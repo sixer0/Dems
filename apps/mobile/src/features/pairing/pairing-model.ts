@@ -35,12 +35,28 @@ export function phaseAt(elapsedMs: number): PairPhase {
 // Outcome and view
 // ---------------------------------------------------------------------------------------------
 
-/** What the last attempt of this visit returned (never the code). */
+/**
+ * Live mode: why a redeem got no judgement of the code (backend task W57; 04_client_integration_spec
+ * §9.4 "failed, error form"). OFFLINE: the Core did not check the code (the link was down and
+ * nothing was sent, or the Core said it is not ready). NO_ANSWER: the request left and no answer
+ * came, so whether the code was used is not known. FAILED: a 5xx, an answer outside the contract,
+ * or a refusal that is not about the code. STORAGE: the Core paired the tablet and the tablet
+ * could not keep its credential.
+ */
+export type PairUnavailableReason = 'OFFLINE' | 'NO_ANSWER' | 'FAILED' | 'STORAGE';
+
+/**
+ * What the last attempt of this visit returned (never the code). `limited` and `unavailable` exist
+ * in Live mode only: the simulator always judges the code. `retryAt` is on the clock of the store.
+ */
 export type PairOutcome =
   | { kind: 'paired'; pairedAt: EpochMs }
   | { kind: 'invalid'; attemptsRemaining: number }
   | { kind: 'locked' }
-  | { kind: 'error' };
+  | { kind: 'error' }
+  /** The Core answered 429: a limit ("wait `retry-after`"), never a wrong code. No attempt was counted. */
+  | { kind: 'limited'; retryAt: EpochMs; exhausted: boolean }
+  | { kind: 'unavailable'; reason: PairUnavailableReason; retryAt: EpochMs; exhausted: boolean };
 
 export function outcomeOf(result: PairResult): PairOutcome {
   if (result.ok) return { kind: 'paired', pairedAt: result.pairedAt };
@@ -64,7 +80,7 @@ export function pairingViewFor({ simState, phase, lockSeconds, outcome }: Pairin
   if (phase !== null) return 'pairing';
   if (simState === PairingState.PAIRED) return 'paired';
   if (lockSeconds > 0) return 'locked';
-  if (outcome?.kind === 'invalid' || outcome?.kind === 'error') return 'failed';
+  if (outcome?.kind === 'invalid' || outcome?.kind === 'error' || outcome?.kind === 'limited' || outcome?.kind === 'unavailable') return 'failed';
   return 'unpaired';
 }
 

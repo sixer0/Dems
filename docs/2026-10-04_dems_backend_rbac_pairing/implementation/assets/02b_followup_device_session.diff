@@ -1,0 +1,116 @@
+--- a/apps/mobile/scripts/device-session.sh (before the follow-up, sha256 f25f3096...)	2026-10-04 10:49:52
++++ b/apps/mobile/scripts/device-session.sh	2026-10-04 11:09:48
+@@ -3,7 +3,8 @@
+ # Written and tested by step 67. Hard session cap rewritten by step 67b (D93, incident F-83-6).
+ # Second phone (dems_phone2) and the any-phone / any targets added by step 67c (D100).
+ # AVD-name prefix (DEMS_AVD_PREFIX, default dems2_) and the screen-lock check (exit 77) added by
+-# row W02b of the backend task (its D58).
++# row W02b of the backend task (its D58); the port guard (exit 69 when another AVD holds the
++# target's port) by that row's follow-up (D63).
+ #
+ # Run it OUTSIDE the sandbox (adb and the emulator need that, D24), from any directory:
+ #
+@@ -38,7 +39,10 @@
+ #      -gpu host -no-boot-anim -no-snapshot-load -no-snapshot-save), detached, writes
+ #      .locks/<AVD name>.pid (dems2_phone.pid, ...) and .locks/<AVD name>.emulator.log, waits for
+ #      boot. A running AVD that adb cannot reach is never booted a second time, and no emulator is
+-#      ever stopped or rebooted here (P3, D78);
++#      ever stopped or rebooted here (P3, D78). Port guard: if the target's port is held by an
++#      emulator of ANOTHER AVD (the two families share the ports), nothing is booted, the PID file
++#      is left as it is and the session stops with 69, naming that AVD and the DEMS_AVD_PREFIX
++#      that addresses it; the same when the serial is answered by another AVD than the session's;
+ #   1b. wakes the screen and dismisses a keyguard that has no credential (input keyevent
+ #      KEYCODE_WAKEUP, wm dismiss-keyguard), then reads isKeyguardShowing. Still showing means the
+ #      device has a secure lock (PIN, pattern, password): the session stops with 77 (no Metro, no
+@@ -91,7 +95,8 @@
+ #   DEVICE_SESSION_MAX_SECONDS (hard cap in seconds, default 1800; SESSION_MAX_SECS is the older
+ #   name and is still read when DEVICE_SESSION_MAX_SECONDS is unset),
+ #   BOOT_WAIT (seconds to wait for a reboot, default 240), ANDROID_HOME (default ~/Library/Android/sdk).
+-# Exit status: that of <commands>; 64 usage; 69 device unavailable; 70 Metro failed or session setup
++# Exit status: that of <commands>; 64 usage; 69 device unavailable, or its port or serial belongs
++#   to another AVD (port guard, step 1); 70 Metro failed or session setup
+ #   failed; 75 lock not acquired within LOCK_WAIT (from lockf, or from the any-phone/any wait);
+ #   77 a device of the session shows a secure screen lock (nothing was entered, <commands> did not
+ #   run; the user unlocks the device); 142 session cap reached. If the watchdog has to KILL a hung
+@@ -252,15 +257,62 @@
+     [ "$i" -gt "$2" ] && return 1
+     sleep 2
+   done
++}
++
++# Port guard (W02b follow-up, D63). The dems_* and dems2_* AVDs use the same ports, so the emulator
++# on a target's port may be the other family's (or one started by `npm run emulator`, which takes
++# the first free port). A session must neither boot its AVD onto a held port nor run on that AVD.
++#   port_process  any emulator process started with "-port <the target's port>", whatever its AVD;
++#   avd_name_of   the AVD name the emulator on a serial reports (read-only; empty: no answer);
++#   prefix_hint   which DEMS_AVD_PREFIX addresses the AVD that was found, for the log line.
++port_process() { pgrep -f -- "^[^ ]*(qemu-system-[a-z0-9_]+|emulator) (.* )?-port $(port_of "$1")( |\$)" 2>/dev/null | head -n 1; }
++avd_name_of() {
++  an=$(adb -s "$1" emu avd name 2>/dev/null | head -n 1 | tr -d '\r')
++  case "$an" in '' | *[!A-Za-z0-9._-]*) ;; *) echo "$an" ;; esac
+ }
++prefix_hint() { # $1 = target, $2 = AVD name found on its port (may be empty)
++  case "$2" in
++    ?*"$1")
++      hp=${2%"$1"}
++      case "$hp" in *[!A-Za-z0-9_]*) ;; *)
++        echo "DEMS_AVD_PREFIX=$hp addresses it"
++        return
++        ;;
++      esac
++      ;;
++  esac
++  echo "no DEMS_AVD_PREFIX addresses it as target $1"
++}
+ 
+ ensure_avd() {
+   s=$(serial_of "$1")
+   name="${AVD_PREFIX}$1"
+   adb start-server >/dev/null 2>&1
+-  if [ -n "$(avd_process "$1")" ]; then
+-    wait_up "$s" 60 && return 0
+-    log "$name is running (PID $(avd_process "$1")) but adb cannot reach $s in 60 s; not booting a second copy"
++  p=$(avd_process "$1")
++  on=""
++  [ -n "$p" ] || on=$(avd_name_of "$s")
++  # Running: the AVD's own process exists, or (started in a form avd_process does not match) the
++  # serial already answers with this AVD's name. Either way it is never booted a second time.
++  if [ -n "$p" ] || [ "$on" = "$name" ]; then
++    if wait_up "$s" 60; then
++      on=$(avd_name_of "$s")
++      if [ -n "$on" ] && [ "$on" != "$name" ]; then
++        log "$name runs (PID ${p:-unknown}), but $s is answered by AVD '$on': another emulator holds port $(port_of "$1")"
++        log "$(prefix_hint "$1" "$on"); or stop that emulator first (this script never stops one)"
++        return 1
++      fi
++      return 0
++    fi
++    log "$name is running (PID ${p:-unknown}) but adb cannot reach $s in 60 s; not booting a second copy"
++    return 1
++  fi
++  # Down. Before any boot: does another emulator hold the port? Its process (-port <port>), an
++  # AVD name answering on the serial, or the serial being a device at all is enough.
++  holder=$(port_process "$1")
++  if [ -n "$holder" ] || [ -n "$on" ] || [ "$(adb -s "$s" get-state 2>/dev/null)" = device ]; then
++    [ -n "$on" ] || [ -z "$holder" ] || on=$(ps -o command= -p "$holder" 2>/dev/null | sed -n 's/.* -avd \([^ ]*\).*/\1/p')
++    log "port $(port_of "$1") is held by another emulator: AVD '${on:-unknown}'${holder:+ (PID $holder)}, not $name. Not booting $name; .locks/$name.pid is left as it is"
++    log "$(prefix_hint "$1" "$on"); or stop that emulator first (this script never stops one)"
+     return 1
+   fi
+   log "$name ($s) is down; booting it cold the P3/D78 way (-no-snapshot-load -no-snapshot-save)"
+@@ -277,7 +329,14 @@
+     log "$name did not finish booting in ${BOOT_WAIT:-240} s (log: .locks/$name.emulator.log)"
+     return 1
+   fi
+-  log "$name booted cold; D78: reinstall the current step-72 debug APK (hash-verified) before testing"
++  # The serial answers: by this AVD? (An emulator adb had not listed yet may have held the port.)
++  on=$(avd_name_of "$s")
++  if [ -n "$on" ] && [ "$on" != "$name" ]; then
++    log "$name was started, but $s is answered by AVD '$on': port $(port_of "$1") was already held, so that start failed (.locks/$name.emulator.log; .locks/$name.pid holds its PID)"
++    log "$(prefix_hint "$1" "$on"); or stop that emulator first (this script never stops one)"
++    return 1
++  fi
++  log "$name booted cold; D78: check that the current debug APK is on it (base.apk SHA-256 = the host APK) before testing"
+ }
+ 
+ case "$AVD" in both) AVDS="phone tablet" ;; *) AVDS=$AVD ;; esac

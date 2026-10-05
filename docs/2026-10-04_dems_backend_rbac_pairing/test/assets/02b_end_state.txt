@@ -1,0 +1,25 @@
+# End state of step 69b (the follow-up of W47), 2026-10-04 19:53:27
+session: role=dems_owner database=postgres server=18.4 port=4432 postmaster started 2026-10-04 07:14:26.046351+07
+databases with this row's prefix (dems_test_step_69_*): 0
+test databases of all rows at this moment: 0
+project databases: dems_demo, dems_lane_1, dems_lane_2, dems_lane_3
+sessions on this row's databases still open: 0
+.locks/postgres.pid: 19121
+files of this row in the tree:
+19:51 90840 /Users/gsp-budi/Documents/DEMS/apps/core-server/test/acceptance/rbac-matrix.test.ts
+19:39 27448 /Users/gsp-budi/Documents/DEMS/apps/core-server/test/acceptance/rbac-matrix.support.ts
+newest change of the files the mutations name (none by this row):
+  11:31 apps/core-server/src/modules/identity/session-store.ts
+  17:29 apps/core-server/src/plugins/authenticate/index.ts
+  09:22 apps/core-server/src/plugins/origin-guard/origin-decision.ts
+  15:15 apps/core-server/src/plugins/permission-guard/access-rules.ts
+  19:34 apps/core-server/src/plugins/permission-guard/decision.ts
+  19:34 apps/core-server/src/plugins/permission-guard/denial.ts
+  19:34 apps/core-server/src/plugins/permission-guard/index.ts
+  09:22 apps/core-server/src/plugins/throttle/limits.ts
+  08:09 packages/shared/src/api/administration.ts
+  08:23 packages/shared/src/api/identity.ts
+  19:34 packages/shared/src/api/pairing.ts
+  the specification: 19:34
+  original text still present exactly once: 30 of 30
+processes started by this row and still running: none

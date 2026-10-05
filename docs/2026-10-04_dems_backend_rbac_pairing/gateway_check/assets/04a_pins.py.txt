@@ -1,0 +1,74 @@
+#!/usr/bin/env python3
+"""Red before / green after for the test-pin findings (CPB1-13, CPB1-15), on the two SCRATCH
+copies only: `before` (the tests as they were) and `tree` (the tests of fix round A). Each case
+changes one production or helper file of a scratch copy the way a later row would (a new boot
+step, a new log key, an autovacuum worker on the clone), runs the named tests, and puts the file
+back. Usage: pins.py"""
+import os
+import pathlib
+import re
+import subprocess
+
+REPO = pathlib.Path('/Users/gsp-budi/Documents/DEMS')
+BASE = pathlib.Path(__file__).resolve().parent
+assert str(BASE).startswith('/private/tmp/'), BASE
+
+BOOT_STEP = ("export const throttlePlugin: FastifyPluginAsync = async (app) => {",
+             "export const throttlePlugin: FastifyPluginAsync = async (app) => {\n  app.readiness.addBootStep({ id: 'later.row', run: async () => undefined });")
+LOG_KEY = ("      log.info({ part, ready }, 'readiness changed');", "      log.info({ part, ready, since: 1 }, 'readiness changed');")
+SECRET_KEY = ("      log.info({ part, ready }, 'readiness changed');", "      log.info({ part, ready, sessionToken: 'x' }, 'readiness changed');")
+SECRET_VALUE = ("      log.info({ part, ready }, 'readiness changed');", "      log.info({ part, ready, note: 'ses_' + 'A'.repeat(43) }, 'readiness changed');")
+ENGINE_KEY = ("    log.info({ epoch, revision }, 'engine stopped');", "    log.info({ epoch, revision, subject: 'x' }, 'engine stopped');")
+WORKER = ("      'FROM pg_stat_activity WHERE datname = $1 GROUP BY 1, 2 ORDER BY 1 NULLS FIRST, 2',\n    [database],\n  );",
+          "      'FROM pg_stat_activity WHERE datname = $1 GROUP BY 1, 2 ORDER BY 1 NULLS FIRST, 2',\n    [database],\n  ).then((groups) => [{ role: null, application: '', backends: 1 } as never, ...groups]);")
+
+# name, file, (old, new), project, tests, expected per copy
+CASES = [
+    ('a later row adds a boot step between B-9 and the engine (unit)', 'src/plugins/throttle/index.ts', BOOT_STEP, 'unit',
+     ['src/core/__tests__/core-plugin.test.ts'], {'before': 'red', 'tree': 'green'}),
+    ('a later row adds a boot step between B-9 and the engine (db)', 'src/plugins/throttle/index.ts', BOOT_STEP, 'db',
+     ['src/core/__tests__/seeded.db.test.ts', 'src/core/__tests__/boot-checks.db.test.ts', 'src/engine/__tests__/restart.db.test.ts', 'test/db/boot-checks.db.test.ts'],
+     {'before': 'red', 'tree': 'green'}),
+    ('another unit logs a new, harmless key on a line of its own', 'src/plugins/readiness/index.ts', LOG_KEY, 'db',
+     ['src/engine/__tests__/commands.db.test.ts'], {'before': 'red', 'tree': 'green'}),
+    ('another unit logs a key that names a secret', 'src/plugins/readiness/index.ts', SECRET_KEY, 'db',
+     ['src/engine/__tests__/commands.db.test.ts'], {'tree': 'red'}),
+    ('another unit logs a value in the form of a session token', 'src/plugins/readiness/index.ts', SECRET_VALUE, 'db',
+     ['src/engine/__tests__/commands.db.test.ts'], {'tree': 'red'}),
+    ('the engine logs a new key on a line of its own', 'src/engine/host.ts', ENGINE_KEY, 'db',
+     ['src/engine/__tests__/commands.db.test.ts'], {'tree': 'red'}),
+    ('a backend without a role (an autovacuum worker) is on the clone', 'test/helpers/db/ddl.ts', WORKER, 'db',
+     ['test/helpers/db/__tests__/drop-retry.db.test.ts'], {'before': 'red', 'tree': 'green'}),
+]
+
+
+def run(copy, project, tests):
+    root = BASE / copy / 'apps' / 'core-server'
+    command = ['node', 'node_modules/vitest/vitest.mjs', 'run', '--root', str(root), '--project', project, '--maxWorkers=2', *tests]
+    env = dict(os.environ, DEMS_TEST_STEP='60a') if project == 'db' else None
+    done = subprocess.run(command, cwd=REPO, capture_output=True, text=True, env=env)
+    out = done.stdout + done.stderr
+    tests_line = re.findall(r'^\s+Tests\s+(.*)$', out, flags=re.M)
+    files_line = re.findall(r'^\s+Test Files\s+(.*)$', out, flags=re.M)
+    return done.returncode, (files_line[-1].strip() if files_line else 'no summary'), (tests_line[-1].strip() if tests_line else 'no summary')
+
+
+ok = True
+for name, path, (old, new), project, tests, expected in CASES:
+    for copy, want in expected.items():
+        file = BASE / copy / 'apps' / 'core-server' / path
+        original = file.read_text()
+        if original.count(old) != 1:
+            print(f'{name} [{copy}]: NOT APPLIED ({original.count(old)} occurrences)', flush=True)
+            ok = False
+            continue
+        file.write_text(original.replace(old, new))
+        try:
+            code, files, summary = run(copy, project, tests)
+        finally:
+            file.write_text(original)
+        got = 'green' if code == 0 else 'red'
+        mark = 'as expected' if got == want else 'NOT AS EXPECTED'
+        ok = ok and got == want
+        print(f'{name} [{copy}: the tests {"as they were" if copy == "before" else "of fix round A"}]: {got.upper()} ({mark}; expected {want}) — exit {code}; files {files}; tests {summary}', flush=True)
+print('all as expected' if ok else 'SOMETHING IS NOT AS EXPECTED', flush=True)

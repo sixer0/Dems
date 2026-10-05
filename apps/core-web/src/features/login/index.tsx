@@ -21,12 +21,20 @@
  * page navigates to the validated `?redirect=` target (or `/dashboard`). The shell mounts in the
  * same commit and its top-bar emblem flies from this emblem's box through the shared
  * `BRAND_EMBLEM_LAYOUT_ID`. A guard timer always leaves, even if an animation is interrupted.
+ *
+ * Live mode (backend task 04_client_integration_spec §5.2 to §5.6; plan row W55): the same page
+ * on the Core server. The layout, the components and the motion do not change; what changes is
+ * where each value comes from (`use-login-controller.ts`). The page adds the mode selector of a
+ * dev build (§3.2, MD-4) and takes a hand-off back when the session ended before the page was
+ * left. `data-core-mode` on the root says which data source the page runs on. The tab's
+ * presentation flag is kept in step with the server by the root route, not here (WS-10).
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { getRouteApi, useNavigate, useRouter } from '@tanstack/react-router'
 import { animate, motion } from 'motion/react'
 import { useTranslation } from 'react-i18next'
 import { SOFTWARE_VERSION } from '@dems/shared/sim'
+import { useModeSwitch } from '@/components/shell/mode-switch'
 import { lastTopLevelRoute } from '@/components/shell/shell-entrance'
 import { useMotionPolicy } from '@/motion'
 import { AuthCard } from './auth-card'
@@ -50,6 +58,9 @@ export function LoginPage() {
   const { redirect } = loginRoute.useSearch()
   const { tier, tall } = useLoginTier()
   const presentation = usePresentationMode()
+  // The one confirmed mode change of the console (D144(1), CPW1-1): the shell's hook, naming this
+  // page in the page's own log.
+  const modeSwitch = useModeSwitch('login.modeSwitch')
 
   // Where the operator came from, read once on mount (the root records the top-level route only
   // after this page has committed): `/_app` means a sign-out from the shell (M-APP-02).
@@ -78,7 +89,10 @@ export function LoginPage() {
     return () => clearTimeout(id)
   }, [router, m, choreography.focusAtMs])
 
+  /** `leaving`, readable by a callback that was created before the state changed. */
+  const leavingRef = useRef(false)
   const onAccepted = useCallback(() => {
+    leavingRef.current = true
     setLeaving(true)
     // Signed in now, so the target's guard passes: load its chunks during the 450 ms exit.
     // `href` wins over `to` in the router's buildLocation; `to` only satisfies the preload typing.
@@ -98,11 +112,19 @@ export function LoginPage() {
     setTimeout(() => (field === 'username' ? usernameRef : passwordRef).current?.focus(), 0)
   }, [])
 
-  const controller = useLoginController({ previousTopLevel, onAccepted, onRejected, onFocusField })
-
   const navigated = useRef(false)
+  // Live mode: the session ended before the hand-off left this page. The card comes back.
+  const onHandOffLost = useCallback(() => {
+    navigated.current = false
+    leavingRef.current = false
+    setLeaving(false)
+  }, [])
+
+  const controller = useLoginController({ previousTopLevel, onAccepted, onRejected, onFocusField, onHandOffLost })
+
   const finishHandOff = useCallback(() => {
-    if (navigated.current) return
+    // A late exit callback of a hand-off that was taken back must not navigate.
+    if (navigated.current || !leavingRef.current) return
     navigated.current = true
     navigate({ href: target, replace: true }).catch((error: unknown) => {
       navigated.current = false
@@ -118,7 +140,8 @@ export function LoginPage() {
   }, [leaving, finishHandOff, m])
 
   const ringSize = ringSizeFor(tier, tall)
-  const ringState = ringStateFor({ locked: controller.lockout.locked, coreLink: controller.coreLink })
+  // §3.5: a Core server that is starting is shown as one that cannot be used yet.
+  const ringState = ringStateFor({ locked: controller.lockout.locked, coreLink: controller.coreStarting ? 'offline' : controller.coreLink })
 
   return (
     <main
@@ -132,6 +155,7 @@ export function LoginPage() {
       data-leaving={leaving ? 'true' : 'false'}
       data-presentation={presentation ? 'true' : 'false'}
       data-core-link={controller.coreLink}
+      data-core-mode={controller.mode}
     >
       <LoginBackdrop choreography={choreography} leaving={leaving} cropOnLeave={tier === 'wide'} />
       <BrandSide
@@ -150,6 +174,7 @@ export function LoginPage() {
           leaving={leaving}
           onExitComplete={finishHandOff}
           presentation={presentation}
+          modeSwitch={modeSwitch}
           shakeRef={shakeRef}
           usernameRef={usernameRef}
           passwordRef={passwordRef}
@@ -165,6 +190,7 @@ export function LoginPage() {
       <p className="sr-only" role="status" aria-live="polite" data-testid="login-announcement">
         {controller.accepted ? t('login.successAs', { name: controller.accepted.displayName }) : ''}
       </p>
+      {modeSwitch.dialog}
     </main>
   )
 }

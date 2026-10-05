@@ -214,7 +214,7 @@ function ServicePanel() {
       ) : (
         <Skeleton isLoading={health.isPending} className="rounded-md">
           <Text testID="health-version" className="font-mono text-data text-foreground">
-            {health.data ? `mock-core v${health.data.version} · api ${health.data.apiVersion}` : 'mock-core'}
+            {health.data ? `${health.data.service.replace(/^dems-/, '')} v${health.data.version} · api ${health.data.apiVersion}` : 'mock-core'}
           </Text>
         </Skeleton>
       )}

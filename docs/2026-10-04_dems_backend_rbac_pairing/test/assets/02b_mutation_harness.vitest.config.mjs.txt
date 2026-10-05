@@ -1,0 +1,61 @@
+// Scratch runner configuration of plan row W47 (blueprint step 69, follow-up 69b), outside the
+// repository (rule M15): the workspace's own Vitest configuration plus load-time transforms.
+// No file of the tree is changed: a changed text exists only in the memory of the test run.
+//
+//   W47_MUTATION=<id>   mutations.json: id, note, and either one change (file, from, to) or
+//                       several (`changes: [{ file, from, to }]`). Every `from` must occur exactly
+//                       once in its file.
+//   `spec`              a mutation may also change what the TEST READS AS THE SPECIFICATION
+//                       (`spec: [{ from, to }]`): the document is copied to this scratch folder
+//                       with the changes, and the test's support file is transformed, in memory,
+//                       to read the copy. The document in the tree is not touched.
+import { readFileSync, writeFileSync } from 'node:fs';
+import { dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { mergeConfig } from '/Users/gsp-budi/Documents/DEMS/node_modules/vitest/dist/config.js';
+import base from '/Users/gsp-budi/Documents/DEMS/apps/core-server/vitest.config.ts';
+
+const REPOSITORY = '/Users/gsp-budi/Documents/DEMS';
+const ROOT = `${REPOSITORY}/apps/core-server`;
+const HERE = dirname(fileURLToPath(import.meta.url));
+const SPEC = 'docs/2026-10-04_dems_backend_rbac_pairing/masterplan/01_specs.md';
+const SUPPORT = 'apps/core-server/test/acceptance/rbac-matrix.support.ts';
+const mutations = JSON.parse(readFileSync(`${HERE}/mutations.json`, 'utf8'));
+const chosen = process.env.W47_MUTATION ?? '';
+const mutation = chosen === '' ? null : mutations.find((entry) => entry.id === chosen);
+if (chosen !== '' && !mutation) throw new Error(`no mutation ${chosen}`);
+
+function once(text, from, where) {
+  const parts = text.split(from);
+  if (parts.length !== 2) throw new Error(`mutation ${chosen}: the text to replace occurs ${parts.length - 1} time(s) in ${where}, not once`);
+  return parts;
+}
+
+const changes = mutation === null ? [] : [...(mutation.changes ?? []), ...(mutation.file === undefined ? [] : [{ file: mutation.file, from: mutation.from, to: mutation.to }])];
+if (mutation !== null && mutation.spec !== undefined) {
+  let text = readFileSync(`${REPOSITORY}/${SPEC}`, 'utf8');
+  for (const change of mutation.spec) text = once(text, change.from, SPEC).join(change.to);
+  const copy = `${HERE}/spec_${mutation.id}.md`;
+  writeFileSync(copy, text);
+  changes.push({ file: SUPPORT, from: `'../../../../${SPEC}'`, to: `'file://${copy}'` });
+}
+const byFile = new Map();
+for (const change of changes) byFile.set(`${REPOSITORY}/${change.file}`, [...(byFile.get(`${REPOSITORY}/${change.file}`) ?? []), change]);
+
+const plugin = {
+  name: 'w47-mutation',
+  enforce: 'pre',
+  load(id) {
+    const file = id.split('?')[0];
+    const mine = byFile.get(file);
+    if (mine === undefined) return null;
+    let source = readFileSync(file, 'utf8');
+    for (const change of mine) source = once(source, change.from, change.file).join(change.to);
+    process.stdout.write(`[w47-harness] mutation ${mutation.id} applied to ${mine[0].file} (${mine.length} change(s))\n`);
+    return source;
+  },
+};
+
+const merged = mergeConfig(base, { root: ROOT, plugins: [plugin] });
+merged.test.projects = merged.test.projects.map((project) => ({ ...project, plugins: [plugin] }));
+export default merged;

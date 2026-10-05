@@ -1,0 +1,400 @@
+// Roles and privileges (database contract §7; CL-11; SR-68, AC-B-54, AC-B-87): T-PV-1 and T-PV-2.
+//
+// The expected matrix below is written from the table of contract §7.3, not from the migration
+// file. T-PV-1 compares it with the catalog (`has_table_privilege`, `has_column_privilege`) and
+// then with LIVE statements as `dems_app`: for every table one SELECT, INSERT, DELETE and
+// TRUNCATE, and one UPDATE for each of the 302 columns. The statements match no row
+// (`WHERE false`), so an allowed one changes nothing; a privilege is checked before any row is
+// looked at, so a forbidden one fails with 42501 all the same.
+import type { Pool } from 'pg';
+import { beforeAll, describe, expect, it } from 'vitest';
+import { useTestDatabase } from '../helpers/db';
+import { readInventory } from './contract-inventory';
+import { SQLSTATE, connect, expectRefused, refusalOf } from './support';
+
+const db = useTestDatabase({ template: 'schema' });
+const inventory = readInventory();
+let app: Pool;
+let owner: Pool;
+
+beforeAll(() => {
+  app = db.appPool();
+  owner = db.ownerPool();
+});
+
+interface Grant {
+  readonly insert?: true;
+  /** The columns the runtime role may update; `all` for `active_session`. */
+  readonly update?: readonly string[] | 'all';
+  readonly delete?: true;
+}
+
+/** Contract §7.3. SELECT is granted on every table; TRUNCATE, REFERENCES and TRIGGER on none. */
+const MATRIX: Readonly<Record<string, Grant>> = {
+  roles: {},
+  permissions: {},
+  role_permissions: {},
+  operators: { update: ['role_id', 'enabled', 'last_sign_in_at', 'role_changed_at', 'updated_at'] },
+  operator_credentials: { update: ['algorithm', 'memory_kib', 'passes', 'parallelism', 'salt', 'hash', 'hashed_at'] },
+  auth_sessions: { insert: true, update: ['last_seen_at', 'ended_at', 'end_reason'] },
+  pairing_codes: { insert: true, update: ['state', 'failed_attempts', 'closed_at', 'closed_by_operator_id'] },
+  paired_devices: {
+    insert: true,
+    update: ['state', 'last_seen_at', 'revoked_at', 'revoked_by_operator_id', 'revoke_reason', 'unpaired_at', 'updated_at'],
+  },
+  device_credentials: { insert: true, update: ['current_hash', 'next_hash', 'rotated_at'] },
+  biometric_tokens: { insert: true, update: ['used_at', 'revoked_at', 'revoke_reason'] },
+  registry_counters: { update: ['next_value'] },
+  audit_log: { insert: true },
+  audit_chain_head: {},
+  events: { insert: true },
+  active_session: { insert: true, update: 'all', delete: true },
+  session_history: { insert: true },
+  evidence_items: {
+    insert: true,
+    update: ['status', 'lifecycle_stage', 'verification_status', 'verification_at', 'tampered', 'tampered_track_id', 'updated_at'],
+  },
+  evidence_tracks: { insert: true },
+  evidence_custody: { insert: true },
+  exports: { insert: true },
+  alerts: { insert: true, update: ['active', 'acknowledged', 'resolved_at'] },
+  storage_policy: { update: ['retention_policy', 'retention_days', 'auto_archive', 'updated_at'] },
+  console_settings: { update: ['presentation_mode', 'time_format', 'notify_warnings', 'notify_sound', 'updated_at'] },
+  engine_counters: { insert: true, update: ['next_value'] },
+  core_device: { update: ['software_version', 'core_software_version', 'updated_at'] },
+  core_state: { update: ['epoch', 'last_sealed_session_id', 'last_sealed_acknowledged', 'updated_at'] },
+  hardware_snapshot: {
+    update: [
+      'tablet_link', 'active_camera_id', 'cameras', 'mics', 'storage', 'time_status', 'network', 'security',
+      'services', 'health', 'other_devices', 'ports', 'faults', 'diagnostics', 'software_update', 'written_at',
+    ],
+  },
+  health_snapshots: { insert: true },
+  schema_meta: {},
+  audit_chain_history: {},
+};
+
+const columnsOf = (table: string): string[] => inventory.tables.find((entry) => entry.name === table)?.columns.map((column) => column.name) ?? [];
+const mayUpdate = (table: string, column: string): boolean => {
+  const update = MATRIX[table]?.update;
+  return update === 'all' || (update?.includes(column) ?? false);
+};
+
+describe('T-PV-1: the privileges of dems_app equal the matrix of contract §7.3', () => {
+  it('the matrix names all 30 tables; INSERT on 16 of them, not on audit_chain_history (D18)', () => {
+    expect(Object.keys(MATRIX).sort()).toEqual(inventory.tables.map((table) => table.name).sort());
+    const insertable = Object.entries(MATRIX).filter(([, grant]) => grant.insert === true).map(([table]) => table);
+    expect(insertable).toHaveLength(16);
+    expect(insertable).not.toContain('audit_chain_history');
+    for (const [table, grant] of Object.entries(MATRIX)) {
+      if (Array.isArray(grant.update)) for (const column of grant.update) expect(columnsOf(table), `${table}.${column}`).toContain(column);
+    }
+  });
+
+  it('catalog: for every table and every privilege, has_table_privilege equals the matrix', async () => {
+    const { rows } = await owner.query<Record<string, string | boolean>>(
+      `SELECT c.relname::text AS table_name,
+              has_table_privilege('dems_app', c.oid, 'SELECT') AS "SELECT",
+              has_table_privilege('dems_app', c.oid, 'INSERT') AS "INSERT",
+              has_table_privilege('dems_app', c.oid, 'UPDATE') AS "UPDATE",
+              has_table_privilege('dems_app', c.oid, 'DELETE') AS "DELETE",
+              has_table_privilege('dems_app', c.oid, 'TRUNCATE') AS "TRUNCATE",
+              has_table_privilege('dems_app', c.oid, 'REFERENCES') AS "REFERENCES",
+              has_table_privilege('dems_app', c.oid, 'TRIGGER') AS "TRIGGER",
+              has_table_privilege('dems_app', c.oid, 'MAINTAIN') AS "MAINTAIN",
+              has_any_column_privilege('dems_app', c.oid, 'INSERT') AS any_column_insert,
+              has_any_column_privilege('dems_app', c.oid, 'REFERENCES') AS any_column_references,
+              pg_get_userbyid(c.relowner)::text AS owner
+         FROM pg_class c WHERE c.relnamespace = 'public'::regnamespace AND c.relkind = 'r' ORDER BY 1`,
+    );
+    const expected = Object.keys(MATRIX)
+      .sort()
+      .map((table) => ({
+        table_name: table,
+        SELECT: true,
+        INSERT: MATRIX[table]?.insert === true,
+        UPDATE: MATRIX[table]?.update === 'all',
+        DELETE: MATRIX[table]?.delete === true,
+        TRUNCATE: false,
+        REFERENCES: false,
+        TRIGGER: false,
+        MAINTAIN: false,
+        any_column_insert: MATRIX[table]?.insert === true,
+        any_column_references: false,
+        owner: 'dems_owner',
+      }));
+    expect(rows).toEqual(expected);
+  });
+
+  it('catalog: for each of the 302 columns, has_column_privilege(UPDATE) equals the matrix', async () => {
+    const { rows } = await owner.query<{ table_name: string; column_name: string; can_update: boolean }>(
+      `SELECT c.relname::text AS table_name, a.attname::text AS column_name,
+              has_column_privilege('dems_app', c.oid, a.attnum, 'UPDATE') AS can_update
+         FROM pg_class c JOIN pg_attribute a ON a.attrelid = c.oid
+        WHERE c.relnamespace = 'public'::regnamespace AND c.relkind = 'r' AND a.attnum > 0 AND NOT a.attisdropped
+        ORDER BY 1, a.attnum`,
+    );
+    expect(rows).toHaveLength(302);
+    const wrong = rows.filter((row) => row.can_update !== mayUpdate(row.table_name, row.column_name));
+    expect(wrong).toEqual([]);
+    const granted = rows.filter((row) => row.can_update).length;
+    console.info(`[w17] T-PV-1: UPDATE is granted on ${granted} of 302 columns (30 of them are every column of active_session)`);
+  });
+
+  it('LIVE as dems_app: SELECT, INSERT, DELETE and TRUNCATE on every table behave as the matrix says', async () => {
+    const outcomes: string[] = [];
+    const attempt = async (statement: string): Promise<string> => {
+      try {
+        await app.query(statement);
+        return 'ok';
+      } catch (error) {
+        return refusalOf(error).code ?? 'error';
+      }
+    };
+    for (const table of Object.keys(MATRIX).sort()) {
+      const grant = MATRIX[table] ?? {};
+      const got = {
+        select: await attempt(`SELECT count(*) FROM public.${table}`),
+        insert: await attempt(`INSERT INTO public.${table} SELECT * FROM public.${table} WHERE false`),
+        delete: await attempt(`DELETE FROM public.${table} WHERE false`),
+        truncate: await attempt(`TRUNCATE public.${table}`),
+      };
+      const want = {
+        select: 'ok',
+        insert: grant.insert === true ? 'ok' : SQLSTATE.insufficientPrivilege,
+        delete: grant.delete === true ? 'ok' : SQLSTATE.insufficientPrivilege,
+        truncate: SQLSTATE.insufficientPrivilege,
+      };
+      if (JSON.stringify(got) !== JSON.stringify(want)) outcomes.push(`${table}: got ${JSON.stringify(got)}, expected ${JSON.stringify(want)}`);
+    }
+    expect(outcomes).toEqual([]);
+  });
+
+  it('LIVE as dems_app: one UPDATE per column, 302 statements; allowed exactly where the matrix grants it', async () => {
+    const wrong: string[] = [];
+    let allowed = 0;
+    let refused = 0;
+    for (const table of inventory.tables) {
+      for (const column of table.columns) {
+        let outcome = 'ok';
+        try {
+          await app.query(`UPDATE public.${table.name} SET "${column.name}" = "${column.name}" WHERE false`);
+        } catch (error) {
+          outcome = refusalOf(error).code ?? 'error';
+        }
+        const want = mayUpdate(table.name, column.name) ? 'ok' : SQLSTATE.insufficientPrivilege;
+        if (outcome === 'ok') allowed += 1;
+        else refused += 1;
+        if (outcome !== want) wrong.push(`${table.name}.${column.name}: ${outcome}, expected ${want}`);
+      }
+    }
+    expect(wrong).toEqual([]);
+    expect(allowed + refused).toBe(302);
+    console.info(`[w17] T-PV-1 live: ${allowed} column UPDATEs allowed, ${refused} refused with 42501, 0 unexpected`);
+  });
+
+  it('functions: dems_app may execute audit_chain_lock() and dems_jsonb_is_flat(jsonb) only; PUBLIC none (OW-4, PG-17)', async () => {
+    const { rows } = await owner.query(
+      `SELECT p.proname::text AS name, has_function_privilege('dems_app', p.oid, 'EXECUTE') AS app,
+              has_function_privilege('public', p.oid, 'EXECUTE') AS everyone
+         FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace ORDER BY 1`,
+    );
+    expect(rows).toEqual([
+      { name: 'audit_chain_history_refuse_change', app: false, everyone: false },
+      { name: 'audit_chain_lock', app: true, everyone: false },
+      { name: 'audit_log_guard_insert', app: false, everyone: false },
+      { name: 'audit_log_refuse_change', app: false, everyone: false },
+      { name: 'dems_jsonb_is_flat', app: true, everyone: false },
+    ]);
+    // Live: the two it may call answer; the three trigger functions are refused by privilege.
+    expect((await app.query(`SELECT public.dems_jsonb_is_flat('{"a": 1, "b": null}'::jsonb) AS flat, public.dems_jsonb_is_flat('{"a": {"b": 1}}'::jsonb) AS nested, public.dems_jsonb_is_flat('[1]'::jsonb) AS list`)).rows).toEqual([
+      { flat: true, nested: false, list: false },
+    ]);
+    const client = await app.connect();
+    try {
+      await client.query('BEGIN');
+      expect((await client.query('SELECT seq::int AS seq, hash FROM public.audit_chain_lock()')).rows).toEqual([{ seq: 0, hash: '0'.repeat(64) }]);
+      await client.query('ROLLBACK');
+    } finally {
+      client.release();
+    }
+    for (const name of ['audit_log_guard_insert', 'audit_log_refuse_change', 'audit_chain_history_refuse_change']) {
+      await expectRefused(() => app.query(`SELECT public.${name}()`), SQLSTATE.insufficientPrivilege);
+    }
+  });
+
+  it('a trigger function fires for dems_app without EXECUTE on it; a function called by a CHECK is checked for the inserting role (PG-17)', async () => {
+    // The guard fires on an INSERT by dems_app, which holds no EXECUTE on audit_log_guard_insert():
+    // a row that does not continue the head is refused by the trigger, not by a privilege.
+    await expectRefused(
+      () =>
+        app.query(
+          "INSERT INTO audit_log (seq, id, at, type, category, severity, message, prev_hash, hash) VALUES (7, 'AUD-000007', 1, 'SYSTEM_BOOT', 'SYSTEM', 'INFO', 'm', repeat('0', 64), repeat('1', 64))",
+        ),
+      SQLSTATE.chainDiscontinuity,
+    );
+    // The CHECK of events calls dems_jsonb_is_flat as the inserting role: with EXECUTE granted the
+    // CHECK is evaluated and refuses a nested map.
+    await expectRefused(
+      () =>
+        app.query(
+          `INSERT INTO events (seq, id, at, type, category, severity, message, params) VALUES (1, 'LOG-000001', 1, 'SESSION_CREATED', 'SESSION', 'INFO', 'm', '{"a": {"b": 1}}')`,
+        ),
+      SQLSTATE.checkViolation,
+      'events_params_flat_check',
+    );
+  });
+
+  it('PG-17, the other half: without EXECUTE on the function a CHECK calls, an INSERT by dems_app is refused; the owner is not affected', async () => {
+    const clone = await db.another({ slug: 'priv_no_execute' });
+    await clone.ownerPool().query('REVOKE EXECUTE ON FUNCTION public.dems_jsonb_is_flat(jsonb) FROM dems_app');
+    const insert = `INSERT INTO events (seq, id, at, type, category, severity, message, params) VALUES (1, 'LOG-000001', 1, 'SESSION_CREATED', 'SESSION', 'INFO', 'm', '{}')`;
+    const refusal = await expectRefused(() => clone.appPool().query(insert), SQLSTATE.insufficientPrivilege);
+    expect(refusal.message).toBe('permission denied for function dems_jsonb_is_flat');
+    await clone.ownerPool().query(insert);
+    // This is why 0003_privileges grants EXECUTE on that one function to the runtime role.
+    await clone.ownerPool().query('GRANT EXECUTE ON FUNCTION public.dems_jsonb_is_flat(jsonb) TO dems_app');
+    await clone.appPool().query(insert.replace('(1, \'LOG-000001\'', '(2, \'LOG-000002\''));
+  });
+
+  it('dems_app cannot create an object, a schema or a database, and has nothing on schema drizzle (OW-3, OW-5, PG-15)', async () => {
+    await expectRefused(() => app.query('CREATE TABLE public.w17_denied (id integer)'), SQLSTATE.insufficientPrivilege);
+    await expectRefused(() => app.query('CREATE SCHEMA w17_denied'), SQLSTATE.insufficientPrivilege);
+    await expectRefused(() => app.query(`CREATE DATABASE ${db.run.identity.prefix}x_denied`), SQLSTATE.insufficientPrivilege);
+    await expectRefused(() => app.query('CREATE ROLE w17_denied'), SQLSTATE.insufficientPrivilege);
+    await expectRefused(() => app.query('SELECT id, hash, created_at FROM drizzle.__drizzle_migrations'), SQLSTATE.insufficientPrivilege);
+    await expectRefused(() => app.query('ALTER TABLE public.audit_log ENABLE TRIGGER audit_log_append_only'), SQLSTATE.insufficientPrivilege);
+    await expectRefused(() => app.query('ALTER FUNCTION public.audit_chain_lock() SECURITY INVOKER'), SQLSTATE.insufficientPrivilege);
+
+    // A GRANT to itself is NOT an error for a role that holds some privilege on the table without
+    // the grant option: PostgreSQL answers with the warning 01007 and grants nothing. (Contract
+    // §6.2 expected 42501 here; the outcome it wants, no new privilege, holds.) With no privilege
+    // at all on the object the same statement is an error.
+    const session = await connect(db.runtime, 'dems-w17-grant');
+    try {
+      const notices: Array<{ code: string | undefined; message: string | undefined }> = [];
+      session.on('notice', (notice) => notices.push({ code: notice.code, message: notice.message }));
+      await session.query('GRANT UPDATE ON public.audit_log TO dems_app');
+      await session.query('GRANT INSERT ON public.audit_chain_history TO dems_app');
+      expect(notices).toEqual([
+        { code: '01007', message: 'no privileges were granted for "audit_log"' },
+        { code: '01007', message: 'no privileges were granted for "audit_chain_history"' },
+      ]);
+    } finally {
+      await session.end();
+    }
+    await expectRefused(() => app.query('GRANT EXECUTE ON FUNCTION public.audit_log_refuse_change() TO dems_app'), SQLSTATE.insufficientPrivilege);
+    const unchanged = await owner.query(
+      `SELECT has_any_column_privilege('dems_app', 'public.audit_log', 'UPDATE') AS audit_update,
+              has_table_privilege('dems_app', 'public.audit_chain_history', 'INSERT') AS lineage_insert,
+              has_function_privilege('dems_app', 'public.audit_log_refuse_change()', 'EXECUTE') AS refuse_execute`,
+    );
+    expect(unchanged.rows).toEqual([{ audit_update: false, lineage_insert: false, refuse_execute: false }]);
+
+    const { rows } = await owner.query(
+      `SELECT has_schema_privilege('dems_app', 'public', 'USAGE') AS public_usage,
+              has_schema_privilege('dems_app', 'public', 'CREATE') AS public_create,
+              has_schema_privilege('public', 'public', 'USAGE') AS everyone_public_usage,
+              has_schema_privilege('dems_app', 'drizzle', 'USAGE') AS drizzle_usage,
+              has_schema_privilege('dems_app', 'drizzle', 'CREATE') AS drizzle_create,
+              has_database_privilege('dems_app', current_database(), 'CREATE') AS database_create,
+              has_database_privilege('dems_app', current_database(), 'CONNECT') AS database_connect,
+              has_database_privilege('dems_app', current_database(), 'TEMPORARY') AS database_temporary`,
+    );
+    expect(rows).toEqual([
+      {
+        public_usage: true,
+        public_create: false,
+        everyone_public_usage: false,
+        drizzle_usage: false,
+        drizzle_create: false,
+        database_create: false,
+        // PG-15, PG-10: a new database lets every role connect and create temporary tables; those
+        // two database-level defaults are not part of the matrix and no migration changes them.
+        database_connect: true,
+        database_temporary: true,
+      },
+    ]);
+  });
+
+  it('PG-10: the privileges came with the clone; a table added without grants would be closed to dems_app (OW-6)', async () => {
+    const { rows } = await owner.query<{ datname: string }>('SELECT current_database()::text AS datname');
+    expect(rows[0]?.datname).toBe(db.name);
+    await owner.query('CREATE TABLE public.w17_later_table (id integer PRIMARY KEY)');
+    try {
+      await expectRefused(() => app.query('SELECT * FROM public.w17_later_table'), SQLSTATE.insufficientPrivilege);
+      const defaults = await owner.query('SELECT count(*)::int AS rows FROM pg_default_acl');
+      expect(defaults.rows).toEqual([{ rows: 0 }]); // no ALTER DEFAULT PRIVILEGES (OW-6)
+    } finally {
+      await owner.query('DROP TABLE public.w17_later_table');
+    }
+  });
+});
+
+describe('T-PV-2: roles, memberships and ownership (OW-1, OW-2, OW-9; SR-68)', () => {
+  it('dems_owner: CREATEDB only; dems_app: no attribute; neither is a member of a role or has members', async () => {
+    const roles = await owner.query(
+      `SELECT rolname::text AS rolname, rolcanlogin, rolsuper, rolcreatedb, rolcreaterole, rolreplication, rolbypassrls
+         FROM pg_roles WHERE rolname IN ('dems_owner', 'dems_app') ORDER BY 1`,
+    );
+    expect(roles.rows).toEqual([
+      { rolname: 'dems_app', rolcanlogin: true, rolsuper: false, rolcreatedb: false, rolcreaterole: false, rolreplication: false, rolbypassrls: false },
+      { rolname: 'dems_owner', rolcanlogin: true, rolsuper: false, rolcreatedb: true, rolcreaterole: false, rolreplication: false, rolbypassrls: false },
+    ]);
+    const memberships = await owner.query(
+      `SELECT count(*)::int AS rows FROM pg_auth_members m
+        WHERE m.roleid IN (SELECT oid FROM pg_roles WHERE rolname IN ('dems_owner', 'dems_app'))
+           OR m.member IN (SELECT oid FROM pg_roles WHERE rolname IN ('dems_owner', 'dems_app'))`,
+    );
+    expect(memberships.rows).toEqual([{ rows: 0 }]);
+    const settings = await owner.query(
+      `SELECT count(*)::int AS rows FROM pg_db_role_setting s
+        WHERE s.setrole IN (SELECT oid FROM pg_roles WHERE rolname IN ('dems_owner', 'dems_app'))
+           OR s.setdatabase = (SELECT oid FROM pg_database WHERE datname = current_database())`,
+    );
+    expect(settings.rows).toEqual([{ rows: 0 }]);
+  });
+
+  it('every object belongs to dems_owner: the database, every table, index and function of public, and schema drizzle with its table', async () => {
+    const { rows } = await owner.query<{ kind: string; owner: string; total: number }>(
+      `SELECT kind, owner, count(*)::int AS total FROM (
+         SELECT 'database' AS kind, pg_get_userbyid(datdba)::text AS owner FROM pg_database WHERE datname = current_database()
+         UNION ALL
+         SELECT 'public ' || CASE c.relkind WHEN 'r' THEN 'table' WHEN 'i' THEN 'index' ELSE 'relation ' || c.relkind::text END,
+                pg_get_userbyid(c.relowner)::text
+           FROM pg_class c WHERE c.relnamespace = 'public'::regnamespace
+         UNION ALL
+         SELECT 'public function', pg_get_userbyid(p.proowner)::text FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace
+         UNION ALL
+         SELECT 'schema drizzle', pg_get_userbyid(n.nspowner)::text FROM pg_namespace n WHERE n.nspname = 'drizzle'
+         UNION ALL
+         SELECT 'drizzle ' || CASE c.relkind WHEN 'r' THEN 'table' WHEN 'i' THEN 'index' WHEN 'S' THEN 'sequence' ELSE 'relation ' || c.relkind::text END,
+                pg_get_userbyid(c.relowner)::text
+           FROM pg_class c WHERE c.relnamespace = 'drizzle'::regnamespace
+       ) AS objects GROUP BY 1, 2 ORDER BY 1, 2`,
+    );
+    expect(rows).toEqual([
+      { kind: 'database', owner: 'dems_owner', total: 1 },
+      { kind: 'drizzle index', owner: 'dems_owner', total: 1 },
+      { kind: 'drizzle sequence', owner: 'dems_owner', total: 1 },
+      { kind: 'drizzle table', owner: 'dems_owner', total: 1 },
+      { kind: 'public function', owner: 'dems_owner', total: 5 },
+      { kind: 'public index', owner: 'dems_owner', total: 69 },
+      { kind: 'public table', owner: 'dems_owner', total: 30 },
+      { kind: 'schema drizzle', owner: 'dems_owner', total: 1 },
+    ]);
+    // Schema public itself belongs to the pseudo-role "the owner of the database" (PG-15).
+    const schema = await owner.query("SELECT pg_get_userbyid(nspowner)::text AS owner FROM pg_namespace WHERE nspname = 'public'");
+    expect(schema.rows).toEqual([{ owner: 'pg_database_owner' }]);
+    console.info(`[w17] T-PV-2 ownership in ${db.name}:\n${rows.map((row) => `  ${row.kind.padEnd(18)} ${row.owner}  x${row.total}`).join('\n')}`);
+  });
+
+  it('dems_owner is not a superuser: CREATE ROLE, the trigger-skipping session setting and a rename of another database fail with 42501', async () => {
+    await expectRefused(() => owner.query('CREATE ROLE w17_x'), SQLSTATE.insufficientPrivilege);
+    await expectRefused(() => owner.query('SET session_replication_role = replica'), SQLSTATE.insufficientPrivilege);
+    const rename = await expectRefused(() => owner.query('ALTER DATABASE postgres RENAME TO w17_y'), SQLSTATE.insufficientPrivilege);
+    expect(rename.message).toBe('must be owner of database postgres');
+    const still = await owner.query("SELECT count(*)::int AS rows FROM pg_database WHERE datname = 'postgres'");
+    expect(still.rows).toEqual([{ rows: 1 }]);
+  });
+});

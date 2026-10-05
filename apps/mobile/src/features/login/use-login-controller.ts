@@ -15,14 +15,27 @@
  * - Haptics through the one service (§7.6): Sign In press (light), success, failure, lockout.
  * - Unexpected failures go to the persistent runtime log (`dems.mobile.log.v1`) with a
  *   correlation id and no credential in the context.
+ *
+ * LIVE mode (backend task W59; 04_client_integration_spec §9.2, §3.5, §8.5 S1-1, LB-10). The same
+ * two calls sign in on the Core server through the auth layer (`@/auth`, W56); the simulated paths
+ * above are untouched. What LIVE adds here, all of it behind `live`:
+ * - a refusal the contract's result cannot say is read from `useAuthSession().signInFailure`:
+ *   a limit (429) shows no Alert and keeps what was typed (the auth layer shows the limit toast);
+ *   a sign-in the Core server did not answer shows the presenter's sentences in place;
+ * - the fingerprint result `invalid` (the stored token is dead) shows nothing of its own: the
+ *   auth layer's notice says it, and takes the Alert slot (`noticeFor`);
+ * - the offline Alert follows the Live link without flicker; Retry asks the Live socket to
+ *   reconnect, on the same cooldown; "Use Simulated mode" stores the simulator as the source.
  */
 import { zodResolver } from '@hookform/resolvers/zod';
+import { router } from 'expo-router';
 import { useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { HeartbeatContext, useRetryCooldown } from '@dems/shared/realtime';
 import { useAuthSession } from '@/auth';
 import { useHaptics } from '@/motion';
-import { newCorrelationId, reportRuntimeIssue, useAuth, useCoreLink } from '@/runtime';
+import { newCorrelationId, reportRuntimeIssue, setCoreLinkSource, useAuth, useCoreLink, useMobileLive } from '@/runtime';
+import { isLimitFailure, isLiveLogin, liveAttemptFor, liveOfflineNoticeAfter } from './login-live-model';
 import {
   EMPTY_LOGIN_FORM,
   isCoreBlocked,
@@ -56,6 +69,9 @@ export function useLoginController({ onRejected, onAccepted }: LoginControllerOp
   const coreLink = useCoreLink();
   const haptic = useHaptics();
   const heartbeat = useContext(HeartbeatContext);
+  /** LIVE mode: the Core server is the Core. Every LIVE branch below hangs on this one word of the runtime. */
+  const live = isLiveLogin(coreLink);
+  const mobileLive = useMobileLive();
 
   const form = useForm<LoginFormInput, unknown, LoginFormValues>({
     resolver: zodResolver(loginSchema),
@@ -80,10 +96,23 @@ export function useLoginController({ onRejected, onAccepted }: LoginControllerOp
   const [overrides, setOverrides] = useState<FieldOverrides>({});
   /** Counts rejected password attempts; the card puts the focus back into the password field. */
   const [rejectSeq, setRejectSeq] = useState(0);
+  /** LIVE LB-10: a LIVE sign-in ended UNAVAILABLE and its refusal is classified on the next render. */
+  const [awaitingLimit, setAwaitingLimit] = useState(false);
 
-  const { lockout, biometric, signInWithBiometric: biometricSignIn } = session;
+  const { lockout, biometric, signInWithBiometric: biometricSignIn, signInFailure } = session;
   const coreBlocked = isCoreBlocked(coreLink);
   const submitDisabled = isSubmitDisabled({ locked: lockout.locked, pending, coreBlocked });
+
+  // LIVE: the offline Alert follows the link's heartbeat without flicker (CONNECTING keeps what is
+  // shown), while Sign In stays disabled for as long as the link is not ONLINE. State derived from
+  // a changed input, adjusted while rendering (no effect, no extra frame).
+  const linkHeartbeat = coreLink.heartbeat;
+  const [heartbeatSeen, setHeartbeatSeen] = useState(linkHeartbeat);
+  const [liveOfflineShown, setLiveOfflineShown] = useState(() => live && liveOfflineNoticeAfter(false, linkHeartbeat));
+  if (heartbeatSeen !== linkHeartbeat) {
+    setHeartbeatSeen(linkHeartbeat);
+    setLiveOfflineShown(live && liveOfflineNoticeAfter(liveOfflineShown, linkHeartbeat));
+  }
 
   // §6.3 step 2: ask the OS once the screen is up (hardware, enrolment).
   const { refreshBiometricAvailability } = session;
@@ -107,9 +136,28 @@ export function useLoginController({ onRejected, onAccepted }: LoginControllerOp
     [],
   );
 
+  /** The password never outlives the attempt (§6.1): out of the form, and out of the mounted input. */
+  const clearPassword = useCallback(() => {
+    form.setValue('password', '');
+    setOverrides((current) => ({ ...current, password: '' }));
+  }, [form]);
+
+  // LIVE, LB-10 (AC-C-110): a limit keeps the form filled, because the Core server did not look at
+  // the attempt. Whether a rejected sign-in was a limit is the auth layer's to say (`signInFailure`),
+  // and its state reaches this hook with the render after the attempt, not inside the attempt's own
+  // closure. So a LIVE attempt that ended `UNAVAILABLE` leaves the field as it is and marks itself
+  // (`awaitingLimit`); the first render that carries its outcome also carries the auth layer's word
+  // (set before the sign-in call returned), and this render-time adjustment — the same pattern as the
+  // offline Alert above, no ref and no effect — then clears the password unless that word is a limit.
+  if (awaitingLimit) {
+    setAwaitingLimit(false);
+    if (!isLimitFailure(signInFailure)) clearPassword();
+  }
+
   const submit = form.handleSubmit(async ({ username, password }) => {
     if (submitDisabled) return;
     const correlationId = newCorrelationId('login');
+    let passwordDecidedLater = false;
     haptic('primaryPress');
     setPending(true);
     try {
@@ -139,6 +187,11 @@ export function useLoginController({ onRejected, onAccepted }: LoginControllerOp
           haptic('signInFailure');
           break;
         default:
+          // LIVE: what the refusal was arrives with the next render (see `awaitingLimit`).
+          if (live) {
+            setAwaitingLimit(true);
+            passwordDecidedLater = true;
+          }
           settle({ kind: 'unavailable' });
           reportRuntimeIssue('warn', 'login.signIn', 'Sign-in unavailable', { reason: result.reason }, correlationId);
       }
@@ -146,9 +199,8 @@ export function useLoginController({ onRejected, onAccepted }: LoginControllerOp
       settle({ kind: 'unavailable' });
       reportRuntimeIssue('error', 'login.signIn', error, undefined, correlationId);
     } finally {
-      // The password never outlives the attempt (§6.1).
-      form.setValue('password', '');
-      setOverrides((current) => ({ ...current, password: '' }));
+      // The password never outlives the attempt (§6.1). The one exception is a limit in LIVE mode.
+      if (!passwordDecidedLater) clearPassword();
       setPending(false);
     }
   });
@@ -188,6 +240,12 @@ export function useLoginController({ onRejected, onAccepted }: LoginControllerOp
         case 'unavailable':
           // The button re-renders from the refreshed availability (caption or hidden).
           break;
+        case 'invalid':
+          // LIVE (MB-3): the stored token can never sign in again. The auth layer deleted it and
+          // holds the notice that says so; this screen shows nothing of its own.
+          settle(null);
+          haptic('signInFailure');
+          break;
         default:
           settle({ kind: 'biometric-error' });
           reportRuntimeIssue('warn', 'login.biometric', 'Biometric sign-in ended with an error', undefined, correlationId);
@@ -223,23 +281,46 @@ export function useLoginController({ onRejected, onAccepted }: LoginControllerOp
     });
   }, []);
 
-  // L9 Core offline → Retry: reconnect the heartbeat now (rate-limited).
+  // L9 Core offline → Retry: reconnect the heartbeat now (rate-limited). In LIVE mode the Live
+  // source owns the one socket (its heartbeat view can neither be stopped nor started): it is
+  // asked to reconnect, on the same cooldown.
   const reconnect = useCallback(() => {
-    if (!heartbeat) return;
     try {
+      if (mobileLive !== null) {
+        mobileLive.reconnect('RETRY');
+        return;
+      }
+      if (!heartbeat) return;
       heartbeat.stop();
       heartbeat.start();
     } catch (error) {
       reportRuntimeIssue('warn', 'login.coreRetry', error);
     }
-  }, [heartbeat]);
+  }, [heartbeat, mobileLive]);
   const coreRetry = useRetryCooldown(reconnect);
+
+  /**
+   * LIVE, Core offline → "Use Simulated mode" (§3.5; LIVE exists in debug builds only, MD-3). The
+   * runtime mounts the simulator in place of the Live source; the boot router picks the screen.
+   * Nobody is signed in on this screen, so nothing is signed out and nothing is asked first.
+   */
+  const switchToSimulated = useCallback(() => {
+    try {
+      reportRuntimeIssue('info', 'login.useSimulated', 'Core link source set to SIMULATED from the Login screen');
+      setCoreLinkSource('SIMULATED');
+      router.replace('/');
+    } catch (error) {
+      reportRuntimeIssue('error', 'login.useSimulated', error);
+    }
+  }, []);
 
   const notice = noticeFor({
     lockout,
-    coreBlocked,
-    lastAttempt,
+    // LIVE: the Alert of the link, without flicker. HEARTBEAT: the link itself, as before.
+    coreBlocked: live ? liveOfflineShown : coreBlocked,
+    lastAttempt: live ? liveAttemptFor(lastAttempt, signInFailure) : lastAttempt,
     lastSignOut: attempted ? null : session.lastSignOut,
+    authNotice: session.notice?.kind ?? null,
   });
 
   return {
@@ -260,6 +341,8 @@ export function useLoginController({ onRejected, onAccepted }: LoginControllerOp
     coreRetry,
     overrides,
     rejectSeq,
+    live,
+    switchToSimulated,
   };
 }
 

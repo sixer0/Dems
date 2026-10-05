@@ -21,6 +21,12 @@
  *
  * The simulator trusts the OS result: "simulated identity binding". No biometric data ever reaches
  * the app; only the OS verdict does.
+ *
+ * Backend task W56 (04_client_integration_spec §8.5 S1-2, S1-3): the two auth calls may answer
+ * later. With the simulator they answer at once and `applyBiometricOutcome` returns its result at
+ * once, as before; with a Live source (the Core server is the Core) they are promises and so is the
+ * result. In LIVE mode the Core never takes the OS verdict as a sign-in: it takes a single-use
+ * token (`./live-biometric.ts`), and a token it refuses for good is the result `invalid`.
  */
 import * as LocalAuthentication from 'expo-local-authentication';
 import type { LocalAuthenticationOptions, LocalAuthenticationResult } from 'expo-local-authentication';
@@ -120,38 +126,59 @@ export type BiometricSignInResult =
   /** The console lockout (§6.1), from the simulator clock. */
   | { readonly kind: 'locked'; readonly lockedUntilMs: number }
   | { readonly kind: 'unavailable' }
-  /** Heartbeat mode with the Core offline: sign-in is disabled (04 §4.1 L6). */
+  /** The Core link is down: sign-in is disabled (04 §4.1 L6). */
   | { readonly kind: 'core-offline' }
+  /**
+   * LIVE mode only (MB-3, MB-6a): the stored token can never sign in again and both stored items
+   * are deleted. The operator signs in with the password and enables biometric sign-in again; the
+   * Alert is `useAuthSession().notice`.
+   */
+  | { readonly kind: 'invalid' }
   | { readonly kind: 'error' };
 
-/** The simulator auth calls a biometric sign-in makes (`sim.actions`). */
+/**
+ * The auth calls a biometric sign-in makes: the actions of the source in `SimContext`. The
+ * simulator answers at once; a Live source answers after the Core server did.
+ */
 export interface BiometricSimAuth {
-  signInWithBiometric(operatorId: string): SimSignInResult;
-  recordBiometricFailure(operatorId: string | null): SimSignInResult;
+  signInWithBiometric(operatorId: string): SimSignInResult | Promise<SimSignInResult>;
+  recordBiometricFailure(operatorId: string | null): SimSignInResult | Promise<SimSignInResult>;
 }
 
-function fromFailure(result: Extract<SimSignInResult, { ok: false }>): BiometricSignInResult {
+/** A failed attempt as the fingerprint button shows it: the console lockout, or the attempts left. */
+export function fromFailure(result: Extract<SimSignInResult, { ok: false }>): BiometricSignInResult {
   return result.reason === 'LOCKED'
     ? { kind: 'locked', lockedUntilMs: result.lockedUntil }
     : { kind: 'failed', attemptsRemaining: result.attemptsRemaining };
 }
 
-/** The §6.3 result table, simulator side (pure apart from the simulator calls it makes). */
+function isPromiseLike<T>(value: T | PromiseLike<T>): value is PromiseLike<T> {
+  return typeof value === 'object' && value !== null && typeof (value as { then?: unknown }).then === 'function';
+}
+
+/** `map` of an answer: at once for the simulator's plain value, on settlement for a Live result. */
+function mapAnswer<T, R>(answer: T | Promise<T>, map: (value: T) => R): R | Promise<R> {
+  return isPromiseLike(answer) ? Promise.resolve(answer).then(map) : map(answer);
+}
+
+/**
+ * The §6.3 result table, auth side (pure apart from the auth calls it makes). With the simulator
+ * the result is returned at once, as before; with a Live source it is a promise, which rejects
+ * with what the action rejected with.
+ */
 export function applyBiometricOutcome(
   outcome: BiometricPromptOutcome,
   operatorId: string,
   auth: BiometricSimAuth,
-): BiometricSignInResult {
+): BiometricSignInResult | Promise<BiometricSignInResult> {
   switch (outcome) {
-    case 'success': {
-      const result = auth.signInWithBiometric(operatorId);
-      return result.ok ? { kind: 'signed-in', operatorId: result.operatorId } : fromFailure(result);
-    }
-    case 'failed': {
-      const result = auth.recordBiometricFailure(operatorId);
+    case 'success':
+      return mapAnswer(auth.signInWithBiometric(operatorId), (result) =>
+        result.ok ? { kind: 'signed-in', operatorId: result.operatorId } : fromFailure(result),
+      );
+    case 'failed':
       // A failure never signs in; `ok` cannot be true here.
-      return result.ok ? { kind: 'error' } : fromFailure(result);
-    }
+      return mapAnswer(auth.recordBiometricFailure(operatorId), (result) => (result.ok ? { kind: 'error' } : fromFailure(result)));
     case 'cancel':
       return { kind: 'cancelled' };
     case 'lockout':
@@ -172,14 +199,15 @@ export interface BiometricSignInOptions {
   readonly api?: BiometricApi;
 }
 
-/** The whole fingerprint-button flow: availability, prompt, then the simulator (§6.3). */
+/** The whole fingerprint-button flow of the simulator: availability, prompt, then the auth call (§6.3). */
 export async function biometricSignIn({ operatorId, text, auth, api = DEFAULT_API }: BiometricSignInOptions): Promise<BiometricSignInResult> {
   const availability = await getBiometricAvailability(api);
   if (availability === 'unavailable') return { kind: 'unavailable' };
   if (availability === 'not-enrolled') return { kind: 'not-enrolled' };
   const outcome = await promptBiometric(text, api);
   try {
-    return applyBiometricOutcome(outcome, operatorId, auth);
+    // Awaited here, so that a result that arrives later and fails is contained below as well.
+    return await applyBiometricOutcome(outcome, operatorId, auth);
   } catch (error) {
     reportRuntimeIssue('error', 'auth.biometric.signIn', error, { outcome });
     return { kind: 'error' };

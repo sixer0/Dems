@@ -1,0 +1,8 @@
+[HOST-CONTROL run=w12x071039] P1 GET getServiceHealth PASS {"ok":true,"status":200,"epoch":null,"revision":null,"requestId":"req-000003"}
+[HOST-CONTROL run=w12x071039] P2 POST createSession PASS {"ok":true,"status":201,"epoch":"1","revision":101,"requestId":"req-000004"}
+[HOST-CONTROL run=w12x071039] P3 POST exportEvidence 403 PASS {"ok":false,"kind":"FORBIDDEN","status":403,"code":"FORBIDDEN","retryAfterSeconds":null,"transport":null}
+[HOST-CONTROL run=w12x071039] P4 POST stopSession 429 retry-after PASS {"ok":false,"kind":"RATE_LIMITED","status":429,"code":"RATE_LIMITED","retryAfterSeconds":42,"transport":"UNAVAILABLE"}
+[HOST-CONTROL run=w12x071039] P5 GET getStorageStatus contract violation PASS {"ok":false,"kind":"CONTRACT_VIOLATION","status":200,"code":"CONTRACT_VIOLATION","retryAfterSeconds":null,"transport":"UNAVAILABLE"}
+[HOST-CONTROL run=w12x071039] P2b POST createSession without a credential is 401 PASS {"ok":false,"kind":"UNAUTHENTICATED","status":401,"code":"NOT_SIGNED_IN","retryAfterSeconds":null,"transport":null}
+[HOST-CONTROL run=w12x071039] P7 GET getVideoStatus time-out PASS {"ok":false,"kind":"TIMEOUT","status":null,"code":"TIMEOUT","retryAfterSeconds":null,"transport":"CORE_OFFLINE","elapsedMs":1001}
+[HOST-CONTROL run=w12x071039] DONE fail=0

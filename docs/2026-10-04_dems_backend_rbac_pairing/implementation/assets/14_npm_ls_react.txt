@@ -1,0 +1,284 @@
+dems-demo@0.1.0 /Users/gsp-budi/Documents/DEMS
++-- @dems/core-server@0.2.0 -> ./apps/core-server
+| `-- react@19.2.3 overridden
++-- @dems/core-web@0.1.0 -> ./apps/core-web
+| +-- @heroui/react@3.2.6
+| | +-- @radix-ui/react-avatar@1.2.6
+| | | +-- @radix-ui/react-context@1.2.2
+| | | | `-- react@19.2.3 deduped
+| | | +-- @radix-ui/react-primitive@2.1.10
+| | | | +-- react-dom@19.2.3 deduped
+| | | | `-- react@19.2.3 deduped
+| | | +-- @radix-ui/react-use-callback-ref@1.1.4
+| | | | `-- react@19.2.3 deduped
+| | | +-- @radix-ui/react-use-is-hydrated@0.1.3
+| | | | `-- react@19.2.3 deduped
+| | | +-- @radix-ui/react-use-layout-effect@1.1.4
+| | | | `-- react@19.2.3 deduped
+| | | +-- react-dom@19.2.3 deduped
+| | | `-- react@19.2.3 deduped
+| | +-- @react-aria/ssr@3.10.1
+| | | +-- react-dom@19.2.3 deduped
+| | | `-- react@19.2.3 deduped
+| | +-- @react-aria/utils@3.34.1
+| | | +-- react-dom@19.2.3 deduped
+| | | +-- react-stately@3.50.0
+| | | | `-- react@19.2.3 deduped
+| | | `-- react@19.2.3 deduped
+| | +-- @react-stately/utils@3.12.1
+| | | +-- react-dom@19.2.3 deduped
+| | | `-- react@19.2.3 deduped
+| | +-- @react-types/color@3.2.0
+| | | +-- @react-aria/color@3.2.1
+| | | | +-- react-dom@19.2.3 deduped
+| | | | `-- react@19.2.3 deduped
+| | | +-- @react-spectrum/color@3.2.1
+| | | | +-- @adobe/react-spectrum@3.47.5
+| | | | | +-- @spectrum-icons/ui@3.7.2
+| | | | | | +-- @adobe/react-spectrum-ui@1.2.1
+| | | | | | | +-- react-dom@19.2.3 deduped
+| | | | | | | `-- react@19.2.3 deduped
+| | | | | | +-- react-dom@19.2.3 deduped
+| | | | | | `-- react@19.2.3 deduped
+| | | | | +-- @spectrum-icons/workflow@4.3.2
+| | | | | | +-- @adobe/react-spectrum-workflow@2.3.5
+| | | | | | | +-- react-dom@19.2.3 deduped
+| | | | | | | `-- react@19.2.3 deduped
+| | | | | | +-- react-dom@19.2.3 deduped
+| | | | | | `-- react@19.2.3 deduped
+| | | | | +-- react-dom@19.2.3 deduped
+| | | | | +-- react-transition-group@4.4.5
+| | | | | | +-- react-dom@19.2.3 deduped
+| | | | | | `-- react@19.2.3 deduped
+| | | | | `-- react@19.2.3 deduped
+| | | | +-- react-dom@19.2.3 deduped
+| | | | `-- react@19.2.3 deduped
+| | | +-- @react-spectrum/provider@3.11.1
+| | | | +-- react-dom@19.2.3 deduped
+| | | | `-- react@19.2.3 deduped
+| | | +-- @react-stately/color@3.10.1
+| | | | +-- react-dom@19.2.3 deduped
+| | | | `-- react@19.2.3 deduped
+| | | +-- react-dom@19.2.3 deduped
+| | | `-- react@19.2.3 deduped
+| | +-- @react-types/shared@3.36.1
+| | | `-- react@19.2.3 deduped
+| | +-- input-otp@1.5.0
+| | | +-- react-dom@19.2.3 deduped
+| | | `-- react@19.2.3 deduped
+| | +-- react-aria-components@1.21.1
+| | | +-- react-dom@19.2.3 deduped
+| | | `-- react@19.2.3 deduped
+| | +-- react-aria@3.52.1
+| | | +-- react-dom@19.2.3 deduped
+| | | `-- react@19.2.3 deduped
+| | +-- react-dom@19.2.3 deduped
+| | `-- react@19.2.3 deduped
+| +-- @scalar/api-reference-react@0.9.76
+| | `-- react@19.2.3 deduped
+| +-- @tanstack/react-query@5.104.0
+| | `-- react@19.2.3 deduped
+| +-- @tanstack/react-router@1.170.40
+| | +-- @tanstack/react-store@0.11.2
+| | | +-- react-dom@19.2.3 deduped
+| | | `-- react@19.2.3 deduped
+| | +-- react-dom@19.2.3 deduped
+| | `-- react@19.2.3 deduped
+| +-- @tanstack/react-table@8.21.3
+| | +-- react-dom@19.2.3 deduped
+| | `-- react@19.2.3 deduped
+| +-- @testing-library/react@16.3.3
+| | +-- react-dom@19.2.3 deduped
+| | `-- react@19.2.3 deduped
+| +-- lucide-react@1.49.0
+| | `-- react@19.2.3 deduped
+| +-- motion@13.4.6
+| | +-- framer-motion@13.4.6
+| | | +-- react-dom@19.2.3 deduped
+| | | `-- react@19.2.3 deduped
+| | +-- react-dom@19.2.3 deduped
+| | `-- react@19.2.3 deduped
+| +-- qrcode.react@4.2.0
+| | `-- react@19.2.3 deduped
+| +-- react-dom@19.2.3 overridden
+| | `-- react@19.2.3 deduped
+| +-- react-hook-form@7.89.0
+| | `-- react@19.2.3 deduped
+| +-- react-i18next@17.0.15
+| | +-- react@19.2.3 deduped
+| | `-- use-sync-external-store@1.7.0
+| |   `-- react@19.2.3 deduped
+| +-- react-use-measure@2.1.7
+| | +-- react-dom@19.2.3 deduped
+| | `-- react@19.2.3 deduped
+| +-- react@19.2.3 deduped
+| +-- recharts@3.10.1
+| | +-- @reduxjs/toolkit@2.13.0
+| | | `-- react@19.2.3 deduped
+| | +-- react-dom@19.2.3 deduped
+| | +-- react-redux@9.3.0
+| | | `-- react@19.2.3 deduped
+| | `-- react@19.2.3 deduped
+| `-- zustand@5.0.15
+|   `-- react@19.2.3 deduped
++-- @dems/mobile@0.1.0 -> ./apps/mobile
+| +-- @expo/ui@57.0.21
+| | +-- react-dom@19.2.3 deduped
+| | +-- react@19.2.3 deduped
+| | `-- vaul@1.1.2
+| |   +-- @radix-ui/react-dialog@1.1.23
+| |   | +-- @radix-ui/react-dismissable-layer@1.1.19
+| |   | | +-- react-dom@19.2.3 deduped
+| |   | | `-- react@19.2.3 deduped
+| |   | +-- @radix-ui/react-focus-guards@1.1.6
+| |   | | `-- react@19.2.3 deduped
+| |   | +-- @radix-ui/react-focus-scope@1.1.16
+| |   | | +-- react-dom@19.2.3 deduped
+| |   | | `-- react@19.2.3 deduped
+| |   | +-- @radix-ui/react-portal@1.1.17
+| |   | | +-- react-dom@19.2.3 deduped
+| |   | | `-- react@19.2.3 deduped
+| |   | +-- react-dom@19.2.3 deduped
+| |   | +-- react-remove-scroll@2.7.2
+| |   | | +-- react-remove-scroll-bar@2.3.8
+| |   | | | `-- react@19.2.3 deduped
+| |   | | +-- react-style-singleton@2.2.3
+| |   | | | `-- react@19.2.3 deduped
+| |   | | +-- react@19.2.3 deduped
+| |   | | +-- use-callback-ref@1.3.3
+| |   | | | `-- react@19.2.3 deduped
+| |   | | `-- use-sidecar@1.1.3
+| |   | |   `-- react@19.2.3 deduped
+| |   | `-- react@19.2.3 deduped
+| |   +-- react-dom@19.2.3 deduped
+| |   `-- react@19.2.3 deduped
+| +-- @gorhom/bottom-sheet@5.2.14
+| | +-- @gorhom/portal@1.0.14
+| | | `-- react@19.2.3 deduped
+| | `-- react@19.2.3 deduped
+| +-- @shopify/flash-list@2.0.2
+| | `-- react@19.2.3 deduped
+| +-- @shopify/react-native-skia@2.6.2
+| | +-- react-reconciler@0.31.0
+| | | `-- react@19.2.3 deduped
+| | `-- react@19.2.3 deduped
+| +-- @testing-library/react-native@13.3.3
+| | `-- react@19.2.3 deduped
+| +-- expo-blur@57.0.3
+| | `-- react@19.2.3 deduped
+| +-- expo-font@57.0.4
+| | `-- react@19.2.3 deduped
+| +-- expo-glass-effect@57.0.4
+| | `-- react@19.2.3 deduped
+| +-- expo-image@57.0.5
+| | `-- react@19.2.3 deduped
+| +-- expo-keep-awake@57.0.2
+| | `-- react@19.2.3 deduped
+| +-- expo-linear-gradient@57.0.2
+| | `-- react@19.2.3 deduped
+| +-- expo-linking@57.0.11
+| | `-- react@19.2.3 deduped
+| +-- expo-router@57.0.24
+| | +-- @expo/log-box@57.0.4
+| | | `-- react@19.2.3 deduped
+| | +-- @expo/metro-runtime@57.0.16
+| | | +-- react-dom@19.2.3 deduped
+| | | `-- react@19.2.3 deduped
+| | +-- @radix-ui/react-slot@1.3.3
+| | | +-- @radix-ui/react-compose-refs@1.1.5
+| | | | `-- react@19.2.3 deduped
+| | | `-- react@19.2.3 deduped
+| | +-- @radix-ui/react-tabs@1.1.21
+| | | +-- @radix-ui/react-direction@1.1.4
+| | | | `-- react@19.2.3 deduped
+| | | +-- @radix-ui/react-id@1.1.4
+| | | | `-- react@19.2.3 deduped
+| | | +-- @radix-ui/react-presence@1.1.10
+| | | | +-- react-dom@19.2.3 deduped
+| | | | `-- react@19.2.3 deduped
+| | | +-- @radix-ui/react-roving-focus@1.1.19
+| | | | +-- @radix-ui/react-collection@1.1.15
+| | | | | +-- react-dom@19.2.3 deduped
+| | | | | `-- react@19.2.3 deduped
+| | | | +-- react-dom@19.2.3 deduped
+| | | | `-- react@19.2.3 deduped
+| | | +-- @radix-ui/react-use-controllable-state@1.2.6
+| | | | +-- @radix-ui/react-use-effect-event@0.0.5
+| | | | | `-- react@19.2.3 deduped
+| | | | `-- react@19.2.3 deduped
+| | | +-- react-dom@19.2.3 deduped
+| | | `-- react@19.2.3 deduped
+| | +-- @react-native-masked-view/masked-view@0.3.2
+| | | `-- react@19.2.3 deduped
+| | +-- react-dom@19.2.3 deduped
+| | +-- react-native-drawer-layout@4.2.11
+| | | +-- react@19.2.3 deduped
+| | | `-- use-latest-callback@0.2.6
+| | |   `-- react@19.2.3 deduped
+| | `-- react@19.2.3 deduped
+| +-- expo-status-bar@57.0.1
+| | `-- react@19.2.3 deduped
+| +-- expo-symbols@57.0.3
+| | `-- react@19.2.3 deduped
+| +-- expo-video@57.0.5
+| | `-- react@19.2.3 deduped
+| +-- expo@57.0.26
+| | +-- @expo/cli@57.0.27
+| | | `-- @expo/router-server@57.0.11
+| | |   +-- react-dom@19.2.3 deduped
+| | |   `-- react@19.2.3 deduped
+| | +-- @expo/devtools@57.0.1
+| | | `-- react@19.2.3 deduped
+| | +-- @expo/dom-webview@57.0.1
+| | | `-- react@19.2.3 deduped
+| | +-- expo-asset@57.0.18
+| | | `-- react@19.2.3 deduped
+| | +-- expo-modules-core@57.0.20
+| | | `-- react@19.2.3 deduped
+| | +-- react-dom@19.2.3 deduped
+| | `-- react@19.2.3 deduped
+| +-- heroui-native@1.0.10
+| | `-- react@19.2.3 deduped
+| +-- jest-expo@57.0.5
+| | `-- @react-native/jest-preset@0.86.3
+| |   `-- react@19.2.3 deduped
+| +-- lucide-react-native@1.49.0
+| | `-- react@19.2.3 deduped
+| +-- react-dom@19.2.3 deduped
+| +-- react-native-gesture-handler@2.32.0
+| | `-- react@19.2.3 deduped
+| +-- react-native-keyboard-controller@1.21.9
+| | +-- react-native-is-edge-to-edge@1.3.1
+| | | `-- react@19.2.3 deduped
+| | `-- react@19.2.3 deduped
+| +-- react-native-reanimated@4.5.1
+| | `-- react@19.2.3 deduped
+| +-- react-native-safe-area-context@5.7.0
+| | `-- react@19.2.3 deduped
+| +-- react-native-screens@4.26.2
+| | +-- react-freeze@1.0.4
+| | | `-- react@19.2.3 deduped
+| | `-- react@19.2.3 deduped
+| +-- react-native-svg@15.15.4
+| | `-- react@19.2.3 deduped
+| +-- react-native-web@0.21.3
+| | +-- react-dom@19.2.3 deduped
+| | `-- react@19.2.3 deduped
+| +-- react-native-worklets@0.10.1
+| | `-- react@19.2.3 deduped
+| +-- react-native@0.86.3
+| | +-- @react-native/virtualized-lists@0.86.3
+| | | `-- react@19.2.3 deduped
+| | `-- react@19.2.3 deduped
+| +-- react-test-renderer@19.2.3 overridden
+| | `-- react@19.2.3 deduped
+| +-- react@19.2.3 deduped
+| +-- uniwind@1.12.0
+| | `-- react@19.2.3 deduped
+| `-- victory-native@42.0.1
+|   +-- its-fine@1.2.5
+|   | `-- react@19.2.3 deduped
+|   `-- react@19.2.3 deduped
+`-- @dems/shared@0.1.0 -> ./packages/shared
+  `-- react@19.2.3 deduped
+

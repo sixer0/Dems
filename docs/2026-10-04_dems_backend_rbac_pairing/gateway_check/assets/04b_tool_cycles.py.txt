@@ -1,0 +1,53 @@
+#!/usr/bin/env python3
+"""Unit-level import graph of the production sources (value imports only) and its cycles."""
+import os, re, sys
+root = sys.argv[1]
+IMPORT = re.compile(r"""(?:^|\n)\s*(import|export)\s+(type\s+)?([^'";]*?)\s*from\s+['"](\.{1,2}(?:/[^'"]*)?)['"]""")
+def strip(text):
+    return re.sub(r"/\*.*?\*/", lambda m: '\n' * m.group(0).count('\n'), text, flags=re.S)
+def unit_of(path):
+    p = path.split('/')
+    if len(p) == 2: return path[:-3] if path.endswith('.ts') else path
+    if p[1] in ('plugins', 'modules', 'db'): return '/'.join(p[:3])
+    return '/'.join(p[:2])
+edges = {}
+for d, dirs, names in os.walk(os.path.join(root, 'src')):
+    dirs[:] = [x for x in dirs if x not in ('node_modules', '__tests__')]
+    for n in names:
+        if not n.endswith('.ts') or n.endswith('.test.ts'): continue
+        f = os.path.relpath(os.path.join(d, n), root)
+        text = strip(open(os.path.join(root, f)).read())
+        for m in IMPORT.finditer(text):
+            if m.group(2): continue                      # import type …
+            names_part = m.group(3).strip()
+            if names_part.startswith('{') and all(x.strip().startswith('type ') for x in names_part.strip('{}').split(',') if x.strip()): continue
+            target = os.path.normpath(os.path.join(os.path.dirname(f), m.group(4)))
+            if os.path.isdir(os.path.join(root, target)): target += '/index.ts'
+            else: target += '.ts'
+            a, b = unit_of(f), unit_of(target)
+            if a != b:
+                line = text.count('\n', 0, m.start(4)) + 1
+                edges.setdefault((a, b), []).append(f"{f}:{line}")
+graph = {}
+for (a, b) in edges: graph.setdefault(a, set()).add(b); graph.setdefault(b, set())
+# Tarjan
+index = {}; low = {}; stack = []; on = set(); out = []; counter = [0]
+sys.setrecursionlimit(10000)
+def visit(v):
+    index[v] = low[v] = counter[0]; counter[0] += 1; stack.append(v); on.add(v)
+    for w in graph[v]:
+        if w not in index: visit(w); low[v] = min(low[v], low[w])
+        elif w in on: low[v] = min(low[v], index[w])
+    if low[v] == index[v]:
+        comp = []
+        while True:
+            w = stack.pop(); on.discard(w); comp.append(w)
+            if w == v: break
+        if len(comp) > 1: out.append(sorted(comp))
+for v in sorted(graph):
+    if v not in index: visit(v)
+for comp in sorted(out):
+    print('CYCLE GROUP:', ', '.join(c.replace('src/', '') for c in comp))
+    for (a, b), where in sorted(edges.items()):
+        if a in comp and b in comp: print(f"   {a.replace('src/','')} -> {b.replace('src/','')}   ({'; '.join(where)})")
+if not out: print('no cycle between units')

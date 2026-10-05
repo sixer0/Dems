@@ -1,0 +1,60 @@
+import subprocess, shutil, re, sys, os
+ROOT='/Users/gsp-budi/Documents/DEMS'
+DIR=ROOT+'/packages/shared/src/live/testing/'
+BK=ROOT+'/.cache/w31/mutation/'
+M=[
+ ('M01 the request body is not parsed with its schema','contract.ts',"  if (!parsed.success) return refuse(FakeRequestViolation.INVALID_BODY, issuePaths(parsed.error.issues), matched, route);\n",""),
+ ('M02 the verdict on a scripted answer is ignored','contract.ts',"  if (!verdict.ok) {\n    const reason =","  if (!verdict.ok && status < 0) {\n    const reason ="),
+ ('M03 every answer counts as a deliberate violation','http.ts',"    if (reply.violatesContract) return null;","    if (reply.violatesContract !== null) return null;"),
+ ('M04 a static answer is not checked when it is scripted','http.ts',"    const error = replyError(target, reply, 'scripting', 0);\n    if (error) throw error;\n    return { kind: 'reply', reply };","    return { kind: 'reply', reply };"),
+ ('M05 maskCredentials returns its input','errors.ts',"  return text.replace(CREDENTIAL_TOKEN, '$1_***');","  return text;"),
+ ('M06 header values are printed as given','log.ts',"out[maskCredentials(name)] = maskHeaderValue(name, headers[name] ?? '');","out[maskCredentials(name)] = headers[name] ?? '';"),
+ ('M07 server messages are not checked','socket.ts',"    if (!deliberate) {\n      const error = serverMessageError(wire, travelled);","    if (!deliberate && wire.record.id < 0) {\n      const error = serverMessageError(wire, travelled);"),
+ ('M08 client messages are not parsed with the client union','socket.ts',"    if (!parsed.success) return refuse(FakeMessageViolation.INVALID_MESSAGE, typeOf(message), issuePaths(parsed.error.issues));","    if (!parsed.success) return;"),
+ ('M09 a credential in a URL is not looked for','contract.ts',"  const places: string[] = [];\n  if (url.hasUserInfo) places.push('user part');","  const places: string[] = [];\n  if (places.length === 0) return places;\n  if (url.hasUserInfo) places.push('user part');"),
+ ('M10 one-shot answers are taken from the end','http.ts',"const queued = slot?.queue.shift();","const queued = slot?.queue.pop();"),
+ ('M11 any close code is accepted from the server','socket.ts',"if (options.violatesContract !== true && !REALTIME_CLOSE_CODES.some((entry) => entry.code === code)) {","if (options.violatesContract !== true && code < 0) {"),
+ ('M12 restore puts nothing back','install.ts',"      if (descriptor) Object.defineProperty(target, name, descriptor);\n      else delete (target as Record<string, unknown>)[name];","      void descriptor;\n      void name;"),
+ ('M13 a 2xx of a POST needs no revision headers','contract.ts',"  if (operation.method === 'post' && status >= 200 && status <= 299) {\n    // API-7","  if (operation.method === 'post' && status >= 200 && status <= 199) {\n    // API-7"),
+ ('M14 the clock runs due tasks in the order they were scheduled','clock.ts',"if (!found || task.at < found.at || (task.at === found.at && task.order < found.order)) found = task;","if (!found || task.order < found.order) found = task;"),
+ ('M15 a body on a 204 is accepted','contract.ts',"  if (spec && !spec.schema && facts.hasBody) {","  if (spec && !spec.schema && facts.hasBody && status < 0) {"),
+ ('M16 assertNoViolations never throws','fake-transport.ts',"    const first = violations[0];\n    if (first) throw first;\n  }","    const first = violations[0];\n    if (first && first.message === '') throw first;\n  }"),
+ ('M17 a request with no scripted answer is answered 200 without a body','http.ts',"    if (!script) {\n      call.outcome = 'unscripted';","    if (!script && call.seq < 0) {\n      call.outcome = 'unscripted';"),
+ ('M18 the request error has the name of its base class','errors.ts',"  override readonly name = 'FakeTransportRequestError';","  override readonly name = 'FakeTransportError';"),
+ ('M19 a body shows in the text of the log','log.ts',"  return `${size}, members: ${Object.keys(body).map((name) => maskCredentials(name)).join(', ') || '(none)'}`;","  return `${size}, ${JSON.stringify(body)}`;"),
+ ('M20 the fake adds no revision headers to a 2xx of a POST','http.ts',"    if (target.method === 'post' && success) {\n      headers[EPOCH_HEADER_NAME]","    if (target.method === 'post' && success && requestSeq < 0) {\n      headers[EPOCH_HEADER_NAME]"),
+ ('M21 the query is not parsed with the query schema','contract.ts',"    if (issues.length > 0) return refuse(FakeRequestViolation.INVALID_QUERY, issues, matched, route);","    void issues;"),
+ ('M22 the upgrade is not checked','socket.ts',"      const error = upgradeError(text, protocols, headers, problems);\n      if (error) {","      const error = opened < 0 ? upgradeError(text, protocols, headers, problems) : null;\n      if (error) {"),
+ ('M23 hello need not come first','socket.ts',"  if (!wire.helloSent) return refuse(FakeMessageViolation.HELLO_FIRST, ['every connection gets hello first']);\n",""),
+ ('M24 the principal of a connection is not looked at for server messages','socket.ts',"  if (wire.principal !== null && !canReceiveRealtimeMessage(wire.principal, known)) {","  if (wire.principal === null && !canReceiveRealtimeMessage(RealtimePrincipal.OPERATOR, known)) {"),
+ ('M25 the bearer form is not checked','contract.ts',"  else if (!SESSION_TOKEN_PATTERN.test(bearer[1]) && !DEVICE_CREDENTIAL_PATTERN.test(bearer[1])) {","  else if (bearer[1] === '') {"),
+ ('M26 the path parameter pattern is not checked','contract.ts',"    if (value === undefined || !param.pattern.test(value)) {","    if (value === undefined) {"),
+]
+def restore():
+    for f in os.listdir(BK):
+        shutil.copy(BK+f, DIR+f)
+def run():
+    r=subprocess.run(['npx','vitest','run','--root','packages/shared','test/live-testing-','--maxWorkers=2'],cwd=ROOT,capture_output=True,text=True)
+    out=r.stdout+r.stderr
+    files=re.findall(r'^ (?:❯|×|FAIL)\s+(test/live-testing-[\w-]+\.test\.ts)',out,re.M)
+    tests=re.search(r'Tests\s+(.*)',out)
+    return r.returncode, (tests.group(1).strip() if tests else 'no summary'), sorted(set(files))
+caught=0
+try:
+    code,summary,_=run()
+    print(f'BASE   exit={code}  {summary}')
+    for name,f,old,new in M:
+        src=open(DIR+f).read()
+        if src.count(old)!=1:
+            print(f'{name}: PATTERN NOT FOUND x{src.count(old)}'); continue
+        open(DIR+f,'w').write(src.replace(old,new))
+        code,summary,files=run()
+        restore()
+        ok = code!=0
+        caught+=ok
+        print(f"{'CAUGHT' if ok else 'MISSED'} {name} [{f}]  exit={code}  {summary}  {', '.join(x.replace('test/live-testing-','').replace('.test.ts','') for x in files)}")
+finally:
+    restore()
+code,summary,_=run()
+print(f'AFTER  exit={code}  {summary}')
+print(f'{caught} of {len(M)} mutations caught')

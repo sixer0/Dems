@@ -1,0 +1,98 @@
+// W11b diagnosis, second part: the order "plain drop first, then forced" against "forced first",
+// with a leftover session of the owner role on the database. Own run prefix only (33b).
+import { performance } from 'node:perf_hooks';
+import { TestRun } from '/Users/gsp-budi/Documents/DEMS/apps/core-server/test/helpers/db/run';
+import { injectedResolver } from '/Users/gsp-budi/Documents/DEMS/apps/core-server/test/helpers/db/hooks';
+import { OwnerSession } from '/Users/gsp-budi/Documents/DEMS/apps/core-server/test/helpers/db/session';
+import { DEFAULT_DATA_DIR, readOwnerCredentials } from '/Users/gsp-budi/Documents/DEMS/apps/core-server/test/helpers/db/credentials';
+import { guardOwnDatabase, quoteDatabaseName } from '/Users/gsp-budi/Documents/DEMS/apps/core-server/test/helpers/db/names';
+import { dropDatabase } from '/Users/gsp-budi/Documents/DEMS/apps/core-server/test/helpers/db/ddl';
+
+const TRIALS = Number(process.env['W11B_TRIALS'] ?? 4);
+type Row = Record<string, unknown>;
+
+function clock(): string {
+  const now = new Date();
+  return `${now.toTimeString().slice(0, 8)}.${String(now.getMilliseconds()).padStart(3, '0')}`;
+}
+function say(label: string, value?: unknown): void {
+  console.log(`[${clock()}] ${label}${value === undefined ? '' : ` ${JSON.stringify(value)}`}`);
+}
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+async function attempt(work: () => Promise<unknown>): Promise<{ ok: boolean; ms: number; code?: string }> {
+  const started = performance.now();
+  try {
+    await work();
+    return { ok: true, ms: Math.round(performance.now() - started) };
+  } catch (error) {
+    return { ok: false, ms: Math.round(performance.now() - started), code: (error as { code?: string }).code };
+  }
+}
+
+const credentials = readOwnerCredentials(DEFAULT_DATA_DIR);
+const run = await TestRun.start({
+  env: { DEMS_TEST_STEP: '33b' },
+  sessionDrainMs: 500,
+  resolveDefinition: injectedResolver([
+    { key: 'x_diag', base: 'empty', build: async ({ pool }) => void (await pool.query('CREATE TABLE diag_load (id integer, pad text)')) },
+  ]),
+});
+say('run', { prefix: run.identity.prefix });
+const obs = await OwnerSession.open(credentials, { applicationName: 'dems-w11b-diag2' });
+const backendsOn = (name: string): Promise<Row[]> =>
+  obs.run('SELECT pid, usename::text AS usename, application_name, backend_type FROM pg_stat_activity WHERE datname = $1 ORDER BY pid', [name]);
+
+async function trial(slug: string, plainFirst: boolean): Promise<void> {
+  const database = await run.createDatabase({ template: 'x_diag', slug });
+  const name = guardOwnDatabase(database.name, run.identity, 'drop');
+  const pool = run.poolOn(database.name, 'owner', 'dems-w11b-held-owner');
+  const held = await pool.connect();
+  held.on('error', () => undefined);
+  await held.query('INSERT INTO diag_load SELECT n, md5(n::text) FROM generate_series(1, 2000) AS n');
+  const out: Row = { database: database.name };
+  if (plainFirst) out['plain'] = await attempt(() => obs.run(`DROP DATABASE IF EXISTS ${quoteDatabaseName(name)}`));
+  const forced = await attempt(() => dropDatabase(obs, name));
+  out['forced'] = forced;
+  if (!forced.ok) {
+    out['backendsRightAfterTheRefusal'] = await backendsOn(database.name);
+    for (let i = 1; i <= 60; i += 1) {
+      await sleep(100);
+      const again = await attempt(() => dropDatabase(obs, name));
+      if (again.ok) {
+        out['forcedAgain'] = { succeededAtRetry: i, afterMs: i * 100 };
+        break;
+      }
+      if (i === 60) out['forcedAgain'] = { succeededAtRetry: null, backends: await backendsOn(database.name) };
+    }
+  }
+  say(plainFirst ? 'plain first, then forced' : 'forced first', out);
+  try {
+    held.release(true);
+  } catch {
+    // Ended by the forced drop.
+  }
+  await pool.end().catch(() => undefined);
+}
+
+try {
+  for (let i = 1; i <= TRIALS; i += 1) await trial(`diag_pf${i}`, true);
+  for (let i = 1; i <= TRIALS; i += 1) await trial(`diag_ff${i}`, false);
+} finally {
+  await obs.close();
+  const prefix = run.identity.prefix;
+  const report = await run.teardown().catch((error: unknown) => ({ dropped: [], remaining: ['(teardown threw)'], failed: [{ name: '-', reason: String(error) }], ms: 0 }));
+  say('teardown of the diagnosis run', { dropped: report.dropped.length, remaining: report.remaining, failed: report.failed });
+  const sweeper = await OwnerSession.open(credentials, { applicationName: 'dems-w11b-sweeper' });
+  try {
+    if (!/^dems_test_step_33b_[0-9a-z]{8}_$/.test(prefix)) throw new Error('unexpected prefix');
+    for (const row of await sweeper.run<{ name: string }>('SELECT datname::text AS name FROM pg_database WHERE starts_with(datname, $1) ORDER BY 1', [prefix])) {
+      await sweeper.run(`ALTER DATABASE "${row.name}" WITH IS_TEMPLATE false`).catch(() => undefined);
+      say(`leftover ${row.name}: plain drop`, await attempt(() => sweeper.run(`DROP DATABASE IF EXISTS "${row.name}"`)));
+    }
+    say('databases with the prefix dems_test_step_33b_ now', await sweeper.run("SELECT datname::text AS name FROM pg_database WHERE starts_with(datname, 'dems_test_step_33b_') ORDER BY 1"));
+  } finally {
+    await sweeper.close();
+  }
+}

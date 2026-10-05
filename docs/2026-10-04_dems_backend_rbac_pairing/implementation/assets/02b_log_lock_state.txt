@@ -1,0 +1,64 @@
+== W02b step 7 (read-only) 2026-10-04 10:42:07 WIB
+$ adb devices -l
+List of devices attached
+emulator-5554          device product:sdk_gphone64_arm64 model:sdk_gphone64_arm64 device:emu64a transport_id:4
+emulator-5556          device product:sdk_gphone64_arm64 model:sdk_gphone64_arm64 device:emu64a transport_id:5
+emulator-5558          device product:sdk_gphone64_arm64 model:sdk_gphone64_arm64 device:emu64a transport_id:6
+
+=== emulator-5554  avd_name=dems2_phone  sys.boot_completed=1
+$ adb -s emulator-5554 shell dumpsys window | grep -E 'isKeyguardShowing|mCurrentFocus|mDreamingLockscreen'
+mCurrentFocus=Window{980edc8 u0 com.google.android.apps.nexuslauncher/com.google.android.apps.nexuslauncher.NexusLauncherActivity}
+mShowingDream=false mDreamingLockscreen=false
+isKeyguardShowing=false
+$ adb -s emulator-5554 shell dumpsys user | grep -E 'State: '
+State: RUNNING_UNLOCKED
+$ adb -s emulator-5554 shell dumpsys trust | grep -E 'User "'
+User "Owner" (id=0, flags=0x4c13) (current): trustState=UNTRUSTED, trustManaged=0, deviceLocked=0, isActiveUnlockRunning=0, strongAuthRequired=0x0
+$ adb -s emulator-5554 shell locksettings get-disabled     (a query; nothing is written)
+true
+$ adb -s emulator-5554 shell dumpsys lock_settings | grep -i -E 'CredentialType|Quality|SP Handle|sp-handle' | head
+Quality: 0
+CredentialType: NONE
+$ adb -s emulator-5554 shell dumpsys fingerprint | grep -o '"count":[0-9]*'
+"count":0 
+$ settings get (read-only): screen_off_timeout=2147483647 stay_on_while_plugged_in=1 lockscreen.disabled=0
+$ pm list packages | grep dems: []
+reverse: [;]
+=== emulator-5556  avd_name=dems2_tablet  sys.boot_completed=1
+$ adb -s emulator-5556 shell dumpsys window | grep -E 'isKeyguardShowing|mCurrentFocus|mDreamingLockscreen'
+mCurrentFocus=Window{94c25a1 u0 com.google.android.apps.nexuslauncher/com.google.android.apps.nexuslauncher.NexusLauncherActivity}
+mShowingDream=false mDreamingLockscreen=false
+isKeyguardShowing=false
+$ adb -s emulator-5556 shell dumpsys user | grep -E 'State: '
+State: RUNNING_UNLOCKED
+$ adb -s emulator-5556 shell dumpsys trust | grep -E 'User "'
+User "Owner" (id=0, flags=0x4c13) (current): trustState=UNTRUSTED, trustManaged=0, deviceLocked=0, isActiveUnlockRunning=0, strongAuthRequired=0x0
+$ adb -s emulator-5556 shell locksettings get-disabled     (a query; nothing is written)
+true
+$ adb -s emulator-5556 shell dumpsys lock_settings | grep -i -E 'CredentialType|Quality|SP Handle|sp-handle' | head
+Quality: 0
+CredentialType: NONE
+$ adb -s emulator-5556 shell dumpsys fingerprint | grep -o '"count":[0-9]*'
+"count":0 
+$ settings get (read-only): screen_off_timeout=2147483647 stay_on_while_plugged_in=1 lockscreen.disabled=0
+$ pm list packages | grep dems: []
+reverse: [;]
+=== emulator-5558  avd_name=dems2_phone2  sys.boot_completed=1
+$ adb -s emulator-5558 shell dumpsys window | grep -E 'isKeyguardShowing|mCurrentFocus|mDreamingLockscreen'
+mCurrentFocus=Window{2e98743 u0 com.google.android.apps.nexuslauncher/com.google.android.apps.nexuslauncher.NexusLauncherActivity}
+mShowingDream=false mDreamingLockscreen=false
+isKeyguardShowing=false
+$ adb -s emulator-5558 shell dumpsys user | grep -E 'State: '
+State: RUNNING_UNLOCKED
+$ adb -s emulator-5558 shell dumpsys trust | grep -E 'User "'
+User "Owner" (id=0, flags=0x4c13) (current): trustState=UNTRUSTED, trustManaged=0, deviceLocked=0, isActiveUnlockRunning=0, strongAuthRequired=0x0
+$ adb -s emulator-5558 shell locksettings get-disabled     (a query; nothing is written)
+true
+$ adb -s emulator-5558 shell dumpsys lock_settings | grep -i -E 'CredentialType|Quality|SP Handle|sp-handle' | head
+Quality: 0
+CredentialType: NONE
+$ adb -s emulator-5558 shell dumpsys fingerprint | grep -o '"count":[0-9]*'
+"count":0 
+$ settings get (read-only): screen_off_timeout=2147483647 stay_on_while_plugged_in=1 lockscreen.disabled=0
+$ pm list packages | grep dems: []
+reverse: [;]

@@ -7,6 +7,12 @@
  *
  * Phones stack it above the code card with a horizontal stepper and a `mini` ring; tablets give it
  * its own pane with a `hero` ring and a vertical stepper whose steps carry descriptions.
+ *
+ * **LIVE mode** (backend task W57; 04_client_integration_spec §3.2, §9.4): the chip reads `LIVE`,
+ * and the card says only what the tablet knows. An unpaired tablet gets no Core data, so before
+ * pairing there is no Core name, ID or fingerprint to show: the list holds the Core server, the
+ * link state and "This tablet: Not paired". After pairing it holds the Core identity of the redeem
+ * answer and the ID the Core gave this tablet. The texts of Simulated mode are not changed.
  */
 import { useIsFocused } from 'expo-router';
 import { Lock, Link2Off, Radar, ShieldCheck } from 'lucide-react-native';
@@ -18,10 +24,12 @@ import { DATE_PATTERNS, formatClock, formatDate } from '@dems/shared/realtime';
 import { useSim, type PairingState } from '@dems/shared/sim';
 import { derived, fontFamily, palette, spacing, statusText, toneHex, typography } from '@dems/shared/tokens';
 import { GlowRing } from '@/components/composed/glow-ring';
+import type { GlowRingState } from '@/components/composed/glow-ring.math';
 import { Stepper, type StepDef, type StepStatusWords } from '@/components/composed/stepper';
 import { KeyValueList, SectionCard, StatusChip, type KeyValueItem } from '@/components/kit';
 import { SPEC_LITERALS, animatePulseOnce, crossFadeIn, useAmbientLoop, type MotionSettings } from '@/motion';
 import { reportRuntimeIssue } from '@/runtime';
+import { liveRingStateFor, liveStatusKeyFor, liveStepStatusesFor, type LiveLinkView } from './pairing-live-model';
 import {
   fingerprintLines,
   ringStateFor,
@@ -33,6 +41,7 @@ import {
   stateChipFor,
   statusKeyFor,
   stepStatusesFor,
+  type PairOutcome,
   type PairPhase,
   type PairingView,
 } from './pairing-model';
@@ -43,6 +52,16 @@ export const PAIRING_LOOPS = { ringBreath: 'pairing-ring-breath', ringRotate: 'p
 const STEP_KEYS = ['discover', 'verifyCode', 'paired'] as const;
 const STEP_DESCRIPTION_KEYS = ['discover', 'verify', 'paired'] as const;
 
+/** What the card needs to know in LIVE mode, besides the view. */
+export interface PairingConnectionLive {
+  link: LiveLinkView;
+  /** The code left the tablet and the answer is not in yet. */
+  sent: boolean;
+  outcome: PairOutcome | null;
+  /** The Core's ID of this tablet while paired, e.g. `DEV-0003`. */
+  tabletId: string | null;
+}
+
 export interface PairingConnectionProps {
   view: PairingView;
   phase: PairPhase | null;
@@ -51,9 +70,11 @@ export interface PairingConnectionProps {
   split: boolean;
   ringSize: number;
   settings: MotionSettings;
+  /** LIVE mode; absent or `null` in Simulated mode, where the card is as it was. */
+  live?: PairingConnectionLive | null;
 }
 
-export function PairingConnection({ view, phase, simState, split, ringSize, settings }: PairingConnectionProps) {
+export function PairingConnection({ view, phase, simState, split, ringSize, settings, live = null }: PairingConnectionProps) {
   const { t } = useTranslation();
   const device = useSim(selectCoreDeviceId);
   const room = useSim(selectCoreName);
@@ -61,13 +82,27 @@ export function PairingConnection({ view, phase, simState, split, ringSize, sett
   const pairedAt = useSim(selectPairedAt);
   const lastAudit = useSim(selectLastPairingAudit);
   const chip = stateChipFor(view, simState);
-  const statusKey = statusKeyFor(view, phase);
-  const statuses = stepStatusesFor(view, phase);
+  const paired = simState === 'PAIRED';
+  const offline = live !== null && live.link === 'offline' && view !== 'pairing' && view !== 'paired';
+  // One key per status text: the line cross-fades when it changes.
+  const statusKey = live === null ? statusKeyFor(view, phase) : `live.${liveStatusKeyFor({ view, phase, sent: live.sent, link: live.link, outcome: live.outcome })}`;
+  const statuses = live === null ? stepStatusesFor(view, phase) : liveStepStatusesFor(view, phase, live.link);
+  const statusText =
+    live === null
+      ? t(`features.pairing.connection.status.${statusKey}`, { device })
+      : t(`features.pairing.live.connection.status.${statusKey.slice('live.'.length)}`, { device, tablet: live.tabletId ?? '' });
 
   const steps: StepDef[] = STEP_KEYS.map((key, i) => ({
     key,
     label: t(`mobile.pairing.steps.${key}`),
-    ...(split ? { description: t(`features.pairing.connection.steps.${STEP_DESCRIPTION_KEYS[i]}`, { device }) } : {}),
+    ...(split
+      ? {
+          description:
+            live === null
+              ? t(`features.pairing.connection.steps.${STEP_DESCRIPTION_KEYS[i]}`, { device })
+              : t(`features.pairing.live.connection.steps.${STEP_DESCRIPTION_KEYS[i]}`),
+        }
+      : {}),
   }));
   const words: StepStatusWords = {
     step: t('features.pairing.stepper.step'),
@@ -80,33 +115,70 @@ export function PairingConnection({ view, phase, simState, split, ringSize, sett
     error: t('features.pairing.stepper.error'),
   };
 
-  const items: KeyValueItem[] = [
-    { id: 'device', label: t('features.pairing.identity.device'), value: device, mono: true, testID: 'pairing-identity-device' },
-    { id: 'room', label: t('features.pairing.identity.room'), value: room, testID: 'pairing-identity-room' },
-    {
-      id: 'paired-at',
-      label: t('features.pairing.identity.pairedAt'),
-      value: simState === 'PAIRED' && pairedAt !== null ? formatDate(pairedAt, DATE_PATTERNS.dateTime) : t('features.pairing.identity.notPaired'),
-      mono: simState === 'PAIRED' && pairedAt !== null,
-      testID: 'pairing-identity-paired-at',
-    },
-    {
-      id: 'last-audit',
-      label: t('features.pairing.identity.lastAudit'),
-      value: lastAudit
-        ? t('features.pairing.identity.lastAuditValue', {
-            seq: lastAudit[0],
-            event: t(`common.auditType.${lastAudit[1]}`),
-            time: formatClock(lastAudit[2]),
-          })
-        : t('features.pairing.identity.noAudit'),
-      testID: 'pairing-identity-last-audit',
-    },
-  ];
+  const pairedAtItem: KeyValueItem = {
+    id: 'paired-at',
+    label: t('features.pairing.identity.pairedAt'),
+    value: paired && pairedAt !== null ? formatDate(pairedAt, DATE_PATTERNS.dateTime) : t('features.pairing.identity.notPaired'),
+    mono: paired && pairedAt !== null,
+    testID: 'pairing-identity-paired-at',
+  };
+  const lastAuditItem: KeyValueItem = {
+    id: 'last-audit',
+    label: t('features.pairing.identity.lastAudit'),
+    value: lastAudit
+      ? t('features.pairing.identity.lastAuditValue', {
+          seq: lastAudit[0],
+          event: t(`common.auditType.${lastAudit[1]}`),
+          time: formatClock(lastAudit[2]),
+        })
+      : t('features.pairing.identity.noAudit'),
+    testID: 'pairing-identity-last-audit',
+  };
+  const tabletItem: KeyValueItem = {
+    id: 'tablet',
+    label: t('features.pairing.live.identity.tablet'),
+    value: paired && live?.tabletId ? live.tabletId : t('features.pairing.identity.notPaired'),
+    mono: paired && Boolean(live?.tabletId),
+    testID: 'pairing-identity-tablet',
+  };
+  const items: KeyValueItem[] =
+    live === null
+      ? [
+          { id: 'device', label: t('features.pairing.identity.device'), value: device, mono: true, testID: 'pairing-identity-device' },
+          { id: 'room', label: t('features.pairing.identity.room'), value: room, testID: 'pairing-identity-room' },
+          pairedAtItem,
+          lastAuditItem,
+        ]
+      : paired
+        ? [
+            { id: 'device', label: t('features.pairing.live.identity.coreDevice'), value: device, mono: true, testID: 'pairing-identity-device' },
+            { id: 'room', label: t('features.pairing.live.identity.coreName'), value: room, testID: 'pairing-identity-room' },
+            tabletItem,
+            pairedAtItem,
+            // The replica holds audit rows only while an operator is signed in: no row, no line.
+            ...(lastAudit ? [lastAuditItem] : []),
+          ]
+        : [
+            // Nothing is known about the Core before pairing: the list holds what the tablet does know.
+            { id: 'server', label: t('features.pairing.live.identity.server'), value: t('features.pairing.live.identity.serverValue'), testID: 'pairing-identity-server' },
+            { id: 'link', label: t('features.pairing.live.identity.link'), value: t(`features.pairing.live.identity.linkState.${live.link}`), testID: 'pairing-identity-link' },
+            tabletItem,
+          ];
+
+  // LIVE mode before pairing: the Core has not said who it is.
+  const fingerprintKnown = live === null || fingerprint !== '';
 
   const ring = (
     <RingBoundary>
-      <PairingRing view={view} mode={split ? 'hero' : 'mini'} size={ringSize} settings={settings} label={t('features.pairing.connection.ringLabel', { state: t(chip.key) })} />
+      <PairingRing
+        view={view}
+        offline={offline}
+        ringState={live === null ? ringStateFor(view) : liveRingStateFor(view, live.link)}
+        mode={split ? 'hero' : 'mini'}
+        size={ringSize}
+        settings={settings}
+        label={t('features.pairing.connection.ringLabel', { state: t(chip.key) })}
+      />
     </RingBoundary>
   );
 
@@ -116,9 +188,9 @@ export function PairingConnection({ view, phase, simState, split, ringSize, sett
         testID="pairing-status-line"
         accessibilityLiveRegion="polite"
         maxFontSizeMultiplier={1.2}
-        style={[styles.status, view === 'locked' || view === 'failed' ? styles.statusAlert : null, view === 'paired' ? styles.statusOk : null, split ? styles.center : null]}
+        style={[styles.status, view === 'locked' || view === 'failed' || offline ? styles.statusAlert : null, view === 'paired' ? styles.statusOk : null, split ? styles.center : null]}
       >
-        {t(`features.pairing.connection.status.${statusKey}`, { device })}
+        {statusText}
       </Text>
     </Animated.View>
   );
@@ -154,18 +226,36 @@ export function PairingConnection({ view, phase, simState, split, ringSize, sett
         style={split ? styles.stepperSplit : styles.stepperStacked}
       />
       <KeyValueList items={items} accessibilityLabel={t('features.pairing.identity.title')} testID="pairing-identity" />
-      <View style={styles.fingerprint} testID="pairing-fingerprint" accessible accessibilityLabel={`${t('features.pairing.identity.fingerprint')}, ${fingerprint}`}>
+      <View
+        style={styles.fingerprint}
+        testID="pairing-fingerprint"
+        accessible
+        accessibilityLabel={`${t('features.pairing.identity.fingerprint')}, ${fingerprintKnown ? fingerprint : t('features.pairing.live.identity.fingerprintUnknown')}`}
+      >
         <View style={styles.fingerprintHead}>
           <Text maxFontSizeMultiplier={1.2} style={styles.fingerprintLabel}>
             {t('features.pairing.identity.fingerprint')}
           </Text>
-          <StatusChip testID="pairing-simulated-chip" tone="info" label={t('mobile.pairing.simulated')} icon={null} size="sm" />
+          {/* The mode chip (§3.2). Its test ID is the screen's from before Live mode and stays. */}
+          <StatusChip
+            testID="pairing-simulated-chip"
+            tone={live === null ? 'info' : live.link === 'offline' ? 'danger' : 'success'}
+            label={t(live === null ? 'mobile.pairing.simulated' : 'mobile.pairing.live')}
+            icon={null}
+            size="sm"
+          />
         </View>
-        {fingerprintLines(fingerprint).map((line) => (
-          <Text key={line} selectable maxFontSizeMultiplier={1.2} style={styles.fingerprintValue}>
-            {line}
+        {fingerprintKnown ? (
+          fingerprintLines(fingerprint).map((line) => (
+            <Text key={line} selectable maxFontSizeMultiplier={1.2} style={styles.fingerprintValue}>
+              {line}
+            </Text>
+          ))
+        ) : (
+          <Text testID="pairing-fingerprint-unknown" maxFontSizeMultiplier={1.2} style={styles.fingerprintUnknown}>
+            {t('features.pairing.live.identity.fingerprintUnknown')}
           </Text>
-        ))}
+        )}
       </View>
     </SectionCard>
   );
@@ -175,6 +265,9 @@ const ICONS = { paired: ShieldCheck, pairing: Radar, locked: Lock, failed: Link2
 
 interface PairingRingProps {
   view: PairingView;
+  /** LIVE mode: the Core server is unreachable. */
+  offline: boolean;
+  ringState: GlowRingState;
   mode: 'mini' | 'hero';
   size: number;
   settings: MotionSettings;
@@ -182,12 +275,12 @@ interface PairingRingProps {
 }
 
 /** C-1 ring around the link icon; one glow pulse on success (03M R8, `totalMs` passed, F74-02). */
-function PairingRing({ view, mode, size, settings, label }: PairingRingProps) {
+function PairingRing({ view, offline, ringState, mode, size, settings, label }: PairingRingProps) {
   const focused = useIsFocused();
   const breathing = useAmbientLoop(PAIRING_LOOPS.ringBreath, { paused: !focused });
   useAmbientLoop(PAIRING_LOOPS.ringRotate, { active: mode === 'hero', paused: !focused });
   const Icon = ICONS[view];
-  const tone = view === 'paired' ? toneHex.success : view === 'locked' ? toneHex.danger : view === 'pairing' ? palette.gold : toneHex.warning;
+  const tone = view === 'paired' ? toneHex.success : view === 'locked' || offline ? toneHex.danger : view === 'pairing' ? palette.gold : toneHex.warning;
 
   const pulse = useSharedValue(1);
   useEffect(() => {
@@ -197,7 +290,7 @@ function PairingRing({ view, mode, size, settings, label }: PairingRingProps) {
 
   const iconSize = mode === 'hero' ? 64 : 30;
   return (
-    <GlowRing testID="pairing-ring" mode={mode} size={size} state={ringStateFor(view)} motion={settings.policy} paused={!breathing} accessibilityLabel={label}>
+    <GlowRing testID="pairing-ring" mode={mode} size={size} state={ringState} motion={settings.policy} paused={!breathing} accessibilityLabel={label}>
       <Animated.View style={pulseStyle}>
         <Icon size={iconSize} color={tone} strokeWidth={1.75} />
       </Animated.View>
@@ -247,6 +340,12 @@ const styles = StyleSheet.create({
     fontSize: typography.caption.size,
     lineHeight: typography.caption.lineHeight,
     color: palette.gray,
+  },
+  fingerprintUnknown: {
+    fontFamily: fontFamily.native.normal,
+    fontSize: typography.body.size,
+    lineHeight: typography.body.lineHeight,
+    color: derived.foreground2,
   },
   fingerprintValue: {
     fontFamily: fontFamily.native.mono,

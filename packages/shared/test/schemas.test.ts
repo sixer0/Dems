@@ -53,3 +53,31 @@ describe('contract schemas', () => {
     expect(HealthResponseSchema.safeParse({ ...health, service: 'other' }).success).toBe(false);
   });
 });
+
+// Backend task 2026-10-04, plan row W19 (01_specs §7.4): the health body is widened additively.
+describe('HealthResponse, widened for the Core server', () => {
+  const core: HealthResponse = {
+    ...health,
+    service: 'dems-core-server',
+    version: '0.2.0',
+    ready: { database: true, engine: true },
+  };
+
+  it('accepts the Core server\'s answer: its service name and `ready`', () => {
+    expect(HealthResponseSchema.parse(core)).toEqual(core);
+    // A stopped database still answers 200; it shows in `ready`.
+    expect(HealthResponseSchema.safeParse({ ...core, ready: { database: false, engine: false } }).success).toBe(true);
+  });
+
+  it('`ready` is optional: mock-core\'s and the launcher\'s answers stay valid and gain nothing', () => {
+    expect(HealthResponseSchema.parse(health)).toEqual(health);
+    expect('ready' in HealthResponseSchema.parse(health)).toBe(false);
+    expect(HealthResponseSchema.safeParse({ ...health, service: 'dems-core-server' }).success).toBe(true);
+  });
+
+  it('rejects a `ready` that is incomplete or not boolean', () => {
+    expect(HealthResponseSchema.safeParse({ ...core, ready: { database: true } }).success).toBe(false);
+    expect(HealthResponseSchema.safeParse({ ...core, ready: { database: 'yes', engine: true } }).success).toBe(false);
+    expect(HealthResponseSchema.safeParse({ ...core, ready: true }).success).toBe(false);
+  });
+});

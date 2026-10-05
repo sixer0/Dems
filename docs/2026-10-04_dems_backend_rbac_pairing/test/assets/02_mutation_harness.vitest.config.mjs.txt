@@ -1,0 +1,36 @@
+// Scratch runner configuration of plan row W47 (blueprint step 69), outside the repository
+// (rule M15): the workspace's own Vitest configuration plus ONE load-time transform of ONE file.
+// No file of the tree is changed: the changed text exists only in the memory of the test run.
+//
+//   W47_MUTATION=<id>   one text of one source file is replaced (mutations.json: id, note, file,
+//                       from, to). The text must occur exactly once in that file.
+import { readFileSync } from 'node:fs';
+import { mergeConfig } from '/Users/gsp-budi/Documents/DEMS/node_modules/vitest/dist/config.js';
+import base from '/Users/gsp-budi/Documents/DEMS/apps/core-server/vitest.config.ts';
+
+const REPOSITORY = '/Users/gsp-budi/Documents/DEMS';
+const ROOT = `${REPOSITORY}/apps/core-server`;
+const mutations = JSON.parse(readFileSync(new URL('./mutations.json', import.meta.url), 'utf8'));
+const chosen = process.env.W47_MUTATION ?? '';
+const mutation = chosen === '' ? null : mutations.find((entry) => entry.id === chosen);
+if (chosen !== '' && !mutation) throw new Error(`no mutation ${chosen}`);
+const FILE = mutation === null ? null : `${REPOSITORY}/${mutation.file}`;
+let applied = 0;
+
+const plugin = {
+  name: 'w47-mutation',
+  enforce: 'pre',
+  load(id) {
+    if (FILE === null || id.split('?')[0] !== FILE) return null;
+    const source = readFileSync(FILE, 'utf8');
+    const parts = source.split(mutation.from);
+    if (parts.length !== 2) throw new Error(`mutation ${mutation.id}: the text to replace occurs ${parts.length - 1} time(s) in ${mutation.file}, not once`);
+    applied += 1;
+    process.stdout.write(`[w47-harness] mutation ${mutation.id} applied to ${mutation.file} (load ${applied})\n`);
+    return parts.join(mutation.to);
+  },
+};
+
+const merged = mergeConfig(base, { root: ROOT, plugins: [plugin] });
+merged.test.projects = merged.test.projects.map((project) => ({ ...project, plugins: [plugin] }));
+export default merged;

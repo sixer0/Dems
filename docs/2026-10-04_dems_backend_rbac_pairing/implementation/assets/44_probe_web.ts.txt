@@ -1,0 +1,65 @@
+// Step 66 (W44): the Live source as the web runtime (W50) will use it, compiled under the web console's own compiler options.
+import { createCoreClient } from '@dems/shared/client';
+import { coreActionsOf, liveOf, settle, useLiveSelector, type CoreActions, type LiveHandle } from '@dems/shared/live';
+import {
+  LIVE_STOPPED_CODE,
+  LiveMisuse,
+  asSim,
+  createLiveSim,
+  shareStructure,
+  type LiveOwedSignOut,
+  type LiveOwedSignOutPort,
+  type LiveSessionEnd,
+  type LiveSessionEndSource,
+  type LiveSim,
+} from '@dems/shared/live/source';
+import { selectIsSignedIn, type Sim, type SimErrorReport } from '@dems/shared/sim';
+
+export async function bootLive(pageOrigin: string, socketUrl: string, log: (report: SimErrorReport) => void): Promise<Sim> {
+  const client = createCoreClient({ baseUrl: pageOrigin, credentials: 'browser-cookie' });
+  // Second fix round (decision D90): where the debt of a local end is kept across a reload. The
+  // web runtime backs it with the origin's own storage; the record holds no credential.
+  let kept: LiveOwedSignOut | null = null;
+  const owedSignOut: LiveOwedSignOutPort = {
+    read: () => kept,
+    write: (debt) => {
+      kept = { operatorId: debt.operatorId, issuedAt: debt.issuedAt, reason: debt.reason, at: debt.at };
+    },
+    clear: () => {
+      kept = null;
+    },
+  };
+  const live = createLiveSim({ client, socket: { url: socketUrl }, structuralSharing: shareStructure, onError: log, owedSignOut });
+  await live.ready;
+  const sim: Sim = asSim(live);
+  const handle: LiveHandle | null = liveOf(sim);
+  const typed: LiveSim<typeof client> | null = liveOf<LiveSim<typeof client>>(sim);
+  const actions: CoreActions = coreActionsOf(sim);
+  const stopEnd = live.onSessionEnd((end: LiveSessionEnd) => log({ level: 'warn', source: 'web', message: `${end.kind} ${String(end.reason)}`, at: end.at }));
+  const stopControl = live.onControl((message) => {
+    if (message.type === 'admin.changed') void typed?.client.call('listUsers');
+  });
+  // Follow-up (decision D84): an administration page calls its operations through `live.client`, typed as the client itself.
+  const issued = await typed?.client.call('issuePairingCode');
+  if (issued?.ok === false) log({ level: 'warn', source: 'web', message: issued.error.code, at: 0 });
+  settle(() => actions.archiveEvidence('EV-20260930-0004'), { ok: () => undefined, fail: () => undefined });
+  const signedIn: boolean = selectIsSignedIn(live.store.getState());
+  const permission: boolean = handle?.session?.permissions.includes('USER_ADMIN') ?? false;
+  const idle: number | undefined = live.session?.idleExpiresAt;
+  void [signedIn, permission, idle, live.link, live.lastSessionEnd?.reason, live.auditChain?.stored.ok, live.heartbeat.getSnapshot().state];
+  live.reconnect('RETRY');
+  stopEnd();
+  stopControl();
+  return sim;
+}
+
+/** Fix round after CP-C1 (decision D80): the shell's notice after a session end, read through the light API's selector hook. */
+export function useEndNotice(): 'LOCKED' | 'EXPIRED' | 'SIGNED_OUT' | null {
+  const end = useLiveSelector((live: LiveSim | null) => live?.lastSessionEnd ?? null);
+  const chainOk = useLiveSelector((live: LiveSim | null) => live?.auditChain?.stored.ok ?? null);
+  if (end === null) return null;
+  const decidedHere: boolean = end.source === ('LOCAL' satisfies LiveSessionEndSource);
+  void [decidedHere, chainOk, LIVE_STOPPED_CODE, LiveMisuse.READ_AS_VALUE, LiveMisuse.NOT_OBSERVED];
+  if (end.signOut === 'LOCK') return 'LOCKED';
+  return end.reason === 'IDLE_EXPIRED' || end.reason === 'ABSOLUTE_EXPIRED' ? 'EXPIRED' : 'SIGNED_OUT';
+}

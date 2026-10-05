@@ -1,0 +1,917 @@
+diff --git b/apps/core-server/test/helpers/db/__tests__/dead-run.db.test.ts b/apps/core-server/test/helpers/db/__tests__/dead-run.db.test.ts
+new file mode 100644
+index 0000000..bc04aef
+--- /dev/null
++++ b/apps/core-server/test/helpers/db/__tests__/dead-run.db.test.ts
+@@ -0,0 +1,237 @@
++// Row W11b, decision D111, against the real server: `TestRun.dropDeadRun(prefix)` removes the
++// databases of one named run whose owner is gone, and refuses everything else.
++//
++// The dead runs of this file are real runs of its own, closed without a teardown (which is what a
++// stopped `test:db` leaves: the liveness lock is gone with the session, the databases stay). The
++// run that is alive is the one this very file runs in, and a second one beside it.
++//
++// The stand-in tests of the same behaviour: `dead-run.test.ts`.
++import { afterAll, describe, expect, it, vi } from 'vitest';
++import { APP_ROLE, OWNER_ROLE } from '../constants';
++import { waitForSessionsToEnd } from '../ddl';
++import { DbGuardError, DbTestHelperError } from '../errors';
++import { TestRun, providedRun, useTestDatabase } from '../index';
++import { runnerOf } from '../session';
++import { PROBE_TABLE, SELFTEST_TEMPLATE } from '../testing/probe-hooks';
++import { probeResolver, startPrivateRun } from '../testing/private-run';
++
++// Limits as caps, not waits (decision D110). A clone or a template that a test asks for waits
++// for the clone lock, which another run on this host may hold for seconds while it builds its
++// bulk template; with the runner's default of 5 s such a wait failed a healthy test under load.
++vi.setConfig({ testTimeout: 120_000, hookTimeout: 180_000 });
++
++const db = useTestDatabase({ template: SELFTEST_TEMPLATE });
++const started: TestRun[] = [];
++/** The runs this file stopped on purpose. A test that fails half-way leaves their databases. */
++const stoppedPrefixes: string[] = [];
++
++/** Short, so that a test does not wait the three seconds a person's call waits. */
++const SETTLE = { settleMs: 150 };
++
++afterAll(async () => {
++  for (const run of started) if (!run.closed) await run.teardown();
++  // Nothing of this file stays behind, also when a test failed: the stopped runs go by name.
++  const cleaner = await startPrivateRun('dz');
++  try {
++    for (const prefix of stoppedPrefixes) await cleaner.dropDeadRun(prefix, SETTLE).catch(() => undefined);
++  } finally {
++    await cleaner.teardown();
++  }
++});
++
++/**
++ * The databases that neither come nor go while tests run: not a test database of some run, and
++ * not the copy the reset routine keeps for a moment (`<name>_next`, `<name>_prev`).
++ */
++function settled(names: readonly string[]): string[] {
++  return names.filter((name) => !name.startsWith('dems_test_') && !name.endsWith('_next') && !name.endsWith('_prev'));
++}
++
++async function privateRun(tag: string): Promise<TestRun> {
++  const run = await startPrivateRun(tag);
++  started.push(run);
++  return run;
++}
++
++async function namesWithPrefix(prefix: string): Promise<string[]> {
++  const rows = await db.ownerPool().query<{ name: string }>(
++    'SELECT datname::text AS name FROM pg_database WHERE starts_with(datname, $1) ORDER BY 1',
++    [prefix],
++  );
++  return rows.rows.map((row) => row.name);
++}
++
++async function refusal(action: () => Promise<unknown>): Promise<DbTestHelperError> {
++  try {
++    await action();
++  } catch (error) {
++    if (error instanceof DbTestHelperError) return error;
++    throw error;
++  }
++  throw new Error('not refused');
++}
++
++/** A run with a clone and two locked templates whose owner "is stopped": closed, not torn down. */
++async function stoppedRun(tag: string): Promise<{ prefix: string; names: string[]; identity: TestRun['identity'] }> {
++  const run = await privateRun(tag);
++  const clone = await run.createDatabase({ template: 'seed', slug: 'left_behind' });
++  await clone.appPool().query(`INSERT INTO ${PROBE_TABLE} (token_hash, origin) VALUES ('t', 'left')`);
++  // The stop: the run's process is gone, its session and its liveness lock with it.
++  await run.close();
++  const prefix = run.identity.prefix;
++  stoppedPrefixes.push(prefix);
++  const names = await namesWithPrefix(prefix);
++  expect(names).toEqual([clone.name, `${prefix}tpl_schema`, `${prefix}tpl_seed`]);
++  return { prefix, names, identity: run.identity };
++}
++
++describe('a run that was stopped before its teardown', () => {
++  it('is removed by name: its clone and its locked templates; every other database stays', async () => {
++    const stopped = await stoppedRun('dd');
++    const operator = await privateRun('op');
++    const others = settled(await namesWithPrefix(''));
++    const templatesOfThisRun = (await namesWithPrefix(db.run.identity.prefix)).filter((name) => name.includes('_tpl_'));
++    // The stale sweep does not take it: it started seconds ago.
++    const swept = await operator.sweepStale();
++    for (const name of stopped.names) expect(swept.dropped).not.toContain(name);
++    expect(swept.keptYounger).toEqual(expect.arrayContaining(stopped.names));
++
++    const report = await operator.dropDeadRun(stopped.prefix, SETTLE);
++
++    expect(report.prefix).toBe(stopped.prefix);
++    expect(report.failed).toEqual([]);
++    expect(report.remaining).toEqual([]);
++    expect([...report.dropped].sort()).toEqual(stopped.names);
++    // The clone went before the templates.
++    expect(report.dropped[0]).toBe(stopped.names[0]);
++    expect(await namesWithPrefix(stopped.prefix)).toEqual([]);
++    // Everything else is there: the project's own databases (whichever exist), the maintenance
++    // database, the templates of PostgreSQL, and the run in progress with this file's own clone.
++    const now = await namesWithPrefix('');
++    expect(settled(now)).toEqual(others);
++    expect(others).toEqual(expect.arrayContaining(['postgres', 'template0', 'template1']));
++    for (const name of [db.name, ...templatesOfThisRun]) expect(now, name).toContain(name);
++    expect((await db.appPool().query<{ db: string }>('SELECT current_database()::text AS db')).rows).toEqual([{ db: db.name }]);
++    // Once more: nothing is left to drop.
++    expect(await operator.dropDeadRun(stopped.prefix, SETTLE)).toMatchObject({ dropped: [], remaining: [], failed: [] });
++    console.log(`[test:db] dead run: dropped ${report.dropped.length} database(s) of a stopped run in ${Math.round(report.ms)} ms (settle ${SETTLE.settleMs} ms)`);
++  });
++});
++
++describe('a run that is alive', () => {
++  it('the run this file runs in: refused with RUN_ALIVE after one statement; its templates and clones stay', async () => {
++    const operator = await privateRun('ol');
++    const live = providedRun().prefix;
++    const before = await namesWithPrefix(live);
++    expect(before).toContain(db.name);
++    expect(before.some((name) => name.includes('_tpl_'))).toBe(true);
++    const sent = operator.statementCount;
++
++    const error = await refusal(() => operator.dropDeadRun(live, SETTLE));
++
++    expect(error.code).toBe('RUN_ALIVE');
++    expect(error.message).toContain(`the run ${live}* is alive`);
++    expect(error.message).toContain('Nothing was dropped');
++    // One statement: the question whether the liveness lock is free.
++    expect(operator.statementCount).toBe(sent + 1);
++    // The other worker's files come and go meanwhile; what was there and is this file's is there.
++    const after = await namesWithPrefix(live);
++    expect(after).toContain(db.name);
++    for (const name of before.filter((entry) => entry.includes('_tpl_'))) expect(after, name).toContain(name);
++  });
++
++  it('a second run beside it, with a clone and locked templates: refused; nothing of it changes', async () => {
++    const alive = await privateRun('al');
++    const clone = await alive.createDatabase({ template: 'seed', slug: 'in_use' });
++    const before = await alive.listDatabases();
++    expect(before.map((row) => row.name)).toEqual([clone.name, `${alive.identity.prefix}tpl_schema`, `${alive.identity.prefix}tpl_seed`]);
++    const operator = await privateRun('oa');
++
++    expect((await refusal(() => operator.dropDeadRun(alive.identity.prefix, SETTLE))).code).toBe('RUN_ALIVE');
++
++    expect(await alive.listDatabases()).toEqual(before);
++    expect((await clone.appPool().query<{ n: number }>(`SELECT count(*)::int AS n FROM ${PROBE_TABLE}`)).rows).toEqual([{ n: 1 }]);
++  });
++});
++
++describe('a dead run that somebody still works in', () => {
++  it.each([
++    ['the runtime role', 'app', APP_ROLE],
++    ['the owner role, which a forced drop would end', 'owner', OWNER_ROLE],
++  ] as const)('a session of %s on its clone: refused, the session is not ended; after it has left the run is removed', async (_label, kind, role) => {
++    const stopped = await stoppedRun(kind === 'app' ? 'da' : 'do');
++    const clone = stopped.names[0] ?? '';
++    // A worker of that run that outlived its owner, with a connection of its own.
++    const worker = await TestRun.attach(stopped.identity, { resolveDefinition: probeResolver() });
++    const pool = worker.poolOn(clone, kind, 'dems-w11b-still-here');
++    const held = await pool.connect();
++    held.on('error', () => undefined);
++    const operator = await privateRun(kind === 'app' ? 'oq' : 'or');
++    try {
++      await held.query('SELECT 1');
++
++      const error = await refusal(() => operator.dropDeadRun(stopped.prefix, SETTLE));
++
++      expect(error.code).toBe('SESSIONS_REMAIN');
++      expect(error.message).toContain(`1 of role ${role} (application "dems-w11b-still-here") on ${clone}`);
++      expect(error.message).toContain('no session was ended');
++      expect(await namesWithPrefix(stopped.prefix)).toEqual(stopped.names);
++      // Nobody ended it: it still answers, on the database that was not dropped.
++      expect((await held.query<{ db: string }>('SELECT current_database()::text AS db')).rows).toEqual([{ db: clone }]);
++    } finally {
++      held.release();
++      await pool.end();
++      await worker.close();
++    }
++    // The session is closed; the server needs a moment to end its backend.
++    expect(await waitForSessionsToEnd(runnerOf(db.ownerPool()), clone, 5_000)).toEqual([]);
++    const report = await operator.dropDeadRun(stopped.prefix, SETTLE);
++    expect(report.remaining).toEqual([]);
++    expect([...report.dropped].sort()).toEqual(stopped.names);
++    expect(await namesWithPrefix(stopped.prefix)).toEqual([]);
++  });
++});
++
++describe('what is not a run of its own to remove', () => {
++  it('the demo database, the lanes, the maintenance database, the templates of PostgreSQL, a database name: refused before a statement is sent', async () => {
++    const operator = await privateRun('og');
++    const all = settled(await namesWithPrefix(''));
++    const sent = operator.statementCount;
++    for (const text of [
++      'dems_demo',
++      'dems_demo_',
++      'dems_lane_1',
++      'dems_lane_2',
++      'dems_lane_3',
++      'postgres',
++      'template0',
++      'template1',
++      'dems_test_',
++      db.name,
++      providedRun().prefix.slice(0, -1),
++      `${providedRun().prefix}tpl_schema`,
++      'dems_test_step_%',
++    ]) {
++      const error = await refusal(() => operator.dropDeadRun(text, SETTLE));
++      expect(error, text).toBeInstanceOf(DbGuardError);
++      expect(error.message, text).toContain('refused before any statement');
++    }
++    // Its own run: the teardown is the way.
++    const own = await refusal(() => operator.dropDeadRun(operator.identity.prefix, SETTLE));
++    expect(own).toBeInstanceOf(DbGuardError);
++    expect(own.message).toContain('is this run');
++    expect(operator.statementCount).toBe(sent);
++    const after = await namesWithPrefix('');
++    expect(settled(after)).toEqual(all);
++    expect(after).toContain(db.name);
++  });
++
++  it('a test file attached to a run cannot remove another run', async () => {
++    const stopped = await stoppedRun('dn');
++    expect((await refusal(() => db.run.dropDeadRun(stopped.prefix, SETTLE))).code).toBe('RUN_NOT_OWNER');
++    expect(await namesWithPrefix(stopped.prefix)).toEqual(stopped.names);
++    // Removed by a run that may: nothing of this test stays behind.
++    const operator = await privateRun('on');
++    expect((await operator.dropDeadRun(stopped.prefix, SETTLE)).remaining).toEqual([]);
++  });
++});
+diff --git b/apps/core-server/test/helpers/db/__tests__/dead-run.test.ts b/apps/core-server/test/helpers/db/__tests__/dead-run.test.ts
+new file mode 100644
+index 0000000..7a41753
+--- /dev/null
++++ b/apps/core-server/test/helpers/db/__tests__/dead-run.test.ts
+@@ -0,0 +1,368 @@
++// Row W11b, decision D111: a run that was stopped before its teardown leaves its databases; the
++// stale sweep takes them after six hours. `TestRun.dropDeadRun(prefix)` removes ONE such run by
++// name at once, after showing that it is dead:
++//
++//   - the text is exactly a run prefix, and not the caller's own: anything else is refused before
++//     a statement is sent (the demo database, a lane, `postgres`, the templates of PostgreSQL);
++//   - no session holds the run's liveness lock (a run that is alive is refused, its templates too);
++//   - no client session of any role is on its databases, twice, a settle time apart.
++//
++// No database and no socket here: the stand-in cluster. Against the real server:
++// `dead-run.db.test.ts`.
++import { afterEach, describe, expect, it } from 'vitest';
++import { DEAD_RUN_SETTLE_MS, LOCK_CLASS, OWNER_ROLE, STALE_AFTER_SECONDS } from '../constants';
++import { DbGuardError, DbTestHelperError } from '../errors';
++import { injectedResolver, type TemplateDefinition } from '../hooks';
++import { createRunIdentity, guardDeadRunDatabase, livenessKey, parseRunPrefix, type RunIdentity } from '../names';
++import { TestRun, type RunOptions } from '../run';
++import { FakeCluster, fakeDataDir, type FakeDatabase } from '../testing/fake-cluster';
++
++const NOW_MS = Date.UTC(2026, 9, 4, 11, 0, 0);
++const NOW_SECONDS = NOW_MS / 1000;
++const TEMPLATES: TemplateDefinition[] = [
++  { key: 'schema', base: 'empty', build: async () => undefined },
++  { key: 'seed', base: 'schema', build: async () => undefined },
++];
++const cleanups: Array<() => void | Promise<void>> = [];
++
++function stampAt(seconds: number, tail: string): string {
++  return `${seconds.toString(36).padStart(6, '0')}${tail}`;
++}
++
++/** A run that was stopped forty minutes ago: far younger than the six hours of the stale sweep. */
++const STOPPED = createRunIdentity('step_64m', stampAt(NOW_SECONDS - 40 * 60, 'g5'));
++const STOPPED_DATABASES = [`${STOPPED.prefix}f01_backpressure`, `${STOPPED.prefix}tpl_schema`, `${STOPPED.prefix}tpl_seed`];
++/** Another row's run, started a minute ago. */
++const NEIGHBOUR = createRunIdentity('step_67', stampAt(NOW_SECONDS - 60, 'y7'));
++const BYSTANDERS = ['dems_demo', 'dems_lane_1', 'dems_lane_2', 'dems_lane_3', `${NEIGHBOUR.prefix}f01_identity`, `${NEIGHBOUR.prefix}tpl_schema`];
++
++function clusterWithTheStoppedRun(): FakeCluster {
++  const cluster = new FakeCluster([...BYSTANDERS, `${STOPPED.prefix}f01_backpressure`]);
++  cluster.add(`${STOPPED.prefix}tpl_schema`, { isTemplate: true, allowConnections: false });
++  cluster.add(`${STOPPED.prefix}tpl_seed`, { isTemplate: true, allowConnections: false });
++  return cluster;
++}
++
++async function ownerRun(cluster: FakeCluster, options: RunOptions = {}): Promise<TestRun> {
++  const data = fakeDataDir();
++  cleanups.push(data.remove);
++  const run = await TestRun.start({
++    env: { DEMS_TEST_STEP: '33c' },
++    dataDir: data.dir,
++    clientFactory: cluster.factory,
++    probe: async () => undefined,
++    now: () => NOW_MS,
++    sessionDrainMs: 30,
++    dropRetry: { attempts: 5, pauseMs: 0 },
++    resolveDefinition: injectedResolver(TEMPLATES),
++    ...options,
++  });
++  cleanups.push(() => run.close());
++  return run;
++}
++
++async function attachedRun(cluster: FakeCluster, identity: RunIdentity): Promise<TestRun> {
++  const data = fakeDataDir();
++  cleanups.push(data.remove);
++  const run = await TestRun.attach(identity, { dataDir: data.dir, clientFactory: cluster.factory, resolveDefinition: injectedResolver(TEMPLATES) });
++  cleanups.push(() => run.close());
++  return run;
++}
++
++async function refusal(action: () => Promise<unknown>): Promise<DbTestHelperError> {
++  try {
++    await action();
++  } catch (error) {
++    if (error instanceof DbTestHelperError) return error;
++    throw error;
++  }
++  throw new Error('not refused');
++}
++
++function fakeOf(cluster: FakeCluster, name: string): FakeDatabase {
++  const database = cluster.databases.get(name);
++  if (database === undefined) throw new Error(`the stand-in cluster has no database ${name}`);
++  return database;
++}
++
++function locksOn(cluster: FakeCluster, key: number): string[] {
++  return cluster.statements.filter((statement) => statement.values[1] === key && statement.values[0] === LOCK_CLASS).map((statement) => statement.text);
++}
++
++afterEach(async () => {
++  for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
++});
++
++const NOT_A_RUN_PREFIX: Array<[string, unknown]> = [
++  ['the demo database', 'dems_demo'],
++  ['the demo database with an underscore', 'dems_demo_'],
++  ['a copy the reset keeps', 'dems_demo_prev'],
++  ['a lane', 'dems_lane_1'],
++  ['a lane with an underscore', 'dems_lane_1_'],
++  ['the maintenance database', 'postgres'],
++  ['a template of PostgreSQL', 'template0'],
++  ['the other template of PostgreSQL', 'template1'],
++  ['a proof database', 'dems_proof_drizzle_20261004003235_a'],
++  ['the test prefix alone', 'dems_test_'],
++  ['a label without a stamp', 'dems_test_step_64m_'],
++  ['a run prefix without its last underscore', STOPPED.prefix.slice(0, -1)],
++  ['a database name of the run', `${STOPPED.prefix}f01_backpressure`],
++  ['a template name of the run', `${STOPPED.prefix}tpl_schema`],
++  ['a run prefix with a second underscore', `${STOPPED.prefix}_`],
++  ['a pattern', 'dems_test_step_64m_%'],
++  ['a pattern in place of the stamp', 'dems_test_step_64m_________'],
++  ['upper case', STOPPED.prefix.toUpperCase()],
++  ['a stamp of seven characters', 'dems_test_step_64m_tmdoqjg_'],
++  ['a label of thirteen characters', 'dems_test_step_abcdefghijklm_tmdoqjg5_'],
++  ['a leading space', ` ${STOPPED.prefix}`],
++  ['a line break at the end', `${STOPPED.prefix}\n`],
++  ['a quote', `${STOPPED.prefix}"; DROP DATABASE dems_demo; --`],
++  ['the empty text', ''],
++  ['a number', 42],
++  ['null', null],
++  ['undefined', undefined],
++];
++
++describe('a run prefix, and nothing else', () => {
++  it('is dems_test_<label>_<stamp>_ with its last underscore', () => {
++    expect(parseRunPrefix(STOPPED.prefix)).toEqual(STOPPED);
++    expect(parseRunPrefix('dems_test_local_tmd0a1b2_')).toEqual(createRunIdentity('local', 'tmd0a1b2'));
++    expect(parseRunPrefix('dems_test_step_abcdefghijkl_00000000_')?.label).toBe('step_abcdefghijkl');
++  });
++
++  it.each(NOT_A_RUN_PREFIX)('%s is not one', (_label, value) => {
++    expect(parseRunPrefix(value)).toBeNull();
++  });
++});
++
++describe('the guard of a named dead run', () => {
++  const own = createRunIdentity('step_33c', stampAt(NOW_SECONDS, 'a1'));
++
++  it('passes the databases of the run that was named, and only those', () => {
++    for (const name of STOPPED_DATABASES) expect(guardDeadRunDatabase(name, own, { run: STOPPED })).toBe(name);
++    for (const name of [...BYSTANDERS, 'postgres', 'template0', 'template1', `${own.prefix}f01_mine`, STOPPED.prefix, 'dems_test_handmade', 42, null]) {
++      expect(() => guardDeadRunDatabase(name, own, { run: STOPPED }), String(name)).toThrow(DbGuardError);
++      expect(() => guardDeadRunDatabase(name, own, { run: STOPPED }), String(name)).toThrow('refused before any statement');
++    }
++  });
++
++  it('never passes a database of the caller\'s own run, whatever is claimed', () => {
++    expect(() => guardDeadRunDatabase(`${own.prefix}f01_mine`, own, { run: own })).toThrow('belongs to this run');
++    expect(() => guardDeadRunDatabase(`${own.prefix}tpl_schema`, own, { run: own })).toThrow(DbGuardError);
++  });
++});
++
++describe('dropDeadRun: refused before a statement is sent', () => {
++  it.each(NOT_A_RUN_PREFIX)('%s', async (_label, value) => {
++    const cluster = clusterWithTheStoppedRun();
++    const run = await ownerRun(cluster);
++    const sent = cluster.statements.length;
++    const counted = run.statementCount;
++    const names = cluster.names();
++
++    const error = await refusal(() => run.dropDeadRun(value as string, { settleMs: 0 }));
++
++    expect(error).toBeInstanceOf(DbGuardError);
++    expect(error.code).toBe('GUARD_NOT_A_TEST_DATABASE');
++    expect(error.message).toContain('refused before any statement');
++    expect(error.message).toContain('is not the prefix of a test run');
++    expect(cluster.statements).toHaveLength(sent);
++    expect(run.statementCount).toBe(counted);
++    expect(cluster.names()).toEqual(names);
++  });
++
++  it('the caller\'s own run: its teardown is the way', async () => {
++    const cluster = clusterWithTheStoppedRun();
++    const run = await ownerRun(cluster);
++    await run.createDatabase({ template: 'schema', slug: 'mine' });
++    const sent = cluster.statements.length;
++    const names = cluster.names();
++
++    const error = await refusal(() => run.dropDeadRun(run.identity.prefix, { settleMs: 0 }));
++
++    expect(error).toBeInstanceOf(DbGuardError);
++    expect(error.code).toBe('GUARD_NOT_STALE');
++    expect(error.message).toContain('is this run');
++    expect(cluster.statements).toHaveLength(sent);
++    expect(cluster.names()).toEqual(names);
++  });
++
++  it('a test file attached to a run cannot, and a closed run cannot', async () => {
++    const cluster = clusterWithTheStoppedRun();
++    const owner = await ownerRun(cluster);
++    const file = await attachedRun(cluster, owner.identity);
++    const sent = cluster.statements.length;
++    expect((await refusal(() => file.dropDeadRun(STOPPED.prefix, { settleMs: 0 }))).code).toBe('RUN_NOT_OWNER');
++    await owner.close();
++    expect((await refusal(() => owner.dropDeadRun(STOPPED.prefix, { settleMs: 0 }))).code).toBe('RUN_CLOSED');
++    expect(cluster.statements).toHaveLength(sent);
++    for (const name of STOPPED_DATABASES) expect(cluster.databases.has(name)).toBe(true);
++  });
++});
++
++describe('dropDeadRun: a run that is alive', () => {
++  it('is refused with RUN_ALIVE after one statement, the question; its clone and its locked templates stay', async () => {
++    const cluster = clusterWithTheStoppedRun();
++    // The owner of that run still exists: another session holds its liveness lock.
++    cluster.locksHeldElsewhere.add(livenessKey(STOPPED.stamp));
++    const run = await ownerRun(cluster);
++    const sent = cluster.statements.length;
++    const names = cluster.names();
++
++    const error = await refusal(() => run.dropDeadRun(STOPPED.prefix, { settleMs: 0 }));
++
++    expect(error.code).toBe('RUN_ALIVE');
++    expect(error.message).toContain(`the run ${STOPPED.prefix}* is alive`);
++    expect(error.message).toContain(`advisory lock ${LOCK_CLASS}, ${livenessKey(STOPPED.stamp)}`);
++    expect(error.message).toContain('Nothing was dropped');
++    expect(cluster.statements.slice(sent).map((statement) => statement.text)).toEqual(['SELECT pg_try_advisory_lock($1::int, $2::int) AS locked']);
++    expect(cluster.databaseStatements()).toEqual([]);
++    expect(cluster.names()).toEqual(names);
++    expect(fakeOf(cluster, `${STOPPED.prefix}tpl_schema`)).toMatchObject({ isTemplate: true, allowConnections: false });
++  });
++
++  it('a run started a minute ago by another row: alive, refused, untouched', async () => {
++    const cluster = clusterWithTheStoppedRun();
++    cluster.locksHeldElsewhere.add(livenessKey(NEIGHBOUR.stamp));
++    const run = await ownerRun(cluster);
++    expect((await refusal(() => run.dropDeadRun(NEIGHBOUR.prefix, { settleMs: 0 }))).code).toBe('RUN_ALIVE');
++    expect(cluster.databases.has(`${NEIGHBOUR.prefix}f01_identity`)).toBe(true);
++    expect(cluster.databases.has(`${NEIGHBOUR.prefix}tpl_schema`)).toBe(true);
++    expect(cluster.databaseStatements()).toEqual([]);
++  });
++});
++
++describe('dropDeadRun: a dead run that somebody still works in', () => {
++  it.each([
++    ['the runtime role', 'dems_app', 'dems-core-server'],
++    ['the owner role, which a forced drop would end', OWNER_ROLE, 'dems-test-fixture'],
++  ])('a session of %s on one of its databases: refused, nothing dropped, nothing ended, the lock released', async (_label, role, application) => {
++    const cluster = clusterWithTheStoppedRun();
++    fakeOf(cluster, `${STOPPED.prefix}f01_backpressure`).sessions = [{ role, sessions: 2, application }];
++    const run = await ownerRun(cluster);
++    const names = cluster.names();
++
++    const error = await refusal(() => run.dropDeadRun(STOPPED.prefix, { settleMs: 0 }));
++
++    expect(error.code).toBe('SESSIONS_REMAIN');
++    expect(error.message).toContain(`sessions are open on databases of the run ${STOPPED.prefix}*`);
++    expect(error.message).toContain(`2 of role ${role} (application "${application}") on ${STOPPED.prefix}f01_backpressure`);
++    expect(error.message).toContain('no session was ended');
++    expect(cluster.databaseStatements()).toEqual([]);
++    expect(cluster.names()).toEqual(names);
++    expect(fakeOf(cluster, `${STOPPED.prefix}f01_backpressure`).sessions).toHaveLength(1);
++    // Taken once, given back once.
++    const locks = locksOn(cluster, livenessKey(STOPPED.stamp));
++    expect(locks).toHaveLength(2);
++    expect(locks[0]).toContain('pg_try_advisory_lock');
++    expect(locks[1]).toContain('pg_advisory_unlock');
++  });
++
++  it('a session that connects during the settle time: refused at the second look', async () => {
++    const cluster = clusterWithTheStoppedRun();
++    const run = await ownerRun(cluster);
++    let looks = 0;
++    cluster.beforeStatement = (text) => {
++      if (!text.includes('FROM pg_stat_activity') || !text.includes('starts_with(datname, $1)')) return;
++      looks += 1;
++      if (looks === 2) fakeOf(cluster, `${STOPPED.prefix}f01_backpressure`).sessions = [{ role: 'dems_app', sessions: 1, application: 'late' }];
++    };
++
++    const error = await refusal(() => run.dropDeadRun(STOPPED.prefix, { settleMs: 5 }));
++
++    expect(looks).toBe(2);
++    expect(error.code).toBe('SESSIONS_REMAIN');
++    expect(error.message).toContain('1 of role dems_app (application "late")');
++    expect(cluster.databaseStatements()).toEqual([]);
++    for (const name of STOPPED_DATABASES) expect(cluster.databases.has(name)).toBe(true);
++  });
++
++  it('looks twice, the settle time apart, before it drops; the default is 3 s', async () => {
++    expect(DEAD_RUN_SETTLE_MS).toBe(3_000);
++    const cluster = clusterWithTheStoppedRun();
++    const run = await ownerRun(cluster);
++    const looks: number[] = [];
++    cluster.beforeStatement = (text) => {
++      if (text.includes('FROM pg_stat_activity') && text.includes('starts_with(datname, $1)')) looks.push(performance.now());
++    };
++    await run.dropDeadRun(STOPPED.prefix, { settleMs: 60 });
++    expect(looks).toHaveLength(2);
++    // A timer may fire a fraction of a millisecond early.
++    expect((looks[1] ?? 0) - (looks[0] ?? 0)).toBeGreaterThanOrEqual(55);
++  });
++});
++
++describe('dropDeadRun: a run that is dead and quiet', () => {
++  it('drops its clone, then its templates, and nothing else; the run is forty minutes old', async () => {
++    const cluster = clusterWithTheStoppedRun();
++    const run = await ownerRun(cluster);
++    const mine = await run.createDatabase({ template: 'schema', slug: 'mine' });
++    expect(NOW_SECONDS - Number.parseInt(STOPPED.stamp.slice(0, 6), 36)).toBeLessThan(STALE_AFTER_SECONDS);
++    // The stale sweep leaves that run alone: it is too young. That is why it has to be named.
++    const swept = await run.sweepStale();
++    expect(swept.dropped).toEqual([]);
++    expect(swept.keptYounger).toEqual(expect.arrayContaining(STOPPED_DATABASES));
++    const before = cluster.databaseStatements().length;
++
++    const report = await run.dropDeadRun(STOPPED.prefix, { settleMs: 0 });
++
++    expect(report.prefix).toBe(STOPPED.prefix);
++    expect(report.dropped).toEqual(STOPPED_DATABASES);
++    expect(report.remaining).toEqual([]);
++    expect(report.failed).toEqual([]);
++    expect(cluster.databaseStatements().slice(before)).toEqual([
++      `DROP DATABASE IF EXISTS "${STOPPED.prefix}f01_backpressure" WITH (FORCE)`,
++      `ALTER DATABASE "${STOPPED.prefix}tpl_schema" WITH IS_TEMPLATE false`,
++      `DROP DATABASE IF EXISTS "${STOPPED.prefix}tpl_schema" WITH (FORCE)`,
++      `ALTER DATABASE "${STOPPED.prefix}tpl_seed" WITH IS_TEMPLATE false`,
++      `DROP DATABASE IF EXISTS "${STOPPED.prefix}tpl_seed" WITH (FORCE)`,
++    ]);
++    // The demo database, the lanes, the other row's run and the caller's own databases are as they were.
++    expect(cluster.names()).toEqual([...BYSTANDERS, mine.name, `${run.identity.prefix}tpl_schema`, 'postgres', 'template0', 'template1'].sort());
++    const locks = locksOn(cluster, livenessKey(STOPPED.stamp));
++    expect(locks).toHaveLength(2);
++    expect(locks[0]).toContain('pg_try_advisory_lock');
++    expect(locks[1]).toContain('pg_advisory_unlock');
++  });
++
++  it('a second call finds nothing and drops nothing', async () => {
++    const cluster = clusterWithTheStoppedRun();
++    const run = await ownerRun(cluster);
++    await run.dropDeadRun(STOPPED.prefix, { settleMs: 0 });
++    const before = cluster.databaseStatements().length;
++    const report = await run.dropDeadRun(STOPPED.prefix, { settleMs: 0 });
++    expect(report).toMatchObject({ dropped: [], remaining: [], failed: [] });
++    expect(cluster.databaseStatements()).toHaveLength(before);
++  });
++
++  it('an autovacuum worker on one of its databases does not count as somebody: the drop is repeated', async () => {
++    const cluster = clusterWithTheStoppedRun();
++    Object.assign(fakeOf(cluster, `${STOPPED.prefix}f01_backpressure`), { background: 1, backgroundLeavesAfter: 2 });
++    const run = await ownerRun(cluster);
++    const report = await run.dropDeadRun(STOPPED.prefix, { settleMs: 0 });
++    expect(report.dropped).toEqual(STOPPED_DATABASES);
++    expect(report.remaining).toEqual([]);
++    expect(run.retriedDrops).toEqual([{ name: `${STOPPED.prefix}f01_backpressure`, refusals: 2 }]);
++  });
++
++  it('a database that cannot be dropped is reported as remaining, by name and reason; the others go; the lock is released', async () => {
++    const cluster = clusterWithTheStoppedRun();
++    const run = await ownerRun(cluster);
++    // A session that connects after the two looks, at the instant of the first drop.
++    cluster.beforeStatement = (text) => {
++      if (text.startsWith('DROP DATABASE') && text.includes('f01_backpressure')) {
++        fakeOf(cluster, `${STOPPED.prefix}f01_backpressure`).sessions = [{ role: 'dems_app', sessions: 1, application: 'zombie' }];
++      }
++    };
++
++    const report = await run.dropDeadRun(STOPPED.prefix, { settleMs: 0 });
++
++    expect(report.dropped).toEqual([`${STOPPED.prefix}tpl_schema`, `${STOPPED.prefix}tpl_seed`]);
++    expect(report.remaining).toEqual([`${STOPPED.prefix}f01_backpressure`]);
++    expect(report.failed).toHaveLength(1);
++    expect(report.failed[0]?.name).toBe(`${STOPPED.prefix}f01_backpressure`);
++    expect(report.failed[0]?.reason).toContain('1 of role dems_app (application "zombie")');
++    expect(locksOn(cluster, livenessKey(STOPPED.stamp)).at(-1)).toContain('pg_advisory_unlock');
++    expect(cluster.namesInDatabaseStatements().every((name) => name.startsWith(STOPPED.prefix))).toBe(true);
++  });
++});
+diff --git a/apps/core-server/test/helpers/db/constants.ts b/apps/core-server/test/helpers/db/constants.ts
+index c8732dc..1681912 100644
+--- a/apps/core-server/test/helpers/db/constants.ts
++++ b/apps/core-server/test/helpers/db/constants.ts
+@@ -63,6 +63,11 @@ export const DEFAULT_SESSION_DRAIN_MS = 5_000;
+  */
+ export const DROP_RETRY_ATTEMPTS = 20;
+ export const DROP_RETRY_PAUSE_MS = 250;
++/**
++ * A run that is removed by name (`TestRun.dropDeadRun`, decision D111) must show no client
++ * session on its databases twice, this far apart, while the caller holds its liveness lock.
++ */
++export const DEAD_RUN_SETTLE_MS = 3_000;
+ /** Longest wait for a connection. */
+ export const CONNECT_TIMEOUT_MS = 5_000;
+ /** Longest wait of the reachability probe. */
+diff --git a/apps/core-server/test/helpers/db/errors.ts b/apps/core-server/test/helpers/db/errors.ts
+index 992aa23..f112bb3 100644
+--- a/apps/core-server/test/helpers/db/errors.ts
++++ b/apps/core-server/test/helpers/db/errors.ts
+@@ -23,6 +23,7 @@ export type DbTestHelperErrorCode =
+   | 'RUN_NOT_PROVIDED'
+   | 'RUN_NOT_OWNER'
+   | 'RUN_CLOSED'
++  | 'RUN_ALIVE'
+   | 'RUN_PREFIX_UNAVAILABLE'
+   | 'NAME_INVALID'
+   | 'CLONE_SLOTS_EXHAUSTED'
+diff --git a/apps/core-server/test/helpers/db/names.ts b/apps/core-server/test/helpers/db/names.ts
+index fcd6342..dddb017 100644
+--- a/apps/core-server/test/helpers/db/names.ts
++++ b/apps/core-server/test/helpers/db/names.ts
+@@ -11,11 +11,12 @@
+  *   test file    <prefix>f<nn>_<slug>, at most 63 bytes
+  *
+  * THE GUARD. A statement that creates, changes or drops a database takes a
+- * `GuardedDatabaseName`, and only the two functions at the end of this file produce one:
+- * `guardOwnDatabase` (a name of the caller's own run) and `guardStaleDatabase` (a name of a run
+- * that is older than the threshold and holds no liveness lock). Both throw a `DbGuardError`
+- * before any statement exists. Neither can return `dems_demo`, a lane database, `postgres`,
+- * `template0`, `template1`, a proof database or a database of another, younger run.
++ * `GuardedDatabaseName`, and only the functions at the end of this file produce one:
++ * `guardOwnDatabase` (a name of the caller's own run), `guardStaleDatabase` (a name of a run
++ * that is older than the threshold and holds no liveness lock) and `guardDeadRunDatabase` (a
++ * name of one run that was named and shown to be dead). Each throws a `DbGuardError` before
++ * any statement exists. None can return `dems_demo`, a lane database, `postgres`,
++ * `template0`, `template1`, a proof database or a database of a run that is alive.
+  */
+ import { randomInt } from 'node:crypto';
+ import {
+@@ -38,6 +39,8 @@ const STEP_PATTERN = /^[A-Za-z0-9]{1,12}$/;
+ const TEST_NAME_PATTERN = /^dems_test_[a-z0-9_]+$/;
+ /** A name of the scheme of TI-2, split into its run prefix and the rest. */
+ const RUN_NAME_PATTERN = /^(dems_test_(local|step_[a-z0-9]{1,12})_([0-9a-z]{8})_)([a-z0-9_]+)$/;
++/** A run prefix of that scheme: the whole text, and nothing after the last underscore. */
++const RUN_PREFIX_PATTERN = /^dems_test_(local|step_[a-z0-9]{1,12})_([0-9a-z]{8})_$/;
+ const TEMPLATE_KEY_PATTERN = /^(?:schema|seed|bulk|x_[a-z0-9]{1,16})$/;
+ const CLONE_REST_PATTERN = /^f([0-9]{2})_[a-z0-9_]+$/;
+ 
+@@ -108,6 +111,19 @@ export function parseTestDatabaseName(name: string): ParsedTestDatabaseName | nu
+   return { run: createRunIdentity(label, stamp), rest, startedAtSeconds: stampSeconds(stamp) };
+ }
+ 
++/**
++ * The run that a prefix names: exactly `dems_test_<label>_<stamp>_`. `null` for every other
++ * value: a database name, a prefix without its last underscore, a pattern, the demo database.
++ */
++export function parseRunPrefix(prefix: unknown): RunIdentity | null {
++  if (typeof prefix !== 'string') return null;
++  const match = RUN_PREFIX_PATTERN.exec(prefix);
++  const label = match?.[1];
++  const stamp = match?.[2];
++  if (label === undefined || stamp === undefined) return null;
++  return createRunIdentity(label, stamp);
++}
++
+ /** `schema`, `seed`, `bulk`, or `x_<name>` for a private template. */
+ export function isTemplateKey(key: string): boolean {
+   return TEMPLATE_KEY_PATTERN.test(key);
+@@ -342,6 +358,40 @@ export function guardStaleDatabase(name: unknown, own: RunIdentity, claim: Stale
+   return name as GuardedDatabaseName;
+ }
+ 
++/**
++ * Proof that one run was named for removal and shown to be dead: the caller holds that run's
++ * liveness lock, so no live session is its owner, and saw no client session on its databases
++ * (`TestRun.dropDeadRun`).
++ */
++export interface DeadRunClaim {
++  /** The run that was named. */
++  readonly run: RunIdentity;
++}
++
++/**
++ * Passes a name only when it belongs to the run of `claim`, and that run is not the caller's
++ * own. The age of the run plays no part: that it is dead was shown another way.
++ */
++export function guardDeadRunDatabase(name: unknown, own: RunIdentity, claim: DeadRunClaim): GuardedDatabaseName {
++  refuseUnlessTestName(name, 'drop');
++  if (claim.run.prefix === own.prefix) {
++    throw new DbGuardError(
++      'GUARD_NOT_STALE',
++      name,
++      `refused before any statement: ${JSON.stringify(name)} belongs to this run; a run removes its own databases with its teardown.`,
++    );
++  }
++  if (!name.startsWith(claim.run.prefix) || name.length === claim.run.prefix.length) {
++    throw new DbGuardError(
++      'GUARD_FOREIGN_RUN',
++      name,
++      `refused before any statement: ${JSON.stringify(name)} is not a database of the run ${claim.run.prefix}* that was named.`,
++    );
++  }
++  // The same test as for a database of the caller's own run, against the run that was named.
++  return guardOwnDatabase(name, claim.run, 'drop');
++}
++
+ /** A double-quoted identifier. The guard has already limited the name to `[a-z0-9_]`. */
+ export function quoteDatabaseName(name: GuardedDatabaseName): string {
+   return `"${name}"`;
+diff --git a/apps/core-server/test/helpers/db/run.ts b/apps/core-server/test/helpers/db/run.ts
+index e9fc6cf..ef857e6 100644
+--- a/apps/core-server/test/helpers/db/run.ts
++++ b/apps/core-server/test/helpers/db/run.ts
+@@ -18,9 +18,11 @@ import type { Pool } from 'pg';
+ import type { DatabaseConnection } from '../../../src/config';
+ import {
+   APP_POOL_MAX,
++  DEAD_RUN_SETTLE_MS,
+   DEFAULT_LOCK_TIMEOUT_MS,
+   DEFAULT_SESSION_DRAIN_MS,
+   ENV_TEST_STEP,
++  LOCK_CLASS,
+   OWNER_POOL_MAX,
+   OWNER_ROLE,
+   TEST_DATABASE_PREFIX,
+@@ -49,20 +51,23 @@ import {
+   type DropRetryPolicy,
+ } from './ddl';
+ import { PROJECT_ENDPOINT, assertServerReachable, type Endpoint } from './endpoint';
+-import { DbTestHelperError, errorCode, errorMessage } from './errors';
++import { DbGuardError, DbTestHelperError, errorCode, errorMessage } from './errors';
+ import { conventionResolver, templateNotAvailable, type DefinitionResolver, type TemplateDefinition } from './hooks';
+ import {
+   classifyForSweep,
+   createRunIdentity,
+   fileDatabaseName,
++  guardDeadRunDatabase,
+   guardOwnDatabase,
+   guardStaleDatabase,
+   isTemplateName,
+   livenessKey,
+   lowestFreeCounter,
+   newStamp,
++  parseRunPrefix,
+   runLabel,
+   templateDatabaseName,
++  type DeadRunClaim,
+   type GuardedDatabaseName,
+   type RunIdentity,
+   type StaleClaim,
+@@ -141,6 +146,21 @@ export interface SweepReport {
+   readonly failed: ReadonlyArray<{ readonly name: string; readonly reason: string }>;
+ }
+ 
++export interface DeadRunReport {
++  /** The run that was named. */
++  readonly prefix: string;
++  readonly dropped: readonly string[];
++  /** Databases with that prefix that still exist, read from `pg_database` after the drops. */
++  readonly remaining: readonly string[];
++  readonly failed: ReadonlyArray<{ readonly name: string; readonly reason: string }>;
++  readonly ms: number;
++}
++
++export interface DropDeadRunOptions {
++  /** How far apart the two looks for client sessions are, in milliseconds. Default: 3 s. */
++  readonly settleMs?: number;
++}
++
+ /** A forced drop that PostgreSQL refused at first and that went through at a later attempt. */
+ export interface RetriedDrop {
+   readonly name: string;
+@@ -680,6 +700,103 @@ export class TestRun {
+     return { dropped, keptYounger: plan.younger, keptLive, unrecognised: plan.unrecognised, failed };
+   }
+ 
++  // ── A dead run, removed by name (row W11b, decision D111) ────────────────────────────────────
++
++  /**
++   * Drops the databases of ONE other run that somebody names, after showing that it is dead.
++   * It is for a run that was stopped before its teardown and is younger than the six hours the
++   * stale sweep waits.
++   *
++   * The sweep runs unattended at the start of every `test:db` and must never touch a run that a
++   * parallel row may be using, so it asks for age AND a free liveness lock. Here somebody who
++   * knows that a run was stopped names it, and the helper proves what it can prove:
++   *
++   *   1. the text is exactly a run prefix, `dems_test_<label>_<stamp>_`, and not the caller's
++   *      own. The demo database, a lane, the maintenance database and the templates of
++   *      PostgreSQL are no run prefixes: refused before any statement;
++   *   2. no session holds the run's liveness lock, so the process that owned the run is gone
++   *      (`RUN_ALIVE` otherwise). The caller takes the lock and holds it while it works;
++   *   3. no client session of any role is on a database of the run, now and again after
++   *      `settleMs`: nobody is still working in it (`SESSIONS_REMAIN` otherwise). Nothing is
++   *      ended to get there, not even a session of the owner role.
++   *
++   * Then every database with the prefix is dropped as the teardown does it: clones first,
++   * templates after `IS_TEMPLATE false`, each name through the guard, each drop with the
++   * bounded retry.
++   */
++  async dropDeadRun(prefix: string, options: DropDeadRunOptions = {}): Promise<DeadRunReport> {
++    const dead = parseRunPrefix(prefix);
++    if (dead === null) {
++      const shown = typeof prefix === 'string' ? JSON.stringify(prefix) : `a value of type ${typeof prefix}`;
++      throw new DbGuardError(
++        'GUARD_NOT_A_TEST_DATABASE',
++        String(prefix),
++        `refused before any statement: ${shown} is not the prefix of a test run (${TEST_DATABASE_PREFIX}<label>_<stamp>_, with its last underscore).`,
++      );
++    }
++    if (dead.prefix === this.identity.prefix) {
++      throw new DbGuardError(
++        'GUARD_NOT_STALE',
++        dead.prefix,
++        `refused before any statement: ${dead.prefix}* is this run; a run removes its own databases with its teardown.`,
++      );
++    }
++    this.#assertOpen();
++    this.#assertOwner('drop the databases of a dead run');
++    const settleMs = Math.max(0, options.settleMs ?? DEAD_RUN_SETTLE_MS);
++    const started = performance.now();
++    const key = livenessKey(dead.stamp);
++    if (!(await tryLivenessLock(this.#session, key))) {
++      throw new DbTestHelperError(
++        'RUN_ALIVE',
++        `refused: the run ${dead.prefix}* is alive: a session holds its liveness lock (advisory lock ${LOCK_CLASS}, ${key} ` +
++          'on the maintenance database). Nothing was dropped. A run that was stopped releases the lock when its process ends.',
++      );
++    }
++    try {
++      let busy = await this.#clientSessionsOf(dead.prefix);
++      if (busy === '') {
++        await pause(settleMs);
++        busy = await this.#clientSessionsOf(dead.prefix);
++      }
++      if (busy !== '') {
++        throw new DbTestHelperError(
++          'SESSIONS_REMAIN',
++          `refused: sessions are open on databases of the run ${dead.prefix}* (${busy}): somebody is still working in it. ` +
++            'Nothing was dropped and no session was ended.',
++        );
++      }
++      const claim: DeadRunClaim = { run: dead };
++      const dropped: string[] = [];
++      const failed: Array<{ name: string; reason: string }> = [];
++      const rows = await listDatabasesWithPrefix(this.#session, dead.prefix);
++      for (const name of clonesFirst(rows.map((row) => row.name))) {
++        try {
++          await this.#dropGuarded(guardDeadRunDatabase(name, this.identity, claim));
++          dropped.push(name);
++        } catch (error) {
++          failed.push({ name, reason: errorMessage(error) });
++        }
++      }
++      const remaining = (await listDatabasesWithPrefix(this.#session, dead.prefix)).map((row) => row.name);
++      return { prefix: dead.prefix, dropped, remaining, failed, ms: performance.now() - started };
++    } finally {
++      await releaseLivenessLock(this.#session, key).catch(() => undefined);
++    }
++  }
++
++  /** The client sessions on the databases of a run, described; the empty text when there is none. */
++  async #clientSessionsOf(prefix: string): Promise<string> {
++    if ((await sessionRolesWithPrefix(this.#session, prefix)).length === 0) return '';
++    const parts: string[] = [];
++    for (const row of await listDatabasesWithPrefix(this.#session, prefix)) {
++      const clients = (await backendsOn(this.#session, row.name)).filter((group) => group.role !== null);
++      if (clients.length > 0) parts.push(`${describeBackends(clients)} on ${row.name}`);
++    }
++    // Seen a moment ago and gone at the second look: still not quiet.
++    return parts.length > 0 ? parts.join('; ') : 'a session that had left again when the helper looked';
++  }
++
+   // ── The end of a run (TI-11) ─────────────────────────────────────────────────────────────────
+ 
+   /**
+@@ -790,6 +907,12 @@ function sessionOptions(options: RunOptions, applicationName: string): {
+   };
+ }
+ 
++function pause(ms: number): Promise<void> {
++  return new Promise((resolve) => {
++    setTimeout(resolve, ms);
++  });
++}
++
+ /** A template that is finished: flagged as one and closed to connections (TI-5). */
+ function isReadyTemplate(row: DatabaseRow | null): boolean {
+   return row !== null && row.isTemplate && !row.allowConnections;

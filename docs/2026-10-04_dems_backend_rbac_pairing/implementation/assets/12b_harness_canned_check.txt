@@ -1,0 +1,11 @@
+health           getServiceHealth 200 -> valid
+created          createSession 201 -> valid
+notSignedIn      createSession 401 -> valid
+invalidInput     createSession 422 -> valid
+exportForbidden  exportEvidence 403 -> valid
+video            getVideoStatus 200 -> valid
+rateLimited      envelope parses: true; as an answer of stopSession: valid
+storageViolation is refused: true (INVALID_BODY)
+createSession request example parses: true
+registry operations: 37
+exit=0

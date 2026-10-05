@@ -1,0 +1,643 @@
+--- a/apps/core-server/src/plugins/permission-guard/__tests__/guard.test.ts
++++ b/apps/core-server/src/plugins/permission-guard/__tests__/guard.test.ts
+@@ -1,12 +1,20 @@
+-// The guard in the real app, without a database (plan row W28; spec §2.3 stage 6, §4.6 RB-1,
+-// RB-4, RB-6; SR-43, SR-45, SR-71; AC-B-12; decision D82). The pool is the core's stand-in, which
+-// commits what a unit of work appends; stage 4 is a stand-in that makes the caller whoever the
+-// test says. The same paths with the real stages 3 to 5 and PostgreSQL are in the database tests
+-// of this folder.
++// The guard in the app factory, without a database (plan row W28; spec §2.3 stage 6, §4.6 RB-1,
++// RB-4, RB-6; SR-43, SR-45, SR-71; AC-B-12; decisions D82, D85). The pool is the core's stand-in,
++// which commits what a unit of work appends; stage 4 is a stand-in that makes the caller whoever
++// the test says. The same paths with the real stages 3 to 5 and PostgreSQL are in the database
++// tests of this folder.
++//
++// THE APP OF THIS FILE HAS NO DOMAIN MODULE (decision D85): `./without-domain-modules` is the
++// first import, so the eleven domain modules and the realtime channel add no route. The tests
++// give the operations they call stand-in handlers, and no stand-in ever stands beside a module's
++// route. Nothing here depends on which modules have landed, and nothing pins which operations
++// are registered: that is read from the app. What the REAL server registers is asked in
++// `registered-routes.test.ts`.
++import './without-domain-modules';
+ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+ import { tmpdir } from 'node:os';
+ import { join } from 'node:path';
+-import { CORE_API_OPERATIONS, UserRoleRequestSchema, WS_PATH } from '@dems/shared/api';
++import { CORE_API_OPERATIONS, IDENTITY_OPERATIONS, UserRoleRequestSchema } from '@dems/shared/api';
+ import { ROLE_PERMISSIONS, createManualClock, type OperatorRole } from '@dems/shared/sim';
+ import type { FastifyInstance } from 'fastify';
+ import type { ZodTypeProvider } from 'fastify-type-provider-zod';
+@@ -16,8 +24,17 @@
+ import { ANONYMOUS_PRINCIPAL, type Principal } from '../../authenticate';
+ import { captureLog, credentialLeaks, unitTestConfig, type CapturedLog } from '../../config/__tests__/test-config';
+ import { throttleControl } from '../../throttle';
+-import { AccessRuleError, AccessRuleErrorCode, DENIAL_UNIT_LABEL, permissionGuard, routeOfOperation, routesOfPrintedTable } from '../index';
+-import { operationOf, passScratchRoutes, registryRoutes } from './support';
++import {
++  AccessRuleError,
++  AccessRuleErrorCode,
++  DENIAL_UNIT_LABEL,
++  REALTIME_CHANNEL_ID,
++  permissionGuard,
++  routeOfOperation,
++  routePatternOf,
++  routesOfPrintedTable,
++} from '../index';
++import { channelRoute, operationOf, passScratchRoutes, registryRoutes } from './support';
+ 
+ const scratchDir = mkdtempSync(join(tmpdir(), 'dems-w28-guard-'));
+ const apps: FastifyInstance[] = [];
+@@ -128,16 +145,31 @@
+   }
+ };
+ 
+-const REGISTERED_NOW = ['getServiceHealth', 'signIn', 'getSignInStatus', 'getAuthSession', 'signOut', 'touchSession', 'getRoleMatrix'];
+-const NOT_YET_REGISTERED = CORE_API_OPERATIONS.map((operation) => operation.operationId).filter((operationId) => !REGISTERED_NOW.includes(operationId));
++/** Every operation of the registry, in registry order. */
++const ALL_OPERATIONS = CORE_API_OPERATIONS.map((operation) => operation.operationId);
++/** The operations of the real units that the tests of this row call: health (W08), the identity core (W24), this row's module. */
++const NEEDED_HERE = ['getServiceHealth', 'signIn', 'getSignInStatus', 'getAuthSession', 'signOut', 'touchSession', 'getRoleMatrix'];
++/** What the three real units of this file's app may register: health, the identity area, operation 10. */
++const OF_THE_REAL_UNITS = ['getServiceHealth', 'getRoleMatrix', ...IDENTITY_OPERATIONS.map((operation) => operation.operationId)];
+ 
+ describe('RB-1, AC-B-12: the boot check of app.ready()', () => {
+-  it('the server as it stands is ready: every registered route is a registry operation with its rules', async () => {
++  it('the app without the domain modules is ready: every registered route is a registry operation with its rule, none twice, and all are of the three real units', async () => {
+     const { app } = await ready();
+     const guard = permissionGuard(app);
+     expect(guard.routeProblems()).toEqual([]);
+-    expect(guard.registeredRules().map((rule) => rule.operationId)).toEqual(REGISTERED_NOW);
+-    for (const rule of guard.registeredRules()) expect(operationOf(rule.operationId).path.replace('{id}', ':id')).toBe(rule.url);
++    const registered = guard.registeredRules();
++    const ids = registered.map((rule) => rule.operationId);
++    expect(new Set(ids).size).toBe(ids.length);
++    for (const rule of registered) {
++      // The rule the guard holds for the route IS the rule of that operation in the registry.
++      expect(guard.rules.ruleOf(rule.operationId)).toBe(rule);
++      const operation = operationOf(rule.operationId);
++      expect([rule.operationId, rule.method, rule.url]).toEqual([rule.operationId, operation.method.toUpperCase(), routePatternOf(operation.path)]);
++    }
++    // No count and no list of what a module has registered: what this row's tests call is
++    // there, and nothing of a domain module is.
++    for (const operationId of NEEDED_HERE) expect(ids).toContain(operationId);
++    expect(ids.filter((operationId) => !OF_THE_REAL_UNITS.includes(operationId))).toEqual([]);
+   });
+ 
+   it('a route without an access rule and an audit rule stops the boot, by name, with one log line and one entry in the error log', async () => {
+@@ -196,17 +228,29 @@
+     expect((error as AccessRuleError).problems.map((problem) => problem.route)).toEqual(['GET /api/v1/one', 'GET /api/v1/two', 'POST /api/v1/two']);
+   });
+ 
+-  it('registry operations whose module does not exist yet can be registered: all 68 of them, and the socket route', async () => {
++  it('EVERY operation of the registry can be registered under the guard: the real route where a real unit has one, a stand-in for each of the rest, and the socket route', async () => {
++    const added: string[] = [];
++    let socketAdded = false;
+     const { app } = await ready({
+       routes: (instance) => {
+-        registryRoutes(instance, NOT_YET_REGISTERED);
+-        instance.get(WS_PATH, async () => ({ channel: true }));
++        // A stand-in only where the app has no route: asked of the app, not of a list.
++        added.push(...registryRoutes(instance, ALL_OPERATIONS));
++        socketAdded = channelRoute(instance);
+       },
+     });
+     const guard = permissionGuard(app);
+     expect(guard.routeProblems()).toEqual([]);
+-    expect(NOT_YET_REGISTERED).toHaveLength(68);
+-    expect(guard.registeredRules().map((rule) => rule.operationId).sort()).toEqual([...CORE_API_OPERATIONS.map((operation) => operation.operationId), 'realtimeChannel'].sort());
++    const registered = guard.registeredRules();
++    // What is registered is exactly the registry and the socket route, each once.
++    expect(registered.map((rule) => rule.operationId).sort()).toEqual([...ALL_OPERATIONS, REALTIME_CHANNEL_ID].sort());
++    expect(ALL_OPERATIONS).toHaveLength(75);
++    // Each one with the rule of its registry entry, at its registry route.
++    for (const operationId of ALL_OPERATIONS) expect(registered.find((rule) => rule.operationId === operationId)).toBe(guard.rules.ruleOf(operationId));
++    // The stand-ins and the routes of the real units make up the registry, and no operation is in both.
++    const plain = await ready();
++    const real = permissionGuard(plain.app).registeredRules().map((rule) => rule.operationId);
++    expect([...added, ...real].sort()).toEqual([...ALL_OPERATIONS].sort());
++    expect(socketAdded).toBe(true);
+   });
+ 
+   it('a test that takes stage 6 out before ready() gets its scratch routes: the check is skipped with one warn line', async () => {
+@@ -303,17 +347,17 @@
+     expect(built.log.lines().find((line) => line['msg'] === 'unexpected error while handling a request')).toMatchObject({ err: { code: 'OPERATION_ID_MISMATCH' } });
+   });
+ 
+-  it('the printed route table gives back exactly the routes the guard was shown: all 75 operations and the socket', async () => {
++  it('the printed route table gives back exactly the routes the guard was shown: every operation of the registry and the socket', async () => {
+     const { app } = await ready({
+       routes: (instance) => {
+-        registryRoutes(instance, NOT_YET_REGISTERED);
+-        instance.get(WS_PATH, async () => ({}));
++        registryRoutes(instance, ALL_OPERATIONS);
++        channelRoute(instance);
+       },
+     });
+     const printed = routesOfPrintedTable(app.printRoutes()).map((route) => `${route.method} ${route.url}`).sort();
+     const shown = permissionGuard(app).registeredRules().map((rule) => `${rule.method} ${rule.url}`).sort();
+     expect(printed).toEqual(shown);
+-    expect(printed).toHaveLength(76);
++    expect(printed).toHaveLength(ALL_OPERATIONS.length + 1);
+     expect(() => permissionGuard(app).checkRouter()).not.toThrow();
+   });
+ 
+--- a/apps/core-server/src/plugins/permission-guard/__tests__/support.ts
++++ b/apps/core-server/src/plugins/permission-guard/__tests__/support.ts
+@@ -15,10 +15,23 @@
+  *                                                   session operations, …) keeps the REAL guard.
+  *
+  * FOR A TEST OF THE GUARD, or of a module behind it: `guardApp` and `registryRoutes` build the
+- * real app with stand-in handlers for registry operations whose module does not exist yet.
++ * real app with stand-in handlers for registry operations that have no route in that app.
++ *
++ * THE MODULES LAND ONE BY ONE (decision D85). Nothing here, and no test that uses it, may depend
++ * on WHICH operations a module has registered:
++ *
++ *   - `registryRoutes` adds a stand-in only for an operation that has no route in the app. It
++ *     is called from a plugin that runs after the units, so every module's route is there;
++ *   - a test does not assert on a stand-in's handler for an operation a module may own one
++ *     day. What it asks is whether stage 6 let the request through, and the app records
++ *     exactly that (`GuardApp.passed`: a hook after the request stages and before the body is
++ *     read), whatever the route's handler then does;
++ *   - a POST that only has to show "allowed" is sent with a malformed JSON body
++ *     (`MALFORMED_JSON`): refused by stage 6 it answers 401 or 403, let through it answers 400
++ *     `INVALID_JSON` at stage 7, and no handler of any module runs.
+  */
+ import type { CoreApiOperation } from '@dems/shared/api';
+-import { CORE_API_OPERATIONS } from '@dems/shared/api';
++import { CORE_API_OPERATIONS, WS_PATH } from '@dems/shared/api';
+ import { createManualClock } from '@dems/shared/sim';
+ import type { FastifyInstance, FastifyReply, FastifyRequest, LightMyRequestResponse } from 'fastify';
+ import { buildApp } from '../../../app';
+@@ -67,24 +80,76 @@
+ }
+ 
+ /**
+- * Adds a stand-in route for each named registry operation whose module does not exist yet:
++ * Adds a stand-in route for each named registry operation that has NO route in the app yet:
+  * method, path and `config.operationId` are the registry's, so the guard applies the registry's
+- * rule; the handler only says that it was reached. No schema: stage 7 has nothing to refuse, so
+- * whatever answers 401 or 403 was decided before the body was read.
++ * rule; the handler only says that it was reached. An operation that a module has registered
++ * keeps its real route. Returns the operations a stand-in was added for.
++ *
++ * Call it from a plugin that is registered after the units (`guardApp` does), so that the
++ * routes of every module exist when it looks. At the top level, before the plugins ran, no
++ * module's route exists yet: use it there only for an operation no unit registers.
+  */
+ export function registryRoutes(app: FastifyInstance, operationIds: readonly string[], reached: string[] = []): string[] {
++  const added: string[] = [];
+   for (const operationId of operationIds) {
++    const route = routeOfOperation(operationOf(operationId));
++    if (app.hasRoute({ method: route.method, url: route.url })) continue;
+     app.route({
+-      ...routeOfOperation(operationOf(operationId)),
++      ...route,
+       handler: async (): Promise<StandInAnswer> => {
+         reached.push(operationId);
+         return { reached: operationId };
+       },
+     });
++    added.push(operationId);
+   }
+-  return reached;
++  return added;
+ }
+ 
++/**
++ * Adds a stand-in for the socket route, `GET /ws`, when the realtime channel has not registered
++ * it (plan row W42). Returns whether it was added.
++ */
++export function channelRoute(app: FastifyInstance): boolean {
++  if (app.hasRoute({ method: 'GET', url: WS_PATH })) return false;
++  app.get(WS_PATH, async () => ({ channel: true }));
++  return true;
++}
++
++/** A request that stage 6 let through: recorded after the stages, before the body is read. */
++export interface PassedRequest {
++  /** `config.operationId` of the route; null for a route that names none (the socket). */
++  readonly operationId: string | null;
++  /** `METHOD pattern`, for example `GET /ws`. */
++  readonly route: string;
++  /** Who stage 4 resolved the caller to. */
++  readonly principal: 'ANONYMOUS' | 'DEVICE' | 'OPERATOR';
++}
++
++/**
++ * Records every request that passed the request stages: a `preParsing` hook, which runs after
++ * the one `onRequest` hook of the stages and before the body is read. A request a stage refused
++ * never gets there. Add it before `app.ready()`.
++ */
++export function recordPassed(app: FastifyInstance, passed: PassedRequest[] = []): PassedRequest[] {
++  app.addHook('preParsing', (request, _reply, payload, done) => {
++    passed.push({
++      operationId: request.routeOptions.config.operationId ?? null,
++      route: `${request.method} ${request.routeOptions.url ?? ''}`,
++      principal: request.principal.kind,
++    });
++    done(null, payload);
++  });
++  return passed;
++}
++
++/**
++ * Headers and body of a POST that only has to show whether stage 6 lets it through: a body
++ * that is no JSON. Stage 7 answers 400 `INVALID_JSON` for it on every route, a module's and a
++ * stand-in's alike, and no handler runs.
++ */
++export const MALFORMED_JSON = { headers: { 'content-type': 'application/json' }, payload: '{"w28": ' } as const;
++
+ // ── The real app on a clone, with every stage as the server has it ─────────────────────────────
+ 
+ export interface GuardTarget {
+@@ -99,7 +164,7 @@
+   readonly demoControls?: boolean;
+   readonly logLevel?: LogLevel;
+   readonly errorLogFile?: string;
+-  /** Registry operations whose module does not exist yet: each gets a stand-in route. */
++  /** Registry operations the test calls: each gets a stand-in route unless a module has registered it. */
+   readonly standIns?: readonly string[];
+   /** Further routes, added by the same plugin as the stand-ins: the boot check is shown them. */
+   readonly routes?: (instance: FastifyInstance, reached: string[]) => void;
+@@ -114,16 +179,21 @@
+   readonly log: CapturedLog;
+   /** `dems_session_<listen port>`. */
+   readonly cookieName: string;
+-  /** The operations whose stand-in handler ran, in order. */
++  /** The operations whose STAND-IN handler ran, in order. A module's own handler is not recorded here. */
+   readonly reached: string[];
+-  /** The device registry behind the seam `deviceResolver`: the pairing module is plan row W32's. */
++  /** The operations of `standIns` that got a stand-in: those no module had registered. */
++  readonly standIns: string[];
++  /** Every request that stage 6 let through, in order, whatever its handler did afterwards. */
++  readonly passed: PassedRequest[];
++  /** The device registry behind the seam `deviceResolver`, as a stand-in the test steers. */
+   readonly devices: DeviceRegistryDouble;
+ }
+ 
+ /**
+  * The real app factory on a clone, as `dems_app`, built but not yet ready: for a test of the
+- * boot. NO stage is replaced. The one stand-in is behind the seam `deviceResolver`, whose owner
+- * (the pairing module) is a later row.
++ * boot. NO stage is replaced. The one stand-in is the device registry behind the seam
++ * `deviceResolver`: the test says which device is paired and which is retired, whatever the
++ * pairing module (plan row W32) has built.
+  */
+ export function buildGuardApp(target: GuardTarget, options: GuardAppOptions = {}): GuardApp {
+   const log = captureLog();
+@@ -140,11 +210,14 @@
+   });
+   target.onCleanup(() => app.close());
+   const reached: string[] = [];
++  const standIns: string[] = [];
++  const passed = recordPassed(app);
+   options.topLevel?.(app);
+   if (options.standIns !== undefined || options.routes !== undefined) {
+-    // A plugin registered after the units, as a module is: the guard's boot check sees its routes.
++    // A plugin registered after the units, as a module is: the guard's boot check sees its
++    // routes, and every module's route exists when the stand-ins are chosen.
+     void app.register(async (instance) => {
+-      registryRoutes(instance, options.standIns ?? [], reached);
++      standIns.push(...registryRoutes(instance, options.standIns ?? [], reached));
+       options.routes?.(instance, reached);
+     });
+   }
+@@ -152,7 +225,7 @@
+   app.seams.replace('clock', clock);
+   const devices = deviceRegistryDouble();
+   app.seams.replace('deviceResolver', devices.resolver);
+-  return { app, clock, log, cookieName: app.config.sessionCookieName, reached, devices };
++  return { app, clock, log, cookieName: app.config.sessionCookieName, reached, standIns, passed, devices };
+ }
+ 
+ /**
+--- a/apps/core-server/src/plugins/permission-guard/__tests__/boot-registry.test.ts
++++ b/apps/core-server/src/plugins/permission-guard/__tests__/boot-registry.test.ts
+@@ -3,6 +3,12 @@
+ // application does not boot. The registry table is type-checked, so such an entry cannot be
+ // written there; here the table the guard reads is replaced by one in which an entry lost a
+ // rule, as a careless edit of the model's types would leave it.
++//
++// The app is built without the domain modules (decision D85; `./without-domain-modules`): the
++// routes whose entry is changed here are those of the units that are always there (health, the
++// identity core, this row's module), and the operation "whose route is not registered" is an
++// entry this file adds to the table, which no module will ever register.
++import './without-domain-modules';
+ import type { CoreApiRegistryOperation } from '@dems/shared/api';
+ import type { FastifyInstance } from 'fastify';
+ import { afterEach, describe, expect, it, vi } from 'vitest';
+@@ -43,10 +49,11 @@
+     });
+ }
+ 
+-async function boot(): Promise<{ app: FastifyInstance; error: unknown; log: ReturnType<typeof captureLog> }> {
++async function boot(prepare?: (app: FastifyInstance) => void): Promise<{ app: FastifyInstance; error: unknown; log: ReturnType<typeof captureLog> }> {
+   const log = captureLog();
+   const app = buildApp({ config: unitTestConfig({ logLevel: 'info' }), createPool: () => createFakePool().pool, logStream: log.stream });
+   apps.push(app);
++  prepare?.(app);
+   const error = await app.ready().then(
+     () => null,
+     (thrown: unknown) => thrown,
+@@ -87,14 +94,38 @@
+   });
+ 
+   it('an entry of an operation whose route is NOT registered does not stop the boot: later rows add their routes one by one', async () => {
+-    without('listUsers', 'audit');
+-    without('startSession', 'access');
++    // Two entries that no unit has a route for, each without one of its rules.
++    registry.change = (table) => {
++      const [model] = table as Table;
++      if (model === undefined) throw new Error('the registry table is empty');
++      const { audit: _audit, ...withoutAudit } = { ...model, operationId: 'w28NoRouteRead', path: '/api/v1/w28-no-route/read' };
++      const { access: _access, ...withoutAccess } = { ...model, operationId: 'w28NoRouteCommand', method: 'post', path: '/api/v1/w28-no-route/command' };
++      return [...(table as Table), withoutAudit, withoutAccess];
++    };
+     const { app, error } = await boot();
+     expect(error).toBeNull();
+-    // The rule book still says what is wrong with it, for the day its route arrives.
+-    expect(permissionGuard(app).rules.ruleOf('startSession')).toMatchObject({ code: 'ACCESS_RULE_MISSING', operationId: 'startSession' });
++    const guard = permissionGuard(app);
++    expect(guard.registeredRules().map((rule) => rule.operationId)).not.toContain('w28NoRouteRead');
++    // The rule book still says what is wrong with each, for the day its route arrives.
++    expect(guard.rules.ruleOf('w28NoRouteRead')).toMatchObject({ code: 'AUDIT_RULE_MISSING', operationId: 'w28NoRouteRead' });
++    expect(guard.rules.ruleOf('w28NoRouteCommand')).toMatchObject({ code: 'ACCESS_RULE_MISSING', operationId: 'w28NoRouteCommand' });
+   });
+ 
++  it('and on the day its route arrives, the boot stops: the same entry with a route', async () => {
++    registry.change = (table) => {
++      const [model] = table as Table;
++      if (model === undefined) throw new Error('the registry table is empty');
++      const { audit: _audit, ...withoutAudit } = { ...model, operationId: 'w28NoRouteRead', path: '/api/v1/w28-no-route/read' };
++      return [...(table as Table), withoutAudit];
++    };
++    const { error } = await boot((app) => {
++      void app.register(async (instance) => {
++        instance.get('/api/v1/w28-no-route/read', { config: { operationId: 'w28NoRouteRead' } }, async () => ({}));
++      });
++    });
++    expect(error).toMatchObject({ code: AccessRuleErrorCode.AUDIT_RULE_MISSING, problems: [{ operationId: 'w28NoRouteRead', route: 'GET /api/v1/w28-no-route/read' }] });
++  });
++
+   it('an operation that was removed from the registry leaves its route without rules', async () => {
+     registry.change = (table) => (table as Table).filter((operation) => operation.operationId !== 'getRoleMatrix');
+     const { error } = await boot();
+--- a/apps/core-server/src/plugins/permission-guard/__tests__/denial.db.test.ts
++++ b/apps/core-server/src/plugins/permission-guard/__tests__/denial.db.test.ts
+@@ -3,12 +3,17 @@
+ // decisions D13 DEPARTURE-3, D64 DN-12, D78 DN-9).
+ //
+ // The real app factory on a clone of the seed, as `dems_app`, on a manual clock, with EVERY stage
+-// as the server has it: nothing is replaced. Operators sign in with the seeded credential. The
+-// operations whose module is a later row get a stand-in route built from their registry entry,
+-// so the rule that is applied is the registry's. The device registry behind the seam
+-// `deviceResolver` is a stand-in until plan row W32.
++// as the server has it: no stage is replaced. Operators sign in with the seeded credential. The
++// device registry behind the seam `deviceResolver` is a stand-in the test steers.
+ //
++// THE APP HAS NO DOMAIN MODULE (decision D85): `without-domain-modules` is the first import, so
++// the eleven domain modules and the realtime channel add no route, whichever of them have
++// landed. The operations a test calls get a stand-in route built from their registry entry, so
++// the rule that is applied is the registry's, and a stand-in never stands beside a module's
++// route. Every STAGE is the server's own.
++//
+ // No credential is printed: a token is taken from an answer and handed on in a header.
++import './without-domain-modules';
+ import { UserRoleRequestSchema, validateCoreApiResponse } from '@dems/shared/api';
+ import { OPERATORS, OPERATOR_IDS, type AuditRow } from '@dems/shared/sim';
+ import type { InjectOptions, LightMyRequestResponse } from 'fastify';
+--- a/apps/core-server/src/plugins/permission-guard/__tests__/pipeline.db.test.ts
++++ b/apps/core-server/src/plugins/permission-guard/__tests__/pipeline.db.test.ts
+@@ -6,9 +6,16 @@
+ // REPLACED: the Origin guard, `authenticate`, the throttle with the denial budget and the access
+ // rule are the server's own, in the server's order. Sessions are real: an operator signs in with
+ // the seeded credential, on the web (the cookie) and on a paired device (a bearer value). The
+-// one stand-in is the device registry behind the seam `deviceResolver`, which plan row W32 fills.
++// one stand-in is the device registry behind the seam `deviceResolver`, which the test steers.
+ //
++// THE APP HAS NO DOMAIN MODULE (decision D85): `without-domain-modules` is the first import, so
++// the eleven domain modules and the realtime channel add no route, whichever of them have
++// landed. The operations a test calls get a stand-in route built from their registry entry, so
++// the rule that is applied is the registry's, and a stand-in never stands beside a module's
++// route. Every STAGE is the server's own.
++//
+ // No credential is printed: a token is taken from an answer and handed on in a header.
++import './without-domain-modules';
+ import { randomBytes } from 'node:crypto';
+ import { WS_PATH } from '@dems/shared/api';
+ import { DEMO_OPERATOR_PASSWORD, OPERATORS, OPERATOR_IDS } from '@dems/shared/sim';
+@@ -34,7 +41,7 @@
+ } from '../../../modules/identity/__tests__/support';
+ import { credentialLeaks } from '../../config/__tests__/test-config';
+ import { throttleControl } from '../../throttle';
+-import { deviceOperator, guardApp, outcome, webOperator, type GuardApp } from './support';
++import { channelRoute, deviceOperator, guardApp, outcome, webOperator, type GuardApp } from './support';
+ 
+ const db = useTestDatabase({ template: 'seed' });
+ let guard: GuardApp;
+@@ -59,13 +66,26 @@
+   return response;
+ }
+ 
++/**
++ * A handshake request to the socket route: its status, and who stage 4 made of the caller, read
++ * from the record of what passed stage 6 (null when a stage refused it).
++ */
++async function handshake(headers: Headers): Promise<[number, string | null]> {
++  const before = guard.passed.length;
++  const response = await send({ method: 'GET', url: WS_PATH, headers });
++  const record = guard.passed.length > before ? guard.passed.at(-1) : undefined;
++  return [response.statusCode, record?.route === `GET ${WS_PATH}` ? record.principal : null];
++}
++
+ beforeAll(async () => {
+   owner = db.ownerPool();
+   guard = await guardApp(db, {
+     routes: (instance) => {
+-      // The socket route is the realtime row's (W42). Here it only shows that stages 3 to 6 let
+-      // the handshake request of each caller through; `inject` performs no upgrade.
+-      instance.get(WS_PATH, async (request) => ({ principal: request.principal.kind }));
++      // The socket route is the realtime row's (W42), whose unit adds no route in this file's
++      // app. This stand-in only shows that stages 3 to 6 let the handshake request of each
++      // caller through; `inject` performs no upgrade. What stage 4 made of the caller is read
++      // from `guard.passed`, the record of every request that passed stage 6.
++      expect(channelRoute(instance)).toBe(true);
+     },
+   });
+   await insertPairedDevice(owner, DEVICE, OPERATOR_IDS.ANDI, CLOCK_START);
+@@ -335,14 +355,11 @@
+ 
+   it('the socket upgrade carries Origin http://127.0.0.1:4420 and the bearer value: stages 3 to 6 let the handshake request through, also beside a foreign cookie', async () => {
+     const upgrade = { upgrade: 'websocket', connection: 'Upgrade', origin: OWN_ORIGIN, ...OKHTTP };
+-    const withSession = await send({ method: 'GET', url: WS_PATH, headers: { ...token, ...upgrade } });
+-    expect([withSession.statusCode, withSession.json()]).toEqual([200, { principal: 'OPERATOR' }]);
+-    const withCredential = await send({ method: 'GET', url: WS_PATH, headers: { ...device, ...upgrade } });
+-    expect([withCredential.statusCode, withCredential.json()]).toEqual([200, { principal: 'DEVICE' }]);
++    expect(await handshake({ ...token, ...upgrade })).toEqual([200, 'OPERATOR']);
++    expect(await handshake({ ...device, ...upgrade })).toEqual([200, 'DEVICE']);
+     // F55: React Native's socket also sends what its cookie store holds for the host; another
+     // instance's cookie and an unrelated one are no credential and no conflict.
+-    const beside = await send({ method: 'GET', url: WS_PATH, headers: { ...token, ...upgrade, cookie: 'dems_session_4421=abc; theme=dark' } });
+-    expect([beside.statusCode, beside.json()]).toEqual([200, { principal: 'OPERATOR' }]);
++    expect(await handshake({ ...token, ...upgrade, cookie: 'dems_session_4421=abc; theme=dark' })).toEqual([200, 'OPERATOR']);
+   });
+ 
+   it('the handshake request is open at stage 6 to every caller that passed stage 3: anonymous, an unknown bearer value, a retired device; none writes a row', async () => {
+@@ -352,13 +369,14 @@
+     guard.devices.retire(RETIRED_DEVICE);
+     const unknown = bearer(`ses_${randomBytes(32).toString('base64url')}`);
+     for (const headers of [{}, { origin: OWN_ORIGIN }, { origin: WEB_ORIGIN }, unknown, retired]) {
+-      const response = await send({ method: 'GET', url: WS_PATH, headers: { ...headers, ...upgrade } });
+-      expect([response.statusCode, response.json()]).toEqual([200, { principal: 'ANONYMOUS' }]);
++      expect(await handshake({ ...headers, ...upgrade })).toEqual([200, 'ANONYMOUS']);
+     }
+     // Stage 3 still decides the upgrade: a cookie needs a web console origin, a foreign origin is refused.
+     expect(outcome(await send({ method: 'GET', url: WS_PATH, headers: { ...cookie, ...upgrade } }))).toEqual([...ORIGIN_REFUSED]);
+     expect(outcome(await send({ method: 'GET', url: WS_PATH, headers: { origin: FOREIGN_ORIGIN, ...upgrade } }))).toEqual([...ORIGIN_REFUSED]);
+-    expect((await send({ method: 'GET', url: WS_PATH, headers: { ...cookie, origin: WEB_ORIGIN, ...upgrade } })).json()).toEqual({ principal: 'OPERATOR' });
++    expect(await handshake({ ...cookie, origin: WEB_ORIGIN, ...upgrade })).toEqual([200, 'OPERATOR']);
++    // A refused handshake request never passed stage 6.
++    expect(await handshake({ origin: FOREIGN_ORIGIN, ...upgrade })).toEqual([403, null]);
+     expect((await readTrail(owner)).length).toBe(before);
+     expect(await throttleControl(guard.app).inspect('class:local')).toMatchObject({ used: 0 });
+   });
+--- a/apps/core-server/src/modules/rbac/__tests__/matrix.db.test.ts
++++ b/apps/core-server/src/modules/rbac/__tests__/matrix.db.test.ts
+@@ -5,6 +5,12 @@
+ // The real app factory on clones of the seed, as `dems_app`, with every stage as the server has
+ // it. An app that is BOOTED here gets the engine on a manual timer (decision D77): the engine
+ // ticks only when a test fires it, and every count is relative to the trail after the boot.
++//
++// THE APP HAS NO DOMAIN MODULE (decision D85): `without-domain-modules` is the first import, so
++// the domain modules and the realtime channel add no route, whichever of them have landed. The
++// operations a test calls get a stand-in route built from their registry entry. Nothing here
++// pins the list of boot steps either: a later row may add one.
++import '../../../plugins/permission-guard/__tests__/without-domain-modules';
+ import { ADMINISTRATION_EXAMPLES, CORE_API_OPERATIONS, CoreApiAccessCondition, CoreApiAccessKind, validateCoreApiResponse, type CoreApiRegistryOperation } from '@dems/shared/api';
+ import { OPERATORS, OperatorRole, Permission, ROLE_PERMISSIONS } from '@dems/shared/sim';
+ import type { Pool } from 'pg';
+@@ -45,7 +51,8 @@
+ const MATRIX = '/api/v1/rbac/matrix';
+ const ROLES = Object.values(OperatorRole);
+ const PERMISSIONS = Object.values(Permission);
+-const BOOT_STEPS = ['B-1', 'B-2', 'B-3', 'B-4', 'B-5', 'B-6', 'B-7', 'B-8', 'B-9', 'engine.rehydrate', RBAC_BOOT_STEP];
++/** The steps this row's step comes after: the nine database checks and the engine's. */
++const STEPS_BEFORE = ['B-1', 'B-2', 'B-3', 'B-4', 'B-5', 'B-6', 'B-7', 'B-8', 'B-9', 'engine.rehydrate'];
+ 
+ const passedSteps = (app: GuardApp): unknown[] =>
+   app.log
+@@ -91,8 +98,13 @@
+ });
+ 
+ describe('the boot step rbac.matrix on a seeded database', () => {
+-  it('passes last, after the nine checks and the engine; the server is ready and has not listened', () => {
+-    expect(passedSteps(guard)).toEqual(BOOT_STEPS);
++  it('passes, after the nine checks and the engine; the server is ready and has not listened', () => {
++    const passed = passedSteps(guard);
++    expect(passed.filter((step) => step === RBAC_BOOT_STEP)).toHaveLength(1);
++    for (const step of STEPS_BEFORE) {
++      expect(passed).toContain(step);
++      expect(passed.indexOf(step)).toBeLessThan(passed.indexOf(RBAC_BOOT_STEP));
++    }
+     expect(guard.app.readiness.snapshot()).toEqual({ database: true, engine: true });
+     expect(guard.app.server.listening).toBe(false);
+     expect(guard.log.lines().filter((line) => Number(line['level']) >= 50)).toEqual([]);
+@@ -350,16 +362,26 @@
+ 
+     const { app, stopped } = await boot(target, { standIns: ['listUsers', 'assignUserRole', 'startSession'] });
+     expect(stopped?.stepId).toBe(RBAC_BOOT_STEP);
+-    expect(passedSteps(app)).toEqual(BOOT_STEPS.slice(0, -1));
++    expect(passedSteps(app)).toEqual(expect.arrayContaining(STEPS_BEFORE));
++    expect(passedSteps(app)).not.toContain(RBAC_BOOT_STEP);
+     expect(stopped?.cause).toBeInstanceOf(AccessRuleError);
++    // One problem for every registered route whose rule names USER_ADMIN, in the order the
++    // routes were registered, then the mismatch of the vocabulary.
++    const naming = permissionGuard(app.app)
++      .registeredRules()
++      .filter((rule) => rule.permissions.includes(Permission.USER_ADMIN));
++    expect(naming.map((rule) => rule.operationId)).toEqual(expect.arrayContaining(['listUsers', 'assignUserRole']));
+     expect(stopped?.cause).toMatchObject({
+       code: AccessRuleErrorCode.PERMISSION_NOT_STORED,
+       problems: [
+-        { code: 'PERMISSION_NOT_STORED', operationId: 'listUsers', route: 'GET /api/v1/admin/users' },
+-        { code: 'PERMISSION_NOT_STORED', operationId: 'assignUserRole', route: 'POST /api/v1/admin/users/:id/role' },
++        ...naming.map((rule) => ({ code: 'PERMISSION_NOT_STORED', operationId: rule.operationId, route: `${rule.method} ${rule.url}` })),
+         { code: 'STORED_MATRIX_MISMATCH', operationId: null, detail: 'permissions not stored: USER_ADMIN' },
+       ],
+     });
++    const cause = stopped?.cause;
++    expect(cause instanceof AccessRuleError ? cause.problems : []).toContainEqual(
++      expect.objectContaining({ code: 'PERMISSION_NOT_STORED', operationId: 'listUsers', route: 'GET /api/v1/admin/users' }),
++    );
+     expect(app.app.server.listening).toBe(false);
+     expect(permissionGuard(app.app).matrix()).toBeNull();
+     const line = app.log.lines().find((entry) => entry['msg'] === 'the stored role matrix does not fit the access rules');
+@@ -371,8 +393,9 @@
+     const admin = database.ownerPool();
+     await admin.query("DELETE FROM public.role_permissions WHERE permission_id = 'DEMO_CONTROL'");
+     await admin.query("DELETE FROM public.permissions WHERE id = 'DEMO_CONTROL'");
+-    const { stopped } = await boot(target);
++    const { app, stopped } = await boot(target);
+     expect(stopped?.stepId).toBe(RBAC_BOOT_STEP);
++    expect(permissionGuard(app.app).registeredRules().filter((rule) => rule.permissions.includes(Permission.DEMO_CONTROL))).toEqual([]);
+     expect(stopped?.cause).toMatchObject({ code: AccessRuleErrorCode.STORED_MATRIX_MISMATCH, problems: [{ detail: 'permissions not stored: DEMO_CONTROL' }] });
+   });
+ 
+@@ -385,7 +408,8 @@
+     });
+     expect(stopped?.stepId).toBe(RBAC_BOOT_STEP);
+     expect(stopped?.cause).toMatchObject({ code: AccessRuleErrorCode.ROUTE_WITHOUT_RULES, problems: [{ route: 'GET /api/v1/scratch', operationId: null }] });
+-    expect(passedSteps(app)).toEqual(BOOT_STEPS.slice(0, -1));
++    expect(passedSteps(app)).toEqual(expect.arrayContaining(STEPS_BEFORE));
++    expect(passedSteps(app)).not.toContain(RBAC_BOOT_STEP);
+     expect(app.app.server.listening).toBe(false);
+     // And it is refused at request time all the same.
+     expect((await app.app.inject({ method: 'GET', url: '/api/v1/scratch' })).statusCode).toBe(500);
+--- a/apps/core-server/src/modules/rbac/__tests__/routes.test.ts
++++ b/apps/core-server/src/modules/rbac/__tests__/routes.test.ts
+@@ -9,7 +9,7 @@
+ import { buildApp } from '../../../app';
+ import type { Principal } from '../../../plugins/authenticate';
+ import { captureLog, createFakePool, unitTestConfig, type CapturedLog } from '../../../plugins/config/__tests__/test-config';
+-import { READ_STORED_MATRIX, permissionGuard } from '../../../plugins/permission-guard';
++import { AccessRuleError, READ_STORED_MATRIX, permissionGuard } from '../../../plugins/permission-guard';
+ import { RBAC_BOOT_STEP, RBAC_OPERATIONS } from '../index';
+ 
+ const MATRIX = '/api/v1/rbac/matrix';
+@@ -181,15 +181,29 @@
+ });
+ 
+ describe('the boot step rbac.matrix on a database that does not hold the vocabulary', () => {
+-  it('reloadMatrix refuses an empty matrix by its code, logs the problems and keeps nothing', async () => {
++  it('reloadMatrix refuses an empty matrix, names what is missing, logs the problems and keeps nothing', async () => {
+     const built = await build({ rows: [] });
+     const guard = permissionGuard(built.app);
+-    await expect(guard.reloadMatrix()).rejects.toMatchObject({ name: 'AccessRuleError', code: 'STORED_MATRIX_MISMATCH' });
++    const error = await guard.reloadMatrix().then(
++      () => null,
++      (thrown: unknown) => thrown,
++    );
++    expect(error).toBeInstanceOf(AccessRuleError);
++    const { problems } = error as AccessRuleError;
++    // Whichever modules have landed: the two mismatches of the vocabulary are among the problems,
++    // and every other problem is a permission that a registered route names and that is not stored.
++    expect(problems.filter((problem) => problem.code === 'STORED_MATRIX_MISMATCH').map((problem) => problem.detail)).toEqual([
++      'roles not stored: INVESTIGATOR, SUPERVISOR, TECHNICIAN',
++      expect.stringMatching(/^permissions not stored: SESSION_START, .*DEMO_CONTROL$/),
++    ]);
++    const named = guard.registeredRules().flatMap((rule) => rule.permissions.map((permission) => `${rule.operationId} ${permission}`));
++    expect(
++      problems.filter((problem) => problem.code !== 'STORED_MATRIX_MISMATCH').map((problem) => `${problem.code} ${problem.operationId} ${/names (\w+),/.exec(problem.detail)?.[1]}`),
++    ).toEqual(named.map((pair) => `PERMISSION_NOT_STORED ${pair}`));
++    expect(['STORED_MATRIX_MISMATCH', 'PERMISSION_NOT_STORED']).toContain((error as AccessRuleError).code);
+     expect(guard.matrix()).toBeNull();
+-    expect(built.log.lines().find((line) => line['msg'] === 'the stored role matrix does not fit the access rules')).toMatchObject({
+-      level: 50,
+-      code: 'STORED_MATRIX_MISMATCH',
+-    });
++    const line = built.log.lines().find((entry) => entry['msg'] === 'the stored role matrix does not fit the access rules');
++    expect(line).toMatchObject({ level: 50, code: (error as AccessRuleError).code });
+   });
+ 
+   it('reloadMatrix hands a driver failure on, logged by its code only', async () => {

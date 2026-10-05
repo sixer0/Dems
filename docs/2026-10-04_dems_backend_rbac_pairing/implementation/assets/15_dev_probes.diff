@@ -1,0 +1,207 @@
+--- .cache/rollback/W15/dev-probes.ts.pre	2026-10-04 11:06:05
++++ apps/mobile/src/runtime/dev-probes.ts	2026-10-04 11:25:24
+@@ -16,6 +16,8 @@
+  * | Probe | Proves |
+  * |-------|--------|
+  * | `core-client` | Early proof (e): the registry-driven typed client (`@dems/shared/client`, HB-9) on Hermes with the default global `fetch`: GET, POST with a JSON body and a bearer header, the error envelope, 429 with `retry-after`, a contract violation, no answer, the time-out; and a socket opened with an `Authorization` header (CA-08). The clients are the default ones, typed by the registry's literal table |
++ * | `secure-store` | Early proof (g), plan row W15: `expo-secure-store` through the wrapper `./secure-credentials` (the package's only importer). One fixed probe item, `dems.live.probe.v1`, with a meaningless value made on the device: written, read and deleted without an authentication requirement, then with `requireAuthentication: true` (write, read, the write after a rotation, delete). Its lines carry the tag `[DEMS-PROBE-W15 run=<id>]`. It needs no Core server and no reverse rule. A protected step that does not settle within 8 s is reported as `pending` (an OS prompt is waiting; nothing answers it) and the remaining protected steps are skipped. The item is deleted at the end in every case |
++ * | `secure-store-wait` | The same probe, waiting 60 s per protected step: for a re-run on a device where the USER answers the OS prompts (no agent does) |
+  *
+  * The probe holds no secret. Its bearer value is an obviously fake string made at run time; only its
+  * prefix and length are ever logged. It changes no setting of the app. The harness offers a dummy
+@@ -23,10 +25,18 @@
+  * delete it again, and it expires by itself after 60 s.
+  */
+ import { Platform } from 'react-native';
++import * as Device from 'expo-device';
++import * as LocalAuthentication from 'expo-local-authentication';
+ import { fetch as expoFetch } from 'expo/fetch';
+ import { CORE_API_EXAMPLES, EvidenceExportRequestSchema, SessionStopRequestSchema, sessionCreateSchema } from '@dems/shared/api';
+ import { createCoreClient, type CoreCallResult, type CoreClientLogLine, type CoreFetch } from '@dems/shared/client';
+ import { reportRuntimeIssue } from './log';
++import {
++  isUnprotectedBiometricItemAllowed,
++  secureStoreDevProbe,
++  type SecureStoreOutcome,
++  type SecureStoreRead,
++} from './secure-credentials';
+ 
+ /** The address every app build uses for the Core server; `adb reverse` maps it to the host (01_specs §2.4). */
+ const CORE_ORIGIN = 'http://127.0.0.1:4420';
+@@ -34,6 +44,11 @@
+ /** A device port with no reverse rule and no listener: a request to it gets no answer. */
+ const DEAD_ORIGIN = 'http://127.0.0.1:4429';
+ const LOG_TAG = 'DEMS-PROBE-W12';
++/** The log tag of a probe that is not W12's. A name without an entry keeps `LOG_TAG`. */
++const LOG_TAGS: Readonly<Record<string, string>> = {
++  'secure-store': 'DEMS-PROBE-W15',
++  'secure-store-wait': 'DEMS-PROBE-W15',
++};
+ 
+ type Details = Record<string, unknown>;
+ type Line = (check: string, pass: boolean, details: Details) => void;
+@@ -381,11 +396,155 @@
+     status: after.status,
+     cookiePresent: after.body?.cookiePresent ?? null,
+     error: after.error,
++  });
++}
++
++/** A meaningless probe value, made on the device at each run. Never a credential, never logged. */
++function probeValue(): string {
++  let hex = '';
++  for (let index = 0; index < 24; index += 1) hex += Math.floor(Math.random() * 16).toString(16);
++  return `PROBE_W15_${hex}`;
++}
++
++type StoreStep = SecureStoreOutcome | SecureStoreRead<string>;
++
++/** What one secure-store step did, without any value. `pending`: it did not settle in the wait. */
++interface StepObservation {
++  readonly outcome: 'ok' | 'threw' | 'pending';
++  readonly ms: number;
++  readonly result: StoreStep | null;
++}
++
++function describeStep(step: StepObservation): Details {
++  const { result } = step;
++  if (result === null) return { outcome: step.outcome, ms: step.ms };
++  if (!result.ok) return { outcome: step.outcome, ms: step.ms, code: result.code, messageClass: result.reason, nativeCode: result.nativeCode };
++  return { outcome: step.outcome, ms: step.ms };
++}
++
++/**
++ * Runs one step of the wrapper's probe item and measures it. The wrapper never throws, so `threw`
++ * means "the store rejected and the wrapper returned its code". A step still unsettled after
++ * `waitMs` is `pending`: on a device with an enrolled fingerprint that is the OS prompt waiting.
++ */
++async function observe(run: () => Promise<StoreStep>, waitMs: number): Promise<StepObservation> {
++  const started = Date.now();
++  let timer: ReturnType<typeof setTimeout> | undefined;
++  const pending = new Promise<null>((resolve) => {
++    timer = setTimeout(() => resolve(null), waitMs);
+   });
++  try {
++    const result = await Promise.race([run(), pending]);
++    const ms = Date.now() - started;
++    if (result === null) return { outcome: 'pending', ms, result: null };
++    return { outcome: result.ok ? 'ok' : 'threw', ms, result };
++  } catch (error) {
++    // Not expected (the wrapper returns failures); kept so that a probe step can never throw.
++    reportRuntimeIssue('error', 'runtime.devProbes.secureStore.step', error instanceof Error ? error.name : 'unknown error');
++    return { outcome: 'threw', ms: Date.now() - started, result: null };
++  } finally {
++    if (timer !== undefined) clearTimeout(timer);
++  }
+ }
+ 
++/** Whether a read returned the expected text: `equal`, `absent` or `different`. Never the text. */
++function compare(step: StepObservation, expected: string): 'equal' | 'absent' | 'different' | 'not-read' {
++  const { result } = step;
++  if (result === null || !result.ok || !('value' in result)) return 'not-read';
++  if (result.value === null) return 'absent';
++  return result.value === expected ? 'equal' : 'different';
++}
++
++/**
++ * Early proof (g), plan row W15. The unprotected steps must work (PASS or FAIL). A protected step
++ * is an OBSERVATION: its line is PASS when the step was observed, whatever it did, and the details
++ * say what it did (`ok`, `threw` with the code and the message class, or `pending`). Nothing is
++ * done to make a protected step succeed.
++ */
++async function secureStoreProbe({ line }: DevProbeContext, waitMs: number): Promise<void> {
++  const probe = secureStoreDevProbe;
++  if (probe === null) {
++    line('S0 environment', false, { error: 'the wrapper exports no probe (not a debug build)' });
++    return;
++  }
++
++  // S0: what the device and the library say. Read-only calls; none of them shows a prompt.
++  const localAuth: Details = {};
++  try {
++    localAuth.hasHardware = await LocalAuthentication.hasHardwareAsync();
++    localAuth.isEnrolled = await LocalAuthentication.isEnrolledAsync();
++    localAuth.enrolledLevel = await LocalAuthentication.getEnrolledLevelAsync();
++  } catch (error) {
++    localAuth.error = error instanceof Error ? error.name : 'unknown error';
++  }
++  line('S0 environment', true, {
++    isDevice: Device.isDevice,
++    platformApiLevel: Device.platformApiLevel,
++    osVersion: Platform.Version,
++    model: Device.modelName,
++    deviceType: Device.deviceType,
++    debugBuild: __DEV__,
++    canUseBiometricAuthentication: probe.canUseBiometricAuthentication(),
++    unprotectedBiometricItemAllowed: isUnprotectedBiometricItemAllowed(),
++    localAuthentication: localAuth,
++    item: probe.itemKey,
++    waitMs,
++  });
++
++  // S1: nothing is left from an earlier run (an item left behind is deleted and reported).
++  const before = await observe(() => probe.read(false), waitMs);
++  const leftover = compare(before, '') !== 'absent';
++  if (leftover) await observe(() => probe.remove(), waitMs);
++  line('S1 probe item absent before the run', before.outcome === 'ok' && !leftover, { ...describeStep(before), leftoverDeleted: leftover });
++
++  // U1 to U4: the item without an authentication requirement (how the device credential is stored).
++  const plain = probeValue();
++  const plainWrite = await observe(() => probe.write(plain, false), waitMs);
++  line('U1 unprotected write', plainWrite.outcome === 'ok', describeStep(plainWrite));
++  const plainRead = await observe(() => probe.read(false), waitMs);
++  line('U2 unprotected read gives the written value', compare(plainRead, plain) === 'equal', {
++    ...describeStep(plainRead),
++    read: compare(plainRead, plain),
++    length: plain.length,
++  });
++  const plainDelete = await observe(() => probe.remove(), waitMs);
++  line('U3 unprotected delete', plainDelete.outcome === 'ok', describeStep(plainDelete));
++  const plainGone = await observe(() => probe.read(false), waitMs);
++  line('U4 read after the delete gives nothing', compare(plainGone, plain) === 'absent', { ...describeStep(plainGone), read: compare(plainGone, plain) });
++
++  // P1 to P6: the item with `requireAuthentication: true` (how the biometric token would be stored).
++  // Observations only. After a `pending` step the OS prompt is still open, so the rest is skipped.
++  const first = probeValue();
++  const second = probeValue();
++  const third = probeValue();
++  let blocked = false;
++  const protectedStep = async (check: string, run: () => Promise<StoreStep>, extra: (step: StepObservation) => Details = () => ({})) => {
++    if (blocked) {
++      line(check, true, { outcome: 'skipped', why: 'an earlier protected step is still pending' });
++      return;
++    }
++    const step = await observe(run, waitMs);
++    if (step.outcome === 'pending') blocked = true;
++    line(check, true, { ...describeStep(step), ...extra(step) });
++  };
++  await protectedStep('P1 protected write', () => probe.write(first, true));
++  await protectedStep('P2 protected read', () => probe.read(true), (step) => ({ read: compare(step, first) }));
++  await protectedStep('P3 rotation: delete of the old value', () => probe.remove());
++  await protectedStep('P4 rotation: protected write of a new value', () => probe.write(second, true));
++  await protectedStep('P5 rotation in place: protected write over the stored value', () => probe.write(third, true));
++  await protectedStep('P6 protected read after the rotation', () => probe.read(true), (step) => ({ read: compare(step, third) }));
++
++  // Z1, Z2: the probe item is gone, whatever happened above. A delete needs no authentication.
++  const cleanup = await observe(() => probe.remove(), waitMs);
++  line('Z1 delete of the probe item', cleanup.outcome === 'ok', describeStep(cleanup));
++  const after = await observe(() => probe.read(false), waitMs);
++  line('Z2 probe item absent after the run', compare(after, first) === 'absent', { ...describeStep(after), read: compare(after, first), protectedStepPending: blocked });
++}
++
+ const PROBES: Readonly<Record<string, (context: DevProbeContext) => Promise<void>>> = {
+   'core-client': coreClientProbe,
++  'secure-store': (context) => secureStoreProbe(context, 8_000),
++  'secure-store-wait': (context) => secureStoreProbe(context, 60_000),
+ };
+ 
+ /** Probe names in flight, so a link delivered twice (launch URL and link event) runs a probe once. */
+@@ -396,7 +555,7 @@
+  * Never throws: a probe that throws is logged as a FAIL line and reported.
+  */
+ export async function runDevProbe(name: string, run: string): Promise<void> {
+-  const prefix = `[${LOG_TAG} run=${run}]`;
++  const prefix = `[${LOG_TAGS[name] ?? LOG_TAG} run=${run}]`;
+   const key = `${name}/${run}`;
+   if (running.has(key)) return;
+   running.add(key);

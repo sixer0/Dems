@@ -1,0 +1,42 @@
+#!/bin/sh
+# W54: the top bar's horizontal budget, measured in a real browser. Simulated mode only: Vite on the
+# lane's port and a headless Chromium; NO backend is started. Run inside the lane lock:
+#   /usr/bin/lockf -k -t 900 .locks/core-server.lane3.lock /bin/sh .cache/w54/lane/run_measure.sh <label>
+set -u
+K=3; VITE=5178; DEV=9398
+LABEL="${1:-measure}"
+OUT=.cache/w54/lane/out
+CHROME="$HOME/Library/Caches/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-mac-arm64/chrome-headless-shell"
+[ -n "${TMPDIR:-}" ] || { echo "ABORT: TMPDIR is not set"; exit 6; }
+PROFILE="${TMPDIR%/}/w54-chrome-profile"
+mkdir -p "$OUT/$LABEL"
+listening() { lsof -nP -iTCP:"$1" -sTCP:LISTEN >/dev/null 2>&1; }
+VITE_PID=""; CHROME_PID=""; STARTED_VITE=0; STARTED_CHROME=0
+stop_all() {
+  if [ "$STARTED_CHROME" = 1 ]; then kill "$CHROME_PID" 2>/dev/null; wait "$CHROME_PID" 2>/dev/null; P=$(lsof -nP -tiTCP:$DEV -sTCP:LISTEN 2>/dev/null); [ -n "$P" ] && kill $P 2>/dev/null; echo "chrome stopped"; fi
+  if [ "$STARTED_VITE" = 1 ]; then
+    kill "$VITE_PID" 2>/dev/null; wait "$VITE_PID" 2>/dev/null; echo "vite: npm exit status $?"
+    i=0; while listening $VITE && [ $i -lt 20 ]; do i=$((i + 1)); sleep 0.25; done
+    P=$(lsof -nP -tiTCP:$VITE -sTCP:LISTEN 2>/dev/null); [ -n "$P" ] && { echo "vite: fallback kill of the listener $P"; kill $P 2>/dev/null; }
+    : > .locks/core-server.lane$K.vite.pid
+  fi
+  [ -d "$PROFILE" ] && rm -rf "$PROFILE"
+  echo "== listeners left on 4423, $VITE, $DEV (expect none):"
+  lsof -nP -iTCP:4423 -iTCP:$VITE -iTCP:$DEV -sTCP:LISTEN; echo "lsof exit $? (1 with no output: no listener)"
+  date '+%Y-%m-%d %H:%M:%S %Z'
+}
+trap stop_all EXIT
+for p in $VITE $DEV; do
+  if listening $p; then echo "port $p is in use: ABORT"; lsof -nP -iTCP:$p -sTCP:LISTEN; exit 3; fi
+done
+date '+%Y-%m-%d %H:%M:%S %Z'
+echo "-- listeners on mock-core's port 4400 (not started and not used here):"; lsof -nP -iTCP:4400 -sTCP:LISTEN; echo "lsof exit $?"
+npm run dev -w @dems/core-web -- --host 127.0.0.1 --port $VITE --strictPort > "$OUT/$LABEL/vite.log" 2>&1 &
+VITE_PID=$!; STARTED_VITE=1; echo $VITE_PID > .locks/core-server.lane$K.vite.pid
+i=0; until listening $VITE || [ $i -ge 120 ]; do i=$((i + 1)); sleep 0.25; done
+listening $VITE || { echo "ABORT: Vite does not listen"; exit 5; }
+rm -rf "$PROFILE"
+"$CHROME" --remote-debugging-port=$DEV --remote-debugging-address=127.0.0.1 --user-data-dir="$PROFILE" --no-first-run --disable-background-networking --disable-component-update --disable-sync --disable-default-apps --disable-domain-reliability --host-resolver-rules="MAP * ~NOTFOUND, EXCLUDE 127.0.0.1, EXCLUDE localhost" --window-size=1440,900 about:blank > "$OUT/$LABEL/chrome.log" 2>&1 &
+CHROME_PID=$!; STARTED_CHROME=1
+i=0; until curl -s http://127.0.0.1:$DEV/json/version >/dev/null 2>&1 || [ $i -ge 60 ]; do i=$((i + 1)); sleep 0.25; done
+node --import tsx .cache/w54/lane/measure-driver.mjs $DEV $VITE "$OUT/$LABEL/measure.json" "$OUT/$LABEL"; echo "measure-driver exit $?"

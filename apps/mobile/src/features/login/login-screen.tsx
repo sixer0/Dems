@@ -49,10 +49,12 @@ export function LoginScreen() {
   const { layoutClass } = useLayoutClass();
   const insets = useSafeAreaInsets();
   const focused = useIsFocused();
-  const { lastSignOut } = useAuthSession();
+  const { lastSignOut, notice: authNotice } = useAuthSession();
 
-  // M-APP-02 after a sign-out; M-PG-LOGIN otherwise (chosen once, at mount).
-  const choreography = useLoginChoreography(lastSignOut !== null ? 'return' : 'enter', settings);
+  // M-APP-02 after a sign-out; M-PG-LOGIN otherwise (chosen once, at mount). LIVE mode (backend
+  // task W59): a session the Core ended (`TOKEN_REUSE`, a disabled account, the 8-hour limit) is a
+  // return too; the auth layer's notice tells it, and is `null` in the other modes and at a cold start.
+  const choreography = useLoginChoreography(lastSignOut !== null || authNotice !== null ? 'return' : 'enter', settings);
   const controller = useLoginController({ onRejected: choreography.shake, onAccepted: choreography.leave });
 
   // Ambient loops (§7.3 Login, ≤ 4): ring rotation, bracket breathing, Ken Burns, gold dust. The

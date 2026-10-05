@@ -15,6 +15,7 @@ import {
 import { SlidingNumber } from '@/components/ui/sliding-number'
 import { useAmbientLoop, useMotionPolicy } from '@/motion'
 import { BrandEmblem } from './brand-emblem'
+import { ModeIndicator } from './mode-indicator'
 import { NotificationsBell } from './notifications-bell'
 import { SecurePill } from './secure-pill'
 import { BRAND_EMBLEM_LAYOUT_ID } from './shared-layout-ids'
@@ -30,8 +31,9 @@ export interface TopBarProps {
 
 /**
  * Top bar (01_specs §14.4 "Top bar"; research/04 §2.1, §2.5), left to right: logo lockup, date,
- * clock, Device ID, bell, user, SECURE pill, with vertical separators. Narrow widths drop items
- * per 04 §2.5 (CSS in `shell.css`); below 1024 px a hamburger opens the Drawer.
+ * clock, Device ID, mode indicator, bell, user, SECURE pill, with vertical separators. Narrow
+ * widths drop items per 04 §2.5 (CSS in `shell.css`); below 1024 px a hamburger opens the Drawer.
+ * The mode indicator (backend task 04_client_integration_spec §3.2) is never dropped.
  *
  * Motion (03_motion_spec §4; step 41):
  * - The bar's background layer and its content drop in with the shell entrance (`topBar`
@@ -71,6 +73,8 @@ export function TopBar({ mode, drawerOpen, onToggleDrawer }: TopBarProps) {
         <Separator orientation="vertical" className="dems-topbar-sep dems-hide-below-md" />
         <DeviceBlock />
         <Separator orientation="vertical" className="dems-topbar-sep dems-hide-below-md" />
+        <ModeIndicator />
+        <Separator orientation="vertical" className="dems-topbar-sep dems-hide-below-sm" />
         <NotificationsBell />
         <Separator orientation="vertical" className="dems-topbar-sep dems-hide-below-sm" />
         <UserMenu />

@@ -1,0 +1,66 @@
+== W02b step 5 2026-10-04 10:38:16 WIB
+$ /usr/bin/lockf -k -t 0 .locks/dems_phone.lock /bin/sh stop_old.sh emulator-5554 dems_phone 84074
+== emulator-5554 (dems_phone, PID 84074) 10:38:16: device lock held
+process check: PID 84074 is the emulator of dems_phone on port 5554
+reverse rules before: [;]
+$ adb -s emulator-5554 emu kill
+OK: killing emulator, bye bye
+OK
+(exit=0)
+PID 84074 gone after 1 s (10:38:17)
+ports 5554 and 5555: no listener (after 0 s)
+$ pgrep -fl -- '-avd dems_phone( |$)'
+(no process)
+$ adb devices
+List of devices attached
+emulator-5556	device
+emulator-5558	device
+
+== emulator-5554 stopped by row W02b (D58): old PID 84074
+stop dems_phone: status 0
+
+$ /usr/bin/lockf -k -t 0 .locks/dems_tablet.lock /bin/sh stop_old.sh emulator-5556 dems_tablet 84299
+== emulator-5556 (dems_tablet, PID 84299) 10:38:17: device lock held
+process check: PID 84299 is the emulator of dems_tablet on port 5556
+reverse rules before: [;]
+$ adb -s emulator-5556 emu kill
+OK: killing emulator, bye bye
+OK
+(exit=0)
+PID 84299 gone after 3 s (10:38:20)
+ports 5556 and 5557: no listener (after 0 s)
+$ pgrep -fl -- '-avd dems_tablet( |$)'
+(no process)
+$ adb devices
+List of devices attached
+emulator-5558	device
+
+== emulator-5556 stopped by row W02b (D58): old PID 84299
+stop dems_tablet: status 0
+
+$ /usr/bin/lockf -k -t 0 .locks/dems_phone2.lock /bin/sh stop_old.sh emulator-5558 dems_phone2 84494
+== emulator-5558 (dems_phone2, PID 84494) 10:38:20: device lock held
+process check: PID 84494 is the emulator of dems_phone2 on port 5558
+reverse rules before: [;]
+$ adb -s emulator-5558 emu kill
+OK: killing emulator, bye bye
+OK
+(exit=0)
+PID 84494 gone after 2 s (10:38:22)
+ports 5558 and 5559: no listener (after 0 s)
+$ pgrep -fl -- '-avd dems_phone2( |$)'
+(no process)
+$ adb devices
+List of devices attached
+
+== emulator-5558 stopped by row W02b (D58): old PID 84494
+stop dems_phone2: status 0
+
+final status=0
+$ ps (emulator processes)
+(end)
+$ adb devices
+List of devices attached
+
+$ lsof listeners 5554-5559
+(end)

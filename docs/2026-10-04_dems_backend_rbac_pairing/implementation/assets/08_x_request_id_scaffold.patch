@@ -1,0 +1,272 @@
+--- a/apps/core-server/src/plugins/response-headers/index.ts
++++ b/apps/core-server/src/plugins/response-headers/index.ts
+@@ -1,7 +1,7 @@
+ /**
+- * Response headers of the Core server (spec §14.2 OR-9; SR-76; assumption SA-13).
++ * Response headers of the Core server (spec §14.2 OR-9; SR-76; assumption SA-13; contract A).
+  *
+- * Every answer, success or error, carries exactly these five:
++ * Every answer, success or error, carries the five headers of OR-9:
+  *
+  *   Cache-Control: no-store
+  *   X-Content-Type-Options: nosniff
+@@ -9,6 +9,14 @@
+  *   Cross-Origin-Resource-Policy: same-origin
+  *   Referrer-Policy: no-referrer
+  *
++ * and the request ID, under the header name the shared contract pins (`x-request-id`):
++ *
++ *   x-request-id: <the ID of this request>
++ *
++ * It is the ID the server made for the request (a UUID; never a value of an incoming header),
++ * the `reqId` of the request's log lines, and the `error.requestId` of an error envelope. A
++ * client can so name a request, successful or not, and an operator can find it in the log.
++ *
+  * `@fastify/helmet` 13.1.1 sets four of them in its `onRequest` hook, so a refusal raised by a
+  * later hook already has them. One `onSend` hook adds `Cache-Control`. `Strict-Transport-Security`
+  * is switched off (plain HTTP on loopback, no TLS), and so is every other helmet default: this
+@@ -22,6 +30,7 @@
+  * This governs the Core server's own answers only. The packaged content-security policy of the
+  * web console is another file and is not touched (OR-6).
+  */
++import { REQUEST_ID_HEADER_NAME } from '@dems/shared/api';
+ import helmet, { type FastifyHelmetOptions } from '@fastify/helmet';
+ import type { FastifyPluginAsync, FastifyReply } from 'fastify';
+ 
+@@ -63,18 +72,21 @@
+ };
+ 
+ /**
+- * Sets all five headers on one reply. For the one answer that passes no hook at all: a request
+- * whose URL the router cannot decode (400 `INVALID_PATH`).
++ * Sets the five headers and the request ID on one reply. For the one answer that passes no hook
++ * at all: a request whose URL the router cannot decode (400 `INVALID_PATH`).
+  */
+ export function applyResponseHeaders(reply: FastifyReply): void {
+   reply.headers(RESPONSE_HEADERS);
++  reply.header(REQUEST_ID_HEADER_NAME, reply.request.id);
+ }
+ 
+ export const responseHeadersPlugin: FastifyPluginAsync = async (app) => {
+   await app.register(helmet, HELMET_OPTIONS);
+ 
+-  app.addHook('onSend', async (_request, reply) => {
++  app.addHook('onSend', async (request, reply) => {
+     reply.header('cache-control', RESPONSE_HEADERS['cache-control']);
+     reply.header('content-security-policy', RESPONSE_HEADERS['content-security-policy']);
++    // The server's own ID of the request (`genReqId` in the app factory), on every answer.
++    reply.header(REQUEST_ID_HEADER_NAME, request.id);
+   });
+ };
+--- a/apps/core-server/src/plugins/response-headers/__tests__/response-headers.test.ts
++++ b/apps/core-server/src/plugins/response-headers/__tests__/response-headers.test.ts
+@@ -1,11 +1,13 @@
+ // Response headers (plan row W08; OR-9, SR-76; AC-B-14 in unit form; assumption SA-13): every
+-// answer, success or error, carries the five headers with their exact values, and none that
+-// OR-9 does not list. No `Strict-Transport-Security`, no CORS header.
++// answer, success or error, carries the five headers with their exact values, the request ID
++// under the name the shared contract pins (contract A; decision D55), and nothing else. No
++// `Strict-Transport-Security`, no CORS header.
++import { REQUEST_ID_HEADER_NAME } from '@dems/shared/api';
+ import type { FastifyInstance, InjectOptions } from 'fastify';
+ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+ import { buildApp } from '../../../app';
+ import { BODY_LIMIT_BYTES } from '../../../config';
+-import { unitTestConfig } from '../../config/__tests__/test-config';
++import { captureLog, unitTestConfig } from '../../config/__tests__/test-config';
+ import { ApiFailure } from '../../error-envelope';
+ import {
+   CONTENT_SECURITY_POLICY_DIRECTIVES,
+@@ -14,9 +16,12 @@
+   RESPONSE_HEADERS,
+ } from '../index';
+ 
+-/** What a response may carry besides the five: set by Fastify, Node or an answer itself. */
++/** What a response may carry besides the five and the request ID: set by Fastify, Node or an answer itself. */
+ const TRANSPORT_HEADERS = ['content-type', 'content-length', 'date', 'connection', 'allow', 'retry-after'];
+ 
++/** The server's request IDs are UUIDs (version 4): 36 characters, none of them from the request. */
++const REQUEST_ID_FORMAT = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
++
+ let app: FastifyInstance;
+ 
+ interface Case {
+@@ -48,23 +53,39 @@
+   { label: 'a refusal by a request stage', status: 503, request: { method: 'GET', url: '/api/v1/guarded' } },
+ ];
+ 
+-beforeAll(async () => {
+-  app = buildApp({ config: unitTestConfig() });
+-  app.post('/api/v1/echo', async (request) => ({ body: request.body }));
+-  app.get('/api/v1/refused', async () => {
++/** The scratch routes of `CASES`, and one with a path parameter. */
++function addScratchRoutes(instance: FastifyInstance): void {
++  instance.post('/api/v1/echo', async (request) => ({ body: request.body }));
++  instance.post('/api/v1/echo/:id', async (request) => ({ body: request.body }));
++  instance.get('/api/v1/refused', async () => {
+     throw new ApiFailure(409, 'INVALID_STATE', 'Not in that state.');
+   });
+-  app.get('/api/v1/boom', async () => {
++  instance.get('/api/v1/boom', async () => {
+     throw new Error('boom');
+   });
+-  app.get('/api/v1/guarded', { config: { operationId: 'guarded' } }, async () => ({}));
+-  await app.ready();
+-  // Only `/api/v1/guarded` is refused at stage 2.
+-  app.stages.replace('readiness', (request) => {
++  instance.get('/api/v1/guarded', { config: { operationId: 'guarded' } }, async () => ({}));
++}
++
++/** Only `/api/v1/guarded` is refused at stage 2. */
++function refuseGuardedAtReadiness(instance: FastifyInstance): void {
++  instance.stages.replace('readiness', (request) => {
+     if (request.routeOptions.config.operationId === 'guarded') {
+       throw new ApiFailure(503, 'NOT_READY', 'The server is not ready. Try again shortly.');
+     }
+   });
++}
++
++/** `error.requestId` of an answer, or undefined when the answer is not an error envelope. */
++function envelopeRequestId(response: { json: () => unknown }): string | undefined {
++  const body = response.json() as { error?: { requestId?: string } };
++  return body.error?.requestId;
++}
++
++beforeAll(async () => {
++  app = buildApp({ config: unitTestConfig() });
++  addScratchRoutes(app);
++  await app.ready();
++  refuseGuardedAtReadiness(app);
+ });
+ 
+ afterAll(() => app.close());
+@@ -80,17 +101,21 @@
+     });
+   });
+ 
+-  it.each(CASES)('$label ($status) carries the five headers and nothing else', async ({ status, request }) => {
+-    const response = await app.inject(request);
+-    expect(response.statusCode).toBe(status);
+-    for (const [name, value] of Object.entries(RESPONSE_HEADERS)) expect(response.headers[name], name).toBe(value);
+-    for (const name of FORBIDDEN_RESPONSE_HEADERS) expect(response.headers[name], name).toBeUndefined();
+-    const others = Object.keys(response.headers).filter(
+-      (name) => !(name in RESPONSE_HEADERS) && !TRANSPORT_HEADERS.includes(name),
+-    );
+-    expect(others).toEqual([]);
+-    expect(response.headers['content-type']).toBe('application/json; charset=utf-8');
+-  });
++  it.each(CASES)(
++    '$label ($status) carries the five headers, the request ID and nothing else',
++    async ({ status, request }) => {
++      const response = await app.inject(request);
++      expect(response.statusCode).toBe(status);
++      for (const [name, value] of Object.entries(RESPONSE_HEADERS)) expect(response.headers[name], name).toBe(value);
++      for (const name of FORBIDDEN_RESPONSE_HEADERS) expect(response.headers[name], name).toBeUndefined();
++      expect(response.headers[REQUEST_ID_HEADER_NAME]).toMatch(REQUEST_ID_FORMAT);
++      const others = Object.keys(response.headers).filter(
++        (name) => !(name in RESPONSE_HEADERS) && name !== REQUEST_ID_HEADER_NAME && !TRANSPORT_HEADERS.includes(name),
++      );
++      expect(others).toEqual([]);
++      expect(response.headers['content-type']).toBe('application/json; charset=utf-8');
++    },
++  );
+ 
+   it('no answer carries Strict-Transport-Security or a CORS header, whatever the Origin', async () => {
+     for (const origin of ['http://127.0.0.1:5173', 'http://evil.example', 'null']) {
+@@ -114,6 +139,96 @@
+   });
+ });
+ 
++describe('the request ID header (contract A; decision D55)', () => {
++  // Its own app: a captured log, and the guard stages replaced by no-ops, because this is about
++  // the header and the log, not about who may call.
++  const log = captureLog();
++  let quiet: FastifyInstance;
++
++  function requestLines(id: unknown): Array<Record<string, unknown>> {
++    return log.lines().filter((line) => line.msg === 'request completed' && line.reqId === id);
++  }
++
++  beforeAll(async () => {
++    quiet = buildApp({ config: unitTestConfig({ logLevel: 'info' }), logStream: log.stream });
++    addScratchRoutes(quiet);
++    await quiet.ready();
++    refuseGuardedAtReadiness(quiet);
++    for (const stage of ['originGuard', 'authenticate', 'throttle', 'accessRule'] as const) {
++      quiet.stages.replace(stage, () => {});
++    }
++  });
++
++  afterAll(() => quiet.close());
++
++  it('has the name the shared contract pins', () => {
++    expect(REQUEST_ID_HEADER_NAME).toBe('x-request-id');
++  });
++
++  it.each(CASES)(
++    '$label ($status): the header is the ID of the request, in the answer and in the log',
++    async ({ status, request }) => {
++      const response = await quiet.inject(request);
++      expect(response.statusCode).toBe(status);
++
++      // The format the contract states: a non-empty string. The server's own: a UUID.
++      const id = response.headers[REQUEST_ID_HEADER_NAME];
++      expect(typeof id).toBe('string');
++      expect(String(id).length).toBeGreaterThanOrEqual(1);
++      expect(id).toMatch(REQUEST_ID_FORMAT);
++
++      // An error envelope repeats it; a success has no envelope, so the header is its only place.
++      if (status >= 400) expect(envelopeRequestId(response)).toBe(id);
++      else expect(envelopeRequestId(response)).toBeUndefined();
++
++      // The correlation key: exactly one request line of the log has this ID, with this status.
++      const lines = requestLines(id);
++      expect(lines).toHaveLength(1);
++      expect(lines[0]?.status).toBe(status);
++    },
++  );
++
++  it('is made by the server: a request ID sent by the caller is never echoed, in any answer', async () => {
++    const CALLER = 'chosen-by-caller-MARK-7c1e9a';
++    const callerHeaders = { 'x-request-id': CALLER, 'request-id': CALLER, 'x-correlation-id': CALLER };
++
++    const success = await quiet.inject({
++      method: 'POST',
++      url: `/api/v1/echo/${CALLER}?requestId=${CALLER}`,
++      headers: callerHeaders,
++      payload: { requestId: CALLER },
++    });
++    const refused = await quiet.inject({ method: 'GET', url: '/api/v1/refused', headers: callerHeaders });
++    const unknown = await quiet.inject({ method: 'GET', url: '/api/v1/nope', headers: callerHeaders });
++    const undecodable = await quiet.inject({ method: 'GET', url: '/api/v1/%E0%A4%A', headers: callerHeaders });
++    expect([success, refused, unknown, undecodable].map((response) => response.statusCode)).toEqual([200, 409, 404, 400]);
++
++    for (const response of [success, refused, unknown, undecodable]) {
++      const id = String(response.headers[REQUEST_ID_HEADER_NAME]);
++      // A UUID from start to end, so it holds nothing of the request: no header, path, query or body value.
++      expect(id).toMatch(REQUEST_ID_FORMAT);
++      expect(id).not.toContain(CALLER);
++      // The caller's value is not sent back under any header name either.
++      expect(Object.values(response.headers).map(String).filter((value) => value.includes(CALLER))).toEqual([]);
++      // And the log knows the request by the server's ID, not by the caller's.
++      expect(requestLines(id)).toHaveLength(1);
++    }
++    for (const response of [refused, unknown, undecodable]) {
++      expect(envelopeRequestId(response)).toBe(response.headers[REQUEST_ID_HEADER_NAME]);
++    }
++    expect(log.text()).not.toContain(CALLER);
++  });
++
++  it('is different for every request', async () => {
++    const responses = await Promise.all(
++      Array.from({ length: 50 }, () => quiet.inject({ method: 'GET', url: '/api/v1/health' })),
++    );
++    const ids = responses.map((response) => response.headers[REQUEST_ID_HEADER_NAME]);
++    expect(new Set(ids).size).toBe(50);
++    for (const id of ids) expect(id).toMatch(REQUEST_ID_FORMAT);
++  });
++});
++
+ describe('the helmet options (SA-13)', () => {
+   it('switch Strict-Transport-Security off and every default that OR-9 does not list', () => {
+     expect(HELMET_OPTIONS.strictTransportSecurity).toBe(false);

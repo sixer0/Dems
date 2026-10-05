@@ -308,6 +308,10 @@ export const securityAudit = {
       DEVICE_MANAGE: 'Manage devices',
       DIAGNOSTICS_RUN: 'Run diagnostics',
       MAINTENANCE: 'Maintenance and updates',
+      // Backend task W16 (D37): the three permissions added to the sim `Permission` set.
+      PAIRING_MANAGE: 'Manage pairing and paired devices',
+      USER_ADMIN: 'Manage users and roles',
+      DEMO_CONTROL: 'Use the demo controls',
     },
   },
 } as const satisfies ResourceTree;

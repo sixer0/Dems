@@ -39,6 +39,7 @@ import {
   type ActiveSessionInfo,
   type AuthContract,
   type AuthOperator,
+  type PairingInfo,
 } from '@/runtime';
 import { createTestSim } from '@/runtime/testing/test-sim';
 
@@ -80,18 +81,20 @@ class FakeSocket implements SocketLike {
 export interface FakeRuntimeState {
   operator: AuthOperator | null;
   session: ActiveSessionInfo;
+  /** The pairing-required gate (MP-9). `undefined` = the contract has none (SIMULATED / HEARTBEAT). */
+  pairing?: PairingInfo;
 }
 
 const IDLE: ActiveSessionInfo = { state: null, sessionId: null, startedAtMs: null };
 
-/** A controllable runtime contract (auth + active session) for route tests. */
+/** A controllable runtime contract (auth + active session + pairing gate) for route tests. */
 export class FakeRuntime {
   private state: FakeRuntimeState;
   private readonly listeners = new Set<() => void>();
   readonly signInCalls: string[] = [];
 
   constructor(initial: Partial<FakeRuntimeState> = {}) {
-    this.state = { operator: initial.operator ?? null, session: initial.session ?? IDLE };
+    this.state = { operator: initial.operator ?? null, session: initial.session ?? IDLE, ...(initial.pairing ? { pairing: initial.pairing } : {}) };
   }
 
   readonly subscribe = (listener: () => void) => {
@@ -118,6 +121,11 @@ export class FakeRuntime {
     act(() => this.set({ session: { state, sessionId, startedAtMs } }));
   }
 
+  /** Set the pairing gate (MP-9): LIVE mode drives it; SIMULATED / HEARTBEAT leave it `undefined`. */
+  setPairing(pairing: PairingInfo | undefined) {
+    act(() => this.set({ pairing }));
+  }
+
   /** The auth part of the contract (signIn succeeds for any non-empty pair, like the stub). */
   auth(): AuthContract {
     const { operator } = this.state;
@@ -136,7 +144,7 @@ export class FakeRuntime {
 
 function FakeRuntimeProvider({ runtime, children }: { runtime: FakeRuntime; children: ReactNode }) {
   const state = useSyncExternalStore(runtime.subscribe, runtime.getSnapshot);
-  const value = createRuntimeContract({ auth: runtime.auth(), session: state.session });
+  const value = createRuntimeContract({ auth: runtime.auth(), session: state.session, ...(state.pairing ? { pairing: state.pairing } : {}) });
   return <RuntimeContractProvider value={value}>{children}</RuntimeContractProvider>;
 }
 

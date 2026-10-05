@@ -1,0 +1,262 @@
+# Plan row W35: the row's database tests, verbose (15:20:27 WIB, exit 0). Command: DEMS_TEST_STEP=57 npm run test:db -w @dems/core-server -- --maxWorkers=2 --reporter=verbose src/modules/evidence
+
+> @dems/core-server@0.2.0 test:db
+> vitest run --project db --maxWorkers=2 --reporter=verbose src/modules/evidence
+
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/apps/core-server
+
+[test:db] PostgreSQL 18.4 on 127.0.0.1:4432; helper role dems_owner, code under test dems_app; run prefix dems_test_step_57_tmdj634c_
+[test:db] stale sweep: dropped 0; kept 20 of younger runs, 0 of live runs, 0 unrecognised; 0 failed
+[test:db] template dems_test_step_57_tmdj634c_tpl_schema: built in 332 ms (create 95 ms, hook 132 ms)
+[test:db] template dems_test_step_57_tmdj634c_tpl_seed: built in 322 ms (create 137 ms, hook 182 ms)
+[test:db] bulk fixture: dems_test_step_57_tmdj634c_tpl_bulk as dems_owner; clock 2026-10-01T03:00:00.000Z; seed 20261004
+[test:db]   table                   minimum   loaded   added  met
+[test:db]   roles                         3        3       0  yes
+[test:db]   permissions                  12       12       0  yes
+[test:db]   role_permissions             18       18       0  yes
+[test:db]   operators                    12       12       9  yes
+[test:db]   operator_credentials         12       12       9  yes
+[test:db]   auth_sessions               300      300     300  yes
+[test:db]   pairing_codes                60       60      60  yes
+[test:db]   paired_devices               40       40      40  yes
+[test:db]   device_credentials           40       40      40  yes
+[test:db]   biometric_tokens             80       83      83  yes
+[test:db]   registry_counters             2        2       0  yes
+[test:db]   audit_log                  5000     5000    4918  yes
+[test:db]   audit_chain_head              1        1       0  yes
+[test:db]   audit_chain_history          25       25      25  yes
+[test:db]   events                     2500     3649    3590  yes
+[test:db]   session_history             520      520     507  yes
+[test:db]   evidence_items              505      515     502  yes
+[test:db]   evidence_tracks            2020     2060    2008  yes
+[test:db]   evidence_custody           1200     1220    1192  yes
+[test:db]   exports                      60       60      59  yes
+[test:db]   alerts                      250      250     250  yes
+[test:db]   health_snapshots           1500     1508    1508  yes
+[test:db]   engine_counters               6        6       1  yes
+[test:db]   active_session                0        0       0  yes
+[test:db]   storage_policy                1        1       0  yes
+[test:db]   console_settings              1        1       0  yes
+[test:db]   core_device                   1        1       0  yes
+[test:db]   core_state                    1        1       0  yes
+[test:db]   hardware_snapshot             1        1       0  yes
+[test:db]   schema_meta                   1        1       0  yes
+[test:db] bulk fixture: every minimum of the 30 tables is met; audit head seq 5000, hash d2d9f9e596ed73d2...; digest 953c92ea4c9e1393...; build 291 ms, write 1364 ms, total 1658 ms
+stdout | src/modules/evidence/__tests__/reads.db.test.ts > operation 39 listEvidence on the seeded database > one page is ONE snapshot: begin read only at REPEATABLE READ, the items, their tracks, their custody entries, commit (5 statements); an empty page is 3
+[w35] round trips of listEvidence: 5 for a page with items (begin, items, tracks, custody, commit), 3 for an empty page
+
+ ✓ |db| src/modules/evidence/__tests__/reads.db.test.ts > operation 39 listEvidence on the seeded database > answers the 13 stored items, newest recording first, in the contract's shape; the last page has no cursor 9ms
+ ✓ |db| src/modules/evidence/__tests__/reads.db.test.ts > operation 39 listEvidence on the seeded database > SOURCE OF TRUTH: what PostgreSQL answers is, item by item and member by member, the engine's committed evidence slice 20ms
+ ✓ |db| src/modules/evidence/__tests__/reads.db.test.ts > operation 39 listEvidence on the seeded database > every role holds EVIDENCE_VIEW: the INVESTIGATOR, the SUPERVISOR and the TECHNICIAN get the same list 11ms
+ ✓ |db| src/modules/evidence/__tests__/reads.db.test.ts > operation 39 listEvidence on the seeded database > AC-B-70: every item lists exactly four tracks, VIDEO-01, VIDEO-02, AUDIO-01 and AUDIO-02, and the two audio tracks have their own hashes 4ms
+ ✓ |db| src/modules/evidence/__tests__/reads.db.test.ts > operation 39 listEvidence on the seeded database > NONE-R: a read writes no audit row and no event, opens no unit of work, publishes nothing and moves no revision 12ms
+ ✓ |db| src/modules/evidence/__tests__/reads.db.test.ts > operation 39 listEvidence on the seeded database > one page is ONE snapshot: begin read only at REPEATABLE READ, the items, their tracks, their custody entries, commit (5 statements); an empty page is 3 5ms
+ ✓ |db| src/modules/evidence/__tests__/reads.db.test.ts > operation 39: paging by a keyset cursor (API-9) > limit 5 walks the 13 items in three pages of 5, 5 and 3, without a repeat and without a gap, in the order of the whole list 8ms
+ ✓ |db| src/modules/evidence/__tests__/reads.db.test.ts > operation 39: paging by a keyset cursor (API-9) > a cursor is the position of the last item of its page, fits the contract's pattern, and names no more than the page did 3ms
+ ✓ |db| src/modules/evidence/__tests__/reads.db.test.ts > operation 39: paging by a keyset cursor (API-9) > every limit from 1 to 14 gives the same 13 items in the same order; a page that ends exactly at the last item has no cursor 141ms
+stdout | src/modules/evidence/__tests__/reads.db.test.ts > operation 39: the filters > status: each value of the vocabulary answers exactly the items of that status
+[w35] seed: items by status {"RECORDED":1,"SEALED":10,"EXPORTED":1,"UNDER_REVIEW":1,"ARCHIVED":0}
+
+ ✓ |db| src/modules/evidence/__tests__/reads.db.test.ts > operation 39: paging by a keyset cursor (API-9) > the default page is 50 and the largest 200: both hold all 13 here 7ms
+ ✓ |db| src/modules/evidence/__tests__/reads.db.test.ts > operation 39: paging by a keyset cursor (API-9) > a cursor past the oldest item answers an empty last page, and one before the newest the whole list 13ms
+ ✓ |db| src/modules/evidence/__tests__/reads.db.test.ts > operation 39: paging by a keyset cursor (API-9) > a cursor works together with a filter: the walk of a filtered list is the filtered list 15ms
+ ✓ |db| src/modules/evidence/__tests__/reads.db.test.ts > operation 39: the filters > status: each value of the vocabulary answers exactly the items of that status 11ms
+ ✓ |db| src/modules/evidence/__tests__/reads.db.test.ts > operation 39: the filters > caseType: each value answers exactly the items of that case type; with a status both must hold 17ms
+ ✓ |db| src/modules/evidence/__tests__/reads.db.test.ts > operation 39: the filters > q: matched without regard to case against the evidence ID, the session ID, the case number and the subject name 39ms
+stdout | src/modules/evidence/__tests__/reads.db.test.ts > operation 40 getEvidence > one item is one snapshot too: begin read only, the item, its tracks, its custody entries, commit; an unknown ID is 3 statements
+[w35] round trips of getEvidence: 5 for an item (begin, item, tracks, custody, commit), 3 for an unknown ID
+
+stdout | src/modules/evidence/__tests__/bulk.db.test.ts > the bulk template: what is stored and what the engine holds > 515 items, 2,060 tracks and 1,220 custody entries are stored, and the engine rehydrated EVERY item: evidence is a slice without a ring
+[w35] bulk: stored items 515, engine slice 515; audit rows stored 5003, in the engine's ring 1000
+
+ ✓ |db| src/modules/evidence/__tests__/reads.db.test.ts > operation 39: the filters > q is a text, never a pattern: the wildcard characters of LIKE are plain characters 14ms
+ ✓ |db| src/modules/evidence/__tests__/reads.db.test.ts > operation 40 getEvidence > answers each of the 13 items as the engine holds it, with the media reference of its bundled package 27ms
+ ✓ |db| src/modules/evidence/__tests__/reads.db.test.ts > operation 40 getEvidence > SR-66, MS-3: the answer holds a reference and no file: no path, no URL, no file name, and exactly two members of media 3ms
+ ✓ |db| src/modules/evidence/__tests__/reads.db.test.ts > operation 40 getEvidence > one item is one snapshot too: begin read only, the item, its tracks, its custody entries, commit; an unknown ID is 3 statements 4ms
+ ✓ |db| src/modules/evidence/__tests__/reads.db.test.ts > operation 40 getEvidence > an unknown ID answers 404 NOT_FOUND in the form a hosted action's own refusal has 3ms
+ ✓ |db| src/modules/evidence/__tests__/reads.db.test.ts > operation 40 getEvidence > an ID that is no evidence ID answers 422 INVALID_INPUT and is never sent to the database 5ms
+ ✓ |db| src/modules/evidence/__tests__/reads.db.test.ts > operation 40 getEvidence > nobody without a session reads an item or the list: 401, and no row 3ms
+ ✓ |db| src/modules/evidence/__tests__/reads.db.test.ts > a read while the database fails > a statement of the read that fails: 503 NOT_READY, one error line with the driver's code, the snapshot rolled back, and the next read answers again 9ms
+ ✓ |db| src/modules/evidence/__tests__/reads.db.test.ts > a read while the database fails > rule M14: a failing statement whose bind parameter is the search text leaves nothing of the statement and nothing of the text in the log or in the persistent error log 6ms
+ ✓ |db| src/modules/evidence/__tests__/reads.db.test.ts > evidence made by the engine while a client walks the list (plan rule: no route of the sessions module is used) > a session sealed between two pages does not shift the walk: the cursor of page 1 still leads to the same page 2 182ms
+ ✓ |db| src/modules/evidence/__tests__/bulk.db.test.ts > the bulk template: what is stored and what the engine holds > 515 items, 2,060 tracks and 1,220 custody entries are stored, and the engine rehydrated EVERY item: evidence is a slice without a ring 9ms
+ ✓ |db| src/modules/evidence/__tests__/bulk.db.test.ts > the bulk template: what is stored and what the engine holds > the order of the list is total: no two items share a recording instant and an ID 1ms
+ ✓ |db| src/modules/evidence/__tests__/bulk.db.test.ts > operation 39 listEvidence at volume > SOURCE OF TRUTH: the default page size walks all 515 stored items in 11 pages, and the walk IS the engine's committed slice, member by member 99ms
+ ✓ |db| src/modules/evidence/__tests__/reads.db.test.ts > evidence made by the engine while a client walks the list (plan rule: no route of the sessions module is used) > the new item is the newest: it is first in a new walk, and the list equals the engine's slice again (14 items) 5ms
+ ✓ |db| src/modules/evidence/__tests__/reads.db.test.ts > evidence made by the engine while a client walks the list (plan rule: no route of the sessions module is used) > MS-2: a session recorded in Live mode has no bundled media, also when its evidence number is one a demo package uses 3ms
+ ✓ |db| src/modules/evidence/__tests__/reads.db.test.ts > evidence made by the engine while a client walks the list (plan rule: no route of the sessions module is used) > it is found by its case number and its subject, in any case 8ms
+ ✓ |db| src/modules/evidence/__tests__/reads.db.test.ts > a session on a paired device (decision D69: a bearer value, no Origin, no cookie) > reads the list and an item and verifies as the web console does; no answer sets a cookie, and the row names the operator of the session 53ms
+stdout | src/modules/evidence/__tests__/bulk.db.test.ts > operation 39 listEvidence at volume > the largest page is 200: three pages of 200, 200 and 115, the same items in the same order; every page validates against the contract
+[w35] bulk: 515 items in 3 pages of 200 read, mapped, validated and serialised in 52 ms (in-process, 15 statements)
+
+ ✓ |db| src/modules/evidence/__tests__/bulk.db.test.ts > operation 39 listEvidence at volume > the largest page is 200: three pages of 200, 200 and 115, the same items in the same order; every page validates against the contract 74ms
+ ✓ |db| src/modules/evidence/__tests__/bulk.db.test.ts > operation 39 listEvidence at volume > small and odd page sizes give the same list: 1 (the first 12 pages), 7, 64 and 199 427ms
+stdout | src/modules/evidence/__tests__/bulk.db.test.ts > operation 39 listEvidence at volume > status: every value answers the stored count of that status, walked in pages of 50; together they are the 515
+[w35] bulk: items by status {"RECORDED":15,"SEALED":410,"EXPORTED":40,"UNDER_REVIEW":20,"ARCHIVED":30}
+
+ ✓ |db| src/modules/evidence/__tests__/bulk.db.test.ts > operation 39 listEvidence at volume > AC-B-70: all 515 items list exactly VIDEO-01, VIDEO-02, AUDIO-01 and AUDIO-02, each track with its own hash 59ms
+ ✓ |db| src/modules/evidence/__tests__/bulk.db.test.ts > operation 39 listEvidence at volume > status: every value answers the stored count of that status, walked in pages of 50; together they are the 515 112ms
+stdout | src/modules/evidence/__tests__/bulk.db.test.ts > operation 39 listEvidence at volume > q matches text outside ASCII without regard to case, which the locale of the cluster (C) alone would not: diacritics, CJK, and characters outside the Basic Multilingual Plane
+[w35] bulk: 14 of 515 subjects hold the Unicode sample; found by it in upper case, by its CJK part and by each of its two astral characters
+
+ ✓ |db| src/modules/evidence/__tests__/bulk.db.test.ts > operation 39 listEvidence at volume > caseType: every value answers the stored count of that case type; a status and a case type together narrow both 88ms
+ ✓ |db| src/modules/evidence/__tests__/bulk.db.test.ts > operation 39 listEvidence at volume > q matches text outside ASCII without regard to case, which the locale of the cluster (C) alone would not: diacritics, CJK, and characters outside the Basic Multilingual Plane 121ms
+stdout | src/modules/evidence/__tests__/bulk.db.test.ts > operation 39 listEvidence at volume > the keyset is answered through the index of the order: the row comparison is an index condition of evidence_items_recorded_at_idx
+[w35] bulk: plan of the keyset page
+[w35]   Limit
+[w35]     ->  Index Only Scan using evidence_items_recorded_at_idx on evidence_items
+[w35]           Index Cond: (ROW(recorded_at, id) < ROW('1788163524000'::bigint, 'EV-20260831-0278'::text))
+
+ ✓ |db| src/modules/evidence/__tests__/bulk.db.test.ts > operation 39 listEvidence at volume > the keyset is answered through the index of the order: the row comparison is an index condition of evidence_items_recorded_at_idx 2ms
+ ✓ |db| src/modules/evidence/__tests__/bulk.db.test.ts > operation 40 getEvidence at volume > MS-2: the 13 dataset items answer DEMO_PACKAGE and every one of the 502 fixture items NONE, also the one whose number a package uses 79ms
+ ✓ |db| src/modules/evidence/__tests__/bulk.db.test.ts > operation 40 getEvidence at volume > text outside ASCII comes back as it was stored: a subject, a note and a marker label with the Unicode sample 3ms
+ ✓ |db| src/modules/evidence/__tests__/bulk.db.test.ts > the three commands on fixture items > a tampered fixture item fails its verification on its tampered track, and a sealed one passes; the sealed rows of both are byte-equal afterwards 28ms
+stdout | src/modules/evidence/__tests__/bulk.db.test.ts > the three commands on fixture items > an export continues the stored export counter, an archive of an archived item writes nothing, an export of a RECORDED or an ARCHIVED item is refused; the sealed rows of all 515 items do not move
+[w35] bulk: SHA-256 of all 2575 sealed rows (515 items, 2,060 tracks) ff908eee2738ff7d1248b949572e18ae3960053378ed8ab7d159e38516ad1c22 before and after an export, three refusals and two archives
+
+ ✓ |db| src/modules/evidence/__tests__/bulk.db.test.ts > the three commands on fixture items > an export continues the stored export counter, an archive of an archived item writes nothing, an export of a RECORDED or an ARCHIVED item is refused; the sealed rows of all 515 items do not move 224ms
+stdout | src/modules/evidence/__tests__/commands.db.test.ts > operation 41 verifyEvidence: the hosted action `verify` > measured round trips of one command: the unit of the hosted action, statement by statement
+[w35] verifyEvidence: 11 statements on one connection, one transaction:
+[w35]    1 BEGIN ISOLATION LEVEL READ COMMITTED
+[w35]    2 SELECT seq, hash FROM public.audit_chain_lock()
+[w35]    3 SELECT set_config('statement_timeout', $1, true)
+[w35]    4 select "id", "username", "rank", "name", "display_name", "initia
+[w35]    5 insert into "audit_log" ("seq", "id", "at", "type", "category", 
+[w35]    6 insert into "events" ("seq", "id", "at", "type", "category", "se
+[w35]    7 UPDATE public.engine_counters SET next_value = GREATEST(next_val
+[w35]    8 update "engine_counters" set "next_value" = $1 where "engine_cou
+[w35]    9 update "evidence_items" set "verification_status" = $1, "verific
+[w35]   10 insert into "evidence_custody" ("evidence_id", "seq", "at", "act
+[w35]   11 COMMIT
+
+ ✓ |db| src/modules/evidence/__tests__/commands.db.test.ts > operation 41 verifyEvidence: the hosted action `verify` > a sealed item verifies: 200 with the verdict of record, one EVIDENCE_VERIFIED row and one event naming the caller, one custody entry, the state position 30ms
+ ✓ |db| src/modules/evidence/__tests__/commands.db.test.ts > operation 41 verifyEvidence: the hosted action `verify` > measured round trips of one command: the unit of the hosted action, statement by statement 10ms
+ ✓ |db| src/modules/evidence/__tests__/commands.db.test.ts > operation 41 verifyEvidence: the hosted action `verify` > the dataset's tampered item fails: 200 with ok false on AUDIO-02 only, one EVIDENCE_VERIFY_FAILED row (CRITICAL), custody VERIFY_FAILED 9ms
+ ✓ |db| src/modules/evidence/__tests__/commands.db.test.ts > operation 41 verifyEvidence: the hosted action `verify` > every role holds EVIDENCE_VIEW: the INVESTIGATOR, the SUPERVISOR and the TECHNICIAN verify, and each row names its caller 23ms
+ ✓ |db| src/modules/evidence/__tests__/commands.db.test.ts > operation 41 verifyEvidence: the hosted action `verify` > SR-65: the actor is the session's operator, whatever a body claims; a time in the body is not used 8ms
+ ✓ |db| src/modules/evidence/__tests__/commands.db.test.ts > operation 41 verifyEvidence: the hosted action `verify` > an item of every status can be verified: RECORDED, EXPORTED and UNDER_REVIEW answer 200 and keep their status 22ms
+ ✓ |db| src/modules/evidence/__tests__/commands.db.test.ts > operation 41 verifyEvidence: the hosted action `verify` > an unknown item: 404 NOT_FOUND with the simulator's code; the unit is rolled back and nothing is stored or published 10ms
+ ✓ |db| src/modules/evidence/__tests__/commands.db.test.ts > operation 41 verifyEvidence: the hosted action `verify` > an ID that is no evidence ID: 422 INVALID_INPUT at the schema stage; the engine is not asked 5ms
+ ✓ |db| src/modules/evidence/__tests__/commands.db.test.ts > operation 41 verifyEvidence: the hosted action `verify` > nobody without a session verifies: 401, no row, no command 3ms
+ ✓ |db| src/modules/evidence/__tests__/commands.db.test.ts > operation 41 verifyEvidence: the hosted action `verify` > ENG-5: a unit whose COMMIT fails answers 503 NOT_READY; nothing is stored, the engine is set back, and the same command works afterwards 41ms
+ ✓ |db| src/modules/evidence/__tests__/commands.db.test.ts > operation 41 verifyEvidence: the hosted action `verify` > a statement of the write-through that fails: the command is refused with an error envelope, nothing is stored and the engine is set back 25ms
+stdout | src/modules/evidence/__tests__/immutability.db.test.ts > AC-B-69: after verify, export, archive and an evidence tamper fault the sealed rows of the item are byte-equal > a dataset item (hashes of its demo package): six steps, one digest
+[w35] AC-B-69 EV-20260929-0001 (DEMO_PACKAGE): SHA-256 of the stored sealed rows (item row without its 7 mutable columns + 4 track rows)
+[w35]   before                                  b9e5fc5eb5f170f7be9a84cd8b78494e444ddfbe79849cdbcef4b9915c313346  rows 5
+[w35]   after verify (every hash matches)       b9e5fc5eb5f170f7be9a84cd8b78494e444ddfbe79849cdbcef4b9915c313346  equal; status SEALED, verification PASS, tampered false, custody 3
+[w35]   after evidence TAMPER fault (AUDIO-02)  b9e5fc5eb5f170f7be9a84cd8b78494e444ddfbe79849cdbcef4b9915c313346  equal; status SEALED, verification NOT_RUN, tampered true, custody 3
+[w35]   after verify (fails on the track)       b9e5fc5eb5f170f7be9a84cd8b78494e444ddfbe79849cdbcef4b9915c313346  equal; status SEALED, verification FAIL, tampered true, custody 4
+[w35]   after the fault cleared                 b9e5fc5eb5f170f7be9a84cd8b78494e444ddfbe79849cdbcef4b9915c313346  equal; status SEALED, verification NOT_RUN, tampered false, custody 4
+[w35]   after export                            b9e5fc5eb5f170f7be9a84cd8b78494e444ddfbe79849cdbcef4b9915c313346  equal; status EXPORTED, verification NOT_RUN, tampered false, custody 5
+[w35]   after archive                           b9e5fc5eb5f170f7be9a84cd8b78494e444ddfbe79849cdbcef4b9915c313346  equal; status ARCHIVED, verification NOT_RUN, tampered false, custody 6
+
+stdout | src/modules/evidence/__tests__/immutability.db.test.ts > AC-B-69: after verify, export, archive and an evidence tamper fault the sealed rows of the item are byte-equal > a dataset item (hashes of its demo package): six steps, one digest
+[w35] AC-B-69 all 65 sealed rows of the database (13 items, 52 tracks): 52811c3067b7655cde7912c06fe0e66dd4b70b15269a7f3a6b9b6c4884cc8c37 before and after
+
+ ✓ |db| src/modules/evidence/__tests__/immutability.db.test.ts > AC-B-69: after verify, export, archive and an evidence tamper fault the sealed rows of the item are byte-equal > a dataset item (hashes of its demo package): six steps, one digest 119ms
+stdout | src/modules/evidence/__tests__/immutability.db.test.ts > AC-B-69: after verify, export, archive and an evidence tamper fault the sealed rows of the item are byte-equal > the tamper fault on VIDEO-01: the same six steps on another item, the same result
+[w35] AC-B-69 EV-20261001-0007 (DEMO_PACKAGE): SHA-256 of the stored sealed rows (item row without its 7 mutable columns + 4 track rows)
+[w35]   before                                  0327a1b3b4e60dc3b009781dac85f951bdf27602f6af17ac93ed1f71cb84ffe8  rows 5
+[w35]   after archive                           0327a1b3b4e60dc3b009781dac85f951bdf27602f6af17ac93ed1f71cb84ffe8  equal; status ARCHIVED, verification NOT_RUN, tampered false, custody 6
+
+stdout | src/modules/evidence/__tests__/immutability.db.test.ts > AC-B-69: after verify, export, archive and an evidence tamper fault the sealed rows of the item are byte-equal > the tamper fault on VIDEO-02: the same six steps on another item, the same result
+[w35] AC-B-69 EV-20261001-0009 (DEMO_PACKAGE): SHA-256 of the stored sealed rows (item row without its 7 mutable columns + 4 track rows)
+[w35]   before                                  bcc6baca261b0510f9a31ca56ef50b1c766603623258870e46c1ab38c4a87d77  rows 5
+[w35]   after archive                           bcc6baca261b0510f9a31ca56ef50b1c766603623258870e46c1ab38c4a87d77  equal; status ARCHIVED, verification NOT_RUN, tampered false, custody 6
+
+ ✓ |db| src/modules/evidence/__tests__/immutability.db.test.ts > AC-B-69: after verify, export, archive and an evidence tamper fault the sealed rows of the item are byte-equal > the tamper fault on VIDEO-01: the same six steps on another item, the same result 75ms
+ ✓ |db| src/modules/evidence/__tests__/immutability.db.test.ts > AC-B-69: after verify, export, archive and an evidence tamper fault the sealed rows of the item are byte-equal > the tamper fault on VIDEO-02: the same six steps on another item, the same result 82ms
+stdout | src/modules/evidence/__tests__/commands.db.test.ts > operation 42 exportEvidence: the hosted action `exportEvidence` > the SUPERVISOR exports a sealed item: 202 with the export ID, one EVIDENCE_EXPORTED row and event, one custody entry, one export record with the reason
+[w35] exportEvidence: 13 statements on one connection, one transaction:
+[w35]    1 BEGIN ISOLATION LEVEL READ COMMITTED
+[w35]    2 SELECT seq, hash FROM public.audit_chain_lock()
+[w35]    3 SELECT set_config('statement_timeout', $1, true)
+[w35]    4 select "id", "username", "rank", "name", "display_name", "initia
+[w35]    5 insert into "audit_log" ("seq", "id", "at", "type", "category", 
+[w35]    6 insert into "events" ("seq", "id", "at", "type", "category", "se
+[w35]    7 UPDATE public.engine_counters SET next_value = GREATEST(next_val
+[w35]    8 update "engine_counters" set "next_value" = $1 where "engine_cou
+[w35]    9 insert into "engine_counters" ("name", "next_value") values ($1,
+[w35]   10 update "evidence_items" set "status" = $1, "lifecycle_stage" = $
+[w35]   11 insert into "evidence_custody" ("evidence_id", "seq", "at", "act
+[w35]   12 insert into "exports" ("id", "scope", "evidence_id", "operator_i
+[w35]   13 COMMIT
+
+stdout | src/modules/evidence/__tests__/immutability.db.test.ts > AC-B-69: after verify, export, archive and an evidence tamper fault the sealed rows of the item are byte-equal > the tamper fault on AUDIO-01: the same six steps on another item, the same result
+[w35] AC-B-69 EV-20261001-0011 (DEMO_PACKAGE): SHA-256 of the stored sealed rows (item row without its 7 mutable columns + 4 track rows)
+[w35]   before                                  8e44ebd7b2c7442b006f64e3ad1eface315e694965a851fda7fbcef40c01fb65  rows 5
+[w35]   after archive                           8e44ebd7b2c7442b006f64e3ad1eface315e694965a851fda7fbcef40c01fb65  equal; status ARCHIVED, verification NOT_RUN, tampered false, custody 6
+
+stdout | src/modules/evidence/__tests__/immutability.db.test.ts > AC-B-69: after verify, export, archive and an evidence tamper fault the sealed rows of the item are byte-equal > the tamper fault on AUDIO-02: the same six steps on another item, the same result
+[w35] AC-B-69 EV-20261001-0013 (DEMO_PACKAGE): SHA-256 of the stored sealed rows (item row without its 7 mutable columns + 4 track rows)
+[w35]   before                                  b52eecb898cb76ccbae64b1b0d7d8fd5054342c70cb3750f3caff3f59714ea64  rows 5
+[w35]   after archive                           b52eecb898cb76ccbae64b1b0d7d8fd5054342c70cb3750f3caff3f59714ea64  equal; status ARCHIVED, verification NOT_RUN, tampered false, custody 6
+
+ ✓ |db| src/modules/evidence/__tests__/immutability.db.test.ts > AC-B-69: after verify, export, archive and an evidence tamper fault the sealed rows of the item are byte-equal > the tamper fault on AUDIO-01: the same six steps on another item, the same result 93ms
+ ✓ |db| src/modules/evidence/__tests__/immutability.db.test.ts > AC-B-69: after verify, export, archive and an evidence tamper fault the sealed rows of the item are byte-equal > the tamper fault on AUDIO-02: the same six steps on another item, the same result 87ms
+ ✓ |db| src/modules/evidence/__tests__/commands.db.test.ts > operation 42 exportEvidence: the hosted action `exportEvidence` > the SUPERVISOR exports a sealed item: 202 with the export ID, one EVIDENCE_EXPORTED row and event, one custody entry, one export record with the reason 23ms
+ ✓ |db| src/modules/evidence/__tests__/commands.db.test.ts > operation 42 exportEvidence: the hosted action `exportEvidence` > an absent destination is the action's default; an item that is already EXPORTED can be exported again, with the next export ID 11ms
+ ✓ |db| src/modules/evidence/__tests__/commands.db.test.ts > operation 42 exportEvidence: the hosted action `exportEvidence` > the bounds are the contract's and the server cuts nothing: a reason of 500 code units and a destination of 120 are stored as sent 13ms
+ ✓ |db| src/modules/evidence/__tests__/commands.db.test.ts > operation 42 exportEvidence: the hosted action `exportEvidence` > line 10 of the precedence table, in the order the hosted action checks: 404, then 409 NOT_SEALED, then 409 SECURITY_FAULT, then 422 INVALID_REASON; each stores nothing 78ms
+ ✓ |db| src/modules/evidence/__tests__/commands.db.test.ts > operation 42 exportEvidence: the hosted action `exportEvidence` > line 8 before line 10: a body that breaks the schema answers 422 INVALID_INPUT before the engine, also for an unknown item and for one that was never sealed 34ms
+ ✓ |db| src/modules/evidence/__tests__/commands.db.test.ts > operation 42 exportEvidence: the hosted action `exportEvidence` > an ID that is no evidence ID answers 404 without a unit of work 4ms
+ ✓ |db| src/modules/evidence/__tests__/commands.db.test.ts > operation 42 exportEvidence: the hosted action `exportEvidence` > the denied export (RB-5; decision D83 DN-4): the GUARD refuses and writes the one row; the module adds none > INVESTIGATOR: 403 FORBIDDEN, exactly one EXPORT_DENIED row and one EXPORT_DENIED event, the hosted action never reached 12ms
+ ✓ |db| src/modules/evidence/__tests__/commands.db.test.ts > operation 42 exportEvidence: the hosted action `exportEvidence` > the denied export (RB-5; decision D83 DN-4): the GUARD refuses and writes the one row; the module adds none > TECHNICIAN: 403 FORBIDDEN, exactly one EXPORT_DENIED row and one EXPORT_DENIED event, the hosted action never reached 10ms
+ ✓ |db| src/modules/evidence/__tests__/commands.db.test.ts > operation 42 exportEvidence: the hosted action `exportEvidence` > the denied export (RB-5; decision D83 DN-4): the GUARD refuses and writes the one row; the module adds none > the refusal is decided before the body and the item are looked at: a broken body, no body and an unknown item answer the same 403 with one row each 32ms
+ ✓ |db| src/modules/evidence/__tests__/commands.db.test.ts > operation 42 exportEvidence: the hosted action `exportEvidence` > nobody without a session exports: 401, no row 4ms
+ ✓ |db| src/modules/evidence/__tests__/commands.db.test.ts > operation 42 exportEvidence: the hosted action `exportEvidence` > SR-48: the reason and the destination are stored, and neither is in a log line 8ms
+stdout | src/modules/evidence/__tests__/immutability.db.test.ts > AC-B-69: after verify, export, archive and an evidence tamper fault the sealed rows of the item are byte-equal > an item the ENGINE sealed (a session recorded through hosted commands, simulated hashes): six steps, one digest
+[w35] AC-B-69 EV-20261001-0014 (SIMULATED): SHA-256 of the stored sealed rows (item row without its 7 mutable columns + 4 track rows)
+[w35]   before                                  697d5a50422eb0c5255cf22f626dbf5e4ab1f277788dd18aedb0d02ad6450928  rows 5
+[w35]   after verify (every hash matches)       697d5a50422eb0c5255cf22f626dbf5e4ab1f277788dd18aedb0d02ad6450928  equal; status SEALED, verification PASS, tampered false, custody 4
+[w35]   after evidence TAMPER fault (AUDIO-02)  697d5a50422eb0c5255cf22f626dbf5e4ab1f277788dd18aedb0d02ad6450928  equal; status SEALED, verification NOT_RUN, tampered true, custody 4
+[w35]   after verify (fails on the track)       697d5a50422eb0c5255cf22f626dbf5e4ab1f277788dd18aedb0d02ad6450928  equal; status SEALED, verification FAIL, tampered true, custody 5
+[w35]   after the fault cleared                 697d5a50422eb0c5255cf22f626dbf5e4ab1f277788dd18aedb0d02ad6450928  equal; status SEALED, verification NOT_RUN, tampered false, custody 5
+[w35]   after export                            697d5a50422eb0c5255cf22f626dbf5e4ab1f277788dd18aedb0d02ad6450928  equal; status EXPORTED, verification NOT_RUN, tampered false, custody 6
+[w35]   after archive                           697d5a50422eb0c5255cf22f626dbf5e4ab1f277788dd18aedb0d02ad6450928  equal; status ARCHIVED, verification NOT_RUN, tampered false, custody 7
+
+ ✓ |db| src/modules/evidence/__tests__/immutability.db.test.ts > AC-B-69: after verify, export, archive and an evidence tamper fault the sealed rows of the item are byte-equal > an item the ENGINE sealed (a session recorded through hosted commands, simulated hashes): six steps, one digest 272ms
+ ✓ |db| src/modules/evidence/__tests__/commands.db.test.ts > a refusal the simulator reports IN ITS RESULT is answered after the unit (rule M4; engine host §3) > a caller whose role lost the permission between stage 4 and the unit: the action refuses in its result, ITS row is stored, and the answer is 403 FORBIDDEN 149ms
+stdout | src/modules/evidence/__tests__/commands.db.test.ts > operation 43 archiveEvidence: the hosted action `archiveEvidence` > the SUPERVISOR archives a sealed item: 204 without a body, one EVIDENCE_ARCHIVED row and event, one custody entry, the status ARCHIVED
+[w35] archiveEvidence: 11 statements on one connection, one transaction:
+[w35]    1 BEGIN ISOLATION LEVEL READ COMMITTED
+[w35]    2 SELECT seq, hash FROM public.audit_chain_lock()
+[w35]    3 SELECT set_config('statement_timeout', $1, true)
+[w35]    4 select "id", "username", "rank", "name", "display_name", "initia
+[w35]    5 insert into "audit_log" ("seq", "id", "at", "type", "category", 
+[w35]    6 insert into "events" ("seq", "id", "at", "type", "category", "se
+[w35]    7 UPDATE public.engine_counters SET next_value = GREATEST(next_val
+[w35]    8 update "engine_counters" set "next_value" = $1 where "engine_cou
+[w35]    9 update "evidence_items" set "status" = $1, "lifecycle_stage" = $
+[w35]   10 insert into "evidence_custody" ("evidence_id", "seq", "at", "act
+[w35]   11 COMMIT
+
+stdout | src/modules/evidence/__tests__/commands.db.test.ts > operation 43 archiveEvidence: the hosted action `archiveEvidence` > an item that is already archived: 204 again, no row, no event, no custody entry, and the revision does not move
+[w35] archiveEvidence of an archived item: 5 statements, none of them a write
+
+ ✓ |db| src/modules/evidence/__tests__/commands.db.test.ts > operation 43 archiveEvidence: the hosted action `archiveEvidence` > the SUPERVISOR archives a sealed item: 204 without a body, one EVIDENCE_ARCHIVED row and event, one custody entry, the status ARCHIVED 16ms
+ ✓ |db| src/modules/evidence/__tests__/commands.db.test.ts > operation 43 archiveEvidence: the hosted action `archiveEvidence` > an item that is already archived: 204 again, no row, no event, no custody entry, and the revision does not move 4ms
+ ✓ |db| src/modules/evidence/__tests__/commands.db.test.ts > operation 43 archiveEvidence: the hosted action `archiveEvidence` > an EXPORTED and an UNDER_REVIEW item can be archived 12ms
+ ✓ |db| src/modules/evidence/__tests__/commands.db.test.ts > operation 43 archiveEvidence: the hosted action `archiveEvidence` > an item that was never sealed: 409 NOT_SEALED with the simulator's code and event; nothing is stored 4ms
+ ✓ |db| src/modules/evidence/__tests__/commands.db.test.ts > operation 43 archiveEvidence: the hosted action `archiveEvidence` > an unknown item: 404; an ID that is no evidence ID: 422 without a command 6ms
+ ✓ |db| src/modules/evidence/__tests__/commands.db.test.ts > operation 43 archiveEvidence: the hosted action `archiveEvidence` > INVESTIGATOR lacks EVIDENCE_REVIEW: 403 NOT_PERMITTED with exactly one ACCESS_DENIED row, written by the guard; the action is not reached 5ms
+ ✓ |db| src/modules/evidence/__tests__/commands.db.test.ts > operation 43 archiveEvidence: the hosted action `archiveEvidence` > TECHNICIAN lacks EVIDENCE_REVIEW: 403 NOT_PERMITTED with exactly one ACCESS_DENIED row, written by the guard; the action is not reached 4ms
+ ✓ |db| src/modules/evidence/__tests__/commands.db.test.ts > operation 43 archiveEvidence: the hosted action `archiveEvidence` > after the archive: the item is still read and verified, and an export of it is refused with 409 NOT_SEALED 16ms
+ ✓ |db| src/modules/evidence/__tests__/immutability.db.test.ts > AC-B-69: after verify, export, archive and an evidence tamper fault the sealed rows of the item are byte-equal > the dataset's own tampered item: a failed verification and an archive leave its sealed rows byte-equal, and its sealed AUDIO-02 hash is still the one it was sealed with 12ms
+ ✓ |db| src/modules/evidence/__tests__/immutability.db.test.ts > why nothing sealed can move: the runtime role may not write it (database contract §7.3) > as dems_app, an UPDATE of a sealed column or of a track, and a DELETE of a track or a custody entry, are refused by privilege (42501) 38ms
+ ✓ |db| src/modules/evidence/__tests__/commands.db.test.ts > who may call operations 39, 40 and 41 is the guard's decision too (contract finding F-8) > with the grant of EVIDENCE_VIEW taken away in the clone: 403 NOT_PERMITTED and exactly one ACCESS_DENIED row per call; no read and no action runs; with the grant back, 200 232ms
+ ✓ |db| src/modules/evidence/__tests__/commands.db.test.ts > while the engine is not running > every operation of the module answers 503 NOT_READY at stage 2: the two reads too, and nothing is read or run 196ms
+ ✓ |db| src/modules/evidence/__tests__/consistency.db.test.ts > a read is one snapshot of the three tables > getEvidence: a verification that commits between the item statement and the custody statement is not half-seen 286ms
+ ✓ |db| src/modules/evidence/__tests__/consistency.db.test.ts > a read is one snapshot of the three tables > listEvidence: an export that commits between the item statement and the custody statement is not half-seen in any item of the page 219ms
+ ✓ |db| src/modules/evidence/__tests__/consistency.db.test.ts > ENG-6: commands that arrive together are serialised > two exports and ten verifications of one item at once: every one is accepted, each with its own row, export ID and custody entry, and the chain has no gap 290ms
+ ✓ |db| src/modules/evidence/__tests__/edge.db.test.ts > items that share a recording instant > the ID breaks the tie: every page size walks all 13 items once, in recorded_at DESC, id DESC 380ms
+ ✓ |db| src/modules/evidence/__tests__/edge.db.test.ts > a stored row the mapping refuses > answers 500 INTERNAL_ERROR, is reported as an unexpected failure by the envelope, and does not make the server report the database as not ready 176ms
+
+ Test Files  6 passed (6)
+      Tests  89 passed (89)
+   Start at  15:20:27
+   Duration  12.88s (tests 71%, import 18%, transform 10%)
+
+[test:db] forced drops that needed a retry: 0
+[test:db] teardown: dropped 3 database(s) in 199 ms; 0 remain with the run prefix dems_test_step_57_tmdj634c_

@@ -406,7 +406,7 @@ describe('SecurityAuditPage', { timeout: 45_000 }, () => {
     const rbac = screen.getByTestId('panel-rbac')
     expect(rbac.querySelectorAll('[data-operator]')).toHaveLength(3)
     expect(rbac.querySelector('[data-operator="OPR-001"]')).toHaveAttribute('data-current', 'true')
-    expect(within(screen.getByTestId('rbac-matrix')).getAllByRole('row')).toHaveLength(10)
+    expect(await within(screen.getByTestId('rbac-matrix')).findAllByRole('row')).toHaveLength(10)
   })
 
   it('shows sign-in failures and the lockout in the authentication panel (§20.1)', async () => {

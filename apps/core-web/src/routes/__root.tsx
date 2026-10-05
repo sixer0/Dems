@@ -18,13 +18,17 @@ import {
 import { LayoutGroup } from 'motion/react'
 import { I18nextProvider, useTranslation } from 'react-i18next'
 import { HEALTH_QUERY_KEY } from '@dems/shared/api'
-import { HeartbeatProvider, useRetryCooldown } from '@dems/shared/realtime'
+import { liveOf } from '@dems/shared/live'
+import type { LiveSim } from '@dems/shared/live/source'
+import { HeartbeatContext, HeartbeatProvider, useRetryCooldown } from '@dems/shared/realtime'
 import { SimProvider } from '@dems/shared/sim'
 import { noteTopLevelRoute } from '@/components/shell/shell-entrance'
 import { i18n } from '@/i18n'
 import { coreWsUrl } from '@/lib/core-endpoint'
 import { MotionPolicyProvider } from '@/motion'
 import type { RouterContext } from '@/router'
+import { followServerPresentationMode } from '@/runtime/presentation-follow'
+import { attachQueryBridge } from '@/runtime/query-bridge'
 import '@/components/shell/shell.css'
 
 /**
@@ -44,6 +48,22 @@ import '@/components/shell/shell.css'
  *   is not wrapped in a keyed `AnimatePresence`; M-APP-01/02 use the two-phase fallback (each side
  *   plays its own exit before navigating) and the emblem still flies through the shared layoutId.
  *   Evidence: implementation/21_shell_motion.md §3 and `src/test/shell-motion.test.tsx`.
+ *
+ * Live mode (backend task 04_client_integration_spec §5.1 step 6, CL-7, PG-6; plan row W50). The
+ * mode is read from the data source in the router context (`liveOf`): a simulator renders the
+ * tree above, unchanged. A Live source changes three things:
+ * - Heartbeat: no second socket client is built. `HeartbeatContext` is provided from the Live
+ *   source's own heartbeat view, so `useHeartbeat()` and every Core-link reader work as before on
+ *   the one socket of the page (CL-7).
+ * - The query bridge is attached for the lifetime of the root: `admin.changed` refetches the
+ *   administration lists, and the end of a session or the loss of an administration permission
+ *   REMOVES every `['core', …]` entry (`runtime/query-bridge.ts`).
+ * - Life cycle: the provider only PROVIDES a Live source (`autoStart` is false for it). The entry
+ *   created and started it before the router existed, and it lives as long as the page; the mode
+ *   switch stops it before the page is loaded again. A component effect must not own that life
+ *   cycle: under StrictMode the provider's start-stop-start at mount would close and reopen the
+ *   socket once at every page load and run the session bootstrap a second time. The simulator is
+ *   started and stopped by the provider as before.
  */
 export const Route = createRootRouteWithContext<RouterContext>()({
   component: RootLayout,
@@ -54,6 +74,10 @@ export const Route = createRootRouteWithContext<RouterContext>()({
 function RootLayout() {
   const { sim, queryClient, socketFactory } = Route.useRouteContext()
   const router = useRouter()
+  // Null for a simulator. The type is the Live source's; the import is type-only (MD-6).
+  const live = liveOf<LiveSim>(sim)
+  useEffect(() => (live ? attachQueryBridge(live, queryClient) : undefined), [live, queryClient])
+  useEffect(() => (live ? followServerPresentationMode(live) : undefined), [live]) // WS-10 (W55, decision D128): on every route, for the lifetime of the root
   // Refresh health after a WS reconnect (01_specs §5.5/§5.6 resync).
   const resync = useCallback(() => {
     void queryClient.invalidateQueries({ queryKey: HEALTH_QUERY_KEY })
@@ -67,24 +91,32 @@ function RootLayout() {
     noteTopLevelRoute(router, topLevelRouteId)
   }, [router, topLevelRouteId])
 
+  const source = (
+    <SimProvider sim={sim} autoStart={live === null}>
+      <I18nextProvider i18n={i18n}>
+        <AriaRouterProvider navigate={navigate} useHref={identityHref}>
+          <MotionPolicyProvider>
+            <Surface variant="transparent" className="min-h-dvh bg-background text-foreground">
+              <LayoutGroup id="dems">
+                <Outlet />
+              </LayoutGroup>
+              <ToastProvider />
+            </Surface>
+          </MotionPolicyProvider>
+        </AriaRouterProvider>
+      </I18nextProvider>
+    </SimProvider>
+  )
+
   return (
     <QueryClientProvider client={queryClient}>
-      <HeartbeatProvider url={coreWsUrl()} onResync={resync} {...(socketFactory ? { socketFactory } : {})}>
-        <SimProvider sim={sim} autoStart>
-          <I18nextProvider i18n={i18n}>
-            <AriaRouterProvider navigate={navigate} useHref={identityHref}>
-              <MotionPolicyProvider>
-                <Surface variant="transparent" className="min-h-dvh bg-background text-foreground">
-                  <LayoutGroup id="dems">
-                    <Outlet />
-                  </LayoutGroup>
-                  <ToastProvider />
-                </Surface>
-              </MotionPolicyProvider>
-            </AriaRouterProvider>
-          </I18nextProvider>
-        </SimProvider>
-      </HeartbeatProvider>
+      {live ? (
+        <HeartbeatContext.Provider value={live.heartbeat}>{source}</HeartbeatContext.Provider>
+      ) : (
+        <HeartbeatProvider url={coreWsUrl()} onResync={resync} {...(socketFactory ? { socketFactory } : {})}>
+          {source}
+        </HeartbeatProvider>
+      )}
     </QueryClientProvider>
   )
 }

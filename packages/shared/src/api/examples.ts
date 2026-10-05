@@ -15,6 +15,17 @@
  * the numeric suffixes (the join key for `@dems/shared/demo-data`, D51) stay the same.
  * test/openapi.test.ts parses every example with its zod schema and compares the IDs, names and
  * numbers with the simulator's own answers at this instant.
+ *
+ * The examples of the Core-server operations (backend task 2026-10-04) live beside their
+ * operations, in the module of their area (`identity.ts` to `alerts.ts`), and are merged into
+ * `CORE_API_EXAMPLES` at the end of this file. They use the same instant, as epoch milliseconds,
+ * and show every secret as a placeholder (`example-parts.ts`). The state they show is the idle
+ * simulator's at that instant (`state-examples.ts`).
+ *
+ * The ten operations of this file also have examples for the statuses that only the Core server
+ * sends (the `401` and the `403` of the five reads, the `422` of `startSession`): those carry the
+ * request ID, as every answer of the Core server does. The document of the `offline` scope leaves
+ * those statuses out.
  */
 import type {
   ApiError,
@@ -31,9 +42,22 @@ import type {
   VideoStatusResponse,
   VideoTrackStatus,
 } from './core-api';
+import { ADMINISTRATION_EXAMPLES } from './administration';
+import { ALERT_EXAMPLES } from './alerts';
+import { DEMO_EXAMPLES } from './demo-controls';
+import { DEVICE_EXAMPLES } from './devices';
+import { EVIDENCE_EXAMPLES } from './evidence';
+import { BASIC_403_EXAMPLES, ERROR_EXAMPLES } from './example-parts';
 import type { HealthResponse } from './health';
+import { IDENTITY_EXAMPLES } from './identity';
+import { NETWORK_TIME_EXAMPLES } from './network-time';
+import { PAIRING_EXAMPLES } from './pairing';
 import type { Heartbeat } from './realtime-messages';
+import { SECURITY_AUDIT_EXAMPLES } from './security-audit';
 import type { SessionCreateRequest } from './session-schema';
+import { SESSION_EXAMPLES } from './sessions';
+import { STORAGE_EXAMPLES } from './storage';
+import { SYSTEM_EXAMPLES } from './system';
 
 /** The instant every example describes: 2026-10-01 10:00:00 WIB (UTC+07:00). */
 export const OPENAPI_EXAMPLE_INSTANT = '2026-10-01T03:00:00.000Z';
@@ -302,6 +326,15 @@ const NOT_SIGNED_IN = apiError('NOT_SIGNED_IN', 'Sign in first.');
 /** Step 54 (D101): start / stop as a role without SESSION_START (the simulator's exact text). */
 const SESSION_NOT_PERMITTED = apiError('NOT_PERMITTED', 'Your role cannot control sessions (RBAC).');
 
+/**
+ * The two refusals only the Core server sends on a read that the in-app simulator answers too
+ * (01_specs §7.19): no valid session, and a retired device or an Origin outside the lists.
+ */
+const CORE_SERVER_READ_REFUSALS = {
+  401: { notSignedIn: ERROR_EXAMPLES.notSignedIn },
+  403: BASIC_403_EXAMPLES,
+} as const;
+
 // ── Per operation ─────────────────────────────────────────────────────────────────────────
 
 export interface OperationExamples {
@@ -365,6 +398,8 @@ export const CORE_API_EXAMPLES: Readonly<Record<string, OperationExamples>> = {
           value: apiError('PRECHECK_RUNNING', 'Pre-recording checks are still running.'),
         },
       },
+      // Core server only: the optional body failed its schema.
+      422: { invalidInput: ERROR_EXAMPLES.invalidInput },
     },
   },
   stopSession: {
@@ -413,23 +448,25 @@ export const CORE_API_EXAMPLES: Readonly<Record<string, OperationExamples>> = {
           value: { session: null, serverTime: AT } satisfies CurrentSessionResponse,
         },
       },
+      ...CORE_SERVER_READ_REFUSALS,
     },
   },
   getDeviceHealth: {
-    responses: { 200: { idle: { summary: 'Idle, all green', value: DEVICE_HEALTH_IDLE } } },
+    responses: { 200: { idle: { summary: 'Idle, all green', value: DEVICE_HEALTH_IDLE } }, ...CORE_SERVER_READ_REFUSALS },
   },
   getAudioStatus: {
-    responses: { 200: { recording: { summary: 'Interviewer speaking', value: AUDIO_RECORDING } } },
+    responses: { 200: { recording: { summary: 'Interviewer speaking', value: AUDIO_RECORDING } }, ...CORE_SERVER_READ_REFUSALS },
   },
   getVideoStatus: {
     responses: {
       200: {
         recording: { summary: 'Both tracks recording', value: { tracks: videoTracks('REC') } satisfies VideoStatusResponse },
       },
+      ...CORE_SERVER_READ_REFUSALS,
     },
   },
   getStorageStatus: {
-    responses: { 200: { atLoad: { summary: '20 % used, 3.2 TB free', value: STORAGE_AT_LOAD } } },
+    responses: { 200: { atLoad: { summary: '20 % used, 3.2 TB free', value: STORAGE_AT_LOAD } }, ...CORE_SERVER_READ_REFUSALS },
   },
   exportEvidence: {
     pathParams: { id: EXAMPLE_IDS.exportedEvidenceId },
@@ -461,4 +498,17 @@ export const CORE_API_EXAMPLES: Readonly<Record<string, OperationExamples>> = {
       },
     },
   },
+  // Backend task (01_specs §7.5 to §7.16): the Core-server operations, by area.
+  ...IDENTITY_EXAMPLES,
+  ...ADMINISTRATION_EXAMPLES,
+  ...PAIRING_EXAMPLES,
+  ...SESSION_EXAMPLES,
+  ...EVIDENCE_EXAMPLES,
+  ...DEVICE_EXAMPLES,
+  ...STORAGE_EXAMPLES,
+  ...NETWORK_TIME_EXAMPLES,
+  ...SECURITY_AUDIT_EXAMPLES,
+  ...SYSTEM_EXAMPLES,
+  ...ALERT_EXAMPLES,
+  ...DEMO_EXAMPLES,
 };

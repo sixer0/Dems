@@ -1,0 +1,673 @@
+{
+  "phase": "live",
+  "browser": "HeadlessChrome/153.0.8010.12",
+  "at": "2026-10-04T14:24:44.604Z",
+  "steps": {
+    "liveLogin": {
+      "loaded": true,
+      "facts": {
+        "path": "/login?…",
+        "viewport": "1440x900",
+        "tier": null,
+        "sidebar": null,
+        "mode": null,
+        "topBarOverflows": null,
+        "pageOverflowsX": false,
+        "navLinks": [],
+        "adminGroup": null,
+        "pages": [
+          "page-login"
+        ],
+        "stubs": [],
+        "heading": "Sign in",
+        "toasts": [],
+        "healthVersion": null,
+        "coreModeKey": null,
+        "owedSignOutKeyPresent": false
+      },
+      "network": {
+        "api": [
+          "GET /api/v1/auth/session 401",
+          "GET /api/v1/auth/status 200",
+          "GET /api/v1/health 200"
+        ],
+        "origins": [
+          "http://127.0.0.1:5178"
+        ],
+        "sockets": [
+          "ws://127.0.0.1:5178/?… 101",
+          "ws://127.0.0.1:5178/ws 101"
+        ],
+        "console": []
+      }
+    },
+    "supervisor1440": {
+      "signIn": {
+        "status": 200,
+        "role": "SUPERVISOR",
+        "operatorId": "OPR-002",
+        "errorCode": null
+      },
+      "facts": {
+        "path": "/dashboard",
+        "viewport": "1440x900",
+        "tier": "lg",
+        "sidebar": "full",
+        "mode": {
+          "text": "LIVE",
+          "state": "LIVE",
+          "ariaLabel": "Data mode: LIVE",
+          "tag": "BUTTON",
+          "box": [
+            790,
+            22,
+            46,
+            28
+          ],
+          "insideViewport": true,
+          "display": "flex"
+        },
+        "topBarOverflows": false,
+        "pageOverflowsX": false,
+        "navLinks": [
+          "dashboard",
+          "session",
+          "evidence",
+          "devices",
+          "storage",
+          "network-time",
+          "security-audit",
+          "system",
+          "users-roles",
+          "paired-devices",
+          "api-reference"
+        ],
+        "adminGroup": {
+          "label": "ADMINISTRATION",
+          "links": [
+            "/admin/users",
+            "/admin/devices"
+          ]
+        },
+        "pages": [
+          "page-dashboard"
+        ],
+        "stubs": [],
+        "heading": "Dashboard",
+        "toasts": [],
+        "healthVersion": null,
+        "coreModeKey": null,
+        "owedSignOutKeyPresent": false
+      },
+      "screenshot": "54_shell_live_supervisor_1440.png",
+      "network": {
+        "api": [
+          "POST /api/v1/auth/sign-in 200",
+          "GET /api/v1/auth/session 200"
+        ],
+        "origins": [
+          "http://127.0.0.1:5178"
+        ],
+        "sockets": [
+          "ws://127.0.0.1:5178/?… 101",
+          "ws://127.0.0.1:5178/ws 101"
+        ],
+        "console": []
+      }
+    },
+    "supervisor900": {
+      "facts": {
+        "path": "/dashboard",
+        "viewport": "900x900",
+        "tier": "sm",
+        "sidebar": "drawer",
+        "mode": {
+          "text": "LIVE",
+          "state": "LIVE",
+          "ariaLabel": "Data mode: LIVE",
+          "tag": "BUTTON",
+          "box": [
+            643,
+            18,
+            46,
+            28
+          ],
+          "insideViewport": true,
+          "display": "flex"
+        },
+        "topBarOverflows": false,
+        "pageOverflowsX": false,
+        "navLinks": [],
+        "adminGroup": null,
+        "pages": [
+          "page-dashboard"
+        ],
+        "stubs": [],
+        "heading": "Dashboard",
+        "toasts": [],
+        "healthVersion": null,
+        "coreModeKey": null,
+        "owedSignOutKeyPresent": false
+      },
+      "screenshot": "54_shell_live_900.png",
+      "drawer": {
+        "navLinks": [
+          "dashboard",
+          "session",
+          "evidence",
+          "devices",
+          "storage",
+          "network-time",
+          "security-audit",
+          "system",
+          "users-roles",
+          "paired-devices",
+          "api-reference"
+        ],
+        "adminGroup": {
+          "label": "ADMINISTRATION",
+          "links": [
+            "/admin/users",
+            "/admin/devices"
+          ]
+        }
+      },
+      "drawerScreenshot": "54_drawer_live_900.png"
+    },
+    "supervisor600": {
+      "facts": {
+        "path": "/dashboard",
+        "viewport": "600x900",
+        "tier": "xs",
+        "sidebar": "tabs",
+        "mode": {
+          "text": "LIVE",
+          "state": "LIVE",
+          "ariaLabel": "Data mode: LIVE",
+          "tag": "BUTTON",
+          "box": [
+            366,
+            18,
+            46,
+            28
+          ],
+          "insideViewport": true,
+          "display": "flex"
+        },
+        "topBarOverflows": false,
+        "pageOverflowsX": false,
+        "navLinks": [],
+        "adminGroup": null,
+        "pages": [
+          "page-dashboard"
+        ],
+        "stubs": [],
+        "heading": "Dashboard",
+        "toasts": [],
+        "healthVersion": null,
+        "coreModeKey": null,
+        "owedSignOutKeyPresent": false
+      },
+      "screenshot": "54_shell_live_600.png"
+    },
+    "supervisor390": {
+      "facts": {
+        "path": "/dashboard",
+        "viewport": "390x844",
+        "tier": "xs",
+        "sidebar": "tabs",
+        "mode": {
+          "text": "LIVE",
+          "state": "LIVE",
+          "ariaLabel": "Data mode: LIVE",
+          "tag": "BUTTON",
+          "box": [
+            156,
+            18,
+            46,
+            28
+          ],
+          "insideViewport": true,
+          "display": "flex"
+        },
+        "topBarOverflows": false,
+        "pageOverflowsX": false,
+        "navLinks": [],
+        "adminGroup": null,
+        "pages": [
+          "page-dashboard"
+        ],
+        "stubs": [],
+        "heading": "Dashboard",
+        "toasts": [],
+        "healthVersion": null,
+        "coreModeKey": null,
+        "owedSignOutKeyPresent": false
+      },
+      "screenshot": "54_shell_live_390.png"
+    },
+    "adminUsers": {
+      "facts": {
+        "path": "/admin/users",
+        "viewport": "1440x900",
+        "tier": "lg",
+        "sidebar": "full",
+        "mode": {
+          "text": "LIVE",
+          "state": "LIVE",
+          "ariaLabel": "Data mode: LIVE",
+          "tag": "BUTTON",
+          "box": [
+            790,
+            22,
+            46,
+            28
+          ],
+          "insideViewport": true,
+          "display": "flex"
+        },
+        "topBarOverflows": false,
+        "pageOverflowsX": false,
+        "navLinks": [
+          "dashboard",
+          "session",
+          "evidence",
+          "devices",
+          "storage",
+          "network-time",
+          "security-audit",
+          "system",
+          "users-roles",
+          "paired-devices",
+          "api-reference"
+        ],
+        "adminGroup": {
+          "label": "ADMINISTRATION",
+          "links": [
+            "/admin/users",
+            "/admin/devices"
+          ]
+        },
+        "pages": [
+          "page-users-roles",
+          "page-header"
+        ],
+        "stubs": [
+          "ur-stub"
+        ],
+        "heading": "Users & RolesUsers & Roles",
+        "toasts": [],
+        "healthVersion": null,
+        "coreModeKey": null,
+        "owedSignOutKeyPresent": false
+      },
+      "screenshot": "54_admin_users_live.png"
+    },
+    "adminDevices": {
+      "facts": {
+        "path": "/admin/devices",
+        "viewport": "1440x900",
+        "tier": "lg",
+        "sidebar": "full",
+        "mode": {
+          "text": "LIVE",
+          "state": "LIVE",
+          "ariaLabel": "Data mode: LIVE",
+          "tag": "BUTTON",
+          "box": [
+            790,
+            22,
+            46,
+            28
+          ],
+          "insideViewport": true,
+          "display": "flex"
+        },
+        "topBarOverflows": false,
+        "pageOverflowsX": false,
+        "navLinks": [
+          "dashboard",
+          "session",
+          "evidence",
+          "devices",
+          "storage",
+          "network-time",
+          "security-audit",
+          "system",
+          "users-roles",
+          "paired-devices",
+          "api-reference"
+        ],
+        "adminGroup": {
+          "label": "ADMINISTRATION",
+          "links": [
+            "/admin/users",
+            "/admin/devices"
+          ]
+        },
+        "pages": [
+          "page-paired-devices",
+          "page-header"
+        ],
+        "stubs": [
+          "pd-stub"
+        ],
+        "heading": "Paired DevicesPaired Devices",
+        "toasts": [],
+        "healthVersion": null,
+        "coreModeKey": null,
+        "owedSignOutKeyPresent": false
+      },
+      "screenshot": "54_admin_devices_live.png"
+    },
+    "stackCheck": {
+      "healthVersion": "core-server v0.2.0 · api v1"
+    },
+    "supervisorSignOut": {
+      "signOut": {
+        "status": 204
+      },
+      "facts": {
+        "path": "/login",
+        "viewport": "1440x900",
+        "tier": null,
+        "sidebar": null,
+        "mode": null,
+        "topBarOverflows": null,
+        "pageOverflowsX": false,
+        "navLinks": [],
+        "adminGroup": null,
+        "pages": [
+          "page-login"
+        ],
+        "stubs": [],
+        "heading": "Sign in",
+        "toasts": [],
+        "healthVersion": null,
+        "coreModeKey": null,
+        "owedSignOutKeyPresent": false
+      },
+      "network": {
+        "api": [
+          "GET /api/v1/auth/session 200",
+          "GET /api/v1/auth/session 200",
+          "GET /api/v1/auth/session 200",
+          "GET /api/v1/health 200",
+          "POST /api/v1/auth/sign-out 204",
+          "GET /api/v1/auth/status 200",
+          "GET /api/v1/health 200"
+        ],
+        "origins": [
+          "http://127.0.0.1:5178"
+        ],
+        "sockets": [
+          "ws://127.0.0.1:5178/?… 101",
+          "ws://127.0.0.1:5178/ws 101",
+          "ws://127.0.0.1:5178/?… 101",
+          "ws://127.0.0.1:5178/ws 101",
+          "ws://127.0.0.1:5178/?… 101",
+          "ws://127.0.0.1:5178/ws 101 closed",
+          "ws://127.0.0.1:5178/ws 101"
+        ],
+        "console": []
+      }
+    },
+    "investigator1440": {
+      "signIn": {
+        "status": 200,
+        "role": "INVESTIGATOR",
+        "operatorId": "OPR-001",
+        "errorCode": null
+      },
+      "facts": {
+        "path": "/dashboard",
+        "viewport": "1440x900",
+        "tier": "lg",
+        "sidebar": "full",
+        "mode": {
+          "text": "LIVE",
+          "state": "LIVE",
+          "ariaLabel": "Data mode: LIVE",
+          "tag": "BUTTON",
+          "box": [
+            792,
+            22,
+            46,
+            28
+          ],
+          "insideViewport": true,
+          "display": "flex"
+        },
+        "topBarOverflows": false,
+        "pageOverflowsX": false,
+        "navLinks": [
+          "dashboard",
+          "session",
+          "evidence",
+          "devices",
+          "storage",
+          "network-time",
+          "security-audit",
+          "system",
+          "api-reference"
+        ],
+        "adminGroup": null,
+        "pages": [
+          "page-dashboard"
+        ],
+        "stubs": [],
+        "heading": "Dashboard",
+        "toasts": [],
+        "healthVersion": null,
+        "coreModeKey": null,
+        "owedSignOutKeyPresent": false
+      },
+      "screenshot": "54_shell_live_investigator_1440.png"
+    },
+    "investigatorGuard": {
+      "adminUsersLandsOn": "/dashboard",
+      "adminUsersPages": [
+        "page-dashboard"
+      ],
+      "adminDevicesLandsOn": "/dashboard",
+      "adminDevicesPages": [
+        "page-dashboard"
+      ],
+      "network": {
+        "api": [
+          "POST /api/v1/auth/sign-in 200",
+          "GET /api/v1/auth/session 200",
+          "GET /api/v1/auth/session 200",
+          "GET /api/v1/auth/session 200"
+        ],
+        "origins": [
+          "http://127.0.0.1:5178"
+        ],
+        "sockets": [
+          "ws://127.0.0.1:5178/?… 101",
+          "ws://127.0.0.1:5178/ws 101",
+          "ws://127.0.0.1:5178/?… 101",
+          "ws://127.0.0.1:5178/ws 101",
+          "ws://127.0.0.1:5178/?… 101",
+          "ws://127.0.0.1:5178/ws 101"
+        ],
+        "console": []
+      }
+    },
+    "roleChange": {
+      "assignSupervisor": 200,
+      "gained": {
+        "path": "/dashboard",
+        "viewport": "1440x900",
+        "tier": "lg",
+        "sidebar": "full",
+        "mode": {
+          "text": "LIVE",
+          "state": "LIVE",
+          "ariaLabel": "Data mode: LIVE",
+          "tag": "BUTTON",
+          "box": [
+            792,
+            22,
+            46,
+            28
+          ],
+          "insideViewport": true,
+          "display": "flex"
+        },
+        "topBarOverflows": false,
+        "pageOverflowsX": false,
+        "navLinks": [
+          "dashboard",
+          "session",
+          "evidence",
+          "devices",
+          "storage",
+          "network-time",
+          "security-audit",
+          "system",
+          "users-roles",
+          "paired-devices",
+          "api-reference"
+        ],
+        "adminGroup": {
+          "label": "ADMINISTRATION",
+          "links": [
+            "/admin/users",
+            "/admin/devices"
+          ]
+        },
+        "pages": [
+          "page-dashboard"
+        ],
+        "stubs": [],
+        "heading": "Dashboard",
+        "toasts": [
+          {
+            "title": "Your role is now Supervisor. The available actions have changed.",
+            "description": null,
+            "buttons": []
+          }
+        ],
+        "healthVersion": null,
+        "coreModeKey": null,
+        "owedSignOutKeyPresent": false
+      },
+      "gainedScreenshot": "54_role_gained_live.png",
+      "onAdminUsers": {
+        "path": "/admin/users",
+        "viewport": "1440x900",
+        "tier": "lg",
+        "sidebar": "full",
+        "mode": {
+          "text": "LIVE",
+          "state": "LIVE",
+          "ariaLabel": "Data mode: LIVE",
+          "tag": "BUTTON",
+          "box": [
+            792,
+            22,
+            46,
+            28
+          ],
+          "insideViewport": true,
+          "display": "flex"
+        },
+        "topBarOverflows": false,
+        "pageOverflowsX": false,
+        "navLinks": [
+          "dashboard",
+          "session",
+          "evidence",
+          "devices",
+          "storage",
+          "network-time",
+          "security-audit",
+          "system",
+          "users-roles",
+          "paired-devices",
+          "api-reference"
+        ],
+        "adminGroup": {
+          "label": "ADMINISTRATION",
+          "links": [
+            "/admin/users",
+            "/admin/devices"
+          ]
+        },
+        "pages": [
+          "page-users-roles",
+          "page-header"
+        ],
+        "stubs": [
+          "ur-stub"
+        ],
+        "heading": "Users & RolesUsers & Roles",
+        "toasts": [],
+        "healthVersion": null,
+        "coreModeKey": null,
+        "owedSignOutKeyPresent": false
+      },
+      "assignInvestigator": 200,
+      "lost": {
+        "path": "/dashboard",
+        "viewport": "1440x900",
+        "tier": "lg",
+        "sidebar": "full",
+        "mode": {
+          "text": "LIVE",
+          "state": "LIVE",
+          "ariaLabel": "Data mode: LIVE",
+          "tag": "BUTTON",
+          "box": [
+            792,
+            22,
+            46,
+            28
+          ],
+          "insideViewport": true,
+          "display": "flex"
+        },
+        "topBarOverflows": false,
+        "pageOverflowsX": false,
+        "navLinks": [
+          "dashboard",
+          "session",
+          "evidence",
+          "devices",
+          "storage",
+          "network-time",
+          "security-audit",
+          "system",
+          "api-reference"
+        ],
+        "adminGroup": null,
+        "pages": [
+          "page-dashboard"
+        ],
+        "stubs": [],
+        "heading": "Dashboard",
+        "toasts": [
+          {
+            "title": "Your role is now Investigator. The available actions have changed.",
+            "description": "The page you were on is not part of this role. You are back on the Dashboard.",
+            "buttons": []
+          }
+        ],
+        "healthVersion": null,
+        "coreModeKey": null,
+        "owedSignOutKeyPresent": false
+      },
+      "lostScreenshot": "54_role_lost_live.png",
+      "secondClientSignOut": 204,
+      "network": {
+        "api": [],
+        "origins": [
+          "http://127.0.0.1:5178"
+        ],
+        "sockets": [],
+        "console": []
+      }
+    }
+  }
+}

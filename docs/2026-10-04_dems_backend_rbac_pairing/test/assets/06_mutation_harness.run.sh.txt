@@ -1,0 +1,12 @@
+#!/bin/sh
+# Runs the mutations of the test's input against the row's test file, one at a time, through the
+# scratch configuration. Run from the workspace root; no `cd`. Usage: run_mutations.sh [id ...]
+M=/tmp/claude-501/w53
+if [ "$#" -eq 0 ]; then set -- BASELINE $(python3 -c "import json; print(' '.join(x['id'] for x in json.load(open('$M/mutations.json'))))"); fi
+for id in "$@"; do
+  if [ "$id" = BASELINE ]; then mutation=""; note="no mutation: the file as it is, through the scratch configuration"; else mutation="$id"; note=$(python3 -c "import json; print([x['note'] for x in json.load(open('$M/mutations.json')) if x['id']=='$id'][0])"); fi
+  echo "=== $id | $note | $(date '+%H:%M:%S')"
+  W53_MUTATION="$mutation" DEMS_TEST_STEP=75 npm exec -w @dems/core-server -- vitest run --config "$M/harness.vitest.config.mjs" --project db test/acceptance > "$M/mutation_$id.log" 2>&1
+  echo "exit $?"
+  grep -E "^ +(Test Files|Tests) |^ (FAIL|×) |AssertionError|^Error|→ |remain with the run prefix" "$M/mutation_$id.log" | cut -c1-400
+done

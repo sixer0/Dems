@@ -5,6 +5,10 @@
  * The names and types of step 68 are kept; step 73 only added optional members, so fakes built
  * for step 68 (the step-70 router harness, T-M03) still type-check.
  *
+ * Backend task W51 (04_client_integration_spec MD-3, MP-9): `CoreLinkSource` gains `LIVE` (the Core
+ * server is the Core), and the contract gains the optional member `pairing`: the pairing-required
+ * gate of Live mode. It is optional, so every fake contract built before stays valid.
+ *
  * Who provides it (04_mobile_specs §3.2 slots 9 and 10):
  * - `SimRuntimeProvider` (`sim-runtime-provider.tsx`): status (hydration), Core link, active
  *   session; auth is `UNAVAILABLE_AUTH` at that layer;
@@ -14,7 +18,8 @@
 import { createContext, createElement, useContext, type ReactNode } from 'react';
 import type { CoreLinkState, HeartbeatState, SessionState } from '@dems/shared/domain';
 
-export type RuntimeImplementation = 'stub' | 'simulator';
+/** `live`: the data source is the Core server's replica (the Core link source LIVE). */
+export type RuntimeImplementation = 'stub' | 'simulator' | 'live';
 
 /** Reviews (steps 62, 63, 74) grep for this: the step-68 stub is gone once it reads 'simulator'. */
 export const RUNTIME_IMPLEMENTATION: RuntimeImplementation = 'simulator';
@@ -63,15 +68,46 @@ export interface AuthContract {
   signOut(reason?: SignOutReason): void;
 }
 
-/** Settings → App Preferences → "Core link source" (04 §4.4 step 2); default SIMULATED (Q-M8, D38). */
-export type CoreLinkSource = 'SIMULATED' | 'HEARTBEAT';
+/**
+ * Settings → App Preferences → "Core link source" (04 §4.4 step 2); default SIMULATED (Q-M8, D38).
+ * SIMULATED and HEARTBEAT show simulator data; LIVE shows the Core server's (debug builds only, MD-3).
+ */
+export type CoreLinkSource = 'SIMULATED' | 'HEARTBEAT' | 'LIVE';
 
 export interface CoreLinkInfo {
   readonly source: CoreLinkSource;
-  /** SIMULATED: the simulator's tablet link. HEARTBEAT: LIVE → ONLINE, anything else → OFFLINE. */
+  /**
+   * SIMULATED: the simulator's tablet link. HEARTBEAT: the mock-core heartbeat, LIVE → ONLINE,
+   * anything else → OFFLINE. LIVE: the same rule on the heartbeat of the Core server's socket.
+   */
   readonly state: CoreLinkState;
-  /** HEARTBEAT only: the client state behind `state` (Login ring: STALE → ATTENTION, 04 §4.1 L2). */
+  /** HEARTBEAT and LIVE: the client state behind `state` (Login ring: STALE → ATTENTION, 04 §4.1 L2). */
   readonly heartbeat?: HeartbeatState;
+}
+
+/**
+ * Is this device paired with the Core server? (04_client_integration_spec §9.4, MP-9, MP-10.)
+ * CHECKING: the stored device credential has not been read yet (the runtime is not ready).
+ */
+export type PairingGateState = 'CHECKING' | 'UNPAIRED' | 'PAIRED';
+
+/** Why the device is not paired any more, for the notice above the code card of the Pair screen. */
+export type PairingNotice =
+  /** The Core revoked this device's pairing (§6.6). */
+  | 'revoked'
+  /** The Core does not know the stored credential: another database, or a re-created one (MP-10). */
+  | 'unknown'
+  /** The device was unpaired, here or on the Core (MP-7). */
+  | 'unpaired';
+
+/** The pairing-required gate (MP-9). In SIMULATED and HEARTBEAT mode it does not apply: `required` is false. */
+export interface PairingInfo {
+  /** True only in LIVE mode. */
+  readonly required: boolean;
+  readonly state: PairingGateState;
+  readonly notice: PairingNotice | null;
+  /** The Core's ID of this device, e.g. `DEV-0003`, while PAIRED; else null. Not a secret. */
+  readonly deviceId: string | null;
 }
 
 /** The session the live mini-bar (04 §3.8) and the post-sign-in resync (§3.3, §3.7) read. */
@@ -101,6 +137,8 @@ export interface RuntimeContract {
   readonly auth: AuthContract;
   readonly coreLink: CoreLinkInfo;
   readonly session: ActiveSessionInfo;
+  /** The pairing-required gate (MP-9). Absent in fakes built before it and in SIMULATED / HEARTBEAT mode. */
+  readonly pairing?: PairingInfo;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -109,6 +147,10 @@ export interface RuntimeContract {
 
 export const IDLE_SESSION: ActiveSessionInfo = { state: null, sessionId: null, startedAtMs: null };
 export const SIMULATED_ONLINE: CoreLinkInfo = { source: 'SIMULATED', state: 'ONLINE' };
+/** The gate where it does not apply (SIMULATED, HEARTBEAT, a fake without the member): nothing is required. */
+export const PAIRING_NOT_REQUIRED: PairingInfo = { required: false, state: 'UNPAIRED', notice: null, deviceId: null };
+/** LIVE mode before the stored device credential has been read. */
+export const PAIRING_CHECKING: PairingInfo = { required: true, state: 'CHECKING', notice: null, deviceId: null };
 const DEFAULT_STATUS: RuntimeStatus = { ready: true, implementation: RUNTIME_IMPLEMENTATION };
 
 /** Signed-out auth that cannot sign in: the value outside `AuthProvider`. */
@@ -129,8 +171,17 @@ export function initialsFor(name: string): string {
 }
 
 /**
+ * MP-11: the app is blocked while LIVE mode requires a pairing and the device is not PAIRED (also
+ * while the stored credential is still being read). Then only `/`, `/pair` and `/stack-check` work.
+ */
+export function isPairingBlocked(pairing: PairingInfo | undefined): boolean {
+  return pairing !== undefined && pairing.required && pairing.state !== 'PAIRED';
+}
+
+/**
  * A complete contract value for tests and debug tooling; unspecified parts take the defaults
- * (ready, signed out and unable to sign in, Core link SIMULATED/ONLINE, no session).
+ * (ready, signed out and unable to sign in, Core link SIMULATED/ONLINE, no session). `pairing` is
+ * part of the value only when it is given.
  */
 export function createRuntimeContract(overrides: Partial<RuntimeContract> = {}): RuntimeContract {
   return {
@@ -138,6 +189,7 @@ export function createRuntimeContract(overrides: Partial<RuntimeContract> = {}):
     auth: overrides.auth ?? UNAVAILABLE_AUTH,
     coreLink: overrides.coreLink ?? SIMULATED_ONLINE,
     session: overrides.session ?? IDLE_SESSION,
+    ...(overrides.pairing ? { pairing: overrides.pairing } : {}),
   };
 }
 
@@ -180,4 +232,9 @@ export function useActiveSession(): ActiveSessionInfo {
 /** Hydration status for the boot gate (04 §3.2: splash held until ready, at most 2 s). */
 export function useRuntimeStatus(): RuntimeStatus {
   return useContext(RuntimeContext).status;
+}
+
+/** The pairing-required gate (MP-9); `PAIRING_NOT_REQUIRED` where the contract has none. */
+export function usePairing(): PairingInfo {
+  return useContext(RuntimeContext).pairing ?? PAIRING_NOT_REQUIRED;
 }

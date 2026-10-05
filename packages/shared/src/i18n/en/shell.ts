@@ -20,6 +20,34 @@ export const shell = {
     toggleRail: 'Collapse or expand the sidebar ([)',
   },
 
+  /**
+   * Backend task W54 (04_client_integration_spec §3.2): the tooltip of the mode indicator, by its
+   * state. The chip's own words are `common.coreMode.chip*`.
+   */
+  mode: {
+    tooltip: {
+      SIMULATED: 'The Core is simulated in this browser. Nothing is sent to a server.',
+      LIVE: 'Data comes from the Core server on this computer.',
+      OFFLINE: 'The Core server is unreachable. The screen shows the last state received.',
+      RECONNECTING: 'The link to the Core server is being restored.',
+    },
+    switchHint: {
+      SIMULATED: 'Press to switch to Simulated mode.',
+      LIVE: 'Press to switch to Live mode.',
+    },
+  },
+
+  /** Backend task W54 (§6.3): the operator's role was changed while signed in. */
+  roleNotice: {
+    changed: 'Your role is now {{role}}. The available actions have changed.',
+    pageLeft: 'The page you were on is not part of this role. You are back on the Dashboard.',
+  },
+
+  /** Backend task W54 (§10.1): a page that exists in Live mode only, opened in Simulated mode. */
+  liveOnly: {
+    title: 'This page needs the Core server',
+  },
+
   notifications: {
     button: 'Notifications',
     count_one: '{{count}} new alert',
@@ -86,6 +114,9 @@ export const shell = {
     networkTime: 'Network & Time',
     securityAudit: 'Security & Audit',
     system: 'System & Maintenance',
+    adminGroup: 'ADMINISTRATION',
+    usersRoles: 'Users & Roles',
+    pairedDevices: 'Paired Devices',
     developerGroup: 'DEVELOPER',
     apiReference: 'API Reference',
     devChip: 'DEV',

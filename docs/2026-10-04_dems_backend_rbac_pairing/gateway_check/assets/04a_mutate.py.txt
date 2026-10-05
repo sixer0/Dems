@@ -1,0 +1,209 @@
+#!/usr/bin/env python3
+"""Mutation check of fix round A, on the SCRATCH copy only (rule M15): each mutation changes one
+file of the scratch tree, runs the tests named for it, counts the failed tests, and puts the file
+back. A mutation is DETECTED when at least one test fails. Usage: mutate.py <project> [ids...]"""
+import pathlib
+import re
+import subprocess
+import sys
+
+REPO = pathlib.Path('/Users/gsp-budi/Documents/DEMS')
+ROOT = pathlib.Path(__file__).resolve().parent / 'tree' / 'apps' / 'core-server'
+assert str(ROOT).startswith('/private/tmp/'), ROOT
+
+LOGGER = ['src/plugins/logger']
+POOL = ['src/plugins/db']
+CORE = ['src/core']
+
+# id, file, old, new, project, tests
+MUTATIONS = [
+    # ── the logger's sanitiser ──────────────────────────────────────────────────────────────
+    ('L1 the formatter does nothing', 'src/plugins/logger/logger-options.ts',
+     "      log: (object) => safeLogObject(object),", "      log: (object) => object,", 'unit', LOGGER),
+    ('L2 the describer reads the error only, not its causes', 'src/plugins/logger/error-log.ts',
+     "export const CAUSE_CHAIN_DEPTH = 4;", "export const CAUSE_CHAIN_DEPTH = 1;", 'unit', LOGGER),
+    ('L3 the frames are filtered without cutting the message (the old filter)', 'src/plugins/logger/error-log.ts',
+     "  const afterMessage = at < 0 ? stack : stack.slice(at + message.length);", "  const afterMessage = at < -2 ? stack : stack;", 'unit', LOGGER),
+    ('L4 the frame form is any line that starts with at', 'src/plugins/logger/error-log.ts',
+     "const FRAME_LINE = /^\\s+at .+(?::\\d+:\\d+\\)?|\\(<anonymous>\\)|\\(native\\)|\\(index \\d+\\)|<anonymous>)$/;", "const FRAME_LINE = /^\\s+at /;", 'unit', LOGGER),
+    ('L5 arrays are not read', 'src/plugins/logger/logger-options.ts',
+     "    if (Array.isArray(value)) {", "    if (Array.isArray(value)) return value;\n    if (Array.isArray(value)) {", 'unit', LOGGER),
+    ('L6 nested objects are not read (one level only)', 'src/plugins/logger/logger-options.ts',
+     "      const safe = safeValue(member, depth + 1, budget);\n      if (safe !== member) {\n        copy ??= { ...members };",
+     "      const safe = member instanceof Error ? safeValue(member, depth + 1, budget) : member;\n      if (safe !== member) {\n        copy ??= { ...members };", 'unit', LOGGER),
+    ('L7 what lies deeper than the limit is written as it is', 'src/plugins/logger/logger-options.ts',
+     "  if (depth > LOG_DEPTH_LIMIT || budget.left <= 0) return NOT_LOGGED;", "  if (depth > LOG_DEPTH_LIMIT || budget.left <= 0) return value;", 'unit', LOGGER),
+    ('L8 a container past the member limit is written as it is', 'src/plugins/logger/logger-options.ts',
+     "        budget.left -= 1;\n        if (budget.left < 0) return NOT_LOGGED;\n        const safe = safeValue(item, depth + 1, budget);",
+     "        budget.left -= 1;\n        if (budget.left < 0) return value;\n        const safe = safeValue(item, depth + 1, budget);", 'unit', LOGGER),
+    ('L9 a value for the text of a line is not described', 'src/plugins/logger/logger-options.ts',
+     "          return index === 0 ? arg : safeValue(arg, 1, { left: LOG_MEMBER_LIMIT });", "          return arg;", 'unit', LOGGER),
+    ('L10 req, res and err are skipped at every depth', 'src/plugins/logger/logger-options.ts',
+     "    for (const key of Object.keys(members)) {\n      budget.left -= 1;\n      if (budget.left < 0) return NOT_LOGGED;\n      const member = members[key];",
+     "    for (const key of Object.keys(members)) {\n      budget.left -= 1;\n      if (budget.left < 0) return NOT_LOGGED;\n      if (SERIALIZED_KEYS.has(key)) continue;\n      const member = members[key];", 'unit', LOGGER),
+    ('L11 the JSON form of an object is not read', 'src/plugins/logger/logger-options.ts',
+     "      return typeof json === 'object' && json !== null ? safeValue(json, depth + 1, budget) : value;", "      return value;", 'unit', LOGGER),
+    ('L12 the name of the cause is not reported', 'src/plugins/logger/error-log.ts',
+     "    ...(coded === undefined || coded.depth === 0 ? {} : { causeName: nameOf(coded.error) }),", "", 'unit', LOGGER),
+    ('L13 the caller\'s object is changed in place', 'src/plugins/logger/logger-options.ts',
+     "    if (safe !== member) {\n      copy ??= { ...members };\n      copy[key] = safe;\n    }\n  }\n  return copy ?? object;",
+     "    if (safe !== member) {\n      copy ??= members;\n      copy[key] = safe;\n    }\n  }\n  return copy ?? object;", 'unit', LOGGER),
+    # ── the pool: the option, the boot check, the read helper, the lost connection ──────────
+    ('P1 the pool has no start-up option', 'src/plugins/db/index.ts',
+     "    options: RUNTIME_CONNECTION_OPTIONS,\n", "", 'unit', POOL),
+    ('P2 the boot check is not run', 'src/plugins/db/index.ts',
+     "      await checkSearchPath();\n", "", 'unit', POOL),
+    ('P3 the boot check accepts any path that names the project schema', 'src/plugins/db/index.ts',
+     "    if (found === RUNTIME_SEARCH_PATH) return;", "    if (typeof found === 'string' && found.includes('public')) return;", 'unit', POOL),
+    ('P4 the temporary schema first in the pinned value', 'src/plugins/db/index.ts',
+     "export const RUNTIME_SEARCH_PATH = 'public,pg_temp';", "export const RUNTIME_SEARCH_PATH = 'pg_temp,public';", 'unit', POOL + CORE),
+    ('P5 the boot check passes when the pool gives no row', 'src/plugins/db/index.ts',
+     "    if (found === RUNTIME_SEARCH_PATH) return;", "    if (found === RUNTIME_SEARCH_PATH || found === undefined) return;", 'unit', POOL),
+    ('P6 a failed boot check is not logged', 'src/plugins/db/index.ts',
+     "    app.log.error({ step: BOOT_STEP_DATABASE_ANSWERS, code: SEARCH_PATH_NOT_PINNED, expected: RUNTIME_SEARCH_PATH, found: shown }, 'boot check failed');", "", 'unit', POOL),
+    ('P7 read() starts no probe', 'src/plugins/db/index.ts',
+     "        // Readiness follows the pool; the probe reports its own failure and never rejects.\n        void database.probe({ fresh: true });\n", "", 'unit', POOL),
+    ('P8 read() lets the driver\'s error go', 'src/plugins/db/index.ts',
+     "        throw notReady();\n      }\n    },\n    connectionLost() {", "        throw error;\n      }\n    },\n    connectionLost() {", 'unit', POOL),
+    ('P9 read() turns a refusal of the work into 503', 'src/plugins/db/index.ts',
+     "        if (error instanceof ApiFailure) throw error;\n        app.log.error({ err: error, source }, READ_FAILED);", "        app.log.error({ err: error, source }, READ_FAILED);", 'unit', POOL),
+    ('P10 read() does not persist the failure', 'src/plugins/db/index.ts',
+     "        app.errorLog.append({\n          level: 'error',\n          source,\n          message: READ_FAILED,\n          ...describeError(error),\n          context: { database: connection.database, generation },\n        });\n",
+     "", 'unit', POOL),
+    ('P11 connectionLost() keeps the last probe result', 'src/plugins/db/index.ts',
+     "      app.readiness.set('database', false);\n      lastProbe = { at: performance.now(), ok: false };\n      void database.probe({ fresh: true });",
+     "      app.readiness.set('database', false);\n      void database.probe({ fresh: true });", 'unit', POOL),
+    ('P12 connectionLost() leaves the flag on', 'src/plugins/db/index.ts',
+     "      app.readiness.set('database', false);\n      lastProbe = { at: performance.now(), ok: false };", "      lastProbe = { at: performance.now(), ok: false };", 'unit', POOL + CORE),
+    ('P13 connectionLost() starts no probe', 'src/plugins/db/index.ts',
+     "      lastProbe = { at: performance.now(), ok: false };\n      void database.probe({ fresh: true });", "      lastProbe = { at: performance.now(), ok: false };", 'unit', POOL + CORE),
+    # ── the unit: the pin, the guard, the protocol ──────────────────────────────────────────
+    ('U1 the unit does not pin the search path (the old third statement)', 'src/core/unit-of-work.ts',
+     "  settings: \"SELECT set_config('statement_timeout', $1, true), set_config('search_path', $2, true)\",", "  settings: \"SELECT set_config('statement_timeout', $1, true)\",", 'unit', CORE),
+    ('U2 the pin is for the session, not for the transaction', 'src/core/unit-of-work.ts',
+     "set_config('search_path', $2, true)\",", "set_config('search_path', $2, false)\",", 'unit', CORE),
+    ('U3 the pinned value is not sent', 'src/core/unit-of-work.ts',
+     "[String(this.#dependencies.statementTimeoutMs), RUNTIME_SEARCH_PATH]", "[String(this.#dependencies.statementTimeoutMs), '\"$user\", public']", 'unit', CORE),
+    ('U4 the guard is not asked', 'src/core/unit-of-work.ts',
+     "    const rule = typeof text === 'string' ? unitStatementRefusal(text) : 'NO_TEXT';", "    const rule = typeof text === 'string' ? null : 'NO_TEXT';", 'unit', CORE),
+    ('U5 a second statement passes (R3)', 'src/core/unit-statement.ts',
+     "  if (SECOND_STATEMENT.test(code)) return UnitStatementRule.SEVERAL_STATEMENTS;\n", "", 'unit', CORE),
+    ('U6 SELECT INTO passes (R4)', 'src/core/unit-statement.ts',
+     "  if (SELECT_INTO.test(code)) return UnitStatementRule.CREATES_A_TABLE;\n", "", 'unit', CORE),
+    ('U7 the forbidden words pass (R5)', 'src/core/unit-statement.ts',
+     "  for (const [rule, pattern] of FORBIDDEN_WORDS) if (pattern.test(code)) return rule;\n", "", 'unit', CORE),
+    ('U8 the old first-keyword list instead of the row kinds (R2)', 'src/core/unit-statement.ts',
+     "  if (!ROW_STATEMENT.test(code)) return UnitStatementRule.NOT_A_ROW_STATEMENT;",
+     "  if (/^\\s*(?:begin|start\\s+transaction|commit|end|rollback|abort|savepoint|release|prepare\\s+transaction|set(?!\\s+(?:local|constraints)\\b)|reset|discard|create)\\b/i.test(code)) return UnitStatementRule.NOT_A_ROW_STATEMENT;", 'unit', CORE),
+    ('U9 strings and comments are read as code', 'src/core/unit-statement.ts',
+     "  const code = withoutLiterals(text);", "  const code = withoutLiterals(text) === null ? null : text;", 'unit', CORE),
+    ('U10 a text that cannot be read passes (R1)', 'src/core/unit-statement.ts',
+     "  if (code === null) return UnitStatementRule.UNREADABLE;", "  if (code === null) return null;", 'unit', CORE),
+    ('U11 a backslash escapes in every string', 'src/core/unit-statement.ts',
+     "      const escapes = char === \"'\" && /[Ee]/.test(text[index - 1] ?? '') && !isWordChar(text[index - 2]);", "      const escapes = char === \"'\";", 'unit', CORE),
+    ('U12 the setting function is not a forbidden word', 'src/core/unit-statement.ts',
+     "/\\bset_config\\s*\\(|\\bsearch_path\\b/i", "/\\bsearch_path\\b/i", 'unit', CORE),
+    ('U13 the name of the path setting is not a forbidden word', 'src/core/unit-statement.ts',
+     "/\\bset_config\\s*\\(|\\bsearch_path\\b/i", "/\\bset_config\\s*\\(/i", 'unit', CORE),
+    ('U14 the temporary schema is not a forbidden word', 'src/core/unit-statement.ts',
+     "  [UnitStatementRule.TEMPORARY_SCHEMA, /\\bpg_temp(?:_\\d+)?\\b/i],\n", "", 'unit', CORE),
+    ('U15 a statement is sent without asking for the extended protocol', 'src/core/unit-of-work.ts',
+     "  return typeof query === 'string' ? { text: query, queryMode: 'extended' } : { ...query, queryMode: 'extended' };",
+     "  return (typeof query === 'string' ? { text: query } : { ...query }) as UnitQueryConfig;", 'unit', CORE),
+    ('U16 only a statement with values asks for the extended protocol', 'src/core/unit-of-work.ts',
+     "      return await (values === undefined ? run(statement) : run(statement, [...values]));",
+     "      return await (values === undefined ? run({ text: statement.text }) : run(statement, [...values]));", 'unit', CORE),
+    # ── the lost connection ─────────────────────────────────────────────────────────────────
+    ('C1 the pipeline does not turn a lost connection into 503', 'src/core/pipeline.ts',
+     "        lost !== null && !(outcome.error instanceof PipelineFailure)", "        lost === undefined && !(outcome.error instanceof PipelineFailure)", 'unit', CORE),
+    ('C2 readiness is not told of the loss', 'src/core/pipeline.ts',
+     "      if (lost !== null) dependencies.onConnectionLost?.();\n", "", 'unit', CORE),
+    ('C3 class 08 is not the connection class', 'src/core/errors.ts',
+     "(CONNECTION_EXCEPTION.test(code) || SERVER_GONE.has(code) || SOCKET_FAILURES.has(code))", "(SERVER_GONE.has(code) || SOCKET_FAILURES.has(code))", 'unit', CORE),
+    ('C4 57P01 to 57P03 are not the connection class', 'src/core/errors.ts',
+     "(CONNECTION_EXCEPTION.test(code) || SERVER_GONE.has(code) || SOCKET_FAILURES.has(code))", "(CONNECTION_EXCEPTION.test(code) || SOCKET_FAILURES.has(code))", 'unit', CORE),
+    ('C5 the socket errors are not the connection class', 'src/core/errors.ts',
+     "(CONNECTION_EXCEPTION.test(code) || SERVER_GONE.has(code) || SOCKET_FAILURES.has(code))", "(CONNECTION_EXCEPTION.test(code) || SERVER_GONE.has(code))", 'unit', CORE),
+    ('C6 every failure without the class counts as a loss', 'src/core/errors.ts',
+     "  return isConnectionFailureCode(sqlStateOf(error));", "  return true;", 'unit', CORE),
+    ('C7 the error event of the connection is not a loss', 'src/core/unit-of-work.ts',
+     "    this.#lost ??= { error };\n    this.#failure ??= { error };\n  };", "    this.#failure ??= { error };\n  };", 'unit', CORE),
+    ('C8 a statement that fails with the class is not a loss', 'src/core/unit-of-work.ts',
+     "      if (isConnectionFailure(error)) this.#lost ??= { error };\n", "", 'unit', CORE),
+    ('C9 a rollback is sent on a lost connection and it goes back to the pool', 'src/core/unit-of-work.ts',
+     "    if (this.#lost !== null) {\n      // Nothing can be said to a connection that is gone, and it never goes back to the pool.\n      this.#release(true);\n      this.#phase = 'ended';\n      return;\n    }\n", "", 'unit', CORE),
+    ('C10 the app does not tell the pool of the loss', 'src/core/index.ts',
+     "      app.db.connectionLost();\n", "", 'unit', CORE),
+    ('C11 the 503 carries no cause', 'src/core/pipeline.ts',
+     "          ? new PipelineFailure(PipelineRefusal.DATABASE_UNAVAILABLE, lost.error)", "          ? new PipelineFailure(PipelineRefusal.DATABASE_UNAVAILABLE)", 'unit', CORE),
+    ('C12 a lost connection is a commit failure, not "the database does not answer"', 'src/core/pipeline.ts',
+     "          ? new PipelineFailure(PipelineRefusal.DATABASE_UNAVAILABLE, lost.error)", "          ? new PipelineFailure(PipelineRefusal.COMMIT_FAILED, lost.error)", 'unit', CORE),
+    # ── the registration order of the boot checks: do the relative-order tests still see it? ─
+    ('T1 the boot checks are registered in reverse order', 'src/core/boot-checks.ts',
+     "  for (const id of BOOT_CHECK_IDS) {", "  for (const id of [...BOOT_CHECK_IDS].reverse()) {", 'unit', CORE),
+    ('T2 the reported check B-8 is not registered', 'src/core/boot-checks.ts',
+     "      app.readiness.addBootStep({ id, run: () => reportStoredChain(app) });\n      continue;", "      continue;", 'unit', CORE),
+    # ── against PostgreSQL ──────────────────────────────────────────────────────────────────
+    ('D1 the pool has no start-up option', 'src/plugins/db/index.ts',
+     "    options: RUNTIME_CONNECTION_OPTIONS,\n", "", 'db', ['src/plugins/db/__tests__/search-path.db.test.ts']),
+    ('D2 the unit does not pin the search path', 'src/core/unit-of-work.ts',
+     "  settings: \"SELECT set_config('statement_timeout', $1, true), set_config('search_path', $2, true)\",", "  settings: \"SELECT set_config('statement_timeout', $1, true), set_config('lock_timeout', $2, true)\",", 'db', ['src/core/__tests__/search-path.db.test.ts']),
+    ('D3 the pin is for the session', 'src/core/unit-of-work.ts',
+     "set_config('search_path', $2, true)\",", "set_config('search_path', $2, false)\",", 'db', ['src/core/__tests__/search-path.db.test.ts']),
+    ('D4 the guard is not asked', 'src/core/unit-of-work.ts',
+     "    const rule = typeof text === 'string' ? unitStatementRefusal(text) : 'NO_TEXT';", "    const rule = typeof text === 'string' ? null : 'NO_TEXT';", 'db', ['src/core/__tests__/unit-guard.db.test.ts', 'src/core/__tests__/unit-of-work.db.test.ts']),
+    ('D5 the pipeline does not turn a lost connection into 503', 'src/core/pipeline.ts',
+     "        lost !== null && !(outcome.error instanceof PipelineFailure)", "        lost === undefined && !(outcome.error instanceof PipelineFailure)", 'db', ['src/core/__tests__/connection-lost.db.test.ts']),
+    ('D6 the error event of the connection is not a loss', 'src/core/unit-of-work.ts',
+     "    this.#lost ??= { error };\n    this.#failure ??= { error };\n  };", "    this.#failure ??= { error };\n  };", 'db', ['src/core/__tests__/connection-lost.db.test.ts']),
+    ('D7 the formatter does nothing', 'src/plugins/logger/logger-options.ts',
+     "      log: (object) => safeLogObject(object),", "      log: (object) => object,", 'db', ['src/plugins/logger/__tests__/error-keys.db.test.ts']),
+    ('D8 the engine shutdown test: the pool is never closed (the poll must still fail)', 'src/plugins/db/index.ts',
+     "      await pool.end();\n    },\n    async reopen() {", "    },\n    async reopen() {", 'db', ['src/engine/__tests__/restart.db.test.ts']),
+]
+
+
+def run(project, tests):
+    command = ['node', 'node_modules/vitest/vitest.mjs', 'run', '--root', str(ROOT), '--project', project, '--maxWorkers=2', *tests]
+    env = None
+    if project == 'db':
+        import os
+        env = dict(os.environ, DEMS_TEST_STEP='60a')
+    done = subprocess.run(command, cwd=REPO, capture_output=True, text=True, env=env)
+    out = done.stdout + done.stderr
+    tests_line = re.findall(r'^\s+Tests\s+(.*)$', out, flags=re.M)
+    files_line = re.findall(r'^\s+Test Files\s+(.*)$', out, flags=re.M)
+    failed = re.search(r'(\d+) failed', tests_line[-1]) if tests_line else None
+    return done.returncode, (int(failed.group(1)) if failed else 0), (files_line[-1].strip() if files_line else 'no summary'), (tests_line[-1].strip() if tests_line else 'no summary')
+
+
+def main():
+    project = sys.argv[1]
+    wanted = sys.argv[2:]
+    detected = 0
+    total = 0
+    for name, path, old, new, where, tests in MUTATIONS:
+        if where != project:
+            continue
+        if wanted and name.split(' ')[0] not in wanted:
+            continue
+        file = ROOT / path
+        original = file.read_text()
+        if original.count(old) != 1:
+            print(f'{name}: NOT APPLIED (the text occurs {original.count(old)} times)', flush=True)
+            total += 1
+            continue
+        file.write_text(original.replace(old, new))
+        try:
+            code, failed, files, summary = run(project, tests)
+        finally:
+            file.write_text(original)
+        total += 1
+        verdict = 'DETECTED' if code != 0 and (failed > 0 or 'failed' in files) else 'NOT DETECTED'
+        if verdict == 'DETECTED':
+            detected += 1
+        print(f'{name}: {verdict} — exit {code}; files {files}; tests {summary}', flush=True)
+    print(f'{detected} of {total} mutations detected ({project})', flush=True)
+
+
+main()

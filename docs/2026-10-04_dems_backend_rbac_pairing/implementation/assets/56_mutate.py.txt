@@ -1,0 +1,156 @@
+#!/usr/bin/env python3
+"""W56 mutation check of the auth layer's own logic.
+
+Each mutation changes ONE text of ONE production file IN MEMORY (the jest transformer beside this
+file: mutating-transformer.cjs) and runs the test files of `apps/mobile/src/auth`. A mutation is
+DETECTED when jest exits non-zero. Nothing in the tree is written (rule M15): the hashes of the
+mutated files are compared before and after the whole run.
+
+  python3 mutate.py [id ...]      (no id: all)
+"""
+import hashlib, json, os, subprocess, sys, time
+
+ROOT = '/Users/gsp-budi/Documents/DEMS'
+APP = ROOT + '/apps/mobile'
+HERE = os.path.dirname(os.path.abspath(__file__))
+SPEC = HERE + '/spec.json'
+CONFIG = HERE + '/jest.mut.config.cjs'
+TESTS = [
+    'src/auth/live-auth.test.tsx', 'src/auth/live-auth-model.test.ts', 'src/auth/live-biometric.test.ts',
+    'src/auth/live-auth-static.test.ts', 'src/auth/auth-provider.test.tsx', 'src/auth/biometric.test.ts',
+]
+LM = 'src/auth/live-auth-model.ts'
+LB = 'src/auth/live-biometric.ts'
+LP = 'src/auth/live-auth-provider.tsx'
+AP = 'src/auth/auth-provider.tsx'
+AS = 'src/auth/auth-session.tsx'
+BI = 'src/auth/biometric.ts'
+AN = 'src/auth/auth-notice.tsx'
+
+M = [
+  # ── the pure rules ──
+  ('M01', LM, "return link.source !== 'SIMULATED' && link.state === 'OFFLINE';", "return link.source === 'HEARTBEAT' && link.state === 'OFFLINE';", 'LIVE with the link down does not block the sign-in'),
+  ('M02', LM, "return link.source !== 'SIMULATED' && link.state === 'OFFLINE';", "return link.state === 'OFFLINE';", 'SIMULATED is blocked too'),
+  ('M03', LM, "if (session.signOut === 'LOCK') return 'LOCK';", "if (session.signOut === 'LOCK') return 'USER';", 'Lock console reads as a sign-out'),
+  ('M04', LM, "if (session.reason === 'IDLE_EXPIRED') return 'IDLE';", "if (session.reason === 'IDLE_EXPIRED') return null;", 'an idle expiry has no Login notice'),
+  ('M05', LM, "    case 'TOKEN_REUSE':\n      return authNotice('token-reuse');", "    case 'TOKEN_REUSE':\n      return authNotice('biometric-invalid');", 'a reuse gets the Alert of MB-3'),
+  ('M06', LM, "return end !== null && end.kind === 'SESSION_ENDED' && end.wasSignedIn ? end : null;", "return end !== null && end.wasSignedIn ? end : null;", 'the end of the pairing counts as a session end'),
+  ('M07', LM, "if (presentation?.outage === true) return { result: { ok: false, reason: 'CORE_OFFLINE' }, presentation, toast: false };", "", 'an outage is UNAVAILABLE'),
+  ('M08', LM, "const silent = presentation === null || presentation.label === null || presentation.kind === 'SIGNED_OUT';", "const silent = true;", 'no limit toast'),
+  ('M09', LM, "return !settled.result.ok && settled.result.reason === 'LOCKED' ? 'kept' : 'spent';", "return settled.result.ok ? 'spent' : 'kept';", 'a 401 keeps the token'),
+  ('M10', LM, "if (error.status === HTTP_TOO_MANY_REQUESTS || error.code === CODE_RATE_LIMITED) return 'kept';", "if (error.status === HTTP_TOO_MANY_REQUESTS || error.code === CODE_RATE_LIMITED) return 'spent';", 'a limit costs the enrolment'),
+  ('M11', LM, "    if (error.code !== null && NOTHING_SENT_CODES.includes(error.code)) return 'kept';\n    return 'spent';", "    if (error.code !== null && NOTHING_SENT_CODES.includes(error.code)) return 'kept';\n    return 'kept';", 'A LOST ANSWER KEEPS THE TOKEN: it would be sent again'),
+  ('M12', LM, "if (error instanceof SimPermissionError) return 'kept';", "if (error instanceof SimPermissionError) return 'spent';", 'a 401 NOT_SIGNED_IN costs the enrolment'),
+  ('M13', LM, "return protectedItem && isDevice ? 'read-is-prompt' : 'os-prompt-first';", "return protectedItem ? 'read-is-prompt' : 'os-prompt-first';", 'an emulator with a protected item gets no OS prompt first'),
+  ('M14', LM, "return reason === 'IDLE_EXPIRED' ? 'IDLE' : reason === 'ABSOLUTE_EXPIRED' ? 'ABSOLUTE' : null;", "return reason === 'IDLE_EXPIRED' || reason === 'ABSOLUTE_EXPIRED' ? 'IDLE' : null;", 'the 8-hour limit shows the idle sentence'),
+  ('M15', LM, "return end.kind === 'SESSION_ENDED' && end.reason === 'TOKEN_REUSE';", "return false;", 'a reuse deletes nothing'),
+  ('M16', LM, "if (error.status === HTTP_NOT_READY && error.code === CODE_NOT_READY) return 'kept';", "", 'a Core that is not ready costs the enrolment'),
+  ('M17', LM, "    if (error.status === HTTP_FORBIDDEN && error.code === CODE_DEVICE_NOT_PAIRED) return 'kept';", "    if (error.status === HTTP_FORBIDDEN) return 'kept';", 'a revoked device keeps the token'),
+  # ── the token storage ──
+  ('B01', LB, "return isUnprotectedBiometricItemAllowed() ? 'unprotected' : 'protected';", "return 'unprotected';", 'never a protected write'),
+  ('B02', LB, "return isUnprotectedBiometricItemAllowed() ? 'unprotected' : 'protected';", "return 'protected-with-fallback';", 'a fallback the ruling did not choose'),
+  ('B03', LB, "if (open === null || open.asked) return null;", "if (open === null) return null;", 'a token is handed out twice in one attempt'),
+  ('B04', LB, "if (stored === null || stored.operatorId !== operatorId) {", "if (stored === null) {", 'the token of another operator is handed out'),
+  ('B05', LB, "if (read.value.deviceId !== deviceId) {", "if (false) {", 'an enrolment of an earlier pairing is used'),
+  ('B06', LB, "    if (deviceId === null) return null;\n    const read = await readBiometricMarker();", "    const read = await readBiometricMarker();", 'the storage is asked while the tablet is not paired'),
+  ('B07', LB, "if (open.release.kind === 'unreadable') await deleteBiometric();", "", 'an unreadable item stays'),
+  ('B08', LB, "      open.rotated = true;\n", "", 'the next token is deleted at the end of the attempt'),
+  ('B09', LB, "const written = await rotateBiometricToken(issued.biometricToken, open.promptTitle);", "const written = await Promise.resolve({ ok: true as const, protected: false });", 'the next token is not stored'),
+  ('B10', LB, "if (open === null || !open.out) return;", "if (open === null) return;", 'a sign-in without a released token rotates'),
+  ('B11', LB, "      if (issued.biometricToken === null) return;\n", "", 'a missing next token is written'),
+  ('B12', LB, "      if (current !== null) return null;\n", "", 'two attempts at once'),
+  ('B13', LB, "if (fate === 'kept') return { release: open.release, token: 'kept' };", "if (fate !== 'x') return { release: open.release, token: 'kept' };", 'a spent token is never deleted'),
+  ('B14', LB, "if (!open.out) return { release: open.release, token: 'untouched' };", "", 'the items are deleted although nothing left the store'),
+  ('B15', LB, "if (open.rotated) return { release: open.release, token: open.rotationFailed ? 'deleted' : 'rotated' };", "", 'the rotated token is deleted when the attempt ends'),
+  ('B16', LB, "    case 'LOCKOUT':\n      return { kind: 'check', outcome: 'lockout' };", "    case 'LOCKOUT':\n      return { kind: 'check', outcome: 'failed' };", 'an OS lockout is reported as a failed check'),
+  ('B17', LB, "if (failure.code !== 'AUTHENTICATION') return { kind: 'unreadable' };", "if (failure.code !== 'AUTHENTICATION') return { kind: 'check', outcome: 'cancel' };", 'an unreadable item reads as a cancelled prompt'),
+  ('B18', LB, "      open.out = true;\n", "", 'a released token does not count as presented'),
+  ('B19', LB, "    case 'USER_CANCELED':\n", "    case 'OTHER':\n", 'a cancelled protected read is a failed check'),
+  ('B20', LB, "        await deleteBiometric();\n        open.release = { kind: 'unreadable' };", "        open.release = { kind: 'unreadable' };", 'a marker without a token stays'),
+  # ── the LIVE provider ──
+  ('P01', LP, "      if (isPairingBlocked(pairingRef.current)) {\n        // §9.2", "      if (false) {\n        // §9.2", 'a tablet that is not paired sends a sign-in'),
+  ('P02', LP, "      if (rejection.toast) presentCoreError(error);\n", "", 'no toast for a refused sign-in'),
+  ('P03', LP, "      setSignInFailure(rejection.presentation);\n", "", 'the refusal of the last attempt is not exposed'),
+  ('P04', LP, "session.operator.id !== operatorId || session.method !== 'PASSWORD' || session.deviceId === null) {", "session.operator.id !== operatorId || session.deviceId === null) {", 'OPERATION 7 IS SENT IN A BIOMETRIC SESSION'),
+  ('P05', LP, "if (stored !== null && stored.operatorId === operatorId) return;", "", 'the enrolment is offered although it exists'),
+  ('P06', LP, "const removed = await store.remove();", "const removed = await Promise.resolve(true);", 'turning it off deletes nothing'),
+  ('P07', LP, "      if (!answer.ok) {\n        reportRuntimeIssue('warn', 'auth.biometric.disable'", "      if (false) {\n        reportRuntimeIssue('warn', 'auth.biometric.disable'", 'the items are deleted although the Core was not told'),
+  ('P08', LP, "const undone = await live.client.call('setBiometricEnrollment', { body: { enabled: false } });", "const undone = await Promise.resolve({ ok: true as const, status: 200, error: { code: '' }, requestId: null });", 'a failed enrolment leaves a live token on the Core'),
+  ('P09', LP, "if (!isTokenReuse(end) || store === null) return;", "if (store !== undefined) return;", 'TOKEN_REUSE DELETES NOTHING'),
+  ('P10', LP, "const lastSignOut = signedIn ? null : signOutReasonOf(sessionEnd);", "const lastSignOut = signOutReasonOf(sessionEnd);", 'the notice of the last end outlives the next sign-in'),
+  ('P11', LP, "const notice = signedIn ? null : biometricInvalid ?", "const notice = biometricInvalid ?", 'an Alert while signed in'),
+  ('P12', LP, "    mobile.setBiometricPort(store.port);\n", "", 'the token storage is never registered'),
+  ('P13', LP, "    if (inFlight.current !== null) return inFlight.current;\n", "", 'A DOUBLE TAP IS TWO SIGN-INS'),
+  ('P14', LP, "if (lock.locked && lock.lockedUntilMs !== null) return { kind: 'locked', lockedUntilMs: lock.lockedUntilMs };", "", 'a token is sent while the device is locked'),
+  ('P15', LP, "if (store.promptPlan(stored) === 'os-prompt-first') {", "if (store.promptPlan(stored) !== 'os-prompt-first') {", 'NO OS CHECK BEFORE THE TOKEN IS SENT'),
+  ('P16', LP, "if (outcome !== 'success') return afterCheck(outcome, stored.operatorId, correlationId);", "if (outcome === 'failed') return afterCheck(outcome, stored.operatorId, correlationId);", 'A CANCELLED PROMPT SENDS THE TOKEN'),
+  ('P17', LP, "if (tokenEnd === 'deleted' || release?.kind === 'unreadable') {", "if (release?.kind === 'unreadable') {", 'a dead token is reported as a failed attempt'),
+  ('P18', LP, "      setBiometricInvalid(true);\n", "", 'no Alert after a dead token'),
+  ('P19', LP, "      settle(() => actions.signOut(reason === 'LOCK' ? 'LOCK' : 'USER'), {", "      settle(() => actions.signOut('USER'), {", 'Lock console is sent as a sign-out'),
+  ('P20', LP, "changeBlocked: sessionMethod === 'BIOMETRIC',", "changeBlocked: false,", 'the switch is not blocked in a biometric session'),
+  ('P21', LP, "protected: marker?.protected ?? null,", "protected: null,", 'the session does not say how the token is stored'),
+  ('P22', LP, "enabled: marker !== null,", "enabled: true,", 'biometric sign-in always reads as enabled'),
+  ('P23', LP, "const expiredNotice = expiry !== null && sessionEnd !== dismissedExpiry;", "const expiredNotice = expiry !== null;", 'the expiry dialog cannot be closed'),
+  ('P24', LP, "{...(expiry === 'ABSOLUTE' ? { reason: t('features.auth.notice.absoluteExpired') } : {})}", "", 'the dialog of the 8-hour limit says 15 minutes'),
+  ('P25', LP, "              note={t('features.auth.biometric.screenLockNote')}\n", "", 'the LIVE offer says "Simulated identity binding"'),
+  ('P26', LP, "      setBiometricInvalid(false);\n      offerBiometricFor", "      offerBiometricFor", 'the Alert of a dead token comes back after a password sign-in'),
+  ('P27', LP, "        if (!outcome.ok) throw new Error('Biometric sign-in was not turned on');\n", "", 'a failed enrolment is reported as done'),
+  ('P28', LP, "    const fate = biometricTokenFate(settled);", "    const fate = 'kept' as ReturnType<typeof biometricTokenFate>;", 'NO TOKEN IS EVER DELETED AFTER AN ATTEMPT'),
+  ('P29', LP, "const expiry = signedIn ? null : expiryOf(sessionEnd);", "const expiry = expiryOf(sessionEnd);", 'the expiry dialog reopens after the next sign-in'),
+  ('P30', LP, "if (session === null || session.operator.id !== operatorId || session.method !== 'PASSWORD') return;\n      if (alive.current) setBiometricOffer(operatorId);", "if (alive.current) setBiometricOffer('OPR-999');", 'the offer names another operator'),
+  ('P31', LP, "        if (next !== 'available') return;\n      const stored = await refreshMarker();", "      const stored = await refreshMarker();", 'placeholder: replaced below'),
+  # ── the switch, the simulated provider, the shared parts ──
+  ('A01', AP, "return mobile !== null ? (", "return mobile === null ? (", 'the providers are swapped'),
+  ('A02', AP, "result = await actions.signIn(username, password);", "result = await actions.signIn(username, '');", 'the simulated sign-in drops the password'),
+  ('A03', AP, "settle(() => actions.signOut(reason === 'LOCK' ? 'LOCK' : 'USER'), {", "settle(() => actions.signOut('USER'), {", 'the simulated Lock console is a sign-out'),
+  ('A04', AP, "      auth: actions,\n", "      auth: { signInWithBiometric: () => ({ ok: false, reason: 'INVALID_CREDENTIALS', attemptsRemaining: 0 }), recordBiometricFailure: actions.recordBiometricFailure },\n", 'the simulated fingerprint never signs in'),
+  ('S01', AS, "if (now - lastTouch.current < ACTIVITY_THROTTLE_MS) return;", "if (now - lastTouch.current < Number.POSITIVE_INFINITY) return;", 'no touch is ever reported'),
+  ('S02', AS, "settle(() => actions.touch(), {", "settle(() => undefined, {", 'a touch calls nothing'),
+  ('S03', AS, "if (result.reason === 'LOCKED') return { ok: false, reason: 'LOCKED', lockedUntilMs: result.lockedUntil };", "", 'a lockout reads as a wrong password'),
+  ('I01', BI, "return isPromiseLike(answer) ? Promise.resolve(answer).then(map) : map(answer);", "return map(answer as T);", 'a Live answer is read as a value'),
+  ('I02', BI, "      return mapAnswer(auth.recordBiometricFailure(operatorId), (result) => (result.ok ? { kind: 'error' } : fromFailure(result)));", "      return { kind: 'error' };", 'a failed OS check reports nothing'),
+  ('N01', AN, "if (notice === null) return null;", "if (notice !== null) return null;", 'the Alert is never drawn'),
+  ('N02', AN, "<Alert.Title>{t(notice.textKey)}</Alert.Title>", "<Alert.Title>{notice.kind}</Alert.Title>", 'the Alert shows no sentence'),
+]
+# P31 was a placeholder for a text that does not occur as written: dropped, so that the list holds only real mutations.
+M = [m for m in M if m[0] != 'P31']
+
+def sha(path):
+    with open(path, 'rb') as f:
+        return hashlib.sha256(f.read()).hexdigest()
+
+def main():
+    wanted = set(sys.argv[1:])
+    todo = [m for m in M if not wanted or m[0] in wanted]
+    files = sorted({m[1] for m in M})
+    before = {f: sha(APP + '/' + f) for f in files}
+    print('# W56 mutation check, %s; %d test files per run; the tree is not edited' % (time.strftime('%Y-%m-%d %H:%M:%S'), len(TESTS)), flush=True)
+    detected, survived, broken = [], [], []
+    for (mid, file, old, new, what) in todo:
+        source = open(APP + '/' + file).read()
+        count = source.count(old)
+        if count != 1:
+            broken.append(mid)
+            print('%s  NOT APPLIED: the text occurs %d times in %s   (%s)' % (mid, count, file, what), flush=True)
+            continue
+        json.dump({'id': mid, 'file': file, 'from': old, 'to': new}, open(SPEC, 'w'))
+        env = dict(os.environ, W56_MUT_SPEC=SPEC, CI='1')
+        started = time.time()
+        run = subprocess.run(['node', ROOT + '/node_modules/jest/bin/jest.js', '--config', CONFIG, '--maxWorkers=2', '--silent', *TESTS],
+                             cwd=APP, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        tail = [line for line in run.stdout.splitlines() if line.startswith('Tests:')]
+        failed_files = sorted({line.split()[1].replace('src/auth/', '') for line in run.stdout.splitlines() if line.startswith('FAIL ')})
+        verdict = 'detected' if run.returncode != 0 else 'NOT DETECTED'
+        (detected if run.returncode != 0 else survived).append(mid)
+        print('%s  %-12s %4.0fs  %s  | %s  | %s' % (mid, verdict, time.time() - started, what, (tail[-1].strip() if tail else 'no summary line'), ', '.join(failed_files)), flush=True)
+    after = {f: sha(APP + '/' + f) for f in files}
+    print('## %d detected, %d not detected, %d not applied, of %d' % (len(detected), len(survived), len(broken), len(todo)), flush=True)
+    if survived: print('## not detected: ' + ' '.join(survived), flush=True)
+    if broken: print('## not applied: ' + ' '.join(broken), flush=True)
+    print('## the mutated files in the tree, before and after: ' + ('identical' if before == after else 'CHANGED'), flush=True)
+    for f in files: print('   %s  %s' % (after[f][:16], f), flush=True)
+    print('# finished %s' % time.strftime('%H:%M:%S'), flush=True)
+    return 0 if not survived and not broken and before == after else 1
+
+if __name__ == '__main__':
+    sys.exit(main())

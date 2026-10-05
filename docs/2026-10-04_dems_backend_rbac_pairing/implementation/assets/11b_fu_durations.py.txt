@@ -1,0 +1,70 @@
+#!/usr/bin/env python3
+"""W11b follow-up: per-file and per-test durations from Vitest's JSON reporter.
+
+usage: durations.py <label> <report.json> [<report.json> ...]
+Prints, per test file: tests, the sum of the test durations and the slowest test, for each
+report; then the tests slower than a threshold. Reads only; prints names and milliseconds.
+"""
+import json
+import os
+import sys
+
+label = sys.argv[1]
+reports = sys.argv[2:]
+THRESHOLD_MS = float(os.environ.get('W11B_SLOW_MS', '1000'))
+ONLY = os.environ.get('W11B_ONLY', 'test/helpers/db/')
+
+runs = []
+for path in reports:
+    data = json.load(open(path, encoding='utf-8'))
+    files = {}
+    for result in data.get('testResults', []):
+        name = result['name']
+        marker = 'apps/core-server/'
+        short = name[name.index(marker) + len(marker):] if marker in name else name
+        tests = result.get('assertionResults', [])
+        durations = [(t.get('duration') or 0.0, t.get('fullName') or t.get('title'), t.get('status')) for t in tests]
+        files[short] = {
+            'tests': len(tests),
+            'sum': sum(d for d, _, _ in durations),
+            'wall': (result.get('endTime') or 0) - (result.get('startTime') or 0),
+            'slowest': max(durations, default=(0.0, '-', '-')),
+            'all': durations,
+            'failed': [t for t in durations if t[2] not in ('passed', 'skipped', 'pending', 'todo')],
+        }
+    runs.append((os.path.basename(path), data, files))
+
+names = sorted({name for _, _, files in runs for name in files if ONLY in name})
+print(f'# {label}: {len(runs)} report(s); per file: sum of the test durations in ms (tests), one column per run')
+width = max((len(n) for n in names), default=10)
+print(f"{'file'.ljust(width)}  " + '  '.join(f'run {i + 1}'.rjust(12) for i in range(len(runs))) + '   median')
+totals = [0.0] * len(runs)
+for name in names:
+    cells = []
+    values = []
+    for i, (_, _, files) in enumerate(runs):
+        entry = files.get(name)
+        if entry is None:
+            cells.append('-'.rjust(12))
+            continue
+        values.append(entry['sum'])
+        totals[i] += entry['sum']
+        cells.append(f"{entry['sum']:.0f} ({entry['tests']})".rjust(12))
+    values.sort()
+    median = values[len(values) // 2] if values else 0
+    print(f'{name.ljust(width)}  ' + '  '.join(cells) + f'   {median:.0f}')
+print(f"{'all files above'.ljust(width)}  " + '  '.join(f'{t:.0f}'.rjust(12) for t in totals) + f'   {sorted(totals)[len(totals) // 2]:.0f}')
+for i, (base, data, files) in enumerate(runs):
+    failed = sum(len(f['failed']) for f in files.values())
+    print(f"# run {i + 1} ({base}): files {data.get('numTotalTestSuites')}, tests {data.get('numTotalTests')}, passed {data.get('numPassedTests')}, failed {data.get('numFailedTests')}, success {data.get('success')}; not passed in the files listed: {failed}")
+slow = []
+for i, (_, _, files) in enumerate(runs):
+    for name, entry in files.items():
+        if ONLY not in name:
+            continue
+        for duration, title, status in entry['all']:
+            if duration >= THRESHOLD_MS:
+                slow.append((duration, i + 1, name.split('/')[-1], title, status))
+print(f'# tests of these files that took {THRESHOLD_MS:.0f} ms or more: {len(slow)}')
+for duration, run, name, title, status in sorted(slow, reverse=True)[:40]:
+    print(f'  {duration:7.0f} ms  run {run}  {name}  {status}  {title[:150]}')

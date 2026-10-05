@@ -1,0 +1,113 @@
+=== old_nometro_unset (stub adb trace)
+adb start-server
+adb -s emulator-5554 get-state
+adb -s emulator-5554 shell getprop sys.boot_completed
+adb -s emulator-5554 shell am force-stop com.dems.demo.tablet
+adb -s emulator-5554 reverse tcp:4400 tcp:4400
+adb -s emulator-5554 shell am force-stop com.dems.demo.tablet
+adb -s emulator-5554 reverse --remove tcp:4400
+=== new_nometro_unset (stub adb trace)
+adb start-server
+adb -s emulator-5554 get-state
+adb -s emulator-5554 shell getprop sys.boot_completed
+adb -s emulator-5554 shell am force-stop com.dems.demo.tablet
+adb -s emulator-5554 reverse tcp:4400 tcp:4400
+adb -s emulator-5554 shell am force-stop com.dems.demo.tablet
+adb -s emulator-5554 reverse --remove tcp:4400
+=== new_nometro_empty (stub adb trace)
+adb start-server
+adb -s emulator-5554 get-state
+adb -s emulator-5554 shell getprop sys.boot_completed
+adb -s emulator-5554 shell am force-stop com.dems.demo.tablet
+adb -s emulator-5554 reverse tcp:4400 tcp:4400
+adb -s emulator-5554 shell am force-stop com.dems.demo.tablet
+adb -s emulator-5554 reverse --remove tcp:4400
+=== new_nometro_4421 (stub adb trace)
+adb start-server
+adb -s emulator-5554 get-state
+adb -s emulator-5554 shell getprop sys.boot_completed
+adb -s emulator-5554 shell am force-stop com.dems.demo.tablet
+adb -s emulator-5554 reverse tcp:4400 tcp:4400
+adb -s emulator-5554 reverse tcp:4420 tcp:4421
+adb -s emulator-5554 shell am force-stop com.dems.demo.tablet
+adb -s emulator-5554 reverse --remove tcp:4400
+adb -s emulator-5554 reverse --remove tcp:4420
+=== old_metro_unset (stub adb trace)
+adb start-server
+adb -s emulator-5554 get-state
+adb -s emulator-5554 shell getprop sys.boot_completed
+adb start-server
+adb -s emulator-5556 get-state
+adb -s emulator-5556 shell getprop sys.boot_completed
+adb -s emulator-5554 shell am force-stop com.dems.demo.tablet
+adb -s emulator-5556 shell am force-stop com.dems.demo.tablet
+adb -s emulator-5554 shell run-as com.dems.demo.tablet cat shared_prefs/com.dems.demo.tablet_preferences.xml
+adb -s emulator-5554 shell run-as com.dems.demo.tablet sh -c 'mkdir -p shared_prefs && cat > shared_prefs/com.dems.demo.tablet_preferences.xml'
+adb -s emulator-5554 shell run-as com.dems.demo.tablet cat shared_prefs/com.dems.demo.tablet_preferences.xml
+adb -s emulator-5554 reverse tcp:8081 tcp:8086
+adb -s emulator-5554 reverse tcp:4400 tcp:4400
+adb -s emulator-5556 shell run-as com.dems.demo.tablet cat shared_prefs/com.dems.demo.tablet_preferences.xml
+adb -s emulator-5556 shell run-as com.dems.demo.tablet sh -c 'mkdir -p shared_prefs && cat > shared_prefs/com.dems.demo.tablet_preferences.xml'
+adb -s emulator-5556 shell run-as com.dems.demo.tablet cat shared_prefs/com.dems.demo.tablet_preferences.xml
+adb -s emulator-5556 reverse tcp:8081 tcp:8086
+adb -s emulator-5556 reverse tcp:4400 tcp:4400
+adb -s emulator-5554 shell am force-stop com.dems.demo.tablet
+adb -s emulator-5554 reverse --remove tcp:8081
+adb -s emulator-5554 reverse --remove tcp:4400
+adb -s emulator-5556 shell am force-stop com.dems.demo.tablet
+adb -s emulator-5556 reverse --remove tcp:8081
+adb -s emulator-5556 reverse --remove tcp:4400
+=== new_metro_unset (stub adb trace)
+adb start-server
+adb -s emulator-5554 get-state
+adb -s emulator-5554 shell getprop sys.boot_completed
+adb start-server
+adb -s emulator-5556 get-state
+adb -s emulator-5556 shell getprop sys.boot_completed
+adb -s emulator-5554 shell am force-stop com.dems.demo.tablet
+adb -s emulator-5556 shell am force-stop com.dems.demo.tablet
+adb -s emulator-5554 shell run-as com.dems.demo.tablet cat shared_prefs/com.dems.demo.tablet_preferences.xml
+adb -s emulator-5554 shell run-as com.dems.demo.tablet sh -c 'mkdir -p shared_prefs && cat > shared_prefs/com.dems.demo.tablet_preferences.xml'
+adb -s emulator-5554 shell run-as com.dems.demo.tablet cat shared_prefs/com.dems.demo.tablet_preferences.xml
+adb -s emulator-5554 reverse tcp:8081 tcp:8086
+adb -s emulator-5554 reverse tcp:4400 tcp:4400
+adb -s emulator-5556 shell run-as com.dems.demo.tablet cat shared_prefs/com.dems.demo.tablet_preferences.xml
+adb -s emulator-5556 shell run-as com.dems.demo.tablet sh -c 'mkdir -p shared_prefs && cat > shared_prefs/com.dems.demo.tablet_preferences.xml'
+adb -s emulator-5556 shell run-as com.dems.demo.tablet cat shared_prefs/com.dems.demo.tablet_preferences.xml
+adb -s emulator-5556 reverse tcp:8081 tcp:8086
+adb -s emulator-5556 reverse tcp:4400 tcp:4400
+adb -s emulator-5554 shell am force-stop com.dems.demo.tablet
+adb -s emulator-5554 reverse --remove tcp:8081
+adb -s emulator-5554 reverse --remove tcp:4400
+adb -s emulator-5556 shell am force-stop com.dems.demo.tablet
+adb -s emulator-5556 reverse --remove tcp:8081
+adb -s emulator-5556 reverse --remove tcp:4400
+=== new_metro_4422 (stub adb trace)
+adb start-server
+adb -s emulator-5554 get-state
+adb -s emulator-5554 shell getprop sys.boot_completed
+adb start-server
+adb -s emulator-5556 get-state
+adb -s emulator-5556 shell getprop sys.boot_completed
+adb -s emulator-5554 shell am force-stop com.dems.demo.tablet
+adb -s emulator-5556 shell am force-stop com.dems.demo.tablet
+adb -s emulator-5554 shell run-as com.dems.demo.tablet cat shared_prefs/com.dems.demo.tablet_preferences.xml
+adb -s emulator-5554 shell run-as com.dems.demo.tablet sh -c 'mkdir -p shared_prefs && cat > shared_prefs/com.dems.demo.tablet_preferences.xml'
+adb -s emulator-5554 shell run-as com.dems.demo.tablet cat shared_prefs/com.dems.demo.tablet_preferences.xml
+adb -s emulator-5554 reverse tcp:8081 tcp:8086
+adb -s emulator-5554 reverse tcp:4400 tcp:4400
+adb -s emulator-5556 shell run-as com.dems.demo.tablet cat shared_prefs/com.dems.demo.tablet_preferences.xml
+adb -s emulator-5556 shell run-as com.dems.demo.tablet sh -c 'mkdir -p shared_prefs && cat > shared_prefs/com.dems.demo.tablet_preferences.xml'
+adb -s emulator-5556 shell run-as com.dems.demo.tablet cat shared_prefs/com.dems.demo.tablet_preferences.xml
+adb -s emulator-5556 reverse tcp:8081 tcp:8086
+adb -s emulator-5556 reverse tcp:4400 tcp:4400
+adb -s emulator-5554 reverse tcp:4420 tcp:4422
+adb -s emulator-5556 reverse tcp:4420 tcp:4422
+adb -s emulator-5554 shell am force-stop com.dems.demo.tablet
+adb -s emulator-5554 reverse --remove tcp:8081
+adb -s emulator-5554 reverse --remove tcp:4400
+adb -s emulator-5554 reverse --remove tcp:4420
+adb -s emulator-5556 shell am force-stop com.dems.demo.tablet
+adb -s emulator-5556 reverse --remove tcp:8081
+adb -s emulator-5556 reverse --remove tcp:4400
+adb -s emulator-5556 reverse --remove tcp:4420

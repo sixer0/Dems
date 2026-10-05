@@ -1,0 +1,46 @@
+--- packages/shared/test/client-core.test.ts	2026-10-04 07:02:48
++++ packages/shared/test/client-core.test.ts	2026-10-04 08:33:20
+@@ -115,7 +115,9 @@
+       expect(statuses.some((status) => status >= 200 && status <= 299)).toBe(true);
+ 
+       for (const status of statuses) {
+-        const body = example(operation.operationId, status);
++        // A success without a body (204) has no schema and no example: the answer is empty.
++        const schemaName = operation.responses[status]?.schema;
++        const body = schemaName ? example(operation.operationId, status) : undefined;
+         const { client, calls } = mobileClient(() => ({ status, body }));
+         const result = await client.call(operation.operationId, input);
+         exchanges += 1;
+@@ -126,10 +128,9 @@
+         expect(calls[0]?.url).toBe(`${BASE}${expectedPath}`);
+ 
+         if (status >= 200 && status <= 299) {
+-          const schemaName = operation.responses[status]?.schema;
+-          expect(schemaName).toBeDefined();
+           expect(result).toMatchObject({ ok: true, operationId: operation.operationId, status });
+           if (result.ok && schemaName) expect(result.data).toEqual(CORE_API_SCHEMAS[schemaName].parse(body));
++          if (result.ok && !schemaName) expect(result.data).toBeUndefined();
+         } else {
+           expect(result).toMatchObject({
+             ok: false,
+--- packages/shared/test/client-types.test.ts	2026-10-04 07:12:48
++++ packages/shared/test/client-types.test.ts	2026-10-04 08:33:20
+@@ -11,6 +11,7 @@
+   CORE_API_OPERATIONS,
+   CoreApiMode,
+   CoreApiTag,
++  type ApiError,
+   type CoreApiOperation,
+   type SessionCommandResponse,
+   type SessionStartRequest,
+@@ -120,7 +121,9 @@
+       { params: { id: 'T-9' } },
+     );
+     if (result.ok) throw new Error('expected a failure');
+-    expectTypeOf(result.error).toEqualTypeOf<{ code: string; message: string }>();
++    // The envelope member: `code` and `message`, plus the optional `details` and `requestId` (01_specs §7.2).
++    expectTypeOf(result.error).toEqualTypeOf<ApiError['error']>();
++    expectTypeOf(result.error).toExtend<{ code: string; message: string }>();
+     expectTypeOf(result.status).toEqualTypeOf<number | null>();
+     expect(result.error.code).toBe('NOT_FOUND');
+   });

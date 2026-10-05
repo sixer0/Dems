@@ -43,6 +43,7 @@ import { SimErrorCode, SimTransitionError } from './errors';
 import { nextItemId, pushRing, recordActivity, type ActivityInput } from './events';
 import { createEvidenceItem } from './evidence';
 import { RngStream, type Rng, type RngStreams } from './rng';
+import { cutText } from './text-cut';
 import type {
   ActiveSession,
   CreateSessionResult,
@@ -1067,7 +1068,8 @@ function finishIncomplete(state: SimState, session: ActiveSession, at: EpochMs):
 export function addMarkerTransition(state: SimState, now: EpochMs, label?: string): SimState {
   const session = requireSession(state, 'addMarker', [SessionState.RECORDING]);
   const count = session.markerCount + 1;
-  const text = typeof label === 'string' && label.trim() ? label.trim().slice(0, 80) : `Marker ${count}`;
+  // 80 code units, cut so that a surrogate pair is never split (SIM-GAP-1).
+  const text = typeof label === 'string' && label.trim() ? cutText(label.trim(), 80) : `Marker ${count}`;
   let next: SimState = { ...state, session: { ...session, markerCount: count } };
   next = addTimelineItem(next, { at: now, kind: 'MARKER', label: text, detail: null, channel: null, params: { index: count, label: text } });
   return record(next, now, {
@@ -1099,7 +1101,8 @@ export function addNoteTransition(state: SimState, now: EpochMs, text: string): 
     at: now,
     kind: 'NOTE',
     label: 'Investigator note',
-    detail: body.length > 140 ? `${body.slice(0, 139)}…` : body,
+    // At most 139 code units and an ellipsis; the cut never splits a surrogate pair (SIM-GAP-1).
+    detail: body.length > 140 ? `${cutText(body, 139)}…` : body,
     channel: null,
     params: { noteId: id, length: body.length },
   });

@@ -1,0 +1,44 @@
+// Mutation runner configuration of plan row W43 (rule M15): OUTSIDE the source tree. It runs the
+// tests of apps/core-server with ONE production file transformed in memory: no file of the
+// workspace is changed, not even for seconds. The mutation is chosen by W43_MUTATION.
+import { readFileSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const here = dirname(fileURLToPath(import.meta.url));
+const mutations = JSON.parse(readFileSync(join(here, 'mutations.json'), 'utf8'));
+const id = process.env.W43_MUTATION;
+const mutation = mutations.find((entry) => entry.id === id);
+if (mutation === undefined) throw new Error(`W43_MUTATION=${id} names no mutation`);
+
+const DB_TEST_FILES = ['src/**/*.db.test.ts', 'test/**/*.db.test.ts', 'test/acceptance/**/*.test.ts'];
+
+export default {
+  plugins: [
+    {
+      name: 'w43-mutation',
+      enforce: 'pre',
+      transform(code, file) {
+        const path = file.split('?')[0];
+        if (!path.endsWith(`/apps/core-server/${mutation.file}`)) return null;
+        if (!code.includes(mutation.find)) {
+          writeFileSync(join(here, `invalid-${mutation.id}`), 'the text to replace is not in the file\n');
+          throw new Error(`mutation ${mutation.id}: the text to replace is not in ${mutation.file}`);
+        }
+        if (code.split(mutation.find).length !== 2) {
+          writeFileSync(join(here, `invalid-${mutation.id}`), 'the text to replace occurs more than once\n');
+          throw new Error(`mutation ${mutation.id}: the text to replace occurs more than once in ${mutation.file}`);
+        }
+        writeFileSync(join(here, `applied-${mutation.id}`), `${mutation.file}\n`);
+        return { code: code.replace(mutation.find, mutation.replace), map: null };
+      },
+    },
+  ],
+  test: {
+    maxWorkers: 2,
+    projects: [
+      { extends: true, test: { name: 'unit', environment: 'node', include: ['src/**/*.test.ts', 'test/**/*.test.ts'], exclude: [...DB_TEST_FILES, '**/node_modules/**'] } },
+      { extends: true, test: { name: 'db', environment: 'node', include: DB_TEST_FILES, exclude: ['**/node_modules/**'], globalSetup: ['./test/global-setup.db.ts'] } },
+    ],
+  },
+};

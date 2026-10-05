@@ -1,0 +1,32 @@
+
+> @dems/core-server@0.2.0 typecheck
+> tsc --noEmit
+
+src/plugins/response-headers/__tests__/response-headers.test.ts(25,59): error TS2493: Tuple type '[]' of length '0' has no element at index '0'.
+src/plugins/response-headers/__tests__/response-headers.test.ts(31,49): error TS2322: Type '{ method: string; url: string; }' is not assignable to type 'undefined'.
+src/plugins/response-headers/__tests__/response-headers.test.ts(32,49): error TS2322: Type '{ method: string; url: string; payload: { a: number; }; }' is not assignable to type 'undefined'.
+src/plugins/response-headers/__tests__/response-headers.test.ts(33,44): error TS2322: Type '{ method: string; url: string; }' is not assignable to type 'undefined'.
+src/plugins/response-headers/__tests__/response-headers.test.ts(34,43): error TS2322: Type '{ method: string; url: string; }' is not assignable to type 'undefined'.
+src/plugins/response-headers/__tests__/response-headers.test.ts(35,57): error TS2322: Type '{ method: string; url: string; }' is not assignable to type 'undefined'.
+src/plugins/response-headers/__tests__/response-headers.test.ts(39,5): error TS2322: Type '{ method: string; url: string; headers: { 'content-type': string; }; payload: string; }' is not assignable to type 'undefined'.
+src/plugins/response-headers/__tests__/response-headers.test.ts(44,5): error TS2322: Type '{ method: string; url: string; headers: { 'content-type': string; }; payload: string; }' is not assignable to type 'undefined'.
+src/plugins/response-headers/__tests__/response-headers.test.ts(46,58): error TS2322: Type '{ method: string; url: string; }' is not assignable to type 'undefined'.
+src/plugins/response-headers/__tests__/response-headers.test.ts(47,50): error TS2322: Type '{ method: string; url: string; }' is not assignable to type 'undefined'.
+src/plugins/response-headers/__tests__/response-headers.test.ts(48,57): error TS2322: Type '{ method: string; url: string; }' is not assignable to type 'undefined'.
+src/plugins/response-headers/__tests__/response-headers.test.ts(84,39): error TS2345: Argument of type 'undefined' is not assignable to parameter of type 'string | InjectOptions'.
+src/plugins/response-headers/__tests__/response-headers.test.ts(85,21): error TS2339: Property 'statusCode' does not exist on type 'void & Promise<Response> & Chain'.
+src/plugins/response-headers/__tests__/response-headers.test.ts(86,74): error TS7053: Element implicitly has an 'any' type because expression of type 'string' can't be used to index type '(headers: OutgoingHttpHeaders | IncomingHttpHeaders) => Chain'.
+  No index signature with a parameter of type 'string' was found on type '(headers: OutgoingHttpHeaders | IncomingHttpHeaders) => Chain'.
+src/plugins/response-headers/__tests__/response-headers.test.ts(87,59): error TS7053: Element implicitly has an 'any' type because expression of type '"strict-transport-security"' can't be used to index type '(headers: OutgoingHttpHeaders | IncomingHttpHeaders) => Chain'.
+  Property 'strict-transport-security' does not exist on type '(headers: OutgoingHttpHeaders | IncomingHttpHeaders) => Chain'.
+src/plugins/response-headers/__tests__/response-headers.test.ts(92,12): error TS7053: Element implicitly has an 'any' type because expression of type '"content-type"' can't be used to index type '(headers: OutgoingHttpHeaders | IncomingHttpHeaders) => Chain'.
+  Property 'content-type' does not exist on type '(headers: OutgoingHttpHeaders | IncomingHttpHeaders) => Chain'.
+src/plugins/response-headers/__tests__/response-headers.test.ts(99,68): error TS18048: 'base' is possibly 'undefined'.
+src/plugins/response-headers/__tests__/response-headers.test.ts(99,73): error TS2339: Property 'headers' does not exist on type '{ url: never; }'.
+npm error Lifecycle script `typecheck` failed with error:
+npm error code 2
+npm error path /Users/gsp-budi/Documents/DEMS/apps/core-server
+npm error workspace @dems/core-server@0.2.0
+npm error location /Users/gsp-budi/Documents/DEMS/apps/core-server
+npm error command failed
+npm error command sh -c tsc --noEmit

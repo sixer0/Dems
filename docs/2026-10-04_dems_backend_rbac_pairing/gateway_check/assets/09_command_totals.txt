@@ -1,0 +1,36 @@
+# 09 CP-M1 — command totals (blueprint step 84)
+# host: darwin, zsh; every command run from the repo root with -w (P10: no cd)
+# two other agents were live throughout (P11): the gate agent on port 4420 and the core-web
+# fix round. No lane backend, no Metro, no device session was started by this review.
+
+## mobile suite (P9: --maxWorkers=2)
+$ npm run test -w @dems/mobile -- --maxWorkers=2
+  Test Suites: 94 passed, 94 total
+  Tests:       1230 passed, 1230 total
+  Snapshots:   0 total
+  Time:        50.716 s
+  exit: 0
+  -> matches the ledger after decision D143 (mobile 94 suites / 1,230 tests)
+
+## shared suite
+$ npm run test -w @dems/shared -- --maxWorkers=2
+  Test Files  68 passed (68)
+       Tests  1814 passed (1814)
+  Start at  17:14:15  Duration 9.63 s   exit: 0
+
+## typecheck
+$ npm run typecheck -w @dems/mobile      # tsc --noEmit
+  exit: 0 (no output)
+
+## lint (eslint-plugin-react-hooks 7.1.1 via eslint-config-expo 57.0.2;
+##  react-hooks/set-state-in-render, set-state-in-effect, refs, purity, immutability,
+##  static-components, invalid-reactive-dependencies all at severity 2)
+$ npm run lint -w @dems/mobile           # eslint .
+  exit: 0
+$ npx eslint src --format json           # counted in apps/mobile
+  errors 0   warnings 0   files with warnings 0
+
+## not run (the standing conditions of D141 and this row's brief)
+  npm run test:db            - the gate agent owns the database
+  any lane backend / Metro / device session / Maestro flow
+  any keyguard, fingerprint or device-security write (only `status` below)

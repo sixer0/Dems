@@ -9,14 +9,23 @@
  *   either says so.
  * - Why the operator arrived (M-APP-02): the simulator's `selectLastSignOut` reads the newest
  *   sign-out, console lock or idle expiry from its event ring (it survives a reload).
+ *
+ * Live mode (backend task, plan row W55; 04_client_integration_spec §5.5 WS-10): the server's
+ * presentation setting is not public before sign-in, so the tab-local flag decides alone; the
+ * replica's `settings` slice is not read here. The root route keeps the flag in step with the
+ * server while an operator is signed in (`followServerPresentationMode` of `./live-adapter`).
  */
-import { selectLastSignOut, selectPresentationMode, useSim, type Sim, type SimEvent } from '@dems/shared/sim'
+import { CoreMode, useCoreMode } from '@dems/shared/live'
+import { selectLastSignOut, selectPresentationMode, useSim, type Sim, type SimEvent, type SimState } from '@dems/shared/sim'
 import { usePresentationMode as usePresentationModeFlag } from '@/lib/presentation-mode'
 
-/** True while presentation mode is on (simulator settings or the D74 module). */
+const NOT_READ = (_state: SimState): boolean => false
+
+/** True while presentation mode is on (simulator settings or the D74 module; in Live mode the tab-local flag). */
 export function usePresentationMode(): boolean {
   const flag = usePresentationModeFlag()
-  const simulated = useSim(selectPresentationMode)
+  const live = useCoreMode() === CoreMode.LIVE
+  const simulated = useSim(live ? NOT_READ : selectPresentationMode)
   return flag || simulated
 }
 

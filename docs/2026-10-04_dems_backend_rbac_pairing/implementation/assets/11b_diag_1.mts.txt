@@ -1,0 +1,253 @@
+// W11b diagnosis. Role dems_owner on 127.0.0.1:4432 through the test helper's own modules
+// (read as they are; nothing of the repository is written). It creates databases of its OWN run
+// prefix only (DEMS_TEST_STEP=33b) and drops them at the end. It prints names, counts, times and
+// SQLSTATEs; never a credential, never a query text of another session.
+import { performance } from 'node:perf_hooks';
+import { TestRun } from '/Users/gsp-budi/Documents/DEMS/apps/core-server/test/helpers/db/run';
+import { injectedResolver } from '/Users/gsp-budi/Documents/DEMS/apps/core-server/test/helpers/db/hooks';
+import { OwnerSession } from '/Users/gsp-budi/Documents/DEMS/apps/core-server/test/helpers/db/session';
+import { DEFAULT_DATA_DIR, readOwnerCredentials } from '/Users/gsp-budi/Documents/DEMS/apps/core-server/test/helpers/db/credentials';
+import { guardOwnDatabase, quoteDatabaseName } from '/Users/gsp-budi/Documents/DEMS/apps/core-server/test/helpers/db/names';
+import { dropDatabase } from '/Users/gsp-budi/Documents/DEMS/apps/core-server/test/helpers/db/ddl';
+
+const ROWS = Number(process.env['W11B_ROWS'] ?? 600_000);
+const DETECT_MS = Number(process.env['W11B_DETECT_MS'] ?? 200_000);
+const SAFE = new Set(['datid', 'datname', 'pid', 'leader_pid', 'usesysid', 'usename', 'application_name', 'backend_type']);
+
+type Row = Record<string, unknown>;
+
+function clock(): string {
+  const now = new Date();
+  return `${now.toTimeString().slice(0, 8)}.${String(now.getMilliseconds()).padStart(3, '0')}`;
+}
+function say(label: string, value?: unknown): void {
+  console.log(`[${clock()}] ${label}${value === undefined ? '' : ` ${JSON.stringify(value)}`}`);
+}
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+/** One row of pg_stat_activity as the reading role sees it: which columns are set. */
+function describe(row: Row | undefined): Row | null {
+  if (row === undefined) return null;
+  const out: Row = {};
+  for (const [column, value] of Object.entries(row)) {
+    if (value === null) out[column] = 'NULL';
+    else if (column === 'query') out[column] = value === '<insufficient privilege>' ? '<insufficient privilege>' : '(a text; not printed)';
+    else if (SAFE.has(column)) out[column] = value;
+    else out[column] = '(set)';
+  }
+  return out;
+}
+function pgError(error: unknown): { code?: string; message?: string; detail?: string } {
+  const e = error as { code?: string; message?: string; detail?: string };
+  return { code: e.code, message: e.message, detail: e.detail };
+}
+async function attempt(work: () => Promise<unknown>): Promise<{ ok: boolean; ms: number; error?: ReturnType<typeof pgError> }> {
+  const started = performance.now();
+  try {
+    await work();
+    return { ok: true, ms: Math.round(performance.now() - started) };
+  } catch (error) {
+    return { ok: false, ms: Math.round(performance.now() - started), error: pgError(error) };
+  }
+}
+
+const credentials = readOwnerCredentials(DEFAULT_DATA_DIR);
+const open = (name: string): Promise<OwnerSession> => OwnerSession.open(credentials, { applicationName: name });
+
+const run = await TestRun.start({
+  env: { DEMS_TEST_STEP: '33b' },
+  sessionDrainMs: 500,
+  resolveDefinition: injectedResolver([
+    {
+      key: 'x_diag',
+      base: 'empty',
+      build: async ({ pool }) => {
+        await pool.query('CREATE TABLE diag_load (id integer, pad text)');
+        await pool.query('GRANT SELECT ON diag_load TO dems_app');
+      },
+    },
+  ]),
+});
+say('run', { prefix: run.identity.prefix, server: run.server });
+const obs = await open('dems-w11b-diag');
+const exists = async (name: string): Promise<boolean> =>
+  (await obs.run('SELECT 1 FROM pg_database WHERE datname = $1', [name])).length > 0;
+
+let stopObserver = false;
+const seenWorkers = new Map<number, { datname: string; first: number; last: number; backendType: unknown; application: unknown }>();
+const observer = (async () => {
+  const session = await open('dems-w11b-observer');
+  try {
+    while (!stopObserver) {
+      const rows = await session.run<Row>(
+        'SELECT pid, datname::text AS datname, application_name, backend_type FROM pg_stat_activity WHERE datname IS NOT NULL AND usename IS NULL',
+      );
+      const now = performance.now();
+      for (const row of rows) {
+        const pid = Number(row['pid']);
+        const known = seenWorkers.get(pid);
+        if (known === undefined) {
+          seenWorkers.set(pid, { datname: String(row['datname']), first: now, last: now, backendType: row['backend_type'], application: row['application_name'] });
+        } else {
+          known.last = now;
+        }
+      }
+      await sleep(5);
+    }
+  } finally {
+    await session.close();
+  }
+})();
+
+try {
+  // ── S0: settings and role memberships (read-only) ────────────────────────────────────────────
+  say(
+    'S0 settings',
+    Object.fromEntries(
+      (
+        await obs.run<Row>(
+          "SELECT name, setting || coalesce(' ' || unit, '') AS value FROM pg_settings WHERE name IN ('autovacuum','autovacuum_naptime'," +
+            "'autovacuum_max_workers','autovacuum_worker_slots','autovacuum_vacuum_threshold','autovacuum_vacuum_insert_threshold'," +
+            "'autovacuum_analyze_threshold','autovacuum_vacuum_scale_factor','autovacuum_analyze_scale_factor','autovacuum_vacuum_cost_delay'," +
+            "'log_autovacuum_min_duration','track_counts','server_version') ORDER BY name",
+        )
+      ).map((row) => [row['name'], row['value']]),
+    ),
+  );
+  say(
+    'S0 roles',
+    await obs.run(
+      "SELECT r.rolname::text AS role, r.rolsuper AS superuser, pg_has_role(r.rolname, 'pg_signal_backend', 'MEMBER') AS signal_backend, " +
+        "pg_has_role(r.rolname, 'pg_read_all_stats', 'MEMBER') AS read_all_stats FROM pg_roles r WHERE r.rolname IN ('dems_owner', 'dems_app') ORDER BY 1",
+    ),
+  );
+  say(
+    'S0 backends without a database, as dems_owner sees them',
+    await obs.run('SELECT pid, usename::text AS usename, application_name, backend_type FROM pg_stat_activity WHERE datname IS NULL ORDER BY pid'),
+  );
+
+  // ── S1: a client session of another role (dems_app) ──────────────────────────────────────────
+  const client = await run.createDatabase({ template: 'x_diag', slug: 'diag_client' });
+  const clientName = guardOwnDatabase(client.name, run.identity, 'drop');
+  const appPool = run.poolOn(client.name, 'app', 'dems-w11b-held-app');
+  const held = await appPool.connect();
+  held.on('error', () => undefined);
+  await held.query('SELECT count(*) FROM diag_load');
+  const heldPid = Number((await held.query('SELECT pg_backend_pid() AS pid')).rows[0].pid);
+  say('S1 a dems_app session, as dems_owner sees it', describe((await obs.run<Row>('SELECT * FROM pg_stat_activity WHERE pid = $1', [heldPid]))[0]));
+  say('S1 the reader\'s own session, for contrast', describe((await obs.run<Row>('SELECT * FROM pg_stat_activity WHERE pid = pg_backend_pid()'))[0]));
+  say('S1 forced drop while dems_app is connected', await attempt(() => dropDatabase(obs, clientName)));
+  say('S1 plain drop while dems_app is connected', await attempt(() => obs.run(`DROP DATABASE IF EXISTS ${quoteDatabaseName(clientName)}`)));
+  say('S1 the held session still answers', (await held.query('SELECT current_user::text AS role')).rows);
+  held.release();
+  await appPool.end();
+  say('S1 forced drop after the session was released', await attempt(() => dropDatabase(obs, clientName)));
+  say('S1 database exists', await exists(client.name));
+
+  // ── S2: a leftover session of the owner role ─────────────────────────────────────────────────
+  const left = await run.createDatabase({ template: 'x_diag', slug: 'diag_owner' });
+  const leftName = guardOwnDatabase(left.name, run.identity, 'drop');
+  const ownerPool = run.poolOn(left.name, 'owner', 'dems-w11b-held-owner');
+  const ownerHeld = await ownerPool.connect();
+  ownerHeld.on('error', () => undefined);
+  await ownerHeld.query('SELECT 1');
+  say('S2 plain drop while a dems_owner session is connected', await attempt(() => obs.run(`DROP DATABASE IF EXISTS ${quoteDatabaseName(leftName)}`)));
+  say('S2 forced drop while a dems_owner session is connected', await attempt(() => dropDatabase(obs, leftName)));
+  say('S2 database exists', await exists(left.name));
+  try {
+    ownerHeld.release(true);
+  } catch {
+    // The forced drop ended it.
+  }
+  await ownerPool.end().catch(() => undefined);
+
+  // ── S3, S4: an autovacuum worker ─────────────────────────────────────────────────────────────
+  const scenario = async (slug: string, act: (session: OwnerSession, name: ReturnType<typeof guardOwnDatabase>) => Promise<void>): Promise<void> => {
+    const database = await run.createDatabase({ template: 'x_diag', slug });
+    const name = guardOwnDatabase(database.name, run.identity, 'drop');
+    const loaded = await attempt(() =>
+      database.ownerPool().query("INSERT INTO diag_load SELECT n, md5(n::text) FROM generate_series(1, $1::int) AS n", [ROWS]),
+    );
+    await database.closeResources();
+    say(`${slug}: loaded ${ROWS} rows`, loaded);
+    const session = await open(`dems-w11b-${slug.replace(/_/g, '-')}`);
+    try {
+      const deadline = performance.now() + DETECT_MS;
+      const waited = performance.now();
+      for (;;) {
+        const rows = await session.run<Row>('SELECT pid FROM pg_stat_activity WHERE datname = $1 AND usename IS NULL', [name]);
+        if (rows.length > 0) {
+          const full = await session.run<Row>('SELECT * FROM pg_stat_activity WHERE datname = $1', [name]);
+          say(`${slug}: a backend without a role arrived after ${Math.round(performance.now() - waited)} ms; every backend on the database, as dems_owner sees it`, full.map(describe));
+          await act(session, name);
+          return;
+        }
+        if (performance.now() > deadline) {
+          say(`${slug}: NOT REPRODUCED, no backend without a role came within ${DETECT_MS} ms`);
+          return;
+        }
+        await sleep(4);
+      }
+    } finally {
+      await session.close();
+    }
+  };
+
+  await Promise.all([
+    scenario('diag_av_forced', async (session, name) => {
+      const started = performance.now();
+      const attempts: Row[] = [];
+      for (let i = 1; i <= 60; i += 1) {
+        const result = await attempt(() => dropDatabase(session, name));
+        const still = result.ok ? [] : await session.run<Row>('SELECT pid, usename::text AS usename FROM pg_stat_activity WHERE datname = $1', [name]);
+        attempts.push({
+          attempt: i,
+          atMs: Math.round(performance.now() - started),
+          ok: result.ok,
+          ...(result.error === undefined ? {} : { code: result.error.code, message: result.error.message, detail: result.error.detail }),
+          backendsWithoutRole: still.filter((row) => row['usename'] === null).length,
+          backendsWithRole: still.filter((row) => row['usename'] !== null).length,
+        });
+        if (result.ok) break;
+        await sleep(250);
+      }
+      say('diag_av_forced: forced drop, repeated every 250 ms', attempts);
+      say('diag_av_forced: database exists', await exists(name));
+    }),
+    scenario('diag_av_plain', async (session, name) => {
+      say('diag_av_plain: plain drop while the backend without a role is connected', await attempt(() => session.run(`DROP DATABASE IF EXISTS ${quoteDatabaseName(name)}`)));
+      say('diag_av_plain: database exists', await exists(name));
+    }),
+  ]);
+} finally {
+  stopObserver = true;
+  await observer.catch((error: unknown) => say('observer failed', pgError(error)));
+  const mine = [...seenWorkers.values()].filter((worker) => worker.datname.startsWith(run.identity.prefix));
+  const otherTests = [...seenWorkers.values()].filter((worker) => worker.datname.startsWith('dems_test_') && !worker.datname.startsWith(run.identity.prefix));
+  const others = [...seenWorkers.values()].filter((worker) => !worker.datname.startsWith('dems_test_'));
+  const stays = (list: typeof mine): number[] => list.map((worker) => Math.round(worker.last - worker.first)).sort((a, b) => a - b);
+  say('observer: backends WITHOUT a role on a database, seen by polling every 5 ms', {
+    total: seenWorkers.size,
+    onMyDatabases: mine.map((worker) => ({ database: worker.datname, seenForMs: Math.round(worker.last - worker.first), backend_type: worker.backendType, application_name: worker.application })),
+    onTestDatabasesOfOtherRuns: { count: otherTests.length, seenForMs: stays(otherTests), sample: otherTests.slice(0, 8).map((worker) => ({ database: worker.datname, backend_type: worker.backendType })) },
+    onOtherDatabases: others.map((worker) => ({ database: worker.datname, seenForMs: Math.round(worker.last - worker.first), backend_type: worker.backendType })),
+  });
+  await obs.close();
+  const prefix = run.identity.prefix;
+  const report = await run.teardown().catch((error: unknown) => ({ dropped: [], remaining: ['(teardown threw)'], failed: [{ name: '-', reason: String(error) }], ms: 0 }));
+  say('teardown of the diagnosis run', report);
+  // Whatever the (unfixed) helper could not drop: a plain drop, own prefix only.
+  const sweeper = await open('dems-w11b-sweeper');
+  try {
+    if (!/^dems_test_step_33b_[0-9a-z]{8}_$/.test(prefix)) throw new Error('unexpected prefix');
+    for (const row of await sweeper.run<{ name: string }>('SELECT datname::text AS name FROM pg_database WHERE starts_with(datname, $1) ORDER BY 1', [prefix])) {
+      if (!row.name.startsWith(prefix)) continue;
+      await sweeper.run(`ALTER DATABASE "${row.name}" WITH IS_TEMPLATE false`).catch(() => undefined);
+      say(`leftover ${row.name}: plain drop`, await attempt(() => sweeper.run(`DROP DATABASE IF EXISTS "${row.name}"`)));
+    }
+    say('databases with the prefix dems_test_step_33b_ now', await sweeper.run("SELECT datname::text AS name FROM pg_database WHERE starts_with(datname, 'dems_test_step_33b_') ORDER BY 1"));
+  } finally {
+    await sweeper.close();
+  }
+}

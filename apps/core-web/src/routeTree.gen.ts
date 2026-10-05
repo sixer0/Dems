@@ -19,6 +19,8 @@ import { Route as AppSecurityAuditRouteImport } from './routes/_app/security-aud
 import { Route as AppStackCheckRouteImport } from './routes/_app/stack-check'
 import { Route as AppStorageRouteImport } from './routes/_app/storage'
 import { Route as AppSystemRouteImport } from './routes/_app/system'
+import { Route as AppAdminDevicesRouteImport } from './routes/_app/admin/devices'
+import { Route as AppAdminUsersRouteImport } from './routes/_app/admin/users'
 import { Route as AppDeveloperApiRouteImport } from './routes/_app/developer/api'
 import { Route as AppEvidenceIndexRouteImport } from './routes/_app/evidence/index'
 import { Route as AppEvidenceEvidenceIdRouteImport } from './routes/_app/evidence/$evidenceId'
@@ -74,6 +76,16 @@ const AppSystemRoute = AppSystemRouteImport.update({
   path: '/system',
   getParentRoute: () => AppRoute,
 } as any)
+const AppAdminDevicesRoute = AppAdminDevicesRouteImport.update({
+  id: '/admin/devices',
+  path: '/admin/devices',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAdminUsersRoute = AppAdminUsersRouteImport.update({
+  id: '/admin/users',
+  path: '/admin/users',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppDeveloperApiRoute = AppDeveloperApiRouteImport.update({
   id: '/developer/api',
   path: '/developer/api',
@@ -110,6 +122,8 @@ export interface FileRoutesByFullPath {
   '/stack-check': typeof AppStackCheckRoute
   '/storage': typeof AppStorageRoute
   '/system': typeof AppSystemRoute
+  '/admin/devices': typeof AppAdminDevicesRoute
+  '/admin/users': typeof AppAdminUsersRoute
   '/developer/api': typeof AppDeveloperApiRoute
   '/evidence/$evidenceId': typeof AppEvidenceEvidenceIdRoute
   '/session/new': typeof AppSessionNewRoute
@@ -126,6 +140,8 @@ export interface FileRoutesByTo {
   '/storage': typeof AppStorageRoute
   '/system': typeof AppSystemRoute
   '/': typeof AppIndexRoute
+  '/admin/devices': typeof AppAdminDevicesRoute
+  '/admin/users': typeof AppAdminUsersRoute
   '/developer/api': typeof AppDeveloperApiRoute
   '/evidence/$evidenceId': typeof AppEvidenceEvidenceIdRoute
   '/session/new': typeof AppSessionNewRoute
@@ -144,6 +160,8 @@ export interface FileRoutesById {
   '/_app/storage': typeof AppStorageRoute
   '/_app/system': typeof AppSystemRoute
   '/_app/': typeof AppIndexRoute
+  '/_app/admin/devices': typeof AppAdminDevicesRoute
+  '/_app/admin/users': typeof AppAdminUsersRoute
   '/_app/developer/api': typeof AppDeveloperApiRoute
   '/_app/evidence/$evidenceId': typeof AppEvidenceEvidenceIdRoute
   '/_app/session/new': typeof AppSessionNewRoute
@@ -162,6 +180,8 @@ export interface FileRouteTypes {
     | '/stack-check'
     | '/storage'
     | '/system'
+    | '/admin/devices'
+    | '/admin/users'
     | '/developer/api'
     | '/evidence/$evidenceId'
     | '/session/new'
@@ -178,6 +198,8 @@ export interface FileRouteTypes {
     | '/storage'
     | '/system'
     | '/'
+    | '/admin/devices'
+    | '/admin/users'
     | '/developer/api'
     | '/evidence/$evidenceId'
     | '/session/new'
@@ -195,6 +217,8 @@ export interface FileRouteTypes {
     | '/_app/storage'
     | '/_app/system'
     | '/_app/'
+    | '/_app/admin/devices'
+    | '/_app/admin/users'
     | '/_app/developer/api'
     | '/_app/evidence/$evidenceId'
     | '/_app/session/new'
@@ -279,6 +303,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSystemRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/admin/devices': {
+      id: '/_app/admin/devices'
+      path: '/admin/devices'
+      fullPath: '/admin/devices'
+      preLoaderRoute: typeof AppAdminDevicesRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/admin/users': {
+      id: '/_app/admin/users'
+      path: '/admin/users'
+      fullPath: '/admin/users'
+      preLoaderRoute: typeof AppAdminUsersRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/developer/api': {
       id: '/_app/developer/api'
       path: '/developer/api'
@@ -326,6 +364,8 @@ interface AppRouteChildren {
   AppStorageRoute: typeof AppStorageRoute
   AppSystemRoute: typeof AppSystemRoute
   AppIndexRoute: typeof AppIndexRoute
+  AppAdminDevicesRoute: typeof AppAdminDevicesRoute
+  AppAdminUsersRoute: typeof AppAdminUsersRoute
   AppDeveloperApiRoute: typeof AppDeveloperApiRoute
   AppEvidenceEvidenceIdRoute: typeof AppEvidenceEvidenceIdRoute
   AppSessionNewRoute: typeof AppSessionNewRoute
@@ -342,6 +382,8 @@ const AppRouteChildren: AppRouteChildren = {
   AppStorageRoute: AppStorageRoute,
   AppSystemRoute: AppSystemRoute,
   AppIndexRoute: AppIndexRoute,
+  AppAdminDevicesRoute: AppAdminDevicesRoute,
+  AppAdminUsersRoute: AppAdminUsersRoute,
   AppDeveloperApiRoute: AppDeveloperApiRoute,
   AppEvidenceEvidenceIdRoute: AppEvidenceEvidenceIdRoute,
   AppSessionNewRoute: AppSessionNewRoute,

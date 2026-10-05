@@ -1,0 +1,10 @@
+## W56 after the device check (read-only), 2026-10-04 21:36:20 WIB
+$ adb -s emulator-5554 reverse --list
+
+exit=0
+$ adb -s emulator-5554 shell pidof com.dems.demo.tablet
+exit=1 (1: the app is not running)
+$ lsof -nP -iTCP:4421 -iTCP:8081-8086 -sTCP:LISTEN
+exit=1 (1 with no output: no listener)
+$ wc -c .locks/core-server.lane1.pid
+       0 .locks/core-server.lane1.pid

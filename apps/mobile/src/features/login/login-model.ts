@@ -14,8 +14,8 @@
 import { z } from 'zod';
 import { CORE_HTTP_ORIGIN } from '@dems/shared/api';
 import type { GlowRingState } from '@/components/composed/glow-ring.math';
-import type { BiometricAvailability } from '@/auth';
-import type { CoreLinkInfo, SignOutReason } from '@/runtime';
+import type { AuthNoticeKind, BiometricAvailability } from '@/auth';
+import type { CoreErrorText, CoreLinkInfo, SignOutReason } from '@/runtime';
 
 // ---------------------------------------------------------------------------------------------
 // Form
@@ -70,9 +70,13 @@ export function coreChipFor(coreLink: CoreLinkInfo): { kind: CoreChipKind; tone:
   return { kind: 'ONLINE', tone: 'success' };
 }
 
-/** Heartbeat mode with the Core down: Sign In is disabled (§4.1 L6). Mirrors `isSignInBlocked`. */
+/**
+ * Heartbeat mode with the Core down: Sign In is disabled (§4.1 L6). Mirrors `isSignInBlocked`.
+ * Backend task W59 (04_client_integration_spec §9.5): so is LIVE mode while the link to the Core
+ * server is not ONLINE. The simulator's own link (SIMULATED) never blocks, as before.
+ */
 export function isCoreBlocked(coreLink: CoreLinkInfo): boolean {
-  return coreLink.source === 'HEARTBEAT' && coreLink.state === 'OFFLINE';
+  return coreLink.source !== 'SIMULATED' && coreLink.state === 'OFFLINE';
 }
 
 /** `host:port` of the Core for the offline Alert ("Core service unreachable at 127.0.0.1:4400."). */
@@ -91,12 +95,20 @@ export type AttemptOutcome =
   | { readonly kind: 'biometric-lockout' }
   | { readonly kind: 'biometric-error' }
   | { readonly kind: 'unavailable' }
-  | { readonly kind: 'core-offline' };
+  | { readonly kind: 'core-offline' }
+  /**
+   * LIVE mode (backend task W59): the sign-in was sent and the Core server gave no answer, while
+   * the link still reads ONLINE. The two sentences are the refusal presenter's own, as i18n keys.
+   * Built by `liveAttemptFor` (`./login-live-model.ts`), never by the simulator's paths.
+   */
+  | { readonly kind: 'no-answer'; readonly title: CoreErrorText; readonly body: CoreErrorText | null };
 
 export type LoginNotice =
   | { readonly kind: 'locked'; readonly retryInSeconds: number }
   | { readonly kind: 'core-offline' }
   | AttemptOutcome
+  /** LIVE mode: the auth layer's Alert of a session end or of a dead biometric token (`<AuthNoticeAlert />`). */
+  | { readonly kind: 'auth-notice'; readonly notice: AuthNoticeKind }
   | { readonly kind: 'signed-out'; readonly reason: 'USER' | 'LOCK' }
   | { readonly kind: 'expired' };
 
@@ -109,6 +121,11 @@ export interface NoticeInputs {
   readonly lastAttempt: AttemptOutcome | null;
   /** Why the previous operator left (§3.3), until this screen makes an attempt. */
   readonly lastSignOut: SignOutReason | null;
+  /**
+   * LIVE mode: the kind of `useAuthSession().notice` (04_client_integration_spec §6.4, §6.5, MB-3,
+   * WS-14), while the auth layer holds one. Absent or `null` in the other modes.
+   */
+  readonly authNotice?: AuthNoticeKind | null;
 }
 
 /**
@@ -116,11 +133,16 @@ export interface NoticeInputs {
  * Locked (warning, live countdown) → Core offline (danger + Retry) → the last attempt's error
  * (danger: generic message + attempts left; or the biometric results) → Signed out / Expired
  * (accent). A lockout that has ended no longer shows, even if the last attempt caused it.
+ *
+ * LIVE mode adds one step between the last attempt and the arrival notices: the auth layer's
+ * notice (why the session ended, or that the biometric token is dead). It outlives an attempt,
+ * because an attempt can be what raised it (the fingerprint button on a dead token).
  */
-export function noticeFor({ lockout, coreBlocked, lastAttempt, lastSignOut }: NoticeInputs): LoginNotice | null {
+export function noticeFor({ lockout, coreBlocked, lastAttempt, lastSignOut, authNotice }: NoticeInputs): LoginNotice | null {
   if (lockout.locked) return { kind: 'locked', retryInSeconds: lockout.retryInSeconds };
   if (coreBlocked) return { kind: 'core-offline' };
   if (lastAttempt && lastAttempt.kind !== 'core-offline') return lastAttempt;
+  if (authNotice) return { kind: 'auth-notice', notice: authNotice };
   if (lastSignOut === 'IDLE') return { kind: 'expired' };
   if (lastSignOut === 'USER' || lastSignOut === 'LOCK') return { kind: 'signed-out', reason: lastSignOut };
   return null;

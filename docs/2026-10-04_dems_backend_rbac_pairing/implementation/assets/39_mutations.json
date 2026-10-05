@@ -1,0 +1,695 @@
+[
+ {
+  "id": "C01",
+  "file": "src/modules/security-audit/cursor.ts",
+  "from": "return `${auditId(row.seq)}-${row.hash.slice(0, AUDIT_CURSOR_MARK_LENGTH)}`;",
+  "to": "return `${auditId(row.seq)}-${'0'.repeat(AUDIT_CURSOR_MARK_LENGTH)}`;",
+  "note": "the audit cursor does not carry the row's hash (a fixed mark)"
+ },
+ {
+  "id": "C02",
+  "file": "src/modules/security-audit/cursor.ts",
+  "from": "const AUDIT_FORM = /^(AUD-\\d{6,15})-([0-9a-f]{16})$/;",
+  "to": "const AUDIT_FORM = /^(AUD-\\d{6,15})-([0-9a-f]{16})/;",
+  "note": "text after the mark of an audit cursor is accepted"
+ },
+ {
+  "id": "C03",
+  "file": "src/modules/security-audit/cursor.ts",
+  "from": "const AUDIT_FORM = /^(AUD-\\d{6,15})-([0-9a-f]{16})$/;",
+  "to": "const AUDIT_FORM = /^(AUD-\\d{6,15})-([0-9a-fA-F]{16})$/;",
+  "note": "upper-case digits in the mark are accepted"
+ },
+ {
+  "id": "C04",
+  "file": "src/modules/security-audit/cursor.ts",
+  "from": "return seq >= 1 && idOf(seq) === id ? seq : null;",
+  "to": "return seq >= 1 ? seq : null;",
+  "note": "an ID with extra leading zeros is accepted (two texts for one row)"
+ },
+ {
+  "id": "C05",
+  "file": "src/modules/security-audit/cursor.ts",
+  "from": "return seq >= 1 && idOf(seq) === id ? seq : null;",
+  "to": "return idOf(seq) === id ? seq : null;",
+  "note": "sequence 0 is accepted"
+ },
+ {
+  "id": "C06",
+  "file": "src/modules/security-audit/cursor.ts",
+  "from": "return `${eventId(event.seq)}-${event.at}`;",
+  "to": "return `${eventId(event.seq)}-0`;",
+  "note": "the event cursor does not carry the event's instant"
+ },
+ {
+  "id": "C07",
+  "file": "src/modules/security-audit/cursor.ts",
+  "from": "const EVENT_FORM = /^(LOG-\\d{6,15})-(0|[1-9]\\d{0,15})$/;",
+  "to": "const EVENT_FORM = /^(LOG-\\d{6,15})-(\\d{1,16})$/;",
+  "note": "an instant with a leading zero is accepted"
+ },
+ {
+  "id": "C08",
+  "file": "src/modules/security-audit/cursor.ts",
+  "from": "return seq === null || !Number.isSafeInteger(at) ? null : { seq, at };",
+  "to": "return seq === null ? null : { seq, at };",
+  "note": "an instant above the largest safe integer is accepted"
+ },
+ {
+  "id": "C09",
+  "file": "src/modules/security-audit/cursor.ts",
+  "from": "const EVENT_FORM = /^(LOG-\\d{6,15})-(0|[1-9]\\d{0,15})$/;",
+  "to": "const EVENT_FORM = /^(LOG-\\d{6,15})-(0|[1-9]\\d{0,15})/;",
+  "note": "text after the instant of an event cursor is accepted"
+ },
+ {
+  "id": "X01",
+  "file": "src/modules/security-audit/export-request.ts",
+  "from": "(issue.code === 'too_small' || (issue.code === 'invalid_type' && absent))",
+  "to": "issue.code === 'too_small'",
+  "note": "an absent reason is INVALID_INPUT, not the action's INVALID_REASON"
+ },
+ {
+  "id": "X02",
+  "file": "src/modules/security-audit/export-request.ts",
+  "from": "issue.path.length === 1 && issue.path[0] === REASON && (",
+  "to": "(",
+  "note": "a fault of the destination counts as a missing reason"
+ },
+ {
+  "id": "X03",
+  "file": "src/modules/security-audit/export-request.ts",
+  "from": "export const NO_REASON: AuditExportRequest = Object.freeze({ reason: '', destination: '' });",
+  "to": "export const NO_REASON: AuditExportRequest = Object.freeze({ reason: 'No reason given', destination: '' });",
+  "note": "a stand-in reason the action accepts: an export without a reason goes through"
+ },
+ {
+  "id": "X04",
+  "file": "src/modules/security-audit/export-request.ts",
+  "from": "destination: parsed.data.destination ?? '' }",
+  "to": "destination: parsed.data.destination ?? 'Audit archive' }",
+  "note": "an absent destination is given a text of the module"
+ },
+ {
+  "id": "X05",
+  "file": "src/modules/security-audit/export-request.ts",
+  "from": "return onlyTheLowerBound ? { kind: 'REASON_MISSING' } : { kind: 'INVALID' };",
+  "to": "return { kind: 'INVALID' };",
+  "note": "a missing reason is refused before the engine, as INVALID_INPUT"
+ },
+ {
+  "id": "X06",
+  "file": "src/modules/security-audit/export-request.ts",
+  "from": "return onlyTheLowerBound ? { kind: 'REASON_MISSING' } : { kind: 'INVALID' };",
+  "to": "return { kind: 'REASON_MISSING' };",
+  "note": "every body the schema refuses is treated as a missing reason"
+ },
+ {
+  "id": "R01",
+  "file": "src/modules/security-audit/reads.ts",
+  "from": "const SNAPSHOT = { isolationLevel: 'repeatable read', accessMode: 'read only' } as const;",
+  "to": "const SNAPSHOT = { isolationLevel: 'read committed', accessMode: 'read only' } as const;",
+  "note": "a page is not one snapshot"
+ },
+ {
+  "id": "R02",
+  "file": "src/modules/security-audit/reads.ts",
+  "from": "        .where(and(eq(auditLog.seq, after.seq), sql`starts_with(${auditLog.hash}, ${after.mark}::text)`))",
+  "to": "        .where(eq(auditLog.seq, after.seq))",
+  "note": "the cursor's mark is not compared with the row's hash: a cursor of a discarded chain is accepted"
+ },
+ {
+  "id": "R03",
+  "file": "src/modules/security-audit/reads.ts",
+  "from": "      if (named.length === 0) return CURSOR_UNKNOWN;\n    }\n    const newestFirst",
+  "to": "      void named;\n    }\n    const newestFirst",
+  "note": "a cursor whose row is not in the audit table is accepted"
+ },
+ {
+  "id": "R04",
+  "file": "src/modules/security-audit/reads.ts",
+  "from": "conditions.push(newestFirst ? lt(auditLog.seq, after.seq) : gt(auditLog.seq, after.seq));",
+  "to": "conditions.push(newestFirst ? gt(auditLog.seq, after.seq) : lt(auditLog.seq, after.seq));",
+  "note": "the keyset goes the wrong way"
+ },
+ {
+  "id": "R05",
+  "file": "src/modules/security-audit/reads.ts",
+  "from": "conditions.push(newestFirst ? lt(auditLog.seq, after.seq) : gt(auditLog.seq, after.seq));",
+  "to": "conditions.push(newestFirst ? lt(auditLog.seq, after.seq) : sql`${auditLog.seq} >= ${after.seq}`);",
+  "note": "the keyset is not strict: the cursor's row is repeated"
+ },
+ {
+  "id": "R06",
+  "file": "src/modules/security-audit/reads.ts",
+  "from": ".orderBy(newestFirst ? desc(auditLog.seq) : asc(auditLog.seq))",
+  "to": ".orderBy(asc(auditLog.seq))",
+  "note": "order=DESC is ignored"
+ },
+ {
+  "id": "R07",
+  "file": "src/modules/security-audit/reads.ts",
+  "from": "      .orderBy(newestFirst ? desc(auditLog.seq) : asc(auditLog.seq))\n      .limit(request.limit + 1);",
+  "to": "      .orderBy(newestFirst ? desc(auditLog.seq) : asc(auditLog.seq))\n      .limit(request.limit);",
+  "note": "no look-ahead row: the audit list never has a cursor"
+ },
+ {
+  "id": "R08",
+  "file": "src/modules/security-audit/reads.ts",
+  "from": "next: stored.length > request.limit ? (rows.at(-1) ?? null) : null };",
+  "to": "next: stored.length >= request.limit ? (rows.at(-1) ?? null) : null };",
+  "note": "a cursor on an exactly full last audit page: the walk ends on an empty page"
+ },
+ {
+  "id": "R09",
+  "file": "src/modules/security-audit/reads.ts",
+  "from": "const rows = stored.slice(0, request.limit).map(auditRowFromRow);",
+  "to": "const rows = stored.map(auditRowFromRow);",
+  "note": "the look-ahead row is in the page"
+ },
+ {
+  "id": "R10",
+  "file": "src/modules/security-audit/reads.ts",
+  "from": "    if (request.category !== undefined) conditions.push(eq(auditLog.category, request.category));\n",
+  "to": "",
+  "note": "the category filter of the audit list is ignored"
+ },
+ {
+  "id": "R11",
+  "file": "src/modules/security-audit/reads.ts",
+  "from": "    if (request.type !== undefined) conditions.push(eq(auditLog.type, request.type));\n",
+  "to": "",
+  "note": "the type filter of the audit list is ignored"
+ },
+ {
+  "id": "R12",
+  "file": "src/modules/security-audit/reads.ts",
+  "from": "    if (request.actorId !== undefined) conditions.push(eq(auditLog.actorId, request.actorId));\n",
+  "to": "",
+  "note": "the actor filter is ignored"
+ },
+ {
+  "id": "R13",
+  "file": "src/modules/security-audit/reads.ts",
+  "from": "    if (request.sessionId !== undefined) conditions.push(eq(auditLog.sessionId, request.sessionId));\n",
+  "to": "",
+  "note": "the session filter is ignored"
+ },
+ {
+  "id": "R14",
+  "file": "src/modules/security-audit/reads.ts",
+  "from": "    if (request.evidenceId !== undefined) conditions.push(eq(auditLog.evidenceId, request.evidenceId));\n",
+  "to": "",
+  "note": "the evidence filter is ignored"
+ },
+ {
+  "id": "R15",
+  "file": "src/modules/security-audit/reads.ts",
+  "from": "    const head = await headOf(snapshot);\n    const { after } = request;",
+  "to": "    const head = await headOf(drizzle(pool, { logger: false }));\n    const { after } = request;",
+  "note": "the head of a page is read outside its snapshot"
+ },
+ {
+  "id": "R16",
+  "file": "src/modules/security-audit/reads.ts",
+  "from": "        .where(and(eq(events.seq, after.seq), eq(events.at, after.at)))",
+  "to": "        .where(eq(events.seq, after.seq))",
+  "note": "the event cursor's instant is not compared: a cursor of a discarded chain is accepted"
+ },
+ {
+  "id": "R17",
+  "file": "src/modules/security-audit/reads.ts",
+  "from": "    if (after !== undefined) conditions.push(gt(events.seq, after.seq));",
+  "to": "    if (after !== undefined) conditions.push(lt(events.seq, after.seq));",
+  "note": "the keyset of the events goes the wrong way"
+ },
+ {
+  "id": "R18",
+  "file": "src/modules/security-audit/reads.ts",
+  "from": "    if (request.severity !== undefined) conditions.push(eq(events.severity, request.severity));\n",
+  "to": "",
+  "note": "the severity filter is ignored"
+ },
+ {
+  "id": "R19",
+  "file": "src/modules/security-audit/reads.ts",
+  "from": "    if (request.category !== undefined) conditions.push(eq(events.category, request.category));\n",
+  "to": "",
+  "note": "the category filter of the events is ignored"
+ },
+ {
+  "id": "R20",
+  "file": "src/modules/security-audit/reads.ts",
+  "from": "    if (request.type !== undefined) conditions.push(eq(events.type, request.type));\n",
+  "to": "",
+  "note": "the type filter of the events is ignored"
+ },
+ {
+  "id": "R21",
+  "file": "src/modules/security-audit/reads.ts",
+  "from": "      .orderBy(asc(events.seq))",
+  "to": "      .orderBy(desc(events.seq))",
+  "note": "the events are listed newest first"
+ },
+ {
+  "id": "R22",
+  "file": "src/modules/security-audit/reads.ts",
+  "from": "next: stored.length > request.limit ? (page.at(-1) ?? null) : null };",
+  "to": "next: stored.length >= request.limit ? (page.at(-1) ?? null) : null };",
+  "note": "a cursor on an exactly full last page of events"
+ },
+ {
+  "id": "R23",
+  "file": "src/modules/security-audit/reads.ts",
+  "from": "    .orderBy(desc(auditChainHistory.resetNo))",
+  "to": "    .orderBy(asc(auditChainHistory.resetNo))",
+  "note": "the lineage is listed oldest first"
+ },
+ {
+  "id": "R24",
+  "file": "src/modules/security-audit/reads.ts",
+  "from": "    .limit(max);",
+  "to": "    .limit(max + 5);",
+  "note": "the lineage limit is 25, not 20"
+ },
+ {
+  "id": "R25",
+  "file": "src/modules/security-audit/reads.ts",
+  "from": "total: Number(rows[0]?.total ?? 0),",
+  "to": "total: rows.length,",
+  "note": "lineageTotal is the number of entries returned"
+ },
+ {
+  "id": "R26",
+  "file": "src/modules/security-audit/reads.ts",
+  "from": "      total: sql<string>`count(*) OVER ()`,",
+  "to": "      total: sql<string>`row_number() OVER (ORDER BY ${auditChainHistory.resetNo} DESC)`,",
+  "note": "lineageTotal is taken from the first row's position, not from the count"
+ },
+ {
+  "id": "R27",
+  "file": "src/modules/security-audit/reads.ts",
+  "from": "      rows: auditChainHistory.rowCount,\n      head: auditChainHistory.headHash,",
+  "to": "      rows: auditChainHistory.firstSeq,\n      head: auditChainHistory.headHash,",
+  "note": "the lineage entry's row count is the first sequence"
+ },
+ {
+  "id": "R28",
+  "file": "src/modules/security-audit/reads.ts",
+  "from": "      if (named.length === 0) return CURSOR_UNKNOWN;\n    }\n    const conditions",
+  "to": "      void named;\n    }\n    const conditions",
+  "note": "a cursor whose event is not in the table is accepted"
+ },
+ {
+  "id": "S01",
+  "file": "src/modules/security-audit/stored-chain.ts",
+  "from": "      limit: due,",
+  "to": "      limit: head.seq,",
+  "note": "every call reads the whole table: not incremental"
+ },
+ {
+  "id": "S02",
+  "file": "src/modules/security-audit/stored-chain.ts",
+  "from": "      if (rows[0]?.holds !== true) forgotten = true;",
+  "to": "      void rows;",
+  "note": "the remembered position is not checked against its stored row"
+ },
+ {
+  "id": "S03",
+  "file": "src/modules/security-audit/stored-chain.ts",
+  "from": "if (read.firstSeq !== from.seq + 1 || read.firstPrevHash !== from.hash) return",
+  "to": "if (read.firstSeq !== from.seq + 1) return",
+  "note": "the first row of a pass need not name the hash of the position"
+ },
+ {
+  "id": "S04",
+  "file": "src/modules/security-audit/stored-chain.ts",
+  "from": "      running ??= run(pool).finally(() => {",
+  "to": "      running = run(pool).finally(() => {",
+  "note": "calls that arrive together each run a verification"
+ },
+ {
+  "id": "S05",
+  "file": "src/modules/security-audit/stored-chain.ts",
+  "from": "    if (current !== chain) {",
+  "to": "    if (current !== chain && chain === null) {",
+  "note": "a new chain does not forget what was remembered"
+ },
+ {
+  "id": "S06",
+  "file": "src/modules/security-audit/stored-chain.ts",
+  "from": "    if (broken !== null) return failed(broken, await headOf(pool));\n",
+  "to": "",
+  "note": "a break is not remembered: every call verifies again"
+ },
+ {
+  "id": "S07",
+  "file": "src/modules/security-audit/stored-chain.ts",
+  "from": "    checked: found.firstBadSeq - 1,",
+  "to": "    checked: found.firstBadSeq,",
+  "note": "checked counts the bad row as verified"
+ },
+ {
+  "id": "S08",
+  "file": "src/modules/security-audit/stored-chain.ts",
+  "from": "      if (dependencies.chain() === current) result.remember();",
+  "to": "      result.remember();",
+  "note": "what a run learnt is kept although the chain changed while it ran"
+ },
+ {
+  "id": "S09",
+  "file": "src/modules/security-audit/stored-chain.ts",
+  "from": "        remember: () => {\n          position = head;\n        },",
+  "to": "        remember: () => {},",
+  "note": "a verified head is not remembered: every call is a full pass"
+ },
+ {
+  "id": "S10",
+  "file": "src/modules/security-audit/stored-chain.ts",
+  "from": "    if (read.rows !== due || read.lastSeq !== head.seq) return { kind: 'NOT_COVERED', firstUncovered: Math.min(read.lastSeq, head.seq) + 1 };\n",
+  "to": "",
+  "note": "a pass that stops short of the head counts as covering it"
+ },
+ {
+  "id": "S11",
+  "file": "src/modules/security-audit/stored-chain.ts",
+  "from": "    if (read.lastHash !== head.hash) return { kind: 'NOT_COVERED', firstUncovered: head.seq };\n",
+  "to": "",
+  "note": "a pass whose last row is not the head's hash counts as verified"
+ },
+ {
+  "id": "S12",
+  "file": "src/modules/security-audit/stored-chain.ts",
+  "from": "const named = VERDICT_SEQUENCE.exec(verdict.reason ?? '')?.[1];",
+  "to": "const named = [][0];",
+  "note": "the sequence of the verdict is not read: a break is reported at the first row of the pass"
+ },
+ {
+  "id": "S13",
+  "file": "src/modules/security-audit/stored-chain.ts",
+  "from": "      if (outcome.kind === 'NOT_COVERED' && from.seq > 0) forgotten = true;\n",
+  "to": "",
+  "note": "an incremental pass that does not cover its rows is taken as the verdict"
+ },
+ {
+  "id": "S14",
+  "file": "src/modules/security-audit/stored-chain.ts",
+  "from": "    } else if (!forgotten && head.hash !== from.hash) {",
+  "to": "    } else if (forgotten && head.hash !== from.hash) {",
+  "note": "a head that is not the position, with no row due, is taken as verified"
+ },
+ {
+  "id": "S15",
+  "file": "src/modules/security-audit/stored-chain.ts",
+  "from": "const BEGIN_SNAPSHOT = 'BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY';",
+  "to": "const BEGIN_SNAPSHOT = 'BEGIN ISOLATION LEVEL READ COMMITTED READ ONLY';",
+  "note": "the pass is not one snapshot"
+ },
+ {
+  "id": "S16",
+  "file": "src/modules/security-audit/stored-chain.ts",
+  "from": "      client.release(lost);",
+  "to": "      client.release(false);",
+  "note": "a connection whose rollback failed goes back to the pool"
+ },
+ {
+  "id": "S17",
+  "file": "src/modules/security-audit/stored-chain.ts",
+  "from": "if (report.lineage === 'mismatch' && !lineageReported) {",
+  "to": "if (report.lineage === 'mismatch') {",
+  "note": "the lineage warning is logged at every pass"
+ },
+ {
+  "id": "S18",
+  "file": "src/modules/security-audit/stored-chain.ts",
+  "from": "    if (!verdict.ok || report.linkBreaks > 0) {",
+  "to": "    if (!verdict.ok && report.linkBreaks > 0) {",
+  "note": "a failed digest verdict alone is not a break"
+ },
+ {
+  "id": "S19",
+  "file": "src/modules/security-audit/stored-chain.ts",
+  "from": "if (read === null) return { kind: 'NOT_COVERED', firstUncovered: from.seq + 1 };",
+  "to": "if (read === null) return { kind: 'VERIFIED' };",
+  "note": "a pass that read no row counts as verified"
+ },
+ {
+  "id": "S20",
+  "file": "src/modules/security-audit/stored-chain.ts",
+  "from": "      } else if (head.hash !== GENESIS_HASH) {\n        outcome = { kind: 'NOT_COVERED', firstUncovered: 1 };\n      }",
+  "to": "      }",
+  "note": "after a position was given up, an empty chain with a head that is not the genesis hash verifies"
+ },
+ {
+  "id": "S21",
+  "file": "src/modules/security-audit/stored-chain.ts",
+  "from": "      else outcome = { kind: 'NOT_COVERED', firstUncovered: 1 };\n    }\n    if (forgotten) {",
+  "to": "    }\n    if (forgotten) {",
+  "note": "an empty chain whose head is not the genesis hash verifies"
+ },
+ {
+  "id": "S22",
+  "file": "src/modules/security-audit/stored-chain.ts",
+  "from": "      outcome = await pass(snapshot, from, head);\n      // An incremental pass",
+  "to": "      outcome = await pass(snapshot, BEFORE_FIRST_ROW, head);\n      // An incremental pass",
+  "note": "every pass starts from the first row"
+ },
+ {
+  "id": "S23",
+  "file": "src/modules/security-audit/stored-chain.ts",
+  "from": "        broken = found;\n",
+  "to": "",
+  "note": "a break is answered but not remembered"
+ },
+ {
+  "id": "S24",
+  "file": "src/modules/security-audit/stored-chain.ts",
+  "from": "firstBadSeq: named === undefined ? read.firstSeq : Number(named) };",
+  "to": "firstBadSeq: read.firstSeq };",
+  "note": "a break is always reported at the first row of the pass"
+ },
+ {
+  "id": "I01",
+  "file": "src/modules/security-audit/index.ts",
+  "from": "readAuditPage(pool, { category, type, actorId, sessionId, evidenceId, order: order ?? 'ASC', after, limit: limit ?? API_PAGE_LIMIT_DEFAULT }),",
+  "to": "readAuditPage(pool, { category, type, actorId, sessionId, evidenceId, order: order ?? 'ASC', after, limit: limit ?? 200 }),",
+  "note": "the default page of the audit list is 200"
+ },
+ {
+  "id": "I02",
+  "file": "src/modules/security-audit/index.ts",
+  "from": "order: order ?? 'ASC'",
+  "to": "order: order ?? 'DESC'",
+  "note": "the default order is newest first"
+ },
+ {
+  "id": "I03",
+  "file": "src/modules/security-audit/index.ts",
+  "from": "        const position = decodeAuditCursor(cursor);\n        if (position === null) throw invalidInput('querystring');\n        after = position;",
+  "to": "        const position = decodeAuditCursor(cursor);\n        if (position !== null) after = position;",
+  "note": "a value that is no audit cursor is ignored: the first page is answered"
+ },
+ {
+  "id": "I04",
+  "file": "src/modules/security-audit/index.ts",
+  "from": "      if (page.kind === 'CURSOR_UNKNOWN') throw invalidInput('querystring');\n      return { rows: page.rows,",
+  "to": "      if (page.kind === 'CURSOR_UNKNOWN') return { rows: [], head: '0'.repeat(64), total: 0, nextCursor: null };\n      return { rows: page.rows,",
+  "note": "a cursor of a discarded chain is answered as an empty last page"
+ },
+ {
+  "id": "I05",
+  "file": "src/modules/security-audit/index.ts",
+  "from": "total: page.head.seq, nextCursor:",
+  "to": "total: page.rows.length, nextCursor:",
+  "note": "total is the size of the page"
+ },
+ {
+  "id": "I06",
+  "file": "src/modules/security-audit/index.ts",
+  "from": "nextCursor: page.next === null ? null : encodeAuditCursor(page.next) };",
+  "to": "nextCursor: null };",
+  "note": "the audit list never gives a cursor"
+ },
+ {
+  "id": "I07",
+  "file": "src/modules/security-audit/index.ts",
+  "from": "return { security, auditHead: head.hash, auditTotal: head.seq };",
+  "to": "return { security, auditHead: head.hash, auditTotal: app.engine.slice('audit').rows.length };",
+  "note": "auditTotal is the length of the engine's ring"
+ },
+ {
+  "id": "I08",
+  "file": "src/modules/security-audit/index.ts",
+  "from": "return { view: view.value, stored, lineage: lineage.entries, lineageTotal: lineage.total };",
+  "to": "return { view: { ok: true, checked: stored.checked, head: stored.head }, stored, lineage: lineage.entries, lineageTotal: lineage.total };",
+  "note": "the view is answered from the stored check: AUDIT_TAMPER is not seen"
+ },
+ {
+  "id": "I09",
+  "file": "src/modules/security-audit/index.ts",
+  "from": "readLineage(pool, AUDIT_CHAIN_LINEAGE_MAX)",
+  "to": "readLineage(pool, 50)",
+  "note": "the lineage is not limited to 20"
+ },
+ {
+  "id": "I10",
+  "file": "src/modules/security-audit/index.ts",
+  "from": "body.kind === 'VALID' ? body.request : NO_REASON);",
+  "to": "body.kind === 'VALID' ? body.request : (request.body as never));",
+  "note": "the refused reason is handed to the engine as it was sent"
+ },
+ {
+  "id": "I11",
+  "file": "src/modules/security-audit/index.ts",
+  "from": "    if (body.kind === 'INVALID') throw invalidInput('body');\n",
+  "to": "",
+  "note": "a body that breaks the schema reaches the engine"
+ },
+ {
+  "id": "I12",
+  "file": "src/modules/security-audit/index.ts",
+  "from": "return new ApiFailure(403, 'NOT_PERMITTED', 'Your role does not allow this action. The attempt was audited.');",
+  "to": "return new ApiFailure(403, 'FORBIDDEN', 'Your role does not allow this action. The attempt was audited.');",
+  "note": "a FORBIDDEN in the result keeps the simulator's code"
+ },
+ {
+  "id": "I13",
+  "file": "src/modules/security-audit/index.ts",
+  "from": "    withStatePosition(reply, outcome);\n    void reply.code(202);",
+  "to": "    void reply.code(202);",
+  "note": "an accepted export carries no state position"
+ },
+ {
+  "id": "I14",
+  "file": "src/modules/security-audit/index.ts",
+  "from": "    void reply.code(202);\n",
+  "to": "",
+  "note": "an accepted export answers 200"
+ },
+ {
+  "id": "I15",
+  "file": "src/modules/security-audit/index.ts",
+  "from": "rows: row.seq - 1, head: row.prevHash };",
+  "to": "rows: Number(row.details['rows']), head: row.prevHash };",
+  "note": "the answer's row count is the ring's, from the row's details"
+ },
+ {
+  "id": "I16",
+  "file": "src/modules/security-audit/index.ts",
+  "from": "rows: row.seq - 1, head: row.prevHash };",
+  "to": "rows: row.seq, head: row.prevHash };",
+  "note": "the answer counts the export's own row"
+ },
+ {
+  "id": "I17",
+  "file": "src/modules/security-audit/index.ts",
+  "from": "rows: row.seq - 1, head: row.prevHash };",
+  "to": "rows: row.seq - 1, head: row.hash };",
+  "note": "the answer's head is the export row's own hash"
+ },
+ {
+  "id": "I18",
+  "file": "src/modules/security-audit/index.ts",
+  "from": "row.type === EXPORT_ROW_TYPE && row.details[EXPORT_ROW_ID] === exportId",
+  "to": "row.type === EXPORT_ROW_TYPE",
+  "note": "the newest export row is taken, whichever export it records"
+ },
+ {
+  "id": "I19",
+  "file": "src/modules/security-audit/index.ts",
+  "from": "row.type === EXPORT_ROW_TYPE && row.details[EXPORT_ROW_ID] === exportId",
+  "to": "row.details[EXPORT_ROW_ID] === exportId",
+  "note": "a row of another type that names the export ID is taken"
+ },
+ {
+  "id": "I20",
+  "file": "src/modules/security-audit/index.ts",
+  "from": "'An export reason of at least 5 characters is required.', { details: { simCode: 'REASON_TOO_SHORT' } });",
+  "to": "'An export reason of at least 5 characters is required.');",
+  "note": "INVALID_REASON without its details"
+ },
+ {
+  "id": "I21",
+  "file": "src/modules/security-audit/index.ts",
+  "from": "return new ApiFailure(401, 'NOT_SIGNED_IN', 'Sign in first.');",
+  "to": "return new ApiFailure(403, 'NOT_SIGNED_IN', 'Sign in first.');",
+  "note": "NOT_SIGNED_IN in the result answers 403"
+ },
+ {
+  "id": "I22",
+  "file": "src/modules/security-audit/index.ts",
+  "from": "runExport(request, reply, 'exportLogs', AuditExportScope.LOGS)",
+  "to": "runExport(request, reply, 'exportLogs', AuditExportScope.AUDIT)",
+  "note": "the log export answers the scope AUDIT"
+ },
+ {
+  "id": "I23",
+  "file": "src/modules/security-audit/index.ts",
+  "from": "runExport(request, reply, 'exportLogs', AuditExportScope.LOGS)",
+  "to": "runExport(request, reply, 'exportAudit', AuditExportScope.LOGS)",
+  "note": "the log export runs the audit export action"
+ },
+ {
+  "id": "I24",
+  "file": "src/modules/security-audit/index.ts",
+  "from": "readEventPage(pool, { category, type, severity, after, limit: limit ?? API_PAGE_LIMIT_DEFAULT }),",
+  "to": "readEventPage(pool, { category, type, severity, after, limit: limit ?? 200 }),",
+  "note": "the default page of the events is 200"
+ },
+ {
+  "id": "I25",
+  "file": "src/modules/security-audit/index.ts",
+  "from": "chain: () => `${app.engine.epoch}:${app.db.generation}`,",
+  "to": "chain: () => 'one',",
+  "note": "the stored check never learns of a new chain"
+ },
+ {
+  "id": "I26",
+  "file": "src/modules/security-audit/index.ts",
+  "from": "chain: () => `${app.engine.epoch}:${app.db.generation}`,",
+  "to": "chain: () => `${app.engine.epoch}`,",
+  "note": "a reopened pool does not drop what was remembered"
+ },
+ {
+  "id": "I27",
+  "file": "src/modules/security-audit/index.ts",
+  "from": "chain: () => `${app.engine.epoch}:${app.db.generation}`,",
+  "to": "chain: () => `${app.db.generation}`,",
+  "note": "a new epoch does not drop what was remembered"
+ },
+ {
+  "id": "I28",
+  "file": "src/modules/security-audit/index.ts",
+  "from": "const view = await app.engine.command(request.principal, 'verifyAuditChain');",
+  "to": "const view = await app.engine.command({ ...request.principal }, 'verifyAuditChain');",
+  "note": "a copy of the principal is handed to the engine"
+ },
+ {
+  "id": "I29",
+  "file": "src/modules/security-audit/index.ts",
+  "from": "      if (page.kind === 'CURSOR_UNKNOWN') throw invalidInput('querystring');\n      return { events: page.events,",
+  "to": "      if (page.kind === 'CURSOR_UNKNOWN') return { events: [], nextCursor: null };\n      return { events: page.events,",
+  "note": "an event cursor of a discarded chain is answered as an empty last page"
+ },
+ {
+  "id": "I30",
+  "file": "src/modules/security-audit/index.ts",
+  "from": "        const position = decodeEventCursor(cursor);\n        if (position === null) throw invalidInput('querystring');\n        after = position;",
+  "to": "        const position = decodeEventCursor(cursor);\n        if (position !== null) after = position;",
+  "note": "a value that is no event cursor is ignored"
+ },
+ {
+  "id": "I31",
+  "file": "src/modules/security-audit/index.ts",
+  "from": "    default:\n      return new Error('the audit export was refused for a reason it does not have');",
+  "to": "    default:\n      return new ApiFailure(refusal.status, refusal.reason, 'Refused.');",
+  "note": "a refusal the action does not have is passed on as it came"
+ },
+ {
+  "id": "I32",
+  "file": "src/modules/security-audit/index.ts",
+  "from": "await app.engine.command(request.principal, action,",
+  "to": "await app.engine.command({ ...request.principal }, action,",
+  "note": "a copy of the principal is handed to the engine by the exports"
+ }
+]

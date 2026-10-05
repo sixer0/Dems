@@ -1,0 +1,86 @@
+[
+ {
+  "id": "C01",
+  "file": "src/plugins/permission-guard/decision.ts",
+  "from": "        if (principal.kind !== 'DEVICE') return refuse({ kind: AccessRefusalKind.DEVICE_NOT_PAIRED, cause: condition });\n",
+  "to": "",
+  "note": "the condition DEVICE_CREDENTIAL is looked at and never refuses (the case is empty)"
+ },
+ {
+  "id": "C02",
+  "file": "src/plugins/permission-guard/decision.ts",
+  "from": "if (principal.kind !== 'DEVICE') return refuse({ kind: AccessRefusalKind.DEVICE_NOT_PAIRED, cause: condition });",
+  "to": "if (principal.kind === 'ANONYMOUS') return refuse({ kind: AccessRefusalKind.DEVICE_NOT_PAIRED, cause: condition });",
+  "note": "an operator on a device holds the condition"
+ },
+ {
+  "id": "C03",
+  "file": "src/plugins/permission-guard/decision.ts",
+  "from": "if (principal.kind !== 'DEVICE') return refuse({ kind: AccessRefusalKind.DEVICE_NOT_PAIRED, cause: condition });",
+  "to": "if (principal.kind !== 'OPERATOR') return refuse({ kind: AccessRefusalKind.DEVICE_NOT_PAIRED, cause: condition });",
+  "note": "the condition is turned round: the device is refused, the operator's session passes"
+ },
+ {
+  "id": "C04",
+  "file": "src/plugins/permission-guard/decision.ts",
+  "from": "        const unevaluated: never = condition;\n        throw new Error(`the access rule of ${rule.operationId} carries a condition that stage 6 does not evaluate: ${String(unevaluated)}`);\n",
+  "to": "        break;\n",
+  "note": "a condition without a case is passed over"
+ },
+ {
+  "id": "C05",
+  "file": "src/plugins/permission-guard/decision.ts",
+  "from": "      case CoreApiAccessCondition.DEVICE_CREDENTIAL:\n        // The device itself",
+  "to": "      case 'NO_SUCH_CONDITION':\n        // The device itself",
+  "note": "DEVICE_CREDENTIAL has no case (it reaches the default)"
+ },
+ {
+  "id": "C06",
+  "file": "src/plugins/permission-guard/denial.ts",
+  "from": "OWN_CREDENTIAL_TEXT, { details: { reason: DEVICE_CREDENTIAL_REQUIRED_REASON } }",
+  "to": "OWN_CREDENTIAL_TEXT",
+  "note": "the answer of the condition carries no reason"
+ },
+ {
+  "id": "C07",
+  "file": "src/plugins/permission-guard/denial.ts",
+  "from": "OWN_CREDENTIAL_TEXT, { details: { reason: DEVICE_CREDENTIAL_REQUIRED_REASON } }",
+  "to": "DEVICE_ONLY_TEXT, { details: { reason: DEVICE_CREDENTIAL_REQUIRED_REASON } }",
+  "note": "the answer of the condition has the text of the marker's refusal"
+ },
+ {
+  "id": "C08",
+  "file": "src/plugins/permission-guard/denial.ts",
+  "from": "      if (refusal.cause === CoreApiAccessCondition.DEVICE_CREDENTIAL) {",
+  "to": "      if (refusal.cause === CoreApiAccessCondition.DEVICE_CREDENTIAL || refusal.cause === 'DEVICE_OPERATION') {",
+  "note": "a web console session gets the reason too"
+ },
+ {
+  "id": "C09",
+  "file": "src/plugins/permission-guard/denial.ts",
+  "from": "new ApiFailure(403, ApiErrorCode.DEVICE_NOT_PAIRED, OWN_CREDENTIAL_TEXT",
+  "to": "new ApiFailure(403, ApiErrorCode.DEVICE_REVOKED, OWN_CREDENTIAL_TEXT",
+  "note": "the answer of the condition has another code"
+ },
+ {
+  "id": "C10",
+  "file": "src/plugins/permission-guard/denial.ts",
+  "from": "  if (refusal.kind !== AccessRefusalKind.NOT_PERMITTED) return null;\n",
+  "to": "  if (refusal.kind === AccessRefusalKind.DEVICE_NOT_PAIRED && refusal.cause === 'DEVICE_CREDENTIAL') {\n    return { audit: { type: AuditType.ACCESS_DENIED, severity: Severity.WARNING, message: `Access denied (${rule.operationId})`, actorId: null, deviceId: null, details: { operationId: rule.operationId } }, event: null };\n  }\n  if (refusal.kind !== AccessRefusalKind.NOT_PERMITTED) return null;\n",
+  "note": "the refusal of the condition writes a row and takes a place in the denial budget"
+ },
+ {
+  "id": "C11",
+  "file": "src/plugins/permission-guard/index.ts",
+  "from": "{ refusedBy: refusal.cause }",
+  "to": "{ cause: refusal.cause }",
+  "note": "the log line names what refused under the key cause again"
+ },
+ {
+  "id": "C12",
+  "file": "src/plugins/permission-guard/index.ts",
+  "from": "...(refusal.kind === AccessRefusalKind.DEVICE_NOT_PAIRED ? { refusedBy: refusal.cause } : {}),",
+  "to": "",
+  "note": "the log line does not say what refused"
+ }
+]

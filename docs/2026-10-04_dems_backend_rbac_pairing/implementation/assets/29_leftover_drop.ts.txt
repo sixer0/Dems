@@ -1,0 +1,58 @@
+// Evidence and clean-up script of plan row W29 (not part of the project). It looks at ONE
+// database of this row's own test run that the test helper could not drop, reads its autovacuum
+// statistics, and then removes it with a plain (not forced) DROP DATABASE, as dems_owner.
+// Usage: tsx w29-leftover.mts <name> [--drop]
+import { createOwnerPool, readOwnerConnection } from '/Users/gsp-budi/Documents/DEMS/apps/core-server/src/db/commands/owner-connection';
+
+const name = process.argv[2] ?? '';
+const drop = process.argv.includes('--drop');
+// Only a per-file database of a run of step 51 (this row): nothing else can be named here.
+if (!/^dems_test_step_51_[0-9a-z]{8}_f[0-9]{2}_[a-z0-9_]+$/.test(name) || name.length > 63) {
+  console.error('refused: not a test database of step 51.');
+  process.exit(2);
+}
+
+const owner = readOwnerConnection();
+const maintenance = createOwnerPool(owner, 'postgres', 'dems-w29-evidence');
+try {
+  const exists = await maintenance.query('SELECT oid::text AS oid, pg_get_userbyid(datdba)::text AS owner FROM pg_database WHERE datname = $1', [name]);
+  if (exists.rows.length === 0) {
+    console.log(`${name}: does not exist`);
+  } else {
+    console.log(`${name}: oid ${exists.rows[0].oid}, owner ${exists.rows[0].owner}`);
+    const sessions = await maintenance.query(
+      "SELECT pid, coalesce(usename::text, '(no role)') AS role, coalesce(backend_type, '(hidden)') AS backend_type FROM pg_stat_activity WHERE datname = $1",
+      [name],
+    );
+    console.log(`backends on it now: ${sessions.rows.length}${sessions.rows.map((s) => ` [${s.role}, ${s.backend_type}]`).join('')}`);
+
+    const inside = createOwnerPool(owner, name, 'dems-w29-evidence');
+    try {
+      const stats = await inside.query(
+        "SELECT relname::text AS table, n_live_tup::text AS live, n_mod_since_analyze::text AS modified, autoanalyze_count::text AS autoanalyze, autovacuum_count::text AS autovacuum, " +
+          "to_char(last_autoanalyze, 'HH24:MI:SS.MS') AS last_autoanalyze, to_char(last_autovacuum, 'HH24:MI:SS.MS') AS last_autovacuum " +
+          'FROM pg_stat_user_tables WHERE autoanalyze_count > 0 OR autovacuum_count > 0 ORDER BY last_autoanalyze NULLS LAST, relname',
+      );
+      console.log(`tables that autovacuum has worked on: ${stats.rows.length}`);
+      for (const row of stats.rows) {
+        console.log(`  ${String(row.table).padEnd(22)} live ${String(row.live).padStart(5)}  autoanalyze ${row.autoanalyze} (last ${row.last_autoanalyze ?? '-'})  autovacuum ${row.autovacuum} (last ${row.last_autovacuum ?? '-'})`);
+      }
+    } finally {
+      await inside.end();
+    }
+
+    if (drop) {
+      // Wait for this script's own session on the database to be gone, then a plain drop.
+      for (let i = 0; i < 100; i += 1) {
+        const left = await maintenance.query('SELECT count(*)::int AS n FROM pg_stat_activity WHERE datname = $1 AND usename IS NOT NULL', [name]);
+        if (left.rows[0].n === 0) break;
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      await maintenance.query(`DROP DATABASE "${name}"`);
+      const gone = await maintenance.query('SELECT count(*)::int AS n FROM pg_database WHERE datname = $1', [name]);
+      console.log(`dropped (plain DROP DATABASE, not forced): ${gone.rows[0].n === 0 ? 'yes' : 'NO'}`);
+    }
+  }
+} finally {
+  await maintenance.end();
+}

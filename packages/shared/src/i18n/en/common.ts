@@ -398,6 +398,16 @@ export const common = {
     UPDATE_COMPLETED: 'Update completed',
     SCENARIO_LOADED: 'Demo scenario loaded',
     SYSTEM_BOOT: 'System started',
+    // Backend task W16: the nine types the Core server writes (2026-10-04 01_specs §13.1).
+    ACCESS_DENIED: 'Access denied',
+    PAIRING_CODE_ISSUED: 'Pairing code issued',
+    PAIRING_CODE_CLOSED: 'Pairing code closed',
+    DEVICE_REVOKED: 'Paired device revoked',
+    DEVICE_CREDENTIAL_ROTATED: 'Device credential rotated',
+    ROLE_CHANGED: 'Role changed',
+    USER_ENABLED: 'User enabled',
+    USER_DISABLED: 'User disabled',
+    BIOMETRIC_ENROLLMENT_CHANGED: 'Biometric sign-in changed',
   },
 
   /** Audit filter categories (sim `AuditCategory`). */
@@ -553,11 +563,88 @@ export const common = {
   rbac: {
     deniedTitle: 'Not permitted',
     requiresRole: 'Requires the {{role}} role',
+    /**
+     * Backend task W16: labels of the three permissions added to the sim `Permission` set
+     * (2026-10-04 01_specs §4.3). The nine earlier ones are `securityAudit.rbac.permissions.*`.
+     */
+    permissions: {
+      PAIRING_MANAGE: 'Manage pairing and paired devices',
+      USER_ADMIN: 'Manage users and roles',
+      DEMO_CONTROL: 'Use the demo controls',
+    },
   },
 
   simulated: {
     chip: 'SIMULATED',
     note: 'Simulated in this demo',
+  },
+
+  /**
+   * Backend task W50 (2026-10-04 04_client_integration_spec §3.2, §3.3): the data mode of a
+   * client. SIMULATED: the in-app simulator is the Core. LIVE: the Core server is the Core. The
+   * maps are keyed by the wire values of `CoreMode` (`src/live/mode.ts`).
+   */
+  coreMode: {
+    label: 'Data mode',
+    chip: {
+      SIMULATED: 'SIMULATED',
+      LIVE: 'LIVE',
+    },
+    chipOffline: 'LIVE · OFFLINE',
+    chipReconnecting: 'LIVE · RECONNECTING',
+    name: {
+      SIMULATED: 'Simulated',
+      LIVE: 'Live',
+    },
+    switchTitle: {
+      SIMULATED: 'Switch to Simulated mode?',
+      LIVE: 'Switch to Live mode?',
+    },
+    switchBody: 'You will be signed out and the console reloads. Simulated data and Live data are separate.',
+    switchConfirm: {
+      SIMULATED: 'Switch to Simulated mode',
+      LIVE: 'Switch to Live mode',
+    },
+    switchFailed: 'The mode could not be saved in this browser. Nothing was changed.',
+    useSimulated: 'Use Simulated mode',
+  },
+
+  /** Backend task W50 (§3.5): the link between a client in Live mode and the Core server. */
+  coreLink: {
+    lostTitle: 'Core server unreachable',
+    lostBody: 'The screen shows the last state received. Reconnecting…',
+    retryNow: 'Retry now',
+    restored: 'Reconnected to the Core',
+    starting: 'The Core server is starting',
+  },
+
+  /**
+   * Backend task W50 (§6.2; §8.1 LB-6, LB-7, LB-10): how a Live call that the Core refused, or
+   * that got no usable answer, is worded on every page alike. A limit is not an outage: a 429
+   * names the seconds of `retry-after` and never uses the "unreachable" sentences.
+   */
+  coreErrors: {
+    offline: 'Core server unreachable. Nothing was changed.',
+    starting: 'The Core server is starting. Nothing was changed.',
+    timedOut:
+      'Core server unreachable. The command may or may not have been applied; the screen updates when the Core is reachable.',
+    limited: 'The Core server is limiting requests from this console. Try again in {{seconds}} s.',
+    limitedNoTime: 'The Core server is limiting requests from this console. Try again shortly.',
+    unavailable: 'The Core server could not complete the request. Try again.',
+    notSent: 'The request was not sent: the stored credentials could not be read. Nothing was changed.',
+    snapshotTimeout:
+      'The sign-in was accepted, but the Core state has not arrived. The console continues when the Core server is reachable.',
+    notAvailable: 'This action is not available in Live mode.',
+    demoDisabled: 'Demo controls are disabled on this Core server.',
+    originNotAllowed: 'The Core server does not accept requests from this address. Open the console at {{address}}.',
+  },
+
+  /** Backend task W50 (§4.1 WT-2a): the web console was opened at an address the Core server does not accept. */
+  liveHost: {
+    title: 'Live mode needs another address',
+    body: 'This page was opened at {{current}}. The Core server accepts the web console only from {{expected}}, so a sign-in from here would be refused.',
+    open: 'Open {{address}}',
+    simulatedNote: 'Simulated mode works at this address: nothing is sent to a server.',
   },
 
   states: {

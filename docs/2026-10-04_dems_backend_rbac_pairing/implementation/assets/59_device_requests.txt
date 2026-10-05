@@ -1,0 +1,2 @@
+DEMS-LIVE] GET /api/v1/auth/session 401 63eb4421-8307-411b-8860-5555e14fecd4
+DEMS-LIVE] GET /api/v1/auth/status 200 a8be7135-2797-4b71-b6f2-807e2cc0b675

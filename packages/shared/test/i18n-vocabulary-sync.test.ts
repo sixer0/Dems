@@ -111,4 +111,46 @@ describe('i18n ↔ sim/vocabulary.ts (D52)', () => {
     expect(Object.keys(V.SIM_EVENT_CATEGORY).sort()).toEqual(values(V.SimEventType).sort());
     expect(Object.keys(V.FAULT_EVENT_CATEGORY).sort()).toEqual(values(V.FaultKind).sort());
   });
+
+  // Backend task W16 (GP-06; 2026-10-04 01_specs §4.3; D37): `Permission` joins the sync. Every value
+  // is labelled in `securityAudit.rbac.permissions`, the map the clients read (the web matrix and the
+  // mobile Profile sheet, which lists every grant of a role). `common.rbac.permissions` repeats the
+  // three new ones; a value labelled in both maps must read the same in both.
+  it('Permission: 12 values, each labelled in securityAudit.rbac.permissions; common.rbac.permissions agrees (W16)', () => {
+    const all = values(V.Permission);
+    expect(all).toHaveLength(12);
+    expectExactKeys('securityAudit.rbac.permissions', all);
+    const page = at('securityAudit.rbac.permissions');
+    const shared = at('common.rbac.permissions');
+    expect(shared, 'common.rbac.permissions is missing').toBeDefined();
+    if (!page || !shared) return;
+    for (const [permission, label] of Object.entries(shared)) {
+      expect(all.includes(permission), `common.rbac.permissions.${permission} is not a permission`).toBe(true);
+      expect(label, `permission ${permission} reads differently in the two maps`).toBe(page[permission]);
+    }
+  });
+
+  // Backend task W16 (GP-06; 2026-10-04 01_specs §13.1, §19.2): nine audit types the Core server
+  // writes, in the existing eight categories; no event type was added.
+  it('AuditType: 53 values; the nine server-written types sit in the existing categories (W16)', () => {
+    expect(values(V.AuditType)).toHaveLength(53);
+    expect(values(V.AuditCategory)).toHaveLength(8);
+    expect(values(V.SimEventType)).toHaveLength(46);
+    const added = {
+      ACCESS_DENIED: 'SECURITY',
+      PAIRING_CODE_ISSUED: 'PAIRING',
+      PAIRING_CODE_CLOSED: 'PAIRING',
+      DEVICE_REVOKED: 'PAIRING',
+      DEVICE_CREDENTIAL_ROTATED: 'PAIRING',
+      ROLE_CHANGED: 'SECURITY',
+      USER_ENABLED: 'SECURITY',
+      USER_DISABLED: 'SECURITY',
+      BIOMETRIC_ENROLLMENT_CHANGED: 'AUTH',
+    } as const satisfies Partial<Record<V.AuditType, V.AuditCategory>>;
+    for (const type of Object.keys(added) as (keyof typeof added)[]) {
+      expect(V.AuditType[type]).toBe(type);
+      expect(V.AUDIT_TYPE_CATEGORY[type]).toBe(added[type]);
+    }
+    expect(values(V.AuditType).slice(-9)).toEqual(Object.keys(added));
+  });
 });

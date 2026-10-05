@@ -1,0 +1,193 @@
+#!/usr/bin/env node
+// Mutation harness for the W11b follow-up 3 tests (row rule M15: mutations run OUTSIDE the tree).
+// Each mutation is one string replacement in the scratch copy; the named test files are run; the
+// line "caught"/"survived" is printed with the test counts.
+import { execFileSync } from 'node:child_process';
+import { readFileSync, writeFileSync } from 'node:fs';
+
+const ROOT = '/var/folders/rn/7bm_xjb14jxcbp36qw981phr0000gn/T/kilo/w11b3-tree';
+const IDX = `${ROOT}/apps/core-server/test/helpers/db/index.ts`;
+const RUN = `${ROOT}/apps/core-server/test/helpers/db/run.ts`;
+const DDL = `${ROOT}/apps/core-server/test/helpers/db/ddl.ts`;
+const SES = `${ROOT}/apps/core-server/test/helpers/db/session.ts`;
+
+const UNIT = ['test/helpers/db/__tests__/needs.test.ts', 'test/helpers/db/__tests__/limits.test.ts', 'test/helpers/db/__tests__/static.test.ts'];
+const DB = [
+  'test/helpers/db/__tests__/needs.db.test.ts',
+  'test/helpers/db/__tests__/limits.db.test.ts',
+  'test/helpers/db/__tests__/limits-own.db.test.ts',
+];
+
+function edit(file, from, to) {
+  const text = readFileSync(file, 'utf8');
+  if (!text.includes(from)) throw new Error(`anchor not found in ${file}: ${from.slice(0, 60)}`);
+  writeFileSync(file, text.replace(from, to));
+}
+
+function restoreAll(files) {
+  for (const [file, text] of files) writeFileSync(file, text);
+}
+
+function snapshot(files) {
+  return files.map((file) => [file, readFileSync(file, 'utf8')]);
+}
+
+function run(project, files) {
+  try {
+    const out = execFileSync('npx', ['vitest', 'run', '--project', project, '--maxWorkers=1', '--root', 'apps/core-server', ...files], {
+      cwd: ROOT,
+      encoding: 'utf8',
+      env: { ...process.env, DEMS_TEST_STEP: 'w11b3m' },
+      timeout: 600_000,
+    });
+    return { failed: 0, text: out };
+  } catch (error) {
+    const text = `${error.stdout ?? ''}${error.stderr ?? ''}`;
+    const match = /Tests\s+(\d+) failed \| (\d+) passed \| (\d+) skipped|Tests\s+(\d+) failed\s+\((\d+)\)|Tests\s+(\d+) passed \((\d+)\)/.exec(text);
+    return { failed: -1, text, summary: summaryOf(text) };
+  }
+}
+
+function summaryOf(text) {
+  const failed = /Tests\s+(\d+) failed/.exec(text);
+  const total = /Tests\s+[^\n]*\((\d+)\)/.exec(text);
+  return { failed: failed ? Number(failed[1]) : 0, total: total ? Number(total[1]) : 0 };
+}
+
+const mutations = [
+  {
+    name: 'M1 a stated need is ignored (only the caps apply)',
+    files: [IDX],
+    apply: () => edit(IDX, 'return isNoLimit(current) ? current : Math.max(current, stated);', 'return isNoLimit(current) ? current : raisedLimit(current, cap);'),
+    project: 'unit',
+    tests: UNIT,
+  },
+  {
+    name: 'M2 a stated need may LOWER a limit',
+    files: [IDX],
+    apply: () => edit(IDX, 'return isNoLimit(current) ? current : Math.max(current, stated);', 'return isNoLimit(current) ? current : stated;'),
+    project: 'unit',
+    tests: UNIT,
+  },
+  {
+    name: 'M3 no ceiling on a stated need',
+    files: [IDX],
+    apply: () => edit(IDX, 'if (value > DB_NEED_MAX_MS) {', 'if (false && value > DB_NEED_MAX_MS) {'),
+    project: 'unit',
+    tests: UNIT,
+  },
+  {
+    name: "M4 a stated need is not checked for being whole milliseconds",
+    files: [IDX],
+    apply: () =>
+      edit(IDX, "if (typeof value !== 'number' || !Number.isInteger(value) || value < 1) {", "if (typeof value !== 'number') {"),
+    project: 'unit',
+    tests: UNIT,
+  },
+  {
+    name: 'M5 the ceiling of a stated need is the cap instead of 15 minutes',
+    files: [IDX],
+    apply: () => edit(IDX, 'if (value > DB_NEED_MAX_MS) {', 'if (value > cap) {'),
+    project: 'unit',
+    tests: UNIT,
+  },
+  {
+    name: 'M6 a request for a quiet cluster is not read at all',
+    files: [RUN],
+    apply: () =>
+      edit(
+        RUN,
+        'const quiet = options.quiet === true ? await waitForQuietCluster(this.#session, this.#quietBudgetMs) : QUIET_NOT_ASKED;',
+        'const quiet = QUIET_NOT_ASKED;',
+      ),
+    project: 'unit',
+    tests: UNIT,
+  },
+  {
+    name: 'M7 the answer of the clone-lock queue is not looked at (always quiet)',
+    files: [DDL],
+    apply: () => edit(DDL, 'if ((await cloneLockSessionsElsewhere(runner)) === 0) {', 'if (true) {'),
+    project: 'unit',
+    tests: UNIT,
+  },
+  {
+    name: 'M8 the bound of the quiet wait is not enforced',
+    files: [DDL],
+    apply: () => edit(DDL, 'if (waited >= budgetMs) return { waitedMs: waited, obtained: false, budgetMs };', 'if (false) return { waitedMs: waited, obtained: false, budgetMs };'),
+    project: 'unit',
+    tests: UNIT,
+  },
+  {
+    name: 'M9 no pause between two looks at the queue',
+    files: [DDL],
+    apply: () => edit(DDL, 'await sleep(Math.min(pause, budgetMs - waited));', 'await sleep(0);'),
+    project: 'unit',
+    tests: UNIT,
+  },
+  {
+    name: 'M10 the connect wait of a pool ignores the stated need',
+    files: [SES],
+    apply: () => edit(SES, 'connectionTimeoutMillis: options.connectTimeoutMs ?? CONNECT_TIMEOUT_MS', 'connectionTimeoutMillis: CONNECT_TIMEOUT_MS'),
+    project: 'unit',
+    tests: UNIT,
+  },
+  {
+    name: 'M11 a stated connect wait may be shorter than the helper’s own',
+    files: [IDX],
+    apply: () => edit(IDX, 'return stated === undefined ? undefined : Math.max(stated, CONNECT_TIMEOUT_MS);', 'return stated === undefined ? undefined : stated;'),
+    project: 'unit',
+    tests: UNIT,
+  },
+  {
+    name: "M12 a file's stated hook need shortens the helper's own hooks",
+    files: [IDX],
+    apply: () => edit(IDX, 'return isNoLimit(applied) ? applied : Math.max(applied, DB_HOOK_TIMEOUT_MS);', 'return applied;'),
+    project: 'unit',
+    tests: UNIT,
+  },
+  {
+    name: 'M13 the helper applies the limits again at every call (a file’s own lower limit is lost)',
+    files: [IDX],
+    apply: () => edit(IDX, 'if (!statesARunnerLimit(needs)) return;', '/* guard removed */'),
+    project: 'unit',
+    tests: UNIT,
+  },
+  {
+    name: 'M14 the read of the clone-lock queue is not keyed by its own session',
+    files: [DDL],
+    apply: () => edit(DDL, 'AND pid <> pg_backend_pid()', ''),
+    project: 'unit',
+    tests: UNIT,
+  },
+];
+
+const dbMutations = [
+  mutations.find((m) => m.name.startsWith('M6')),
+  mutations.find((m) => m.name.startsWith('M7')),
+  mutations.find((m) => m.name.startsWith('M8')),
+  mutations.find((m) => m.name.startsWith('M13')),
+];
+
+const lines = [];
+for (const mutation of mutations) {
+  const saved = snapshot(mutation.files);
+  mutation.apply();
+  const result = run(mutation.project, mutation.tests);
+  const summary = summaryOf(result.text);
+  lines.push(`${mutation.name} | ${mutation.project} ${mutation.tests.length} files | Tests failed ${summary.failed} of ${summary.total}`);
+  restoreAll(saved);
+}
+for (const mutation of dbMutations) {
+  const saved = snapshot(mutation.files);
+  mutation.apply();
+  const result = run('db', DB);
+  const summary = summaryOf(result.text);
+  lines.push(`${mutation.name} | db ${DB.length} files | Tests failed ${summary.failed} of ${summary.total}`);
+  restoreAll(saved);
+}
+// M0: the unchanged copy.
+const unchanged = run('unit', UNIT);
+lines.push(`M0 unchanged | unit | Tests failed ${summaryOf(unchanged.text).failed} of ${summaryOf(unchanged.text).total}`);
+const unchangedDb = run('db', DB);
+lines.push(`M0 unchanged | db | Tests failed ${summaryOf(unchangedDb.text).failed} of ${summaryOf(unchangedDb.text).total}`);
+console.log(lines.join('\n'));

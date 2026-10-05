@@ -14,9 +14,14 @@ import { AUTH_IDLE_TIMEOUT_MS } from '@dems/shared/sim';
 export interface IdleLockDialogProps {
   isOpen: boolean;
   onDismiss: () => void;
+  /**
+   * Why the session expired, in one sentence. Default: the 15 minutes without activity. LIVE mode
+   * passes the sentence of the 8-hour limit when that is what ended the session (WS-14).
+   */
+  reason?: string;
 }
 
-export function IdleLockDialog({ isOpen, onDismiss }: IdleLockDialogProps) {
+export function IdleLockDialog({ isOpen, onDismiss, reason }: IdleLockDialogProps) {
   const { t } = useTranslation();
   return (
     <Dialog isOpen={isOpen} onOpenChange={(open) => (open ? undefined : onDismiss())}>
@@ -25,7 +30,7 @@ export function IdleLockDialog({ isOpen, onDismiss }: IdleLockDialogProps) {
         <Dialog.Content testID="idle-lock-dialog">
           <Dialog.Title>{t('mobile.idleLock.title')}</Dialog.Title>
           <Dialog.Description>
-            {`${t('login.notices.sessionExpired', { minutes: AUTH_IDLE_TIMEOUT_MS / 60_000 })} ${t('mobile.idleLock.recording')}`}
+            {`${reason ?? t('login.notices.sessionExpired', { minutes: AUTH_IDLE_TIMEOUT_MS / 60_000 })} ${t('mobile.idleLock.recording')}`}
           </Dialog.Description>
           <View style={styles.actions}>
             <Button testID="idle-lock-confirm" variant="primary" onPress={onDismiss}>
@@ -42,9 +47,15 @@ export interface BiometricOfferDialogProps {
   isOpen: boolean;
   onAccept: () => void;
   onDecline: () => void;
+  /**
+   * What biometric sign-in is, in one sentence. Default: "Simulated identity binding", which is
+   * what it is with the simulator. LIVE mode passes its own sentence: nothing there is simulated,
+   * and the sentence must not claim hardware protection (04_client_integration_spec MB-6a).
+   */
+  note?: string;
 }
 
-export function BiometricOfferDialog({ isOpen, onAccept, onDecline }: BiometricOfferDialogProps) {
+export function BiometricOfferDialog({ isOpen, onAccept, onDecline, note }: BiometricOfferDialogProps) {
   const { t } = useTranslation();
   return (
     <Dialog isOpen={isOpen} onOpenChange={(open) => (open ? undefined : onDecline())}>
@@ -52,7 +63,7 @@ export function BiometricOfferDialog({ isOpen, onAccept, onDecline }: BiometricO
         <Dialog.Overlay />
         <Dialog.Content testID="biometric-offer-dialog">
           <Dialog.Title>{t('mobile.biometric.enableOffer')}</Dialog.Title>
-          <Dialog.Description>{t('mobile.biometric.identityNote')}</Dialog.Description>
+          <Dialog.Description>{note ?? t('mobile.biometric.identityNote')}</Dialog.Description>
           <View style={styles.actions}>
             <Button testID="biometric-offer-enable" variant="primary" onPress={onAccept}>
               <Button.Label>{t('mobile.biometric.enable')}</Button.Label>

@@ -9,6 +9,7 @@ import {
   createSim,
   DEMO_OPERATOR_PASSWORD,
   OPERATOR_IDS,
+  Permission,
   ROLE_PERMISSIONS,
   roleHas,
   selectLockout,
@@ -238,5 +239,52 @@ describe('RBAC (demo roles, 01 G1)', () => {
     expect(roleHas('TECHNICIAN', 'MAINTENANCE')).toBe(true);
     expect(roleHas(null, 'EVIDENCE_VIEW')).toBe(false);
     expect(Object.keys(ROLE_PERMISSIONS).sort()).toEqual(['INVESTIGATOR', 'SUPERVISOR', 'TECHNICIAN']);
+  });
+
+  // Backend task W16 (GP-06; 2026-10-04 01_specs §4.3, §4.4, AC-B-17): the matrix the Core server
+  // seeds and enforces. Three permissions and three SUPERVISOR grants were added; nothing else moved.
+  it('pins 12 permissions and 18 grants: INVESTIGATOR 4, SUPERVISOR 10, TECHNICIAN 4 (W16)', () => {
+    expect(Object.values(Permission)).toEqual([
+      'SESSION_START',
+      'SESSION_NOTE',
+      'EVIDENCE_VIEW',
+      'EVIDENCE_REVIEW',
+      'EVIDENCE_EXPORT',
+      'AUDIT_EXPORT',
+      'DEVICE_MANAGE',
+      'DIAGNOSTICS_RUN',
+      'MAINTENANCE',
+      'PAIRING_MANAGE',
+      'USER_ADMIN',
+      'DEMO_CONTROL',
+    ]);
+    expect(Object.keys(Permission)).toEqual(Object.values(Permission));
+    expect(ROLE_PERMISSIONS).toEqual({
+      INVESTIGATOR: ['SESSION_START', 'SESSION_NOTE', 'EVIDENCE_VIEW', 'DIAGNOSTICS_RUN'],
+      SUPERVISOR: [
+        'SESSION_START',
+        'SESSION_NOTE',
+        'EVIDENCE_VIEW',
+        'DIAGNOSTICS_RUN',
+        'EVIDENCE_REVIEW',
+        'EVIDENCE_EXPORT',
+        'AUDIT_EXPORT',
+        'PAIRING_MANAGE',
+        'USER_ADMIN',
+        'DEMO_CONTROL',
+      ],
+      TECHNICIAN: ['EVIDENCE_VIEW', 'DEVICE_MANAGE', 'DIAGNOSTICS_RUN', 'MAINTENANCE'],
+    });
+    const grants = Object.values(ROLE_PERMISSIONS).map((list) => list.length);
+    expect(grants).toEqual([4, 10, 4]);
+    expect(grants.reduce((sum, count) => sum + count, 0)).toBe(18);
+    for (const list of Object.values(ROLE_PERMISSIONS)) {
+      expect(new Set<string>(list).size).toBe(list.length);
+    }
+    for (const permission of ['PAIRING_MANAGE', 'USER_ADMIN', 'DEMO_CONTROL'] as const) {
+      expect(roleHas('SUPERVISOR', permission)).toBe(true);
+      expect(roleHas('INVESTIGATOR', permission)).toBe(false);
+      expect(roleHas('TECHNICIAN', permission)).toBe(false);
+    }
   });
 });

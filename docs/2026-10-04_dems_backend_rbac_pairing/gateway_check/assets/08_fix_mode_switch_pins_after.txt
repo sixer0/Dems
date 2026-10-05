@@ -1,0 +1,23 @@
+CP-W1 fix round — the four files that pin the confirmation dialog, after item 1 (the login copy is deleted)
+Counts of each test ID per file (grep -c over apps/core-web/src/test):
+
+live-shell-indicator.test.tsx dialog=11 confirm=4 cancel=1
+live-shell-notices.test.tsx dialog=1 confirm=1 cancel=0
+live-shell-admin.test.tsx  dialog=1 confirm=1 cancel=0
+live-login-page.test.tsx   dialog=8 confirm=5 cancel=1
+
+The checkpoint's table (assets/08_mode_switch_pins.txt) was 11/4/1, 1/1/0, 1/1/0, 7/4/1.
+Neither hook is imported by any of them:
+  (no test imports either hook: they reach the dialog through the surface they mount)
+
+Production consumers of the one surviving copy:
+Production consumers of the one surviving copy:
+apps/core-web/src/components/shell/index.ts
+apps/core-web/src/components/shell/live-notices.tsx
+apps/core-web/src/components/shell/live-only-state.tsx
+apps/core-web/src/components/shell/mode-indicator.tsx
+apps/core-web/src/components/shell/mode-switch.tsx
+apps/core-web/src/features/login/index.tsx
+apps/core-web/src/features/login/mode-selector.tsx
+
+Files in apps/core-web/src/features/login (.ts/.tsx) after the deletion: 17 (the folder's own static rule asks for at least 16)

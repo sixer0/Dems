@@ -63,3 +63,11 @@ coverage/
 # packager sources in scripts/release/ (step 95).
 /release/
 apps/mobile/signing/
+
+# Project-local PostgreSQL (backend task 2026-10-04, plan W03 / W07; SR-60, AC-B-64):
+# the cluster, the server log and the three credential files. Never version them.
+# `/.data/` is anchored to the repo root, like `/release/` above.
+/.data/
+
+# Test runner output (vitest JSON reporter); generated, never versioned.
+.vitest/

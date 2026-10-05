@@ -1,0 +1,394 @@
+[
+ {
+  "id": "M01",
+  "file": "src/modules/evidence/cursor.ts",
+  "from": "return `${position.recordedAt}-${position.id}`;",
+  "to": "return `${position.id}`;",
+  "note": "the cursor holds the ID only, not the recording instant"
+ },
+ {
+  "id": "M02",
+  "file": "src/modules/evidence/cursor.ts",
+  "from": "const CURSOR_FORM = /^(0|[1-9]\\d{0,15})-(EV-\\d{8}-\\d{4})$/;",
+  "to": "const CURSOR_FORM = /^(\\d{1,16})-(EV-\\d{8}-\\d{4})$/;",
+  "note": "a cursor with leading zeros is accepted (two texts for one position)"
+ },
+ {
+  "id": "M03",
+  "file": "src/modules/evidence/cursor.ts",
+  "from": "return Number.isSafeInteger(recordedAt) ? { recordedAt, id } : null;",
+  "to": "return { recordedAt, id };",
+  "note": "an instant above the largest safe integer is accepted"
+ },
+ {
+  "id": "M04",
+  "file": "src/modules/evidence/cursor.ts",
+  "from": "const CURSOR_FORM = /^(0|[1-9]\\d{0,15})-(EV-\\d{8}-\\d{4})$/;",
+  "to": "const CURSOR_FORM = /^(0|[1-9]\\d{0,15})-(EV-\\d{8}-\\d{4})/;",
+  "note": "a cursor with text after the evidence ID is accepted"
+ },
+ {
+  "id": "M05",
+  "file": "src/modules/evidence/export-request.ts",
+  "from": "(issue.code === 'too_small' || (issue.code === 'invalid_type' && absent))",
+  "to": "issue.code === 'too_small'",
+  "note": "an absent reason is INVALID_INPUT, not the action's INVALID_REASON"
+ },
+ {
+  "id": "M06",
+  "file": "src/modules/evidence/export-request.ts",
+  "from": "issue.path.length === 1 && issue.path[0] === REASON && (issue.code === 'too_small' || (issue.code === 'invalid_type' && absent))",
+  "to": "issue.path.length === 1 && issue.path[0] === REASON",
+  "note": "every fault of the reason (a number, 501 units, U+0000) is sent to the engine as a missing reason"
+ },
+ {
+  "id": "M07",
+  "file": "src/modules/evidence/export-request.ts",
+  "from": "(issue) => issue.path.length === 1 && issue.path[0] === REASON && (issue.code",
+  "to": "(issue) => (issue.code",
+  "note": "a fault of the destination counts as a missing reason"
+ },
+ {
+  "id": "M08",
+  "file": "src/modules/evidence/export-request.ts",
+  "from": "destination: parsed.data.destination ?? '' } };",
+  "to": "destination: parsed.data.destination ?? 'Unspecified' } };",
+  "note": "an absent destination is given a text of the module's own"
+ },
+ {
+  "id": "M09",
+  "file": "src/modules/evidence/export-request.ts",
+  "from": "export const NO_REASON: ExportRequest = Object.freeze({ reason: '', destination: '' });",
+  "to": "export const NO_REASON: ExportRequest = Object.freeze({ reason: 'no reason given', destination: '' });",
+  "note": "the stand-in for a missing reason is a text the action accepts: an export without a reason goes through"
+ },
+ {
+  "id": "M10",
+  "file": "src/modules/evidence/export-request.ts",
+  "from": "return onlyTheLowerBound ? { kind: 'REASON_MISSING' } : { kind: 'INVALID' };",
+  "to": "return { kind: 'INVALID' };",
+  "note": "a too-short reason is refused at the schema stage: 422 INVALID_INPUT before the 404 and the 409"
+ },
+ {
+  "id": "M11",
+  "file": "src/modules/evidence/media.ts",
+  "from": "return joined === null ? NO_MEDIA : { source: EvidenceMediaSource.DEMO_PACKAGE, packageSuffix: joined.evidenceSuffix };",
+  "to": "return NO_MEDIA;",
+  "note": "no item has bundled media"
+ },
+ {
+  "id": "M12",
+  "file": "src/modules/evidence/media.ts",
+  "from": "packageSuffix: joined.evidenceSuffix };",
+  "to": "packageSuffix: joined.sessionSuffix };",
+  "note": "the suffix is the session's, not the evidence item's"
+ },
+ {
+  "id": "M13",
+  "file": "src/modules/evidence/media.ts",
+  "from": "return joined === null ? NO_MEDIA :",
+  "to": "return joined === null ? { source: EvidenceMediaSource.DEMO_PACKAGE, packageSuffix: item.id.slice(-4) } :",
+  "note": "every item claims the package of its number, joined or not"
+ },
+ {
+  "id": "M14",
+  "file": "src/modules/evidence/reads.ts",
+  "from": ".orderBy(desc(evidenceItems.recordedAt), desc(evidenceItems.id))",
+  "to": ".orderBy(evidenceItems.recordedAt, evidenceItems.id)",
+  "note": "the list is oldest first"
+ },
+ {
+  "id": "M15",
+  "file": "src/modules/evidence/reads.ts",
+  "from": "(${evidenceItems.recordedAt}, ${evidenceItems.id}) < (${request.after.recordedAt}::bigint, ${request.after.id}::text)",
+  "to": "(${evidenceItems.recordedAt}, ${evidenceItems.id}) <= (${request.after.recordedAt}::bigint, ${request.after.id}::text)",
+  "note": "the keyset is not strict: a page starts with the last item of the one before"
+ },
+ {
+  "id": "M16",
+  "file": "src/modules/evidence/reads.ts",
+  "from": "(${evidenceItems.recordedAt}, ${evidenceItems.id}) < (${request.after.recordedAt}::bigint, ${request.after.id}::text)",
+  "to": "${evidenceItems.recordedAt} < ${request.after.recordedAt}::bigint",
+  "note": "the keyset is the instant alone: items that share an instant are skipped"
+ },
+ {
+  "id": "M17",
+  "file": "src/modules/evidence/reads.ts",
+  "from": ".limit(request.limit + 1);",
+  "to": ".limit(request.limit);",
+  "note": "no row beyond the page is read: no page has a next cursor"
+ },
+ {
+  "id": "M18",
+  "file": "src/modules/evidence/reads.ts",
+  "from": "next: rows.length > request.limit ? { recordedAt: last.recordedAt, id: last.id } : null,",
+  "to": "next: rows.length >= request.limit ? { recordedAt: last.recordedAt, id: last.id } : null,",
+  "note": "a page that ends exactly at the last item still gets a cursor"
+ },
+ {
+  "id": "M19",
+  "file": "src/modules/evidence/reads.ts",
+  "from": "    if (request.status !== undefined) conditions.push(eq(evidenceItems.status, request.status));\n",
+  "to": "",
+  "note": "the status filter is ignored"
+ },
+ {
+  "id": "M20",
+  "file": "src/modules/evidence/reads.ts",
+  "from": "    if (request.caseType !== undefined) conditions.push(eq(evidenceItems.caseType, request.caseType));\n",
+  "to": "",
+  "note": "the case-type filter is ignored"
+ },
+ {
+  "id": "M21",
+  "file": "src/modules/evidence/reads.ts",
+  "from": "sql`casefold(${text} COLLATE \"pg_unicode_fast\")`",
+  "to": "sql`lower(${text})`",
+  "note": "the search folds with the locale of the cluster: ASCII letters only"
+ },
+ {
+  "id": "M22",
+  "file": "src/modules/evidence/reads.ts",
+  "from": "sql`strpos(${folded(column)}, ${needle}) > 0`",
+  "to": "sql`${folded(column)} LIKE '%' || ${needle} || '%'`",
+  "note": "the search text is a LIKE pattern: % and _ are wildcards"
+ },
+ {
+  "id": "M23",
+  "file": "src/modules/evidence/reads.ts",
+  "from": " OR ${holds(evidenceItems.sessionId)}",
+  "to": "",
+  "note": "the search does not look at the session ID"
+ },
+ {
+  "id": "M24",
+  "file": "src/modules/evidence/reads.ts",
+  "from": " OR ${holds(evidenceItems.subjectName)})",
+  "to": ")",
+  "note": "the search does not look at the subject name"
+ },
+ {
+  "id": "M25",
+  "file": "src/modules/evidence/reads.ts",
+  "from": " OR ${holds(evidenceItems.caseNumber)}",
+  "to": "",
+  "note": "the search does not look at the case number"
+ },
+ {
+  "id": "M26",
+  "file": "src/modules/evidence/reads.ts",
+  "from": "const SNAPSHOT = { isolationLevel: 'repeatable read', accessMode: 'read only' } as const;",
+  "to": "const SNAPSHOT = { isolationLevel: 'read committed', accessMode: 'read write' } as const;",
+  "note": "the three statements of a read are not one snapshot, and the transaction could write"
+ },
+ {
+  "id": "M27",
+  "file": "src/modules/evidence/reads.ts",
+  "from": "evidenceItemFromRows(row, tracksOf.get(row.id) ?? [], custodyOf.get(row.id) ?? [])",
+  "to": "evidenceItemFromRows(row, tracks, custodyOf.get(row.id) ?? [])",
+  "note": "every item of a page gets the tracks of the whole page"
+ },
+ {
+  "id": "M28",
+  "file": "src/modules/evidence/reads.ts",
+  "from": "evidenceItemFromRows(row, tracksOf.get(row.id) ?? [], custodyOf.get(row.id) ?? [])",
+  "to": "evidenceItemFromRows(row, tracksOf.get(row.id) ?? [], [])",
+  "note": "the custody chain is left out of a listed item"
+ },
+ {
+  "id": "M29",
+  "file": "src/modules/evidence/reads.ts",
+  "from": ".where(eq(evidenceItems.id, evidenceId)).limit(1);",
+  "to": ".limit(1);",
+  "note": "getEvidence answers some item, whatever the ID"
+ },
+ {
+  "id": "M30",
+  "file": "src/modules/evidence/reads.ts",
+  "from": "const page = rows.slice(0, request.limit);",
+  "to": "const page = rows;",
+  "note": "the page holds the extra row that was read to look ahead"
+ },
+ {
+  "id": "M31",
+  "file": "src/modules/evidence/index.ts",
+  "from": "limit: limit ?? API_PAGE_LIMIT_DEFAULT }",
+  "to": "limit: limit ?? 200 }",
+  "note": "the default page is 200, not the contract's 50"
+ },
+ {
+  "id": "M32",
+  "file": "src/modules/evidence/index.ts",
+  "from": "        if (position === null) throw invalidInput('querystring');\n        after = position;",
+  "to": "        if (position !== null) after = position;",
+  "note": "a cursor that is none of this list is ignored: the first page again, not 422"
+ },
+ {
+  "id": "M33",
+  "file": "src/modules/evidence/index.ts",
+  "from": "if (evidence === null) throw evidenceNotFound();",
+  "to": "if (evidence === null) throw notReady();",
+  "note": "an unknown item answers 503, not 404"
+ },
+ {
+  "id": "M34",
+  "file": "src/modules/evidence/index.ts",
+  "from": "const evidenceNotFound = (): ApiFailure => new ApiFailure(404, 'NOT_FOUND', NOT_FOUND_TEXT, { details: { simCode: 'NOT_FOUND' } });",
+  "to": "const evidenceNotFound = (): ApiFailure => new ApiFailure(404, 'NOT_FOUND', NOT_FOUND_TEXT);",
+  "note": "the 404 of the read lacks details.simCode"
+ },
+ {
+  "id": "M35",
+  "file": "src/modules/evidence/index.ts",
+  "from": "      const outcome = await hosted(() => app.engine.command(request.principal, 'verify', request.params.id));\n      withStatePosition(reply, outcome);",
+  "to": "      const outcome = await hosted(() => app.engine.command(request.principal, 'verify', request.params.id));",
+  "note": "verifyEvidence answers without the state position of API-7"
+ },
+ {
+  "id": "M36",
+  "file": "src/modules/evidence/index.ts",
+  "from": "app.engine.command(request.principal, 'verify', request.params.id)",
+  "to": "app.engine.command({ ...request.principal }, 'verify', request.params.id)",
+  "note": "the engine is handed a copy of the principal, not the object stage 4 set"
+ },
+ {
+  "id": "M37",
+  "file": "src/modules/evidence/index.ts",
+  "from": "      if (body.kind === 'INVALID') throw invalidInput('body');\n",
+  "to": "",
+  "note": "a body that breaks the schema reaches the engine as a missing reason"
+ },
+ {
+  "id": "M38",
+  "file": "src/modules/evidence/index.ts",
+  "from": "      if (!exportIdPattern.test(evidenceId)) throw exportRefused({ ok: false, status: 404, reason: 'NOT_FOUND' });\n",
+  "to": "",
+  "note": "an ID that is no evidence ID is handed to the engine"
+ },
+ {
+  "id": "M39",
+  "file": "src/modules/evidence/index.ts",
+  "from": "body.kind === 'VALID' ? body.request : NO_REASON);",
+  "to": "body.kind === 'VALID' ? body.request : { reason: 'unspecified', destination: '' });",
+  "note": "a missing reason is replaced by a text of the module: the export is accepted without a reason"
+ },
+ {
+  "id": "M40",
+  "file": "src/modules/evidence/index.ts",
+  "from": "      if (!result.ok) throw exportRefused(result);",
+  "to": "      if (!result.ok && result.status !== 403) throw exportRefused(result);",
+  "note": "a FORBIDDEN in the result is not answered as a refusal"
+ },
+ {
+  "id": "M41",
+  "file": "src/modules/evidence/index.ts",
+  "from": "      void reply.code(202);\n",
+  "to": "",
+  "note": "an accepted export answers 200, not 202"
+ },
+ {
+  "id": "M42",
+  "file": "src/modules/evidence/index.ts",
+  "from": "return { exportId: result.exportId, evidenceId, status: 'EXPORTED' };",
+  "to": "return { exportId: result.exportId, evidenceId: 'EV-00000000-0000', status: 'EXPORTED' };",
+  "note": "the answer of an export names another item"
+ },
+ {
+  "id": "M43",
+  "file": "src/modules/evidence/index.ts",
+  "from": "return reply.code(204).send();",
+  "to": "return reply.code(200).send();",
+  "note": "archiveEvidence answers 200, not 204"
+ },
+ {
+  "id": "M44",
+  "file": "src/modules/evidence/index.ts",
+  "from": "app.engine.command(request.principal, 'archiveEvidence', request.params.id)",
+  "to": "app.engine.command(request.principal, 'verify', request.params.id)",
+  "note": "archiveEvidence runs the verification"
+ },
+ {
+  "id": "M45",
+  "file": "src/modules/evidence/index.ts",
+  "from": "throw simRefusal(error.cause, REFUSAL_WORDING[simCode]) ?? error;",
+  "to": "throw new ApiFailure(error.statusCode, error.code, REFUSAL_WORDING[simCode] ?? '');",
+  "note": "a reworded refusal loses its details (simCode, from, event)"
+ },
+ {
+  "id": "M46",
+  "file": "src/modules/evidence/index.ts",
+  "from": "    if (!(error instanceof ApiFailure) || simCode === null || !Object.hasOwn(REFUSAL_WORDING, simCode)) throw error;\n    throw simRefusal(error.cause, REFUSAL_WORDING[simCode]) ?? error;",
+  "to": "    throw error;",
+  "note": "a refusal of the simulator keeps the host's general wording"
+ },
+ {
+  "id": "M47",
+  "file": "src/modules/evidence/index.ts",
+  "from": "      void app.db.probe({ fresh: true });\n      throw notReady();",
+  "to": "      void app.db.probe({ fresh: true });\n      throw error;",
+  "note": "a read that failed hands the driver's error to the envelope: 500"
+ },
+ {
+  "id": "M48",
+  "file": "src/modules/evidence/index.ts",
+  "from": "request.log.error({ code: description.code ?? description.errorName, operationId }, READ_FAILED);",
+  "to": "request.log.error({ code: description.code ?? description.errorName, operationId, detail: String(error), cause: String((error as Error).cause) }, READ_FAILED);",
+  "note": "the failure line carries the error's own message (the statement and its parameters)"
+ },
+ {
+  "id": "M49",
+  "file": "src/modules/evidence/index.ts",
+  "from": "      if (error instanceof MappingError) throw error;\n",
+  "to": "",
+  "note": "a row the mapping refuses is reported as 'the database does not answer' (503)"
+ },
+ {
+  "id": "M50",
+  "file": "src/modules/evidence/index.ts",
+  "from": "      app.errorLog.append({\n        level: 'error',\n        source: `evidence.${operationId}`,\n        message: READ_FAILED,\n        ...description,\n        context: { requestId: request.id, operationId },\n      });\n",
+  "to": "",
+  "note": "a failed read is not written to the persistent error log"
+ },
+ {
+  "id": "M51",
+  "file": "src/modules/evidence/index.ts",
+  "from": "      void app.db.probe({ fresh: true });\n      throw notReady();",
+  "to": "      throw notReady();",
+  "note": "a failed read does not make the server probe the database"
+ },
+ {
+  "id": "M52",
+  "file": "src/modules/evidence/index.ts",
+  "from": "return { evidence, media: mediaRefOf(evidence) };",
+  "to": "return { evidence, media: { source: 'NONE', packageSuffix: null } };",
+  "note": "getEvidence never names a package"
+ },
+ {
+  "id": "M53",
+  "file": "src/modules/evidence/index.ts",
+  "from": "const idParams = (operation: CoreApiRegistryOperation) => z.object({ id: z.string().regex(idPatternOf(operation)) });",
+  "to": "const idParams = (_operation: CoreApiRegistryOperation) => z.object({ id: z.string() });",
+  "note": "the path parameter of operations 40, 41 and 43 is not held to the registry's pattern"
+ },
+ {
+  "id": "M54",
+  "file": "src/modules/evidence/index.ts",
+  "from": "NOT_SEALED: 'Only sealed evidence can be exported.',",
+  "to": "NOT_SEALED: 'Only sealed evidence can be exported.' + String(Date.now()).slice(0, 0) + ' ',",
+  "note": "the text of a refusal differs from the contract's example"
+ },
+ {
+  "id": "M55",
+  "file": "src/modules/evidence/index.ts",
+  "from": "return { items: page.items, nextCursor: page.next === null ? null : encodeEvidenceCursor(page.next) };",
+  "to": "return { items: page.items, nextCursor: null };",
+  "note": "the list never answers a next cursor"
+ },
+ {
+  "id": "M56",
+  "file": "src/modules/evidence/index.ts",
+  "from": "withStatePosition(reply, outcome);\n      void reply.code(202);",
+  "to": "void reply.code(202);",
+  "note": "an accepted export answers without the state position"
+ }
+]

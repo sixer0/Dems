@@ -2,7 +2,7 @@
 // validates with the documented schema; session commands need SESSION_START; `sim.request` never
 // throws; any method is accepted by the request type and answered 404 / 405.
 import { describe, expect, it } from 'vitest';
-import { validateCoreApiResponse } from '../src/api';
+import { API_TEXT_RULE_MESSAGE, validateCoreApiResponse } from '../src/api';
 import {
   createManualClock,
   createSim,
@@ -90,6 +90,30 @@ describe('POST /api/v1/session (D62, review 40 §5.d)', () => {
     // Auth runs before validation and before the idempotency branch.
     const signedOut = harness(null);
     expect(signedOut.sim.actions.createSession({ ...CREATE_BODY, caseNumber: 'ABC' } as never)).toMatchObject({ reason: 'NOT_SIGNED_IN' });
+  });
+});
+
+// Backend task 2026-10-04, plan row W19 (01_specs API-13): the create schema is shared with the Core
+// server, so the simulated create refuses the same ill-formed text.
+describe('POST /api/v1/session refuses U+0000 and an unpaired surrogate in a text field (API-13)', () => {
+  it.each([
+    ['U+0000', 'API\u0000Saksi'],
+    ['an unpaired surrogate', 'API Saksi \ud83d'],
+  ])('%s in subjectName → 422 INVALID_INPUT naming the field, and nothing is created', (_name, subjectName) => {
+    const h = harness('budi.santoso');
+    const response = h.call('POST', '/api/v1/session', { ...CREATE_BODY, subjectName });
+    expect(response.status).toBe(422);
+    expect(code(response)).toEqual({ code: 'INVALID_INPUT', message: `subjectName: ${API_TEXT_RULE_MESSAGE}` });
+    expect(validateCoreApiResponse('createSession', 422, response.body)).toEqual({ ok: true });
+    expect(h.state().session).toBeNull();
+    expect(h.sim.actions.createSession({ ...CREATE_BODY, subjectName } as never)).toEqual({ ok: false, reason: 'INVALID_INPUT', sessionId: null });
+  });
+
+  it('well-formed text outside the Basic Multilingual Plane is still accepted', () => {
+    const h = harness('budi.santoso');
+    const response = h.call('POST', '/api/v1/session', { ...CREATE_BODY, subjectName: 'API Saksi \ud83d\ude00' });
+    expect(response.status).toBe(201);
+    expect(h.state().session?.input.subjectName).toBe('API Saksi \ud83d\ude00');
   });
 });
 

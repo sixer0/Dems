@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { Button, Chip, Focusable, Separator, Tooltip } from '@heroui/react'
 import { Link } from '@tanstack/react-router'
-import { LayoutGroup, motion, useAnimate } from 'motion/react'
+import { AnimatePresence, LayoutGroup, motion, useAnimate, type Variants } from 'motion/react'
 import { PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { motion as tokens } from '@dems/shared/tokens'
@@ -10,9 +10,10 @@ import topoUrl from '@/assets/brand/topo.svg'
 import { AnimatedBackground } from '@/components/ui/animated-background'
 import { cn } from '@/lib/utils'
 import { tween, useAmbientLoop, useMotionPolicy } from '@/motion'
-import { DEVELOPER_NAV_ITEMS, MAIN_NAV_ITEMS, type NavItem } from './nav-items'
+import { ADMIN_NAV_ITEMS, DEVELOPER_NAV_ITEMS, MAIN_NAV_ITEMS, type NavItem } from './nav-items'
 import { useShellMotion } from './shell-motion-context'
 import type { SidebarMode } from './use-shell-layout'
+import { useVisibleNavItems } from './use-visible-nav-items'
 
 /** M-SH-03: expanding labels slide in 20 ms apart (spec literal, D49). */
 const LABEL_STAGGER_MS = 20
@@ -46,15 +47,31 @@ export interface SidebarNavProps {
  *   item (spring `indicator`); a pre-rendered e3 glow layer fades in and out during the travel.
  *   Reduced motion: no travel, the card cross-fades in at the destination.
  * - **M-APP-01** hand-off: items inherit `navItem` variants and stagger 30 ms after the sidebar.
+ *
+ * ADMINISTRATION (backend task 04_client_integration_spec §10.1 PG-4, PG-5; §6.3; AC-C-51): the
+ * group with "Users & Roles" and "Paired Devices" stands between the product pages and DEVELOPER,
+ * with the same separator and micro label. It is rendered only when it has an item, and an item
+ * only in Live mode with its permission (`useVisibleNavItems`), so the Drawer below 1024 px and
+ * the "More" sheet below 768 px show the same groups. When a role change gives or takes the
+ * permission the group enters (`fast`, `x -8 → 0`) or exits (R2: opacity, `exit` easing), and
+ * DEVELOPER below it moves by Motion `layout`; reduced motion: opacity only.
  */
 export function SidebarNav({ mode, onNavigate, expandCount = 0 }: SidebarNavProps) {
   const { t } = useTranslation()
   const m = useMotionPolicy()
   const { choreography } = useShellMotion()
+  const adminItems = useVisibleNavItems(ADMIN_NAV_ITEMS)
   // The Drawer opens long after the shell arrived, so its items do not take the entrance stagger.
   const itemVariants = mode === 'drawer' ? undefined : choreography.navItem
+  const layout = m.flags.sharedLayout ? 'position' : false
   return (
-    <motion.div className="dems-nav-list" data-nav-mode={mode} layout={m.flags.sharedLayout ? 'position' : false} transition={m.transitions.layout}>
+    <motion.div
+      className="dems-nav-list"
+      data-nav-mode={mode}
+      data-admin={adminItems.length > 0 ? 'true' : undefined}
+      layout={layout}
+      transition={m.transitions.layout}
+    >
       <ul className="dems-nav-group" role="list">
         <AnimatedBackground enableHover className="dems-nav-hover">
           {MAIN_NAV_ITEMS.map((item, index) => (
@@ -64,27 +81,85 @@ export function SidebarNav({ mode, onNavigate, expandCount = 0 }: SidebarNavProp
           ))}
         </AnimatedBackground>
       </ul>
-      <Separator className="dems-nav-separator" />
-      <p className="dems-nav-group-label" aria-hidden={mode === 'rail'}>
-        {t('shell.nav.developerGroup')}
-      </p>
-      <ul className="dems-nav-group" role="list" aria-label={t('shell.nav.developerGroup')}>
-        <AnimatedBackground enableHover className="dems-nav-hover">
-          {DEVELOPER_NAV_ITEMS.map((item, index) => (
-            <motion.li key={item.id} data-id={item.id} variants={itemVariants}>
-              <NavLink
-                item={item}
-                mode={mode}
-                onNavigate={onNavigate}
-                devChip
-                expandCount={expandCount}
-                index={MAIN_NAV_ITEMS.length + index}
-              />
-            </motion.li>
-          ))}
-        </AnimatedBackground>
-      </ul>
+      <AdminNavGroup items={adminItems} mode={mode} onNavigate={onNavigate} expandCount={expandCount} itemVariants={itemVariants} />
+      {/* One layout node for the group: it moves as a whole when ADMINISTRATION appears or goes. */}
+      <motion.div className="dems-nav-section" layout={layout} transition={m.transitions.layout}>
+        <Separator className="dems-nav-separator" />
+        <p className="dems-nav-group-label" aria-hidden={mode === 'rail'}>
+          {t('shell.nav.developerGroup')}
+        </p>
+        <ul className="dems-nav-group" role="list" aria-label={t('shell.nav.developerGroup')}>
+          <AnimatedBackground enableHover className="dems-nav-hover">
+            {DEVELOPER_NAV_ITEMS.map((item, index) => (
+              <motion.li key={item.id} data-id={item.id} variants={itemVariants}>
+                <NavLink
+                  item={item}
+                  mode={mode}
+                  onNavigate={onNavigate}
+                  devChip
+                  expandCount={expandCount}
+                  index={MAIN_NAV_ITEMS.length + adminItems.length + index}
+                />
+              </motion.li>
+            ))}
+          </AnimatedBackground>
+        </ul>
+      </motion.div>
     </motion.div>
+  )
+}
+
+interface AdminNavGroupProps {
+  /** The items that are rendered now; none: the group is not rendered. */
+  items: readonly NavItem[]
+  mode: SidebarNavProps['mode']
+  onNavigate: (() => void) | undefined
+  expandCount: number
+  itemVariants: Variants | undefined
+}
+
+/**
+ * The ADMINISTRATION group (PG-4, PG-5). At the first render it is at rest and its items take
+ * the shell entrance like every other item; it plays its own enter only when it APPEARS under a
+ * mounted shell (a role change that gives the permission), and its exit when it goes.
+ */
+function AdminNavGroup({ items, mode, onNavigate, expandCount, itemVariants }: AdminNavGroupProps) {
+  const { t } = useTranslation()
+  const m = useMotionPolicy()
+  const visible = items.length > 0
+  // Derived while rendering (the pattern of `seenMode` below): has the group appeared after the mount?
+  const [seen, setSeen] = useState({ visible, appeared: false })
+  if (seen.visible !== visible) setSeen({ visible, appeared: seen.appeared || visible })
+  const appeared = seen.appeared || (visible && !seen.visible)
+  return (
+    <AnimatePresence>
+      {visible ? (
+        <motion.div
+          key="admin"
+          className="dems-nav-section"
+          data-testid="nav-admin-group"
+          layout={m.flags.sharedLayout ? 'position' : false}
+          transition={m.transitions.layout}
+          initial={appeared ? (m.reduced ? { opacity: 0 } : { opacity: 0, x: -tokens.distance.exitDrop }) : false}
+          animate={{ opacity: 1, x: 0, transition: m.reduced ? m.transitions.crossFade : tween('fast', 'standard', m.timeScale) }}
+          exit={{ opacity: 0, transition: m.transitions.exit }}
+        >
+          <Separator className="dems-nav-separator" />
+          <p className="dems-nav-group-label" aria-hidden={mode === 'rail'}>
+            {t('shell.nav.adminGroup')}
+          </p>
+          <ul className="dems-nav-group" role="list" aria-label={t('shell.nav.adminGroup')}>
+            <AnimatedBackground enableHover className="dems-nav-hover">
+              {items.map((item, index) => (
+                <motion.li key={item.id} data-id={item.id} variants={itemVariants}>
+                  <NavLink item={item} mode={mode} onNavigate={onNavigate} expandCount={expandCount} index={MAIN_NAV_ITEMS.length + index} />
+                </motion.li>
+              ))}
+            </AnimatedBackground>
+          </ul>
+        </motion.div>
+      ) : null}
+    </AnimatePresence>
   )
 }
 

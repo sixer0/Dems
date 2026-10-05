@@ -1,0 +1,69 @@
+src/core/__tests__/static.test.ts  +1 -0
+src/core/__tests__/support.ts  +13 -363
+src/core/__tests__/windows.test.ts  +0 -0  (new)
+src/core/index.ts  +1 -0
+src/core/windows.ts  +7 -2  (from src/plugins/throttle/windows.ts)
+src/db/reset/__tests__/support.ts  +6 -462
+src/db/reset/routine.ts  +2 -1
+src/db/seed/__tests__/support.ts  +6 -326
+src/db/seed/index.ts  +8 -4
+src/db/seed/store.ts  +3 -404
+src/db/store/__tests__/static.test.ts  +0 -0  (new)
+src/db/store/__tests__/write-through.db.test.ts  +2 -2  (from src/db/seed/__tests__/write-through.db.test.ts)
+src/db/store/index.ts  +0 -0  (new)
+src/db/store/store.ts  +8 -1  (from src/db/seed/store.ts)
+src/engine/__tests__/static.test.ts  +2 -2
+src/engine/__tests__/support.ts  +14 -264
+src/modules/admin/__tests__/sequence.db.test.ts  +4 -2
+src/modules/admin/__tests__/static.test.ts  +15 -7
+src/modules/admin/__tests__/support.ts  +7 -7
+src/modules/admin/changes.ts  +2 -2
+src/modules/admin/statements.ts  +5 -12
+src/modules/demo/__tests__/reset.db.test.ts  +6 -6
+src/modules/demo/__tests__/routes.test.ts  +2 -2
+src/modules/health/index.ts  +14 -9
+src/modules/identity/__tests__/routes.test.ts  +6 -6
+src/modules/identity/__tests__/sessions.test.ts  +28 -5
+src/modules/identity/__tests__/static.test.ts  +1 -1
+src/modules/identity/__tests__/support.ts  +6 -328
+src/modules/identity/lockout.ts  +2 -2
+src/modules/identity/routes.ts  +27 -34
+src/modules/identity/sessions.ts  +7 -18
+src/modules/pairing/__tests__/routes.test.ts  +3 -3
+src/modules/pairing/__tests__/secrets.db.test.ts  +5 -5
+src/modules/pairing/__tests__/sequence.db.test.ts  +7 -6
+src/modules/pairing/__tests__/static.test.ts  +13 -3
+src/modules/pairing/__tests__/support.ts  +6 -259
+src/modules/pairing/database.ts  +12 -23
+src/modules/pairing/devices.ts  +3 -3
+src/modules/pairing/redeem-lock.ts  +2 -2
+src/modules/pairing/store.ts  +5 -14
+src/modules/rbac/__tests__/routes.test.ts  +3 -3
+src/modules/rbac/index.ts  +6 -25
+src/plugins/authenticate/__tests__/authenticate.db.test.ts  +19 -10
+src/plugins/authenticate/__tests__/authenticate.test.ts  +22 -3
+src/plugins/authenticate/index.ts  +15 -4
+src/plugins/config/__tests__/test-config.ts  +6 -132
+src/plugins/db/index.ts  +4 -1
+src/plugins/permission-guard/__tests__/support.ts  +6 -274
+src/plugins/readiness/__tests__/readiness.test.ts  +19 -1
+src/plugins/readiness/index.ts  +12 -9
+src/plugins/throttle/__tests__/throttle.test.ts  +3 -2
+src/plugins/throttle/__tests__/windows-limits.test.ts  +3 -78
+src/plugins/throttle/denial-budget.ts  +2 -2
+src/plugins/throttle/index.ts  +2 -2
+test/static/audit-protection.test.ts  +8 -3
+test/static/imports.test.ts  +0 -0  (new)
+test/static/imports.ts  +0 -0  (new)
+test/static/log-calls.test.ts  +15 -14
+test/static/routes.test.ts  +0 -0  (new)
+test/support/admin.ts  +0 -0  (new)
+test/support/config.ts  +8 -3  (from src/plugins/config/__tests__/test-config.ts)
+test/support/core.ts  +17 -39  (from src/core/__tests__/support.ts)
+test/support/engine.ts  +18 -59  (from src/engine/__tests__/support.ts)
+test/support/guard.ts  +15 -24  (from src/plugins/permission-guard/__tests__/support.ts)
+test/support/identity.ts  +16 -10  (from src/modules/identity/__tests__/support.ts)
+test/support/pairing.ts  +10 -5  (from src/modules/pairing/__tests__/support.ts)
+test/support/reset.ts  +14 -8  (from src/db/reset/__tests__/support.ts)
+test/support/scratch-routes.ts  +0 -0  (new)
+test/support/seed.ts  +9 -3  (from src/db/seed/__tests__/support.ts)

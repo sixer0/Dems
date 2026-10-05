@@ -1,0 +1,30 @@
+// Evidence script of plan row W29 (not part of the project): each lane database, read as the
+// RUNTIME role through the server's own configuration loader (the database follows the port),
+// passes the boot checks B-2 to B-9. It reads only; no credential is printed.
+const ROOT = '/Users/gsp-budi/Documents/DEMS/apps/core-server/src';
+const { loadConfig } = await import(`${ROOT}/plugins/config/index.ts`);
+const { createRuntimePool } = await import(`${ROOT}/plugins/db/index.ts`);
+const { BLOCKING_BOOT_CHECKS, checkStoredChain } = await import(`${ROOT}/db/schema/boot-checks.ts`);
+const { verifyStoredAuditRows } = await import(`${ROOT}/db/mapping/index.ts`);
+
+for (const port of ['4421', '4422', '4423']) {
+  const config = loadConfig({ env: { DEMS_CORE_PORT: port } });
+  const pool = createRuntimePool(config.database);
+  try {
+    const who = await pool.query('SELECT current_user::text AS role, current_database()::text AS database');
+    const passed: string[] = [];
+    for (const check of BLOCKING_BOOT_CHECKS) {
+      await check.run(pool);
+      passed.push(check.id);
+    }
+    const chain = await checkStoredChain(pool, { verifyDigests: verifyStoredAuditRows });
+    const state = await pool.query('SELECT epoch::text AS epoch, scenario FROM core_state');
+    console.log(
+      `port ${port}: ${who.rows[0].role} on ${who.rows[0].database}; blocking checks passed: ${passed.join(', ')}; ` +
+        `B-8 ok=${chain.ok} rows=${chain.rowsChecked} linkBreaks=${chain.linkBreaks} digests=${chain.digests} lineage=${chain.lineage}; ` +
+        `epoch ${state.rows[0].epoch}, scenario ${state.rows[0].scenario}`,
+    );
+  } finally {
+    await pool.end();
+  }
+}

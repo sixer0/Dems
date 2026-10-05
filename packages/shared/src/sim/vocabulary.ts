@@ -30,6 +30,11 @@ export const Permission = {
   DEVICE_MANAGE: 'DEVICE_MANAGE',
   DIAGNOSTICS_RUN: 'DIAGNOSTICS_RUN',
   MAINTENANCE: 'MAINTENANCE',
+  // Backend task W16 (2026-10-04 01_specs §4.3, §19.1; ADQ-9): additive. The Core server enforces
+  // these three; no simulator action checks them. SUPERVISOR holds all three (`auth.ts`).
+  PAIRING_MANAGE: 'PAIRING_MANAGE',
+  USER_ADMIN: 'USER_ADMIN',
+  DEMO_CONTROL: 'DEMO_CONTROL',
 } as const;
 export type Permission = ValueOf<typeof Permission>;
 
@@ -340,6 +345,18 @@ export const AuditType = {
   UPDATE_COMPLETED: 'UPDATE_COMPLETED',
   SCENARIO_LOADED: 'SCENARIO_LOADED',
   SYSTEM_BOOT: 'SYSTEM_BOOT',
+  // Backend task W16 (2026-10-04 01_specs §13.1, §19.2; ADQ-9): additive. Written by the Core
+  // server only (permission guard, pairing, user administration, identity); the simulator never
+  // emits them. "Device paired" stays PAIRING_SUCCESS.
+  ACCESS_DENIED: 'ACCESS_DENIED',
+  PAIRING_CODE_ISSUED: 'PAIRING_CODE_ISSUED',
+  PAIRING_CODE_CLOSED: 'PAIRING_CODE_CLOSED',
+  DEVICE_REVOKED: 'DEVICE_REVOKED',
+  DEVICE_CREDENTIAL_ROTATED: 'DEVICE_CREDENTIAL_ROTATED',
+  ROLE_CHANGED: 'ROLE_CHANGED',
+  USER_ENABLED: 'USER_ENABLED',
+  USER_DISABLED: 'USER_DISABLED',
+  BIOMETRIC_ENROLLMENT_CHANGED: 'BIOMETRIC_ENROLLMENT_CHANGED',
 } as const;
 export type AuditType = ValueOf<typeof AuditType>;
 
@@ -389,6 +406,16 @@ export const AUDIT_TYPE_CATEGORY = {
   UPDATE_COMPLETED: 'SYSTEM',
   SCENARIO_LOADED: 'SYSTEM',
   SYSTEM_BOOT: 'SYSTEM',
+  // Backend task W16: the nine server-written types, in the existing eight categories (§13.1).
+  ACCESS_DENIED: 'SECURITY',
+  PAIRING_CODE_ISSUED: 'PAIRING',
+  PAIRING_CODE_CLOSED: 'PAIRING',
+  DEVICE_REVOKED: 'PAIRING',
+  DEVICE_CREDENTIAL_ROTATED: 'PAIRING',
+  ROLE_CHANGED: 'SECURITY',
+  USER_ENABLED: 'SECURITY',
+  USER_DISABLED: 'SECURITY',
+  BIOMETRIC_ENROLLMENT_CHANGED: 'AUTH',
 } as const satisfies Record<AuditType, AuditCategory>;
 
 // ── Operational events (Recent Events, bell, timeline sources) ──────────────────────────

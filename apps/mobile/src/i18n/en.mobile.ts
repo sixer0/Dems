@@ -65,6 +65,8 @@ export const enMobile = {
         paired: 'Paired',
       },
       simulated: 'SIMULATED',
+      // Backend task W51 (04_client_integration_spec §3.2): the chip of the Pair screen in LIVE mode.
+      live: 'LIVE',
       pair: 'Pair',
       cancel: 'Cancel',
       unpair: 'Unpair',
@@ -84,9 +86,46 @@ export const enMobile = {
       source: {
         SIMULATED: 'Simulated',
         HEARTBEAT: 'mock-core heartbeat',
+        // Backend task W51 (04_client_integration_spec §9.5): the third source, debug builds only.
+        LIVE: 'Live',
       },
       lost: 'Core link lost — recording continues on the Core. Reconnecting…',
       resynced: 'Resynced',
+    },
+    // Backend task W51 (04_client_integration_spec §6.2, §6.3, §8.1): Live mode, the Core server is
+    // the Core. `refusal.*` is the copy of the refusal presenter (`runtime/core-errors.ts`); a denied
+    // call uses the shared `common.rbac.*` sentences, as the web console does.
+    live: {
+      // §6.3: one notice after the Core changed the signed-in operator's role (`session.updated`).
+      roleChanged: 'Your role is now {{role}}. The available actions have changed.',
+      refusal: {
+        // 401: the session is over; the guard opens the Login screen.
+        signedOut: 'You are signed out',
+        signedOutHint: 'Sign in to continue.',
+        // LB-6: no answer, or the link is down. One toast per 3 s.
+        offline: 'Core server unreachable',
+        offlineHint: 'Nothing was changed.',
+        // LB-7: no answer within 8 s.
+        timeoutHint: 'The command may or may not have been applied; the screen updates when the Core is reachable.',
+        // §5.2 step 6: the sign-in was answered, its data did not arrive in time.
+        snapshotHint: 'The Core did not send its data in time. Try again.',
+        // LB-10: a limit is not an outage.
+        limit: 'The Core server is limiting requests from this tablet',
+        limitHint: 'Try again in {{seconds}} s.',
+        limitHintSoon: 'Try again in a moment.',
+        // 500, or an answer outside the contract.
+        failed: 'The Core server could not complete the request',
+        failedHint: 'Try again. If it happens again, check the Core server.',
+        // The tablet could not read its own credential: nothing was sent.
+        credentials: 'This tablet could not read its credential',
+        credentialsHint: 'Nothing was sent. Try again.',
+        // The action has no operation in Live mode, or the tablet's own storage failed.
+        notAvailable: 'Not available right now',
+        notAvailableHint: 'This action cannot be done on this tablet at the moment.',
+        // Envelope codes without a simulator class.
+        demoDisabled: 'Demo controls are turned off on the Core server',
+        refused: 'The Core refused this action',
+      },
     },
     // §7.6: the in-app haptics preference.
     haptics: {

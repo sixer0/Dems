@@ -175,7 +175,7 @@ function ServiceCard() {
           </Chip>
         ) : (
           <p data-testid="health-version" className="font-mono text-data text-foreground">
-            mock-core v{health.data.version} · api {health.data.apiVersion}
+            {health.data.service.replace(/^dems-/, '')} v{health.data.version} · api {health.data.apiVersion}
           </p>
         )}
       </Card.Content>

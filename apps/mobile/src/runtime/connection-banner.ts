@@ -9,8 +9,11 @@
  * - `hidden` otherwise.
  *
  * In heartbeat mode CONNECTING is a transient (first connect, or between reconnect attempts), so
- * it keeps the current banner instead of flickering it. This file is pure logic plus a React
- * context; the screens (step 79 and the shell) draw the banner from `useConnectionBanner()`.
+ * it keeps the current banner instead of flickering it. LIVE mode has the same heartbeat states,
+ * read from the Core server's socket, and the same rule (backend task W51; 04_client_integration_spec
+ * §3.5, §7.2): the banner is the answer to "link lost", "link back", and never to a refused call
+ * (a 429 does not change it, LB-10). This file is pure logic plus a React context; the screens
+ * (step 79 and the shell) draw the banner from `useConnectionBanner()`.
  */
 import { createContext, useContext } from 'react';
 import type { CoreLinkInfo } from './contract';
@@ -25,9 +28,14 @@ export const CONNECTION_BANNER_MESSAGE_KEYS = {
   resynced: 'mobile.coreLink.resynced',
 } as const;
 
+/** A source whose link follows a heartbeat: its CONNECTING state is a transient. */
+function followsHeartbeat(link: CoreLinkInfo): boolean {
+  return link.source === 'HEARTBEAT' || link.source === 'LIVE';
+}
+
 /** The next banner kind after a Core link change (pure). */
 export function nextBannerKind(current: ConnectionBannerKind, link: CoreLinkInfo): ConnectionBannerKind {
-  if (link.source === 'HEARTBEAT' && link.heartbeat === 'CONNECTING') return current;
+  if (followsHeartbeat(link) && link.heartbeat === 'CONNECTING') return current;
   if (link.state === 'OFFLINE') return 'offline';
   if (current === 'offline') return 'resynced';
   return current;
