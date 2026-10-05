@@ -24,6 +24,17 @@
  * Layout (04 §2.4 "Finalizing, Summary, Recovery"): a centred card on phones; tablet landscape puts
  * the analysis details (tracks, segment, time source, session) in a 360 dp pane beside the 720 dp card.
  * Back: consumed with a toast while the analysis runs; otherwise it pops, or goes Home (F-79-1).
+ *
+ * **Live mode** (backend task, plan row W73; 04_client_integration_spec §8.6 S2-3, §8.7 S4-8, S5-2;
+ * requirement E1, 01_specs §8.6). The screen shows the Core's session: after a Core restart with a
+ * recording in flight the Core raises POWER_FAIL and the session waits in FAULT; the route sync opens
+ * this screen on the replica's FAULT, whatever epoch the Core came back with. "Start recovery" is a
+ * pending control (LB-1: busy at the press, the runtime's spinner late, one command per press); the
+ * pipeline and the outcome follow the Core's `session.recovery` slice and its history entry. While the
+ * link is down the runtime's one notice shows ("Core server unreachable") and a press is refused
+ * locally; Back is not held then, because the analysis runs on the Core, not on this device. One LIVE
+ * line says that the check results are derived on this device from the Core's data (the Core reports
+ * the stage and the outcome only, CONTRACT-GAP-W73-1). Simulated mode looks and behaves as at step 81.
  */
 import { useIsFocused, useRouter, type Href } from 'expo-router';
 import { Alert, Button, useToast } from 'heroui-native';
@@ -40,7 +51,7 @@ import { KeyValueList, SectionCard, StatusChip, SubjectTypeChip, type KeyValueIt
 import { Pane, SafeScreen, useLayoutClass, type LayoutClass } from '@/layout';
 import { SPEC_LITERALS, animatePulseOnce, enterRise, glowShadow, triggerHaptic, useAmbientLoop, useMotionSettings } from '@/motion';
 import { sessionResyncHref } from '@/navigation';
-import { reportRuntimeIssue } from '@/runtime';
+import { PendingSpinner, busyState, reportRuntimeIssue, useCoreLink, useCoreLinkNotice, usePendingPress } from '@/runtime';
 import { RecoveryPipeline, TrackRows } from './recovery-analysis';
 import { RecoveryBoundary } from './recovery-boundary';
 import {
@@ -64,6 +75,7 @@ import {
   useRecoveryOutcome,
   useRecoveryRole,
   useSimNow,
+  type RecoveryActions,
   type RecoveryAnalysis,
   type RecoveryInputs,
   type RecoveryOutcomeData,
@@ -105,8 +117,12 @@ export function SessionRecoveryScreen() {
   const actions = useRecoveryActions(role);
   const go = useNavigate();
   const simNow = useSimNow();
+  const live = useCoreLink().source === 'LIVE';
+  // LIVE only: the runtime's one rule (rows M0, M1); outside LIVE `offline` is always false.
+  const { offline: linkDown } = useCoreLinkNotice();
 
-  useRecoveryBack({ busy: isRecoveryBusy(phase), focused, go, simNow });
+  // While the Core link is down the analysis still runs on the Core, so Back is not held (LIVE only).
+  useRecoveryBack({ busy: isRecoveryBusy(phase) && !linkDown, focused, go, simNow });
 
   // One critical-fault haptic per interrupted session (§7.6 row 7).
   const faultId = phase === 'fault' ? (followed?.id ?? null) : null;
@@ -172,6 +188,8 @@ export function SessionRecoveryScreen() {
               ringPaused={!focused}
               canStart={canStartRecovery(role)}
               roleLabel={role ? t(`common.roles.${role}`) : '—'}
+              live={live}
+              linkDown={linkDown}
               onStart={actions.start}
               onHome={() => go('/home', 'home')}
             />
@@ -284,7 +302,11 @@ interface StatusCardProps {
   ringPaused: boolean;
   canStart: boolean;
   roleLabel: string;
-  onStart: () => void;
+  /** The Core link source is LIVE: the derivation line shows. */
+  live: boolean;
+  /** LIVE only: the runtime's "Core server unreachable" notice is up. */
+  linkDown: boolean;
+  onStart: RecoveryActions['start'];
   onHome: () => void;
 }
 
@@ -298,11 +320,19 @@ function StatusCard({
   ringPaused,
   canStart,
   roleLabel,
+  live,
+  linkDown,
   onStart,
   onHome,
 }: StatusCardProps) {
   const { t } = useTranslation();
   const settings = useMotionSettings();
+  // S2-3 (LB-1): busy from the press until the Core answered, the spinner only after the reveal delay
+  // on the store's clock. Simulated mode settles before `run` returns: nothing changes on screen.
+  const press = usePendingPress();
+  const onStartPress = () => {
+    press.run((release) => onStart(release));
+  };
   const ringRunning = useAmbientLoop('recovery-ring', { paused: ringPaused });
   const ringState = ringStateFor(phase, outcome, acknowledged);
   const RingIcon = ringState === 'ready' ? ShieldCheck : ringState === 'critical' ? ShieldAlert : ShieldEllipsis;
@@ -330,6 +360,18 @@ function StatusCard({
             </View>
           </View>
 
+          {linkDown ? (
+            <View style={styles.alert} testID="recovery-link-down">
+              <Alert status="warning">
+                <Alert.Indicator />
+                <Alert.Content>
+                  <Alert.Title>{t('features.session-recovery.live.linkDownTitle')}</Alert.Title>
+                  <Alert.Description>{t('features.session-recovery.live.linkDownBody')}</Alert.Description>
+                </Alert.Content>
+              </Alert>
+            </View>
+          ) : null}
+
           {phase === 'fault' ? <FaultAlert inputs={inputs} /> : null}
           {phase === 'analysing' ? (
             <View style={styles.alert} testID="recovery-analysing">
@@ -356,10 +398,16 @@ function StatusCard({
           <View accessibilityLabel={t('session.recovery.stagesLabel')}>
             <RecoveryPipeline phase={phase} milestone={milestone} analysis={analysis} />
           </View>
+          {live ? (
+            <Text maxFontSizeMultiplier={1.2} style={styles.caption} testID="recovery-live-derived">
+              {t('features.session-recovery.live.derived')}
+            </Text>
+          ) : null}
 
           {phase === 'fault' ? (
             <View style={styles.actions}>
-              <Button testID="recovery-start" variant="primary" size="lg" onPress={onStart}>
+              <Button testID="recovery-start" variant="primary" size="lg" onPress={onStartPress} {...busyState(press.busy)}>
+                {press.pending ? <PendingSpinner color={palette.black} testID="recovery-start-spinner" /> : null}
                 <Button.Label>{t('features.session-recovery.actions.start')}</Button.Label>
               </Button>
               <Text maxFontSizeMultiplier={1.2} style={styles.caption} testID="recovery-start-hint">

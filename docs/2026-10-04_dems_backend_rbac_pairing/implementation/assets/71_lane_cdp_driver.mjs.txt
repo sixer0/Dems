@@ -1,0 +1,441 @@
+// W71 lane check: the Storage page (site B-9) and the Network & Time page in Live mode in a real
+// headless Chromium, over raw CDP (Node's built-in WebSocket; no install). The helpers (lines up to
+// `takeNetwork`) are W55's driver as W63 used it, unchanged except the operators it reads; the steps
+// are this row's. Sign-ins go THROUGH THE FORM, from the project's own seed constants. Site B-9 is
+// pressed through the Manage Storage drawer, and the policy is set back to what it was.
+// Usage: node --import tsx .cache/w71/lane/cdp-driver.mjs <devtoolsPort> <vitePort> <outJson> <assetsDir>
+//
+// What is never stored or printed: a request body, a cookie value, the seeded password, a
+// `Runtime.evaluate` expression. Cookie values are cut to their length; URLs lose their query
+// values; only named elements and booleans are read from the pages.
+import { writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+// The seeded demo operator, read from the project's own seed source (never printed).
+import { DEMO_OPERATOR_PASSWORD, OPERATORS } from '../../../packages/shared/src/sim/dataset.ts'
+
+const [devPort, vitePort, outJson, assetsDir] = process.argv.slice(2)
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+const ORIGIN = `http://127.0.0.1:${vitePort}`
+const supervisor = OPERATORS.find((operator) => operator.role === 'SUPERVISOR')
+const investigator = OPERATORS.find((operator) => operator.role === 'INVESTIGATOR')
+if (!supervisor || !investigator || typeof DEMO_OPERATOR_PASSWORD !== 'string') throw new Error('the seed source has no SUPERVISOR, no INVESTIGATOR or no demo password constant')
+
+const list = await (await fetch(`http://127.0.0.1:${devPort}/json/list`)).json()
+const target = list.find((t) => t.type === 'page')
+const ws = new WebSocket(target.webSocketDebuggerUrl)
+await new Promise((r) => ws.addEventListener('open', r, { once: true }))
+
+let id = 0
+const pending = new Map()
+let requests = new Map() // requestId -> { method, url, status }
+let sockets = new Map() // requestId -> { url, status, frames: [type...], cookieSent }
+let consoleLines = []
+let loadFired = false
+
+const cleanUrl = (url) => String(url).replace(/\?.*$/, (query) => (query.length > 1 ? '?…' : ''))
+const typeOf = (payload) => {
+  try {
+    return JSON.parse(payload).type ?? '(no type)'
+  } catch {
+    return '(not JSON)'
+  }
+}
+const pick = (headers, name) => {
+  for (const [key, value] of Object.entries(headers ?? {})) if (key.toLowerCase() === name) return value
+  return null
+}
+
+ws.addEventListener('message', (event) => {
+  const msg = JSON.parse(event.data)
+  if (msg.id && pending.has(msg.id)) {
+    const { resolve, reject } = pending.get(msg.id)
+    pending.delete(msg.id)
+    // The error of a failed call is reported by its code only: its text can quote the expression.
+    msg.error ? reject(new Error(`CDP error ${msg.error.code}`)) : resolve(msg.result)
+    return
+  }
+  const p = msg.params ?? {}
+  switch (msg.method) {
+    case 'Page.loadEventFired':
+      loadFired = true
+      break
+    case 'Network.requestWillBeSent':
+      // Never `p.request.postData`.
+      requests.set(p.requestId, { method: p.request.method, url: cleanUrl(p.request.url), status: null })
+      break
+    case 'Network.responseReceived': {
+      const entry = requests.get(p.requestId)
+      if (entry) entry.status = p.response.status
+      break
+    }
+    case 'Network.loadingFailed': {
+      const entry = requests.get(p.requestId)
+      if (entry && entry.status === null) entry.status = `failed: ${p.errorText}`
+      break
+    }
+    case 'Network.webSocketCreated':
+      sockets.set(p.requestId, { url: cleanUrl(p.url), status: null, frames: [] })
+      break
+    case 'Network.webSocketWillSendHandshakeRequest': {
+      const entry = sockets.get(p.requestId)
+      if (entry) entry.cookieSent = pick(p.request.headers, 'cookie') ? 'yes (value not recorded)' : 'no'
+      break
+    }
+    case 'Network.webSocketHandshakeResponseReceived': {
+      const entry = sockets.get(p.requestId)
+      if (entry) entry.status = p.response.status
+      break
+    }
+    case 'Network.webSocketFrameReceived': {
+      const entry = sockets.get(p.requestId)
+      if (entry && entry.frames.length < 400) entry.frames.push(typeOf(p.response.payloadData))
+      break
+    }
+    case 'Network.webSocketClosed': {
+      const entry = sockets.get(p.requestId)
+      if (entry) entry.closed = true
+      break
+    }
+    case 'Runtime.exceptionThrown':
+      consoleLines.push(`exception: ${String(p.exceptionDetails?.exception?.description ?? p.exceptionDetails?.text).slice(0, 240)}`)
+      break
+    case 'Runtime.consoleAPICalled':
+      if (p.type === 'error' || p.type === 'warning') {
+        const text = (p.args ?? [])
+          .map((arg) => {
+            if (arg.value !== undefined) return String(arg.value)
+            const preview = arg.preview?.properties?.map((property) => `${property.name}: ${property.value}`).join(', ')
+            return preview ? `{${preview}}` : String(arg.description ?? arg.type)
+          })
+          .join(' ')
+        consoleLines.push(`${p.type}: ${text.slice(0, 420)}`)
+      }
+      break
+  }
+})
+
+const send = (method, params = {}) =>
+  new Promise((resolve, reject) => {
+    const n = ++id
+    pending.set(n, { resolve, reject })
+    ws.send(JSON.stringify({ id: n, method, params }))
+  })
+
+/** Runs page script. A failure is reported without the expression and without the page's own message. */
+const evaluate = async (expression, label) => {
+  const result = await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true })
+  if (result.exceptionDetails) throw new Error(`page script failed: ${label}`)
+  return result.result.value
+}
+
+const navigate = async (url, settleMs = 3500) => {
+  loadFired = false
+  await send('Page.navigate', { url })
+  for (let i = 0; i < 150 && !loadFired; i++) await sleep(100)
+  await sleep(settleMs) // the dev client's socket, the lazy route chunk, the entrance motion
+  return loadFired
+}
+
+/** Waits until the page holds (or no longer holds) an element with this test ID. Returns whether it did in time. */
+const waitFor = async (testId, present = true, timeoutMs = 15000) => {
+  const until = Date.now() + timeoutMs
+  while (Date.now() < until) {
+    const found = await evaluate(`document.querySelector('[data-testid="${testId}"]') !== null`, `wait ${testId}`)
+    if (found === present) return true
+    await sleep(150)
+  }
+  return false
+}
+
+const screenshot = async (name) => {
+  const { data } = await send('Page.captureScreenshot', { format: 'png' })
+  const file = join(assetsDir, name)
+  writeFileSync(file, Buffer.from(data, 'base64'))
+  return file
+}
+
+/** Types into the input of a field by script: focus, select what is there, insert. The text is not echoed. */
+const typeInto = async (fieldTestId, text, label) => {
+  const focused = await evaluate(
+    `(() => { const el = document.querySelector('[data-testid="${fieldTestId}"] input'); if (!el) return false; el.focus(); el.select(); return document.activeElement === el })()`,
+    `focus ${label}`,
+  )
+  if (!focused) throw new Error(`the field ${label} could not be focused`)
+  await send('Input.insertText', { text })
+}
+const press = (testId) => evaluate(`(() => { const el = document.querySelector('[data-testid="${testId}"]'); if (!el) return false; el.click(); return true })()`, `press ${testId}`)
+
+/** What the page did since the last call, and a new record for what follows. */
+const takeNetwork = () => {
+  const taken = {
+    api: [...requests.values()].filter((entry) => entry.url.includes('/api/v1/')),
+    origins: [...new Set([...requests.values()].map((entry) => { try { return new URL(entry.url).origin } catch { return '(other)' } }))].sort(),
+    sockets: [...sockets.values()]
+      .filter((entry) => entry.url.endsWith('/ws'))
+      .map((entry) => ({ url: entry.url, status: entry.status, cookieSent: entry.cookieSent ?? null, closed: entry.closed === true, frameCount: entry.frames.length, firstTypes: entry.frames.slice(0, 4), distinctTypes: [...new Set(entry.frames)].sort() })),
+    console: consoleLines,
+  }
+  requests = new Map()
+  sockets = new Map()
+  consoleLines = []
+  return taken
+}
+
+
+
+
+// ════════════════════════════════════ W71: the steps ════════════════════════════════════
+
+/** Named facts of the Storage page, and booleans over its words (the page holds no credential). */
+const storageFacts = (label) =>
+  evaluate(
+    `(() => {
+      const q = (id) => document.querySelector('[data-testid="' + id + '"]')
+      const text = (id) => q(id)?.textContent?.replace(/\\s+/g, ' ').trim() ?? null
+      const labels = [...document.body.querySelectorAll('[aria-label], [title], [alt]')].map((el) => ['aria-label', 'title', 'alt'].map((n) => el.getAttribute(n) ?? '').join(' ')).join(' ')
+      const words = (document.body.textContent ?? '') + ' ' + labels
+      return {
+        href: location.origin + location.pathname,
+        onStorage: q('page-storage') !== null,
+        panels: ['capacity','kpis','usage','sealed','volumes','activity','calculator','policy'].filter((id) => q('storage-panel-' + id) !== null),
+        shellMode: text('shell-mode'),
+        shellCoreMode: document.querySelector('.dems-shell')?.getAttribute('data-core-mode') ?? null,
+        user: q('user-menu')?.getAttribute('aria-label') ?? null,
+        bannerState: q('storage-banner')?.getAttribute('data-state') ?? null,
+        banner: text('storage-banner'),
+        retention: text('storage-policy-retention'),
+        kpiRetention: text('storage-kpi-retentionDays'),
+        volumes: [...document.querySelectorAll('[data-testid^="storage-volume-"]')].map((el) => el.getAttribute('data-testid')),
+        volumesFootnote: q('storage-panel-volumes')?.querySelector('.stor-footnote')?.textContent?.replace(/\\s+/g, ' ').trim() ?? null,
+        activityRows: document.querySelectorAll('[data-testid="storage-activity-row"]').length,
+        firstActivity: q('storage-activity-row')?.textContent?.replace(/\\s+/g, ' ').trim() ?? null,
+        drawerOpen: q('storage-manage-drawer') !== null,
+        drawerRbac: text('storage-policy-rbac'),
+        applyDisabled: q('storage-policy-apply') ? (q('storage-policy-apply').hasAttribute('disabled') || q('storage-policy-apply').getAttribute('aria-disabled') === 'true' || q('storage-policy-apply').hasAttribute('data-disabled')) : null,
+        applyText: text('storage-policy-apply'),
+        footerBusy: q('storage-policy-footer')?.getAttribute('aria-busy') ?? null,
+        selected: text('storage-policy-select'),
+        saysSimulated: /simulat/i.test(words),
+        toasts: [...document.querySelectorAll('[data-slot="toast"]')].map((el) => el.textContent?.replace(/\\s+/g, ' ').trim()),
+      }
+    })()`,
+    label,
+  )
+
+/** Named facts of the Network & Time page. */
+const networkTimeFacts = (label) =>
+  evaluate(
+    `(() => {
+      const q = (id) => document.querySelector('[data-testid="' + id + '"]')
+      const text = (id) => q(id)?.textContent?.replace(/\\s+/g, ' ').trim() ?? null
+      const labels = [...document.body.querySelectorAll('[aria-label], [title], [alt]')].map((el) => ['aria-label', 'title', 'alt'].map((n) => el.getAttribute(n) ?? '').join(' ')).join(' ')
+      const words = (document.body.textContent ?? '') + ' ' + labels
+      return {
+        href: location.origin + location.pathname,
+        onNetworkTime: q('page-network-time') !== null,
+        panels: ['system-time','hierarchy','network','domains','offset','log'].filter((id) => q('network-time-panel-' + id) !== null),
+        shellMode: text('shell-mode'),
+        shellCoreMode: document.querySelector('.dems-shell')?.getAttribute('data-core-mode') ?? null,
+        clock: text('network-time-clock'),
+        source: text('network-time-source'),
+        banner: text('network-time-banner'),
+        bannerTone: q('network-time-banner')?.getAttribute('data-tone') ?? null,
+        activeTier: q('network-time-tiers')?.getAttribute('data-active') ?? null,
+        orbit: text('network-time-orbit-caption'),
+        lastSync: text('network-time-last-sync'),
+        lan: text('network-time-row-lan'),
+        poe: text('network-time-row-poe'),
+        tablet: text('network-time-tablet-state'),
+        tabletAlert: text('network-time-tablet-alert'),
+        domains: Object.fromEntries(['CAMERA','MANAGEMENT','SERVICE_UPDATE','EXPORT_TRANSFER'].map((id) => [id, text('network-time-domain-' + id)])),
+        logRows: document.querySelectorAll('[data-testid="network-time-log-row"]').length,
+        offsetPoints: q('network-time-offset-chart')?.getAttribute('data-points') ?? null,
+        saysSimulated: /simulat/i.test(words),
+        toasts: [...document.querySelectorAll('[data-slot="toast"]')].map((el) => el.textContent?.replace(/\\s+/g, ' ').trim()),
+      }
+    })()`,
+    label,
+  )
+
+const waitToast = async (needle, timeoutMs = 10000) => {
+  const until = Date.now() + timeoutMs
+  while (Date.now() < until) {
+    const found = await evaluate(`[...document.querySelectorAll('[data-slot="toast"]')].some((el) => (el.textContent ?? '').includes(${JSON.stringify(needle)}))`, 'toast')
+    if (found) return true
+    await sleep(150)
+  }
+  return false
+}
+const signInThroughTheForm = async (operator, label) => {
+  await waitFor('page-login', true, 15000)
+  await typeInto('login-username-field', operator.username, `${label} username`)
+  await typeInto('login-password-field', DEMO_OPERATOR_PASSWORD, `${label} password`)
+  await press('login-submit')
+  const arrived = await waitFor('page-dashboard', true, 25000)
+  await sleep(2500) // the hand-off and the shell's entrance
+  return arrived
+}
+const signOutByPage = async () => {
+  const answer = await evaluate(
+    `(async () => { const r = await fetch('/api/v1/auth/sign-out', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ reason: 'USER' }) }); return { status: r.status } })()`,
+    'sign-out',
+  )
+  const back = await waitFor('page-login', true, 15000)
+  await sleep(1500)
+  return { ...answer, loginShown: back }
+}
+/** Goes to a page of the console by a full load (the session cookie carries the sign-in). */
+const openPage = async (path, testId, lastPanel) => {
+  await navigate(`${ORIGIN}${path}`, 2500)
+  const shown = await waitFor(testId, true, 20000)
+  if (lastPanel) await waitFor(lastPanel, true, 15000)
+  await sleep(3000) // the panels' beats and the lazily loaded charts
+  return shown
+}
+/** The Core's policy, read by a page request with the page's own cookie (no body is sent). */
+const corePolicy = () =>
+  evaluate(
+    `(async () => { const r = await fetch('/api/v1/storage/detail', { credentials: 'same-origin' }); let body = null; try { body = await r.json() } catch {} return { status: r.status, policy: body?.storagePolicy ?? null } })()`,
+    'storage detail',
+  )
+const POLICY_NAMES = { DAYS_30: '30 days', DAYS_90: '90 days', YEAR_1: '1 year', CASE_CLOSURE: 'Until case closure' }
+/** Site B-9 through the UI: open Manage Storage, pick a policy by its option name, press Apply. */
+const applyThroughTheDrawer = async (optionName, shotName) => {
+  await press('storage-manage-open')
+  const opened = await waitFor('storage-manage-drawer', true, 8000)
+  await sleep(700)
+  const trigger = await evaluate(`(() => { const b = document.querySelector('[data-testid="storage-policy-select"] button'); if (!b) return false; b.click(); return true })()`, 'open select')
+  let listed = false
+  for (let i = 0; i < 40 && !listed; i++) {
+    listed = await evaluate(`document.querySelector('[role="option"]') !== null`, 'options shown')
+    if (!listed) await sleep(100)
+  }
+  await sleep(300)
+  const picked = await evaluate(
+    `(() => { const el = [...document.querySelectorAll('[role="option"]')].find((e) => (e.textContent ?? '').trim() === ${JSON.stringify(optionName)}); if (!el) return false; el.click(); return true })()`,
+    'pick option',
+  )
+  await sleep(600)
+  const before = await storageFacts('drawer before apply')
+  const shotBefore = shotName ? await screenshot(shotName.replace('.png', '_drawer.png')) : null
+  const pressed = await press('storage-policy-apply')
+  const toastShown = await waitToast('Storage policy updated')
+  await sleep(900)
+  const after = await storageFacts('after apply')
+  const shot = shotName ? await screenshot(shotName) : null
+  return { opened, trigger, listed, picked, drawerBefore: { selected: before.selected, applyText: before.applyText, applyDisabled: before.applyDisabled }, drawerScreenshot: shotBefore, pressed, toastShown, after, screenshot: shot }
+}
+
+const started = Date.now()
+const ONLY_SIMULATED = process.env.W71_STEPS === 'simulated'
+
+await send('Network.enable')
+await send('Page.enable')
+await send('Runtime.enable')
+await send('Emulation.setDeviceMetricsOverride', { width: 1920, height: 1080, deviceScaleFactor: 1, mobile: false })
+const version = await send('Browser.getVersion')
+const result = { browser: { product: version.product, userAgent: version.userAgent, headless: /Headless/i.test(version.userAgent) }, viewport: '1920x1080', steps: {} }
+
+if (!ONLY_SIMULATED) {
+  // ── 1. Live, the seeded SUPERVISOR through the form; the Storage page on the Core's data ──
+  await navigate(`${ORIGIN}/login`)
+  const coreMode = await evaluate(`document.querySelector('[data-testid="page-login"]')?.getAttribute('data-core-mode') ?? null`, 'login mode')
+  takeNetwork()
+  const arrived = await signInThroughTheForm(supervisor, 'supervisor')
+  const shown = await openPage('/storage', 'page-storage', 'storage-panel-policy')
+  const policyBefore = await corePolicy()
+  result.steps.liveStorage = { loginCoreMode: coreMode, signedIn: arrived, storageShown: shown, corePolicyBefore: policyBefore, facts: await storageFacts('live storage'), screenshot: await screenshot('71_storage_live_supervisor.png'), network: takeNetwork() }
+
+  // ── 2. Site B-9 through the drawer: a different retention policy, then the original one back ──
+  const original = policyBefore.policy
+  const target = original?.retentionPolicy === 'YEAR_1' ? 'DAYS_30' : 'YEAR_1'
+  const changed = await applyThroughTheDrawer(POLICY_NAMES[target], '71_storage_live_b9_applied.png')
+  const policyChanged = await corePolicy()
+  result.steps.b9Apply = { target, ...changed, corePolicyAfter: policyChanged, network: takeNetwork() }
+  let restore = null
+  if (original) {
+    const back = await applyThroughTheDrawer(POLICY_NAMES[original.retentionPolicy], null)
+    let policyBack = await corePolicy()
+    let exact = null
+    if (JSON.stringify(policyBack.policy) !== JSON.stringify(original)) {
+      // The drawer sends the policy name only (its days are the name's): put the exact days and archive flag back.
+      exact = await evaluate(
+        `(async () => { const r = await fetch('/api/v1/storage/policy', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify(${JSON.stringify(original)}) }); return { status: r.status } })()`,
+        'restore exact policy',
+      )
+      policyBack = await corePolicy()
+    }
+    restore = { ...back, exactRestore: exact, corePolicyAfterRestore: policyBack, equalsOriginal: JSON.stringify(policyBack.policy) === JSON.stringify(original), network: takeNetwork() }
+  }
+  result.steps.b9SetBack = restore
+
+  // ── 3. Network & Time in Live mode, same operator ──
+  const ntShown = await openPage('/network-time', 'page-network-time', 'network-time-panel-log')
+  result.steps.liveNetworkTime = { shown: ntShown, facts: await networkTimeFacts('live network-time'), screenshot: await screenshot('71_network_time_live.png'), network: takeNetwork() }
+
+  // ── 4. The seeded INVESTIGATOR: Apply disabled with the two roles; the Core's own answer to operation 55 ──
+  const signOut = await signOutByPage()
+  takeNetwork()
+  const investigatorIn = await signInThroughTheForm(investigator, 'investigator')
+  await openPage('/storage', 'page-storage', 'storage-panel-policy')
+  await press('storage-manage-open')
+  await waitFor('storage-manage-drawer', true, 8000)
+  await sleep(800)
+  const drawer = await storageFacts('investigator drawer')
+  const drawerShot = await screenshot('71_storage_live_investigator_drawer.png')
+  // A page request (the UI does not offer it to this role): what the Core sends for the any-of.
+  const answer = await evaluate(
+    `(async () => { const r = await fetch('/api/v1/storage/policy', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ retentionPolicy: 'YEAR_1' }) }); let body = null; try { body = await r.json() } catch {} return { status: r.status, code: body?.error?.code ?? null, details: body?.error?.details ?? null } })()`,
+    'policy as investigator',
+  )
+  const policyAfterRefusal = await corePolicy()
+  result.steps.investigator = { signOutOfSupervisor: signOut, signedIn: investigatorIn, drawer: { open: drawer.drawerOpen, rbac: drawer.drawerRbac, applyDisabled: drawer.applyDisabled, saysSimulated: drawer.saysSimulated }, screenshot: drawerShot, coreAnswerToOperation55: answer, corePolicyAfterRefusal: policyAfterRefusal, network: takeNetwork() }
+}
+
+// ── 5. Simulated mode (the stored choice wins over the lane's preset). Sign In needs mock-core on
+// 127.0.0.1:4400, which this check may not start (F63-3): the simulator's own stored sign-in
+// (`dems.auth`: operator ID and time, no credential) is written instead. ──
+{
+  const signOut = ONLY_SIMULATED ? null : await signOutByPage()
+  if (ONLY_SIMULATED) await navigate(`${ORIGIN}/login`, 1500)
+  await evaluate(`localStorage.setItem('dems.core.mode.v1', 'SIMULATED')`, 'store SIMULATED')
+  takeNetwork()
+  await navigate(`${ORIGIN}/login`)
+  await waitFor('page-login', true, 15000)
+  const coreMode = await evaluate(`document.querySelector('[data-testid="page-login"]')?.getAttribute('data-core-mode') ?? null`, 'login mode')
+  await sleep(1200)
+  const submitDisabled = await evaluate(`document.querySelector('[data-testid="login-submit"]')?.hasAttribute('disabled') || document.querySelector('[data-testid="login-submit"]')?.getAttribute('aria-disabled') === 'true'`, 'submit disabled')
+  await evaluate(`sessionStorage.setItem('dems.auth', JSON.stringify({ operatorId: ${JSON.stringify(supervisor.id)}, issuedAt: Date.now() }))`, 'simulated stored sign-in')
+  const storageShown = await openPage('/storage', 'page-storage', 'storage-panel-policy')
+  const storage = await storageFacts('simulated storage')
+  const storageShot = await screenshot('71_storage_simulated.png')
+  const ntShown = await openPage('/network-time', 'page-network-time', 'network-time-panel-log')
+  const nt = await networkTimeFacts('simulated network-time')
+  const ntShot = await screenshot('71_network_time_simulated.png')
+  const network = takeNetwork()
+  result.steps.simulated = {
+    signOutOfLive: signOut,
+    loginCoreMode: coreMode,
+    submitDisabledOnTheLoginPage: submitDisabled,
+    signInPath: 'stored simulated sign-in (dems.auth), F63-3',
+    storageShown,
+    storage,
+    storageScreenshot: storageShot,
+    networkTimeShown: ntShown,
+    networkTime: nt,
+    networkTimeScreenshot: ntShot,
+    apiRequestsToTheDevServer: network.api.length,
+    socketsToTheDevServerWs: network.sockets.filter((s) => s.url.startsWith(`ws://127.0.0.1:${vitePort}/ws`)).length,
+    network,
+  }
+  await evaluate(`localStorage.removeItem('dems.core.mode.v1'); sessionStorage.removeItem('dems.auth')`, 'leave the origin as found')
+}
+result.elapsedSeconds = Math.round((Date.now() - started) / 1000)
+
+// Last line of defence: the password may not be in what is written, whatever a page showed.
+let text = JSON.stringify(result, null, 2)
+if (text.includes(DEMO_OPERATOR_PASSWORD)) text = text.split(DEMO_OPERATOR_PASSWORD).join('***')
+text = text.replace(/\b(ses|dvc|bio)_[A-Za-z0-9_-]+/g, '$1_***')
+writeFileSync(outJson, `${text}\n`)
+console.log(text)
+ws.close()

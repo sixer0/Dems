@@ -1,0 +1,167 @@
+// Backend task W74, static tests over the production files of `features/evidence/` (client gate CLG
+// item (c), AC-C-53; gateway_check/09_cp_mobile_runtime §4 answer 3, rules 1, 3, 4, 5, 7 and 8;
+// gateway_check/09a_m0_link_rule §10). The model is `pairing-live-static.test.ts`.
+//
+//  1. No production file takes the Core's actions from the simulator: no `useSimActions`, and no
+//     `.actions` read on a `Sim`. The calls come from `useCoreActions()` and go through `settle`;
+//     operation 40 goes through `useMobileLive()?.client.call` only.
+//  2. The folder names no network API, no Core server address, no storage package, no Live source
+//     module, no credential module (rules 3 and 4), and no raw state of the Core link (M0 rule).
+//  3. One LIVE idiom (rule 5): a file that picks a LIVE behaviour reads `useCoreLink().source`, or
+//     takes `live` from a caller that does; nothing derives the mode from the data-mode hook.
+//  4. The Live waits run on the store's clock (rule 7): the files written for Live mode hold no
+//     `setTimeout`, `setInterval` or `Date.now`.
+//  5. The copy (rule 8): the Live text says nothing about a simulation; no `SIM-GAP` marker was
+//     added; the copy of Simulated mode is what it was at `acaff20`.
+//
+// The texts this file looks for are put together below, so that it does not hold them itself.
+import { describe, expect, it } from '@jest/globals';
+import { createHash } from 'node:crypto';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { join, relative, sep } from 'node:path';
+import { evidenceEn } from './i18n';
+
+const FOLDER = __dirname;
+const isTest = (path: string): boolean => /\.test\.tsx?$/.test(path) || /(?:^|\/)(?:testing|__tests__)\//.test(path);
+/** Code without its comments. */
+const code = (text: string): string => text.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(?<!:)\/\/.*$/gm, '');
+/** Text inside quotes is no code: `t('features.evidence.actions.archived')` names a translation, not a simulator. */
+const unquoted = (text: string): string => text.replace(/'[^'\n]*'|"[^"\n]*"|`[^`\n]*`/g, "''");
+
+function sourceFiles(folder: string): string[] {
+  return readdirSync(folder).flatMap((name) => {
+    const path = join(folder, name);
+    if (statSync(path).isDirectory()) return sourceFiles(path);
+    return /\.tsx?$/.test(name) ? [path] : [];
+  });
+}
+
+const raw = sourceFiles(FOLDER)
+  .map((path) => ({ name: relative(FOLDER, path).split(sep).join('/'), source: readFileSync(path, 'utf8') }))
+  .sort((a, b) => a.name.localeCompare(b.name));
+const production = raw.filter((file) => !isTest(file.name)).map((file) => ({ name: file.name, text: code(file.source) }));
+const matching = (pattern: RegExp): string[] => production.filter((file) => pattern.test(file.text)).map((file) => file.name);
+const fileText = (name: string): string => production.find((file) => file.name === name)!.text;
+
+const SIM_ACTIONS_HOOK = ['use', 'Sim', 'Actions'].join('');
+/** The files written for Live mode by this row. */
+const LIVE_FILES = ['live-integrity-tab.tsx', 'use-clock-due.ts', 'use-core-verify.ts', 'use-evidence-media-ref.ts'];
+/** The copy that only Live mode shows. */
+const LIVE_KEYS = [
+  'media.checking',
+  'media.unavailable',
+  'integrity.coreLabel',
+  'integrity.coreNote',
+  'integrity.bundledResult',
+  'integrity.bundledDiffers',
+  'actions.manifestToastLive',
+  'play.bundled',
+  'export.deniedBodyUnrecorded',
+  'export.zipNoteLive',
+  'export.successLive',
+];
+
+function leaves(tree: unknown, path: string[] = []): { key: string; text: string }[] {
+  if (typeof tree === 'string') return [{ key: path.join('.'), text: tree }];
+  if (typeof tree !== 'object' || tree === null) return [];
+  return Object.entries(tree).flatMap(([name, value]) => leaves(value, [...path, name]));
+}
+const digest = (list: unknown): string => createHash('sha256').update(JSON.stringify(list)).digest('hex');
+
+describe('Evidence takes the Core through the light Live API (CLG c, AC-C-53)', () => {
+  it('reads the folder: every production file, sub-folders included', () => {
+    expect(production.map((file) => file.name)).toEqual([
+      'archive-dialog.tsx',
+      'detail-intent.ts',
+      'evidence-chips.tsx',
+      'evidence-detail-screen.tsx',
+      'evidence-detail.tsx',
+      'evidence-list-screen.tsx',
+      'evidence-media.ts',
+      'evidence-model.ts',
+      'evidence-row.tsx',
+      'export-sheet.tsx',
+      'i18n.ts',
+      'integrity-tab.tsx',
+      'live-integrity-tab.tsx',
+      'media-tab.tsx',
+      'metadata-tab.tsx',
+      'play-sheet.tsx',
+      'sheet-frame.tsx',
+      'sim-adapter.ts',
+      'use-clock-due.ts',
+      'use-core-verify.ts',
+      'use-evidence-data.ts',
+      'use-evidence-media-ref.ts',
+      'use-evidence-playback.ts',
+      'use-scramble.ts',
+    ]);
+  });
+
+  it('no production file names the simulator\'s actions hook or reads `.actions` (rule 1)', () => {
+    expect(matching(new RegExp(`\\b${SIM_ACTIONS_HOOK}\\b`))).toEqual([]);
+    // `styles.actions` is a style sheet entry, not the simulator's actions.
+    expect(production.filter((file) => /(?<!\bstyles)\.actions\b/.test(unquoted(file.text))).map((file) => file.name)).toEqual([]);
+  });
+
+  it('the Core\'s actions come from `useCoreActions()` and are settled', () => {
+    expect(matching(/\buseCoreActions\(\)/)).toEqual(['evidence-detail.tsx', 'evidence-list-screen.tsx', 'export-sheet.tsx', 'integrity-tab.tsx', 'use-core-verify.ts']);
+    for (const name of ['archive-dialog.tsx', 'export-sheet.tsx', 'sim-adapter.ts', 'use-core-verify.ts']) expect(fileText(name)).toMatch(/\bsettle\(/);
+  });
+
+  it('operation 40 is the one operation called through the Live client, from one file (rule 1)', () => {
+    expect(matching(/\.client\.call\(/)).toEqual(['use-evidence-media-ref.ts']);
+    expect(fileText('use-evidence-media-ref.ts')).toMatch(/client\.call\('getEvidence'/);
+  });
+});
+
+describe('No network, no address, no storage, no credential, no raw link state (rules 3 and 4; M0)', () => {
+  it('names no network API and no Core server address', () => {
+    expect(matching(/\bfetch\(|XMLHttpRequest|new WebSocket|127\.0\.0\.1|localhost|https?:\/\//)).toEqual([]);
+  });
+
+  it('imports no storage package, no Live source module and no credential module', () => {
+    expect(matching(/from '(?:expo-secure-store|@react-native-async-storage\/async-storage|@dems\/shared\/live\/source[^']*|@\/runtime\/secure-credentials)'/)).toEqual([]);
+    expect(matching(/from '@\/runtime\/[^']+'/)).toEqual([]);
+  });
+
+  it('names no raw state of the Core link and no rule of its own (the link notice is the runtime\'s)', () => {
+    expect(matching(/\b(?:CONNECTING|RESYNCING|STALE)\b/)).toEqual([]);
+  });
+});
+
+describe('One LIVE idiom (rule 5)', () => {
+  it('the files that pick a LIVE behaviour read `useCoreLink().source`; none reads the data-mode hook', () => {
+    expect(matching(/useCoreLink\(\)\.source === 'LIVE'/)).toEqual(['archive-dialog.tsx', 'evidence-detail.tsx', 'export-sheet.tsx']);
+    expect(matching(/\buseCoreMode\b|\buseLive\b\(/)).toEqual([]);
+  });
+});
+
+describe('The Live waits run on the store\'s clock (rule 7)', () => {
+  it('the files written for Live mode hold no timer of their own', () => {
+    for (const name of LIVE_FILES) expect([name, /\bsetTimeout\b|\bsetInterval\b|Date\.now/.test(fileText(name))]).toEqual([name, false]);
+  });
+});
+
+describe('The copy (rule 8)', () => {
+  const all = leaves(evidenceEn);
+
+  it('the Live copy says nothing about a simulation', () => {
+    const live = all.filter((leaf) => LIVE_KEYS.includes(leaf.key));
+    expect(live.map((leaf) => leaf.key).sort()).toEqual([...LIVE_KEYS].sort());
+    expect(live.filter((leaf) => /simulat/i.test(leaf.text))).toEqual([]);
+  });
+
+  it('the copy of Simulated mode is the copy of `acaff20` (185 texts, the same digest)', () => {
+    const simulated = all.filter((leaf) => !LIVE_KEYS.includes(leaf.key));
+    expect(simulated).toHaveLength(185);
+    expect(digest(simulated)).toBe('649c9a0468cb49be63070a5d666fc2e83d5dcdb27818c5c32d56a501b44f034b');
+  });
+
+  it('no SIM-GAP marker was added: the folder holds the eight of `acaff20`', () => {
+    // Put together, so that this file adds no marker to the count (KI-07: 13 IDs, 62 markers).
+    const marker = (n: number): string => ['SIM', 'GAP', 'M83', String(n)].join('-');
+    const markers = raw.flatMap((file) => file.source.match(/SIM-GAP-M\d+-\d+/g) ?? []);
+    expect(markers.sort()).toEqual([...Array<string>(6).fill(marker(1)), ...Array<string>(2).fill(marker(2))]);
+  });
+});

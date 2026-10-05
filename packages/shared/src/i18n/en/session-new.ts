@@ -180,4 +180,14 @@ export const sessionNew = {
 
   creating: 'Creating session…',
   alreadyActive: 'A session is already active. End it before starting a new one.',
+
+  /**
+   * Backend task, plan row W64 (additive): Live mode only. In Live mode the Core link of the
+   * pre-check is set by a real connection of a paired tablet (decision F69), so a blocked `CORE`
+   * check means "no paired tablet is connected", not a fault the console can clear.
+   */
+  live: {
+    coreLinkHint:
+      'No paired tablet is connected to the Core server. Open the DEMS app on the paired tablet so that it connects, then re-run the checks.',
+  },
 } as const satisfies ResourceTree;

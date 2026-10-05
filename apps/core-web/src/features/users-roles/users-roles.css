@@ -1,0 +1,401 @@
+/*
+ * Users & Roles page styles (backend task 04_client_integration_spec §10.1 PG-7, PG-8, PG-9;
+ * §10.2; plan row W77). Feature-scoped `ur-*` classes only; colours, radii and type come from the
+ * theme tokens. Only opacity and transform animate, except the one gold row highlight (M-C-07),
+ * whose background fades as the copied-in `animated-list` does. No ambient loop.
+ */
+@layer components {
+  .ur-page {
+    --ur-gap: var(--shell-gutter, 16px);
+  }
+
+  .ur-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--ur-gap);
+  }
+
+  /* F76-12: the shared "Live mode only" card does not centre itself; this page's own grid does. */
+  .ur-state-wrap {
+    display: grid;
+    flex: 1 0 auto;
+    place-items: center;
+    min-height: 320px;
+  }
+
+  .ur-state-wrap > * {
+    width: min(100%, 560px);
+  }
+
+  .ur-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    padding: 48px 16px;
+    text-align: center;
+  }
+
+  .ur-state-icon {
+    width: 40px;
+    height: 40px;
+    color: var(--color-foreground-2, #d8cec6);
+  }
+
+  .ur-state-title {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+    line-height: 26px;
+    color: var(--foreground);
+  }
+
+  .ur-state-link {
+    font-size: 14px;
+    color: var(--accent);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+
+  /* ── Panel shell (the header of the Security & Audit panels) ─────────────────────────── */
+  .ur-panel {
+    min-width: 0;
+    display: flex;
+  }
+
+  .ur-card {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    min-width: 0;
+    padding: 14px 16px 16px;
+    gap: 12px;
+    border-radius: calc(var(--radius) * 1.5);
+    background: linear-gradient(180deg, rgb(37 28 20 / 0.72) 0%, rgb(21 14 7 / 0.92) 100%);
+    box-shadow: var(--shadow-glow-1);
+  }
+
+  .ur-card-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 28px;
+  }
+
+  .ur-card-icon {
+    width: 20px;
+    height: 20px;
+    flex: none;
+    color: var(--accent);
+  }
+
+  .ur-card-heading {
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+
+  .ur-card-title {
+    margin: 0;
+    font-size: 14px;
+    line-height: 20px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--foreground);
+  }
+
+  .ur-card-subtitle {
+    margin: 0;
+    font-size: 12px;
+    line-height: 16px;
+    color: var(--muted);
+  }
+
+  .ur-card-action {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: none;
+  }
+
+  .ur-card-body {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-height: 0;
+  }
+
+  .ur-panel-fallback {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 12px;
+  }
+
+  .ur-fallback-title {
+    margin: 0;
+    font-weight: 600;
+  }
+
+  .ur-fallback-body {
+    margin: 0;
+    color: var(--muted);
+  }
+
+  /* ── Text helpers ─────────────────────────────────────────────────────────────────────── */
+  .ur-mono {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: 0.02em;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .ur-muted {
+    margin: 0;
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  /* ── Summary chip ─────────────────────────────────────────────────────────────────────── */
+  .ur-summary-text {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 4px;
+  }
+
+  .ur-summary-sep {
+    padding: 0 4px;
+    color: var(--muted);
+  }
+
+  /* ── Operators table ──────────────────────────────────────────────────────────────────── */
+  .ur-table .table__cell,
+  .ur-table .table__column,
+  .ur-matrix .table__cell,
+  .ur-matrix .table__column {
+    padding: 8px 12px;
+    font-size: 13px;
+    background: transparent;
+  }
+
+  .ur-table .table__column,
+  .ur-matrix .table__column {
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .ur-col-number {
+    text-align: right;
+  }
+
+  .ur-col-actions {
+    width: 48px;
+    text-align: right;
+  }
+
+  .ur-row[data-highlight='true'] {
+    animation: ur-row-highlight 1500ms ease-out both;
+  }
+
+  @keyframes ur-row-highlight {
+    from {
+      background-color: rgb(255 191 71 / 0.18);
+    }
+    to {
+      background-color: transparent;
+    }
+  }
+
+  .ur-operator {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+  }
+
+  .ur-operator-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  .ur-operator-name {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 600;
+    color: var(--foreground);
+  }
+
+  .ur-status-wrap {
+    position: relative;
+    display: inline-flex;
+  }
+
+  .ur-status-chip {
+    transition:
+      background-color 400ms ease,
+      color 400ms ease;
+  }
+
+  .ur-status-dot {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    margin-right: 4px;
+    border-radius: 9999px;
+    background: currentColor;
+  }
+
+  .ur-status-halo {
+    position: absolute;
+    inset: 0;
+    border-radius: 9999px;
+    box-shadow: 0 0 0 2px currentColor;
+    pointer-events: none;
+  }
+
+  .ur-menu-hint {
+    max-width: 220px;
+    font-size: 11px;
+    line-height: 14px;
+    color: var(--muted);
+  }
+
+  /* ── Loading ──────────────────────────────────────────────────────────────────────────── */
+  .ur-skeleton {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .ur-skeleton-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    height: 40px;
+  }
+
+  .ur-skeleton-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 9999px;
+  }
+
+  .ur-skeleton-line {
+    flex: 1 1 auto;
+    height: 12px;
+    border-radius: var(--radius);
+  }
+
+  .ur-skeleton-chip {
+    width: 72px;
+    height: 20px;
+    border-radius: 9999px;
+  }
+
+  .ur-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 32px 16px;
+  }
+
+  .ur-empty-title {
+    margin: 0;
+    font-weight: 600;
+  }
+
+  .ur-read-error {
+    align-items: center;
+  }
+
+  /* ── Matrix ───────────────────────────────────────────────────────────────────────────── */
+  .ur-grant {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 9999px;
+  }
+
+  .ur-grant[data-granted='true'] {
+    color: #4ade80;
+    background: rgb(34 197 94 / 0.14);
+  }
+
+  .ur-grant[data-granted='false'] {
+    color: rgb(156 163 175 / 0.6);
+  }
+
+  /* ── Dialogs ──────────────────────────────────────────────────────────────────────────── */
+  .ur-dialog-body {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .ur-dialog-target,
+  .ur-dialog-text {
+    margin: 0;
+    font-size: 14px;
+    line-height: 20px;
+  }
+
+  .ur-role-options {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .ur-role-current {
+    color: var(--muted);
+  }
+
+  .ur-role-diff {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .ur-role-diff-title,
+  .ur-diff-list-title {
+    margin: 0;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .ur-role-diff-lists {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .ur-diff-list ul {
+    margin: 4px 0 0;
+    padding-left: 16px;
+    font-size: 13px;
+    line-height: 18px;
+  }
+
+  .ur-diff-list[data-tone='gain'] ul {
+    color: #4ade80;
+  }
+
+  .ur-diff-list[data-tone='loss'] ul {
+    color: #f87171;
+  }
+
+  @media (max-width: 767px) {
+    .ur-role-diff-lists {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+}

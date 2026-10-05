@@ -8,6 +8,16 @@
  * Export, More (pinned under the content, so they stay reachable on the long tabs).
  *
  * A landscape phone lays it out as hero column 40% | tabs 60% (§2.4 "Evidence" row).
+ *
+ * **Live mode** (backend task W74; 04_client_integration_spec §14 point 7, §8.7 S3-1; 01_specs
+ * MS-2; AC-C-61). The Core's actions come from `useCoreActions()` in both modes (archive: site
+ * S3-1, settled by the dialog). In Live mode:
+ * - Hash & Integrity is `LiveIntegrityTab`: the Core server's verdict of record (operation 41).
+ * - Bundled media, the bundled manifest and the bundled package's check are shown only when the
+ *   Core's media reference (operation 40) is `DEMO_PACKAGE`, joined by the suffix the Core named;
+ *   while it is asked, and when it cannot be read, the Media tab says so.
+ * - "Download manifest" says that it is not available: the Core serves no file (MS-1).
+ * Simulated mode joins the bundled packages by the evidence number, as before.
  */
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -34,23 +44,26 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import type { AudioTrackId, VideoTrackId } from '@dems/shared/domain';
 import { DATE_PATTERNS, formatClock, formatDate, formatDuration } from '@dems/shared/realtime';
-import { useSimActions, useSimInstance } from '@dems/shared/sim';
+import { useCoreActions } from '@dems/shared/live';
+import { useSimInstance } from '@dems/shared/sim';
 import { derived, fontFamily, palette, radius, spacing, typography } from '@dems/shared/tokens';
 import { withAlpha } from '@/components/media';
 import { useLayoutClass } from '@/layout';
 import { crossFadeIn, enterRise, triggerHaptic, useMotionSettings } from '@/motion';
-import { reportRuntimeIssue } from '@/runtime';
+import { reportRuntimeIssue, useCoreLink } from '@/runtime';
 import { ArchiveDialog } from './archive-dialog';
 import { consumeDetailIntent, useDetailIntent, type DetailTab } from './detail-intent';
 import { EvidenceStatusChip, EvidenceSubjectChip } from './evidence-chips';
-import { clipMsFor, mediaForEvidence, posterForEvidence } from './evidence-media';
+import { clipMsFor, mediaForEvidence, posterOf } from './evidence-media';
 import { fileSizeParts, integrityFor, isArchivable, isExportable, packageFor, packageTimeSource } from './evidence-model';
 import { ExportSheet } from './export-sheet';
 import { IntegrityTab } from './integrity-tab';
+import { LiveIntegrityTab } from './live-integrity-tab';
 import { MediaTab } from './media-tab';
 import { MetadataTab } from './metadata-tab';
 import { PlaySheet } from './play-sheet';
 import { useCanArchive, useEvidenceItem, useOperatorNames } from './use-evidence-data';
+import { useEvidenceMediaRef } from './use-evidence-media-ref';
 
 const TABS: readonly DetailTab[] = ['media', 'metadata', 'integrity'];
 const TAB_LABEL_KEYS: Record<DetailTab, string> = {
@@ -74,7 +87,9 @@ export function EvidenceDetail({ evidenceId, variant }: EvidenceDetailProps) {
   const router = useRouter();
   const m = useMotionSettings();
   const sim = useSimInstance();
-  const actions = useSimActions();
+  const actions = useCoreActions();
+  const live = useCoreLink().source === 'LIVE';
+  const mediaRef = useEvidenceMediaRef(evidenceId);
   const { toast } = useToast();
   const { layoutClass } = useLayoutClass();
   const item = useEvidenceItem(evidenceId);
@@ -99,10 +114,15 @@ export function EvidenceDetail({ evidenceId, variant }: EvidenceDetailProps) {
     if (intent && intent.seq === handledIntent) consumeDetailIntent(intent);
   }, [intent, handledIntent]);
 
-  const pkg = useMemo(() => packageFor(evidenceId), [evidenceId]);
-  const media = useMemo(() => mediaForEvidence(evidenceId), [evidenceId]);
-  const timeSource = useMemo(() => packageTimeSource(evidenceId), [evidenceId]);
-  const integrity = useMemo(() => (item ? integrityFor(item, sim.clock.now()) : null), [item, sim]);
+  // What the bundled lookups join by: the evidence number (Simulated), or the suffix the Core named
+  // for a DEMO_PACKAGE item (Live; null while asked, for NONE, and without an answer).
+  const liveSuffix = mediaRef.status === 'ready' && mediaRef.media.source === 'DEMO_PACKAGE' ? mediaRef.media.packageSuffix : null;
+  const bundleKey = live ? liveSuffix : evidenceId;
+  const pkg = useMemo(() => (bundleKey === null ? null : packageFor(bundleKey)), [bundleKey]);
+  const media = useMemo(() => (bundleKey === null ? null : mediaForEvidence(bundleKey)), [bundleKey]);
+  const timeSource = useMemo(() => (bundleKey === null ? null : packageTimeSource(bundleKey)), [bundleKey]);
+  // Simulated only: in Live mode the integrity shown is the Core's verdict (`LiveIntegrityTab`).
+  const integrity = useMemo(() => (item && !live ? integrityFor(item, sim.clock.now()) : null), [item, live, sim]);
 
   const header =
     variant === 'screen' ? (
@@ -129,7 +149,7 @@ export function EvidenceDetail({ evidenceId, variant }: EvidenceDetailProps) {
       </View>
     );
 
-  if (!item || !integrity) {
+  if (!item || (!live && !integrity)) {
     return (
       <View style={styles.root} testID="evidence-detail-missing">
         {header}
@@ -176,7 +196,7 @@ export function EvidenceDetail({ evidenceId, variant }: EvidenceDetailProps) {
     <Animated.View entering={enterRise(0, m, { distance: 'riseLg' })} style={styles.heroBlock}>
       <View style={[styles.hero, variant === 'pane' ? styles.heroPane : null]} testID="evidence-detail-hero">
         <Image
-          source={posterForEvidence(item.id)}
+          source={posterOf(media)}
           style={StyleSheet.absoluteFill}
           contentFit="cover"
           transition={0}
@@ -234,7 +254,15 @@ export function EvidenceDetail({ evidenceId, variant }: EvidenceDetailProps) {
         </Tabs.List>
       </Tabs>
       <Animated.View key={tab} entering={crossFadeIn(m)} style={styles.tabBody}>
-        {tab === 'media' ? (
+        {tab === 'media' && live && mediaRef.status === 'loading' ? (
+          <Text maxFontSizeMultiplier={1.2} style={styles.note} testID="evidence-media-checking">
+            {t('features.evidence.media.checking')}
+          </Text>
+        ) : tab === 'media' && live && mediaRef.status === 'unavailable' ? (
+          <Text maxFontSizeMultiplier={1.2} style={styles.note} testID="evidence-media-unavailable">
+            {t('features.evidence.media.unavailable')}
+          </Text>
+        ) : tab === 'media' ? (
           <MediaTab
             media={media}
             durationMs={item.durationMs}
@@ -244,6 +272,14 @@ export function EvidenceDetail({ evidenceId, variant }: EvidenceDetailProps) {
           />
         ) : tab === 'metadata' ? (
           <MetadataTab evidenceId={item.id} pkg={pkg} />
+        ) : live || !integrity ? (
+          <LiveIntegrityTab
+            key={`integrity-${verifySeq ?? 0}`}
+            item={item}
+            operatorNames={operatorNames}
+            autoVerify={verifySeq !== null}
+            bundled={pkg}
+          />
         ) : (
           <IntegrityTab
             key={`integrity-${verifySeq ?? 0}`}
@@ -303,7 +339,9 @@ export function EvidenceDetail({ evidenceId, variant }: EvidenceDetailProps) {
             </Menu.Item>
             <Menu.Item
               testID="evidence-more-manifest"
-              onPress={() => toast.show({ variant: 'default', label: t('features.evidence.actions.manifestToast') })}
+              onPress={() =>
+                toast.show({ variant: 'default', label: t(live ? 'features.evidence.actions.manifestToastLive' : 'features.evidence.actions.manifestToast') })
+              }
             >
               <Menu.ItemTitle>{t('features.evidence.actions.downloadManifest')}</Menu.ItemTitle>
             </Menu.Item>
@@ -344,6 +382,7 @@ export function EvidenceDetail({ evidenceId, variant }: EvidenceDetailProps) {
         recordedAt={item.recordedAt}
         initialCamera={play?.camera}
         initialMic={play?.mic}
+        live={live}
       />
       <ExportSheet isOpen={exportOpen} onClose={() => setExportOpen(false)} evidenceId={item.id} />
       <ArchiveDialog
@@ -351,7 +390,7 @@ export function EvidenceDetail({ evidenceId, variant }: EvidenceDetailProps) {
         onOpenChange={(open) => (open ? undefined : setArchiveId(null))}
         archive={(id) => {
           try {
-            actions.archiveEvidence(id);
+            return actions.archiveEvidence(id);
           } catch (error) {
             reportRuntimeIssue('warn', 'evidence.archive.detail', error, { evidenceId: id });
             throw error;
@@ -424,6 +463,7 @@ const styles = StyleSheet.create({
   splitTabs: { flex: 3 },
   missing: { padding: spacing[3], gap: spacing[2] },
   body: { fontFamily: fontFamily.native.normal, fontSize: typography.body.size, lineHeight: typography.body.lineHeight, color: palette.foreground },
+  note: { fontFamily: fontFamily.native.normal, fontSize: typography.caption.size, lineHeight: typography.caption.lineHeight, color: palette.gray },
   heroBlock: { gap: spacing[2] },
   hero: {
     height: 196,

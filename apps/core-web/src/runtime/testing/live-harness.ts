@@ -366,6 +366,12 @@ export function createLiveTestBed(options: LiveTestBedOptions = {}): LiveTestBed
 
   // One list of an administration page, answered by what the Core holds: a page row scripts its own.
   answered('listUsers', () => (core.alive() ? fake.example('listUsers', 200, 'seeded') : fake.example('listUsers', 401, 'notSignedIn')))
+  // Plan row W0, decision D172 (finding F77-1): the reads of the other administration pages, in the same
+  // form, so a test that opens one of them without scripting it finds what an idle seeded Core holds:
+  // the seeded matrix, the registry's one paired tablet, and no active pairing code.
+  answered('getRoleMatrix', () => (core.alive() ? fake.example('getRoleMatrix', 200, 'seeded') : fake.example('getRoleMatrix', 401, 'notSignedIn')))
+  answered('listPairedDevices', () => (core.alive() ? fake.example('listPairedDevices', 200, 'registry') : fake.example('listPairedDevices', 401, 'notSignedIn')))
+  answered('getPairingCodeStatus', () => (core.alive() ? fake.example('getPairingCodeStatus', 200, 'none') : fake.example('getPairingCodeStatus', 401, 'notSignedIn')))
   // CPW1-3: the console's health reader uses the global `fetch`, not the typed client. Answered here,
   // by what the model Core holds, so no Live test can reach a real port through it — including a test
   // that lands on `/login`, whose device strip asks for health on the page's own origin. A page row

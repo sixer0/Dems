@@ -1,0 +1,134 @@
+#!/usr/bin/env python3
+"""W71 mutation check (rule M15: no file of the workspace tree is changed). W63's runner, adapted.
+
+Each mutation is ONE text replacement in ONE module, applied in memory by the transform plugin of
+vitest.mutation.config.mts. A mutation is DETECTED when the named tests fail while the mutation was
+really applied (the plugin leaves a marker file under TMPDIR). From the workspace root:
+
+    python3 .cache/w71/mut/run_mutations.py check
+    python3 .cache/w71/mut/run_mutations.py run [ids]
+"""
+import json, os, subprocess, sys, time
+
+ROOT = os.getcwd()
+HERE = os.path.join(ROOT, '.cache/w71/mut')
+CONFIG = '.cache/w71/mut/vitest.mutation.config.mts'
+APPLIED = os.path.join(os.environ['TMPDIR'], 'w71-mut-applied')
+os.makedirs(APPLIED, exist_ok=True)
+
+S = 'apps/core-web/src/features/storage/'
+NT = 'apps/core-web/src/features/network-time/'
+T_POL = 'src/test/live-storage-policy.test.tsx'
+T_PAGE = 'src/test/live-storage-page.test.tsx'
+T_NT = 'src/test/live-network-time-page.test.tsx'
+ALL = [T_POL, T_PAGE, T_NT]
+
+M = []
+def m(id, file, what, find, replace, tests):
+    M.append({'id': id, 'file': file, 'what': what, 'find': find, 'replace': replace, 'tests': tests})
+
+F = S + 'manage-drawer.tsx'
+m('D01', F, 'the presenter is not consulted first', "          if (presentCoreError(error) !== null) return\n", "", [T_POL, T_PAGE])
+m('D02', F, 'the success toast is shown at the press (optimistic), not after the answer',
+  "        ok: () => {\n          toast.success(t(applied))\n          onApplied()\n        },",
+  "        ok: () => {\n          onApplied()\n        },", [T_POL])
+m('D03', F, 'the drawer closes at the press, before the answer',
+  "      inFlight.current = true\n      setBusy(true)\n",
+  "      inFlight.current = true\n      setBusy(true)\n      onApplied()\n", [T_POL])
+m('D04', F, 'the Live toast uses the Simulated words', "const applied = APPLIED_WORDS[useCoreMode()]", "const applied = APPLIED_WORDS[CoreMode.SIMULATED]", [T_POL])
+m('D05', F, 'Apply is never busy', "      setBusy(true)\n", "", [T_POL])
+m('D06', F, 'the spinner is never revealed', "const timer = setTimeout(() => setRevealed(true), delayMs)", "const timer = setTimeout(() => setRevealed(false), delayMs)", [T_POL])
+m('D07', F, 'the spinner shows at once', "  return busy && revealed\n", "  return busy\n", [T_POL])
+m('D08', F, 'Apply does not return to idle', "          inFlight.current = false\n          setBusy(false)\n", "          inFlight.current = false\n", [T_POL])
+m('D09', F, 'the in-flight flag is dropped (a second press sends a second command)', "      if (inFlight.current) return\n", "", [T_POL])
+m('D10', F, 'the page record of a 422 is not written', "          logStorageError('ManageStorageDrawer.apply', error, { retentionPolicy: policy.retentionPolicy })\n", "", [T_POL])
+m('D11', F, 'the any-of gate is dropped', "isDisabled={!changed || !canManage}", "isDisabled={!changed}", [T_POL])
+m('D12', F, 'the footer is not marked busy', "aria-busy={busy || undefined}", "data-mutated={busy || undefined}", [T_POL])
+m('D13', F, 'the live policy is sent instead of the draft', "onPress={() => apply(draft)}", "onPress={() => apply(policy)}", [T_POL])
+m('D14', F, 'the drawer closes on a refusal', "        fail: (error) => {\n", "        fail: (error) => {\n          onApplied()\n", [T_POL])
+m('D15', F, 'the command is fired and forgotten (settle sees no promise)',
+  "settle(() => actions.setStoragePolicy({ retentionPolicy: policy.retentionPolicy, autoArchive: policy.autoArchive }), {",
+  "settle(() => { void actions.setStoragePolicy({ retentionPolicy: policy.retentionPolicy, autoArchive: policy.autoArchive }) }, {", [T_POL, T_PAGE])
+m('D17', F, 'the success toast is shown at the press (optimistic), before the answer',
+  "      inFlight.current = true\n      setBusy(true)\n",
+  "      inFlight.current = true\n      setBusy(true)\n      toast.success(t(applied))\n", [T_POL])
+m('D16', F, 'the friendly toast of the page branch is dropped', "          toast.danger(t('storage.manage.failed'))\n", "", [T_POL])
+F = S + 'log.ts'
+m('L01', F, 'the record quotes the text of the error', "    message: `Storage: the step \"${source}\" did not complete.`,", "    message: error instanceof Error ? error.message : String(error),", [T_POL, T_PAGE])
+m('L02', F, 'the record loses its correlation ID', ", correlationId: newStorageCorrelationId() }", " }", [T_POL, T_PAGE])
+m('L03', F, 'the record loses the code of the cause', "  if (typeof code === 'string' || typeof code === 'number') facts.code = code\n", "", [T_POL, T_PAGE])
+m('L04', F, 'the stack keeps its first line (the message)', "  const frames = error.stack.split('\\n').slice(1).join('\\n')", "  const frames = error.stack", [T_PAGE])
+F = S + 'volumes-panel.tsx'
+m('V01', F, 'Live: the SMART footnote names the simulator', "const derivedNote = DERIVED_NOTE[useCoreMode()]", "const derivedNote = DERIVED_NOTE[CoreMode.SIMULATED]", [T_PAGE, T_POL])
+F = S + 'panel.tsx'
+m('B01', F, 'a panel crash is not recorded', "    logStorageError('PanelBoundary', error,", "    void ('PanelBoundary', error,", [T_PAGE])
+# Network & Time: production files unchanged by this row; these in-memory mutations show that the
+# row's Live tests read the Core's data and would see a page that stopped doing so.
+m('N01', NT + 'network-panel.tsx', 'the LAN row shows a fixed address, not the Core\'s', "    ip: s.network.ip,", "    ip: '192.168.10.21',", [T_NT])
+m('N02', NT + 'hierarchy-panel.tsx', 'the orbit shows a fixed satellite count', "<Constellation locked={time.gnss.locked} satellites={time.gnss.satellites} />", "<Constellation locked={time.gnss.locked} satellites={11} />", [T_NT])
+m('N03', NT + 'use-network-time-alerts.ts', 'a GNSS loss raises no warning', "      toast.warning(t('networkTime.toast.gnssLost'), {", "      void (t('networkTime.toast.gnssLost'), {", [T_NT])
+m('N04', NT + 'network-panel.tsx', 'the PoE row shows a fixed port count', "    activePorts: s.network.poe.activePorts,", "    activePorts: 2,", [T_NT])
+m('N05', NT + 'network-panel.tsx', 'the tablet link ignores the replica', "  const link = useSim((s) => s.tabletLink.state)", "  const link = useSim(() => 'CONNECTED' as const)", [T_NT])
+
+def check():
+    bad = 0
+    for mu in M:
+        text = open(os.path.join(ROOT, mu['file']), encoding='utf8').read()
+        count = text.count(mu['find'])
+        if count != 1:
+            bad += 1
+            print(f"{mu['id']}: the text occurs {count} times in {mu['file']}")
+    ids = [mu['id'] for mu in M]
+    assert len(ids) == len(set(ids)), 'duplicate id'
+    print(f"{len(M)} mutations; texts that do not occur exactly once: {bad}")
+    return bad
+
+def vitest(mid, tests):
+    env = dict(os.environ)
+    env['W71_APPLIED_DIR'] = APPLIED
+    if mid:
+        env['W71_MUT'] = mid
+    else:
+        env.pop('W71_MUT', None)
+    started = time.time()
+    done = subprocess.run(['npx', 'vitest', 'run', '--config', CONFIG, '--maxWorkers=2', *tests], cwd=ROOT, env=env, capture_output=True, text=True)
+    out = done.stdout + done.stderr
+    summary = ' | '.join(line.strip() for line in out.splitlines() if line.strip().startswith(('Test Files', 'Tests ')))
+    first = next((line.strip() for line in out.splitlines() if line.strip().startswith(('×', 'FAIL'))), '')
+    return done.returncode, summary, first[:200], time.time() - started
+
+def stamp():
+    return time.strftime('%Y-%m-%d %H:%M:%S WIB')
+
+def run(ids):
+    json.dump(M, open(os.path.join(HERE, 'mutations.json'), 'w'), indent=1)
+    if check():
+        sys.exit(2)
+    if not ids:
+        code, summary, _first, took = vitest('', ALL)
+        print(f"## {stamp()} baseline: the three test files of the row, no mutation\nbaseline exit={code} {summary} ({took:.1f} s)", flush=True)
+        if code != 0:
+            sys.exit(3)
+    chosen = [mu for mu in M if not ids or mu['id'] in ids]
+    survived, not_applied = [], []
+    for mu in chosen:
+        marker = os.path.join(APPLIED, mu['id'])
+        if os.path.exists(marker):
+            os.remove(marker)
+        code, summary, first, took = vitest(mu['id'], mu['tests'])
+        applied = os.path.exists(marker)
+        if not applied:
+            not_applied.append(mu['id']); verdict = 'NOT APPLIED'
+        elif code != 0:
+            verdict = 'DETECTED   '
+        else:
+            verdict = 'SURVIVED   '; survived.append(mu['id'])
+        print(f"{mu['id']} {verdict} exit={code} {mu['file'].split('/')[-1]}: {mu['what']} [{summary}] ({took:.0f} s) first: {first}", flush=True)
+    print(f"## {stamp()} {len(chosen)} mutations: {len(chosen) - len(survived) - len(not_applied)} detected, {len(survived)} survived {survived}, {len(not_applied)} not applied {not_applied}", flush=True)
+
+if __name__ == '__main__':
+    mode = sys.argv[1] if len(sys.argv) > 1 else 'check'
+    if mode == 'check':
+        json.dump(M, open(os.path.join(HERE, 'mutations.json'), 'w'), indent=1)
+        sys.exit(1 if check() else 0)
+    run(sys.argv[2:])

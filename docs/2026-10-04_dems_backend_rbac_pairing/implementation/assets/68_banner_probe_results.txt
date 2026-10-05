@@ -1,0 +1,33 @@
+# W68 scratch probes of the runtime connection banner (2026-10-06 00:55-01:06 WIB); the tree was not edited outside features/session-live
+## debug5
+    before wait offline {"source":"LIVE","state":"OFFLINE","heartbeat":"OFFLINE"} offline
+    after wait offline {"source":"LIVE","state":"OFFLINE","heartbeat":"OFFLINE"} offline
+    wait-only offline {"source":"LIVE","state":"ONLINE","heartbeat":"LIVE"} offline
+    later offline {"source":"LIVE","state":"ONLINE","heartbeat":"LIVE"} offline
+    later offline {"source":"LIVE","state":"ONLINE","heartbeat":"LIVE"} offline
+    later offline {"source":"LIVE","state":"ONLINE","heartbeat":"LIVE"} offline
+## debug6
+    before wait offline {"source":"LIVE","state":"OFFLINE","heartbeat":"OFFLINE"} offline
+    after wait offline {"source":"LIVE","state":"OFFLINE","heartbeat":"OFFLINE"} offline
+    LOG next(offline,OFFLINE/CONNECTING)=offline | resync(offline)=offline | next(offline,ONLINE/LIVE)=resynced
+    wait-only offline {"source":"LIVE","state":"ONLINE","heartbeat":"LIVE"} offline
+    later offline {"source":"LIVE","state":"ONLINE","heartbeat":"LIVE"} offline
+    later offline {"source":"LIVE","state":"ONLINE","heartbeat":"LIVE"} offline
+    later offline {"source":"LIVE","state":"ONLINE","heartbeat":"LIVE"} offline
+## debug7
+    before wait offline {"source":"LIVE","state":"OFFLINE","heartbeat":"OFFLINE"} offline
+    after wait offline {"source":"LIVE","state":"OFFLINE","heartbeat":"OFFLINE"} offline
+    LOG next(offline,OFFLINE/CONNECTING)=offline | resync(offline)=offline | next(offline,ONLINE/LIVE)=resynced | for(resynced) | for(offline)
+    wait-only offline {"source":"LIVE","state":"ONLINE","heartbeat":"LIVE"} offline
+    later offline {"source":"LIVE","state":"ONLINE","heartbeat":"LIVE"} offline
+    later offline {"source":"LIVE","state":"ONLINE","heartbeat":"LIVE"} offline
+    later offline {"source":"LIVE","state":"ONLINE","heartbeat":"LIVE"} offline
+## debug8
+    WAIT=false ONLINE/LIVE banner=resynced
+    WAIT=true ONLINE/LIVE banner=resynced
+## debug9
+    OLDRULE ONLINE/LIVE banner=offline
+## debug10
+    OLDRULE+NOPRESS ONLINE/LIVE banner=offline
+## debug11
+    OLDRULE+NOA11YINTERVAL ONLINE/LIVE banner=resynced

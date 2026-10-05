@@ -1,23 +1,44 @@
-import { useState, type Key, type ReactNode } from 'react'
-import { Drawer, EmptyState, Table, Tabs } from '@heroui/react'
-import { Camera, Lightbulb, MapPinned, Mic, MonitorCog, Network, ShieldCheck, TabletSmartphone, type LucideIcon } from 'lucide-react'
+import { useEffect, useRef, useState, type Key, type ReactNode } from 'react'
+import { Button, Drawer, EmptyState, Table, Tabs } from '@heroui/react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { Link } from '@tanstack/react-router'
+import {
+  ArrowRight,
+  Camera,
+  Lightbulb,
+  MapPinned,
+  Mic,
+  MonitorCog,
+  Network,
+  ShieldCheck,
+  TabletSmartphone,
+  type LucideIcon,
+} from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
+import type { PairedDeviceList } from '@dems/shared/api'
 import type { EnResources } from '@dems/shared/i18n'
-import { DATE_PATTERNS, EMPTY_DATE_TEXT, formatDate } from '@dems/shared/realtime'
+import { CoreMode, LiveLinkState, useCoreMode, useCorePermission, useLiveLink } from '@dems/shared/live'
+import { DATE_PATTERNS, EMPTY_DATE_TEXT, formatDate, useRetryCooldown } from '@dems/shared/realtime'
 import {
   DEVICE_IDENTITY,
+  DeviceCommand,
+  Permission,
   selectCameraById,
   selectMicById,
+  TabletLinkState,
   useSim,
   type AuditRow,
   type FaultKind,
-  type TabletLinkState,
 } from '@dems/shared/sim'
+import { useCoreErrorPresenter } from '@/lib/core-errors'
+import { CORE_QUERY_KEYS, useWebLive } from '@/runtime'
 import { HealthChart } from './health-chart'
 import { useDeviceLabels } from './labels'
+import { useDeviceWords, type DeviceWords } from './live'
 import { deviceStatus, STATUS_SEVERITY, STATUS_TONE, type DeviceTone } from './model'
 import { DevicesErrorBoundary } from './panel'
+import { reportDevicesError } from './report'
 import {
   bookPoe,
   CAMERA_POE_PORT,
@@ -275,7 +296,9 @@ function RelayOverview() {
 function TabletOverview() {
   const { t } = useTranslation()
   const label = useFieldLabel()
+  const live = useCoreMode() === CoreMode.LIVE
   const link = useSim((s) => s.tabletLink)
+  // In Live mode this is the neutral value of the web console, which no screen reads (§2.3).
   const pairing = useSim((s) => s.pairing.state)
   const ip = useSim((s) => s.network.ip)
   return (
@@ -285,10 +308,133 @@ function TabletOverview() {
         [label('since'), <Mono key="since">{formatDate(link.changedAt, DATE_PATTERNS.dateTime)}</Mono>],
         [label('link'), t('devices.other.tabletLink')],
         [label('address'), <Mono key="ip">{ip}</Mono>],
-        [label('pairing'), t(`common.pairingState.${pairing}`)],
+        live
+          ? [t('devices.live.pairedDevices.label'), <PairedDevicesFact key="paired" />]
+          : [label('pairing'), t(`common.pairingState.${pairing}`)],
       ]}
     />
   )
+}
+
+/** The fixed sentence of the page's own record when the registry could not be read for a reason the presenter left to the page. */
+const REGISTRY_FAILED_RECORD = 'The paired-device registry could not be read for the device drawer.'
+
+/** A failed read of operation 19, named by its code and status only (never the server's text). */
+class RegistryReadError extends Error {
+  override readonly name = 'RegistryReadError'
+  readonly code: string
+  readonly status: number | null
+  constructor(code: string, status: number | null) {
+    super('The paired-device registry could not be read.')
+    this.code = code
+    this.status = status
+  }
+}
+
+/**
+ * The "Paired devices" row of the tablet drawer in Live mode (04_client_integration_spec §7.3 note
+ * G6, gap GS-16; plan row W70). The web console does not pair [SP:§6.9], so the Simulated row
+ * (`s.pairing.state`) would describe nothing here. A holder of `PAIRING_MANAGE` (the server's hint,
+ * which follows `session.updated`) sees "n paired, m online" from operation 19 with a link to the
+ * Paired Devices page; any other operator sees whether a paired device is connected, from
+ * `tabletLink`, which the Core sets from real device connections [SP:§6.8].
+ */
+function PairedDevicesFact() {
+  const canList = useCorePermission(Permission.PAIRING_MANAGE)
+  return canList ? <PairedDevicesSummary /> : <TabletLinkSentence />
+}
+
+function TabletLinkSentence() {
+  const { t } = useTranslation()
+  const connected = useSim((s) => s.tabletLink.state === TabletLinkState.CONNECTED)
+  return (
+    <span data-testid="drawer-paired-link" data-connected={connected ? 'true' : 'false'}>
+      {connected ? t('devices.live.pairedDevices.connected') : t('devices.live.pairedDevices.none')}
+    </span>
+  )
+}
+
+/**
+ * "n paired, m online" from `listPairedDevices`, kept under `CORE_QUERY_KEYS.pairedDevices` as the
+ * operation's own answer (`PairedDeviceList`): the query bridge refetches it on `admin.changed`
+ * DEVICES and on a resync, and removes it when the session ends or loses `PAIRING_MANAGE`
+ * (PG-6, PG-6a). It is read only while the link is up: with the link down the row shows the
+ * tablet link sentence, and the shell says the Core is unreachable (rule 6).
+ *
+ * CONTRACT-GAP-W70-1: a paired device's socket opening or closing publishes no `admin.changed`
+ * DEVICES (`apps/core-server/src/realtime/hub.ts:219-224, 697-700`), so the `online` member of a
+ * held answer goes stale. The replicated tablet link changes with those sockets, so its change
+ * refetches the list.
+ */
+function PairedDevicesSummary() {
+  const { t } = useTranslation()
+  const live = useWebLive()
+  const linkUp = useLiveLink() === LiveLinkState.ONLINE
+  const presentCoreError = useCoreErrorPresenter()
+  const queryClient = useQueryClient()
+  const tabletChangedAt = useSim((s) => s.tabletLink.changedAt)
+
+  const query = useQuery({
+    queryKey: CORE_QUERY_KEYS.pairedDevices,
+    enabled: live !== null && linkUp,
+    queryFn: async (): Promise<PairedDeviceList> => {
+      if (live === null) throw new RegistryReadError('NOT_LIVE', null)
+      const answer = await live.client.call('listPairedDevices')
+      if (answer.ok) return answer.data
+      // Rule 2 of the page rows: the presenter first (a 403 names the role; an outage, a 429 ...).
+      if (presentCoreError(answer, { permission: Permission.PAIRING_MANAGE }) === null) {
+        reportDevicesError('features/devices.pairedDevices', answer, REGISTRY_FAILED_RECORD, { operationId: 'listPairedDevices', code: answer.error.code }, 'warn')
+      }
+      throw new RegistryReadError(answer.error.code, answer.status)
+    },
+  })
+
+  // CONTRACT-GAP-W70-1: the tablet link is the replicated sign that a device came or went.
+  const seenChange = useRef(tabletChangedAt)
+  useEffect(() => {
+    if (seenChange.current === tabletChangedAt) return
+    seenChange.current = tabletChangedAt
+    void queryClient.invalidateQueries({ queryKey: CORE_QUERY_KEYS.pairedDevices })
+  }, [queryClient, tabletChangedAt])
+
+  const { retry, cooldown, exhausted, canRetry } = useRetryCooldown(() => {
+    void query.refetch()
+  })
+
+  if (query.data !== undefined) {
+    const paired = query.data.devices.filter((device) => device.state === 'PAIRED')
+    const online = paired.filter((device) => device.online).length
+    return (
+      <span className="dev-facts-paired" data-testid="drawer-paired-summary">
+        <span>{t('devices.live.pairedDevices.summary', { paired: paired.length, online })}</span>
+        <Link to="/admin/devices" className="dev-facts-link" data-testid="drawer-paired-open">
+          <span>{t('devices.live.pairedDevices.open')}</span>
+          <ArrowRight aria-hidden="true" size={14} />
+        </Link>
+      </span>
+    )
+  }
+  if (query.isError) {
+    // Layer 3: what every operator sees, the registry's absence named, a rate-limited retry.
+    return (
+      <span className="dev-facts-paired" data-testid="drawer-paired-error">
+        <TabletLinkSentence />
+        <span className="text-foreground-2">{t('devices.live.pairedDevices.unavailable')}</span>
+        <Button size="sm" variant="outline" isDisabled={!canRetry || !linkUp} onPress={retry} data-testid="drawer-paired-retry">
+          {exhausted ? t('common.errors.maxRetries') : cooldown > 0 ? t('common.actions.retryIn', { seconds: cooldown }) : t('common.actions.retry')}
+        </Button>
+      </span>
+    )
+  }
+  if (query.isFetching) {
+    return (
+      <span className="text-foreground-2" data-testid="drawer-paired-loading">
+        {t('devices.live.pairedDevices.loading')}
+      </span>
+    )
+  }
+  // Not read: the link is down. What every operator sees.
+  return <TabletLinkSentence />
 }
 
 function GnssOverview() {
@@ -366,8 +512,13 @@ const SEVERITY_TONE: Record<AuditRow['severity'], DeviceTone> = {
   CRITICAL: 'danger',
 }
 
-/** The detail cell from codes only (type, fault kind, command, link state), never the simulator's English text (m4). */
-function logDetail(row: AuditRow, t: TFunction): string {
+/**
+ * The detail cell from codes only (type, fault kind, command, link state), never the simulator's
+ * English text (m4). The command words follow the data mode (§3.2, plan row W70). An Identify row
+ * reads "Identify (blink)", the menu's own word, in both modes (plan row W0, item 6: finding F70-1,
+ * decision D156 — before W0 every command that was not a test signal read as a restart).
+ */
+function logDetail(row: AuditRow, t: TFunction, words: DeviceWords): string {
   const kind = typeof row.details.kind === 'string' ? (row.details.kind as FaultKind) : null
   switch (row.type) {
     case 'FAULT_RAISED':
@@ -375,7 +526,9 @@ function logDetail(row: AuditRow, t: TFunction): string {
     case 'AUDIT_CHAIN_DISCONTINUITY':
       return kind ? t(`common.faultKind.${kind}`) : EMPTY_DATE_TEXT
     case 'DEVICE_COMMAND':
-      return row.details.command === 'TEST_SIGNAL' ? t('common.deviceMenu.testSignal') : t('common.deviceMenu.restart')
+      if (row.details.command === DeviceCommand.TEST_SIGNAL) return t(words.testSignal)
+      if (row.details.command === DeviceCommand.IDENTIFY) return t('common.deviceMenu.identify')
+      return t(words.restart)
     case 'TABLET_LINK_CHANGED':
       return typeof row.details.state === 'string' ? t(`common.tabletLinkState.${row.details.state as TabletLinkState}`) : EMPTY_DATE_TEXT
     default:
@@ -385,6 +538,7 @@ function logDetail(row: AuditRow, t: TFunction): string {
 
 function DeviceLog({ deviceId }: { deviceId: DeviceId }) {
   const { t } = useTranslation()
+  const words = useDeviceWords()
   const rows = useSim((s) => deviceLog(s.audit.rows, deviceId))
   if (rows.length === 0) {
     return (
@@ -412,7 +566,7 @@ function DeviceLog({ deviceId }: { deviceId: DeviceId }) {
                     {t(`common.auditType.${row.type}`)}
                   </span>
                 </Table.Cell>
-                <Table.Cell className="text-foreground-2">{logDetail(row, t)}</Table.Cell>
+                <Table.Cell className="text-foreground-2">{logDetail(row, t, words)}</Table.Cell>
               </Table.Row>
             ))}
           </Table.Body>

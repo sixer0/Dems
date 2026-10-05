@@ -1,0 +1,52 @@
+#!/bin/sh
+# W68 device check (lane 1, phone). Host part, run INSIDE the lane lock:
+#   /usr/bin/lockf -k -t 600 /Users/gsp-budi/Documents/DEMS/.locks/core-server.lane1.lock /bin/sh /Users/gsp-budi/Documents/DEMS/.cache/w68/run_w68.sh
+# dems_lane_1 is NOT reset: the phone is paired there as DEV-0001 (D143) and stays paired.
+# Model: W67's run script (implementation/assets/67_run_w67.sh.txt), without `cd` (npm --prefix).
+# No credential is printed.
+set -u
+ROOT=/Users/gsp-budi/Documents/DEMS; H="$ROOT/.cache/w68"; OUT="$H/out"; PORT=4421; METRO=${METRO_PORT:-8083}
+RUN="w68$(date +%H%M%S)"; mkdir -p "$OUT"
+say() { printf '\n== %s %s\n' "$(date '+%H:%M:%S')" "$*"; }
+listener() { lsof -nP -iTCP:"$1" -sTCP:LISTEN -t 2>/dev/null | head -n 1; }
+counts() { npm --prefix "$ROOT" run db:status -w @dems/core-server -- --database dems_lane_1 2>&1 | grep -E "^ +(paired_devices|device_credentials|active_session|audit_log) +[0-9]+|db:status:" | sed 's/^ */   /'; }
+
+say "0. before (no reset): listeners free?; dems_lane_1 as the earlier rows left it"
+[ -z "$(listener $PORT)" ] || { echo "port $PORT busy"; exit 70; }
+[ -z "$(listener "$METRO")" ] || { echo "Metro $METRO busy"; exit 70; }
+counts | tee "$OUT/counts_before.txt"
+
+say "1. start the lane backend (demo flag off)"
+: >"$OUT/server.log"
+DEMS_CORE_PORT=$PORT npm --prefix "$ROOT" run start:server >"$OUT/server.log" 2>&1 &
+NPM_PID=$!; i=0
+until [ -n "$(listener $PORT)" ] || ! kill -0 "$NPM_PID" 2>/dev/null || [ "$i" -ge 160 ]; do i=$((i + 1)); sleep 0.25; done
+SERVER_PID=$(listener $PORT); [ -n "$SERVER_PID" ] || { echo "backend did not boot"; tail -n 20 "$OUT/server.log"; exit 70; }
+echo "$SERVER_PID" >"$ROOT/.locks/core-server.lane1.pid"
+echo "npm PID $NPM_PID, listener PID $SERVER_PID"
+grep -E 'configuration loaded' "$OUT/server.log" | grep -o '"port":[0-9]*,"database":"[a-z_0-9]*","demoControls":[a-z]*' | sed 's/^/   /'
+curl -s "http://127.0.0.1:$PORT/api/v1/health"; echo
+HOST_LINES=$(grep -c . "$OUT/server.log")
+
+say "2. device session: phone, Metro $METRO, tcp:4420 -> tcp:$PORT (cap 600 s)"
+METRO_PORT=$METRO DEMS_CORE_HOST_PORT=$PORT DEVICE_SESSION_MAX_SECONDS=600 LOCK_WAIT=${LOCK_WAIT:-420} \
+  "$ROOT/apps/mobile/scripts/device-session.sh" phone "/bin/sh '$H/device_w68.sh' '$RUN' '$OUT' '$OUT/server.log' '$PORT'"
+DEVICE_EXIT=$?; echo "device session exit=$DEVICE_EXIT"; echo "$DEVICE_EXIT" >"$OUT/device_exit.txt"
+
+say "3. backend request log during the session"
+tail -n +$((HOST_LINES + 1)) "$OUT/server.log" >"$OUT/server_device_part.log"
+grep '"msg":"request completed"' "$OUT/server_device_part.log" | sed -E 's/.*"method":"([^"]*)","route":"([^"]*)","status":([0-9]*).*"principal":([^,}]*).*/\1 \2 \3 principal=\4/' | sed -E 's/principal="?(operator|device|null)[^ ]*/principal=\1/' | sort | uniq -c | sed 's/^/   /' | tee "$OUT/server_requests.txt"
+echo "-- audit rows of the session this run:"
+grep -o '"type":"\(SESSION_CREATED\|PRECHECK_STARTED\|PRECHECK_PASSED\|RECORDING_STARTED\|MARKER_ADDED\|SNAPSHOT_TAKEN\|RECORDING_STOPPED\|SESSION_SEALED\|SUMMARY_ACKNOWLEDGED\)"' "$OUT/server_device_part.log" | sort | uniq -c | sed 's/^/   /'
+echo "-- socket lines of the session (meters subscription):"
+grep -o '"msg":"[^"]*socket[^"]*"\|"topic":"meters"[^}]*' "$OUT/server_device_part.log" | sort | uniq -c | sed 's/^/   /' | head -n 12
+echo "-- bearer/cookie/credential lines in the server log this run (must be 0): $(grep -c -E 'dvc_|ses_|bio_|[Bb]earer |[Cc]ookie' "$OUT/server.log")"
+
+say "4. stop the backend and check nothing is left"
+kill "$SERVER_PID" 2>/dev/null; i=0; while [ -n "$(listener $PORT)" ] && [ "$i" -lt 40 ]; do i=$((i + 1)); sleep 0.25; done
+kill "$NPM_PID" 2>/dev/null; wait "$NPM_PID" 2>/dev/null
+grep -c 'shutdown complete' "$OUT/server.log" | sed 's/^/-- shutdown complete lines: /'
+: >"$ROOT/.locks/core-server.lane1.pid"
+lsof -nP -iTCP:$PORT -iTCP:"$METRO" -iTCP:8081 -sTCP:LISTEN; echo "lsof exit $? (1 = none)"
+counts | tee "$OUT/counts_after.txt"
+say "end of run $RUN"; exit "$DEVICE_EXIT"

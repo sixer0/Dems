@@ -5,6 +5,10 @@
  * Step 42 added keys only (the mobile Dashboard reads `statusStrip`, `devices`, `sealedToday`
  * and `systemRing` too, so no existing key was renamed or removed). The one changed value is
  * `hero.paragraph`, which now carries the designer's copy from DEMS-Dashboard1.png.
+ *
+ * Backend task W63 (the Dashboard in Live mode) added `devices.live.*` and
+ * `activeSession.sealed.noPackage`, additively: the words a Live screen shows where the
+ * Simulated screen says "simulated".
  */
 import type { ResourceTree } from '../resource-tree';
 
@@ -121,6 +125,12 @@ export const dashboard = {
       viewEvidence: 'View evidence',
       evidenceId: 'Evidence ID',
       sealedAt: 'Sealed at',
+      /**
+       * Live mode (backend task W63): the suffix of a hash that is not the evidence package's. A
+       * session recorded on the Core server has no media and joins no package (01_specs §11), and a
+       * Live screen never says "simulated" (04_client_integration_spec §3.2).
+       */
+      noPackage: 'NO MEDIA PACKAGE',
     },
     fault: {
       title: 'Session fault',
@@ -140,6 +150,17 @@ export const dashboard = {
     testSignalSent: 'Test signal sent to {{name}} (simulated)',
     restartSent: '{{name}} restart requested (simulated)',
     commandFailed: 'The command could not be sent. Please try again.',
+    /**
+     * Live mode (backend task W63; 04_client_integration_spec §3.2, §8.3 B-7): the Core server
+     * carries the command out and answers it, so neither the menu nor the toast says "simulated".
+     * The menu labels of Simulated mode are `common.deviceMenu.*`.
+     */
+    live: {
+      testSignal: 'Test signal',
+      restart: 'Restart',
+      testSignalSent: 'Test signal sent to {{name}}',
+      restartSent: '{{name}} restart requested',
+    },
   },
 
   /** F: Storage & Evidence. */

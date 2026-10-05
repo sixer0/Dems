@@ -1,0 +1,307 @@
+{
+  "browser": {
+    "product": "HeadlessChrome/153.0.8010.12",
+    "headless": true
+  },
+  "steps": {
+    "signIn": {
+      "label": "live sign-in",
+      "dashboardShown": true,
+      "network": {
+        "api": [
+          {
+            "method": "GET",
+            "url": "http://127.0.0.1:5176/api/v1/auth/session",
+            "status": 401
+          },
+          {
+            "method": "GET",
+            "url": "http://127.0.0.1:5176/api/v1/auth/status",
+            "status": 200
+          },
+          {
+            "method": "GET",
+            "url": "http://127.0.0.1:5176/api/v1/health",
+            "status": 200
+          },
+          {
+            "method": "POST",
+            "url": "http://127.0.0.1:5176/api/v1/auth/sign-in",
+            "status": 200
+          }
+        ],
+        "console": []
+      }
+    },
+    "liveForm": {
+      "shown": true,
+      "facts": {
+        "href": "http://127.0.0.1:5176/session/new?…",
+        "onPage": true,
+        "step": "1",
+        "sessionState": "IDLE",
+        "shellCoreMode": "LIVE",
+        "headerSession": null,
+        "caseNumber": "",
+        "caseNumberMaxLength": 17,
+        "subjectNameMaxLength": 120,
+        "caseNumberError": false,
+        "nextText": "Next",
+        "nextDisabled": true,
+        "gate": null,
+        "gateProgress": null,
+        "coreCheck": null,
+        "blockedAlert": null,
+        "liveLinkHint": null,
+        "retryShown": false,
+        "toasts": [],
+        "saysUnreachable": false,
+        "modeIndicator": null
+      },
+      "screenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/64_session_new_live.png",
+      "network": {
+        "api": [
+          {
+            "method": "GET",
+            "url": "http://127.0.0.1:5176/api/v1/auth/session",
+            "status": 200
+          }
+        ],
+        "console": []
+      }
+    },
+    "bounds": {
+      "facts": {
+        "href": "http://127.0.0.1:5176/session/new?…",
+        "onPage": true,
+        "step": "1",
+        "sessionState": "IDLE",
+        "shellCoreMode": "LIVE",
+        "headerSession": null,
+        "caseNumber": "ABC",
+        "caseNumberMaxLength": 17,
+        "subjectNameMaxLength": 120,
+        "caseNumberError": true,
+        "nextText": "Next",
+        "nextDisabled": true,
+        "gate": null,
+        "gateProgress": null,
+        "coreCheck": null,
+        "blockedAlert": null,
+        "liveLinkHint": null,
+        "retryShown": false,
+        "toasts": [],
+        "saysUnreachable": false,
+        "modeIndicator": null
+      },
+      "screenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/64_session_new_live_bounds.png",
+      "network": {
+        "api": [],
+        "console": []
+      }
+    },
+    "scan": {
+      "filled": true,
+      "facts": {
+        "href": "http://127.0.0.1:5176/session/new?…",
+        "onPage": true,
+        "step": "1",
+        "sessionState": "IDLE",
+        "shellCoreMode": "LIVE",
+        "headerSession": null,
+        "caseNumber": "LP/2026/1005-0009",
+        "caseNumberMaxLength": 17,
+        "subjectNameMaxLength": 120,
+        "caseNumberError": false,
+        "nextText": "Next",
+        "nextDisabled": true,
+        "gate": null,
+        "gateProgress": null,
+        "coreCheck": null,
+        "blockedAlert": null,
+        "liveLinkHint": null,
+        "retryShown": false,
+        "toasts": [],
+        "saysUnreachable": false,
+        "modeIndicator": null
+      },
+      "network": {
+        "api": [
+          {
+            "method": "POST",
+            "url": "http://127.0.0.1:5176/api/v1/session/case-number",
+            "status": 200
+          }
+        ],
+        "console": []
+      }
+    },
+    "coreRefusal": {
+      "step2": true,
+      "blocked": true,
+      "facts": {
+        "href": "http://127.0.0.1:5176/session/new?…",
+        "onPage": true,
+        "step": "2",
+        "sessionState": "PRECHECK",
+        "shellCoreMode": "LIVE",
+        "headerSession": "SES-20261005-0025",
+        "caseNumber": null,
+        "caseNumberMaxLength": null,
+        "subjectNameMaxLength": null,
+        "caseNumberError": false,
+        "nextText": "Next",
+        "nextDisabled": true,
+        "gate": "block",
+        "gateProgress": "8 of 8 checks complete",
+        "coreCheck": "BLOCK",
+        "blockedAlert": "Recording is blockedResolve these checks before continuing: Core link offline.No paired tablet is connected to the Core server. Open the DEMS app on the paired tablet so that it connects, then re-run the checks.",
+        "liveLinkHint": "No paired tablet is connected to the Core server. Open the DEMS app on the paired tablet so that it connects, then re-run the checks.",
+        "retryShown": true,
+        "toasts": [],
+        "saysUnreachable": false,
+        "modeIndicator": null
+      },
+      "screenshots": [
+        "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/64_session_new_live_core_refusal_top.png",
+        "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/64_session_new_live_core_refusal.png"
+      ],
+      "network": {
+        "api": [
+          {
+            "method": "POST",
+            "url": "http://127.0.0.1:5176/api/v1/session",
+            "status": 201
+          },
+          {
+            "method": "POST",
+            "url": "http://127.0.0.1:5176/api/v1/session/SES-20261005-0025/precheck",
+            "status": 202
+          }
+        ],
+        "console": []
+      }
+    },
+    "startProbe": {
+      "probe": {
+        "sent": true,
+        "status": 409,
+        "code": "PRECHECK_BLOCKED",
+        "message": "Start blocked: Core link offline"
+      },
+      "facts": {
+        "href": "http://127.0.0.1:5176/session/new?…",
+        "onPage": true,
+        "step": "2",
+        "sessionState": "PRECHECK",
+        "shellCoreMode": "LIVE",
+        "headerSession": "SES-20261005-0025",
+        "caseNumber": null,
+        "caseNumberMaxLength": null,
+        "subjectNameMaxLength": null,
+        "caseNumberError": false,
+        "nextText": "Next",
+        "nextDisabled": true,
+        "gate": "block",
+        "gateProgress": "8 of 8 checks complete",
+        "coreCheck": "BLOCK",
+        "blockedAlert": "Recording is blockedResolve these checks before continuing: Core link offline.No paired tablet is connected to the Core server. Open the DEMS app on the paired tablet so that it connects, then re-run the checks.",
+        "liveLinkHint": "No paired tablet is connected to the Core server. Open the DEMS app on the paired tablet so that it connects, then re-run the checks.",
+        "retryShown": true,
+        "toasts": [],
+        "saysUnreachable": false,
+        "modeIndicator": null
+      },
+      "network": {
+        "api": [
+          {
+            "method": "POST",
+            "url": "http://127.0.0.1:5176/api/v1/session/SES-20261005-0025/start",
+            "status": 409
+          }
+        ],
+        "console": []
+      }
+    },
+    "retry": {
+      "ranAgain": true,
+      "blockedAgain": true,
+      "facts": {
+        "href": "http://127.0.0.1:5176/session/new?…",
+        "onPage": true,
+        "step": "2",
+        "sessionState": "PRECHECK",
+        "shellCoreMode": "LIVE",
+        "headerSession": "SES-20261005-0025",
+        "caseNumber": null,
+        "caseNumberMaxLength": null,
+        "subjectNameMaxLength": null,
+        "caseNumberError": false,
+        "nextText": "Next",
+        "nextDisabled": true,
+        "gate": "block",
+        "gateProgress": "8 of 8 checks complete",
+        "coreCheck": "BLOCK",
+        "blockedAlert": "Recording is blockedResolve these checks before continuing: Core link offline.No paired tablet is connected to the Core server. Open the DEMS app on the paired tablet so that it connects, then re-run the checks.",
+        "liveLinkHint": "No paired tablet is connected to the Core server. Open the DEMS app on the paired tablet so that it connects, then re-run the checks.",
+        "retryShown": true,
+        "toasts": [],
+        "saysUnreachable": false,
+        "modeIndicator": null
+      },
+      "network": {
+        "api": [
+          {
+            "method": "POST",
+            "url": "http://127.0.0.1:5176/api/v1/session/SES-20261005-0025/precheck/retry",
+            "status": 202
+          }
+        ],
+        "console": []
+      }
+    },
+    "cancel": {
+      "dialog": true,
+      "left": true,
+      "toasts": [
+        "Session discarded."
+      ],
+      "network": {
+        "api": [
+          {
+            "method": "POST",
+            "url": "http://127.0.0.1:5176/api/v1/session/SES-20261005-0025/cancel",
+            "status": 204
+          }
+        ],
+        "console": []
+      }
+    },
+    "signOut": {
+      "signOut": {
+        "status": 204
+      },
+      "loginShown": true,
+      "network": {
+        "api": [
+          {
+            "method": "POST",
+            "url": "http://127.0.0.1:5176/api/v1/auth/sign-out",
+            "status": 204
+          },
+          {
+            "method": "GET",
+            "url": "http://127.0.0.1:5176/api/v1/auth/status",
+            "status": 200
+          },
+          {
+            "method": "GET",
+            "url": "http://127.0.0.1:5176/api/v1/health",
+            "status": null
+          }
+        ],
+        "console": []
+      }
+    }
+  }
+}

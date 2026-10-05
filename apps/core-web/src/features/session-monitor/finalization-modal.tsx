@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from 'motion/react'
 import { FileLock2, LifeBuoy } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { BootRecoveryState, SessionState } from '@dems/shared/domain'
+import { CoreMode, useCoreMode } from '@dems/shared/live'
 import { useSim } from '@dems/shared/sim'
 import { Stepper, StepperStamp, type StepperStep } from '@/components/composed'
 import { GlowLayer, useMotionPolicy } from '@/motion'
@@ -222,16 +223,20 @@ function FinalizationBody({ sessionId, state, onClose }: { sessionId: string; st
 
 function PackageBlock({ pkg, simulatedManifestHash }: { pkg: PackageState; simulatedManifestHash: string | null }) {
   const { t } = useTranslation()
+  // [CS] §3.2: "a screen that shows simulator data says 'simulated'; a screen that says 'live' shows
+  // server data". In Live mode the digest is the Core server's (the replica), so it is labelled LIVE
+  // (plan row W65; found by the row's lane check).
+  const live = useCoreMode() === CoreMode.LIVE
   if (pkg.status === 'idle') return null
   if (pkg.status === 'loading') return <p className="sm-final-package-note">{t('session.finalization.loadingPackage')}</p>
   if (pkg.status === 'missing') {
     // No guarded DEMO package joins (review 40 M4/R3): the simulator's hash, labelled simulated.
     return (
-      <dl className="sm-final-package" data-testid="sm-final-package" data-source="simulated">
+      <dl className="sm-final-package" data-testid="sm-final-package" data-source={live ? 'core' : 'simulated'}>
         <div className="sm-final-package-head">
           <span>{t('session.finalization.manifestDigest')}</span>
           <Chip size="sm" variant="soft" color="default">
-            <Chip.Label>{t('common.simulated.chip')}</Chip.Label>
+            <Chip.Label>{live ? t('common.coreMode.chip.LIVE') : t('common.simulated.chip')}</Chip.Label>
           </Chip>
         </div>
         {simulatedManifestHash ? (

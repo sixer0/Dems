@@ -5,17 +5,37 @@
  * while the simulator ticks audio at 20 Hz: it re-renders when the state, a finding or a pipeline
  * milestone changes (8 milestones in the 3 s recovery), not per frame. Time-based values read the
  * simulator clock (F74-09). Every function that calls a hook is named `use*` (D66).
+ *
+ * **Live mode** (backend task, plan row W73; 04_client_integration_spec §8.6 S2-3, §8.7 S4-8 and
+ * S5-2; requirement E1 of 01_specs §8.6). The selectors read the Live source's replica, whose `clock`
+ * follows the Core's clock (CL-12, §2.3), so the pipeline milestones follow the Core's own
+ * `session.recovery` stage and times. The actions come from `useCoreActions()` and every result is
+ * consumed through `settle` (CL-25): in Simulated mode the continuation runs before the call
+ * returns, so the screen keeps its step-81 timing exactly; in Live mode it runs in the turn in which
+ * the store holds the command's effect (CL-16).
+ *
+ * | Site | What | Live behaviour |
+ * |------|------|----------------|
+ * | S2-3 | `start` (`recover`, operation 33) | Reports `true` or `false` to its continuation instead of returning it; the screen's milestones follow the state |
+ * | S4-8 | `acknowledgeAlerts` (`acknowledgeAlert`, operation 70, per matching alert) | One request per alert, fired without waiting for each other; a refusal is presented and logged, nothing waits for it |
+ * | S5-2 | the role hint of `startRecovery` | Kept as the client-side hint (no request for a role the replica says lacks SESSION_START); the Core enforces SESSION_START |
+ *
+ * Every rejection goes to the refusal presenter first in Live mode (`useCoreErrorPresenter`, §6.2,
+ * LB-5 to LB-10; mobile rule 2), and only what it leaves gets this screen's own toast; Simulated mode
+ * keeps the step-81 toasts. The read-only refusal while the Core link is down stays first; whether
+ * the screen is read-only is the runtime's one rule, `useCoreLinkReadOnly()` (row M2; shared with the
+ * Session Monitor): in Live mode the notice of rows M0 and M1, otherwise the step-81 rule.
  */
 import { useToast } from 'heroui-native';
 import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { SessionState } from '@dems/shared/domain';
+import { settle, useCoreActions } from '@dems/shared/live';
 import {
   SimPermissionError,
   SimTransitionError,
   selectRole,
   useSim,
-  useSimActions,
   useSimInstance,
   type FaultKind,
   type OperatorRole,
@@ -23,7 +43,7 @@ import {
   type SimState,
   type SubjectType,
 } from '@dems/shared/sim';
-import { reportRuntimeIssue, useConnectionBanner, useCoreLink } from '@/runtime';
+import { reportRuntimeIssue, useCoreErrorPresenter, useCoreLink, useCoreLinkReadOnly } from '@/runtime';
 import {
   RECOVERY_TRACKS,
   ackSettled,
@@ -180,57 +200,75 @@ export function useSimNow(): () => number {
   return useCallback(() => sim.clock.now(), [sim]);
 }
 
-/** Session actions are refused while the Core link is offline (the monitor's rule, step 79). */
-export function useRecoveryReadOnly(): boolean {
-  const banner = useConnectionBanner();
-  const link = useCoreLink();
-  return banner.kind === 'offline' || link.state === 'OFFLINE';
-}
+/** The outcome of `start`, handed to its continuation exactly once. */
+export type RecoverySettled = (started: boolean) => void;
 
 export interface RecoveryActions {
-  /** FAULT → RECOVERY. Returns false (after a toast) when refused. */
-  start(): boolean;
+  /**
+   * FAULT → RECOVERY (site S2-3). Calls `then(true)` once the Core holds RECOVERY (Simulated mode:
+   * before `start` returns), or `then(false)` after a toast when refused. `then` runs exactly once,
+   * in every path, so a pending control can release on it.
+   */
+  start(then?: RecoverySettled): void;
   /** Checks EVIDENCE_VIEW; returns false (after a toast) when refused. */
   canOpenEvidence(): boolean;
-  /** Marks the followed fault's alerts as seen (bell); never throws. */
+  /** Marks the followed fault's alerts as seen (bell); never throws (site S4-8). */
   acknowledgeAlerts(faultKind: FaultKind | null, faultAt: number | null): void;
 }
+
+const SOURCE_START = 'features.sessionRecovery.start';
+const SOURCE_ACK = 'features.sessionRecovery.acknowledgeAlerts';
 
 /**
  * The D61 error contract: SimPermissionError → a warning toast naming the role rule; a
  * SimTransitionError (the session left FAULT meanwhile) → a calm toast; anything else → a danger toast.
+ * In Live mode the refusal presenter comes first (a denial with the role, an outage, a limit).
  * Every refusal and failure goes to the persistent runtime log (`dems.mobile.log.v1`).
  */
 export function useRecoveryActions(role: OperatorRole | null): RecoveryActions {
-  const actions = useSimActions();
+  const actions = useCoreActions();
   const sim = useSimInstance();
+  const live = useCoreLink().source === 'LIVE';
+  const presentCoreError = useCoreErrorPresenter();
   const { toast } = useToast();
   const { t } = useTranslation();
-  const readOnly = useRecoveryReadOnly();
+  // Session actions are refused while the Core link is down (the runtime's one rule, row M2).
+  const readOnly = useCoreLinkReadOnly();
 
-  const start = useCallback((): boolean => {
-    if (readOnly) {
-      toast.show({ variant: 'warning', label: t('features.session-recovery.actions.readOnly') });
-      reportRuntimeIssue('info', 'features.sessionRecovery.start', 'Refused while the Core link is offline', { role });
-      return false;
-    }
-    try {
-      startRecovery(actions, role);
-      return true;
-    } catch (error) {
-      if (error instanceof SimPermissionError) {
-        toast.show({ variant: 'warning', label: t('features.session-recovery.actions.deniedStart') });
-        reportRuntimeIssue('warn', 'features.sessionRecovery.start', error, { role, permission: error.permission });
-      } else if (error instanceof SimTransitionError) {
-        toast.show({ variant: 'default', label: t('features.session-recovery.actions.notInFault') });
-        reportRuntimeIssue('warn', 'features.sessionRecovery.start', error, { role, from: error.from });
-      } else {
-        toast.show({ variant: 'danger', label: t('features.session-recovery.actions.failed') });
-        reportRuntimeIssue('error', 'features.sessionRecovery.start', error, { role });
+  const start = useCallback(
+    (then?: RecoverySettled): void => {
+      if (readOnly) {
+        toast.show({ variant: 'warning', label: t('features.session-recovery.actions.readOnly') });
+        reportRuntimeIssue('info', SOURCE_START, 'Refused while the Core link is offline', { role });
+        then?.(false);
+        return;
       }
-      return false;
-    }
-  }, [actions, readOnly, role, toast, t]);
+      settle(() => startRecovery(actions, role), {
+        ok: () => then?.(true),
+        fail: (error) => {
+          // Live mode: a denial (the hint or the Core's 403), an outage or a limit is the presenter's
+          // (one wording on every screen); it is an expected state of the role or the link.
+          if (live && presentCoreError(error)) {
+            reportRuntimeIssue('warn', SOURCE_START, error, {
+              role,
+              ...(error instanceof SimPermissionError ? { permission: error.permission } : {}),
+            });
+          } else if (error instanceof SimPermissionError) {
+            toast.show({ variant: 'warning', label: t('features.session-recovery.actions.deniedStart') });
+            reportRuntimeIssue('warn', SOURCE_START, error, { role, permission: error.permission });
+          } else if (error instanceof SimTransitionError) {
+            toast.show({ variant: 'default', label: t('features.session-recovery.actions.notInFault') });
+            reportRuntimeIssue('warn', SOURCE_START, error, { role, from: error.from });
+          } else {
+            toast.show({ variant: 'danger', label: t('features.session-recovery.actions.failed') });
+            reportRuntimeIssue('error', SOURCE_START, error, { role });
+          }
+          then?.(false);
+        },
+      });
+    },
+    [actions, live, presentCoreError, readOnly, role, toast, t],
+  );
 
   const canOpenEvidence = useCallback((): boolean => {
     try {
@@ -246,19 +284,28 @@ export function useRecoveryActions(role: OperatorRole | null): RecoveryActions {
   const acknowledgeAlerts = useCallback(
     (faultKind: FaultKind | null, faultAt: number | null) => {
       if (faultKind === null || faultAt === null) return;
+      const failed = (error: unknown): void => {
+        if (live && presentCoreError(error)) {
+          reportRuntimeIssue('warn', SOURCE_ACK, error, { faultKind });
+          return;
+        }
+        reportRuntimeIssue('error', SOURCE_ACK, error, { faultKind });
+      };
       try {
-        // Read at press time (no render subscription to the alert list).
+        // Read at press time (no render subscription to the alert list). In Live mode: the replica.
         const alerts = sim.store.getState().alerts;
         for (const alert of alerts) {
           if (alert.kind === faultKind && !alert.acknowledged && Math.abs(alert.at - faultAt) <= 1_000) {
-            actions.acknowledgeAlert(alert.id);
+            // S4-8: one request per alert, fired without waiting for each other; the Core treats an
+            // alert that is already acknowledged as a no-op (01_specs §7.15).
+            settle(() => actions.acknowledgeAlert(alert.id), { fail: failed });
           }
         }
       } catch (error) {
-        reportRuntimeIssue('error', 'features.sessionRecovery.acknowledgeAlerts', error, { faultKind });
+        reportRuntimeIssue('error', SOURCE_ACK, error, { faultKind });
       }
     },
-    [actions, sim],
+    [actions, live, presentCoreError, sim],
   );
 
   return { start, canOpenEvidence, acknowledgeAlerts };

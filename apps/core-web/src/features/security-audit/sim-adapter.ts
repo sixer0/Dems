@@ -4,8 +4,13 @@
  *
  * - **Audit export with a reason (W51-1).** The simulator's `exportAudit({ reason })` refuses a
  *   reason under 5 characters (422, no audit row) and writes the reason into its AUDIT_EXPORTED row
- *   (design book §19.2 item 8, §19.3 rule 2). `exportAuditWithReason` passes the request through and
- *   reads the receipt back from that row.
+ *   (design book §19.2 item 8, §19.3 rule 2). `auditExportOutcome` reads the receipt back from that
+ *   row. In Live mode (plan row W75; 04_client_integration_spec §8.2 A7) the result union is the
+ *   Live binding's (CL-19) and the row is the Core's, in the replica by the time the action settles
+ *   (CL-16); the entry count is then the row's sequence minus one, the stored rows the export covers
+ *   (implementation/39 §7.4: the Core's answer counts the same way; the row's own `details.rows`
+ *   counts the Core's 1,000-row ring, finding F-1 there). `exportAuditWithReason` is the synchronous
+ *   form over a simulator; the dialog runs the action through `settle` in both modes.
  * - **Keys and certificates (W1, D67 (c)).** The simulator's DEVICE_CERT and EVIDENCE_SIGNING_KEY are
  *   now the step-93 DEMO Ed25519 certificate and key (fingerprints guarded by the shared
  *   alignment test). The keys panel still takes the certificate's serial, subject and validity from
@@ -16,10 +21,12 @@
  *   evidence suffix, session suffix, case sequence and subject, any demo day). The simulator's own
  *   EV 0005 is tampered on AUDIO-02 too since step 54, so both verdicts agree.
  */
+import { coreActionsOf } from '@dems/shared/live'
 import {
   EXPORT_REASON_MIN_LENGTH,
   type AuditRow,
   type EvidenceItem,
+  type ExportResult,
   type KeyRecord,
   type Sim,
 } from '@dems/shared/sim'
@@ -47,7 +54,8 @@ export type AuditExportOutcome =
   | { ok: true; receipt: AuditExportReceipt }
   | { ok: false; status: 401 | 403 | 422 | 500; reason: 'NOT_SIGNED_IN' | 'FORBIDDEN' | 'INVALID_REASON' | 'UNEXPECTED' }
 
-function exportRowOf(rows: readonly AuditRow[], exportId: string): AuditRow | null {
+/** The newest AUDIT_EXPORTED row of `exportId` in the ring (the simulator's, or the Core's replica), or null. */
+export function exportRowOf(rows: readonly AuditRow[], exportId: string): AuditRow | null {
   for (let index = rows.length - 1; index >= 0; index -= 1) {
     const row = rows[index] as AuditRow
     if (row.type === 'AUDIT_EXPORTED' && row.details.exportId === exportId) return row
@@ -55,27 +63,30 @@ function exportRowOf(rows: readonly AuditRow[], exportId: string): AuditRow | nu
   return null
 }
 
+const UNEXPECTED: AuditExportOutcome = { ok: false, status: 500, reason: 'UNEXPECTED' }
+
 /**
- * The simulator's `exportAudit({ reason })`: 401, 403 (audited), 422 INVALID_REASON below 5
- * characters (no audit row), or 202 with the reason in its AUDIT_EXPORTED row. Never throws.
+ * The dialog's outcome of one export result (the simulator's union, or the Live binding's, CL-19):
+ * 401, 403 (audited), 422 INVALID_REASON, or the receipt read back from the AUDIT_EXPORTED row in
+ * `rows`. `coreRows`: count the entries as the stored rows before that row (Live mode), not as the
+ * row's `details.rows` (the simulator's ring count). Pure; never throws.
  */
-export function exportAuditWithReason(sim: Pick<Sim, 'actions' | 'store'>, reasonText: string): AuditExportOutcome {
+export function auditExportOutcome(
+  result: ExportResult,
+  rows: readonly AuditRow[],
+  reasonText: string,
+  coreRows = false,
+): AuditExportOutcome {
   const reason = reasonText.trim()
-  let result: ReturnType<Sim['actions']['exportAudit']>
-  try {
-    result = sim.actions.exportAudit({ reason })
-  } catch {
-    return { ok: false, status: 500, reason: 'UNEXPECTED' }
-  }
   if (!result.ok) {
     if (result.reason === 'NOT_SIGNED_IN' || result.reason === 'FORBIDDEN') {
       return { ok: false, status: result.status === 401 ? 401 : 403, reason: result.reason }
     }
     if (result.reason === 'INVALID_REASON') return { ok: false, status: 422, reason: 'INVALID_REASON' }
-    return { ok: false, status: 500, reason: 'UNEXPECTED' }
+    return UNEXPECTED
   }
-  const row = exportRowOf(sim.store.getState().audit.rows, result.exportId)
-  const rowsValue = row?.details.rows
+  const row = exportRowOf(rows, result.exportId)
+  const rowsValue = coreRows ? (row ? row.seq - 1 : null) : row?.details.rows
   const headValue = row?.details.head
   const chainValue = row?.details.chainOk
   return {
@@ -89,6 +100,29 @@ export function exportAuditWithReason(sim: Pick<Sim, 'actions' | 'store'>, reaso
       auditRowId: row?.id ?? null,
     },
   }
+}
+
+/** Whether a Core result is still on its way (a Live source answers later; the simulator at once). */
+function isPending(value: unknown): value is PromiseLike<unknown> {
+  return typeof value === 'object' && value !== null && typeof (value as { then?: unknown }).then === 'function'
+}
+
+/**
+ * The simulator's `exportAudit({ reason })`: 401, 403 (audited), 422 INVALID_REASON below 5
+ * characters (no audit row), or 202 with the reason in its AUDIT_EXPORTED row. Never throws. The
+ * synchronous form over a simulator (the actions through `coreActionsOf`, CL-12); a Live source
+ * answers later, so its callers use `settle` with `auditExportOutcome` instead.
+ */
+export function exportAuditWithReason(sim: Sim, reasonText: string): AuditExportOutcome {
+  const reason = reasonText.trim()
+  let result: ReturnType<ReturnType<typeof coreActionsOf>['exportAudit']>
+  try {
+    result = coreActionsOf(sim).exportAudit({ reason })
+  } catch {
+    return UNEXPECTED
+  }
+  if (isPending(result)) return UNEXPECTED
+  return auditExportOutcome(result, sim.store.getState().audit.rows, reason)
 }
 
 // ── Keys and certificates (W1, D67) ───────────────────────────────────────────────────────

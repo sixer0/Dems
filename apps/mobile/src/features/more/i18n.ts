@@ -84,6 +84,8 @@ export const moreEn = {
   footer: {
     demo: 'DEMO',
     demoNote: 'Simulated data for demonstration',
+    /** Backend task W66 (§3.2): LIVE mode shows the Core server's data, so the note says so. */
+    liveNote: 'Data from the Core server',
     coreLink: 'Core {{state}}',
     coreLinkLabel: 'Core link: {{state}} ({{source}})',
   },

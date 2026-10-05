@@ -1,0 +1,122 @@
+#!/usr/bin/env python3
+"""W73 mutation check (rule M15: nothing in the tree is written). M1's / W80's method.
+
+Each mutant changes texts of ONE production file of `features/session-recovery/` IN MEMORY (the jest
+transformer beside this file) and runs the BEHAVIOURAL test files of the folder (the existing
+Simulated suites and the two new Live suites; the static test is left out, so a regex cannot be what
+catches a mutant). DETECTED = jest exits non-zero. The SHA-256 of the mutated files is compared
+before and after the run.
+
+  python3 mutate.py control           the unmutated test files, once
+  python3 mutate.py all               every mutant
+  python3 mutate.py U1 U2 ...         the named mutants
+"""
+import hashlib, json, os, re, subprocess, sys, time
+
+ROOT = '/Users/gsp-budi/Documents/DEMS'
+APP = ROOT + '/apps/mobile'
+HERE = os.path.dirname(os.path.abspath(__file__))
+SPEC = HERE + '/spec.json'
+CONFIG = HERE + '/jest.mut.config.cjs'
+
+HOOK = 'src/features/session-recovery/use-recovery.ts'
+SCREEN = 'src/features/session-recovery/session-recovery-screen.tsx'
+ADAPTER = 'src/features/session-recovery/sim-adapter.ts'
+
+TESTS = [
+    'src/features/session-recovery/session-recovery-screen.test.tsx',
+    'src/features/session-recovery/recovery.model.test.ts',
+    'src/features/session-recovery/live-recovery-sites.test.tsx',
+    'src/features/session-recovery/live-recovery-restart.test.tsx',
+]
+
+def e(frm, to):
+    return {'from': frm, 'to': to}
+
+START_PRESENTER = "          if (live && presentCoreError(error)) {\n            reportRuntimeIssue('warn', SOURCE_START, error, {"
+ACK_PRESENTER = "        if (live && presentCoreError(error)) {\n          reportRuntimeIssue('warn', SOURCE_ACK, error, { faultKind });"
+SPINNER = '{press.pending ? <PendingSpinner color={palette.black} testID="recovery-start-spinner" /> : null}'
+DERIVED = '{live ? (\n            <Text maxFontSizeMultiplier={1.2} style={styles.caption} testID="recovery-live-derived">'
+
+M = [
+  # ── U: use-recovery.ts (S2-3, S4-8, the read-only rule) ──
+  ('U1', HOOK, 'S2-3: LIVE rejections skip the presenter (the step-81 toasts in LIVE)', [e(START_PRESENTER, START_PRESENTER.replace('if (live && presentCoreError(error))', 'if (false)'))]),
+  ('U2', HOOK, 'S2-3: the presenter also in SIMULATED (the Simulated toasts change)', [e(START_PRESENTER, START_PRESENTER.replace('if (live && presentCoreError(error))', 'if (presentCoreError(error))'))]),
+  ('U3', HOOK, 'S2-3: the continuation is not told of a refusal (the control stays busy)', [e("          then?.(false);\n        },\n      });", "        },\n      });")]),
+  ('U4', HOOK, 'S2-3: the continuation is not told of a success (the control stays busy)', [e('ok: () => then?.(true),', 'ok: () => undefined,')]),
+  ('U5', HOOK, 'LIVE read-only never true (a press while the link is down goes to the Live source)', [e("if (link.source === 'LIVE') return offline;", "if (link.source === 'LIVE') return false;")]),
+  ('U6', HOOK, 'LIVE read-only by the two-valued state of step 81 (not the one notice)', [e("  if (link.source === 'LIVE') return offline;\n", '')]),
+  ('U7', HOOK, 'S4-8: only the first matching alert is acknowledged', [e('settle(() => actions.acknowledgeAlert(alert.id), { fail: failed });', 'settle(() => actions.acknowledgeAlert(alert.id), { fail: failed });\n            break;')]),
+  ('U8', HOOK, 'S4-8: a LIVE refusal of an acknowledgement is not presented', [e(ACK_PRESENTER, ACK_PRESENTER.replace('if (live && presentCoreError(error))', 'if (false)'))]),
+  ('U9', HOOK, 'S4-8: the acknowledgements are not sent at all', [e('settle(() => actions.acknowledgeAlert(alert.id), { fail: failed });', 'void failed;')]),
+  # ── S: session-recovery-screen.tsx (the pending control, the notice, the LIVE line, Back) ──
+  ('S1', SCREEN, 'LB-1: Start is never marked busy', [e('{...busyState(press.busy)}', '{...{}}')]),
+  ('S2', SCREEN, 'LB-1: the spinner at the press (busy instead of pending)', [e('{press.pending ? <PendingSpinner', '{press.busy ? <PendingSpinner')]),
+  ('S3', SCREEN, 'LB-1: never a spinner', [e(SPINNER, 'null')]),
+  ('S4', SCREEN, 'LB-1: the press is not guarded (a second press sends again)', [e('press.run((release) => onStart(release));', 'onStart();')]),
+  ('S5', SCREEN, 'the link notice never shows', [e('{linkDown ? (', '{false ? (')]),
+  ('S6', SCREEN, 'the link notice always shows (also in SIMULATED)', [e('{linkDown ? (', '{true ? (')]),
+  ('S7', SCREEN, 'the LIVE derivation line never shows', [e(DERIVED, DERIVED.replace('{live ? (', '{false ? ('))]),
+  ('S8', SCREEN, 'the LIVE derivation line also in SIMULATED', [e(DERIVED, DERIVED.replace('{live ? (', '{true ? ('))]),
+  ('S9', SCREEN, 'Back held while the Core link is down (LIVE)', [e('busy: isRecoveryBusy(phase) && !linkDown', 'busy: isRecoveryBusy(phase)')]),
+  ('S10', SCREEN, 'Back never held during the analysis', [e('busy: isRecoveryBusy(phase) && !linkDown', 'busy: false')]),
+  # ── A: sim-adapter.ts (S5-2 and the returned result) ──
+  ('A1', ADAPTER, 'the action\'s result is dropped (settle ends at once in LIVE; a rejection is lost)', [e('  return actions.recover();', '  void actions.recover();\n  return undefined;')]),
+  ('A2', ADAPTER, 'S5-2: the role hint dropped (a Technician\'s press goes to the Core)', [e('if (!canStartRecovery(role)) throw', 'if (false) throw')]),
+]
+
+def sha(path):
+    with open(path, 'rb') as f:
+        return hashlib.sha256(f.read()).hexdigest()
+
+def jest(env, tests):
+    return subprocess.run(['node', ROOT + '/node_modules/jest/bin/jest.js', '--config', CONFIG, '--maxWorkers=2', '--silent', *tests],
+                          cwd=APP, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+
+def summary(out):
+    tail = [line.strip() for line in out.splitlines() if line.startswith('Tests:')]
+    files = sorted({line.split()[1].split('/')[-1] for line in out.splitlines() if line.startswith('FAIL ')})
+    first = [re.sub(r'\s+', ' ', line.strip().lstrip('●').strip()) for line in out.splitlines() if line.strip().startswith('● ') and 'Console' not in line]
+    return (tail[-1] if tail else 'no summary line'), files, first[:1]
+
+def main():
+    wanted = sys.argv[1:]
+    files = sorted({m[1] for m in M})
+    before = {f: sha(APP + '/' + f) for f in files}
+    print('# W73 mutation check, %s; the tree is not edited' % time.strftime('%Y-%m-%d %H:%M:%S'), flush=True)
+    if 'control' in wanted:
+        started = time.time()
+        run = jest(dict(os.environ, CI='1'), TESTS)
+        tail, failed, _ = summary(run.stdout)
+        print('control (no mutation, %d test files): exit=%d %s (%.0f s)' % (len(TESTS), run.returncode, tail, time.time() - started), flush=True)
+        if run.returncode != 0:
+            print(run.stdout[-4000:])
+            sys.exit(1)
+    chosen = M if 'all' in wanted else [m for m in M if m[0] in wanted]
+    detected = missed = unapplied = 0
+    for mid, file, what, edits in chosen:
+        with open(SPEC, 'w') as f:
+            json.dump({'id': mid, 'file': file, 'edits': edits}, f)
+        started = time.time()
+        run = jest(dict(os.environ, CI='1', W73_MUT_SPEC=SPEC), TESTS)
+        tail, failed, first = summary(run.stdout)
+        if 'expected exactly 1' in run.stdout:
+            unapplied += 1
+            verdict = 'NOT APPLIED'
+        elif run.returncode != 0:
+            detected += 1
+            verdict = 'DETECTED'
+        else:
+            missed += 1
+            verdict = 'not detected'
+        print('%-3s %-12s %s | %s | %s | failing files: %s | first: %s (%.0f s)' % (mid, verdict, what, file.split('/')[-1], tail, ', '.join(failed) or '-', ' / '.join(first) or '-', time.time() - started), flush=True)
+    if chosen:
+        print('## %d detected, %d not detected, %d not applied, of %d' % (detected, missed, unapplied, len(chosen)), flush=True)
+    after = {f: sha(APP + '/' + f) for f in files}
+    print('## the mutated files in the tree, before and after: %s' % ('identical' if before == after else 'CHANGED'), flush=True)
+    for f in files:
+        print('   %s  %s' % (after[f][:16], f), flush=True)
+    print('# finished %s' % time.strftime('%H:%M:%S'), flush=True)
+
+if __name__ == '__main__':
+    main()

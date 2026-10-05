@@ -514,19 +514,33 @@ function useTabletLinkFromHeartbeat(sim: Sim, ready: boolean, source: CoreLinkIn
   }, [sim, ready, source, heartbeat]);
 }
 
-function useConnectionBannerState(link: CoreLinkInfo, bus: ResyncBus) {
+/**
+ * The banner kind, written ONLY while rendering, from the kind of that render (decision D170, finding
+ * F-1 of row W68). The link arrives through `useSyncExternalStore` (a sync update) while the resync
+ * signal comes from a socket callback (a default-lane update). A functional updater of `kind` queued
+ * by the signal and skipped by the render that applied the link change was later rebased over that
+ * render-phase update and undid it: "Resynced", then "offline" again with the link ONLINE. So the bus
+ * and the timer only count their signals, each in a state of its own, and the render folds every input
+ * that changed into `kind` in one step: the link (`nextBannerKind`), a resync (`bannerKindAfterResync`),
+ * the end of "Resynced" (hidden). No effect and no extra commit for a link change, as before.
+ */
+export function useConnectionBannerState(link: CoreLinkInfo, bus: ResyncBus) {
   const [kind, setKind] = useState<ConnectionBannerKind>(() => nextBannerKind('hidden', link));
-  // A new Core link value updates the banner in the same render ("adjusting state when a prop
-  // changes"), so no effect and no extra commit is needed.
-  const [seenLink, setSeenLink] = useState(link);
-  if (seenLink !== link) {
-    setSeenLink(link);
-    setKind(nextBannerKind(kind, link));
+  const [resyncs, setResyncs] = useState(0);
+  const [expiries, setExpiries] = useState(0);
+  const [seen, setSeen] = useState({ link, resyncs, expiries });
+  if (seen.link !== link || seen.resyncs !== resyncs || seen.expiries !== expiries) {
+    let next = kind;
+    if (seen.link !== link) next = nextBannerKind(next, link);
+    if (seen.resyncs !== resyncs) next = bannerKindAfterResync(next);
+    if (seen.expiries !== expiries && next === 'resynced') next = 'hidden';
+    setSeen({ link, resyncs, expiries });
+    if (next !== kind) setKind(next);
   }
-  useEffect(() => bus.subscribe(() => setKind(bannerKindAfterResync)), [bus]);
+  useEffect(() => bus.subscribe(() => setResyncs((count) => count + 1)), [bus]);
   useEffect(() => {
     if (kind !== 'resynced') return undefined;
-    const timer = setTimeout(() => setKind((current) => (current === 'resynced' ? 'hidden' : current)), RESYNCED_BANNER_MS);
+    const timer = setTimeout(() => setExpiries((count) => count + 1), RESYNCED_BANNER_MS);
     return () => clearTimeout(timer);
   }, [kind]);
   return useMemo(() => connectionBannerFor(kind), [kind]);

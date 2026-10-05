@@ -6,11 +6,16 @@
  * here. Every function that calls a hook is named `use…` (D66: the device build runs the React
  * Compiler). The chain status comes from the simulator's own `selectAuditChainBreak` (the AUDIT_TAMPER
  * row, EVT-30), reduced to its `seq`.
+ *
+ * Live mode (backend task W80; client spec §7.4): the same selectors read the replica of the Core
+ * server's state (the `audit` ring, `operators` and `faults` slices), so the rows, the head, the
+ * total and the demo fault's break are the Core's. No REST read is made here (§7.1 "read path").
  */
 import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { selectAuditChainBreak, useSim, type AuditRow } from '@dems/shared/sim';
-import { actorKindOf, authMethodOf, faultKindOf, filterAuditRows, rowRefs, type AuditQuery } from './audit-model';
+import { useCoreLink } from '@/runtime';
+import { actorKindOf, authMethodOf, faultKindOf, filterAuditRows, isTypedUsernameActor, rowRefs, type AuditQuery } from './audit-model';
 
 /** The audit ring as the simulator holds it (oldest first, ≤ 1,000 rows). */
 export function useAuditRingRows(): readonly AuditRow[] {
@@ -53,14 +58,23 @@ export interface AuditText {
   secondary: (row: AuditRow) => string;
 }
 
-/** Translated row text. Labels come from i18n by code, never from the row's English `message`. */
+/**
+ * Translated row text. Labels come from i18n by code, never from the row's English `message`.
+ *
+ * Live mode (backend task W80; security review CPS1-12 (a)): a failed or locked sign-in that names
+ * an operator names the operator whose username was TYPED, not someone who signed in, so its actor
+ * reads "Username typed: <name>" in the row, the detail and the search. Simulated mode is unchanged.
+ */
 export function useAuditText(names: Readonly<Record<string, string>>): AuditText {
   const { t } = useTranslation();
+  const live = useCoreLink().source === 'LIVE';
   return useMemo<AuditText>(() => {
     const actor = (row: AuditRow) => {
       switch (actorKindOf(row)) {
-        case 'OPERATOR':
-          return names[row.actorId ?? ''] ?? row.actorId ?? '';
+        case 'OPERATOR': {
+          const name = names[row.actorId ?? ''] ?? row.actorId ?? '';
+          return live && isTypedUsernameActor(row) ? t('features.audit.live.typedActor', { name }) : name;
+        }
         case 'UNVERIFIED':
           return t('securityAudit.audit.unverifiedUser');
         case 'SYSTEM':
@@ -77,7 +91,7 @@ export function useAuditText(names: Readonly<Record<string, string>>): AuditText
       return parts.join(' · ');
     };
     return { label: (row) => t(`common.auditType.${row.type}`), actor, secondary };
-  }, [t, names]);
+  }, [t, names, live]);
 }
 
 export interface AuditFeed {

@@ -9,6 +9,16 @@
  *
  * The bell opens a kit `Popover` with the latest alerts; the avatar (initials "BS", 04 §9 #29)
  * opens a kit `Menu`: Profile, Lock console, Sign out. Sign-out never touches a recording (§3.3).
+ *
+ * Backend task W66 (04_client_integration_spec §3.2, MD-8, MD-9, §7.4):
+ * - The Core link chip takes the one rule of `features/more/use-core-link-chip.ts` (More's footer
+ *   takes the same): "Simulated" in SIMULATED and HEARTBEAT mode, "Live" only in LIVE mode, and in
+ *   LIVE "Offline" by the runtime's no-flicker rule (row M0).
+ * - MD-9: in LIVE mode the chip is in the header of every layout class; in SIMULATED and HEARTBEAT
+ *   mode it stays on the expanded header only, so no Simulated layout changes.
+ * - Acknowledging an alert (operation 70) is fire-and-forget: the actions come from
+ *   `useCoreActions()` in both modes (AC-C-53), and a rejection goes to the refusal presenter first
+ *   (a denial or an outage gets the app's one toast), then to the runtime log.
  */
 import { useRouter } from 'expo-router';
 import { Avatar, Button, Chip, LinkButton, Menu, Popover } from 'heroui-native';
@@ -18,7 +28,8 @@ import { useTranslation } from 'react-i18next';
 import { StyleSheet, Text, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { formatDate, formatUtcOffset } from '@dems/shared/realtime';
-import { selectClockSecond, useSim, useSimActions, type SimAlert } from '@dems/shared/sim';
+import { settle, useCoreActions } from '@dems/shared/live';
+import { selectClockSecond, useSim, type SimAlert } from '@dems/shared/sim';
 import { fontFamily, palette, toneTextHex, typography, type StatusTone } from '@dems/shared/tokens';
 import { useAuthSession } from '@/auth';
 import { RollingNumber } from '@/components/composed/rolling-number';
@@ -26,7 +37,8 @@ import { StatusChip } from '@/components/kit';
 import { Emblem } from '@/components/media/emblem';
 import type { LayoutClass } from '@/layout';
 import { useMotionPolicy, useMotionSettings, useMotionState } from '@/motion';
-import { reportRuntimeIssue, useAuth, useCoreLink } from '@/runtime';
+import { useCoreLinkChip } from '@/features/more/use-core-link-chip';
+import { reportRuntimeIssue, useAuth, useCoreErrorPresenter, useCoreLink } from '@/runtime';
 import { clockText, displaySecondsOfDay, type HomeStatus } from './home-model';
 import { HOME_BEATS, homeEnter } from './home-motion';
 import { useAlertSummary } from './use-home-data';
@@ -41,6 +53,8 @@ export function HomeHeader({ layoutClass, status }: HomeHeaderProps) {
   const settings = useMotionSettings();
   const tablet = layoutClass === 'medium' || layoutClass === 'expanded';
   const condensed = layoutClass === 'compact-landscape';
+  // MD-9: in LIVE the Core link chip is in every layout class; otherwise on the expanded header only.
+  const live = useCoreLink().source === 'LIVE';
 
   return (
     <Animated.View
@@ -66,7 +80,7 @@ export function HomeHeader({ layoutClass, status }: HomeHeaderProps) {
             size="sm"
           />
         ) : null}
-        {layoutClass === 'expanded' ? <CoreLinkChip /> : null}
+        {layoutClass === 'expanded' || live ? <CoreLinkChip /> : null}
         {layoutClass === 'expanded' ? <HeaderClock /> : null}
         <AlertsBell />
         <AccountMenu />
@@ -105,23 +119,24 @@ function Brand({ condensed }: { condensed: boolean }) {
   );
 }
 
-/** Core link chip (expanded header, §2.3): Simulated (default, Q-M8), Live (heartbeat) or Offline. */
+/**
+ * Core link chip (§2.3; W66 MD-8): Simulated (default, Q-M8; also with the mock-core heartbeat),
+ * Live (LIVE mode only) or Offline. The word, tone and icon are `useCoreLinkChip()`'s.
+ */
 function CoreLinkChip() {
   const { t } = useTranslation();
-  const link = useCoreLink();
-  const online = link.state === 'ONLINE';
-  const tone: StatusTone = !online ? 'danger' : link.source === 'SIMULATED' ? 'info' : 'success';
-  const word = !online ? t('common.status.offline') : link.source === 'SIMULATED' ? t('common.status.simulated') : t('common.status.live');
+  const chip = useCoreLinkChip();
+  const word = t(`common.status.${chip.word}`);
   return (
     <StatusChip
       testID="home-core-link"
-      tone={tone}
+      tone={chip.tone}
       label={t('features.dashboard.header.coreLink', { state: word })}
       accessibilityLabel={t('features.dashboard.header.coreLinkLabel', {
         state: word,
-        source: t(`mobile.coreLink.source.${link.source}`),
+        source: t(`mobile.coreLink.source.${chip.source}`),
       })}
-      icon={online ? 'Wifi' : 'TriangleAlert'}
+      icon={chip.icon}
       size="sm"
       className="self-center"
     />
@@ -161,16 +176,21 @@ const SEVERITY_TONE: Record<SimAlert['severity'], StatusTone> = {
 function AlertsBell() {
   const { t } = useTranslation();
   const router = useRouter();
-  const actions = useSimActions();
+  const actions = useCoreActions();
+  const presentCoreError = useCoreErrorPresenter();
   const { count, alerts } = useAlertSummary();
   const [open, setOpen] = useState(false);
 
+  // Fire-and-forget (§7.4; CL-24): nothing reads the result. A refusal or an outage of the Core
+  // server is worded by the presenter (AC-C-48: a denial names the role when the operation has one);
+  // anything else is logged, as before.
   const acknowledge = (id: string) => {
-    try {
-      actions.acknowledgeAlert(id);
-    } catch (error) {
-      reportRuntimeIssue('warn', 'dashboard.alerts.acknowledge', error, { alertId: id });
-    }
+    settle(() => actions.acknowledgeAlert(id), {
+      fail: (error) => {
+        if (presentCoreError(error)) return;
+        reportRuntimeIssue('warn', 'dashboard.alerts.acknowledge', error, { alertId: id });
+      },
+    });
   };
 
   return (

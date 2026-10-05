@@ -61,8 +61,9 @@ interface BoundaryState {
 
 /**
  * Frontend error rules, layers 1–3: a render failure inside one panel shows friendly copy with a
- * rate-limited retry (3 s → 6 s → 12 s, at most 3), and the structured record goes to the dev
- * console (no client log endpoint exists, D41(g)). The rest of the page keeps working.
+ * rate-limited retry (3 s → 6 s → 12 s, at most 3), and the structured record goes to the page's
+ * own log, `webErrorSink` (no client log endpoint exists, D41(g); `./log`, plan row W71). The rest
+ * of the page keeps working.
  */
 export class StoragePanelBoundary extends Component<BoundaryProps, BoundaryState> {
   override state: BoundaryState = { error: null, resets: 0 }

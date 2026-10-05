@@ -10,6 +10,15 @@
  * state); the CLIP latch locks the top
  * segment red and shows the CLIP chip (tap resets it through `resetClip`). A new latch plays the
  * Warning haptic once (§7.6 "MIC clip latch").
+ *
+ * Live mode (backend task, row W68): the levels are the Core server's — the Live source writes the
+ * store's `audio` slice from each socket `meters` frame and `useAudioSharedValues` copies it into the
+ * shared values, so the meter still draws on the UI thread with zero React renders per frame; on a
+ * lost link the Live source resets the slice to silent frames and the meter shows NO SIGNAL. The
+ * CLIP reset is a Core command: one per meter at a time (`usePendingPress()` from `@/runtime`, LB-1);
+ * the chip itself is drawn by `components/composed/dbfs-meter.tsx`, which is not this feature's, so
+ * it carries no busy mark or Spinner. Its result is ignored, as before ([CS:S2-1]); the CLIP chip
+ * leaves when the Core's delta clears the latch.
  */
 import { Chip, Surface } from 'heroui-native';
 import { useEffect, useRef, useState } from 'react';
@@ -22,7 +31,7 @@ import { DbfsMeter, type MeterVariant } from '@/components/composed/dbfs-meter';
 import { triggerHaptic, useMotionPolicy } from '@/motion';
 import { useAnimatedReaction } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
-import { useAudioAccessibilityValue, useAudioSharedValues, type AudioSharedValues } from '@/runtime';
+import { useAudioAccessibilityValue, useAudioSharedValues, usePendingPress, type AudioSharedValues } from '@/runtime';
 
 export interface MicMeterProps {
   mic: MicStatus;
@@ -30,7 +39,8 @@ export interface MicMeterProps {
   /** Screen unfocused or backgrounded: the meter's UI-thread clock stops (04 §7.8). */
   paused: boolean;
   monitoringPaused: boolean;
-  onClipReset: (channel: AudioTrackId) => void;
+  /** Sends `resetClip(channel)`; calls `release` once the command settled. */
+  onClipReset: (channel: AudioTrackId, release: () => void) => void;
   testID?: string;
 }
 
@@ -42,6 +52,7 @@ export function MicMeter({ mic, variant, paused, monitoringPaused, onClipReset, 
   const flat = useNoSignal(values);
   const noSignalText = t('session.feed.noSignal');
   const a11y = useAudioAccessibilityValue(mic.id, { noSignalText });
+  const clipPress = usePendingPress();
   const shortName = mic.channel === 2 ? t('common.devices.mic2') : t('common.devices.mic1');
   return (
     <DbfsMeter
@@ -53,7 +64,9 @@ export function MicMeter({ mic, variant, paused, monitoringPaused, onClipReset, 
       paused={paused}
       signal={flat || mic.state === 'NO_SIGNAL' ? 'no-signal' : 'ok'}
       monitoringPaused={monitoringPaused}
-      onClipReset={() => onClipReset(mic.id)}
+      onClipReset={() => {
+        clipPress.run((release) => onClipReset(mic.id, release));
+      }}
       labels={{
         unit: 'dBFS',
         clip: t('common.enums.micState.CLIP'),

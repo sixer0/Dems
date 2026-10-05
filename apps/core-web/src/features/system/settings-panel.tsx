@@ -15,10 +15,13 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { selectOperator, useSim, useSimActions, useSimInstance, type SimActions, type SimState } from '@dems/shared/sim'
+import { useCoreActions } from '@dems/shared/live'
+import { selectOperator, useSim, type SimActions, type SimState } from '@dems/shared/sim'
+import { usePendingControl } from '@/lib/pending-control'
 import { useMotionPolicy } from '@/motion'
+import { useSystemLiveMode } from './live'
 import { SystemPanel } from './panel'
-import { setPresentationModeEverywhere, useConsolePrefs, usePresentationModeSetting } from './sim-adapter'
+import { setPresentationModeEverywhere, useConsolePrefs, usePreferenceWriteFailure, usePresentationModeSetting } from './sim-adapter'
 import { useSimCommand } from './use-sim-command'
 
 const selectAccount = (s: SimState) => ({ operator: selectOperator(s), method: s.auth.method })
@@ -89,13 +92,19 @@ function jumpTo(id: string, reduced: boolean) {
  * `setActiveCamera`); Storage Management; Network & Time; System Maintenance; About DEMS. The time
  * format and notification preferences live in the sim's settings slice (step 54), mirrored to
  * this browser's storage.
+ *
+ * Plan row W76 (Live mode): the live camera goes through the command wrapper (B-10) with its own
+ * pending state; the preferences and presentation mode are the Core server's `settings` slice
+ * (operation 68), written fire-and-forget with a refusal worded by the presenter (§8.4 F).
  */
 export function SettingsPanel({ maintenanceAnchor, aboutAnchor }: { maintenanceAnchor: string; aboutAnchor: string }) {
   const { t } = useTranslation()
   const m = useMotionPolicy()
-  const actions = useSimActions()
+  const actions = useCoreActions()
+  const live = useSystemLiveMode()
   const run = useSimCommand()
-  const sim = useSimInstance()
+  const camera = usePendingControl()
+  const onPresentationFail = usePreferenceWriteFailure('Settings.presentationMode')
   const presentation = usePresentationModeSetting()
   const account = useSim(selectAccount)
   const device = useSim(selectDeviceSettings)
@@ -132,7 +141,7 @@ export function SettingsPanel({ maintenanceAnchor, aboutAnchor }: { maintenanceA
             label={t('system.settings.presentationMode')}
             hint={t('system.settings.presentationModeHint')}
             isSelected={presentation}
-            onChange={(on) => setPresentationModeEverywhere(sim, on)}
+            onChange={(on) => setPresentationModeEverywhere(actions, on, live, onPresentationFail)}
             testId="system-presentation-mode"
           />
           <RadioGroup
@@ -198,9 +207,17 @@ export function SettingsPanel({ maintenanceAnchor, aboutAnchor }: { maintenanceA
           <Select
             value={device.activeCameraId}
             onChange={(key) => {
-              const camera = device.cameras.find((item) => item.id === key)
-              if (camera) run(() => actions.setActiveCamera(camera.id as Parameters<SimActions['setActiveCamera']>[0]), { source: 'Settings.activeCamera', context: { cameraId: camera.id } })
+              const chosen = device.cameras.find((item) => item.id === key)
+              if (chosen) {
+                run(
+                  () => actions.setActiveCamera(chosen.id as Parameters<SimActions['setActiveCamera']>[0]),
+                  { source: 'Settings.activeCamera', context: { cameraId: chosen.id } },
+                  undefined,
+                  camera,
+                )
+              }
             }}
+            isDisabled={camera.pending}
             className="sys-setting"
             data-testid="system-active-camera"
           >

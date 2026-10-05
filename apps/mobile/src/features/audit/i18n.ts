@@ -77,4 +77,18 @@ export const auditEn = {
     panel: 'The audit view could not be shown. The log itself is unchanged.',
     verify: 'The chain could not be checked. Try again.',
   },
+  // Live mode only (backend task W80): the Core server's own words for its rows and its chain check.
+  live: {
+    // CPS1-12 (a): AUTH_FAILED / AUTH_LOCKED name the operator whose username was typed; nobody signed in.
+    typedActor: 'Username typed: {{name}}',
+    // Operation 60 `stored`: the Core's check of its table, which no demo fault breaks (client spec §8.2 A9).
+    storedVerified: 'Stored chain verified through entry #{{seq}}',
+    storedBroken: 'Stored chain breaks at entry #{{seq}}',
+    // Operation 60 `lineageTotal`: chains a demo reset or a scenario load discarded (SD-19).
+    earlierChains_one: 'Earlier chains: {{count}}, discarded by a demo reset or a scenario load',
+    earlierChains_other: 'Earlier chains: {{count}}, discarded by demo resets or scenario loads',
+    // The runtime's one link rule (useCoreLinkNotice): the list holds what the Core sent last.
+    offlineTitle: 'Core server unreachable',
+    offlineBody: 'The entries shown are the last the Core sent.',
+  },
 } as const satisfies ResourceTree;

@@ -1,20 +1,24 @@
-import { useState, type ReactNode } from 'react'
-import { Alert, Button, Chip, Modal, ProgressBar, toast, Tooltip } from '@heroui/react'
+import { useState, type ReactNode, type RefObject } from 'react'
+import { Alert, Button, Chip, Modal, ProgressBar, Spinner, toast, Tooltip } from '@heroui/react'
 import { CircleCheck, Download, RefreshCw, RotateCw, Stethoscope, TriangleAlert, Wrench, XCircle } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { useCoreActions } from '@dems/shared/live'
 import {
   formatWibTime,
   Permission,
   selectCan,
   useSim,
-  useSimActions,
   useSimInstance,
   type DiagnosticCheck,
   type DiagnosticStatus,
   type SimState,
 } from '@dems/shared/sim'
+import { usePendingControl } from '@/lib/pending-control'
 import { GlowLayer, useMotionPolicy } from '@/motion'
 import { DIAG_BAR_FILL_MS } from './choreography'
+import { ExportLogsDialog } from './export-logs-dialog'
+import { useSystemLiveMode } from './live'
+import { downloadJson } from './live-log-export'
 import { logSystemError } from './log'
 import { diagnosticsTone, requiredRoleFor, summarizeDiagnostics, type DiagnosticsSummary } from './model'
 import { SystemPanel } from './panel'
@@ -59,31 +63,41 @@ function RbacGate({ allowed, permission, label, children }: { allowed: boolean; 
   )
 }
 
-/** Triggers a JSON download in the browser. Throws when the platform cannot create the file. */
-function downloadJson(fileName: string, data: unknown): void {
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
-  const url = URL.createObjectURL(blob)
-  const anchor = document.createElement('a')
-  anchor.href = url
-  anchor.download = fileName
-  anchor.rel = 'noopener'
-  document.body.append(anchor)
-  anchor.click()
-  anchor.remove()
-  setTimeout(() => URL.revokeObjectURL(url), 1000)
-}
-
 /**
  * Diagnostics & Maintenance: the last Run Diagnostics result, Run Diagnostics (DIAGNOSTICS_RUN),
- * Restart services (MAINTENANCE; the sim's `restartServices`, simulated and audited) and Export
- * logs (the sim's `exportLogs`: AUDIT_EXPORT, audited either way; step 54). RBAC per S20: disabled with a
- * Tooltip naming the role; refusals from the sim still become friendly toasts.
+ * Restart services (MAINTENANCE; `restartServices`, audited) and Export logs (`exportLogs`:
+ * AUDIT_EXPORT, audited either way; step 54). RBAC per S20: disabled with a Tooltip naming the role;
+ * refusals become friendly toasts.
+ *
+ * Plan row W76 (Live mode; backend task 04_client_integration_spec §8.2 A8, A10, A11, §8.3 B-10):
+ * - A11 Restart: through the command wrapper; the toast prints the Core's count in `ok`; 409
+ *   `SESSION_ACTIVE` keeps the friendly warning. Busy at once, spinner late (LB-1).
+ * - A10 Run Diagnostics: the page's starter opens the modal on the 202 (`runPending`, `runRef`: its pending state).
+ * - A8 Export logs: Simulated exports at once, as before (the simulator needs no reason). Live opens
+ *   `ExportLogsDialog`, which collects the reason the Core requires (CPC1-22) and builds the file
+ *   from every page of operations 59 and 63.
  */
-export function MaintenancePanel({ anchorId, onOpenDiagnostics }: { anchorId: string; onOpenDiagnostics: () => void }) {
+export function MaintenancePanel({
+  anchorId,
+  onOpenDiagnostics,
+  runPending = false,
+  runRef,
+}: {
+  anchorId: string
+  onOpenDiagnostics: () => void
+  /** A10, LB-1: the page's diagnostics start is out for longer than the reveal time. */
+  runPending?: boolean
+  /** The Run Diagnostics button's element (`aria-busy` while the start is out). */
+  runRef?: RefObject<HTMLButtonElement | null>
+}) {
   const { t } = useTranslation()
   const sim = useSimInstance()
-  const actions = useSimActions()
+  const actions = useCoreActions()
+  const live = useSystemLiveMode()
   const runCommand = useSimCommand()
+  const restartControl = usePendingControl()
+  const { pending: restartPending, ref: restartRef } = restartControl
+  const [exportOpen, setExportOpen] = useState(false)
   const run = useSim(selectRun)
   const canRun = useSim(selectCanRun)
   const canMaintain = useSim(selectCanMaintain)
@@ -92,44 +106,55 @@ export function MaintenancePanel({ anchorId, onOpenDiagnostics }: { anchorId: st
   const summary = summarizeDiagnostics(run)
 
   const restart = () => {
-    const count = runCommand(() => restartCoreServices(sim), {
-      source: 'Maintenance.restart',
-      transitionMessage: t('system.maintenance.restartBlocked'),
-    })
-    if (count !== undefined) toast.success(t('system.maintenance.restartDone'), { description: t('system.maintenance.restartBody', { count }) })
+    runCommand(
+      () => restartCoreServices(actions),
+      { source: 'Maintenance.restart', transitionMessage: t('system.maintenance.restartBlocked') },
+      (count) => toast.success(live ? t('system.live.restartDone') : t('system.maintenance.restartDone'), { description: t('system.maintenance.restartBody', { count }) }),
+      restartControl,
+    )
+  }
+
+  /** Simulated mode: the simulator's export needs no reason; the file is the simulator's state, as before. */
+  const exportSimulated = () => {
+    runCommand(
+      () => actions.exportLogs(),
+      { source: 'Maintenance.exportLogs' },
+      (result) => {
+        if (!result.ok) {
+          toast.danger(t('system.maintenance.exportDenied'), {
+            description:
+              result.status === 401
+                ? t('system.maintenance.exportNotSignedIn')
+                : t('common.rbac.requiresRole', { role: t(`common.roles.${requiredRoleFor(Permission.AUDIT_EXPORT) ?? 'SUPERVISOR'}`) }),
+          })
+          return
+        }
+        const state = sim.store.getState()
+        try {
+          downloadJson(`dems-logs-${state.device.id}-${result.exportId}.json`, {
+            demo: true,
+            notice: 'DEMO - simulated log export from the DEMS demo stack.',
+            exportId: result.exportId,
+            deviceId: state.device.id,
+            softwareVersion: state.device.softwareVersion,
+            exportedAt: new Date(state.clock.now).toISOString(),
+            audit: { head: state.audit.head, rows: state.audit.rows },
+            events: state.events,
+            services: state.services,
+            diagnostics: state.diagnostics,
+          })
+          toast.success(t('system.maintenance.exportDone', { rows: state.audit.rows.length }))
+        } catch (error) {
+          toast.danger(t('system.maintenance.exportFailed'))
+          logSystemError('Maintenance.exportLogs.download', error, { exportId: result.exportId })
+        }
+      },
+    )
   }
 
   const exportLogs = () => {
-    const result = runCommand(() => actions.exportLogs(), { source: 'Maintenance.exportLogs' })
-    if (!result) return
-    if (!result.ok) {
-      toast.danger(t('system.maintenance.exportDenied'), {
-        description:
-          result.status === 401
-            ? t('system.maintenance.exportNotSignedIn')
-            : t('common.rbac.requiresRole', { role: t(`common.roles.${requiredRoleFor(Permission.AUDIT_EXPORT) ?? 'SUPERVISOR'}`) }),
-      })
-      return
-    }
-    const state = sim.store.getState()
-    try {
-      downloadJson(`dems-logs-${state.device.id}-${result.exportId}.json`, {
-        demo: true,
-        notice: 'DEMO - simulated log export from the DEMS demo stack.',
-        exportId: result.exportId,
-        deviceId: state.device.id,
-        softwareVersion: state.device.softwareVersion,
-        exportedAt: new Date(state.clock.now).toISOString(),
-        audit: { head: state.audit.head, rows: state.audit.rows },
-        events: state.events,
-        services: state.services,
-        diagnostics: state.diagnostics,
-      })
-      toast.success(t('system.maintenance.exportDone', { rows: state.audit.rows.length }))
-    } catch (error) {
-      toast.danger(t('system.maintenance.exportFailed'))
-      logSystemError('Maintenance.exportLogs.download', error, { exportId: result.exportId })
-    }
+    if (live) setExportOpen(true)
+    else exportSimulated()
   }
 
   return (
@@ -159,10 +184,19 @@ export function MaintenancePanel({ anchorId, onOpenDiagnostics }: { anchorId: st
         <MaintenanceAction
           icon={Stethoscope}
           title={t('system.diagnostics.title')}
-          hint={t('system.diagnostics.subtitle')}
+          hint={live ? t('system.live.diagnosticsSubtitle') : t('system.diagnostics.subtitle')}
           button={
             <RbacGate allowed={canRun} permission={Permission.DIAGNOSTICS_RUN} label={t('system.diagnostics.title')}>
-              <Button size="sm" variant="primary" isDisabled={!canRun} onPress={onOpenDiagnostics} data-testid="system-run-diagnostics">
+              <Button
+                ref={runRef}
+                size="sm"
+                variant="primary"
+                isDisabled={!canRun}
+                isPending={runPending}
+                onPress={onOpenDiagnostics}
+                data-testid="system-run-diagnostics"
+              >
+                {runPending ? <Spinner size="sm" color="current" aria-hidden="true" /> : null}
                 {t('system.diagnostics.title')}
               </Button>
             </RbacGate>
@@ -171,10 +205,19 @@ export function MaintenancePanel({ anchorId, onOpenDiagnostics }: { anchorId: st
         <MaintenanceAction
           icon={RotateCw}
           title={t('system.maintenance.restart')}
-          hint={t('system.maintenance.restartHint')}
+          hint={live ? t('system.live.restartHint') : t('system.maintenance.restartHint')}
           button={
             <RbacGate allowed={canMaintain} permission={Permission.MAINTENANCE} label={t('system.maintenance.restart')}>
-              <Button size="sm" variant="outline" isDisabled={!canMaintain} onPress={restart} data-testid="system-restart-services">
+              <Button
+                ref={restartRef}
+                size="sm"
+                variant="outline"
+                isDisabled={!canMaintain}
+                isPending={restartPending}
+                onPress={restart}
+                data-testid="system-restart-services"
+              >
+                {restartPending ? <Spinner size="sm" color="current" aria-hidden="true" /> : null}
                 {t('system.maintenance.restart')}
               </Button>
             </RbacGate>
@@ -183,7 +226,7 @@ export function MaintenancePanel({ anchorId, onOpenDiagnostics }: { anchorId: st
         <MaintenanceAction
           icon={Download}
           title={t('system.maintenance.exportLogs')}
-          hint={t('system.maintenance.exportLogsHint')}
+          hint={live ? t('system.live.exportLogsHint') : t('system.maintenance.exportLogsHint')}
           button={
             <RbacGate allowed={canExport} permission={Permission.AUDIT_EXPORT} label={t('system.maintenance.exportLogs')}>
               <Button size="sm" variant="outline" isDisabled={!canExport} onPress={exportLogs} data-testid="system-export-logs">
@@ -193,6 +236,7 @@ export function MaintenancePanel({ anchorId, onOpenDiagnostics }: { anchorId: st
           }
         />
       </div>
+      {live ? <ExportLogsDialog isOpen={exportOpen} onOpenChange={setExportOpen} /> : null}
     </SystemPanel>
   )
 }
@@ -246,9 +290,11 @@ function CheckRow({ check }: { check: DiagnosticCheck }) {
  */
 export function DiagnosticsModal({ isOpen, onOpenChange }: { isOpen: boolean; onOpenChange: (open: boolean) => void }) {
   const { t } = useTranslation()
+  const live = useSystemLiveMode()
   const run = useSim(selectRun)
   const canRun = useSim(selectCanRun)
-  const start = useStartDiagnostics()
+  // A10: "Run again" through the wrapper, with its own pending state (LB-1); the modal is already open.
+  const { start: startAgain, pending: againPending, ref: againRef } = useStartDiagnostics()
   const summaryText = useSummaryText()
   const summary = summarizeDiagnostics(run)
   const complete = summary?.complete ?? false
@@ -266,13 +312,15 @@ export function DiagnosticsModal({ isOpen, onOpenChange }: { isOpen: boolean; on
           <Modal.Header className="sys-diag-header">
             <Stethoscope className="sys-card-icon" aria-hidden="true" strokeWidth={1.75} />
             <Modal.Heading>{t('system.diagnostics.title')}</Modal.Heading>
-            <Chip size="sm" variant="secondary" className="sys-sim-chip">
-              <Chip.Label>{t('common.simulated.chip')}</Chip.Label>
-            </Chip>
+            {live ? null : (
+              <Chip size="sm" variant="secondary" className="sys-sim-chip">
+                <Chip.Label>{t('common.simulated.chip')}</Chip.Label>
+              </Chip>
+            )}
           </Modal.Header>
           <Modal.Body className="sys-diag-body">
             <p className="sys-muted sys-small">
-              {summary && !complete ? t('system.diagnostics.running') : t('system.diagnostics.subtitle')}
+              {summary && !complete ? t('system.diagnostics.running') : live ? t('system.live.diagnosticsSubtitle') : t('system.diagnostics.subtitle')}
             </p>
             <ol className="sys-diag-list" aria-label={t('system.diagnostics.title')}>
               {(run?.checks ?? []).map((check) => (
@@ -298,8 +346,15 @@ export function DiagnosticsModal({ isOpen, onOpenChange }: { isOpen: boolean; on
             <Button variant="ghost" onPress={() => onOpenChange(false)}>
               {t('common.actions.close')}
             </Button>
-            <Button variant="outline" isDisabled={!complete || !canRun} onPress={() => start()} data-testid="system-diagnostics-again">
-              <RefreshCw className="size-4" aria-hidden="true" />
+            <Button
+              ref={againRef}
+              variant="outline"
+              isDisabled={!complete || !canRun}
+              isPending={againPending}
+              onPress={() => startAgain()}
+              data-testid="system-diagnostics-again"
+            >
+              {againPending ? <Spinner size="sm" color="current" aria-hidden="true" /> : <RefreshCw className="size-4" aria-hidden="true" />}
               {t('system.diagnostics.runAgain')}
             </Button>
           </Modal.Footer>

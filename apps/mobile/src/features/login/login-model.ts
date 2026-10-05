@@ -4,6 +4,8 @@
  *
  * - `loginSchema`: the local zod schema (§5.7: "the login schema is local (two required strings)").
  * - `ringStateFor`: L2, the Core link and the lockout → the C-1 GlowRing tone.
+ * - `liveCoreLookOf`: LIVE only, the runtime's notice and view of the link → the look of the L2 ring,
+ *   the L11 chip and the ambient loops (row M2 follow-up, decision D180).
  * - `noticeFor`: L9, which one Alert the card shows (§6.2 states), highest priority first.
  * - `biometricButtonFor`: L7, hidden / disabled with a caption / enabled (§6.3 step 2).
  * - `splitAroundToken`: renders an i18n sentence with a live C-6 value in the middle.
@@ -15,7 +17,7 @@ import { z } from 'zod';
 import { CORE_HTTP_ORIGIN } from '@dems/shared/api';
 import type { GlowRingState } from '@/components/composed/glow-ring.math';
 import type { AuthNoticeKind, BiometricAvailability } from '@/auth';
-import type { CoreErrorText, CoreLinkInfo, SignOutReason } from '@/runtime';
+import { coreLinkViewOf, type CoreErrorText, type CoreLinkInfo, type CoreLinkView, type SignOutReason } from '@/runtime';
 
 // ---------------------------------------------------------------------------------------------
 // Form
@@ -45,27 +47,76 @@ export const EMPTY_LOGIN_FORM: LoginFormInput = { username: '', password: '' };
 // L2: ring tone
 // ---------------------------------------------------------------------------------------------
 
+/**
+ * LIVE mode: how the L2 ring, the L11 chip and the ambient loops read the Core link (row M2
+ * follow-up, decision D180; findings L-1, L-2 of `gateway_check/09c`). Not the two-valued `state`:
+ * there a link that is still connecting reads OFFLINE, so a cold start showed "Core offline" and a
+ * critical ring while the offline Alert, which follows the runtime's rule, stayed hidden. The input
+ * is the runtime's notice of the link, `useCoreLinkNotice()` (rows M0, M1):
+ *
+ * | The runtime says | Look | Chip | Ring |
+ * |---|---|---|---|
+ * | the notice shows (from the first OFFLINE or STALE until the first heartbeat; a reconnect attempt keeps it, no flicker), or the view is `down` | `offline` | Core offline (danger) | critical |
+ * | the view is `up` | `up` | Core online (success) | ready |
+ * | the view is `settling` and the notice does not show: a cold start, a reconnect with no outage before it | `connecting` | Connecting to Core… (warning) | attention |
+ *
+ * The view `none` (no LIVE source) never reaches it, because only LIVE asks; it would read `connecting`.
+ */
+export type LiveCoreLook = 'up' | 'connecting' | 'offline';
+
+export function liveCoreLookOf(link: { readonly view: CoreLinkView; readonly offline: boolean }): LiveCoreLook {
+  if (link.offline || link.view === 'down') return 'offline';
+  return link.view === 'up' ? 'up' : 'connecting';
+}
+
+/** LIVE: the look handed in, or, without one, the link's view alone (a settling link reads `connecting`). */
+function liveLookFor(coreLink: CoreLinkInfo, liveLook: LiveCoreLook | null): LiveCoreLook {
+  return liveLook ?? liveCoreLookOf({ view: coreLinkViewOf(coreLink), offline: false });
+}
+
+const LIVE_RING: Readonly<Record<LiveCoreLook, GlowRingState>> = { up: 'ready', connecting: 'attention', offline: 'critical' };
+
 export interface RingInputs {
   readonly coreLink: CoreLinkInfo;
   readonly locked: boolean;
+  /** LIVE: the controller's `coreLook` (`liveCoreLookOf(useCoreLinkNotice())`); the other modes leave it out. */
+  readonly liveLook?: LiveCoreLook | null;
 }
 
 /**
  * The login ring (§4.1 L2): the §6.1 lockout → amber (ATTENTION, M-C-22); the Core link OFFLINE →
- * CRITICAL; a STALE heartbeat → ATTENTION; otherwise READY (gold).
+ * CRITICAL; a STALE heartbeat → ATTENTION; otherwise READY (gold). LIVE: the look of the link
+ * (`liveCoreLookOf`), so a link that is still connecting is ATTENTION, never CRITICAL.
  */
-export function ringStateFor({ coreLink, locked }: RingInputs): GlowRingState {
+export function ringStateFor({ coreLink, locked, liveLook = null }: RingInputs): GlowRingState {
   if (locked) return 'attention';
+  if (coreLink.source === 'LIVE') return LIVE_RING[liveLookFor(coreLink, liveLook)];
   if (coreLink.state === 'OFFLINE') return 'critical';
+  // Unreachable from the runtime's links (a STALE heartbeat makes `state` OFFLINE, `core-link.ts`
+  // `coreLinkStateFor`), kept because step 75's test pins it with a hand-built link (row M2, L-2).
   if (coreLink.heartbeat === 'STALE') return 'attention';
   return 'ready';
 }
 
-/** The L11 chip: `ONLINE`, `STALE` or `OFFLINE`, with its status tone. */
-export type CoreChipKind = 'ONLINE' | 'STALE' | 'OFFLINE';
+/** The L11 chip: `ONLINE`, `STALE` or `OFFLINE`, with its status tone; LIVE adds `SETTLING` (still connecting). */
+export type CoreChipKind = 'ONLINE' | 'STALE' | 'OFFLINE' | 'SETTLING';
 
-export function coreChipFor(coreLink: CoreLinkInfo): { kind: CoreChipKind; tone: 'success' | 'warning' | 'danger' } {
+export interface CoreChip {
+  readonly kind: CoreChipKind;
+  readonly tone: 'success' | 'warning' | 'danger';
+}
+
+const LIVE_CHIP: Readonly<Record<LiveCoreLook, CoreChip>> = {
+  up: { kind: 'ONLINE', tone: 'success' },
+  connecting: { kind: 'SETTLING', tone: 'warning' },
+  offline: { kind: 'OFFLINE', tone: 'danger' },
+};
+
+/** The L11 chip of a link. LIVE: the look of the link (`liveCoreLookOf`), as the ring. */
+export function coreChipFor(coreLink: CoreLinkInfo, liveLook: LiveCoreLook | null = null): CoreChip {
+  if (coreLink.source === 'LIVE') return LIVE_CHIP[liveLookFor(coreLink, liveLook)];
   if (coreLink.state === 'OFFLINE') return { kind: 'OFFLINE', tone: 'danger' };
+  // Unreachable from the runtime's links, as in `ringStateFor` (row M2, L-2).
   if (coreLink.heartbeat === 'STALE') return { kind: 'STALE', tone: 'warning' };
   return { kind: 'ONLINE', tone: 'success' };
 }

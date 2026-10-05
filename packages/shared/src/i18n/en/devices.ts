@@ -6,6 +6,10 @@
  *
  * Step 48 extended this file additively: every step-34 key keeps its value (the mobile Devices
  * screens share this namespace).
+ *
+ * Backend task W70 (Devices & Inputs in Live mode) added `devices.live.*`, additively: the words a
+ * Live screen shows where the Simulated screen says "simulated" (04_client_integration_spec §3.2),
+ * and the "Paired devices" row of the device drawer (§7.3 note G6).
  */
 import type { ResourceTree } from '../resource-tree';
 
@@ -303,5 +307,37 @@ export const devices = {
     clipReset: 'Clip latch reset on {{name}}',
     failed: 'The action could not be completed. Please try again.',
     restartWhileRecording: 'Not available while recording',
+  },
+
+  /**
+   * Live mode (backend task W70; 04_client_integration_spec §3.2, §7.3 note G6, §8.3 B-7): the
+   * Core server carries the device commands out and answers them, and the page shows the Core's
+   * data, so nothing here says "simulated". Simulated mode keeps the words above and
+   * `common.deviceMenu.*`.
+   */
+  live: {
+    menu: {
+      testSignal: 'Test signal',
+      restart: 'Restart',
+    },
+    actions: {
+      testSignalSent: 'Test signal sent to {{name}}',
+      restarted: '{{name}} restarted',
+    },
+    lcdLabel: 'Local status display, page {{page}}',
+    /** The camera picture's accessible name: the bundled demo loop (MS-1), not the Core's camera (plan row W0, item 7). */
+    feedAria: '{{name}}, bundled demo picture',
+    samples_one: '{{count}} sample',
+    samples_other: 'Last {{count}} samples',
+    /** The tablet row of the device drawer in Live mode (note G6): the web console does not pair. */
+    pairedDevices: {
+      label: 'Paired devices',
+      summary: '{{paired}} paired, {{online}} online',
+      open: 'Open Paired Devices',
+      connected: 'A paired device is connected',
+      none: 'No paired device is connected',
+      loading: 'Reading the device registry…',
+      unavailable: 'The device registry could not be read.',
+    },
   },
 } as const satisfies ResourceTree;

@@ -3,14 +3,19 @@ import { Alert, Button, Chip, Spinner, Tag, TagGroup, toast } from '@heroui/reac
 import { AnimatePresence, motion } from 'motion/react'
 import { Link2, Link2Off, ShieldCheck } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { settle, useCoreActions } from '@dems/shared/live'
 import { DATE_PATTERNS, formatDate } from '@dems/shared/realtime'
-import { useSim, useSimActions, useSimInstance, type ChainVerifyResult } from '@dems/shared/sim'
+import { useSim, useSimInstance, type ChainVerifyResult } from '@dems/shared/sim'
 import { toneChipProps } from '@dems/shared/tokens'
 import { useRouteEnterDelay } from '@/components/shell'
 import { TextScramble } from '@/components/ui/text-scramble'
 import { GlowLayer, useMotionPolicy } from '@/motion'
+import { useCoreErrorPresenter } from '@/lib/core-errors'
+import { usePendingControl } from '@/lib/pending-control'
 import { cn } from '@/lib/utils'
+import { useWebLive } from '@/runtime'
 import { useAuditLog } from './audit-context'
+import { CoreChainLines, type CoreChainCheck } from './chain-core-lines'
 import { CHAIN_LINK_STAGGER_MS, CONTENT_BEAT_MS, PANEL_BEAT_MS } from './choreography'
 import { logSecurityAudit } from './log'
 import { shortHash, STRIP_SIZE, stripBlocks, type ChainReport } from './model'
@@ -42,12 +47,26 @@ export interface ChainPanelProps {
  *   until the alert is acknowledged (P7, R8), and slides in the discontinuity Alert.
  * - "Verify chain" runs the simulator's `verifyAuditChain()`: Spinner, then the head hash
  *   scrambles to the recomputed value and a PASS/FAIL chip pops (bouncy, one glow; no shake).
+ *
+ * Live mode (plan row W75; 04_client_integration_spec §8.2 A9, §8.3 B-5, §8.4 C-6; AC-C-109):
+ * - A9: the request leaves when the Spinner's time is over, as the simulator's check did (so
+ *   Simulated mode is identical; decision D154 DN-4, D165), through `settle`; the Spinner stays until
+ *   the Core answered (LB-2). The chip is the check over the Core's audit VIEW; under it the panel
+ *   adds the stored-chain line and, when the Core discarded chains, "Earlier chains: n" with the
+ *   read-only list (`./chain-core-lines`). A refusal or an outage goes to the presenter first.
+ * - C-6: the time stamp is the Live clock (`clock.now` of the source), as in Simulated mode.
+ * - B-5: Acknowledge runs `acknowledgeAlert` through the one pending control (busy at once, spinner
+ *   late); the button leaves when the Core's delta marks the alert acknowledged.
  */
 export const ChainPanel = memo(function ChainPanel({ chain, onShowEntry, className }: ChainPanelProps) {
   const { t } = useTranslation()
   const m = useMotionPolicy()
-  const actions = useSimActions()
+  const actions = useCoreActions()
   const sim = useSimInstance()
+  const live = useWebLive()
+  const presentCoreError = useCoreErrorPresenter()
+  // The busy mark goes on the pressed button through `ref` (08a §15); destructured, as Session New does.
+  const { run: runAcknowledge, pending: acknowledgePending, ref: acknowledgeRef } = usePendingControl()
   const routeDelay = useRouteEnterDelay()
   const audit = useAuditLog()
   const tamperAlertId = useSim((s) => s.alerts.find((alert) => alert.active && alert.kind === 'AUDIT_TAMPER')?.id ?? null)
@@ -63,7 +82,7 @@ export const ChainPanel = memo(function ChainPanel({ chain, onShowEntry, classNa
   const selected = blocks.find((block) => block.row.seq === selectedSeq) ?? blocks[blocks.length - 1] ?? null
 
   const [verifying, setVerifying] = useState(false)
-  const [verified, setVerified] = useState<(ChainVerifyResult & { at: number }) | null>(null)
+  const [verified, setVerified] = useState<(ChainVerifyResult & { at: number; core: CoreChainCheck | null }) | null>(null)
   const [verifyCount, setVerifyCount] = useState(0)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => () => {
@@ -90,28 +109,41 @@ export const ChainPanel = memo(function ChainPanel({ chain, onShowEntry, classNa
     setVerifying(true)
     timer.current = setTimeout(() => {
       timer.current = null
-      try {
-        const result = actions.verifyAuditChain()
-        setVerified({ ...result, at: sim.store.getState().clock.now })
-        setVerifyCount((count) => count + 1)
-      } catch (error) {
-        logSecurityAudit('error', 'ChainPanel.verify', error, { rows: audit.rows.length })
-        toast.danger(t('common.errors.generic'))
-      } finally {
-        setVerifying(false)
-      }
+      settle(() => actions.verifyAuditChain(), {
+        ok: (result) => {
+          // Live: the Core's `stored` and `lineage` of this same answer, kept on the Live handle (§2.5).
+          const status = live?.auditChain ?? null
+          const core: CoreChainCheck | null =
+            live === null || status === null ? null : { stored: status.stored, lineage: status.lineage, lineageTotal: status.lineageTotal }
+          setVerified({ ...result, at: sim.store.getState().clock.now, core })
+          setVerifyCount((count) => count + 1)
+        },
+        fail: (error) => {
+          if (presentCoreError(error) !== null) return
+          logSecurityAudit('error', 'ChainPanel.verify', error, { rows: audit.rows.length })
+          toast.danger(t(live === null ? 'common.errors.generic' : 'securityAudit.live.chain.verifyFailed'))
+        },
+        done: () => setVerifying(false),
+      })
     }, m.reduced ? 0 : m.seconds(VERIFY_SPINNER_MS) * 1000)
   }
 
   const acknowledge = () => {
     if (!tamperAlertId) return
-    try {
-      actions.acknowledgeAlert(tamperAlertId)
-      toast.info(t('securityAudit.chain.acknowledged'))
-    } catch (error) {
-      logSecurityAudit('error', 'ChainPanel.acknowledge', error, { alertId: tamperAlertId })
-      toast.danger(t('common.errors.generic'))
-    }
+    const alertId = tamperAlertId
+    runAcknowledge((release) =>
+      settle(() => actions.acknowledgeAlert(alertId), {
+        ok: () => {
+          toast.info(t('securityAudit.chain.acknowledged'))
+        },
+        fail: (error) => {
+          if (presentCoreError(error) !== null) return
+          logSecurityAudit('error', 'ChainPanel.acknowledge', error, { alertId })
+          toast.danger(t('common.errors.generic'))
+        },
+        done: release,
+      }),
+    )
   }
 
   const statusChip = chain.ok ? (
@@ -175,7 +207,16 @@ export const ChainPanel = memo(function ChainPanel({ chain, onShowEntry, classNa
                   {t('securityAudit.chain.jump')}
                 </Button>
                 {tamperAlertId && !tamperAcknowledged ? (
-                  <Button size="sm" variant="danger-soft" onPress={acknowledge}>
+                  <Button
+                    ref={acknowledgeRef}
+                    size="sm"
+                    variant="danger-soft"
+                    onPress={acknowledge}
+                    isPending={acknowledgePending}
+                    data-pending={acknowledgePending ? 'true' : undefined}
+                    data-testid="chain-acknowledge"
+                  >
+                    {acknowledgePending ? <Spinner size="sm" color="current" aria-hidden="true" /> : null}
                     {t('securityAudit.chain.acknowledge')}
                   </Button>
                 ) : null}
@@ -300,6 +341,7 @@ export const ChainPanel = memo(function ChainPanel({ chain, onShowEntry, classNa
           </span>
         ) : null}
       </div>
+      {verified?.core ? <CoreChainLines check={verified.core} /> : null}
     </Panel>
   )
 })

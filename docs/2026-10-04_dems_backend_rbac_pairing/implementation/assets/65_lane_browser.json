@@ -1,0 +1,301 @@
+{
+  "browser": {
+    "product": "HeadlessChrome/153.0.8010.12",
+    "headless": true
+  },
+  "steps": {
+    "signIn": {
+      "at": "15:40:33",
+      "dashboardShown": true,
+      "operator": "OPR-002",
+      "network": {
+        "api": [
+          "GET /api/v1/auth/session 401",
+          "GET /api/v1/auth/status 200",
+          "GET /api/v1/health 200",
+          "POST /api/v1/auth/sign-in 200"
+        ],
+        "sockets": [
+          {
+            "url": "ws://127.0.0.1:5177/ws",
+            "frames": {
+              "hello": 1,
+              "heartbeat": 4
+            }
+          },
+          {
+            "url": "ws://127.0.0.1:5177/ws",
+            "frames": {
+              "hello": 1,
+              "snapshot": 1,
+              "heartbeat": 4,
+              "meters": 49,
+              "delta": 3
+            }
+          }
+        ],
+        "console": []
+      }
+    },
+    "recording": {
+      "at": "15:40:38",
+      "sessionId": "SES-20261005-0024",
+      "state": "RECORDING",
+      "steps": [
+        {
+          "call": "GET /session/current",
+          "status": 200,
+          "code": null,
+          "sessionId": null,
+          "state": null,
+          "caseNumber": null,
+          "precheck": null,
+          "evidenceId": null
+        },
+        {
+          "call": "POST /session/case-number",
+          "status": 200,
+          "caseNumber": "LP/2026/1005-0008"
+        },
+        {
+          "call": "POST /session",
+          "status": 201,
+          "code": null,
+          "sessionId": "SES-20261005-0024",
+          "state": "CREATE"
+        },
+        {
+          "call": "POST /session/{id}/start (from CREATE)",
+          "status": 202,
+          "code": null,
+          "state": "PRECHECK"
+        },
+        {
+          "call": "GET /session/current (pre-check resolved)",
+          "state": "ARMED",
+          "precheck": {
+            "outcome": "PASS",
+            "items": [
+              "CORE=PASS(ONLINE)",
+              "LENS_1=PASS(READY)",
+              "LENS_2=PASS(READY)",
+              "MIC_1=PASS(READY)",
+              "MIC_2=PASS(READY)",
+              "STORAGE=PASS(READY)",
+              "TIME=PASS(GNSS)",
+              "SECURITY=PASS(READY)"
+            ]
+          }
+        },
+        {
+          "call": "POST /session/{id}/start",
+          "status": 200,
+          "code": null,
+          "state": "RECORDING"
+        },
+        {
+          "call": "GET /session/current (after start)",
+          "state": "RECORDING",
+          "precheck": {
+            "outcome": "PASS",
+            "items": [
+              "CORE=PASS(ONLINE)",
+              "LENS_1=PASS(READY)",
+              "LENS_2=PASS(READY)",
+              "MIC_1=PASS(READY)",
+              "MIC_2=PASS(READY)",
+              "STORAGE=PASS(READY)",
+              "TIME=PASS(GNSS)",
+              "SECURITY=PASS(READY)"
+            ]
+          }
+        }
+      ],
+      "network": {
+        "api": [
+          "GET /api/v1/session/current 200",
+          "POST /api/v1/session/case-number 200",
+          "POST /api/v1/session 201",
+          "GET /api/v1/session/current 200",
+          "POST /api/v1/session/SES-20261005-0024/start 202",
+          "GET /api/v1/session/current 200",
+          "GET /api/v1/session/current 200",
+          "GET /api/v1/session/current 200",
+          "GET /api/v1/session/current 200",
+          "GET /api/v1/session/current 200",
+          "GET /api/v1/session/current 200",
+          "GET /api/v1/session/current 200",
+          "GET /api/v1/session/current 200",
+          "GET /api/v1/session/current 200",
+          "GET /api/v1/session/current 200",
+          "POST /api/v1/session/SES-20261005-0024/start 200",
+          "GET /api/v1/session/current 200"
+        ],
+        "sockets": [
+          {
+            "url": "ws://127.0.0.1:5177/ws",
+            "frames": {}
+          },
+          {
+            "url": "ws://127.0.0.1:5177/ws",
+            "frames": {
+              "meters": 94,
+              "delta": 14,
+              "heartbeat": 5
+            }
+          }
+        ],
+        "console": []
+      }
+    },
+    "meters": {
+      "first": {
+        "at": "15:40:49.340",
+        "phase": "RECORDING",
+        "sessionState": "RECORDING",
+        "banner": "ACTIVE",
+        "duration": "00:00:10",
+        "meters": [
+          {
+            "channel": "AUDIO-01",
+            "noSignal": false,
+            "ariaValueNow": "-51",
+            "ariaValueText": "−51 dBFS"
+          },
+          {
+            "channel": "AUDIO-02",
+            "noSignal": false,
+            "ariaValueNow": "-12",
+            "ariaValueText": "−12 dBFS"
+          }
+        ],
+        "coreMode": "LIVE",
+        "hidden": false
+      },
+      "second": {
+        "at": "15:40:52.528",
+        "phase": "RECORDING",
+        "sessionState": "RECORDING",
+        "banner": "ACTIVE",
+        "duration": "00:00:13",
+        "meters": [
+          {
+            "channel": "AUDIO-01",
+            "noSignal": false,
+            "ariaValueNow": "-51",
+            "ariaValueText": "−51 dBFS"
+          },
+          {
+            "channel": "AUDIO-02",
+            "noSignal": false,
+            "ariaValueNow": "-15",
+            "ariaValueText": "−15 dBFS"
+          }
+        ],
+        "coreMode": "LIVE",
+        "hidden": false
+      },
+      "moved": true,
+      "screenshots": [
+        "65_session_monitor_live_meters_1.png",
+        "65_session_monitor_live_meters_2.png"
+      ],
+      "networkInBetween": {
+        "api": [],
+        "sockets": [
+          {
+            "url": "ws://127.0.0.1:5177/ws",
+            "frames": {}
+          },
+          {
+            "url": "ws://127.0.0.1:5177/ws",
+            "frames": {}
+          },
+          {
+            "url": "ws://127.0.0.1:5177/ws",
+            "frames": {
+              "meters": 64,
+              "heartbeat": 3,
+              "delta": 3
+            }
+          }
+        ],
+        "console": []
+      }
+    },
+    "stop": {
+      "at": "15:41:03",
+      "dialogOpened": true,
+      "dialogClosedOnSettle": true,
+      "overlayShown": true,
+      "sealed": true,
+      "facts": {
+        "modalState": "SEALED",
+        "modalMode": "finalization",
+        "sealedLine": "SEALEDEvidence EV-20261005-0014 sealedSealed 7.6 s after the recording endedManifest SHA-256SIMULATEDManifest SHA-256d0daa3a3a6cc9c1fed6e99fe…No DEMO package exists for this item.",
+        "banner": "SEALED",
+        "steps": []
+      },
+      "server": {
+        "status": 200,
+        "code": null,
+        "sessionId": "SES-20261005-0024",
+        "state": "SEALED",
+        "caseNumber": null,
+        "precheck": {
+          "outcome": "PASS",
+          "items": [
+            "CORE=PASS(ONLINE)",
+            "LENS_1=PASS(READY)",
+            "LENS_2=PASS(READY)",
+            "MIC_1=PASS(READY)",
+            "MIC_2=PASS(READY)",
+            "STORAGE=PASS(READY)",
+            "TIME=PASS(GNSS)",
+            "SECURITY=PASS(READY)"
+          ]
+        },
+        "evidenceId": "EV-20261005-0014"
+      },
+      "screenshots": [
+        "65_end_session_dialog_live.png",
+        "65_session_sealed_live.png"
+      ],
+      "network": {
+        "api": [
+          "POST /api/v1/session/SES-20261005-0024/stop 202",
+          "GET /api/v1/session/current 200"
+        ],
+        "sockets": [
+          {
+            "url": "ws://127.0.0.1:5177/ws",
+            "frames": {}
+          },
+          {
+            "url": "ws://127.0.0.1:5177/ws",
+            "frames": {}
+          },
+          {
+            "url": "ws://127.0.0.1:5177/ws",
+            "frames": {
+              "meters": 193,
+              "delta": 16,
+              "heartbeat": 10
+            }
+          }
+        ],
+        "console": []
+      }
+    },
+    "signOut": {
+      "status": 204,
+      "code": null,
+      "sessionId": null,
+      "state": null,
+      "caseNumber": null,
+      "precheck": null,
+      "evidenceId": null
+    },
+    "consoleAtEnd": []
+  }
+}

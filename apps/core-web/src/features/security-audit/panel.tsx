@@ -69,7 +69,7 @@ interface BoundaryState {
 /**
  * Catches a render failure inside one panel: the panel shows a friendly message with a
  * rate-limited retry (3 s → 6 s → 12 s, max 3); the rest of the page keeps working. The
- * structured record goes to the dev console (no client log endpoint, D41(g)).
+ * structured record goes to the page's own log (`./log`; no client log endpoint, D41(g)).
  */
 export class PanelErrorBoundary extends Component<BoundaryProps, BoundaryState> {
   override state: BoundaryState = { error: null, resets: 0 }
@@ -79,7 +79,7 @@ export class PanelErrorBoundary extends Component<BoundaryProps, BoundaryState> 
   }
 
   override componentDidCatch(error: Error, info: ErrorInfo) {
-    logSecurityAudit('error', 'PanelErrorBoundary', error, { panel: this.props.panel, componentStack: info.componentStack })
+    logSecurityAudit('error', 'PanelErrorBoundary', error, { panel: this.props.panel, componentStack: info.componentStack ?? null })
   }
 
   private readonly reset = () => {

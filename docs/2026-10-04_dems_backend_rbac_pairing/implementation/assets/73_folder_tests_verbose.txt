@@ -1,0 +1,69 @@
+## 2026-10-06 01:58:22 WIB $ npm run test -w @dems/mobile -- --maxWorkers=2 --verbose src/features/session-recovery
+PASS src/features/session-recovery/live-recovery-restart.test.tsx (10.581 s)
+    ✓ the Core comes back in a new epoch with the session in FAULT; Recovery opens and recovers the session truthfully to INCOMPLETE (1687 ms)
+    ✓ a second restart while in FAULT: the notice while the Core is down (a press sends nothing); afterwards the same fault, the same instant, and Start works (924 ms)
+    ✓ a restart during the recovery: Back is held while the Core answers; the screen keeps the last state while it is down; the Core completes the recovery at its deadline and the screen shows its outcome (1061 ms)
+    ✓ while the Core is down during the recovery, Back leaves (the analysis runs on the Core, not here) (607 ms)
+    ✓ a POWER_FAIL delta on the monitor: the route sync opens Recovery in FAULT, and Start works (266 ms)
+PASS src/features/session-recovery/session-recovery-screen.test.tsx
+    ✓ FAULT: names the fault calmly, waits on the five-step pipeline and offers Start recovery (282 ms)
+    ✓ drives FAULT → RECOVERY → INCOMPLETE on the simulator clock and asserts each screen state (480 ms)
+    ✓ Acknowledge marks the fault alert as seen, settles the ring for 600 ms of simulator time, then opens Home (263 ms)
+    ✓ opens the unsealed evidence item from the outcome card (217 ms)
+    ✓ role gating: a Technician sees the rule and gets the SimPermissionError toast; the session stays in FAULT (170 ms)
+    ✓ a fault before recording started: no media on any track, no evidence item (257 ms)
+    ✓ SIM-GAP-M81-1: a SEALED history entry would show RECOVERED · SEALED with the recovery signature (215 ms)
+    ✓ Back while the analysis runs is consumed with a calm toast and changes nothing (108 ms)
+    ✓ Back in FAULT with nothing below goes Home instead of leaving the app (F-79-1) (80 ms)
+    ✓ §3.7: a critical fault while the operator is on the monitor routes here (production route sync) (122 ms)
+    ✓ a session that is not interrupted, and no session at all, get a notice with the way out (98 ms)
+    ✓ tablet landscape puts the analysis details pane beside the recovery card (101 ms)
+PASS src/features/session-recovery/recovery.model.test.ts
+    ✓ maps the live state and the followed outcome (1 ms)
+    ✓ counts 8 milestones over the 3 s and never lags the simulator stage
+    ✓ resolves the four tracks in order, one checking at a time (1 ms)
+    ✓ waits in FAULT, runs one step at a time in RECOVERY, finishes on the outcome
+    ✓ marks a finished step with a finding as warn (one halo, then steady amber; P7)
+    ✓ tracks: GAP for a lost source, FLAGGED for clipping, INTACT otherwise, NO MEDIA before recording
+    ✓ time: GNSS → NTP (or RTC) from the loss; GNSS throughout without one
+    ✓ last good segment: the newest autosave, else the recording start, else none
+    ✓ maps the simulator outcome (RECOVERED only through SIM-GAP-M81-1) (1 ms)
+    ✓ ring: critical in FAULT, attention while recovering and when incomplete, ready once acknowledged
+    ✓ settles 600 ms after Acknowledge on the simulator clock
+    ✓ formats sizes in decimal units
+    ✓ SIM-GAP-M81-2: only SESSION_START roles start recovery; others get SimPermissionError before the simulator (6 ms)
+    ✓ SIM-GAP-M81-1: a recovery signature only for a sealed item (1 ms)
+PASS src/features/session-recovery/recovery-live-static.test.ts
+    ✓ reads the folder: every production file, sub-folders included
+    ✓ no production file calls the simulator's action hook (1 ms)
+    ✓ no production file reads `.actions` of a `Sim` (a translation key is no read) (3 ms)
+    ✓ S2-3 and S4-8: the actions come from useCoreActions and every result goes through settle; the presenter comes first in LIVE (1 ms)
+    ✓ the Start control is the runtime's pending control (D166): the hook, busyState and PendingSpinner from the barrel, no copy (1 ms)
+    ✓ names no network API and no Core address
+    ✓ imports no storage or secure-store package, no Live source module, and the runtime only through its barrel (1 ms)
+    ✓ adds no timer: no setTimeout, and the one setInterval is the region boundary's retry countdown of step 81
+    ✓ one LIVE idiom and one link rule: source === LIVE, the notice in one call (1 ms)
+    ✓ the LIVE texts say nothing about a simulation (5 ms)
+    ✓ the markers of the simulator's gaps are exactly those of acaff20, per production file; the new files hold none
+    ✓ the copy of Simulated mode is what it was at acaff20 (90 texts; digest computed independently from `git show acaff20:…/i18n.ts`) (1 ms)
+PASS src/features/session-recovery/live-recovery-sites.test.tsx (14.979 s)
+    ✓ success (delta first): one POST for the open session; RECOVERY from the Core; the pipeline on the Core's clock; the Core's INCOMPLETE outcome (1403 ms)
+    ✓ success (answer first): the answer alone moves nothing; the screen moves when the Core's delta arrives (383 ms)
+    ✓ pending (LB-1): busy at the press, no spinner at 300 ms, the spinner after the reveal delay, a second press sends nothing (294 ms)
+    ✓ the control is released after a success: a second session interrupted while this screen still shows the first outcome gets its own request (891 ms)
+    ✓ refusal: 403 (example notPermitted) → the denied toast that names the role; FAULT stays; Start idle; the next press sends again (313 ms)
+    ✓ outage: "Core server unreachable. Nothing was changed."; FAULT stays; Start idle; a second press sends again (395 ms)
+    ✓ a 429 is a limit, not an outage (LB-10): the limit toast with the seconds, no offline wording, no link notice (197 ms)
+    ✓ 409 (the session left FAULT on the Core meanwhile) → the screen's own calm toast, no denial (232 ms)
+    ✓ link down (rows M0, M1): the notice shows, a press is refused here and sends nothing; the notice leaves when the Core is back and Start works (620 ms)
+    ✓ a Technician: the hint names the rule; a press sends nothing and shows the denied toast (the hint, read from the replica) (208 ms)
+    ✓ an Investigator passes the hint: the request goes to the Core, which is the judge (its 403 is shown, see S2-3) (218 ms)
+    ✓ success: one POST for the fault's alert; the Core's delta marks it; Home after the ring settles (798 ms)
+    ✓ two matching alerts: both requests are out before either answer arrives (nothing waits), and Home follows on its own clock (376 ms)
+    ✓ refusal: a 403 NOT_PERMITTED (CONTRACT-GAP-W66-2: operation 70 has no notPermitted example) → the denied toast; the alert stays unacknowledged; Home still opens (777 ms)
+    ✓ refusal by the contract's own 403 example (originNotAllowed) → "The Core refused this action" (669 ms)
+    ✓ outage: "Core server unreachable" once; the alert stays unacknowledged; Home still opens (571 ms)
+    ✓ mounted twice by StrictMode, the screen starts no Core command at mount; one press sends ONE recoverSession (398 ms)
+    ✓ Start is never busy, no link notice and no derived line; FAULT → RECOVERY before the press returns (185 ms)
+Test Suites: 5 passed, 5 total
+Tests:       61 passed, 61 total

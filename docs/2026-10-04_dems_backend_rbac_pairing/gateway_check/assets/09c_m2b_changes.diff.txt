@@ -1,0 +1,236 @@
+# M2b changes: every edited file against its pre-image (.cache/rollback/M2b/), then the new file with SHA-256
+# generated 2026-10-06 02:57:03 WIB
+
+## apps/mobile/src/features/login/login-model.ts
+--- pre/apps/mobile/src/features/login/login-model.ts
++++ post/apps/mobile/src/features/login/login-model.ts
+@@ -4,6 +4,8 @@
+  *
+  * - `loginSchema`: the local zod schema (§5.7: "the login schema is local (two required strings)").
+  * - `ringStateFor`: L2, the Core link and the lockout → the C-1 GlowRing tone.
++ * - `liveCoreLookOf`: LIVE only, the runtime's notice and view of the link → the look of the L2 ring,
++ *   the L11 chip and the ambient loops (row M2 follow-up, decision D180).
+  * - `noticeFor`: L9, which one Alert the card shows (§6.2 states), highest priority first.
+  * - `biometricButtonFor`: L7, hidden / disabled with a caption / enabled (§6.3 step 2).
+  * - `splitAroundToken`: renders an i18n sentence with a live C-6 value in the middle.
+@@ -15,7 +17,7 @@
+ import { CORE_HTTP_ORIGIN } from '@dems/shared/api';
+ import type { GlowRingState } from '@/components/composed/glow-ring.math';
+ import type { AuthNoticeKind, BiometricAvailability } from '@/auth';
+-import type { CoreErrorText, CoreLinkInfo, SignOutReason } from '@/runtime';
++import { coreLinkViewOf, type CoreErrorText, type CoreLinkInfo, type CoreLinkView, type SignOutReason } from '@/runtime';
+ 
+ // ---------------------------------------------------------------------------------------------
+ // Form
+@@ -45,27 +47,76 @@
+ // L2: ring tone
+ // ---------------------------------------------------------------------------------------------
+ 
++/**
++ * LIVE mode: how the L2 ring, the L11 chip and the ambient loops read the Core link (row M2
++ * follow-up, decision D180; findings L-1, L-2 of `gateway_check/09c`). Not the two-valued `state`:
++ * there a link that is still connecting reads OFFLINE, so a cold start showed "Core offline" and a
++ * critical ring while the offline Alert, which follows the runtime's rule, stayed hidden. The input
++ * is the runtime's notice of the link, `useCoreLinkNotice()` (rows M0, M1):
++ *
++ * | The runtime says | Look | Chip | Ring |
++ * |---|---|---|---|
++ * | the notice shows (from the first OFFLINE or STALE until the first heartbeat; a reconnect attempt keeps it, no flicker), or the view is `down` | `offline` | Core offline (danger) | critical |
++ * | the view is `up` | `up` | Core online (success) | ready |
++ * | the view is `settling` and the notice does not show: a cold start, a reconnect with no outage before it | `connecting` | Connecting to Core… (warning) | attention |
++ *
++ * The view `none` (no LIVE source) never reaches it, because only LIVE asks; it would read `connecting`.
++ */
++export type LiveCoreLook = 'up' | 'connecting' | 'offline';
++
++export function liveCoreLookOf(link: { readonly view: CoreLinkView; readonly offline: boolean }): LiveCoreLook {
++  if (link.offline || link.view === 'down') return 'offline';
++  return link.view === 'up' ? 'up' : 'connecting';
++}
++
++/** LIVE: the look handed in, or, without one, the link's view alone (a settling link reads `connecting`). */
++function liveLookFor(coreLink: CoreLinkInfo, liveLook: LiveCoreLook | null): LiveCoreLook {
++  return liveLook ?? liveCoreLookOf({ view: coreLinkViewOf(coreLink), offline: false });
++}
++
++const LIVE_RING: Readonly<Record<LiveCoreLook, GlowRingState>> = { up: 'ready', connecting: 'attention', offline: 'critical' };
++
+ export interface RingInputs {
+   readonly coreLink: CoreLinkInfo;
+   readonly locked: boolean;
++  /** LIVE: the controller's `coreLook` (`liveCoreLookOf(useCoreLinkNotice())`); the other modes leave it out. */
++  readonly liveLook?: LiveCoreLook | null;
+ }
+ 
+ /**
+  * The login ring (§4.1 L2): the §6.1 lockout → amber (ATTENTION, M-C-22); the Core link OFFLINE →
+- * CRITICAL; a STALE heartbeat → ATTENTION; otherwise READY (gold).
++ * CRITICAL; a STALE heartbeat → ATTENTION; otherwise READY (gold). LIVE: the look of the link
++ * (`liveCoreLookOf`), so a link that is still connecting is ATTENTION, never CRITICAL.
+  */
+-export function ringStateFor({ coreLink, locked }: RingInputs): GlowRingState {
++export function ringStateFor({ coreLink, locked, liveLook = null }: RingInputs): GlowRingState {
+   if (locked) return 'attention';
++  if (coreLink.source === 'LIVE') return LIVE_RING[liveLookFor(coreLink, liveLook)];
+   if (coreLink.state === 'OFFLINE') return 'critical';
++  // Unreachable from the runtime's links (a STALE heartbeat makes `state` OFFLINE, `core-link.ts`
++  // `coreLinkStateFor`), kept because step 75's test pins it with a hand-built link (row M2, L-2).
+   if (coreLink.heartbeat === 'STALE') return 'attention';
+   return 'ready';
+ }
+ 
+-/** The L11 chip: `ONLINE`, `STALE` or `OFFLINE`, with its status tone. */
+-export type CoreChipKind = 'ONLINE' | 'STALE' | 'OFFLINE';
++/** The L11 chip: `ONLINE`, `STALE` or `OFFLINE`, with its status tone; LIVE adds `SETTLING` (still connecting). */
++export type CoreChipKind = 'ONLINE' | 'STALE' | 'OFFLINE' | 'SETTLING';
+ 
+-export function coreChipFor(coreLink: CoreLinkInfo): { kind: CoreChipKind; tone: 'success' | 'warning' | 'danger' } {
++export interface CoreChip {
++  readonly kind: CoreChipKind;
++  readonly tone: 'success' | 'warning' | 'danger';
++}
++
++const LIVE_CHIP: Readonly<Record<LiveCoreLook, CoreChip>> = {
++  up: { kind: 'ONLINE', tone: 'success' },
++  connecting: { kind: 'SETTLING', tone: 'warning' },
++  offline: { kind: 'OFFLINE', tone: 'danger' },
++};
++
++/** The L11 chip of a link. LIVE: the look of the link (`liveCoreLookOf`), as the ring. */
++export function coreChipFor(coreLink: CoreLinkInfo, liveLook: LiveCoreLook | null = null): CoreChip {
++  if (coreLink.source === 'LIVE') return LIVE_CHIP[liveLookFor(coreLink, liveLook)];
+   if (coreLink.state === 'OFFLINE') return { kind: 'OFFLINE', tone: 'danger' };
++  // Unreachable from the runtime's links, as in `ringStateFor` (row M2, L-2).
+   if (coreLink.heartbeat === 'STALE') return { kind: 'STALE', tone: 'warning' };
+   return { kind: 'ONLINE', tone: 'success' };
+ }
+
+## apps/mobile/src/features/login/use-login-controller.ts
+--- pre/apps/mobile/src/features/login/use-login-controller.ts
++++ post/apps/mobile/src/features/login/use-login-controller.ts
+@@ -25,7 +25,10 @@
+  * - the fingerprint result `invalid` (the stored token is dead) shows nothing of its own: the
+  *   auth layer's notice says it, and takes the Alert slot (`noticeFor`);
+  * - the offline Alert follows the Live link without flicker; Retry asks the Live socket to
+- *   reconnect, on the same cooldown; "Use Simulated mode" stores the simulator as the source.
++ *   reconnect, on the same cooldown; "Use Simulated mode" stores the simulator as the source;
++ * - `coreLook` (row M2 follow-up, decision D180): the chip, the ring and the ambient loops read the
++ *   runtime's notice and view of the link (`useCoreLinkNotice()` → `liveCoreLookOf`), never its
++ *   two-valued `state`, so a link that is still connecting never reads "offline" or critical.
+  */
+ import { zodResolver } from '@hookform/resolvers/zod';
+ import { router } from 'expo-router';
+@@ -34,12 +37,13 @@
+ import { HeartbeatContext, useRetryCooldown } from '@dems/shared/realtime';
+ import { useAuthSession } from '@/auth';
+ import { useHaptics } from '@/motion';
+-import { newCorrelationId, reportRuntimeIssue, setCoreLinkSource, useAuth, useCoreLink, useMobileLive } from '@/runtime';
++import { newCorrelationId, reportRuntimeIssue, setCoreLinkSource, useAuth, useCoreLink, useCoreLinkNotice, useMobileLive } from '@/runtime';
+ import { isLimitFailure, isLiveLogin, liveAttemptFor, liveOfflineNoticeAfter } from './login-live-model';
+ import {
+   EMPTY_LOGIN_FORM,
+   isCoreBlocked,
+   isSubmitDisabled,
++  liveCoreLookOf,
+   loginSchema,
+   noticeFor,
+   type AttemptOutcome,
+@@ -72,6 +76,9 @@
+   /** LIVE mode: the Core server is the Core. Every LIVE branch below hangs on this one word of the runtime. */
+   const live = isLiveLogin(coreLink);
+   const mobileLive = useMobileLive();
++  /** LIVE: how the chip, the ring and the ambient loops read the link (`null` in the other modes). */
++  const linkNotice = useCoreLinkNotice();
++  const coreLook = live ? liveCoreLookOf(linkNotice) : null;
+ 
+   const form = useForm<LoginFormInput, unknown, LoginFormValues>({
+     resolver: zodResolver(loginSchema),
+@@ -332,6 +339,7 @@
+     pending,
+     notice,
+     coreLink,
++    coreLook,
+     coreBlocked,
+     lockout,
+     biometric,
+
+## apps/mobile/src/features/login/login-screen.tsx
+--- pre/apps/mobile/src/features/login/login-screen.tsx
++++ post/apps/mobile/src/features/login/login-screen.tsx
+@@ -31,7 +31,7 @@
+ import { GoldDust } from './login-ambient';
+ import { LoginBrand } from './login-brand';
+ import { LoginCard } from './login-card';
+-import { ringSizeFor, ringStateFor } from './login-model';
++import { coreChipFor, ringSizeFor, ringStateFor } from './login-model';
+ import { useLoginChoreography } from './use-login-choreography';
+ import { useLoginController } from './use-login-controller';
+ 
+@@ -58,14 +58,16 @@
+   const controller = useLoginController({ onRejected: choreography.shake, onAccepted: choreography.leave });
+ 
+   // Ambient loops (§7.3 Login, ≤ 4): ring rotation, bracket breathing, Ken Burns, gold dust. The
+-  // dust yields its slot to the Core-offline chip breath (login-card.tsx) while the Core is down.
+-  const coreOffline = controller.coreLink.state === 'OFFLINE';
++  // dust yields its slot to the Core-offline chip breath (login-card.tsx) while the chip says the
++  // Core is down. LIVE (row M2 follow-up, D180): the chip, the ring and the loops read the runtime's
++  // view of the link (`controller.coreLook`), so a link that is still connecting is not "offline".
++  const coreOffline = coreChipFor(controller.coreLink, controller.coreLook).kind === 'OFFLINE';
+   const ringLoops = useAmbientLoop('login-ring-rotation', { paused: !focused });
+   useAmbientLoop('login-ring-breath', { paused: !focused });
+   const kenBurns = useAmbientLoop('login-ken-burns', { paused: !focused });
+   const dust = useAmbientLoop('login-gold-dust', { paused: !focused, active: !coreOffline });
+ 
+-  const ringState = ringStateFor({ coreLink: controller.coreLink, locked: controller.lockout.locked });
++  const ringState = ringStateFor({ coreLink: controller.coreLink, locked: controller.lockout.locked, liveLook: controller.coreLook });
+   const ringSize = ringSizeFor(layoutClass);
+ 
+   const brand = (
+
+## apps/mobile/src/features/login/login-card.tsx
+--- pre/apps/mobile/src/features/login/login-card.tsx
++++ post/apps/mobile/src/features/login/login-card.tsx
+@@ -585,7 +585,8 @@
+   const pairingState = useSim(selectPairingState);
+   const device = useSim(selectCoreDeviceId);
+   const gate = usePairing();
+-  const chip = coreChipFor(controller.coreLink);
++  // LIVE: the runtime's look of the link (row M2 follow-up, D180): still connecting is not "offline".
++  const chip = coreChipFor(controller.coreLink, controller.coreLook);
+   // LIVE (§9.2, AC-C-72): the pairing gate says whether this tablet is paired, and as which device.
+   const liveText = controller.live ? liveTrustTextFor(liveTrustLineFor(gate, device)) : null;
+   const paired = controller.live ? gate.state === 'PAIRED' && gate.deviceId !== null : pairingState === 'PAIRED';
+@@ -605,7 +606,7 @@
+           testID="login-core-chip"
+           tone={chip.tone}
+           label={t(`features.login.coreChip.${chip.kind}`)}
+-          icon={chip.kind === 'ONLINE' ? 'Wifi' : 'TriangleAlert'}
++          icon={chip.kind === 'ONLINE' || chip.kind === 'SETTLING' ? 'Wifi' : 'TriangleAlert'}
+           size="sm"
+         />
+       </Animated.View>
+
+## apps/mobile/src/features/login/i18n.ts
+--- pre/apps/mobile/src/features/login/i18n.ts
++++ post/apps/mobile/src/features/login/i18n.ts
+@@ -45,6 +45,8 @@
+     ONLINE: 'Core online',
+     STALE: 'Core link stale',
+     OFFLINE: 'Core offline',
++    // LIVE only (row M2 follow-up, D180): the link to the Core server is still connecting.
++    SETTLING: 'Connecting to Core…',
+   },
+   // Backend task W59 (04_client_integration_spec §9.2, §3.5; additive): what the Login alone says
+   // while the Core server is the Core (LIVE mode, debug builds). No key above is read differently.
+
+## new file
+2f64e4a10f0fa049d14bb3fcc3e6fcdf6cfaac7af7fbc2a9ee43c1e381bd02b1  apps/mobile/src/features/login/live-login-link-visuals.test.tsx
+
+## post-images (SHA-256)
+2c7a94edfc1c9016d6a7322699896377de92f3c913d6164fd13c0488b07da065  apps/mobile/src/features/login/login-model.ts
+2bc2360fab3d76b7fc60bc233fa1842b1e441f3b178d7ff0bc9857de5e8511da  apps/mobile/src/features/login/use-login-controller.ts
+50ae131ecfff817df37d05baede8fd30ea000f8120797c0188c669ee4197a75b  apps/mobile/src/features/login/login-screen.tsx
+60978dc03cebf72301b3946cd3d11f62f62640cfabf23fdd6b3af1b9692fcd6c  apps/mobile/src/features/login/login-card.tsx
+b31179ac2dd8f8f0762faf08c6670a3aa295edcf7c4f07ade6349668b0e4045b  apps/mobile/src/features/login/i18n.ts
+## unchanged (pre-image kept, not edited): apps/mobile/src/features/login/login-live-model.ts
+1f3d8d1003a2658119362c2a3c0acfeafe414bf83e8bd8e33bbf302235a3ef21  apps/mobile/src/features/login/login-live-model.ts

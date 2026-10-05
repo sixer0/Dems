@@ -1,0 +1,124 @@
+#!/usr/bin/env python3
+"""W74 mutation check of the Live behaviour of `features/evidence/` (the M0 / W60 method, rule M15).
+
+Each mutation changes texts of ONE production file IN MEMORY (the jest transformer beside this file)
+and runs the row's Live test files. A mutation is DETECTED when jest exits non-zero. Nothing in the
+tree is written: the hashes of the mutated files are compared before and after the whole run.
+
+  python3 mutate.py [id ...]      (no id: all; 'control' runs the unmutated tests once)
+"""
+import hashlib, json, os, re, subprocess, sys, time
+
+ROOT = '/Users/gsp-budi/Documents/DEMS'
+APP = ROOT + '/apps/mobile'
+HERE = os.path.dirname(os.path.abspath(__file__))
+SPEC = HERE + '/spec.json'
+CONFIG = HERE + '/jest.mut.config.cjs'
+EV = 'src/features/evidence/'
+TESTS = [APP + '/' + EV + name for name in (
+    'live-evidence-archive.test.tsx', 'live-evidence-export.test.tsx', 'live-evidence-verify.test.tsx',
+    'live-evidence-strict.test.tsx', 'live-evidence-static.test.ts')]
+AD = EV + 'archive-dialog.tsx'
+EX = EV + 'export-sheet.tsx'
+CV = EV + 'use-core-verify.ts'
+LI = EV + 'live-integrity-tab.tsx'
+MO = EV + 'evidence-model.ts'
+DE = EV + 'evidence-detail.tsx'
+
+def e(frm, to):
+    return {'from': frm, 'to': to}
+
+PROBE = "    settle(() => actions.exportEvidence(evidenceId, { reason: '', destination: '' }), {\n      ok: (result) => {\n        logDenied"
+AUTO = "    queueMicrotask(() => {\n      if (disposed) return;\n      setAutoPending(false);\n      if (run()) setPhase('asking');\n    });"
+
+M = [
+  # S3-1, the archive dialog
+  ('A1', AD, 'the success toast before the answer (the old "call, toast, close" order)', [
+      e("    settle(() => archive(evidenceId), {", "    toast.show({ variant: 'success', label: t('features.evidence.actions.archived', { id: evidenceId }) });\n    settle(() => archive(evidenceId), {")]),
+  ('A2', AD, 'a refusal skips the presenter (no denied toast that names the role)', [e("        if (live && presentCoreError(error)) return;\n", "")]),
+  ('A3', AD, 'the dialog closes at the press, before the answer', [
+      e("    if (!settled) setPressedAt(sim.store.getState().clock.now);", "    if (!settled) setPressedAt(sim.store.getState().clock.now);\n    onOpenChange(false);")]),
+  ('A4', AD, 'the spinner shows at once (no LB-1 delay)', [e("s.clock.now - pressedAt >= LIVE_PENDING_REVEAL_MS", "s.clock.now - pressedAt >= 0")]),
+  # S1-5 / S5-1 / S1-6, the export wizard
+  ('E1', EX, 'a denied role does not call the Core in Live mode (no audited denial)', [
+      e(PROBE, "    setAuth('denied');\n    if (Date.length < 0) settle(() => actions.exportEvidence(evidenceId, { reason: '', destination: '' }), {\n      ok: (result) => {\n        logDenied")]),
+  ('E2', EX, 'the denial counts as recorded without an answer', [e("        setDenialRecorded(false);", "        setDenialRecorded(true);")]),
+  ('E3', EX, 'the build result shows at the answer (no EXPORT_BUILD_MS minimum, LB-2)', [
+      e("useClockDue(live && buildAnswer !== null ? buildFrom : null, reduced ? 0 : EXPORT_BUILD_MS, showBuildAnswer);", "useClockDue(live && buildAnswer !== null ? buildFrom : null, 0, showBuildAnswer);")]),
+  ('E4', EX, 'an outage at Build skips the presenter (no LB-6 return to Reason)', [e("    const presented = presentCoreError(buildAnswer.error);", "    const presented = false;")]),
+  ('E5', EX, 'Live "Verify source" passes without the Core\'s verdict', [e("  const sourceOk = live ? coreSource?.verdict === 'PASS' :", "  const sourceOk = live ? coreSource?.verdict !== 'FAIL' :")]),
+  ('E6', EX, 'INVALID_REASON does not return to Reason', [e("      if (reasonCode === 'INVALID_REASON') setStep(3);", "")]),
+  ('E7', EX, 'the Authorize wait is skipped in Live mode', [
+      e("useClockDue(live && auth === 'checking' ? openedAt : null, reduced ? 0 : EXPORT_AUTH_MS, authorizeLive);", "useClockDue(live && auth === 'checking' ? openedAt : null, 0, authorizeLive);")]),
+  # verify, the Core's verdict
+  ('V1', CV, 'no minimum "asking" time (LB-2)', [e("useClockDue(askedAt !== null && answer !== null ? askedAt : null, minAskMs, handOver);", "useClockDue(askedAt !== null && answer !== null ? askedAt : null, 0, handOver);")]),
+  ('V2', CV, 'a rejection skips the presenter', [e("    const presented = presentCoreError(answer.error);", "    const presented = false;")]),
+  ('L1', LI, 'the kebab "Verify" starts in the effect itself (twice under StrictMode, F69-1)', [e(AUTO, "    setAutoPending(false);\n    if (run()) setPhase('asking');")]),
+  ('L2', LI, 'the chip shows the bundled package\'s verdict before the Core\'s', [
+      e("<VerdictLine verdict={view.verdict} failed={view.failed}", "<VerdictLine verdict={bundledModel?.verdict ?? view.verdict} failed={view.failed}")]),
+  ('L3', LI, 'the "differs" Alert never shows', [e("  const differs = done && verdict !== null", "  const differs = false && done && verdict !== null")]),
+  ('M1', MO, 'the stored hash shown is the sealed one, not the one the Core computed', [e("      actual: answer?.actual ?? null,", "      actual: answer === undefined ? null : (sealed?.sha256 ?? null),")]),
+  ('D1', DE, 'Live mode joins the bundled package by the evidence number (no MS-2 gate)', [e("  const bundleKey = live ? liveSuffix : evidenceId;", "  const bundleKey = live ? (liveSuffix ?? evidenceId) : evidenceId;")]),
+]
+
+def sha(path):
+    with open(path, 'rb') as f:
+        return hashlib.sha256(f.read()).hexdigest()
+
+def jest(env):
+    return subprocess.run(['node', ROOT + '/node_modules/jest/bin/jest.js', '--config', CONFIG, '--maxWorkers=2', '--silent', *TESTS],
+                          cwd=APP, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)  # the alias '@/' resolves from apps/mobile (as M0)
+
+def summary(out):
+    tail = [line.strip() for line in out.splitlines() if line.startswith('Tests:')]
+    files = sorted({line.split()[1].split('/')[-1] for line in out.splitlines() if line.startswith('FAIL ')})
+    first = [re.sub(r'\s+', ' ', line.strip().lstrip('●').strip()) for line in out.splitlines() if line.strip().startswith('● ') and 'Console' not in line]
+    return (tail[-1] if tail else 'no summary line'), files, first[:2]
+
+def main():
+    wanted = set(sys.argv[1:])
+    files = sorted({m[1] for m in M})
+    before = {f: sha(APP + '/' + f) for f in files}
+    print('# W74 mutation check, %s; %d test files per run; the tree is not edited' % (time.strftime('%Y-%m-%d %H:%M:%S'), len(TESTS)), flush=True)
+    if not wanted or 'control' in wanted:
+        started = time.time()
+        run = jest(dict(os.environ, CI='1'))
+        tail, failed, _ = summary(run.stdout)
+        print('control (no mutation): exit=%d %s (%.0f s)' % (run.returncode, tail, time.time() - started), flush=True)
+        if run.returncode != 0:
+            print('## the control run is not green: stop', flush=True)
+            print(run.stdout[-3000:])
+            return 2
+    todo = [m for m in M if not wanted or m[0] in wanted]
+    detected, survived, broken = [], [], []
+    for (mid, file, what, edits) in todo:
+        text = open(APP + '/' + file).read()
+        ok = True
+        for edit in edits:
+            if text.count(edit['from']) != 1:
+                ok = False
+                break
+            text = text.replace(edit['from'], edit['to'], 1)
+        if not ok:
+            broken.append(mid)
+            print('%s  NOT APPLIED: a text does not occur exactly once in %s   (%s)' % (mid, file, what), flush=True)
+            continue
+        json.dump({'id': mid, 'file': file, 'edits': edits}, open(SPEC, 'w'))
+        started = time.time()
+        run = jest(dict(os.environ, W74_MUT_SPEC=SPEC, CI='1'))
+        tail, failed, first = summary(run.stdout)
+        verdict = 'detected' if run.returncode != 0 else 'NOT DETECTED'
+        (detected if run.returncode != 0 else survived).append(mid)
+        print('%s  %-12s %3.0fs  %s  | %s  | %s' % (mid, verdict, time.time() - started, what, tail, ', '.join(failed)), flush=True)
+        for name in first: print('      e.g. %s' % name, flush=True)
+    after = {f: sha(APP + '/' + f) for f in files}
+    print('## %d detected, %d not detected, %d not applied, of %d' % (len(detected), len(survived), len(broken), len(todo)), flush=True)
+    if survived: print('## not detected: ' + ' '.join(survived), flush=True)
+    if broken: print('## not applied: ' + ' '.join(broken), flush=True)
+    print('## the mutated files in the tree, before and after: ' + ('identical' if before == after else 'CHANGED'), flush=True)
+    for f in files: print('   %s  %s' % (after[f][:16], f), flush=True)
+    print('# finished %s' % time.strftime('%H:%M:%S'), flush=True)
+    return 0 if not survived and not broken and before == after else 1
+
+if __name__ == '__main__':
+    sys.exit(main())

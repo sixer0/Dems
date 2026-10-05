@@ -1,0 +1,122 @@
+#!/bin/sh
+# W65 lane check (lane 2, the paired tablet): the web Session Monitor in Live mode against the REAL
+# Core server through the dev proxy, in a real browser, while the paired tablet (dems2_tablet,
+# emulator-5556, DEV-0001) is connected in LIVE mode, so that a recording can start (F69).
+# Run from the workspace root, inside the lane lock (W50's lock pattern, lane 2):
+#   /usr/bin/lockf -k -t 900 .locks/core-server.lane2.lock /bin/sh .cache/w65/lane/run_lane2.sh
+# It starts processes of its own (the lane backend on 127.0.0.1:4422, Vite on 127.0.0.1:5177, a
+# headless Chromium with devtools on 127.0.0.1:9397) and stops them at the end; Metro (8083) and the
+# reverse rules are device-session.sh's, which removes them itself. It never touches a listener it
+# did not start, does NOT reset dems_lane_2 (its pairing tables stay), and prints no credential.
+set -u
+ROOT=/Users/gsp-budi/Documents/DEMS
+K=2; PORT=4422; VITE=5177; DEV=9397; METRO=${METRO_PORT:-8083}
+H="$ROOT/.cache/w65/lane"
+OUT="$H/out"
+ASSETS="$ROOT/docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets"
+CHROME="$HOME/Library/Caches/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-mac-arm64/chrome-headless-shell"
+ANDROID_HOME=${ANDROID_HOME:-$HOME/Library/Android/sdk}
+ADB="$ANDROID_HOME/platform-tools/adb"
+[ -n "${TMPDIR:-}" ] || { echo "ABORT: TMPDIR is not set"; exit 6; }
+PROFILE="${TMPDIR%/}/w65-chrome-profile"
+RUN="w65$(date +%H%M%S)"
+mkdir -p "$OUT" "$ASSETS"
+cd "$ROOT" || exit 6
+
+stamp() { date '+%H:%M:%S'; }
+say() { echo; echo "== $(stamp) $*"; }
+listening() { lsof -nP -iTCP:"$1" -sTCP:LISTEN >/dev/null 2>&1; }
+counts() {
+  npm run db:status -w @dems/core-server -- --database dems_lane_$K 2>&1 | grep -E "^ +(paired_devices|device_credentials|sessions|audit_log|evidence_items|events) +[0-9]+|db:status:" | sed 's/^ */   /'
+}
+
+BACK_PID=""; VITE_PID=""; CHROME_PID=""; STARTED_BACK=0; STARTED_VITE=0; STARTED_CHROME=0
+
+stop_all() {
+  say "stop what this check started"
+  if [ "$STARTED_CHROME" = 1 ]; then
+    kill "$CHROME_PID" 2>/dev/null; wait "$CHROME_PID" 2>/dev/null
+    P=$(lsof -nP -tiTCP:$DEV -sTCP:LISTEN 2>/dev/null); [ -n "$P" ] && kill $P 2>/dev/null
+    echo "chrome stopped"
+  fi
+  if [ "$STARTED_VITE" = 1 ]; then
+    kill "$VITE_PID" 2>/dev/null; wait "$VITE_PID" 2>/dev/null; echo "vite: npm exit status $?"
+    i=0; while listening $VITE && [ $i -lt 20 ]; do i=$((i + 1)); sleep 0.25; done
+    P=$(lsof -nP -tiTCP:$VITE -sTCP:LISTEN 2>/dev/null); [ -n "$P" ] && { echo "vite: fallback kill of the listener $P"; kill $P 2>/dev/null; }
+    : > .locks/core-server.lane$K.vite.pid
+  fi
+  if [ "$STARTED_BACK" = 1 ]; then
+    kill "$BACK_PID" 2>/dev/null; wait "$BACK_PID" 2>/dev/null; echo "backend: npm exit status $?"
+    i=0; while listening $PORT && [ $i -lt 40 ]; do i=$((i + 1)); sleep 0.25; done
+    P=$(lsof -nP -tiTCP:$PORT -sTCP:LISTEN 2>/dev/null); [ -n "$P" ] && { echo "backend: fallback kill of the listener $P"; kill $P 2>/dev/null; sleep 1; }
+    : > .locks/core-server.lane$K.pid
+  fi
+  [ -d "$PROFILE" ] && rm -rf "$PROFILE"
+  say "listeners left on $PORT, $VITE, $DEV, $METRO (expect none):"
+  lsof -nP -iTCP:$PORT -iTCP:$VITE -iTCP:$DEV -iTCP:$METRO -sTCP:LISTEN; echo "lsof exit $? (1 with no output: no listener)"
+  echo "-- adb reverse --list on emulator-5556 after the session (expect empty):"
+  "$ADB" -s emulator-5556 reverse --list; echo "adb reverse --list exit $?"
+  say "lane database after the check (not reset)"
+  counts | tee "$OUT/db_counts_after.txt"
+  echo "-- the backend's log: lines $(wc -l < "$OUT/server.log"); lines with level error or fatal: $(grep -c '"level":\(50\|60\)' "$OUT/server.log")"
+  echo "-- lines with a bearer value, a cookie or a credential in the backend's log (must be 0): $(grep -c -E 'dvc_|ses_|bio_|[Bb]earer |[Cc]ookie' "$OUT/server.log")"
+  say "end of run $RUN"; date '+%Y-%m-%d %H:%M:%S %Z'
+}
+trap stop_all EXIT
+
+say "0. run $RUN; the ports must be free before anything is started (nothing is stopped that this check did not start)"
+for p in $PORT $VITE $DEV $METRO; do
+  if listening $p; then echo "port $p is in use:"; lsof -nP -iTCP:$p -sTCP:LISTEN; echo "ABORT: not this check's listener"; exit 3; fi
+done
+echo "free: $PORT $VITE $DEV $METRO"
+date '+%Y-%m-%d %H:%M:%S %Z'; uptime
+echo "-- emulator-user-lock.sh status tablet (read-only, before):"
+"$ROOT/apps/mobile/scripts/emulator-user-lock.sh" status tablet 2>&1 | tee "$OUT/lock_status_start.txt"
+
+say "1. lane database before the check (not reset)"
+counts | tee "$OUT/db_counts_before.txt"
+
+say "2. start the lane backend: DEMS_CORE_PORT=$PORT npm run start:server (demo flag OFF)"
+: > "$OUT/server.log"
+env -u DEMS_DEMO_CONTROLS DEMS_CORE_PORT=$PORT npm run start:server > "$OUT/server.log" 2>&1 &
+BACK_PID=$!; STARTED_BACK=1; echo $BACK_PID > .locks/core-server.lane$K.pid
+i=0; code=000
+while [ $i -lt 240 ]; do
+  code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:$PORT/api/v1/health 2>/dev/null)
+  [ "$code" = "200" ] && break
+  kill -0 "$BACK_PID" 2>/dev/null || break
+  i=$((i + 1)); sleep 0.25
+done
+if [ "$code" != "200" ]; then echo "ABORT: the backend did not come up (last status $code). Last lines of its log:"; tail -15 "$OUT/server.log" | cut -c1-300; exit 4; fi
+echo "backend up after $i quarter seconds, npm pid $BACK_PID"
+lsof -nP -iTCP:$PORT -sTCP:LISTEN
+grep -E 'configuration loaded' "$OUT/server.log" | grep -o '"port":[0-9]*,"database":"[a-z_0-9]*","demoControls":[a-z]*'
+echo "-- direct health on the backend:"; curl -s http://127.0.0.1:$PORT/api/v1/health; echo
+
+say "3. start Vite for lane $K: DEMS_CORE_PROXY_PORT=$PORT VITE_DEMS_CORE_MODE=live npm run dev -w @dems/core-web -- --host 127.0.0.1 --port $VITE --strictPort"
+DEMS_CORE_PROXY_PORT=$PORT VITE_DEMS_CORE_MODE=live npm run dev -w @dems/core-web -- --host 127.0.0.1 --port $VITE --strictPort > "$OUT/vite.log" 2>&1 &
+VITE_PID=$!; STARTED_VITE=1; echo $VITE_PID > .locks/core-server.lane$K.vite.pid
+i=0; until listening $VITE || [ $i -ge 120 ]; do i=$((i + 1)); sleep 0.25; done
+echo "waited $i quarter seconds"; lsof -nP -iTCP:$VITE -sTCP:LISTEN || { echo "ABORT: Vite does not listen"; tail -20 "$OUT/vite.log"; exit 5; }
+echo "-- health through the dev server: $(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:$VITE/api/v1/health)"
+
+say "4. a headless Chromium (devtools on 127.0.0.1:$DEV)"
+rm -rf "$PROFILE"
+"$CHROME" --remote-debugging-port=$DEV --remote-debugging-address=127.0.0.1 --user-data-dir="$PROFILE" --no-first-run --disable-background-networking --disable-component-update --disable-sync --disable-default-apps --disable-domain-reliability --host-resolver-rules="MAP * ~NOTFOUND, EXCLUDE 127.0.0.1, EXCLUDE localhost" --window-size=1440,900 about:blank > "$OUT/chrome.log" 2>&1 &
+CHROME_PID=$!; STARTED_CHROME=1; echo "chrome pid $CHROME_PID"
+"$CHROME" --version 2>/dev/null | head -1
+i=0; until curl -s http://127.0.0.1:$DEV/json/version >/dev/null 2>&1 || [ $i -ge 60 ]; do i=$((i + 1)); sleep 0.25; done
+
+say "5. device session: tablet (emulator-5556), Metro $METRO, device tcp:4420 -> host tcp:$PORT"
+METRO_PORT=$METRO DEMS_CORE_HOST_PORT=$PORT DEVICE_SESSION_MAX_SECONDS=600 LOCK_WAIT=${LOCK_WAIT:-300} \
+  "$ROOT/apps/mobile/scripts/device-session.sh" tablet "/bin/sh '$H/device_w65.sh' '$RUN' '$OUT' '$OUT/server.log' '$DEV' '$VITE' '$ASSETS'"
+DEVICE_EXIT=$?
+echo "device session exit=$DEVICE_EXIT"; echo "$DEVICE_EXIT" > "$OUT/device_exit.txt"
+
+say "6. the backend's request log of the check, by route and status (no body is logged)"
+grep '"msg":"request completed"' "$OUT/server.log" | sed -E 's/.*"method":"([^"]*)","route":"([^"]*)","status":([0-9]*).*"principal":([^,}]*).*/\1 \2 \3 principal=\4/' | sed -E 's/principal="?(operator|device|null)[^ ]*/principal=\1/' | sort | uniq -c | sed 's/^/   /'
+echo "-- tablet link lines:"; grep -i 'tablet' "$OUT/server.log" | sed -E 's/"hostname":"[^"]*",//; s/"pid":[0-9]*,//' | cut -c1-220 | head -n 6
+echo "-- what Vite printed (error lines):"; grep -n "error\|Error" "$OUT/vite.log" | head -8 || true
+echo "-- emulator-user-lock.sh status tablet (read-only, after):"
+"$ROOT/apps/mobile/scripts/emulator-user-lock.sh" status tablet 2>&1 | tee "$OUT/lock_status_end.txt"
+exit "$DEVICE_EXIT"

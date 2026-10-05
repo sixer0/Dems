@@ -17,7 +17,7 @@ import { spacing } from '@dems/shared/tokens';
 import { useAuthSession } from '@/auth';
 import { Pane, PaneLayout, SafeScreen, useLayoutClass } from '@/layout';
 import type { SettingsSection } from '@/navigation/params';
-import { useAuth } from '@/runtime';
+import { useAuth, useCoreLink } from '@/runtime';
 import { ProfileSheet } from './profile-sheet';
 import { SectionBody } from './section-body';
 import { paneSection, SECTION_TITLE_KEYS, type SettingsRouteHref } from './settings-model';
@@ -37,6 +37,7 @@ export function SettingsScreen({ selectedSection }: SettingsScreenProps) {
   const { isMultiPane } = useLayoutClass();
   const auth = useAuth();
   const session = useAuthSession();
+  const live = useCoreLink().source === 'LIVE';
   const [profileOpen, setProfileOpen] = useState(false);
   const section = paneSection(selectedSection);
 
@@ -84,6 +85,7 @@ export function SettingsScreen({ selectedSection }: SettingsScreenProps) {
         isOpen={profileOpen}
         onClose={() => setProfileOpen(false)}
         operator={auth.operator}
+        live={live}
         onLockConsole={() => {
           setProfileOpen(false);
           session.lockConsole();

@@ -976,6 +976,17 @@
     gap: 12px;
   }
 
+  /* Live mode (plan row W69; §14 point 7): the bundled demo package's check beside the Core's verdict. */
+  .evi-bundled {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    border: 1px solid var(--evi-hairline);
+    background: rgb(255 255 255 / 0.02);
+  }
+
   @media (max-width: 1279px) {
     .evi-kpis {
       grid-template-columns: repeat(3, minmax(0, 1fr));

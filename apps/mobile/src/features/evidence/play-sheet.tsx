@@ -8,6 +8,11 @@
  * The step-72 `CameraFeed` plays muted loops with no seek control, so the sheet drives its own
  * expo-video player (the CameraFeed contract allows either, 45 §3.1). Without DEMO media (a later
  * live recording) the sheet shows `CameraFeed`'s procedural playback instead and no audio.
+ *
+ * Live mode (backend task W74; 01_specs MS-2; gateway_check/09 §4 answer 3 rule 8): the media is
+ * the bundled package the Core named, so the first chip reads "Bundled demo package" (not
+ * "Simulated playback"); with no bundled media neither chip shows. The caller passes `live` (the
+ * runtime's hooks do not reach portalled sheet content).
  */
 import { Button, Slider, Tabs, TagGroup } from 'heroui-native';
 import { VideoView } from 'expo-video';
@@ -34,9 +39,11 @@ export interface PlaySheetProps {
   recordedAt: number;
   initialCamera?: VideoTrackId;
   initialMic?: AudioTrackId;
+  /** The Core link source is LIVE (W74): the chips name the bundled package. */
+  live?: boolean;
 }
 
-export function PlaySheet({ isOpen, onClose, evidenceId, media, ...rest }: PlaySheetProps) {
+export function PlaySheet({ isOpen, onClose, evidenceId, media, live = false, ...rest }: PlaySheetProps) {
   const { t } = useTranslation();
   return (
     <SheetFrame
@@ -48,10 +55,17 @@ export function PlaySheet({ isOpen, onClose, evidenceId, media, ...rest }: PlayS
       testID="evidence-play-sheet"
       lockContentPan
       badges={
-        <>
-          <StatusChip size="sm" tone="default" icon={null} label={t('features.evidence.play.simulated')} testID="evidence-play-simulated" />
-          <StatusChip size="sm" tone="warning" icon={null} label={t('features.evidence.play.excerpt')} testID="evidence-play-excerpt" />
-        </>
+        !live ? (
+          <>
+            <StatusChip size="sm" tone="default" icon={null} label={t('features.evidence.play.simulated')} testID="evidence-play-simulated" />
+            <StatusChip size="sm" tone="warning" icon={null} label={t('features.evidence.play.excerpt')} testID="evidence-play-excerpt" />
+          </>
+        ) : media ? (
+          <>
+            <StatusChip size="sm" tone="default" icon={null} label={t('features.evidence.play.bundled')} testID="evidence-play-bundled" />
+            <StatusChip size="sm" tone="warning" icon={null} label={t('features.evidence.play.excerpt')} testID="evidence-play-excerpt" />
+          </>
+        ) : null
       }
     >
       {media ? (

@@ -24,6 +24,7 @@ import type { PrecheckItem, PrecheckSlice } from '@dems/shared/sim';
 import { spacing } from '@dems/shared/tokens';
 import { SectionCard, StatusChip } from '@/components/kit';
 import { REDUCED_FADE_MS, SPEC_LITERALS, animatePulseOnce, rowReveal, triggerHaptic, useMotionSettings, type MotionSettings } from '@/motion';
+import { PendingSpinner, busyState } from '@/runtime';
 import { CheckIcon } from './check-icon';
 import { DevicePreviews } from './device-previews';
 import { CHECK_ORDER, itemsWith, precheckTone, resolvedCount, valueKey, type GatePhase } from './session-new-model';
@@ -36,6 +37,18 @@ export interface DevicesCheckStepProps {
   /** Simulator already ARMED (a WARN acknowledged earlier, or PASS). */
   armed: boolean;
   onRetry(): void;
+  /**
+   * Live mode (plan row W67, LB-1): "Run checks again" was pressed and its command is out (further
+   * presses are ignored by the screen); `retryPending` once that lasted `LIVE_PENDING_REVEAL_MS`:
+   * the kit's Spinner shows inside the button. Never true in Simulated mode.
+   */
+  retryBusy?: boolean;
+  retryPending?: boolean;
+  /**
+   * Live mode: a blocked `CORE` check is this device's own connection to the Core server (decision
+   * F69), so the block Alert says so. False in Simulated mode, where the step looks as before.
+   */
+  live?: boolean;
   /** Previews above the list (phones, tablet portrait); on tablet landscape they sit in the device column. */
   showPreviews: boolean;
   /** Phones play one feed at a time (04 §7.8 compact budget). */
@@ -50,6 +63,9 @@ export function DevicesCheckStep({
   onAcknowledgedChange,
   armed,
   onRetry,
+  retryBusy = false,
+  retryPending = false,
+  live = false,
   showPreviews,
   liveFeeds,
   paused,
@@ -59,6 +75,7 @@ export function DevicesCheckStep({
   const items = precheck?.items ?? [];
   const done = resolvedCount(items);
   const blocks = itemsWith(items, 'BLOCK');
+  const coreBlocked = live && blocks.some((item) => item.id === 'CORE');
   useGateHaptics(phase);
 
   const reasons = blocks
@@ -95,6 +112,9 @@ export function DevicesCheckStep({
               <Alert.Content>
                 <Alert.Title>{t('sessionNew.devices.blockedTitle')}</Alert.Title>
                 <Alert.Description>{t('sessionNew.devices.blockedBody', { reasons })}</Alert.Description>
+                {coreBlocked ? (
+                  <Alert.Description testID="session-new-gate-live-core">{t('features.session-new.live.coreCheckHint')}</Alert.Description>
+                ) : null}
               </Alert.Content>
             </Alert>
           </Animated.View>
@@ -143,7 +163,14 @@ export function DevicesCheckStep({
         </ListGroup>
 
         {phase === 'block' || (phase === 'warn' && !armed) ? (
-          <Button variant="outline" size="md" onPress={onRetry} testID="session-new-retry-checks">
+          <Button
+            variant="outline"
+            size="md"
+            onPress={onRetry}
+            testID="session-new-retry-checks"
+            {...busyState(retryBusy)}
+          >
+            {retryPending ? <PendingSpinner testID="session-new-retry-spinner" /> : null}
             <Button.Label>{t('features.session-new.devices.retry')}</Button.Label>
           </Button>
         ) : null}

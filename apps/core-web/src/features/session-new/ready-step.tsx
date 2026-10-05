@@ -1,4 +1,5 @@
-import { Button, Card, Chip, Description, Label, Switch } from '@heroui/react'
+import type { RefObject } from 'react'
+import { Button, Card, Chip, Description, Label, Spinner, Switch } from '@heroui/react'
 import { AnimatePresence, motion } from 'motion/react'
 import { Circle, Lock, ShieldCheck, TriangleAlert } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -32,6 +33,14 @@ export interface ReadyStepProps {
   canStart: boolean
   /** Delay before the hero sweep (route enter), ms. */
   enterDelayMs: number
+  /**
+   * Live mode (plan row W64, LB-1): the start request is in flight for longer than the reveal
+   * time. The button shows the kit's pending state, with the `Spinner` in place of the record dot.
+   * Never true in Simulated mode, where the start answers at once.
+   */
+  startPending?: boolean
+  /** The Start button's element (`aria-busy` while the start request is in flight). */
+  startRef?: RefObject<HTMLButtonElement | null>
 }
 
 /**
@@ -41,7 +50,7 @@ export interface ReadyStepProps {
  * The countdown is a centred 3-2-1: each digit rack-focuses in and scales 1.1 → 1 over 600 ms, one
  * second apart (M-PG-NEW). Start is gated on SESSION_START (review 40 M5, rule R4).
  */
-export function ReadyStep({ summary, warnings, countdownOn, onCountdownChange, countdown, onStart, onCancelCountdown, canStart, enterDelayMs }: ReadyStepProps) {
+export function ReadyStep({ summary, warnings, countdownOn, onCountdownChange, countdown, onStart, onCancelCountdown, canStart, enterDelayMs, startPending = false, startRef }: ReadyStepProps) {
   const { t } = useTranslation()
   const m = useMotionPolicy()
   const subjectTone = summary.subjectType ? toneChipProps(SUBJECT_TONE[summary.subjectType]) : null
@@ -128,14 +137,16 @@ export function ReadyStep({ summary, warnings, countdownOn, onCountdownChange, c
               <span className="sn-start-glow">
                 <GlowLayer level={canStart && !counting ? 2 : 0} />
                 <Button
+                  ref={startRef}
                   variant="primary"
                   size="lg"
                   onPress={onStart}
                   isDisabled={!canStart || counting}
+                  isPending={startPending}
                   className="sn-start"
                   data-testid="sn-start"
                 >
-                  <Circle className="sn-rec-dot" aria-hidden="true" />
+                  {startPending ? <Spinner size="sm" color="current" aria-hidden="true" /> : <Circle className="sn-rec-dot" aria-hidden="true" />}
                   {counting ? t('sessionNew.ready.starting') : t('sessionNew.ready.start')}
                 </Button>
               </span>

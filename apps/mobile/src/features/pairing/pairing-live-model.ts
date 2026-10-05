@@ -20,11 +20,11 @@
  * waits 3 s, then 6 s, then 12 s, and never less than the server's `retry-after`. After the third
  * in a row the Retry control is withdrawn; Pair (a deliberate new attempt) stays, behind the wait.
  */
-import { LiveLinkState, LiveTransportError } from '@dems/shared/live';
+import { LiveTransportError, type LiveLinkState } from '@dems/shared/live';
 import type { EpochMs, PairResult } from '@dems/shared/sim';
 import type { GlowRingState } from '@/components/composed/glow-ring.math';
 import type { StepStatus } from '@/components/composed/stepper';
-import { describeCoreError, type PairingNotice } from '@/runtime';
+import { coreLinkViewOf, describeCoreError, type PairingNotice } from '@/runtime';
 import {
   outcomeOf,
   ringStateFor,
@@ -42,29 +42,17 @@ import {
 export type LiveLinkView = 'online' | 'connecting' | 'offline';
 
 /**
- * Whether the "Core server unreachable" notice shows after a change of the Live link. OFFLINE and
- * STALE show it, ONLINE hides it, and CONNECTING and RESYNCING are transients that keep what is
- * shown: with the Core down the link alternates between OFFLINE and CONNECTING at every reconnect
- * attempt, and a notice that follows it would flicker (the rule of the connection banner).
- * `null` is Simulated mode: there is no Live link, and no notice.
+ * Whether the "Core server unreachable" notice shows after a change of the Live link: the runtime's
+ * one rule (`@/runtime`, `link-notice.ts`; row M0), re-exported under the name this screen and its
+ * tests use. The rule is not written here: OFFLINE and STALE show the notice at once, ONLINE and
+ * `null` (Simulated mode) hide it, and the transients keep what is shown.
  */
-export function offlineNoticeAfter(shown: boolean, link: LiveLinkState | null): boolean {
-  switch (link) {
-    case LiveLinkState.OFFLINE:
-    case LiveLinkState.STALE:
-      return true;
-    case LiveLinkState.CONNECTING:
-    case LiveLinkState.RESYNCING:
-      return shown;
-    default:
-      return false;
-  }
-}
+export { offlineNoticeAfter } from '@/runtime';
 
-/** `offline` while the notice shows; else `online` only when a redeem would be sent (the Live source sends while ONLINE only, CL-22). */
+/** `offline` while the notice shows; else `online` only when a redeem would be sent (the Live source sends while ONLINE only, CL-22: the runtime's `up`). */
 export function liveLinkViewFor(link: LiveLinkState | null, offlineShown: boolean): LiveLinkView {
   if (offlineShown) return 'offline';
-  return link === LiveLinkState.ONLINE ? 'online' : 'connecting';
+  return coreLinkViewOf(link) === 'up' ? 'online' : 'connecting';
 }
 
 // ---------------------------------------------------------------------------------------------

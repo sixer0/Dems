@@ -1,0 +1,25 @@
+# W66 device check helper (read-only): reads a screencap PNG.
+#   python3 pixels.py offer <png>      prints "offer" when the app's biometric-offer dialog shows, else "none"
+#   python3 pixels.py signout <png>    prints "X Y" of the red "Sign out" label of More's operator card, or "none"
+import sys
+from PIL import Image
+mode, path = sys.argv[1], sys.argv[2]
+im = Image.open(path).convert('RGB')
+if mode == 'offer':
+    # Measured on W60's capture: the dialog's Enable button is (255,200,107) at x 200 and 900, y 1297;
+    # the dialog's slate surface (31,38,46) at (200,1444). Home without the dialog is (25,16,8) there.
+    def yellow(p): r, g, b = im.getpixel(p); return r > 230 and 170 < g < 230 and b < 150
+    def slate(p): r, g, b = im.getpixel(p); return r < 70 and g < 70 and b < 80 and b > r
+    print('offer' if yellow((200, 1297)) and yellow((900, 1297)) and slate((200, 1444)) else 'none')
+elif mode == 'signout':
+    xs, ys = [], []
+    for y in range(150, 1300, 2):
+        for x in range(545, 1060, 2):
+            r, g, b = im.getpixel((x, y))
+            if r > 190 and g < 140 and b < 140 and r - g > 80:
+                xs.append(x); ys.append(y)
+    if len(xs) < 40:
+        print('none')
+    else:
+        xs.sort(); ys.sort()
+        print(f'{xs[len(xs) // 2]} {ys[len(ys) // 2]}')

@@ -1,0 +1,4 @@
+   audit_log                241
+   device_credentials       1
+   paired_devices           1
+   db:status: OK: dems_lane_1 is at the schema version this code expects and the ledger matches the files.

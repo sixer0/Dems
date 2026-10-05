@@ -3,9 +3,11 @@ import { Button, Chip, Spinner, toast } from '@heroui/react'
 import { AnimatePresence, motion } from 'motion/react'
 import { CircleCheck, CircleDashed, CircleX, ShieldCheck, TriangleAlert } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { settle, useCoreActions } from '@dems/shared/live'
 import { formatUtcOffset } from '@dems/shared/realtime'
-import { useSim, useSimActions, type ChainVerifyResult } from '@dems/shared/sim'
+import { useSim, type ChainVerifyResult } from '@dems/shared/sim'
 import { TextScramble } from '@/components/ui/text-scramble'
+import { useCoreErrorPresenter } from '@/lib/core-errors'
 import { useMotionPolicy } from '@/motion'
 import { cn } from '@/lib/utils'
 import { PANEL_BEAT_MS, useStaggerVariants } from './choreography'
@@ -39,11 +41,20 @@ type VerifyState =
  * gold band down the rows (synced to T's insertion). "Re-verify" recomputes the audit hash chain:
  * Spinner, then the chain head resolves with TextScramble and a PASS chip pops (`bouncy`), or a
  * red FAIL chip with one glow pulse (no shake, P7).
+ *
+ * A9 (plan row W65; [CS] §8.2, LB-2): the Spinner is kept and becomes true. The check is asked for
+ * when the Spinner's literal 700 ms are over, as before, and the Spinner stays until the answer:
+ * the simulator answers at once, a Live result when the Core server did (operation 60). In Live
+ * mode the result is the check over the audit VIEW (`AuditChainStatus.view`), the one the screens
+ * show and the demo fault AUDIT_TAMPER breaks; the stored chain is the Security & Audit page's
+ * line. A refusal goes to the presenter first (an outage, a limit, the address of an
+ * ORIGIN_NOT_ALLOWED), else to the page's own toast.
  */
 export function IntegrityPanel() {
   const { t } = useTranslation()
   const m = useMotionPolicy()
-  const actions = useSimActions()
+  const actions = useCoreActions()
+  const presentCoreError = useCoreErrorPresenter()
   const integrity = useSim(selectIntegrity)
   const container = useStaggerVariants(PANEL_BEAT_MS.N, 80)
   const [verify, setVerify] = useState<VerifyState>({ phase: 'idle' })
@@ -60,18 +71,23 @@ export function IntegrityPanel() {
   }
 
   const reverify = () => {
+    // LB-1: the button is disabled while a check runs, and a press in that time does nothing.
     if (verify.phase === 'running') return
     setVerify({ phase: 'running' })
     timer.current = setTimeout(() => {
-      try {
-        const result = actions.verifyAuditChain()
-        runs.current += 1
-        setVerify({ phase: 'done', result, runs: runs.current })
-      } catch (error) {
-        logSessionMonitorError('IntegrityPanel.reverify', error)
-        setVerify({ phase: 'idle' })
-        toast.danger(t('session.integrity.verifyFailed'))
-      }
+      timer.current = null
+      settle(() => actions.verifyAuditChain(), {
+        ok: (result) => {
+          runs.current += 1
+          setVerify({ phase: 'done', result, runs: runs.current })
+        },
+        fail: (error) => {
+          logSessionMonitorError('IntegrityPanel.reverify', error)
+          setVerify({ phase: 'idle' })
+          if (presentCoreError(error) !== null) return
+          toast.danger(t('session.integrity.verifyFailed'))
+        },
+      })
     }, m.reduced ? 0 : VERIFY_SPIN_MS)
   }
 

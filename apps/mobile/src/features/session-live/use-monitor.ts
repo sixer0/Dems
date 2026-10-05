@@ -10,24 +10,43 @@
  * the persistent runtime log (`dems.mobile.log.v1`, step 73), never swallowed. The stop reason is
  * free text typed by the investigator, so only its length is logged.
  *
+ * **Live mode** (backend task, plan row W68; 04_client_integration_spec §8.6 S2-1, §8.7 S4-2). The
+ * same hooks read the replica of the Core server (the Live source is the store), and the actions go
+ * through `useCoreActions()` + `settle`, so ONE wrapper serves both modes:
+ *
+ * | Mode | When the handlers run | A refusal |
+ * |---|---|---|
+ * | SIMULATED, HEARTBEAT | before the call returns (`settle`, CL-25): exactly the step-79 order | the step-79 toasts |
+ * | LIVE | when the Core answered and the store holds the effect (CL-16) | the refusal presenter first (denied with the role, offline, limit; mobile rule 2), then the step-79 branch; a stop reason the Core refuses (422 `INVALID_REASON`, F59) is the reason field's error, without a toast |
+ *
+ * The read-only refusal while the Core link is down stays first ([CS:S2-1]). Whether the screen is
+ * read-only is the runtime's one rule, `useCoreLinkReadOnly()` (row M2; shared with Recovery): in LIVE
+ * the notice of rows M0 and M1 (read-only from the first OFFLINE or STALE until the first ONLINE, a
+ * reconnect attempt keeps it, a cold start flashes nothing); SIMULATED and HEARTBEAT keep step 79's.
+ *
+ * The meters need no code here: `useAudioSharedValues` (runtime) copies each frame of the store's
+ * `audio` slice into Reanimated shared values, and in LIVE the Live source writes that slice from the
+ * socket's `meters` frames (CL-11b, §2.3; [CS:S4-9] "no change"). Nothing on this screen polls.
+ *
  * Every function that calls a hook is named `use*` (D66: the device build runs the React Compiler).
  */
 import { useToast } from 'heroui-native';
 import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { AudioTrackId, VideoTrackId } from '@dems/shared/domain';
+import { settle, useCoreActions } from '@dems/shared/live';
 import {
+  SimErrorCode,
   SimTransitionError,
   selectCameras,
   selectMics,
   selectTimeline,
   useSim,
-  useSimActions,
   type CameraStatus,
   type MicStatus,
   type TimelineEvent,
 } from '@dems/shared/sim';
-import { reportRuntimeIssue, useConnectionBanner, useCoreLink } from '@/runtime';
+import { reportRuntimeIssue, useCoreErrorPresenter, useCoreLink, useCoreLinkReadOnly } from '@/runtime';
 import { elapsedSecondsAt, statusStrip, type StripChip } from './session-live.math';
 
 /** The recording session's identity and counters (primitives only). */
@@ -97,67 +116,115 @@ export function useMonitorStrip(): StripChip[] {
   });
 }
 
+/** Why a session command did not go through, for the control that sent it. */
+export type MonitorRefusal =
+  /** The Core refused the stop reason (422 `INVALID_REASON`; F59: the server is the judge). The reason field says so; no toast. */
+  | 'reason'
+  /** Refused or failed: a toast has already said why. */
+  | 'refused';
+
 /**
- * S7: session actions become read-only while the Core link is OFFLINE (the connection banner shows
- * why). Display-only controls (Audio Monitor, Settings, camera choice) stay available.
+ * What the control that sent a session command does with its outcome (S2-1: "each consumer moves
+ * what followed the `if` into `ok`"). Exactly one of `ok` and `refused` runs, once, then `done`.
+ * In SIMULATED and HEARTBEAT mode they all run before the action call returns.
  */
-export function useMonitorReadOnly(): boolean {
-  const banner = useConnectionBanner();
-  const link = useCoreLink();
-  return banner.kind === 'offline' || link.state === 'OFFLINE';
+export interface MonitorHandlers {
+  /** The command went through; the store already holds its effect (CL-16). */
+  readonly ok?: () => void;
+  /** It did not; any toast has been shown. */
+  readonly refused?: (why: MonitorRefusal) => void;
+  /** Once after either, in every path: release the control (`usePendingPress`). */
+  readonly done?: () => void;
 }
 
 export interface MonitorActions {
-  /** M-C-18: `snapshot()`. Returns false (after a toast) when refused. */
-  snapshot(): boolean;
+  /** M-C-18: `snapshot()`. */
+  snapshot(handlers?: MonitorHandlers): void;
   /** M-C-17: `addMarker(label)`; `undefined` numbers it ("Marker n"). */
-  addMarker(label: string | undefined): boolean;
+  addMarker(label: string | undefined, handlers?: MonitorHandlers): void;
   /** S6: `stopRecording(reason)`; route-sync then opens `/session/finalizing`. */
-  endSession(reason: string): boolean;
-  /** S8: the CLIP latch chip. */
-  resetClip(channel: AudioTrackId): boolean;
-  /** S3: Cam 1 | Cam 2 (display choice; the recording keeps both tracks). */
-  setActiveCamera(cameraId: VideoTrackId): boolean;
+  endSession(reason: string, handlers?: MonitorHandlers): void;
+  /** S8: the CLIP latch chip (its result is ignored, as before). */
+  resetClip(channel: AudioTrackId, handlers?: MonitorHandlers): void;
+  /** S3: Cam 1 | Cam 2 (display choice; the recording keeps both tracks; its result is ignored, as before). */
+  setActiveCamera(cameraId: VideoTrackId, handlers?: MonitorHandlers): void;
 }
 
 type ActionName = 'snapshot' | 'addMarker' | 'endSession' | 'resetClip' | 'setActiveCamera';
+type LogContext = Readonly<Record<string, string | number | boolean>>;
 
-/** Session actions with the D61 error contract: SimTransitionError → toast; anything else → toast + error log. */
+/**
+ * Session actions with the D61 error contract: SimTransitionError → toast; anything else → toast +
+ * error log. S2-1 of the backend task: one `settle` per command, in both modes (the table in this
+ * file's header).
+ */
 export function useMonitorActions(): MonitorActions {
-  const actions = useSimActions();
+  const actions = useCoreActions();
+  const live = useCoreLink().source === 'LIVE';
+  const presentCoreError = useCoreErrorPresenter();
   const { toast } = useToast();
   const { t } = useTranslation();
-  const readOnly = useMonitorReadOnly();
+  // S7: session actions are read-only while the Core link is down (the runtime's one rule, row M2;
+  // the banner says why). Display-only controls (CLIP reset, camera choice) are not guarded.
+  const readOnly = useCoreLinkReadOnly();
+
+  /** Shows and logs why a command failed; tells the control what it may do next. */
+  const explain = useCallback(
+    (name: ActionName, error: unknown, context: LogContext): MonitorRefusal => {
+      // F59: the Core judges the reason (it counts characters; the dialog counts the simulator's code
+      // units). Its 422 comes back as the simulator's REASON_TOO_SHORT (CL-20). The dialog's own
+      // check is the simulator's rule, so a Simulated stop never gets here.
+      if (live && error instanceof SimTransitionError && error.code === SimErrorCode.REASON_TOO_SHORT) {
+        reportRuntimeIssue('warn', `sessionLive.${name}`, error, context);
+        return 'reason';
+      }
+      // Live mode: a denial, an outage or a limit is the presenter's (one wording on every screen,
+      // mobile rule 2); it is an expected state of the role or the link, so it is logged as a warning.
+      if (live && presentCoreError(error)) {
+        reportRuntimeIssue('warn', `sessionLive.${name}`, error, context);
+        return 'refused';
+      }
+      if (error instanceof SimTransitionError) {
+        toast.show({ variant: 'warning', label: t('features.session-live.errors.notRecording') });
+        reportRuntimeIssue('warn', `sessionLive.${name}`, error, context);
+      } else {
+        toast.show({ variant: 'danger', label: t('features.session-live.errors.actionFailed') });
+        reportRuntimeIssue('error', `sessionLive.${name}`, error, context);
+      }
+      return 'refused';
+    },
+    [live, presentCoreError, toast, t],
+  );
 
   const run = useCallback(
-    (name: ActionName, work: () => void, context: Readonly<Record<string, string | number | boolean>> = {}, guarded = true): boolean => {
+    (name: ActionName, work: () => unknown, context: LogContext, guarded: boolean, handlers: MonitorHandlers = {}): void => {
       if (guarded && readOnly) {
         toast.show({ variant: 'warning', label: t('features.session-live.errors.readOnly') });
         reportRuntimeIssue('info', `sessionLive.${name}`, 'Refused while the Core link is offline', context);
-        return false;
-      }
-      try {
-        work();
-        return true;
-      } catch (error) {
-        if (error instanceof SimTransitionError) {
-          toast.show({ variant: 'warning', label: t('features.session-live.errors.notRecording') });
-          reportRuntimeIssue('warn', `sessionLive.${name}`, error, context);
-        } else {
-          toast.show({ variant: 'danger', label: t('features.session-live.errors.actionFailed') });
-          reportRuntimeIssue('error', `sessionLive.${name}`, error, context);
+        try {
+          handlers.refused?.('refused');
+        } finally {
+          handlers.done?.();
         }
-        return false;
+        return;
       }
+      settle(work, {
+        ok: () => handlers.ok?.(),
+        fail: (error) => {
+          const why = explain(name, error, context);
+          handlers.refused?.(why);
+        },
+        done: () => handlers.done?.(),
+      });
     },
-    [readOnly, toast, t],
+    [readOnly, toast, t, explain],
   );
 
   return {
-    snapshot: () => run('snapshot', () => actions.snapshot()),
-    addMarker: (label) => run('addMarker', () => actions.addMarker(label), { labelled: label !== undefined }),
-    endSession: (reason) => run('endSession', () => actions.stopRecording(reason), { reasonLength: reason.length }),
-    resetClip: (channel) => run('resetClip', () => actions.resetClip(channel), { channel }, false),
-    setActiveCamera: (cameraId) => run('setActiveCamera', () => actions.setActiveCamera(cameraId), { cameraId }, false),
+    snapshot: (handlers) => run('snapshot', () => actions.snapshot(), {}, true, handlers),
+    addMarker: (label, handlers) => run('addMarker', () => actions.addMarker(label), { labelled: label !== undefined }, true, handlers),
+    endSession: (reason, handlers) => run('endSession', () => actions.stopRecording(reason), { reasonLength: reason.length }, true, handlers),
+    resetClip: (channel, handlers) => run('resetClip', () => actions.resetClip(channel), { channel }, false, handlers),
+    setActiveCamera: (cameraId, handlers) => run('setActiveCamera', () => actions.setActiveCamera(cameraId), { cameraId }, false, handlers),
   };
 }

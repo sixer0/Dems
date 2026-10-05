@@ -12,10 +12,21 @@ export type DeviceAction = 'details' | 'testSignal' | 'identify' | 'restart'
 export interface DeviceActionsValue {
   open: (deviceId: DeviceId) => void
   run: (deviceId: DeviceId, action: DeviceAction) => void
+  /**
+   * The devices with a command out (Live mode, plan row W70; LB-1): from the press until the Core
+   * server answered. Always empty in Simulated mode, where a command settles before the press returns.
+   */
+  pending: ReadonlySet<DeviceId>
 }
 
 const noop = () => undefined
-export const DeviceActionsContext = createContext<DeviceActionsValue>({ open: noop, run: noop })
+const NONE: ReadonlySet<DeviceId> = new Set()
+export const DeviceActionsContext = createContext<DeviceActionsValue>({ open: noop, run: noop, pending: NONE })
+
+/** Whether `deviceId` has a command out (LB-1). */
+export function useDevicePending(deviceId: DeviceId): boolean {
+  return useContext(DeviceActionsContext).pending.has(deviceId)
+}
 
 export function useDeviceActions(): DeviceActionsValue {
   return useContext(DeviceActionsContext)

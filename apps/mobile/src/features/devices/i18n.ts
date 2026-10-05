@@ -9,6 +9,9 @@ import type { ResourceTree } from '@/i18n/resources';
  * `common.status`, enums from `common.enums`, audit types from `common.auditType`, the diagnostics
  * checks from `system.diagnostics`. This tree holds only what the mobile screens alone say.
  * "SEDANG MEREKAM" stays the shared `devices.other.recordingLamp` (D28/Q3).
+ *
+ * Backend task W78 added `live.*`, additively: the words the screens show in LIVE mode where the
+ * Simulated screens say "simulated". Every earlier key keeps its value.
  */
 export const devicesEn = {
   header: {
@@ -74,5 +77,29 @@ export const devicesEn = {
   diagnostics: {
     close: 'Close diagnostics',
     failedToStart: 'Diagnostics could not start. Please try again.',
+  },
+  /**
+   * LIVE mode (backend task W78; 04_client_integration_spec §3.2, MD-8; gateway rule 8): the Core
+   * server carries the commands out and answers them, and the screens show its data, so nothing
+   * here says "simulated". SIMULATED and HEARTBEAT mode keep the words above and the shared
+   * `devices.*` and `common.deviceMenu.*` copy, unchanged.
+   */
+  live: {
+    testSignalBody: 'A short test tone or pattern is sent and the Core writes the command to its audit log.',
+    restartBody: 'The Core restarts the device and writes the command to its audit log.',
+    testSignalSent: 'Test signal sent to {{name}}',
+    restarted: '{{name}} restarted',
+    unsupported: '{{name}} does not accept this command.',
+    /** The device log's detail cell for a DEVICE_COMMAND row, by `details.command`. */
+    command: {
+      TEST_SIGNAL: 'Test signal',
+      RESTART: 'Restart',
+      IDENTIFY: 'Identify',
+    },
+    // Row M1 follow-up (D160, CONTRACT-GAP-W78-2): the Core serves no per-device health history, so the
+    // LIVE line is computed on this device from the Core's data (§3.2: say what is true).
+    samples_one: "Derived on this device from the Core's data · {{count}} sample",
+    samples_other: "Derived on this device from the Core's data · last {{count}} samples",
+    diagnosticsSubtitle: 'Eight health checks on the Core, one after another.',
   },
 } as const satisfies ResourceTree;

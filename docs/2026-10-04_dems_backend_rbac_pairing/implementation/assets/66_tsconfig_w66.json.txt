@@ -1,0 +1,15 @@
+{
+  "extends": "/Users/gsp-budi/Documents/DEMS/apps/mobile/tsconfig.json",
+  "compilerOptions": { "noEmit": true },
+  "include": [
+    "/Users/gsp-budi/Documents/DEMS/apps/mobile/**/*.ts",
+    "/Users/gsp-budi/Documents/DEMS/apps/mobile/**/*.tsx",
+    "/Users/gsp-budi/Documents/DEMS/apps/mobile/.expo/types/**/*.ts",
+    "/Users/gsp-budi/Documents/DEMS/apps/mobile/expo-env.d.ts"
+  ],
+  "exclude": [
+    "/Users/gsp-budi/Documents/DEMS/apps/mobile/node_modules",
+    "/Users/gsp-budi/Documents/DEMS/apps/mobile/src/features/devices/testing/live-devices-bed.tsx",
+    "/Users/gsp-budi/Documents/DEMS/apps/mobile/src/features/devices/live-devices-sites.test.tsx"
+  ]
+}

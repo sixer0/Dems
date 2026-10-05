@@ -1,0 +1,95 @@
+#!/bin/sh
+# W78 device commands (run by device-session.sh on the phone). The phone is paired with lane 1 (DEV-0001).
+# Automatic part: LIVE cold start -> /login -> scripted sign-in of the seeded SUPERVISOR (DIAGNOSTICS_RUN:
+# Test signal; the Restart hint shows) by typing into the APP's own fields (W66's script).
+# Then a supervised step loop: the agent writes numbered steps into $OUT/cmd.txt and reads the screencaps;
+# the loop runs only the verbs below, each tap only while the app has the focus and no keyguard shows.
+# Never: a PIN, the fingerprint sensor, a keyguard, a system prompt or a device setting (D125). The app's
+# own biometric offer is only ever DECLINED ("Not now").
+set -u
+RUN=$1; OUT=$2; SERVER_LOG=$3; HOSTPORT=$4
+A="adb -s $SERIAL"; H="$ROOT/.cache/w78"
+echo "-- serial $SERIAL ($AVD_NAME), lane port $HOSTPORT, run $RUN"
+unlocked() {
+  KG=$($A shell dumpsys window 2>/dev/null | tr -d '\r' | grep -o 'isKeyguardShowing=[a-z]*' | head -n 1)
+  ST=$($A shell dumpsys user 2>/dev/null | grep -m 1 "State:" | tr -d '\r' | sed 's/^ *//')
+  case "$KG/$ST" in isKeyguardShowing=false/*RUNNING_UNLOCKED*) return 0 ;; *) echo "-- LOCKED ($KG; $ST) at: $1 — stop, report."; return 1 ;; esac
+}
+focus() { $A shell dumpsys window 2>/dev/null | tr -d '\r' | grep -m 1 'mCurrentFocus' | sed 's/^ *//'; }
+app_focused() { focus | grep -q "com.dems.demo.tablet/"; }
+echo "-- lock: $($A shell dumpsys window 2>/dev/null|tr -d '\r'|grep -o 'isKeyguardShowing=[a-z]*'|head -n1); fps $($A shell dumpsys fingerprint 2>/dev/null|tr -d '\r'|grep -o '"count":[0-9]*'|head -n1)"
+unlocked "the start" || exit 77
+T0=$($A shell "date '+%m-%d %H:%M:%S.000'" | tr -d '\r')
+js() { $A logcat -d -T "$T0" -s ReactNativeJS:V 2>/dev/null; }
+wait_for() { i=0; until js | grep -q -- "$1" || [ "$i" -ge "$2" ]; do i=$((i + 1)); sleep 1; done; echo "-- waited $i s for: $1"; }
+launch() { echo "-- am start -W -d '$1'"; $A shell "am start -W -a android.intent.action.VIEW -d '$1' $APP_ID" 2>&1 | tr -d '\r' | grep -E "Status|LaunchState|Error|TotalTime" | sed 's/^/   /'; }
+shot() { NAME="78_phone_$1"; $A exec-out screencap -p >"$OUT/$NAME.png"; echo "-- screencap: $NAME.png ($(wc -c <"$OUT/$NAME.png"|tr -d ' ') bytes), focus: $(focus)"; }
+prefs() { $A shell "run-as $APP_ID sh -c 'sqlite3 databases/RKStorage \"select value from catalystLocalStorage where key = \\\"dems.mobile.prefs.v1\\\"\"'" 2>/dev/null | tr -d '\r'; }
+simauth() { $A shell "run-as $APP_ID sh -c 'sqlite3 databases/RKStorage \"select value from catalystLocalStorage where key = \\\"dems.sim.v1\\\"\"'" 2>/dev/null | tr -d '\r' | grep -o '"auth":{"status":"[A-Z_]*"' | head -n 1; }
+FIELDS="540 1105|540 1265|540 1430"
+UA=$(echo "$FIELDS" | cut -d'|' -f1); PA=$(echo "$FIELDS" | cut -d'|' -f2); SA=$(echo "$FIELDS" | cut -d'|' -f3)
+echo "-- before: prefs $(prefs); simulator auth $(simauth)"
+
+echo "== L1. LIVE: cold start on the paired phone -> /login =="
+launch 'demsdemo:///?core=LIVE'
+wait_for 'runtime.live.ready' 150
+wait_for 'DEMS-LIVE\] GET /api/v1/pairing/device 200' 40
+sleep 8
+unlocked "the login" || exit 77
+shot login_live
+$A shell input tap 540 700; sleep 1   # the brand emblem: no control there (gives the window the focus)
+
+echo "== L2. LIVE: scripted sign-in with the seeded SUPERVISOR =="
+unlocked "the sign-in" || exit 77
+node --import tsx "$H/sign_in_w78.mts" "$SERIAL" live "$T0" "$SERVER_LOG" "$UA" "$PA" "$SA"
+SIGN_EXIT=$?; echo "-- sign-in step exit: $SIGN_EXIT (0 = Core answered 200 and no credential leaked)"
+sleep 4
+unlocked "after the sign-in" || exit 77
+shot after_sign_in
+
+echo "== STEPS: supervised loop on $OUT/cmd.txt (lines '<n> <verb> <args>') =="
+LAST=0; START=$(date +%s); T1=$T0
+while [ $(( $(date +%s) - START )) -lt 420 ]; do
+  NEXT=$(awk -v last="$LAST" '$1 ~ /^[0-9]+$/ && $1 > last { print; exit }' "$OUT/cmd.txt" 2>/dev/null)
+  if [ -z "$NEXT" ]; then sleep 1; continue; fi
+  N=$(echo "$NEXT" | awk '{print $1}'); VERB=$(echo "$NEXT" | awk '{print $2}'); ARGS=$(echo "$NEXT" | cut -d' ' -f3-)
+  [ "$ARGS" = "$VERB" ] && ARGS=""
+  LAST=$N; echo "-- [$(date +%H:%M:%S)] step $N: $VERB $ARGS"
+  case "$VERB" in
+    tap)
+      unlocked "step $N" || exit 77
+      if app_focused; then $A shell input tap $ARGS; echo "   tapped $ARGS"; else echo "   NOT tapped: the app has no focus ($(focus))"; fi ;;
+    swipe)
+      unlocked "step $N" || exit 77
+      if app_focused; then $A shell input swipe $ARGS 400; echo "   swiped $ARGS"; else echo "   NOT swiped: no focus"; fi ;;
+    shot) shot "$ARGS" ;;
+    link)
+      case "$ARGS" in demsdemo:///*) launch "$ARGS" ;; *) echo "   refused: not a demsdemo:/// link" ;; esac ;;
+    dump)
+      $A shell uiautomator dump /sdcard/w78.xml >/dev/null 2>&1
+      $A shell cat /sdcard/w78.xml 2>/dev/null | tr '>' '\n' | grep -o -E '(text|content-desc)="[^"]+"[^/]*bounds="[^"]+"' | sed -E 's/ (resource-id|class|package|checkable|checked|clickable|enabled|focusable|focused|scrollable|long-clickable|password|selected)="[^"]*"//g' | head -n 60 | sed 's/^/   /'
+      $A shell rm -f /sdcard/w78.xml ;;
+    js) js | grep -F -- "$ARGS" | tail -n 15 | sed 's/^/   /' ;;
+    live) js | grep -o 'DEMS-LIVE\] .*' | sed -E 's/ [0-9a-f]{8}-[0-9a-f-]{27}$//' | tail -n 20 | sed 's/^/   /' ;;
+    wait) sleep "$ARGS" ;;
+    simstart)
+      echo "   live.misuse (must be 0): $(js | grep -c 'live\.misuse'); credential/token lines (must be 0): $(js | grep -c -E 'dvc_|ses_|bio_')"
+      $A shell am force-stop "$APP_ID"
+      T1=$($A shell "date '+%m-%d %H:%M:%S.000'" | tr -d '\r')
+      launch 'demsdemo:///?core=SIMULATED'
+      i=0; until $A logcat -d -T "$T1" -s ReactNativeJS:V 2>/dev/null | grep -q 'runtime.sim.hydrated' || [ "$i" -ge 90 ]; do i=$((i + 1)); sleep 1; done
+      echo "   waited $i s for runtime.sim.hydrated; prefs $(prefs); simulator auth $(simauth)" ;;
+    simsignin)
+      unlocked "step $N" || exit 77
+      $A shell input tap 540 700; sleep 1
+      node --import tsx "$H/sign_in_w78.mts" "$SERIAL" simulated "$T1" - "$UA" "$PA" "$SA"; echo "   simulated sign-in exit: $?" ;;
+    simreq) echo "   Core requests after the SIMULATED launch (must be 0): $($A logcat -d -T "$T1" -s ReactNativeJS:V 2>/dev/null | grep -c 'DEMS-LIVE')" ;;
+    prefs) echo "   prefs $(prefs); simulator auth $(simauth)" ;;
+    done) break ;;
+    *) echo "   refused: unknown verb" ;;
+  esac
+  echo "-- [$(date +%H:%M:%S)] step $N finished"
+done
+echo "-- after: prefs $(prefs); simulator auth $(simauth)"
+echo "-- lock at end: $($A shell dumpsys window 2>/dev/null|tr -d '\r'|grep -o 'isKeyguardShowing=[a-z]*'|head -n1); fps $($A shell dumpsys fingerprint 2>/dev/null|tr -d '\r'|grep -o '"count":[0-9]*'|head -n1)"
+exit "$SIGN_EXIT"

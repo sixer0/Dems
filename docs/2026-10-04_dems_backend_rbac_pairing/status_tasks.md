@@ -85,8 +85,35 @@
 | C. Implementation | helper follow-up 3 | **done — CLOSED on the non-local tier** | D142, DR-13: the folder was complete-but-unmeasured from two dead rounds; verified with zero program-line writes; whole `db` 122 / 1,740 exit 0 twice, whole `unit` 153 / 3,912 exit 0, 11 of 11 new mutations caught, cluster untouched. F W3-3 (`test/static/scan.ts:19` does not skip `.cache`) routed to a post-gate structural slot |
 | C. Implementation | RESUME wave 1 (2026-10-05) | closed — 4 of 4 returned | B2b holder, W59 holder, verifier (evidence), helper holder (failed twice); then two evidence-repair rows closed W54's and W57's gaps |
 | C. Implementation | RESUME wave 2: 82 (W60 mobile pairing gate), 83 (W61 CP-W1 review), helper finish | closed — 3 of 3 returned | D143 (W60 PASS, mobile 1,230 / 94, the LIVE sign-in evidence delivered on device), D144 (CP-W1 PASS WITH FIXES, 0 Blocker / 1 High / 4 Medium; **D136(g) superseded, F76-13 withdrawn**), D142 (helper) |
-| C. Implementation | RESUME wave 3: **80 (W58 backend gate)**, CP-W1 fix round (web), 84 (W62 CP-M1 mobile review) | running — 3 in flight of 8 | W58 owns port 4420 and `dems_demo`, with a live `npm audit` quoted (D145); the fix round writes `apps/core-web/**` only and binds no lane while the gate runs (P9); CP-M1 is read-only over the mobile rows |
-| C. Implementation | queue after wave 3 | pending | **W104 (125) checkpoint commit 1 the moment W58 passes** → CP-M1 fixes → page rows 85–104 (W63–W82) → 105 (W83 close-out, 9 files still carry `CONTRACT-GAP-*`, KI-18 still in `core-api.ts:601`) → 106 (W84) → 108 (W86 README, carries the four-tab sentence of D144) → the static-scan slot (F W3-3) → CPS1-9 at a quiet restart and the W15 lock re-probe (needs the user's finger) |
+| C. Implementation | RESUME wave 3: 80 (W58 backend gate), CP-W1 fix round, 84 (W62 CP-M1) | done | D146, D147, D148 |
+| C. Implementation | 125 (W104 checkpoint commit 1) | **done — `b90a3c6`** | D150: 1,562 files, local only; the other tool's half-done staging finished after a content scan; controller's fresh runs all green 20:07–20:12 |
+| C. Implementation | M0 (CPM1-3, one link rule in `@/runtime`) | done | D151: mobile 96 suites / 1,257 (controller run 22:38) |
+| C. Implementation | 85 (W63 web Dashboard) | done | D152: web 62 files / 853 (controller run 22:46) |
+| C. Implementation | 86 (W64 web Start New Session) | done | D153 (controller run 23:04); row W0 queued: one shared pending-control hook after W65 and W69 |
+| C. Implementation | 87 (W65 web Session Monitor) | done | D154: a real recording on the paired tablet, meters on the console from the socket, sealed (controller run 23:12) |
+| C. Implementation | 93 (W71 web Storage and Network & Time) | done | D155 (controller run 23:22) |
+| C. Implementation | 92 (W70 web Devices) | done | D156 (controller run 23:34) |
+| C. Implementation | 89 (W67 mobile Start Session), 91 (W69 web Evidence) | done | D157, D158 (controller runs 23:38, 23:40) |
+| C. Implementation | 88 (W66 mobile Home and More) | done | D159 (controller run 23:50) |
+| C. Implementation | 100 (W78 mobile Devices) | done | D160 (controller run 00:04) |
+| C. Implementation | static-scan slot (F W3-3) | done | D161 |
+| C. Implementation | 96 (W74 mobile Evidence) | done | D162, D163 (device re-run passed) |
+| C. Implementation | M1 (mobile consolidation) | done | D164 (controller run 00:28); follow-up in flight |
+| C. Implementation | W0 (web consolidation) | done | D165 (controller run 00:48); reporter move in flight |
+| C. Implementation | W0 follow-up (reporter to `lib/`), M1 follow-up | done | D166 |
+| C. Implementation | 101 (W79 mobile Storage and Network & Time), 102 (W80 mobile Operator Audit) | done | D167, D168 (controller run 01:14) |
+| C. Implementation | 94 (W72 mobile Finalization / Summary / Sessions) | done | D169 (controller run 01:21); hub follow-up and the runtime resync fix in flight |
+| C. Implementation | 90 (W68 mobile Session Monitor) | done | D170 (controller run 01:25); runtime banner fix queued to the runtime's writer |
+| C. Implementation | 99 (W77 web Users & Roles) | done | D174 (controller run 02:04, web 93 / 1,242) |
+| C. Implementation | 95 (W73 mobile Recovery), 97 (W75 web Security & Audit) | done | D175, D176 |
+| C. Implementation | 104 (W82 mobile Settings) | done | D177: CPM1-1 and CPM1-2 closed; all ten mobile page rows done |
+| C. Implementation | 98 (W76 web System and Demo Control) | done | D178 (controller run 02:24) |
+| C. Implementation | 103 (W81 web Paired Devices) | done | D179 — **all twenty page rows W63–W82 done** |
+| C. Implementation | M2 (closing mobile round) | done | D180; follow-up L-1 / L-2 (Login's link visuals) in flight |
+| C. Implementation | M2b (Login's link visuals) | done | D181 |
+| C. Implementation | W1 (closing web round) | done | D182; its two test files (DC-3) in flight |
+| C. Implementation | W1 follow-up (DC-3), 105 (W83 phase 1: the gap ledger, read-only) | running — 2 in flight | then W105 checkpoint commit 2, then W83 phase 2 after the rulings | then W105 checkpoint commit 2; closing mobile round (one read-only helper) before W93 | then W105 checkpoint commit 2 |
+| C. Implementation | queue after wave 4 | pending | page rows W66–W82 (mobile after M0) → 105 (W83 close-out, 9 files still carry `CONTRACT-GAP-*`, KI-18 still in `core-api.ts:601`) → 106 (W84) → 108 (W86 README, carries the four-tab sentence of D144) → the static-scan slot (F W3-3) → CPS1-9 at a quiet restart and the W15 lock re-probe (needs the user's finger) |
 | D. Verification | — | pending | |
 | E. Close | — | pending | |
 

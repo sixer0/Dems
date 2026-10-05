@@ -51,7 +51,14 @@ export function useSignedInOperator(): SignedInOperator {
   return useMemo(() => ({ id, displayName, role }), [id, displayName, role]);
 }
 
-/** Archive needs EVIDENCE_REVIEW (SUPERVISOR); the UI disables it otherwise (sim `archiveEvidence`). */
+/**
+ * Archive needs EVIDENCE_REVIEW (SUPERVISOR); the UI disables it otherwise (sim `archiveEvidence`).
+ *
+ * Site S5-5 (backend task W74; 04_client_integration_spec §8.7, §6.1): a display hint, kept. In Live
+ * mode the role is the replica's (`operators`, replaced by the Core on a role change), and the Core
+ * decides the call itself (operation 43 answers 403 to a role without the permission, which the
+ * archive dialog shows through the refusal presenter).
+ */
 export function useCanArchive(): boolean {
   return useSim((s) => selectCan(s, Permission.EVIDENCE_REVIEW));
 }

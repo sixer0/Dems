@@ -1,10 +1,13 @@
 import { useEffect, useRef } from 'react'
-import { Button, Chip, ProgressBar, toast, Tooltip } from '@heroui/react'
+import { Button, Chip, ProgressBar, Spinner, toast, Tooltip } from '@heroui/react'
 import { ArrowRight, CloudDownload, HardDrive, LifeBuoy, RotateCcw } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { Permission, selectCan, useSim, useSimActions, type AuditRow, type SimState } from '@dems/shared/sim'
+import { useCoreActions } from '@dems/shared/live'
+import { Permission, selectCan, useSim, type AuditRow, type SimState } from '@dems/shared/sim'
 import { Stepper, type StepperStep } from '@/components/composed/stepper'
+import { usePendingControl } from '@/lib/pending-control'
 import { cn } from '@/lib/utils'
+import { useSystemLiveMode } from './live'
 import { NVME_PARTITIONS, requiredRoleFor, updateView } from './model'
 import { SystemPanel } from './panel'
 import { useSimCommand } from './use-sim-command'
@@ -35,11 +38,18 @@ const selectPreviousVersion = (s: SimState): string | null => {
  * installed and available versions, the six-step pipeline (Stepper `pipeline`, M-C-09: connector
  * fill, Spinner → check), the A/B slots with the last-known-good rollback target, rollback and
  * recovery notes, and the NVMe partition map. Install is RBAC-gated on MAINTENANCE (S20) and refused
- * by the sim during a session (friendly toast).
+ * by the Core during a session (friendly toast).
+ *
+ * Plan row W76 (Live mode, B-10): Install goes through the command wrapper with its own pending
+ * state (LB-1); the "installing" toast follows the Core's answer; 409 `SESSION_ACTIVE` keeps the
+ * friendly warning. In Live mode the words carry no "(simulated)" (§3.2).
  */
 export function UpdatePanel({ anchorId }: { anchorId: string }) {
   const { t } = useTranslation()
-  const actions = useSimActions()
+  const actions = useCoreActions()
+  const live = useSystemLiveMode()
+  const control = usePendingControl()
+  const { pending: installPending, ref: installRef } = control
   const run = useSimCommand()
   const update = useSim(selectUpdateSlice)
   const canMaintain = useSim(selectCanMaintain)
@@ -63,28 +73,30 @@ export function UpdatePanel({ anchorId }: { anchorId: string }) {
 
   const install = () => {
     const version = update.availableVersion
-    const ok = run(
-      () => {
-        actions.startSoftwareUpdate()
-        return true
-      },
+    run(
+      () => actions.startSoftwareUpdate(),
       { source: 'UpdatePanel.install', transitionMessage: t('system.update.blockedBySession'), context: { version } },
+      () => {
+        if (version) toast.info(live ? t('system.live.startedToast', { version }) : t('system.update.startedToast', { version }), { description: t('system.update.startedBody') })
+      },
+      control,
     )
-    if (ok && version) toast.info(t('system.update.startedToast', { version }), { description: t('system.update.startedBody') })
   }
 
   const role = requiredRoleFor(Permission.MAINTENANCE)
   const denied = t('common.rbac.requiresRole', { role: role ? t(`common.roles.${role}`) : '' })
   const installButton = (
     <Button
+      ref={installRef}
       variant="primary"
       size="sm"
       isDisabled={!canMaintain || !view.canInstall}
+      isPending={installPending}
       onPress={install}
       data-testid="system-update-install"
     >
-      <CloudDownload className="size-4" aria-hidden="true" />
-      {update.state === 'RUNNING' ? t('system.update.installing') : t('system.update.install')}
+      {installPending ? <Spinner size="sm" color="current" aria-hidden="true" /> : <CloudDownload className="size-4" aria-hidden="true" />}
+      {update.state === 'RUNNING' ? t('system.update.installing') : live ? t('system.live.install') : t('system.update.install')}
     </Button>
   )
 
@@ -140,7 +152,7 @@ export function UpdatePanel({ anchorId }: { anchorId: string }) {
             installButton
           ) : (
             <Tooltip delay={200}>
-              <Tooltip.Trigger className="rounded-lg" aria-label={`${t('system.update.install')}: ${denied}`} data-testid="system-update-locked">
+              <Tooltip.Trigger className="rounded-lg" aria-label={`${live ? t('system.live.install') : t('system.update.install')}: ${denied}`} data-testid="system-update-locked">
                 {installButton}
               </Tooltip.Trigger>
               <Tooltip.Content placement="top">{denied}</Tooltip.Content>

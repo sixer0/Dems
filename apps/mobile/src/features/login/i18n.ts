@@ -45,6 +45,8 @@ export const loginEn = {
     ONLINE: 'Core online',
     STALE: 'Core link stale',
     OFFLINE: 'Core offline',
+    // LIVE only (row M2 follow-up, D180): the link to the Core server is still connecting.
+    SETTLING: 'Connecting to Core…',
   },
   // Backend task W59 (04_client_integration_spec §9.2, §3.5; additive): what the Login alone says
   // while the Core server is the Core (LIVE mode, debug builds). No key above is read differently.

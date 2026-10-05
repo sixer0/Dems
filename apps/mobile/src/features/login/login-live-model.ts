@@ -17,7 +17,6 @@
  * the limit toast with the seconds of `retry-after`. This screen then shows no Alert of its own,
  * keeps what was typed, and changes nothing that follows the link (the chip, the ring, the mode).
  */
-import type { HeartbeatState } from '@dems/shared/domain';
 import type { CoreErrorPresentation, CoreLinkInfo, PairingInfo } from '@/runtime';
 import type { AttemptOutcome } from './login-model';
 
@@ -69,24 +68,14 @@ export function liveTrustTextFor(line: LiveTrustLine): LiveTrustText {
 // ---------------------------------------------------------------------------------------------
 
 /**
- * Whether the offline Alert shows after a change of the Live link's heartbeat. OFFLINE and STALE
- * show it, LIVE hides it, and CONNECTING is a transient that keeps what is shown: at a cold start
- * the link is CONNECTING until the first heartbeat, and with the Core down it alternates between
- * OFFLINE and CONNECTING at every reconnect attempt. An Alert that followed it would flash at
- * every start and flicker during an outage (the rule of the connection banner, and of the Pair
- * screen). Sign In itself stays disabled the whole time the link is not ONLINE (`isCoreBlocked`).
+ * Whether the offline Alert shows after a change of the Live link's heartbeat: the runtime's one
+ * rule (`@/runtime`, `link-notice.ts`; row M0), re-exported under the name this screen and its tests
+ * use. The rule is not written here: OFFLINE and STALE show the Alert at once, LIVE hides it, and
+ * CONNECTING keeps what is shown, so the Alert neither flashes at a cold start nor flickers while
+ * the link retries. A heartbeat that is absent (`undefined`) hides it. Sign In itself stays disabled
+ * the whole time the link is not ONLINE (`isCoreBlocked`).
  */
-export function liveOfflineNoticeAfter(shown: boolean, heartbeat: HeartbeatState | undefined): boolean {
-  switch (heartbeat) {
-    case 'OFFLINE':
-    case 'STALE':
-      return true;
-    case 'LIVE':
-      return false;
-    default:
-      return shown;
-  }
-}
+export { offlineNoticeAfter as liveOfflineNoticeAfter } from '@/runtime';
 
 // ---------------------------------------------------------------------------------------------
 // L9: the last attempt, read with what the auth layer says the Core's refusal was (S1-1, LB-10)

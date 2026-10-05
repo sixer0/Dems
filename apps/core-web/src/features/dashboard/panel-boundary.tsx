@@ -3,6 +3,7 @@ import { Button } from '@heroui/react'
 import { TriangleAlert } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { RETRY_MAX_ATTEMPTS } from '@dems/shared/realtime'
+import { reportDashboardError } from './report'
 
 /** Retry cooldown after each attempt: 3 s → 6 s → 12 s (capped at 15 s), as `useRetryCooldown`. */
 const RETRY_BASE_MS = 3000
@@ -29,8 +30,10 @@ interface PanelBoundaryState {
  * apart, with a countdown on the disabled button. The count lives in the boundary, so a panel
  * that fails again at once cannot be retried faster than the cooldown allows.
  *
- * Logging: mock-core has no client-log endpoint (D3/D4, D41(g)), so the error goes to the
- * development console as a structured entry, as the other steps do; nothing personal is logged.
+ * Logging: mock-core has no client-log endpoint (D3/D4, D41(g)). Since plan row W63 the error is
+ * one record in the page's own log (`report.ts` → `webErrorSink`: in memory in every build, printed
+ * to the development console as before), named by its class, code and status and never by its
+ * text (CPW1-8); nothing personal is logged.
  */
 export class PanelBoundary extends Component<PanelBoundaryProps, PanelBoundaryState> {
   override state: PanelBoundaryState = { error: null, attempt: 0, nextRetryAt: 0 }
@@ -40,15 +43,12 @@ export class PanelBoundary extends Component<PanelBoundaryProps, PanelBoundarySt
   }
 
   override componentDidCatch(error: unknown, info: ErrorInfo) {
-    if (import.meta.env.DEV) {
-      console.error('[core-web] dashboard panel error', {
-        level: 'error',
-        source: `features/dashboard.panel-${this.props.panel}`,
-        message: error instanceof Error ? error.message : String(error),
-        stack: error instanceof Error ? error.stack : undefined,
-        context: { panel: this.props.panel, attempt: this.state.attempt, componentStack: info.componentStack },
-      })
-    }
+    reportDashboardError(`features/dashboard.panel-${this.props.panel}`, error, 'A Dashboard panel failed to render and shows its fallback.', {
+      panel: this.props.panel,
+      attempt: this.state.attempt,
+      // Component names only: no value of the page.
+      componentStack: info.componentStack ?? null,
+    })
   }
 
   private readonly retry = () => {

@@ -31,7 +31,7 @@ import { useAmbientLoop, useMotionSettings } from '@/motion';
 import { GoldDust } from './login-ambient';
 import { LoginBrand } from './login-brand';
 import { LoginCard } from './login-card';
-import { ringSizeFor, ringStateFor } from './login-model';
+import { coreChipFor, ringSizeFor, ringStateFor } from './login-model';
 import { useLoginChoreography } from './use-login-choreography';
 import { useLoginController } from './use-login-controller';
 
@@ -58,14 +58,16 @@ export function LoginScreen() {
   const controller = useLoginController({ onRejected: choreography.shake, onAccepted: choreography.leave });
 
   // Ambient loops (§7.3 Login, ≤ 4): ring rotation, bracket breathing, Ken Burns, gold dust. The
-  // dust yields its slot to the Core-offline chip breath (login-card.tsx) while the Core is down.
-  const coreOffline = controller.coreLink.state === 'OFFLINE';
+  // dust yields its slot to the Core-offline chip breath (login-card.tsx) while the chip says the
+  // Core is down. LIVE (row M2 follow-up, D180): the chip, the ring and the loops read the runtime's
+  // view of the link (`controller.coreLook`), so a link that is still connecting is not "offline".
+  const coreOffline = coreChipFor(controller.coreLink, controller.coreLook).kind === 'OFFLINE';
   const ringLoops = useAmbientLoop('login-ring-rotation', { paused: !focused });
   useAmbientLoop('login-ring-breath', { paused: !focused });
   const kenBurns = useAmbientLoop('login-ken-burns', { paused: !focused });
   const dust = useAmbientLoop('login-gold-dust', { paused: !focused, active: !coreOffline });
 
-  const ringState = ringStateFor({ coreLink: controller.coreLink, locked: controller.lockout.locked });
+  const ringState = ringStateFor({ coreLink: controller.coreLink, locked: controller.lockout.locked, liveLook: controller.coreLook });
   const ringSize = ringSizeFor(layoutClass);
 
   const brand = (

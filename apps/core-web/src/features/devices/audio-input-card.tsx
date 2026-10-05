@@ -1,23 +1,29 @@
 import { useCallback, useRef } from 'react'
-import { Button, Chip, Tooltip, toast } from '@heroui/react'
+import { Button, Chip, Spinner, Tooltip, toast } from '@heroui/react'
 import { AnimatePresence, motion } from 'motion/react'
 import { Lock, RotateCcw } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { AudioTrackId } from '@dems/shared/domain'
+import { settle, useCoreActions } from '@dems/shared/live'
 import { EMPTY_DATE_TEXT } from '@dems/shared/realtime'
-import { selectMicById, useAudioChannel, useSim, useSimActions, type AudioFrame } from '@dems/shared/sim'
+import { selectMicById, useAudioChannel, useSim, type AudioFrame } from '@dems/shared/sim'
 import { DbfsMeter, formatDbfsValue, METER_THRESHOLDS } from '@/components/composed'
+import { useCoreErrorPresenter } from '@/lib/core-errors'
+import { usePendingControl } from '@/lib/pending-control'
 import { useMotionPolicy } from '@/motion'
+import { useDevicePending } from './context'
 import { DeviceMenu, IdentifyRing } from './device-menu'
 import { useDeviceLabels } from './labels'
 import { deviceStatus, STATUS_SEVERITY, STATUS_TONE } from './model'
-import { logDevicesError } from './motion'
+import { reportDevicesError } from './report'
 import { MIC_DEVICE, type RearPortId } from './sim-adapter'
 import { StatusChip, StatusDot } from './status-chip'
 
 const MIC_PORT: Record<AudioTrackId, RearPortId> = { 'AUDIO-01': 'MIC_IN_1', 'AUDIO-02': 'MIC_IN_2' }
 /** P8: fast-changing number text updates at most 4 times per second. */
 const PEAK_TEXT_INTERVAL_MS = 250
+/** The fixed sentence of the page's own record when a clip reset fails for a reason the presenter left to the page. */
+const CLIP_RESET_FAILED_RECORD = 'A clip latch reset of Devices & Inputs was not carried out.'
 
 export interface AudioInputCardProps {
   channel: AudioTrackId
@@ -29,13 +35,26 @@ export interface AudioInputCardProps {
  * CLIP latch, NO SIGNAL) beside a dBFS scale, and the channel facts: peak hold readout (4 Hz),
  * read-only gain and 48 V phantom (G13, `Tooltip`), the clip latch with a reset, the recording
  * track state and the ADC format. A NO SIGNAL input shows a calm hint (P7), not an alarm.
+ *
+ * Live mode (plan row W70; 04_client_integration_spec §8.3 B-8, §8.1 LB-1 to LB-7, LB-10): the
+ * clip reset goes through `useCoreActions()` and `settle`. The CLIP latch leaves when the Core's
+ * delta arrives, which is before `ok` runs (CL-16), and the success toast follows. While the reset
+ * is out the button ignores presses and its fact is `aria-busy` (the kit's `Button` drops the
+ * attribute); after `LIVE_PENDING_REVEAL_MS` the spinner replaces the button's icon. A failure goes
+ * to the refusal presenter first; what it leaves to the page keeps the existing toast and one
+ * record in the page's own log. In Simulated mode the reset settles before the press returns.
  */
 export function AudioInputCard({ channel }: AudioInputCardProps) {
   const { t } = useTranslation()
   const m = useMotionPolicy()
   const labels = useDeviceLabels()
-  const actions = useSimActions()
+  const actions = useCoreActions()
+  const presentCoreError = useCoreErrorPresenter()
   const deviceId = MIC_DEVICE[channel]
+  // LB-1: the kebab's Button drops `aria-busy`, so the head that holds it carries it.
+  const commandBusy = useDevicePending(deviceId)
+  // LB-1: the shared pending control (`@/lib/pending-control`, plan row W0).
+  const { busy: resetBusy, pending: showResetPending, run: runReset } = usePendingControl()
   const mic = useSim((s) => selectMicById(s, channel))
   const status = useSim((s) => deviceStatus(s, deviceId))
   const fullName = labels.fullName(deviceId)
@@ -46,13 +65,21 @@ export function AudioInputCard({ channel }: AudioInputCardProps) {
   const noSignal = status === 'NO_SIGNAL'
 
   const resetClip = () => {
-    try {
-      actions.resetClip(channel)
-      toast.success(t('devices.actions.clipReset', { name }))
-    } catch (error) {
-      logDevicesError('AudioInputCard.resetClip', error, { channel })
-      toast.danger(t('devices.actions.failed'))
-    }
+    // LB-1: one reset at a time; a press while one is out sends nothing. A Simulated reset settles
+    // in the press, so nothing of the control changes.
+    runReset((release) => {
+      settle(() => actions.resetClip(channel), {
+        ok: () => {
+          toast.success(t('devices.actions.clipReset', { name }))
+        },
+        fail: (error) => {
+          if (presentCoreError(error) !== null) return
+          reportDevicesError('features/devices.resetClip', error, CLIP_RESET_FAILED_RECORD, { channel })
+          toast.danger(t('devices.actions.failed'))
+        },
+        done: release,
+      })
+    })
   }
 
   return (
@@ -63,7 +90,7 @@ export function AudioInputCard({ channel }: AudioInputCardProps) {
       data-tone={tone}
       variants={m.variants.row}
     >
-      <header className="dev-tile-head">
+      <header className="dev-tile-head" aria-busy={commandBusy || undefined}>
         <StatusDot tone={tone} />
         <div className="dev-tile-titles">
           <span className="dev-tile-name">{fullName}</span>
@@ -123,12 +150,19 @@ export function AudioInputCard({ channel }: AudioInputCardProps) {
               </Chip>
             </dd>
           </div>
-          <div className="dev-fact" data-fact="clip">
+          <div className="dev-fact" data-fact="clip" aria-busy={resetBusy || undefined}>
             <dt>{t('devices.audio.clip')}</dt>
             <dd>
               {latched ? (
-                <Button size="sm" variant="danger-soft" onPress={resetClip} data-testid={`clip-reset-${channel}`}>
-                  <RotateCcw aria-hidden="true" size={14} />
+                <Button
+                  size="sm"
+                  variant="danger-soft"
+                  onPress={resetClip}
+                  data-testid={`clip-reset-${channel}`}
+                  // Only while the spinner shows: Simulated mode renders the button exactly as before.
+                  {...(showResetPending ? { isPending: true, 'data-pending': 'true' } : {})}
+                >
+                  {showResetPending ? <Spinner size="sm" color="current" aria-hidden="true" /> : <RotateCcw aria-hidden="true" size={14} />}
                   {t('devices.audio.resetClip')}
                 </Button>
               ) : (

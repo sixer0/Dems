@@ -1,0 +1,40 @@
+import './testing/monitor-test-setup';
+import '@/navigation/testing/router-harness';
+import { afterEach, beforeEach, expect, it, jest } from '@jest/globals';
+import * as bannerModule from '@/runtime/connection-banner';
+import { act, screen } from '@testing-library/react-native';
+import { meterFrame, renderLiveMonitor, resetLiveMonitorBed, type LiveMonitorBed } from './testing/live-monitor-bed';
+
+let bed: LiveMonitorBed | null = null;
+beforeEach(async () => { await resetLiveMonitorBed(); });
+afterEach(() => { bed?.stop(); bed = null; });
+const banner = () => (screen.queryByTestId('monitor-banner-offline') ? 'offline' : screen.queryByTestId('monitor-banner-resynced') ? 'resynced' : 'hidden');
+
+for (const variant of ['wait-only']) {
+  it(variant, async () => {
+    const b = await renderLiveMonitor();
+    bed = b;
+    await b.openMonitor();
+    const at = b.fake.clock.now();
+    if (variant === 'meters-only') b.sendMeters({ 'AUDIO-01': meterFrame(-18, at, 1), 'AUDIO-02': meterFrame(-24, at, 1) });
+    if (variant === 'wait-before-drop') await act(async () => { await new Promise((r) => setTimeout(r, 1100)); });
+    b.setReachable(false);
+    await b.flush();
+    await b.elapse(1_000, 250);
+    if (variant === 'wait-only') { const r0 = (globalThis as any).__DEMS_DEBUG__?.runtime?.(); console.log('before wait', banner(), JSON.stringify(r0?.coreLink), r0?.banner); await act(async () => { await new Promise((r) => setTimeout(r, 1100)); }); const r1 = (globalThis as any).__DEMS_DEBUG__?.runtime?.(); console.log('after wait', banner(), JSON.stringify(r1?.coreLink), r1?.banner); }
+    const log: string[] = [];
+    const real1 = bannerModule.nextBannerKind;
+    const real2 = bannerModule.bannerKindAfterResync;
+    jest.spyOn(bannerModule, 'nextBannerKind').mockImplementation((c, l) => { const r = real1(c, l); log.push(`next(${c},${l.state}/${l.heartbeat})=${r}`); return r; });
+    jest.spyOn(bannerModule, 'bannerKindAfterResync').mockImplementation((c) => { const r = real2(c); log.push(`resync(${c})=${r}`); return r; });
+    const real3 = bannerModule.connectionBannerFor;
+    jest.spyOn(bannerModule, 'connectionBannerFor').mockImplementation((k) => { log.push(`for(${k})`); return real3(k); });
+    b.setReachable(true);
+    await b.elapse(4_000, 250);
+    console.log('LOG', log.join(' | '));
+    const rt = (globalThis as any).__DEMS_DEBUG__?.runtime?.();
+    console.log(variant, banner(), JSON.stringify(rt?.coreLink), rt?.banner);
+    for (let i = 0; i < 3; i += 1) { await b.elapse(1_000, 250); const r2 = (globalThis as any).__DEMS_DEBUG__?.runtime?.(); console.log('later', banner(), JSON.stringify(r2?.coreLink), r2?.banner); }
+    expect(true).toBe(true);
+  });
+}

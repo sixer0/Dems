@@ -1,0 +1,129 @@
+#!/usr/bin/env python3
+"""W72 mutation check of the Summary's Live acknowledgement and of the unchanged Finalization and hub
+in LIVE mode (plan row W72; rule M15). Copied from W67's `67_mutate.py.txt`.
+
+Each mutation changes texts of ONE production file IN MEMORY (the jest transformer beside this file)
+and runs the behaviour test files (the static scan is left out on purpose, so that a mutant has to be
+caught by behaviour, not by a text pin). A mutation is DETECTED when jest exits non-zero. Nothing in
+the tree is written: the hashes of the mutated files are compared before and after the run.
+
+  python3 mutate.py [id ...]      (no id: all; 'control' runs the unmutated tests once)
+"""
+import hashlib, json, os, re, subprocess, sys, time
+
+ROOT = '/Users/gsp-budi/Documents/DEMS'
+APP = ROOT + '/apps/mobile'
+HERE = os.path.dirname(os.path.abspath(__file__))
+SPEC = HERE + '/spec.json'
+CONFIG = HERE + '/jest.mut.config.cjs'
+S = 'src/features/session-summary/'
+TESTS = [
+    S + 'live-summary-sites.test.tsx', S + 'session-summary-screen.test.tsx',
+    'src/features/session-finalizing/live-finalizing.test.tsx', 'src/features/sessions/live-sessions.test.tsx',
+    'src/features/sessions/sessions-screen.test.tsx',
+]
+HOOK = S + 'use-summary.ts'
+SCREEN = S + 'session-summary-screen.tsx'
+HUB = 'src/features/sessions/sessions-screen.tsx'
+FIN = 'src/features/session-finalizing/session-finalizing-screen.tsx'
+
+def e(frm, to):
+    return {'from': frm, 'to': to}
+
+M = [
+  # ── U: the acknowledgement hook (S2-4, S4-4) ──
+  ('U1', HOOK, 'LIVE skips the presenter (the step-80 toast instead of the denied / outage / limit toast)', [
+      e("          if (live && presentCoreError(error)) {", "          if (false && presentCoreError(error)) {")]),
+  ('U2', HOOK, 'a refusal still navigates (ok runs in fail)', [
+      e("        fail: (error) => {\n", "        fail: (error) => {\n          ok();\n")]),
+  ('U3', HOOK, 'S4-4 read dropped: a summary that is not pending is acknowledged anyway', [
+      e("      if (acknowledged.current || selectPendingSummaryId(sim.store.getState()) !== sessionId) {", "      if (acknowledged.current) {")]),
+  ('U4', HOOK, 'no one-request-at-a-time guard across the three controls', [
+      e("      if (inFlight.current) {\n", "      if (false) {\n")]),
+  ('U5', HOOK, 'the in-flight flag is never released (a second press after a refusal sends nothing)', [
+      e("          inFlight.current = false;\n", "          void 0;\n")]),
+  ('U6', HOOK, 'the control is never released after the command settled', [
+      e("          inFlight.current = false;\n          done?.();", "          inFlight.current = false;")]),
+  # ── S: the screen's three controls, the link notice, the mount ──
+  ('S1', SCREEN, 'Done navigates before the Core answered (not in ok)', [
+      e("    donePress.run((release) => acknowledge({ ok: () => navigate('/home', 'home'), done: release }));",
+        "    donePress.run((release) => {\n      navigate('/home', 'home');\n      acknowledge({ ok: () => undefined, done: release });\n    });")]),
+  ('S2', SCREEN, 'Done never marked busy', [e(" {...busyState(donePress.busy)}>", ">")]),
+  ('S3', SCREEN, 'no spinner inside Done', [e("        {donePress.pending ? <PendingSpinner testID=\"summary-done-spinner\" /> : null}\n", "")]),
+  ('S4', SCREEN, 'the link notice never shows', [e("      linkDown={linkDown && session.pending}", "      linkDown={false}")]),
+  ('S5', SCREEN, 'the link notice always shows while pending (no link rule)', [e("      linkDown={linkDown && session.pending}", "      linkDown={session.pending}")]),
+  ('S6', SCREEN, 'the acknowledgement starts on mount (the D158 / F69-1 defect class)', [
+      e("    if (playStamp) markStamped(sessionId);", "    if (playStamp) markStamped(sessionId);\n    acknowledge({ ok: () => undefined });")]),
+  ('S7', SCREEN, 'hardware Back leaves without acknowledging', [e("      onBack();\n", "      navigate('/home', 'home');\n")]),
+  ('S8', SCREEN, 'View in Evidence goes Home', [e("ok: () => navigate(href, 'evidence')", "ok: () => navigate('/home', 'home')")]),
+  # ── X: the unchanged screens in LIVE (the tests guard them too) ──
+  ('X1', HUB, 'S4-5: the refresh stamp on the wall clock instead of the Live clock', [e("    setFrom(sim.store.getState().clock.now);", "    setFrom(Date.now());")]),
+  # ── H: the follow-up of decision D169 (the hub's stamp and link notice) ──
+  ('H1', HUB, 'the stamp is recorded while the link is down (the skip dropped)', [e("    if (!offline) setUpdatedAt(from + REFRESH_MS);", "    setUpdatedAt(from + REFRESH_MS);")]),
+  ('H2', HUB, 'the stamp is never recorded', [e("    if (!offline) setUpdatedAt(from + REFRESH_MS);", "    if (false) setUpdatedAt(from + REFRESH_MS);")]),
+  ('H3', HUB, 'the link notice never shows', [e("      {offline ? (\n        <View style={styles.linkDown}>", "      {false ? (\n        <View style={styles.linkDown}>")]),
+  ('H4', HUB, 'the link notice always shows (also online and in Simulated mode)', [e("      {offline ? (\n        <View style={styles.linkDown}>", "      {true ? (\n        <View style={styles.linkDown}>")]),
+  ('X2', FIN, 'Finalization never shows the Core\'s evidence ID', [
+      e("      value: session.evidenceId ?? t('features.session-finalizing.evidencePending'),", "      value: t('features.session-finalizing.evidencePending'),")]),
+]
+
+def sha(path):
+    with open(path, 'rb') as f:
+        return hashlib.sha256(f.read()).hexdigest()
+
+def jest(env):
+    return subprocess.run(['node', ROOT + '/node_modules/jest/bin/jest.js', '--config', CONFIG, '--maxWorkers=2', '--silent', *TESTS],
+                          cwd=APP, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+
+def summary(out):
+    tail = [line.strip() for line in out.splitlines() if line.startswith('Tests:')]
+    files = sorted({line.split()[1].split('/')[-1] for line in out.splitlines() if line.startswith('FAIL ')})
+    first = [re.sub(r'\s+', ' ', line.strip().lstrip('●').strip()) for line in out.splitlines() if line.strip().startswith('● ') and 'Console' not in line]
+    return (tail[-1] if tail else 'no summary line'), files, first[:2]
+
+def main():
+    wanted = set(sys.argv[1:])
+    files = sorted({m[1] for m in M})
+    before = {f: sha(APP + '/' + f) for f in files}
+    print('# W72 mutation check (follow-up D169 adds H1-H4 and the Simulated hub test), %s; %d test files per run; the tree is not edited' % (time.strftime('%Y-%m-%d %H:%M:%S'), len(TESTS)), flush=True)
+    if not wanted or 'control' in wanted:
+        started = time.time()
+        run = jest(dict(os.environ, CI='1'))
+        tail, failed, _ = summary(run.stdout)
+        print('control (no mutation): exit=%d %s (%.0f s)' % (run.returncode, tail, time.time() - started), flush=True)
+        if run.returncode != 0:
+            print('## the control run is not green: stop', flush=True)
+            return 2
+    todo = [m for m in M if not wanted or m[0] in wanted]
+    detected, survived, broken = [], [], []
+    for (mid, file, what, edits) in todo:
+        text = open(APP + '/' + file).read()
+        ok = True
+        for edit in edits:
+            if text.count(edit['from']) != 1:
+                ok = False
+                break
+            text = text.replace(edit['from'], edit['to'], 1)
+        if not ok:
+            broken.append(mid)
+            print('%s  NOT APPLIED: a text does not occur exactly once in %s   (%s)' % (mid, file, what), flush=True)
+            continue
+        json.dump({'id': mid, 'file': file, 'edits': edits}, open(SPEC, 'w'))
+        started = time.time()
+        run = jest(dict(os.environ, W72_MUT_SPEC=SPEC, CI='1'))
+        tail, failed, first = summary(run.stdout)
+        verdict = 'detected' if run.returncode != 0 else 'NOT DETECTED'
+        (detected if run.returncode != 0 else survived).append(mid)
+        print('%s  %-12s %3.0fs  %s  | %s  | %s' % (mid, verdict, time.time() - started, what, tail, ', '.join(failed)), flush=True)
+        for name in first: print('      e.g. %s' % name, flush=True)
+    after = {f: sha(APP + '/' + f) for f in files}
+    print('## %d detected, %d not detected, %d not applied, of %d' % (len(detected), len(survived), len(broken), len(todo)), flush=True)
+    if survived: print('## not detected: ' + ' '.join(survived), flush=True)
+    if broken: print('## not applied: ' + ' '.join(broken), flush=True)
+    print('## the mutated files in the tree, before and after: ' + ('identical' if before == after else 'CHANGED'), flush=True)
+    for f in files: print('   %s  %s' % (after[f][:16], f), flush=True)
+    print('# finished %s' % time.strftime('%H:%M:%S'), flush=True)
+    return 0 if not survived and not broken and before == after else 1
+
+if __name__ == '__main__':
+    sys.exit(main())

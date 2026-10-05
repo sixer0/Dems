@@ -1,0 +1,226 @@
+--- a/apps/core-web/src/features/dashboard/report.ts (W0b pre-image)
++++ b/apps/core-web/src/features/dashboard/report.ts
+@@ -1,72 +1,13 @@
+ /**
+- * Where a failure of a page control is written (backend task, plan row W63; the one helper since plan
+- * row W0, item 8 — finding F70-5, decision D156: `features/devices/report.ts` was a copy of this file
+- * and now binds its own prefix here).
+- *
+- * The console has no client-log endpoint (predecessor decisions D3, D4, D41(g)), so the record goes
+- * to the page's own log, `webErrorSink` of `@/runtime`: kept in memory, printed to the console in a
+- * dev build (the place the predecessor's `console.error` wrote to), never sent anywhere and never
+- * put in web storage. In Live mode the Live source also reports every rejected action itself
+- * (CL-24); this record is the page's own, for the branch that the refusal presenter left to it.
+- *
+- * The discipline of `components/shell/shell-report.ts` and `features/login/report.ts` (finding
+- * CPW1-8, decision D144(1)): `message` is the caller's fixed sentence, never the text of the
+- * error, which is not trusted to be free of input; the cause is named by its class, code and
+- * status; `context` holds non-secret facts of the caller (a device ID, a command name, a channel).
++ * Where a failure of a Dashboard control is written (backend task, plan row W63): the page's own log
++ * through the console's one page-report helper, `createPageReporter` of `@/lib/page-report` (plan row
++ * W0, item 8; moved to `lib/` by decision D165). The record's discipline is written there: a fixed
++ * sentence, the cause by its class, code and status, never its text; non-secret facts of the caller
++ * in `context`; the page's own sink, `webErrorSink`, never the console directly.
+  */
++import { createPageReporter } from '@/lib/page-report'
+ import { webErrorSink, type ErrorSink } from '@/runtime'
+ 
+-/** The facts that identify a cause without quoting it: its code and its status, when it has them. */
+-function causeFacts(error: unknown): Record<string, string | number> {
+-  if (typeof error !== 'object' || error === null) return {}
+-  const { code, status } = error as { code?: unknown; status?: unknown }
+-  return {
+-    ...(typeof code === 'string' || typeof code === 'number' ? { code } : {}),
+-    ...(typeof status === 'number' ? { status } : {}),
+-  }
+-}
+-
+-export interface PageReporter {
+-  /** A correlation ID per failed control action (`<prefix>-<time>-<n>`), so its records can be joined. */
+-  readonly newCorrelationId: () => string
+-  /**
+-   * Writes one record to the page's own log. Never throws (the sink does not). `sink` is for tests;
+-   * a page passes nothing.
+-   */
+-  readonly report: (
+-    source: string,
+-    error: unknown,
+-    message: string,
+-    context?: Record<string, string | number | boolean | null>,
+-    level?: 'error' | 'warn',
+-    sink?: Pick<ErrorSink, 'report'>,
+-  ) => void
+-}
+-
+-/** The reporter of one page: its correlation IDs start with `prefix` and count on their own. */
+-export function createPageReporter(prefix: string): PageReporter {
+-  let sequence = 0
+-  const newCorrelationId = (): string => {
+-    sequence += 1
+-    return `${prefix}-${Date.now().toString(36)}-${sequence}`
+-  }
+-  const report: PageReporter['report'] = (source, error, message, context = {}, level = 'error', sink = webErrorSink) => {
+-    sink.report({
+-      level,
+-      source,
+-      message,
+-      at: Date.now(),
+-      context: {
+-        ...context,
+-        errorName: error instanceof Error ? error.name : typeof error,
+-        ...causeFacts(error),
+-        correlationId: newCorrelationId(),
+-      },
+-    })
+-  }
+-  return { newCorrelationId, report }
+-}
+-
+ const dashboard = createPageReporter('dash')
+ 
+ /** A correlation ID per failed control action of the Dashboard (`dash-<time>-<n>`). */
+--- a/apps/core-web/src/features/devices/report.ts (W0b pre-image)
++++ b/apps/core-web/src/features/devices/report.ts
+@@ -1,11 +1,12 @@
+ /**
+  * Where a failure of a Devices & Inputs control is written (backend task, plan row W70): the page's
+- * own log through the console's one page-report helper, `createPageReporter` of
+- * `features/dashboard/report.ts` (plan row W0, item 8 — finding F70-5, decision D156: this file was a
+- * copy of that one). The record's discipline is written there: a fixed sentence, the cause by its
+- * class, code and status, never its text; non-secret facts of the caller in `context`.
++ * own log through the console's one page-report helper, `createPageReporter` of `@/lib/page-report`
++ * (plan row W0, item 8 — finding F70-5, decision D156: this file was a copy of the Dashboard's; the
++ * helper moved to `lib/` by decision D165). The record's discipline is written there: a fixed
++ * sentence, the cause by its class, code and status, never its text; non-secret facts of the caller
++ * in `context`.
+  */
+-import { createPageReporter } from '@/features/dashboard/report'
++import { createPageReporter } from '@/lib/page-report'
+ 
+ const devices = createPageReporter('dev')
+ 
+--- a/apps/core-web/src/test/live-w0-page-logs.test.tsx (W0b pre-image)
++++ b/apps/core-web/src/test/live-w0-page-logs.test.tsx
+@@ -8,15 +8,16 @@
+ // | Criterion | Where |
+ // |-----------|-------|
+ // | Item 5: a Network & Time record goes to the page's own sink, with a fixed sentence and the error's name; never its text, never the console directly | "item 5" |
+-// | Item 8: one page-report helper; the Dashboard and Devices records keep their shapes and their own correlation prefixes; Devices holds no copy | "item 8" |
++// | Item 8: one page-report helper, `@/lib/page-report` (decision D165); the Dashboard and Devices records keep their shapes and their own correlation prefixes; neither page holds a copy | "item 8" |
+ import { readFileSync } from 'node:fs'
+ import { resolve } from 'node:path'
+ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+ import type { ErrorRecord } from '@/runtime'
+ import { webErrorSink } from '@/runtime'
+-import { createPageReporter, newDashboardCorrelationId, reportDashboardError } from '@/features/dashboard/report'
++import { newDashboardCorrelationId, reportDashboardError } from '@/features/dashboard/report'
+ import { newDevicesCorrelationId, reportDevicesError } from '@/features/devices/report'
+ import { logNetworkTimeError } from '@/features/network-time/log'
++import { createPageReporter } from '@/lib/page-report'
+ 
+ const FEATURES = resolve(import.meta.dirname, '../features')
+ const code = (text: string) => text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"`\\])\/\/[^\n]*/g, '$1')
+@@ -107,13 +108,20 @@
+     expect(newDevicesCorrelationId()).toMatch(/^dev-/)
+   })
+ 
+-  it('one copy: only `dashboard/report.ts` writes to a sink; `devices/report.ts` binds its prefix to the helper', () => {
++  it('one copy: only `lib/page-report.ts` writes to a sink; the Dashboard and Devices bind their prefixes to it (D165)', () => {
++    const helper = code(readFileSync(resolve(FEATURES, '../lib/page-report.ts'), 'utf8'))
+     const dashboard = code(readFileSync(resolve(FEATURES, 'dashboard/report.ts'), 'utf8'))
+     const devices = code(readFileSync(resolve(FEATURES, 'devices/report.ts'), 'utf8'))
+-    expect(dashboard).toMatch(/export function createPageReporter\(/)
+-    expect(dashboard).toMatch(/sink\.report\(/)
+-    expect(devices).not.toMatch(/sink\.report\(|webErrorSink|function causeFacts/)
+-    expect(devices).toMatch(/createPageReporter\('dev'\)/)
+-    for (const text of [dashboard, devices]) expect(text).not.toMatch(/console\.|error\.message|String\(error\)|\.stack/)
++    expect(helper).toMatch(/export function createPageReporter\(/)
++    expect(helper).toMatch(/sink\.report\(/)
++    for (const [text, prefix] of [
++      [dashboard, 'dash'],
++      [devices, 'dev'],
++    ] as const) {
++      expect(text).toMatch(/import \{ createPageReporter \} from '@\/lib\/page-report'/)
++      expect(text).toContain(`createPageReporter('${prefix}')`)
++      expect(text).not.toMatch(/sink\.report\(|function causeFacts|function createPageReporter/)
++    }
++    for (const text of [helper, dashboard, devices]) expect(text).not.toMatch(/console\.|error\.message|String\(error\)|\.stack/)
+   })
+ })
+--- a/apps/core-web/src/lib/page-report.ts (new)
++++ b/apps/core-web/src/lib/page-report.ts
+@@ -0,0 +1,74 @@
++/**
++ * A page's own log reporter — the console's one page-report helper (plan row W0, item 8: finding
++ * F70-5, decision D156; moved here from `features/dashboard/report.ts` by decision D165).
++ *
++ * The console has no client-log endpoint (predecessor decisions D3, D4, D41(g)), so the record goes
++ * to the page's own log, `webErrorSink` of `@/runtime`: kept in memory in every build, printed to the
++ * console in a dev build, never sent anywhere and never put in web storage. In Live mode the Live
++ * source also reports every rejected action itself (CL-24); this record is the page's own, for the
++ * branch the refusal presenter left to the page.
++ *
++ * The discipline of `components/shell/shell-report.ts` and `features/login/report.ts` (finding
++ * CPW1-8, decision D144(1)): `message` is the caller's fixed sentence, never the text of the error,
++ * which is not trusted to be free of input; the cause is named by its class, code and status;
++ * `context` holds non-secret facts of the caller (a device ID, a command name, a channel).
++ *
++ * A page binds its prefix once, in its own module:
++ *
++ * ```ts
++ * const page = createPageReporter('usr')
++ * export const reportUsersError = page.report
++ * ```
++ */
++import { webErrorSink, type ErrorSink } from '@/runtime'
++
++/** The facts that identify a cause without quoting it: its code and its status, when it has them. */
++function causeFacts(error: unknown): Record<string, string | number> {
++  if (typeof error !== 'object' || error === null) return {}
++  const { code, status } = error as { code?: unknown; status?: unknown }
++  return {
++    ...(typeof code === 'string' || typeof code === 'number' ? { code } : {}),
++    ...(typeof status === 'number' ? { status } : {}),
++  }
++}
++
++export interface PageReporter {
++  /** A correlation ID per failed control action (`<prefix>-<time>-<n>`), so its records can be joined. */
++  readonly newCorrelationId: () => string
++  /**
++   * Writes one record to the page's own log. Never throws (the sink does not). `sink` is for tests;
++   * a page passes nothing.
++   */
++  readonly report: (
++    source: string,
++    error: unknown,
++    message: string,
++    context?: Record<string, string | number | boolean | null>,
++    level?: 'error' | 'warn',
++    sink?: Pick<ErrorSink, 'report'>,
++  ) => void
++}
++
++/** The reporter of one page: its correlation IDs start with `prefix` and count on their own. */
++export function createPageReporter(prefix: string): PageReporter {
++  let sequence = 0
++  const newCorrelationId = (): string => {
++    sequence += 1
++    return `${prefix}-${Date.now().toString(36)}-${sequence}`
++  }
++  const report: PageReporter['report'] = (source, error, message, context = {}, level = 'error', sink = webErrorSink) => {
++    sink.report({
++      level,
++      source,
++      message,
++      at: Date.now(),
++      context: {
++        ...context,
++        errorName: error instanceof Error ? error.name : typeof error,
++        ...causeFacts(error),
++        correlationId: newCorrelationId(),
++      },
++    })
++  }
++  return { newCorrelationId, report }
++}

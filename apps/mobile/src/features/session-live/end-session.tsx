@@ -13,6 +13,19 @@
  *
  * Reduced motion: no fill; the Dialog opens on press. Screen readers: the `activate` action (a
  * TalkBack double-tap) opens the Dialog directly, no hold needed.
+ *
+ * Live mode (backend task, row W68; [CS:§8.6] S2-1, §8.1 LB-1, LB-6, LB-10; F59). The Dialog's
+ * "End Session" sends `stopSession` to the Core server:
+ *
+ * | Phase | The Dialog |
+ * |---|---|
+ * | the press until the Core answered | the confirm ignores presses and is marked busy (`usePendingPress()` from `@/runtime`); after `LIVE_PENDING_REVEAL_MS` on the store's clock it shows the kit's Spinner and "Ending…". "Keep recording" is disabled, and the overlay and Back do not close it (decision D166): a stop that left the device cannot be taken back, and a closed Dialog would hide what the answer means |
+ * | 202 | it closes; route-sync follows the Core's STOPPING to `/session/finalizing` |
+ * | 422 `INVALID_REASON` | it stays open with the reason; the reason field says the reason is too short (the Core counts characters, the field counts the simulator's code units) |
+ * | 403, an outage, a limit, 409 | it stays open with the reason, the confirm idle again; the toast says why (the refusal presenter in LIVE, the step-79 toasts otherwise) |
+ *
+ * In Simulated mode the stop settles before the press returns: no state is set, nothing waits, and
+ * the Dialog looks and behaves exactly as before.
  */
 import { Button, Description, Dialog, FieldError, Label, TextArea, TextField, useToast } from 'heroui-native';
 import { Square } from 'lucide-react-native';
@@ -24,12 +37,14 @@ import Animated, { Easing, cancelAnimation, useAnimatedStyle, useSharedValue, wi
 import { derived, fontFamily, motion as motionTokens, palette, spacing } from '@dems/shared/tokens';
 import { withAlpha } from '@/components/media/color';
 import { triggerHaptic, useMotionPolicy } from '@/motion';
+import { PendingSpinner, busyState, usePendingPress } from '@/runtime';
 import { HOLD_HAPTIC_BEATS_MS, HOLD_TO_CONFIRM_MS, STOP_REASON_MAX, STOP_REASON_MIN, checkStopReason } from './session-live.math';
+import type { MonitorHandlers } from './use-monitor';
 
 export interface EndSessionProps {
   disabled: boolean;
-  /** Calls `stopRecording(reason)`; returns whether the simulator accepted it. */
-  onEnd: (reason: string) => boolean;
+  /** Sends `stopRecording(reason)`; the handlers run once the command settled (S2-1). */
+  onEnd: (reason: string, handlers: MonitorHandlers) => void;
 }
 
 /** The pinned End Session control plus its reason Dialog. */
@@ -163,7 +178,7 @@ function EndSessionButton({ disabled, dialogOpen, onConfirmHold }: EndSessionBut
 interface EndSessionDialogProps {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
-  onEnd: (reason: string) => boolean;
+  onEnd: EndSessionProps['onEnd'];
 }
 
 /** The mandatory-reason Dialog (S21: at least 5 characters after trimming). */
@@ -171,31 +186,44 @@ function EndSessionDialog({ isOpen, onOpenChange, onEnd }: EndSessionDialogProps
   const { t } = useTranslation();
   const [reason, setReason] = useState('');
   const [touched, setTouched] = useState(false);
-  const [ending, setEnding] = useState(false);
+  /** The trimmed reason the Core refused (422 `INVALID_REASON`); editing it clears the error. */
+  const [refusedReason, setRefusedReason] = useState<string | null>(null);
+  const press = usePendingPress();
   const keyboardHeight = useKeyboardState((s) => (s.isVisible ? s.height : 0));
   const check = checkStopReason(reason);
-  const showError = touched && !check.valid;
+  const refusedByCore = refusedReason !== null && refusedReason === check.value;
+  const showError = (touched && !check.valid) || refusedByCore;
 
   const close = () => {
     onOpenChange(false);
     setTouched(false);
-    setEnding(false);
+    setRefusedReason(null);
+  };
+  // While the stop is out the Dialog stays: the answer decides (the table in this file's header).
+  const dismiss = () => {
+    if (!press.busy) close();
   };
 
   const confirm = () => {
     setTouched(true);
-    if (!check.valid || ending) return;
-    setEnding(true);
-    if (onEnd(check.value)) {
-      setReason('');
-      close();
-    } else {
-      setEnding(false);
-    }
+    if (!check.valid) return;
+    const sent = check.value;
+    press.run((release) =>
+      onEnd(sent, {
+        ok: () => {
+          setReason('');
+          close();
+        },
+        refused: (why) => {
+          if (why === 'reason') setRefusedReason(sent);
+        },
+        done: release,
+      }),
+    );
   };
 
   return (
-    <Dialog isOpen={isOpen} onOpenChange={(open) => (open ? onOpenChange(true) : close())}>
+    <Dialog isOpen={isOpen} onOpenChange={(open) => (open ? onOpenChange(true) : dismiss())}>
       <Dialog.Portal style={keyboardHeight > 0 ? { paddingBottom: keyboardHeight } : undefined}>
         <Dialog.Overlay />
         <Dialog.Content testID="monitor-end-dialog" style={styles.dialog}>
@@ -215,7 +243,7 @@ function EndSessionDialog({ isOpen, onOpenChange, onEnd }: EndSessionDialogProps
                 style={styles.textArea}
               />
               {showError ? (
-                <FieldError testID="monitor-end-reason-error">
+                <FieldError testID={refusedByCore ? 'monitor-end-reason-refused' : 'monitor-end-reason-error'}>
                   {t('session.actions.endSession.reasonTooShort', { min: STOP_REASON_MIN })}
                 </FieldError>
               ) : (
@@ -226,12 +254,13 @@ function EndSessionDialog({ isOpen, onOpenChange, onEnd }: EndSessionDialogProps
             </TextField>
           </View>
           <View style={styles.actions}>
-            <Button testID="monitor-end-keep" variant="outline" onPress={close}>
+            <Button testID="monitor-end-keep" variant="outline" isDisabled={press.busy} onPress={dismiss}>
               <Button.Label>{t('session.actions.endSession.keepRecording')}</Button.Label>
             </Button>
-            <Button testID="monitor-end-confirm" variant="danger" isDisabled={!check.valid || ending} onPress={confirm}>
+            <Button testID="monitor-end-confirm" variant="danger" isDisabled={!check.valid} onPress={confirm} {...busyState(press.busy, !check.valid)}>
+              {press.pending ? <PendingSpinner color={derived.dangerForeground} testID="monitor-end-confirm-spinner" /> : null}
               <Button.Label>
-                {ending ? t('features.session-live.endSession.ending') : t('session.actions.endSession.confirm')}
+                {press.pending ? t('features.session-live.endSession.ending') : t('session.actions.endSession.confirm')}
               </Button.Label>
             </Button>
           </View>

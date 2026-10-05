@@ -1,0 +1,538 @@
+# M1 follow-up (D164) changes: every edited file against its pre-image in .cache/rollback/M1b (pre.sha256), then the new files. 2026-10-06 00:53:59 WIB
+=== apps/mobile/src/features/devices/use-pending-press.ts
+@@ -1,73 +1 @@
+-/**
+- * "Busy at once, spinner late" for one control of Start Session (backend task
+- * 04_client_integration_spec §8.1 LB-1; AC-C-57, AC-C-58; plan row W67).
+- *
+- * | Phase | From | What the control shows | A press |
+- * |-------|------|------------------------|---------|
+- * | idle | — | its own look | starts the command |
+- * | busy | the press | no visual change; `accessibilityState.busy` is true | is ignored: one command per control |
+- * | pending | `LIVE_PENDING_REVEAL_MS` after the press, on the store's clock | the kit's `Spinner` in place of the control's icon, so nothing moves | is ignored |
+- *
+- * The caller passes `run` a function that starts the command and calls `release` once the command
+- * settled (from the continuation that `settle` runs). In Simulated mode the command settles before
+- * `run` returns (`settle`, CL-25): no state is set, nothing renders again, and the control looks and
+- * behaves exactly as before.
+- *
+- * Time is the store's clock (mobile rule 7, never `setTimeout`): in Live mode the store is the Live
+- * source, whose `clock` slice follows the Core's clock in 100 ms steps. The selector returns a
+- * boolean, so the clock re-renders the control at most once per press (when the spinner is due).
+- * The in-flight flag is a ref written only in the event handler, never read while rendering.
+- */
+-import { useCallback, useRef, useState } from 'react';
+-import { LIVE_PENDING_REVEAL_MS } from '@dems/shared/live';
+-import { useSim, useSimInstance } from '@dems/shared/sim';
+-
+-export interface PendingPress {
+-  /** From the press until the command settled: further presses are ignored. */
+-  readonly busy: boolean;
+-  /** Busy for `LIVE_PENDING_REVEAL_MS` or longer: the control shows the kit's pending state. */
+-  readonly pending: boolean;
+-  /**
+-   * Starts one command unless this control has one in flight. `start` gets `release`, which must run
+-   * once when the command settled. Returns whether the command was started.
+-   */
+-  run(start: (release: () => void) => void): boolean;
+-}
+-
+-export function usePendingPress(): PendingPress {
+-  const sim = useSimInstance();
+-  const inFlight = useRef(false);
+-  /** The store's clock at the press of a command still in flight; null while idle. */
+-  const [pressedAt, setPressedAt] = useState<number | null>(null);
+-  const pending = useSim((s) => pressedAt !== null && s.clock.now - pressedAt >= LIVE_PENDING_REVEAL_MS);
+-
+-  const run = useCallback(
+-    (start: (release: () => void) => void): boolean => {
+-      if (inFlight.current) return false;
+-      inFlight.current = true;
+-      let released = false;
+-      let shown = false;
+-      const release = (): void => {
+-        if (released) return;
+-        released = true;
+-        inFlight.current = false;
+-        if (shown) setPressedAt(null);
+-      };
+-      try {
+-        start(release);
+-      } catch (error) {
+-        release();
+-        throw error;
+-      }
+-      // Settled already (Simulated mode, or a command the Live source refused before sending it).
+-      if (!released) {
+-        shown = true;
+-        setPressedAt(sim.store.getState().clock.now);
+-      }
+-      return true;
+-    },
+-    [sim],
+-  );
+-
+-  return { busy: pressedAt !== null, pending, run };
+-}
++export { usePendingPress, type PendingPress } from '@/runtime'; // The one hook lives in the runtime (row M1, D157 DN-7).
+=== apps/mobile/src/features/devices/busy-state.ts
+@@ -1,11 +1 @@
+-/**
+- * The accessibility state of a control whose command is out (backend task W78;
+- * 04_client_integration_spec §8.1 LB-1: "the control is marked busy"); nothing while idle, so a
+- * control in Simulated mode, whose command settles before the press returns, gets no new prop.
+- *
+- * Kept apart from `use-pending-press.ts`, which stays byte-equal to Start Session's hook
+- * (`features/session-new/use-pending-press.ts`) until one copy moves into `@/runtime` (row M1).
+- */
+-export function busyState(busy: boolean, disabled = false): { accessibilityState?: { busy: true; disabled: boolean } } {
+-  return busy ? { accessibilityState: { busy: true, disabled } } : {};
+-}
++export { busyState } from '@/runtime'; // The one helper lives in the runtime beside usePendingPress (row M1 follow-up, D164).
+=== apps/mobile/src/features/devices/device-detail.tsx
+@@ -34,5 +34,5 @@
+  */
+ import { useIsFocused, useRouter } from 'expo-router';
+-import { Alert, Button, Spinner, Tabs, useToast } from 'heroui-native';
++import { Alert, Button, Tabs, useToast } from 'heroui-native';
+ import { Activity, ArrowLeft, EthernetPort, RotateCcw, Siren, Stethoscope, Tablet, type LucideIcon } from 'lucide-react-native';
+ import { useCallback, useState, type ReactNode } from 'react';
+@@ -50,5 +50,5 @@ import { DEMO_MEDIA_LIVE } from '@/components/media/demo-media';
+ import { useLayoutClass } from '@/layout';
+ import { crossFadeIn, enterRise, triggerHaptic, useMotionPolicy, useMotionSettings, useMotionState } from '@/motion';
+-import { reportRuntimeIssue, useCoreErrorPresenter, useCoreLink } from '@/runtime';
++import { PendingSpinner, busyState, reportRuntimeIssue, useCoreErrorPresenter, useCoreLink } from '@/runtime';
+ import { DeviceCommandDialog } from './device-command-dialog';
+ import { DeviceMicMeter } from './device-mic-meter';
+@@ -68,5 +68,4 @@ import { DiagnosticsSheet } from './diagnostics-sheet';
+ import { HealthChart } from './health-chart';
+ import { CAMERA_POE_PORT_KEY, channelOf } from './sim-adapter';
+-import { busyState } from './busy-state';
+ import { usePendingPress } from './use-pending-press';
+ import {
+@@ -281,5 +280,5 @@ function KnownDeviceDetail({ deviceId, variant, header }: { deviceId: DeviceId;
+           {...busyState(diagnosticsPress.busy)}
+         >
+-          {diagnosticsPress.pending ? <Spinner size="sm" color={palette.gold} testID="device-action-diagnostics-spinner" /> : <Stethoscope size={18} color={palette.gold} />}
++          {diagnosticsPress.pending ? <PendingSpinner color={palette.gold} testID="device-action-diagnostics-spinner" /> : <Stethoscope size={18} color={palette.gold} />}
+           <Button.Label numberOfLines={1}>{t('features.devices.actions.diagnostics')}</Button.Label>
+         </Button>
+=== apps/mobile/src/features/devices/device-command-dialog.tsx
+@@ -25,10 +25,9 @@
+ import { settle, type CoreResult } from '@dems/shared/live';
+ import { SimErrorCode, SimNotFoundError, SimTransitionError, type DeviceCommand } from '@dems/shared/sim';
+-import { Button, Dialog, Spinner, useToast } from 'heroui-native';
++import { Button, Dialog, useToast } from 'heroui-native';
+ import { useTranslation } from 'react-i18next';
+ import { StyleSheet, View } from 'react-native';
+ import { palette, spacing } from '@dems/shared/tokens';
+-import { reportRuntimeIssue, useCoreErrorPresenter } from '@/runtime';
+-import { busyState } from './busy-state';
++import { PendingSpinner, busyState, reportRuntimeIssue, useCoreErrorPresenter } from '@/runtime';
+ import { usePendingPress } from './use-pending-press';
+ 
+@@ -124,5 +123,5 @@ export function DeviceCommandDialog({ command, deviceId, deviceName, live = fals
+             </Button>
+             <Button variant={restart ? 'danger' : 'primary'} onPress={confirm} testID="device-command-confirm" {...busyState(press.busy)}>
+-              {press.pending ? <Spinner size="sm" color={palette.foreground} testID="device-command-spinner" /> : null}
++              {press.pending ? <PendingSpinner color={palette.foreground} testID="device-command-spinner" /> : null}
+               <Button.Label>{t('features.devices.actions.confirm')}</Button.Label>
+             </Button>
+=== apps/mobile/src/features/devices/diagnostics-sheet.tsx
+@@ -26,5 +26,5 @@ import { fontFamily, palette, spacing, typography, type StatusTone } from '@dems
+ import { StatusChip } from '@/components/kit';
+ import { REDUCED_FADE_MS, useMotionPolicy } from '@/motion';
+-import { busyState } from './busy-state';
++import { PendingSpinner, busyState } from '@/runtime';
+ import { SheetContentSignal, useSheetPresence } from './use-sheet-presence';
+ 
+@@ -108,5 +108,5 @@ function DiagnosticsBody({ onClose, onRunAgain, closeLabel, subtitleKey, runAgai
+           {...busyState(runAgainBusy)}
+         >
+-          {runAgainPending ? <Spinner size="sm" color={palette.gold} testID="device-diagnostics-again-spinner" /> : null}
++          {runAgainPending ? <PendingSpinner color={palette.gold} testID="device-diagnostics-again-spinner" /> : null}
+           <Button.Label>{t('system.diagnostics.runAgain')}</Button.Label>
+         </Button>
+=== apps/mobile/src/features/devices/health-chart.tsx
+@@ -7,5 +7,9 @@
+  *
+  * LIVE mode (backend task W78; 04_client_integration_spec §3.2): the line is drawn from the Core's
+- * replicated data, so the sample caption drops "Simulated" (`features.devices.live.samples`).
++ * replicated data, so the sample caption drops "Simulated" (`features.devices.live.samples`). The Core
++ * serves no per-device health history (CONTRACT-GAP-W78-2): the line of a camera, the tablet and the
++ * PoE switch is derived from the Core's network data, the lamp's from its session state, a
++ * microphone's from 1 s peaks of its meter frames, so the LIVE caption says the line is derived on this
++ * device (row M1 follow-up, D160).
+  */
+ import { useMemo } from 'react';
+=== apps/mobile/src/features/devices/i18n.ts
+@@ -97,6 +97,8 @@ export const devicesEn = {
+       IDENTIFY: 'Identify',
+     },
+-    samples_one: '{{count}} sample',
+-    samples_other: 'Last {{count}} samples',
++    // Row M1 follow-up (D160, CONTRACT-GAP-W78-2): the Core serves no per-device health history, so the
++    // LIVE line is computed on this device from the Core's data (§3.2: say what is true).
++    samples_one: "Derived on this device from the Core's data · {{count}} sample",
++    samples_other: "Derived on this device from the Core's data · last {{count}} samples",
+     diagnosticsSubtitle: 'Eight health checks on the Core, one after another.',
+   },
+=== apps/mobile/src/features/devices/live-devices-sites.test.tsx
+@@ -366,5 +366,6 @@ describe('the LIVE copy (rule 8, MD-8)', () => {
+     await press('device-tab-health', b);
+     expect(screen.getByText('Link quality (%)')).toBeTruthy();
+-    expect(screen.getByTestId('device-health-samples')).toHaveTextContent(/^(?:Last \d+ samples|Collecting samples…)$/);
++    // Row M1 follow-up (D160): the LIVE caption says the line is derived on this device (CONTRACT-GAP-W78-2).
++    expect(screen.getByTestId('device-health-samples')).toHaveTextContent(/^(?:Derived on this device from the Core's data · last \d+ samples|Collecting samples…)$/);
+     expect(saysSimulated()).toBe(false);
+   });
+=== apps/mobile/src/features/session-new/session-new-screen.tsx
+@@ -41,5 +41,5 @@
+ import { useIsFocused, useNavigation, useRouter } from 'expo-router';
+ import { StackActions } from 'expo-router/react-navigation';
+-import { Alert, Button, Spinner, useToast } from 'heroui-native';
++import { Alert, Button, useToast } from 'heroui-native';
+ import { ArrowRight, Circle } from 'lucide-react-native';
+ import { useEffect, useEffectEvent, useMemo, useState, type ReactNode } from 'react';
+@@ -63,5 +63,5 @@ import {
+ } from '@/motion';
+ import { BackGuardDialog, useBackGuard, type SessionStep } from '@/navigation';
+-import { reportRuntimeIssue, useCoreLink, useCoreLinkNotice, usePendingPress } from '@/runtime';
++import { PendingSpinner, busyState, reportRuntimeIssue, useCoreLink, useCoreLinkNotice, usePendingPress } from '@/runtime';
+ import { DevicesCheckStep } from './devices-check-step';
+ import { LiveDeviceColumn } from './device-previews';
+@@ -369,5 +369,5 @@ export function SessionNewScreen({ step }: SessionNewScreenProps) {
+       >
+         <Button.Label>{t('common.actions.next')}</Button.Label>
+-        {createPress.pending ? <PendingSpinner testID="session-new-next-spinner" /> : <ArrowRight size={20} color={palette.black} />}
++        {createPress.pending ? <PendingSpinner color={palette.black} testID="session-new-next-spinner" /> : <ArrowRight size={20} color={palette.black} />}
+       </Button>
+     );
+@@ -377,5 +377,5 @@ export function SessionNewScreen({ step }: SessionNewScreenProps) {
+       <Button testID="session-new-next" variant="primary" size="lg" isDisabled={blocked} onPress={onNextGate} {...busyState(gatePress.busy, blocked)}>
+         <Button.Label>{t('common.actions.next')}</Button.Label>
+-        {gatePress.pending ? <PendingSpinner testID="session-new-next-spinner" /> : <ArrowRight size={20} color={palette.black} />}
++        {gatePress.pending ? <PendingSpinner color={palette.black} testID="session-new-next-spinner" /> : <ArrowRight size={20} color={palette.black} />}
+       </Button>
+     );
+@@ -512,5 +512,5 @@ export function SessionNewScreen({ step }: SessionNewScreenProps) {
+       {remaining !== null ? <CountdownOverlay seconds={remaining} onCancel={() => setRemaining(null)} /> : null}
+       {flowActive ? (
+-        <BackGuardDialog guard={back.guard} variant="flow" onConfirm={cancelAndLeave} busy={cancelPress.pending} />
++        <BackGuardDialog guard={back.guard} variant="flow" onConfirm={cancelAndLeave} busy={cancelPress.busy} pending={cancelPress.pending} />
+       ) : (
+         <DiscardDialog guard={back.guard} />
+@@ -642,16 +642,5 @@ function handOffToMonitor(navigation: StackNavigation, fallback: () => void): vo
+ }
+ 
+-/**
+- * The accessibility state of a control whose command is out (LB-1: "the control is marked busy").
+- * Nothing while idle, so an idle control keeps exactly the props it had before Live mode existed.
+- */
+-function busyState(busy: boolean, disabled: boolean): { accessibilityState?: { busy: true; disabled: boolean } } {
+-  return busy ? { accessibilityState: { busy: true, disabled } } : {};
+-}
+-
+-/** The kit's Spinner in place of a button's icon (LB-1: nothing moves). */
+-function PendingSpinner({ testID, color = palette.black }: { testID: string; color?: string }) {
+-  return <Spinner size="sm" color={color} testID={testID} />;
+-}
++// `busyState` and `PendingSpinner` (LB-1) come from `@/runtime` (row M1 follow-up, D164).
+ 
+ const styles = StyleSheet.create({
+=== apps/mobile/src/features/session-new/devices-check-step.tsx
+@@ -25,4 +25,5 @@ import { spacing } from '@dems/shared/tokens';
+ import { SectionCard, StatusChip } from '@/components/kit';
+ import { REDUCED_FADE_MS, SPEC_LITERALS, animatePulseOnce, rowReveal, triggerHaptic, useMotionSettings, type MotionSettings } from '@/motion';
++import { PendingSpinner, busyState } from '@/runtime';
+ import { CheckIcon } from './check-icon';
+ import { DevicePreviews } from './device-previews';
+@@ -168,7 +169,7 @@ export function DevicesCheckStep({
+             onPress={onRetry}
+             testID="session-new-retry-checks"
+-            {...(retryBusy ? { accessibilityState: { busy: true, disabled: false } } : {})}
++            {...busyState(retryBusy)}
+           >
+-            {retryPending ? <Spinner size="sm" testID="session-new-retry-spinner" /> : null}
++            {retryPending ? <PendingSpinner testID="session-new-retry-spinner" /> : null}
+             <Button.Label>{t('features.session-new.devices.retry')}</Button.Label>
+           </Button>
+=== apps/mobile/src/runtime/index.ts
+@@ -23,4 +23,5 @@
+  * | `use-pending-press` | `usePendingPress`: "busy at once, spinner late" for one control that sends a Core command (LB-1; row M1) |
+  * | `use-core-link-notice` | `useCoreLinkNotice`: the offline notice of a screen in one call, its first render seeded from the connection banner (row M1) |
++ * | `pending-control` | `busyState` and `PendingSpinner`: the look of a pending control, beside `usePendingPress` (LB-1; row M1 follow-up) |
+  *
+  * Auth (`useAuth().signIn` against the simulator's `auth.ts`, lockout, biometric, idle lock) is
+@@ -34,5 +35,5 @@
+  * | Show "Core server unreachable" without flicker | `const { view, offline } = useCoreLinkNotice();` (row M1: M0's rule, its first render seeded from the connection banner); never a rule of your own |
+  * | Call a Core action | `useCoreActions()` and `settle` of `@dems/shared/live`, in every mode |
+- * | Mark a control busy while its command is out, the spinner late | `usePendingPress()`: `run((release) => settle(…, { done: release }))`, then `busy` (accessibility state) and `pending` (the kit's `Spinner`); never a copy of the hook, never `setTimeout` |
++ * | Mark a control busy while its command is out, the spinner late | `usePendingPress()`: `run((release) => settle(…, { done: release }))`, then `{...busyState(press.busy)}` on the control and `{press.pending ? <PendingSpinner /> : icon}` inside it; never a copy of the hook or of the two helpers, never `setTimeout` |
+  * | Call an operation that is no simulator action | `useMobileLive()?.client.call(operationId, input)` |
+  * | Present a refusal | `useCoreErrorPresenter()`; `describeCoreError(error)` where the refusal is drawn in place |
+@@ -205,2 +206,3 @@ export { coreLinkViewOf, initialOfflineNotice, offlineNoticeAfter, type CoreLink
+ export { usePendingPress, type PendingPress } from './use-pending-press';
+ export { useCoreLinkNotice, type CoreLinkNotice } from './use-core-link-notice';
++export { PendingSpinner, busyState, type PendingSpinnerProps } from './pending-control';
+=== apps/mobile/src/navigation/back-guard.tsx
+@@ -1,9 +1,10 @@
+ import { useNavigation, useRouter, type Href } from 'expo-router';
+ import { usePreventRemove } from 'expo-router/react-navigation';
+-import { Button, Dialog, Spinner } from 'heroui-native';
++import { Button, Dialog } from 'heroui-native';
+ import { useCallback, useEffect, useState } from 'react';
+ import { useTranslation } from 'react-i18next';
+ import { StyleSheet, View } from 'react-native';
+ import { palette, spacing } from '@dems/shared/tokens';
++import { PendingSpinner, busyState } from '@/runtime';
+ import { reportNavigationIssue } from './log';
+ 
+@@ -107,18 +108,26 @@ export interface BackGuardDialogProps {
+   onConfirm?: () => void;
+   /**
+-   * The leave action's command is out (Live mode, LB-1; row M1, W67 F-6): the leave button carries
+-   * `accessibilityState.busy` and shows the kit's `Spinner` before its label, and a further press
+-   * is ignored (the answer decides). The caller passes its pending state (`usePendingPress().pending`
+-   * of `@/runtime`), so a fast answer shows no spinner. Default false: the dialog is as before.
++   * The leave action's command is out, from the PRESS until it settled (Live mode, LB-1; row M1, W67
++   * F-6 and DN-4): the leave button carries `accessibilityState.busy` and a further press is ignored
++   * (the answer decides). The dialog holds meanwhile (row M1 follow-up F5; S3-1 "keeps its busy state
++   * until the settle", B-6 "leaving happens in `ok`", LB-6 "a dialog stays open"): the stay button is
++   * disabled and ignored, and the dialog cannot be dismissed. Pass `usePendingPress().busy` of
++   * `@/runtime`. Default false: as before.
+    */
+   busy?: boolean;
++  /**
++   * The command has been out for `LIVE_PENDING_REVEAL_MS`: the kit's `Spinner` shows inside the leave
++   * button, before its label (LB-1: spinner late). Pass `usePendingPress().pending`. When omitted it
++   * follows `busy` (the first form of this prop, row M1), so such a caller keeps its behaviour.
++   */
++  pending?: boolean;
+ }
+ 
+ /** The §3.6 back-guard Dialog (HeroUI Native `Dialog`), with the copy of `mobile.backGuard.*`. */
+-export function BackGuardDialog({ guard, variant, onConfirm, busy = false }: BackGuardDialogProps) {
++export function BackGuardDialog({ guard, variant, onConfirm, busy = false, pending = busy }: BackGuardDialogProps) {
+   const { t } = useTranslation();
+   const monitor = variant === 'monitor';
+   return (
+-    <Dialog isOpen={guard.isPrompting} onOpenChange={(open) => (open ? undefined : guard.stay())}>
++    <Dialog isOpen={guard.isPrompting} onOpenChange={(open) => (open || busy ? undefined : guard.stay())}>
+       <Dialog.Portal>
+         <Dialog.Overlay />
+@@ -126,5 +135,5 @@ export function BackGuardDialog({ guard, variant, onConfirm, busy = false }: Bac
+           <Dialog.Title>{t(monitor ? 'mobile.backGuard.leaveMonitor' : 'mobile.backGuard.cancelSession')}</Dialog.Title>
+           <View style={styles.actions}>
+-            <Button testID="back-guard-stay" variant="primary" onPress={guard.stay}>
++            <Button testID="back-guard-stay" variant="primary" onPress={guard.stay} {...(busy ? { isDisabled: true } : {})}>
+               <Button.Label>{t(monitor ? 'mobile.backGuard.stayOnMonitor' : 'mobile.backGuard.keepSession')}</Button.Label>
+             </Button>
+@@ -138,7 +147,7 @@ export function BackGuardDialog({ guard, variant, onConfirm, busy = false }: Bac
+                 else guard.leave();
+               }}
+-              {...(busy ? { accessibilityState: { busy: true } } : {})}
++              {...busyState(busy)}
+             >
+-              {busy ? <Spinner size="sm" color={palette.foreground} testID="back-guard-leave-spinner" /> : null}
++              {pending ? <PendingSpinner color={palette.foreground} testID="back-guard-leave-spinner" /> : null}
+               <Button.Label>{t(monitor ? 'mobile.backGuard.goHome' : 'mobile.backGuard.confirmCancel')}</Button.Label>
+             </Button>
+=== apps/mobile/src/navigation/__tests__/back-guard-busy.test.tsx
+@@ -9,4 +9,5 @@ import { QueryClient } from '@tanstack/react-query';
+ import { act, fireEvent, screen, within } from '@testing-library/react-native';
+ import { Stack, router } from 'expo-router';
++import { Dialog } from 'heroui-native';
+ import { useSyncExternalStore } from 'react';
+ import { Text, View } from 'react-native';
+@@ -25,15 +26,17 @@ class IdleSocket implements SocketLike {
+ }
+ 
+-/** What the test sets: the variant, the screen's confirm action, and the busy prop (undefined = not passed). */
+-const config: { variant: BackGuardDialogVariant; onConfirm: jest.Mock<() => void> | undefined; busy: boolean | undefined } = {
++/** What the test sets: the variant, the screen's confirm action, and the two props (undefined = not passed). */
++const config: { variant: BackGuardDialogVariant; onConfirm: jest.Mock<() => void> | undefined; busy: boolean | undefined; pending: boolean | undefined } = {
+   variant: 'flow',
+   onConfirm: undefined,
+   busy: undefined,
++  pending: undefined,
+ };
+ const listeners = new Set<() => void>();
+ let version = 0;
+-function setBusy(busy: boolean | undefined): void {
++function setBusy(busy: boolean | undefined, pending?: boolean): void {
+   act(() => {
+     config.busy = busy;
++    config.pending = pending;
+     version += 1;
+     for (const listener of listeners) listener();
+@@ -71,4 +74,5 @@ function Guarded() {
+         {...(config.onConfirm ? { onConfirm: config.onConfirm } : {})}
+         {...(config.busy === undefined ? {} : { busy: config.busy })}
++        {...(config.pending === undefined ? {} : { pending: config.pending })}
+       />
+     </View>
+@@ -107,5 +111,5 @@ beforeEach(() => {
+   listeners.clear();
+   version = 0;
+-  Object.assign(config, { variant: 'flow', onConfirm: jest.fn(), busy: undefined });
++  Object.assign(config, { variant: 'flow', onConfirm: jest.fn(), busy: undefined, pending: undefined });
+ });
+ 
+@@ -173,7 +177,13 @@ describe('BackGuardDialog `busy` (LB-1; row M1)', () => {
+   });
+ 
+-  it('busy does not touch "Stay": it still drops the held attempt (unchanged)', () => {
++  it('busy holds the dialog (F5; S3-1, B-6): "Stay" is disabled and ignored; once not busy it drops the held attempt as before', () => {
+     const app = promptOnGuarded();
+     setBusy(true);
++    expect(screen.getByTestId('back-guard-stay').props.accessibilityState).toMatchObject({ disabled: true });
++    fireEvent.press(screen.getByTestId('back-guard-stay'));
++    expect(screen.getByTestId('prompting')).toHaveTextContent('true');
++    expect(screen.getByTestId('back-guard-dialog')).toBeTruthy();
++    setBusy(false);
++    expect(screen.getByTestId('back-guard-stay').props.accessibilityState?.disabled).not.toBe(true);
+     fireEvent.press(screen.getByTestId('back-guard-stay'));
+     expect(screen.getByTestId('prompting')).toHaveTextContent('false');
+@@ -181,4 +191,60 @@ describe('BackGuardDialog `busy` (LB-1; row M1)', () => {
+   });
+ 
++  it('busy: a request to dismiss the dialog (the kit\'s onOpenChange(false): overlay, close part) is ignored; not busy it drops the attempt as before', () => {
++    promptOnGuarded();
++    const dismiss = () =>
++      act(() => {
++        (screen.UNSAFE_getByType(Dialog).props as { onOpenChange: (open: boolean) => void }).onOpenChange(false);
++      });
++    setBusy(true);
++    dismiss();
++    expect(screen.getByTestId('prompting')).toHaveTextContent('true');
++    setBusy(false);
++    dismiss();
++    expect(screen.getByTestId('prompting')).toHaveTextContent('false');
++  });
++
++  it('not busy: "Stay" carries no disabled state (the default dialog is unchanged)', () => {
++    promptOnGuarded();
++    expect(screen.getByTestId('back-guard-stay').props.accessibilityState?.disabled).not.toBe(true);
++    setBusy(false);
++    expect(screen.getByTestId('back-guard-stay').props.accessibilityState?.disabled).not.toBe(true);
++  });
++
++  it('DN-4, busy at the press and the spinner late: `busy` without `pending` marks the button busy and shows no spinner; `pending` adds the Spinner', () => {
++    promptOnGuarded();
++    const outside = idsOutsideLeave();
++    setBusy(true, false);
++    expect(leave().props.accessibilityState).toMatchObject({ busy: true });
++    expect(screen.queryByTestId('back-guard-leave-spinner')).toBeNull();
++    expect(idsOutsideLeave()).toEqual(outside);
++    act(() => {
++      fireEvent.press(leave());
++    });
++    expect(config.onConfirm).not.toHaveBeenCalled();
++    setBusy(true, true);
++    expect(leave().props.accessibilityState).toMatchObject({ busy: true });
++    expect(within(leave()).getByTestId('back-guard-leave-spinner')).toBeTruthy();
++    expect(idsOutsideLeave()).toEqual(outside);
++    setBusy(false, false);
++    expect(leave().props.accessibilityState?.busy).not.toBe(true);
++    expect(screen.queryByTestId('back-guard-leave-spinner')).toBeNull();
++  });
++
++  it('`pending` alone shows the Spinner but does not hold the button (the caller decides what is busy)', () => {
++    promptOnGuarded();
++    setBusy(undefined, true);
++    expect(within(leave()).getByTestId('back-guard-leave-spinner')).toBeTruthy();
++    expect(leave().props.accessibilityState?.busy).not.toBe(true);
++  });
++
++  it('`pending` omitted: the spinner follows `busy`, so a caller of the first form keeps its behaviour', () => {
++    promptOnGuarded();
++    setBusy(true);
++    expect(within(leave()).getByTestId('back-guard-leave-spinner')).toBeTruthy();
++    setBusy(false);
++    expect(screen.queryByTestId('back-guard-leave-spinner')).toBeNull();
++  });
++
+   it('is the dialog the navigation barrel hands out', () => {
+     expect(BarrelBackGuardDialog).toBe(BackGuardDialog);
+=== apps/mobile/src/features/session-new/live-session-new-followups.test.tsx
+@@ -93,8 +93,11 @@ describe('the cancel confirm is a pending control (LB-1, AC-C-57, AC-C-58; DN-9)
+     await b.flush();
+     expect(b.requests('cancelSession')).toHaveLength(1);
++    // LB-1 (the follow-up's DN-4): marked busy at the PRESS, its look unchanged.
++    expect(leave().props.accessibilityState).toMatchObject({ busy: true });
++    expect(screen.queryByTestId('back-guard-leave-spinner')).toBeNull();
+ 
+     await b.elapse(300);
+     expect(screen.queryByTestId('back-guard-leave-spinner')).toBeNull();
+-    expect(leave().props.accessibilityState?.busy).not.toBe(true);
++    expect(leave().props.accessibilityState).toMatchObject({ busy: true });
+     // A third press while it is out sends nothing either.
+     fireEvent.press(leave());
+@@ -152,4 +155,62 @@ describe('the cancel confirm is a pending control (LB-1, AC-C-57, AC-C-58; DN-9)
+ });
+ 
++describe('the cancel confirm holds while the cancel is out (S3-1, B-6, LB-6; the follow-up\'s F5)', () => {
++  // B-6: "Cancel: the dialog's confirm is busy; leaving happens in `ok`". S3-1: "The dialog keeps its busy
++  // state until the settle … and closes in `done`". LB-6: on an outage "a dialog … stays open". So while
++  // the cancel request is out, "Keep session" cannot close the dialog: the Core's answer decides.
++  const stay = () => screen.getByTestId('back-guard-stay');
++  const stayDisabled = () => stay().props.accessibilityState?.disabled === true;
++
++  for (const order of ['delta-first', 'answer-first'] as const) {
++    it(`a confirmed cancel (${order}): "Keep session" is disabled and does not close the dialog while the cancel is out; the wizard leaves on the Core's answer`, async () => {
++      const b = await liveCancelConfirm();
++      b.order = order;
++      b.answerDelayMs = 1_000;
++      expect(stayDisabled()).toBe(false);
++      fireEvent.press(leave());
++      await b.flush();
++      fireEvent.press(stay());
++      await b.flush();
++      // The defect: "Keep session" closed the dialog while the cancel was out (the wizard then left anyway).
++      expect(screen.queryByText('Cancel this session?')).not.toBeNull();
++      expect(stayDisabled()).toBe(true);
++      expect(b.app.getPathname()).toBe('/session/new');
++      await b.elapse(500);
++      fireEvent.press(stay());
++      await b.flush();
++      expect(screen.getByText('Cancel this session?')).toBeTruthy();
++      await b.elapse(700);
++      if (order === 'answer-first') {
++        b.sendHeldDeltas();
++        await b.flush();
++      }
++      await b.elapse(200);
++      expect(b.requests('cancelSession')).toHaveLength(1);
++      expect(b.state().session).toBeNull();
++      expect(b.app.getPathname()).toBe('/home');
++    });
++  }
++
++  it('a refused cancel (403, 1 s late): "Keep session" is disabled while it is out, enabled again after the refusal, and then keeps the session', async () => {
++    const b = await liveCancelConfirm();
++    b.fake.answerOnce('cancelSession', { ...b.fake.example('cancelSession', 403, 'notPermitted'), delayMs: 1_000 });
++    fireEvent.press(leave());
++    await b.flush();
++    fireEvent.press(stay());
++    await b.flush();
++    expect(screen.queryByText('Cancel this session?')).not.toBeNull();
++    expect(stayDisabled()).toBe(true);
++    await b.elapse(1_200);
++    expect(screen.queryAllByText('Not permitted').length).toBeGreaterThan(0);
++    expect(screen.getByText('Cancel this session?')).toBeTruthy();
++    expect(stayDisabled()).toBe(false);
++    fireEvent.press(stay());
++    await b.flush();
++    expect(screen.queryByText('Cancel this session?')).toBeNull();
++    expect(b.app.getPathname()).toBe('/session/new');
++    expect(b.state().session?.state).toBe('ARMED');
++  });
++});
++
+ describe('truthful copy (§3.2, MD-8; F-2)', () => {
+   /** Every text and accessibility label rendered under the screen. */
+=== new files
+edce932f9bd2cffc77b565eae211d8d341885529f26f9ded971712e6a86a634f  apps/mobile/src/runtime/pending-control.tsx  (43 lines)
+8f54db9889cc98ae0bb423873598760c0dedf49a874bb952e50e3321fe768d3b  apps/mobile/src/runtime/pending-control.test.tsx  (117 lines)
+05f434b8d905ecad06646c0f4656d8860d2be566075b614d6420869e61cd141a  apps/mobile/src/features/devices/live-devices-health-caption.test.tsx  (117 lines)

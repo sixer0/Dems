@@ -1,0 +1,228 @@
+// W67 device check: the UI driver. Taps the app's own controls by test ID (React Native puts a testID
+// into `resource-id`; centres from a `uiautomator dump`, W57's method), types into the app's own
+// fields with `adb shell input`, and reads the app's development console (`[DEMS-LIVE]` request
+// lines: method, path template, status, request ID; never a body or a credential).
+//   node --import tsx .cache/w67/drive_w67.mts <serial> <out> <logcat T0>
+// Rules: the demo password is read from the shared dataset constant, is only ever an argument of one
+// `adb shell input text`, and is never printed, logged or written. Nothing is typed unless the app has
+// the focus and no keyguard shows. No dump is taken while the password field holds text. The app's
+// biometric offer is declined in the app (in-memory state only); no device setting is touched.
+import { execFileSync } from 'node:child_process';
+import { writeFileSync } from 'node:fs';
+import { DEMO_OPERATOR_PASSWORD, OPERATORS } from '../../packages/shared/src/sim/dataset';
+
+const [serial, out, t0] = process.argv.slice(2);
+if (!serial || !out || !t0) {
+  console.error('usage: drive_w67.mts <serial> <out> <T0>');
+  process.exit(64);
+}
+const APP = 'com.dems.demo.tablet';
+const BIG = { encoding: 'utf8' as const, maxBuffer: 256 * 1024 * 1024 };
+const adb = (...args: string[]): string => execFileSync('adb', ['-s', serial, ...args], BIG);
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+const stamp = () => new Date().toTimeString().slice(0, 8);
+const say = (line: string) => console.log(`-- ${stamp()} ${line}`);
+const jsLog = (): string => adb('logcat', '-d', '-T', t0, '-s', 'ReactNativeJS:V');
+
+function focused(): boolean {
+  const window = adb('shell', 'dumpsys', 'window');
+  return /isKeyguardShowing=false/.test(window) && new RegExp(`mCurrentFocus=.*${APP.replace(/\./g, '\\.')}`).test(window);
+}
+
+interface Box { l: number; t: number; r: number; b: number }
+let lastDump = '';
+async function dump(): Promise<string> {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    try {
+      adb('shell', 'uiautomator', 'dump', '/sdcard/w67.xml');
+      lastDump = adb('shell', 'cat', '/sdcard/w67.xml');
+      if (lastDump.includes('<hierarchy')) return lastDump;
+    } catch {
+      // the UI was not idle; try again
+    }
+    await sleep(1000);
+  }
+  throw new Error('uiautomator dump failed five times');
+}
+const nodes = (xml: string): string[] => [...xml.matchAll(/<node\b[^>]*>/g)].map((m) => m[0]);
+const attr = (node: string, name: string): string => new RegExp(` ${name}="([^"]*)"`).exec(node)?.[1] ?? '';
+const idOf = (node: string): string => attr(node, 'resource-id').replace(/^.*:id\//, '');
+const boxOf = (node: string): Box | null => {
+  const m = /\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]/.exec(attr(node, 'bounds'));
+  return m ? { l: Number(m[1]), t: Number(m[2]), r: Number(m[3]), b: Number(m[4]) } : null;
+};
+const has = (xml: string, id: string): boolean => nodes(xml).some((n) => idOf(n) === id);
+const textIn = (xml: string, text: string): boolean => nodes(xml).some((n) => attr(n, 'text').includes(text) || attr(n, 'content-desc').includes(text));
+function centre(xml: string, id: string): [string, string] {
+  const node = nodes(xml).find((n) => idOf(n) === id);
+  const box = node ? boxOf(node) : null;
+  if (!box) throw new Error(`no node with test ID ${id}`);
+  return [String(Math.round((box.l + box.r) / 2)), String(Math.round((box.t + box.b) / 2))];
+}
+async function waitForId(id: string, seconds: number): Promise<string> {
+  for (let waited = 0; waited < seconds; waited += 1) {
+    const xml = await dump();
+    if (has(xml, id)) return xml;
+    await sleep(1000);
+  }
+  throw new Error(`test ID ${id} did not appear in ${seconds} s`);
+}
+async function tapId(id: string, xml?: string): Promise<void> {
+  if (!focused()) throw new Error(`app not focused or keyguard showing before tapping ${id}`);
+  const [x, y] = centre(xml ?? (await dump()), id);
+  adb('shell', 'input', 'tap', x, y);
+  say(`tapped ${id} at ${x},${y}`);
+}
+async function waitLog(pattern: RegExp, seconds: number): Promise<string | null> {
+  for (let waited = 0; waited < seconds; waited += 1) {
+    const line = jsLog().split('\n').find((l) => pattern.test(l));
+    if (line !== undefined) return line.replace(/^.*DEMS-LIVE\]/, '[DEMS-LIVE]').replace(/ [0-9a-f]{8}-[0-9a-f-]{27}$/, '');
+    await sleep(1000);
+  }
+  return null;
+}
+function shot(name: string): void {
+  const png = execFileSync('adb', ['-s', serial, 'exec-out', 'screencap', '-p'], { maxBuffer: BIG.maxBuffer });
+  writeFileSync(`${out}/67_phone_${name}.png`, png);
+  say(`screencap 67_phone_${name}.png (${png.length} bytes)`);
+}
+
+async function main(): Promise<number> {
+  const investigator = OPERATORS.find((operator) => operator.role === 'INVESTIGATOR');
+  if (!investigator) throw new Error('no INVESTIGATOR in the dataset');
+  if (!focused()) {
+    say('app not focused / keyguard: nothing typed');
+    return 77;
+  }
+
+  // ── D2. Sign in on the paired phone, in the app's own fields ──
+  const login = await waitForId('login-username', 30);
+  shot('login_live');
+  const [ux, uy] = centre(login, 'login-username');
+  const [px, py] = centre(login, 'login-password');
+  adb('shell', 'input', 'tap', ux, uy);
+  await sleep(700);
+  if (!focused()) return 77;
+  adb('shell', 'input', 'text', investigator.username);
+  say(`typed the operator username (${investigator.username})`);
+  adb('shell', 'input', 'tap', px, py);
+  await sleep(700);
+  if (!focused()) return 77;
+  adb('shell', 'input', 'text', DEMO_OPERATOR_PASSWORD); // never printed
+  say('typed the demo password (not shown)');
+  await sleep(400);
+  adb('shell', 'input', 'keyevent', '66'); // the keypad's go key submits the form
+  say("pressed the keypad's go key");
+  const signIn = await waitLog(/DEMS-LIVE\] POST \/api\/v1\/auth\/sign-in/, 40);
+  say(`the app's sign-in request: ${signIn ?? 'NOT SEEN in 40 s'}`);
+  if (signIn === null || !/ 200\b/.test(signIn)) return 2;
+  await sleep(4000);
+
+  // The app offers biometric sign-in after a password sign-in on a device with a fingerprint: declined
+  // in the app (in-memory state), so nothing is enrolled and no device setting changes.
+  let home = await dump();
+  if (has(home, 'biometric-offer-decline')) {
+    shot('biometric_offer_declined_before');
+    await tapId('biometric-offer-decline', home);
+    await sleep(1500);
+    home = await dump();
+  }
+  shot('home_live');
+
+  // ── D3. Start Session (the Home button's route) ──
+  say('deep link demsdemo:///session/new?step=1');
+  adb('shell', 'am', 'start', '-W', '-a', 'android.intent.action.VIEW', '-d', 'demsdemo:///session/new?step=1', APP);
+  let step1 = await waitForId('session-new-step-1', 20);
+  shot('step1_live');
+
+  // ── D4. Step 1: scan, subject type, name; Next → createSession, then beginPrecheck (S1-4) ──
+  await tapId('session-new-scan', step1);
+  await sleep(600);
+  await tapId('session-new-subject-TERSANGKA');
+  await sleep(600);
+  await tapId('session-new-subject-name');
+  await sleep(700);
+  if (!focused()) return 77;
+  adb('shell', 'input', 'text', 'Ahmad%sFauzi');
+  say('typed the subject name (demo data)');
+  await sleep(1200);
+  step1 = await dump();
+  shot('step1_filled_live');
+  await tapId('session-new-next', step1);
+  const created = await waitLog(/DEMS-LIVE\] POST \/api\/v1\/session \d{3}/, 20);
+  const precheck = await waitLog(/DEMS-LIVE\] POST \/api\/v1\/session\/\S+\/precheck \d{3}/, 20);
+  say(`create: ${created ?? 'NOT SEEN'}; pre-check: ${precheck ?? 'NOT SEEN'}`);
+  if (created === null || precheck === null) return 3;
+  await waitForId('session-new-step-2', 15);
+  await sleep(7000); // the Core's gate: eight checks, at most 4.9 s
+  let gate = await dump();
+  shot('step2_gate_live');
+  const outcome = has(gate, 'session-new-gate-block') ? 'BLOCK' : has(gate, 'session-new-gate-warn') ? 'WARN' : has(gate, 'session-new-gate-pass') ? 'PASS' : 'RUNNING';
+  say(`gate outcome on the screen: ${outcome}; Live CORE hint shown: ${has(gate, 'session-new-gate-live-core')}`);
+  if (outcome === 'BLOCK' || outcome === 'RUNNING') {
+    // Leave lane 1 without a setup session: cancel it through the app's own dialog.
+    await tapId('session-new-back', gate);
+    await sleep(1200);
+    await tapId('back-guard-leave');
+    say(`cancel: ${(await waitLog(/DEMS-LIVE\] POST \/api\/v1\/session\/\S+\/cancel \d{3}/, 15)) ?? 'NOT SEEN'}`);
+    return 3;
+  }
+  if (outcome === 'WARN') {
+    await tapId('session-new-acknowledge', gate);
+    await sleep(600);
+    gate = await dump();
+  }
+
+  // ── D5. Step 3 (Ready) ──
+  await tapId('session-new-next', gate);
+  if (outcome === 'WARN') say(`acknowledge: ${(await waitLog(/precheck\/acknowledge \d{3}/, 15)) ?? 'NOT SEEN'}`);
+  const ready = await waitForId('session-new-step-3', 15);
+  shot('step3_ready_live');
+
+  // ── D6. Start Recording (3-2-1 on, as shipped) → startSession → the hand-off to the monitor ──
+  await tapId('session-new-start', ready);
+  await sleep(1200);
+  shot('countdown_live');
+  const started = await waitLog(/DEMS-LIVE\] POST \/api\/v1\/session\/\S+\/start \d{3}/, 20);
+  say(`start: ${started ?? 'NOT SEEN'}`);
+  if (started === null) return 4;
+  await sleep(1500);
+  const monitor = await dump();
+  const onMonitor = has(monitor, 'monitor-end-session');
+  const busyToast = textIn(monitor, 'A session is already active');
+  shot('monitor_after_handoff_live');
+  say(`after the hand-off: monitor shown ${onMonitor}; "A session is already active" toast on screen ${busyToast}; wizard still mounted ${has(monitor, 'screen-session-new')}`);
+  if (!onMonitor) return 4;
+
+  // ── D7. End Session through the app's own controls: hold, reason, confirm (stopSession, reason ≥ 5) ──
+  await sleep(4000); // a few seconds of recording
+  const [ex, ey] = centre(monitor, 'monitor-end-session');
+  if (!focused()) return 77;
+  adb('shell', 'input', 'swipe', ex, ey, ex, ey, '2300'); // hold to confirm (1.5 s)
+  say('held End Session for 2.3 s');
+  let dialog = await waitForId('monitor-end-reason', 10);
+  await tapId('monitor-end-reason', dialog);
+  await sleep(700);
+  if (!focused()) return 77;
+  adb('shell', 'input', 'text', 'W67%sdevice%scheck%send');
+  say('typed the stop reason (W67 device check end)');
+  await sleep(1000);
+  dialog = await dump();
+  shot('end_dialog_live');
+  await tapId('monitor-end-confirm', dialog);
+  const stopped = await waitLog(/DEMS-LIVE\] POST \/api\/v1\/session\/\S+\/stop \d{3}/, 20);
+  say(`stop: ${stopped ?? 'NOT SEEN'}`);
+  await sleep(5000);
+  shot('after_stop_live');
+  const after = await dump();
+  say(`after the stop: finalizing ${has(after, 'screen-session-finalizing')}, summary ${has(after, 'screen-session-summary')}, home ${has(after, 'screen-home')}`);
+  return stopped !== null && / 202\b/.test(stopped) ? 0 : 5;
+}
+
+main().then(
+  (status) => process.exit(status),
+  (error: unknown) => {
+    console.error(`-- failed: ${error instanceof Error ? error.message : 'unknown'}`);
+    process.exit(1);
+  },
+);

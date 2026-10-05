@@ -19,6 +19,10 @@
  * | `log` | The persistent, privacy-filtered runtime log (`dems.mobile.log.v1`) |
  * | `debug` | Debug builds only: `&scenario=` and `core=` deep links, `__DEMS_DEBUG__` |
  * | `core-errors` | The refusal presenter of Live mode: one wording for a denied call, a dead link, a limit |
+ * | `link-notice` | One view of the Core link (`coreLinkViewOf`) and the one no-flicker rule of the offline notice (`offlineNoticeAfter`, row M0) |
+ * | `use-pending-press` | `usePendingPress`: "busy at once, spinner late" for one control that sends a Core command (LB-1; row M1) |
+ * | `use-core-link-notice` | `useCoreLinkNotice`: the offline notice of a screen in one call, its first render seeded from the connection banner (row M1) |
+ * | `pending-control` | `busyState` and `PendingSpinner`: the look of a pending control, beside `usePendingPress` (LB-1; row M1 follow-up) |
  *
  * Auth (`useAuth().signIn` against the simulator's `auth.ts`, lockout, biometric, idle lock) is
  * provided by `AuthProvider` in `src/auth`, one layer below `SimRuntimeProvider`.
@@ -28,7 +32,10 @@
  * | To | Import |
  * |---|---|
  * | Know the source and the link | `useCoreLink()` (`source`: SIMULATED, HEARTBEAT, LIVE); `useCoreMode()` of `@dems/shared/live` for the data mode |
+ * | Show "Core server unreachable" without flicker | `const { view, offline } = useCoreLinkNotice();` (row M1: M0's rule, its first render seeded from the connection banner); never a rule of your own |
+ * | Make session actions read-only while the Core link is down | `const readOnly = useCoreLinkReadOnly();` (row M2: in LIVE the notice above, else the step-79 rule); never a rule of your own |
  * | Call a Core action | `useCoreActions()` and `settle` of `@dems/shared/live`, in every mode |
+ * | Mark a control busy while its command is out, the spinner late | `usePendingPress()`: `run((release) => settle(…, { done: release }))`, then `{...busyState(press.busy)}` on the control and `{press.pending ? <PendingSpinner /> : icon}` inside it; never a copy of the hook or of the two helpers, never `setTimeout` |
  * | Call an operation that is no simulator action | `useMobileLive()?.client.call(operationId, input)` |
  * | Present a refusal | `useCoreErrorPresenter()`; `describeCoreError(error)` where the refusal is drawn in place |
  * | Read the pairing gate | `usePairing()`, `isPairingBlocked(pairing)` |
@@ -196,3 +203,8 @@ export {
   type CoreErrorPresenter,
   type CoreErrorText,
 } from './core-errors';
+export { coreLinkViewOf, initialOfflineNotice, offlineNoticeAfter, type CoreLinkInput, type CoreLinkView } from './link-notice';
+export { usePendingPress, type PendingPress } from './use-pending-press';
+export { useCoreLinkNotice, type CoreLinkNotice } from './use-core-link-notice';
+export { useCoreLinkReadOnly } from './use-core-link-read-only';
+export { PendingSpinner, busyState, type PendingSpinnerProps } from './pending-control';

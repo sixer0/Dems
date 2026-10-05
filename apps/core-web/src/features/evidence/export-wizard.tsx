@@ -9,6 +9,7 @@ import {
   ListBox,
   Modal,
   Select,
+  Spinner,
   TextArea,
   TextField,
   toast,
@@ -16,6 +17,7 @@ import {
 import { AnimatePresence, motion } from 'motion/react'
 import { Download, FileJson, FileArchive, ShieldCheck, UserRound } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { CoreMode, settle, useCoreActions, useCoreMode } from '@dems/shared/live'
 import {
   EXPORT_REASON_MIN_LENGTH,
   OperatorRole,
@@ -23,12 +25,14 @@ import {
   selectCan,
   selectOperator,
   useSim,
-  useSimActions,
   useSimInstance,
   type ExportResult,
 } from '@dems/shared/sim'
 import { Stepper, type StepperStep } from '@/components/composed/stepper'
 import { TransitionPanel } from '@/components/ui/transition-panel'
+import { useCoreErrorPresenter } from '@/lib/core-errors'
+import { deferEffectStart } from '@/lib/effect-start'
+import { usePendingControl } from '@/lib/pending-control'
 import { useMotionPolicy } from '@/motion'
 import { CheckList } from './check-list'
 import { VerdictChip } from './chips'
@@ -40,6 +44,13 @@ import {
   saveBytes,
   type ExportDownloadPlan,
 } from './export-download'
+import {
+  anyExportPastGuard,
+  everyExportDenied,
+  exportFailureText,
+  reasonRefused as coreRefusedReason,
+  type ExportOutcome,
+} from './export-outcome'
 import { LockShackle } from './lock-shackle'
 import { logEvidenceError, newCorrelationId } from './log'
 import { byteSize, shortHash, type EvidenceRow } from './model'
@@ -57,14 +68,6 @@ type Destination = 'CASE_FILE' | 'USB' | 'NETWORK'
 const DESTINATIONS: Destination[] = ['CASE_FILE', 'USB', 'NETWORK']
 const REASON_MAX = 500
 
-interface ExportOutcome {
-  rowId: string
-  result: ExportResult
-  auditRowId: string | null
-  auditHash: string | null
-  exportedAt: number
-}
-
 /**
  * Export wizard (01_specs §14.5.3 "Export → Modal export wizard"; design book §19.2, §19.3; C9;
  * 03_motion_spec M-PG-EVID, M-C-09).
@@ -75,12 +78,33 @@ interface ExportOutcome {
  * export) → **Export** (`exportEvidence` writes the custody entry and EVIDENCE_EXPORTED audit row; the
  * download is EV 0004's prebuilt `EXP-000031.zip`, hash-checked against its export manifest, or the
  * DEMO export manifest JSON for other items). The source package is never modified (§19.3 rule 1).
+ *
+ * Live mode (backend task, plan row W69; 04_client_integration_spec §8.2 A5, §8.4 C-5 and D-6;
+ * F59; LB-1, LB-2, LB-6, LB-10). Every export goes through `useCoreActions()` and `settle`, one
+ * row after the other (nested `settle` calls in row order), and the Core server is the judge:
+ * - Authorise, for a role without EVIDENCE_EXPORT (D-6): one export per selected row, so the Core
+ *   writes its `EXPORT_DENIED` row for each; with more than 20 refusals within 60 s the later calls
+ *   answer 429, which the presenter shows once (LB-10). The denied Alert follows the answers; if
+ *   the Core let a call through (the console's permission hint was out of date), its answers are
+ *   shown as the export's result instead.
+ * - Export (A5): the request starts at the press and the step stays on its pipeline step until the
+ *   last answer (LB-2). `202` → accepted, and the audit row of the export is read from the replica
+ *   (C-5). `403` for every row → the denied Alert. `422 INVALID_REASON` → back to the Reason step,
+ *   the reason kept. `404`, `409` → the existing sentence of the reason. No answer → the presenter's
+ *   toast and the row's failure state with the presenter's own sentence.
+ * - While a request is out its control ignores presses, its step panel carries `aria-busy`, and
+ *   after `LIVE_PENDING_REVEAL_MS` the button shows the kit's spinner (LB-1).
+ * In Simulated mode every `settle` runs before it returns, so the wizard behaves as before.
  */
 export function ExportWizard({ rows, isOpen, onOpenChange }: ExportWizardProps) {
   const { t } = useTranslation()
   const m = useMotionPolicy()
   const sim = useSimInstance()
-  const actions = useSimActions()
+  const actions = useCoreActions()
+  const live = useCoreMode() === CoreMode.LIVE
+  const presentCoreError = useCoreErrorPresenter()
+  const authorising = usePendingControl()
+  const exporting = usePendingControl()
   const assets = useEvidenceAssets()
   const operator = useSim(selectOperator)
   const canExport = useSim((s) => selectCan(s, Permission.EVIDENCE_EXPORT))
@@ -88,6 +112,8 @@ export function ExportWizard({ rows, isOpen, onOpenChange }: ExportWizardProps) 
   const [direction, setDirection] = useState<1 | -1>(1)
   const [reason, setReason] = useState('')
   const [reasonTouched, setReasonTouched] = useState(false)
+  /** Live mode: the Core answered `422 INVALID_REASON` for this reason (F59: the Core is the judge). */
+  const [reasonRejected, setReasonRejected] = useState(false)
   const [destination, setDestination] = useState<Destination>('CASE_FILE')
   const [auth, setAuth] = useState<'idle' | 'granted' | 'denied'>('idle')
   const [verification, setVerification] = useState<Record<string, VerifyState>>({})
@@ -112,7 +138,7 @@ export function ExportWizard({ rows, isOpen, onOpenChange }: ExportWizardProps) 
   const stepStatus = (index: number): StepperStep['status'] => {
     if (index === 1 && auth === 'denied') return 'error'
     if (index === 2 && allVerified && !sourcesOk) return 'error'
-    if (index < step || (index === 3 && outcomes?.every((outcome) => outcome.result.ok))) return 'done'
+    if (index < step || (index === 3 && outcomes?.every((outcome) => outcome.result?.ok === true))) return 'done'
     return index === step ? 'active' : 'pending'
   }
   const steps: StepperStep[] = [
@@ -122,43 +148,127 @@ export function ExportWizard({ rows, isOpen, onOpenChange }: ExportWizardProps) 
     { id: 'export', label: t('evidence.exportWizard.steps.export'), status: stepStatus(3) },
   ]
 
-  /** §19.3 rule 2: every attempt is audited. A denied role gets EXPORT_DENIED rows from the sim. */
+  /** One export through `settle`; `onAnswer` gets the result, or `null` and the presenter's notice when there was none. */
+  const exportOne = (
+    row: EvidenceRow,
+    source: 'export.authorise' | 'export.run',
+    correlationId: string,
+    onAnswer: (result: ExportResult | null, failureText: string | null) => void,
+  ) => {
+    settle(() => actions.exportEvidence(row.id, { reason: trimmed, destination: destinationText }), {
+      ok: (result) => onAnswer(result, null),
+      fail: (error) => {
+        // Rule 2: the presenter speaks first (an outage, a time-out, a limit); the page records the rest.
+        const notice = presentCoreError(error)
+        if (notice === null) logEvidenceError(source, error, { evidenceId: row.id, correlationId, reasonLength: trimmed.length })
+        // Simulated mode keeps its fallback (an item that is gone); in Live mode the Core gave no result.
+        if (!live && notice === null) onAnswer({ ok: false, status: 404, reason: 'NOT_FOUND' }, null)
+        else onAnswer(null, exportFailureText(t, notice))
+      },
+    })
+  }
+
+  /** The audit row of an accepted export, read from the replica (C-5), and the row's outcome. */
+  const outcomeOf = (row: EvidenceRow, result: ExportResult | null, failureText: string | null): ExportOutcome => {
+    const state = sim.store.getState()
+    const audit = result?.ok ? latestAuditRowFor(state, row.id, 'EVIDENCE_EXPORTED') : null
+    return {
+      rowId: row.id,
+      result,
+      auditRowId: audit?.id ?? null,
+      auditHash: audit?.hash ?? null,
+      exportedAt: state.clock.now,
+      failureText,
+    }
+  }
+
+  /**
+   * The result list and its toast (all accepted, or how many of how many). When nothing was
+   * accepted and no row has an answer of the Core (Live mode: an outage), the presenter has already
+   * spoken (LB-6: one toast) and the rows show its sentence, so no second toast is added.
+   */
+  const showOutcomes = (results: ExportOutcome[]) => {
+    setOutcomes(results)
+    const accepted = results.filter((outcome) => outcome.result?.ok === true)
+    if (accepted.length === results.length) toast.success(t('evidence.exportWizard.successToast', { id: idLabel }))
+    else if (accepted.length > 0 || results.some((outcome) => outcome.result !== null)) {
+      toast.danger(t('evidence.exportWizard.partialToast', { ok: accepted.length, total: results.length }))
+    }
+  }
+
+  /** §19.3 rule 2: every attempt is audited. A denied role gets EXPORT_DENIED rows (D-6: one per row, in row order). */
   const requestAuthorisation = () => {
     if (canExport) {
       setAuth('granted')
       return
     }
-    for (const row of rows) {
-      try {
-        actions.exportEvidence(row.id, { reason: trimmed, destination: destinationText })
-      } catch (error) {
-        logEvidenceError('export.authorise', error, { evidenceId: row.id, reasonLength: trimmed.length })
+    const correlationId = newCorrelationId('export')
+    authorising.run((release) => {
+      const answers: { row: EvidenceRow; result: ExportResult | null; failureText: string | null }[] = []
+      const finish = () => {
+        const results = answers.map((answer) => answer.result)
+        if (live && anyExportPastGuard(results)) {
+          // The Core is the judge: it let a call through, so its answers are the export's result.
+          setAuth('granted')
+          showOutcomes(answers.map((answer) => outcomeOf(answer.row, answer.result, answer.failureText)))
+          goTo(3)
+        } else {
+          setAuth('denied')
+        }
+        release()
       }
-    }
-    setAuth('denied')
+      const next = (index: number) => {
+        const row = rows[index]
+        if (!row) {
+          finish()
+          return
+        }
+        exportOne(row, 'export.authorise', correlationId, (result, failureText) => {
+          answers.push({ row, result, failureText })
+          next(index + 1)
+        })
+      }
+      next(0)
+    })
   }
 
   const runExport = () => {
     const correlationId = newCorrelationId('export')
-    const results: ExportOutcome[] = rows.map((row) => {
-      try {
-        const result = actions.exportEvidence(row.id, { reason: trimmed, destination: destinationText })
-        const state = sim.store.getState()
-        const audit = result.ok ? latestAuditRowFor(state, row.id, 'EVIDENCE_EXPORTED') : null
-        return { rowId: row.id, result, auditRowId: audit?.id ?? null, auditHash: audit?.hash ?? null, exportedAt: state.clock.now }
-      } catch (error) {
-        logEvidenceError('export.run', error, { evidenceId: row.id, correlationId, reasonLength: trimmed.length })
-        return { rowId: row.id, result: { ok: false, status: 404, reason: 'NOT_FOUND' }, auditRowId: null, auditHash: null, exportedAt: Date.now() }
+    exporting.run((release) => {
+      const results: ExportOutcome[] = []
+      const finish = () => {
+        const answers = results.map((outcome) => outcome.result)
+        if (live && everyExportDenied(answers)) {
+          // A5: 403 → the wizard's denied Alert; the Core wrote EXPORT_DENIED for each call.
+          setAuth('denied')
+          goTo(1)
+        } else if (live && coreRefusedReason(answers)) {
+          // A5, F59: INVALID_REASON returns to the Reason step; what was typed stays.
+          setReasonRejected(true)
+          setReasonTouched(true)
+          goTo(0)
+        } else {
+          showOutcomes(results)
+        }
+        release()
       }
+      const next = (index: number) => {
+        const row = rows[index]
+        if (!row) {
+          finish()
+          return
+        }
+        exportOne(row, 'export.run', correlationId, (result, failureText) => {
+          results.push(outcomeOf(row, result, failureText))
+          next(index + 1)
+        })
+      }
+      next(0)
     })
-    setOutcomes(results)
-    const accepted = results.filter((outcome) => outcome.result.ok)
-    if (accepted.length === results.length) toast.success(t('evidence.exportWizard.successToast', { id: idLabel }))
-    else toast.danger(t('evidence.exportWizard.partialToast', { ok: accepted.length, total: results.length }))
   }
 
   const download = async (row: EvidenceRow, outcome: ExportOutcome, plan: ExportDownloadPlan) => {
-    if (!outcome.result.ok || !operator) return
+    if (!outcome.result?.ok || !operator) return
     const correlationId = newCorrelationId('export')
     setDownloads((previous) => ({ ...previous, [row.id]: 'busy' }))
     try {
@@ -194,7 +304,11 @@ export function ExportWizard({ rows, isOpen, onOpenChange }: ExportWizardProps) 
     setVerification((previous) => (previous[rowId] === state ? previous : { ...previous, [rowId]: state }))
   }, [])
 
-  const reasonError = reasonTouched && !reasonValid ? t('evidence.exportWizard.reasonTooShort', { min: EXPORT_REASON_MIN_LENGTH }) : null
+  const reasonError = reasonRejected
+    ? t('evidence.live.export.reasonRefused')
+    : reasonTouched && !reasonValid
+      ? t('evidence.exportWizard.reasonTooShort', { min: EXPORT_REASON_MIN_LENGTH })
+      : null
 
   const panels = [
     <div key="reason" className="evi-wizard-panel" data-testid="export-step-reason">
@@ -202,7 +316,10 @@ export function ExportWizard({ rows, isOpen, onOpenChange }: ExportWizardProps) 
       <TextField
         isRequired
         value={reason}
-        onChange={(value) => setReason(value.slice(0, REASON_MAX))}
+        onChange={(value) => {
+          setReason(value.slice(0, REASON_MAX))
+          setReasonRejected(false)
+        }}
         onBlur={() => setReasonTouched(true)}
         isInvalid={reasonError !== null}
         className="evi-field"
@@ -236,7 +353,7 @@ export function ExportWizard({ rows, isOpen, onOpenChange }: ExportWizardProps) 
       </Select>
     </div>,
 
-    <div key="authorise" className="evi-wizard-panel" data-testid="export-step-authorise">
+    <div key="authorise" className="evi-wizard-panel" data-testid="export-step-authorise" aria-busy={authorising.busy || undefined}>
       <div className="evi-operator-card">
         <UserRound className="size-5 text-accent" aria-hidden="true" />
         <div className="flex flex-col">
@@ -299,7 +416,7 @@ export function ExportWizard({ rows, isOpen, onOpenChange }: ExportWizardProps) 
       ) : null}
     </div>,
 
-    <div key="export" className="evi-wizard-panel" data-testid="export-step-export">
+    <div key="export" className="evi-wizard-panel" data-testid="export-step-export" aria-busy={exporting.busy || undefined}>
       {outcomes === null ? (
         <>
           <p className="evi-wizard-lead">{t('evidence.exportWizard.summary', { id: idLabel, destination: destinationText })}</p>
@@ -320,14 +437,16 @@ export function ExportWizard({ rows, isOpen, onOpenChange }: ExportWizardProps) 
           {rows.map((row) => {
             const outcome = outcomes.find((entry) => entry.rowId === row.id)
             if (!outcome) return null
-            if (!outcome.result.ok) {
+            if (!outcome.result?.ok) {
               return (
-                <li key={row.id}>
+                <li key={row.id} data-export-failure={outcome.result?.reason ?? 'NO_RESULT'}>
                   <Alert status="danger">
                     <Alert.Indicator />
                     <Alert.Content>
                       <Alert.Title>{row.id}</Alert.Title>
-                      <Alert.Description>{t(`evidence.exportWizard.failure.${outcome.result.reason}`)}</Alert.Description>
+                      <Alert.Description>
+                        {outcome.result ? t(`evidence.exportWizard.failure.${outcome.result.reason}`) : (outcome.failureText ?? t('evidence.live.export.notCompleted'))}
+                      </Alert.Description>
                     </Alert.Content>
                   </Alert>
                 </li>
@@ -394,7 +513,7 @@ export function ExportWizard({ rows, isOpen, onOpenChange }: ExportWizardProps) 
       </Button>
     )
     const back = step > 0 && outcomes === null && auth !== 'denied' ? (
-      <Button variant="outline" onPress={() => goTo((step - 1) as StepIndex)}>
+      <Button variant="outline" isDisabled={exporting.busy || authorising.busy} onPress={() => goTo((step - 1) as StepIndex)}>
         {t('common.actions.back')}
       </Button>
     ) : null
@@ -419,7 +538,14 @@ export function ExportWizard({ rows, isOpen, onOpenChange }: ExportWizardProps) 
             {t('common.actions.next')}
           </Button>
         ) : auth === 'idle' ? (
-          <Button variant="primary" onPress={requestAuthorisation} data-testid="export-authorise">
+          <Button
+            variant="primary"
+            onPress={requestAuthorisation}
+            isPending={authorising.pending}
+            data-pending={authorising.pending ? 'true' : undefined}
+            data-testid="export-authorise"
+          >
+            {authorising.pending ? <Spinner size="sm" color="current" aria-hidden="true" /> : null}
             {t('evidence.exportWizard.requestAuthorisation')}
           </Button>
         ) : null
@@ -431,7 +557,14 @@ export function ExportWizard({ rows, isOpen, onOpenChange }: ExportWizardProps) 
       )
     } else if (outcomes === null) {
       primary = (
-        <Button variant="primary" onPress={runExport} data-testid="export-submit">
+        <Button
+          variant="primary"
+          onPress={runExport}
+          isPending={exporting.pending}
+          data-pending={exporting.pending ? 'true' : undefined}
+          data-testid="export-submit"
+        >
+          {exporting.pending ? <Spinner size="sm" color="current" aria-hidden="true" /> : null}
           {t('evidence.exportWizard.submit')}
         </Button>
       )
@@ -477,15 +610,17 @@ interface SourceCheckProps {
 /** One source's verification inside the wizard (§19.3 rule 3), started on mount. */
 function SourceCheck({ row, onState }: SourceCheckProps) {
   const { t } = useTranslation()
-  const { state, run } = useEvidenceVerification(row, { record: true, toasts: false })
+  // Live mode: the Core's verdict decides (§19.3 rule 3); the bundled package's check is not repeated here.
+  const { state, run } = useEvidenceVerification(row, { record: true, toasts: false, bundled: false })
   const runRef = useRef(run)
   useEffect(() => {
     runRef.current = run
   })
-  // §19.3 rule 3: the source is verified as soon as this step opens (once per mount).
-  useEffect(() => {
-    void runRef.current()
-  }, [])
+  // §19.3 rule 3: the source is verified as soon as this step opens (once per mount). The start
+  // waits one task, so React StrictMode's simulated unmount (every dev build, where Live mode lives)
+  // cancels the first start instead of sending a second verification to the Core (plan row W69; the
+  // shared helper, W0).
+  useEffect(() => deferEffectStart(() => void runRef.current()), [])
 
   useEffect(() => {
     onState(row.id, state)
@@ -505,7 +640,13 @@ function SourceCheck({ row, onState }: SourceCheckProps) {
         <VerdictChip verdict={verdict} runKey={state.runId} size="sm" className="ml-auto" />
       </header>
       <CheckList state={state} variant="compact" />
-      <p className="evi-caption">{state.mode === 'package' ? (state.label ?? t('evidence.verify.packageMode')) : t('evidence.verify.simulatedMode')}</p>
+      <p className="evi-caption">
+        {state.mode === 'core'
+          ? t('evidence.live.verify.sourceCaption')
+          : state.mode === 'package'
+            ? (state.label ?? t('evidence.verify.packageMode'))
+            : t('evidence.verify.simulatedMode')}
+      </p>
     </section>
   )
 }

@@ -15,6 +15,7 @@ import {
 } from '@dems/shared/sim';
 import type { StepStatus as StepperStatus } from '@/components/composed/stepper';
 import type { SettingsSection } from '@/navigation/params';
+import type { CoreLinkSource } from '@/runtime';
 
 // ── MB 10 list (G2–G4) ─────────────────────────────────────────────────────────────────────
 
@@ -81,6 +82,20 @@ export function permissionsOf(role: OperatorRole): readonly Permission[] {
 export type MeterSize = 'card' | 'compact';
 export const METER_SIZES: readonly MeterSize[] = ['card', 'compact'];
 
+/**
+ * Backend task W82 (04_client_integration_spec §3.3, §9.5): a change of the Core link source that
+ * crosses the LIVE boundary asks first and signs the operator out; SIMULATED ↔ HEARTBEAT stays
+ * instant, as before (both run the simulator).
+ */
+export function crossesLiveBoundary(from: CoreLinkSource, to: CoreLinkSource): boolean {
+  return from !== to && (from === 'LIVE' || to === 'LIVE');
+}
+
+/** The data mode a source shows (§3.1: HEARTBEAT is SIMULATED data with a mock-core link). */
+export function dataModeOf(source: CoreLinkSource): 'SIMULATED' | 'LIVE' {
+  return source === 'LIVE' ? 'LIVE' : 'SIMULATED';
+}
+
 // ── Notifications ──────────────────────────────────────────────────────────────────────────
 
 export type NotificationCategory = 'devices' | 'storage' | 'time' | 'system';
@@ -123,17 +138,52 @@ export interface BiometricSwitchView {
   readonly statusKey: string;
   /** Another operator holds the binding (the status line names them). */
   readonly boundToOther: boolean;
+  /**
+   * The sentence that says what biometric sign-in is (backend task W82, finding CPM1-1). SIMULATED
+   * and HEARTBEAT: `mobile.biometric.identityNote` ("Simulated identity binding"), as before. LIVE:
+   * worded on how the Core's token is stored (MB-6a (3)), or, in a session created with the
+   * fingerprint, the MB-1 sentence that it changes only after a password sign-in.
+   */
+  readonly noteKey: string;
+  /**
+   * LIVE, MB-1: the session was created with the fingerprint, so the switch is disabled and the
+   * description is `noteKey` alone (no status line).
+   */
+  readonly changeBlocked: boolean;
 }
+
+/** LIVE mode inputs of the biometric switch (backend task W82; `useAuthSession().biometric`). */
+export interface BiometricSwitchLive {
+  /** MB-1: the session was created with the fingerprint (`biometric.changeBlocked`). */
+  readonly changeBlocked: boolean;
+  /** MB-6a: the stored token carries the device's authentication requirement (`biometric.protected`); `null` when none is stored. */
+  readonly protected: boolean | null;
+}
+
+/** SIMULATED and HEARTBEAT: the simulated identity binding (unchanged, `en.mobile.ts`). */
+export const BIOMETRIC_NOTE_SIMULATED = 'mobile.biometric.identityNote';
+/** LIVE, MB-6a (3): words that hold with and without the protected item; never a claim of hardware protection (the auth layer's key). */
+export const BIOMETRIC_NOTE_LIVE = 'features.auth.biometric.screenLockNote';
+/** LIVE, only while the marker says `protected: true`: the token is read only after the device's own check. */
+export const BIOMETRIC_NOTE_LIVE_PROTECTED = 'mobile.biometric.identityNoteLiveProtected';
+/** LIVE, MB-1: a session created with the fingerprint (the auth layer's key). */
+export const BIOMETRIC_NOTE_CHANGE_BLOCKED = 'features.auth.biometric.passwordSessionRequired';
 
 /**
  * The biometric switch (§6.3): on only when enabled for the signed-in operator; usable only with
  * enrolled hardware. Turning it off is always allowed while it is on.
+ *
+ * `live` (backend task W82, CPM1-1; 04_client_integration_spec §9.3 MB-1, MB-6a): absent outside
+ * LIVE mode, so the four-argument form behaves exactly as before. In LIVE mode a session created
+ * with the fingerprint disables the switch whatever else holds (AC-C-68): biometric sign-in is
+ * changed only in a password session, and the auth layer sends nothing in a biometric one.
  */
 export function biometricSwitchView(
   availability: BiometricAvailabilityView,
   enabled: boolean,
   boundOperatorId: string | null,
   operatorId: string | null,
+  live?: BiometricSwitchLive,
 ): BiometricSwitchView {
   const selected = enabled && operatorId !== null && boundOperatorId === operatorId;
   const boundToOther = enabled && boundOperatorId !== null && boundOperatorId !== operatorId;
@@ -145,7 +195,41 @@ export function biometricSwitchView(
         : availability === 'unavailable'
           ? 'features.settings.security.biometricUnavailable'
           : 'features.settings.security.biometricChecking';
-  return { selected, disabled: !selected && (availability !== 'available' || operatorId === null), statusKey, boundToOther };
+  const changeBlocked = live?.changeBlocked === true;
+  const noteKey =
+    live === undefined
+      ? BIOMETRIC_NOTE_SIMULATED
+      : changeBlocked
+        ? BIOMETRIC_NOTE_CHANGE_BLOCKED
+        : live.protected === true
+          ? BIOMETRIC_NOTE_LIVE_PROTECTED
+          : BIOMETRIC_NOTE_LIVE;
+  const disabled = changeBlocked || (!selected && (availability !== 'available' || operatorId === null));
+  return { selected, disabled, statusKey, boundToOther, noteKey, changeBlocked };
+}
+
+// ── System Maintenance: who sees the Demo controls (backend task W82; AC-C-52) ─────────────
+
+/**
+ * `shown`: the panel. `presentation`: hidden by presentation mode (both modes, as before).
+ * LIVE mode only (AC-C-52, [SP:DC-1, DC-2]): `not-permitted` without DEMO_CONTROL (the Core
+ * answers 403 NOT_PERMITTED whatever its flag), `flag-off` when the Core server runs without its
+ * demo flag (`session.demoControls` false; the Core answers 403 DEMO_DISABLED).
+ */
+export type DemoControlsAccess = 'shown' | 'presentation' | 'not-permitted' | 'flag-off';
+
+export function demoControlsAccess(input: {
+  readonly presentationMode: boolean;
+  readonly live: boolean;
+  /** LIVE: the session holds DEMO_CONTROL (`useCorePermission`). */
+  readonly permitted: boolean;
+  /** LIVE: the session's `demoControls` (the server-side flag, DC-3). */
+  readonly demoFlag: boolean;
+}): DemoControlsAccess {
+  if (input.presentationMode) return 'presentation';
+  if (!input.live) return 'shown';
+  if (!input.permitted) return 'not-permitted';
+  return input.demoFlag ? 'shown' : 'flag-off';
 }
 
 // ── System Maintenance: Demo controls (§4.15, 01S §14.5.8, MA-30) ──────────────────────────

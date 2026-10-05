@@ -21,9 +21,19 @@
  * phone landscape centres a 560 dp column; tablets put the summary and the pipeline side by side
  * (`pane-finalization` | `pane-summary`). Past sessions (already acknowledged, or not the last
  * sealed one) render the same view without the stamp or an acknowledgement.
+ *
+ * Live mode (backend task, plan row W72; 04_client_integration_spec §8.6 S2-4, §8.1 LB-1): every
+ * region reads the Core's replicated state. Done, View in Evidence and Back each send the
+ * acknowledgement through `useAcknowledgeSummary` and navigate only once the Core answered (in `ok`);
+ * each is a pending control (`usePendingPress` of the runtime: busy at the press, the kit's spinner
+ * after the reveal delay), and one request is out at a time. While the summary still waits for the
+ * acknowledgement and the Core link is down, the runtime's one link notice (`useCoreLinkNotice`) says
+ * why the buttons cannot finish. Nothing is sent on mount (decision D158, F69-1). The signature keeps
+ * its SIMULATED chip in both modes: the contract itself calls it a simulated signature
+ * (`packages/shared/src/api/state-slices.ts`, the evidence `signature`; decision D158 DC-4).
  */
 import { useIsFocused, useRouter, type Href } from 'expo-router';
-import { Button, Chip, PressableFeedback, useToast } from 'heroui-native';
+import { Alert, Button, Chip, PressableFeedback, useToast } from 'heroui-native';
 import { ArrowLeft, ChevronRight } from 'lucide-react-native';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -36,7 +46,7 @@ import { Stepper, type StepDef, type StepStatusWords } from '@/components/compos
 import { KeyValueList, SectionCard, StatusChip, SubjectTypeChip, type KeyValueItem } from '@/components/kit';
 import { Pane, SafeScreen, useLayoutClass, type LayoutClass } from '@/layout';
 import { enterRise, useMotionSettings } from '@/motion';
-import { reportRuntimeIssue } from '@/runtime';
+import { PendingSpinner, busyState, reportRuntimeIssue, useCoreLinkNotice, usePendingPress, type PendingPress } from '@/runtime';
 import { FinalizationPipeline } from '@/features/session-finalizing/finalization-pipeline';
 import { pipelineSeconds, pipelineStatuses, sealedAfterSeconds } from '@/features/session-finalizing/finalizing.model';
 import { FlowBoundary } from '@/features/session-finalizing/flow-boundary';
@@ -78,6 +88,10 @@ export function SessionSummaryScreen({ sessionId }: SessionSummaryScreenProps) {
   const evidence = useSummaryEvidence(sessionId);
   const finalization = useSummaryFinalization(sessionId);
   const acknowledge = useAcknowledgeSummary(sessionId);
+  const backPress = usePendingPress();
+  const donePress = usePendingPress();
+  const evidencePress = usePendingPress();
+  const { offline: linkDown } = useCoreLinkNotice();
   const [sheet, setSheet] = useState<HashSheetValue | null>(null);
 
   // The stamp plays on the first sight of an unacknowledged summary, once per session (F-80-1).
@@ -99,16 +113,22 @@ export function SessionSummaryScreen({ sessionId }: SessionSummaryScreenProps) {
     [router, toast, t, sessionId],
   );
 
+  // S2-4: each control acknowledges, then navigates in `ok`; its pending state is released in `done`.
   const onDone = useCallback(() => {
-    if (acknowledge()) navigate('/home', 'home');
-  }, [acknowledge, navigate]);
+    donePress.run((release) => acknowledge({ ok: () => navigate('/home', 'home'), done: release }));
+  }, [donePress, acknowledge, navigate]);
+  const onBack = useCallback(() => {
+    backPress.run((release) => acknowledge({ ok: () => navigate('/home', 'home'), done: release }));
+  }, [backPress, acknowledge, navigate]);
   const onViewEvidence = useCallback(() => {
     if (!evidence) return;
-    if (acknowledge()) navigate(`/evidence/${evidence.id}` as Href, 'evidence');
-  }, [acknowledge, navigate, evidence]);
+    const href = `/evidence/${evidence.id}` as Href;
+    evidencePress.run((release) => acknowledge({ ok: () => navigate(href, 'evidence'), done: release }));
+  }, [evidencePress, acknowledge, navigate, evidence]);
 
   // §3.6: Back is allowed here; it acknowledges the summary and returns Home (and never leaves the
-  // app when the summary is the only route, F-79-1).
+  // app when the summary is the only route, F-79-1). While an acknowledgement is out, Back is
+  // consumed and sends nothing more (`useAcknowledgeSummary` keeps one request at a time).
   useEffect(() => {
     if (!focused) return undefined;
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -116,17 +136,17 @@ export function SessionSummaryScreen({ sessionId }: SessionSummaryScreenProps) {
         setSheet(null);
         return true;
       }
-      onDone();
+      onBack();
       return true;
     });
     return () => subscription.remove();
-  }, [focused, sheet, onDone]);
+  }, [focused, sheet, onBack]);
 
   const availability = summaryAvailability(session.found, session.activeId, session.activeState, sessionId);
   const twoPane = layoutClass === 'medium' || layoutClass === 'expanded';
   const maxWidth = COLUMN_MAX_WIDTH[layoutClass];
 
-  const header = <SummaryHeader onBack={onDone} large={twoPane} />;
+  const header = <SummaryHeader onBack={onBack} press={backPress} large={twoPane} />;
 
   if (availability !== 'summary') {
     const finalizing = availability === 'finalizing';
@@ -169,6 +189,9 @@ export function SessionSummaryScreen({ sessionId }: SessionSummaryScreenProps) {
       acknowledging={session.pending}
       onViewEvidence={onViewEvidence}
       onDone={onDone}
+      donePress={donePress}
+      evidencePress={evidencePress}
+      linkDown={linkDown && session.pending}
       wide={twoPane}
     />
   );
@@ -234,12 +257,20 @@ function Boundary({ name, children }: { name: string; children: ReactNode }) {
 // Header and actions
 // ---------------------------------------------------------------------------------------------
 
-function SummaryHeader({ onBack, large }: { onBack: () => void; large: boolean }) {
+function SummaryHeader({ onBack, press, large }: { onBack: () => void; press: PendingPress; large: boolean }) {
   const { t } = useTranslation();
   return (
     <View style={[styles.header, large ? styles.headerLarge : null]} testID="summary-header">
-      <Button testID="summary-back" isIconOnly size="lg" variant="ghost" onPress={onBack} accessibilityLabel={t('features.session-summary.back')}>
-        <ArrowLeft size={24} color={palette.gold} />
+      <Button
+        testID="summary-back"
+        isIconOnly
+        size="lg"
+        variant="ghost"
+        onPress={onBack}
+        accessibilityLabel={t('features.session-summary.back')}
+        {...busyState(press.busy)}
+      >
+        {press.pending ? <PendingSpinner color={palette.gold} testID="summary-back-spinner" /> : <ArrowLeft size={24} color={palette.gold} />}
       </Button>
       <Text accessibilityRole="header" maxFontSizeMultiplier={1.2} numberOfLines={1} style={large ? styles.titleLarge : styles.title}>
         {t('features.session-summary.title')}
@@ -254,22 +285,49 @@ interface SummaryActionsProps {
   acknowledging: boolean;
   onViewEvidence: () => void;
   onDone: () => void;
+  donePress: PendingPress;
+  evidencePress: PendingPress;
+  /** LIVE only: the summary waits for the acknowledgement and the Core link is down (`useCoreLinkNotice`). */
+  linkDown: boolean;
   wide: boolean;
 }
 
-function SummaryActions({ canViewEvidence, acknowledging, onViewEvidence, onDone, wide }: SummaryActionsProps) {
+function SummaryActions({ canViewEvidence, acknowledging, onViewEvidence, onDone, donePress, evidencePress, linkDown, wide }: SummaryActionsProps) {
   const { t } = useTranslation();
   const hint = acknowledging ? t('features.session-summary.actions.acknowledgeHint') : undefined;
-  return (
+  const buttons = (
     <View style={[styles.actions, wide ? styles.actionsWide : null]} testID="summary-actions">
-      <Button testID="summary-done" variant="outline" size="lg" onPress={onDone} accessibilityHint={hint} style={styles.doneButton}>
+      <Button testID="summary-done" variant="outline" size="lg" onPress={onDone} accessibilityHint={hint} style={styles.doneButton} {...busyState(donePress.busy)}>
+        {donePress.pending ? <PendingSpinner testID="summary-done-spinner" /> : null}
         <Button.Label numberOfLines={1}>{t('common.actions.done')}</Button.Label>
       </Button>
       {canViewEvidence ? (
-        <Button testID="summary-view-evidence" variant="primary" size="lg" onPress={onViewEvidence} accessibilityHint={hint} style={styles.evidenceButton}>
+        <Button
+          testID="summary-view-evidence"
+          variant="primary"
+          size="lg"
+          onPress={onViewEvidence}
+          accessibilityHint={hint}
+          style={styles.evidenceButton}
+          {...busyState(evidencePress.busy)}
+        >
+          {evidencePress.pending ? <PendingSpinner color={palette.black} testID="summary-view-evidence-spinner" /> : null}
           <Button.Label numberOfLines={1}>{t('session.finalization.viewEvidence')}</Button.Label>
         </Button>
       ) : null}
+    </View>
+  );
+  if (!linkDown) return buttons;
+  return (
+    <View style={styles.actionsColumn}>
+      <Alert status="warning" testID="summary-link-down">
+        <Alert.Indicator />
+        <Alert.Content>
+          <Alert.Title>{t('features.session-summary.live.linkDownTitle')}</Alert.Title>
+          <Alert.Description>{t('features.session-summary.live.linkDownBody')}</Alert.Description>
+        </Alert.Content>
+      </Alert>
+      {buttons}
     </View>
   );
 }
@@ -584,6 +642,7 @@ const styles = StyleSheet.create({
   },
   actions: { flexDirection: 'row', gap: spacing[2] },
   actionsWide: { justifyContent: 'flex-end' },
+  actionsColumn: { gap: spacing[2] },
   // 2 : 3, so "View in Evidence" stays on one line on a 411 dp phone (it wrapped at 1 : 1 on dems_phone).
   doneButton: { flex: 2 },
   evidenceButton: { flex: 3 },

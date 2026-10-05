@@ -32,6 +32,7 @@ import {
   verifyEvidenceItem,
   type EpochMs,
   type EvidenceItem,
+  type EvidenceVerifyResult,
 } from '@dems/shared/sim';
 import type { StatusTone } from '@dems/shared/tokens';
 
@@ -314,6 +315,75 @@ export function integrityFor(item: EvidenceItem, at: EpochMs): IntegrityModel {
 /** Display names of failed checks: `track:AUDIO-02` → `AUDIO-02`, others unchanged. */
 export function failedCheckNames(failed: readonly string[]): string[] {
   return failed.map((id) => trackIdOf(id) ?? id);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Live mode: the Core server's verdict of record (backend task W74; 04_client_integration_spec
+// §14 point 7, §8.5 "verify"; AC-C-61)
+// ---------------------------------------------------------------------------------------------
+
+/** What the Core's verification answered: operation 41 `verifyEvidence`, the simulator's own shape. */
+export type CoreVerdict = EvidenceVerifyResult;
+
+/**
+ * What the Live integrity tab shows: the Core's sealed record of the item (the replica's hashes)
+ * and, once the Core answered, its verdict. Nothing here is computed on the tablet: `verdict`,
+ * `failed`, every `actual` and every `ok` come from the Core's answer, and are `null`, empty or
+ * `false` until there is one (a row's `ok` is never shown before a verdict is revealed).
+ */
+export interface CoreIntegrityView {
+  verdict: IntegrityVerdict | null;
+  /** Failed check IDs of the Core's verdict (`track:AUDIO-02`, `manifest`, `signature`). */
+  failed: string[];
+  /** When the Core ran the verification, on its clock; null before an answer. */
+  at: EpochMs | null;
+  /** The four tracks in TRACK_ORDER: the sealed hash, and the hash the Core computed. */
+  tracks: IntegrityRow[];
+  /** Manifest and signature, as the Core judged them. */
+  checks: IntegrityRow[];
+  manifestHash: string;
+  signature: { value: string; keyId: string; algorithm: string };
+}
+
+/** The Core's sealed record and, when given, the Core's verdict of it (never the tablet's). */
+export function coreIntegrityView(item: EvidenceItem, verdict: CoreVerdict | null): CoreIntegrityView {
+  const answered = new Map((verdict?.tracks ?? []).map((track) => [track.trackId, track]));
+  const tracks: IntegrityRow[] = TRACK_ORDER.map((trackId) => {
+    const answer = answered.get(trackId);
+    const sealed = item.tracks.find((track) => track.trackId === trackId);
+    return {
+      id: `track:${trackId}`,
+      trackId,
+      ok: answer?.ok ?? false,
+      expected: answer?.expected ?? sealed?.sha256 ?? null,
+      actual: answer?.actual ?? null,
+    };
+  });
+  const checks: IntegrityRow[] = [
+    { id: 'manifest', trackId: null, ok: verdict?.manifestOk ?? false, expected: item.manifestHash, actual: null },
+    { id: 'signature', trackId: null, ok: verdict?.signatureOk ?? false, expected: item.signature.value, actual: null },
+  ];
+  return {
+    verdict: verdict === null ? null : verdict.ok ? 'PASS' : 'FAIL',
+    failed: verdict === null ? [] : [...tracks, ...checks].filter((row) => !row.ok).map((row) => row.id),
+    at: verdict?.at ?? null,
+    tracks,
+    checks,
+    manifestHash: item.manifestHash,
+    signature: { value: item.signature.value, keyId: item.signature.keyId, algorithm: item.signature.algorithm },
+  };
+}
+
+/**
+ * Whether the bundled demo package's result differs from the Core's verdict (§14 point 7): another
+ * verdict, or other failed tracks. The checks only a package has (certificate, audit extract, export
+ * package) are not compared: the Core's verdict has no such check.
+ */
+export function bundledDiffers(bundled: Pick<IntegrityModel, 'verdict' | 'failed'>, verdict: CoreVerdict): boolean {
+  if (bundled.verdict !== (verdict.ok ? 'PASS' : 'FAIL')) return true;
+  const bundledTracks = bundled.failed.map(trackIdOf).filter((trackId): trackId is TrackId => trackId !== null).sort();
+  const coreTracks = verdict.tracks.filter((track) => !track.ok).map((track) => track.trackId).sort();
+  return bundledTracks.join(',') !== coreTracks.join(',');
 }
 
 /** Every precomputed check ID a package report can carry (typed for the i18n lookups). */

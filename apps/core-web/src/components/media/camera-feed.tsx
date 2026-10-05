@@ -1,5 +1,6 @@
 import {
   useCallback,
+  useContext,
   useEffect,
   useImperativeHandle,
   useMemo,
@@ -12,6 +13,8 @@ import { Chip } from '@heroui/react'
 import { AnimatePresence, motion, useInView, usePageInView, type Transition } from 'motion/react'
 import { useTranslation } from 'react-i18next'
 import type { VideoTrackId } from '@dems/shared/domain'
+import { CoreMode, coreModeOf } from '@dems/shared/live'
+import { SimContext } from '@dems/shared/sim'
 import { motion as tokens } from '@dems/shared/tokens'
 import { GlowLayer, tween, useAmbientLoop, useMotionPolicy } from '@/motion'
 import { cn } from '@/lib/utils'
@@ -131,6 +134,12 @@ export function CameraFeed({
   ref,
 }: CameraFeedProps) {
   const { t } = useTranslation()
+  // Live mode (plan row W0, item 7; 04_client_integration_spec §3.2): the camera's state is the Core's,
+  // the picture is still the bundled demo loop (decision MS-1). The component's own words say so: the
+  // procedural OSD line and the default accessible name do not call that picture live. The line burnt
+  // into the bundled loop's frames cannot be changed here (decision for the controller, W0 report).
+  const sim = useContext(SimContext)
+  const liveData = sim !== null && coreModeOf(sim) === CoreMode.LIVE
   const m = useMotionPolicy()
   const liveMedia = useMemo(() => liveVideo(cameraId), [cameraId])
   const videoSrc = src === undefined ? (liveMedia?.src ?? null) : src
@@ -237,9 +246,14 @@ export function CameraFeed({
     if (mode !== 'procedural') return undefined
     const canvas = canvasRef.current
     if (!canvas) return undefined
-    const feed = createProceduralFeed(canvas, cameraId, () => {
-      feed?.paint(performance.now(), { animate: false, now: readNow() })
-    })
+    const feed = createProceduralFeed(
+      canvas,
+      cameraId,
+      () => {
+        feed?.paint(performance.now(), { animate: false, now: readNow() })
+      },
+      liveData,
+    )
     if (!feed) return undefined
     feedRef.current = feed
     const applySize = () => {
@@ -254,7 +268,7 @@ export function CameraFeed({
       feed.destroy()
       if (feedRef.current === feed) feedRef.current = null
     }
-  }, [mode, cameraId, readNow])
+  }, [mode, cameraId, readNow, liveData])
 
   useEffect(() => {
     if (mode !== 'procedural' || !visible) return undefined
@@ -315,7 +329,7 @@ export function CameraFeed({
   const dimTransition = m.transitions.crossFade
   const mediaHover = variant === 'tile' ? m.interactions.mediaTile.whileHover : undefined
   const recording = recordingSince !== null
-  const imageLabel = ariaLabel ?? `${t(`common.tracks.${cameraId}`)} · ${t('session.feed.title')}`
+  const imageLabel = ariaLabel ?? `${t(`common.tracks.${cameraId}`)} · ${t(liveData ? 'session.feed.bundledPicture' : 'session.feed.title')}`
   const chipSize = variant === 'feed' ? 'md' : 'sm'
 
   return (

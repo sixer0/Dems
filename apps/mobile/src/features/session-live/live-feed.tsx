@@ -11,6 +11,10 @@
  * - Camera switch: tap the feed on phones; kit `Tabs variant="secondary"` on tablets.
  * - Snapshot (M-C-18): one white shutter flash 0 → 0.85 → 0 in 180 ms, a thumbnail that flies
  *   into the counter chip, whose badge pops (`bouncy`). Reduced: a gold border highlight only.
+ *   Two signals (backend task, row W68, [CS:S2-1] and LB-4): `shutterSignal` plays the flash (or the
+ *   highlight) — at the press in Live mode, because it changes no record — and `snapshotSignal`
+ *   plays the flight and the pop once the Core holds the snapshot. In Simulated mode the screen
+ *   raises both in one handler, so the three play together exactly as before.
  * - Pause monitoring (M-C-20, UI-only): the player pauses and a scrim says recording continues.
  * - NO SIGNAL (S8): a lost camera shows CameraFeed's NO SIGNAL fade.
  */
@@ -33,6 +37,7 @@ import { derived, fontFamily, motion as motionTokens, palette, radius, typograph
 import { CameraFeed } from '@/components/media';
 import { withAlpha } from '@/components/media/color';
 import { GlowLayer, triggerHaptic, useMotionSettings } from '@/motion';
+import { busyState } from '@/runtime';
 import { RecTimer } from './rec-indicator';
 import { SHUTTER_MS, SHUTTER_PEAK, cameraIndexOf, otherCameraId } from './session-live.math';
 
@@ -48,7 +53,11 @@ export interface LiveFeedProps {
   /** Tablets: kit Tabs under the feed. Phones: tap the feed. */
   cameraTabs: boolean;
   onSwitchCamera: (cameraId: VideoTrackId) => void;
-  /** Increments once per captured snapshot (drives M-C-18). */
+  /** A camera command of this screen is out (LB-1): the tap target is marked busy. */
+  cameraBusy?: boolean;
+  /** Increments once per shutter flash (M-C-18, first half: the flash, or the reduced highlight). */
+  shutterSignal: number;
+  /** Increments once per captured snapshot (M-C-18, second half: the thumbnail flight and the counter pop). */
   snapshotSignal: number;
   snapshotCount: number;
   style?: StyleProp<ViewStyle>;
@@ -61,6 +70,8 @@ export function LiveFeed({
   monitoringPaused,
   cameraTabs,
   onSwitchCamera,
+  cameraBusy = false,
+  shutterSignal,
   snapshotSignal,
   snapshotCount,
   style,
@@ -81,10 +92,11 @@ export function LiveFeed({
   const flight = useSharedValue(1);
   const pop = useSharedValue(1);
   const size = useSharedValue({ width: 0, height: 0 });
-  const lastSignal = useRef(snapshotSignal);
+  // First half: the flash (reduced: the highlight).
+  const lastShutter = useRef(shutterSignal);
   useEffect(() => {
-    if (lastSignal.current === snapshotSignal) return;
-    lastSignal.current = snapshotSignal;
+    if (lastShutter.current === shutterSignal) return;
+    lastShutter.current = shutterSignal;
     if (reduced) {
       highlight.set(withSequence(withTiming(1, { duration: 0 }), withTiming(0, { duration: motionTokens.duration.slower })));
       return;
@@ -95,10 +107,17 @@ export function LiveFeed({
         withTiming(0, { duration: SHUTTER_MS / 2, easing: Easing.in(Easing.quad) }),
       ),
     );
+  }, [shutterSignal, reduced, shutter, highlight]);
+  // Second half: the thumbnail flight and the counter pop (none in reduced motion).
+  const lastSignal = useRef(snapshotSignal);
+  useEffect(() => {
+    if (lastSignal.current === snapshotSignal) return;
+    lastSignal.current = snapshotSignal;
+    if (reduced) return;
     flight.set(0);
     flight.set(withSpring(1, motionTokens.spring.gentle));
     pop.set(withSequence(withTiming(1.25, { duration: 0 }), withSpring(1, motionTokens.spring.bouncy)));
-  }, [snapshotSignal, reduced, shutter, highlight, flight, pop]);
+  }, [snapshotSignal, reduced, flight, pop]);
 
   const shutterStyle = useAnimatedStyle(() => ({ opacity: shutter.get() }));
   const highlightStyle = useAnimatedStyle(() => ({ opacity: highlight.get() }));
@@ -153,6 +172,7 @@ export function LiveFeed({
                 camera: t('features.session-live.feed.cameraShort', { index: cameraIndexOf(otherCameraId(activeCameraId, cameraIds)) }),
               })}
               accessibilityHint={t('features.session-live.feed.switchHint')}
+              {...busyState(cameraBusy)}
               onPress={() => {
                 const next = otherCameraId(activeCameraId, cameraIds) as VideoTrackId;
                 if (next !== activeCameraId) {

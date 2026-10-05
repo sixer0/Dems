@@ -7,6 +7,7 @@ import { DEVICE_IDENTITY, selectSystemState, storageSummary, useSim, type SimSta
 import { palette, statusText } from '@dems/shared/tokens'
 import { useSimSecond } from '@/components/media'
 import { useMotionPolicy } from '@/motion'
+import { useDeviceWords } from './live'
 import { formatTb, LCD_PAGES, type LcdPage } from './model'
 import { bookPoe } from './sim-adapter'
 
@@ -117,6 +118,8 @@ export interface LcdDisplayProps {
  */
 export function LcdDisplay({ page }: LcdDisplayProps) {
   const { t } = useTranslation()
+  // §3.2 (plan row W70): the label says "simulated" in Simulated mode only.
+  const words = useDeviceWords()
   const m = useMotionPolicy()
   const uid = useId().replace(/:/g, '')
   const second = useSimSecond()
@@ -227,7 +230,7 @@ export function LcdDisplay({ page }: LcdDisplayProps) {
       className="dev-lcd"
       viewBox={`0 0 ${W} ${H}`}
       role="img"
-      aria-label={t('devices.front.lcdLabel', { page: pageTitle })}
+      aria-label={t(words.lcdLabel, { page: pageTitle })}
       data-testid="front-lcd"
       data-page={page}
     >

@@ -1,14 +1,23 @@
-import { AlertDialog, Button } from '@heroui/react'
+import type { RefObject } from 'react'
+import { AlertDialog, Button, Spinner } from '@heroui/react'
 import { useTranslation } from 'react-i18next'
 
 export interface CancelDialogProps {
   isOpen: boolean
   onOpenChange: (open: boolean) => void
   onConfirm: () => void
+  /**
+   * Live mode (plan row W64, B-6, LB-1): the cancel request is in flight for longer than the
+   * reveal time. The confirm button shows the kit's pending state; the dialog stays open until the
+   * Core answered. Never true in Simulated mode.
+   */
+  confirmPending?: boolean
+  /** The confirm button's element (`aria-busy` while the cancel request is in flight). */
+  confirmRef?: RefObject<HTMLButtonElement | null>
 }
 
 /** "Discard this session?" (04 §5.7: cancelling after data entry opens an AlertDialog). */
-export function CancelDialog({ isOpen, onOpenChange, onConfirm }: CancelDialogProps) {
+export function CancelDialog({ isOpen, onOpenChange, onConfirm, confirmPending = false, confirmRef }: CancelDialogProps) {
   const { t } = useTranslation()
   return (
     <AlertDialog.Backdrop isOpen={isOpen} onOpenChange={onOpenChange}>
@@ -25,7 +34,8 @@ export function CancelDialog({ isOpen, onOpenChange, onConfirm }: CancelDialogPr
             <Button variant="ghost" onPress={() => onOpenChange(false)} data-testid="sn-cancel-keep">
               {t('sessionNew.cancelDialog.keep')}
             </Button>
-            <Button variant="danger" onPress={onConfirm} data-testid="sn-cancel-confirm">
+            <Button ref={confirmRef} variant="danger" onPress={onConfirm} isPending={confirmPending} data-testid="sn-cancel-confirm">
+              {confirmPending ? <Spinner size="sm" color="current" aria-hidden="true" /> : null}
               {t('sessionNew.cancelDialog.confirm')}
             </Button>
           </AlertDialog.Footer>

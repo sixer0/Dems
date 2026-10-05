@@ -18,9 +18,22 @@ export function mediaForEvidence(evidenceId: string): DemoMediaItem | null {
   return demoMediaForEvidence(suffix) ?? (isLiveLoopEvidence(suffix) ? DEMO_MEDIA_LIVE : null);
 }
 
-/** The poster for rows and the hero: Camera 1's poster, else the W-05 room still. */
+/**
+ * The poster for rows and the hero: Camera 1's poster, else the W-05 room still.
+ *
+ * CONTRACT-GAP-W74-2 (backend task W74; 01_specs MS-2): in Live mode a row of the list still joins
+ * its poster by the evidence number, because an item of operation 39's `EvidencePage` carries no
+ * `EvidenceMediaRef`; only operation 40 does, one item per call. The detail asks operation 40 and
+ * uses `posterOf` with the media the Core named. A media reference on the list's items (or on the
+ * replicated `evidence` slice) would let the rows follow MS-2 as well.
+ */
 export function posterForEvidence(evidenceId: string): DemoMediaAsset {
-  return mediaForEvidence(evidenceId)?.poster['VIDEO-01'] ?? HERO_STILL;
+  return posterOf(mediaForEvidence(evidenceId));
+}
+
+/** Camera 1's poster of the bundled media given, else the W-05 room still (Live: media the Core named, W74). */
+export function posterOf(media: DemoMediaItem | null): DemoMediaAsset {
+  return media?.poster['VIDEO-01'] ?? HERO_STILL;
 }
 
 /** Length of the DEMO excerpt every track covers, in ms (0 when there is no package). */

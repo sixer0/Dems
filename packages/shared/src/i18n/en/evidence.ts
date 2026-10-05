@@ -314,4 +314,32 @@ export const evidence = {
   },
 
   loading: 'Loading evidence…',
+
+  /**
+   * Backend task, plan row W69: the words of the page in Live mode (04_client_integration_spec
+   * §8.2 A5, A6; §14 point 7; §3.2: a screen that shows server data never says "simulated").
+   */
+  live: {
+    /** An item's values as the Core server holds them (no bundled demo package belongs to it). */
+    coreRecord: 'Core record',
+    /** The preview card's package line for an item without a bundled demo package (plan row W0, item 9; decision D158). */
+    noPackage: "No DEMO package for this item: the Core server's record only.",
+    /** Operation 40 did not answer: whether a bundled package belongs to the item is unknown, so none is shown. */
+    mediaUnavailable: 'Media reference unavailable',
+    verify: {
+      mode: 'Verdict of the Core server',
+      note: "The Core server's verdict is the record: it is written to the audit trail and to the chain of custody.",
+      sourceCaption: 'Verified by the Core server',
+      bundledTitle: 'Bundled demo package',
+      bundledNote: 'Recomputed in this browser for display only. It writes nothing and is not the record.',
+      bundledRunning: 'Checking the bundled demo package…',
+      bundledError: 'The bundled demo package could not be checked.',
+      differsTitle: 'Two results',
+      differs: "The bundled demo package differs from the Core's record. The Core's verdict is the record.",
+    },
+    export: {
+      reasonRefused: 'The Core server did not accept this reason. Change it and try again.',
+      notCompleted: 'The Core server could not complete this export.',
+    },
+  },
 } as const satisfies ResourceTree;

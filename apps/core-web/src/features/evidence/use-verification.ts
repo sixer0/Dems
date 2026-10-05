@@ -15,6 +15,22 @@
  *   sequence reads (time-scaled; immediate under reduced motion).
  * - **Audit.** When the run ends, `recordPackageVerification` writes the custody entry and audit row
  *   through the sim (the step-54 alignment and `recordPackageVerification` keep them consistent).
+ *
+ * **Live mode** (backend task, plan row W69; 04_client_integration_spec §8.2 A6, §8.4 D-1, §14
+ * point 7; 01_specs MS-5; AC-C-61). The verdict of record is the Core server's: one call of the
+ * `verify` action (operation 41 `verifyEvidence`) through `useCoreActions()` and `settle`, and the
+ * chip, the per-check list and the custody entry show its `EvidenceVerifyResult`. No demo control is
+ * ever called (no mirror of a tamper, D-1), and nothing is computed into the verdict here.
+ * - Waiting (LB-2): the existing Spinner on the first check while the request is out; the answer's
+ *   checks are then revealed one per `VERIFY_STEP_MS` with the hash scramble (M-C-21), so the old
+ *   pacing is the minimum display time and nothing flashes.
+ * - The check over the bundled demo files runs beside it for display only, when the row carries a
+ *   package (the detail page gives it one only when the Core's media reference is `DEMO_PACKAGE`,
+ *   MS-2) and the caller asks for it (`bundled`). It is labelled "Bundled demo package", writes
+ *   nothing, and when its result differs from the Core's the page says so; the Core's verdict
+ *   stays the record.
+ * - A refusal or an outage goes to the refusal presenter first (rule 2 of the page rows); what it
+ *   leaves to the page keeps the existing error state and toast.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from '@heroui/react'
@@ -27,19 +43,22 @@ import {
   type DemoCheckResult,
   type DemoVerificationReport,
 } from '@dems/shared/demo-data'
+import { CoreMode, settle, useCoreActions, useCoreMode } from '@dems/shared/live'
 import { useSimInstance, type EvidenceVerifyResult } from '@dems/shared/sim'
 import { motion as tokens } from '@dems/shared/tokens'
+import { useCoreErrorPresenter } from '@/lib/core-errors'
 import { useMotionPolicy } from '@/motion'
 import { useEvidenceAssets } from './demo-assets'
 import { logEvidence, logEvidenceError, newCorrelationId } from './log'
 import type { EvidenceRow } from './model'
-import { recordPackageVerification, simTamperedTrack, withSimulatedTamper } from './sim-adapter'
+import { failedTracksOf, recordPackageVerification, simTamperedTrack, withSimulatedTamper } from './sim-adapter'
 
 /** M-C-21 pacing: one result revealed per `fast` (160 ms), time-scaled. */
 export const VERIFY_STEP_MS = tokens.duration.fast
 
 export type CheckPhase = 'pending' | 'running' | 'pass' | 'fail'
-export type CheckSource = 'computed' | 'precomputed' | 'simulated'
+/** `core`: the Core server's verdict of record (Live mode). */
+export type CheckSource = 'computed' | 'precomputed' | 'simulated' | 'core'
 
 export interface VerifyCheckView {
   id: DemoCheckId
@@ -52,37 +71,53 @@ export interface VerifyCheckView {
 
 export type VerifyPhase = 'idle' | 'running' | 'done' | 'error'
 
+/** Live mode: the check over the bundled demo package, shown beside the Core's verdict (§14 point 7). */
+export interface BundledCheck {
+  phase: 'running' | 'done' | 'error'
+  verdict: 'PASS' | 'FAIL' | null
+  /** The report label ("DEMO - recomputed", …) once done. */
+  label: string | null
+}
+
 export interface VerifyState {
   phase: VerifyPhase
-  mode: 'package' | 'simulated'
+  /** `core`: Live mode, the Core server's verdict. */
+  mode: 'package' | 'simulated' | 'core'
   checks: VerifyCheckView[]
   verdict: 'PASS' | 'FAIL' | null
-  /** The report label ("DEMO - recomputed", "… (some checks precomputed)") or null (simulated). */
+  /** The report label ("DEMO - recomputed", "… (some checks precomputed)") or null (simulated, core). */
   label: string | null
   report: DemoVerificationReport | null
   /** Increments per run (animations key on it). */
   runId: number
+  /** Live mode only: the bundled package's check (display only); `null` when none runs. */
+  bundled: BundledCheck | null
+  /** Live mode only: the bundled package's result differs from the Core's verdict. */
+  differs: boolean
 }
 
 const SIM_CHECK_ORDER: DemoCheckId[] = ['track:VIDEO-01', 'track:VIDEO-02', 'track:AUDIO-01', 'track:AUDIO-02', 'manifest', 'signature']
 
-function orderFor(row: EvidenceRow | null): DemoCheckId[] {
-  return row?.pkg ? checkOrder(row.pkg) : SIM_CHECK_ORDER
+/** The checks shown: the package's in Simulated mode, the Core's six (four tracks, manifest, signature) in Live mode. */
+function orderFor(row: EvidenceRow | null, live: boolean): DemoCheckId[] {
+  return !live && row?.pkg ? checkOrder(row.pkg) : SIM_CHECK_ORDER
 }
 
-function pendingChecks(row: EvidenceRow | null): VerifyCheckView[] {
-  return orderFor(row).map((id) => ({ id, phase: 'pending', expected: null, actual: null, source: null }))
+function pendingChecks(row: EvidenceRow | null, live: boolean): VerifyCheckView[] {
+  return orderFor(row, live).map((id) => ({ id, phase: 'pending', expected: null, actual: null, source: null }))
 }
 
-function initialState(row: EvidenceRow | null): VerifyState {
+function initialState(row: EvidenceRow | null, live: boolean): VerifyState {
   return {
     phase: 'idle',
-    mode: row?.pkg ? 'package' : 'simulated',
-    checks: pendingChecks(row),
+    mode: live ? 'core' : row?.pkg ? 'package' : 'simulated',
+    checks: pendingChecks(row, live),
     verdict: null,
     label: null,
     report: null,
     runId: 0,
+    bundled: null,
+    differs: false,
   }
 }
 
@@ -97,17 +132,49 @@ function viewOf(result: DemoCheckResult): VerifyCheckView {
   }
 }
 
-/** The simulator's result as check rows (items without a package). */
-export function simulatedChecks(result: EvidenceVerifyResult): VerifyCheckView[] {
+/** A verify result as check rows: the simulator's (`simulated`) or the Core server's (`core`). */
+export function resultChecks(result: EvidenceVerifyResult, source: 'simulated' | 'core'): VerifyCheckView[] {
   const byTrack = new Map(result.tracks.map((track) => [`track:${track.trackId}`, track]))
   return SIM_CHECK_ORDER.map((id) => {
     const track = byTrack.get(id)
     if (track) {
-      return { id, phase: track.ok ? 'pass' : 'fail', expected: track.expected, actual: track.actual, source: 'simulated' }
+      return { id, phase: track.ok ? 'pass' : 'fail', expected: track.expected, actual: track.actual, source }
     }
     const ok = id === 'manifest' ? result.manifestOk : result.signatureOk
-    return { id, phase: ok ? 'pass' : 'fail', expected: 'VALID', actual: ok ? 'VALID' : 'INVALID', source: 'simulated' }
+    return { id, phase: ok ? 'pass' : 'fail', expected: 'VALID', actual: ok ? 'VALID' : 'INVALID', source }
   })
+}
+
+/** The simulator's result as check rows (items without a package). */
+export function simulatedChecks(result: EvidenceVerifyResult): VerifyCheckView[] {
+  return resultChecks(result, 'simulated')
+}
+
+/**
+ * Whether the bundled package's report differs from the Core's verdict: another verdict, or other
+ * failed tracks (§14 point 7). The checks only the package has (certificate, audit extract, export
+ * package) are not compared: the Core's verdict has no such check.
+ */
+export function bundledDiffers(report: Pick<DemoVerificationReport, 'failed' | 'result'>, result: EvidenceVerifyResult): boolean {
+  if (report.result !== (result.ok ? 'PASS' : 'FAIL')) return true
+  const bundledFailed = new Set(failedTracksOf(report))
+  const coreFailed = result.tracks.filter((track) => !track.ok).map((track) => track.trackId)
+  return bundledFailed.size !== coreFailed.length || coreFailed.some((trackId) => !bundledFailed.has(trackId))
+}
+
+/** What `verify` answered, or what it threw or rejected with. */
+type VerifyAnswer = { ok: true; result: EvidenceVerifyResult } | { ok: false; error: unknown }
+
+/** What the bundled package's check gave (Live mode). */
+type BundledOutcome = { ok: true; report: DemoVerificationReport } | { ok: false; error: unknown }
+
+/** The bundled line of the state for an outcome, compared with the Core's result. */
+function bundledView(outcome: BundledOutcome, core: EvidenceVerifyResult): Pick<VerifyState, 'bundled' | 'differs'> {
+  if (!outcome.ok) return { bundled: { phase: 'error', verdict: null, label: null }, differs: false }
+  return {
+    bundled: { phase: 'done', verdict: outcome.report.result, label: outcome.report.label },
+    differs: bundledDiffers(outcome.report, core),
+  }
 }
 
 export interface EvidenceVerification {
@@ -116,25 +183,36 @@ export interface EvidenceVerification {
   run: () => Promise<VerifyState | null>
 }
 
-export function useEvidenceVerification(row: EvidenceRow | null, options: { record?: boolean; toasts?: boolean } = {}): EvidenceVerification {
-  const { record = true, toasts = true } = options
+export interface EvidenceVerificationOptions {
+  /** Simulated mode: record the package verification in the simulator. Default true. */
+  record?: boolean
+  toasts?: boolean
+  /** Live mode: also run the bundled-package check for display, when the row carries a package. Default true. */
+  bundled?: boolean
+}
+
+export function useEvidenceVerification(row: EvidenceRow | null, options: EvidenceVerificationOptions = {}): EvidenceVerification {
+  const { record = true, toasts = true, bundled = true } = options
   const { t } = useTranslation()
   const sim = useSimInstance()
+  const actions = useCoreActions()
+  const live = useCoreMode() === CoreMode.LIVE
+  const presentCoreError = useCoreErrorPresenter()
   const assets = useEvidenceAssets()
   const m = useMotionPolicy()
-  const [state, setState] = useState<VerifyState>(() => initialState(row))
+  const [state, setState] = useState<VerifyState>(() => initialState(row, live))
   const rowRef = useRef(row)
   const running = useRef(false)
   const generation = useRef(0)
   const runCounter = useRef(0)
   const timers = useRef<ReturnType<typeof setTimeout>[]>([])
 
-  // A different item (or its package join changing) resets the view.
-  const identity = `${row?.id ?? ''}|${row?.pkg?.evidenceSuffix ?? ''}`
+  // A different item (or its package join, or the data mode, changing) resets the view.
+  const identity = `${live ? 'core' : 'sim'}|${row?.id ?? ''}|${row?.pkg?.evidenceSuffix ?? ''}`
   const [trackedIdentity, setTrackedIdentity] = useState(identity)
   if (trackedIdentity !== identity) {
     setTrackedIdentity(identity)
-    setState(initialState(row))
+    setState(initialState(row, live))
   }
   useEffect(() => {
     rowRef.current = row
@@ -159,17 +237,36 @@ export function useEvidenceVerification(row: EvidenceRow | null, options: { reco
     running.current = true
     const myGeneration = ++generation.current
     const correlationId = newCorrelationId('verify')
-    const order = orderFor(target)
+    const order = orderFor(target, live)
     const alive = () => generation.current === myGeneration
 
     runCounter.current += 1
     const runId = runCounter.current
+    // Live mode: the bundled package's check starts beside the Core's call (display only).
+    const bundledPkg = live && bundled ? target.pkg : null
     setState({
-      ...initialState(target),
+      ...initialState(target, live),
       phase: 'running',
       runId,
       checks: order.map((id, index) => ({ id, phase: index === 0 ? 'running' : 'pending', expected: null, actual: null, source: null })),
+      bundled: bundledPkg ? { phase: 'running', verdict: null, label: null } : null,
     })
+
+    /** One call of `verify` through `settle`: the simulator answers before it returns, a Live source after the Core did. */
+    const askVerify = () =>
+      new Promise<VerifyAnswer>((resolve) => {
+        settle(() => actions.verify(target.id), {
+          ok: (result) => resolve({ ok: true, result }),
+          fail: (error) => resolve({ ok: false, error }),
+        })
+      })
+    /** Rule 2: the presenter words a refusal or an outage first; anything it leaves goes to the existing error branch. */
+    const refused = (error: unknown): VerifyState => {
+      if (presentCoreError(error) === null) throw error
+      const failedState: VerifyState = { ...initialState(target, live), phase: 'error', runId }
+      setState(failedState)
+      return failedState
+    }
 
     // Reveal queue (M-C-21 pacing).
     const queue: VerifyCheckView[] = []
@@ -202,7 +299,50 @@ export function useEvidenceVerification(row: EvidenceRow | null, options: { reco
 
     try {
       let final: VerifyState
-      if (target.pkg) {
+      if (live) {
+        // What the bundled check found, and the Core's result once known: the two may settle in either order.
+        const box: { outcome: BundledOutcome | null; core: EvidenceVerifyResult | null } = { outcome: null, core: null }
+        const bundledRun = bundledPkg
+          ? verifyDemoPackage(bundledPkg, assets.load, {
+              trust: demoVerificationTrust(),
+              ...(assets.subtle !== undefined ? { subtle: assets.subtle } : {}),
+            }).then(
+              (report): BundledOutcome => ({ ok: true, report }),
+              (error: unknown): BundledOutcome => ({ ok: false, error }),
+            )
+          : null
+        void bundledRun?.then((outcome) => {
+          box.outcome = outcome
+          if (!outcome.ok) logEvidence('warn', 'verify.bundled', outcome.error, { evidenceId: target.id, suffix: target.suffix, correlationId })
+          const core = box.core
+          // Before the Core's verdict is shown, the final state reads `box.outcome` itself.
+          if (!alive() || core === null) return
+          setState((previous) => (previous.runId === runId ? { ...previous, ...bundledView(outcome, core) } : previous))
+        })
+        const answer = await askVerify()
+        if (!alive()) return null
+        if (!answer.ok) return refused(answer.error)
+        const views = resultChecks(answer.result, 'core')
+        for (const view of views) reveal(view)
+        await draining
+        if (!alive()) return null
+        const coreResult = answer.result
+        box.core = coreResult
+        final = {
+          phase: 'done',
+          mode: 'core',
+          checks: views,
+          verdict: coreResult.ok ? 'PASS' : 'FAIL',
+          label: null,
+          report: null,
+          runId,
+          ...(bundledRun === null
+            ? { bundled: null, differs: false }
+            : box.outcome === null
+              ? { bundled: { phase: 'running', verdict: null, label: null }, differs: false }
+              : bundledView(box.outcome, coreResult)),
+        }
+      } else if (target.pkg) {
         const pkg = target.pkg
         const load = withSimulatedTamper(assets.load, pkg, simTamperedTrack(target.item))
         const report = await verifyDemoPackage(pkg, load, {
@@ -220,16 +360,19 @@ export function useEvidenceVerification(row: EvidenceRow | null, options: { reco
           label: report.label,
           report,
           runId,
+          bundled: null,
+          differs: false,
         }
         if (record) {
-          try {
-            recordPackageVerification(sim, target.id, report)
-          } catch (error) {
-            logEvidence('warn', 'verify.record', error, { evidenceId: target.id, correlationId })
-          }
+          recordPackageVerification(actions, sim.store.getState(), target.id, report, (error) =>
+            logEvidence('warn', 'verify.record', error, { evidenceId: target.id, correlationId }),
+          )
         }
       } else {
-        const result = sim.actions.verify(target.id)
+        const answer = await askVerify()
+        if (!alive()) return null
+        if (!answer.ok) return refused(answer.error)
+        const result = answer.result
         const views = simulatedChecks(result)
         for (const view of views) reveal(view)
         await draining
@@ -242,6 +385,8 @@ export function useEvidenceVerification(row: EvidenceRow | null, options: { reco
           label: null,
           report: null,
           runId,
+          bundled: null,
+          differs: false,
         }
       }
       setState(final)
@@ -254,14 +399,14 @@ export function useEvidenceVerification(row: EvidenceRow | null, options: { reco
     } catch (error) {
       if (!alive()) return null
       logEvidenceError('verify.run', error, { evidenceId: target.id, suffix: target.suffix, correlationId })
-      const failedState: VerifyState = { ...initialState(target), phase: 'error', runId }
+      const failedState: VerifyState = { ...initialState(target, live), phase: 'error', runId }
       setState(failedState)
       if (toasts) toast.danger(t('evidence.verify.errorToast'))
       return failedState
     } finally {
       if (alive()) running.current = false
     }
-  }, [assets, pace, record, sim, t, toasts])
+  }, [actions, assets, bundled, live, pace, presentCoreError, record, sim, t, toasts])
 
   return { state, run }
 }

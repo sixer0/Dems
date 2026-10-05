@@ -1,0 +1,74 @@
+#!/bin/sh
+# W64 lane check (lane 1), follow-up for the SIMULATED screenshot: Vite and the browser only, no backend.
+# Same lock: /usr/bin/lockf -k -t 900 .locks/core-server.lane1.lock /bin/sh .cache/w64/lane/run_lane_sim.sh
+# Base: the Start New Session page of the web console against the REAL Core
+# server through the dev proxy, in a real headless browser. Adapted from W50/W55's lane scripts
+# (the lane number only). Run from the workspace root, inside lane 1's lock:
+#   /usr/bin/lockf -k -t 900 .locks/core-server.lane1.lock /bin/sh .cache/w64/lane/run_lane.sh
+# It starts three processes of its own (the lane backend on 127.0.0.1:4421, Vite on 127.0.0.1:5176,
+# a headless Chromium with devtools on 127.0.0.1:9396) and stops all three at the end. It never
+# touches a listener it did not start, it does not reset dems_lane_1 (decision D143: the paired
+# phone DEV-0001 stays), and it touches no emulator. No credential is printed.
+set -u
+ROOT=/Users/gsp-budi/Documents/DEMS
+[ "$(pwd)" = "$ROOT" ] || { echo "ABORT: run from $ROOT"; exit 9; }
+K=1; PORT=4421; VITE=5176; DEV=9396
+OUT=.cache/w64/lane/out
+ASSETS=docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets
+CHROME="$HOME/Library/Caches/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-mac-arm64/chrome-headless-shell"
+[ -n "${TMPDIR:-}" ] || { echo "ABORT: TMPDIR is not set"; exit 6; }
+PROFILE="${TMPDIR%/}/w64-chrome-profile"
+mkdir -p "$OUT" "$ASSETS"
+START_EPOCH=$(date +%s)
+
+stamp() { date '+%H:%M:%S'; }
+say() { echo; echo "== $(stamp) $*"; }
+listening() { lsof -nP -iTCP:"$1" -sTCP:LISTEN >/dev/null 2>&1; }
+
+BACK_PID=""; VITE_PID=""; CHROME_PID=""; STARTED_BACK=0; STARTED_VITE=0; STARTED_CHROME=0
+
+stop_all() {
+  say "stop what this check started"
+  if [ "$STARTED_CHROME" = 1 ]; then
+    kill "$CHROME_PID" 2>/dev/null; wait "$CHROME_PID" 2>/dev/null
+    P=$(lsof -nP -tiTCP:$DEV -sTCP:LISTEN 2>/dev/null); [ -n "$P" ] && kill $P 2>/dev/null
+    echo "chrome stopped"
+  fi
+  if [ "$STARTED_VITE" = 1 ]; then
+    kill "$VITE_PID" 2>/dev/null; wait "$VITE_PID" 2>/dev/null; echo "vite: npm exit status $?"
+    i=0; while listening $VITE && [ $i -lt 20 ]; do i=$((i + 1)); sleep 0.25; done
+    P=$(lsof -nP -tiTCP:$VITE -sTCP:LISTEN 2>/dev/null); [ -n "$P" ] && { echo "vite: fallback kill of the listener $P"; kill $P 2>/dev/null; }
+    : > .locks/core-server.lane$K.vite.pid
+  fi
+  if [ "$STARTED_BACK" = 1 ]; then
+    kill "$BACK_PID" 2>/dev/null; wait "$BACK_PID" 2>/dev/null; echo "backend: npm exit status $?"
+    i=0; while listening $PORT && [ $i -lt 40 ]; do i=$((i + 1)); sleep 0.25; done
+    P=$(lsof -nP -tiTCP:$PORT -sTCP:LISTEN 2>/dev/null); [ -n "$P" ] && { echo "backend: fallback kill of the listener $P"; kill $P 2>/dev/null; sleep 1; }
+    : > .locks/core-server.lane$K.pid
+  fi
+  [ -d "$PROFILE" ] && rm -rf "$PROFILE"
+  say "listeners left on $PORT, $VITE, $DEV (expect none):"
+  lsof -nP -iTCP:$PORT -iTCP:$VITE -iTCP:$DEV -sTCP:LISTEN; echo "lsof exit $? (1 with no output: no listener)"
+  echo "-- the check took $(( $(date +%s) - START_EPOCH )) s"
+}
+trap stop_all EXIT
+
+say "0. the ports must be free before anything is started"
+for p in $PORT $VITE $DEV; do
+  if listening $p; then echo "port $p is in use:"; lsof -nP -iTCP:$p -sTCP:LISTEN; echo "ABORT: not this check's listener"; exit 3; fi
+done
+echo "free: $PORT $VITE $DEV"; date '+%Y-%m-%d %H:%M:%S %Z'; uptime
+
+say "1. start Vite for lane $K (no backend: Simulated mode sends nothing to the Core)"
+DEMS_CORE_PROXY_PORT=$PORT VITE_DEMS_CORE_MODE=live npm run dev -w @dems/core-web -- --host 127.0.0.1 --port $VITE --strictPort > "$OUT/vite_sim.log" 2>&1 &
+VITE_PID=$!; STARTED_VITE=1; echo $VITE_PID > .locks/core-server.lane$K.vite.pid
+i=0; until listening $VITE || [ $i -ge 120 ]; do i=$((i + 1)); sleep 0.25; done
+lsof -nP -iTCP:$VITE -sTCP:LISTEN || { echo "ABORT: Vite does not listen"; exit 5; }
+
+say "2. the page in Simulated mode (headless Chromium over CDP)"
+rm -rf "$PROFILE"
+"$CHROME" --remote-debugging-port=$DEV --remote-debugging-address=127.0.0.1 --user-data-dir="$PROFILE" --no-first-run --disable-background-networking --disable-component-update --disable-sync --disable-default-apps --disable-domain-reliability --host-resolver-rules="MAP * ~NOTFOUND, EXCLUDE 127.0.0.1, EXCLUDE localhost" --window-size=1440,900 about:blank > "$OUT/chrome_sim.log" 2>&1 &
+CHROME_PID=$!; STARTED_CHROME=1
+i=0; until curl -s http://127.0.0.1:$DEV/json/version >/dev/null 2>&1 || [ $i -ge 60 ]; do i=$((i + 1)); sleep 0.25; done
+node --import tsx .cache/w64/lane/cdp-driver-sim.mjs $DEV $VITE "$OUT/browser_sim.json" "$ASSETS" > "$OUT/browser_sim.log" 2>&1; echo "cdp-driver-sim exit $?"
+echo "-- 4421 was never started by this run: $(lsof -nP -iTCP:$PORT -sTCP:LISTEN >/dev/null 2>&1 && echo 'LISTENING (not ours)' || echo 'free')"

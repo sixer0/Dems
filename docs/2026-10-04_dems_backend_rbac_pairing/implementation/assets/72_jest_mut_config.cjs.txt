@@ -1,0 +1,8 @@
+// W72 mutation check: the app's own jest configuration, with the transformer above in place of babel-jest.
+const base = require('/Users/gsp-budi/Documents/DEMS/apps/mobile/jest.config.js')
+module.exports = {
+  ...base,
+  rootDir: '/Users/gsp-budi/Documents/DEMS/apps/mobile',
+  setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
+  transform: { '\\.[jt]sx?$': require.resolve('./mutating-transformer.cjs') },
+}

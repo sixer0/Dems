@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useState, type ReactNode, type RefObject } from 'react'
 import { Alert, Button, Card, Checkbox, Chip, Label, ListBox, Spinner } from '@heroui/react'
 import { AnimatePresence, motion, type Variants } from 'motion/react'
 import {
@@ -46,6 +46,16 @@ export interface DevicesStepProps {
   acknowledged: boolean
   onAcknowledgedChange: (value: boolean) => void
   onRetry: () => void
+  /**
+   * Live mode (plan row W64): a blocked `CORE` check is worded as what it is there, "no paired
+   * tablet is connected" (decision F69), because the console cannot clear it. False in Simulated
+   * mode, where the step looks as before.
+   */
+  live?: boolean
+  /** Live mode (LB-1): "Re-run checks" is in flight for longer than the reveal time. Never true in Simulated mode. */
+  retryPending?: boolean
+  /** The "Re-run checks" button's element (`aria-busy` while the request is in flight). */
+  retryRef?: RefObject<HTMLButtonElement | null>
 }
 
 /** The text of a WARN or BLOCK check (i18n, never the simulator's EN `reason`; looked up from its `reasonCode`). */
@@ -68,15 +78,16 @@ function useCheckReason() {
  * Motion (M-PG-NEW): Spinner → check-draw (PASS), amber chip (WARN; the Checkbox slides in) or red
  * chip plus the Alert (BLOCK); preview tiles fade in from blur; meters are live.
  */
-export function DevicesStep({ gate, acknowledged, onAcknowledgedChange, onRetry }: DevicesStepProps) {
+export function DevicesStep({ gate, acknowledged, onAcknowledgedChange, onRetry, live = false, retryPending = false, retryRef }: DevicesStepProps) {
   const { t } = useTranslation()
   const m = useMotionPolicy()
   const items = useSim(selectItems)
   const reasonOf = useCheckReason()
-  const blockReasons = items
-    .filter((item) => item.status === 'BLOCK')
-    .map((item) => reasonOf(item))
-    .filter((text): text is string => text !== null)
+  const blocked = items.filter((item) => item.status === 'BLOCK')
+  const blockReasons = blocked.map((item) => reasonOf(item)).filter((text): text is string => text !== null)
+  // F69: in Live mode only a connected paired tablet clears this check; "Clear the fault" would mislead.
+  const linkBlocked = live && blocked.some((item) => reasonKeyFor(item) === 'coreOffline')
+  const onlyLinkBlocked = linkBlocked && blocked.every((item) => reasonKeyFor(item) === 'coreOffline')
 
   const slide = {
     initial: m.reduced ? { opacity: 0 } : { opacity: 0, y: -8 },
@@ -159,7 +170,8 @@ export function DevicesStep({ gate, acknowledged, onAcknowledgedChange, onRetry 
                 <Alert.Content>
                   <Alert.Title>{t('sessionNew.devices.blockedTitle')}</Alert.Title>
                   <Alert.Description>{t('sessionNew.devices.blockedBody', { reasons: blockReasons.join('; ') })}</Alert.Description>
-                  <Alert.Description>{t('sessionNew.devices.resolveHint')}</Alert.Description>
+                  {linkBlocked ? <Alert.Description data-testid="sn-gate-live-link">{t('sessionNew.live.coreLinkHint')}</Alert.Description> : null}
+                  {onlyLinkBlocked ? null : <Alert.Description>{t('sessionNew.devices.resolveHint')}</Alert.Description>}
                 </Alert.Content>
               </Alert>
             </motion.div>
@@ -181,8 +193,8 @@ export function DevicesStep({ gate, acknowledged, onAcknowledgedChange, onRetry 
 
         {gate.canRetry ? (
           <div className="sn-gate-actions">
-            <Button variant="outline" size="sm" onPress={onRetry} data-testid="sn-retry">
-              <RotateCcw className="size-4" aria-hidden="true" />
+            <Button ref={retryRef} variant="outline" size="sm" onPress={onRetry} isPending={retryPending} data-testid="sn-retry">
+              {retryPending ? <Spinner size="sm" color="current" aria-hidden="true" /> : <RotateCcw className="size-4" aria-hidden="true" />}
               {t('sessionNew.devices.retry')}
             </Button>
           </div>

@@ -24,9 +24,15 @@
  * (M-C-11); a filter change or a finished pull-to-refresh re-reveals the rows. The refresh lasts
  * `REFRESH_MS` on the simulator clock (relay F74-09), shows the gold Android spinner on the warm
  * panel colour and stamps "Updated hh:mm:ss". The only ambient loop is the REC dot (P3 ≤ 4).
+ *
+ * Live mode (backend task, plan row W72 follow-up, decision D169): the rows are the Core's replicated
+ * state, pushed over the socket. While the Core link is down (`useCoreLinkNotice()` of the runtime, the
+ * one link rule) a refresh records no "Updated" time, because nothing was received, and a notice above
+ * the rows says the list is what this device last received. Outside LIVE `offline` is false and the hub
+ * is as before.
  */
 import { FlashList } from '@shopify/flash-list';
-import { Button, SearchField, SkeletonGroup, TagGroup } from 'heroui-native';
+import { Alert, Button, SearchField, SkeletonGroup, TagGroup } from 'heroui-native';
 import { useCallback, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -38,7 +44,7 @@ import { SectionCard } from '@/components/kit';
 import { Emblem } from '@/components/media';
 import { Pane, PaneLayout, SafeScreen, useLayoutClass } from '@/layout';
 import { enterRise, rowReveal, triggerHaptic, useMotionSettings } from '@/motion';
-import { useRuntimeStatus } from '@/runtime';
+import { useCoreLinkNotice, useRuntimeStatus } from '@/runtime';
 import { HubTop } from './hub-top';
 import { SessionDetail } from './session-detail';
 import { SessionRow } from './session-row';
@@ -119,8 +125,11 @@ interface HubRefresh {
   updatedAt: number | null;
 }
 
-/** Pull-to-refresh timed on the simulator clock (named `use…`: it calls hooks, D66). */
-function useHubRefresh(): HubRefresh {
+/**
+ * Pull-to-refresh timed on the simulator clock (named `use…`: it calls hooks, D66). `offline` (LIVE, the
+ * Core link down): the refresh still runs, but records no "Updated" time — nothing was received (D169).
+ */
+function useHubRefresh(offline: boolean): HubRefresh {
   const sim = useSimInstance();
   const [from, setFrom] = useState<number | null>(null);
   const [seq, setSeq] = useState(0);
@@ -130,7 +139,7 @@ function useHubRefresh(): HubRefresh {
   if (done && from !== null) {
     setFrom(null);
     setSeq(seq + 1);
-    setUpdatedAt(from + REFRESH_MS);
+    if (!offline) setUpdatedAt(from + REFRESH_MS);
   }
   const refresh = useCallback(() => {
     setFrom(sim.store.getState().clock.now);
@@ -157,7 +166,8 @@ function SessionsListColumn({ query, onQueryChange, selectedId, withControls }: 
   const { isMultiPane } = useLayoutClass();
   const open = useOpenSession();
   const { rows, total } = useHubRows(query);
-  const { refreshing, refresh, seq, updatedAt } = useHubRefresh();
+  const { offline } = useCoreLinkNotice();
+  const { refreshing, refresh, seq, updatedAt } = useHubRefresh(offline);
   const filtered = isFiltered(query);
   // A filter change or a finished refresh re-reveals the rows (they stagger again).
   const revealKey = `${query.filter}|${seq}`;
@@ -207,6 +217,17 @@ function SessionsListColumn({ query, onQueryChange, selectedId, withControls }: 
       <Animated.View entering={enterRise(0, m)}>
         <ListHeader />
       </Animated.View>
+      {offline ? (
+        <View style={styles.linkDown}>
+          <Alert status="warning" testID="sessions-link-down">
+            <Alert.Indicator />
+            <Alert.Content>
+              <Alert.Title>{t('features.sessions.live.linkDownTitle')}</Alert.Title>
+              <Alert.Description>{t('features.sessions.live.linkDownBody')}</Alert.Description>
+            </Alert.Content>
+          </Alert>
+        </View>
+      ) : null}
       <View style={styles.listWrap} accessibilityLabel={t('features.sessions.list.label')}>
         <FlashList
           testID="sessions-rows"
@@ -391,6 +412,7 @@ const styles = StyleSheet.create({
   filtersPane: { paddingLeft: spacing[3], paddingTop: spacing[3], paddingBottom: spacing[4], gap: spacing[2] },
   skeletons: { gap: spacing[1] },
   emptyWrap: { paddingTop: spacing[1] },
+  linkDown: { paddingHorizontal: spacing[3], paddingBottom: spacing[2] },
   listWrap: { flex: 1 },
   listContent: { paddingHorizontal: spacing[3], paddingBottom: spacing[3] },
   count: {

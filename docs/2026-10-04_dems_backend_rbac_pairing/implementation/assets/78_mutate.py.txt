@@ -1,0 +1,134 @@
+#!/usr/bin/env python3
+"""W78 mutation check of the Live call sites of `features/devices/` (S2-8, S3-2, S5-4, the clip reset),
+the LIVE copy choice and the pending-press hook.
+
+Each mutation changes texts of ONE production file IN MEMORY (the jest transformer beside this file,
+the method of M0 / W56) and runs the four test files of the folder. A mutation is DETECTED when jest
+exits non-zero. Nothing in the tree is written (rule M15): the hashes of the mutated files are
+compared before and after the whole run.
+
+  python3 mutate.py [id ...]      (no id: all; 'control' runs the unmutated tests once)
+"""
+import hashlib, json, os, re, subprocess, sys, time
+
+ROOT = '/Users/gsp-budi/Documents/DEMS'
+APP = ROOT + '/apps/mobile'
+HERE = os.path.dirname(os.path.abspath(__file__))
+SPEC = HERE + '/spec.json'
+CONFIG = HERE + '/jest.mut.config.cjs'
+TESTS = [
+    'src/features/devices/live-devices-sites.test.tsx', 'src/features/devices/devices-live-static.test.ts',
+    'src/features/devices/devices-screen.test.tsx', 'src/features/devices/devices-model.test.ts',
+]
+DD = 'src/features/devices/device-detail.tsx'
+DC = 'src/features/devices/device-command-dialog.tsx'
+DS = 'src/features/devices/diagnostics-sheet.tsx'
+HC = 'src/features/devices/health-chart.tsx'
+PP = 'src/features/devices/use-pending-press.ts'
+I18N = 'src/features/devices/i18n.ts'
+
+def e(frm, to):
+    return {'from': frm, 'to': to}
+
+M = [
+  # ── S3-2: the device-command dialog ──
+  ('DC1', DC, 'the success toast shows at the press, before the answer (AC-C-63)', [
+      e("    press.run((release) => {\n      settle(() => onConfirm(command), {\n        ok: () => {\n          toast.show({",
+        "    toast.show({ variant: 'success', label: t('features.devices.live.testSignalSent', { name: deviceName }) });\n    press.run((release) => {\n      settle(() => onConfirm(command), {\n        ok: () => {\n          toast.show({")]),
+  ('DC2', DC, 'the dialog closes at the press, not in done', [e("    press.run((release) => {", "    onClose();\n    press.run((release) => {")]),
+  ('DC3', DC, 'the presenter is not consulted in Live mode (generic toast instead of the denied one)', [e("if (live && presentCoreError(error)) {", "if (false && presentCoreError(error)) {")]),
+  ('DC4', DC, 'the 409 answers lose their wording (generic toast)', [
+      e("if (error instanceof SimTransitionError && error.code === SimErrorCode.RECORDING_ACTIVE) return t('devices.actions.restartWhileRecording');", ""),
+      e("if (error instanceof SimTransitionError && error.code === SimErrorCode.COMMAND_UNSUPPORTED) return t('features.devices.live.unsupported', { name: deviceName });", "")]),
+  ('DC5', DC, 'the LIVE success toast says "(simulated)" (the Simulated copy in LIVE)', [e("            label: live\n", "            label: false\n")]),
+  ('DC6', DC, 'the LIVE dialog body is the Simulated one', [e("            {live\n", "            {false\n")]),
+  ('DC7', DC, 'the confirm button is not marked busy while the command is out (LB-1)', [e(" {...busyState(press.busy)}>", ">")]),
+  ('DC8', DC, 'no spinner after the reveal time (LB-1)', [e("{press.pending ? <Spinner", "{false ? <Spinner")]),
+  ('DC9', DC, 'Cancel closes the dialog while the command is out', [e("    if (press.busy) return;\n", "")]),
+  ('DC10', DC, 'the dialog does not close in done', [e("          release();\n          onClose();", "          release();")]),
+  # ── S2-8 and the clip reset: the detail ──
+  ('DD1', DD, 'the diagnostics sheet opens at the press, before the Core accepted the run', [e("startDiagnostics(() => setDiagnosticsOpen(true));", "startDiagnostics();\n            setDiagnosticsOpen(true);")]),
+  ('DD2', DD, 'a diagnostics rejection skips the presenter in Live mode', [e("            if (live && presentCoreError(error)) {", "            if (false && presentCoreError(error)) {")]),
+  ('DD3', DD, 'a clip-reset rejection is not presented', [e("          if (live) presentCoreError(error);\n", "")]),
+  ('DD4', DD, 'the screen never takes the LIVE branch', [e("const live = useCoreLink().source === 'LIVE';", "const live = useCoreLink().source === 'LIVE' && false;")]),
+  ('DD5', DD, 'the Diagnostics button is not marked busy (LB-1)', [e("          {...busyState(diagnosticsPress.busy)}\n", "")]),
+  ('DD6', DD, 'no spinner on the Diagnostics button after the reveal time', [e("{diagnosticsPress.pending ? <Spinner", "{false ? <Spinner")]),
+  ('DD7', DD, 'the Log names LIVE commands with the Simulated words', [e("      if (live) {\n        const key", "      if (false) {\n        const key")]),
+  ('DD8', DD, '"Run again" is never marked busy', [e("runAgainBusy={diagnosticsPress.busy}", "runAgainBusy={false}")]),
+  ('DD9', DD, 'the diagnostics run is not guarded against a second press', [e("      diagnosticsPress.run((release) => {", "      ((start: (release: () => void) => void) => start(() => undefined))((release) => {")]),
+  ('SM1', DD, 'a Core command starts from a mount effect (F69-1: twice under StrictMode)', [
+      e("import { useCallback, useState, type ReactNode } from 'react';", "import { useCallback, useEffect, useState, type ReactNode } from 'react';"),
+      e("  const diagnosticsPress = usePendingPress();\n", "  const diagnosticsPress = usePendingPress();\n  useEffect(() => {\n    void actions.runDiagnostics();\n  }, [actions]);\n")]),
+  # ── the LIVE copy elsewhere ──
+  ('DS1', DS, 'the LIVE diagnostics subtitle is the Simulated one', [e("subtitleKey={live ? 'features.devices.live.diagnosticsSubtitle' : 'system.diagnostics.subtitle'}", "subtitleKey={'system.diagnostics.subtitle'}")]),
+  ('HC1', HC, 'the LIVE health caption is the Simulated one', [e("t(live ? 'features.devices.live.samples' : 'devices.drawer.health.samples'", "t(false ? 'features.devices.live.samples' : 'devices.drawer.health.samples'")]),
+  ('I1', I18N, 'a LIVE text says "(simulated)"', [e("    testSignalSent: 'Test signal sent to {{name}}',", "    testSignalSent: 'Test signal sent to {{name}} (simulated)',")]),
+  # ── the pending-press hook ──
+  ('PP1', PP, 'the spinner shows at once (no reveal time)', [e("pressedAt !== null && s.clock.now - pressedAt >= LIVE_PENDING_REVEAL_MS", "pressedAt !== null")]),
+  ('PP2', PP, 'the spinner never shows', [e("pressedAt !== null && s.clock.now - pressedAt >= LIVE_PENDING_REVEAL_MS", "pressedAt !== null && false")]),
+  ('PP3', PP, 'a second press while in flight sends a second command', [e("      if (inFlight.current) return false;\n", "")]),
+  ('PP4', PP, 'the control is never marked busy', [e("        setPressedAt(sim.store.getState().clock.now);\n", "")]),
+  ('PP5', PP, 'busy is never cleared after the command settled', [e("        if (shown) setPressedAt(null);\n", "")]),
+]
+
+def sha(path):
+    with open(path, 'rb') as f:
+        return hashlib.sha256(f.read()).hexdigest()
+
+def jest(env):
+    return subprocess.run(['node', ROOT + '/node_modules/jest/bin/jest.js', '--config', CONFIG, '--maxWorkers=2', '--silent', *[APP + '/' + t for t in TESTS]],
+                          cwd=APP, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)  # the app's babel resolves `@/` from its own folder (as M0's runner)
+
+def summary(out):
+    tail = [line.strip() for line in out.splitlines() if line.startswith('Tests:')]
+    files = sorted({line.split()[1].split('/')[-1] for line in out.splitlines() if line.startswith('FAIL ')})
+    first = [re.sub(r'\s+', ' ', line.strip().lstrip('●').strip()) for line in out.splitlines() if line.strip().startswith('● ') and 'Console' not in line]
+    return (tail[-1] if tail else 'no summary line'), files, first[:2]
+
+def main():
+    wanted = set(sys.argv[1:])
+    files = sorted({m[1] for m in M})
+    before = {f: sha(APP + '/' + f) for f in files}
+    print('# W78 mutation check, %s; %d test files per run; the tree is not edited' % (time.strftime('%Y-%m-%d %H:%M:%S'), len(TESTS)), flush=True)
+    if not wanted or 'control' in wanted:
+        started = time.time()
+        run = jest(dict(os.environ, CI='1'))
+        tail, failed, _ = summary(run.stdout)
+        print('control (no mutation): exit=%d %s (%.0f s)' % (run.returncode, tail, time.time() - started), flush=True)
+        if run.returncode != 0:
+            print(run.stdout[-3000:])
+            print('## the control run is not green: stop', flush=True)
+            return 2
+    todo = [m for m in M if not wanted or m[0] in wanted]
+    detected, survived, broken = [], [], []
+    for (mid, file, what, edits) in todo:
+        text = open(APP + '/' + file).read()
+        ok = True
+        for edit in edits:
+            if text.count(edit['from']) != 1:
+                ok = False
+                break
+            text = text.replace(edit['from'], edit['to'], 1)
+        if not ok:
+            broken.append(mid)
+            print('%s  NOT APPLIED: a text does not occur exactly once in %s   (%s)' % (mid, file, what), flush=True)
+            continue
+        json.dump({'id': mid, 'file': file, 'edits': edits}, open(SPEC, 'w'))
+        started = time.time()
+        run = jest(dict(os.environ, W78_MUT_SPEC=SPEC, CI='1'))
+        tail, failed, first = summary(run.stdout)
+        verdict = 'detected' if run.returncode != 0 else 'NOT DETECTED'
+        (detected if run.returncode != 0 else survived).append(mid)
+        print('%s  %-12s %3.0fs  %s  | %s  | %s' % (mid, verdict, time.time() - started, what, tail, ', '.join(failed)), flush=True)
+        for name in first: print('      e.g. %s' % name, flush=True)
+    after = {f: sha(APP + '/' + f) for f in files}
+    print('## %d detected, %d not detected, %d not applied, of %d' % (len(detected), len(survived), len(broken), len(todo)), flush=True)
+    if survived: print('## not detected: ' + ' '.join(survived), flush=True)
+    if broken: print('## not applied: ' + ' '.join(broken), flush=True)
+    print('## the mutated files in the tree, before and after: ' + ('identical' if before == after else 'CHANGED'), flush=True)
+    for f in files: print('   %s  %s' % (after[f][:16], f), flush=True)
+    print('# finished %s' % time.strftime('%H:%M:%S'), flush=True)
+    return 0 if not survived and not broken and before == after else 1
+
+if __name__ == '__main__':
+    sys.exit(main())

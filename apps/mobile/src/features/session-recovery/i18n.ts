@@ -122,6 +122,12 @@ export const sessionRecoveryEn = {
     warn: 'needs attention',
     error: 'failed',
   },
+  // LIVE mode only (plan row W73): the runtime's link notice and the truthful source of the findings.
+  live: {
+    linkDownTitle: 'Core server unreachable',
+    linkDownBody: 'This device is not connected to the Core server. The screen shows the last state received; recovery can start once the connection is back.',
+    derived: "The Core reports the recovery stage and the outcome. The check results shown here are derived on this device from the Core's data.",
+  },
   // Region error boundary (three-layer error handling: message, persistent log, rate-limited retry).
   error: {
     title: 'This part could not be displayed',

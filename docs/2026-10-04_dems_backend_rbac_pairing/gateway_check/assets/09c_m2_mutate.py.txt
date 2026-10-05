@@ -1,0 +1,138 @@
+#!/usr/bin/env python3
+"""M2 mutation check (rule M15: nothing in the tree is written). The method of M0 and M1.
+
+Each mutation changes texts of ONE production file IN MEMORY (the jest transformer beside this file)
+and runs the test files of its group. A mutation is DETECTED when jest exits non-zero. The hashes of
+the mutated files are compared before and after the whole run.
+
+Groups:
+  R  the new helper `runtime/use-core-link-read-only.ts` (item 1): its own test plus the behavioural
+     tests of the Session Monitor (W68) and Recovery (W73), which now run through it
+  C  the three call sites of item 1 (monitor screen, monitor actions, recovery actions): the screens'
+     behavioural tests (the static checks read the disk, so an in-memory mutant cannot reach them)
+  K  W66's chip (item 2): W66's tests and M1's chip group
+
+  python3 mutate.py control            the unmutated test files of every group, once
+  python3 mutate.py R                  every mutant of group R (or C, K); ids also work (R1 C2 …)
+"""
+import hashlib, json, os, re, subprocess, sys, time
+
+ROOT = '/Users/gsp-budi/Documents/DEMS'
+APP = ROOT + '/apps/mobile'
+HERE = os.path.dirname(os.path.abspath(__file__))
+SPEC = HERE + '/spec.json'
+CONFIG = HERE + '/jest.mut.config.cjs'
+
+HELPER = 'src/runtime/use-core-link-read-only.ts'
+MONITOR = 'src/features/session-live/use-monitor.ts'
+MONITOR_SCREEN = 'src/features/session-live/session-live-screen.tsx'
+RECOVERY = 'src/features/session-recovery/use-recovery.ts'
+CHIP = 'src/features/more/use-core-link-chip.ts'
+
+SCREENS = [
+    'src/features/session-live/live-session-live-link.test.tsx',
+    'src/features/session-live/live-session-live-sites.test.tsx',
+    'src/features/session-live/session-live-screen.test.tsx',
+    'src/features/session-recovery/live-recovery-sites.test.tsx',
+    'src/features/session-recovery/live-recovery-restart.test.tsx',
+    'src/features/session-recovery/session-recovery-screen.test.tsx',
+]
+TESTS = {
+    'R': ['src/runtime/use-core-link-read-only.test.tsx', *SCREENS],
+    'C': SCREENS,
+    'K': [
+        'src/features/more/use-core-link-chip.test.tsx',
+        'src/features/more/more-live.test.tsx',
+        'src/features/dashboard/home-live.test.tsx',
+        'src/runtime/use-core-link-notice.test.tsx',
+    ],
+}
+
+def e(frm, to):
+    return {'from': frm, 'to': to}
+
+LIVE_BRANCH = "  if (link.source === 'LIVE') return offline;\n"
+STEP79 = "  return banner.kind === 'offline' || link.state === 'OFFLINE';"
+CALL = 'const readOnly = useCoreLinkReadOnly();'
+NOTICE = 'const { offline } = useCoreLinkNotice();'
+M = [
+  # ── R: the helper ──
+  ('R1', HELPER, "W73's U6: LIVE takes the step-79 two-valued rule (the LIVE branch dropped)", [e(LIVE_BRANCH, '')]),
+  ('R2', HELPER, 'SIMULATED and HEARTBEAT take the notice (never read-only outside LIVE)', [e(STEP79, '  return offline;')]),
+  ('R3', HELPER, 'outside LIVE the banner is not read', [e(STEP79, "  return link.state === 'OFFLINE';")]),
+  ('R4', HELPER, 'outside LIVE the link state is not read', [e(STEP79, "  return banner.kind === 'offline';")]),
+  ('R5', HELPER, 'LIVE: the notice OR the step-79 rule (a cold start and a reconnect blink the controls)', [e(LIVE_BRANCH, "  if (link.source === 'LIVE') return offline || banner.kind === 'offline' || link.state === 'OFFLINE';\n")]),
+  ('R6', HELPER, 'LIVE: the notice AND the banner', [e(LIVE_BRANCH, "  if (link.source === 'LIVE') return offline && banner.kind === 'offline';\n")]),
+  ('R7', HELPER, 'HEARTBEAT handled like LIVE', [e("link.source === 'LIVE'", "link.source !== 'SIMULATED'")]),
+  ('R8', HELPER, 'LIVE inverted', [e(LIVE_BRANCH, "  if (link.source === 'LIVE') return !offline;\n")]),
+  ('R9', HELPER, 'never read-only', [e(LIVE_BRANCH, '  return false;\n')]),
+  # ── C: the call sites ──
+  ('C1', MONITOR, 'the monitor actions are never refused while read-only', [e(CALL, 'const readOnly = false;')]),
+  ('C2', MONITOR_SCREEN, 'the monitor screen never disables its session controls', [e(CALL, 'const readOnly = false;')]),
+  ('C3', RECOVERY, 'Recovery Start is never refused while read-only', [e(CALL, 'const readOnly = false;')]),
+  ('C4', MONITOR, 'the monitor actions are always refused', [e(CALL, 'const readOnly = true;')]),
+  ('C5', RECOVERY, 'Recovery Start is always refused', [e(CALL, 'const readOnly = true;')]),
+  # ── K: the chip ──
+  ('K1', CHIP, 'the chip ignores the notice (LIVE never reads Offline)', [e(NOTICE, 'const offline = false;')]),
+  ('K2', CHIP, 'the chip always reads Offline in LIVE', [e(NOTICE, 'const offline = true;')]),
+  ('K3', CHIP, "the chip takes the notice's view instead of its state (settling after an outage reads Live)", [e(NOTICE, "const { view } = useCoreLinkNotice();\n  const offline = view === 'down';")]),
+]
+
+def sha(path):
+    with open(path, 'rb') as f:
+        return hashlib.sha256(f.read()).hexdigest()
+
+def jest(env, tests):
+    return subprocess.run(['node', ROOT + '/node_modules/jest/bin/jest.js', '--config', CONFIG, '--maxWorkers=2', '--silent', *tests],
+                          cwd=APP, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+
+def summary(out):
+    tail = [line.strip() for line in out.splitlines() if line.startswith('Tests:')]
+    files = sorted({line.split()[1].split('/')[-1] for line in out.splitlines() if line.startswith('FAIL ')})
+    first = [re.sub(r'\s+', ' ', line.strip().lstrip('●').strip()) for line in out.splitlines() if line.strip().startswith('● ') and 'Console' not in line]
+    return (tail[-1] if tail else 'no summary line'), files, first[:2]
+
+def main():
+    wanted = sys.argv[1:]
+    files = sorted({m[1] for m in M})
+    before = {f: sha(APP + '/' + f) for f in files}
+    print('# M2 mutation check, %s; the tree is not edited' % time.strftime('%Y-%m-%d %H:%M:%S'), flush=True)
+    if 'control' in wanted:
+        tests = sorted({t for group in TESTS.values() for t in group})
+        started = time.time()
+        run = jest(dict(os.environ, CI='1'), tests)
+        tail, failed, _ = summary(run.stdout)
+        print('control (no mutation, %d test files): exit=%d %s (%.0f s)' % (len(tests), run.returncode, tail, time.time() - started), flush=True)
+        if run.returncode != 0:
+            print(run.stdout[-4000:])
+            sys.exit(1)
+    chosen = [m for m in M if m[0] in wanted or m[0].rstrip('0123456789') in wanted]
+    detected = missed = unapplied = 0
+    for mid, file, what, edits in chosen:
+        group = mid.rstrip('0123456789')
+        with open(SPEC, 'w') as f:
+            json.dump({'id': mid, 'file': file, 'edits': edits}, f)
+        started = time.time()
+        run = jest(dict(os.environ, CI='1', M2_MUT_SPEC=SPEC), TESTS[group])
+        tail, failed, first = summary(run.stdout)
+        if 'expected exactly 1' in run.stdout:
+            unapplied += 1
+            verdict = 'NOT APPLIED'
+        elif run.returncode != 0:
+            detected += 1
+            verdict = 'DETECTED'
+        else:
+            missed += 1
+            verdict = 'not detected'
+        print('%-4s %-12s %s | %s | %s | failing files: %s | first: %s (%.0f s)' % (mid, verdict, what, file, tail, ', '.join(failed) or '-', ' / '.join(first) or '-', time.time() - started), flush=True)
+    if chosen:
+        print('## %d detected, %d not detected, %d not applied, of %d' % (detected, missed, unapplied, len(chosen)), flush=True)
+    after = {f: sha(APP + '/' + f) for f in files}
+    same = before == after
+    print('## the mutated files in the tree, before and after: %s' % ('identical' if same else 'CHANGED'), flush=True)
+    for f in files:
+        print('   %s  %s' % (after[f][:16], f), flush=True)
+    print('# finished %s' % time.strftime('%H:%M:%S'), flush=True)
+
+if __name__ == '__main__':
+    main()

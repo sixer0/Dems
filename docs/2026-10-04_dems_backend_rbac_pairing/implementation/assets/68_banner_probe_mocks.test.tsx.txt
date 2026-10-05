@@ -1,0 +1,44 @@
+// Scratch (W68): does the stuck banner depend on the monitor's use of useCoreLinkNotice?
+import './testing/monitor-test-setup';
+import '@/navigation/testing/router-harness';
+import { afterEach, beforeEach, expect, it, jest } from '@jest/globals';
+import { act } from '@testing-library/react-native';
+import { renderLiveMonitor, resetLiveMonitorBed, type LiveMonitorBed } from './testing/live-monitor-bed';
+
+jest.mock('@/runtime', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const actual = require('@jest/globals').jest.requireActual('@/runtime') as Record<string, unknown>;
+  return { ...actual, useAudioAccessibilityValue: () => ({ min: -60, max: 0, now: -60, text: 'x' }) };
+});
+jest.mock('./use-monitor', () => {
+  const actual = jest.requireActual<Record<string, unknown>>('./use-monitor');
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const runtime = require('@/runtime');
+  return {
+    ...actual,
+    useMonitorReadOnly: () => {
+      const banner = runtime.useConnectionBanner();
+      const link = runtime.useCoreLink();
+      return banner.kind === 'offline' || link.state === 'OFFLINE';
+    },
+  };
+});
+
+let bed: LiveMonitorBed | null = null;
+beforeEach(async () => { await resetLiveMonitorBed(); });
+afterEach(() => { bed?.stop(); bed = null; });
+const rt = () => { const r = (globalThis as any).__DEMS_DEBUG__?.runtime?.(); return `${r?.coreLink?.state}/${r?.coreLink?.heartbeat} banner=${r?.banner}`; };
+
+it('monitor with the step-79 read-only rule, real wait during the outage', async () => {
+  const b = await renderLiveMonitor();
+  bed = b;
+  await b.openMonitor();
+  b.setReachable(false);
+  await b.flush();
+  await b.elapse(1_000, 250);
+  await act(async () => { await new Promise((r) => setTimeout(r, 1100)); });
+  b.setReachable(true);
+  await b.elapse(4_000, 250);
+  console.log('OLDRULE+NOA11YINTERVAL', rt());
+  expect(true).toBe(true);
+});

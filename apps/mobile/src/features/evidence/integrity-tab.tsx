@@ -12,6 +12,11 @@
  * (audit row, custody entry) through `recordCoreVerification` (SIM-GAP-M83-1 guard).
  *
  * Below: the C-4 lifecycle (§19.1, horizontal scroll) and the chain of custody (`ListGroup`).
+ *
+ * This is the tab of Simulated mode (and HEARTBEAT). Live mode renders `LiveIntegrityTab`
+ * (`live-integrity-tab.tsx`, backend task W74), which shows the Core server's verdict of record and
+ * reuses the presentational parts exported below. The simulator's `verify` is taken from
+ * `useCoreActions()` (client gate CLG item (c)); in Simulated mode that is the same action.
  */
 import { Button, ListGroup, Separator, Spinner, useToast } from 'heroui-native';
 import { CircleCheck, CircleX } from 'lucide-react-native';
@@ -19,6 +24,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { useTranslation } from 'react-i18next';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
+import { useCoreActions } from '@dems/shared/live';
 import { DATE_PATTERNS, formatDate } from '@dems/shared/realtime';
 import { useSimInstance, type EvidenceItem } from '@dems/shared/sim';
 import { derived, fontFamily, palette, radius, spacing, statusText, typography } from '@dems/shared/tokens';
@@ -26,7 +32,7 @@ import { StatusChip } from '@/components/kit';
 import { Stepper, type StepDef } from '@/components/composed/stepper';
 import { animatePulseOnce, animateSpring, glowShadow, triggerHaptic, useMotionPolicy, useMotionSettings } from '@/motion';
 import { newCorrelationId } from '@/runtime';
-import { LIFECYCLE_STAGES, failedCheckNames, lifecycleStatuses, type IntegrityModel, type IntegrityRow } from './evidence-model';
+import { LIFECYCLE_STAGES, failedCheckNames, lifecycleStatuses, type IntegrityModel, type IntegrityRow, type IntegrityVerdict } from './evidence-model';
 import { recordCoreVerification } from './sim-adapter';
 import { SCRAMBLE_MS, useScramble } from './use-scramble';
 
@@ -48,6 +54,7 @@ export function IntegrityTab({ item, integrity, operatorNames, autoVerify = fals
   const policy = useMotionPolicy();
   const reduced = policy === 'reduced';
   const sim = useSimInstance();
+  const actions = useCoreActions();
   const { toast } = useToast();
   const [phase, setPhase] = useState<VerifyPhase>(autoVerify ? 'asking' : 'idle');
   const [resultKey, setResultKey] = useState(0);
@@ -74,8 +81,8 @@ export function IntegrityTab({ item, integrity, operatorNames, autoVerify = fals
       variant: pass ? 'success' : 'danger',
       label: pass ? t('features.evidence.integrity.passToast', { id: item.id }) : t('features.evidence.integrity.failToast', { id: item.id }),
     });
-    recordCoreVerification(sim, item, integrity, correlation.current ?? undefined);
-  }, [integrity, item, sim, t, toast]);
+    recordCoreVerification(actions, sim.clock.now(), item, integrity, correlation.current ?? undefined);
+  }, [integrity, item, sim, actions, t, toast]);
 
   // The scramble pass: each stored hash scrambles in its own row (`ScrambledHash`), so this tab
   // renders only at the start and the end of the pass.
@@ -129,7 +136,7 @@ export function IntegrityTab({ item, integrity, operatorNames, autoVerify = fals
         <Text maxFontSizeMultiplier={1.2} style={styles.note}>
           {integrity.source === 'package' ? t('features.evidence.integrity.verifiedByCoreNote') : t('features.evidence.integrity.noPackage')}
         </Text>
-        <VerdictLine integrity={integrity} done={done} resultKey={resultKey} />
+        <VerdictLine verdict={integrity.verdict} failed={integrity.failed} done={done} resultKey={resultKey} />
       </View>
 
       <Section title={t('features.evidence.integrity.trackTitle')}>
@@ -192,13 +199,21 @@ export function IntegrityTab({ item, integrity, operatorNames, autoVerify = fals
 /** One escalation pulse of the verdict glow (03M R8: exactly one; M-C-21 PASS glow, FAIL red pulse). */
 export const VERDICT_PULSE_MS = 600;
 
+export interface VerdictLineProps {
+  verdict: IntegrityVerdict;
+  /** Failed check IDs, named in the FAIL sentence. */
+  failed: readonly string[];
+  done: boolean;
+  resultKey: number;
+}
+
 /** The verdict under the Verify button: waiting text, then the PASS pop or the FAIL pulse. */
-function VerdictLine({ integrity, done, resultKey }: { integrity: IntegrityModel; done: boolean; resultKey: number }) {
+export function VerdictLine({ verdict, failed, done, resultKey }: VerdictLineProps) {
   const { t } = useTranslation();
   const m = useMotionSettings();
   const scale = useSharedValue(1);
   const halo = useSharedValue(0);
-  const pass = integrity.verdict === 'PASS';
+  const pass = verdict === 'PASS';
 
   useEffect(() => {
     if (resultKey === 0) return;
@@ -224,9 +239,9 @@ function VerdictLine({ integrity, done, resultKey }: { integrity: IntegrityModel
       </Text>
     );
   }
-  const checks = failedCheckNames(integrity.failed).join(', ');
+  const checks = failedCheckNames(failed).join(', ');
   return (
-    <View style={styles.verdictRow} testID={`evidence-verdict-${integrity.verdict}`}>
+    <View style={styles.verdictRow} testID={`evidence-verdict-${verdict}`}>
       <View style={styles.verdictChip}>
         <Animated.View
           pointerEvents="none"
@@ -248,7 +263,7 @@ function VerdictLine({ integrity, done, resultKey }: { integrity: IntegrityModel
   );
 }
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
+export function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <View style={styles.section}>
       <Text maxFontSizeMultiplier={1.2} accessibilityRole="header" style={styles.label}>
@@ -259,7 +274,7 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
-function HashText({ value, testID, tone }: { value: string; testID?: string; tone?: 'fail' }) {
+export function HashText({ value, testID, tone }: { value: string; testID?: string; tone?: 'fail' }) {
   return (
     // The full hash, wrapping onto a second line where needed (evidence hashes are never cut).
     <Text maxFontSizeMultiplier={1.2} selectable testID={testID} style={[styles.hash, tone === 'fail' ? styles.failText : null]}>
@@ -275,7 +290,7 @@ interface TrackHashRowProps {
   revealed: boolean;
 }
 
-function TrackHashRow({ row, scrambling, reduced, revealed }: TrackHashRowProps) {
+export function TrackHashRow({ row, scrambling, reduced, revealed }: TrackHashRowProps) {
   const { t } = useTranslation();
   const failed = revealed && !row.ok;
   const Icon = row.ok ? CircleCheck : CircleX;
@@ -325,7 +340,7 @@ function ScrambledHash({ value, scrambling, reduced, tone, testID }: { value: st
   return <HashText value={text ?? value} tone={tone} testID={testID} />;
 }
 
-function CheckLine({ row, revealed, label }: { row: IntegrityRow | undefined; revealed: boolean; label: string }) {
+export function CheckLine({ row, revealed, label }: { row: IntegrityRow | undefined; revealed: boolean; label: string }) {
   if (!row || !revealed) return null;
   const Icon = row.ok ? CircleCheck : CircleX;
   return (
@@ -339,7 +354,7 @@ function CheckLine({ row, revealed, label }: { row: IntegrityRow | undefined; re
 }
 
 /** The §19.1 lifecycle as a horizontal C-4 wizard strip, scrolled so the current stage shows. */
-function LifecycleStrip({ stage }: { stage: string }) {
+export function LifecycleStrip({ stage }: { stage: string }) {
   const { t } = useTranslation();
   const policy = useMotionPolicy();
   const steps: StepDef[] = useMemo(
@@ -361,7 +376,7 @@ function LifecycleStrip({ stage }: { stage: string }) {
 
 const LIFECYCLE_STEP_WIDTH = 92;
 
-function CustodyLog({ item, operatorNames }: { item: EvidenceItem; operatorNames: Readonly<Record<string, string>> }) {
+export function CustodyLog({ item, operatorNames }: { item: EvidenceItem; operatorNames: Readonly<Record<string, string>> }) {
   const { t } = useTranslation();
   const rows = useMemo(() => item.custody.slice().reverse(), [item.custody]);
   return (
@@ -397,7 +412,8 @@ function CustodyLog({ item, operatorNames }: { item: EvidenceItem; operatorNames
   );
 }
 
-const styles = StyleSheet.create({
+/** Shared with the Live tab (`live-integrity-tab.tsx`), so both read the same. */
+export const integrityStyles = StyleSheet.create({
   root: { gap: spacing[3] },
   verifyCard: {
     gap: spacing[1],
@@ -444,3 +460,4 @@ const styles = StyleSheet.create({
   hashKey: { width: 52, fontFamily: fontFamily.native.normal, fontSize: typography.caption.size, lineHeight: typography.caption.lineHeight, color: palette.gray },
   checkLine: { flexDirection: 'row', alignItems: 'center', gap: spacing[0] },
 });
+const styles = integrityStyles;

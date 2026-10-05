@@ -1,0 +1,120 @@
+#!/usr/bin/env python3
+"""W80 mutation check (rule M15: nothing in the tree is written). M1's method (`.cache/m1/mut/`).
+
+Each mutant changes texts of ONE production file of `features/audit/` IN MEMORY (the jest transformer
+beside this file) and runs the BEHAVIOURAL test files of the folder (the existing Simulated suite and
+the two new Live suites; the static test is left out, so a regex cannot be what catches a mutant).
+DETECTED = jest exits non-zero. The SHA-256 of the mutated files is compared before and after the run.
+
+  python3 mutate.py control      the unmutated test files, once
+  python3 mutate.py all          every mutant
+"""
+import hashlib, json, os, re, subprocess, sys, time
+
+ROOT = '/Users/gsp-budi/Documents/DEMS'
+APP = ROOT + '/apps/mobile'
+HERE = os.path.dirname(os.path.abspath(__file__))
+SPEC = HERE + '/spec.json'
+CONFIG = HERE + '/jest.mut.config.cjs'
+
+STRIP = 'src/features/audit/chain-strip.tsx'
+LIVE = 'src/features/audit/chain-live.tsx'
+DATA = 'src/features/audit/use-audit-data.ts'
+MODEL = 'src/features/audit/audit-model.ts'
+SCREEN = 'src/features/audit/audit-screen.tsx'
+
+TESTS = [
+    'src/features/audit/audit-screen.test.tsx',
+    'src/features/audit/live-audit-chain.test.tsx',
+    'src/features/audit/live-audit-screen.test.tsx',
+]
+
+def e(frm, to):
+    return {'from': frm, 'to': to}
+
+M = [
+  # ── C: site S1-7 / S4-3 in chain-strip.tsx ──
+  ('C1', STRIP, 'LIVE rejections take the Simulated branch (no presenter, generic toast, verdict cleared)', [e('          if (live) {\n', '          if (false) {\n')]),
+  ('C1b', STRIP, 'the generic "could not be checked" toast also after the presenter spoke', [e('if (!presented) toast.show(', 'toast.show(')]),
+  ('C2', STRIP, 'the control is never released: stuck busy after the first answer', [e('        done: release,\n', '        done: () => undefined,\n')]),
+  ('C3', STRIP, 'the busy mark is dropped while the request is out (LB-1)', [e('{...busyState(verify.busy, running)}', '{...{}}')]),
+  ('C4', STRIP, 'S4-3: the stamp from the wall clock instead of the store (Live) clock', [e('at: sim.store.getState().clock.now', 'at: Date.now()')]),
+  ('C5', STRIP, 'a LIVE rejection clears the last verdict', [e("            if (!presented) toast.show({ variant: 'danger', label: t('features.audit.errors.verify') });\n            return;\n", "            if (!presented) toast.show({ variant: 'danger', label: t('features.audit.errors.verify') });\n            setState({ kind: 'idle' });\n            return;\n")]),
+  ('C6', STRIP, 'the stored / lineage lines are never shown in LIVE', [e("{verify.live && verify.state.kind === 'done' ? <LiveChainLines /> : null}", '{null}')]),
+  ('C7', STRIP, 'Simulated mode calls the action at the press, before the Spinner frame', [e("    setState({ kind: 'running' });\n    frame.current = requestAnimationFrame(() => {\n      frame.current = null;\n      start();\n    });\n", "    setState({ kind: 'running' });\n    start();\n")]),
+  ('C8', STRIP, 'the verdict is shown before the answer (assumed PASS at the press, Simulated path)', [e("    setState({ kind: 'running' });\n", "    setState({ kind: 'done', result: { ok: true, checked: 0, head: '' }, at: 0 });\n")]),
+  # ── P: the pending control in LIVE (LB-1, D166) ──
+  ('P1', STRIP, 'LIVE: the PendingSpinner at the press (busy instead of pending)', [e('verify.pending ? <PendingSpinner', 'verify.busy ? <PendingSpinner')]),
+  ('P2', STRIP, 'LIVE: never a spinner while the request is out', [e('verify.pending ? <PendingSpinner testID="audit-verify-spinner" /> : null', 'null')]),
+  ('P3', STRIP, 'LIVE takes the Simulated path (running state and the Spinner at the press, one frame late)', [e('    if (live) {\n      start();\n      return;\n    }\n', '')]),
+  ('P4', STRIP, 'LIVE: "Verifying…" at the press (busy instead of pending)', [e('running || verify.pending ?', 'running || verify.busy ?')]),
+  # ── L: chain-live.tsx ──
+  ('L1', LIVE, 'the lineage line shows with no discarded chain', [e('chain.lineageTotal > 0 ?', 'chain.lineageTotal >= 0 ?')]),
+  ('L2', LIVE, 'the link notice never shows', [e('if (!offline) return null;', 'if (true) return null;')]),
+  ('L3', LIVE, 'the link notice always shows (also in SIMULATED)', [e('if (!offline) return null;', 'if (false) return null;')]),
+  ('L4', LIVE, 'the stored line from the verdict, not from the Core\'s stored check', [e('const stored = storedChainLine(chain.stored);', 'const stored = storedChainLine({ ok: true, checked: chain.view.checked, firstBadSeq: null });')]),
+  # ── M: audit-model.ts ──
+  ('M1', MODEL, 'a broken stored chain reads as verified', [e('  if (stored.ok) return {', '  if (true) return {')]),
+  ('M2', MODEL, 'a successful sign-in counts as a typed username', [e("return actorKindOf(row) === 'OPERATOR' && UNVERIFIED_WHEN_NULL.has(row.type);", "return actorKindOf(row) === 'OPERATOR' && row.category === 'AUTH';")]),
+  # ── A: use-audit-data.ts ──
+  ('A1', DATA, 'the typed-username wording also in SIMULATED (the Simulated screen changes)', [e('return live && isTypedUsernameActor(row) ?', 'return isTypedUsernameActor(row) ?')]),
+  ('A2', DATA, 'the typed-username wording never shown in LIVE', [e('return live && isTypedUsernameActor(row) ?', 'return false ?')]),
+  # ── S: audit-screen.tsx ──
+  ('S1', SCREEN, 'the link notice is not mounted on the screen', [e('<AuditLinkNotice style={styles.section} />', '{null}')]),
+]
+
+def sha(path):
+    with open(path, 'rb') as f:
+        return hashlib.sha256(f.read()).hexdigest()
+
+def jest(env, tests):
+    return subprocess.run(['node', ROOT + '/node_modules/jest/bin/jest.js', '--config', CONFIG, '--maxWorkers=2', '--silent', *tests],
+                          cwd=APP, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+
+def summary(out):
+    tail = [line.strip() for line in out.splitlines() if line.startswith('Tests:')]
+    files = sorted({line.split()[1].split('/')[-1] for line in out.splitlines() if line.startswith('FAIL ')})
+    first = [re.sub(r'\s+', ' ', line.strip().lstrip('●').strip()) for line in out.splitlines() if line.strip().startswith('● ') and 'Console' not in line]
+    return (tail[-1] if tail else 'no summary line'), files, first[:1]
+
+def main():
+    wanted = sys.argv[1:]
+    files = sorted({m[1] for m in M})
+    before = {f: sha(APP + '/' + f) for f in files}
+    print('# W80 mutation check, %s; the tree is not edited' % time.strftime('%Y-%m-%d %H:%M:%S'), flush=True)
+    if 'control' in wanted:
+        started = time.time()
+        run = jest(dict(os.environ, CI='1'), TESTS)
+        tail, failed, _ = summary(run.stdout)
+        print('control (no mutation, %d test files): exit=%d %s (%.0f s)' % (len(TESTS), run.returncode, tail, time.time() - started), flush=True)
+        if run.returncode != 0:
+            print(run.stdout[-4000:])
+            sys.exit(1)
+    chosen = M if 'all' in wanted else [m for m in M if m[0] in wanted]
+    detected = missed = unapplied = 0
+    for mid, file, what, edits in chosen:
+        with open(SPEC, 'w') as f:
+            json.dump({'id': mid, 'file': file, 'edits': edits}, f)
+        started = time.time()
+        run = jest(dict(os.environ, CI='1', W80_MUT_SPEC=SPEC), TESTS)
+        tail, failed, first = summary(run.stdout)
+        if 'expected exactly 1' in run.stdout:
+            unapplied += 1
+            verdict = 'NOT APPLIED'
+        elif run.returncode != 0:
+            detected += 1
+            verdict = 'DETECTED'
+        else:
+            missed += 1
+            verdict = 'not detected'
+        print('%-3s %-12s %s | %s | %s | failing files: %s | first: %s (%.0f s)' % (mid, verdict, what, file.split('/')[-1], tail, ', '.join(failed) or '-', ' / '.join(first) or '-', time.time() - started), flush=True)
+    if chosen:
+        print('## %d detected, %d not detected, %d not applied, of %d' % (detected, missed, unapplied, len(chosen)), flush=True)
+    after = {f: sha(APP + '/' + f) for f in files}
+    print('## the mutated files in the tree, before and after: %s' % ('identical' if before == after else 'CHANGED'), flush=True)
+    for f in files:
+        print('   %s  %s' % (after[f][:16], f), flush=True)
+    print('# finished %s' % time.strftime('%H:%M:%S'), flush=True)
+
+if __name__ == '__main__':
+    main()

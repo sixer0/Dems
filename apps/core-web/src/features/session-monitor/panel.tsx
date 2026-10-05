@@ -14,6 +14,8 @@ export interface PanelProps {
   title: string
   /** Header right side (for example a "View All →" link). */
   action?: ReactNode
+  /** LB-1 (Live mode only): a command of the header's control is out; its wrapper is `aria-busy`. */
+  actionBusy?: boolean
   /** Body class (the body is a flex column that fills the card). */
   bodyClassName?: string
   className?: string
@@ -25,7 +27,7 @@ export interface PanelProps {
  * title, optional link), entering on its M-PG-SM beat. The page wraps each panel component in a
  * `PanelErrorBoundary`, so a failing panel never blanks the page (frontend error rules, layer 3).
  */
-export function Panel({ id, icon: Icon, title, action, bodyClassName, className, children }: PanelProps) {
+export function Panel({ id, icon: Icon, title, action, actionBusy = false, bodyClassName, className, children }: PanelProps) {
   const variants = usePanelVariants(PANEL_BEAT_MS[id])
   return (
     <motion.section
@@ -41,7 +43,11 @@ export function Panel({ id, icon: Icon, title, action, bodyClassName, className,
         <header className="sm-card-header">
           <Icon className="sm-card-icon" aria-hidden="true" strokeWidth={1.75} />
           <h2 className="sm-card-title">{title}</h2>
-          {action ? <div className="sm-card-action">{action}</div> : null}
+          {action ? (
+            <div className="sm-card-action" aria-busy={actionBusy || undefined}>
+              {action}
+            </div>
+          ) : null}
         </header>
         <div className={cn('sm-card-body', bodyClassName)}>{children}</div>
       </Card>

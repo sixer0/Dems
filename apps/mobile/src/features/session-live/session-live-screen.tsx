@@ -18,6 +18,23 @@
  *
  * Motion (§7.3 M-PG-SM): 0 header; 80 feed; 140 MIC cards; 200 actions (stagger 40); 260 End
  * Session. Ambient loops: the REC pulse and the feed frame glow (2 of the 4 allowed, 03M P3).
+ *
+ * **Live mode** (backend task, plan row W68; 04_client_integration_spec §8.6 S2-1, §8.7 S4-2; I8).
+ * The screen is the same in both modes; what changes is where the data comes from and when a
+ * command's continuation runs (`useMonitorActions`, `settle`):
+ *
+ * | Site | At the press | Once the Core holds the effect (`ok`) | On a refusal |
+ * |---|---|---|---|
+ * | Snapshot (S2-1) | the tile is busy (LB-1); the shutter flashes if the Core has not answered yet (LB-4: it changes no record) | the thumbnail flight, the counter pop, the toast | the toast says why; nothing else |
+ * | Marker (S2-1, S4-2) | the Add button is busy | the timeline's newest node is read (S4-2: it is the marker, CL-16), the toast with its time, the chip flight; the field closes | the field stays open with the label |
+ * | End Session (S2-1) | the Dialog's confirm is busy | the Dialog closes; route-sync follows STOPPING | the Dialog stays (`end-session.tsx`) |
+ * | Camera, CLIP reset | one command per control | results ignored, as before | the toast (presenter in LIVE) |
+ *
+ * The meters come from the socket (I8): the Live source writes the store's `audio` slice from each
+ * `meters` frame, the runtime copies it into Reanimated shared values, and the meters draw on the UI
+ * thread; this screen sends no request for them and re-renders for none of them. The timer reads the
+ * store's clock, which in LIVE follows the Core's. Nothing starts on mount, so React StrictMode (a
+ * development build mounts effects twice, D158 F69-1) sends nothing twice.
  */
 import { useIsFocused, useRouter } from 'expo-router';
 import { Button, useToast } from 'heroui-native';
@@ -29,6 +46,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { useAnimatedStyle, useSharedValue, withSequence, withSpring, withTiming } from 'react-native-reanimated';
 import type { AudioTrackId, VideoTrackId } from '@dems/shared/domain';
 import { useSimInstance } from '@dems/shared/sim';
+import { useCoreLinkReadOnly, usePendingPress } from '@/runtime';
 import { derived, fontFamily, motion as motionTokens, palette, spacing, statusText, typography } from '@dems/shared/tokens';
 import { SectionCard } from '@/components/kit';
 import type { MeterVariant } from '@/components/composed/dbfs-meter';
@@ -58,8 +76,8 @@ import { StatusStrip } from './status-strip';
 import {
   useMonitorActions,
   useMonitorCameras,
+  type MonitorHandlers,
   useMonitorMics,
-  useMonitorReadOnly,
   useMonitorSession,
   useMonitorTimeline,
 } from './use-monitor';
@@ -102,7 +120,7 @@ export function SessionLiveScreen() {
   const { activeCameraId, cameras } = useMonitorCameras();
   const mics = useMonitorMics();
   const events = useMonitorTimeline();
-  const readOnly = useMonitorReadOnly();
+  const readOnly = useCoreLinkReadOnly();
   const actions = useMonitorActions();
 
   // §3.6: while RECORDING, every way back asks first; leaving never touches the session.
@@ -113,7 +131,10 @@ export function SessionLiveScreen() {
   const [sheet, setSheet] = useState<SheetName | null>(null);
   const [monitoringPaused, setMonitoringPaused] = useState(false);
   const [meterVariant, setMeterVariant] = useState<MeterVariant>('card');
+  const [shutterSignal, setShutterSignal] = useState(0);
   const [snapshotSignal, setSnapshotSignal] = useState(0);
+  // One camera command at a time for the three camera controls (feed tap, tabs, settings sheet).
+  const cameraPress = usePendingPress();
   const [seenEvents, setSeenEvents] = useState(session.timelineLength);
   const [flight, setFlight] = useState<MarkerFlightSpec | null>(null);
 
@@ -146,47 +167,71 @@ export function SessionLiveScreen() {
 
   const onBack = dialogGuard.requestBack;
 
-  const onSnapshot = () => {
-    if (actions.snapshot()) {
-      setSnapshotSignal((n) => n + 1);
-      toast.show({ variant: 'success', label: t('session.actions.snapshot.captured'), ...CONFIRM_TOAST });
+  // S2-1 Snapshot. Simulated mode: `ok` runs before `snapshot` returns, so the flash, the flight, the
+  // pop and the toast play together as before. Live mode: the flash at the press, the rest on the settle.
+  const onSnapshot = (release: () => void) => {
+    let settled = false;
+    let flashed = false;
+    actions.snapshot({
+      ok: () => {
+        if (!flashed) setShutterSignal((n) => n + 1);
+        setSnapshotSignal((n) => n + 1);
+        toast.show({ variant: 'success', label: t('session.actions.snapshot.captured'), ...CONFIRM_TOAST });
+      },
+      done: () => {
+        settled = true;
+        release();
+      },
+    });
+    if (!settled) {
+      // LB-4: the Core has not answered yet. The flash changes no record; a refusal leaves nothing of
+      // it once its 180 ms are over, and the toast says why.
+      flashed = true;
+      setShutterSignal((n) => n + 1);
     }
   };
 
-  const onAddMarker = (label: string | undefined): boolean => {
-    if (!actions.addMarker(label)) return false;
-    const state = sim.store.getState();
-    const node = state.session?.timeline.at(-1);
-    const shown = node?.label ?? label ?? '';
-    toast.show({
-      variant: 'success',
-      label: t('session.actions.addMarker.added', { time: timelineTime(node?.at ?? sim.clock.now()) }),
-      ...CONFIRM_TOAST,
+  // S2-1 Marker, then S4-2: the timeline's newest node is read in `ok`, where the store already holds
+  // the marker (CL-16), in both modes.
+  const onAddMarker = (label: string | undefined, { added, done }: { added: () => void; done: () => void }) => {
+    actions.addMarker(label, {
+      ok: () => {
+        const state = sim.store.getState();
+        const node = state.session?.timeline.at(-1);
+        const shown = node?.label ?? label ?? '';
+        toast.show({
+          variant: 'success',
+          label: t('session.actions.addMarker.added', { time: timelineTime(node?.at ?? sim.clock.now()) }),
+          ...CONFIRM_TOAST,
+        });
+        // M-C-17: fly a chip from the Bookmark tile to the History icon (phone) or the inline timeline.
+        if (settings.policy === 'full') {
+          const target = inlineTimeline ? timelineRef.current : historyRef.current;
+          void Promise.all([measure(rootRef.current), measure(bookmarkRef.current), measure(target)]).then(([root, from, to]) => {
+            if (!root || !from || !to) return;
+            flightKey.current += 1;
+            const shift = (r: FlightRect): FlightRect => ({ ...r, x: r.x - root.x, y: r.y - root.y });
+            setFlight({ key: flightKey.current, from: shift(from), to: shift(to), label: shown });
+          });
+        }
+        added();
+      },
+      done,
     });
-    // M-C-17: fly a chip from the Bookmark tile to the History icon (phone) or the inline timeline.
-    if (settings.policy === 'full') {
-      const target = inlineTimeline ? timelineRef.current : historyRef.current;
-      void Promise.all([measure(rootRef.current), measure(bookmarkRef.current), measure(target)]).then(([root, from, to]) => {
-        if (!root || !from || !to) return;
-        flightKey.current += 1;
-        const shift = (r: FlightRect): FlightRect => ({ ...r, x: r.x - root.x, y: r.y - root.y });
-        setFlight({ key: flightKey.current, from: shift(from), to: shift(to), label: shown });
-      });
-    }
-    return true;
   };
   const onFlightDone = useCallback(() => setFlight(null), []);
 
-  const onEnd = (reason: string) => {
-    const ok = actions.endSession(reason);
-    // Route-sync (step 73) and the route's own redirect take the screen to /session/finalizing.
-    return ok;
+  // S2-1 End Session. Route-sync (step 73) and the route's own redirect take the screen to
+  // /session/finalizing once the store holds STOPPING; the Dialog handles its own outcome.
+  const onEnd = (reason: string, handlers: MonitorHandlers) => {
+    actions.endSession(reason, handlers);
   };
-  const onClipReset = (channel: AudioTrackId) => {
-    actions.resetClip(channel);
+  // Results ignored, as before ([CS:S2-1]); a refusal is still shown and logged by the wrapper.
+  const onClipReset = (channel: AudioTrackId, release: () => void) => {
+    actions.resetClip(channel, { done: release });
   };
   const onSwitchCamera = (cameraId: VideoTrackId) => {
-    actions.setActiveCamera(cameraId);
+    cameraPress.run((release) => actions.setActiveCamera(cameraId, { done: release }));
   };
 
   // --- Regions -------------------------------------------------------------------------------
@@ -198,6 +243,8 @@ export function SessionLiveScreen() {
       monitoringPaused={monitoringPaused}
       cameraTabs={usesCameraTabs(arrangement)}
       onSwitchCamera={onSwitchCamera}
+      cameraBusy={cameraPress.busy}
+      shutterSignal={shutterSignal}
       snapshotSignal={snapshotSignal}
       snapshotCount={session.snapshotCount}
     />

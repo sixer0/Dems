@@ -14,6 +14,13 @@
  *
  * A resync never creates a session: it only reads the state (the simulator's idempotent
  * `createSession` is the other half of that guarantee, S26).
+ *
+ * LIVE mode (decision D169, finding F-2 of row W72): RESYNCED can come before the store holds the
+ * Core's snapshot (after an outage the Live source confirms the session first, CPC1-35), and the
+ * rendered session is older still. So the heartbeat resync waits until the Live source's store holds
+ * that snapshot (`watchLiveResync`, `live-resync-watch.ts`) and then reads the session from that store
+ * with the selector the runtime's contract renders it with (`selectActiveSessionInfo`). SIMULATED and
+ * HEARTBEAT keep the rendered session: their resync signal replaces no data.
  */
 import type { Href } from 'expo-router';
 // The hooks module directly, not the `expo-router` entry: the entry also loads `standard-navigation`
@@ -22,16 +29,22 @@ import type { Href } from 'expo-router';
 // module instance as the entry re-exports (`build/exports.js` → `./hooks`).
 import { usePathname, useRouter } from 'expo-router/build/hooks';
 import { useCallback, useEffect, useRef } from 'react';
+import { liveOf } from '@dems/shared/live';
 import { useActiveSession, type ActiveSessionInfo } from './contract';
 import { useRuntimeInternals } from './internals';
+import { watchLiveResync } from './live-resync-watch';
 import { reportRuntimeIssue } from './log';
 import { hrefPath, isForcedTransition, resyncNavigation, type ResyncTrigger } from './route-sync';
+import type { MobileLiveSim } from './sim-adapters';
+import { selectActiveSessionInfo } from './sim-runtime-provider';
 
 export function SessionRouteSync(): null {
   const session = useActiveSession();
   const pathname = usePathname();
   const router = useRouter();
-  const bus = useRuntimeInternals()?.resyncBus ?? null;
+  const internals = useRuntimeInternals();
+  const bus = internals?.resyncBus ?? null;
+  const sim = internals?.sim ?? null;
 
   // The latest values for the bus callback, which outlives renders.
   const latest = useRef<{ session: ActiveSessionInfo; pathname: string }>({ session, pathname });
@@ -69,7 +82,28 @@ export function SessionRouteSync(): null {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session.state, resync]);
 
-  useEffect(() => bus?.subscribe(() => resync('heartbeat', latest.current)), [bus, resync]);
+  // The subscription and the Live watch outlive renders (the watch remembers an outage), so the
+  // callback reads the newest `resync` through a ref instead of re-subscribing when it changes.
+  const latestResync = useRef(resync);
+  useEffect(() => {
+    latestResync.current = resync;
+  }, [resync]);
+  useEffect(() => {
+    const live = sim === null ? null : liveOf<MobileLiveSim>(sim);
+    if (bus === null) return undefined;
+    if (sim === null || live === null) return bus.subscribe(() => latestResync.current('heartbeat', latest.current));
+    // D169: in LIVE, once the store holds the Core's snapshot, from that store.
+    const watch = watchLiveResync(live);
+    const unsubscribe = bus.subscribe(() =>
+      watch.whenSynced(() =>
+        latestResync.current('heartbeat', { session: selectActiveSessionInfo(sim.store.getState()), pathname: latest.current.pathname }),
+      ),
+    );
+    return () => {
+      unsubscribe();
+      watch.dispose();
+    };
+  }, [bus, sim]);
 
   return null;
 }

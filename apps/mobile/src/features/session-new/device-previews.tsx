@@ -19,13 +19,14 @@ import { Fragment, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { StyleSheet, View } from 'react-native';
 import type { AudioTrackId } from '@dems/shared/domain';
-import { useSim, useSimActions, type SimState } from '@dems/shared/sim';
+import { settle, useCoreActions } from '@dems/shared/live';
+import { useSim, type SimState } from '@dems/shared/sim';
 import { spacing } from '@dems/shared/tokens';
 import { DbfsMeter } from '@/components/composed/dbfs-meter';
 import { SectionCard, StatusChip } from '@/components/kit';
 import { CameraFeed, DEMO_MEDIA_LIVE } from '@/components/media';
 import { triggerHaptic, useMotionPolicy, useMotionState } from '@/motion';
-import { reportRuntimeIssue, useAudioAccessibilityValue, useAudioSharedValues } from '@/runtime';
+import { reportRuntimeIssue, useAudioAccessibilityValue, useAudioSharedValues, useCoreErrorPresenter, useCoreLink } from '@/runtime';
 import { CHECK_ORDER, decodeEvaluation, precheckTone, valueKey } from './session-new-model';
 import { CheckIcon } from './check-icon';
 import { useLiveEvaluations, useMicSignals } from './use-session-new';
@@ -52,6 +53,8 @@ export function DevicePreviews({ layout, live, paused, testID = 'session-new-pre
   const micSignals = useMicSignals();
   const testSwitch = useMotionState((s) => s.linkMotion === 'off');
   const [liveIndex, setLiveIndex] = useState(0);
+  // Live mode says where the levels come from instead of "(simulated)" (row M1, W67 F-2; §3.2).
+  const liveSource = useCoreLink().source === 'LIVE';
   return (
     <View testID={testID} style={styles.previews}>
       <View style={layout === 'row' ? styles.row : styles.column}>
@@ -79,7 +82,7 @@ export function DevicePreviews({ layout, live, paused, testID = 'session-new-pre
         ))}
       </View>
       <Typography type="body-xs" color="muted" testID={`${testID}-hint`}>
-        {t('sessionNew.devices.speakToTest')}
+        {t(liveSource ? 'features.session-new.live.speakToTest' : 'sessionNew.devices.speakToTest')}
       </Typography>
     </View>
   );
@@ -102,16 +105,21 @@ interface PreviewTileProps {
 function PreviewTile({ cameraId, poster, onMakeLive, cameraLabel, channel, micLabel, cameraNoSignal, micNoSignal, paused }: PreviewTileProps) {
   const { t } = useTranslation();
   const policy = useMotionPolicy();
-  const actions = useSimActions();
+  const actions = useCoreActions();
+  const live = useCoreLink().source === 'LIVE';
+  const presentCoreError = useCoreErrorPresenter();
   const values = useAudioSharedValues(channel);
   const noSignalText = t('session.feed.noSignal');
   const a11y = useAudioAccessibilityValue(channel, { noSignalText });
+  // Fire and forget (operation 52 in Live mode): nothing waits for the answer, as before. A
+  // rejection is logged; in Live mode the presenter also words it (a denial, an outage, a limit).
   const resetClip = () => {
-    try {
-      actions.resetClip(channel);
-    } catch (error) {
-      reportRuntimeIssue('warn', 'features.sessionNew.resetClip', error, { channel });
-    }
+    settle(() => actions.resetClip(channel), {
+      fail: (error) => {
+        reportRuntimeIssue('warn', 'features.sessionNew.resetClip', error, { channel });
+        if (live) presentCoreError(error);
+      },
+    });
   };
   const feed = (
     <CameraFeed

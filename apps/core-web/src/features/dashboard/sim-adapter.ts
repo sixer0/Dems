@@ -8,8 +8,14 @@
  *   carries the step-93 DEMO package's digest on every item that joins a package (review 40 §5.c,
  *   rule R3), labelled by `EvidenceItem.integritySource`; a session the presenter recorded live
  *   keeps the simulator's synthetic hash, labelled "simulated". No demo-data import is needed.
+ *
+ * Live mode (backend task, plan row W63): every read here works on the Live source's replica
+ * unchanged (`useSim` reads the store of the source in the context, 04_client_integration_spec
+ * §2.3). Only the label of a hash that is not the package's differs: a Live screen never says
+ * "simulated" (§3.2), so it says that the item has no media package (01_specs §11).
  */
 import { SessionState } from '@dems/shared/domain'
+import { CoreMode } from '@dems/shared/live'
 import { selectSystemState, useSim, type SimState } from '@dems/shared/sim'
 
 export { selectSystemStateValue } from '@dems/shared/sim'
@@ -50,4 +56,16 @@ const selectDigest =
 /** The manifest digest to show for a sealed evidence item (a flat object of primitives). */
 export function useSealedManifestDigest(evidenceId: string | null): ManifestDigest {
   return useSim(selectDigest(evidenceId))
+}
+
+/**
+ * The i18n key of the suffix after "Manifest hash", or null for none. A package digest has none
+ * in either mode; a hash that is not the package's says "SIMULATED" in Simulated mode (as before)
+ * and "NO MEDIA PACKAGE" in Live mode. Pure.
+ */
+export type ManifestSuffixKey = 'common.simulated.chip' | 'dashboard.activeSession.sealed.noPackage'
+
+export function manifestSuffixKey(source: ManifestDigestSource, mode: CoreMode): ManifestSuffixKey | null {
+  if (source !== 'simulated') return null
+  return mode === CoreMode.LIVE ? 'dashboard.activeSession.sealed.noPackage' : 'common.simulated.chip'
 }

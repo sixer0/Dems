@@ -1,0 +1,667 @@
+{
+  "browser": {
+    "product": "HeadlessChrome/153.0.8010.12",
+    "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.8010.12 Safari/537.36",
+    "headless": true
+  },
+  "viewport": "1600x1000",
+  "steps": {
+    "live": {
+      "loginCoreMode": "LIVE",
+      "signedIn": true,
+      "shown": true,
+      "facts": {
+        "href": "http://127.0.0.1:5178/admin/users",
+        "onPage": true,
+        "shellMode": "LIVE",
+        "summary": "3 users, 3 enabled",
+        "panels": [
+          "users",
+          "matrix"
+        ],
+        "rows": [
+          {
+            "id": "OPR-001",
+            "role": "INVESTIGATOR",
+            "roleText": "Investigator",
+            "enabled": "true",
+            "self": false,
+            "highlighted": false,
+            "menuDisabled": false
+          },
+          {
+            "id": "OPR-002",
+            "role": "SUPERVISOR",
+            "roleText": "Supervisor",
+            "enabled": "true",
+            "self": true,
+            "highlighted": false,
+            "menuDisabled": false
+          },
+          {
+            "id": "OPR-003",
+            "role": "TECHNICIAN",
+            "roleText": "Technician",
+            "enabled": "true",
+            "self": false,
+            "highlighted": false,
+            "menuDisabled": false
+          }
+        ],
+        "matrixRows": 12,
+        "grants": 18,
+        "readOnly": "Read-only",
+        "liveOnly": false,
+        "liveOnlyCentred": false,
+        "states": [],
+        "dialog": null,
+        "toasts": []
+      },
+      "coreUsersAtStart": {
+        "status": 200,
+        "users": [
+          {
+            "id": "OPR-001",
+            "role": "INVESTIGATOR",
+            "enabled": true
+          },
+          {
+            "id": "OPR-002",
+            "role": "SUPERVISOR",
+            "enabled": true
+          },
+          {
+            "id": "OPR-003",
+            "role": "TECHNICIAN",
+            "enabled": true
+          }
+        ]
+      },
+      "screenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/77_users_roles_live.png",
+      "network": {
+        "api": [
+          {
+            "method": "POST",
+            "url": "http://127.0.0.1:5178/api/v1/auth/sign-in",
+            "status": 200
+          },
+          {
+            "method": "GET",
+            "url": "http://127.0.0.1:5178/api/v1/auth/session",
+            "status": 200
+          },
+          {
+            "method": "GET",
+            "url": "http://127.0.0.1:5178/api/v1/admin/users",
+            "status": 200
+          },
+          {
+            "method": "GET",
+            "url": "http://127.0.0.1:5178/api/v1/rbac/matrix",
+            "status": 200
+          },
+          {
+            "method": "GET",
+            "url": "http://127.0.0.1:5178/api/v1/admin/users",
+            "status": 200
+          }
+        ],
+        "origins": [
+          "http://127.0.0.1:5178"
+        ],
+        "sockets": [
+          {
+            "url": "ws://127.0.0.1:5178/ws",
+            "status": 101,
+            "cookieSent": "yes (value not recorded)",
+            "closed": false,
+            "frameCount": 79,
+            "firstTypes": [
+              "hello",
+              "snapshot",
+              "heartbeat",
+              "heartbeat"
+            ],
+            "distinctTypes": [
+              "delta",
+              "heartbeat",
+              "hello",
+              "meters",
+              "snapshot"
+            ]
+          },
+          {
+            "url": "ws://127.0.0.1:5178/ws",
+            "status": 101,
+            "cookieSent": "yes (value not recorded)",
+            "closed": false,
+            "frameCount": 154,
+            "firstTypes": [
+              "hello",
+              "snapshot",
+              "heartbeat",
+              "meters"
+            ],
+            "distinctTypes": [
+              "delta",
+              "heartbeat",
+              "hello",
+              "meters",
+              "snapshot"
+            ]
+          }
+        ],
+        "console": []
+      }
+    },
+    "lastAdminHint": {
+      "operatorId": "OPR-002",
+      "dialog": {
+        "target": "AKP Andi Pratama (andi.pratama)",
+        "options": [
+          {
+            "role": "INVESTIGATOR",
+            "checked": false,
+            "blocked": true,
+            "disabled": true,
+            "hint": true
+          },
+          {
+            "role": "SUPERVISOR",
+            "checked": true,
+            "blocked": false,
+            "disabled": false,
+            "hint": false
+          },
+          {
+            "role": "TECHNICIAN",
+            "checked": false,
+            "blocked": true,
+            "disabled": true,
+            "hint": true
+          }
+        ],
+        "ownWarning": true,
+        "confirmDisabled": true,
+        "diff": "What changesChoose another role to see what changes.The operator stays signed in. The change applies at once on the web console and on paired devices.",
+        "error": null
+      },
+      "screenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/77_last_admin_hint_live.png",
+      "network": {
+        "api": [],
+        "origins": [],
+        "sockets": [],
+        "console": []
+      }
+    },
+    "roleChange": {
+      "target": "OPR-003",
+      "seededRole": "TECHNICIAN",
+      "newRole": "INVESTIGATOR",
+      "changed": {
+        "menu": {
+          "shown": true,
+          "pressed": true
+        },
+        "opened": true,
+        "dialogBefore": {
+          "target": "Rina Wijaya (rina.wijaya)",
+          "options": [
+            {
+              "role": "INVESTIGATOR",
+              "checked": false,
+              "blocked": false,
+              "disabled": false,
+              "hint": false
+            },
+            {
+              "role": "SUPERVISOR",
+              "checked": false,
+              "blocked": false,
+              "disabled": false,
+              "hint": false
+            },
+            {
+              "role": "TECHNICIAN",
+              "checked": true,
+              "blocked": false,
+              "disabled": false,
+              "hint": false
+            }
+          ],
+          "ownWarning": false,
+          "confirmDisabled": true,
+          "diff": "What changesChoose another role to see what changes.The operator stays signed in. The change applies at once on the web console and on paired devices.",
+          "error": null
+        },
+        "chosen": true,
+        "dialogReady": {
+          "target": "Rina Wijaya (rina.wijaya)",
+          "options": [
+            {
+              "role": "INVESTIGATOR",
+              "checked": true,
+              "blocked": false,
+              "disabled": false,
+              "hint": false
+            },
+            {
+              "role": "SUPERVISOR",
+              "checked": false,
+              "blocked": false,
+              "disabled": false,
+              "hint": false
+            },
+            {
+              "role": "TECHNICIAN",
+              "checked": false,
+              "blocked": false,
+              "disabled": false,
+              "hint": false
+            }
+          ],
+          "ownWarning": false,
+          "confirmDisabled": false,
+          "diff": "What changesGainsStart sessionsAdd notes and markersLosesManage devicesMaintenance and updatesThe operator stays signed in. The change applies at once on the web console and on paired devices.",
+          "error": null
+        },
+        "dialogScreenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/77_role_changed_live_dialog.png",
+        "pressed": true,
+        "toastShown": true,
+        "closed": true,
+        "after": {
+          "href": "http://127.0.0.1:5178/admin/users",
+          "onPage": true,
+          "shellMode": "LIVE",
+          "summary": "3 users, 3 enabled",
+          "panels": [
+            "users",
+            "matrix"
+          ],
+          "rows": [
+            {
+              "id": "OPR-001",
+              "role": "INVESTIGATOR",
+              "roleText": "Investigator",
+              "enabled": "true",
+              "self": false,
+              "highlighted": false,
+              "menuDisabled": false
+            },
+            {
+              "id": "OPR-002",
+              "role": "SUPERVISOR",
+              "roleText": "Supervisor",
+              "enabled": "true",
+              "self": true,
+              "highlighted": false,
+              "menuDisabled": false
+            },
+            {
+              "id": "OPR-003",
+              "role": "INVESTIGATOR",
+              "roleText": "Investigator",
+              "enabled": "true",
+              "self": false,
+              "highlighted": true,
+              "menuDisabled": false
+            }
+          ],
+          "matrixRows": 12,
+          "grants": 18,
+          "readOnly": "Read-only",
+          "liveOnly": false,
+          "liveOnlyCentred": false,
+          "states": [],
+          "dialog": null,
+          "toasts": [
+            "Role of Rina Wijaya is now Investigator"
+          ]
+        },
+        "screenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/77_role_changed_live.png",
+        "coreUsersAfterChange": {
+          "status": 200,
+          "users": [
+            {
+              "id": "OPR-001",
+              "role": "INVESTIGATOR",
+              "enabled": true
+            },
+            {
+              "id": "OPR-002",
+              "role": "SUPERVISOR",
+              "enabled": true
+            },
+            {
+              "id": "OPR-003",
+              "role": "INVESTIGATOR",
+              "enabled": true
+            }
+          ]
+        },
+        "network": {
+          "api": [
+            {
+              "method": "POST",
+              "url": "http://127.0.0.1:5178/api/v1/admin/users/OPR-003/role",
+              "status": 200
+            },
+            {
+              "method": "GET",
+              "url": "http://127.0.0.1:5178/api/v1/admin/users",
+              "status": 200
+            },
+            {
+              "method": "GET",
+              "url": "http://127.0.0.1:5178/api/v1/admin/users",
+              "status": 200
+            },
+            {
+              "method": "GET",
+              "url": "http://127.0.0.1:5178/api/v1/admin/users",
+              "status": 200
+            }
+          ],
+          "origins": [
+            "http://127.0.0.1:5178"
+          ],
+          "sockets": [],
+          "console": []
+        }
+      },
+      "back": {
+        "menu": {
+          "shown": true,
+          "pressed": true
+        },
+        "opened": true,
+        "dialogBefore": {
+          "target": "Rina Wijaya (rina.wijaya)",
+          "options": [
+            {
+              "role": "INVESTIGATOR",
+              "checked": true,
+              "blocked": false,
+              "disabled": false,
+              "hint": false
+            },
+            {
+              "role": "SUPERVISOR",
+              "checked": false,
+              "blocked": false,
+              "disabled": false,
+              "hint": false
+            },
+            {
+              "role": "TECHNICIAN",
+              "checked": false,
+              "blocked": false,
+              "disabled": false,
+              "hint": false
+            }
+          ],
+          "ownWarning": false,
+          "confirmDisabled": true,
+          "diff": "What changesChoose another role to see what changes.The operator stays signed in. The change applies at once on the web console and on paired devices.",
+          "error": null
+        },
+        "chosen": true,
+        "dialogReady": {
+          "target": "Rina Wijaya (rina.wijaya)",
+          "options": [
+            {
+              "role": "INVESTIGATOR",
+              "checked": false,
+              "blocked": false,
+              "disabled": false,
+              "hint": false
+            },
+            {
+              "role": "SUPERVISOR",
+              "checked": false,
+              "blocked": false,
+              "disabled": false,
+              "hint": false
+            },
+            {
+              "role": "TECHNICIAN",
+              "checked": true,
+              "blocked": false,
+              "disabled": false,
+              "hint": false
+            }
+          ],
+          "ownWarning": false,
+          "confirmDisabled": false,
+          "diff": "What changesGainsManage devicesMaintenance and updatesLosesStart sessionsAdd notes and markersThe operator stays signed in. The change applies at once on the web console and on paired devices.",
+          "error": null
+        },
+        "dialogScreenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/77_role_restored_live_dialog.png",
+        "pressed": true,
+        "toastShown": true,
+        "closed": true,
+        "after": {
+          "href": "http://127.0.0.1:5178/admin/users",
+          "onPage": true,
+          "shellMode": "LIVE",
+          "summary": "3 users, 3 enabled",
+          "panels": [
+            "users",
+            "matrix"
+          ],
+          "rows": [
+            {
+              "id": "OPR-001",
+              "role": "INVESTIGATOR",
+              "roleText": "Investigator",
+              "enabled": "true",
+              "self": false,
+              "highlighted": false,
+              "menuDisabled": false
+            },
+            {
+              "id": "OPR-002",
+              "role": "SUPERVISOR",
+              "roleText": "Supervisor",
+              "enabled": "true",
+              "self": true,
+              "highlighted": false,
+              "menuDisabled": false
+            },
+            {
+              "id": "OPR-003",
+              "role": "TECHNICIAN",
+              "roleText": "Technician",
+              "enabled": "true",
+              "self": false,
+              "highlighted": true,
+              "menuDisabled": false
+            }
+          ],
+          "matrixRows": 12,
+          "grants": 18,
+          "readOnly": "Read-only",
+          "liveOnly": false,
+          "liveOnlyCentred": false,
+          "states": [],
+          "dialog": null,
+          "toasts": [
+            "Role of Rina Wijaya is now Technician"
+          ]
+        },
+        "screenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/77_role_restored_live.png",
+        "restoredByRequest": null,
+        "coreUsersAfterRestore": {
+          "status": 200,
+          "users": [
+            {
+              "id": "OPR-001",
+              "role": "INVESTIGATOR",
+              "enabled": true
+            },
+            {
+              "id": "OPR-002",
+              "role": "SUPERVISOR",
+              "enabled": true
+            },
+            {
+              "id": "OPR-003",
+              "role": "TECHNICIAN",
+              "enabled": true
+            }
+          ]
+        },
+        "backAtSeededRole": true,
+        "network": {
+          "api": [
+            {
+              "method": "POST",
+              "url": "http://127.0.0.1:5178/api/v1/admin/users/OPR-003/role",
+              "status": 200
+            },
+            {
+              "method": "GET",
+              "url": "http://127.0.0.1:5178/api/v1/admin/users",
+              "status": 200
+            },
+            {
+              "method": "GET",
+              "url": "http://127.0.0.1:5178/api/v1/admin/users",
+              "status": 200
+            },
+            {
+              "method": "GET",
+              "url": "http://127.0.0.1:5178/api/v1/admin/users",
+              "status": 200
+            }
+          ],
+          "origins": [
+            "http://127.0.0.1:5178"
+          ],
+          "sockets": [],
+          "console": []
+        }
+      }
+    },
+    "simulated": {
+      "signOutOfLive": {
+        "status": 204,
+        "loginShown": true
+      },
+      "loginCoreMode": "SIMULATED",
+      "signInPath": "stored simulated sign-in (dems.auth), F63-3",
+      "shown": true,
+      "facts": {
+        "href": "http://127.0.0.1:5178/admin/users",
+        "onPage": true,
+        "shellMode": "SIMULATED",
+        "summary": null,
+        "panels": [],
+        "rows": [],
+        "matrixRows": null,
+        "grants": 0,
+        "readOnly": null,
+        "liveOnly": true,
+        "liveOnlyCentred": true,
+        "states": [],
+        "dialog": null,
+        "toasts": []
+      },
+      "navAdminGroupShown": false,
+      "screenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/77_users_roles_simulated.png",
+      "apiRequestsToTheDevServer": 0,
+      "socketsToTheDevServerWs": 0,
+      "network": {
+        "api": [],
+        "origins": [
+          "http://127.0.0.1:5178"
+        ],
+        "sockets": [
+          {
+            "url": "ws://127.0.0.1:4400/ws",
+            "status": null,
+            "cookieSent": null,
+            "closed": true,
+            "frameCount": 0,
+            "firstTypes": [],
+            "distinctTypes": []
+          },
+          {
+            "url": "ws://127.0.0.1:4400/ws",
+            "status": null,
+            "cookieSent": null,
+            "closed": true,
+            "frameCount": 0,
+            "firstTypes": [],
+            "distinctTypes": []
+          },
+          {
+            "url": "ws://127.0.0.1:4400/ws",
+            "status": null,
+            "cookieSent": null,
+            "closed": true,
+            "frameCount": 0,
+            "firstTypes": [],
+            "distinctTypes": []
+          },
+          {
+            "url": "ws://127.0.0.1:4400/ws",
+            "status": null,
+            "cookieSent": null,
+            "closed": true,
+            "frameCount": 0,
+            "firstTypes": [],
+            "distinctTypes": []
+          },
+          {
+            "url": "ws://127.0.0.1:4400/ws",
+            "status": null,
+            "cookieSent": null,
+            "closed": true,
+            "frameCount": 0,
+            "firstTypes": [],
+            "distinctTypes": []
+          },
+          {
+            "url": "ws://127.0.0.1:4400/ws",
+            "status": null,
+            "cookieSent": null,
+            "closed": true,
+            "frameCount": 0,
+            "firstTypes": [],
+            "distinctTypes": []
+          },
+          {
+            "url": "ws://127.0.0.1:4400/ws",
+            "status": null,
+            "cookieSent": null,
+            "closed": true,
+            "frameCount": 0,
+            "firstTypes": [],
+            "distinctTypes": []
+          },
+          {
+            "url": "ws://127.0.0.1:4400/ws",
+            "status": null,
+            "cookieSent": null,
+            "closed": true,
+            "frameCount": 0,
+            "firstTypes": [],
+            "distinctTypes": []
+          },
+          {
+            "url": "ws://127.0.0.1:4400/ws",
+            "status": null,
+            "cookieSent": null,
+            "closed": true,
+            "frameCount": 0,
+            "firstTypes": [],
+            "distinctTypes": []
+          }
+        ],
+        "console": []
+      }
+    }
+  },
+  "elapsedSeconds": 34
+}

@@ -9,8 +9,22 @@
  *   sequence on enter (opacity 0.3 → 1, 80 ms apart). The head breathes subtly while the chain is
  *   intact (`glowBreath`, the screen's one ambient loop, paused off-focus and under reduced motion).
  *   A broken entry is a red block; a break older than the strip is pinned in front with a gap. The
- *   Verify button runs the simulator's own `verifyAuditChain()` (Spinner → PASS pop / FAIL pulse, no
- *   shake) and states the entries checked at the simulator time.
+ *   Verify button runs `verifyAuditChain()` (Spinner → PASS pop / FAIL pulse, no shake) and states
+ *   the entries checked at the store's time.
+ *
+ *   Site S1-7 / S4-3 (backend task W80; 04_client_integration_spec §8.5, §8.7, §8.1 LB-1, LB-5,
+ *   LB-6, LB-10; 09b_m1_mobile_consolidation §8 and decision D166): the action comes from
+ *   `useCoreActions()` and settles through `settle` inside the runtime's `usePendingPress`, in both
+ *   modes.
+ *   - Simulated mode: the simulator's own check, synchronous, one frame after the Spinner shows,
+ *     exactly as before (the hook sets no state and the button gets no new prop).
+ *   - Live mode: operation 60 `verifyAuditChain` on the Core server, sent at the press. Busy at
+ *     once, spinner late (LB-1, D166): the button is marked busy while the request is out and a
+ *     second press sends nothing; its look does not change for `LIVE_PENDING_REVEAL_MS`, then the
+ *     runtime's `PendingSpinner` and "Verifying…" show until the answer. The verdict is the Core's
+ *     `view` (its check of the audit ring it holds), stamped with the store's clock, which is the
+ *     Core's (S4-3); the Core's `stored` and `lineage` lines follow it (`chain-live.tsx`). A
+ *     rejection goes to the runtime's refusal presenter first and the last verdict, if any, stays.
  * - `TamperAlert`: the EVT-30 discontinuity `Alert status="danger"` (same copy as the web Alert),
  *   with "Show entry" and "Acknowledge". Acknowledging stops the broken row's slow glow; the break
  *   stays on record.
@@ -21,8 +35,9 @@ import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn, ReduceMotion, cancelAnimation, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
+import { settle, useCoreActions } from '@dems/shared/live';
 import { DATE_PATTERNS, formatDate } from '@dems/shared/realtime';
-import { useSimActions, useSimInstance, type AuditRow, type ChainVerifyResult } from '@dems/shared/sim';
+import { useSimInstance, type AuditRow, type ChainVerifyResult } from '@dems/shared/sim';
 import { derived, fontFamily, palette, radius, spacing, statusText, typography } from '@dems/shared/tokens';
 import { StatusChip } from '@/components/kit';
 import {
@@ -36,8 +51,9 @@ import {
   useAmbientLoop,
   useMotionSettings,
 } from '@/motion';
-import { reportRuntimeIssue } from '@/runtime';
+import { PendingSpinner, busyState, reportRuntimeIssue, useCoreErrorPresenter, useCoreLink, usePendingPress } from '@/runtime';
 import { shortHash, stripEntries } from './audit-model';
+import { LiveChainLines } from './chain-live';
 
 /** One escalation pulse (03M R8 / M-C-10), always passed explicitly to the builder (D73). */
 export const CHAIN_ESCALATION_PULSE_MS = SPEC_LITERALS.escalationPulseMs;
@@ -86,10 +102,17 @@ export function ChainStatusChip({ breakSeq }: { breakSeq: number | null }) {
 
 type VerifyState = { kind: 'idle' } | { kind: 'running' } | { kind: 'done'; result: ChainVerifyResult; at: number };
 
-/** Runs the simulator's `verifyAuditChain()` one frame after the Spinner shows. */
+/**
+ * Runs `verifyAuditChain()` (site S1-7): in Simulated mode one frame after the Spinner shows, as
+ * before; in Live mode at the press. Only a press starts it: nothing is sent from a mount effect
+ * (decision D158, F69-1), so a development build's StrictMode sends nothing at mount.
+ */
 function useChainVerify() {
-  const actions = useSimActions();
+  const actions = useCoreActions();
   const sim = useSimInstance();
+  const live = useCoreLink().source === 'LIVE';
+  const presentCoreError = useCoreErrorPresenter();
+  const press = usePendingPress();
   const { t } = useTranslation();
   const { toast } = useToast();
   const [state, setState] = useState<VerifyState>({ kind: 'idle' });
@@ -98,23 +121,45 @@ function useChainVerify() {
     if (frame.current !== null) cancelAnimationFrame(frame.current);
   }, []);
 
+  // One request per press (LB-1). In Simulated mode the action settles before `run` returns, so the
+  // hook sets no state and the button gets no new prop: the screen is as before.
+  const start = () =>
+    press.run((release) =>
+      settle(() => actions.verifyAuditChain(), {
+        ok: (result) => {
+          // S4-3: the store's clock; in Live mode the store is the Live source, its clock the Core's.
+          setState({ kind: 'done', result, at: sim.store.getState().clock.now });
+          triggerHaptic(result.ok ? 'verifyPass' : 'verifyFail');
+        },
+        fail: (error) => {
+          if (live) {
+            // LB-5, LB-6, LB-10: the presenter words a refusal, a dead link or a limit; the last verdict stays.
+            const presented = presentCoreError(error);
+            reportRuntimeIssue(presented ? 'warn' : 'error', 'audit.verifyChain.core', error, { presented });
+            if (!presented) toast.show({ variant: 'danger', label: t('features.audit.errors.verify') });
+            return;
+          }
+          reportRuntimeIssue('error', 'audit.verifyChain', error);
+          toast.show({ variant: 'danger', label: t('features.audit.errors.verify') });
+          setState({ kind: 'idle' });
+        },
+        done: release,
+      }),
+    );
+
   const run = () => {
     if (state.kind === 'running') return;
+    if (live) {
+      start();
+      return;
+    }
     setState({ kind: 'running' });
     frame.current = requestAnimationFrame(() => {
       frame.current = null;
-      try {
-        const result = actions.verifyAuditChain();
-        setState({ kind: 'done', result, at: sim.store.getState().clock.now });
-        triggerHaptic(result.ok ? 'verifyPass' : 'verifyFail');
-      } catch (error) {
-        reportRuntimeIssue('error', 'audit.verifyChain', error);
-        toast.show({ variant: 'danger', label: t('features.audit.errors.verify') });
-        setState({ kind: 'idle' });
-      }
+      start();
     });
   };
-  return { state, run };
+  return { state, run, busy: press.busy, pending: press.pending, live };
 }
 
 export interface ChainStripProps {
@@ -133,6 +178,8 @@ export function ChainStrip({ rows, head, total, breakSeq, focused }: ChainStripP
   const { tail, olderBreakSeq } = stripEntries(rows, breakSeq, STRIP_BLOCKS);
   const verify = useChainVerify();
   const intact = breakSeq === null;
+  /** Simulated mode's one frame between the press and the synchronous check (the Spinner as before). */
+  const running = verify.state.kind === 'running';
 
   return (
     <View style={styles.strip} testID="audit-chain-strip">
@@ -178,17 +225,19 @@ export function ChainStrip({ rows, head, total, breakSeq, focused }: ChainStripP
           size="sm"
           variant="outline"
           onPress={verify.run}
-          isDisabled={verify.state.kind === 'running'}
+          isDisabled={running}
           accessibilityLabel={t('features.audit.chain.verifyLabel')}
           testID="audit-verify"
+          {...busyState(verify.busy, running)}
         >
-          {verify.state.kind === 'running' ? <Spinner size="sm" /> : null}
-          <Button.Label>{verify.state.kind === 'running' ? t('securityAudit.chain.verifying') : t('common.actions.verify')}</Button.Label>
+          {running ? <Spinner size="sm" /> : verify.pending ? <PendingSpinner testID="audit-verify-spinner" /> : null}
+          <Button.Label>{running || verify.pending ? t('securityAudit.chain.verifying') : t('common.actions.verify')}</Button.Label>
         </Button>
       </View>
       {verify.state.kind === 'done' ? (
         <VerifyVerdict key={verify.state.at} result={verify.state.result} at={verify.state.at} motion={m.policy} />
       ) : null}
+      {verify.live && verify.state.kind === 'done' ? <LiveChainLines /> : null}
     </View>
   );
 }

@@ -1,0 +1,14 @@
+// Digest of the leaves of the audit copy at acaff20 (W80 static test control). Reads only.
+const fs = require('node:fs');
+const { createHash } = require('node:crypto');
+let src = fs.readFileSync(process.argv[2], 'utf8');
+src = src.replace(/^import type .*$/m, '').replace(/export const auditEn =/, 'module.exports =').replace(/\} as const satisfies ResourceTree;/, '};');
+const m = { exports: {} };
+new Function('module', src)(m);
+function leaves(tree, path = []) {
+  if (typeof tree === 'string') return [{ key: path.join('.'), text: tree }];
+  if (typeof tree !== 'object' || tree === null) return [];
+  return Object.entries(tree).flatMap(([name, value]) => leaves(value, [...path, name]));
+}
+const list = leaves(m.exports).filter((leaf) => !leaf.key.startsWith('live.'));
+console.log(list.length, createHash('sha256').update(JSON.stringify(list)).digest('hex'));

@@ -21,18 +21,16 @@
  * - **Export IDs (W47-4).** The simulator's export counter continues after EV 0004's prebuilt
  *   EXP-000031, so a re-export gets EXP-000032 onwards; the wizard downloads the prebuilt archive,
  *   labelled as the prebuilt DEMO package, and the audit trail records the new ID.
+ * - **Live mode (backend task, plan row W69; 04_client_integration_spec §8.4 D-1, §14 point 7).**
+ *   The mirror of case 1 is SIMULATED MODE ONLY: in Live mode the Core server's verdict is the
+ *   record, the page calls `verify` (operation 41) alone and never a demo control. The actions come
+ *   from `useCoreActions()` (no read of a simulator's actions object, AC-C-53) and run through
+ *   `settle`, which in Simulated mode runs them before it returns, as before.
  */
 import type { TrackId } from '@dems/shared/domain'
 import type { DemoAssetLoader, DemoEvidencePackage, DemoVerificationReport } from '@dems/shared/demo-data'
-import {
-  FaultKind,
-  SubjectType,
-  type AuditRow,
-  type EvidenceItem,
-  type EvidenceVerifyResult,
-  type Sim,
-  type SimState,
-} from '@dems/shared/sim'
+import { settle, type CoreActions } from '@dems/shared/live'
+import { FaultKind, SubjectType, type AuditRow, type EvidenceItem, type SimState } from '@dems/shared/sim'
 
 // ── Integrity (W47-1) ───────────────────────────────────────────────────────────────────────
 
@@ -79,21 +77,27 @@ export function failedTracksOf(report: Pick<DemoVerificationReport, 'failed'>): 
 
 /**
  * Records a finished package verification in the simulator (custody entry + audit row), mirroring a
- * package-level tamper into the sim first so both agree (case 1 above). Returns the sim's result.
+ * package-level tamper into the sim first so both agree (case 1 above). SIMULATED MODE ONLY (D-1).
+ * `onError` receives what either action threw; when the mirror throws, `verify` is not called.
  */
 export function recordPackageVerification(
-  sim: Sim,
+  actions: Pick<CoreActions, 'inject' | 'verify'>,
+  state: Pick<SimState, 'evidence'>,
   evidenceId: string,
   report: Pick<DemoVerificationReport, 'failed' | 'result'>,
-): EvidenceVerifyResult {
-  const state = sim.store.getState()
+  onError: (error: unknown) => void,
+): void {
   const item = state.evidence.find((entry) => entry.id === evidenceId)
   const failedTracks = failedTracksOf(report)
+  const record = () => settle(() => actions.verify(evidenceId), { fail: onError })
   if (item && failedTracks.length === 1) {
     const trackId = failedTracks[0] as TrackId
-    if (simTamperedTrack(item) !== trackId) sim.actions.inject(FaultKind.TAMPER, { evidenceId, trackId })
+    if (simTamperedTrack(item) !== trackId) {
+      settle(() => actions.inject(FaultKind.TAMPER, { evidenceId, trackId }), { ok: record, fail: onError })
+      return
+    }
   }
-  return sim.actions.verify(evidenceId)
+  record()
 }
 
 // ── Case type (W47-2) ───────────────────────────────────────────────────────────────────────

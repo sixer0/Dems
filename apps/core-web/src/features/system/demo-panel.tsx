@@ -1,23 +1,27 @@
 import { useEffect, useState } from 'react'
 import type { Key } from '@heroui/react'
-import { Button, Chip, Description, Label, ListBox, Select, Switch, toast, ToggleButton, ToggleButtonGroup } from '@heroui/react'
+import { AlertDialog, Button, Chip, Description, Label, ListBox, Select, Spinner, Switch, toast, ToggleButton, ToggleButtonGroup } from '@heroui/react'
 import { AnimatePresence, motion } from 'motion/react'
 import { CalendarClock, Eraser, FlaskConical, LifeBuoy, ListChecks, Play, RotateCcw } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { useCoreActions } from '@dems/shared/live'
 import {
   FaultKind,
   formatWibTime,
   ScenarioName,
   selectClockSecond,
+  selectOperator,
   useSim,
-  useSimActions,
   useSimInstance,
   wibDateParts,
   type AuditRow,
+  type AuditType,
   type SimState,
 } from '@dems/shared/sim'
+import { usePendingControl } from '@/lib/pending-control'
 import { useMotionPolicy } from '@/motion'
 import { cn } from '@/lib/utils'
+import { newestOwnRow, useSystemLiveMode } from './live'
 import { logSystemError } from './log'
 import {
   activeFaultKeys,
@@ -30,7 +34,7 @@ import {
   type TimeSourceChoice,
 } from './model'
 import { SystemPanel } from './panel'
-import { readDemoControlsOpen, setPresentationModeEverywhere, usePresentationModeSetting, writeDemoControlsOpen } from './sim-adapter'
+import { readDemoControlsOpen, setPresentationModeEverywhere, usePreferenceWriteFailure, usePresentationModeSetting, writeDemoControlsOpen } from './sim-adapter'
 import { useSimCommand } from './use-sim-command'
 
 const SCENARIOS = Object.values(ScenarioName)
@@ -40,6 +44,13 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
 const selectActiveFaults = (s: SimState) => s.faults.active
 const selectAuditRows = (s: SimState) => s.audit.rows
 const selectDemoContext = (s: SimState) => ({ scenario: s.meta.scenario, sessionState: s.session?.state ?? null })
+const selectOperatorId = (s: SimState) => selectOperator(s)?.id ?? null
+
+/** The audit types a fault command writes (the simulator's fault rows; AUDIT_TAMPER raises a discontinuity row). */
+const FAULT_ROW_TYPES: readonly AuditType[] = ['FAULT_RAISED', 'FAULT_CLEARED', 'AUDIT_CHAIN_DISCONTINUITY']
+
+/** What a Live reset or scenario load waits for: the operator's confirmation (W43 §9: "the panel should ask first"). */
+type PendingRebuild = { readonly name: ScenarioName; readonly reset: boolean }
 
 function lastDemoRows(rows: readonly AuditRow[], count: number): AuditRow[] {
   const found: AuditRow[] = []
@@ -74,6 +85,20 @@ function useDemoAsOf(): string | null {
  * time-source control, reset (the sim's `resetDemo`), recover, presentation mode, and the D64 as-of dates.
  * Every action writes an audit row in the sim; the newest rows are listed here. RBAC follows the
  * sim: a `SimPermissionError` becomes a "Requires the … role" toast (the sim enforces the role table since step 54; the Demo Control Panel actions stay open to every role).
+ *
+ * Plan row W76 (Live mode; backend task 04_client_integration_spec §8.3 B-10, §8.4 C-7, D-4):
+ * - The panel is rendered only for a session with `DEMO_CONTROL` on a Core server with the demo
+ *   flag (the page decides, `useDemoPanelVisible`); a 403 `DEMO_DISABLED` is worded by the presenter.
+ * - Every command goes through the page's wrapper on ONE pending control for the panel: while a demo
+ *   command is out, the panel's other demo commands send nothing (LB-1), the panel body is marked
+ *   `aria-busy`, and only the pressed button shows the late spinner (`control.key`).
+ * - D-4: several requests of one press (clear a fault and reset its latch; clear all) are sent one
+ *   after the other through nested `settle` calls. A reset and a scenario load settle when the
+ *   snapshot of the new epoch is applied (CL-18); in Live mode both are confirmed first, because they
+ *   rebuild the Core's data for every console.
+ * - C-7: the toast's audit note reads the newest row OF THIS COMMAND (its types, its fault kind,
+ *   written after the press, by this operator or by no actor) — in Live mode the newest row of the
+ *   ring may be the engine's or another console's. Simulated mode keeps the newest row, as before.
  */
 export function DemoPanel() {
   const { t } = useTranslation()
@@ -131,112 +156,128 @@ export function DemoPanel() {
 function DemoBody() {
   const { t } = useTranslation()
   const sim = useSimInstance()
-  const actions = useSimActions()
+  const actions = useCoreActions()
+  const live = useSystemLiveMode()
   const run = useSimCommand()
+  // ONE pending control for the panel's demo commands (LB-1): `key` names the pressed control.
+  const demo = usePendingControl()
+  const onPresentationFail = usePreferenceWriteFailure('DemoPanel.presentationMode')
   const presentation = usePresentationModeSetting()
   const active = useSim(selectActiveFaults)
   const rows = useSim(selectAuditRows)
   const context = useSim(selectDemoContext)
+  const operatorId = useSim(selectOperatorId)
   const nowSecond = useSim(selectClockSecond)
   const asOf = useDemoAsOf()
   const [scenario, setScenario] = useState<ScenarioName>(context.scenario)
+  const [rebuild, setRebuild] = useState<PendingRebuild | null>(null)
 
   const keys = activeFaultKeys(active)
   const timeSource = timeSourceChoice(active)
   const demoRows = lastDemoRows(rows, 5)
   const now = wibDateParts(nowSecond * 1000)
+  /** The pressed control shows the kit's pending state once the reveal time has passed (LB-1). */
+  const pendingOn = (key: string) => demo.pending && demo.key === key
 
-  /** The newest audit row's type and book event kind, for the toast that confirms the write. */
-  const auditNote = () => {
-    const row = sim.store.getState().audit.rows.at(-1)
+  /** The ring's `total` at the press: C-7 looks only at rows written after it. */
+  const auditTotal = () => sim.store.getState().audit.total
+
+  /**
+   * The audit row of the command just confirmed, as "type · book event kind" for its toast (C-7).
+   * Simulated: the newest row, as before. Live: the newest row of the command's types (and fault
+   * kind) written after the press by this operator or by no actor; none → no note.
+   */
+  const auditNote = (afterSeq: number, kind: string) => {
+    const ring = sim.store.getState().audit.rows
+    const row = live ? newestOwnRow(ring, { types: FAULT_ROW_TYPES, afterSeq, operatorId, kind }) : ring.at(-1)
     if (!row) return undefined
-    const kind = typeof row.details.eventKind === 'string' ? row.details.eventKind : null
+    const eventKind = typeof row.details.eventKind === 'string' ? row.details.eventKind : null
     return t('system.demo.auditWritten', {
       type: t(`common.auditType.${row.type}`),
-      kind: kind ? t(`common.enums.auditEventKind.${kind}` as 'common.enums.auditEventKind.AUDIO_CLIP', { defaultValue: kind }) : row.id,
+      kind: eventKind ? t(`common.enums.auditEventKind.${eventKind}` as 'common.enums.auditEventKind.AUDIO_CLIP', { defaultValue: eventKind }) : row.id,
     })
   }
 
   const setFault = (spec: DemoFaultSpec, on: boolean) => {
     const fault = t(`system.demo.faults.${spec.kind}`)
-    const done = run(
+    const before = auditTotal()
+    // D-4: clearing MIC 2 clip is two requests, the latch reset only after the clear was answered.
+    const steps: (() => unknown)[] = on
+      ? [() => actions.inject(spec.kind, spec.target)]
+      : [() => actions.clearFault(spec.kind, spec.target), ...(spec.kind === FaultKind.MIC_CLIP ? [() => actions.resetClip(spec.target?.channel ?? 'AUDIO-02')] : [])]
+    run(
+      steps,
+      { source: on ? 'DemoPanel.inject' : 'DemoPanel.clearFault', context: { kind: spec.kind }, key: `fault:${spec.kind}` },
       () => {
         if (on) {
-          actions.inject(spec.kind, spec.target)
+          const notify = spec.critical ? toast.danger : toast.warning
+          notify(t('system.demo.injected', { fault }), { description: auditNote(before, spec.kind) })
         } else {
-          actions.clearFault(spec.kind, spec.target)
-          if (spec.kind === FaultKind.MIC_CLIP) actions.resetClip(spec.target?.channel ?? 'AUDIO-02')
+          toast.success(t('system.demo.cleared', { fault }), { description: auditNote(before, spec.kind) })
         }
-        return true
       },
-      { source: on ? 'DemoPanel.inject' : 'DemoPanel.clearFault', context: { kind: spec.kind } },
+      demo,
     )
-    if (!done) return
-    if (on) {
-      const notify = spec.critical ? toast.danger : toast.warning
-      notify(t('system.demo.injected', { fault }), { description: auditNote() })
-    } else {
-      toast.success(t('system.demo.cleared', { fault }), { description: auditNote() })
-    }
   }
 
   const setTimeSource = (choice: TimeSourceChoice) => {
     if (choice === timeSource) return
-    const done = run(
+    const before = auditTotal()
+    run(
+      () => (choice === 'GNSS' ? actions.clearFault(FaultKind.GNSS_LOSS) : actions.inject(FaultKind.GNSS_LOSS, { fallback: choice })),
+      { source: 'DemoPanel.timeSource', context: { choice }, key: 'time' },
       () => {
-        if (choice === 'GNSS') actions.clearFault(FaultKind.GNSS_LOSS)
-        else actions.inject(FaultKind.GNSS_LOSS, { fallback: choice })
-        return true
+        const message = t('system.demo.fallback', { source: t(`system.demo.timeSource.${choice}`) })
+        if (choice === 'GNSS') toast.success(message, { description: auditNote(before, FaultKind.GNSS_LOSS) })
+        else toast.warning(message, { description: auditNote(before, FaultKind.GNSS_LOSS) })
       },
-      { source: 'DemoPanel.timeSource', context: { choice } },
+      demo,
     )
-    if (!done) return
-    const message = t('system.demo.fallback', { source: t(`system.demo.timeSource.${choice}`) })
-    if (choice === 'GNSS') toast.success(message, { description: auditNote() })
-    else toast.warning(message, { description: auditNote() })
+  }
+
+  /** Sends the reset or the scenario load; in Live mode it settles on the snapshot of the new epoch (CL-18). */
+  const sendScenario = (name: ScenarioName, reset: boolean) => {
+    run(
+      // Step 54 (W52-8): a reset is the Core's own resetDemo (audited as a reset).
+      () => (reset ? actions.resetDemo() : actions.loadScenario(name)),
+      { source: reset ? 'DemoPanel.reset' : 'DemoPanel.loadScenario', context: { scenario: name }, key: reset ? 'reset' : 'load' },
+      () => {
+        setScenario(name)
+        toast.success(reset ? t('system.demo.resetDone') : t('system.demo.scenarioLoaded', { scenario: t(`system.demo.scenarios.${name}`) }))
+      },
+      demo,
+    )
   }
 
   const loadScenario = (name: ScenarioName, reset = false) => {
-    const done = run(
-      () => {
-        // Step 54 (W52-8): a reset is the simulator's own resetDemo (audited as a reset).
-        if (reset) actions.resetDemo()
-        else actions.loadScenario(name)
-        return true
-      },
-      { source: reset ? 'DemoPanel.reset' : 'DemoPanel.loadScenario', context: { scenario: name } },
-    )
-    if (!done) return
-    setScenario(name)
-    toast.success(reset ? t('system.demo.resetDone') : t('system.demo.scenarioLoaded', { scenario: t(`system.demo.scenarios.${name}`) }))
+    if (demo.busy) return
+    // Live: the rebuild replaces the Core's data for every console; the operator confirms it first.
+    if (live) setRebuild({ name, reset })
+    else sendScenario(name, reset)
+  }
+
+  const confirmRebuild = () => {
+    if (!rebuild) return
+    setRebuild(null)
+    sendScenario(rebuild.name, rebuild.reset)
   }
 
   const clearAll = () => {
-    const done = run(
-      () => {
-        for (const kind of new Set(active.map((fault) => fault.kind))) actions.clearFault(kind)
-        actions.resetClip('AUDIO-01')
-        actions.resetClip('AUDIO-02')
-        return true
-      },
-      { source: 'DemoPanel.clearAll', context: { count: active.length } },
-    )
-    if (done) toast.success(t('system.demo.clearedAll'))
+    // D-4: one request after the other, each sent when the one before was answered.
+    const steps: (() => unknown)[] = [
+      ...[...new Set(active.map((fault) => fault.kind))].map((kind) => () => actions.clearFault(kind)),
+      () => actions.resetClip('AUDIO-01'),
+      () => actions.resetClip('AUDIO-02'),
+    ]
+    run(steps, { source: 'DemoPanel.clearAll', context: { count: active.length }, key: 'clear' }, () => toast.success(t('system.demo.clearedAll')), demo)
   }
 
   const recover = () => {
-    const done = run(
-      () => {
-        actions.recover()
-        return true
-      },
-      { source: 'DemoPanel.recover' },
-    )
-    if (done) toast.info(t('system.demo.recovered'))
+    run(() => actions.recover(), { source: 'DemoPanel.recover', key: 'recover' }, () => toast.info(t('system.demo.recovered')), demo)
   }
 
   return (
-    <div className="sys-demo-body" data-testid="system-demo-body">
+    <div className="sys-demo-body" data-testid="system-demo-body" aria-busy={demo.busy || undefined}>
       <p className="sys-demo-note">{t('system.demo.note')}</p>
       <div className="sys-demo-grid">
         <section className="sys-demo-col" aria-label={t('system.demo.scenarioTitle')}>
@@ -266,20 +307,20 @@ function DemoBody() {
                 </ListBox>
               </Select.Popover>
             </Select>
-            <Button size="sm" variant="primary" onPress={() => loadScenario(scenario)} data-testid="system-demo-load">
-              <Play className="size-4" aria-hidden="true" />
+            <Button size="sm" variant="primary" isPending={pendingOn('load')} onPress={() => loadScenario(scenario)} data-testid="system-demo-load">
+              {pendingOn('load') ? <Spinner size="sm" color="current" aria-hidden="true" /> : <Play className="size-4" aria-hidden="true" />}
               {t('system.demo.loadScenario')}
             </Button>
           </div>
           <p className="sys-muted sys-small">{t('system.demo.scenarioCurrent', { scenario: t(`system.demo.scenarios.${context.scenario}`) })}</p>
 
           <div className="sys-demo-actions">
-            <Button size="sm" variant="outline" onPress={() => loadScenario(ScenarioName.IDLE, true)} data-testid="system-demo-reset">
-              <RotateCcw className="size-4" aria-hidden="true" />
+            <Button size="sm" variant="outline" isPending={pendingOn('reset')} onPress={() => loadScenario(ScenarioName.IDLE, true)} data-testid="system-demo-reset">
+              {pendingOn('reset') ? <Spinner size="sm" color="current" aria-hidden="true" /> : <RotateCcw className="size-4" aria-hidden="true" />}
               {t('system.demo.reset')}
             </Button>
-            <Button size="sm" variant="ghost" isDisabled={active.length === 0} onPress={clearAll} data-testid="system-demo-clear-all">
-              <Eraser className="size-4" aria-hidden="true" />
+            <Button size="sm" variant="ghost" isDisabled={active.length === 0} isPending={pendingOn('clear')} onPress={clearAll} data-testid="system-demo-clear-all">
+              {pendingOn('clear') ? <Spinner size="sm" color="current" aria-hidden="true" /> : <Eraser className="size-4" aria-hidden="true" />}
               {t('system.demo.clearAll')}
             </Button>
           </div>
@@ -288,14 +329,19 @@ function DemoBody() {
           {context.sessionState === 'FAULT' ? (
             <div className="sys-demo-recover" data-testid="system-demo-recover">
               <p className="sys-small">{t('system.demo.recoverHint')}</p>
-              <Button size="sm" variant="danger-soft" onPress={recover}>
-                <LifeBuoy className="size-4" aria-hidden="true" />
+              <Button size="sm" variant="danger-soft" isPending={pendingOn('recover')} onPress={recover}>
+                {pendingOn('recover') ? <Spinner size="sm" color="current" aria-hidden="true" /> : <LifeBuoy className="size-4" aria-hidden="true" />}
                 {t('system.demo.recover')}
               </Button>
             </div>
           ) : null}
 
-          <Switch isSelected={presentation} onChange={(on) => setPresentationModeEverywhere(sim, on)} className="sys-setting" data-testid="system-demo-presentation">
+          <Switch
+            isSelected={presentation}
+            onChange={(on) => setPresentationModeEverywhere(actions, on, live, onPresentationFail)}
+            className="sys-setting"
+            data-testid="system-demo-presentation"
+          >
             <Switch.Content>
               <Switch.Control>
                 <Switch.Thumb />
@@ -311,7 +357,7 @@ function DemoBody() {
             </span>
             <span className="sys-small">{asOf ? t('system.demo.asOf', { asOf: formatAsOf(asOf) }) : t('common.states.loading')}</span>
             <span className="sys-small">
-              {t('system.demo.simClock', {
+              {t(live ? 'system.live.demo.coreClock' : 'system.demo.simClock', {
                 date: `${now.day} ${MONTHS[now.month - 1] ?? ''} ${now.year}`,
                 time: formatWibTime(nowSecond * 1000),
               })}
@@ -339,6 +385,7 @@ function DemoBody() {
                   onChange={(selected) => setFault(spec, selected)}
                   className={cn('sys-fault', spec.critical && 'sys-fault--critical')}
                   data-active={on ? 'true' : 'false'}
+                  data-pending={pendingOn(`fault:${spec.kind}`) ? 'true' : undefined}
                   data-testid={`system-demo-fault-${spec.kind}`}
                   aria-label={`${label} (${spec.evt})`}
                 >
@@ -403,6 +450,61 @@ function DemoBody() {
           </div>
         </section>
       </div>
+      {live ? (
+        <RebuildConfirm
+          pending={rebuild}
+          sessionOpen={context.sessionState !== null}
+          onCancel={() => setRebuild(null)}
+          onConfirm={confirmRebuild}
+        />
+      ) : null}
     </div>
+  )
+}
+
+/**
+ * Live mode only: the confirmation of a reset or a scenario load (D-4). The Core rebuilds its data
+ * from the seed for every connected console; the discarded audit chain stays traceable as an
+ * earlier chain (row count and head hash, operation 60's lineage). Implementation/43 §9: "A reset
+ * while a recording runs is not refused. The panel should ask the operator first."
+ */
+function RebuildConfirm({
+  pending,
+  sessionOpen,
+  onCancel,
+  onConfirm,
+}: {
+  pending: PendingRebuild | null
+  sessionOpen: boolean
+  onCancel: () => void
+  onConfirm: () => void
+}) {
+  const { t } = useTranslation()
+  const title = pending?.reset
+    ? t('system.live.demo.confirmResetTitle')
+    : t('system.live.demo.confirmScenarioTitle', { scenario: pending ? t(`system.demo.scenarios.${pending.name}`) : '' })
+  return (
+    <AlertDialog.Backdrop isOpen={pending !== null} onOpenChange={(open) => (open ? undefined : onCancel())}>
+      <AlertDialog.Container size="sm">
+        <AlertDialog.Dialog aria-label={title} data-testid="system-demo-confirm">
+          <AlertDialog.Header>
+            <AlertDialog.Icon status="warning" />
+            <AlertDialog.Heading>{title}</AlertDialog.Heading>
+          </AlertDialog.Header>
+          <AlertDialog.Body>
+            <p className="sys-small">{t('system.live.demo.confirmBody')}</p>
+            {sessionOpen ? <p className="sys-small sys-strong">{t('system.live.demo.confirmSession')}</p> : null}
+          </AlertDialog.Body>
+          <AlertDialog.Footer>
+            <Button variant="ghost" onPress={onCancel} data-testid="system-demo-confirm-keep">
+              {t('system.live.demo.keep')}
+            </Button>
+            <Button variant="danger" onPress={onConfirm} data-testid="system-demo-confirm-go">
+              {pending?.reset ? t('system.live.demo.confirmReset') : t('system.live.demo.confirmLoad')}
+            </Button>
+          </AlertDialog.Footer>
+        </AlertDialog.Dialog>
+      </AlertDialog.Container>
+    </AlertDialog.Backdrop>
   )
 }

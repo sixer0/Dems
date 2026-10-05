@@ -1,0 +1,446 @@
+// W69 lane check: the Evidence page in Live mode in a real headless Chromium, over raw CDP (Node's
+// built-in WebSocket; no install). The helpers (lines up to `takeNetwork`) are W55's driver as W63
+// used it, unchanged except the operator lookup; the steps are this row's. Sign-ins go THROUGH THE
+// FORM, from the project's own seed constants. Sites A6, A5 and D-6 are pressed through the page.
+// Usage: node --import tsx .cache/w69/lane/cdp-driver.mjs <devtoolsPort> <vitePort> <outJson> <assetsDir>
+//
+// What is never stored or printed: a request body, a cookie value, the seeded password, a
+// `Runtime.evaluate` expression. Cookie values are cut to their length; URLs lose their query
+// values; only named elements and booleans are read from the Dashboard.
+import { writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+// The seeded demo operator, read from the project's own seed source (never printed).
+import { DEMO_OPERATOR_PASSWORD, OPERATORS } from '../../../packages/shared/src/sim/dataset.ts'
+
+const [devPort, vitePort, outJson, assetsDir] = process.argv.slice(2)
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+const ORIGIN = `http://127.0.0.1:${vitePort}`
+const supervisor = OPERATORS.find((operator) => operator.role === 'SUPERVISOR')
+const investigator = OPERATORS.find((operator) => operator.role === 'INVESTIGATOR')
+if (!supervisor || !investigator || typeof DEMO_OPERATOR_PASSWORD !== 'string') throw new Error('the seed source has no SUPERVISOR, no INVESTIGATOR or no demo password constant')
+
+const list = await (await fetch(`http://127.0.0.1:${devPort}/json/list`)).json()
+const target = list.find((t) => t.type === 'page')
+const ws = new WebSocket(target.webSocketDebuggerUrl)
+await new Promise((r) => ws.addEventListener('open', r, { once: true }))
+
+let id = 0
+const pending = new Map()
+let requests = new Map() // requestId -> { method, url, status }
+let sockets = new Map() // requestId -> { url, status, frames: [type...], cookieSent }
+let consoleLines = []
+let loadFired = false
+
+const cleanUrl = (url) => String(url).replace(/\?.*$/, (query) => (query.length > 1 ? '?…' : ''))
+const typeOf = (payload) => {
+  try {
+    return JSON.parse(payload).type ?? '(no type)'
+  } catch {
+    return '(not JSON)'
+  }
+}
+const pick = (headers, name) => {
+  for (const [key, value] of Object.entries(headers ?? {})) if (key.toLowerCase() === name) return value
+  return null
+}
+
+ws.addEventListener('message', (event) => {
+  const msg = JSON.parse(event.data)
+  if (msg.id && pending.has(msg.id)) {
+    const { resolve, reject } = pending.get(msg.id)
+    pending.delete(msg.id)
+    // The error of a failed call is reported by its code only: its text can quote the expression.
+    msg.error ? reject(new Error(`CDP error ${msg.error.code}`)) : resolve(msg.result)
+    return
+  }
+  const p = msg.params ?? {}
+  switch (msg.method) {
+    case 'Page.loadEventFired':
+      loadFired = true
+      break
+    case 'Network.requestWillBeSent':
+      // Never `p.request.postData`.
+      requests.set(p.requestId, { method: p.request.method, url: cleanUrl(p.request.url), status: null })
+      break
+    case 'Network.responseReceived': {
+      const entry = requests.get(p.requestId)
+      if (entry) entry.status = p.response.status
+      break
+    }
+    case 'Network.loadingFailed': {
+      const entry = requests.get(p.requestId)
+      if (entry && entry.status === null) entry.status = `failed: ${p.errorText}`
+      break
+    }
+    case 'Network.webSocketCreated':
+      sockets.set(p.requestId, { url: cleanUrl(p.url), status: null, frames: [] })
+      break
+    case 'Network.webSocketWillSendHandshakeRequest': {
+      const entry = sockets.get(p.requestId)
+      if (entry) entry.cookieSent = pick(p.request.headers, 'cookie') ? 'yes (value not recorded)' : 'no'
+      break
+    }
+    case 'Network.webSocketHandshakeResponseReceived': {
+      const entry = sockets.get(p.requestId)
+      if (entry) entry.status = p.response.status
+      break
+    }
+    case 'Network.webSocketFrameReceived': {
+      const entry = sockets.get(p.requestId)
+      if (entry && entry.frames.length < 400) entry.frames.push(typeOf(p.response.payloadData))
+      break
+    }
+    case 'Network.webSocketClosed': {
+      const entry = sockets.get(p.requestId)
+      if (entry) entry.closed = true
+      break
+    }
+    case 'Runtime.exceptionThrown':
+      consoleLines.push(`exception: ${String(p.exceptionDetails?.exception?.description ?? p.exceptionDetails?.text).slice(0, 240)}`)
+      break
+    case 'Runtime.consoleAPICalled':
+      if (p.type === 'error' || p.type === 'warning') {
+        const text = (p.args ?? [])
+          .map((arg) => {
+            if (arg.value !== undefined) return String(arg.value)
+            const preview = arg.preview?.properties?.map((property) => `${property.name}: ${property.value}`).join(', ')
+            return preview ? `{${preview}}` : String(arg.description ?? arg.type)
+          })
+          .join(' ')
+        consoleLines.push(`${p.type}: ${text.slice(0, 420)}`)
+      }
+      break
+  }
+})
+
+const send = (method, params = {}) =>
+  new Promise((resolve, reject) => {
+    const n = ++id
+    pending.set(n, { resolve, reject })
+    ws.send(JSON.stringify({ id: n, method, params }))
+  })
+
+/** Runs page script. A failure is reported without the expression and without the page's own message. */
+const evaluate = async (expression, label) => {
+  const result = await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true })
+  if (result.exceptionDetails) throw new Error(`page script failed: ${label}`)
+  return result.result.value
+}
+
+const navigate = async (url, settleMs = 3500) => {
+  loadFired = false
+  await send('Page.navigate', { url })
+  for (let i = 0; i < 150 && !loadFired; i++) await sleep(100)
+  await sleep(settleMs) // the dev client's socket, the lazy route chunk, the entrance motion
+  return loadFired
+}
+
+/** Waits until the page holds (or no longer holds) an element with this test ID. Returns whether it did in time. */
+const waitFor = async (testId, present = true, timeoutMs = 15000) => {
+  const until = Date.now() + timeoutMs
+  while (Date.now() < until) {
+    const found = await evaluate(`document.querySelector('[data-testid="${testId}"]') !== null`, `wait ${testId}`)
+    if (found === present) return true
+    await sleep(150)
+  }
+  return false
+}
+
+const screenshot = async (name) => {
+  const { data } = await send('Page.captureScreenshot', { format: 'png' })
+  const file = join(assetsDir, name)
+  writeFileSync(file, Buffer.from(data, 'base64'))
+  return file
+}
+
+/** Types into the input of a field by script: focus, select what is there, insert. The text is not echoed. */
+const typeInto = async (fieldTestId, text, label) => {
+  const focused = await evaluate(
+    `(() => { const el = document.querySelector('[data-testid="${fieldTestId}"] input'); if (!el) return false; el.focus(); el.select(); return document.activeElement === el })()`,
+    `focus ${label}`,
+  )
+  if (!focused) throw new Error(`the field ${label} could not be focused`)
+  await send('Input.insertText', { text })
+}
+const press = (testId) => evaluate(`(() => { const el = document.querySelector('[data-testid="${testId}"]'); if (!el) return false; el.click(); return true })()`, `press ${testId}`)
+
+/** What the page did since the last call, and a new record for what follows. */
+const takeNetwork = () => {
+  const taken = {
+    api: [...requests.values()].filter((entry) => entry.url.includes('/api/v1/')),
+    origins: [...new Set([...requests.values()].map((entry) => { try { return new URL(entry.url).origin } catch { return '(other)' } }))].sort(),
+    sockets: [...sockets.values()]
+      .filter((entry) => entry.url.endsWith('/ws'))
+      .map((entry) => ({ url: entry.url, status: entry.status, cookieSent: entry.cookieSent ?? null, closed: entry.closed === true, frameCount: entry.frames.length, firstTypes: entry.frames.slice(0, 4), distinctTypes: [...new Set(entry.frames)].sort() })),
+    console: consoleLines,
+  }
+  requests = new Map()
+  sockets = new Map()
+  consoleLines = []
+  return taken
+}
+
+
+// ════════════════════════════════════ W69: the steps ════════════════════════════════════
+
+/** Named facts of the Evidence page, and booleans over its words (the page holds no credential). */
+const evidenceFacts = (label) =>
+  evaluate(
+    `(() => {
+      const q = (id) => document.querySelector('[data-testid="' + id + '"]')
+      const text = (id) => q(id)?.textContent?.replace(/\\s+/g, ' ').trim() ?? null
+      const card = q('evidence-verify-card')
+      const bundled = q('evidence-bundled')
+      return {
+        href: location.origin + location.pathname,
+        shellMode: text('shell-mode'),
+        page: q('page-evidence-detail') ? 'detail' : q('page-evidence') ? 'list' : null,
+        listRows: document.querySelectorAll('[data-row-id]').length,
+        packageChip: q('evidence-package-chip')?.getAttribute('data-package') ?? null,
+        integrityMode: q('evidence-integrity')?.getAttribute('data-mode') ?? null,
+        hashesSource: q('evidence-hashes')?.getAttribute('data-source') ?? null,
+        verdict: card?.querySelector('[data-testid="evidence-verdict"]')?.getAttribute('data-verdict') ?? null,
+        checks: card ? [...card.querySelectorAll('[data-check]')].map((el) => el.getAttribute('data-check') + ':' + el.getAttribute('data-phase') + ':' + el.getAttribute('data-source')) : [],
+        verifyLabel: text('evidence-verify-label'),
+        bundled: bundled ? { phase: bundled.getAttribute('data-phase'), verdict: bundled.getAttribute('data-verdict') } : null,
+        differs: q('evidence-bundled-differs') !== null,
+        custodyTop: q('evidence-custody')?.querySelector('[data-custody-action]')?.getAttribute('data-custody-action') ?? null,
+        wizardSteps: ['reason', 'authorise', 'verify', 'export'].filter((s) => q('export-step-' + s) !== null),
+        exportDenied: text('export-denied'),
+        reasonRefusedShown: (document.body.textContent ?? '').includes('The Core server did not accept this reason'),
+        verifyCardSaysSimulated: /simulat/i.test(card?.textContent ?? ''),
+        toasts: [...document.querySelectorAll('[data-slot="toast"]')].map((el) => el.textContent?.replace(/\\s+/g, ' ').trim()),
+      }
+    })()`,
+    label,
+  )
+
+const signInThroughTheForm = async (operator, label) => {
+  await waitFor('page-login', true, 15000)
+  await typeInto('login-username-field', operator.username, `${label} username`)
+  await typeInto('login-password-field', DEMO_OPERATOR_PASSWORD, `${label} password`)
+  await press('login-submit')
+  const arrived = await waitFor('page-dashboard', true, 25000)
+  await sleep(2500)
+  return arrived
+}
+const signOutByPage = async () => {
+  const answer = await evaluate(
+    `(async () => { const r = await fetch('/api/v1/auth/sign-out', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ reason: 'USER' }) }); return { status: r.status } })()`,
+    'sign-out',
+  )
+  const back = await waitFor('page-login', true, 15000)
+  await sleep(1500)
+  return { ...answer, loginShown: back }
+}
+/** Types into a text area by script: focus, select what is there, insert. The text is not echoed. */
+const typeIntoArea = async (testId, text, label) => {
+  const focused = await evaluate(
+    `(() => { const el = document.querySelector('[data-testid="${testId}"]'); if (!el) return false; el.focus(); el.select?.(); return document.activeElement === el })()`,
+    `focus ${label}`,
+  )
+  if (!focused) throw new Error(`the field ${label} could not be focused`)
+  await send('Input.insertText', { text })
+}
+/** Waits until a button is there and enabled, then presses it. */
+const pressWhenEnabled = async (testId, timeoutMs = 15000) => {
+  const until = Date.now() + timeoutMs
+  while (Date.now() < until) {
+    const ready = await evaluate(
+      `(() => { const el = document.querySelector('[data-testid="${testId}"]'); return !!el && !el.disabled && el.getAttribute('aria-disabled') !== 'true' })()`,
+      `enabled ${testId}`,
+    )
+    if (ready) return press(testId)
+    await sleep(150)
+  }
+  return false
+}
+/** Polls the page until `predicate(facts)` holds; returns the last facts. */
+const until = async (predicate, label, timeoutMs = 20000) => {
+  const end = Date.now() + timeoutMs
+  let facts = await evidenceFacts(label)
+  while (!predicate(facts) && Date.now() < end) {
+    await sleep(250)
+    facts = await evidenceFacts(label)
+  }
+  return facts
+}
+/** The Core's evidence list as this operator may read it: IDs and statuses only. */
+const evidenceList = () =>
+  evaluate(`(async () => { const r = await fetch('/api/v1/evidence?limit=50', { credentials: 'same-origin' }); const b = await r.json(); return { status: r.status, items: (b.items ?? []).map((i) => ({ id: i.id, status: i.status })) } })()`, 'evidence list')
+/** The Core's media reference of one item (operation 40): source and suffix only. */
+const mediaOf = (evidenceId) =>
+  evaluate(`(async () => { const r = await fetch('/api/v1/evidence/${evidenceId}', { credentials: 'same-origin' }); const b = await r.json(); return { status: r.status, media: b.media ?? null } })()`, 'media reference')
+/** The EXPORT_DENIED rows of one item, newest first (every signed-in role may read the audit log): count and non-secret members. */
+const deniedRows = (evidenceId) =>
+  evaluate(
+    `(async () => { const r = await fetch('/api/v1/audit?type=EXPORT_DENIED&evidenceId=${evidenceId}&order=DESC&limit=50', { credentials: 'same-origin' }); const b = await r.json(); return { status: r.status, count: (b.rows ?? []).length, newest: b.rows?.[0] ? { seq: b.rows[0].seq, type: b.rows[0].type, actorId: b.rows[0].actorId, evidenceId: b.rows[0].evidenceId, details: b.rows[0].details } : null } })()`,
+    'denied rows',
+  )
+const escape = async () => {
+  await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 })
+  await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 })
+  await sleep(400)
+}
+const evidenceRequests = (network) => network.api.filter((entry) => /\/api\/v1\/(evidence|demo|faults)/.test(entry.url))
+
+const started = Date.now()
+await send('Network.enable')
+await send('Page.enable')
+await send('Runtime.enable')
+await send('Emulation.setDeviceMetricsOverride', { width: 1600, height: 1000, deviceScaleFactor: 1, mobile: false })
+const version = await send('Browser.getVersion')
+const result = { browser: { product: version.product, headless: /Headless/i.test(version.userAgent) }, viewport: '1600x1000', steps: {} }
+
+// ── 1. Live, the seeded SUPERVISOR through the form, then the Evidence list on the Core's data ──
+await navigate(`${ORIGIN}/login`)
+const loginCoreMode = await evaluate(`document.querySelector('[data-testid="page-login"]')?.getAttribute('data-core-mode') ?? null`, 'login mode')
+takeNetwork()
+const supervisorIn = await signInThroughTheForm(supervisor, 'supervisor')
+await navigate(`${ORIGIN}/evidence`, 3000)
+await waitFor('evidence-list-body', true, 20000)
+await sleep(2000)
+const coreList = await evidenceList()
+const bySuffix = (suffix) => coreList.items.find((item) => item.id.endsWith(`-${suffix}`)) ?? null
+const tampered = bySuffix('0005')
+const pristine = bySuffix('0001')
+result.steps.liveList = { loginCoreMode, signedIn: supervisorIn, coreList: { status: coreList.status, count: coreList.items.length, tampered, pristine }, facts: await evidenceFacts('live list'), screenshot: await screenshot('69_evidence_list_live.png'), network: takeNetwork() }
+
+// ── 2. Site A6 on the tampered item: the Core's verdict, the bundled package beside it ──
+if (tampered) {
+  const media = await mediaOf(tampered.id)
+  await navigate(`${ORIGIN}/evidence/${tampered.id}?tab=integrity`, 3000)
+  await waitFor('evidence-detail-body', true, 20000)
+  await sleep(1500)
+  const before = await evidenceFacts('before verify')
+  takeNetwork()
+  const pressed = await press('evidence-verify')
+  const settled = await until((f) => f.verdict === 'PASS' || f.verdict === 'FAIL' || f.verdict === 'ERROR', 'verdict')
+  const after = await until((f) => !f.bundled || f.bundled.phase !== 'running', 'bundled', 20000)
+  await sleep(1200)
+  const shot = await screenshot('69_evidence_verify_live.png')
+  const network = takeNetwork()
+  result.steps.verifyTampered = { evidenceId: tampered.id, coreMediaReference: media, before, pressed, verdictAt: settled.verdict, facts: after, screenshot: shot, evidenceRequests: evidenceRequests(network), network }
+}
+
+// ── 3. Site A6 on a pristine item, then site A5 refused by the Core: a reason the form accepts
+//    (three astral characters: six UTF-16 code units) that the Core counts as three characters → 422 ──
+if (pristine) {
+  await navigate(`${ORIGIN}/evidence/${pristine.id}?tab=integrity`, 3000)
+  await waitFor('evidence-detail-body', true, 20000)
+  await sleep(1000)
+  takeNetwork()
+  await press('evidence-verify')
+  const verified = await until((f) => f.verdict === 'PASS' || f.verdict === 'FAIL' || f.verdict === 'ERROR', 'pristine verdict')
+  await sleep(800)
+  result.steps.verifyPristine = { evidenceId: pristine.id, facts: verified, screenshot: await screenshot('69_evidence_verify_pass_live.png'), evidenceRequests: evidenceRequests(takeNetwork()) }
+
+  await press('evidence-export')
+  await waitFor('export-wizard', true, 10000)
+  await sleep(600)
+  await typeIntoArea('export-reason', '\u{1D400}\u{1D401}\u{1D402}', 'reason')
+  await sleep(300)
+  await pressWhenEnabled('export-next')
+  await waitFor('export-step-authorise', true, 10000)
+  await pressWhenEnabled('export-authorise')
+  await sleep(400)
+  await pressWhenEnabled('export-next')
+  const source = await until((f) => f.wizardSteps.includes('verify'), 'verify step', 10000)
+  await sleep(2500)
+  await pressWhenEnabled('export-next', 20000)
+  await waitFor('export-submit', true, 10000)
+  takeNetwork()
+  await pressWhenEnabled('export-submit')
+  const refused = await until((f) => f.reasonRefusedShown, 'reason refused', 15000)
+  await sleep(800)
+  result.steps.exportRefused422 = { evidenceId: pristine.id, sourceStep: source.wizardSteps, facts: refused, screenshot: await screenshot('69_export_refused_422_live.png'), evidenceRequests: evidenceRequests(takeNetwork()) }
+  await escape()
+}
+
+// ── 4. Site D-6: the seeded INVESTIGATOR (no EVIDENCE_EXPORT) asks for authorisation → the Core's 403 and its guard row ──
+{
+  const signOut = await signOutByPage()
+  takeNetwork()
+  const investigatorIn = await signInThroughTheForm(investigator, 'investigator')
+  const target = pristine ?? tampered
+  if (target) {
+    const deniedBefore = await deniedRows(target.id)
+    await navigate(`${ORIGIN}/evidence/${target.id}`, 3000)
+    await waitFor('evidence-detail-body', true, 20000)
+    await sleep(1000)
+    await press('evidence-export')
+    await waitFor('export-wizard', true, 10000)
+    await sleep(600)
+    await typeIntoArea('export-reason', 'Prosecutor review request', 'reason')
+    await pressWhenEnabled('export-next')
+    await waitFor('export-step-authorise', true, 10000)
+    takeNetwork()
+    await pressWhenEnabled('export-authorise')
+    const denied = await until((f) => f.exportDenied !== null, 'denied', 15000)
+    await sleep(800)
+    const shot = await screenshot('69_export_denied_403_live.png')
+    const network = takeNetwork()
+    const deniedAfter = await deniedRows(target.id)
+    result.steps.deniedInvestigator = { signOut, signedIn: investigatorIn, evidenceId: target.id, deniedRowsBefore: deniedBefore, deniedRowsAfter: deniedAfter, facts: denied, screenshot: shot, evidenceRequests: evidenceRequests(network) }
+    await escape()
+  }
+}
+
+// ── 5. Simulated mode (the stored choice wins over the lane's preset). Sign In needs mock-core on
+// 127.0.0.1:4400, which this check may not start (F63-3, D152): the simulator's own stored sign-in
+// (`dems.auth`: operator ID and time, no credential) is written instead, as W63 did (DV-2). ──
+{
+  const signOut = await signOutByPage()
+  await evaluate(`localStorage.setItem('dems.core.mode.v1', 'SIMULATED')`, 'store SIMULATED')
+  takeNetwork()
+  await navigate(`${ORIGIN}/login`)
+  await waitFor('page-login', true, 15000)
+  const coreMode = await evaluate(`document.querySelector('[data-testid="page-login"]')?.getAttribute('data-core-mode') ?? null`, 'login mode')
+  await sleep(1200)
+  const submitDisabled = await evaluate(`document.querySelector('[data-testid="login-submit"]')?.hasAttribute('disabled') || document.querySelector('[data-testid="login-submit"]')?.getAttribute('aria-disabled') === 'true'`, 'submit disabled')
+  await evaluate(`sessionStorage.setItem('dems.auth', JSON.stringify({ operatorId: ${JSON.stringify(supervisor.id)}, issuedAt: Date.now() }))`, 'simulated stored sign-in')
+  await navigate(`${ORIGIN}/evidence`, 3500)
+  await waitFor('evidence-list-body', true, 20000)
+  await sleep(2000)
+  const listFacts = await evidenceFacts('simulated list')
+  const listShot = await screenshot('69_evidence_simulated.png')
+  const simId = await evaluate(`[...document.querySelectorAll('[data-row-id]')].map((el) => el.getAttribute('data-row-id')).find((id) => id.endsWith('-0001')) ?? [...document.querySelectorAll('[data-row-id]')].map((el) => el.getAttribute('data-row-id')).at(-1) ?? null`, 'simulated id')
+  let verifyFacts = null
+  let verifyShot = null
+  if (simId) {
+    await navigate(`${ORIGIN}/evidence/${simId}?tab=integrity`, 3000)
+    await waitFor('evidence-detail-body', true, 20000)
+    await sleep(1000)
+    await press('evidence-verify')
+    verifyFacts = await until((f) => f.verdict === 'PASS' || f.verdict === 'FAIL' || f.verdict === 'ERROR', 'simulated verdict', 30000)
+    await sleep(1000)
+    verifyShot = await screenshot('69_evidence_verify_simulated.png')
+  }
+  const network = takeNetwork()
+  result.steps.simulated = {
+    signOutOfLive: signOut,
+    loginCoreMode: coreMode,
+    submitDisabledOnTheLoginPage: submitDisabled,
+    signInPath: 'stored simulated sign-in (dems.auth), because Sign In is disabled while mock-core is offline (F63-3)',
+    listFacts,
+    listScreenshot: listShot,
+    simulatedEvidenceId: simId,
+    verifyFacts,
+    verifyScreenshot: verifyShot,
+    apiRequestsToTheDevServer: network.api.length,
+    socketsToTheDevServerWs: network.sockets.filter((s) => s.url.startsWith(`ws://127.0.0.1:${vitePort}/ws`)).length,
+    console: network.console,
+  }
+  await evaluate(`localStorage.removeItem('dems.core.mode.v1'); sessionStorage.removeItem('dems.auth')`, 'leave the origin as found')
+}
+result.elapsedSeconds = Math.round((Date.now() - started) / 1000)
+
+// Last line of defence: the password may not be in what is written, whatever a page showed.
+let text = JSON.stringify(result, null, 2)
+const passwordSeen = text.includes(DEMO_OPERATOR_PASSWORD)
+if (passwordSeen) text = text.split(DEMO_OPERATOR_PASSWORD).join('***')
+text = text.replace(/\b(ses|dvc|bio)_[A-Za-z0-9_-]+/g, '$1_***')
+writeFileSync(outJson, `${text}\n`)
+console.log(text)
+console.log(`the output held the seeded password before redaction: ${passwordSeen}`)
+ws.close()

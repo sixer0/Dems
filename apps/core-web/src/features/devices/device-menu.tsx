@@ -1,11 +1,13 @@
 import type { Key } from 'react'
-import { Button, Description, Dropdown, Label } from '@heroui/react'
+import { Button, Description, Dropdown, Label, Spinner } from '@heroui/react'
 import { motion } from 'motion/react'
 import { Activity, EllipsisVertical, Info, Lightbulb, RotateCcw } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Permission, selectCan, useSim } from '@dems/shared/sim'
+import { usePendingReveal } from '@/lib/pending-control'
 import { useMotionPolicy } from '@/motion'
 import { useDeviceActions, useIdentify, type DeviceAction } from './context'
+import { useDeviceWords } from './live'
 import { selectIsRecordingNow } from './model'
 import { COMMANDABLE, IDENTIFY_BLINKS, IDENTIFY_PERIOD_MS, type DeviceId } from './sim-adapter'
 
@@ -25,10 +27,18 @@ function isDeviceAction(key: Key): key is DeviceAction {
  * Test signal, Identify (blink) and Restart, all simulated `deviceCommand`s (audit DEVICE_COMMAND).
  * Test signal and Restart exist on the commandable devices; Identify on every device (step 54).
  * Restart needs DEVICE_MANAGE (TECHNICIAN) and is unavailable while recording.
+ *
+ * Live mode (plan row W70; LB-1, §3.2): while a command of this device is out its three command
+ * items are disabled (Details stays), and after `LIVE_PENDING_REVEAL_MS` the trigger shows the
+ * kit's spinner in place of its icon. The kit's `Button` does not pass `aria-busy` on, so the
+ * tile head that holds this menu carries it. The two command words lose "(simulated)".
  */
 export function DeviceMenu({ deviceId, name }: DeviceMenuProps) {
   const { t } = useTranslation()
-  const { run } = useDeviceActions()
+  const { run, pending } = useDeviceActions()
+  const words = useDeviceWords()
+  const busy = pending.has(deviceId)
+  const showPending = usePendingReveal(busy)
   const m = useMotionPolicy()
   const canManage = useSim((s) => selectCan(s, Permission.DEVICE_MANAGE))
   const recording = useSim(selectIsRecordingNow)
@@ -39,18 +49,32 @@ export function DeviceMenu({ deviceId, name }: DeviceMenuProps) {
       ? t('devices.actions.restartWhileRecording')
       : null
   const label = `${t('common.deviceMenu.label')}: ${name}`
+  const disabledKeys = busy ? ['testSignal', 'identify', 'restart'] : restartReason ? ['restart'] : []
 
   return (
     <Dropdown>
-      <Button isIconOnly size="sm" variant="ghost" aria-label={label} className="dev-kebab" data-testid={`device-menu-${deviceId}`}>
-        <motion.span className="inline-flex" {...m.interactions.iconPress}>
-          <EllipsisVertical aria-hidden="true" size={18} />
-        </motion.span>
+      <Button
+        isIconOnly
+        size="sm"
+        variant="ghost"
+        aria-label={label}
+        className="dev-kebab"
+        data-testid={`device-menu-${deviceId}`}
+        // Only while the spinner shows: Simulated mode renders the trigger exactly as before.
+        {...(showPending ? { isPending: true, 'data-pending': 'true' } : {})}
+      >
+        {showPending ? (
+          <Spinner size="sm" color="current" aria-hidden="true" />
+        ) : (
+          <motion.span className="inline-flex" {...m.interactions.iconPress}>
+            <EllipsisVertical aria-hidden="true" size={18} />
+          </motion.span>
+        )}
       </Button>
       <Dropdown.Popover placement="bottom end" className="min-w-[240px]">
         <Dropdown.Menu
           aria-label={label}
-          disabledKeys={restartReason ? ['restart'] : []}
+          disabledKeys={disabledKeys}
           onAction={(key) => {
             if (isDeviceAction(key)) run(deviceId, key)
           }}
@@ -60,9 +84,9 @@ export function DeviceMenu({ deviceId, name }: DeviceMenuProps) {
             <Label>{t('common.deviceMenu.details')}</Label>
           </Dropdown.Item>
           {commandable ? (
-            <Dropdown.Item id="testSignal" textValue={t('common.deviceMenu.testSignal')}>
+            <Dropdown.Item id="testSignal" textValue={t(words.testSignal)}>
               <Activity aria-hidden="true" size={16} />
-              <Label>{t('common.deviceMenu.testSignal')}</Label>
+              <Label>{t(words.testSignal)}</Label>
             </Dropdown.Item>
           ) : null}
           <Dropdown.Item id="identify" textValue={t('common.deviceMenu.identify')}>
@@ -70,10 +94,10 @@ export function DeviceMenu({ deviceId, name }: DeviceMenuProps) {
             <Label>{t('common.deviceMenu.identify')}</Label>
           </Dropdown.Item>
           {commandable ? (
-            <Dropdown.Item id="restart" textValue={t('common.deviceMenu.restart')}>
+            <Dropdown.Item id="restart" textValue={t(words.restart)}>
               <RotateCcw aria-hidden="true" size={16} />
               <div className="flex flex-col">
-                <Label>{t('common.deviceMenu.restart')}</Label>
+                <Label>{t(words.restart)}</Label>
                 {restartReason ? <Description>{restartReason}</Description> : null}
               </div>
             </Dropdown.Item>

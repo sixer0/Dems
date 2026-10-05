@@ -1,0 +1,114 @@
+#!/usr/bin/env python3
+"""W64 mutation check (rule M15: no file of the workspace tree is changed).
+
+Each mutation is ONE text replacement in ONE module, applied in memory by the transform plugin of
+vitest.mutation.config.mts (W55's pattern). A mutation is DETECTED when the named tests fail while the
+mutation was really applied (the plugin leaves a marker file under TMPDIR). Run from the workspace root:
+    python3 .cache/w64/mut/run_mutations.py check | run [ids]
+"""
+import json, os, subprocess, sys, time
+
+ROOT = os.getcwd()
+HERE = os.path.join(ROOT, '.cache/w64/mut')
+CONFIG = '.cache/w64/mut/vitest.mutation.config.mts'
+APPLIED = os.path.join(os.environ['TMPDIR'], 'w64-mut-applied')
+os.makedirs(APPLIED, exist_ok=True)
+L = 'apps/core-web/src/features/session-new/'
+CREATE = 'src/test/live-session-new-create.test.tsx'
+PRE = 'src/test/live-session-new-precheck.test.tsx'
+PEND = 'src/test/live-session-new-pending.test.tsx'
+SIM = 'src/features/session-new/__tests__/session-new.test.tsx'
+
+M = []
+def m(id, file, what, find, replace, tests):
+    M.append({'id': id, 'file': L + file, 'what': what, 'find': find, 'replace': replace, 'tests': tests})
+
+F = 'index.tsx'
+m('P01', F, 'FC-7: the in-flight marker of the resume effect is ignored', "    if (precheckInFlight.current === sessionId) return\n", "", [PRE])
+m('P02', F, 'A3: a Live 403 shows the Simulated sentence, not the denied toast', "if (live && result.reason === 'NOT_PERMITTED')", "if (false && result.reason === 'NOT_PERMITTED')", [CREATE])
+m('P03', F, 'A3/D-3: the presenter is skipped in the catch of createAndCheck', "      if (presentCoreError(error) !== null) return\n      toast.danger(t('sessionNew.errors.precheck'))\n    } finally {", "      toast.danger(t('sessionNew.errors.precheck'))\n    } finally {", [CREATE])
+m('P04', F, 'D-3: the pre-check is not awaited before step 2', "await beginPrecheckOnce(created.id)", "void beginPrecheckOnce(created.id)", [CREATE])
+m('P05', F, 'C-3: the state read after the create is ignored (a pre-check is always sent)', "if (created?.state === SessionState.CREATE) await", "if (created) await", [CREATE])
+m('P06', F, 'D-2: the cancel is not awaited before the second create', "        await actions.cancel()\n", "        void actions.cancel()\n", [CREATE])
+m('P07', F, 'A3: a second submit is not ignored while a create is out', "    if (creating || createInFlight.current) return\n", "    if (creating) return\n", [CREATE])
+m('P08', F, 'A4: the scanned number is not written into the field', "ok: (caseNumber) => form.setValue(", "ok: (caseNumber) => caseNumber === '' && form.setValue(", [CREATE, PEND])
+m('P09', F, 'A4: a refused scan is not handed to the presenter', "            presentCoreError(error)\n          }),", "          }),", [CREATE])
+m('P10', F, 'B-6: step 3 opens although the acknowledgement was refused', "        })\n      })\n      return\n    }\n    goTo(3)", "        })\n      })\n    }\n    goTo(3)", [PRE])
+m('P11', F, 'B-6: the start toast and the navigation do not wait for the answer', "        ok: () => {\n          toast.success(", "        ok: () => undefined,\n        _ok: () => {\n          toast.success(", [PRE])
+m('P12', F, 'B-6: a refused start is not handed to the presenter', "          logSessionNew('error', 'startRecording', error, { sessionId: id, correlationId: correlation.current })\n          if (presentCoreError(error) !== null) return\n", "          logSessionNew('error', 'startRecording', error, { sessionId: id, correlationId: correlation.current })\n", [PRE])
+m('P13', F, 'B-6: a refused cancel closes the dialog and leaves', "          logSessionNew('error', 'cancel', error, { sessionId: current.id, correlationId: correlation.current })\n", "          logSessionNew('error', 'cancel', error, { sessionId: current.id, correlationId: correlation.current })\n          leave()\n", [PRE])
+m('P14', F, 'B-6: a refused retry is not handed to the presenter', "          logSessionNew('error', 'retryPrecheck', error, { sessionId, correlationId: correlation.current })\n          if (presentCoreError(error) !== null) return\n", "          logSessionNew('error', 'retryPrecheck', error, { sessionId, correlationId: correlation.current })\n", [PRE])
+# CLG (c) is a scan of the files on disk: an in-memory mutation cannot reach it. Its negative control is inside the test.
+m('P16', F, 'the Live flag is not passed to the Devices step', "        live={live}\n", "", [PRE])
+
+F = 'use-pending-control.ts'
+m('H01', F, 'the spinner shows at once', "      }, revealMs.current)", "      }, 0)", [PEND])
+m('H02', F, 'a second press is not ignored', "    if (inFlight.current) return false\n", "", [PEND])
+m('H03', F, 'nothing is shown while a command is in flight', "    if (!released) {\n      setPhase('busy')", "    if (false) {\n      setPhase('busy')", [PEND])
+m('H04', F, 'aria-busy is never written', "    else element.setAttribute('aria-busy', 'true')", "    else element.removeAttribute('aria-busy')", [PEND])
+m('H05', F, 'the reveal timer outlives the answer', "      if (timer.current !== null) clearTimeout(timer.current)\n      timer.current = null\n      setPhase('idle')", "      setPhase('idle')", [PEND])
+
+F = 'sim-adapter.ts'
+m('S01', F, 'a refused scan leaves the field empty (no fallback)', "      onRefused(error)\n      return fallback()", "      onRefused(error)\n      throw error", [CREATE])
+m('S02', F, 'a refused scan is not reported to the page', "      onRefused(error)\n      return fallback()", "      return fallback()", [CREATE])
+
+F = 'devices-step.tsx'
+m('D01', F, 'the Live sentence shows in Simulated mode too', "const linkBlocked = live && blocked.some(", "const linkBlocked = blocked.some(", [PEND])
+m('D02', F, 'Live: "clear the fault" is still shown for a missing tablet', "{onlyLinkBlocked ? null : <Alert.Description>", "{false ? null : <Alert.Description>", [PRE, PEND])
+
+def dump():
+    with open(os.path.join(HERE, 'mutations.json'), 'w', encoding='utf8') as handle:
+        json.dump([{k: mu[k] for k in ('id', 'file', 'find', 'replace')} for mu in M], handle, indent=1)
+
+def check():
+    dump()
+    bad = 0
+    for mu in M:
+        text = open(os.path.join(ROOT, mu['file']), encoding='utf8').read()
+        count = text.count(mu['find'])
+        if count != 1:
+            bad += 1
+            print(f"{mu['id']}: the text occurs {count} times in {mu['file']}")
+    ids = [mu['id'] for mu in M]
+    assert len(ids) == len(set(ids)), 'duplicate id'
+    print(f"{len(M)} mutations; texts that do not occur exactly once: {bad}")
+    return bad
+
+def vitest(mid, tests):
+    env = dict(os.environ)
+    env['W64_APPLIED_DIR'] = APPLIED
+    if mid: env['W64_MUT'] = mid
+    else: env.pop('W64_MUT', None)
+    started = time.time()
+    done = subprocess.run(['npx', 'vitest', 'run', '--config', CONFIG, '--maxWorkers=2', *tests], cwd=ROOT, env=env, capture_output=True, text=True)
+    out = done.stdout + done.stderr
+    summary = ' | '.join(line.strip() for line in out.splitlines() if line.strip().startswith(('Test Files', 'Tests ')))
+    first = next((line.strip() for line in out.splitlines() if line.strip().startswith(('×', 'FAIL'))), '')
+    return done.returncode, summary, first[:200], time.time() - started
+
+def run(ids):
+    if check(): sys.exit(2)
+    chosen = [mu for mu in M if not ids or mu['id'] in ids]
+    log = open(os.path.join(HERE, 'mutations.log'), 'a', encoding='utf8')
+    def say(line):
+        print(line, flush=True); log.write(line + '\n'); log.flush()
+    say(f"## {time.strftime('%Y-%m-%d %H:%M:%S WIB')} baseline (no mutation): the row's test files")
+    code, summary, first, secs = vitest(None, [CREATE, PRE, PEND, SIM])
+    say(f"baseline exit {code} {summary} ({secs:.0f} s)")
+    if code != 0: sys.exit(3)
+    detected, survived, missing = [], [], []
+    for mu in chosen:
+        marker = os.path.join(APPLIED, mu['id'])
+        if os.path.exists(marker): os.remove(marker)
+        code, summary, first, secs = vitest(mu['id'], mu['tests'])
+        applied = os.path.exists(marker)
+        if not applied: missing.append(mu['id']); verdict = 'NOT APPLIED'
+        elif code != 0: detected.append(mu['id']); verdict = 'detected'
+        else: survived.append(mu['id']); verdict = 'SURVIVED'
+        say(f"{mu['id']} {verdict:11} {mu['what']} | {summary} | {first} ({secs:.0f} s)")
+        if os.path.exists(marker): os.remove(marker)
+    say(f"## {time.strftime('%Y-%m-%d %H:%M:%S WIB')} {len(chosen)} mutations: {len(detected)} detected, {len(survived)} survived {survived}, {len(missing)} not applied {missing}")
+
+if __name__ == '__main__':
+    if len(sys.argv) > 1 and sys.argv[1] == 'check': sys.exit(1 if check() else 0)
+    run(sys.argv[2:] if len(sys.argv) > 2 else [])

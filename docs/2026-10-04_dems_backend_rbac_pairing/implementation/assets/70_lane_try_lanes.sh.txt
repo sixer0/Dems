@@ -1,0 +1,20 @@
+#!/bin/sh
+# W70: run the lane check on lane 3 or lane 1, whichever lock is free first (never both, never
+# another lane). `lockf -t 0` does not wait: exit 75 means the lane is busy, and the next is tried;
+# after a full round both are busy and the round is repeated 30 s later (at most 16 rounds).
+set -u
+round=0
+while [ $round -lt 16 ]; do
+  round=$((round + 1))
+  for K in 3 1; do
+    echo "== $(date '+%H:%M:%S') round $round: try the lock of lane $K"
+    /usr/bin/lockf -k -t 0 .locks/core-server.lane$K.lock /bin/sh .cache/w70/lane/run_lane.sh $K > .cache/w70/lane/run_lane$K.log 2>&1
+    code=$?
+    if [ $code -eq 75 ]; then echo "lane $K is busy (lockf exit 75)"; continue; fi
+    echo "lane $K: run_lane.sh exit $code (log .cache/w70/lane/run_lane$K.log)"
+    exit $code
+  done
+  sleep 30
+done
+echo "ABORT: both lanes stayed busy"
+exit 9

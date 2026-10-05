@@ -20,8 +20,14 @@
  *   posters and the two MIC tracks; no adapter invents snapshots.
  * - The simulator's certificate is "ECDSA P-256 (simulated)" while the packages use Ed25519: the
  *   screens show the package certificate (D67 (c); the alignment itself is SIM-GAP-W1, step 54).
+ *
+ * Backend task W74 (client gate CLG item (c), AC-C-53): the action comes from `useCoreActions()`
+ * and goes through `settle`; the clock reading is passed in. Simulated mode only: in Live mode the
+ * Core server's verdict is the record and this guard is not used (04_client_integration_spec §14
+ * point 7; `use-core-verify.ts`).
  */
-import { verifyEvidenceItem, type EvidenceItem, type Sim } from '@dems/shared/sim';
+import { settle, type CoreActions } from '@dems/shared/live';
+import { verifyEvidenceItem, type EpochMs, type EvidenceItem } from '@dems/shared/sim';
 import { reportRuntimeIssue } from '@/runtime';
 import type { IntegrityModel } from './evidence-model';
 
@@ -38,14 +44,15 @@ export type CoreVerificationOutcome =
  * Never throws; every non-recorded outcome is logged to the persistent runtime log.
  */
 export function recordCoreVerification(
-  sim: Sim,
+  actions: Pick<CoreActions, 'verify'>,
+  now: EpochMs,
   item: EvidenceItem,
   integrity: IntegrityModel,
   correlationId?: string,
 ): CoreVerificationOutcome {
   try {
     if (integrity.source === 'package') {
-      const simVerdict = verifyEvidenceItem(item, sim.clock.now()).ok ? 'PASS' : 'FAIL';
+      const simVerdict = verifyEvidenceItem(item, now).ok ? 'PASS' : 'FAIL';
       if (simVerdict !== integrity.verdict) {
         // `info`, not `warn`: a documented, expected condition (debug builds mirror warnings to LogBox).
         reportRuntimeIssue(
@@ -58,10 +65,17 @@ export function recordCoreVerification(
         return 'skipped-mismatch';
       }
     }
-    sim.actions.verify(item.id);
-    return 'recorded';
   } catch (error) {
     reportRuntimeIssue('error', 'evidence.verify.record', error, { evidenceId: item.id }, correlationId);
     return 'failed';
   }
+  let outcome: CoreVerificationOutcome = 'recorded';
+  // The simulator answers before `settle` returns, so `outcome` is final when it is returned.
+  settle(() => actions.verify(item.id), {
+    fail: (error) => {
+      reportRuntimeIssue('error', 'evidence.verify.record', error, { evidenceId: item.id }, correlationId);
+      outcome = 'failed';
+    },
+  });
+  return outcome;
 }

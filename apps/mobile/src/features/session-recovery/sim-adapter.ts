@@ -27,6 +27,7 @@
  *   debug-only `__DEMS_DEBUG__` handle (D66 (c)); the route sync then opens `/session/recovery`.
  *   Proposed closure: a `power-fail` scenario (fault-demo plus POWER_FAIL).
  */
+import type { CoreActions, CoreResult } from '@dems/shared/live';
 import {
   Permission,
   SimPermissionError,
@@ -46,10 +47,16 @@ export function canStartRecovery(role: OperatorRole | null): boolean {
 /**
  * FAULT → RECOVERY for a role that may do it. Throws `SimPermissionError` (SIM-GAP-M81-2) or, from
  * the simulator, `SimTransitionError` when the session is not in FAULT any more.
+ *
+ * Live mode (plan row W73, site S5-2): the check stays as the client-side hint, read from the
+ * replicated role; the Core enforces SESSION_START on operation 33 (`recoverSession`). The action's
+ * result is returned, so the caller consumes it through `settle`: the simulator answers before this
+ * returns, a Live source when the Core answered and the store holds RECOVERY (CL-16). Both shapes of
+ * the action are accepted: the Core actions of either mode, and the simulator's own (step 81's tests).
  */
-export function startRecovery(actions: Pick<SimActions, 'recover'>, role: OperatorRole | null): void {
+export function startRecovery(actions: Pick<CoreActions, 'recover'> | Pick<SimActions, 'recover'>, role: OperatorRole | null): CoreResult<void> {
   if (!canStartRecovery(role)) throw new SimPermissionError('recover', RECOVERY_PERMISSION);
-  actions.recover();
+  return actions.recover();
 }
 
 /** Opening an evidence item needs EVIDENCE_VIEW (every demo role has it; the check keeps the D61 path). */

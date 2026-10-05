@@ -4,7 +4,8 @@ import { Button, Dialog } from 'heroui-native';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { StyleSheet, View } from 'react-native';
-import { spacing } from '@dems/shared/tokens';
+import { palette, spacing } from '@dems/shared/tokens';
+import { PendingSpinner, busyState } from '@/runtime';
 import { reportNavigationIssue } from './log';
 
 /**
@@ -105,31 +106,49 @@ export interface BackGuardDialogProps {
   variant: BackGuardDialogVariant;
   /** `flow` variant: what "Cancel session" does before leaving. */
   onConfirm?: () => void;
+  /**
+   * The leave action's command is out, from the PRESS until it settled (Live mode, LB-1; row M1, W67
+   * F-6 and DN-4): the leave button carries `accessibilityState.busy` and a further press is ignored
+   * (the answer decides). The dialog holds meanwhile (row M1 follow-up F5; S3-1 "keeps its busy state
+   * until the settle", B-6 "leaving happens in `ok`", LB-6 "a dialog stays open"): the stay button is
+   * disabled and ignored, and the dialog cannot be dismissed. Pass `usePendingPress().busy` of
+   * `@/runtime`. Default false: as before.
+   */
+  busy?: boolean;
+  /**
+   * The command has been out for `LIVE_PENDING_REVEAL_MS`: the kit's `Spinner` shows inside the leave
+   * button, before its label (LB-1: spinner late). Pass `usePendingPress().pending`. When omitted it
+   * follows `busy` (the first form of this prop, row M1), so such a caller keeps its behaviour.
+   */
+  pending?: boolean;
 }
 
 /** The §3.6 back-guard Dialog (HeroUI Native `Dialog`), with the copy of `mobile.backGuard.*`. */
-export function BackGuardDialog({ guard, variant, onConfirm }: BackGuardDialogProps) {
+export function BackGuardDialog({ guard, variant, onConfirm, busy = false, pending = busy }: BackGuardDialogProps) {
   const { t } = useTranslation();
   const monitor = variant === 'monitor';
   return (
-    <Dialog isOpen={guard.isPrompting} onOpenChange={(open) => (open ? undefined : guard.stay())}>
+    <Dialog isOpen={guard.isPrompting} onOpenChange={(open) => (open || busy ? undefined : guard.stay())}>
       <Dialog.Portal>
         <Dialog.Overlay />
         <Dialog.Content testID="back-guard-dialog">
           <Dialog.Title>{t(monitor ? 'mobile.backGuard.leaveMonitor' : 'mobile.backGuard.cancelSession')}</Dialog.Title>
           <View style={styles.actions}>
-            <Button testID="back-guard-stay" variant="primary" onPress={guard.stay}>
+            <Button testID="back-guard-stay" variant="primary" onPress={guard.stay} {...(busy ? { isDisabled: true } : {})}>
               <Button.Label>{t(monitor ? 'mobile.backGuard.stayOnMonitor' : 'mobile.backGuard.keepSession')}</Button.Label>
             </Button>
             <Button
               testID="back-guard-leave"
               variant={monitor ? 'outline' : 'danger'}
               onPress={() => {
+                if (busy) return;
                 if (monitor) guard.leaveTo('/home');
                 else if (onConfirm) onConfirm();
                 else guard.leave();
               }}
+              {...busyState(busy)}
             >
+              {pending ? <PendingSpinner color={palette.foreground} testID="back-guard-leave-spinner" /> : null}
               <Button.Label>{t(monitor ? 'mobile.backGuard.goHome' : 'mobile.backGuard.confirmCancel')}</Button.Label>
             </Button>
           </View>

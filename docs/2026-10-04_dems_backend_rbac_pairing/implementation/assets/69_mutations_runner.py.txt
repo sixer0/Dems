@@ -1,0 +1,129 @@
+#!/usr/bin/env python3
+"""W69 mutation check (rule M15: no file of the workspace tree is changed). W63's runner, with this row's list.
+
+Each mutation is ONE text replacement in ONE module, applied in memory by the transform plugin of
+vitest.mutation.config.mts (W63's, renamed). A mutation is DETECTED when the row's tests fail while
+the mutation was really applied (the plugin leaves a marker file under TMPDIR). From the workspace root:
+
+    python3 .cache/w69/mut/run_mutations.py check
+    python3 .cache/w69/mut/run_mutations.py run [ids]
+"""
+import json, os, subprocess, sys, time
+
+ROOT = os.getcwd()
+HERE = os.path.join(ROOT, '.cache/w69/mut')
+CONFIG = '.cache/w69/mut/vitest.mutation.config.mts'
+APPLIED = os.path.join(os.environ['TMPDIR'], 'w69-mut-applied')
+os.makedirs(APPLIED, exist_ok=True)
+
+D = 'apps/core-web/src/features/evidence/'
+T_V = 'src/test/live-evidence-verify.test.tsx'
+T_E = 'src/test/live-evidence-export.test.tsx'
+T_A = 'src/test/live-evidence-archive.test.tsx'
+ALL = [T_V, T_E, T_A]
+
+M = []
+def m(id, file, what, find, replace, tests):
+    M.append({'id': id, 'file': D + file, 'what': what, 'find': find, 'replace': replace, 'tests': tests})
+
+F = 'use-verification.ts'
+m('V01', F, 'Live mode is not seen: the Simulated paths run', "const live = useCoreMode() === CoreMode.LIVE", "const live = false", [T_V])
+m('V02', F, "the Core's checks are labelled as the simulator's", "const views = resultChecks(answer.result, 'core')", "const views = resultChecks(answer.result, 'simulated')", [T_V])
+m('V03', F, 'the presenter is not consulted first (verify)', "if (presentCoreError(error) === null) throw error", "throw error", [T_V])
+m('V04', F, 'the bundled check never runs', "const bundledPkg = live && bundled ? target.pkg : null", "const bundledPkg = null", [T_V])
+m('V05', F, 'a difference is never said', "differs: bundledDiffers(outcome.report, core),", "differs: false,", [T_V])
+m('V06', F, "the verdict shown is not the Core's (always PASS)", "verdict: coreResult.ok ? 'PASS' : 'FAIL',", "verdict: 'PASS',", [T_V])
+F = 'use-evidence-media.ts'
+m('M01', F, "the Core's media reference is ignored (the guarded join stands)", "if (media.status === 'simulated') return row", "if (media.status !== 'loading') return row", [T_V])
+m('M02', F, 'a failed media read is not handed to the presenter', "if (presentCoreError(answer, { permission: Permission.EVIDENCE_VIEW }) === null) {", "if (true) {", [T_V])
+F = 'export-wizard.tsx'
+m('E01', F, 'A5: a 403 for every row does not show the denied Alert', "if (live && everyExportDenied(answers)) {", "if (false) {", [T_E])
+m('E02', F, 'A5: INVALID_REASON does not return to the Reason step', "} else if (live && coreRefusedReason(answers)) {", "} else if (false) {", [T_E])
+m('E03', F, 'D-6: only the first selected row is sent', "          answers.push({ row, result, failureText })\n          next(index + 1)", "          answers.push({ row, result, failureText })\n          next(rows.length)", [T_E])
+m('E04', F, 'D-6: a call the Core let through is still shown as denied', "if (live && anyExportPastGuard(results)) {", "if (false) {", [T_E])
+m('E05', F, "an outage row carries no sentence of the presenter", "else onAnswer(null, exportFailureText(t, notice))", "else onAnswer(null, null)", [T_E])
+m('E06', F, 'the presenter is not consulted (export)', "const notice = presentCoreError(error)", "const notice = null", [T_E])
+m('E07', F, 'the export step is not marked busy', "aria-busy={exporting.busy || undefined}", "data-mutated={exporting.busy || undefined}", [T_E])
+m('E08', F, 'an outage adds a second toast of the page', "else if (accepted.length > 0 || results.some((outcome) => outcome.result !== null)) {", "else {", [T_E])
+m('E09', F, 'C-5: the audit row of the export is not read', "const audit = result?.ok ? latestAuditRowFor(state, row.id, 'EVIDENCE_EXPORTED') : null", "const audit = null", [T_E])
+m('E10', F, 'StrictMode: the source check starts in the mount effect itself (twice in dev)', "    const start = setTimeout(() => void runRef.current(), 0)\n    return () => clearTimeout(start)", "    void runRef.current()\n    return undefined", [T_V])
+F = 'detail-page.tsx'
+m('D01', F, 'the action row is not marked busy', "aria-busy={archiving.busy || undefined}", "data-mutated={archiving.busy || undefined}", [T_A])
+m('D02', F, 'Archive stays enabled while one is out', " && !archiving.busy", "", [T_A])
+m('D03', F, 'StrictMode: the arrival verification starts in the mount effect itself (twice in dev)', "    const start = setTimeout(() => void runRef.current(), 0)\n    return () => clearTimeout(start)", "    void runRef.current()\n    return undefined", [T_V])
+m('D04', F, "Live: an item without a package says 'simulated'", "        : { kind: 'core', label: t('evidence.live.coreRecord') }", "        : { kind: 'simulated', label: t('common.simulated.chip') }", [T_V])
+F = 'use-archive.ts'
+m('A01', F, 'the presenter is not consulted first (archive)', "            if (presentCoreError(error) !== null) return\n", "", [T_A])
+m('A02', F, 'the success toast is shown at the press (optimistic), not after the answer',
+  "        settle(() => actions.archiveEvidence(evidenceId), {\n          ok: () => {\n            toast.success(t('evidence.archive.success', { id: evidenceId }))\n          },",
+  "        toast.success(t('evidence.archive.success', { id: evidenceId }))\n        settle(() => actions.archiveEvidence(evidenceId), {\n          ok: () => undefined,", [T_A])
+m('A03', F, 'the control does not return to idle', "          done: release,", "          done: () => undefined,", [T_A])
+m('A04', F, 'a 409 NOT_SEALED is not the not-sealed warning', "            if (error instanceof SimTransitionError) {", "            if (false) {", [T_A])
+F = 'use-pending-action.ts'
+m('P01', F, 'the spinner shows at once', "      setPhase('busy')\n", "      setPhase('pending')\n", [T_A, T_E])
+m('P02', F, 'the in-flight flag is dropped', "    if (inFlight.current) return false\n", "", [T_E])
+F = 'integrity-tab.tsx'
+m('I01', F, "Live: the verdict card keeps the Simulated words", "                {state.mode === 'core'\n                  ? t('evidence.live.verify.note')", "                {false\n                  ? t('evidence.live.verify.note')", [T_V])
+
+def check():
+    bad = 0
+    for mu in M:
+        text = open(os.path.join(ROOT, mu['file']), encoding='utf8').read()
+        count = text.count(mu['find'])
+        if count != 1:
+            bad += 1
+            print(f"{mu['id']}: the text occurs {count} times in {mu['file']}")
+    ids = [mu['id'] for mu in M]
+    assert len(ids) == len(set(ids)), 'duplicate id'
+    print(f"{len(M)} mutations; texts that do not occur exactly once: {bad}")
+    return bad
+
+def vitest(mid, tests):
+    env = dict(os.environ)
+    env['W69_APPLIED_DIR'] = APPLIED
+    if mid:
+        env['W69_MUT'] = mid
+    else:
+        env.pop('W69_MUT', None)
+    started = time.time()
+    done = subprocess.run(['npx', 'vitest', 'run', '--config', CONFIG, '--maxWorkers=2', *tests], cwd=ROOT, env=env, capture_output=True, text=True)
+    out = done.stdout + done.stderr
+    summary = ' | '.join(line.strip() for line in out.splitlines() if line.strip().startswith(('Test Files', 'Tests ')))
+    first = next((line.strip() for line in out.splitlines() if line.strip().startswith(('×', 'FAIL'))), '')
+    return done.returncode, summary, first[:200], time.time() - started
+
+def stamp():
+    return time.strftime('%Y-%m-%d %H:%M:%S WIB')
+
+def run(ids):
+    json.dump(M, open(os.path.join(HERE, 'mutations.json'), 'w'), indent=1)
+    if check():
+        sys.exit(2)
+    if not ids:
+        code, summary, _first, took = vitest('', ALL)
+        print(f"## {stamp()} baseline: the three Live test files of the row, no mutation\nbaseline exit={code} {summary} ({took:.1f} s)", flush=True)
+        if code != 0:
+            sys.exit(3)
+    chosen = [mu for mu in M if not ids or mu['id'] in ids]
+    survived, not_applied = [], []
+    for mu in chosen:
+        marker = os.path.join(APPLIED, mu['id'])
+        if os.path.exists(marker):
+            os.remove(marker)
+        code, summary, first, took = vitest(mu['id'], mu['tests'])
+        applied = os.path.exists(marker)
+        if not applied:
+            not_applied.append(mu['id']); verdict = 'NOT APPLIED'
+        elif code != 0:
+            verdict = 'DETECTED   '
+        else:
+            verdict = 'SURVIVED   '; survived.append(mu['id'])
+        print(f"{mu['id']} {verdict} exit={code} {mu['file'].split('/')[-1]}: {mu['what']} [{summary}] ({took:.0f} s) first: {first}", flush=True)
+    print(f"## {stamp()} {len(chosen)} mutations: {len(chosen) - len(survived) - len(not_applied)} detected, {len(survived)} survived {survived}, {len(not_applied)} not applied {not_applied}", flush=True)
+
+if __name__ == '__main__':
+    mode = sys.argv[1] if len(sys.argv) > 1 else 'check'
+    if mode == 'check':
+        json.dump(M, open(os.path.join(HERE, 'mutations.json'), 'w'), indent=1)
+        sys.exit(1 if check() else 0)
+    run(sys.argv[2:])

@@ -1,0 +1,132 @@
+#!/usr/bin/env python3
+"""W67 mutation check of Start Session's Live behaviour (plan row W67; rule M15).
+
+Each mutation changes texts of ONE production file IN MEMORY (the jest transformer beside this file,
+copied from row M0) and runs the folder's test files. A mutation is DETECTED when jest exits
+non-zero. Nothing in the tree is written: the hashes of the mutated files are compared before and
+after the run.
+
+  python3 mutate.py [id ...]      (no id: all; 'control' runs the unmutated tests once)
+"""
+import hashlib, json, os, re, subprocess, sys, time
+
+ROOT = '/Users/gsp-budi/Documents/DEMS'
+APP = ROOT + '/apps/mobile'
+HERE = os.path.dirname(os.path.abspath(__file__))
+SPEC = HERE + '/spec.json'
+CONFIG = HERE + '/jest.mut.config.cjs'
+F = 'src/features/session-new/'
+TESTS = [
+    F + 'live-session-new-handoff.test.tsx', F + 'live-session-new-sites.test.tsx', F + 'live-session-new-replica.test.tsx',
+    F + 'session-new-screen.test.tsx', F + 'precheck.test.tsx', F + 'session-new-model.test.ts',
+]
+SCREEN = F + 'session-new-screen.tsx'
+FLOW = F + 'use-session-new.ts'
+PRESS = F + 'use-pending-press.ts'
+STEP2 = F + 'devices-check-step.tsx'
+
+def e(frm, to):
+    return {'from': frm, 'to': to}
+
+M = [
+  # ── H: the start-recording hand-off (S2-2, CA-02, AC-C-62) ──
+  ('H1', SCREEN, 'the hand-off by router.replace only (the queued navigation the original comment warns about)', [
+      e("        handOffToMonitor(navigation, () => router.replace('/session/live'));", "        router.replace('/session/live');")]),
+  ('H2', SCREEN, 'the hand-off dispatched before the start settled (not in its continuation)', [
+      e("      actions.startRecording((ok) => {", "      handOffToMonitor(navigation, () => router.replace('/session/live'));\n      actions.startRecording((ok) => {")]),
+  ('H3', SCREEN, 'a refused start does not return Start to idle (launching stays on)', [
+      e("          setLaunching(false); // refused", "          void 0; // refused")]),
+  # ── P: the pending state (LB-1, AC-C-57, AC-C-58) ──
+  ('P1', PRESS, 'no in-flight guard: a second press sends a second command', [e("      if (inFlight.current) return false;", "      if (false) return false;")]),
+  ('P2', PRESS, 'the spinner at once (no reveal time)', [e("s.clock.now - pressedAt >= LIVE_PENDING_REVEAL_MS", "s.clock.now - pressedAt >= 0")]),
+  ('P3', PRESS, 'the spinner never', [e("s.clock.now - pressedAt >= LIVE_PENDING_REVEAL_MS", "s.clock.now - pressedAt >= Number.POSITIVE_INFINITY")]),
+  ('P4', PRESS, 'the busy state is never released', [e("        if (shown) setPressedAt(null);", "        void shown;")]),
+  ('P5', SCREEN, 'the busy flag never reaches the control', [e("  return busy ? { accessibilityState: { busy: true, disabled } } : {};", "  return {};")]),
+  # ── R: refusals and the presenter (AC-C-48, LB-5 to LB-10) ──
+  ('R1', FLOW, 'Live mode skips the presenter for a void action (the generic toast instead)', [
+      e("      if (live && presentCoreError(error)) {\n        logAction(action, error, state, sessionId, 'warn');", "      if (false && presentCoreError(error)) {\n        logAction(action, error, state, sessionId, 'warn');")]),
+  ('R2', FLOW, 'a refused create (403) shows no denied toast in Live mode', [
+      e("          if (live && result.reason === 'NOT_PERMITTED') presentCoreError(new SimPermissionError('createSession', Permission.SESSION_START));\n", "")]),
+  ('R3', FLOW, 'a presented rejection of the create also sets the inline "unexpected" error', [
+      e("          then({ ok: false, reason: null });", "          then({ ok: false, reason: 'UNEXPECTED' });")]),
+  ('R4', FLOW, 'the create skips the pre-check start (nested settle broken)', [
+      e("        settle(() => actions.beginPrecheck(), {", "        settle(() => undefined, {")]),
+  ('R5', FLOW, 'a changed form on a CREATE session is not cancelled and created again', [
+      e("          if (!result.ok && result.reason === 'SESSION_ACTIVE' && state === 'CREATE') {", "          if (false) {")]),
+  ('R6', FLOW, 'a successful flow action reports false', [e("        ok: () => then(true),", "        ok: () => then(false),")]),
+  ('R7', SCREEN, 'Live mode leaves on a refused cancel (the dialog closes)', [e("        if (ok || !live) back.guard.leave();", "        back.guard.leave();")]),
+  # ── A: AC-C-50, a lost SESSION_START ──
+  ('A1', SCREEN, 'a lost SESSION_START is ignored', [e("    if (live && mayStartSeen && !mayStart) setPermissionLost(true);", "    if (false) setPermissionLost(true);")]),
+  ('A2', SCREEN, 'the wizard leaves without switching the guard off (router.replace)', [
+      e("  const leaveForHome = useEffectEvent(() => back.guard.leaveTo('/home'));", "  const leaveForHome = useEffectEvent(() => router.replace('/home'));")]),
+  # ── L: the Core link (row M0's one rule) ──
+  ('L1', SCREEN, 'Start stays enabled while the link is down', [e("remaining !== null || launching || linkDown;", "remaining !== null || launching;")]),
+  ('L2', SCREEN, 'a rule of its own: settling hides the notice (no hysteresis)', [e("    setLinkDown(offlineNoticeAfter(linkDown, linkView));", "    setLinkDown(linkView === 'down');")]),
+  ('L3', SCREEN, 'a running countdown ignores the link', [e("data.state !== 'ARMED' || linkDown);", "data.state !== 'ARMED');")]),
+  ('L4', STEP2, 'the Live CORE hint shows in Simulated mode too', [e("  const coreBlocked = live && blocks.some((item) => item.id === 'CORE');", "  const coreBlocked = blocks.some((item) => item.id === 'CORE');")]),
+  ('L5', STEP2, 'the Live CORE hint never shows', [e("  const coreBlocked = live && blocks.some((item) => item.id === 'CORE');", "  const coreBlocked = false && live && blocks.length > 0;")]),
+  # ── B: Back while a command is out ──
+  ('B1', SCREEN, 'hardware Back is not held while sending', [e("    if (!sending) return undefined;\n    const subscription", "    if (sending || !sending) return undefined;\n    const subscription")]),
+  ('B2', SCREEN, 'the header arrow is not held while sending', [e("    if (sending) return; // a command is out", "    // a command is out")]),
+]
+
+def sha(path):
+    with open(path, 'rb') as f:
+        return hashlib.sha256(f.read()).hexdigest()
+
+def jest(env):
+    return subprocess.run(['node', ROOT + '/node_modules/jest/bin/jest.js', '--config', CONFIG, '--maxWorkers=2', '--silent', *TESTS],
+                          cwd=APP, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+
+def summary(out):
+    tail = [line.strip() for line in out.splitlines() if line.startswith('Tests:')]
+    files = sorted({line.split()[1].split('/')[-1] for line in out.splitlines() if line.startswith('FAIL ')})
+    first = [re.sub(r'\s+', ' ', line.strip().lstrip('●').strip()) for line in out.splitlines() if line.strip().startswith('● ') and 'Console' not in line]
+    return (tail[-1] if tail else 'no summary line'), files, first[:2]
+
+def main():
+    wanted = set(sys.argv[1:])
+    files = sorted({m[1] for m in M})
+    before = {f: sha(APP + '/' + f) for f in files}
+    print('# W67 mutation check, %s; %d test files per run; the tree is not edited' % (time.strftime('%Y-%m-%d %H:%M:%S'), len(TESTS)), flush=True)
+    if not wanted or 'control' in wanted:
+        started = time.time()
+        run = jest(dict(os.environ, CI='1'))
+        tail, failed, _ = summary(run.stdout)
+        print('control (no mutation): exit=%d %s (%.0f s)' % (run.returncode, tail, time.time() - started), flush=True)
+        if run.returncode != 0:
+            print('## the control run is not green: stop', flush=True)
+            return 2
+    todo = [m for m in M if not wanted or m[0] in wanted]
+    detected, survived, broken = [], [], []
+    for (mid, file, what, edits) in todo:
+        text = open(APP + '/' + file).read()
+        ok = True
+        for edit in edits:
+            if text.count(edit['from']) != 1:
+                ok = False
+                break
+            text = text.replace(edit['from'], edit['to'], 1)
+        if not ok:
+            broken.append(mid)
+            print('%s  NOT APPLIED: a text does not occur exactly once in %s   (%s)' % (mid, file, what), flush=True)
+            continue
+        json.dump({'id': mid, 'file': file, 'edits': edits}, open(SPEC, 'w'))
+        started = time.time()
+        run = jest(dict(os.environ, W67_MUT_SPEC=SPEC, CI='1'))
+        tail, failed, first = summary(run.stdout)
+        verdict = 'detected' if run.returncode != 0 else 'NOT DETECTED'
+        (detected if run.returncode != 0 else survived).append(mid)
+        print('%s  %-12s %3.0fs  %s  | %s  | %s' % (mid, verdict, time.time() - started, what, tail, ', '.join(failed)), flush=True)
+        for name in first: print('      e.g. %s' % name, flush=True)
+    after = {f: sha(APP + '/' + f) for f in files}
+    print('## %d detected, %d not detected, %d not applied, of %d' % (len(detected), len(survived), len(broken), len(todo)), flush=True)
+    if survived: print('## not detected: ' + ' '.join(survived), flush=True)
+    if broken: print('## not applied: ' + ' '.join(broken), flush=True)
+    print('## the mutated files in the tree, before and after: ' + ('identical' if before == after else 'CHANGED'), flush=True)
+    for f in files: print('   %s  %s' % (after[f][:16], f), flush=True)
+    print('# finished %s' % time.strftime('%H:%M:%S'), flush=True)
+    return 0 if not survived and not broken and before == after else 1
+
+if __name__ == '__main__':
+    sys.exit(main())

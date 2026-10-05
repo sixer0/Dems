@@ -97,7 +97,7 @@ export interface AudioMonitorSheetProps {
   onClose: () => void;
   mics: readonly MicStatus[];
   monitoringPaused: boolean;
-  onClipReset: (channel: AudioTrackId) => void;
+  onClipReset: (channel: AudioTrackId, release: () => void) => void;
 }
 
 export function AudioMonitorSheet({ isOpen, onClose, mics, monitoringPaused, onClipReset }: AudioMonitorSheetProps) {

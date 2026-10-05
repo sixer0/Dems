@@ -1,0 +1,31 @@
+#!/bin/sh
+# W73 device commands, run by device-session.sh on the phone (cwd apps/mobile); lane-1 backend on 4421 via tcp:4420.
+# One queue-driven sitting: LIVE (/login?core=LIVE&motion=off -> sign in -> decline the biometric offer ->
+# Start Session -> recording -> the lane backend is stopped and started -> FAULT -> Recovery -> Start
+# recovery -> outcome -> Acknowledge), then SIMULATED last (D124). Exit 77 when locked: reported, never
+# worked around. Removes the one dump file this row creates (/sdcard/w73.xml). No `cd`.
+set -u
+OUT=$1; H="$ROOT/.cache/w73"; A="adb -s $SERIAL"
+echo "-- serial $SERIAL ($AVD_NAME), Metro $METRO_PORT, cwd $(pwd)"
+unlocked() {
+  KG=$($A shell dumpsys window 2>/dev/null | tr -d '\r' | grep -o 'isKeyguardShowing=[a-z]*' | head -n 1)
+  ST=$($A shell dumpsys user 2>/dev/null | grep -m 1 "State:" | tr -d '\r' | sed 's/^ *//')
+  case "$KG/$ST" in isKeyguardShowing=false/*RUNNING_UNLOCKED*) return 0 ;; *) echo "-- LOCKED ($KG; $ST) at: $1 - stop, report."; return 1 ;; esac
+}
+prefs() { $A shell "run-as $APP_ID sh -c 'sqlite3 databases/RKStorage \"select value from catalystLocalStorage where key = \\\"dems.mobile.prefs.v1\\\"\"'" 2>/dev/null | tr -d '\r'; }
+simauth() { $A shell "run-as $APP_ID sh -c 'sqlite3 databases/RKStorage \"select value from catalystLocalStorage where key = \\\"dems.sim.v1\\\"\"'" 2>/dev/null | tr -d '\r' | grep -o '"auth":{"status":"[A-Z_]*"' | head -n 1; }
+unlocked "the start" || exit 77
+echo "-- before: prefs $(prefs); simulator auth $(simauth)"
+T0=$($A shell "date '+%m-%d %H:%M:%S.000'" | tr -d '\r')
+echo "$T0" >"$OUT/t0.txt"
+node --import tsx "$H/drive_q.mts" "$SERIAL" "$OUT" "$T0"
+DRIVE_EXIT=$?; echo "-- driver exit: $DRIVE_EXIT"
+[ "$DRIVE_EXIT" = 77 ] && exit 77
+echo "-- Core request lines of the sitting (method, path template, status):"
+$A logcat -d -T "$T0" -s ReactNativeJS:V 2>/dev/null | grep -o 'DEMS-LIVE\] .*' | sed -E 's/ [0-9a-f]{8}-[0-9a-f-]{27}$//' | sort | uniq -c | sort -rn | head -n 30 | sed 's/^/   /'
+echo "-- credential/token lines in the JS log (must be 0): $($A logcat -d -T "$T0" -s ReactNativeJS:V 2>/dev/null | grep -c -E 'dvc_|ses_|bio_')"
+echo "-- prefs after: $(prefs); simulator auth $(simauth)"
+echo "-- remove this row's dump file only: adb shell rm /sdcard/w73.xml"
+$A shell rm -f /sdcard/w73.xml; $A shell ls /sdcard/w73.xml 2>&1 | tr -d '\r' | sed 's/^/   /'
+echo "-- lock at end: $($A shell dumpsys window 2>/dev/null|tr -d '\r'|grep -o 'isKeyguardShowing=[a-z]*'|head -n1)"
+exit "$DRIVE_EXIT"

@@ -2,6 +2,7 @@
  * `storage.*`: the Storage page (01_specs §14.5.5; research/04 §5.3). Ring semantics are
  * USED % (D28/Q1); the shared legend and KPI words are in `common.storage`.
  * Step 49 extended this file additively (every step-34 key is kept with its text).
+ * Plan row W71 (backend task) added the two `live` groups: the words of Live mode.
  */
 import type { ResourceTree } from '../resource-tree';
 
@@ -115,6 +116,10 @@ export const storage = {
     notYet: 'Not yet',
     derivedNote: 'SMART values are demo values derived by the console until the simulator models them',
     tempTrend: 'Temperature over the last minutes',
+    /** Live mode (plan row W71): the Core server reports no SMART counters (CONTRACT-GAP-W71-1). */
+    live: {
+      derivedNote: 'SMART values are demo values derived by the console: the Core server does not report them',
+    },
   },
 
   activity: {
@@ -201,5 +206,9 @@ export const storage = {
     thresholdFull: 'FULL at {{percent}}%: new recordings are blocked',
     failed: 'The storage policy could not be updated. Please try again.',
     unchanged: 'No change to apply',
+    /** Live mode (plan row W71): the Core server applied the change, so the words say nothing of a simulation. */
+    live: {
+      applied: 'Storage policy updated',
+    },
   },
 } as const satisfies ResourceTree;

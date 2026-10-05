@@ -4,6 +4,7 @@ import type { Key } from '@heroui/react'
 import { motion } from 'motion/react'
 import { FileJson, FileX, FolderTree } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { CoreMode, useCoreMode } from '@dems/shared/live'
 import { getDemoEvidenceDocuments, MANIFEST_FIELDS, PACKAGE_ITEM_FILES, type PackageItemKey } from '@dems/shared/demo-data'
 import { formatUtcOffset } from '@dems/shared/realtime'
 import { toWibIso } from '@dems/shared/sim'
@@ -31,11 +32,14 @@ export interface MetadataTabProps {
  *   `EvidenceItem.markers` / `notes`, step 54, are empty for the dataset items).
  * - Raw documents: `manifest.json`, `metadata.json` and `signature.sig` exactly as stored (from
  *   `getDemoEvidenceDocuments`), and the audit extract loaded on demand from the package.
- * Items without a package show the simulator's record, labelled SIMULATED.
+ * Items without a package show the simulator's record, labelled SIMULATED. In Live mode the record is
+ * the Core server's: it is labelled "Core record" and says so, never "simulated" (04_client_integration_spec
+ * §3.2; plan row W0, item 9, decision D158).
  */
 export function MetadataTab({ row }: MetadataTabProps) {
   const { t } = useTranslation()
   const m = useMotionPolicy()
+  const live = useCoreMode() === CoreMode.LIVE
   const { load } = useEvidenceAssets()
   const pkg = row.pkg
   const documents = useMemo(() => (pkg ? getDemoEvidenceDocuments(pkg.evidenceSuffix) : null), [pkg])
@@ -79,10 +83,11 @@ export function MetadataTab({ row }: MetadataTabProps) {
   }
 
   if (!pkg || !documents) {
-    const simulated = JSON.stringify(
+    const record = JSON.stringify(
       {
-        simulated: true,
-        note: 'SIMULATED record from the in-browser simulator; no DEMO package joins this item.',
+        ...(live
+          ? { record: 'CORE', note: "The Core server's record of this item; no DEMO package joins it." }
+          : { simulated: true, note: 'SIMULATED record from the in-browser simulator; no DEMO package joins this item.' }),
         evidenceId: row.item.id,
         sessionId: row.item.sessionId,
         caseNumber: row.item.caseNumber,
@@ -102,12 +107,12 @@ export function MetadataTab({ row }: MetadataTabProps) {
       2,
     )
     return (
-      <div className="evi-metadata" data-testid="evidence-metadata" data-package="simulated">
+      <div className="evi-metadata" data-testid="evidence-metadata" data-package={live ? 'core' : 'simulated'}>
         <EmptyState className="evi-empty evi-empty-inline">
           <FileX className="size-6 text-foreground-2" aria-hidden="true" />
           <p className="evi-empty-title">{t('evidence.metadata.noPackage')}</p>
         </EmptyState>
-        <JsonView text={simulated} label={t('evidence.metadata.simulatedRecord')} />
+        <JsonView text={record} label={t(live ? 'evidence.live.coreRecord' : 'evidence.metadata.simulatedRecord')} />
       </div>
     )
   }

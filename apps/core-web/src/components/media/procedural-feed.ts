@@ -139,6 +139,8 @@ export function createProceduralFeed(
   canvas: HTMLCanvasElement,
   cameraId: VideoTrackId,
   onStillReady?: () => void,
+  /** Live mode: the OSD line says what is true of a bundled picture (`osdLabel`, plan row W0, item 7). */
+  liveData = false,
 ): ProceduralFeed | null {
   const context = canvas.getContext('2d')
   if (!context) return null
@@ -188,7 +190,7 @@ export function createProceduralFeed(
     ctx.font = `600 ${size}px ${'"JetBrains Mono Variable", ui-monospace, monospace'}`
     ctx.textAlign = 'center'
     ctx.textBaseline = 'bottom'
-    const lines = [osdTimestamp(now), osdLabel(cameraId)]
+    const lines = [osdTimestamp(now), osdLabel(cameraId, liveData)]
     let y = height - size * 0.9
     for (let i = lines.length - 1; i >= 0; i -= 1) {
       const text = lines[i] ?? ''

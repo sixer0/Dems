@@ -328,4 +328,43 @@ export const system = {
   errors: {
     generic: 'The action could not be completed. Please try again.',
   },
+
+  /**
+   * Live mode only (plan row W76): the words of the page when the Core server is the Core. A screen
+   * that shows server data does not say "simulated" (backend task 04_client_integration_spec §3.2);
+   * the Simulated words above are unchanged.
+   */
+  live: {
+    restartHint: 'Restarts the Core services. Recording must be idle.',
+    restartDone: 'Core services restarted',
+    install: 'Install update',
+    startedToast: 'Installing v{{version}}',
+    diagnosticsSubtitle: 'Eight health checks on the Core server, one after another.',
+    exportLogsHint: 'Builds a JSON file from the Core server\'s audit chain and events. The export is audited and needs a reason.',
+    export: {
+      title: 'Export logs',
+      lead: 'The Core server records the reason with the export. The file is built from every page of its audit chain and of its events.',
+      reasonLabel: 'Reason',
+      reasonPlaceholder: 'e.g. Weekly review of the device logs',
+      reasonHint: 'Required, at least {{min}} characters.',
+      reasonTooShort: 'Enter a reason of at least {{min}} characters.',
+      reasonRefused: 'The Core server did not accept this reason. Change it and try again.',
+      submit: 'Export',
+      cancel: 'Cancel',
+      reading: 'Reading the Core logs · page {{page}}',
+      done: 'Logs exported · {{exportId}}',
+      doneBody: '{{rows}} audit rows and {{events}} events in the file',
+      readFailed: 'The Core server recorded export {{exportId}}, but its logs could not be read to the end. No file was saved.',
+    },
+    demo: {
+      coreClock: 'Core clock: {{date}} {{time}} WIB',
+      confirmResetTitle: 'Reset the Core demo data?',
+      confirmScenarioTitle: 'Load the {{scenario}} scenario?',
+      confirmBody: 'Every console connected to this Core server sees the new data at once. The current audit chain is discarded; its row count and head hash stay on record.',
+      confirmSession: 'A session is open on the Core server: the rebuild replaces it.',
+      confirmReset: 'Reset',
+      confirmLoad: 'Load',
+      keep: 'Cancel',
+    },
+  },
 } as const satisfies ResourceTree;

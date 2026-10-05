@@ -1,0 +1,49 @@
+#!/bin/sh
+# W68 device commands (run by device-session.sh, which exports SERIAL, APP_ID, ROOT). The phone is
+# paired with lane 1. LIVE launch → sign in → Start Session over the Core → the start-recording
+# hand-off into the monitor → the meters from the phone's own socket (two screencaps) → End Session
+# with a typed reason (a tap under motion=off, W67 F-4) → sealed → leave SIMULATED (D124).
+# No keyguard, PIN, fingerprint or device setting is touched; the app's own biometric OFFER is
+# declined in the app ("Not now", in-memory only), never accepted. Model: W67's device script.
+set -u
+RUN=$1; OUT=$2; SERVER_LOG=$3; HOSTPORT=$4
+A="adb -s $SERIAL"; H="$ROOT/.cache/w68"
+echo "-- serial $SERIAL ($AVD_NAME), lane port $HOSTPORT, run $RUN"
+unlocked() {
+  KG=$($A shell dumpsys window 2>/dev/null | tr -d '\r' | grep -o 'isKeyguardShowing=[a-z]*' | head -n 1)
+  ST=$($A shell dumpsys user 2>/dev/null | grep -m 1 "State:" | tr -d '\r' | sed 's/^ *//')
+  case "$KG/$ST" in isKeyguardShowing=false/*RUNNING_UNLOCKED*) return 0 ;; *) echo "-- LOCKED ($KG; $ST) at: $1 — stop, report."; return 1 ;; esac
+}
+unlocked "the start" || exit 77
+T0=$($A shell "date '+%m-%d %H:%M:%S.000'" | tr -d '\r')
+js() { $A logcat -d -T "$T0" -s ReactNativeJS:V 2>/dev/null; }
+wait_for() { i=0; until js | grep -q -- "$1" || [ "$i" -ge "$2" ]; do i=$((i + 1)); sleep 1; done; echo "-- waited $i s for: $1"; }
+launch() { echo "-- am start -W -d '$1'"; $A shell "am start -W -a android.intent.action.VIEW -d '$1' $APP_ID" 2>&1 | tr -d '\r' | grep -E "Status|LaunchState|Error|TotalTime" | sed 's/^/   /'; }
+
+echo "== D1. cold launch in LIVE mode on the PAIRED phone, at /login, motion off (D164 DN-7) =="
+launch 'demsdemo:///login?core=LIVE&motion=off'
+wait_for 'runtime.live.ready' 120
+wait_for 'DEMS-LIVE\] GET /api/v1/pairing/device 200' 40
+sleep 3
+unlocked "the login" || exit 77
+
+echo "== D2..D8: the queue-driven UI driver (sign-in, Start Session, hand-off, meters, End Session) =="
+node --import "file://$ROOT/node_modules/tsx/dist/esm/index.mjs" "$H/drive_q.mts" "$SERIAL" "$OUT" "$T0"
+DRIVE_EXIT=$?
+echo "-- driver exit: $DRIVE_EXIT"
+echo "-- Core request lines this session (method, path template, status):"
+js | grep -o 'DEMS-LIVE\] .*' | sed -E 's/ [0-9a-f]{8}-[0-9a-f-]{27}$//' | sort | uniq -c | sort -rn | head -n 30 | sed 's/^/   /' | tee "$OUT/device_requests.txt"
+echo "-- live.misuse lines: $(js | grep -c 'live\.misuse'); credential/token lines (must be 0): $(js | grep -c -E 'dvc_|ses_|bio_')"
+echo "-- 'session is already active' lines in the JS log: $(js | grep -c 'already active')"
+
+echo "== D9. leave the app in SIMULATED mode as found (D124) =="
+$A shell am force-stop "$APP_ID"
+T1=$($A shell "date '+%m-%d %H:%M:%S.000'" | tr -d '\r')
+launch 'demsdemo:///?core=SIMULATED'
+i=0; until $A logcat -d -T "$T1" -s ReactNativeJS:V 2>/dev/null | grep -q 'runtime.sim.hydrated' || [ "$i" -ge 90 ]; do i=$((i + 1)); sleep 1; done
+echo "-- waited $i s for runtime.sim.hydrated; Core requests after (must be 0): $($A logcat -d -T "$T1" -s ReactNativeJS:V 2>/dev/null | grep -c 'DEMS-LIVE')"
+printf '%s' "-- prefs after: "; $A shell "run-as $APP_ID sh -c 'sqlite3 databases/RKStorage \"select value from catalystLocalStorage where key = \\\"dems.mobile.prefs.v1\\\"\"'" 2>/dev/null | tr -d '\r'; echo
+sleep 3
+$A exec-out screencap -p >"$OUT/68_phone_after_simulated.png"; echo "-- screencap: 68_phone_after_simulated.png"
+echo "-- lock at end: $($A shell dumpsys window 2>/dev/null|tr -d '\r'|grep -o 'isKeyguardShowing=[a-z]*'|head -n1)"
+exit "$DRIVE_EXIT"

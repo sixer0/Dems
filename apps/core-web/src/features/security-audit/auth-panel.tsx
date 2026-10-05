@@ -5,9 +5,10 @@ import { useTranslation } from 'react-i18next'
 import { AUTH_MAX_FAILURES, selectLockout, useSim, type AuditRow } from '@dems/shared/sim'
 import { toneChipProps } from '@dems/shared/tokens'
 import { cn } from '@/lib/utils'
+import { useWebLive } from '@/runtime'
 import { useAuditLog } from './audit-context'
 import { Feed, type FeedItem } from './feed'
-import { actorKindOf, countMatching, isAuthRow, newestMatching } from './model'
+import { actorKindOf, countMatching, isAuthRow, namesTypedUsername, newestMatching } from './model'
 import { Panel } from './panel'
 import { SEVERITY_TONE, toneClass } from './tones'
 import { useNewestArrival, useStableRows } from './use-newest'
@@ -27,6 +28,8 @@ export const AuthPanel = memo(function AuthPanel({ className }: AuthPanelProps) 
   const { t } = useTranslation()
   const { rows } = useAuditLog()
   const operators = useSim((s) => s.operators)
+  // Live mode (W75; CPS1-12 (a)): a failed sign-in names the operator whose username was typed.
+  const isLive = useWebLive() !== null
   const locked = useSim((s) => selectLockout(s).locked)
   const lockSeconds = useSim((s) => Math.ceil(selectLockout(s).retryInMs / 1000))
   const attemptsRemaining = useSim((s) => selectLockout(s).attemptsRemaining)
@@ -38,9 +41,13 @@ export const AuthPanel = memo(function AuthPanel({ className }: AuthPanelProps) 
 
   const items: FeedItem[] = useMemo(() => {
     const names = new Map(operators.map((operator) => [operator.id, operator.displayName]))
+    const named = (row: AuditRow, actorId: string) => {
+      const name = names.get(actorId) ?? actorId
+      return isLive && namesTypedUsername(row) ? t('securityAudit.live.audit.typedActor', { name }) : name
+    }
     const actor = (row: AuditRow) =>
       row.actorId
-        ? (names.get(row.actorId) ?? row.actorId)
+        ? named(row, row.actorId)
         : actorKindOf(row) === 'UNVERIFIED'
           ? t('securityAudit.audit.unverifiedUser')
           : t('securityAudit.audit.system')
@@ -56,7 +63,7 @@ export const AuthPanel = memo(function AuthPanel({ className }: AuthPanelProps) 
           : actor(row),
       }
     })
-  }, [recent, t, operators])
+  }, [recent, t, operators, isLive])
 
   const failuresInWindow = AUTH_MAX_FAILURES - attemptsRemaining
 

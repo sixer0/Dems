@@ -314,4 +314,47 @@ export const securityAudit = {
       DEMO_CONTROL: 'Use the demo controls',
     },
   },
+
+  // Backend task W75 (plan step 97): the page in Live mode. Simulated mode keeps every key above.
+  live: {
+    audit: {
+      // CPS1-12 (a): AUTH_FAILED and AUTH_LOCKED name the operator whose username was typed, not a signed-in actor.
+      typedActor: '{{name}} (username typed, unverified)',
+    },
+    chain: {
+      stored: 'Stored chain: verified, {{count}} rows',
+      storedBroken: 'Stored chain: broken at entry #{{seq}}, verified through #{{checked}}',
+      earlier: 'Earlier chains: {{count}}',
+      earlierTitle: 'Earlier audit chains',
+      earlierHint: 'Chains that a demo reset or a scenario load discarded on the Core, newest first. Read-only.',
+      earlierShown: 'The newest {{shown}} of {{total}} are listed.',
+      earlierListLabel: 'Discarded audit chains',
+      entry: 'Epoch {{epoch}} • {{rows}} rows • head {{head}}',
+      resetLine: '{{reason}} at {{time}} by {{operator}} • scenario {{scenario}}',
+      commandLine: 'the command line',
+      reason: {
+        RESET: 'Reset',
+        SCENARIO_LOAD: 'Scenario load',
+      },
+      verifyFailed: 'The Core could not check the audit chain. Please try again.',
+    },
+    exportAudit: {
+      success: 'Audit export accepted by the Core',
+      body: 'The Core records the export as a new chain-of-custody event. The file is built here from the Core’s audit list: {{count}} entries.',
+      destinationValue: 'A file downloaded to this computer',
+      readingPages: 'Reading the Core’s audit list: page {{page}} of {{pages}}',
+      readingPage: 'Reading the Core’s audit list: page {{page}}',
+      reasonRefused: 'The Core server did not accept this reason. Change it and try again.',
+      fileFailed: 'The Core recorded export {{exportId}}, but the file could not be built. Export again to get the file.',
+      fileName: 'File',
+      download: 'Download again',
+      reasonNote: 'Recorded by the Core in the audit row of the export.',
+    },
+    rbac: {
+      subtitle: 'Operators of the Core and what each role may do, as the Core server enforces it',
+      loading: 'Reading the role matrix from the Core…',
+      failed: 'The role matrix could not be read from the Core.',
+      exhausted: 'Reload the page to try again.',
+    },
+  },
 } as const satisfies ResourceTree;

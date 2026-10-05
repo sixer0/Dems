@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Button, Card, Chip, ProgressBar, Table } from '@heroui/react'
-import { Copy, KeyRound, RotateCcw, ShieldCheck } from 'lucide-react'
+import { Alert, Button, Card, Chip, ProgressBar, Table } from '@heroui/react'
+import { Copy, KeyRound, PackageCheck, RotateCcw, ShieldCheck } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { DEMO_EVIDENCE_INDEX } from '@dems/shared/demo-data'
 import { formatUtcOffset } from '@dems/shared/realtime'
 import { EvidenceLifecycleStage } from '@dems/shared/domain'
+import { CoreMode, useCoreMode } from '@dems/shared/live'
 import { useSim } from '@dems/shared/sim'
 import { Stepper, type StepperStep } from '@/components/composed/stepper'
 import { useMotionPolicy } from '@/motion'
@@ -33,10 +34,17 @@ export interface IntegrityTabProps {
  * simulator's synthetic hashes or ECDSA certificate for a package-backed item. Items without a
  * package show the simulator's values, labelled SIMULATED. Below: the §19.1 lifecycle Stepper and the
  * chain-of-custody table (simulator custody log, which the verification and exports append to).
+ *
+ * Live mode (backend task, plan row W69; 04_client_integration_spec §8.2 A6, §14 point 7; §3.2):
+ * the verdict chip, the check list and the custody table show the Core server's record (the custody
+ * entry of a verification arrives with the answer's delta, CL-16). The bundled package's check, when
+ * it runs, has its own line labelled "Bundled demo package", and an info Alert says so when the two
+ * differ. An item without a bundled package shows the Core's values, labelled "Core record".
  */
 export function IntegrityTab({ row, verification }: IntegrityTabProps) {
   const { t } = useTranslation()
   const m = useMotionPolicy()
+  const live = useCoreMode() === CoreMode.LIVE
   const operators = useSim(selectOperators)
   const { state, run } = verification
   const retry = useRetryCooldown()
@@ -99,10 +107,16 @@ export function IntegrityTab({ row, verification }: IntegrityTabProps) {
             <VerdictChip verdict={verdict} runKey={state.runId} size="lg" />
             <div className="evi-verify-text">
               <span className="evi-strong">
-                {state.mode === 'package' ? t('evidence.verify.packageMode') : t('evidence.verify.simulatedMode')}
+                {state.mode === 'core'
+                  ? t('evidence.live.verify.mode')
+                  : state.mode === 'package'
+                    ? t('evidence.verify.packageMode')
+                    : t('evidence.verify.simulatedMode')}
               </span>
               <span className="evi-caption" data-testid="evidence-verify-label">
-                {state.label ?? (state.mode === 'package' ? t('evidence.verify.trustNote') : t('evidence.verify.simulatedNote'))}
+                {state.mode === 'core'
+                  ? t('evidence.live.verify.note')
+                  : (state.label ?? (state.mode === 'package' ? t('evidence.verify.trustNote') : t('evidence.verify.simulatedNote')))}
               </span>
             </div>
             <Button
@@ -134,14 +148,43 @@ export function IntegrityTab({ row, verification }: IntegrityTabProps) {
           </ProgressBar>
           <span className="evi-caption">{t('evidence.verify.progress', { done, total })}</span>
           <CheckList state={state} variant="full" />
+          {state.bundled ? (
+            <div className="evi-bundled" data-testid="evidence-bundled" data-phase={state.bundled.phase} data-verdict={state.bundled.verdict ?? undefined}>
+              <PackageCheck className="size-4 text-foreground-2" aria-hidden="true" />
+              <div className="flex min-w-0 flex-col">
+                <span className="evi-strong">{t('evidence.live.verify.bundledTitle')}</span>
+                <span className="evi-caption">
+                  {state.bundled.phase === 'running'
+                    ? t('evidence.live.verify.bundledRunning')
+                    : state.bundled.phase === 'error'
+                      ? t('evidence.live.verify.bundledError')
+                      : `${state.bundled.label ?? ''} · ${t('evidence.live.verify.bundledNote')}`}
+                </span>
+              </div>
+              {state.bundled.verdict ? (
+                <Chip size="sm" variant="soft" color={state.bundled.verdict === 'PASS' ? 'success' : 'danger'} className="ml-auto font-semibold uppercase">
+                  <Chip.Label>{t(`common.verificationStatus.${state.bundled.verdict}`)}</Chip.Label>
+                </Chip>
+              ) : null}
+            </div>
+          ) : null}
+          {state.differs ? (
+            <Alert status="accent" data-testid="evidence-bundled-differs">
+              <Alert.Indicator />
+              <Alert.Content>
+                <Alert.Title>{t('evidence.live.verify.differsTitle')}</Alert.Title>
+                <Alert.Description>{t('evidence.live.verify.differs')}</Alert.Description>
+              </Alert.Content>
+            </Alert>
+          ) : null}
         </Card>
 
-        <Card className="evi-hash-card" data-testid="evidence-hashes" data-source={pkg ? 'package' : 'simulated'}>
+        <Card className="evi-hash-card" data-testid="evidence-hashes" data-source={pkg ? 'package' : live ? 'core' : 'simulated'}>
           <h3 className="evi-section-title">
             <KeyRound className="size-4 text-accent" aria-hidden="true" />
             {t('evidence.integrity.sealedValues')}
             <Chip size="sm" variant="secondary" className="evi-demo-chip">
-              <Chip.Label>{pkg ? t('evidence.demo.chip') : t('common.simulated.chip')}</Chip.Label>
+              <Chip.Label>{pkg ? t('evidence.demo.chip') : live ? t('evidence.live.coreRecord') : t('common.simulated.chip')}</Chip.Label>
             </Chip>
           </h3>
           <ul className="evi-hash-list">

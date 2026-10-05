@@ -5,7 +5,23 @@
  * Simulator reads follow F74-13: each `useSim` selector returns a primitive or a reference the
  * simulator keeps stable between changes (the precheck slice, the session input, the operator
  * list, one history entry), never a freshly built object, so the 20 Hz audio ticks re-render
- * nothing here.
+ * nothing here. In Live mode the same selectors read the Live source's replica (CL-12).
+ *
+ * **Live mode** (backend task 04_client_integration_spec §8.5, §8.6; plan row W67). The actions
+ * come from `useCoreActions()` and each result is consumed through `settle` (CL-25), so one call
+ * site serves both data modes: in Simulated mode `settle` runs the continuation before it returns,
+ * so the flow keeps its synchronous timing; in Live mode it runs in the turn in which the store
+ * holds the command's effect (CL-16).
+ *
+ * | Site | Action(s) | Live behaviour |
+ * |------|-----------|----------------|
+ * | S1-4 | `createAndCheck`: `createSession` (twice, with `cancel` between, for a changed form on a CREATE session), then `beginPrecheck` | Nested `settle` in that order. A refused create keeps the inline error by reason; a 403 also shows the denied toast (AC-C-48). A rejection (outage, limit, refused precheck) goes to the presenter and leaves no inline error |
+ * | S2-2 | `acknowledgeWarnings`, `retryChecks`, `cancelSession`, `startRecording` | Each reports `true` or `false` to its continuation (`then`) instead of returning it |
+ *
+ * Every rejection goes to the refusal presenter first in Live mode (`useCoreErrorPresenter`, §6.2,
+ * LB-5 to LB-10), and only what it leaves gets the flow's own toast; in Simulated mode the flow's
+ * own branch runs as before (the Pair screen's precedent, `pairing-screen.tsx:93`). Every path
+ * writes the persistent runtime log (`reportRuntimeIssue`); no form value is logged.
  */
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useToast } from 'heroui-native';
@@ -19,14 +35,16 @@ import {
   type SessionCreateFormValues,
   type SessionCreateRequest,
 } from '@dems/shared/api';
+import { settle, useCoreActions } from '@dems/shared/live';
 import {
   PRECHECK_ORDER,
+  Permission,
   RecordingProfileId,
+  SimPermissionError,
   evaluatePrecheck,
   selectPrecheck,
   signedInOperatorId,
   useSim,
-  useSimActions,
   type CreateSessionResult,
   type PrecheckSlice,
   type SessionCreateInput,
@@ -34,7 +52,7 @@ import {
   type SimOperator,
   type SimState,
 } from '@dems/shared/sim';
-import { reportRuntimeIssue, useActiveSession } from '@/runtime';
+import { reportRuntimeIssue, useActiveSession, useCoreErrorPresenter, useCoreLink, type RuntimeLogLevel } from '@/runtime';
 import { encodeEvaluation, newestHistoryEntry } from './session-new-model';
 
 // ---------------------------------------------------------------------------------------------
@@ -132,88 +150,130 @@ export function useSessionForm(defaults: SessionCreateFormValues): SessionForm {
 // Actions, with the three-layer error handling (toast, persistent log, the screen stays usable)
 // ---------------------------------------------------------------------------------------------
 
-export type CreateOutcome = { readonly ok: true; readonly sessionId: string } | { readonly ok: false; readonly reason: CreateFailure };
+/**
+ * What step 1's Next got. `reason: null` (Live mode only): the refusal was already shown by the
+ * presenter (an outage, a limit, a refused pre-check start), so the form shows no inline error.
+ */
+export type CreateOutcome = { readonly ok: true; readonly sessionId: string } | { readonly ok: false; readonly reason: CreateFailure | null };
 export type CreateFailure = Exclude<CreateSessionResult, { ok: true }>['reason'] | 'UNEXPECTED';
 
+/** The continuation of a flow action: `true` when the action went through, `false` when it was refused (already shown and logged). */
+export type FlowSettled = (ok: boolean) => void;
+
 export interface FlowActions {
-  /** Step 1 → 2: `createSession(input)` → CREATE, then `beginPrecheck()` → PRECHECK (04 §4.4). */
-  createAndCheck(values: SessionCreateRequest): CreateOutcome;
+  /** Step 1 → 2: `createSession(input)` → CREATE, then `beginPrecheck()` → PRECHECK (04 §4.4). `then` gets the outcome. */
+  createAndCheck(values: SessionCreateRequest, then: (outcome: CreateOutcome) => void): void;
   /** WARN + "Acknowledge warnings" → ARMED (PRECHECK_PASSED with the warning count). */
-  acknowledgeWarnings(): boolean;
+  acknowledgeWarnings(then: FlowSettled): void;
   /** A resolved BLOCK or WARN outcome → a fresh run of all eight checks. */
-  retryChecks(): boolean;
+  retryChecks(then: FlowSettled): void;
   /** CREATE, PRECHECK or ARMED → no session (audit SESSION_CANCELLED). */
-  cancelSession(): boolean;
-  /** ARMED → RECORDING. Throws nothing; false when the simulator refused. */
-  startRecording(): boolean;
+  cancelSession(then: FlowSettled): void;
+  /** ARMED → RECORDING. Throws nothing; `then(false)` when the simulator or the Core refused. */
+  startRecording(then: FlowSettled): void;
 }
 
 const SOURCE = 'features.sessionNew';
 
 /** Error details safe to log: the error class and message, never form values (no PII). */
-function logAction(action: string, error: unknown, state: SessionState | null, sessionId: string | null): void {
-  reportRuntimeIssue('error', `${SOURCE}.${action}`, error, { state, sessionId });
+function logAction(action: string, error: unknown, state: SessionState | null, sessionId: string | null, level: RuntimeLogLevel = 'error'): void {
+  reportRuntimeIssue(level, `${SOURCE}.${action}`, error, { state, sessionId });
 }
 
 export function useFlowActions(state: SessionState | null, sessionId: string | null): FlowActions {
-  const actions = useSimActions();
+  const actions = useCoreActions();
+  const live = useCoreLink().source === 'LIVE';
+  const presentCoreError = useCoreErrorPresenter();
   const { toast } = useToast();
   const { t } = useTranslation();
 
   const fail = useCallback(
     (action: string, error: unknown, message: string) => {
+      // Live mode: a denial, an outage or a limit is the presenter's (one wording on every screen);
+      // it is an expected state of the link or the role, so it is logged as a warning.
+      if (live && presentCoreError(error)) {
+        logAction(action, error, state, sessionId, 'warn');
+        return;
+      }
       logAction(action, error, state, sessionId);
       toast.show({ variant: 'danger', label: message });
     },
-    [state, sessionId, toast],
+    [live, presentCoreError, state, sessionId, toast],
   );
 
+  // S1-4: `createSession` (and, for a changed form on a CREATE session, `cancel` then `createSession`
+  // again), then `beginPrecheck`, each in the `ok` of the one before (nested `settle`, CL-25).
   const createAndCheck = useCallback(
-    (values: SessionCreateRequest): CreateOutcome => {
-      try {
-        let result = actions.createSession(values);
-        // A CREATE session left by an earlier run with other details (edited after a relaunch):
-        // it has no checks and no recording yet, so it is cancelled and created again.
-        if (!result.ok && result.reason === 'SESSION_ACTIVE' && state === 'CREATE') {
-          actions.cancel();
-          result = actions.createSession(values);
+    (values: SessionCreateRequest, then: (outcome: CreateOutcome) => void): void => {
+      const failed = (error: unknown): void => {
+        if (live && presentCoreError(error)) {
+          logAction('create', error, state, sessionId, 'warn');
+          then({ ok: false, reason: null });
+          return;
         }
+        logAction('create', error, state, sessionId);
+        then({ ok: false, reason: 'UNEXPECTED' });
+      };
+      const judge = (result: CreateSessionResult): void => {
         if (!result.ok) {
           reportRuntimeIssue('warn', `${SOURCE}.create`, `createSession refused: ${result.reason}`, { reason: result.reason, state });
-          return { ok: false, reason: result.reason };
+          // AC-C-48: in Live mode the Core's 403 also reads as the denied toast that names the role,
+          // as on every screen; the inline error by reason stays (S1-4).
+          if (live && result.reason === 'NOT_PERMITTED') presentCoreError(new SimPermissionError('createSession', Permission.SESSION_START));
+          then({ ok: false, reason: result.reason });
+          return;
         }
-        actions.beginPrecheck();
-        reportRuntimeIssue('info', `${SOURCE}.create`, 'Session created; pre-recording checks started', {
-          sessionId: result.sessionId,
-          created: result.created,
+        settle(() => actions.beginPrecheck(), {
+          ok: () => {
+            reportRuntimeIssue('info', `${SOURCE}.create`, 'Session created; pre-recording checks started', {
+              sessionId: result.sessionId,
+              created: result.created,
+            });
+            then({ ok: true, sessionId: result.sessionId });
+          },
+          fail: failed,
         });
-        return { ok: true, sessionId: result.sessionId };
-      } catch (error) {
-        logAction('create', error, state, sessionId);
-        return { ok: false, reason: 'UNEXPECTED' };
-      }
+      };
+      settle(() => actions.createSession(values), {
+        ok: (result) => {
+          // A CREATE session left by an earlier run with other details (edited after a relaunch): it
+          // has no checks and no recording yet, so it is cancelled and created again. `state` is the
+          // state seen before the call.
+          if (!result.ok && result.reason === 'SESSION_ACTIVE' && state === 'CREATE') {
+            settle(() => actions.cancel(), {
+              ok: () => settle(() => actions.createSession(values), { ok: judge, fail: failed }),
+              fail: failed,
+            });
+            return;
+          }
+          judge(result);
+        },
+        fail: failed,
+      });
     },
-    [actions, state, sessionId],
+    [actions, live, presentCoreError, state, sessionId],
   );
 
+  // S2-2: a success or a throw (Simulated) or a rejection (Live) becomes the boolean of `then`.
   const guarded = useCallback(
-    (action: string, run: () => void, message: string): boolean => {
-      try {
-        run();
-        return true;
-      } catch (error) {
-        fail(action, error, message);
-        return false;
-      }
+    (action: string, run: () => unknown, message: string, then: FlowSettled): void => {
+      settle(run, {
+        ok: () => then(true),
+        fail: (error) => {
+          fail(action, error, message);
+          then(false);
+        },
+      });
     },
     [fail],
   );
 
   return {
     createAndCheck,
-    acknowledgeWarnings: () => guarded('acknowledgeWarnings', () => actions.acknowledgePrecheckWarnings(), t('features.session-new.actionFailed')),
-    retryChecks: () => guarded('retryChecks', () => actions.retryPrecheck(), t('features.session-new.actionFailed')),
-    cancelSession: () => guarded('cancel', () => actions.cancel(), t('features.session-new.actionFailed')),
-    startRecording: () => guarded('startRecording', () => actions.startRecording(), t('features.session-new.ready.startFailed')),
+    acknowledgeWarnings: (then) =>
+      guarded('acknowledgeWarnings', () => actions.acknowledgePrecheckWarnings(), t('features.session-new.actionFailed'), then),
+    retryChecks: (then) => guarded('retryChecks', () => actions.retryPrecheck(), t('features.session-new.actionFailed'), then),
+    cancelSession: (then) => guarded('cancel', () => actions.cancel(), t('features.session-new.actionFailed'), then),
+    startRecording: (then) => guarded('startRecording', () => actions.startRecording(), t('features.session-new.ready.startFailed'), then),
   };
 }

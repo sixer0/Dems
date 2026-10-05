@@ -1,0 +1,7 @@
+# F-2 reproduction (W72, 2026-10-06 00:50, a debug print in this row's own hub test, removed afterwards).
+# Scenario on the fake transport: SES-20261001-0024 sealed and pending; the link drops; the Core acknowledges 0024 and seals
+# SES-20261001-0025 (pending); the link comes back. Expected: stay on /sessions or open 0025's summary. Seen: the route sync
+# opened 0024's summary (already acknowledged on the Core), i.e. it used the session from before the snapshot.
+    DEBUG {"conns":[["DEVICE","CLOSED"],["OPERATOR","CLOSED"],[null,"CLOSED"],[null,"CLOSED"],["OPERATOR","OPEN"]],"hist":[["SES-20261001-0025","Sari Core Lestari"],["SES-20261001-0024","Wahyu Core Pratama"]],"eng":[["SES-20261001-0025","Sari Core Lestari"],["SES-20261001-0024","Wahyu Core Pratama"]],"rows":[],"loading":0,"empty":0,"hubs":0,"path":"/session/summary/SES-20261001-0024","auth":"SIGNED_IN"}
+
+      at Object.log (src/features/sessions/live-sessions.test.tsx:202:13)

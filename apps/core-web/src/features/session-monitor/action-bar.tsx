@@ -3,6 +3,7 @@ import {
   AlertDialog,
   Button,
   buttonVariants,
+  Chip,
   Description,
   Drawer,
   FieldError,
@@ -10,6 +11,7 @@ import {
   Input,
   Label,
   Popover,
+  Spinner,
   TextArea,
   TextField,
   toast,
@@ -18,17 +20,21 @@ import {
 } from '@heroui/react'
 import { Link } from '@tanstack/react-router'
 import { AnimatePresence, motion, useAnimate } from 'motion/react'
-import { Camera, FolderOpen, MapPin, NotebookPen, Pause, Play, Square } from 'lucide-react'
+import { Bookmark, Camera, FolderOpen, MapPin, NotebookPen, Pause, Play, Square } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { SessionState } from '@dems/shared/domain'
+import { useCoreActions } from '@dems/shared/live'
 import { formatClock } from '@dems/shared/realtime'
 import {
+  SimErrorCode,
   SimTransitionError,
   STOP_REASON_MIN_LENGTH,
   useSim,
-  useSimActions,
   useSimInstance,
 } from '@dems/shared/sim'
 import type { CameraFeedHandle } from '@/components/media'
+import { CoreErrorNoticeKind, useCoreErrorPresenter } from '@/lib/core-errors'
+import { usePendingControl } from '@/lib/pending-control'
 import { useMotionPolicy } from '@/motion'
 import { cn } from '@/lib/utils'
 import { PANEL_BEAT_MS, usePanelVariants, useStaggerVariants } from './choreography'
@@ -67,6 +73,23 @@ export interface ActionBarProps {
  *    mandatory reason (S21, ≥ 5 characters) → `stopRecording(reason)`.
  * Buttons stagger 40 ms on enter (M-PG-SM t = 320). Session actions throw `SimTransitionError`
  * outside RECORDING; the UI shows a toast and logs a structured record.
+ *
+ * Both data modes (plan row W65; [CS] §8.3 B-2, §8.4 C-1, C-2; LB-1 to LB-7): the four session
+ * commands run through `useCoreActions()` and `settle` (`usePendingControl`), and every error goes to
+ * the refusal presenter before the bar's own message. A simulator answers at once, so the bar
+ * behaves as before in Simulated mode; a Live result answers when the Core server did:
+ * - Marker: the popover closes and a chip appears at the button at the press (LB-4); the flight
+ *   to the timeline and the toast run on the settle, where the marker count is read (C-1); on a
+ *   refusal the chip leaves and the toast explains.
+ * - Note: Save is busy (LB-1); the drawer closes on the settle; on a refusal it stays open with
+ *   the text.
+ * - Snapshot: the shutter flash plays at the press (LB-4); the thumbnail flight and the toast run
+ *   on the settle, where the camera and the time are read (C-2).
+ * - End Session: the dialog's confirm is busy and the dialog closes on the settle. A 422 (the Core
+ *   counts the reason's characters itself, F59) shows the reason field's error and the dialog stays
+ *   open; a 409 because the session already ended (another operator stopped it, Q16) closes it with
+ *   an info toast, and the finalization overlay follows the state; an outage or a limit keeps the
+ *   dialog open with the reason (LB-6, LB-10).
  */
 export function ActionBar(props: ActionBarProps) {
   const { t } = useTranslation()
@@ -127,13 +150,20 @@ function ActionLabel({ icon, title, subtitle }: { icon: ReactNode; title: string
   )
 }
 
-function ActionSlot({ children }: { children: ReactNode }) {
+function ActionSlot({ children, busy = false, className }: { children: ReactNode; busy?: boolean; className?: string }) {
   const m = useMotionPolicy()
   return (
-    <motion.div className="sm-action-slot" variants={m.variants.row}>
+    // LB-1: the slot is `aria-busy` while the command of its control is out (the kit's Button does
+    // not pass `aria-busy` through to the DOM, so the plain wrapper carries it).
+    <motion.div className={cn('sm-action-slot', className)} variants={m.variants.row} aria-busy={busy || undefined}>
       {children}
     </motion.div>
   )
+}
+
+/** LB-1: once the reveal time is over, the kit's Spinner replaces the action's icon, so nothing moves. */
+function PendingIcon({ pending, children }: { pending: boolean; children: ReactNode }) {
+  return pending ? <Spinner size="sm" color="current" /> : <>{children}</>
 }
 
 /** The id of the hidden "Available during a recording session" text that disabled actions reference. */
@@ -155,10 +185,8 @@ function Unavailable({ enabled, reason, children }: { enabled: boolean; reason?:
   )
 }
 
-function failToast(message: string, source: string, error: unknown, context: Record<string, unknown> = {}) {
-  logSessionMonitorError(source, error, context)
-  toast.danger(message)
-}
+/** The session states in which a stop has already happened (409 of a second stop, Q16). */
+const ENDED_STATES: ReadonlySet<string> = new Set([SessionState.STOPPING, SessionState.FINALIZING, SessionState.SEALED])
 
 // ── 1. Pause Monitoring (UI-only) ────────────────────────────────────────────────────────
 function PauseAction({ recording, paused, onChange }: { recording: boolean; paused: boolean; onChange: (v: boolean) => void }) {
@@ -205,42 +233,81 @@ function PauseAction({ recording, paused, onChange }: { recording: boolean; paus
 // ── 2. Add Marker ────────────────────────────────────────────────────────────────────────
 function MarkerAction({ enabled, timelineRef }: { enabled: boolean; timelineRef: RefObject<HTMLDivElement | null> }) {
   const { t } = useTranslation()
-  const actions = useSimActions()
+  const m = useMotionPolicy()
+  const actions = useCoreActions()
+  const presentCoreError = useCoreErrorPresenter()
   const sim = useSimInstance()
   const fly = useFlight()
+  const press = usePendingControl()
   const [open, setOpen] = useState(false)
   const [label, setLabel] = useState('')
+  /** LB-4: the chip shown at the button while a Live marker is out; `null` otherwise. */
+  const [pendingChip, setPendingChip] = useState<string | null>(null)
   const buttonRef = useRef<HTMLButtonElement>(null)
 
   const submit = () => {
     const text = label.trim().slice(0, MARKER_MAX)
-    try {
-      actions.addMarker(text || undefined)
-    } catch (error) {
-      failToast(t('session.actions.failed'), 'ActionBar.addMarker', error, { length: text.length })
-      setOpen(false)
-      return
-    }
-    const at = sim.store.getState().clock.now
-    const count = sim.store.getState().session?.markerCount ?? 0
-    const chip = text || `Marker ${count}`
-    setOpen(false)
-    setLabel('')
-    const from = buttonRef.current?.getBoundingClientRect()
-    const to = timelineRef.current?.getBoundingClientRect()
-    if (from && to) {
-      fly({ kind: 'marker', from, to: new DOMRect(to.left, to.bottom - 48, to.width, 40), label: chip })
-    }
-    toast.success(t('session.actions.addMarker.added', { time: formatClock(at) }))
+    const sent = press.settle(() => actions.addMarker(text || undefined), {
+      onWait: () => setPendingChip(text || `Marker ${(sim.store.getState().session?.markerCount ?? 0) + 1}`),
+      ok: () => {
+        // C-1: read in `ok`, where the store already holds the new marker (CL-16).
+        const at = sim.store.getState().clock.now
+        const count = sim.store.getState().session?.markerCount ?? 0
+        const chip = text || `Marker ${count}`
+        setLabel('')
+        const from = buttonRef.current?.getBoundingClientRect()
+        const to = timelineRef.current?.getBoundingClientRect()
+        if (from && to) {
+          fly({ kind: 'marker', from, to: new DOMRect(to.left, to.bottom - 48, to.width, 40), label: chip })
+        }
+        toast.success(t('session.actions.addMarker.added', { time: formatClock(at) }))
+      },
+      fail: (error) => {
+        logSessionMonitorError('ActionBar.addMarker', error, { length: text.length })
+        if (presentCoreError(error) !== null) return
+        toast.danger(t('session.actions.failed'))
+      },
+      done: () => setPendingChip(null),
+    })
+    // The popover closes at the press, also when the marker is refused (the label is kept then).
+    if (sent) setOpen(false)
   }
 
   return (
-    <ActionSlot>
+    <ActionSlot busy={press.busy} className="sm-action-slot-anchored">
+      <AnimatePresence>
+        {pendingChip !== null ? (
+          <span key="pending" className="sm-marker-pending" aria-hidden="true">
+            <motion.span
+              className="sm-marker-pending-chip"
+              data-testid="sm-marker-pending"
+              initial={m.reduced ? { opacity: 0 } : { opacity: 0, y: 6, scale: 0.9 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={m.reduced ? { opacity: 0 } : { opacity: 0, y: 4, scale: 0.9 }}
+              transition={m.transitions.feedback}
+            >
+              <Chip color="accent" variant="soft" size="sm" className="gap-1.5 border border-accent/50">
+                <Bookmark className="size-3.5" aria-hidden="true" />
+                <Chip.Label className="truncate">{pendingChip}</Chip.Label>
+              </Chip>
+            </motion.span>
+          </span>
+        ) : null}
+      </AnimatePresence>
       <Unavailable enabled={enabled}>
         <Popover isOpen={open} onOpenChange={setOpen}>
-          <Button ref={buttonRef} variant="outline" className="sm-action" isDisabled={!enabled} data-testid="sm-action-marker" aria-describedby={enabled ? undefined : UNAVAILABLE_ID}>
+          <Button
+            ref={buttonRef}
+            variant="outline"
+            className="sm-action"
+            isDisabled={!enabled}
+            isPending={press.pending}
+            data-busy={press.busy || undefined}
+            data-testid="sm-action-marker"
+            aria-describedby={enabled ? undefined : UNAVAILABLE_ID}
+          >
             <ActionLabel
-              icon={<MapPin className="size-5" />}
+              icon={<PendingIcon pending={press.pending}><MapPin className="size-5" /></PendingIcon>}
               title={t('session.actions.addMarker.title')}
               subtitle={t('session.actions.addMarker.subtitle')}
             />
@@ -275,7 +342,9 @@ function MarkerAction({ enabled, timelineRef }: { enabled: boolean; timelineRef:
 // ── 3. Session Note ──────────────────────────────────────────────────────────────────────
 function NoteAction({ enabled }: { enabled: boolean }) {
   const { t } = useTranslation()
-  const actions = useSimActions()
+  const actions = useCoreActions()
+  const presentCoreError = useCoreErrorPresenter()
+  const press = usePendingControl()
   const [open, setOpen] = useState(false)
   const [text, setText] = useState('')
   const [touched, setTouched] = useState(false)
@@ -285,16 +354,20 @@ function NoteAction({ enabled }: { enabled: boolean }) {
   const save = () => {
     setTouched(true)
     if (error) return
-    try {
-      actions.addNote(trimmed)
-    } catch (caught) {
-      failToast(t('session.actions.failed'), 'ActionBar.addNote', caught, { length: trimmed.length })
-      return
-    }
-    setOpen(false)
-    setText('')
-    setTouched(false)
-    toast.success(t('session.actions.sessionNote.saved'))
+    // LB-1: Save is busy until the settle; the drawer closes in `ok` and stays open with the text on a refusal.
+    press.settle(() => actions.addNote(trimmed), {
+      ok: () => {
+        setOpen(false)
+        setText('')
+        setTouched(false)
+        toast.success(t('session.actions.sessionNote.saved'))
+      },
+      fail: (caught) => {
+        logSessionMonitorError('ActionBar.addNote', caught, { length: trimmed.length })
+        if (presentCoreError(caught) !== null) return
+        toast.danger(t('session.actions.failed'))
+      },
+    })
   }
 
   return (
@@ -336,11 +409,12 @@ function NoteAction({ enabled }: { enabled: boolean }) {
                   <Description>{t('session.actions.sessionNote.counter', { count: trimmed.length, max: NOTE_MAX })}</Description>
                   <FieldError>{touched ? error : null}</FieldError>
                 </TextField>
-                <div className="flex justify-end gap-2">
+                <div className="flex justify-end gap-2" aria-busy={press.busy || undefined}>
                   <Button variant="ghost" onPress={() => setOpen(false)}>
                     {t('common.actions.cancel')}
                   </Button>
-                  <Button type="submit" variant="primary" data-testid="sm-note-submit">
+                  <Button type="submit" variant="primary" isPending={press.pending} data-busy={press.busy || undefined} data-testid="sm-note-submit">
+                    {press.pending ? <Spinner size="sm" color="current" /> : null}
                     {t('session.actions.sessionNote.submit')}
                   </Button>
                 </div>
@@ -366,36 +440,57 @@ function SnapshotAction({
   onSnapshot: () => void
 }) {
   const { t } = useTranslation()
-  const actions = useSimActions()
+  const actions = useCoreActions()
+  const presentCoreError = useCoreErrorPresenter()
   const sim = useSimInstance()
   const fly = useFlight()
+  const press = usePendingControl()
 
   const capture = () => {
     const image = feedRef.current?.snapshot() ?? null
-    try {
-      actions.snapshot()
-    } catch (error) {
-      logSessionMonitorError('ActionBar.snapshot', error)
-      toast.danger(t('session.actions.snapshot.failed'))
-      return
-    }
-    onSnapshot()
-    const state = sim.store.getState()
-    const camera = state.cameras.find((c) => c.id === state.activeCameraId)?.name ?? state.activeCameraId
-    const from = feedStageRef.current?.getBoundingClientRect()
-    const to = document.querySelector('[data-testid="sm-action-queue"]')?.getBoundingClientRect()
-    if (from && to) fly({ kind: 'snapshot', from, to, image })
-    toast.success(t('session.actions.snapshot.captured'), {
-      description: t('session.actions.snapshot.capturedDetail', { camera, time: formatClock(state.clock.now) }),
+    let flashed = false
+    press.settle(() => actions.snapshot(), {
+      // LB-4: with a Live result the shutter flashes at the press; a simulator answers at once and
+      // flashes in `ok`, as before (and not at all on a refusal).
+      onWait: () => {
+        flashed = true
+        onSnapshot()
+      },
+      ok: () => {
+        if (!flashed) onSnapshot()
+        // C-2: read in `ok`, where the store already holds the snapshot (CL-16).
+        const state = sim.store.getState()
+        const camera = state.cameras.find((c) => c.id === state.activeCameraId)?.name ?? state.activeCameraId
+        const from = feedStageRef.current?.getBoundingClientRect()
+        const to = document.querySelector('[data-testid="sm-action-queue"]')?.getBoundingClientRect()
+        if (from && to) fly({ kind: 'snapshot', from, to, image })
+        toast.success(t('session.actions.snapshot.captured'), {
+          description: t('session.actions.snapshot.capturedDetail', { camera, time: formatClock(state.clock.now) }),
+        })
+      },
+      fail: (error) => {
+        logSessionMonitorError('ActionBar.snapshot', error)
+        if (presentCoreError(error) !== null) return
+        toast.danger(t('session.actions.snapshot.failed'))
+      },
     })
   }
 
   return (
-    <ActionSlot>
+    <ActionSlot busy={press.busy}>
       <Unavailable enabled={enabled}>
-        <Button variant="outline" className="sm-action" isDisabled={!enabled} onPress={capture} data-testid="sm-action-snapshot" aria-describedby={enabled ? undefined : UNAVAILABLE_ID}>
+        <Button
+          variant="outline"
+          className="sm-action"
+          isDisabled={!enabled}
+          isPending={press.pending}
+          data-busy={press.busy || undefined}
+          onPress={capture}
+          data-testid="sm-action-snapshot"
+          aria-describedby={enabled ? undefined : UNAVAILABLE_ID}
+        >
           <ActionLabel
-            icon={<Camera className="size-5" />}
+            icon={<PendingIcon pending={press.pending}><Camera className="size-5" /></PendingIcon>}
             title={t('session.actions.snapshot.title')}
             subtitle={t('session.actions.snapshot.subtitle')}
           />
@@ -534,34 +629,60 @@ function EndSessionAction({ recording, permitted }: { recording: boolean; permit
 
 function EndSessionDialog({ isOpen, onOpenChange }: { isOpen: boolean; onOpenChange: (open: boolean) => void }) {
   const { t } = useTranslation()
-  const actions = useSimActions()
+  const actions = useCoreActions()
+  const presentCoreError = useCoreErrorPresenter()
+  const press = usePendingControl()
   const [reason, setReason] = useState('')
   const [touched, setTouched] = useState(false)
+  /** The reason text the Core refused with 422 (F59: the Core counts characters itself); the error shows while it is unchanged. */
+  const [refused, setRefused] = useState<string | null>(null)
   const trimmed = reason.trim()
   const tooShort = trimmed.length < STOP_REASON_MIN_LENGTH
-  const error = tooShort ? t('session.actions.endSession.reasonTooShort', { min: STOP_REASON_MIN_LENGTH }) : null
+  const refusedNow = refused !== null && refused === trimmed
+  const error = tooShort || refusedNow ? t('session.actions.endSession.reasonTooShort', { min: STOP_REASON_MIN_LENGTH }) : null
 
   const close = () => {
     onOpenChange(false)
     setReason('')
     setTouched(false)
+    setRefused(null)
   }
 
   const confirm = () => {
     setTouched(true)
     if (tooShort) return
-    try {
-      actions.stopRecording(trimmed)
-    } catch (caught) {
-      logSessionMonitorError('ActionBar.endSession', caught, {
-        reasonLength: trimmed.length,
-        transition: caught instanceof SimTransitionError ? caught.event : null,
-      })
-      toast.danger(t('session.actions.endSession.failed'))
-      close()
-      return
-    }
-    close()
+    const sent = trimmed
+    // LB-1: the confirm is busy until the settle; the dialog closes in `ok`.
+    press.settle(() => actions.stopRecording(sent), {
+      ok: close,
+      fail: (caught) => {
+        const transition = caught instanceof SimTransitionError ? caught : null
+        logSessionMonitorError('ActionBar.endSession', caught, {
+          reasonLength: sent.length,
+          transition: transition ? transition.event : null,
+        })
+        const notice = presentCoreError(caught)
+        if (notice !== null) {
+          // An outage, a time-out or a limit keeps the dialog open with the reason (LB-6, LB-7, LB-10);
+          // a refusal of the role, or a session that is over, closes it.
+          if (notice.kind === CoreErrorNoticeKind.PERMISSION || notice.kind === CoreErrorNoticeKind.SIGNED_OUT || notice.kind === CoreErrorNoticeKind.STOPPED) close()
+          return
+        }
+        if (transition?.code === SimErrorCode.REASON_TOO_SHORT) {
+          // 422 INVALID_REASON: the reason field's error; the dialog stays open with the text.
+          setRefused(sent)
+          return
+        }
+        if (transition !== null && transition.from !== null && ENDED_STATES.has(transition.from)) {
+          // 409: another operator already stopped the session (Q16); the overlay follows the state.
+          toast.info(t('session.actions.endSession.alreadyEnded'))
+          close()
+          return
+        }
+        toast.danger(t('session.actions.endSession.failed'))
+        close()
+      },
+    })
   }
 
   return (
@@ -584,20 +705,21 @@ function EndSessionDialog({ isOpen, onOpenChange }: { isOpen: boolean; onOpenCha
                 value={reason}
                 onChange={setReason}
                 isRequired
-                isInvalid={touched && tooShort}
+                isInvalid={(touched && tooShort) || refusedNow}
                 name="reason"
                 autoFocus
               >
                 <Label>{t('session.actions.endSession.reasonLabel')}</Label>
                 <TextArea rows={3} placeholder={t('session.actions.endSession.reasonPlaceholder')} data-testid="sm-end-reason" />
-                <FieldError>{touched ? error : null}</FieldError>
+                <FieldError>{touched || refusedNow ? error : null}</FieldError>
               </TextField>
             </AlertDialog.Body>
-            <AlertDialog.Footer>
+            <AlertDialog.Footer aria-busy={press.busy || undefined}>
               <Button variant="ghost" onPress={close} data-testid="sm-end-cancel">
                 {t('session.actions.endSession.keepRecording')}
               </Button>
-              <Button type="submit" variant="danger" data-testid="sm-end-confirm">
+              <Button type="submit" variant="danger" isPending={press.pending} data-busy={press.busy || undefined} data-testid="sm-end-confirm">
+                {press.pending ? <Spinner size="sm" color="current" /> : null}
                 {t('session.actions.endSession.confirm')}
               </Button>
             </AlertDialog.Footer>

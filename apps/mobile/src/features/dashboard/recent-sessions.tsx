@@ -4,6 +4,11 @@
  * "See All" → `/sessions`. Thumbnails are `expo-image` crops of the bundled evidence posters (D50,
  * joined on the evidence number, D61), never a canvas per row (§7.8). Rows stagger in at 650 ms.
  * On tablets the card also carries the "items sealed today" count (web Dashboard H parity; D61: 7).
+ *
+ * Backend task W66, LIVE mode: a row shows bundled media only when the Core says the item has it
+ * (01_specs MS-2: `EvidenceMediaRef.source` is `DEMO_PACKAGE`). The replicated session history does
+ * not say so (CONTRACT-GAP-W66-1, below), so in LIVE every row shows the brand still, the picture a
+ * row without a poster already shows; Simulated mode joins the bundled posters as before.
  */
 import { Image } from 'expo-image';
 import { useRouter, type Href } from 'expo-router';
@@ -17,6 +22,7 @@ import { SectionCard, SubjectTypeChip } from '@/components/kit';
 import { HERO_FOCUS, HERO_STILL } from '@/components/media/brand-assets';
 import { demoMediaForEvidence } from '@/components/media/demo-media';
 import { useMotionPolicy, useMotionSettings } from '@/motion';
+import { useCoreLink } from '@/runtime';
 import type { RecentRow } from './home-model';
 import { HOME_BEATS, beatAt, homeEnter, valueTickDelay } from './home-motion';
 import { useHeldValue } from './use-held-value';
@@ -67,7 +73,11 @@ function RecentSessionRow({ row, index, chipBelow, last }: { row: RecentRow; ind
   const router = useRouter();
   const settings = useMotionSettings();
   const when = t(`features.dashboard.recent.${row.whenKey}`, { time: row.time, date: row.date });
-  const poster = row.posterSuffix ? demoMediaForEvidence(row.posterSuffix)?.poster['VIDEO-01'] : undefined;
+  // CONTRACT-GAP-W66-1: a `SessionHistoryEntry` of the replicated state carries no `EvidenceMediaRef`
+  // (only operation 40 `getEvidence` does, one item per call), so Home cannot tell a demo package
+  // from a session recorded in Live mode (`NONE`). Until the slice carries it, LIVE shows no poster.
+  const live = useCoreLink().source === 'LIVE';
+  const poster = row.posterSuffix && !live ? demoMediaForEvidence(row.posterSuffix)?.poster['VIDEO-01'] : undefined;
   const chip = <SubjectTypeChip testID={`home-recent-row-${index}-subject`} type={row.subjectType} size="sm" />;
 
   return (

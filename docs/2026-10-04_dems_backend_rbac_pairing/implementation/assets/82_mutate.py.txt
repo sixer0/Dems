@@ -1,0 +1,142 @@
+#!/usr/bin/env python3
+"""W82 mutation check (rule M15: nothing in the tree is written). M1's / W80's method.
+
+Each mutant changes texts of ONE production file of `features/settings/` IN MEMORY (the jest
+transformer beside this file) and runs the BEHAVIOURAL test files that reach it (the existing
+Simulated suites, the release gate, W51's runtime test of the control, and the new Live suites; the
+static test is left out, so a regex cannot be what catches a mutant). DETECTED = jest exits non-zero.
+The SHA-256 of the mutated files is compared before and after the run.
+
+  python3 mutate.py control      the unmutated test files, once
+  python3 mutate.py all          every mutant
+"""
+import hashlib, json, os, re, subprocess, sys, time
+
+ROOT = '/Users/gsp-budi/Documents/DEMS'
+APP = ROOT + '/apps/mobile'
+HERE = os.path.dirname(os.path.abspath(__file__))
+SPEC = HERE + '/spec.json'
+CONFIG = HERE + '/jest.mut.config.cjs'
+
+F = 'src/features/settings/'
+SWITCH = F + 'core-link-switch.tsx'
+MAINT = F + 'maintenance-section.tsx'
+SEC = F + 'security-section.tsx'
+MODEL = F + 'settings-model.ts'
+PREFS = F + 'preferences-section.tsx'
+PROFILE = F + 'profile-sheet.tsx'
+SCREEN = F + 'settings-screen.tsx'
+
+TESTS = [
+    F + 'settings-screen.test.tsx',
+    F + 'settings-model.test.ts',
+    F + 'heartbeat-release-gate.test.tsx',
+    'src/runtime/live-settings.test.tsx',
+    F + 'settings-live-model.test.ts',
+    F + 'live-settings-sites.test.tsx',
+    F + 'live-settings-biometric.test.tsx',
+    F + 'live-settings-boundary.test.tsx',
+]
+
+def e(frm, to):
+    return {'from': frm, 'to': to}
+
+M = [
+  # ── W: the switch across the LIVE boundary (core-link-switch.tsx; §3.3, CPM1-2) ──
+  ('W1', SWITCH, 'no dialog: every change is instant', [e('if (!crossesLiveBoundary(source, next)) {', 'if (true) {')]),
+  ('W2', SWITCH, 'a dialog for every change (SIMULATED <-> HEARTBEAT too)', [e('if (!crossesLiveBoundary(source, next)) {', 'if (false) {')]),
+  ('W3', SWITCH, 'no sign-out before the switch', [e("settle(() => actions.signOut('USER'), {", 'settle(() => undefined, {')]),
+  ('W4', SWITCH, 'the source is stored at the press, before the sign-out settled', [e('    press.run((release) => {\n', '    setCoreLinkSource(next);\n    press.run((release) => {\n')]),
+  ('W5', SWITCH, 'the source is never stored', [e('          setCoreLinkSource(next);\n', '          void next;\n')]),
+  ('W6', SWITCH, 'Cancel does not close the dialog', [e('const cancel = (): void => setTarget(null);', 'const cancel = (): void => undefined;')]),
+  ('W7', SWITCH, 'Cancel enabled while busy', [e('{...(busy ? { isDisabled: true } : {})}', '{...{}}')]),
+  ('W8', SWITCH, 'the dialog always speaks of Live mode', [e("dataModeOf(target ?? 'SIMULATED')", "dataModeOf('LIVE')")]),
+  ('W9', SWITCH, 'the confirm is not marked busy while the sign-out is out', [e('{...busyState(busy)}', '{...{}}')]),
+  ('W10', SWITCH, 'the spinner at the press (busy instead of pending)', [e('{pending ? <PendingSpinner', '{busy ? <PendingSpinner')]),
+  ('W11', SWITCH, 'a dismissal closes the dialog while the sign-out is out', [e('(open || busy ? undefined : onCancel())', '(open ? undefined : onCancel())')]),
+  # ── R: the control (preferences-section.tsx) ──
+  ('R1', PREFS, 'the segment changes nothing', [e('onChange={core.request}', 'onChange={() => undefined}')]),
+  ('R2', PREFS, 'the dialog is never shown', [e('<CoreModeDialog target={core.target}', '<CoreModeDialog target={null}')]),
+  ('R3', PREFS, 'the LIVE hint line is missing in a release build', [e(" ${t('features.settings.preferences.coreLinkHintLiveRelease')}", '')]),
+  # ── M: S2-7 (maintenance-section.tsx) ──
+  ('M1', MAINT, 'LIVE rejections bypass the presenter', [e('if (live && presentCoreError(error)) {', 'if (false) {')]),
+  ('M2', MAINT, 'the diagnostics sheet opens whatever the answer', [e('        ok: () => setOpen(true),\n        done: release,\n', '        done: () => {\n          setOpen(true);\n          release();\n        },\n')]),
+  ('M3', MAINT, 'Run diagnostics is never released', [e('        ok: () => setOpen(true),\n        done: release,\n', '        ok: () => setOpen(true),\n        done: () => undefined,\n')]),
+  ('M4', MAINT, 'Run diagnostics is not marked busy', [e('onPress={start} {...busyState(press.busy)}', 'onPress={start}')]),
+  ('M5', MAINT, 'the MIC 2 clip latch reset is never sent', [e('        chained = true;\n        run(() => actions.resetClip(channel)', '        chained = true;\n        if (spec.kind !== FaultKind.MIC_CLIP) run(() => actions.resetClip(channel)')]),
+  ('M6', MAINT, 'the fault button is released before the latch reset settled', [e('        if (!chained) release();', '        release();')]),
+  ('M7', MAINT, 'the LIVE update chip says SIMULATED', [e("t(live ? 'system.demo.badge' : 'common.simulated.chip')", "t('common.simulated.chip')")]),
+  ('M8', MAINT, 'the LIVE diagnostics subtitle says simulated', [e("t(live ? 'features.settings.live.diagnosticsSubtitle' : 'system.diagnostics.subtitle')", "t('system.diagnostics.subtitle')")]),
+  ('M9', MAINT, 'the demo gating ignores LIVE', [e('demoControlsAccess({ presentationMode: prefs.presentationMode, live, permitted, demoFlag })', 'demoControlsAccess({ presentationMode: prefs.presentationMode, live: false, permitted, demoFlag })')]),
+  ('M10', MAINT, 'the scenario toast at the press, not in ok', [e("    run(() => actions.loadScenario(name), {\n      source: reset ? 'settings.demo.reset' : 'settings.demo.loadScenario',\n      context: { scenario: name },\n      ok: () => {\n", "    toast.show({ variant: 'success', label: reset ? t('system.demo.resetDone') : t('system.demo.scenarioLoaded', { scenario: t(`system.demo.scenarios.${name}`) }) });\n    run(() => actions.loadScenario(name), {\n      source: reset ? 'settings.demo.reset' : 'settings.demo.loadScenario',\n      context: { scenario: name },\n      ok: () => {\n")]),
+  # ── S: the biometric switch (security-section.tsx; CPM1-1, AC-C-68) ──
+  ('S1', SEC, 'the LIVE inputs are not passed (the simulated note in LIVE)', [e('live ? { changeBlocked: session.biometric.changeBlocked, protected: session.biometric.protected } : undefined', 'undefined')]),
+  ('S2', SEC, 'a biometric session may change biometric sign-in (handler guard)', [e('    if (biometric.changeBlocked) return;\n', '')]),
+  ('S3', SEC, 'the LIVE failure toast is the simulated sentence', [e("t(live ? 'features.settings.live.biometricFailed' : 'features.settings.saveFailed')", "t('features.settings.saveFailed')")]),
+  ('S4', SEC, 'the SIMULATED description loses its period', [e('const description = !live ? `${status} ${t(biometric.noteKey)}.`', 'const description = !live ? `${status} ${t(biometric.noteKey)}`')]),
+  # ── B: the model (settings-model.ts) ──
+  ('B1', MODEL, 'a biometric session does not disable the switch', [e('const disabled = changeBlocked || (', 'const disabled = (')]),
+  ('B2', MODEL, 'the protected wording without a protected marker', [e('live.protected === true', 'live.protected !== false')]),
+  ('B3', MODEL, 'SIMULATED <-> HEARTBEAT crosses the boundary', [e("return from !== to && (from === 'LIVE' || to === 'LIVE');", 'return from !== to;')]),
+  ('B4', MODEL, 'the demo flag is ignored', [e("return input.demoFlag ? 'shown' : 'flag-off';", "return 'shown';")]),
+  ('B5', MODEL, 'DEMO_CONTROL is ignored', [e("  if (!input.permitted) return 'not-permitted';\n", '')]),
+  # ── P, Q: S5-7 (profile-sheet.tsx, settings-screen.tsx) ──
+  ('P1', PROFILE, 'the LIVE permission note is the simulated sentence', [e("t(live ? 'features.settings.live.permissionsNote' : 'features.settings.account.permissionsNote')", "t('features.settings.account.permissionsNote')")]),
+  ('Q1', SCREEN, 'the sheet is never told it is LIVE', [e('        live={live}\n', '        live={false}\n')]),
+]
+
+def sha(path):
+    with open(path, 'rb') as f:
+        return hashlib.sha256(f.read()).hexdigest()
+
+def jest(env, tests):
+    return subprocess.run(['node', ROOT + '/node_modules/jest/bin/jest.js', '--config', CONFIG, '--maxWorkers=2', '--silent', *tests],
+                          cwd=APP, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+
+def summary(out):
+    tail = [line.strip() for line in out.splitlines() if line.startswith('Tests:')]
+    files = sorted({line.split()[1].split('/')[-1] for line in out.splitlines() if line.startswith('FAIL ')})
+    first = [re.sub(r'\s+', ' ', line.strip().lstrip('●').strip()) for line in out.splitlines() if line.strip().startswith('● ') and 'Console' not in line]
+    return (tail[-1] if tail else 'no summary line'), files, first[:1]
+
+def main():
+    wanted = sys.argv[1:]
+    files = sorted({m[1] for m in M})
+    before = {f: sha(APP + '/' + f) for f in files}
+    print('# W82 mutation check, %s; %d test files per run; the tree is not edited' % (time.strftime('%Y-%m-%d %H:%M:%S'), len(TESTS)), flush=True)
+    if 'control' in wanted:
+        started = time.time()
+        run = jest(dict(os.environ, CI='1'), TESTS)
+        tail, failed, _ = summary(run.stdout)
+        print('control (no mutation, %d test files): exit=%d %s (%.0f s)' % (len(TESTS), run.returncode, tail, time.time() - started), flush=True)
+        if run.returncode != 0:
+            print(run.stdout[-4000:])
+            sys.exit(1)
+    chosen = M if 'all' in wanted else [m for m in M if m[0] in wanted]
+    detected = missed = unapplied = 0
+    for mid, file, what, edits in chosen:
+        with open(SPEC, 'w') as f:
+            json.dump({'id': mid, 'file': file, 'edits': edits}, f)
+        started = time.time()
+        run = jest(dict(os.environ, CI='1', W82_MUT_SPEC=SPEC), TESTS)
+        tail, failed, first = summary(run.stdout)
+        if 'expected exactly 1' in run.stdout:
+            unapplied += 1
+            verdict = 'NOT APPLIED'
+        elif run.returncode != 0:
+            detected += 1
+            verdict = 'DETECTED'
+        else:
+            missed += 1
+            verdict = 'not detected'
+        print('%-3s %-12s %s | %s | %s | failing files: %s | first: %s (%.0f s)' % (mid, verdict, what, file.split('/')[-1], tail, ', '.join(failed) or '-', ' / '.join(first)[:160] or '-', time.time() - started), flush=True)
+    if chosen:
+        print('## %d detected, %d not detected, %d not applied, of %d' % (detected, missed, unapplied, len(chosen)), flush=True)
+    after = {f: sha(APP + '/' + f) for f in files}
+    print('## the mutated files in the tree, before and after: %s' % ('identical' if before == after else 'CHANGED'), flush=True)
+    for f in files:
+        print('   %s  %s' % (after[f][:16], f), flush=True)
+    print('# finished %s' % time.strftime('%H:%M:%S'), flush=True)
+
+if __name__ == '__main__':
+    main()

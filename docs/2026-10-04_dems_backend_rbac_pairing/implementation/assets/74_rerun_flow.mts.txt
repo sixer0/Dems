@@ -1,0 +1,216 @@
+// W74 device RE-RUN (decision D162): the Evidence screen in LIVE mode (the Core's verdict, the settled
+// site S1-5) and in SIMULATED mode, on the phone of lane 1, in one sitting.
+//   node --import tsx rerun_flow.mts <serial> <out> <T0> <live|simulated>
+// - Login, Summary and Home are never dumped (they never go idle): W60's fixed Login coordinates, and
+//   the Summary's two controls at the positions measured off `74_phone_live_summary_first.png`
+//   (1080 x 2424): the biometric dialog's "Not now" (540, 1443), the Summary's "Done" (246, 2254).
+// - `uiautomator dump` only on the Evidence screens, each with a 20 s limit (a spawn option).
+// Rules (P19, D125): the demo password is read from the shared dataset constant and never printed;
+// it is only ever the argument of one `adb shell input text` into the APP's own password field.
+// Nothing is typed or tapped unless the app has the focus and no keyguard shows (exit 77 otherwise).
+// "Enable" of the biometric dialog is never pressed. No keyguard, fingerprint or setting is touched.
+import { execFileSync } from 'node:child_process';
+import { writeFileSync } from 'node:fs';
+import { DEMO_OPERATOR_PASSWORD, OPERATORS } from '../../packages/shared/src/sim/dataset';
+
+const [serial, out, t0, phase] = process.argv.slice(2);
+if (!serial || !out || !t0 || (phase !== 'live' && phase !== 'simulated')) {
+  console.error('usage: rerun_flow.mts <serial> <out> <T0> <live|simulated>');
+  process.exit(64);
+}
+const LIVE_ITEM = 'EV-20261005-0014'; // the evidence of SES-20261005-0026, recorded in Live mode on lane 1
+const BIG = { encoding: 'utf8' as const, maxBuffer: 256 * 1024 * 1024 };
+const adb = (...a: string[]): string => execFileSync('adb', ['-s', serial, ...a], BIG);
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const jsLog = (): string => adb('logcat', '-d', '-T', t0, '-s', 'ReactNativeJS:V');
+const say = (text: string) => console.log(`-- ${new Date().toTimeString().slice(0, 8)} ${text}`);
+class Locked extends Error {
+  readonly code = 77;
+}
+
+function guard(): void {
+  const w = adb('shell', 'dumpsys', 'window');
+  if (!/isKeyguardShowing=false/.test(w) || !/mCurrentFocus=.*com\.dems\.demo\.tablet/.test(w)) throw new Locked('app not focused / keyguard');
+}
+function tapAt(x: number, y: number, what: string): void {
+  guard();
+  adb('shell', 'input', 'tap', String(x), String(y));
+  say(`tapped ${what} at ${x},${y}`);
+}
+function shot(name: string): void {
+  const png = execFileSync('adb', ['-s', serial, 'exec-out', 'screencap', '-p'], { maxBuffer: BIG.maxBuffer });
+  writeFileSync(`${out}/74_rerun_${name}.png`, png);
+  say(`screencap 74_rerun_${name}.png (${png.length} bytes)`);
+}
+function core(pattern: RegExp): string[] {
+  return jsLog()
+    .split('\n')
+    .map((line) => /DEMS-LIVE\] (.*)$/.exec(line)?.[1] ?? '')
+    .filter((line) => line !== '' && pattern.test(line))
+    .map((line) => line.replace(/ [0-9a-f]{8}-[0-9a-f-]{27}$/, ''));
+}
+async function waitCore(pattern: RegExp, seconds: number): Promise<string[]> {
+  for (let waited = 0; waited < seconds; waited += 1) {
+    const lines = core(pattern);
+    if (lines.length > 0) return lines;
+    await sleep(1000);
+  }
+  return [];
+}
+
+interface Box { l: number; t: number; r: number; b: number }
+/** One dump of the screen (Evidence screens only); null when the screen does not go idle in 20 s. */
+function dump(): { ids: Map<string, Box>; height: number } | null {
+  try {
+    execFileSync('adb', ['-s', serial, 'shell', 'uiautomator', 'dump', '/sdcard/w74.xml'], { ...BIG, timeout: 20_000 });
+  } catch {
+    say('dump: no idle state in 20 s');
+    return null;
+  }
+  const xml = adb('exec-out', 'cat', '/sdcard/w74.xml');
+  const ids = new Map<string, Box>();
+  let height = 0;
+  for (const [node] of xml.matchAll(/<node\b[^>]*>/g)) {
+    const bounds = / bounds="\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]"/.exec(node);
+    if (!bounds) continue;
+    const box = { l: Number(bounds[1]), t: Number(bounds[2]), r: Number(bounds[3]), b: Number(bounds[4]) };
+    height = Math.max(height, box.b);
+    const id = / resource-id="([^"]*)"/.exec(node)?.[1]?.replace(/^.*:id\//, '');
+    if (id && !ids.has(id)) ids.set(id, box);
+  }
+  return { ids, height };
+}
+/** Taps a node of an Evidence screen by its test ID, scrolling the content up until it shows. */
+async function tapId(id: string, { scroll = false, tries = 6 }: { scroll?: boolean; tries?: number } = {}): Promise<boolean> {
+  for (let attempt = 0; attempt < tries; attempt += 1) {
+    const d = dump();
+    const box = d?.ids.get(id);
+    if (d && box && box.b > box.t && box.t >= 0 && box.b < d.height - 180) {
+      tapAt(Math.round((box.l + box.r) / 2), Math.round((box.t + box.b) / 2), id);
+      return true;
+    }
+    if (scroll) {
+      guard();
+      adb('shell', 'input', 'swipe', '540', '1500', '540', '1000', '300');
+    }
+    await sleep(800);
+  }
+  say(`no visible node ${id}`);
+  return false;
+}
+function present(id: RegExp): string[] {
+  const d = dump();
+  return d === null ? [] : [...d.ids.keys()].filter((key) => id.test(key));
+}
+
+/** W60's sign-in on the app's own Login form, fixed coordinates (phone portrait 1080 x 2424). */
+async function signIn(username: string): Promise<void> {
+  const USER: [number, number] = [540, 1105];
+  const PASS: [number, number] = [540, 1265];
+  tapAt(...USER, 'the username field');
+  await sleep(1200);
+  tapAt(540, 2338, "the handwriting coach's Cancel (empty space when none)");
+  await sleep(800);
+  tapAt(...USER, 'the username field');
+  await sleep(600);
+  guard();
+  adb('shell', 'input', 'text', username);
+  say(`typed the operator username (${username})`);
+  await sleep(400);
+  tapAt(...PASS, 'the password field');
+  await sleep(600);
+  guard();
+  adb('shell', 'input', 'text', DEMO_OPERATOR_PASSWORD); // never printed
+  say('typed the demo password (not shown)');
+  await sleep(400);
+  guard();
+  adb('shell', 'input', 'keyevent', '66');
+  say("pressed the keypad's go key");
+}
+function link(url: string): void {
+  guard();
+  adb('shell', 'am', 'start', '-a', 'android.intent.action.VIEW', '-d', url, 'com.dems.demo.tablet');
+  say(`deep link ${url}`);
+}
+/** Declines the biometric offer if it is up on an Evidence screen (by its test ID; never "Enable"). */
+async function declineOfferIfShown(): Promise<void> {
+  if (present(/^biometric-offer-decline$/).length > 0) await tapId('biometric-offer-decline');
+}
+
+async function live(): Promise<number> {
+  const investigator = OPERATORS.find((o) => o.role === 'INVESTIGATOR');
+  if (!investigator) throw new Error('no INVESTIGATOR in the dataset');
+  await sleep(6000);
+  shot('live_login');
+  await signIn(investigator.username);
+  say(`the app's sign-in: ${(await waitCore(/POST \/api\/v1\/auth\/sign-in/, 30)).join(' | ') || 'NOT SEEN'}`);
+  await sleep(6000);
+  shot('live_after_signin');
+  // The pending Summary of SES-20261005-0026 with the biometric offer on top (controller note 3).
+  tapAt(540, 1443, 'the biometric offer\'s "Not now" (Summary)');
+  await sleep(2000);
+  shot('live_summary');
+  tapAt(246, 2254, 'the Summary\'s "Done"');
+  say(`acknowledge: ${(await waitCore(/summary\/acknowledge/, 12)).join(' | ') || 'NOT SEEN'}`);
+  await sleep(3000);
+
+  link(`demsdemo:///evidence/${LIVE_ITEM}`);
+  say(`media reference: ${(await waitCore(new RegExp(`GET /api/v1/evidence/${LIVE_ITEM}`), 15)).join(' | ') || 'NOT SEEN'}`);
+  await sleep(2500);
+  await declineOfferIfShown();
+  shot('live_detail');
+  if (!(await tapId('evidence-tab-integrity', { scroll: true }))) return 1;
+  await sleep(1500);
+  if (!(await tapId('evidence-verify', { scroll: true }))) return 1;
+  say(`verify: ${(await waitCore(new RegExp(`POST /api/v1/evidence/${LIVE_ITEM}/verify`), 15)).join(' | ') || 'NOT SEEN'}`);
+  await sleep(2500);
+  say(`on screen: ${present(/^evidence-(verdict-|bundled-|integrity-label)/).join(', ') || 'none'}`);
+  shot('live_verdict');
+  // Site S1-5: an INVESTIGATOR's export, refused and audited by the Core.
+  await tapId('evidence-action-export');
+  say(`export probe: ${(await waitCore(new RegExp(`POST /api/v1/evidence/${LIVE_ITEM}/export`), 15)).join(' | ') || 'NOT SEEN'}`);
+  await sleep(2000);
+  say(`on screen: ${present(/^evidence-export-(denied|authorizing|authorized)$/).join(', ') || 'none'}`);
+  shot('live_export_denied');
+  const log = jsLog();
+  say(`credential/token lines in the JS log (must be 0): ${log.split('\n').filter((l) => /dvc_|ses_|bio_/.test(l)).length}`);
+  say(`demo operations (must be 0): ${core(/\/api\/v1\/demo\//).length}; biometric enrolment requests (must be 0): ${core(/biometric/).length}`);
+  return 0;
+}
+
+async function simulated(): Promise<number> {
+  const investigator = OPERATORS.find((o) => o.role === 'INVESTIGATOR');
+  if (!investigator) throw new Error('no INVESTIGATOR in the dataset');
+  await sleep(6000);
+  shot('simulated_login');
+  await signIn(investigator.username);
+  await sleep(6000);
+  link('demsdemo:///evidence');
+  await sleep(3000);
+  await declineOfferIfShown();
+  const rows = present(/^evidence-row-EV-\d{8}-\d{4}$/);
+  say(`evidence rows on screen: ${rows.length}`);
+  shot('simulated_list');
+  const row = rows[0];
+  if (row) {
+    await tapId(row);
+    await sleep(2500);
+    if (await tapId('evidence-tab-integrity', { scroll: true })) {
+      await sleep(1500);
+      await tapId('evidence-verify', { scroll: true });
+      await sleep(3000);
+      say(`on screen: ${present(/^evidence-(verdict-|integrity-label)/).join(', ') || 'none'}`);
+      shot('simulated_verdict');
+    }
+  }
+  say(`Core requests in SIMULATED mode (must be 0): ${jsLog().split('\n').filter((l) => l.includes('DEMS-LIVE]')).length}`);
+  return 0;
+}
+
+(phase === 'live' ? live() : simulated()).then(
+  (status) => process.exit(status),
+  (error: unknown) => {
+    console.error(`-- failed: ${error instanceof Error ? error.message : 'unknown'}`);
+    process.exit(error instanceof Locked ? 77 : 1);
+  },
+);

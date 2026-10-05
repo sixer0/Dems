@@ -49,13 +49,18 @@ function CardBody({ spec }: { spec: QuickSpec }) {
 export interface QuickActionsProps {
   onRunDiagnostics: () => void
   onSoftwareUpdate: () => void
+  /**
+   * Live mode (plan row W76, LB-1): a diagnostics start is out; the card is marked `aria-busy` and a
+   * press sends nothing more (the starter ignores it). Never true in Simulated mode.
+   */
+  runBusy?: boolean
 }
 
 /**
  * Quick actions (01_specs §14.5.8 "reuses J"): four pressable cards with the MP Spotlight (M-C-16).
  * RBAC (S20): a card whose action the role lacks is disabled and a Tooltip names the role.
  */
-export function QuickActions({ onRunDiagnostics, onSoftwareUpdate }: QuickActionsProps) {
+export function QuickActions({ onRunDiagnostics, onSoftwareUpdate, runBusy = false }: QuickActionsProps) {
   const { t } = useTranslation()
   const m = useMotionPolicy()
   const routeDelay = useRouteEnterDelay()
@@ -96,6 +101,7 @@ export function QuickActions({ onRunDiagnostics, onSoftwareUpdate }: QuickAction
         className="sys-qa-card"
         data-enabled="true"
         data-testid={testId}
+        aria-busy={spec.id === 'runDiagnostics' && runBusy ? true : undefined}
         onClick={spec.id === 'runDiagnostics' ? onRunDiagnostics : onSoftwareUpdate}
       >
         <Spotlight size={200} />

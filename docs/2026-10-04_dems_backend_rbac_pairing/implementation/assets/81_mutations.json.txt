@@ -1,0 +1,293 @@
+[
+ {
+  "id": "M01",
+  "file": "features/paired-devices/model.ts",
+  "what": "rule 2 without the freshness count",
+  "find": "active.codeId !== held.codeId && statusCount > held.statusCount &&",
+  "replace": "active.codeId !== held.codeId &&",
+  "tests": [
+   "src/features/paired-devices/__tests__/model.test.ts",
+   "src/test/live-paired-devices-issue.test.tsx"
+  ]
+ },
+ {
+  "id": "M02",
+  "file": "features/paired-devices/model.ts",
+  "what": "a redeem is not seen in the registry",
+  "find": "const device = devices?.find((entry) => entry.pairedWithCodeId === held.codeId)",
+  "replace": "const device = undefined as PairedDevice | undefined",
+  "tests": [
+   "src/features/paired-devices/__tests__/model.test.ts",
+   "src/test/live-paired-devices-issue.test.tsx"
+  ]
+ },
+ {
+  "id": "M03",
+  "file": "features/paired-devices/model.ts",
+  "what": "expiry one second late",
+  "find": "if (now >= held.expiresAt) return { kind: IssuePanelKind.EXPIRED }",
+  "replace": "if (now > held.expiresAt + 1000) return { kind: IssuePanelKind.EXPIRED }",
+  "tests": [
+   "src/features/paired-devices/__tests__/model.test.ts",
+   "src/test/live-paired-devices-issue.test.tsx"
+  ]
+ },
+ {
+  "id": "M04",
+  "file": "features/paired-devices/model.ts",
+  "what": "EXHAUSTED read as EXPIRED",
+  "find": "if (closedReason === 'EXHAUSTED') return { kind: IssuePanelKind.EXHAUSTED }",
+  "replace": "if (closedReason === 'EXHAUSTED') return { kind: IssuePanelKind.EXPIRED }",
+  "tests": [
+   "src/features/paired-devices/__tests__/model.test.ts",
+   "src/test/live-paired-devices-issue.test.tsx"
+  ]
+ },
+ {
+  "id": "M05",
+  "file": "features/paired-devices/model.ts",
+  "what": "the page's own cancel reads as cancelled elsewhere",
+  "find": "return cancelledHere === held.codeId ? { kind: IssuePanelKind.IDLE } : { kind: IssuePanelKind.CANCELLED_ELSEWHERE }",
+  "replace": "return { kind: IssuePanelKind.CANCELLED_ELSEWHERE }",
+  "tests": [
+   "src/features/paired-devices/__tests__/model.test.ts"
+  ]
+ },
+ {
+  "id": "M06",
+  "file": "features/paired-devices/model.ts",
+  "what": "amber one second late",
+  "find": "if (seconds <= AMBER_FROM_S) return 'amber'",
+  "replace": "if (seconds < AMBER_FROM_S) return 'amber'",
+  "tests": [
+   "src/features/paired-devices/__tests__/model.test.ts",
+   "src/test/live-paired-devices-issue.test.tsx"
+  ]
+ },
+ {
+  "id": "M07",
+  "file": "features/paired-devices/model.ts",
+  "what": "PAIRED not first",
+  "find": "if (paired !== 0) return paired",
+  "replace": "if (paired !== 0 && false) return paired",
+  "tests": [
+   "src/features/paired-devices/__tests__/model.test.ts",
+   "src/test/live-paired-devices-list.test.tsx"
+  ]
+ },
+ {
+  "id": "M08",
+  "file": "features/paired-devices/model.ts",
+  "what": "an ended code's stale status reads as active elsewhere",
+  "find": "const endedHere = active !== null && (outcome?.codeId === active.codeId || cancelledHere === active.codeId)",
+  "replace": "const endedHere = false",
+  "tests": [
+   "src/features/paired-devices/__tests__/model.test.ts",
+   "src/test/live-paired-devices-issue.test.tsx"
+  ]
+ },
+ {
+  "id": "M09",
+  "file": "features/paired-devices/code-memory.ts",
+  "what": "no PG-6a subscription",
+  "find": "entry.stopClearing = onCoreQueriesCleared(queryClient, () => forgetCodes(queryClient))",
+  "replace": "entry.stopClearing = () => undefined",
+  "tests": [
+   "src/features/paired-devices/__tests__/code-memory.test.ts",
+   "src/test/live-paired-devices-memory.test.tsx"
+  ]
+ },
+ {
+  "id": "M10",
+  "file": "features/paired-devices/code-memory.ts",
+  "what": "one memory for every query client",
+  "find": "let entry = entries.get(queryClient)",
+  "replace": "let entry = entries.get(firstClient ??= queryClient); queryClient = firstClient",
+  "tests": [
+   "src/features/paired-devices/__tests__/code-memory.test.ts",
+   "src/test/live-paired-devices-memory.test.tsx"
+  ],
+  "prelude": "let firstClient: QueryClient | undefined\n"
+ },
+ {
+  "id": "M11",
+  "file": "features/paired-devices/code-memory.ts",
+  "what": "the code also put into web storage",
+  "find": "  const statusCount = queryClient.getQueryState(CORE_QUERY_KEYS.pairingCode)?.dataUpdateCount ?? 0",
+  "replace": "  const statusCount = queryClient.getQueryState(CORE_QUERY_KEYS.pairingCode)?.dataUpdateCount ?? 0\n  window.sessionStorage.setItem('dems.pairing.last', issued.code)",
+  "tests": [
+   "src/test/live-paired-devices-memory.test.tsx"
+  ]
+ },
+ {
+  "id": "M12",
+  "file": "features/paired-devices/issue-panel.tsx",
+  "what": "the answer also put into the query cache",
+  "find": "          holdCode(queryClient, issued)\n",
+  "replace": "          holdCode(queryClient, issued)\n          queryClient.setQueryData(['core', 'pairing-last'], issued)\n",
+  "tests": [
+   "src/test/live-paired-devices-memory.test.tsx"
+  ]
+ },
+ {
+  "id": "M13",
+  "file": "features/paired-devices/issue-panel.tsx",
+  "what": "the code written to the page's log on issue",
+  "find": "          holdCode(queryClient, issued)\n",
+  "replace": "          holdCode(queryClient, issued)\n          reportPairingError('features/paired-devices.issue', null, PAIRING_RECORD.issue, { code: issued.code }, 'warn')\n",
+  "tests": [
+   "src/test/live-paired-devices-memory.test.tsx"
+  ]
+ },
+ {
+  "id": "M14",
+  "file": "features/paired-devices/issue-panel.tsx",
+  "what": "a 429 shows the Error state",
+  "find": "  CoreErrorNoticeKind.ORIGIN_NOT_ALLOWED,\n])",
+  "replace": "  CoreErrorNoticeKind.ORIGIN_NOT_ALLOWED,\n  CoreErrorNoticeKind.LIMIT,\n])",
+  "tests": [
+   "src/test/live-paired-devices-issue.test.tsx"
+  ]
+ },
+ {
+  "id": "M15",
+  "file": "features/paired-devices/issue-panel.tsx",
+  "what": "the presenter skipped on a failed issue",
+  "find": "          const notice = presentCoreError(error, { permission: PAIRING_PERMISSION })\n          if (notice !== null) {",
+  "replace": "          const notice = null as ReturnType<typeof presentCoreError>\n          if (notice !== null) {",
+  "tests": [
+   "src/test/live-paired-devices-issue.test.tsx"
+  ]
+ },
+ {
+  "id": "M16",
+  "file": "features/paired-devices/issue-panel.tsx",
+  "what": "cancel does not empty the memory",
+  "find": "          if (codeId !== null) codeCancelledHere(queryClient, codeId)",
+  "replace": "          void codeCancelledHere",
+  "tests": [
+   "src/test/live-paired-devices-issue.test.tsx"
+  ]
+ },
+ {
+  "id": "M17",
+  "file": "features/paired-devices/live-data.ts",
+  "what": "a 403 presented by both reads",
+  "find": "        if (forbiddenShown.current) return\n",
+  "replace": "",
+  "tests": [
+   "src/test/live-paired-devices-list.test.tsx"
+  ]
+ },
+ {
+  "id": "M18",
+  "file": "features/paired-devices/live-data.ts",
+  "what": "the registry under a key of its own (not the drawer's entry)",
+  "find": "    queryKey: CORE_QUERY_KEYS.pairedDevices,",
+  "replace": "    queryKey: [...CORE_QUERY_KEYS.pairedDevices, 'page'],",
+  "tests": [
+   "src/test/live-paired-devices-list.test.tsx"
+  ]
+ },
+ {
+  "id": "M19",
+  "file": "features/paired-devices/devices-panel.tsx",
+  "what": "CONTRACT-GAP-W70-1 refresh removed",
+  "find": "      void queryClient.invalidateQueries({ queryKey: CORE_QUERY_KEYS.pairedDevices })\n    })",
+  "replace": "      void queryClient\n    })",
+  "tests": [
+   "src/test/live-paired-devices-list.test.tsx"
+  ]
+ },
+ {
+  "id": "M20",
+  "file": "features/paired-devices/devices-panel.tsx",
+  "what": "no highlight of a new row",
+  "find": "    setAdded(new Set(fresh))",
+  "replace": "    setAdded(new Set())",
+  "tests": [
+   "src/test/live-paired-devices-list.test.tsx",
+   "src/test/live-paired-devices-issue.test.tsx"
+  ]
+ },
+ {
+  "id": "M21",
+  "file": "features/paired-devices/revoke-dialog.tsx",
+  "what": "an outage closes the dialog",
+  "find": "const CLOSING_NOTICES: ReadonlySet<string> = new Set([CoreErrorNoticeKind.PERMISSION,",
+  "replace": "const CLOSING_NOTICES: ReadonlySet<string> = new Set([CoreErrorNoticeKind.OFFLINE, CoreErrorNoticeKind.PERMISSION,",
+  "tests": [
+   "src/test/live-paired-devices-list.test.tsx"
+  ]
+ },
+ {
+  "id": "M22",
+  "file": "features/paired-devices/revoke-dialog.tsx",
+  "what": "no reason length check before the request",
+  "find": "  const tooShort = trimmed.length < PAIRING_INPUT_LIMITS.revokeReasonMin",
+  "replace": "  const tooShort = trimmed.length < 0",
+  "tests": [
+   "src/test/live-paired-devices-list.test.tsx"
+  ]
+ },
+ {
+  "id": "M23",
+  "file": "features/paired-devices/revoke-dialog.tsx",
+  "what": "409 treated as a generic failure",
+  "find": "          if (failure?.status === 409 || failure?.status === 404) {",
+  "replace": "          if (failure?.status === 404) {",
+  "tests": [
+   "src/test/live-paired-devices-list.test.tsx"
+  ]
+ },
+ {
+  "id": "M24",
+  "file": "features/paired-devices/code-display.tsx",
+  "what": "the QR gets a value other than the answer's payload",
+  "find": "        value={payload}",
+  "replace": "        value={payload.replace('DEMS-PAIR:1:', 'DEMS-PAIR:')}",
+  "tests": [
+   "src/test/live-paired-devices-issue.test.tsx"
+  ]
+ },
+ {
+  "id": "M25",
+  "file": "features/paired-devices/index.tsx",
+  "what": "the Forbidden state ignored",
+  "find": "  const forbidden = isForbidden(reads.status.error) || isForbidden(reads.devices.error)",
+  "replace": "  const forbidden = false",
+  "tests": [
+   "src/test/live-paired-devices-list.test.tsx"
+  ]
+ },
+ {
+  "id": "M26",
+  "file": "features/paired-devices/issue-panel.tsx",
+  "what": "the stale-status count never set (always fresh)",
+  "find": "  const statusCount = statusAnsweredAt === 0 ? 0 : (queryClient.getQueryState(CORE_QUERY_KEYS.pairingCode)?.dataUpdateCount ?? 0)",
+  "replace": "  const statusCount = Number.MAX_SAFE_INTEGER + statusAnsweredAt * 0",
+  "tests": [
+   "src/test/live-paired-devices-issue.test.tsx"
+  ]
+ },
+ {
+  "id": "M27",
+  "file": "features/paired-devices/live-data.ts",
+  "what": "reads not gated on a signed-in operator (D176)",
+  "find": "const enabled = live && signedIn && linkUp && canManage",
+  "replace": "const enabled = live && linkUp && canManage",
+  "tests": [
+   "src/test/live-paired-devices-memory.test.tsx"
+  ]
+ },
+ {
+  "id": "M28",
+  "file": "features/paired-devices/live-data.ts",
+  "what": "reads gated on neither a signed-in operator nor the permission (F75-2's defect)",
+  "find": "const enabled = live && signedIn && linkUp && canManage",
+  "replace": "const enabled = live && linkUp",
+  "tests": [
+   "src/test/live-paired-devices-memory.test.tsx"
+  ]
+ }
+]

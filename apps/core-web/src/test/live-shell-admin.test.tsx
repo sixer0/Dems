@@ -184,8 +184,11 @@ afterEach(async () => {
   cleanup()
   await clearToasts()
   for (const sim of sims.splice(0)) sim.stop()
-  bed?.dispose()
+  // Cleared before `dispose()`: a dispose that throws (a fake-transport violation) fails its own test
+  // only, instead of leaving `bed` set for every later test's clean-up (D179 DC-2, F81-2).
+  const disposing = bed
   bed = undefined
+  disposing?.dispose()
   window.matchMedia = originalMatchMedia
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
@@ -382,16 +385,16 @@ describe('the ADMINISTRATION group (PG-4; AC-C-51)', () => {
 
 describe('the two routes (PG-1, PG-2, PG-3)', () => {
   it.each([
-    ['/admin/users', 'page-users-roles', 'ur-stub', 'USERS & ROLES', 'Users & Roles'],
-    ['/admin/devices', 'page-paired-devices', 'pd-stub', 'PAIRED DEVICES', 'Paired Devices'],
-  ] as const)('Live mode with the permission: %s renders %s inside the shell, and its entry is the active one', async (path, testId, stubId, _title, entry) => {
+    ['/admin/users', 'page-users-roles', 'users-roles-page', 'USERS & ROLES', 'Users & Roles'],
+    ['/admin/devices', 'page-paired-devices', 'paired-devices-page', 'PAIRED DEVICES', 'Paired Devices'],
+  ] as const)('Live mode with the permission: %s renders %s inside the shell, and its entry is the active one', async (path, testId, bodyId, _title, entry) => {
     viewport(1920)
     const { router } = await mountLive(path)
     const page = await screen.findByTestId(testId)
     expect(screen.getByRole('main')).toContainElement(page)
     expect(router.state.location.pathname).toBe(path)
     expect(within(page).getByRole('heading', { level: 1 })).toHaveTextContent(new RegExp(entry, 'i'))
-    expect(within(page).getByTestId(stubId)).toBeInTheDocument()
+    expect(within(page).getByTestId(bodyId)).toBeInTheDocument()
     expect(within(page).queryByText(en.shell.liveOnly.title)).not.toBeInTheDocument()
     expect(within(primaryNav()).getByRole('link', { name: entry })).toHaveAttribute('aria-current', 'page')
     expect(getMissingI18nKeys()).toEqual([])

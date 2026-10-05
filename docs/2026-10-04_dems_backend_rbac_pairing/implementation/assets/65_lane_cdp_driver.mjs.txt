@@ -1,0 +1,348 @@
+// W65 lane check (lane 2, paired tablet connected): the Session Monitor in Live mode in a real
+// headless Chromium over raw CDP (Node's built-in WebSocket; no install).
+// Usage: node --import tsx .cache/w65/lane/cdp-driver.mjs <devtoolsPort> <vitePort> <outJson> <assetsDir>
+//
+// Steps: sign in through the Login form as the seeded SUPERVISOR; start a session and a recording by
+// page script (requests of the page itself, with its own cookie, through the dev proxy: the Start
+// Session page is row W64's and in flight); open the Session Monitor; read the two meters twice,
+// 3 s apart, with a screenshot each time, and count the `meters` frames on the page's socket; end
+// the session THROUGH THE PAGE (End Session, the reason typed, the confirm pressed); wait for the
+// finalization overlay to read SEALED; screenshot; sign out by page script.
+//
+// Never stored or printed: a request body, a cookie value, the seeded password, a `Runtime.evaluate`
+// expression, the whole text of a page. Cookie values are cut to their length; only named elements
+// are read.
+import { writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+// The seeded demo operator, read from the project's own seed source (never printed).
+import { DEMO_OPERATOR_PASSWORD, OPERATORS } from '../../../packages/shared/src/sim/dataset.ts'
+
+const [devPort, vitePort, outJson, assetsDir] = process.argv.slice(2)
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+const ORIGIN = `http://127.0.0.1:${vitePort}`
+const supervisor = OPERATORS.find((operator) => operator.role === 'SUPERVISOR')
+if (!supervisor || typeof DEMO_OPERATOR_PASSWORD !== 'string') throw new Error('the seed source has no SUPERVISOR or no demo password constant')
+const REASON = 'Interview completed (W65 lane check)'
+const stamp = () => new Date().toISOString().slice(11, 19)
+
+const list = await (await fetch(`http://127.0.0.1:${devPort}/json/list`)).json()
+const target = list.find((t) => t.type === 'page')
+const ws = new WebSocket(target.webSocketDebuggerUrl)
+await new Promise((r) => ws.addEventListener('open', r, { once: true }))
+
+let id = 0
+const pending = new Map()
+let requests = new Map()
+let sockets = new Map()
+let consoleLines = []
+let loadFired = false
+const cleanUrl = (url) => String(url).replace(/\?.*$/, (query) => (query.length > 1 ? '?…' : ''))
+const typeOf = (payload) => {
+  try {
+    return JSON.parse(payload).type ?? '(no type)'
+  } catch {
+    return '(not JSON)'
+  }
+}
+
+ws.addEventListener('message', (event) => {
+  const msg = JSON.parse(event.data)
+  if (msg.id && pending.has(msg.id)) {
+    const { resolve, reject } = pending.get(msg.id)
+    pending.delete(msg.id)
+    msg.error ? reject(new Error(`CDP error ${msg.error.code}`)) : resolve(msg.result)
+    return
+  }
+  const p = msg.params ?? {}
+  switch (msg.method) {
+    case 'Page.loadEventFired':
+      loadFired = true
+      break
+    case 'Network.requestWillBeSent':
+      requests.set(p.requestId, { method: p.request.method, url: cleanUrl(p.request.url), status: null })
+      break
+    case 'Network.responseReceived': {
+      const entry = requests.get(p.requestId)
+      if (entry) entry.status = p.response.status
+      break
+    }
+    case 'Network.loadingFailed': {
+      const entry = requests.get(p.requestId)
+      if (entry && entry.status === null) entry.status = `failed: ${p.errorText}`
+      break
+    }
+    case 'Network.webSocketCreated':
+      sockets.set(p.requestId, { url: cleanUrl(p.url), frames: new Map() })
+      break
+    case 'Network.webSocketFrameReceived': {
+      const entry = sockets.get(p.requestId)
+      if (entry) {
+        const type = typeOf(p.response.payloadData)
+        entry.frames.set(type, (entry.frames.get(type) ?? 0) + 1)
+      }
+      break
+    }
+    case 'Runtime.exceptionThrown':
+      consoleLines.push(`exception: ${String(p.exceptionDetails?.exception?.description ?? p.exceptionDetails?.text).slice(0, 240)}`)
+      break
+    case 'Runtime.consoleAPICalled':
+      if (p.type === 'error' || p.type === 'warning') {
+        const text = (p.args ?? [])
+          .map((arg) => {
+            if (arg.value !== undefined) return String(arg.value)
+            const preview = arg.preview?.properties?.map((property) => `${property.name}: ${property.value}`).join(', ')
+            return preview ? `{${preview}}` : String(arg.description ?? arg.type)
+          })
+          .join(' ')
+        consoleLines.push(`${p.type}: ${text.slice(0, 420)}`)
+      }
+      break
+  }
+})
+
+const send = (method, params = {}) =>
+  new Promise((resolve, reject) => {
+    const n = ++id
+    pending.set(n, { resolve, reject })
+    ws.send(JSON.stringify({ id: n, method, params }))
+  })
+
+const evaluate = async (expression, label) => {
+  const result = await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true })
+  if (result.exceptionDetails) throw new Error(`page script failed: ${label}`)
+  return result.result.value
+}
+
+const navigate = async (url, settleMs = 3500) => {
+  loadFired = false
+  await send('Page.navigate', { url })
+  for (let i = 0; i < 150 && !loadFired; i++) await sleep(100)
+  await sleep(settleMs)
+  return loadFired
+}
+
+const waitFor = async (testId, present = true, timeoutMs = 15000) => {
+  const until = Date.now() + timeoutMs
+  while (Date.now() < until) {
+    const found = await evaluate(`document.querySelector('[data-testid="${testId}"]') !== null`, `wait ${testId}`)
+    if (found === present) return true
+    await sleep(150)
+  }
+  return false
+}
+
+const screenshot = async (name) => {
+  const { data } = await send('Page.captureScreenshot', { format: 'png' })
+  const file = join(assetsDir, name)
+  writeFileSync(file, Buffer.from(data, 'base64'))
+  return name
+}
+
+const typeInto = async (selector, text, label) => {
+  const focused = await evaluate(
+    `(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (!el) return false; el.focus(); if (el.select) el.select(); return document.activeElement === el })()`,
+    `focus ${label}`,
+  )
+  if (!focused) throw new Error(`the field ${label} could not be focused`)
+  await send('Input.insertText', { text })
+}
+const press = (testId) => evaluate(`(() => { const el = document.querySelector('[data-testid="${testId}"]'); if (!el) return false; el.click(); return true })()`, `press ${testId}`)
+
+const takeNetwork = () => {
+  const taken = {
+    api: [...requests.values()].filter((entry) => entry.url.includes('/api/v1/')).map((entry) => `${entry.method} ${entry.url.replace(ORIGIN, '')} ${entry.status}`),
+    sockets: [...sockets.values()].filter((entry) => entry.url.endsWith('/ws')).map((entry) => ({ url: entry.url, frames: Object.fromEntries(entry.frames) })),
+    console: consoleLines,
+  }
+  requests = new Map()
+  for (const entry of sockets.values()) entry.frames = new Map()
+  consoleLines = []
+  return taken
+}
+
+/** A request of the page itself (same origin, its own cookie). Returns status and the named members of the answer only. */
+const api = (method, path, body, label) =>
+  evaluate(
+    `(async () => {
+      const answer = await fetch(${JSON.stringify(path)}, { method: ${JSON.stringify(method)}, credentials: 'same-origin', headers: { 'content-type': 'application/json' }, ${body === undefined ? '' : `body: JSON.stringify(${JSON.stringify(body)}),`} })
+      let data = null
+      try { data = await answer.json() } catch {}
+      const s = data && data.session !== undefined ? data.session : data
+      return {
+        status: answer.status,
+        code: data && data.error ? data.error.code : null,
+        sessionId: s ? (s.id ?? s.sessionId ?? null) : null,
+        state: s ? (s.state ?? null) : null,
+        caseNumber: data && data.caseNumber ? data.caseNumber : null,
+        precheck: s && s.precheck ? { outcome: s.precheck.outcome ?? null, items: (s.precheck.items ?? []).map((i) => i.id + '=' + i.status + (i.value ? '(' + i.value + ')' : '')) } : null,
+        evidenceId: s ? (s.evidenceId ?? null) : null,
+      }
+    })()`,
+    label,
+  )
+
+/** The two meters of panel O and the timer: named attributes only. */
+const meterFacts = () =>
+  evaluate(
+    `(() => {
+      const panel = document.querySelector('[data-testid="panel-O"]')
+      const meters = [...(panel?.querySelectorAll('[data-testid="dbfs-meter"]') ?? [])].map((m) => {
+        const role = m.querySelector('[role="meter"]')
+        return { channel: m.getAttribute('data-channel'), noSignal: m.getAttribute('data-no-signal') === 'true', ariaValueNow: role?.getAttribute('aria-valuenow') ?? null, ariaValueText: role?.getAttribute('aria-valuetext') ?? null }
+      })
+      const page = document.querySelector('[data-testid="page-session-monitor"]')
+      return {
+        at: new Date().toISOString().slice(11, 23),
+        phase: page?.getAttribute('data-phase') ?? null,
+        sessionState: page?.getAttribute('data-session-state') ?? null,
+        banner: document.querySelector('[data-testid="sm-status-banner"]')?.getAttribute('data-kind') ?? null,
+        duration: document.querySelector('[data-testid="sm-duration"]')?.textContent?.trim() ?? null,
+        meters,
+        coreMode: document.querySelector('.dems-shell')?.getAttribute('data-core-mode') ?? null,
+        hidden: document.hidden,
+      }
+    })()`,
+    'meter facts',
+  )
+
+await send('Network.enable')
+await send('Page.enable')
+await send('Runtime.enable')
+await send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false })
+const version = await send('Browser.getVersion')
+const result = { browser: { product: version.product, headless: /Headless/i.test(version.userAgent) }, steps: {} }
+const save = () => {
+  let text = JSON.stringify(result, null, 2)
+  if (text.includes(DEMO_OPERATOR_PASSWORD)) text = text.split(DEMO_OPERATOR_PASSWORD).join('***')
+  text = text.replace(/\b(ses|dvc|bio)_[A-Za-z0-9_-]+/g, '$1_***')
+  writeFileSync(outJson, `${text}\n`)
+  return text
+}
+
+try {
+  // ── 1. Sign in through the form (the seeded SUPERVISOR) ──
+  {
+    await navigate(`${ORIGIN}/login`)
+    await waitFor('page-login')
+    await typeInto('[data-testid="login-username-field"] input', supervisor.username, 'username')
+    await typeInto('[data-testid="login-password-field"] input', DEMO_OPERATOR_PASSWORD, 'password')
+    await press('login-submit')
+    const arrived = await waitFor('page-dashboard', true, 20000)
+    await sleep(1500)
+    result.steps.signIn = { at: stamp(), dashboardShown: arrived, operator: supervisor.id, network: takeNetwork() }
+    console.log(`[${stamp()}] signed in: ${arrived}`)
+  }
+
+  // ── 2. A session and a recording, by page script ──
+  {
+    const steps = []
+    let current = await api('GET', '/api/v1/session/current', undefined, 'current session')
+    steps.push({ call: 'GET /session/current', ...current })
+    if (current.sessionId === null || current.state === 'SEALED' || current.state === 'INCOMPLETE') {
+      const scan = await api('POST', '/api/v1/session/case-number', undefined, 'scan case number')
+      steps.push({ call: 'POST /session/case-number', status: scan.status, caseNumber: scan.caseNumber })
+      const created = await api(
+        'POST',
+        '/api/v1/session',
+        { caseNumber: scan.caseNumber, subjectType: 'TERSANGKA', subjectName: 'Ahmad Fauzi', investigatorId: 'OPR-001', room: 'Interview Room 1', profileId: 'STANDARD_1080P25' },
+        'create session',
+      )
+      steps.push({ call: 'POST /session', status: created.status, code: created.code, sessionId: created.sessionId, state: created.state })
+      current = await api('GET', '/api/v1/session/current', undefined, 'current session')
+    }
+    const sessionId = current.sessionId
+    if (current.state !== 'RECORDING') {
+      if (current.state === 'CREATE') {
+        const started = await api('POST', `/api/v1/session/${sessionId}/start`, { acknowledgeWarnings: true }, 'start from CREATE')
+        steps.push({ call: 'POST /session/{id}/start (from CREATE)', status: started.status, code: started.code, state: started.state })
+      }
+      // The eight checks resolve on the Core's pace.
+      for (let i = 0; i < 60; i++) {
+        current = await api('GET', '/api/v1/session/current', undefined, 'poll pre-check')
+        if (current.state !== 'PRECHECK' || current.precheck?.outcome) break
+        await sleep(500)
+      }
+      steps.push({ call: 'GET /session/current (pre-check resolved)', state: current.state, precheck: current.precheck })
+      if (current.state === 'ARMED' || (current.state === 'PRECHECK' && current.precheck?.outcome === 'WARN')) {
+        const started = await api('POST', `/api/v1/session/${sessionId}/start`, { acknowledgeWarnings: true }, 'start recording')
+        steps.push({ call: 'POST /session/{id}/start', status: started.status, code: started.code, state: started.state })
+      }
+      current = await api('GET', '/api/v1/session/current', undefined, 'after start')
+      steps.push({ call: 'GET /session/current (after start)', state: current.state, precheck: current.precheck })
+    }
+    result.steps.recording = { at: stamp(), sessionId, state: current.state, steps, network: takeNetwork() }
+    console.log(`[${stamp()}] session ${sessionId}: ${current.state}`)
+    if (current.state !== 'RECORDING') throw new Error(`no recording could be started (state ${current.state})`)
+  }
+
+  // ── 3. The Session Monitor: the meters move (two readings 3 s apart, a screenshot each) ──
+  {
+    await press('nav-session') // in-app navigation if the sidebar item has this test ID; else the URL below
+    await sleep(500)
+    const onPage = await waitFor('page-session-monitor', true, 3000)
+    if (!onPage) await navigate(`${ORIGIN}/session`, 4000)
+    await waitFor('page-session-monitor', true, 15000)
+    await sleep(3500) // the panels' entrance
+    takeNetwork()
+    const first = await meterFacts()
+    const shot1 = await screenshot('65_session_monitor_live_meters_1.png')
+    await sleep(3000)
+    const second = await meterFacts()
+    const shot2 = await screenshot('65_session_monitor_live_meters_2.png')
+    const network = takeNetwork()
+    const moved = first.meters.some((meter, index) => meter.ariaValueNow !== second.meters[index]?.ariaValueNow)
+    result.steps.meters = { first, second, moved, screenshots: [shot1, shot2], networkInBetween: network }
+    console.log(`[${stamp()}] meters: ${JSON.stringify(first.meters.map((m) => m.ariaValueText))} -> ${JSON.stringify(second.meters.map((m) => m.ariaValueText))}; moved=${moved}`)
+  }
+
+  // ── 4. End the session through the page: End Session, the reason, the confirm ──
+  {
+    await press('sm-action-end') // a virtual press (assistive technology) opens the dialog directly (M-C-19)
+    const opened = await waitFor('sm-end-dialog', true, 5000)
+    await sleep(600)
+    await typeInto('[data-testid="sm-end-reason"]', REASON, 'reason')
+    const dialogShot = await screenshot('65_end_session_dialog_live.png')
+    takeNetwork()
+    await press('sm-end-confirm')
+    const closed = await waitFor('sm-end-dialog', false, 15000)
+    const overlay = await waitFor('finalization-modal', true, 15000)
+    let sealed = false
+    const until = Date.now() + 30000
+    while (Date.now() < until) {
+      sealed = await evaluate(`document.querySelector('[data-testid="finalization-modal"]')?.getAttribute('data-state') === 'SEALED'`, 'sealed?')
+      if (sealed) break
+      await sleep(250)
+    }
+    await sleep(1800) // the stamp
+    const facts = await evaluate(
+      `(() => ({
+        modalState: document.querySelector('[data-testid="finalization-modal"]')?.getAttribute('data-state') ?? null,
+        modalMode: document.querySelector('[data-testid="finalization-modal"]')?.getAttribute('data-mode') ?? null,
+        sealedLine: document.querySelector('[data-testid="sm-final-sealed"]')?.textContent?.trim() ?? null,
+        banner: document.querySelector('[data-testid="sm-status-banner"]')?.getAttribute('data-kind') ?? null,
+        steps: [...(document.querySelector('[data-testid="finalization-modal"]')?.querySelectorAll('[role="listitem"]') ?? [])].map((s) => s.getAttribute('data-status')),
+      }))()`,
+      'sealed facts',
+    )
+    const sealedShot = await screenshot('65_session_sealed_live.png')
+    const current = await api('GET', '/api/v1/session/current', undefined, 'after stop')
+    result.steps.stop = { at: stamp(), dialogOpened: opened, dialogClosedOnSettle: closed, overlayShown: overlay, sealed, facts, server: current, screenshots: [dialogShot, sealedShot], network: takeNetwork() }
+    console.log(`[${stamp()}] stop: dialog closed ${closed}, overlay ${overlay}, sealed ${sealed}, server state ${current.state}, evidence ${current.evidenceId}`)
+  }
+} catch (error) {
+  result.error = String(error?.message ?? error)
+  console.log(`[${stamp()}] ERROR ${result.error}`)
+  try {
+    result.errorScreenshot = await screenshot('65_lane_error.png')
+  } catch {}
+} finally {
+  // ── 5. Sign out (a request of the page) ──
+  try {
+    result.steps.signOut = await api('POST', '/api/v1/auth/sign-out', { reason: 'USER' }, 'sign-out')
+  } catch (error) {
+    result.steps.signOut = { error: String(error?.message ?? error) }
+  }
+  result.steps.consoleAtEnd = takeNetwork().console
+  console.log(save())
+  ws.close()
+}

@@ -1,0 +1,360 @@
+/*
+ * Paired Devices page styles (backend task 04_client_integration_spec §10.1 PG-7 to PG-9, §10.3;
+ * plan row W81). Feature-scoped `pd-*` classes only; colours, radii and type come from the theme
+ * tokens (@dems/shared/theme/heroui-web.css). Only opacity and transform animate (03_motion_spec
+ * §9.2): the row enter, the gold highlight of a new row (an overlay's opacity), the halo; the
+ * countdown hairline shrinks with `scaleX`. No ambient loop.
+ */
+@layer components {
+  .pd-page {
+    --pd-gap: var(--shell-gutter, 16px);
+  }
+
+  /* PG-8: the 12-column grid of every shell page. "Pair a device" 5 of 12 and "Devices" 7 of 12
+     from 1280 px; full width, the issue panel first, below. */
+  .pd-grid {
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    gap: var(--pd-gap);
+    align-items: start;
+  }
+
+  .pd-grid > * {
+    grid-column: 1 / -1;
+    min-width: 0;
+  }
+
+  @media (min-width: 1280px) {
+    .pd-grid > .pd-panel-issue { grid-column: span 5 / span 5; }
+    .pd-grid > .pd-panel-devices { grid-column: span 7 / span 7; }
+  }
+
+  /* F76-12: the "Live mode only" card does not centre itself; this cell gives it its place. */
+  .pd-state-cell {
+    display: flex;
+    min-height: 320px;
+  }
+
+  .pd-state-cell > * { flex: 1 1 auto; }
+
+  .pd-link {
+    color: var(--accent);
+    font-weight: 600;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+
+  .pd-link:focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  /* ── Panel shell ────────────────────────────────────────────────────────────────────── */
+  .pd-panel {
+    min-width: 0;
+    display: flex;
+  }
+
+  .pd-card {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    min-width: 0;
+    padding: 14px 16px 16px;
+    gap: 12px;
+    border-radius: calc(var(--radius) * 1.5);
+    background: linear-gradient(180deg, rgb(37 28 20 / 0.72) 0%, rgb(21 14 7 / 0.92) 100%);
+    box-shadow: var(--shadow-glow-1);
+  }
+
+  .pd-card-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 28px;
+  }
+
+  .pd-card-icon {
+    width: 20px;
+    height: 20px;
+    flex: none;
+    color: var(--accent);
+    filter: drop-shadow(0 0 6px rgb(255 159 61 / 0.45));
+  }
+
+  .pd-card-title {
+    margin: 0;
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: 14px;
+    line-height: 20px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--foreground);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .pd-card-action {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: none;
+  }
+
+  .pd-card-body {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 0;
+  }
+
+  .pd-panel-fallback {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 12px;
+    border-radius: var(--radius);
+    background: rgb(239 68 68 / 0.08);
+  }
+
+  .pd-fallback-title { margin: 0; font-size: 14px; font-weight: 600; color: var(--foreground); }
+  .pd-fallback-body { margin: 0; font-size: 12px; color: var(--color-foreground-2); }
+
+  .pd-mono {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: 0.02em;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .pd-soft { color: var(--color-foreground-2); font-size: 12px; }
+
+  /* ── The issue-code panel ───────────────────────────────────────────────────────────── */
+  .pd-issue,
+  .pd-idle,
+  .pd-active,
+  .pd-active-elsewhere,
+  .pd-ended,
+  .pd-redeemed {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .pd-steps {
+    margin: 0;
+    padding-left: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    list-style: decimal;
+    color: var(--color-foreground-2);
+    font-size: 14px;
+    line-height: 20px;
+  }
+
+  .pd-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .pd-action-with-hint {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .pd-hint {
+    margin: 0;
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  .pd-active-code {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+  }
+
+  .pd-code {
+    display: flex;
+    gap: 0.45em;
+    font-family: var(--font-mono);
+    font-size: clamp(36px, 3.4vw, 52px);
+    line-height: 1;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    font-variant-numeric: tabular-nums;
+    color: var(--foreground);
+  }
+
+  .pd-qr-tile {
+    flex: none;
+    padding: 8px;
+    border-radius: var(--radius);
+    background: #ffffff;
+    line-height: 0;
+  }
+
+  .pd-qr-tile svg { width: 200px; height: 200px; }
+
+  .pd-dimmed { opacity: 0.35; }
+
+  .pd-caption {
+    margin: 0;
+    font-size: 12px;
+    color: var(--color-foreground-2);
+  }
+
+  .pd-countdown-block {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .pd-countdown {
+    position: relative;
+    align-self: flex-start;
+    font-family: var(--font-mono);
+    font-size: 20px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .pd-countdown-digits { display: inline-flex; align-items: center; }
+
+  .pd-tone-gold { --pd-tone: var(--accent); color: var(--accent); }
+  .pd-tone-amber { --pd-tone: var(--warning); color: #fbbf24; }
+  .pd-tone-red { --pd-tone: var(--danger); color: #f87171; }
+
+  .pd-expiry-track {
+    height: 2px;
+    width: 100%;
+    border-radius: 1px;
+    background: rgb(255 255 255 / 0.08);
+    overflow: hidden;
+  }
+
+  .pd-expiry-bar {
+    height: 100%;
+    width: 100%;
+    transform-origin: left center;
+    background: var(--pd-tone);
+  }
+
+  .pd-attempts {
+    margin: 0;
+    font-size: 12px;
+    color: var(--color-foreground-2);
+  }
+
+  .pd-halo {
+    position: absolute;
+    inset: -4px;
+    border-radius: 999px;
+    border: 2px solid var(--pd-tone, var(--accent));
+    pointer-events: none;
+  }
+
+  .pd-halo-danger { --pd-tone: var(--danger); }
+
+  .pd-redeemed-chip { align-self: flex-start; }
+  .pd-redeemed-text { margin: 0; font-size: 14px; color: var(--foreground); }
+
+  /* ── The device list ────────────────────────────────────────────────────────────────── */
+  .pd-loading {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .pd-skeleton-row {
+    height: 40px;
+    border-radius: var(--radius);
+  }
+
+  .pd-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 32px 16px;
+    text-align: center;
+  }
+
+  .pd-empty-icon { width: 32px; height: 32px; color: var(--color-foreground-2); }
+  .pd-empty-title { margin: 0; font-size: 14px; font-weight: 600; color: var(--foreground); }
+  .pd-empty-body { margin: 0; font-size: 12px; color: var(--color-foreground-2); }
+
+  .pd-table { min-width: 0; }
+
+  .pd-device-id {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--foreground);
+  }
+
+  .pd-device-name,
+  .pd-ended-cell > span,
+  .pd-row td > .pd-soft { display: block; }
+
+  .pd-reason { max-width: 240px; overflow-wrap: anywhere; }
+
+  .pd-state {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .pd-chip-wrap { position: relative; display: inline-flex; }
+
+  /* A static dot: no loop (§10.3). */
+  .pd-online-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    flex: none;
+  }
+
+  .pd-online-on { background: var(--success); }
+  .pd-online-off { background: var(--muted); opacity: 0.6; }
+
+  /* R1 / M-C-11: rows enter in reading order (opacity and transform only). */
+  .pd-row-enter {
+    animation: pd-row-in 240ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+    animation-delay: var(--pd-row-delay, 0s);
+  }
+
+  @keyframes pd-row-in {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: none; }
+  }
+
+  /* M-C-07: the gold highlight of a new row, an overlay whose opacity fades. */
+  .pd-row-new > td { position: relative; }
+
+  .pd-row-new > td::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--accent);
+    opacity: 0;
+    pointer-events: none;
+    animation: pd-highlight var(--pd-highlight-ms, 1500ms) ease-out;
+  }
+
+  @keyframes pd-highlight {
+    from { opacity: var(--pd-highlight-from, 0.18); }
+    to { opacity: 0; }
+  }
+}

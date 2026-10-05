@@ -43,6 +43,7 @@ import { useRouteEnterDelay } from '@/components/shell'
 import { HIGHLIGHT_FADE_MS, HIGHLIGHT_FROM_OPACITY } from '@/components/ui/animated-list'
 import { ROW_STAGGER_CAP, ROW_STAGGER_MS, useMotionPolicy } from '@/motion'
 import { cn } from '@/lib/utils'
+import { useWebLive } from '@/runtime'
 import { useAuditLog } from './audit-context'
 import { CONTENT_BEAT_MS, PANEL_BEAT_MS } from './choreography'
 import { ExportAuditDialog } from './export-audit-dialog'
@@ -52,6 +53,7 @@ import {
   isFiltered,
   matchesOperator,
   matchesQuery,
+  namesTypedUsername,
   NO_OPERATOR,
   roleFor,
   shortHash,
@@ -230,6 +232,8 @@ export const AuditLogPanel = memo(function AuditLogPanel({ chain, focusRequest, 
   const audit = useAuditLog()
   const operators = useSim((s) => s.operators)
   const canExport = useSim((s) => selectCan(s, Permission.AUDIT_EXPORT))
+  // Live mode (W75; CPS1-12 (a)): a failed sign-in names the operator whose username was typed.
+  const isLive = useWebLive() !== null
 
   // ── Live stream ──────────────────────────────────────────────────────────────────────
   const headSeq = audit.rows[audit.rows.length - 1]?.seq ?? 0
@@ -274,11 +278,13 @@ export const AuditLogPanel = memo(function AuditLogPanel({ chain, focusRequest, 
   const actorOf = useCallback(
     (row: AuditRowView) =>
       row.actorKind === 'OPERATOR'
-        ? (row.actorName ?? '')
+        ? isLive && namesTypedUsername(row)
+          ? t('securityAudit.live.audit.typedActor', { name: row.actorName ?? '' })
+          : (row.actorName ?? '')
         : row.actorKind === 'UNVERIFIED'
           ? t('securityAudit.audit.unverifiedUser')
           : t('securityAudit.audit.system'),
-    [t],
+    [t, isLive],
   )
 
   const columnFilters = useMemo<ColumnFiltersState>(() => {

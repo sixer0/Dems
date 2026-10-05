@@ -55,6 +55,11 @@ export const enMobile = {
       enable: 'Enable',
       notNow: 'Not now',
       identityNote: 'Simulated identity binding',
+      // Backend task W82 (finding CPM1-1; 04_client_integration_spec §9.3 MB-6a (3)): the Settings
+      // switch in LIVE mode says nothing simulated. While the token is stored without the device's
+      // authentication requirement it reads `features.auth.biometric.screenLockNote`; only while
+      // the marker says `protected: true` does it read this sentence. Neither claims hardware.
+      identityNoteLiveProtected: "Biometric sign-in asks for this device's screen-lock check before the stored sign-in token can be read.",
     },
     // §4.2 and §4.1 L11: pairing (derived screen) and the Core trust line.
     pairing: {

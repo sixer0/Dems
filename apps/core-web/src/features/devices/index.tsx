@@ -9,14 +9,29 @@
  *   [Front Panel 5]    [Port Map 7]
  * plus the device Drawer (Overview, Health, Log). Simulator gaps are handled locally in
  * `sim-adapter.ts` (the simulator's device views, W48-1..5, step 54).
+ *
+ * Live mode (backend task, plan row W70; 04_client_integration_spec §8.3 B-7, §8.4 D-5, §8.1 LB-1
+ * to LB-7, LB-10): the kebab commands go through `useCoreActions()` and `settle`, so one call site
+ * serves both modes. The menu closes at the press (the kit's `Dropdown`). The outcome follows the
+ * Core's answer: the success toast and, for Identify, the local blink (D-5) run in `ok`. While a
+ * command is out its device is in `pending`: the device's command items are disabled and its tile
+ * head is `aria-busy`, so a second press cannot send a second command, and after
+ * `LIVE_PENDING_REVEAL_MS` the kebab shows the kit's spinner in place of its icon (LB-1). Every
+ * failure goes to the refusal presenter first (a 403 names the role, an outage, a time-out and a
+ * 429 have the presenter's words); what it leaves to the page (409 `RECORDING_ACTIVE` or
+ * `COMMAND_UNSUPPORTED`, rebuilt as `SimTransitionError`) keeps the existing friendly toast and one
+ * record in the page's own log. In Simulated mode the command settles before the press returns:
+ * nothing is ever pending and the outcome is the predecessor's.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from '@heroui/react'
 import { AudioLines, Cable, Camera, Cpu, LayoutGrid, MonitorCog, Video } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useTranslation } from 'react-i18next'
-import { useSimActions } from '@dems/shared/sim'
+import { settle, useCoreActions } from '@dems/shared/live'
+import { DeviceCommand } from '@dems/shared/sim'
 import { PageHeader } from '@/components/shell/page-header'
+import { useCoreErrorPresenter } from '@/lib/core-errors'
 import { useMotionPolicy } from '@/motion'
 import { AudioInputCard } from './audio-input-card'
 import { CameraTile } from './camera-tile'
@@ -32,22 +47,44 @@ import { DeviceDrawer } from './device-drawer'
 import { DevicesBanner } from './devices-banner'
 import { FrontPanel } from './front-panel'
 import { useDeviceLabels } from './labels'
-import { logDevicesError, PANEL_BEAT_MS, ROW_STAGGER_MS, useHeroBloomDelayMs, useStaggerVariants } from './motion'
+import { DEVICE_COMMAND_OF, useDeviceWords } from './live'
+import { PANEL_BEAT_MS, ROW_STAGGER_MS, useHeroBloomDelayMs, useStaggerVariants } from './motion'
 import { OtherDevices } from './other-devices'
 import { DevicesPanel } from './panel'
 import { PortMap } from './port-map'
+import { reportDevicesError } from './report'
 import { IDENTIFY_BLINKS, IDENTIFY_PERIOD_MS, type DeviceId } from './sim-adapter'
 import { SummaryCards } from './summary-cards'
 import './devices.css'
+
+/** The fixed sentence of the page's own record when a command fails for a reason the presenter left to the page. */
+const COMMAND_FAILED_RECORD = 'A device command of Devices & Inputs was not carried out.'
+const NO_DEVICE: ReadonlySet<DeviceId> = new Set()
+
+function withDevice(set: ReadonlySet<DeviceId>, deviceId: DeviceId): ReadonlySet<DeviceId> {
+  return set.has(deviceId) ? set : new Set([...set, deviceId])
+}
+
+function withoutDevice(set: ReadonlySet<DeviceId>, deviceId: DeviceId): ReadonlySet<DeviceId> {
+  if (!set.has(deviceId)) return set
+  const next = new Set(set)
+  next.delete(deviceId)
+  return next
+}
 
 export function DevicesPage() {
   const { t } = useTranslation()
   const m = useMotionPolicy()
   const labels = useDeviceLabels()
-  const actions = useSimActions()
+  const actions = useCoreActions()
+  const presentCoreError = useCoreErrorPresenter()
+  const words = useDeviceWords()
   const sampler = usePageMicSampler()
   const [drawerId, setDrawerId] = useState<DeviceId | null>(null)
   const [identify, setIdentify] = useState<IdentifyValue>({ deviceId: null, key: 0 })
+  // LB-1: the ref answers the next press at once; the state drives the look (Live mode only).
+  const inFlight = useRef(new Set<DeviceId>())
+  const [pending, setPending] = useState<ReadonlySet<DeviceId>>(NO_DEVICE)
 
   // R3: the hero (the two large meters) finishes last with one glow bloom on its panel.
   const bloomDelayMs = useHeroBloomDelayMs()
@@ -70,35 +107,51 @@ export function DevicesPage() {
 
   const run = useCallback(
     (deviceId: DeviceId, action: DeviceAction) => {
-      const name = labels.name(deviceId)
-      try {
-        switch (action) {
-          case 'details':
-            setDrawerId(deviceId)
-            break
-          case 'identify':
-            actions.deviceCommand(deviceId, 'IDENTIFY')
-            setIdentify((current) => ({ deviceId, key: current.key + 1 }))
-            toast.info(t('devices.actions.identifying', { name }))
-            break
-          case 'testSignal':
-            actions.deviceCommand(deviceId, 'TEST_SIGNAL')
-            toast.success(t('devices.actions.testSignalSent', { name }))
-            break
-          case 'restart':
-            actions.deviceCommand(deviceId, 'RESTART')
-            toast.success(t('devices.actions.restarted', { name }))
-            break
-        }
-      } catch (error) {
-        // Layer 1: a friendly toast; layer 2: the structured record; layer 3: the page keeps working.
-        logDevicesError('run', error, { deviceId, action })
-        toast.danger(t('devices.actions.failed'))
+      if (action === 'details') {
+        setDrawerId(deviceId)
+        return
       }
+      // LB-1: one command per device at a time; a press while one is out sends nothing.
+      if (inFlight.current.has(deviceId)) return
+      const name = labels.name(deviceId)
+      const command = DEVICE_COMMAND_OF[action]
+      inFlight.current.add(deviceId)
+      let settled = false
+      settle(() => actions.deviceCommand(deviceId, command), {
+        ok: () => {
+          switch (command) {
+            case DeviceCommand.IDENTIFY:
+              // D-5: the local blink starts when the Core accepted the command.
+              setIdentify((current) => ({ deviceId, key: current.key + 1 }))
+              toast.info(t('devices.actions.identifying', { name }))
+              break
+            case DeviceCommand.TEST_SIGNAL:
+              toast.success(t(words.testSignalSent, { name }))
+              break
+            case DeviceCommand.RESTART:
+              toast.success(t(words.restarted, { name }))
+              break
+          }
+        },
+        fail: (error) => {
+          // Rule 2 of the page rows: the presenter first (a 403, an outage, a time-out, a 429).
+          if (presentCoreError(error) !== null) return
+          // Layer 1: a friendly toast; layer 2: the structured record; layer 3: the page keeps working.
+          reportDevicesError('features/devices.run', error, COMMAND_FAILED_RECORD, { deviceId, command })
+          toast.danger(t('devices.actions.failed'))
+        },
+        done: () => {
+          settled = true
+          inFlight.current.delete(deviceId)
+          setPending((current) => withoutDevice(current, deviceId))
+        },
+      })
+      // A Live command is out: show it. A Simulated one has settled already, so nothing changes.
+      if (!settled) setPending((current) => withDevice(current, deviceId))
     },
-    [actions, labels, t],
+    [actions, labels, presentCoreError, t, words],
   )
-  const deviceActions = useMemo(() => ({ open: setDrawerId, run }), [run])
+  const deviceActions = useMemo(() => ({ open: setDrawerId, run, pending }), [run, pending])
   const camerasStagger = useStaggerVariants(PANEL_BEAT_MS.cameras, ROW_STAGGER_MS)
   const audioStagger = useStaggerVariants(PANEL_BEAT_MS.audio, ROW_STAGGER_MS)
 

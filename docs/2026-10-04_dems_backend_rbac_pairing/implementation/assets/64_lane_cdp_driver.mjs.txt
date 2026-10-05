@@ -1,0 +1,277 @@
+// W64 lane check: the Start New Session page in Live mode in a real headless Chromium, over raw CDP
+// (Node's built-in WebSocket; no install). Adapted from W55's driver. The sign-in goes through the
+// Login form with the seeded SUPERVISOR, read from the project's own seed source.
+// Usage: node --import tsx .cache/w64/lane/cdp-driver.mjs <devtoolsPort> <vitePort> <outJson> <assetsDir>
+//
+// Never stored or printed: a request body, a cookie value, the seeded password, a `Runtime.evaluate`
+// expression, the whole text of a page. URLs lose their query values; only named elements are read.
+import { writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { DEMO_OPERATOR_PASSWORD, OPERATORS } from '../../../packages/shared/src/sim/dataset.ts'
+
+const [devPort, vitePort, outJson, assetsDir] = process.argv.slice(2)
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+const ORIGIN = `http://127.0.0.1:${vitePort}`
+const supervisor = OPERATORS.find((operator) => operator.role === 'SUPERVISOR')
+if (!supervisor || typeof DEMO_OPERATOR_PASSWORD !== 'string') throw new Error('the seed source has no SUPERVISOR or no demo password constant')
+
+const list = await (await fetch(`http://127.0.0.1:${devPort}/json/list`)).json()
+const target = list.find((t) => t.type === 'page')
+const ws = new WebSocket(target.webSocketDebuggerUrl)
+await new Promise((r) => ws.addEventListener('open', r, { once: true }))
+
+let id = 0
+const pending = new Map()
+let requests = new Map()
+let consoleLines = []
+let loadFired = false
+const cleanUrl = (url) => String(url).replace(/\?.*$/, (query) => (query.length > 1 ? '?…' : ''))
+
+ws.addEventListener('message', (event) => {
+  const msg = JSON.parse(event.data)
+  if (msg.id && pending.has(msg.id)) {
+    const { resolve, reject } = pending.get(msg.id)
+    pending.delete(msg.id)
+    msg.error ? reject(new Error(`CDP error ${msg.error.code}`)) : resolve(msg.result)
+    return
+  }
+  const p = msg.params ?? {}
+  switch (msg.method) {
+    case 'Page.loadEventFired':
+      loadFired = true
+      break
+    case 'Network.requestWillBeSent':
+      requests.set(p.requestId, { method: p.request.method, url: cleanUrl(p.request.url), status: null })
+      break
+    case 'Network.responseReceived': {
+      const entry = requests.get(p.requestId)
+      if (entry) entry.status = p.response.status
+      break
+    }
+    case 'Network.loadingFailed': {
+      const entry = requests.get(p.requestId)
+      if (entry && entry.status === null) entry.status = `failed: ${p.errorText}`
+      break
+    }
+    case 'Runtime.exceptionThrown':
+      consoleLines.push(`exception: ${String(p.exceptionDetails?.exception?.description ?? p.exceptionDetails?.text).slice(0, 240)}`)
+      break
+    case 'Runtime.consoleAPICalled':
+      if (p.type === 'error' || p.type === 'warning') {
+        const text = (p.args ?? [])
+          .map((arg) => {
+            if (arg.value !== undefined) return String(arg.value)
+            const preview = arg.preview?.properties?.map((property) => `${property.name}: ${property.value}`).join(', ')
+            return preview ? `{${preview}}` : String(arg.description ?? arg.type)
+          })
+          .join(' ')
+        consoleLines.push(`${p.type}: ${text.slice(0, 420)}`)
+      }
+      break
+  }
+})
+
+const send = (method, params = {}) =>
+  new Promise((resolve, reject) => {
+    const n = ++id
+    pending.set(n, { resolve, reject })
+    ws.send(JSON.stringify({ id: n, method, params }))
+  })
+const evaluate = async (expression, label) => {
+  const result = await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true })
+  if (result.exceptionDetails) throw new Error(`page script failed: ${label}`)
+  return result.result.value
+}
+const navigate = async (url, settleMs = 3500) => {
+  loadFired = false
+  await send('Page.navigate', { url })
+  for (let i = 0; i < 150 && !loadFired; i++) await sleep(100)
+  await sleep(settleMs)
+  return loadFired
+}
+const waitUntil = async (expression, label, timeoutMs = 15000) => {
+  const until = Date.now() + timeoutMs
+  while (Date.now() < until) {
+    if ((await evaluate(expression, label)) === true) return true
+    await sleep(150)
+  }
+  return false
+}
+const waitFor = (testId, present = true, timeoutMs = 15000) =>
+  waitUntil(`(document.querySelector('[data-testid="${testId}"]') !== null) === ${present}`, `wait ${testId}`, timeoutMs)
+const screenshot = async (name) => {
+  const { data } = await send('Page.captureScreenshot', { format: 'png' })
+  const file = join(assetsDir, name)
+  writeFileSync(file, Buffer.from(data, 'base64'))
+  return file
+}
+/** Types into an input by script (focus, select, insert). The text is not echoed. */
+const typeInto = async (selector, text, label) => {
+  const focused = await evaluate(
+    `(() => { const el = document.querySelector('${selector}'); if (!el) return false; el.focus(); el.select(); return document.activeElement === el })()`,
+    `focus ${label}`,
+  )
+  if (!focused) throw new Error(`the field ${label} could not be focused`)
+  await send('Input.insertText', { text })
+}
+const press = (testId) => evaluate(`(() => { const el = document.querySelector('[data-testid="${testId}"]'); if (!el) return false; el.click(); return true })()`, `press ${testId}`)
+const blur = () => evaluate(`(() => { document.activeElement?.blur?.(); return true })()`, 'blur')
+const takeNetwork = () => {
+  const taken = { api: [...requests.values()].filter((entry) => entry.url.includes('/api/v1/')), console: consoleLines }
+  requests = new Map()
+  consoleLines = []
+  return taken
+}
+
+/** Named elements of the Start New Session page only. */
+const pageFacts = (label) =>
+  evaluate(
+    `(() => {
+      const q = (id) => document.querySelector('[data-testid="' + id + '"]')
+      const text = (id) => q(id)?.textContent?.replace(/\\s+/g, ' ').trim() ?? null
+      const page = q('page-session-new')
+      return {
+        href: location.origin + location.pathname + (location.search ? '?…' : ''),
+        onPage: page !== null,
+        step: page?.getAttribute('data-step') ?? null,
+        sessionState: page?.getAttribute('data-session-state') ?? null,
+        shellCoreMode: document.querySelector('[data-core-mode]')?.getAttribute('data-core-mode') ?? null,
+        headerSession: text('sn-header-session'),
+        caseNumber: document.querySelector('[data-testid="sn-case-number"]')?.value ?? null,
+        caseNumberMaxLength: document.querySelector('[data-testid="sn-case-number"]')?.maxLength ?? null,
+        subjectNameMaxLength: document.querySelector('[data-testid="sn-subject-name"]')?.maxLength ?? document.querySelector('[data-testid="sn-subject-name"] input')?.maxLength ?? null,
+        caseNumberError: /Use the case format/.test(text('sn-field-case') ?? ''),
+        nextText: text('sn-next'),
+        nextDisabled: q('sn-next')?.hasAttribute('disabled') || q('sn-next')?.getAttribute('aria-disabled') === 'true' || q('sn-next')?.hasAttribute('data-disabled') || false,
+        gate: q('sn-step-devices')?.getAttribute('data-gate') ?? null,
+        gateProgress: text('sn-gate-progress'),
+        coreCheck: q('sn-check-CORE')?.getAttribute('data-status') ?? null,
+        blockedAlert: text('sn-gate-blocked'),
+        liveLinkHint: text('sn-gate-live-link'),
+        retryShown: q('sn-retry') !== null,
+        toasts: [...document.querySelectorAll('[data-slot="toast"]')].map((el) => el.textContent?.replace(/\\s+/g, ' ').trim().slice(0, 200)),
+        saysUnreachable: /unreachable/i.test(document.querySelector('main')?.textContent ?? '') || [...document.querySelectorAll('[data-slot="toast"]')].some((el) => /unreachable/i.test(el.textContent ?? '')),
+        modeIndicator: document.querySelector('[data-testid="mode-indicator"]')?.textContent?.trim() ?? null,
+      }
+    })()`,
+    label,
+  )
+
+await send('Network.enable')
+await send('Page.enable')
+await send('Runtime.enable')
+await send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false })
+const version = await send('Browser.getVersion')
+const result = { browser: { product: version.product, headless: /Headless/i.test(version.userAgent) }, steps: {} }
+
+const signInThroughTheForm = async (label) => {
+  await navigate(`${ORIGIN}/login`)
+  await waitFor('page-login')
+  await typeInto('[data-testid="login-username-field"] input', supervisor.username, 'username')
+  await typeInto('[data-testid="login-password-field"] input', DEMO_OPERATOR_PASSWORD, 'password')
+  await press('login-submit')
+  const arrived = await waitFor('page-dashboard', true, 20000)
+  await sleep(2000)
+  return { label, dashboardShown: arrived, network: takeNetwork() }
+}
+
+// ── 1. Live: sign in as the seeded SUPERVISOR, open Start New Session ──
+result.steps.signIn = await signInThroughTheForm('live sign-in')
+{
+  await navigate(`${ORIGIN}/session/new`)
+  const shown = await waitFor('page-session-new')
+  await sleep(1200)
+  result.steps.liveForm = { shown, facts: await pageFacts('live form'), screenshot: await screenshot('64_session_new_live.png'), network: takeNetwork() }
+}
+
+// ── 2. The form's client-side bounds (F59): a malformed case number is refused inline; the field limits ──
+{
+  await typeInto('[data-testid="sn-case-number"]', 'ABC', 'case number')
+  await blur()
+  await waitUntil(`/Use the case format/.test(document.querySelector('[data-testid="sn-field-case"]')?.textContent ?? '')`, 'case error', 5000)
+  await sleep(500)
+  result.steps.bounds = { facts: await pageFacts('bounds'), screenshot: await screenshot('64_session_new_live_bounds.png'), network: takeNetwork() }
+}
+
+// ── 3. A4 on the real Core: the scanner reserves the next case number ──
+{
+  await press('sn-scan')
+  const filled = await waitUntil(`/^LP\\//.test(document.querySelector('[data-testid="sn-case-number"]')?.value ?? '')`, 'scan filled', 8000)
+  await sleep(400)
+  result.steps.scan = { filled, facts: await pageFacts('after scan'), network: takeNetwork() }
+}
+
+// ── 4. A3, D-3 on the real Core; then the Core's verdict on the pre-check with no paired tablet connected (F69) ──
+{
+  await press('sn-subject-TERSANGKA')
+  await typeInto('[data-testid="sn-subject-name"]', 'Lane Check Subject', 'subject name')
+  await blur()
+  await waitUntil(`(() => { const b = document.querySelector('[data-testid="sn-next"]'); return !!b && !b.hasAttribute('disabled') && b.getAttribute('aria-disabled') !== 'true' && !b.hasAttribute('data-disabled') })()`, 'next enabled', 5000)
+  await press('sn-next')
+  const step2 = await waitUntil(`document.querySelector('[data-testid="page-session-new"]')?.getAttribute('data-step') === '2'`, 'step 2', 15000)
+  const blocked = await waitUntil(`document.querySelector('[data-testid="sn-step-devices"]')?.getAttribute('data-gate') === 'block'`, 'gate block', 15000)
+  await sleep(900)
+  const facts = await pageFacts('core refusal')
+  const top = await screenshot('64_session_new_live_core_refusal_top.png')
+  // The Alert sits below the eight checks: bring it into view for the second picture.
+  await evaluate(`(() => { document.querySelector('[data-testid="sn-gate-blocked"]')?.scrollIntoView({ block: 'center' }); return true })()`, 'scroll to the alert')
+  await sleep(700)
+  result.steps.coreRefusal = { step2, blocked, facts, screenshots: [top, await screenshot('64_session_new_live_core_refusal.png')], network: takeNetwork() }
+}
+
+// ── 5. Evidence only, NOT the page: what the Core answers to a start of this session (F69, operation 25) ──
+{
+  const probe = await evaluate(
+    `(async () => {
+      const id = document.querySelector('[data-testid="sn-header-session"]')?.textContent?.trim()
+      if (!id) return { sent: false }
+      const answer = await fetch('/api/v1/session/' + encodeURIComponent(id) + '/start', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: '{}' })
+      let body = null
+      try { body = await answer.json() } catch {}
+      return { sent: true, status: answer.status, code: body?.error?.code ?? null, message: body?.error?.message ?? null }
+    })()`,
+    'start probe',
+  )
+  await sleep(600)
+  result.steps.startProbe = { probe, facts: await pageFacts('after the probe'), network: takeNetwork() }
+}
+
+// ── 6. B-6 retry on the real Core: the checks run again and block again ──
+{
+  await press('sn-retry')
+  const ranAgain = await waitUntil(`document.querySelector('[data-testid="sn-step-devices"]')?.getAttribute('data-gate') !== 'block'`, 'gate left block', 6000)
+  const blockedAgain = await waitUntil(`document.querySelector('[data-testid="sn-step-devices"]')?.getAttribute('data-gate') === 'block'`, 'gate block again', 15000)
+  await sleep(600)
+  result.steps.retry = { ranAgain, blockedAgain, facts: await pageFacts('after retry'), network: takeNetwork() }
+}
+
+// ── 7. B-6 cancel on the real Core: the session is discarded, the page leaves for the Dashboard ──
+{
+  await press('sn-cancel')
+  const dialog = await waitFor('sn-cancel-dialog', true, 5000)
+  await sleep(400)
+  await press('sn-cancel-confirm')
+  const left = await waitFor('page-dashboard', true, 10000)
+  await sleep(800)
+  const toasts = await evaluate(`[...document.querySelectorAll('[data-slot="toast"]')].map((el) => el.textContent?.replace(/\\s+/g, ' ').trim().slice(0, 120))`, 'toasts')
+  result.steps.cancel = { dialog, left, toasts, network: takeNetwork() }
+}
+
+// ── 8. Sign out of the Live session (a request of the page; the Login page follows) ──
+{
+  const signOut = await evaluate(
+    `(async () => { const a = await fetch('/api/v1/auth/sign-out', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ reason: 'USER' }) }); return { status: a.status } })()`,
+    'sign-out',
+  )
+  const back = await waitFor('page-login', true, 15000)
+  result.steps.signOut = { signOut, loginShown: back, network: takeNetwork() }
+}
+
+// Simulated mode: `cdp-driver-sim.mjs` (the Simulated Login refuses while mock-core is unreachable).
+
+let text = JSON.stringify(result, null, 2)
+if (text.includes(DEMO_OPERATOR_PASSWORD)) text = text.split(DEMO_OPERATOR_PASSWORD).join('***')
+text = text.replace(/\b(ses|dvc|bio)_[A-Za-z0-9_-]+/g, '$1_***')
+writeFileSync(outJson, `${text}\n`)
+console.log(text)
+ws.close()

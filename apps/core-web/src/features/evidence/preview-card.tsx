@@ -2,6 +2,7 @@ import { Button, Card, Chip, Separator } from '@heroui/react'
 import { AnimatePresence, motion } from 'motion/react'
 import { ArrowRight, FileVideo, MousePointerClick, Share2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { CoreMode, useCoreMode } from '@dems/shared/live'
 import { formatUtcOffset } from '@dems/shared/realtime'
 import { useMotionPolicy } from '@/motion'
 import { EvidenceStatusChip, SubjectTypeChip } from './chips'
@@ -25,12 +26,14 @@ export interface EvidencePreviewProps {
 /**
  * Sticky preview beside the table (research/04 §5.1 "Detail preview (sticky) 4"; mobile MB 6 header
  * block): VIDEO-01 poster from the package, ID and time range, the key-values, the package line
- * (DEMO manifest digest, or "simulated" when no package joins), Open details and Export.
+ * (DEMO manifest digest, or "simulated" when no package joins; in Live mode "the Core server's record",
+ * plan row W0, item 9, decision D158), Open details and Export.
  * The content cross-fades between rows (`base`).
  */
 export function EvidencePreview({ row, onOpen, onExport }: EvidencePreviewProps) {
   const { t } = useTranslation()
   const m = useMotionPolicy()
+  const live = useCoreMode() === CoreMode.LIVE
   const { urlFor } = useEvidenceAssets()
 
   return (
@@ -106,10 +109,10 @@ export function EvidencePreview({ row, onOpen, onExport }: EvidencePreviewProps)
             </dl>
 
             <Separator />
-            <p className="evi-preview-package" data-package={row.pkg ? 'demo' : 'simulated'}>
+            <p className="evi-preview-package" data-package={row.pkg ? 'demo' : live ? 'core' : 'simulated'}>
               {row.pkg
                 ? t('evidence.preview.packageLine', { digest: shortHash(row.pkg.signature.signedDigest) })
-                : t('evidence.preview.noPackage')}
+                : t(live ? 'evidence.live.noPackage' : 'evidence.preview.noPackage')}
             </p>
 
             <div className="evi-preview-actions">

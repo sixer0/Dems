@@ -25,7 +25,10 @@
  * - the fingerprint result `invalid` (the stored token is dead) shows nothing of its own: the
  *   auth layer's notice says it, and takes the Alert slot (`noticeFor`);
  * - the offline Alert follows the Live link without flicker; Retry asks the Live socket to
- *   reconnect, on the same cooldown; "Use Simulated mode" stores the simulator as the source.
+ *   reconnect, on the same cooldown; "Use Simulated mode" stores the simulator as the source;
+ * - `coreLook` (row M2 follow-up, decision D180): the chip, the ring and the ambient loops read the
+ *   runtime's notice and view of the link (`useCoreLinkNotice()` → `liveCoreLookOf`), never its
+ *   two-valued `state`, so a link that is still connecting never reads "offline" or critical.
  */
 import { zodResolver } from '@hookform/resolvers/zod';
 import { router } from 'expo-router';
@@ -34,12 +37,13 @@ import { useForm } from 'react-hook-form';
 import { HeartbeatContext, useRetryCooldown } from '@dems/shared/realtime';
 import { useAuthSession } from '@/auth';
 import { useHaptics } from '@/motion';
-import { newCorrelationId, reportRuntimeIssue, setCoreLinkSource, useAuth, useCoreLink, useMobileLive } from '@/runtime';
+import { newCorrelationId, reportRuntimeIssue, setCoreLinkSource, useAuth, useCoreLink, useCoreLinkNotice, useMobileLive } from '@/runtime';
 import { isLimitFailure, isLiveLogin, liveAttemptFor, liveOfflineNoticeAfter } from './login-live-model';
 import {
   EMPTY_LOGIN_FORM,
   isCoreBlocked,
   isSubmitDisabled,
+  liveCoreLookOf,
   loginSchema,
   noticeFor,
   type AttemptOutcome,
@@ -72,6 +76,9 @@ export function useLoginController({ onRejected, onAccepted }: LoginControllerOp
   /** LIVE mode: the Core server is the Core. Every LIVE branch below hangs on this one word of the runtime. */
   const live = isLiveLogin(coreLink);
   const mobileLive = useMobileLive();
+  /** LIVE: how the chip, the ring and the ambient loops read the link (`null` in the other modes). */
+  const linkNotice = useCoreLinkNotice();
+  const coreLook = live ? liveCoreLookOf(linkNotice) : null;
 
   const form = useForm<LoginFormInput, unknown, LoginFormValues>({
     resolver: zodResolver(loginSchema),
@@ -332,6 +339,7 @@ export function useLoginController({ onRejected, onAccepted }: LoginControllerOp
     pending,
     notice,
     coreLink,
+    coreLook,
     coreBlocked,
     lockout,
     biometric,

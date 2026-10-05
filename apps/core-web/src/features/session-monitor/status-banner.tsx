@@ -1,5 +1,5 @@
 import { useRef, useState, type ReactNode } from 'react'
-import { Button, buttonVariants } from '@heroui/react'
+import { Button, buttonVariants, Spinner } from '@heroui/react'
 import { Link } from '@tanstack/react-router'
 import { AnimatePresence, motion } from 'motion/react'
 import { useTranslation } from 'react-i18next'
@@ -12,6 +12,10 @@ import { BANNER_RANK, BANNER_TONE, selectBanner, type BannerModel } from './mode
 export interface StatusBannerProps {
   canStart: boolean
   onRecover: () => void
+  /** LB-1 (Live mode only): the recovery request is out; the button ignores presses and is `aria-busy`. */
+  recoverBusy?: boolean
+  /** LB-1: out for longer than the reveal time; the button shows the kit's pending state. */
+  recoverPending?: boolean
 }
 
 /** Detail line of the banner (research/04 §3.2 K states plus the step-44 additions). */
@@ -68,7 +72,7 @@ function useBannerText(banner: BannerModel): { title: string; detail: string } {
  * §9.4), escalations pulse once (R8, M-C-10) and the label cross-fades (120 ms). Announced
  * politely to screen readers.
  */
-export function StatusBanner({ canStart, onRecover }: StatusBannerProps) {
+export function StatusBanner({ canStart, onRecover, recoverBusy = false, recoverPending = false }: StatusBannerProps) {
   const { t } = useTranslation()
   const m = useMotionPolicy()
   const banner = useSim(selectBanner)
@@ -101,7 +105,15 @@ export function StatusBanner({ canStart, onRecover }: StatusBannerProps) {
     )
   } else if (banner.kind === 'FAULT' && !banner.whileRecording && canStart) {
     cta = (
-      <Button size="sm" variant="danger-soft" onPress={onRecover} data-testid="sm-banner-cta">
+      <Button
+        size="sm"
+        variant="danger-soft"
+        onPress={onRecover}
+        isPending={recoverPending}
+        data-busy={recoverBusy || undefined}
+        data-testid="sm-banner-cta"
+      >
+        {recoverPending ? <Spinner size="sm" color="current" /> : null}
         {t('session.banner.cta.recover')}
       </Button>
     )
@@ -151,7 +163,11 @@ export function StatusBanner({ canStart, onRecover }: StatusBannerProps) {
           {detail}
         </span>
       </span>
-      {cta ? <span className="sm-banner-cta">{cta}</span> : null}
+      {cta ? (
+        <span className="sm-banner-cta" aria-busy={recoverBusy || undefined}>
+          {cta}
+        </span>
+      ) : null}
     </div>
   )
 }

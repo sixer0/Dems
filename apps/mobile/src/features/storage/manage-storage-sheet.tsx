@@ -13,6 +13,16 @@
  * The kit portals the sheet above the runtime providers, so the frame re-provides the simulator and
  * the sheet takes the operator role and the apply callback as props (step 83's sheet-frame note).
  * Mount on demand: `use-sheet-presence.tsx` (F-79-2).
+ *
+ * Live mode (backend task, plan row W79; 04_client_integration_spec §8.1 LB-1, §8.6 S2-6, §8.7 S5-3):
+ * - S2-6: Apply runs the screen's `onApply` inside `usePendingPress` (`@/runtime`): from the press
+ *   until the policy change settled a second press sends nothing and Apply is marked busy with its
+ *   look unchanged; after `LIVE_PENDING_REVEAL_MS` on the store's clock the kit's `Spinner` shows in
+ *   it. The sheet closes in `ok` (`applied`) and stays open with the draft on a refusal. The press
+ *   state lives here, outside the portal, so it outlasts a sheet closed while the command is out.
+ * - S5-3: the role gate above stays a hint read from the replicated operator; the Core enforces the
+ *   any-of rule on operation 55, and its 403 reaches the presenter.
+ * In Simulated mode the command settles before the press returns: nothing is ever marked busy.
  */
 import { Alert, BottomSheet, Button, Description, Label, RadioGroup, Switch } from 'heroui-native';
 import { Lock } from 'lucide-react-native';
@@ -22,6 +32,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { RetentionPolicyId, SimContext, useSimInstance, type OperatorRole } from '@dems/shared/sim';
 import { derived, fontFamily, palette, typography } from '@dems/shared/tokens';
 import { triggerHaptic } from '@/motion';
+import { PendingSpinner, busyState, usePendingPress } from '@/runtime';
 import { THRESHOLDS } from './storage-model';
 import { canManageStoragePolicy } from './sim-adapter';
 import type { StoragePolicyView } from './use-storage-data';
@@ -39,20 +50,36 @@ export interface PolicyDraft {
   autoArchive: boolean;
 }
 
+/** What follows a policy change once it settled (site S2-6). */
+export interface ApplyHandlers {
+  /** The change was applied (`ok`): the sheet closes. */
+  applied: () => void;
+  /** The change settled, applied or refused (`done`): Apply returns to idle. */
+  settled: () => void;
+}
+
 export interface ManageStorageSheetProps {
   isOpen: boolean;
   onClose: () => void;
   /** The signed-in operator's role, or null when signed out (portal: passed as a prop). */
   role: OperatorRole | null;
   policy: StoragePolicyView;
-  /** Writes the policy; resolves true on success (the caller shows the toast and logs failures). */
-  onApply: (draft: PolicyDraft) => boolean;
+  /**
+   * Writes the policy (the caller shows the toast and logs failures) and runs `applied` on success
+   * and `settled` in every path, at once in Simulated mode and on the Core's answer in Live mode.
+   */
+  onApply: (draft: PolicyDraft, handlers: ApplyHandlers) => void;
 }
 
 export function ManageStorageSheet({ isOpen, onClose, role, policy, onApply }: ManageStorageSheetProps) {
   const { t } = useTranslation();
   const sim = useSimInstance();
+  const press = usePendingPress();
   const presence = useSheetPresence(isOpen);
+  // S2-6: one command per press; the sheet closes in `ok` and stays open on a refusal.
+  const apply = (draft: PolicyDraft) => {
+    press.run((release) => onApply(draft, { applied: onClose, settled: release }));
+  };
   if (!presence.mounted) return null;
   return (
     <BottomSheet isOpen={presence.open} onOpenChange={(open) => (open ? undefined : onClose())}>
@@ -69,7 +96,7 @@ export function ManageStorageSheet({ isOpen, onClose, role, policy, onApply }: M
               <BottomSheet.Close accessibilityLabel={t('features.storage.manage.close')} testID="storage-manage-close" onPress={onClose} />
             </View>
             <SimContext.Provider value={sim}>
-              <ManageStorageBody role={role} policy={policy} onApply={onApply} onDone={onClose} />
+              <ManageStorageBody role={role} policy={policy} onApply={apply} busy={press.busy} pending={press.pending} />
             </SimContext.Provider>
           </SheetContentSignal>
         </BottomSheet.Content>
@@ -81,12 +108,16 @@ export function ManageStorageSheet({ isOpen, onClose, role, policy, onApply }: M
 interface ManageStorageBodyProps {
   role: OperatorRole | null;
   policy: StoragePolicyView;
-  onApply: (draft: PolicyDraft) => boolean;
-  onDone: () => void;
+  /** Sends the draft; the frame closes the sheet once it was applied. */
+  onApply: (draft: PolicyDraft) => void;
+  /** A policy change is out (LB-1): Apply is marked busy, its look unchanged. */
+  busy: boolean;
+  /** It has been out for `LIVE_PENDING_REVEAL_MS` or longer: the kit's `Spinner` shows in Apply. */
+  pending: boolean;
 }
 
 /** The sheet body; its draft starts from the current policy each time the sheet mounts. */
-export function ManageStorageBody({ role, policy, onApply, onDone }: ManageStorageBodyProps) {
+export function ManageStorageBody({ role, policy, onApply, busy, pending }: ManageStorageBodyProps) {
   const { t } = useTranslation();
   const [draft, setDraft] = useState<PolicyDraft>({ retentionPolicy: policy.retentionPolicy, autoArchive: policy.autoArchive });
   const allowed = canManageStoragePolicy(role);
@@ -174,11 +205,13 @@ export function ManageStorageBody({ role, policy, onApply, onDone }: ManageStora
         size="lg"
         isDisabled={!allowed || !changed}
         accessibilityLabel={changed ? t('storage.manage.apply') : t('storage.manage.unchanged')}
+        {...busyState(busy, !allowed || !changed)}
         onPress={() => {
           triggerHaptic('primaryPress');
-          if (onApply(draft)) onDone();
+          onApply(draft);
         }}
       >
+        {pending ? <PendingSpinner color={palette.black} testID="storage-manage-apply-spinner" /> : null}
         <Button.Label>{t('storage.manage.apply')}</Button.Label>
       </Button>
     </View>

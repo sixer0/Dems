@@ -1,0 +1,650 @@
+--- pre/apps/core-web/src/features/paired-devices/index.tsx
++++ now/apps/core-web/src/features/paired-devices/index.tsx
+@@ -10,9 +10,9 @@
+  * | Live, with `PAIRING_MANAGE` (the route guard sends everybody else to the Dashboard) | The header with "n paired · m online"; "Pair a device" (the hero, 5 of 12 columns from 1280 px) and "Devices" (7 of 12) |
+  * | Live, a read answered 403 (a stale hint) | The header and the Forbidden state, `pd-forbidden`, with a link to the Dashboard |
+  *
+- * The Live body keeps W54's test ID `pd-stub` on its grid: `test/live-shell-admin.test.tsx` pins it
+- * as "the Live branch is on screen" and this row may not change that file (CLG (a)). Renaming it is
+- * a by-design test change left to the controller (implementation/81_web_paired_devices.md).
++ * The Live body's grid carries the test ID `paired-devices-page`: `test/live-shell-admin.test.tsx`
++ * finds it inside the page root as "the Live branch is on screen". It replaced W54's stub ID `pd-stub`
++ * in the closing web round (row W1, decision D179 DC-1).
+  *
+  * The pairing code is held in `code-memory.ts` only; see there for where it may and may not go.
+  */
+@@ -79,7 +79,7 @@
+           </div>
+         </div>
+       ) : (
+-        <div className="pd-grid" data-testid="pd-stub">
++        <div className="pd-grid" data-testid="paired-devices-page">
+           <IssuePanel reads={reads} />
+           <DevicesPanel reads={reads} />
+         </div>
+--- pre/apps/core-web/src/features/security-audit/export-audit-dialog.tsx
++++ now/apps/core-web/src/features/security-audit/export-audit-dialog.tsx
+@@ -151,8 +151,12 @@
+     const pages = auditPageCount(receipt.entries)
+     updateFile({ status: 'reading', page: 1, pages })
+     const target = { exportId: receipt.exportId, rows: receipt.entries, head: receipt.head }
+-    void readExportedRows(auditPageReader(webLive), target, (read) => {
+-      if (generation.current === mine) updateFile({ status: 'reading', page: Math.min(read + 1, pages ?? read + 1), pages })
++    void readExportedRows(auditPageReader(webLive), target, {
++      // D176: a page is asked for only while an operator is signed in (the walk checks before each one).
++      signedIn: () => webLive.session != null,
++      onPage: (read) => {
++        if (generation.current === mine) updateFile({ status: 'reading', page: Math.min(read + 1, pages ?? read + 1), pages })
++      },
+     }).then(
+       (rows) => {
+         if (generation.current !== mine) return
+--- pre/apps/core-web/src/features/security-audit/export-file.ts
++++ now/apps/core-web/src/features/security-audit/export-file.ts
+@@ -4,45 +4,30 @@
+  * and 63) after the server accepted the export (operations 61, 62)"; implementation/39 §7.1, §12).
+  *
+  * The Core writes no file and returns none. Once it accepted the export (202, the AUDIT_EXPORTED row
+- * in the replica), the console reads the STORED chain from operation 59 `listAuditRows`, oldest
+- * first, 200 rows a page, following `nextCursor`, up to the rows the export covers: every row before
+- * the AUDIT_EXPORTED row (its sequence minus one; the Core's answer counts the same way,
+- * implementation/39 §7.4). The table may hold more rows than the 1,000-row ring the socket keeps, so
+- * the ring is never the file. The walk ends on the row whose hash is the export's head; anything
+- * else (the chain was discarded by a reset meanwhile: the Core answers 422 to the old cursor) is a
+- * failure, never a partial file.
++ * in the replica), the console reads the STORED chain from operation 59 `listAuditRows` through the
++ * console's one paged walk (`walkAuditChain`, `lib/core-page-walk.ts`, plan row W1): oldest first,
++ * 200 rows a page, following `nextCursor`, up to the rows the export covers — every row before the
++ * AUDIT_EXPORTED row (its sequence minus one; the Core's answer counts the same way,
++ * implementation/39 §7.4) — only while an operator is signed in (D176). The table may hold more rows
++ * than the 1,000-row ring the socket keeps, so the ring is never the file. The walk ends on the row
++ * whose hash is the export's head; anything else (the chain was discarded by a reset meanwhile: the
++ * Core answers 422 to the old cursor) is a failure, never a partial file. This file keeps the page's
++ * own parts: its error (its name and code are the page's record), the file and its name.
+  *
+  * Pure except `downloadAuditFile`, which hands the finished text to the browser.
+  */
+ import type { AuditPage } from '@dems/shared/api'
+ import type { AuditRow } from '@dems/shared/sim'
++import { CORE_PAGE_LIMIT, walkAuditChain, type AuditChainTarget, type CorePageReader, type CoreWalkFailure } from '@/lib/core-page-walk'
+ 
+ /** Rows per page of operation 59: the contract's largest page (API-9). */
+-export const AUDIT_PAGE_LIMIT = 200
++export const AUDIT_PAGE_LIMIT = CORE_PAGE_LIMIT
+ 
+-/** A hard stop for a walk that never ends (a server that keeps handing out cursors). */
+-const MAX_PAGES = 10_000
+-
+-/**
+- * What the walk needs of one answer of operation 59: the typed client's result, read structurally (a
+- * page row never imports the typed client). A failure is kept whole, so the refusal presenter gets
+- * the object the client returned.
+- */
+-export type AuditPageAnswer =
+-  | { readonly ok: true; readonly data: AuditPage }
+-  | { readonly ok: false; readonly status: number | null; readonly error: { readonly code: string } }
+-
+-export type AuditPageFailure = Extract<AuditPageAnswer, { ok: false }>
+-
+ /** Reads one page of operation 59 after `cursor` (null: the first page). */
+-export type AuditPageReader = (cursor: string | null) => Promise<AuditPageAnswer>
++export type AuditPageReader = CorePageReader<AuditPage>
+ 
+-/** Why a walk did not produce the file. */
+-export type AuditWalkFailure =
+-  /** A page was not answered with rows: the refusal or the outage, as the typed client returned it. */
+-  | { readonly kind: 'CALL'; readonly failure: AuditPageFailure }
+-  /** The rows walked do not end on the export's head, or a sequence is missing: the chain moved. */
+-  | { readonly kind: 'CHAIN'; readonly walked: number; readonly lastSeq: number | null }
++/** Why a walk did not produce the file (the walk's own failure: a page, the chain, an endless list). */
++export type AuditWalkFailure = CoreWalkFailure
+ 
+ export class AuditWalkError extends Error {
+   override readonly name = 'AuditWalkError'
+@@ -54,18 +39,12 @@
+     super('The audit list of the Core could not be read to the end of the export.')
+     this.reason = reason
+     this.status = reason.kind === 'CALL' ? reason.failure.status : null
+-    this.code = reason.kind === 'CALL' ? reason.failure.error.code : 'CHAIN_MOVED'
++    this.code = reason.kind === 'CALL' ? reason.failure.error.code : reason.kind === 'CHAIN' ? 'CHAIN_MOVED' : 'ENDLESS_LIST'
+   }
+ }
+ 
+ /** What the walk is bound to: the rows the export covers and the hash of the last of them, when known. */
+-export interface AuditWalkTarget {
+-  readonly exportId: string
+-  /** Rows the export covers (the AUDIT_EXPORTED row's sequence minus one); null when the row was not seen. */
+-  readonly rows: number | null
+-  /** Hash of the last covered row; null when unknown. */
+-  readonly head: string | null
+-}
++export type AuditWalkTarget = AuditChainTarget
+ 
+ /** Whole pages the walk needs for `rows` rows (at least one: an empty chain still reads one page). */
+ export function auditPageCount(rows: number | null): number | null {
+@@ -74,51 +53,18 @@
+ }
+ 
+ /**
+- * Reads the stored chain from the first row up to the export's rows. `onPage(read)` after each page.
+- * Without a known row count it stops before the AUDIT_EXPORTED row of `exportId` (or at the last page).
+- * Throws `AuditWalkError`.
++ * Reads the stored chain from the first row up to the export's rows, asking `signedIn()` before every
++ * page (D176). `onPage(read)` after each page. Without a known row count it stops before the
++ * AUDIT_EXPORTED row of `exportId` (or at the last page). Throws `AuditWalkError`.
+  */
+-export async function readExportedRows(
++export function readExportedRows(
+   readPage: AuditPageReader,
+   target: AuditWalkTarget,
+-  onPage: (read: number) => void = () => undefined,
++  options: { readonly signedIn: () => boolean; readonly onPage?: (read: number) => void },
+ ): Promise<AuditRow[]> {
+-  const rows: AuditRow[] = []
+-  let cursor: string | null = null
+-  for (let read = 1; read <= MAX_PAGES; read += 1) {
+-    const answer = await readPage(cursor)
+-    if (!answer.ok) throw new AuditWalkError({ kind: 'CALL', failure: answer })
+-    let stop = false
+-    for (const row of answer.data.rows as AuditRow[]) {
+-      if (target.rows !== null && rows.length >= target.rows) {
+-        stop = true
+-        break
+-      }
+-      if (target.rows === null && row.type === 'AUDIT_EXPORTED' && row.details.exportId === target.exportId) {
+-        stop = true
+-        break
+-      }
+-      rows.push(row)
+-    }
+-    onPage(read)
+-    cursor = answer.data.nextCursor
+-    if (stop || cursor === null || (target.rows !== null && rows.length >= target.rows)) break
+-  }
+-  checkWalk(rows, target)
+-  return rows
++  return walkAuditChain(readPage, target, { ...options, fail: (reason) => new AuditWalkError(reason) })
+ }
+ 
+-/** The walked rows are 1, 2, 3, … without a gap, as many as the export covers, ending on its head. */
+-function checkWalk(rows: readonly AuditRow[], target: AuditWalkTarget): void {
+-  const last = rows.at(-1) ?? null
+-  const fail = (): never => {
+-    throw new AuditWalkError({ kind: 'CHAIN', walked: rows.length, lastSeq: last?.seq ?? null })
+-  }
+-  if (target.rows !== null && rows.length !== target.rows) fail()
+-  for (let index = 0; index < rows.length; index += 1) if ((rows[index] as AuditRow).seq !== index + 1) fail()
+-  if (target.head !== null && last !== null && last.hash !== target.head) fail()
+-}
+-
+ /** The file's content: the export's identity, why it was made, and the stored rows it covers. */
+ export interface AuditExportFile {
+   readonly kind: 'dems-audit-export'
+--- pre/apps/core-web/src/features/system/export-logs-dialog.tsx
++++ now/apps/core-web/src/features/system/export-logs-dialog.tsx
+@@ -6,6 +6,7 @@
+ import { settle, useCoreActions } from '@dems/shared/live'
+ import { EXPORT_REASON_MIN_LENGTH, Permission, useSimInstance, type ExportResult } from '@dems/shared/sim'
+ import { CoreErrorNoticeKind, useCoreErrorPresenter } from '@/lib/core-errors'
++import { SIGNED_OUT_PAGE } from '@/lib/core-page-walk'
+ import { usePendingControl } from '@/lib/pending-control'
+ import { useWebLive } from '@/runtime'
+ import {
+@@ -18,7 +19,6 @@
+   readExportedAuditRows,
+   type AuditPageAnswer,
+   type EventPageAnswer,
+-  type PageFailure,
+ } from './live-log-export'
+ import { logSystemError, newSystemCorrelationId } from './log'
+ import { requiredRoleFor } from './model'
+@@ -70,22 +70,19 @@
+   }
+ 
+   /**
+-   * Decision D176 (finding F75-2): a Core read runs only while an operator is signed in. The walk asks
+-   * before EVERY page; after a sign-out (or any session end) it sends nothing more and ends as the Core
+-   * would have answered (401 `NOT_SIGNED_IN`, which the presenter leaves silent: the shell shows the
+-   * login screen).
++   * Decision D176 (finding F75-2): a Core read runs only while an operator is signed in. The walk
++   * (`lib/core-page-walk.ts`) asks before EVERY page; after a sign-out (or any session end) it sends
++   * nothing more and ends as the Core would have answered (401 `NOT_SIGNED_IN`, which the presenter
++   * leaves silent: the shell shows the login screen).
+    */
+-  const signedOut = (): PageFailure | null =>
+-    live === null || live.session === null ? { ok: false, status: 401, error: { code: ApiErrorCode.NOT_SIGNED_IN } } : null
++  const signedIn = () => live !== null && live.session !== null
+   const readAuditPage = async (cursor: string | null): Promise<AuditPageAnswer> => {
+-    const ended = signedOut()
+-    if (ended !== null || live === null) return ended ?? { ok: false, status: null, error: { code: ApiErrorCode.NOT_SIGNED_IN } }
++    if (live === null) return SIGNED_OUT_PAGE
+     const answer = await live.client.call('listAuditRows', { query: cursor === null ? { limit: LOG_PAGE_LIMIT } : { limit: LOG_PAGE_LIMIT, cursor } })
+     return answer.ok ? { ok: true, data: answer.data as AuditPage } : answer
+   }
+   const readEventPage = async (cursor: string | null): Promise<EventPageAnswer> => {
+-    const ended = signedOut()
+-    if (ended !== null || live === null) return ended ?? { ok: false, status: null, error: { code: ApiErrorCode.NOT_SIGNED_IN } }
++    if (live === null) return SIGNED_OUT_PAGE
+     const answer = await live.client.call('listEvents', { query: cursor === null ? { limit: LOG_PAGE_LIMIT } : { limit: LOG_PAGE_LIMIT, cursor } })
+     return answer.ok ? { ok: true, data: answer.data as EventPage } : answer
+   }
+@@ -96,11 +93,14 @@
+     let auditPages = 0
+     setPage(1)
+     try {
+-      const rows = await readExportedAuditRows(readAuditPage, target, (read) => {
+-        auditPages = read
+-        setPage(read + 1)
++      const rows = await readExportedAuditRows(readAuditPage, target, {
++        signedIn,
++        onPage: (read) => {
++          auditPages = read
++          setPage(read + 1)
++        },
+       })
+-      const events = await readAllEvents(readEventPage, (read) => setPage(auditPages + read + 1))
++      const events = await readAllEvents(readEventPage, { signedIn, onPage: (read) => setPage(auditPages + read + 1) })
+       const state = sim.store.getState()
+       downloadJson(
+         `dems-logs-${state.device.id}-${exportId}.json`,
+--- pre/apps/core-web/src/features/system/live-log-export.ts
++++ now/apps/core-web/src/features/system/live-log-export.ts
+@@ -5,51 +5,45 @@
+  * implementation/39 §7.4, §12).
+  *
+  * The Core writes no file and returns none. Once it accepted the export (202, the AUDIT_EXPORTED row
+- * in the replica), the console reads:
++ * in the replica), the console reads, through the console's one paged walk (`lib/core-page-walk.ts`,
++ * plan row W1), only while an operator is signed in (D176: the walk asks before every page):
+  *
+- * - the STORED audit chain from operation 59 `listAuditRows`, oldest first, 200 rows a page,
+- *   following `nextCursor`, up to the rows the export covers: every row before its AUDIT_EXPORTED
+- *   row (that row's sequence minus one, its `prevHash` the head; the Core's own answer counts the
+- *   same way, implementation/39 §7.4). The table may hold more rows than the 1,000-row ring the
+- *   socket keeps, so the ring is never the file. The walk must end on the export's head; anything
+- *   else (a reset discarded the chain meanwhile: the Core answers 422 to the old cursor) is a
+- *   failure, never a partial file;
+- * - every operational event from operation 63 `listEvents`, 200 a page, to the last page (the
+- *   table may hold more than the 500-event ring).
++ * - the STORED audit chain from operation 59 `listAuditRows` (`walkAuditChain`), oldest first, 200
++ *   rows a page, following `nextCursor`, up to the rows the export covers: every row before its
++ *   AUDIT_EXPORTED row (that row's sequence minus one, its `prevHash` the head; the Core's own answer
++ *   counts the same way, implementation/39 §7.4). The table may hold more rows than the 1,000-row
++ *   ring the socket keeps, so the ring is never the file. The walk must end on the export's head;
++ *   anything else (a reset discarded the chain meanwhile: the Core answers 422 to the old cursor) is
++ *   a failure, never a partial file;
++ * - every operational event from operation 63 `listEvents` (`walkAllEvents`), 200 a page, to the
++ *   last page (the table may hold more than the 500-event ring).
+  *
++ * This file keeps the page's own parts: its error (its name, code and list are the page's record),
++ * the export's target, the file.
++ *
+  * Pure except `downloadJson`, which hands the finished text to the browser.
+  */
+ import type { AuditPage, EventPage } from '@dems/shared/api'
+ import type { AuditRow, DiagnosticsRun, ServiceEntry, SimEvent } from '@dems/shared/sim'
++import {
++  CORE_PAGE_LIMIT,
++  walkAllEvents,
++  walkAuditChain,
++  type AuditChainTarget,
++  type CorePageAnswer,
++  type CorePageReader,
++  type CoreWalkFailure,
++} from '@/lib/core-page-walk'
+ 
+ /** Rows per page of operations 59 and 63: the contract's largest page (API-9). */
+-export const LOG_PAGE_LIMIT = 200
++export const LOG_PAGE_LIMIT = CORE_PAGE_LIMIT
+ 
+-/** A hard stop for a walk that never ends (a server that keeps handing out cursors). */
+-const MAX_PAGES = 10_000
++export type AuditPageAnswer = CorePageAnswer<AuditPage>
++export type EventPageAnswer = CorePageAnswer<EventPage>
+ 
+-/** A failed answer of the typed client, read structurally (a page never imports the typed client). */
+-export interface PageFailure {
+-  readonly ok: false
+-  readonly status: number | null
+-  readonly error: { readonly code: string }
+-}
++/** Why a walk did not produce the file (the walk's own failure: a page, the chain, an endless list). */
++export type LogWalkFailure = CoreWalkFailure
+ 
+-export type AuditPageAnswer = { readonly ok: true; readonly data: AuditPage } | PageFailure
+-export type EventPageAnswer = { readonly ok: true; readonly data: EventPage } | PageFailure
+-
+-/** Reads one page after `cursor` (null: the first page). */
+-export type PageReader<Answer> = (cursor: string | null) => Promise<Answer>
+-
+-/** Why a walk did not produce the file. */
+-export type LogWalkFailure =
+-  /** A page was not answered with rows: the refusal or the outage, as the typed client returned it. */
+-  | { readonly kind: 'CALL'; readonly list: 'AUDIT' | 'EVENTS'; readonly failure: PageFailure }
+-  /** The audit rows walked do not end on the export's head, or a sequence is missing: the chain moved. */
+-  | { readonly kind: 'CHAIN'; readonly walked: number; readonly lastSeq: number | null }
+-  /** The server kept handing out cursors. */
+-  | { readonly kind: 'ENDLESS'; readonly list: 'AUDIT' | 'EVENTS' }
+-
+ export class LogWalkError extends Error {
+   override readonly name = 'LogWalkError'
+   readonly reason: LogWalkFailure
+@@ -65,12 +59,7 @@
+ }
+ 
+ /** What the audit walk is bound to: the rows the export covers and the hash of the last of them, when known. */
+-export interface LogExportTarget {
+-  readonly exportId: string
+-  /** Rows the export covers (the AUDIT_EXPORTED row's sequence minus one); null when the row is not in the ring. */
+-  readonly rows: number | null
+-  /** Hash of the last covered row (the AUDIT_EXPORTED row's `prevHash`); null when unknown. */
+-  readonly head: string | null
++export interface LogExportTarget extends AuditChainTarget {
+   /** When the Core accepted the export (the AUDIT_EXPORTED row's instant); null when unknown. */
+   readonly at: number | null
+ }
+@@ -86,64 +75,26 @@
+   return { exportId, rows: null, head: null, at: null }
+ }
+ 
++/** What both walks of the page take: the session check (D176) and the page counter. */
++export interface LogWalkOptions {
++  readonly signedIn: () => boolean
++  readonly onPage?: (read: number) => void
++}
++
++const fail = (reason: LogWalkFailure) => new LogWalkError(reason)
++
+ /**
+  * Reads the stored chain from the first row up to the export's rows. `onPage(read)` after each page.
+  * Without a known row count it stops before the AUDIT_EXPORTED row of `exportId` (or at the last page).
+  * Throws `LogWalkError`.
+  */
+-export async function readExportedAuditRows(
+-  readPage: PageReader<AuditPageAnswer>,
+-  target: LogExportTarget,
+-  onPage: (read: number) => void = () => undefined,
+-): Promise<AuditRow[]> {
+-  const rows: AuditRow[] = []
+-  let cursor: string | null = null
+-  let finished = false
+-  for (let read = 1; read <= MAX_PAGES && !finished; read += 1) {
+-    const answer: AuditPageAnswer = await readPage(cursor)
+-    if (!answer.ok) throw new LogWalkError({ kind: 'CALL', list: 'AUDIT', failure: answer })
+-    for (const row of answer.data.rows as AuditRow[]) {
+-      const enough = target.rows !== null && rows.length >= target.rows
+-      const exportRow = target.rows === null && row.type === 'AUDIT_EXPORTED' && row.details.exportId === target.exportId
+-      if (enough || exportRow) {
+-        finished = true
+-        break
+-      }
+-      rows.push(row)
+-    }
+-    onPage(read)
+-    cursor = answer.data.nextCursor
+-    if (cursor === null || (target.rows !== null && rows.length >= target.rows)) finished = true
+-  }
+-  if (!finished) throw new LogWalkError({ kind: 'ENDLESS', list: 'AUDIT' })
+-  checkWalk(rows, target)
+-  return rows
++export function readExportedAuditRows(readPage: CorePageReader<AuditPage>, target: LogExportTarget, options: LogWalkOptions): Promise<AuditRow[]> {
++  return walkAuditChain(readPage, target, { ...options, fail })
+ }
+ 
+-/** The walked rows are 1, 2, 3, … without a gap, as many as the export covers, ending on its head. */
+-function checkWalk(rows: readonly AuditRow[], target: LogExportTarget): void {
+-  const last = rows.at(-1) ?? null
+-  const fail = (): never => {
+-    throw new LogWalkError({ kind: 'CHAIN', walked: rows.length, lastSeq: last?.seq ?? null })
+-  }
+-  if (target.rows !== null && rows.length !== target.rows) fail()
+-  for (let index = 0; index < rows.length; index += 1) if ((rows[index] as AuditRow).seq !== index + 1) fail()
+-  if (target.head !== null && last !== null && last.hash !== target.head) fail()
+-}
+-
+ /** Reads every operational event, page after page, to the last one. Throws `LogWalkError`. */
+-export async function readAllEvents(readPage: PageReader<EventPageAnswer>, onPage: (read: number) => void = () => undefined): Promise<SimEvent[]> {
+-  const events: SimEvent[] = []
+-  let cursor: string | null = null
+-  for (let read = 1; read <= MAX_PAGES; read += 1) {
+-    const answer: EventPageAnswer = await readPage(cursor)
+-    if (!answer.ok) throw new LogWalkError({ kind: 'CALL', list: 'EVENTS', failure: answer })
+-    events.push(...(answer.data.events as SimEvent[]))
+-    onPage(read)
+-    cursor = answer.data.nextCursor
+-    if (cursor === null) return events
+-  }
+-  throw new LogWalkError({ kind: 'ENDLESS', list: 'EVENTS' })
++export function readAllEvents(readPage: CorePageReader<EventPage>, options: LogWalkOptions): Promise<SimEvent[]> {
++  return walkAllEvents(readPage, { ...options, fail })
+ }
+ 
+ /** The file's content: the export's identity, why it was made, the stored rows it covers and the events. */
+--- pre/apps/core-web/src/features/users-roles/index.tsx
++++ now/apps/core-web/src/features/users-roles/index.tsx
+@@ -25,9 +25,9 @@
+  * disable by anyone, this page's own command, a socket resync or a return to the browser tab
+  * (TanStack Query's focus refetch) reads them again. Nothing is invented on the client.
+  *
+- * **Compatibility test ID** `ur-stub`: the wrapper of the two panels keeps W54's ID, because W54's
+- * existing test (`src/test/live-shell-admin.test.tsx:385`) finds it inside the page in Live mode and
+- * no existing test may change in this row (CLG (a)). It names nothing of the stub any more.
++ * **Test ID** `users-roles-page`: the wrapper of the two panels, the Live body of the page. W54's test
++ * (`src/test/live-shell-admin.test.tsx`) finds it inside the page root `page-users-roles` in Live mode;
++ * it replaced W54's stub ID `ur-stub` in the closing web round (row W1, decision D179 DC-1).
+  */
+ import { useState } from 'react'
+ import { Card, Chip, EmptyState } from '@heroui/react'
+@@ -117,7 +117,7 @@
+   return (
+     <>
+       {header}
+-      <div className="ur-grid" data-testid="ur-stub">
++      <div className="ur-grid" data-testid="users-roles-page">
+         <UsersPanel
+           users={users}
+           matrix={matrix}
+--- pre/apps/core-web/src/test/live-shell-admin.test.tsx
++++ now/apps/core-web/src/test/live-shell-admin.test.tsx
+@@ -184,8 +184,11 @@
+   cleanup()
+   await clearToasts()
+   for (const sim of sims.splice(0)) sim.stop()
+-  bed?.dispose()
++  // Cleared before `dispose()`: a dispose that throws (a fake-transport violation) fails its own test
++  // only, instead of leaving `bed` set for every later test's clean-up (D179 DC-2, F81-2).
++  const disposing = bed
+   bed = undefined
++  disposing?.dispose()
+   window.matchMedia = originalMatchMedia
+   vi.restoreAllMocks()
+   vi.unstubAllGlobals()
+@@ -382,16 +385,16 @@
+ 
+ describe('the two routes (PG-1, PG-2, PG-3)', () => {
+   it.each([
+-    ['/admin/users', 'page-users-roles', 'ur-stub', 'USERS & ROLES', 'Users & Roles'],
+-    ['/admin/devices', 'page-paired-devices', 'pd-stub', 'PAIRED DEVICES', 'Paired Devices'],
+-  ] as const)('Live mode with the permission: %s renders %s inside the shell, and its entry is the active one', async (path, testId, stubId, _title, entry) => {
++    ['/admin/users', 'page-users-roles', 'users-roles-page', 'USERS & ROLES', 'Users & Roles'],
++    ['/admin/devices', 'page-paired-devices', 'paired-devices-page', 'PAIRED DEVICES', 'Paired Devices'],
++  ] as const)('Live mode with the permission: %s renders %s inside the shell, and its entry is the active one', async (path, testId, bodyId, _title, entry) => {
+     viewport(1920)
+     const { router } = await mountLive(path)
+     const page = await screen.findByTestId(testId)
+     expect(screen.getByRole('main')).toContainElement(page)
+     expect(router.state.location.pathname).toBe(path)
+     expect(within(page).getByRole('heading', { level: 1 })).toHaveTextContent(new RegExp(entry, 'i'))
+-    expect(within(page).getByTestId(stubId)).toBeInTheDocument()
++    expect(within(page).getByTestId(bodyId)).toBeInTheDocument()
+     expect(within(page).queryByText(en.shell.liveOnly.title)).not.toBeInTheDocument()
+     expect(within(primaryNav()).getByRole('link', { name: entry })).toHaveAttribute('aria-current', 'page')
+     expect(getMissingI18nKeys()).toEqual([])
+--- pre/apps/core-web/src/test/live-strict-mode-starts.test.tsx
++++ now/apps/core-web/src/test/live-strict-mode-starts.test.tsx
+@@ -225,11 +225,6 @@
+     token: 'invalidateQueries(',
+     why: 'CONTRACT-GAP-W70-1 refresh: the ref starts at the mount value of `tabletLink.changedAt`, so the mount run and StrictMode\'s second run send nothing; a later change runs once (no remount)',
+   },
+-  {
+-    file: 'system/sim-adapter.ts',
+-    token: 'actions.updateSettings(',
+-    why: 'W76\'s folder, not yet in Live mode: a ref-guarded seed of local console preferences into the simulator (`useSimActions`); W76 routes it through the helper or keeps this entry with its own reason',
+-  },
+ ]
+ 
+ function productionFiles(dir: string): string[] {
+--- pre/apps/core-web/src/lib/core-page-walk.ts (absent)
++++ now/apps/core-web/src/lib/core-page-walk.ts
+@@ -0,0 +1,151 @@
++/**
++ * The ONE paged walk of the Core's lists for an export file (plan row W1; decisions D178 DC-4 and
++ * FW76-5, D176). It replaces the two copies of W75 (`features/security-audit/export-file.ts`, the
++ * audit export) and W76 (`features/system/live-log-export.ts`, the log export).
++ *
++ * The Core writes no export file and returns none (01_specs §11: "An audit or log export file | Built
++ * by the client from server rows (operations 59 and 63) after the server accepted the export";
++ * 04_client_integration_spec §8.2 A7, A8; AC-C-60; implementation/39 §7.4, §12). Once it accepted an
++ * export, the page reads:
++ *
++ * | Walk | Operation | Ends | Checked |
++ * |------|-----------|------|---------|
++ * | `walkAuditChain` | 59 `listAuditRows`, oldest first | at the rows the export covers (the AUDIT_EXPORTED row's sequence minus one); without a known count, before the AUDIT_EXPORTED row of the export, or at the last page | the rows are 1, 2, 3, … without a gap, as many as the export covers, ending on its head (the chain check) |
++ * | `walkAllEvents` | 63 `listEvents` | at the last page | — |
++ *
++ * Every walk:
++ * - reads EVERY page, `CORE_PAGE_LIMIT` (200, the contract's largest page, API-9) a page, following
++ *   `nextCursor`: the Core's tables may hold more than the rings the socket keeps, so a ring is never
++ *   the file;
++ * - asks `signedIn()` before EVERY page (decision D176, finding F75-2: a Core read runs only while an
++ *   operator is signed in). After a sign-out (or any session end) it sends nothing more and ends as
++ *   the Core would have answered: a 401 `NOT_SIGNED_IN` failure, which the refusal presenter leaves
++ *   silent (the shell shows the login screen with its own notice);
++ * - never returns a partial list: a refused page or an outage, a chain that moved (a reset discarded
++ *   it meanwhile: the Core answers 422 to the old cursor), or a server that keeps handing out cursors
++ *   each THROW the page's own error, built by `fail` (its name and code are the page's record).
++ *
++ * Pure: the page hands in its reader (the Live source's typed client, rule 1 — read structurally, so
++ * no page imports the typed client here), its session check and its error.
++ */
++import { ApiErrorCode, type AuditPage, type EventPage } from '@dems/shared/api'
++import type { AuditRow, SimEvent } from '@dems/shared/sim'
++
++/** Rows per page of operations 59 and 63: the contract's largest page (API-9). */
++export const CORE_PAGE_LIMIT = 200
++
++/** A hard stop for a walk that never ends (a server that keeps handing out cursors). */
++const MAX_PAGES = 10_000
++
++/** A failed answer of the typed client, read structurally. Kept whole, so the presenter gets the object the client returned. */
++export interface CorePageFailure {
++  readonly ok: false
++  readonly status: number | null
++  readonly error: { readonly code: string }
++}
++
++export type CorePageAnswer<Data> = { readonly ok: true; readonly data: Data } | CorePageFailure
++
++/** Reads one page after `cursor` (null: the first page). */
++export type CorePageReader<Data> = (cursor: string | null) => Promise<CorePageAnswer<Data>>
++
++/** Which list a walk reads. */
++export type CoreWalkList = 'AUDIT' | 'EVENTS'
++
++/** Why a walk did not produce its list. */
++export type CoreWalkFailure =
++  /** A page was not answered with rows (the refusal or the outage, as the typed client returned it), or the session ended (`SIGNED_OUT_PAGE`). */
++  | { readonly kind: 'CALL'; readonly list: CoreWalkList; readonly failure: CorePageFailure }
++  /** The audit rows walked do not end on the export's head, or a sequence is missing: the chain moved. */
++  | { readonly kind: 'CHAIN'; readonly walked: number; readonly lastSeq: number | null }
++  /** The server kept handing out cursors. */
++  | { readonly kind: 'ENDLESS'; readonly list: CoreWalkList }
++
++/**
++ * What a walk ends with when the session is over before a page (D176): the Core's own answer to a call
++ * without a session, in the typed client's shape (`transport: null`: a refusal, not an outage), so the
++ * presenter treats it exactly as that 401.
++ */
++export const SIGNED_OUT_PAGE: CorePageFailure & { readonly transport: null; readonly retryAfterSeconds: null } = {
++  ok: false,
++  status: 401,
++  error: { code: ApiErrorCode.NOT_SIGNED_IN },
++  transport: null,
++  retryAfterSeconds: null,
++}
++
++export interface CoreWalkOptions {
++  /** Asked before every page (D176); `false` ends the walk with `SIGNED_OUT_PAGE` and sends nothing more. */
++  readonly signedIn: () => boolean
++  /** The page's own error for a failure: the walk throws what this returns. */
++  readonly fail: (reason: CoreWalkFailure) => Error
++  /** After each page read, with its number (1, 2, …). */
++  readonly onPage?: (read: number) => void
++}
++
++/** What the audit walk is bound to: the rows the export covers and the hash of the last of them, when known. */
++export interface AuditChainTarget {
++  readonly exportId: string
++  /** Rows the export covers (the AUDIT_EXPORTED row's sequence minus one); null when that row was not seen. */
++  readonly rows: number | null
++  /** Hash of the last covered row (the AUDIT_EXPORTED row's `prevHash`); null when unknown. */
++  readonly head: string | null
++}
++
++/** One page, only while signed in; a refused page throws the page's error. */
++async function readSignedIn<Data>(readPage: CorePageReader<Data>, cursor: string | null, list: CoreWalkList, options: CoreWalkOptions): Promise<Data> {
++  if (!options.signedIn()) throw options.fail({ kind: 'CALL', list, failure: SIGNED_OUT_PAGE })
++  const answer = await readPage(cursor)
++  if (!answer.ok) throw options.fail({ kind: 'CALL', list, failure: answer })
++  return answer.data
++}
++
++/** Reads the stored chain (operation 59) from the first row up to the export's rows, then checks it. */
++export async function walkAuditChain(readPage: CorePageReader<AuditPage>, target: AuditChainTarget, options: CoreWalkOptions): Promise<AuditRow[]> {
++  const rows: AuditRow[] = []
++  let cursor: string | null = null
++  let finished = false
++  for (let read = 1; read <= MAX_PAGES && !finished; read += 1) {
++    const page: AuditPage = await readSignedIn(readPage, cursor, 'AUDIT', options)
++    for (const row of page.rows as AuditRow[]) {
++      const enough = target.rows !== null && rows.length >= target.rows
++      const exportRow = target.rows === null && row.type === 'AUDIT_EXPORTED' && row.details.exportId === target.exportId
++      if (enough || exportRow) {
++        finished = true
++        break
++      }
++      rows.push(row)
++    }
++    options.onPage?.(read)
++    cursor = page.nextCursor
++    if (cursor === null || (target.rows !== null && rows.length >= target.rows)) finished = true
++  }
++  if (!finished) throw options.fail({ kind: 'ENDLESS', list: 'AUDIT' })
++  checkChain(rows, target, options.fail)
++  return rows
++}
++
++/** The walked rows are 1, 2, 3, … without a gap, as many as the export covers, ending on its head. */
++function checkChain(rows: readonly AuditRow[], target: AuditChainTarget, fail: CoreWalkOptions['fail']): void {
++  const last = rows.at(-1) ?? null
++  const moved = (): never => {
++    throw fail({ kind: 'CHAIN', walked: rows.length, lastSeq: last?.seq ?? null })
++  }
++  if (target.rows !== null && rows.length !== target.rows) moved()
++  for (let index = 0; index < rows.length; index += 1) if ((rows[index] as AuditRow).seq !== index + 1) moved()
++  if (target.head !== null && last !== null && last.hash !== target.head) moved()
++}
++
++/** Reads every operational event (operation 63), page after page, to the last one. */
++export async function walkAllEvents(readPage: CorePageReader<EventPage>, options: CoreWalkOptions): Promise<SimEvent[]> {
++  const events: SimEvent[] = []
++  let cursor: string | null = null
++  for (let read = 1; read <= MAX_PAGES; read += 1) {
++    const page: EventPage = await readSignedIn(readPage, cursor, 'EVENTS', options)
++    events.push(...(page.events as SimEvent[]))
++    options.onPage?.(read)
++    cursor = page.nextCursor
++    if (cursor === null) return events
++  }
++  throw options.fail({ kind: 'ENDLESS', list: 'EVENTS' })
++}

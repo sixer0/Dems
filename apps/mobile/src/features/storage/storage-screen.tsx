@@ -17,6 +17,13 @@
  * Data: the shared simulator only (`useSim`, D19) plus `useAuth()` for the role gate. Motion: the
  * §7.3 beats (`storage-motion.ts`): ring sweep hero, legend stagger, activity rows; no ambient loop.
  * LOW / FULL: colour morph + one pulse + toast + inline Alert (calm escalation).
+ *
+ * Live mode (backend task, plan row W79; 04_client_integration_spec §7.4, §8.6 S2-6, §8.7 S5-3): the
+ * store is the Live source, so every panel reads the Core's replicated slices (`storage`,
+ * `storagePolicy`, `events`, `session`, `evidence`) with the same selectors. Apply sends operation 55
+ * through `useCoreActions()` and `settle` (`useApplyStoragePolicy` below); the role gate stays a hint
+ * (S5-3) and the Core enforces its any-of rule. No production code here starts a Core command on
+ * mount (decision D158).
  */
 import { useRouter } from 'expo-router';
 import { Button, useToast } from 'heroui-native';
@@ -25,13 +32,13 @@ import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ScrollView, StyleSheet, Text, View, type ViewStyle } from 'react-native';
 import Animated from 'react-native-reanimated';
-import { useSimActions } from '@dems/shared/sim';
+import { settle, useCoreActions } from '@dems/shared/live';
 import { derived, fontFamily, palette, spacing, typography } from '@dems/shared/tokens';
 import { Pane, PaneLayout, SafeScreen, useLayoutClass, type LayoutClass } from '@/layout';
 import { triggerHaptic, useMotionSettings } from '@/motion';
-import { newCorrelationId, reportRuntimeIssue, useAuth } from '@/runtime';
+import { newCorrelationId, reportRuntimeIssue, useAuth, useCoreErrorPresenter, useCoreLink } from '@/runtime';
 import { CapacityCard } from './capacity-card';
-import { ManageStorageSheet, type PolicyDraft } from './manage-storage-sheet';
+import { ManageStorageSheet, type ApplyHandlers, type PolicyDraft } from './manage-storage-sheet';
 import { PanelBoundary } from './panel-boundary';
 import { StorageActivity } from './storage-activity';
 import { StorageKpis } from './storage-kpis';
@@ -177,29 +184,48 @@ function ManageStorageButton({ onPress }: { onPress: () => void }) {
 }
 
 /**
- * Apply → `setStoragePolicy` (simulated, audited by the simulator). Three-layer handling: a success
- * or a friendly failure toast; the failure goes to the runtime log (`dems.mobile.log.v1`) with a
- * correlation id; the sheet stays open on failure so the operator can retry.
+ * Apply → `setStoragePolicy` (settle site S2-6; 04_client_integration_spec §8.6). Three-layer
+ * handling: a success or a friendly failure toast; the failure goes to the runtime log
+ * (`dems.mobile.log.v1`) with a correlation id; the sheet stays open on failure so the operator can
+ * retry. The caller's `applied` runs in `ok` (the sheet closes there) and `settled` in `done` (the
+ * pressed control returns to idle).
+ *
+ * | Mode | The command | Success | A refusal |
+ * |---|---|---|---|
+ * | SIMULATED | the simulator, settled before `settle` returns (CL-25) | "Storage policy updated (simulated)", as before | "could not be updated", as before |
+ * | LIVE | operation 55 on the Core; `ok` runs once the replica holds the revision the answer named (CL-16) | "Storage policy updated": the Core applied it (rule 8) | the presenter first (a 403, an outage, a 429: LB-5 to LB-10), else the Core's 422 `POLICY_RANGE` keeps "could not be updated" |
+ *
+ * The Core's 403 names the any-of permission in its own spelling (`EVIDENCE_REVIEW_OR_MAINTENANCE`,
+ * F64 / CONTRACT-GAP-5), so the denied toast names no role until the contract close-out (W83) maps it.
  */
-function useApplyStoragePolicy(): (draft: PolicyDraft) => boolean {
+function useApplyStoragePolicy(): (draft: PolicyDraft, handlers: ApplyHandlers) => void {
   const { t } = useTranslation();
   const { toast } = useToast();
-  const actions = useSimActions();
+  const actions = useCoreActions();
+  const live = useCoreLink().source === 'LIVE';
+  const presentCoreError = useCoreErrorPresenter();
   return useCallback(
-    (draft: PolicyDraft) => {
+    (draft: PolicyDraft, handlers: ApplyHandlers) => {
       const correlationId = newCorrelationId('storage-policy');
-      try {
-        actions.setStoragePolicy({ retentionPolicy: draft.retentionPolicy, autoArchive: draft.autoArchive });
-        reportRuntimeIssue('info', 'storage.manage.apply', 'Storage policy applied', { ...draft }, correlationId);
-        toast.show({ variant: 'success', label: t('storage.manage.applied') });
-        return true;
-      } catch (error) {
-        reportRuntimeIssue('error', 'storage.manage.apply', error, { ...draft }, correlationId);
-        toast.show({ variant: 'danger', label: t('storage.manage.failed') });
-        return false;
-      }
+      settle(() => actions.setStoragePolicy({ retentionPolicy: draft.retentionPolicy, autoArchive: draft.autoArchive }), {
+        ok: () => {
+          reportRuntimeIssue('info', 'storage.manage.apply', 'Storage policy applied', { ...draft }, correlationId);
+          toast.show({ variant: 'success', label: live ? t('features.storage.live.applied') : t('storage.manage.applied') });
+          handlers.applied();
+        },
+        fail: (error) => {
+          // Live mode: a denial, an outage or a limit is the presenter's (one wording on every screen).
+          if (live && presentCoreError(error)) {
+            reportRuntimeIssue('warn', 'storage.manage.apply', error, { ...draft }, correlationId);
+            return;
+          }
+          reportRuntimeIssue('error', 'storage.manage.apply', error, { ...draft }, correlationId);
+          toast.show({ variant: 'danger', label: t('storage.manage.failed') });
+        },
+        done: handlers.settled,
+      });
     },
-    [actions, toast, t],
+    [actions, live, presentCoreError, toast, t],
   );
 }
 

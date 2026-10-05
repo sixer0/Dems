@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Button, Chip } from '@heroui/react'
+import { Button, Chip, toast } from '@heroui/react'
 import {
   AnimatePresence,
   motion,
@@ -9,12 +9,16 @@ import {
   type MotionValue,
   type Transition,
 } from 'motion/react'
+import type { TFunction } from 'i18next'
 import { useTranslation } from 'react-i18next'
 import type { AudioTrackId } from '@dems/shared/domain'
-import { useAudioChannel, useSimActions, useSimInstance, type AudioFrame } from '@dems/shared/sim'
+import { settle, useCoreActions, type CoreActions } from '@dems/shared/live'
+import { useAudioChannel, useSimInstance, type AudioFrame } from '@dems/shared/sim'
 import { motion as tokens } from '@dems/shared/tokens'
 import { reportMeterFrame, tween, useMotionPolicy } from '@/motion'
+import { useCoreErrorPresenter } from '@/lib/core-errors'
 import { cn } from '@/lib/utils'
+import { webErrorSink } from '@/runtime'
 import {
   ariaValueNow,
   createFrameGate,
@@ -66,6 +70,45 @@ const LAYOUT: Record<
 }
 
 /** Writes into the text node React rendered (so a later React update edits the same node). */
+/** The fixed sentence of the meter's own record when a clip reset fails for a reason the presenter left to it. */
+const CLIP_RESET_FAILED_RECORD = 'A clip latch reset from an audio meter was not carried out.'
+
+/**
+ * The CLIP chip's reset (plan row W0, item 4; decision D154 DN-3, finding F-3 of W65): the simulator's
+ * action in Simulated mode, operation 52 `resetMicClip` in Live mode, consumed through `settle` in both
+ * (rule 1 of the page rows). A refusal goes to the refusal presenter first (rule 2: a 403, an outage, a
+ * time-out and a 429 have its words); what it leaves to the meter (a 400 or 422 the operator cannot
+ * correct) gets the console's generic sentence and one record in the page's own log — a fixed
+ * message and the cause's name, code and status, never its text (CPW1-8). A simulator never refuses a
+ * reset, so Simulated mode is unchanged.
+ */
+function resetClip(
+  actions: CoreActions,
+  channel: AudioTrackId,
+  presentCoreError: ReturnType<typeof useCoreErrorPresenter>,
+  t: TFunction,
+): void {
+  settle(() => actions.resetClip(channel), {
+    fail: (error) => {
+      if (presentCoreError(error) !== null) return
+      const { code, status } = typeof error === 'object' && error !== null ? (error as { code?: unknown; status?: unknown }) : {}
+      webErrorSink.report({
+        level: 'error',
+        source: 'components/composed.DbfsMeter.resetClip',
+        message: CLIP_RESET_FAILED_RECORD,
+        at: Date.now(),
+        context: {
+          channel,
+          errorName: error instanceof Error ? error.name : typeof error,
+          ...(typeof code === 'string' || typeof code === 'number' ? { code } : {}),
+          ...(typeof status === 'number' ? { status } : {}),
+        },
+      })
+      toast.danger(t('common.errors.generic'))
+    },
+  })
+}
+
 function setText(element: HTMLElement, text: string) {
   const node = element.firstChild
   if (node && node.nodeType === Node.TEXT_NODE) {
@@ -140,7 +183,8 @@ export function DbfsMeter({
   const { t } = useTranslation()
   const m = useMotionPolicy()
   const sim = useSimInstance()
-  const actions = useSimActions()
+  const actions = useCoreActions()
+  const presentCoreError = useCoreErrorPresenter()
   const vertical = (orientation ?? (variant === 'large' ? 'vertical' : 'horizontal')) === 'vertical'
   const layout = LAYOUT[variant]
 
@@ -357,7 +401,7 @@ export function DbfsMeter({
               variant="ghost"
               aria-label={`${t('session.audio.clipReset')}: ${accessibleName}`}
               className="h-auto min-w-0 p-0"
-              onPress={() => actions.resetClip(channel)}
+              onPress={() => resetClip(actions, channel, presentCoreError, t)}
             >
               <Chip
                 color="danger"

@@ -1099,6 +1099,35 @@
     color: var(--muted);
   }
 
+  /* The "Paired devices" row of the tablet drawer in Live mode (plan row W70, note G6). */
+  .dev-facts-paired {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+
+  .dev-facts-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--accent);
+    text-decoration: none;
+    border-radius: 4px;
+  }
+
+  .dev-facts-link:hover {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+
+  .dev-facts-link:focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+  }
+
   .dev-health {
     display: flex;
     flex-direction: column;

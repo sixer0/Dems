@@ -22,17 +22,33 @@
  * controller from step 67). Motion (§7.3, 03M M-PG-NEW): stepper badges stagger, step content
  * enters in the direction of travel (x ±24, `gentle`), step 2 checks resolve in sequence, step 3's
  * ring sweep is the hero moment; loops pause off-focus.
+ *
+ * **Live mode** (backend task 04_client_integration_spec §8.5 to §8.7, §6.3; plan row W67). The
+ * actions and their sites are in `use-session-new.ts`; what this screen adds:
+ *
+ * | Item | Live behaviour |
+ * |------|----------------|
+ * | Pending (LB-1, AC-C-57, AC-C-58) | Next (steps 1 and 2), "Run checks again" and Start Recording ignore further presses from the press until the command settled; after `LIVE_PENDING_REVEAL_MS` on the store's clock the kit's `Spinner` takes the place of the button's icon, inside the button. Start keeps its existing "Starting…" label (LB-2) |
+ * | The start-recording hand-off (S2-2, CA-02, AC-C-62) | The stack replace to the monitor runs in the `ok` of `startRecording`, in the turn in which the store shows RECORDING (CL-16), so the wizard route never renders RECORDING and its "session busy" guard does not fire, in both arrival orders of the answer and the delta |
+ * | Back while a command is out | Held (hardware Back and the header arrow): a request that left the device cannot be taken back; the answer decides (the Pair screen's rule) |
+ * | The Core link (M0's one rule through `useCoreLinkNotice()`, row M1) | While the link is down a warning says so and Start Recording is disabled; a running 3-2-1 stops. A recording starts only over a connected link: on the device this is the app's own socket to the Core (decision F69) |
+ * | A lost `SESSION_START` (§6.3, AC-C-50) | The wizard leaves for `/home`; the runtime's role-change toast says why. A setup session stays on the Core |
+ * | S4-6 (the case-number scan) and S5-6 (the investigator list) | No change: both read the replica |
+ *
+ * In Simulated mode every command settles before `settle` returns, so none of the Live states is
+ * ever set and the screen looks and behaves exactly as before.
  */
 import { useIsFocused, useNavigation, useRouter } from 'expo-router';
 import { StackActions } from 'expo-router/react-navigation';
-import { Button, useToast } from 'heroui-native';
+import { Alert, Button, useToast } from 'heroui-native';
 import { ArrowRight, Circle } from 'lucide-react-native';
 import { useEffect, useEffectEvent, useMemo, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { StyleSheet, View } from 'react-native';
+import { BackHandler, StyleSheet, View } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import Animated, { FadeIn, FadeInLeft, FadeInRight, ReduceMotion, type EntryOrExitLayoutType } from 'react-native-reanimated';
-import { useSimInstance } from '@dems/shared/sim';
+import { useCorePermission } from '@dems/shared/live';
+import { Permission, useSimInstance } from '@dems/shared/sim';
 import { motion as motionTokens, palette, spacing } from '@dems/shared/tokens';
 import { Stepper, type StepDef, type StepStatusWords } from '@/components/composed/stepper';
 import { Pane, PaneLayout, SafeScreen, useLayoutClass } from '@/layout';
@@ -46,7 +62,7 @@ import {
   type MotionSettings,
 } from '@/motion';
 import { BackGuardDialog, useBackGuard, type SessionStep } from '@/navigation';
-import { reportRuntimeIssue } from '@/runtime';
+import { PendingSpinner, busyState, reportRuntimeIssue, useCoreLink, useCoreLinkNotice, usePendingPress } from '@/runtime';
 import { DevicesCheckStep } from './devices-check-step';
 import { LiveDeviceColumn } from './device-previews';
 import { DiscardDialog, useFlowBackPrompt } from './flow-guard';
@@ -121,6 +137,30 @@ export function SessionNewScreen({ step }: SessionNewScreenProps) {
   const investigators = useMemo(() => eligibleInvestigators(data.operators), [data.operators]);
   const actions = useFlowActions(data.state, data.sessionId);
 
+  // ── Live mode: one pending control per command (LB-1); Simulated mode never sets them ────────
+  const createPress = usePendingPress();
+  const gatePress = usePendingPress();
+  const retryPress = usePendingPress();
+  const startPress = usePendingPress();
+  const cancelPress = usePendingPress();
+  /** A command of this screen is out (Live mode only). */
+  const sending = createPress.busy || gatePress.busy || retryPress.busy || startPress.busy || cancelPress.busy;
+
+  // ── Live mode: the Core link (M0's one rule in one call, row M1; nothing shows outside LIVE) ──
+  const live = useCoreLink().source === 'LIVE';
+  const { offline: linkDown } = useCoreLinkNotice();
+
+  // ── Live mode: losing SESSION_START leaves the wizard (§6.3, AC-C-50) ────────────────────────
+  // The server's permission hint follows `session.updated`; it is false in Simulated mode, where
+  // nothing is lost. Only a loss seen while mounted counts (true → false).
+  const mayStart = useCorePermission(Permission.SESSION_START);
+  const [mayStartSeen, setMayStartSeen] = useState(mayStart);
+  const [permissionLost, setPermissionLost] = useState(false);
+  if (mayStartSeen !== mayStart) {
+    setMayStartSeen(mayStart);
+    if (live && mayStartSeen && !mayStart) setPermissionLost(true);
+  }
+
   // ── Step 1 form ──────────────────────────────────────────────────────────────────────────────
   const [initialValues] = useState(() =>
     data.state === 'CREATE' && data.input
@@ -150,9 +190,27 @@ export function SessionNewScreen({ step }: SessionNewScreenProps) {
   const backGuard = useBackGuard({ enabled: guardEnabled });
   const back = useFlowBackPrompt(backGuard, guardEnabled && focused);
 
-  // A back attempt, or the state leaving ARMED (a fault), stops a running countdown.
-  const stopCountdown = remaining !== null && (back.guard.isPrompting || data.state !== 'ARMED');
+  // A back attempt, or the state leaving ARMED (a fault), stops a running countdown; in Live mode so
+  // does a Core link that went down (a recording starts only over a connected link).
+  const stopCountdown = remaining !== null && (back.guard.isPrompting || data.state !== 'ARMED' || linkDown);
   if (stopCountdown) setRemaining(null);
+
+  // Live mode: the wizard is left for Home once its permission is gone (the setup session stays on
+  // the Core; the runtime's role-change toast says why). `leaveTo` switches the guard off first.
+  const leaveForHome = useEffectEvent(() => back.guard.leaveTo('/home'));
+  useEffect(() => {
+    if (permissionLost) leaveForHome();
+  }, [permissionLost]);
+
+  // Live mode: while a command is out, Back is held: a request that left the device cannot be taken
+  // back, and the answer decides (the Pair screen's rule). Re-subscribed on every render while
+  // sending, so this listener is always the newest and answers first (the flow prompt's listener
+  // re-subscribes on every render too). Never subscribed in Simulated mode.
+  useEffect(() => {
+    if (!sending) return undefined;
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => true);
+    return () => subscription.remove();
+  });
 
   // Keep `?step=` equal to the step shown (resync and deep links read it, §3.7). The screen's own
   // navigation object sets the param on this route directly; `router.setParams` asserts that the
@@ -184,16 +242,23 @@ export function SessionNewScreen({ step }: SessionNewScreenProps) {
   // itself with a "session active" toast. So the stack action is dispatched synchronously, next to
   // `startRecording()`: the state change and the navigation land in one render, and the monitor
   // route (RECORDING only) opens straight away. `replace`, so Back can never return to ARMED.
+  // Live mode (S2-2, CA-02): the continuation runs in the turn in which the store reaches RECORDING
+  // (CL-16), whichever of the answer and the delta arrived first, so the same holds there.
   const launch = useEffectEvent(() => {
-    if (!actions.startRecording()) {
-      setLaunching(false); // the simulator refused (toast + log in `useFlowActions`); stay on step 3
-      return;
-    }
-    if (!replaceWithMonitor(navigation)) router.replace('/session/live');
+    startPress.run((release) => {
+      actions.startRecording((ok) => {
+        release();
+        if (!ok) {
+          setLaunching(false); // refused (toast + log in `useFlowActions`); stay on step 3
+          return;
+        }
+        handOffToMonitor(navigation, () => router.replace('/session/live'));
+      });
+    });
   });
   useEffect(() => {
-    // The only state update here is the rare refusal path (`setLaunching(false)`), one render at most.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+    // The only state updates here are the refusal path (`setLaunching(false)`, one render at most)
+    // and, in Live mode, the pending press; both now sit in the action's continuation.
     if (launching) launch();
   }, [launching]);
 
@@ -224,26 +289,46 @@ export function SessionNewScreen({ step }: SessionNewScreenProps) {
   };
 
   const onNextInfo = form.handleSubmit((values) => {
-    triggerHaptic('primaryPress');
-    const outcome = actions.createAndCheck(values);
-    if (!outcome.ok) {
-      setCreateError(outcome.reason);
-      return;
-    }
-    setCreateError(null);
-    setAcknowledged(false);
-    showStep(2);
+    // One create per press of Next: a second press while it is out is ignored (LB-1).
+    createPress.run((release) => {
+      triggerHaptic('primaryPress');
+      actions.createAndCheck(values, (outcome) => {
+        release();
+        if (!outcome.ok) {
+          setCreateError(outcome.reason);
+          return;
+        }
+        setCreateError(null);
+        setAcknowledged(false);
+        showStep(2);
+      });
+    });
   });
 
   const onNextGate = () => {
+    if (data.state === 'PRECHECK' && phase === 'warn') {
+      gatePress.run((release) => {
+        triggerHaptic('primaryPress');
+        actions.acknowledgeWarnings((ok) => {
+          release();
+          if (ok) showStep(3);
+        });
+      });
+      return;
+    }
+    if (gatePress.busy) return;
     triggerHaptic('primaryPress');
-    if (data.state === 'PRECHECK' && phase === 'warn' && !actions.acknowledgeWarnings()) return;
     showStep(3);
   };
 
   const onRetry = () => {
-    triggerHaptic('primaryPress');
-    if (actions.retryChecks()) setAcknowledged(false);
+    retryPress.run((release) => {
+      triggerHaptic('primaryPress');
+      actions.retryChecks((ok) => {
+        release();
+        if (ok) setAcknowledged(false);
+      });
+    });
   };
 
   const onStart = () => {
@@ -253,37 +338,56 @@ export function SessionNewScreen({ step }: SessionNewScreenProps) {
   };
 
   const cancelAndLeave = () => {
-    actions.cancelSession();
-    back.guard.leave();
+    cancelPress.run((release) => {
+      actions.cancelSession((ok) => {
+        release();
+        // Simulated mode leaves whatever the answer, as before. Live mode leaves once the Core
+        // cancelled; on a refusal the dialog stays open (the presenter said why).
+        if (ok || !live) back.guard.leave();
+      });
+    });
+  };
+
+  const onBack = () => {
+    if (sending) return; // a command is out: the answer decides (see the hardware Back above)
+    back.requestBack();
   };
 
   // ── Footer (the MB 3 gold button, pinned on phones) ──────────────────────────────────────────
   const warningsAcknowledged = itemsWith(data.precheck?.items ?? [], 'WARN').length;
   let footer: ReactNode;
   if (current === 1) {
+    const invalid = !form.formState.isValid;
     footer = (
-      <Button testID="session-new-next" variant="primary" size="lg" isDisabled={!form.formState.isValid} onPress={() => void onNextInfo()}>
+      <Button
+        testID="session-new-next"
+        variant="primary"
+        size="lg"
+        isDisabled={invalid}
+        onPress={() => void onNextInfo()}
+        {...busyState(createPress.busy, invalid)}
+      >
         <Button.Label>{t('common.actions.next')}</Button.Label>
-        <ArrowRight size={20} color={palette.black} />
+        {createPress.pending ? <PendingSpinner color={palette.black} testID="session-new-next-spinner" /> : <ArrowRight size={20} color={palette.black} />}
       </Button>
     );
   } else if (current === 2) {
+    const blocked = !canLeaveGate(phase, acknowledged, data.state);
     footer = (
-      <Button testID="session-new-next" variant="primary" size="lg" isDisabled={!canLeaveGate(phase, acknowledged, data.state)} onPress={onNextGate}>
+      <Button testID="session-new-next" variant="primary" size="lg" isDisabled={blocked} onPress={onNextGate} {...busyState(gatePress.busy, blocked)}>
         <Button.Label>{t('common.actions.next')}</Button.Label>
-        <ArrowRight size={20} color={palette.black} />
+        {gatePress.pending ? <PendingSpinner color={palette.black} testID="session-new-next-spinner" /> : <ArrowRight size={20} color={palette.black} />}
       </Button>
     );
   } else {
+    const startDisabled = data.state !== 'ARMED' || remaining !== null || launching || linkDown;
     footer = (
-      <Button
-        testID="session-new-start"
-        variant="primary"
-        size="lg"
-        isDisabled={data.state !== 'ARMED' || remaining !== null || launching}
-        onPress={onStart}
-      >
-        <Circle size={14} color={palette.danger} fill={palette.danger} />
+      <Button testID="session-new-start" variant="primary" size="lg" isDisabled={startDisabled} onPress={onStart} {...busyState(startPress.busy, startDisabled)}>
+        {startPress.pending ? (
+          <PendingSpinner testID="session-new-start-spinner" color={palette.danger} />
+        ) : (
+          <Circle size={14} color={palette.danger} fill={palette.danger} />
+        )}
         <Button.Label>{launching ? t('sessionNew.ready.starting') : t('common.actions.startRecording')}</Button.Label>
       </Button>
     );
@@ -306,6 +410,9 @@ export function SessionNewScreen({ step }: SessionNewScreenProps) {
         onAcknowledgedChange={setAcknowledged}
         armed={data.state === 'ARMED'}
         onRetry={onRetry}
+        retryBusy={retryPress.busy}
+        retryPending={retryPress.pending}
+        live={live}
         showPreviews={!deviceColumn}
         liveFeeds={arrangement === 'phone' || arrangement === 'phone-landscape' ? 'one' : 'both'}
         paused={paused}
@@ -331,13 +438,24 @@ export function SessionNewScreen({ step }: SessionNewScreenProps) {
     </Animated.View>
   );
 
+  // Live mode only (the view is `none` elsewhere): the Core link is down, so nothing can be sent.
+  const linkNotice = linkDown ? (
+    <Alert status="warning" testID="session-new-link-down">
+      <Alert.Indicator />
+      <Alert.Content>
+        <Alert.Title>{t('features.session-new.live.linkDownTitle')}</Alert.Title>
+        <Alert.Description>{t('features.session-new.live.linkDownBody')}</Alert.Description>
+      </Alert.Content>
+    </Alert>
+  ) : null;
+
   const stepper = (
     <FlowStepper current={current} phase={phase} state={data.state} arrangement={arrangement} onBackToChecks={() => showStep(2)} />
   );
 
   const header = (
     <SessionNewHeader
-      onBack={back.requestBack}
+      onBack={onBack}
       showMenu={current === 1}
       hasLastProfile={data.newestHistory !== null}
       onLastProfile={onLastProfile}
@@ -354,6 +472,7 @@ export function SessionNewScreen({ step }: SessionNewScreenProps) {
       style={styles.flex}
       contentContainerStyle={[styles.scrollContent, arrangement === 'phone' ? null : styles.scrollContentWide]}
     >
+      {linkNotice}
       {stepBody}
     </KeyboardAwareScrollView>
   );
@@ -392,7 +511,7 @@ export function SessionNewScreen({ step }: SessionNewScreenProps) {
 
       {remaining !== null ? <CountdownOverlay seconds={remaining} onCancel={() => setRemaining(null)} /> : null}
       {flowActive ? (
-        <BackGuardDialog guard={back.guard} variant="flow" onConfirm={cancelAndLeave} />
+        <BackGuardDialog guard={back.guard} variant="flow" onConfirm={cancelAndLeave} busy={cancelPress.busy} pending={cancelPress.pending} />
       ) : (
         <DiscardDialog guard={back.guard} />
       )}
@@ -506,6 +625,23 @@ function replaceWithMonitor(navigation: StackNavigation): boolean {
   navigation.dispatch(StackActions.replace(monitor));
   return true;
 }
+
+/**
+ * The hand-off to the monitor: the stack replace, else `fallback` (`router.replace`). In Live mode it
+ * runs inside a settled action's continuation, where an exception would end up in a promise nobody
+ * reads: it is logged and the fallback runs instead, so the recording that started is never left
+ * without its monitor.
+ */
+function handOffToMonitor(navigation: StackNavigation, fallback: () => void): void {
+  try {
+    if (replaceWithMonitor(navigation)) return;
+  } catch (error) {
+    reportRuntimeIssue('error', 'features.sessionNew.handOff', error);
+  }
+  fallback();
+}
+
+// `busyState` and `PendingSpinner` (LB-1) come from `@/runtime` (row M1 follow-up, D164).
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },

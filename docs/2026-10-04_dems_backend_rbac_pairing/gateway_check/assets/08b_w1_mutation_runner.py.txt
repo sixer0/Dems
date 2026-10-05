@@ -1,0 +1,278 @@
+#!/usr/bin/env python3
+"""W1 mutation check (rule M15: no file of the workspace tree is changed). W0's runner, adapted.
+
+Each mutation is one or more text replacements in ONE module, applied in memory by the transform plugin
+of vitest.mutation.config.mts. A mutation is DETECTED when the named tests fail while it was really
+applied (the plugin leaves a marker under TMPDIR) and, where `expect` is given, that text is in the
+output (so the failure is the one meant). A CONTROL is expected to stay green. The SHA-256 of every
+mutated file is taken before and after each batch.
+    python3 /Users/gsp-budi/Documents/DEMS/.cache/w1/mut/run_mutations.py check | run [ids] [--baseline]
+"""
+import hashlib, json, os, re, subprocess, sys, time
+
+ROOT = '/Users/gsp-budi/Documents/DEMS'
+HERE = os.path.join(ROOT, '.cache/w1/mut')
+CONFIG = '.cache/w1/mut/vitest.mutation.config.mts'
+PROOF_CONFIG = '.cache/w1/mut/vitest.proof.config.mts'
+APPLIED = os.path.join(os.environ['TMPDIR'], 'w1-mut-applied')
+os.makedirs(APPLIED, exist_ok=True)
+SRC = 'apps/core-web/src/'
+
+STRICT = 'src/test/live-strict-mode-starts.test.tsx'
+
+M = []
+def m(mid, file, what, pairs, tests, expect=None, control=False, more=(), config=None):
+    """One mutation: `pairs` in `file`, plus `more` = ((file, pairs), ...) in other modules (a proof test injected beside it)."""
+    edits = [{'file': SRC + file, 'pairs': pairs}] + [{'file': SRC + f, 'pairs': p} for f, p in more]
+    M.append({'id': mid, 'file': SRC + file, 'what': what, 'edits': edits, 'tests': tests, 'expect': expect, 'control': control, 'config': config or CONFIG})
+
+# ── Item 1: the guard without the `system/sim-adapter.ts` entry ──────────────────────────────────
+# The guard reads the files from disk, so an in-memory change of `system/sim-adapter.ts` cannot reach
+# it; the test file itself is mutated so that the text it read for that one file is regressed.
+F = 'test/live-strict-mode-starts.test.tsx'
+FILES = "  const files = productionFiles(FEATURES).map((path) => ({ file: path.slice(FEATURES.length + 1).split('\\\\').join('/'), text: readFileSync(path, 'utf8') }))\n"
+def regress(pairs):
+    body = ', '.join('[' + json.dumps(a) + ', ' + json.dumps(b) + ']' for a, b in pairs)
+    return FILES + ("  {\n    const entry = files.find((item) => item.file === 'system/sim-adapter.ts')\n"
+                    "    if (!entry) throw new Error('W1 mutation: system/sim-adapter.ts not read')\n"
+                    f"    for (const [find, replace] of [{body}] as [string, string][]) {{\n"
+                    "      if (entry.text.split(find).length !== 2) throw new Error(`W1 mutation: ${find} not found once`)\n"
+                    "      entry.text = entry.text.replace(find, replace)\n    }\n  }\n")
+START_IN_SETUP = [("    return deferEffectStart(() => {\n      if (seeded.current) return", "    ;(() => {\n      if (seeded.current) return"),
+                  ("      }\n    })\n  }, [actions, live, onFail])", "      }\n    })()\n  }, [actions, live, onFail])")]
+BARE = [("settle(() => actions.updateSettings(stored), { fail: onFail })", "actions.updateSettings(stored)")]
+ENTRY = ("    why: 'CONTRACT-GAP-W70-1 refresh: the ref starts at the mount value of `tabletLink.changedAt`, so the mount run and StrictMode\\'s second run send nothing; a later change runs once (no remount)',\n  },\n]",
+         "    why: 'CONTRACT-GAP-W70-1 refresh: the ref starts at the mount value of `tabletLink.changedAt`, so the mount run and StrictMode\\'s second run send nothing; a later change runs once (no remount)',\n  },\n  {\n    file: 'system/sim-adapter.ts',\n    token: 'actions.updateSettings(',\n    why: 'the removed W0 entry, restored in memory for this control only (W76 moved the seed onto the helper)',\n  },\n]")
+m('P01', F, 'system/sim-adapter.ts regressed to its pre-W76 shape (a bare `actions.updateSettings(stored)` in the set-up), entry removed', [(FILES, regress(START_IN_SETUP + BARE))], [STRICT], expect='system/sim-adapter.ts:131 actions.updateSettings( — outside the helper')
+m('P02', F, 'system/sim-adapter.ts regressed to `settle(() => actions.updateSettings(stored))` in the set-up, entry removed', [(FILES, regress(START_IN_SETUP))], [STRICT], expect='system/sim-adapter.ts:131 settle( — outside the helper')
+m('P03', F, 'system/sim-adapter.ts helper called but not returned, entry removed', [(FILES, regress([("    return deferEffectStart(() => {", "    deferEffectStart(() => {")]))], [STRICT], expect='system/sim-adapter.ts:131 settle( — the helper is not returned')
+m('P04', F, 'CONTROL: the pre-W76 regression of P01 with the old entry restored — the entry would hide it (why it goes)', [(FILES, regress(START_IN_SETUP + BARE)), ENTRY], [STRICT], control=True)
+
+# ── Item 2: the one paged walk (`lib/core-page-walk.ts`) and its two callers ─────────────────────
+SAEXP = 'src/test/live-security-audit-export.test.tsx'
+SYSEXP = 'src/test/live-system-export.test.tsx'
+SAPAGE = 'src/test/live-security-audit-page.test.tsx'
+SYSSET = 'src/test/live-system-settings.test.tsx'
+WALK_TESTS = [SAEXP, SYSEXP]
+W = 'lib/core-page-walk.ts'
+
+# The in-memory proof for W75 (no test of the tree covers a sign-out during the AUDIT export walk):
+# the W76 D176 test's shape, injected at the end of W75's export test file, using that file's helpers.
+SA_TAIL = "    expect(screen.queryByTestId('export-audit-pages')).not.toBeInTheDocument()\n  })\n})\n"
+SA_PROOF = SA_TAIL + """
+describe('W1 proof (in memory): D176 on the audit export walk', () => {
+  it('the session ends while the walk waits for page 1: no further page of 59 is asked for; no file; nothing said', async () => {
+    const core = coreWith(450, 200)
+    const { bed, page } = await live(core)
+    const accepted = core.accept()
+    bed.fake.scriptCommand('exportAudit', { ops: accepted.ops, order: 'delta-first', answer: { status: 202, body: { exportId: EXPORT_ID, scope: 'AUDIT', rows: 450, head: accepted.head } } })
+    const held = bed.fake.hold('listAuditRows')
+    const dialog = await openDialog()
+    fireEvent.click(within(dialog).getByTestId('export-confirm'))
+    await waitFor(() => expect(requests('listAuditRows')).toHaveLength(1))
+    await bed.flush()
+    await act(async () => {
+      bed.core.end('SIGNED_OUT')
+    })
+    await bed.flush()
+    await waitFor(() => expect(page.live.session).toBeNull())
+    await act(async () => {
+      held.release(core.listAuditRows({ query: held.call?.query ?? {} }) as never)
+    })
+    await bed.flush()
+    await bed.elapse(2_000)
+    expect(requests('listAuditRows')).toHaveLength(1)
+    expect(blobs).toHaveLength(0)
+    expect(toastWith(LX.fileFailed.replace('{{exportId}}', EXPORT_ID))).toHaveLength(0)
+    expect(records('SecurityAudit.ExportAuditDialog.buildFile')).toHaveLength(0)
+  })
+})
+"""
+PROOF = ((SAEXP.replace('src/', ''), [(SA_TAIL, SA_PROOF)]),)
+
+m('X00', 'lib/core-page-walk.ts', 'PROOF (control, no production change): W75 now sends no page of 59 after a sign-out (the injected test on the tree as it is)', [("export const CORE_PAGE_LIMIT = 200", "export const CORE_PAGE_LIMIT = 200 ")], [SAEXP], control=True, more=PROOF)
+
+# a page skipped
+m('K01', W, 'a page skipped: the rows of audit page 2 are dropped', [("    for (const row of page.rows as AuditRow[]) {", "    for (const row of (read === 2 ? [] : page.rows) as AuditRow[]) {")], WALK_TESTS)
+m('K02', W, 'a page skipped: the events of page 2 are dropped', [("    events.push(...(page.events as SimEvent[]))", "    if (read !== 2) events.push(...(page.events as SimEvent[]))")], [SYSEXP])
+m('K03', W, 'a page skipped: the audit walk stops after its first page', [("    if (cursor === null || (target.rows !== null && rows.length >= target.rows)) finished = true", "    finished = true")], WALK_TESTS)
+m('K04', W, 'a page skipped: the events walk stops after its first page', [("    if (cursor === null) return events\n", "    return events\n")], [SYSEXP])
+m('K05', W, 'a page skipped: the next page is read from the first cursor again (nextCursor not followed)', [("    cursor = page.nextCursor\n    if (cursor === null || (target.rows", "    cursor = cursor ?? page.nextCursor\n    if (cursor === null || (target.rows")], WALK_TESTS)
+m('K06', W, 'pages of 100 rows instead of the contract\'s 200', [("export const CORE_PAGE_LIMIT = 200", "export const CORE_PAGE_LIMIT = 100")], WALK_TESTS)
+
+# the signed-in check removed
+m('S01', W, 'the signed-in check removed', [("  if (!options.signedIn()) throw options.fail({ kind: 'CALL', list, failure: SIGNED_OUT_PAGE })\n", "")], WALK_TESTS)
+m('S02', W, 'the signed-in check only before the first page', [("  if (!options.signedIn()) throw", "  if (cursor === null && !options.signedIn()) throw")], WALK_TESTS)
+m('S03', W, 'the signed-in check after the page is asked for (a request still leaves)', [("  if (!options.signedIn()) throw options.fail({ kind: 'CALL', list, failure: SIGNED_OUT_PAGE })\n  const answer = await readPage(cursor)\n", "  const answer = await readPage(cursor)\n  if (!options.signedIn()) throw options.fail({ kind: 'CALL', list, failure: SIGNED_OUT_PAGE })\n")], WALK_TESTS)
+m('S04', W, 'PROOF: the signed-in check removed, with the W75 proof injected', [("  if (!options.signedIn()) throw options.fail({ kind: 'CALL', list, failure: SIGNED_OUT_PAGE })\n", "")], [SAEXP], expect='W1 proof (in memory): D176 on the audit export walk', more=PROOF)
+m('S05', 'features/security-audit/export-audit-dialog.tsx', 'W75 call site: the session check always says signed in (with the W75 proof injected)', [("      signedIn: () => webLive.session != null,", "      signedIn: () => true,")], [SAEXP], expect='W1 proof (in memory): D176 on the audit export walk', more=PROOF)
+m('S06', 'features/system/export-logs-dialog.tsx', 'W76 call site: the session check always says signed in', [("  const signedIn = () => live !== null && live.session !== null", "  const signedIn = () => live !== null")], [SYSEXP])
+m('S07', W, 'the signed-out ending is not the Core\'s 401 (`transport` missing: the presenter no longer reads it as a refusal) — with the W75 proof', [("  transport: null,\n  retryAfterSeconds: null,\n}", "  retryAfterSeconds: null,\n} as never")], [SAEXP, SYSEXP], more=PROOF)
+
+# a partial file emitted
+m('F01', W, 'partial: a refused events page ends the walk with the events read so far', [("    const page: EventPage = await readSignedIn(readPage, cursor, 'EVENTS', options)\n", "    const page: EventPage | null = await readSignedIn(readPage, cursor, 'EVENTS', options).catch(() => null)\n    if (page === null) return events\n")], [SYSEXP])
+m('F02', W, 'partial: a refused audit page ends the walk with the rows read so far', [("    const page: AuditPage = await readSignedIn(readPage, cursor, 'AUDIT', options)\n", "    const page: AuditPage | null = await readSignedIn(readPage, cursor, 'AUDIT', options).catch(() => null)\n    if (page === null) return rows\n")], WALK_TESTS)
+m('F03', W, 'partial: the chain check is not run', [("  checkChain(rows, target, options.fail)\n  return rows", "  return rows")], WALK_TESTS)
+m('F04', W, 'partial: a chain that fails its check returns the rows anyway', [("    throw fail({ kind: 'CHAIN', walked: rows.length, lastSeq: last?.seq ?? null })", "    return undefined as never")], WALK_TESTS)
+m('F05', W, 'partial: the count check removed', [("  if (target.rows !== null && rows.length !== target.rows) moved()\n", "")], WALK_TESTS)
+m('F06', W, 'partial: the sequence check removed', [("  for (let index = 0; index < rows.length; index += 1) if ((rows[index] as AuditRow).seq !== index + 1) moved()\n", "")], WALK_TESTS)
+m('F07', W, 'partial: the head check removed', [("  if (target.head !== null && last !== null && last.hash !== target.head) moved()\n", "")], WALK_TESTS)
+m('F08', W, 'partial: an endless audit list returns what it read', [("  if (!finished) throw options.fail({ kind: 'ENDLESS', list: 'AUDIT' })\n", "")], WALK_TESTS)
+m('F09', W, 'partial: an endless events list returns what it read', [("  throw options.fail({ kind: 'ENDLESS', list: 'EVENTS' })\n}", "  return events\n}")], [SYSEXP])
+m('F10', W, 'the walk reads past the rows the export covers (the stop on the count removed)', [("      const enough = target.rows !== null && rows.length >= target.rows\n", "      const enough = false\n")], WALK_TESTS)
+m('F11', W, 'without a known count the walk does not stop before the export\'s own row', [("      const exportRow = target.rows === null && row.type === 'AUDIT_EXPORTED' && row.details.exportId === target.exportId\n", "      const exportRow = false\n")], WALK_TESTS)
+
+# the page's own parts kept
+m('P10', W, 'the page counter is not called', [("    options.onPage?.(read)\n    cursor = page.nextCursor\n    if (cursor === null || (target.rows", "    cursor = page.nextCursor\n    if (cursor === null || (target.rows")], WALK_TESTS)
+m('P11', 'features/security-audit/export-file.ts', 'W75 error: a moved chain is not named CHAIN_MOVED', [("reason.kind === 'CHAIN' ? 'CHAIN_MOVED' : 'ENDLESS_LIST'", "'ENDLESS_LIST'")], [SAEXP])
+m('P12', 'features/system/live-log-export.ts', 'W76 error: a moved chain is not named CHAIN_MOVED', [("reason.kind === 'CHAIN' ? 'CHAIN_MOVED' : 'ENDLESS_LIST'", "'ENDLESS_LIST'")], [SYSEXP])
+m('P13', W, 'a refused page loses its list name', [("  if (!answer.ok) throw options.fail({ kind: 'CALL', list, failure: answer })", "  if (!answer.ok) throw options.fail({ kind: 'CALL', list: 'AUDIT', failure: answer })")], [SYSEXP])
+
+# ── Item 3: W54's shell test ─────────────────────────────────────────────────────────────────────
+SHELL = 'src/test/live-shell-admin.test.tsx'
+SH = 'test/live-shell-admin.test.tsx'
+THROWING_DISPOSE = ("    const { bed, page, router } = await mountLive('/admin/users')\n    await screen.findByTestId('page-users-roles')\n    const info = vi.spyOn(toast, 'info')\n",
+                    "    const { bed, page, router } = await mountLive('/admin/users')\n    const real = bed.dispose.bind(bed)\n    bed.dispose = () => {\n      real()\n      throw new Error('W1 proof: a dispose that throws')\n    }\n    await screen.findByTestId('page-users-roles')\n    const info = vi.spyOn(toast, 'info')\n")
+OLD_CLEANUP = ("  const disposing = bed\n  bed = undefined\n  disposing?.dispose()\n", "  bed?.dispose()\n  bed = undefined\n")
+m('Q01', SH, "PROOF (a): one test's dispose throws, with the new clean-up — that test fails, no other", [THROWING_DISPOSE], [SHELL], expect='Tests  1 failed |')
+m('Q02', SH, 'PROOF (a): the same throwing dispose with the OLD clean-up restored in memory — the failure cascades', [THROWING_DISPOSE, OLD_CLEANUP], [SHELL])
+m('Q03', 'features/users-roles/index.tsx', '(b): the Users & Roles body loses its page test ID (back to `ur-stub`)', [('data-testid="users-roles-page"', 'data-testid="ur-stub"')], [SHELL], expect='/admin/users')
+m('Q04', 'features/paired-devices/index.tsx', '(b): the Paired Devices body loses its page test ID (back to `pd-stub`)', [('data-testid="paired-devices-page"', 'data-testid="pd-stub"')], [SHELL], expect='/admin/devices')
+
+# ── Item 4: the Users & Roles reads after a sign-out (D176, F75-2) — read-only check, proven in memory ──
+URP = 'src/test/live-users-roles-page.test.tsx'
+UR_ANCHOR = "    await waitFor(() => expect(mounted.router.state.location.pathname).toBe('/login'))\n    expect(screen.queryByTestId('ur-users-table')).not.toBeInTheDocument()\n  })\n"
+UR_PROOF = UR_ANCHOR + """
+  it('W1 proof (in memory), D176: after a sign-out from this console the page sends no read, also while it is still on screen; no 401', async () => {
+    const { bed, page, mounted } = await openUsersRoles()
+    const reads = () => ({ users: bed.fake.log.requestsOf('listUsers').length, matrix: bed.fake.log.requestsOf('getRoleMatrix').length })
+    const before = reads()
+    expect(before.users).toBeGreaterThan(0)
+    await act(async () => {
+      await page.live.actions.signOut('USER')
+    })
+    await bed.flush()
+    await waitFor(() => expect(mounted.router.state.location.pathname).toBe('/login'))
+    await bed.elapse(5_000, 500)
+    expect(reads()).toEqual(before)
+    for (const operationId of ['listUsers', 'getRoleMatrix']) {
+      expect(bed.fake.log.requestsOf(operationId).filter((call) => call.status === 401), operationId).toEqual([])
+    }
+  })
+
+  it('W1 proof (in memory), D176: after the Core ends the session the page sends no read; no 401', async () => {
+    const { bed, mounted } = await openUsersRoles()
+    const reads = () => ({ users: bed.fake.log.requestsOf('listUsers').length, matrix: bed.fake.log.requestsOf('getRoleMatrix').length })
+    const before = reads()
+    await act(async () => {
+      bed.core.end('SIGNED_OUT')
+    })
+    await bed.flush()
+    await waitFor(() => expect(mounted.router.state.location.pathname).toBe('/login'))
+    await bed.elapse(5_000, 500)
+    expect(reads()).toEqual(before)
+    for (const operationId of ['listUsers', 'getRoleMatrix']) {
+      expect(bed.fake.log.requestsOf(operationId).filter((call) => call.status === 401), operationId).toEqual([])
+    }
+  })
+"""
+UR_INJECT = (('test/live-users-roles-page.test.tsx', [(UR_ANCHOR, UR_PROOF)]),)
+m('U00', 'features/users-roles/queries.ts', 'PROOF (control, no production change): the two injected D176 tests on the tree as it is', [("const NOT_LIVE = { status: null, error: { code: 'NOT_LIVE' } } as const", "const NOT_LIVE = { status: null, error: { code: 'NOT_LIVE' } } as const ")], [URP], control=True, more=UR_INJECT)
+m('U01', 'features/users-roles/queries.ts', 'the reads no longer need USER_ADMIN in the session (enabled while signed out: the F75-2 shape)', [("  return live !== null && allowed && linkUp", "  return live !== null && linkUp")], [URP], expect='W1 proof (in memory), D176', more=UR_INJECT)
+
+# The survivors of the tree's tests, re-run against the proof OUTSIDE the tree (`.cache/w1/proof/`).
+PW = 'core-page-walk.proof'
+for sid, text in (('S03', 'S03'), ('F05', 'F05'), ('F06', 'F06'), ('F08', 'F08'), ('F09', 'F09'), ('F11', 'F11')):
+    base = next(mu for mu in M if mu['id'] == sid)
+    M.append({**base, 'id': 'Z' + sid, 'what': 'PROOF outside the tree: ' + base['what'], 'tests': [PW], 'config': PROOF_CONFIG})
+
+# ── Follow-up (decision D182): the walker mutation set against the TREE's tests only (no injection) ──
+SIGNOUT = 'src/test/live-security-audit-signout.test.tsx'
+WALKUNIT = 'src/lib/__tests__/core-page-walk.test.ts'
+TREE_WALK = [SAEXP, SYSEXP, SIGNOUT, WALKUNIT]
+for base in [mu for mu in list(M) if mu['id'][0] in 'KSFP' and mu['id'] not in ('P01', 'P02', 'P03', 'P04') and mu['id'][1:].isdigit() and len(mu['id']) == 3]:
+    first = base['edits'][0]
+    M.append({**base, 'id': 'T' + base['id'], 'what': 'TREE: ' + base['what'], 'edits': [first], 'tests': TREE_WALK, 'expect': None, 'control': False, 'config': CONFIG})
+
+def dump():
+    with open(os.path.join(HERE, 'mutations.json'), 'w', encoding='utf8') as handle:
+        json.dump([{'id': mu['id'], 'edits': mu['edits']} for mu in M], handle, indent=1)
+
+def check():
+    dump()
+    bad = 0
+    for mu in M:
+        for edit in mu['edits']:
+            text = open(os.path.join(ROOT, edit['file']), encoding='utf8').read()
+            for find, replace in edit['pairs']:
+                count = text.count(find)
+                if count != 1:
+                    bad += 1
+                    print(f"{mu['id']}: a text occurs {count} times in {edit['file']}: {find[:80]!r}")
+                text = text.replace(find, replace, 1)
+    ids = [mu['id'] for mu in M]
+    assert len(ids) == len(set(ids)), 'duplicate id'
+    print(f"{len(M)} mutations; texts that do not occur exactly once: {bad}")
+    return bad
+
+def digests(files):
+    return {f: hashlib.sha256(open(os.path.join(ROOT, f), 'rb').read()).hexdigest()[:16] for f in sorted(set(files))}
+
+def vitest(mid, tests, config=CONFIG):
+    env = dict(os.environ)
+    env['W1_APPLIED_DIR'] = APPLIED
+    if mid: env['W1_MUT'] = mid
+    else: env.pop('W1_MUT', None)
+    started = time.time()
+    done = subprocess.run(['npx', 'vitest', 'run', '--config', config, '--maxWorkers=2', *tests], cwd=ROOT, env=env, capture_output=True, text=True)
+    out = done.stdout + done.stderr
+    summary = ' | '.join(line.strip() for line in out.splitlines() if line.strip().startswith(('Test Files', 'Tests ')))
+    first = next((line.strip() for line in out.splitlines() if line.strip().startswith(('×', 'FAIL'))), '')
+    return done.returncode, summary, first[:180], time.time() - started, out
+
+def run(ids, baseline):
+    if check(): sys.exit(2)
+    chosen = [mu for mu in M if not ids or mu['id'] in ids]
+    log = open(os.path.join(HERE, 'mutations.log'), 'a', encoding='utf8')
+    def say(line):
+        print(line, flush=True); log.write(line + '\n'); log.flush()
+    tree_files = sorted({edit['file'] for mu in chosen for edit in mu['edits']} | set(EXTRA_WATCH))
+    before = digests(tree_files)
+    say(f"## {time.strftime('%Y-%m-%d %H:%M:%S WIB')} batch {[mu['id'] for mu in chosen]}")
+    if baseline:
+        for config in sorted({mu['config'] for mu in chosen}):
+            tests = sorted({t for mu in chosen if mu['config'] == config for t in mu['tests']})
+            code, summary, first, secs, _ = vitest(None, tests, config)
+            say(f"baseline (no mutation) {config} exit {code} {summary} ({secs:.0f} s) over {len(tests)} files")
+            if code != 0: sys.exit(3)
+    detected, survived, missing, unexpected, controls_ok, controls_bad = [], [], [], [], [], []
+    for mu in chosen:
+        markers = [os.path.join(APPLIED, mu['id'] + '__' + re.sub(r'[^A-Za-z0-9.-]', '_', edit['file'])) for edit in mu['edits']]
+        for marker in markers:
+            if os.path.exists(marker): os.remove(marker)
+        code, summary, first, secs, out = vitest(mu['id'], mu['tests'], mu['config'])
+        applied = all(os.path.exists(marker) for marker in markers)
+        if not applied: missing.append(mu['id']); verdict = 'NOT APPLIED'
+        elif mu['control']:
+            if code == 0: controls_ok.append(mu['id']); verdict = 'control ok'
+            else: controls_bad.append(mu['id']); verdict = 'CONTROL RED'
+        elif code != 0 and (mu['expect'] is None or mu['expect'] in out): detected.append(mu['id']); verdict = 'detected'
+        elif code != 0: unexpected.append(mu['id']); verdict = 'RED, OTHER'
+        else: survived.append(mu['id']); verdict = 'SURVIVED'
+        seen = '' if mu['expect'] is None else (' | expected text seen' if mu['expect'] in out else ' | expected text NOT seen')
+        say(f"{mu['id']} {verdict:11} {mu['what']} | {summary} | {first}{seen} ({secs:.0f} s)")
+        with open(os.path.join(HERE, f"out_{mu['id']}.txt"), 'w', encoding='utf8') as handle: handle.write(out)
+        for marker in markers:
+            if os.path.exists(marker): os.remove(marker)
+    after = digests(tree_files)
+    say(f"## {time.strftime('%Y-%m-%d %H:%M:%S WIB')} {len(chosen)} mutations: {len(detected)} detected, {len(survived)} survived {survived}, {len(unexpected)} red for another reason {unexpected}, {len(missing)} not applied {missing}; controls green {controls_ok}, controls red {controls_bad}")
+    say(f"## the mutated files (and watched files) in the tree, before and after: {'identical' if before == after else 'CHANGED'}")
+    for f, h in after.items(): say(f"   {h}  {f}")
+
+EXTRA_WATCH = ['apps/core-web/src/features/system/sim-adapter.ts', 'apps/core-web/src/lib/core-page-walk.ts', 'apps/core-web/src/features/security-audit/export-file.ts', 'apps/core-web/src/features/system/live-log-export.ts']
+
+if __name__ == '__main__':
+    if len(sys.argv) > 1 and sys.argv[1] == 'check': sys.exit(1 if check() else 0)
+    args = sys.argv[2:] if len(sys.argv) > 2 else []
+    baseline = '--baseline' in args
+    run([a for a in args if a != '--baseline'], baseline)

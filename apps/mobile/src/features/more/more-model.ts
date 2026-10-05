@@ -91,16 +91,35 @@ export function pairingTone(state: SimState['pairing']['state']): StatusTone {
   return 'warning';
 }
 
-/** Core link chip (same rule as the Home header): Simulated (info), Live (success), Offline (danger). */
-export function coreLinkTone(link: Pick<CoreLinkInfo, 'state' | 'source'>): StatusTone {
-  if (link.state !== 'ONLINE') return 'danger';
-  return link.source === 'SIMULATED' ? 'info' : 'success';
+/** The `common.status.*` word of the Core link chip. */
+export type CoreLinkWordKey = 'offline' | 'simulated' | 'live';
+
+/**
+ * The word of the two Core link chips, Home header `home-core-link` and More footer `more-core-link`
+ * (one rule for both; backend task W66, 04_client_integration_spec §3.2, MD-8, AC-C-30):
+ *
+ * | Source | Link | Word |
+ * |---|---|---|
+ * | SIMULATED | always up | Simulated |
+ * | HEARTBEAT | mock-core heartbeat up | **Simulated** (MD-8: it read "Live", although the data is simulated) |
+ * | HEARTBEAT | mock-core heartbeat down | Offline (as before) |
+ * | LIVE | `liveOffline` false | Live |
+ * | LIVE | `liveOffline` true | Offline |
+ *
+ * "Live" only when the source is LIVE. In LIVE the caller decides `liveOffline` with the runtime's
+ * one rule (`offlineNoticeAfter` over `coreLinkViewOf(useCoreLink())`, row M0; `use-core-link-chip.ts`),
+ * never from `link.state`. The SIMULATED and HEARTBEAT rows read `link.state` as they always did:
+ * that link is mock-core's, which never drives the Core server's notice (the M0 view is `none`).
+ */
+export function coreLinkWordKey(link: Pick<CoreLinkInfo, 'state' | 'source'>, liveOffline: boolean): CoreLinkWordKey {
+  if (link.source === 'LIVE') return liveOffline ? 'offline' : 'live';
+  return link.state === 'ONLINE' ? 'simulated' : 'offline';
 }
 
-/** The `common.status.*` word of the Core link chip. */
-export function coreLinkWordKey(link: Pick<CoreLinkInfo, 'state' | 'source'>): 'offline' | 'simulated' | 'live' {
-  if (link.state !== 'ONLINE') return 'offline';
-  return link.source === 'SIMULATED' ? 'simulated' : 'live';
+/** The tone of the Core link chip: Simulated (info), Live (success), Offline (danger). */
+export function coreLinkTone(word: CoreLinkWordKey): StatusTone {
+  if (word === 'offline') return 'danger';
+  return word === 'simulated' ? 'info' : 'success';
 }
 
 // ---------------------------------------------------------------------------------------------

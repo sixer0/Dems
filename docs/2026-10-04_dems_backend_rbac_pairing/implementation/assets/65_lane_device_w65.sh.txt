@@ -1,0 +1,116 @@
+#!/bin/sh
+# W65 device commands: the paired tablet in LIVE mode connects to the lane 2 Core (its device socket
+# makes the Core link CONNECTED, finding F69), the web console's check runs while it is connected,
+# then the app is relaunched in SIMULATED mode (the stored choice, D124). Runs INSIDE
+# apps/mobile/scripts/device-session.sh: the device lock is held, Metro is up, the session's reverse
+# rules are set (device tcp:4420 -> host tcp:4422).
+#   $1 = run id, $2 = output folder, $3 = the backend's log file, $4 = the devtools port, $5 = the Vite port,
+#   $6 = the assets folder.
+#
+# What this script does to the device, and nothing else: read-only queries (dumpsys, logcat, run-as
+# reads of key NAMES and the mode preference), launches of the app by a deep link, a force-stop of
+# the app, one screencap of the app. It sets, changes or clears NO lock, PIN, pattern, password or
+# fingerprint, changes no device setting, touches no fingerprint sensor, answers no keyguard or
+# system prompt, and types nothing on the device. A locked device ends the script with 77.
+# It does not unpair or pair the tablet.
+set -u
+RUN=$1
+OUT=$2
+SERVER_LOG=$3
+DEV=$4
+VITE=$5
+ASSETS=$6
+A="adb -s $SERIAL"
+H="$ROOT/.cache/w65/lane"
+echo "-- serial $SERIAL ($AVD_NAME), app $APP_ID, Metro port $METRO_PORT, run $RUN"
+echo "-- adb reverse --list (start of commands):"
+$A reverse --list
+
+lock_state() {
+  echo "-- lock state ($1; read-only queries):"
+  echo "   $($A shell dumpsys window 2>/dev/null | tr -d '\r' | grep -o 'isKeyguardShowing=[a-z]*' | head -n 1)"
+  echo "   user 0: $($A shell dumpsys user 2>/dev/null | tr -d '\r' | grep -m 1 'State:' | sed 's/^ *//')"
+  echo "   $($A shell dumpsys lock_settings 2>/dev/null | tr -d '\r' | grep -m 1 'CredentialType' | sed 's/^ *//')"
+  echo "   fingerprints enrolled: $($A shell dumpsys fingerprint 2>/dev/null | tr -d '\r' | grep -o '"count":[0-9]*' | head -n 1)"
+}
+unlocked() {
+  KG=$($A shell dumpsys window 2>/dev/null | tr -d '\r' | grep -o 'isKeyguardShowing=[a-z]*' | head -n 1)
+  ST=$($A shell dumpsys user 2>/dev/null | grep -m 1 "State:" | tr -d '\r' | sed 's/^ *//')
+  case "$KG/$ST" in
+    isKeyguardShowing=false/*RUNNING_UNLOCKED*) return 0 ;;
+    *)
+      echo "-- $AVD_NAME is LOCKED ($KG; $ST) at: $1. The device part stops here; the user unlocks the device. Nothing was typed."
+      return 1
+      ;;
+  esac
+}
+prefs() {
+  printf '%s' "-- dems.mobile.prefs.v1 ($1; absent = the default source, SIMULATED): "
+  $A shell "run-as $APP_ID sh -c 'sqlite3 databases/RKStorage \"select value from catalystLocalStorage where key = \\\"dems.mobile.prefs.v1\\\"\" 2>&1'" | tr -d '\r'
+  echo
+}
+secure_entries() {
+  echo "-- secure-store entry NAMES ($1; no value is read):"
+  $A shell "run-as $APP_ID sh -c 'grep -o \"name=[^ >]*\" shared_prefs/SecureStore.xml 2>/dev/null'" | tr -d '\r' | sed 's/^/   entry: /'
+}
+launch() {
+  echo "-- am start -W -a android.intent.action.VIEW -d '$1' $APP_ID"
+  $A shell "am start -W -a android.intent.action.VIEW -d '$1' $APP_ID" 2>&1 | tr -d '\r' | grep -E "Status|LaunchState|Activity|Error|TotalTime" | sed 's/^/   /'
+}
+
+lock_state "start of the session" | tee "$OUT/lock_state_start.txt"
+unlocked "the start" || exit 77
+prefs "before the launch" | tee "$OUT/prefs_before.txt"
+secure_entries "before the launch" | tee "$OUT/secure_before.txt"
+
+echo
+echo "== A. LIVE mode on the PAIRED tablet: demsdemo:///?core=LIVE"
+HOST_BEFORE=$(grep -c . "$SERVER_LOG")
+T0=$($A shell "date '+%m-%d %H:%M:%S.000'" | tr -d '\r')
+launch 'demsdemo:///?core=LIVE'
+i=0
+until tail -n +$((HOST_BEFORE + 1)) "$SERVER_LOG" | grep -q '"kind":"DEVICE","msg":"socket opened"' || [ "$i" -ge 120 ]; do
+  i=$((i + 1))
+  sleep 1
+done
+echo "-- waited $i s for the tablet's DEVICE socket in the backend's log"
+tail -n +$((HOST_BEFORE + 1)) "$SERVER_LOG" | grep -E '"msg":"socket (opened|closed)"' | sed -E 's/"hostname":"[^"]*",//; s/"pid":[0-9]*,//; s/"time":[0-9]*,//; s/"connectionId":"[^"]*",//' | cut -c1-200 | head -n 6
+tail -n +$((HOST_BEFORE + 1)) "$SERVER_LOG" | grep -q '"kind":"DEVICE","msg":"socket opened"' || { echo "-- no DEVICE socket: the recording cannot start (F69); the web part is not run"; DEVICE_SOCKET=0; }
+DEVICE_SOCKET=${DEVICE_SOCKET:-1}
+sleep 4
+unlocked "the LIVE screencap" || exit 77
+prefs "after the launch with core=LIVE" | tee "$OUT/prefs_live.txt"
+$A exec-out screencap -p >"$ASSETS/65_tablet_live_connected.png"
+echo "-- screencap 65_tablet_live_connected.png ($(wc -c <"$ASSETS/65_tablet_live_connected.png" | tr -d ' ') bytes)"
+echo "-- 'live.misuse' reports on the tablet (must be 0): $($A logcat -d -T "$T0" -s ReactNativeJS:V 2>/dev/null | grep -c 'live\.misuse')"
+
+echo
+echo "== B. the web console on 127.0.0.1:$VITE while the tablet is connected (the driver)"
+if [ "$DEVICE_SOCKET" = 1 ]; then
+  (cd "$ROOT" && node --import tsx "$H/cdp-driver.mjs" "$DEV" "$VITE" "$OUT/browser.json" "$ASSETS") >"$OUT/browser.log" 2>&1
+  echo "cdp-driver exit $?"
+  grep -E '^\[[0-9:]+\]' "$OUT/browser.log"
+fi
+echo "-- the tablet's socket lines during the check:"
+tail -n +$((HOST_BEFORE + 1)) "$SERVER_LOG" | grep -E '"msg":"socket (opened|closed)"' | grep -c DEVICE | sed 's/^/   DEVICE socket lines: /'
+echo "-- lines with a credential or a bearer value in the tablet's log of this session (must be 0): $($A logcat -d -T "$T0" -s ReactNativeJS:V 2>/dev/null | grep -c -E 'dvc_|ses_|bio_|[Bb]earer ')"
+
+echo
+echo "== C. the default source again: stop the app, then a launch with core=SIMULATED (the choice is stored, D124)"
+$A shell am force-stop "$APP_ID"
+T1=$($A shell "date '+%m-%d %H:%M:%S.000'" | tr -d '\r')
+launch 'demsdemo:///?core=SIMULATED'
+i=0
+until $A logcat -d -T "$T1" -s ReactNativeJS:V 2>/dev/null | grep -q 'runtime.sim.hydrated' || [ "$i" -ge 90 ]; do
+  i=$((i + 1))
+  sleep 1
+done
+echo "-- waited $i s for: runtime.sim.hydrated"
+sleep 4
+echo "-- request lines to the Core server after the relaunch (must be 0): $($A logcat -d -T "$T1" -s ReactNativeJS:V 2>/dev/null | grep -c 'DEMS-LIVE')"
+prefs "after the launch with core=SIMULATED" | tee "$OUT/prefs_after.txt"
+secure_entries "at the end (the pairing must still be listed)" | tee "$OUT/secure_after.txt"
+lock_state "end of the commands" | tee "$OUT/lock_state_end.txt"
+echo "-- adb reverse --list (end of commands; device-session.sh removes its own rules after this):"
+$A reverse --list
+exit 0

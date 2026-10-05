@@ -24,6 +24,7 @@ import { derived, palette, spacing, statusSoft, toneHex, toneTextHex } from '@de
 import { SectionCard } from '@/components/kit';
 import { SubjectTypeCodeTone } from '@/components/kit/subject-type-chip';
 import { enterRise, triggerHaptic, useMotionSettings } from '@/motion';
+import { useCoreLink } from '@/runtime';
 import { filterInvestigators, SUBJECT_TYPE_ORDER, type SessionNewArrangement } from './session-new-model';
 import type { CreateFailure, SessionForm } from './use-session-new';
 import { SheetContentSignal, useSheetPresence } from './use-sheet-presence';
@@ -48,6 +49,8 @@ export function SessionInfoStep({ form, investigators, arrangement, onScan, crea
   'use no memo';
   const { t } = useTranslation();
   const settings = useMotionSettings();
+  // Live mode names what the button does instead of "(simulated)" (row M1, W67 F-2; §3.2).
+  const live = useCoreLink().source === 'LIVE';
   const twoColumns = arrangement === 'phone-landscape';
   const sheet = arrangement === 'phone' || arrangement === 'phone-landscape';
 
@@ -77,7 +80,7 @@ export function SessionInfoStep({ form, investigators, arrangement, onScan, crea
                 variant="ghost"
                 size="sm"
                 hitSlop={8}
-                accessibilityLabel={t('sessionNew.info.caseNumber.scan')}
+                accessibilityLabel={t(live ? 'features.session-new.live.scanCaseNumber' : 'sessionNew.info.caseNumber.scan')}
                 onPress={onScan}
               >
                 <ScanLine size={ICON} color={palette.gold} />

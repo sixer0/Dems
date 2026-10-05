@@ -66,6 +66,9 @@ export const evidenceEn = {
     duration: '{{duration}}',
     noMedia: 'No DEMO media for this item on this device.',
     excerptNote: 'DEMO excerpt of {{clip}} s, repeated over the recorded {{duration}}.',
+    // Live mode (backend task W74; 01_specs MS-2): the Core says which bundled media belongs to an item.
+    checking: 'Asking the Core which media belongs to this item…',
+    unavailable: 'The Core did not say which media belongs to this item, so no bundled media is shown.',
   },
   metadata: {
     manifestTitle: 'Manifest (§11.3)',
@@ -147,6 +150,11 @@ export const evidenceEn = {
     passToast: 'Evidence {{id}} verified by the Core',
     failToast: 'Integrity check FAILED for {{id}}',
     verifyError: 'The Core could not verify this item. Try again.',
+    // Live mode (backend task W74; 04_client_integration_spec §14 point 7): the Core's verdict is the record.
+    coreLabel: 'Core record',
+    coreNote: 'The Core runs the verification and returns the verdict of record; this tablet shows it as it is.',
+    bundledResult: 'Bundled demo package: {{verdict}} ({{label}})',
+    bundledDiffers: 'The bundled demo package differs from the Core’s record. The Core’s verdict is the record.',
   },
   actions: {
     play: 'Play',
@@ -157,6 +165,7 @@ export const evidenceEn = {
     archive: 'Archive',
     downloadManifest: 'Download manifest',
     manifestToast: 'Manifest download is simulated in this demo',
+    manifestToastLive: 'Manifest download is not available on this tablet.',
     exportDisabled: 'Only sealed evidence can be exported',
     archiveDisabled: 'Archiving needs the Supervisor role',
     archiveTitle: 'Archive {{id}}?',
@@ -169,6 +178,7 @@ export const evidenceEn = {
   play: {
     title: 'Evidence player',
     simulated: 'Simulated playback',
+    bundled: 'Bundled demo package',
     excerpt: 'DEMO excerpt',
     camera: 'Camera',
     cameraShort: 'CAM {{index}}',
@@ -200,6 +210,7 @@ export const evidenceEn = {
     authorizedAs: 'Authorized as {{name}} ({{role}})',
     deniedTitle: 'Your role cannot export',
     deniedBody: 'Exporting evidence requires the Supervisor role. This attempt was recorded in the audit log.',
+    deniedBodyUnrecorded: 'Exporting evidence requires the Supervisor role. The Core could not be reached, so this attempt was not recorded.',
     sourcePass: 'Source verified by the Core: PASS',
     sourceFail: 'Source failed verification ({{checks}}). Export is blocked.',
     sourceSimulated: 'No DEMO package: the simulator’s own record is used.',
@@ -213,6 +224,8 @@ export const evidenceEn = {
     manifestSha: 'Session manifest SHA-256',
     zipSha: 'Package SHA-256 ({{file}})',
     zipNote: 'Package built on the Core (simulated); its hash is recorded in the export manifest.',
+    zipNoteLive: 'The Core recorded this export. No file is sent to this tablet.',
+    successLive: 'Export of {{id}} accepted by the Core',
     destinationValue: 'Destination',
     reasonValue: 'Reason',
     doneTitle: 'Export accepted',

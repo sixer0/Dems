@@ -1,0 +1,423 @@
+{
+  "browser": {
+    "product": "HeadlessChrome/153.0.8010.12",
+    "headless": true
+  },
+  "viewport": "1600x1000",
+  "steps": {
+    "liveList": {
+      "loginCoreMode": "LIVE",
+      "signedIn": true,
+      "coreList": {
+        "status": 200,
+        "count": 13,
+        "tampered": {
+          "id": "EV-20261003-0005",
+          "status": "SEALED"
+        },
+        "pristine": {
+          "id": "EV-20261002-0001",
+          "status": "SEALED"
+        }
+      },
+      "facts": {
+        "href": "http://127.0.0.1:5178/evidence",
+        "shellMode": "LIVE",
+        "page": "list",
+        "listRows": 10,
+        "packageChip": null,
+        "integrityMode": null,
+        "hashesSource": null,
+        "verdict": null,
+        "checks": [],
+        "verifyLabel": null,
+        "bundled": null,
+        "differs": false,
+        "custodyTop": null,
+        "wizardSteps": [],
+        "exportDenied": null,
+        "reasonRefusedShown": false,
+        "verifyCardSaysSimulated": false,
+        "toasts": []
+      },
+      "screenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/69_evidence_list_live.png",
+      "network": {
+        "api": [
+          {
+            "method": "POST",
+            "url": "http://127.0.0.1:5178/api/v1/auth/sign-in",
+            "status": 200
+          },
+          {
+            "method": "GET",
+            "url": "http://127.0.0.1:5178/api/v1/auth/session",
+            "status": 200
+          },
+          {
+            "method": "GET",
+            "url": "http://127.0.0.1:5178/api/v1/evidence?…",
+            "status": 200
+          }
+        ],
+        "origins": [
+          "http://127.0.0.1:5178",
+          "null"
+        ],
+        "sockets": [
+          {
+            "url": "ws://127.0.0.1:5178/ws",
+            "status": 101,
+            "cookieSent": "yes (value not recorded)",
+            "closed": false,
+            "frameCount": 78,
+            "firstTypes": [
+              "hello",
+              "snapshot",
+              "heartbeat",
+              "meters"
+            ],
+            "distinctTypes": [
+              "delta",
+              "heartbeat",
+              "hello",
+              "meters",
+              "snapshot"
+            ]
+          },
+          {
+            "url": "ws://127.0.0.1:5178/ws",
+            "status": 101,
+            "cookieSent": "yes (value not recorded)",
+            "closed": false,
+            "frameCount": 111,
+            "firstTypes": [
+              "hello",
+              "snapshot",
+              "heartbeat",
+              "meters"
+            ],
+            "distinctTypes": [
+              "delta",
+              "heartbeat",
+              "hello",
+              "meters",
+              "snapshot"
+            ]
+          }
+        ],
+        "console": []
+      }
+    },
+    "verifyTampered": {
+      "evidenceId": "EV-20261003-0005",
+      "coreMediaReference": {
+        "status": 200,
+        "media": {
+          "source": "DEMO_PACKAGE",
+          "packageSuffix": "0005"
+        }
+      },
+      "before": {
+        "href": "http://127.0.0.1:5178/evidence/EV-20261003-0005",
+        "shellMode": "LIVE",
+        "page": "detail",
+        "listRows": 0,
+        "packageChip": "demo",
+        "integrityMode": "core",
+        "hashesSource": "package",
+        "verdict": "NOT_RUN",
+        "checks": [
+          "track:VIDEO-01:pending:null",
+          "track:VIDEO-02:pending:null",
+          "track:AUDIO-01:pending:null",
+          "track:AUDIO-02:pending:null",
+          "manifest:pending:null",
+          "signature:pending:null"
+        ],
+        "verifyLabel": "The Core server's verdict is the record: it is written to the audit trail and to the chain of custody.",
+        "bundled": null,
+        "differs": false,
+        "custodyTop": "SEALED",
+        "wizardSteps": [],
+        "exportDenied": null,
+        "reasonRefusedShown": false,
+        "verifyCardSaysSimulated": false,
+        "toasts": []
+      },
+      "pressed": true,
+      "verdictAt": "FAIL",
+      "facts": {
+        "href": "http://127.0.0.1:5178/evidence/EV-20261003-0005",
+        "shellMode": "LIVE",
+        "page": "detail",
+        "listRows": 0,
+        "packageChip": "demo",
+        "integrityMode": "core",
+        "hashesSource": "package",
+        "verdict": "FAIL",
+        "checks": [
+          "track:VIDEO-01:pass:core",
+          "track:VIDEO-02:pass:core",
+          "track:AUDIO-01:pass:core",
+          "track:AUDIO-02:fail:core",
+          "manifest:pass:core",
+          "signature:pass:core"
+        ],
+        "verifyLabel": "The Core server's verdict is the record: it is written to the audit trail and to the chain of custody.",
+        "bundled": {
+          "phase": "done",
+          "verdict": "FAIL"
+        },
+        "differs": false,
+        "custodyTop": "VERIFY_FAILED",
+        "wizardSteps": [],
+        "exportDenied": null,
+        "reasonRefusedShown": false,
+        "verifyCardSaysSimulated": false,
+        "toasts": [
+          "Integrity FAILED for EV-20261003-0005: AUDIO-02"
+        ]
+      },
+      "screenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/69_evidence_verify_live.png",
+      "evidenceRequests": [
+        {
+          "method": "POST",
+          "url": "http://127.0.0.1:5178/api/v1/evidence/EV-20261003-0005/verify",
+          "status": 200
+        }
+      ],
+      "network": {
+        "api": [
+          {
+            "method": "POST",
+            "url": "http://127.0.0.1:5178/api/v1/evidence/EV-20261003-0005/verify",
+            "status": 200
+          }
+        ],
+        "origins": [
+          "http://127.0.0.1:5178"
+        ],
+        "sockets": [],
+        "console": []
+      }
+    },
+    "verifyPristine": {
+      "evidenceId": "EV-20261002-0001",
+      "facts": {
+        "href": "http://127.0.0.1:5178/evidence/EV-20261002-0001",
+        "shellMode": "LIVE",
+        "page": "detail",
+        "listRows": 0,
+        "packageChip": "demo",
+        "integrityMode": "core",
+        "hashesSource": "package",
+        "verdict": "PASS",
+        "checks": [
+          "track:VIDEO-01:pass:core",
+          "track:VIDEO-02:pass:core",
+          "track:AUDIO-01:pass:core",
+          "track:AUDIO-02:pass:core",
+          "manifest:pass:core",
+          "signature:pass:core"
+        ],
+        "verifyLabel": "The Core server's verdict is the record: it is written to the audit trail and to the chain of custody.",
+        "bundled": {
+          "phase": "done",
+          "verdict": "PASS"
+        },
+        "differs": false,
+        "custodyTop": "VERIFIED",
+        "wizardSteps": [],
+        "exportDenied": null,
+        "reasonRefusedShown": false,
+        "verifyCardSaysSimulated": false,
+        "toasts": [
+          "Integrity verified: EV-20261002-0001 PASS"
+        ]
+      },
+      "screenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/69_evidence_verify_pass_live.png",
+      "evidenceRequests": [
+        {
+          "method": "POST",
+          "url": "http://127.0.0.1:5178/api/v1/evidence/EV-20261002-0001/verify",
+          "status": 200
+        }
+      ]
+    },
+    "exportRefused422": {
+      "evidenceId": "EV-20261002-0001",
+      "sourceStep": [
+        "authorise",
+        "verify"
+      ],
+      "facts": {
+        "href": "http://127.0.0.1:5178/evidence/EV-20261002-0001",
+        "shellMode": "LIVE",
+        "page": "detail",
+        "listRows": 0,
+        "packageChip": "demo",
+        "integrityMode": "core",
+        "hashesSource": "package",
+        "verdict": "PASS",
+        "checks": [
+          "track:VIDEO-01:pass:core",
+          "track:VIDEO-02:pass:core",
+          "track:AUDIO-01:pass:core",
+          "track:AUDIO-02:pass:core",
+          "manifest:pass:core",
+          "signature:pass:core"
+        ],
+        "verifyLabel": "The Core server's verdict is the record: it is written to the audit trail and to the chain of custody.",
+        "bundled": {
+          "phase": "done",
+          "verdict": "PASS"
+        },
+        "differs": false,
+        "custodyTop": "VERIFIED",
+        "wizardSteps": [
+          "reason"
+        ],
+        "exportDenied": null,
+        "reasonRefusedShown": true,
+        "verifyCardSaysSimulated": false,
+        "toasts": []
+      },
+      "screenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/69_export_refused_422_live.png",
+      "evidenceRequests": [
+        {
+          "method": "POST",
+          "url": "http://127.0.0.1:5178/api/v1/evidence/EV-20261002-0001/export",
+          "status": 422
+        }
+      ]
+    },
+    "deniedInvestigator": {
+      "signOut": {
+        "status": 204,
+        "loginShown": true
+      },
+      "signedIn": true,
+      "evidenceId": "EV-20261002-0001",
+      "deniedRowsBefore": {
+        "status": 200,
+        "count": 0,
+        "newest": null
+      },
+      "deniedRowsAfter": {
+        "status": 200,
+        "count": 1,
+        "newest": {
+          "seq": 137,
+          "type": "EXPORT_DENIED",
+          "actorId": "OPR-001",
+          "evidenceId": "EV-20261002-0001",
+          "details": {
+            "role": "INVESTIGATOR",
+            "eventKind": "UNAUTHORIZED_EXPORT",
+            "permission": "EVIDENCE_EXPORT",
+            "operationId": "exportEvidence"
+          }
+        }
+      },
+      "facts": {
+        "href": "http://127.0.0.1:5178/evidence/EV-20261002-0001",
+        "shellMode": "LIVE",
+        "page": "detail",
+        "listRows": 0,
+        "packageChip": "demo",
+        "integrityMode": null,
+        "hashesSource": null,
+        "verdict": null,
+        "checks": [],
+        "verifyLabel": null,
+        "bundled": null,
+        "differs": false,
+        "custodyTop": null,
+        "wizardSteps": [
+          "authorise"
+        ],
+        "exportDenied": "Export not permittedExporting evidence requires the Supervisor role. This attempt was recorded in the audit log.",
+        "reasonRefusedShown": false,
+        "verifyCardSaysSimulated": false,
+        "toasts": []
+      },
+      "screenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/69_export_denied_403_live.png",
+      "evidenceRequests": [
+        {
+          "method": "POST",
+          "url": "http://127.0.0.1:5178/api/v1/evidence/EV-20261002-0001/export",
+          "status": 403
+        }
+      ]
+    },
+    "simulated": {
+      "signOutOfLive": {
+        "status": 204,
+        "loginShown": true
+      },
+      "loginCoreMode": "SIMULATED",
+      "submitDisabledOnTheLoginPage": true,
+      "signInPath": "stored simulated sign-in (dems.auth), because Sign In is disabled while mock-core is offline (F63-3)",
+      "listFacts": {
+        "href": "http://127.0.0.1:5178/evidence",
+        "shellMode": "SIMULATED",
+        "page": "list",
+        "listRows": 10,
+        "packageChip": null,
+        "integrityMode": null,
+        "hashesSource": null,
+        "verdict": null,
+        "checks": [],
+        "verifyLabel": null,
+        "bundled": null,
+        "differs": false,
+        "custodyTop": null,
+        "wizardSteps": [],
+        "exportDenied": null,
+        "reasonRefusedShown": false,
+        "verifyCardSaysSimulated": false,
+        "toasts": []
+      },
+      "listScreenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/69_evidence_simulated.png",
+      "simulatedEvidenceId": "EV-20261004-0004",
+      "verifyFacts": {
+        "href": "http://127.0.0.1:5178/evidence/EV-20261004-0004",
+        "shellMode": "SIMULATED",
+        "page": "detail",
+        "listRows": 0,
+        "packageChip": "demo",
+        "integrityMode": "package",
+        "hashesSource": "package",
+        "verdict": "PASS",
+        "checks": [
+          "track:VIDEO-01:pass:computed",
+          "track:VIDEO-02:pass:computed",
+          "track:AUDIO-01:pass:computed",
+          "track:AUDIO-02:pass:computed",
+          "manifest:pass:computed",
+          "signature:pass:computed",
+          "certificate:pass:computed",
+          "auditChain:pass:computed",
+          "exportPackage:pass:computed",
+          "exportSignature:pass:computed"
+        ],
+        "verifyLabel": "DEMO - recomputed",
+        "bundled": null,
+        "differs": false,
+        "custodyTop": "VERIFIED",
+        "wizardSteps": [],
+        "exportDenied": null,
+        "reasonRefusedShown": false,
+        "verifyCardSaysSimulated": false,
+        "toasts": [
+          "Integrity verified: EV-20261004-0004 PASS"
+        ]
+      },
+      "verifyScreenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/69_evidence_verify_simulated.png",
+      "apiRequestsToTheDevServer": 0,
+      "socketsToTheDevServerWs": 0,
+      "console": []
+    }
+  },
+  "elapsedSeconds": 65
+}

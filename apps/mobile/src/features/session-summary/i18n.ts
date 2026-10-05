@@ -56,6 +56,12 @@ export const sessionSummaryEn = {
     open: 'Open finalization',
   },
   goHome: 'Go to Home',
+  // Backend task, plan row W72: Live mode only. The acknowledgement is recorded by the Core server
+  // (operation 37); while the link is down the buttons cannot finish, and the screen says why.
+  live: {
+    linkDownTitle: 'Core server unreachable',
+    linkDownBody: 'Your acknowledgement of this summary is recorded on the Core server. Done and View in Evidence finish once the connection is back.',
+  },
   // C-4 Stepper accessibility words for the lifecycle strip.
   stepper: {
     step: 'Stage',

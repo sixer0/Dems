@@ -19,8 +19,31 @@
  *
  * The URL never shows a step the session does not allow (`model.effectiveStep`); a live session
  * owned by the Session Monitor sends the operator there (R4 n5). Errors: every simulator call is
- * wrapped; the operator sees generic kit toasts (no `SimTransitionError` text, m8), the console
- * gets a structured record (`log.ts`), and a failing step renders a retryable fallback.
+ * wrapped; the operator sees generic kit toasts (no `SimTransitionError` text, m8), the page's own
+ * log gets a structured record (`log.ts`), and a failing step renders a retryable fallback.
+ *
+ * **Live mode** (backend task 04_client_integration_spec §8; plan row W64). One page for both data
+ * modes: the actions come from `useCoreActions()` and are consumed through `settle` (CL-25) or, in
+ * the already asynchronous `createAndCheck`, awaited (CL-26). In Simulated mode both settle before
+ * the next line runs, so the page behaves exactly as before.
+ *
+ * | Site | Where | Live behaviour |
+ * |------|-------|----------------|
+ * | A3 | `createAndCheck`: `createSession` | Awaited; waiting is the existing "Creating session…" state of Next (LB-2). A refused result union keeps its toast per reason; in Live mode a 403 shows the denied toast of the presenter instead (AC-C-48) |
+ * | D-2 | `createAndCheck`: `cancel` then `createSession` | Awaited in order (a changed form on a setup session) |
+ * | C-3, D-3 | `createAndCheck`: the state read after the create decides `beginPrecheck` | Read after the awaited create; `beginPrecheck` is awaited before step 2 |
+ * | A4 | `scan` | LB-1 on the scan button; the field is written in `ok`; a refusal or an outage goes to the presenter, then the adapter's fallback number (`sim-adapter.ts`) |
+ * | B-6 | the resume effect: `beginPrecheck` | FC-7: one request per session ID while it is in flight (`precheckInFlight`, shared with `createAndCheck`) |
+ * | B-6 | `proceedFromDevices`: `acknowledgePrecheckWarnings` | LB-1 on Next; `goTo(3)` in `ok` |
+ * | B-6 | `retryChecks`: `retryPrecheck` | LB-1 on "Re-run checks"; the acknowledgement reset in `ok` |
+ * | B-6, C-4 | `startNow`: `startRecording` | The optional 3-2-1 first, as today; then LB-1 on Start; the toast (the ID read before the call, C-4) and `/session` in `ok` |
+ * | B-6 | `confirmCancel`: `cancel` | LB-1 on the dialog's confirm; leaving happens in `ok`; on a refusal the dialog stays open |
+ *
+ * Every `fail` hands the error to the presenter first (`useCoreErrorPresenter`, §6.2, LB-5, LB-6,
+ * LB-10): a 403 reads as the denied toast naming the role, an outage as "Core server unreachable",
+ * a 429 as a limit. Only what the presenter leaves (a refused transition) gets the page's own toast.
+ * A pre-check that blocks because no paired tablet is connected (decision F69) is the Core's
+ * verdict in the replica, worded by the Devices step; it is never an "unreachable" sentence.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Button, Chip, Spinner, toast } from '@heroui/react'
@@ -37,6 +60,7 @@ import {
   type SessionCreateFormValues,
   type SessionCreateRequest,
 } from '@dems/shared/api'
+import { CoreMode, settle, useCoreActions, useCoreMode } from '@dems/shared/live'
 import {
   Permission,
   RecordingProfileId,
@@ -44,13 +68,16 @@ import {
   selectCan,
   selectOperator,
   selectSessionState,
+  SimPermissionError,
   useSim,
-  useSimActions,
   useSimInstance,
   type SimState,
 } from '@dems/shared/sim'
 import { Stepper, type StepperStatus, type StepperStep } from '@/components/composed/stepper'
 import { PageHeader, useRouteEnterDelay } from '@/components/shell'
+import { useCoreErrorPresenter } from '@/lib/core-errors'
+import { deferEffectStart } from '@/lib/effect-start'
+import { usePendingControl } from '@/lib/pending-control'
 import { TransitionPanel } from '@/components/ui/transition-panel'
 import { GlowLayer, useMotionPolicy } from '@/motion'
 import { CancelDialog } from './cancel-dialog'
@@ -116,7 +143,9 @@ export function SessionNewPage() {
   const { t } = useTranslation()
   const m = useMotionPolicy()
   const sim = useSimInstance()
-  const actions = useSimActions()
+  const actions = useCoreActions()
+  const live = useCoreMode() === CoreMode.LIVE
+  const presentCoreError = useCoreErrorPresenter()
   const navigate = useNavigate()
   const search = route.useSearch()
   const enterDelayMs = useRouteEnterDelay()
@@ -151,6 +180,17 @@ export function SessionNewPage() {
   const correlation = useRef(newFlowCorrelationId())
   const startedHere = useRef(false)
   const leaving = useRef(false)
+  /** A3: a second submit while one create is out (two presses before the next render) is ignored. */
+  const createInFlight = useRef(false)
+  /** FC-7: the session ID whose `beginPrecheck` is in flight; one request per session. */
+  const precheckInFlight = useRef<string | null>(null)
+
+  // LB-1: one in-flight flag and one late spinner per control that sends a command.
+  const { run: runScan, pending: scanPending, ref: scanRef } = usePendingControl()
+  const { run: runAck, pending: ackPending, ref: ackRef } = usePendingControl()
+  const { run: runRetry, pending: retryPending, ref: retryRef } = usePendingControl()
+  const { run: runStart, busy: startBusy, pending: startPending, ref: startRef } = usePendingControl()
+  const { run: runCancel, pending: cancelPending, ref: cancelRef } = usePendingControl()
 
   const goTo = useCallback(
     (next: FlowStep, replace = false) => {
@@ -183,91 +223,156 @@ export function SessionNewPage() {
   }, [sessionState, search.step, step, goTo, navigate, t])
 
   // A session left in CREATE (a reload between create and precheck) starts its gate on step 2.
+  // FC-7: in Live mode the state leaves CREATE only when the delta arrives, so the effect can run
+  // again before that; the in-flight marker of the session lets exactly one request out. F69-1
+  // (plan row W0): the start waits one task (`deferEffectStart`), so StrictMode's second set-up
+  // cannot send a second pre-check — in Simulated mode the marker is already cleared by then.
   useEffect(() => {
-    if (step !== 2 || sessionState !== SessionState.CREATE) return
-    try {
-      actions.beginPrecheck()
-    } catch (error) {
-      logSessionNew('error', 'beginPrecheck.resume', error, { sessionId, correlationId: correlation.current })
-      toast.danger(t('sessionNew.errors.precheck'))
-    }
-  }, [step, sessionState, actions, sessionId, t])
+    if (step !== 2 || sessionState !== SessionState.CREATE || sessionId === null) return undefined
+    if (precheckInFlight.current === sessionId) return undefined
+    const id = sessionId
+    return deferEffectStart(() => {
+      if (precheckInFlight.current === id) return
+      precheckInFlight.current = id
+      settle(() => actions.beginPrecheck(), {
+        fail: (error) => {
+          logSessionNew('error', 'beginPrecheck.resume', error, { sessionId: id, correlationId: correlation.current })
+          if (presentCoreError(error) !== null) return
+          toast.danger(t('sessionNew.errors.precheck'))
+        },
+        done: () => {
+          if (precheckInFlight.current === id) precheckInFlight.current = null
+        },
+      })
+    })
+  }, [step, sessionState, actions, sessionId, t, presentCoreError])
 
   // ── Step 1 → 2 ──────────────────────────────────────────────────────────────────────────
+  /** D-3: the pre-check of a session just created, unless the resume effect already has it in flight (FC-7). */
+  const beginPrecheckOnce = async (id: string) => {
+    if (precheckInFlight.current === id) return
+    precheckInFlight.current = id
+    try {
+      await actions.beginPrecheck()
+    } finally {
+      if (precheckInFlight.current === id) precheckInFlight.current = null
+    }
+  }
+
+  // A3, D-2, C-3, D-3: already asynchronous, so the actions are awaited in order (CL-26). In
+  // Simulated mode each awaited value is already there.
   const createAndCheck = async (values: SessionCreateRequest) => {
-    if (creating) return
+    if (creating || createInFlight.current) return
+    createInFlight.current = true
     setCreating(true)
     try {
       await wait(CREATE_BEAT_MS)
       const before = sim.store.getState().session
-      let result = actions.createSession(values)
+      let result = await actions.createSession(values)
       if (!result.ok && result.reason === 'SESSION_ACTIVE' && before && isSetupState(before.state)) {
         // A changed form on an existing setup session: discard it and create the new one.
-        actions.cancel()
-        result = actions.createSession(values)
+        await actions.cancel()
+        result = await actions.createSession(values)
       }
       if (!result.ok) {
         logSessionNew('warn', 'createSession', result.reason, { reason: result.reason, correlationId: correlation.current })
-        toast.danger(t(`sessionNew.errors.create.${result.reason}`))
+        // AC-C-48: the Core's 403 reads as the denied toast that names the role, as on every page.
+        if (live && result.reason === 'NOT_PERMITTED') presentCoreError(new SimPermissionError('createSession', Permission.SESSION_START))
+        else toast.danger(t(`sessionNew.errors.create.${result.reason}`))
         return
       }
-      if (sim.store.getState().session?.state === SessionState.CREATE) actions.beginPrecheck()
+      // C-3: read after the awaited create, so in Live mode the replica already holds the new session (CL-16).
+      const created = sim.store.getState().session
+      if (created?.state === SessionState.CREATE) await beginPrecheckOnce(created.id)
       goTo(2)
     } catch (error) {
       logSessionNew('error', 'submitInfo', error, { sessionId: sim.store.getState().session?.id ?? null, correlationId: correlation.current })
+      if (presentCoreError(error) !== null) return
       toast.danger(t('sessionNew.errors.precheck'))
     } finally {
+      createInFlight.current = false
       setCreating(false)
     }
   }
   const submitInfo = () => form.handleSubmit(createAndCheck)()
 
+  // A4: the field is written when the scan settled; the result never rejects (the adapter's fallback).
   const scan = () => {
-    form.setValue('caseNumber', scanCaseNumber(sim), { shouldValidate: true, shouldDirty: true, shouldTouch: true })
+    runScan((release) => {
+      settle(
+        () =>
+          scanCaseNumber(actions, sim.store.getState, (error) => {
+            logSessionNew('warn', 'scanCaseNumber', error, { correlationId: correlation.current })
+            presentCoreError(error)
+          }),
+        {
+          ok: (caseNumber) => form.setValue('caseNumber', caseNumber, { shouldValidate: true, shouldDirty: true, shouldTouch: true }),
+          fail: (error) => logSessionNew('error', 'scanCaseNumber', error, { correlationId: correlation.current }),
+          done: release,
+        },
+      )
+    })
   }
 
   // ── Step 2 → 3 ──────────────────────────────────────────────────────────────────────────
   const proceedFromDevices = () => {
     if (!gate.canProceed) return
     if (sessionState === SessionState.PRECHECK && gate.phase === 'warn') {
-      try {
-        actions.acknowledgePrecheckWarnings()
-      } catch (error) {
-        logSessionNew('error', 'acknowledgePrecheckWarnings', error, { sessionId, correlationId: correlation.current })
-        toast.danger(t('sessionNew.errors.acknowledge'))
-        return
-      }
+      runAck((release) => {
+        settle(() => actions.acknowledgePrecheckWarnings(), {
+          ok: () => goTo(3),
+          fail: (error) => {
+            logSessionNew('error', 'acknowledgePrecheckWarnings', error, { sessionId, correlationId: correlation.current })
+            if (presentCoreError(error) !== null) return
+            toast.danger(t('sessionNew.errors.acknowledge'))
+          },
+          done: release,
+        })
+      })
+      return
     }
     goTo(3)
   }
 
   const retryChecks = () => {
-    try {
-      actions.retryPrecheck()
-      setAck({ runAt: null, value: false })
-    } catch (error) {
-      logSessionNew('error', 'retryPrecheck', error, { sessionId, correlationId: correlation.current })
-      toast.danger(t('sessionNew.errors.precheck'))
-    }
+    runRetry((release) => {
+      settle(() => actions.retryPrecheck(), {
+        ok: () => setAck({ runAt: null, value: false }),
+        fail: (error) => {
+          logSessionNew('error', 'retryPrecheck', error, { sessionId, correlationId: correlation.current })
+          if (presentCoreError(error) !== null) return
+          toast.danger(t('sessionNew.errors.precheck'))
+        },
+        done: release,
+      })
+    })
   }
 
   // ── Step 3: Start ───────────────────────────────────────────────────────────────────────
   const startNow = useCallback(() => {
+    // C-4: the ID is read before the call; the toast names it.
     const id = sim.store.getState().session?.id ?? null
-    try {
+    runStart((release) => {
       startedHere.current = true
-      actions.startRecording()
-      toast.success(t('sessionNew.ready.startedToast', { sessionId: id ?? '' }))
-      void navigate({ to: '/session' })
-    } catch (error) {
-      startedHere.current = false
-      logSessionNew('error', 'startRecording', error, { sessionId: id, correlationId: correlation.current })
-      toast.danger(t('sessionNew.errors.start'))
-    }
-  }, [actions, navigate, sim, t])
+      settle(() => actions.startRecording(), {
+        // In Live mode the store already shows RECORDING here (CL-16).
+        ok: () => {
+          toast.success(t('sessionNew.ready.startedToast', { sessionId: id ?? '' }))
+          void navigate({ to: '/session' })
+        },
+        fail: (error) => {
+          startedHere.current = false
+          logSessionNew('error', 'startRecording', error, { sessionId: id, correlationId: correlation.current })
+          if (presentCoreError(error) !== null) return
+          toast.danger(t('sessionNew.errors.start'))
+        },
+        done: release,
+      })
+    })
+  }, [actions, navigate, sim, t, presentCoreError, runStart])
 
   const start = () => {
-    if (!canStart || countdown !== null) return
+    if (!canStart || countdown !== null || startBusy) return
     if (countdownOn) setCountdown(COUNTDOWN_FROM)
     else startNow()
   }
@@ -290,22 +395,32 @@ export function SessionNewPage() {
     else void navigate({ to: '/dashboard' })
   }
 
-  const confirmCancel = () => {
-    const current = sim.store.getState().session
-    if (current && isSetupState(current.state)) {
-      try {
-        actions.cancel()
-      } catch (error) {
-        logSessionNew('error', 'cancel', error, { sessionId: current.id, correlationId: correlation.current })
-        toast.danger(t('sessionNew.errors.cancel'))
-        return
-      }
-    }
+  const leave = () => {
     leaving.current = true
     setCountdown(null)
     setCancelOpen(false)
     toast.info(t('sessionNew.discarded'))
     void navigate({ to: '/dashboard' })
+  }
+
+  const confirmCancel = () => {
+    const current = sim.store.getState().session
+    if (!current || !isSetupState(current.state)) {
+      leave()
+      return
+    }
+    // B-6: the dialog's confirm is busy; leaving happens when the Core answered; a refusal keeps the dialog open.
+    runCancel((release) => {
+      settle(() => actions.cancel(), {
+        ok: leave,
+        fail: (error) => {
+          logSessionNew('error', 'cancel', error, { sessionId: current.id, correlationId: correlation.current })
+          if (presentCoreError(error) !== null) return
+          toast.danger(t('sessionNew.errors.cancel'))
+        },
+        done: release,
+      })
+    })
   }
 
   // ── View model ──────────────────────────────────────────────────────────────────────────
@@ -339,7 +454,15 @@ export function SessionNewPage() {
 
   const panels = [
     <FlowErrorBoundary key="info" part="info">
-      <InfoStep control={form.control} submitted={isSubmitted} onSubmit={() => void submitInfo()} onScan={scan} enterDelayMs={enterDelayMs} />
+      <InfoStep
+        control={form.control}
+        submitted={isSubmitted}
+        onSubmit={() => void submitInfo()}
+        onScan={scan}
+        enterDelayMs={enterDelayMs}
+        scanPending={scanPending}
+        scanRef={scanRef}
+      />
     </FlowErrorBoundary>,
     <FlowErrorBoundary key="devices" part="devices">
       <DevicesStep
@@ -347,6 +470,9 @@ export function SessionNewPage() {
         acknowledged={acknowledged}
         onAcknowledgedChange={(value) => setAck({ runAt: precheck?.startedAt ?? null, value })}
         onRetry={retryChecks}
+        live={live}
+        retryPending={retryPending}
+        retryRef={retryRef}
       />
     </FlowErrorBoundary>,
     <FlowErrorBoundary key="ready" part="ready">
@@ -360,6 +486,8 @@ export function SessionNewPage() {
         onCancelCountdown={() => setCountdown(null)}
         canStart={canStart}
         enterDelayMs={0}
+        startPending={startPending}
+        startRef={startRef}
       />
     </FlowErrorBoundary>,
   ]
@@ -416,16 +544,17 @@ export function SessionNewPage() {
               <span className="sn-next-wrap">
                 <GlowLayer level={nextEnabled ? 2 : 0} />
                 <Button
+                  ref={ackRef}
                   variant="primary"
                   onPress={step === 1 ? () => void submitInfo() : proceedFromDevices}
                   isDisabled={!nextEnabled}
-                  isPending={creating}
+                  isPending={creating || ackPending}
                   className="sn-next"
                   data-testid="sn-next"
                 >
                   {creating ? <Spinner size="sm" color="current" aria-hidden="true" /> : null}
                   {creating ? t('sessionNew.creating') : t('common.actions.next')}
-                  {creating ? null : <ArrowRight className="size-4" aria-hidden="true" />}
+                  {creating ? null : ackPending ? <Spinner size="sm" color="current" aria-hidden="true" /> : <ArrowRight className="size-4" aria-hidden="true" />}
                 </Button>
               </span>
             ) : null}
@@ -433,7 +562,13 @@ export function SessionNewPage() {
         </footer>
       </motion.section>
 
-      <CancelDialog isOpen={cancelOpen} onOpenChange={setCancelOpen} onConfirm={confirmCancel} />
+      <CancelDialog
+        isOpen={cancelOpen}
+        onOpenChange={setCancelOpen}
+        onConfirm={confirmCancel}
+        confirmPending={cancelPending}
+        confirmRef={cancelRef}
+      />
     </div>
   )
 }

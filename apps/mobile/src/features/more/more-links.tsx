@@ -7,6 +7,11 @@
  * (`/session/recovery`, only while the session is FAULT or RECOVERY), About DEMS
  * (`/settings/about`), and the developer gallery (`/dev-gallery`, debug builds only). These are
  * never tabs, so they show on tablets too. Rows reveal 30 ms apart (M-C-11 `rowReveal`).
+ *
+ * Backend task W66 (04_client_integration_spec §3.2, MD-8, AC-C-30): the footer's Core link chip
+ * takes the one rule of `use-core-link-chip.ts` (the Home header takes the same), and in LIVE mode
+ * the note under the chips says where the data comes from instead of "Simulated data": a screen
+ * that shows server data says nothing about a simulation.
  */
 import { ListGroup, Separator } from 'heroui-native';
 import { ChevronRight, FlaskConical, Info, LifeBuoy, Link2, type LucideIcon } from 'lucide-react-native';
@@ -19,11 +24,8 @@ import { derived, fontFamily, palette, typography, type StatusTone } from '@dems
 import { SectionCard, StatusChip } from '@/components/kit';
 import { Emblem } from '@/components/media/emblem';
 import { rowReveal, useMotionSettings } from '@/motion';
-import { useCoreLink } from '@/runtime';
 import {
   LINK_HREFS,
-  coreLinkTone,
-  coreLinkWordKey,
   linkDestinations,
   pairingTone,
   selectCoreName,
@@ -31,6 +33,7 @@ import {
   selectSessionStateFlat,
   type LinkDestination,
 } from './more-model';
+import { useCoreLinkChip } from './use-core-link-chip';
 import { useMoreNavigate } from './use-more-navigate';
 
 const ICONS: Record<LinkDestination, LucideIcon> = {
@@ -150,9 +153,8 @@ function useRowView(name: LinkDestination): RowView {
 /** Footer: emblem, "DEMS EDGE CLIENT · v2.4.1", the DEMO label and the Core link chip (§4.17). */
 export function MoreFooter() {
   const { t } = useTranslation();
-  const link = useCoreLink();
-  const word = t(`common.status.${coreLinkWordKey(link)}`);
-  const online = link.state === 'ONLINE';
+  const chip = useCoreLinkChip();
+  const word = t(`common.status.${chip.word}`);
 
   return (
     <View testID="more-footer" style={styles.footer}>
@@ -164,18 +166,18 @@ export function MoreFooter() {
         <StatusChip testID="more-demo" tone="accent" label={t('features.more.footer.demo')} icon={null} size="sm" />
         <StatusChip
           testID="more-core-link"
-          tone={coreLinkTone(link)}
+          tone={chip.tone}
           label={t('features.more.footer.coreLink', { state: word })}
           accessibilityLabel={t('features.more.footer.coreLinkLabel', {
             state: word,
-            source: t(`mobile.coreLink.source.${link.source}`),
+            source: t(`mobile.coreLink.source.${chip.source}`),
           })}
-          icon={online ? 'Wifi' : 'TriangleAlert'}
+          icon={chip.icon}
           size="sm"
         />
       </View>
-      <Text maxFontSizeMultiplier={1.2} style={styles.note}>
-        {t('features.more.footer.demoNote')}
+      <Text testID="more-footer-note" maxFontSizeMultiplier={1.2} style={styles.note}>
+        {t(chip.live ? 'features.more.footer.liveNote' : 'features.more.footer.demoNote')}
       </Text>
     </View>
   );

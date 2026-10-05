@@ -12,9 +12,28 @@
  * - Restart needs the Technician role and is unavailable while recording (D79; SIM-GAP-M84-3).
  * - Faults escalate calmly (03M P7): the chip pulses once and holds its colour; the hero greys to
  *   NO SIGNAL; a tablet-offline note says recording continues.
+ *
+ * Both data modes (backend task W78; 04_client_integration_spec §8.6 S2-8, §8.7 S3-2 and S5-4): the
+ * actions come from `useCoreActions()` and every result is consumed through `settle`, so one call
+ * site serves the simulator (it settles before `settle` returns: the screens behave as before) and
+ * the Core server (it settles once the Core answered and the store holds what the answer named,
+ * CL-16).
+ *
+ * | Site | What | Live behaviour |
+ * |---|---|---|
+ * | S2-8 | `startDiagnostics` (operation 65) | The sheet opens in `ok`, only once the Core accepted the run; "Diagnostics" and "Run again" ignore further presses until then, with the kit's `Spinner` after `LIVE_PENDING_REVEAL_MS` (LB-1). A refusal goes to the presenter; the sheet stays closed |
+ * | S3-2 | `DeviceCommandDialog`, `onConfirm` (operations 48, 49) | The dialog waits for the answer: success toast in `ok`, danger toast in `fail`, closed in `done` (AC-C-63) |
+ * | S5-4 | the Restart hint (`useCanManageDevices`, `restartBlocked`) | Kept as a hint (the role comes from the replicated `operators` slice); the Core enforces DEVICE_MANAGE on operation 48 and its 403 shows the denied toast (AC-C-48) |
+ * | — | `resetClip` (operation 52), result ignored as before | Through `settle` as well, so a refusal or an outage is presented and logged instead of an unhandled rejection |
+ *
+ * Every rejection goes to the refusal presenter first in Live mode (`useCoreErrorPresenter`, §6.2,
+ * LB-5 to LB-10), and only what it leaves gets the site's own message; every failure writes the
+ * persistent runtime log (`reportRuntimeIssue`). In LIVE mode the copy says nothing about a
+ * simulation (MD-8): the dialog bodies, the toasts, the log's command names, the health caption and
+ * the diagnostics subtitle take `features.devices.live.*`.
  */
 import { useIsFocused, useRouter } from 'expo-router';
-import { Alert, Button, Tabs } from 'heroui-native';
+import { Alert, Button, Tabs, useToast } from 'heroui-native';
 import { Activity, ArrowLeft, EthernetPort, RotateCcw, Siren, Stethoscope, Tablet, type LucideIcon } from 'lucide-react-native';
 import { useCallback, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -22,14 +41,15 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import type { AudioTrackId } from '@dems/shared/domain';
 import { EMPTY_DATE_TEXT, formatClock } from '@dems/shared/realtime';
-import { useSimActions, type AuditRow, type DeviceCommand } from '@dems/shared/sim';
+import { settle, useCoreActions } from '@dems/shared/live';
+import type { AuditRow, DeviceCommand } from '@dems/shared/sim';
 import { derived, fontFamily, palette, radius, spacing, toneHex, typography } from '@dems/shared/tokens';
 import { KeyValueList, type KeyValueItem } from '@/components/kit';
 import { CameraFeed } from '@/components/media';
 import { DEMO_MEDIA_LIVE } from '@/components/media/demo-media';
 import { useLayoutClass } from '@/layout';
 import { crossFadeIn, enterRise, triggerHaptic, useMotionPolicy, useMotionSettings, useMotionState } from '@/motion';
-import { reportRuntimeIssue } from '@/runtime';
+import { PendingSpinner, busyState, reportRuntimeIssue, useCoreErrorPresenter, useCoreLink } from '@/runtime';
 import { DeviceCommandDialog } from './device-command-dialog';
 import { DeviceMicMeter } from './device-mic-meter';
 import { DeviceStatusChip } from './device-status-chip';
@@ -47,6 +67,7 @@ import {
 import { DiagnosticsSheet } from './diagnostics-sheet';
 import { HealthChart } from './health-chart';
 import { CAMERA_POE_PORT_KEY, channelOf } from './sim-adapter';
+import { usePendingPress } from './use-pending-press';
 import {
   useBookPoe,
   useCamera,
@@ -121,7 +142,11 @@ export function DeviceDetail({ deviceId, variant }: DeviceDetailProps) {
 function KnownDeviceDetail({ deviceId, variant, header }: { deviceId: DeviceId; variant: 'screen' | 'pane'; header: ReactNode }) {
   const { t } = useTranslation();
   const m = useMotionSettings();
-  const actions = useSimActions();
+  const actions = useCoreActions();
+  const live = useCoreLink().source === 'LIVE';
+  const presentCoreError = useCoreErrorPresenter();
+  const { toast } = useToast();
+  const diagnosticsPress = usePendingPress();
   const status = useDeviceStatus(deviceId);
   const recording = useIsRecording();
   const canManage = useCanManageDevices();
@@ -131,25 +156,40 @@ function KnownDeviceDetail({ deviceId, variant, header }: { deviceId: DeviceId; 
   const [command, setCommand] = useState<DeviceCommand | null>(null);
   const shortName = t(DEVICE_SHORT_NAME_KEY[deviceId]);
 
-  const startDiagnostics = useCallback(() => {
-    try {
-      actions.runDiagnostics();
-      return true;
-    } catch (error) {
-      reportRuntimeIssue('error', 'devices.diagnostics', error, { deviceId });
-      return false;
-    }
-  }, [actions, deviceId]);
+  // S2-8: a diagnostics run; `started` runs once the simulator or the Core accepted it (the sheet opens there).
+  const startDiagnostics = useCallback(
+    (started?: () => void) => {
+      diagnosticsPress.run((release) => {
+        settle(() => actions.runDiagnostics(), {
+          ok: () => started?.(),
+          fail: (error) => {
+            // Live mode: a denial, an outage or a limit is the presenter's (one wording on every screen).
+            if (live && presentCoreError(error)) {
+              reportRuntimeIssue('warn', 'devices.diagnostics', error, { deviceId });
+              return;
+            }
+            reportRuntimeIssue('error', 'devices.diagnostics', error, { deviceId });
+            if (live) toast.show({ variant: 'danger', label: t('features.devices.diagnostics.failedToStart') });
+          },
+          done: release,
+        });
+      });
+    },
+    [actions, deviceId, diagnosticsPress, live, presentCoreError, t, toast],
+  );
 
+  // The CLIP latch reset; its result is ignored as before, but a Live rejection is presented and logged.
   const resetClip = useCallback(
     (channel: AudioTrackId) => {
-      try {
-        actions.resetClip(channel);
-      } catch (error) {
-        reportRuntimeIssue('warn', 'devices.resetClip', error, { deviceId, channel });
-      }
+      settle(() => actions.resetClip(channel), {
+        fail: (error) => {
+          // Live mode: the presenter words a denial, an outage or a limit; the latch stays lit either way.
+          if (live) presentCoreError(error);
+          reportRuntimeIssue('warn', 'devices.resetClip', error, { deviceId, channel });
+        },
+      });
     },
-    [actions, deviceId],
+    [actions, deviceId, live, presentCoreError],
   );
 
   const restartBlocked = !canManage || recording;
@@ -200,9 +240,9 @@ function KnownDeviceDetail({ deviceId, variant, header }: { deviceId: DeviceId; 
         {tab === 'overview' ? (
           <OverviewTab deviceId={deviceId} status={status} onClipReset={resetClip} />
         ) : tab === 'health' ? (
-          <HealthTab deviceId={deviceId} />
+          <HealthTab deviceId={deviceId} live={live} />
         ) : (
-          <LogTab deviceId={deviceId} />
+          <LogTab deviceId={deviceId} live={live} />
         )}
       </Animated.View>
     </Animated.View>
@@ -233,12 +273,13 @@ function KnownDeviceDetail({ deviceId, variant, header }: { deviceId: DeviceId; 
           style={styles.action}
           onPress={() => {
             triggerHaptic('primaryPress');
-            if (startDiagnostics()) setDiagnosticsOpen(true);
+            startDiagnostics(() => setDiagnosticsOpen(true));
           }}
           accessibilityLabel={t('features.devices.actions.diagnosticsLabel')}
           testID="device-action-diagnostics"
+          {...busyState(diagnosticsPress.busy)}
         >
-          <Stethoscope size={18} color={palette.gold} />
+          {diagnosticsPress.pending ? <PendingSpinner color={palette.gold} testID="device-action-diagnostics-spinner" /> : <Stethoscope size={18} color={palette.gold} />}
           <Button.Label numberOfLines={1}>{t('features.devices.actions.diagnostics')}</Button.Label>
         </Button>
         <Button variant="outline" size="sm" style={styles.action} onPress={() => setCommand('TEST_SIGNAL')} testID="device-action-test-signal">
@@ -269,11 +310,15 @@ function KnownDeviceDetail({ deviceId, variant, header }: { deviceId: DeviceId; 
         onRunAgain={() => {
           startDiagnostics();
         }}
+        live={live}
+        runAgainBusy={diagnosticsPress.busy}
+        runAgainPending={diagnosticsPress.pending}
       />
       <DeviceCommandDialog
         command={command}
         deviceId={deviceId}
         deviceName={shortName}
+        live={live}
         onClose={() => setCommand(null)}
         onConfirm={(next) => actions.deviceCommand(deviceId, next)}
       />
@@ -503,31 +548,43 @@ function TabletOverview({ status }: { status: DeviceStatus }) {
 }
 
 // ── Health ───────────────────────────────────────────────────────────────────────────────
-function HealthTab({ deviceId }: { deviceId: DeviceId }) {
+function HealthTab({ deviceId, live }: { deviceId: DeviceId; live: boolean }) {
   const channel = channelOf(deviceId);
-  return channel ? <MicHealth channel={channel} /> : <DeviceHealth deviceId={deviceId} />;
+  return channel ? <MicHealth channel={channel} live={live} /> : <DeviceHealth deviceId={deviceId} live={live} />;
 }
 
-function DeviceHealth({ deviceId }: { deviceId: DeviceId }) {
+function DeviceHealth({ deviceId, live }: { deviceId: DeviceId; live: boolean }) {
   const series = useHealthSeries(deviceId);
-  return <HealthChart series={series} testID="device-health" />;
+  return <HealthChart series={series} testID="device-health" live={live} />;
 }
 
-function MicHealth({ channel }: { channel: AudioTrackId }) {
+function MicHealth({ channel, live }: { channel: AudioTrackId; live: boolean }) {
   const series = useMicLevelSeries(channel);
-  return <HealthChart series={series} testID="device-health" />;
+  return <HealthChart series={series} testID="device-health" live={live} />;
 }
 
 // ── Log ──────────────────────────────────────────────────────────────────────────────────
+/** LIVE mode: a DEVICE_COMMAND row names its command without "(simulated)"; IDENTIFY comes from the web console. */
+const LIVE_COMMAND_KEY: Readonly<Record<string, string>> = {
+  TEST_SIGNAL: 'features.devices.live.command.TEST_SIGNAL',
+  RESTART: 'features.devices.live.command.RESTART',
+  IDENTIFY: 'features.devices.live.command.IDENTIFY',
+};
+
 /** The detail cell from codes only (fault kind, command, link state), never the simulator's English. */
-function logDetail(row: AuditRow, t: (key: string) => string): string {
+function logDetail(row: AuditRow, t: (key: string) => string, live: boolean): string {
   const kind = typeof row.details.kind === 'string' ? row.details.kind : null;
   switch (row.type) {
     case 'FAULT_RAISED':
     case 'FAULT_CLEARED':
       return kind ? t(`common.faultKind.${kind}`) : EMPTY_DATE_TEXT;
-    case 'DEVICE_COMMAND':
+    case 'DEVICE_COMMAND': {
+      if (live) {
+        const key = typeof row.details.command === 'string' && Object.prototype.hasOwnProperty.call(LIVE_COMMAND_KEY, row.details.command) ? LIVE_COMMAND_KEY[row.details.command] : undefined;
+        return key ? t(key) : EMPTY_DATE_TEXT;
+      }
       return row.details.command === 'TEST_SIGNAL' ? t('common.deviceMenu.testSignal') : t('common.deviceMenu.restart');
+    }
     case 'TABLET_LINK_CHANGED':
       return typeof row.details.state === 'string' ? t(`common.tabletLinkState.${row.details.state}`) : EMPTY_DATE_TEXT;
     default:
@@ -542,7 +599,7 @@ const SEVERITY_COLOR: Readonly<Record<AuditRow['severity'], string>> = {
   CRITICAL: palette.danger,
 };
 
-function LogTab({ deviceId }: { deviceId: DeviceId }) {
+function LogTab({ deviceId, live }: { deviceId: DeviceId; live: boolean }) {
   const { t } = useTranslation();
   const rows = useDeviceLog(deviceId);
   if (rows.length === 0) {
@@ -565,7 +622,7 @@ function LogTab({ deviceId }: { deviceId: DeviceId }) {
               {t(`common.auditType.${row.type}`)}
             </Text>
             <Text maxFontSizeMultiplier={1.2} style={styles.logDetail} numberOfLines={1}>
-              {logDetail(row, t)}
+              {logDetail(row, t, live)}
             </Text>
           </View>
         </View>

@@ -585,7 +585,8 @@ function TrustLine({ controller, settings, loopsAllowed }: { controller: LoginCo
   const pairingState = useSim(selectPairingState);
   const device = useSim(selectCoreDeviceId);
   const gate = usePairing();
-  const chip = coreChipFor(controller.coreLink);
+  // LIVE: the runtime's look of the link (row M2 follow-up, D180): still connecting is not "offline".
+  const chip = coreChipFor(controller.coreLink, controller.coreLook);
   // LIVE (§9.2, AC-C-72): the pairing gate says whether this tablet is paired, and as which device.
   const liveText = controller.live ? liveTrustTextFor(liveTrustLineFor(gate, device)) : null;
   const paired = controller.live ? gate.state === 'PAIRED' && gate.deviceId !== null : pairingState === 'PAIRED';
@@ -605,7 +606,7 @@ function TrustLine({ controller, settings, loopsAllowed }: { controller: LoginCo
           testID="login-core-chip"
           tone={chip.tone}
           label={t(`features.login.coreChip.${chip.kind}`)}
-          icon={chip.kind === 'ONLINE' ? 'Wifi' : 'TriangleAlert'}
+          icon={chip.kind === 'ONLINE' || chip.kind === 'SETTLING' ? 'Wifi' : 'TriangleAlert'}
           size="sm"
         />
       </Animated.View>

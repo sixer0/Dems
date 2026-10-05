@@ -5,9 +5,10 @@ import type { VideoTrackId } from '@dems/shared/domain'
 import { selectCameraById, useSim } from '@dems/shared/sim'
 import { CameraFeed } from '@/components/media'
 import { useMotionPolicy } from '@/motion'
-import { useDeviceActions } from './context'
+import { useDeviceActions, useDevicePending } from './context'
 import { DeviceMenu, IdentifyRing } from './device-menu'
 import { useDeviceLabels } from './labels'
+import { useDeviceWords } from './live'
 import { deviceStatus, STATUS_SEVERITY, STATUS_TONE } from './model'
 import { CAMERA_DEVICE, CAMERA_POE_PORT } from './sim-adapter'
 import { StatusChip, StatusDot } from './status-chip'
@@ -32,10 +33,13 @@ export interface CameraTileProps {
  */
 export function CameraTile({ cameraId, lens }: CameraTileProps) {
   const { t } = useTranslation()
+  const words = useDeviceWords()
   const m = useMotionPolicy()
   const labels = useDeviceLabels()
   const { open } = useDeviceActions()
   const deviceId = CAMERA_DEVICE[cameraId]
+  // LB-1 (plan row W70): the kebab's Button drops `aria-busy`, so the head that holds it carries it.
+  const busy = useDevicePending(deviceId)
   const camera = useSim((s) => selectCameraById(s, cameraId))
   const status = useSim((s) => deviceStatus(s, deviceId))
   const name = labels.name(deviceId)
@@ -51,7 +55,7 @@ export function CameraTile({ cameraId, lens }: CameraTileProps) {
       data-status={status}
       variants={m.variants.row}
     >
-      <header className="dev-tile-head">
+      <header className="dev-tile-head" aria-busy={busy || undefined}>
         <StatusDot tone={tone} />
         <div className="dev-tile-titles">
           <span className="dev-tile-name">{name}</span>
@@ -89,7 +93,8 @@ export function CameraTile({ cameraId, lens }: CameraTileProps) {
           formatLabel={t('common.devices.cameraFormat', { resolution, fps })}
           recordingSince={null}
           noSignal={status === 'FAULT'}
-          ariaLabel={t('devices.cameras.feedAria', { name })}
+          // Live mode: the picture is the bundled demo loop, not a live preview (plan row W0, item 7).
+          ariaLabel={t(words.feedAria, { name })}
         />
         <IdentifyRing deviceId={deviceId} />
       </button>

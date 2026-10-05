@@ -7,6 +7,7 @@ import { palette, statusText } from '@dems/shared/tokens'
 import { useSimSecond } from '@/components/media'
 import { useMotionPolicy } from '@/motion'
 import { useMicPoints } from './context'
+import { useDeviceWords } from './live'
 import { DEVICE_MIC, healthSeries, type DeviceId, type HealthSeries } from './sim-adapter'
 
 /** M-PG-DEV: the Health chart draws once when the tab opens (Recharts), then streams without animation (§9.3). */
@@ -34,6 +35,8 @@ export interface HealthChartProps {
  */
 export function HealthChart({ deviceId }: HealthChartProps) {
   const { t } = useTranslation()
+  // §3.2 (plan row W70): the caption says "Simulated" in Simulated mode only.
+  const words = useDeviceWords()
   const m = useMotionPolicy()
   const sim = useSimInstance()
   const second = useSimSecond()
@@ -128,7 +131,7 @@ export function HealthChart({ deviceId }: HealthChartProps) {
           </ResponsiveContainer>
         </div>
       )}
-      <p className="dev-health-source">{t('devices.drawer.health.samples', { count: series.points.length })}</p>
+      <p className="dev-health-source">{t(words.samples, { count: series.points.length })}</p>
     </div>
   )
 }

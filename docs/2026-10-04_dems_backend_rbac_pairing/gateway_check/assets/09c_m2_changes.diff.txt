@@ -1,0 +1,275 @@
+# M2 changes: every edited file against its pre-image (.cache/rollback/M2/), then the new files with SHA-256
+# generated 2026-10-06 02:36:35 WIB
+
+## apps/mobile/src/runtime/index.ts
+--- pre/apps/mobile/src/runtime/index.ts
++++ post/apps/mobile/src/runtime/index.ts
+@@ -33,6 +33,7 @@
+  * |---|---|
+  * | Know the source and the link | `useCoreLink()` (`source`: SIMULATED, HEARTBEAT, LIVE); `useCoreMode()` of `@dems/shared/live` for the data mode |
+  * | Show "Core server unreachable" without flicker | `const { view, offline } = useCoreLinkNotice();` (row M1: M0's rule, its first render seeded from the connection banner); never a rule of your own |
++ * | Make session actions read-only while the Core link is down | `const readOnly = useCoreLinkReadOnly();` (row M2: in LIVE the notice above, else the step-79 rule); never a rule of your own |
+  * | Call a Core action | `useCoreActions()` and `settle` of `@dems/shared/live`, in every mode |
+  * | Mark a control busy while its command is out, the spinner late | `usePendingPress()`: `run((release) => settle(…, { done: release }))`, then `{...busyState(press.busy)}` on the control and `{press.pending ? <PendingSpinner /> : icon}` inside it; never a copy of the hook or of the two helpers, never `setTimeout` |
+  * | Call an operation that is no simulator action | `useMobileLive()?.client.call(operationId, input)` |
+@@ -205,4 +206,5 @@
+ export { coreLinkViewOf, initialOfflineNotice, offlineNoticeAfter, type CoreLinkInput, type CoreLinkView } from './link-notice';
+ export { usePendingPress, type PendingPress } from './use-pending-press';
+ export { useCoreLinkNotice, type CoreLinkNotice } from './use-core-link-notice';
++export { useCoreLinkReadOnly } from './use-core-link-read-only';
+ export { PendingSpinner, busyState, type PendingSpinnerProps } from './pending-control';
+
+## apps/mobile/src/features/session-live/use-monitor.ts
+--- pre/apps/mobile/src/features/session-live/use-monitor.ts
++++ post/apps/mobile/src/features/session-live/use-monitor.ts
+@@ -19,9 +19,10 @@
+  * | SIMULATED, HEARTBEAT | before the call returns (`settle`, CL-25): exactly the step-79 order | the step-79 toasts |
+  * | LIVE | when the Core answered and the store holds the effect (CL-16) | the refusal presenter first (denied with the role, offline, limit; mobile rule 2), then the step-79 branch; a stop reason the Core refuses (422 `INVALID_REASON`, F59) is the reason field's error, without a toast |
+  *
+- * The read-only refusal while the Core link is down stays first ([CS:S2-1]). In LIVE the link is the
+- * runtime's one rule (`useCoreLinkNotice()`, rows M0 and M1): read-only from the first OFFLINE or
+- * STALE until the first ONLINE, a reconnect attempt keeps it, a cold start flashes nothing.
++ * The read-only refusal while the Core link is down stays first ([CS:S2-1]). Whether the screen is
++ * read-only is the runtime's one rule, `useCoreLinkReadOnly()` (row M2; shared with Recovery): in LIVE
++ * the notice of rows M0 and M1 (read-only from the first OFFLINE or STALE until the first ONLINE, a
++ * reconnect attempt keeps it, a cold start flashes nothing); SIMULATED and HEARTBEAT keep step 79's.
+  *
+  * The meters need no code here: `useAudioSharedValues` (runtime) copies each frame of the store's
+  * `audio` slice into Reanimated shared values, and in LIVE the Live source writes that slice from the
+@@ -45,7 +46,7 @@
+   type MicStatus,
+   type TimelineEvent,
+ } from '@dems/shared/sim';
+-import { reportRuntimeIssue, useConnectionBanner, useCoreErrorPresenter, useCoreLink, useCoreLinkNotice } from '@/runtime';
++import { reportRuntimeIssue, useCoreErrorPresenter, useCoreLink, useCoreLinkReadOnly } from '@/runtime';
+ import { elapsedSecondsAt, statusStrip, type StripChip } from './session-live.math';
+ 
+ /** The recording session's identity and counters (primitives only). */
+@@ -115,25 +116,6 @@
+   });
+ }
+ 
+-/**
+- * S7: session actions become read-only while the Core link is OFFLINE (the connection banner shows
+- * why). Display-only controls (Audio Monitor, Settings, camera choice) stay available.
+- *
+- * LIVE (row W68): the runtime's one rule of the "Core server unreachable" notice, in one call (rows
+- * M0, M1; [CS:§3.5] "the existing read-only rule of the monitor"). The two-valued `state` of a LIVE
+- * link reads a reconnect attempt as OFFLINE, so it would blink the actions at every attempt and at
+- * the socket's reconnect after a sign-in; the notice keeps what it showed through those transients.
+- * In LIVE the connection banner follows the same rule (`link-notice.test.ts`), so the banner and the
+- * read-only actions agree. SIMULATED and HEARTBEAT keep the step-79 rule exactly.
+- */
+-export function useMonitorReadOnly(): boolean {
+-  const banner = useConnectionBanner();
+-  const link = useCoreLink();
+-  const { offline } = useCoreLinkNotice();
+-  if (link.source === 'LIVE') return offline;
+-  return banner.kind === 'offline' || link.state === 'OFFLINE';
+-}
+-
+ /** Why a session command did not go through, for the control that sent it. */
+ export type MonitorRefusal =
+   /** The Core refused the stop reason (422 `INVALID_REASON`; F59: the server is the judge). The reason field says so; no toast. */
+@@ -182,7 +164,9 @@
+   const presentCoreError = useCoreErrorPresenter();
+   const { toast } = useToast();
+   const { t } = useTranslation();
+-  const readOnly = useMonitorReadOnly();
++  // S7: session actions are read-only while the Core link is down (the runtime's one rule, row M2;
++  // the banner says why). Display-only controls (CLIP reset, camera choice) are not guarded.
++  const readOnly = useCoreLinkReadOnly();
+ 
+   /** Shows and logs why a command failed; tells the control what it may do next. */
+   const explain = useCallback(
+
+## apps/mobile/src/features/session-live/session-live-screen.tsx
+--- pre/apps/mobile/src/features/session-live/session-live-screen.tsx
++++ post/apps/mobile/src/features/session-live/session-live-screen.tsx
+@@ -46,7 +46,7 @@
+ import Animated, { useAnimatedStyle, useSharedValue, withSequence, withSpring, withTiming } from 'react-native-reanimated';
+ import type { AudioTrackId, VideoTrackId } from '@dems/shared/domain';
+ import { useSimInstance } from '@dems/shared/sim';
+-import { usePendingPress } from '@/runtime';
++import { useCoreLinkReadOnly, usePendingPress } from '@/runtime';
+ import { derived, fontFamily, motion as motionTokens, palette, spacing, statusText, typography } from '@dems/shared/tokens';
+ import { SectionCard } from '@/components/kit';
+ import type { MeterVariant } from '@/components/composed/dbfs-meter';
+@@ -78,7 +78,6 @@
+   useMonitorCameras,
+   type MonitorHandlers,
+   useMonitorMics,
+-  useMonitorReadOnly,
+   useMonitorSession,
+   useMonitorTimeline,
+ } from './use-monitor';
+@@ -121,7 +120,7 @@
+   const { activeCameraId, cameras } = useMonitorCameras();
+   const mics = useMonitorMics();
+   const events = useMonitorTimeline();
+-  const readOnly = useMonitorReadOnly();
++  const readOnly = useCoreLinkReadOnly();
+   const actions = useMonitorActions();
+ 
+   // §3.6: while RECORDING, every way back asks first; leaving never touches the session.
+
+## apps/mobile/src/features/session-recovery/use-recovery.ts
+--- pre/apps/mobile/src/features/session-recovery/use-recovery.ts
++++ post/apps/mobile/src/features/session-recovery/use-recovery.ts
+@@ -22,8 +22,9 @@
+  *
+  * Every rejection goes to the refusal presenter first in Live mode (`useCoreErrorPresenter`, §6.2,
+  * LB-5 to LB-10; mobile rule 2), and only what it leaves gets this screen's own toast; Simulated mode
+- * keeps the step-81 toasts. The read-only refusal while the Core link is down stays first; in Live
+- * mode the link is the runtime's one rule (`useCoreLinkNotice()`, rows M0 and M1).
++ * keeps the step-81 toasts. The read-only refusal while the Core link is down stays first; whether
++ * the screen is read-only is the runtime's one rule, `useCoreLinkReadOnly()` (row M2; shared with the
++ * Session Monitor): in Live mode the notice of rows M0 and M1, otherwise the step-81 rule.
+  */
+ import { useToast } from 'heroui-native';
+ import { useCallback, useState } from 'react';
+@@ -42,7 +43,7 @@
+   type SimState,
+   type SubjectType,
+ } from '@dems/shared/sim';
+-import { reportRuntimeIssue, useConnectionBanner, useCoreErrorPresenter, useCoreLink, useCoreLinkNotice } from '@/runtime';
++import { reportRuntimeIssue, useCoreErrorPresenter, useCoreLink, useCoreLinkReadOnly } from '@/runtime';
+ import {
+   RECOVERY_TRACKS,
+   ackSettled,
+@@ -197,22 +198,6 @@
+ export function useSimNow(): () => number {
+   const sim = useSimInstance();
+   return useCallback(() => sim.clock.now(), [sim]);
+-}
+-
+-/**
+- * Session actions are refused while the Core link is offline (the monitor's rule, step 79).
+- *
+- * LIVE (row W73): the runtime's one rule of the "Core server unreachable" notice, in one call (rows
+- * M0, M1; [CS:§3.5] "the existing read-only rule of the monitor and recovery screens"): read-only
+- * from the first OFFLINE or STALE until the first ONLINE; a reconnect attempt keeps it, a cold start
+- * flashes nothing. SIMULATED and HEARTBEAT keep the step-81 rule exactly.
+- */
+-export function useRecoveryReadOnly(): boolean {
+-  const banner = useConnectionBanner();
+-  const link = useCoreLink();
+-  const { offline } = useCoreLinkNotice();
+-  if (link.source === 'LIVE') return offline;
+-  return banner.kind === 'offline' || link.state === 'OFFLINE';
+ }
+ 
+ /** The outcome of `start`, handed to its continuation exactly once. */
+@@ -247,7 +232,8 @@
+   const presentCoreError = useCoreErrorPresenter();
+   const { toast } = useToast();
+   const { t } = useTranslation();
+-  const readOnly = useRecoveryReadOnly();
++  // Session actions are refused while the Core link is down (the runtime's one rule, row M2).
++  const readOnly = useCoreLinkReadOnly();
+ 
+   const start = useCallback(
+     (then?: RecoverySettled): void => {
+
+## apps/mobile/src/features/session-recovery/recovery-live-static.test.ts
+--- pre/apps/mobile/src/features/session-recovery/recovery-live-static.test.ts
++++ post/apps/mobile/src/features/session-recovery/recovery-live-static.test.ts
+@@ -123,10 +123,10 @@
+ 
+   it('one LIVE idiom and one link rule: source === LIVE, the notice in one call', () => {
+     expect(matching(/useCoreLink\(\)\.source === 'LIVE'/)).toEqual(['session-recovery-screen.tsx', 'use-recovery.ts']);
+-    expect(matching(/const \{ offline(?:: linkDown)? \} = useCoreLinkNotice\(\);/)).toEqual(['session-recovery-screen.tsx', 'use-recovery.ts']);
++    expect(matching(/const \{ offline(?:: linkDown)? \} = useCoreLinkNotice\(\);/)).toEqual(['session-recovery-screen.tsx']);
+     expect(matching(/useMobileLive|useLiveLink|initialOfflineNotice|offlineNoticeAfter/)).toEqual([]);
+-    // The read-only rule of LIVE is the one notice; the step-81 rule stays for SIMULATED and HEARTBEAT.
+-    expect(fileText('use-recovery.ts')).toMatch(/const \{ offline \} = useCoreLinkNotice\(\);\n {2}if \(link\.source === 'LIVE'\) return offline;\n {2}return banner\.kind === 'offline' \|\| link\.state === 'OFFLINE';/);
++    // The read-only rule is the runtime's one helper (row M2, D175 DN-4): LIVE the one notice, else step 81's.
++    expect(fileText('use-recovery.ts')).toMatch(/const readOnly = useCoreLinkReadOnly\(\);/);
+   });
+ });
+ 
+
+## apps/mobile/src/features/more/use-core-link-chip.ts
+--- pre/apps/mobile/src/features/more/use-core-link-chip.ts
++++ post/apps/mobile/src/features/more/use-core-link-chip.ts
+@@ -4,21 +4,21 @@
+  *
+  * - The word comes from `coreLinkWordKey` (`more-model.ts`): "Simulated" in SIMULATED and in
+  *   HEARTBEAT mode, "Live" only when the source is LIVE, "Offline" when the link is down.
+- * - In LIVE, "down" is the runtime's one rule of row M0, not a rule of this screen: the view of
+- *   `useCoreLink()` goes through `offlineNoticeAfter`, kept in state by the render-time adjustment
+- *   (React Compiler, D138: never a ref plus an effect, never a timer, never a hold time). So the chip
+- *   turns Offline at the first OFFLINE or STALE, back to Live at the first heartbeat, and a
+- *   reconnect attempt (CONNECTING) between two OFFLINEs keeps it Offline: no flicker. A refused call
+- *   (a 429 among them) is no link state and never reaches the chip (LB-10).
+- * - Outside LIVE the view is `none` and the M0 state stays false, so SIMULATED and HEARTBEAT keep
+- *   their link rule of before (mock-core's heartbeat; `link.state`).
++ * - In LIVE, "down" is the runtime's one rule (rows M0, M1), not a rule of this screen, taken in ONE
++ *   call, `useCoreLinkNotice()` (row M2, D164 DN-2; React Compiler, D138: never a ref plus an effect,
++ *   never a timer, never a hold time). So the chip turns Offline at the first OFFLINE or STALE, back
++ *   to Live at the first heartbeat, and a reconnect attempt (CONNECTING) between two OFFLINEs keeps
++ *   it Offline: no flicker. First rendered while the socket reconnects after an outage it reads
++ *   Offline at once (seeded from the connection banner, row M1, F-1). A refused call (a 429 among
++ *   them) is no link state and never reaches the chip (LB-10).
++ * - Outside LIVE `offline` stays false, so SIMULATED and HEARTBEAT keep their link rule of before
++ *   (mock-core's heartbeat; `link.state`).
+  *
+  * `live` tells Home where to draw the chip (MD-9: in LIVE in every layout class; in SIMULATED and
+  * HEARTBEAT on the expanded header only, as before).
+  */
+-import { useState } from 'react';
+ import type { StatusTone } from '@dems/shared/tokens';
+-import { coreLinkViewOf, initialOfflineNotice, offlineNoticeAfter, useConnectionBanner, useCoreLink, type CoreLinkSource } from '@/runtime';
++import { useCoreLink, useCoreLinkNotice, type CoreLinkSource } from '@/runtime';
+ import { coreLinkTone, coreLinkWordKey, type CoreLinkWordKey } from './more-model';
+ 
+ export interface CoreLinkChip {
+@@ -35,17 +35,7 @@
+ 
+ export function useCoreLinkChip(): CoreLinkChip {
+   const link = useCoreLink();
+-  const view = coreLinkViewOf(link);
+-  // Row M0's snippet (gateway_check/09a §10): the notice state follows the view, adjusted in render.
+-  // Its first render starts from the app's connection banner (row M1, F-1): a screen opened while
+-  // the socket reconnects after an outage reads "Offline" at once, not "Live" for one reconnect step.
+-  const banner = useConnectionBanner().kind;
+-  const [viewSeen, setViewSeen] = useState(view);
+-  const [offline, setOffline] = useState(() => initialOfflineNotice(view, banner));
+-  if (viewSeen !== view) {
+-    setViewSeen(view);
+-    setOffline(offlineNoticeAfter(offline, view));
+-  }
++  const { offline } = useCoreLinkNotice();
+   const word = coreLinkWordKey(link, offline);
+   return {
+     word,
+
+## apps/mobile/src/features/dashboard/home-more-live-static.test.ts
+--- pre/apps/mobile/src/features/dashboard/home-more-live-static.test.ts
++++ post/apps/mobile/src/features/dashboard/home-more-live-static.test.ts
+@@ -130,10 +130,9 @@
+     expect(matching(/\b(?:useCoreMode|getCoreLinkSource|useCoreLinkSource|useCoreLinkSourceSetting|coreLinkSource)\b/)).toEqual([]);
+     expect(matching(/useCoreLink\(\)\.source === 'LIVE'/)).toEqual(['dashboard/home-header.tsx', 'dashboard/recent-sessions.tsx']);
+     expect(fileText('more/use-core-link-chip.ts')).toMatch(/live: link\.source === 'LIVE'/);
+-    // The chip's LIVE "Offline" is the runtime's rule (row M0), adjusted in render: no ref, no effect, no timer.
++    // The chip's LIVE "Offline" is the runtime's rule (rows M0, M1) in one call (row M2): no ref, no effect, no timer.
+     const chip = fileText('more/use-core-link-chip.ts');
+-    expect(chip).toMatch(/coreLinkViewOf\(link\)/);
+-    expect(chip).toMatch(/offlineNoticeAfter\(offline, view\)/);
++    expect(chip).toMatch(/const \{ offline \} = useCoreLinkNotice\(\);/);
+     expect(chip).not.toMatch(/\buse(?:Ref|Effect|LayoutEffect)\b|setTimeout|setInterval|Date\.now/);
+   });
+ });
+
+## new files
+c270baa01a304c54ddc3617bedd82bd57227535c78acf8e0dd78a8ae9447166f  apps/mobile/src/runtime/use-core-link-read-only.ts
+83e0cc580dfac665c3681125794ccfb45274bd8b61ea97ea9d7cd9dfbfc0bf7c  apps/mobile/src/runtime/use-core-link-read-only.test.tsx
+
+## post-images (SHA-256)
+5d058819a161c2b81e6074bddf8a2e965f9bedb821d505046529a03d4a8ce97f  apps/mobile/src/runtime/index.ts
+320300ccc1240dd48be63e63e1f2af86645a199fff22ab3bee792d6cc29b4e9e  apps/mobile/src/features/session-live/use-monitor.ts
+90ec1b55a00c721101821f8aea1ac80cd1db035fd565dc79fdcc27fa219f523f  apps/mobile/src/features/session-live/session-live-screen.tsx
+7f5f3b482877b7ebeb5a763a04c1da19c05d5f70fdcb1fba49e4e8adb69f6b0e  apps/mobile/src/features/session-recovery/use-recovery.ts
+0c781937d6cfb1e5247e8d44a3021efe3c56a31ea6ee0b358c9a3b6e0f44a7d3  apps/mobile/src/features/session-recovery/recovery-live-static.test.ts
+37741fb3eeaed936dce24477d831975ab7a645c81c92ee33a2e964705227cd31  apps/mobile/src/features/more/use-core-link-chip.ts
+61ce1ecb9e5ce6e93d4848cae7e2f2205cdf28578a9f7ae2a5a1a0d8238d8e5c  apps/mobile/src/features/dashboard/home-more-live-static.test.ts

@@ -24,7 +24,12 @@ export function useIsRecording(): boolean {
   return useSim(isRecording);
 }
 
-/** Restart needs DEVICE_MANAGE (TECHNICIAN, D79; SIM-GAP-M84-3). */
+/**
+ * Restart needs DEVICE_MANAGE (TECHNICIAN, D79; SIM-GAP-M84-3).
+ *
+ * Site S5-4 (backend task W78): a display hint in both modes. In LIVE mode the role comes from the
+ * replicated `operators` slice and the Core server enforces DEVICE_MANAGE on operation 48 itself.
+ */
 export function useCanManageDevices(): boolean {
   return useSim((s) => selectCan(s, Permission.DEVICE_MANAGE));
 }

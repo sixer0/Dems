@@ -1,0 +1,34 @@
+{
+  "dems-audit-EXP-000032.json": {
+    "bytes": 80715,
+    "sha256": "759ae56d02ee20deb0eff70be8b55350c3072179b2e33e7d66983ed946806a9b",
+    "kind": "dems-audit-export",
+    "source": "core-server",
+    "exportId": "EXP-000032",
+    "scope": "AUDIT",
+    "rows": 140,
+    "firstSeq": 1,
+    "lastSeq": 140,
+    "contiguous": true,
+    "chainRows": 140,
+    "chainHead16": "94b19a13d2d239e9",
+    "lastRowHash16": "94b19a13d2d239e9",
+    "containsItsAuditExportedRow": false
+  },
+  "dems-audit-EXP-000033.json": {
+    "bytes": 87296,
+    "sha256": "7a8ef81fa22f134ee70700e8ccc6686f1720ce097e663e69b26de566abefd53e",
+    "kind": "dems-audit-export",
+    "source": "core-server",
+    "exportId": "EXP-000033",
+    "scope": "AUDIT",
+    "rows": 151,
+    "firstSeq": 1,
+    "lastSeq": 151,
+    "contiguous": true,
+    "chainRows": 151,
+    "chainHead16": "50b5b680dc70d97a",
+    "lastRowHash16": "50b5b680dc70d97a",
+    "containsItsAuditExportedRow": false
+  }
+}

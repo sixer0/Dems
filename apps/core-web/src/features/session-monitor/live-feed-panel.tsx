@@ -1,14 +1,17 @@
 import { useState, type Ref } from 'react'
-import { Button, buttonVariants, Modal, ToggleButton, ToggleButtonGroup } from '@heroui/react'
+import { Button, buttonVariants, Modal, Spinner, ToggleButton, ToggleButtonGroup } from '@heroui/react'
 import { Link } from '@tanstack/react-router'
 import { AnimatePresence, motion } from 'motion/react'
 import { Maximize2, Minimize2, Video } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { VideoTrackId } from '@dems/shared/domain'
 import { formatDuration } from '@dems/shared/realtime'
-import { selectSystemState, useSim, useSimActions } from '@dems/shared/sim'
+import { useCoreActions } from '@dems/shared/live'
+import { selectSystemState, useSim } from '@dems/shared/sim'
 import { GlowRing } from '@/components/composed'
 import { CameraFeed, RecIndicator, useSimSecond, type CameraFeedHandle } from '@/components/media'
+import { useCoreErrorPresenter } from '@/lib/core-errors'
+import { usePendingControl } from '@/lib/pending-control'
 import { useMotionPolicy } from '@/motion'
 import { logSessionMonitorError } from './log'
 import { selectFeed, type SessionPhase } from './model'
@@ -30,6 +33,10 @@ export interface LiveFeedPanelProps {
   /** The feed stage element (snapshot flights start here, M-C-18). */
   stageRef: Ref<HTMLDivElement>
   onRecover: () => void
+  /** LB-1 (Live mode only): the recovery request is out. */
+  recoverBusy?: boolean
+  /** LB-1: out for longer than the reveal time. */
+  recoverPending?: boolean
 }
 
 /**
@@ -44,12 +51,31 @@ export interface LiveFeedPanelProps {
  *   check, so it is not used; the page feed stops decoding while the fullscreen copy plays.
  * - Without a recording the feed shows its poster, dimmed, under an invitation with a GlowRing
  *   `mini` (M-PG-SM "NO SESSION state").
+ * - B-4 (plan row W65; [CS] §8.3, LB-4): the camera choice is optimistic. The toggle shows the
+ *   pressed camera at once from a local pending value, which yields to the store when the action
+ *   settles and reverts on a failure (a view selection writes no record, 01_specs §7.10 op. 51).
+ *   The feed itself follows the store. A simulator answers at once, so nothing pends there.
  */
-export function LiveFeedPanel({ phase, evidenceId, canStart, paused, shutterKey, feedRef, stageRef, onRecover }: LiveFeedPanelProps) {
+export function LiveFeedPanel({
+  phase,
+  evidenceId,
+  canStart,
+  paused,
+  shutterKey,
+  feedRef,
+  stageRef,
+  onRecover,
+  recoverBusy = false,
+  recoverPending = false,
+}: LiveFeedPanelProps) {
   const { t } = useTranslation()
   const m = useMotionPolicy()
-  const actions = useSimActions()
+  const actions = useCoreActions()
+  const presentCoreError = useCoreErrorPresenter()
+  const cameraPress = usePendingControl()
   const feed = useSim(selectFeed)
+  const [pendingCamera, setPendingCamera] = useState<VideoTrackId | null>(null)
+  const selectedCamera = pendingCamera ?? feed.activeCameraId
   const [fullscreen, setFullscreen] = useState(false)
   const live = phase === 'RECORDING' || phase === 'FINALIZING'
   const label = t('session.feed.cameraLabel', { camera: feed.cameraName, room: feed.room })
@@ -63,11 +89,17 @@ export function LiveFeedPanel({ phase, evidenceId, canStart, paused, shutterKey,
     if (keys === 'all') return
     const next = [...keys][0]
     if (next !== 'VIDEO-01' && next !== 'VIDEO-02') return
-    try {
-      actions.setActiveCamera(next)
-    } catch (error) {
-      logSessionMonitorError('LiveFeedPanel.switchCamera', error, { cameraId: next })
-    }
+    // LB-1: a second choice while the first is out is ignored (the toggle keeps the pending one).
+    cameraPress.settle(() => actions.setActiveCamera(next), {
+      onWait: () => setPendingCamera(next),
+      fail: (error) => {
+        logSessionMonitorError('LiveFeedPanel.switchCamera', error, { cameraId: next })
+        // The page's own branch is the log line above, as before; the presenter words an outage,
+        // a limit or a refusal of the Core.
+        presentCoreError(error)
+      },
+      done: () => setPendingCamera(null),
+    })
   }
 
   const fullscreenButton = (
@@ -91,15 +123,17 @@ export function LiveFeedPanel({ phase, evidenceId, canStart, paused, shutterKey,
       title={t('session.feed.title')}
       className="sm-area-feed"
       bodyClassName="sm-feed-body"
+      actionBusy={cameraPress.busy}
       action={
         <ToggleButtonGroup
           aria-label={t('session.feed.cameraSwitch')}
           selectionMode="single"
           disallowEmptySelection
-          selectedKeys={new Set([feed.activeCameraId])}
+          selectedKeys={new Set([selectedCamera])}
           onSelectionChange={switchCamera}
           size="sm"
           className="sm-camera-switch"
+          data-pending-camera={pendingCamera ?? undefined}
         >
           {CAMERA_IDS.map((id) => (
             <ToggleButton key={id} id={id} data-testid={`sm-camera-${id}`}>
@@ -151,7 +185,14 @@ export function LiveFeedPanel({ phase, evidenceId, canStart, paused, shutterKey,
               exit={{ opacity: 0 }}
               transition={m.transitions.crossFade}
             >
-              <Invitation phase={phase} evidenceId={evidenceId} canStart={canStart} onRecover={onRecover} />
+              <Invitation
+                phase={phase}
+                evidenceId={evidenceId}
+                canStart={canStart}
+                onRecover={onRecover}
+                recoverBusy={recoverBusy}
+                recoverPending={recoverPending}
+              />
             </motion.div>
           ) : null}
         </AnimatePresence>
@@ -217,10 +258,12 @@ interface InvitationProps {
   evidenceId: string | null
   canStart: boolean
   onRecover: () => void
+  recoverBusy: boolean
+  recoverPending: boolean
 }
 
 /** The feed panel's idle, setup, sealed and fault content (M-PG-SM NO SESSION state). */
-function Invitation({ phase, evidenceId, canStart, onRecover }: InvitationProps) {
+function Invitation({ phase, evidenceId, canStart, onRecover, recoverBusy, recoverPending }: InvitationProps) {
   const { t } = useTranslation()
   const systemState = useSim((s) => selectSystemState(s).state)
   const copy =
@@ -239,13 +282,14 @@ function Invitation({ phase, evidenceId, canStart, onRecover }: InvitationProps)
         <p className="sm-invitation-title">{copy.title}</p>
         <p className="sm-invitation-body">{copy.body}</p>
       </div>
-      <div className="sm-invitation-actions">
+      <div className="sm-invitation-actions" aria-busy={recoverBusy || undefined}>
         {!canStart && (phase === 'SETUP' || phase === 'FAULT') ? null : phase === 'SETUP' ? (
           <Link to="/session/new" className={buttonVariants({ variant: 'primary', size: 'md' })}>
             {t('session.banner.cta.continueSetup')}
           </Link>
         ) : phase === 'FAULT' ? (
-          <Button variant="danger-soft" onPress={onRecover}>
+          <Button variant="danger-soft" onPress={onRecover} isPending={recoverPending} data-busy={recoverBusy || undefined}>
+            {recoverPending ? <Spinner size="sm" color="current" /> : null}
             {t('session.banner.cta.recover')}
           </Button>
         ) : phase === 'RECOVERY' ? null : canStart ? (

@@ -12,18 +12,22 @@
  * | W52-6 RBAC | runDiagnostics, deviceCommand, setStoragePolicy, startSoftwareUpdate, restartServices check roles; the Demo Control Panel actions stay open to every role | the page still catches `SimPermissionError` |
  * | W52-7 export logs | `actions.exportLogs()` (scope LOGS), `logBundle` | the Maintenance panel calls it |
  * | W52-8 reset | `actions.resetDemo()` | the Demo panel calls it |
+ *
+ * Plan row W76 (Live mode): the functions take the actions of `useCoreActions()` (the same object
+ * as before in Simulated mode, CL-12) instead of reading `sim.actions` (AC-C-53). In Live mode the
+ * console preferences and presentation mode are the Core server's `settings` slice: the stored copy
+ * of this browser is not pushed to the Core on mount (see `useConsolePrefs`), and presentation mode
+ * is written to the Core only (the root route's follow-up copies the server's value into the tab
+ * flag, `runtime/presentation-follow.ts`).
  */
-import { useEffect, useRef } from 'react'
-import {
-  selectPresentationMode,
-  selectSettings,
-  useSim,
-  useSimActions,
-  type AuditRow,
-  type Sim,
-  type SimState,
-} from '@dems/shared/sim'
+import { useCallback, useEffect, useRef } from 'react'
+import { settle, useCoreActions, type CoreActions } from '@dems/shared/live'
+import { selectPresentationMode, selectSettings, useSim, type AuditRow, type SimState } from '@dems/shared/sim'
+import { useCoreErrorPresenter } from '@/lib/core-errors'
+import { deferEffectStart } from '@/lib/effect-start'
 import { setPresentationMode, usePresentationMode } from '@/lib/presentation-mode'
+import { useSystemLiveMode } from './live'
+import { logSystemError } from './log'
 
 export { releaseInfo, selectServicesSince, SERVICES_RESTART_SCOPE, type ReleaseInfo } from '@dems/shared/sim'
 
@@ -60,11 +64,12 @@ export function uptimeAnchors(s: SimState): UptimeAnchors {
 
 // ── Restart services (W52-3) ─────────────────────────────────────────────────────────────────
 /**
- * Restarts the Core services (simulated, audited by the simulator). Throws like a sim action:
- * `SimPermissionError` without MAINTENANCE, `SimTransitionError` (SESSION_ACTIVE) during a session.
+ * Restarts the Core services (audited by the Core). Throws (Simulated) or rejects (Live) like an
+ * action: `SimPermissionError` without MAINTENANCE, `SimTransitionError` (SESSION_ACTIVE) during a
+ * session. Resolves with the number of services restarted (A11).
  */
-export function restartCoreServices(sim: Pick<Sim, 'actions'>): number {
-  return sim.actions.restartServices()
+export function restartCoreServices(actions: Pick<CoreActions, 'restartServices'>): number | Promise<number> {
+  return actions.restartServices()
 }
 
 // ── Presentation mode (W52-5) ────────────────────────────────────────────────────────────────
@@ -75,32 +80,68 @@ export function usePresentationModeSetting(): boolean {
   return flag || simulated
 }
 
-/** Sets presentation mode in the simulator and in the D74 module (Login reads either). */
-export function setPresentationModeEverywhere(sim: Pick<Sim, 'actions'>, enabled: boolean): void {
-  sim.actions.setPresentationMode(enabled)
-  setPresentationMode(enabled)
+/**
+ * Sets presentation mode. Simulated: in the simulator and in the D74 module (Login reads either), as
+ * before. Live: on the Core server only (operation 68); the tab flag follows the server's value
+ * through the root route's follow-up, so the switch never shows a value the Core refused. `onFail`
+ * gets a refusal or an outage of the Live write (a fire-and-forget site, §8.4 F).
+ */
+export function setPresentationModeEverywhere(
+  actions: Pick<CoreActions, 'setPresentationMode'>,
+  enabled: boolean,
+  live = false,
+  onFail: (error: unknown) => void = () => undefined,
+): void {
+  settle(() => actions.setPresentationMode(enabled), { fail: onFail })
+  if (!live) setPresentationMode(enabled)
+}
+
+/** The refusal handler of a fire-and-forget preference write (§8.4 F): the presenter first, then one record. */
+export function usePreferenceWriteFailure(source: string): (error: unknown) => void {
+  const presentCoreError = useCoreErrorPresenter()
+  return useCallback(
+    (error: unknown) => {
+      if (presentCoreError(error) !== null) return
+      logSystemError(source, error, {}, 'warn')
+    },
+    [presentCoreError, source],
+  )
 }
 
 // ── Console preferences (W52-2) ──────────────────────────────────────────────────────────────
 /**
- * The console preferences from the simulator's `settings` slice. Each change also goes to
- * localStorage, and a fresh store (a new tab) starts from the stored choice once.
+ * The console preferences from the `settings` slice. Each change also goes to localStorage.
+ *
+ * Simulated mode: a fresh store (a new tab) starts from the stored choice once — the seed, started
+ * from an effect and therefore RETURNED through `deferEffectStart` (StrictMode runs the set-up twice
+ * in a dev build; the marker is set inside the start, gateway_check/08a §15).
+ *
+ * Live mode: the slice is the Core server's record, shared by every console and kept across its
+ * restarts (operation 68, `console_settings`). Nothing is sent on mount: pushing this browser's
+ * stored copy would overwrite what another console chose, a write nobody made. A change made here
+ * is sent as before (a fire-and-forget site, §8.4 F); a refusal or an outage is worded by the
+ * presenter, and the controls follow the replica, so they show the server's value.
  */
 export function useConsolePrefs(): [LocalPrefs, (patch: Partial<LocalPrefs>) => void] {
   const settings = useSim(selectSettings)
-  const actions = useSimActions()
+  const actions = useCoreActions()
+  const live = useSystemLiveMode()
+  const onFail = usePreferenceWriteFailure('Settings.preferences')
   const seeded = useRef(false)
   useEffect(() => {
-    if (seeded.current) return
-    seeded.current = true
-    const stored = readPrefs()
-    if (stored.timeFormat !== DEFAULT_PREFS.timeFormat || stored.notifyWarnings !== DEFAULT_PREFS.notifyWarnings || stored.notifySound !== DEFAULT_PREFS.notifySound) {
-      actions.updateSettings(stored)
-    }
-  }, [actions])
+    if (live || seeded.current) return undefined
+    return deferEffectStart(() => {
+      if (seeded.current) return
+      seeded.current = true
+      const stored = readPrefs()
+      if (stored.timeFormat !== DEFAULT_PREFS.timeFormat || stored.notifyWarnings !== DEFAULT_PREFS.notifyWarnings || stored.notifySound !== DEFAULT_PREFS.notifySound) {
+        settle(() => actions.updateSettings(stored), { fail: onFail })
+      }
+    })
+  }, [actions, live, onFail])
   const prefs: LocalPrefs = { timeFormat: settings.timeFormat, notifyWarnings: settings.notifyWarnings, notifySound: settings.notifySound }
   const update = (patch: Partial<LocalPrefs>) => {
-    actions.updateSettings(patch)
+    settle(() => actions.updateSettings(patch), { fail: onFail })
     writePrefs({ ...prefs, ...patch })
   }
   return [prefs, update]

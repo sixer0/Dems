@@ -10,6 +10,9 @@ import type { ResourceTree } from '@/i18n/resources';
  * names (`common.roles.*`, `securityAudit.rbac.permissions.*`) and the account menu
  * (`shell.userMenu.*`). The mobile namespace gives Haptics, the Core link source and the biometric
  * copy (`mobile.*`). Only what this screen alone says lives here.
+ *
+ * Backend task W82 added, additively, `preferences.coreLinkHintLive*` (the third segment) and
+ * `live.*` (the words of LIVE mode); no existing value changed.
  */
 export const settingsEn = {
   back: 'Back',
@@ -41,6 +44,10 @@ export const settingsEn = {
     debugGroup: 'Developer',
     coreLinkHint: 'Simulated runs the Core inside the app. mock-core heartbeat follows the mock-core service on this computer.',
     coreLinkHintRelease: 'Simulated runs the Core inside the app. mock-core heartbeat is a developer setup only (adb reverse to mock-core).',
+    // Backend task W82 (04_client_integration_spec §9.5): the line that follows the two hints above,
+    // for the third segment. Debug builds; a release build shows the segment disabled with its own line.
+    coreLinkHintLive: 'Live uses the Core server on this computer through adb reverse. The tablet must be paired.',
+    coreLinkHintLiveRelease: 'Live is a developer setup as well (adb reverse to the Core server).',
     meterSize: 'Meter size',
     meterSizeHint: 'Default size of the live audio meters on the session monitor.',
     meterStandard: 'Standard',
@@ -107,5 +114,29 @@ export const settingsEn = {
   },
   sheets: {
     close: 'Close',
+  },
+  /**
+   * LIVE mode (backend task W82; 04_client_integration_spec §3.2, MD-8; gateway rule 8): the Core
+   * server carries the commands out and answers them, so nothing here says "simulated". SIMULATED
+   * and HEARTBEAT mode keep the words above and the shared copy, unchanged. The dialog of a change
+   * across the LIVE boundary (§3.3) uses the shared `common.coreMode.switch*` sentences, as the web
+   * console does.
+   */
+  live: {
+    // S5-7, the Profile sheet: the role's permissions are the Core's rules (the shared table the
+    // Core is seeded from, [SP:AC-B-17]); the Core decides every call.
+    permissions: 'Permissions',
+    permissionsNote: 'The Core server checks every action against your role.',
+    // S2-7: the Core's diagnostics run and update.
+    diagnosticsSubtitle: 'Eight health checks on the Core, one after another.',
+    updateNote: 'The Core server runs a demonstration update: no software is installed.',
+    install: 'Install update',
+    updateStarted: 'Installing v{{version}}',
+    // AC-C-52: the Demo controls act on the Core, so every connected console sees them.
+    demoNote: 'Demo only. Faults are injected on the Core server, and every connected console sees them.',
+    demoFlagOff: 'Demo controls are turned off on the Core server. They appear when it runs with its demo flag on.',
+    demoNotPermitted: 'Your role does not include the demo controls.',
+    // CPM1-1: the Core or the tablet's storage did not take a change of the biometric switch; nothing changed.
+    biometricFailed: 'Biometric sign-in was not changed on this tablet. Try again.',
   },
 } as const satisfies ResourceTree;

@@ -20,6 +20,9 @@
  * over to it), so rotation and split-screen keep it (MA-13). The selected row carries glow e2.
  * Motion (§7.3 "Evidence"): search and filters, then the first 8 rows stagger 30 ms; a filter or
  * sort change re-reveals the list; no ambient loops.
+ *
+ * Backend task W74: the archive of the row kebab is site S3-1 (`archive-dialog.tsx`). The action
+ * comes from `useCoreActions()` in both modes; its result is handed to the dialog, which settles it.
  */
 import { FlashList } from '@shopify/flash-list';
 import { useRouter, type Href } from 'expo-router';
@@ -29,7 +32,7 @@ import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated from 'react-native-reanimated';
-import { useSimActions } from '@dems/shared/sim';
+import { useCoreActions } from '@dems/shared/live';
 import { fontFamily, palette, spacing, typography } from '@dems/shared/tokens';
 import { SectionCard } from '@/components/kit';
 import { Emblem } from '@/components/media';
@@ -64,7 +67,7 @@ const MEDIUM_LIST_WIDTH = 360;
 
 export function EvidenceListScreen({ selectedId }: EvidenceListScreenProps) {
   const router = useRouter();
-  const actions = useSimActions();
+  const actions = useCoreActions();
   const { layoutClass, isMultiPane } = useLayoutClass();
   const [query, setQuery] = useState<EvidenceQuery>(DEFAULT_EVIDENCE_QUERY);
   const [density, setDensity] = useState<EvidenceDensity>('comfortable');
@@ -136,7 +139,7 @@ export function EvidenceListScreen({ selectedId }: EvidenceListScreenProps) {
         onOpenChange={(open) => (open ? undefined : setArchiveId(null))}
         archive={(id) => {
           try {
-            actions.archiveEvidence(id);
+            return actions.archiveEvidence(id);
           } catch (error) {
             reportRuntimeIssue('warn', 'evidence.archive.list', error, { evidenceId: id });
             throw error;

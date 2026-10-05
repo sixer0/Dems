@@ -9,6 +9,13 @@
  * simulator's provider, so the frame re-provides it; the sheet mounts on request and opens once its
  * content has laid out (`useSheetPresence`), and it is exempt from the reduce-motion setting with
  * the short reduced fade instead (a gorhom sheet never snapped open under ReducedMotionConfig).
+ *
+ * LIVE mode (backend task W78; 04_client_integration_spec §3.2, §8.1 LB-1, LB-2; site S2-8): the
+ * sheet opens only once the Core accepted the run, and it renders the Core's `diagnostics` slice, so
+ * its subtitle says nothing about a simulation. "Run again" is the control of a command that may be
+ * out: it is marked busy from the press, and the kit's `Spinner` shows in it after
+ * `LIVE_PENDING_REVEAL_MS` (the caller passes both flags as plain values: this content is
+ * portalled, so it reads no runtime hook of its own).
  */
 import { BottomSheet, Button, Spinner } from 'heroui-native';
 import { useTranslation } from 'react-i18next';
@@ -18,6 +25,7 @@ import { SimContext, useSim, useSimInstance, type DiagnosticCheck, type Diagnost
 import { fontFamily, palette, spacing, typography, type StatusTone } from '@dems/shared/tokens';
 import { StatusChip } from '@/components/kit';
 import { REDUCED_FADE_MS, useMotionPolicy } from '@/motion';
+import { PendingSpinner, busyState } from '@/runtime';
 import { SheetContentSignal, useSheetPresence } from './use-sheet-presence';
 
 const CHECK_TONE: Readonly<Record<string, StatusTone>> = { PASS: 'success', WARN: 'warning', FAIL: 'danger' };
@@ -25,11 +33,17 @@ const CHECK_TONE: Readonly<Record<string, StatusTone>> = { PASS: 'success', WARN
 export interface DiagnosticsSheetProps {
   isOpen: boolean;
   onClose: () => void;
-  /** Starts another run (the caller holds the simulator's actions and the error handling). */
+  /** Starts another run (the caller holds the Core's actions and the error handling). */
   onRunAgain: () => void;
+  /** The Core link source is LIVE: the Core's words. */
+  live?: boolean;
+  /** A run the caller started is out (LB-1): "Run again" is marked busy. */
+  runAgainBusy?: boolean;
+  /** It has been out for `LIVE_PENDING_REVEAL_MS` or longer: the kit's `Spinner` shows in "Run again". */
+  runAgainPending?: boolean;
 }
 
-export function DiagnosticsSheet({ isOpen, onClose, onRunAgain }: DiagnosticsSheetProps) {
+export function DiagnosticsSheet({ isOpen, onClose, onRunAgain, live = false, runAgainBusy = false, runAgainPending = false }: DiagnosticsSheetProps) {
   const { t } = useTranslation();
   const sim = useSimInstance();
   const reduced = useMotionPolicy() === 'reduced';
@@ -42,7 +56,14 @@ export function DiagnosticsSheet({ isOpen, onClose, onRunAgain }: DiagnosticsShe
         <BottomSheet.Content overrideReduceMotion={ReduceMotion.Never} {...(reduced ? { animationConfigs: { duration: REDUCED_FADE_MS } } : {})}>
           <SheetContentSignal onChange={presence.setContentMounted}>
             <SimContext.Provider value={sim}>
-              <DiagnosticsBody onClose={onClose} onRunAgain={onRunAgain} closeLabel={t('features.devices.diagnostics.close')} />
+              <DiagnosticsBody
+                onClose={onClose}
+                onRunAgain={onRunAgain}
+                closeLabel={t('features.devices.diagnostics.close')}
+                subtitleKey={live ? 'features.devices.live.diagnosticsSubtitle' : 'system.diagnostics.subtitle'}
+                runAgainBusy={runAgainBusy}
+                runAgainPending={runAgainPending}
+              />
             </SimContext.Provider>
           </SheetContentSignal>
         </BottomSheet.Content>
@@ -51,7 +72,17 @@ export function DiagnosticsSheet({ isOpen, onClose, onRunAgain }: DiagnosticsShe
   );
 }
 
-function DiagnosticsBody({ onClose, onRunAgain, closeLabel }: { onClose: () => void; onRunAgain: () => void; closeLabel: string }) {
+interface DiagnosticsBodyProps {
+  onClose: () => void;
+  onRunAgain: () => void;
+  closeLabel: string;
+  /** The subtitle's i18n key: the Simulated one says "(simulated)", the LIVE one does not. */
+  subtitleKey: string;
+  runAgainBusy: boolean;
+  runAgainPending: boolean;
+}
+
+function DiagnosticsBody({ onClose, onRunAgain, closeLabel, subtitleKey, runAgainBusy, runAgainPending }: DiagnosticsBodyProps) {
   const { t } = useTranslation();
   const run = useSim((s) => s.diagnostics);
   return (
@@ -59,17 +90,24 @@ function DiagnosticsBody({ onClose, onRunAgain, closeLabel }: { onClose: () => v
       <View style={styles.header}>
         <View style={styles.headerText}>
           <BottomSheet.Title>{t('system.diagnostics.title')}</BottomSheet.Title>
-          <BottomSheet.Description>{summaryOf(run, t)}</BottomSheet.Description>
+          <BottomSheet.Description>{summaryOf(run, subtitleKey, t)}</BottomSheet.Description>
         </View>
         <BottomSheet.Close accessibilityLabel={closeLabel} testID="device-diagnostics-close" onPress={onClose} />
       </View>
-      <View style={styles.list} accessibilityLabel={t('system.diagnostics.subtitle')}>
+      <View style={styles.list} accessibilityLabel={t(subtitleKey)}>
         {(run?.checks ?? []).map((check) => (
           <CheckRow key={check.id} check={check} />
         ))}
       </View>
       {run && run.completedAt !== null ? (
-        <Button variant="outline" onPress={onRunAgain} testID="device-diagnostics-again" style={styles.again}>
+        <Button
+          variant="outline"
+          onPress={onRunAgain}
+          testID="device-diagnostics-again"
+          style={styles.again}
+          {...busyState(runAgainBusy)}
+        >
+          {runAgainPending ? <PendingSpinner color={palette.gold} testID="device-diagnostics-again-spinner" /> : null}
           <Button.Label>{t('system.diagnostics.runAgain')}</Button.Label>
         </Button>
       ) : null}
@@ -77,8 +115,8 @@ function DiagnosticsBody({ onClose, onRunAgain, closeLabel }: { onClose: () => v
   );
 }
 
-function summaryOf(run: DiagnosticsRun | null, t: (key: string, options?: Record<string, unknown>) => string): string {
-  if (!run) return t('system.diagnostics.subtitle');
+function summaryOf(run: DiagnosticsRun | null, subtitleKey: string, t: (key: string, options?: Record<string, unknown>) => string): string {
+  if (!run) return t(subtitleKey);
   const done = run.checks.filter((check) => check.status === 'PASS' || check.status === 'WARN' || check.status === 'FAIL').length;
   if (run.completedAt === null) return t('system.diagnostics.progress', { done, total: run.checks.length });
   const failed = run.checks.filter((check) => check.status === 'FAIL').length;

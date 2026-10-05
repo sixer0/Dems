@@ -1,21 +1,15 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { getRouteApi } from '@tanstack/react-router'
-import { Button, Card, Chip, Dropdown, Label, Tabs, toast } from '@heroui/react'
+import { Button, Card, Chip, Dropdown, Label, Skeleton, Spinner, Tabs, toast } from '@heroui/react'
 import type { Key } from '@heroui/react'
 import { animate, motion } from 'motion/react'
 import { Archive, Copy, Download, FileVideo, MoreHorizontal, Play, Share2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { CoreMode, useCoreMode } from '@dems/shared/live'
 import { formatUtcOffset } from '@dems/shared/realtime'
-import {
-  Permission,
-  selectCan,
-  SimPermissionError,
-  SimTransitionError,
-  useSim,
-  useSimActions,
-  type EvidenceItem,
-} from '@dems/shared/sim'
+import { Permission, selectCan, useSim, type EvidenceItem } from '@dems/shared/sim'
 import { useRouteEnterDelay } from '@/components/shell/shell-motion-context'
+import { deferEffectStart } from '@/lib/effect-start'
 import { useMotionPolicy } from '@/motion'
 import { EvidenceStatusChip, SubjectTypeChip } from './chips'
 import { copyText } from './clipboard'
@@ -38,6 +32,8 @@ import {
 } from './model'
 import { consumeAutoVerify, takeHeaderOrigin, type HeaderOrigin } from './pending-actions'
 import { selectOperators } from './selectors'
+import { useArchiveEvidence } from './use-archive'
+import { rowForMedia, useEvidenceMedia, type EvidenceMediaState } from './use-evidence-media'
 import { useEvidenceVerification } from './use-verification'
 
 const detailRoute = getRouteApi('/_app/evidence/$evidenceId')
@@ -52,28 +48,50 @@ const TABS: TabKey[] = ['media', 'metadata', 'integrity']
  * the Media, Metadata and Hash & Integrity tabs (URL `?tab=`). The header's ID block grows out of the
  * clicked row (the H-M1 stored-rect fallback of `layoutId="evidence-<id>-header"`); reduced motion
  * cross-fades it.
+ *
+ * Live mode (backend task, plan row W69): the Core server's media reference (operation 40, MS-2)
+ * decides whether the bundled demo package belongs to the item; the body waits for it behind the
+ * skeleton, so the media, the poster and the bundled check never appear and vanish again. Without
+ * an answer the page shows no bundled media and says so on the header chip. Archive is settle site
+ * B-1 (`use-archive.ts`).
  */
 export function EvidenceDetailBody({ item }: { item: EvidenceItem }) {
   const search = detailRoute.useSearch()
   const navigateDetail = detailRoute.useNavigate()
-  return <EvidenceDetail item={item} tab={search.tab ?? 'media'} onTab={(tab) => void navigateDetail({ search: { tab }, replace: true })} />
+  const media = useEvidenceMedia(item.id)
+  if (media.status === 'loading') return <MediaReferenceSkeleton />
+  return <EvidenceDetail item={item} media={media} tab={search.tab ?? 'media'} onTab={(tab) => void navigateDetail({ search: { tab }, replace: true })} />
+}
+
+/** The detail body's shape while the Core's media reference is on its way (Live mode only; M-C-24). */
+function MediaReferenceSkeleton() {
+  const m = useMotionPolicy()
+  const animation = m.reduced ? 'none' : 'shimmer'
+  return (
+    <div className="evi-body evi-body-skeleton" data-testid="evidence-media-loading" aria-busy="true">
+      <Skeleton animationType={animation} className="evi-skeleton-block evi-skeleton-header" />
+      <Skeleton animationType={animation} className="evi-skeleton-block evi-skeleton-panel" />
+    </div>
+  )
 }
 
 interface EvidenceDetailProps {
   item: EvidenceItem
+  media: EvidenceMediaState
   tab: TabKey
   onTab: (tab: TabKey) => void
 }
 
-function EvidenceDetail({ item, tab, onTab }: EvidenceDetailProps) {
+function EvidenceDetail({ item, media, tab, onTab }: EvidenceDetailProps) {
   const { t } = useTranslation()
   const m = useMotionPolicy()
-  const actions = useSimActions()
+  const live = useCoreMode() === CoreMode.LIVE
+  const { archive, control: archiving } = useArchiveEvidence()
   const operators = useSim(selectOperators)
   const canArchive = useSim((s) => selectCan(s, Permission.EVIDENCE_REVIEW))
   const { urlFor, load } = useEvidenceAssets()
   const routeDelay = useRouteEnterDelay()
-  const row = useMemo(() => buildEvidenceRow(item, operators), [item, operators])
+  const row = useMemo(() => rowForMedia(buildEvidenceRow(item, operators), media), [item, media, operators])
   const verification = useEvidenceVerification(row)
   const [playToken, setPlayToken] = useState<number | null>(null)
   const onPlayHandled = useCallback(() => setPlayToken(null), [])
@@ -86,8 +104,11 @@ function EvidenceDetail({ item, tab, onTab }: EvidenceDetailProps) {
   useEffect(() => {
     runRef.current = verification.run
   })
+  // The start waits one task, so React StrictMode's simulated unmount cancels the first start instead
+  // of sending a second verification to the Core in Live mode (plan row W69; the shared helper, W0).
   useEffect(() => {
-    if (autoVerify.current) void runRef.current()
+    if (!autoVerify.current) return undefined
+    return deferEffectStart(() => void runRef.current())
   }, [])
 
   // Header flight from the clicked row (H-M1 stored-rect fallback of the R5 shared element). The
@@ -124,7 +145,7 @@ function EvidenceDetail({ item, tab, onTab }: EvidenceDetailProps) {
   const tabsVariants = usePanelVariants(DETAIL_BEAT_MS.tabs)
 
   const exportable = EXPORTABLE_STATUSES.includes(item.status)
-  const archivable = canArchive && ARCHIVABLE_STATUSES.includes(item.status)
+  const archivable = canArchive && ARCHIVABLE_STATUSES.includes(item.status) && !archiving.busy
   const size = byteSize(item.sizeBytes)
   const poster = urlFor(row.posterPath)
 
@@ -155,19 +176,18 @@ function EvidenceDetail({ item, tab, onTab }: EvidenceDetailProps) {
     } else if (key === 'manifest') {
       void downloadManifest()
     } else if (key === 'archive') {
-      try {
-        actions.archiveEvidence(item.id)
-        toast.success(t('evidence.archive.success', { id: item.id }))
-      } catch (error) {
-        if (error instanceof SimPermissionError) toast.danger(t('evidence.archive.denied'))
-        else if (error instanceof SimTransitionError) toast.warning(t('evidence.archive.notSealed'))
-        else {
-          logEvidenceError('detail.archive', error, { evidenceId: item.id })
-          toast.danger(t('evidence.archive.failed'))
-        }
-      }
+      archive(item.id, 'detail')
     }
   }
+
+  // §3.2: in Live mode an item without a bundled package shows the Core's record, never "simulated".
+  const packageChip = row.pkg
+    ? { kind: 'demo', label: t('evidence.demo.package') }
+    : !live
+      ? { kind: 'simulated', label: t('common.simulated.chip') }
+      : media.status === 'unavailable'
+        ? { kind: 'unavailable', label: t('evidence.live.mediaUnavailable') }
+        : { kind: 'core', label: t('evidence.live.coreRecord') }
 
   return (
     <div className="evi-body" data-testid="evidence-detail-body">
@@ -186,8 +206,8 @@ function EvidenceDetail({ item, tab, onTab }: EvidenceDetailProps) {
             </div>
             <div className="evi-still-meta">
               <EvidenceStatusChip status={item.status} size="md" />
-              <Chip size="sm" variant="secondary" className="evi-demo-chip" data-testid="evidence-package-chip" data-package={row.pkg ? 'demo' : 'simulated'}>
-                <Chip.Label>{row.pkg ? t('evidence.demo.package') : t('common.simulated.chip')}</Chip.Label>
+              <Chip size="sm" variant="secondary" className="evi-demo-chip" data-testid="evidence-package-chip" data-package={packageChip.kind}>
+                <Chip.Label>{packageChip.label}</Chip.Label>
               </Chip>
             </div>
           </div>
@@ -249,7 +269,8 @@ function EvidenceDetail({ item, tab, onTab }: EvidenceDetailProps) {
                 <dd className="evi-mono">{item.sessionId}</dd>
               </div>
             </dl>
-            <div className="evi-detail-actions">
+            {/* LB-1: the kit's Button drops `aria-busy` (F63-2), so the action row carries it while an archive is out. */}
+            <div className="evi-detail-actions" aria-busy={archiving.busy || undefined}>
               <Button variant="primary" onPress={onPlay} isDisabled={!row.pkg} data-testid="evidence-play">
                 <Play className="size-4" aria-hidden="true" />
                 {t('evidence.detail.actions.play')}
@@ -259,8 +280,14 @@ function EvidenceDetail({ item, tab, onTab }: EvidenceDetailProps) {
                 {t('evidence.detail.actions.export')}
               </Button>
               <Dropdown>
-                <Button variant="ghost" aria-label={t('evidence.detail.actions.more')} data-testid="evidence-more">
-                  <MoreHorizontal className="size-4" aria-hidden="true" />
+                <Button
+                  variant="ghost"
+                  aria-label={t('evidence.detail.actions.more')}
+                  data-testid="evidence-more"
+                  isPending={archiving.pending}
+                  data-pending={archiving.pending ? 'true' : undefined}
+                >
+                  {archiving.pending ? <Spinner size="sm" color="current" aria-hidden="true" /> : <MoreHorizontal className="size-4" aria-hidden="true" />}
                   {t('evidence.detail.actions.more')}
                 </Button>
                 <Dropdown.Popover placement="bottom end" className="min-w-[220px]">

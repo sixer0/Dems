@@ -1,6 +1,7 @@
 import { Chip, Label, ProgressBar } from '@heroui/react'
 import { Archive, Cpu, Info, Server } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { CoreMode, useCoreMode } from '@dems/shared/live'
 import { formatWibTime, selectStorage, TB, useSim, type StorageVolume } from '@dems/shared/sim'
 import { toneChipProps, type StatusTone } from '@dems/shared/tokens'
 import { useMotionPolicy } from '@/motion'
@@ -14,6 +15,17 @@ const SMART_TONE: Record<SmartStatus, StatusTone> = { PASSED: 'success', WARNING
 const TEMP_TONE: Record<TempLevel, StatusTone> = { OK: 'success', WARM: 'warning', HOT: 'danger' }
 
 /**
+ * The footnote on the SMART values, by data mode. Live mode (plan row W71): the volumes and the
+ * temperatures are the Core server's (`storage`, `health`), but the Core server reports no SMART
+ * counters (CONTRACT-GAP-W71-1): the console derives them with the same `driveHealth`, and the
+ * footnote says so without naming a simulator (04_client_integration_spec §3.2).
+ */
+const DERIVED_NOTE = {
+  [CoreMode.SIMULATED]: 'storage.volumes.derivedNote',
+  [CoreMode.LIVE]: 'storage.volumes.live.derivedNote',
+} as const
+
+/**
  * Volumes & Health (01_specs §14.5.5 "Volumes: NVMe (system), HDD (evidence)", `ProgressBar` × 2;
  * research/01_explore §10.1 roles). Each drive shows its role, its fill (kit ProgressBar whose fill
  * reveals with a 700 ms `scaleX`, never a width animation, §9.2), and SMART-like health with a
@@ -23,6 +35,7 @@ export function VolumesPanel() {
   const { t } = useTranslation()
   const volumes = useSim((s) => s.storage.volumes)
   const level = useSim((s) => selectStorage(s).state) as StorageLevel
+  const derivedNote = DERIVED_NOTE[useCoreMode()]
   return (
     <StoragePanel id="volumes" icon={Server} title={t('storage.volumes.panelTitle')} bodyClassName="stor-volumes">
       {volumes.map((volume) => (
@@ -31,7 +44,7 @@ export function VolumesPanel() {
       <p className="stor-footnote">
         <Info aria-hidden="true" strokeWidth={1.75} />
         <span>
-          {t('storage.volumes.roleSource')} · {t('storage.volumes.derivedNote')}
+          {t('storage.volumes.roleSource')} · {t(derivedNote)}
         </span>
       </p>
     </StoragePanel>

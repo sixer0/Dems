@@ -17,6 +17,11 @@
  * Motion (§7.3 "Audit"): chain chip and strip first, then the rows stagger (first 10, 30 ms); a
  * filter change re-reveals; live rows insert (M-C-07); the chain head breathes (one ambient loop);
  * a tamper escalates once and the broken row holds a slow red glow until acknowledged (P7).
+ *
+ * Live mode (backend task W80; 04_client_integration_spec §7.4): the rows, the chain head and the
+ * demo fault's break are the Core server's (the replica); Verify is operation 60 (`chain-strip.tsx`,
+ * site S1-7); a failed or locked sign-in names the username typed (`use-audit-data.ts`); while the
+ * Core link is down a notice says the rows are the last the Core sent (`chain-live.tsx`).
  */
 import { FlashList, type FlashListRef } from '@shopify/flash-list';
 import { useIsFocused, useRouter } from 'expo-router';
@@ -38,6 +43,7 @@ import { AuditFilters } from './audit-filters';
 import { DEFAULT_AUDIT_QUERY, chainLinkOf, isFiltered, type AuditQuery } from './audit-model';
 import { AuditRowItem } from './audit-row';
 import { AuditSheet } from './audit-sheet';
+import { AuditLinkNotice } from './chain-live';
 import { ChainStatusChip, ChainStrip, TamperAlert } from './chain-strip';
 import {
   useAuditFeed,
@@ -116,6 +122,8 @@ export function AuditScreen() {
         <Animated.View entering={enterRise(1, m)} style={styles.section}>
           <ChainStrip rows={ring} head={head} total={total} breakSeq={breakSeq} focused={focused} />
         </Animated.View>
+        {/* Live mode only, and only while the Core link is down: no element otherwise (W80). */}
+        <AuditLinkNotice style={styles.section} />
         {breakSeq !== null ? (
           <View style={styles.section}>
             <TamperAlert seq={breakSeq} acknowledged={acknowledged} onShow={showBrokenEntry} onAcknowledge={() => setAcknowledgedSeq(breakSeq)} />

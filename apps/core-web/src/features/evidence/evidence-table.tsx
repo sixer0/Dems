@@ -1,5 +1,5 @@
 import { useRef } from 'react'
-import { Button, Checkbox, Dropdown, EmptyState, Label, Pagination, Skeleton, Table } from '@heroui/react'
+import { Button, Checkbox, Dropdown, EmptyState, Label, Pagination, Skeleton, Spinner, Table } from '@heroui/react'
 import type { Key, Selection, SortDescriptor } from '@heroui/react'
 import { Archive, Eye, FileVideo, FilterX, MoreVertical, Share2, ShieldCheck } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -26,6 +26,10 @@ export interface EvidenceTableProps {
   previewId: string | null
   selectedIds: ReadonlySet<string>
   canArchive: boolean
+  /** The item whose archive is out (Live mode, LB-1): its menu offers no second archive; the table is `aria-busy`. */
+  busyId?: string | null
+  /** The item whose archive has been out for `LIVE_PENDING_REVEAL_MS`: its menu trigger shows the kit's spinner. */
+  pendingId?: string | null
   onSelectionChange: (ids: Set<string>) => void
   onRowAction: (row: EvidenceRow) => void
   onView: (row: EvidenceRow, origin: Element | null) => void
@@ -48,7 +52,7 @@ const SORTABLE: EvidenceSortColumn[] = ['evidence', 'subject', 'case', 'duration
  * Motion (M-C-11): `useRowMotion` reveals, FLIPs and cross-fades the rows.
  */
 export function EvidenceTable(props: EvidenceTableProps) {
-  const { model, loading, previewId, selectedIds, canArchive, onSelectionChange, onRowAction, onView, onVerify, onExport, onArchive, onPageChange, onClearFilters } = props
+  const { model, loading, previewId, selectedIds, canArchive, busyId = null, pendingId = null, onSelectionChange, onRowAction, onView, onVerify, onExport, onArchive, onPageChange, onClearFilters } = props
   const { t } = useTranslation()
   const { urlFor } = useEvidenceAssets()
   const routeDelay = useRouteEnterDelay()
@@ -86,7 +90,17 @@ export function EvidenceTable(props: EvidenceTableProps) {
   const last = Math.min(model.total, (model.pageIndex + 1) * 10)
 
   return (
-    <div ref={containerRef} className="evi-table-wrap" data-testid="evidence-table" data-page={page} data-pages={pages} data-total={model.total}>
+    // LB-1: the kit's Button and React Aria's rows drop `aria-busy` (F63-2), so the table's wrapper carries it.
+    <div
+      ref={containerRef}
+      className="evi-table-wrap"
+      data-testid="evidence-table"
+      data-page={page}
+      data-pages={pages}
+      data-total={model.total}
+      aria-busy={busyId !== null || undefined}
+      data-busy-id={busyId ?? undefined}
+    >
       <Table variant="primary" className="evi-table">
         <Table.ScrollContainer>
           <Table.Content
@@ -163,7 +177,8 @@ export function EvidenceTable(props: EvidenceTableProps) {
                   ))
                 : model.pageRows.map((row) => {
                     const exportable = EXPORTABLE_STATUSES.includes(row.item.status)
-                    const archivable = canArchive && ARCHIVABLE_STATUSES.includes(row.item.status)
+                    const archivable = canArchive && ARCHIVABLE_STATUSES.includes(row.item.status) && busyId === null
+                    const rowPending = pendingId === row.id
                     const size = byteSize(row.item.sizeBytes)
                     const thumb = urlFor(row.thumbPath)
                     return (
@@ -224,8 +239,16 @@ export function EvidenceTable(props: EvidenceTableProps) {
                         </Table.Cell>
                         <Table.Cell className="evi-col-actions">
                           <Dropdown>
-                            <Button isIconOnly size="sm" variant="ghost" aria-label={t('evidence.table.rowActions.label', { id: row.id })} data-testid={`evidence-row-menu-${row.id}`}>
-                              <MoreVertical className="size-4" aria-hidden="true" />
+                            <Button
+                              isIconOnly
+                              size="sm"
+                              variant="ghost"
+                              aria-label={t('evidence.table.rowActions.label', { id: row.id })}
+                              data-testid={`evidence-row-menu-${row.id}`}
+                              isPending={rowPending}
+                              data-pending={rowPending ? 'true' : undefined}
+                            >
+                              {rowPending ? <Spinner size="sm" color="current" aria-hidden="true" /> : <MoreVertical className="size-4" aria-hidden="true" />}
                             </Button>
                             <Dropdown.Popover placement="bottom end" className="min-w-[200px]">
                               <Dropdown.Menu

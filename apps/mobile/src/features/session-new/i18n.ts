@@ -78,4 +78,16 @@ export const sessionNewEn = {
     maxRetries: 'Still failing. Go back and reopen Start Session.',
   },
   actionFailed: 'That action could not be completed. Please try again.',
+  // Backend task, plan row W67: Live mode only (the Core server is the source of the session).
+  live: {
+    linkDownTitle: 'Core server unreachable',
+    linkDownBody: 'This device is not connected to the Core server. Recording can start once the connection is back.',
+    // Decision F69: in Live mode the Core link of the pre-check is set by a paired device's own connection.
+    coreCheckHint: "In Live mode this check is this device's own connection to the Core server. Run the checks again once it is connected.",
+    // Row M1 (W67 F-2; §3.2, MD-8): in Live mode the screen says what is true and nothing about a
+    // simulation. The step 2 meters are the Core server's `meters` frames (the replica's audio slice).
+    speakToTest: 'Microphone levels from the Core server',
+    // The case-number button fills in the next free number from the replicated session records (S4-6): nothing is scanned.
+    scanCaseNumber: 'Fill in the next case number',
+  },
 } as const satisfies ResourceTree;

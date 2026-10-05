@@ -88,10 +88,15 @@ export function osdTimestamp(epochMs: number): string {
   return formatDate(epochMs, 'YYYY-MM-DD  HH:mm:ss  [UTC]Z')
 }
 
-/** Bottom OSD line of the procedural feed (step 92 live-loop wording; DEMO per P13). */
-export function osdLabel(cameraId: VideoTrackId): string {
+/**
+ * Bottom OSD line of the procedural feed (step 92 live-loop wording; DEMO per P13). With the Core's
+ * data (`liveData`, Live mode) the line keeps the DEMO marking and drops LIVE: the picture is the
+ * bundled demo still (decision MS-1), not the Core's camera, and in Live mode the word "live" names
+ * the server's data only (04_client_integration_spec §3.2; plan row W0, item 7).
+ */
+export function osdLabel(cameraId: VideoTrackId, liveData = false): string {
   const n = cameraId.slice(-2)
-  return `CAM-${n} | ${cameraId} | LIVE | DEMO`
+  return liveData ? `CAM-${n} | ${cameraId} | BUNDLED DEMO` : `CAM-${n} | ${cameraId} | LIVE | DEMO`
 }
 
 /**

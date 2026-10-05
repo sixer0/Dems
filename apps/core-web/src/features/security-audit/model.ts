@@ -200,6 +200,15 @@ export function actorKindOf(row: Pick<AuditRow, 'actorId' | 'type'>): ActorKind 
   return UNVERIFIED_WHEN_NULL.has(row.type) ? 'UNVERIFIED' : 'SYSTEM'
 }
 
+/**
+ * A failed sign-in or a lockout that names an operator: the operator whose username was TYPED at
+ * the form, not a signed-in actor (01_specs ID-4; security review CPS1-12 (a)). Live mode words the
+ * actor column so; Simulated mode is as it was.
+ */
+export function namesTypedUsername(row: Pick<AuditRow, 'actorId' | 'type'>): boolean {
+  return row.actorId !== null && UNVERIFIED_WHEN_NULL.has(row.type)
+}
+
 function buildView(row: AuditRow, chain: ChainLinkStatus, actorName: string | null): AuditRowView {
   const refs = [row.evidenceId, row.sessionId, detailString(row, 'exportId'), detailString(row, 'caseNumber'), row.deviceId]
     .filter((value): value is string => typeof value === 'string' && value.length > 0)
@@ -452,6 +461,11 @@ export function roleGrants(role: OperatorRole, permission: Permission): boolean 
 /** The first role (in ROLE_ORDER) that holds a permission: the role a disabled control names (S20). */
 export function roleFor(permission: Permission): OperatorRole | null {
   return ROLE_ORDER.find((role) => roleGrants(role, permission)) ?? null
+}
+
+/** Live mode: the Core's grants (operation 10) as `ROLE:PERMISSION` keys, for the matrix cells. */
+export function coreGrantSet(grants: readonly { role: string; permission: string }[]): ReadonlySet<string> {
+  return new Set(grants.map((grant) => `${grant.role}:${grant.permission}`))
 }
 
 // ── Keys & certificates expiry ───────────────────────────────────────────────────────────

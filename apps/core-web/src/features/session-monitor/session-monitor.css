@@ -694,6 +694,27 @@
   min-width: 0;
 }
 
+/* LB-4 (plan row W65): the marker chip that waits at the button while a Live marker is out. */
+.sm-action-slot-anchored {
+  position: relative;
+}
+
+.sm-marker-pending {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 6px);
+  left: 0;
+  z-index: 5;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.sm-marker-pending-chip {
+  display: inline-flex;
+  max-width: 220px;
+}
+
 .sm-action-unavailable {
   display: flex;
   flex: 1 1 auto;

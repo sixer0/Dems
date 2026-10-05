@@ -22,7 +22,7 @@ export interface AuditEntryDetailProps {
   chain: ChainLink;
   /** Translated event label (by code). */
   label: string;
-  /** Operator name, "System" or "Unverified user". */
+  /** Operator name, "System" or "Unverified user"; in Live mode "Username typed: <name>" for a failed or locked sign-in (W80). */
   actor: string;
   /** `sheet` omits the title (the sheet header shows it). */
   variant: 'sheet' | 'pane';

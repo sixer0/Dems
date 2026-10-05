@@ -47,4 +47,12 @@ export const storageEn = {
     close: 'Close',
     current: 'Current: {{policy}} · auto-archive {{autoArchive}}',
   },
+  /**
+   * LIVE mode (backend task, plan row W79; rule 8, MD-8): the Core server applied the change, so the
+   * words say nothing of a simulation. The web console's twin is the shared `storage.manage.live.*`
+   * of row W71 (one shared key for both clients is the contract close-out's, W83).
+   */
+  live: {
+    applied: 'Storage policy updated',
+  },
 } as const satisfies ResourceTree;

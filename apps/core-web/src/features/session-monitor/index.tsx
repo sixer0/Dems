@@ -18,16 +18,26 @@
  * timer and the feed's breathing frame glow; at most four ambient loops (REC pulse, feed frame
  * glow, the procedural camera push-in only when the video falls back, banner dot) plus the shell;
  * reduced motion follows §8 (static loops, opacity-only enters, no flights, meters kept).
+ *
+ * Both data modes (plan row W65; backend task 04_client_integration_spec §8.2 A9, §8.3 B-2 to B-4,
+ * §8.4 C-1, C-2): every action runs through `useCoreActions()` and `settle`, and every error goes
+ * to the refusal presenter (`useCoreErrorPresenter`) before the page's own message. In Live mode
+ * the panels read the replica of the Core server; the meters are the `meters` publications of the
+ * socket, which the Live source writes into the store's `audio` slice (the DbfsMeter reads that
+ * slice; nothing here polls). The shell owns the outage notice and the role notice (W54 §21.2).
  */
 import { useEffect, useRef, useState, type RefObject } from 'react'
 import { toast } from '@heroui/react'
 import { createPortal } from 'react-dom'
 import { Monitor } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { useSim, useSimActions } from '@dems/shared/sim'
+import { useCoreActions } from '@dems/shared/live'
+import { useSim } from '@dems/shared/sim'
 import { PageHeader, useRouteEnterDelay } from '@/components/shell'
 import type { CameraFeedHandle } from '@/components/media'
 import { TextShimmer } from '@/components/ui/text-shimmer'
+import { useCoreErrorPresenter } from '@/lib/core-errors'
+import { usePendingControl } from '@/lib/pending-control'
 import { useMotionPolicy } from '@/motion'
 import { ActionBar } from './action-bar'
 import { AudioPanel } from './audio-panel'
@@ -59,7 +69,9 @@ interface Overlay {
 export function SessionMonitorPage() {
   const { t } = useTranslation()
   const m = useMotionPolicy()
-  const actions = useSimActions()
+  const actions = useCoreActions()
+  const presentCoreError = useCoreErrorPresenter()
+  const recovery = usePendingControl()
   const page = useSim(selectPageModel)
   const rootRef = useRef<HTMLDivElement>(null)
   const feedRef = useRef<CameraFeedHandle>(null)
@@ -81,13 +93,17 @@ export function SessionMonitorPage() {
   // Pause Monitoring is UI-only (D28/Q8) and ends with the recording.
   const pausedNow = paused && page.phase === 'RECORDING'
 
+  // B-3: settle, then the recovery overlay follows the state (it opens on RECOVERY, below). A
+  // refusal: the presenter's denied toast (SESSION_START), an outage or a limit; else the page's own.
   const recover = () => {
-    try {
-      actions.recover()
-    } catch (error) {
-      logSessionMonitorError('recover', error, { sessionId: page.sessionId })
-      toast.danger(t('session.recovery.failed'))
-    }
+    const sessionId = page.sessionId
+    recovery.settle(() => actions.recover(), {
+      fail: (error) => {
+        logSessionMonitorError('recover', error, { sessionId })
+        if (presentCoreError(error) !== null) return
+        toast.danger(t('session.recovery.failed'))
+      },
+    })
   }
 
   return (
@@ -105,7 +121,7 @@ export function SessionMonitorPage() {
             icon={Monitor}
             title={t('session.title')}
             subtitle={t('session.subtitle')}
-            status={<StatusBanner canStart={page.canStart} onRecover={recover} />}
+            status={<StatusBanner canStart={page.canStart} onRecover={recover} recoverBusy={recovery.busy} recoverPending={recovery.pending} />}
             className="sm-header"
           />
         </div>
@@ -122,6 +138,8 @@ export function SessionMonitorPage() {
               feedRef={feedRef}
               stageRef={feedStageRef}
               onRecover={recover}
+              recoverBusy={recovery.busy}
+              recoverPending={recovery.pending}
             />
           </PanelErrorBoundary>
           <PanelErrorBoundary panel="M" areaClassName="sm-area-details">

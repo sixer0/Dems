@@ -15,7 +15,7 @@ export const WORKSPACE = resolve(dirname(fileURLToPath(import.meta.url)), '..', 
 /** The workspace root of the repository. */
 export const REPOSITORY = resolve(WORKSPACE, '..', '..');
 
-/** Never read: dependencies, build output, generated native projects, caches, logs, media. */
+/** Never read: dependencies, build output, generated native projects, caches (also `.cache/`, git-ignored scratch), logs, media. */
 const SKIPPED_DIRECTORIES = new Set([
   'node_modules',
   'coverage',
@@ -29,6 +29,7 @@ const SKIPPED_DIRECTORIES = new Set([
   '.turbo',
   '.expo',
   '.gradle',
+  '.cache',
   '.git',
 ]);
 

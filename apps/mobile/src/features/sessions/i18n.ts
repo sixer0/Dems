@@ -63,6 +63,12 @@ export const sessionsEn = {
       detail: 'Shows the session details',
     },
   },
+  // Backend task, plan row W72 follow-up (decision D169): Live mode only. The rows are pushed by the
+  // Core server; while the link is down they are what this device last received.
+  live: {
+    linkDownTitle: 'Core server unreachable',
+    linkDownBody: 'This list is what this device last received from the Core server. It updates by itself once the connection is back.',
+  },
   pane: {
     emptyTitle: 'Select a session',
     emptyBody: 'Pick a session from the list to see its details here.',

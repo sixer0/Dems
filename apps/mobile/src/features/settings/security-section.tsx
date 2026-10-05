@@ -7,6 +7,12 @@
  *   selected and the other values are shown disabled (SIM-GAP-M88-1).
  * - Core pairing → `/pair`, Operator audit → `/audit`.
  * - Lock console and Sign out (brief; also in the Profile sheet). Neither touches a recording.
+ *
+ * LIVE mode (backend task W82, finding CPM1-1; 04_client_integration_spec §9.3 MB-1, MB-6a; AC-C-68):
+ * the switch is the Core's biometric sign-in. Its description never says "simulated" and never
+ * claims hardware protection: it is worded on how the token is stored (`biometric.protected`). In a
+ * session created with the fingerprint (`biometric.changeBlocked`) the switch is disabled with the
+ * MB-1 sentence; the auth layer sends nothing there either. SIMULATED and HEARTBEAT: as before.
  */
 import { useRouter } from 'expo-router';
 import { Button, useToast } from 'heroui-native';
@@ -17,7 +23,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { useSim, type SimState } from '@dems/shared/sim';
 import { palette, spacing } from '@dems/shared/tokens';
 import { useAuthSession } from '@/auth';
-import { reportRuntimeIssue, useAuth } from '@/runtime';
+import { reportRuntimeIssue, useAuth, useCoreLink } from '@/runtime';
 import { AUTO_LOCK_CHOICES, AUTO_LOCK_POLICY_MINUTES, biometricSwitchView } from './settings-model';
 import { GroupCard, NavRow, SectionStack, SegmentRow, SwitchRow, settingsStyles } from './settings-controls';
 
@@ -30,6 +36,7 @@ export function SecuritySection() {
   const auth = useAuth();
   const session = useAuthSession();
   const pairingState = useSim(selectPairingState);
+  const live = useCoreLink().source === 'LIVE';
   const operator = auth.operator;
   const { refreshBiometricAvailability } = session;
 
@@ -37,14 +44,28 @@ export function SecuritySection() {
     void refreshBiometricAvailability();
   }, [refreshBiometricAvailability]);
 
-  const biometric = biometricSwitchView(session.biometric.availability, session.biometric.enabled, session.biometric.lastOperatorId, operator?.id ?? null);
+  const biometric = biometricSwitchView(
+    session.biometric.availability,
+    session.biometric.enabled,
+    session.biometric.lastOperatorId,
+    operator?.id ?? null,
+    live ? { changeBlocked: session.biometric.changeBlocked, protected: session.biometric.protected } : undefined,
+  );
   const status = biometric.boundToOther
     ? t('features.settings.security.biometricBoundOther', { name: session.biometric.lastOperator?.displayName ?? '' })
     : t(biometric.statusKey);
+  // SIMULATED and HEARTBEAT: exactly the former line. LIVE: the note keys are whole sentences; in a
+  // biometric session the MB-1 sentence stands alone.
+  const description = !live ? `${status} ${t(biometric.noteKey)}.` : biometric.changeBlocked ? t(biometric.noteKey) : `${status} ${t(biometric.noteKey)}`;
 
   const setBiometric = (on: boolean) => {
+    // MB-1: in a session created with the fingerprint biometric sign-in is not changed at all (the switch
+    // is disabled; this also holds for a press that reaches the handler).
+    if (biometric.changeBlocked) return;
     session.setBiometricEnabled(on).catch((error: unknown) => {
-      toast.show({ variant: 'danger', label: t('features.settings.saveFailed') });
+      // LIVE: the Core or the tablet's storage did not take the change, so nothing changed (MB-1, MB-2);
+      // the SIMULATED sentence ("it applies until the app restarts") would not be true there.
+      toast.show({ variant: 'danger', label: t(live ? 'features.settings.live.biometricFailed' : 'features.settings.saveFailed') });
       reportRuntimeIssue('error', 'settings.security.setBiometric', error, { enabled: on });
     });
   };
@@ -56,7 +77,7 @@ export function SecuritySection() {
           key="biometric"
           testID="settings-biometric"
           label={t('features.settings.security.biometric')}
-          description={`${status} ${t('mobile.biometric.identityNote')}.`}
+          description={description}
           isSelected={biometric.selected}
           isDisabled={biometric.disabled}
           onChange={setBiometric}

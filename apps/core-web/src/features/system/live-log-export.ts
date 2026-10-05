@@ -1,0 +1,161 @@
+/**
+ * The log export FILE in Live mode (plan row W76; backend task 04_client_integration_spec §8.2 A8,
+ * AC-C-60; 01_specs §11: "An audit or log export file | Built by the client from server rows
+ * (operations 59 and 63) after the server accepted the export (operations 61, 62)";
+ * implementation/39 §7.4, §12).
+ *
+ * The Core writes no file and returns none. Once it accepted the export (202, the AUDIT_EXPORTED row
+ * in the replica), the console reads, through the console's one paged walk (`lib/core-page-walk.ts`,
+ * plan row W1), only while an operator is signed in (D176: the walk asks before every page):
+ *
+ * - the STORED audit chain from operation 59 `listAuditRows` (`walkAuditChain`), oldest first, 200
+ *   rows a page, following `nextCursor`, up to the rows the export covers: every row before its
+ *   AUDIT_EXPORTED row (that row's sequence minus one, its `prevHash` the head; the Core's own answer
+ *   counts the same way, implementation/39 §7.4). The table may hold more rows than the 1,000-row
+ *   ring the socket keeps, so the ring is never the file. The walk must end on the export's head;
+ *   anything else (a reset discarded the chain meanwhile: the Core answers 422 to the old cursor) is
+ *   a failure, never a partial file;
+ * - every operational event from operation 63 `listEvents` (`walkAllEvents`), 200 a page, to the
+ *   last page (the table may hold more than the 500-event ring).
+ *
+ * This file keeps the page's own parts: its error (its name, code and list are the page's record),
+ * the export's target, the file.
+ *
+ * Pure except `downloadJson`, which hands the finished text to the browser.
+ */
+import type { AuditPage, EventPage } from '@dems/shared/api'
+import type { AuditRow, DiagnosticsRun, ServiceEntry, SimEvent } from '@dems/shared/sim'
+import {
+  CORE_PAGE_LIMIT,
+  walkAllEvents,
+  walkAuditChain,
+  type AuditChainTarget,
+  type CorePageAnswer,
+  type CorePageReader,
+  type CoreWalkFailure,
+} from '@/lib/core-page-walk'
+
+/** Rows per page of operations 59 and 63: the contract's largest page (API-9). */
+export const LOG_PAGE_LIMIT = CORE_PAGE_LIMIT
+
+export type AuditPageAnswer = CorePageAnswer<AuditPage>
+export type EventPageAnswer = CorePageAnswer<EventPage>
+
+/** Why a walk did not produce the file (the walk's own failure: a page, the chain, an endless list). */
+export type LogWalkFailure = CoreWalkFailure
+
+export class LogWalkError extends Error {
+  override readonly name = 'LogWalkError'
+  readonly reason: LogWalkFailure
+  /** The HTTP status of a refused page, for the page's record (never the text of the answer). */
+  readonly status: number | null
+  readonly code: string
+  constructor(reason: LogWalkFailure) {
+    super('The logs of the Core could not be read to the end of the export.')
+    this.reason = reason
+    this.status = reason.kind === 'CALL' ? reason.failure.status : null
+    this.code = reason.kind === 'CALL' ? reason.failure.error.code : reason.kind === 'CHAIN' ? 'CHAIN_MOVED' : 'ENDLESS_LIST'
+  }
+}
+
+/** What the audit walk is bound to: the rows the export covers and the hash of the last of them, when known. */
+export interface LogExportTarget extends AuditChainTarget {
+  /** When the Core accepted the export (the AUDIT_EXPORTED row's instant); null when unknown. */
+  readonly at: number | null
+}
+
+/** The export's target, read from its AUDIT_EXPORTED row in the replica's ring (newest first). */
+export function logExportTarget(rows: readonly AuditRow[], exportId: string): LogExportTarget {
+  for (let index = rows.length - 1; index >= 0; index -= 1) {
+    const row = rows[index] as AuditRow
+    if (row.type === 'AUDIT_EXPORTED' && row.details.exportId === exportId) {
+      return { exportId, rows: row.seq - 1, head: row.prevHash, at: row.at }
+    }
+  }
+  return { exportId, rows: null, head: null, at: null }
+}
+
+/** What both walks of the page take: the session check (D176) and the page counter. */
+export interface LogWalkOptions {
+  readonly signedIn: () => boolean
+  readonly onPage?: (read: number) => void
+}
+
+const fail = (reason: LogWalkFailure) => new LogWalkError(reason)
+
+/**
+ * Reads the stored chain from the first row up to the export's rows. `onPage(read)` after each page.
+ * Without a known row count it stops before the AUDIT_EXPORTED row of `exportId` (or at the last page).
+ * Throws `LogWalkError`.
+ */
+export function readExportedAuditRows(readPage: CorePageReader<AuditPage>, target: LogExportTarget, options: LogWalkOptions): Promise<AuditRow[]> {
+  return walkAuditChain(readPage, target, { ...options, fail })
+}
+
+/** Reads every operational event, page after page, to the last one. Throws `LogWalkError`. */
+export function readAllEvents(readPage: CorePageReader<EventPage>, options: LogWalkOptions): Promise<SimEvent[]> {
+  return walkAllEvents(readPage, { ...options, fail })
+}
+
+/** The file's content: the export's identity, why it was made, the stored rows it covers and the events. */
+export interface LogExportFile {
+  readonly kind: 'dems-log-export'
+  readonly source: 'core-server'
+  /** The DEMS stack holds synthetic demo data only. */
+  readonly demo: true
+  readonly notice: string
+  readonly exportId: string
+  readonly scope: 'LOGS'
+  readonly reason: string
+  readonly deviceId: string
+  readonly softwareVersion: string
+  readonly exportedAt: string
+  readonly audit: { readonly total: number; readonly head: string | null; readonly rows: readonly AuditRow[] }
+  readonly events: readonly SimEvent[]
+  readonly services: readonly ServiceEntry[]
+  readonly diagnostics: DiagnosticsRun | null
+}
+
+export function buildLogExportFile(input: {
+  exportId: string
+  reason: string
+  deviceId: string
+  softwareVersion: string
+  at: number
+  rows: readonly AuditRow[]
+  events: readonly SimEvent[]
+  services: readonly ServiceEntry[]
+  diagnostics: DiagnosticsRun | null
+}): LogExportFile {
+  return {
+    kind: 'dems-log-export',
+    source: 'core-server',
+    demo: true,
+    notice: 'DEMO - log export of the DEMS Core server (synthetic demo data). Built from every page of its audit chain and events.',
+    exportId: input.exportId,
+    scope: 'LOGS',
+    reason: input.reason,
+    deviceId: input.deviceId,
+    softwareVersion: input.softwareVersion,
+    exportedAt: new Date(input.at).toISOString(),
+    audit: { total: input.rows.length, head: input.rows.at(-1)?.hash ?? null, rows: input.rows },
+    events: input.events,
+    services: input.services,
+    diagnostics: input.diagnostics,
+  }
+}
+
+/** Triggers a JSON download in the browser. Throws when the platform cannot create the file. */
+export function downloadJson(fileName: string, data: unknown): void {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = fileName
+  anchor.rel = 'noopener'
+  document.body.append(anchor)
+  anchor.click()
+  anchor.remove()
+  // `revokeObjectURL` is optional here only because a test page (jsdom) has no Blob URLs.
+  setTimeout(() => URL.revokeObjectURL?.(url), 1000)
+}

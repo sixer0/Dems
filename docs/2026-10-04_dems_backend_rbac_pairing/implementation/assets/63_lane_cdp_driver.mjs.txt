@@ -1,0 +1,389 @@
+// W63 lane check: the Dashboard in Live mode in a real headless Chromium, over raw CDP (Node's
+// built-in WebSocket; no install). The helpers (lines up to `takeNetwork`) are W55's driver,
+// unchanged; the steps are this row's. Sign-ins go THROUGH THE FORM, from the project's own seed
+// constants. Site B-7 is pressed through the tile kebab.
+// Usage: node --import tsx .cache/w63/lane/cdp-driver.mjs <devtoolsPort> <vitePort> <outJson> <assetsDir>
+//
+// What is never stored or printed: a request body, a cookie value, the seeded password, a
+// `Runtime.evaluate` expression. Cookie values are cut to their length; URLs lose their query
+// values; only named elements and booleans are read from the Dashboard.
+import { writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+// The seeded demo operator, read from the project's own seed source (never printed).
+import { DEMO_OPERATOR_PASSWORD, OPERATORS } from '../../../packages/shared/src/sim/dataset.ts'
+
+const [devPort, vitePort, outJson, assetsDir] = process.argv.slice(2)
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+const ORIGIN = `http://127.0.0.1:${vitePort}`
+const supervisor = OPERATORS.find((operator) => operator.role === 'SUPERVISOR')
+const technician = OPERATORS.find((operator) => operator.role === 'TECHNICIAN')
+if (!supervisor || !technician || typeof DEMO_OPERATOR_PASSWORD !== 'string') throw new Error('the seed source has no SUPERVISOR, no TECHNICIAN or no demo password constant')
+
+const list = await (await fetch(`http://127.0.0.1:${devPort}/json/list`)).json()
+const target = list.find((t) => t.type === 'page')
+const ws = new WebSocket(target.webSocketDebuggerUrl)
+await new Promise((r) => ws.addEventListener('open', r, { once: true }))
+
+let id = 0
+const pending = new Map()
+let requests = new Map() // requestId -> { method, url, status }
+let sockets = new Map() // requestId -> { url, status, frames: [type...], cookieSent }
+let consoleLines = []
+let loadFired = false
+
+const cleanUrl = (url) => String(url).replace(/\?.*$/, (query) => (query.length > 1 ? '?…' : ''))
+const typeOf = (payload) => {
+  try {
+    return JSON.parse(payload).type ?? '(no type)'
+  } catch {
+    return '(not JSON)'
+  }
+}
+const pick = (headers, name) => {
+  for (const [key, value] of Object.entries(headers ?? {})) if (key.toLowerCase() === name) return value
+  return null
+}
+
+ws.addEventListener('message', (event) => {
+  const msg = JSON.parse(event.data)
+  if (msg.id && pending.has(msg.id)) {
+    const { resolve, reject } = pending.get(msg.id)
+    pending.delete(msg.id)
+    // The error of a failed call is reported by its code only: its text can quote the expression.
+    msg.error ? reject(new Error(`CDP error ${msg.error.code}`)) : resolve(msg.result)
+    return
+  }
+  const p = msg.params ?? {}
+  switch (msg.method) {
+    case 'Page.loadEventFired':
+      loadFired = true
+      break
+    case 'Network.requestWillBeSent':
+      // Never `p.request.postData`.
+      requests.set(p.requestId, { method: p.request.method, url: cleanUrl(p.request.url), status: null })
+      break
+    case 'Network.responseReceived': {
+      const entry = requests.get(p.requestId)
+      if (entry) entry.status = p.response.status
+      break
+    }
+    case 'Network.loadingFailed': {
+      const entry = requests.get(p.requestId)
+      if (entry && entry.status === null) entry.status = `failed: ${p.errorText}`
+      break
+    }
+    case 'Network.webSocketCreated':
+      sockets.set(p.requestId, { url: cleanUrl(p.url), status: null, frames: [] })
+      break
+    case 'Network.webSocketWillSendHandshakeRequest': {
+      const entry = sockets.get(p.requestId)
+      if (entry) entry.cookieSent = pick(p.request.headers, 'cookie') ? 'yes (value not recorded)' : 'no'
+      break
+    }
+    case 'Network.webSocketHandshakeResponseReceived': {
+      const entry = sockets.get(p.requestId)
+      if (entry) entry.status = p.response.status
+      break
+    }
+    case 'Network.webSocketFrameReceived': {
+      const entry = sockets.get(p.requestId)
+      if (entry && entry.frames.length < 400) entry.frames.push(typeOf(p.response.payloadData))
+      break
+    }
+    case 'Network.webSocketClosed': {
+      const entry = sockets.get(p.requestId)
+      if (entry) entry.closed = true
+      break
+    }
+    case 'Runtime.exceptionThrown':
+      consoleLines.push(`exception: ${String(p.exceptionDetails?.exception?.description ?? p.exceptionDetails?.text).slice(0, 240)}`)
+      break
+    case 'Runtime.consoleAPICalled':
+      if (p.type === 'error' || p.type === 'warning') {
+        const text = (p.args ?? [])
+          .map((arg) => {
+            if (arg.value !== undefined) return String(arg.value)
+            const preview = arg.preview?.properties?.map((property) => `${property.name}: ${property.value}`).join(', ')
+            return preview ? `{${preview}}` : String(arg.description ?? arg.type)
+          })
+          .join(' ')
+        consoleLines.push(`${p.type}: ${text.slice(0, 420)}`)
+      }
+      break
+  }
+})
+
+const send = (method, params = {}) =>
+  new Promise((resolve, reject) => {
+    const n = ++id
+    pending.set(n, { resolve, reject })
+    ws.send(JSON.stringify({ id: n, method, params }))
+  })
+
+/** Runs page script. A failure is reported without the expression and without the page's own message. */
+const evaluate = async (expression, label) => {
+  const result = await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true })
+  if (result.exceptionDetails) throw new Error(`page script failed: ${label}`)
+  return result.result.value
+}
+
+const navigate = async (url, settleMs = 3500) => {
+  loadFired = false
+  await send('Page.navigate', { url })
+  for (let i = 0; i < 150 && !loadFired; i++) await sleep(100)
+  await sleep(settleMs) // the dev client's socket, the lazy route chunk, the entrance motion
+  return loadFired
+}
+
+/** Waits until the page holds (or no longer holds) an element with this test ID. Returns whether it did in time. */
+const waitFor = async (testId, present = true, timeoutMs = 15000) => {
+  const until = Date.now() + timeoutMs
+  while (Date.now() < until) {
+    const found = await evaluate(`document.querySelector('[data-testid="${testId}"]') !== null`, `wait ${testId}`)
+    if (found === present) return true
+    await sleep(150)
+  }
+  return false
+}
+
+const screenshot = async (name) => {
+  const { data } = await send('Page.captureScreenshot', { format: 'png' })
+  const file = join(assetsDir, name)
+  writeFileSync(file, Buffer.from(data, 'base64'))
+  return file
+}
+
+/** Types into the input of a field by script: focus, select what is there, insert. The text is not echoed. */
+const typeInto = async (fieldTestId, text, label) => {
+  const focused = await evaluate(
+    `(() => { const el = document.querySelector('[data-testid="${fieldTestId}"] input'); if (!el) return false; el.focus(); el.select(); return document.activeElement === el })()`,
+    `focus ${label}`,
+  )
+  if (!focused) throw new Error(`the field ${label} could not be focused`)
+  await send('Input.insertText', { text })
+}
+const press = (testId) => evaluate(`(() => { const el = document.querySelector('[data-testid="${testId}"]'); if (!el) return false; el.click(); return true })()`, `press ${testId}`)
+
+/** What the page did since the last call, and a new record for what follows. */
+const takeNetwork = () => {
+  const taken = {
+    api: [...requests.values()].filter((entry) => entry.url.includes('/api/v1/')),
+    origins: [...new Set([...requests.values()].map((entry) => { try { return new URL(entry.url).origin } catch { return '(other)' } }))].sort(),
+    sockets: [...sockets.values()]
+      .filter((entry) => entry.url.endsWith('/ws'))
+      .map((entry) => ({ url: entry.url, status: entry.status, cookieSent: entry.cookieSent ?? null, closed: entry.closed === true, frameCount: entry.frames.length, firstTypes: entry.frames.slice(0, 4), distinctTypes: [...new Set(entry.frames)].sort() })),
+    console: consoleLines,
+  }
+  requests = new Map()
+  sockets = new Map()
+  consoleLines = []
+  return taken
+}
+
+
+// ════════════════════════════════════ W63: the steps ════════════════════════════════════
+
+/** Named facts of the Dashboard, and booleans over its words (the Dashboard holds no credential). */
+const dashFacts = (label) =>
+  evaluate(
+    `(() => {
+      const q = (id) => document.querySelector('[data-testid="' + id + '"]')
+      const text = (id) => q(id)?.textContent?.replace(/\\s+/g, ' ').trim() ?? null
+      const labels = [...document.body.querySelectorAll('[aria-label], [title], [alt]')].map((el) => ['aria-label', 'title', 'alt'].map((n) => el.getAttribute(n) ?? '').join(' ')).join(' ')
+      const words = (document.body.textContent ?? '') + ' ' + labels
+      return {
+        href: location.origin + location.pathname,
+        onDashboard: q('page-dashboard') !== null,
+        panels: ['a','b','c','d','e','f','g','h','i','j'].filter((id) => q('panel-' + id) !== null),
+        shellMode: text('shell-mode'),
+        shellCoreMode: document.querySelector('.dems-shell')?.getAttribute('data-core-mode') ?? null,
+        user: q('user-menu')?.getAttribute('aria-label') ?? null,
+        strip: Object.fromEntries(['cameras','mics','storage','time','security','network'].map((id) => [id, q('strip-' + id)?.getAttribute('aria-label') ?? null])),
+        tiles: Object.fromEntries(['CAM-01','CAM-02','MIC-01','MIC-02'].map((id) => [id, text('tile-state-' + id)])),
+        sessionView: [...document.querySelectorAll('[data-testid^="session-"]')].map((el) => el.getAttribute('data-testid')).filter((id) => /^session-(idle|setup|recording|finalizing|sealed|fault|recovery)$/.test(id)),
+        sealedManifestSource: q('sealed-manifest')?.getAttribute('data-source') ?? null,
+        sealedToday: text('sealed-today-count'),
+        recentEvents: document.querySelectorAll('[data-testid="recent-event"]').length,
+        saysSimulated: /simulat/i.test(words),
+        toasts: [...document.querySelectorAll('[data-slot="toast"]')].map((el) => el.textContent?.replace(/\\s+/g, ' ').trim()),
+      }
+    })()`,
+    label,
+  )
+
+/** Opens a tile's kebab by its accessible name; returns the menu's items as the page shows them. */
+const openMenu = async (name) => {
+  const opened = await evaluate(`(() => { const b = document.querySelector('button[aria-label="${name} actions"]'); if (!b) return false; b.click(); return true })()`, `open ${name}`)
+  if (!opened) return { opened: false, items: [] }
+  for (let i = 0; i < 40; i++) {
+    if (await evaluate(`document.querySelector('[role="menu"]') !== null`, 'menu shown')) break
+    await sleep(100)
+  }
+  await sleep(350)
+  const items = await evaluate(
+    `[...document.querySelectorAll('[role="menu"] [role="menuitem"]')].map((el) => ({ text: el.textContent?.replace(/\\s+/g, ' ').trim(), disabled: el.getAttribute('aria-disabled') === 'true' }))`,
+    'menu items',
+  )
+  return { opened: true, items }
+}
+const pressItem = (prefix) =>
+  evaluate(`(() => { const el = [...document.querySelectorAll('[role="menu"] [role="menuitem"]')].find((e) => (e.textContent ?? '').trim().startsWith('${prefix}')); if (!el) return false; el.click(); return true })()`, `press ${prefix}`)
+const escape = async () => {
+  await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 })
+  await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 })
+  await sleep(400)
+}
+const waitToast = async (needle, timeoutMs = 10000) => {
+  const until = Date.now() + timeoutMs
+  while (Date.now() < until) {
+    const found = await evaluate(`[...document.querySelectorAll('[data-slot="toast"]')].some((el) => (el.textContent ?? '').includes(${JSON.stringify(needle)}))`, 'toast')
+    if (found) return true
+    await sleep(150)
+  }
+  return false
+}
+const signInThroughTheForm = async (operator, label) => {
+  await waitFor('page-login', true, 15000)
+  await typeInto('login-username-field', operator.username, `${label} username`)
+  await typeInto('login-password-field', DEMO_OPERATOR_PASSWORD, `${label} password`)
+  await press('login-submit')
+  const arrived = await waitFor('page-dashboard', true, 25000)
+  await waitFor('panel-j', true, 15000)
+  await sleep(3500) // the hand-off, the shell's entrance and the panels' beats
+  return arrived
+}
+const signOutByPage = async () => {
+  const answer = await evaluate(
+    `(async () => { const r = await fetch('/api/v1/auth/sign-out', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ reason: 'USER' }) }); return { status: r.status } })()`,
+    'sign-out',
+  )
+  const back = await waitFor('page-login', true, 15000)
+  await sleep(1500)
+  return { ...answer, loginShown: back }
+}
+const started = Date.now()
+/** `W63_STEPS=simulated` runs step 7 only (the second run: the Live steps were done in the first). */
+const ONLY_SIMULATED = process.env.W63_STEPS === 'simulated'
+
+await send('Network.enable')
+await send('Page.enable')
+await send('Runtime.enable')
+await send('Emulation.setDeviceMetricsOverride', { width: 1920, height: 1080, deviceScaleFactor: 1, mobile: false })
+const version = await send('Browser.getVersion')
+const result = { browser: { product: version.product, userAgent: version.userAgent, headless: /Headless/i.test(version.userAgent) }, viewport: '1920x1080', steps: {} }
+
+// ── 1. Live, the seeded SUPERVISOR, through the form: the Dashboard on the Core's data ──
+if (!ONLY_SIMULATED) {
+  await navigate(`${ORIGIN}/login`)
+  const coreMode = await evaluate(`document.querySelector('[data-testid="page-login"]')?.getAttribute('data-core-mode') ?? null`, 'login mode')
+  takeNetwork()
+  const arrived = await signInThroughTheForm(supervisor, 'supervisor')
+  result.steps.liveSupervisor = { loginCoreMode: coreMode, dashboardShown: arrived, facts: await dashFacts('live supervisor'), screenshot: await screenshot('63_dashboard_live_supervisor.png'), network: takeNetwork() }
+}
+
+// ── 2. The kebab of Camera 1 as SUPERVISOR: Live words, both commands disabled (DEVICE_MANAGE is the TECHNICIAN's) ──
+if (!ONLY_SIMULATED) {
+  const menu = await openMenu('Camera 1')
+  const shot = await screenshot('63_dashboard_live_menu_supervisor.png')
+  await escape()
+  result.steps.menuSupervisor = { ...menu, screenshot: shot, network: takeNetwork() }
+}
+
+// ── 3. What the Core answers this SUPERVISOR for operation 48 (a page request; the UI does not offer it) ──
+if (!ONLY_SIMULATED) {
+  const answer = await evaluate(
+    `(async () => { const r = await fetch('/api/v1/device/CAM-01/restart', { method: 'POST', credentials: 'same-origin' }); let body = null; try { body = await r.json() } catch {} return { status: r.status, code: body?.error?.code ?? null, permission: body?.error?.details?.permission ?? null } })()`,
+    'restart as supervisor',
+  )
+  await sleep(1200)
+  result.steps.restartAsSupervisor = { answer, facts: await dashFacts('after the refused request'), network: takeNetwork() }
+}
+
+// ── 4. Sign out; the seeded TECHNICIAN through the form ──
+if (!ONLY_SIMULATED) {
+  const signOut = await signOutByPage()
+  takeNetwork()
+  const arrived = await signInThroughTheForm(technician, 'technician')
+  result.steps.liveTechnician = { signOut, dashboardShown: arrived, facts: await dashFacts('live technician'), network: takeNetwork() }
+}
+
+// ── 5. Site B-7 through the kebab: Test signal on MIC 1 ──
+if (!ONLY_SIMULATED) {
+  const menu = await openMenu('MIC 1')
+  const pressed = await pressItem('Test signal')
+  const toastShown = await waitToast('Test signal sent to MIC 1')
+  await sleep(300)
+  result.steps.testSignal = { menu, pressed, toastShown, facts: await dashFacts('after test signal'), screenshot: await screenshot('63_dashboard_live_test_signal.png'), network: takeNetwork() }
+}
+
+// ── 6. Site B-7 through the kebab: Restart of Camera 2 ──
+if (!ONLY_SIMULATED) {
+  const menu = await openMenu('Camera 2')
+  const pressed = await pressItem('Restart')
+  const toastShown = await waitToast('Camera 2 restart requested')
+  await sleep(600)
+  const facts = await dashFacts('after restart')
+  result.steps.restart = { menu, pressed, toastShown, facts, screenshot: await screenshot('63_dashboard_live_restart.png'), network: takeNetwork() }
+  await sleep(4000)
+  result.steps.restart.tilesFourSecondsLater = (await dashFacts('restart + 4 s')).tiles
+}
+
+// ── 7. Simulated mode (the stored choice wins over the lane's preset). Sign In needs mock-core on
+// 127.0.0.1:4400, which this check may not start (predecessor rule, `login-model.ts:61`): when the
+// form's button is disabled, the simulator's own stored sign-in (`dems.auth`: operator ID and time,
+// no credential) is written instead, as a simulated reload of a signed-in console does. ──
+{
+  const signOut = ONLY_SIMULATED ? null : await signOutByPage()
+  // The storage of the origin is reachable from a page of the origin only (the tab starts at about:blank).
+  if (ONLY_SIMULATED) await navigate(`${ORIGIN}/login`, 1500)
+  await evaluate(`localStorage.setItem('dems.core.mode.v1', 'SIMULATED')`, 'store SIMULATED')
+  takeNetwork()
+  await navigate(`${ORIGIN}/login`)
+  await waitFor('page-login', true, 15000)
+  const coreMode = await evaluate(`document.querySelector('[data-testid="page-login"]')?.getAttribute('data-core-mode') ?? null`, 'login mode')
+  await sleep(1500)
+  const submitDisabled = await evaluate(`document.querySelector('[data-testid="login-submit"]')?.hasAttribute('disabled') || document.querySelector('[data-testid="login-submit"]')?.getAttribute('aria-disabled') === 'true'`, 'submit disabled')
+  let path
+  let arrived
+  if (!submitDisabled) {
+    path = 'form'
+    arrived = await signInThroughTheForm(supervisor, 'simulated supervisor')
+  } else {
+    path = 'stored simulated sign-in (dems.auth), because Sign In is disabled while mock-core is offline'
+    await evaluate(`sessionStorage.setItem('dems.auth', JSON.stringify({ operatorId: ${JSON.stringify(supervisor.id)}, issuedAt: Date.now() }))`, 'simulated stored sign-in')
+    await navigate(`${ORIGIN}/dashboard`, 4000)
+    arrived = await waitFor('page-dashboard', true, 20000)
+    await waitFor('panel-j', true, 15000)
+    await sleep(3500)
+  }
+  const facts = await dashFacts('simulated')
+  const shot = await screenshot('63_dashboard_simulated.png')
+  const menu = await openMenu('Camera 1')
+  const menuShot = await screenshot('63_dashboard_simulated_menu.png')
+  await escape()
+  const network = takeNetwork()
+  result.steps.simulated = {
+    signOutOfLive: signOut,
+    loginCoreMode: coreMode,
+    submitDisabledOnTheLoginPage: submitDisabled,
+    signInPath: path,
+    dashboardShown: arrived,
+    facts,
+    screenshot: shot,
+    menu,
+    menuScreenshot: menuShot,
+    apiRequestsToTheDevServer: network.api.length,
+    socketsToTheDevServerWs: network.sockets.filter((s) => s.url.startsWith(`ws://127.0.0.1:${vitePort}/ws`)).length,
+    network,
+  }
+  await evaluate(`localStorage.removeItem('dems.core.mode.v1'); sessionStorage.removeItem('dems.auth')`, 'leave the origin as found')
+}
+result.elapsedSeconds = Math.round((Date.now() - started) / 1000)
+
+// Last line of defence: the password may not be in what is written, whatever a page showed.
+let text = JSON.stringify(result, null, 2)
+if (text.includes(DEMO_OPERATOR_PASSWORD)) text = text.split(DEMO_OPERATOR_PASSWORD).join('***')
+text = text.replace(/\b(ses|dvc|bio)_[A-Za-z0-9_-]+/g, '$1_***')
+writeFileSync(outJson, `${text}\n`)
+console.log(text)
+ws.close()

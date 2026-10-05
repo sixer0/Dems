@@ -6,11 +6,18 @@
  * `acknowledgeSummary` runs at most once per screen (SCR-02) and a refusal is shown and written to
  * the persistent runtime log (`dems.mobile.log.v1`), never swallowed.
  * Every function that calls a hook is named `use*` (D66: the device build runs the React Compiler).
+ *
+ * Live mode (backend task, plan row W72; 04_client_integration_spec §8.6 S2-4, §8.7 S4-4): the store
+ * is the Live source, so every read here is the Core's replicated state (`session`, `sessionHistory`,
+ * `evidence`, `time`, `lastSealed*`). The one command, the acknowledgement (operation 37
+ * `acknowledgeSessionSummary`), goes through `useCoreActions()` and `settle` in both modes: in Simulated
+ * mode `settle` runs the continuation before it returns, exactly as the earlier synchronous call did.
  */
 import { useToast } from 'heroui-native';
 import { useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { TimeSource } from '@dems/shared/domain';
+import { settle, useCoreActions } from '@dems/shared/live';
 import {
   selectEvidenceBySessionId,
   selectOperatorById,
@@ -24,7 +31,7 @@ import {
   type SessionOutcome,
   type SubjectType,
 } from '@dems/shared/sim';
-import { reportRuntimeIssue } from '@/runtime';
+import { reportRuntimeIssue, useCoreErrorPresenter, useCoreLink } from '@/runtime';
 import { timeSourceAt } from './sim-adapter';
 
 /** The finished session (history entry) and where the route stands, as flat values. */
@@ -116,29 +123,71 @@ export function useSummaryFinalization(sessionId: string): SummaryFinalization |
   });
 }
 
+/** What the screen does once the acknowledgement settled (S2-4: what followed the old `if`). */
+export interface AcknowledgeHandlers {
+  /** The summary is acknowledged now, or needs no acknowledgement (already acknowledged, a past session). */
+  readonly ok: () => void;
+  /** Runs once after `ok` or a refusal, in every path: the pending control's `release`. */
+  readonly done?: () => void;
+}
+
 /**
- * SCR-02: acknowledges this summary once. Returns true when the summary is (now or already)
- * acknowledged or needs none (a past session), false when the simulator refused.
+ * SCR-02 and settle site S2-4: acknowledges this summary once, then runs `ok` (the navigation). On a
+ * refusal `ok` does not run: the screen stays and its control returns to idle.
+ *
+ * - S4-4: whether a request is needed is read from the store (the replica in LIVE) before the call; a
+ *   summary that is not pending (a past session, or one another console acknowledged) sends nothing.
+ * - One request at a time, whichever control asked (Done, View in Evidence, Back): a second call
+ *   while one is out is released at once and sends nothing.
+ * - In LIVE a rejection goes to the runtime's presenter first (the denied toast with the role, the
+ *   outage, the limit; mobile rule 2) and is logged at `warn`; otherwise the step-80 toast and an
+ *   `error` record, as before.
+ * - Never called from an effect: only an operator's press acknowledges (decision D158, F69-1).
  */
-export function useAcknowledgeSummary(sessionId: string): () => boolean {
+export function useAcknowledgeSummary(sessionId: string): (handlers: AcknowledgeHandlers) => void {
   const sim = useSimInstance();
+  const actions = useCoreActions();
+  const live = useCoreLink().source === 'LIVE';
+  const presentCoreError = useCoreErrorPresenter();
   const { toast } = useToast();
   const { t } = useTranslation();
-  const done = useRef(false);
-  return useCallback(() => {
-    if (done.current) return true;
-    if (selectPendingSummaryId(sim.store.getState()) !== sessionId) {
-      done.current = true;
-      return true;
-    }
-    try {
-      sim.actions.acknowledgeSummary(sessionId);
-      done.current = true;
-      return true;
-    } catch (error) {
-      toast.show({ variant: 'danger', label: t('features.session-summary.actions.failed') });
-      reportRuntimeIssue('error', 'features.sessionSummary.acknowledge', error, { sessionId });
-      return false;
-    }
-  }, [sim, sessionId, toast, t]);
+  const acknowledged = useRef(false);
+  const inFlight = useRef(false);
+  return useCallback(
+    ({ ok, done }: AcknowledgeHandlers) => {
+      if (inFlight.current) {
+        done?.();
+        return;
+      }
+      if (acknowledged.current || selectPendingSummaryId(sim.store.getState()) !== sessionId) {
+        acknowledged.current = true;
+        try {
+          ok();
+        } finally {
+          done?.();
+        }
+        return;
+      }
+      inFlight.current = true;
+      settle(() => actions.acknowledgeSummary(sessionId), {
+        ok: () => {
+          acknowledged.current = true;
+          ok();
+        },
+        fail: (error) => {
+          if (live && presentCoreError(error)) {
+            reportRuntimeIssue('warn', 'features.sessionSummary.acknowledge', error, { sessionId });
+            return;
+          }
+          toast.show({ variant: 'danger', label: t('features.session-summary.actions.failed') });
+          reportRuntimeIssue('error', 'features.sessionSummary.acknowledge', error, { sessionId });
+        },
+        done: () => {
+          inFlight.current = false;
+          done?.();
+        },
+      });
+    },
+    [sim, actions, live, presentCoreError, sessionId, toast, t],
+  );
 }

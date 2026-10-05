@@ -1,0 +1,328 @@
+{
+  "browser": {
+    "product": "HeadlessChrome/153.0.8010.12",
+    "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.8010.12 Safari/537.36",
+    "headless": true
+  },
+  "viewport": "1920x1080",
+  "phase": "offline",
+  "steps": {
+    "offlineCommand": {
+      "shellModeSeen": "LIVE · OFFLINE",
+      "before": {
+        "href": "http://127.0.0.1:5178/devices",
+        "onDevices": true,
+        "panels": [
+          "cameras",
+          "summary",
+          "audio",
+          "other",
+          "front",
+          "ports"
+        ],
+        "shellMode": "LIVE · OFFLINE",
+        "shellCoreMode": "LIVE",
+        "user": "Account menu: Rina Wijaya",
+        "status": {
+          "VIDEO-01": "READY",
+          "VIDEO-02": "READY",
+          "AUDIO-01": "READY",
+          "AUDIO-02": "READY",
+          "TABLET": "OFFLINE"
+        },
+        "lcdLabel": "Local status display, page STATUS",
+        "saysSimulated": true,
+        "busyHeads": 0,
+        "pendingTriggers": 0,
+        "identifyRings": [],
+        "toasts": [
+          "Core server unreachableThe screen shows the last state received. Reconnecting…Switch to Simulated modeRetry now"
+        ]
+      },
+      "menu": {
+        "opened": true,
+        "items": [
+          {
+            "text": "Details",
+            "disabled": false
+          },
+          {
+            "text": "Test signal",
+            "disabled": false
+          },
+          {
+            "text": "Identify (blink)",
+            "disabled": false
+          },
+          {
+            "text": "Restart",
+            "disabled": false
+          }
+        ]
+      },
+      "pressed": true,
+      "presenterToast": true,
+      "facts": {
+        "href": "http://127.0.0.1:5178/devices",
+        "onDevices": true,
+        "panels": [
+          "cameras",
+          "summary",
+          "audio",
+          "other",
+          "front",
+          "ports"
+        ],
+        "shellMode": "LIVE · OFFLINE",
+        "shellCoreMode": "LIVE",
+        "user": "Account menu: Rina Wijaya",
+        "status": {
+          "VIDEO-01": "READY",
+          "VIDEO-02": "READY",
+          "AUDIO-01": "READY",
+          "AUDIO-02": "READY",
+          "TABLET": "OFFLINE"
+        },
+        "lcdLabel": "Local status display, page STATUS",
+        "saysSimulated": true,
+        "busyHeads": 0,
+        "pendingTriggers": 0,
+        "identifyRings": [],
+        "toasts": [
+          "Core server unreachable. Nothing was changed.",
+          "Core server unreachableThe screen shows the last state received. Reconnecting…Switch to Simulated modeRetry now"
+        ]
+      },
+      "screenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/70_devices_live_offline_command.png",
+      "network": {
+        "api": [],
+        "origins": [],
+        "sockets": [
+          {
+            "url": "ws://127.0.0.1:5178/ws",
+            "status": null,
+            "cookieSent": "yes (value not recorded)",
+            "closed": true,
+            "frameCount": 0,
+            "firstTypes": [],
+            "distinctTypes": []
+          }
+        ],
+        "console": [
+          "error: [core-web] live {level: error, source: live.action.deviceCommand, message: The Core server is unreachable (CORE_OFFLINE)., context: Object, at: 1791216457259}"
+        ]
+      }
+    },
+    "simulated": {
+      "loginCoreMode": "SIMULATED",
+      "submitDisabledOnTheLoginPage": true,
+      "signInPath": "stored simulated sign-in (dems.auth), because Sign In is disabled while mock-core is offline",
+      "devicesShown": true,
+      "facts": {
+        "href": "http://127.0.0.1:5178/devices",
+        "onDevices": true,
+        "panels": [
+          "cameras",
+          "summary",
+          "audio",
+          "other",
+          "front",
+          "ports"
+        ],
+        "shellMode": "SIMULATED",
+        "shellCoreMode": "SIMULATED",
+        "user": "Account menu: AKP Andi Pratama",
+        "status": {
+          "VIDEO-01": "READY",
+          "VIDEO-02": "READY",
+          "AUDIO-01": "READY",
+          "AUDIO-02": "READY",
+          "TABLET": "CONNECTED"
+        },
+        "lcdLabel": "Local status display (simulated), page STATUS",
+        "saysSimulated": true,
+        "busyHeads": 0,
+        "pendingTriggers": 0,
+        "identifyRings": [],
+        "toasts": []
+      },
+      "screenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/70_devices_simulated.png",
+      "menu": {
+        "opened": true,
+        "items": [
+          {
+            "text": "Details",
+            "disabled": false
+          },
+          {
+            "text": "Test signal (simulated)",
+            "disabled": false
+          },
+          {
+            "text": "Identify (blink)",
+            "disabled": false
+          },
+          {
+            "text": "Restart (simulated)Requires the Technician role",
+            "disabled": true
+          }
+        ]
+      },
+      "drawer": {
+        "clicked": true,
+        "open": true,
+        "row": null,
+        "facts": {
+          "open": true,
+          "device": "TABLET",
+          "rows": [
+            {
+              "label": "Status",
+              "value": "CONNECTED"
+            },
+            {
+              "label": "Since",
+              "value": "5 Oct 2026 23:07:38"
+            },
+            {
+              "label": "Link",
+              "value": "MGMT LAN · HTTPS / WSS"
+            },
+            {
+              "label": "Address",
+              "value": "192.168.10.21"
+            },
+            {
+              "label": "Pairing",
+              "value": "Paired"
+            }
+          ],
+          "pairedRowState": [],
+          "link": null,
+          "saysSimulated": false
+        },
+        "screenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/70_drawer_pairing_simulated.png"
+      },
+      "apiRequestsToTheDevServer": 0,
+      "socketsToTheDevServerWs": 0,
+      "network": {
+        "api": [],
+        "origins": [
+          "http://127.0.0.1:5178"
+        ],
+        "sockets": [
+          {
+            "url": "ws://127.0.0.1:4400/ws",
+            "status": null,
+            "cookieSent": null,
+            "closed": true,
+            "frameCount": 0,
+            "firstTypes": [],
+            "distinctTypes": []
+          },
+          {
+            "url": "ws://127.0.0.1:4400/ws",
+            "status": null,
+            "cookieSent": null,
+            "closed": true,
+            "frameCount": 0,
+            "firstTypes": [],
+            "distinctTypes": []
+          },
+          {
+            "url": "ws://127.0.0.1:4400/ws",
+            "status": null,
+            "cookieSent": null,
+            "closed": true,
+            "frameCount": 0,
+            "firstTypes": [],
+            "distinctTypes": []
+          },
+          {
+            "url": "ws://127.0.0.1:4400/ws",
+            "status": null,
+            "cookieSent": null,
+            "closed": true,
+            "frameCount": 0,
+            "firstTypes": [],
+            "distinctTypes": []
+          },
+          {
+            "url": "ws://127.0.0.1:4400/ws",
+            "status": null,
+            "cookieSent": null,
+            "closed": true,
+            "frameCount": 0,
+            "firstTypes": [],
+            "distinctTypes": []
+          },
+          {
+            "url": "ws://127.0.0.1:4400/ws",
+            "status": null,
+            "cookieSent": null,
+            "closed": true,
+            "frameCount": 0,
+            "firstTypes": [],
+            "distinctTypes": []
+          },
+          {
+            "url": "ws://127.0.0.1:4400/ws",
+            "status": null,
+            "cookieSent": null,
+            "closed": true,
+            "frameCount": 0,
+            "firstTypes": [],
+            "distinctTypes": []
+          },
+          {
+            "url": "ws://127.0.0.1:4400/ws",
+            "status": null,
+            "cookieSent": null,
+            "closed": true,
+            "frameCount": 0,
+            "firstTypes": [],
+            "distinctTypes": []
+          },
+          {
+            "url": "ws://127.0.0.1:4400/ws",
+            "status": null,
+            "cookieSent": null,
+            "closed": true,
+            "frameCount": 0,
+            "firstTypes": [],
+            "distinctTypes": []
+          },
+          {
+            "url": "ws://127.0.0.1:4400/ws",
+            "status": null,
+            "cookieSent": null,
+            "closed": true,
+            "frameCount": 0,
+            "firstTypes": [],
+            "distinctTypes": []
+          },
+          {
+            "url": "ws://127.0.0.1:4400/ws",
+            "status": null,
+            "cookieSent": null,
+            "closed": true,
+            "frameCount": 0,
+            "firstTypes": [],
+            "distinctTypes": []
+          },
+          {
+            "url": "ws://127.0.0.1:4400/ws",
+            "status": null,
+            "cookieSent": null,
+            "closed": true,
+            "frameCount": 0,
+            "firstTypes": [],
+            "distinctTypes": []
+          }
+        ],
+        "console": []
+      }
+    }
+  },
+  "elapsedSeconds": 29
+}

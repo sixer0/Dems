@@ -1,0 +1,49 @@
+
+> @dems/core-server@0.2.0 db:status
+> tsx src/db/commands/status.ts --database dems_lane_3
+
+database         dems_lane_3 on PostgreSQL 18.4
+owner            dems_owner; encoding UTF8; locale C
+schema version   1; contract revision dbc-2; this code expects 1 (dbc-2)
+migrations       4 file(s); ledger matches
+  0000_prelude         applied  file sha256 ca4c6e034ea1d154c65e3723643e7999a1c99cee0ed339a9a56ba338ad603a0b  stored ca4c6e034ea1d154c65e3723643e7999a1c99cee0ed339a9a56ba338ad603a0b
+  0001_tables          applied  file sha256 46b6bcbe51442598111ae47168d105ce1550063483bf00fde13fad24869224e9  stored 46b6bcbe51442598111ae47168d105ce1550063483bf00fde13fad24869224e9
+  0002_audit_guards    applied  file sha256 35429449ba9cfd1595b0285e75bb97370b9d921dd0ee100244e5650f6aa9cf41  stored 35429449ba9cfd1595b0285e75bb97370b9d921dd0ee100244e5650f6aa9cf41
+  0003_privileges      applied  file sha256 7a054fd46ec24bf9d96480fcc040162a2d3256641467a23347c2530e450871d4  stored 7a054fd46ec24bf9d96480fcc040162a2d3256641467a23347c2530e450871d4
+seeded_at        2026-10-04T04:36:43.575Z (1791088603575)
+last_reset_at    2026-10-04T04:36:43.575Z (1791088603575)
+audit head       seq 146; hash a5297ad6f76b93e7...
+audit triggers   audit_chain_history_append_only=A, audit_log_append_only=A, audit_log_chain_guard=A
+lineage          0 row(s)
+row counts       30 table(s)
+  active_session           0
+  alerts                   0
+  audit_chain_head         1
+  audit_chain_history      0
+  audit_log                146
+  auth_sessions            20
+  biometric_tokens         0
+  console_settings         1
+  core_device              1
+  core_state               1
+  device_credentials       0
+  engine_counters          6
+  events                   110
+  evidence_custody         32
+  evidence_items           13
+  evidence_tracks          52
+  exports                  2
+  hardware_snapshot        1
+  health_snapshots         2
+  operator_credentials     3
+  operators                3
+  paired_devices           0
+  pairing_codes            0
+  permissions              12
+  registry_counters        2
+  role_permissions         18
+  roles                    3
+  schema_meta              1
+  session_history          13
+  storage_policy           1
+db:status: OK: dems_lane_3 is at the schema version this code expects and the ledger matches the files.

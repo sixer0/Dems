@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, type RefObject } from 'react'
 import {
   Button,
   Card,
@@ -11,6 +11,7 @@ import {
   Label,
   ListBox,
   Select,
+  Spinner,
   TextArea,
   TextField,
   ToggleButton,
@@ -49,6 +50,14 @@ export interface InfoStepProps {
   onScan: () => void
   /** Delay before the field stagger (route enter, M-APP-04), ms. */
   enterDelayMs: number
+  /**
+   * Live mode (plan row W64, LB-1): the scan is in flight for longer than the reveal time. The
+   * button shows the kit's pending state, with the `Spinner` in place of its icon. Never true in
+   * Simulated mode, where the scan answers at once.
+   */
+  scanPending?: boolean
+  /** The scan button's element (`aria-busy` while the scan is in flight, `usePendingControl`). */
+  scanRef?: RefObject<HTMLButtonElement | null>
 }
 
 function selectStartOperators(s: { operators: SimOperator[] }): SimOperator[] {
@@ -71,7 +80,7 @@ function useErrorText() {
  * `FieldError`. React Hook Form with the shared `sessionCreateSchema` lives in the page so the
  * values survive the step change. Motion (M-PG-NEW): rows stagger 30 ms; errors slide in (160).
  */
-export function InfoStep({ control, submitted, onSubmit, onScan, enterDelayMs }: InfoStepProps) {
+export function InfoStep({ control, submitted, onSubmit, onScan, enterDelayMs, scanPending = false, scanRef }: InfoStepProps) {
   const { t } = useTranslation()
   const m = useMotionPolicy()
   const errorText = useErrorText()
@@ -138,14 +147,16 @@ export function InfoStep({ control, submitted, onSubmit, onScan, enterDelayMs }:
                         <InputGroup.Suffix>
                           <Tooltip delay={300}>
                             <Button
+                              ref={scanRef}
                               isIconOnly
                               size="sm"
                               variant="ghost"
                               aria-label={t('sessionNew.info.caseNumber.scan')}
                               onPress={onScan}
+                              isPending={scanPending}
                               data-testid="sn-scan"
                             >
-                              <ScanLine className="size-4" aria-hidden="true" />
+                              {scanPending ? <Spinner size="sm" color="current" aria-hidden="true" /> : <ScanLine className="size-4" aria-hidden="true" />}
                             </Button>
                             <Tooltip.Content placement="top">{t('sessionNew.info.caseNumber.scan')}</Tooltip.Content>
                           </Tooltip>

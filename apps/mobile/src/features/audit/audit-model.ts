@@ -89,6 +89,17 @@ export function actorKindOf(row: Pick<AuditRow, 'actorId' | 'type'>): ActorKind 
   return UNVERIFIED_WHEN_NULL.has(row.type) ? 'UNVERIFIED' : 'SYSTEM';
 }
 
+/**
+ * A failed or locked sign-in that names an operator (backend task W80; security review CPS1-12 (a)).
+ * The Core server writes AUTH_FAILED and AUTH_LOCKED with `actorId` = the operator whose USERNAME
+ * WAS TYPED at the sign-in form (01_specs ID-4, as the simulator does): nobody was authenticated, so
+ * the actor column must not read as if that operator acted. The screen words these rows in Live
+ * mode as "Username typed: <name>"; Simulated mode keeps its wording (decision for the controller).
+ */
+export function isTypedUsernameActor(row: Pick<AuditRow, 'actorId' | 'type'>): boolean {
+  return actorKindOf(row) === 'OPERATOR' && UNVERIFIED_WHEN_NULL.has(row.type);
+}
+
 export function detailString(row: Pick<AuditRow, 'details'>, key: string): string | null {
   const value = row.details[key];
   return typeof value === 'string' && value.length > 0 ? value : null;
@@ -187,6 +198,34 @@ export function filterAuditRows(rows: readonly AuditRow[], query: AuditQuery, te
     out.push(row);
   }
   return out;
+}
+
+// ── Live mode: the stored chain and the lineage of operation 60 ────────────────────────────
+
+/** `stored` of operation 60 `verifyAuditChain` (the check over the Core's table, which no demo fault breaks). */
+export interface StoredChainCheck {
+  readonly ok: boolean;
+  /** The `seq` the stored chain has been verified through. */
+  readonly checked: number;
+  /** `seq` of the first stored row that does not verify; null while the chain verifies. */
+  readonly firstBadSeq: number | null;
+}
+
+/** A translation key with its values (the screen translates it). */
+export interface KeyedText {
+  readonly key: string;
+  readonly values: Readonly<Record<string, number>>;
+}
+
+/**
+ * The stored-chain line under the verdict in Live mode (client spec §8.2 A9, the mobile form): the
+ * sequence the Core verified its table through, or the first stored row that does not verify. The
+ * Core's own numbers, nothing computed on the tablet. A broken answer without `firstBadSeq` (not in
+ * the contract's examples) names the row after the last verified one, which is where the check stopped.
+ */
+export function storedChainLine(stored: StoredChainCheck): KeyedText {
+  if (stored.ok) return { key: 'features.audit.live.storedVerified', values: { seq: stored.checked } };
+  return { key: 'features.audit.live.storedBroken', values: { seq: stored.firstBadSeq ?? stored.checked + 1 } };
 }
 
 /**

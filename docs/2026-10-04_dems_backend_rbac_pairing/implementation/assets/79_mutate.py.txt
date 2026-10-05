@@ -1,0 +1,137 @@
+#!/usr/bin/env python3
+"""W79 mutation check (rule M15) of the Live call site S2-6 of `features/storage/` (Apply in the Manage
+Storage sheet, operation 55), the S5-3 hint, the LIVE copy choice, the StrictMode rule, and — for
+Network & Time, which changes no production file — of the reads the Live tests rely on (the mutants show
+that those tests read the Core's data and not fixed values).
+
+Each mutation changes texts of ONE production file IN MEMORY (the jest transformer beside this file, the
+method of M0 / W56 / W78) and runs the test files of its group. A mutation is DETECTED when jest exits
+non-zero. Nothing in the tree is written: the hashes of the mutated files are compared before and after.
+
+  python3 mutate.py <storage|network-time> [id ...]      ('control' runs the group's tests unmutated once)
+"""
+import hashlib, json, os, re, subprocess, sys, time
+
+ROOT = '/Users/gsp-budi/Documents/DEMS'
+APP = ROOT + '/apps/mobile'
+HERE = os.path.dirname(os.path.abspath(__file__))
+CONFIG = HERE + '/jest.mut.config.cjs'
+GROUP_TESTS = {
+    'storage': [
+        'src/features/storage/live-storage-sites.test.tsx', 'src/features/storage/storage-live-static.test.ts',
+        'src/features/storage/storage-screen.test.tsx', 'src/features/storage/storage-model.test.ts',
+    ],
+    'network-time': [
+        'src/features/network-time/live-network-time.test.tsx', 'src/features/network-time/network-time-screen.test.tsx',
+        'src/features/network-time/network-time-model.test.ts',
+    ],
+}
+SS = 'src/features/storage/storage-screen.tsx'
+MS = 'src/features/storage/manage-storage-sheet.tsx'
+SI = 'src/features/storage/i18n.ts'
+NM = 'src/features/network-time/network-time-model.ts'
+NU = 'src/features/network-time/use-network-time.ts'
+
+def e(frm, to):
+    return {'from': frm, 'to': to}
+
+SETTLE = "      settle(() => actions.setStoragePolicy({ retentionPolicy: draft.retentionPolicy, autoArchive: draft.autoArchive }), {\n"
+M = {
+  'storage': [
+    ('S1', SS, 'the success toast shows at the press (optimistic), before the Core answered', [
+        e(SETTLE, "      toast.show({ variant: 'success', label: t('features.storage.live.applied') });\n" + SETTLE)]),
+    ('S2', SS, 'the sheet closes at the press, not in ok', [e(SETTLE, "      handlers.applied();\n" + SETTLE)]),
+    ('S3', SS, 'the sheet closes on a refusal too', [e("        done: handlers.settled,\n", "        done: () => {\n          handlers.applied();\n          handlers.settled();\n        },\n")]),
+    ('S4', SS, 'a Live rejection skips the presenter (no denied / offline / limit toast)', [e("if (live && presentCoreError(error)) {", "if (false && presentCoreError(error)) {")]),
+    ('S5', SS, 'the LIVE success toast is the Simulated "(simulated)" one', [e("label: live ? t('features.storage.live.applied') : t('storage.manage.applied')", "label: false ? t('features.storage.live.applied') : t('storage.manage.applied')")]),
+    ('S6', SS, 'the screen never takes the LIVE branch', [e("const live = useCoreLink().source === 'LIVE';", "const live = useCoreLink().source === 'LIVE' && false;")]),
+    ('S7', SS, 'Apply never returns to idle (done dropped)', [e("        done: handlers.settled,\n", "")]),
+    ('S8', SS, 'a presented refusal also shows the friendly failure toast', [e("            reportRuntimeIssue('warn', 'storage.manage.apply', error, { ...draft }, correlationId);\n            return;\n", "            reportRuntimeIssue('warn', 'storage.manage.apply', error, { ...draft }, correlationId);\n")]),
+    ('S9', SS, 'a presented refusal is logged as an error, not a warning', [e("reportRuntimeIssue('warn', 'storage.manage.apply'", "reportRuntimeIssue('error', 'storage.manage.apply'")]),
+    ('S10', SS, 'the command is fired and forgotten: ok runs at once', [
+        e(SETTLE, "      void actions.setStoragePolicy({ retentionPolicy: draft.retentionPolicy, autoArchive: draft.autoArchive });\n      settle(() => undefined, {\n")]),
+    ('S11', SS, 'auto-archive is not sent as drafted', [e("autoArchive: draft.autoArchive }), {", "autoArchive: true }), {")]),
+    ('SM1', SS, 'a Core command starts from a mount effect (F69-1: twice under StrictMode)', [
+        e("import { useCallback, useState } from 'react';", "import { useCallback, useEffect, useState } from 'react';"),
+        e("  const presentCoreError = useCoreErrorPresenter();\n  return useCallback(", "  const presentCoreError = useCoreErrorPresenter();\n  useEffect(() => {\n    void actions.setStoragePolicy({ autoArchive: true });\n  }, [actions]);\n  return useCallback(")]),
+    ('M1', MS, 'Apply is not marked busy while the command is out (LB-1)', [e("        {...busyState(busy, !allowed || !changed)}\n", "")]),
+    ('M2', MS, 'no spinner after the reveal time (LB-1)', [e("{pending ? <PendingSpinner", "{false ? <PendingSpinner")]),
+    ('M3', MS, 'the spinner shows at once (busy instead of pending)', [e("{pending ? <PendingSpinner", "{busy ? <PendingSpinner")]),
+    ('M4', MS, 'no in-flight guard: a second press sends a second command', [
+        e("press.run((release) => onApply(draft, { applied: onClose, settled: release }));", "onApply(draft, { applied: onClose, settled: () => undefined });")]),
+    ('M5', MS, 'the sheet never closes on success', [e("{ applied: onClose, settled: release }", "{ applied: () => undefined, settled: release }")]),
+    ('M6', MS, 'S5-3: the role hint is dropped (an INVESTIGATOR may press Apply)', [e("const allowed = canManageStoragePolicy(role);", "const allowed = true;")]),
+    ('I1', SI, 'the LIVE text says "(simulated)"', [e("    applied: 'Storage policy updated',", "    applied: 'Storage policy updated (simulated)',")]),
+  ],
+  'network-time': [
+    ('N1', NM, 'a fixed NTP server instead of the Core\'s', [e("    ntpServer: time.ntp.server,", "    ntpServer: '192.168.10.1',")]),
+    ('N2', NM, 'a fixed satellite count instead of the Core\'s', [e("    satellites: time.gnss.satellites,", "    satellites: 10,")]),
+    ('N3', NM, 'all PoE ports up whatever the Core says', [e("    activePorts: network.poe.activePorts,", "    activePorts: network.poe.totalPorts,")]),
+    ('N4', NM, 'the tablet link ignores the replica', [e("    tabletLink: s.tabletLink.state,", "    tabletLink: 'CONNECTED' as const,")]),
+    ('N5', NM, 'a fixed IP address instead of the Core\'s', [e("    ip: network.ip,", "    ip: '192.168.10.21',")]),
+    ('N6', NU, 'no warning toast on a GNSS loss pushed by the Core', [e("if (level === 'FALLBACK' && from === 'LOCKED') {", "if (false) {")]),
+  ],
+}
+
+def sha(path):
+    with open(path, 'rb') as f:
+        return hashlib.sha256(f.read()).hexdigest()
+
+def jest(env, tests):
+    # The app's babel resolves `@/` from its own folder: the jest subprocess gets cwd=apps/mobile (as M0's / W78's runner); no shell cd.
+    return subprocess.run(['node', ROOT + '/node_modules/jest/bin/jest.js', '--config', CONFIG, '--maxWorkers=2', '--silent', *[APP + '/' + t for t in tests]],
+                          cwd=APP, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+
+def summary(out):
+    tail = [line.strip() for line in out.splitlines() if line.startswith('Tests:')]
+    files = sorted({line.split()[1].split('/')[-1] for line in out.splitlines() if line.startswith('FAIL ')})
+    first = [re.sub(r'\s+', ' ', line.strip().lstrip('●').strip()) for line in out.splitlines() if line.strip().startswith('● ') and 'Console' not in line]
+    return (tail[-1] if tail else 'no summary line'), files, first[:1]
+
+def main():
+    group = sys.argv[1]
+    wanted = set(sys.argv[2:])
+    tests = GROUP_TESTS[group]
+    spec_path = HERE + '/spec_' + group + '.json'
+    files = sorted({m[1] for m in M[group]})
+    before = {f: sha(APP + '/' + f) for f in files}
+    print('# W79 mutation check, group %s, %s; %d test files per run; the tree is not edited' % (group, time.strftime('%Y-%m-%d %H:%M:%S'), len(tests)), flush=True)
+    if not wanted or 'control' in wanted:
+        started = time.time()
+        run = jest(dict(os.environ, CI='1'), tests)
+        tail, failed, _ = summary(run.stdout)
+        print('control (no mutation): exit=%d %s (%.0f s)' % (run.returncode, tail, time.time() - started), flush=True)
+        if run.returncode != 0:
+            print(run.stdout[-3000:])
+            print('## the control run is not green: stop', flush=True)
+            return 2
+    todo = [m for m in M[group] if not wanted or m[0] in wanted]
+    detected, survived, broken = [], [], []
+    for (mid, file, what, edits) in todo:
+        text = open(APP + '/' + file).read()
+        ok = True
+        for edit in edits:
+            if text.count(edit['from']) != 1:
+                ok = False
+                break
+            text = text.replace(edit['from'], edit['to'], 1)
+        if not ok:
+            broken.append(mid)
+            print('%s  NOT APPLIED: a text does not occur exactly once in %s   (%s)' % (mid, file, what), flush=True)
+            continue
+        json.dump({'id': mid, 'file': file, 'edits': edits}, open(spec_path, 'w'))
+        started = time.time()
+        run = jest(dict(os.environ, W79_MUT_SPEC=spec_path, CI='1'), tests)
+        tail, failed, first = summary(run.stdout)
+        verdict = 'detected' if run.returncode != 0 else 'NOT DETECTED'
+        (detected if run.returncode != 0 else survived).append(mid)
+        print('%-4s %-12s %s (%.0f s) — %s; failing: %s; %s' % (mid, verdict, file.split('/')[-1], time.time() - started, what, ', '.join(failed) or '-', tail), flush=True)
+        if first:
+            print('       first failure: %s' % first[0][:200], flush=True)
+    after = {f: sha(APP + '/' + f) for f in files}
+    print('## %d detected, %d not detected, %d not applied, of %d' % (len(detected), len(survived), len(broken), len(todo)), flush=True)
+    print('## the mutated files in the tree, before and after: %s' % ('identical' if before == after else 'CHANGED'), flush=True)
+    return 0 if not survived and not broken and before == after else 1
+
+if __name__ == '__main__':
+    sys.exit(main())

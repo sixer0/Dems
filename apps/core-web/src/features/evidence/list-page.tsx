@@ -1,34 +1,23 @@
 import { useCallback, useMemo, useState } from 'react'
 import { getRouteApi, useNavigate } from '@tanstack/react-router'
-import { Button, Card, toast } from '@heroui/react'
+import { Button, Card } from '@heroui/react'
 import { motion } from 'motion/react'
 import { BadgeCheck, CircleDot, Hourglass, Layers, Share2, type LucideIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import {
-  EvidenceStatus,
-  Permission,
-  selectCan,
-  selectEvidence,
-  selectEvidenceStats,
-  SimPermissionError,
-  SimTransitionError,
-  useSim,
-  useSimActions,
-  useSimReady,
-} from '@dems/shared/sim'
+import { EvidenceStatus, Permission, selectCan, selectEvidence, selectEvidenceStats, useSim, useSimReady } from '@dems/shared/sim'
 import { AnimatedNumber } from '@/components/ui/animated-number'
 import { browserMatchMedia, useMediaQuery } from '@/motion/use-media-query'
 import { useMotionPolicy } from '@/motion'
 import { LIST_BEAT_MS, usePanelVariants, useStaggerVariants } from './choreography'
 import { EvidenceTable } from './evidence-table'
 import { ExportWizard } from './export-wizard'
-import { logEvidenceError } from './log'
 import { buildEvidenceRows, STATUS_FILTERS, type EvidenceRow } from './model'
 import { rememberHeaderOrigin, requestAutoVerify } from './pending-actions'
 import { EvidencePreview } from './preview-card'
 import { selectOperators } from './selectors'
 import { subjectTypeFromSearch } from './sim-adapter'
 import { EvidenceToolbar, type EvidenceFilters } from './toolbar'
+import { useArchiveEvidence } from './use-archive'
 import { useEvidenceTable } from './use-evidence-table'
 
 const listRoute = getRouteApi('/_app/evidence/')
@@ -48,6 +37,10 @@ function isEvidenceStatus(value: string | undefined): value is EvidenceStatus {
  * M-PG-EVID), lazily loaded under the page shell in `index.tsx`: five KPI cards, the toolbar, the
  * TanStack table (10 per page, AC-64) and the sticky preview. Filters live in the URL search (step 38
  * route schema). Export opens the wizard for one row or the bulk selection.
+ *
+ * Archive is settle site B-1 (backend task, plan row W69; `use-archive.ts`): the row menu closes at
+ * the press; while the archive is out the table is marked busy and that row's menu trigger shows
+ * the kit's spinner after `LIVE_PENDING_REVEAL_MS`. In Simulated mode it settles in the press.
  */
 export function EvidenceListBody() {
   const { t } = useTranslation()
@@ -55,7 +48,7 @@ export function EvidenceListBody() {
   const search = listRoute.useSearch()
   const navigateList = listRoute.useNavigate()
   const navigate = useNavigate()
-  const actions = useSimActions()
+  const { archive: archiveEvidence, control: archiving } = useArchiveEvidence()
   const ready = useSimReady()
   const items = useSim(selectEvidence)
   const operators = useSim(selectOperators)
@@ -133,22 +126,7 @@ export function EvidenceListBody() {
     setWizard((previous) => ({ key: previous.key + 1, ids, open: true }))
   }, [])
 
-  const archive = useCallback(
-    (row: EvidenceRow) => {
-      try {
-        actions.archiveEvidence(row.id)
-        toast.success(t('evidence.archive.success', { id: row.id }))
-      } catch (error) {
-        if (error instanceof SimPermissionError) toast.danger(t('evidence.archive.denied'))
-        else if (error instanceof SimTransitionError) toast.warning(t('evidence.archive.notSealed'))
-        else {
-          logEvidenceError('list.archive', error, { evidenceId: row.id })
-          toast.danger(t('evidence.archive.failed'))
-        }
-      }
-    },
-    [actions, t],
-  )
+  const archive = useCallback((row: EvidenceRow) => archiveEvidence(row.id, 'list'), [archiveEvidence])
 
   const kpiVariants = useStaggerVariants(LIST_BEAT_MS.kpis, 60)
   const toolbarVariants = usePanelVariants(LIST_BEAT_MS.toolbar)
@@ -208,6 +186,8 @@ export function EvidenceListBody() {
               previewId={wide ? (previewRow?.id ?? null) : null}
               selectedIds={selectedIds}
               canArchive={canArchive}
+              busyId={archiving.key}
+              pendingId={archiving.pending ? archiving.key : null}
               onSelectionChange={setSelectedIds}
               onRowAction={(row) => (wide ? setPreviewId(row.id) : openDetail(row, null))}
               onView={(row, origin) => openDetail(row, origin)}

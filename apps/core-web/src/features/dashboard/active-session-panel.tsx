@@ -18,6 +18,7 @@ import {
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { SessionState } from '@dems/shared/domain'
+import { useCoreMode } from '@dems/shared/live'
 import { DATE_PATTERNS, formatDate, formatUtcOffset } from '@dems/shared/realtime'
 import { Permission, selectCan, selectOperatorById, useSim, type SimState } from '@dems/shared/sim'
 import { motion as tokens, palette, toneChipProps } from '@dems/shared/tokens'
@@ -36,7 +37,7 @@ import {
   type SessionPanelKind,
 } from './dashboard-model'
 import { DASH_BEATS } from './dashboard-motion'
-import { selectSystemStateValue, useSealedManifestDigest } from './sim-adapter'
+import { manifestSuffixKey, selectSystemStateValue, useSealedManifestDigest } from './sim-adapter'
 
 /** Ripple and ShineBorder share ONE of the four ambient slots (D63; §9.4 "Ripple/ShineBorder"). */
 const IDLE_INVITATION_GROUP = 'idle-invitation'
@@ -333,6 +334,8 @@ function SealedView({ card, canStart }: { card: SessionCard; canStart: boolean }
   const navigate = useNavigate()
   // Review rule R3: the DEMO package digest when the item joins a package (step 54 alignment).
   const manifest = useSealedManifestDigest(card.evidenceId)
+  // W63: a Live screen never says "simulated" (04_client_integration_spec §3.2).
+  const manifestSuffix = manifestSuffixKey(manifest.source, useCoreMode())
   const sealedChip = toneChipProps('sealed')
   const digest = manifest.digest ? `${manifest.digest.slice(0, 16)}…${manifest.digest.slice(-8)}` : '…'
   return (
@@ -359,7 +362,7 @@ function SealedView({ card, canStart }: { card: SessionCard; canStart: boolean }
           <div className="col-span-2 min-w-0">
             <dt>
               {t('dashboard.activeSession.sealed.manifestHash')}
-              {manifest.source === 'simulated' ? ` · ${t('common.simulated.chip')}` : ''}
+              {manifestSuffix === null ? '' : ` · ${t(manifestSuffix)}`}
             </dt>
             <dd className="font-mono" data-testid="sealed-manifest" data-source={manifest.source}>
               {manifest.digest ? (

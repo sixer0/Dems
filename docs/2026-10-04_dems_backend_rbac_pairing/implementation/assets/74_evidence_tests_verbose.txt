@@ -1,0 +1,112 @@
+## 2026-10-05 23:56:19 WIB $ npm run test -w @dems/mobile -- --maxWorkers=2 --verbose src/features/evidence
+PASS src/features/evidence/live-evidence-export.test.tsx (5.365 s)
+  S5-1 and S1-5: Authorize — the hint decides the display; a denied role still calls the Core
+    ✓ INVESTIGATOR: after EXPORT_AUTH_MS one call with an empty reason; the Core's 403 (forbidden) → the denied Alert, audited by the Core (443 ms)
+    ✓ INVESTIGATOR, outage: the presenter's toast, and the denied Alert says the Core did not record the attempt (241 ms)
+    ✓ SUPERVISOR (S5-1): the hint authorizes after EXPORT_AUTH_MS on the store's clock and no probe is sent (145 ms)
+  Verify source on the Core's verdict (§14 point 7)
+    ✓ operation 41 is asked once; PASS lets the export go on (199 ms)
+    ✓ the Core's FAIL (EV 0005, AUDIO-02) blocks the export (259 ms)
+    ✓ outage: the presenter's toast, no verdict, "Verify again" asks once more (233 ms)
+  S1-6: the export — the request starts with the build step; the result at the later of the answer and EXPORT_BUILD_MS (LB-2)
+    ✓ success: one request at the press; "Building" until EXPORT_BUILD_MS though the Core answered; then Done with the Core's export ID (326 ms)
+    ✓ refusal: 403 (example forbidden) at the press → the refusal's Alert at Build (the union, §6.2); nothing exported (316 ms)
+    ✓ the Core's 422 INVALID_REASON (F59: the Core is the judge) → back to Reason, the reason kept, the inline error shown (290 ms)
+    ✓ outage (LB-6): the presenter's toast after the build step; back to Reason with what was typed; Export can be pressed again (256 ms)
+PASS src/features/evidence/live-evidence-verify.test.tsx
+  AC-C-61: operation 41, no demo operation; the verdict shown is the Core's
+    ✓ PASS (EV 0001): one verifyEvidence and nothing else; "Asking the Core" for at least VERIFY_ASK_MS; the Core's hashes, chip, toast and custody entry (523 ms)
+    ✓ FAIL (EV 0005, AUDIO-02): the Core's verdict names the track; the bundled package agrees (294 ms)
+    ✓ the Core and the bundled package differ (a tamper the Core recorded on VIDEO-01): the Core's FAIL is shown, and the info Alert says so (297 ms)
+    ✓ a session recorded in Live mode (media NONE): no bundled check and no bundled media, the Core's verdict all the same (366 ms)
+    ✓ operation 40 gets no answer: the Media tab says the reference is unavailable; the Core's verdict still works (295 ms)
+  No verdict: the presenter first, then the tab's own message (LB-5, LB-6)
+    ✓ outage: the "Core server unreachable" toast; the button returns to Verify; nothing is shown as a verdict (255 ms)
+    ✓ a 404 the presenter does not word (example notFound): the tab's own "could not verify" toast; a later Verify gets the verdict (431 ms)
+  The list kebab "Verify" on a tablet
+    ✓ opens the detail pane on Hash & Integrity and sends operation 41 once (277 ms)
+PASS src/features/evidence/play-sheet.test.tsx
+  Play sheet
+    ✓ plays the camera clip and both MIC tracks as separate players; only MIC 1 is audible at first (345 ms)
+    ✓ switches to MIC 2: MIC 1 muted, MIC 2 audible (never mixed) (249 ms)
+    ✓ a scrubber seek maps the recording position to p mod the clip length on every player (193 ms)
+    ✓ switches the camera clip and pauses every player when the sheet closes (212 ms)
+    ✓ reduced motion: the player opens in a kit Dialog (no slide-up) and still plays (device finding) (308 ms)
+PASS src/features/evidence/evidence-detail.test.tsx (10.729 s)
+  Evidence detail: Hash & Integrity
+    ✓ shows PASS for a pristine item (EV 0001) and the Core records the verification (1569 ms)
+    ✓ shows FAIL on AUDIO-02 for the tampered item (EV 0005) and the Core records the same failure (no contradicting row) (1385 ms)
+    ✓ the list kebab "Verify" opens the tablet detail pane on Hash & Integrity and runs it (1322 ms)
+  Evidence detail: Metadata
+    ✓ lists the 13 §11.3 fields and shows the byte-exact manifest.json (232 ms)
+  Evidence detail: Export wizard
+    ✓ an INVESTIGATOR is refused by the Core; the attempt is audited (S20, EVT-26) (761 ms)
+    ✓ a SUPERVISOR exports with a destination and a mandatory reason; status becomes EXPORTED (2024 ms)
+    ✓ the tampered source (EV 0005) blocks the export at "Verify source" (§19.3 rule 3) (785 ms)
+PASS src/features/evidence/evidence-list.test.tsx
+  T-M15 Evidence list
+    ✓ lists every dataset item newest first, with violet Sealed chips (181 ms)
+    ✓ filters by status chip (Sealed, Exported, Recorded, Under Review, then All) (307 ms)
+    ✓ searches by subject, case number and session ID; an empty result offers "Clear filters" (183 ms)
+    ✓ tablet landscape: pane-list and pane-detail side by side; selecting a row fills the detail pane (129 ms)
+    ✓ tablet landscape: a filter keeps the selection in the detail pane (131 ms)
+    ✓ tablet landscape: a deep link to /evidence/<id> hands over to the detail pane (110 ms)
+    ✓ phone portrait: selecting a row pushes the detail route (MB 6), Back returns to the list (221 ms)
+PASS src/features/evidence/live-evidence-archive.test.tsx
+  S3-1 from the list: success only after the Core's 2xx (AC-C-63)
+    ✓ the dialog stays busy while the request is out, shows the spinner late (LB-1), then toasts and closes after the answer (305 ms)
+    ✓ refusal: archiveEvidence 403 (example notPermitted) → the denied toast that names the role; no success toast; the dialog closes (217 ms)
+    ✓ outage: no answer → the presenter's "Core server unreachable" toast, no success toast, nothing archived (153 ms)
+  S3-1 from the detail's More menu
+    ✓ success: the toast after the Core's 2xx, the dialog closes, the item is ARCHIVED in the replica (272 ms)
+    ✓ an INVESTIGATOR sees the entry disabled by the hint (S5-5) and the Core is not asked (198 ms)
+  Simulated mode is unchanged (CLG a)
+    ✓ the dialog toasts and closes in the same handler; the simulator archives the item (181 ms)
+PASS src/features/evidence/evidence-model.test.ts
+    ✓ has the five MB 5 filters in order
+    ✓ filters by status and keeps ARCHIVED only under All (1 ms)
+    ✓ searches evidence ID, session ID, subject and case number, case-insensitively (2 ms)
+    ✓ sorts newest or oldest first by recording time
+    ✓ knows when the list is filtered
+    ✓ Sealed is violet with a lock (D28/Q4); the other statuses follow 04 §4.10
+    ✓ formats sizes in decimal units and shortens hashes (1 ms)
+    ✓ joins every dataset item to its DEMO package by evidence suffix
+    ✓ bundled media exist for EV 0001–0013; evidence 0014 plays the live loops; later items have none
+    ✓ reads the sealed time source from the manifest
+    ✓ plays position p at p mod the clip length
+    ✓ clamps to the recording and re-seeks only past the drift tolerance (wrapping)
+    ✓ a pristine item (EV 0001) is PASS with four track rows and the DEMO precomputed label
+    ✓ the tampered item (EV 0005) is FAIL on exactly its altered track, AUDIO-02
+    ✓ every package but 0005 passes (13 PASS, 1 FAIL across the 14 packages)
+    ✓ without a package it falls back to the simulator record, labelled SIMULATED (1 ms)
+    ✓ marks earlier stages done and the current one active
+    ✓ exports sealed, reviewed and exported items; archives all but RECORDED and ARCHIVED
+    ✓ needs an export reason of at least 5 characters after trimming (S21)
+    ✓ 600 ms, at most 20 text updates
+    ✓ reveals left to right and keeps non-hex characters (1 ms)
+PASS src/features/evidence/live-evidence-static.test.ts
+  Evidence takes the Core through the light Live API (CLG c, AC-C-53)
+    ✓ reads the folder: every production file, sub-folders included
+    ✓ no production file names the simulator's actions hook or reads `.actions` (rule 1) (1 ms)
+    ✓ the Core's actions come from `useCoreActions()` and are settled
+    ✓ operation 40 is the one operation called through the Live client, from one file (rule 1)
+  No network, no address, no storage, no credential, no raw link state (rules 3 and 4; M0)
+    ✓ names no network API and no Core server address
+    ✓ imports no storage package, no Live source module and no credential module (1 ms)
+    ✓ names no raw state of the Core link and no rule of its own (the link notice is the runtime's)
+  One LIVE idiom (rule 5)
+    ✓ the files that pick a LIVE behaviour read `useCoreLink().source`; none reads the data-mode hook
+  The Live waits run on the store's clock (rule 7)
+    ✓ the files written for Live mode hold no timer of their own
+  The copy (rule 8)
+    ✓ the Live copy says nothing about a simulation
+    ✓ the copy of Simulated mode is the copy of `acaff20` (185 texts, the same digest)
+    ✓ no SIM-GAP marker was added: the folder holds the eight of `acaff20` (1 ms)
+PASS src/features/evidence/live-evidence-strict.test.tsx
+  StrictMode: one request per effect-started call
+    ✓ the list kebab "Verify" sends operation 41 once; the detail reads operation 40 once (638 ms)
+    ✓ the export wizard's probe for a denied role is sent once (236 ms)
+Test Suites: 9 passed, 9 total
+Tests:       78 passed, 78 total
+Time:        13.934 s
+exit=0

@@ -69,6 +69,8 @@ export const session = {
   /** L: live feed overlays. */
   feed: {
     title: 'LIVE SESSION FEED',
+    /** Live mode: the accessible name of the camera picture, which is the bundled demo loop (MS-1), not the Core's camera (plan row W0, item 7). */
+    bundledPicture: 'Bundled demo picture',
     cameraLabel: '{{camera}} - {{room}}',
     rec: 'REC',
     preview: 'PREVIEW',
@@ -197,6 +199,8 @@ export const session = {
       keepRecording: 'Keep recording',
       failed: 'The session could not be ended. Please try again.',
       notPermitted: 'Your role cannot end sessions.',
+      /** Live mode (plan row W65, [CS] §8.3 B-2): a stop answered 409 because the session had already ended (Q16). */
+      alreadyEnded: 'The session was already ended.',
     },
     unavailable: 'Available during a recording session',
     failed: 'That action is not available right now. Please try again.',

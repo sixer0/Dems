@@ -1,0 +1,105 @@
+#!/usr/bin/env python3
+"""M1 FOLLOW-UP 3 (D170) mutation check (rule M15: nothing in the tree is written). Group B: the banner kind.
+
+Each mutation changes texts of ONE production file IN MEMORY (the jest transformer beside this file)
+and runs the test files of its group. A mutation is DETECTED when jest exits non-zero. The hashes of
+the mutated files are compared before and after the whole run.
+
+Groups:
+  H  the pending-press hook (`runtime/use-pending-press.ts`): the press guard and the reveal delay
+  S  the seeded first render (`runtime/link-notice.ts` `initialOfflineNotice`, `runtime/use-core-link-notice.ts`,
+     the W66 chip's first-render line)
+  B  the `busy` prop of `navigation/back-guard.tsx` and W67's call
+  T  the truthful copy of Start Session
+
+  python3 mutate.py control            the unmutated test files of every group, once
+  python3 mutate.py H                  every mutant of group H (or S, B, T); ids also work (H1 S3 …)
+"""
+import hashlib, json, os, re, subprocess, sys, time
+
+ROOT = '/Users/gsp-budi/Documents/DEMS'
+APP = ROOT + '/apps/mobile'
+HERE = os.path.dirname(os.path.abspath(__file__))
+SPEC = HERE + '/spec.json'
+CONFIG = '/Users/gsp-budi/Documents/DEMS/.cache/m1/mut/jest.mut.config.cjs'
+
+PROV = 'src/runtime/sim-runtime-provider.tsx'
+OLD_FN = 'function useConnectionBannerState(link: CoreLinkInfo, bus: ResyncBus) {\n  const [kind, setKind] = useState<ConnectionBannerKind>(() => nextBannerKind(\'hidden\', link));\n  // A new Core link value updates the banner in the same render ("adjusting state when a prop\n  // changes"), so no effect and no extra commit is needed.\n  const [seenLink, setSeenLink] = useState(link);\n  if (seenLink !== link) {\n    setSeenLink(link);\n    setKind(nextBannerKind(kind, link));\n  }\n  useEffect(() => bus.subscribe(() => setKind(bannerKindAfterResync)), [bus]);\n  useEffect(() => {\n    if (kind !== \'resynced\') return undefined;\n    const timer = setTimeout(() => setKind((current) => (current === \'resynced\' ? \'hidden\' : current)), RESYNCED_BANNER_MS);\n    return () => clearTimeout(timer);\n  }, [kind]);\n  return useMemo(() => connectionBannerFor(kind), [kind]);\n}\n'
+NEW_FN = '/**\n * The banner kind, written ONLY while rendering, from the kind of that render (decision D170, finding\n * F-1 of row W68). The link arrives through `useSyncExternalStore` (a sync update) while the resync\n * signal comes from a socket callback (a default-lane update). A functional updater of `kind` queued\n * by the signal and skipped by the render that applied the link change was later rebased over that\n * render-phase update and undid it: "Resynced", then "offline" again with the link ONLINE. So the bus\n * and the timer only count their signals, each in a state of its own, and the render folds every input\n * that changed into `kind` in one step: the link (`nextBannerKind`), a resync (`bannerKindAfterResync`),\n * the end of "Resynced" (hidden). No effect and no extra commit for a link change, as before.\n */\nexport function useConnectionBannerState(link: CoreLinkInfo, bus: ResyncBus) {\n  const [kind, setKind] = useState<ConnectionBannerKind>(() => nextBannerKind(\'hidden\', link));\n  const [resyncs, setResyncs] = useState(0);\n  const [expiries, setExpiries] = useState(0);\n  const [seen, setSeen] = useState({ link, resyncs, expiries });\n  if (seen.link !== link || seen.resyncs !== resyncs || seen.expiries !== expiries) {\n    let next = kind;\n    if (seen.link !== link) next = nextBannerKind(next, link);\n    if (seen.resyncs !== resyncs) next = bannerKindAfterResync(next);\n    if (seen.expiries !== expiries && next === \'resynced\') next = \'hidden\';\n    setSeen({ link, resyncs, expiries });\n    if (next !== kind) setKind(next);\n  }\n  useEffect(() => bus.subscribe(() => setResyncs((count) => count + 1)), [bus]);\n  useEffect(() => {\n    if (kind !== \'resynced\') return undefined;\n    const timer = setTimeout(() => setExpiries((count) => count + 1), RESYNCED_BANNER_MS);\n    return () => clearTimeout(timer);\n  }, [kind]);\n  return useMemo(() => connectionBannerFor(kind), [kind]);\n}\n'
+
+TESTS = {
+    'B': ['src/runtime/connection-banner-live.test.tsx', 'src/runtime/runtime.test.tsx', 'src/runtime/live-core-link.test.tsx', 'src/runtime/live-runtime.test.tsx', 'src/runtime/use-core-link-notice.test.tsx'],
+}
+
+def e(frm, to):
+    return {'from': frm, 'to': to}
+
+M = [
+  ('B0', PROV, 'the fix reverted: the hook as at b90a3c6 (red-before of the committed test)', [e(NEW_FN, 'export ' + OLD_FN)]),
+  ('B1', PROV, 'a resync signal is not folded into the kind', [e("    if (seen.resyncs !== resyncs) next = bannerKindAfterResync(next);\n", "")]),
+  ('B2', PROV, 'the end of "Resynced" is not folded into the kind', [e("    if (seen.expiries !== expiries && next === 'resynced') next = 'hidden';\n", "")]),
+  ('B3', PROV, 'the end of "Resynced" hides whatever the kind is', [e("if (seen.expiries !== expiries && next === 'resynced') next = 'hidden';", "if (seen.expiries !== expiries) next = 'hidden';")]),
+  ('B4', PROV, 'the bus writes the kind again (an updater of kind from outside the render)', [e("useEffect(() => bus.subscribe(() => setResyncs((count) => count + 1)), [bus]);", "useEffect(() => bus.subscribe(() => setKind(bannerKindAfterResync)), [bus]);")]),
+  ('B5', PROV, 'the link change is skipped when a resync came in the same render', [e("    if (seen.link !== link) next = nextBannerKind(next, link);\n    if (seen.resyncs !== resyncs) next = bannerKindAfterResync(next);", "    if (seen.resyncs !== resyncs) next = bannerKindAfterResync(next);\n    else if (seen.link !== link) next = nextBannerKind(next, link);")]),
+  ('B6', PROV, 'the resync is folded before the link change (order swapped)', [e("    if (seen.link !== link) next = nextBannerKind(next, link);\n    if (seen.resyncs !== resyncs) next = bannerKindAfterResync(next);", "    if (seen.resyncs !== resyncs) next = bannerKindAfterResync(next);\n    if (seen.link !== link) next = nextBannerKind(next, link);")]),
+  ('B7', PROV, 'the timer writes the kind again', [e("const timer = setTimeout(() => setExpiries((count) => count + 1), RESYNCED_BANNER_MS);", "const timer = setTimeout(() => setKind((current) => (current === 'resynced' ? 'hidden' : current)), RESYNCED_BANNER_MS);")]),
+]
+
+def sha(path):
+    with open(path, 'rb') as f:
+        return hashlib.sha256(f.read()).hexdigest()
+
+def jest(env, tests):
+    return subprocess.run(['node', ROOT + '/node_modules/jest/bin/jest.js', '--config', CONFIG, '--maxWorkers=2', '--silent', *tests],
+                          cwd=APP, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+
+def summary(out):
+    tail = [line.strip() for line in out.splitlines() if line.startswith('Tests:')]
+    files = sorted({line.split()[1].split('/')[-1] for line in out.splitlines() if line.startswith('FAIL ')})
+    first = [re.sub(r'\s+', ' ', line.strip().lstrip('●').strip()) for line in out.splitlines() if line.strip().startswith('● ') and 'Console' not in line]
+    return (tail[-1] if tail else 'no summary line'), files, first[:2]
+
+def main():
+    wanted = sys.argv[1:]
+    files = sorted({m[1] for m in M})
+    before = {f: sha(APP + '/' + f) for f in files}
+    print('# M1 follow-up 3 (D170) mutation check, %s; the tree is not edited' % time.strftime('%Y-%m-%d %H:%M:%S'), flush=True)
+    if 'control' in wanted:
+        tests = sorted({t for group in TESTS.values() for t in group})
+        started = time.time()
+        run = jest(dict(os.environ, CI='1'), tests)
+        tail, failed, _ = summary(run.stdout)
+        print('control (no mutation, %d test files): exit=%d %s (%.0f s)' % (len(tests), run.returncode, tail, time.time() - started), flush=True)
+        if run.returncode != 0:
+            print(run.stdout[-4000:])
+            sys.exit(1)
+    chosen = [m for m in M if m[0] in wanted or m[0].rstrip('0123456789') in wanted]
+    detected = missed = unapplied = 0
+    for mid, file, what, edits in chosen:
+        group = mid.rstrip('0123456789')
+        with open(SPEC, 'w') as f:
+            json.dump({'id': mid, 'file': file, 'edits': edits}, f)
+        started = time.time()
+        run = jest(dict(os.environ, CI='1', M1_MUT_SPEC=SPEC), TESTS[group])
+        tail, failed, first = summary(run.stdout)
+        if 'expected exactly 1' in run.stdout:
+            unapplied += 1
+            verdict = 'NOT APPLIED'
+        elif run.returncode != 0:
+            detected += 1
+            verdict = 'DETECTED'
+        else:
+            missed += 1
+            verdict = 'not detected'
+        print('%-4s %-12s %s | %s | %s | failing files: %s | first: %s (%.0f s)' % (mid, verdict, what, file, tail, ', '.join(failed) or '-', ' / '.join(first) or '-', time.time() - started), flush=True)
+    if chosen:
+        print('## %d detected, %d not detected, %d not applied, of %d' % (detected, missed, unapplied, len(chosen)), flush=True)
+    after = {f: sha(APP + '/' + f) for f in files}
+    same = before == after
+    print('## the mutated files in the tree, before and after: %s' % ('identical' if same else 'CHANGED'), flush=True)
+    for f in files:
+        print('   %s  %s' % (after[f][:16], f), flush=True)
+    print('# finished %s' % time.strftime('%H:%M:%S'), flush=True)
+
+if __name__ == '__main__':
+    main()

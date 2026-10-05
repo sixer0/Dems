@@ -9,9 +9,31 @@
  *   (inject, or clear when active), a scenario choice with Load, Reset (`loadScenario('idle')`) and
  *   Recover while a session is in FAULT (01S §14.5.8; MA-30: "MIC 2 clip", "Storage full").
  *
- * Every simulator command runs through `useSimCommand`: user feedback (toast), a persistent
+ * Every Core command runs through `useCoreCommand`: user feedback (toast), a persistent
  * runtime-log record on failure, and nothing thrown into the render.
+ *
+ * Both data modes (backend task W82; 04_client_integration_spec §8.6 S2-7, §8.1 LB-1 to LB-10;
+ * AC-C-52). The actions come from `useCoreActions()` and every command goes through `settle` in the
+ * callback form (the web wrapper's, B-10): what followed the former `true` runs in `ok`. The simulator
+ * settles before `settle` returns, so SIMULATED and HEARTBEAT behave exactly as before; the Core
+ * server settles once it answered and the store holds what the answer named (CL-16).
+ *
+ * | Use (S2-7) | Operation | Live behaviour |
+ * |---|---|---|
+ * | Run diagnostics | 65 `runDiagnostics` | The sheet opens in `ok`, once the Core accepted the run |
+ * | Install update | 67 `startSoftwareUpdate` | The started toast in `ok`; a 409 (a session is open) is the warning of the simulator's refusal |
+ * | Fault buttons | 73 `injectFault`, 74 `clearFault`, then 52 `resetMicClip` for MIC 2 clip | The toast in `ok`; the latch reset is the next command, sent in the clear's `ok` |
+ * | Load, Reset | 72 `loadScenario` | The scenario chip and the toast in `ok`, once the snapshot of the new epoch is in (CL-18) |
+ * | Recover | 33 `recoverSession` | The toast in `ok` |
+ *
+ * Each control is busy from its press until its command settled and shows the kit's spinner late
+ * (`usePendingPress`, `busyState`, `PendingSpinner` of `@/runtime`). A Live rejection goes to the
+ * refusal presenter first (a denial, an outage, a limit, `DEMO_DISABLED`); only what it leaves gets
+ * this screen's own message. In LIVE mode the Demo controls show only with DEMO_CONTROL and the
+ * Core's demo flag (`session.demoControls`, AC-C-52), otherwise one line says why; and the copy says
+ * nothing about a simulation (`features.settings.live.*`).
  */
+import { settle, useCoreActions, useCorePermission, useLiveSelector } from '@dems/shared/live';
 import { Accordion, Button, Chip, Spinner, TagGroup, useToast } from 'heroui-native';
 import { Activity, Download, FlaskConical, LifeBuoy, Play, RotateCcw } from 'lucide-react-native';
 import { useCallback, useState } from 'react';
@@ -20,13 +42,13 @@ import { StyleSheet, Text, View } from 'react-native';
 import {
   FaultKind,
   formatWibTime,
+  Permission,
   ScenarioName,
   SimTransitionError,
   selectActiveFaults,
   selectDiagnostics,
   selectUpdate,
   useSim,
-  useSimActions,
   type DiagnosticStatus,
   type SimState,
 } from '@dems/shared/sim';
@@ -34,10 +56,11 @@ import { fontFamily, palette, spacing, typography } from '@dems/shared/tokens';
 import { Stepper } from '@/components/composed/stepper';
 import { SectionCard } from '@/components/kit';
 import { useMotionPolicy } from '@/motion';
-import { reportRuntimeIssue } from '@/runtime';
+import { PendingSpinner, busyState, reportRuntimeIssue, useCoreErrorPresenter, useCoreLink, usePendingPress, type MobileLiveSim } from '@/runtime';
 import {
   DEMO_FAULTS,
   DEMO_SCENARIOS,
+  demoControlsAccess,
   isDemoFaultActive,
   summarizeDiagnostics,
   targetSlotOf,
@@ -51,50 +74,77 @@ import { SectionStack, settingsStyles } from './settings-controls';
 const selectSessionState = (s: SimState) => s.session?.state ?? null;
 const selectScenario = (s: SimState) => s.meta.scenario;
 
-interface CommandOptions {
+interface CommandOptions<T> {
   source: string;
   context?: Record<string, unknown>;
-  /** Friendly text when the simulator refuses the transition (an active session, …). */
+  /** Friendly text when the simulator or the Core refuses the transition (an active session, …). */
   refusedLabel?: string;
+  /** What followed the former `true`: the command was accepted (S2-7, the callback form). */
+  ok?: (value: T) => void;
+  /** Once after `ok` or the failure, in every path: the pending control's release. */
+  done?: () => void;
 }
 
-/** Runs one simulator command with the three error layers; returns false when it threw. */
-function useSimCommand() {
+/**
+ * Runs one Core command with the three error layers (S2-7, the callback form of B-10). A Live
+ * rejection goes to the refusal presenter first; a refused transition is a warning with the site's
+ * text; anything else the generic danger toast. Every failure writes the persistent runtime log.
+ */
+function useCoreCommand() {
   const { t } = useTranslation();
   const { toast } = useToast();
+  const live = useCoreLink().source === 'LIVE';
+  const presentCoreError = useCoreErrorPresenter();
   return useCallback(
-    (command: () => void, { source, context, refusedLabel }: CommandOptions): boolean => {
-      try {
-        command();
-        return true;
-      } catch (error) {
-        if (error instanceof SimTransitionError) {
-          toast.show({ variant: 'warning', label: refusedLabel ?? t('system.errors.generic') });
-          reportRuntimeIssue('warn', source, error, { ...context, from: error.from, event: error.event });
-        } else {
-          toast.show({ variant: 'danger', label: t('system.errors.generic') });
-          reportRuntimeIssue('error', source, error, context);
-        }
-        return false;
-      }
+    <T,>(command: () => T | PromiseLike<T>, { source, context, refusedLabel, ok, done }: CommandOptions<T>): void => {
+      settle(command, {
+        ...(ok ? { ok } : {}),
+        fail: (error) => {
+          // Live mode: a denial, an outage, a limit or DEMO_DISABLED is the presenter's (one wording on every screen).
+          if (live && presentCoreError(error)) {
+            reportRuntimeIssue('warn', source, error, context);
+            return;
+          }
+          if (error instanceof SimTransitionError) {
+            toast.show({ variant: 'warning', label: refusedLabel ?? t('system.errors.generic') });
+            reportRuntimeIssue('warn', source, error, { ...context, from: error.from, event: error.event });
+          } else {
+            toast.show({ variant: 'danger', label: t('system.errors.generic') });
+            reportRuntimeIssue('error', source, error, context);
+          }
+        },
+        ...(done ? { done } : {}),
+      });
     },
-    [t, toast],
+    [live, presentCoreError, t, toast],
   );
 }
+
+/** The demo flag of the Core server, as the signed-in session read it (DC-3); false outside LIVE. */
+const selectDemoFlag = (handle: MobileLiveSim | null): boolean => handle?.session?.demoControls === true;
 
 export function MaintenanceSection() {
   const { t } = useTranslation();
   const prefs = useSettingsPrefs();
+  const live = useCoreLink().source === 'LIVE';
+  const permitted = useCorePermission(Permission.DEMO_CONTROL);
+  const demoFlag = useLiveSelector(selectDemoFlag);
+  const access = demoControlsAccess({ presentationMode: prefs.presentationMode, live, permitted, demoFlag });
   return (
     <SectionStack testID="settings-maintenance">
       <DiagnosticsCard />
       <UpdateCard />
-      {prefs.presentationMode ? (
+      {access === 'presentation' ? (
         <Text maxFontSizeMultiplier={1.2} style={settingsStyles.muted} testID="settings-demo-hidden">
           {t('features.settings.maintenance.demoHiddenPresentation')}
         </Text>
-      ) : (
+      ) : access === 'shown' ? (
         <DemoControls />
+      ) : (
+        // AC-C-52: LIVE mode without DEMO_CONTROL, or the Core server without its demo flag: no panel, one true line.
+        <Text maxFontSizeMultiplier={1.2} style={settingsStyles.muted} testID={`settings-demo-${access}`}>
+          {t(access === 'not-permitted' ? 'features.settings.live.demoNotPermitted' : 'features.settings.live.demoFlagOff')}
+        </Text>
       )}
     </SectionStack>
   );
@@ -104,19 +154,29 @@ export function MaintenanceSection() {
 
 function DiagnosticsCard() {
   const { t } = useTranslation();
-  const actions = useSimActions();
-  const run = useSimCommand();
+  const actions = useCoreActions();
+  const run = useCoreCommand();
+  const press = usePendingPress();
+  const live = useCoreLink().source === 'LIVE';
   const diagnostics = useSim(selectDiagnostics);
   const [open, setOpen] = useState(false);
   const summary = summarizeDiagnostics(diagnostics);
+  const subtitle = t(live ? 'features.settings.live.diagnosticsSubtitle' : 'system.diagnostics.subtitle');
 
+  // S2-7: the sheet opens in `ok`, once the simulator or the Core accepted the run.
   const start = () => {
-    const started = run(() => void actions.runDiagnostics(), { source: 'settings.maintenance.runDiagnostics', refusedLabel: t('system.diagnostics.failedToStart') });
-    if (started) setOpen(true);
+    press.run((release) =>
+      run(() => actions.runDiagnostics(), {
+        source: 'settings.maintenance.runDiagnostics',
+        refusedLabel: t('system.diagnostics.failedToStart'),
+        ok: () => setOpen(true),
+        done: release,
+      }),
+    );
   };
 
   return (
-    <SectionCard title={t('features.settings.maintenance.diagnosticsTitle')} description={t('system.diagnostics.subtitle')} testID="settings-diagnostics">
+    <SectionCard title={t('features.settings.maintenance.diagnosticsTitle')} description={subtitle} testID="settings-diagnostics">
       {summary?.complete && diagnostics?.completedAt != null ? (
         <Text maxFontSizeMultiplier={1.2} style={settingsStyles.muted} testID="settings-diagnostics-last">
           {t('features.settings.maintenance.lastRun', {
@@ -127,11 +187,11 @@ function DiagnosticsCard() {
           })}
         </Text>
       ) : null}
-      <Button testID="settings-run-diagnostics" variant="secondary" size="lg" onPress={start}>
-        <Activity size={18} color={palette.gold} />
+      <Button testID="settings-run-diagnostics" variant="secondary" size="lg" onPress={start} {...busyState(press.busy)}>
+        {press.pending ? <PendingSpinner color={palette.gold} testID="settings-run-diagnostics-spinner" /> : <Activity size={18} color={palette.gold} />}
         <Button.Label>{t('features.settings.maintenance.runDiagnostics')}</Button.Label>
       </Button>
-      <DiagnosticsSheet isOpen={open} onClose={() => setOpen(false)} />
+      <DiagnosticsSheet isOpen={open} onClose={() => setOpen(false)} description={subtitle} />
     </SectionCard>
   );
 }
@@ -144,10 +204,10 @@ const DIAGNOSTIC_TONE: Readonly<Record<DiagnosticStatus, 'default' | 'accent' | 
   FAIL: 'danger',
 };
 
-function DiagnosticsSheet({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
+function DiagnosticsSheet({ isOpen, onClose, description }: { isOpen: boolean; onClose: () => void; description: string }) {
   const { t } = useTranslation();
   return (
-    <SheetFrame isOpen={isOpen} onClose={onClose} title={t('features.settings.maintenance.diagnosticsSheetTitle')} description={t('system.diagnostics.subtitle')} testID="settings-diagnostics-sheet">
+    <SheetFrame isOpen={isOpen} onClose={onClose} title={t('features.settings.maintenance.diagnosticsSheetTitle')} description={description} testID="settings-diagnostics-sheet">
       <DiagnosticsBody />
     </SheetFrame>
   );
@@ -190,8 +250,10 @@ function DiagnosticsBody() {
 
 function UpdateCard() {
   const { t } = useTranslation();
-  const actions = useSimActions();
-  const run = useSimCommand();
+  const actions = useCoreActions();
+  const run = useCoreCommand();
+  const press = usePendingPress();
+  const live = useCoreLink().source === 'LIVE';
   const { toast } = useToast();
   const motion = useMotionPolicy();
   const update = useSim(selectUpdate);
@@ -199,12 +261,20 @@ function UpdateCard() {
   const showPipeline = update.state !== 'IDLE';
   const slot = targetSlotOf(update);
 
+  // S2-7: the started toast in `ok`, once the simulator or the Core accepted the update.
   const install = () => {
-    const started = run(() => actions.startSoftwareUpdate(), {
-      source: 'settings.maintenance.startSoftwareUpdate',
-      refusedLabel: t('system.update.blockedBySession'),
-    });
-    if (started && update.availableVersion) toast.show({ variant: 'default', label: t('system.update.startedToast', { version: update.availableVersion }) });
+    press.run((release) =>
+      run(() => actions.startSoftwareUpdate(), {
+        source: 'settings.maintenance.startSoftwareUpdate',
+        refusedLabel: t('system.update.blockedBySession'),
+        ok: () => {
+          if (update.availableVersion) {
+            toast.show({ variant: 'default', label: t(live ? 'features.settings.live.updateStarted' : 'system.update.startedToast', { version: update.availableVersion }) });
+          }
+        },
+        done: release,
+      }),
+    );
   };
 
   const body =
@@ -219,8 +289,9 @@ function UpdateCard() {
       title={t('common.quickActions.softwareUpdate.title')}
       description={t('features.settings.maintenance.updateCurrent', { version: update.currentVersion, slot: update.activeSlot })}
       action={
-        <Chip size="sm" variant="soft" color="warning">
-          <Chip.Label>{t('common.simulated.chip')}</Chip.Label>
+        // LIVE: the Core runs a demonstration update (no software is installed), so the chip says DEMO, not "simulated".
+        <Chip size="sm" variant="soft" color="warning" testID="settings-update-chip">
+          <Chip.Label>{t(live ? 'system.demo.badge' : 'common.simulated.chip')}</Chip.Label>
         </Chip>
       }
       testID="settings-update"
@@ -228,6 +299,11 @@ function UpdateCard() {
       <Text maxFontSizeMultiplier={1.2} style={settingsStyles.body} testID="settings-update-body">
         {body}
       </Text>
+      {live ? (
+        <Text maxFontSizeMultiplier={1.2} style={settingsStyles.muted} testID="settings-update-live-note">
+          {t('features.settings.live.updateNote')}
+        </Text>
+      ) : null}
       {showPipeline ? (
         <Stepper
           testID="settings-update-steps"
@@ -238,9 +314,9 @@ function UpdateCard() {
         />
       ) : null}
       {update.availableVersion && !running && update.state !== 'PASS' ? (
-        <Button testID="settings-update-install" variant="primary" size="lg" onPress={install}>
-          <Download size={18} color={palette.black} />
-          <Button.Label>{t('system.update.install')}</Button.Label>
+        <Button testID="settings-update-install" variant="primary" size="lg" onPress={install} {...busyState(press.busy)}>
+          {press.pending ? <PendingSpinner color={palette.black} testID="settings-update-install-spinner" /> : <Download size={18} color={palette.black} />}
+          <Button.Label>{t(live ? 'features.settings.live.install' : 'system.update.install')}</Button.Label>
         </Button>
       ) : null}
       {running ? (
@@ -256,46 +332,73 @@ function UpdateCard() {
 
 function DemoControls() {
   const { t } = useTranslation();
-  const actions = useSimActions();
-  const run = useSimCommand();
+  const actions = useCoreActions();
+  const run = useCoreCommand();
+  const live = useCoreLink().source === 'LIVE';
+  const loadPress = usePendingPress();
+  const resetPress = usePendingPress();
+  const recoverPress = usePendingPress();
   const { toast } = useToast();
   const active = useSim(selectActiveFaults);
   const sessionState = useSim(selectSessionState);
   const currentScenario = useSim(selectScenario);
   const [scenario, setScenario] = useState<ScenarioName>(currentScenario);
 
-  const toggleFault = (spec: DemoFaultSpec) => {
+  // S2-7: the toast in `ok`; `release` frees the pressed fault button once the last command settled.
+  const toggleFault = (spec: DemoFaultSpec, release: () => void) => {
     const on = !isDemoFaultActive(active, spec);
     const fault = t(`system.demo.faults.${spec.kind}`);
-    const done = run(
-      () => {
-        if (on) {
-          actions.inject(spec.kind, spec.target);
-        } else {
-          actions.clearFault(spec.kind, spec.target);
-          // The CLIP latch stays until reset (faults.ts): clearing the demo fault also resets it.
-          if (spec.kind === FaultKind.MIC_CLIP) actions.resetClip(spec.target?.channel ?? 'AUDIO-02');
-        }
+    const source = on ? 'settings.demo.inject' : 'settings.demo.clearFault';
+    const context = { kind: spec.kind };
+    if (on) {
+      run(() => actions.inject(spec.kind, spec.target), {
+        source,
+        context,
+        ok: () => toast.show({ variant: spec.critical ? 'danger' : 'warning', label: t('system.demo.injected', { fault }) }),
+        done: release,
+      });
+      return;
+    }
+    const cleared = () => toast.show({ variant: 'success', label: t('system.demo.cleared', { fault }) });
+    if (spec.kind !== FaultKind.MIC_CLIP) {
+      run(() => actions.clearFault(spec.kind, spec.target), { source, context, ok: cleared, done: release });
+      return;
+    }
+    // The CLIP latch stays until reset (faults.ts): clearing the demo fault also resets it, as the
+    // next command (sequences nest, CL-25); the button is released when that one settled.
+    const channel = spec.target?.channel ?? 'AUDIO-02';
+    let chained = false;
+    run(() => actions.clearFault(spec.kind, spec.target), {
+      source,
+      context,
+      ok: () => {
+        chained = true;
+        run(() => actions.resetClip(channel), { source, context: { ...context, channel }, ok: cleared, done: release });
       },
-      { source: on ? 'settings.demo.inject' : 'settings.demo.clearFault', context: { kind: spec.kind } },
-    );
-    if (!done) return;
-    if (on) toast.show({ variant: spec.critical ? 'danger' : 'warning', label: t('system.demo.injected', { fault }) });
-    else toast.show({ variant: 'success', label: t('system.demo.cleared', { fault }) });
-  };
-
-  const loadScenario = (name: ScenarioName, reset: boolean) => {
-    const done = run(() => actions.loadScenario(name), { source: reset ? 'settings.demo.reset' : 'settings.demo.loadScenario', context: { scenario: name } });
-    if (!done) return;
-    setScenario(name);
-    toast.show({
-      variant: 'success',
-      label: reset ? t('system.demo.resetDone') : t('system.demo.scenarioLoaded', { scenario: t(`system.demo.scenarios.${name}`) }),
+      done: () => {
+        if (!chained) release();
+      },
     });
   };
 
-  const recover = () => {
-    if (run(() => actions.recover(), { source: 'settings.demo.recover' })) toast.show({ variant: 'default', label: t('system.demo.recovered') });
+  // S2-7: the scenario chip and the toast in `ok`.
+  const loadScenario = (name: ScenarioName, reset: boolean, release: () => void) => {
+    run(() => actions.loadScenario(name), {
+      source: reset ? 'settings.demo.reset' : 'settings.demo.loadScenario',
+      context: { scenario: name },
+      ok: () => {
+        setScenario(name);
+        toast.show({
+          variant: 'success',
+          label: reset ? t('system.demo.resetDone') : t('system.demo.scenarioLoaded', { scenario: t(`system.demo.scenarios.${name}`) }),
+        });
+      },
+      done: release,
+    });
+  };
+
+  const recover = (release: () => void) => {
+    run(() => actions.recover(), { source: 'settings.demo.recover', ok: () => toast.show({ variant: 'default', label: t('system.demo.recovered') }), done: release });
   };
 
   return (
@@ -315,8 +418,8 @@ function DemoControls() {
         </Accordion.Trigger>
         <Accordion.Content>
           <View style={styles.demoBody} testID="settings-demo-body">
-            <Text maxFontSizeMultiplier={1.2} style={settingsStyles.muted}>
-              {t('system.demo.note')}
+            <Text maxFontSizeMultiplier={1.2} style={settingsStyles.muted} testID="settings-demo-note">
+              {t(live ? 'features.settings.live.demoNote' : 'system.demo.note')}
             </Text>
 
             <View style={styles.demoHead}>
@@ -328,22 +431,9 @@ function DemoControls() {
               </Text>
             </View>
             <View style={settingsStyles.wrap}>
-              {DEMO_FAULTS.map((spec) => {
-                const on = isDemoFaultActive(active, spec);
-                return (
-                  <Button
-                    key={spec.kind}
-                    testID={`settings-demo-fault-${spec.kind}`}
-                    size="sm"
-                    variant={on ? 'danger-soft' : 'outline'}
-                    accessibilityState={{ selected: on }}
-                    accessibilityHint={t(on ? 'features.settings.maintenance.faultActiveHint' : 'features.settings.maintenance.faultIdleHint')}
-                    onPress={() => toggleFault(spec)}
-                  >
-                    <Button.Label>{t(`system.demo.faults.${spec.kind}`)}</Button.Label>
-                  </Button>
-                );
-              })}
+              {DEMO_FAULTS.map((spec) => (
+                <DemoFaultButton key={spec.kind} spec={spec} on={isDemoFaultActive(active, spec)} onToggle={toggleFault} />
+              ))}
             </View>
 
             <Text maxFontSizeMultiplier={1.2} accessibilityRole="header" style={settingsStyles.strong}>
@@ -370,12 +460,24 @@ function DemoControls() {
               {t('system.demo.scenarioCurrent', { scenario: t(`system.demo.scenarios.${currentScenario}`) })}
             </Text>
             <View style={styles.demoActions}>
-              <Button testID="settings-demo-load" size="md" variant="primary" onPress={() => loadScenario(scenario, false)}>
-                <Play size={16} color={palette.black} />
+              <Button
+                testID="settings-demo-load"
+                size="md"
+                variant="primary"
+                onPress={() => loadPress.run((release) => loadScenario(scenario, false, release))}
+                {...busyState(loadPress.busy)}
+              >
+                {loadPress.pending ? <PendingSpinner color={palette.black} testID="settings-demo-load-spinner" /> : <Play size={16} color={palette.black} />}
                 <Button.Label>{t('features.settings.maintenance.loadScenario')}</Button.Label>
               </Button>
-              <Button testID="settings-demo-reset" size="md" variant="outline" onPress={() => loadScenario(ScenarioName.IDLE, true)}>
-                <RotateCcw size={16} color={palette.gold} />
+              <Button
+                testID="settings-demo-reset"
+                size="md"
+                variant="outline"
+                onPress={() => resetPress.run((release) => loadScenario(ScenarioName.IDLE, true, release))}
+                {...busyState(resetPress.busy)}
+              >
+                {resetPress.pending ? <PendingSpinner color={palette.gold} testID="settings-demo-reset-spinner" /> : <RotateCcw size={16} color={palette.gold} />}
                 <Button.Label>{t('system.demo.reset')}</Button.Label>
               </Button>
             </View>
@@ -388,8 +490,14 @@ function DemoControls() {
                 <Text maxFontSizeMultiplier={1.2} style={settingsStyles.body}>
                   {t('system.demo.recoverHint')}
                 </Text>
-                <Button size="md" variant="danger-soft" onPress={recover} testID="settings-demo-recover-button">
-                  <LifeBuoy size={16} color={palette.danger} />
+                <Button
+                  size="md"
+                  variant="danger-soft"
+                  onPress={() => recoverPress.run(recover)}
+                  testID="settings-demo-recover-button"
+                  {...busyState(recoverPress.busy)}
+                >
+                  {recoverPress.pending ? <PendingSpinner color={palette.danger} testID="settings-demo-recover-spinner" /> : <LifeBuoy size={16} color={palette.danger} />}
                   <Button.Label>{t('system.demo.recover')}</Button.Label>
                 </Button>
               </View>
@@ -398,6 +506,29 @@ function DemoControls() {
         </Accordion.Content>
       </Accordion.Item>
     </Accordion>
+  );
+}
+
+/**
+ * One fault button with its own pending state (LB-1: the control that sent the command ignores
+ * further presses until it settled). The button keeps its `selected` state; while its command is out
+ * the busy state joins it. It has no icon, so the kit's spinner shows before the label when late.
+ */
+function DemoFaultButton({ spec, on, onToggle }: { spec: DemoFaultSpec; on: boolean; onToggle: (spec: DemoFaultSpec, release: () => void) => void }) {
+  const { t } = useTranslation();
+  const press = usePendingPress();
+  return (
+    <Button
+      testID={`settings-demo-fault-${spec.kind}`}
+      size="sm"
+      variant={on ? 'danger-soft' : 'outline'}
+      accessibilityState={{ selected: on, ...busyState(press.busy).accessibilityState }}
+      accessibilityHint={t(on ? 'features.settings.maintenance.faultActiveHint' : 'features.settings.maintenance.faultIdleHint')}
+      onPress={() => press.run((release) => onToggle(spec, release))}
+    >
+      {press.pending ? <PendingSpinner color={on ? palette.danger : palette.gold} testID={`settings-demo-fault-${spec.kind}-spinner`} /> : null}
+      <Button.Label>{t(`system.demo.faults.${spec.kind}`)}</Button.Label>
+    </Button>
   );
 }
 
