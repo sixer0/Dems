@@ -20,7 +20,7 @@
  * - Operation 40 answers the item from the engine and the media reference `mediaRef(id)` gives
  *   (default: `DEMO_PACKAGE` with the item's own suffix).
  *
- * **The guard order of operation 42** (CONTRACT-GAP-W74-1). The export wizard's probe for a role
+ * **The guard order of operation 42** (RESIDUAL-W74-1, W83 ledger #49). The export wizard's probe for a role
  * without EVIDENCE_EXPORT (site S1-5) sends an empty reason on purpose: a role whose permission the
  * tablet's hint has not caught up with then gets the Core's `422`, never an export (F59). The Core
  * server reads the role BEFORE the body and answers a denied role 403 with one `EXPORT_DENIED` row
@@ -91,7 +91,7 @@ const STORED: PairingRedeemed = { ...REDEEMED, deviceCredential: FAKE_CREDENTIAL
 /** A marker, not a credential of anything. */
 const MARKER_PASSWORD = ['MARKER', 'PW', 'w74'].join('-');
 
-/** CONTRACT-GAP-W74-1 (see the header): the registry's schemas, plus the probe's empty body for operation 42. */
+/** RESIDUAL-W74-1 (see the header): the registry's schemas, plus the probe's empty body for operation 42. */
 const PROBE_BODY = z.strictObject({ reason: z.literal(''), destination: z.literal('') });
 const GUARD_ORDER_SCHEMAS = { ...CORE_API_SCHEMAS, EvidenceExportRequest: z.union([CORE_API_SCHEMAS.EvidenceExportRequest, PROBE_BODY]) };
 

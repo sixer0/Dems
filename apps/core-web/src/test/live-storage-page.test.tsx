@@ -10,7 +10,7 @@
 // | Criterion | Where it is proven here |
 // |-----------|-------------------------|
 // | G13: the panels render on the Live source's replica with the Core's values, and follow a delta | "the page on the Core's data" |
-// | §3.2: a Live screen says nothing of a simulation; the SMART footnote says the Core reports none (CONTRACT-GAP-W71-1) | "the page on the Core's data" |
+// | §3.2: a Live screen says nothing of a simulation; the SMART footnote says the Core reports none (RESIDUAL-W71-1, W83 ledger #47) | "the page on the Core's data" |
 // | The page reads no storage operation of its own: the replica is the source | "the page on the Core's data" |
 // | An outage: the page keeps the last data and shows no notice of its own (§21.2 of row W54) | "an outage" |
 // | CLG (c), AC-C-53: no production file imports `useSimActions` or reads `.actions` of a `Sim`; the one action runs through `settle` | "static rules of the folder" |
@@ -139,7 +139,7 @@ describe('the page on the Core\'s data (G13; §3.2)', () => {
     for (const volume of bed.core.served.storage.volumes) expect(screen.getByTestId(`storage-volume-${volume.id}`)).toBeInTheDocument()
     const evidence = bed.core.served.storage.volumes.find((volume) => volume.kind === 'EVIDENCE')!
     expect(screen.getByTestId(`storage-volume-${evidence.id}`)).toHaveTextContent('90% used')
-    // CONTRACT-GAP-W71-1: the SMART counters are the console's; the footnote says so in Live words.
+    // RESIDUAL-W71-1: the SMART counters are the console's; the footnote says so in Live words.
     expect(screen.getByTestId('storage-panel-volumes')).toHaveTextContent(S.volumes.live.derivedNote)
     expect(screen.getByTestId('storage-panel-volumes')).not.toHaveTextContent(S.volumes.derivedNote)
     // §3.2: nothing on the screen speaks of a simulation.

@@ -1,0 +1,15 @@
+tap 173,527 at 17:25:25.822
+slept 3000 ms
+screencap S04_devices.png (412985 bytes) at 17:25:29.130
+tap 172,631 at 17:25:29.212
+slept 3000 ms
+screencap S05_storage.png (389712 bytes) at 17:25:32.562
+tap 227,735 at 17:25:32.652
+slept 3000 ms
+screencap S06_network_time.png (344691 bytes) at 17:25:35.927
+tap 155,840 at 17:25:36.004
+slept 3500 ms
+screencap S07_audit.png (431496 bytes) at 17:25:39.880
+tap 174,943 at 17:25:39.976
+slept 3000 ms
+screencap S08_settings.png (479300 bytes) at 17:25:43.648

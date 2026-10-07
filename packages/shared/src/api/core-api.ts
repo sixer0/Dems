@@ -100,7 +100,7 @@ import { EVIDENCE_OPERATIONS, EVIDENCE_SCHEMAS } from './evidence';
 import { HealthResponseSchema } from './health';
 import { IDENTITY_OPERATIONS, IDENTITY_SCHEMAS } from './identity';
 import { NETWORK_TIME_OPERATIONS, NETWORK_TIME_SCHEMAS } from './network-time';
-import { INVALID_INPUT, NOT_SIGNED_IN, forbidden } from './operation-parts';
+import { EXPORT_DENIAL_NOTE, INVALID_INPUT, NOT_SIGNED_IN, forbidden } from './operation-parts';
 import { PAIRING_OPERATIONS, PAIRING_SCHEMAS } from './pairing';
 import { HeartbeatSchema, REALTIME_SCHEMAS } from './realtime-messages';
 import {
@@ -203,7 +203,7 @@ export const ApiErrorSchema = z
         .record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()]))
         .optional()
         .describe(
-          'Optional machine-readable context, a flat map: `simCode`, `permission`, `from`, `event`, `attemptsRemaining`, `lockedUntil`, `retryInMs`, `reason`, `in`. Never a credential or a part of the input.',
+          'Optional machine-readable context, a flat map: `simCode`, `permission`, `from`, `event`, `attemptsRemaining`, `lockedUntil`, `retryInMs`, `reason`, `in`, `sessionId` (409 `SESSION_ACTIVE` of the Core server: the open session). Never a credential or a part of the input.',
         ),
       requestId: z
         .string()
@@ -530,6 +530,13 @@ const CORE_SERVER_ANSWERS =
 /** `coreServerDescription` of the five simulated reads: their access rule is AUTHENTICATED. */
 const READ_FOR_EVERY_ROLE = 'Needs a signed-in operator. Every role may read it: the operation needs no permission.';
 
+/**
+ * `coreServerDescription` of the session commands (W83, gap W34-1 and gap W34-3): the
+ * Core server's refusal texts are fixed; the examples show the in-app simulator's.
+ */
+const CORE_SERVER_SESSION_TEXTS =
+  'The Core server\'s refusal texts are fixed and quote no part of the request: a session that is not the open one answers `404 NOT_FOUND` "This session is not the open session." (`details.simCode: NOT_FOUND`), and an action that does not fit the session\'s state answers `409 INVALID_STATE` "The action is not allowed in the current state." with `details.simCode: ILLEGAL_STATE`, `from` and `event`. A `409 SESSION_ACTIVE` names the open session in `details.sessionId`. The examples show the texts of the in-app simulator.';
+
 /** `coreServerDescription` of the three session commands. */
 const SESSION_START_REFUSAL =
   'One session is open per Core, and any operator holding SESSION_START may act on it. A caller whose role lacks the permission is refused with `403 NOT_PERMITTED` and one ACCESS_DENIED audit row, before the body is read.';
@@ -597,8 +604,9 @@ const OPERATION_TABLE = [
     tag: CoreApiTag.SERVICE,
     mode: CoreApiMode.LIVE,
     summary: 'Service liveness',
+    // KI-18, corrected by the contract close-out W83: the origin depends on the build, so the text names none as fixed.
     description:
-      'Liveness of the local mock-core service. **Live**: served by mock-core on 127.0.0.1:4400 (CORS allows the web dev origins). This is not the device health snapshot; that is `GET /api/v1/device/health`.',
+      'Liveness of the local mock-core service. **Live**: served by mock-core over the network, on 127.0.0.1:4400 in a development run and on the page\'s own origin in a packaged build. This is not the device health snapshot; that is `GET /api/v1/device/health`.',
     coreServerDescription: [
       'Liveness of the service that answers. Public: it needs no credential and returns nothing of the Core state.',
       [
@@ -623,7 +631,7 @@ const OPERATION_TABLE = [
     mode: CoreApiMode.SIMULATED,
     summary: 'Create session',
     description: [...CREATE_SESSION_TEXT, SIM_NOTE].join('\n\n'),
-    coreServerDescription: [...CREATE_SESSION_TEXT, SESSION_START_REFUSAL, CORE_SERVER_ANSWERS].join('\n\n'),
+    coreServerDescription: [...CREATE_SESSION_TEXT, SESSION_START_REFUSAL, CORE_SERVER_SESSION_TEXTS, CORE_SERVER_ANSWERS].join('\n\n'),
     source: 'Design book §21.2',
     requestBody: { schema: 'SessionCreateRequest', required: true },
     responses: {
@@ -656,6 +664,7 @@ const OPERATION_TABLE = [
       ...START_SESSION_TEXT,
       SESSION_START_REFUSAL,
       'A body that does not match its schema answers `422 INVALID_INPUT`. The pre-check and its outcome also have operations of their own: `beginPrecheck`, `retryPrecheck` and `acknowledgePrecheckWarnings`.',
+      CORE_SERVER_SESSION_TEXTS,
       CORE_SERVER_ANSWERS,
     ].join('\n\n'),
     source: 'Design book §21.2',
@@ -696,7 +705,8 @@ const OPERATION_TABLE = [
     coreServerDescription: [
       ...STOP_SESSION_TEXT,
       SESSION_START_REFUSAL,
-      'The operator who stops a recording need not be the one who started it. A reason that the schema refuses for another cause than its length answers `422 INVALID_INPUT`.',
+      'The operator who stops a recording need not be the one who started it. A reason that is absent, or shorter than 5 characters after trimming, answers `422 INVALID_REASON` after the `404` and the `409`; a reason that is not text, holds U+0000 or an unpaired surrogate, or is longer than its maximum, and a malformed `{id}`, answer `422 INVALID_INPUT`.',
+      CORE_SERVER_SESSION_TEXTS,
       CORE_SERVER_ANSWERS,
     ].join('\n\n'),
     source: 'Design book §21.2',
@@ -709,7 +719,12 @@ const OPERATION_TABLE = [
       403: { description: 'The operator lacks SESSION_START (NOT_PERMITTED).', schema: 'ApiError' },
       404: { description: 'This ID is not the open session (NOT_FOUND).', schema: 'ApiError' },
       409: { description: 'The session is not RECORDING (INVALID_STATE).', schema: 'ApiError' },
-      422: { description: 'The reason is shorter than 5 characters (INVALID_REASON).', schema: 'ApiError' },
+      422: {
+        description: 'The reason is shorter than 5 characters (INVALID_REASON).',
+        coreServerDescription:
+          'The reason is absent or shorter than 5 characters after trimming (INVALID_REASON), decided after the 404 and the 409; or the body or the path does not match its schema (INVALID_INPUT, Core server only): a reason that is not text, holds U+0000 or an unpaired surrogate, or is longer than its maximum, or a malformed `{id}`.',
+        schema: 'ApiError',
+      },
     },
     rbac: {
       permission: Permission.SESSION_START,
@@ -828,6 +843,7 @@ const OPERATION_TABLE = [
       EXPORT_OUTCOMES,
       EXPORT_SEALED_ONLY,
       `The answer holds no file: the server records the export, and a client keeps its bundled export archive (01_specs §11). The reason is mandatory. A reason longer than ${EXPORT_REASON_MAX_LENGTH} UTF-16 code units, a destination longer than ${EXPORT_DESTINATION_MAX_LENGTH}, and any other body that does not match its schema, answers \`422 INVALID_INPUT\`; the server does not cut a text.`,
+      EXPORT_DENIAL_NOTE,
       CORE_SERVER_ANSWERS,
     ].join('\n\n'),
     source: 'Design book §21.2, §19.2, §19.3',
@@ -846,7 +862,12 @@ const OPERATION_TABLE = [
         description: 'The evidence is not sealed, or security is in FAULT (NOT_SEALED, SECURITY_FAULT).',
         schema: 'ApiError',
       },
-      422: { description: 'The reason is shorter than 5 characters (INVALID_REASON).', schema: 'ApiError' },
+      422: {
+        description: 'The reason is shorter than 5 characters (INVALID_REASON).',
+        coreServerDescription:
+          'The reason is missing or shorter than 5 characters (INVALID_REASON), decided after the 404 and the 409; or the body does not match its schema (INVALID_INPUT, Core server only): a reason that is not text or is longer than 500 UTF-16 code units, a destination longer than 120, U+0000 or an unpaired surrogate.',
+        schema: 'ApiError',
+      },
     },
     rbac: {
       permission: Permission.EVIDENCE_EXPORT,
@@ -1005,6 +1026,16 @@ export const CORE_API_ENVELOPE_RESPONSES = [
     codes: [ApiErrorCode.PAYLOAD_TOO_LARGE],
     stage: CoreApiEnvelopeStage.PIPELINE,
     description: 'The request body is larger than 65,536 bytes.',
+  },
+  // W83 (gap W36-1, gap W40-1): the body parser runs before every handler, so a POST
+  // whose operation takes no body still refuses a body that is no JSON object. An operation that takes
+  // a body documents its own 400; this entry covers the others. It follows the routing 400 in this
+  // list, so a lookup by status alone (`validateCoreApiEnvelopeResponse`) still finds INVALID_PATH.
+  {
+    status: 400,
+    codes: [ApiErrorCode.INVALID_JSON],
+    stage: CoreApiEnvelopeStage.PIPELINE,
+    description: 'A body was sent that is not a JSON object. Every POST, also one that takes no body; an empty body is no body.',
   },
   {
     status: 500,

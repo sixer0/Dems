@@ -345,7 +345,8 @@ function PairedPanel({ flow, device, signedIn, settings, onRequestUnpair }: Pair
           {flow.live ? t('features.pairing.live.paired.body', { device, tablet: flow.tabletId ?? '' }) : t('features.pairing.paired.body', { device })}
         </Text>
         <View style={styles.actions}>
-          <Button testID="pairing-continue" variant="primary" size="lg" onPress={flow.leave}>
+          {/* The manual hand-off: the same target as the automatic one (E2E-S-1), never the press event as a reason. */}
+          <Button testID="pairing-continue" variant="primary" size="lg" onPress={() => flow.leave('handoff')}>
             <Button.Label>{signedIn ? t('features.pairing.paired.done') : t('features.pairing.paired.continueToSignIn')}</Button.Label>
           </Button>
           {flow.handingOff ? (

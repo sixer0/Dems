@@ -1,0 +1,45 @@
+#!/bin/sh
+# W86: README "Live mode" step 4, run by run_main.sh INSIDE .locks/vite.lock while the Core server
+# runs on 4420. Starts Vite with the README's command and a headless Chromium (devtools 9397), runs the
+# CDP driver against http://127.0.0.1:5173 (never localhost), stops both. Touches nothing else.
+set -u
+ROOT=/Users/gsp-budi/Documents/DEMS
+[ "$(pwd)" = "$ROOT" ] || { echo "ABORT: run from $ROOT"; exit 9; }
+OUT=.cache/w86/out; DEV=9397
+ASSETS=docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets
+CHROME="$HOME/Library/Caches/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-mac-arm64/chrome-headless-shell"
+[ -n "${TMPDIR:-}" ] || { echo "ABORT: TMPDIR is not set"; exit 6; }
+PROFILE="${TMPDIR%/}/w86-chrome-profile"
+mkdir -p "$ASSETS"
+stamp() { date '+%H:%M:%S'; }
+listening() { lsof -nP -iTCP:"$1" -sTCP:LISTEN >/dev/null 2>&1; }
+VITE_NPM=""; CHROME_PID=""
+cleanup() {
+  if [ -n "$CHROME_PID" ]; then kill "$CHROME_PID" 2>/dev/null; wait "$CHROME_PID" 2>/dev/null; P=$(lsof -nP -tiTCP:$DEV -sTCP:LISTEN 2>/dev/null); [ -n "$P" ] && kill $P 2>/dev/null; echo "-- $(stamp) chrome stopped"; fi
+  if [ -n "$VITE_NPM" ]; then
+    kill "$VITE_NPM" 2>/dev/null
+    i=0; while listening 5173 && [ $i -lt 20 ]; do i=$((i + 1)); sleep 0.25; done
+    P=$(lsof -nP -tiTCP:5173 -sTCP:LISTEN 2>/dev/null); [ -n "$P" ] && { echo "-- vite: stop the listener $P"; kill $P 2>/dev/null; sleep 1; }
+    wait "$VITE_NPM" 2>/dev/null; echo "-- $(stamp) vite stopped"
+  fi
+  [ -d "$PROFILE" ] && rm -rf "$PROFILE"
+}
+trap cleanup EXIT
+listening 5173 && { echo "ABORT: 5173 in use"; exit 3; }
+echo "-- $(stamp) \$ DEMS_CORE_PROXY_PORT=4420 VITE_DEMS_CORE_MODE=live npm run dev:web"
+DEMS_CORE_PROXY_PORT=4420 VITE_DEMS_CORE_MODE=live npm run dev:web > "$OUT/a14_vite.log" 2>&1 &
+VITE_NPM=$!
+i=0; until listening 5173 || [ $i -ge 160 ]; do i=$((i + 1)); sleep 0.25; done
+lsof -nP -iTCP:5173 -sTCP:LISTEN || { echo "ABORT: Vite does not listen"; tail -n 20 "$OUT/a14_vite.log"; exit 5; }
+echo "-- vite up after $i quarter seconds"
+grep -E "Local|ready" "$OUT/a14_vite.log" | sed 's/\x1b\[[0-9;]*m//g' | head -3
+echo "-- health through the dev proxy: $(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:5173/api/v1/health)"
+rm -rf "$PROFILE"
+"$CHROME" --remote-debugging-port=$DEV --remote-debugging-address=127.0.0.1 --user-data-dir="$PROFILE" --no-first-run --disable-background-networking --disable-component-update --disable-sync --disable-default-apps --disable-domain-reliability --host-resolver-rules="MAP * ~NOTFOUND, EXCLUDE 127.0.0.1" --window-size=1440,900 about:blank > "$OUT/a15_chrome.log" 2>&1 &
+CHROME_PID=$!
+"$CHROME" --version 2>/dev/null | head -1
+i=0; until curl -s http://127.0.0.1:$DEV/json/version >/dev/null 2>&1 || [ $i -ge 60 ]; do i=$((i + 1)); sleep 0.25; done
+node --import tsx .cache/w86/cdp-main.mjs $DEV 5173 "$OUT/a16_browser.json" "$ASSETS" > "$OUT/a16_browser.log" 2>&1; rc=$?
+echo "-- $(stamp) cdp driver exit $rc"
+echo "-- vite log lines with error: $(sed 's/\x1b\[[0-9;]*m//g' "$OUT/a14_vite.log" | grep -c -i 'error')"
+exit $rc

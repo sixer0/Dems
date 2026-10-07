@@ -16,7 +16,7 @@
  * "Device ID" in the specification's table is the row's own `deviceId`. A module may repeat it
  * in the details as `deviceId`; the list allows that for the three types that name a device.
  */
-import { DEVICE_ID_PATTERN, OPERATOR_ID_PATTERN, PAIRING_CODE_ID_PATTERN } from '@dems/shared/api';
+import { DEVICE_ID_PATTERN, OPERATOR_ID_PATTERN, PAIRING_CODE_ID_PATTERN, PairingCodeCloseReason } from '@dems/shared/api';
 import { AuditType, OperatorRole, type DetailValue } from '@dems/shared/sim';
 import { NATIVE_TEXT_MAX_LENGTH } from './limits';
 
@@ -29,8 +29,15 @@ export interface DetailRule {
 }
 
 const ROLES: ReadonlySet<string> = new Set(Object.values(OperatorRole));
-/** How a pairing code can close (spec §6.2 T3 to T5). */
-export const PAIRING_CODE_CLOSE_REASONS = ['CANCELLED', 'EXPIRED', 'EXHAUSTED'] as const;
+/**
+ * How a pairing code can close (spec §6.2 T3 to T5): the contract's `PairingCodeCloseReason`
+ * (review finding W91-4), in this order for the refusal message.
+ */
+export const PAIRING_CODE_CLOSE_REASONS = [
+  PairingCodeCloseReason.CANCELLED,
+  PairingCodeCloseReason.EXPIRED,
+  PairingCodeCloseReason.EXHAUSTED,
+] as const satisfies readonly PairingCodeCloseReason[];
 const CLOSE_REASONS: ReadonlySet<string> = new Set(PAIRING_CODE_CLOSE_REASONS);
 
 const matching = (pattern: RegExp, form: string) => (required: boolean): DetailRule => ({

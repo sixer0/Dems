@@ -1,0 +1,15 @@
+// Reads the app's quiet session-window records (source runtime.diag.sessionWindow, written by
+// apps/mobile/src/runtime/session-diagnostics.ts into AsyncStorage key dems.mobile.log.v1; NOT printed to logcat by
+// design) from ONE device via run-as + sqlite3, keeps only that source (and one session if given), writes them.
+// Nothing else of the store is printed or written.   SERIAL=emulator-5556 node diag.mjs <out name> [sessionId]
+import { adb, log, writeJson, clockOffset } from './lib.mjs'
+const [name, sid] = process.argv.slice(2)
+const raw = adb('shell', `run-as com.dems.demo.tablet sh -c 'sqlite3 databases/RKStorage "select value from catalystLocalStorage where key = \\"dems.mobile.log.v1\\""'`)
+let parsed; try { parsed = JSON.parse(raw) } catch { log('the log value is not JSON'); process.exit(2) }
+const list = Array.isArray(parsed) ? parsed : parsed.records ?? parsed.entries ?? []
+const recs = list.filter((r) => r?.source === 'runtime.diag.sessionWindow' && (!sid || r.context?.sessionId === sid))
+const clock = clockOffset()
+const out = { note: `dems.mobile.log.v1 records of source runtime.diag.sessionWindow${sid ? ' for ' + sid : ''} on ${process.env.SERIAL}; timestamps are the DEVICE clock; device minus host ${clock.offsetMs} ms (bracket ${clock.bracketMs} ms) at read time`, totalRecordsInStore: list.length, clock, records: recs.map((r) => ({ ...r, hostTimeMs: Date.parse(r.timestamp) - clock.offsetMs, hostTime: new Date(Date.parse(r.timestamp) - clock.offsetMs).toISOString() })) }
+writeJson(name, out)
+for (const r of out.records) { const c = r.context; log(`${r.hostTime} host  ${c.from}->${c.to} ${c.sessionId} samples ${c.samples} lagMax ${c.lagMaxMs} (@${c.lagMaxAtMs}) >500:${c.lagOver500} >1000:${c.lagOver1000} rev ${c.revision} deltas ${c.deltas} dropped ${c.deltasDropped} stale ${c.deltasStale} resyncs ${c.resyncs} reconnects ${c.reconnects} link ${c.link}`) }
+log(`${recs.length} records kept of ${list.length} in the store`)

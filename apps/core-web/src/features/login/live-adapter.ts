@@ -7,15 +7,16 @@
  *   strip shows what is public: the service, its version and its readiness. The answer comes from
  *   the console's one health reader, `fetchCoreHealth()` (the page's own origin in Live mode),
  *   under the shared key `['health']`, which the query bridge refetches after a resync. Nothing is
- *   asked in Simulated mode (`enabled` is false there).
+ *   asked in Simulated mode (`enabled` is false there). The key and its `queryFn` are the one
+ *   definition of `lib/health-query.ts` (FXR-W, W92-8); this observer adds its own interval and
+ *   `retry: false`.
  *
  * The presentation-mode follow-up of WS-10 used to be here. It runs on every route, so decision
  * D144(4) (finding CPW1-4) moved it to `runtime/presentation-follow.ts`, beside `query-bridge.ts`,
  * where the root route installs it.
  */
 import { useQuery } from '@tanstack/react-query'
-import { HEALTH_QUERY_KEY } from '@dems/shared/api'
-import { fetchCoreHealth } from '@/lib/core-endpoint'
+import { healthQueryOptions } from '@/lib/health-query'
 import { HEALTH_REFETCH_MS, HEALTH_STARTING_REFETCH_MS, isCoreStarting } from './login-live-model'
 
 /**
@@ -24,8 +25,7 @@ import { HEALTH_REFETCH_MS, HEALTH_STARTING_REFETCH_MS, isCoreStarting } from '.
  */
 export function useLiveCoreHealth(enabled: boolean) {
   return useQuery({
-    queryKey: HEALTH_QUERY_KEY,
-    queryFn: () => fetchCoreHealth(),
+    ...healthQueryOptions(),
     enabled,
     retry: false,
     refetchInterval: (query) => (isCoreStarting(query.state.data) ? HEALTH_STARTING_REFETCH_MS : HEALTH_REFETCH_MS),

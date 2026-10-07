@@ -1,0 +1,19 @@
+## C1 mutation check (rule M15: in memory, scratch config and transformer outside the tree), 08:53:23
+## control: scratch config, no mutation — the new test
+    ✓ is unref'd, so a pending flush does not keep the process alive, and still flushes on time (27 ms)
+Tests:       1 passed, 1 total
+exit 0
+## mutant: the unref call removed in memory — the new test
+    ✕ is unref'd, so a pending flush does not keep the process alive, and still flushes on time (2 ms)
+  ● the runtime log flush timer (W87-F1) › is unref'd, so a pending flush does not keep the process alive, and still flushes on time
+    Expected: false
+    Received: true
+Tests:       1 failed, 1 total
+exit 1
+applied marker: applied
+## mutant: the two baseline suites, two workers (the warning returns)
+A worker process has failed to exit gracefully and has been force exited. This is likely caused by tests leaking due to improper teardown. Try running with --detectOpenHandles to find leaks. Active timers can also cause this, ensure that .unref() was called on them.
+Tests:       17 passed, 17 total
+exit 0
+## log.ts sha256 after the mutation runs
+54eae2034cd4fe074475ae51a614d93fb43e14b04a6851166874e5e14b498419  apps/mobile/src/runtime/log.ts

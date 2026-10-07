@@ -6,11 +6,11 @@
  * config, so a new point redraws without a tween (the data is the motion, 03M R9).
  *
  * LIVE mode (backend task W78; 04_client_integration_spec §3.2): the line is drawn from the Core's
- * replicated data, so the sample caption drops "Simulated" (`features.devices.live.samples`). The Core
- * serves no per-device health history (CONTRACT-GAP-W78-2): the line of a camera, the tablet and the
- * PoE switch is derived from the Core's network data, the lamp's from its session state, a
- * microphone's from 1 s peaks of its meter frames, so the LIVE caption says the line is derived on this
- * device (row M1 follow-up, D160).
+ * replicated data, so the sample caption drops "Simulated". The Core serves no per-device health
+ * history (RESIDUAL-W78-2, W83 ledger #57): the line of a camera, the tablet and the PoE switch is
+ * derived from the Core's network data, the lamp's from its session state, a microphone's from 1 s
+ * peaks of its meter frames, so the LIVE caption says the line is derived (row M1 follow-up, D160) in
+ * the web console's words: the shared `devices.live.samples` (closing copy round, decision D186).
  */
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -91,7 +91,7 @@ export function HealthChart({ series, testID, live = false }: HealthChartProps) 
         )}
       </View>
       <Text maxFontSizeMultiplier={1.2} style={styles.caption} testID={testID ? `${testID}-samples` : undefined}>
-        {enough ? t(live ? 'features.devices.live.samples' : 'devices.drawer.health.samples', { count: data.length }) : t('devices.drawer.health.collecting')}
+        {enough ? t(live ? 'devices.live.samples' : 'devices.drawer.health.samples', { count: data.length }) : t('devices.drawer.health.collecting')}
       </Text>
     </View>
   );

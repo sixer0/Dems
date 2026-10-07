@@ -1,0 +1,10 @@
+#!/bin/bash
+# The lane-1 proof loop: 12 runs, varied stalls (see proofbatch.sh).
+cd /Users/gsp-budi/Documents/DEMS/.cache/cf_m1
+RUNS="${RUNS:-P01:1:prestall P02:0:plain P03:0:poststall P04:1:plain P05:0:prestall P06:0:plain P07:1:poststall P08:0:prestall P09:0:plain P10:1:prestall P11:0:poststall P12:0:plain}"
+for r in $RUNS; do
+  IFS=: read NAME SS MODE <<< "$r"
+  echo "=== $NAME start=$SS stop=$MODE $(date +%T)"
+  ./proofbatch.sh $NAME $SS $MODE summary | node send.mjs q_phone 900 | grep -E "start 200|stop|hermes|until|native|ERROR|REFUSED|POST|socket|pulled|focused|sumack" | cut -c1-260
+done
+echo "=== loop done $(date +%T)"

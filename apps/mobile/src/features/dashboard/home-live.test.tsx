@@ -6,7 +6,7 @@
 // every layout class (MD-9); nothing on the screen claims a simulation; the data is the Core's; an
 // outage turns the chip "Offline" by the runtime's one rule and back, without a flicker during the
 // reconnect attempts; the recent rows show no bundled poster the Core did not name
-// (CONTRACT-GAP-W66-1); and the one fire-and-forget call (operation 70, acknowledge an alert) goes
+// (RESIDUAL-W66-1, W83 ledger #41); and the one fire-and-forget call (operation 70, acknowledge an alert) goes
 // to the Core, with a denial and an outage worded by the refusal presenter. Simulated mode is
 // `dashboard-screen.test.tsx`'s, unchanged; its HEARTBEAT chip is at the end of this file.
 import 'react-native-gesture-handler/jestSetup';
@@ -111,7 +111,7 @@ describe('Home in LIVE mode: the Core link chip (MD-8, MD-9, AC-C-30)', () => {
     expect(getMissingKeys()).toEqual([]);
   });
 
-  it('shows the Core\'s data: the operator of the session, the Core\'s recent sessions, and a brand still where no poster was named (CONTRACT-GAP-W66-1)', async () => {
+  it('shows the Core\'s data: the operator of the session, the Core\'s recent sessions, and a brand still where no poster was named (RESIDUAL-W66-1)', async () => {
     const home = await signedInHome();
     // The Core's snapshot is not a new seal: Home's "new seal" toast (§7.3) does not fire on sign-in,
     // although the Core holds items sealed today (the control).
@@ -208,7 +208,7 @@ describe('Home in LIVE mode: acknowledging an alert (operation 70, fire-and-forg
 
   it('a denial (403 NOT_PERMITTED): the denied toast, the alert stays unacknowledged and its button can be pressed again', async () => {
     const home = await signedInHome('phonePortrait', { alerts: [ALERT] });
-    // CONTRACT-GAP-W66-2: operation 70 has no `notPermitted` example (every signed-in role may call it), so the envelope is written here.
+    // RESIDUAL-W66-2 (W83 ledger #42): operation 70 has no `notPermitted` example (every signed-in role may call it), so the envelope is written here.
     home.fake.answerOnce('acknowledgeAlert', refusal(403, 'NOT_PERMITTED', 'Not permitted.'));
     await openBell();
     fireEvent.press(acknowledgeButton());

@@ -1,0 +1,43 @@
+W59 device check — lane 1, dems2_phone (emulator-5554), backend 127.0.0.1:4421, database dems_lane_1, Metro 8082.
+Run inside /usr/bin/lockf -k -t 900 .locks/core-server.lane1.lock and apps/mobile/scripts/device-session.sh phone.
+Opened with core=LIVE. The device is NOT paired (W56 left it so; pairing is W57's flow). No credential, token,
+pairing code or password appears in this log. Session window 10:34:22–10:35:56 (device time), ~94 s of device time.
+
+== A. cold start in LIVE mode on the Login screen: demsdemo:///login?core=LIVE (device not paired)
+   am start Status: timeout (the deep link launches; the Live source then reports ready)
+   waited 5 s for: runtime.live.ready
+   focus: mCurrentFocus=Window{... com.dems.demo.tablet/.MainActivity}
+   screencap: 59_login_live_unpaired.png
+   dems.mobile.prefs.v1 (after core=LIVE): {"coreLinkSource":"LIVE"}
+   secure-store entries: none listed = none stored (an unpaired device holds no credential)
+   soft keyboard: mInputShown=false
+
+== B. demo-operator disclosure opened (one tap on the app's own "Demo operators" row)
+   input tap 540 1975
+   screencap: 59_login_live_disclosure.png  (shows the C1 sentence, "Select an operator to fill the form",
+              an operator row with NO role chip; no pairing-code hint; no password visible)
+
+== device request lines ([DEMS-LIVE] method, path template, status):
+   1 DEMS-LIVE] GET /api/v1/auth/session 401
+   1 DEMS-LIVE] GET /api/v1/auth/status 200
+   sign-in request lines (POST /api/v1/auth/sign-in or /auth/biometric...; must be 0): 0
+   JS runtime errors (Error:/Invariant/hooks): 0
+   credential/password lines in the device log (must be 0): 0
+
+== C. back to default: force-stop, then a launch with core=SIMULATED
+   dems.mobile.prefs.v1 (after core=SIMULATED): {"coreLinkSource":"SIMULATED"}
+   Core-server requests after reset (must be 0): 0
+   screencap: 59_after_reset_simulated.png (soft keyboard up over the lower card; prefs confirm SIMULATED)
+
+== backend request log during the device session
+   request lines: 3
+      1 GET /api/v1/auth/session 401 principal=null
+      1 GET /api/v1/auth/status 200 principal=null
+      1 GET /api/v1/health 200 principal=null          <- the host's curl
+   sign-in operation requests (must be 0): 0
+   POSTs in all (must be 0): 0
+   credential lines in the server log (must be 0): 0
+
+== cleanup
+   npm exit status: 0; process <backend pid> is gone; lsof exit 1 (no listener on 4421 or 8082)
+   .locks/core-server.lane1.pid emptied; Metro stopped by device-session.sh; session ended status 0

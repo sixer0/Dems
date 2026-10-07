@@ -1,0 +1,16 @@
+#!/bin/zsh
+# Usage: mut.sh <label> <file-suffix> <from> <to> <test files...>
+# Runs the given tests with one in-memory mutation; prints and logs the vitest summary lines.
+label=$1; file=$2; from=$3; to=$4; shift 4
+LOG=/private/tmp/claude-501/-Users-gsp-budi-Documents-DEMS/0d71fd65-4a51-4019-9c48-5c92d11bbdaf/scratchpad/fxw/mutations.log
+cd /Users/gsp-budi/Documents/DEMS/apps/core-web
+export MUT_FILE=$file
+export MUT_FROM_B64=$(printf '%s' "$from" | base64)
+export MUT_TO_B64=$(printf '%s' "$to" | base64)
+out=$(npx vitest run --config /private/tmp/claude-501/-Users-gsp-budi-Documents-DEMS/0d71fd65-4a51-4019-9c48-5c92d11bbdaf/scratchpad/fxw/mutate.config.mts "$@" 2>&1)
+applied=$(printf '%s\n' "$out" | grep -c "\[fxw-mutate\] applied")
+summary=$(printf '%s\n' "$out" | grep -E "^ +(Test Files|Tests) " | tr -s ' ' | tr '\n' ';')
+anchorErr=$(printf '%s\n' "$out" | grep -c "anchor found")
+line="$label => applied:$applied anchorErrors:$anchorErr $summary"
+echo "$line" | tee -a $LOG
+printf '%s\n' "$out" | grep -E "^ +× " | head -8 | tee -a $LOG

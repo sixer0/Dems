@@ -1,0 +1,129 @@
+
+== 05:46:13 0. ports 4420, 5173, 9397 must be free (nothing is stopped that this check did not start)
+free: 4420 5173 9397
+2026-10-06 05:46:13 WIB
+
+== 05:46:13 1. README step 1: pg:status, and pg:init once (expected: refusal on an initialised host)
+-- 05:46:13 $ npm run pg:status
+-- 05:46:13 exit 0  (full output: .cache/w86/out/a01_pg_status.txt, 33 lines)
+pg:status: OK, running
+-- 05:46:13 $ npm run pg:init
+-- 05:46:13 exit 1  (full output: .cache/w86/out/a02_pg_init.txt, 24 lines)
+pg:init: project-local PostgreSQL on 127.0.0.1:4432
+pg:init: refused: already provisioned, or partly provisioned (.data/postgres, .data/pg.pwfile, .data/pg.owner.env, .data/pg.env). Nothing was changed.
+
+== 05:46:13 2. README step 2: create, migrate, seed (expected: refusal, seeded), status
+-- 05:46:13 $ npm run db:create -- --database dems_demo
+-- 05:46:14 exit 0  (full output: .cache/w86/out/a03_db_create.txt, 9 lines)
+db:create: dems_demo already exists (owner dems_owner, encoding UTF8, locale C); nothing to do.
+-- 05:46:14 $ /usr/bin/lockf -k .locks/db-migrate.lock npm run db:migrate -- --database dems_demo
+-- 05:46:14 exit 0  (full output: .cache/w86/out/a04_db_migrate.txt, 13 lines)
+db:migrate: dems_demo is migrated under the migrate lock: this command must be run as "/usr/bin/lockf -k .locks/db-migrate.lock npm run db:migrate ...".
+db:migrate: dems_demo on PostgreSQL 18.4 as dems_owner
+db:migrate: schema version before: 1 (dbc-2)
+db:migrate: no pending migration; nothing was applied.
+db:migrate: schema version after: 1 (dbc-2)
+-- 05:46:14 $ /usr/bin/lockf -k .locks/db-migrate.lock npm run db:seed -- --database dems_demo
+-- 05:46:15 exit 1  (full output: .cache/w86/out/a05_db_seed.txt, 19 lines)
+db:seed: dems_demo is seeded under the migrate lock: this command must be run as "/usr/bin/lockf -k .locks/db-migrate.lock npm run db:seed ...".
+db:seed: the database dems_demo is already seeded (seeded_at 2026-10-04T03:28:35.448Z). Nothing was written. Seeding again is a reset.
+db:seed: to rebuild the dataset: npm run db:reset -w @dems/core-server -- --database dems_demo
+db:seed: NOT SEEDED (ALREADY_SEEDED).
+-- 05:46:15 $ npm run db:status -- --database dems_demo
+-- 05:46:15 exit 0  (full output: .cache/w86/out/a06_db_status.txt, 53 lines)
+seeded_at        2026-10-04T03:28:35.448Z (1791084515448)
+last_reset_at    never
+audit head       seq 91; hash 8cd683b65bf2698b...
+  audit_log                91
+  auth_sessions            5
+  paired_devices           0
+  session_history          13
+db:status: OK: dems_demo is at the schema version this code expects and the ledger matches the files.
+
+== 05:46:15 2b. README step 2: reset to the seed (the Core server of dems_demo is not running: 4420 free)
+-- 05:46:15 $ /usr/bin/lockf -k .locks/db-migrate.lock npm run db:reset -- --database dems_demo
+-- 05:46:16 exit 0  (full output: .cache/w86/out/a07_db_reset.txt, 52 lines)
+db:reset: dems_demo is reset under the migrate lock: this command must be run as "/usr/bin/lockf -k .locks/db-migrate.lock npm run db:reset ...".
+db:reset: audit chain of dems_demo discarded: 91 row(s), head 8cd683b65bf2698be615d72fc653429aca16abc42f16fb4cd14f4e1bd9e68206.
+db:reset: dems_demo on PostgreSQL 18.4 as dems_owner
+db:reset: dataset as of 2026-10-05T22:46:15.949Z (1791240375949); scenario idle; reason RESET; actor none (command line)
+db:reset: epoch 3 -> 4
+db:reset: kept tables carried over unchanged (rows): registry_counters 2, console_settings 1, pairing_codes 0, paired_devices 0, device_credentials 0, auth_sessions 5, biometric_tokens 0, audit_chain_history 0
+db:reset: pairing codes that were ACTIVE, now CANCELLED: 0; operators with a last sign-in from a kept session: 2
+db:reset: discarded chain: reset_no 1, epoch 3, rows 91, first_seq 1, last_seq 91, head 8cd683b65bf2698be615d72fc653429aca16abc42f16fb4cd14f4e1bd9e68206
+db:reset: SCENARIO_LOADED is audit row 83 of the new chain
+db:reset: done in 341 ms (R-0 13, R-1 3, R-2 1, R-3 26, R-4 62, R-5 138, R-6 8, R-7 2, R-8 88, R-9 0); the database now holds 309 row(s) in 23 of 30 table(s)
+db:reset: OK: dems_demo is reset. State: npm run db:status -w @dems/core-server -- --database dems_demo
+-- 05:46:16 $ npm run db:status -- --database dems_demo
+-- 05:46:16 exit 0  (full output: .cache/w86/out/a08_db_status_after_reset.txt, 53 lines)
+seeded_at        2026-10-05T22:46:15.949Z (1791240375949)
+last_reset_at    2026-10-05T22:46:15.949Z (1791240375949)
+audit head       seq 83; hash a13fd3cbf97f67e2...
+lineage          1 row(s); newest: reset_no 1, epoch 3, rows 91, head 8cd683b65bf2698b..., reset_at 2026-10-05T22:46:15.949Z (1791240375949), actor none (command line), reason RESET, scenario idle
+  audit_log                83
+  auth_sessions            5
+  paired_devices           0
+  session_history          13
+db:status: OK: dems_demo is at the schema version this code expects and the ledger matches the files.
+
+== 05:46:16 3. README step 3: npm run start:server (demo controls off), health
+-- up after 3 quarter seconds; npm PID 19315; listener PID 19357 (recorded in .locks/core-server.pid)
+"port":4420,"database":"dems_demo","demoControls":false
+-- 05:46:17 $ curl -s http://127.0.0.1:4420/api/v1/health
+{"status":"ok","service":"dems-core-server","version":"0.2.0","apiVersion":"v1","serverTime":"2026-10-05T22:46:17.608Z","uptimeMs":222,"ws":{"path":"/ws","heartbeatIntervalMs":1000,"clients":0},"ready":{"database":true,"engine":true}}
+
+== 05:46:17 4. README step 4: the web console in Live mode (inside .locks/vite.lock)
+-- 05:46:17 $ DEMS_CORE_PROXY_PORT=4420 VITE_DEMS_CORE_MODE=live npm run dev:web
+COMMAND   PID     USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
+node    19429 gsp-budi   14u  IPv4 0x8a49c342c8a4717a      0t0  TCP 127.0.0.1:5173 (LISTEN)
+-- vite up after 2 quarter seconds
+  VITE v8.3.1  ready in 244 ms
+  ➜  Local:   http://127.0.0.1:5173/
+-- health through the dev proxy: 200
+Google Chrome for Testing 153.0.8010.12
+-- 05:46:35 cdp driver exit 0
+-- vite log lines with error: 0
+-- 05:46:35 chrome stopped
+-- 05:46:35 vite stopped
+-- web step exit 0
+
+== 05:46:35 5. the Core server's request log during the web step (method, route, status; no body is logged)
+      1 GET /api/v1/auth/session 401
+      2 GET /api/v1/auth/status 200
+      5 GET /api/v1/health 200
+      1 POST /api/v1/auth/sign-in 200
+      1 POST /api/v1/auth/sign-out 204
+-- credential-shaped values in the server log (must be 0): 0
+-- lines with level error or fatal: 0
+
+== 05:46:35 6. README step 3: stop the server (lsof, kill -TERM), then DEMS_DEMO_CONTROLS=1 npm run start:server
+-- 05:46:35 $ lsof -nP -iTCP:4420 -sTCP:LISTEN
+COMMAND   PID     USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
+node    19357 gsp-budi   17u  IPv4 0x56fe3bee7829e514      0t0  TCP 127.0.0.1:4420 (LISTEN)
+-- 05:46:35 $ kill -TERM 19357
+-- 05:46:35 npm exit status 0 after 0 quarter seconds
+   shutdown requested
+   shutdown complete
+-- up after 4 quarter seconds
+"port":4420,"database":"dems_demo","demoControls":true
+-- 05:46:36 $ curl -s http://127.0.0.1:4420/api/v1/health
+{"status":"ok","service":"dems-core-server","version":"0.2.0","apiVersion":"v1","serverTime":"2026-10-05T22:46:36.894Z","uptimeMs":398,"ws":{"path":"/ws","heartbeatIntervalMs":1000,"clients":0},"ready":{"database":true,"engine":true}}
+-- 05:46:36 $ lsof -nP -iTCP:4420 -sTCP:LISTEN
+COMMAND   PID     USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
+node    19604 gsp-budi   17u  IPv4 0xcc3e1380193da66c      0t0  TCP 127.0.0.1:4420 (LISTEN)
+-- 05:46:36 $ kill -TERM 19604
+-- 05:46:36 npm exit status 0 after 0 quarter seconds
+   shutdown requested
+   shutdown complete
+
+== 05:46:36 7. after: listeners on 4420, 5173, 9397 (expect none); dems_demo status
+lsof exit 1 (1: none)
+-- 05:46:37 $ npm run db:status -- --database dems_demo
+-- 05:46:37 exit 0  (full output: .cache/w86/out/a13_db_status_end.txt, 53 lines)
+audit head       seq 90; hash e54757c08cf7e0d5...
+  audit_log                90
+  auth_sessions            6
+  paired_devices           0
+db:status: OK: dems_demo is at the schema version this code expects and the ledger matches the files.
+-- credential-shaped values in both server logs (must be 0): 0
+-- the check took 24 s

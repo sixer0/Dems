@@ -1,0 +1,33 @@
+// FX-W in-memory mutation config: a load-time transform of ONE module (source or `?raw` text). The file
+// on disk is never changed; the mutation exists only in the module Vite serves to the tests.
+// MUT_FILE: path suffix of the target (e.g. /apps/core-web/src/features/dashboard/devices-panel.tsx)
+// MUT_FROM_B64 / MUT_TO_B64: the anchor and its replacement (base64, UTF-8). The anchor must occur once.
+import { mergeConfig } from '/Users/gsp-budi/Documents/DEMS/node_modules/vite/dist/node/index.js'
+import base from '/Users/gsp-budi/Documents/DEMS/apps/core-web/vite.config.ts'
+
+const target = process.env.MUT_FILE ?? ''
+const from = Buffer.from(process.env.MUT_FROM_B64 ?? '', 'base64').toString('utf8')
+const to = Buffer.from(process.env.MUT_TO_B64 ?? '', 'base64').toString('utf8')
+const escapeForJsString = (text: string) => JSON.stringify(text).slice(1, -1)
+
+export default (env: { mode: string; command: 'build' | 'serve' }) =>
+  mergeConfig(typeof base === 'function' ? (base as (e: typeof env) => object)(env) : base, {
+    root: '/Users/gsp-budi/Documents/DEMS/apps/core-web',
+    plugins: [
+      {
+        name: 'fxw-mutate',
+        enforce: 'pre',
+        transform(code: string, id: string) {
+          if (target === '' || from === '' || !id.split('?')[0].endsWith(target)) return null
+          // A `?raw` module is `export default "<escaped text>"`: match the escaped anchor.
+          const raw = id.includes('?raw')
+          const anchor = raw ? escapeForJsString(from) : from
+          const replacement = raw ? escapeForJsString(to) : to
+          const count = code.split(anchor).length - 1
+          if (count !== 1) throw new Error(`fxw-mutate: anchor found ${count} times in ${id}`)
+          console.log(`[fxw-mutate] applied to ${id.split('/apps/core-web/')[1] ?? id}`)
+          return code.replace(anchor, replacement)
+        },
+      },
+    ],
+  })

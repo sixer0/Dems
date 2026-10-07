@@ -1,0 +1,128 @@
+
+== 21:24:40 0. the three ports must be free before anything is started (nothing is stopped that this check did not start)
+free: 4423 5178 9398
+2026-10-04 21:24:40 WIB
+21:24  up 3 days,  4:37, 1 user, load averages: 8.09 6.28 4.98
+
+== 21:24:40 1. lane database before the check: npm run db:status -w @dems/core-server -- --database dems_lane_3
+db:status exit 0
+seeded_at        2026-10-04T04:36:43.575Z (1791088603575)
+last_reset_at    2026-10-04T04:36:43.575Z (1791088603575)
+audit head       seq 99; hash 28b2114336243c4a...
+audit triggers   audit_chain_history_append_only=A, audit_log_append_only=A, audit_log_chain_guard=A
+  audit_log                99
+  auth_sessions            6
+  operators                3
+  pairing_codes            0
+
+== 21:24:41 2. start the lane backend: DEMS_CORE_PORT=4423 npm run start -w @dems/core-server (demo flag OFF)
+backend up after 5 quarter seconds, npm pid 32302
+COMMAND   PID     USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
+node    32325 gsp-budi   18u  IPv4 0x50e91d401c38928f      0t0  TCP 127.0.0.1:4423 (LISTEN)
+-- direct health on the backend:
+{"status":"ok","service":"dems-core-server","version":"0.2.0","apiVersion":"v1","serverTime":"2026-10-04T14:24:43.030Z","uptimeMs":260,"ws":{"path":"/ws","heartbeatIntervalMs":1000,"clients":0},"ready":{"database":true,"engine":true}}
+
+== 21:24:43 3. start Vite for lane 3: DEMS_CORE_PROXY_PORT=4423 VITE_DEMS_CORE_MODE=live npm run dev -w @dems/core-web -- --host 127.0.0.1 --port 5178 --strictPort
+waited 3 quarter seconds
+COMMAND   PID     USER   FD   TYPE            DEVICE SIZE/OFF NODE NAME
+node    32410 gsp-budi   14u  IPv4 0x66272e67d330d2d      0t0  TCP 127.0.0.1:5178 (LISTEN)
+-- health through the dev server: "service":"dems-core-server"
+
+== 21:24:44 4. the shell in a real browser (headless Chromium over CDP): Live mode
+chrome pid 32432
+cdp-driver live exit 0
+cdp-driver live: the output held the seeded password before redaction: false
+
+== 21:25:34 5. the link is lost while signed in: the lane backend is stopped
+backend: npm exit status 0
+lsof exit 1 (1: nothing listens on 4423)
+cdp-driver down exit 0
+cdp-driver down: the output held the seeded password before redaction: false
+
+== 21:25:39 6. the link is back: the lane backend is started again
+backend up after 7 quarter seconds, npm pid 33085
+cdp-driver up exit 0
+cdp-driver up: the output held the seeded password before redaction: false
+
+== 21:25:44 6b. the layout at eleven window sizes, Live (the SUPERVISOR) and Simulated: the top bar's budget and the sidebar's footer
+live 1280x800 lg LIVE | chip LIVE 46px inside true | date false/false | collision 42 | items 11 admin true | footer over toggle 0, over last item -40, scrolls true, texture 0px
+live 1280x800 longest label lg LIVE | chip LIVE · RECONNECTING 152px inside true | date false/false | collision 149 | items 11 admin true | footer over toggle 0, over last item -40, scrolls true, texture 0px
+live 1366x768 lg LIVE | chip LIVE 46px inside true | date false/false | collision -35 | items 11 admin true | footer over toggle 0, over last item -40, scrolls true, texture 0px
+live 1366x768 longest label lg LIVE | chip LIVE · RECONNECTING 152px inside true | date false/false | collision 71 | items 11 admin true | footer over toggle 0, over last item -40, scrolls true, texture 0px
+live 1440x900 lg LIVE | chip LIVE 46px inside true | date false/false | collision -109 | items 11 admin true | footer over toggle 0, over last item -40, scrolls true, texture 0px
+live 1440x900 longest label lg LIVE | chip LIVE · RECONNECTING 152px inside true | date false/false | collision -3 | items 11 admin true | footer over toggle 0, over last item -40, scrolls true, texture 0px
+live 1519x900 lg LIVE | chip LIVE 46px inside true | date false/false | collision -188 | items 11 admin true | footer over toggle 0, over last item -40, scrolls true, texture 0px
+live 1519x900 longest label lg LIVE | chip LIVE · RECONNECTING 152px inside true | date false/false | collision -82 | items 11 admin true | footer over toggle 0, over last item -40, scrolls true, texture 0px
+live 1520x900 lg LIVE | chip LIVE 46px inside true | date false/false | collision -189 | items 11 admin true | footer over toggle 0, over last item -40, scrolls true, texture 0px
+live 1520x900 longest label lg LIVE | chip LIVE · RECONNECTING 152px inside true | date false/false | collision -83 | items 11 admin true | footer over toggle 0, over last item -40, scrolls true, texture 0px
+live 1536x864 lg LIVE | chip LIVE 46px inside true | date false/false | collision -205 | items 11 admin true | footer over toggle 0, over last item -40, scrolls true, texture 0px
+live 1536x864 longest label lg LIVE | chip LIVE · RECONNECTING 152px inside true | date false/false | collision -99 | items 11 admin true | footer over toggle 0, over last item -40, scrolls true, texture 0px
+live 1600x900 xl LIVE | chip LIVE 46px inside true | date false/false | collision -207 | items 11 admin true | footer over toggle 0, over last item -40, scrolls true, texture 0px
+live 1600x900 longest label xl LIVE | chip LIVE · RECONNECTING 152px inside true | date false/false | collision -101 | items 11 admin true | footer over toggle 0, over last item -40, scrolls true, texture 0px
+live 1663x900 xl LIVE | chip LIVE 46px inside true | date false/false | collision -270 | items 11 admin true | footer over toggle 0, over last item -40, scrolls true, texture 0px
+live 1663x900 longest label xl LIVE | chip LIVE · RECONNECTING 152px inside true | date false/false | collision -164 | items 11 admin true | footer over toggle 0, over last item -40, scrolls true, texture 0px
+live 1664x900 xl LIVE | chip LIVE 46px inside true | date true/true | collision -114 | items 11 admin true | footer over toggle 0, over last item -40, scrolls true, texture 0px
+live 1664x900 longest label xl LIVE | chip LIVE · RECONNECTING 152px inside true | date true/true | collision -7 | items 11 admin true | footer over toggle 0, over last item -40, scrolls true, texture 0px
+live 1680x1050 xl LIVE | chip LIVE 46px inside true | date true/true | collision -130 | items 11 admin true | footer over toggle -7, over last item -47, scrolls false, texture 7px
+live 1680x1050 longest label xl LIVE | chip LIVE · RECONNECTING 152px inside true | date true/true | collision -23 | items 11 admin true | footer over toggle -7, over last item -47, scrolls false, texture 7px
+live 1920x1080 xl LIVE | chip LIVE 46px inside true | date true/true | collision -370 | items 11 admin true | footer over toggle -37, over last item -77, scrolls false, texture 37px
+live 1920x1080 longest label xl LIVE | chip LIVE · RECONNECTING 152px inside true | date true/true | collision -263 | items 11 admin true | footer over toggle -37, over last item -77, scrolls false, texture 37px
+live scrolledEnd lg LIVE | chip LIVE 46px inside true | date false/false | collision -35 | items 11 admin true | footer over toggle 0, over last item -40, scrolls true, texture 0px
+simulated 1280x800 lg SIMULATED | chip SIMULATED 89px inside true | date false/false | collision 58 | items 9 admin false | footer over toggle -22, over last item -62, scrolls false, texture 22px
+simulated 1366x768 lg SIMULATED | chip SIMULATED 89px inside true | date false/false | collision -19 | items 9 admin false | footer over toggle 10, over last item -30, scrolls false, texture 0px
+simulated 1440x900 lg SIMULATED | chip SIMULATED 89px inside true | date false/false | collision -93 | items 9 admin false | footer over toggle -122, over last item -162, scrolls false, texture 122px
+simulated 1519x900 lg SIMULATED | chip SIMULATED 89px inside true | date false/false | collision -172 | items 9 admin false | footer over toggle -122, over last item -162, scrolls false, texture 122px
+simulated 1520x900 lg SIMULATED | chip SIMULATED 89px inside true | date true/true | collision -15 | items 9 admin false | footer over toggle -122, over last item -162, scrolls false, texture 122px
+simulated 1536x864 lg SIMULATED | chip SIMULATED 89px inside true | date true/true | collision -31 | items 9 admin false | footer over toggle -86, over last item -126, scrolls false, texture 86px
+simulated 1600x900 xl SIMULATED | chip SIMULATED 89px inside true | date true/true | collision -34 | items 9 admin false | footer over toggle -24, over last item -64, scrolls false, texture 24px
+simulated 1663x900 xl SIMULATED | chip SIMULATED 89px inside true | date true/true | collision -97 | items 9 admin false | footer over toggle -24, over last item -64, scrolls false, texture 24px
+simulated 1664x900 xl SIMULATED | chip SIMULATED 89px inside true | date true/true | collision -98 | items 9 admin false | footer over toggle -24, over last item -64, scrolls false, texture 24px
+simulated 1680x1050 xl SIMULATED | chip SIMULATED 89px inside true | date true/true | collision -114 | items 9 admin false | footer over toggle -174, over last item -214, scrolls false, texture 174px
+simulated 1920x1080 xl SIMULATED | chip SIMULATED 89px inside true | date true/true | collision -354 | items 9 admin false | footer over toggle -204, over last item -244, scrolls false, texture 204px
+layout-driver: sign-in 200; console errors or warnings 0; the output held the seeded password before redaction: false
+layout-driver exit 0
+
+== 21:26:26 7. the same shell in Simulated mode (the stored choice of this origin)
+-- listeners on mock-core's port 4400 before the Simulated page is loaded (it is not started and not used by this check):
+lsof exit 1 (1: nothing listens on 4400)
+cdp-driver simulated exit 0
+cdp-driver simulated: the output held the seeded password before redaction: false
+
+== 21:26:39 8. what Vite printed (errors; hot updates)
+9:9:25:01 PM [vite] ws proxy error:
+10:Error: read ECONNRESET
+12:9:25:01 PM [vite] ws proxy socket error:
+13:Error: read ECONNRESET
+15:9:25:34 PM [vite] ws proxy error:
+16:Error: connect ECONNREFUSED 127.0.0.1:4423
+18:9:25:35 PM [vite] ws proxy error:
+19:Error: connect ECONNREFUSED 127.0.0.1:4423
+21:9:25:37 PM [vite] ws proxy error:
+22:Error: connect ECONNREFUSED 127.0.0.1:4423
+24:9:25:48 PM [vite] ws proxy error:
+25:Error: read ECONNRESET
+-- lines in Vite's log:       29
+
+== 21:26:39 9. lane database after the check
+db:status exit 0
+-- row counts that differ (before / after):
+< audit head       seq 99; hash 28b2114336243c4a...
+> audit head       seq 108; hash 0aed11ec7d0f5986...
+<   audit_log                99
+<   auth_sessions            6
+>   audit_log                108
+>   auth_sessions            10
+<   events                   74
+>   events                   81
+-- the backend's log: lines      110; lines with level error or fatal: 0
+-- role changes the backend logged or audited are restored: see the browser record (assignSupervisor, assignInvestigator)
+
+== 21:26:40 stop what this check started
+chrome stopped
+vite: npm exit status 143
+backend: npm exit status 0
+
+== 21:26:41 listeners left on 4423, 5178, 9398 (expect none):
+lsof exit 1 (1 with no output: no listener)
+2026-10-04 21:26:41 WIB
+lockf exit=0

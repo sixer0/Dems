@@ -1,0 +1,35 @@
+10:31:05.435 declared screen summary
+10:31:05.527 screencap 66_sc3_s3_phone_summary_pending.png 10:31:05.527..10:31:06.052
+10:31:06.140 mark b08 at 10:31:06.140
+10:31:06.195 tap 244,2252
+10:31:06.448 slept 2500 ms
+10:31:09.005 declared screen home
+10:31:09.046 screencap 66b_sc3_phone_home_idle.png 10:31:09.046..10:31:09.348
+10:31:09.397 press sm-final-close ok at 10:31:09.457
+10:31:09.546 slept 500 ms
+10:31:10.083 nav / load=true
+10:31:13.282 press start-new-session ok at 10:31:13.307
+10:31:13.361 wait page-session-new present: 65 ms (at 10:31:13.426)
+10:31:13.482 slept 2000 ms
+10:31:15.565 press sn-scan ok at 10:31:15.587
+10:31:15.641 slept 800 ms
+10:31:16.522 press sn-subject-TERSANGKA ok at 10:31:16.527
+10:31:16.601 slept 300 ms
+10:31:16.974 type into [data-testid="sn-subject-name"]: "SC3 Web Start Timed"
+10:31:17.056 slept 500 ms
+10:31:17.641 press sn-next ok at 10:31:17.642
+10:31:17.702 slept 9000 ms
+10:31:26.783 js => "All checks passed"
+10:31:26.864 press sn-next ok at 10:31:26.915
+10:31:26.979 slept 2500 ms
+10:31:29.563 screenshot 67_sc3_s1b_web_ready.png 10:31:29.563..10:31:29.701
+10:31:29.759 ids => ["sn-countdown-switch","sn-start"]
+10:31:29.830 serverlog since b08 (8):
+    10:31:06.412 POST /api/v1/auth/touch 200 operator:OPR-001
+    10:31:06.489 POST /api/v1/session/:id/summary/acknowledge 204 operator:OPR-001
+    10:31:10.097 [socket closed] operator:OPR-002
+    10:31:10.207 GET /api/v1/auth/session 200 operator:OPR-002
+    10:31:10.223 [socket opened] operator:OPR-002
+    10:31:15.592 POST /api/v1/session/case-number 200 operator:OPR-002
+    10:31:17.959 POST /api/v1/session 201 operator:OPR-002
+    10:31:17.989 POST /api/v1/session/:id/precheck 202 operator:OPR-002

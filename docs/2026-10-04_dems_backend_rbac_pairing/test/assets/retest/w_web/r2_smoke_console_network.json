@@ -1,0 +1,231 @@
+{
+ "Login": {
+  "requests": 442,
+  "origins": {
+   "http://127.0.0.1:5178": 441,
+   "blob:": 1
+  },
+  "ws": [
+   "ws://127.0.0.1:5178/",
+   "ws://127.0.0.1:5178/ws",
+   "ws://127.0.0.1:5178/ws"
+  ],
+  "errors": [],
+  "warnings": [],
+  "exceptions": [],
+  "log": [
+   "error network: Failed to load resource: the server responded with a status of 401 (Unauthorized) (/api/v1/auth/session)"
+  ],
+  "responses4xx": [
+   "401 GET /api/v1/auth/session"
+  ],
+  "blocked": []
+ },
+ "Stack Check": {
+  "requests": 257,
+  "origins": {
+   "http://127.0.0.1:5178": 257
+  },
+  "ws": [
+   "ws://127.0.0.1:5178/",
+   "ws://127.0.0.1:5178/ws"
+  ],
+  "errors": [],
+  "warnings": [],
+  "exceptions": [],
+  "log": [],
+  "responses4xx": [],
+  "blocked": []
+ },
+ "Dashboard": {
+  "requests": 171,
+  "origins": {
+   "http://127.0.0.1:5178": 171
+  },
+  "ws": [],
+  "errors": [],
+  "warnings": [],
+  "exceptions": [],
+  "log": [],
+  "responses4xx": [],
+  "blocked": []
+ },
+ "Start New Session": {
+  "requests": 16,
+  "origins": {
+   "http://127.0.0.1:5178": 16
+  },
+  "ws": [],
+  "errors": [],
+  "warnings": [],
+  "exceptions": [],
+  "log": [],
+  "responses4xx": [],
+  "blocked": []
+ },
+ "Session Monitor": {
+  "requests": 24,
+  "origins": {
+   "http://127.0.0.1:5178": 24
+  },
+  "ws": [],
+  "errors": [],
+  "warnings": [],
+  "exceptions": [],
+  "log": [],
+  "responses4xx": [],
+  "blocked": []
+ },
+ "Evidence list": {
+  "requests": 108,
+  "origins": {
+   "http://127.0.0.1:5178": 107,
+   "data:": 1
+  },
+  "ws": [],
+  "errors": [],
+  "warnings": [],
+  "exceptions": [],
+  "log": [],
+  "responses4xx": [],
+  "blocked": []
+ },
+ "Evidence detail": {
+  "requests": 963,
+  "origins": {
+   "http://127.0.0.1:5178": 963
+  },
+  "ws": [
+   "ws://127.0.0.1:5178/",
+   "ws://127.0.0.1:5178/ws",
+   "ws://127.0.0.1:5178/",
+   "ws://127.0.0.1:5178/ws"
+  ],
+  "errors": [],
+  "warnings": [],
+  "exceptions": [],
+  "log": [],
+  "responses4xx": [],
+  "blocked": []
+ },
+ "Devices & Inputs": {
+  "requests": 50,
+  "origins": {
+   "http://127.0.0.1:5178": 50
+  },
+  "ws": [],
+  "errors": [],
+  "warnings": [],
+  "exceptions": [],
+  "log": [],
+  "responses4xx": [],
+  "blocked": []
+ },
+ "Storage": {
+  "requests": 24,
+  "origins": {
+   "http://127.0.0.1:5178": 24
+  },
+  "ws": [],
+  "errors": [],
+  "warnings": [],
+  "exceptions": [],
+  "log": [],
+  "responses4xx": [],
+  "blocked": []
+ },
+ "Network & Time": {
+  "requests": 19,
+  "origins": {
+   "http://127.0.0.1:5178": 19
+  },
+  "ws": [],
+  "errors": [],
+  "warnings": [],
+  "exceptions": [],
+  "log": [],
+  "responses4xx": [],
+  "blocked": []
+ },
+ "Security & Audit": {
+  "requests": 29,
+  "origins": {
+   "http://127.0.0.1:5178": 29
+  },
+  "ws": [],
+  "errors": [],
+  "warnings": [],
+  "exceptions": [],
+  "log": [],
+  "responses4xx": [],
+  "blocked": []
+ },
+ "System & Maintenance": {
+  "requests": 22,
+  "origins": {
+   "http://127.0.0.1:5178": 22
+  },
+  "ws": [],
+  "errors": [],
+  "warnings": [],
+  "exceptions": [],
+  "log": [],
+  "responses4xx": [],
+  "blocked": []
+ },
+ "Users & Roles": {
+  "requests": 15,
+  "origins": {
+   "http://127.0.0.1:5178": 15
+  },
+  "ws": [],
+  "errors": [],
+  "warnings": [],
+  "exceptions": [],
+  "log": [],
+  "responses4xx": [],
+  "blocked": []
+ },
+ "Paired Devices": {
+  "requests": 16,
+  "origins": {
+   "http://127.0.0.1:5178": 16
+  },
+  "ws": [],
+  "errors": [],
+  "warnings": [],
+  "exceptions": [],
+  "log": [],
+  "responses4xx": [],
+  "blocked": []
+ },
+ "API Reference": {
+  "requests": 36,
+  "origins": {
+   "http://127.0.0.1:5178": 36
+  },
+  "ws": [],
+  "errors": [],
+  "warnings": [],
+  "exceptions": [],
+  "log": [],
+  "responses4xx": [],
+  "blocked": []
+ },
+ "Sign out": {
+  "requests": 25,
+  "origins": {
+   "http://127.0.0.1:5178": 24,
+   "blob:": 1
+  },
+  "ws": [
+   "ws://127.0.0.1:5178/ws"
+  ],
+  "errors": [],
+  "warnings": [],
+  "exceptions": [],
+  "log": [],
+  "responses4xx": [],
+  "blocked": []
+ }
+}

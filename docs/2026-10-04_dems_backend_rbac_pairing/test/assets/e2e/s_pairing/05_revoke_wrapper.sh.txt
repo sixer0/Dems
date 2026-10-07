@@ -1,0 +1,22 @@
+#!/bin/sh
+# E2E-S step 5 wrapper: screen recording with the time overlay (--bugreport) and a streamed device JS log on
+# emulator-5558 ONLY, around the web revoke (05_revoke.mjs). No setting, lock or reverse rule is touched.
+#   sh 05_revoke_wrapper.sh.txt <out folder> <scripts folder> <deviceId>
+set -u
+OUT=$1; SP=$2; DEV=$3
+a() { adb -s emulator-5558 "$@"; }
+T0=$(a shell "date '+%m-%d %H:%M:%S.000'" | tr -d '\r')
+echo "== step 5 — device T0 $T0; host $(date '+%H:%M:%S'); $(a shell dumpsys window | tr -d '\r' | grep -o 'isKeyguardShowing=[a-z]*' | head -n 1)"
+a shell screenrecord --bugreport --time-limit 30 /sdcard/e2e_s_revoke.mp4 &
+REC=$!
+a logcat -v epoch -T "$T0" -s ReactNativeJS:V > "$OUT/05_device_js_stream.log" 2>&1 &
+LOGP=$!
+sleep 3
+(cd /Users/gsp-budi/Documents/DEMS && node --import tsx "$SP/05_revoke.mjs" "$DEV" "$T0")
+echo "-- waiting for the 30 s screen recording to end"
+wait $REC
+kill $LOGP 2>/dev/null
+a pull /sdcard/e2e_s_revoke.mp4 "$OUT/05_phone_revoke_screenrecord.mp4" 2>&1 | tail -n 1
+a shell rm -f /sdcard/e2e_s_revoke.mp4
+echo "-- recording: $(wc -c < "$OUT/05_phone_revoke_screenrecord.mp4" | tr -d ' ') bytes; device JS stream lines: $(wc -l < "$OUT/05_device_js_stream.log" | tr -d ' ')"
+echo "-- credential/token lines in the streamed JS log (must be 0): $(grep -c -E 'dvc_|ses_|bio_' "$OUT/05_device_js_stream.log")"

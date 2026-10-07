@@ -1,0 +1,19 @@
+tap 1603,1248 at 17:24:30.805
+slept 2500 ms
+swipe 1900,1250,1900,550 600 ms
+slept 1500 ms
+screencap S03b_evidence_detail_metadata.png (769659 bytes) at 17:24:35.976
+swipe 1900,500,1900,1300 500 ms
+slept 800 ms
+swipe 1900,500,1900,1300 500 ms
+slept 1000 ms
+tap 1852,1248 at 17:24:39.155
+slept 2500 ms
+swipe 1900,1250,1900,550 600 ms
+slept 1500 ms
+screencap S03c_evidence_detail_hash_integrity.png (740940 bytes) at 17:24:44.708
+swipe 1900,1300,1900,300 600 ms
+slept 800 ms
+swipe 1900,1300,1900,300 600 ms
+slept 1500 ms
+screencap S03d_evidence_detail_custody.png (707514 bytes) at 17:24:49.196

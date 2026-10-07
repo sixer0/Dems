@@ -1,7 +1,6 @@
 import { useCallback, useEffect } from 'react'
 import {
   RouterProvider as AriaRouterProvider,
-  Button,
   Card,
   Surface,
   ToastProvider,
@@ -13,15 +12,15 @@ import {
   Outlet,
   useRouter,
   useRouterState,
-  type ErrorComponentProps,
 } from '@tanstack/react-router'
 import { LayoutGroup } from 'motion/react'
 import { I18nextProvider, useTranslation } from 'react-i18next'
 import { HEALTH_QUERY_KEY } from '@dems/shared/api'
 import { liveOf } from '@dems/shared/live'
 import type { LiveSim } from '@dems/shared/live/source'
-import { HeartbeatContext, HeartbeatProvider, useRetryCooldown } from '@dems/shared/realtime'
+import { HeartbeatContext, HeartbeatProvider } from '@dems/shared/realtime'
 import { SimProvider } from '@dems/shared/sim'
+import { RootError } from '@/components/shell/root-error'
 import { noteTopLevelRoute } from '@/components/shell/shell-entrance'
 import { i18n } from '@/i18n'
 import { coreWsUrl } from '@/lib/core-endpoint'
@@ -124,43 +123,6 @@ function RootLayout() {
 /** App paths are absolute and the app has no basepath, so an href is already a URL. */
 function identityHref(href: string): string {
   return href
-}
-
-/** Router-level error boundary: friendly message, rate-limited retry, reload as last resort. */
-function RootError({ error, reset }: ErrorComponentProps) {
-  const { t } = useTranslation()
-  const { retry, cooldown, exhausted, canRetry } = useRetryCooldown(reset)
-  if (import.meta.env.DEV) {
-    // No client-log endpoint exists on mock-core (D3/D4, D41(g)); dev console only.
-    console.error('[core-web] route error', {
-      level: 'error',
-      source: 'routes/__root.RootError',
-      message: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : undefined,
-    })
-  }
-  return (
-    <Surface variant="transparent" className="flex min-h-dvh items-center justify-center bg-background p-6">
-      <Card className="w-full max-w-md rounded-xl">
-        <Card.Header>
-          <Card.Title>{t('common.errors.panelTitle')}</Card.Title>
-          <Card.Description>{t('common.errors.generic')}</Card.Description>
-        </Card.Header>
-        <Card.Footer className="gap-3">
-          <Button variant="primary" isDisabled={!canRetry} onPress={retry}>
-            {exhausted
-              ? t('common.errors.maxRetries')
-              : cooldown > 0
-                ? t('common.actions.retryIn', { seconds: cooldown })
-                : t('common.actions.retry')}
-          </Button>
-          <Button variant="outline" onPress={() => window.location.reload()}>
-            {t('common.actions.refresh')}
-          </Button>
-        </Card.Footer>
-      </Card>
-    </Surface>
-  )
 }
 
 function NotFound() {

@@ -1,0 +1,17 @@
+## 2026-10-05 23:05:25 WIB (load 7.09)
+$ npm run typecheck -w @dems/core-web     typecheck exit=0
+$ npm run lint -w @dems/core-web          lint exit=0
+## 2026-10-05 23:05:55 WIB
+23:05  2 users, load averages: 5.73 6.44 5.56
+$ npm run test -w @dems/core-web -- --maxWorkers=2
+     ✓ a FAIL from the server is shown as FAIL on exactly the track the server named, with the sealed value beside the found one 1078ms
+     ✓ gives FAIL on exactly one track (AUDIO-02) for the tampered EV 0005, and the audit trail agrees 1476ms
+     ✓ AC-55 UI path: after inject AUDIT_TAMPER the chain view reports FAIL at the tampered index 1440ms
+     ✓ success: the Spinner holds until the Core answered; the chip shows the check over the audit view (PASS, then FAIL during a tamper) 2450ms
+ Test Files  69 passed (69)
+      Tests  933 passed (933)
+exit=0
+src/test/live-session-monitor-actions.test.tsx passed 16 / 16
+src/test/live-session-monitor-panels.test.tsx passed 10 / 10
+src/features/session-monitor/__tests__/session-monitor.test.tsx passed 13 / 13
+success True 933 / 933

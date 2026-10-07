@@ -1,0 +1,135 @@
+#!/usr/bin/env python3
+"""FX-M2 mutation check (rule: nothing in the tree is written). Each mutant reverts or breaks one fix IN
+MEMORY (jest transformer) and runs the tests that prove that fix; a fix is proven when its tests fail.
+
+  python3 mutate.py control         the unmutated test files of every group, once
+  python3 mutate.py P R M H B       every mutant of the groups (or single ids: P1 R3 ...)
+Groups: P E2E-P-2 copy; R R2 (E2E-P-5, O-2); M E2E-T-6 record; H E2E-P-4/E2E-T-4 hand-over; B E2E-T-2 states.
+"""
+import hashlib, json, os, re, subprocess, sys, time
+
+ROOT = '/Users/gsp-budi/Documents/DEMS'
+APP = ROOT + '/apps/mobile'
+HERE = os.path.dirname(os.path.abspath(__file__))
+SPEC = HERE + '/spec.json'
+CONFIG = HERE + '/jest.mut.config.cjs'
+
+HOME = 'src/features/home/home-screen.tsx'
+QUICK = 'src/features/dashboard/quick-actions.tsx'
+HUB = 'src/features/sessions/hub-top.tsx'
+NEW_ROUTE = 'src/app/(app)/session/new.tsx'
+MAINT = 'src/features/settings/maintenance-section.tsx'
+GATE = 'src/features/rbac/use-role-gate.ts'
+GUARD = 'src/features/session-new/use-start-entry-guard.ts'
+META = 'src/features/evidence/metadata-tab.tsx'
+DETAIL = 'src/features/evidence/evidence-detail.tsx'
+LIVE_ROUTE = 'src/app/(app)/session/live.tsx'
+FIN = 'src/features/session-finalizing/session-finalizing-screen.tsx'
+DEV = 'src/features/devices/devices-screen.tsx'
+BOUND = 'src/features/devices/panel-boundary.tsx'
+
+TESTS = {
+    'P': ['src/features/home/stack-proof-source.test.tsx', 'src/features/home/home-screen.test.tsx'],
+    'R': ['src/features/rbac/role-gate-r2.test.tsx', 'src/features/rbac/live-role-gate-r2.test.tsx',
+          'src/features/settings/live-settings-sites.test.tsx', 'src/features/session-new/session-new-screen.test.tsx'],
+    'M': ['src/features/evidence/live-evidence-metadata-record.test.tsx'],
+    'H': ['src/features/session-live/live-stop-handover.test.tsx'],
+    'B': ['src/features/devices/devices-states.test.tsx'],
+}
+
+def e(frm, to):
+    return {'from': frm, 'to': to}
+
+M = [
+  ('P1', HOME, 'the old literal copy is back (always "the local mock-core")', [e('{STACK_PROOF_SOURCE_LINE[source]}', 'Query, wired to the local mock-core over adb reverse.')]),
+  ('P2', HOME, 'the line ignores the Core link source (always SIMULATED)', [e('const { source } = useCoreLink();', "const source = 'SIMULATED' as const;")]),
+  ('R1', QUICK, 'Home Start is never locked', [e('const locked = startsWizard(action.kind) && !startGate.allowed;', 'const locked = false;')]),
+  ('R2', QUICK, 'the lock covers Start only (Continue setup open to a TECHNICIAN) and the hint is never drawn', [e('{locked && startGate.hint ? (', '{false ? (')]),
+  ('R3', HUB, 'the Sessions hub Start is never locked', [e('const locked = !busy && !startGate.allowed;', 'const locked = false;')]),
+  ('R4', NEW_ROUTE, 'the route has no entry guard (a deep link opens the wizard)', [e('  if (refused !== null) return <Redirect href={refused} />;\n', '')]),
+  ('R5', MAINT, 'Install update is never locked', [e('const locked = !maintenance.allowed;', 'const locked = false;')]),
+  ('R6', GATE, 'the gate keeps the first role (a pushed role change is not followed)', [e('  }, [role, permission, t]);', '    // eslint-disable-next-line react-hooks/exhaustive-deps\n  }, [permission, t]);')]),
+  ('R7', GATE, 'an unknown role counts as locked (the sentence and the guard act before the role is known)', [e('locked: known && !allowed', 'locked: !allowed')]),
+  ('R8', GUARD, 'the guard decides on every render (a loss while open navigates a second time)', [e('  if (enabled && !entered && gate.known && gate.allowed) setEntered(true);\n', '')]),
+  ('R9', GATE, 'the sentence names the wrong role', [e("t(`common.roles.${gate.requiredRole}`)", "t('common.roles.SUPERVISOR')")]),
+  ('M1', META, 'the record is never shown (only the one line, as before)', [e('    if (item === null) {', '    if (true) {')]),
+  ('M2', DETAIL, 'the detail does not hand the item to the tab', [e('            pkg={pkg}\n            item={item}\n            live={live}\n', '            pkg={pkg}\n            live={live}\n')]),
+  ('M3', META, 'an unanswered media reference claims that no package exists', [e(": mediaStatus === 'unavailable'\n          ? t('evidence.live.mediaUnavailable')", ": mediaStatus === 'unavailable'\n          ? t('evidence.live.noPackage')")]),
+  ('M4', META, 'the Live record is labelled as the simulator\'s', [e("t(live ? 'evidence.live.coreRecord' : 'evidence.metadata.simulatedRecord')", "t('evidence.metadata.simulatedRecord')")]),
+  ('H1', LIVE_ROUTE, 'the live route renders only the redirect again (the empty frame)', [e('        <SessionFinalizingScreen handover />\n', '')]),
+  ('H2', LIVE_ROUTE, 'the in-place screen enters with motion (rises from opacity 0)', [e('<SessionFinalizingScreen handover />', '<SessionFinalizingScreen />')]),
+  ('H3', FIN, 'the in-place screen does not mark the hand-over (the route copy rises in)', [e('    if (handover) markFinalizingHandover(session.id);\n', '')]),
+  ('B1', DEV, 'no boundary around the list (a render failure blanks the screen)', [e('    <PanelBoundary name="list">\n      <DevicesList', '    <>\n      <DevicesList'), e('onSelect={select} />\n    </PanelBoundary>\n  );', 'onSelect={select} />\n    </>\n  );')]),
+  ('B2', BOUND, 'Retry is not rate-limited', [e('const cooldownS = Math.ceil(panelRetryCooldownMs(attempt) / 1000);', 'const cooldownS = 0;')]),
+  ('B3', DEV, 'no boundary around the detail pane', [e('<PanelBoundary key={selectedId ?? \'none\'} name="detail">', '<>'), e('<DetailPlaceholder />}\n            </PanelBoundary>', '<DetailPlaceholder />}\n            </>')]),
+]
+
+def sha(path):
+    with open(path, 'rb') as f:
+        return hashlib.sha256(f.read()).hexdigest()
+
+def jest(env, tests):
+    return subprocess.run(['node', ROOT + '/node_modules/jest/bin/jest.js', '--config', CONFIG, '--maxWorkers=2', '--silent', *tests],
+                          cwd=APP, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+
+def summary(out):
+    tail = [line.strip() for line in out.splitlines() if line.startswith('Tests:')]
+    files = sorted({line.split()[1].split('/')[-1] for line in out.splitlines() if line.startswith('FAIL ')})
+    first = [re.sub(r'\s+', ' ', line.strip().lstrip('●').strip()) for line in out.splitlines() if line.strip().startswith('● ') and 'Console' not in line]
+    return (tail[-1] if tail else 'no summary line'), files, first[:1]
+
+def load():
+    out = subprocess.run(['uptime'], stdout=subprocess.PIPE, text=True).stdout
+    m = re.search(r'load averages?: ([\d.]+)', out)
+    return float(m.group(1)) if m else 0.0
+
+def wait_for_load():
+    while load() > 14:
+        print('   (load %.1f > 14: pausing 30 s)' % load(), flush=True)
+        time.sleep(30)
+
+def main():
+    wanted = sys.argv[1:]
+    files = sorted({m[1] for m in M})
+    before = {f: sha(APP + '/' + f) for f in files}
+    print('# FX-M2 mutation check, %s; the tree is not edited' % time.strftime('%Y-%m-%d %H:%M:%S'), flush=True)
+    if 'control' in wanted:
+        tests = sorted({t for group in TESTS.values() for t in group})
+        wait_for_load()
+        started = time.time()
+        run = jest(dict(os.environ, CI='1'), tests)
+        tail, failed, _ = summary(run.stdout)
+        print('control (no mutation, %d test files): exit=%d %s (%.0f s)' % (len(tests), run.returncode, tail, time.time() - started), flush=True)
+        if run.returncode != 0:
+            print(run.stdout[-4000:])
+            sys.exit(1)
+    chosen = [m for m in M if m[0] in wanted or m[0].rstrip('0123456789') in wanted]
+    detected = missed = unapplied = 0
+    for mid, file, what, edits in chosen:
+        group = mid.rstrip('0123456789')
+        with open(SPEC, 'w') as f:
+            json.dump({'id': mid, 'file': file, 'edits': edits}, f)
+        wait_for_load()
+        started = time.time()
+        run = jest(dict(os.environ, CI='1', FXM2_MUT_SPEC=SPEC), TESTS[group])
+        tail, failed, first = summary(run.stdout)
+        if 'expected exactly 1' in run.stdout:
+            unapplied += 1
+            verdict = 'NOT APPLIED'
+        elif run.returncode != 0:
+            detected += 1
+            verdict = 'DETECTED'
+        else:
+            missed += 1
+            verdict = 'not detected'
+        print('%-3s %-12s %s | %s | %s | failing: %s | first: %s (%.0f s)' % (mid, verdict, what, file, tail, ', '.join(failed) or '-', ' / '.join(first) or '-', time.time() - started), flush=True)
+    if chosen:
+        print('## %d detected, %d not detected, %d not applied, of %d' % (detected, missed, unapplied, len(chosen)), flush=True)
+    after = {f: sha(APP + '/' + f) for f in files}
+    print('## the mutated files in the tree, before and after: %s' % ('identical' if before == after else 'CHANGED'), flush=True)
+    for f in files:
+        print('   %s  %s' % (after[f][:16], f), flush=True)
+    print('# finished %s' % time.strftime('%H:%M:%S'), flush=True)
+
+if __name__ == '__main__':
+    main()

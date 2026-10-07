@@ -19,6 +19,7 @@ import { describe, expect, it } from '@jest/globals';
 import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
+import { en } from '@dems/shared/i18n';
 import { evidenceEn } from './i18n';
 
 const FOLDER = __dirname;
@@ -58,7 +59,10 @@ const LIVE_KEYS = [
   'play.bundled',
   'export.deniedBodyUnrecorded',
   'export.zipNoteLive',
-  'export.successLive',
+  // Closing-fix CF-M2 (R-T-2): the Live card's heading per the Core's stored verification.
+  'integrity.failedOnCore',
+  'integrity.notVerifiedYet',
+  'integrity.coreNotRun',
 ];
 
 function leaves(tree: unknown, path: string[] = []): { key: string; text: string }[] {
@@ -85,8 +89,12 @@ describe('Evidence takes the Core through the light Live API (CLG c, AC-C-53)', 
       'integrity-tab.tsx',
       'live-integrity-tab.tsx',
       'media-tab.tsx',
+      // Closing-fix CF-M2 (R-T-1): a kit Menu item's title and reason stacked.
+      'menu-item-text.tsx',
       'metadata-tab.tsx',
       'play-sheet.tsx',
+      // CF2-B (RF-T-1): the always-mounted selection glow of the list rows.
+      'selection-glow.tsx',
       'sheet-frame.tsx',
       'sim-adapter.ts',
       'use-clock-due.ts',
@@ -150,6 +158,8 @@ describe('The copy (rule 8)', () => {
     const live = all.filter((leaf) => LIVE_KEYS.includes(leaf.key));
     expect(live.map((leaf) => leaf.key).sort()).toEqual([...LIVE_KEYS].sort());
     expect(live.filter((leaf) => /simulat/i.test(leaf.text))).toEqual([]);
+    // Closing copy round (D162 DN-5): the Live success toast is the shared `evidence.live.export.success`.
+    expect(/simulat/i.test(en.evidence.live.export.success)).toBe(false);
   });
 
   it('the copy of Simulated mode is the copy of `acaff20` (185 texts, the same digest)', () => {

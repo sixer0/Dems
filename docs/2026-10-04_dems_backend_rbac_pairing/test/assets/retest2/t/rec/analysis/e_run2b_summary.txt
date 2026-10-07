@@ -1,0 +1,20 @@
+frames 434; monitor frames 381; blank frames 0
+first monitor frame f_0002 device 17:11:11.619; last monitor frame f_0382 device 17:11:21.326
+hand-over: last monitor f_0382 (f=381) 17:11:21.326 -> next f_0383 (f=382) 17:11:21.466 sd 15.4 blank=False (+140 ms)
+non-monitor frames inside the monitor span: []
+unreadable timer frames: 0
+timer values shown: 10 changes; backward steps: 0 []
+timer steps (frame, device time, host time = device - offset, value, lag = host - Core start - value):
+  f_0002 dev 17:11:11.619 host 17:11:12.092 timer 212 lag +0.68 s held 0.41 s
+  f_0016 dev 17:11:12.025 host 17:11:12.498 timer 213 lag +0.09 s held 1.12 s
+  f_0054 dev 17:11:13.142 host 17:11:13.615 timer 214 lag +0.21 s held 1.13 s
+  f_0090 dev 17:11:14.273 host 17:11:14.746 timer 215 lag +0.34 s held 1.22 s
+  f_0142 dev 17:11:15.493 host 17:11:15.966 timer 216 lag +0.56 s held 0.62 s
+  f_0179 dev 17:11:16.110 host 17:11:16.583 timer 217 lag +0.17 s held 0.89 s
+  f_0213 dev 17:11:16.997 host 17:11:17.470 timer 218 lag +0.06 s held 1.05 s
+  f_0247 dev 17:11:18.044 host 17:11:18.517 timer 219 lag +0.11 s held 1.05 s
+  f_0284 dev 17:11:19.091 host 17:11:19.564 timer 220 lag +0.16 s held 1.04 s
+  f_0336 dev 17:11:20.128 host 17:11:20.601 timer 221 lag +0.19 s
+holds > 1.5 s (value, first frame, device time, seconds held, next value): []
+banner probes: header row y baseline 95; frames shifted 0 []; band amber>20 0 []; band green>20 0 []
+band pixel maxima over monitor frames: amber 0, green 0

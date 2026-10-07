@@ -1,0 +1,4 @@
+swipe 2100,1400,2100,400 600 ms
+slept 1500 ms
+screencap 08b_session_detail_scrolled.png (606041 bytes) at 09:50:11.714
+ids: 138 nodes -> q/session_detail_scrolled.txt

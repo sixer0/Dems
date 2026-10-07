@@ -1,0 +1,90 @@
+
+== 23:17:38 0. before (no reset): listeners free?; dems_lane_1 as W60/W66 left it
+   audit_log                121
+   device_credentials       1
+   paired_devices           1
+   db:status: OK: dems_lane_1 is at the schema version this code expects and the ledger matches the files.
+
+== 23:17:38 1. start the lane backend (demo flag off)
+npm PID 98775, listener PID 98833
+   "port":4421,"database":"dems_lane_1","demoControls":false
+{"status":"ok","service":"dems-core-server","version":"0.2.0","apiVersion":"v1","serverTime":"2026-10-05T16:17:40.857Z","uptimeMs":253,"ws":{"path":"/ws","heartbeatIntervalMs":1000,"clients":0},"ready":{"database":true,"engine":true}}
+
+== 23:17:40 2. device session: phone, Metro 8083, tcp:4420 -> tcp:4421 (cap 450 s)
+[device-session phone 23:17:40] lock held; hard cap 450 s, until 23:25:10 (watchdog PID 98921)
+[device-session phone 23:17:40] session serial: emulator-5554 (dems2_phone)
+[device-session phone 23:17:41] emulator-5554: screen awake, no keyguard
+[device-session phone 23:17:41] Metro PID 98962 (own process group) on 127.0.0.1:8083 (log: /var/folders/rn/7bm_xjb14jxcbp36qw981phr0000gn/T//dems-metro-8083.log)
+[device-session phone 23:17:44] emulator-5554: bundler location set to localhost:8081 (H-MB-09)
+[device-session phone 23:17:44] Metro ready; device tcp:8081 -> host tcp:8083, tcp:4400 -> tcp:4400 on emulator-5554
+[device-session phone 23:17:44] Core server: device tcp:4420 -> host tcp:4421 on emulator-5554
+-- serial emulator-5554 (dems2_phone), lane port 4421, run w67231737
+== D1. cold launch in LIVE mode on the PAIRED phone (motion off for uiautomator) ==
+-- am start -W -d 'demsdemo:///login?core=LIVE&motion=off'
+   Status: timeout
+   LaunchState: UNKNOWN (-1)
+-- waited 5 s for: runtime.live.ready
+-- waited 3 s for: DEMS-LIVE\] GET /api/v1/pairing/device 200
+== D2..D8: the queue-driven UI driver (sign-in, Start Session, hand-off, End Session) ==
+-- 23:18:16 ACK 001 | tap 540,1105 | slept 800 ms | username typed (budi.santoso); editor inputType 0x80001 | slept 400 ms | tap 540,1265 | slept 800 ms | imedump: 66 lines; last inputType 0x80081 | focused true; editor inputType 0x80081 | screencap 001.png (1231922 bytes)
+-- 23:18:36 ACK 002 | password typed (not shown); editor inputType 0x80081 | slept 300 ms | key 66 | signin 200 (POST /api/v1/auth/sign-in 200) | slept 4000 ms | ids: screen-home[0,0][1080,2204] biometric-offer-dialog[53,865][1028,1559] biometric-offer-enable[106,1234][976,1360] biometric-offer-decline[106,1381][976,1507] | screencap 002.png (388039 bytes)
+-- 23:18:50 ACK 003 | tap 541,1444 | slept 1500 ms | screencap 67_phone_home_live.png (437736 bytes) | deep link demsdemo:///session/new?step=1 | slept 3000 ms | ids: screen-session-new[0,0][1080,2424] session-new-header[0,63][1080,210] session-new-back[21,63][168,210] session-new-profile-menu[912,63][1059,210] session-new-stepper-root[42,231][1038,389] session-new-stepper[42,231][1038,389] session-new-stepper-step-0[113,336][303,389] session-new-stepper-step-1[426,336][655,389] session-new-stepper-step-2[824,336][920,389] session-new-scroll[0,421][1080,2162] session-new-step-1[42,421][1038,2162] session-new-info[42,421][1038,2162] session-new-case-number[84,605][996,730] session-new-scan[860,616][965,721] session-new-subject-type[84,857][996,973] session-new-subject-TERSANGKA[84,857][374,973] session-new-subject-SAKSI[395,857][685,973] session-new-subject-LAINNYA[706,857][996,973] session-new-subject-gloss[84,993][996,1046] session-new-subject-name[84,1167][996,1293] session-new-investigator[84,1419][996,1545] session-new-room[84,1671][996,1797] session-new-profile[84,1923][996,2049] session-new-notes[84,2169][996,2162] session-new-next[42,2183][1038,2330] | screencap 003.png (205811 bytes)
+-- 23:19:12 ACK 004 | screencap 67_phone_step1_live.png (205681 bytes) | tap 912,668 | slept 700 ms | tap 229,915 | slept 700 ms | tap 540,1230 | slept 900 ms | text typed (Ahmad Fauzi); editor inputType 0x2001 | slept 1200 ms | ids: screen-session-new[0,0][1080,2424] session-new-header[0,63][1080,210] session-new-back[21,63][168,210] session-new-profile-menu[912,63][1059,210] session-new-stepper-root[42,231][1038,389] session-new-stepper[42,231][1038,389] session-new-stepper-step-0[113,336][303,389] session-new-stepper-step-1[426,336][655,389] session-new-stepper-step-2[824,336][920,389] session-new-scroll[0,421][1080,2162] session-new-step-1[42,421][1038,2162] session-new-info[42,421][1038,2162] session-new-case-number[84,605][996,730] session-new-scan[860,616][965,721] session-new-subject-type[84,857][996,973] session-new-subject-TERSANGKA[84,857][374,973] session-new-subject-SAKSI[395,857][685,973] session-new-subject-LAINNYA[706,857][996,973] session-new-subject-gloss[84,993][996,1046] session-new-subject-name[84,1167][996,1293] session-new-investigator[84,1419][996,1545] session-new-room[84,1671][996,1797] session-new-profile[84,1923][996,2049] session-new-notes[84,2169][996,2162] session-new-next[42,2183][1038,2330] | screencap 004.png (227200 bytes)
+-- 23:19:39 ACK 005 | tap 540,2256 | create 201 (POST /api/v1/session 201) | precheck 202 (POST /api/v1/session/{id}/precheck 202) | slept 7000 ms | ids: screen-session-new[0,0][1080,2424] session-new-header[0,63][1080,210] session-new-back[21,63][168,210] session-new-stepper-root[42,231][1038,389] session-new-stepper[42,231][1038,389] session-new-stepper-step-0[114,336][302,389] session-new-stepper-step-1[425,336][656,389] session-new-stepper-step-2[824,336][920,389] session-new-scroll[0,421][1080,2162] session-new-step-2[42,421][1038,2162] session-new-previews-card[42,421][1038,900] session-new-previews[84,463][996,858] session-new-preview-CAM-1[84,463][524,784] session-new-feed-CAM-1[84,463][524,710] session-new-meter-AUDIO-01[221,745][524,771] session-new-preview-CAM-2[556,463][996,784] session-new-feed-CAM-2[556,463][996,710] session-new-meter-AUDIO-02[693,745][997,771] session-new-previews-hint[84,805][996,858] session-new-gate[42,943][1038,2162] session-new-gate-progress[769,985][996,1038] session-new-gate-pass[84,1185][515,1259] session-new-checks[84,1291][996,2162] session-new-check-CORE[84,1291][996,1491] session-new-check-CORE-value[205,1396][758,1449] session-new-check-CORE-status[788,1365][954,1417] session-new-check-LENS_1[84,1492][996,1692] session-new-check-LENS_1-value[205,1597][758,1650] session-new-check-LENS_1-status[788,1566][954,1618] session-new-check-LENS_2[84,1693][996,1893] session-new-check-LENS_2-value[205,1798][758,1851] session-new-check-LENS_2-status[788,1767][954,1819] session-new-check-MIC_1[84,1894][996,2094] session-new-check-MIC_1-value[205,1999][758,2052] session-new-check-MIC_1-status[788,1968][954,2020] session-new-check-MIC_2[84,2095][996,2162] session-new-check-MIC_2-value[205,2200][758,2162] session-new-check-MIC_2-status[788,2169][954,2162] session-new-check-STORAGE[84,2296][996,2162] session-new-check-STORAGE-value[205,2401][758,2162] session-new-check-STORAGE-status[788,2370][954,2162] session-new-next[42,2183][1038,2330] | screencap 005.png (495316 bytes)
+-- 23:20:03 ACK 006 | tap 540,2256 | slept 1800 ms | screencap 67_phone_step3_ready_live.png (249005 bytes) | tap 540,2256 | slept 1300 ms | screencap 67_phone_countdown_live.png (176138 bytes) | start 200 (POST /api/v1/session/{id}/start 200) | slept 1200 ms | ids: uiautomator could not dump within 7 s | screencap 006.png (514935 bytes)
+-- 23:20:27 ACK 007 | long 539,2266 2400 ms | slept 1500 ms | ids: uiautomator could not dump within 7 s | screencap 007.png (507404 bytes)
+-- 23:20:46 ACK 008 | tap 539,2266 | slept 1500 ms | screencap 008.png (303857 bytes)
+-- 23:21:04 ACK 009 | tap 539,1278 | slept 800 ms | text typed (W67 device check end); editor inputType 0x24001 | slept 1200 ms | screencap 009.png (314630 bytes)
+-- 23:21:46 ACK 010 | tap 809,1621 | stop 202 (POST /api/v1/session/{id}/stop 202) | slept 5000 ms | ids: screen-session-summary[0,0][1080,2424] | screencap 010.png (204176 bytes)
+-- 23:21:53 ACK 011 done 0
+-- driver exit: 0
+-- Core request lines this session (method, path template, status):
+      2 DEMS-LIVE] POST /api/v1/auth/touch 200
+      1 DEMS-LIVE] POST /api/v1/session/{id}/stop 202
+      1 DEMS-LIVE] POST /api/v1/session/{id}/start 200
+      1 DEMS-LIVE] POST /api/v1/session/{id}/precheck 202
+      1 DEMS-LIVE] POST /api/v1/session 201
+      1 DEMS-LIVE] POST /api/v1/auth/sign-in 200
+      1 DEMS-LIVE] GET /api/v1/pairing/device 200
+      1 DEMS-LIVE] GET /api/v1/auth/status 200
+      1 DEMS-LIVE] GET /api/v1/auth/session 401
+-- live.misuse lines: 0; credential/token lines (must be 0): 0
+-- 'session is already active' lines in the JS log: 0
+== D9. leave the app in SIMULATED mode as found (D124) ==
+-- am start -W -d 'demsdemo:///?core=SIMULATED'
+   Status: ok
+   LaunchState: COLD
+   TotalTime: 11506
+-- waited 0 s for runtime.sim.hydrated; Core requests after (must be 0): 0
+-- prefs after: {"coreLinkSource":"SIMULATED"}
+
+-- screencap: 67_phone_after_simulated.png
+-- lock at end: isKeyguardShowing=false; fps "count":1
+[device-session phone 23:22:11] Metro 98962 stopped
+[device-session phone 23:22:11] session ended with status 0
+device session exit=0
+
+== 23:22:11 3. backend request log during the session
+      1 GET /api/v1/auth/session 401 principal=device
+      1 GET /api/v1/auth/status 200 principal=device
+      1 GET /api/v1/health 200 principal=null
+      1 GET /api/v1/pairing/device 200 principal=device
+      1 POST /api/v1/auth/sign-in 200 principal=device
+      2 POST /api/v1/auth/touch 200 principal=operator
+      1 POST /api/v1/session 201 principal=operator
+      1 POST /api/v1/session/:id/precheck 202 principal=operator
+      1 POST /api/v1/session/:id/start 200 principal=operator
+      1 POST /api/v1/session/:id/stop 202 principal=operator
+-- audit rows of the session this run:
+-- bearer/cookie/credential lines in the server log this run (must be 0): 0
+
+== 23:22:11 4. stop the backend and check nothing is left
+-- shutdown complete lines: 1
+lsof exit 1 (1 = none)
+   audit_log                152
+   device_credentials       1
+   paired_devices           1
+   db:status: OK: dems_lane_1 is at the schema version this code expects and the ledger matches the files.
+
+== 23:22:12 end of run w67231737
+run exit=0

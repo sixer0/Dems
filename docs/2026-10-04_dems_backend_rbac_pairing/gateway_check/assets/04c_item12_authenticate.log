@@ -1,0 +1,13 @@
+
+> @dems/core-server@0.2.0 test
+> vitest run --project unit --maxWorkers=2 src/plugins/authenticate/__tests__/authenticate.test.ts
+
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/apps/core-server
+
+
+ Test Files  1 passed (1)
+      Tests  42 passed (42)
+   Start at  10:49:44
+   Duration  1.11s (transform 54%, import 38%, tests 8%)
+

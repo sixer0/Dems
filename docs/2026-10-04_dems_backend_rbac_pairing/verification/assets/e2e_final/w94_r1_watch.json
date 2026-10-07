@@ -1,0 +1,88 @@
+{
+  "tag": "w94_r1_watch",
+  "documentTimeOrigin": {
+    "start": 1791337894086.1,
+    "stop": 1791337894086.1,
+    "sameDocument": true
+  },
+  "startedObserverAt": "08:53:06.454 (epoch 1791337986.454)",
+  "initialCells": "DEV-0001|Paired|—|true",
+  "href": "http://127.0.0.1:5173/admin/devices",
+  "events": [
+    {
+      "at": "08:53:06.445 (epoch 1791337986.445)",
+      "atMs": 1791337986445,
+      "what": "GET /api/v1/health 200"
+    },
+    {
+      "at": "08:53:34.799 (epoch 1791338014.799)",
+      "atMs": 1791338014799,
+      "what": "ws frame admin.changed DEVICES"
+    },
+    {
+      "at": "08:53:34.831 (epoch 1791338014.831)",
+      "atMs": 1791338014831,
+      "what": "GET /api/v1/pairing/code 200"
+    },
+    {
+      "at": "08:53:34.832 (epoch 1791338014.832)",
+      "atMs": 1791338014832,
+      "what": "GET /api/v1/pairing/devices 200"
+    },
+    {
+      "at": "08:53:34.851 (epoch 1791338014.851)",
+      "atMs": 1791338014851,
+      "what": "DOM cells DEV-0001|Paired|AKP Budi Santoso|true"
+    },
+    {
+      "at": "08:53:52.159 (epoch 1791338032.159)",
+      "atMs": 1791338032159,
+      "what": "GET /api/v1/pairing/devices 200"
+    },
+    {
+      "at": "08:53:52.163 (epoch 1791338032.163)",
+      "atMs": 1791338032163,
+      "what": "GET /api/v1/audit?… 200"
+    },
+    {
+      "at": "08:54:24.164 (epoch 1791338064.164)",
+      "atMs": 1791338064164,
+      "what": "POST /api/v1/pairing/devices/DEV-0001/revoke 200"
+    },
+    {
+      "at": "08:54:24.165 (epoch 1791338064.165)",
+      "atMs": 1791338064165,
+      "what": "ws frame admin.changed DEVICES"
+    },
+    {
+      "at": "08:54:24.208 (epoch 1791338064.208)",
+      "atMs": 1791338064208,
+      "what": "GET /api/v1/pairing/code 200"
+    },
+    {
+      "at": "08:54:24.208 (epoch 1791338064.208)",
+      "atMs": 1791338064208,
+      "what": "GET /api/v1/pairing/devices 200"
+    },
+    {
+      "at": "08:54:24.262 (epoch 1791338064.262)",
+      "atMs": 1791338064262,
+      "what": "DOM cells DEV-0001|Revoked|—|false"
+    },
+    {
+      "at": "08:54:24.263 (epoch 1791338064.263)",
+      "atMs": 1791338064263,
+      "what": "GET /api/v1/pairing/devices 200"
+    },
+    {
+      "at": "08:54:24.263 (epoch 1791338064.263)",
+      "atMs": 1791338064263,
+      "what": "GET /api/v1/pairing/devices 200"
+    },
+    {
+      "at": "08:54:31.935 (epoch 1791338071.935)",
+      "atMs": 1791338071935,
+      "what": "GET /api/v1/audit?… 200"
+    }
+  ]
+}

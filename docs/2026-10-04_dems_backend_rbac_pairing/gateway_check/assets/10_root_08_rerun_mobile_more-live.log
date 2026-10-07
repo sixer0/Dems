@@ -1,0 +1,369 @@
+Wed Oct  7 05:16:52 WIB 2026
+ 5:16  1 user, load averages: 11.66 11.62 6.71
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+  console.info
+    [34mHeroUI Native Styling Principles[0m
+    • className: this is your go-to styling solution. Use Tailwind CSS classes via className prop on all components.
+    • StyleSheet precedence: The style prop (StyleSheet API) has precedence over className when both are provided. This allows you to override Tailwind classes when needed.
+    • Animated styles: Some style properties are animated using react-native-reanimated and have precedence over className. To identify which styles are animated:
+      - Hover over className in your IDE - TypeScript definitions show which properties are occupied by animated styles
+      - Check component documentation - Each component page includes a link to the component's style source
+    • If styles are occupied by animation, modify them via the animation prop on components that support it.
+    • To deactivate animated style completely and apply your own styles, use isAnimatedStyleActive prop.
+    [33m💡 To disable this message, set config.devInfo.stylingPrinciples to false[0m
+
+      at info (../../node_modules/heroui-native/src/helpers/internal/hooks/use-dev-info.ts:25:15)
+
+  console.warn
+    Uniwind - We couldn't find your variable --theme. Make sure it's used at least once in your className, or define it in a static theme as described in the docs: https://docs.uniwind.dev/api/use-css-variable
+
+      at Logger.warn (../../node_modules/uniwind/src/core/logger.ts:11:17)
+      at warn (../../node_modules/uniwind/src/hooks/useCSSVariable/useCSSVariable.ts:20:12)
+      at logDevError (../../node_modules/uniwind/src/hooks/useCSSVariable/useCSSVariable.ts:33:17)
+          at Array.forEach (<anonymous>)
+      at forEach (../../node_modules/uniwind/src/hooks/useCSSVariable/useCSSVariable.ts:31:15)
+      at getCSSVariable (../../node_modules/uniwind/src/hooks/useCSSVariable/useCSSVariable.ts:79:34)
+      at mountReducer (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:5136:28)
+      at Object.useReducer (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:15997:18)
+      at Object.<anonymous>.process.env.NODE_ENV.exports.useReducer (../../node_modules/react/cjs/react.development.js:1257:34)
+      at useCSSVariable (../../node_modules/uniwind/src/hooks/useCSSVariable/useCSSVariable.ts:96:44)
+      at useLibraryTheme (../../node_modules/heroui-native/src/helpers/internal/hooks/use-library-theme.ts:22:33)
+      at useHasDefaultThemeBackground (../../node_modules/heroui-native/src/components/theme-background/theme-background.tsx:33:32)
+      at HeroUINative.Surface.Root (../../node_modules/heroui-native/src/components/surface/surface.tsx:84:67)
+      at Object.react_stack_bottom_frame (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:15670:20)
+      at renderWithHooks (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:4863:22)
+      at updateForwardRef (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:6707:19)
+      at beginWork (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:8611:18)
+      at runWithFiberInDEV (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:2315:13)
+      at performUnitOfWork (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:13224:22)
+      at workLoopSync (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:13068:41)
+      at renderRootSync (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:13049:11)
+      at performWorkOnRoot (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:12181:11)
+      at performSyncWorkOnRoot (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:2923:7)
+      at flushSyncWorkAcrossRoots_impl (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:2764:21)
+      at processRootScheduleInMicrotask (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:2796:9)
+      at ../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:2933:11
+      at flushActQueue (../../node_modules/react/cjs/react.development.js:590:34)
+      at ../../node_modules/react/cjs/react.development.js:847:21
+
+  console.error
+    [colorKit.RGB] An error occurred while attempting to convert the provided parameter into an `RGB` color. As a result, the default color "black" will be used instead.
+
+      at error (../../node_modules/heroui-native/src/helpers/external/utils/color-kit/index.ts:1326:13)
+      at Object.RGB [as setAlpha] (../../node_modules/heroui-native/src/helpers/external/utils/color-kit/index.ts:1888:25)
+      at setAlpha (../../node_modules/heroui-native/src/components/button/button.tsx:128:12)
+      at mountMemo (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:5897:23)
+      at Object.useMemo (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:15986:18)
+      at Object.<anonymous>.process.env.NODE_ENV.exports.useMemo (../../node_modules/react/cjs/react.development.js:1251:34)
+      at HeroUINative.Button.Root (../../node_modules/heroui-native/src/components/button/button.tsx:111:36)
+      at Object.react_stack_bottom_frame (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:15670:20)
+      at renderWithHooks (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:4863:22)
+      at updateForwardRef (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:6707:19)
+      at beginWork (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:8611:18)
+      at runWithFiberInDEV (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:2315:13)
+      at performUnitOfWork (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:13224:22)
+      at workLoopSync (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:13068:41)
+      at renderRootSync (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:13049:11)
+      at performWorkOnRoot (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:12181:11)
+      at performSyncWorkOnRoot (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:2923:7)
+      at flushSyncWorkAcrossRoots_impl (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:2764:21)
+      at processRootScheduleInMicrotask (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:2796:9)
+      at ../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:2933:11
+      at flushActQueue (../../node_modules/react/cjs/react.development.js:590:34)
+      at ../../node_modules/react/cjs/react.development.js:847:21
+
+  console.error
+    [colorKit.RGB] An error occurred while attempting to convert the provided parameter into an `RGB` color. As a result, the default color "black" will be used instead.
+
+      at error (../../node_modules/heroui-native/src/helpers/external/utils/color-kit/index.ts:1326:13)
+      at Object.RGB [as setAlpha] (../../node_modules/heroui-native/src/helpers/external/utils/color-kit/index.ts:1888:25)
+      at setAlpha (../../node_modules/heroui-native/src/components/button/button.tsx:128:12)
+      at mountMemo (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:5897:23)
+      at Object.useMemo (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:15986:18)
+      at Object.<anonymous>.process.env.NODE_ENV.exports.useMemo (../../node_modules/react/cjs/react.development.js:1251:34)
+      at HeroUINative.Button.Root (../../node_modules/heroui-native/src/components/button/button.tsx:111:36)
+      at Object.react_stack_bottom_frame (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:15670:20)
+      at renderWithHooks (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:4863:22)
+      at updateForwardRef (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:6707:19)
+      at beginWork (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:8611:18)
+      at runWithFiberInDEV (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:2315:13)
+      at performUnitOfWork (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:13224:22)
+      at workLoopSync (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:13068:41)
+      at renderRootSync (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:13049:11)
+      at performWorkOnRoot (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:12181:11)
+      at performSyncWorkOnRoot (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:2923:7)
+      at flushSyncWorkAcrossRoots_impl (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:2764:21)
+      at flushPendingEffects (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14128:11)
+      at performWorkOnRootViaSchedulerTask (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:2896:11)
+      at flushActQueue (../../node_modules/react/cjs/react.development.js:590:34)
+      at recursivelyFlushAsyncActWork (../../node_modules/react/cjs/react.development.js:566:13)
+      at Immediate._onImmediate (../../node_modules/react/cjs/react.development.js:849:32)
+
+  console.info
+    [34mHeroUI Native Styling Principles[0m
+    • className: this is your go-to styling solution. Use Tailwind CSS classes via className prop on all components.
+    • StyleSheet precedence: The style prop (StyleSheet API) has precedence over className when both are provided. This allows you to override Tailwind classes when needed.
+    • Animated styles: Some style properties are animated using react-native-reanimated and have precedence over className. To identify which styles are animated:
+      - Hover over className in your IDE - TypeScript definitions show which properties are occupied by animated styles
+      - Check component documentation - Each component page includes a link to the component's style source
+    • If styles are occupied by animation, modify them via the animation prop on components that support it.
+    • To deactivate animated style completely and apply your own styles, use isAnimatedStyleActive prop.
+    [33m💡 To disable this message, set config.devInfo.stylingPrinciples to false[0m
+
+      at info (../../node_modules/heroui-native/src/helpers/internal/hooks/use-dev-info.ts:25:15)
+
+  console.error
+    [colorKit.RGB] An error occurred while attempting to convert the provided parameter into an `RGB` color. As a result, the default color "black" will be used instead.
+
+      at error (../../node_modules/heroui-native/src/helpers/external/utils/color-kit/index.ts:1326:13)
+      at Object.RGB [as setAlpha] (../../node_modules/heroui-native/src/helpers/external/utils/color-kit/index.ts:1888:25)
+      at setAlpha (../../node_modules/heroui-native/src/components/button/button.tsx:128:12)
+      at mountMemo (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:5897:23)
+      at Object.useMemo (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:15986:18)
+      at Object.<anonymous>.process.env.NODE_ENV.exports.useMemo (../../node_modules/react/cjs/react.development.js:1251:34)
+      at HeroUINative.Button.Root (../../node_modules/heroui-native/src/components/button/button.tsx:111:36)
+      at Object.react_stack_bottom_frame (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:15670:20)
+      at renderWithHooks (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:4863:22)
+      at updateForwardRef (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:6707:19)
+      at beginWork (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:8611:18)
+      at runWithFiberInDEV (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:2315:13)
+      at performUnitOfWork (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:13224:22)
+      at workLoopSync (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:13068:41)
+      at renderRootSync (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:13049:11)
+      at performWorkOnRoot (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:12181:11)
+      at performSyncWorkOnRoot (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:2923:7)
+      at flushSyncWorkAcrossRoots_impl (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:2764:21)
+      at processRootScheduleInMicrotask (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:2796:9)
+      at ../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:2933:11
+      at flushActQueue (../../node_modules/react/cjs/react.development.js:590:34)
+      at ../../node_modules/react/cjs/react.development.js:847:21
+
+  console.error
+    [colorKit.RGB] An error occurred while attempting to convert the provided parameter into an `RGB` color. As a result, the default color "black" will be used instead.
+
+      at error (../../node_modules/heroui-native/src/helpers/external/utils/color-kit/index.ts:1326:13)
+      at Object.RGB [as setAlpha] (../../node_modules/heroui-native/src/helpers/external/utils/color-kit/index.ts:1888:25)
+      at setAlpha (../../node_modules/heroui-native/src/components/button/button.tsx:128:12)
+      at mountMemo (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:5897:23)
+      at Object.useMemo (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:15986:18)
+      at Object.<anonymous>.process.env.NODE_ENV.exports.useMemo (../../node_modules/react/cjs/react.development.js:1251:34)
+      at HeroUINative.Button.Root (../../node_modules/heroui-native/src/components/button/button.tsx:111:36)
+      at Object.react_stack_bottom_frame (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:15670:20)
+      at renderWithHooks (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:4863:22)
+      at updateForwardRef (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:6707:19)
+      at beginWork (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:8611:18)
+      at runWithFiberInDEV (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:2315:13)
+      at performUnitOfWork (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:13224:22)
+      at workLoopSync (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:13068:41)
+      at renderRootSync (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:13049:11)
+      at performWorkOnRoot (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:12181:11)
+      at performSyncWorkOnRoot (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:2923:7)
+      at flushSyncWorkAcrossRoots_impl (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:2764:21)
+      at flushPendingEffects (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14128:11)
+      at performWorkOnRootViaSchedulerTask (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:2896:11)
+      at flushActQueue (../../node_modules/react/cjs/react.development.js:590:34)
+      at recursivelyFlushAsyncActWork (../../node_modules/react/cjs/react.development.js:566:13)
+      at Immediate._onImmediate (../../node_modules/react/cjs/react.development.js:849:32)
+
+  console.info
+    [34mHeroUI Native Styling Principles[0m
+    • className: this is your go-to styling solution. Use Tailwind CSS classes via className prop on all components.
+    • StyleSheet precedence: The style prop (StyleSheet API) has precedence over className when both are provided. This allows you to override Tailwind classes when needed.
+    • Animated styles: Some style properties are animated using react-native-reanimated and have precedence over className. To identify which styles are animated:
+      - Hover over className in your IDE - TypeScript definitions show which properties are occupied by animated styles
+      - Check component documentation - Each component page includes a link to the component's style source
+    • If styles are occupied by animation, modify them via the animation prop on components that support it.
+    • To deactivate animated style completely and apply your own styles, use isAnimatedStyleActive prop.
+    [33m💡 To disable this message, set config.devInfo.stylingPrinciples to false[0m
+
+      at info (../../node_modules/heroui-native/src/helpers/internal/hooks/use-dev-info.ts:25:15)
+
+  console.error
+    [colorKit.RGB] An error occurred while attempting to convert the provided parameter into an `RGB` color. As a result, the default color "black" will be used instead.
+
+      at error (../../node_modules/heroui-native/src/helpers/external/utils/color-kit/index.ts:1326:13)
+      at Object.RGB [as setAlpha] (../../node_modules/heroui-native/src/helpers/external/utils/color-kit/index.ts:1888:25)
+      at setAlpha (../../node_modules/heroui-native/src/components/button/button.tsx:128:12)
+      at mountMemo (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:5897:23)
+      at Object.useMemo (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:15986:18)
+      at Object.<anonymous>.process.env.NODE_ENV.exports.useMemo (../../node_modules/react/cjs/react.development.js:1251:34)
+      at HeroUINative.Button.Root (../../node_modules/heroui-native/src/components/button/button.tsx:111:36)
+      at Object.react_stack_bottom_frame (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:15670:20)
+      at renderWithHooks (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:4863:22)
+      at updateForwardRef (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:6707:19)
+      at beginWork (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:8611:18)
+      at runWithFiberInDEV (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:2315:13)
+      at performUnitOfWork (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:13224:22)
+      at workLoopSync (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:13068:41)
+      at renderRootSync (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:13049:11)
+      at performWorkOnRoot (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:12181:11)
+      at performSyncWorkOnRoot (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:2923:7)
+      at flushSyncWorkAcrossRoots_impl (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:2764:21)
+      at processRootScheduleInMicrotask (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:2796:9)
+      at ../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:2933:11
+      at flushActQueue (../../node_modules/react/cjs/react.development.js:590:34)
+      at ../../node_modules/react/cjs/react.development.js:847:21
+
+  console.error
+    [colorKit.RGB] An error occurred while attempting to convert the provided parameter into an `RGB` color. As a result, the default color "black" will be used instead.
+
+      at error (../../node_modules/heroui-native/src/helpers/external/utils/color-kit/index.ts:1326:13)
+      at Object.RGB [as setAlpha] (../../node_modules/heroui-native/src/helpers/external/utils/color-kit/index.ts:1888:25)
+      at setAlpha (../../node_modules/heroui-native/src/components/button/button.tsx:128:12)
+      at mountMemo (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:5897:23)
+      at Object.useMemo (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:15986:18)
+      at Object.<anonymous>.process.env.NODE_ENV.exports.useMemo (../../node_modules/react/cjs/react.development.js:1251:34)
+      at HeroUINative.Button.Root (../../node_modules/heroui-native/src/components/button/button.tsx:111:36)
+      at Object.react_stack_bottom_frame (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:15670:20)
+      at renderWithHooks (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:4863:22)
+      at updateForwardRef (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:6707:19)
+      at beginWork (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:8611:18)
+      at runWithFiberInDEV (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:2315:13)
+      at performUnitOfWork (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:13224:22)
+      at workLoopSync (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:13068:41)
+      at renderRootSync (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:13049:11)
+      at performWorkOnRoot (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:12181:11)
+      at performSyncWorkOnRoot (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:2923:7)
+      at flushSyncWorkAcrossRoots_impl (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:2764:21)
+      at flushPendingEffects (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14128:11)
+      at performWorkOnRootViaSchedulerTask (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:2896:11)
+      at flushActQueue (../../node_modules/react/cjs/react.development.js:590:34)
+      at recursivelyFlushAsyncActWork (../../node_modules/react/cjs/react.development.js:566:13)
+      at Immediate._onImmediate (../../node_modules/react/cjs/react.development.js:849:32)
+
+  console.error
+    [colorKit.RGB] An error occurred while attempting to convert the provided parameter into an `RGB` color. As a result, the default color "black" will be used instead.
+
+      138 |
+      139 | export function renderWithRuntime(ui: ReactElement, { sim, sockets, onHeartbeatResync, ...options }: RenderWithRuntimeOptions) {
+    > 140 |   return render(ui, {
+          |                ^
+      141 |     ...options,
+      142 |     wrapper: ({ children }) => (
+      143 |       <RuntimeTestProviders sim={sim} {...(sockets ? { sockets } : {})} {...(onHeartbeatResync ? { onHeartbeatResync } : {})}>
+
+      at error (../../node_modules/heroui-native/src/helpers/external/utils/color-kit/index.ts:1326:13)
+      at Object.RGB [as setAlpha] (../../node_modules/heroui-native/src/helpers/external/utils/color-kit/index.ts:1888:25)
+      at setAlpha (../../node_modules/heroui-native/src/components/button/button.tsx:128:12)
+      at mountMemo (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:5897:23)
+      at Object.useMemo (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:15986:18)
+      at Object.<anonymous>.process.env.NODE_ENV.exports.useMemo (../../node_modules/react/cjs/react.development.js:1251:34)
+      at HeroUINative.Button.Root (../../node_modules/heroui-native/src/components/button/button.tsx:111:36)
+      at Object.react_stack_bottom_frame (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:15670:20)
+      at renderWithHooks (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:4863:22)
+      at updateForwardRef (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:6707:19)
+      at beginWork (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:8611:18)
+      at runWithFiberInDEV (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:2315:13)
+      at performUnitOfWork (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:13224:22)
+      at workLoopSync (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:13068:41)
+      at renderRootSync (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:13049:11)
+      at performWorkOnRoot (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:12181:11)
+      at performWorkOnRootViaSchedulerTask (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:2908:7)
+      at flushActQueue (../../node_modules/react/cjs/react.development.js:590:34)
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (../../node_modules/react/cjs/react.development.js:884:10)
+      at actImplementation (../../node_modules/@testing-library/react-native/src/act.ts:30:25)
+      at renderWithAct (../../node_modules/@testing-library/react-native/src/render-act.ts:13:11)
+      at renderInternal (../../node_modules/@testing-library/react-native/src/render.tsx:69:33)
+      at renderInternal (../../node_modules/@testing-library/react-native/src/render.tsx:44:10)
+      at renderWithRuntime (src/runtime/testing/test-sim.tsx:140:16)
+      at Object.<anonymous> (src/features/more/more-live.test.tsx:129:22)
+      at asyncGeneratorStep (../../node_modules/@babel/runtime/helpers/asyncToGenerator.js:3:17)
+      at _next (../../node_modules/@babel/runtime/helpers/asyncToGenerator.js:17:9)
+      at ../../node_modules/@babel/runtime/helpers/asyncToGenerator.js:22:7
+      at Object.<anonymous> (../../node_modules/@babel/runtime/helpers/asyncToGenerator.js:14:12)
+
+  console.info
+    [34mHeroUI Native Styling Principles[0m
+    • className: this is your go-to styling solution. Use Tailwind CSS classes via className prop on all components.
+    • StyleSheet precedence: The style prop (StyleSheet API) has precedence over className when both are provided. This allows you to override Tailwind classes when needed.
+    • Animated styles: Some style properties are animated using react-native-reanimated and have precedence over className. To identify which styles are animated:
+      - Hover over className in your IDE - TypeScript definitions show which properties are occupied by animated styles
+      - Check component documentation - Each component page includes a link to the component's style source
+    • If styles are occupied by animation, modify them via the animation prop on components that support it.
+    • To deactivate animated style completely and apply your own styles, use isAnimatedStyleActive prop.
+    [33m💡 To disable this message, set config.devInfo.stylingPrinciples to false[0m
+
+      at info (../../node_modules/heroui-native/src/helpers/internal/hooks/use-dev-info.ts:25:15)
+
+(node:46820) ExperimentalWarning: localStorage is not available because --localstorage-file was not provided.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  console.error
+    [colorKit.RGB] An error occurred while attempting to convert the provided parameter into an `RGB` color. As a result, the default color "black" will be used instead.
+
+      138 |
+      139 | export function renderWithRuntime(ui: ReactElement, { sim, sockets, onHeartbeatResync, ...options }: RenderWithRuntimeOptions) {
+    > 140 |   return render(ui, {
+          |                ^
+      141 |     ...options,
+      142 |     wrapper: ({ children }) => (
+      143 |       <RuntimeTestProviders sim={sim} {...(sockets ? { sockets } : {})} {...(onHeartbeatResync ? { onHeartbeatResync } : {})}>
+
+      at error (../../node_modules/heroui-native/src/helpers/external/utils/color-kit/index.ts:1326:13)
+      at Object.RGB [as setAlpha] (../../node_modules/heroui-native/src/helpers/external/utils/color-kit/index.ts:1888:25)
+      at setAlpha (../../node_modules/heroui-native/src/components/button/button.tsx:128:12)
+      at mountMemo (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:5897:23)
+      at Object.useMemo (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:15986:18)
+      at Object.<anonymous>.process.env.NODE_ENV.exports.useMemo (../../node_modules/react/cjs/react.development.js:1251:34)
+      at HeroUINative.Button.Root (../../node_modules/heroui-native/src/components/button/button.tsx:111:36)
+      at Object.react_stack_bottom_frame (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:15670:20)
+      at renderWithHooks (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:4863:22)
+      at updateForwardRef (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:6707:19)
+      at beginWork (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:8611:18)
+      at runWithFiberInDEV (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:2315:13)
+      at performUnitOfWork (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:13224:22)
+      at workLoopSync (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:13068:41)
+      at renderRootSync (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:13049:11)
+      at performWorkOnRoot (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:12181:11)
+      at performWorkOnRootViaSchedulerTask (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:2908:7)
+      at flushActQueue (../../node_modules/react/cjs/react.development.js:590:34)
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (../../node_modules/react/cjs/react.development.js:884:10)
+      at actImplementation (../../node_modules/@testing-library/react-native/src/act.ts:30:25)
+      at renderWithAct (../../node_modules/@testing-library/react-native/src/render-act.ts:13:11)
+      at renderInternal (../../node_modules/@testing-library/react-native/src/render.tsx:69:33)
+      at renderInternal (../../node_modules/@testing-library/react-native/src/render.tsx:44:10)
+      at renderWithRuntime (src/runtime/testing/test-sim.tsx:140:16)
+      at Object.<anonymous> (src/features/more/more-live.test.tsx:141:22)
+      at asyncGeneratorStep (../../node_modules/@babel/runtime/helpers/asyncToGenerator.js:3:17)
+      at _next (../../node_modules/@babel/runtime/helpers/asyncToGenerator.js:17:9)
+      at ../../node_modules/@babel/runtime/helpers/asyncToGenerator.js:22:7
+      at Object.<anonymous> (../../node_modules/@babel/runtime/helpers/asyncToGenerator.js:14:12)
+
+  console.info
+    [34mHeroUI Native Styling Principles[0m
+    • className: this is your go-to styling solution. Use Tailwind CSS classes via className prop on all components.
+    • StyleSheet precedence: The style prop (StyleSheet API) has precedence over className when both are provided. This allows you to override Tailwind classes when needed.
+    • Animated styles: Some style properties are animated using react-native-reanimated and have precedence over className. To identify which styles are animated:
+      - Hover over className in your IDE - TypeScript definitions show which properties are occupied by animated styles
+      - Check component documentation - Each component page includes a link to the component's style source
+    • If styles are occupied by animation, modify them via the animation prop on components that support it.
+    • To deactivate animated style completely and apply your own styles, use isAnimatedStyleActive prop.
+    [33m💡 To disable this message, set config.devInfo.stylingPrinciples to false[0m
+
+      at info (../../node_modules/heroui-native/src/helpers/internal/hooks/use-dev-info.ts:25:15)
+
+PASS src/features/more/more-live.test.tsx
+  More in LIVE mode (MD-8, AC-C-30, §3.2)
+    ✓ the footer reads "Core Live" and names the Core server as the source of the data; nothing claims a simulation, in any layout class (205 ms)
+    ✓ shows the Core's data: the operator of the session, the pairing with the Core's own name, the audit count of the replica (56 ms)
+    ✓ an outage: "Core Offline" at the first down state, kept through the reconnect attempts, "Core Live" again at the first heartbeat (254 ms)
+  More in SIMULATED and HEARTBEAT mode (MD-8)
+    ✓ SIMULATED: "Core Simulated" and the note about simulated data, as before (26 ms)
+    ✓ HEARTBEAT: "Core Simulated" while mock-core beats (it read "Live" before, MD-8), "Core Offline" when it is gone (36 ms)
+
+Test Suites: 1 passed, 1 total
+Tests:       5 passed, 5 total
+Snapshots:   0 total
+Time:        1.81 s, estimated 4 s
+Ran all test suites matching /src\/features\/more\/more-live.test.tsx/i.
+exit=0

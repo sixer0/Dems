@@ -1,0 +1,234 @@
+## 2026-10-04 19:07:34 WIB $ DEMS_TEST_STEP=71 npm run test:db -w @dems/core-server -- --maxWorkers=2
+
+> @dems/core-server@0.2.0 test:db
+> vitest run --project db --maxWorkers=2
+
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/apps/core-server
+
+[test:db] PostgreSQL 18.4 on 127.0.0.1:4432; helper role dems_owner, code under test dems_app; run prefix dems_test_step_71_tmdtombu_
+[test:db] stale sweep: dropped 0; kept 10 of younger runs, 0 of live runs, 0 unrecognised; 0 failed
+[test:db] template dems_test_step_71_tmdtombu_tpl_schema: built in 196 ms (create 64 ms, hook 129 ms)
+[test:db] template dems_test_step_71_tmdtombu_tpl_seed: built in 324 ms (create 113 ms, hook 207 ms)
+stdout | src/modules/demo/__tests__/reset-failures.db.test.ts > finding F-5: an AUDIT_TAMPER fault across a reload of the engine that is no process start > RUN through a failed reset: the stored chain is intact and the server is usable; what the fault list and the view say is printed; clearing the fault leaves both clean
+[w43] F-5, a failed reset with AUDIT_TAMPER active: before: fault listed true, alert active true, view verifies false (consistent); after the resync: fault listed false, alert active false, view verifies true (consistent); getDemoStatus lists the fault: false
+
+ ❯ |db| src/modules/demo/__tests__/reset-failures.db.test.ts (14 tests | 1 failed) 8950ms
+   ❯ finding F-5: an AUDIT_TAMPER fault across a reload of the engine that is no process start (3)
+     × RUN through a failed reset: the stored chain is intact and the server is usable; what the fault list and the view say is printed; clearing the fault leaves both clean 119ms
+[test:db] bulk fixture: dems_test_step_71_tmdtombu_tpl_bulk as dems_owner; clock 2026-10-01T03:00:00.000Z; seed 20261004
+[test:db]   table                   minimum   loaded   added  met
+[test:db]   roles                         3        3       0  yes
+[test:db]   permissions                  12       12       0  yes
+[test:db]   role_permissions             18       18       0  yes
+[test:db]   operators                    12       12       9  yes
+[test:db]   operator_credentials         12       12       9  yes
+[test:db]   auth_sessions               300      300     300  yes
+[test:db]   pairing_codes                60       60      60  yes
+[test:db]   paired_devices               40       40      40  yes
+[test:db]   device_credentials           40       40      40  yes
+[test:db]   biometric_tokens             80       83      83  yes
+[test:db]   registry_counters             2        2       0  yes
+[test:db]   audit_log                  5000     5000    4918  yes
+[test:db]   audit_chain_head              1        1       0  yes
+[test:db]   audit_chain_history          25       25      25  yes
+[test:db]   events                     2500     3649    3590  yes
+[test:db]   session_history             520      520     507  yes
+[test:db]   evidence_items              505      515     502  yes
+[test:db]   evidence_tracks            2020     2060    2008  yes
+[test:db]   evidence_custody           1200     1220    1192  yes
+[test:db]   exports                      60       60      59  yes
+[test:db]   alerts                      250      250     250  yes
+[test:db]   health_snapshots           1500     1508    1508  yes
+[test:db]   engine_counters               6        6       1  yes
+[test:db]   active_session                0        0       0  yes
+[test:db]   storage_policy                1        1       0  yes
+[test:db]   console_settings              1        1       0  yes
+[test:db]   core_device                   1        1       0  yes
+[test:db]   core_state                    1        1       0  yes
+[test:db]   hardware_snapshot             1        1       0  yes
+[test:db]   schema_meta                   1        1       0  yes
+[test:db] bulk fixture: every minimum of the 30 tables is met; audit head seq 5000, hash 26e251887c667e1e...; digest e58f1ae233811851...; build 365 ms, write 3543 ms, total 3923 ms
+ ❯ |db| src/modules/identity/biometric/__tests__/sign-in.db.test.ts (23 tests | 1 failed) 2144ms
+   ❯ no request without a valid token creates a session: every refusal path (13)
+     × a token of another device: refused on the device that presents it, and still good on its own 55ms
+ ❯ |db| src/realtime/__tests__/upgrade.db.test.ts (70 tests | 1 failed) 6186ms
+   ❯ CPS1-5: the cap of one principal, over real sockets (2)
+     × one web session: four tabs are open; a fifth is admitted and the first is closed with 1013; a second operator and a device are not touched. One device: two sockets; a third closes its oldest 5005ms
+(node:24056) [FST_LIGHTMYREQUEST_DEP01] DeprecationWarning: You are accessing "request.connection", use "request.socket" instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+ ❯ |db| src/modules/identity/biometric/__tests__/sequence.db.test.ts (12 tests | 1 failed) 1121ms
+   ❯ signInWithBiometric: ONE unit, the attempt taken first, the claim before anything else is read (ENG-23 to ENG-25) (7)
+     × an unknown token, a token of another device, a revoked one and an expired one: the same work, step for step, and the place in the denial budget is taken before the row 160ms
+ ❯ |db| src/modules/identity/biometric/__tests__/secrets.db.test.ts (12 tests | 1 failed) 820ms
+   ❯ the journey itself (1)
+     × ran through every transition of a token: the rows it wrote, by type, and the states it left 8ms
+ ❯ |db| src/modules/identity/biometric/__tests__/failure.db.test.ts (13 tests | 1 failed) 1460ms
+   ❯ AC-B-83 (SR-37, SD-11): the row names an operator only where an enrolment of that device exists (7)
+     × "live or last used": a pair whose live token was revoked with the account still has its used token, and is named 103ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 6 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |db| src/realtime/__tests__/upgrade.db.test.ts > CPS1-5: the cap of one principal, over real sockets > one web session: four tabs are open; a fifth is admitted and the first is closed with 1013; a second operator and a device are not touched. One device: two sockets; a third closes its oldest
+Error: Test timed out in 5000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+ ❯ src/realtime/__tests__/upgrade.db.test.ts:703:3
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/6]⎯
+
+ FAIL  |db| src/modules/demo/__tests__/reset-failures.db.test.ts > finding F-5: an AUDIT_TAMPER fault across a reload of the engine that is no process start > RUN through a failed reset: the stored chain is intact and the server is usable; what the fault list and the view say is printed; clearing the fault leaves both clean
+AssertionError: expected [ …(87) ] to have a length of 86 but got 87
+
+- Expected
++ Received
+
+- 86
++ 87
+
+ ❯ src/modules/demo/__tests__/reset-failures.db.test.ts:391:23
+    389|     const storedNow = await dumpTable(owner(), 'audit_log', 'seq');
+    390|     expect(storedNow.slice(0, stored.length)).toEqual(stored);
+    391|     expect(storedNow).toHaveLength(stored.length + 1);
+       |                       ^
+    392|     expect(storedNow.filter((row) => row.includes('[altered]'))).toEqu…
+    393|     expect(await checkStoredChain(server.app.db.pool, { verifyDigests:…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/6]⎯
+
+ FAIL  |db| src/modules/identity/biometric/__tests__/failure.db.test.ts > AC-B-83 (SR-37, SD-11): the row names an operator only where an enrolment of that device exists > "live or last used": a pair whose live token was revoked with the account still has its used token, and is named
+AssertionError: expected { type: 'AUTH_FAILED', …(3) } to deeply equal { type: 'AUTH_FAILED', …(3) }
+
+- Expected
++ Received
+
+@@ -1,10 +1,10 @@
+  {
+-   "actorId": "OPR-003",
++   "actorId": null,
+    "details": {
+      "attemptsRemaining": 4,
+-     "knownOperator": true,
++     "knownOperator": false,
+      "lockedUntil": null,
+      "method": "BIOMETRIC",
+    },
+    "deviceId": "DEV-0001",
+    "type": "AUTH_FAILED",
+
+ ❯ src/modules/identity/biometric/__tests__/failure.db.test.ts:147:68
+    145|         [false, 'USER_DISABLED'],
+    146|       ]);
+    147|       expect((await report(tablet.credential, TECHNICIAN.id)).row).toE…
+       |                                                                    ^
+    148|     } finally {
+    149|       expect((await portalPost(bio.app, enableUrl(TECHNICIAN.id), cook…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/6]⎯
+
+ FAIL  |db| src/modules/identity/biometric/__tests__/secrets.db.test.ts > the journey itself > ran through every transition of a token: the rows it wrote, by type, and the states it left
+AssertionError: expected { null: 5, TOKEN_EXPIRED: 1, …(2) } to deeply equal { null: 5, OTHER_DEVICE: 1, …(3) }
+
+- Expected
++ Received
+
+  {
+-   "OTHER_DEVICE": 1,
+    "TOKEN_EXPIRED": 1,
+-   "TOKEN_REUSE": 1,
++   "TOKEN_REUSE": 2,
+    "TOKEN_REVOKED": 3,
+    "null": 5,
+  }
+
+ ❯ src/modules/identity/biometric/__tests__/secrets.db.test.ts:197:96
+    195|       [CLOCK_START],
+    196|     );
+    197|     expect(Object.fromEntries(reasons.rows.map((row) => [String(row.re…
+       |                                                                                                ^
+    198|       null: 5,
+    199|       OTHER_DEVICE: 1,
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/6]⎯
+
+ FAIL  |db| src/modules/identity/biometric/__tests__/sequence.db.test.ts > signInWithBiometric: ONE unit, the attempt taken first, the claim before anything else is read (ENG-23 to ENG-25) > an unknown token, a token of another device, a revoked one and an expired one: the same work, step for step, and the place in the denial budget is taken before the row
+AssertionError: expected { steps: [ …(13) ], roundTrips: 12 } to deeply equal { steps: [ …(11) ], roundTrips: 10 }
+
+- Expected
++ Received
+
+@@ -1,13 +1,15 @@
+  {
+-   "roundTrips": 10,
++   "roundTrips": 12,
+    "steps": [
+      "pool  FIND_DEVICE_BY_CREDENTIAL",
+      "lockout.take",
+      "unit  BEGIN",
+      "unit  CLAIM_TOKEN",
+      "unit  READ_TOKEN_STATE",
++     "unit  REVOKE_TOKENS.FAMILY",
++     "unit  END_BIOMETRIC_SESSIONS",
+      "lockout.fail",
+      "denialBudget.consume",
+      "unit  INSERT audit_log AUTH_FAILED",
+      "unit  event number",
+      "unit  INSERT events AUTH_FAILED",
+
+ ❯ src/modules/identity/biometric/__tests__/sequence.db.test.ts:261:79
+    259|     });
+    260|
+    261|     for (const run of [otherDevice, revoked, expired, notAToken]) expe…
+       |                                                                               ^
+    262|     print('signInWithBiometric, a token that is not accepted (unknown,…
+    263|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/6]⎯
+
+ FAIL  |db| src/modules/identity/biometric/__tests__/sign-in.db.test.ts > no request without a valid token creates a session: every refusal path > a token of another device: refused on the device that presents it, and still good on its own
+AssertionError: expected { type: 'AUTH_FAILED', …(3) } to deeply equal { type: 'AUTH_FAILED', …(3) }
+
+- Expected
++ Received
+
+@@ -3,10 +3,11 @@
+    "details": {
+      "attemptsRemaining": 4,
+      "knownOperator": true,
+      "lockedUntil": null,
+      "method": "BIOMETRIC",
+-     "reason": "OTHER_DEVICE",
++     "reason": "TOKEN_REUSE",
++     "sessionsEnded": 0,
+    },
+    "deviceId": "DEV-0002",
+    "type": "AUTH_FAILED",
+  }
+
+ ❯ src/modules/identity/biometric/__tests__/sign-in.db.test.ts:372:61
+    370|   it('a token of another device: refused on the device that presents i…
+    371|     const enrolled = await enrolledOperator(bio.app, tablet, INVESTIGA…
+    372|     expect(await refused(phone.credential, enrolled.token)).toEqual(fa…
+       |                                                             ^
+    373|     expect(stateOf(await tokenRow(owner, enrolled.token), now())).toBe…
+    374|     expect((await signInWithToken(bio.app, tablet.credential, enrolled…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/6]⎯
+
+
+ Test Files  6 failed | 109 passed (115)
+      Tests  6 failed | 1678 passed (1684)
+   Start at  19:07:34
+   Duration  216.04s (tests 82%, import 17%, transform 1%)
+
+[test:db] forced drops that needed a retry: 0
+[test:db] teardown: dropped 8 database(s) in 360 ms; 0 remain with the run prefix dems_test_step_71_tmdtombu_
+npm error Lifecycle script `test:db` failed with error:
+npm error code 1
+npm error path /Users/gsp-budi/Documents/DEMS/apps/core-server
+npm error workspace @dems/core-server@0.2.0
+npm error location /Users/gsp-budi/Documents/DEMS/apps/core-server
+npm error command failed
+npm error command sh -c vitest run --project db --maxWorkers=2
+exit=1
+## ended 19:11:11

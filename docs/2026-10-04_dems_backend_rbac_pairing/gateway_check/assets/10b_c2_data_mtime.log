@@ -1,0 +1,23 @@
+# .data/ mtimes only (stat -f '%Sm %N'), no content read. BEFORE, captured at 2026-10-06 09:24:07 WIB, before the first edit:
+2026-10-04 07:12:26  .data
+2026-10-06 05:46:13  .data/pg-scripts.log
+2026-10-04 07:12:23  .data/pg.env
+2026-10-04 07:12:23  .data/pg.owner.env
+2026-10-04 07:12:23  .data/pg.pwfile
+2026-10-04 07:14:26  .data/postgres
+2026-10-06 09:06:08  .data/postgres.log
+2026-10-04 07:12:24  .data/postgres/postgresql.conf
+2026-10-04 07:12:23  .data/postgres/postgresql.auto.conf
+2026-10-04 07:12:23  .data/postgres/pg_hba.conf
+# AFTER, captured at 2026-10-06 09:41:30 WIB, after the last run:
+2026-10-04 07:12:26  .data
+2026-10-06 05:46:13  .data/pg-scripts.log
+2026-10-04 07:12:23  .data/pg.env
+2026-10-04 07:12:23  .data/pg.owner.env
+2026-10-04 07:12:23  .data/pg.pwfile
+2026-10-04 07:14:26  .data/postgres
+2026-10-06 09:41:05  .data/postgres.log
+2026-10-04 07:12:24  .data/postgres/postgresql.conf
+2026-10-04 07:12:23  .data/postgres/postgresql.auto.conf
+2026-10-04 07:12:23  .data/postgres/pg_hba.conf
+# .data/postgres/log exists: no   (the running cluster has no collector: the new settings are not in it)

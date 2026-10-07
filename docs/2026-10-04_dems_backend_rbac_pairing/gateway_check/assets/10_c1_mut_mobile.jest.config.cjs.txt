@@ -1,0 +1,8 @@
+// C1 scratch: the app's own jest configuration with the transformer above.
+const base = require('/Users/gsp-budi/Documents/DEMS/apps/mobile/jest.config.js');
+module.exports = {
+  ...base,
+  rootDir: '/Users/gsp-budi/Documents/DEMS/apps/mobile',
+  cacheDirectory: '/private/tmp/claude-501/-Users-gsp-budi-Documents-DEMS/0d71fd65-4a51-4019-9c48-5c92d11bbdaf/scratchpad/c1_mut/jest-cache',
+  transform: { '\\.[jt]sx?$': '/private/tmp/claude-501/-Users-gsp-budi-Documents-DEMS/0d71fd65-4a51-4019-9c48-5c92d11bbdaf/scratchpad/c1_mut/transformer.cjs' },
+};

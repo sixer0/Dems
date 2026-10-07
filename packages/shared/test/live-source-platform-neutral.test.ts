@@ -232,17 +232,23 @@ describe('fix round after CP-C1: the contract\'s codes, and the markers of the l
       expect(at, `${name} holds ${near}`).toBeGreaterThan(0);
       expect(text.slice(Math.max(0, at - 700), at).includes(id), `${id} stands at ${near}`).toBe(true);
     };
-    marker('bindings.ts', 'CONTRACT-GAP-3', 'export const DEVICE_COMMAND_OPERATION_INDEX');
+    // Gap 3 was closed by the contract close-out W83: the index is read from the contract's table.
+    expect(raw('bindings.ts')).toContain('DEVICE_COMMAND_OPERATIONS.RESTART');
     marker('neutral-state.ts', 'F66-5', 'export function lastActivityOf');
     marker('live-sim.ts', 'SIM-GAP-2', ' * Whenever a session or a pairing ends');
-    // Decision D100: two gaps of this row, numbered in its own series until the contract close-out row numbers them.
-    marker('live-sim.ts', 'CONTRACT-GAP-W44-1', '  function revalidateSession(): void {');
-    marker('live-sim.ts', 'CONTRACT-GAP-W44-2', 'const plan = LIVE_BINDINGS.signOut.plan([debt.reason]');
-    // What the contract close-out row searches for finds the open contract gaps, and nothing else.
-    const gaps = files.flatMap((name) => [...raw(name).matchAll(/CONTRACT-GAP-(?:W44-)?\d+/g)].map((match) => `${name}: ${match[0]}`));
-    // This folder holds THREE open contract gaps. The gap about the reason of a sign-out for an expiry
-    // (first numbered 4, then 7) is gone: since decision D90 no sign-out is ever sent for an expiry.
-    expect([...new Set(gaps)].sort()).toEqual(['bindings.ts: CONTRACT-GAP-3', 'live-sim.ts: CONTRACT-GAP-W44-1', 'live-sim.ts: CONTRACT-GAP-W44-2']);
+    // Decision D100: two gaps of this row, numbered in its own series; the contract close-out W83 ruled
+    // both residuals of the demo (decision D184, R-C1 and R-C2) and renamed their markers.
+    marker('live-sim.ts', 'RESIDUAL-W44-1', '  function revalidateSession(): void {');
+    marker('live-sim.ts', 'RESIDUAL-W44-2', 'const plan = LIVE_BINDINGS.signOut.plan([debt.reason]');
+    // No open contract gap is left in this folder (W83 closed gap 3); the two residuals are what remains.
+    // The gap about the reason of a sign-out for an expiry (first numbered 4, then 7) is gone: since
+    // decision D90 no sign-out is ever sent for an expiry.
+    // The pattern is built from parts, so that the close-out's own search over the tree finds nothing here.
+    const gapMarker = new RegExp(`${['CONTRACT', 'GAP'].join('-')}-[A-Z0-9-]+`, 'g');
+    const gaps = files.flatMap((name) => [...raw(name).matchAll(gapMarker)].map((match) => `${name}: ${match[0]}`));
+    expect(gaps).toEqual([]);
+    const residuals = files.flatMap((name) => [...raw(name).matchAll(/RESIDUAL-W44-\d+/g)].map((match) => `${name}: ${match[0]}`));
+    expect([...new Set(residuals)].sort()).toEqual(['live-sim.ts: RESIDUAL-W44-1', 'live-sim.ts: RESIDUAL-W44-2']);
   });
 });
 

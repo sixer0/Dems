@@ -1,0 +1,142 @@
+{
+ "Login (Live, Core paths blocked)": {
+  "requests": 511,
+  "origins": {
+   "http://127.0.0.1:5173": 509,
+   "blob:": 2
+  },
+  "ws": [
+   "ws://127.0.0.1:5173/",
+   "ws://127.0.0.1:5173/",
+   "ws://127.0.0.1:4400/ws",
+   "ws://127.0.0.1:4400/ws"
+  ],
+  "errors": [
+   "[core-web] live Object",
+   "[core-web] live Object",
+   "[core-web] live Object"
+  ],
+  "warnings": [
+   "[core-web] live Object",
+   "[core-web] live Object"
+  ],
+  "exceptions": [],
+  "log": [
+   "warning network: WebSocket connection to 'ws://127.0.0.1:4400/ws' failed: WebSocket is closed before the connection is established. (/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/realtime/heartbeat-client.ts)"
+  ],
+  "responses4xx": [],
+  "blocked": [],
+  "wsHandshakes": [
+   101,
+   101,
+   101
+  ],
+  "wsGuardRefused": [
+   "ws://127.0.0.1:5173/ws",
+   "ws://127.0.0.1:5173/ws",
+   "ws://127.0.0.1:5173/ws"
+  ],
+  "loadFailed": [
+   "inspector  /api/v1/auth/session",
+   "inspector  /api/v1/health",
+   "inspector  /api/v1/auth/session"
+  ]
+ },
+ "Login (Simulated)": {
+  "requests": 188,
+  "origins": {
+   "http://127.0.0.1:5173": 188
+  },
+  "ws": [],
+  "errors": [],
+  "warnings": [],
+  "exceptions": [],
+  "log": [],
+  "responses4xx": [],
+  "blocked": []
+ },
+ "Simulated: evidence 0012": {
+  "requests": 128,
+  "origins": {
+   "http://127.0.0.1:5173": 127,
+   "data:": 1
+  },
+  "ws": [],
+  "errors": [],
+  "warnings": [],
+  "exceptions": [],
+  "log": [],
+  "responses4xx": [],
+  "blocked": []
+ },
+ "Simulated: sign out": {
+  "requests": 1,
+  "origins": {
+   "blob:": 1
+  },
+  "ws": [],
+  "errors": [],
+  "warnings": [],
+  "exceptions": [],
+  "log": [],
+  "responses4xx": [],
+  "blocked": []
+ },
+ "Switch back to Live": {
+  "requests": 252,
+  "origins": {
+   "http://127.0.0.1:5173": 251,
+   "blob:": 1
+  },
+  "ws": [
+   "ws://127.0.0.1:5173/"
+  ],
+  "errors": [
+   "[core-web] live Object",
+   "[core-web] live Object"
+  ],
+  "warnings": [
+   "[core-web] live Object"
+  ],
+  "exceptions": [],
+  "log": [],
+  "responses4xx": [],
+  "blocked": [],
+  "wsHandshakes": [
+   101
+  ],
+  "wsGuardRefused": [
+   "ws://127.0.0.1:5173/ws",
+   "ws://127.0.0.1:5173/ws"
+  ],
+  "loadFailed": [
+   "inspector  /api/v1/auth/session",
+   "inspector  /api/v1/health"
+  ]
+ },
+ "Login (Live again, Core paths blocked)": {
+  "requests": 26,
+  "origins": {
+   "http://127.0.0.1:5173": 26
+  },
+  "ws": [],
+  "errors": [
+   "[core-web] live Object",
+   "[core-web] live Object"
+  ],
+  "warnings": [
+   "[core-web] live Object"
+  ],
+  "exceptions": [],
+  "log": [],
+  "responses4xx": [],
+  "blocked": [],
+  "wsGuardRefused": [
+   "ws://127.0.0.1:5173/ws",
+   "ws://127.0.0.1:5173/ws"
+  ],
+  "loadFailed": [
+   "inspector  /api/v1/auth/session"
+  ]
+ }
+}

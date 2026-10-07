@@ -1,0 +1,90 @@
+# W82 mutation check, 2026-10-06 01:53:24; 8 test files per run; the tree is not edited
+control (no mutation, 8 test files): exit=0 Tests:       68 passed, 68 total (45 s)
+## the mutated files in the tree, before and after: identical
+   941ee9296c15f353  src/features/settings/core-link-switch.tsx
+   cf9cdf107eeecfe4  src/features/settings/maintenance-section.tsx
+   efe030b1541a3b3d  src/features/settings/preferences-section.tsx
+   add9f448f2cf8651  src/features/settings/profile-sheet.tsx
+   d19e954956f1a9af  src/features/settings/security-section.tsx
+   4feafe3eaed051f3  src/features/settings/settings-model.ts
+   e2cb7a95991904da  src/features/settings/settings-screen.tsx
+# finished 01:54:10
+# W82 mutation check, 2026-10-06 01:54:22; 8 test files per run; the tree is not edited
+W1  DETECTED     no dialog: every change is instant | core-link-switch.tsx | Tests:       6 failed, 62 passed, 68 total | failing files: live-settings-boundary.test.tsx | first: SIMULATED → LIVE (§3.3, AC-C-31) › selecting LIVE shows the dialog; confirming signs the operator out of the simulator and lands on /pair (no credential) (14 s)
+W2  DETECTED     a dialog for every change (SIMULATED <-> HEARTBEAT too) | core-link-switch.tsx | Tests:       3 failed, 65 passed, 68 total | failing files: heartbeat-release-gate.test.tsx, live-settings-boundary.test.tsx, settings-screen.test.tsx | first: SIMULATED → LIVE (§3.3, AC-C-31) › SIMULATED → HEARTBEAT stays instant: no dialog, no sign-out (§3.3 step 1) (14 s)
+W3  DETECTED     no sign-out before the switch | core-link-switch.tsx | Tests:       3 failed, 65 passed, 68 total | failing files: live-settings-boundary.test.tsx | first: SIMULATED → LIVE (§3.3, AC-C-31) › selecting LIVE shows the dialog; confirming signs the operator out of the simulator and lands on /pair (no credential) (19 s)
+W4  DETECTED     the source is stored at the press, before the sign-out settled | core-link-switch.tsx | Tests:       1 failed, 67 passed, 68 total | failing files: live-settings-boundary.test.tsx | first: LIVE → SIMULATED (§3.3; CPM1-2) › the dialog holds while the Core is asked; the sign-out (operation 5) is sent once and answered; then SIMULATED, on /login (14 s)
+W5  DETECTED     the source is never stored | core-link-switch.tsx | Tests:       5 failed, 63 passed, 68 total | failing files: live-settings-boundary.test.tsx | first: SIMULATED → LIVE (§3.3, AC-C-31) › selecting LIVE shows the dialog; confirming signs the operator out of the simulator and lands on /pair (no credential) (53 s)
+W6  not detected Cancel closes the dialog while the sign-out is out (handler guard) | core-link-switch.tsx | Tests:       68 passed, 68 total | failing files: - | first: - (12 s)
+W7  DETECTED     Cancel enabled while busy | core-link-switch.tsx | Tests:       1 failed, 67 passed, 68 total | failing files: live-settings-boundary.test.tsx | first: LIVE → SIMULATED (§3.3; CPM1-2) › the dialog holds while the Core is asked; the sign-out (operation 5) is sent once and answered; then SIMULATED, on /login (10 s)
+W8  DETECTED     the dialog always speaks of Live mode | core-link-switch.tsx | Tests:       2 failed, 66 passed, 68 total | failing files: live-settings-boundary.test.tsx | first: LIVE → SIMULATED (§3.3; CPM1-2) › the dialog holds while the Core is asked; the sign-out (operation 5) is sent once and answered; then SIMULATED, on /login (9 s)
+W9  DETECTED     the confirm is not marked busy while the sign-out is out | core-link-switch.tsx | Tests:       1 failed, 67 passed, 68 total | failing files: live-settings-boundary.test.tsx | first: LIVE → SIMULATED (§3.3; CPM1-2) › the dialog holds while the Core is asked; the sign-out (operation 5) is sent once and answered; then SIMULATED, on /login (11 s)
+## 8 detected, 1 not detected, 0 not applied, of 9
+## the mutated files in the tree, before and after: identical
+   941ee9296c15f353  src/features/settings/core-link-switch.tsx
+   cf9cdf107eeecfe4  src/features/settings/maintenance-section.tsx
+   efe030b1541a3b3d  src/features/settings/preferences-section.tsx
+   add9f448f2cf8651  src/features/settings/profile-sheet.tsx
+   d19e954956f1a9af  src/features/settings/security-section.tsx
+   4feafe3eaed051f3  src/features/settings/settings-model.ts
+   e2cb7a95991904da  src/features/settings/settings-screen.tsx
+# finished 01:57:00
+# W82 mutation check, 2026-10-06 01:57:00; 8 test files per run; the tree is not edited
+W10 DETECTED     the spinner at the press (busy instead of pending) | core-link-switch.tsx | Tests:       1 failed, 67 passed, 68 total | failing files: live-settings-boundary.test.tsx | first: LIVE → SIMULATED (§3.3; CPM1-2) › the dialog holds while the Core is asked; the sign-out (operation 5) is sent once and answered; then SIMULATED, on /login (11 s)
+W11 not detected a second confirm press sends a second sign-out (handler guard) | core-link-switch.tsx | Tests:       68 passed, 68 total | failing files: - | first: - (10 s)
+R1  DETECTED     the segment changes nothing | preferences-section.tsx | Tests:       9 failed, 59 passed, 68 total | failing files: heartbeat-release-gate.test.tsx, live-settings-boundary.test.tsx, settings-screen.test.tsx | first: SIMULATED → LIVE (§3.3, AC-C-31) › selecting LIVE shows the dialog; confirming signs the operator out of the simulator and lands on /pair (no credential) (16 s)
+R2  DETECTED     the dialog is never shown | preferences-section.tsx | Tests:       6 failed, 62 passed, 68 total | failing files: live-settings-boundary.test.tsx | first: SIMULATED → LIVE (§3.3, AC-C-31) › selecting LIVE shows the dialog; confirming signs the operator out of the simulator and lands on /pair (no credential) (15 s)
+R3  DETECTED     the LIVE hint line is missing in a release build | preferences-section.tsx | Tests:       1 failed, 67 passed, 68 total | failing files: live-settings-boundary.test.tsx | first: a release build offers no LIVE (MD-3, AC-C-83) › the LIVE segment is disabled: a press opens no dialog, signs nobody out and stores nothing (16 s)
+M1  DETECTED     LIVE rejections bypass the presenter | maintenance-section.tsx | Tests:       8 failed, 60 passed, 68 total | failing files: live-settings-sites.test.tsx | first: S2-7: Run diagnostics (operation 65) › refusal: a 403 NOT_PERMITTED is the denied toast; the sheet stays closed and the button is released (19 s)
+M2  DETECTED     the diagnostics sheet opens whatever the answer | maintenance-section.tsx | Tests:       3 failed, 65 passed, 68 total | failing files: live-settings-sites.test.tsx | first: S2-7: Run diagnostics (operation 65) › refusal: a 403 NOT_PERMITTED is the denied toast; the sheet stays closed and the button is released (17 s)
+M3  DETECTED     Run diagnostics is never released | maintenance-section.tsx | Tests:       3 failed, 65 passed, 68 total | failing files: live-settings-sites.test.tsx | first: S2-7: Run diagnostics (operation 65) › success: the sheet opens only after the Core accepted the run; busy at once, spinner late (LB-1); one request; the Core's (14 s)
+M4  DETECTED     Run diagnostics is not marked busy | maintenance-section.tsx | Tests:       1 failed, 67 passed, 68 total | failing files: live-settings-sites.test.tsx | first: S2-7: Run diagnostics (operation 65) › success: the sheet opens only after the Core accepted the run; busy at once, spinner late (LB-1); one request; the Core's (13 s)
+## 8 detected, 1 not detected, 0 not applied, of 9
+## the mutated files in the tree, before and after: CHANGED
+   26e8942bd544d358  src/features/settings/core-link-switch.tsx
+   cf9cdf107eeecfe4  src/features/settings/maintenance-section.tsx
+   efe030b1541a3b3d  src/features/settings/preferences-section.tsx
+   add9f448f2cf8651  src/features/settings/profile-sheet.tsx
+   d19e954956f1a9af  src/features/settings/security-section.tsx
+   4feafe3eaed051f3  src/features/settings/settings-model.ts
+   e2cb7a95991904da  src/features/settings/settings-screen.tsx
+# finished 01:59:11
+# W82 mutation check, 2026-10-06 01:59:11; 8 test files per run; the tree is not edited
+M5  DETECTED     the MIC 2 clip latch reset is never sent | maintenance-section.tsx | Tests:       2 failed, 66 passed, 68 total | failing files: live-settings-sites.test.tsx, settings-screen.test.tsx | first: S2-7: the Demo controls (operations 73, 74, 52, 72, 33) › inject and clear MIC 2 clip: the toast after the 204; the clear sends the latch reset as the NEXT comm (16 s)
+M6  DETECTED     the fault button is released before the latch reset settled | maintenance-section.tsx | Tests:       1 failed, 67 passed, 68 total | failing files: live-settings-sites.test.tsx | first: S2-7: the Demo controls (operations 73, 74, 52, 72, 33) › inject and clear MIC 2 clip: the toast after the 204; the clear sends the latch reset as the NEXT comm (14 s)
+M7  DETECTED     the LIVE update chip says SIMULATED | maintenance-section.tsx | Tests:       3 failed, 65 passed, 68 total | failing files: live-settings-sites.test.tsx | first: S2-7: Run diagnostics (operation 65) › success: the sheet opens only after the Core accepted the run; busy at once, spinner late (LB-1); one request; the Core's (12 s)
+M8  DETECTED     the LIVE diagnostics subtitle says simulated | maintenance-section.tsx | Tests:       3 failed, 65 passed, 68 total | failing files: live-settings-sites.test.tsx | first: S2-7: Run diagnostics (operation 65) › success: the sheet opens only after the Core accepted the run; busy at once, spinner late (LB-1); one request; the Core's (11 s)
+M9  DETECTED     the demo gating ignores LIVE | maintenance-section.tsx | Tests:       3 failed, 65 passed, 68 total | failing files: live-settings-sites.test.tsx | first: AC-C-52: the Demo controls show in LIVE mode only with DEMO_CONTROL and the Core's demo flag › INVESTIGATOR (no DEMO_CONTROL): no panel, one true line; no demo  (12 s)
+M10 DETECTED     the scenario toast at the press, not in ok | maintenance-section.tsx | Tests:       2 failed, 66 passed, 68 total | failing files: live-settings-sites.test.tsx | first: S2-7: the Demo controls (operations 73, 74, 52, 72, 33) › load a scenario (answer first): the chip and the toast only once the snapshot of the new epoch is in ( (12 s)
+S1  DETECTED     the LIVE inputs are not passed (the simulated note in LIVE) | security-section.tsx | Tests:       3 failed, 65 passed, 68 total | failing files: live-settings-biometric.test.tsx | first: a session created by password on this tablet (MB-1, MB-2) › not enrolled: the switch is usable; its description is the screen-lock sentence, never "simulated",  (11 s)
+S2  not detected a biometric session may change biometric sign-in (handler guard) | security-section.tsx | Tests:       68 passed, 68 total | failing files: - | first: - (9 s)
+S3  DETECTED     the LIVE failure toast is the simulated sentence | security-section.tsx | Tests:       1 failed, 67 passed, 68 total | failing files: live-settings-biometric.test.tsx | first: a session created by password on this tablet (MB-1, MB-2) › the Core cannot be told (outage): one truthful toast — nothing changed — and both items stay (9 s)
+## 8 detected, 1 not detected, 0 not applied, of 9
+## the mutated files in the tree, before and after: identical
+   26e8942bd544d358  src/features/settings/core-link-switch.tsx
+   cf9cdf107eeecfe4  src/features/settings/maintenance-section.tsx
+   efe030b1541a3b3d  src/features/settings/preferences-section.tsx
+   add9f448f2cf8651  src/features/settings/profile-sheet.tsx
+   d19e954956f1a9af  src/features/settings/security-section.tsx
+   4feafe3eaed051f3  src/features/settings/settings-model.ts
+   e2cb7a95991904da  src/features/settings/settings-screen.tsx
+# finished 02:00:57
+# W82 mutation check, 2026-10-06 02:00:57; 8 test files per run; the tree is not edited
+S4  not detected the SIMULATED description loses its period | security-section.tsx | Tests:       68 passed, 68 total | failing files: - | first: - (14 s)
+B1  DETECTED     a biometric session does not disable the switch | settings-model.ts | Tests:       2 failed, 66 passed, 68 total | failing files: live-settings-biometric.test.tsx, settings-live-model.test.ts | first: a session created with the fingerprint (AC-C-68) › the switch is disabled with the MB-1 sentence, and a press sends nothing (14 s)
+B2  DETECTED     the protected wording without a protected marker | settings-model.ts | Tests:       2 failed, 66 passed, 68 total | failing files: live-settings-biometric.test.tsx, settings-live-model.test.ts | first: the biometric switch (CPM1-1, MB-1, MB-6a, AC-C-68) › LIVE: worded on how the token is stored; a session created with the fingerprint disables it whatever else  (16 s)
+B3  DETECTED     SIMULATED <-> HEARTBEAT crosses the boundary | settings-model.ts | Tests:       4 failed, 64 passed, 68 total | failing files: heartbeat-release-gate.test.tsx, live-settings-boundary.test.tsx, settings-live-model.test.ts, settings-screen.test.tsx | first: the LIVE boundary of the Core link source (§3.3) › only a change into or out of LIVE crosses it; SIMULATED <-> HEARTBEAT and no change do not (14 s)
+B4  DETECTED     the demo flag is ignored | settings-model.ts | Tests:       2 failed, 66 passed, 68 total | failing files: live-settings-sites.test.tsx, settings-live-model.test.ts | first: who sees the Demo controls (AC-C-52) › SIMULATED as before (presentation mode hides them); LIVE only with DEMO_CONTROL and the demo flag (17 s)
+B5  DETECTED     DEMO_CONTROL is ignored | settings-model.ts | Tests:       3 failed, 65 passed, 68 total | failing files: live-settings-sites.test.tsx, settings-live-model.test.ts | first: who sees the Demo controls (AC-C-52) › SIMULATED as before (presentation mode hides them); LIVE only with DEMO_CONTROL and the demo flag (22 s)
+P1  DETECTED     the LIVE permission note is the simulated sentence | profile-sheet.tsx | Tests:       1 failed, 67 passed, 68 total | failing files: live-settings-sites.test.tsx | first: S5-7: the role's permissions in the Profile sheet › SUPERVISOR: the shared table's seven grants (W16's three included), labelled, under the Core's words; a push (21 s)
+Q1  DETECTED     the sheet is never told it is LIVE | settings-screen.tsx | Tests:       1 failed, 67 passed, 68 total | failing files: live-settings-sites.test.tsx | first: S5-7: the role's permissions in the Profile sheet › SUPERVISOR: the shared table's seven grants (W16's three included), labelled, under the Core's words; a push (16 s)
+## 7 detected, 1 not detected, 0 not applied, of 8
+## the mutated files in the tree, before and after: identical
+   26e8942bd544d358  src/features/settings/core-link-switch.tsx
+   cf9cdf107eeecfe4  src/features/settings/maintenance-section.tsx
+   efe030b1541a3b3d  src/features/settings/preferences-section.tsx
+   add9f448f2cf8651  src/features/settings/profile-sheet.tsx
+   d19e954956f1a9af  src/features/settings/security-section.tsx
+   4feafe3eaed051f3  src/features/settings/settings-model.ts
+   e2cb7a95991904da  src/features/settings/settings-screen.tsx
+# finished 02:03:11

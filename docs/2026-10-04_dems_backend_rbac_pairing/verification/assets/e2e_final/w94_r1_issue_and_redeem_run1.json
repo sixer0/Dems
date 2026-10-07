@@ -1,0 +1,452 @@
+{
+  "label": "run1",
+  "startedAt": "08:52:16.446 (epoch 1791337936.446)",
+  "steps": {
+    "issue": {
+      "button": "pd-issue",
+      "clickedAt": "08:52:16.586 (epoch 1791337936.586)",
+      "clickedAtMs": 1791337936586,
+      "codeShown": true,
+      "codeReadStable": true,
+      "mask": {
+        "maskPresent": true,
+        "digitGroups": 2,
+        "transparent": true,
+        "noShadow": true,
+        "blurred": true,
+        "qrPresent": true,
+        "qrHidden": true
+      },
+      "facts": {
+        "href": "http://127.0.0.1:5173/admin/devices",
+        "onPage": true,
+        "issueState": "ACTIVE_KNOWN",
+        "codeShown": true,
+        "codeDigitCount": 6,
+        "qrShown": true,
+        "countdownSeconds": "299",
+        "attempts": "5 attempts left",
+        "redeemedText": null,
+        "activeElsewhere": false,
+        "list": "empty",
+        "rows": [],
+        "summary": {
+          "paired": "0",
+          "online": "0",
+          "text": "0 paired · 0 online0 paired · 0 online"
+        },
+        "toasts": []
+      },
+      "screenshot": "w94_r1_web_code_issued_blurred.png",
+      "issueCall": {
+        "sent": "08:52:16.588 (epoch 1791337936.588)",
+        "method": "POST",
+        "path": "/api/v1/pairing/code",
+        "status": 201,
+        "done": "08:52:16.601 (epoch 1791337936.601)"
+      },
+      "network": {
+        "api": [
+          {
+            "sent": "08:52:16.588 (epoch 1791337936.588)",
+            "method": "POST",
+            "path": "/api/v1/pairing/code",
+            "status": 201,
+            "done": "08:52:16.601 (epoch 1791337936.601)"
+          },
+          {
+            "sent": "08:52:16.602 (epoch 1791337936.602)",
+            "method": "GET",
+            "path": "/api/v1/pairing/code",
+            "status": 200,
+            "done": "08:52:16.616 (epoch 1791337936.616)"
+          },
+          {
+            "sent": "08:52:16.616 (epoch 1791337936.616)",
+            "method": "GET",
+            "path": "/api/v1/pairing/code",
+            "status": 200,
+            "done": "08:52:16.623 (epoch 1791337936.623)"
+          }
+        ],
+        "origins": [
+          "http://127.0.0.1:5173"
+        ],
+        "sockets": [],
+        "console": []
+      },
+      "audit": {
+        "status": 200,
+        "total": 87,
+        "rows": [
+          {
+            "seq": 87,
+            "id": "AUD-000087",
+            "at": "2026-10-07T01:52:16.596Z",
+            "atMs": 1791337936596,
+            "type": "PAIRING_CODE_ISSUED",
+            "category": "PAIRING",
+            "severity": "INFO",
+            "actorId": "OPR-002",
+            "deviceId": null,
+            "sessionId": null,
+            "message": "Pairing code PCD-000001 issued",
+            "details": {
+              "codeId": "PCD-000001",
+              "expiresAt": 1791338236594
+            }
+          }
+        ]
+      }
+    },
+    "redeem": {
+      "typedAt": "08:52:18.826 (epoch 1791337938.826)",
+      "enterAt": "08:52:19.651 (epoch 1791337939.651)",
+      "appRedeemLine": {
+        "deviceEpoch": 1791337891.598,
+        "method": "POST",
+        "path": "/api/v1/pairing/redeem",
+        "status": "201",
+        "deviceTime": "08:51:31.598 (epoch 1791337891.598)"
+      },
+      "lineSeenByDriverAt": "08:52:21.506 (epoch 1791337941.506)",
+      "web": {
+        "redeemedShown": true,
+        "redeemedSeenAt": "08:52:22.014 (epoch 1791337942.014)",
+        "facts": {
+          "href": "http://127.0.0.1:5173/admin/devices",
+          "onPage": true,
+          "issueState": "REDEEMED",
+          "codeShown": false,
+          "codeDigitCount": 0,
+          "qrShown": false,
+          "countdownSeconds": null,
+          "attempts": null,
+          "redeemedText": "PairedDEV-0001 · sdk_gphone64_arm64 is paired.Issue another code",
+          "activeElsewhere": false,
+          "list": "table",
+          "rows": [
+            {
+              "id": "DEV-0001",
+              "state": "Paired",
+              "online": "Online",
+              "operator": "—",
+              "lastSeen": "Just now",
+              "revokeShown": true
+            }
+          ],
+          "summary": {
+            "paired": "1",
+            "online": "1",
+            "text": "1 paired · 1 online1 paired · 1 online"
+          },
+          "toasts": []
+        },
+        "screenshot": "w94_r1_web_code_redeemed_device_paired.png",
+        "network": {
+          "api": [
+            {
+              "sent": "08:52:18.783 (epoch 1791337938.783)",
+              "method": "GET",
+              "path": "/api/v1/audit?…",
+              "status": 200,
+              "done": "08:52:18.790 (epoch 1791337938.790)"
+            },
+            {
+              "sent": "08:52:21.427 (epoch 1791337941.427)",
+              "method": "GET",
+              "path": "/api/v1/pairing/devices",
+              "status": 200,
+              "done": "08:52:21.435 (epoch 1791337941.435)"
+            },
+            {
+              "sent": "08:52:21.427 (epoch 1791337941.427)",
+              "method": "GET",
+              "path": "/api/v1/pairing/code",
+              "status": 200,
+              "done": "08:52:21.435 (epoch 1791337941.435)"
+            },
+            {
+              "sent": "08:52:21.427 (epoch 1791337941.427)",
+              "method": "GET",
+              "path": "/api/v1/pairing/code",
+              "status": 200,
+              "done": "08:52:21.436 (epoch 1791337941.436)"
+            },
+            {
+              "sent": "08:52:21.719 (epoch 1791337941.719)",
+              "method": "GET",
+              "path": "/api/v1/pairing/devices",
+              "status": 200,
+              "done": "08:52:21.736 (epoch 1791337941.736)"
+            },
+            {
+              "sent": "08:52:22.827 (epoch 1791337942.827)",
+              "method": "GET",
+              "path": "/api/v1/pairing/devices",
+              "status": 200,
+              "done": "08:52:22.844 (epoch 1791337942.844)"
+            },
+            {
+              "sent": "08:52:22.827 (epoch 1791337942.827)",
+              "method": "GET",
+              "path": "/api/v1/pairing/code",
+              "status": 200,
+              "done": "08:52:22.844 (epoch 1791337942.844)"
+            },
+            {
+              "sent": "08:52:23.601 (epoch 1791337943.601)",
+              "method": "GET",
+              "path": "/api/v1/audit?…",
+              "status": 200,
+              "done": "08:52:23.605 (epoch 1791337943.605)"
+            }
+          ],
+          "origins": [
+            "http://127.0.0.1:5173"
+          ],
+          "sockets": [],
+          "console": []
+        },
+        "audit": {
+          "status": 200,
+          "total": 89,
+          "rows": [
+            {
+              "seq": 88,
+              "id": "AUD-000088",
+              "at": "2026-10-07T01:52:21.422Z",
+              "atMs": 1791337941422,
+              "type": "PAIRING_SUCCESS",
+              "category": "PAIRING",
+              "severity": "INFO",
+              "actorId": null,
+              "deviceId": "DEV-0001",
+              "sessionId": null,
+              "message": "Device DEV-0001 paired with DEMS-IR-01",
+              "details": {
+                "codeId": "PCD-000001",
+                "coreDeviceId": "DEMS-IR-01",
+                "certificateFingerprint": "76:0B:E9:29:6D:40:F7:D8:93:20:FD:C6:5F:76:7A:4B"
+              }
+            }
+          ]
+        }
+      },
+      "recording": {
+        "startedAt": "08:52:22.009 (epoch 1791337942.009)",
+        "file": "w94_r1_phone_handoff_screenrecord.mp4"
+      },
+      "phone": {
+        "state": {
+          "keyguard": "false",
+          "focus": "mCurrentFocus=Window{e1052b9 u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity}",
+          "appFocused": true
+        },
+        "screencap": {
+          "file": "w94_r1_phone_after_redeem_login.png",
+          "bytes": 1724667,
+          "at": "08:52:36.236 (epoch 1791337956.236)"
+        },
+        "appRequestsSinceT0": [
+          "08:51:31.598 (epoch 1791337891.598) POST /api/v1/pairing/redeem 201",
+          "08:51:32.175 (epoch 1791337892.175) GET /api/v1/auth/status 200",
+          "08:51:33.954 (epoch 1791337893.954) GET /api/v1/health 200"
+        ],
+        "secureStoreEntryNames": [
+          "name=\"key_v1-dems.live.device.v1\""
+        ]
+      }
+    }
+  },
+  "deviceT0": "10-07 08:51:26.000",
+  "clockBefore": {
+    "offsetMs": -49858,
+    "bracketMs": 22
+  },
+  "clockAfter": {
+    "offsetMs": -49860,
+    "bracketMs": 18
+  },
+  "serverLines": [
+    {
+      "at": "08:52:16.598 (epoch 1791337936.598)",
+      "atMs": 1791337936598,
+      "method": "POST",
+      "route": "/api/v1/pairing/code",
+      "status": 201,
+      "principal": "operator:OPR-002",
+      "msg": "request completed",
+      "code": null,
+      "closedBy": null,
+      "kind": null
+    },
+    {
+      "at": "08:52:16.603 (epoch 1791337936.603)",
+      "atMs": 1791337936603,
+      "method": "GET",
+      "route": "/api/v1/pairing/code",
+      "status": 200,
+      "principal": "operator:OPR-002",
+      "msg": "request completed",
+      "code": null,
+      "closedBy": null,
+      "kind": null
+    },
+    {
+      "at": "08:52:16.618 (epoch 1791337936.618)",
+      "atMs": 1791337936618,
+      "method": "GET",
+      "route": "/api/v1/pairing/code",
+      "status": 200,
+      "principal": "operator:OPR-002",
+      "msg": "request completed",
+      "code": null,
+      "closedBy": null,
+      "kind": null
+    },
+    {
+      "at": "08:52:21.427 (epoch 1791337941.427)",
+      "atMs": 1791337941427,
+      "method": "POST",
+      "route": "/api/v1/pairing/redeem",
+      "status": 201,
+      "principal": null,
+      "msg": "request completed",
+      "code": null,
+      "closedBy": null,
+      "kind": null
+    },
+    {
+      "at": "08:52:21.430 (epoch 1791337941.430)",
+      "atMs": 1791337941430,
+      "method": "GET",
+      "route": "/api/v1/pairing/code",
+      "status": 200,
+      "principal": "operator:OPR-002",
+      "msg": "request completed",
+      "code": null,
+      "closedBy": null,
+      "kind": null
+    },
+    {
+      "at": "08:52:21.431 (epoch 1791337941.431)",
+      "atMs": 1791337941431,
+      "method": "GET",
+      "route": "/api/v1/pairing/devices",
+      "status": 200,
+      "principal": "operator:OPR-002",
+      "msg": "request completed",
+      "code": null,
+      "closedBy": null,
+      "kind": null
+    },
+    {
+      "at": "08:52:21.433 (epoch 1791337941.433)",
+      "atMs": 1791337941433,
+      "method": "GET",
+      "route": "/api/v1/pairing/code",
+      "status": 200,
+      "principal": "operator:OPR-002",
+      "msg": "request completed",
+      "code": null,
+      "closedBy": null,
+      "kind": null
+    },
+    {
+      "at": "08:52:21.649 (epoch 1791337941.649)",
+      "atMs": 1791337941649,
+      "method": null,
+      "route": null,
+      "status": null,
+      "principal": null,
+      "msg": "socket closed",
+      "code": 1000,
+      "closedBy": "peer",
+      "kind": null
+    },
+    {
+      "at": "08:52:21.685 (epoch 1791337941.685)",
+      "atMs": 1791337941685,
+      "method": null,
+      "route": null,
+      "status": null,
+      "principal": "device:DEV-0001",
+      "msg": "socket opened",
+      "code": null,
+      "closedBy": null,
+      "kind": "DEVICE"
+    },
+    {
+      "at": "08:52:21.722 (epoch 1791337941.722)",
+      "atMs": 1791337941722,
+      "method": "GET",
+      "route": "/api/v1/pairing/devices",
+      "status": 200,
+      "principal": "operator:OPR-002",
+      "msg": "request completed",
+      "code": null,
+      "closedBy": null,
+      "kind": null
+    },
+    {
+      "at": "08:52:21.911 (epoch 1791337941.911)",
+      "atMs": 1791337941911,
+      "method": "GET",
+      "route": "/api/v1/auth/status",
+      "status": 200,
+      "principal": "device:DEV-0001",
+      "msg": "request completed",
+      "code": null,
+      "closedBy": null,
+      "kind": null
+    },
+    {
+      "at": "08:52:22.830 (epoch 1791337942.830)",
+      "atMs": 1791337942830,
+      "method": "GET",
+      "route": "/api/v1/pairing/code",
+      "status": 200,
+      "principal": "operator:OPR-002",
+      "msg": "request completed",
+      "code": null,
+      "closedBy": null,
+      "kind": null
+    },
+    {
+      "at": "08:52:22.830 (epoch 1791337942.830)",
+      "atMs": 1791337942830,
+      "method": "GET",
+      "route": "/api/v1/pairing/devices",
+      "status": 200,
+      "principal": "operator:OPR-002",
+      "msg": "request completed",
+      "code": null,
+      "closedBy": null,
+      "kind": null
+    },
+    {
+      "at": "08:52:23.818 (epoch 1791337943.818)",
+      "atMs": 1791337943818,
+      "method": "GET",
+      "route": "/api/v1/health",
+      "status": 200,
+      "principal": "device:DEV-0001",
+      "msg": "request completed",
+      "code": null,
+      "closedBy": null,
+      "kind": null
+    }
+  ],
+  "codeScan": {
+    "method": "the issued 6 digits counted as a digit-bounded token and as digits separated by spaces in each place (raw substring counts kept to show chance hits inside longer numbers or compressed data); the value is not recorded",
+    "places": 29,
+    "boundedOrSpacedHits": [],
+    "rawHits": []
+  },
+  "credentialLines": {
+    "deviceJs": 0,
+    "server": 0
+  },
+  "finishedAt": "08:52:36.734 (epoch 1791337956.734)"
+}

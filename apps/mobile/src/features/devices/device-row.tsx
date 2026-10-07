@@ -2,7 +2,9 @@
  * One Devices & Inputs row (04_mobile_specs §4.12 V2–V4; MB 7). A kit `ListGroup.Item`:
  * prefix (camera poster, mic poster with a mic badge, or an icon tile), title and description,
  * and the suffix (status chip or dot + gold chevron). On tablets a mic row also carries a C-2
- * `compact` meter inline (V3), and the selected row is outlined in gold with glow e2.
+ * `compact` meter inline (V3), and the selected row is outlined in gold with glow e2. Post-review fix FXR-M
+ * (W93-4, the CF2-B RF-T-1 cause): the 1 dp border is there in every state (transparent / gold) and the glow
+ * is the always-mounted `SelectionGlow`, so a selection change mounts nothing and changes colours only.
  *
  * The Recording Indicator's lamp breathes while recording (V4; `glowBreath`, registered as an
  * ambient loop so it pauses off-focus and stops under reduced motion, where it stays steadily lit).
@@ -16,10 +18,11 @@ import { useTranslation } from 'react-i18next';
 import { StyleSheet, Text, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 import { derived, fontFamily, palette, radius, spacing, toneHex, typography } from '@dems/shared/tokens';
+import { ROW_CARD_BORDER, SelectionGlow } from '@/components/composed/selection-glow';
 import { withAlpha } from '@/components/media';
 import { DEMO_MEDIA_LIVE } from '@/components/media/demo-media';
 import { useLayoutClass } from '@/layout';
-import { GlowLayer, animateBreath, animateFade, useAmbientLoop, useMotionSettings, useMotionState } from '@/motion';
+import { animateBreath, animateFade, useAmbientLoop, useMotionSettings, useMotionState } from '@/motion';
 import { DeviceMicMeter } from './device-mic-meter';
 import { DeviceStatusChip, DeviceStatusDot } from './device-status-chip';
 import { DEVICE_CAMERA, DEVICE_KIND, DEVICE_NAME_KEY, STATUS_LABEL_KEY, STATUS_TONE, type DeviceId, type DeviceStatus } from './devices-model';
@@ -180,8 +183,7 @@ interface RowFrameProps {
 function RowFrame({ deviceId, selected, onPress, name, detail, statusText, prefix, suffix, extra }: RowFrameProps) {
   const { t } = useTranslation();
   return (
-    <View style={styles.wrap}>
-      {selected ? <GlowLayer level={2} radius={radius.px.lg} testID={`device-row-glow-${deviceId}`} /> : null}
+    <View style={styles.wrap} testID={`device-row-wrap-${deviceId}`}>
       <ListGroup.Item
         testID={`device-row-${deviceId}`}
         accessibilityRole="button"
@@ -208,6 +210,8 @@ function RowFrame({ deviceId, selected, onPress, name, detail, statusText, prefi
           <ChevronRight size={20} color={palette.gold} />
         </ListGroup.ItemSuffix>
       </ListGroup.Item>
+      {/* W93-4: always mounted, last; React sets its opacity. */}
+      <SelectionGlow selected={selected} radius={radius.px.lg} testID={`device-row-glow-${deviceId}`} />
     </View>
   );
 }
@@ -251,8 +255,9 @@ function RecLamp({ lit }: { lit: boolean }) {
 
 const styles = StyleSheet.create({
   wrap: { position: 'relative' },
-  item: { borderRadius: radius.px.lg, paddingVertical: spacing[1], paddingHorizontal: spacing[0], gap: spacing[2] },
-  itemSelected: { borderColor: palette.gold, borderWidth: 1, backgroundColor: withAlpha(palette.gold, 0.06) },
+  // W93-4 (FXR-M; the RF-T-1 cause): a 1 dp border in every state; the selection changes colours only.
+  item: { borderRadius: radius.px.lg, paddingVertical: spacing[1], paddingHorizontal: spacing[0], gap: spacing[2], ...ROW_CARD_BORDER },
+  itemSelected: { borderColor: palette.gold, backgroundColor: withAlpha(palette.gold, 0.06) },
   content: { flex: 1, minWidth: 0, gap: 2 },
   title: { fontFamily: fontFamily.native.medium, fontSize: typography.body.size + 1, lineHeight: typography.body.lineHeight, color: palette.foreground },
   detail: { fontFamily: fontFamily.native.normal, fontSize: typography.caption.size + 1, lineHeight: typography.caption.lineHeight + 2, color: palette.gray },

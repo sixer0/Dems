@@ -1,0 +1,54 @@
+{
+  "cmd": "start",
+  "steps": [
+    {
+      "name": "scan case number",
+      "status": 200,
+      "at": "10:07:54.672 (epoch 1791342474.672)",
+      "atMs": 1791342474672,
+      "sessionId": null,
+      "state": null,
+      "code": null
+    },
+    {
+      "name": "create",
+      "status": 201,
+      "at": "10:07:54.742 (epoch 1791342474.742)",
+      "atMs": 1791342474742,
+      "sessionId": "SES-20261007-0031",
+      "state": "CREATE",
+      "code": null
+    },
+    {
+      "name": "precheck",
+      "status": 202,
+      "at": "10:07:54.782 (epoch 1791342474.782)",
+      "atMs": 1791342474782,
+      "sessionId": "SES-20261007-0031",
+      "state": "PRECHECK",
+      "code": null
+    },
+    {
+      "name": "start",
+      "status": 200,
+      "at": "10:07:58.412 (epoch 1791342478.412)",
+      "atMs": 1791342478412,
+      "sessionId": "SES-20261007-0031",
+      "state": "RECORDING",
+      "code": null
+    }
+  ],
+  "sessionId": "SES-20261007-0031",
+  "precheckOutcome": "PASS",
+  "startAtMs": 1791342478412,
+  "after": {
+    "id": "SES-20261007-0031",
+    "state": "RECORDING",
+    "outcome": "PASS",
+    "elapsedMs": 878,
+    "startedAt": "2026-10-07T10:07:58.339+07:00",
+    "stoppedAt": null,
+    "sealedAt": null,
+    "evidenceId": null
+  }
+}

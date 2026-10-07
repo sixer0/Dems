@@ -1,0 +1,14 @@
+FXR-S W91-5 / W91-6 mutation checks (2026-10-07 ~06:10)
+W91-5 m1 engine/errors.ts operatorRequired() text set back to 'Sign in to continue.'
+  npx vitest run --project unit src/engine/__tests__/errors.test.ts
+     × stage 4, the engine backstop and the hosted actions' refusal table answer the contract's "Sign in first." 3ms
+  -   "message": "Sign in first.",
+      Tests  1 failed | 23 passed (24)     -> restored: Tests 24 passed (24)
+W91-5 m2 (compile time) throttle/limits.ts DEVICE_SIGN_IN_OPERATIONS 'getSignInStatus' -> 'getSigninStatus'
+  npx tsc --noEmit
+  src/plugins/throttle/limits.ts(65,3): error TS2820: Type '"getSigninStatus"' is not assignable to type '"scanCaseNumber" | ... | "reportBiometricFailure"'. Did you mean '"getSignInStatus"'?
+  -> restored
+W91-6 m3 test/helpers/db/ddl.ts createEmptyDatabase restated with LOCALE 'en_US.UTF-8'
+  npx vitest run --project unit test/db/create-statement.test.ts
+     × db:create, the reset routine's staging database and the test helper's first template all build it there 3ms
+      Tests  1 failed | 3 passed (4)     -> restored: Tests 4 passed (4)

@@ -1,0 +1,37 @@
+# navbar.py out_sheet.png file:expected [file:expected ...]
+# Measures, per bottom tab (Home, Sessions, Evidence, Devices, More), the gold icon pixels, gold label
+# pixels, pill-fill pixels and pill-border pixels, then names the tab each layer marks as active.
+import sys
+from PIL import Image, ImageDraw
+A='/Users/gsp-budi/Documents/DEMS/docs/2026-10-04_dems_backend_rbac_pairing/test/assets/retest/p_phone/'
+TABS=['home','sessions','evidence','devices','more']; CX=[108,324,540,756,972]
+def near(c,ref,tol): return all(abs(a-b)<=tol for a,b in zip(c,ref))
+GOLD=(255,200,107); FILL=(59,44,23); BORDER=(152,95,37)
+out=sys.argv[1]; rows=[]; crops=[]
+for arg in sys.argv[2:]:
+  f,exp=arg.split(':')
+  im=Image.open((f if f.startswith('/') else A+f)+'.png').convert('RGB'); px=im.load(); f=f.split('/')[-1]
+  res={}
+  for t,cx in zip(TABS,CX):
+    ig=lg=fl=bd=0
+    for x in range(cx-100,cx+100,2):
+      for y in range(2212,2302,2):
+        c=px[x,y]
+        if near(c,GOLD,40): ig+=1
+        if near(c,FILL,8): fl+=1
+        if near(c,BORDER,18): bd+=1
+      for y in range(2304,2346,2):
+        if near(px[x,y],GOLD,40): lg+=1
+    res[t]=(ig,lg,fl,bd)
+  def act(i,th):
+    hits=[t for t in TABS if res[t][i]>=th]
+    return '+'.join(hits) if hits else '-'
+  icon=act(0,25); label=act(1,15); pill=act(2,150); border=act(3,40)
+  ok = icon==exp and label==exp and pill==exp and border==exp
+  rows.append(f"{f} | expected {exp} | icon {icon} | label {label} | pill {pill} | pill-border {border} | {'PASS' if ok else 'FAIL'} | raw {' '.join(f'{t}:{res[t][0]}/{res[t][1]}/{res[t][2]}/{res[t][3]}' for t in TABS)}")
+  c=im.crop((0,2185,1080,2350)); d=ImageDraw.Draw(c); d.rectangle((0,0,1080,22),fill=(0,0,0)); d.text((4,5),f"{f}  (expected {exp}; icon {icon}, label {label}, pill {pill})",fill=(255,255,0))
+  crops.append(c)
+sheet=Image.new('RGB',(1080,165*len(crops)+4*(len(crops)-1)),(90,90,90))
+for i,c in enumerate(crops): sheet.paste(c,(0,i*169))
+sheet.save(out)
+print('\n'.join(rows))

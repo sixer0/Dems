@@ -4,7 +4,8 @@
 //   CR-7  git must ignore .data/ BEFORE anything is created
 //   RP-1  .data/ (0700) and three generated passwords in three files (0600, created exclusively)
 //   RP-2  initdb -U dems_admin -A scram-sha-256 --pwfile=<path> -E UTF8 --locale=C, then
-//         listen_addresses = '127.0.0.1', port = 4432, unix_socket_directories = ''
+//         listen_addresses = '127.0.0.1', port = 4432, unix_socket_directories = '' and the
+//         server-log settings of security ruling 14 (CONF_BLOCK)
 //   RP-3  first start; as dems_admin: CREATE ROLE dems_owner (CREATEDB, no superuser), dems_app
 //   RP-4  host-authentication check HA-1 to HA-4
 //   RP-5  the trial (trial.mjs), as dems_owner; T5-j once as dems_admin
@@ -57,8 +58,11 @@ import { Recorder, readRoles, runSqlTrial } from './trial.mjs';
 export const OWNER_ATTRIBUTES = 'LOGIN NOSUPERUSER CREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS';
 export const APP_ATTRIBUTES = 'LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS';
 
-/** Appended to postgresql.conf. Logging settings are not touched: they stay at the defaults
- *  (contract NL-5). */
+/** Appended to postgresql.conf. What is logged stays at the defaults (contract NL-5): no statement,
+ *  duration or bind-parameter logging. HOW the server log is written follows security ruling 14
+ *  (finding CPS1-9): terse errors, so a failed statement leaves no DETAIL line with the failing row
+ *  or the key value (hash columns among them), and a ring of 24 hourly files instead of one file
+ *  that grows without bound. PostgreSQL has no byte cap for its own log; its bound is this ring. */
 export const CONF_BLOCK = [
   '',
   '# --- DEMS project-local settings (scripts/pg/init.mjs; plan W07, analysis TD-02) ---',
@@ -66,6 +70,18 @@ export const CONF_BLOCK = [
   `listen_addresses = '${PG_HOST}'`,
   `port = ${PG_PORT}`,
   "unix_socket_directories = ''",
+  '# The server log (security ruling 14, CPS1-9). Terse: no DETAIL, HINT, QUERY or CONTEXT line.',
+  'log_error_verbosity = terse',
+  '# 24 hourly files in .data/postgres/log/, each overwritten when its hour comes round again.',
+  '# Size-driven rotation is off: it would reopen the same hour file and append to it. The file',
+  '# of pg_ctl -l (.data/postgres.log) keeps only what is written before the collector starts.',
+  'logging_collector = on',
+  "log_directory = 'log'",
+  "log_filename = 'postgresql-%H.log'",
+  'log_file_mode = 0600',
+  'log_rotation_age = 1h',
+  'log_rotation_size = 0',
+  'log_truncate_on_rotation = on',
   '',
 ].join('\n');
 
@@ -221,6 +237,7 @@ await main(import.meta.url, 'pg:init', async (args, paths) => {
     if (r.status !== 0) throw new PgScriptError(`initdb failed (exit ${r.status}).`);
     fs.appendFileSync(path.join(paths.pgdata, 'postgresql.conf'), CONF_BLOCK);
     say("  postgresql.conf: listen_addresses = '127.0.0.1', port = 4432, unix_socket_directories = '' appended");
+    say('  postgresql.conf: log_error_verbosity = terse and the hourly log ring in .data/postgres/log/ appended (ruling 14)');
     logEvent(paths, 'info', 'pg:init', 'cluster created', { pgdata: rel(paths.pgdata, paths.root) });
   }
   assertClusterEndpoint(paths.pgdata);

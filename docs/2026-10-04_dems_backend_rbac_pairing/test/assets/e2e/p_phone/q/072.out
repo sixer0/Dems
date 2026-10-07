@@ -1,0 +1,10 @@
+10:35:19.543 press ur-actions-OPR-001 ok at 10:35:19.564
+10:35:19.637 wait ur-change-role-OPR-001 present: 0 ms (at 10:35:19.637)
+10:35:19.733 slept 300 ms
+10:35:20.113 press ur-change-role-OPR-001 ok at 10:35:20.193
+10:35:20.257 wait ur-role-dialog present: 1 ms (at 10:35:20.258)
+10:35:20.315 slept 600 ms
+10:35:20.975 js => true
+10:35:21.047 slept 400 ms
+10:35:21.562 js => "Change roleAKP Budi Santoso (budi.santoso)RoleInvestigator · Current roleSupervisorTechnicianWhat changesGainsManage devicesMaintenance and updatesLosesStart sessionsAdd notes and markersThe operator stays signed in. The change applies at once on the web console and on paired devices.Reason (optional)Kept in the audit log. At most 500 characters.CancelChange role"
+10:35:21.629 screenshot 76_sc4_w1_role_dialog_technician.png 10:35:21.629..10:35:21.775

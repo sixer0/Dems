@@ -86,6 +86,22 @@ export const TABLET_LINK_DEBOUNCE_MS = 5_000;
 export const TABLET_LINK_RETRY_MS = 1_000;
 
 /**
+ * E-fix FX-C (ruling R4; E2E-S-2, RESIDUAL-W70-1): a paired device's sign-in or sign-out (the
+ * publication `device.session`) and the admission or departure of a device's socket are told to
+ * the holders of the device permission as ONE `admin.changed DEVICES`, once this long has passed
+ * without another change: a sign-in and the socket the app opens after it are one change, not
+ * two. A run of changes never waits longer than `DEVICES_CHANGED_MAX_WAIT_MS` from its first one.
+ */
+export const DEVICES_CHANGED_DEBOUNCE_MS = 1_000;
+/**
+ * The longest a run of device changes waits for its `admin.changed DEVICES`, counted from its
+ * first change: a device that reconnects again and again still updates Paired Devices every 5 s.
+ * Its own number (review finding W91-3): it equals the tablet link's `TABLET_LINK_DEBOUNCE_MS`
+ * today, but retuning the Core link (spec §6.8) must not change how stale Paired Devices may get.
+ */
+export const DEVICES_CHANGED_MAX_WAIT_MS = 5_000;
+
+/**
  * How long the channel remembers that a session ended or a device was retired. An upgrade whose
  * credential was resolved before that commit and which reaches the channel after the publication
  * is refused by this memory (SR-41): no request spends this long between stage 4 and its handler.
@@ -108,6 +124,8 @@ export interface RealtimeLimits {
   readonly clientMessageLimit: { readonly count: number; readonly windowMs: number };
   readonly tabletLinkDebounceMs: number;
   readonly tabletLinkRetryMs: number;
+  readonly devicesChangedDebounceMs: number;
+  readonly devicesChangedMaxWaitMs: number;
   readonly endedMemoryMs: number;
 }
 
@@ -126,6 +144,8 @@ export const REALTIME_LIMITS: RealtimeLimits = Object.freeze({
   clientMessageLimit: REALTIME_CLIENT_MESSAGE_LIMIT,
   tabletLinkDebounceMs: TABLET_LINK_DEBOUNCE_MS,
   tabletLinkRetryMs: TABLET_LINK_RETRY_MS,
+  devicesChangedDebounceMs: DEVICES_CHANGED_DEBOUNCE_MS,
+  devicesChangedMaxWaitMs: DEVICES_CHANGED_MAX_WAIT_MS,
   endedMemoryMs: REALTIME_ENDED_MEMORY_MS,
 });
 

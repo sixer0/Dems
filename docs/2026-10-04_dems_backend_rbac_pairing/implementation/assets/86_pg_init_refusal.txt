@@ -1,0 +1,24 @@
+
+> dems-demo@0.1.0 pg:init
+> node scripts/pg/init.mjs
+
+pg:init: project-local PostgreSQL on 127.0.0.1:4432
+
+== Binaries (SU-1: SHA-256, recomputed here)
+  515d8e4c690ecd6ae86074eedd5d6d0ed50df434b3743274085b9692f1e923f9  node_modules/@embedded-postgres/darwin-arm64/native/bin/postgres
+  b81069a19bcec5d2dd263f5c9bce2ce0b5075ae0f9b8a5c81b79f34bef503c39  node_modules/@embedded-postgres/darwin-arm64/native/bin/initdb
+  2c37317f9f606d9716e493d6765ff14f84d8df9b8c07eaa722431de16446f071  node_modules/@embedded-postgres/darwin-arm64/native/bin/pg_ctl
+T2     PASS     [shell] node_modules/@embedded-postgres/darwin-arm64/native/bin/postgres --version
+                -> postgres (PostgreSQL) 18.4
+
+== CR-7: git check-ignore -v, before anything is created
+  .gitignore:70:/.data/	.data/postgres
+  .gitignore:70:/.data/	.data/pg.pwfile
+  .gitignore:70:/.data/	.data/pg.owner.env
+  .gitignore:70:/.data/	.data/pg.env
+  .gitignore:70:/.data/	.data/postgres.log
+  .gitignore:70:/.data/	.data/pg-scripts.log
+pg:init: refused: already provisioned, or partly provisioned (.data/postgres, .data/pg.pwfile, .data/pg.owner.env, .data/pg.env). Nothing was changed.
+  The server:            npm run pg:status / npm run pg:start
+  An interrupted init:   node scripts/pg/init.mjs --resume   (creates only what is missing)
+  A new cluster:         npm run pg:remove-data, then npm run pg:init   (deletes every database)

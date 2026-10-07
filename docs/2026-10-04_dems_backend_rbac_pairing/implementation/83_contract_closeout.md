@@ -391,3 +391,127 @@ No test suite was run in this phase; the suites' figures in 7.4 are the controll
 
 ---
 *Generated: 2026-10-06 03:17 · Last updated: 2026-10-06 03:25*
+
+---
+
+# Part 2: phase 2 applied
+
+Decision D184 ruled the sheet of part 1; checkpoint commit 2 is `057fc17`. Phase 2 ran from 03:33 to 04:24 on
+2026-10-06 as the single writer of the contract slot, under `.locks/contract.lock`, with nobody else writing
+the tree. **Status: complete**, with one fallback taken (DQ-3 (b) for the heartbeat) and one deviation
+outside the grants (DV-4, one line) that needs ratification.
+
+## P2.1 What was applied, by ruling
+
+| Ruling | Applied as |
+|---|---|
+| A items (34) | 33 applied in the contract; ledger row 38 (gap W49-1, the strict union heartbeat) tried and reverted to DQ-3 (b): a sentence in AC-B-46 (errata S-7) |
+| C (R-C1 to R-C6), D (R-D2 to R-D5), E (all) | Residuals; no server behaviour change; code markers renamed `RESIDUAL-W<row>-<n>` (DQ-5); sentences for W86 and W88 in P2.5 |
+| R-D1 | Done in L5: `packages/shared/src/live/source/rebuild-error.ts:129` maps every spelling of the any-of to `A \| B` |
+| DQ-1 (a) | `CoreApiResponseSpec.coreServerDescription` (L3) |
+| DQ-2 (a) | One PIPELINE envelope entry 400 `INVALID_JSON` (L2) |
+| DQ-3 | **(a) for the answers of contract A** (17 schemas strict, 0 tests outside W83's files red); **(b) for the heartbeat**: the strict union member turned 1 test outside W83's files red, `apps/core-server/test/acceptance/shared-state.test.ts:856` ("the union accepts an unknown member of a heartbeat", W49's own pin of the gap), a file outside the grants; reverted, and the sentence went into AC-B-46 (errata S-7) |
+| DQ-4 (a), DQ-5 (a), DQ-6 (a), DQ-9 | As ruled |
+| DQ-7 (b) | The seven copy merges (ledger #89 to #95) were not touched |
+| DQ-8 | `info.version` of the `all` scope 0.2.1 (DQ-1 and DQ-2 landed in full, DQ-3 in part) |
+
+## P2.2 Landings
+
+Every landing ended with `node --import tsx packages/shared/scripts/gen-openapi.ts` (write), `--check`
+(exit 0 each time), the shared suite, and the workspaces it touched. Pre-images of all 99 files edited
+outside a new file are in `.cache/rollback/W83/` (mirrored paths), their hashes in
+`.cache/rollback/W83.pre.sha256`, the list in `.cache/rollback/W83.files.txt`. Restore one file:
+`cp -p .cache/rollback/W83/<path> <path>`.
+
+| L | Ledger rows | Files (lines +/−) | Tests changed by design | Gate (exit 0 unless stated) |
+|---|---|---|---|---|
+| L0 | — | `.locks/contract.lock`; fresh marker grep: 87 lines in 43 files (the same 43 files as part 1, one line fewer after W1) | — | baseline shared 68 / 1,814; `--check` "up to date … 0.2.0" |
+| L1 | 4 (constants), 6, 8–12, 14, 16, 21–23, 26–31, 33–35, 39, 59, 75 | `api/pairing.ts` (constants `PAIRING_CODE_LIFETIME_MS`, `PAIRING_CODE_MAX_FAILED_REDEEMS`, `PAIRING_QR_PREFIX`, `PairingCodeCloseReason`; the 423 text; the two descriptions; the web-session 403 on operations 21–23); `api/identity.ts` (`BIOMETRIC_TOKEN_LIFETIME_MS`, `BiometricTokenRefusalReason`, the 423 text, operation 7's reason and example, the web-session 403 and examples on operations 8 and 9, the reuse text); `api/patterns.ts` (`SESSION_TOKEN_PREFIX`, `DEVICE_CREDENTIAL_PREFIX`, `BIOMETRIC_TOKEN_PREFIX`, `BEARER_SECRET_PREFIXES`; the cursor comment); `api/contract-model.ts` (`PASSWORD_SESSION_REQUIRED_REASON`); `api/core-api.ts` (`details` names `sessionId`; the session commands' fixed texts; stopSession's 422 rule; the export denial note); `api/operation-parts.ts` (`INVALID_QUERY`, `REVOKED`, `EXPORT_DENIAL_NOTE`); `api/example-parts.ts` (`webConsoleSession`); `api/sessions.ts`, `evidence.ts`, `security-audit.ts`, `alerts.ts`, `realtime-messages.ts`, `realtime-examples.ts`, `administration.ts`, `demo-controls.ts` (`DemoRebuildRefusalReason`) | `api-registry.test.ts:591` (+ `webConsoleSession`); new `api-closeout.test.ts` | shared 69 / 1,832; web 95 / 1,255; mobile 140 / 1,721; server unit 154 / 3,916; offline pins unchanged |
+| L2 | 18, 25, 32 | `api/core-api.ts` (envelope 400 `INVALID_JSON`, PIPELINE, after the routing 400); `api/realtime-messages.ts` (close code 1009) | `api-envelope.test.ts:110`; `api-openapi-scope.test.ts:552` (+ `InvalidJson`); `api-realtime.test.ts:787` (six → seven codes) | shared 69 / 1,834; typecheck server, web, mobile |
+| L3 | 13, 17 | `api/contract-model.ts` (`coreServerDescription` on a response), `api/openapi.ts`, `api/core-api.ts` (stopSession and exportEvidence 422); `apps/core-server/test/acceptance/contract.support.ts` (reads both texts, +11 −3); `contract.test.ts` (`KNOWN_CODE_GAPS` emptied: 10, 13, 17, 39) | `api-openapi-scope.test.ts:485` | shared 69 / 1,835; `test:db test/acceptance/contract.test.ts` 34 / 34 — the code block passes with no known gap |
+| L4 | 3, 4 | `api/sim-actions.ts` (`DEVICE_COMMAND_OPERATIONS`, `deviceCommandOfOperation`); `live/source/bindings.ts` (index derived, name kept); `apps/core-server/src/modules/devices/operations.ts` (table derived, name kept); `client/core-client.ts` (guard built from `BEARER_SECRET_PREFIXES`) | `client-credentials.test.ts` (+ list check); `live-source-platform-neutral.test.ts:235-247`; `devices/__tests__/routes.test.ts` (title, one assertion; the W36-1 print became an assertion that the validator accepts) | shared 69 / 1,836; server unit 154 / 3,916; `test:db devices/effects.db.test.ts` 3 / 3 |
+| L5 | 5, 66 | `api/contract-model.ts` (`ANY_OF_DENIAL_SEPARATOR`, `denialPermissionOf`, `permissionsOfDenialLabel`); `api/storage.ts` (example `EVIDENCE_REVIEW_OR_MAINTENANCE`); `live/source/rebuild-error.ts:129` | `apps/mobile/src/features/storage/live-storage-sites.test.tsx:190` **and `:219`** (the twin test in the same file, same assertion; DV-7): the toast now says "Requires the Supervisor role", never Investigator or Technician; `storage-screen.tsx:199` comment | shared 69 / 1,837; web 95 / 1,255 (the web storage tests untouched and green); mobile 140 / 1,721 |
+| L6 | 64 (KI-18) | `api/core-api.ts:601` | `api-openapi-scope.test.ts`: hashes `paths` and `getServiceHealth` (acaff20 values kept as comments) and two titles | shared 69 / 1,838; web `scalar-config` + `sim-fetch` 29 / 29; the other nine operation hashes, `info`, `servers`, `tags` unchanged |
+| L7 | 71 (and 38, reverted) | 17 schemas `z.strictObject` in `api/identity.ts`, `administration.ts`, `pairing.ts`, `demo-controls.ts`; `api/openapi.ts` (version 0.2.1); `scripts/gen-openapi.ts` (comment) | `api-schemas.test.ts:189` (PairedDevice refuses an extra member); `api-openapi-scope.test.ts:8, 245, 371, 378` and `contract.test.ts:443` (version 0.2.1). The heartbeat attempt changed 8 pins in owned tests, all reverted with it | measured with both halves: web 95 / 1,255, mobile 140 / 1,721, server unit 154 / 3,916 green; server `db` 121 / 122 files, 1,739 / 1,740 (**the one red: `shared-state.test.ts:856`**); after the heartbeat revert `shared-state.test.ts` 6 / 6 |
+| L8 | markers | closed gaps reworded ("gap N, closed by W83") in `contract.test.ts`, `commands.db.test.ts`, `revoke-dialog.tsx`, `live-storage-policy.test.tsx`, `live-devices-bed.tsx`; residuals renamed in 31 files (`RESIDUAL-W<row>-<n>`, "W83 ledger #n" at the first use in each file); `live-source-platform-neutral.test.ts` asserts no gap marker and the two residuals; `contract.test.ts` body-less block asserts the seven verdicts are `{"ok":true}` | `apps/mobile/src/features/dashboard/home-more-live-static.test.ts:150` (**DV-4**) | shared 69 / 1,840; web 95 / 1,255; server unit 154 / 3,916; mobile dashboard 7 / 55 |
+| L9 | 76–87, 98, and the B halves of 26, 30, 31, 32, 75; 38 (S-7) | appended "Errata (W83)": `masterplan/01_specs.md` (S-1 to S-13), `masterplan/03_database_contract.md` (D-1 to D-3), `masterplan/04_client_integration_spec.md` (C-1 to C-4); note appended to `implementation/41_biometric_token.md`; comments `apps/core-server/src/db/commands/owner-connection.ts:10`, `apps/mobile/src/features/devices/sim-adapter.ts` (`SIM-GAP-M84-3` text), `apps/mobile/src/features/storage/sim-adapter.ts` (`SIM-GAP-M85-2` text) | — | `git diff --numstat` of the four documents: +24/+13/+14/+9, 0 deletions; KI-07 tokens in the two adapters 1 and 2, as at HEAD |
+
+`packages/shared/test/api-closeout.test.ts` (new, 315 lines, 26 tests) holds every closing text, constant and
+table to its ledger row, so that taking one back turns it red.
+
+## P2.3 Deviations
+
+| # | Deviation | Why |
+|--:|---|---|
+| DV-4 | `apps/mobile/src/features/dashboard/home-more-live-static.test.ts:150` was edited (one line plus a comment) although it is not in the grant list | W66's static test pins the marker `CONTRACT-GAP-W66-1` in `recent-sessions.tsx`, built from parts, so part 1's grep missed it. The rename that DQ-5 ordered turned it red; keeping the old marker would fail the row's own criterion. The line now pins `RESIDUAL-W66-1`. Pre-image saved. **Needs ratification** |
+| DV-5 | Constants placed beside their area, not in `constants.ts`: the prefixes in `patterns.ts`, the pairing numbers in `pairing.ts`, the biometric lifetime in `identity.ts` | `constants.ts` holds network constants and imports nothing; each new constant sits next to the pattern or schema it describes, and the barrel exports all |
+| DV-6 | Part 1 section 7.2 said "13 `apps/core-web` files"; the marker files of section 4 are 17 | A counting slip in part 1; the 17 are the ones section 4 lists, and only those (plus DV-4) were edited |
+| DV-7 | Two assertions of `live-storage-sites.test.tsx` changed (`:190` granted and its twin `:219`) | The same assertion in the test of the Core's own spelling; R-D1 changes both alike |
+| DV-8 | `KNOWN_CODE_GAPS` was emptied in L3, not L8; two prints became assertions (`devices/__tests__/routes.test.ts`, `contract.test.ts` body-less block) | The gate then proves the closure instead of printing it |
+| DV-9 | The DQ-3 heartbeat half took fallback (b) on 1 red test, not "more than a few" | The red test lies outside the grants (`shared-state.test.ts` is W49's), and the sheet allowed no edit there; the controller may grant it and re-apply (a), which is ready: strict twin `RealtimeHeartbeatSchema` in the union, catalogue name `RealtimeHeartbeat`, 8 by-design pins in owned tests and `shared-state.test.ts:848-860` |
+
+## P2.4 Final gate (part 1 section 7.4, all eight points)
+
+| # | Check | Output |
+|--:|---|---|
+| 1 | `grep -rn 'CONTRACT-GAP-' apps packages --include='*.ts' --include='*.tsx'` | `0` lines (also 0 in `packages/shared/openapi/openapi.json`) |
+| 2 | `grep -rn 'CORS allows the web dev origins\|served by mock-core on 127.0.0.1:4400' packages/shared/src packages/shared/openapi` | `0`. Diff of the eight places below |
+| 3 | `node --import tsx packages/shared/scripts/gen-openapi.ts --check` | `packages/shared/openapi/openapi.json is up to date (all (committed): 75 operations, 2 security schemes, version 0.2.1; offline: 10 operations, 0 security schemes, version 0.1.0)`, exit 0; `registry 75 document 75 version 0.2.1` |
+| 4 | `npm run typecheck`; `npm run lint` (all workspaces, mock-core included) | exit 0; exit 0 |
+| 5 | `npm test -w @dems/shared` | `Test Files 69 passed (69)`, `Tests 1840 passed (1840)` (ledger 68 / 1,814 + the new file's 26) |
+| 6 | `npm test -w @dems/core-server`; `npm run test:db -w @dems/core-server` (04:19:36 to 04:21:25) | unit `154 passed (154)`, `3916 passed (3916)`; db `122 passed (122)`, `1740 passed (1740)`, `0 remain with the run prefix` — `contract.test.ts` and `rbac-matrix.test.ts` included |
+| 7 | `npm test -w @dems/core-web`; `npm test -w @dems/mobile` | web `95 passed (95)`, `1255 passed (1255)` (the W1 ledger); mobile `Test Suites: 140 passed`, `Tests: 1721 passed` |
+| 8 | `shasum -a 256 -c .cache/rollback/W83.pre.sha256` | 78 files changed, 53 of them outside the owned paths: exactly the files of section 7.2 / 7.3 and L9, plus DV-4. No pre-imaged file outside the owned paths is unchanged by accident; `git status` shows no other change in `apps/` or `packages/` beyond the new `api-closeout.test.ts` |
+
+**KI-18, the eight places** (research `01b_explore_contract_dataset.md:274-297`): (1) the `core-api.ts` header
+table, (2) the `openapi.ts` header, (3) the info summary, (4) the badge legend row, (5) the tag texts, (6) the
+server description, (7) `openapi.json` — corrected by contract C in the `all` scope (the offline strings of
+3 to 6 are true of Simulated mode and re-pointed by the web in a packaged build); (8) the web's
+`api-document.ts` — W84's path, it swaps origins in `info` and `tags`. The stale sentence itself survived in
+the offline health description and is gone now:
+
+```diff
+-      'Liveness of the local mock-core service. **Live**: served by mock-core on 127.0.0.1:4400 (CORS allows the web dev origins). This is not the device health snapshot; that is `GET /api/v1/device/health`.',
++      'Liveness of the local mock-core service. **Live**: served by mock-core over the network, on 127.0.0.1:4400 in a development run and on the page\'s own origin in a packaged build. This is not the device health snapshot; that is `GET /api/v1/device/health`.',
+```
+
+`api-closeout.test.ts` ("W83 ledger row 64: KI-18") holds both scopes free of the two stale phrases.
+
+## P2.5 Sentences for the README (W86) and the final report (W88)
+
+For the residuals of D184. README sentences describe Live mode to a user; report sentences record the limit.
+
+| Item | README (W86) | Final report (W88) |
+|---|---|---|
+| R-C1 `RESIDUAL-W44-1` | — | After a reconnect the console confirms its session with one request before it shows the Core's data; `hello` does not name the session |
+| R-C2 `RESIDUAL-W44-2` | — | A sign-out owed by one tab and paid after another tab signed in can end that newer session; the operator signs in again |
+| R-C3 `RESIDUAL-W66-1`, `RESIDUAL-W74-2` | In Live mode the session list and the evidence list show the bundled poster by evidence number, or the brand still; an item's own picture opens in its detail | The replicated history and evidence rows carry no media reference |
+| R-C4 `RESIDUAL-W70-1` | With two paired devices, one leaving while the other stays shows as offline only at the next refresh of the Devices drawer or the Paired Devices page | A paired device's socket opening or closing publishes no `admin.changed DEVICES`; clients re-read on a tablet-link change |
+| R-C5 `RESIDUAL-W77-1` | On Users & Roles, active sessions and the last sign-in are as fresh as the page's last read; it reads again when the window regains focus | No `admin.changed` on sign-in, sign-out or expiry |
+| R-C6 (gap W81-2) | — | A pairing code replaced by a new issue is closed with the reason `CANCELLED`; the page tells the two apart by a status read |
+| R-D2 (gap W75-1) | In Live mode an export from the web console is recorded with the Core's default destination label, "Audit archive (simulated)" | — |
+| R-D3 `RESIDUAL-W76-1` | — | A reset refused because another runs and a reset that failed both read "The Core server is starting. Nothing was changed." |
+| R-D4 (gap W76-3, F75-1) | — | The export pages read the row count and head from the `AUDIT_EXPORTED` row in the replica, not from the answer |
+| R-D5 (`@dems/shared/realtime`) | — | The entry re-exports a React file; server-side tests import the socket client by file |
+| R-E1 (six operations) | — | Operations 41, 49, 50, 60, 65 and 70 show no NOT_PERMITTED example: no seeded role can be refused there; their 403 texts still name the code |
+| R-E2 `SIM-GAP-W34-1`, `SIM-GAP-W39-1` | — | Known differences of both modes: a faulted session's recording time keeps counting; the simulator's `AUDIT_EXPORTED` row counts its ring of 1,000 |
+| R-E5 `RESIDUAL-W71-1`, `RESIDUAL-W73-1`, `RESIDUAL-W78-2`, gap W78-1 | In Live mode the SMART counters, the recovery check details and the device health lines are derived on the client from the Core's data, and the camera picture is the bundled demo loop | — |
+| R-E6 `RESIDUAL-W74-1`; R-E7 SIM-GAP-2; R-E8; R-E10; R-E11 | — | As the ruling sheet says (section 6.3) |
+| R-E9 (reason length) | — | A reason is counted in characters by the Core server and in UTF-16 code units in Simulated mode; only astral input differs |
+| DQ-3 (b) heartbeat | — | The union's `heartbeat` member is not strict (AC-B-46 erratum S-7); the shared-state test checks its members |
+| `RESIDUAL-W63-1`, `-W66-2`, `-W69-1`, `-W70-2`, `-W80-1` | — | Covered by R-E1; `RESIDUAL-W69-2` is the accepted evidence-media cache key (D158 DC-1) |
+
+## P2.6 Ledger after phase 2
+
+| Class | Part 1 | After phase 2 |
+|---|--:|---|
+| A | 34 | 33 closed in the contract; 1 (row 38) moved to B by DQ-3 (b) |
+| B | 13 | 14 applied as errata (13 + S-7), plus the B halves of rows 26, 30, 31, 32, 75 |
+| C | 7 | 7 residuals (P2.5) |
+| D | 5 | 1 done (R-D1), 4 residuals |
+| E | 28 | 28 accepted; 17 code markers renamed `RESIDUAL-*` |
+| F | 7 | untouched, for the closing copy round (DQ-7) |
+| Closed | 7 | unchanged |
+
+---
+*Part 2 written: 2026-10-06 04:24*

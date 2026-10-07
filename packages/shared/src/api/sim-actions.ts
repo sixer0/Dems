@@ -20,6 +20,7 @@
  * module loads), so an action added to the simulator does not compile until it has a line here.
  */
 import type { SimActions } from '../sim/types';
+import type { DeviceCommand } from '../sim/vocabulary';
 
 export const SimActionExecution = {
   HOSTED: 'hosted',
@@ -93,6 +94,22 @@ export const SIM_ACTION_OPERATIONS = {
 } as const satisfies Record<keyof SimActions, SimActionBinding>;
 
 export type SimActionName = keyof typeof SIM_ACTION_OPERATIONS;
+
+/**
+ * Which operation each `DeviceCommand` reaches (01_specs §7.10, operations 48 to 50; W83,
+ * gap 3). The one table for both sides: the Live source reads the operation of a command,
+ * the Core server the command of an operation. The values are `deviceCommand`'s three operations.
+ */
+export const DEVICE_COMMAND_OPERATIONS = {
+  RESTART: 'restartDevice',
+  TEST_SIGNAL: 'testDeviceSignal',
+  IDENTIFY: 'identifyDevice',
+} as const satisfies Record<DeviceCommand, (typeof SIM_ACTION_OPERATIONS)['deviceCommand']['operations'][number]>;
+
+/** The command an operation runs, or undefined for an operation that is not one of the three. */
+export function deviceCommandOfOperation(operationId: string): DeviceCommand | undefined {
+  return (Object.keys(DEVICE_COMMAND_OPERATIONS) as DeviceCommand[]).find((command) => DEVICE_COMMAND_OPERATIONS[command] === operationId);
+}
 
 /** The simulator actions that reach `operationId`: none for a read or a server function. */
 export function simActionsOfOperation(operationId: string): SimActionName[] {

@@ -1,0 +1,36 @@
+$ /usr/bin/lockf -k -t 900 .locks/core-server.lock npm run start:server   # 2026-10-07 05:33:55
+
+> dems-demo@0.1.0 start:server
+> npm run start -w @dems/core-server --
+
+
+> @dems/core-server@0.2.0 start
+> tsx src/index.ts
+
+{"level":30,"time":1791326036265,"pid":35020,"hostname":"GSP-Budis-MacBook-Air.local","port":4420,"database":"dems_demo","demoControls":false,"msg":"configuration loaded"}
+{"level":30,"time":1791326036273,"pid":35020,"hostname":"GSP-Budis-MacBook-Air.local","part":"database","ready":true,"msg":"readiness changed"}
+{"level":30,"time":1791326036273,"pid":35020,"hostname":"GSP-Budis-MacBook-Air.local","step":"B-1","msg":"boot step passed"}
+{"level":30,"time":1791326036273,"pid":35020,"hostname":"GSP-Budis-MacBook-Air.local","step":"B-2","msg":"boot step passed"}
+{"level":30,"time":1791326036274,"pid":35020,"hostname":"GSP-Budis-MacBook-Air.local","step":"B-3","msg":"boot step passed"}
+{"level":30,"time":1791326036274,"pid":35020,"hostname":"GSP-Budis-MacBook-Air.local","step":"B-4","msg":"boot step passed"}
+{"level":30,"time":1791326036275,"pid":35020,"hostname":"GSP-Budis-MacBook-Air.local","step":"B-5","msg":"boot step passed"}
+{"level":30,"time":1791326036275,"pid":35020,"hostname":"GSP-Budis-MacBook-Air.local","step":"B-6","msg":"boot step passed"}
+{"level":30,"time":1791326036276,"pid":35020,"hostname":"GSP-Budis-MacBook-Air.local","step":"B-7","msg":"boot step passed"}
+{"level":30,"time":1791326036278,"pid":35020,"hostname":"GSP-Budis-MacBook-Air.local","step":"B-8","rowsChecked":85,"firstSeq":1,"lastSeq":85,"linkBreaks":0,"digests":"ok","lineage":"none","msg":"the stored audit chain verifies"}
+{"level":30,"time":1791326036279,"pid":35020,"hostname":"GSP-Budis-MacBook-Air.local","step":"B-8","msg":"boot step passed"}
+{"level":30,"time":1791326036279,"pid":35020,"hostname":"GSP-Budis-MacBook-Air.local","step":"B-9","msg":"boot step passed"}
+{"level":30,"time":1791326036304,"pid":35020,"hostname":"GSP-Budis-MacBook-Air.local","mode":"boot","epoch":3,"auditTotal":85,"session":null,"restartFault":null,"tamperCleared":false,"tabletLinkReset":false,"tabletLinkCarried":false,"auditRows":0,"msg":"engine started"}
+{"level":30,"time":1791326036304,"pid":35020,"hostname":"GSP-Budis-MacBook-Air.local","part":"engine","ready":true,"msg":"readiness changed"}
+{"level":30,"time":1791326036305,"pid":35020,"hostname":"GSP-Budis-MacBook-Air.local","step":"engine.rehydrate","msg":"boot step passed"}
+{"level":30,"time":1791326036307,"pid":35020,"hostname":"GSP-Budis-MacBook-Air.local","step":"rbac.matrix","msg":"boot step passed"}
+{"level":30,"time":1791326036309,"pid":35020,"hostname":"GSP-Budis-MacBook-Air.local","msg":"Server listening at http://127.0.0.1:4420"}
+{"level":30,"time":1791326036569,"pid":35020,"hostname":"GSP-Budis-MacBook-Air.local","reqId":"27c9b5a3-6919-49ea-9b95-da4721fc5514","method":"GET","route":"/api/v1/health","status":200,"durationMs":6,"principal":null,"msg":"request completed"}
+{"level":30,"time":1791326038211,"pid":35020,"hostname":"GSP-Budis-MacBook-Air.local","connectionId":"44c180d7-82e6-4e3e-9d5c-c26c20dbbc1b","principal":null,"kind":"ANONYMOUS","msg":"socket opened"}
+{"level":30,"time":1791326097197,"pid":35020,"hostname":"GSP-Budis-MacBook-Air.local","signal":"SIGTERM","msg":"shutdown requested"}
+{"level":30,"time":1791326097197,"pid":35020,"hostname":"GSP-Budis-MacBook-Air.local","hold":"shutdown","held":true,"msg":"readiness hold"}
+{"level":30,"time":1791326097197,"pid":35020,"hostname":"GSP-Budis-MacBook-Air.local","part":"engine","ready":false,"msg":"readiness changed"}
+{"level":30,"time":1791326097197,"pid":35020,"hostname":"GSP-Budis-MacBook-Air.local","epoch":3,"revision":63,"msg":"engine stopped"}
+{"level":30,"time":1791326097202,"pid":35020,"hostname":"GSP-Budis-MacBook-Air.local","connectionId":"44c180d7-82e6-4e3e-9d5c-c26c20dbbc1b","code":1001,"closedBy":"server","principal":null,"durationMs":58992,"msg":"socket closed"}
+{"level":30,"time":1791326097202,"pid":35020,"hostname":"GSP-Budis-MacBook-Air.local","drained":true,"abandoned":0,"completed":1181,"failed":0,"timedOut":0,"refused":0,"msg":"pipeline closed"}
+{"level":30,"time":1791326097202,"pid":35020,"hostname":"GSP-Budis-MacBook-Air.local","part":"database","ready":false,"msg":"readiness changed"}
+{"level":30,"time":1791326097202,"pid":35020,"hostname":"GSP-Budis-MacBook-Air.local","msg":"shutdown complete"}

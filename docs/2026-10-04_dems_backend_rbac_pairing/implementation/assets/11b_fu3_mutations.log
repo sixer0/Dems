@@ -1,0 +1,26 @@
+# Mutations of the limits mechanism (index.ts, constants.ts), one at a time, in the scratch copy OUTSIDE the repository (rule M15). 2026-10-04 20:29:51 WIB
+M0 unchanged | unit: Tests 17 passed (17) | db: Tests 10 passed (10)
+M1 the limits are not applied at all | unit (limits.test.ts): Tests 17 passed (17) | db (limits.db.test.ts, limits-own.db.test.ts): Tests 5 failed | 5 passed (10)
+M2 a higher test limit is lowered to the cap | unit (limits.test.ts): Tests 3 failed | 14 passed (17) | db (limits.db.test.ts, limits-own.db.test.ts): Tests 10 passed (10)
+M3 a higher hook limit is lowered to the cap | unit (limits.test.ts): Tests 3 failed | 14 passed (17) | db (limits.db.test.ts, limits-own.db.test.ts): Tests 10 passed (10)
+M4 applied in the database-free project too | unit (limits.test.ts): Tests 3 failed | 14 passed (17) | db (limits.db.test.ts, limits-own.db.test.ts): Tests 10 passed (10)
+M5 the limits cannot be read | unit (limits.test.ts): Tests 3 failed | 14 passed (17) | db (limits.db.test.ts, limits-own.db.test.ts): Tests 7 failed | 3 passed (10)
+M6 the hook limit is left at the runner's | unit (limits.test.ts): Tests 17 passed (17) | db (limits.db.test.ts, limits-own.db.test.ts): Tests 4 failed | 6 passed (10)
+M7 the test limit is left at the runner's | unit (limits.test.ts): Tests 17 passed (17) | db (limits.db.test.ts, limits-own.db.test.ts): Tests 4 failed | 6 passed (10)
+M8 the cap of a test is 60 s | unit (limits.test.ts): Tests 5 failed | 12 passed (17) | db (limits.db.test.ts, limits-own.db.test.ts): Tests 10 passed (10)
+M9 the helper applies the limits again when useTestDatabase is called (it would raise a file's own lower limit) | unit (limits.test.ts): Tests 17 passed (17) | db (limits.db.test.ts, limits-own.db.test.ts): Tests 10 passed (10)
+restored | unit: Tests 17 passed (17) | db: Tests 10 passed (10)
+the scratch copy is as it was before the mutations
+
+# After M9 survived, limits-own.db.test.ts was changed to call useTestDatabase after its own limits, as the module rows' files do. 20:30:35
+M0 unchanged | unit: Tests 17 passed (17) | db: Tests 11 passed (11)
+M9 the helper applies the limits again when useTestDatabase is called | unit: Tests 17 passed (17) | db: Tests 4 failed | 7 passed (11)
+restored | unit: Tests 17 passed (17) | db: Tests 11 passed (11)
+the scratch copy is as it was before the mutation
+
+# After the rule for "no limit" was added. 20:54:25
+M0 unchanged | unit: Tests 18 passed (18)
+M10 "no limit" (zero) is raised to the cap, which lowers it | unit: Tests 1 failed | 17 passed (18)
+M11 a value that is no number is handed on to the runner | unit: Tests 1 failed | 17 passed (18)
+restored | unit: Tests 18 passed (18)
+the scratch copy is as it was before the mutations

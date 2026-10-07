@@ -1,0 +1,7 @@
+device-host clock offset ms: -438, -455, -455, -465, -464 at 17:07:32.034
+app pid 12423 at 17:07:32.089
+screenrecord e_run2 started (pid 13536, limit 80 s, watchdog at +12 s) at 17:07:32.794
+slept 800 ms
+mark E run 2 tablet Start Recording pressed at 17:07:33.595
+tap 1178,1455 at 17:07:33.937
+start 200 (10-06 17:07:38.952 POST /api/v1/session/{id}/start 200)

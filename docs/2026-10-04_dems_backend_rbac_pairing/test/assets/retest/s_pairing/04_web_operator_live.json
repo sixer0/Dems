@@ -1,0 +1,158 @@
+{
+  "at": "13:06:48.183 (epoch 1791266808.183)",
+  "facts": {
+    "href": "http://127.0.0.1:5173/admin/devices",
+    "onPage": true,
+    "issueState": "IDLE",
+    "codeShown": false,
+    "codeDigitCount": 0,
+    "qrShown": false,
+    "countdownSeconds": null,
+    "attempts": null,
+    "redeemedText": null,
+    "activeElsewhere": false,
+    "list": "table",
+    "rows": [
+      {
+        "id": "DEV-0003",
+        "state": "Paired",
+        "online": "Online",
+        "operator": "AKP Budi Santoso",
+        "lastSeen": "Just now",
+        "revokeShown": true
+      },
+      {
+        "id": "DEV-0002",
+        "state": "Revoked",
+        "online": "Offline",
+        "operator": "—",
+        "lastSeen": "20 min ago",
+        "revokeShown": false
+      },
+      {
+        "id": "DEV-0001",
+        "state": "Revoked",
+        "online": "Offline",
+        "operator": "—",
+        "lastSeen": "2 h ago",
+        "revokeShown": false
+      }
+    ],
+    "summary": {
+      "paired": "1",
+      "online": "1",
+      "text": "1 paired · 1 online1 paired · 1 online"
+    },
+    "toasts": []
+  },
+  "registry": {
+    "status": 200,
+    "devices": [
+      {
+        "id": "DEV-0003",
+        "state": "PAIRED",
+        "online": true,
+        "signedInOperatorId": "OPR-001",
+        "revokedAt": null
+      },
+      {
+        "id": "DEV-0002",
+        "state": "REVOKED",
+        "online": false,
+        "signedInOperatorId": null,
+        "revokedAt": "2026-10-06T05:49:21.176Z"
+      },
+      {
+        "id": "DEV-0001",
+        "state": "REVOKED",
+        "online": false,
+        "signedInOperatorId": null,
+        "revokedAt": "2026-10-06T03:08:24.580Z"
+      }
+    ]
+  },
+  "documentTimeOrigin": 1791265669672.8,
+  "screenshot": {
+    "file": "04_web_operator_live.png",
+    "at": "13:06:48.156 (epoch 1791266808.156)"
+  },
+  "audit": {
+    "AUTH_SUCCESS": {
+      "status": 200,
+      "total": 181,
+      "rows": [
+        {
+          "seq": 181,
+          "id": "AUD-000181",
+          "at": "2026-10-06T06:06:28.538Z",
+          "atMs": 1791266788538,
+          "type": "AUTH_SUCCESS",
+          "category": "AUTH",
+          "severity": "INFO",
+          "actorId": "OPR-001",
+          "deviceId": "DEV-0003",
+          "sessionId": null,
+          "message": "Operator signed in (AKP Budi Santoso) via password",
+          "details": {
+            "method": "PASSWORD"
+          }
+        },
+        {
+          "seq": 175,
+          "id": "AUD-000175",
+          "at": "2026-10-06T05:47:53.583Z",
+          "atMs": 1791265673583,
+          "type": "AUTH_SUCCESS",
+          "category": "AUTH",
+          "severity": "INFO",
+          "actorId": "OPR-002",
+          "deviceId": null,
+          "sessionId": null,
+          "message": "Operator signed in (AKP Andi Pratama) via password",
+          "details": {
+            "method": "PASSWORD"
+          }
+        },
+        {
+          "seq": 168,
+          "id": "AUD-000168",
+          "at": "2026-10-06T03:17:16.762Z",
+          "atMs": 1791256636762,
+          "type": "AUTH_SUCCESS",
+          "category": "AUTH",
+          "severity": "INFO",
+          "actorId": "OPR-003",
+          "deviceId": null,
+          "sessionId": null,
+          "message": "Operator signed in (Rina Wijaya) via password",
+          "details": {
+            "method": "PASSWORD"
+          }
+        }
+      ]
+    }
+  },
+  "network": {
+    "api": [
+      {
+        "sent": "13:06:48.169 (epoch 1791266808.169)",
+        "method": "GET",
+        "path": "/api/v1/pairing/devices",
+        "status": 200,
+        "done": "13:06:48.175 (epoch 1791266808.175)"
+      },
+      {
+        "sent": "13:06:48.178 (epoch 1791266808.178)",
+        "method": "GET",
+        "path": "/api/v1/audit?…",
+        "status": 200,
+        "done": "13:06:48.183 (epoch 1791266808.183)"
+      }
+    ],
+    "origins": [
+      "http://127.0.0.1:5173"
+    ],
+    "sockets": [],
+    "console": []
+  }
+}

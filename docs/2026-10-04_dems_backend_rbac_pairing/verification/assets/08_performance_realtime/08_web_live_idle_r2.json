@@ -1,0 +1,50 @@
+{
+  "label": "08_web_live_idle_r2",
+  "start": "10:13:57.088 (epoch 1791342837.088)",
+  "end": "10:14:27.091 (epoch 1791342867.091)",
+  "wallMs": 30003,
+  "uptimeStart": "10:13  up 5 days, 17:26, 2 users, load averages: 5.12 6.09 5.82",
+  "uptimeEnd": "10:14  up 5 days, 17:27, 2 users, load averages: 4.58 5.87 5.75",
+  "pageBefore": {
+    "href": "/session",
+    "state": "SEALED",
+    "mode": "LIVE",
+    "visibility": "visible"
+  },
+  "pageAfter": {
+    "href": "/session",
+    "state": "SEALED",
+    "visibility": "visible"
+  },
+  "raf": {
+    "longSupported": true,
+    "frames": 1101,
+    "spanS": 29.95,
+    "fps": 36.7,
+    "intervalP50": 33.3,
+    "intervalP95": 33.4,
+    "intervalP99": 33.4,
+    "intervalMax": 50,
+    "intervalsOver50": 0,
+    "intervalsOver100": 0,
+    "longtasks": 0,
+    "longtaskTotalMs": 0,
+    "longtaskMaxMs": 0,
+    "longtaskDurations": []
+  },
+  "cdpMetrics": {
+    "TaskDurationMs": 1518,
+    "ScriptDurationMs": 479,
+    "LayoutDurationMs": 32,
+    "RecalcStyleDurationMs": 130,
+    "mainThreadBusyPct": 5.1,
+    "JSHeapUsedMB": 66.3,
+    "Nodes": 2117
+  },
+  "socketFramesByType": {
+    "meters": 590,
+    "heartbeat": 30,
+    "delta": 30
+  },
+  "socketFramesPerS": 21.66
+}

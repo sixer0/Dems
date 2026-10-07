@@ -1,0 +1,84 @@
+=== BASELINE | no mutation: the tree as it is, through the scratch configuration | 19:52:45
+exit 0
+   1       Tests  37 passed (37)
+   1  Test Files  1 passed (1)
+   1 [test:db] teardown: dropped 3 database(s) in 101 ms; 0 remain with the run prefix dems_test_step_69b_tmdvrx6l_
+   1 [w47] D118 on rotateDeviceCredential: DEVICE 400 INVALID_JSON (no JSON) | a session on the device 403 DEVICE_NOT_PAIRED (DEVICE_CREDENTIAL_REQUIRED), rows 0, places 0 | a web session 403 DEVICE_NOT_PAIRED | a retired device 403 DEVICE_REVOKED · ACCESS_DENIED
+   1 [w47] DEVICE_CREDENTIAL (reason DEVICE_CREDENTIAL_REQUIRED) on: 23 rotateDeviceCredential
+   1 [w47] INVESTIGATOR@DEVICE: 75 cells: 52 let through by stage 6, 0 × 401, 23 × 403; 22 with a denial row; 0 × 429; 0 not as specified
+   1 [w47] SUPERVISOR@DEVICE: 75 cells: 71 let through by stage 6, 0 × 401, 4 × 403; 3 with a denial row; 0 × 429; 0 not as specified
+   1 [w47] TECHNICIAN@DEVICE: 75 cells: 43 let through by stage 6, 0 × 401, 32 × 403; 31 with a denial row; 0 × 429; 0 not as specified
+=== Q01 | apps/core-server/src/plugins/permission-guard/decision.ts: D118: the guard does not evaluate the condition DEVICE_CREDENTIAL (whoever has a principal holds it) | 19:52:51
+exit 1
+   1       Tests  6 failed | 31 passed (37)
+   1  Test Files  1 failed (1)
+   1  × INVESTIGATOR@DEVICE: the seeded INVESTIGATOR, signed in on a paired device (the session token as a bearer value) 154ms
+   1  × SUPERVISOR@DEVICE: the seeded SUPERVISOR, signed in on a paired device (the session token as a bearer value) 153ms
+   1  × TECHNICIAN@DEVICE: the seeded TECHNICIAN, signed in on a paired device (the session token as a bearer value) 157ms
+   1  × decision D118, the condition DEVICE_CREDENTIAL: on every operation that carries it the device itself passes; a session of an operator on the device is refused with 403 DEVICE_NOT_PAIRED and the reason, no row and no place in the denial budget; a web session is refused by the marker, without
+   1  × no cell of this file was answered 429, no limit was reached, and the server counted the refusals of every key as the test did 7ms
+   1  × the session of an operator on the device presented where the cell expects the device itself: every cell is red, and an operation that needs the device's own credential answers 403 with the reason, no row and no place in the budget 126ms
+   1 [test:db] teardown: dropped 3 database(s) in 107 ms; 0 remain with the run prefix dems_test_step_69b_tmdvs4tw_
+   1 [w47-harness] mutation Q01 applied to apps/core-server/src/plugins/permission-guard/decision.ts (1 change(s))
+   1 [w47] DEVICE_CREDENTIAL (reason DEVICE_CREDENTIAL_REQUIRED) on: 23 rotateDeviceCredential
+   1 [w47] INVESTIGATOR@DEVICE: 75 cells: 53 let through by stage 6, 0 × 401, 22 × 403; 22 with a denial row; 0 × 429; 1 not as specified
+   1 [w47] SUPERVISOR@DEVICE: 75 cells: 72 let through by stage 6, 0 × 401, 3 × 403; 3 with a denial row; 0 × 429; 1 not as specified
+   1 [w47] TECHNICIAN@DEVICE: 75 cells: 44 let through by stage 6, 0 × 401, 31 × 403; 31 with a denial row; 0 × 429; 1 not as specified
+=== Q02 | apps/core-server/src/plugins/permission-guard/denial.ts: D118: the guard writes an ACCESS_DENIED row (and takes a place in the budget) for the refusal of the condition | 19:52:58
+exit 1
+   1       Tests  7 failed | 30 passed (37)
+   1  Test Files  1 failed (1)
+   1  × AC-B-16: every denied cell of an operator wrote exactly one row, ACCESS_DENIED or EXPORT_DENIED on the three exports, and a permitted call wrote none 1ms
+   1  × INVESTIGATOR@DEVICE: the seeded INVESTIGATOR, signed in on a paired device (the session token as a bearer value) 181ms
+   1  × SUPERVISOR@DEVICE: the seeded SUPERVISOR, signed in on a paired device (the session token as a bearer value) 176ms
+   1  × TECHNICIAN@DEVICE: the seeded TECHNICIAN, signed in on a paired device (the session token as a bearer value) 178ms
+   1  × decision D118, the condition DEVICE_CREDENTIAL: on every operation that carries it the device itself passes; a session of an operator on the device is refused with 403 DEVICE_NOT_PAIRED and the reason, no row and no place in the denial budget; a web session is refused by the marker, without
+   1  × no cell of this file was answered 429, no limit was reached, and the server counted the refusals of every key as the test did 7ms
+   1  × the session of an operator on the device presented where the cell expects the device itself: every cell is red, and an operation that needs the device's own credential answers 403 with the reason, no row and no place in the budget 140ms
+   1 [test:db] teardown: dropped 3 database(s) in 107 ms; 0 remain with the run prefix dems_test_step_69b_tmdvsaw7_
+   1 [w47-harness] mutation Q02 applied to apps/core-server/src/plugins/permission-guard/denial.ts (1 change(s))
+   1 [w47] DEVICE_CREDENTIAL (reason DEVICE_CREDENTIAL_REQUIRED) on: 23 rotateDeviceCredential
+   1 [w47] INVESTIGATOR@DEVICE: 75 cells: 52 let through by stage 6, 0 × 401, 23 × 403; 23 with a denial row; 0 × 429; 1 not as specified
+   1 [w47] SUPERVISOR@DEVICE: 75 cells: 71 let through by stage 6, 0 × 401, 4 × 403; 4 with a denial row; 0 × 429; 1 not as specified
+   1 [w47] TECHNICIAN@DEVICE: 75 cells: 43 let through by stage 6, 0 × 401, 32 × 403; 32 with a denial row; 0 × 429; 1 not as specified
+=== Q03 | apps/core-server/src/plugins/permission-guard/denial.ts: D118: the answer of the condition carries no reason | 19:53:06
+exit 1
+   1       Tests  6 failed | 31 passed (37)
+   1  Test Files  1 failed (1)
+   1  × INVESTIGATOR@DEVICE: the seeded INVESTIGATOR, signed in on a paired device (the session token as a bearer value) 179ms
+   1  × SUPERVISOR@DEVICE: the seeded SUPERVISOR, signed in on a paired device (the session token as a bearer value) 179ms
+   1  × TECHNICIAN@DEVICE: the seeded TECHNICIAN, signed in on a paired device (the session token as a bearer value) 190ms
+   1  × decision D118, the condition DEVICE_CREDENTIAL: on every operation that carries it the device itself passes; a session of an operator on the device is refused with 403 DEVICE_NOT_PAIRED and the reason, no row and no place in the denial budget; a web session is refused by the marker, without
+   1  × no cell of this file was answered 429, no limit was reached, and the server counted the refusals of every key as the test did 8ms
+   1  × the session of an operator on the device presented where the cell expects the device itself: every cell is red, and an operation that needs the device's own credential answers 403 with the reason, no row and no place in the budget 172ms
+   1 [test:db] teardown: dropped 3 database(s) in 117 ms; 0 remain with the run prefix dems_test_step_69b_tmdvsihl_
+   1 [w47-harness] mutation Q03 applied to apps/core-server/src/plugins/permission-guard/denial.ts (1 change(s))
+   1 [w47] DEVICE_CREDENTIAL (reason DEVICE_CREDENTIAL_REQUIRED) on: 23 rotateDeviceCredential
+   1 [w47] INVESTIGATOR@DEVICE: 75 cells: 52 let through by stage 6, 0 × 401, 23 × 403; 22 with a denial row; 0 × 429; 1 not as specified
+   1 [w47] SUPERVISOR@DEVICE: 75 cells: 71 let through by stage 6, 0 × 401, 4 × 403; 3 with a denial row; 0 × 429; 1 not as specified
+   1 [w47] TECHNICIAN@DEVICE: 75 cells: 43 let through by stage 6, 0 × 401, 32 × 403; 31 with a denial row; 0 × 429; 1 not as specified
+=== Q04 | packages/shared/src/api/pairing.ts: D118: THE REGISTRY loses the condition on operation 23 (the document keeps it) | 19:53:13
+exit 1
+   1       Tests  4 failed | 33 passed (37)
+   1  Test Files  1 failed (1)
+   1  × decision D118, the condition DEVICE_CREDENTIAL: on every operation that carries it the device itself passes; a session of an operator on the device is refused with 403 DEVICE_NOT_PAIRED and the reason, no row and no place in the denial budget; a web session is refused by the marker, without
+   1  × every registry entry has the method, the path, the access rule, the conditions and the audit rule of its row 7ms
+   1  × the condition DEVICE_CREDENTIAL (decision D118): the reason of its refusal is the same in the document (§7.2) and in the registry, and it stands only on the marker DEVICE 0ms
+   1  × the session of an operator on the device presented where the cell expects the device itself: every cell is red, and an operation that needs the device's own credential answers 403 with the reason, no row and no place in the budget 116ms
+   1 [test:db] teardown: dropped 3 database(s) in 110 ms; 0 remain with the run prefix dems_test_step_69b_tmdvsqjc_
+   1 [w47-harness] mutation Q04 applied to packages/shared/src/api/pairing.ts (1 change(s))
+   1 [w47] INVESTIGATOR@DEVICE: 75 cells: 53 let through by stage 6, 0 × 401, 22 × 403; 22 with a denial row; 0 × 429; 0 not as specified
+   1 [w47] SUPERVISOR@DEVICE: 75 cells: 72 let through by stage 6, 0 × 401, 3 × 403; 3 with a denial row; 0 × 429; 0 not as specified
+   1 [w47] TECHNICIAN@DEVICE: 75 cells: 44 let through by stage 6, 0 × 401, 31 × 403; 31 with a denial row; 0 × 429; 0 not as specified
+=== F01 | THE SECOND STEP, SIMULATED: operation 8 signInWithBiometric gets the condition in the registry AND the same words in its row of the document. Expected: GREEN, with no change of the test files | 19:53:20
+exit 0
+   1       Tests  37 passed (37)
+   1  Test Files  1 passed (1)
+   1 [test:db] teardown: dropped 3 database(s) in 102 ms; 0 remain with the run prefix dems_test_step_69b_tmdvsxuh_
+   1 [w47-harness] mutation F01 applied to apps/core-server/test/acceptance/rbac-matrix.support.ts (1 change(s))
+   1 [w47-harness] mutation F01 applied to packages/shared/src/api/identity.ts (1 change(s))
+   1 [w47] D118 on signInWithBiometric, rotateDeviceCredential: DEVICE 401 INVALID_CREDENTIALS · AUTH_FAILED | a session on the device 403 DEVICE_NOT_PAIRED (DEVICE_CREDENTIAL_REQUIRED), rows 0, places 0 | a web session 403 DEVICE_NOT_PAIRED | a retired device 403 DEVICE_REVOKED · ACCESS_DENIED
+   1 [w47] DEVICE_CREDENTIAL (reason DEVICE_CREDENTIAL_REQUIRED) on: 8 signInWithBiometric, 23 rotateDeviceCredential
+   1 [w47] INVESTIGATOR@DEVICE: 75 cells: 51 let through by stage 6, 0 × 401, 24 × 403; 22 with a denial row; 0 × 429; 0 not as specified
+   1 [w47] SUPERVISOR@DEVICE: 75 cells: 70 let through by stage 6, 0 × 401, 5 × 403; 3 with a denial row; 0 × 429; 0 not as specified
+   1 [w47] TECHNICIAN@DEVICE: 75 cells: 42 let through by stage 6, 0 × 401, 33 × 403; 31 with a denial row; 0 × 429; 0 not as specified

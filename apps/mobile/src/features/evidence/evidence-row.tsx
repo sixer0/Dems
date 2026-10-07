@@ -3,6 +3,10 @@
  * subject, subject-type chip, duration (mono), status chip and the kebab `Menu` (View, Verify,
  * Export, Archive; Archive RBAC-gated). The row is a pressable kit `Card`; on tablets the selected
  * row carries glow e2 (§4.10 "Tablet").
+ *
+ * CF2-B (RF-T-1): a selection change is a colour change only. The glow is `SelectionGlow`, always
+ * mounted after the pressable (nothing is mounted or removed inside the row), and the card keeps its
+ * 1 dp border in both states (`ROW_CARD_BORDER`), so its border insets, layout and clip never change.
  */
 import { Image } from 'expo-image';
 import { Button, Card, Menu, PressableFeedback } from 'heroui-native';
@@ -13,10 +17,11 @@ import { StyleSheet, Text, View } from 'react-native';
 import { DATE_PATTERNS, formatDate, formatDuration } from '@dems/shared/realtime';
 import type { EvidenceItem } from '@dems/shared/sim';
 import { derived, fontFamily, palette, radius, spacing, typography } from '@dems/shared/tokens';
-import { GlowLayer } from '@/motion';
 import { EvidenceStatusChip, EvidenceSubjectChip } from './evidence-chips';
 import { posterForEvidence } from './evidence-media';
 import { isArchivable, isExportable, type EvidenceDensity } from './evidence-model';
+import { MenuItemText } from './menu-item-text';
+import { ROW_CARD_BORDER, SelectionGlow } from './selection-glow';
 
 export type EvidenceRowAction = 'view' | 'verify' | 'export' | 'archive';
 
@@ -38,7 +43,6 @@ function EvidenceRowImpl({ item, selected, density, canArchive, onPress, onActio
 
   return (
     <View style={styles.wrap}>
-      {selected ? <GlowLayer level={2} radius={radius.px.xl} testID={`evidence-row-glow-${item.id}`} /> : null}
       <PressableFeedback
         testID={`evidence-row-${item.id}`}
         accessibilityRole="button"
@@ -47,7 +51,7 @@ function EvidenceRowImpl({ item, selected, density, canArchive, onPress, onActio
         onPress={() => onPress(item.id)}
         style={styles.pressable}
       >
-        <Card className="rounded-xl" style={[styles.card, selected ? styles.cardSelected : null]}>
+        <Card className="rounded-xl" style={[styles.card, selected ? styles.cardSelected : null]} testID={`evidence-row-card-${item.id}`}>
           <View style={[styles.row, compact ? styles.rowCompact : null]}>
             {compact ? null : (
               <Image
@@ -83,6 +87,7 @@ function EvidenceRowImpl({ item, selected, density, canArchive, onPress, onActio
           </View>
         </Card>
       </PressableFeedback>
+      <SelectionGlow selected={selected} radius={radius.px.xl} testID={`evidence-row-glow-${item.id}`} />
     </View>
   );
 }
@@ -121,8 +126,12 @@ function RowMenu({ item, canArchive, onAction }: { item: EvidenceItem; canArchiv
             isDisabled={!exportable}
             onPress={() => onAction(item.id, 'export')}
           >
-            <Menu.ItemTitle>{t('features.evidence.actions.export')}</Menu.ItemTitle>
-            {exportable ? null : <Menu.ItemDescription>{t('features.evidence.actions.exportDisabled')}</Menu.ItemDescription>}
+            {/* CF-M2 (R-T-1): title and reason stacked, so a disabled item keeps its visible title. */}
+            <MenuItemText
+              title={t('features.evidence.actions.export')}
+              description={exportable ? null : t('features.evidence.actions.exportDisabled')}
+              testID={`evidence-row-export-text-${item.id}`}
+            />
           </Menu.Item>
           <Menu.Item
             testID={`evidence-row-archive-${item.id}`}
@@ -130,8 +139,11 @@ function RowMenu({ item, canArchive, onAction }: { item: EvidenceItem; canArchiv
             variant="danger"
             onPress={() => onAction(item.id, 'archive')}
           >
-            <Menu.ItemTitle>{t('features.evidence.actions.archive')}</Menu.ItemTitle>
-            {canArchive ? null : <Menu.ItemDescription>{t('features.evidence.actions.archiveDisabled')}</Menu.ItemDescription>}
+            <MenuItemText
+              title={t('features.evidence.actions.archive')}
+              description={canArchive ? null : t('features.evidence.actions.archiveDisabled')}
+              testID={`evidence-row-archive-text-${item.id}`}
+            />
           </Menu.Item>
         </Menu.Content>
       </Menu.Portal>
@@ -142,8 +154,10 @@ function RowMenu({ item, canArchive, onAction }: { item: EvidenceItem; canArchiv
 const styles = StyleSheet.create({
   wrap: { marginBottom: spacing[1] + 2, borderRadius: radius.px.xl },
   pressable: { borderRadius: radius.px.xl },
-  card: { padding: spacing[1] + 2 },
-  cardSelected: { borderColor: palette.gold, borderWidth: 1 },
+  // CF2-B (RF-T-1): the 1 dp border is there in both states and only its colour follows the selection,
+  // so a selection change never changes the card's border insets, layout or clip (see `ROW_CARD_BORDER`).
+  card: { padding: spacing[1] + 2, ...ROW_CARD_BORDER },
+  cardSelected: { borderColor: palette.gold },
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing[2] },
   rowCompact: { gap: spacing[1] },
   thumb: { width: 96, height: 76, borderRadius: radius.px.lg, backgroundColor: derived.surfaceSecondary },

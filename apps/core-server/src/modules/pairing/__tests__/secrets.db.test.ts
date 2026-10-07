@@ -253,9 +253,15 @@ describe('AC-B-41: no audit row, event, publication or refusal of the whole life
     expect(codeLeaks(text)).toEqual([]);
     expectAbsent(text, credentials);
     const kinds = new Set(pairing.published.map((publication) => publication.kind));
-    expect([...kinds].sort()).toEqual(['admin.changed', 'device.revoked']);
+    // `device.session` (E-fix FX-C, R4): a device's sign-in or the end of its session, by device ID only.
+    expect([...kinds].sort()).toEqual(['admin.changed', 'device.revoked', 'device.session']);
+    const keysOf: Record<string, string[]> = {
+      'device.revoked': ['deviceId', 'kind', 'reason'],
+      'device.session': ['deviceIds', 'kind'],
+      'admin.changed': ['kind', 'resource'],
+    };
     for (const publication of pairing.published) {
-      expect(Object.keys(publication).sort()).toEqual(publication.kind === 'device.revoked' ? ['deviceId', 'kind', 'reason'] : ['kind', 'resource']);
+      expect(Object.keys(publication).sort()).toEqual(keysOf[publication.kind]);
     }
   });
 

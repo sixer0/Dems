@@ -18,6 +18,12 @@
  *
  * On multi-pane windows the selection lives in `?selected=` (the route hands a deep-linked detail
  * over to it), so rotation and split-screen keep it (MA-13). Mic rows carry a `compact` meter there.
+ *
+ * E2E-T-2 (E-fix row FX-M2; decision D200/D201): the screen always shows one of three things: the
+ * loading skeleton (until the runtime has hydrated), the data (the store, synchronously: this screen
+ * sends no request and waits for no query, suspense or focus effect), or the panel's error card with
+ * a rate-limited Retry (`PanelBoundary` around the list and around the detail pane). The blank pane
+ * seen once on the tablet is traced in `gateway_check/11d_efix_mobile_screens.md`.
  */
 import { useRouter, type Href } from 'expo-router';
 import { Alert, ListGroup, Separator, SkeletonGroup } from 'heroui-native';
@@ -34,6 +40,7 @@ import { useRuntimeStatus } from '@/runtime';
 import { DeviceDetail } from './device-detail';
 import { DeviceRow } from './device-row';
 import { DEVICE_SHORT_NAME_KEY, SECTIONS, STATUS_LABEL_KEY, STATUS_RANK, attentionDevices, type DeviceId, type DeviceSection, type DeviceStatus } from './devices-model';
+import { PanelBoundary } from './panel-boundary';
 import { useDeviceStatuses } from './use-devices-data';
 
 export interface DevicesScreenProps {
@@ -56,7 +63,11 @@ export function DevicesScreen({ selectedId }: DevicesScreenProps) {
     [isMultiPane, router],
   );
 
-  const list = <DevicesList selectedId={isMultiPane ? selectedId : null} twoColumns={layoutClass === 'compact-landscape'} onSelect={select} />;
+  const list = (
+    <PanelBoundary name="list">
+      <DevicesList selectedId={isMultiPane ? selectedId : null} twoColumns={layoutClass === 'compact-landscape'} onSelect={select} />
+    </PanelBoundary>
+  );
 
   return (
     <SafeScreen id="devices">
@@ -66,7 +77,9 @@ export function DevicesScreen({ selectedId }: DevicesScreenProps) {
             {list}
           </Pane>
           <Pane name="detail" flex={3} style={styles.flexBasisZero}>
-            {selectedId ? <DeviceDetail key={selectedId} deviceId={selectedId} variant="pane" /> : <DetailPlaceholder />}
+            <PanelBoundary key={selectedId ?? 'none'} name="detail">
+              {selectedId ? <DeviceDetail key={selectedId} deviceId={selectedId} variant="pane" /> : <DetailPlaceholder />}
+            </PanelBoundary>
           </Pane>
         </PaneLayout>
       ) : (

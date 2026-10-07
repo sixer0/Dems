@@ -1,0 +1,370 @@
+// E2E-W2 Part B: two consoles live on http://127.0.0.1:5173, two separate headless-shell processes
+// with separate fresh profiles: console 1 SUPERVISOR andi.pratama, console 2 INVESTIGATOR budi.santoso.
+// Each change is made in one console and watched in the other WITHOUT a reload: a watcher installed
+// in the observing page (setInterval 20 ms) stores Date.now() when the change first shows. The delay
+// is measured from the acting console's HTTP 2xx answer (and from the click), and the Core's own
+// audit row time is read afterwards. One machine clock for all.
+// Also: the SUPERVISOR reads the ACCESS_DENIED / EXPORT_DENIED rows of Part A (Security & Audit).
+// Usage: TMPDIR=… node w2_part_b.mjs <assetsDir>
+import * as lib from './w2_lib.mjs'
+import { join } from 'node:path'
+import { readFileSync } from 'node:fs'
+
+const [ASSETS] = process.argv.slice(2)
+const LOG = join(ASSETS, 'w2_driver.log')
+const { sleep, ORIGIN } = lib
+const result = { startedAt: lib.nowIso(), consoles: {}, auditRead: null, changes: [], screenshots: [], signOut: {} }
+let n = 0
+const nn = () => String(++n).padStart(2, '0')
+
+const b1 = await lib.launch('b_supervisor')
+const b2 = await lib.launch('b_investigator')
+const c1 = await lib.connect(b1, 'supervisor', ASSETS, LOG)
+const c2 = await lib.connect(b2, 'investigator', ASSETS, LOG)
+result.consoles = {
+  supervisor: { pid: b1.proc.pid, devtools: b1.http, profile: b1.profile },
+  investigator: { pid: b2.proc.pid, devtools: b2.http, profile: b2.profile },
+  separateProcesses: b1.proc.pid !== b2.proc.pid && b1.profile !== b2.profile,
+}
+const shotBoth = async (change, phase, cap1, cap2) => {
+  const f1 = `${nn()}_live_${change}_supervisor_${phase}.png`
+  await c1.screenshot(f1)
+  result.screenshots.push({ file: f1, caption: cap1 })
+  const f2 = `${nn()}_live_${change}_investigator_${phase}.png`
+  await c2.screenshot(f2)
+  result.screenshots.push({ file: f2, caption: cap2 })
+  return [f1, f2]
+}
+const shotOne = async (c, slug, caption) => {
+  const f = `${nn()}_${slug}.png`
+  await c.screenshot(f)
+  result.screenshots.push({ file: f, caption })
+  return f
+}
+const txt = (c, tid) => c.evaluate(`document.querySelector('[data-testid="${tid}"]')?.textContent?.replace(/\\s+/g,' ').trim().slice(0,200) ?? null`)
+const watch = (c, key, cond) =>
+  c.evaluate(`(() => { window.__w2 = window.__w2 || {}; delete window.__w2[${JSON.stringify(key)}]; const f = () => { try { return !!(${cond}) } catch { return false } }; if (f()) { window.__w2[${JSON.stringify(key)}] = -1; return 'already' } const t = setInterval(() => { if (f()) { window.__w2[${JSON.stringify(key)}] = Date.now(); clearInterval(t) } }, 20); window.__w2t = window.__w2t || {}; window.__w2t[${JSON.stringify(key)}] = t; return 'armed' })()`)
+const seen = async (c, key, timeoutMs = 15000) => {
+  const until = Date.now() + timeoutMs
+  while (Date.now() < until) {
+    const v = await c.evaluate(`(window.__w2 || {})[${JSON.stringify(key)}] ?? null`)
+    if (v !== null) return v
+    await sleep(100)
+  }
+  return null
+}
+const navCount = (c) => c.allRequests.filter((r) => r.type === 'Document').length
+const respOf = (c, part, method, after) => {
+  const e = [...c.allRequests].reverse().find((r) => r.method === method && r.url.includes(part) && typeof r.status === 'number' && r.status < 300 && r.at >= after)
+  return e ? { status: e.status, sentAt: e.at, respAt: e.respAt ?? null } : null
+}
+const auditAt = async (c, type, after) => {
+  const r = await c.pageFetch('GET', `/api/v1/audit?type=${type}&order=DESC&limit=10`)
+  const rows = r.body?.items ?? r.body?.rows ?? []
+  const row = rows.find((x) => {
+    const at = typeof x.at === 'number' ? x.at : Date.parse(x.at ?? x.timestamp ?? x.time)
+    return at >= after - 2000
+  })
+  if (!row) return { status: r.status, row: null, keys: rows[0] ? Object.keys(rows[0]) : [] }
+  const at = typeof row.at === 'number' ? row.at : Date.parse(row.at ?? row.timestamp ?? row.time)
+  return { seq: row.seq, type: row.type, at, actorId: row.actorId ?? row.actor?.id ?? null }
+}
+const iso = (t) => (typeof t === 'number' && t > 0 ? new Date(t).toISOString() : t)
+const record = (change, madeIn, seenIn, info) => {
+  const delayFromResponse = info.seenAt && info.response?.respAt ? info.seenAt - info.response.respAt : null
+  const delayFromClick = info.seenAt && info.clickAt ? info.seenAt - info.clickAt : null
+  const delayFromCore = info.seenAt && info.core?.at ? info.seenAt - info.core.at : null
+  const reloads = info.reloadsDuring ?? null
+  const pass = info.seenAt !== null && info.seenAt > 0 && reloads === 0 && (delayFromCore ?? delayFromResponse ?? 99999) <= 2000
+  const row = {
+    change,
+    madeIn,
+    seenIn,
+    clickAt: iso(info.clickAt),
+    response: info.response ? { ...info.response, sentAt: iso(info.response.sentAt), respAt: iso(info.response.respAt) } : null,
+    core: info.core ? { ...info.core, at: iso(info.core.at) } : null,
+    seenAt: iso(info.seenAt),
+    delayMsFromResponse: delayFromResponse,
+    delayMsFromCoreRow: delayFromCore,
+    delayMsFromClick: delayFromClick,
+    observerReloadsDuringChange: reloads,
+    result: pass ? 'PASS' : 'FAIL',
+    screenshots: info.screenshots,
+    note: info.note ?? '',
+  }
+  result.changes.push(row)
+  c1.log(`change ${change}: ${row.result} seen ${row.seenAt} delay(resp) ${delayFromResponse} delay(core) ${delayFromCore}`)
+  return row
+}
+
+try {
+  // ── Sign-ins (both through the Login form) ──
+  result.consoles.supervisor.signIn = await lib.signIn(c1, 'andi.pratama')
+  result.consoles.investigator.signIn = await lib.signIn(c2, 'budi.santoso')
+  const a1 = await c1.pageFetch('GET', '/api/v1/auth/session')
+  const a2 = await c2.pageFetch('GET', '/api/v1/auth/session')
+  result.consoles.supervisor.role = a1.body?.operator?.role
+  result.consoles.supervisor.permissions = a1.body?.permissions
+  result.consoles.investigator.role = a2.body?.operator?.role
+  const nav1 = await lib.navFacts(c1)
+  result.consoles.supervisor.nav = nav1
+  await shotOne(c1, 'supervisor_dashboard_after_sign_in', 'Console 1 SUPERVISOR andi.pratama signed in (ADMINISTRATION group visible)')
+  await shotOne(c2, 'investigator_dashboard_after_sign_in', 'Console 2 INVESTIGATOR budi.santoso signed in (no ADMINISTRATION group)')
+  c1.takeNet()
+  c2.takeNet()
+
+  // ── Audit read as SUPERVISOR: the refusals of Part A ──
+  {
+    const refused = ['investigator', 'technician'].flatMap((r) => {
+      try {
+        return JSON.parse(readFileSync(join(ASSETS, `w2_part_a2_refusals_${r}.json`), 'utf8')).result.calls.map((x) => ({ ...x, role: r.toUpperCase() }))
+      } catch {
+        return []
+      }
+    })
+    const ad = await c1.pageFetch('GET', '/api/v1/audit?type=ACCESS_DENIED&order=DESC&limit=60')
+    const ed = await c1.pageFetch('GET', '/api/v1/audit?type=EXPORT_DENIED&order=DESC&limit=20')
+    const rowsA = ad.body?.rows ?? ad.body?.items ?? []
+    const rowsE = ed.body?.rows ?? ed.body?.items ?? []
+    const atOf = (x) => (typeof x.at === 'number' ? x.at : Date.parse(x.at))
+    const match = refused.map((call) => {
+      const t = Date.parse(call.at)
+      const row = rowsA.find((x) => x.details?.operationId === call.operation && Math.abs(atOf(x) - t) < 5000)
+      return {
+        operation: call.operation,
+        role: call.role,
+        status: call.status,
+        code: call.code,
+        row: row ? { seq: row.seq, type: row.type, category: row.category, at: iso(atOf(row)), actorId: row.actorId, deviceId: row.deviceId ?? null, details: row.details } : null,
+      }
+    })
+    const exportRows = rowsE
+      .filter((x) => atOf(x) > Date.parse(result.startedAt) - 3600000)
+      .slice(0, 6)
+      .map((x) => ({ seq: x.seq, type: x.type, category: x.category, at: iso(atOf(x)), actorId: x.actorId, details: x.details }))
+    result.auditRead = { reader: 'SUPERVISOR andi.pratama (console 1)', accessDeniedStatus: ad.status, exportDeniedStatus: ed.status, rowKeys: rowsA[0] ? Object.keys(rowsA[0]) : [], matches: match, exportDeniedRows: exportRows }
+    await c1.navigate(ORIGIN + '/security-audit', 4000)
+    await c1.waitFor('audit-table', true, 8000)
+    await c1.typeInto('[data-testid="audit-search"] input, input[data-testid="audit-search"]', 'Access denied', 'audit search')
+    await sleep(2000)
+    result.auditRead.uiRowsShown = await c1.evaluate(`[...document.querySelectorAll('[data-testid="audit-table"] tbody tr, [data-testid="audit-table"] [role="row"]')].slice(0, 14).map((r) => r.textContent.replace(/\\s+/g, ' ').trim().slice(0, 170))`)
+    await shotOne(c1, 'supervisor_security_audit_access_denied', 'SUPERVISOR: Security & Audit, audit log searched for "Access denied": the refusals of Part A (INVESTIGATOR and TECHNICIAN)')
+    await c1.typeInto('[data-testid="audit-search"] input, input[data-testid="audit-search"]', 'Export denied', 'audit search')
+    await sleep(2000)
+    result.auditRead.uiExportRowsShown = await c1.evaluate(`[...document.querySelectorAll('[data-testid="audit-table"] tbody tr, [data-testid="audit-table"] [role="row"]')].slice(0, 8).map((r) => r.textContent.replace(/\\s+/g, ' ').trim().slice(0, 170))`)
+    await shotOne(c1, 'supervisor_security_audit_export_denied', 'SUPERVISOR: Security & Audit, audit log searched for "Export denied": the two Export wizard attempts of Part A')
+    c1.takeNet()
+  }
+
+  // ── Preconditions for the session changes ──
+  const link = await c1.evaluate(`(async () => { const s = await (await fetch('/api/v1/network/status', { credentials: 'same-origin' })).json(); return s.tabletLink?.state ?? JSON.stringify(s).match(/"tabletLink":\\{"state":"([A-Z]+)"/)?.[1] ?? null })()`)
+  const cur0 = await c1.pageFetch('GET', '/api/v1/session/current')
+  result.preconditions = { tabletLink: link, currentSession: cur0.body?.session ? { id: cur0.body.session.id, state: cur0.body.session.state } : null }
+  if (cur0.body?.session && !['SEALED', 'CANCELLED'].includes(cur0.body.session.state)) throw new Error(`a session ${cur0.body.session.id} ${cur0.body.session.state} exists; not touching it`)
+
+  // ── Change 1: session started (made in console 2 INVESTIGATOR, seen in console 1 SUPERVISOR Dashboard) ──
+  await c1.navigate(ORIGIN + '/dashboard', 4000)
+  await c2.navigate(ORIGIN + '/session/new', 4000)
+  await c2.waitFor('page-session-new', true, 8000)
+  await c2.click('sn-scan')
+  await sleep(1800)
+  await c2.clickSel('[data-testid="sn-subject-SAKSI"]', 'subject')
+  await c2.typeInto('[data-testid="sn-subject-name"] input, input[data-testid="sn-subject-name"]', 'Saksi E2E W2 Live', 'subject name')
+  await sleep(400)
+  await c2.click('sn-next')
+  const gate = await c2.waitUntil(`(() => { const e = document.querySelector('[data-testid="sn-gate-outcome"]'); return !!e && ['block','warn','pass'].includes(e.getAttribute('data-phase')) })()`, 'gate', 45000)
+  const phase = await c2.evaluate(`document.querySelector('[data-testid="sn-gate-outcome"]')?.getAttribute('data-phase') ?? null`)
+  result.preconditions.precheck = { settled: gate, phase, blocked: await txt(c2, 'sn-gate-blocked') }
+  if (phase === 'warn') {
+    await c2.clickSel('[data-testid="sn-ack"]', 'ack')
+    await sleep(500)
+  }
+  let sessionRan = false
+  if (phase === 'pass' || phase === 'warn') {
+    await c2.click('sn-next')
+    await c2.waitFor('sn-start', true, 10000)
+    await sleep(1500)
+    const caption1 = await txt(c1, 'dashboard-hero')
+    const before = await shotBoth('session_start', 'before', 'SUPERVISOR Dashboard before the start (active session panel: setup)', 'INVESTIGATOR ready to press Start')
+    await watch(c1, 'start', `document.querySelector('[data-testid="session-recording"]') !== null`)
+    const docs0 = navCount(c1)
+    const clickAt = await c2.click('sn-start')
+    const seenAt = await seen(c1, 'start', 20000)
+    await sleep(1200)
+    const after = await shotBoth('session_start', 'after', 'SUPERVISOR Dashboard after the start, no reload: active session panel RECORDING', 'INVESTIGATOR after Start (countdown, then recording)')
+    const response = respOf(c2, '/start', 'POST', clickAt)
+    const core = await auditAt(c1, 'RECORDING_STARTED', clickAt)
+    record('Session started', 'console 2 INVESTIGATOR (Start New Session → Start)', 'console 1 SUPERVISOR (Dashboard, active session panel)', { clickAt, seenAt, response, core, reloadsDuring: navCount(c1) - docs0, screenshots: [...before, ...after], note: `hero before: ${caption1?.slice(0, 60)}` })
+    sessionRan = seenAt !== null
+    // make sure console 2 is on the Session Monitor
+    await c2.waitUntil(`(async () => { const r = await fetch('/api/v1/session/current', { credentials: 'same-origin' }); const j = await r.json(); return j.session?.state === 'RECORDING' })()`, 'recording', 20000)
+    await sleep(1500)
+    if ((await c2.evaluate('location.pathname')) !== '/session') await c2.navigate(ORIGIN + '/session', 3500)
+  } else {
+    result.preconditions.note = 'pre-check blocked: no session change could run'
+  }
+
+  if (sessionRan) {
+    // ── Change 2: session note (console 2 → console 1 Session Monitor timeline) ──
+    {
+    await c1.navigate(ORIGIN + '/session', 4000)
+    await sleep(1500)
+    const unique = `E2E-W2 live note ${new Date().toISOString().slice(11, 19)}`
+    await c2.click('sm-action-note')
+    await c2.waitFor('sm-note-drawer', true, 6000)
+    await sleep(600)
+    await c2.typeInto('[data-testid="sm-note-input"] textarea, textarea[data-testid="sm-note-input"]', unique, 'note')
+    await sleep(400)
+    const before = await shotBoth('session_note', 'before', 'SUPERVISOR Session Monitor before the note', `INVESTIGATOR note drawer with "${unique}" typed`)
+    await watch(c1, 'note', `(document.querySelector('[data-testid="sm-timeline-scroll"]')?.textContent ?? '').includes(${JSON.stringify(unique)})`)
+    const docs0 = navCount(c1)
+    const clickAt = await c2.click('sm-note-submit')
+    const seenAt = await seen(c1, 'note', 15000)
+    await sleep(1200)
+    const after = await shotBoth('session_note', 'after', `SUPERVISOR Session Monitor after the note, no reload: the timeline shows "${unique}"`, 'INVESTIGATOR after Submit ("Note added")')
+    const response = respOf(c2, '/notes', 'POST', clickAt)
+    const core = await auditAt(c1, 'NOTE_ADDED', clickAt)
+    record('Session note', 'console 2 INVESTIGATOR (Session Monitor → Session Note)', 'console 1 SUPERVISOR (Session Monitor, timeline)', { clickAt, seenAt, response, core, reloadsDuring: navCount(c1) - docs0, screenshots: [...before, ...after] })
+
+    }
+    // ── Change 3 + 4: session stopped and the Dashboard counter (console 2 → console 1 Dashboard) ──
+    {
+    await c1.navigate(ORIGIN + '/dashboard', 4000)
+    await sleep(1500)
+    const countBefore = await txt(c1, 'sealed-today-count')
+    await sleep(3000)
+    const box = await c2.evaluate(`(() => { const el = document.querySelector('[data-testid="sm-action-end"]'); el.scrollIntoView({ block: 'center' }); const r = el.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 } })()`)
+    await c2.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: box.x, y: box.y })
+    await c2.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: box.x, y: box.y, button: 'left', clickCount: 1 })
+    await sleep(1900)
+    await c2.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: box.x, y: box.y, button: 'left', clickCount: 1 })
+    await c2.waitFor('sm-end-dialog', true, 5000)
+    await sleep(500)
+    await c2.typeInto('[data-testid="sm-end-reason"] textarea, textarea[data-testid="sm-end-reason"]', 'E2E-W2 live check completed', 'end reason')
+    const before = await shotBoth('session_stop', 'before', `SUPERVISOR Dashboard before the stop (RECORDING; sealed today ${countBefore})`, 'INVESTIGATOR End Session dialog')
+    await watch(c1, 'stop', `document.querySelector('[data-testid="session-recording"]') === null && (document.querySelector('[data-testid="session-finalizing"]') !== null || document.querySelector('[data-testid="session-sealed"]') !== null)`)
+    await watch(c1, 'counter', `(document.querySelector('[data-testid="sealed-today-count"]')?.textContent ?? '').replace(/\\s+/g, '').trim() !== ${JSON.stringify(String(countBefore).replace(/\s+/g, ''))}`)
+    await watch(c2, 'sealedSelf', `document.querySelector('[data-testid="sm-final-sealed"]') !== null`)
+    const docs0 = navCount(c1)
+    const clickAt = await c2.click('sm-end-confirm')
+    const seenStop = await seen(c1, 'stop', 20000)
+    await sleep(1000)
+    const mid = await shotBoth('session_stop', 'after', 'SUPERVISOR Dashboard after the stop, no reload: active session panel FINALIZING/SEALED', 'INVESTIGATOR finalization after End Session')
+    const respStop = respOf(c2, '/stop', 'POST', clickAt)
+    const coreStop = await auditAt(c1, 'RECORDING_STOPPED', clickAt)
+    record('Session stopped', 'console 2 INVESTIGATOR (End Session, hold + confirm)', 'console 1 SUPERVISOR (Dashboard, active session panel)', { clickAt, seenAt: seenStop, response: respStop, core: coreStop, reloadsDuring: navCount(c1) - docs0, screenshots: [...before, ...mid] })
+    const seenCounter = await seen(c1, 'counter', 40000)
+    const sealedSelf = await seen(c2, 'sealedSelf', 20000)
+    await sleep(1500)
+    const countAfter = await txt(c1, 'sealed-today-count')
+    const after = await shotBoth('dashboard_counter', 'after', `SUPERVISOR Dashboard, no reload: Sealed evidence today ${countBefore} → ${countAfter}`, 'INVESTIGATOR: Evidence sealed (finalization done)')
+    const coreSeal = await auditAt(c1, 'EVIDENCE_SEALED', clickAt)
+    record('Dashboard counter "Sealed evidence today"', 'console 2 INVESTIGATOR (the session it ended was sealed by the Core)', 'console 1 SUPERVISOR (Dashboard counter)', {
+      clickAt,
+      seenAt: seenCounter,
+      response: null,
+      core: coreSeal,
+      reloadsDuring: navCount(c1) - docs0,
+      screenshots: [...before, ...after],
+      note: `count ${countBefore} → ${countAfter}; the acting console showed "Evidence sealed" at ${iso(sealedSelf)}; the counter follows the Core's seal (finalization takes about 7 s after the stop by design), so the delay is measured from the EVIDENCE_SEALED row`,
+    })
+    const cur = await c2.pageFetch('GET', '/api/v1/session/current')
+    result.sealedEvidence = cur.body?.session?.evidenceId ?? null
+    }
+  }
+
+  // ── Change 5: evidence review — SUPERVISOR archives an item, seen in the INVESTIGATOR's Evidence list ──
+  {
+    let evId = result.sealedEvidence
+    if (!evId) {
+      const l = await c1.pageFetch('GET', '/api/v1/evidence?limit=50')
+      evId = (l.body?.items ?? []).find((i) => i.status === 'SEALED')?.id ?? null
+    }
+    result.archivedEvidence = evId
+    if (evId) {
+      await c2.key('Escape', 'Escape', 27)
+      await c2.navigate(ORIGIN + '/evidence', 4000)
+      await c1.navigate(ORIGIN + `/evidence/${evId}`, 4000)
+      await c1.clickSel('[data-testid="evidence-more"]', 'more')
+      await c1.waitUntil(`document.querySelector('[role="menu"]') !== null`, 'menu', 5000)
+      await sleep(600)
+      const rowCond = `(() => { const row = [...document.querySelectorAll('[data-testid="evidence-table"] tr, [data-testid="evidence-table"] [role="row"]')].find((r) => r.textContent.includes(${JSON.stringify(evId)})); return !!row && /Archived/i.test(row.textContent) })()`
+      const rowBefore = await c2.evaluate(`(() => { const row = [...document.querySelectorAll('[data-testid="evidence-table"] tr, [data-testid="evidence-table"] [role="row"]')].find((r) => r.textContent.includes(${JSON.stringify(evId)})); return row ? row.textContent.replace(/\\s+/g,' ').trim().slice(0,160) : null })()`)
+      const before = await shotBoth('evidence_archive', 'before', `SUPERVISOR evidence ${evId}, More menu open (Archive enabled: EVIDENCE_REVIEW)`, `INVESTIGATOR Evidence list before the review: ${evId} Sealed`)
+      await watch(c2, 'archive', rowCond)
+      const docs0 = navCount(c2)
+      const clickAt = await c1.clickSel('[role="menu"] [role="menuitem"][data-key="archive"]', 'archive')
+      const seenAt = await seen(c2, 'archive', 15000)
+      await sleep(1200)
+      const rowAfter = await c2.evaluate(`(() => { const row = [...document.querySelectorAll('[data-testid="evidence-table"] tr, [data-testid="evidence-table"] [role="row"]')].find((r) => r.textContent.includes(${JSON.stringify(evId)})); return row ? row.textContent.replace(/\\s+/g,' ').trim().slice(0,160) : null })()`)
+      const after = await shotBoth('evidence_archive', 'after', `SUPERVISOR after Archive (op 43): ${evId} Archived`, `INVESTIGATOR Evidence list, no reload: ${evId} Archived`)
+      const response = respOf(c1, '/archive', 'POST', clickAt)
+      const core = await auditAt(c1, 'EVIDENCE_ARCHIVED', clickAt)
+      record('Evidence review (archive)', 'console 1 SUPERVISOR (Evidence detail → More → Archive)', 'console 2 INVESTIGATOR (Evidence list row)', { clickAt, seenAt, response, core, reloadsDuring: navCount(c2) - docs0, screenshots: [...before, ...after], note: `row before: ${rowBefore}; after: ${rowAfter}` })
+    }
+  }
+
+  // ── Change 6: storage state — SUPERVISOR changes the auto-archive policy, seen on the INVESTIGATOR's Storage page; then restored ──
+  for (const pass of ['change', 'restore']) {
+    await c2.navigate(ORIGIN + '/storage', 4000)
+    await c1.navigate(ORIGIN + '/storage', 4000)
+    const valueOf = `(() => { const dl = document.querySelector('.stor-policy-list'); if (!dl) return null; const d = [...dl.querySelectorAll('div')].find((x) => /Auto-archive/i.test(x.querySelector('dt')?.textContent ?? '')); return d?.querySelector('dd')?.textContent?.trim() ?? null })()`
+    const v0 = await c2.evaluate(valueOf)
+    await c1.click('storage-manage-open')
+    await c1.waitFor('storage-manage-drawer', true, 6000)
+    await sleep(900)
+    await c1.clickSel('[data-testid="storage-auto-archive"] [data-slot="switch-control"]', 'switch')
+    await sleep(500)
+    const before = await shotBoth(`storage_policy_${pass}`, 'before', `SUPERVISOR Manage Storage, auto-archive switched (${pass})`, `INVESTIGATOR Storage page before: auto-archive ${v0}`)
+    await watch(c2, `storage_${pass}`, `${valueOf} !== ${JSON.stringify(v0)}`)
+    const docs0 = navCount(c2)
+    const clickAt = await c1.click('storage-policy-apply')
+    const seenAt = await seen(c2, `storage_${pass}`, 15000)
+    await sleep(1200)
+    const v1 = await c2.evaluate(valueOf)
+    const after = await shotBoth(`storage_policy_${pass}`, 'after', `SUPERVISOR after Apply (op 55, ${pass})`, `INVESTIGATOR Storage page, no reload: auto-archive ${v0} → ${v1}`)
+    const response = respOf(c1, '/storage/policy', 'POST', clickAt)
+    const core = await auditAt(c1, 'STORAGE_POLICY_CHANGED', clickAt)
+    record(`Storage policy auto-archive (${pass})`, 'console 1 SUPERVISOR (Storage → Manage Storage → Apply)', 'console 2 INVESTIGATOR (Storage page, policy list)', { clickAt, seenAt, response, core, reloadsDuring: navCount(c2) - docs0, screenshots: [...before, ...after], note: `${v0} → ${v1}` })
+  }
+} catch (e) {
+  result.error = String(e.message || e)
+  try {
+    await shotOne(c1, 'live_error_supervisor', `driver error: ${result.error.slice(0, 60)}`)
+    await shotOne(c2, 'live_error_investigator', `driver error: ${result.error.slice(0, 60)}`)
+  } catch {}
+}
+
+// ── Sign out both consoles (their own sessions only), through the user menu ──
+for (const [name, c] of [['supervisor', c1], ['investigator', c2]]) {
+  try {
+    await c.key('Escape', 'Escape', 27)
+    await c.navigate(ORIGIN + '/dashboard', 3000)
+    await c.click('user-menu')
+    await c.waitUntil(`document.querySelector('[role="menu"]') !== null`, 'menu', 5000)
+    await sleep(500)
+    const at = await c.clickSel('[role="menu"] [role="menuitem"][data-key="signOut"]', 'sign out')
+    const back = await c.waitFor('page-login', true, 15000)
+    await sleep(1200)
+    const after = await c.pageFetch('GET', '/api/v1/auth/session')
+    const f = await shotOne(c, `${name}_signed_out_login`, `${name.toUpperCase()} console signed out (own session), Login page`)
+    result.signOut[name] = { at: iso(at), loginShown: back, sessionAfter: after.status, screenshot: f }
+  } catch (e) {
+    result.signOut[name] = { error: String(e.message || e) }
+  }
+}
+result.endedAt = lib.nowIso()
+for (const [name, c] of [['supervisor', c1], ['investigator', c2]]) {
+  result.consoles[name].inlineDataUrls = c.allRequests.filter((r) => /^(data|blob):/.test(r.url)).length
+  result.consoles[name].origins = [...new Set(c.allRequests.filter((r) => !/^(data|blob):/.test(r.url)).map((r) => { try { return new URL(r.url.replace('?…', '')).origin } catch { return r.url.slice(0, 30) } }))]
+  result.consoles[name].requests = c.allRequests.filter((r) => !/^(data|blob):/.test(r.url) && (r.url.includes('/api/') || r.type === 'WebSocket' || r.type === 'Document')).map((r) => `${new Date(r.at).toISOString().slice(11, 23)} ${r.method} ${r.url.replace(ORIGIN, '')} ${r.status}`)
+  result.consoles[name].sockets = c.sockets.map((s) => ({ at: iso(s.at), url: s.url }))
+  result.consoles[name].console = c.allConsole
+}
+lib.writeJson(join(ASSETS, 'w2_part_b_two_consoles.json'), result)
+console.log(lib.sanitize(JSON.stringify({ error: result.error ?? null, pre: result.preconditions, changes: result.changes.map((x) => [x.change, x.result, x.delayMsFromResponse, x.delayMsFromCoreRow, x.delayMsFromClick, x.observerReloadsDuringChange]), audit: result.auditRead?.matches?.map((m) => [m.role, m.operation, m.status, m.row?.seq ?? null]), signOut: result.signOut, origins: [result.consoles.supervisor.origins, result.consoles.investigator.origins], shots: n }, null, 1)))
+c1.close()
+c2.close()
+await lib.shutdown(b1)
+await lib.shutdown(b2)
+process.exit(0)

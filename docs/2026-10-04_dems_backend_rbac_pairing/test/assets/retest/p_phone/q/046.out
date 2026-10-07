@@ -1,0 +1,19 @@
+13:17:42.940 declared screen home
+13:17:42.980 device-host clock offset ms: -335, -335, -334, -334, -335
+13:17:43.143 screenrecord role_back_inv started (pid 99189) at 13:17:43.746
+13:17:43.793 mark i04 at 13:17:43.793
+13:17:43.826 press ur-role-confirm ok at 13:17:43.832
+13:17:43.873 until true at 13:17:43.919 after 46 ms => "Role of AKP Budi Santoso is now Investigator"
+13:17:43.963 slept 9000 ms
+13:17:53.014 screenrecord role_back_inv pulled; every frame extracted (passthrough)
+13:17:54.566 device-host clock offset ms: -334, -335, -335, -335, -335
+13:17:54.729 screencap 90_role_phone_home_investigator_enabled.png 13:17:54.729..13:17:55.134
+13:17:55.250 js => [["OPR-001","budi.santoso","INVESTIGATOR"],["OPR-002","andi.pratama","SUPERVISOR"],["OPR-003","rina.wijaya","TECHNICIAN"]]
+13:17:55.324 js => [[419,"ROLE_CHANGED","OPR-002","2026-10-06T03:43:46.164Z","Role of OPR-001 changed from TECHNICIAN to INVESTIGATOR"],[507,"ROLE_CHANGED","OPR-002","2026-10-06T06:16:30.445Z","Role of OPR-001 changed from INVESTIGATOR to TECHNICIAN"]]
+13:17:55.370 screenshot 91_role_web_after_back_investigator.png 13:17:55.370..13:17:55.473
+13:17:55.516 serverlog since i04 (5):
+    13:17:43.842 POST /api/v1/admin/users/:id/role 200
+    13:17:43.843 GET /api/v1/admin/users 200
+    13:17:43.845 GET /api/v1/admin/users 200
+    13:17:55.253 GET /api/v1/admin/users 200
+    13:17:55.328 GET /api/v1/audit 200

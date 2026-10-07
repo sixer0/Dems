@@ -1,0 +1,92 @@
+# FX-W in-memory mutation runs (vitest with mutate.config.mts: a load-time transform; no tree file changed)
+M1-baseline (no mutation) => applied:0 anchorErrors:0  Test Files 1 passed (1); Tests 15 passed (15);
+M1a Test signal gate back on DEVICE_MANAGE => applied:1 anchorErrors:0  Test Files 1 failed (1); Tests 3 failed | 12 passed (15);
+     × a SUPERVISOR (DIAGNOSTICS_RUN, no DEVICE_MANAGE) may send Test signal: the item is enabled with no role hint, one POST to operation 49, the Live toast
+     × while a Test signal is out both commands are disabled (LB-1 still holds for a role without DEVICE_MANAGE)
+     × R3: an INVESTIGATOR (DIAGNOSTICS_RUN) may send Test signal, as on the Devices page; Restart stays disabled with the role that holds DEVICE_MANAGE
+M1b old disabledKeys (both on canManage) => applied:1 anchorErrors:0  Test Files 1 failed (1); Tests 3 failed | 12 passed (15);
+     × a SUPERVISOR (DIAGNOSTICS_RUN, no DEVICE_MANAGE) may send Test signal: the item is enabled with no role hint, one POST to operation 49, the Live toast
+     × while a Test signal is out both commands are disabled (LB-1 still holds for a role without DEVICE_MANAGE)
+     × R3: an INVESTIGATOR (DIAGNOSTICS_RUN) may send Test signal, as on the Devices page; Restart stays disabled with the role that holds DEVICE_MANAGE
+M1c busy no longer disables Test signal => applied:1 anchorErrors:0  Test Files 1 failed (1); Tests 2 failed | 13 passed (15);
+     × while the command is out a second press sends nothing; the spinner replaces the icon only after LIVE_PENDING_REVEAL_MS; the toast follows the answer 148ms
+     × while a Test signal is out both commands are disabled (LB-1 still holds for a role without DEVICE_MANAGE) 160ms
+M2-baseline (no mutation) => applied:0 anchorErrors:0  Test Files 2 passed (2); Tests 15 passed (15);
+M2a chip back to this view's run only (state.verdict ?? NOT_RUN) => applied:1 anchorErrors:0  Test Files 2 failed (2); Tests 5 failed | 10 passed (15);
+     × a record holding PASS: the chip is PASS before any run, with the last verification's result, time and operator, and "Verify again" 163ms
+     × a record holding FAIL opens on FAIL 50ms
+     × the detail page of an item whose record holds a PASS opens the integrity tab on PASS, naming who verified 513ms
+     × the Core's record holds a PASS: the chip is PASS on open, with the time and the operator, and nothing was sent 927ms
+     × a new Verify shows the Core's new verdict, and the record's delta moves the last line to that run 169ms
+M2b storedVerification always null => applied:1 anchorErrors:0  Test Files 2 failed (2); Tests 6 failed | 9 passed (15);
+     × reads the record: none for NOT_RUN; the verdict, its time and the actor of the custody entry of that instant 12ms
+     × a record holding PASS: the chip is PASS before any run, with the last verification's result, time and operator, and "Verify again" 109ms
+     × a record holding FAIL opens on FAIL 47ms
+     × the detail page of an item whose record holds a PASS opens the integrity tab on PASS, naming who verified 474ms
+     × the Core's record holds a PASS: the chip is PASS on open, with the time and the operator, and nothing was sent 870ms
+     × a new Verify shows the Core's new verdict, and the record's delta moves the last line to that run 179ms
+M2c actor from the latest entry, not the entry of that instant => applied:1 anchorErrors:0  Test Files 1 failed | 1 passed (2); Tests 1 failed | 14 passed (15);
+     × reads the record: none for NOT_RUN; the verdict, its time and the actor of the custody entry of that instant 14ms
+M3a Metadata tab treats every joined package as the item's (the old rule) => applied:1 anchorErrors:0  Test Files 2 failed | 1 passed (3); Tests 2 failed | 16 passed (18);
+     × another record shows this item's record first, says the package is another record, and labels the package's documents 21ms
+     × the Core names package 0012 for EV-20261006-0012: the Core's record first, the notice, the package's documents labelled as that other record 95ms
+M3b packageDescribesItem drops the record check (any joined package) => applied:1 anchorErrors:0  Test Files 2 failed | 1 passed (3); Tests 3 failed | 15 passed (18);
+     × the join still gives the package (its media play), but only the package's own record counts as described by it 5ms
+     × another record shows this item's record first, says the package is another record, and labels the package's documents 16ms
+     × the Core names package 0012 for EV-20261006-0012: the Core's record first, the notice, the package's documents labelled as that other record 84ms
+M3c record check on the evidence ID only is not enough when the case number differs => applied:1 anchorErrors:0  Test Files 1 failed | 2 passed (3); Tests 1 failed | 17 passed (18);
+     × the join still gives the package (its media play), but only the package's own record counts as described by it 6ms
+M4-baseline (no mutation) => applied:0 anchorErrors:0  Test Files 2 passed (2); Tests 22 passed (22);
+M4a the scale is computed but not applied to the word => applied:1 anchorErrors:0  Test Files 1 failed | 1 passed (2); Tests 1 failed | 21 passed (22);
+     × ATTENTION in the 258 px ring gets a smaller font size through the display token; the word and its classes stay 61ms
+M4b no fit at all (scale always 1, the old look) => applied:1 anchorErrors:0  Test Files 1 failed | 1 passed (2); Tests 4 failed | 18 passed (22);
+     × fits ATTENTION (E2E-W1-5) at 1440 x 900 and at 390 x 844, keeping the fit air inside the ring 2ms
+     × also fits the other words whose ink crosses the 258 px ring (UNKNOWN, and CRITICAL by 1.2 px) 1ms
+     × is 1 without layout, never below the floor, and smaller for a wider word 2ms
+     × ATTENTION in the 258 px ring gets a smaller font size through the display token; the word and its classes stay 55ms
+M4c trigger at the fit air (a word that clears the ring would change) => applied:1 anchorErrors:0  Test Files 1 failed | 1 passed (2); Tests 1 failed | 21 passed (22);
+     × keeps every word that clears the ring at scale 1 (its look unchanged) 4ms
+M4d the word finds no ring root at mount (the parent-ref timing bug) => applied:1 anchorErrors:0  Test Files 1 failed | 1 passed (2); Tests 1 failed | 21 passed (22);
+     × ATTENTION in the 258 px ring gets a smaller font size through the display token; the word and its classes stay 69ms
+M4e fit ignores the vertical reach (centre-line chord) => applied:1 anchorErrors:0  Test Files 1 failed | 1 passed (2); Tests 3 failed | 19 passed (22);
+     × fits ATTENTION (E2E-W1-5) at 1440 x 900 and at 390 x 844, keeping the fit air inside the ring 2ms
+     × also fits the other words whose ink crosses the 258 px ring (UNKNOWN, and CRITICAL by 1.2 px) 1ms
+     × ATTENTION in the 258 px ring gets a smaller font size through the display token; the word and its classes stay 56ms
+M6a custody time back to one span of formatWibDateTime (the old cell) => applied:1 anchorErrors:0  Test Files 1 failed (1); Tests 1 failed | 10 passed (11);
+     × each time is a date token and a clock token, with the same words as before 28ms
+M6b the time cell keeps break-all (no word-break override; in-memory CSS text) => applied:1 anchorErrors:0  Test Files 1 failed (1); Tests 1 failed | 10 passed (11);
+     × the stylesheet keeps each token whole: no break inside the date or the clock (hashes keep breaking anywhere) 2ms
+M6c the date and clock tokens may wrap inside (no nowrap; in-memory CSS text) => applied:1 anchorErrors:0  Test Files 1 failed (1); Tests 1 failed | 10 passed (11);
+     × the stylesheet keeps each token whole: no break inside the date or the clock (hashes keep breaking anywhere) 2ms
+# M5 re-run on the final stylesheet (truncation scoped to the sm/xs tiers, 12:01); earlier M5 runs superseded
+M5-baseline (no mutation) => applied:0 anchorErrors:0  Test Files 1 passed (1); Tests 2 passed (2);
+M5a the flex-1 utility back on the strip item (beats the wrap rules) => applied:1 anchorErrors:0  Test Files 1 failed (1); Tests 1 failed | 1 passed (2);
+     × each cell sits in a `.dems-strip-item` wrapper without the `flex-1` utility, and its value text is a truncating span 666ms
+M5b stylesheet as before: the wrap basis on .dems-strip-cell (in-memory CSS text) => applied:1 anchorErrors:0  Test Files 1 failed (1); Tests 1 failed | 1 passed (2);
+     × the stylesheet wraps the items (three per row below 1024 px, two below 768 px) and ends a long value in an ellipsis 2ms
+M5d value text not wrapped in its truncating span => applied:1 anchorErrors:0  Test Files 1 failed (1); Tests 1 failed | 1 passed (2);
+     × each cell sits in a `.dems-strip-item` wrapper without the `flex-1` utility, and its value text is a truncating span 544ms
+M5e xs keeps three per row (no 45% basis; in-memory CSS text) => applied:1 anchorErrors:0  Test Files 1 failed (1); Tests 1 failed | 1 passed (2);
+     × the stylesheet wraps the items (three per row below 1024 px, two below 768 px) and ends a long value in an ellipsis 2ms
+M5f truncation applied at every tier (the desktop look would change; in-memory CSS text) => applied:1 anchorErrors:0  Test Files 1 failed (1); Tests 1 failed | 1 passed (2);
+     × the stylesheet wraps the items (three per row below 1024 px, two below 768 px) and ends a long value in an ellipsis 5ms
+M5c no ellipsis on the narrow value text (in-memory CSS text) => applied:1 anchorErrors:0  Test Files 1 failed (1); Tests 1 failed | 1 passed (2);
+     × the stylesheet wraps the items (three per row below 1024 px, two below 768 px) and ends a long value in an ellipsis 8ms
+# FX-W2 mutations (12:15)
+W2-baseline (no mutation) => applied:0 anchorErrors:0  Test Files 3 passed (3); Tests 20 passed (20);
+W2-M1 own-record rule in both modes again (the FX-W shape) => applied:1 anchorErrors:0  Test Files 1 failed | 1 passed (2); Tests 2 failed | 14 passed (16);
+     × Simulated mode (ruling of row FX-W2): a re-dated record keeps the package as its metadata, with no notice 12ms
+     × a simulator dated 2026-10-06: the detail page of item 0012 (re-dated ids) shows the package as its metadata and no notice 46ms
+W2-M2 own-record rule dropped in Live too => applied:1 anchorErrors:0  Test Files 1 failed | 1 passed (2); Tests 1 failed | 15 passed (16);
+     × the Core names package 0012 for EV-20261006-0012: the Core's record first, the notice, the package's documents labelled as that other record 56ms
+W2-M3 drawer title back to the fixed key => applied:1 anchorErrors:0  Test Files 1 failed (1); Tests 3 failed | 1 passed (4);
+     × a SUPERVISOR writes a "Supervisor note": drawer heading, dialog name and action subtitle 536ms
+     × an INVESTIGATOR writes an "Investigator note" 102ms
+     × the SUPERVISOR of the Core session gets "Supervisor note" 121ms
+W2-M4 action subtitle back to the fixed key => applied:1 anchorErrors:0  Test Files 1 failed (1); Tests 3 failed | 1 passed (4);
+     × a SUPERVISOR writes a "Supervisor note": drawer heading, dialog name and action subtitle 543ms
+     × an INVESTIGATOR writes an "Investigator note" 104ms
+     × the SUPERVISOR of the Core session gets "Supervisor note" 117ms
+W2-M5 the supervisor's drawer says Investigator note (old wording) => applied:1 anchorErrors:0  Test Files 1 failed (1); Tests 2 failed | 2 passed (4);
+     × a SUPERVISOR writes a "Supervisor note": drawer heading, dialog name and action subtitle 645ms
+     × the words match the timeline titles FX-C gives the note of each role, and the neutral fallback names no role 2ms

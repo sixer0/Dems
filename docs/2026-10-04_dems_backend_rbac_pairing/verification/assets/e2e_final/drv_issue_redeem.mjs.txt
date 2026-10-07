@@ -1,0 +1,140 @@
+// R-S step 3: ONE process from the issue to the redeem, so the pairing code is handed to nothing (adapted from
+// round 1's drv_03_issue_and_redeem.mjs.txt).
+//  - the web page (SUPERVISOR andi.pratama, already signed in, Paired Devices) issues ONE code by a real click;
+//  - the blur mask is injected BEFORE the click; the screenshot is taken only if the mask holds;
+//  - the digits are read from the page into one variable, compared twice, and handed to exactly one
+//    `adb -s emulator-5558 shell input text` call, only if the app is focused and no keyguard shows;
+//  - the app's redeem is read from its own [DEMS-LIVE] request line (polled every 250 ms). Only once it says 201
+//    (Live mode clears a redeemed code from the slots, use-pairing-flow.ts:222-223) and 500 ms more have passed,
+//    a 15 s `screenrecord --bugreport` starts, to show where the hand-off lands (2.4 s after the answer);
+//  - at the end the code is COUNTED (never shown) in every output file, the server log and the device logs.
+//   node --import tsx issue_redeem.mjs <prefix> <label>
+import { spawn } from 'node:child_process'
+import { readFileSync, readdirSync } from 'node:fs'
+import { join } from 'node:path'
+import { OUT, SERIAL, SERVER_LOG, adb, applyMask, auditRows, clockOffset, connect, deviceNow, deviceState, fmtAudit, fmtServer, hms, liveLines, log, maskCheck, pdFacts, screencap, serverLines, sleep, stamp, writeJson } from './lib.mjs'
+
+const [pp = '03', label = 'first'] = process.argv.slice(2)
+const result = { label, startedAt: stamp(), steps: {} }
+const page = await connect()
+const T0 = deviceNow()
+result.deviceT0 = T0
+result.clockBefore = clockOffset()
+log(`device T0 ${T0}; device clock minus host ${result.clockBefore.offsetMs} ms (bracket ${result.clockBefore.bracketMs} ms)`)
+
+const pre = deviceState()
+const facts0 = await pdFacts(page)
+log(`device: keyguard ${pre.keyguard}, app focused ${pre.appFocused}; web: ${facts0.href}, issue ${facts0.issueState}, rows ${JSON.stringify(facts0.rows.map((r) => `${r.id}:${r.state}`))}`)
+if (!pre.appFocused) { log('the app is not the focused window or a keyguard shows: NO code is issued, nothing typed'); process.exit(77) }
+if (!facts0.onPage || facts0.activeElsewhere) { log(`web not ready (onPage ${facts0.onPage}, active elsewhere ${facts0.activeElsewhere}): no code issued`); process.exit(3) }
+page.takeNetwork()
+
+// ── issue one code (mask first) ──
+await applyMask(page)
+const issueButton = (await page.evaluate(`document.querySelector('[data-testid="pd-issue"]') !== null`, 'issue button')) ? 'pd-issue' : 'pd-issue-new'
+const clickedAt = await page.clickTestId(issueButton)
+const codeShown = await page.waitFor('pd-code', true, 15000)
+await sleep(1600) // the scramble (600 ms) is over
+let secret = ''
+for (let i = 0; i < 12; i++) {
+  const a = String(await page.evaluate(`document.querySelector('[data-testid="pd-code"]')?.textContent?.replace(/\\s+/g, '') ?? ''`, 'read 1'))
+  await sleep(350)
+  const b = String(await page.evaluate(`document.querySelector('[data-testid="pd-code"]')?.textContent?.replace(/\\s+/g, '') ?? ''`, 'read 2'))
+  if (/^\d{6}$/.test(a) && a === b) { secret = a; break }
+}
+const mask = await maskCheck(page)
+const factsIssued = await pdFacts(page)
+let webShot = 'NOT TAKEN: the mask did not hold'
+if (mask.maskPresent && mask.transparent && mask.noShadow && mask.blurred && mask.qrHidden) webShot = (await page.screenshot(`${pp}_web_code_issued_blurred.png`)).file
+const netIssue = page.takeNetwork()
+const issueCall = netIssue.api.find((a) => a.method === 'POST' && a.path === '/api/v1/pairing/code')
+result.steps.issue = { button: issueButton, clickedAt: stamp(clickedAt), clickedAtMs: clickedAt, codeShown, codeReadStable: /^\d{6}$/.test(secret), mask, facts: factsIssued, screenshot: webShot, issueCall, network: netIssue }
+log(`issue clicked ${stamp(clickedAt)}; ${issueCall ? `${issueCall.method} ${issueCall.path} ${issueCall.status} done ${issueCall.done}` : 'issue call NOT seen'}; code shown ${codeShown}, read stable ${/^\d{6}$/.test(secret)} (not shown); mask ${JSON.stringify(mask)}; screenshot ${webShot}`)
+log(`issue panel: state ${factsIssued.issueState}, digits shown ${factsIssued.codeDigitCount}, QR ${factsIssued.qrShown}, countdown ${factsIssued.countdownSeconds} s, attempts "${factsIssued.attempts}"`)
+const issuedRows = await auditRows(page, 'PAIRING_CODE_ISSUED', 3)
+result.steps.issue.audit = issuedRows
+log(`audit PAIRING_CODE_ISSUED (newest): ${fmtAudit(issuedRows.rows[0])}`)
+if (!/^\d{6}$/.test(secret) || webShot.startsWith('NOT')) { log('stop: the code was not read or the mask did not hold; nothing typed'); writeJson(`${pp}_issue_and_redeem_${label}.json`, result); process.exit(4) }
+
+// ── type the code into the app (one adb call), submit with the keypad's go key ──
+const before = deviceState()
+if (!before.appFocused) { log('the focus changed before typing: NOTHING typed'); writeJson(`${pp}_issue_and_redeem_${label}.json`, result); process.exit(77) }
+const typedAt = Date.now()
+adb('shell', 'input', 'text', secret)
+log('typed the code into the focused field of the app: adb shell input text <not shown>')
+await sleep(700)
+const enterAt = Date.now()
+adb('shell', 'input', 'keyevent', '66')
+log("pressed the keypad's go key (KEYCODE_ENTER)")
+let redeem
+for (let waited = 0; waited < 160 && !redeem; waited++) { await sleep(250); redeem = liveLines(T0).find((l) => l.method === 'POST' && l.path === '/api/v1/pairing/redeem') }
+const seenAt = Date.now()
+result.steps.redeem = { typedAt: stamp(typedAt), enterAt: stamp(enterAt), appRedeemLine: redeem ? { ...redeem, deviceTime: stamp(Math.round(redeem.deviceEpoch * 1000)) } : 'NOT SEEN in 40 s', lineSeenByDriverAt: stamp(seenAt) }
+log(`the app's redeem request (device log): ${redeem ? `POST /api/v1/pairing/redeem ${redeem.status} at device ${stamp(Math.round(redeem.deviceEpoch * 1000))}; seen by this driver at ${hms(seenAt)}` : 'NOT SEEN in 40 s'}`)
+
+// ── the hand-off, recorded only after a 201 (the slots are empty by then) ──
+let rec = null
+if (redeem?.status === '201') {
+  await sleep(500)
+  const recAt = Date.now()
+  rec = { startedAt: stamp(recAt), proc: spawn('adb', ['-s', SERIAL, 'shell', 'screenrecord', '--bugreport', '--size', SERIAL === 'emulator-5556' ? '864x540' : '540x1212', '--time-limit', '12', '/sdcard/e2f_handoff.mp4'], { stdio: 'ignore' }) }
+  rec.done = new Promise((resolve) => rec.proc.on('exit', resolve))
+  log(`screen recording of the hand-off started at host ${hms(recAt)} (12 s, 540 px)`)
+} else log('NO recording: the redeem did not answer 201 (the slots may still hold digits)')
+
+// the web panel follows the redeem over its socket
+const redeemedShown = await page.waitFor('pd-code-redeemed', true, 15000)
+const redeemedSeenAt = Date.now()
+await sleep(1500)
+const factsRedeemed = await pdFacts(page)
+const webRedeemedShot = (await page.screenshot(`${pp}_web_code_redeemed_device_paired.png`)).file
+log(`web: redeemed panel shown ${redeemedShown} at ${stamp(redeemedSeenAt)}; "${factsRedeemed.redeemedText}"; rows ${JSON.stringify(factsRedeemed.rows)}; summary ${JSON.stringify(factsRedeemed.summary)}`)
+const success = await auditRows(page, 'PAIRING_SUCCESS', 3)
+log(`audit PAIRING_SUCCESS (newest): ${fmtAudit(success.rows[0])}`)
+result.steps.redeem.web = { redeemedShown, redeemedSeenAt: stamp(redeemedSeenAt), facts: factsRedeemed, screenshot: webRedeemedShot, network: page.takeNetwork(), audit: success }
+
+if (rec) {
+  await rec.done
+  await sleep(800)
+  adb('pull', '/sdcard/e2f_handoff.mp4', join(OUT, `${pp}_phone_handoff_screenrecord.mp4`))
+  adb('shell', 'rm', '-f', '/sdcard/e2f_handoff.mp4')
+  result.steps.redeem.recording = { startedAt: rec.startedAt, file: `${pp}_phone_handoff_screenrecord.mp4` }
+  log(`recording pulled: ${pp}_phone_handoff_screenrecord.mp4`)
+}
+const after = deviceState()
+const phoneShot = after.keyguard !== 'false' ? 'NOT TAKEN: keyguard' : redeem?.status !== '201' ? 'NOT TAKEN: the redeem did not succeed (the slots may hold digits)' : screencap(`${pp}_phone_after_redeem_login.png`)
+log(`device after the redeem: keyguard ${after.keyguard}, focus ${after.focus.slice(0, 100)}; screencap ${JSON.stringify(phoneShot)}`)
+const lines = liveLines(T0).map((l) => `${stamp(Math.round(l.deviceEpoch * 1000))} ${l.method} ${l.path} ${l.status}`)
+result.steps.redeem.phone = { state: after, screencap: phoneShot, appRequestsSinceT0: lines }
+log(`app requests since T0:\n   ${lines.join('\n   ')}`)
+let secureEntries = []
+try { secureEntries = adb('shell', `run-as com.dems.demo.tablet sh -c 'grep -o "name=\\"[^\\"]*\\"" shared_prefs/SecureStore.xml'`).trim().split('\n').filter(Boolean) } catch { secureEntries = [] }
+result.steps.redeem.phone.secureStoreEntryNames = secureEntries
+log(`secure-store entry NAMES now: ${secureEntries.join(', ') || '(none)'}`)
+result.clockAfter = clockOffset()
+log(`device clock minus host after: ${result.clockAfter.offsetMs} ms (bracket ${result.clockAfter.bracketMs} ms)`)
+result.serverLines = serverLines(clickedAt - 1000).filter((l) => (l.route ?? '').startsWith('/api/v1/pairing') || (l.principal ?? '').startsWith('device:') || l.msg.startsWith('socket'))
+for (const l of result.serverLines) log(`server ${fmtServer(l)}`)
+
+// ── the count-only scan for the issued code (digit-bounded matches), then forget it ──
+const bounded = (text) => { if (secret === '') return -1; let n = 0, i = 0; while ((i = text.indexOf(secret, i)) !== -1) { const b = text[i - 1], a = text[i + secret.length]; if (!/\d/.test(b ?? '') && !/\d/.test(a ?? '')) n++; i += 1 } return n }
+const raw = (text) => (secret === '' ? -1 : text.split(secret).length - 1)
+const spaced = (text) => (secret === '' ? -1 : text.split(secret.split('').join(' ')).length - 1)
+const scan = {}
+for (const name of readdirSync(OUT)) { const t = readFileSync(join(OUT, name)).toString('latin1'); scan[name] = { bounded: bounded(t), raw: raw(t), spaced: spaced(t) } }
+const server = readFileSync(SERVER_LOG, 'utf8'); scan['main-server.log'] = { bounded: bounded(server), raw: raw(server), spaced: spaced(server) }
+const js = adb('logcat', '-d', '-T', T0, '-s', 'ReactNativeJS:V'); scan['device JS log since T0'] = { bounded: bounded(js), raw: raw(js), spaced: spaced(js) }
+const whole = adb('logcat', '-d'); scan['whole device log (every tag)'] = { bounded: bounded(whole), raw: raw(whole), spaced: spaced(whole) }
+const store = adb('shell', `run-as com.dems.demo.tablet sh -c 'sqlite3 databases/RKStorage "select key || char(1) || value from catalystLocalStorage"'`); scan['app AsyncStorage values'] = { bounded: bounded(store), raw: raw(store), spaced: spaced(store) }
+const resultText = JSON.stringify(result); scan['this result JSON'] = { bounded: bounded(resultText), raw: raw(resultText), spaced: spaced(resultText) }
+secret = ''
+const hits = Object.entries(scan).filter(([, v]) => v.bounded !== 0 || v.spaced !== 0)
+result.codeScan = { method: 'the issued 6 digits counted as a digit-bounded token and as digits separated by spaces in each place (raw substring counts kept to show chance hits inside longer numbers or compressed data); the value is not recorded', places: Object.keys(scan).length, boundedOrSpacedHits: hits, rawHits: Object.entries(scan).filter(([, v]) => v.raw !== 0).map(([k, v]) => `${k}:${v.raw}`) }
+log(`code scan: ${Object.keys(scan).length} places; digit-bounded or spaced hits ${hits.length === 0 ? 0 : JSON.stringify(hits)}; raw substring hits ${JSON.stringify(result.codeScan.rawHits)}`)
+const cred = (t) => t.split('\n').filter((l) => /dvc_|ses_|bio_/.test(l)).length
+result.credentialLines = { deviceJs: cred(js), server: cred(server) }
+log(`credential/token lines (dvc_, ses_, bio_): device JS ${cred(js)}; server log ${cred(server)}`)
+result.finishedAt = stamp()
+writeJson(`${pp}_issue_and_redeem_${label}.json`, result)
+page.close()
+process.exit(redeem && redeem.status === '201' ? 0 : 2)

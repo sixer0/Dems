@@ -3,7 +3,15 @@
  * thumbnail, session ID (mono), date and time, subject with its `SubjectTypeChip`, duration (mono),
  * the state `StatusChip` and a chevron. A sealed session whose summary is still unacknowledged
  * carries a gold "Summary pending" chip. The current session's row shows a live duration on the
- * simulator clock (1 Hz, that row only). On tablets the selected row carries glow e2 (§2.4).
+ * simulator clock (1 Hz, that row only). On tablets the selected row carries glow e2 (§2.4): the
+ * always-mounted `SelectionGlow` and a card border in both states (CF2-B, RF-T-1 — the Sessions hub
+ * showed the same empty card).
+ *
+ * Closing-fix CF-M2, defect R-T-4: in a list pane (medium, expanded) the row is narrower than on a
+ * phone, so it uses `PANE_ROW`: a smaller poster, the subject chip and the duration on a line that
+ * may wrap between them (never inside a value), and one line for the duration. With the
+ * list's 360 dp minimum (`sessions-screen.tsx`, `LIST_MIN_WIDTH`) the ID, date, chip and duration
+ * each fit on one line. The phone row (`PHONE_ROW`) is unchanged.
  */
 import { Image } from 'expo-image';
 import { Card, PressableFeedback } from 'heroui-native';
@@ -18,7 +26,7 @@ import { StatusChip, SubjectTypeChip } from '@/components/kit';
 import { HERO_FOCUS, HERO_STILL } from '@/components/media/brand-assets';
 import { withAlpha } from '@/components/media/color';
 import { DEMO_MEDIA_LIVE, demoMediaForEvidence, type DemoMediaAsset } from '@/components/media/demo-media';
-import { GlowLayer } from '@/motion';
+import { ROW_CARD_BORDER, SelectionGlow } from '@/components/composed/selection-glow';
 import { SessionStatusChip } from './session-status-chip';
 import { evidenceSuffix, handOffFor, type SessionRow as SessionRowModel } from './sessions-model';
 import { useLiveElapsedSeconds } from './use-sessions-data';
@@ -39,6 +47,13 @@ export function posterForRow(row: Pick<SessionRowModel, 'evidenceId' | 'active'>
   return { source: HERO_STILL, still: true };
 }
 
+/** Card padding of a row (both sides). */
+export const ROW_CARD_PADDING = spacing[1] + 2;
+/** The phone row's poster and gap (the step-82 values, unchanged). */
+export const PHONE_ROW = { thumbWidth: 88, thumbHeight: 68, gap: spacing[2] } as const;
+/** The list-pane row's poster (R-T-4); the gap stays the phone's. */
+export const PANE_ROW = { thumbWidth: 64, thumbHeight: 50, gap: PHONE_ROW.gap } as const;
+
 function SessionRowImpl({ row, selected, isMultiPane, onPress }: SessionRowProps) {
   const { t } = useTranslation();
   const date = formatDate(row.startedAt, DATE_PATTERNS.dateTimeMinutes);
@@ -49,7 +64,6 @@ function SessionRowImpl({ row, selected, isMultiPane, onPress }: SessionRowProps
 
   return (
     <View style={styles.wrap}>
-      {selected ? <GlowLayer level={2} radius={radius.px.xl} testID={`session-row-glow-${row.id}`} /> : null}
       <PressableFeedback
         testID={`session-row-${row.id}`}
         accessibilityRole="button"
@@ -65,9 +79,9 @@ function SessionRowImpl({ row, selected, isMultiPane, onPress }: SessionRowProps
         onPress={() => onPress(row)}
         style={styles.pressable}
       >
-        <Card className="rounded-xl" style={[styles.card, selected ? styles.cardSelected : null]}>
+        <Card className="rounded-xl" style={[styles.card, selected ? styles.cardSelected : null]} testID={`session-row-card-${row.id}`}>
           <View style={styles.row}>
-            <View style={styles.thumbWrap}>
+            <View style={[styles.thumbWrap, isMultiPane ? styles.thumbPane : null]} testID={`session-row-thumb-${row.id}`}>
               <Image
                 source={poster.source}
                 style={styles.thumb}
@@ -96,12 +110,17 @@ function SessionRowImpl({ row, selected, isMultiPane, onPress }: SessionRowProps
               <Text maxFontSizeMultiplier={1.2} numberOfLines={1} style={styles.subject}>
                 {row.subjectName}
               </Text>
-              <View style={styles.chips}>
+              <View style={[styles.chips, isMultiPane ? styles.chipsPane : null]} testID={`session-row-chips-${row.id}`}>
                 <SubjectTypeChip type={row.subjectType} size="sm" testID={`session-row-subject-${row.id}`} />
                 {duration === null ? (
-                  <LiveDuration testID={`session-row-duration-${row.id}`} />
+                  <LiveDuration testID={`session-row-duration-${row.id}`} oneLine={isMultiPane} />
                 ) : (
-                  <Text maxFontSizeMultiplier={1.2} style={styles.duration} testID={`session-row-duration-${row.id}`}>
+                  <Text
+                    maxFontSizeMultiplier={1.2}
+                    style={styles.duration}
+                    testID={`session-row-duration-${row.id}`}
+                    {...(isMultiPane ? { numberOfLines: 1 } : {})}
+                  >
                     {duration}
                   </Text>
                 )}
@@ -123,6 +142,7 @@ function SessionRowImpl({ row, selected, isMultiPane, onPress }: SessionRowProps
           </View>
         </Card>
       </PressableFeedback>
+      <SelectionGlow selected={selected} radius={radius.px.xl} testID={`session-row-glow-${row.id}`} />
     </View>
   );
 }
@@ -131,10 +151,10 @@ function SessionRowImpl({ row, selected, isMultiPane, onPress }: SessionRowProps
 export const SessionRow = memo(SessionRowImpl);
 
 /** The current session's recording time, ticking once per simulator second (this text only). */
-function LiveDuration({ testID }: { testID: string }) {
+function LiveDuration({ testID, oneLine }: { testID: string; oneLine: boolean }) {
   const seconds = useLiveElapsedSeconds();
   return (
-    <Text maxFontSizeMultiplier={1.2} style={[styles.duration, styles.durationLive]} testID={testID}>
+    <Text maxFontSizeMultiplier={1.2} style={[styles.duration, styles.durationLive]} testID={testID} {...(oneLine ? { numberOfLines: 1 } : {})}>
       {formatDuration(seconds * 1_000)}
     </Text>
   );
@@ -143,10 +163,12 @@ function LiveDuration({ testID }: { testID: string }) {
 const styles = StyleSheet.create({
   wrap: { marginBottom: spacing[1] + 2, borderRadius: radius.px.xl },
   pressable: { borderRadius: radius.px.xl },
-  card: { padding: spacing[1] + 2 },
-  cardSelected: { borderColor: palette.gold, borderWidth: 1 },
-  row: { flexDirection: 'row', alignItems: 'center', gap: spacing[2] },
-  thumbWrap: { width: 88, height: 68, borderRadius: radius.px.lg, overflow: 'hidden', backgroundColor: derived.surfaceSecondary },
+  // CF2-B (RF-T-1): a border in both states, only its colour follows the selection (`ROW_CARD_BORDER`).
+  card: { padding: ROW_CARD_PADDING, ...ROW_CARD_BORDER },
+  cardSelected: { borderColor: palette.gold },
+  row: { flexDirection: 'row', alignItems: 'center', gap: PHONE_ROW.gap },
+  thumbWrap: { width: PHONE_ROW.thumbWidth, height: PHONE_ROW.thumbHeight, borderRadius: radius.px.lg, overflow: 'hidden', backgroundColor: derived.surfaceSecondary },
+  thumbPane: { width: PANE_ROW.thumbWidth, height: PANE_ROW.thumbHeight },
   thumb: { width: '100%', height: '100%' },
   liveBadge: {
     position: 'absolute',
@@ -167,6 +189,8 @@ const styles = StyleSheet.create({
   meta: { fontFamily: fontFamily.native.normal, fontSize: typography.caption.size, lineHeight: typography.caption.lineHeight, color: palette.gray },
   subject: { fontFamily: fontFamily.native.medium, fontSize: typography.body.size, lineHeight: typography.body.lineHeight, color: derived.foreground2 },
   chips: { flexDirection: 'row', alignItems: 'center', gap: spacing[1], marginTop: 2 },
+  // R-T-4: when chip and duration do not fit side by side, the duration moves to the next line whole.
+  chipsPane: { flexWrap: 'wrap', rowGap: 2 },
   duration: {
     fontFamily: fontFamily.native.mono,
     fontSize: typography.data.size,

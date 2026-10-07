@@ -49,6 +49,7 @@ describe('the scan itself', () => {
       'src/core/limits.ts',
       'src/core/payload-rules.ts',
       'src/core/pipeline.ts',
+      'src/core/sweeper.ts',
       'src/core/types.ts',
       'src/core/unit-of-work.ts',
       'src/core/unit-statement.ts',

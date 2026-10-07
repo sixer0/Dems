@@ -1,0 +1,62 @@
+2026-10-04 12:45:45 WIB
+$ DEMS_TEST_STEP=51b npm run test:db -w @dems/core-server -- src/db/reset/__tests__/reset-failures.db.test.ts   (run A, in the background)
+
+> @dems/core-server@0.2.0 test:db
+> vitest run --project db src/db/reset/__tests__/reset-failures.db.test.ts
+
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/apps/core-server
+
+[test:db] PostgreSQL 18.4 on 127.0.0.1:4432; helper role dems_owner, code under test dems_app; run prefix dems_test_step_51b_tmdc09nu_
+[test:db] stale sweep: dropped 0; kept 0 of younger runs, 0 of live runs, 0 unrecognised; 0 failed
+[test:db] template dems_test_step_51b_tmdc09nu_tpl_schema: built in 76 ms (create 27 ms, hook 47 ms)
+[test:db] template dems_test_step_51b_tmdc09nu_tpl_seed: built in 118 ms (create 38 ms, hook 79 ms)
+ ❯ |db| src/db/reset/__tests__/reset-failures.db.test.ts (48 tests | 1 failed) 28757ms
+   ❯ R-4: the staging database cannot be created (1)
+     × a database of that name appears after R-2: CREATE fails with 42P04, the target is untouched 3125ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |db| src/db/reset/__tests__/reset-failures.db.test.ts > R-4: the staging database cannot be created > a database of that name appears after R-2: CREATE fails with 42P04, the target is untouched
+AssertionError: sessions of the routine: expected [ { database: 'postgres', …(2) } ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   {
++     "application": "dems-db-reset-failures",
++     "database": "postgres",
++     "role": "dems_owner",
++   },
++ ]
+
+ ❯ expectNothingLeft src/db/reset/__tests__/reset-failures.db.test.ts:100:90
+     98|   expect(catalog[`${database.name}_next`], 'staging database').toBeUnd…
+     99|   expect(catalog[`${database.name}_prev`], 'previous database').toBeUn…
+    100|   expect(await waitForSessionsGone(maintenance, APPLICATION), 'session…
+       |                                                                                          ^
+    101|   const slot = guardResetTarget(database.name, internals).lockSlot;
+    102|   expect(await resetLockHeld(maintenance, slot), 'advisory lock').toBe…
+ ❯ expectUntouched src/db/reset/__tests__/reset-failures.db.test.ts:109:3
+ ❯ src/db/reset/__tests__/reset-failures.db.test.ts:442:5
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 47 passed (48)
+   Start at  12:45:45
+   Duration  29.72s (tests 99%, import 1%, transform 1%)
+
+[test:db] forced drops that needed a retry: 0
+[test:db] teardown: dropped 3 database(s) in 129 ms; 0 remain with the run prefix dems_test_step_51b_tmdc09nu_
+npm error Lifecycle script `test:db` failed with error:
+npm error code 1
+npm error path /Users/gsp-budi/Documents/DEMS/apps/core-server
+npm error workspace @dems/core-server@0.2.0
+npm error location /Users/gsp-budi/Documents/DEMS/apps/core-server
+npm error command failed
+npm error command sh -c vitest run --project db src/db/reset/__tests__/reset-failures.db.test.ts
+exit=1

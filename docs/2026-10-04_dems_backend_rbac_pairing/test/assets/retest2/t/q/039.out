@@ -1,0 +1,17 @@
+tap 1350,1431 at 17:15:32.397
+slept 3000 ms
+screencap E3_00_home_before_run3.png (774603 bytes) at 17:15:35.684
+mark E run 3: Start Session from Home at 17:15:35.684
+tap 2210,1034 at 17:15:35.743
+slept 5000 ms
+tap 1736,379 at 17:15:40.797
+slept 1500 ms
+tap 760,568 at 17:15:42.354
+slept 1000 ms
+tap 1178,808 at 17:15:43.411
+slept 1200 ms
+text typed (Uji Tiga); editor inputType 0x2001
+slept 1000 ms
+tap 1178,248 at 17:15:45.968
+slept 1500 ms
+screencap E3_01_wizard_step1_filled.png (743408 bytes) at 17:15:47.756

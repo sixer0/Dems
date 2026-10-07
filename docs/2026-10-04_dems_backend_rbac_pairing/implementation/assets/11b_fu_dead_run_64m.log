@@ -1,0 +1,61 @@
+# W11b follow-up, decision D111: the stopped run dems_test_step_64m_tmdoqjg5_* removed through the helper's own entry TestRun.dropDeadRun. 2026-10-04 18:13:08 WIB
+
+## 1. BEFORE: the test runs in the cluster, as the owner role
+read at 18:13:08 WIB as dems_owner on 127.0.0.1:4432, PostgreSQL 18.4
+pg_database: 10 row(s); outside the test prefix: dems_demo (dems_owner), dems_lane_1 (dems_owner), dems_lane_2 (dems_owner), dems_lane_3 (dems_owner), postgres (dems_admin), template0 (dems_admin), template1 (dems_admin)
+test runs with a database: 1
+  dems_test_step_64m_tmdoqjg5_*  started 17:20:43 (52 min ago; the stale sweep takes a dead run after 6 h, at 23:20:43)  databases 3  no session holds its liveness lock
+      client sessions on its databases: none; backends without a role: 0
+      dems_test_step_64m_tmdoqjg5_f01_backpressure
+      dems_test_step_64m_tmdoqjg5_tpl_schema
+      dems_test_step_64m_tmdoqjg5_tpl_seed
+clone lock (442002, 0): free; liveness locks held in all: 0
+
+## 2. Processes of this user that run Vitest at this instant (pid, started): a run stopped at 17:21 would show an older one if any part of it were alive
+  (end of list)
+
+## 3. What the entry refuses, on the real cluster: each is refused before any statement
+$ drop-dead-run.mts dems_demo
+[18:13:08.434] REFUSED (GUARD_NOT_A_TEST_DATABASE): refused before any statement: "dems_demo" is not the prefix of a test run (dems_test_<label>_<stamp>_, with its last underscore).
+[18:13:08.436] caller's run closed: dropped 0, remaining 0
+  exit=1
+$ drop-dead-run.mts dems_lane_1_
+[18:13:08.526] REFUSED (GUARD_NOT_A_TEST_DATABASE): refused before any statement: "dems_lane_1_" is not the prefix of a test run (dems_test_<label>_<stamp>_, with its last underscore).
+[18:13:08.528] caller's run closed: dropped 0, remaining 0
+  exit=1
+$ drop-dead-run.mts postgres
+[18:13:08.617] REFUSED (GUARD_NOT_A_TEST_DATABASE): refused before any statement: "postgres" is not the prefix of a test run (dems_test_<label>_<stamp>_, with its last underscore).
+[18:13:08.619] caller's run closed: dropped 0, remaining 0
+  exit=1
+$ drop-dead-run.mts template0
+[18:13:08.711] REFUSED (GUARD_NOT_A_TEST_DATABASE): refused before any statement: "template0" is not the prefix of a test run (dems_test_<label>_<stamp>_, with its last underscore).
+[18:13:08.713] caller's run closed: dropped 0, remaining 0
+  exit=1
+$ drop-dead-run.mts dems_test_step_64m_tmdoqjg5
+[18:13:08.804] REFUSED (GUARD_NOT_A_TEST_DATABASE): refused before any statement: "dems_test_step_64m_tmdoqjg5" is not the prefix of a test run (dems_test_<label>_<stamp>_, with its last underscore).
+[18:13:08.805] caller's run closed: dropped 0, remaining 0
+  exit=1
+$ drop-dead-run.mts dems_test_step_64m_tmdoqjg5_tpl_schema
+[18:13:08.897] REFUSED (GUARD_NOT_A_TEST_DATABASE): refused before any statement: "dems_test_step_64m_tmdoqjg5_tpl_schema" is not the prefix of a test run (dems_test_<label>_<stamp>_, with its last underscore).
+[18:13:08.898] caller's run closed: dropped 0, remaining 0
+  exit=1
+
+## 4. The named run
+$ DEMS_TEST_STEP=33c node node_modules/tsx/dist/cli.mjs <scratch>/drop-dead-run.mts dems_test_step_64m_tmdoqjg5_
+[18:13:08.988] caller: run dems_test_step_33c_tmdr5wgf_* as dems_owner on 127.0.0.1:4432, PostgreSQL 18.4
+[18:13:08.988] asked to remove the run dems_test_step_64m_tmdoqjg5_*
+[18:13:12.128] dropped 3 database(s) in 3140 ms:
+    dems_test_step_64m_tmdoqjg5_f01_backpressure
+    dems_test_step_64m_tmdoqjg5_tpl_schema
+    dems_test_step_64m_tmdoqjg5_tpl_seed
+    remaining with that prefix: 0
+    forced drops that needed a retry: 0
+[18:13:12.130] caller's run closed: dropped 0, remaining 0
+exit=0
+
+## 5. AFTER
+read at 18:13:12 WIB as dems_owner on 127.0.0.1:4432, PostgreSQL 18.4
+pg_database: 7 row(s); outside the test prefix: dems_demo (dems_owner), dems_lane_1 (dems_owner), dems_lane_2 (dems_owner), dems_lane_3 (dems_owner), postgres (dems_admin), template0 (dems_admin), template1 (dems_admin)
+test runs with a database: 0
+  dems_test_step_64m_tmdoqjg5_*  no database with this prefix exists
+clone lock (442002, 0): free; liveness locks held in all: 0

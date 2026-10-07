@@ -1,0 +1,18 @@
+mark R2 tablet stop probe
+shot R2_08_stop_probe_01
+shot R2_08_stop_probe_02
+shot R2_08_stop_probe_03
+shot R2_08_stop_probe_04
+shot R2_08_stop_probe_05
+shot R2_08_stop_probe_06
+shot R2_08_stop_probe_07
+shot R2_08_stop_probe_08
+shot R2_08_stop_probe_09
+shot R2_08_stop_probe_10
+shot R2_08_stop_probe_11
+shot R2_08_stop_probe_12
+shot R2_08_stop_probe_13
+shot R2_08_stop_probe_14
+shot R2_08_stop_probe_15
+shot R2_08_stop_probe_16
+noshot

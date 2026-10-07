@@ -1,0 +1,358 @@
+{
+  "window": [
+    "10:01:40",
+    "10:04:30"
+  ],
+  "serverLines": [
+    {
+      "at": "10:01:42.236 (epoch 1791342102.236)",
+      "atMs": 1791342102236,
+      "method": "GET",
+      "route": "/api/v1/session/current",
+      "status": 200,
+      "principal": "operator:OPR-002",
+      "msg": "request completed",
+      "code": null,
+      "closedBy": null,
+      "kind": null
+    },
+    {
+      "at": "10:01:42.256 (epoch 1791342102.256)",
+      "atMs": 1791342102256,
+      "method": "POST",
+      "route": "/api/v1/session/case-number",
+      "status": 200,
+      "principal": "operator:OPR-002",
+      "msg": "request completed",
+      "code": null,
+      "closedBy": null,
+      "kind": null
+    },
+    {
+      "at": "10:01:42.262 (epoch 1791342102.262)",
+      "atMs": 1791342102262,
+      "method": "POST",
+      "route": "/api/v1/session",
+      "status": 201,
+      "principal": "operator:OPR-002",
+      "msg": "request completed",
+      "code": null,
+      "closedBy": null,
+      "kind": null
+    },
+    {
+      "at": "10:01:42.324 (epoch 1791342102.324)",
+      "atMs": 1791342102324,
+      "method": "POST",
+      "route": "/api/v1/session/:id/precheck",
+      "status": 202,
+      "principal": "operator:OPR-002",
+      "msg": "request completed",
+      "code": null,
+      "closedBy": null,
+      "kind": null
+    },
+    {
+      "at": "10:01:42.369 (epoch 1791342102.369)",
+      "atMs": 1791342102369,
+      "method": "GET",
+      "route": "/api/v1/session/current",
+      "status": 200,
+      "principal": "operator:OPR-002",
+      "msg": "request completed",
+      "code": null,
+      "closedBy": null,
+      "kind": null
+    },
+    {
+      "at": "10:01:42.875 (epoch 1791342102.875)",
+      "atMs": 1791342102875,
+      "method": "GET",
+      "route": "/api/v1/session/current",
+      "status": 200,
+      "principal": "operator:OPR-002",
+      "msg": "request completed",
+      "code": null,
+      "closedBy": null,
+      "kind": null
+    },
+    {
+      "at": "10:01:43.383 (epoch 1791342103.383)",
+      "atMs": 1791342103383,
+      "method": "GET",
+      "route": "/api/v1/session/current",
+      "status": 200,
+      "principal": "operator:OPR-002",
+      "msg": "request completed",
+      "code": null,
+      "closedBy": null,
+      "kind": null
+    },
+    {
+      "at": "10:01:43.890 (epoch 1791342103.890)",
+      "atMs": 1791342103890,
+      "method": "GET",
+      "route": "/api/v1/session/current",
+      "status": 200,
+      "principal": "operator:OPR-002",
+      "msg": "request completed",
+      "code": null,
+      "closedBy": null,
+      "kind": null
+    },
+    {
+      "at": "10:01:44.396 (epoch 1791342104.396)",
+      "atMs": 1791342104396,
+      "method": "GET",
+      "route": "/api/v1/session/current",
+      "status": 200,
+      "principal": "operator:OPR-002",
+      "msg": "request completed",
+      "code": null,
+      "closedBy": null,
+      "kind": null
+    },
+    {
+      "at": "10:01:44.902 (epoch 1791342104.902)",
+      "atMs": 1791342104902,
+      "method": "GET",
+      "route": "/api/v1/session/current",
+      "status": 200,
+      "principal": "operator:OPR-002",
+      "msg": "request completed",
+      "code": null,
+      "closedBy": null,
+      "kind": null
+    },
+    {
+      "at": "10:01:45.407 (epoch 1791342105.407)",
+      "atMs": 1791342105407,
+      "method": "GET",
+      "route": "/api/v1/session/current",
+      "status": 200,
+      "principal": "operator:OPR-002",
+      "msg": "request completed",
+      "code": null,
+      "closedBy": null,
+      "kind": null
+    },
+    {
+      "at": "10:01:45.915 (epoch 1791342105.915)",
+      "atMs": 1791342105915,
+      "method": "GET",
+      "route": "/api/v1/session/current",
+      "status": 200,
+      "principal": "operator:OPR-002",
+      "msg": "request completed",
+      "code": null,
+      "closedBy": null,
+      "kind": null
+    },
+    {
+      "at": "10:01:46.420 (epoch 1791342106.420)",
+      "atMs": 1791342106420,
+      "method": "GET",
+      "route": "/api/v1/session/current",
+      "status": 200,
+      "principal": "operator:OPR-002",
+      "msg": "request completed",
+      "code": null,
+      "closedBy": null,
+      "kind": null
+    },
+    {
+      "at": "10:01:46.927 (epoch 1791342106.927)",
+      "atMs": 1791342106927,
+      "method": "GET",
+      "route": "/api/v1/session/current",
+      "status": 200,
+      "principal": "operator:OPR-002",
+      "msg": "request completed",
+      "code": null,
+      "closedBy": null,
+      "kind": null
+    },
+    {
+      "at": "10:01:46.934 (epoch 1791342106.934)",
+      "atMs": 1791342106934,
+      "method": "POST",
+      "route": "/api/v1/session/:id/start",
+      "status": 200,
+      "principal": "operator:OPR-002",
+      "msg": "request completed",
+      "code": null,
+      "closedBy": null,
+      "kind": null
+    },
+    {
+      "at": "10:01:47.860 (epoch 1791342107.860)",
+      "atMs": 1791342107860,
+      "method": "GET",
+      "route": "/api/v1/session/current",
+      "status": 200,
+      "principal": "operator:OPR-002",
+      "msg": "request completed",
+      "code": null,
+      "closedBy": null,
+      "kind": null
+    },
+    {
+      "at": "10:03:50.387 (epoch 1791342230.387)",
+      "atMs": 1791342230387,
+      "method": "POST",
+      "route": "/api/v1/session/:id/stop",
+      "status": 202,
+      "principal": "operator:OPR-002",
+      "msg": "request completed",
+      "code": null,
+      "closedBy": null,
+      "kind": null
+    }
+  ],
+  "audit": {
+    "SESSION_CREATED": [
+      {
+        "seq": 208,
+        "id": "AUD-000208",
+        "at": "2026-10-07T03:01:42.260Z",
+        "atMs": 1791342102260,
+        "type": "SESSION_CREATED",
+        "category": "SESSION",
+        "severity": "INFO",
+        "actorId": "OPR-002",
+        "deviceId": null,
+        "sessionId": "SES-20261007-0030",
+        "message": "Session SES-20261007-0030 created",
+        "details": {
+          "caseNumber": "LP/2026/1007-0014",
+          "subjectType": "SAKSI"
+        }
+      },
+      {
+        "seq": 191,
+        "id": "AUD-000191",
+        "at": "2026-10-07T02:33:07.446Z",
+        "atMs": 1791340387446,
+        "type": "SESSION_CREATED",
+        "category": "SESSION",
+        "severity": "INFO",
+        "actorId": "OPR-002",
+        "deviceId": null,
+        "sessionId": "SES-20261007-0029",
+        "message": "Session SES-20261007-0029 created",
+        "details": {
+          "caseNumber": "LP/2026/1007-0013",
+          "subjectType": "SAKSI"
+        }
+      }
+    ],
+    "RECORDING_STARTED": [
+      {
+        "seq": 210,
+        "id": "AUD-000210",
+        "at": "2026-10-07T03:01:46.931Z",
+        "atMs": 1791342106931,
+        "type": "RECORDING_STARTED",
+        "category": "SESSION",
+        "severity": "INFO",
+        "actorId": "OPR-002",
+        "deviceId": null,
+        "sessionId": "SES-20261007-0030",
+        "message": "Recording started (SES-20261007-0030)",
+        "details": {
+          "timeSource": "GNSS"
+        }
+      },
+      {
+        "seq": 193,
+        "id": "AUD-000193",
+        "at": "2026-10-07T02:33:25.747Z",
+        "atMs": 1791340405747,
+        "type": "RECORDING_STARTED",
+        "category": "SESSION",
+        "severity": "INFO",
+        "actorId": "OPR-002",
+        "deviceId": null,
+        "sessionId": "SES-20261007-0029",
+        "message": "Recording started (SES-20261007-0029)",
+        "details": {
+          "timeSource": "GNSS"
+        }
+      }
+    ],
+    "RECORDING_STOPPED": [
+      {
+        "seq": 220,
+        "id": "AUD-000220",
+        "at": "2026-10-07T03:03:50.383Z",
+        "atMs": 1791342230383,
+        "type": "RECORDING_STOPPED",
+        "category": "SESSION",
+        "severity": "INFO",
+        "actorId": "OPR-002",
+        "deviceId": null,
+        "sessionId": "SES-20261007-0030",
+        "message": "Recording stopped (SES-20261007-0030)",
+        "details": {
+          "reason": "W98 run A web stop",
+          "durationMs": 123452
+        }
+      },
+      {
+        "seq": 198,
+        "id": "AUD-000198",
+        "at": "2026-10-07T02:34:02.405Z",
+        "atMs": 1791340442405,
+        "type": "RECORDING_STOPPED",
+        "category": "SESSION",
+        "severity": "INFO",
+        "actorId": "OPR-002",
+        "deviceId": null,
+        "sessionId": "SES-20261007-0029",
+        "message": "Recording stopped (SES-20261007-0029)",
+        "details": {
+          "reason": "FXR checklist stop on web 2",
+          "durationMs": 36658
+        }
+      }
+    ],
+    "EVIDENCE_SEALED": [
+      {
+        "seq": 221,
+        "id": "AUD-000221",
+        "at": "2026-10-07T03:03:57.388Z",
+        "atMs": 1791342237388,
+        "type": "EVIDENCE_SEALED",
+        "category": "EVIDENCE",
+        "severity": "INFO",
+        "actorId": null,
+        "deviceId": null,
+        "sessionId": "SES-20261007-0030",
+        "message": "Evidence EV-20261007-0020 sealed",
+        "details": {
+          "tracks": 4,
+          "sizeBytes": 281196222,
+          "manifestHash": "4e2747f89609f628fd1d5f27344bef7fdd46664df281001833e61b577049f0e0"
+        }
+      },
+      {
+        "seq": 199,
+        "id": "AUD-000199",
+        "at": "2026-10-07T02:34:09.410Z",
+        "atMs": 1791340449410,
+        "type": "EVIDENCE_SEALED",
+        "category": "EVIDENCE",
+        "severity": "INFO",
+        "actorId": null,
+        "deviceId": null,
+        "sessionId": "SES-20261007-0029",
+        "message": "Evidence EV-20261007-0019 sealed",
+        "details": {
+          "tracks": 4,
+          "sizeBytes": 83498778,
+          "manifestHash": "a72598672136e5e4a55446e3af3023a391d15e1e35a78603abf2a8c6fb6bfd82"
+        }
+      }
+    ]
+  }
+}

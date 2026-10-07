@@ -1,0 +1,74 @@
+{
+  "since": "09:25:00",
+  "types": "SESSION_CREATED,RECORDING_STARTED,RECORDING_STOPPED,EVIDENCE_SEALED",
+  "rows": [
+    {
+      "seq": 163,
+      "id": "AUD-000163",
+      "at": "2026-10-07T02:25:16.079Z",
+      "atMs": 1791339916079,
+      "type": "SESSION_CREATED",
+      "category": "SESSION",
+      "severity": "INFO",
+      "actorId": "OPR-002",
+      "deviceId": null,
+      "sessionId": "SES-20261007-0028",
+      "message": "Session SES-20261007-0028 created",
+      "details": {
+        "caseNumber": "LP/2026/1007-0012",
+        "subjectType": "SAKSI"
+      }
+    },
+    {
+      "seq": 165,
+      "id": "AUD-000165",
+      "at": "2026-10-07T02:25:34.517Z",
+      "atMs": 1791339934517,
+      "type": "RECORDING_STARTED",
+      "category": "SESSION",
+      "severity": "INFO",
+      "actorId": "OPR-002",
+      "deviceId": null,
+      "sessionId": "SES-20261007-0028",
+      "message": "Recording started (SES-20261007-0028)",
+      "details": {
+        "timeSource": "GNSS"
+      }
+    },
+    {
+      "seq": 189,
+      "id": "AUD-000189",
+      "at": "2026-10-07T02:30:25.731Z",
+      "atMs": 1791340225731,
+      "type": "RECORDING_STOPPED",
+      "category": "SESSION",
+      "severity": "INFO",
+      "actorId": "OPR-002",
+      "deviceId": null,
+      "sessionId": "SES-20261007-0028",
+      "message": "Recording stopped (SES-20261007-0028)",
+      "details": {
+        "reason": "FXR checklist stop on web",
+        "durationMs": 291214
+      }
+    },
+    {
+      "seq": 190,
+      "id": "AUD-000190",
+      "at": "2026-10-07T02:30:31.799Z",
+      "atMs": 1791340231799,
+      "type": "EVIDENCE_SEALED",
+      "category": "EVIDENCE",
+      "severity": "INFO",
+      "actorId": null,
+      "deviceId": null,
+      "sessionId": "SES-20261007-0028",
+      "message": "Evidence EV-20261007-0018 sealed",
+      "details": {
+        "tracks": 4,
+        "sizeBytes": 663320778,
+        "manifestHash": "9a78207fbc4cb54a5859fe45728d4d334e87188c9ee7a8210b433f6ebb87e3cf"
+      }
+    }
+  ]
+}

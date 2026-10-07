@@ -1,0 +1,12 @@
+## 2026-10-04 18:45:23 WIB end state of blueprint row 70 (W48)
+session: role=dems_owner server=18.4 port=4432 postmaster started 2026-10-04 07:14:26.046351+07
+databases with this row's prefix (dems_test_step_70_*): 0
+test databases of all rows at this moment: 0
+project databases: dems_demo, dems_lane_1, dems_lane_2, dems_lane_3
+sessions on this row's databases still open: 0
+## .locks/postgres.pid: 19121
+## process 19121: 19121 Sun Oct  4 07:14:26 2026     /Users/gsp-budi/Documents/DEMS/node_modules/@embedded-postgres/darwin-arm64/native/bin/postgres
+## listeners on loopback held by node processes (lsof), with the ports of the plan named:
+COMMAND PID NAME
+postgres 19121 127.0.0.1:4432
+## vitest runners of this row still alive (pgrep -f 'pairing-lifecycle|w48'): 0

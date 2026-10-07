@@ -1,0 +1,43 @@
+{
+  "since": "09:15:00",
+  "types": "ROLE_CHANGED,ACCESS_DENIED",
+  "rows": [
+    {
+      "seq": 156,
+      "id": "AUD-000156",
+      "at": "2026-10-07T02:15:17.535Z",
+      "atMs": 1791339317535,
+      "type": "ROLE_CHANGED",
+      "category": "SECURITY",
+      "severity": "INFO",
+      "actorId": "OPR-002",
+      "deviceId": null,
+      "sessionId": null,
+      "message": "Role of OPR-001 changed from INVESTIGATOR to TECHNICIAN",
+      "details": {
+        "to": "TECHNICIAN",
+        "from": "INVESTIGATOR",
+        "reason": "W96 role change R1",
+        "targetOperatorId": "OPR-001"
+      }
+    },
+    {
+      "seq": 157,
+      "id": "AUD-000157",
+      "at": "2026-10-07T02:16:03.375Z",
+      "atMs": 1791339363375,
+      "type": "ACCESS_DENIED",
+      "category": "SECURITY",
+      "severity": "WARNING",
+      "actorId": "OPR-001",
+      "deviceId": null,
+      "sessionId": null,
+      "message": "Access denied: role TECHNICIAN lacks SESSION_START (createSession)",
+      "details": {
+        "role": "TECHNICIAN",
+        "permission": "SESSION_START",
+        "operationId": "createSession"
+      }
+    }
+  ]
+}

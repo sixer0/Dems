@@ -60,7 +60,7 @@ export function DiagnosticsSheet({ isOpen, onClose, onRunAgain, live = false, ru
                 onClose={onClose}
                 onRunAgain={onRunAgain}
                 closeLabel={t('features.devices.diagnostics.close')}
-                subtitleKey={live ? 'features.devices.live.diagnosticsSubtitle' : 'system.diagnostics.subtitle'}
+                subtitleKey={live ? 'system.live.diagnosticsSubtitle' : 'system.diagnostics.subtitle'}
                 runAgainBusy={runAgainBusy}
                 runAgainPending={runAgainPending}
               />

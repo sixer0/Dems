@@ -1,0 +1,30 @@
+2026-10-05 22:57:38 WIB
+$ npm run test -w @dems/shared -- --maxWorkers=2
+
+> @dems/shared@0.1.0 test
+> vitest run --maxWorkers=2
+
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/packages/shared
+
+
+ Test Files  68 passed (68)
+      Tests  1814 passed (1814)
+   Start at  22:57:38
+   Duration  10.22s (tests 57%, import 34%, transform 8%, worker 1%)
+
+    Isolate  68 workers spawned · ~68ms startup each (spawn + environment, per file)
+             at least ~2.25s faster with isolate: false — reuses workers across files instead of one per file
+
+exit 0
+22:57:49
+$ npm run typecheck -w @dems/shared
+> @dems/shared@0.1.0 typecheck
+> tsc --noEmit
+
+exit 0
+$ npm run lint -w @dems/shared
+> @dems/shared@0.1.0 lint
+> oxlint
+
+exit 0

@@ -12,7 +12,8 @@ import type { ResourceTree } from '@/i18n/resources';
  * copy (`mobile.*`). Only what this screen alone says lives here.
  *
  * Backend task W82 added, additively, `preferences.coreLinkHintLive*` (the third segment) and
- * `live.*` (the words of LIVE mode); no existing value changed.
+ * `live.*` (the words of LIVE mode); no existing value changed. The closing copy round moved three of
+ * the `live.*` words to the shared `system.live.*` (D177 DN-5).
  */
 export const settingsEn = {
   back: 'Back',
@@ -127,11 +128,11 @@ export const settingsEn = {
     // Core is seeded from, [SP:AC-B-17]); the Core decides every call.
     permissions: 'Permissions',
     permissionsNote: 'The Core server checks every action against your role.',
-    // S2-7: the Core's diagnostics run and update.
-    diagnosticsSubtitle: 'Eight health checks on the Core, one after another.',
+    // S2-7: the Core's diagnostics run and update. The diagnostics subtitle, the Install label and the
+    // started toast are the web console's shared `system.live.diagnosticsSubtitle`, `.install` and
+    // `.startedToast` (row W76): this row's own three keys were merged into them in the closing copy
+    // round (decision D177 DN-5, W83 ledger #92). The note has no web twin and stays here.
     updateNote: 'The Core server runs a demonstration update: no software is installed.',
-    install: 'Install update',
-    updateStarted: 'Installing v{{version}}',
     // AC-C-52: the Demo controls act on the Core, so every connected console sees them.
     demoNote: 'Demo only. Faults are injected on the Core server, and every connected console sees them.',
     demoFlagOff: 'Demo controls are turned off on the Core server. They appear when it runs with its demo flag on.',

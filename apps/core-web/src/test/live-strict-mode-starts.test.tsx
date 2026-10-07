@@ -223,7 +223,7 @@ const ALLOWED: readonly { file: string; token: string; why: string }[] = [
   {
     file: 'devices/device-drawer.tsx',
     token: 'invalidateQueries(',
-    why: 'CONTRACT-GAP-W70-1 refresh: the ref starts at the mount value of `tabletLink.changedAt`, so the mount run and StrictMode\'s second run send nothing; a later change runs once (no remount)',
+    why: 'RESIDUAL-W70-1 (W83 ledger #45) refresh: the ref starts at the mount value of `tabletLink.changedAt`, so the mount run and StrictMode\'s second run send nothing; a later change runs once (no remount)',
   },
 ]
 

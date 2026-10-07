@@ -176,6 +176,23 @@ describe('LB-6, LB-7: no usable answer', () => {
     expect(shown).toHaveLength(1)
   })
 
+  it('FXR-W W92-13: after an accepted command (an export\'s paged walk) the outage and starting sentences drop "Nothing was changed"', () => {
+    const offline = presenter()
+    expect(offline.present(new LiveTransportError('CORE_OFFLINE'), { afterAcceptedCommand: true })).toEqual({ kind: 'OFFLINE' })
+    expect(offline.shown).toEqual([{ tone: 'danger', title: 'Core server unreachable.', description: undefined }])
+    resetCoreErrorPresenter() // one coalescing gate for both kinds; each case starts with it open
+    const starting = presenter()
+    const error = rejected(failure({ code: 'NOT_READY', status: 503, kind: 'NOT_READY', transport: 'CORE_OFFLINE' }))
+    expect(starting.present(error, { afterAcceptedCommand: true })).toEqual({ kind: 'STARTING' })
+    expect(starting.shown).toEqual([{ tone: 'danger', title: 'The Core server is starting.', description: undefined }])
+    // Without the flag the sentences are unchanged.
+    resetCoreErrorPresenter()
+    const plain = presenter()
+    plain.present(new LiveTransportError('CORE_OFFLINE'))
+    expect(plain.shown[0]?.title).toBe('Core server unreachable. Nothing was changed.')
+    expect(getMissingI18nKeys()).toEqual([])
+  })
+
   it('a 503 of the dev proxy with the backend down is an outage, not a start (WT-4: no envelope of the Core)', () => {
     const { present, shown } = presenter()
     const error = rejected(failure({ code: 'CONTRACT_VIOLATION', status: 503, kind: 'CONTRACT_VIOLATION', transport: 'CORE_OFFLINE' }))

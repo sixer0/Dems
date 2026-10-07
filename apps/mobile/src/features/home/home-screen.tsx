@@ -19,11 +19,23 @@ import {
 } from '@dems/shared/tokens';
 import { TONE_ICONS } from '@/lib/tone-icons';
 import { triggerHaptic } from '@/motion';
+import { useCoreLink, type CoreLinkSource } from '@/runtime';
 import { PulseRing } from './pulse-ring';
 import { useHealth } from './use-health';
 
 /** `slow` is the Motion proof mode (`demsdemo://?motion=slow`, masterplan/01_specs.md §5.6). */
 export type MotionMode = 'normal' | 'slow';
+
+/**
+ * E2E-P-2 (E-fix row FX-M2): the proof card names the data source the app really uses, from the
+ * runtime's Core link (`useCoreLink().source`), instead of always saying "the local mock-core". The
+ * Heartbeat and Service panels below follow the same source (`useHeartbeat`, `useHealth`).
+ */
+export const STACK_PROOF_SOURCE_LINE: Readonly<Record<CoreLinkSource, string>> = {
+  SIMULATED: 'Data source: Simulated. The Core runs inside the app; Heartbeat and Service below probe the local mock-core over adb reverse.',
+  HEARTBEAT: 'Data source: mock-core heartbeat. The Core link follows the local mock-core over adb reverse.',
+  LIVE: 'Data source: Live. Data, Heartbeat and Service come from the Core server over adb reverse.',
+};
 
 /** Rev 3 (D17): two panes at >= 900 dp, one column below (phone portrait, narrow tablet). */
 export const TWO_PANE_MIN_WIDTH = 900;
@@ -136,6 +148,7 @@ export function HomeScreen({ motionMode }: HomeScreenProps) {
 
 function HeroCard() {
   const { toast } = useToast();
+  const { source } = useCoreLink();
   const secure = BADGES.SECURE;
   const SecureIcon = TONE_ICONS[secure.icon];
 
@@ -155,8 +168,10 @@ function HeroCard() {
       </Card.Header>
       <Card.Body>
         <Text className="text-body text-muted">
-          Mobile stack proof: HeroUI Native on Uniwind, Reanimated, Skia, Expo Router and TanStack
-          Query, wired to the local mock-core over adb reverse.
+          Mobile stack proof: HeroUI Native on Uniwind, Reanimated, Skia, Expo Router and TanStack Query.
+        </Text>
+        <Text testID="stack-proof-source" className="text-body text-muted">
+          {STACK_PROOF_SOURCE_LINE[source]}
         </Text>
       </Card.Body>
       <Card.Footer>

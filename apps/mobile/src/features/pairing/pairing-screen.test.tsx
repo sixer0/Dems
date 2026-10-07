@@ -22,7 +22,16 @@ jest.mock('@shopify/react-native-skia', () =>
     .createSkiaMock(),
 );
 
-const mockRouter = { back: jest.fn(), replace: jest.fn(), push: jest.fn(), navigate: jest.fn(), canGoBack: jest.fn(() => true) };
+const mockRouter = {
+  back: jest.fn(),
+  replace: jest.fn(),
+  push: jest.fn(),
+  navigate: jest.fn(),
+  canGoBack: jest.fn(() => true),
+  // Row FX-M1 (E2E-S-1): the signed-out hand-off resets the stack to the boot router.
+  canDismiss: jest.fn(() => true),
+  dismissAll: jest.fn(),
+};
 jest.mock('expo-router', () => ({
   useRouter: () => mockRouter,
   useIsFocused: () => true,
@@ -94,6 +103,7 @@ describe('Pairing screen', () => {
     resetMissingKeys();
     jest.clearAllMocks();
     mockRouter.canGoBack.mockImplementation(() => true);
+    mockRouter.canDismiss.mockImplementation(() => true);
   });
 
   afterEach(() => {
@@ -152,21 +162,42 @@ describe('Pairing screen', () => {
       /^Last pairing audit, #\d+ Tablet paired · \d\d:\d\d:\d\d$/,
     );
     expect(trigger).toHaveBeenCalledWith('pairingSuccess');
-    // Signed out: the hand-off goes back to sign-in.
+    // Signed out: the hand-off goes on to sign-in.
     expect(textOf('pairing-continue')).toBe('Continue to sign-in');
     expect(screen.getByTestId('pairing-handoff')).toBeTruthy();
 
-    expect(mockRouter.back).not.toHaveBeenCalled();
+    expect(mockRouter.replace).not.toHaveBeenCalled();
     await advance(test, PAIR_TIMELINE.handoffAfter);
-    expect(mockRouter.back).toHaveBeenCalledTimes(1);
+    // Row FX-M1 (E2E-S-1): never "back" to whatever lies underneath (it was Stack Check on the
+    // phone); the stack is reset and the boot router opens Login.
+    expect(mockRouter.back).not.toHaveBeenCalled();
+    expect(mockRouter.dismissAll).toHaveBeenCalledTimes(1);
+    expect(mockRouter.replace).toHaveBeenCalledTimes(1);
+    expect(mockRouter.replace).toHaveBeenCalledWith('/');
+    expect(mockRouter.dismissAll.mock.invocationCallOrder[0]!).toBeLessThan(mockRouter.replace.mock.invocationCallOrder[0]!);
     // Done after the hand-off does not navigate twice.
     fireEvent.press(screen.getByTestId('pairing-continue'));
-    expect(mockRouter.back).toHaveBeenCalledTimes(1);
+    expect(mockRouter.replace).toHaveBeenCalledTimes(1);
+    expect(mockRouter.back).not.toHaveBeenCalled();
     trigger.mockRestore();
+  });
+
+  it('signed in, with Settings underneath: Done goes back to it (row FX-M1 keeps the signed-in hand-off)', async () => {
+    const test = await mount({ signIn: true });
+    typeCode(DEMO_PAIRING_CODE);
+    fireEvent.press(screen.getByTestId('pairing-pair'));
+    await advance(test, PAIR_TIMELINE.commitAt);
+    expect(pairing(test).state).toBe('PAIRED');
+    expect(textOf('pairing-continue')).toBe('Done');
+    fireEvent.press(screen.getByTestId('pairing-continue'));
+    expect(mockRouter.back).toHaveBeenCalledTimes(1);
+    expect(mockRouter.replace).not.toHaveBeenCalled();
+    expect(mockRouter.dismissAll).not.toHaveBeenCalled();
   });
 
   it('without a screen underneath (deep link) the hand-off replaces to the boot router', async () => {
     mockRouter.canGoBack.mockImplementation(() => false);
+    mockRouter.canDismiss.mockImplementation(() => false);
     const test = await mount({ signIn: true });
     typeCode(DEMO_PAIRING_CODE);
     // The keypad's submit key pairs as well as the button.

@@ -1,0 +1,10 @@
+10:01:43.307 tapid settings-section-header-back at 95,216 "Back"
+10:01:46.396 slept 2000 ms
+10:01:48.439 mark a16 at 10:01:48.440
+10:01:48.498 tap 540,1049
+10:01:48.670 slept 2500 ms
+10:01:51.223 declared screen settings-notifications
+10:01:51.273 screencap 18_settings_notifications.png 10:01:51.273..10:01:52.072
+10:01:52.335 ids(11): screen-settings-section@540,1102 ; settings-section-header@540,216 ; settings-section-header-back@95,216 "Back" ; settings-section-notifications@540,1247 ; settings-notifications@540,920 ; settings-notifications-categories@540,920 ; settings-notify-devices@933,550 "Cameras and microphones, on" ; settings-notify-storage@933,735 "Storage, on" ; settings-notify-time@933,920 "Time sources, on" ; settings-notify-system@933,1105 "Enclosure and system, on" ; settings-notify-critical@933,1343 "Critical alerts, on"
+10:01:54.587 serverlog since a16 (0):
+    

@@ -1,0 +1,15 @@
+
+> @dems/core-server@0.2.0 test:db:drop-run
+> tsx test/drop-dead-run.ts dems_demo
+
+[10:52:57.566] caller: run dems_test_step_b2br2_tmf1g9ht_* as dems_owner on 127.0.0.1:4432, PostgreSQL 18.4
+[10:52:57.567] asked to remove the run dems_demo*
+[10:52:57.567] REFUSED (GUARD_NOT_A_TEST_DATABASE): refused before any statement: "dems_demo" is not the prefix of a test run (dems_test_<label>_<stamp>_, with its last underscore).
+[10:52:57.570] caller's run closed: dropped 0, remaining 0
+npm error Lifecycle script `test:db:drop-run` failed with error:
+npm error code 1
+npm error path /Users/gsp-budi/Documents/DEMS/apps/core-server
+npm error workspace @dems/core-server@0.2.0
+npm error location /Users/gsp-budi/Documents/DEMS/apps/core-server
+npm error command failed
+npm error command sh -c tsx test/drop-dead-run.ts dems_demo

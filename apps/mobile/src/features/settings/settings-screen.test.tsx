@@ -36,6 +36,12 @@ jest.mock('expo-router', () => ({
   useRouter: () => mockRouter,
   useIsFocused: () => true,
 }));
+// CF-M2 (R-P-3): the System rows open their tab at its root through `useOpenTabRoot` (the route tree
+// test `navigation/__tests__/settings-tab-root.test.tsx` proves what that does to the tab stacks).
+const mockOpenTabRoot = jest.fn();
+jest.mock('@/navigation/tab-root', () => ({
+  useOpenTabRoot: () => mockOpenTabRoot,
+}));
 
 const WINDOWS = {
   phonePortrait: { width: 411, height: 923 },
@@ -97,6 +103,7 @@ describe('Settings', () => {
     resetMotionStateForTests();
     resetMissingKeys();
     for (const fn of Object.values(mockRouter)) fn.mockClear();
+    mockOpenTabRoot.mockClear();
   });
 
   afterEach(() => {
@@ -132,7 +139,7 @@ describe('Settings', () => {
     expect(getMissingKeys()).toEqual([]);
   });
 
-  it('phone: sections push /settings/<section>; System rows open the existing screens; Back goes back', async () => {
+  it('phone: sections push /settings/<section>; System rows open the existing screens at their root; Back goes back', async () => {
     await mount();
     for (const id of ['preferences', 'notifications', 'security', 'devices', 'storage', 'network-time', 'maintenance', 'about']) {
       fireEvent.press(screen.getByTestId(`settings-row-${id}`));
@@ -141,12 +148,11 @@ describe('Settings', () => {
       '/settings/preferences',
       '/settings/notifications',
       '/settings/security',
-      '/devices',
-      '/storage',
-      '/network-time',
       '/settings/maintenance',
       '/settings/about',
     ]);
+    // CF-M2 (R-P-3): not `router.push` (it stacked a second Devices list over an open device detail).
+    expect(mockOpenTabRoot.mock.calls.map((call) => call[0])).toEqual(['/devices', '/storage', '/network-time']);
     fireEvent.press(screen.getByTestId('settings-header-back'));
     expect(mockRouter.back).toHaveBeenCalledTimes(1);
   });

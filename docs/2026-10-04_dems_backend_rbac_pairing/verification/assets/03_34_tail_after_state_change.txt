@@ -1,0 +1,14 @@
+== 05:31:49 after state change
+connected as dems_owner to 127.0.0.1/32:4432 (PostgreSQL 18.4)
+audit_log seq 83 TABLET_LINK_CHANGED actor -
+audit_log seq 84 AUTH_SUCCESS actor OPR-002
+audit_log seq 85 AUTH_SIGNED_OUT actor OPR-002
+events columns: seq, id, at, type, category, severity, message, params, session_id, device_id
+events seq 62 type AUTH_LOGOUT
+events seq 61 type AUTH_LOGIN
+events seq 60 type TABLET_DISCONNECTED
+events seq 59 type EVIDENCE_SEALED
+core_state: 1 row(s)
+engine_counters: 5 row(s)
+auth_sessions: 1 row(s)
+exit=0

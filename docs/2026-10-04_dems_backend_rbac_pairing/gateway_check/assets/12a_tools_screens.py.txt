@@ -1,0 +1,23 @@
+"""screens.py <frames_dir> <mp4> [hostOffsetMs]: per-frame screen class with device time (overlay OCR anchored to
+the frame pts, so frames where the overlay cannot be read still get a time); prints the changes."""
+import sys, os, json
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from fx import classify_screen, overlay_time, hms_of, pts_list
+d = sys.argv[1]
+mp4 = sys.argv[2]
+off = float(sys.argv[3]) / 1000 if len(sys.argv) > 3 else 0.0
+files = sorted(os.listdir(d), key=lambda n: int(''.join(ch for ch in n if ch.isdigit()) or 0))
+pts = pts_list(mp4)
+ocr = [overlay_time(os.path.join(d, fn)) for fn in files]
+deltas = sorted(o - p for o, p in zip(ocr, pts) if o is not None)
+base = deltas[len(deltas) // 2] if deltas else None
+prev = None
+rows = []
+for i, fn in enumerate(files):
+    cls, facts = classify_screen(os.path.join(d, fn))
+    t = (base + pts[i]) if base is not None and i < len(pts) else None
+    rows.append({'frame': fn, 'dev': hms_of(t), 'host': hms_of(t - off) if t is not None else None, 'cls': cls, **facts})
+    if cls != prev:
+        print(fn, 'device', hms_of(t), 'host', hms_of(t - off) if t is not None else None, cls, json.dumps(facts))
+        prev = cls
+json.dump(rows, open(os.path.join(os.path.dirname(d.rstrip('/')), os.path.basename(d.rstrip('/')) + '_screens.json'), 'w'))

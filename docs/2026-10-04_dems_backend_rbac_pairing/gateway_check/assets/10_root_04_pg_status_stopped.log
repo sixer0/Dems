@@ -1,0 +1,32 @@
+
+> dems-demo@0.1.0 pg:status
+> node scripts/pg/status.mjs
+
+cluster    .data/postgres (PG_VERSION 18)
+settings   listen_addresses = '127.0.0.1', port = 4432, unix_socket_directories = '' (configuration files)
+server     NOT RUNNING. Start it with "npm run pg:start".
+host authentication (HA-1 to HA-4)
+  HA-1 PASS
+  HA-2 PASS
+  HA-3 PASS
+  effective lines of .data/postgres/pg_hba.conf (6):
+    local   all             all                                     scram-sha-256
+    host    all             all             127.0.0.1/32            scram-sha-256
+    host    all             all             ::1/128                 scram-sha-256
+    local   replication     all                                     scram-sha-256
+    host    replication     all             127.0.0.1/32            scram-sha-256
+    host    replication     all             ::1/128                 scram-sha-256
+  HA-4 not run (the server is stopped)
+file modes (expected 700 for directories, 600 for files)
+  700  .data
+  700  .data/postgres
+  600  .data/pg.pwfile
+  600  .data/pg.owner.env
+  600  .data/pg.env
+  600  .data/postgres.log
+  600  .data/pg-scripts.log
+connection files (key names only)
+  .data/pg.owner.env: DEMS_PG_HOST, DEMS_PG_PORT, DEMS_PG_DATABASE, DEMS_PG_OWNER_ROLE, DEMS_PG_OWNER_PASSWORD
+  .data/pg.env: DEMS_PG_HOST, DEMS_PG_PORT, DEMS_PG_DATABASE, DEMS_PG_APP_ROLE, DEMS_PG_APP_PASSWORD
+pg:status: stopped (file checks passed)
+exit=3

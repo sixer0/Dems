@@ -1,0 +1,145 @@
+#!/usr/bin/env python3
+"""CF2-B mutation check (nothing in the tree is written; method of CF-M2 / FX-M2b): each mutant puts the
+OLD code back (rollback copy) or breaks one guarantee of the new code IN MEMORY (jest transformer
+`mutating-transformer.cjs`, env CF2B_MUT_SPEC) and runs the tests that must catch it.
+
+  python3 mutate.py control      the unmutated test files, once
+  python3 mutate.py R S T        every mutant of the groups (or single ids)
+Groups: R RF-T-1 row glow; S RF-T-2 hub panes; T RF-T-5 time values.
+"""
+import hashlib, json, os, re, subprocess, sys, time
+
+ROOT = '/Users/gsp-budi/Documents/DEMS'
+APP = ROOT + '/apps/mobile'
+HERE = os.path.dirname(os.path.abspath(__file__))
+SPEC = HERE + '/spec.json'
+CONFIG = HERE + '/jest.mut.config.cjs'
+RB = ROOT + '/.cache/rollback/CF2-B/apps/mobile/'
+
+EROW = 'src/features/evidence/evidence-row.tsx'
+SROW = 'src/features/sessions/session-row.tsx'
+GLOW = 'src/features/evidence/selection-glow.tsx'
+HUB = 'src/features/sessions/sessions-screen.tsx'
+TIME = 'src/features/network-time/time-sync-card.tsx'
+
+TESTS = {
+    'R': ['src/features/evidence/evidence-row-deselect-drawn.test.tsx', 'src/features/sessions/session-row-deselect-drawn.test.tsx'],
+    'S': ['src/features/sessions/hub-pane-split.test.tsx', 'src/features/sessions/hub-pane-row-fit.test.tsx'],
+    'T': ['src/features/network-time/time-sync-fit.test.tsx'],
+}
+
+def e(frm, to):
+    return {'from': frm, 'to': to}
+
+def one(file, edits):
+    return {'files': [{'file': file, 'edits': edits}]}
+
+def old(file):
+    return {'files': [{'file': file, 'replaceWith': RB + file}]}
+
+EGLOW = '      <SelectionGlow selected={selected} radius={radius.px.xl} testID={`evidence-row-glow-${item.id}`} />\n'
+SGLOW = '      <SelectionGlow selected={selected} radius={radius.px.xl} testID={`session-row-glow-${row.id}`} />\n'
+
+M = [
+  # RF-T-1
+  ('R1', 'the old Evidence row (rollback copy): GlowLayer mounted first, only while selected', old(EROW)),
+  ('R2', 'the old Sessions row (rollback copy): the same pattern', old(SROW)),
+  ('R3', 'Evidence row: SelectionGlow mounted only while selected',
+   one(EROW, [e(EGLOW, '      {selected ? <SelectionGlow selected radius={radius.px.xl} testID={`evidence-row-glow-${item.id}`} /> : null}\n')])),
+  ('R4', 'Sessions row: SelectionGlow mounted only while selected',
+   one(SROW, [e(SGLOW, '      {selected ? <SelectionGlow selected radius={radius.px.xl} testID={`session-row-glow-${row.id}`} /> : null}\n')])),
+  ('R5', 'Evidence row: the glow before the content (content no longer child 0)',
+   one(EROW, [e(EGLOW, ''), e('    <View style={styles.wrap}>\n', '    <View style={styles.wrap}>\n' + EGLOW)])),
+  ('R6', 'the glow back on the Reanimated GlowLayer (always mounted, level 2 or 0)',
+   {'files': [{'file': GLOW, 'replaceWith': HERE + '/selection_glow_reanimated.tsx'}]}),
+  ('R7', 'the glow ignores the selection (always lit)',
+   one(GLOW, [e('(selected ? 1 : 0)', '(selected ? 1 : 1)')])),
+  ('R8', 'the glow may be flattened away (collapsable not false)',
+   one(GLOW, [e('      collapsable={false}\n', '')])),
+  ('R9', 'Evidence row: the border only while selected (device run 1: the new glow with the old border)',
+   one(EROW, [e('  card: { padding: spacing[1] + 2, ...ROW_CARD_BORDER },', '  card: { padding: spacing[1] + 2 },'),
+              e('  cardSelected: { borderColor: palette.gold },', '  cardSelected: { borderColor: palette.gold, borderWidth: 1 },')])),
+  ('R10', 'Sessions row: the border only while selected',
+   one(SROW, [e('  card: { padding: ROW_CARD_PADDING, ...ROW_CARD_BORDER },', '  card: { padding: ROW_CARD_PADDING },'),
+              e('  cardSelected: { borderColor: palette.gold },', '  cardSelected: { borderColor: palette.gold, borderWidth: 1 },')])),
+  ('R11', 'ROW_CARD_BORDER without a width (no border in either state)',
+   one(GLOW, [e("export const ROW_CARD_BORDER = { borderWidth: 1, borderColor: 'transparent' } as const;", "export const ROW_CARD_BORDER = { borderColor: 'transparent' } as const;")])),
+  # RF-T-2
+  ('S1', 'the old hub (rollback copy): flex 2 + minWidth 360 on a zero basis', old(HUB)),
+  ('S2', 'the list as a zero basis with a 360 dp minimum again',
+   one(HUB, [e('export const LIST_PANE_FLEX = { flexGrow: 2, flexShrink: 1, flexBasis: LIST_MIN_WIDTH } as const;',
+               'export const LIST_PANE_FLEX = { flexGrow: 2, flexShrink: 1, flexBasis: 0, minWidth: LIST_MIN_WIDTH } as const;')])),
+  ('S3', 'the detail starts at 0 (no 340 dp start)',
+   one(HUB, [e('export const DETAIL_PANE_FLEX = { flexGrow: 3, flexShrink: 1, flexBasis: DETAIL_MIN_WIDTH } as const;',
+               'export const DETAIL_PANE_FLEX = { flexGrow: 3, flexShrink: 1, flexBasis: 0 } as const;')])),
+  ('S4', 'a 200 dp detail start (the list takes the slack)',
+   one(HUB, [e('export const DETAIL_MIN_WIDTH = 340;', 'export const DETAIL_MIN_WIDTH = 200;')])),
+  ('S5', 'the medium detail also gets the expanded flex',
+   one(HUB, [e('style={expanded ? DETAIL_PANE_FLEX : styles.flexBasisZero}', 'style={DETAIL_PANE_FLEX}')])),
+  # RF-T-5
+  ('T1', 'the old Time Synchronization card (rollback copy): one line per value', old(TIME)),
+  ('T2', 'the values capped at two lines',
+   one(TIME, [e('                  maxFontSizeMultiplier={1.2}\n                  selectable={row.mono}', '                  maxFontSizeMultiplier={1.2}\n                  numberOfLines={2}\n                  selectable={row.mono}')])),
+  ('T3', 'the wrapped value not right-aligned',
+   one(TIME, [e("    textAlign: 'right',\n", '')])),
+]
+
+def sha(path):
+    with open(path, 'rb') as f:
+        return hashlib.sha256(f.read()).hexdigest()
+
+def jest(env, tests):
+    return subprocess.run(['node', ROOT + '/node_modules/jest/bin/jest.js', '--config', CONFIG, '--maxWorkers=2', '--silent', *tests],
+                          cwd=APP, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+
+def summary(out):
+    tail = [line.strip() for line in out.splitlines() if line.startswith('Tests:')]
+    files = sorted({line.split()[1].split('/')[-1] for line in out.splitlines() if line.startswith('FAIL ')})
+    first = [re.sub(r'\s+', ' ', line.strip().lstrip('●').strip()) for line in out.splitlines() if line.strip().startswith('● ') and 'Console' not in line]
+    return (tail[-1] if tail else 'no summary line'), files, first[:1]
+
+def load():
+    out = subprocess.run(['uptime'], stdout=subprocess.PIPE, text=True).stdout
+    m = re.search(r'load averages?: ([\d.]+)', out)
+    return float(m.group(1)) if m else 0.0
+
+def wait_for_load():
+    while load() > 14:
+        print('   (load %.1f > 14: pausing 30 s)' % load(), flush=True)
+        time.sleep(30)
+
+def main():
+    args = sys.argv[1:]
+    files = sorted({p['file'] for _, _, spec in M for p in spec['files']})
+    before = {f: sha(APP + '/' + f) for f in files}
+    env = dict(os.environ)
+    detected = 0
+    ran = 0
+    if args == ['control']:
+        wait_for_load()
+        env.pop('CF2B_MUT_SPEC', None)
+        tests = sorted({t for group in TESTS.values() for t in group})
+        r = jest(env, tests)
+        s, failed, first = summary(r.stdout)
+        print('control: %d files | %s | exit %d' % (len(tests), s, r.returncode))
+        if r.returncode != 0:
+            print(r.stdout[-4000:])
+    else:
+        wanted = [m for m in M if m[0] in args or m[0][0] in args]
+        for mid, why, spec in wanted:
+            wait_for_load()
+            with open(SPEC, 'w') as f:
+                json.dump({'id': mid, **spec}, f)
+            env['CF2B_MUT_SPEC'] = SPEC
+            r = jest(env, TESTS[mid[0]])
+            s, failed, first = summary(r.stdout)
+            ran += 1
+            caught = r.returncode != 0
+            detected += caught
+            print('%s %s: %s | %s | exit %d | failing: %s | first: %s' % (mid, 'DETECTED' if caught else 'SURVIVED', why, s, r.returncode, ','.join(failed) or '-', first[0][:160] if first else '-'), flush=True)
+        print('detected %d of %d' % (detected, ran))
+    after = {f: sha(APP + '/' + f) for f in files}
+    print('tree files unchanged: %s (%d files checked)' % (before == after, len(files)))
+
+if __name__ == '__main__':
+    main()

@@ -1,0 +1,6 @@
+password typed (not shown); editor inputType 0x80081
+slept 300 ms
+key 66 at 16:38:58.736
+signin 200 (10-06 16:38:58.345 POST /api/v1/auth/sign-in 200)
+slept 4000 ms
+screencap 02_after_signin_budi.png (614919 bytes) at 16:39:04.161

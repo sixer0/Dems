@@ -84,9 +84,31 @@
   }
   .dems-shell:is([data-shell-tier='sm'], [data-shell-tier='xs']) .dems-strip {
     flex-wrap: wrap;
+    row-gap: 2px;
   }
-  .dems-shell:is([data-shell-tier='sm'], [data-shell-tier='xs']) .dems-strip-cell {
+  /*
+   * E2E-W1-6 (E-fix FX-W): the strip's flex items are the `.dems-strip-item` wrappers (the cells'
+   * motion wrappers), so the wrap basis goes on them; on the cells inside it never wrapped and six
+   * cells shared one 390 px row. Three per row below 1024 px, two below 768 px.
+   */
+  .dems-shell:is([data-shell-tier='sm'], [data-shell-tier='xs']) .dems-strip-item {
     flex: 1 1 30%;
+  }
+  .dems-shell[data-shell-tier='xs'] .dems-strip-item {
+    flex-basis: 45%;
+  }
+  /*
+   * E2E-W1-6: below 1024 px a value wider than its cell ends in an ellipsis inside the cell (the dot
+   * stays). Wider tiers keep the look they had (there "Synchronized" sits a fraction of a pixel past
+   * its text box, which an ellipsis would cut).
+   */
+  .dems-shell:is([data-shell-tier='sm'], [data-shell-tier='xs']) .dems-strip-value {
+    max-width: 100%;
+  }
+  .dems-shell:is([data-shell-tier='sm'], [data-shell-tier='xs']) .dems-strip-value-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .dems-shell:is([data-shell-tier='sm'], [data-shell-tier='xs']) .dems-strip-sep {
     display: none;
@@ -371,6 +393,13 @@
     align-items: center;
     min-height: clamp(58px, 6.6cqw, 78px);
     padding: 6px clamp(6px, 1.2cqw, 16px);
+  }
+  /*
+   * The strip's flex item (a cell's motion wrapper). Its basis lives here, not in a `flex-1` utility,
+   * so the sm/xs wrap rules above can change it (utilities would win over this layer; E2E-W1-6).
+   */
+  .dems-strip-item {
+    flex: 1 1 0;
   }
   .dems-strip-cell {
     position: relative;

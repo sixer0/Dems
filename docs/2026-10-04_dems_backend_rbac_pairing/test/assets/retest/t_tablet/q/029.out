@@ -1,0 +1,7 @@
+tap 1280,924 at 12:57:46.423
+slept 2500 ms
+screencap R2_c_home_technician_start_locked.png (782615 bytes) at 12:57:49.281
+mark tap the locked Start Session (expect nothing to open) at 12:57:49.281
+tap 2210,1034 at 12:57:49.341
+slept 3000 ms
+screencap R2_d_home_technician_after_locked_tap.png (782615 bytes) at 12:57:52.639

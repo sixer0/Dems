@@ -1,0 +1,12 @@
+#!/bin/bash
+# run.sh <lane>: starts the CF-M1 queue driver for a lane at the next free batch number.
+LANE=$1
+B=/Users/gsp-budi/Documents/DEMS/.cache/cf_m1
+S=/private/tmp/claude-501/-Users-gsp-budi-Documents-DEMS/0d71fd65-4a51-4019-9c48-5c92d11bbdaf/scratchpad/cf
+mkdir -p $B/q_$LANE $S/${LANE}_assets $S/${LANE}_frames
+# The first batch without an answer, else the next number.
+N=""
+for c in $(ls $B/q_$LANE 2>/dev/null | grep -E '^[0-9]{3}\.cmd$' | sort); do n=${c%.cmd}; if [ ! -f "$B/q_$LANE/$n.out" ]; then N=$((10#$n)); break; fi; done
+if [ -z "$N" ]; then N=$(ls $B/q_$LANE 2>/dev/null | grep -E '^[0-9]{3}\.cmd$' | sort | tail -1 | cut -c1-3); N=$((10#${N:-0} + 1)); fi
+cd /Users/gsp-budi/Documents/DEMS
+RT_START=$N CF_LANE=$LANE exec node --import tsx $B/cfq.mts $B/q_$LANE $S/${LANE}_assets $S/${LANE}_frames >> $S/driver_$LANE.log 2>&1

@@ -1,0 +1,57 @@
+== 007
+21:16:22.278 batch start; device time 10-06 21:16:21.000; host load 7.47
+21:16:22.348 mark C1 at 21:16:22.348
+21:16:22.428 declared screen session-new
+21:16:22.491 tap 913,748
+21:16:22.697 slept 900 ms
+21:16:23.640 tap 229,994
+21:16:23.721 slept 700 ms
+21:16:24.454 tap 540,1309
+21:16:24.544 slept 900 ms
+21:16:25.494 text typed (CF2A C1); inputType 0x2001
+21:16:25.824 slept 800 ms
+21:16:26.673 key 111
+21:16:26.777 slept 800 ms
+21:16:27.612 tap 540,2257
+21:16:27.754 create 201 at device 10-06 21:16:27.365 (POST /api/v1/session 201)
+21:16:28.475 precheck 202 at device 10-06 21:16:27.455 (POST /api/v1/session/{id}/precheck 202)
+21:16:28.596 slept 9000 ms
+21:16:37.704 tap 540,2257
+21:16:37.939 slept 2500 ms
+21:16:40.476 nav /session load=true
+21:16:43.121 wait page-session-monitor present: 0 ms (at 21:16:43.121)
+21:16:43.149 js => "ARMED"
+21:16:43.183 declared screen live
+21:16:43.236 host load 6.69 8.37 7.20
+21:16:43.288 device-host clock offset ms: -418, -419, -418, -418, -418
+21:16:43.541 screencap C1_ready.png 21:16:43.542..21:16:44.094
+21:16:44.233 screenrecord C1 started (pid 28012) at 21:16:44.836; load 6.69 8.37 7.20
+21:16:44.916 tap 540,2257
+21:16:45.115 start 200 at device 10-06 21:16:47.907 (POST /api/v1/session/{id}/start 200)
+21:16:48.503 until true at 21:16:48.504 after 1 ms => "RECORDING"
+21:16:48.542 slept 24000 ms
+21:17:12.628 press sm-action-end ok at 21:17:12.678
+21:17:12.889 wait sm-end-dialog present: 2 ms (at 21:17:12.891)
+21:17:12.975 slept 400 ms
+21:17:13.459 type into [data-testid="sm-end-reason"]: "CF2A C1 web stop after 30 s"
+21:17:13.564 slept 4500 ms
+21:17:18.197 press sm-end-confirm ok at 21:17:18.206
+21:17:18.304 until true at 21:17:18.377 after 73 ms => "STOPPING"
+21:17:18.499 until true at 21:17:24.845 after 6346 ms => {"state":"SEALED","modal":"SEALED"}
+21:17:25.312 slept 5000 ms
+21:17:30.419 screenrecord C1 pulled; every frame extracted (passthrough)
+21:17:56.418 declared screen summary
+21:17:56.463 screencap C1_after.png 21:17:56.463..21:17:57.037
+21:17:57.166 native C1_native.txt pid 31182: 187686 lines; crash-class lines 1087: 10-06 21:16:27.617 31182 31182 W Reanimated: Caused by: com.facebook.react.bridge.RetryableMountingLayerException: Unable to find SurfaceMountingManager for tag: [3704] | 10-06 21:16:27.619 31182 31182 W Reanimated: Caused by: com.facebook.react.bridge.RetryableMountingLayerException: Unable to find SurfaceMountingManager for tag: [3678] | 10-06 21:16:27.619 31182 31182 W Reanimated: Caused by: com.facebook.react.bridge.RetryableMountingLayerException: Unable to find SurfaceMountingManager for tag: [3558] | 10-06 21:16:27.620 31182 31182 W Reanimated: Caused by: com.facebook.react.bridge.RetryableMountingLayerException: Unable to find SurfaceMountingManager for tag: [3404] | 10-06 21:16:27.623 31182 31182 W Reanimated: Caused by: com.facebook.react.bridge.RetryableMountingLayerException: Unable to find SurfaceMountingManager for tag: [3704] | 10-06 21:16:27.623 31182 31182 W Reanimated: Caused by: com.facebook.react.bridge.RetryableMountingLayerException: Unable to find SurfaceMountingManager for tag: [3678]
+21:17:57.586 appjs C1_js.txt: 29 lines since 10-06 21:16:21.000
+21:17:57.722 focused true; keyguard false; inputType 0x2001
+21:17:58.210 serverlog since C1 (7):
+    21:16:27.764 POST /api/v1/session 201
+    21:16:27.885 POST /api/v1/session/:id/precheck 202
+    21:16:40.488 [socket closed]
+    21:16:40.592 GET /api/v1/auth/session 200
+    21:16:40.596 [socket opened]
+    21:16:48.309 POST /api/v1/session/:id/start 200
+    21:17:18.224 POST /api/v1/session/:id/stop 202
+21:17:58.275 js => {"id":"SES-20261006-0078","state":"SEALED","subject":"CF2A C1","startedAt":"2026-10-06T21:16:48.302+07:00","stoppedAt":"2026-10-06T21:17:18.216+07:00","sealedAt":"2026-10-06T21:17:24.677+07:00","evidenceId":"EV-20261006-0065","elapsedMs":29914,"audit":[["AUD-001184","SESSION_CREATED","OPR-001","21:16:27.752",""],["AUD-001185","PRECHECK_PASSED","OPR-001","21:16:31.562",""],["AUD-001186","RECORDING_STARTED","OPR-001","21:16:48.302",""],["AUD-001187","FRAME_HASH",null,"21:16:51.237",""],["AUD-001188","WRITE_VERIFIED",null,"21:16:52.444",""],["AUD-001189","WRITE_VERIFIED",null,"21:16:55.017",""],["AUD-001190","WRITE_VERIFIED",null,"21:17:05.705",""],["AUD-001191","WRITE_VERIFIED",null,"21:17:13.015",""],["AUD-001192","WRITE_VERIFIED",null,"21:17:15.256",""],["AUD-001193","RECORDING_STOPPED","OPR-002","21:17:18.216","CF2A C1 web stop after 30 s"],["AUD-001194","EVIDENCE_SEALED",null,"21:17:24.677",""]]}
+21:17:58.366 nav /admin/devices load=true

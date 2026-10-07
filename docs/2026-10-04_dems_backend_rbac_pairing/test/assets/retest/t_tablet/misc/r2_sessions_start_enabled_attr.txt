@@ -1,0 +1,4 @@
+12:58:20 uiautomator node of the Sessions hub Start (rina.wijaya TECHNICIAN; raw dump read once, node attributes only):
+resource-id="sessions-start" content-desc="Start New Session" clickable="true" enabled="false"
+hint node: sessions-start-locked "Requires the Investigator role" (q/sessions_hub_technician.txt)
+Home quick action: no uiautomator dump on Home (rule); evidence = R2_c (dimmed Start Session + "Requires the Investigator role") and R2_d (after a tap on it: byte-identical capture, 782,615 bytes each; no request in the Core log)

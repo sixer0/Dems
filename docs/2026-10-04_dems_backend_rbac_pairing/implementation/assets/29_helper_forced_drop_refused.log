@@ -1,0 +1,11 @@
+2026-10-04 11:24:22 WIB
+dems_test_step_51_tmd85m2e_f02_rfbulk: oid 220293, owner dems_owner
+backends on it now: 0
+tables that autovacuum has worked on: 5
+  audit_chain_head       live     1  autoanalyze 1 (last 11:22:56.702)  autovacuum 0 (last -)
+  auth_sessions          live  1200  autoanalyze 1 (last 11:22:56.712)  autovacuum 1 (last 11:22:56.707)
+  audit_log              live    83  autoanalyze 1 (last 11:22:56.715)  autovacuum 0 (last -)
+  events                 live    60  autoanalyze 1 (last 11:22:56.715)  autovacuum 0 (last -)
+  evidence_tracks        live    52  autoanalyze 1 (last 11:22:56.716)  autovacuum 0 (last -)
+dropped (plain DROP DATABASE, not forced): yes
+exit=0

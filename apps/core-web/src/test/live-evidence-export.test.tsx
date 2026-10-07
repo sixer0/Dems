@@ -19,6 +19,7 @@
 // | D-6: when the Core lets a call through, its answers are the result (the server is the judge) | "D-6" |
 // | LB-1: the export is busy at once (a second press sends nothing), spinner late | "A5 pending" |
 import { act, cleanup, configure, fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { toast } from '@heroui/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { EvidenceVerifyResultBody } from '@dems/shared/api'
 import { en } from '@dems/shared/i18n'
@@ -118,6 +119,19 @@ async function toExportStep(evidenceId: string): Promise<void> {
   await screen.findByTestId('export-submit')
 }
 
+
+/**
+ * FXR-W W92-16 (D179 DC-6): a test that claims ONE toast counts the toast CALLS, not the toasts on
+ * screen — `waitFor(… toHaveLength(1))` resolves on the first toast, and a second identical toast
+ * that arrives later would pass. Each method of the kit's `toast` is spied (the toast still shows).
+ */
+function spyToastCalls(): () => number {
+  const spies = (['success', 'danger', 'warning', 'info'] as const)
+    .filter((method) => typeof (toast as unknown as Record<string, unknown>)[method] === 'function')
+    .map((method) => vi.spyOn(toast, method))
+  return () => spies.reduce((sum, spy) => sum + spy.mock.calls.length, 0)
+}
+
 describe('A5 success (§8.2; C-5)', () => {
   it('one POST to operation 42 with the reason and the destination; the result names the Core\'s export ID and the audit row the delta brought', async () => {
     const { bed } = await openWizard(EV.exported)
@@ -177,6 +191,7 @@ describe('A5 outage (LB-6, LB-10)', () => {
     const { bed } = await openWizard(EV.sealed)
     await toExportStep(EV.sealed)
     bed.fake.failOnce('exportEvidence')
+    const toastCalls = spyToastCalls()
     fireEvent.click(screen.getByTestId('export-submit'))
     const results = await screen.findByTestId('export-results', {}, UI)
     const failure = results.querySelector<HTMLElement>('[data-export-failure]')
@@ -184,6 +199,12 @@ describe('A5 outage (LB-6, LB-10)', () => {
     expect(failure).toHaveTextContent(OFFLINE)
     await waitFor(() => expect(toastWith(OFFLINE)).toHaveLength(1))
     expect(toastTexts()).toHaveLength(1)
+    // W92-16: after a flush, ONE toast call — not only one toast on screen.
+    await bed.flush()
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50))
+    })
+    expect(toastCalls()).toBe(1)
     expect(screen.getByTestId('export-wizard')).toBeInTheDocument()
     expect(webErrorSink.records().filter((record) => record.source.startsWith('Evidence.'))).toHaveLength(0)
   })

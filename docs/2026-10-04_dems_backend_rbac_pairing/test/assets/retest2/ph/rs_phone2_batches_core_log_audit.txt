@@ -1,0 +1,366 @@
+===== 001.out
+16:38:06.474 batch start; device time 10-06 16:38:05.000; host load 9.36
+16:38:06.543 mark relaunch at 16:38:06.543
+16:38:06.579 focused true; keyguard false; inputType 0x80001
+16:38:06.995 force-stopped the app
+16:38:07.221 slept 1500 ms
+16:38:09.006 deep link demsdemo:///login?core=LIVE&motion=off
+16:38:21.828 slept 18000 ms
+16:38:39.882 declared screen login
+16:38:39.931 focused true; keyguard false; inputType 0x80001
+16:38:40.366 screencap p2_00_relaunched_login.png 16:38:40.366..16:38:41.578
+16:38:41.681 corelog (3): 16:38:22.063 GET /api/v1/auth/session 401 | 16:38:22.070 GET /api/v1/auth/status 200 | 16:38:22.080 GET /api/v1/pairing/device 200
+16:38:41.756 serverlog since relaunch (5):
+    16:38:07.613 [socket closed]
+    16:38:21.528 [socket opened]
+    16:38:21.550 GET /api/v1/auth/session 401 NOT_SIGNED_IN
+    16:38:21.552 GET /api/v1/auth/status 200
+    16:38:21.562 GET /api/v1/pairing/device 200
+===== 002.out
+17:28:41.169 batch start; device time 10-06 17:28:40.000; host load 4.98
+17:28:41.227 mark setup2 at 17:28:41.227
+17:28:41.257 focused true; keyguard false; inputType 0x80001
+17:28:41.615 w1: HeadlessChrome/153.0.8010.12 headless=true pid 69544 devtools 127.0.0.1:64378 (OS-assigned, listener owned by pid 69544), fresh profile in TMPDIR
+17:28:41.843 nav /login load=true
+17:28:44.582 signin andi.pratama (SUPERVISOR) dashboard after 1086 ms
+17:28:47.803 nav /admin/devices load=true
+17:28:50.945 wait pd-issue-panel present: 0 ms (at 17:28:50.945)
+17:28:50.973 pdfacts => {"href":"/admin/devices","onPage":true,"issueState":"IDLE","codeShown":false,"activeElsewhere":false,"redeemed":null,"rows":[{"id":"DEV-0019","state":"Paired","operator":"—","revokeShown":true},{"id":"DEV-0018","state":"Revoked","operator":"—","revokeShown":false},{"id":"DEV-0017", ...]}
+17:28:51.002 api GET /api/v1/session/current => {"status":200,"body":{"session":{"id":"SES-20261006-0025","state":"SEALED","caseNumber":"LP/2026/1006-0009","subjectType":"SAKSI","subjectName":"Saksi E2E W2 Live","investigatorId":"OPR-001","investigatorName":"AKP Budi Santoso","room":"Interview Room 1","profileId":"STANDARD_1080P25","createdAt":"2026-10-06T10:13:24.342+07:00","startedAt":"2026-10-06T10:13:34.182+07:00","stoppedAt":"2026-10-06T10:13:58.869+07:00","sealedAt":"2026-10-06T10:14:06.341+07:00","elapsedMs":24687,"bytesWritten":56231500,"evidenceId":"EV-20261006-0015","precheck":{"outcome":"PASS","items":[{"id":"CORE","status":"PASS","value":"ONLINE","reason":null},{"id":"LENS_1","status":"PASS","value":"READY","reason":null},{"id":"LENS_2","status":"PASS","value":"READY","reason":null},{"id":"MIC_1","status":"PASS","value":"READY","reason":null},{"id":"MIC_2","status":"PASS","va
+17:28:51.042 api GET /api/v1/admin/users => {"status":200,"body":{"users":[{"id":"OPR-001","username":"budi.santoso","rank":"AKP","name":"Budi Santoso","displayName":"AKP Budi Santoso","initials":"BS","role":"INVESTIGATOR","enabled":true,"lastSignInAt":1791276512529,"activeSessions":0,"roleChangedAt":null},{"id":"OPR-002","username":"andi.pratama","rank":"AKP","name":"Andi Pratama","displayName":"AKP Andi Pratama","initials":"AP","role":"SUPERVISOR","enabled":true,"lastSignInAt":1791282524715,"activeSessions":1,"roleChangedAt":null},{"id":"OPR-003","username":"rina.wijaya","rank":null,"name":"Rina Wijaya","displayName":"Rina Wijaya","initials":"RW","role":"TECHNICIAN","enabled":true,"lastSignInAt":1791256636760,"activeSessions":0,"roleChangedAt":null}]}}
+17:28:51.075 serverlog since setup2 (14):
+    17:28:42.239 [socket opened]
+    17:28:42.242 GET /api/v1/auth/session 401 NOT_SIGNED_IN
+    17:28:42.244 GET /api/v1/auth/status 200
+    17:28:42.401 GET /api/v1/health 200
+    17:28:44.724 POST /api/v1/auth/sign-in 200
+    17:28:44.726 [socket closed]
+    17:28:44.730 [socket opened]
+    17:28:47.809 [socket closed]
+    17:28:47.934 GET /api/v1/auth/session 200
+    17:28:47.965 [socket opened]
+    17:28:48.060 GET /api/v1/pairing/code 200
+    17:28:48.063 GET /api/v1/pairing/devices 200
+    17:28:51.005 GET /api/v1/session/current 200
+    17:28:51.046 GET /api/v1/admin/users 200
+===== 003.out
+17:28:58.664 batch start; device time 10-06 17:28:57.000; host load 5.45
+17:28:58.696 mark rvS1 at 17:28:58.696
+17:28:58.718 nav /admin/devices load=true
+17:29:01.865 wait pd-issue-panel present: 1 ms (at 17:29:01.866)
+17:29:01.896 pdfacts => {"href":"/admin/devices","onPage":true,"issueState":"IDLE","codeShown":false,"activeElsewhere":false,"redeemed":null,"rows":[{"id":"DEV-0019","state":"Paired","operator":"—","revokeShown":true},{"id":"DEV-0018","state":"Revoked","operator":"—","revokeShown":false},{"id":"DEV-0017", ...]}
+17:29:01.929 screencap rvS1_before.png 17:29:01.929..17:29:02.771
+17:29:02.842 host load 5.10 7.87 9.45
+17:29:02.866 device-host clock offset ms: -670, -671, -671, -671, -671
+17:29:02.977 screenrecord rvS1 started (pid 70097) at 17:29:03.578; load 5.10 7.87 9.45
+17:29:03.632 slept 2500 ms
+17:29:06.165 revoke DEV-0019: confirm clicked 17:29:07.080 (epoch 1791282547080); answer 200 (request 17:29:07.084)
+17:29:07.173 host load 4.93 7.78 9.41
+17:29:07.208 slept 9000 ms
+17:29:16.248 screenrecord rvS1 pulled; every frame extracted (passthrough)
+17:29:24.629 declared screen pair
+17:29:24.653 screencap rvS1_after.png 17:29:24.653..17:29:24.842
+17:29:24.899 appjs rvS1_js.txt: 14 lines since 10-06 17:28:57.000
+17:29:24.975 serverlog since rvS1 (5):
+    17:28:58.723 [socket closed]
+    17:28:58.821 [socket opened]
+    17:29:07.108 POST /api/v1/pairing/devices/:id/revoke 200
+    17:29:07.113 [socket closed]
+    17:29:07.808 [socket opened]
+17:29:24.998 js => [["AUD-000297","TABLET_LINK_CHANGED",null,"TABLET","17:29:07.109",""],["AUD-000296","DEVICE_REVOKED","OPR-002","DEV-0019","17:29:07.098","RF-PH revoke timing S1"],["AUD-000295","AUTH_SUCCESS","OPR-002",null,"17:28:44.718",""],["AUD-000294","AUTH_EXPIRED","OPR-002",null,"16:39:10.515","IDLE"],["AUD-000293","TABLET_LINK_CHANGED",null,"TABLET","16:38:21.528",""],["AUD-000292","TABLET_LINK_CHANGED",null,"TABLET","16:38:12.831",""]]
+===== 004.out
+17:30:02.099 batch start; device time 10-06 17:30:01.000; host load 4.06
+17:30:02.133 mark hoH1 at 17:30:02.133
+17:30:02.162 nav /admin/devices load=true
+17:30:05.316 wait pd-issue-panel present: 0 ms (at 17:30:05.316)
+17:30:05.349 declared screen pair
+17:30:05.376 tapid pairing-code-slot-0 at 178,2265
+17:30:07.859 slept 1500 ms
+17:30:09.395 focused true; keyguard false; inputType 0x80002
+17:30:09.659 host load 3.90 6.98 9.00
+17:30:09.685 device-host clock offset ms: -671, -672, -671, -672, -672
+17:30:09.790 issued at 17:30:09.814; mask ok; screenshot hoH1_web_code_issued_blurred.png 17:30:11.934..17:30:12.058; code typed into the phone at 17:30:12.222 (not shown) + go key; redeem 201 at device 10-06 17:30:15.390 (POST /api/v1/pairing/redeem 201); code scan (count only) {"deviceJs":0,"serverLog":0,"events":0}; screenrecord hoH1 started (pid 71444) at 17:30:17.108; load 4.14 6.93 8.96
+17:30:17.166 screenrecord hoH1 pulled; every frame extracted (passthrough)
+17:30:32.907 declared screen login
+17:30:32.931 screencap hoH1_after.png 17:30:32.931..17:30:33.582
+17:30:33.646 jsall (1): 17:30:15.390 [DEMS-LIVE] POST /api/v1/pairing/redeem 201 3cb99b93-d358-48cc-aaa8-92de6008214a
+17:30:33.697 serverlog since hoH1 (16):
+    17:30:02.177 [socket closed]
+    17:30:02.297 [socket opened]
+    17:30:02.387 GET /api/v1/pairing/devices 200
+    17:30:02.387 GET /api/v1/pairing/code 200
+    17:30:09.827 POST /api/v1/pairing/code 201
+    17:30:09.829 GET /api/v1/pairing/code 200
+    17:30:09.922 GET /api/v1/pairing/code 200
+    17:30:16.043 POST /api/v1/pairing/redeem 201
+    17:30:16.049 GET /api/v1/pairing/devices 200
+    17:30:16.058 GET /api/v1/pairing/code 200
+    17:30:16.061 GET /api/v1/pairing/code 200
+    17:30:16.146 [socket closed]
+    17:30:16.149 [socket opened]
+    17:30:16.265 GET /api/v1/pairing/devices 200
+    17:30:17.226 GET /api/v1/pairing/code 200
+    17:30:17.227 GET /api/v1/pairing/devices 200
+17:30:33.720 pdfacts => {"href":"/admin/devices","onPage":true,"issueState":"IDLE","codeShown":false,"activeElsewhere":false,"redeemed":null,"rows":[{"id":"DEV-0020","state":"Paired","operator":"—","revokeShown":true},{"id":"DEV-0019","state":"Revoked","operator":"—","revokeShown":false},{"id":"DEV-0018", ...]}
+17:30:33.746 js => [["AUD-000300","TABLET_LINK_CHANGED",null,"TABLET","17:30:16.149"],["AUD-000299","PAIRING_SUCCESS",null,"DEV-0020","17:30:16.040"],["AUD-000298","PAIRING_CODE_ISSUED","OPR-002",null,"17:30:09.823"],["AUD-000297","TABLET_LINK_CHANGED",null,"TABLET","17:29:07.109"]]
+===== 005.out
+17:31:27.960 batch start; device time 10-06 17:31:27.000; host load 4.41
+17:31:28.039 mark signinI1 at 17:31:28.039
+17:31:28.067 declared screen login
+17:31:28.092 tap 539,1184
+17:31:28.205 slept 900 ms
+17:31:29.136 username typed (budi.santoso, INVESTIGATOR); inputType 0x80001
+17:31:29.729 slept 500 ms
+17:31:30.256 key 66
+17:31:30.326 slept 1200 ms
+17:31:31.552 focused true; keyguard false; inputType 0x80081
+17:31:31.722 password typed (not shown); inputType 0x80081
+17:31:32.017 slept 300 ms
+17:31:32.341 key 66
+17:31:32.474 signin 401; the app was force-stopped (fields cleared) before any screencap
+17:31:32.609 slept 4000 ms
+17:31:36.635 screencap p2_I1_after_signin.png 17:31:36.635..17:31:37.190
+===== 006.out
+17:31:46.486 batch start; device time 10-06 17:31:45.000; host load 4.64
+17:31:46.524 serverlog since signinI1 (5):
+    17:31:32.457 POST /api/v1/auth/sign-in 401 INVALID_CREDENTIALS
+    17:31:32.636 [socket closed]
+    17:31:33.720 GET /api/v1/pairing/devices 200
+    17:31:33.730 GET /api/v1/pairing/code 200
+    17:31:37.835 GET /api/v1/pairing/devices 200
+17:31:46.563 js => [["AUD-000302","TABLET_LINK_CHANGED",null,"TABLET","{\"state\":\"OFFLINE\"}","17:31:37"],["AUD-000301","AUTH_FAILED","OPR-001","DEV-0020","{\"method\":\"PASSWORD\",\"lockedUntil\":null,\"knownOperator\":true,\"attemptsRemaining\":4}","17:31:32"],["AUD-000300","TABLET_LINK_CHANGED",null,"TABLET","{\"state\":\"CONNECTED\"}","17:30:16"]]
+17:31:46.634 mCurrentFocus=Window{a63fee2 u0 com.google.android.apps.nexuslauncher/com.google.android.apps.nexuslauncher.NexusLauncherActivity} ; isKeyguardShowing=false
+===== 007.out
+17:32:06.281 batch start; device time 10-06 17:32:05.000; host load 4.49
+17:32:06.311 mark signinI1b at 17:32:06.311
+17:32:06.356 deep link demsdemo:///login?core=LIVE&motion=off
+17:32:10.826 slept 15000 ms
+17:32:25.881 declared screen login
+17:32:25.914 focused true; keyguard false; inputType 0x80001
+17:32:26.198 screencap p2_I1_relaunched_login.png 17:32:26.198..17:32:26.973
+17:32:27.054 tap 539,1184
+17:32:27.157 slept 900 ms
+17:32:28.086 username typed (budi.santoso, INVESTIGATOR); inputType 0x80001
+17:32:28.571 slept 600 ms
+17:32:29.201 tap 539,1342
+17:32:29.315 slept 1500 ms
+17:32:30.850 focused true; keyguard false; inputType 0x80081
+17:32:31.035 password typed (not shown); inputType 0x80081
+17:32:31.351 slept 400 ms
+17:32:31.787 key 66
+17:32:31.943 signin 200 at device 10-06 17:32:31.289 (POST /api/v1/auth/sign-in 200)
+17:32:32.009 slept 4000 ms
+17:32:36.049 screencap p2_I1_after_signin.png 17:32:36.050..17:32:36.268
+17:32:36.328 serverlog since signinI1b (4):
+    17:32:10.323 [socket opened]
+    17:32:31.934 POST /api/v1/auth/sign-in 200
+    17:32:31.978 [socket closed]
+    17:32:31.985 [socket opened]
+===== 008.out
+17:32:58.379 batch start; device time 10-06 17:32:57.000; host load 4.47
+17:32:58.419 mark rvI1 at 17:32:58.419
+17:32:58.446 nav /admin/devices load=true
+17:33:01.598 wait pd-issue-panel present: 0 ms (at 17:33:01.598)
+17:33:01.634 pdfacts => {"href":"/admin/devices","onPage":true,"issueState":"IDLE","codeShown":false,"activeElsewhere":false,"redeemed":null,"rows":[{"id":"DEV-0020","state":"Paired","operator":"AKP Budi Santoso","revokeShown":true},{"id":"DEV-0019","state":"Revoked","operator":"—","revokeShown":false},{"id ...]}
+17:33:01.671 screencap rvI1_before.png 17:33:01.671..17:33:01.926
+17:33:02.028 host load 4.51 5.96 8.19
+17:33:02.058 device-host clock offset ms: -672, -673, -671, -672, -672
+17:33:02.184 screenrecord rvI1 started (pid 74745) at 17:33:02.787; load 4.51 5.96 8.19
+17:33:02.815 slept 2500 ms
+17:33:05.346 revoke DEV-0020: confirm clicked 17:33:06.260 (epoch 1791282786260); answer 200 (request 17:33:06.264)
+17:33:06.431 host load 4.51 5.96 8.19
+17:33:06.467 slept 9000 ms
+17:33:15.506 screenrecord rvI1 pulled; every frame extracted (passthrough)
+17:33:23.721 declared screen pair
+17:33:23.748 screencap rvI1_after.png 17:33:23.748..17:33:23.935
+17:33:23.993 appjs rvI1_js.txt: 14 lines since 10-06 17:32:57.000
+17:33:24.048 serverlog since rvI1 (5):
+    17:32:58.466 [socket closed]
+    17:32:58.577 [socket opened]
+    17:33:06.284 POST /api/v1/pairing/devices/:id/revoke 200
+    17:33:06.288 [socket closed]
+    17:33:07.290 [socket opened]
+17:33:24.074 js => [["AUD-000306","TABLET_LINK_CHANGED",null,"TABLET","17:33:06.284",""],["AUD-000305","DEVICE_REVOKED","OPR-002","DEV-0020","17:33:06.274","RF-PH revoke timing I1"],["AUD-000304","AUTH_SUCCESS","OPR-001","DEV-0020","17:32:31.926",""],["AUD-000303","TABLET_LINK_CHANGED",null,"TABLET","17:32:10.323",""],["AUD-000302","TABLET_LINK_CHANGED",null,"TABLET","17:31:37.729",""],["AUD-000301","AUTH_FAILED","OPR-001","DEV-0020","17:31:32.450",""]]
+===== 009.out
+17:33:58.378 batch start; device time 10-06 17:33:57.000; host load 5.01
+17:33:58.415 mark hoH2 at 17:33:58.415
+17:33:58.443 nav /admin/devices load=true
+17:34:01.596 wait pd-issue-panel present: 1 ms (at 17:34:01.597)
+17:34:01.632 declared screen pair
+17:34:01.668 tapid pairing-code-slot-0 at 178,2265
+17:34:04.236 slept 1500 ms
+17:34:05.765 focused true; keyguard false; inputType 0x80002
+17:34:06.025 host load 5.41 5.97 8.05
+17:34:06.058 device-host clock offset ms: -672, -672, -672, -673, -673
+17:34:06.193 issued at 17:34:06.219; mask ok; screenshot hoH2_web_code_issued_blurred.png 17:34:08.343..17:34:08.458; code typed into the phone at 17:34:08.594 (not shown) + go key; redeem 201 at device 10-06 17:34:11.854 (POST /api/v1/pairing/redeem 201); code scan (count only) {"deviceJs":0,"serverLog":0,"events":0}; screenrecord hoH2 started (pid 89973) at 17:34:13.580; load 5.50 5.97 8.02
+17:34:13.664 screenrecord hoH2 pulled; every frame extracted (passthrough)
+17:34:28.793 declared screen login
+17:34:28.820 screencap hoH2_after.png 17:34:28.820..17:34:29.515
+17:34:29.579 jsall (1): 17:34:11.854 [DEMS-LIVE] POST /api/v1/pairing/redeem 201 b88ebfde-b1e9-4438-a360-c2007df45edf
+17:34:29.657 serverlog since hoH2 (16):
+    17:33:58.454 [socket closed]
+    17:33:58.562 [socket opened]
+    17:33:58.655 GET /api/v1/pairing/devices 200
+    17:33:58.655 GET /api/v1/pairing/code 200
+    17:34:06.233 POST /api/v1/pairing/code 201
+    17:34:06.236 GET /api/v1/pairing/code 200
+    17:34:06.329 GET /api/v1/pairing/code 200
+    17:34:12.498 POST /api/v1/pairing/redeem 201
+    17:34:12.503 GET /api/v1/pairing/devices 200
+    17:34:12.510 GET /api/v1/pairing/code 200
+    17:34:12.513 GET /api/v1/pairing/code 200
+    17:34:12.649 [socket closed]
+    17:34:12.667 [socket opened]
+    17:34:12.738 GET /api/v1/pairing/devices 200
+    17:34:13.697 GET /api/v1/pairing/devices 200
+    17:34:13.698 GET /api/v1/pairing/code 200
+17:34:29.688 pdfacts => {"href":"/admin/devices","onPage":true,"issueState":"IDLE","codeShown":false,"activeElsewhere":false,"redeemed":null,"rows":[{"id":"DEV-0021","state":"Paired","operator":"—","revokeShown":true},{"id":"DEV-0020","state":"Revoked","operator":"—","revokeShown":false},{"id":"DEV-0019", ...]}
+17:34:29.714 js => [["AUD-000309","TABLET_LINK_CHANGED",null,"TABLET","17:34:12.667"],["AUD-000308","PAIRING_SUCCESS",null,"DEV-0021","17:34:12.495"],["AUD-000307","PAIRING_CODE_ISSUED","OPR-002",null,"17:34:06.227"],["AUD-000306","TABLET_LINK_CHANGED",null,"TABLET","17:33:06.284"]]
+===== 010.out
+17:34:39.507 batch start; device time 10-06 17:34:38.000; host load 5.49
+17:34:39.538 mark rvS2 at 17:34:39.538
+17:34:39.565 nav /admin/devices load=true
+17:34:42.699 wait pd-issue-panel present: 1 ms (at 17:34:42.700)
+17:34:42.728 pdfacts => {"href":"/admin/devices","onPage":true,"issueState":"IDLE","codeShown":false,"activeElsewhere":false,"redeemed":null,"rows":[{"id":"DEV-0021","state":"Paired","operator":"—","revokeShown":true},{"id":"DEV-0020","state":"Revoked","operator":"—","revokeShown":false},{"id":"DEV-0019", ...]}
+17:34:42.752 screencap rvS2_before.png 17:34:42.752..17:34:43.495
+17:34:43.563 host load 5.37 5.91 7.93
+17:34:43.588 device-host clock offset ms: -672, -672, -672, -673, -673
+17:34:43.722 screenrecord rvS2 started (pid 22756) at 17:34:44.325; load 5.37 5.91 7.93
+17:34:44.351 slept 2500 ms
+17:34:46.881 revoke DEV-0021: confirm clicked 17:34:47.801 (epoch 1791282887801); answer 200 (request 17:34:47.805)
+17:34:47.949 host load 5.18 5.86 7.90
+17:34:47.989 slept 9000 ms
+17:34:57.037 screenrecord rvS2 pulled; every frame extracted (passthrough)
+17:35:05.412 declared screen pair
+17:35:05.442 screencap rvS2_after.png 17:35:05.442..17:35:05.649
+17:35:05.743 appjs rvS2_js.txt: 14 lines since 10-06 17:34:38.000
+17:35:05.821 serverlog since rvS2 (5):
+    17:34:39.576 [socket closed]
+    17:34:39.713 [socket opened]
+    17:34:47.820 POST /api/v1/pairing/devices/:id/revoke 200
+    17:34:47.828 [socket closed]
+    17:34:48.522 [socket opened]
+17:35:05.854 js => [["AUD-000311","TABLET_LINK_CHANGED",null,"TABLET","17:34:47.820",""],["AUD-000310","DEVICE_REVOKED","OPR-002","DEV-0021","17:34:47.812","RF-PH revoke timing S2"],["AUD-000309","TABLET_LINK_CHANGED",null,"TABLET","17:34:12.667",""],["AUD-000308","PAIRING_SUCCESS",null,"DEV-0021","17:34:12.495",""],["AUD-000307","PAIRING_CODE_ISSUED","OPR-002",null,"17:34:06.227",""],["AUD-000306","TABLET_LINK_CHANGED",null,"TABLET","17:33:06.284",""]]
+===== 011.out
+17:35:14.442 batch start; device time 10-06 17:35:13.000; host load 5.22
+17:35:14.468 mark hoH3 at 17:35:14.468
+17:35:14.492 nav /admin/devices load=true
+17:35:17.629 wait pd-issue-panel present: 1 ms (at 17:35:17.630)
+17:35:17.658 declared screen pair
+17:35:17.685 tapid pairing-code-slot-0 at 178,2265
+17:35:19.975 slept 1500 ms
+17:35:21.505 focused true; keyguard false; inputType 0x80002
+17:35:21.718 host load 5.13 5.76 7.78
+17:35:21.739 device-host clock offset ms: -674, -674, -674, -674, -674
+17:35:21.845 issued at 17:35:21.869; mask ok; screenshot hoH3_web_code_issued_blurred.png 17:35:24.021..17:35:24.145; code typed into the phone at 17:35:24.380 (not shown) + go key; redeem 201 at device 10-06 17:35:27.531 (POST /api/v1/pairing/redeem 201); code scan (count only) {"deviceJs":0,"serverLog":0,"events":0}; screenrecord hoH3 started (pid 69730) at 17:35:28.881; load 6.32 6.00 7.85
+17:35:28.939 screenrecord hoH3 pulled; every frame extracted (passthrough)
+17:35:44.185 declared screen login
+17:35:44.211 screencap hoH3_after.png 17:35:44.211..17:35:44.887
+17:35:44.957 jsall (1): 17:35:27.531 [DEMS-LIVE] POST /api/v1/pairing/redeem 201 a256ebe0-1e59-42da-9f68-8791ef942f29
+17:35:45.017 serverlog since hoH3 (16):
+    17:35:14.501 [socket closed]
+    17:35:14.604 [socket opened]
+    17:35:14.704 GET /api/v1/pairing/devices 200
+    17:35:14.705 GET /api/v1/pairing/code 200
+    17:35:21.882 POST /api/v1/pairing/code 201
+    17:35:21.883 GET /api/v1/pairing/code 200
+    17:35:22.001 GET /api/v1/pairing/code 200
+    17:35:28.171 POST /api/v1/pairing/redeem 201
+    17:35:28.181 GET /api/v1/pairing/devices 200
+    17:35:28.190 GET /api/v1/pairing/code 200
+    17:35:28.193 GET /api/v1/pairing/code 200
+    17:35:28.343 [socket closed]
+    17:35:28.355 [socket opened]
+    17:35:28.471 GET /api/v1/pairing/devices 200
+    17:35:29.425 GET /api/v1/pairing/code 200
+    17:35:29.427 GET /api/v1/pairing/devices 200
+17:35:45.046 pdfacts => {"href":"/admin/devices","onPage":true,"issueState":"IDLE","codeShown":false,"activeElsewhere":false,"redeemed":null,"rows":[{"id":"DEV-0022","state":"Paired","operator":"—","revokeShown":true},{"id":"DEV-0021","state":"Revoked","operator":"—","revokeShown":false},{"id":"DEV-0020", ...]}
+17:35:45.077 js => [["AUD-000314","TABLET_LINK_CHANGED",null,"TABLET","17:35:28.355"],["AUD-000313","PAIRING_SUCCESS",null,"DEV-0022","17:35:28.167"],["AUD-000312","PAIRING_CODE_ISSUED","OPR-002",null,"17:35:21.877"],["AUD-000311","TABLET_LINK_CHANGED",null,"TABLET","17:34:47.820"]]
+===== 012.out
+17:38:28.708 batch start; device time 10-06 17:38:28.000; host load 2.98
+===== 013.out
+17:38:46.913 batch start; device time 10-06 17:38:46.000; host load 3.00
+17:38:46.961 mark signinI2 at 17:38:46.961
+17:38:46.989 w1: HeadlessChrome/153.0.8010.12 headless=true pid 35624 devtools 127.0.0.1:50363 (OS-assigned, listener owned by pid 35624), fresh profile in TMPDIR
+17:38:47.211 nav /login load=true
+17:38:49.854 signin andi.pratama (SUPERVISOR) dashboard after 1090 ms
+17:38:53.087 nav /admin/devices load=true
+17:38:56.234 wait pd-issue-panel present: 0 ms (at 17:38:56.234)
+17:38:56.268 declared screen login
+17:38:56.298 focused true; keyguard false; inputType 0x80001
+17:38:56.594 tap 539,1184
+17:38:56.681 slept 900 ms
+17:38:57.620 username typed (budi.santoso, INVESTIGATOR); inputType 0x80001
+17:38:58.091 slept 600 ms
+17:38:58.724 tap 539,1342
+17:38:58.829 slept 1500 ms
+17:39:00.359 focused true; keyguard false; inputType 0x80081
+17:39:00.518 password typed (not shown); inputType 0x80081
+17:39:00.840 slept 400 ms
+17:39:01.279 key 66
+17:39:01.441 signin 200 at device 10-06 17:39:00.765 (POST /api/v1/auth/sign-in 200)
+17:39:01.520 slept 4000 ms
+17:39:05.545 screencap p2_I2_after_signin.png 17:39:05.545..17:39:05.842
+17:39:05.907 serverlog since signinI2 (2):
+    17:38:49.987 POST /api/v1/auth/sign-in 200
+    17:39:01.397 POST /api/v1/auth/sign-in 200
+===== 014.out
+17:39:15.100 batch start; device time 10-06 17:39:14.000; host load 3.27
+17:39:15.128 mark rvI2 at 17:39:15.128
+17:39:15.154 nav /admin/devices load=true
+17:39:18.303 wait pd-issue-panel present: 0 ms (at 17:39:18.303)
+17:39:18.337 pdfacts => {"href":"/admin/devices","onPage":true,"issueState":"IDLE","codeShown":false,"activeElsewhere":false,"redeemed":null,"rows":[{"id":"DEV-0022","state":"Paired","operator":"AKP Budi Santoso","revokeShown":true},{"id":"DEV-0021","state":"Revoked","operator":"—","revokeShown":false},{"id ...]}
+17:39:18.376 screencap rvI2_before.png 17:39:18.376..17:39:18.635
+17:39:18.698 host load 3.88 4.58 6.77
+17:39:18.720 device-host clock offset ms: -676, -677, -676, -676, -675
+17:39:18.824 screenrecord rvI2 started (pid 36958) at 17:39:19.427; load 3.88 4.58 6.77
+17:39:19.465 slept 2500 ms
+17:39:22.003 revoke DEV-0022: confirm clicked 17:39:22.938 (epoch 1791283162938); answer 200 (request 17:39:22.943)
+17:39:23.123 host load 3.73 4.53 6.74
+17:39:23.164 slept 9000 ms
+17:39:32.206 screenrecord rvI2 pulled; every frame extracted (passthrough)
+17:39:40.391 declared screen pair
+17:39:40.419 screencap rvI2_after.png 17:39:40.419..17:39:40.611
+17:39:40.666 appjs rvI2_js.txt: 14 lines since 10-06 17:39:14.000
+17:39:40.717 serverlog since rvI2 (5):
+    17:39:15.166 [socket closed]
+    17:39:15.276 [socket opened]
+    17:39:22.962 POST /api/v1/pairing/devices/:id/revoke 200
+    17:39:22.968 [socket closed]
+    17:39:23.960 [socket opened]
+17:39:40.746 js => [["AUD-000318","TABLET_LINK_CHANGED",null,"TABLET","17:39:22.962",""],["AUD-000317","DEVICE_REVOKED","OPR-002","DEV-0022","17:39:22.953","RF-PH revoke timing I2"],["AUD-000316","AUTH_SUCCESS","OPR-001","DEV-0022","17:39:01.388",""],["AUD-000315","AUTH_SUCCESS","OPR-002",null,"17:38:49.984",""],["AUD-000314","TABLET_LINK_CHANGED",null,"TABLET","17:35:28.355",""],["AUD-000313","PAIRING_SUCCESS",null,"DEV-0022","17:35:28.167",""]]
+===== 015.out
+17:39:49.131 batch start; device time 10-06 17:39:48.000; host load 3.96
+17:39:49.160 mark hoH4 at 17:39:49.160
+17:39:49.193 nav /admin/devices load=true
+17:39:52.335 wait pd-issue-panel present: 1 ms (at 17:39:52.336)
+17:39:52.374 declared screen pair
+17:39:52.411 tapid pairing-code-slot-0 at 178,2265
+17:39:54.792 slept 1500 ms
+17:39:56.329 focused true; keyguard false; inputType 0x80002
+17:39:56.571 host load 4.69 4.68 6.72
+17:39:56.594 device-host clock offset ms: -676, -676, -676, -676, -677
+17:39:56.705 issued at 17:39:56.728; mask ok; screenshot hoH4_web_code_issued_blurred.png 17:39:58.858..17:39:58.984; code typed into the phone at 17:39:59.129 (not shown) + go key; redeem 201 at device 10-06 17:40:02.383 (POST /api/v1/pairing/redeem 201); code scan (count only) {"deviceJs":0,"serverLog":0,"events":0}; screenrecord hoH4 started (pid 38213) at 17:40:05.378; load 4.80 4.70 6.70
+17:40:05.425 screenrecord hoH4 pulled; every frame extracted (passthrough)
+17:40:20.706 declared screen login
+17:40:20.732 screencap hoH4_after.png 17:40:20.732..17:40:21.378
+17:40:21.439 jsall (1): 17:40:02.383 [DEMS-LIVE] POST /api/v1/pairing/redeem 201 fcbacc7f-bf3c-48db-9b6d-5b9526c34ac5
+17:40:21.527 serverlog since hoH4 (16):
+    17:39:49.204 [socket closed]
+    17:39:49.301 [socket opened]
+    17:39:49.390 GET /api/v1/pairing/devices 200
+    17:39:49.390 GET /api/v1/pairing/code 200
+    17:39:56.742 POST /api/v1/pairing/code 201
+    17:39:56.744 GET /api/v1/pairing/code 200
+    17:39:56.847 GET /api/v1/pairing/code 200
+    17:40:03.033 POST /api/v1/pairing/redeem 201
+    17:40:03.055 GET /api/v1/pairing/code 200
+    17:40:03.057 GET /api/v1/pairing/devices 200
+    17:40:03.060 GET /api/v1/pairing/code 200
+    17:40:03.214 [socket closed]
+    17:40:03.220 [socket opened]
+    17:40:03.345 GET /api/v1/pairing/devices 200
+    17:40:04.255 GET /api/v1/pairing/code 200
+    17:40:04.256 GET /api/v1/pairing/devices 200
+17:40:21.550 pdfacts => {"href":"/admin/devices","onPage":true,"issueState":"IDLE","codeShown":false,"activeElsewhere":false,"redeemed":null,"rows":[{"id":"DEV-0023","state":"Paired","operator":"—","revokeShown":true},{"id":"DEV-0022","state":"Revoked","operator":"—","revokeShown":false},{"id":"DEV-0021", ...]}
+17:40:21.573 js => [["AUD-000321","TABLET_LINK_CHANGED",null,"TABLET","17:40:03.220"],["AUD-000320","PAIRING_SUCCESS",null,"DEV-0023","17:40:03.028"],["AUD-000319","PAIRING_CODE_ISSUED","OPR-002",null,"17:39:56.736"],["AUD-000318","TABLET_LINK_CHANGED",null,"TABLET","17:39:22.962"]]

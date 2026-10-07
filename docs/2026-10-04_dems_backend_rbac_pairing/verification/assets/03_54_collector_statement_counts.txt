@@ -1,0 +1,16 @@
+# 2026-10-07 05:34:46 STATEMENT lines of .data/postgres/log/postgresql-05.log: counts by pattern (no line printed)
+contain PASSWORD (any case): 0
+contain SCRAM-SHA-256$: 0
+contain dems_trial (trial statements): 6
+contain session_replication_role/log_statement (trial refusals): 3
+contain ROLE: 1
+STATEMENT keyword only (first SQL word), counted:
+   2 ALTER
+   1 CREATE
+   1 DELETE
+   1 DROP
+   1 SET
+   1 TRUNCATE
+   1 UPDATE
+   2 select
+   3 show

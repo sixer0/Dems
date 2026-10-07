@@ -3,8 +3,9 @@ import { API_ERROR_CODES } from '@dems/shared/api';
 import { SimErrorCode, SimNotFoundError, SimNotImplementedError, SimPermissionError, SimTransitionError } from '@dems/shared/sim';
 import { describe, expect, it } from 'vitest';
 import { PipelineFailure } from '../../core';
-import { ApiFailure } from '../../plugins/error-envelope';
-import { EngineError, SIM_REFUSAL_RULES, engineNotReady, simCodeOf, simRefusal } from '../errors';
+import { notSignedIn } from '../../plugins/authenticate';
+import { ApiFailure, NOT_SIGNED_IN_TEXT } from '../../plugins/error-envelope';
+import { EngineError, SIM_REFUSAL_RULES, engineNotReady, operatorRequired, simCodeOf, simRefusal } from '../errors';
 
 /** Spec §7.2, "How a thrown simulator error becomes an answer": simulator code, status, code of the answer. */
 const SPEC_TABLE: ReadonlyArray<readonly [simCode: SimErrorCode, status: number, code: string]> = [
@@ -104,5 +105,15 @@ describe('the host\'s own errors', () => {
     const error = new EngineError('ENGINE_SNAPSHOT_REJECTED', 'the stored state was rejected', { slices: 'session', rejected: 1 });
     expect(error).not.toBeInstanceOf(ApiFailure);
     expect(error).toMatchObject({ name: 'EngineError', code: 'ENGINE_SNAPSHOT_REJECTED', detail: { slices: 'session', rejected: 1 } });
+  });
+});
+
+describe('401 NOT_SIGNED_IN has one text across the server (review findings CPB1-18, W91-5)', () => {
+  it('stage 4, the engine backstop and the hosted actions\' refusal table answer the contract\'s "Sign in first."', () => {
+    expect(NOT_SIGNED_IN_TEXT).toBe('Sign in first.');
+    expect(notSignedIn()).toMatchObject({ statusCode: 401, code: 'NOT_SIGNED_IN', message: NOT_SIGNED_IN_TEXT });
+    expect(operatorRequired()).toMatchObject({ statusCode: 401, code: 'NOT_SIGNED_IN', message: NOT_SIGNED_IN_TEXT });
+    expect(SIM_REFUSAL_RULES.NOT_SIGNED_IN.message).toBe(NOT_SIGNED_IN_TEXT);
+    expect(simRefusal(new SimPermissionError('cancel', 'SESSION_START', SimErrorCode.NOT_SIGNED_IN))?.message).toBe(NOT_SIGNED_IN_TEXT);
   });
 });

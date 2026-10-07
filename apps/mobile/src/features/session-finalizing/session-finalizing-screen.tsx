@@ -20,10 +20,14 @@
  * "Finalizing — please wait"; there is no back arrow, the stack's back gesture is off for an active
  * session (step 70), and Back never leaves the app mid-session (F-79-1). A fault (FAULT, RECOVERY)
  * turns the running step red once and shows a calm Alert with the way to the Recovery status (P7).
+ *
+ * Hand-over from the monitor (E-fix row FX-M2; E2E-P-4, E2E-T-4): `/session/live` draws this screen
+ * in place (`handover`) in the commit that drops the monitor, so a stop shows no empty frame; that
+ * copy and the Finalizing route's copy right after it skip the enter motion (`handover.ts`).
  */
 import { useIsFocused, useRouter, type Href } from 'expo-router';
 import { Alert, Button, Spinner, useToast } from 'heroui-native';
-import { useCallback, useEffect, useRef, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { BackHandler, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated from 'react-native-reanimated';
@@ -45,6 +49,9 @@ import {
   type FinalizingPhase,
 } from './finalizing.model';
 import { FlowBoundary } from './flow-boundary';
+import { SessionSummaryScreen } from '@/features/session-summary/session-summary-screen';
+import { markSummaryHandoff } from '@/features/session-summary/summary-handoff';
+import { isFinalizingHandover, markFinalizingHandover } from './handover';
 import { SealedStamp } from './sealed-stamp';
 import { useFinalizationSteps, useFinalizingSession, useSealedHandOffDue, type FinalizingSession } from './use-finalizing';
 
@@ -60,13 +67,27 @@ const SIDE_WIDTH = 360;
 /** One "please wait" toast per this many ms, however often Back is pressed. */
 const BLOCKED_TOAST_GAP_MS = 2_000;
 
-export function SessionFinalizingScreen() {
+export interface SessionFinalizingScreenProps {
+  /** Drawn in place by `/session/live` while it hands over to this route (E2E-P-4): no enter motion. */
+  readonly handover?: boolean;
+}
+
+export function SessionFinalizingScreen({ handover = false }: SessionFinalizingScreenProps = {}) {
   const { t } = useTranslation();
   const focused = useIsFocused();
   const { layoutClass } = useLayoutClass();
   const session = useFinalizingSession();
+  // E2E-P-4: the in-place copy, and the route's copy that replaces it, appear at once (no rise from 0).
+  const [enter] = useState(() => !handover && !isFinalizingHandover(session.id));
+  useLayoutEffect(() => {
+    if (handover) markFinalizingHandover(session.id);
+  }, [handover, session.id]);
   const steps = useFinalizationSteps();
   const phase = finalizingPhase(session.state);
+  // CF2-A (RF-PH-3): the Summary that replaces this screen draws in place (`summary-handoff.ts`).
+  useLayoutEffect(() => {
+    if (phase === 'sealed') markSummaryHandoff(session.id);
+  }, [phase, session.id]);
   const busy = isFinalizingBusy(phase);
   const summaryHref: Href | null = session.id ? (`/session/summary/${session.id}` as Href) : null;
 
@@ -79,6 +100,14 @@ export function SessionFinalizingScreen() {
     if (handOff && focused && summaryHref) go(summaryHref, 'handOff');
   }, [handOff, focused, summaryHref, go]);
 
+  // CF2-A (RF-PH-3): sealed with the summary pending, this route draws the Summary IN PLACE (the D201 recipe of
+  // the monitor -> Finalizing hand-over): the route change that follows (the route sync at SEALED, or the
+  // 1.2 s hand-off above) swaps two identical screens. On the phones the Summary route took up to 2 s to
+  // draw after the replace and then cut in with one empty frame (9 of 18 runs).
+  if (!handover && phase === 'sealed' && session.summaryPending && session.id) {
+    return <SessionSummaryScreen sessionId={session.id} handover />;
+  }
+
   const sideBySide = layoutClass === 'expanded';
   const maxWidth = CARD_MAX_WIDTH[layoutClass];
 
@@ -87,6 +116,7 @@ export function SessionFinalizingScreen() {
     const resume = phase === 'open' ? sessionResyncHref(session.state, { sessionId: session.id }) : null;
     body = (
       <NoticeCard
+        enter={enter}
         testID={`finalizing-${phase}`}
         title={t(phase === 'idle' ? 'features.session-finalizing.idle.title' : 'features.session-finalizing.notEnded.title')}
         body={t(phase === 'idle' ? 'features.session-finalizing.idle.body' : 'features.session-finalizing.notEnded.body')}
@@ -98,14 +128,21 @@ export function SessionFinalizingScreen() {
     body = (
       <View style={[styles.cards, sideBySide ? styles.cardsRow : null]}>
         <View style={sideBySide ? styles.mainColumn : styles.fullWidth}>
-          {phase === 'interrupted' ? <InterruptedAlert faultKind={session.faultKind} onOpen={() => go('/session/recovery', 'recovery')} /> : null}
+          {phase === 'interrupted' ? <InterruptedAlert enter={enter} faultKind={session.faultKind} onOpen={() => go('/session/recovery', 'recovery')} /> : null}
           <FlowBoundary scope="session-finalizing" name="pipeline">
-            <PipelineCard session={session} phase={phase} steps={steps} onOpenSummary={summaryHref ? () => go(summaryHref, 'openSummary') : null} />
+            <PipelineCard
+              enter={enter}
+              handover={handover}
+              session={session}
+              phase={phase}
+              steps={steps}
+              onOpenSummary={summaryHref ? () => go(summaryHref, 'openSummary') : null}
+            />
           </FlowBoundary>
         </View>
         <View style={sideBySide ? styles.sideColumn : styles.fullWidth}>
           <FlowBoundary scope="session-finalizing" name="session">
-            <SessionCard session={session} />
+            <SessionCard enter={enter} session={session} />
           </FlowBoundary>
         </View>
       </View>
@@ -189,13 +226,17 @@ function useFinalizingBack({ busy, focused, exitHref }: FinalizingBackOptions): 
 // ---------------------------------------------------------------------------------------------
 
 interface PipelineCardProps {
+  /** False on a hand-over from the monitor: the card is there at once (E2E-P-4). */
+  enter: boolean;
   session: FinalizingSession;
   phase: FinalizingPhase;
   steps: ReturnType<typeof useFinalizationSteps>;
   onOpenSummary: (() => void) | null;
+  /** The copy drawn in place on a hand-over: its Stepper starts no motion (W93-7). */
+  handover?: boolean;
 }
 
-function PipelineCard({ session, phase, steps, onOpenSummary }: PipelineCardProps) {
+function PipelineCard({ enter, session, phase, steps, onOpenSummary, handover = false }: PipelineCardProps) {
   const { t } = useTranslation();
   const settings = useMotionSettings();
   const statuses = pipelineStatuses(steps, phase);
@@ -205,7 +246,7 @@ function PipelineCard({ session, phase, steps, onOpenSummary }: PipelineCardProp
   const sealedIn = sealedAfterSeconds(session.stoppedAt, session.sealedAt);
 
   return (
-    <Animated.View entering={enterRise(0, settings)}>
+    <Animated.View entering={enter ? enterRise(0, settings) : undefined}>
       <Pane name="finalization">
         <SectionCard testID="finalizing-card">
           <View style={styles.cardHead}>
@@ -255,7 +296,7 @@ function PipelineCard({ session, phase, steps, onOpenSummary }: PipelineCardProp
           </View>
 
           <View accessibilityLabel={t('features.session-finalizing.pipelineLabel')}>
-            <FinalizationPipeline statuses={statuses} seconds={seconds} />
+            <FinalizationPipeline statuses={statuses} seconds={seconds} animate={!handover} />
           </View>
 
           {isFinalizingBusy(phase) ? (
@@ -283,7 +324,7 @@ function PipelineCard({ session, phase, steps, onOpenSummary }: PipelineCardProp
   );
 }
 
-function SessionCard({ session }: { session: FinalizingSession }) {
+function SessionCard({ enter, session }: { enter: boolean; session: FinalizingSession }) {
   const { t } = useTranslation();
   const settings = useMotionSettings();
   const length =
@@ -313,7 +354,7 @@ function SessionCard({ session }: { session: FinalizingSession }) {
     },
   ];
   return (
-    <Animated.View entering={enterRise(1, settings)}>
+    <Animated.View entering={enter ? enterRise(1, settings) : undefined}>
       <Pane name="session">
         <SectionCard title={t('features.session-finalizing.sessionCard')} testID="finalizing-session-card">
           <KeyValueList items={items} />
@@ -323,12 +364,12 @@ function SessionCard({ session }: { session: FinalizingSession }) {
   );
 }
 
-function InterruptedAlert({ faultKind, onOpen }: { faultKind: FinalizingSession['faultKind']; onOpen: () => void }) {
+function InterruptedAlert({ enter, faultKind, onOpen }: { enter: boolean; faultKind: FinalizingSession['faultKind']; onOpen: () => void }) {
   const { t } = useTranslation();
   const settings = useMotionSettings();
   const fault = faultKind ? t(`common.faultKind.${faultKind}`) : t('features.session-finalizing.interrupted.unknownFault');
   return (
-    <Animated.View entering={enterRise(0, settings)} style={styles.alert} testID="finalizing-interrupted">
+    <Animated.View entering={enter ? enterRise(0, settings) : undefined} style={styles.alert} testID="finalizing-interrupted">
       <Alert status="danger">
         <Alert.Indicator />
         <Alert.Content>
@@ -346,6 +387,7 @@ function InterruptedAlert({ faultKind, onOpen }: { faultKind: FinalizingSession[
 }
 
 interface NoticeCardProps {
+  enter: boolean;
   testID: string;
   title: string;
   body: string;
@@ -353,10 +395,10 @@ interface NoticeCardProps {
   onAction: () => void;
 }
 
-function NoticeCard({ testID, title, body, actionLabel, onAction }: NoticeCardProps) {
+function NoticeCard({ enter, testID, title, body, actionLabel, onAction }: NoticeCardProps) {
   const settings = useMotionSettings();
   return (
-    <Animated.View entering={enterRise(0, settings)}>
+    <Animated.View entering={enter ? enterRise(0, settings) : undefined}>
       <SectionCard testID={testID}>
         <Text accessibilityRole="header" maxFontSizeMultiplier={1.2} style={styles.title}>
           {title}

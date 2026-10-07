@@ -1,0 +1,9 @@
+#!/bin/bash
+# Final phone2 proof: one re-pair (hand-off F0), then revoke signed-out / signed-in / signed-out / signed-in, re-pair after each.
+cd /Users/gsp-budi/Documents/DEMS/.cache/cf_m1
+echo "=== F0 re-pair $(date +%T)"
+OUT=$(./cycle.sh F0 0 X | sed -n '/w1 nav \/admin\/devices/,$p' | node send.mjs q_phone2 300)
+echo "$OUT" | grep -E "issued|redeem|ERROR|REFUSED" | cut -c1-300
+NEXT=$(echo "$OUT" | grep -o '"id":"DEV-[0-9]*","state":"Paired"' | head -1 | grep -o 'DEV-[0-9]*')
+[ -n "$NEXT" ] && echo "$NEXT" > own_device_phone2.id && echo "new device $NEXT" || { echo "F0 re-pair failed"; exit 1; }
+SPECS="F1:0 F2:1 F3:0 F4:1" ./revokeloop.sh

@@ -1,0 +1,16 @@
+13:07:44.940 mark f01 at 13:07:44.941
+13:07:44.981 press sm-final-close ok at 13:07:45.024
+13:07:45.068 slept 500 ms
+13:07:45.613 nav /evidence/EV-20261006-0023 load=true
+13:07:49.264 js => "/evidence/EV-20261006-0023"
+13:07:49.308 press evidence-tab-integrity ok at 13:07:49.386
+13:07:49.430 slept 2000 ms
+13:07:51.475 js => [["Time UTC+07:00","Action","Actor","Detail"],["6 Oct 2026 13:04:04","SEALED","System","—"],["6 Oct 2026 13:03:57","RECORDING_STOPPED","AKP Andi Pratama","RP web stop by supervisor"],["6 Oct 2026 12:59:36","RECORDING_STARTED","AKP Budi Santoso","—"]]
+13:07:51.520 slept 800 ms
+13:07:52.389 screenshot 67_custody_web_ev0023_integrity_tab.png 13:07:52.389..13:07:52.485
+13:07:52.522 js => [922,494,467,370]
+13:07:52.559 serverlog since f01 (4):
+    13:07:45.625 [socket closed]
+    13:07:45.726 [socket opened]
+    13:07:45.737 GET /api/v1/auth/session 200
+    13:07:46.128 GET /api/v1/evidence/:id 200

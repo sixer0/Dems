@@ -190,7 +190,7 @@ describe('S1-7 and S4-3: Verify sends operation 60 and shows the Core\'s verdict
     expect(screen.getByTestId('audit-verify-PASS')).toBeTruthy();
   });
 
-  it('a denial (403 NOT_PERMITTED, CONTRACT-GAP-W80-1: the envelope written here): the denied toast, the button idle', async () => {
+  it('a denial (403 NOT_PERMITTED, RESIDUAL-W80-1 (W83 ledger #58): the envelope written here): the denied toast, the button idle', async () => {
     const b = await openAudit();
     // Operation 60 needs no permission (every signed-in role may call it), so the contract has no
     // `notPermitted` example and a role cannot be named (W66 F-3); the envelope proves the presenter path.

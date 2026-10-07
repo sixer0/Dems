@@ -98,13 +98,21 @@ export interface SessionRegistry {
    * Ends every open session of one operator inside the CALLER's unit of work (a disabled user,
    * spec §4.7). Returns the IDs of the ended sessions: the caller counts them into its audit row
    * (`sessionsEnded`) and publishes `session.ended` after its commit. No row is written here.
+   *
+   * Publication rule of the three `endFor...` methods (FX-C, review finding W91-2): the registry
+   * publishes the DEVICE side only (`device.session`, registered on the caller's unit, so it
+   * goes out after the commit and never after a rollback); the caller publishes `session.ended`
+   * and `admin.changed`. `endForOperator` and `endBiometricSessions` register `device.session`
+   * for the ended sessions bound to a paired device. `endForDevice` publishes nothing: its
+   * callers (revoke, unpair) send `device.revoked` and an immediate `admin.changed DEVICES`.
    */
   endForOperator(unit: UnitOfWork, operatorId: string, reason: OperatorEndReason): Promise<readonly string[]>;
-  /** The same for one paired device (a revoked or unpaired device). */
+  /** The same for one paired device (a revoked or unpaired device). Publishes nothing (see above). */
   endForDevice(unit: UnitOfWork, deviceId: string, reason: DeviceEndReason): Promise<readonly string[]>;
   /**
    * The same for the open BIOMETRIC sessions of one device and operator, with the reason
    * `TOKEN_REUSE` (a reused biometric token, spec §5.6 step 6). Password sessions stay open.
+   * Registers `device.session` for the device (see above).
    */
   endBiometricSessions(unit: UnitOfWork, deviceId: string, operatorId: string): Promise<readonly string[]>;
   /**
@@ -141,6 +149,24 @@ export function onPool(pool: Pool): Queryable {
  */
 export function readDatabase<T>(app: FastifyInstance, source: string, work: (db: Queryable) => Promise<T>, context?: ReadContext): Promise<T> {
   return app.db.read(source, (pool) => work(onPool(pool)), context);
+}
+
+/**
+ * E-fix FX-C (ruling R4; E2E-S-2, RESIDUAL-W70-1): after the commit, tells the realtime channel
+ * that auth sessions bound to these paired devices began or ended, so the operator the device
+ * registry shows signed in on them (`signedInOperatorId`, operation 19) may have changed. The
+ * channel turns it into one debounced `admin.changed DEVICES`. Sessions without a device (the
+ * console's) publish nothing. Called by the sign-ins, the sign-out and every end below except
+ * `endForDevice`, whose callers (revoke, unpair) publish `admin.changed DEVICES` themselves.
+ */
+export function publishDeviceSessions(
+  app: FastifyInstance,
+  unit: Pick<UnitContext, 'afterCommit'>,
+  sessions: readonly { readonly deviceId: string | null }[],
+): void {
+  const deviceIds = [...new Set(sessions.flatMap((session) => (session.deviceId === null ? [] : [session.deviceId])))];
+  if (deviceIds.length === 0) return;
+  unit.afterCommit(() => app.publish({ kind: 'device.session', deviceIds }));
 }
 
 export interface IssuedSession {
@@ -183,13 +209,14 @@ export function createSessionRegistry(app: FastifyInstance): SessionRegistry {
     });
   }
 
-  /** After the commit, in commit order: one publication per reason. */
+  /** After the commit, in commit order: one publication per reason, then the devices among them (R4). */
   function publishExpired(unit: UnitContext, ended: readonly EndedSession[]): void {
     for (const reason of ['IDLE_EXPIRED', 'ABSOLUTE_EXPIRED'] as const) {
       const sessionIds = ended.filter((session) => session.endReason === reason).map((session) => session.id);
       if (sessionIds.length === 0) continue;
       unit.afterCommit(() => app.publish({ kind: 'session.ended', sessionIds, reason: EXPIRY_PUBLICATION[reason].publish }));
     }
+    publishDeviceSessions(app, unit, ended);
   }
 
   /** Inside a unit: ends this session if it is open and past a limit, with its row and event. */
@@ -261,7 +288,10 @@ export function createSessionRegistry(app: FastifyInstance): SessionRegistry {
     },
 
     async endForOperator(unit, operatorId, reason) {
-      const ended = await endSessionsOfOperator(unitContextOf(unit), operatorId, app.clock.now(), reason);
+      const context = unitContextOf(unit);
+      const ended = await endSessionsOfOperator(context, operatorId, app.clock.now(), reason);
+      // A disabled operator signed in on a paired device leaves it: Paired Devices reads its list (R4).
+      publishDeviceSessions(app, context, ended);
       return ended.map((session) => session.id);
     },
 
@@ -271,7 +301,9 @@ export function createSessionRegistry(app: FastifyInstance): SessionRegistry {
     },
 
     async endBiometricSessions(unit, deviceId, operatorId) {
-      const ended = await endBiometricSessions(unitContextOf(unit), deviceId, operatorId, app.clock.now());
+      const context = unitContextOf(unit);
+      const ended = await endBiometricSessions(context, deviceId, operatorId, app.clock.now());
+      publishDeviceSessions(app, context, ended);
       return ended.map((session) => session.id);
     },
 
@@ -308,6 +340,7 @@ export async function signOutSession(
     if (ended === null) return false;
     await appendActivity(unit, signedOut({ operatorId: ended.operatorId, deviceId: ended.deviceId, reason }));
     unit.afterCommit(() => app.publish({ kind: 'session.ended', sessionIds: [ended.id], reason: 'SIGNED_OUT' }));
+    publishDeviceSessions(app, unit, [ended]);
     return true;
   });
 }

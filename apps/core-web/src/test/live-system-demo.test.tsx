@@ -466,7 +466,7 @@ describe('D-4 reset and scenario load (CL-18)', () => {
     expect(requests('resetDemo')).toHaveLength(3)
   })
 
-  it('a 503 while the Core rebuilds (another reset holds it) reads "The Core server is starting"; nothing is announced (CONTRACT-GAP-W76-1: `details.reason` does not reach the page)', async () => {
+  it('a 503 while the Core rebuilds (another reset holds it) reads "The Core server is starting"; nothing is announced (RESIDUAL-W76-1, W83 ledger #52: `details.reason` does not reach the page)', async () => {
     const { bed } = await liveSystem()
     bed.fake.answerOnce('resetDemo', refusal(503, 'NOT_READY', 'The Core server is not ready.', { reason: 'RESET_IN_PROGRESS' }))
     const body = await openPanel()

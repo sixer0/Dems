@@ -1,0 +1,266 @@
+// R-S re-test shared helpers (adapted from round 1's drv_lib.mjs.txt): raw CDP to this row's OWN headless
+// shell (OS-assigned port read from its DevToolsActivePort; origin http://127.0.0.1:5173 only) and adb against
+// emulator-5558 ONLY.
+//
+// SECRETS: no request body, cookie value, Runtime.evaluate expression, password, pairing code, token or device
+// credential is ever printed or written. Network records keep method, path (query cut) and status. Socket
+// frames keep only `type` and `resource`. CDP errors are reported by code only.
+import { execFileSync } from 'node:child_process'
+import { readFileSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+
+export const ORIGIN = 'http://127.0.0.1:5173'
+export const SERIAL = process.env.SERIAL || 'emulator-5558'
+if (!['emulator-5554','emulator-5556','emulator-5558'].includes(SERIAL)) throw new Error('serial outside 5554/5556/5558 refused')
+export const APP = 'com.dems.demo.tablet'
+export const OUT = '/Users/gsp-budi/Documents/DEMS/docs/2026-10-04_dems_backend_rbac_pairing/verification/assets/08_performance_realtime'
+export const SCRATCH = '/private/tmp/claude-501/-Users-gsp-budi-Documents-DEMS/0d71fd65-4a51-4019-9c48-5c92d11bbdaf/scratchpad/w98'
+export const SERVER_LOG = '/Users/gsp-budi/Documents/DEMS/.cache/manual/main-server-w94.log'
+export const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+const local = (ms) => new Date(ms).toLocaleTimeString('en-GB', { hour12: false }) + '.' + String(ms % 1000).padStart(3, '0')
+export const hms = local
+export const stamp = (ms = Date.now()) => `${local(ms)} (epoch ${(ms / 1000).toFixed(3)})`
+export function log(line) { console.log(`[${local(Date.now())}] ${line}`) }
+
+// ───────────────────────────── adb (emulator-5558 only) ─────────────────────────────
+const BIG = { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 }
+export const adb = (...args) => execFileSync('adb', ['-s', SERIAL, ...args], BIG)
+export function deviceState() {
+  const w = adb('shell', 'dumpsys', 'window')
+  const keyguard = /isKeyguardShowing=(\w+)/.exec(w)?.[1] ?? '?'
+  const focus = (/mCurrentFocus=.*$/m.exec(w)?.[0] ?? '').trim()
+  return { keyguard, focus, appFocused: keyguard === 'false' && focus.includes(APP) }
+}
+export function screencap(name) {
+  const png = execFileSync('adb', ['-s', SERIAL, 'exec-out', 'screencap', '-p'], { encoding: 'buffer', maxBuffer: BIG.maxBuffer })
+  writeFileSync(join(OUT, name), png)
+  return { file: name, bytes: png.length, at: stamp() }
+}
+export const tap = (x, y) => adb('shell', 'input', 'tap', String(x), String(y))
+export const deviceNow = () => adb('shell', "date '+%m-%d %H:%M:%S.000'").trim()
+/** Device JS log since T0 with epoch seconds per line. */
+export const jsLog = (t0) => adb('logcat', '-d', '-v', 'epoch', '-T', t0, '-s', 'ReactNativeJS:V')
+export const liveLines = (t0) => jsLog(t0).split('\n').filter((l) => l.includes('[DEMS-LIVE]')).map((l) => {
+  const m = /^\s*([0-9.]+) .*\[DEMS-LIVE\] (\S+) (\S+) (\S+)/.exec(l)
+  return m ? { deviceEpoch: Number(m[1]), method: m[2], path: m[3], status: m[4] } : null
+}).filter(Boolean)
+/** Device clock minus host clock in ms, from one `date` call bracketed by host times. */
+export function clockOffset() {
+  const before = Date.now()
+  const dev = Number(adb('shell', 'date +%s.%N').trim()) * 1000
+  const after = Date.now()
+  return { offsetMs: Math.round(dev - (before + after) / 2), bracketMs: after - before }
+}
+
+/** Server log records (host clock) since a host epoch ms: time, method, route, status, principal, msg, code only. */
+export function serverLines(sinceMs, untilMs = Infinity) {
+  const out = []
+  for (const line of readFileSync(SERVER_LOG, 'utf8').split('\n')) {
+    if (!line.startsWith('{')) continue
+    let r; try { r = JSON.parse(line) } catch { continue }
+    if (r.time < sinceMs || r.time > untilMs) continue
+    out.push({ at: stamp(r.time), atMs: r.time, method: r.method ?? null, route: r.route ?? null, status: r.status ?? null, principal: r.principal ?? null, msg: r.msg, code: r.code ?? null, closedBy: r.closedBy ?? null, kind: r.kind ?? null })
+  }
+  return out
+}
+export const fmtServer = (l) => `${hms(l.atMs)} ${l.method ?? '-'} ${l.route ?? '-'} ${l.status ?? '-'} principal=${l.principal} ${l.msg}${l.code !== null ? ` code=${l.code}` : ''}${l.closedBy ? ` closedBy=${l.closedBy}` : ''}${l.kind ? ` kind=${l.kind}` : ''}`
+
+// ───────────────────────────── CDP ─────────────────────────────
+export function cdpPort() {
+  const ctx = process.env.CTX || 'a'
+  const port = Number(readFileSync(join(SCRATCH, `cdp_port_${ctx}`), 'utf8').trim())
+  if (!Number.isInteger(port) || port <= 0) throw new Error('no CDP port recorded')
+  // ownership: the recorded pid of THIS row's browser (profile path in its command line) must be the listener
+  const pid = readFileSync(join(SCRATCH, `browser_pid_${ctx}`), 'utf8').trim()
+  const profile = readFileSync(join(SCRATCH, `profile_dir_${ctx}`), 'utf8').trim()
+  const cmd = execFileSync('ps', ['-p', pid, '-o', 'command='], { encoding: 'utf8' })
+  if (!cmd.includes(profile)) throw new Error(`pid ${pid} is not this row's browser`)
+  const listen = execFileSync('lsof', ['-nP', '-a', '-p', pid, `-iTCP:${port}`, '-sTCP:LISTEN'], { encoding: 'utf8' })
+  if (!listen.includes(`127.0.0.1:${port}`)) throw new Error(`port ${port} is not owned by pid ${pid}`)
+  return port
+}
+export async function connect({ viewport = true } = {}) {
+  const port = cdpPort()
+  const list = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()
+  const target = list.find((t) => t.type === 'page')
+  const ws = new WebSocket(target.webSocketDebuggerUrl)
+  await new Promise((r) => ws.addEventListener('open', r, { once: true }))
+  let id = 0
+  const pending = new Map()
+  const requests = new Map()
+  const sockets = new Map()
+  const consoleLines = []
+  const listeners = []
+  let loadFired = false
+  let monoToWall = null
+  const cleanUrl = (u) => String(u).replace(/\?.*$/, (q) => (q.length > 1 ? '?…' : ''))
+  const wallOf = (mono) => (monoToWall === null ? null : Math.round((mono + monoToWall) * 1000))
+  ws.addEventListener('message', (event) => {
+    const msg = JSON.parse(event.data)
+    if (msg.id && pending.has(msg.id)) {
+      const { resolve, reject } = pending.get(msg.id)
+      pending.delete(msg.id)
+      msg.error ? reject(new Error(`CDP error ${msg.error.code}`)) : resolve(msg.result)
+      return
+    }
+    const p = msg.params ?? {}
+    switch (msg.method) {
+      case 'Page.loadEventFired': loadFired = true; break
+      case 'Network.requestWillBeSent':
+        if (p.wallTime && p.timestamp) monoToWall = p.wallTime - p.timestamp
+        requests.set(p.requestId, { sentAt: Math.round(p.wallTime * 1000), method: p.request.method, url: cleanUrl(p.request.url), status: null, doneAt: null })
+        break
+      case 'Network.responseReceived': { const e = requests.get(p.requestId); if (e) { e.status = p.response.status; e.doneAt = wallOf(p.timestamp); for (const f of listeners) f({ kind: 'http', ...e }) } break }
+      case 'Network.loadingFailed': { const e = requests.get(p.requestId); if (e && e.status === null) e.status = `failed: ${p.errorText}`; break }
+      case 'Network.webSocketCreated': sockets.set(p.requestId, { url: cleanUrl(p.url), status: null, frames: [] }); break
+      case 'Network.webSocketHandshakeResponseReceived': { const e = sockets.get(p.requestId); if (e) e.status = p.response.status; break }
+      case 'Network.webSocketFrameReceived': {
+        const e = sockets.get(p.requestId)
+        let type = '(not JSON)', resource = null
+        try { const d = JSON.parse(p.response.payloadData); type = d.type ?? '(no type)'; resource = typeof d.resource === 'string' ? d.resource : null } catch {}
+        const frame = { at: wallOf(p.timestamp), type, resource }
+        if (e && e.frames.length < 4000) e.frames.push(frame)
+        for (const f of listeners) f({ kind: 'frame', ...frame })
+        break
+      }
+      case 'Runtime.exceptionThrown': consoleLines.push(`exception: ${String(p.exceptionDetails?.exception?.description ?? p.exceptionDetails?.text).slice(0, 200)}`); break
+      case 'Runtime.consoleAPICalled':
+        if (p.type === 'error' || p.type === 'warning') consoleLines.push(`${p.type}: ${(p.args ?? []).map((a) => (a.value !== undefined ? String(a.value) : String(a.description ?? a.type))).join(' ').slice(0, 300)}`)
+        break
+    }
+  })
+  const send = (method, params = {}) => new Promise((resolve, reject) => { const n = ++id; pending.set(n, { resolve, reject }); ws.send(JSON.stringify({ id: n, method, params })) })
+  const evaluate = async (expression, label) => {
+    const r = await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true })
+    if (r.exceptionDetails) throw new Error(`page script failed: ${label}`)
+    return r.result.value
+  }
+  await send('Network.enable'); await send('Page.enable'); await send('Runtime.enable')
+  if (viewport) await send('Emulation.setDeviceMetricsOverride', { width: 1920, height: 1080, deviceScaleFactor: 1, mobile: false })
+  const q = (s) => JSON.stringify(s)
+  const page = {
+    send, evaluate,
+    onEvent: (f) => listeners.push(f),
+    close: () => ws.close(),
+    navigate: async (url, settleMs = 3500) => {
+      if (!url.startsWith(ORIGIN)) throw new Error('origin other than 127.0.0.1:5173 refused')
+      loadFired = false; await send('Page.navigate', { url })
+      for (let i = 0; i < 150 && !loadFired; i++) await sleep(100)
+      await sleep(settleMs); return loadFired
+    },
+    href: () => evaluate('location.origin + location.pathname', 'href'),
+    waitFor: async (testId, present = true, timeoutMs = 15000) => {
+      const until = Date.now() + timeoutMs
+      while (Date.now() < until) {
+        if ((await evaluate(`document.querySelector('[data-testid="${testId}"]') !== null`, `wait ${testId}`)) === present) return true
+        await sleep(120)
+      }
+      return false
+    },
+    waitAny: async (testIds, timeoutMs = 12000) => {
+      const until = Date.now() + timeoutMs
+      while (Date.now() < until) {
+        const f = await evaluate(`${q(testIds)}.find((id) => document.querySelector('[data-testid="' + id + '"]') !== null) ?? null`, 'wait any')
+        if (f) return f
+        await sleep(150)
+      }
+      return null
+    },
+    text: (testId) => evaluate(`document.querySelector('[data-testid="${testId}"]')?.textContent?.replace(/\\s+/g, ' ').trim() ?? null`, `text ${testId}`),
+    screenshot: async (name) => { const { data } = await send('Page.captureScreenshot', { format: 'png' }); writeFileSync(join(OUT, name), Buffer.from(data, 'base64')); return { file: name, at: stamp() } },
+    clickTestId: async (testId) => {
+      const box = await evaluate(`(() => { const el = document.querySelector('[data-testid="${testId}"]'); if (!el) return null; el.scrollIntoView({ block: 'center', inline: 'center' }); const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 } })()`, `locate ${testId}`)
+      if (!box) return null
+      await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: box.x, y: box.y })
+      await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: box.x, y: box.y, button: 'left', clickCount: 1 })
+      const at = Date.now()
+      await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: box.x, y: box.y, button: 'left', clickCount: 1 })
+      return at
+    },
+    /** Focus the input of a field and insert text; the text is never echoed. */
+    typeInto: async (selector, text, label) => {
+      const ok = await evaluate(`(() => { const el = document.querySelector(${q(selector)}); if (!el) return false; el.focus(); if (el.select) el.select(); return document.activeElement === el })()`, `focus ${label}`)
+      if (!ok) throw new Error(`could not focus ${label}`)
+      await send('Input.insertText', { text })
+    },
+    press: (testId) => evaluate(`(() => { const el = document.querySelector('[data-testid="${testId}"]'); if (!el) return false; el.click(); return true })()`, `press ${testId}`),
+    takeNetwork: () => {
+      const api = [...requests.values()].filter((e) => e.url.includes('/api/v1/')).map((e) => ({ sent: e.sentAt ? stamp(e.sentAt) : null, method: e.method, path: e.url.replace(/^https?:\/\/[^/]+/, ''), status: e.status, done: e.doneAt ? stamp(e.doneAt) : null }))
+      const origins = [...new Set([...requests.values()].map((e) => { try { return new URL(e.url).origin } catch { return '(other)' } }))].sort()
+      const wsOut = [...sockets.values()].map((s) => ({ url: s.url, status: s.status, frames: s.frames.length, types: [...new Set(s.frames.map((f) => (f.resource ? `${f.type} ${f.resource}` : f.type)))].sort() }))
+      const out = { api, origins, sockets: wsOut, console: [...consoleLines] }
+      requests.clear(); consoleLines.length = 0
+      for (const s of sockets.values()) s.frames.length = 0
+      return out
+    },
+    rawRequests: () => [...requests.values()],
+    socketFrames: () => [...sockets.values()].flatMap((s) => s.frames),
+  }
+  return page
+}
+
+/** Named facts of the Paired Devices page: never the digits of a code, only how many are shown. */
+export const pdFacts = (page) => page.evaluate(`(() => {
+  const q = (id) => document.querySelector('[data-testid="' + id + '"]')
+  const text = (el) => el?.textContent?.replace(/\\s+/g, ' ').trim() ?? null
+  const code = q('pd-code')
+  const rows = [...document.querySelectorAll('[data-testid^="pd-device-"]')].map((row) => {
+    const id = row.getAttribute('data-testid').slice('pd-device-'.length)
+    return { id, state: text(q('pd-state-' + id)), online: q('pd-online-' + id)?.getAttribute('aria-label') ?? text(q('pd-online-' + id)), operator: text(q('pd-operator-' + id)), lastSeen: text(q('pd-last-seen-' + id)), revokeShown: q('pd-revoke-' + id) !== null }
+  })
+  const summary = q('pd-summary')
+  return {
+    href: location.origin + location.pathname,
+    onPage: q('page-paired-devices') !== null,
+    issueState: q('pd-issue-panel')?.getAttribute('data-state') ?? null,
+    codeShown: code !== null,
+    codeDigitCount: code ? (code.textContent.match(/\\d/g) ?? []).length : 0,
+    qrShown: q('pd-qr') !== null,
+    countdownSeconds: q('pd-countdown')?.getAttribute('data-seconds') ?? null,
+    attempts: text(q('pd-attempts')),
+    redeemedText: text(q('pd-code-redeemed')),
+    activeElsewhere: q('pd-code-active-elsewhere') !== null,
+    list: q('pd-devices-table') ? 'table' : q('pd-empty') ? 'empty' : q('pd-loading') ? 'loading' : q('pd-error') ? 'error' : null,
+    rows,
+    summary: summary ? { paired: summary.getAttribute('data-paired'), online: summary.getAttribute('data-online'), text: text(summary) } : null,
+    toasts: [...document.querySelectorAll('[data-slot="toast"]')].map((el) => text(el)),
+  }
+})()`, 'pd facts')
+
+/** Blur mask: digits rendered transparent (no glyph reaches the pixels) over a blurred frosted box; the QR (which encodes the code) hidden behind a blurred tile. */
+const MASK_CSS = [
+  '[data-testid="pd-code"] .pd-code-group { color: transparent !important; text-shadow: none !important; -webkit-text-stroke: 0 !important; background: linear-gradient(90deg, rgb(255 210 120 / 0.55), rgb(255 255 255 / 0.35), rgb(255 210 120 / 0.55)) !important; filter: blur(7px) !important; border-radius: 10px !important; }',
+  '[data-testid="pd-code"] .pd-code-group * { color: transparent !important; text-shadow: none !important; }',
+  '[data-testid="pd-qr"] { visibility: hidden !important; }',
+  '.pd-qr-tile { position: relative !important; background: radial-gradient(circle, #9a9a9a, #4a4a4a) !important; filter: blur(5px) !important; }',
+].join('\n')
+export async function applyMask(page) {
+  await page.evaluate(`(() => { if (document.getElementById('rs-mask')) return true; const s = document.createElement('style'); s.id = 'rs-mask'; s.textContent = ${JSON.stringify(MASK_CSS)}; document.head.appendChild(s); return true })()`, 'mask')
+}
+export const maskCheck = (page) => page.evaluate(`(() => {
+  const groups = [...document.querySelectorAll('[data-testid="pd-code"] .pd-code-group')]
+  const all = groups.flatMap((g) => [g, ...g.querySelectorAll('*')])
+  const transparent = all.length > 0 && all.every((el) => { const c = getComputedStyle(el).color; return c === 'rgba(0, 0, 0, 0)' || c === 'transparent' })
+  const noShadow = all.every((el) => getComputedStyle(el).textShadow === 'none')
+  const blurred = groups.length > 0 && groups.every((g) => getComputedStyle(g).filter.includes('blur'))
+  const svg = document.querySelector('[data-testid="pd-qr"]')
+  return { maskPresent: document.getElementById('rs-mask') !== null, digitGroups: groups.length, transparent, noShadow, blurred, qrPresent: svg !== null, qrHidden: svg === null || getComputedStyle(svg).visibility === 'hidden' }
+})()`, 'mask check')
+
+/** Newest audit rows of one type, as the signed-in page reads them (operation 59). Flat fields only. */
+export const auditRows = (page, type, limit = 5) => page.evaluate(`(async () => {
+  const r = await fetch('/api/v1/audit?type=${type}&order=DESC&limit=${limit}', { credentials: 'same-origin' })
+  if (r.status !== 200) return { status: r.status, rows: [] }
+  const body = await r.json()
+  return { status: r.status, total: body.total, rows: body.rows.map((x) => ({ seq: x.seq, id: x.id, at: new Date(x.at).toISOString(), atMs: x.at, type: x.type, category: x.category, severity: x.severity, actorId: x.actorId, deviceId: x.deviceId, sessionId: x.sessionId, message: x.message, details: x.details })) }
+})()`, `audit ${type}`)
+export const fmtAudit = (row) => (row ? `${row.id} ${hms(row.atMs)} ${row.type} severity ${row.severity} actor ${row.actorId} device ${row.deviceId} "${row.message}" ${JSON.stringify(row.details)}` : '(none)')
+
+export const registry = (page) => page.evaluate(`(async () => {
+  const r = await fetch('/api/v1/pairing/devices', { credentials: 'same-origin' })
+  if (r.status !== 200) return { status: r.status }
+  const b = await r.json()
+  return { status: r.status, devices: b.devices.map((d) => ({ id: d.id, state: d.state, online: d.online, signedInOperatorId: d.signedInOperatorId ?? null, revokedAt: d.revokedAt ? new Date(d.revokedAt).toISOString() : null })) }
+})()`, 'registry')
+
+export const writeJson = (name, value) => writeFileSync(join(OUT, name), JSON.stringify(value, null, 2))

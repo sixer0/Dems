@@ -1,0 +1,21 @@
+#!/bin/zsh
+# Usage: mut.sh <label> <src|css> <file-suffix|-> <from> <to> <test files...>
+# One in-memory mutation; prints and logs the vitest summary and the failing test names.
+label=$1; kind=$2; file=$3; from=$4; to=$5; shift 5
+DIR=/private/tmp/claude-501/-Users-gsp-budi-Documents-DEMS/0d71fd65-4a51-4019-9c48-5c92d11bbdaf/scratchpad/cfw/mut
+LOG=$DIR/mutations.log
+cd /Users/gsp-budi/Documents/DEMS/apps/core-web
+unset MUT_FILE MUT_FROM_B64 MUT_TO_B64 CSS_FROM_B64 CSS_TO_B64
+if [[ $kind == css ]]; then
+  n=$(FROM="$from" node -e "const s=require('fs').readFileSync('src/features/evidence/evidence.css','utf8');console.log(s.split(process.env.FROM).length-1)")
+  [[ $n == 1 ]] || { echo "$label => CSS anchor found $n times" | tee -a $LOG; exit 1; }
+  export CSS_FROM_B64=$(printf '%s' "$from" | base64) CSS_TO_B64=$(printf '%s' "$to" | base64)
+else
+  export MUT_FILE=$file MUT_FROM_B64=$(printf '%s' "$from" | base64) MUT_TO_B64=$(printf '%s' "$to" | base64)
+fi
+out=$(npx vitest run --config $DIR/mutate.config.mts "$@" 2>&1)
+applied=$(printf '%s\n' "$out" | grep -c "\[cfw-mutate\] applied")
+summary=$(printf '%s\n' "$out" | grep -E "^ +(Test Files|Tests) " | tr -s ' ' | tr '\n' ';')
+anchorErr=$(printf '%s\n' "$out" | grep -c "anchor found")
+echo "$label => applied:$applied anchorErrors:$anchorErr $summary" | tee -a $LOG
+printf '%s\n' "$out" | grep -E "^ +× " | head -8 | tee -a $LOG

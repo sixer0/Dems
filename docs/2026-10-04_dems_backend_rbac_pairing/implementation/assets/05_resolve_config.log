@@ -1,0 +1,16 @@
+dev server   DEMS_CORE_PROXY_PORT=(unset)                    server.proxy=undefined preview.proxy=undefined server=127.0.0.1:5173 strict=true
+dev server   DEMS_CORE_PROXY_PORT=""                         server.proxy=undefined preview.proxy=undefined server=127.0.0.1:5173 strict=true
+dev server   DEMS_CORE_PROXY_PORT="4420"                     server.proxy={"/api/v1":{"target":"http://127.0.0.1:4420"},"/ws":{"target":"http://127.0.0.1:4420","ws":true}} preview.proxy={"/api/v1":{"target":"http://127.0.0.1:4420"},"/ws":{"target":"http://127.0.0.1:4420","ws":true}} server=127.0.0.1:5173 strict=true
+dev server   DEMS_CORE_PROXY_PORT="4421"                     server.proxy={"/api/v1":{"target":"http://127.0.0.1:4421"},"/ws":{"target":"http://127.0.0.1:4421","ws":true}} preview.proxy={"/api/v1":{"target":"http://127.0.0.1:4421"},"/ws":{"target":"http://127.0.0.1:4421","ws":true}} server=127.0.0.1:5173 strict=true
+dev server   DEMS_CORE_PROXY_PORT="4422"                     server.proxy={"/api/v1":{"target":"http://127.0.0.1:4422"},"/ws":{"target":"http://127.0.0.1:4422","ws":true}} preview.proxy={"/api/v1":{"target":"http://127.0.0.1:4422"},"/ws":{"target":"http://127.0.0.1:4422","ws":true}} server=127.0.0.1:5173 strict=true
+dev server   DEMS_CORE_PROXY_PORT="4423"                     server.proxy={"/api/v1":{"target":"http://127.0.0.1:4423"},"/ws":{"target":"http://127.0.0.1:4423","ws":true}} preview.proxy={"/api/v1":{"target":"http://127.0.0.1:4423"},"/ws":{"target":"http://127.0.0.1:4423","ws":true}} server=127.0.0.1:5173 strict=true
+dev server   DEMS_CORE_PROXY_PORT="4424"                     THROWS: DEMS_CORE_PROXY_PORT must be one of 4420, 4421, 4422, 4423 (got "4424"). Unset it to run without the Core proxy.
+dev server   DEMS_CORE_PROXY_PORT="9999"                     THROWS: DEMS_CORE_PROXY_PORT must be one of 4420, 4421, 4422, 4423 (got "9999"). Unset it to run without the Core proxy.
+dev server   DEMS_CORE_PROXY_PORT=" 4421"                    THROWS: DEMS_CORE_PROXY_PORT must be one of 4420, 4421, 4422, 4423 (got " 4421"). Unset it to run without the Core proxy.
+dev server   DEMS_CORE_PROXY_PORT="http://evil.example:80"   THROWS: DEMS_CORE_PROXY_PORT must be one of 4420, 4421, 4422, 4423 (got "http://evil.example:80"). Unset it to run without the Core proxy.
+vite preview DEMS_CORE_PROXY_PORT="4421"                     server.proxy=undefined preview.proxy=undefined server=127.0.0.1:5173 strict=true
+vite preview DEMS_CORE_PROXY_PORT="9999"                     server.proxy=undefined preview.proxy=undefined server=127.0.0.1:5173 strict=true
+vite build   DEMS_CORE_PROXY_PORT="4421"                     server.proxy=undefined preview.proxy=undefined server=127.0.0.1:5173 strict=true
+vite build   DEMS_CORE_PROXY_PORT="9999"                     server.proxy=undefined preview.proxy=undefined server=127.0.0.1:5173 strict=true
+vitest       DEMS_CORE_PROXY_PORT=(unset)                    server.proxy=undefined preview.proxy=undefined server=127.0.0.1:5173 strict=true
+vitest       DEMS_CORE_PROXY_PORT="4421"                     server.proxy={"/api/v1":{"target":"http://127.0.0.1:4421"},"/ws":{"target":"http://127.0.0.1:4421","ws":true}} preview.proxy={"/api/v1":{"target":"http://127.0.0.1:4421"},"/ws":{"target":"http://127.0.0.1:4421","ws":true}} server=127.0.0.1:5173 strict=true

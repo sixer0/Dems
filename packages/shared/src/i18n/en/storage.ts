@@ -116,7 +116,7 @@ export const storage = {
     notYet: 'Not yet',
     derivedNote: 'SMART values are demo values derived by the console until the simulator models them',
     tempTrend: 'Temperature over the last minutes',
-    /** Live mode (plan row W71): the Core server reports no SMART counters (CONTRACT-GAP-W71-1). */
+    /** Live mode (plan row W71): the Core server reports no SMART counters (RESIDUAL-W71-1, W83 ledger #47). */
     live: {
       derivedNote: 'SMART values are demo values derived by the console: the Core server does not report them',
     },

@@ -14,9 +14,11 @@
  *   device's 1 Hz line from the simulator's own 1 Hz `network.bandwidth.history` plus the current
  *   fault state. Microphone levels have no history in the simulator (the audio slice holds one
  *   frame), so `MicLevelSampler` keeps the 1 s peak of a channel from the moment the detail opens.
- * - **SIM-GAP-M84-3: `deviceCommand` checks no permission.** The screens gate Restart on
+ * - **SIM-GAP-M84-3** (text corrected by the contract close-out W83, finding F78-3): `deviceCommand`
+ *   now checks its permission itself, DEVICE_MANAGE for Restart and DIAGNOSTICS_RUN for Test signal
+ *   and Identify (`packages/shared/src/sim/maintenance.ts:204-207`). The screens gate Restart on
  *   DEVICE_MANAGE (TECHNICIAN) and disable it while recording (D79); Test signal stays open to
- *   every role (simulated and harmless), as on the web page.
+ *   every role (every seeded role holds DIAGNOSTICS_RUN), as on the web page.
  */
 import { SessionState, type AudioTrackId, type VideoTrackId } from '@dems/shared/domain';
 import { FaultKind, type AudioFrame, type AuditRow, type BandwidthPoint, type EpochMs, type SimState } from '@dems/shared/sim';

@@ -123,7 +123,7 @@ describe('the hub in LIVE mode lists the Core\'s sessions', () => {
     expect(b.commandsSinceSignIn()).toEqual([]);
   });
 
-  it('posters: a session recorded on the Core shows the room still; a row of the Core\'s seeded dataset keeps that package\'s own poster (CONTRACT-GAP-W66-1: the history carries no media reference)', async () => {
+  it('posters: a session recorded on the Core shows the room still; a row of the Core\'s seeded dataset keeps that package\'s own poster (RESIDUAL-W66-1, W83 ledger #41: the history carries no media reference)', async () => {
     const { b, sessionId } = await hubWithSealed();
     const coreOnly = b.state().sessionHistory.find((entry) => entry.id === sessionId)!;
     expect(screen.UNSAFE_getByProps({ recyclingKey: sessionId }).props.source).toBe(HERO_STILL);

@@ -1,0 +1,18 @@
+// Runs one exploration step module against a launched browser: node w2_run.mjs <browserName> <label> <step.mjs>
+import * as lib from './w2_lib.mjs'
+import { readFileSync } from 'node:fs'
+import { pathToFileURL } from 'node:url'
+const [name, label, step] = process.argv.slice(2)
+const b = JSON.parse(readFileSync(`${process.env.TMPDIR}/w2_browser_${name}.json`, 'utf8'))
+const { execFileSync } = await import('node:child_process')
+const pids = execFileSync('/usr/sbin/lsof', ['-nP', `-iTCP:${b.port}`, '-sTCP:LISTEN', '-t']).toString().trim().split('\n')
+if (pids.length !== 1 || pids[0] !== String(b.pid)) { console.log(`REFUSED: listener on ${b.port} is ${pids}, not ${b.pid}`); process.exit(2) }
+const assets = process.env.W2_ASSETS || process.env.TMPDIR
+const c = await lib.connect(b, label, assets, process.env.W2_LOG)
+const mod = await import(pathToFileURL(step).href + '?' + Date.now())
+let out
+try { out = await mod.default(c, lib) } catch (e) { out = { error: String(e.message || e) } }
+out = { result: out, net: c.takeNet() }
+console.log(lib.sanitize(JSON.stringify(out, null, 1)).slice(0, 30000))
+c.close()
+process.exit(0)

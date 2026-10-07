@@ -19,7 +19,7 @@
 | B. Research | Rows 19 (consistency check) ∥ 21 (blueprint refinement) | done | D21 PASS-WITH-NOTES (text fixes applied: specs rev 2.1, contract rev 2.2); D22 blueprint rev 2, 127 rows, V1–V7 PASS, class MAJOR |
 | B. Research | Plan rev 2.1, specs rev 2.2, contract rev 2.2, blueprint rev 2.1 | done | D23; controller quality gate before implementation: PASS (gateway_check/01_gate_report.md) |
 | B. Research | Row 22 docs commit (git-specialist) | done — `4b708c8` | SC1 reference 2026-10-04T06:25:02+07:00 (D24) |
-| B. Research | rows 14 (analysis) → 15, 16, 17 (specs) → 18 (plan) → 19, 20 (checks) → 21 (refine) → 22 (docs commit) | pending | |
+| B. Research | rows 14 (analysis) → 15, 16, 17 (specs) → 18 (plan) → 19, 20 (checks) → 21 (refine) → 22 (docs commit) | done | superseded by the rows above (D11–D24); stale line corrected 2026-10-06 (W88 O-13) |
 | C. Implementation | Steps 23 (W01), 24 (W02), 28 (W06) | done | D25 (core-web 438 / 438), emulators up, D26 (DP-1 option A) |
 | C. Implementation | Step 25 (W03) npm slot N1 | done | D27: 13 pins installed, PostgreSQL binaries 18.4 present, one install script approved by name after reading |
 | C. Implementation | Steps 26 (W04), 27 (W05) — early proofs d and f | done — both CONFIRMED | D28 (headless engine), D29 (same-origin proxy) |
@@ -34,7 +34,7 @@
 | C. Implementation | Live source follow-ups (gap-ID rename, observed client, one export) | done | D86: all 17 CP-C1 findings of the Live source fixed; one more real defect found and fixed (stale data on a non-operator socket); shared 1,747 / 1,747 (controller, 14:37) |
 | C. Implementation | 60 (W38 checkpoint CP-B1: review of the backend foundation) | done — PASS WITH FIXES | D87: 1 Blocker (= D85, fix in flight), 2 High, 12 Medium, 9 Low, 2 Info; fix now in two rounds; rule M14 |
 | C. Implementation | W28 owner fix (D85 / CPB1-1, D88 grants assertion) and CP-B1 fix round A | done | D95, D96: CP-B1 open blockers 0; F53 shown to be a real silent loss of an audit row on the old code and closed by construction; server `unit` 2,822 (controller, 15:54), `db` 1,112 |
-| C. Implementation | CP-B1 fix round B2b (`app.ts`, typed codes, cycles, shims, module follow-ons) | queued after B2a | CPB1-5, 9, 10; remove the modules' own API-7 lines; devices module reads `meters()`; demo module uses the exported boot-check runner; the remaining read-block copies; shims; Low items |
+| C. Implementation | CP-B1 fix round B2b (`app.ts`, typed codes, cycles, shims, module follow-ons) | done | D139, D142, D150 (closed on the whole-project green); leftovers F-B2b-1/2, CPB1-18/19/22/24/25/26 to the server code review W91 (D190) |
 | C. Implementation | CP-C1 re-review of the fix rounds | done — PASS WITH FIXES | D90: 19 of 22 closed in code; 10 new findings (2 Medium); runtimes may start |
 | C. Implementation | Live source second and third fix rounds | done | D97, D107: shared 1,807 / 1,807 (controller); the shared client layer is closed until W92; brief list for the runtimes = implementation/44 §17.4 (34 rows) |
 | C. Implementation | 30 (W08), 32 (W10), 36 (W14), 38 (W16) | done | D40 scaffold 330 tests; D38 drizzle confirmed; D39 npm slots closed; D37 vocabulary 12 / 18 / 53 |
@@ -112,8 +112,16 @@
 | C. Implementation | M2 (closing mobile round) | done | D180; follow-up L-1 / L-2 (Login's link visuals) in flight |
 | C. Implementation | M2b (Login's link visuals) | done | D181 |
 | C. Implementation | W1 (closing web round) | done | D182; its two test files (DC-3) in flight |
-| C. Implementation | W1 follow-up (DC-3), 105 (W83 phase 1: the gap ledger, read-only) | running — 2 in flight | then W105 checkpoint commit 2, then W83 phase 2 after the rulings | then W105 checkpoint commit 2; closing mobile round (one read-only helper) before W93 | then W105 checkpoint commit 2 |
-| C. Implementation | queue after wave 4 | pending | page rows W66–W82 (mobile after M0) → 105 (W83 close-out, 9 files still carry `CONTRACT-GAP-*`, KI-18 still in `core-api.ts:601`) → 106 (W84) → 108 (W86 README, carries the four-tab sentence of D144) → the static-scan slot (F W3-3) → CPS1-9 at a quiet restart and the W15 lock re-probe (needs the user's finger) |
+| C. Implementation | W1 follow-up (DC-3) | done | web 95 / 1,255 |
+| C. Implementation | 126 (W105 checkpoint commit 2) | **done — `057fc17`** | D183: 754 files, local only |
+| C. Implementation | 105 (W83 contract close-out) | done | D185: 0 gap markers; OpenAPI `all` 0.2.1 |
+| C. Implementation | closing copy round (W83's F items) | done | D186 |
+| C. Implementation | 106 (W84 web API Reference) | done | D187 |
+| C. Implementation | 108 (W86 README Live-mode guide) | done | D188 |
+| C. Implementation | 109 (W87 test completion and coverage) | done | D189: 75/75 operations, 54/54 sites, coverage 96.93 % lines |
+| C. Implementation | closing-fix rounds C1 and C2 | running | C1 (W87-F1, W87-F2, F84-3, F86-1); C2 (CPS1-9 PostgreSQL log settings applied at W90's init, CPW1-7 boot guard, two stale comments) — D190; then W89 root gate; W90 clean-state rebuild after a word with the user (it removes `.data/`) |
+| C. Implementation | MANUAL TEST by the user (D191, D192) | stack up since 09:21 (lanes 1 and 2, web 5176 / 5177, Metro); emulators to be booted by the user | W89 and W90 held until the user is done |
+| C. Implementation | queue after the closing fixes | pending | W89 root gate → W90 clean-state rebuild (user informed) → W91–W93 code reviews → W94–W96 end to end (the user's finger for biometric steps; the W15 re-probe in the same sitting) → W97 regression → W98 performance → W99, W100 security reviews → W101 SC1–SC11 → W102 report inputs → W103 final commit (with the `docs/**/assets/*.log` negation after a scan, D190 O-1) |
 | D. Verification | — | pending | |
 | E. Close | — | pending | |
 
@@ -123,3 +131,10 @@
 - Toolchain: node v26.8.2, Homebrew present. **Missing:** `psql`, `postgres`, `pg_ctl` (no PostgreSQL on the host). `docker` CLI exists at `/opt/homebrew/bin/docker` (daemon state not probed; Docker is not used without the user's explicit OK — predecessor rule).
 - Ports: nothing listens on 4400, 5173–5178, 8081 or 5432. The predecessor's manual-test servers (mock-core, Vite, Metro) are gone — the host session ended.
 - Emulators: `adb` cannot start its daemon inside the sandbox; device state not probed yet.
+| E2E round (D194) | 09:36 five verifier rows launched in parallel: E2E-W1 web SUPERVISOR lane 3 (4423/5178), E2E-W2 web INVESTIGATOR+TECHNICIAN and two consoles main (4420/5173), E2E-P phone lane 1 (SC3, SC4), E2E-T tablet lane 2 (tablet journey), E2E-S pairing main + dems2_phone2 (SC5). Controller started lane 3 + main instance (health ok 09:34) and booted dems2_phone2. C2 still in flight (6 agents). W89/W90 held. | in progress |
+| C2 closing fixes (D195) | PASS 09:46: CPS1-9 PostgreSQL log block for new clusters, CPW1-7 boot guard, two stale comments; controller re-ran pg-scripts 57/57 and the touched tests; C2-R1 (pg-behaviours db test) routed into W90 | done |
+| E2E round gated (D196-D201) | 5/5 rows gated: W1 15/15 pages 177/189 PASS; W2 14x2 routes, 7/7 live; P 27/27 screens, SC3+SC4 PASS; T 36/38 screens, journey 10/10; S pairing 4/6 (+E2E-S-1). 24 defects (1 High, 8 Medium, 15 Low). Round-1 gallery `report/e2e_evidence_gallery_round1.html` (770 captures). E-fix launched 11:05: FX-C, FX-W, FX-M1, FX-M2 (parallel, disjoint paths). Next: restart Core servers after FX-C, re-test round on browser + emulators, final gallery. | in progress |
+| E-fix (D202-D208) | FX-C, FX-W (+W2), FX-M1, FX-M2 (+M2b) all gated PASS; Core servers restarted 12:14 with FX-C code. Suites by agents: shared 1,848; server unit 3,926; server db 1,751; core-web 1,427; mobile 1,834. | done |
+| Re-test round | 12:30 R-W web (lane 3) launched; 12:40 R-P phone (lane 1), R-T tablet (lane 2), R-S pairing (main + phone2) launched; outputs test/08a..08d + test/assets/retest/. Then final gallery and report to the user. | in progress |
+| E2E round closed (D194-D237) | Round 1 + FX/CF/CF2 fix rounds + re-tests R-*, RF-*, RF2 all gated. Final gallery `report/e2e_evidence_gallery_final.html` (625 captures, 12 sections, summary + open items) delivered 22:5x; round-1 gallery `report/e2e_evidence_gallery_round1.html`. Open items routed to W93/W98. Next: W89 (PG stop/start) and W90 (clean rebuild, removes `.data/`) — held until the user ends manual testing; then W91-W103. Next-phase decisions D219-D230 + impact map `research/10_next_phase_impact_map.md`. | done |
+| Closing gates (D238-D247) | W89 PASS (flake recorded, closed by T1); W90 PASS (F-1 ruled); C3 PASS; W91/W92/W93 reviews approved with comments; FXR-S/W/M fix pass PASS; T1 jest timeout; ledger shared 71/1,851, core-web 117/1,495, mobile 191/1,985, server 160/3,954 + db 124/1,751. 08:45 main instance + Live web 5173 + Metro started by controller; W94-W96 short device confirmations running; W99 security review (read-only) running. Next: W97 regression, W98 reduced performance, W100, W101, W102, W103. | in progress |

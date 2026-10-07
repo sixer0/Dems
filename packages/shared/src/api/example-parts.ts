@@ -99,6 +99,15 @@ export const ERROR_EXAMPLES = {
       reason: DEVICE_CREDENTIAL_REQUIRED_REASON,
     }),
   },
+  /**
+   * A device-only operation called by an operator's web console session (spec §7.2; W83,
+   * gap W32-3 and gap W52-1): refused by the access rule, no audit row.
+   */
+  webConsoleSession: {
+    summary: 'A web console session on a device-only operation',
+    description: 'The caller is an operator signed in on the web console, not a paired device. No audit row is written.',
+    value: apiErrorExample('DEVICE_NOT_PAIRED', 'This operation is available on a paired device only.'),
+  },
   demoDisabled: named('The demo flag is off', apiErrorExample('DEMO_DISABLED', 'Demo controls are not enabled on this server.')),
 } as const;
 

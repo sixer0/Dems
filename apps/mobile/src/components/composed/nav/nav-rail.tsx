@@ -1,8 +1,7 @@
 import { PressableFeedback } from 'heroui-native';
 import { PanelLeftClose, PanelLeftOpen } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
-import { StyleSheet, Text, View } from 'react-native';
-import Animated, { useAnimatedStyle } from 'react-native-reanimated';
+import { StyleSheet, Text, View, type LayoutRectangle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SvgXml } from 'react-native-svg';
 import { TOPO_SVG } from '@dems/shared/brand';
@@ -12,6 +11,7 @@ import { Emblem } from '@/components/media/emblem';
 import type { NavChrome } from '@/layout';
 import { GlowLayer } from '@/motion';
 import { TAB_DESTINATIONS, type TabName } from '@/navigation/routes';
+import { IndicatorTravelLayer, settledBoxStyle, type IndicatorBox } from './indicator-travel';
 import { NavItem, type NavItemLayout } from './nav-item';
 import { useIndicatorTrack } from './use-indicator';
 
@@ -36,6 +36,11 @@ function itemLayoutFor(nav: NavChrome): NavItemLayout {
   return nav.labels === 'inline' ? 'rail-inline' : 'rail-below';
 }
 
+/** The card covers the active item's frame. */
+function cardBox(frame: LayoutRectangle): IndicatorBox {
+  return { x: frame.x, y: frame.y, width: frame.width, height: frame.height };
+}
+
 /** Horizontal inset of the items and the active card inside the rail. */
 const LIST_INSET = 8;
 
@@ -48,19 +53,17 @@ const LIST_INSET = 8;
  * Active state (D49 web parity, token colours only): an inset card on `surface-tertiary` with a
  * gold hairline and glow e2, travelling with the `indicator` spring and pulsing to e3 on arrival
  * (M-MB-01). The extended rail carries the topographic texture and the version line at its foot.
+ *
+ * E-fix row FX-M2b (E2E-T-2, E2E-P-1): the settled card is a plain view placed by React on the
+ * active item; a trip draws a travelling copy over it (`IndicatorTravelLayer`) that React removes
+ * when the trip's budget is over, so the card never stays on the tab that was left (12_devices_blank).
  */
 export function NavRail({ items, active, nav, collapse }: NavRailProps) {
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
-  const track = useIndicatorTrack(active);
+  const { frame, travel, onItemLayout } = useIndicatorTrack(active);
   const layout = itemLayoutFor(nav);
   const showHeader = layout !== 'rail-icon';
-
-  const cardStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: track.x.get() }, { translateY: track.y.get() }],
-    width: track.width.get(),
-    height: track.height.get(),
-  }));
 
   return (
     <View
@@ -102,10 +105,16 @@ export function NavRail({ items, active, nav, collapse }: NavRailProps) {
       ) : null}
 
       <View style={styles.list}>
-        {track.frame ? (
-          <Animated.View pointerEvents="none" testID="nav-rail-indicator" style={[styles.card, cardStyle]}>
+        {frame ? (
+          // Settled: React places it on the active item; hidden (not moved) while a copy travels.
+          <View pointerEvents="none" testID="nav-rail-indicator" style={[styles.card, settledBoxStyle(cardBox(frame)), travel ? styles.hidden : null]}>
             <GlowLayer level={2} radius={radius.px.lg} pulseKey={active ?? undefined} />
-          </Animated.View>
+          </View>
+        ) : null}
+        {frame && travel ? (
+          <IndicatorTravelLayer key={`card-${travel.id}`} testID="nav-rail-indicator-travel" from={cardBox(travel.from)} to={cardBox(travel.to)} style={styles.card}>
+            <GlowLayer level={2} radius={radius.px.lg} />
+          </IndicatorTravelLayer>
         ) : null}
         {items.map((name) => {
           const destination = TAB_DESTINATIONS[name];
@@ -118,7 +127,7 @@ export function NavRail({ items, active, nav, collapse }: NavRailProps) {
               active={active === name}
               layout={layout}
               haptic="railSelect"
-              onLayout={track.onItemLayout}
+              onLayout={onItemLayout}
             />
           );
         })}
@@ -183,6 +192,7 @@ const styles = StyleSheet.create({
     borderColor: palette.gold,
     backgroundColor: derived.surfaceTertiary,
   },
+  hidden: { opacity: 0 },
   spacer: { flex: 1 },
   footer: {
     paddingHorizontal: 20,

@@ -1,0 +1,63 @@
+#!/bin/bash
+# proofbatch.sh <name> <startStall:0|1> <stopMode:plain|prestall|poststall> [summary|home]
+# One CF-M1 proof run on lane 1: start on the phone (wizard), watch the start (25 s recording), stop on the
+# web (5176, andi.pratama) while the phone shows the monitor (30 s recording), then the native log.
+NAME=$1; SS=$2; MODE=$3; FROM=${4:-summary}
+BANNER='p hermes eval globalThis.__DEMS_DEBUG__?.runtime?.()?.banner'
+echo "mark $NAME"
+if [ "$FROM" = summary ]; then printf 'p screen summary\np tap 244 2252\np waitlog sumack 15\nsleep 2500\n'; fi
+cat <<B
+p screen home
+p tap 302 1239
+sleep 3000
+p screen session-new
+p tap 913 748
+sleep 900
+p tap 229 994
+sleep 700
+p tap 540 1309
+sleep 900
+p text CF M1 $NAME
+sleep 800
+p key 111
+sleep 800
+p tap 540 2257
+p waitlog create 20
+p waitlog precheck 20
+sleep 7000
+p tap 540 2257
+sleep 2500
+p clock
+p rec start ${NAME}_start 25
+p tap 540 2257
+p waitlog start 25
+B
+if [ "$SS" = 1 ]; then printf 'sleep 7000\np hermes stall 3500\n%s\nsleep 300\n%s\nsleep 9000\n' "$BANNER" "$BANNER"; else printf 'sleep 6000\n%s\nsleep 12000\n' "$BANNER"; fi
+cat <<B
+p rec pull ${NAME}_start
+w1 nav /session 3000
+w1 wait page-session-monitor present 15000
+w1 press sm-action-end
+w1 wait sm-end-dialog present 5000
+sleep 600
+w1 type [data-testid="sm-end-reason"] CF M1 proof web stop $NAME
+sleep 500
+p screen live
+p clock
+p rec start ${NAME}_stop 30
+B
+case $MODE in
+  plain) echo "w1 press sm-end-confirm";;
+  prestall) printf 'p hermes stall 3500\n%s\nsleep 300\nw1 press sm-end-confirm\n' "$BANNER";;
+  poststall) printf 'w1 press sm-end-confirm\np hermes stall 3000\n';;
+esac
+cat <<B
+w1 until 15000 (()=>{const s=document.querySelector('[data-testid="page-session-monitor"]')?.getAttribute('data-session-state'); return s && s!=='RECORDING' ? s : false})()
+w1 until 25000 (()=>{const m=document.querySelector('[data-testid="finalization-modal"]')?.getAttribute('data-state'); const s=document.querySelector('[data-testid="page-session-monitor"]')?.getAttribute('data-session-state'); return (m==='SEALED'||s==='SEALED') ? {state:s, modal:m} : false})()
+p rec pull ${NAME}_stop
+p shot ${NAME}_after
+p native ${NAME}_native.txt
+p appjs ${NAME}_js.txt
+p focus
+serverlog $NAME socket|stop|start
+B

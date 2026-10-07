@@ -1,0 +1,52 @@
+
+> @dems/core-server@0.2.0 test:db
+> vitest run --project db test/acceptance/contract.test.ts
+
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/apps/core-server
+
+[test:db] PostgreSQL 18.4 on 127.0.0.1:4432; helper role dems_owner, code under test dems_app; run prefix dems_test_step_74_tmds27xw_
+[test:db] stale sweep: dropped 0; kept 0 of younger runs, 0 of live runs, 0 unrecognised; 0 failed
+[test:db] template dems_test_step_74_tmds27xw_tpl_schema: built in 81 ms (create 29 ms, hook 51 ms)
+[test:db] template dems_test_step_74_tmds27xw_tpl_seed: built in 126 ms (create 40 ms, hook 84 ms)
+[test:db] bulk fixture: dems_test_step_74_tmds27xw_tpl_bulk as dems_owner; clock 2026-10-01T03:00:00.000Z; seed 20261004
+[test:db]   table                   minimum   loaded   added  met
+[test:db]   roles                         3        3       0  yes
+[test:db]   permissions                  12       12       0  yes
+[test:db]   role_permissions             18       18       0  yes
+[test:db]   operators                    12       12       9  yes
+[test:db]   operator_credentials         12       12       9  yes
+[test:db]   auth_sessions               300      300     300  yes
+[test:db]   pairing_codes                60       60      60  yes
+[test:db]   paired_devices               40       40      40  yes
+[test:db]   device_credentials           40       40      40  yes
+[test:db]   biometric_tokens             80       83      83  yes
+[test:db]   registry_counters             2        2       0  yes
+[test:db]   audit_log                  5000     5000    4918  yes
+[test:db]   audit_chain_head              1        1       0  yes
+[test:db]   audit_chain_history          25       25      25  yes
+[test:db]   events                     2500     3649    3590  yes
+[test:db]   session_history             520      520     507  yes
+[test:db]   evidence_items              505      515     502  yes
+[test:db]   evidence_tracks            2020     2060    2008  yes
+[test:db]   evidence_custody           1200     1220    1192  yes
+[test:db]   exports                      60       60      59  yes
+[test:db]   alerts                      250      250     250  yes
+[test:db]   health_snapshots           1500     1508    1508  yes
+[test:db]   engine_counters               6        6       1  yes
+[test:db]   active_session                0        0       0  yes
+[test:db]   storage_policy                1        1       0  yes
+[test:db]   console_settings              1        1       0  yes
+[test:db]   core_device                   1        1       0  yes
+[test:db]   core_state                    1        1       0  yes
+[test:db]   hardware_snapshot             1        1       0  yes
+[test:db]   schema_meta                   1        1       0  yes
+[test:db] bulk fixture: every minimum of the 30 tables is met; audit head seq 5000, hash 26e251887c667e1e...; digest e58f1ae233811851...; build 148 ms, write 1237 ms, total 1388 ms
+
+ Test Files  1 passed (1)
+      Tests  34 passed (34)
+   Start at  18:32:31
+   Duration  6.52s (tests 86%, transform 9%, import 5%)
+
+[test:db] forced drops that needed a retry: 0
+[test:db] teardown: dropped 3 database(s) in 99 ms; 0 remain with the run prefix dems_test_step_74_tmds27xw_

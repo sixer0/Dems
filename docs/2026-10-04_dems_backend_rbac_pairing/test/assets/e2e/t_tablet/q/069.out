@@ -1,0 +1,6 @@
+password typed (not shown); editor inputType 0x80081
+slept 300 ms
+key 66 at 10:31:34.526
+signin 200 (10-06 10:31:34.615 POST /api/v1/auth/sign-in 200)
+slept 5000 ms
+screencap 26_partB_signed_in_offer.png (615800 bytes) at 10:31:41.811

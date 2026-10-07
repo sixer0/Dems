@@ -1,0 +1,10 @@
+10:11:25.016 tap 539,1380
+10:11:25.485 slept 2500 ms
+10:11:28.063 declared screen home
+10:11:28.127 screencap 34_home_while_recording.png 10:11:28.127..10:11:28.666
+10:11:28.884 tap 302,1239
+10:11:29.001 slept 2500 ms
+10:11:31.559 declared screen live
+10:11:31.598 screencap 35_return_to_live_monitor.png 10:11:31.598..10:11:32.354
+10:11:32.518 serverlog since a27 (0):
+    

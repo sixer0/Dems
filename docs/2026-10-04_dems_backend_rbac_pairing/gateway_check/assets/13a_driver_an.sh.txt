@@ -1,0 +1,12 @@
+#!/bin/bash
+# an.sh <run>: frame analysis, timer lag against the Core's start/stop (from the run's session row), empty frames.
+R=$1; cd /private/tmp/claude-501/-Users-gsp-budi-Documents-DEMS/0d71fd65-4a51-4019-9c48-5c92d11bbdaf/scratchpad/cf2a
+ST=$(grep -o '"startedAt":"[^"]*' runs/$R.out | head -1 | grep -o 'T[0-9:.]*' | tr -d T)
+SP=$(grep -o '"stoppedAt":"[^"]*' runs/$R.out | head -1 | grep -o 'T[0-9:.]*' | tr -d T)
+SE=$(grep -o '"sealedAt":"[^"]*' runs/$R.out | head -1 | grep -o 'T[0-9:.]*' | tr -d T)
+OFF=$(grep -o 'clock offset ms: -\?[0-9]*' runs/$R.out | tail -1 | grep -o -- '-\?[0-9]*$')
+(cd tools && python3 analyze_run.py ../frames/$R ../assets/$R.mp4 ${OFF:--400} > ../runs/${R}_analysis.json 2>&1)
+echo "$R core start $ST stop $SP sealed $SE offset ${OFF}"
+python3 -c "import json;a=json.load(open('runs/${R}_analysis.json'));print({k:a[k] for k in ['frames','monitorFrames','timerDecoded','timerFirst','timerLast','backwardSteps','bannerFrames','redFrames']}, 'handover', {k:a['handover'][k] for k in ['lastMonitorHost','nextHost','nextBlank']} if a['handover'] else None)"
+python3 tools/lag.py frames/${R}_rows.json $ST $SP | tee runs/${R}_lag.json
+python3 tools/blank2.py frames/$R | tee runs/${R}_blank.json

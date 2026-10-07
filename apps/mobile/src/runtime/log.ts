@@ -7,11 +7,22 @@
  * `adb shell run-as … `) can read them after a restart. In development builds each record is also
  * printed to the Metro console, as the motion kit and navigation logs do.
  *
+ * **Which console** (row FX-M1, finding F80, ruling R6 of D201). React Native's LogBox turns every
+ * `console.warn` into the "Open debugger to view warnings" toast and every `console.error` into a red
+ * one, over the bottom of the screen the operator is using. A `warn` record of this log is an expected
+ * operational state (the Core link down, a revoked device, a refused or unanswered call), already
+ * shown by the screen in its own words, so it is mirrored with `console.info` like an `info` record:
+ * it stays in Metro and logcat, with its level inside the record, and in this log. Only an `error`
+ * record, a fault of the app, reaches `console.error`. An expected state is never written as `error`
+ * (the Live source's unanswered calls are judged first, `probe-failure.ts`).
+ *
  * Record fields: timestamp, level, source (module.function), message, stack, context and a
  * correlation id (one per app launch, plus an optional operation id). Context is filtered: keys
  * that could carry credentials or personal data (password, pin, token, secret, credential, username,
  * code) are dropped, values are primitives only, and text is truncated. Callers never pass user
- * input as a message.
+ * input as a message. Every kept text (source, message, stack, string context values) also has its
+ * credential-shaped values blanked, `ses_…`, `dvc_…` and `bio_…` becoming `ses_***` and so on, as the
+ * web error sink does (`apps/core-web/src/runtime/error-sink.ts`, `redactCredentials`; row PT, W100-1).
  *
  * The motion kit (`setMotionLogSink`, step 69) and the navigation shell (`setNavigationLogSink`,
  * step 70) route their records here through `installRuntimeLogSinks()` (called by AppProviders).
@@ -31,6 +42,13 @@ const MAX_STACK = 2000;
 const MAX_CONTEXT_VALUE = 200;
 /** Context keys never stored (credentials, codes, identities). */
 const SENSITIVE_KEY = /(pass|pin$|^pin|token|secret|credential|user(name)?$|^code$|pairingcode|otp)/i;
+/** A session token, a device credential and a biometric token start with these (01_specs §5.3); same rule as the web sink. */
+const CREDENTIAL = /\b(ses|dvc|bio)_[A-Za-z0-9_-]+/g;
+
+/** Blanks every value that carries a credential prefix (row PT, W100-1). */
+export function redactCredentials(text: string): string {
+  return text.replace(CREDENTIAL, '$1_***');
+}
 
 export type RuntimeLogLevel = 'error' | 'warn' | 'info';
 export type RuntimeLogValue = string | number | boolean | null;
@@ -61,6 +79,11 @@ function truncate(text: string, max: number): string {
   return text.length > max ? `${text.slice(0, max - 1)}…` : text;
 }
 
+/** Redacts before truncating, so a cut can never leave the head of a credential behind unmatched. */
+function keepText(text: string, max: number): string {
+  return truncate(redactCredentials(text), max);
+}
+
 /** Keeps primitive values under non-sensitive keys; drops everything else. */
 export function sanitizeLogContext(context: Readonly<Record<string, unknown>> | undefined): Record<string, RuntimeLogValue> | undefined {
   if (!context) return undefined;
@@ -68,7 +91,7 @@ export function sanitizeLogContext(context: Readonly<Record<string, unknown>> | 
   for (const [key, value] of Object.entries(context)) {
     if (SENSITIVE_KEY.test(key)) continue;
     if (value === null || typeof value === 'number' || typeof value === 'boolean') out[key] = value;
-    else if (typeof value === 'string') out[key] = truncate(value, MAX_CONTEXT_VALUE);
+    else if (typeof value === 'string') out[key] = keepText(value, MAX_CONTEXT_VALUE);
   }
   return Object.keys(out).length > 0 ? out : undefined;
 }
@@ -85,16 +108,16 @@ export interface RuntimeLogInput {
 
 export function toRuntimeLogRecord({ level, source, error, context, correlationId, at }: RuntimeLogInput): RuntimeLogRecord {
   const message = error instanceof Error ? error.message : typeof error === 'string' ? error : String(error);
-  const stack = error instanceof Error && error.stack ? truncate(error.stack, MAX_STACK) : undefined;
+  const stack = error instanceof Error && error.stack ? keepText(error.stack, MAX_STACK) : undefined;
   const safeContext = sanitizeLogContext(context);
   return {
     timestamp: new Date(at ?? Date.now()).toISOString(),
     level,
-    source,
-    message: truncate(message, MAX_MESSAGE),
+    source: redactCredentials(source),
+    message: keepText(message, MAX_MESSAGE),
     ...(stack ? { stack } : {}),
     ...(safeContext ? { context: safeContext } : {}),
-    correlationId: correlationId ?? LAUNCH_ID,
+    correlationId: correlationId ? redactCredentials(correlationId) : LAUNCH_ID,
   };
 }
 
@@ -104,8 +127,17 @@ export interface LogStorage {
   setItem(key: string, value: string): Promise<void>;
 }
 
+/** Per-write options. */
+export interface RuntimeLogWriteOptions {
+  /**
+   * False keeps the record out of the development console mirror (it is still kept and persisted). For the
+   * measurement records of W98 (post-review fix FXR-M, W93-28): data for later reading, not console noise.
+   */
+  readonly console?: boolean;
+}
+
 export interface RuntimeLog {
-  write(record: RuntimeLogRecord): void;
+  write(record: RuntimeLogRecord, options?: RuntimeLogWriteOptions): void;
   /** The records in memory, oldest first (after `load()`, including earlier launches). */
   records(): readonly RuntimeLogRecord[];
   /** Merges the stored records of earlier launches under the ones written since start. */
@@ -160,15 +192,22 @@ export function createRuntimeLog(options: RuntimeLogOptions = {}): RuntimeLog {
   };
 
   return {
-    write(record) {
+    write(record, writeOptions) {
       buffer.push(record);
       trim();
-      if (__DEV__ && mirror) {
+      if (__DEV__ && mirror && writeOptions?.console !== false) {
         if (record.level === 'error') console.error('[runtime]', record);
-        else if (record.level === 'warn') console.warn('[runtime]', record);
+        // R6: an operational state is no LogBox warning (see the header); the record keeps its level.
         else if (!IN_JEST) console.info('[runtime]', record);
       }
-      if (timer === null) timer = setTimeout(() => void flush(), flushMs);
+      if (timer === null) {
+        timer = setTimeout(() => void flush(), flushMs);
+        // W87-F1 (D189): under Node (jest) the handle is a Timeout; unref'd, a pending flush no longer
+        // keeps the process alive (jest's "worker failed to exit gracefully"). React Native returns a
+        // number, which has no `unref`, so the optional call does nothing in the app. The cast keeps
+        // the line compiling whether the typings say Timeout (@types/node) or number (React Native).
+        (timer as { unref?: () => void }).unref?.();
+      }
     },
     records: () => buffer.slice(),
     load() {
@@ -210,14 +249,26 @@ export function reportRuntimeIssue(
   }
 }
 
+/**
+ * Records one MEASUREMENT (level `info`) in the app's log without printing it to the development console
+ * (post-review fix FXR-M, W93-28: the session-window diagnostics for W98). Never throws.
+ */
+export function reportDiagnostic(source: string, message: string, context?: Readonly<Record<string, unknown>>): void {
+  try {
+    runtimeLog.write(toRuntimeLogRecord({ level: 'info', source, error: message, ...(context ? { context } : {}) }), { console: false });
+  } catch {
+    // Logging must never break the caller.
+  }
+}
+
 function fromSibling(record: MotionLogRecord | NavigationLogRecord): RuntimeLogRecord {
   const context = sanitizeLogContext(record.context);
   return {
     timestamp: record.timestamp,
     level: record.level,
-    source: record.source,
-    message: truncate(record.message, MAX_MESSAGE),
-    ...(record.stack ? { stack: truncate(record.stack, MAX_STACK) } : {}),
+    source: redactCredentials(record.source),
+    message: keepText(record.message, MAX_MESSAGE),
+    ...(record.stack ? { stack: keepText(record.stack, MAX_STACK) } : {}),
     ...(context ? { context } : {}),
     correlationId: LAUNCH_ID,
   };

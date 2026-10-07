@@ -264,7 +264,14 @@ describe('SR-36, SR-54: no audit row, event, publication or refusal of the journ
       expect(publication.sessionIds).toHaveLength(2);
       for (const id of publication.sessionIds) expect(id).toMatch(/^[0-9a-f-]{36}$/);
     }
-    expect([...new Set(bio.published.map((publication) => publication.kind))].sort()).toEqual(['admin.changed', 'session.ended']);
+    // E-fix FX-C (R4): a device's sign-in and the end of its session tell the channel; device IDs only.
+    const devices = bio.published.filter((publication) => publication.kind === 'device.session');
+    expect(devices.length).toBeGreaterThan(0);
+    for (const publication of devices) {
+      expect(Object.keys(publication).sort()).toEqual(['deviceIds', 'kind']);
+      for (const id of publication.deviceIds) expect(id).toMatch(/^DEV-\d{4}$/);
+    }
+    expect([...new Set(bio.published.map((publication) => publication.kind))].sort()).toEqual(['admin.changed', 'device.session', 'session.ended']);
   });
 
   it('the answers of every refusal and failure: no token is echoed, no credential, no marker, nothing of a statement', () => {

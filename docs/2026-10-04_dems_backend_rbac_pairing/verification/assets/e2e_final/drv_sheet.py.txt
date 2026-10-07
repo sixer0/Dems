@@ -1,0 +1,26 @@
+# Evidence sheet: chosen frames of a 540 px --bugreport recording, each with its overlay (device time) and a label.
+#   python3 sheet.py <frames dir> <out.png> <offset_ms device-minus-host> f_0005:label f_0006:label ...
+import sys
+from datetime import datetime, timedelta
+from PIL import Image, ImageDraw
+fdir, out, off = sys.argv[1], sys.argv[2], int(sys.argv[3])
+items = [a.split(':', 1) for a in sys.argv[4:]]
+tw = 270
+tiles = []
+for name, label in items:
+    im = Image.open(f'{fdir}/{name}.png').convert('RGB')
+    th = int(im.height * tw / im.width)
+    t = Image.new('RGB', (tw, th + 48), 'white')
+    d = ImageDraw.Draw(t)
+    d.text((3, 2), f'{name}: {label}', fill='black')
+    t.paste(im.crop((0, 0, im.width, 22)).resize((tw, int(22 * tw / im.width) + 4)), (0, 16))
+    t.paste(im.resize((tw, th)), (0, 48))
+    tiles.append(t)
+W = len(tiles) * (tw + 6)
+H = max(t.height for t in tiles)
+s = Image.new('RGB', (W, H + 18), 'white')
+ImageDraw.Draw(s).text((3, H + 3), f'overlay = device clock; host = device - ({off} ms)', fill='black')
+for i, t in enumerate(tiles):
+    s.paste(t, (i * (tw + 6), 0))
+s.save(out)
+print('saved', out, s.size)

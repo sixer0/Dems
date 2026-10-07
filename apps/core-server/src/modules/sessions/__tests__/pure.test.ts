@@ -120,7 +120,7 @@ describe('the refusals (refusals.ts): status and code by the engine\'s table, de
     expect(refused('SESSION_ACTIVE', null)).toEqual([409, 'SESSION_ACTIVE', 'A session is active.', { simCode: 'SESSION_ACTIVE' }]);
     expect(refused('INVALID_INPUT', 'SES-20261001-0024')).toEqual([422, 'INVALID_INPUT', 'The request does not match the expected input.', { simCode: 'INVALID_INPUT' }]);
     expect(refused('NOT_PERMITTED', null)).toEqual([403, 'NOT_PERMITTED', 'Your role does not allow this action.', { simCode: 'NOT_PERMITTED' }]);
-    expect(refused('NOT_SIGNED_IN', null)).toEqual([401, 'NOT_SIGNED_IN', 'Sign in to continue.', { simCode: 'NOT_SIGNED_IN' }]);
+    expect(refused('NOT_SIGNED_IN', null)).toEqual([401, 'NOT_SIGNED_IN', 'Sign in first.', { simCode: 'NOT_SIGNED_IN' }]);
   });
 });
 

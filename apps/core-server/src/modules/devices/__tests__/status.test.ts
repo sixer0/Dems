@@ -5,7 +5,7 @@
 // answers them (`handleSimApiRequest`). Here each answer of the module is held against that
 // handler on the SAME state, member by member, so Live mode cannot drift from Simulated mode in
 // what a read says. The one difference is stated and measured: the 20 Hz meter levels, which
-// are no part of the committed state (BE-GAP-W36-1).
+// are no part of the committed state (a recorded difference, ruled by D89; formerly gap BE-GAP-W36-1).
 import { AudioStatusResponseSchema, DeviceHealthResponseSchema, DeviceInventorySchema, VideoStatusResponseSchema, validateCoreApiResponse } from '@dems/shared/api';
 import {
   AUDIO_CLIP_BURST_DBFS,
@@ -179,7 +179,7 @@ describe('operations 44, 45, 46: the answer is the in-app simulator\'s on the sa
   });
 });
 
-describe('BE-GAP-W36-1: the 20 Hz meter levels are not in the committed state', () => {
+describe('the recorded difference of D89 (formerly BE-GAP-W36-1): the 20 Hz meter levels are not in the committed state', () => {
   it('the levels follow the state of the mic: READY the noise floor, NO_SIGNAL the flat -90, CLIP the burst level; clip is the latch', () => {
     expect(stateLevelsOf({ state: 'READY', clipLatched: false }, NOW)).toEqual({ dbfs: AUDIO_NOISE_FLOOR_DBFS, peak: AUDIO_NOISE_FLOOR_DBFS, clip: false, noSignal: false });
     expect(stateLevelsOf({ state: 'READY', clipLatched: true }, NOW)).toEqual({ dbfs: AUDIO_NOISE_FLOOR_DBFS, peak: AUDIO_NOISE_FLOOR_DBFS, clip: true, noSignal: false });
@@ -223,7 +223,7 @@ describe('BE-GAP-W36-1: the 20 Hz meter levels are not in the committed state', 
     expect(withoutLevels(deviceHealthOf(committed, now))).toEqual(withoutLevels(simulatorAnswer(state, HEALTH, now)));
     expect(videoStatusOf(committed)).toEqual(simulatorAnswer(state, VIDEO, now));
     console.info(
-      `[w36] BE-GAP-W36-1: after 3 s of the recording scenario the simulator answers ${simulators.channels.map((channel) => `${channel.trackId} ${channel.dbfs}/${channel.peak}`).join(', ')} dBFS; ` +
+      `[w36] D89 difference (formerly BE-GAP-W36-1): after 3 s of the recording scenario the simulator answers ${simulators.channels.map((channel) => `${channel.trackId} ${channel.dbfs}/${channel.peak}`).join(', ')} dBFS; ` +
         `the module answers ${mine.channels.map((channel) => `${channel.trackId} ${channel.dbfs}/${channel.peak}`).join(', ')}; every other member is equal`,
     );
   });

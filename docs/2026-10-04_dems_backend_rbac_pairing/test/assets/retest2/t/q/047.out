@@ -1,0 +1,8 @@
+tap 870,474 at 17:23:59.510
+slept 3000 ms
+swipe 1900,500,1900,1300 500 ms
+slept 800 ms
+swipe 1900,500,1900,1300 500 ms
+slept 1500 ms
+screencap S03a_evidence_detail_media.png (1278203 bytes) at 17:24:07.144
+ids: 160 nodes -> q/s03_detail_top.txt

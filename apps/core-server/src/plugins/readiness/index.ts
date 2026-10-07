@@ -20,10 +20,11 @@
  * boot: the entry point logs the step's ID and exits without a listener.
  */
 import type { FastifyBaseLogger, FastifyPluginAsync } from 'fastify';
+import type { RegistryOperationId } from '../../core';
 import { notReady } from '../error-envelope';
 
-/** The one operation that answers while the server is not ready (spec §2.3 stage 2). */
-export const READINESS_EXEMPT_OPERATION = 'getServiceHealth';
+/** The one operation that answers while the server is not ready (spec §2.3 stage 2). A registry operation ID (W91-5). */
+export const READINESS_EXEMPT_OPERATION = 'getServiceHealth' satisfies RegistryOperationId;
 
 export type ReadinessPart = 'database' | 'engine';
 

@@ -1,0 +1,329 @@
+{
+  "phase": "before",
+  "item": "EV-20261006-0012",
+  "ring1440": {
+    "state": "ATTENTION",
+    "size": 258,
+    "word": "ATTENTIONATTENTION",
+    "wordWidth": 214,
+    "fontSize": "32px",
+    "innerDiameter": 191,
+    "wordLeftInsideInner": -11,
+    "wordRightInsideInner": -11
+  },
+  "strip1440": {
+    "boxes": [
+      {
+        "id": "strip-cameras",
+        "cell": {
+          "left": 600,
+          "right": 730,
+          "top": 309,
+          "bottom": 350
+        },
+        "valueText": "Ready",
+        "valueLeft": 643,
+        "valueRight": 687,
+        "visibleRight": 687,
+        "clipped": false
+      },
+      {
+        "id": "strip-mics",
+        "cell": {
+          "left": 731,
+          "right": 861,
+          "top": 309,
+          "bottom": 350
+        },
+        "valueText": "Ready",
+        "valueLeft": 774,
+        "valueRight": 818,
+        "visibleRight": 818,
+        "clipped": false
+      },
+      {
+        "id": "strip-storage",
+        "cell": {
+          "left": 862,
+          "right": 992,
+          "top": 309,
+          "bottom": 350
+        },
+        "valueText": "3.2 TB Free",
+        "valueLeft": 905,
+        "valueRight": 975,
+        "visibleRight": 975,
+        "clipped": false
+      },
+      {
+        "id": "strip-time",
+        "cell": {
+          "left": 993,
+          "right": 1124,
+          "top": 309,
+          "bottom": 350
+        },
+        "valueText": "Synchronized",
+        "valueLeft": 1036,
+        "valueRight": 1118,
+        "visibleRight": 1117,
+        "clipped": false
+      },
+      {
+        "id": "strip-security",
+        "cell": {
+          "left": 1125,
+          "right": 1255,
+          "top": 309,
+          "bottom": 350
+        },
+        "valueText": "Secure",
+        "valueLeft": 1167,
+        "valueRight": 1216,
+        "visibleRight": 1216,
+        "clipped": false
+      },
+      {
+        "id": "strip-network",
+        "cell": {
+          "left": 1256,
+          "right": 1386,
+          "top": 309,
+          "bottom": 350
+        },
+        "valueText": "Connected",
+        "valueLeft": 1298,
+        "valueRight": 1367,
+        "visibleRight": 1367,
+        "clipped": false
+      }
+    ],
+    "overlaps": [],
+    "offscreen": [],
+    "rows": 1
+  },
+  "menu": [
+    {
+      "text": "Details",
+      "disabled": false
+    },
+    {
+      "text": "Test signalRequires the Technician role",
+      "disabled": true
+    },
+    {
+      "text": "RestartRequires the Technician role",
+      "disabled": true
+    }
+  ],
+  "ring390": {
+    "state": "ATTENTION",
+    "size": 284,
+    "word": "ATTENTIONATTENTION",
+    "wordWidth": 214,
+    "fontSize": "32px",
+    "innerDiameter": 210,
+    "wordLeftInsideInner": -2,
+    "wordRightInsideInner": -2
+  },
+  "strip390": {
+    "boxes": [
+      {
+        "id": "strip-cameras",
+        "cell": {
+          "left": 19,
+          "right": 78,
+          "top": 440,
+          "bottom": 480
+        },
+        "valueText": "Ready",
+        "valueLeft": 53,
+        "valueRight": 98,
+        "visibleRight": 75,
+        "clipped": true
+      },
+      {
+        "id": "strip-mics",
+        "cell": {
+          "left": 78,
+          "right": 136,
+          "top": 440,
+          "bottom": 480
+        },
+        "valueText": "Ready",
+        "valueLeft": 112,
+        "valueRight": 156,
+        "visibleRight": 133,
+        "clipped": true
+      },
+      {
+        "id": "strip-storage",
+        "cell": {
+          "left": 136,
+          "right": 195,
+          "top": 440,
+          "bottom": 480
+        },
+        "valueText": "3.2 TB Free",
+        "valueLeft": 170,
+        "valueRight": 241,
+        "visibleRight": 192,
+        "clipped": true
+      },
+      {
+        "id": "strip-time",
+        "cell": {
+          "left": 195,
+          "right": 254,
+          "top": 440,
+          "bottom": 480
+        },
+        "valueText": "Synchronized",
+        "valueLeft": 229,
+        "valueRight": 311,
+        "visibleRight": 251,
+        "clipped": true
+      },
+      {
+        "id": "strip-security",
+        "cell": {
+          "left": 254,
+          "right": 312,
+          "top": 440,
+          "bottom": 480
+        },
+        "valueText": "Secure",
+        "valueLeft": 288,
+        "valueRight": 336,
+        "visibleRight": 309,
+        "clipped": true
+      },
+      {
+        "id": "strip-network",
+        "cell": {
+          "left": 312,
+          "right": 371,
+          "top": 440,
+          "bottom": 480
+        },
+        "valueText": "Connected",
+        "valueLeft": 346,
+        "valueRight": 414,
+        "visibleRight": 368,
+        "clipped": true
+      }
+    ],
+    "overlaps": [
+      "strip-cameras value overruns strip-mics",
+      "strip-mics value overruns strip-storage",
+      "strip-storage value overruns strip-time",
+      "strip-time value overruns strip-security",
+      "strip-security value overruns strip-network"
+    ],
+    "offscreen": [],
+    "rows": 1
+  },
+  "metadata": {
+    "dataPackage": "demo",
+    "regions": [
+      "manifest.json"
+    ],
+    "firstJsonIds": [
+      "EV-20261001-0012"
+    ],
+    "alert": null,
+    "headings": [
+      "Manifest fields (design book §11.3)DEMO",
+      "Package contents · SESSION-SES-20261001-0022",
+      "Session notes"
+    ]
+  },
+  "integrityOpen": {
+    "card": {
+      "verdict": "NOT_RUN",
+      "last": null,
+      "button": "Verify",
+      "progress": "The Core server's verdict is the record: it is written to the audit trail and to the chain of custody. | 0 of 6 checks"
+    },
+    "core": {
+      "verification": {
+        "status": "NOT_RUN",
+        "at": null
+      },
+      "lastCustody": {
+        "at": 1791254053000,
+        "action": "SEALED",
+        "actorId": null,
+        "detail": null
+      }
+    }
+  },
+  "integrityVerified": {
+    "card": {
+      "verdict": "PASS",
+      "last": null,
+      "button": "Verify again",
+      "progress": "The Core server's verdict is the record: it is written to the audit trail and to the chain of custody. | 6 of 6 checks | DEMO - recomputed · Recomputed in this browser for display only. It writes nothing and is not the record."
+    },
+    "core": {
+      "verification": {
+        "status": "PASS",
+        "at": 1791260843146
+      },
+      "lastCustody": {
+        "at": 1791260843146,
+        "action": "VERIFIED",
+        "actorId": "OPR-002",
+        "detail": null
+      }
+    }
+  },
+  "integrityReload": {
+    "card": {
+      "verdict": "NOT_RUN",
+      "last": null,
+      "button": "Verify",
+      "progress": "The Core server's verdict is the record: it is written to the audit trail and to the chain of custody. | 0 of 6 checks"
+    },
+    "core": {
+      "verification": {
+        "status": "PASS",
+        "at": 1791260843146
+      },
+      "lastCustody": {
+        "at": 1791260843146,
+        "action": "VERIFIED",
+        "actorId": "OPR-002",
+        "detail": null
+      }
+    }
+  },
+  "custody": [
+    {
+      "lines": 3,
+      "text": [
+        "6 Oct 20",
+        "26 11:2",
+        "7:23"
+      ]
+    },
+    {
+      "lines": 3,
+      "text": [
+        "6 Oct 20",
+        "26 09:3",
+        "4:13"
+      ]
+    },
+    {
+      "lines": 3,
+      "text": [
+        "6 Oct 20",
+        "26 09:1",
+        "4:49"
+      ]
+    }
+  ],
+  "exceptions": [],
+  "blocked": []
+}

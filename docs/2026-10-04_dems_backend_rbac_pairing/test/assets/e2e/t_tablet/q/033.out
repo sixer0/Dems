@@ -1,0 +1,4 @@
+mark test-signal at 10:08:44.203
+tap 1921,1432 at 10:08:44.386
+slept 2500 ms
+screencap 14b_device_test_signal_dialog.png (956074 bytes) at 10:08:47.605

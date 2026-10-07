@@ -1,0 +1,235 @@
+{"t":1791254641509,"label":"01 login: open"}
+{"t":1791254658750,"label":"02 login: wrong password"}
+{"t":1791254669767,"label":"03 login: data mode selector -> Simulated -> cancel"}
+{"t":1791254678739,"label":"04 login: sign in as SUPERVISOR through the form"}
+{"t":1791254701033,"label":"05 stack-check: open"}
+{"t":1791254718172,"label":"06 stack-check: Show test toast"}
+{"t":1791254738009,"label":"07 dashboard: open via sidebar"}
+{"t":1791254758265,"label":"08 dashboard: Camera 1 actions menu"}
+{"t":1791254785340,"label":"09a dashboard: MIC 1 actions menu"}
+{"t":1791254787634,"label":"09b dashboard: More start options"}
+{"t":1791254789942,"label":"09c dashboard: notifications bell"}
+{"t":1791254792819,"label":"09d dashboard: secure pill (ATTENTION)"}
+{"t":1791254808291,"label":"10a dashboard: device ID button"}
+{"t":1791254821255,"label":"10a dashboard: device ID button (rerun)"}
+{"t":1791254824287,"label":"10b dashboard: LIVE mode indicator -> dialog -> cancel"}
+{"t":1791254827799,"label":"10c dashboard: security tile TPM"}
+{"t":1791254861803,"label":"11a dashboard: hover TPM tile"}
+{"t":1791254863513,"label":"11b dashboard: hover Device ID"}
+{"t":1791254880452,"label":"12 dashboard: Open Evidence Queue"}
+{"t":1791254886233,"label":"12 dashboard: strip GNSS / Time"}
+{"t":1791254892048,"label":"12 dashboard: View All Events"}
+{"t":1791254897868,"label":"12 dashboard: quick action Run Diagnostics"}
+{"t":1791254903701,"label":"12 dashboard: Sealed evidence View All"}
+{"t":1791254924116,"label":"13a dashboard: narrow 390x844"}
+{"t":1791254930701,"label":"13b dashboard: reload of the deep link /devices while signed in"}
+{"t":1791255005442,"label":"14 session-new: open from the Dashboard button"}
+{"t":1791255033345,"label":"15a session-new: invalid case number (client bound)"}
+{"t":1791255034529,"label":"15b session-new: Fill in the next case number (scan)"}
+{"t":1791255037122,"label":"15c session-new: subject type Saksi, name, investigator suggestions"}
+{"t":1791255041724,"label":"15d session-new: room and profile selects"}
+{"t":1791255068276,"label":"16a session-new: Next (create + precheck)"}
+{"t":1791255108976,"label":"17a session-new: Re-run checks"}
+{"t":1791255116560,"label":"17b session-new: Back to step 1"}
+{"t":1791255119325,"label":"17c session-new: Cancel -> dialog"}
+{"t":1791255139526,"label":"18 session-monitor: open (idle, no recording)"}
+{"t":1791255154557,"label":"19a session-monitor: switch to Camera 2"}
+{"t":1791255158171,"label":"19b session-monitor: Re-verify"}
+{"t":1791255193525,"label":"19c session-monitor: Re-verify (read the chain result)"}
+{"t":1791255218585,"label":"20 evidence: open via sidebar"}
+{"t":1791255240338,"label":"21a evidence: search \"Indah\""}
+{"t":1791255242396,"label":"21b evidence: clear search"}
+{"t":1791255243940,"label":"21c evidence: status filter Sealed"}
+{"t":1791255246433,"label":"21d evidence: status filter Under Review"}
+{"t":1791255285142,"label":"21r evidence: status filter Sealed"}
+{"t":1791255287373,"label":"21r evidence: status filter Under Review"}
+{"t":1791255289630,"label":"21r evidence: status filter Recorded"}
+{"t":1791255291895,"label":"21r evidence: status filter All"}
+{"t":1791255314727,"label":"21s evidence: status filter Sealed"}
+{"t":1791255317401,"label":"21s evidence: status filter Under Review"}
+{"t":1791255319983,"label":"21s evidence: status filter Recorded"}
+{"t":1791255322465,"label":"21s evidence: status filter Archived"}
+{"t":1791255324799,"label":"21s evidence: status filter All"}
+{"t":1791255341801,"label":"22a evidence: subject filter Saksi"}
+{"t":1791255345852,"label":"22b evidence: investigator filter AKP Andi Pratama"}
+{"t":1791255350367,"label":"22c evidence: Clear filters"}
+{"t":1791255352700,"label":"22d evidence: date range from 06/10/2026"}
+{"t":1791255371231,"label":"22e evidence: date range from 06/10/2026 to 06/10/2026 (keystrokes)"}
+{"t":1791255408449,"label":"22f evidence: date from 2026-10-06 (native setter + input event)"}
+{"t":1791255410365,"label":"22g evidence: date to 2026-10-05 (before from)"}
+{"t":1791255412152,"label":"22h evidence: date to 2026-10-06"}
+{"t":1791255435959,"label":"23a evidence: sort by Subject (1st press)"}
+{"t":1791255438728,"label":"23b evidence: sort by Subject (2nd press)"}
+{"t":1791255441278,"label":"23c evidence: sort by Duration"}
+{"t":1791255443819,"label":"23d evidence: sort by Evidence ID (back to default)"}
+{"t":1791255448273,"label":"23e evidence: page 2"}
+{"t":1791255450695,"label":"23f evidence: previous page"}
+{"t":1791255453563,"label":"23g evidence: next page"}
+{"t":1791255473997,"label":"24a evidence: row menu of EV-20261006-0012"}
+{"t":1791255476393,"label":"24b evidence: select one row -> bulk bar"}
+{"t":1791255478388,"label":"24c evidence: bulk export -> wizard (opened, then cancelled)"}
+{"t":1791255501903,"label":"25a evidence: row menu Verify (EV-20261006-0012)"}
+{"t":1791255509773,"label":"25b evidence: row menu View (EV-20261006-0012)"}
+{"t":1791255531473,"label":"26a evidence-detail: Media tab, Play"}
+{"t":1791255536912,"label":"26b evidence-detail: Camera 2, MIC 2"}
+{"t":1791255540825,"label":"26c evidence-detail: pause, track AUDIO-02"}
+{"t":1791255558523,"label":"27a evidence-detail: Metadata tab"}
+{"t":1791255560951,"label":"27b evidence-detail: Metadata, open a package document"}
+{"t":1791255563084,"label":"27c evidence-detail: Hash & Integrity tab"}
+{"t":1791255566527,"label":"27d evidence-detail: Verify again"}
+{"t":1791255626410,"label":"27e evidence-detail: read the Core record of EV-20261006-0012 (page request)"}
+{"t":1791255639385,"label":"27f evidence: verification shown after a reload of the detail and in the list preview"}
+{"t":1791255704014,"label":"28a evidence-detail: More menu"}
+{"t":1791255723730,"label":"29a evidence-detail: More > Copy ID"}
+{"t":1791255727057,"label":"29b evidence-detail: More > Download manifest"}
+{"t":1791255742996,"label":"30a evidence-detail: Export wizard, reason step"}
+{"t":1791255748429,"label":"30b evidence-detail: Export wizard, Next -> authorise step"}
+{"t":1791255763149,"label":"31a evidence-detail: Export wizard Back, Next with a 3-character reason"}
+{"t":1791255767384,"label":"31b evidence-detail: Export wizard, valid reason, Next"}
+{"t":1791255783285,"label":"32a evidence-detail: Export wizard, Request authorisation"}
+{"t":1791255786633,"label":"32b evidence-detail: Export wizard press export-next"}
+{"t":1791255790780,"label":"32b evidence-detail: Export wizard press export-next"}
+{"t":1791255794943,"label":"32b evidence-detail: Export wizard press export-submit"}
+{"t":1791255799524,"label":"32c evidence-detail: Export wizard download"}
+{"t":1791255832698,"label":"33a evidence-detail: Close wizard, Back to Evidence"}
+{"t":1791255836815,"label":"33b evidence: row menu Archive (EV-20261004-0001)"}
+{"t":1791255867464,"label":"34 devices: open via sidebar"}
+{"t":1791255894287,"label":"35a devices: Camera 1 device menu"}
+{"t":1791255896005,"label":"35b devices: Camera 1 menu > Details"}
+{"t":1791255898961,"label":"35c devices: drawer Health tab"}
+{"t":1791255901432,"label":"35d devices: drawer Log tab"}
+{"t":1791255934904,"label":"36a devices: Camera 1 > Test signal"}
+{"t":1791255941021,"label":"36b devices: Camera 1 > Identify (blink)"}
+{"t":1791255945364,"label":"36c devices: MIC 1 device menu"}
+{"t":1791255983485,"label":"37a devices: camera tile Camera 2 (set active camera)"}
+{"t":1791255986603,"label":"37b devices: audio input MIC 1 (press)"}
+{"t":1791255989203,"label":"37c devices: front panel LCD keys DOWN, ENTER, BACK"}
+{"t":1791256007025,"label":"37c devices: front panel LCD keys DOWN, ENTER, BACK, UP"}
+{"t":1791256012100,"label":"37d devices: port MGMT LAN"}
+{"t":1791256014776,"label":"37e devices: other device Tablet Control"}
+{"t":1791256035654,"label":"37a devices: camera tile Camera 2 (rerun)"}
+{"t":1791256038893,"label":"37b devices: audio input MIC 1 (rerun)"}
+{"t":1791256041602,"label":"37g devices: hover LED FAULT"}
+{"t":1791256068280,"label":"38 storage: open via sidebar"}
+{"t":1791256083818,"label":"39a storage: calculator Increase video Mbps, Decrease retention"}
+{"t":1791256085593,"label":"39b storage: calculator Reset to book example"}
+{"t":1791256086792,"label":"39c storage: Manage Storage drawer"}
+{"t":1791256105903,"label":"40a storage: policy 1 year + auto-archive off"}
+{"t":1791256112244,"label":"40b storage: restore policy 90 days + auto-archive on"}
+{"t":1791256139302,"label":"41a storage: auto-archive off + apply"}
+{"t":1791256145401,"label":"41b storage: auto-archive back on + apply"}
+{"t":1791256151433,"label":"41c storage: calculator Increase video Mbps x2, Decrease retention days"}
+{"t":1791256189386,"label":"41a storage: auto-archive off (label) + apply"}
+{"t":1791256193320,"label":"41b storage: auto-archive back on + apply"}
+{"t":1791256210872,"label":"41c storage: calculator Increase video Mbps x2, Decrease retention days"}
+{"t":1791256212096,"label":"41d storage: calculator Reset to book example"}
+{"t":1791256213300,"label":"41e storage: View sealed link"}
+{"t":1791256249602,"label":"41c storage: calculator Increase video Mbps x2, Decrease retention days x1 (scoped)"}
+{"t":1791256252828,"label":"41d storage: calculator Reset to book example (scoped)"}
+{"t":1791256264078,"label":"42 network-time: open via sidebar"}
+{"t":1791256286248,"label":"43 network-time: live values over 4 s"}
+{"t":1791256300139,"label":"44 security-audit: open via sidebar"}
+{"t":1791256323315,"label":"45a security-audit: Verify chain"}
+{"t":1791256328391,"label":"45b security-audit: Show in log"}
+{"t":1791256330601,"label":"45c security-audit: search \"Storage\""}
+{"t":1791256333526,"label":"45d security-audit: type filter Authentication"}
+{"t":1791256336900,"label":"45e security-audit: severity filter Warning"}
+{"t":1791256340128,"label":"45f security-audit: operator filter AKP Andi Pratama (type+severity reset first)"}
+{"t":1791256379332,"label":"46a security-audit: Earlier chains"}
+{"t":1791256382252,"label":"46b security-audit: Live switch off, then on"}
+{"t":1791256384949,"label":"46c security-audit: Export audit dialog"}
+{"t":1791256393549,"label":"46d security-audit: Export audit download"}
+{"t":1791256411862,"label":"46d security-audit: Download again"}
+{"t":1791256417495,"label":"46e security-audit: Live switch back on"}
+{"t":1791256454932,"label":"47 system: open via sidebar"}
+{"t":1791256476171,"label":"48a system: Run Diagnostics (maintenance panel)"}
+{"t":1791256482882,"label":"48b system: Diagnostics Run again"}
+{"t":1791256505139,"label":"49a system: diagnostics modal close"}
+{"t":1791256506774,"label":"49b system: hover locked Install update and disabled Restart services"}
+{"t":1791256510058,"label":"49c system: Export logs dialog"}
+{"t":1791256549828,"label":"50 system: Export logs again (automatic downloads granted)"}
+{"t":1791256609959,"label":"51a system: settings Account"}
+{"t":1791256610806,"label":"51b system: settings App Preferences: presentation mode on, then off"}
+{"t":1791256614011,"label":"51c system: settings App Preferences: reduce motion toggle and back"}
+{"t":1791256616725,"label":"51d system: settings App Preferences: clock 12 h and back to 24 h"}
+{"t":1791256665859,"label":"52a system: settings Notifications: first switch off, then on"}
+{"t":1791256668184,"label":"52b system: settings Device Settings: active camera VIDEO-02, then VIDEO-01"}
+{"t":1791256674513,"label":"52c system: settings System Maintenance and About"}
+{"t":1791256701694,"label":"52a system: settings Notifications: first switch off, then on (rerun)"}
+{"t":1791256706054,"label":"52b system: settings Device Settings: active camera VIDEO-02, then VIDEO-01 (rerun)"}
+{"t":1791256713269,"label":"52c system: settings System Maintenance, Security & Privacy, Account, About (rerun)"}
+{"t":1791256734401,"label":"53a system: Device Settings active camera -> Camera 2"}
+{"t":1791256737948,"label":"53b system: Device Settings active camera -> Camera 1"}
+{"t":1791256754851,"label":"54 system: Demo Control panel"}
+{"t":1791256784146,"label":"55a demo: inject MIC_NO_SIGNAL"}
+{"t":1791256786889,"label":"55b demo: Devices page while MIC 1 has no signal"}
+{"t":1791256793271,"label":"55c demo: clear MIC_NO_SIGNAL (press again)"}
+{"t":1791256795990,"label":"55d demo: time source NTP fallback"}
+{"t":1791256798717,"label":"55e demo: time source back to GNSS lock"}
+{"t":1791256843671,"label":"57a demo: inject CAMERA_LOSS and FAN_STALL"}
+{"t":1791256848506,"label":"57b demo: Dashboard while two faults are active"}
+{"t":1791256854803,"label":"57c demo: Clear all faults"}
+{"t":1791256871653,"label":"58a demo: choose scenario Recording"}
+{"t":1791256873957,"label":"58b demo: Load scenario -> confirmation"}
+{"t":1791256875643,"label":"58c demo: confirm Load scenario Recording (LANE 3 ONLY)"}
+{"t":1791256901806,"label":"59a session-monitor: open during the Recording scenario"}
+{"t":1791256921958,"label":"60a session-monitor: Add Marker"}
+{"t":1791256926609,"label":"60b session-monitor: Session Note"}
+{"t":1791256947333,"label":"61a session-monitor: Pause Monitoring"}
+{"t":1791256952135,"label":"61b session-monitor: Resume Monitoring"}
+{"t":1791256954244,"label":"61c session-monitor: Snapshot"}
+{"t":1791256956835,"label":"61d session-monitor: Camera 2 while recording"}
+{"t":1791256959808,"label":"61e session-monitor: Fullscreen"}
+{"t":1791256995771,"label":"62a session-monitor: End Session (press and hold)"}
+{"t":1791257000060,"label":"62b session-monitor: End Session confirm"}
+{"t":1791257019148,"label":"63a session-monitor: View evidence from the finalization modal"}
+{"t":1791257024399,"label":"63b session-monitor: back to Session Monitor after sealing"}
+{"t":1791257039733,"label":"63c evidence: custody actor of RECORDING_STOPPED in the Core record"}
+{"t":1791257082948,"label":"64a demo: Reset demo -> confirmation"}
+{"t":1791257084599,"label":"64b demo: confirm Reset demo (LANE 3 ONLY)"}
+{"t":1791257102575,"label":"65 users-roles: open via sidebar"}
+{"t":1791257124636,"label":"66a users-roles: own row menu and role dialog (last-administrator hint)"}
+{"t":1791257128694,"label":"66b users-roles: OPR-003 TECHNICIAN -> INVESTIGATOR"}
+{"t":1791257136315,"label":"66c users-roles: OPR-003 back to TECHNICIAN"}
+{"t":1791257179218,"label":"66b users-roles: OPR-003 TECHNICIAN -> INVESTIGATOR (radio control)"}
+{"t":1791257183108,"label":"66c users-roles: OPR-003 back to TECHNICIAN (radio control)"}
+{"t":1791257205629,"label":"67a users-roles: Disable OPR-001 -> dialog"}
+{"t":1791257208644,"label":"67b users-roles: Disable OPR-001 confirm"}
+{"t":1791257210968,"label":"67c users-roles: Enable OPR-001 -> dialog -> confirm"}
+{"t":1791257245154,"label":"68a shell: user menu (before the controller-ordered browser relaunch)"}
+{"t":1791257246680,"label":"68b shell: user menu > Sign out"}
+{"t":1791257297182,"label":"69 relaunch: fresh browser on an OS-assigned port (controller instruction after IN-1); sign in again through the form"}
+{"t":1791257323446,"label":"70 paired-devices: open via sidebar"}
+{"t":1791257342125,"label":"71a paired-devices: Issue pairing code (masked before capture)"}
+{"t":1791257344383,"label":"71b paired-devices: Cancel code"}
+{"t":1791257366209,"label":"72 paired-devices: issue a second code and leave it to expire (5 min)"}
+{"t":1791257469952,"label":"73 paired-devices: waiting on the page for the second code to expire"}
+{"t":1791257748426,"label":"74a paired-devices: audit row of the expiry (sweep)"}
+{"t":1791257748439,"label":"74b api-reference: open via sidebar"}
+{"t":1791257770048,"label":"75a api-reference: open GET /api/v1/health"}
+{"t":1791257772827,"label":"75b api-reference: Test Request (open the client)"}
+{"t":1791257785251,"label":"76 api-reference: Send GET /api/v1/health from the client"}
+{"t":1791257805978,"label":"77a api-reference: open #tag/storage/GET/api/v1/storage/status"}
+{"t":1791257808730,"label":"77b api-reference: Test Request + Send (authenticated read)"}
+{"t":1791257815389,"label":"77c api-reference: realtime panel connect"}
+{"t":1791257843230,"label":"78a api-reference: storage status operation, Test Request, Send (authenticated read)"}
+{"t":1791257865310,"label":"79a api-reference: Test Request (get /api/v1/storage/status), longer wait"}
+{"t":1791257899580,"label":"80a api-reference: Test Request (storage status) by geometry"}
+{"t":1791257900616,"label":"80b api-reference: Send GET /api/v1/storage/status (authenticated read)"}
+{"t":1791257932863,"label":"81a api-reference: Copy base URL"}
+{"t":1791257934489,"label":"81b api-reference: Download openapi.json"}
+{"t":1791257953339,"label":"82a api-reference: close the Try it client (x)"}
+{"t":1791257983446,"label":"83a api-reference: Copy base URL"}
+{"t":1791257985124,"label":"83b api-reference: Download openapi.json"}
+{"t":1791258010952,"label":"84a shell: user menu > Lock console"}
+{"t":1791258015911,"label":"84b login: sign in again after the lock"}
+{"t":1791258033917,"label":"85a shell: final Sign out (user menu)"}
+{"t":1791258038319,"label":"85b login: deep link /evidence/EV-20261006-0012 while signed out"}
+{"t":1791258077284,"label":"86a login: password visibility toggle with a non-secret test string"}
+{"t":1791258083686,"label":"86b login: sign in for the extra round"}
+{"t":1791258088053,"label":"86c dashboard: More start options > Start with last profile"}
+{"t":1791258096157,"label":"86d dashboard: More start options > Start from template"}
+{"t":1791258102761,"label":"86e system: quick action Software Update"}
+{"t":1791258107604,"label":"86f evidence-detail: header Play"}
+{"t":1791258147525,"label":"87 shell: final Sign out through the user menu (end of walk)"}
+{"t":1791258151352,"label":"99 end of walk"}

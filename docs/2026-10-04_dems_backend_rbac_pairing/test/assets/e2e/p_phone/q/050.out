@@ -1,0 +1,12 @@
+10:19:21.442 mark a31 at 10:19:21.442
+10:19:21.541 tap 811,1622
+10:19:21.782 stop 202 at device 10-06 10:19:21.569 (POST /api/v1/session/{id}/stop 202)
+10:19:22.391 declared screen finalizing
+10:19:22.425 poll: 47_finalizing_00.png 10:19:22.425..10:19:22.636 ; 47_finalizing_01.png 10:19:23.337..10:19:23.480 ; 47_finalizing_02.png 10:19:24.182..10:19:24.297 ; 47_finalizing_03.png 10:19:24.999..10:19:25.120 ; 47_finalizing_04.png 10:19:25.824..10:19:26.071 ; 47_finalizing_05.png 10:19:26.773..10:19:26.995
+10:19:27.958 slept 4000 ms
+10:19:32.086 declared screen summary
+10:19:32.188 screencap 48_summary.png 10:19:32.188..10:19:32.922
+10:19:33.065 corelog (1): 10:19:21.569 POST /api/v1/session/{id}/stop 202
+10:19:33.412 serverlog since a31 (1):
+    10:19:21.820 POST /api/v1/session/:id/stop 202 operator:OPR-001
+10:19:33.479 js => {"id":"SES-20261006-0030","state":"SEALED","evidenceId":"EV-20261006-0018","summaryAck":null}

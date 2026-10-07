@@ -1,0 +1,48 @@
+2026-10-06T06:42:48.882Z browser pid 30398, CDP port 50825 (OS-assigned), owner verified
+2026-10-06T06:42:48.947Z viewport 1440x900
+2026-10-06T06:42:51.017Z signed in as andi.pratama (SUPERVISOR); landed on /dashboard
+2026-10-06T06:42:54.089Z inventory: 14 items; keys ["items","nextCursor"]
+2026-10-06T06:42:54.089Z   EV-20261006-0014 SEALED media="DEMO_PACKAGE" multiWord=[{"action":"RECORDING_STOPPED","detail":"R-W re-test: interview ended by the supervisor from the web console"}]
+2026-10-06T06:42:54.089Z   EV-20261006-0013 SEALED media="DEMO_PACKAGE" multiWord=[]
+2026-10-06T06:42:54.089Z   EV-20261006-0012 SEALED media="DEMO_PACKAGE" multiWord=[]
+2026-10-06T06:42:54.089Z   EV-20261006-0011 SEALED media="DEMO_PACKAGE" multiWord=[]
+2026-10-06T06:42:54.089Z   EV-20261006-0010 SEALED media="DEMO_PACKAGE" multiWord=[]
+2026-10-06T06:42:54.089Z   EV-20261006-0009 SEALED media="DEMO_PACKAGE" multiWord=[]
+2026-10-06T06:42:54.089Z   EV-20261006-0008 SEALED media="DEMO_PACKAGE" multiWord=[]
+2026-10-06T06:42:54.089Z   EV-20261006-0007 SEALED media="DEMO_PACKAGE" multiWord=[]
+2026-10-06T06:42:54.089Z   EV-20261005-0006 RECORDED media="DEMO_PACKAGE" multiWord=[{"action":"SESSION_INCOMPLETE","detail":"Power fail; recovered"}]
+2026-10-06T06:42:54.089Z   EV-20261005-0005 SEALED media="DEMO_PACKAGE" multiWord=[]
+2026-10-06T06:42:54.089Z   EV-20261005-0004 EXPORTED media="DEMO_PACKAGE" multiWord=[{"action":"EXPORTED","detail":"Case file transfer (simulated)"}]
+2026-10-06T06:42:54.089Z   EV-20261005-0003 UNDER_REVIEW media="DEMO_PACKAGE" multiWord=[]
+2026-10-06T06:42:54.089Z   EV-20261004-0002 SEALED media="DEMO_PACKAGE" multiWord=[]
+2026-10-06T06:42:54.089Z   EV-20261004-0001 SEALED media="DEMO_PACKAGE" multiWord=[]
+2026-10-06T06:42:54.089Z target EV-20261006-0014
+2026-10-06T06:42:54.102Z viewport 1280x800
+2026-10-06T06:42:57.648Z custody 1280x800: card 407 container 375 table 472 overflow 97 layout auto cols [106,187,87,92]
+2026-10-06T06:42:57.648Z     SEALED: detail 0/92 px visible, date lines 1, clock lines 1, action lines 2, overflowing cells 0
+2026-10-06T06:42:57.648Z     RECORDING_STOPPED: detail 0/92 px visible, date lines 1, clock lines 1, action lines 2, overflowing cells 0
+2026-10-06T06:42:57.648Z     RECORDING_STARTED: detail 0/92 px visible, date lines 1, clock lines 1, action lines 2, overflowing cells 0
+2026-10-06T06:42:57.681Z screenshot 12c_before_rw1_custody_1280x800.png
+2026-10-06T06:42:57.760Z screenshot 12c_before_rw1_integrity_page_1280x800.png
+2026-10-06T06:42:57.771Z viewport 1440x900
+2026-10-06T06:43:01.246Z custody 1440x900: card 473 container 441 table 472 overflow 31 layout auto cols [106,187,87,92]
+2026-10-06T06:43:01.246Z     SEALED: detail 62/92 px visible, date lines 1, clock lines 1, action lines 2, overflowing cells 0
+2026-10-06T06:43:01.246Z     RECORDING_STOPPED: detail 62/92 px visible, date lines 1, clock lines 1, action lines 2, overflowing cells 0
+2026-10-06T06:43:01.246Z     RECORDING_STARTED: detail 62/92 px visible, date lines 1, clock lines 1, action lines 2, overflowing cells 0
+2026-10-06T06:43:01.285Z screenshot 12c_before_rw1_custody_1440x900.png
+2026-10-06T06:43:01.368Z screenshot 12c_before_rw1_integrity_page_1440x900.png
+2026-10-06T06:43:01.380Z viewport 1920x1080
+2026-10-06T06:43:04.879Z custody 1920x1080: card 663 container 631 table 631 overflow 0 layout auto cols [129,187,109,206]
+2026-10-06T06:43:04.879Z     SEALED: detail 206/206 px visible, date lines 1, clock lines 1, action lines 2, overflowing cells 0
+2026-10-06T06:43:04.879Z     RECORDING_STOPPED: detail 206/206 px visible, date lines 1, clock lines 1, action lines 2, overflowing cells 0
+2026-10-06T06:43:04.879Z     RECORDING_STARTED: detail 206/206 px visible, date lines 1, clock lines 1, action lines 2, overflowing cells 0
+2026-10-06T06:43:04.922Z screenshot 12c_before_rw1_custody_1920x1080.png
+2026-10-06T06:43:05.002Z screenshot 12c_before_rw1_integrity_page_1920x1080.png
+2026-10-06T06:43:05.014Z viewport 1440x900
+2026-10-06T06:43:07.536Z media: {"mode":null,"empty":true,"source":null,"title":"No DEMO media","body":"This item has no DEMO package, so there is nothing to play. Its record comes from the simulator.","packageChip":"Core record","packageChipKind":"core"}
+2026-10-06T06:43:07.635Z screenshot 12c_before_ort1_media_tab_1440x900.png
+2026-10-06T06:43:07.660Z screenshot 12c_before_ort1_media_empty_1440x900.png
+2026-10-06T06:43:07.660Z answers rewritten in this browser: [{"mode":"none","url":"/api/v1/evidence/EV-20261006-0014","status":200,"mediaBefore":{"source":"DEMO_PACKAGE","packageSuffix":"0014"},"mediaAfter":{"source":"NONE","packageSuffix":null}}]
+2026-10-06T06:43:07.660Z exceptions: 0; blocked requests: 0
+2026-10-06T06:43:07.699Z sign-out POST /api/v1/auth/sign-out -> 204
+2026-10-06T06:43:08.248Z browser closed, profile removed

@@ -1,0 +1,103 @@
+# W67 mutation check, 2026-10-05 23:23:19; 6 test files per run; the tree is not edited
+control (no mutation): exit=0 Tests:       78 passed, 78 total (42 s)
+H1  detected      14s  the hand-off by router.replace only (the queued navigation the original comment warns about)  | Tests:       4 failed, 74 passed, 78 total  | live-session-new-handoff.test.tsx, session-new-screen.test.tsx
+      e.g. step 3 and the hand-off to the live monitor (MA-29 steps 1–3) › Ready shows the ARMED summary; Start Recording (no countdown) lands on /session/live with the session RECORDING
+      e.g. step 3 and the hand-off to the live monitor (MA-29 steps 1–3) › with the 3-2-1 countdown on, recording starts after three one-second digits; Cancel stops it
+H2  detected      15s  the hand-off dispatched before the start settled (not in its continuation)  | Tests:       3 failed, 75 passed, 78 total  | live-session-new-handoff.test.tsx
+      e.g. the start-recording hand-off in Live mode (S2-2, CA-02, AC-C-62) › the delta before the answer: the monitor opens with the session RECORDING and no "session busy" toast
+      e.g. the start-recording hand-off in Live mode (S2-2, CA-02, AC-C-62) › the answer before the delta: the wizard waits on Ready, then the monitor opens in the turn of the delta, with no "session busy" toast
+H3  detected      15s  a refused start does not return Start to idle (launching stays on)  | Tests:       2 failed, 76 passed, 78 total  | live-session-new-handoff.test.tsx
+      e.g. the start-recording hand-off in Live mode (S2-2, CA-02, AC-C-62) › a 403 on start (example notPermitted): the denied toast names the role, Start returns to idle, the wizard stays on Ready (AC-C-48)
+      e.g. the start-recording hand-off in Live mode (S2-2, CA-02, AC-C-62) › an outage on start: "Core server unreachable. Nothing was changed.", Start returns to idle, the wizard stays on Ready
+P1  detected      15s  no in-flight guard: a second press sends a second command  | Tests:       1 failed, 77 passed, 78 total  | live-session-new-handoff.test.tsx
+      e.g. the pending state of Next on step 1 (LB-1, AC-C-57, AC-C-58) › an answer 1 s late: two quick presses send one request; no spinner at 300 ms; the in-button spinner at 500 ms; nothing added outside the control
+P2  detected      14s  the spinner at once (no reveal time)  | Tests:       2 failed, 76 passed, 78 total  | live-session-new-handoff.test.tsx
+      e.g. the pending state of Next on step 1 (LB-1, AC-C-57, AC-C-58) › an answer 1 s late: two quick presses send one request; no spinner at 300 ms; the in-button spinner at 500 ms; nothing added outside the control
+      e.g. the pending state of Next on step 1 (LB-1, AC-C-57, AC-C-58) › an answer after 50 ms: no spinner is ever rendered
+P3  detected      13s  the spinner never  | Tests:       1 failed, 77 passed, 78 total  | live-session-new-handoff.test.tsx
+      e.g. the pending state of Next on step 1 (LB-1, AC-C-57, AC-C-58) › an answer 1 s late: two quick presses send one request; no spinner at 300 ms; the in-button spinner at 500 ms; nothing added outside the control
+P4  detected      11s  the busy state is never released  | Tests:       8 failed, 70 passed, 78 total  | live-session-new-handoff.test.tsx, live-session-new-sites.test.tsx
+      e.g. the start-recording hand-off in Live mode (S2-2, CA-02, AC-C-62) › a 403 on start (example notPermitted): the denied toast names the role, Start returns to idle, the wizard stays on Ready (AC-C-48)
+      e.g. the start-recording hand-off in Live mode (S2-2, CA-02, AC-C-62) › an outage on start: "Core server unreachable. Nothing was changed.", Start returns to idle, the wizard stays on Ready
+P5  detected      10s  the busy flag never reaches the control  | Tests:       2 failed, 76 passed, 78 total  | live-session-new-handoff.test.tsx
+      e.g. the start-recording hand-off in Live mode (S2-2, CA-02, AC-C-62) › the answer before the delta: the wizard waits on Ready, then the monitor opens in the turn of the delta, with no "session busy" toast
+      e.g. the pending state of Next on step 1 (LB-1, AC-C-57, AC-C-58) › an answer 1 s late: two quick presses send one request; no spinner at 300 ms; the in-button spinner at 500 ms; nothing added outside the control
+## 8 detected, 0 not detected, 0 not applied, of 8
+## the mutated files in the tree, before and after: identical
+   a90e13baf60abdfb  src/features/session-new/devices-check-step.tsx
+   6762a08e9ed75422  src/features/session-new/session-new-screen.tsx
+   a1a38ac8249d7bda  src/features/session-new/use-pending-press.ts
+   9e6c3d206d80ceb7  src/features/session-new/use-session-new.ts
+# finished 23:25:48
+exit=0
+# W67 mutation check, 2026-10-05 23:25:55; 6 test files per run; the tree is not edited
+R1  detected      14s  Live mode skips the presenter for a void action (the generic toast instead)  | Tests:       8 failed, 70 passed, 78 total  | live-session-new-handoff.test.tsx, live-session-new-sites.test.tsx
+      e.g. the start-recording hand-off in Live mode (S2-2, CA-02, AC-C-62) › a 403 on start (example notPermitted): the denied toast names the role, Start returns to idle, the wizard stays on Ready (AC-C-48)
+      e.g. the start-recording hand-off in Live mode (S2-2, CA-02, AC-C-62) › an outage on start: "Core server unreachable. Nothing was changed.", Start returns to idle, the wizard stays on Ready
+R2  detected      13s  a refused create (403) shows no denied toast in Live mode  | Tests:       2 failed, 76 passed, 78 total  | live-session-new-replica.test.tsx, live-session-new-sites.test.tsx
+      e.g. S1-4: Next on step 1 — createSession, then beginPrecheck (nested settle) › refusal: createSession 403 (example notPermitted) → the denied toast and the inline error by reason; no pre-check; Next idle
+      e.g. S5-6: the investigator list is a hint from the replicated roles › the hint is not the judge: the replica offers the operator, the Core refuses the create (example notPermitted) → the denied toast
+R3  detected      14s  a presented rejection of the create also sets the inline "unexpected" error  | Tests:       3 failed, 75 passed, 78 total  | live-session-new-sites.test.tsx
+      e.g. S1-4: Next on step 1 — createSession, then beginPrecheck (nested settle) › refusal of the second leg: beginPrecheck 403 (example notPermitted) → the denied toast, no inline error; the setup session stays on the Core
+      e.g. S1-4: Next on step 1 — createSession, then beginPrecheck (nested settle) › outage: "Core server unreachable. Nothing was changed."; no inline error; Next idle; a second press sends again
+R4  detected       8s  the create skips the pre-check start (nested settle broken)  | Tests:       29 failed, 49 passed, 78 total  | live-session-new-handoff.test.tsx, live-session-new-replica.test.tsx, live-session-new-sites.test.tsx, session-new-screen.test.tsx
+      e.g. §6.3, AC-C-50: losing SESSION_START while the wizard is open › leaves for /home with the role-change toast; the setup session stays on the Core and nothing is cancelled
+      e.g. the Core link: a recording starts only over a connected link (row M0's one rule; F69) › link down on Ready: the notice shows and Start is disabled; it stays through the reconnect attempts; link back: hidden, Start enabled
+R5  detected      15s  a changed form on a CREATE session is not cancelled and created again  | Tests:       1 failed, 77 passed, 78 total  | live-session-new-sites.test.tsx
+      e.g. S1-4: Next on step 1 — createSession, then beginPrecheck (nested settle) › a CREATE session with other details: 409, then cancel and create again, then the pre-check — in order (D-2 of the web)
+R6  detected      16s  a successful flow action reports false  | Tests:       7 failed, 71 passed, 78 total  | live-session-new-handoff.test.tsx, live-session-new-sites.test.tsx, precheck.test.tsx, session-new-screen.test.tsx
+      e.g. S2-2: acknowledge the warnings (Next on step 2) › success: one acknowledge, then step 3 on the Core's ARMED
+      e.g. S2-2: cancel the session (Back → "Cancel this session?") › success: one cancel; the wizard leaves once the Core cancelled
+R7  detected      15s  Live mode leaves on a refused cancel (the dialog closes)  | Tests:       2 failed, 76 passed, 78 total  | live-session-new-sites.test.tsx
+      e.g. S2-2: cancel the session (Back → "Cancel this session?") › refusal (example notPermitted): the denied toast; the dialog stays open and the wizard stays
+      e.g. S2-2: cancel the session (Back → "Cancel this session?") › outage: "Core server unreachable"; the dialog stays open and the wizard stays
+A1  detected      13s  a lost SESSION_START is ignored  | Tests:       1 failed, 77 passed, 78 total  | live-session-new-replica.test.tsx
+      e.g. §6.3, AC-C-50: losing SESSION_START while the wizard is open › leaves for /home with the role-change toast; the setup session stays on the Core and nothing is cancelled
+A2  detected      16s  the wizard leaves without switching the guard off (router.replace)  | Tests:       1 failed, 77 passed, 78 total  | live-session-new-replica.test.tsx
+      e.g. §6.3, AC-C-50: losing SESSION_START while the wizard is open › leaves for /home with the role-change toast; the setup session stays on the Core and nothing is cancelled
+## 9 detected, 0 not detected, 0 not applied, of 9
+## the mutated files in the tree, before and after: identical
+   a90e13baf60abdfb  src/features/session-new/devices-check-step.tsx
+   6762a08e9ed75422  src/features/session-new/session-new-screen.tsx
+   a1a38ac8249d7bda  src/features/session-new/use-pending-press.ts
+   9e6c3d206d80ceb7  src/features/session-new/use-session-new.ts
+# finished 23:28:00
+exit=0
+# W67 mutation check, 2026-10-05 23:28:00; 6 test files per run; the tree is not edited
+L1  detected      13s  Start stays enabled while the link is down  | Tests:       1 failed, 77 passed, 78 total  | live-session-new-replica.test.tsx
+      e.g. the Core link: a recording starts only over a connected link (row M0's one rule; F69) › link down on Ready: the notice shows and Start is disabled; it stays through the reconnect attempts; link back: hidden, Start enabled
+L2  NOT DETECTED  12s  a rule of its own: settling hides the notice (no hysteresis)  | Tests:       78 passed, 78 total  | 
+L3  detected      13s  a running countdown ignores the link  | Tests:       1 failed, 77 passed, 78 total  | live-session-new-replica.test.tsx
+      e.g. the Core link: a recording starts only over a connected link (row M0's one rule; F69) › a running 3-2-1 stops when the link goes down
+L4  detected      14s  the Live CORE hint shows in Simulated mode too  | Tests:       1 failed, 77 passed, 78 total  | live-session-new-replica.test.tsx
+      e.g. the Core link: a recording starts only over a connected link (row M0's one rule; F69) › Simulated mode: no link notice and no Live CORE hint, even with the tablet link OFFLINE (the step looks as before)
+L5  detected      14s  the Live CORE hint never shows  | Tests:       1 failed, 77 passed, 78 total  | live-session-new-replica.test.tsx
+      e.g. the Core link: a recording starts only over a connected link (row M0's one rule; F69) › a blocked CORE check reads as this device's own connection in Live mode
+B1  detected      13s  hardware Back is not held while sending  | Tests:       1 failed, 77 passed, 78 total  | live-session-new-handoff.test.tsx
+      e.g. the start-recording hand-off in Live mode (S2-2, CA-02, AC-C-62) › while the start is out, hardware Back is held: the answer decides, and the monitor opens
+B2  detected      12s  the header arrow is not held while sending  | Tests:       1 failed, 77 passed, 78 total  | live-session-new-handoff.test.tsx
+      e.g. the start-recording hand-off in Live mode (S2-2, CA-02, AC-C-62) › while the start is out, hardware Back is held: the answer decides, and the monitor opens
+## 6 detected, 1 not detected, 0 not applied, of 7
+## not detected: L2
+## the mutated files in the tree, before and after: identical
+   a90e13baf60abdfb  src/features/session-new/devices-check-step.tsx
+   6762a08e9ed75422  src/features/session-new/session-new-screen.tsx
+   a1a38ac8249d7bda  src/features/session-new/use-pending-press.ts
+   9e6c3d206d80ceb7  src/features/session-new/use-session-new.ts
+# finished 23:29:32
+exit=1
+# W67 mutation check, 2026-10-05 23:30:07; 6 test files per run; the tree is not edited
+control (no mutation): exit=0 Tests:       79 passed, 79 total (10 s)
+L1  detected      10s  Start stays enabled while the link is down  | Tests:       2 failed, 77 passed, 79 total  | live-session-new-replica.test.tsx
+      e.g. the Core link: a recording starts only over a connected link (row M0's one rule; F69) › link down on Ready: the notice shows and Start is disabled; it stays through the reconnect attempts; link back: hidden, Start enabled
+      e.g. the Core link: a recording starts only over a connected link (row M0's one rule; F69) › a reconnect attempt that hangs in CONNECTING keeps the notice (the one rule's hysteresis, no flicker)
+L2  detected      12s  a rule of its own: settling hides the notice (no hysteresis)  | Tests:       1 failed, 78 passed, 79 total  | live-session-new-replica.test.tsx
+      e.g. the Core link: a recording starts only over a connected link (row M0's one rule; F69) › a reconnect attempt that hangs in CONNECTING keeps the notice (the one rule's hysteresis, no flicker)
+## 2 detected, 0 not detected, 0 not applied, of 2
+## the mutated files in the tree, before and after: identical
+   a90e13baf60abdfb  src/features/session-new/devices-check-step.tsx
+   6762a08e9ed75422  src/features/session-new/session-new-screen.tsx
+   a1a38ac8249d7bda  src/features/session-new/use-pending-press.ts
+   9e6c3d206d80ceb7  src/features/session-new/use-session-new.ts
+# finished 23:30:39
+exit=0

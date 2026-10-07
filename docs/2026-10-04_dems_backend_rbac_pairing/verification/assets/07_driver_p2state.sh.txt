@@ -1,0 +1,9 @@
+#!/bin/sh
+# W97: read-only state of phone2 (emulator-5558): screen size, keyguard, focus, user state, stored prefs, simulator auth status.
+A="adb -s emulator-5558"; APP=com.dems.demo.tablet
+$A shell wm size | tr -d '\r'
+$A shell dumpsys window | tr -d '\r' | grep -oE "isKeyguardShowing=[a-z]+|mCurrentFocus=[^}]+" | head -2
+$A shell dumpsys user | grep -m1 "State:" | tr -d '\r' | sed 's/^ *//'
+echo "prefs: $($A shell "run-as $APP sh -c 'sqlite3 databases/RKStorage \"select value from catalystLocalStorage where key = \\\"dems.mobile.prefs.v1\\\"\"'" 2>&1 | tr -d '\r')"
+echo "sim auth: $($A shell "run-as $APP sh -c 'sqlite3 databases/RKStorage \"select value from catalystLocalStorage where key = \\\"dems.sim.v1\\\"\"'" 2>/dev/null | tr -d '\r' | grep -o '"auth":{"status":"[A-Z_]*"' | head -1)"
+echo "reverse: $($A reverse --list | tr -d '\r' | tr '\n' ';')"

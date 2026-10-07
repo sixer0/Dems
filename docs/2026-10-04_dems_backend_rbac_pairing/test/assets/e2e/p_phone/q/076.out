@@ -1,0 +1,6 @@
+10:38:36.582 js => [[414,"ROLE_CHANGED","OPR-002","10:35:41.127","Role of OPR-001 changed from INVESTIGATOR to TECHNICIAN","{\"to\":\"TECHNICIAN\",\"from\":\"INVESTIGATOR\",\"targetOperatorId\":\"OPR-001\"}",null],[416,"ACCESS_DENIED","OPR-001","10:38:01.193","Access denied: role TECHNICIAN lacks SESSION_START (createSession)","{\"role\":\"TECHNICIAN\",\"permission\":\"SESSION_START\",\"operationId\":\"createSession\"}","DEV-0001"],[415,"ACCESS_DENIED","OPR-001","10:37:05.349","Access denied: role TECHNICIAN lacks SESSION_START (createSession)","{\"role\":\"TECHNICIAN\",\"permission\":\"SESSION_START\",\"operationId\":\"createSession\"}",null]]
+10:38:36.669 tap 995,2233
+10:38:36.838 slept 600 ms
+10:38:37.480 tap 95,216
+10:38:37.674 slept 2500 ms
+10:38:40.221 screencap 84_sc4_phone_after_leaving_wizard.png 10:38:40.221..10:38:40.485

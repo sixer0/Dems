@@ -217,7 +217,7 @@ describe('D-1: no demo control mirrors a tamper in Live mode (§8.4)', () => {
 describe('A6 refusal (§6.2; AC-C-48; LB-5)', () => {
   it('a 403 NOT_PERMITTED shows the denied toast naming the Investigator role (the first that holds EVIDENCE_VIEW); no verdict, no page record; the control is idle again', async () => {
     const { bed } = await openIntegrity(EV.sealed)
-    // CONTRACT-GAP-W69-1: operation 41 has no `notPermitted` example (every seeded role holds EVIDENCE_VIEW, `evidence.ts` VIEW_DENIED), so the envelope is written here.
+    // RESIDUAL-W69-1 (W83 ledger #43): operation 41 has no `notPermitted` example (every seeded role holds EVIDENCE_VIEW, `evidence.ts` VIEW_DENIED), so the envelope is written here.
     bed.fake.answerOnce('verifyEvidence', refusal(403, 'NOT_PERMITTED', 'Not permitted.', { permission: 'EVIDENCE_VIEW' }))
     fireEvent.click(screen.getByTestId('evidence-verify'))
     await waitFor(() => expect(toastWith(DENIED)).toHaveLength(1))

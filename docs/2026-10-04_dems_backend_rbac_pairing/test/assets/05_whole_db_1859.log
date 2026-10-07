@@ -1,0 +1,133 @@
+## 2026-10-04 18:59:17 WIB $ DEMS_TEST_STEP=71 npm run test:db -w @dems/core-server -- --maxWorkers=2
+
+> @dems/core-server@0.2.0 test:db
+> vitest run --project db --maxWorkers=2
+
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/apps/core-server
+
+[test:db] PostgreSQL 18.4 on 127.0.0.1:4432; helper role dems_owner, code under test dems_app; run prefix dems_test_step_71_tmdtat2p_
+[test:db] stale sweep: dropped 0; kept 0 of younger runs, 0 of live runs, 0 unrecognised; 0 failed
+[test:db] template dems_test_step_71_tmdtat2p_tpl_schema: built in 86 ms (create 33 ms, hook 50 ms)
+[test:db] template dems_test_step_71_tmdtat2p_tpl_seed: built in 139 ms (create 59 ms, hook 80 ms)
+stdout | src/modules/demo/__tests__/reset-failures.db.test.ts > finding F-5: an AUDIT_TAMPER fault across a reload of the engine that is no process start > RUN through a failed reset: the stored chain is intact and the server is usable; what the fault list and the view say is printed; clearing the fault leaves both clean
+[w43] F-5, a failed reset with AUDIT_TAMPER active: before: fault listed true, alert active true, view verifies false (consistent); after the resync: fault listed false, alert active false, view verifies true (consistent); getDemoStatus lists the fault: false
+
+ ❯ |db| src/modules/demo/__tests__/reset-failures.db.test.ts (14 tests | 1 failed) 3795ms
+   ❯ finding F-5: an AUDIT_TAMPER fault across a reload of the engine that is no process start (3)
+     × RUN through a failed reset: the stored chain is intact and the server is usable; what the fault list and the view say is printed; clearing the fault leaves both clean 43ms
+[test:db] bulk fixture: dems_test_step_71_tmdtat2p_tpl_bulk as dems_owner; clock 2026-10-01T03:00:00.000Z; seed 20261004
+[test:db]   table                   minimum   loaded   added  met
+[test:db]   roles                         3        3       0  yes
+[test:db]   permissions                  12       12       0  yes
+[test:db]   role_permissions             18       18       0  yes
+[test:db]   operators                    12       12       9  yes
+[test:db]   operator_credentials         12       12       9  yes
+[test:db]   auth_sessions               300      300     300  yes
+[test:db]   pairing_codes                60       60      60  yes
+[test:db]   paired_devices               40       40      40  yes
+[test:db]   device_credentials           40       40      40  yes
+[test:db]   biometric_tokens             80       83      83  yes
+[test:db]   registry_counters             2        2       0  yes
+[test:db]   audit_log                  5000     5000    4918  yes
+[test:db]   audit_chain_head              1        1       0  yes
+[test:db]   audit_chain_history          25       25      25  yes
+[test:db]   events                     2500     3649    3590  yes
+[test:db]   session_history             520      520     507  yes
+[test:db]   evidence_items              505      515     502  yes
+[test:db]   evidence_tracks            2020     2060    2008  yes
+[test:db]   evidence_custody           1200     1220    1192  yes
+[test:db]   exports                      60       60      59  yes
+[test:db]   alerts                      250      250     250  yes
+[test:db]   health_snapshots           1500     1508    1508  yes
+[test:db]   engine_counters               6        6       1  yes
+[test:db]   active_session                0        0       0  yes
+[test:db]   storage_policy                1        1       0  yes
+[test:db]   console_settings              1        1       0  yes
+[test:db]   core_device                   1        1       0  yes
+[test:db]   core_state                    1        1       0  yes
+[test:db]   hardware_snapshot             1        1       0  yes
+[test:db]   schema_meta                   1        1       0  yes
+[test:db] bulk fixture: every minimum of the 30 tables is met; audit head seq 5000, hash 26e251887c667e1e...; digest e58f1ae233811851...; build 152 ms, write 1150 ms, total 1307 ms
+ ❯ |db| test/acceptance/pairing-lifecycle.test.ts (31 tests | 1 failed) 756ms
+   ❯ AC-B-82, SR-74: a used biometric token presented again closes the socket of the BIOMETRIC session; a PASSWORD session of the same operator stays (5)
+     × the PASSWORD session of the same operator on the same device stays open, and so does its socket 4ms
+ ❯ |db| src/realtime/__tests__/upgrade.db.test.ts (65 tests | 1 failed) 1014ms
+   ❯ AC-B-85, SR-42: the connection caps over real sockets (2)
+     × with six anonymous sockets open a seventh is closed with 1013, an operator's and a device's upgrade are accepted, and the 17th connection of any kind is closed with 1013 56ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |db| test/acceptance/pairing-lifecycle.test.ts > AC-B-82, SR-74: a used biometric token presented again closes the socket of the BIOMETRIC session; a PASSWORD session of the same operator stays > the PASSWORD session of the same operator on the same device stays open, and so does its socket
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ test/acceptance/pairing-lifecycle.test.ts:1288:41
+    1286|     expect((own.json() as { method: string }).method).toBe('PASSWORD');
+    1287|     // The device's own socket was not touched either.
+    1288|     expect(isOpen(second.wire as Wire)).toBe(true);
+       |                                         ^
+    1289|   });
+    1290| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯
+
+ FAIL  |db| src/realtime/__tests__/upgrade.db.test.ts > AC-B-85, SR-42: the connection caps over real sockets > with six anonymous sockets open a seventh is closed with 1013, an operator's and a device's upgrade are accepted, and the 17th connection of any kind is closed with 1013
+AssertionError: expected 9 to be 16 // Object.is equality
+
+- Expected
++ Received
+
+- 16
++ 9
+
+ ❯ src/realtime/__tests__/upgrade.db.test.ts:556:44
+    554|     const more = Array.from({ length: 8 }, () => openSocket(rt.wsUrl, …
+    555|     for (const socket of more) expect(await helloOf(socket)).toMatchOb…
+    556|     expect(rt.channel.stats().connections).toBe(16);
+       |                                            ^
+    557|     for (const headers of [webHeaders(cookie()), deviceHeaders(tablet.…
+    558|       const beyond = openSocket(rt.wsUrl, headers);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/3]⎯
+
+ FAIL  |db| src/modules/demo/__tests__/reset-failures.db.test.ts > finding F-5: an AUDIT_TAMPER fault across a reload of the engine that is no process start > RUN through a failed reset: the stored chain is intact and the server is usable; what the fault list and the view say is printed; clearing the fault leaves both clean
+AssertionError: expected [ …(87) ] to have a length of 86 but got 87
+
+- Expected
++ Received
+
+- 86
++ 87
+
+ ❯ src/modules/demo/__tests__/reset-failures.db.test.ts:391:23
+    389|     const storedNow = await dumpTable(owner(), 'audit_log', 'seq');
+    390|     expect(storedNow.slice(0, stored.length)).toEqual(stored);
+    391|     expect(storedNow).toHaveLength(stored.length + 1);
+       |                       ^
+    392|     expect(storedNow.filter((row) => row.includes('[altered]'))).toEqu…
+    393|     expect(await checkStoredChain(server.app.db.pool, { verifyDigests:…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/3]⎯
+
+
+ Test Files  3 failed | 111 passed (114)
+      Tests  3 failed | 1668 passed (1671)
+   Start at  18:59:17
+   Duration  121.43s (tests 80%, import 19%, transform 1%)
+
+[test:db] forced drops that needed a retry: 0
+[test:db] teardown: dropped 8 database(s) in 449 ms; 0 remain with the run prefix dems_test_step_71_tmdtat2p_
+npm error Lifecycle script `test:db` failed with error:
+npm error code 1
+npm error path /Users/gsp-budi/Documents/DEMS/apps/core-server
+npm error workspace @dems/core-server@0.2.0
+npm error location /Users/gsp-budi/Documents/DEMS/apps/core-server
+npm error command failed
+npm error command sh -c vitest run --project db --maxWorkers=2
+exit=1

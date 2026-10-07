@@ -1,0 +1,26 @@
+12:58:44.058 mark d02 at 12:58:44.058
+12:58:44.116 declared screen session-new
+12:58:44.164 tap 913,748
+12:58:44.365 slept 900 ms
+12:58:45.336 tap 229,994
+12:58:45.570 slept 700 ms
+12:58:46.302 tap 540,1309
+12:58:46.431 slept 900 ms
+12:58:47.361 text typed (RP Phone Start); inputType 0x2001
+12:58:48.095 slept 800 ms
+12:58:48.932 key 111
+12:58:49.069 slept 800 ms
+12:58:49.921 screencap 50_start_session_step1_filled.png 12:58:49.921..12:58:50.422
+12:58:50.590 tap 540,2257
+12:58:50.785 create 201 at device 10-06 12:58:50.616 (POST /api/v1/session 201)
+12:58:51.539 precheck 202 at device 10-06 12:58:51.514 (POST /api/v1/session/{id}/precheck 202)
+12:58:52.214 slept 7000 ms
+12:58:59.311 screencap 51_start_session_step2_gate.png 12:58:59.311..12:59:00.075
+12:59:00.386 tap 540,2257
+12:59:00.717 slept 2500 ms
+12:59:03.271 screencap 52_start_session_step3_ready.png 12:59:03.271..12:59:03.601
+12:59:03.704 ids(4): session-new-ready-ring@540,726 ; session-new-ready@540,1539 ; session-new-countdown@147,1980 "3-2-1 countdown, on" ; session-new-start@540,2257 "busy"
+12:59:06.162 warnlog since 10-06 12:58:43.000 (0): 
+12:59:06.277 serverlog since d02 (2):
+    12:58:50.819 POST /api/v1/session 201
+    12:58:51.703 POST /api/v1/session/:id/precheck 202

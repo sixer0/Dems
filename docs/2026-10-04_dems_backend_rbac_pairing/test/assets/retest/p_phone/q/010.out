@@ -1,0 +1,33 @@
+12:48:44.900 mark p1r3 at 12:48:44.900
+12:48:44.966 tap 324,2283
+12:48:45.274 slept 2000 ms
+12:48:47.325 declared screen session-detail
+12:48:47.380 screencap 17_p1_r3_0_sessions_tab_again.png 12:48:47.380..12:48:47.852
+12:48:47.962 tapid session-detail-back at 95,216 "Back to Sessions"
+12:48:50.406 slept 1800 ms
+12:48:52.285 declared screen sessions
+12:48:52.378 ids(2): session-row-SES-20261006-0029@540,866 "SES-20261006-0029, Dewi W73 Device, Incomplete, 6 Oct 2026 01:53, dura" ; session-row-SES-20261004-0016@540,1161 "SES-20261004-0016, Hendra Wijaya, Incomplete, 4 Oct 2026 15:47, durati"
+12:48:54.865 tap 540,866
+12:48:55.028 slept 2500 ms
+12:48:57.584 declared screen session-detail
+12:48:57.629 screencap 18_p1_r3_a_session_detail.png 12:48:57.629..12:48:58.106
+12:48:58.263 ids(1): screen-session-detail@540,1102
+12:49:00.611 tap 540,2283
+12:49:00.780 slept 1200 ms
+12:49:02.057 declared screen evidence
+12:49:02.113 screencap 19_p1_r3_b_evidence_t1.png 12:49:02.113..12:49:02.550
+12:49:02.719 slept 1800 ms
+12:49:04.567 screencap 19_p1_r3_b_evidence_t3.png 12:49:04.567..12:49:04.979
+12:49:05.092 tap 756,2283
+12:49:05.253 slept 1200 ms
+12:49:06.531 declared screen devices
+12:49:06.589 screencap 20_p1_r3_c_devices_t1.png 12:49:06.589..12:49:06.947
+12:49:07.090 slept 1800 ms
+12:49:08.940 screencap 20_p1_r3_c_devices_t3.png 12:49:08.940..12:49:09.338
+12:49:09.468 tap 972,2283
+12:49:09.661 slept 2000 ms
+12:49:11.724 declared screen more
+12:49:11.775 screencap 21_p1_r3_d_more.png 12:49:11.775..12:49:12.133
+12:49:12.280 warnlog since 10-06 12:48:44.000 (0): 
+12:49:12.413 serverlog since p1r3 (0):
+    

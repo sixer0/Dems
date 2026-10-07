@@ -1,0 +1,15 @@
+
+> @dems/core-server@0.2.0 typecheck
+> tsc --noEmit
+
+test/acceptance/shared-state.support.ts(409,41): error TS2353: Object literal may only specify known properties, and 'headers' does not exist in type 'string[]'.
+test/acceptance/shared-state.support.ts(887,7): error TS2322: Type 'LiveSim<LiveClient>' is not assignable to type 'LiveSim<CoreClient<readonly [{ readonly operationId: "getServiceHealth"; readonly method: "get"; readonly path: "/api/v1/health"; readonly tag: "Service"; readonly mode: "live"; readonly summary: "Service liveness"; ... 6 more ...; readonly services: readonly [...]; }, ... 73 more ..., { ...; }]>>'.
+  Type 'LiveClient' is missing the following properties from type 'CoreClient<readonly [{ readonly operationId: "getServiceHealth"; readonly method: "get"; readonly path: "/api/v1/health"; readonly tag: "Service"; readonly mode: "live"; readonly summary: "Service liveness"; ... 6 more ...; readonly services: readonly [...]; }, ... 73 more ..., { ...; }]>': operationIds, describe
+npm error Lifecycle script `typecheck` failed with error:
+npm error code 2
+npm error path /Users/gsp-budi/Documents/DEMS/apps/core-server
+npm error workspace @dems/core-server@0.2.0
+npm error location /Users/gsp-budi/Documents/DEMS/apps/core-server
+npm error command failed
+npm error command sh -c tsc --noEmit
+exit 2 at 18:44:14

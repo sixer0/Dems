@@ -1,0 +1,16 @@
+"""blank2.py <frames_dir> [...]: frames whose app area (y 60..1170 of the 540 x 1212 frame: below the status bar,
+above the gesture pill) is uniform (sd < 6) = an empty frame even with the status bar and the pill drawn; and red
+screens (> 35 % red pixels in that area)."""
+import json, os, sys
+from PIL import Image
+for d in sys.argv[1:]:
+    files = sorted([f for f in os.listdir(d) if f.endswith('.png')], key=lambda n: int(''.join(c for c in n if c.isdigit())))[1:]
+    rows = {r['frame']: r for r in json.load(open(d.rstrip('/') + '_rows.json'))} if os.path.exists(d.rstrip('/') + '_rows.json') else {}
+    hits = []; reds = 0
+    for fn in files:
+        im = Image.open(os.path.join(d, fn)).convert('L'); px = im.load(); W, H = im.size
+        vals = [px[x, y] for y in range(60, min(1170, H), 6) for x in range(0, W, 6)]
+        m = sum(vals) / len(vals); sd = (sum(v * v for v in vals) / len(vals) - m * m) ** 0.5
+        if sd < 6:
+            hits.append((fn, rows.get(fn, {}).get('host'), round(m, 1), round(sd, 1)))
+    print(json.dumps({'dir': os.path.basename(d.rstrip('/')), 'frames': len(files), 'emptyFrames': len(hits), 'sample': hits[:10]}))

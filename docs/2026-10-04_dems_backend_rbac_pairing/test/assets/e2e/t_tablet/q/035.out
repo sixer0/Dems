@@ -1,0 +1,10 @@
+mark restart (disabled for INVESTIGATOR) at 10:09:27.272
+tap 2309,1432 at 10:09:27.461
+slept 2000 ms
+screencap 14d_device_restart_disabled_tap.png (1224027 bytes) at 10:09:30.476
+tap 1633,975 at 10:09:30.615
+slept 2000 ms
+screencap 14e_device_tab_health.png (1225230 bytes) at 10:09:33.281
+tap 1765,975 at 10:09:33.396
+slept 2000 ms
+screencap 14f_device_tab_log.png (1220387 bytes) at 10:09:36.273

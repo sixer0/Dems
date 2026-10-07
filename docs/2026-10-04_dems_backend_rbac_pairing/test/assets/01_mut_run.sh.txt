@@ -1,0 +1,23 @@
+#!/bin/sh
+# W87 scratch runner: each mutation of mutations.json against its test file, then the baseline; no `cd`.
+M=/Users/gsp-budi/Documents/DEMS/.cache/w87/mut
+R=/Users/gsp-budi/Documents/DEMS
+ids=${*:-$(python3 -c "import json; print(' '.join(x['id'] for x in json.load(open('$M/mutations.json'))))")}
+for id in BASE-WEB BASE-MOBILE $ids; do
+  rm -f "$M/applied/$id"
+  case $id in
+    BASE-WEB) app=web; kind=none; test="src/test/live-static-ac-c-53.test.ts src/test/live-gap-indicator-connecting.test.tsx";;
+    BASE-MOBILE) app=mobile; kind=none; test="src/lib/live-static-ac-c-53.test.ts src/features/session-live/live-gap-read-only-dialog.test.tsx src/features/session-live/live-gap-s4-7-tablet-link.test.tsx src/features/settings/live-gap-s1-2-biometric.test.tsx src/features/pairing/live-gap-sites.test.tsx";;
+    *) eval "$(python3 -c "import json; m=[x for x in json.load(open('$M/mutations.json')) if x['id']=='$id'][0]; print('app=%s; kind=%s; test=%s' % (m['app'], m['kind'], m['test']))")";;
+  esac
+  if [ "$kind" = fs ]; then FS=$id; MU=; elif [ "$kind" = transform ]; then FS=; MU=$id; else FS=; MU=; fi
+  if [ "$app" = web ]; then
+    W87_FS_INJECT=$FS W87_MUT=$MU npx --prefix $R vitest run --config $M/web.mutation.config.mts --maxWorkers=2 $test > $M/$id.log 2>&1
+  else
+    W87_FS_INJECT=$FS W87_MUT=$MU npm exec --prefix $R -w @dems/mobile -- jest --config $M/mobile.jest.config.cjs --no-cache --maxWorkers=2 $test > $M/$id.log 2>&1
+  fi
+  code=$?
+  applied=$( [ -f "$M/applied/$id" ] && echo applied || echo not-applied )
+  summary=$(grep -E "^ +Tests +|^Tests:" $M/$id.log | tail -1 | sed 's/  */ /g')
+  echo "$id exit=$code $applied |$summary"
+done

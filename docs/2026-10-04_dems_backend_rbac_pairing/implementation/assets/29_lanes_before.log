@@ -1,0 +1,20 @@
+### before the lane databases
+2026-10-04 11:36:37 WIB
+19121 Sun Oct  4 07:14:26 2026    
+session        dems_owner (superuser false) on 127.0.0.1:4432, PostgreSQL 18.4, postmaster started 2026-10-04 07:14:26 WIB
+pg_database    4 row(s)
+  dems_demo                                        owner dems_owner  template false allowconn true  UTF8 C
+  postgres                                         owner dems_admin  template false allowconn true  UTF8 C
+  template0                                        owner dems_admin  template true  allowconn false UTF8 C
+  template1                                        owner dems_admin  template true  allowconn true  UTF8 C
+pg_roles       3 role(s) outside pg_*
+  dems_admin   superuser true  createdb true  createrole true  login true
+  dems_app     superuser false createdb false createrole false login true
+  dems_owner   superuser false createdb true  createrole false login true
+pg_settings    375 visible setting(s), digest 6373391cbc111bce33dc5cf487c0c1e8; pg_db_role_setting 0 row(s)
+client sessions 1 group(s)
+  postgres                                         dems_owner  dems-w29-evidence        1
+advisory locks 0
+exit=0
+listeners on the lane ports 4421-4423:
+(end)

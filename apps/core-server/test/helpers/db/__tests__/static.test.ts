@@ -203,8 +203,10 @@ describe('TI-3: statements on databases are written in one file', () => {
     expect(filesWith(helperCode, statement)).toEqual(['test/helpers/db/ddl.ts']);
     const ddl = helperCode.find((file) => file.path === 'test/helpers/db/ddl.ts')?.text ?? '';
     const written = [...ddl.matchAll(/`((?:CREATE|ALTER|DROP) DATABASE [^`]*)`/g)].map((match) => match[1]);
+    // The first template's statement is the server's one `CREATE DATABASE` text (review finding
+    // CPB1-19, `src/db/commands/statements.ts`), called here with a guarded, quoted name.
+    expect(ddl).toContain('createEmptyDatabaseStatement(quoteDatabaseName(name), OWNER_IDENTIFIER)');
     expect(written).toEqual([
-      "CREATE DATABASE ${quoteDatabaseName(name)} OWNER ${OWNER_IDENTIFIER} TEMPLATE ${EMPTY_TEMPLATE} ENCODING 'UTF8' LOCALE 'C'",
       'CREATE DATABASE ${quoteDatabaseName(name)} TEMPLATE ${quoteDatabaseName(template)} OWNER ${OWNER_IDENTIFIER}',
       'ALTER DATABASE ${quoteDatabaseName(name)} WITH IS_TEMPLATE true ALLOW_CONNECTIONS false',
       'ALTER DATABASE ${quoteDatabaseName(name)} WITH IS_TEMPLATE false',

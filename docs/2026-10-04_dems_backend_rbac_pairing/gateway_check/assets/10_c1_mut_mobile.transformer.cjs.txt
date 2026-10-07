@@ -1,0 +1,30 @@
+// C1 scratch (rule M15): removes the unref call of apps/mobile/src/runtime/log.ts IN MEMORY when
+// C1_MUT=1, then hands the source to the app's own transformer. No tree file changes.
+const path = require('node:path');
+const fs = require('node:fs');
+const crypto = require('node:crypto');
+const ROOT = '/Users/gsp-budi/Documents/DEMS';
+const APP = path.join(ROOT, 'apps/mobile');
+const babelJest = require(path.join(ROOT, 'node_modules/babel-jest'));
+const { resolveBabelOptions } = require(path.join(ROOT, 'node_modules/jest-expo/src/resolveBabelOptions'));
+const inner = (babelJest.default ?? babelJest).createTransformer(resolveBabelOptions(APP));
+const on = process.env.C1_MUT === '1';
+const target = path.join(APP, 'src/runtime/log.ts');
+const FROM = '(timer as { unref?: () => void }).unref?.();';
+function mutate(source, filename) {
+  if (!on || filename !== target) return source;
+  const count = source.split(FROM).length - 1;
+  if (count !== 1) throw new Error(`C1 mutation: the text occurs ${count} times`);
+  fs.writeFileSync(path.join(__dirname, 'applied'), 'applied\n');
+  return source.replace(FROM, () => 'void 0;');
+}
+module.exports = {
+  canInstrument: false,
+  process(source, filename, options) {
+    return inner.process(mutate(source, filename), filename, options);
+  },
+  getCacheKey(source, filename, options) {
+    const key = inner.getCacheKey(source, filename, options);
+    return filename === target ? crypto.createHash('sha256').update(key).update(on ? 'mut' : 'none').digest('hex') : key;
+  },
+};

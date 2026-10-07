@@ -1,0 +1,94 @@
+# M0 mutation check, 2026-10-05 22:27:42; 6 test files per run; the tree is not edited
+control (no mutation): exit=0 Tests:       86 passed, 86 total (23 s)
+W1  detected      10s  window 0 -> 1 ms on the wall clock: the notice waits until a down state has held 1 ms  | Tests:       11 failed, 75 passed, 86 total  | link-notice.test.ts, login-live-model.test.ts, pairing-live-model.test.ts
+      e.g. the rule (offlineNoticeAfter): down shows at once, up and none hide at once, settling keeps › every view, from hidden and from shown
+      e.g. the rule (offlineNoticeAfter): down shows at once, up and none hide at once, settling keeps › every state of both vocabularies, from hidden and from shown
+W2  detected       9s  window 0 -> 2,500 ms on the wall clock (the STALE threshold again)  | Tests:       15 failed, 71 passed, 86 total  | link-notice.test.ts, live-login.test.tsx, login-live-model.test.ts, pairing-live-model.test.ts, pairing-live.test.tsx
+      e.g. the Live link as the screen words it › OFFLINE and STALE show the notice, ONLINE hides it, and the transients keep what is shown
+      e.g. the Live link as the screen words it › a dead link that keeps retrying never flickers the notice: OFFLINE, CONNECTING, OFFLINE …
+W3  detected       9s  window of one observation, no clock: the notice shows at the SECOND down state in a row  | Tests:       9 failed, 77 passed, 86 total  | link-notice.test.ts, login-live-model.test.ts, pairing-live-model.test.ts
+      e.g. the rule (offlineNoticeAfter): down shows at once, up and none hide at once, settling keeps › every view, from hidden and from shown
+      e.g. the rule (offlineNoticeAfter): down shows at once, up and none hide at once, settling keeps › every state of both vocabularies, from hidden and from shown
+W4  detected       9s  the notice never shows from hidden (an infinite window)  | Tests:       14 failed, 72 passed, 86 total  | link-notice.test.ts, live-login.test.tsx, login-live-model.test.ts, pairing-live-model.test.ts, pairing-live.test.tsx
+      e.g. the offline Alert follows the link without flicker (§3.5, L9) › OFFLINE and STALE show it, LIVE hides it, CONNECTING keeps what is shown
+      e.g. the rule (offlineNoticeAfter): down shows at once, up and none hide at once, settling keeps › every view, from hidden and from shown
+D1  detected       9s  STALE left out of the down states (a transient instead)  | Tests:       8 failed, 78 passed, 86 total  | link-notice.test.ts, login-live-model.test.ts, pairing-live-model.test.ts
+      e.g. the one view of the link (coreLinkViewOf) › maps every state of both vocabularies, and the vocabularies hold no other state
+      e.g. the one view of the link (coreLinkViewOf) › the runtime's link: a LIVE source reads its heartbeat; SIMULATED and HEARTBEAT have no link to the Core server
+D2  detected      11s  OFFLINE left out of the down states (a transient instead)  | Tests:       12 failed, 74 passed, 86 total  | link-notice.test.ts, live-login.test.tsx, login-live-model.test.ts, pairing-live-model.test.ts, pairing-live.test.tsx
+      e.g. the offline Alert follows the link without flicker (§3.5, L9) › OFFLINE and STALE show it, LIVE hides it, CONNECTING keeps what is shown
+      e.g. the one view of the link (coreLinkViewOf) › maps every state of both vocabularies, and the vocabularies hold no other state
+D3  detected      12s  STALE read as up  | Tests:       8 failed, 78 passed, 86 total  | link-notice.test.ts, login-live-model.test.ts, pairing-live-model.test.ts
+      e.g. the one view of the link (coreLinkViewOf) › maps every state of both vocabularies, and the vocabularies hold no other state
+      e.g. the one view of the link (coreLinkViewOf) › the runtime's link: a LIVE source reads its heartbeat; SIMULATED and HEARTBEAT have no link to the Core server
+D4  detected      10s  a LIVE link without a heartbeat and state OFFLINE is not down  | Tests:       1 failed, 85 passed, 86 total  | link-notice.test.ts
+      e.g. the one view of the link (coreLinkViewOf) › a LIVE link without a heartbeat (a fake runtime) falls back on its two-valued state
+D5  detected      10s  the view 'down' handed back in is not down  | Tests:       2 failed, 84 passed, 86 total  | link-notice.test.ts
+      e.g. the one view of the link (coreLinkViewOf) › a view is its own view, so a screen can key its state on the view
+      e.g. the rule (offlineNoticeAfter): down shows at once, up and none hide at once, settling keeps › every view, from hidden and from shown
+L1  detected      10s  a value that is no link state (a refusal kind, a 429) is down  | Tests:       2 failed, 84 passed, 86 total  | link-notice.test.ts
+      e.g. the one view of the link (coreLinkViewOf) › a value that is no link state says nothing about the link
+      e.g. a 429 is a limit, never an outage (LB-10) › a 429 is no link state: whatever the link shows stays, with the link up and with the link down
+L2  detected      10s  a value that is no link state hides the notice  | Tests:       2 failed, 84 passed, 86 total  | link-notice.test.ts
+      e.g. the one view of the link (coreLinkViewOf) › a value that is no link state says nothing about the link
+      e.g. a 429 is a limit, never an outage (LB-10) › a 429 is no link state: whatever the link shows stays, with the link up and with the link down
+C1  detected      10s  the down branch reads the wall clock (behaviour otherwise equal)  | Tests:       1 failed, 85 passed, 86 total  | link-notice.test.ts
+      e.g. pure: the rule reads no clock, no timer, no React and no storage (rule 7 of the CP-M1 review) › asks no clock and starts no timer while it decides, for every input
+C2  detected      10s  the settling branch reads performance.now (behaviour otherwise equal)  | Tests:       1 failed, 85 passed, 86 total  | link-notice.test.ts
+      e.g. pure: the rule reads no clock, no timer, no React and no storage (rule 7 of the CP-M1 review) › asks no clock and starts no timer while it decides, for every input
+C3  detected      10s  the rule schedules a timer (behaviour otherwise equal)  | Tests:       1 failed, 85 passed, 86 total  | link-notice.test.ts
+      e.g. pure: the rule reads no clock, no timer, no React and no storage (rule 7 of the CP-M1 review) › asks no clock and starts no timer while it decides, for every input
+## 14 detected, 0 not detected, 0 not applied, of 14
+## the mutated files in the tree, before and after: identical
+   674928ede60e317d  src/features/pairing/pairing-live-model.ts
+   8df54bdb2236eeee  src/runtime/link-notice.ts
+# finished 22:30:24
+# M0 mutation check, 2026-10-05 22:30:31; 6 test files per run; the tree is not edited
+T1  detected      10s  CONNECTING is down (the notice flashes at every cold start)  | Tests:       11 failed, 75 passed, 86 total  | link-notice.test.ts, login-live-model.test.ts, pairing-live-model.test.ts
+      e.g. the one view of the link (coreLinkViewOf) › maps every state of both vocabularies, and the vocabularies hold no other state
+      e.g. the one view of the link (coreLinkViewOf) › the runtime's link: a LIVE source reads its heartbeat; SIMULATED and HEARTBEAT have no link to the Core server
+T2  detected      10s  RESYNCING is up (a resync hides the notice)  | Tests:       5 failed, 81 passed, 86 total  | link-notice.test.ts, pairing-live-model.test.ts
+      e.g. the one view of the link (coreLinkViewOf) › maps every state of both vocabularies, and the vocabularies hold no other state
+      e.g. the rule (offlineNoticeAfter): down shows at once, up and none hide at once, settling keeps › every state of both vocabularies, from hidden and from shown
+T3  detected      10s  CONNECTING is up (a reconnect attempt hides the notice: flicker)  | Tests:       13 failed, 73 passed, 86 total  | link-notice.test.ts, login-live-model.test.ts, pairing-live-model.test.ts, pairing-live.test.tsx
+      e.g. the Live link as the screen words it › OFFLINE and STALE show the notice, ONLINE hides it, and the transients keep what is shown
+      e.g. the Live link as the screen words it › a dead link that keeps retrying never flickers the notice: OFFLINE, CONNECTING, OFFLINE …
+T4  detected       9s  settling hides the notice (no hysteresis: flicker)  | Tests:       12 failed, 74 passed, 86 total  | link-notice.test.ts, login-live-model.test.ts, pairing-live-model.test.ts, pairing-live.test.tsx
+      e.g. the rule (offlineNoticeAfter): down shows at once, up and none hide at once, settling keeps › every view, from hidden and from shown
+      e.g. the rule (offlineNoticeAfter): down shows at once, up and none hide at once, settling keeps › every state of both vocabularies, from hidden and from shown
+T5  detected      10s  settling shows the notice (a flash at every start)  | Tests:       11 failed, 75 passed, 86 total  | link-notice.test.ts, login-live-model.test.ts, pairing-live-model.test.ts
+      e.g. the rule (offlineNoticeAfter): down shows at once, up and none hide at once, settling keeps › every view, from hidden and from shown
+      e.g. the rule (offlineNoticeAfter): down shows at once, up and none hide at once, settling keeps › every state of both vocabularies, from hidden and from shown
+N1  detected      10s  null and undefined keep what is shown (Simulated mode keeps a notice)  | Tests:       3 failed, 83 passed, 86 total  | link-notice.test.ts, pairing-live-model.test.ts
+      e.g. the Live link as the screen words it › OFFLINE and STALE show the notice, ONLINE hides it, and the transients keep what is shown
+      e.g. the one view of the link (coreLinkViewOf) › no link is `none`: Simulated mode (`useLiveLink()` is null) and an absent heartbeat
+N2  detected      10s  undefined keeps what is shown (the Login copy's old default)  | Tests:       2 failed, 84 passed, 86 total  | link-notice.test.ts
+      e.g. the one view of the link (coreLinkViewOf) › no link is `none`: Simulated mode (`useLiveLink()` is null) and an absent heartbeat
+      e.g. the rule (offlineNoticeAfter): down shows at once, up and none hide at once, settling keeps › every state of both vocabularies, from hidden and from shown
+N3  detected      12s  HEARTBEAT mode's mock-core heartbeat drives the Core server notice  | Tests:       3 failed, 83 passed, 86 total  | link-notice.test.ts
+      e.g. the one view of the link (coreLinkViewOf) › the runtime's link: a LIVE source reads its heartbeat; SIMULATED and HEARTBEAT have no link to the Core server
+      e.g. the rule (offlineNoticeAfter): down shows at once, up and none hide at once, settling keeps › the runtime's link: LIVE follows its heartbeat; HEARTBEAT mode with mock-core down shows no Core server notice
+N4  detected      10s  the source is not asked at all  | Tests:       3 failed, 83 passed, 86 total  | link-notice.test.ts
+      e.g. the one view of the link (coreLinkViewOf) › the runtime's link: a LIVE source reads its heartbeat; SIMULATED and HEARTBEAT have no link to the Core server
+      e.g. the rule (offlineNoticeAfter): down shows at once, up and none hide at once, settling keeps › the runtime's link: LIVE follows its heartbeat; HEARTBEAT mode with mock-core down shows no Core server notice
+N5  detected       9s  a LIVE link reads its two-valued state although it has a heartbeat  | Tests:       4 failed, 82 passed, 86 total  | link-notice.test.ts
+      e.g. the one view of the link (coreLinkViewOf) › the runtime's link: a LIVE source reads its heartbeat; SIMULATED and HEARTBEAT have no link to the Core server
+      e.g. the rule (offlineNoticeAfter): down shows at once, up and none hide at once, settling keeps › the runtime's link: LIVE follows its heartbeat; HEARTBEAT mode with mock-core down shows no Core server notice
+U1  detected      10s  up keeps what is shown (the notice never hides when the link is back)  | Tests:       10 failed, 76 passed, 86 total  | link-notice.test.ts, login-live-model.test.ts, pairing-live-model.test.ts, pairing-live.test.tsx
+      e.g. the rule (offlineNoticeAfter): down shows at once, up and none hide at once, settling keeps › every view, from hidden and from shown
+      e.g. the rule (offlineNoticeAfter): down shows at once, up and none hide at once, settling keeps › every state of both vocabularies, from hidden and from shown
+V1  detected       7s  ONLINE is no longer up (a value the rule does not know)  | Tests:       24 failed, 62 passed, 86 total  | link-notice.test.ts, pairing-live-model.test.ts, pairing-live.test.tsx
+      e.g. the one view of the link (coreLinkViewOf) › maps every state of both vocabularies, and the vocabularies hold no other state
+      e.g. the rule (offlineNoticeAfter): down shows at once, up and none hide at once, settling keeps › every state of both vocabularies, from hidden and from shown
+V2  detected      10s  the heartbeat LIVE is no longer up  | Tests:       7 failed, 79 passed, 86 total  | link-notice.test.ts, login-live-model.test.ts
+      e.g. the one view of the link (coreLinkViewOf) › maps every state of both vocabularies, and the vocabularies hold no other state
+      e.g. the one view of the link (coreLinkViewOf) › the runtime's link: a LIVE source reads its heartbeat; SIMULATED and HEARTBEAT have no link to the Core server
+P1  detected      10s  the Pair screen says 'online' for every view that is not down  | Tests:       1 failed, 85 passed, 86 total  | pairing-live-model.test.ts
+      e.g. the Live link as the screen words it › `online` only when a redeem would be sent; `offline` while the notice shows; else `connecting`
+P2  detected      10s  the Pair screen says 'online' for any Live link  | Tests:       1 failed, 85 passed, 86 total  | pairing-live-model.test.ts
+      e.g. the Live link as the screen words it › `online` only when a redeem would be sent; `offline` while the notice shows; else `connecting`
+## 15 detected, 0 not detected, 0 not applied, of 15
+## the mutated files in the tree, before and after: identical
+   674928ede60e317d  src/features/pairing/pairing-live-model.ts
+   8df54bdb2236eeee  src/runtime/link-notice.ts
+# finished 22:32:58

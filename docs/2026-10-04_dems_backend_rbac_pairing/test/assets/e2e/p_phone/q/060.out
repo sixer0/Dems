@@ -1,0 +1,13 @@
+10:26:39.111 screenrecord sc3_s2_phone started (pid 99177) at 10:26:39.713
+10:26:39.868 mark b03 at 10:26:39.868
+10:26:39.993 tap 811,1622
+10:26:40.652 until true at 10:26:40.860 after 207 ms => {"state":"STOPPING","modal":"STOPPING"}
+10:26:40.983 screenshot 57_sc3_s2_web_after_phone_stop.png 10:26:40.983..10:26:41.251
+10:26:41.301 until true at 10:26:48.029 after 6728 ms => {"state":"SEALED","modal":"SEALED","sealed":"SEALEDEvidence EV-20261006-0019 sealedSealed 7.1 s after the recording endedLoading package details…"}
+10:26:48.194 slept 1500 ms
+10:26:49.848 screenshot 58_sc3_s2_web_sealed.png 10:26:49.848..10:26:50.048
+10:26:50.312 screenrecord sc3_s2_phone pulled; frames extracted at 5 fps
+10:26:54.593 declared screen summary
+10:26:54.679 screencap 58p_sc3_s2_phone_summary.png 10:26:54.679..10:26:56.104
+10:26:56.182 serverlog since b03 (1):
+    10:26:40.776 POST /api/v1/session/:id/stop 202 operator:OPR-001

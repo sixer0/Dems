@@ -17,6 +17,7 @@
 // | LB-10: a 429 is a limit, not an outage | "B-7 outage" |
 // | LB-1: busy at once (a second press sends nothing), spinner late | "B-7 pending" |
 // | §3.2: no "simulated" word on the Live menu or its toasts; Simulated mode keeps its words and its synchronous timing | "B-7 success", "Simulated mode is unchanged" |
+// | Ruling R3 (D201; E-fix FX-W, E2E-W1-2 = E2E-W2-1): Test signal follows DIAGNOSTICS_RUN (operation 49), Restart stays on DEVICE_MANAGE (operation 48), like the Devices page | "R3 gating" (Live), "Simulated mode is unchanged" |
 import { act, cleanup, configure, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { toast } from '@heroui/react'
 import { QueryClient } from '@tanstack/react-query'
@@ -43,14 +44,14 @@ import { getMissingI18nKeys, resetMissingI18nKeys } from '@/i18n'
 import { resetCoreErrorPresenter } from '@/lib/core-errors'
 import { createAppRouter } from '@/router'
 import { webErrorSink } from '@/runtime'
-import { createLiveTestBed, type LivePage, type LiveTestBed } from '@/runtime/testing/live-harness'
+import { createLiveTestBed, SUPERVISOR_SESSION, type LivePage, type LiveTestBed } from '@/runtime/testing/live-harness'
 
 // The panels are a lazily loaded chunk: under load the first import can take longer than the library's second.
 configure({ asyncUtilTimeout: 8_000 })
 vi.setConfig({ testTimeout: 25_000 })
 
 const RINA = OPERATORS.find((operator) => operator.id === OPERATOR_IDS.RINA)!
-/** The seeded TECHNICIAN: the one role that holds DEVICE_MANAGE, so the two commands are enabled. */
+/** The seeded TECHNICIAN: the one role that holds DEVICE_MANAGE (and DIAGNOSTICS_RUN), so the two commands are enabled. */
 const TECHNICIAN_SESSION: Pick<AuthSessionInfo, 'operator' | 'permissions'> = {
   operator: {
     id: RINA.id,
@@ -195,7 +196,7 @@ describe('B-7 refusal (§6.2; AC-C-48; LB-5)', () => {
 
   it('a 403 NOT_PERMITTED of operation 49 names the first role that holds DIAGNOSTICS_RUN', async () => {
     const { bed } = await liveDashboard()
-    // CONTRACT-GAP-W63-1: operation 49 has no `notPermitted` example (every seeded role holds the permission), so the envelope is written here.
+    // RESIDUAL-W63-1 (W83 ledger #40): operation 49 has no `notPermitted` example (every seeded role holds the permission), so the envelope is written here.
     bed.fake.answerOnce('testDeviceSignal', refusal(403, 'NOT_PERMITTED', 'Not permitted.', { permission: 'DIAGNOSTICS_RUN' }))
     await press('MIC 2', /^Test signal/)
     await waitFor(() => expect(toastWith(DENIED)).toHaveLength(1))
@@ -310,6 +311,50 @@ describe('B-7 pending (LB-1: busy at once, spinner late)', () => {
   })
 })
 
+describe('R3 gating (D201; E2E-W1-2 = E2E-W2-1): each command follows the permission the Core checks', () => {
+  it('a SUPERVISOR (DIAGNOSTICS_RUN, no DEVICE_MANAGE) may send Test signal: the item is enabled with no role hint, one POST to operation 49, the Live toast', async () => {
+    const { bed } = await liveDashboard(SUPERVISOR_SESSION)
+    expect(SUPERVISOR_SESSION.permissions).toContain('DIAGNOSTICS_RUN')
+    expect(SUPERVISOR_SESSION.permissions).not.toContain('DEVICE_MANAGE')
+    bed.fake.answerFromExample('testDeviceSignal')
+    const menu = await openMenu('Camera 1')
+    const test = within(menu).getByRole('menuitem', { name: /^Test signal/ })
+    expect(test).not.toHaveAttribute('aria-disabled', 'true')
+    expect(test).not.toHaveTextContent(REQUIRES(en.common.roles.TECHNICIAN))
+    expect(test.textContent).toBe(W.live.testSignal)
+    // Restart keeps the Core's DEVICE_MANAGE: disabled, naming the Technician.
+    const restart = within(menu).getByRole('menuitem', { name: /^Restart/ })
+    expect(restart).toHaveAttribute('aria-disabled', 'true')
+    expect(restart).toHaveTextContent(REQUIRES(en.common.roles.TECHNICIAN))
+    fireEvent.click(test)
+    await waitFor(() => expect(toastWith(LIVE_TEST_SENT('Camera 1'))).toHaveLength(1))
+    expect(requests('testDeviceSignal')).toHaveLength(1)
+    expect(requests('testDeviceSignal')[0]).toMatchObject({ method: 'POST', path: '/api/v1/device/CAM-01/test-signal' })
+    expect(requests('restartDevice')).toHaveLength(0)
+    expect(getMissingI18nKeys()).toEqual([])
+  })
+
+  it('while a Test signal is out both commands are disabled (LB-1 still holds for a role without DEVICE_MANAGE)', async () => {
+    const { bed } = await liveDashboard(SUPERVISOR_SESSION)
+    const held = bed.fake.hold('testDeviceSignal')
+    await press('MIC 1', /^Test signal/)
+    await waitFor(() => expect(requests('testDeviceSignal')).toHaveLength(1))
+    await bed.flush()
+    const menu = await openMenu('MIC 1')
+    expect(within(menu).getByRole('menuitem', { name: /^Test signal/ })).toHaveAttribute('aria-disabled', 'true')
+    expect(within(menu).getByRole('menuitem', { name: /^Restart/ })).toHaveAttribute('aria-disabled', 'true')
+    fireEvent.keyDown(menu, { key: 'Escape' })
+    await act(async () => {
+      held.release()
+    })
+    await bed.flush()
+    await waitFor(() => expect(toastWith(LIVE_TEST_SENT('MIC 1'))).toHaveLength(1))
+    const again = await openMenu('MIC 1')
+    expect(within(again).getByRole('menuitem', { name: /^Test signal/ })).not.toHaveAttribute('aria-disabled', 'true')
+    expect(requests('testDeviceSignal')).toHaveLength(1)
+  })
+})
+
 // ── The control group: the same menu in Simulated mode, as it was before this row ─────────────
 
 class SilentSocket implements SocketLike {
@@ -373,21 +418,36 @@ describe('Simulated mode is unchanged (CLG (a); §3.2)', () => {
     expect(trigger('Camera 1')).not.toHaveAttribute('data-pending')
   })
 
-  it('an INVESTIGATOR sees both commands disabled with the role that holds DEVICE_MANAGE', async () => {
-    await simulatedDashboard(OPERATOR_IDS.BUDI)
+  it('R3: an INVESTIGATOR (DIAGNOSTICS_RUN) may send Test signal, as on the Devices page; Restart stays disabled with the role that holds DEVICE_MANAGE', async () => {
+    const sim = await simulatedDashboard(OPERATOR_IDS.BUDI)
     const menu = await openMenu('MIC 1')
-    for (const item of [/^Restart/, /^Test signal/]) {
-      const entry = within(menu).getByRole('menuitem', { name: item })
-      expect(entry).toHaveAttribute('aria-disabled', 'true')
-      expect(entry).toHaveTextContent(REQUIRES(en.common.roles.TECHNICIAN))
-    }
+    const restart = within(menu).getByRole('menuitem', { name: /^Restart/ })
+    expect(restart).toHaveAttribute('aria-disabled', 'true')
+    expect(restart).toHaveTextContent(REQUIRES(en.common.roles.TECHNICIAN))
+    const test = within(menu).getByRole('menuitem', { name: /^Test signal/ })
+    expect(test).not.toHaveAttribute('aria-disabled', 'true')
+    expect(test).not.toHaveTextContent(REQUIRES(en.common.roles.TECHNICIAN))
+    const before = sim.store.getState().audit.rows.length
+    fireEvent.click(test)
+    // The simulator grants TEST_SIGNAL on DIAGNOSTICS_RUN (`sim/maintenance.ts`): one DEVICE_COMMAND row, at once.
+    expect(sim.store.getState().audit.rows.length).toBe(before + 1)
+    expect(sim.store.getState().audit.rows.at(-1)).toMatchObject({ type: 'DEVICE_COMMAND', actorId: OPERATOR_IDS.BUDI })
+    await waitFor(() => expect(toastWith(W.testSignalSent.replace('{{name}}', 'MIC 1'))).toHaveLength(1))
   })
 
-  it('a restart while recording keeps the existing friendly toast', async () => {
-    vi.spyOn(console, 'error').mockImplementation(() => undefined)
-    await simulatedDashboard(OPERATOR_IDS.RINA, 'recording')
-    await press('Camera 2', /^Restart/)
-    await waitFor(() => expect(toastWith(W.commandFailed)).toHaveLength(1))
+  it('FXR-W W92-14 (by design; was "a restart while recording keeps the existing friendly toast"): while recording Restart is disabled with the Devices page\'s reason; a press sends nothing and says nothing', async () => {
+    const sim = await simulatedDashboard(OPERATOR_IDS.RINA, 'recording')
+    const menu = await openMenu('Camera 2')
+    const restart = within(menu).getByRole('menuitem', { name: /^Restart/ })
+    expect(restart).toHaveAttribute('aria-disabled', 'true')
+    expect(restart).toHaveTextContent(en.devices.actions.restartWhileRecording)
+    // Test signal is not a restart: it stays offered while recording.
+    expect(within(menu).getByRole('menuitem', { name: /^Test signal/ })).not.toHaveAttribute('aria-disabled', 'true')
+    const before = sim.store.getState().audit.rows.length
+    fireEvent.click(restart)
+    await act(async () => undefined)
+    expect(sim.store.getState().audit.rows.length).toBe(before)
+    expect(toastWith(W.commandFailed)).toHaveLength(0)
     expect(toastWith(W.restartSent.replace('{{name}}', 'Camera 2'))).toHaveLength(0)
   })
 })

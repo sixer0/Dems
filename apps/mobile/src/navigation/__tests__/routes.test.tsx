@@ -4,6 +4,7 @@
 // screen shows for its params, on a deterministic simulator (`routeTestSim`, stable dataset IDs).
 // The harness must be the first import (see its header).
 import { FakeRuntime, renderApp, resetShellState, routeTestSim, type RouteTestSimState } from '../testing/router-harness';
+import { DEMO_OPERATOR_PASSWORD } from '@dems/shared/sim';
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { screen } from '@testing-library/react-native';
 import { existsSync } from 'node:fs';
@@ -136,7 +137,11 @@ describe('T-M02 route tree', () => {
   it('parses params with zod: an out-of-range step falls back to 1', () => {
     const runtime = new FakeRuntime();
     runtime.signInAs();
-    renderApp('/session/new?step=9', { runtime, sim: routeTestSim() });
+    // Ruling W93-11 (FXR-M, D243): the wizard opens only once the store knows the operator's role (it waits
+    // with "Checking your permissions…" before), so the store's operator is signed in as well.
+    const sim = routeTestSim();
+    expect(sim.actions.signIn('budi.santoso', DEMO_OPERATOR_PASSWORD).ok).toBe(true);
+    renderApp('/session/new?step=9', { runtime, sim });
     expect(mockSessionNewSteps.length).toBeGreaterThan(0);
     expect(new Set(mockSessionNewSteps)).toEqual(new Set([1]));
     expect(screen.getByTestId('session-new-step-1')).toBeTruthy();

@@ -19,6 +19,7 @@
 import type { AuditPage } from '@dems/shared/api'
 import type { AuditRow } from '@dems/shared/sim'
 import { CORE_PAGE_LIMIT, walkAuditChain, type AuditChainTarget, type CorePageReader, type CoreWalkFailure } from '@/lib/core-page-walk'
+import { downloadJsonFile } from '@/lib/download'
 
 /** Rows per page of operation 59: the contract's largest page (API-9). */
 export const AUDIT_PAGE_LIMIT = CORE_PAGE_LIMIT
@@ -103,16 +104,7 @@ export function auditExportFileName(exportId: string): string {
   return `dems-audit-${exportId.replace(/[^A-Za-z0-9-]/g, '')}.json`
 }
 
-/** Hands the file to the browser as a download. Throws when the platform cannot create it. */
+/** Hands the file to the browser as a download (`lib/download.ts`, W92-7). Throws when the platform cannot create it. */
 export function downloadAuditFile(fileName: string, file: AuditExportFile): void {
-  const blob = new Blob([JSON.stringify(file, null, 2)], { type: 'application/json' })
-  const url = URL.createObjectURL(blob)
-  const anchor = document.createElement('a')
-  anchor.href = url
-  anchor.download = fileName
-  anchor.rel = 'noopener'
-  document.body.append(anchor)
-  anchor.click()
-  anchor.remove()
-  setTimeout(() => URL.revokeObjectURL(url), 1000)
+  downloadJsonFile(fileName, file)
 }

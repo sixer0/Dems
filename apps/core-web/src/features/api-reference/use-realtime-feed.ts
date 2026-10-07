@@ -141,7 +141,7 @@ export function useRealtimeFeed(socketFactory?: SocketFactory): RealtimeFeed {
     createHeartbeatClient({
       url: coreWsUrl(),
       socketFactory: tappingSocketFactory(socketFactory, (data) => tap.record(data)),
-      onInvalidMessage: (reason) => logApiReference('warn', 'realtime.invalidMessage', new Error(reason)),
+      onInvalidMessage: (reason) => logApiReference('warn', 'realtime.invalidMessage', new Error(reason), 'A heartbeat frame was dropped.'),
     }),
   )
   // Injected sockets (tests) and allowed origins connect at once; other origins wait for Connect.
@@ -152,7 +152,7 @@ export function useRealtimeFeed(socketFactory?: SocketFactory): RealtimeFeed {
     try {
       client.start()
     } catch (error) {
-      logApiReference('error', 'realtime.start', error)
+      logApiReference('error', 'realtime.start', error, 'The Realtime panel could not open its heartbeat socket.')
     }
     return () => client.stop()
   }, [client, connected])

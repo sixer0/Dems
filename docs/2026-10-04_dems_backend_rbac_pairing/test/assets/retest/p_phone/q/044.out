@@ -1,0 +1,15 @@
+13:16:29.525 declared screen home
+13:16:29.567 device-host clock offset ms: -334, -334, -334, -334, -334
+13:16:29.737 screenrecord role_to_tech started (pid 98067) at 13:16:30.339
+13:16:30.384 mark i02 at 13:16:30.384
+13:16:30.427 press ur-role-confirm ok at 13:16:30.434
+13:16:30.480 until true at 13:16:30.553 after 73 ms => "Role of AKP Budi Santoso is now Technician"
+13:16:30.598 slept 9000 ms
+13:16:39.649 screenrecord role_to_tech pulled; every frame extracted (passthrough)
+13:16:41.227 device-host clock offset ms: -334, -334, -335, -334, -336
+13:16:41.387 screencap 85_role_phone_home_technician_locked.png 13:16:41.387..13:16:41.945
+13:16:42.060 screenshot 86_role_web_after_change_technician.png 13:16:42.060..13:16:42.172
+13:16:42.212 serverlog since i02 (3):
+    13:16:30.448 POST /api/v1/admin/users/:id/role 200
+    13:16:30.450 GET /api/v1/admin/users 200
+    13:16:30.452 GET /api/v1/admin/users 200

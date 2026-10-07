@@ -186,7 +186,9 @@ describe('area 3: pairing and the device registry', () => {
     expect(Object.values(PairedDeviceState)).toEqual(['PAIRED', 'REVOKED', 'UNPAIRED']);
     expect(PairedDeviceSchema.safeParse({ ...device, state: 'FAILED' }).success).toBe(false);
     expect(PairedDeviceSchema.safeParse({ ...device, lastSeenAt: null }).success).toBe(false);
-    expect(PairedDeviceSchema.parse({ ...device, deviceCredential: EXAMPLE_PLACEHOLDERS.deviceCredential })).not.toHaveProperty('deviceCredential');
+    // Changed by design (W83, finding W52-F2; decision D184 DQ-3): the answer is strict, so a member it
+    // does not have, a credential above all, is refused instead of dropped.
+    expect(PairedDeviceSchema.safeParse({ ...device, deviceCredential: EXAMPLE_PLACEHOLDERS.deviceCredential }).success).toBe(false);
   });
 
   it('DeviceRevokeRequest: a reason of 5 to 500 characters after trimming', () => {

@@ -1,0 +1,12 @@
+# topsheet.py framesDir out.png cols idx... : top 300 px of each frame (overlay time, header, banner, timer)
+import sys
+from PIL import Image, ImageDraw
+d=sys.argv[1]; out=sys.argv[2]; cols=int(sys.argv[3]); idx=[int(i) for i in sys.argv[4:]]
+ims=[]
+for i in idx:
+  im=Image.open(f'{d}/f_{i:03d}.png').convert('RGB').crop((0,0,540,330))
+  dr=ImageDraw.Draw(im); dr.rectangle((440,300,540,330),fill=(0,0,0)); dr.text((445,308),f'f_{i:03d}',fill=(255,255,0)); ims.append(im)
+rows=(len(ims)+cols-1)//cols
+s=Image.new('RGB',(cols*544,rows*334),(90,90,90))
+for k,im in enumerate(ims): s.paste(im,((k%cols)*544,(k//cols)*334))
+s.save(out)

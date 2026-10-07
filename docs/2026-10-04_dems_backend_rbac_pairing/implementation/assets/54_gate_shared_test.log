@@ -1,0 +1,20 @@
+W54 gate run, performed fresh by coder-execution-local on 2026-10-05 (WIB) from /Users/gsp-budi/Documents/DEMS. Node v26.8.2, npm 11.19.1. Load at 11:34 was 3.92 4.36 4.78. One workspace at a time. No credential, token, cookie value or password appears below.
+
+$ npm run test -w @dems/shared -- --maxWorkers=2
+
+> @dems/shared@0.1.0 test
+> vitest run --maxWorkers=2
+
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/packages/shared
+
+
+ Test Files  68 passed (68)
+      Tests  1814 passed (1814)
+   Start at  11:35:48
+   Duration  9.82s (tests 59%, import 30%, transform 10%, worker 1%)
+
+    Isolate  68 workers spawned · ~57ms startup each (spawn + environment, per file)
+             at least ~1.87s faster with isolate: false — reuses workers across files instead of one per file
+
+SHARED_EXIT=0

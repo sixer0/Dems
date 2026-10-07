@@ -255,7 +255,7 @@ describe('B-9 refusal (§6.2; AC-C-48; LB-5; F64)', () => {
 
   it('the Core server\'s own spelling of the any-of (`EVIDENCE_REVIEW_OR_MAINTENANCE`, decision D88) reads the same', async () => {
     const { bed } = await liveStorage()
-    // The envelope the lane's Core server sends (implementation/37 §6.1), written here: the contract's example differs (CONTRACT-GAP-5, F64).
+    // The envelope the lane's Core server sends (implementation/37 §6.1), written here; since the contract close-out W83 the contract's example names the same spelling (gap 5, finding F64).
     bed.fake.answerOnce(
       'setStoragePolicy',
       refusal(403, 'NOT_PERMITTED', 'Your role does not allow this action. The attempt was audited.', {

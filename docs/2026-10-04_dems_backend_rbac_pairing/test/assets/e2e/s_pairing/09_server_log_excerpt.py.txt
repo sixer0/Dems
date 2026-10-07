@@ -1,0 +1,52 @@
+# E2E-S: excerpt of .cache/manual/main-server.log for this row's moments. Keeps ONLY time, method, route,
+# status, principal, msg and an error/close code — never a header, body, cookie or token (the log holds none).
+# Lines kept: pairing routes, sign-in/sign-out, the device's own principal, and socket events of the windows.
+#   python3 09_server_log_excerpt.py.txt > 09_server_log_excerpt.txt
+import datetime
+import json
+
+LOG = '/Users/gsp-budi/Documents/DEMS/.cache/manual/main-server.log'
+WINDOWS = [  # host epoch seconds (WIB = UTC+7)
+    ('step 2/3 issue and redeem (DEV-0001)', 1791254940, 1791254960),
+    ('step 4 phone sign-in (DEV-0001)', 1791255305, 1791255320),
+    ('step 5 revoke (DEV-0001) and what followed', 1791256100, 1791256140),
+    ('step 6 issue and redeem again (DEV-0002)', 1791256318, 1791256340),
+    ('step 6 phone sign-in (DEV-0002)', 1791256449, 1791256460),
+    ('end: phone sign-out (DEV-0002)', 1791256580, 1791256595),
+]
+rows = []
+for line in open(LOG, encoding='utf8'):
+    if not line.startswith('{'):
+        continue
+    try:
+        r = json.loads(line)
+    except ValueError:
+        continue
+    rows.append(r)
+for title, start, end in WINDOWS:
+    print(f'== {title}')
+    for r in rows:
+        t = r.get('time', 0) / 1000
+        if not start <= t <= end:
+            continue
+        route = r.get('route') or ''
+        principal = r.get('principal')
+        msg = r.get('msg', '')
+        relevant = (
+            route.startswith('/api/v1/pairing')
+            or route in ('/api/v1/auth/sign-in', '/api/v1/auth/sign-out', '/api/v1/device/registration')
+            or (isinstance(principal, str) and principal.startswith('device:'))
+            or msg in ('socket closed', 'socket opened')
+            or (r.get('status') or 0) >= 400
+        )
+        if not relevant:
+            continue
+        ts = datetime.datetime.fromtimestamp(t).strftime('%H:%M:%S.%f')[:-3]
+        parts = [ts, r.get('method') or '-', route or '-', str(r.get('status') or '-'), f'principal={principal}', msg]
+        if r.get('code') is not None:
+            parts.append(f'code={r.get("code")}')
+        if r.get('closedBy'):
+            parts.append(f'closedBy={r.get("closedBy")}')
+        if r.get('kind'):
+            parts.append(f'kind={r.get("kind")}')
+        print('   ' + ' | '.join(parts))

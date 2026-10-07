@@ -1,0 +1,5 @@
+mark R2 web confirm End at 10:54:41.904
+press sm-end-confirm: true at 10:54:41.908
+watch: truthy at 10:54:48.671 (started 10:54:41.908, 6763 ms): "SEALEDEvidence EV-20261006-0016 sealedSealed 6.6 s after the recording endedLoading package details…"
+shot R2_09_web_sealed.png at 10:54:48.885
+api GET /api/v1/session/current -> 200 (1105 bytes, wq/api_1791258888889.json): {"session":{"id":"SES-20261006-0026","state":"SEALED","caseNumber":"LP/2026/1006-0010","subjectType":"TERSANGKA","subjectName":"Dewi Lestari","investigatorId":"OPR-001","investigatorName":"AKP Budi Santoso","room":"Interview Room 1","profileId":"STANDARD_1080P25","createdAt":"2026-10-06T10:53:31.928+07:00","startedAt":"2026-10-06T10:54:01.032+07:00","stoppedAt":"2026-10-06T10:54:41.918+07:00","sealedAt":"2026-10-06T10:54:48.559+07:00","elapsedMs":40886,"bytesWritten":93129222,"evidenceId":"EV-20261006-0016","precheck":{"outcome":"PASS","items":[{"id":"CORE","status":"PASS","value":"ONLINE","reason":null},{"id":"LENS_1","status":"PASS","value":"READY","reason":null},{"id":"LENS_2","status":"P

@@ -1,0 +1,138 @@
+### dems_lane_1
+2026-10-04 11:36:42 WIB
+$ /usr/bin/lockf -k -t 120 .locks/db-migrate.lock npm run db:reset -w @dems/core-server -- --database dems_lane_1
+
+> @dems/core-server@0.2.0 db:reset
+> tsx src/db/reset/cli.ts --database dems_lane_1
+
+db:reset: dems_lane_1 on PostgreSQL 18.4 as dems_owner
+db:reset: dataset as of 2026-10-04T04:36:42.518Z (1791088602518); scenario idle; reason RESET; actor none (command line)
+db:reset: first build: dems_lane_1 did not exist. Nothing was carried over and no chain was discarded; epoch 0.
+db:reset: done in 163 ms (R-0 7, R-1 1, R-2 0, R-3 0, R-4 28, R-5 119, R-6 7, R-7 1, R-8 0, R-9 0); the database now holds 301 row(s) in 21 of 30 table(s)
+row counts       30 table(s)
+  active_session           0
+  alerts                   0
+  audit_chain_head         1
+  audit_chain_history      0
+  audit_log                82
+  auth_sessions            0
+  biometric_tokens         0
+  console_settings         1
+  core_device              1
+  core_state               1
+  device_credentials       0
+  engine_counters          5
+  events                   59
+  evidence_custody         28
+  evidence_items           13
+  evidence_tracks          52
+  exports                  1
+  hardware_snapshot        1
+  health_snapshots         0
+  operator_credentials     3
+  operators                3
+  paired_devices           0
+  pairing_codes            0
+  permissions              12
+  registry_counters        2
+  role_permissions         18
+  roles                    3
+  schema_meta              1
+  session_history          13
+  storage_policy           1
+audit head       seq 82; hash 6f50ffeaaa8b8173...
+lineage          0 row(s); 0 carried over, 0 appended
+db:reset: OK: dems_lane_1 is reset. State: npm run db:status -w @dems/core-server -- --database dems_lane_1
+exit=0
+### dems_lane_2
+2026-10-04 11:36:42 WIB
+$ /usr/bin/lockf -k -t 120 .locks/db-migrate.lock npm run db:reset -w @dems/core-server -- --database dems_lane_2
+
+> @dems/core-server@0.2.0 db:reset
+> tsx src/db/reset/cli.ts --database dems_lane_2
+
+db:reset: dems_lane_2 on PostgreSQL 18.4 as dems_owner
+db:reset: dataset as of 2026-10-04T04:36:43.046Z (1791088603046); scenario idle; reason RESET; actor none (command line)
+db:reset: first build: dems_lane_2 did not exist. Nothing was carried over and no chain was discarded; epoch 0.
+db:reset: done in 162 ms (R-0 7, R-1 1, R-2 0, R-3 0, R-4 27, R-5 119, R-6 7, R-7 1, R-8 0, R-9 0); the database now holds 301 row(s) in 21 of 30 table(s)
+row counts       30 table(s)
+  active_session           0
+  alerts                   0
+  audit_chain_head         1
+  audit_chain_history      0
+  audit_log                82
+  auth_sessions            0
+  biometric_tokens         0
+  console_settings         1
+  core_device              1
+  core_state               1
+  device_credentials       0
+  engine_counters          5
+  events                   59
+  evidence_custody         28
+  evidence_items           13
+  evidence_tracks          52
+  exports                  1
+  hardware_snapshot        1
+  health_snapshots         0
+  operator_credentials     3
+  operators                3
+  paired_devices           0
+  pairing_codes            0
+  permissions              12
+  registry_counters        2
+  role_permissions         18
+  roles                    3
+  schema_meta              1
+  session_history          13
+  storage_policy           1
+audit head       seq 82; hash 49727e3e1ac0b44c...
+lineage          0 row(s); 0 carried over, 0 appended
+db:reset: OK: dems_lane_2 is reset. State: npm run db:status -w @dems/core-server -- --database dems_lane_2
+exit=0
+### dems_lane_3
+2026-10-04 11:36:43 WIB
+$ /usr/bin/lockf -k -t 120 .locks/db-migrate.lock npm run db:reset -w @dems/core-server -- --database dems_lane_3
+
+> @dems/core-server@0.2.0 db:reset
+> tsx src/db/reset/cli.ts --database dems_lane_3
+
+db:reset: dems_lane_3 on PostgreSQL 18.4 as dems_owner
+db:reset: dataset as of 2026-10-04T04:36:43.575Z (1791088603575); scenario idle; reason RESET; actor none (command line)
+db:reset: first build: dems_lane_3 did not exist. Nothing was carried over and no chain was discarded; epoch 0.
+db:reset: done in 162 ms (R-0 7, R-1 1, R-2 0, R-3 0, R-4 28, R-5 118, R-6 7, R-7 1, R-8 0, R-9 0); the database now holds 301 row(s) in 21 of 30 table(s)
+row counts       30 table(s)
+  active_session           0
+  alerts                   0
+  audit_chain_head         1
+  audit_chain_history      0
+  audit_log                82
+  auth_sessions            0
+  biometric_tokens         0
+  console_settings         1
+  core_device              1
+  core_state               1
+  device_credentials       0
+  engine_counters          5
+  events                   59
+  evidence_custody         28
+  evidence_items           13
+  evidence_tracks          52
+  exports                  1
+  hardware_snapshot        1
+  health_snapshots         0
+  operator_credentials     3
+  operators                3
+  paired_devices           0
+  pairing_codes            0
+  permissions              12
+  registry_counters        2
+  role_permissions         18
+  roles                    3
+  schema_meta              1
+  session_history          13
+  storage_policy           1
+audit head       seq 82; hash 777fa372a98d2e42...
+lineage          0 row(s); 0 carried over, 0 appended
+db:reset: OK: dems_lane_3 is reset. State: npm run db:status -w @dems/core-server -- --database dems_lane_3
+exit=0

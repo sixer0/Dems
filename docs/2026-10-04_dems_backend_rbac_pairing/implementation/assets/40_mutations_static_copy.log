@@ -1,0 +1,6 @@
+unmutated copy | exit 0 | Tests 22 passed (22)
+M34 (68: the validated body itself is the patch (equal for every body the schema lets through)) | exit 1 | Tests 1 failed | 21 passed (22)
+    × the line holds two fields, both built from what the unit returned and from the caller: never the body, the patch or a slice 3ms
+M48 (68: the answer is the slice with the patch over it (equal after a commit)) | exit 1 | Tests 2 failed | 20 passed (22)
+    × each plain command awaits its hosted action and answers from its outcome; operation 68 answers the committed slice, read after the unit 7ms
+    × the line holds two fields, both built from what the unit returned and from the caller: never the body, the patch or a slice 5ms

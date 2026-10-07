@@ -1,0 +1,8 @@
+import json, sys
+rows=[json.loads(l) for l in open(sys.argv[1])]
+prev=None
+for r in rows:
+    key=(r.get('banner'),r.get('timer'),r['blank'],r['redbox'],r['dot'] is None)
+    if key!=prev:
+        print(r['frame'], r.get('dev'), round(r['pts'] or 0,3), 'banner',r.get('banner'), 'timer',r.get('timer'),'dot',r['dot'],'blank',r['blank'],'red',r['redbox'],'mean',r['mean'],'sd',r['sd'])
+        prev=key

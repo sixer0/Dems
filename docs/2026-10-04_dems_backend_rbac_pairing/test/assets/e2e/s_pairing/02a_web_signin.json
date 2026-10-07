@@ -1,0 +1,113 @@
+{
+  "at": "09:47:12.235 (epoch 1791254832.235)",
+  "browser": "HeadlessChrome/153.0.8010.12",
+  "coreMode": "LIVE",
+  "dashboard": true,
+  "sidebarLink": true,
+  "pageShown": true,
+  "facts": {
+    "href": "http://127.0.0.1:5173/admin/devices",
+    "onPage": true,
+    "issueState": "IDLE",
+    "codeShown": false,
+    "codeDigitCount": 0,
+    "qrShown": false,
+    "countdownSeconds": null,
+    "attempts": null,
+    "redeemedText": null,
+    "activeElsewhere": false,
+    "list": "empty",
+    "rows": [],
+    "summary": {
+      "paired": "0",
+      "online": "0",
+      "text": "0 paired · 0 online0 paired · 0 online"
+    },
+    "toasts": []
+  },
+  "screenshot": {
+    "file": "02_web_paired_devices_idle.png",
+    "at": "09:47:12.232 (epoch 1791254832.232)"
+  },
+  "network": {
+    "api": [
+      {
+        "sent": "09:47:01.842 (epoch 1791254821.842)",
+        "method": "GET",
+        "path": "/api/v1/auth/session",
+        "status": 401,
+        "done": "09:47:01.856 (epoch 1791254821.856)"
+      },
+      {
+        "sent": "09:47:01.859 (epoch 1791254821.859)",
+        "method": "GET",
+        "path": "/api/v1/auth/status",
+        "status": 200,
+        "done": "09:47:01.876 (epoch 1791254821.876)"
+      },
+      {
+        "sent": "09:47:02.127 (epoch 1791254822.127)",
+        "method": "GET",
+        "path": "/api/v1/health",
+        "status": 200,
+        "done": "09:47:02.383 (epoch 1791254822.383)"
+      },
+      {
+        "sent": "09:47:04.804 (epoch 1791254824.804)",
+        "method": "POST",
+        "path": "/api/v1/auth/sign-in",
+        "status": 200,
+        "done": "09:47:05.004 (epoch 1791254825.004)"
+      },
+      {
+        "sent": "09:47:09.286 (epoch 1791254829.286)",
+        "method": "GET",
+        "path": "/api/v1/pairing/code",
+        "status": 200,
+        "done": "09:47:09.406 (epoch 1791254829.406)"
+      },
+      {
+        "sent": "09:47:09.286 (epoch 1791254829.286)",
+        "method": "GET",
+        "path": "/api/v1/pairing/devices",
+        "status": 200,
+        "done": "09:47:09.417 (epoch 1791254829.417)"
+      }
+    ],
+    "origins": [
+      "http://127.0.0.1:5173"
+    ],
+    "sockets": [
+      {
+        "url": "ws://127.0.0.1:5173/?…",
+        "status": 101,
+        "frames": 1,
+        "types": [
+          "connected"
+        ]
+      },
+      {
+        "url": "ws://127.0.0.1:5173/ws",
+        "status": 101,
+        "frames": 5,
+        "types": [
+          "heartbeat",
+          "hello"
+        ]
+      },
+      {
+        "url": "ws://127.0.0.1:5173/ws",
+        "status": 101,
+        "frames": 139,
+        "types": [
+          "delta",
+          "heartbeat",
+          "hello",
+          "meters",
+          "snapshot"
+        ]
+      }
+    ],
+    "console": []
+  }
+}

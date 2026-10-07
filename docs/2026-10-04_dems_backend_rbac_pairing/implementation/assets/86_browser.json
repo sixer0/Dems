@@ -1,0 +1,132 @@
+{
+  "browser": {
+    "product": "HeadlessChrome/153.0.8010.12",
+    "headless": true
+  },
+  "origin": "http://127.0.0.1:5173",
+  "steps": {
+    "loginLive": {
+      "shown": true,
+      "facts": {
+        "href": "http://127.0.0.1:5173/login",
+        "loginPage": true,
+        "modeSelector": "LIVE",
+        "modeLabel": "Data mode",
+        "livePressed": "true",
+        "simulatedPressed": "false",
+        "demoNotice": "Published demo credentials for synthetic accounts on this local demo. They are not a secret.",
+        "demoDisclosurePresent": true,
+        "liveHostWarning": false,
+        "storedMode": null
+      },
+      "network": {
+        "api": [
+          {
+            "method": "GET",
+            "url": "http://127.0.0.1:5173/api/v1/auth/session",
+            "status": 401
+          },
+          {
+            "method": "GET",
+            "url": "http://127.0.0.1:5173/api/v1/auth/status",
+            "status": 200
+          },
+          {
+            "method": "GET",
+            "url": "http://127.0.0.1:5173/api/v1/health",
+            "status": 200
+          }
+        ],
+        "console": []
+      },
+      "screenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/86_w1_live_login.png"
+    },
+    "signIn": {
+      "operator": "andi.pratama",
+      "role": "SUPERVISOR",
+      "dashboardShown": true,
+      "shell": {
+        "href": "http://127.0.0.1:5173/dashboard",
+        "coreMode": "LIVE",
+        "modeChip": "LIVE",
+        "cookieNames": []
+      },
+      "network": {
+        "api": [
+          {
+            "method": "POST",
+            "url": "http://127.0.0.1:5173/api/v1/auth/sign-in",
+            "status": 200
+          }
+        ],
+        "console": []
+      },
+      "screenshot": "docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/86_w2_live_dashboard.png"
+    },
+    "signOut": {
+      "signOut": {
+        "status": 204
+      },
+      "loginShown": true,
+      "network": {
+        "api": [
+          {
+            "method": "POST",
+            "url": "http://127.0.0.1:5173/api/v1/auth/sign-out",
+            "status": 204
+          },
+          {
+            "method": "GET",
+            "url": "http://127.0.0.1:5173/api/v1/auth/status",
+            "status": 200
+          },
+          {
+            "method": "GET",
+            "url": "http://127.0.0.1:5173/api/v1/health",
+            "status": 200
+          }
+        ],
+        "console": []
+      }
+    },
+    "switchToSimulated": {
+      "before": {
+        "href": "http://127.0.0.1:5173/login",
+        "loginPage": true,
+        "modeSelector": "LIVE",
+        "modeLabel": "Data mode",
+        "livePressed": "true",
+        "simulatedPressed": "false",
+        "demoNotice": "Published demo credentials for synthetic accounts on this local demo. They are not a secret.",
+        "demoDisclosurePresent": true,
+        "liveHostWarning": false,
+        "storedMode": null
+      },
+      "clicked": true,
+      "via": "mouse",
+      "dialog": true,
+      "dialogText": "Switch to Simulated mode?You will be signed out and the console reloads. Simulated data and Live data are separate.CancelSwitch to Simulated mode",
+      "confirmed": true,
+      "after": {
+        "href": "http://127.0.0.1:5173/login",
+        "loginPage": true,
+        "modeSelector": "SIMULATED",
+        "modeLabel": "Data mode",
+        "livePressed": "false",
+        "simulatedPressed": "true",
+        "demoNotice": null,
+        "demoDisclosurePresent": true,
+        "liveHostWarning": false,
+        "storedMode": "SIMULATED"
+      },
+      "network": {
+        "api": [],
+        "console": []
+      }
+    },
+    "removeModeKey": {
+      "before": "SIMULATED",
+      "after": null
+    }
+  }
+}

@@ -1,0 +1,6 @@
+> @dems/core-web@0.1.0 test
+> vitest run --maxWorkers=2
+ Test Files  103 passed (103)
+      Tests  1392 passed (1392)
+   Start at  08:25:09
+   Duration  118.95s (tests 75%, import 12%, environment 8%, setup 3%, transform 1%)

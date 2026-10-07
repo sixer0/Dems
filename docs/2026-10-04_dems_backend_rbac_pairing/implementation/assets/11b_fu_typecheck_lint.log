@@ -1,0 +1,13 @@
+=== npm run typecheck -w @dems/core-server (18:12:21)
+
+> @dems/core-server@0.2.0 typecheck
+> tsc --noEmit
+
+exit=0
+=== npm run lint -w @dems/core-server (18:12:26)
+
+> @dems/core-server@0.2.0 lint
+> oxlint
+
+test/acceptance/rbac-matrix.support.ts:197:9: warning unicorn(prefer-string-starts-ends-with): Prefer String#startsWith over a regex with a caret. help: Replace `/^All five need `DEMO_CONTROL` \*\*and\*\* the server-side demo flag/.test(text)` with `text.startsWith('All five need `DEMO_CONTROL` **and** the server-side demo flag')`.
+exit=0

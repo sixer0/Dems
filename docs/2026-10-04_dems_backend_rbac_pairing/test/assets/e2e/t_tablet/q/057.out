@@ -1,0 +1,5 @@
+deep link demsdemo:///session/new?step=1 at 10:23:48.184: Starting: Intent { act=android.intent.action.VIEW dat=demsdemo:///... pkg=com.dems.demo.tablet }
+slept 1500 ms
+screencap 22d_technician_session_new_link_1s.png (232949 bytes) at 10:23:50.343
+slept 3000 ms
+screencap 22e_technician_session_new_link_4s.png (583388 bytes) at 10:23:54.498

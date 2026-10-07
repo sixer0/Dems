@@ -61,6 +61,7 @@ import {
   backendSource,
   forbidden,
   notPermitted,
+  WEB_SESSION_REFUSED,
 } from './operation-parts';
 import {
   DEVICE_CREDENTIAL_PATTERN,
@@ -85,6 +86,23 @@ export const PAIRING_INPUT_LIMITS = {
   revokeReasonMax: 500,
 } as const;
 
+// Contract close-out W83 (gap W32-4, gap W81-1): the numbers and words of a pairing
+// code that the server and the portal share. The server's `modules/pairing/limits.ts` holds the same
+// values; test/api-closeout.test.ts holds the descriptions below to these constants.
+/** PR-P2: a pairing code is valid this long after its issue (300 s). */
+export const PAIRING_CODE_LIFETIME_MS = 300_000;
+/** PR-P5: failed redeems of one code before it is closed as EXHAUSTED. */
+export const PAIRING_CODE_MAX_FAILED_REDEEMS = 5;
+/** PR-P7: the QR payload is this text followed by the code (`PAIRING_QR_PAYLOAD_PATTERN`). Not a URL. */
+export const PAIRING_QR_PREFIX = 'DEMS-PAIR:1:';
+/**
+ * `details.reason` of a PAIRING_CODE_CLOSED audit row: the code ran out of time, used up its failed
+ * redeems, or was cancelled. A code that a new issue replaces is closed as CANCELLED too.
+ */
+export const PairingCodeCloseReason = { EXPIRED: 'EXPIRED', EXHAUSTED: 'EXHAUSTED', CANCELLED: 'CANCELLED' } as const;
+export type PairingCodeCloseReason = (typeof PairingCodeCloseReason)[keyof typeof PairingCodeCloseReason];
+
+
 /** Life of a paired device (01_specs §6.3). REVOKED and UNPAIRED are final: pairing again makes a new device. */
 export const PairedDeviceState = { PAIRED: 'PAIRED', REVOKED: 'REVOKED', UNPAIRED: 'UNPAIRED' } as const;
 export type PairedDeviceState = (typeof PairedDeviceState)[keyof typeof PairedDeviceState];
@@ -92,16 +110,19 @@ export type PairedDeviceState = (typeof PairedDeviceState)[keyof typeof PairedDe
 const pairingCodeId = () => z.string().regex(PAIRING_CODE_ID_PATTERN);
 
 export const PairingCodeIssuedSchema = z
-  .object({
+  .strictObject({
     codeId: pairingCodeId().describe('Names the code in audit rows and in the registry. It is not the code.'),
     code: z.string().regex(PAIRING_CODE_PATTERN).describe('The six digits, returned here once. No operation can read them again.'),
     qrPayload: z
       .string()
       .regex(PAIRING_QR_PAYLOAD_PATTERN)
-      .describe('`DEMS-PAIR:1:` and the code, for the QR on the portal. Not a URL: a code must not appear in one.'),
+      .describe(`\`${PAIRING_QR_PREFIX}\` (\`PAIRING_QR_PREFIX\`) and the code, for the QR on the portal. Not a URL: a code must not appear in one.`),
     issuedAt: epochMs(),
-    expiresAt: epochMs().describe('`issuedAt` plus 300 s.'),
-    attemptsAllowed: z.int().positive().describe('Failed redeems before the code is closed: 5.'),
+    expiresAt: epochMs().describe(`\`issuedAt\` plus ${PAIRING_CODE_LIFETIME_MS / 1000} s (\`PAIRING_CODE_LIFETIME_MS\`).`),
+    attemptsAllowed: z
+      .int()
+      .positive()
+      .describe(`Failed redeems before the code is closed: ${PAIRING_CODE_MAX_FAILED_REDEEMS} (\`PAIRING_CODE_MAX_FAILED_REDEEMS\`).`),
   })
   .describe('A freshly issued pairing code. One code is active at a time: issuing closes the previous one.');
 export type PairingCodeIssued = z.output<typeof PairingCodeIssuedSchema>;
@@ -118,7 +139,7 @@ export const PairingCodeStatusSchema = z
 export type PairingCodeStatus = z.output<typeof PairingCodeStatusSchema>;
 
 export const ActivePairingCodeSchema = z
-  .object({ active: PairingCodeStatusSchema.nullable().describe('Null when no code is active.') })
+  .strictObject({ active: PairingCodeStatusSchema.nullable().describe('Null when no code is active.') })
   .describe('Response of `GET /api/v1/pairing/code`.');
 export type ActivePairingCode = z.output<typeof ActivePairingCodeSchema>;
 
@@ -126,7 +147,7 @@ export const PairingRedeemRequestSchema = z
   .object({
     code: z.string().regex(PAIRING_CODE_PATTERN).describe('The six digits the operator typed.'),
     deviceName: trimmedText(PAIRING_INPUT_LIMITS.deviceNameMax).describe(
-      `What the registry shows for this device, 1 to ${PAIRING_INPUT_LIMITS.deviceNameMax} characters after trimming.`,
+      `What the registry shows for this device, 1 to ${PAIRING_INPUT_LIMITS.deviceNameMax} characters after trimming. It must not hold the pairing code or anything of the form of a credential: such a body is refused with 422 INVALID_INPUT.`,
     ),
     platform: trimmedText(PAIRING_INPUT_LIMITS.platformMax).describe('e.g. `android`.'),
     appVersion: trimmedText(PAIRING_INPUT_LIMITS.appVersionMax).describe('The app\'s version, e.g. `0.2.0`.'),
@@ -144,7 +165,7 @@ export const CoreIdentitySchema = z
 export type CoreIdentity = z.output<typeof CoreIdentitySchema>;
 
 export const PairingRedeemedSchema = z
-  .object({
+  .strictObject({
     deviceId: deviceId(),
     deviceCredential: z
       .string()
@@ -157,7 +178,7 @@ export const PairingRedeemedSchema = z
 export type PairingRedeemed = z.output<typeof PairingRedeemedSchema>;
 
 export const PairedDeviceSchema = z
-  .object({
+  .strictObject({
     id: deviceId(),
     name: displayText(),
     platform: displayText(),
@@ -179,7 +200,7 @@ export const PairedDeviceSchema = z
 export type PairedDevice = z.output<typeof PairedDeviceSchema>;
 
 export const PairedDeviceListSchema = z
-  .object({ devices: z.array(PairedDeviceSchema) })
+  .strictObject({ devices: z.array(PairedDeviceSchema) })
   .describe('Response of `GET /api/v1/pairing/devices`: every device ever paired, newest first.');
 export type PairedDeviceList = z.output<typeof PairedDeviceListSchema>;
 
@@ -190,14 +211,14 @@ export const DeviceRevokeRequestSchema = z
       .min(PAIRING_INPUT_LIMITS.revokeReasonMin)
       .max(PAIRING_INPUT_LIMITS.revokeReasonMax)
       .describe(
-        `Why the device is revoked: ${PAIRING_INPUT_LIMITS.revokeReasonMin} to ${PAIRING_INPUT_LIMITS.revokeReasonMax} characters after trimming. Written to the audit row.`,
+        `Why the device is revoked: ${PAIRING_INPUT_LIMITS.revokeReasonMin} to ${PAIRING_INPUT_LIMITS.revokeReasonMax} characters after trimming. Written to the audit row. It must not hold anything of the form of a credential (422 INVALID_INPUT).`,
       ),
   })
   .describe('Request body of `POST /api/v1/pairing/devices/{id}/revoke`.');
 export type DeviceRevokeRequest = z.output<typeof DeviceRevokeRequestSchema>;
 
 export const DeviceRegistrationSchema = z
-  .object({
+  .strictObject({
     deviceId: deviceId(),
     name: displayText(),
     state: z.enum(PairedDeviceState),
@@ -209,7 +230,7 @@ export const DeviceRegistrationSchema = z
 export type DeviceRegistration = z.output<typeof DeviceRegistrationSchema>;
 
 export const DeviceCredentialRotatedSchema = z
-  .object({
+  .strictObject({
     deviceCredential: z
       .string()
       .regex(DEVICE_CREDENTIAL_PATTERN)
@@ -252,7 +273,7 @@ export const PAIRING_OPERATIONS = [
     summary: 'Issue a pairing code',
     description: [
       'Issues a one-time pairing code: six digits, valid for 300 s, closed after five failed redeems. The answer is the only place the code ever appears; reloading the portal cannot show it again.',
-      'One code is active at a time: issuing a new one cancels the previous one. Writes PAIRING_CODE_ISSUED, and PAIRING_CODE_CLOSED for a code it replaced.',
+      'One code is active at a time: issuing a new one cancels the previous one. Writes PAIRING_CODE_ISSUED, and PAIRING_CODE_CLOSED (`details.reason: CANCELLED`) for a code it replaced.',
       SECRET_NOTE,
       CORE_SERVER_NOTE,
     ].join('\n\n'),
@@ -295,7 +316,7 @@ export const PAIRING_OPERATIONS = [
     mode: CoreApiMode.LIVE,
     summary: 'Cancel the pairing code',
     description: [
-      'Cancels the active code. Writes PAIRING_CODE_CLOSED with `details.reason: CANCELLED`; when no code is active it writes nothing and still answers `204`.',
+      'Cancels the active code. Writes PAIRING_CODE_CLOSED with `details.reason: CANCELLED`; when no code is active it writes nothing and still answers `204`. The other close reasons are EXPIRED and EXHAUSTED (`PairingCodeCloseReason`).',
       CORE_SERVER_NOTE,
     ].join('\n\n'),
     source: backendSource(SECTION, 17),
@@ -336,7 +357,7 @@ export const PAIRING_OPERATIONS = [
       422: INVALID_INPUT,
       423: {
         description:
-          'Redeeming is locked for 60 s after 3 failures (LOCKED); `details.lockedUntil` and `details.retryInMs` say how long. The attempt is not compared and writes PAIRING_LOCKED.',
+          'Redeeming is locked for 60 s after 3 failures (LOCKED); `details.lockedUntil` and `details.retryInMs` say how long. The failure that locks answers this too and writes PAIRING_FAILED; an attempt during the lock is not compared and writes PAIRING_LOCKED.',
         schema: 'ApiError',
       },
     },
@@ -417,7 +438,7 @@ export const PAIRING_OPERATIONS = [
     responses: {
       200: { description: 'The registration.', schema: 'DeviceRegistration' },
       401: NO_DEVICE_CREDENTIAL,
-      403: forbidden(),
+      403: forbidden(WEB_SESSION_REFUSED),
     },
     access: DEVICE_ACCESS,
     audit: { success: CoreApiAuditNone.READ, denial: AuditType.ACCESS_DENIED },
@@ -439,7 +460,7 @@ export const PAIRING_OPERATIONS = [
     responses: {
       204: { description: 'Unpaired.' },
       401: NO_DEVICE_CREDENTIAL,
-      403: forbidden(),
+      403: forbidden(WEB_SESSION_REFUSED),
     },
     access: DEVICE_ACCESS,
     audit: { success: AuditType.UNPAIRED, denial: AuditType.ACCESS_DENIED },
@@ -463,7 +484,7 @@ export const PAIRING_OPERATIONS = [
     responses: {
       200: { description: 'The next credential, once.', schema: 'DeviceCredentialRotated' },
       401: NO_DEVICE_CREDENTIAL,
-      403: forbidden(DEVICE_CREDENTIAL_REFUSED),
+      403: forbidden(WEB_SESSION_REFUSED, DEVICE_CREDENTIAL_REFUSED),
     },
     access: { ...DEVICE_ACCESS, conditions: [CoreApiAccessCondition.DEVICE_CREDENTIAL] },
     audit: { success: AuditType.DEVICE_CREDENTIAL_ROTATED, denial: AuditType.ACCESS_DENIED },
@@ -655,13 +676,13 @@ export const PAIRING_EXAMPLES: Readonly<Record<string, OperationExamples>> = {
         },
       },
       401: { noDeviceCredential: ERROR_EXAMPLES.noDeviceCredential },
-      403: BASIC_403,
+      403: { webConsoleSession: ERROR_EXAMPLES.webConsoleSession, ...BASIC_403 },
     },
   },
   unpairDevice: {
     responses: {
       401: { noDeviceCredential: ERROR_EXAMPLES.noDeviceCredential },
-      403: BASIC_403,
+      403: { webConsoleSession: ERROR_EXAMPLES.webConsoleSession, ...BASIC_403 },
     },
   },
   rotateDeviceCredential: {
@@ -677,7 +698,7 @@ export const PAIRING_EXAMPLES: Readonly<Record<string, OperationExamples>> = {
         },
       },
       401: { noDeviceCredential: ERROR_EXAMPLES.noDeviceCredential },
-      403: { deviceCredentialRequired: ERROR_EXAMPLES.deviceCredentialRequired, ...BASIC_403 },
+      403: { deviceCredentialRequired: ERROR_EXAMPLES.deviceCredentialRequired, webConsoleSession: ERROR_EXAMPLES.webConsoleSession, ...BASIC_403 },
     },
   },
 };

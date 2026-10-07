@@ -1,0 +1,109 @@
+# Step 66 (W44), fix round after CP-C1: WHY each test of the round fails on the code before the round (2026-10-04 14:16:00 WIB)
+# vitest on .cache/w44/before/shared (src/live/source and src/live/hooks.ts before the round, today's tests): the first line of each failure, then the test
+AssertionError: expected 4 to be +0 // Object.is equality
+      <= test/live-source-atomicity.test.ts > the gate by itself (CL-16 to CL-18) > fix round after CP-C1 (decision D80) > CPC1-8: beyond `maxHeld` everything held is dropped and told; deltas are dropped until a snapshot; ONE resync is asked for when the gate is free
+AssertionError: expected [ 'apply [10]' ] to deeply equal [ 'apply [10]', 'overflow 3' ]
+      <= test/live-source-atomicity.test.ts > the gate by itself (CL-16 to CL-18) > fix round after CP-C1 (decision D80) > CPC1-8: a command that waited for a dropped message leaves by its time-out, and the resync is asked for once
+TypeError: gate.halt is not a function
+      <= test/live-source-atomicity.test.ts > the gate by itself (CL-16 to CL-18) > fix round after CP-C1 (decision D80) > CPC1-7: `halt` settles every waiting command as dropped, clears its timer, drops what is held, lifts every hold, and keeps the position
+AssertionError: constructor: expected SimTransitionError: Illegal session trans… { …(3) } to be an instance of CoreR
+      <= test/live-source-bindings.test.ts > AC-C-11: error rebuilding (CL-20, CL-21) > CPC1-18: an envelope code that names an inherited member of an object stands for no simulator code
+Error: The contract names no operation function Object() { [native code] } for the action "deviceCommand".
+      <= test/live-source-bindings.test.ts > AC-C-11: error rebuilding (CL-20, CL-21) > CPC1-18: a device command that names an inherited member is refused as any unknown command, without a request
+TypeError: isRefusal is not a function
+      <= test/live-source-bindings.test.ts > AC-C-11: error rebuilding (CL-20, CL-21) > CPC1-5: every envelope code of the table, and every code a comparison helper is given, is a code of the contract
+AssertionError: expected [ Array(1) ] to deeply equal [ 'ok' ]
+      <= test/live-source-local-end.test.ts > CPC1-21 / D80: `signOut` while the link is not ONLINE is a local end, never a refusal > signOut(LOCK) while the link is OFFLINE resolves; the replica is cleared at once; lastSessionEnd says LOCAL and the reason; no request is sent
+AssertionError: promise rejected "LiveTransportError: The Core server is un… { …(5) }" instead of resolving
+      <= test/live-source-local-end.test.ts > CPC1-21 / D80: `signOut` while the link is not ONLINE is a local end, never a refusal > Lock while the link is STALE: the same local end
+AssertionError: promise rejected "LiveTransportError: The Core server is un… { …(5) }" instead of resolving
+      <= test/live-source-local-end.test.ts > CPC1-21 / D80: `signOut` while the link is not ONLINE is a local end, never a refusal > no answer: a sign-out the Core does not answer while the link says ONLINE ends here too, and is owed
+AssertionError: expected 'SIGNED_IN' to be 'EXPIRED' // Object.is equality
+      <= test/live-source-local-end.test.ts > CPC1-21 / D80: the expiry this client reckons with ends the session here while the link is not ONLINE > the idle expiry passes while the link is OFFLINE: EXPIRED, the replica cleared, lastSessionEnd says IDLE_EXPIRED and LOCAL
+AssertionError: expected 'SIGNED_IN' to be 'EXPIRED' // Object.is equality
+      <= test/live-source-local-end.test.ts > CPC1-21 / D80: the expiry this client reckons with ends the session here while the link is not ONLINE > the absolute expiry likewise
+AssertionError: expected [] to have a length of 1 but got +0
+      <= test/live-source-local-end.test.ts > CPC1-21 / D80: the expiry this client reckons with ends the session here while the link is not ONLINE > while the link is ONLINE the instant passes and nothing ends here (the Core says so itself); when the link is lost after it, the end follows at once
+AssertionError: expected [] to match object [ { reason: 'IDLE_EXPIRED', …(2) } ]
+      <= test/live-source-local-end.test.ts > CPC1-21 / D80: the expiry this client reckons with ends the session here while the link is not ONLINE > a POST of this client the Core answered moves the idle instant by the idle time-out
+AssertionError: expected [] to have a length of 1 but got +0
+      <= test/live-source-local-end.test.ts > CPC1-21 / D80: the expiry this client reckons with ends the session here while the link is not ONLINE > after a local expiry the link returns with the session still alive at the Core: it is signed out (reason USER), not taken again
+AssertionError: promise rejected "LiveTransportError: The Core server is un… { …(5) }" instead of resolving
+      <= test/live-source-local-end.test.ts > CPC1-21 / D80 on a device: the app drops the session token at the local end, and nothing is kept for the owed request > Lock while OFFLINE: sessionCleared is called then; when the link returns the socket is the device's and no sign-out is sent
+AssertionError: expected [] to have a length of 1 but got +0
+      <= test/live-source-misuse.test.ts > CPC1-4: a Live result that is used as a value is reported (F66-10) > READ_AS_VALUE: the member `ok` read on the result of a value-returning action is reported at once, as an error, once per action
+AssertionError: expected [] to have a length of 1 but got +0
+      <= test/live-source-misuse.test.ts > CPC1-4: a Live result that is used as a value is reported (F66-10) > NOT_OBSERVED: a value-returning result nobody called then, catch or finally on is reported once it settled, as a warning, once per action
+TypeError: LIVE_VALUE_ACTION_NAMES is not iterable
+      <= test/live-source-misuse.test.ts > CPC1-4: a Live result that is used as a value is reported (F66-10) > the names: the 14 actions whose simulator signature returns a value; in a real simulator each result union carries the watched member
+AssertionError: expected [ 'bindings.ts', 'live-sim.ts', …(1) ] to deeply equal []
+      <= test/live-source-platform-neutral.test.ts > fix round after CP-C1: the contract's codes, and the markers of the local adapters > CPC1-5: no envelope code is compared as a text of this folder: every comparison names a member of the contract's ApiErrorCode
+AssertionError: expected 0 to be greater than or equal to 15
+      <= test/live-source-platform-neutral.test.ts > fix round after CP-C1: the contract's codes, and the markers of the local adapters > CPC1-5: every envelope code the folder mentions is a code of the contract; the three codes of its own are not
+AssertionError: bindings.ts names CONTRACT-GAP-3: expected false to be true // Object.is equality
+      <= test/live-source-platform-neutral.test.ts > fix round after CP-C1: the contract's codes, and the markers of the local adapters > CPC1-6: each local adapter carries its ID as a text a search finds
+AssertionError: expected [ …(44) ] to deeply equal [ …(56) ]
+      <= test/live-source-platform-neutral.test.ts > the export subpath @dems/shared/live/source > exports the Live source and nothing else
+AssertionError: expected [ 2000, undefined ] to deeply equal [ 2000, 30000 ]
+      <= test/live-source-platform-neutral.test.ts > the export subpath @dems/shared/live/source > the constants of the fix round after CP-C1 (decision D80)
+TypeError: useLiveSelector is not a function
+      <= test/live-source-react.test.ts > ADQ-2: the Live source in the existing SimContext > CPC1-13: useLiveSelector() reads the session, why the last session ended and the audit chain check, and renders on their changes only
+TypeError: useLiveSelector is not a function
+      <= test/live-source-react.test.ts > ADQ-2: the Live source in the existing SimContext > CPC1-13: useLiveSelector() gets null in Simulated mode and subscribes to nothing
+AssertionError: expected 'pending' to be 'rejected' // Object.is equality
+      <= test/live-source-resilience.test.ts > CPC1-2: an exception inside a store update, or between a command and its settlement, freezes nothing > a store subscriber that throws during the session end of a 401 on a command: the end is complete, the gate is free, the action rejects, the subscriber is repor
+AssertionError: expected [] to deeply equal [ 'OFFLINE' ]
+      <= test/live-source-resilience.test.ts > CPC1-2: an exception inside a store update, or between a command and its settlement, freezes nothing > a subscriber that throws on a delta keeps no other subscriber from the update; one that keeps throwing is reported once a second at most
+AssertionError: expected [] to deeply equal [ 'OFFLINE' ]
+      <= test/live-source-resilience.test.ts > CPC1-2: an exception inside a store update, or between a command and its settlement, freezes nothing > a selector that throws is contained in the same way
+AssertionError: expected 'pending' to be 'rejected' // Object.is equality
+      <= test/live-source-resilience.test.ts > CPC1-2: an exception inside a store update, or between a command and its settlement, freezes nothing > an answer the source cannot read (a client that answers outside the contract) leaves the gate: the action rejects, and later state is still applied
+AssertionError: expected [ …(1) ] to deeply equal []
+      <= test/live-source-resilience.test.ts > CPC1-2: an exception inside a store update, or between a command and its settlement, freezes nothing > an answer to a question of the source itself that cannot be read is reported and raises no unhandled rejection
+AssertionError: expected [ …(3) ] to have a length of 1 but got 3
+      <= test/live-source-resilience.test.ts > CPC1-1: one revocation of the device is one end, and a credential that stays is not retried without limit > a cold start with a revoked credential (the probe is refused 403, `hello` names the reason, the socket closes 4403): ONE end, the app told once, no read w
+FakeTransportUsageError: Fake transport: socket 3 is CLOSING: only a connecting socket can be accepted [USAGE]
+      <= test/live-source-resilience.test.ts > CPC1-1: one revocation of the device is one end, and a credential that stays is not retried without limit > a cold start with a revoked credential (the probe is refused 403, `hello` names the reason, the socket closes 4403): ONE end, the app told once, no read w
+AssertionError: expected [ …(2) ] to have a length of 1 but got 2
+      <= test/live-source-resilience.test.ts > CPC1-1: one revocation of the device is one end, and a credential that stays is not retried without limit > device.revoked and the 403 of a request that was in flight are one end
+AssertionError: expected [ …(24) ] to have a length of 1 but got 24
+      <= test/live-source-resilience.test.ts > CPC1-1: one revocation of the device is one end, and a credential that stays is not retried without limit > a deviceUnpaired that throws and leaves the credential: one end, the storage asked again three times with a growing delay, then one report and a closed so
+FakeTransportUsageError: Fake transport: socket 8 is CLOSING: only a connecting socket can be accepted [USAGE]
+      <= test/live-source-resilience.test.ts > CPC1-1: one revocation of the device is one end, and a credential that stays is not retried without limit > a deviceUnpaired that throws and leaves the credential: one end, the storage asked again three times with a growing delay, then one report and a closed so
+AssertionError: expected [ FakeConnection{ …(2) }, …(1) ] to have a length of 3 but got 2
+      <= test/live-source-resilience.test.ts > CPC1-20: the wait for the storage of the app is bounded > a sessionCleared that never answers: given up after 5,000 ms, reported, and the socket is reopened
+AssertionError: expected 'pending' to be 'rejected' // Object.is equality
+      <= test/live-source-resilience.test.ts > CPC1-20: the wait for the storage of the app is bounded > a sessionIssued that never answers: the sign-in rejects after 5,000 ms and the gate is free again
+AssertionError: expected 'pending' to be 'resolved' // Object.is equality
+      <= test/live-source-resilience.test.ts > CPC1-7: after stop() nothing fires, and a late answer changes nothing > a command the Core accepted and that waits for its delta resolves inside stop(); no timer is left
+AssertionError: expected 'pending' to be 'rejected' // Object.is equality
+      <= test/live-source-resilience.test.ts > CPC1-7: after stop() nothing fires, and a late answer changes nothing > a command without an answer rejects inside stop() (CORE_OFFLINE, STOPPED); the 401 that arrives afterwards ends no session
+AssertionError: expected 1 to be +0 // Object.is equality
+      <= test/live-source-resilience.test.ts > CPC1-7: after stop() nothing fires, and a late answer changes nothing > a 403 that arrives after stop() starts no permission refresh
+AssertionError: expected { …(10) } to be null
+      <= test/live-source-resilience.test.ts > CPC1-7: after stop() nothing fires, and a late answer changes nothing > the answer to the session probe that arrives after stop() adopts no session and starts nothing
+AssertionError: expected 'pending' to be 'rejected' // Object.is equality
+      <= test/live-source-resilience.test.ts > CPC1-7: after stop() nothing fires, and a late answer changes nothing > a sign-in that is out at stop() rejects there; its late answer hands no token to the app
+AssertionError: expected [ +0, 2000, 4000, 6000, 8000, …(56) ] to deeply equal [ +0, 2000, 6000, 14000, 30000, …(3) 
+      <= test/live-source-resilience.test.ts > CPC1-8: the session probe backs off, honours retry-after, and what is held back is bounded > with the Core down the probe is repeated after 2 s, 4 s, 8 s, 16 s and then every 30 s
+AssertionError: expected [ …(2) ] to have a length of 1 but got 2
+      <= test/live-source-resilience.test.ts > CPC1-8: the session probe backs off, honours retry-after, and what is held back is bounded > a 429 is not asked again inside its retry-after, also when a new socket says OPERATOR in between
+AssertionError: expected [] to match object [ Array(1) ]
+      <= test/live-source-resilience.test.ts > CPC1-8: the session probe backs off, honours retry-after, and what is held back is bounded > more than 256 held state messages are dropped, reported, and ONE resync brings the state back when the gate is free
+AssertionError: expected [ FakeConnection{ …(2) } ] to have a length of 2 but got 1
+      <= test/live-source-resilience.test.ts > CPC1-9: a session that is found before the socket said who it is still gets its socket > the probe answers first, then `hello` names DEVICE: one new socket is asked for, and the client is signed in
+AssertionError: expected [] to match object [ { level: 'error', …(1) } ]
+      <= test/live-source-resilience.test.ts > CPC1-9: a session that is found before the socket said who it is still gets its socket > when the second socket does not carry the session either, that is reported once and nothing loops
+AssertionError: expected 1 to be 2 // Object.is equality
+      <= test/live-source-resilience.test.ts > CPC1-11: the lock state is read again after `pair` > the view that was read without a device credential is replaced by the one read as this device
+AssertionError: promise rejected "LiveTransportError: The Core server is un… { …(5) }" instead of resolving
+      <= test/live-source-session.test.ts > sign-out (WS-12) > a sign-out the server cannot answer does not reject and do nothing (decision D80): the session ends here, and the sign-out is owed
+AssertionError: expected [ 300000 ] to deeply equal []
+      <= test/live-source-session.test.ts > CPC1-10: activity that was remembered while the link was down is not reported as fresh > activity older than the interval is forgotten when the link returns: nothing is sent, so the idle time-out is not moved by the time offline
+AssertionError: 60001: expected [ 60001 ] to deeply equal []
+      <= test/live-source-session.test.ts > CPC1-10: activity that was remembered while the link was down is not reported as fresh > activity at most the interval old is still sent ("at most 60 s late", CL-27); one millisecond older is not
+AssertionError: expected [ …(2) ] to have a length of 1 but got 2
+      <= test/live-source-session.test.ts > CPC1-10: activity that was remembered while the link was down is not reported as fresh > on a Live source: the link is down for five minutes after the last activity; when it returns no touch is sent
+⎯⎯⎯⎯⎯⎯ Failed Tests 57 ⎯⎯⎯⎯⎯⎯⎯
+ Test Files  8 failed (8)
+      Tests  57 failed | 235 passed (292)

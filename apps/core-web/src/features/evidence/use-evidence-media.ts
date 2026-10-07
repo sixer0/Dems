@@ -14,19 +14,21 @@
  * | Cache contract (rule 3) | Under the Core root `['core', …]` built from `CORE_QUERY_KEY`, so the query bridge removes it at every session end and refetches it after a resynchronisation; `retry: false` is the bridge's default and is not set again |
  * | Every error to the presenter first (rule 2) | A refused or failed read is handed to the presenter (it names the role of a 403, coalesces an outage); what it leaves to the page (a 404, an answer it does not word) gets one record in the page's own log |
  * | Graceful degradation | Without an answer no bundled media is shown and the header says the reference is unavailable; the Core's verdict still works (operation 41 does not need it) |
+ * | Read only while signed in (D176, finding F75-2; FXR-W W92-3) | `enabled` holds `useCoreSignedIn()`: when the session ends the bridge removes the entry, and a detail page still on screen until the shell leaves asks nothing |
  */
 import { useQuery } from '@tanstack/react-query'
 import { getDemoEvidencePackage, type DemoEvidencePackage } from '@dems/shared/demo-data'
 import type { EvidenceMediaRef } from '@dems/shared/api'
 import { Permission } from '@dems/shared/sim'
 import { useCoreErrorPresenter } from '@/lib/core-errors'
+import { useCoreSignedIn } from '@/lib/core-queries'
 import { CORE_QUERY_KEY, useWebLive } from '@/runtime'
 import { logEvidence, newCorrelationId } from './log'
 import type { EvidenceRow } from './model'
 
 /**
  * The query key of one item's media reference. Built under the Core root, so the bridge's
- * `removeQueries(['core'])` and `invalidateQueries(['core'])` reach it (CONTRACT-GAP-W69-2: the
+ * `removeQueries(['core'])` and `invalidateQueries(['core'])` reach it (RESIDUAL-W69-2, W83 ledger #44: the
  * runtime's `CORE_QUERY_KEYS` table names no evidence key, and `runtime/**` is closed to this row).
  */
 export function evidenceMediaQueryKey(evidenceId: string) {
@@ -66,9 +68,10 @@ const UNAVAILABLE: EvidenceMediaState = { status: 'unavailable', media: null }
 export function useEvidenceMedia(evidenceId: string): EvidenceMediaState {
   const live = useWebLive()
   const presentCoreError = useCoreErrorPresenter()
+  const signedIn = useCoreSignedIn()
   const query = useQuery({
     queryKey: evidenceMediaQueryKey(evidenceId),
-    enabled: live !== null,
+    enabled: live !== null && signedIn,
     queryFn: async (): Promise<EvidenceMediaRef> => {
       if (live === null) throw new Error('No Live source')
       const answer = await live.client.call('getEvidence', { params: { id: evidenceId } })

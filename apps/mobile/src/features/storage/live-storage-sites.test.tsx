@@ -185,9 +185,11 @@ describe('S2-6: Apply in the Manage Storage sheet (operation 55)', () => {
     await pressApply(b);
     await b.elapse(200);
     expect(toastShown(DENIED)).toBe(true);
-    // F64 / CONTRACT-GAP-5: the any-of permission's label names no role the presenter can find, so the
-    // toast names none — and never a wrong one.
-    expect(toastShown(/^Requires the /)).toBe(false);
+    // Changed by design (W83, ruling R-D1 of decision D184; finding F64): the Live source hands the
+    // presenter the any-of as `EVIDENCE_REVIEW | MAINTENANCE`, so the toast names the first role that
+    // holds one of them — and never a wrong one.
+    expect(toastShown(/^Requires the Supervisor role/)).toBe(true);
+    expect(toastShown(/^Requires the (Investigator|Technician)/)).toBe(false);
     expect(toastShown(APPLIED_LIVE)).toBe(false);
     expect(toastShown(FAILED)).toBe(false);
     await wallClock(600);
@@ -216,7 +218,9 @@ describe('S2-6: Apply in the Manage Storage sheet (operation 55)', () => {
     await pressApply(b);
     await b.elapse(200);
     expect(toastShown(DENIED)).toBe(true);
-    expect(toastShown(/^Requires the /)).toBe(false);
+    // Changed by design (W83, ruling R-D1): the same role as for the contract's example.
+    expect(toastShown(/^Requires the Supervisor role/)).toBe(true);
+    expect(toastShown(/^Requires the (Investigator|Technician)/)).toBe(false);
     expect(toastShown(APPLIED_LIVE)).toBe(false);
     await wallClock(600);
     expect(sheetOpen()).toBe(true);

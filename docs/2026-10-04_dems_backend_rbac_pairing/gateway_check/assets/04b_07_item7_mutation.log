@@ -1,0 +1,12 @@
+M-7 (scratch copy only): the test's device is given a credential row before its session is presented
+     × is no device: a credential the registry does not store and an open session of that device resolve to nothing, and it cannot sign in 42ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+AssertionError: expected { principal: { …(6) }, …(3) } to match object { principal: { …(2) }, …(1) }
+- Expected
++ Received
+-   "failure": "DEVICE_UNKNOWN",
++   "failure": null,
+-     "kind": "ANONYMOUS",
+-     "retiredDeviceId": null,
++     "kind": "OPERATOR",
+      Tests  1 failed | 11 skipped (12)

@@ -10,8 +10,8 @@ import { validateCoreApiResponse, type SessionCommandResponse } from '@dems/shar
 import type { LightMyRequestResponse } from 'fastify';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { useTestDatabase } from '../../../../test/helpers/db';
-import { linkProblems, readHead, readTrail, verifyTrail } from '../../../core/__tests__/support';
-import { storedSlices } from '../../../engine/__tests__/support';
+import { linkProblems, readHead, readTrail, verifyTrail } from '../../../../test/support/core';
+import { storedSlices } from '../../../../test/support/engine';
 import { withoutNegativeZeros } from '../../../../test/support/seed';
 import { throttleControl } from '../../../plugins/throttle';
 import { SESSION, errorOf, on, sessionInput, sessionsApp, typesOf, type Caller, type SessionsApp } from './support';

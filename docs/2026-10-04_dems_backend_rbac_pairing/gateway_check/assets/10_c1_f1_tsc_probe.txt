@@ -1,0 +1,17 @@
+===== rn.ts
+// React Native typing: setTimeout returns a number.
+declare const timer: number;
+(timer as { unref?: () => void }).unref?.();
+===== node.ts
+// Node typing: setTimeout returns a Timeout (shape of @types/node's NodeJS.Timeout, reduced).
+interface Timeout { ref(): this; unref(): this; hasRef(): boolean; refresh(): this }
+declare const timer: Timeout;
+(timer as { unref?: () => void }).unref?.();
+===== rn_literal.ts
+// The literal form on a number handle.
+declare const timer: number;
+// @ts-expect-error -- Property 'unref' does not exist on type 'number'.
+timer.unref?.();
+export {};
+===== command and result (tsc 6.0.3, --noEmit --strict --lib es2022 --moduleDetection force)
+rn.ts exit 0; node.ts exit 0; rn_literal.ts exit 0 (its @ts-expect-error is used: the literal form fails on a number handle)

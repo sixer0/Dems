@@ -1,0 +1,5 @@
+tap 1852,1248 at 16:44:30.610
+slept 2500 ms
+swipe 1900,1250,1900,550 600 ms
+slept 1500 ms
+screencap B3_tablet_0017_before_web_verify.png (707454 bytes) at 16:44:35.713

@@ -1,0 +1,7 @@
+debug build  (dev=true)  debug.ts              {"required":["react","react-native","@dems/shared/sim","./core-link","./log","./dev-probes"],"hasProbeModule":true,"hasProbeHook":true}
+debug build  (dev=true)  secure-credentials.ts {"required":["@babel/runtime/helpers/interopRequireWildcard","@babel/runtime/helpers/interopRequireDefault","@babel/runtime/helpers/asyncToGenerator","expo-device","expo-secure-store","zod","@dems/shared/api","./log"],"hasProbeItemName":true,"hasProbePromptTitle":true,"probeExport":"object","hasDeviceItemName":true,"hasUnprotectedRule":true}
+    debug build holds the probe=ok
+release build (dev=false) debug.ts              {"required":["react","react-native","@dems/shared/sim","./core-link","./log"],"hasProbeModule":false,"hasProbeHook":false}
+release build (dev=false) secure-credentials.ts {"required":["@babel/runtime/helpers/interopRequireWildcard","@babel/runtime/helpers/interopRequireDefault","@babel/runtime/helpers/asyncToGenerator","expo-device","expo-secure-store","zod","@dems/shared/api","./log"],"hasProbeItemName":false,"hasProbePromptTitle":false,"probeExport":"null","hasDeviceItemName":true,"hasUnprotectedRule":true}
+    release build holds no probe=ok release build keeps the wrapper=ok
+    MB-6a rule as a release build holds it: return Device.isDevice === false || false;

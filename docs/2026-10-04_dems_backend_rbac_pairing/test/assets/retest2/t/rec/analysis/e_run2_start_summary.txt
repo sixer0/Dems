@@ -1,0 +1,11 @@
+frames 154; monitor frames 81; blank frames 1
+  BLANK f_0073 (overlay f=72) device 17:07:42.189 sd 0.6; prev f_0072 monitor=False; next f_0074 monitor=True
+first monitor frame f_0074 device 17:07:42.253; last monitor frame f_0154 device 17:07:49.517
+non-monitor frames inside the monitor span: []
+unreadable timer frames: 0
+timer values shown: 1 changes; backward steps: 0 []
+timer steps (frame, device time, host time = device - offset, value, lag = host - Core start - value):
+  f_0074 dev 17:07:42.253 host 17:07:42.708 timer   0 lag +3.30 s
+holds > 1.5 s (value, first frame, device time, seconds held, next value): []
+banner probes: header row y baseline 95; frames shifted 0 []; band amber>20 0 []; band green>20 0 []
+band pixel maxima over monitor frames: amber 0, green 0

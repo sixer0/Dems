@@ -18,7 +18,9 @@
  *   resync     a new `snapshot` (RT-6). A new epoch: a `snapshot` to every OPERATOR socket (RT-7).
  *   meters     to OPERATOR sockets that subscribed (RT-8).
  *   control    `session.updated`, `session.ended` then close 4401, `device.revoked` then close
- *              4403, `admin.changed` to the holders of the permission.
+ *              4403, `admin.changed` to the holders of the permission. A paired device's sign-in
+ *              or sign-out (`device.session`) and its sockets' admission and departure become
+ *              ONE debounced `admin.changed DEVICES` (E-fix FX-C, ruling R4; see `devicesChanged`).
  *   heartbeat  every second, to every socket.
  *
  * ORDER. `publish` is called after each commit, in commit order, and sends in the same turn, so
@@ -180,6 +182,13 @@ export function createRealtimeHub(dependencies: HubDependencies): RealtimeHub {
 
   const counters = { refusedByCap: 0, displaced: 0, slowConsumers: 0, metersOverRate: 0, healed: 0, terminated: 0 };
 
+  /**
+   * The `admin.changed DEVICES` that device changes are waiting for (E-fix FX-C, ruling R4;
+   * E2E-S-2, RESIDUAL-W70-1): when the run of changes began and when the message is due. Null
+   * while nothing waits.
+   */
+  let devicesChange: { readonly firstAt: number; dueAt: number } | null = null;
+
   function notify(): void {
     for (const listener of listeners) {
       try {
@@ -222,6 +231,8 @@ export function createRealtimeHub(dependencies: HubDependencies): RealtimeHub {
     connection.present = false;
     dependencies.presence()?.socketClosed(connection.deviceId);
     tabletLink.deviceClosed();
+    // Paired Devices' `online` column and the Devices drawer read the presence counter (R4).
+    devicesChanged();
   }
 
   function destroy(connection: Connection): void {
@@ -433,7 +444,33 @@ export function createRealtimeHub(dependencies: HubDependencies): RealtimeHub {
     tabletLink.deviceRetired();
   }
 
+  /**
+   * A paired device's signed-in operator or presence may have changed (ruling R4): its sign-in or
+   * sign-out (`device.session`), or a socket of a device admitted or departed. The registry
+   * (operation 19) reads both, so the holders of the device permission are told to read it again,
+   * debounced: ONE `admin.changed DEVICES` once `devicesChangedDebounceMs` passed without another
+   * change (a sign-in and the socket the app opens after it are one change), and never later than
+   * `devicesChangedMaxWaitMs` after the first change of the run. Sent by the pace step.
+   */
+  function devicesChanged(): void {
+    if (stopped) return;
+    const now = clock.now();
+    if (devicesChange === null) {
+      devicesChange = { firstAt: now, dueAt: now + limits.devicesChangedDebounceMs };
+      return;
+    }
+    devicesChange.dueAt = Math.min(now + limits.devicesChangedDebounceMs, devicesChange.firstAt + limits.devicesChangedMaxWaitMs);
+  }
+
+  /** The pace step: the waiting `admin.changed DEVICES`, once it is due. */
+  function flushDevicesChange(now: number): void {
+    if (devicesChange === null || now < devicesChange.dueAt) return;
+    onAdminChanged('DEVICES');
+  }
+
   function onAdminChanged(resource: AdminResource): void {
+    // Whatever waited is told by this message: the holders read the list after the change.
+    if (resource === 'DEVICES') devicesChange = null;
     const permission: Permission = ADMIN_RESOURCE_PERMISSION[resource];
     let text: string | null = null;
     for (const connection of connections.values()) {
@@ -463,6 +500,9 @@ export function createRealtimeHub(dependencies: HubDependencies): RealtimeHub {
         return;
       case 'admin.changed':
         onAdminChanged(publication.resource);
+        return;
+      case 'device.session':
+        devicesChanged();
         return;
     }
   }
@@ -698,6 +738,7 @@ export function createRealtimeHub(dependencies: HubDependencies): RealtimeHub {
       connection.present = true;
       dependencies.presence()?.socketOpened(connection.deviceId);
       tabletLink.deviceOpened();
+      devicesChanged();
     }
     notify();
     return handle;
@@ -739,6 +780,7 @@ export function createRealtimeHub(dependencies: HubDependencies): RealtimeHub {
       if (connection.closing === null && connection.resyncDueAt !== null && now >= connection.resyncDueAt) answerResync(connection, now);
     }
     tabletLink.step();
+    flushDevicesChange(now);
     forget(endedSessions, now - limits.endedMemoryMs);
     forget(retiredDevices, now - limits.endedMemoryMs);
   }
@@ -769,6 +811,7 @@ export function createRealtimeHub(dependencies: HubDependencies): RealtimeHub {
     shutdown() {
       stopped = true;
       held = [];
+      devicesChange = null;
       // A socket that reports its close inside the loop is removed from the map; iterating a map tolerates that.
       for (const connection of connections.values()) close(connection, RealtimeCloseCode.GOING_AWAY, CLOSE_REASON.SHUTDOWN);
     },

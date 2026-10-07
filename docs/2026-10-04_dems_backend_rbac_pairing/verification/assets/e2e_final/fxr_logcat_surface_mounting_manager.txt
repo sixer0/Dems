@@ -1,0 +1,20 @@
+W93-7 check: lines containing "SurfaceMountingManager" in logcat since T0 (device clock; host = device + ~49.86 s)
+emulator-5556 (tablet, on the monitor, web stop 09:30:25.739 host): 0 lines
+emulator-5554 (phone, on the monitor, same web stop): 104 lines, all "W/Reanimated ... RetryableMountingLayerException: Unable to find SurfaceMountingManager for tag"
+  tag 33882: 5 lines, device 10-07 09:29:42.458 .. 10-07 09:29:42.486
+  tag 34374: 7 lines, device 10-07 09:29:43.956 .. 10-07 09:29:44.079
+  tag 34702: 9 lines, device 10-07 09:29:44.243 .. 10-07 09:29:44.353
+  tag 34912: 11 lines, device 10-07 09:29:44.590 .. 10-07 09:29:44.642
+  tag 35128: 13 lines, device 10-07 09:29:44.930 .. 10-07 09:29:45.037
+  tag 35350: 15 lines, device 10-07 09:29:45.497 .. 10-07 09:29:45.615
+  tag 35578: 44 lines, device 10-07 09:29:47.462 .. 10-07 09:29:47.890
+credential/token shapes in these lines: 0
+emulator-5556 SurfaceMountingManager lines since T0: 104
+second tablet stop (web stop 202 host 09:34:02.410; tablet on the monitor): emulator-5556 104 lines, all W/Reanimated "Unable to find SurfaceMountingManager for tag"
+  tag 27370: 5 lines, device 10-07 09:33:17.354 .. 10-07 09:33:17.369
+  tag 27680: 7 lines, device 10-07 09:33:18.110 .. 10-07 09:33:18.143
+  tag 27886: 9 lines, device 10-07 09:33:18.601 .. 10-07 09:33:18.669
+  tag 28096: 11 lines, device 10-07 09:33:18.987 .. 10-07 09:33:19.052
+  tag 28312: 13 lines, device 10-07 09:33:19.624 .. 10-07 09:33:19.891
+  tag 28534: 15 lines, device 10-07 09:33:20.307 .. 10-07 09:33:20.353
+  tag 28762: 44 lines, device 10-07 09:33:22.138 .. 10-07 09:33:22.312

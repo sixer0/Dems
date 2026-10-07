@@ -7,6 +7,11 @@
  * - Last Sync (UTC+07:00 date-time, shared `formatDate`), Time Source ("GPS (GNSS Stratum-1)" while
  *   GNSS disciplines the clock) and Server (the NTP server);
  * - the hierarchy row GNSS → NTP → RTC with the moving `time-tier` indicator.
+ *
+ * Closing-fix CF2-B, defect RF-T-5 (decision D227): in the tablet's third pane (row about 290 dp) the
+ * values had one line: "Last Sync" drew only "6 Oct 2026" of "6 Oct 2026 16:46:47" and "Time Source"
+ * ended "GPS (GNSS Str…". The values now have no line cap and wrap between words, right-aligned
+ * ("6 Oct 2026" over "16:46:47"); where they fit (the phone) they stay on one line.
  */
 import { ListGroup, Separator } from 'heroui-native';
 import { Clock, Satellite, Server, type LucideIcon } from 'lucide-react-native';
@@ -110,9 +115,9 @@ export function TimeSyncCard({ time, escalationKey }: TimeSyncCardProps) {
                 </Text>
               </View>
               <ListGroup.ItemSuffix style={styles.factSuffix}>
+                {/* CF2-B (RF-T-5): no line cap; a value too wide for the card wraps between words. */}
                 <Text
                   maxFontSizeMultiplier={1.2}
-                  numberOfLines={1}
                   selectable={row.mono}
                   testID={`network-time-${row.id}-value`}
                   style={[styles.factValue, row.mono ? styles.mono : null]}
@@ -161,6 +166,7 @@ const styles = StyleSheet.create({
     lineHeight: typography.body.lineHeight,
     color: palette.foreground,
     flexShrink: 1,
+    textAlign: 'right',
   },
   mono: { fontFamily: fontFamily.native.mono, fontSize: 13 },
   hierarchy: { gap: 6 },

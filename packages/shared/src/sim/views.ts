@@ -9,11 +9,12 @@
 import type { NetworkDomain } from '../domain';
 import { syntheticFingerprint } from './dataset';
 import { stableSelector } from './memo';
-import type { AuditRow, EpochMs, ServiceEntry, SimEvent, SimState, StorageVolume } from './types';
+import type { AuditRow, EpochMs, ServiceEntry, SimEvent, SimState, StorageVolume, TimelineEvent } from './types';
 import {
   AvSyncState,
   FAULT_EVENT_CATEGORY,
   NetworkDomainState,
+  OperatorRole,
   SIM_EVENT_CATEGORY,
   SmartStatus,
   type FaultKind,
@@ -321,4 +322,25 @@ export function logBundle(s: SimState, exportId: string | null = null): LogBundl
     audit: { rows: s.audit.rows, head: s.audit.head, total: s.audit.total, dropped: s.audit.dropped },
     events: s.events,
   };
+}
+
+// ── Session timeline titles (E-fix FX-C, E2E-T-5) ────────────────────────────────────────
+
+/** The i18n key of a session timeline row's title (typed, so a client's `t` accepts it). */
+export type TimelineTitleKey = `session.timeline.kind.${TimelineEvent['kind']}` | `session.timeline.noteBy.${OperatorRole}`;
+
+const NOTE_TITLE_ROLES: readonly string[] = Object.values(OperatorRole);
+const isNoteTitleRole = (value: unknown): value is OperatorRole => typeof value === 'string' && NOTE_TITLE_ROLES.includes(value);
+
+/**
+ * The i18n key of a session timeline row's title. A NOTE whose item names its author's role
+ * (`params.authorRole`, written by `addNoteTransition`) is titled by that role ("Supervisor Note
+ * Added"); any other NOTE by the neutral kind title ("Note Added"); every other kind by
+ * `session.timeline.kind.<KIND>`. A SUPERVISOR's note was titled "Investigator Note Added" on
+ * the web and the tablet (E2E-T-5).
+ */
+export function timelineTitleKey(event: Pick<TimelineEvent, 'kind' | 'params'>): TimelineTitleKey {
+  const role = event.kind === 'NOTE' ? event.params?.authorRole : undefined;
+  if (isNoteTitleRole(role)) return `session.timeline.noteBy.${role}`;
+  return `session.timeline.kind.${event.kind}`;
 }

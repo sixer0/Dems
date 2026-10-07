@@ -1,0 +1,16 @@
+tap 179,320 at 17:22:42.607
+slept 3000 ms
+screencap S02_sessions_hub.png (629124 bytes) at 17:22:46.157
+tap 180,424 at 17:22:46.272
+slept 3000 ms
+tap 870,474 at 17:22:49.393
+slept 3000 ms
+screencap S03a_evidence_detail_media.png (700412 bytes) at 17:22:52.955
+tap 1603,1248 at 17:22:53.052
+slept 2500 ms
+screencap S03b_evidence_detail_metadata.png (700456 bytes) at 17:22:55.965
+tap 1852,1248 at 17:22:56.050
+slept 2500 ms
+swipe 1900,1250,1900,550 600 ms
+slept 1500 ms
+screencap S03c_evidence_detail_hash_integrity.png (687907 bytes) at 17:23:01.283

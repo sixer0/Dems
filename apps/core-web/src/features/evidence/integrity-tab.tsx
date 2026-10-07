@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Alert, Button, Card, Chip, ProgressBar, Table } from '@heroui/react'
 import { Copy, KeyRound, PackageCheck, RotateCcw, ShieldCheck } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -12,7 +12,7 @@ import { useMotionPolicy } from '@/motion'
 import { CheckList } from './check-list'
 import { VerdictChip, type VerdictState } from './chips'
 import { copyText } from './clipboard'
-import { formatWibDateTime, shortHash, type EvidenceRow } from './model'
+import { formatWibClockSeconds, formatWibDate, formatWibDateTime, shortHash, storedVerification, type EvidenceRow } from './model'
 import { selectOperators } from './selectors'
 import { useRetryCooldown } from './use-retry-cooldown'
 import type { EvidenceVerification } from './use-verification'
@@ -24,6 +24,26 @@ export const LIFECYCLE_STEP_MS = 70
 export interface IntegrityTabProps {
   row: EvidenceRow
   verification: EvidenceVerification
+}
+
+/**
+ * R-W-1 (closing fix CF-W): a custody action code ("RECORDING_STOPPED", "SESSION_INCOMPLETE") may wrap
+ * only after an underscore, so a narrow Action column shows "RECORDING_ / STOPPED" instead of making
+ * the table wider than its card (a code has no other break opportunity). The words are unchanged:
+ * `<wbr>` adds no text.
+ */
+function breakableCode(code: string): ReactNode {
+  const parts = code.split('_')
+  return parts.map((part, index) => (
+    <Fragment key={`${index}:${part}`}>
+      {part}
+      {index < parts.length - 1 ? (
+        <>
+          _<wbr />
+        </>
+      ) : null}
+    </Fragment>
+  ))
 }
 
 /**
@@ -40,6 +60,26 @@ export interface IntegrityTabProps {
  * entry of a verification arrives with the answer's delta, CL-16). The bundled package's check, when
  * it runs, has its own line labelled "Bundled demo package", and an info Alert says so when the two
  * differ. An item without a bundled package shows the Core's values, labelled "Core record".
+ *
+ * Stored verdict (E-fix FX-W, E2E-W1-3): the card opens on the record's last verification
+ * (`item.verification`, the Core server's in Live mode), never on "Not verified" when the record holds
+ * a PASS or a FAIL, and a line under the mode names it: result, time and who (the actor of its custody
+ * entry). A new Verify replaces the chip with its own verdict; the record's delta then moves the line
+ * to the new run (CL-16) once the run has ended — while it runs the line holds the record of the
+ * press (FXR-W W92-10), so the delta never shows the verdict before the run reveals it. The per-check list belongs to a run, so while the stored verdict shows, the
+ * card says that Verify again lists each check instead of "0 of 6 checks".
+ *
+ * Custody times (E-fix FX-W, E2E-W1-7): the date and the clock are two tokens that never break inside
+ * themselves; a narrow column puts the clock on a second line (`.evi-custody-time`).
+ *
+ * Custody table width (closing fix CF-W, R-W-1): the kit's automatic table layout never made the table
+ * narrower than the sum of its columns' longest unbreakable words plus padding — the date token,
+ * `RECORDING_STOPPED`, "Pratama", "supervisor": 472 px in a 441 px card at 1440x900, 97 px over at
+ * 1280x800 with the Detail out of sight. The table now has fixed column widths (`evidence.css`), so it
+ * is never wider than its card; an action code may wrap only after an underscore (`breakableCode`);
+ * on a narrow card (< 26rem of content, the 1280 px layout) the Detail sits under the action, and on a
+ * phone-width card (< 20rem) the actor too. The cells carry the classes that layout uses, and the row
+ * says whether it has a Detail (`data-detail`).
  */
 export function IntegrityTab({ row, verification }: IntegrityTabProps) {
   const { t } = useTranslation()
@@ -50,8 +90,19 @@ export function IntegrityTab({ row, verification }: IntegrityTabProps) {
   const retry = useRetryCooldown()
   const pkg = row.pkg
 
+  const recordNow = storedVerification(row.item)
+  // FXR-W W92-10 (D227 O-RF-T-3; the mobile card's CF-M2 rule): while a run is on screen the line keeps
+  // the record's value from the run's start. In Live mode the Core's delta updates the record before
+  // the run reveals its checks (CL-16), so the line would show the new verdict before the run does.
+  // The first render of a run still holds the old record (the delta comes a round trip later); it is
+  // pinned there, per run, and released when the run ends.
+  const [pinned, setPinned] = useState<{ readonly runId: number; readonly stored: typeof recordNow } | null>(null)
+  if (state.phase === 'running' && pinned?.runId !== state.runId) setPinned({ runId: state.runId, stored: recordNow })
+  const stored = state.phase === 'running' ? (pinned?.runId === state.runId ? pinned.stored : recordNow) : recordNow
+  // Nothing ran in this view yet: the card shows the verdict the record holds (E2E-W1-3).
+  const showStored = state.phase === 'idle' && stored !== null
   const verdict: VerdictState =
-    state.phase === 'running' ? 'RUNNING' : state.phase === 'error' ? 'ERROR' : (state.verdict ?? 'NOT_RUN')
+    state.phase === 'running' ? 'RUNNING' : state.phase === 'error' ? 'ERROR' : (state.verdict ?? stored?.status ?? 'NOT_RUN')
   const done = state.checks.filter((check) => check.phase === 'pass' || check.phase === 'fail').length
   const total = state.checks.length
 
@@ -89,6 +140,16 @@ export function IntegrityTab({ row, verification }: IntegrityTabProps) {
   const nameOf = (actorId: string | null) =>
     actorId === null ? t('evidence.integrity.system') : (operators.find((operator) => operator.id === actorId)?.displayName ?? actorId)
 
+  const lastLine = (() => {
+    if (!stored) return null
+    const result = t(`common.verificationStatus.${stored.status}`)
+    if (stored.at === null) return t('evidence.verify.last.resultOnly', { result })
+    const at = `${formatWibDateTime(stored.at)} UTC${formatUtcOffset()}`
+    return stored.actorKnown
+      ? t('evidence.verify.last.full', { result, at, actor: nameOf(stored.actorId) })
+      : t('evidence.verify.last.noActor', { result, at })
+  })()
+
   const copy = (value: string) =>
     void copyText(value, { ok: t('evidence.detail.integrity.hashCopied'), failed: t('evidence.integrity.copyFailed') }, 'integrity.copy')
 
@@ -102,7 +163,7 @@ export function IntegrityTab({ row, verification }: IntegrityTabProps) {
   return (
     <div className="evi-integrity" data-testid="evidence-integrity" data-mode={state.mode}>
       <div className="evi-integrity-main">
-        <Card className="evi-verify-card" data-testid="evidence-verify-card">
+        <Card className="evi-verify-card" data-testid="evidence-verify-card" data-verdict-source={showStored ? 'record' : state.phase === 'idle' ? 'none' : 'run'}>
           <div className="evi-verify-head">
             <VerdictChip verdict={verdict} runKey={state.runId} size="lg" />
             <div className="evi-verify-text">
@@ -118,6 +179,11 @@ export function IntegrityTab({ row, verification }: IntegrityTabProps) {
                   ? t('evidence.live.verify.note')
                   : (state.label ?? (state.mode === 'package' ? t('evidence.verify.trustNote') : t('evidence.verify.simulatedNote')))}
               </span>
+              {lastLine ? (
+                <span className="evi-caption evi-verify-last" data-testid="evidence-verify-last" data-status={stored?.status}>
+                  {lastLine}
+                </span>
+              ) : null}
             </div>
             <Button
               variant="primary"
@@ -136,17 +202,25 @@ export function IntegrityTab({ row, verification }: IntegrityTabProps) {
                     : retry.cooldownSeconds > 0
                       ? t('common.actions.retryIn', { seconds: retry.cooldownSeconds })
                       : t('common.actions.retry')
-                  : state.phase === 'done'
+                  : state.phase === 'done' || showStored
                     ? t('evidence.verify.again')
                     : t('evidence.detail.integrity.verify')}
             </Button>
           </div>
-          <ProgressBar aria-label={t('evidence.verify.progress', { done, total })} value={total === 0 ? 0 : (done / total) * 100} className="evi-verify-progress" size="sm">
-            <ProgressBar.Track>
-              <ProgressBar.Fill />
-            </ProgressBar.Track>
-          </ProgressBar>
-          <span className="evi-caption">{t('evidence.verify.progress', { done, total })}</span>
+          {showStored ? (
+            <span className="evi-caption" data-testid="evidence-verify-stored-hint">
+              {t('evidence.verify.storedHint')}
+            </span>
+          ) : (
+            <>
+              <ProgressBar aria-label={t('evidence.verify.progress', { done, total })} value={total === 0 ? 0 : (done / total) * 100} className="evi-verify-progress" size="sm">
+                <ProgressBar.Track>
+                  <ProgressBar.Fill />
+                </ProgressBar.Track>
+              </ProgressBar>
+              <span className="evi-caption">{t('evidence.verify.progress', { done, total })}</span>
+            </>
+          )}
           <CheckList state={state} variant="full" />
           {state.bundled ? (
             <div className="evi-bundled" data-testid="evidence-bundled" data-phase={state.bundled.phase} data-verdict={state.bundled.verdict ?? undefined}>
@@ -258,31 +332,46 @@ export function IntegrityTab({ row, verification }: IntegrityTabProps) {
             <Table.ScrollContainer>
               <Table.Content aria-label={t('evidence.detail.integrity.custody')}>
                 <Table.Header>
-                  <Table.Column id="time" isRowHeader>
+                  <Table.Column id="time" isRowHeader className="evi-custody-col-time">
                     {/* AC-74 (step 45b, F45-04): the zone of the custody times, once in the header. */}
                     <span>
                       {t('evidence.detail.integrity.custodyColumns.time')}{' '}
                       <span className="evi-col-zone">{`UTC${formatUtcOffset()}`}</span>
                     </span>
                   </Table.Column>
-                  <Table.Column id="action">{t('evidence.detail.integrity.custodyColumns.action')}</Table.Column>
-                  <Table.Column id="actor">{t('evidence.detail.integrity.custodyColumns.actor')}</Table.Column>
-                  <Table.Column id="detail">{t('evidence.detail.integrity.custodyColumns.detail')}</Table.Column>
+                  <Table.Column id="action" className="evi-custody-col-action">
+                    {t('evidence.detail.integrity.custodyColumns.action')}
+                  </Table.Column>
+                  <Table.Column id="actor" className="evi-custody-col-actor">
+                    {t('evidence.detail.integrity.custodyColumns.actor')}
+                  </Table.Column>
+                  <Table.Column id="detail" className="evi-custody-col-detail">
+                    {t('evidence.detail.integrity.custodyColumns.detail')}
+                  </Table.Column>
                 </Table.Header>
                 <Table.Body>
                   {row.item.custody
                     .map((entry, index) => ({ entry, index }))
                     .reverse()
                     .map(({ entry, index }) => (
-                      <Table.Row key={`${entry.at}-${index}`} id={`${entry.at}-${index}`} data-custody-action={entry.action}>
-                        <Table.Cell>
-                          <span className="evi-mono evi-caption">{formatWibDateTime(entry.at)}</span>
+                      <Table.Row
+                        key={`${entry.at}-${index}`}
+                        id={`${entry.at}-${index}`}
+                        data-custody-action={entry.action}
+                        data-detail={entry.detail ? 'true' : 'false'}
+                      >
+                        <Table.Cell className="evi-custody-time-cell">
+                          {/* E2E-W1-7: two tokens that never break inside; a narrow column wraps between them. */}
+                          <span className="evi-mono evi-caption evi-custody-time" data-testid="evidence-custody-time">
+                            <span className="evi-custody-date">{formatWibDate(entry.at)}</span>{' '}
+                            <span className="evi-custody-clock">{formatWibClockSeconds(entry.at)}</span>
+                          </span>
                         </Table.Cell>
-                        <Table.Cell>
-                          <span className="evi-strong">{entry.action}</span>
+                        <Table.Cell className="evi-custody-action-cell">
+                          <span className="evi-strong evi-custody-action">{breakableCode(entry.action)}</span>
                         </Table.Cell>
-                        <Table.Cell>{nameOf(entry.actorId)}</Table.Cell>
-                        <Table.Cell>
+                        <Table.Cell className="evi-custody-actor">{nameOf(entry.actorId)}</Table.Cell>
+                        <Table.Cell className="evi-custody-detail" data-empty={entry.detail ? undefined : 'true'}>
                           <span className="evi-caption">{entry.detail ?? '—'}</span>
                         </Table.Cell>
                       </Table.Row>

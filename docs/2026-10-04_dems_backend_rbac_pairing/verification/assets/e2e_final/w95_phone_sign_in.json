@@ -1,0 +1,79 @@
+{
+  "operator": {
+    "username": "budi.santoso",
+    "id": "OPR-001",
+    "role": "INVESTIGATOR"
+  },
+  "deviceT0": "10-07 08:59:14.000",
+  "clock": {
+    "offsetMs": -49862,
+    "bracketMs": 17
+  },
+  "prefill": {
+    "file": "w95_phone_phone_login_prefilled.png",
+    "bytes": 1261418,
+    "at": "09:00:09.368 (epoch 1791338409.368)"
+  },
+  "prefillDelayMs": 3210,
+  "submitAt": "09:00:09.400 (epoch 1791338409.400)",
+  "signIn": {
+    "deviceEpoch": 1791338359.687,
+    "method": "POST",
+    "path": "/api/v1/auth/sign-in",
+    "status": "200",
+    "deviceTime": "08:59:19.687 (epoch 1791338359.687)"
+  },
+  "after": {
+    "keyguard": "false",
+    "focus": "mCurrentFocus=Window{9a4c508 u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity}",
+    "appFocused": true
+  },
+  "afterShot": {
+    "file": "w95_phone_phone_signed_in.png",
+    "bytes": 428396,
+    "at": "09:00:16.221 (epoch 1791338416.221)"
+  },
+  "appRequests": [
+    "08:59:19.687 (epoch 1791338359.687) POST /api/v1/auth/sign-in 200"
+  ],
+  "serverLines": [
+    {
+      "at": "09:00:09.539 (epoch 1791338409.539)",
+      "atMs": 1791338409539,
+      "method": "POST",
+      "route": "/api/v1/auth/sign-in",
+      "status": 200,
+      "principal": "device:DEV-0003",
+      "msg": "request completed",
+      "code": null,
+      "closedBy": null,
+      "kind": null
+    },
+    {
+      "at": "09:00:09.561 (epoch 1791338409.561)",
+      "atMs": 1791338409561,
+      "method": null,
+      "route": null,
+      "status": null,
+      "principal": "device:DEV-0003",
+      "msg": "socket closed",
+      "code": 1000,
+      "closedBy": "peer",
+      "kind": null
+    },
+    {
+      "at": "09:00:09.568 (epoch 1791338409.568)",
+      "atMs": 1791338409568,
+      "method": null,
+      "route": null,
+      "status": null,
+      "principal": "operator:OPR-001",
+      "msg": "socket opened",
+      "code": null,
+      "closedBy": null,
+      "kind": "OPERATOR"
+    }
+  ],
+  "credentialLinesDeviceJs": 0,
+  "passwordInDeviceJs": 0
+}

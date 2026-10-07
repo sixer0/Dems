@@ -188,10 +188,11 @@ describe('rule 2 (M4): server-native only', () => {
 });
 
 describe('rule 3 (M8): one clock, no timer of its own', () => {
-  it('no file reads the system time or starts a timer; the sweep runs on the identity module\'s sweeper', () => {
+  it('no file reads the system time or starts a timer; the sweep runs on the core\'s sweeper (W91-11)', () => {
     expect(occurrences(code, SYSTEM_TIME)).toEqual([]);
     expect(occurrences(code, TIMER)).toEqual([]);
     const index = textOf('index.ts');
+    expect(index).toContain("import { createSweeper, type Sweeper } from '../../core';");
     expect(index).toMatch(/addHook\('onListen', async \(\) => \{\s*sweeper\.start\(\);/);
     expect(index).toMatch(/addHook\('preClose', async \(\) => \{\s*sweeper\.stop\(\);/);
     expect(index.match(/sweeper\.start\(/g)).toHaveLength(1);

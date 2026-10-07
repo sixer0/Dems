@@ -1,0 +1,5 @@
+press sm-action-end: true at 10:41:17.973
+wait sm-end-dialog: true at 10:41:17.982
+slept 600
+testids sm-end (4): sm-end-dialog sm-end-reason sm-end-cancel sm-end-confirm
+shot B16_web_end_dialog.png at 10:41:18.792

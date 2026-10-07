@@ -1,0 +1,51 @@
+## 2026-10-06 01:08:12 WIB CLG (a): the folders' existing test files vs acaff20 (empty = unchanged)
+apps/mobile/src/features/network-time/network-time-model.test.ts
+apps/mobile/src/features/network-time/network-time-screen.test.tsx
+apps/mobile/src/features/network-time/testing/network-time-harness.tsx
+apps/mobile/src/features/network-time/testing/network-time-test-setup.ts
+apps/mobile/src/features/storage/storage-model.test.ts
+apps/mobile/src/features/storage/storage-screen.test.tsx
+$ git diff --stat acaff20 -- <those files>
+exit=0 (no output above = unchanged)
+$ git diff --stat acaff20 -- apps/mobile/src/features/network-time
+(no output = no tracked file of the folder changed)
+$ git status --porcelain -- apps/mobile/src/features/network-time
+?? apps/mobile/src/features/network-time/live-network-time.test.tsx
+$ git diff --stat acaff20 -- apps/mobile/src/features/storage
+ apps/mobile/src/features/storage/i18n.ts           |  8 +++
+ .../src/features/storage/manage-storage-sheet.tsx  | 47 ++++++++++++---
+ .../mobile/src/features/storage/storage-screen.tsx | 66 +++++++++++++++-------
+ 3 files changed, 94 insertions(+), 27 deletions(-)
+$ git status --porcelain -- apps/mobile/src/features/storage
+ M apps/mobile/src/features/storage/i18n.ts
+ M apps/mobile/src/features/storage/manage-storage-sheet.tsx
+ M apps/mobile/src/features/storage/storage-screen.tsx
+?? apps/mobile/src/features/storage/live-storage-sites.test.tsx
+?? apps/mobile/src/features/storage/storage-live-static.test.ts
+?? apps/mobile/src/features/storage/testing/
+## the folders' tests in the whole-suite run of 01:03:48
+PASS src/features/network-time/live-network-time.test.tsx
+PASS src/features/network-time/network-time-model.test.ts
+PASS src/features/network-time/network-time-screen.test.tsx
+PASS src/features/storage/live-storage-sites.test.tsx (12.589 s)
+PASS src/features/storage/storage-live-static.test.ts
+PASS src/features/storage/storage-model.test.ts
+PASS src/features/storage/storage-screen.test.tsx
+## the same, plain grep (i18n keys in quotes included)
+apps/mobile/src/features/storage/panel-boundary.tsx:82:        ? i18n.t('common.actions.retryIn', { seconds: cooldownS })
+apps/mobile/src/features/storage/panel-boundary.tsx:83:        : i18n.t('common.actions.retry');
+apps/mobile/src/features/network-time/i18n.ts:7: * fallback toasts; `common.actions.*`, `common.errors.*`), so web and mobile say the same thing.
+apps/mobile/src/features/network-time/card-boundary.tsx:82:        ? i18n.t('common.actions.retryIn', { seconds: cooldownS })
+apps/mobile/src/features/network-time/card-boundary.tsx:83:        : i18n.t('common.actions.retry');
+apps/mobile/src/features/network-time/lan-sheet.tsx:80:              <BottomSheet.Close accessibilityLabel={t('common.actions.close')} testID="network-time-lan-sheet-close" onPress={onClose} />
+## KI-07: SIM-GAP IDs / markers in apps/mobile/src (13 / 62 at acaff20)
+13 IDs / 65 markers
+## at acaff20
+13 IDs / 62 markers
+
+## CLG (c), corrected (01:10): the same scan with quoted text (i18n keys) removed first, comments kept
+(none)
+## KI-07 per folder (occurrences): storage and network-time, now and at acaff20
+apps/mobile/src/features/storage: now 10 ({'SIM-GAP-M85-1': 5, 'SIM-GAP-M85-2': 5}), acaff20 10 ({'SIM-GAP-M85-1': 5, 'SIM-GAP-M85-2': 5})
+apps/mobile/src/features/network-time: now 0 ({}), acaff20 0 ({})
+## the whole-tree difference (62 -> 65) is one new file of another row: apps/mobile/src/features/session-summary/summary-live-static.test.ts (W72, in flight), 3 occurrences on 2 lines

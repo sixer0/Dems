@@ -1,0 +1,90 @@
+# Final runs of the follow-up of plan row W28 (decisions D85 and D88), 2026-10-04, WIB. Summary lines of the runner, unchanged.
+
+== c-own-unit-final
+ Test Files  9 passed (9)
+      Tests  162 passed (162)
+   Start at  15:48:08
+   Duration  2.24s (import 66%, transform 23%, tests 11%)
+
+== c-own-db-final
+ Test Files  3 passed (3)
+      Tests  115 passed (115)
+   Start at  15:47:41
+   Duration  4.89s (tests 50%, transform 25%, import 24%)
+[test:db] forced drops that needed a retry: 0
+[test:db] teardown: dropped 2 database(s) in 80 ms; 0 remain with the run prefix dems_test_step_50b_tmdkfhkl_
+
+== c-storage-db-final
+ Test Files  1 passed (1)
+      Tests  18 passed (18)
+   Start at  15:47:46
+   Duration  3.89s (tests 52%, transform 30%, import 18%)
+[test:db] forced drops that needed a retry: 0
+[test:db] teardown: dropped 2 database(s) in 82 ms; 0 remain with the run prefix dems_test_step_50b_tmdkfmno_
+
+== c-final-unit
+ Test Files  102 passed (102)
+      Tests  2661 passed (2661)
+   Start at  15:42:45
+   Duration  21.68s (import 56%, tests 39%, transform 5%, worker 1%)
+
+== c-final-db
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 7 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  |db| src/core/__tests__/boot-checks.db.test.ts > the registration (decision D40) > B-2 to B-9 follow B-1 in the order of the contract; B-8 is among them; every one passes on a good database
+TypeError: passedAmong is not a function
+ FAIL  |db| src/core/__tests__/boot-checks.db.test.ts > a database that violates a check keeps the app not ready, and the log names the check > one audit trigger in the default mode: the boot stops at B-5
+TypeError: passedAmong is not a function
+ FAIL  |db| src/core/__tests__/boot-checks.db.test.ts > a database that violates a check keeps the app not ready, and the log names the check > a pool of the owner role: B-4
+TypeError: passedAmong is not a function
+ FAIL  |db| src/core/__tests__/boot-checks.db.test.ts > a database that violates a check keeps the app not ready, and the log names the check > a migrated database that was never seeded: B-6, and the line says how to seed it
+TypeError: passedAmong is not a function
+ FAIL  |db| src/core/__tests__/boot-checks.db.test.ts > a database that violates a check keeps the app not ready, and the log names the check > a chain head that does not agree with the table: B-7; B-8 and B-9 do not run
+TypeError: passedAmong is not a function
+ FAIL  |db| src/core/__tests__/boot-checks.db.test.ts > B-8 is reported, never blocking > a stored row whose digest is not the shared one: one error line with a rule and a sequence, and the boot goes on to B-9
+TypeError: passedAmong is not a function
+ FAIL  |db| src/core/__tests__/seeded.db.test.ts > a seeded database > passes the nine boot checks in order; B-8 verifies every seeded row
+TypeError: passedAmong is not a function
+ Test Files  2 failed | 73 passed (75)
+      Tests  7 failed | 1074 passed (1081)
+   Start at  15:43:13
+   Duration  75.09s (tests 83%, import 16%, transform 1%)
+[test:db] forced drops that needed a retry: 0
+[test:db] teardown: dropped 8 database(s) in 276 ms; 0 remain with the run prefix dems_test_step_50b_tmdk81nc_
+
+== c-core-db-1
+ Test Files  2 passed (2)
+      Tests  8 passed (8)
+   Start at  15:44:56
+   Duration  3.86s (tests 45%, transform 34%, import 21%)
+[test:db] forced drops that needed a retry: 0
+[test:db] teardown: dropped 2 database(s) in 109 ms; 0 remain with the run prefix dems_test_step_50b_tmdkawuz_
+
+== c-final-db-2
+ Test Files  80 passed (80)
+      Tests  1112 passed (1112)
+   Start at  15:45:34
+   Duration  107.13s (tests 83%, import 15%, transform 1%)
+[test:db] forced drops that needed a retry: 0
+[test:db] teardown: dropped 8 database(s) in 304 ms; 0 remain with the run prefix dems_test_step_50b_tmdkbyr1_
+
+== c-final-unit-2
+ Test Files  110 passed (110)
+      Tests  2776 passed (2776)
+   Start at  15:48:15
+   Duration  21.13s (import 60%, tests 35%, transform 4%, worker 1%)
+
+== proof4-unit
+ Test Files  9 passed (9)
+      Tests  162 passed (162)
+   Start at  15:49:25
+   Duration  2.79s (import 63%, transform 26%, tests 11%)
+
+== proof4-db
+ Test Files  3 passed (3)
+      Tests  115 passed (115)
+   Start at  15:49:28
+   Duration  4.16s (tests 54%, transform 24%, import 22%)
+[test:db] forced drops that needed a retry: 0
+[test:db] teardown: dropped 2 database(s) in 72 ms; 0 remain with the run prefix dems_test_step_50b_tmdkigv7_
+
+== typecheck 15:48:14: exit 0; lint 15:48:14: exit 0, no finding

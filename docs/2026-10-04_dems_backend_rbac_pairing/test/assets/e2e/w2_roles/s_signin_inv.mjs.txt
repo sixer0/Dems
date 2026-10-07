@@ -1,0 +1,8 @@
+export default async (c, lib) => {
+  const s = await lib.signIn(c, 'budi.santoso')
+  const nav = await lib.navFacts(c)
+  const cur = await c.pageFetch('GET', '/api/v1/session/current')
+  const net = await c.pageFetch('GET', '/api/v1/network/status')
+  const auth = await c.pageFetch('GET', '/api/v1/auth/session')
+  return { s, nav, current: cur.status + ' ' + JSON.stringify(cur.body).slice(0, 600), network: JSON.stringify(net.body).slice(0, 800), auth: auth.status + ' ' + JSON.stringify(auth.body).slice(0, 700) }
+}

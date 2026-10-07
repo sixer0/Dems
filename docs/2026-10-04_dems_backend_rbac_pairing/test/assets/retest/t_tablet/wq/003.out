@@ -1,0 +1,10 @@
+clicktext "Open Session Monitor": BUTTON at 12:46:54.991
+wait page-session-monitor: true at 12:46:55.132
+slept 2500
+eval: {"at":"12:46:57","state":"RECORDING","duration":"00:00:22"}
+shot J09_web_session_monitor.png at 12:46:57.795
+press sm-action-note: true at 12:46:57.818
+slept 1500
+testids sm-note (3): sm-note-drawer sm-note-input sm-note-submit
+eval: ["Supervisor note Note 0 / 2000 Cancel Save note"]
+shot J10_web_note_drawer_supervisor.png at 12:46:59.471

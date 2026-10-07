@@ -1,0 +1,47 @@
+2026-10-06T05:39:08.248Z browser pid 55089, HeadlessChrome/153.0.8010.12, CDP port 51590 (OS-assigned), owner verified (lsof + /json/version), profile rw_profile_bti96b
+2026-10-06T05:39:08.283Z viewport 1440x900
+2026-10-06T05:39:08.284Z == page: Login
+2026-10-06T05:39:11.353Z screenshot p2_01_login.png
+2026-10-06T05:39:11.353Z == page: Login
+2026-10-06T05:39:15.754Z sign-in andi.pratama: landed on /dashboard
+2026-10-06T05:39:15.754Z == page: Stack Check
+2026-10-06T05:39:22.410Z screenshot p2_02_stack_check.png
+2026-10-06T05:39:22.411Z == page: Dashboard
+2026-10-06T05:39:27.195Z screenshot p2_03_dashboard.png
+2026-10-06T05:39:27.195Z == page: Start New Session
+2026-10-06T05:39:30.395Z screenshot p2_04_start_new_session_step1.png
+2026-10-06T05:39:30.395Z == page: Session Monitor
+2026-10-06T05:39:33.643Z screenshot p2_05_session_monitor.png
+2026-10-06T05:39:33.643Z == page: Evidence list
+2026-10-06T05:39:36.868Z screenshot p2_06_evidence_list.png
+2026-10-06T05:39:36.868Z == page: Evidence detail
+2026-10-06T05:39:44.183Z screenshot p2_07a_evidence_detail_media.png
+2026-10-06T05:39:47.143Z screenshot p2_07b_evidence_detail_metadata.png (masked 5, code element false)
+2026-10-06T05:39:50.141Z screenshot p2_07c_evidence_detail_integrity.png
+2026-10-06T05:39:50.143Z == page: Evidence detail
+2026-10-06T05:39:55.229Z screenshot p2_07d_custody_detail_column_ev0014.png
+2026-10-06T05:39:55.229Z == page: Devices & Inputs
+2026-10-06T05:39:58.459Z screenshot p2_08a_devices.png
+2026-10-06T05:40:01.846Z screenshot p2_08b_devices_camera1_drawer.png
+2026-10-06T05:40:02.952Z == page: Storage
+2026-10-06T05:40:06.176Z screenshot p2_09_storage.png
+2026-10-06T05:40:06.177Z == page: Network & Time
+2026-10-06T05:40:09.395Z screenshot p2_10_network_time.png
+2026-10-06T05:40:09.395Z == page: Security & Audit
+2026-10-06T05:40:12.623Z screenshot p2_11_security_audit.png
+2026-10-06T05:40:12.623Z == page: System & Maintenance
+2026-10-06T05:40:15.844Z screenshot p2_12a_system.png
+2026-10-06T05:40:16.754Z screenshot p2_12b_system_demo_control_panel.png
+2026-10-06T05:40:16.754Z == page: Users & Roles
+2026-10-06T05:40:19.992Z screenshot p2_13_users_roles.png
+2026-10-06T05:40:19.992Z == page: Paired Devices
+2026-10-06T05:40:23.162Z screenshot p2_14_paired_devices.png
+2026-10-06T05:40:23.162Z == page: API Reference
+2026-10-06T05:40:28.872Z screenshot p2_15a_api_reference.png
+2026-10-06T05:40:38.297Z screenshot p2_15b_api_reference_try_it_health_response.png
+2026-10-06T05:40:39.683Z == page: Sign out
+2026-10-06T05:40:43.339Z screenshot p2_16_signed_out.png
+2026-10-06T05:40:43.339Z signed out via user menu: {"menu":[{"text":"Profile AKP Andi Pratama","disabled":true},{"text":"Role: Supervisor","disabled":true},{"text":"Lock console","disabled":false},{"text":"Sign out","disabled":false}],"clicked":true,"login":true,"state":"signed-out","alert":"You have been signed out.","shot":"p2_16_signed_out.png"}
+2026-10-06T05:40:43.339Z results: [{"page":"Login","ok":true,"ms":3070,"strip":["DATABASE Ready","ENGINE Ready","CORE LINK Online","MODE Live"],"shot":"p2_01_login.png"},{"page":"Sign in","ok":true,"ms":4401},{"page":"Stack Check","ok":true,"ms":6656,"chip":"Live","seq1":"0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 ","seq2":"0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 ","facts":{"href":"/stack-check","title":"DEMS Edge Client · Core Console","page":["page-stack-check","page-header"],"mode":"LIVE","h1":"STACK CHECK\nSTACK CHECK","toasts":[],"dialogs":[],"alerts":[],"scrollWidth":1440,"clientWidth":1440},"present":true,"shot":"p2_02_stack_check.png"},{"page":"Dashboard","ok":true,"ms":4785,"via":"sidebar","ring":"1 ISSUE","facts":{"href":"/dashboard","title":"DEMS Edge Client · Core Console","page":["page-dashboard"],"mode":"LIVE","h1":"Dashboard","toasts":[],"dialogs":[],"alerts":[],"scrollWidth":1440,"clientWidth":1440},"present":true,"shot":"p2_03_dashboard.png"},{"page":"Start New Session (step 1)","ok":true,"ms":3200,"clicked":true,"next":{"disabled":true,"text":"Next"},"facts":{"href":"/session/new?step=1","title":"DEMS Edge Client · Core Console","page":["page-session-new","page-header"],"mode":"LIVE","h1":"START NEW SESSION\nSTART NEW SESSION","toasts":[],"dialogs":[],"alerts":[],"scrollWidth":1440,"clientWidth":1440},"present":true,"shot":"p2_04_start_new_session_step1.png"},{"page":"Session Monitor","ok":true,"ms":3248,"via":"sidebar","banner":"SESSION SEALED Evidence EV-20261006-0014 sealed • Ready for the n
+2026-10-06T05:40:43.345Z consoleNetwork: {"Login":{"requests":442,"origins":{"http://127.0.0.1:5178":441,"blob:":1},"ws":["ws://127.0.0.1:5178/","ws://127.0.0.1:5178/ws","ws://127.0.0.1:5178/ws"],"errors":[],"warnings":[],"exceptions":[],"log":["error network: Failed to load resource: the server responded with a status of 401 (Unauthorized) (/api/v1/auth/session)"],"responses4xx":["401 GET /api/v1/auth/session"],"blocked":[]},"Stack Check":{"requests":257,"origins":{"http://127.0.0.1:5178":257},"ws":["ws://127.0.0.1:5178/","ws://127.0.0.1:5178/ws"],"errors":[],"warnings":[],"exceptions":[],"log":[],"responses4xx":[],"blocked":[]},"Dashboard":{"requests":171,"origins":{"http://127.0.0.1:5178":171},"ws":[],"errors":[],"warnings":[],"exceptions":[],"log":[],"responses4xx":[],"blocked":[]},"Start New Session":{"requests":16,"origins":{"http://127.0.0.1:5178":16},"ws":[],"errors":[],"warnings":[],"exceptions":[],"log":[],"responses4xx":[],"blocked":[]},"Session Monitor":{"requests":24,"origins":{"http://127.0.0.1:5178":24},"ws":[],"errors":[],"warnings":[],"exceptions":[],"log":[],"responses4xx":[],"blocked":[]},"Evidence list":{"requests":108,"origins":{"http://127.0.0.1:5178":107,"data:":1},"ws":[],"errors":[],"warnings":[],"exceptions":[],"log":[],"responses4xx":[],"blocked":[]},"Evidence detail":{"requests":963,"origins":{"http://127.0.0.1:5178":963},"ws":["ws://127.0.0.1:5178/","ws://127.0.0.1:5178/ws","ws://127.0.0.1:5178/","ws://127.0.0.1:5178/ws"],"errors":[],"warnings":[],"exceptions":[],"log":[],"responses4xx":
+2026-10-06T05:40:44.021Z browser closed (pid 55089), profile removed: true

@@ -1,0 +1,523 @@
+2026-10-04 13:01:09 WIB
+$ DEMS_TEST_STEP=51b npm run test:db -w @dems/core-server -- --reporter=verbose --silent=false src/db/reset
+
+> @dems/core-server@0.2.0 test:db
+> vitest run --project db --reporter=verbose --silent=false src/db/reset
+
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/apps/core-server
+
+[test:db] PostgreSQL 18.4 on 127.0.0.1:4432; helper role dems_owner, code under test dems_app; run prefix dems_test_step_51b_tmdcpyq2_
+[test:db] stale sweep: dropped 0; kept 0 of younger runs, 0 of live runs, 0 unrecognised; 0 failed
+[test:db] template dems_test_step_51b_tmdcpyq2_tpl_schema: built in 79 ms (create 29 ms, hook 49 ms)
+[test:db] template dems_test_step_51b_tmdcpyq2_tpl_seed: built in 124 ms (create 43 ms, hook 80 ms)
+ ✓ |db| src/db/reset/__tests__/reset-failures.db.test.ts > a forced failure at every checkpoint before the swap leaves the target untouched > covers every checkpoint of the routine up to the renames 1ms
+ ✓ |db| src/db/reset/__tests__/reset-failures.db.test.ts > a forced failure at every checkpoint before the swap leaves the target untouched > R-0 23ms
+ ✓ |db| src/db/reset/__tests__/reset-failures.db.test.ts > a forced failure at every checkpoint before the swap leaves the target untouched > R-1 19ms
+ ✓ |db| src/db/reset/__tests__/reset-failures.db.test.ts > a forced failure at every checkpoint before the swap leaves the target untouched > R-2 20ms
+ ✓ |db| src/db/reset/__tests__/reset-failures.db.test.ts > a forced failure at every checkpoint before the swap leaves the target untouched > R-3 21ms
+ ✓ |db| src/db/reset/__tests__/reset-failures.db.test.ts > a forced failure at every checkpoint before the swap leaves the target untouched > R-4 26ms
+ ✓ |db| src/db/reset/__tests__/reset-failures.db.test.ts > a forced failure at every checkpoint before the swap leaves the target untouched > R-5a 258ms
+stdout | src/db/reset/__tests__/reset.db.test.ts > T-RS-1: two resets of a used database > the first reset keeps the eight kept tables byte-equal, closes the ACTIVE code, rebuilds the rest, and records the discarded chain
+[w29] T-RS-1 first reset: dems_test_step_51b_tmdcpyq2_f02_rs epoch 0 -> 1; kept {"registry_counters":2,"console_settings":1,"pairing_codes":5,"paired_devices":2,"device_credentials":2,"auth_sessions":3,"biometric_tokens":3,"audit_chain_history":0}; cancelled codes 1; lineage 0 carried + 1 appended; audit head seq 83; 318 ms (R-0 3, R-1 1, R-2 0, R-3 6, R-4 29, R-5 123, R-6 9, R-7 1, R-8 147, R-9 0)
+
+stdout | src/db/reset/__tests__/reset.db.test.ts > T-RS-1: two resets of a used database > the first reset keeps the eight kept tables byte-equal, closes the ACTIVE code, rebuilds the rest, and records the discarded chain
+[w29] kept tables, rows and checksum before = after the first reset: registry_counters 2 3f418618ba1f74b3d2ff2c2c82caa027; console_settings 1 a81bddfd8671e78ed26275bde826199e; paired_devices 2 b024afc7f7453ed10611a3a8f2711eac; device_credentials 2 acf9443180f330a912dddcf52c9f04e3; auth_sessions 3 fa36edf06fbb05dd4584d4e840870b41; biometric_tokens 3 180efaca586b8967e0170cbf3a66d182
+
+ ✓ |db| src/db/reset/__tests__/reset.db.test.ts > T-RS-1: two resets of a used database > the first reset keeps the eight kept tables byte-equal, closes the ACTIVE code, rebuilds the rest, and records the discarded chain 542ms
+ ✓ |db| src/db/reset/__tests__/reset-failures.db.test.ts > a forced failure at every checkpoint before the swap leaves the target untouched > R-5b 206ms
+stdout | src/db/reset/__tests__/reset.db.test.ts > T-RS-1: two resets of a used database > the second reset, with another scenario: two lineage rows, the first byte-equal; every kept table byte-equal; the epoch grows by one again
+[w29] T-RS-1 second reset: dems_test_step_51b_tmdcpyq2_f02_rs epoch 1 -> 2; kept {"registry_counters":2,"console_settings":1,"pairing_codes":5,"paired_devices":2,"device_credentials":2,"auth_sessions":3,"biometric_tokens":3,"audit_chain_history":1}; cancelled codes 0; lineage 1 carried + 1 appended; audit head seq 219; 246 ms (R-0 3, R-1 1, R-2 0, R-3 6, R-4 38, R-5 151, R-6 6, R-7 1, R-8 40, R-9 0)
+
+stdout | src/db/reset/__tests__/reset.db.test.ts > T-RS-1: two resets of a used database > the second reset, with another scenario: two lineage rows, the first byte-equal; every kept table byte-equal; the epoch grows by one again
+[w29] lineage row 1 before the second reset: (1,0,145fb7f6275881d0689b70ddad0fbcd5f9f88c933e807b2329911544d059cc09,84,1,84,1790827200000,OPR-002,RESET,idle)
+[w29] lineage row 1 after the second reset:  (1,0,145fb7f6275881d0689b70ddad0fbcd5f9f88c933e807b2329911544d059cc09,84,1,84,1790827200000,OPR-002,RESET,idle)
+[w29] lineage row 2:                         (2,1,2a44b9004c973b663a1649a29e267c251af6320a5c6444171a63c97bed8c65c9,83,1,83,1790830800000,,SCENARIO_LOAD,recording)
+
+ ✓ |db| src/db/reset/__tests__/reset-failures.db.test.ts > a forced failure at every checkpoint before the swap leaves the target untouched > R-5c 255ms
+ ✓ |db| src/db/reset/__tests__/reset.db.test.ts > T-RS-1: two resets of a used database > the second reset, with another scenario: two lineage rows, the first byte-equal; every kept table byte-equal; the epoch grows by one again 449ms
+ ✓ |db| src/db/reset/__tests__/reset-failures.db.test.ts > a forced failure at every checkpoint before the swap leaves the target untouched > R-5d 200ms
+ ✓ |db| src/db/reset/__tests__/reset.db.test.ts > T-RS-3: the runtime role cannot do any step of a reset > CREATE DATABASE, DROP DATABASE and ALTER DATABASE ... RENAME as dems_app each fail with 42501 121ms
+ ✓ |db| src/db/reset/__tests__/reset-failures.db.test.ts > a forced failure at every checkpoint before the swap leaves the target untouched > R-5e 231ms
+stdout | src/db/reset/__tests__/reset.db.test.ts > T-RS-5: the sessions of the routine > are dems_owner only, at most two connections at a time, and none is left after R-9
+[w29] T-RS-5: dems_test_step_51b_tmdcpyq2_f02_rs epoch 2 -> 3; kept {"registry_counters":2,"console_settings":1,"pairing_codes":5,"paired_devices":2,"device_credentials":2,"auth_sessions":3,"biometric_tokens":3,"audit_chain_history":2}; cancelled codes 0; lineage 2 carried + 1 appended; audit head seq 83; 236 ms (R-0 3, R-1 1, R-2 1, R-3 7, R-4 32, R-5 120, R-6 8, R-7 2, R-8 62, R-9 1)
+[w29] T-RS-5 connections of the routine per checkpoint (driver): R-0=[] R-1=[postgres] R-2=[postgres] R-3=[postgres] R-4=[postgres] R-5a=[postgres] R-5b=[postgres, <t>_next] R-5c=[postgres, <t>_next] R-5d=[postgres, <t>_next] R-5e=[postgres, <t>_next] R-5f=[postgres, <t>_next] R-5:commit=[postgres, <t>_next] R-6=[postgres, <t>_next] R-7=[postgres] R-7:rename=[postgres] R-8=[postgres] R-9=[postgres]
+[w29] T-RS-5 sessions of the routine per checkpoint (server): R-0=[] R-1=[dems_owner@postgres] R-2=[dems_owner@postgres] R-3=[dems_owner@postgres] R-4=[dems_owner@postgres] R-5a=[dems_owner@postgres] R-5b=[dems_owner@<t>_next, dems_owner@postgres] R-5c=[dems_owner@<t>_next, dems_owner@postgres] R-5d=[dems_owner@<t>_next, dems_owner@postgres] R-5e=[dems_owner@<t>_next, dems_owner@postgres] R-5f=[dems_owner@<t>_next, dems_owner@postgres] R-5:commit=[dems_owner@<t>_next, dems_owner@postgres] R-6=[dems_owner@<t>_next, dems_owner@postgres] R-7=[dems_owner@postgres] R-7:rename=[dems_owner@postgres] R-8=[dems_owner@postgres] R-9=[dems_owner@postgres]
+
+ ✓ |db| src/db/reset/__tests__/reset.db.test.ts > T-RS-5: the sessions of the routine > are dems_owner only, at most two connections at a time, and none is left after R-9 240ms
+ ✓ |db| src/db/reset/__tests__/reset-failures.db.test.ts > a forced failure at every checkpoint before the swap leaves the target untouched > R-5f 225ms
+stdout | src/db/reset/__tests__/reset.db.test.ts > T-RS-6: nothing discarded, no lineage row > a database that was migrated but never seeded is built with no lineage row
+[w29] T-RS-6 never seeded: dems_test_step_51b_tmdcpyq2_f03_rs6 epoch null -> 0; kept {"registry_counters":0,"console_settings":0,"pairing_codes":0,"paired_devices":0,"device_credentials":0,"auth_sessions":0,"biometric_tokens":0,"audit_chain_history":0}; cancelled codes 0; lineage 0 carried + 0 appended; audit head seq 83; 254 ms (R-0 3, R-1 1, R-2 0, R-3 6, R-4 34, R-5 110, R-6 8, R-7 1, R-8 92, R-9 0)
+
+ ✓ |db| src/db/reset/__tests__/reset-failures.db.test.ts > a forced failure at every checkpoint before the swap leaves the target untouched > R-5:commit 216ms
+ ✓ |db| src/db/reset/__tests__/reset.db.test.ts > T-RS-6: nothing discarded, no lineage row > a database that was migrated but never seeded is built with no lineage row 329ms
+stdout | src/db/reset/__tests__/reset.db.test.ts > T-RS-6: nothing discarded, no lineage row > a database that does not exist yet is created, migrated and seeded: a first build, exactly the seed
+[w29] T-RS-6 first build: dems_test_step_51b_tmdcpyq2_f02_rs_fb epoch null -> 0; kept {"registry_counters":0,"console_settings":0,"pairing_codes":0,"paired_devices":0,"device_credentials":0,"auth_sessions":0,"biometric_tokens":0,"audit_chain_history":0}; cancelled codes 0; lineage 0 carried + 0 appended; audit head seq 82; 179 ms (R-0 3, R-1 1, R-2 0, R-3 0, R-4 50, R-5 116, R-6 8, R-7 1, R-8 0, R-9 0)
+
+ ✓ |db| src/db/reset/__tests__/reset-failures.db.test.ts > a forced failure at every checkpoint before the swap leaves the target untouched > R-6 314ms
+ ✓ |db| src/db/reset/__tests__/reset.db.test.ts > T-RS-6: nothing discarded, no lineage row > a database that does not exist yet is created, migrated and seeded: a first build, exactly the seed 361ms
+ ✓ |db| src/db/reset/__tests__/reset-failures.db.test.ts > a forced failure at every checkpoint before the swap leaves the target untouched > R-7 197ms
+ ✓ |db| src/db/reset/__tests__/reset-failures.db.test.ts > a forced failure at every checkpoint before the swap leaves the target untouched > R-7:rename 195ms
+stdout | src/db/reset/__tests__/cli.db.test.ts > db:reset --database <a name that does not exist yet>: how a lane database comes into being > exits 0, creates the database as dems_owner, and prints exactly the seed counts of contract §9.4
+[w29] db:reset --database dems_test_step_51b_tmdcpyq2_f02_rc_fb: exit 0
+  db:reset: dems_test_step_51b_tmdcpyq2_f02_rc_fb on PostgreSQL 18.4 as dems_owner
+  db:reset: dataset as of 2026-10-04T04:00:00.000Z (1791086400000); scenario idle; reason RESET; actor none (command line)
+  db:reset: first build: dems_test_step_51b_tmdcpyq2_f02_rc_fb did not exist. Nothing was carried over and no chain was discarded; epoch 0.
+  db:reset: done in 165 ms (R-0 3, R-1 1, R-2 0, R-3 0, R-4 31, R-5 121, R-6 8, R-7 1, R-8 0, R-9 0); the database now holds 301 row(s) in 21 of 30 table(s)
+  row counts       30 table(s)
+    active_session           0
+    alerts                   0
+    audit_chain_head         1
+    audit_chain_history      0
+    audit_log                82
+    auth_sessions            0
+    biometric_tokens         0
+    console_settings         1
+    core_device              1
+    core_state               1
+    device_credentials       0
+    engine_counters          5
+    events                   59
+    evidence_custody         28
+    evidence_items           13
+    evidence_tracks          52
+    exports                  1
+    hardware_snapshot        1
+    health_snapshots         0
+    operator_credentials     3
+    operators                3
+    paired_devices           0
+    pairing_codes            0
+    permissions              12
+    registry_counters        2
+    role_permissions         18
+    roles                    3
+    schema_meta              1
+    session_history          13
+    storage_policy           1
+  audit head       seq 82; hash 7430f1b2b47c2c1d...
+  lineage          0 row(s); 0 carried over, 0 appended
+  db:reset: OK: dems_test_step_51b_tmdcpyq2_f02_rc_fb is reset. State: npm run db:status -w @dems/core-server -- --database dems_test_step_51b_tmdcpyq2_f02_rc_fb
+
+ ✓ |db| src/db/reset/__tests__/cli.db.test.ts > db:reset --database <a name that does not exist yet>: how a lane database comes into being > exits 0, creates the database as dems_owner, and prints exactly the seed counts of contract §9.4 182ms
+ ✓ |db| src/db/reset/__tests__/reset-failures.db.test.ts > a forced failure at every checkpoint before the swap leaves the target untouched > after fifteen failed resets the database is still the one it was, and one reset then succeeds 393ms
+stdout | src/db/reset/__tests__/cli.db.test.ts > db:reset --database <a name that does not exist yet>: how a lane database comes into being > a second run of the same command resets it: one lineage row, the SCENARIO_LOADED row, epoch 0 -> 1
+[w29] db:reset --database dems_test_step_51b_tmdcpyq2_f02_rc_fb --scenario recording: exit 0
+  db:reset: audit chain of dems_test_step_51b_tmdcpyq2_f02_rc_fb discarded: 82 row(s), head 7430f1b2b47c2c1d887f0c2a2f9f399772babfe591b06754444171cc492e67d3.
+  db:reset: dems_test_step_51b_tmdcpyq2_f02_rc_fb on PostgreSQL 18.4 as dems_owner
+  db:reset: dataset as of 2026-10-04T04:01:00.000Z (1791086460000); scenario recording; reason RESET; actor none (command line)
+  db:reset: epoch 0 -> 1
+  db:reset: kept tables carried over unchanged (rows): registry_counters 2, console_settings 1, pairing_codes 0, paired_devices 0, device_credentials 0, auth_sessions 0, biometric_tokens 0, audit_chain_history 0
+  db:reset: pairing codes that were ACTIVE, now CANCELLED: 0; operators with a last sign-in from a kept session: 0
+  db:reset: discarded chain: reset_no 1, epoch 0, rows 82, first_seq 1, last_seq 82, head 7430f1b2b47c2c1d887f0c2a2f9f399772babfe591b06754444171cc492e67d3
+  db:reset: SCENARIO_LOADED is audit row 219 of the new chain
+  db:reset: done in 317 ms (R-0 3, R-1 1, R-2 0, R-3 6, R-4 28, R-5 140, R-6 8, R-7 1, R-8 131, R-9 0); the database now holds 462 row(s) in 23 of 30 table(s)
+  row counts       30 table(s)
+    active_session           1
+    alerts                   0
+    audit_chain_head         1
+    audit_chain_history      1
+    audit_log                219
+    auth_sessions            0
+    biometric_tokens         0
+    console_settings         1
+    core_device              1
+    core_state               1
+    device_credentials       0
+    engine_counters          5
+    events                   81
+    evidence_custody         28
+    evidence_items           13
+    evidence_tracks          52
+    exports                  1
+    hardware_snapshot        1
+    health_snapshots         0
+    operator_credentials     3
+    operators                3
+    paired_devices           0
+    pairing_codes            0
+    permissions              12
+    registry_counters        2
+    role_permissions         18
+    roles                    3
+    schema_meta              1
+    session_history          13
+    storage_policy           1
+  audit head       seq 219; hash e3ada0f9d3a41f31...
+  lineage          1 row(s); 0 carried over, 1 appended
+  db:reset: OK: dems_test_step_51b_tmdcpyq2_f02_rc_fb is reset. State: npm run db:status -w @dems/core-server -- --database dems_test_step_51b_tmdcpyq2_f02_rc_fb
+
+ ✓ |db| src/db/reset/__tests__/cli.db.test.ts > db:reset --database <a name that does not exist yet>: how a lane database comes into being > a second run of the same command resets it: one lineage row, the SCENARIO_LOADED row, epoch 0 -> 1 319ms
+ ✓ |db| src/db/reset/__tests__/reset-failures.db.test.ts > after the swap a failure does not undo the reset > R-8 forced: the reset succeeded, the previous database is left, and the next reset removes it at R-2 441ms
+stdout | src/db/reset/__tests__/cli.db.test.ts > db:reset on a used database > exits 1 and changes nothing while the database is in use; then exits 0 and keeps the kept tables
+[w29] db:reset --database dems_test_step_51b_tmdcpyq2_f02_rc: exit 1
+  db:reset: refused: dems_test_step_51b_tmdcpyq2_f02_rc is in use (1 of role dems_owner on dems_test_step_51b_tmdcpyq2_f02_rc). The reset ends nobody's session: stop the server of this database, or close its pool, and run again. Nothing was changed.
+  db:reset: NOT RESET (RESET_TARGET_IN_USE at R-1); the database is unchanged.
+
+ ✓ |db| src/db/reset/__tests__/reset-failures.db.test.ts > after the swap a failure does not undo the reset > R-9 forced: the report is returned and nothing is left open 262ms
+stdout | src/db/reset/__tests__/cli.db.test.ts > db:reset on a used database > exits 1 and changes nothing while the database is in use; then exits 0 and keeps the kept tables
+[w29] db:reset --database dems_test_step_51b_tmdcpyq2_f02_rc: exit 0
+  db:reset: audit chain of dems_test_step_51b_tmdcpyq2_f02_rc discarded: 82 row(s), head 90d3ec6022f945ef50e78aa01db2c3e9f50e4f04ded7adef292f3013295a180c.
+  db:reset: dems_test_step_51b_tmdcpyq2_f02_rc on PostgreSQL 18.4 as dems_owner
+  db:reset: dataset as of 2026-10-04T04:00:00.000Z (1791086400000); scenario idle; reason RESET; actor none (command line)
+  db:reset: epoch 0 -> 1
+  db:reset: kept tables carried over unchanged (rows): registry_counters 2, console_settings 1, pairing_codes 5, paired_devices 2, device_credentials 2, auth_sessions 3, biometric_tokens 3, audit_chain_history 0
+  db:reset: pairing codes that were ACTIVE, now CANCELLED: 1; operators with a last sign-in from a kept session: 2
+  db:reset: discarded chain: reset_no 1, epoch 0, rows 82, first_seq 1, last_seq 82, head 90d3ec6022f945ef50e78aa01db2c3e9f50e4f04ded7adef292f3013295a180c
+  db:reset: SCENARIO_LOADED is audit row 83 of the new chain
+  db:reset: done in 224 ms (R-0 3, R-1 1, R-2 0, R-3 6, R-4 32, R-5 115, R-6 8, R-7 1, R-8 59, R-9 0); the database now holds 319 row(s) in 27 of 30 table(s)
+  row counts       30 table(s)
+    active_session           0
+    alerts                   0
+    audit_chain_head         1
+    audit_chain_history      1
+    audit_log                83
+    auth_sessions            3
+    biometric_tokens         3
+    console_settings         1
+    core_device              1
+    core_state               1
+    device_credentials       2
+    engine_counters          5
+    events                   60
+    evidence_custody         28
+    evidence_items           13
+    evidence_tracks          52
+    exports                  1
+    hardware_snapshot        1
+    health_snapshots         0
+    operator_credentials     3
+    operators                3
+    paired_devices           2
+    pairing_codes            5
+    permissions              12
+    registry_counters        2
+    role_permissions         18
+    roles                    3
+    schema_meta              1
+    session_history          13
+    storage_policy           1
+  audit head       seq 83; hash 65c6d11e700cb9d4...
+  lineage          1 row(s); 0 carried over, 1 appended
+  db:reset: OK: dems_test_step_51b_tmdcpyq2_f02_rc is reset. State: npm run db:status -w @dems/core-server -- --database dems_test_step_51b_tmdcpyq2_f02_rc
+
+ ✓ |db| src/db/reset/__tests__/cli.db.test.ts > db:reset on a used database > exits 1 and changes nothing while the database is in use; then exits 0 and keeps the kept tables 562ms
+stdout | src/db/reset/__tests__/cli.db.test.ts > db:reset on a used database > a name of another run, a template and a project name with a suffix are refused with exit 2
+[w29] db:reset --database dems_test_step_51b_tmdcpyq2_tpl_seed: exit 2
+  db:reset: refused before any connection: the database name is not a project database. A reset takes one of dems_demo, dems_lane_1, dems_lane_2, dems_lane_3.
+
+stdout | src/db/reset/__tests__/cli.db.test.ts > db:reset on a used database > a name of another run, a template and a project name with a suffix are refused with exit 2
+[w29] db:reset --database dems_test_step_51_zzzz9999_f01_rc: exit 2
+  db:reset: refused before any connection: the database name is not a project database. A reset takes one of dems_demo, dems_lane_1, dems_lane_2, dems_lane_3.
+
+stdout | src/db/reset/__tests__/cli.db.test.ts > db:reset on a used database > a name of another run, a template and a project name with a suffix are refused with exit 2
+[w29] db:reset --database dems_test_step_51b_tmdcpyq2_f02_rc_next: exit 2
+  db:reset: refused before any connection: a staging or previous copy of a database is not a target; name the database itself. A reset takes one of dems_demo, dems_lane_1, dems_lane_2, dems_lane_3.
+
+ ✓ |db| src/db/reset/__tests__/cli.db.test.ts > db:reset on a used database > a name of another run, a template and a project name with a suffix are refused with exit 2 1ms
+ ✓ |db| src/db/reset/__tests__/cli.db.test.ts > nothing the command printed is a credential > neither role password, no demo password, no pairing code, and no hash of a kept row occurs in any line 1ms
+ ✓ |db| src/db/reset/__tests__/guard.db.test.ts > T-RS-4: the role check of R-0, with a stand-in for the connection > the bootstrap superuser: RESET_ROLE_PRIVILEGED before R-1; no statement other than the check was sent 2ms
+ ✓ |db| src/db/reset/__tests__/guard.db.test.ts > T-RS-4: the role check of R-0, with a stand-in for the connection > the owner role, were it ever made a superuser: RESET_ROLE_PRIVILEGED before R-1; no statement other than the check was sent 0ms
+ ✓ |db| src/db/reset/__tests__/guard.db.test.ts > T-RS-4: the role check of R-0, with a stand-in for the connection > the runtime role: RESET_ROLE_PRIVILEGED before R-1; no statement other than the check was sent 0ms
+ ✓ |db| src/db/reset/__tests__/guard.db.test.ts > T-RS-4: the role check of R-0, with a stand-in for the connection > any other role: RESET_ROLE_PRIVILEGED before R-1; no statement other than the check was sent 0ms
+ ✓ |db| src/db/reset/__tests__/guard.db.test.ts > T-RS-4: the role check of R-0, with a stand-in for the connection > no row at all: RESET_ROLE_PRIVILEGED before R-1; no statement other than the check was sent 0ms
+ ✓ |db| src/db/reset/__tests__/guard.db.test.ts > T-RS-4: the role check of R-0, with a stand-in for the connection > two rows: RESET_ROLE_PRIVILEGED before R-1; no statement other than the check was sent 0ms
+ ✓ |db| src/db/reset/__tests__/guard.db.test.ts > T-RS-4: the role check of R-0, with a stand-in for the connection > a superuser flag that is not a boolean: RESET_ROLE_PRIVILEGED before R-1; no statement other than the check was sent 0ms
+ ✓ |db| src/db/reset/__tests__/guard.db.test.ts > AC-B-72: what the real connections answer to the same question > the statement of the check is the one the stand-in was asked 0ms
+ ✓ |db| src/db/reset/__tests__/guard.db.test.ts > AC-B-72: what the real connections answer to the same question > the owner connection is dems_owner and not a superuser: the answer the routine accepts 5ms
+ ✓ |db| src/db/reset/__tests__/guard.db.test.ts > AC-B-72: what the real connections answer to the same question > the runtime connection is dems_app: an answer the routine refuses 3ms
+ ✓ |db| src/db/reset/__tests__/reset-failures.db.test.ts > after the swap a failure does not undo the reset > R-8 real: a session on the previous database makes the drop fail; the reset still succeeded 5454ms
+ ✓ |db| src/db/reset/__tests__/reset-failures.db.test.ts > R-0: refusals before anything is touched > the advisory lock is held by another session: RESET_ALREADY_RUNNING, and nothing was touched 26ms
+ ✓ |db| src/db/reset/__tests__/reset-failures.db.test.ts > R-0: refusals before anything is touched > two resets of one database at the same time: the second is refused, the first completes 234ms
+ ✓ |db| src/db/reset/__tests__/reset-failures.db.test.ts > R-0: refusals before anything is touched > the owner connection file is missing: RESET_OWNER_CREDENTIALS, and the message names the file and the provisioning command 16ms
+ ✓ |db| src/db/reset/__tests__/reset-failures.db.test.ts > R-1: a database in use is not reset, and nobody is disconnected > a session of dems_app on the target: RESET_TARGET_IN_USE 562ms
+ ✓ |db| src/db/reset/__tests__/reset-failures.db.test.ts > R-1: a database in use is not reset, and nobody is disconnected > a session of dems_owner on the target: RESET_TARGET_IN_USE 566ms
+ ✓ |db| src/db/reset/__tests__/reset-failures.db.test.ts > R-1: a database in use is not reset, and nobody is disconnected > a quiesce hook that throws: RESET_QUIESCE_FAILED, and nothing was read or built 32ms
+ ✓ |db| src/db/reset/__tests__/reset-failures.db.test.ts > R-1: a database in use is not reset, and nobody is disconnected > the quiesce hook runs after R-0 passed and before anything is read, and the clock is read once, after it 215ms
+ ✓ |db| src/db/reset/__tests__/reset-failures.db.test.ts > R-2: leftovers of an earlier run > a staging database that an earlier run left is dropped, and the reset goes on 255ms
+ ✓ |db| src/db/reset/__tests__/reset-failures.db.test.ts > R-2: leftovers of an earlier run > the target is missing and its previous database exists: it gets its name back, with its data, and the routine stops with RESET_RECOVERED_PREVIOUS 242ms
+ ✓ |db| src/db/reset/__tests__/reset-failures.db.test.ts > R-3: the target is not at the schema version of this code > a database that was created and never migrated: RESET_SCHEMA_MISMATCH, and it stays as it is 120ms
+ ✓ |db| src/db/reset/__tests__/reset-failures.db.test.ts > R-3: the target is not at the schema version of this code > a database at another schema version: RESET_SCHEMA_MISMATCH before anything is created 93ms
+ ✓ |db| src/db/reset/__tests__/reset-failures.db.test.ts > R-4: the staging database cannot be created > a database of that name appears after R-2: CREATE fails with 42P04, the target is untouched 72ms
+ ✓ |db| src/db/reset/__tests__/reset-failures.db.test.ts > R-5: the build fails; the live database was not touched > T-RS-2: a carried session names an operator the seed does not create (23503) 299ms
+ ✓ |db| src/db/reset/__tests__/reset-failures.db.test.ts > R-5: the build fails; the live database was not touched > the migrations cannot be applied (R-5a): the staging database is dropped again 74ms
+ ✓ |db| src/db/reset/__tests__/reset-failures.db.test.ts > R-5: the build fails; the live database was not touched > a clock that is behind an ACTIVE code (R-5d): the close violates a CHECK (23514), nothing is swapped 301ms
+ ✓ |db| src/db/reset/__tests__/reset-failures.db.test.ts > R-5: the build fails; the live database was not touched > an actor the seed does not create (R-5d, R-5e): a foreign key refuses it (23503) 187ms
+ ✓ |db| src/db/reset/__tests__/reset-failures.db.test.ts > R-6: a staging database that is not what R-3 read is not swapped in > a carried row was changed: RESET_VERIFY_FAILED 306ms
+ ✓ |db| src/db/reset/__tests__/reset-failures.db.test.ts > R-6: a staging database that is not what R-3 read is not swapped in > a carried row is missing: RESET_VERIFY_FAILED 296ms
+ ✓ |db| src/db/reset/__tests__/reset-failures.db.test.ts > R-6: a staging database that is not what R-3 read is not swapped in > a carried counter was changed: RESET_VERIFY_FAILED 307ms
+ ✓ |db| src/db/reset/__tests__/reset-failures.db.test.ts > R-6: a staging database that is not what R-3 read is not swapped in > the code that was ACTIVE is ACTIVE again: RESET_VERIFY_FAILED 296ms
+ ✓ |db| src/db/reset/__tests__/reset-failures.db.test.ts > R-6: a staging database that is not what R-3 read is not swapped in > the runtime role may update the audit table: RESET_VERIFY_FAILED 297ms
+ ✓ |db| src/db/reset/__tests__/reset-failures.db.test.ts > R-6: a staging database that is not what R-3 read is not swapped in > a guard trigger is no longer ENABLE ALWAYS: RESET_VERIFY_FAILED 297ms
+ ✓ |db| src/db/reset/__tests__/reset-failures.db.test.ts > R-6: a staging database that is not what R-3 read is not swapped in > the epoch is not the continued one: RESET_VERIFY_FAILED 298ms
+ ✓ |db| src/db/reset/__tests__/reset-failures.db.test.ts > R-7: a session that appears during the reset stops the swap > found by the check before the renames: RESET_TARGET_IN_USE at R-7 728ms
+ ✓ |db| src/db/reset/__tests__/reset-failures.db.test.ts > R-7: a session that appears during the reset stops the swap > found by PostgreSQL itself at the rename: 55006, the transaction rolls back, RESET_SWAP_FAILED 5307ms
+stdout | src/db/reset/__tests__/reset-failures.db.test.ts > what the routine sends, statement by statement > only the target and its two copies are created, renamed or dropped; no append-only table is rewritten; three databases are connected to
+[w29] statements of one reset, by database: postgres 13, <t> 14, <t>_next 298
+
+stdout | src/db/reset/__tests__/reset-failures.db.test.ts > what the routine sends, statement by statement > only the target and its two copies are created, renamed or dropped; no append-only table is rewritten; three databases are connected to
+[w29] trace of one reset (326 statements):
+  postgres  SELECT rolname::text AS rolname, rolsuper FROM pg_roles WHERE rolname = current_user
+  postgres  SELECT pg_try_advisory_lock($1::int, $2::int) AS locked
+  postgres  SELECT current_setting('server_version') AS version
+  postgres  SELECT datname::text AS database, usename::text AS role, count(*)::int AS sessions FROM pg_stat_
+  postgres  SELECT datname::text AS name, pg_get_userbyid(datdba)::text AS owner, datistemplate AS template 
+  <t>       SELECT rolname::text AS rolname, rolsuper FROM pg_roles WHERE rolname = current_user
+  <t>       BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY
+  <t>       SELECT to_regclass('public.schema_meta') IS NOT NULL AS present
+  <t>       SELECT schema_version, contract_revision FROM public.schema_meta
+  <t>       SELECT to_jsonb(k)::text AS image FROM public.registry_counters AS k ORDER BY k."name"
+  <t>       SELECT to_jsonb(k)::text AS image FROM public.console_settings AS k ORDER BY k."singleton"
+  <t>       SELECT k.id::text AS id, k.state::text AS state, to_jsonb(k)::text AS image, (to_jsonb(k) - 'sta
+  <t>       SELECT to_jsonb(k)::text AS image FROM public.paired_devices AS k ORDER BY k."id"
+  <t>       SELECT to_jsonb(k)::text AS image FROM public.device_credentials AS k ORDER BY k."device_id"
+  <t>       SELECT to_jsonb(k)::text AS image FROM public.auth_sessions AS k ORDER BY k."id"
+  <t>       SELECT to_jsonb(k)::text AS image FROM public.biometric_tokens AS k ORDER BY k."id"
+  <t>       SELECT to_jsonb(k)::text AS image FROM public.audit_chain_history AS k ORDER BY k."reset_no"
+  <t>       SELECT (SELECT epoch::text FROM public.core_state) AS epoch, h.seq::text AS head_seq, h.hash AS 
+  <t>       COMMIT
+  postgres  CREATE DATABASE "dems_test_step_51b_tmdcpyq2_f02_rfwire_next" OWNER dems_owner TEMPLATE template
+  <t>_next  SELECT rolname::text AS rolname, rolsuper FROM pg_roles WHERE rolname = current_user
+  <t>_next  SELECT to_regclass('public.schema_meta') IS NOT NULL AS present
+  <t>_next  SELECT to_regclass($1) IS NOT NULL AS present
+  <t>_next  CREATE SCHEMA IF NOT EXISTS "drizzle"
+  <t>_next   CREATE TABLE IF NOT EXISTS "drizzle"."__drizzle_migrations" ( id SERIAL PRIMARY KEY, hash text 
+  <t>_next  select id, hash, created_at from "drizzle"."__drizzle_migrations" order by created_at desc limit
+  <t>_next  begin
+  <t>_next  -- Custom SQL migration file, put your code below! -- -- 0000_prelude (hand-written; database co
+  <t>_next  insert into "drizzle"."__drizzle_migrations" ("hash", "created_at") values($1, $2)
+  <t>_next  CREATE TABLE "operator_credentials" ( "operator_id" text PRIMARY KEY NOT NULL, "algorithm" text 
+  <t>_next   CREATE TABLE "operators" ( "id" text PRIMARY KEY NOT NULL, "username" text NOT NULL, "rank" tex
+  <t>_next   CREATE TABLE "permissions" ( "id" text PRIMARY KEY NOT NULL, "sort_order" smallint NOT NULL, CO
+  <t>_next   CREATE TABLE "role_permissions" ( "role_id" text NOT NULL, "permission_id" text NOT NULL, CONST
+  <t>_next   CREATE TABLE "roles" ( "id" text PRIMARY KEY NOT NULL, "sort_order" smallint NOT NULL, CONSTRAI
+  <t>_next   CREATE TABLE "auth_sessions" ( "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL, "token
+  <t>_next   CREATE TABLE "biometric_tokens" ( "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL, "to
+  <t>_next   CREATE TABLE "device_credentials" ( "device_id" text PRIMARY KEY NOT NULL, "current_hash" "byte
+  <t>_next   CREATE TABLE "paired_devices" ( "id" text PRIMARY KEY NOT NULL, "name" text NOT NULL, "platform
+  <t>_next   CREATE TABLE "pairing_codes" ( "id" text PRIMARY KEY NOT NULL, "code_hash" "bytea" NOT NULL, "s
+  <t>_next   CREATE TABLE "registry_counters" ( "name" text PRIMARY KEY NOT NULL, "next_value" bigint NOT NU
+  <t>_next   CREATE TABLE "audit_chain_head" ( "singleton" boolean PRIMARY KEY DEFAULT true NOT NULL, "seq" 
+  <t>_next   CREATE TABLE "audit_chain_history" ( "reset_no" bigint PRIMARY KEY NOT NULL, "epoch" bigint NOT
+  <t>_next   CREATE TABLE "audit_log" ( "seq" bigint PRIMARY KEY NOT NULL, "id" text NOT NULL, "at" bigint N
+  <t>_next   CREATE TABLE "events" ( "seq" bigint PRIMARY KEY NOT NULL, "id" text NOT NULL, "at" bigint NOT 
+  <t>_next   CREATE TABLE "active_session" ( "singleton" boolean PRIMARY KEY DEFAULT true NOT NULL, "id" tex
+  <t>_next   CREATE TABLE "session_history" ( "id" text PRIMARY KEY NOT NULL, "outcome" text NOT NULL, "case
+  <t>_next   CREATE TABLE "evidence_custody" ( "evidence_id" text NOT NULL, "seq" integer NOT NULL, "at" big
+  <t>_next   CREATE TABLE "evidence_items" ( "id" text PRIMARY KEY NOT NULL, "session_id" text NOT NULL, "ca
+  <t>_next   CREATE TABLE "evidence_tracks" ( "evidence_id" text NOT NULL, "track_id" text NOT NULL, "positi
+  <t>_next   CREATE TABLE "exports" ( "id" text PRIMARY KEY NOT NULL, "scope" text NOT NULL, "evidence_id" t
+  <t>_next   CREATE TABLE "alerts" ( "id" text PRIMARY KEY NOT NULL, "at" bigint NOT NULL, "severity" text N
+  <t>_next   CREATE TABLE "console_settings" ( "singleton" boolean PRIMARY KEY DEFAULT true NOT NULL, "prese
+  <t>_next   CREATE TABLE "core_device" ( "singleton" boolean PRIMARY KEY DEFAULT true NOT NULL, "id" text N
+  <t>_next   CREATE TABLE "core_state" ( "singleton" boolean PRIMARY KEY DEFAULT true NOT NULL, "seed" bigin
+  <t>_next   CREATE TABLE "engine_counters" ( "name" text PRIMARY KEY NOT NULL, "next_value" bigint NOT NULL
+  <t>_next   CREATE TABLE "hardware_snapshot" ( "singleton" boolean PRIMARY KEY DEFAULT true NOT NULL, "sim_
+  <t>_next   CREATE TABLE "health_snapshots" ( "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL, "at
+  <t>_next   CREATE TABLE "storage_policy" ( "singleton" boolean PRIMARY KEY DEFAULT true NOT NULL, "retenti
+  <t>_next   CREATE TABLE "schema_meta" ( "singleton" boolean PRIMARY KEY DEFAULT true NOT NULL, "schema_ver
+  <t>_next   ALTER TABLE "operator_credentials" ADD CONSTRAINT "operator_credentials_operator_id_fkey" FOREI
+  <t>_next   ALTER TABLE "operators" ADD CONSTRAINT "operators_role_id_fkey" FOREIGN KEY ("role_id") REFEREN
+  <t>_next   ALTER TABLE "role_permissions" ADD CONSTRAINT "role_permissions_role_id_fkey" FOREIGN KEY ("rol
+  <t>_next   ALTER TABLE "role_permissions" ADD CONSTRAINT "role_permissions_permission_id_fkey" FOREIGN KEY
+  <t>_next   ALTER TABLE "auth_sessions" ADD CONSTRAINT "auth_sessions_operator_id_fkey" FOREIGN KEY ("opera
+  <t>_next   ALTER TABLE "auth_sessions" ADD CONSTRAINT "auth_sessions_device_id_fkey" FOREIGN KEY ("device_
+  <t>_next   ALTER TABLE "biometric_tokens" ADD CONSTRAINT "biometric_tokens_device_id_fkey" FOREIGN KEY ("d
+  <t>_next   ALTER TABLE "biometric_tokens" ADD CONSTRAINT "biometric_tokens_operator_id_fkey" FOREIGN KEY (
+  <t>_next   ALTER TABLE "device_credentials" ADD CONSTRAINT "device_credentials_device_id_fkey" FOREIGN KEY
+  <t>_next   ALTER TABLE "paired_devices" ADD CONSTRAINT "paired_devices_paired_with_code_id_fkey" FOREIGN K
+  <t>_next   ALTER TABLE "paired_devices" ADD CONSTRAINT "paired_devices_revoked_by_operator_id_fkey" FOREIG
+  <t>_next   ALTER TABLE "pairing_codes" ADD CONSTRAINT "pairing_codes_issued_by_operator_id_fkey" FOREIGN K
+  <t>_next   ALTER TABLE "pairing_codes" ADD CONSTRAINT "pairing_codes_closed_by_operator_id_fkey" FOREIGN K
+  <t>_next   ALTER TABLE "audit_chain_history" ADD CONSTRAINT "audit_chain_history_actor_id_fkey" FOREIGN KE
+  <t>_next   ALTER TABLE "audit_log" ADD CONSTRAINT "audit_log_actor_id_fkey" FOREIGN KEY ("actor_id") REFER
+  <t>_next   ALTER TABLE "active_session" ADD CONSTRAINT "active_session_investigator_id_fkey" FOREIGN KEY (
+  <t>_next   ALTER TABLE "active_session" ADD CONSTRAINT "active_session_created_by_fkey" FOREIGN KEY ("crea
+  <t>_next   ALTER TABLE "session_history" ADD CONSTRAINT "session_history_investigator_id_fkey" FOREIGN KEY
+  <t>_next   ALTER TABLE "evidence_custody" ADD CONSTRAINT "evidence_custody_evidence_id_fkey" FOREIGN KEY (
+  <t>_next   ALTER TABLE "evidence_custody" ADD CONSTRAINT "evidence_custody_actor_id_fkey" FOREIGN KEY ("ac
+  <t>_next   ALTER TABLE "evidence_items" ADD CONSTRAINT "evidence_items_session_id_fkey" FOREIGN KEY ("sess
+  <t>_next   ALTER TABLE "evidence_items" ADD CONSTRAINT "evidence_items_investigator_id_fkey" FOREIGN KEY (
+  <t>_next   ALTER TABLE "evidence_tracks" ADD CONSTRAINT "evidence_tracks_evidence_id_fkey" FOREIGN KEY ("e
+  <t>_next   ALTER TABLE "exports" ADD CONSTRAINT "exports_evidence_id_fkey" FOREIGN KEY ("evidence_id") REF
+  <t>_next   ALTER TABLE "exports" ADD CONSTRAINT "exports_operator_id_fkey" FOREIGN KEY ("operator_id") REF
+  <t>_next   CREATE INDEX "operators_role_id_idx" ON "operators" USING btree ("role_id");
+  <t>_next   CREATE INDEX "role_permissions_permission_id_idx" ON "role_permissions" USING btree ("permissio
+  <t>_next   CREATE INDEX "auth_sessions_active_operator_idx" ON "auth_sessions" USING btree ("operator_id")
+  <t>_next   CREATE INDEX "auth_sessions_active_device_idx" ON "auth_sessions" USING btree ("device_id") WHE
+  <t>_next   CREATE INDEX "auth_sessions_active_last_seen_idx" ON "auth_sessions" USING btree ("last_seen_at
+  <t>_next   CREATE UNIQUE INDEX "biometric_tokens_one_live_key" ON "biometric_tokens" USING btree ("device_
+  <t>_next   CREATE INDEX "biometric_tokens_family_id_idx" ON "biometric_tokens" USING btree ("family_id");
+  <t>_next   CREATE INDEX "biometric_tokens_live_operator_idx" ON "biometric_tokens" USING btree ("operator_
+  <t>_next   CREATE UNIQUE INDEX "pairing_codes_one_active_key" ON "pairing_codes" USING btree ("state") WHE
+  <t>_next   CREATE INDEX "audit_log_category_seq_idx" ON "audit_log" USING btree ("category","seq");
+  <t>_next   CREATE INDEX "audit_log_type_seq_idx" ON "audit_log" USING btree ("type","seq");
+  <t>_next   CREATE INDEX "audit_log_actor_id_seq_idx" ON "audit_log" USING btree ("actor_id","seq") WHERE "
+  <t>_next   CREATE INDEX "audit_log_session_id_seq_idx" ON "audit_log" USING btree ("session_id","seq") WHE
+  <t>_next   CREATE INDEX "audit_log_evidence_id_seq_idx" ON "audit_log" USING btree ("evidence_id","seq") W
+  <t>_next   CREATE INDEX "events_category_seq_idx" ON "events" USING btree ("category","seq");
+  <t>_next   CREATE INDEX "events_type_seq_idx" ON "events" USING btree ("type","seq");
+  <t>_next   CREATE INDEX "events_severity_seq_idx" ON "events" USING btree ("severity","seq");
+  <t>_next   CREATE INDEX "session_history_ended_at_idx" ON "session_history" USING btree ("ended_at" DESC N
+  <t>_next   CREATE INDEX "evidence_items_recorded_at_idx" ON "evidence_items" USING btree ("recorded_at" DE
+  <t>_next   CREATE INDEX "evidence_items_status_recorded_at_idx" ON "evidence_items" USING btree ("status",
+  <t>_next   CREATE INDEX "evidence_items_case_type_recorded_at_idx" ON "evidence_items" USING btree ("case_
+  <t>_next   CREATE INDEX "exports_evidence_id_idx" ON "exports" USING btree ("evidence_id") WHERE "exports"
+  <t>_next   CREATE INDEX "alerts_at_idx" ON "alerts" USING btree ("at" DESC NULLS FIRST,"id" DESC NULLS FIR
+  <t>_next   CREATE INDEX "health_snapshots_at_idx" ON "health_snapshots" USING btree ("at");
+  <t>_next  insert into "drizzle"."__drizzle_migrations" ("hash", "created_at") values($1, $2)
+  <t>_next  -- Custom SQL migration file, put your code below! -- -- 0002_audit_guards (hand-written; databa
+  <t>_next   -- 2. The lock a writer takes before it computes a row. It returns the head it must extend. CRE
+  <t>_next   -- 3. The guard: every inserted row must continue the head; the head then moves. CREATE FUNCTIO
+  <t>_next   CREATE TRIGGER audit_log_chain_guard BEFORE INSERT ON public.audit_log FOR EACH ROW EXECUTE FUN
+  <t>_next   -- 4. Append-only for every role. CREATE FUNCTION public.audit_log_refuse_change() RETURNS trig
+  <t>_next   CREATE TRIGGER audit_log_append_only BEFORE UPDATE OR DELETE OR TRUNCATE ON public.audit_log FO
+  <t>_next   -- 5. The lineage of discarded chains is append-only for every role, by the same mechanism. CRE
+  <t>_next   CREATE TRIGGER audit_chain_history_append_only BEFORE UPDATE OR DELETE OR TRUNCATE ON public.au
+  <t>_next   -- 6. The three triggers fire in every session mode: a session that asks the server to skip -- 
+  <t>_next   ALTER TABLE public.audit_log ENABLE ALWAYS TRIGGER audit_log_append_only; 
+  <t>_next   ALTER TABLE public.audit_chain_history ENABLE ALWAYS TRIGGER audit_chain_history_append_only; 
+  <t>_next  insert into "drizzle"."__drizzle_migrations" ("hash", "created_at") values($1, $2)
+  <t>_next  -- Custom SQL migration file, put your code below! -- -- 0003_privileges (hand-written; database
+  <t>_next   GRANT USAGE ON SCHEMA public TO dems_app; 
+  <t>_next   REVOKE ALL ON ALL TABLES IN SCHEMA public FROM PUBLIC, dems_app; 
+  <t>_next   REVOKE ALL ON ALL FUNCTIONS IN SCHEMA public FROM PUBLIC; 
+  <t>_next   GRANT SELECT ON ALL TABLES IN SCHEMA public TO dems_app; 
+  <t>_next   GRANT INSERT ON auth_sessions, pairing_codes, paired_devices, device_credentials, biometric_tok
+  <t>_next   -- audit_chain_history is not in this list: the runtime role has SELECT only on it (CONFLICT-1,
+  <t>_next   GRANT UPDATE (algorithm, memory_kib, passes, parallelism, salt, hash, hashed_at) ON operator_cr
+  <t>_next   GRANT UPDATE (last_seen_at, ended_at, end_reason) ON auth_sessions TO dems_app; 
+  <t>_next   GRANT UPDATE (state, failed_attempts, closed_at, closed_by_operator_id) ON pairing_codes TO dem
+  <t>_next   GRANT UPDATE (state, last_seen_at, revoked_at, revoked_by_operator_id, revoke_reason, unpaired_
+  <t>_next   GRANT UPDATE (current_hash, next_hash, rotated_at) ON device_credentials TO dems_app; 
+  <t>_next   GRANT UPDATE (used_at, revoked_at, revoke_reason) ON biometric_tokens TO dems_app; 
+  <t>_next   GRANT UPDATE (next_value) ON registry_counters, engine_counters TO dems_app; 
+  <t>_next   GRANT UPDATE, DELETE ON active_session TO dems_app; 
+  <t>_next   GRANT UPDATE (status, lifecycle_stage, verification_status, verification_at, tampered, tampered
+  <t>_next   GRANT UPDATE (active, acknowledged, resolved_at) ON alerts TO dems_app; 
+  <t>_next   GRANT UPDATE (retention_policy, retention_days, auto_archive, updated_at) ON storage_policy TO 
+  <t>_next   GRANT UPDATE (presentation_mode, time_format, notify_warnings, notify_sound, updated_at) ON con
+  <t>_next   GRANT UPDATE (software_version, core_software_version, updated_at) ON core_device TO dems_app; 
+  <t>_next   GRANT UPDATE (epoch, last_sealed_session_id, last_sealed_acknowledged, updated_at) ON core_stat
+  <t>_next   GRANT UPDATE (tablet_link, active_camera_id, cameras, mics, storage, time_status, network, secu
+  <t>_next   GRANT EXECUTE ON FUNCTION public.dems_jsonb_is_flat(jsonb) TO dems_app; 
+  <t>_next   GRANT EXECUTE ON FUNCTION public.audit_chain_lock() TO dems_app; 
+  <t>_next   INSERT INTO public.schema_meta (singleton, schema_version, contract_revision) VALUES (true, 1, 
+  <t>_next  insert into "drizzle"."__drizzle_migrations" ("hash", "created_at") values($1, $2)
+  <t>_next  commit
+  <t>_next  SELECT to_regclass($1) IS NOT NULL AS present
+  <t>_next  SELECT id, hash, created_at FROM drizzle.__drizzle_migrations ORDER BY created_at, id
+  <t>_next  SELECT to_regclass('public.schema_meta') IS NOT NULL AS present
+  <t>_next  SELECT schema_version, contract_revision FROM public.schema_meta
+  <t>_next  BEGIN
+  <t>_next  SELECT seq, hash FROM public.audit_chain_lock()
+  <t>_next  select count(*) from "core_state"
+  <t>_next  insert into "roles" ("id", "sort_order") values ($1, $2), ($3, $4), ($5, $6)
+  <t>_next  insert into "permissions" ("id", "sort_order") values ($1, $2), ($3, $4), ($5, $6), ($7, $8), ($
+  <t>_next  insert into "role_permissions" ("role_id", "permission_id") values ($1, $2), ($3, $4), ($5, $6),
+  <t>_next  insert into "operators" ("id", "username", "rank", "name", "display_name", "initials", "role_id"
+  <t>_next  insert into "operator_credentials" ("operator_id", "algorithm", "memory_kib", "passes", "paralle
+  <t>_next  insert into "core_device" ("singleton", "id", "name", "room", "product_name", "software_version"
+  <t>_next  insert into "core_state" ("singleton", "seed", "sim_schema_version", "scenario", "epoch", "creat
+  <t>_next  insert into "storage_policy" ("singleton", "retention_policy", "retention_days", "auto_archive",
+  <t>_next  insert into "console_settings" ("singleton", "presentation_mode", "time_format", "notify_warning
+  <t>_next  insert into "engine_counters" ("name", "next_value") values ($1, $2), ($3, $4), ($5, $6), ($7, $
+  <t>_next  insert into "registry_counters" ("name", "next_value") values ($1, $2), ($3, $4)
+  <t>_next  insert into "hardware_snapshot" ("singleton", "sim_schema_version", "tablet_link", "active_camer
+  <t>_next  insert into "session_history" ("id", "outcome", "case_number", "subject_name", "subject_type", "
+  <t>_next  insert into "evidence_items" ("id", "session_id", "case_number", "subject_name", "subject_type",
+  <t>_next  insert into "evidence_tracks" ("evidence_id", "track_id", "position", "label", "size_bytes", "sh
+  <t>_next  insert into "evidence_custody" ("evidence_id", "seq", "at", "action", "actor_id", "detail") valu
+  <t>_next  insert into "exports" ("id", "scope", "evidence_id", "operator_id", "reason", "destination", "at
+  <t>_next  insert into "audit_log" ("seq", "id", "at", "type", "category", "severity", "actor_id", "message  [x82]
+  <t>_next  insert into "events" ("seq", "id", "at", "type", "category", "severity", "message", "params", "s
+  <t>_next  select "singleton", "seq", "hash" from "audit_chain_head"
+  <t>_next  UPDATE public.registry_counters AS n SET "next_value" = c."next_value" FROM jsonb_populate_recor
+  <t>_next  UPDATE public.console_settings AS n SET "presentation_mode" = c."presentation_mode", "time_forma
+  <t>_next  INSERT INTO public.pairing_codes ("id", "code_hash", "state", "issued_by_operator_id", "issued_a
+  <t>_next  INSERT INTO public.paired_devices ("id", "name", "platform", "app_version", "state", "paired_at"
+  <t>_next  INSERT INTO public.device_credentials ("device_id", "current_hash", "next_hash", "rotated_at") S
+  <t>_next  INSERT INTO public.auth_sessions ("id", "token_hash", "operator_id", "device_id", "method", "iss
+  <t>_next  INSERT INTO public.biometric_tokens ("id", "token_hash", "family_id", "device_id", "operator_id"
+  <t>_next  INSERT INTO public.audit_chain_history ("reset_no", "epoch", "head_hash", "row_count", "first_se
+  <t>_next  UPDATE public.pairing_codes SET state = 'CANCELLED', closed_at = $1::bigint, closed_by_operator_
+  <t>_next  UPDATE public.operators AS o SET last_sign_in_at = s.newest FROM (SELECT operator_id, max(issued
+  <t>_next  INSERT INTO public.audit_chain_history (reset_no, epoch, head_hash, row_count, first_seq, last_s
+  <t>_next  SELECT seq, hash FROM public.audit_chain_lock()
+  <t>_next  update "engine_counters" set "next_value" = $1 where "engine_counters"."name" = $2
+  <t>_next  insert into "audit_log" ("seq", "id", "at", "type", "category", "severity", "actor_id", "message
+  <t>_next  insert into "events" ("seq", "id", "at", "type", "category", "severity", "message", "params", "s
+  <t>_next  COMMIT
+  <t>_next  SELECT to_jsonb(k)::text AS image FROM public.registry_counters AS k ORDER BY k."name"
+  <t>_next  SELECT to_jsonb(k)::text AS image FROM public.console_settings AS k ORDER BY k."singleton"
+  <t>_next  SELECT k.id::text AS id, k.state::text AS state, to_jsonb(k)::text AS image, (to_jsonb(k) - 'sta
+  <t>_next  SELECT to_jsonb(k)::text AS image FROM public.paired_devices AS k ORDER BY k."id"
+  <t>_next  SELECT to_jsonb(k)::text AS image FROM public.device_credentials AS k ORDER BY k."device_id"
+  <t>_next  SELECT to_jsonb(k)::text AS image FROM public.auth_sessions AS k ORDER BY k."id"
+  <t>_next  SELECT to_jsonb(k)::text AS image FROM public.biometric_tokens AS k ORDER BY k."id"
+  <t>_next  SELECT to_jsonb(k)::text AS image FROM public.audit_chain_history AS k ORDER BY k."reset_no"
+  <t>_next  SELECT h.seq::text AS head_seq, h.hash AS head_hash, (SELECT count(*)::text FROM public.audit_lo
+  <t>_next  SELECT h.reset_no::text AS reset_no, h.epoch::text AS epoch, h.head_hash, h.row_count::text AS r
+  <t>_next  SELECT seq::text AS seq, details ->> 'previousRows' AS previous_rows FROM public.audit_log WHERE
+  <t>_next  SELECT to_regclass('public.schema_meta') IS NOT NULL AS present
+  <t>_next  SELECT schema_version, contract_revision FROM public.schema_meta
+  <t>_next  SELECT tgname::text AS tgname, tgenabled::text AS tgenabled FROM pg_trigger WHERE tgrelid IN ('p
+  <t>_next  SELECT x.table_name AS object, x.privilege_name AS privilege, has_table_privilege($1::name, x.ta
+  <t>_next  SELECT rolsuper, rolcreaterole, rolreplication, rolbypassrls FROM pg_roles WHERE rolname = $1
+  <t>_next  SELECT 'database ' || datname::text AS object, pg_get_userbyid(datdba)::text AS owner FROM pg_da
+  <t>_next  select count(*) from "active_session"
+  <t>_next  select count(*) from "alerts"
+  <t>_next  select count(*) from "audit_chain_head"
+  <t>_next  select count(*) from "audit_chain_history"
+  <t>_next  select count(*) from "audit_log"
+  <t>_next  select count(*) from "auth_sessions"
+  <t>_next  select count(*) from "biometric_tokens"
+  <t>_next  select count(*) from "console_settings"
+  <t>_next  select count(*) from "core_device"
+  <t>_next  select count(*) from "core_state"
+  <t>_next  select count(*) from "device_credentials"
+  <t>_next  select count(*) from "engine_counters"
+  <t>_next  select count(*) from "events"
+  <t>_next  select count(*) from "evidence_custody"
+  <t>_next  select count(*) from "evidence_items"
+  <t>_next  select count(*) from "evidence_tracks"
+  <t>_next  select count(*) from "exports"
+  <t>_next  select count(*) from "hardware_snapshot"
+  <t>_next  select count(*) from "health_snapshots"
+  <t>_next  select count(*) from "operator_credentials"
+  <t>_next  select count(*) from "operators"
+  <t>_next  select count(*) from "paired_devices"
+  <t>_next  select count(*) from "pairing_codes"
+  <t>_next  select count(*) from "permissions"
+  <t>_next  select count(*) from "registry_counters"
+  <t>_next  select count(*) from "role_permissions"
+  <t>_next  select count(*) from "roles"
+  <t>_next  select count(*) from "schema_meta"
+  <t>_next  select count(*) from "session_history"
+  <t>_next  select count(*) from "storage_policy"
+  postgres  SELECT datname::text AS database, usename::text AS role, count(*)::int AS sessions FROM pg_stat_
+  postgres  BEGIN
+  postgres  ALTER DATABASE "dems_test_step_51b_tmdcpyq2_f02_rfwire" RENAME TO "dems_test_step_51b_tmdcpyq2_f
+  postgres  ALTER DATABASE "dems_test_step_51b_tmdcpyq2_f02_rfwire_next" RENAME TO "dems_test_step_51b_tmdcp
+  postgres  COMMIT
+  postgres  DROP DATABASE "dems_test_step_51b_tmdcpyq2_f02_rfwire_prev"
+  postgres  SELECT pg_advisory_unlock($1::int, $2::int) AS unlocked
+
+ ✓ |db| src/db/reset/__tests__/reset-failures.db.test.ts > what the routine sends, statement by statement > only the target and its two copies are created, renamed or dropped; no append-only table is rewritten; three databases are connected to 499ms
+ ✓ |db| src/db/reset/__tests__/reset-failures.db.test.ts > more than nine earlier resets > eleven carried lineage rows stay byte-equal and in order, and the appended row is number twelve 282ms
+ ✓ |db| src/db/reset/__tests__/reset-failures.db.test.ts > more than nine earlier resets > 1,200 carried sessions cross in chunks and stay byte-equal 301ms
+ ✓ |db| src/db/reset/__tests__/reset-failures.db.test.ts > R-9: when the routine settles, the driver has closed every connection it opened > after a reset that succeeds: the three connections, each closed 268ms
+ ✓ |db| src/db/reset/__tests__/reset-failures.db.test.ts > R-9: when the routine settles, the driver has closed every connection it opened > after a failure at R-1: every connection opened so far is closed 4ms
+ ✓ |db| src/db/reset/__tests__/reset-failures.db.test.ts > R-9: when the routine settles, the driver has closed every connection it opened > after a failure at R-3: every connection opened so far is closed 4ms
+ ✓ |db| src/db/reset/__tests__/reset-failures.db.test.ts > R-9: when the routine settles, the driver has closed every connection it opened > after a failure at R-5c: every connection opened so far is closed 163ms
+ ✓ |db| src/db/reset/__tests__/reset-failures.db.test.ts > R-9: when the routine settles, the driver has closed every connection it opened > after a failure at R-6: every connection opened so far is closed 167ms
+ ✓ |db| src/db/reset/__tests__/reset-failures.db.test.ts > R-9: when the routine settles, the driver has closed every connection it opened > after a failure at R-7:rename: every connection opened so far is closed 172ms
+
+ Test Files  4 passed (4)
+      Tests  75 passed (75)
+   Start at  13:01:10
+   Duration  23.31s (tests 96%, import 3%, transform 1%)
+
+[test:db] forced drops that needed a retry: 0
+[test:db] teardown: dropped 3 database(s) in 51 ms; 0 remain with the run prefix dems_test_step_51b_tmdcpyq2_
+exit=0

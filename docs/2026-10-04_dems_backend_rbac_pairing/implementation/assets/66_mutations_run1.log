@@ -1,0 +1,64 @@
+# W66 mutation check, 2026-10-05 23:13:58; 5 test files per run; the tree is not edited
+control (no mutation): exit=0 Tests:       47 passed, 47 total (40 s)
+R1  detected       6s  MD-8 undone: the mock-core heartbeat reads 'Live' again (the rule of acaff20)  | Tests:       6 failed, 41 passed, 47 total  | home-live.test.tsx, more-live.test.tsx, use-core-link-chip.test.tsx
+      e.g. Home in SIMULATED and HEARTBEAT mode: the chip says "Simulated" and keeps its place (MD-8, MD-9) › HEARTBEAT: "Core Simulated" while mock-core beats (it read "Live" before, MD-8), "Core Offline" when it is gone
+      e.g. More in SIMULATED and HEARTBEAT mode (MD-8) › HEARTBEAT: "Core Simulated" while mock-core beats (it read "Live" before, MD-8), "Core Offline" when it is gone
+R2  detected       8s  LIVE reads the two-valued link state, not the M0 rule (a reconnect attempt flickers the chip)  | Tests:       3 failed, 44 passed, 47 total  | use-core-link-chip.test.tsx
+      e.g. the chip word, one rule for Home and More (MD-8, AC-C-30) › "Live" for exactly one input class: source LIVE and the M0 rule says the link is not down
+      e.g. the chip word, one rule for Home and More (MD-8, AC-C-30) › a link that is down reads "Offline": by the M0 state in LIVE, by the link state elsewhere (as before)
+R3  detected       7s  LIVE never reads 'Offline'  | Tests:       7 failed, 40 passed, 47 total  | home-live.test.tsx, more-live.test.tsx, use-core-link-chip.test.tsx
+      e.g. the chip word, one rule for Home and More (MD-8, AC-C-30) › "Live" for exactly one input class: source LIVE and the M0 rule says the link is not down
+      e.g. the chip word, one rule for Home and More (MD-8, AC-C-30) › a link that is down reads "Offline": by the M0 state in LIVE, by the link state elsewhere (as before)
+R4  detected       6s  SIMULATED/HEARTBEAT never read 'Offline' (mock-core gone still says Simulated)  | Tests:       4 failed, 43 passed, 47 total  | home-live.test.tsx, more-live.test.tsx, use-core-link-chip.test.tsx
+      e.g. the chip word, one rule for Home and More (MD-8, AC-C-30) › a link that is down reads "Offline": by the M0 state in LIVE, by the link state elsewhere (as before)
+      e.g. useCoreLinkChip over the runtime link › HEARTBEAT: "Simulated" with the heartbeat up (MD-8), "Offline" when mock-core is gone, as the link state says
+R5  detected       6s  the tones of Simulated and Live swapped  | Tests:       4 failed, 43 passed, 47 total  | use-core-link-chip.test.tsx
+      e.g. the chip word, one rule for Home and More (MD-8, AC-C-30) › tones: Simulated info, Live success, Offline danger
+      e.g. useCoreLinkChip over the runtime link › SIMULATED: "Simulated", info, the Wi-Fi mark, not live
+C1  detected       7s  no hysteresis: a transient hides the chip's Offline (flicker)  | Tests:       4 failed, 43 passed, 47 total  | home-live.test.tsx, more-live.test.tsx, use-core-link-chip.test.tsx
+      e.g. useCoreLinkChip over the runtime link › LIVE outage: exactly two flips, on at the first down state and off at the first heartbeat; reconnect attempts keep "Offline"
+      e.g. useCoreLinkChip over the runtime link › LIVE cold start: CONNECTING before the first heartbeat flashes no "Offline"; a start that never connects turns Offline at the first OFFLINE
+C2  detected       7s  the render-time adjustment dropped: the chip keeps its first answer  | Tests:       5 failed, 42 passed, 47 total  | home-live.test.tsx, more-live.test.tsx, use-core-link-chip.test.tsx
+      e.g. useCoreLinkChip over the runtime link › LIVE outage: exactly two flips, on at the first down state and off at the first heartbeat; reconnect attempts keep "Offline"
+      e.g. useCoreLinkChip over the runtime link › LIVE cold start: CONNECTING before the first heartbeat flashes no "Offline"; a start that never connects turns Offline at the first OFFLINE
+C3  detected       6s  HEARTBEAT counted as LIVE (placement and the note)  | Tests:       2 failed, 45 passed, 47 total  | more-live.test.tsx, use-core-link-chip.test.tsx
+      e.g. useCoreLinkChip over the runtime link › HEARTBEAT: "Simulated" with the heartbeat up (MD-8), "Offline" when mock-core is gone, as the link state says
+      e.g. More in SIMULATED and HEARTBEAT mode (MD-8) › HEARTBEAT: "Core Simulated" while mock-core beats (it read "Live" before, MD-8), "Core Offline" when it is gone
+C4  detected       5s  the icon never shows the warning mark  | Tests:       1 failed, 46 passed, 47 total  | use-core-link-chip.test.tsx
+      e.g. useCoreLinkChip over the runtime link › HEARTBEAT: "Simulated" with the heartbeat up (MD-8), "Offline" when mock-core is gone, as the link state says
+C5  detected       5s  the M0 state starts as shown (Offline flashes at a LIVE start)  | Tests:       1 failed, 46 passed, 47 total  | use-core-link-chip.test.tsx
+      e.g. useCoreLinkChip over the runtime link › LIVE cold start: CONNECTING before the first heartbeat flashes no "Offline"; a start that never connects turns Offline at the first OFFLINE
+H1  detected       5s  MD-9 dropped: in LIVE the chip is on the expanded header only  | Tests:       2 failed, 45 passed, 47 total  | home-live.test.tsx
+      e.g. Home in LIVE mode: the Core link chip (MD-8, MD-9, AC-C-30) › reads "Core Live" in the header of every layout class, and nothing on the screen claims a simulation
+      e.g. Home in LIVE mode: the Core link chip (MD-8, MD-9, AC-C-30) › an outage: "Core Offline" at the first down state, kept through every reconnect attempt, "Core Live" at the first heartbeat; the last state stays on screen
+H2  detected      31s  MD-9 overdone: the chip in every class in Simulated mode too (a Simulated layout change)  | Tests:       39 passed, 39 total  | home-live.test.tsx
+      e.g. Test suite failed to run
+H3  detected       7s  the refusal presenter skipped: a denial or an outage of operation 70 is only logged  | Tests:       2 failed, 45 passed, 47 total  | home-live.test.tsx
+      e.g. Home in LIVE mode: acknowledging an alert (operation 70, fire-and-forget; AC-C-48) › a denial (403 NOT_PERMITTED): the denied toast, the alert stays unacknowledged and its button can be pressed again
+      e.g. Home in LIVE mode: acknowledging an alert (operation 70, fire-and-forget; AC-C-48) › an outage on the request: the presenter's one "Core server unreachable" toast; nothing else happens
+H4  detected       6s  the acknowledge request is never sent  | Tests:       4 failed, 43 passed, 47 total  | dashboard-screen.test.tsx, home-live.test.tsx
+      e.g. Home (Dashboard) screen › bell: counts unacknowledged alerts, lists them in the popover and acknowledges one
+      e.g. Home in LIVE mode: acknowledging an alert (operation 70, fire-and-forget; AC-C-48) › success: the request goes to the Core and the bell clears when the Core's delta arrives
+H5  detected       5s  the Home chip names a fixed source in its label  | Tests:       3 failed, 44 passed, 47 total  | home-live.test.tsx
+      e.g. Home in LIVE mode: the Core link chip (MD-8, MD-9, AC-C-30) › reads "Core Live" in the header of every layout class, and nothing on the screen claims a simulation
+      e.g. Home in LIVE mode: the Core link chip (MD-8, MD-9, AC-C-30) › an outage: "Core Offline" at the first down state, kept through every reconnect attempt, "Core Live" at the first heartbeat; the last state stays on screen
+L1  detected       5s  the LIVE footer keeps the note about simulated data  | Tests:       1 failed, 46 passed, 47 total  | more-live.test.tsx
+      e.g. More in LIVE mode (MD-8, AC-C-30, §3.2) › the footer reads "Core Live" and names the Core server as the source of the data; nothing claims a simulation, in any layout class
+L2  detected       6s  the Simulated footer gets the LIVE note  | Tests:       2 failed, 45 passed, 47 total  | more-live.test.tsx
+      e.g. More in SIMULATED and HEARTBEAT mode (MD-8) › SIMULATED: "Core Simulated" and the note about simulated data, as before
+      e.g. More in SIMULATED and HEARTBEAT mode (MD-8) › HEARTBEAT: "Core Simulated" while mock-core beats (it read "Live" before, MD-8), "Core Offline" when it is gone
+L3  NOT DETECTED   7s  the More chip takes a fixed tone  | Tests:       47 passed, 47 total  | 
+P1  detected       5s  CONTRACT-GAP-W66-1 adapter dropped: LIVE rows join the bundled poster again  | Tests:       1 failed, 46 passed, 47 total  | home-live.test.tsx
+      e.g. Home in LIVE mode: the Core link chip (MD-8, MD-9, AC-C-30) › shows the Core's data: the operator of the session, the Core's recent sessions, and a brand still where no poster was named (CONTRACT-GAP-W66-1)
+P2  detected       5s  Simulated rows lose their bundled poster too  | Tests:       1 failed, 46 passed, 47 total  | home-live.test.tsx
+      e.g. Home in SIMULATED and HEARTBEAT mode: the chip says "Simulated" and keeps its place (MD-8, MD-9) › SIMULATED: no chip on phones and tablet portrait, "Core Simulated" on the expanded header (as before)
+## 19 detected, 1 not detected, 0 not applied, of 20
+## not detected: L3
+## the mutated files in the tree, before and after: identical
+   6c39053872b9d2f2  src/features/dashboard/home-header.tsx
+   b4b1437b4a18b6fb  src/features/dashboard/recent-sessions.tsx
+   6cd9bb1164035c05  src/features/more/more-links.tsx
+   18cca00649763544  src/features/more/more-model.ts
+   7f2d9cf1284e6b68  src/features/more/use-core-link-chip.ts
+# finished 23:17:04
+mutate exit=1

@@ -1,0 +1,61 @@
+"""analyze_run.py <frames_dir> <mp4> [hostOffsetMs]: RF-PH per-recording facts, judged by script on every frame.
+Device time per frame = screenrecord --bugreport overlay (OCR by digit templates), anchored to the frame pts (median
+delta), so unreadable overlays still get a time. Monitor frame = the REC row's red dot found; banner = yellow
+('Core link lost') or green ('Resynced') band above the REC row, or the REC row shifted down (dot y > 230);
+blank = whole-frame sd < 6; red screen = > 35 % red pixels; timer = six digits decoded by glyph templates."""
+import json, os, sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from fx import frame_facts, load_templates, overlay_time, hms_of, pts_list
+
+def tsec(t):
+    if not t or '?' in t: return None
+    return int(t[0:2]) * 3600 + int(t[2:4]) * 60 + int(t[4:6])
+
+def main():
+    d, mp4 = sys.argv[1], sys.argv[2]
+    off = float(sys.argv[3]) / 1000 if len(sys.argv) > 3 else 0.0
+    files = sorted(os.listdir(d), key=lambda n: int(''.join(c for c in n if c.isdigit()) or 0))
+    files = [f for f in files if f.endswith('.png')]
+    pts = pts_list(mp4)
+    T = load_templates()
+    rows = []
+    for i, fn in enumerate(files):
+        p = os.path.join(d, fn)
+        f = frame_facts(p, T)
+        f['frame'] = fn; f['i'] = i
+        f['pts'] = pts[i] if i < len(pts) else None
+        f['ocr'] = overlay_time(p)
+        rows.append(f)
+    deltas = sorted(r['ocr'] - r['pts'] for r in rows if r['ocr'] is not None and r['pts'] is not None)
+    base = deltas[len(deltas) // 2] if deltas else None
+    for r in rows:
+        t = base + r['pts'] if base is not None and r['pts'] is not None else r['ocr']
+        r['dev'] = hms_of(t); r['host'] = hms_of(t - off) if t is not None else None
+    body = rows[1:]  # f_001 is the overlay-less first frame of screenrecord
+    mon = [r for r in body if r['dot'] is not None]
+    banner = [r for r in body if r.get('banner') in ('offline', 'resynced', '?')]
+    blank = [r for r in body if r['blank']]
+    red = [r for r in body if r['redbox']]
+    vals = [(r['dev'], tsec(r.get('timer')), r['frame']) for r in mon]
+    dec = [v for v in vals if v[1] is not None]
+    back = [(dec[k - 1], dec[k]) for k in range(1, len(dec)) if dec[k][1] < dec[k - 1][1]]
+    jumps = [(dec[k - 1], dec[k]) for k in range(1, len(dec)) if dec[k][1] - dec[k - 1][1] > 2]
+    last = max((k for k, r in enumerate(body) if r['dot'] is not None), default=None)
+    hand = None
+    if last is not None and last + 1 < len(body):
+        nx = body[last + 1]
+        hand = {'lastMonitor': body[last]['dev'], 'lastMonitorHost': body[last]['host'], 'lastMonitorFrame': body[last]['frame'],
+                'next': nx['dev'], 'nextHost': nx['host'], 'nextFrame': nx['frame'], 'nextBlank': nx['blank'], 'nextMean': nx['mean'], 'nextSd': nx['sd'],
+                'framesAfter': len(body) - last - 1, 'blankAfter': sum(1 for r in body[last + 1:] if r['blank'])}
+    out = {'frames': len(body), 'first': body[0]['dev'] if body else None, 'last': body[-1]['dev'] if body else None,
+           'monitorFrames': len(mon), 'timerDecoded': len(dec), 'timerUndecoded': len(mon) - len(dec),
+           'timerFirst': dec[0][:2] if dec else None, 'timerLast': dec[-1][:2] if dec else None,
+           'backwardSteps': len(back), 'backwardSample': back[:5], 'forwardJumpsOver2s': len(jumps), 'jumpSample': jumps[:5],
+           'bannerFrames': len(banner), 'bannerSample': [(r['frame'], r['dev'], r.get('banner'), r['dot']) for r in banner[:8]],
+           'blankFrames': len(blank), 'blankSample': [(r['frame'], r['dev'], r['mean'], r['sd']) for r in blank[:8]],
+           'redFrames': len(red), 'handover': hand}
+    json.dump(rows, open(d.rstrip('/') + '_rows.json', 'w'))
+    print(json.dumps(out))
+
+if __name__ == '__main__':
+    main()

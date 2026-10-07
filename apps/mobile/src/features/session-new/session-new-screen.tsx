@@ -88,6 +88,7 @@ import {
   type SessionNewArrangement,
   type WizardStep,
 } from './session-new-model';
+import { markMonitorHandoff } from '@/features/session-live/monitor-handoff';
 import { nextCaseNumber } from './sim-adapter';
 import { StepBoundary } from './step-boundary';
 import {
@@ -252,6 +253,8 @@ export function SessionNewScreen({ step }: SessionNewScreenProps) {
           setLaunching(false); // refused (toast + log in `useFlowActions`); stay on step 3
           return;
         }
+        // CF2-A (RF-PH-3): the monitor this replace mounts draws in place, so the first frame is never empty.
+        markMonitorHandoff(sim.store.getState().session?.id);
         handOffToMonitor(navigation, () => router.replace('/session/live'));
       });
     });

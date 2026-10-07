@@ -280,7 +280,7 @@ describe('S2-8: Run diagnostics (operation 65)', () => {
     expect(within(sheet).getByText('All checks passed')).toBeTruthy();
     expect(screen.getByTestId('device-diagnostics-SECURITY-PASS')).toBeTruthy();
     expect(saysSimulated()).toBe(false);
-    expect(screen.getByLabelText('Eight health checks on the Core, one after another.')).toBeTruthy();
+    expect(screen.getByLabelText('Eight health checks on the Core server, one after another.')).toBeTruthy();
     expect(screen.queryByLabelText(/simulated/)).toBeNull();
   });
 
@@ -365,8 +365,8 @@ describe('the LIVE copy (rule 8, MD-8)', () => {
     await b.runCore(6_000);
     await press('device-tab-health', b);
     expect(screen.getByText('Link quality (%)')).toBeTruthy();
-    // Row M1 follow-up (D160): the LIVE caption says the line is derived on this device (CONTRACT-GAP-W78-2).
-    expect(screen.getByTestId('device-health-samples')).toHaveTextContent(/^(?:Derived on this device from the Core's data · last \d+ samples|Collecting samples…)$/);
+    // Row M1 follow-up (D160): the LIVE caption says the line is derived on this device (RESIDUAL-W78-2, W83 ledger #57).
+    expect(screen.getByTestId('device-health-samples')).toHaveTextContent(/^(?:Derived from the Core's data · last \d+ samples|Collecting samples…)$/);
     expect(saysSimulated()).toBe(false);
   });
 });

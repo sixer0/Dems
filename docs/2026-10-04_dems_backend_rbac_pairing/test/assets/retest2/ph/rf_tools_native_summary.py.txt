@@ -1,0 +1,25 @@
+"""native_summary.py <native.txt> [stopDeviceHHMMSS.mmm]: counts in the app process's W/E/F log of one run.
+crash-class = CF-M1's set (addViewAt, Tried to remove view, handleHostException, reactInstance is null,
+FATAL EXCEPTION, IndexOutOfBoundsException); plus Reanimated 'synchronouslyUpdateUIProps failed' warnings
+(W-level, caught by Reanimated) with their time span and how many fall within -1 s..+10 s of the stop."""
+import json, re, sys
+CRASH = re.compile(r'addViewAt|Tried to remove view|handleHostException|reactInstance is null|FATAL EXCEPTION|IndexOutOfBoundsException')
+SYNC = re.compile(r'^\S+ (\S+) .* W Reanimated: synchronouslyUpdateUIProps failed for tag (\d+)')
+def secs(t):
+    h, m, s = t.split(':'); return int(h) * 3600 + int(m) * 60 + float(s)
+path = sys.argv[1]
+stop = secs(sys.argv[2]) if len(sys.argv) > 2 and sys.argv[2] else None
+crash, sync, elines, lines = [], [], [], 0
+for l in open(path, errors='replace'):
+    lines += 1
+    if CRASH.search(l): crash.append(l.strip()[:200])
+    m = SYNC.match(l)
+    if m: sync.append((m.group(1), m.group(2)))
+    elif re.match(r'^\S+ \S+\s+\d+\s+\d+ [EF] ', l): elines.append(l.strip()[:160])
+near = [s for s in sync if stop is not None and -1 <= secs(s[0]) - stop <= 10]
+out = {'file': path.split('/')[-1], 'lines': lines, 'crashClass': len(crash), 'crashSample': crash[:3],
+       'syncUpdateFailed': len(sync), 'syncDistinctTags': len({t for _, t in sync}),
+       'syncFirst': sync[0][0] if sync else None, 'syncLast': sync[-1][0] if sync else None,
+       'syncNearStop': len(near) if stop is not None else None,
+       'eLevelOther': len(elines), 'eSample': sorted(set(re.sub(r'^\S+ \S+\s+\d+\s+\d+ ', '', e) for e in elines))[:6]}
+print(json.dumps(out))

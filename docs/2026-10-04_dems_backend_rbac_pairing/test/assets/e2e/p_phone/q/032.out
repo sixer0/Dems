@@ -1,0 +1,23 @@
+10:07:08.274 tap 913,748
+10:07:08.449 slept 900 ms
+10:07:09.400 tap 229,994
+10:07:09.544 slept 700 ms
+10:07:10.289 tap 540,1309
+10:07:10.536 slept 900 ms
+10:07:11.485 text typed (E2E-P Phone); inputType 0x2001
+10:07:12.450 slept 800 ms
+10:07:13.307 key 111
+10:07:13.475 slept 800 ms
+10:07:14.323 screencap 25_start_session_step1_filled.png 10:07:14.323..10:07:15.160
+10:07:15.414 ids(6): session-new-profile-menu@986,216 "Load last session profile" ; session-new-case-number@540,747 "LP/2026/1006-0014" ; session-new-subject-name@540,1309 "E2E-P Phone" ; session-new-investigator@540,1561 "Investigator" ; session-new-room@540,1813 "Room / Location" ; session-new-profile@540,2065 "Recording Profile"
+10:07:17.892 mark a24 at 10:07:17.892
+10:07:17.973 tap 540,2257
+10:07:18.291 create 201 at device 10-06 10:07:18.453 (POST /api/v1/session 201)
+10:07:19.021 precheck 202 at device 10-06 10:07:19.597 (POST /api/v1/session/{id}/precheck 202)
+10:07:20.303 slept 6000 ms
+10:07:26.342 screencap 26_start_session_step2_gate.png 10:07:26.343..10:07:26.998
+10:07:27.244 ids(27): session-new-stepper-root@540,389 "Session setup progress" ; session-new-stepper@540,389 ; session-new-stepper-step-0@208,442 "Step 1 of 3, Session Info, completed" ; session-new-stepper-step-1@541,442 "Step 2 of 3, Devices Check, current" ; session-new-stepper-step-2@872,442 "Step 3 of 3, Ready, not started" ; session-new-step-2@540,1331 ; session-new-gate@540,1592 ; session-new-gate-progress@883,1091 "8 of 8 checked" ; session-new-gate-pass@300,1301 "All checks passed" ; session-new-checks@540,1766 ; session-new-check-CORE@540,1470 "Core Machine, ONLINE, PASS" ; session-new-check-CORE-value@482,1502 "ONLINE" ; session-new-check-CORE-status@871,1470 "PASS" ; session-new-check-LENS_1@540,1671 "Video Lens 1, READY, PASS" ; session-new-check-LENS_1-value@482,1703 "READY" ; session-new-check-LENS_1-status@871,1671 "PASS" ; session-new-check-LENS_2@540,1872 "Video Lens 2, READY, PASS" ; session-new-check-LENS_2-value@482,1904 "READY" ; session-new-check-LENS_2-status@871,1872 "PASS" ; session-new-check-MIC_1@540,2068 "MIC 1, READY, PASS" ; session-new-check-MIC_1-value@482,2105 "READY" ; session-new-check-MIC_1-status@871,2073 "PASS" ; session-new-check-MIC_2@540,2168 "MIC 2, READY, PASS" ; session-new-check-MIC_2-value@482,2221 "READY" ; session-new-check-MIC_2-status@871,2205 "PASS" ; session-new-check-STORAGE@540,2269 "Storage, READY, PASS" ; session-new-next@540,2257 "busy"
+10:07:29.925 serverlog since a24 (2):
+    10:07:18.387 POST /api/v1/session 201 operator:OPR-001
+    10:07:19.690 POST /api/v1/session/:id/precheck 202 operator:OPR-001
+10:07:29.969 js => {"id":"SES-20261006-0030","state":"ARMED","caseNumber":"LP/2026/1006-0014","subject":"E2E-P Phone","investigatorId":"OPR-001","precheck":{"outcome":"PASS","items":["CORE=PASS","LENS_1=PASS","LENS_2=PASS","MIC_1=PASS","MIC_2=PASS","STORAGE=PASS","TIME=PASS","SECURITY=PASS"]}}

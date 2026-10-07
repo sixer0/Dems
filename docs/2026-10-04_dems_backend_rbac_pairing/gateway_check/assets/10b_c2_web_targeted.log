@@ -1,0 +1,28 @@
+$ (apps/core-web) vitest run src/test/live-runtime-boot-failure.test.tsx src/test/live-runtime-static.test.tsx --reporter=verbose   (09:41:02)
+
+> @dems/core-web@0.1.0 test
+> vitest run src/test/live-runtime-boot-failure.test.tsx src/test/live-runtime-static.test.tsx --reporter=verbose
+
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/apps/core-web
+
+ ✓ src/test/live-runtime-static.test.tsx > the scan itself > reads the console's sources and tells production files from tests 3ms
+ ✓ src/test/live-runtime-static.test.tsx > the heavy modules have one way in (MD-6; brief list rows 1, 21) > `@dems/shared/client` and `@dems/shared/live/source` are loaded as values only by `runtime/live-start.ts` 13ms
+ ✓ src/test/live-runtime-static.test.tsx > the heavy modules have one way in (MD-6; brief list rows 1, 21) > no typed client is built anywhere else: `createCoreClient` and `createLiveSim` are named in that one file 5ms
+ ✓ src/test/live-runtime-static.test.tsx > the heavy modules have one way in (MD-6; brief list rows 1, 21) > `runtime/live-start.ts` is reached by one dynamic import, in `runtime/boot.ts`, and that import stands behind `import.meta.env.DEV` 12ms
+ ✓ src/test/live-runtime-static.test.tsx > the heavy modules have one way in (MD-6; brief list rows 1, 21) > `main.tsx` loads its data source after `z.config`: its static imports are the ones it has always had, plus the i18n provider and the page's error sink (CPW1-7), which imports no value 0ms
+ ✓ src/test/live-runtime-static.test.tsx > test doubles stay out of production files (TS-15) > no production file imports the fake transport or the test harness 18ms
+ ✓ src/test/live-runtime-static.test.tsx > test doubles stay out of production files (TS-15) > the harness is the one non-test file that imports the fake transport 6ms
+ ✓ src/test/live-runtime-static.test.tsx > the dev proxy passes the request through (WT-2; AC-C-102, the static half) > the block is found, and it is the only place of the file that names a proxy 0ms
+ ✓ src/test/live-runtime-static.test.tsx > the dev proxy passes the request through (WT-2; AC-C-102, the static half) > no `headers`, no `changeOrigin`, no rewrite hook: an entry holds `target` (and `ws`) and nothing else 0ms
+ ✓ src/test/live-runtime-boot-failure.test.tsx > a start-up that rejects (CPW1-7) > with an Error: the page shows the one sentence, starts no simulator and records once without the error text 236ms
+ ✓ src/test/live-runtime-boot-failure.test.tsx > a start-up that rejects (CPW1-7) > with a chunk that fails to load (TypeError): the page shows the one sentence, starts no simulator and records once without the error text 3ms
+ ✓ src/test/live-runtime-boot-failure.test.tsx > a start-up that rejects (CPW1-7) > with a value that is not an Error: the page shows the one sentence, starts no simulator and records once without the error text 2ms
+ ✓ src/test/live-runtime-boot-failure.test.tsx > a start-up that rejects (CPW1-7) > with a synchronous throw: the page shows the one sentence, starts no simulator and records once without the error text 4ms
+
+ Test Files  2 passed (2)
+      Tests  13 passed (13)
+   Start at  09:41:03
+   Duration  856ms (environment 50%, setup 22%, tests 21%, transform 3%, import 3%)
+
+exit=0

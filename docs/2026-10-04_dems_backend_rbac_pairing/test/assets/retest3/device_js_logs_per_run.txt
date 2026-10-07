@@ -1,0 +1,292 @@
+######## S1 (phone, ReactNativeJS since the run's batch start)
+--------- beginning of main
+10-06 22:20:13.422 17766 17798 I ReactNativeJS: [DEMS-LIVE] POST /api/v1/auth/touch 200 59276be6-2103-4f69-8252-83ef44d807b1
+10-06 22:20:13.428 17766 17798 I ReactNativeJS: [DEMS-LIVE] POST /api/v1/session/{id}/summary/acknowledge 204 b49d5afb-ae27-490a-9575-e75935b11768
+10-06 22:20:32.266 17766 17798 I ReactNativeJS: [DEMS-LIVE] POST /api/v1/session 201 f9879556-4a36-45ef-986a-463b8a498d56
+10-06 22:20:32.382 17766 17798 I ReactNativeJS: [DEMS-LIVE] POST /api/v1/session/{id}/precheck 202 32804e06-6b9c-40ae-802f-32b9d0eccc72
+10-06 22:20:32.383 17766 17798 I ReactNativeJS: '[runtime]', { timestamp: '2026-10-06T15:20:32.383Z',
+10-06 22:20:32.383 17766 17798 I ReactNativeJS:   level: 'info',
+10-06 22:20:32.383 17766 17798 I ReactNativeJS:   source: 'features.sessionNew.create',
+10-06 22:20:32.383 17766 17798 I ReactNativeJS:   message: 'Session created; pre-recording checks started',
+10-06 22:20:32.383 17766 17798 I ReactNativeJS:   context: { sessionId: 'SES-20261006-0087', created: true },
+10-06 22:20:32.383 17766 17798 I ReactNativeJS:   correlationId: 'Lmuwtq9vq' }
+10-06 22:20:32.570 17766 17798 I ReactNativeJS: '[runtime]', { timestamp: '2026-10-06T15:20:32.569Z',
+10-06 22:20:32.570 17766 17798 I ReactNativeJS:   level: 'info',
+10-06 22:20:32.570 17766 17798 I ReactNativeJS:   source: 'runtime.keepAwake',
+10-06 22:20:32.570 17766 17798 I ReactNativeJS:   message: 'Screen kept on for the session',
+10-06 22:20:32.570 17766 17798 I ReactNativeJS:   context: { tag: 'dems-session' },
+10-06 22:20:32.570 17766 17798 I ReactNativeJS:   correlationId: 'Lmuwtq9vq' }
+10-06 22:20:53.474 17766 17798 I ReactNativeJS: [DEMS-LIVE] POST /api/v1/session/{id}/start 200 6fb67775-5c3b-4a64-ade9-339cc78e70d4
+10-06 22:21:30.228 17766 17798 I ReactNativeJS: '[runtime]', { timestamp: '2026-10-06T15:21:30.227Z',
+10-06 22:21:30.228 17766 17798 I ReactNativeJS:   level: 'info',
+10-06 22:21:30.228 17766 17798 I ReactNativeJS:   source: 'runtime.routeSync.transition',
+10-06 22:21:30.228 17766 17798 I ReactNativeJS:   message: 'Resynced route to the session state',
+10-06 22:21:30.228 17766 17798 I ReactNativeJS:   context: { state: 'SEALED', to: '/session/summary/SES-20261006-0087' },
+10-06 22:21:30.228 17766 17798 I ReactNativeJS:   correlationId: 'Lmuwtq9vq' }
+10-06 22:21:30.233 17766 17798 I ReactNativeJS: '[runtime]', { timestamp: '2026-10-06T15:21:30.232Z',
+10-06 22:21:30.233 17766 17798 I ReactNativeJS:   level: 'info',
+10-06 22:21:30.233 17766 17798 I ReactNativeJS:   source: 'runtime.keepAwake',
+10-06 22:21:30.233 17766 17798 I ReactNativeJS:   message: 'Screen keep-on released',
+10-06 22:21:30.233 17766 17798 I ReactNativeJS:   context: { tag: 'dems-session' },
+10-06 22:21:30.233 17766 17798 I ReactNativeJS:   correlationId: 'Lmuwtq9vq' }
+######## S2 (phone, ReactNativeJS since the run's batch start)
+--------- beginning of main
+10-06 22:23:07.036 17766 17798 I ReactNativeJS: [DEMS-LIVE] POST /api/v1/auth/touch 200 a6d50518-1622-48b8-b945-5d3755712ecb
+10-06 22:23:07.038 17766 17798 I ReactNativeJS: [DEMS-LIVE] POST /api/v1/session/{id}/summary/acknowledge 204 6b5aebc5-0b9e-4cc3-b8d1-70dc60ae0159
+10-06 22:23:25.785 17766 17798 I ReactNativeJS: [DEMS-LIVE] POST /api/v1/session 201 56ff3193-fa3a-427a-8ae0-c1c7dd6fc610
+10-06 22:23:25.893 17766 17798 I ReactNativeJS: [DEMS-LIVE] POST /api/v1/session/{id}/precheck 202 984fde5c-9155-43e6-8b87-7cf4105d0be4
+10-06 22:23:25.894 17766 17798 I ReactNativeJS: '[runtime]', { timestamp: '2026-10-06T15:23:25.894Z',
+10-06 22:23:25.894 17766 17798 I ReactNativeJS:   level: 'info',
+10-06 22:23:25.894 17766 17798 I ReactNativeJS:   source: 'features.sessionNew.create',
+10-06 22:23:25.894 17766 17798 I ReactNativeJS:   message: 'Session created; pre-recording checks started',
+10-06 22:23:25.894 17766 17798 I ReactNativeJS:   context: { sessionId: 'SES-20261006-0088', created: true },
+10-06 22:23:25.894 17766 17798 I ReactNativeJS:   correlationId: 'Lmuwtq9vq' }
+10-06 22:23:26.040 17766 17798 I ReactNativeJS: '[runtime]', { timestamp: '2026-10-06T15:23:26.039Z',
+10-06 22:23:26.040 17766 17798 I ReactNativeJS:   level: 'info',
+10-06 22:23:26.040 17766 17798 I ReactNativeJS:   source: 'runtime.keepAwake',
+10-06 22:23:26.040 17766 17798 I ReactNativeJS:   message: 'Screen kept on for the session',
+10-06 22:23:26.040 17766 17798 I ReactNativeJS:   context: { tag: 'dems-session' },
+10-06 22:23:26.040 17766 17798 I ReactNativeJS:   correlationId: 'Lmuwtq9vq' }
+10-06 22:23:46.749 17766 17798 I ReactNativeJS: [DEMS-LIVE] POST /api/v1/session/{id}/start 200 76a8b4e5-8061-4058-9054-c049d7718611
+10-06 22:24:19.234 17766 17798 I ReactNativeJS: '[runtime]', { timestamp: '2026-10-06T15:24:19.226Z',
+10-06 22:24:19.234 17766 17798 I ReactNativeJS:   level: 'info',
+10-06 22:24:19.234 17766 17798 I ReactNativeJS:   source: 'runtime.routeSync.transition',
+10-06 22:24:19.234 17766 17798 I ReactNativeJS:   message: 'Resynced route to the session state',
+10-06 22:24:19.234 17766 17798 I ReactNativeJS:   context: { state: 'FINALIZING', to: '/session/finalizing' },
+10-06 22:24:19.234 17766 17798 I ReactNativeJS:   correlationId: 'Lmuwtq9vq' }
+10-06 22:24:27.338 17766 17798 I ReactNativeJS: '[runtime]', { timestamp: '2026-10-06T15:24:27.267Z',
+10-06 22:24:27.338 17766 17798 I ReactNativeJS:   level: 'info',
+10-06 22:24:27.338 17766 17798 I ReactNativeJS:   source: 'runtime.routeSync.transition',
+10-06 22:24:27.338 17766 17798 I ReactNativeJS:   message: 'Resynced route to the session state',
+10-06 22:24:27.338 17766 17798 I ReactNativeJS:   context: { state: 'SEALED', to: '/session/summary/SES-20261006-0088' },
+10-06 22:24:27.338 17766 17798 I ReactNativeJS:   correlationId: 'Lmuwtq9vq' }
+10-06 22:24:27.369 17766 17798 I ReactNativeJS: '[runtime]', { timestamp: '2026-10-06T15:24:27.360Z',
+10-06 22:24:27.369 17766 17798 I ReactNativeJS:   level: 'info',
+10-06 22:24:27.369 17766 17798 I ReactNativeJS:   source: 'runtime.keepAwake',
+10-06 22:24:27.369 17766 17798 I ReactNativeJS:   message: 'Screen keep-on released',
+10-06 22:24:27.369 17766 17798 I ReactNativeJS:   context: { tag: 'dems-session' },
+10-06 22:24:27.369 17766 17798 I ReactNativeJS:   correlationId: 'Lmuwtq9vq' }
+######## S3 (phone, ReactNativeJS since the run's batch start)
+--------- beginning of main
+10-06 22:25:28.163 17766 17798 I ReactNativeJS: [DEMS-LIVE] POST /api/v1/auth/touch 200 a82e358d-fce9-4ff2-95b9-6a9e214d7ba8
+10-06 22:25:28.170 17766 17798 I ReactNativeJS: [DEMS-LIVE] POST /api/v1/session/{id}/summary/acknowledge 204 37a3b4a1-1702-4b9f-9be7-a98aeafed878
+10-06 22:25:46.826 17766 17798 I ReactNativeJS: [DEMS-LIVE] POST /api/v1/session 201 2bd89c29-0ce6-4e64-bf3f-d6eef641ad4c
+10-06 22:25:46.902 17766 17798 I ReactNativeJS: [DEMS-LIVE] POST /api/v1/session/{id}/precheck 202 d53a50bc-2a04-47d8-98d6-c74e1e0c2720
+10-06 22:25:46.903 17766 17798 I ReactNativeJS: '[runtime]', { timestamp: '2026-10-06T15:25:46.903Z',
+10-06 22:25:46.903 17766 17798 I ReactNativeJS:   level: 'info',
+10-06 22:25:46.903 17766 17798 I ReactNativeJS:   source: 'features.sessionNew.create',
+10-06 22:25:46.903 17766 17798 I ReactNativeJS:   message: 'Session created; pre-recording checks started',
+10-06 22:25:46.903 17766 17798 I ReactNativeJS:   context: { sessionId: 'SES-20261006-0089', created: true },
+10-06 22:25:46.903 17766 17798 I ReactNativeJS:   correlationId: 'Lmuwtq9vq' }
+10-06 22:25:47.039 17766 17798 I ReactNativeJS: '[runtime]', { timestamp: '2026-10-06T15:25:47.038Z',
+10-06 22:25:47.039 17766 17798 I ReactNativeJS:   level: 'info',
+10-06 22:25:47.039 17766 17798 I ReactNativeJS:   source: 'runtime.keepAwake',
+10-06 22:25:47.039 17766 17798 I ReactNativeJS:   message: 'Screen kept on for the session',
+10-06 22:25:47.039 17766 17798 I ReactNativeJS:   context: { tag: 'dems-session' },
+10-06 22:25:47.039 17766 17798 I ReactNativeJS:   correlationId: 'Lmuwtq9vq' }
+10-06 22:26:09.065 17766 17798 I ReactNativeJS: [DEMS-LIVE] POST /api/v1/session/{id}/start 200 623005ec-3833-454f-bd84-6a45d00a1ca7
+10-06 22:26:41.133 17766 17798 I ReactNativeJS: '[runtime]', { timestamp: '2026-10-06T15:26:41.129Z',
+10-06 22:26:41.133 17766 17798 I ReactNativeJS:   level: 'info',
+10-06 22:26:41.133 17766 17798 I ReactNativeJS:   source: 'runtime.routeSync.transition',
+10-06 22:26:41.133 17766 17798 I ReactNativeJS:   message: 'Resynced route to the session state',
+10-06 22:26:41.133 17766 17798 I ReactNativeJS:   context: { state: 'FINALIZING', to: '/session/finalizing' },
+10-06 22:26:41.133 17766 17798 I ReactNativeJS:   correlationId: 'Lmuwtq9vq' }
+10-06 22:26:49.276 17766 17798 I ReactNativeJS: '[runtime]', { timestamp: '2026-10-06T15:26:49.271Z',
+10-06 22:26:49.276 17766 17798 I ReactNativeJS:   level: 'info',
+10-06 22:26:49.276 17766 17798 I ReactNativeJS:   source: 'runtime.routeSync.transition',
+10-06 22:26:49.276 17766 17798 I ReactNativeJS:   message: 'Resynced route to the session state',
+10-06 22:26:49.276 17766 17798 I ReactNativeJS:   context: { state: 'SEALED', to: '/session/summary/SES-20261006-0089' },
+10-06 22:26:49.276 17766 17798 I ReactNativeJS:   correlationId: 'Lmuwtq9vq' }
+10-06 22:26:49.289 17766 17798 I ReactNativeJS: '[runtime]', { timestamp: '2026-10-06T15:26:49.278Z',
+10-06 22:26:49.289 17766 17798 I ReactNativeJS:   level: 'info',
+10-06 22:26:49.289 17766 17798 I ReactNativeJS:   source: 'runtime.keepAwake',
+10-06 22:26:49.289 17766 17798 I ReactNativeJS:   message: 'Screen keep-on released',
+10-06 22:26:49.289 17766 17798 I ReactNativeJS:   context: { tag: 'dems-session' },
+10-06 22:26:49.289 17766 17798 I ReactNativeJS:   correlationId: 'Lmuwtq9vq' }
+######## X1 (phone, ReactNativeJS since the run's batch start)
+--------- beginning of main
+10-06 22:27:40.479 17766 17798 I ReactNativeJS: [DEMS-LIVE] POST /api/v1/auth/touch 200 661b7f70-722a-436f-82f9-0f0e4e0af145
+10-06 22:27:40.482 17766 17798 I ReactNativeJS: [DEMS-LIVE] POST /api/v1/session/{id}/summary/acknowledge 204 f915cd5b-8a73-4b74-a40d-b316823a7bc1
+10-06 22:27:59.118 17766 17798 I ReactNativeJS: [DEMS-LIVE] POST /api/v1/session 201 6d3f0c5b-53c5-432d-97ad-8dcf5e27bcc3
+10-06 22:27:59.221 17766 17798 I ReactNativeJS: [DEMS-LIVE] POST /api/v1/session/{id}/precheck 202 b822e0d6-9189-4419-94bb-63926c181fd9
+10-06 22:27:59.223 17766 17798 I ReactNativeJS: '[runtime]', { timestamp: '2026-10-06T15:27:59.223Z',
+10-06 22:27:59.223 17766 17798 I ReactNativeJS:   level: 'info',
+10-06 22:27:59.223 17766 17798 I ReactNativeJS:   source: 'features.sessionNew.create',
+10-06 22:27:59.223 17766 17798 I ReactNativeJS:   message: 'Session created; pre-recording checks started',
+10-06 22:27:59.223 17766 17798 I ReactNativeJS:   context: { sessionId: 'SES-20261006-0090', created: true },
+10-06 22:27:59.223 17766 17798 I ReactNativeJS:   correlationId: 'Lmuwtq9vq' }
+10-06 22:27:59.364 17766 17798 I ReactNativeJS: '[runtime]', { timestamp: '2026-10-06T15:27:59.364Z',
+10-06 22:27:59.364 17766 17798 I ReactNativeJS:   level: 'info',
+10-06 22:27:59.364 17766 17798 I ReactNativeJS:   source: 'runtime.keepAwake',
+10-06 22:27:59.364 17766 17798 I ReactNativeJS:   message: 'Screen kept on for the session',
+10-06 22:27:59.364 17766 17798 I ReactNativeJS:   context: { tag: 'dems-session' },
+10-06 22:27:59.364 17766 17798 I ReactNativeJS:   correlationId: 'Lmuwtq9vq' }
+10-06 22:28:20.415 17766 17798 I ReactNativeJS: [DEMS-LIVE] POST /api/v1/session/{id}/start 200 46e26df9-a138-42f9-9e25-211aabca36a6
+10-06 22:28:29.996 17766 17798 I ReactNativeJS: '[runtime]', { timestamp: '2026-10-06T15:28:29.987Z',
+10-06 22:28:29.996 17766 17798 I ReactNativeJS:   level: 'info',
+10-06 22:28:29.996 17766 17798 I ReactNativeJS:   source: 'runtime.routeSync.transition',
+10-06 22:28:29.996 17766 17798 I ReactNativeJS:   message: 'Resynced route to the session state',
+10-06 22:28:29.996 17766 17798 I ReactNativeJS:   context: { state: 'SEALED', to: '/session/summary/SES-20261006-0090' },
+10-06 22:28:29.996 17766 17798 I ReactNativeJS:   correlationId: 'Lmuwtq9vq' }
+10-06 22:28:30.010 17766 17798 I ReactNativeJS: '[runtime]', { timestamp: '2026-10-06T15:28:30.001Z',
+10-06 22:28:30.010 17766 17798 I ReactNativeJS:   level: 'info',
+10-06 22:28:30.010 17766 17798 I ReactNativeJS:   source: 'runtime.keepAwake',
+10-06 22:28:30.010 17766 17798 I ReactNativeJS:   message: 'Screen keep-on released',
+10-06 22:28:30.010 17766 17798 I ReactNativeJS:   context: { tag: 'dems-session' },
+10-06 22:28:30.010 17766 17798 I ReactNativeJS:   correlationId: 'Lmuwtq9vq' }
+######## X2 (phone, ReactNativeJS since the run's batch start)
+--------- beginning of main
+10-06 22:30:22.997 17766 17798 I ReactNativeJS: [DEMS-LIVE] POST /api/v1/auth/touch 200 b3e7ac2a-0407-4a8c-9931-ebded1edf5ff
+10-06 22:30:23.000 17766 17798 I ReactNativeJS: [DEMS-LIVE] POST /api/v1/session/{id}/summary/acknowledge 204 55724c62-4333-479f-aef9-9890a53b31d0
+10-06 22:30:41.713 17766 17798 I ReactNativeJS: [DEMS-LIVE] POST /api/v1/session 201 9c7911ea-dd15-42e9-a84c-26401747ee58
+10-06 22:30:41.811 17766 17798 I ReactNativeJS: [DEMS-LIVE] POST /api/v1/session/{id}/precheck 202 3ffe7150-ed11-4868-a927-021856d6ee8a
+10-06 22:30:41.812 17766 17798 I ReactNativeJS: '[runtime]', { timestamp: '2026-10-06T15:30:41.812Z',
+10-06 22:30:41.812 17766 17798 I ReactNativeJS:   level: 'info',
+10-06 22:30:41.812 17766 17798 I ReactNativeJS:   source: 'features.sessionNew.create',
+10-06 22:30:41.812 17766 17798 I ReactNativeJS:   message: 'Session created; pre-recording checks started',
+10-06 22:30:41.812 17766 17798 I ReactNativeJS:   context: { sessionId: 'SES-20261006-0091', created: true },
+10-06 22:30:41.812 17766 17798 I ReactNativeJS:   correlationId: 'Lmuwtq9vq' }
+10-06 22:30:42.051 17766 17798 I ReactNativeJS: '[runtime]', { timestamp: '2026-10-06T15:30:42.050Z',
+10-06 22:30:42.051 17766 17798 I ReactNativeJS:   level: 'info',
+10-06 22:30:42.051 17766 17798 I ReactNativeJS:   source: 'runtime.keepAwake',
+10-06 22:30:42.051 17766 17798 I ReactNativeJS:   message: 'Screen kept on for the session',
+10-06 22:30:42.051 17766 17798 I ReactNativeJS:   context: { tag: 'dems-session' },
+10-06 22:30:42.051 17766 17798 I ReactNativeJS:   correlationId: 'Lmuwtq9vq' }
+10-06 22:31:02.164 17766 17798 I ReactNativeJS: [DEMS-LIVE] POST /api/v1/session/{id}/start 200 c99a3602-6e40-406c-8840-088fd316a8c4
+10-06 22:31:13.507 17766 17798 I ReactNativeJS: '[runtime]', { timestamp: '2026-10-06T15:31:13.498Z',
+10-06 22:31:13.507 17766 17798 I ReactNativeJS:   level: 'info',
+10-06 22:31:13.507 17766 17798 I ReactNativeJS:   source: 'runtime.routeSync.transition',
+10-06 22:31:13.507 17766 17798 I ReactNativeJS:   message: 'Resynced route to the session state',
+10-06 22:31:13.507 17766 17798 I ReactNativeJS:   context: { state: 'SEALED', to: '/session/summary/SES-20261006-0091' },
+10-06 22:31:13.507 17766 17798 I ReactNativeJS:   correlationId: 'Lmuwtq9vq' }
+10-06 22:31:13.522 17766 17798 I ReactNativeJS: '[runtime]', { timestamp: '2026-10-06T15:31:13.514Z',
+10-06 22:31:13.522 17766 17798 I ReactNativeJS:   level: 'info',
+10-06 22:31:13.522 17766 17798 I ReactNativeJS:   source: 'runtime.keepAwake',
+10-06 22:31:13.522 17766 17798 I ReactNativeJS:   message: 'Screen keep-on released',
+10-06 22:31:13.522 17766 17798 I ReactNativeJS:   context: { tag: 'dems-session' },
+10-06 22:31:13.522 17766 17798 I ReactNativeJS:   correlationId: 'Lmuwtq9vq' }
+######## X3 (phone, ReactNativeJS since the run's batch start)
+--------- beginning of main
+10-06 22:32:01.182 17766 17798 I ReactNativeJS: [DEMS-LIVE] POST /api/v1/session/{id}/summary/acknowledge 204 2a690f36-c42e-4443-a40c-c7956c9f0b56
+10-06 22:32:19.852 17766 17798 I ReactNativeJS: [DEMS-LIVE] POST /api/v1/session 201 5c08d263-ff86-467d-850e-060cba6cd6bc
+10-06 22:32:19.949 17766 17798 I ReactNativeJS: [DEMS-LIVE] POST /api/v1/session/{id}/precheck 202 f57e8bec-aa13-4ac7-a57c-583e847a950e
+10-06 22:32:19.950 17766 17798 I ReactNativeJS: '[runtime]', { timestamp: '2026-10-06T15:32:19.950Z',
+10-06 22:32:19.950 17766 17798 I ReactNativeJS:   level: 'info',
+10-06 22:32:19.950 17766 17798 I ReactNativeJS:   source: 'features.sessionNew.create',
+10-06 22:32:19.950 17766 17798 I ReactNativeJS:   message: 'Session created; pre-recording checks started',
+10-06 22:32:19.950 17766 17798 I ReactNativeJS:   context: { sessionId: 'SES-20261006-0092', created: true },
+10-06 22:32:19.950 17766 17798 I ReactNativeJS:   correlationId: 'Lmuwtq9vq' }
+10-06 22:32:20.180 17766 17798 I ReactNativeJS: '[runtime]', { timestamp: '2026-10-06T15:32:20.179Z',
+10-06 22:32:20.180 17766 17798 I ReactNativeJS:   level: 'info',
+10-06 22:32:20.180 17766 17798 I ReactNativeJS:   source: 'runtime.keepAwake',
+10-06 22:32:20.180 17766 17798 I ReactNativeJS:   message: 'Screen kept on for the session',
+10-06 22:32:20.180 17766 17798 I ReactNativeJS:   context: { tag: 'dems-session' },
+10-06 22:32:20.180 17766 17798 I ReactNativeJS:   correlationId: 'Lmuwtq9vq' }
+10-06 22:32:41.364 17766 17798 I ReactNativeJS: [DEMS-LIVE] POST /api/v1/session/{id}/start 200 9d73e959-8291-4b79-82b4-8d91ad933047
+10-06 22:32:45.127 17766 17798 I ReactNativeJS: '[runtime]', { timestamp: '2026-10-06T15:32:45.113Z',
+10-06 22:32:45.127 17766 17798 I ReactNativeJS:   level: 'info',
+10-06 22:32:45.127 17766 17798 I ReactNativeJS:   source: 'runtime.routeSync.transition',
+10-06 22:32:45.127 17766 17798 I ReactNativeJS:   message: 'Resynced route to the session state',
+10-06 22:32:45.127 17766 17798 I ReactNativeJS:   context: { state: 'FINALIZING', to: '/session/finalizing' },
+10-06 22:32:45.127 17766 17798 I ReactNativeJS:   correlationId: 'Lmuwtq9vq' }
+10-06 22:32:53.886 17766 17798 I ReactNativeJS: '[runtime]', { timestamp: '2026-10-06T15:32:53.882Z',
+10-06 22:32:53.886 17766 17798 I ReactNativeJS:   level: 'info',
+10-06 22:32:53.886 17766 17798 I ReactNativeJS:   source: 'runtime.routeSync.transition',
+10-06 22:32:53.886 17766 17798 I ReactNativeJS:   message: 'Resynced route to the session state',
+10-06 22:32:53.886 17766 17798 I ReactNativeJS:   context: { state: 'SEALED', to: '/session/summary/SES-20261006-0092' },
+10-06 22:32:53.886 17766 17798 I ReactNativeJS:   correlationId: 'Lmuwtq9vq' }
+10-06 22:32:53.895 17766 17798 I ReactNativeJS: '[runtime]', { timestamp: '2026-10-06T15:32:53.887Z',
+10-06 22:32:53.895 17766 17798 I ReactNativeJS:   level: 'info',
+10-06 22:32:53.895 17766 17798 I ReactNativeJS:   source: 'runtime.keepAwake',
+10-06 22:32:53.895 17766 17798 I ReactNativeJS:   message: 'Screen keep-on released',
+10-06 22:32:53.895 17766 17798 I ReactNativeJS:   context: { tag: 'dems-session' },
+10-06 22:32:53.895 17766 17798 I ReactNativeJS:   correlationId: 'Lmuwtq9vq' }
+######## T1 (tablet)
+--------- beginning of main
+10-06 22:41:06.866 24946 24976 I ReactNativeJS: [DEMS-LIVE] POST /api/v1/session 201 2e8b0829-0e6b-40fa-8b3a-6f35e79a3e99
+10-06 22:41:07.032 24946 24976 I ReactNativeJS: [DEMS-LIVE] POST /api/v1/session/{id}/precheck 202 02ed7125-aa90-46f2-800d-dec34edf739f
+10-06 22:41:07.034 24946 24976 I ReactNativeJS: '[runtime]', { timestamp: '2026-10-06T15:41:07.033Z',
+10-06 22:41:07.034 24946 24976 I ReactNativeJS:   level: 'info',
+10-06 22:41:07.034 24946 24976 I ReactNativeJS:   source: 'features.sessionNew.create',
+10-06 22:41:07.034 24946 24976 I ReactNativeJS:   message: 'Session created; pre-recording checks started',
+10-06 22:41:07.034 24946 24976 I ReactNativeJS:   context: { sessionId: 'SES-20261006-0031', created: true },
+10-06 22:41:07.034 24946 24976 I ReactNativeJS:   correlationId: 'Lmuwubbtx' }
+10-06 22:41:07.196 24946 24976 I ReactNativeJS: '[runtime]', { timestamp: '2026-10-06T15:41:07.195Z',
+10-06 22:41:07.196 24946 24976 I ReactNativeJS:   level: 'info',
+10-06 22:41:07.196 24946 24976 I ReactNativeJS:   source: 'runtime.keepAwake',
+10-06 22:41:07.196 24946 24976 I ReactNativeJS:   message: 'Screen kept on for the session',
+10-06 22:41:07.196 24946 24976 I ReactNativeJS:   context: { tag: 'dems-session' },
+10-06 22:41:07.196 24946 24976 I ReactNativeJS:   correlationId: 'Lmuwubbtx' }
+10-06 22:41:28.617 24946 24976 I ReactNativeJS: [DEMS-LIVE] POST /api/v1/session/{id}/start 200 4d202da5-729a-46a8-817b-bd1e6df414d6
+10-06 22:41:46.854 24946 24976 I ReactNativeJS: '[runtime]', { timestamp: '2026-10-06T15:41:46.844Z',
+10-06 22:41:46.854 24946 24976 I ReactNativeJS:   level: 'info',
+10-06 22:41:46.854 24946 24976 I ReactNativeJS:   source: 'runtime.routeSync.transition',
+10-06 22:41:46.854 24946 24976 I ReactNativeJS:   message: 'Resynced route to the session state',
+10-06 22:41:46.854 24946 24976 I ReactNativeJS:   context: { state: 'SEALED', to: '/session/summary/SES-20261006-0031' },
+10-06 22:41:46.854 24946 24976 I ReactNativeJS:   correlationId: 'Lmuwubbtx' }
+10-06 22:41:46.856 24946 24976 I ReactNativeJS: '[runtime]', { timestamp: '2026-10-06T15:41:46.855Z',
+10-06 22:41:46.856 24946 24976 I ReactNativeJS:   level: 'info',
+10-06 22:41:46.856 24946 24976 I ReactNativeJS:   source: 'runtime.keepAwake',
+10-06 22:41:46.856 24946 24976 I ReactNativeJS:   message: 'Screen keep-on released',
+10-06 22:41:46.856 24946 24976 I ReactNativeJS:   context: { tag: 'dems-session' },
+10-06 22:41:46.856 24946 24976 I ReactNativeJS:   correlationId: 'Lmuwubbtx' }
+######## T2 (tablet)
+--------- beginning of main
+10-06 22:48:08.715 24946 24976 I ReactNativeJS: [DEMS-LIVE] POST /api/v1/session 201 4cf444a0-9051-46fd-8934-7e1256c16cd4
+10-06 22:48:08.845 24946 24976 I ReactNativeJS: [DEMS-LIVE] POST /api/v1/session/{id}/precheck 202 eafcac65-5376-4aba-9faa-8f516eddace7
+10-06 22:48:08.848 24946 24976 I ReactNativeJS: '[runtime]', { timestamp: '2026-10-06T15:48:08.848Z',
+10-06 22:48:08.848 24946 24976 I ReactNativeJS:   level: 'info',
+10-06 22:48:08.848 24946 24976 I ReactNativeJS:   source: 'features.sessionNew.create',
+10-06 22:48:08.848 24946 24976 I ReactNativeJS:   message: 'Session created; pre-recording checks started',
+10-06 22:48:08.848 24946 24976 I ReactNativeJS:   context: { sessionId: 'SES-20261006-0032', created: true },
+10-06 22:48:08.848 24946 24976 I ReactNativeJS:   correlationId: 'Lmuwubbtx' }
+10-06 22:48:08.986 24946 24976 I ReactNativeJS: '[runtime]', { timestamp: '2026-10-06T15:48:08.985Z',
+10-06 22:48:08.986 24946 24976 I ReactNativeJS:   level: 'info',
+10-06 22:48:08.986 24946 24976 I ReactNativeJS:   source: 'runtime.keepAwake',
+10-06 22:48:08.986 24946 24976 I ReactNativeJS:   message: 'Screen kept on for the session',
+10-06 22:48:08.986 24946 24976 I ReactNativeJS:   context: { tag: 'dems-session' },
+10-06 22:48:08.986 24946 24976 I ReactNativeJS:   correlationId: 'Lmuwubbtx' }
+10-06 22:48:30.115 24946 24976 I ReactNativeJS: [DEMS-LIVE] POST /api/v1/session/{id}/start 200 d3fa72f8-053d-421b-9ab6-5738f61a5ddc
+10-06 22:48:56.528 24946 24976 I ReactNativeJS: '[runtime]', { timestamp: '2026-10-06T15:48:56.522Z',
+10-06 22:48:56.528 24946 24976 I ReactNativeJS:   level: 'info',
+10-06 22:48:56.528 24946 24976 I ReactNativeJS:   source: 'runtime.routeSync.transition',
+10-06 22:48:56.528 24946 24976 I ReactNativeJS:   message: 'Resynced route to the session state',
+10-06 22:48:56.528 24946 24976 I ReactNativeJS:   context: { state: 'SEALED', to: '/session/summary/SES-20261006-0032' },
+10-06 22:48:56.528 24946 24976 I ReactNativeJS:   correlationId: 'Lmuwubbtx' }
+10-06 22:48:56.538 24946 24976 I ReactNativeJS: '[runtime]', { timestamp: '2026-10-06T15:48:56.533Z',
+10-06 22:48:56.538 24946 24976 I ReactNativeJS:   level: 'info',
+10-06 22:48:56.538 24946 24976 I ReactNativeJS:   source: 'runtime.keepAwake',
+10-06 22:48:56.538 24946 24976 I ReactNativeJS:   message: 'Screen keep-on released',
+10-06 22:48:56.538 24946 24976 I ReactNativeJS:   context: { tag: 'dems-session' },
+10-06 22:48:56.538 24946 24976 I ReactNativeJS:   correlationId: 'Lmuwubbtx' }
+######## T3 (tablet)
+--------- beginning of main
+10-06 22:50:09.137 24946 24976 I ReactNativeJS: [DEMS-LIVE] POST /api/v1/auth/touch 200 379f73ab-1aef-4bc5-8710-c4c32a03006a
+10-06 22:50:13.359 24946 24976 I ReactNativeJS: [DEMS-LIVE] POST /api/v1/session/{id}/summary/acknowledge 204 364d0b2e-58b2-4027-aa2d-0a035ddd2293
+10-06 22:50:30.944 24946 24976 I ReactNativeJS: [DEMS-LIVE] POST /api/v1/session 201 51c78a4b-5a8b-4280-b7b2-92ee86dc5900
+10-06 22:50:31.084 24946 24976 I ReactNativeJS: [DEMS-LIVE] POST /api/v1/session/{id}/precheck 202 c67c4854-381e-426a-afd0-75dbd9c05f05
+10-06 22:50:31.085 24946 24976 I ReactNativeJS: '[runtime]', { timestamp: '2026-10-06T15:50:31.085Z',
+10-06 22:50:31.085 24946 24976 I ReactNativeJS:   level: 'info',
+10-06 22:50:31.085 24946 24976 I ReactNativeJS:   source: 'features.sessionNew.create',
+10-06 22:50:31.085 24946 24976 I ReactNativeJS:   message: 'Session created; pre-recording checks started',
+10-06 22:50:31.085 24946 24976 I ReactNativeJS:   context: { sessionId: 'SES-20261006-0033', created: true },
+10-06 22:50:31.085 24946 24976 I ReactNativeJS:   correlationId: 'Lmuwubbtx' }
+10-06 22:50:31.361 24946 24976 I ReactNativeJS: '[runtime]', { timestamp: '2026-10-06T15:50:31.360Z',
+10-06 22:50:31.361 24946 24976 I ReactNativeJS:   level: 'info',
+10-06 22:50:31.361 24946 24976 I ReactNativeJS:   source: 'runtime.keepAwake',
+10-06 22:50:31.361 24946 24976 I ReactNativeJS:   message: 'Screen kept on for the session',
+10-06 22:50:31.361 24946 24976 I ReactNativeJS:   context: { tag: 'dems-session' },
+10-06 22:50:31.361 24946 24976 I ReactNativeJS:   correlationId: 'Lmuwubbtx' }
+10-06 22:50:52.572 24946 24976 I ReactNativeJS: [DEMS-LIVE] POST /api/v1/session/{id}/start 200 1692017b-8bea-4cbd-99b6-03e7b6259b68
+10-06 22:51:23.229 24946 24976 I ReactNativeJS: '[runtime]', { timestamp: '2026-10-06T15:51:23.223Z',
+10-06 22:51:23.229 24946 24976 I ReactNativeJS:   level: 'info',
+10-06 22:51:23.229 24946 24976 I ReactNativeJS:   source: 'runtime.routeSync.transition',
+10-06 22:51:23.229 24946 24976 I ReactNativeJS:   message: 'Resynced route to the session state',
+10-06 22:51:23.229 24946 24976 I ReactNativeJS:   context: { state: 'SEALED', to: '/session/summary/SES-20261006-0033' },
+10-06 22:51:23.229 24946 24976 I ReactNativeJS:   correlationId: 'Lmuwubbtx' }
+10-06 22:51:23.236 24946 24976 I ReactNativeJS: '[runtime]', { timestamp: '2026-10-06T15:51:23.230Z',
+10-06 22:51:23.236 24946 24976 I ReactNativeJS:   level: 'info',
+10-06 22:51:23.236 24946 24976 I ReactNativeJS:   source: 'runtime.keepAwake',
+10-06 22:51:23.236 24946 24976 I ReactNativeJS:   message: 'Screen keep-on released',
+10-06 22:51:23.236 24946 24976 I ReactNativeJS:   context: { tag: 'dems-session' },
+10-06 22:51:23.236 24946 24976 I ReactNativeJS:   correlationId: 'Lmuwubbtx' }

@@ -90,3 +90,40 @@ export function tickLines(): Array<{ long: boolean; line: [number, number, numbe
   }
   return out
 }
+
+// ── State word fit (E-fix FX-W, E2E-W1-5) ───────────────────────────────────────────────────
+
+/** Stroke width of the inner solid ring, in viewBox units (the `strokeWidth` of layer 3). */
+export const INNER_RING_STROKE = 2.5
+/**
+ * Air between the word's ink and the inner edge of the inner ring, as shares of the ring size. A word
+ * closer than `trigger` (≈2 px at 258 px) touches or crosses the ring and is fitted; it is then sized
+ * to keep `fit` (≈4 px). A word that already clears `trigger` keeps its display size and look.
+ */
+export const RING_WORD_AIR = { trigger: 0.008, fit: 0.016 } as const
+/** The smallest scale the fit applies (a legible floor). */
+export const RING_WORD_MIN_SCALE = 0.5
+
+/**
+ * The widest ink a word may take inside the inner ring when its ink reaches `dy` px above or below the
+ * ring's centre, keeping `air` (a share of the size) from the inner edge of the ring's stroke, in px.
+ */
+export function ringWordBudget(size: number, dy: number, air: number): number {
+  const edge = ((RING_RADII.inner - INNER_RING_STROKE / 2) / RING_VIEWBOX) * size
+  const half = Math.sqrt(Math.max(0, edge * edge - dy * dy))
+  return Math.max(0, 2 * (half - air * size))
+}
+
+/**
+ * The font-size scale of the state word: 1 while its ink (`naturalWidth`: twice its farther side's reach
+ * from the ring's centre at the display size; reaching `dy` px above or below the centre) clears the
+ * inner ring; otherwise the scale that fits it with the fit air, three decimals, never below
+ * `RING_WORD_MIN_SCALE`. No layout (zero sizes): 1.
+ */
+export function ringWordScale(naturalWidth: number, size: number, dy: number): number {
+  if (!(naturalWidth > 0) || !(size > 0)) return 1
+  const reach = Math.max(0, dy)
+  if (naturalWidth <= ringWordBudget(size, reach, RING_WORD_AIR.trigger)) return 1
+  const fitted = Math.floor((ringWordBudget(size, reach, RING_WORD_AIR.fit) / naturalWidth) * 1000) / 1000
+  return Math.min(1, Math.max(RING_WORD_MIN_SCALE, fitted))
+}

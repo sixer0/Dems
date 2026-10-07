@@ -1,0 +1,19 @@
+== 05:30:01 shasum -a 256 (SU-1)
+3596fdda55321a3672bd77bcaecf00d46462914409346ccfa1932a19c5977e11  node_modules/@embedded-postgres/darwin-arm64/scripts/hydrate-symlinks.js
+badbb4ed4901bcdc87c47e2f0e57778289e1e481bf7baf33e422e240a6e33e67  node_modules/@embedded-postgres/darwin-arm64/native/pg-symlinks.json
+515d8e4c690ecd6ae86074eedd5d6d0ed50df434b3743274085b9692f1e923f9  node_modules/@embedded-postgres/darwin-arm64/native/bin/postgres
+b81069a19bcec5d2dd263f5c9bce2ce0b5075ae0f9b8a5c81b79f34bef503c39  node_modules/@embedded-postgres/darwin-arm64/native/bin/initdb
+2c37317f9f606d9716e493d6765ff14f84d8df9b8c07eaa722431de16446f071  node_modules/@embedded-postgres/darwin-arm64/native/bin/pg_ctl
+exit=0
+1397 bytes node_modules/@embedded-postgres/darwin-arm64/scripts/hydrate-symlinks.js
+1363 bytes node_modules/@embedded-postgres/darwin-arm64/native/pg-symlinks.json
+19458112 bytes node_modules/@embedded-postgres/darwin-arm64/native/bin/postgres
+440656 bytes node_modules/@embedded-postgres/darwin-arm64/native/bin/initdb
+245792 bytes node_modules/@embedded-postgres/darwin-arm64/native/bin/pg_ctl
+== compare with W03 7.2 / W07 3
+node_modules/@embedded-postgres/darwin-arm64/scripts/hydrate-symlinks.js: OK
+node_modules/@embedded-postgres/darwin-arm64/native/pg-symlinks.json: OK
+node_modules/@embedded-postgres/darwin-arm64/native/bin/postgres: OK
+node_modules/@embedded-postgres/darwin-arm64/native/bin/initdb: OK
+node_modules/@embedded-postgres/darwin-arm64/native/bin/pg_ctl: OK
+check exit=0

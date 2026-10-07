@@ -1,0 +1,22 @@
+10:43:38.878 slept 4000 ms
+10:43:42.992 press ur-actions-OPR-001 ok at 10:43:43.006
+10:43:43.099 wait ur-change-role-OPR-001 present: 0 ms (at 10:43:43.099)
+10:43:43.186 slept 300 ms
+10:43:43.555 press ur-change-role-OPR-001 ok at 10:43:43.621
+10:43:43.707 wait ur-role-dialog present: 1 ms (at 10:43:43.708)
+10:43:43.894 slept 600 ms
+10:43:44.555 js => true
+10:43:44.622 slept 400 ms
+10:43:45.134 device-host clock offset ms: -256, -259, -261, -257, -261
+10:43:45.362 screenrecord sc4_cycle2_back_phone started (pid 12176) at 10:43:45.965
+10:43:46.085 mark c08 at 10:43:46.085
+10:43:46.147 press ur-role-confirm ok at 10:43:46.156
+10:43:46.232 [0] until true at 10:43:46.233 after 1 ms => true ;; [1] until true at 10:43:46.306 after 74 ms => "Role of AKP Budi Santoso is now Investigator"
+10:43:46.405 slept 4000 ms
+10:43:50.534 screenrecord sc4_cycle2_back_phone pulled; frames extracted at 5 fps
+10:43:57.655 serverlog since c08 (3):
+    10:43:46.172 POST /api/v1/admin/users/:id/role 200 operator:OPR-002
+    10:43:46.174 GET /api/v1/admin/users 200 operator:OPR-002
+    10:43:46.178 GET /api/v1/admin/users 200 operator:OPR-002
+10:43:57.808 js => [["OPR-001","budi.santoso","INVESTIGATOR"],["OPR-002","andi.pratama","SUPERVISOR"],["OPR-003","rina.wijaya","TECHNICIAN"]]
+10:43:57.877 ids(4): device-action-diagnostics@200,2069 "Run diagnostics" ; device-action-test-signal@538,2069 "Test signal" ; device-action-restart@878,2069 "Restart" ; device-restart-hint@540,2173 "Requires the Technician role"

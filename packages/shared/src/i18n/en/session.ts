@@ -162,8 +162,23 @@ export const session = {
     },
     sessionNote: {
       title: 'Session Note',
-      subtitle: 'Add investigator note',
-      drawerTitle: 'Investigator note',
+      /** Neutral, when no role is known; the console shows `subtitleBy` / `drawerTitleBy` of the signed-in role. */
+      subtitle: 'Add a session note',
+      drawerTitle: 'Session note',
+      /**
+       * E-fix FX-W2: by the signed-in operator's role, as the timeline titles the note by its author's
+       * role (FX-C, E2E-T-5; `noteBy`). A supervisor's drawer said "Investigator note".
+       */
+      subtitleBy: {
+        SUPERVISOR: 'Add supervisor note',
+        INVESTIGATOR: 'Add investigator note',
+        TECHNICIAN: 'Add technician note',
+      },
+      drawerTitleBy: {
+        SUPERVISOR: 'Supervisor note',
+        INVESTIGATOR: 'Investigator note',
+        TECHNICIAN: 'Technician note',
+      },
       field: 'Note',
       placeholder: 'What happened?',
       submit: 'Save note',
@@ -212,7 +227,8 @@ export const session = {
     viewAll: 'View All Events',
     kind: {
       START: 'Recording Started',
-      NOTE: 'Investigator Note Added',
+      /** Neutral: a note whose author's role is not on the item (E2E-T-5); `noteBy` names the role. */
+      NOTE: 'Note Added',
       AUDIO_PEAK: 'Audio Peak Detected',
       HEALTH: 'Device Health Normal',
       AUTOSAVE: 'Evidence Auto-Save',
@@ -220,6 +236,16 @@ export const session = {
       MARKER: 'Marker Added',
       SNAPSHOT: 'Snapshot Captured',
       FAULT: 'Fault Detected',
+    },
+    /**
+     * E-fix FX-C (E2E-T-5): the title of a NOTE row by its author's role (`params.authorRole`),
+     * chosen by `timelineTitleKey` of `@dems/shared/sim`. A supervisor's note read "Investigator
+     * Note Added".
+     */
+    noteBy: {
+      SUPERVISOR: 'Supervisor Note Added',
+      INVESTIGATOR: 'Investigator Note Added',
+      TECHNICIAN: 'Technician Note Added',
     },
     audioPeakDetail: '{{mic}} {{value}} dBFS, within threshold',
     autosaveDetail: 'Segment {{segment}} saved ({{size}})',

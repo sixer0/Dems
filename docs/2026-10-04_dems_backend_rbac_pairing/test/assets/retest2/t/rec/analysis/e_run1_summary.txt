@@ -1,0 +1,33 @@
+frames 890; monitor frames 730; blank frames 2
+  BLANK f_0124 (overlay f=123) device 16:52:06.945 sd 0.6; prev f_0123 monitor=False; next f_0125 monitor=True
+  BLANK f_0879 (overlay f=878) device 16:52:51.231 sd 0.6; prev f_0878 monitor=False; next f_0880 monitor=False
+first monitor frame f_0125 device 16:52:07.029; last monitor frame f_0854 device 16:52:36.092
+hand-over: last monitor f_0854 (f=853) 16:52:36.092 -> next f_0855 (f=854) 16:52:36.292 sd 15.4 blank=False (+200 ms)
+non-monitor frames inside the monitor span: []
+unreadable timer frames: 0
+timer values shown: 21 changes; backward steps: 0 []
+timer steps (frame, device time, host time = device - offset, value, lag = host - Core start - value):
+  f_0125 dev 16:52:07.029 host 16:52:07.485 timer   0 lag +3.13 s held 2.21 s
+  f_0185 dev 16:52:09.243 host 16:52:09.699 timer   3 lag +2.34 s held 0.67 s
+  f_0199 dev 16:52:09.909 host 16:52:10.365 timer   4 lag +2.01 s held 0.54 s
+  f_0211 dev 16:52:10.445 host 16:52:10.901 timer   5 lag +1.54 s held 0.85 s
+  f_0232 dev 16:52:11.294 host 16:52:11.750 timer   6 lag +1.39 s held 0.73 s
+  f_0252 dev 16:52:12.028 host 16:52:12.484 timer   7 lag +1.12 s held 0.27 s
+  f_0257 dev 16:52:12.294 host 16:52:12.750 timer   8 lag +0.39 s held 1.07 s
+  f_0289 dev 16:52:13.362 host 16:52:13.818 timer   9 lag +0.46 s held 0.81 s
+  f_0312 dev 16:52:14.176 host 16:52:14.632 timer  10 lag +0.27 s held 1.12 s
+  f_0348 dev 16:52:15.293 host 16:52:15.749 timer  11 lag +0.39 s held 1.15 s
+  f_0379 dev 16:52:16.444 host 16:52:16.900 timer  12 lag +0.54 s held 0.76 s
+  f_0403 dev 16:52:17.202 host 16:52:17.658 timer  13 lag +0.30 s held 1.64 s
+  f_0445 dev 16:52:18.839 host 16:52:19.295 timer  14 lag +0.94 s held 1.59 s
+  f_0480 dev 16:52:20.430 host 16:52:20.886 timer  15 lag +1.53 s held 0.28 s
+  f_0488 dev 16:52:20.709 host 16:52:21.165 timer  16 lag +0.81 s held 1.10 s
+  f_0515 dev 16:52:21.811 host 16:52:22.267 timer  17 lag +0.91 s held 10.13 s
+  f_0746 dev 16:52:31.945 host 16:52:32.401 timer  26 lag +2.04 s held 0.43 s
+  f_0757 dev 16:52:32.378 host 16:52:32.834 timer  27 lag +1.47 s held 0.25 s
+  f_0764 dev 16:52:32.626 host 16:52:33.082 timer  28 lag +0.72 s held 1.19 s
+  f_0791 dev 16:52:33.814 host 16:52:34.270 timer  29 lag +0.91 s held 0.93 s
+  f_0819 dev 16:52:34.745 host 16:52:35.201 timer  30 lag +0.84 s
+holds > 1.5 s (value, first frame, device time, seconds held, next value): [(0, 'f_0125', '16:52:07.029', 2.21, 3), (13, 'f_0403', '16:52:17.202', 1.64, 14), (14, 'f_0445', '16:52:18.839', 1.59, 15), (17, 'f_0515', '16:52:21.811', 10.13, 26)]
+banner probes: header row y baseline 95; frames shifted 0 []; band amber>20 0 []; band green>20 0 []
+band pixel maxima over monitor frames: amber 0, green 0

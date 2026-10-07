@@ -374,6 +374,61 @@ export function coreIntegrityView(item: EvidenceItem, verdict: CoreVerdict | nul
   };
 }
 
+// ---------------------------------------------------------------------------------------------
+// Stored verification (closing-fix CF-M2, defect R-T-2): the card reads the verification the record
+// holds, like the web console after E2E-W1-3 (apps/core-web/src/features/evidence/model.ts
+// `storedVerification`, the same rule).
+// ---------------------------------------------------------------------------------------------
+
+/** The custody action each verdict writes (simulator `verifyEvidenceTransition`; the Core's operation 41). */
+const VERIFY_CUSTODY_ACTION = { PASS: 'VERIFIED', FAIL: 'VERIFY_FAILED' } as const;
+
+/** The record's last verification: its verdict, when, and who ran it. */
+export interface StoredVerification {
+  status: IntegrityVerdict;
+  at: EpochMs | null;
+  /** The operator of the verification's custody entry; null for the system. */
+  actorId: string | null;
+  /** False when the custody list holds no entry of that verification (who ran it is then not known). */
+  actorKnown: boolean;
+}
+
+/**
+ * The verification the record holds (`item.verification`, kept by the Core server in Live mode), with
+ * the actor of its custody entry: the entry of the same verdict at the SAME instant. Null when the record
+ * holds none (`NOT_RUN`). Post-review fix FXR-M (W93-25): without an exact match the actor is not known
+ * (`actorKnown: false`, the "no actor" copy); it used to name the operator of the newest entry of that
+ * verdict, which can be an older verification's.
+ */
+export function storedVerification(item: Pick<EvidenceItem, 'verification' | 'custody'>): StoredVerification | null {
+  const { status, at } = item.verification;
+  if (status !== 'PASS' && status !== 'FAIL') return null;
+  const action = VERIFY_CUSTODY_ACTION[status];
+  const entries = item.custody.filter((entry) => entry.action === action);
+  // Newest first, without `findLast` (kept off the device's JS engine on purpose).
+  const newestFirst = entries.slice().reverse();
+  const matched = newestFirst.find((candidate) => candidate.at === at) ?? null;
+  return { status, at, actorId: matched?.actorId ?? null, actorKnown: matched !== null };
+}
+
+/** What the Live card says about the item: the record's verdict, or that the Core has not verified it. */
+export type CoreVerificationState = IntegrityVerdict | 'NOT_RUN';
+
+/**
+ * The state the Live card's heading names: this screen's verdict once it is revealed (a new Verify
+ * replaces the record's), else the verdict the record holds, else `NOT_RUN`.
+ */
+export function coreVerificationState(stored: Pick<StoredVerification, 'status'> | null, revealed: IntegrityVerdict | null): CoreVerificationState {
+  return revealed ?? stored?.status ?? 'NOT_RUN';
+}
+
+/** The heading of the Live card per state (`features.evidence.integrity.*`). */
+export const CORE_HEADING_KEYS: Readonly<Record<CoreVerificationState, string>> = {
+  PASS: 'features.evidence.integrity.verifiedByCore',
+  FAIL: 'features.evidence.integrity.failedOnCore',
+  NOT_RUN: 'features.evidence.integrity.notVerifiedYet',
+};
+
 /**
  * Whether the bundled demo package's result differs from the Core's verdict (§14 point 7): another
  * verdict, or other failed tracks. The checks only a package has (certificate, audit extract, export

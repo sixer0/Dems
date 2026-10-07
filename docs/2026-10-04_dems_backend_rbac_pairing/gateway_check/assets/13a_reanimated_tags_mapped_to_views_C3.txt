@@ -1,0 +1,32 @@
+C3: tags of the Reanimated "Unable to find SurfaceMountingManager" warnings against `dumpsys activity top` of the DEMS app window (Fabric view id = React tag; class, bounds relative to parent).
+Dumps (host): step1 21:28:34.10-.24, step2 21:28:44.17-.39, monitor 21:29:05.18-.77, finalizing 21:29:28.86-29.31.
+views with an id in each dump: {'step1': 156, 'step2': 250, 'monitor': 489, 'finalizing': 128}
+
+burst 21:28:34.215 (device) 230 warnings, 12 tags 18238..19426
+  tag 18238 in step1 dump: ReactViewGroup 147x147 at (912, 142) depth 54
+  tag 18392 in step1 dump: ReactViewGroup 105x105 at (32, 11) depth 68
+  tag 18512 in step1 dump: ReactViewGroup 42x42 at (828, 42) depth 68
+  tag 18538 in step1 dump: ReactViewGroup 42x42 at (828, 42) depth 68
+
+burst 21:29:28.222 (device) 10 warnings, 2 tags 20342..20426
+  none of these tags is in a dump taken before the burst
+
+burst 21:29:29.844 (device) 60 warnings, 12 tags 21964..22116
+  tag 21964 in finalizing dump: ReactViewGroup 42x42 at (0, 0) depth 66
+  tag 21976 in finalizing dump: ReactViewGroup 84x84 at (0, 0) depth 66
+  tag 21988 in finalizing dump: ReactViewGroup 6x48 at (0, 0) depth 68
+  tag 22004 in finalizing dump: ReactViewGroup 84x84 at (0, 0) depth 66
+  tag 22016 in finalizing dump: ReactViewGroup 6x47 at (0, 0) depth 68
+  tag 22032 in finalizing dump: ReactViewGroup 84x84 at (0, 0) depth 66
+  tag 22044 in finalizing dump: ReactViewGroup 6x47 at (0, 0) depth 68
+  tag 22060 in finalizing dump: ReactViewGroup 84x84 at (0, 0) depth 66
+  tag 22072 in finalizing dump: ReactViewGroup 6x47 at (0, 0) depth 68
+  tag 22088 in finalizing dump: ReactViewGroup 84x84 at (0, 0) depth 66
+  tag 22100 in finalizing dump: ReactViewGroup 6x48 at (0, 0) depth 68
+  tag 22116 in finalizing dump: ReactViewGroup 84x84 at (0, 0) depth 66
+
+burst 21:29:32.104 (device) 660 warnings, 60 tags 22462..23540
+  none of these tags is in a dump taken before the burst
+
+burst 21:29:38.783 (device) 528 warnings, 12 tags 23566..23756
+  none of these tags is in a dump taken before the burst

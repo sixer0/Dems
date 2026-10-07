@@ -1,0 +1,18 @@
+#!/bin/bash
+# finish.sh <name>: after the web confirm: web STOPPING then SEALED, phone recording pulled, Summary capture,
+# native W/E/F log of the app process, JS log, Core log request lines, session + audit rows of the session.
+NAME=$1
+cat <<B
+w1 until 15000 (()=>{const s=document.querySelector('[data-testid="page-session-monitor"]')?.getAttribute('data-session-state'); return s && s!=='RECORDING' ? s : false})()
+w1 until 25000 (()=>{const m=document.querySelector('[data-testid="finalization-modal"]')?.getAttribute('data-state'); const s=document.querySelector('[data-testid="page-session-monitor"]')?.getAttribute('data-session-state'); return (m==='SEALED'||s==='SEALED') ? {state:s, modal:m} : false})()
+sleep 5000
+p rec pull $NAME
+p screen summary
+p shot ${NAME}_after
+p native ${NAME}_native.txt
+p appjs ${NAME}_js.txt
+p focus
+serverlog $NAME socket|session|markers|sign
+w1 js (async()=>{const c=await (await fetch('/api/v1/session/current',{credentials:'same-origin'})).json(); const s=c.session; const a=await (await fetch('/api/v1/audit?sessionId='+s.id+'&order=ASC&limit=50',{credentials:'same-origin'})).json(); return {id:s.id,state:s.state,subject:s.subjectName,startedAt:s.startedAt,stoppedAt:s.stoppedAt,sealedAt:s.sealedAt,evidenceId:s.evidenceId,elapsedMs:s.elapsedMs,audit:a.rows.map(r=>[r.id,r.type,r.actorId,new Date(r.at).toTimeString().slice(0,8)+'.'+String(r.at%1000).padStart(3,'0'),r.details&&r.details.reason||''])}})()
+w1 nav /admin/devices 500
+B

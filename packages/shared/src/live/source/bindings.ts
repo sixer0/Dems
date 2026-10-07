@@ -46,7 +46,7 @@ import type { SignInResponse, SignInStatus } from '../../api/identity';
 import type { PairingRedeemed } from '../../api/pairing';
 import type { AuditChainStatus, AuditExportAccepted } from '../../api/security-audit';
 import type { CaseNumberScan } from '../../api/sessions';
-import { SIM_ACTION_OPERATIONS, type SimActionName } from '../../api/sim-actions';
+import { DEVICE_COMMAND_OPERATIONS, SIM_ACTION_OPERATIONS, type SimActionName } from '../../api/sim-actions';
 import type { DiagnosticsRunStarted, ServicesRestarted } from '../../api/system';
 import type { CoreCallFailure, CoreCallSuccess, CoreLooseCallInput } from '../../client/core-client';
 import { AUTH_LOCKOUT_MS, PAIRING_LOCKOUT_MS } from '../../sim/constants';
@@ -153,16 +153,16 @@ export function operationOf(action: SimActionName, index = 0): string {
 /**
  * Which of `deviceCommand`'s three operations a command reaches, as an index into the contract's list (48, 49, 50).
  *
- * CONTRACT-GAP-3 (local adapter): `SIM_ACTION_OPERATIONS.deviceCommand` lists the three operations
- * and does not say which `DeviceCommand` reaches which, so the link is this index. A test holds
- * each index to the path of the operation it reaches. When the contract's table names the link,
- * read it there and delete this constant.
+ * Read from the contract's table `DEVICE_COMMAND_OPERATIONS` (W83 closed the local adapter of
+ * gap 3; the name stays, it is part of this subpath's public API). A test holds each index
+ * to the path of the operation it reaches.
  */
-export const DEVICE_COMMAND_OPERATION_INDEX = {
-  [DeviceCommand.RESTART]: 0,
-  [DeviceCommand.TEST_SIGNAL]: 1,
-  [DeviceCommand.IDENTIFY]: 2,
-} as const satisfies Record<DeviceCommand, number>;
+const DEVICE_COMMAND_OPERATION_LIST: readonly string[] = SIM_ACTION_OPERATIONS.deviceCommand.operations;
+export const DEVICE_COMMAND_OPERATION_INDEX: Readonly<Record<DeviceCommand, number>> = {
+  [DeviceCommand.RESTART]: DEVICE_COMMAND_OPERATION_LIST.indexOf(DEVICE_COMMAND_OPERATIONS.RESTART),
+  [DeviceCommand.TEST_SIGNAL]: DEVICE_COMMAND_OPERATION_LIST.indexOf(DEVICE_COMMAND_OPERATIONS.TEST_SIGNAL),
+  [DeviceCommand.IDENTIFY]: DEVICE_COMMAND_OPERATION_LIST.indexOf(DEVICE_COMMAND_OPERATIONS.IDENTIFY),
+};
 
 /** The operation index of a device command. Own keys only: a text that names an inherited member is no command. */
 function deviceCommandIndex(command: unknown): number | undefined {

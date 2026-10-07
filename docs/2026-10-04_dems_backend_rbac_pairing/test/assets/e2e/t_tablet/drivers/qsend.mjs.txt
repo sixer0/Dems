@@ -1,0 +1,15 @@
+// Write the next queue command file and wait for its .out.  node qsend.mjs <d|w> <<'EOF' ... EOF
+import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+const OUT = '/Users/gsp-budi/Documents/DEMS/docs/2026-10-04_dems_backend_rbac_pairing/test/assets/e2e/t_tablet'
+const which = process.argv[2] === 'w' ? 'wq' : process.argv[2] === 'd2' ? 'q2' : 'q'
+const dir = `${OUT}/${which}`
+const body = readFileSync(0, 'utf8')
+const nums = readdirSync(dir).filter((f) => /^\d{3}\.cmd$/.test(f)).map((f) => Number(f.slice(0, 3)))
+const n = String((nums.length ? Math.max(...nums) : 0) + 1).padStart(3, '0')
+writeFileSync(`${dir}/${n}.cmd`, body)
+const limit = Number(process.argv[3] ?? 300) * 1000
+const t = Date.now()
+while (!existsSync(`${dir}/${n}.out`) && Date.now() - t < limit) await new Promise((r) => setTimeout(r, 200))
+await new Promise((r) => setTimeout(r, 100))
+console.log(`### ${which}/${n}`)
+console.log(existsSync(`${dir}/${n}.out`) ? readFileSync(`${dir}/${n}.out`, 'utf8') : `NO OUT within ${limit / 1000} s`)

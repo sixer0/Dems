@@ -1,0 +1,21 @@
+== W30 baseline before the first edit, 2026-10-04 09:49:31 to 09:49:40 WIB ==
+$ npm run test -w @dems/shared -- --maxWorkers=2   (exit 0)
+
+ Test Files  46 passed (46)
+      Tests  977 passed (977)
+   Start at  09:49:32
+   Duration  3.44s (tests 48%, import 38%, transform 12%, worker 1%)
+
+    Isolate  46 workers spawned · ~43ms startup each (spawn + environment, per file)
+             at least ~955ms faster with isolate: false — reuses workers across files instead of one per file
+
+$ npm run typecheck -w @dems/shared   (exit 0)
+
+> @dems/shared@0.1.0 typecheck
+> tsc --noEmit
+
+$ npm run lint -w @dems/shared   (exit 0)
+
+> @dems/shared@0.1.0 lint
+> oxlint
+

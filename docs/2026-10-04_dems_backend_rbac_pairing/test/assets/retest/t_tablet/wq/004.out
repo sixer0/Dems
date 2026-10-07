@@ -1,0 +1,7 @@
+typed into sm-note-input: Supervisor note R-T: confirm subject ID before questioning
+mark J3 web Save note at 12:47:14.382
+press sm-note-submit: true at 12:47:14.389
+waitgone sm-note-drawer: true at 12:47:14.713
+slept 1500
+shot J13_web_note_saved.png at 12:47:16.389
+eval: ["Session Note","Add supervisor note","Supervisor Note Added","Supervisor note R-T: confirm subject ID before questioning","12:47:14, Supervisor Note Added, Supervisor note R-T: confirm subject ID before questioning","Note added"]

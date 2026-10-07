@@ -1,0 +1,112 @@
+{
+  "at": "08:53:52.163 (epoch 1791338032.163)",
+  "facts": {
+    "href": "http://127.0.0.1:5173/admin/devices",
+    "onPage": true,
+    "issueState": "IDLE",
+    "codeShown": false,
+    "codeDigitCount": 0,
+    "qrShown": false,
+    "countdownSeconds": null,
+    "attempts": null,
+    "redeemedText": null,
+    "activeElsewhere": false,
+    "list": "table",
+    "rows": [
+      {
+        "id": "DEV-0001",
+        "state": "Paired",
+        "online": "Online",
+        "operator": "AKP Budi Santoso",
+        "lastSeen": "Just now",
+        "revokeShown": true
+      }
+    ],
+    "summary": {
+      "paired": "1",
+      "online": "1",
+      "text": "1 paired · 1 online1 paired · 1 online"
+    },
+    "toasts": []
+  },
+  "registry": {
+    "status": 200,
+    "devices": [
+      {
+        "id": "DEV-0001",
+        "state": "PAIRED",
+        "online": true,
+        "signedInOperatorId": "OPR-001",
+        "revokedAt": null
+      }
+    ]
+  },
+  "documentTimeOrigin": 1791337894086.1,
+  "screenshot": {
+    "file": "w94_r1_web_device_with_operator.png",
+    "at": "08:53:52.145 (epoch 1791338032.145)"
+  },
+  "audit": {
+    "AUTH_SUCCESS": {
+      "status": 200,
+      "total": 90,
+      "rows": [
+        {
+          "seq": 90,
+          "id": "AUD-000090",
+          "at": "2026-10-07T01:53:33.739Z",
+          "atMs": 1791338013739,
+          "type": "AUTH_SUCCESS",
+          "category": "AUTH",
+          "severity": "INFO",
+          "actorId": "OPR-001",
+          "deviceId": "DEV-0001",
+          "sessionId": null,
+          "message": "Operator signed in (AKP Budi Santoso) via password",
+          "details": {
+            "method": "PASSWORD"
+          }
+        },
+        {
+          "seq": 86,
+          "id": "AUD-000086",
+          "at": "2026-10-07T01:51:37.931Z",
+          "atMs": 1791337897931,
+          "type": "AUTH_SUCCESS",
+          "category": "AUTH",
+          "severity": "INFO",
+          "actorId": "OPR-002",
+          "deviceId": null,
+          "sessionId": null,
+          "message": "Operator signed in (AKP Andi Pratama) via password",
+          "details": {
+            "method": "PASSWORD"
+          }
+        }
+      ]
+    }
+  },
+  "network": {
+    "api": [
+      {
+        "sent": "08:53:52.156 (epoch 1791338032.156)",
+        "method": "GET",
+        "path": "/api/v1/pairing/devices",
+        "status": 200,
+        "done": "08:53:52.159 (epoch 1791338032.159)"
+      },
+      {
+        "sent": "08:53:52.161 (epoch 1791338032.161)",
+        "method": "GET",
+        "path": "/api/v1/audit?…",
+        "status": 200,
+        "done": "08:53:52.163 (epoch 1791338032.163)"
+      }
+    ],
+    "origins": [
+      "http://127.0.0.1:5173"
+    ],
+    "sockets": [],
+    "console": []
+  }
+}

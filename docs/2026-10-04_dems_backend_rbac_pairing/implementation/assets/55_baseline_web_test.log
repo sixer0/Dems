@@ -1,0 +1,19 @@
+## 2026-10-04 20:34:14 WIB baseline before the first edit of W55
+20:34  1 user, load averages: 4.61 3.32 2.65
+$ npm run test -w @dems/core-web -- --maxWorkers=2
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+
+ Test Files  48 passed (48)
+      Tests  598 passed (598)
+   Start at  20:34:14
+   Duration  48.05s (tests 60%, import 18%, environment 14%, setup 5%, transform 4%)
+
+    Isolate  48 workers spawned · ~321ms startup each (spawn + environment, per file)
+             at least ~7.39s faster with isolate: false — reuses workers across files instead of one per file
+
+exit=0
+## 20:35:02 done

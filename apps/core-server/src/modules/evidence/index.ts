@@ -66,7 +66,7 @@ import type { Pool } from 'pg';
 import { z } from 'zod';
 import { MappingError } from '../../db/mapping';
 import { simCodeOf, simRefusal, type EngineOutcome } from '../../engine';
-import { ApiFailure, invalidInput } from '../../plugins/error-envelope';
+import { ApiFailure, NOT_SIGNED_IN_TEXT, invalidInput } from '../../plugins/error-envelope';
 import { routeOfOperation } from '../../plugins/permission-guard';
 import { decodeEvidenceCursor, encodeEvidenceCursor, type EvidenceCursor } from './cursor';
 import { NO_REASON, readExportBody } from './export-request';
@@ -90,7 +90,7 @@ type ExportRefusal = Extract<ExportResult, { ok: false }>;
 
 /** The texts of the export's refusals: the ones the contract's examples show. Fixed; none quotes the request. */
 const EXPORT_REFUSAL_TEXT: Readonly<Record<ExportRefusal['reason'], string>> = {
-  NOT_SIGNED_IN: 'Sign in first.',
+  NOT_SIGNED_IN: NOT_SIGNED_IN_TEXT,
   FORBIDDEN: 'Your role cannot export evidence (RBAC). The attempt was audited.',
   NOT_FOUND: NOT_FOUND_TEXT,
   NOT_SEALED: 'Only sealed evidence can be exported.',

@@ -1,0 +1,8 @@
+13:23:40.094 mark l01 at 13:23:40.094
+13:23:40.185 declared screen login
+13:23:40.235 tap 540,1341
+13:23:40.422 slept 1200 ms
+13:23:41.652 focused true; keyguard false; inputType 0x80001
+13:23:41.889 username typed (andi.pratama, SUPERVISOR); inputType 0x80001
+13:23:42.150 slept 600 ms
+13:23:42.779 screencap 108_login_username_typed_andi.png 13:23:42.779..13:23:43.417

@@ -218,7 +218,7 @@ describe('B-7 refusal (§6.2; AC-C-48; LB-5)', () => {
     expect(requests('restartDevice')).toHaveLength(1)
   })
 
-  it('a 403 NOT_PERMITTED of operation 49 names the first role that holds DIAGNOSTICS_RUN (CONTRACT-GAP-W70-2: no `notPermitted` example)', async () => {
+  it('a 403 NOT_PERMITTED of operation 49 names the first role that holds DIAGNOSTICS_RUN (RESIDUAL-W70-2, W83 ledger #46: no `notPermitted` example)', async () => {
     const { bed } = await liveDevices()
     bed.fake.answerOnce('testDeviceSignal', refusal(403, 'NOT_PERMITTED', 'Not permitted.', { permission: 'DIAGNOSTICS_RUN' }))
     await press('MIC-02', /^Test signal/)

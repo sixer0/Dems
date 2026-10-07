@@ -1,0 +1,50 @@
+#!/bin/bash
+# cycle.sh <tag> <signedIn:0|1> <DEV>: revoke phone2's own device (timing), then re-pair with a hand-off recording.
+TAG=$1; IN=$2; DEV=$3
+echo "mark rv$TAG"
+if [ "$IN" = 1 ]; then cat <<B
+p screen login
+p tap 539 1184
+sleep 900
+p username budi.santoso
+sleep 500
+p tap 539 1342
+sleep 800
+p password
+sleep 300
+p key 66
+p waitlog signin 30
+sleep 3000
+p screen home
+p tap 540 1444
+sleep 2500
+B
+fi
+cat <<B
+p shot rv${TAG}_before
+p clock
+p rec start rv$TAG 20
+sleep 1500
+${STARVE:+p hermes starve 9000 200 250}
+sleep 500
+w1 revoke $DEV CF-M1 revoke timing $TAG
+sleep 9000
+p rec pull rv$TAG
+p screen pair
+p shot rv${TAG}_after
+p appjs rv${TAG}_js.txt
+serverlog rv$TAG revoke|socket
+w1 nav /admin/devices 3000
+w1 wait pd-issue-panel present 15000
+p screen pair
+p tapid pairing-code-slot-0
+sleep 1500
+p focus
+w1 issueredeem ho${TAG}_web_code_issued_blurred ho$TAG 14
+p rec pull ho$TAG
+p screen login
+p shot ho${TAG}_after
+p jsall SYNC_TIMEOUT|live\.socket|redeem
+serverlog rv$TAG redeem|socket
+w1 pdfacts
+B

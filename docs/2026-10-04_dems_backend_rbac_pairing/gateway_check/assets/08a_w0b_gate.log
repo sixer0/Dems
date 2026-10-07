@@ -1,0 +1,26 @@
+## 2026-10-06 00:50:28 WIB $ npm run typecheck -w @dems/core-web
+exit=0
+## 00:50:46 $ npm run lint -w @dems/core-web
+exit=0
+## $ npm run test -w @dems/core-web -- --maxWorkers=2 src/features/dashboard src/features/devices src/test/live-dashboard src/test/live-devices src/test/live-w0-page-logs.test.tsx src/test/live-w0-device-log.test.tsx src/test/live-meter-clip-reset.test.tsx
+ Test Files  11 passed (11)
+      Tests  126 passed (126)
+exit=0
+## 2026-10-06 00:52:01 WIB  0:52  2 users, load averages: 9.11 6.22 4.41
+## $ npm run test -w @dems/core-web -- --maxWorkers=2
+ Test Files  78 passed (78)
+      Tests  1012 passed (1012)
+   Duration  117.82s (tests 71%, import 14%, environment 9%, setup 3%, transform 2%)
+exit=0
+## protected test files (sha256 recorded at 23:43 before any W0 edit)
+apps/core-web/src/test/routes.test.tsx: OK
+apps/core-web/src/test/sim-fetch.test.ts: OK
+apps/core-web/src/features/storage/__tests__/storage-page.test.tsx: OK
+apps/core-web/src/lib/__tests__/core-endpoint.test.tsx: OK
+apps/core-web/src/lib/__tests__/packaged-csp.test.ts: OK
+apps/core-web/src/features/dashboard/__tests__/dashboard.test.tsx: OK
+## files of apps/core-web/src and packages/shared/src modified since 00:49 (the start of W0b): find -newermt '2026-10-06 00:49:00'
+apps/core-web/src/features/dashboard/report.ts
+apps/core-web/src/features/devices/report.ts
+apps/core-web/src/lib/page-report.ts
+apps/core-web/src/test/live-w0-page-logs.test.tsx

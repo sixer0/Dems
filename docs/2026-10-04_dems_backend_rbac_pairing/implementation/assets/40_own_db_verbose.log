@@ -1,0 +1,223 @@
+
+> @dems/core-server@0.2.0 test:db
+> vitest run --project db --maxWorkers=2 --silent=false --reporter=verbose src/modules/system src/modules/alerts
+
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/apps/core-server
+
+[test:db] PostgreSQL 18.4 on 127.0.0.1:4432; helper role dems_owner, code under test dems_app; run prefix dems_test_step_62_tmdmyhhk_
+[test:db] stale sweep: dropped 0; kept 1 of younger runs, 0 of live runs, 0 unrecognised; 0 failed
+[test:db] template dems_test_step_62_tmdmyhhk_tpl_schema: built in 135 ms (create 45 ms, hook 87 ms)
+[test:db] template dems_test_step_62_tmdmyhhk_tpl_seed: built in 224 ms (create 77 ms, hook 146 ms)
+stdout | src/modules/system/__tests__/effects.db.test.ts > runDiagnostics: the eight checks resolve on the engine's ticks, as the simulator's do > the schedule is the shared transition's; every tick is the shared step on the server's own state; the run ends when the reference simulator's ends, with the same verdicts
+[w40] runDiagnostics DIAG-000001 over 105 ticks (5.25 s): checks resolved at +ms 389, 924, 1491, 1934, 2381, 2706, 3254, 3715; ticks that changed the run: 8 (+400: 1 | +950: 2 | +1500: 3 | +1950: 4 | +2400: 5 | +2750: 6 | +3300: 7 | +3750: 8); every tick = advanceDiagnostics on the engine's state = the reference simulator; committed diagnostics behind the engine's own on 48 ticks, at most 700 ms; completedAt +3715 ms; audit rows 1, events 2
+
+stdout | src/modules/system/__tests__/system.db.test.ts > operation 68 updateSettings: no audit row, one log line (SR-82, AC-B-89) > INVESTIGATOR changes settings: 200 with the committed slice, the stored row, ONE published change, NO audit row, NO event, and exactly ONE log line with the operator ID and the changed names
+[w40] updateSettings by INVESTIGATOR: 200; audit rows +0, events +0, tables +{}; published [["replace settings"]]; log line {"operatorId":"OPR-001","changedKeys":["timeFormat"]} "settings changed" level 30
+
+stdout | src/modules/system/__tests__/effects.db.test.ts > restartServices: the restart is complete with its row > every service starts at the instant of the command, as the shared transition and the reference simulator say; the ticks afterwards change no service and write no row
+[w40] restartServices: 200 { restarted: 16 }; all 16 services started at the command's instant; stored row = the shared transition's (hash ed01bc151abf…) = the reference simulator's content; 100 ticks afterwards: no service changed, no row
+
+ ✓ |db| src/modules/system/__tests__/effects.db.test.ts > runDiagnostics: the eight checks resolve on the engine's ticks, as the simulator's do > the schedule is the shared transition's; every tick is the shared step on the server's own state; the run ends when the reference simulator's ends, with the same verdicts 71ms
+ ✓ |db| src/modules/system/__tests__/effects.db.test.ts > restartServices: the restart is complete with its row > every service starts at the instant of the command, as the shared transition and the reference simulator say; the ticks afterwards change no service and write no row 36ms
+stdout | src/modules/system/__tests__/system.db.test.ts > operation 68 updateSettings: no audit row, one log line (SR-82, AC-B-89) > SUPERVISOR changes settings: 200 with the committed slice, the stored row, ONE published change, NO audit row, NO event, and exactly ONE log line with the operator ID and the changed names
+[w40] updateSettings by SUPERVISOR: 200; audit rows +0, events +0, tables +{}; published [["replace settings"]]; log line {"operatorId":"OPR-002","changedKeys":["notifySound","presentationMode"]} "settings changed" level 30
+
+stdout | src/modules/system/__tests__/system.db.test.ts > operation 68 updateSettings: no audit row, one log line (SR-82, AC-B-89) > TECHNICIAN changes settings: 200 with the committed slice, the stored row, ONE published change, NO audit row, NO event, and exactly ONE log line with the operator ID and the changed names
+[w40] updateSettings by TECHNICIAN: 200; audit rows +0, events +0, tables +{}; published [["replace settings"]]; log line {"operatorId":"OPR-003","changedKeys":["notifyWarnings","timeFormat"]} "settings changed" level 30
+
+ ✓ |db| src/modules/system/__tests__/system.db.test.ts > the booted server > is ready with a running engine on the manual timer, listens on no port, and holds the idle seed 2ms
+ ✓ |db| src/modules/system/__tests__/system.db.test.ts > operation 64 getSystemStatus > INVESTIGATOR reads the five slices of the committed state: 200, valid against the contract 3ms
+ ✓ |db| src/modules/system/__tests__/system.db.test.ts > operation 64 getSystemStatus > SUPERVISOR reads the five slices of the committed state: 200, valid against the contract 1ms
+ ✓ |db| src/modules/system/__tests__/system.db.test.ts > operation 64 getSystemStatus > TECHNICIAN reads the five slices of the committed state: 200, valid against the contract 1ms
+ ✓ |db| src/modules/system/__tests__/system.db.test.ts > operation 64 getSystemStatus > what the read answers is what the tables hold: the five slices equal the stored ones 12ms
+ ✓ |db| src/modules/system/__tests__/system.db.test.ts > operation 64 getSystemStatus > the read opens no unit of work, sends no statement, writes no row and publishes nothing 5ms
+ ✓ |db| src/modules/system/__tests__/system.db.test.ts > operation 64 getSystemStatus > nobody without a session reads it: 401 NOT_SIGNED_IN, and no row 2ms
+ ✓ |db| src/modules/system/__tests__/system.db.test.ts > operation 68 updateSettings: no audit row, one log line (SR-82, AC-B-89) > INVESTIGATOR changes settings: 200 with the committed slice, the stored row, ONE published change, NO audit row, NO event, and exactly ONE log line with the operator ID and the changed names 23ms
+ ✓ |db| src/modules/system/__tests__/system.db.test.ts > operation 68 updateSettings: no audit row, one log line (SR-82, AC-B-89) > SUPERVISOR changes settings: 200 with the committed slice, the stored row, ONE published change, NO audit row, NO event, and exactly ONE log line with the operator ID and the changed names 17ms
+ ✓ |db| src/modules/system/__tests__/system.db.test.ts > operation 68 updateSettings: no audit row, one log line (SR-82, AC-B-89) > TECHNICIAN changes settings: 200 with the committed slice, the stored row, ONE published change, NO audit row, NO event, and exactly ONE log line with the operator ID and the changed names 23ms
+ ✓ |db| src/modules/system/__tests__/system.db.test.ts > operation 68 updateSettings: no audit row, one log line (SR-82, AC-B-89) > a call that changes nothing (the values the settings already have): 200 with the settings as they are, no statement of a write, no publication, no row, NO line 4ms
+ ✓ |db| src/modules/system/__tests__/system.db.test.ts > operation 68 updateSettings: no audit row, one log line (SR-82, AC-B-89) > a call that changes nothing (an empty object): 200 with the settings as they are, no statement of a write, no publication, no row, NO line 3ms
+ ✓ |db| src/modules/system/__tests__/system.db.test.ts > operation 68 updateSettings: no audit row, one log line (SR-82, AC-B-89) > a call that changes nothing (only a key the settings do not have): 200 with the settings as they are, no statement of a write, no publication, no row, NO line 4ms
+stdout | src/modules/system/__tests__/system.db.test.ts > operation 68 updateSettings: no audit row, one log line (SR-82, AC-B-89) > three consoles set the SAME setting to the same value at the same time: one of them changed it, so there is exactly ONE line
+[w40] three simultaneous updateSettings with the same value: 200, 200, 200; one unit changed the setting; log lines of the module: 1 ({"operatorId":"OPR-002","changedKeys":["presentationMode"]})
+
+stdout | src/modules/system/__tests__/system.db.test.ts > operation 68 updateSettings: no audit row, one log line (SR-82, AC-B-89) > measured: the statements of one updateSettings
+[w40] statements of POST /api/v1/settings, a change (11):
+BEGIN ISOLATION LEVEL READ COMMITTED
+SELECT seq, hash FROM public.audit_chain_lock()
+SELECT set_config('statement_timeout', $1, true), set_config('search_p
+UPDATE public.auth_sessions SET last_seen_at = $2 WHERE id = $1 AND en
+COMMIT
+BEGIN ISOLATION LEVEL READ COMMITTED
+SELECT seq, hash FROM public.audit_chain_lock()
+SELECT set_config('statement_timeout', $1, true), set_config('search_p
+select "id", "username", "rank", "name", "display_name", "initials", "
+update "console_settings" set "time_format" = $1, "updated_at" = $2 wh
+COMMIT
+[w40] statements of POST /api/v1/settings, unchanged (5):
+BEGIN ISOLATION LEVEL READ COMMITTED
+SELECT seq, hash FROM public.audit_chain_lock()
+SELECT set_config('statement_timeout', $1, true), set_config('search_p
+select "id", "username", "rank", "name", "display_name", "initials", "
+COMMIT
+
+stdout | src/modules/system/__tests__/effects.db.test.ts > startSoftwareUpdate: the six steps resolve on the engine's ticks, as the simulator's do > the schedule is the shared transition's; every tick is the shared step on the server's own state, hash for hash; the reboot restarts the services and the update ends on version 2.5.0 in slot B
+[w40] startSoftwareUpdate over 207 ticks (10.35 s): steps resolved at +ms 842, 1988, 3467, 4886, 7886, 8826 (+850: 1 done | +2000: 2 done | +3500: 3 done | +4900: 4 done | +7900: 5 done | +8850: 6 done); stored rows UPDATE_STARTED, SYSTEM_BOOT (+7886), UPDATE_COMPLETED (+8826) = the shared code's on the engine's state (seq, id, hash) = the reference simulator's content; committed update behind the engine's own on 90 ticks, at most 900 ms; committed states with device.softwareVersion 2.5.0 beside update.state RUNNING: 18 ticks (+8850 to +9700 ms); 16 services restarted at the reboot; version 2.5.0, slot B
+
+stdout | src/modules/system/__tests__/effects.db.test.ts > the whole sequence of the file > the stored trail since the start equals the reference simulator's for the same commands and ticks, row for row; the chain verifies; stored equals committed
+[w40] the file's sequence: 5 stored audit rows = the reference simulator's 5 (at, type, category, severity, actor, device, message, details): DIAGNOSTICS_RUN, DEVICE_COMMAND, UPDATE_STARTED, SYSTEM_BOOT, UPDATE_COMPLETED; chain ok over 91 rows
+
+ ✓ |db| src/modules/system/__tests__/effects.db.test.ts > startSoftwareUpdate: the six steps resolve on the engine's ticks, as the simulator's do > the schedule is the shared transition's; every tick is the shared step on the server's own state, hash for hash; the reboot restarts the services and the update ends on version 2.5.0 in slot B 98ms
+ ✓ |db| src/modules/system/__tests__/effects.db.test.ts > the whole sequence of the file > the stored trail since the start equals the reference simulator's for the same commands and ticks, row for row; the chain verifies; stored equals committed 11ms
+stdout | src/modules/system/__tests__/system.db.test.ts > operation 65 runDiagnostics > a run by each role in turn: 202 with the run ID; while it is in progress another caller gets the same ID and nothing is written; the stored row is the shared transition's, hash for hash
+[w40] runDiagnostics: 202 {"runId":"DIAG-000001"}; stored row = the shared transition's (seq 87, hash 5e26c732ab44…); in progress: the same ID, no row; after completion a new run {"runId":"DIAG-000002"}
+
+ ✓ |db| src/modules/system/__tests__/system.db.test.ts > operation 68 updateSettings: no audit row, one log line (SR-82, AC-B-89) > a wrong type or value (a text for a switch) is refused by the contract's schema: 422 INVALID_INPUT, nothing changed, no row, NO line 3ms
+ ✓ |db| src/modules/system/__tests__/system.db.test.ts > operation 68 updateSettings: no audit row, one log line (SR-82, AC-B-89) > a wrong type or value (a time format that does not exist) is refused by the contract's schema: 422 INVALID_INPUT, nothing changed, no row, NO line 3ms
+ ✓ |db| src/modules/system/__tests__/system.db.test.ts > operation 68 updateSettings: no audit row, one log line (SR-82, AC-B-89) > a wrong type or value (a number for the time format) is refused by the contract's schema: 422 INVALID_INPUT, nothing changed, no row, NO line 3ms
+ ✓ |db| src/modules/system/__tests__/system.db.test.ts > operation 68 updateSettings: no audit row, one log line (SR-82, AC-B-89) > nobody without a session changes a setting: 401, nothing changed, no row, NO line 2ms
+ ✓ |db| src/modules/system/__tests__/system.db.test.ts > operation 68 updateSettings: no audit row, one log line (SR-82, AC-B-89) > two consoles change DIFFERENT settings at the same time: each call has its own line with its own name, and both changes are stored 12ms
+ ✓ |db| src/modules/system/__tests__/system.db.test.ts > operation 68 updateSettings: no audit row, one log line (SR-82, AC-B-89) > three consoles set the SAME setting to the same value at the same time: one of them changed it, so there is exactly ONE line 11ms
+ ✓ |db| src/modules/system/__tests__/system.db.test.ts > operation 68 updateSettings: no audit row, one log line (SR-82, AC-B-89) > measured: the statements of one updateSettings 9ms
+ ✓ |db| src/modules/system/__tests__/system.db.test.ts > operation 68 updateSettings: no audit row, one log line (SR-82, AC-B-89) > engine host F-11: the hosted action `setPresentationMode`, which shares operation 68, runs against PostgreSQL through the same seam: the stored row moves, and no row is written 10ms
+ ✓ |db| src/modules/system/__tests__/system.db.test.ts > operation 65 runDiagnostics > a run by each role in turn: 202 with the run ID; while it is in progress another caller gets the same ID and nothing is written; the stored row is the shared transition's, hash for hash 67ms
+ ✓ |db| src/modules/system/__tests__/system.db.test.ts > operations 66 restartServices and 67 startSoftwareUpdate: who may call > restartServices: INVESTIGATOR and SUPERVISOR are refused by the guard with 403 NOT_PERMITTED and ONE ACCESS_DENIED row each; nothing else is written and nothing changed 7ms
+ ✓ |db| src/modules/system/__tests__/system.db.test.ts > operations 66 restartServices and 67 startSoftwareUpdate: who may call > startSoftwareUpdate: INVESTIGATOR and SUPERVISOR are refused by the guard with 403 NOT_PERMITTED and ONE ACCESS_DENIED row each; nothing else is written and nothing changed 6ms
+ ✓ |db| src/modules/system/__tests__/system.db.test.ts > operations 66 restartServices and 67 startSoftwareUpdate: who may call > 66: a TECHNICIAN restarts the services: 200 with 16; the stored DEVICE_COMMAND row is the shared transition's, hash for hash; every service started now, in the tables too 14ms
+ ✓ |db| src/modules/system/__tests__/system.db.test.ts > operations 66 restartServices and 67 startSoftwareUpdate: who may call > 67: a TECHNICIAN starts the update: 202 without a body; the stored UPDATE_STARTED row and the schedule of the six steps are the shared transition's; a second call changes nothing 16ms
+ ✓ |db| src/modules/system/__tests__/system.db.test.ts > the four commands from an origin that is not the web console's > 403 ORIGIN_NOT_ALLOWED at stage 3 for each, valid against the contract; no row, nothing changed, no line of the module 3ms
+stdout | src/modules/system/__tests__/system.db.test.ts > restartServices and startSoftwareUpdate while a session is open > 409 SESSION_ACTIVE with the simulator's code in every state of an open session: CREATE, PRECHECK, ARMED, RECORDING, and while it stops and finalises; no row, no revision
+[w40] restartServices and startSoftwareUpdate with an open session: 409 SESSION_ACTIVE, details { simCode: SESSION_ACTIVE, from: <state>, event: <action> }, from CREATE, PRECHECK, ARMED, RECORDING, STOPPING; no row, no revision
+
+ ✓ |db| src/modules/system/__tests__/system.db.test.ts > restartServices and startSoftwareUpdate while a session is open > 409 SESSION_ACTIVE with the simulator's code in every state of an open session: CREATE, PRECHECK, ARMED, RECORDING, and while it stops and finalises; no row, no revision 85ms
+ ✓ |db| src/modules/system/__tests__/system.db.test.ts > restartServices and startSoftwareUpdate while a session is open > once the session is SEALED it blocks nothing: the services restart (200) and the update starts (202), each with its row 118ms
+stdout | src/modules/system/__tests__/system.db.test.ts > a settings change is durable (the kept table `console_settings`) > it is present after `engine.stop()`, `app.close()` and a new app on the same clone; no audit row was ever written for it; the new process changes it again with its own line
+[w40] settings across a restart: epoch 1 -> 2; console_settings {"presentationMode":true,"timeFormat":"12","notifyWarnings":false,"notifySound":true} with updated_at unchanged; audit rows about settings: 0; a change in the new process logged [{"operatorId":"OPR-001","changedKeys":["presentationMode"]}]
+
+ ✓ |db| src/modules/system/__tests__/system.db.test.ts > a settings change is durable (the kept table `console_settings`) > it is present after `engine.stop()`, `app.close()` and a new app on the same clone; no audit row was ever written for it; the new process changes it again with its own line 359ms
+stdout | src/modules/system/__tests__/system.db.test.ts > the end state of the file's server > what the tables hold is the committed state, the chain verifies, and no line of level error was written
+[w40] rows written by this file after boot and sign-in: {"DIAGNOSTICS_RUN":2,"ACCESS_DENIED":4,"DEVICE_COMMAND":1,"UPDATE_STARTED":1}; settings lines: 13; stored = committed; chain ok over 94 rows
+
+ ✓ |db| src/modules/system/__tests__/system.db.test.ts > the end state of the file's server > what the tables hold is the committed state, the chain verifies, and no line of level error was written 14ms
+stdout | src/modules/alerts/__tests__/alerts.db.test.ts > AC-B-71: every raised alert has a FAULT_RAISED audit row > thirteen faults raised through the engine (every kind, and a tampered evidence item): every alert of the list has exactly ONE stored row of its fault, and no such row is without an alert
+[w40] AC-B-71: 13 alerts listed; audit rows: 12 FAULT_RAISED + 1 AUDIT_CHAIN_DISCONTINUITY (kind AUDIT_TAMPER); one row per alert:
+  ALR-000001 CAMERA_LOSS target VIDEO-02 -> seq 87 FAULT_RAISED
+  ALR-000002 MIC_NO_SIGNAL target AUDIO-02 -> seq 88 FAULT_RAISED
+  ALR-000003 MIC_CLIP target AUDIO-01 -> seq 89 FAULT_RAISED
+  ALR-000004 STORAGE_LOW target null -> seq 90 FAULT_RAISED
+  ALR-000005 STORAGE_FULL target null -> seq 91 FAULT_RAISED
+  ALR-000006 GNSS_LOSS target RTC -> seq 92 FAULT_RAISED
+  ALR-000007 TAMPER target null -> seq 93 FAULT_RAISED
+  ALR-000008 TAMPER target evidence:EV-20260929-0001:VIDEO-01 -> seq 94 FAULT_RAISED
+  ALR-000009 FAN_STALL target null -> seq 95 FAULT_RAISED
+  ALR-000010 POWER_FAIL target null -> seq 96 FAULT_RAISED
+  ALR-000011 TPM_FAILURE target null -> seq 97 FAULT_RAISED
+  ALR-000012 SECURITY_FAULT target null -> seq 98 FAULT_RAISED
+  ALR-000013 AUDIT_TAMPER target seq:94 -> seq 99 AUDIT_CHAIN_DISCONTINUITY
+
+ ✓ |db| src/modules/alerts/__tests__/alerts.db.test.ts > operation 69 listAlerts on the idle seed > INVESTIGATOR reads an empty list under the slice name: the seed holds no alert 4ms
+ ✓ |db| src/modules/alerts/__tests__/alerts.db.test.ts > operation 69 listAlerts on the idle seed > SUPERVISOR reads an empty list under the slice name: the seed holds no alert 1ms
+ ✓ |db| src/modules/alerts/__tests__/alerts.db.test.ts > operation 69 listAlerts on the idle seed > TECHNICIAN reads an empty list under the slice name: the seed holds no alert 1ms
+ ✓ |db| src/modules/alerts/__tests__/alerts.db.test.ts > operation 69 listAlerts on the idle seed > the read opens no unit of work, sends no statement, writes no row and publishes nothing 4ms
+ ✓ |db| src/modules/alerts/__tests__/alerts.db.test.ts > operation 69 listAlerts on the idle seed > nobody without a session reads the alerts: 401 NOT_SIGNED_IN, and no row 3ms
+stdout | src/modules/alerts/__tests__/alerts.db.test.ts > operation 70 acknowledgeAlert: no audit row, one log line (SR-82, AC-B-89) > INVESTIGATOR acknowledges an alert: 204, the alert as the simulator leaves it, the stored row, ONE published change, NO audit row, NO event, and exactly ONE log line with the operator ID and the alert ID
+[w40] acknowledgeAlert by INVESTIGATOR: 204; audit rows +0, events +0, tables +{}; published [["replace alerts"]]; log line {"operatorId":"OPR-001","alertId":"ALR-000001"} "alert acknowledged" level 30
+
+stdout | src/modules/alerts/__tests__/alerts.db.test.ts > operation 70 acknowledgeAlert: no audit row, one log line (SR-82, AC-B-89) > SUPERVISOR acknowledges an alert: 204, the alert as the simulator leaves it, the stored row, ONE published change, NO audit row, NO event, and exactly ONE log line with the operator ID and the alert ID
+[w40] acknowledgeAlert by SUPERVISOR: 204; audit rows +0, events +0, tables +{}; published [["replace alerts"]]; log line {"operatorId":"OPR-002","alertId":"ALR-000002"} "alert acknowledged" level 30
+
+stdout | src/modules/alerts/__tests__/alerts.db.test.ts > operation 70 acknowledgeAlert: no audit row, one log line (SR-82, AC-B-89) > TECHNICIAN acknowledges an alert: 204, the alert as the simulator leaves it, the stored row, ONE published change, NO audit row, NO event, and exactly ONE log line with the operator ID and the alert ID
+[w40] acknowledgeAlert by TECHNICIAN: 204; audit rows +0, events +0, tables +{}; published [["replace alerts"]]; log line {"operatorId":"OPR-003","alertId":"ALR-000003"} "alert acknowledged" level 30
+
+stdout | src/modules/alerts/__tests__/alerts.db.test.ts > operation 70 acknowledgeAlert: no audit row, one log line (SR-82, AC-B-89) > measured: the statements of one acknowledgeAlert
+[w40] statements of POST /api/v1/alerts/{id}/acknowledge, a change (11):
+BEGIN ISOLATION LEVEL READ COMMITTED
+SELECT seq, hash FROM public.audit_chain_lock()
+SELECT set_config('statement_timeout', $1, true), set_config('search_p
+UPDATE public.auth_sessions SET last_seen_at = $2 WHERE id = $1 AND en
+COMMIT
+BEGIN ISOLATION LEVEL READ COMMITTED
+SELECT seq, hash FROM public.audit_chain_lock()
+SELECT set_config('statement_timeout', $1, true), set_config('search_p
+select "id", "username", "rank", "name", "display_name", "initials", "
+update "alerts" set "acknowledged" = $1 where "alerts"."id" = $2
+COMMIT
+[w40] statements of POST /api/v1/alerts/{id}/acknowledge, unchanged (5):
+BEGIN ISOLATION LEVEL READ COMMITTED
+SELECT seq, hash FROM public.audit_chain_lock()
+SELECT set_config('statement_timeout', $1, true), set_config('search_p
+select "id", "username", "rank", "name", "display_name", "initials", "
+COMMIT
+
+stdout | src/modules/alerts/__tests__/alerts.db.test.ts > operation 70 acknowledgeAlert: no audit row, one log line (SR-82, AC-B-89) > three consoles acknowledge the SAME alert at the same time: one of them acknowledged it, so there is exactly ONE line
+[w40] three simultaneous acknowledgeAlert of ALR-000005: 204, 204, 204; one unit acknowledged it; log lines of the module: 1 ({"operatorId":"OPR-001","alertId":"ALR-000005"})
+
+stdout | src/modules/alerts/__tests__/alerts.db.test.ts > operation 70 acknowledgeAlert: no audit row, one log line (SR-82, AC-B-89) > the end state: what the tables hold is the committed state, the chain verifies, no row is about an acknowledgement, and no line of level error was written
+[w40] rows written by this file after boot and sign-in: {"FAULT_RAISED":12,"AUDIT_CHAIN_DISCONTINUITY":1,"FAULT_CLEARED":2}; alerts acknowledged 7 of 13; lines "alert acknowledged": 7; stored = committed
+
+ ✓ |db| src/modules/alerts/__tests__/alerts.db.test.ts > AC-B-71: every raised alert has a FAULT_RAISED audit row > thirteen faults raised through the engine (every kind, and a tampered evidence item): every alert of the list has exactly ONE stored row of its fault, and no such row is without an alert 92ms
+ ✓ |db| src/modules/alerts/__tests__/alerts.db.test.ts > operation 70 acknowledgeAlert: no audit row, one log line (SR-82, AC-B-89) > INVESTIGATOR acknowledges an alert: 204, the alert as the simulator leaves it, the stored row, ONE published change, NO audit row, NO event, and exactly ONE log line with the operator ID and the alert ID 18ms
+ ✓ |db| src/modules/alerts/__tests__/alerts.db.test.ts > operation 70 acknowledgeAlert: no audit row, one log line (SR-82, AC-B-89) > SUPERVISOR acknowledges an alert: 204, the alert as the simulator leaves it, the stored row, ONE published change, NO audit row, NO event, and exactly ONE log line with the operator ID and the alert ID 13ms
+ ✓ |db| src/modules/alerts/__tests__/alerts.db.test.ts > operation 70 acknowledgeAlert: no audit row, one log line (SR-82, AC-B-89) > TECHNICIAN acknowledges an alert: 204, the alert as the simulator leaves it, the stored row, ONE published change, NO audit row, NO event, and exactly ONE log line with the operator ID and the alert ID 13ms
+ ✓ |db| src/modules/alerts/__tests__/alerts.db.test.ts > operation 70 acknowledgeAlert: no audit row, one log line (SR-82, AC-B-89) > a call that changes nothing writes no line: the alert again, an alert the Core does not have; 204 each, the same revision, no statement of a write 6ms
+ ✓ |db| src/modules/alerts/__tests__/alerts.db.test.ts > operation 70 acknowledgeAlert: no audit row, one log line (SR-82, AC-B-89) > a refused call writes no line: an `{id}` outside the pattern (422), and a caller without a session (401); nothing changed 4ms
+ ✓ |db| src/modules/alerts/__tests__/alerts.db.test.ts > operation 70 acknowledgeAlert: no audit row, one log line (SR-82, AC-B-89) > from an origin that is not the web console's: 403 ORIGIN_NOT_ALLOWED at stage 3, valid against the contract; nothing changed, no line 2ms
+ ✓ |db| src/modules/alerts/__tests__/alerts.db.test.ts > operation 70 acknowledgeAlert: no audit row, one log line (SR-82, AC-B-89) > measured: the statements of one acknowledgeAlert 4ms
+ ✓ |db| src/modules/alerts/__tests__/alerts.db.test.ts > operation 70 acknowledgeAlert: no audit row, one log line (SR-82, AC-B-89) > three consoles acknowledge the SAME alert at the same time: one of them acknowledged it, so there is exactly ONE line 10ms
+ ✓ |db| src/modules/alerts/__tests__/alerts.db.test.ts > operation 70 acknowledgeAlert: no audit row, one log line (SR-82, AC-B-89) > two consoles acknowledge DIFFERENT alerts at the same time: each call has its own line with its own alert 4ms
+ ✓ |db| src/modules/alerts/__tests__/alerts.db.test.ts > operation 70 acknowledgeAlert: no audit row, one log line (SR-82, AC-B-89) > an acknowledgement is kept when the fault is cleared: the alert becomes resolved and stays acknowledged, in the list and in the table 7ms
+ ✓ |db| src/modules/alerts/__tests__/alerts.db.test.ts > operation 70 acknowledgeAlert: no audit row, one log line (SR-82, AC-B-89) > the end state: what the tables hold is the committed state, the chain verifies, no row is about an acknowledgement, and no line of level error was written 11ms
+stdout | src/modules/alerts/__tests__/alerts.db.test.ts > an acknowledgement survives a restart, and the engine's own alert has its row too > after `engine.stop()`, `app.close()` and a new app on the same clone the alerts are as they were; the recording that was running raised a POWER_FAIL alert at the start, with its FAULT_RAISED row; the new process acknowledges on
+[w40] alerts across a restart: epoch 1 -> 2; before the stop [["ALR-000002","MIC_NO_SIGNAL",true],["ALR-000004","FAN_STALL",false]]; after the start the same two and ALR-000006 POWER_FAIL (raised by the engine's restart rule, at 0 ms from the stop) with FAULT_RAISED seq 94, actor null; one FAULT_RAISED row per alert: ALR-000002 -> seq 91, ALR-000004 -> seq 92, ALR-000006 -> seq 94
+
+ ✓ |db| src/modules/alerts/__tests__/alerts.db.test.ts > an acknowledgement survives a restart, and the engine's own alert has its row too > after `engine.stop()`, `app.close()` and a new app on the same clone the alerts are as they were; the recording that was running raised a POWER_FAIL alert at the start, with its FAULT_RAISED row; the new process acknowledges on 369ms
+[test:db] bulk fixture: dems_test_step_62_tmdmyhhk_tpl_bulk as dems_owner; clock 2026-10-01T03:00:00.000Z; seed 20261004
+[test:db]   table                   minimum   loaded   added  met
+[test:db]   roles                         3        3       0  yes
+[test:db]   permissions                  12       12       0  yes
+[test:db]   role_permissions             18       18       0  yes
+[test:db]   operators                    12       12       9  yes
+[test:db]   operator_credentials         12       12       9  yes
+[test:db]   auth_sessions               300      300     300  yes
+[test:db]   pairing_codes                60       60      60  yes
+[test:db]   paired_devices               40       40      40  yes
+[test:db]   device_credentials           40       40      40  yes
+[test:db]   biometric_tokens             80       83      83  yes
+[test:db]   registry_counters             2        2       0  yes
+[test:db]   audit_log                  5000     5000    4918  yes
+[test:db]   audit_chain_head              1        1       0  yes
+[test:db]   audit_chain_history          25       25      25  yes
+[test:db]   events                     2500     3649    3590  yes
+[test:db]   session_history             520      520     507  yes
+[test:db]   evidence_items              505      515     502  yes
+[test:db]   evidence_tracks            2020     2060    2008  yes
+[test:db]   evidence_custody           1200     1220    1192  yes
+[test:db]   exports                      60       60      59  yes
+[test:db]   alerts                      250      250     250  yes
+[test:db]   health_snapshots           1500     1508    1508  yes
+[test:db]   engine_counters               6        6       1  yes
+[test:db]   active_session                0        0       0  yes
+[test:db]   storage_policy                1        1       0  yes
+[test:db]   console_settings              1        1       0  yes
+[test:db]   core_device                   1        1       0  yes
+[test:db]   core_state                    1        1       0  yes
+[test:db]   hardware_snapshot             1        1       0  yes
+[test:db]   schema_meta                   1        1       0  yes
+[test:db] bulk fixture: every minimum of the 30 tables is met; audit head seq 5000, hash 46382e11b1601087...; digest 3d2e7fe247a44ec2...; build 227 ms, write 1518 ms, total 1749 ms
+stdout | src/modules/alerts/__tests__/alerts.db.test.ts > operation 69 on the bulk template: 250 stored alerts > the list is the engine's ring: the newest 100 of the stored alerts by instant and ID, oldest first, valid against the contract
+[w40] bulk template: 250 stored alerts, 100 listed (the ring); listed: 12 active, 48 acknowledged, kinds AUDIT_TAMPER, CAMERA_LOSS, FAN_STALL, GNSS_LOSS, MIC_CLIP, MIC_NO_SIGNAL, POWER_FAIL, SECURITY_FAULT, STORAGE_FULL, STORAGE_LOW, SYSTEM, TAMPER, TPM_FAILURE; of the 88 listed fault alerts of the fixture, 0 have a FAULT_RAISED row with the alert's kind, target, instant and text, 88 one with its kind and instant, 88 one with its kind at any instant; the stored trail holds 275 rows of type FAULT_RAISED or AUDIT_CHAIN_DISCONTINUITY (the fixture's own data, not raised by a server)
+
+stdout | src/modules/alerts/__tests__/alerts.db.test.ts > operation 69 on the bulk template: 250 stored alerts > an alert of the ring is acknowledged with its line; a stored alert that is older than the ring is unknown to the engine: 204, nothing changes, no line
+[w40] bulk template: acknowledging ALR-000350 (in the ring) stored it and logged one line; acknowledging ALR-000200 (stored, older than the newest 100) answered 204 and changed nothing
+
+ ✓ |db| src/modules/alerts/__tests__/alerts.db.test.ts > operation 69 on the bulk template: 250 stored alerts > the list is the engine's ring: the newest 100 of the stored alerts by instant and ID, oldest first, valid against the contract 22ms
+ ✓ |db| src/modules/alerts/__tests__/alerts.db.test.ts > operation 69 on the bulk template: 250 stored alerts > an alert of the ring is acknowledged with its line; a stored alert that is older than the ring is unknown to the engine: 204, nothing changes, no line 22ms
+
+ Test Files  3 passed (3)
+      Tests  55 passed (55)
+   Start at  16:42:17
+   Duration  7.29s (tests 62%, transform 20%, import 17%)
+
+[test:db] forced drops that needed a retry: 0
+[test:db] teardown: dropped 3 database(s) in 136 ms; 0 remain with the run prefix dems_test_step_62_tmdmyhhk_

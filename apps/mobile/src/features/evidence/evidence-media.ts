@@ -21,7 +21,7 @@ export function mediaForEvidence(evidenceId: string): DemoMediaItem | null {
 /**
  * The poster for rows and the hero: Camera 1's poster, else the W-05 room still.
  *
- * CONTRACT-GAP-W74-2 (backend task W74; 01_specs MS-2): in Live mode a row of the list still joins
+ * RESIDUAL-W74-2 (W83 ledger #50) (backend task W74; 01_specs MS-2): in Live mode a row of the list still joins
  * its poster by the evidence number, because an item of operation 39's `EvidencePage` carries no
  * `EvidenceMediaRef`; only operation 40 does, one item per call. The detail asks operation 40 and
  * uses `posterOf` with the media the Core named. A media reference on the list's items (or on the

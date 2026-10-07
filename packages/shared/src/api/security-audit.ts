@@ -51,6 +51,7 @@ import {
   NOT_SIGNED_IN,
   STATE_READ_NOTE,
   backendSource,
+  EXPORT_DENIAL_NOTE,
   exportNotPermitted,
   forbidden,
   hostedNote,
@@ -216,8 +217,8 @@ export const AuditExportAcceptedSchema = z
   .strictObject({
     exportId: z.string().regex(EXPORT_ID_PATTERN),
     scope: z.enum(AuditExportScope),
-    rows: count().describe('Audit rows the export covers.'),
-    head: sha256Hex().describe('Head hash of the chain the export covers.'),
+    rows: count().describe('Stored audit rows the export covers: every row before the AUDIT_EXPORTED row it wrote.'),
+    head: sha256Hex().describe('Hash of the last of those rows: the `prevHash` of the AUDIT_EXPORTED row.'),
   })
   .describe('Export accepted. The ExportEvent is the AUDIT_EXPORTED audit row it wrote; the client builds the file.');
 export type AuditExportAccepted = z.output<typeof AuditExportAcceptedSchema>;
@@ -357,6 +358,7 @@ export const SECURITY_AUDIT_OPERATIONS = [
     description: [
       'Accepts an export of the audit log with a mandatory reason and records it. **RBAC + audit**: a role without AUDIT_EXPORT is refused with `403` and one EXPORT_DENIED row.',
       'Writes AUDIT_EXPORTED with the export ID, the row count, the head hash, the reason and the destination.',
+      EXPORT_DENIAL_NOTE,
       NO_FILE,
       hostedNote('exportAudit'),
     ].join('\n\n'),
@@ -383,6 +385,7 @@ export const SECURITY_AUDIT_OPERATIONS = [
     description: [
       'Accepts an export of the log bundle, which is the audit chain and the operational events, with a mandatory reason and records it. **RBAC + audit**: a role without AUDIT_EXPORT is refused with `403` and one EXPORT_DENIED row.',
       'Writes AUDIT_EXPORTED with `details.scope: LOGS`, the export ID, the counts, the head hash, the reason and the destination.',
+      EXPORT_DENIAL_NOTE,
       NO_FILE,
       hostedNote('exportLogs'),
     ].join('\n\n'),

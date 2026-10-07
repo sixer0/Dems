@@ -5,7 +5,7 @@
 //   section, except the two components the specification widens (AC-B-13). The web API Reference
 //   builds it in Simulated mode.
 // - `all` holds every operation of the registry, as the Core server answers it: 75 operations, two
-//   security schemes, the server 127.0.0.1:4420, version 0.2.0. It is the committed openapi.json.
+//   security schemes, the server 127.0.0.1:4420, version 0.2.1 (0.2.0 until W83). It is the committed openapi.json.
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { dereference, validate } from '@scalar/openapi-parser';
@@ -14,6 +14,7 @@ import { OPENAPI_COMMITTED_SCOPE, OPENAPI_JSON_PATH, renderOpenApiJson } from '.
 import {
   API_BADGES,
   CORE_API_ENVELOPE_RESPONSES,
+  CORE_API_EXAMPLES,
   CORE_API_OPERATIONS,
   CORE_API_SCHEMAS,
   CORE_HTTP_ORIGIN,
@@ -38,6 +39,7 @@ import {
   listCoreApiResponseStatuses,
   listOpenApiOperations,
   serializeOpenApiDocument,
+  validateCoreApiResponse,
   type JsonSchemaObject,
   type OpenApiDocument,
 } from '../src/api';
@@ -52,10 +54,13 @@ const BASELINE = {
   info: '932bce8ca02d6685a68427ca029ac24a64a84c380002c84fe49a38f4afbc213e', // [openapi, info]
   servers: '816622205c53d229fff526e9dd0a986c4f74b8bbf113384dc32f533bb076fc88',
   tags: 'eae2a20baad7c588c67bfd4abb2abf4ae588a2e940e20c4d42be7c027061d072',
-  paths: '64d1bf9b9cabe862b95b0981dccf233187d766e963e4342df76a5637aed98492',
+  // Changed by design (W83, KI-18; decision D184): the health description no longer names a fixed origin.
+  // At acaff20: 64d1bf9b9cabe862b95b0981dccf233187d766e963e4342df76a5637aed98492.
+  paths: '184431cd5576b32c452a5a0af7b85babe5bae50da2271fb00ae4430e6a75d0e7',
   headers: '398f21cb993e8b95f6319663cdc8a79620e83de26fd7aa86a6d67309dbd53f67',
   operations: {
-    getServiceHealth: '314f8b26397442a98e86d76bd9571f9e2cc074c341dd5c9b211a7f966aeba102',
+    // Changed by design (W83, KI-18). At acaff20: 314f8b26397442a98e86d76bd9571f9e2cc074c341dd5c9b211a7f966aeba102.
+    getServiceHealth: 'eb18b951117540b3008d13124770ecc92337fe25e8ab473631bed7d09e46d7b9',
     createSession: 'dd82698b89feda8a52f79f0df15428dd079406bb34766740aa884d53561463d4',
     startSession: 'ef11eecc963ef6ab9fac4801297fa8231b842a64b4366b114ec302bd3b9b8494',
     stopSession: 'e3996b66f273ce04f25545b5663835d00d6484c67d03d40a23fde623d83e67f1',
@@ -122,7 +127,7 @@ describe('scope offline: the default, and the document of the baseline', () => {
     expect(listOpenApiOperations(createOpenApiDocument({ includeSimulated: false })).map((entry) => entry.operation.operationId)).toEqual(['getServiceHealth']);
   });
 
-  it('info, servers, tags, every path and the header component are byte-equal to acaff20', () => {
+  it('info, servers, tags, every path and the header component are byte-equal to acaff20, except the KI-18 sentence of the health path (W83)', () => {
     expect(sha256([offline.openapi, offline.info])).toBe(BASELINE.info);
     expect(sha256(offline.servers)).toBe(BASELINE.servers);
     expect(sha256(offline.tags)).toBe(BASELINE.tags);
@@ -134,7 +139,7 @@ describe('scope offline: the default, and the document of the baseline', () => {
     expect(OPENAPI_DOCUMENT_VERSION).toBe('0.1.0');
   });
 
-  it('each of the ten operation objects is byte-equal to acaff20', () => {
+  it('each of the ten operation objects is byte-equal to acaff20, except the KI-18 sentence of getServiceHealth (W83)', () => {
     const now = Object.fromEntries(listOpenApiOperations(offline).map((entry) => [entry.operation.operationId, sha256(entry.operation)]));
     expect(now).toEqual(BASELINE.operations);
   });
@@ -239,7 +244,7 @@ describe('scope all: every operation of the registry, as the Core server answers
     const parsed = JSON.parse(committed) as OpenApiDocument;
     expect(listOpenApiOperations(parsed)).toHaveLength(75);
     expect(Object.keys(parsed.components.securitySchemes ?? {})).toHaveLength(2);
-    expect(parsed.info.version).toBe('0.2.0');
+    expect(parsed.info.version).toBe('0.2.1'); // changed by design (W83, decision D184 DQ-8)
     expect(parsed.servers[0]?.url).toBe('http://127.0.0.1:4420');
   });
 
@@ -365,14 +370,14 @@ describe('scope all: every operation of the registry, as the Core server answers
     expect([count([]), count([{}, { bearerAuth: [] }]), count(bearer), count(cookieOrBearer)]).toEqual([3, 1, 6, 65]);
   });
 
-  it('API-12: the Core server 127.0.0.1:4420 is the first server, mock-core the second; version 0.2.0', () => {
+  it('API-12: the Core server 127.0.0.1:4420 is the first server, mock-core the second; version 0.2.1 (W83)', () => {
     expect(all.servers.map((server) => server.url)).toEqual([CORE_SERVER_HTTP_ORIGIN, CORE_HTTP_ORIGIN]);
     expect(CORE_SERVER_HTTP_ORIGIN).toBe('http://127.0.0.1:4420');
     expect(all.servers[0]?.description).toContain('dems-core-server');
     expect(all.servers[1]?.description).toContain('It answers no other operation');
     expect(hostsOf(all).sort()).toEqual(['127.0.0.1:4400', '127.0.0.1:4420']);
     expect(all.info.version).toBe(OPENAPI_CORE_SERVER_DOCUMENT_VERSION);
-    expect(OPENAPI_CORE_SERVER_DOCUMENT_VERSION).toBe('0.2.0');
+    expect(OPENAPI_CORE_SERVER_DOCUMENT_VERSION).toBe('0.2.1');
     expect(all.info.summary).toContain('75 operations');
     expect(createOpenApiDocument({ scope: 'all', includeSimulated: false }).info.summary).toContain('66 operations');
     // Each build is independent: a caller may change the servers of its own copy.
@@ -482,8 +487,17 @@ describe('scope all: every operation of the registry, as the Core server answers
         expect(twin?.[member], `${operation.operationId} ${member}`).toEqual(operation[member]);
       }
       for (const [status, response] of Object.entries(operation.responses)) {
-        expect(twin?.responses[status]?.description, `${operation.operationId} ${status}`).toBe(response.description);
-        expect(twin?.responses[status]?.content, `${operation.operationId} ${status}`).toEqual(response.content);
+        // Changed by design (W83, decision D184 DQ-1): a status may carry an all-scope text of its own
+        // (`coreServerDescription`: `stopSession` and `exportEvidence` 422); the offline text is unchanged.
+        const allText = (entryOf(operation.operationId).responses[Number(status)] as { coreServerDescription?: string } | undefined)?.coreServerDescription;
+        expect(twin?.responses[status]?.description, `${operation.operationId} ${status}`).toBe(allText ?? response.description);
+        // Changed by design (closing-fix round C1; F84-3, D187 ruling 3): a status may carry examples of
+        // the Core server's own answer (`coreServerResponses`: health 200), listed first; the rest of the
+        // content is the offline scope's.
+        const own = CORE_API_EXAMPLES[operation.operationId]?.coreServerResponses?.[Number(status)];
+        const media = response.content?.['application/json'];
+        const content = own && media ? { 'application/json': { ...media, examples: { ...own, ...media.examples } } } : response.content;
+        expect(twin?.responses[status]?.content, `${operation.operationId} ${status}`).toEqual(content);
       }
       const extra = Object.keys(twin?.responses ?? {}).filter((status) => !(status in operation.responses));
       const entry = entryOf(operation.operationId);
@@ -491,6 +505,13 @@ describe('scope all: every operation of the registry, as the Core server answers
         listCoreApiResponseStatuses(entry).filter((status) => !listCoreApiResponseStatuses(entry, CoreApiScope.OFFLINE).includes(status)),
       );
     }
+    // C1 (F84-3): health is the only such operation; the Live page prefills from the first example,
+    // which is a valid answer of the Core server.
+    expect(Object.keys(CORE_API_EXAMPLES).filter((id) => CORE_API_EXAMPLES[id]?.coreServerResponses)).toEqual(['getServiceHealth']);
+    const health = all.paths['/api/v1/health']?.get?.responses['200']?.content?.['application/json']?.examples ?? {};
+    expect(Object.keys(health)).toEqual(['coreServer', 'live']);
+    expect(validateCoreApiResponse('getServiceHealth', 200, health.coreServer?.value)).toEqual({ ok: true });
+    expect(health.coreServer?.value).toMatchObject({ service: 'dems-core-server', ready: { database: true, engine: true } });
     const serialized = JSON.stringify(all.components.schemas);
     expect(serialized).not.toContain('"$schema"');
     expect(serialized).not.toContain('9007199254740991');
@@ -550,7 +571,8 @@ describe('scope all: every operation of the registry, as the Core server answers
   it('defines the envelope-level answers once, as components.responses', () => {
     const responses = all.components.responses ?? {};
     expect(Object.keys(responses)).toEqual([
-      'InvalidPath', 'NotFound', 'MethodNotAllowed', 'NotReady', 'OriginNotAllowed', 'CredentialConflict', 'RateLimited', 'PayloadTooLarge', 'InternalError',
+      // `InvalidJson` added by design (W83, gap W36-1 and gap W40-1).
+      'InvalidPath', 'NotFound', 'MethodNotAllowed', 'NotReady', 'OriginNotAllowed', 'CredentialConflict', 'RateLimited', 'PayloadTooLarge', 'InvalidJson', 'InternalError',
     ]);
     expect(Object.keys(responses)).toHaveLength(CORE_API_ENVELOPE_RESPONSES.length);
     for (const response of Object.values(responses)) {

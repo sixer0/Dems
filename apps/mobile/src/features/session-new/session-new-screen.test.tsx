@@ -10,7 +10,7 @@ import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { act, fireEvent, screen, within } from '@testing-library/react-native';
 import { router } from 'expo-router';
 import { BackHandler } from 'react-native';
-import { OPERATORS, PRECHECK_TOTAL_MAX_MS, ScenarioName } from '@dems/shared/sim';
+import { DEMO_OPERATOR_PASSWORD, OPERATORS, PRECHECK_TOTAL_MAX_MS, ScenarioName } from '@dems/shared/sim';
 import { getMissingKeys, i18n, resetMissingKeys } from '@/i18n';
 import { resetMotionStateForTests } from '@/motion';
 import type { TestSim } from '@/runtime/testing/test-sim';
@@ -153,9 +153,26 @@ describe('step 1: Session Information (MB 3, D62)', () => {
     expect(h.app.getSearchParams().step).toBe('2');
   });
 
-  it('a TECHNICIAN cannot start a session: the create error is shown and nothing is created', async () => {
+  it('R2 (E-fix FX-M2, E2E-P-5): a TECHNICIAN is not shown the wizard: the route goes Home and nothing is created', async () => {
+    // Before ruling R2 (decision D201) the wizard opened and only Next was refused (the next test).
     const h = await openFlow({ operator: 2 });
+    await settle();
+    expect(h.app.getPathname()).toBe('/home');
+    expect(screen.getByTestId('screen-home')).toBeTruthy();
+    expect(screen.queryByTestId('session-new-step-1')).toBeNull();
+    expect(h.state().session).toBeNull();
+  });
+
+  it('a role without SESSION_START at Next (the signed-in operator changed while the wizard was open): the create error is shown and nothing is created', async () => {
+    const h = await openFlow();
     await fillStep1();
+    act(() => {
+      h.sim.actions.signOut();
+      expect(h.sim.actions.signIn(OPERATORS[2]!.username, DEMO_OPERATOR_PASSWORD).ok).toBe(true);
+    });
+    await settle();
+    // The entry was allowed, so the screen keeps its own rule for a loss (no second navigation).
+    expect(screen.getByTestId('session-new-step-1')).toBeTruthy();
     await pressNextAsync();
     expect(h.state().session).toBeNull();
     expect(screen.getByTestId('session-new-create-error')).toBeTruthy();

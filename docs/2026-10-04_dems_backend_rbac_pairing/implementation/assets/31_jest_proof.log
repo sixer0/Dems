@@ -1,0 +1,40 @@
+## 2026-10-04 10:29:27 WIB from the workspace root, with the mobile jest config
+$ npx jest --config apps/mobile/jest.config.js --roots "$PWD/.cache/w31/jest" --maxWorkers=2
+PASS .cache/w31/jest/live-testing-jest-proof.test.ts
+  @dems/shared/live/testing under the mobile jest transform
+    ✓ loads through the export subpath, with its whole surface (1 ms)
+    ✓ the real typed client on the fake fetch: every registry operation, answered from the contract examples (21 ms)
+    ✓ the named errors keep their class and their name under the class transform (7 ms)
+    ✓ the real heartbeat client on the fake socket, under the jest fake timers (6 ms)
+    ✓ a held answer and the manual clock, with no runner timer (1 ms)
+    ✓ the opt-in install replaces the global fetch and socket constructor and puts them back (24 ms)
+
+Test Suites: 1 passed, 1 total
+Tests:       6 passed, 6 total
+Snapshots:   0 total
+Time:        0.882 s, estimated 5 s
+Ran all test suites.
+exit=0
+
+## 10:29:29 WIB through the mobile workspace's own test script (jest starts in apps/mobile)
+$ npm run test -w @dems/mobile -- --roots "$PWD/.cache/w31/jest" --maxWorkers=2
+
+> @dems/mobile@0.1.0 test
+> jest --roots /Users/gsp-budi/Documents/DEMS/.cache/w31/jest --maxWorkers=2
+
+PASS ../../.cache/w31/jest/live-testing-jest-proof.test.ts
+  @dems/shared/live/testing under the mobile jest transform
+    ✓ loads through the export subpath, with its whole surface (1 ms)
+    ✓ the real typed client on the fake fetch: every registry operation, answered from the contract examples (25 ms)
+    ✓ the named errors keep their class and their name under the class transform (10 ms)
+    ✓ the real heartbeat client on the fake socket, under the jest fake timers (9 ms)
+    ✓ a held answer and the manual clock, with no runner timer (1 ms)
+    ✓ the opt-in install replaces the global fetch and socket constructor and puts them back (21 ms)
+
+Test Suites: 1 passed, 1 total
+Tests:       6 passed, 6 total
+Snapshots:   0 total
+Time:        0.921 s, estimated 1 s
+Ran all test suites.
+exit=0
+10:29:30 WIB

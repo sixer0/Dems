@@ -49,7 +49,7 @@ import {
   webHeaders,
   type RealtimeApp,
   type TestSocket,
-} from '../../src/realtime/__tests__/support';
+} from '../support/realtime';
 import { useTestDatabase } from '../helpers/db';
 import { credentialLeaks } from '../support/config';
 import { linkProblems, readHead, readTrail, verifyTrail } from '../support/core';

@@ -1,0 +1,10 @@
+read at 18:03:51 WIB as dems_owner on 127.0.0.1:4432, PostgreSQL 18.4
+pg_database: 10 row(s); outside the test prefix: dems_demo (dems_owner), dems_lane_1 (dems_owner), dems_lane_2 (dems_owner), dems_lane_3 (dems_owner), postgres (dems_admin), template0 (dems_admin), template1 (dems_admin)
+test runs with a database: 1
+  dems_test_step_64m_tmdoqjg5_*  started 17:20:43 (43 min ago; the stale sweep takes a dead run after 6 h, at 23:20:43)  databases 3  no session holds its liveness lock
+      client sessions on its databases: none; backends without a role: 0
+      dems_test_step_64m_tmdoqjg5_f01_backpressure
+      dems_test_step_64m_tmdoqjg5_tpl_schema
+      dems_test_step_64m_tmdoqjg5_tpl_seed
+clone lock (442002, 0): free; liveness locks held in all: 0
+exit=0

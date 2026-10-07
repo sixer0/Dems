@@ -29,6 +29,7 @@
  */
 import type { z } from 'zod';
 import { EPOCH_HEADER_NAME, REQUEST_ID_HEADER_NAME, RETRY_AFTER_HEADER_NAME, REVISION_HEADER_NAME } from '../api/constants';
+import { BEARER_SECRET_PREFIXES } from '../api/patterns';
 import {
   ApiErrorSchema,
   CORE_API_OPERATIONS,
@@ -57,17 +58,12 @@ export const RETRY_AFTER_HEADER = RETRY_AFTER_HEADER_NAME;
 export const DEFAULT_REQUEST_ID_HEADER = REQUEST_ID_HEADER_NAME;
 
 /**
- * Prefixes of the values that must never travel in a URL (01_specs §4.1, §5.6; CL-6a): the three
- * bearer secrets of the contract.
- *
- * CONTRACT-GAP-4: the contract states the secrets as three whole patterns (`SESSION_TOKEN_PATTERN`,
- * `DEVICE_CREDENTIAL_PATTERN`, `BIOMETRIC_TOKEN_PATTERN` in `../api/patterns`) and exports no list of
- * their prefixes, so the three are written here once more. `test/client-credentials.test.ts` reads
- * the literal head of every token pattern the contract exports and holds this guard to it; a fourth
- * secret in the contract turns that test red. When the contract exports the prefixes, build this
- * expression from them.
+ * Prefixes of the values that must never travel in a URL (01_specs §4.1, §5.6; CL-6a): the bearer
+ * secrets of the contract, read from its list `BEARER_SECRET_PREFIXES` (`../api/patterns`; W83
+ * closed gap 4). `test/client-credentials.test.ts` still reads the literal head of every
+ * token pattern the contract exports and holds this guard to it.
  */
-const CREDENTIAL_PREFIX = /^(?:dvc|ses|bio)_/;
+const CREDENTIAL_PREFIX = new RegExp(`^(?:${BEARER_SECRET_PREFIXES.join('|')})`);
 
 // ═══════════════════════════════════════════════════════════════════════════════════════
 // Transport (injected)

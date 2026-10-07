@@ -1,0 +1,15 @@
+# C2 item 2, rule M15: load-time mutations of apps/core-web/src/main.tsx (Vite transform plugin in a scratch config, copy: 10b_c2_web_mutate.config.mjs.txt). The file on disk is never changed.
+# main.tsx sha256 before: 131740933fc8de3f85603eb14fe7d35008024d86ac291e7d8eef42f97e36b966
+# Command per mutation: npx --prefix apps/core-web vitest run --config <scratch>/vitest.mutate.config.mjs --root apps/core-web src/test/live-runtime-boot-failure.test.tsx
+baseline (no mutation) => Tests 4 passed (4) (anchor errors: 0)
+W1 rethrow (guard removed) => Tests 4 failed (4) (anchor errors: 0)
+W2 error text recorded => Tests 4 failed (4) (anchor errors: 0)
+W3 fallback to the simulator => Tests 4 failed (4) (anchor errors: 0)
+W4 start-up asked again => Tests 4 failed (4) (anchor errors: 0)
+W5 sentence not shown => Tests 4 failed (4) (anchor errors: 0)
+W6 recorded twice => Tests 4 failed (4) (anchor errors: 0)
+W7 not recorded => Tests 4 failed (4) (anchor errors: 0)
+W8 other sentence (claims a fallback) => Tests 4 failed (4) (anchor errors: 0)
+W9 stack recorded => Tests 4 failed (4) (anchor errors: 0)
+W10 router built anyway => Tests 4 failed (4) (anchor errors: 0)
+# main.tsx sha256 after:  131740933fc8de3f85603eb14fe7d35008024d86ac291e7d8eef42f97e36b966

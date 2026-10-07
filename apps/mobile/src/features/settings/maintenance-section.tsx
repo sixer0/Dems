@@ -31,7 +31,13 @@
  * refusal presenter first (a denial, an outage, a limit, `DEMO_DISABLED`); only what it leaves gets
  * this screen's own message. In LIVE mode the Demo controls show only with DEMO_CONTROL and the
  * Core's demo flag (`session.demoControls`, AC-C-52), otherwise one line says why; and the copy says
- * nothing about a simulation (`features.settings.live.*`).
+ * nothing about a simulation (`features.settings.live.*`; the diagnostics subtitle, the Install label and
+ * the started toast are the web console's shared `system.live.*`: closing copy round, D177 DN-5).
+ *
+ * O-2 / ruling R2 (E-fix row FX-M2; decision D201, amending 04_client_integration_spec §6.3): Install
+ * update needs `MAINTENANCE` (the Core's `startSoftwareUpdate`). Without it the button stays in place,
+ * disabled, with "Requires the Technician role" (`useRoleGate`, the device-restart pattern), in both
+ * modes; a role change pushed by the Core re-gates it in place.
  */
 import { settle, useCoreActions, useCorePermission, useLiveSelector } from '@dems/shared/live';
 import { Accordion, Button, Chip, Spinner, TagGroup, useToast } from 'heroui-native';
@@ -57,6 +63,7 @@ import { Stepper } from '@/components/composed/stepper';
 import { SectionCard } from '@/components/kit';
 import { useMotionPolicy } from '@/motion';
 import { PendingSpinner, busyState, reportRuntimeIssue, useCoreErrorPresenter, useCoreLink, usePendingPress, type MobileLiveSim } from '@/runtime';
+import { useRoleGate } from '@/features/rbac/use-role-gate';
 import {
   DEMO_FAULTS,
   DEMO_SCENARIOS,
@@ -161,7 +168,7 @@ function DiagnosticsCard() {
   const diagnostics = useSim(selectDiagnostics);
   const [open, setOpen] = useState(false);
   const summary = summarizeDiagnostics(diagnostics);
-  const subtitle = t(live ? 'features.settings.live.diagnosticsSubtitle' : 'system.diagnostics.subtitle');
+  const subtitle = t(live ? 'system.live.diagnosticsSubtitle' : 'system.diagnostics.subtitle');
 
   // S2-7: the sheet opens in `ok`, once the simulator or the Core accepted the run.
   const start = () => {
@@ -257,19 +264,22 @@ function UpdateCard() {
   const { toast } = useToast();
   const motion = useMotionPolicy();
   const update = useSim(selectUpdate);
+  const maintenance = useRoleGate(Permission.MAINTENANCE);
+  const locked = !maintenance.allowed;
   const running = update.state === 'RUNNING';
   const showPipeline = update.state !== 'IDLE';
   const slot = targetSlotOf(update);
 
   // S2-7: the started toast in `ok`, once the simulator or the Core accepted the update.
   const install = () => {
+    if (locked) return;
     press.run((release) =>
       run(() => actions.startSoftwareUpdate(), {
         source: 'settings.maintenance.startSoftwareUpdate',
         refusedLabel: t('system.update.blockedBySession'),
         ok: () => {
           if (update.availableVersion) {
-            toast.show({ variant: 'default', label: t(live ? 'features.settings.live.updateStarted' : 'system.update.startedToast', { version: update.availableVersion }) });
+            toast.show({ variant: 'default', label: t(live ? 'system.live.startedToast' : 'system.update.startedToast', { version: update.availableVersion }) });
           }
         },
         done: release,
@@ -314,10 +324,25 @@ function UpdateCard() {
         />
       ) : null}
       {update.availableVersion && !running && update.state !== 'PASS' ? (
-        <Button testID="settings-update-install" variant="primary" size="lg" onPress={install} {...busyState(press.busy)}>
-          {press.pending ? <PendingSpinner color={palette.black} testID="settings-update-install-spinner" /> : <Download size={18} color={palette.black} />}
-          <Button.Label>{t(live ? 'features.settings.live.install' : 'system.update.install')}</Button.Label>
-        </Button>
+        <>
+          <Button
+            testID="settings-update-install"
+            variant="primary"
+            size="lg"
+            isDisabled={locked}
+            onPress={install}
+            {...(locked && maintenance.hint ? { accessibilityHint: maintenance.hint } : {})}
+            {...busyState(press.busy, locked)}
+          >
+            {press.pending ? <PendingSpinner color={palette.black} testID="settings-update-install-spinner" /> : <Download size={18} color={locked ? palette.gray : palette.black} />}
+            <Button.Label>{t(live ? 'system.live.install' : 'system.update.install')}</Button.Label>
+          </Button>
+          {locked && maintenance.hint ? (
+            <Text maxFontSizeMultiplier={1.2} style={settingsStyles.muted} testID="settings-update-install-locked">
+              {maintenance.hint}
+            </Text>
+          ) : null}
+        </>
       ) : null}
       {running ? (
         <Text maxFontSizeMultiplier={1.2} style={settingsStyles.muted}>

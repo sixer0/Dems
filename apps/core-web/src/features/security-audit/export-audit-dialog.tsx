@@ -179,7 +179,8 @@ export function ExportAuditDialog({ isOpen, onOpenChange, chain }: ExportAuditDi
       },
       (caught: unknown) => {
         if (generation.current !== mine) return
-        const presented = caught instanceof AuditWalkError && caught.reason.kind === 'CALL' ? presentCoreError(caught.reason.failure) : null
+        // W92-13: the export was accepted, so the outage sentence leaves out "Nothing was changed".
+        const presented = caught instanceof AuditWalkError && caught.reason.kind === 'CALL' ? presentCoreError(caught.reason.failure, { afterAcceptedCommand: true }) : null
         if (presented === null) {
           logSecurityAudit('error', 'ExportAuditDialog.buildFile', caught, { exportId: receipt.exportId, pages: pages ?? -1 })
         }

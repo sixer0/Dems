@@ -1,0 +1,14 @@
+09:53:58
+ 9:53  up 5 days, 17:06, 2 users, load averages: 3.48 4.27 5.50
+ %CPU    RSS COMM
+ 58.2 351760 node
+ 18.4  58288 /System/Library/PrivateFrameworks/SkyLight.framework/Resources/WindowServer
+ 18.2 881856 /Users/gsp-budi/.vscode/extensions/kilocode.kilo-code-7.8.3-darwin-arm64/bin/kilo
+ 17.1 874320 /Users/gsp-budi/Library/Android/sdk/emulator/qemu/darwin-aarch64/qemu-system-aarch64
+ 15.3 1448160 /Users/gsp-budi/Library/Android/sdk/emulator/qemu/darwin-aarch64/qemu-system-aarch64
+ 12.8  22352 /System/Library/ExtensionKit/Extensions/WallpaperAerialsExtension.appex/Contents/MacOS/WallpaperAerialsExtension
+  8.1 1056384 /Users/gsp-budi/Library/Android/sdk/emulator/qemu/darwin-aarch64/qemu-system-aarch64
+  4.9  92976 /System/Library/Frameworks/VideoToolbox.framework/Versions/A/XPCServices/VTDecoderXPCService.xpc/Contents/MacOS/VTDecoderXPCService
+  2.4 171056 /Applications/WhatsApp.app/Contents/MacOS/WhatsApp
+  1.3  40096 /System/Library/DriverExtensions/AppleCentauriAlpha.dext/AppleCentauriAlpha
+  1.1  42192 /System/Library/CoreServices/Finder.app/Contents/MacOS/Finder

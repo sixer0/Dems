@@ -1,0 +1,114 @@
+# Final runs of plan row W39 (step 61), 2026-10-04 WIB. Commands run from /Users/gsp-budi/Documents/DEMS.
+
+$ npm run typecheck -w @dems/core-server        (16:33:01)   exit 0   [production code final; one test file changed afterwards, by one expression]
+
+$ npm run typecheck -w @dems/core-server        (16:38:31)   exit 2   [files of rows in flight; none under src/modules/security-audit]
+
+> @dems/core-server@0.2.0 typecheck
+> tsc --noEmit
+
+src/realtime/__tests__/first-contact.db.test.ts(482,71): error TS2353: Object literal may only specify known properties, and 'deviceId' does not exist in type '{ readonly id: string; }'.
+../../packages/shared/src/realtime/index.ts(3,15): error TS6142: Module './heartbeat-context' was resolved to '/Users/gsp-budi/Documents/DEMS/packages/shared/src/realtime/heartbeat-context.tsx', but '--jsx' is not set.
+../../packages/shared/src/realtime/use-heartbeat.ts(3,34): error TS6142: Module './heartbeat-context' was resolved to '/Users/gsp-budi/Documents/DEMS/packages/shared/src/realtime/heartbeat-context.tsx', but '--jsx' is not set.
+../../packages/shared/src/realtime/use-heartbeat.ts(11,38): error TS2339: Property 'subscribe' does not exist on type '{}'.
+../../packages/shared/src/realtime/use-heartbeat.ts(11,56): error TS2339: Property 'getSnapshot' does not exist on type '{}'.
+../../packages/shared/src/realtime/use-heartbeat.ts(11,76): error TS2339: Property 'getSnapshot' does not exist on type '{}'.
+npm error Lifecycle script `typecheck` failed with error:
+npm error code 2
+npm error path /Users/gsp-budi/Documents/DEMS/apps/core-server
+npm error workspace @dems/core-server@0.2.0
+npm error location /Users/gsp-budi/Documents/DEMS/apps/core-server
+npm error command failed
+npm error command sh -c tsc --noEmit
+
+$ npm run typecheck -w @dems/core-server        (16:38:53)   exit 2   [the same six lines]
+src/realtime/__tests__/first-contact.db.test.ts(482,71): error TS2353: Object literal may only specify known properties, and 'deviceId' does not exist in type '{ readonly id: string; }'.
+../../packages/shared/src/realtime/index.ts(3,15): error TS6142: Module './heartbeat-context' was resolved to '/Users/gsp-budi/Documents/DEMS/packages/shared/src/realtime/heartbeat-context.tsx', but '--jsx' is not set.
+../../packages/shared/src/realtime/use-heartbeat.ts(3,34): error TS6142: Module './heartbeat-context' was resolved to '/Users/gsp-budi/Documents/DEMS/packages/shared/src/realtime/heartbeat-context.tsx', but '--jsx' is not set.
+../../packages/shared/src/realtime/use-heartbeat.ts(11,38): error TS2339: Property 'subscribe' does not exist on type '{}'.
+../../packages/shared/src/realtime/use-heartbeat.ts(11,56): error TS2339: Property 'getSnapshot' does not exist on type '{}'.
+../../packages/shared/src/realtime/use-heartbeat.ts(11,76): error TS2339: Property 'getSnapshot' does not exist on type '{}'.
+
+$ npm run lint -w @dems/core-server             (16:38:41)   exit 0   [three warnings, all under src/realtime: a row in flight]
+
+> @dems/core-server@0.2.0 lint
+> oxlint
+
+src/realtime/__tests__/support.ts:360:27: warning unicorn(no-useless-spread): Using a spread operator here creates a new array unnecessarily. help: `for…of` can iterate over iterable, it's unnecessary to convert to an array.
+src/realtime/hub.ts:857:33: warning unicorn(no-useless-spread): Using a spread operator here creates a new array unnecessarily. help: `for…of` can iterate over iterable, it's unnecessary to convert to an array.
+src/realtime/hub.ts:860:33: warning unicorn(no-useless-spread): Using a spread operator here creates a new array unnecessarily. help: `for…of` can iterate over iterable, it's unnecessary to convert to an array.
+
+$ npm run test -w @dems/core-server -- --maxWorkers=2        (whole unit project, 16:33:42 to 16:34:35, exit 0)
+
+> @dems/core-server@0.2.0 test
+> vitest run --project unit --maxWorkers=2
+
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/apps/core-server
+
+
+ Test Files  134 passed (134)
+      Tests  3503 passed (3503)
+   Start at  16:33:42
+   Duration  52.56s (import 61%, tests 33%, transform 5%, worker 1%)
+
+
+$ DEMS_TEST_STEP=61 npm run test:db -w @dems/core-server -- --maxWorkers=2        (whole db project, 16:34:40 to 16:38:20, exit 0)
+
+> @dems/core-server@0.2.0 test:db
+> vitest run --project db --maxWorkers=2
+
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/apps/core-server
+
+[test:db] PostgreSQL 18.4 on 127.0.0.1:4432; helper role dems_owner, code under test dems_app; run prefix dems_test_step_61_tmdmltya_
+[test:db] stale sweep: dropped 0; kept 7 of younger runs, 0 of live runs, 0 unrecognised; 0 failed
+[test:db] template dems_test_step_61_tmdmltya_tpl_schema: built in 714 ms (create 42 ms, hook 122 ms)
+[test:db] template dems_test_step_61_tmdmltya_tpl_seed: built in 413 ms (create 108 ms, hook 194 ms)
+[test:db] bulk fixture: dems_test_step_61_tmdmltya_tpl_bulk as dems_owner; clock 2026-10-01T03:00:00.000Z; seed 20261004
+[test:db]   table                   minimum   loaded   added  met
+[test:db]   roles                         3        3       0  yes
+[test:db]   permissions                  12       12       0  yes
+[test:db]   role_permissions             18       18       0  yes
+[test:db]   operators                    12       12       9  yes
+[test:db]   operator_credentials         12       12       9  yes
+[test:db]   auth_sessions               300      300     300  yes
+[test:db]   pairing_codes                60       60      60  yes
+[test:db]   paired_devices               40       40      40  yes
+[test:db]   device_credentials           40       40      40  yes
+[test:db]   biometric_tokens             80       83      83  yes
+[test:db]   registry_counters             2        2       0  yes
+[test:db]   audit_log                  5000     5000    4918  yes
+[test:db]   audit_chain_head              1        1       0  yes
+[test:db]   audit_chain_history          25       25      25  yes
+[test:db]   events                     2500     3649    3590  yes
+[test:db]   session_history             520      520     507  yes
+[test:db]   evidence_items              505      515     502  yes
+[test:db]   evidence_tracks            2020     2060    2008  yes
+[test:db]   evidence_custody           1200     1220    1192  yes
+[test:db]   exports                      60       60      59  yes
+[test:db]   alerts                      250      250     250  yes
+[test:db]   health_snapshots           1500     1508    1508  yes
+[test:db]   engine_counters               6        6       1  yes
+[test:db]   active_session                0        0       0  yes
+[test:db]   storage_policy                1        1       0  yes
+[test:db]   console_settings              1        1       0  yes
+[test:db]   core_device                   1        1       0  yes
+[test:db]   core_state                    1        1       0  yes
+[test:db]   hardware_snapshot             1        1       0  yes
+[test:db]   schema_meta                   1        1       0  yes
+[test:db] bulk fixture: every minimum of the 30 tables is met; audit head seq 5000, hash 46382e11b1601087...; digest 3d2e7fe247a44ec2...; build 315 ms, write 1541 ms, total 1859 ms
+
+ Test Files  105 passed (105)
+      Tests  1513 passed (1513)
+   Start at  16:34:41
+   Duration  219.20s (tests 84%, import 14%, transform 1%)
+
+[test:db] forced drops that needed a retry: 0
+[test:db] teardown: dropped 8 database(s) in 388 ms; 0 remain with the run prefix dems_test_step_61_tmdmltya_
+
+$ npm run typecheck -w @dems/core-server        (16:39:46)   exit 0   [the rows in flight had fixed their files]
+$ npm run lint -w @dems/core-server             (16:39:53)   exit 0   [the same three warnings under src/realtime; none under src/modules/security-audit]
+src/realtime/__tests__/support.ts:360:27: warning unicorn(no-useless-spread): Using a spread operator here creates a new array unnecessarily. help: `for…of` can iterate over iterable, it's unnecessary to convert to an array.
+src/realtime/hub.ts:857:33: warning unicorn(no-useless-spread): Using a spread operator here creates a new array unnecessarily. help: `for…of` can iterate over iterable, it's unnecessary to convert to an array.
+src/realtime/hub.ts:860:33: warning unicorn(no-useless-spread): Using a spread operator here creates a new array unnecessarily. help: `for…of` can iterate over iterable, it's unnecessary to convert to an array.

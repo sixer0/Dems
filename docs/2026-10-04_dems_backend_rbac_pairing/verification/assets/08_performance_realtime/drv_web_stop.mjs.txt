@@ -1,0 +1,29 @@
+// Web stop through the Session Monitor's own controls: hold End Session 1.8 s, type the reason, confirm.
+// Reports the confirm release time and the stop call's sent/answered times (page clock = host clock).
+//   CTX=a node web_stop.mjs "<reason>" <label>
+import { connect, log, sleep, stamp, writeJson } from './lib.mjs'
+const [reason = 'W98 web stop', label = 'stop'] = process.argv.slice(2)
+const page = await connect({ viewport: true })
+const q = (s) => JSON.stringify(s)
+const box = (sel) => page.evaluate(`(() => { const el = document.querySelector(${q(sel)}); if (!el) return null; el.scrollIntoView({ block: 'center' }); const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 } })()`, 'box')
+async function press(sel, holdMs = 0) { const b = await box(sel); if (!b) throw new Error('not found ' + sel); await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: b.x, y: b.y }); await page.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: b.x, y: b.y, button: 'left', clickCount: 1 }); if (holdMs) await sleep(holdMs); const at = Date.now(); await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: b.x, y: b.y, button: 'left', clickCount: 1 }); return at }
+const state0 = await page.evaluate(`document.querySelector('[data-testid="page-session-monitor"]')?.getAttribute('data-session-state') ?? null`, 's')
+log(`monitor state before: ${state0}`)
+let dlg = false, holds = 0
+for (const hold of [1800, 2600, 3200]) { holds++; await press('[data-testid="sm-action-end"]', hold); dlg = await page.waitFor('sm-end-dialog', true, 6000); if (dlg) break; log(`no End dialog after a ${hold} ms hold; holding again`) }
+if (!dlg) { log('the End dialog did not open: nothing stopped'); process.exit(3) }
+const sel = (await page.evaluate(`!!document.querySelector('[data-testid="sm-end-reason"] textarea')`, 't')) ? '[data-testid="sm-end-reason"] textarea' : (await page.evaluate(`!!document.querySelector('[data-testid="sm-end-reason"] input')`, 'i')) ? '[data-testid="sm-end-reason"] input' : '[data-testid="sm-end-reason"]'
+await page.typeInto(sel, reason, 'reason')
+await sleep(400)
+page.takeNetwork()
+const confirmAt = await press('[data-testid="sm-end-confirm"]')
+let callR
+for (let i = 0; i < 200 && !callR; i++) { await sleep(25); callR = page.rawRequests().find((r) => r.method === 'POST' && /\/api\/v1\/session\/[^/]+\/stop/.test(r.url) && r.status !== null) }
+const states = []
+let last = null
+const until = Date.now() + 15000
+while (Date.now() < until) { const s = await page.evaluate(`document.querySelector('[data-testid="page-session-monitor"]')?.getAttribute('data-session-state') ?? null`, 's'); if (s !== last) { states.push({ state: s, at: stamp() }); last = s } if (s === 'SEALED') break; await sleep(100) }
+const out = { label, reason, dialog: dlg, holds, confirmAt: stamp(confirmAt), confirmAtMs: confirmAt, stopCall: callR ? { status: callR.status, sent: stamp(callR.sentAt), sentAtMs: callR.sentAt, done: callR.doneAt ? stamp(callR.doneAt) : null, doneAtMs: callR.doneAt } : 'NOT SEEN', webStates: states }
+writeJson(`${label}_web_stop.json`, out)
+log(JSON.stringify(out))
+page.close()

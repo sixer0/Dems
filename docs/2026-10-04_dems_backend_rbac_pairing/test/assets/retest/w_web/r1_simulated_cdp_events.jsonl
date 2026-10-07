@@ -1,0 +1,833 @@
+{"t":1791264843502,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/login"}
+{"t":1791264843559,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@vite/client"}
+{"t":1791264843560,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/main.tsx"}
+{"t":1791264843573,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@react-refresh"}
+{"t":1791264843589,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/node_modules/@fontsource-variable/orbitron/index.css"}
+{"t":1791264843589,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/node_modules/@fontsource-variable/inter/index.css"}
+{"t":1791264843589,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/node_modules/@fontsource-variable/jetbrains-mono/index.css"}
+{"t":1791264843589,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/index.css"}
+{"t":1791264843589,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/react.js"}
+{"t":1791264843589,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/react-dom_client.js"}
+{"t":1791264843589,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/@tanstack_react-query.js"}
+{"t":1791264843589,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/@tanstack_react-router.js"}
+{"t":1791264843589,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/react-i18next.js"}
+{"t":1791264843589,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/zod.js"}
+{"t":1791264843590,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/runtime/error-sink.ts"}
+{"t":1791264843590,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/react_jsx-dev-runtime.js"}
+{"t":1791264843590,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/node_modules/vite/dist/client/env.mjs"}
+{"t":1791264843644,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/rolldown-runtime-DC62tzP2.js"}
+{"t":1791264843653,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/react_jsx-runtime.js"}
+{"t":1791264843653,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/shim-Zj6jh50b.js"}
+{"t":1791264843653,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/i18next.js"}
+{"t":1791264843662,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/zod-DbJ75KGc.js"}
+{"t":1791264843671,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/react-dom.js"}
+{"t":1791264843683,"label":"Login (Live)","kind":"ws","origin":"ws://127.0.0.1:5178","path":"/"}
+{"t":1791264843687,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/with-selector-B2QvWTxs.js"}
+{"t":1791264843784,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/runtime/boot.ts"}
+{"t":1791264843785,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/index.ts"}
+{"t":1791264843785,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/index.ts"}
+{"t":1791264843785,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/lib/core-endpoint.ts"}
+{"t":1791264843785,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/runtime/core-mode.ts"}
+{"t":1791264843786,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/runtime/live-host.ts"}
+{"t":1791264843796,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/constants.ts"}
+{"t":1791264843796,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/core-actions.ts"}
+{"t":1791264843796,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/settle.ts"}
+{"t":1791264843796,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/errors.ts"}
+{"t":1791264843796,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/mode.ts"}
+{"t":1791264843796,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/hooks.ts"}
+{"t":1791264843801,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/constants.ts"}
+{"t":1791264843802,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/vocabulary.ts"}
+{"t":1791264843802,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/types.ts"}
+{"t":1791264843802,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/errors.ts"}
+{"t":1791264843802,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/memo.ts"}
+{"t":1791264843802,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/demo-alignment.ts"}
+{"t":1791264843802,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/rng.ts"}
+{"t":1791264843803,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/clock.ts"}
+{"t":1791264843803,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/events.ts"}
+{"t":1791264843803,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/evidence.ts"}
+{"t":1791264843803,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/dataset.ts"}
+{"t":1791264843803,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/auth.ts"}
+{"t":1791264843803,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/platform.ts"}
+{"t":1791264843803,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/initial-state.ts"}
+{"t":1791264843803,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/store.ts"}
+{"t":1791264843803,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/selectors.ts"}
+{"t":1791264843803,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/devices.ts"}
+{"t":1791264843803,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/views.ts"}
+{"t":1791264843803,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/derive.ts"}
+{"t":1791264843803,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/session-machine.ts"}
+{"t":1791264843803,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/faults.ts"}
+{"t":1791264843803,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/audio.ts"}
+{"t":1791264843803,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/health.ts"}
+{"t":1791264843803,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/generator.ts"}
+{"t":1791264843803,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/maintenance.ts"}
+{"t":1791264843803,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/evidence-actions.ts"}
+{"t":1791264843803,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/pairing.ts"}
+{"t":1791264843804,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/scenarios.ts"}
+{"t":1791264843804,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/api.ts"}
+{"t":1791264843804,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/actions.ts"}
+{"t":1791264843804,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/engine.ts"}
+{"t":1791264843804,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/react.ts"}
+{"t":1791264843804,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/index.ts"}
+{"t":1791264843804,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/lib/packaged-csp.ts"}
+{"t":1791264843860,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/@noble_hashes_sha2__js.js"}
+{"t":1791264843860,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/@noble_hashes_utils__js.js"}
+{"t":1791264843864,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/domain/index.ts"}
+{"t":1791264843866,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/zustand_middleware.js"}
+{"t":1791264843868,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/zustand_vanilla.js"}
+{"t":1791264843873,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/session-schema.ts"}
+{"t":1791264843873,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/text-cut.ts"}
+{"t":1791264843878,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/zustand.js"}
+{"t":1791264843878,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/zustand_react_shallow.js"}
+{"t":1791264843880,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/constants.ts"}
+{"t":1791264843880,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/health.ts"}
+{"t":1791264843880,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/realtime-messages.ts"}
+{"t":1791264843880,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/patterns.ts"}
+{"t":1791264843880,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/core-api.ts"}
+{"t":1791264843882,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/examples.ts"}
+{"t":1791264843883,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/openapi.ts"}
+{"t":1791264843883,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/text.ts"}
+{"t":1791264843883,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/identity.ts"}
+{"t":1791264843883,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/administration.ts"}
+{"t":1791264843883,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/pairing.ts"}
+{"t":1791264843883,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/demo-controls.ts"}
+{"t":1791264843883,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/operation-table.ts"}
+{"t":1791264843883,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/state-slices.ts"}
+{"t":1791264843883,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/realtime-examples.ts"}
+{"t":1791264843884,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/sessions.ts"}
+{"t":1791264843884,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/evidence.ts"}
+{"t":1791264843884,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/devices.ts"}
+{"t":1791264843884,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/storage.ts"}
+{"t":1791264843884,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/network-time.ts"}
+{"t":1791264843884,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/security-audit.ts"}
+{"t":1791264843884,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/system.ts"}
+{"t":1791264843884,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/alerts.ts"}
+{"t":1791264843885,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/state-examples.ts"}
+{"t":1791264843885,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/sim-actions.ts"}
+{"t":1791264843899,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/domain/ids.ts"}
+{"t":1791264843899,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/domain/enums.ts"}
+{"t":1791264843900,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/domain/entities.ts"}
+{"t":1791264843913,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/schema-parts.ts"}
+{"t":1791264843914,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/example-parts.ts"}
+{"t":1791264843915,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/contract-model.ts"}
+{"t":1791264843915,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/operation-parts.ts"}
+{"t":1791264843916,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/tokens/tokens.ts"}
+{"t":1791264843952,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/i18n.ts"}
+{"t":1791264843959,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/index.ts"}
+{"t":1791264843963,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/api-reference.ts"}
+{"t":1791264843963,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/common.ts"}
+{"t":1791264843964,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/dashboard.ts"}
+{"t":1791264843964,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/devices.ts"}
+{"t":1791264843964,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/evidence.ts"}
+{"t":1791264843964,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/login.ts"}
+{"t":1791264843964,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/network-time.ts"}
+{"t":1791264843964,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/paired-devices.ts"}
+{"t":1791264843964,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/security-audit.ts"}
+{"t":1791264843964,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/session.ts"}
+{"t":1791264843964,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/session-new.ts"}
+{"t":1791264843964,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/shell.ts"}
+{"t":1791264843964,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/storage.ts"}
+{"t":1791264843964,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/system.ts"}
+{"t":1791264843964,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/users-roles.ts"}
+{"t":1791264843964,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/resource-tree.ts"}
+{"t":1791264843986,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/router.tsx"}
+{"t":1791264843991,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/route-view-transition.ts"}
+{"t":1791264843991,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routeTree.gen.ts"}
+{"t":1791264843991,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/runtime/query-bridge.ts"}
+{"t":1791264843999,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/__root.tsx"}
+{"t":1791264843999,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/_app.tsx"}
+{"t":1791264844000,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/login.tsx"}
+{"t":1791264844000,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/_app/index.tsx"}
+{"t":1791264844000,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/_app/dashboard.tsx"}
+{"t":1791264844001,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/_app/devices.tsx"}
+{"t":1791264844001,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/_app/network-time.tsx"}
+{"t":1791264844002,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/_app/security-audit.tsx"}
+{"t":1791264844003,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/_app/stack-check.tsx"}
+{"t":1791264844003,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/_app/storage.tsx"}
+{"t":1791264844004,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/_app/system.tsx"}
+{"t":1791264844004,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/_app/admin/devices.tsx"}
+{"t":1791264844004,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/_app/admin/users.tsx"}
+{"t":1791264844004,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/_app/developer/api.tsx"}
+{"t":1791264844004,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/_app/evidence/index.tsx"}
+{"t":1791264844006,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/_app/evidence/$evidenceId.tsx"}
+{"t":1791264844007,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/_app/session/index.tsx"}
+{"t":1791264844007,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/_app/session/new.tsx"}
+{"t":1791264844025,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/@heroui_react.js"}
+{"t":1791264844025,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/motion_react.js"}
+{"t":1791264844025,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/realtime/index.ts"}
+{"t":1791264844025,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/shell-entrance.ts"}
+{"t":1791264844025,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/motion/index.ts"}
+{"t":1791264844025,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/runtime/presentation-follow.ts"}
+{"t":1791264844025,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/shell.css"}
+{"t":1791264844027,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/-search.ts"}
+{"t":1791264844030,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/_app/admin/-guard.ts"}
+{"t":1791264844081,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/realtime/heartbeat-client.ts"}
+{"t":1791264844081,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/realtime/live-socket-client.ts"}
+{"t":1791264844081,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/realtime/heartbeat-context.tsx"}
+{"t":1791264844081,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/realtime/use-heartbeat.ts"}
+{"t":1791264844081,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/realtime/format.ts"}
+{"t":1791264844082,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/realtime/use-retry-cooldown.ts"}
+{"t":1791264844093,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/motion/motion-policy-provider.tsx"}
+{"t":1791264844093,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/motion/use-motion-policy.ts"}
+{"t":1791264844093,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/motion/use-ambient-loop.ts"}
+{"t":1791264844094,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/motion/ambient-registry.ts"}
+{"t":1791264844094,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/motion/glow-layer.tsx"}
+{"t":1791264844094,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/motion/glow.ts"}
+{"t":1791264844094,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/motion/debug-overlay-gate.tsx"}
+{"t":1791264844094,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/motion/debug-metrics.ts"}
+{"t":1791264844094,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/motion/variants.ts"}
+{"t":1791264844095,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/motion/transitions.ts"}
+{"t":1791264844095,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/motion/policy.ts"}
+{"t":1791264844095,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/motion/use-media-query.ts"}
+{"t":1791264844097,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/lib/presentation-mode.ts"}
+{"t":1791264844119,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/motion/motion.css"}
+{"t":1791264844122,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/tokens/index.ts"}
+{"t":1791264844126,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/lib/utils.ts"}
+{"t":1791264844140,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/tokens/status-tones.ts"}
+{"t":1791264844140,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/clsx.js"}
+{"t":1791264844140,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/tailwind-merge.js"}
+{"t":1791264844154,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/DateFormatter-BaZr6xpv.js"}
+{"t":1791264844239,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/runtime/live-start.ts"}
+{"t":1791264844246,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/client/index.ts"}
+{"t":1791264844246,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/index.ts"}
+{"t":1791264844246,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/runtime/owed-sign-out-storage.ts"}
+{"t":1791264844249,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/client/core-client.ts"}
+{"t":1791264844251,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/constants.ts"}
+{"t":1791264844251,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/types.ts"}
+{"t":1791264844251,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/bindings.ts"}
+{"t":1791264844251,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/clock.ts"}
+{"t":1791264844251,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/command-gate.ts"}
+{"t":1791264844251,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-result.ts"}
+{"t":1791264844252,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts"}
+{"t":1791264844252,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/neutral-state.ts"}
+{"t":1791264844252,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/rebuild-error.ts"}
+{"t":1791264844252,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/replica.ts"}
+{"t":1791264844252,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/structural-sharing.ts"}
+{"t":1791264844252,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/touch-throttle.ts"}
+{"t":1791264844272,"label":"Login (Live)","kind":"ws","origin":"ws://127.0.0.1:5178","path":"/ws"}
+{"t":1791264844272,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/api/v1/auth/session"}
+{"t":1791264844276,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/api/v1/auth/status"}
+{"t":1791264844276,"label":"Login (Live)","kind":"response4xx","status":401,"method":"GET","path":"/api/v1/auth/session"}
+{"t":1791264844276,"label":"Login (Live)","kind":"log","level":"error","source":"network","text":"Failed to load resource: the server responded with a status of 401 (Unauthorized)","url":"http://127.0.0.1:5178/api/v1/auth/session"}
+{"t":1791264844293,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/login.tsx"}
+{"t":1791264844296,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/login/index.tsx"}
+{"t":1791264844299,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/mode-switch.tsx"}
+{"t":1791264844299,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/login/auth-card.tsx"}
+{"t":1791264844299,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/login/brand-panel.tsx"}
+{"t":1791264844299,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/login/login-choreography.ts"}
+{"t":1791264844299,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/login/login-model.ts"}
+{"t":1791264844299,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/login/login-motion.ts"}
+{"t":1791264844299,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/login/report.ts"}
+{"t":1791264844299,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/login/sim-adapter.ts"}
+{"t":1791264844299,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/login/use-login-controller.ts"}
+{"t":1791264844299,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/login/use-login-tier.ts"}
+{"t":1791264844299,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/login/login.css"}
+{"t":1791264844306,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/runtime/index.ts"}
+{"t":1791264844306,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/shell-report.ts"}
+{"t":1791264844309,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/lucide-react.js"}
+{"t":1791264844309,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/ui/border-beam.tsx"}
+{"t":1791264844309,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/login/login-alert.tsx"}
+{"t":1791264844309,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/login/mode-selector.tsx"}
+{"t":1791264844310,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/hero/room-2560.jpg"}
+{"t":1791264844310,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/composed/glow-ring.tsx"}
+{"t":1791264844310,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/shared-layout-ids.ts"}
+{"t":1791264844310,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/ui/particles.tsx"}
+{"t":1791264844310,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/ui/text-effect.tsx"}
+{"t":1791264844310,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/login/device-strip.tsx"}
+{"t":1791264844310,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/login/graded-still.ts"}
+{"t":1791264844310,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/login/login-emblem.tsx"}
+{"t":1791264844313,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/lib/core-errors.ts"}
+{"t":1791264844313,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/login/live-adapter.ts"}
+{"t":1791264844313,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/login/login-live-model.ts"}
+{"t":1791264844314,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/runtime/hooks.ts"}
+{"t":1791264844328,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/ui/animated-number.tsx"}
+{"t":1791264844328,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/ui/sliding-number.tsx"}
+{"t":1791264844330,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/brand/index.ts"}
+{"t":1791264844330,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/media/rec-indicator.tsx"}
+{"t":1791264844331,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/composed/glow-ring.math.ts"}
+{"t":1791264844352,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/react-use-measure.js"}
+{"t":1791264844353,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/brand/emblem.ts"}
+{"t":1791264844354,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/brand/topo.ts"}
+{"t":1791264844357,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/media/use-sim-clock.ts"}
+{"t":1791264844548,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/node_modules/@fontsource-variable/jetbrains-mono/files/jetbrains-mono-latin-wght-normal.woff2"}
+{"t":1791264844548,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/assets/brand/topo.svg"}
+{"t":1791264844548,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/node_modules/@fontsource-variable/inter/files/inter-latin-wght-normal.woff2"}
+{"t":1791264844549,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/node_modules/@fontsource-variable/orbitron/files/orbitron-latin-wght-normal.woff2"}
+{"t":1791264844549,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/api/v1/health"}
+{"t":1791264844549,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/hero/room-2560.jpg"}
+{"t":1791264844851,"label":"Login (Live)","kind":"request","origin":"blob:","method":"GET","path":"http://127.0.0.1:5178/4d31d7c1-617d-4644-a27d-843bd9401f7d"}
+{"t":1791264846357,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/_app.tsx"}
+{"t":1791264846359,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/app-layout.tsx"}
+{"t":1791264846362,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/app-shell.tsx"}
+{"t":1791264846362,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/exit-guard.tsx"}
+{"t":1791264846362,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/route-transition.tsx"}
+{"t":1791264846366,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/bottom-tabs.tsx"}
+{"t":1791264846366,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/live-notices.tsx"}
+{"t":1791264846366,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/nav-drawer.tsx"}
+{"t":1791264846366,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/shell-choreography.ts"}
+{"t":1791264846366,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/shell-motion-context.ts"}
+{"t":1791264846366,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/sidebar.tsx"}
+{"t":1791264846366,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/top-bar.tsx"}
+{"t":1791264846366,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/use-shell-layout.ts"}
+{"t":1791264846373,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/nav-items.ts"}
+{"t":1791264846374,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/mode-indicator-state.ts"}
+{"t":1791264846374,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/route-permissions.ts"}
+{"t":1791264846375,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/brand-emblem.tsx"}
+{"t":1791264846378,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/mode-indicator.tsx"}
+{"t":1791264846378,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/notifications-bell.tsx"}
+{"t":1791264846378,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/secure-pill.tsx"}
+{"t":1791264846378,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/user-menu.tsx"}
+{"t":1791264846381,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/assets/brand/topo.svg"}
+{"t":1791264846381,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/ui/animated-background.tsx"}
+{"t":1791264846381,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/use-visible-nav-items.ts"}
+{"t":1791264846385,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/integrity-checks.ts"}
+{"t":1791264848364,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/login"}
+{"t":1791264848438,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@vite/client"}
+{"t":1791264848438,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/main.tsx"}
+{"t":1791264848438,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@react-refresh"}
+{"t":1791264848443,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/node_modules/@fontsource-variable/orbitron/index.css"}
+{"t":1791264848443,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/node_modules/@fontsource-variable/inter/index.css"}
+{"t":1791264848443,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/node_modules/@fontsource-variable/jetbrains-mono/index.css"}
+{"t":1791264848443,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/index.css"}
+{"t":1791264848443,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/react.js"}
+{"t":1791264848444,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/react-dom_client.js"}
+{"t":1791264848444,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/@tanstack_react-query.js"}
+{"t":1791264848445,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/@tanstack_react-router.js"}
+{"t":1791264848445,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/react-i18next.js"}
+{"t":1791264848445,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/zod.js"}
+{"t":1791264848446,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/runtime/error-sink.ts"}
+{"t":1791264848446,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/react_jsx-dev-runtime.js"}
+{"t":1791264848447,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/rolldown-runtime-DC62tzP2.js"}
+{"t":1791264848447,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/react-dom.js"}
+{"t":1791264848447,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/react_jsx-runtime.js"}
+{"t":1791264848448,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/with-selector-B2QvWTxs.js"}
+{"t":1791264848448,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/shim-Zj6jh50b.js"}
+{"t":1791264848449,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/i18next.js"}
+{"t":1791264848450,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/zod-DbJ75KGc.js"}
+{"t":1791264848451,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/node_modules/vite/dist/client/env.mjs"}
+{"t":1791264848455,"label":"Login (Live)","kind":"ws","origin":"ws://127.0.0.1:5178","path":"/"}
+{"t":1791264848463,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/runtime/boot.ts"}
+{"t":1791264848485,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/index.ts"}
+{"t":1791264848486,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/index.ts"}
+{"t":1791264848486,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/lib/core-endpoint.ts"}
+{"t":1791264848486,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/runtime/core-mode.ts"}
+{"t":1791264848486,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/runtime/live-host.ts"}
+{"t":1791264848494,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/constants.ts"}
+{"t":1791264848494,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/core-actions.ts"}
+{"t":1791264848494,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/settle.ts"}
+{"t":1791264848494,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/errors.ts"}
+{"t":1791264848494,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/mode.ts"}
+{"t":1791264848495,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/hooks.ts"}
+{"t":1791264848497,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/constants.ts"}
+{"t":1791264848497,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/vocabulary.ts"}
+{"t":1791264848498,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/types.ts"}
+{"t":1791264848498,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/errors.ts"}
+{"t":1791264848498,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/memo.ts"}
+{"t":1791264848498,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/demo-alignment.ts"}
+{"t":1791264848498,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/rng.ts"}
+{"t":1791264848498,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/clock.ts"}
+{"t":1791264848498,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/events.ts"}
+{"t":1791264848498,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/evidence.ts"}
+{"t":1791264848498,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/dataset.ts"}
+{"t":1791264848499,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/auth.ts"}
+{"t":1791264848499,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/platform.ts"}
+{"t":1791264848499,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/initial-state.ts"}
+{"t":1791264848499,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/store.ts"}
+{"t":1791264848499,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/selectors.ts"}
+{"t":1791264848499,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/devices.ts"}
+{"t":1791264848499,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/views.ts"}
+{"t":1791264848499,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/derive.ts"}
+{"t":1791264848499,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/session-machine.ts"}
+{"t":1791264848499,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/faults.ts"}
+{"t":1791264848499,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/audio.ts"}
+{"t":1791264848499,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/health.ts"}
+{"t":1791264848499,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/generator.ts"}
+{"t":1791264848499,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/maintenance.ts"}
+{"t":1791264848499,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/evidence-actions.ts"}
+{"t":1791264848499,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/pairing.ts"}
+{"t":1791264848499,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/scenarios.ts"}
+{"t":1791264848499,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/api.ts"}
+{"t":1791264848499,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/actions.ts"}
+{"t":1791264848499,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/engine.ts"}
+{"t":1791264848499,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/react.ts"}
+{"t":1791264848501,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/index.ts"}
+{"t":1791264848501,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/lib/packaged-csp.ts"}
+{"t":1791264848521,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/@noble_hashes_sha2__js.js"}
+{"t":1791264848521,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/@noble_hashes_utils__js.js"}
+{"t":1791264848522,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/domain/index.ts"}
+{"t":1791264848524,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/zustand_middleware.js"}
+{"t":1791264848525,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/zustand_vanilla.js"}
+{"t":1791264848527,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/session-schema.ts"}
+{"t":1791264848527,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/text-cut.ts"}
+{"t":1791264848528,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/zustand.js"}
+{"t":1791264848529,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/zustand_react_shallow.js"}
+{"t":1791264848530,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/constants.ts"}
+{"t":1791264848530,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/health.ts"}
+{"t":1791264848530,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/realtime-messages.ts"}
+{"t":1791264848530,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/patterns.ts"}
+{"t":1791264848530,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/core-api.ts"}
+{"t":1791264848530,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/examples.ts"}
+{"t":1791264848530,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/openapi.ts"}
+{"t":1791264848530,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/text.ts"}
+{"t":1791264848530,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/identity.ts"}
+{"t":1791264848530,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/administration.ts"}
+{"t":1791264848530,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/pairing.ts"}
+{"t":1791264848531,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/demo-controls.ts"}
+{"t":1791264848531,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/operation-table.ts"}
+{"t":1791264848531,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/state-slices.ts"}
+{"t":1791264848531,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/realtime-examples.ts"}
+{"t":1791264848531,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/sessions.ts"}
+{"t":1791264848531,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/evidence.ts"}
+{"t":1791264848531,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/devices.ts"}
+{"t":1791264848531,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/storage.ts"}
+{"t":1791264848531,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/network-time.ts"}
+{"t":1791264848531,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/security-audit.ts"}
+{"t":1791264848531,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/system.ts"}
+{"t":1791264848531,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/alerts.ts"}
+{"t":1791264848531,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/state-examples.ts"}
+{"t":1791264848531,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/sim-actions.ts"}
+{"t":1791264848541,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/domain/ids.ts"}
+{"t":1791264848541,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/domain/enums.ts"}
+{"t":1791264848542,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/domain/entities.ts"}
+{"t":1791264848550,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/schema-parts.ts"}
+{"t":1791264848551,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/example-parts.ts"}
+{"t":1791264848554,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/contract-model.ts"}
+{"t":1791264848554,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/operation-parts.ts"}
+{"t":1791264848554,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/tokens/tokens.ts"}
+{"t":1791264848572,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/i18n.ts"}
+{"t":1791264848577,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/index.ts"}
+{"t":1791264848585,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/api-reference.ts"}
+{"t":1791264848585,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/common.ts"}
+{"t":1791264848585,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/dashboard.ts"}
+{"t":1791264848586,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/devices.ts"}
+{"t":1791264848586,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/evidence.ts"}
+{"t":1791264848586,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/login.ts"}
+{"t":1791264848586,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/network-time.ts"}
+{"t":1791264848586,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/paired-devices.ts"}
+{"t":1791264848586,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/security-audit.ts"}
+{"t":1791264848586,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/session.ts"}
+{"t":1791264848586,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/session-new.ts"}
+{"t":1791264848586,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/shell.ts"}
+{"t":1791264848586,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/storage.ts"}
+{"t":1791264848587,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/system.ts"}
+{"t":1791264848587,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/users-roles.ts"}
+{"t":1791264848587,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/resource-tree.ts"}
+{"t":1791264848602,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/router.tsx"}
+{"t":1791264848604,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/route-view-transition.ts"}
+{"t":1791264848604,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routeTree.gen.ts"}
+{"t":1791264848604,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/runtime/query-bridge.ts"}
+{"t":1791264848608,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/__root.tsx"}
+{"t":1791264848608,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/_app.tsx"}
+{"t":1791264848608,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/login.tsx"}
+{"t":1791264848608,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/_app/index.tsx"}
+{"t":1791264848608,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/_app/dashboard.tsx"}
+{"t":1791264848609,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/_app/devices.tsx"}
+{"t":1791264848609,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/_app/network-time.tsx"}
+{"t":1791264848609,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/_app/security-audit.tsx"}
+{"t":1791264848609,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/_app/stack-check.tsx"}
+{"t":1791264848609,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/_app/storage.tsx"}
+{"t":1791264848609,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/_app/system.tsx"}
+{"t":1791264848609,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/_app/admin/devices.tsx"}
+{"t":1791264848610,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/_app/admin/users.tsx"}
+{"t":1791264848610,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/_app/developer/api.tsx"}
+{"t":1791264848611,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/_app/evidence/index.tsx"}
+{"t":1791264848611,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/_app/evidence/$evidenceId.tsx"}
+{"t":1791264848611,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/_app/session/index.tsx"}
+{"t":1791264848611,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/_app/session/new.tsx"}
+{"t":1791264848619,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/@heroui_react.js"}
+{"t":1791264848620,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/motion_react.js"}
+{"t":1791264848620,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/realtime/index.ts"}
+{"t":1791264848620,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/shell-entrance.ts"}
+{"t":1791264848620,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/motion/index.ts"}
+{"t":1791264848620,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/runtime/presentation-follow.ts"}
+{"t":1791264848620,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/shell.css"}
+{"t":1791264848620,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/clsx.js"}
+{"t":1791264848621,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/DateFormatter-BaZr6xpv.js"}
+{"t":1791264848625,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/-search.ts"}
+{"t":1791264848628,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/_app/admin/-guard.ts"}
+{"t":1791264848631,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/realtime/heartbeat-client.ts"}
+{"t":1791264848631,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/realtime/live-socket-client.ts"}
+{"t":1791264848631,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/realtime/heartbeat-context.tsx"}
+{"t":1791264848631,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/realtime/use-heartbeat.ts"}
+{"t":1791264848631,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/realtime/format.ts"}
+{"t":1791264848631,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/realtime/use-retry-cooldown.ts"}
+{"t":1791264848633,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/motion/motion-policy-provider.tsx"}
+{"t":1791264848634,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/motion/use-motion-policy.ts"}
+{"t":1791264848634,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/motion/use-ambient-loop.ts"}
+{"t":1791264848634,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/motion/ambient-registry.ts"}
+{"t":1791264848634,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/motion/glow-layer.tsx"}
+{"t":1791264848635,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/motion/glow.ts"}
+{"t":1791264848635,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/motion/debug-overlay-gate.tsx"}
+{"t":1791264848635,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/motion/debug-metrics.ts"}
+{"t":1791264848635,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/motion/variants.ts"}
+{"t":1791264848635,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/motion/transitions.ts"}
+{"t":1791264848635,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/motion/policy.ts"}
+{"t":1791264848635,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/motion/use-media-query.ts"}
+{"t":1791264848636,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/lib/presentation-mode.ts"}
+{"t":1791264848644,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/motion/motion.css"}
+{"t":1791264848645,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/tokens/index.ts"}
+{"t":1791264848645,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/lib/utils.ts"}
+{"t":1791264848649,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/tokens/status-tones.ts"}
+{"t":1791264848649,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/tailwind-merge.js"}
+{"t":1791264848695,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/login.tsx"}
+{"t":1791264848698,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/login/index.tsx"}
+{"t":1791264848701,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/mode-switch.tsx"}
+{"t":1791264848701,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/login/auth-card.tsx"}
+{"t":1791264848701,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/login/brand-panel.tsx"}
+{"t":1791264848701,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/login/login-choreography.ts"}
+{"t":1791264848701,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/login/login-model.ts"}
+{"t":1791264848701,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/login/login-motion.ts"}
+{"t":1791264848701,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/login/report.ts"}
+{"t":1791264848701,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/login/sim-adapter.ts"}
+{"t":1791264848701,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/login/use-login-controller.ts"}
+{"t":1791264848701,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/login/use-login-tier.ts"}
+{"t":1791264848701,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/login/login.css"}
+{"t":1791264848712,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/runtime/index.ts"}
+{"t":1791264848712,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/shell-report.ts"}
+{"t":1791264848715,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/lucide-react.js"}
+{"t":1791264848715,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/ui/border-beam.tsx"}
+{"t":1791264848715,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/login/login-alert.tsx"}
+{"t":1791264848716,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/login/mode-selector.tsx"}
+{"t":1791264848717,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/hero/room-2560.jpg"}
+{"t":1791264848717,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/composed/glow-ring.tsx"}
+{"t":1791264848717,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/shared-layout-ids.ts"}
+{"t":1791264848717,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/ui/particles.tsx"}
+{"t":1791264848718,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/ui/text-effect.tsx"}
+{"t":1791264848718,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/login/device-strip.tsx"}
+{"t":1791264848718,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/login/graded-still.ts"}
+{"t":1791264848719,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/login/login-emblem.tsx"}
+{"t":1791264848726,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/lib/core-errors.ts"}
+{"t":1791264848726,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/login/live-adapter.ts"}
+{"t":1791264848726,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/login/login-live-model.ts"}
+{"t":1791264848727,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/runtime/hooks.ts"}
+{"t":1791264848729,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/ui/animated-number.tsx"}
+{"t":1791264848729,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/ui/sliding-number.tsx"}
+{"t":1791264848732,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/brand/index.ts"}
+{"t":1791264848732,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/media/rec-indicator.tsx"}
+{"t":1791264848732,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/composed/glow-ring.math.ts"}
+{"t":1791264848736,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/react-use-measure.js"}
+{"t":1791264848737,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/brand/emblem.ts"}
+{"t":1791264848737,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/brand/topo.ts"}
+{"t":1791264848737,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/media/use-sim-clock.ts"}
+{"t":1791264848816,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/hero/room-2560.jpg"}
+{"t":1791264848816,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/node_modules/@fontsource-variable/jetbrains-mono/files/jetbrains-mono-latin-wght-normal.woff2"}
+{"t":1791264848816,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/assets/brand/topo.svg"}
+{"t":1791264848816,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/node_modules/@fontsource-variable/inter/files/inter-latin-wght-normal.woff2"}
+{"t":1791264848816,"label":"Login (Live)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/node_modules/@fontsource-variable/orbitron/files/orbitron-latin-wght-normal.woff2"}
+{"t":1791264848816,"label":"Login (Live)","kind":"ws","origin":"ws://127.0.0.1:4400","path":"/ws"}
+{"t":1791264848817,"label":"Login (Live)","kind":"log","level":"warning","source":"network","text":"WebSocket connection to 'ws://127.0.0.1:4400/ws' failed: WebSocket is closed before the connection is established.","url":"http://127.0.0.1:5178/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/realtime/heartbeat-client.ts"}
+{"t":1791264848855,"label":"Login (Live)","kind":"ws","origin":"ws://127.0.0.1:4400","path":"/ws"}
+{"t":1791264849035,"label":"Login (Live)","kind":"log","level":"error","source":"network","text":"WebSocket connection to 'ws://127.0.0.1:4400/ws' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED","url":"http://127.0.0.1:5178/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/realtime/heartbeat-client.ts"}
+{"t":1791264849123,"label":"Login (Live)","kind":"request","origin":"blob:","method":"GET","path":"http://127.0.0.1:5178/12aea2d6-4947-4381-833f-fd95d80ee260"}
+{"t":1791264849623,"label":"Login (Live)","kind":"ws","origin":"ws://127.0.0.1:4400","path":"/ws"}
+{"t":1791264849625,"label":"Login (Live)","kind":"log","level":"error","source":"network","text":"WebSocket connection to 'ws://127.0.0.1:4400/ws' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED","url":"http://127.0.0.1:5178/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/realtime/heartbeat-client.ts"}
+{"t":1791264850623,"label":"Login (Simulated)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/_app.tsx"}
+{"t":1791264850626,"label":"Login (Simulated)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/app-layout.tsx"}
+{"t":1791264850628,"label":"Login (Simulated)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/app-shell.tsx"}
+{"t":1791264850628,"label":"Login (Simulated)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/exit-guard.tsx"}
+{"t":1791264850628,"label":"Login (Simulated)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/route-transition.tsx"}
+{"t":1791264850631,"label":"Login (Simulated)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/bottom-tabs.tsx"}
+{"t":1791264850631,"label":"Login (Simulated)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/live-notices.tsx"}
+{"t":1791264850631,"label":"Login (Simulated)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/nav-drawer.tsx"}
+{"t":1791264850631,"label":"Login (Simulated)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/shell-choreography.ts"}
+{"t":1791264850632,"label":"Login (Simulated)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/shell-motion-context.ts"}
+{"t":1791264850632,"label":"Login (Simulated)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/sidebar.tsx"}
+{"t":1791264850632,"label":"Login (Simulated)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/top-bar.tsx"}
+{"t":1791264850632,"label":"Login (Simulated)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/use-shell-layout.ts"}
+{"t":1791264850645,"label":"Login (Simulated)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/nav-items.ts"}
+{"t":1791264850646,"label":"Login (Simulated)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/mode-indicator-state.ts"}
+{"t":1791264850646,"label":"Login (Simulated)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/route-permissions.ts"}
+{"t":1791264850650,"label":"Login (Simulated)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/brand-emblem.tsx"}
+{"t":1791264850651,"label":"Login (Simulated)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/assets/brand/topo.svg"}
+{"t":1791264850651,"label":"Login (Simulated)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/ui/animated-background.tsx"}
+{"t":1791264850651,"label":"Login (Simulated)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/use-visible-nav-items.ts"}
+{"t":1791264850652,"label":"Login (Simulated)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/mode-indicator.tsx"}
+{"t":1791264850653,"label":"Login (Simulated)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/notifications-bell.tsx"}
+{"t":1791264850653,"label":"Login (Simulated)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/secure-pill.tsx"}
+{"t":1791264850653,"label":"Login (Simulated)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/user-menu.tsx"}
+{"t":1791264850661,"label":"Login (Simulated)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/integrity-checks.ts"}
+{"t":1791264850804,"label":"Login (Simulated)","kind":"ws","origin":"ws://127.0.0.1:4400","path":"/ws"}
+{"t":1791264850807,"label":"Login (Simulated)","kind":"log","level":"error","source":"network","text":"WebSocket connection to 'ws://127.0.0.1:4400/ws' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED","url":"http://127.0.0.1:5178/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/realtime/heartbeat-client.ts"}
+{"t":1791264853248,"label":"Login (Simulated)","kind":"ws","origin":"ws://127.0.0.1:4400","path":"/ws"}
+{"t":1791264853248,"label":"Login (Simulated)","kind":"log","level":"error","source":"network","text":"WebSocket connection to 'ws://127.0.0.1:4400/ws' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED","url":"http://127.0.0.1:5178/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/realtime/heartbeat-client.ts"}
+{"t":1791264854965,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/login"}
+{"t":1791264855041,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@vite/client"}
+{"t":1791264855041,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/main.tsx"}
+{"t":1791264855043,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@react-refresh"}
+{"t":1791264855049,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/node_modules/vite/dist/client/env.mjs"}
+{"t":1791264855050,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/node_modules/@fontsource-variable/orbitron/index.css"}
+{"t":1791264855050,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/node_modules/@fontsource-variable/inter/index.css"}
+{"t":1791264855052,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/node_modules/@fontsource-variable/jetbrains-mono/index.css"}
+{"t":1791264855052,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/index.css"}
+{"t":1791264855052,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/react.js"}
+{"t":1791264855053,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/react-dom_client.js"}
+{"t":1791264855053,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/@tanstack_react-query.js"}
+{"t":1791264855053,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/@tanstack_react-router.js"}
+{"t":1791264855054,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/react-i18next.js"}
+{"t":1791264855054,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/zod.js"}
+{"t":1791264855054,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/runtime/error-sink.ts"}
+{"t":1791264855055,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/react_jsx-dev-runtime.js"}
+{"t":1791264855055,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/rolldown-runtime-DC62tzP2.js"}
+{"t":1791264855055,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/react-dom.js"}
+{"t":1791264855056,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/react_jsx-runtime.js"}
+{"t":1791264855056,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/with-selector-B2QvWTxs.js"}
+{"t":1791264855058,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/shim-Zj6jh50b.js"}
+{"t":1791264855059,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/i18next.js"}
+{"t":1791264855059,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/zod-DbJ75KGc.js"}
+{"t":1791264855061,"label":"Switch back to Live (Login selector)","kind":"ws","origin":"ws://127.0.0.1:5178","path":"/"}
+{"t":1791264855077,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/runtime/boot.ts"}
+{"t":1791264855080,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/index.ts"}
+{"t":1791264855082,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/index.ts"}
+{"t":1791264855082,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/lib/core-endpoint.ts"}
+{"t":1791264855082,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/runtime/core-mode.ts"}
+{"t":1791264855082,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/runtime/live-host.ts"}
+{"t":1791264855094,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/constants.ts"}
+{"t":1791264855095,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/core-actions.ts"}
+{"t":1791264855095,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/settle.ts"}
+{"t":1791264855095,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/errors.ts"}
+{"t":1791264855096,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/mode.ts"}
+{"t":1791264855096,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/hooks.ts"}
+{"t":1791264855097,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/constants.ts"}
+{"t":1791264855097,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/vocabulary.ts"}
+{"t":1791264855097,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/types.ts"}
+{"t":1791264855097,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/errors.ts"}
+{"t":1791264855097,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/memo.ts"}
+{"t":1791264855098,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/demo-alignment.ts"}
+{"t":1791264855098,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/rng.ts"}
+{"t":1791264855099,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/clock.ts"}
+{"t":1791264855099,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/events.ts"}
+{"t":1791264855099,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/evidence.ts"}
+{"t":1791264855099,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/dataset.ts"}
+{"t":1791264855100,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/auth.ts"}
+{"t":1791264855100,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/platform.ts"}
+{"t":1791264855100,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/initial-state.ts"}
+{"t":1791264855100,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/store.ts"}
+{"t":1791264855100,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/selectors.ts"}
+{"t":1791264855100,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/devices.ts"}
+{"t":1791264855100,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/views.ts"}
+{"t":1791264855100,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/derive.ts"}
+{"t":1791264855101,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/session-machine.ts"}
+{"t":1791264855101,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/faults.ts"}
+{"t":1791264855101,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/audio.ts"}
+{"t":1791264855101,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/health.ts"}
+{"t":1791264855101,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/generator.ts"}
+{"t":1791264855101,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/maintenance.ts"}
+{"t":1791264855101,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/evidence-actions.ts"}
+{"t":1791264855101,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/pairing.ts"}
+{"t":1791264855101,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/scenarios.ts"}
+{"t":1791264855101,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/api.ts"}
+{"t":1791264855101,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/actions.ts"}
+{"t":1791264855101,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/engine.ts"}
+{"t":1791264855101,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/react.ts"}
+{"t":1791264855121,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/index.ts"}
+{"t":1791264855121,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/lib/packaged-csp.ts"}
+{"t":1791264855136,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/@noble_hashes_sha2__js.js"}
+{"t":1791264855136,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/@noble_hashes_utils__js.js"}
+{"t":1791264855137,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/domain/index.ts"}
+{"t":1791264855139,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/zustand_middleware.js"}
+{"t":1791264855141,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/zustand_vanilla.js"}
+{"t":1791264855146,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/session-schema.ts"}
+{"t":1791264855146,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/text-cut.ts"}
+{"t":1791264855151,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/zustand.js"}
+{"t":1791264855152,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/zustand_react_shallow.js"}
+{"t":1791264855152,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/constants.ts"}
+{"t":1791264855153,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/health.ts"}
+{"t":1791264855153,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/realtime-messages.ts"}
+{"t":1791264855153,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/patterns.ts"}
+{"t":1791264855153,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/core-api.ts"}
+{"t":1791264855153,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/examples.ts"}
+{"t":1791264855154,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/openapi.ts"}
+{"t":1791264855154,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/text.ts"}
+{"t":1791264855154,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/identity.ts"}
+{"t":1791264855154,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/administration.ts"}
+{"t":1791264855154,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/pairing.ts"}
+{"t":1791264855155,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/demo-controls.ts"}
+{"t":1791264855155,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/operation-table.ts"}
+{"t":1791264855155,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/state-slices.ts"}
+{"t":1791264855155,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/realtime-examples.ts"}
+{"t":1791264855156,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/sessions.ts"}
+{"t":1791264855156,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/evidence.ts"}
+{"t":1791264855156,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/devices.ts"}
+{"t":1791264855156,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/storage.ts"}
+{"t":1791264855156,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/network-time.ts"}
+{"t":1791264855156,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/security-audit.ts"}
+{"t":1791264855156,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/system.ts"}
+{"t":1791264855156,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/alerts.ts"}
+{"t":1791264855156,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/state-examples.ts"}
+{"t":1791264855156,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/sim-actions.ts"}
+{"t":1791264855171,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/domain/ids.ts"}
+{"t":1791264855171,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/domain/enums.ts"}
+{"t":1791264855171,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/domain/entities.ts"}
+{"t":1791264855177,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/schema-parts.ts"}
+{"t":1791264855179,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/contract-model.ts"}
+{"t":1791264855179,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/operation-parts.ts"}
+{"t":1791264855180,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/api/example-parts.ts"}
+{"t":1791264855183,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/tokens/tokens.ts"}
+{"t":1791264855199,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/i18n.ts"}
+{"t":1791264855202,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/index.ts"}
+{"t":1791264855205,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/api-reference.ts"}
+{"t":1791264855206,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/common.ts"}
+{"t":1791264855206,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/dashboard.ts"}
+{"t":1791264855206,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/devices.ts"}
+{"t":1791264855206,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/evidence.ts"}
+{"t":1791264855206,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/login.ts"}
+{"t":1791264855207,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/network-time.ts"}
+{"t":1791264855207,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/paired-devices.ts"}
+{"t":1791264855207,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/security-audit.ts"}
+{"t":1791264855207,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/session.ts"}
+{"t":1791264855208,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/session-new.ts"}
+{"t":1791264855208,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/shell.ts"}
+{"t":1791264855208,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/storage.ts"}
+{"t":1791264855208,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/system.ts"}
+{"t":1791264855208,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/en/users-roles.ts"}
+{"t":1791264855209,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/i18n/resource-tree.ts"}
+{"t":1791264855231,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/router.tsx"}
+{"t":1791264855233,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/route-view-transition.ts"}
+{"t":1791264855233,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routeTree.gen.ts"}
+{"t":1791264855233,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/runtime/query-bridge.ts"}
+{"t":1791264855238,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/__root.tsx"}
+{"t":1791264855238,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/_app.tsx"}
+{"t":1791264855239,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/login.tsx"}
+{"t":1791264855239,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/_app/index.tsx"}
+{"t":1791264855239,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/_app/dashboard.tsx"}
+{"t":1791264855239,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/_app/devices.tsx"}
+{"t":1791264855239,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/_app/network-time.tsx"}
+{"t":1791264855239,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/_app/security-audit.tsx"}
+{"t":1791264855239,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/_app/stack-check.tsx"}
+{"t":1791264855239,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/_app/storage.tsx"}
+{"t":1791264855239,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/_app/system.tsx"}
+{"t":1791264855239,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/_app/admin/devices.tsx"}
+{"t":1791264855239,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/_app/admin/users.tsx"}
+{"t":1791264855240,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/_app/developer/api.tsx"}
+{"t":1791264855240,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/_app/evidence/index.tsx"}
+{"t":1791264855240,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/_app/evidence/$evidenceId.tsx"}
+{"t":1791264855240,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/_app/session/index.tsx"}
+{"t":1791264855240,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/_app/session/new.tsx"}
+{"t":1791264855255,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/@heroui_react.js"}
+{"t":1791264855256,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/motion_react.js"}
+{"t":1791264855256,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/realtime/index.ts"}
+{"t":1791264855256,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/shell-entrance.ts"}
+{"t":1791264855256,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/motion/index.ts"}
+{"t":1791264855256,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/runtime/presentation-follow.ts"}
+{"t":1791264855256,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/shell.css"}
+{"t":1791264855256,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/clsx.js"}
+{"t":1791264855256,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/DateFormatter-BaZr6xpv.js"}
+{"t":1791264855262,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/-search.ts"}
+{"t":1791264855270,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/_app/admin/-guard.ts"}
+{"t":1791264855275,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/realtime/heartbeat-client.ts"}
+{"t":1791264855276,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/realtime/live-socket-client.ts"}
+{"t":1791264855276,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/realtime/heartbeat-context.tsx"}
+{"t":1791264855276,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/realtime/use-heartbeat.ts"}
+{"t":1791264855276,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/realtime/format.ts"}
+{"t":1791264855276,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/realtime/use-retry-cooldown.ts"}
+{"t":1791264855282,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/motion/motion-policy-provider.tsx"}
+{"t":1791264855282,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/motion/use-motion-policy.ts"}
+{"t":1791264855282,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/motion/use-ambient-loop.ts"}
+{"t":1791264855282,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/motion/ambient-registry.ts"}
+{"t":1791264855282,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/motion/glow-layer.tsx"}
+{"t":1791264855283,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/motion/glow.ts"}
+{"t":1791264855283,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/motion/debug-overlay-gate.tsx"}
+{"t":1791264855283,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/motion/debug-metrics.ts"}
+{"t":1791264855283,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/motion/variants.ts"}
+{"t":1791264855283,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/motion/transitions.ts"}
+{"t":1791264855283,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/motion/policy.ts"}
+{"t":1791264855283,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/motion/use-media-query.ts"}
+{"t":1791264855283,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/lib/presentation-mode.ts"}
+{"t":1791264855300,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/motion/motion.css"}
+{"t":1791264855303,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/tokens/index.ts"}
+{"t":1791264855308,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/lib/utils.ts"}
+{"t":1791264855325,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/tokens/status-tones.ts"}
+{"t":1791264855331,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/tailwind-merge.js"}
+{"t":1791264855339,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/runtime/live-start.ts"}
+{"t":1791264855344,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/client/index.ts"}
+{"t":1791264855344,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/index.ts"}
+{"t":1791264855344,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/runtime/owed-sign-out-storage.ts"}
+{"t":1791264855350,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/client/core-client.ts"}
+{"t":1791264855351,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/constants.ts"}
+{"t":1791264855351,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/types.ts"}
+{"t":1791264855351,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/bindings.ts"}
+{"t":1791264855351,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/clock.ts"}
+{"t":1791264855352,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/command-gate.ts"}
+{"t":1791264855352,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-result.ts"}
+{"t":1791264855352,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts"}
+{"t":1791264855352,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/neutral-state.ts"}
+{"t":1791264855353,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/rebuild-error.ts"}
+{"t":1791264855353,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/replica.ts"}
+{"t":1791264855354,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/structural-sharing.ts"}
+{"t":1791264855354,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/touch-throttle.ts"}
+{"t":1791264855375,"label":"Switch back to Live (Login selector)","kind":"ws","origin":"ws://127.0.0.1:5178","path":"/ws"}
+{"t":1791264855376,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/api/v1/auth/session"}
+{"t":1791264855379,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/api/v1/auth/status"}
+{"t":1791264855387,"label":"Switch back to Live (Login selector)","kind":"response4xx","status":401,"method":"GET","path":"/api/v1/auth/session"}
+{"t":1791264855388,"label":"Switch back to Live (Login selector)","kind":"log","level":"error","source":"network","text":"Failed to load resource: the server responded with a status of 401 (Unauthorized)","url":"http://127.0.0.1:5178/api/v1/auth/session"}
+{"t":1791264855388,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/login.tsx"}
+{"t":1791264855391,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/login/index.tsx"}
+{"t":1791264855394,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/mode-switch.tsx"}
+{"t":1791264855394,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/login/auth-card.tsx"}
+{"t":1791264855394,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/login/brand-panel.tsx"}
+{"t":1791264855394,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/login/login-choreography.ts"}
+{"t":1791264855394,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/login/login-model.ts"}
+{"t":1791264855394,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/login/login-motion.ts"}
+{"t":1791264855395,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/login/report.ts"}
+{"t":1791264855395,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/login/sim-adapter.ts"}
+{"t":1791264855395,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/login/use-login-controller.ts"}
+{"t":1791264855395,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/login/use-login-tier.ts"}
+{"t":1791264855395,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/login/login.css"}
+{"t":1791264855417,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/runtime/index.ts"}
+{"t":1791264855417,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/shell-report.ts"}
+{"t":1791264855420,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/lucide-react.js"}
+{"t":1791264855421,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/ui/border-beam.tsx"}
+{"t":1791264855421,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/login/login-alert.tsx"}
+{"t":1791264855421,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/login/mode-selector.tsx"}
+{"t":1791264855423,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/hero/room-2560.jpg"}
+{"t":1791264855423,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/composed/glow-ring.tsx"}
+{"t":1791264855423,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/shared-layout-ids.ts"}
+{"t":1791264855424,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/ui/particles.tsx"}
+{"t":1791264855424,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/ui/text-effect.tsx"}
+{"t":1791264855425,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/login/device-strip.tsx"}
+{"t":1791264855425,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/login/graded-still.ts"}
+{"t":1791264855425,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/login/login-emblem.tsx"}
+{"t":1791264855436,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/lib/core-errors.ts"}
+{"t":1791264855436,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/login/live-adapter.ts"}
+{"t":1791264855436,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/features/login/login-live-model.ts"}
+{"t":1791264855440,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/runtime/hooks.ts"}
+{"t":1791264855442,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/ui/animated-number.tsx"}
+{"t":1791264855442,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/ui/sliding-number.tsx"}
+{"t":1791264855449,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/brand/index.ts"}
+{"t":1791264855449,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/media/rec-indicator.tsx"}
+{"t":1791264855449,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/composed/glow-ring.math.ts"}
+{"t":1791264855542,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/node_modules/.vite/deps/react-use-measure.js"}
+{"t":1791264855547,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/brand/emblem.ts"}
+{"t":1791264855547,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/brand/topo.ts"}
+{"t":1791264855550,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/media/use-sim-clock.ts"}
+{"t":1791264855653,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/assets/hero/room-2560.jpg"}
+{"t":1791264855653,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/node_modules/@fontsource-variable/jetbrains-mono/files/jetbrains-mono-latin-wght-normal.woff2"}
+{"t":1791264855653,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/assets/brand/topo.svg"}
+{"t":1791264855653,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/node_modules/@fontsource-variable/inter/files/inter-latin-wght-normal.woff2"}
+{"t":1791264855653,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/@fs/Users/gsp-budi/Documents/DEMS/node_modules/@fontsource-variable/orbitron/files/orbitron-latin-wght-normal.woff2"}
+{"t":1791264855654,"label":"Switch back to Live (Login selector)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/api/v1/health"}
+{"t":1791264856007,"label":"Switch back to Live (Login selector)","kind":"request","origin":"blob:","method":"GET","path":"http://127.0.0.1:5178/2d851aa9-07bd-4840-8c4e-4f43b22fc210"}
+{"t":1791264857449,"label":"Login (Live again)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/routes/_app.tsx"}
+{"t":1791264857452,"label":"Login (Live again)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/app-layout.tsx"}
+{"t":1791264857455,"label":"Login (Live again)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/app-shell.tsx"}
+{"t":1791264857455,"label":"Login (Live again)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/exit-guard.tsx"}
+{"t":1791264857455,"label":"Login (Live again)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/route-transition.tsx"}
+{"t":1791264857459,"label":"Login (Live again)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/bottom-tabs.tsx"}
+{"t":1791264857459,"label":"Login (Live again)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/live-notices.tsx"}
+{"t":1791264857459,"label":"Login (Live again)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/nav-drawer.tsx"}
+{"t":1791264857459,"label":"Login (Live again)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/shell-choreography.ts"}
+{"t":1791264857459,"label":"Login (Live again)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/shell-motion-context.ts"}
+{"t":1791264857459,"label":"Login (Live again)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/sidebar.tsx"}
+{"t":1791264857459,"label":"Login (Live again)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/top-bar.tsx"}
+{"t":1791264857459,"label":"Login (Live again)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/use-shell-layout.ts"}
+{"t":1791264857466,"label":"Login (Live again)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/nav-items.ts"}
+{"t":1791264857468,"label":"Login (Live again)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/mode-indicator-state.ts"}
+{"t":1791264857468,"label":"Login (Live again)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/route-permissions.ts"}
+{"t":1791264857468,"label":"Login (Live again)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/brand-emblem.tsx"}
+{"t":1791264857470,"label":"Login (Live again)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/assets/brand/topo.svg"}
+{"t":1791264857470,"label":"Login (Live again)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/ui/animated-background.tsx"}
+{"t":1791264857471,"label":"Login (Live again)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/use-visible-nav-items.ts"}
+{"t":1791264857471,"label":"Login (Live again)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/mode-indicator.tsx"}
+{"t":1791264857471,"label":"Login (Live again)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/notifications-bell.tsx"}
+{"t":1791264857471,"label":"Login (Live again)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/secure-pill.tsx"}
+{"t":1791264857471,"label":"Login (Live again)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/user-menu.tsx"}
+{"t":1791264857478,"label":"Login (Live again)","kind":"request","origin":"http://127.0.0.1:5178","method":"GET","path":"/src/components/shell/integrity-checks.ts"}

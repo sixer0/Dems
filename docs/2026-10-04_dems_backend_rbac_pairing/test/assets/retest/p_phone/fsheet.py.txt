@@ -1,0 +1,12 @@
+# fsheet.py framesDir out.png width cols idx...  (full frames, numbered)
+import sys
+from PIL import Image, ImageDraw
+d=sys.argv[1]; out=sys.argv[2]; w=int(sys.argv[3]); cols=int(sys.argv[4]); idx=[int(i) for i in sys.argv[5:]]
+ims=[]
+for i in idx:
+  im=Image.open(f'{d}/f_{i:03d}.png').convert('RGB'); h=int(im.height*w/im.width); im=im.resize((w,h))
+  dr=ImageDraw.Draw(im); dr.rectangle((0,h-16,w,h),fill=(0,0,0)); dr.text((3,h-14),f'f_{i:03d}',fill=(255,255,0)); ims.append(im)
+H=ims[0].height; rows=(len(ims)+cols-1)//cols
+s=Image.new('RGB',(cols*w+(cols-1)*4,rows*H+(rows-1)*4),(90,90,90))
+for k,im in enumerate(ims): s.paste(im,((k%cols)*(w+4),(k//cols)*(H+4)))
+s.save(out)

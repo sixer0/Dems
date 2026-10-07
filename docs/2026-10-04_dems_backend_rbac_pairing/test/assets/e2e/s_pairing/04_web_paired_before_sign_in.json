@@ -1,0 +1,44 @@
+{
+  "at": "09:54:57.364 (epoch 1791255297.364)",
+  "waited": null,
+  "facts": {
+    "href": "http://127.0.0.1:5173/admin/devices",
+    "onPage": true,
+    "issueState": "IDLE",
+    "codeShown": false,
+    "codeDigitCount": 0,
+    "qrShown": false,
+    "countdownSeconds": null,
+    "attempts": null,
+    "redeemedText": null,
+    "activeElsewhere": false,
+    "list": "table",
+    "rows": [
+      {
+        "id": "DEV-0001",
+        "state": "Paired",
+        "online": "",
+        "operator": "—",
+        "lastSeen": "5 min ago",
+        "revokeShown": true
+      }
+    ],
+    "summary": {
+      "paired": "1",
+      "online": "1",
+      "text": "1 paired · 1 online1 paired · 1 online"
+    },
+    "toasts": []
+  },
+  "screenshot": {
+    "file": "04_web_paired_before_sign_in.png",
+    "at": "09:54:57.350 (epoch 1791255297.350)"
+  },
+  "audit": {},
+  "network": {
+    "api": [],
+    "origins": [],
+    "sockets": [],
+    "console": []
+  }
+}

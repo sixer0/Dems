@@ -58,7 +58,7 @@ import {
 import { countingPool, manualTimer, type CountingPool, type ManualTimer } from '../../../../test/support/engine';
 import type { Principal } from '../../../plugins/authenticate';
 import { captureLog, unitTestConfig, type CapturedLog } from '../../../../test/support/config';
-import { ApiFailure } from '../../../plugins/error-envelope';
+import { ApiFailure, NOT_SIGNED_IN_TEXT } from '../../../plugins/error-envelope';
 import type { Publication } from '../../../realtime';
 import { WEB_ORIGIN, identityApp, signInOnWeb, type Headers, type IdentityApp, type IdentityTarget, type ManualClock } from '../../../../test/support/identity';
 
@@ -224,7 +224,7 @@ export async function engineDouble(clock: ControllableClock, scenario?: Scenario
   function perform(unit: string, ran: string[], principal: Principal, action: HostedActionName, args: readonly unknown[]): unknown {
     actions.push({ unit, principal, action, args });
     ran.push(action);
-    if (principal.kind !== 'OPERATOR') throw new ApiFailure(401, 'NOT_SIGNED_IN', 'Sign in to continue.');
+    if (principal.kind !== 'OPERATOR') throw new ApiFailure(401, 'NOT_SIGNED_IN', NOT_SIGNED_IN_TEXT);
     const run = sim.actions[action] as (...parameters: readonly unknown[]) => unknown;
     try {
       // The host's own actor scope: the caller for exactly this action, signed out afterwards.

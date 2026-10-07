@@ -1,0 +1,41 @@
+# CF-M2 in-memory mutation run, 2026-10-06 14:03-14:07 (console output of `python3 .cache/cf_m2_mut/mutate.py ...`,
+# copied verbatim from the three runs; driver 12b_cf_m2_mutate.py.txt, transformer 12b_cf_m2_mutating_transformer.cjs.txt,
+# config 12b_cf_m2_jest_mut_config.cjs.txt). The driver hashes the 10 mutated tree files before and after each run.
+
+$ python3 mutate.py control
+   (load 15.1 > 14: pausing 30 s)
+control: 6 files | Tests:       34 passed, 34 total | exit 0
+tree files unchanged: True (10 files checked)
+
+$ python3 mutate.py P M
+P1 DETECTED: the old Settings rows: router.push(href) (stacks a second Devices list over the detail) | Tests:       3 failed, 13 passed, 16 total | exit 1 | failing: settings-screen.test.tsx,settings-tab-root.test.tsx | first: Settings › phone: sections push /settings/<section>; System rows open the existing screens at their root; Back goes back
+P2 DETECTED: the jump keeps the tab's nested stack (resetOnFocus false) | Tests:       3 failed, 13 passed, 16 total | exit 1 | failing: settings-tab-root.test.tsx | first: R-P-3: Settings > Device Settings opens the Devices list at its root › phone: with Camera 1 detail left in the Devices stack, the row shows the list and ONE Bac
+P3 DETECTED: router.navigate(href) instead of the reset jump | Tests:       2 failed, 14 passed, 16 total | exit 1 | failing: settings-tab-root.test.tsx | first: R-P-3: Settings > Device Settings opens the Devices list at its root › phone: with Camera 1 detail left in the Devices stack, the row shows the list and ONE Bac
+P4 DETECTED: the tab navigator is never found (always the logged fallback) | Tests:       2 failed, 14 passed, 16 total | exit 1 | failing: settings-tab-root.test.tsx | first: R-P-3: Settings > Device Settings opens the Devices list at its root › phone: with Camera 1 detail left in the Devices stack, the row shows the list and ONE Bac
+M1 DETECTED: the old Evidence detail Archive item (rollback copy): title and reason side by side | Tests:       1 failed, 2 passed, 3 total | exit 1 | failing: evidence-more-menu-title.test.tsx | first: R-T-1: a disabled menu item keeps its visible title above its reason › Evidence detail > More (INVESTIGATOR): "Archive" over "Archiving needs the Supervisor rol
+M2 DETECTED: the old Evidence row menu (rollback copy) | Tests:       1 failed, 2 passed, 3 total | exit 1 | failing: evidence-more-menu-title.test.tsx | first: R-T-1: a disabled menu item keeps its visible title above its reason › Evidence list row menu (INVESTIGATOR): the disabled Archive item, same structure
+M3 DETECTED: the column has no flex (the title can collapse again) | Tests:       2 failed, 1 passed, 3 total | exit 1 | failing: evidence-more-menu-title.test.tsx | first: R-T-1: a disabled menu item keeps its visible title above its reason › Evidence detail > More (INVESTIGATOR): "Archive" over "Archiving needs the Supervisor rol
+M4 DETECTED: no column: title and reason are direct children of the item row | Tests:       2 failed, 1 passed, 3 total | exit 1 | failing: evidence-more-menu-title.test.tsx | first: R-T-1: a disabled menu item keeps its visible title above its reason › Evidence detail > More (INVESTIGATOR): "Archive" over "Archiving needs the Supervisor rol
+detected 8 of 8
+tree files unchanged: True (10 files checked)
+
+$ python3 mutate.py I N S
+I1 DETECTED: the old Live tab (rollback copy): heading always "Verified by the Core" | Tests:       6 failed, 1 passed, 7 total | exit 1 | failing: live-evidence-stored-verification.test.tsx | first: R-T-2 on phonePortrait › NOT_RUN: "Not verified yet", no last line; a new Verify turns it into "Verified by the Core" with the run's time and operator, only onc
+I2 DETECTED: the heading ignores the record (screen verdict only) | Tests:       4 failed, 3 passed, 7 total | exit 1 | failing: live-evidence-stored-verification.test.tsx | first: R-T-2 on phonePortrait › a PASS the Core holds: "Verified by the Core" before any run, the last verification's result, time and operator, "Verify again"
+I3 DETECTED: no pinning: the replica's delta reveals the new verdict before the paced reveal | Tests:       2 failed, 5 passed, 7 total | exit 1 | failing: live-evidence-stored-verification.test.tsx | first: R-T-2 on phonePortrait › NOT_RUN: "Not verified yet", no last line; a new Verify turns it into "Verified by the Core" with the run's time and operator, only onc
+I4 DETECTED: the actor is the latest entry of that verdict, not the one of the record's instant | Tests:       1 failed, 6 passed, 7 total | exit 1 | failing: live-evidence-stored-verification.test.tsx | first: storedVerification / coreVerificationState (web parity) › NOT_RUN holds nothing; a PASS or FAIL carries its time and the actor of the custody entry of that inst
+I5 DETECTED: a FAIL record is headed "Verified by the Core" | Tests:       3 failed, 4 passed, 7 total | exit 1 | failing: live-evidence-stored-verification.test.tsx | first: storedVerification / coreVerificationState (web parity) › NOT_RUN holds nothing; a PASS or FAIL carries its time and the actor of the custody entry of that inst
+I6 DETECTED: the last line drops the time and the operator | Tests:       6 failed, 1 passed, 7 total | exit 1 | failing: live-evidence-stored-verification.test.tsx | first: R-T-2 on phonePortrait › NOT_RUN: "Not verified yet", no last line; a new Verify turns it into "Verified by the Core" with the run's time and operator, only onc
+N1 DETECTED: the old Network Status card (rollback copy) | Tests:       4 failed, 4 total | exit 1 | failing: bandwidth-row-fit.test.tsx | first: R-T-3: the Bandwidth label keeps its room › the one-line budget: wider than the tablet card, within the phone row at font scale 1
+N2 DETECTED: never stacked (the one-line row everywhere) | Tests:       2 failed, 2 passed, 4 total | exit 1 | failing: bandwidth-row-fit.test.tsx | first: R-T-3: the Bandwidth label keeps its room › tablet (three panes): stacked before the first layout and at the measured 290 dp
+N3 DETECTED: the budget forgets the readout | Tests:       3 failed, 1 passed, 4 total | exit 1 | failing: bandwidth-row-fit.test.tsx | first: R-T-3: the Bandwidth label keeps its room › the one-line budget: wider than the tablet card, within the phone row at font scale 1
+N4 DETECTED: stacked, but the bars stay beside the readout (over the label again) | Tests:       2 failed, 2 passed, 4 total | exit 1 | failing: bandwidth-row-fit.test.tsx | first: R-T-3: the Bandwidth label keeps its room › tablet (three panes): stacked before the first layout and at the measured 290 dp
+S1 DETECTED: the expanded list pane without its 360 dp minimum | Tests:       1 failed, 3 passed, 4 total | exit 1 | failing: hub-pane-row-fit.test.tsx | first: R-T-4: every value of a Sessions row fits on one line in a list pane › expanded (tablet landscape): the list pane is 40% but at least 360 dp; rows use the pane 
+S2 DETECTED: the pane row keeps the phone poster | Tests:       2 failed, 2 passed, 4 total | exit 1 | failing: hub-pane-row-fit.test.tsx | first: R-T-4: every value of a Sessions row fits on one line in a list pane › expanded (tablet landscape): the list pane is 40% but at least 360 dp; rows use the pane 
+S3 DETECTED: the chip line never wraps (a value wraps inside itself again) | Tests:       2 failed, 2 passed, 4 total | exit 1 | failing: hub-pane-row-fit.test.tsx | first: R-T-4: every value of a Sessions row fits on one line in a list pane › expanded (tablet landscape): the list pane is 40% but at least 360 dp; rows use the pane 
+S4 DETECTED: the phone row takes the pane poster too | Tests:       1 failed, 3 passed, 4 total | exit 1 | failing: hub-pane-row-fit.test.tsx | first: R-T-4: every value of a Sessions row fits on one line in a list pane › phone portrait: the row is unchanged (88 x 68 poster, 12 dp gap, no wrap, no line cap on 
+S5 DETECTED: the pane poster back at 88 dp | Tests:       1 failed, 3 passed, 4 total | exit 1 | failing: hub-pane-row-fit.test.tsx | first: R-T-4: every value of a Sessions row fits on one line in a list pane › the budget: the old pane left a text column under 60 dp; the new one holds the ID and chi
+detected 15 of 15
+tree files unchanged: True (10 files checked)
+
+TOTAL: 23 of 23 mutants detected; control 6 files / 34 tests pass.

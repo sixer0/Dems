@@ -15,8 +15,8 @@
 import { OPERATORS, type AuditRow, type OperatorRole, type SessionCreateInput, type SimOperator } from '@dems/shared/sim';
 import type { LightMyRequestResponse } from 'fastify';
 import type { Pool } from 'pg';
-import { readHead, readTrail } from '../../../core/__tests__/support';
-import { engineApp, type EngineApp, type EngineAppOptions, type EngineAppTarget } from '../../../engine/__tests__/support';
+import { readHead, readTrail } from '../../../../test/support/core';
+import { engineApp, type EngineApp, type EngineAppOptions, type EngineAppTarget } from '../../../../test/support/engine';
 import { WEB_ORIGIN, cookieValue, webSignIn, type Headers } from '../../../../test/support/identity';
 
 export const SESSION = '/api/v1/session';

@@ -1,0 +1,19 @@
+08:55:09
+
+> @dems/shared@0.1.0 test
+> vitest run --maxWorkers=2
+
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/packages/shared
+
+
+ Test Files  44 passed (44)
+      Tests  804 passed (804)
+   Start at  08:55:09
+   Duration  2.88s (tests 44%, import 41%, transform 13%, worker 2%)
+
+    Isolate  44 workers spawned · ~43ms startup each (spawn + environment, per file)
+             at least ~903ms faster with isolate: false — reuses workers across files instead of one per file
+
+exit=0
+08:55:12

@@ -1,0 +1,3 @@
+shot 22i_technician_next_after_40s
+ids technician_wizard
+noshot

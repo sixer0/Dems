@@ -29,8 +29,9 @@
  * Every rejection goes to the refusal presenter first in Live mode (`useCoreErrorPresenter`, §6.2,
  * LB-5 to LB-10), and only what it leaves gets the site's own message; every failure writes the
  * persistent runtime log (`reportRuntimeIssue`). In LIVE mode the copy says nothing about a
- * simulation (MD-8): the dialog bodies, the toasts, the log's command names, the health caption and
- * the diagnostics subtitle take `features.devices.live.*`.
+ * simulation (MD-8): the dialog bodies, the toasts, the log's command names and the health caption
+ * take `features.devices.live.*`; the diagnostics subtitle is the shared `system.live.diagnosticsSubtitle`,
+ * the words of the web console and of Settings (closing copy round, D177 DN-5).
  */
 import { useIsFocused, useRouter } from 'expo-router';
 import { Alert, Button, Tabs, useToast } from 'heroui-native';

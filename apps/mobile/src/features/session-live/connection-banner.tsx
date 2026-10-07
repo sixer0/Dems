@@ -7,11 +7,19 @@
  *   Core. Reconnecting…", plus why the session actions are read-only; one Warning haptic;
  * - resynced: the same Alert turns green "Resynced", then exits.
  * It slides down 240 ms from under the header; reduced motion fades.
+ *
+ * Closing-fix row CF-M1 (R-P-1): no `exiting` animation. A view with one is kept by Reanimated as a ghost
+ * after React removed it, and the indices of the following mount instructions are shifted around it; the
+ * crash of the re-test (`Tried to remove view [21688] …`, `addViewAt: failed to insert view …`) had the
+ * banner as the first view out of place, in the subtree the Finalizing hand-over removes. The banner now
+ * leaves in the commit that hides it (the "Resynced" state already said the link is back), and it sits in a
+ * container of its own (`session-live-screen.tsx`), so its coming and going never moves the index of a
+ * sibling of the monitor.
  */
 import { Alert, Spinner } from 'heroui-native';
 import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import Animated, { FadeIn, FadeOut, SlideInUp } from 'react-native-reanimated';
+import Animated, { FadeIn, SlideInUp } from 'react-native-reanimated';
 import { motion as motionTokens } from '@dems/shared/tokens';
 import { triggerHaptic, useMotionSettings } from '@/motion';
 import { useConnectionBanner } from '@/runtime';
@@ -34,7 +42,6 @@ export function ConnectionBanner() {
     <Animated.View
       testID={`monitor-banner-${banner.kind}`}
       entering={reduced ? FadeIn.duration(motionTokens.duration.fast) : SlideInUp.duration(motionTokens.duration.base)}
-      exiting={FadeOut.duration(motionTokens.duration.fast)}
       accessibilityLiveRegion="polite"
     >
       <Alert status={offline ? 'warning' : 'success'}>

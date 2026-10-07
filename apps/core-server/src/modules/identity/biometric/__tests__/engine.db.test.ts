@@ -115,13 +115,15 @@ describe('API-7 and ENG-8 with the engine running', () => {
     expect(signedIn.headers['x-dems-epoch']).toBe(epoch);
     expect(revisionHeader(signedIn)).toBe(revisionOf('AUTH_SUCCESS'));
     expect(revisionHeader(signedIn)).toBeGreaterThan(revisionHeader(enrolled));
-    expect(step()).toEqual(['state[AUTH_SUCCESS]']);
+    // A sign-in on the device changes its signed-in operator: the channel is told (E-fix FX-C, R4).
+    expect(step()).toEqual(['state[AUTH_SUCCESS]', 'device.session']);
 
     // 8, the reuse: a refusal carries neither header (API-7 speaks of 2xx answers).
     const replay = await biometricSignIn(bio.app, tablet.credential, token);
     expect(replay.statusCode).toBe(401);
     expect(replay.headers['x-dems-revision']).toBeUndefined();
-    expect(step()).toEqual(['state[AUTH_FAILED]', 'session.ended TOKEN_REUSE x1']);
+    // The reuse ends the device's biometric session: its operator leaves the device (R4), then session.ended.
+    expect(step()).toEqual(['state[AUTH_FAILED]', 'device.session', 'session.ended TOKEN_REUSE x1']);
 
     // 9
     const reported = await reportFailure(bio.app, tablet.credential, INVESTIGATOR.id);

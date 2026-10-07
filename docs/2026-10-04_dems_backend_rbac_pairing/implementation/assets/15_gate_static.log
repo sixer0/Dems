@@ -1,0 +1,13 @@
+$ npm run typecheck -w @dems/mobile   (11:33:35)
+
+> @dems/mobile@0.1.0 typecheck
+> tsc --noEmit
+
+exit=0
+
+$ npm run lint -w @dems/mobile   (11:33:41)
+
+> @dems/mobile@0.1.0 lint
+> eslint .
+
+exit=0   (11:33:57)

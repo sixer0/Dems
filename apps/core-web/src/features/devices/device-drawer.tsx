@@ -16,7 +16,6 @@ import {
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
-import type { PairedDeviceList } from '@dems/shared/api'
 import type { EnResources } from '@dems/shared/i18n'
 import { CoreMode, LiveLinkState, useCoreMode, useCorePermission, useLiveLink } from '@dems/shared/live'
 import { DATE_PATTERNS, EMPTY_DATE_TEXT, formatDate, useRetryCooldown } from '@dems/shared/realtime'
@@ -32,7 +31,8 @@ import {
   type FaultKind,
 } from '@dems/shared/sim'
 import { useCoreErrorPresenter } from '@/lib/core-errors'
-import { CORE_QUERY_KEYS, useWebLive } from '@/runtime'
+import { CoreReadError, pairedDevicesQueryOptions, retryCoreQuery, usePairedDevicesGate, useQueryFailure } from '@/lib/core-queries'
+import { CORE_QUERY_KEYS } from '@/runtime'
 import { HealthChart } from './health-chart'
 import { useDeviceLabels } from './labels'
 import { useDeviceWords, type DeviceWords } from './live'
@@ -319,18 +319,6 @@ function TabletOverview() {
 /** The fixed sentence of the page's own record when the registry could not be read for a reason the presenter left to the page. */
 const REGISTRY_FAILED_RECORD = 'The paired-device registry could not be read for the device drawer.'
 
-/** A failed read of operation 19, named by its code and status only (never the server's text). */
-class RegistryReadError extends Error {
-  override readonly name = 'RegistryReadError'
-  readonly code: string
-  readonly status: number | null
-  constructor(code: string, status: number | null) {
-    super('The paired-device registry could not be read.')
-    this.code = code
-    this.status = status
-  }
-}
-
 /**
  * The "Paired devices" row of the tablet drawer in Live mode (04_client_integration_spec §7.3 note
  * G6, gap GS-16; plan row W70). The web console does not pair [SP:§6.9], so the Simulated row
@@ -361,35 +349,34 @@ function TabletLinkSentence() {
  * (PG-6, PG-6a). It is read only while the link is up: with the link down the row shows the
  * tablet link sentence, and the shell says the Core is unreachable (rule 6).
  *
- * CONTRACT-GAP-W70-1: a paired device's socket opening or closing publishes no `admin.changed`
- * DEVICES (`apps/core-server/src/realtime/hub.ts:219-224, 697-700`), so the `online` member of a
- * held answer goes stale. The replicated tablet link changes with those sockets, so its change
- * refetches the list.
+ * RESIDUAL-W70-1 (W83 ledger #45), closed by E-fix FX-C (ruling R4 of D201, gated in D202): the Core
+ * server now publishes one debounced `admin.changed` DEVICES (1 s after the last change, at most 5 s
+ * after the first) when a paired device's socket is admitted or departs and when a device signs in or
+ * out, so the bridge refetch keeps the `online` member current. The refetch on a change of the
+ * replicated tablet link, added while that message was missing, stays as a second path.
  */
 function PairedDevicesSummary() {
   const { t } = useTranslation()
-  const live = useWebLive()
   const linkUp = useLiveLink() === LiveLinkState.ONLINE
   const presentCoreError = useCoreErrorPresenter()
   const queryClient = useQueryClient()
   const tabletChangedAt = useSim((s) => s.tabletLink.changedAt)
 
-  const query = useQuery({
-    queryKey: CORE_QUERY_KEYS.pairedDevices,
-    enabled: live !== null && linkUp,
-    queryFn: async (): Promise<PairedDeviceList> => {
-      if (live === null) throw new RegistryReadError('NOT_LIVE', null)
-      const answer = await live.client.call('listPairedDevices')
-      if (answer.ok) return answer.data
-      // Rule 2 of the page rows: the presenter first (a 403 names the role; an outage, a 429 ...).
-      if (presentCoreError(answer, { permission: Permission.PAIRING_MANAGE }) === null) {
-        reportDevicesError('features/devices.pairedDevices', answer, REGISTRY_FAILED_RECORD, { operationId: 'listPairedDevices', code: answer.error.code }, 'warn')
-      }
-      throw new RegistryReadError(answer.error.code, answer.status)
-    },
+  // W92-3 / W92-8: the one definition of operation 19 (`lib/core-queries.ts`), whose gate holds the
+  // signed-in term of D176 as well as the link and PAIRING_MANAGE: after a sign-out this row, still on
+  // screen until the shell leaves, asks nothing.
+  const query = useQuery(pairedDevicesQueryOptions(usePairedDevicesGate()))
+  useQueryFailure(query, (error) => {
+    const answer = error instanceof CoreReadError ? error.failure : null
+    if (answer === null) return
+    // Rule 2 of the page rows: the presenter first (a 403 names the role; an outage, a 429 ...).
+    if (presentCoreError(answer, { permission: Permission.PAIRING_MANAGE }) === null) {
+      reportDevicesError('features/devices.pairedDevices', answer, REGISTRY_FAILED_RECORD, { operationId: 'listPairedDevices', code: answer.error.code }, 'warn')
+    }
   })
 
-  // CONTRACT-GAP-W70-1: the tablet link is the replicated sign that a device came or went.
+  // RESIDUAL-W70-1 (closed, D202): the tablet link changes when a device comes or goes; this refetch came
+  // before the Core's debounced `admin.changed` DEVICES and stays as a second path.
   const seenChange = useRef(tabletChangedAt)
   useEffect(() => {
     if (seenChange.current === tabletChangedAt) return
@@ -397,8 +384,9 @@ function PairedDevicesSummary() {
     void queryClient.invalidateQueries({ queryKey: CORE_QUERY_KEYS.pairedDevices })
   }, [queryClient, tabletChangedAt])
 
+  // W92-4: Retry through the key, so the read's gate holds for a press as it does for a mount.
   const { retry, cooldown, exhausted, canRetry } = useRetryCooldown(() => {
-    void query.refetch()
+    retryCoreQuery(queryClient, CORE_QUERY_KEYS.pairedDevices)
   })
 
   if (query.data !== undefined) {

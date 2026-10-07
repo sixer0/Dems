@@ -875,7 +875,7 @@ describe('`session.updated`: a role change while signed in (AC-C-49, §6.3)', ()
 });
 
 describe('offline, and a limit (AC-C-59, LB-6, LB-10, CL-22)', () => {
-  it('link down: a command rejects at once, five presses show one toast, and no request is sent', async () => {
+  it('link down: a command rejects at once, five presses show 1 toast (one drawn toast, outcomes shown + 4 coalesced), and no request is sent', async () => {
     pairTablet();
     const live = createLive();
     const { unmount } = mountLive(live, <ArchiveButton />);
@@ -1124,6 +1124,60 @@ describe('the secrets port of a device (brief rows 11 to 13)', () => {
     await flush();
     expect(result).toMatchObject({ ok: true });
     expect(probe()).toContain(`auth=SIGNED_IN/${DEVICE_SESSION.operator.id}`);
+    unmount();
+  });
+
+  it('W93-16 (FXR-M): a credential write slower than the budget — the late outcome is logged with its time, and a write that lands after the failure is removed again', async () => {
+    const live = createLive();
+    const { unmount } = mountLive(live);
+    await flush();
+    fake.answer('redeemPairingCode', () => {
+      core.devices.set(REDEEMED.deviceCredential, 'PAIRED');
+      return fake.example('redeemPairingCode', 201);
+    });
+    // The keystore answers only when the test releases it (a real slow write, not a starved thread).
+    const credentials = jest.requireActual<typeof import('./secure-credentials')>('./secure-credentials');
+    const original = credentials.writeDeviceCredential;
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const spy = jest.spyOn(credentials, 'writeDeviceCredential').mockImplementation(async (value) => {
+      await gate;
+      return original(value);
+    });
+    const from = runtimeLog.records().length;
+    let failure: unknown;
+    try {
+      await act(async () => {
+        const pending = live.live.actions.pair('000000').then(
+          () => undefined,
+          (error: unknown) => {
+            failure = error;
+          },
+        );
+        for (let turn = 0; turn < 40; turn += 1) await Promise.resolve();
+        fake.clock.advance(MOBILE_SECRETS_BUDGET_MS + 1_500); // the write is 5.5 s in when it lands
+        for (let turn = 0; turn < 40; turn += 1) await Promise.resolve();
+        release();
+        await pending;
+      });
+      await flush();
+      await flush();
+    } finally {
+      spy.mockRestore();
+    }
+    expect(failure).toBeInstanceOf(CoreRefusalError);
+    const records = runtimeLog.records().slice(from);
+    const budget = records.filter((r) => r.source === 'runtime.live.credentials.write');
+    expect(budget[0]).toMatchObject({ level: 'error', context: expect.objectContaining({ budgetMs: MOBILE_SECRETS_BUDGET_MS, elapsedAtBudgetMs: expect.any(Number) }) });
+    const late = records.filter((r) => r.source === 'runtime.live.credentials.lateWrite');
+    expect(late).toHaveLength(1);
+    expect(late[0]!.context).toMatchObject({ late: true, ok: true, budgetMs: MOBILE_SECRETS_BUDGET_MS, deviceId: REDEEMED.deviceId });
+    expect(Number(late[0]!.context?.elapsedMs)).toBeGreaterThanOrEqual(MOBILE_SECRETS_BUDGET_MS);
+    // Nothing is kept that the app says it does not hold; the credential is never in the log.
+    expect(store().keys()).toEqual([]);
+    expect(JSON.stringify(records)).not.toContain(REDEEMED.deviceCredential);
     unmount();
   });
 

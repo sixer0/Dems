@@ -91,6 +91,15 @@ export const invalidInput = (where: string | undefined): ApiFailure =>
 export const internalError = (cause?: unknown): ApiFailure =>
   new ApiFailure(500, EnvelopeCode.INTERNAL_ERROR, 'The server could not complete the request.', { cause });
 
+/**
+ * The one text of `401 NOT_SIGNED_IN` for a caller without an operator, wherever the server
+ * refuses it: stage 4, the engine's backstop and the hosted actions' refusal table, and the
+ * modules' own refusals (review findings CPB1-18, W91-5). It is the text of the contract's
+ * examples and of the simulator's API (`packages/shared/src/sim/api.ts`), so a client sees one
+ * message for one condition.
+ */
+export const NOT_SIGNED_IN_TEXT = 'Sign in first.';
+
 export const notReady = (): ApiFailure =>
   new ApiFailure(503, EnvelopeCode.NOT_READY, 'The server is not ready. Try again shortly.');
 

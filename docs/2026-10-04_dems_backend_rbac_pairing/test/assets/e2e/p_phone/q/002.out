@@ -1,0 +1,7 @@
+09:45:34.509 mark a01 at 09:45:34.509
+09:45:34.558 declared screen login
+09:45:34.618 screencap 01_login_live.png (1726721 B) 09:45:34.618..09:45:37.538
+09:45:37.729 tap 539,1184
+09:45:38.173 slept 900 ms
+09:45:39.510 focused true; keyguard false; inputType 0x80001
+09:45:42.576 screencap 01b_login_username_focus.png (1726789 B) 09:45:42.576..09:45:44.636

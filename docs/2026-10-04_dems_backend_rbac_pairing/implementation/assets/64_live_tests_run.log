@@ -1,0 +1,578 @@
+2026-10-05 23:01:12 WIB
+$ npm run test -w @dems/core-web -- src/test/live-session-new- --reporter=verbose
+
+> @dems/core-web@0.1.0 test
+> vitest run src/test/live-session-new- --reporter=verbose
+
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/apps/core-web
+
+ ✓ src/test/live-session-new-pending.test.tsx > AC-C-57, AC-C-58: busy at once, spinner late (LB-1), on the scan button > the reveal time is the motion token of the specification (420 ms), between the two checkpoints of the test 2ms
+ ✓ src/test/live-session-new-pending.test.tsx > AC-C-57, AC-C-58: busy at once, spinner late (LB-1), on the scan button > an answer after 1 s: two quick presses send ONE request; no spinner at 300 ms; the in-button spinner at 500 ms; nothing is added outside the control 590ms
+stderr | src/test/live-session-new-precheck.test.tsx > B-6 the resume effect: beginPrecheck once per session (FC-7) > refusal: a 403 shows the denied toast; one request, nothing is sent again
+[core-web] live {
+  level: 'error',
+  source: 'SessionNew.beginPrecheck.resume',
+  message: 'Start New Session: the step "beginPrecheck.resume" did not complete.',
+  stack: '    at rebuildRefusal (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/rebuild-error.ts:135:12)\n' +
+    '    at refusalOf (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2050:14)\n' +
+    '    at /Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2133:54\n' +
+    '    at guarded (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/command-gate.ts:118:7)\n' +
+    '    at Object.end (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/command-gate.ts:234:7)\n' +
+    '    at Object.end (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2092:14)\n' +
+    '    at /Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2133:14',
+  context: {
+    sessionId: 'SES-20261001-0024',
+    correlationId: 'sn-muvfsyho-9',
+    errorClass: 'SimPermissionError',
+    code: 'NOT_PERMITTED'
+  },
+  at: 1791216077096
+}
+
+ ✓ src/test/live-session-new-precheck.test.tsx > B-6 the resume effect: beginPrecheck once per session (FC-7) > success: StrictMode runs the effect twice, ONE request goes out while it is in flight; the delta then moves the gate on 1002ms
+ ✓ src/test/live-session-new-pending.test.tsx > AC-C-57, AC-C-58: busy at once, spinner late (LB-1), on the scan button > an answer after 50 ms: no spinner is ever rendered 200ms
+stderr | src/test/live-session-new-precheck.test.tsx > B-6 the resume effect: beginPrecheck once per session (FC-7) > outage: the offline toast; one request, nothing is sent again
+[core-web] live {
+  level: 'error',
+  source: 'SessionNew.beginPrecheck.resume',
+  message: 'Start New Session: the step "beginPrecheck.resume" did not complete.',
+  stack: '    at transportErrorOf (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/rebuild-error.ts:101:10)\n' +
+    '    at rebuildRefusal (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/rebuild-error.ts:124:21)\n' +
+    '    at refusalOf (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2050:14)\n' +
+    '    at /Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2133:54\n' +
+    '    at guarded (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/command-gate.ts:118:7)\n' +
+    '    at Object.end (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/command-gate.ts:234:7)\n' +
+    '    at Object.end (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2092:14)\n' +
+    '    at /Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2133:14',
+  context: {
+    sessionId: 'SES-20261001-0024',
+    correlationId: 'sn-muvfsyov-15',
+    errorClass: 'LiveTransportError',
+    code: 'NETWORK',
+    reason: 'CORE_OFFLINE'
+  },
+  at: 1791216077353
+}
+
+ ✓ src/test/live-session-new-precheck.test.tsx > B-6 the resume effect: beginPrecheck once per session (FC-7) > refusal: a 403 shows the denied toast; one request, nothing is sent again 266ms
+ ✓ src/test/live-session-new-pending.test.tsx > AC-C-57, AC-C-58: busy at once, spinner late (LB-1), on the scan button > a focused press (keyboard): the only elements added outside the control are inside React Aria's visually hidden live announcer 204ms
+ ✓ src/test/live-session-new-create.test.tsx > A3 createSession (awaited, CL-26) > success: the create is sent once with the form, then the pre-check; step 2 shows the Core's session 1419ms
+ ✓ src/test/live-session-new-precheck.test.tsx > B-6 the resume effect: beginPrecheck once per session (FC-7) > outage: the offline toast; one request, nothing is sent again 231ms
+stderr | src/test/live-session-new-pending.test.tsx > LB-1 on every control of the row: busy at once, the in-button spinner after the reveal time, one request > Next on step 2 (acknowledgePrecheckWarnings)
+[core-web] live {
+  level: 'error',
+  source: 'SessionNew.acknowledgePrecheckWarnings',
+  message: 'Start New Session: the step "acknowledgePrecheckWarnings" did not complete.',
+  stack: '    at transportErrorOf (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/rebuild-error.ts:101:10)\n' +
+    '    at rebuildRefusal (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/rebuild-error.ts:124:21)\n' +
+    '    at refusalOf (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2050:14)\n' +
+    '    at /Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2133:54\n' +
+    '    at guarded (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/command-gate.ts:118:7)\n' +
+    '    at Object.end (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/command-gate.ts:234:7)\n' +
+    '    at Object.end (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2092:14)\n' +
+    '    at /Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2133:14',
+  context: {
+    sessionId: 'SES-20261001-0024',
+    correlationId: 'sn-muvfsyr2-15',
+    errorClass: 'LiveTransportError',
+    code: 'NETWORK',
+    reason: 'CORE_OFFLINE'
+  },
+  at: 1791216077594
+}
+
+ ✓ src/test/live-session-new-pending.test.tsx > LB-1 on every control of the row: busy at once, the in-button spinner after the reveal time, one request > Next on step 2 (acknowledgePrecheckWarnings) 387ms
+stderr | src/test/live-session-new-pending.test.tsx > LB-1 on every control of the row: busy at once, the in-button spinner after the reveal time, one request > "Re-run checks" (retryPrecheck)
+[core-web] live {
+  level: 'error',
+  source: 'SessionNew.retryPrecheck',
+  message: 'Start New Session: the step "retryPrecheck" did not complete.',
+  stack: '    at transportErrorOf (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/rebuild-error.ts:101:10)\n' +
+    '    at rebuildRefusal (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/rebuild-error.ts:124:21)\n' +
+    '    at refusalOf (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2050:14)\n' +
+    '    at /Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2133:54\n' +
+    '    at guarded (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/command-gate.ts:118:7)\n' +
+    '    at Object.end (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/command-gate.ts:234:7)\n' +
+    '    at Object.end (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2092:14)\n' +
+    '    at /Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2133:14',
+  context: {
+    sessionId: 'SES-20261001-0024',
+    correlationId: 'sn-muvfsz1f-23',
+    errorClass: 'LiveTransportError',
+    code: 'NETWORK',
+    reason: 'CORE_OFFLINE'
+  },
+  at: 1791216077839
+}
+
+stderr | src/test/live-session-new-create.test.tsx > A3 createSession (awaited, CL-26) > refusal: a 403 shows the denied toast that names the role (not the Simulated sentence); Next returns to idle, the form is kept
+[core-web] live {
+  level: 'warn',
+  source: 'SessionNew.createSession',
+  message: 'Start New Session: the step "createSession" did not complete.',
+  context: { reason: 'NOT_PERMITTED', correlationId: 'sn-muvfsyt4-12' },
+  at: 1791216077840
+}
+
+ ✓ src/test/live-session-new-precheck.test.tsx > B-6 acknowledgePrecheckWarnings (LB-1 on Next) > success: step 3 opens when the acknowledgement settled 320ms
+stderr | src/test/live-session-new-precheck.test.tsx > B-6 acknowledgePrecheckWarnings (LB-1 on Next) > refusal: a 403 shows the denied toast; step 2 stays and Next is idle again
+[core-web] live {
+  level: 'error',
+  source: 'SessionNew.acknowledgePrecheckWarnings',
+  message: 'Start New Session: the step "acknowledgePrecheckWarnings" did not complete.',
+  stack: '    at rebuildRefusal (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/rebuild-error.ts:135:12)\n' +
+    '    at refusalOf (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2050:14)\n' +
+    '    at /Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2133:54\n' +
+    '    at guarded (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/command-gate.ts:118:7)\n' +
+    '    at Object.end (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/command-gate.ts:234:7)\n' +
+    '    at Object.end (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2092:14)\n' +
+    '    at /Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2133:14',
+  context: {
+    sessionId: 'SES-20261001-0024',
+    correlationId: 'sn-muvfsz3s-30',
+    errorClass: 'SimPermissionError',
+    code: 'NOT_PERMITTED'
+  },
+  at: 1791216077933
+}
+
+ ✓ src/test/live-session-new-pending.test.tsx > LB-1 on every control of the row: busy at once, the in-button spinner after the reveal time, one request > "Re-run checks" (retryPrecheck) 238ms
+ ✓ src/test/live-session-new-create.test.tsx > A3 createSession (awaited, CL-26) > refusal: a 403 shows the denied toast that names the role (not the Simulated sentence); Next returns to idle, the form is kept 563ms
+stderr | src/test/live-session-new-pending.test.tsx > LB-1 on every control of the row: busy at once, the in-button spinner after the reveal time, one request > Start (startRecording)
+[core-web] live {
+  level: 'error',
+  source: 'SessionNew.startRecording',
+  message: 'Start New Session: the step "startRecording" did not complete.',
+  stack: '    at transportErrorOf (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/rebuild-error.ts:101:10)\n' +
+    '    at rebuildRefusal (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/rebuild-error.ts:124:21)\n' +
+    '    at refusalOf (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2050:14)\n' +
+    '    at /Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2133:54\n' +
+    '    at guarded (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/command-gate.ts:118:7)\n' +
+    '    at Object.end (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/command-gate.ts:234:7)\n' +
+    '    at Object.end (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2092:14)\n' +
+    '    at /Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2133:14',
+  context: {
+    sessionId: 'SES-20261001-0024',
+    correlationId: 'sn-muvfsz7z-30',
+    errorClass: 'LiveTransportError',
+    code: 'NETWORK',
+    reason: 'CORE_OFFLINE'
+  },
+  at: 1791216078100
+}
+
+ ✓ src/test/live-session-new-precheck.test.tsx > B-6 acknowledgePrecheckWarnings (LB-1 on Next) > refusal: a 403 shows the denied toast; step 2 stays and Next is idle again 244ms
+ ✓ src/test/live-session-new-pending.test.tsx > LB-1 on every control of the row: busy at once, the in-button spinner after the reveal time, one request > Start (startRecording) 242ms
+stderr | src/test/live-session-new-precheck.test.tsx > B-6 acknowledgePrecheckWarnings (LB-1 on Next) > outage: the offline toast; step 2 stays
+[core-web] live {
+  level: 'error',
+  source: 'SessionNew.acknowledgePrecheckWarnings',
+  message: 'Start New Session: the step "acknowledgePrecheckWarnings" did not complete.',
+  stack: '    at transportErrorOf (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/rebuild-error.ts:101:10)\n' +
+    '    at rebuildRefusal (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/rebuild-error.ts:124:21)\n' +
+    '    at refusalOf (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2050:14)\n' +
+    '    at /Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2133:54\n' +
+    '    at guarded (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/command-gate.ts:118:7)\n' +
+    '    at Object.end (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/command-gate.ts:234:7)\n' +
+    '    at Object.end (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2092:14)\n' +
+    '    at /Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2133:14',
+  context: {
+    sessionId: 'SES-20261001-0024',
+    correlationId: 'sn-muvfszap-37',
+    errorClass: 'LiveTransportError',
+    code: 'NETWORK',
+    reason: 'CORE_OFFLINE'
+  },
+  at: 1791216078291
+}
+
+stderr | src/test/live-session-new-pending.test.tsx > LB-1 on every control of the row: busy at once, the in-button spinner after the reveal time, one request > the Discard confirm (cancel)
+[core-web] live {
+  level: 'error',
+  source: 'SessionNew.cancel',
+  message: 'Start New Session: the step "cancel" did not complete.',
+  stack: '    at transportErrorOf (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/rebuild-error.ts:101:10)\n' +
+    '    at rebuildRefusal (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/rebuild-error.ts:124:21)\n' +
+    '    at refusalOf (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2050:14)\n' +
+    '    at /Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2133:54\n' +
+    '    at guarded (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/command-gate.ts:118:7)\n' +
+    '    at Object.end (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/command-gate.ts:234:7)\n' +
+    '    at Object.end (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2092:14)\n' +
+    '    at /Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2133:14',
+  context: {
+    sessionId: 'SES-20261001-0024',
+    correlationId: 'sn-muvfszeq-38',
+    errorClass: 'LiveTransportError',
+    code: 'NETWORK',
+    reason: 'CORE_OFFLINE'
+  },
+  at: 1791216078352
+}
+
+stderr | src/test/live-session-new-create.test.tsx > A3 createSession (awaited, CL-26) > outage: the offline toast of LB-6; Next returns to idle, the form is kept, nothing else is sent
+[core-web] live {
+  level: 'error',
+  source: 'SessionNew.submitInfo',
+  message: 'Start New Session: the step "submitInfo" did not complete.',
+  stack: '    at transportErrorOf (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/rebuild-error.ts:101:10)\n' +
+    '    at rebuildRefusal (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/rebuild-error.ts:124:21)\n' +
+    '    at refusalOf (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2050:14)\n' +
+    '    at /Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2133:54\n' +
+    '    at guarded (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/command-gate.ts:118:7)\n' +
+    '    at Object.end (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/command-gate.ts:234:7)\n' +
+    '    at Object.end (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2092:14)\n' +
+    '    at /Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2133:14\n' +
+    '    at runNextTicks (node:internal/process/task_queues:65:5)\n' +
+    '    at processTimers (node:internal/timers:615:9)',
+  context: {
+    sessionId: null,
+    correlationId: 'sn-muvfsz8a-19',
+    errorClass: 'LiveTransportError',
+    code: 'NETWORK',
+    reason: 'CORE_OFFLINE'
+  },
+  at: 1791216078360
+}
+
+ ✓ src/test/live-session-new-pending.test.tsx > LB-1 on every control of the row: busy at once, the in-button spinner after the reveal time, one request > the Discard confirm (cancel) 288ms
+ ✓ src/test/live-session-new-pending.test.tsx > CLG (c), AC-C-53: the folder's production files > read the folder 1ms
+ ✓ src/test/live-session-new-pending.test.tsx > CLG (c), AC-C-53: the folder's production files > the scan can fail: it sees a property read and does not see an i18n key 1ms
+ ✓ src/test/live-session-new-pending.test.tsx > CLG (c), AC-C-53: the folder's production files > no `useSimActions`, no `.actions` read on anything, the actions come from `useCoreActions()` 2ms
+ ✓ src/test/live-session-new-pending.test.tsx > the Devices step in Simulated mode keeps its wording (the Live sentence of F69 is Live only) > live=false (Simulated): the blocked Core link 63ms
+ ✓ src/test/live-session-new-pending.test.tsx > the Devices step in Simulated mode keeps its wording (the Live sentence of F69 is Live only) > live=true (Live): the blocked Core link 42ms
+ ✓ src/test/live-session-new-precheck.test.tsx > B-6 acknowledgePrecheckWarnings (LB-1 on Next) > outage: the offline toast; step 2 stays 363ms
+ ✓ src/test/live-session-new-create.test.tsx > A3 createSession (awaited, CL-26) > outage: the offline toast of LB-6; Next returns to idle, the form is kept, nothing else is sent 556ms
+ ✓ src/test/live-session-new-precheck.test.tsx > B-6 retryPrecheck (LB-1 on "Re-run checks"); the blocked Core link in Live mode (F69) > the blocked Core link is worded as a missing paired tablet, without the "clear the fault" line; never an "unreachable" sentence 211ms
+ ✓ src/test/live-session-new-precheck.test.tsx > B-6 retryPrecheck (LB-1 on "Re-run checks"); the blocked Core link in Live mode (F69) > success: the checks run again when the retry settled 183ms
+stderr | src/test/live-session-new-precheck.test.tsx > B-6 retryPrecheck (LB-1 on "Re-run checks"); the blocked Core link in Live mode (F69) > refusal: a 403 shows the denied toast; the gate stays blocked and the button idle
+[core-web] live {
+  level: 'error',
+  source: 'SessionNew.retryPrecheck',
+  message: 'Start New Session: the step "retryPrecheck" did not complete.',
+  stack: '    at rebuildRefusal (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/rebuild-error.ts:135:12)\n' +
+    '    at refusalOf (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2050:14)\n' +
+    '    at /Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2133:54\n' +
+    '    at guarded (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/command-gate.ts:118:7)\n' +
+    '    at Object.end (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/command-gate.ts:234:7)\n' +
+    '    at Object.end (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2092:14)\n' +
+    '    at /Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2133:14',
+  context: {
+    sessionId: 'SES-20261001-0024',
+    correlationId: 'sn-muvfszvl-54',
+    errorClass: 'SimPermissionError',
+    code: 'NOT_PERMITTED'
+  },
+  at: 1791216078868
+}
+
+stderr | src/test/live-session-new-create.test.tsx > A3 createSession (awaited, CL-26) > E5: another console created a session meanwhile (409 with no setup session seen before): the existing "session active" toast, no cancel
+[core-web] live {
+  level: 'warn',
+  source: 'SessionNew.createSession',
+  message: 'Start New Session: the step "createSession" did not complete.',
+  context: { reason: 'SESSION_ACTIVE', correlationId: 'sn-muvfszns-26' },
+  at: 1791216078942
+}
+
+ ✓ src/test/live-session-new-precheck.test.tsx > B-6 retryPrecheck (LB-1 on "Re-run checks"); the blocked Core link in Live mode (F69) > refusal: a 403 shows the denied toast; the gate stays blocked and the button idle 171ms
+stderr | src/test/live-session-new-precheck.test.tsx > B-6 retryPrecheck (LB-1 on "Re-run checks"); the blocked Core link in Live mode (F69) > outage: the offline toast; the gate stays blocked
+[core-web] live {
+  level: 'error',
+  source: 'SessionNew.retryPrecheck',
+  message: 'Start New Session: the step "retryPrecheck" did not complete.',
+  stack: '    at transportErrorOf (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/rebuild-error.ts:101:10)\n' +
+    '    at rebuildRefusal (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/rebuild-error.ts:124:21)\n' +
+    '    at refusalOf (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2050:14)\n' +
+    '    at /Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2133:54\n' +
+    '    at guarded (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/command-gate.ts:118:7)\n' +
+    '    at Object.end (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/command-gate.ts:234:7)\n' +
+    '    at Object.end (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2092:14)\n' +
+    '    at /Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2133:14',
+  context: {
+    sessionId: 'SES-20261001-0024',
+    correlationId: 'sn-muvft008-60',
+    errorClass: 'LiveTransportError',
+    code: 'NETWORK',
+    reason: 'CORE_OFFLINE'
+  },
+  at: 1791216079052
+}
+
+ ✓ src/test/live-session-new-create.test.tsx > A3 createSession (awaited, CL-26) > E5: another console created a session meanwhile (409 with no setup session seen before): the existing "session active" toast, no cancel 553ms
+ ✓ src/test/live-session-new-precheck.test.tsx > B-6 retryPrecheck (LB-1 on "Re-run checks"); the blocked Core link in Live mode (F69) > outage: the offline toast; the gate stays blocked 177ms
+ ✓ src/test/live-session-new-precheck.test.tsx > B-6 startRecording and C-4 (the session ID is read before the call) > success: the toast names the ID read before the call, then /session; one request 265ms
+stderr | src/test/live-session-new-precheck.test.tsx > B-6 startRecording and C-4 (the session ID is read before the call) > refusal: a 403 shows the denied toast; no "Recording started", no navigation, Start idle
+[core-web] live {
+  level: 'error',
+  source: 'SessionNew.startRecording',
+  message: 'Start New Session: the step "startRecording" did not complete.',
+  stack: '    at rebuildRefusal (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/rebuild-error.ts:135:12)\n' +
+    '    at refusalOf (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2050:14)\n' +
+    '    at /Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2133:54\n' +
+    '    at guarded (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/command-gate.ts:118:7)\n' +
+    '    at Object.end (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/command-gate.ts:234:7)\n' +
+    '    at Object.end (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2092:14)\n' +
+    '    at /Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2133:14',
+  context: {
+    sessionId: 'SES-20261001-0024',
+    correlationId: 'sn-muvft0cs-74',
+    errorClass: 'SimPermissionError',
+    code: 'NOT_PERMITTED'
+  },
+  at: 1791216079538
+}
+
+ ✓ src/test/live-session-new-precheck.test.tsx > B-6 startRecording and C-4 (the session ID is read before the call) > refusal: a 403 shows the denied toast; no "Recording started", no navigation, Start idle 221ms
+ ✓ src/test/live-session-new-create.test.tsx > C-3 the state read after the create decides the pre-check > success: the Core answers 200 for a session it already holds in PRECHECK: the state is read after the awaited create, no pre-check is sent 596ms
+stderr | src/test/live-session-new-precheck.test.tsx > B-6 startRecording and C-4 (the session ID is read before the call) > outage: the offline toast; no navigation
+[core-web] live {
+  level: 'error',
+  source: 'SessionNew.startRecording',
+  message: 'Start New Session: the step "startRecording" did not complete.',
+  stack: '    at transportErrorOf (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/rebuild-error.ts:101:10)\n' +
+    '    at rebuildRefusal (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/rebuild-error.ts:124:21)\n' +
+    '    at refusalOf (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2050:14)\n' +
+    '    at /Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2133:54\n' +
+    '    at guarded (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/command-gate.ts:118:7)\n' +
+    '    at Object.end (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/command-gate.ts:234:7)\n' +
+    '    at Object.end (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2092:14)\n' +
+    '    at /Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2133:14',
+  context: {
+    sessionId: 'SES-20261001-0024',
+    correlationId: 'sn-muvft0iy-81',
+    errorClass: 'LiveTransportError',
+    code: 'NETWORK',
+    reason: 'CORE_OFFLINE'
+  },
+  at: 1791216079726
+}
+
+ ✓ src/test/live-session-new-precheck.test.tsx > B-6 startRecording and C-4 (the session ID is read before the call) > outage: the offline toast; no navigation 175ms
+stderr | src/test/live-session-new-create.test.tsx > C-3 the state read after the create decides the pre-check > refusal: after a 403 nothing is read and no pre-check is sent; the denied toast shows
+[core-web] live {
+  level: 'warn',
+  source: 'SessionNew.createSession',
+  message: 'Start New Session: the step "createSession" did not complete.',
+  context: { reason: 'NOT_PERMITTED', correlationId: 'sn-muvft0jo-43' },
+  at: 1791216080109
+}
+
+ ✓ src/test/live-session-new-precheck.test.tsx > B-6 cancel (LB-1 on the dialog's confirm; leaving happens in ok) > success: "Session discarded." and /dashboard after the Core answered 249ms
+stderr | src/test/live-session-new-precheck.test.tsx > B-6 cancel (LB-1 on the dialog's confirm; leaving happens in ok) > refusal: a 403 shows the denied toast; the dialog stays open, the page stays
+[core-web] live {
+  level: 'error',
+  source: 'SessionNew.cancel',
+  message: 'Start New Session: the step "cancel" did not complete.',
+  stack: '    at rebuildRefusal (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/rebuild-error.ts:135:12)\n' +
+    '    at refusalOf (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2050:14)\n' +
+    '    at /Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2133:54\n' +
+    '    at guarded (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/command-gate.ts:118:7)\n' +
+    '    at Object.end (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/command-gate.ts:234:7)\n' +
+    '    at Object.end (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2092:14)\n' +
+    '    at /Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2133:14',
+  context: {
+    sessionId: 'SES-20261001-0024',
+    correlationId: 'sn-muvft0un-96',
+    errorClass: 'SimPermissionError',
+    code: 'NOT_PERMITTED'
+  },
+  at: 1791216080228
+}
+
+ ✓ src/test/live-session-new-create.test.tsx > C-3 the state read after the create decides the pre-check > refusal: after a 403 nothing is read and no pre-check is sent; the denied toast shows 558ms
+ ✓ src/test/live-session-new-precheck.test.tsx > B-6 cancel (LB-1 on the dialog's confirm; leaving happens in ok) > refusal: a 403 shows the denied toast; the dialog stays open, the page stays 290ms
+stderr | src/test/live-session-new-precheck.test.tsx > B-6 cancel (LB-1 on the dialog's confirm; leaving happens in ok) > outage: the offline toast; the dialog stays open
+[core-web] live {
+  level: 'error',
+  source: 'SessionNew.cancel',
+  message: 'Start New Session: the step "cancel" did not complete.',
+  stack: '    at transportErrorOf (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/rebuild-error.ts:101:10)\n' +
+    '    at rebuildRefusal (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/rebuild-error.ts:124:21)\n' +
+    '    at refusalOf (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2050:14)\n' +
+    '    at /Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2133:54\n' +
+    '    at guarded (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/command-gate.ts:118:7)\n' +
+    '    at Object.end (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/command-gate.ts:234:7)\n' +
+    '    at Object.end (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2092:14)\n' +
+    '    at /Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2133:14',
+  context: {
+    sessionId: 'SES-20261001-0024',
+    correlationId: 'sn-muvft12x-103',
+    errorClass: 'LiveTransportError',
+    code: 'NETWORK',
+    reason: 'CORE_OFFLINE'
+  },
+  at: 1791216080518
+}
+
+stderr | src/test/live-session-new-create.test.tsx > C-3 the state read after the create decides the pre-check > outage: no pre-check is sent; the offline toast shows
+[core-web] live {
+  level: 'error',
+  source: 'SessionNew.submitInfo',
+  message: 'Start New Session: the step "submitInfo" did not complete.',
+  stack: '    at transportErrorOf (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/rebuild-error.ts:101:10)\n' +
+    '    at rebuildRefusal (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/rebuild-error.ts:124:21)\n' +
+    '    at refusalOf (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2050:14)\n' +
+    '    at /Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2133:54\n' +
+    '    at guarded (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/command-gate.ts:118:7)\n' +
+    '    at Object.end (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/command-gate.ts:234:7)\n' +
+    '    at Object.end (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2092:14)\n' +
+    '    at /Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2133:14',
+  context: {
+    sessionId: null,
+    correlationId: 'sn-muvft0z0-50',
+    errorClass: 'LiveTransportError',
+    code: 'NETWORK',
+    reason: 'CORE_OFFLINE'
+  },
+  at: 1791216080591
+}
+
+ ✓ src/test/live-session-new-precheck.test.tsx > B-6 cancel (LB-1 on the dialog's confirm; leaving happens in ok) > outage: the offline toast; the dialog stays open 263ms
+ ✓ src/test/live-session-new-create.test.tsx > C-3 the state read after the create decides the pre-check > outage: no pre-check is sent; the offline toast shows 494ms
+ ✓ src/test/live-session-new-create.test.tsx > D-2 cancel, then createSession (a changed form on a setup session) > success: create 409, cancel, create, pre-check, in that order; step 2 shows the new session 714ms
+stderr | src/test/live-session-new-create.test.tsx > D-2 cancel, then createSession (a changed form on a setup session) > refusal: the cancel is refused (403): the denied toast, no second create, step 1 with the form kept
+[core-web] live {
+  level: 'error',
+  source: 'SessionNew.submitInfo',
+  message: 'Start New Session: the step "submitInfo" did not complete.',
+  stack: '    at rebuildRefusal (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/rebuild-error.ts:135:12)\n' +
+    '    at refusalOf (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2050:14)\n' +
+    '    at /Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2133:54\n' +
+    '    at guarded (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/command-gate.ts:118:7)\n' +
+    '    at Object.end (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/command-gate.ts:234:7)\n' +
+    '    at Object.end (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2092:14)\n' +
+    '    at /Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2133:14',
+  context: {
+    sessionId: 'SES-20261001-0024',
+    correlationId: 'sn-muvft1wo-72',
+    errorClass: 'SimPermissionError',
+    code: 'NOT_PERMITTED'
+  },
+  at: 1791216081859
+}
+
+ ✓ src/test/live-session-new-create.test.tsx > D-2 cancel, then createSession (a changed form on a setup session) > refusal: the cancel is refused (403): the denied toast, no second create, step 1 with the form kept 550ms
+stderr | src/test/live-session-new-create.test.tsx > D-2 cancel, then createSession (a changed form on a setup session) > outage: the cancel is not answered: the offline toast, no second create
+[core-web] live {
+  level: 'error',
+  source: 'SessionNew.submitInfo',
+  message: 'Start New Session: the step "submitInfo" did not complete.',
+  stack: '    at transportErrorOf (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/rebuild-error.ts:101:10)\n' +
+    '    at rebuildRefusal (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/rebuild-error.ts:124:21)\n' +
+    '    at refusalOf (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2050:14)\n' +
+    '    at /Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2133:54\n' +
+    '    at guarded (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/command-gate.ts:118:7)\n' +
+    '    at Object.end (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/command-gate.ts:234:7)\n' +
+    '    at Object.end (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2092:14)\n' +
+    '    at /Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2133:14',
+  context: {
+    sessionId: 'SES-20261001-0024',
+    correlationId: 'sn-muvft2c6-82',
+    errorClass: 'LiveTransportError',
+    code: 'NETWORK',
+    reason: 'CORE_OFFLINE'
+  },
+  at: 1791216082510
+}
+
+ ✓ src/test/live-session-new-create.test.tsx > D-2 cancel, then createSession (a changed form on a setup session) > outage: the cancel is not answered: the offline toast, no second create 640ms
+ ✓ src/test/live-session-new-create.test.tsx > D-3 createSession, then beginPrecheck, awaited in order > success: step 2 is shown only after the pre-check settled (its answer first, its delta later) 630ms
+stderr | src/test/live-session-new-create.test.tsx > D-3 createSession, then beginPrecheck, awaited in order > refusal: the pre-check is refused (403): the denied toast, the page stays on step 1 with Next idle
+[core-web] live {
+  level: 'error',
+  source: 'SessionNew.submitInfo',
+  message: 'Start New Session: the step "submitInfo" did not complete.',
+  stack: '    at rebuildRefusal (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/rebuild-error.ts:135:12)\n' +
+    '    at refusalOf (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2050:14)\n' +
+    '    at /Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2133:54\n' +
+    '    at guarded (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/command-gate.ts:118:7)\n' +
+    '    at Object.end (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/command-gate.ts:234:7)\n' +
+    '    at Object.end (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2092:14)\n' +
+    '    at /Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2133:14',
+  context: {
+    sessionId: 'SES-20261001-0024',
+    correlationId: 'sn-muvft3bc-103',
+    errorClass: 'SimPermissionError',
+    code: 'NOT_PERMITTED'
+  },
+  at: 1791216083664
+}
+
+ ✓ src/test/live-session-new-create.test.tsx > D-3 createSession, then beginPrecheck, awaited in order > refusal: the pre-check is refused (403): the denied toast, the page stays on step 1 with Next idle 512ms
+stderr | src/test/live-session-new-create.test.tsx > D-3 createSession, then beginPrecheck, awaited in order > outage: the pre-check is not answered: the offline toast, step 1
+[core-web] live {
+  level: 'error',
+  source: 'SessionNew.submitInfo',
+  message: 'Start New Session: the step "submitInfo" did not complete.',
+  stack: '    at transportErrorOf (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/rebuild-error.ts:101:10)\n' +
+    '    at rebuildRefusal (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/rebuild-error.ts:124:21)\n' +
+    '    at refusalOf (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2050:14)\n' +
+    '    at /Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2133:54\n' +
+    '    at guarded (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/command-gate.ts:118:7)\n' +
+    '    at Object.end (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/command-gate.ts:234:7)\n' +
+    '    at Object.end (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2092:14)\n' +
+    '    at /Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2133:14',
+  context: {
+    sessionId: 'SES-20261001-0024',
+    correlationId: 'sn-muvft3pf-111',
+    errorClass: 'LiveTransportError',
+    code: 'NETWORK',
+    reason: 'CORE_OFFLINE'
+  },
+  at: 1791216084138
+}
+
+ ✓ src/test/live-session-new-create.test.tsx > D-3 createSession, then beginPrecheck, awaited in order > outage: the pre-check is not answered: the offline toast, step 1 499ms
+stderr | src/test/live-session-new-create.test.tsx > A4 scanCaseNumber (LB-1 on the scan button) > refusal: a 403 shows the denied toast, then the field gets the replica's next number (the adapter's fallback)
+[core-web] live {
+  level: 'warn',
+  source: 'SessionNew.scanCaseNumber',
+  message: 'Start New Session: the step "scanCaseNumber" did not complete.',
+  stack: '    at rebuildRefusal (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/rebuild-error.ts:135:12)\n' +
+    '    at refusalOf (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2050:14)\n' +
+    '    at /Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2133:54\n' +
+    '    at guarded (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/command-gate.ts:118:7)\n' +
+    '    at Object.end (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/command-gate.ts:234:7)\n' +
+    '    at Object.end (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2092:14)\n' +
+    '    at /Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2133:14',
+  context: {
+    correlationId: 'sn-muvft471-123',
+    errorClass: 'SimPermissionError',
+    code: 'NOT_PERMITTED'
+  },
+  at: 1791216084439
+}
+
+ ✓ src/test/live-session-new-create.test.tsx > A4 scanCaseNumber (LB-1 on the scan button) > success: the Core's reserved number is written into the field when the scan settled; one request 133ms
+stderr | src/test/live-session-new-create.test.tsx > A4 scanCaseNumber (LB-1 on the scan button) > outage: the offline toast, then the replica's next number; the scan button is idle again
+[core-web] live {
+  level: 'warn',
+  source: 'SessionNew.scanCaseNumber',
+  message: 'Start New Session: the step "scanCaseNumber" did not complete.',
+  stack: '    at transportErrorOf (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/rebuild-error.ts:101:10)\n' +
+    '    at rebuildRefusal (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/rebuild-error.ts:124:21)\n' +
+    '    at refusalOf (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2050:14)\n' +
+    '    at /Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2133:54\n' +
+    '    at guarded (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/command-gate.ts:118:7)\n' +
+    '    at Object.end (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/command-gate.ts:234:7)\n' +
+    '    at Object.end (/Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2092:14)\n' +
+    '    at /Users/gsp-budi/Documents/DEMS/packages/shared/src/live/source/live-sim.ts:2133:14',
+  context: {
+    correlationId: 'sn-muvft4ai-127',
+    errorClass: 'LiveTransportError',
+    code: 'NETWORK',
+    reason: 'CORE_OFFLINE'
+  },
+  at: 1791216084535
+}
+
+ ✓ src/test/live-session-new-create.test.tsx > A4 scanCaseNumber (LB-1 on the scan button) > refusal: a 403 shows the denied toast, then the field gets the replica's next number (the adapter's fallback) 134ms
+ ✓ src/test/live-session-new-create.test.tsx > A4 scanCaseNumber (LB-1 on the scan button) > outage: the offline toast, then the replica's next number; the scan button is idle again 94ms
+
+ Test Files  3 passed (3)
+      Tests  45 passed (45)
+   Start at  23:01:13
+   Duration  11.05s (tests 68%, transform 14%, import 11%, environment 5%, setup 2%)
+
+exit 0

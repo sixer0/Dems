@@ -1,0 +1,8 @@
+22:06:28.546 batch start; device time 10-06 22:06:28.000; host load 6.74
+22:06:28.737 declared screen login
+22:06:28.851 tap 539,1363
+22:06:29.601 slept 2500 ms
+22:06:32.186 mCurrentFocus=Window{71668f0 u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity} ; isKeyguardShowing=false
+22:06:32.319 screencap e01_end_phone_login_signed_out_live.png 22:06:32.319..22:06:33.697
+22:06:33.836 api GET /api/v1/session/current => {"status":401,"body":{"error":{"code":"NOT_SIGNED_IN","message":"Sign in first.","requestId":"57318236-3473-49d2-b4e6-83a958a37cfe"}}}
+22:06:33.902 host load 6.76 8.01 8.40

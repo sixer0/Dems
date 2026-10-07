@@ -1,0 +1,10 @@
+## F-8 diagnosis: the two baseline suites, two workers, the tree as it is
+A worker process has failed to exit gracefully and has been force exited. This is likely caused by tests leaking due to improper teardown. Try running with --detectOpenHandles to find leaks. Active timers can also cause this, ensure that .unref() was called on them.
+Tests:       17 passed, 17 total
+## the same two suites with ONE in-memory change: the runtime log's flush timer unref'd (src/runtime/log.ts:171)
+Tests:       17 passed, 17 total
+## each suite alone, the tree as it is (06:00)
+Tests:       8 passed, 8 total
+Jest did not exit one second after the test run has completed.
+## --detectOpenHandles on session-summary-screen.test.tsx (in band): no open handle reported
+Tests:       9 passed, 9 total

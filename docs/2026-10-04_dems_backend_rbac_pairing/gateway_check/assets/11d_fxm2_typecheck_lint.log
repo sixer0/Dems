@@ -1,0 +1,13 @@
+# FX-M2 typecheck and lint, 12:06:30 (exit status captured without a pipe)
+$ npm run typecheck
+
+> @dems/mobile@0.1.0 typecheck
+> tsc --noEmit
+
+exit=0
+$ npm run lint
+
+> @dems/mobile@0.1.0 lint
+> eslint .
+
+exit=0

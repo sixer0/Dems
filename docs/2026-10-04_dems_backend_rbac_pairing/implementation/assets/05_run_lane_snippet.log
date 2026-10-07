@@ -1,0 +1,13 @@
+waited 2 quarter seconds
+COMMAND   PID     USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
+node    94574 gsp-budi   14u  IPv4 0x46d0d88dd5cabef2      0t0  TCP 127.0.0.1:5176 (LISTEN)
+-- GET /api/v1/health with Origin: http://127.0.0.1:5174 (a foreign loopback origin; no backend):
+   HTTP/1.1 502 Bad Gateway
+   Access-Control-Allow-Origin: http://127.0.0.1:5174
+   Vary: Origin
+-- the same with Origin: https://example.org (not loopback):
+   HTTP/1.1 502 Bad Gateway
+   Vary: Origin
+npm exit status 143
+fallback kill needed: no
+lsof exit 1 (1 with no output: no listener)

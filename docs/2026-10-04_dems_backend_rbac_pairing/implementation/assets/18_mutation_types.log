@@ -1,0 +1,24 @@
+# Step 40 (W18): type-level mutation checks (tsc --noEmit on the same isolated copy, tsconfig extends the workspace's tsconfig.base.json).
+2026-10-04 07:52:50 WIB
+BASE tsc exit=0 errors=0
+KILLED | T1 CoreResult is not widened | tsc exit=2 | errors=6
+       test/live-light-core-actions.test.ts(94,65): error TS2344: Type 'SignInResult | Promise<SignInResult>' does not satisfy the constraint '{ ok: "Expected: never, Actual: boolean"; catch: never
+       test/live-light-core-actions.test.ts(99,73): error TS2344: Type 'string | Promise<string>' does not satisfy the constraint '"Expected: string, Actual: never" | "Expected: ..., Actual: never"
+       test/live-light-core-actions.test.ts(100,74): error TS2344: Type 'number | Promise<number>' does not satisfy the constraint '"Expected: ..., Actual: never" | "Expected: number, Actual: never
+KILLED | T2 fail becomes optional | tsc exit=2 | errors=2
+       src/live/settle.ts(72,7): error TS2722: Cannot invoke an object which is possibly 'undefined'.
+       test/live-light-settle.test.ts(532,5): error TS2578: Unused '@ts-expect-error' directive.
+KILLED | T3 ok receives the raw return type (no unwrapping) | tsc exit=2 | errors=17
+       test/live-light-hooks.test.ts(135,56): error TS2339: Property 'ok' does not exist on type 'CoreResult<SignInResult>'.
+       test/live-light-settle.test.ts(163,18): error TS2322: Type 'Promise<number>' is not assignable to type 'number'.
+       test/live-light-settle.test.ts(178,18): error TS2322: Type 'Promise<number>' is not assignable to type 'number'.
+KILLED | T4 CoreActions drops the parameters | tsc exit=2 | errors=16
+       src/live/core-actions.ts(31,3): error TS2322: Type 'SimActions' is not assignable to type 'CoreActions'.
+       test/live-light-core-actions.test.ts(50,37): error TS2554: Expected 0 arguments, but got 2.
+       test/live-light-core-actions.test.ts(67,31): error TS2554: Expected 0 arguments, but got 2.
+KILLED | T5 useLive loses its type argument | tsc exit=2 | errors=2
+       test/live-light-hooks.test.ts(286,26): error TS2635: Type '() => LiveHandle | null' has no signatures for which the type argument list is applicable.
+       test/live-light-hooks.test.ts(286,45): error TS2339: Property 'toEqualTypeOf' does not exist on type 'never'.
+KILLED | T6 corePermissionOf takes any string | tsc exit=2 | errors=1
+       test/live-light-mode.test.ts(168,61): error TS2344: Type '[sim: Sim, permission: Permission]' does not satisfy the constraint '{ 0: { request: (request: SimApiRequest) => SimApiResponse; err
+RESTORED tsc exit=0 errors=0

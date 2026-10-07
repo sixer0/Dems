@@ -7,7 +7,7 @@
  *
  * Backend task W66, LIVE mode: a row shows bundled media only when the Core says the item has it
  * (01_specs MS-2: `EvidenceMediaRef.source` is `DEMO_PACKAGE`). The replicated session history does
- * not say so (CONTRACT-GAP-W66-1, below), so in LIVE every row shows the brand still, the picture a
+ * not say so (RESIDUAL-W66-1, W83 ledger #41, below), so in LIVE every row shows the brand still, the picture a
  * row without a poster already shows; Simulated mode joins the bundled posters as before.
  */
 import { Image } from 'expo-image';
@@ -73,7 +73,7 @@ function RecentSessionRow({ row, index, chipBelow, last }: { row: RecentRow; ind
   const router = useRouter();
   const settings = useMotionSettings();
   const when = t(`features.dashboard.recent.${row.whenKey}`, { time: row.time, date: row.date });
-  // CONTRACT-GAP-W66-1: a `SessionHistoryEntry` of the replicated state carries no `EvidenceMediaRef`
+  // RESIDUAL-W66-1: a `SessionHistoryEntry` of the replicated state carries no `EvidenceMediaRef`
   // (only operation 40 `getEvidence` does, one item per call), so Home cannot tell a demo package
   // from a session recorded in Live mode (`NONE`). Until the slice carries it, LIVE shows no poster.
   const live = useCoreLink().source === 'LIVE';

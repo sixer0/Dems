@@ -443,11 +443,12 @@ const NOTE_DENIED = (operationId: string) => deniedExamples(operationId, 'SESSIO
 const SIGNED_OUT = { notSignedIn: ERROR_EXAMPLES.notSignedIn } as const;
 const BAD_PATH = { invalidPathParameter: ERROR_EXAMPLES.invalidPathParameter } as const;
 const NOT_OPEN = {
-  notFound: simRefusalExample('Not the open session', 'NOT_FOUND', `Session ${STATE_EXAMPLE_IDS.otherSessionId} is not the current session.`, 'NOT_FOUND'),
+  // W83 (gap W34-3): the server's texts are fixed and quote no part of the request.
+  notFound: simRefusalExample('Not the open session', 'NOT_FOUND', 'This session is not the open session.', 'NOT_FOUND'),
 } as const;
 /** `409 INVALID_STATE` as the engine's refusal maps: the state the session is in and the event that did not fit. */
 const wrongState = (from: string, event: string) => ({
-  invalidState: simRefusalExample(`The session is ${from}`, 'INVALID_STATE', `Session ${STATE_EXAMPLE_IDS.openSessionId} is ${from}.`, 'ILLEGAL_STATE', { from, event }),
+  invalidState: simRefusalExample(`The session is ${from}`, 'INVALID_STATE', 'The action is not allowed in the current state.', 'ILLEGAL_STATE', { from, event }),
 });
 const CHECKS_RUNNING = (event: string) => ({
   precheckRunning: simRefusalExample('Checks still running', 'PRECHECK_RUNNING', 'Pre-recording checks are still running.', 'CHECKS_RUNNING', {

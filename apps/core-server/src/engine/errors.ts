@@ -17,7 +17,7 @@
  * A message of this file is a fixed text. It never quotes a state, a row or an input (SR-48).
  */
 import { SimErrorCode, SimPermissionError, SimTransitionError, simErrorCode } from '@dems/shared/sim';
-import { ApiFailure, notReady, type ErrorDetails } from '../plugins/error-envelope';
+import { ApiFailure, NOT_SIGNED_IN_TEXT, notReady, type ErrorDetails } from '../plugins/error-envelope';
 
 export const EngineErrorCode = {
   /** `start()` while the host is started or starting. */
@@ -53,9 +53,12 @@ export function engineNotReady(): ApiFailure {
   return notReady();
 }
 
-/** 401 `NOT_SIGNED_IN`: a hosted action needs an operator. The permission guard refuses first; this is the backstop. */
+/**
+ * 401 `NOT_SIGNED_IN`: a hosted action needs an operator. The permission guard refuses first; this
+ * is the backstop. Its text is stage 4's (`NOT_SIGNED_IN_TEXT`, review finding W91-5).
+ */
 export function operatorRequired(): ApiFailure {
-  return new ApiFailure(401, 'NOT_SIGNED_IN', 'Sign in to continue.');
+  return new ApiFailure(401, 'NOT_SIGNED_IN', NOT_SIGNED_IN_TEXT);
 }
 
 interface RefusalRule {
@@ -71,7 +74,7 @@ interface RefusalRule {
  * it, and anything without a line is an unexpected failure (500 `INTERNAL_ERROR`).
  */
 export const SIM_REFUSAL_RULES = {
-  [SimErrorCode.NOT_SIGNED_IN]: { status: 401, code: 'NOT_SIGNED_IN', message: 'Sign in to continue.' },
+  [SimErrorCode.NOT_SIGNED_IN]: { status: 401, code: 'NOT_SIGNED_IN', message: NOT_SIGNED_IN_TEXT },
   [SimErrorCode.NOT_PERMITTED]: { status: 403, code: 'NOT_PERMITTED', message: 'Your role does not allow this action.' },
   [SimErrorCode.NOT_FOUND]: { status: 404, code: 'NOT_FOUND', message: 'The requested item was not found.' },
   [SimErrorCode.ILLEGAL_STATE]: { status: 409, code: 'INVALID_STATE', message: 'The action is not allowed in the current state.' },

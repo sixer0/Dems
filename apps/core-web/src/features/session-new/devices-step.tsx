@@ -48,8 +48,9 @@ export interface DevicesStepProps {
   onRetry: () => void
   /**
    * Live mode (plan row W64): a blocked `CORE` check is worded as what it is there, "no paired
-   * tablet is connected" (decision F69), because the console cannot clear it. False in Simulated
-   * mode, where the step looks as before.
+   * tablet is connected" (decision F69), because the console cannot clear it. The meters' hint names
+   * the Core server as their source (`sessionNew.live.speakToTest`, shared with the mobile app: closing
+   * copy round, D164 DN-5). False in Simulated mode, where the step looks as before.
    */
   live?: boolean
   /** Live mode (LB-1): "Re-run checks" is in flight for longer than the reveal time. Never true in Simulated mode. */
@@ -221,7 +222,7 @@ export function DevicesStep({ gate, acknowledged, onAcknowledgedChange, onRetry,
             <h2 className="sn-card-title">{t('sessionNew.devices.meters')}</h2>
             <span className="sn-card-meta sn-speak">
               <Mic className="size-3.5" aria-hidden="true" />
-              {t('sessionNew.devices.speakToTest')}
+              {t(live ? 'sessionNew.live.speakToTest' : 'sessionNew.devices.speakToTest')}
             </span>
           </header>
           <div className="sn-meters">

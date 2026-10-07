@@ -2,7 +2,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Typography } from '@heroui/react'
 import { motion, type Transition } from 'motion/react'
 import { useTranslation } from 'react-i18next'
-import type { TimelineEvent } from '@dems/shared/sim'
+import { timelineTitleKey, type TimelineEvent } from '@dems/shared/sim'
 import { timelineNodeStyle, type TimelineNodeStyle } from './session-timeline.math'
 import { formatClock } from '@dems/shared/realtime'
 import { motion as tokens, toneHex } from '@dems/shared/tokens'
@@ -195,7 +195,8 @@ export function SessionTimeline({
   const newest = visible.at(-1) ?? null
 
   const titleOf = useCallback(
-    (event: TimelineEvent) => getTitle?.(event) ?? t(`session.timeline.kind.${event.kind}`),
+    // A NOTE is titled by its author's role (E2E-T-5, `timelineTitleKey`); other kinds by their kind.
+    (event: TimelineEvent) => getTitle?.(event) ?? t(timelineTitleKey(event)),
     [getTitle, t],
   )
   const detailOf = useCallback(

@@ -32,6 +32,7 @@
  */
 import { PROJECT_DATABASES, TEST_DATABASE_PATTERN, guardTargetDatabase, type TargetDatabase } from '../commands/database-names';
 import { DbCommandError, OWNER_ROLE } from '../commands/owner-connection';
+import { createEmptyDatabaseStatement } from '../commands/statements';
 import { ResetError } from './errors';
 
 /** The advisory lock class of a reset (02_plan §3.4): `pg_try_advisory_lock(442001, <slot>)`. */
@@ -46,9 +47,6 @@ export const MAX_IDENTIFIER_BYTES = 63;
 export const PROTECTED_DATABASES = ['postgres', 'template0', 'template1'] as const;
 
 /** The empty template of PostgreSQL, the encoding and the locale of every project database (R-4). */
-const EMPTY_TEMPLATE = 'template0';
-const ENCODING = 'UTF8';
-const LOCALE = 'C';
 
 const IDENTIFIER = /^[a-z][a-z0-9_]*$/;
 /** The prefix of one run of the test helper: `dems_test_<label>_<stamp>_` (TI-2). */
@@ -161,7 +159,7 @@ export function quoteDatabase(name: TargetDatabase | DisposableDatabase): string
 
 /** R-4: the staging database, empty, owned by the owner role. */
 export function createStagingStatement(target: ResetTarget): string {
-  return `CREATE DATABASE ${quoteDatabase(target.staging)} OWNER ${OWNER_ROLE} TEMPLATE ${EMPTY_TEMPLATE} ENCODING '${ENCODING}' LOCALE '${LOCALE}'`;
+  return createEmptyDatabaseStatement(quoteDatabase(target.staging), OWNER_ROLE);
 }
 
 /**

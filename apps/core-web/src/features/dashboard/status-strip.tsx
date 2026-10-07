@@ -54,6 +54,11 @@ interface CellSpec {
  *
  * Motion (M-PG-DASH t = 250): cells stagger 50 ms; each value arrives after the held beat (R4);
  * the free space counts up with AnimatedNumber. A tone change (a fault) moves the dot colour.
+ *
+ * Narrow widths (E-fix FX-W, E2E-W1-6): each cell sits in a `.dems-strip-item` wrapper (the strip's
+ * flex item), which the sm/xs rules size to three cells per row (sm) or two (xs); there the value
+ * text truncates with an ellipsis inside its cell instead of running into the next one (wider tiers
+ * keep their look). The link's accessible name still carries the whole value.
  */
 export function StatusStripPanel() {
   const { t } = useTranslation()
@@ -164,7 +169,7 @@ export function StatusStripPanel() {
             <Fragment key={cell.id}>
               {index > 0 ? <span className="dems-strip-sep" aria-hidden="true" /> : null}
               <motion.div
-                className="flex min-w-0 flex-1"
+                className="dems-strip-item flex min-w-0"
                 initial={m.reduced ? { opacity: 0 } : { opacity: 0, y: tokens.distance.riseSm }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{
@@ -191,7 +196,7 @@ export function StatusStripPanel() {
                       transition={m.transitions.crossFade}
                     >
                       <StatusDot tone={cell.tone} />
-                      {cell.value}
+                      <span className="dems-strip-value-text">{cell.value}</span>
                     </motion.span>
                   </span>
                 </Link>

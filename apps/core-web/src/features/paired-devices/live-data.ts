@@ -18,40 +18,41 @@
  * removes them on a session end or a lost permission (PG-6a). The reads are enabled only in Live
  * mode, while an operator is signed in (decision D176), with `PAIRING_MANAGE`, while the link is up
  * (rule 6: the shell says the Core is unreachable).
+ *
+ * FXR-W (W92-8): operation 19 is defined once, by `pairedDevicesQueryOptions` in `lib/core-queries.ts`
+ * (the Devices drawer reads the same key through it), with this gate inside it. Both reads only read;
+ * their failures are presented here, after the render, through `useQueryFailure`.
  */
-import { useCallback, useRef } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { useQuery, type UseQueryResult } from '@tanstack/react-query'
 import type { ActivePairingCode, PairedDevice, PairedDeviceList, PairingCodeIssued } from '@dems/shared/api'
 import type { CoreCallFailure } from '@dems/shared/client'
-import { LiveLinkState, useCoreMode, useCorePermission, useLiveLink, CoreMode } from '@dems/shared/live'
-import { Permission, selectIsSignedIn, useSim } from '@dems/shared/sim'
+import { useCoreMode, CoreMode } from '@dems/shared/live'
+import { Permission } from '@dems/shared/sim'
 import { useCoreErrorPresenter } from '@/lib/core-errors'
+import { CoreReadError, isForbiddenCoreRead, pairedDevicesQueryOptions, usePairedDevicesGate, useQueryFailure } from '@/lib/core-queries'
 import { CORE_QUERY_KEYS, useWebLive, type WebLive } from '@/runtime'
 import { PAIRING_RECORD, reportPairingError } from './report'
 
 /** The permission of the five operations of this page (01_specs §7.7). */
 export const PAIRING_PERMISSION = Permission.PAIRING_MANAGE
 
-/** A read of this page failed; the presenter has already worded it. */
-export class PairingReadError extends Error {
-  override readonly name = 'PairingReadError'
-  readonly code: string
-  readonly status: number | null
-  constructor(code: string, status: number | null) {
-    super('A read of the Paired Devices page failed.')
-    this.code = code
-    this.status = status
-  }
-}
-
 /** Whether a failure is a 403 refusal of the role (the Forbidden state of §10.1). */
-export const isForbidden = (error: unknown): boolean => error instanceof PairingReadError && error.status === 403
+export const isForbidden = (error: unknown): boolean => isForbiddenCoreRead(error)
 
 export interface PairingReads {
   readonly live: boolean
   readonly enabled: boolean
   readonly status: UseQueryResult<ActivePairingCode, Error>
   readonly devices: UseQueryResult<PairedDeviceList, Error>
+}
+
+/** Operation 16 (this page's own read; no other page reads the key). */
+async function readPairingCodeStatus(live: WebLive | null): Promise<ActivePairingCode> {
+  if (live === null) throw new CoreReadError('getPairingCodeStatus', null)
+  const answer = await live.client.call('getPairingCodeStatus')
+  if (answer.ok) return answer.data
+  throw new CoreReadError('getPairingCodeStatus', answer)
 }
 
 /**
@@ -62,17 +63,31 @@ export interface PairingReads {
 export function usePairingReads(): PairingReads {
   const liveHandle = useWebLive()
   const live = useCoreMode() === CoreMode.LIVE && liveHandle !== null
-  const linkUp = useLiveLink() === LiveLinkState.ONLINE
-  const canManage = useCorePermission(PAIRING_PERMISSION)
   // Decision D176 (finding F75-2): a read is never sent for a signed-out console, also not by a page
-  // that is still on screen while the shell leaves it after a sign-out or a session end.
-  const signedIn = useSim(selectIsSignedIn)
+  // that is still on screen while the shell leaves it after a sign-out or a session end. The gate
+  // (Live, signed in, link up, PAIRING_MANAGE) is the one of `lib/core-queries.ts`.
+  const gate = usePairedDevicesGate()
   const presentCoreError = useCoreErrorPresenter()
   const forbiddenShown = useRef(false)
-  const enabled = live && signedIn && linkUp && canManage
+  const enabled = live && gate.enabled
+
+  const status = useQuery({
+    queryKey: CORE_QUERY_KEYS.pairingCode,
+    enabled,
+    queryFn: () => readPairingCodeStatus(liveHandle),
+  })
+  const devices = useQuery(pairedDevicesQueryOptions({ live: live ? gate.live : null, enabled }))
+
+  // Any success re-arms the one 403 toast. Declared before the failure hooks, so a success and a
+  // refusal in the same render re-arm first.
+  useEffect(() => {
+    forbiddenShown.current = false
+  }, [status.dataUpdatedAt, devices.dataUpdatedAt])
 
   const presentRead = useCallback(
-    (answer: CoreCallFailure, record: string) => {
+    (error: Error, record: string) => {
+      const answer = error instanceof CoreReadError ? error.failure : null
+      if (answer === null) return
       if (answer.status === 403) {
         if (forbiddenShown.current) return
         forbiddenShown.current = true
@@ -83,36 +98,8 @@ export function usePairingReads(): PairingReads {
     },
     [presentCoreError],
   )
-
-  const status = useQuery({
-    queryKey: CORE_QUERY_KEYS.pairingCode,
-    enabled,
-    queryFn: async (): Promise<ActivePairingCode> => {
-      if (liveHandle === null) throw new PairingReadError('NOT_LIVE', null)
-      const answer = await liveHandle.client.call('getPairingCodeStatus')
-      if (answer.ok) {
-        forbiddenShown.current = false
-        return answer.data
-      }
-      presentRead(answer, PAIRING_RECORD.statusRead)
-      throw new PairingReadError(answer.error.code, answer.status)
-    },
-  })
-
-  const devices = useQuery({
-    queryKey: CORE_QUERY_KEYS.pairedDevices,
-    enabled,
-    queryFn: async (): Promise<PairedDeviceList> => {
-      if (liveHandle === null) throw new PairingReadError('NOT_LIVE', null)
-      const answer = await liveHandle.client.call('listPairedDevices')
-      if (answer.ok) {
-        forbiddenShown.current = false
-        return answer.data
-      }
-      presentRead(answer, PAIRING_RECORD.registryRead)
-      throw new PairingReadError(answer.error.code, answer.status)
-    },
-  })
+  useQueryFailure(status, (error) => presentRead(error, PAIRING_RECORD.statusRead))
+  useQueryFailure(devices, (error) => presentRead(error, PAIRING_RECORD.registryRead))
 
   return { live, enabled, status, devices }
 }

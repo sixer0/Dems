@@ -1,0 +1,124 @@
+// CF-W design probe (read-only): text widths in the custody table and candidate CSS injected into
+// THIS browser's page only (nothing in the tree changes). Reads only; sign-in and sign-out.
+import { writeFileSync } from 'node:fs'
+import { launch, openPage, signIn, signOut, sleep } from './cdp.mjs'
+
+const out = process.argv[2]
+const log = (line) => console.log(`${new Date().toISOString()} ${line}`)
+const ITEM = 'EV-20261006-0014'
+
+const CANDIDATES = {
+  asIs: '',
+  A0_auto_wbr_p10: `.evi-custody-table :is(.table__column,.table__cell){padding-inline:10px}`,
+  F1_fixed_p10: `.evi-custody-table .table__content{table-layout:fixed}
+    .evi-custody-table :is(.table__column,.table__cell){padding-inline:10px}
+    .evi-custody-table th:nth-child(1){width:6.25rem}.evi-custody-table th:nth-child(2){width:30%}.evi-custody-table th:nth-child(3){width:22%}
+    .evi-custody-table td:not(:first-child),.evi-custody-table th:not(:first-child){overflow-wrap:anywhere}`,
+  F2_fixed_p8: `.evi-custody-table .table__content{table-layout:fixed}
+    .evi-custody-table :is(.table__column,.table__cell){padding-inline:8px}
+    .evi-custody-table th:nth-child(1){width:6rem}.evi-custody-table th:nth-child(2){width:31%}.evi-custody-table th:nth-child(3){width:21%}
+    .evi-custody-table td:not(:first-child),.evi-custody-table th:not(:first-child){overflow-wrap:anywhere}`,
+}
+
+const measure = (css, wbr) => {
+  let style = document.getElementById('cfw-candidate')
+  if (!style) {
+    style = document.createElement('style')
+    style.id = 'cfw-candidate'
+    document.head.appendChild(style)
+  }
+  style.textContent = css
+  const card = document.querySelector('[data-testid="evidence-custody"]')
+  for (const strong of card.querySelectorAll('tbody td:nth-child(2) .evi-strong')) {
+    const text = strong.textContent
+    if (wbr) strong.innerHTML = text.split('_').join('_<wbr>')
+    else strong.textContent = text
+  }
+  const scroll = card.querySelector('.table__scroll-container')
+  const table = card.querySelector('table')
+  const lh = (el) => parseFloat(getComputedStyle(el).lineHeight) || 16
+  const lines = (el) => (el ? Math.round(el.getBoundingClientRect().height / lh(el)) : null)
+  return {
+    container: scroll.clientWidth,
+    table: Math.round(table.getBoundingClientRect().width),
+    overflow: scroll.scrollWidth - scroll.clientWidth,
+    cols: [...table.querySelectorAll('thead th')].map((th) => Math.round(th.getBoundingClientRect().width)),
+    rows: [...table.querySelectorAll('tbody tr')].map((tr) => ({
+      action: tr.getAttribute('data-custody-action'),
+      actionLines: lines(tr.querySelector('td:nth-child(2) .evi-strong')),
+      actorLines: Math.round(tr.querySelector('td:nth-child(3)').getBoundingClientRect().height),
+      detailLines: lines(tr.querySelector('td:nth-child(4) .evi-caption')),
+      dateRects: tr.querySelector('.evi-custody-date').getClientRects().length,
+      clockRects: tr.querySelector('.evi-custody-clock').getClientRects().length,
+      overflowingCells: [...tr.children].filter((c) => c.scrollWidth > c.clientWidth + 1).length,
+    })),
+  }
+}
+
+const textWidths = () => {
+  const card = document.querySelector('[data-testid="evidence-custody"]')
+  const probe = (cls, parent, text) => {
+    const span = document.createElement('span')
+    span.className = cls
+    span.style.whiteSpace = 'nowrap'
+    span.textContent = text
+    parent.appendChild(span)
+    const width = span.getBoundingClientRect().width
+    span.remove()
+    return Math.round(width * 10) / 10
+  }
+  const timeCell = card.querySelector('tbody td:nth-child(1)')
+  const actionCell = card.querySelector('tbody td:nth-child(2)')
+  const actorCell = card.querySelector('tbody td:nth-child(3)')
+  const detailCell = card.querySelector('tbody td:nth-child(4)')
+  return {
+    date: probe('evi-mono evi-caption evi-custody-time', timeCell, '6 Oct 2026'),
+    clock: probe('evi-mono evi-caption evi-custody-time', timeCell, '12:36:38'),
+    RECORDING_: probe('evi-strong', actionCell, 'RECORDING_'),
+    INCOMPLETE: probe('evi-strong', actionCell, 'INCOMPLETE'),
+    RECORDING_STOPPED: probe('evi-strong', actionCell, 'RECORDING_STOPPED'),
+    SESSION_INCOMPLETE: probe('evi-strong', actionCell, 'SESSION_INCOMPLETE'),
+    REVIEW_OPENED: probe('evi-strong', actionCell, 'REVIEW_OPENED'),
+    Pratama: probe('', actorCell, 'Pratama'),
+    AKP_Andi_Pratama: probe('', actorCell, 'AKP Andi Pratama'),
+    supervisor: probe('evi-caption', detailCell, 'supervisor'),
+    investigation: probe('evi-caption', detailCell, 'investigation'),
+    fontAction: getComputedStyle(actionCell.querySelector('.evi-strong')).font,
+    fontActor: getComputedStyle(actorCell).font,
+  }
+}
+
+const browser = await launch(log)
+const results = {}
+try {
+  const page = await openPage(browser.cdp, log)
+  await page.viewport(1440, 900)
+  await signIn(page, log)
+  for (const [w, h] of [
+    [1280, 800],
+    [1440, 900],
+    [1920, 1080],
+  ]) {
+    await page.viewport(w, h)
+    await page.goto(`/evidence/${ITEM}?tab=integrity`)
+    await page.waitFor(() => !!document.querySelector('[data-testid="evidence-custody"] tbody tr'), 20000)
+    await sleep(1500)
+    if (w === 1440) {
+      results.text = await page.eval(textWidths)
+      log(`text widths: ${JSON.stringify(results.text)}`)
+    }
+    for (const [name, css] of Object.entries(CANDIDATES)) {
+      for (const wbr of name === 'asIs' ? [false] : [false, true]) {
+        const r = await page.eval(measure, css, wbr)
+        results[`${w}:${name}:${wbr ? 'wbr' : 'nowbr'}`] = r
+        log(`${w} ${name} ${wbr ? 'wbr' : 'nowbr'}: container ${r.container} table ${r.table} overflow ${r.overflow} cols ${JSON.stringify(r.cols)} rows ${JSON.stringify(r.rows.map((x) => [x.action, x.actionLines, x.detailLines, x.dateRects, x.clockRects, x.overflowingCells]))}`)
+      }
+    }
+  }
+  await signOut(page, log)
+} catch (error) {
+  log(`ERROR ${error?.message ?? error}`)
+} finally {
+  await browser.close()
+  if (out) writeFileSync(out, JSON.stringify(results, null, 2))
+}

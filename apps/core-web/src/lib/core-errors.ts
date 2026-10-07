@@ -28,7 +28,7 @@
  * | 4 | Code `SNAPSHOT_TIMEOUT` | SNAPSHOT_TIMEOUT | Warning toast: the sign-in was accepted, the Core state has not arrived |
  * | 5 | Code `TIMEOUT` (no answer in 8 s) | TIMED_OUT | Danger toast: the command may or may not have been applied (LB-7) |
  * | 6 | The Core's 503 `NOT_READY` | STARTING | Danger toast: "The Core server is starting. Nothing was changed." |
- * | 7 | Any other `CORE_OFFLINE` (no answer, the link is not ONLINE) | OFFLINE | Danger toast: "Core server unreachable. Nothing was changed." (LB-6) |
+ * | 7 | Any other `CORE_OFFLINE` (no answer, the link is not ONLINE) | OFFLINE | Danger toast: "Core server unreachable. Nothing was changed." (LB-6); with `afterAcceptedCommand` (a read after an accepted export, W92-13) "Core server unreachable." |
  * | 8 | `UNAVAILABLE` that is no 429 (a 500, an answer outside the contract) | UNAVAILABLE | Danger toast: the Core could not complete the request |
  * | 9 | 401 `NOT_SIGNED_IN` | SIGNED_OUT | Nothing: the session is over and the shell shows the login screen with its own notice (§6.5) |
  * | 10 | 403 `NOT_PERMITTED` or `FORBIDDEN` | PERMISSION | Danger toast `common.rbac.deniedTitle`, naming the first role that holds the permission (§6.2) |
@@ -97,6 +97,12 @@ export interface DescribeCoreErrorOptions {
    * envelope names none. A rejected action carries its permission itself.
    */
   readonly permission?: Permission
+  /**
+   * FXR-W W92-13 (FW76-3): the input is a read that follows a command the Core already accepted (an
+   * export's paged walk). Rows 6 and 7 then drop "Nothing was changed.", which would contradict the
+   * page's own sentence that the Core recorded the command.
+   */
+  readonly afterAcceptedCommand?: boolean
 }
 
 /** Client-side codes of a transport failure (`@dems/shared/client`, `@dems/shared/live/source`). */
@@ -256,10 +262,10 @@ export function presentCoreError(input: unknown, deps: CoreErrorPresenterDeps, o
       show.danger(t('common.coreErrors.timedOut'))
       break
     case CoreErrorNoticeKind.STARTING:
-      show.danger(t('common.coreErrors.starting'))
+      show.danger(t(options.afterAcceptedCommand ? 'common.coreErrors.startingAfterAccepted' : 'common.coreErrors.starting'))
       break
     case CoreErrorNoticeKind.OFFLINE:
-      show.danger(t('common.coreErrors.offline'))
+      show.danger(t(options.afterAcceptedCommand ? 'common.coreErrors.offlineAfterAccepted' : 'common.coreErrors.offline'))
       break
     case CoreErrorNoticeKind.UNAVAILABLE:
       show.danger(t('common.coreErrors.unavailable'))

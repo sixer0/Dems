@@ -149,6 +149,24 @@ const HEALTH: HealthResponse = {
   ws: { path: '/ws', heartbeatIntervalMs: 1000, clients: 2 },
 };
 
+/**
+ * The Core server's answer to the same request (F84-3, D187 ruling 3; closing-fix round C1): its
+ * service name, a version and `ready`. Synthetic values at the example instant: `version` is an
+ * example value (it was the server's package version when this was written), NOT read from or tied
+ * to `apps/core-server/package.json`, and no test holds the two equal (FXR-W W92-25). Shown by the `all` scope only (`coreServerResponses`), first, so the Live API Reference
+ * no longer shows mock-core's answer as the example; the `offline` document is unchanged.
+ */
+const CORE_SERVER_HEALTH: HealthResponse = {
+  status: 'ok',
+  service: 'dems-core-server',
+  version: '0.2.0',
+  apiVersion: 'v1',
+  serverTime: OPENAPI_EXAMPLE_INSTANT,
+  uptimeMs: 5_400_000,
+  ws: { path: '/ws', heartbeatIntervalMs: 1000, clients: 2 },
+  ready: { database: true, engine: true },
+};
+
 /** A WS `/ws` message (documented in the Realtime tag). */
 export const HEARTBEAT_EXAMPLE: Heartbeat = {
   type: 'heartbeat',
@@ -342,12 +360,19 @@ export interface OperationExamples {
   pathParams?: Readonly<Record<string, string>>;
   request?: Readonly<Record<string, OpenApiExample<unknown>>>;
   responses: Readonly<Record<number, Readonly<Record<string, OpenApiExample<unknown>>>>>;
+  /**
+   * Examples of answers only the Core server sends for a status that the `offline` scope documents
+   * too (F84-3: the health of `dems-core-server`). The `all` scope lists them before those of
+   * `responses`; the `offline` scope leaves them out, so its document does not change.
+   */
+  coreServerResponses?: Readonly<Record<number, Readonly<Record<string, OpenApiExample<unknown>>>>>;
 }
 
 /** Examples keyed by operationId, then by HTTP status, then by example name. */
 export const CORE_API_EXAMPLES: Readonly<Record<string, OperationExamples>> = {
   getServiceHealth: {
     responses: { 200: { live: { summary: 'mock-core is up', value: HEALTH } } },
+    coreServerResponses: { 200: { coreServer: { summary: 'The Core server is up, database and engine ready', value: CORE_SERVER_HEALTH } } },
   },
   createSession: {
     request: {

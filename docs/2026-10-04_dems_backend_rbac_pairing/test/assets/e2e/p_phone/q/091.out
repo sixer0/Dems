@@ -1,0 +1,20 @@
+10:52:09.527 mark r04 at 10:52:09.527
+10:52:09.615 tap 246,2253
+10:52:09.894 slept 2500 ms
+10:52:12.434 declared screen home
+10:52:12.464 screencap 99i_retest_home_after_done.png 10:52:12.464..10:52:12.632
+10:52:12.653 tap 972,2283
+10:52:12.711 slept 2500 ms
+10:52:15.247 declared screen more
+10:52:15.275 ids(2): more-operator-name@651,387 "AKP Budi Santoso" ; more-operator-role@438,456 "Investigator"
+10:52:17.471 tapid more-sign-out at 776,663 "Sign out"
+10:52:20.144 slept 3000 ms
+10:52:23.168 declared screen login
+10:52:23.190 screencap 99j_end_state_login_live_signed_out.png 10:52:23.190..10:52:23.811
+10:52:23.830 corelog (3): 10:52:09.622 POST /api/v1/session/{id}/summary/acknowledge 204 | 10:52:20.372 POST /api/v1/auth/sign-out 204 | 10:52:20.379 GET /api/v1/auth/status 200
+10:52:23.880 serverlog since r04 (5):
+    10:52:09.897 POST /api/v1/session/:id/summary/acknowledge 204 operator:OPR-001
+    10:52:20.143 POST /api/v1/auth/sign-out 204 operator:OPR-001
+    10:52:20.144 [socket closed] operator:OPR-001
+    10:52:20.469 [socket opened] device:DEV-0001
+    10:52:20.579 GET /api/v1/auth/status 200 device:DEV-0001

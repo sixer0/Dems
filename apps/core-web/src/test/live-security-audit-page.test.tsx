@@ -311,7 +311,11 @@ describe('static rules of the folder (CLG (c); rules 1 to 4 and 9 of 08 §8; 08a
 
   it('rule 1: the only operations called through the typed client are 59 `listAuditRows` and 10 `getRoleMatrix`', () => {
     const calls = production.flatMap(({ text }) => Array.from(code(text).matchAll(/client\.call\('([A-Za-z]+)'/g), (match) => match[1]))
-    expect(calls.sort()).toEqual(['getRoleMatrix', 'listAuditRows'])
+    // FXR-W (W92-8): operation 10's key is shared with Users & Roles, so its one definition is
+    // `lib/core-queries.ts`, which the panel uses; the page's own call is 59.
+    expect(calls.sort()).toEqual(['listAuditRows'])
+    expect(file('rbac-panel.tsx')).toMatch(/useQuery\(roleMatrixQueryOptions\(useRoleMatrixGate\(\)\)\)/)
+    expect(readFileSync(resolve(folder, '../../lib/core-queries.ts'), 'utf8')).toMatch(/client\.call\('getRoleMatrix'\)/)
   })
 
   it('rule 2: the presenter speaks first in every branch that words a failure', () => {
@@ -320,14 +324,15 @@ describe('static rules of the folder (CLG (c); rules 1 to 4 and 9 of 08 §8; 08a
     expect(chain.indexOf('if (presentCoreError(error) !== null) return')).toBeLessThan(chain.indexOf("logSecurityAudit('error', 'ChainPanel.verify'"))
     const dialog = file('export-audit-dialog.tsx')
     expect(dialog).toMatch(/if \(presentCoreError\(caught\) !== null\) return/)
-    expect(dialog).toMatch(/presentCoreError\(caught\.reason\.failure\)/)
+    // FXR-W W92-13 (by design): the walk after the accepted export tells the presenter so (no "Nothing was changed").
+    expect(dialog).toMatch(/presentCoreError\(caught\.reason\.failure, \{ afterAcceptedCommand: true \}\)/)
     expect(file('rbac-panel.tsx')).toMatch(/if \(presentCoreError\(answer\) === null\) logSecurityAudit/)
     // A page never writes its own outage or limit sentence (LB-6, LB-10).
     for (const { name, text } of production) expect(code(text), name).not.toMatch(/unreachable|limiting requests/i)
   })
 
   it('rule 3: the Core list lives under the runtime\'s key; no key of the page starts with \'core\'', () => {
-    expect(file('rbac-panel.tsx')).toMatch(/queryKey: CORE_QUERY_KEYS\.roleMatrix/)
+    expect(readFileSync(resolve(folder, '../../lib/core-queries.ts'), 'utf8')).toMatch(/queryKey: CORE_QUERY_KEYS\.roleMatrix/)
     for (const { name, text } of production) expect(code(text), name).not.toMatch(/\[\s*'core'/)
   })
 

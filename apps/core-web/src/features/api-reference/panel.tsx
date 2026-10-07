@@ -63,8 +63,9 @@ interface BoundaryState {
 
 /**
  * Frontend error rules, layers 1–3: a render failure shows friendly copy with a rate-limited retry
- * (3 s → 6 s → 12 s, at most 3, `useRetryCooldown`), and the structured record goes to the dev
- * console (no client log endpoint exists, D41(g)).
+ * (3 s → 6 s → 12 s, at most 3, `useRetryCooldown`), and one record goes to the page's own log (no
+ * client log endpoint exists, D41(g)): a fixed sentence and the panel's name in the source, never
+ * the error's text or a component stack (AR-9, D182).
  */
 export class ApiPanelBoundary extends Component<BoundaryProps, BoundaryState> {
   override state: BoundaryState = { error: null, resets: 0 }
@@ -73,8 +74,8 @@ export class ApiPanelBoundary extends Component<BoundaryProps, BoundaryState> {
     return { error }
   }
 
-  override componentDidCatch(error: Error, info: ErrorInfo) {
-    logApiReference('error', 'PanelBoundary', error, { panel: this.props.panel, componentStack: info.componentStack })
+  override componentDidCatch(error: Error, _info: ErrorInfo) {
+    logApiReference('error', `PanelBoundary.${this.props.panel}`, error, 'A panel of the API Reference page failed to render.')
   }
 
   private readonly reset = () => {

@@ -307,7 +307,7 @@ describe('S4-8: Acknowledge — one acknowledgeAlert per matching alert, fired w
     expect(powerFailAlerts(b).every((candidate) => candidate.acknowledged)).toBe(true);
   });
 
-  it('refusal: a 403 NOT_PERMITTED (CONTRACT-GAP-W66-2: operation 70 has no notPermitted example) → the denied toast; the alert stays unacknowledged; Home still opens', async () => {
+  it('refusal: a 403 NOT_PERMITTED (RESIDUAL-W66-2, W83 ledger #42: operation 70 has no notPermitted example) → the denied toast; the alert stays unacknowledged; Home still opens', async () => {
     const b = await openOutcome();
     b.fake.answerOnce('acknowledgeAlert', refusal(403, 'NOT_PERMITTED', 'Not permitted.'));
     await press('recovery-acknowledge', b);

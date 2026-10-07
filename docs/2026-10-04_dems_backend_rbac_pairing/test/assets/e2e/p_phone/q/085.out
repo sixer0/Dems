@@ -1,0 +1,30 @@
+10:45:45.943 declared screen login
+10:45:46.020 slept 2000 ms
+10:45:48.115 screencap 98_end_state_login_live_signed_out.png 10:45:48.115..10:45:50.623
+10:45:50.708 corelog (0): 
+10:45:50.894 js => {"id":"SES-20261006-0033","state":"SEALED","evidenceId":"EV-20261006-0021"}
+10:45:50.976 js => [["DEV-0001","PAIRED",true,null]]
+10:45:51.066 js => [["OPR-001","budi.santoso","INVESTIGATOR",true],["OPR-002","andi.pratama","SUPERVISOR",true],["OPR-003","rina.wijaya","TECHNICIAN",true]]
+10:45:51.152 js => {"view":{"ok":true,"checked":420,"head":"5a772a627993cd25b1032932092b2688ee2a4966d8f4e207c247f363ea19a911"},"stored":{"ok":true,"checked":420}}
+10:45:51.261 origins in w1_network.log: {"http://127.0.0.1:5176":4798,"ws://127.0.0.1:5176":29}
+10:45:51.439 origins in w2_network.log: {"http://127.0.0.1:5176":863,"ws://127.0.0.1:5176":5}
+10:45:51.525 signout status 204
+10:45:51.709 signout status 204
+10:45:51.826 serverlog since d01 (17):
+    10:44:53.333 POST /api/v1/auth/touch 200 operator:OPR-001
+    10:45:00.600 POST /api/v1/auth/sign-out 204 operator:OPR-001
+    10:45:00.601 [socket closed] operator:OPR-001
+    10:45:01.214 [socket opened] device:DEV-0001
+    10:45:01.276 GET /api/v1/auth/status 200 device:DEV-0001
+    10:45:50.902 GET /api/v1/session/current 200 operator:OPR-002
+    10:45:50.982 GET /api/v1/pairing/devices 200 operator:OPR-002
+    10:45:51.070 GET /api/v1/admin/users 200 operator:OPR-002
+    10:45:51.169 GET /api/v1/audit/chain 200 operator:OPR-002
+    10:45:51.534 POST /api/v1/auth/sign-out 204 operator:OPR-001
+    10:45:51.535 [socket closed] operator:OPR-001
+    10:45:51.604 [socket opened]
+    10:45:51.638 GET /api/v1/auth/status 200 null
+    10:45:51.715 POST /api/v1/auth/sign-out 204 operator:OPR-002
+    10:45:51.717 [socket closed] operator:OPR-002
+    10:45:51.747 [socket opened]
+    10:45:51.760 GET /api/v1/auth/status 200 null

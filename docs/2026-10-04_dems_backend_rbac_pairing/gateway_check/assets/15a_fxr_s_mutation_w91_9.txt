@@ -1,0 +1,11 @@
+FXR-S W91-9 (F-B2b-1, F-B2b-2) guard, mutation check (2026-10-07 ~06:35)
+Retargeted importers: test/acceptance/{devices-live,pairing-lifecycle,restart}.test.ts;
+src/modules/sessions/__tests__/{concurrency.db.test,journey.db.test,operations.db.test,memory-engine,support}.ts
+New guard: test/static/test-support-imports.test.ts
+Mutation: devices-live.test.ts import set back to '../../src/realtime/__tests__/support'
+Command: npx vitest run --project unit test/static/test-support-imports.test.ts
+     × no test outside src/core, src/engine and src/realtime imports their old support paths 328ms
++   "test/acceptance/devices-live.test.ts:38 imports ../../src/realtime/__tests__/support (import test/support/realtime instead)",
+      Tests  1 failed | 1 passed (2)
+Restored: Tests  2 passed (2)
+Not done: deletion of the realtime shim and its pin test (needs an explicit delete approval; CLAUDE.md red line).

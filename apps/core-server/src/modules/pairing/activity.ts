@@ -24,7 +24,8 @@
  * The rows go through the unit's writers, which add the sequence, the hash and the time of the
  * server clock; nothing here can set a time (SR-65).
  */
-import type { AuditEntry, EventEntry, PAIRING_CODE_CLOSE_REASONS, UnitContext } from '../../core';
+import { PairingCodeCloseReason } from '@dems/shared/api';
+import type { AuditEntry, EventEntry, UnitContext } from '../../core';
 import { PAIRING_CODE_MAX_FAILED_REDEEMS } from './limits';
 import type { CoreIdentityRow } from './store';
 
@@ -40,7 +41,8 @@ export async function appendActivity(unit: UnitContext, activity: Activity): Pro
   if (activity.event !== null) await unit.events.append(activity.event);
 }
 
-export type CodeCloseReason = (typeof PAIRING_CODE_CLOSE_REASONS)[number];
+/** How a code closes: the contract's `PairingCodeCloseReason` (review finding W91-4). */
+export type CodeCloseReason = PairingCodeCloseReason;
 
 export function codeIssued(input: { readonly operatorId: string; readonly codeId: string; readonly expiresAt: number }): Activity {
   return {
@@ -67,7 +69,7 @@ export function codeClosed(input: { readonly codeId: string; readonly reason: Co
     audit: {
       type: 'PAIRING_CODE_CLOSED',
       message: CLOSE_MESSAGE[input.reason](input.codeId),
-      ...(input.reason === 'EXHAUSTED' ? { severity: 'WARNING' as const } : {}),
+      ...(input.reason === PairingCodeCloseReason.EXHAUSTED ? { severity: 'WARNING' as const } : {}),
       actorId: input.operatorId,
       deviceId: null,
       details: { codeId: input.codeId, reason: input.reason },

@@ -1,0 +1,12 @@
+tap 1603,1248 at 10:46:00.150
+slept 2500 ms
+screencap B27_tablet_evidence_metadata.png (1298421 bytes) at 10:46:03.039
+tap 1853,1248 at 10:46:03.098
+slept 3000 ms
+screencap B28_tablet_evidence_hash_integrity.png (1293988 bytes) at 10:46:06.495
+swipe 1920,1350,1920,450 600 ms
+slept 1500 ms
+swipe 1920,1350,1920,450 600 ms
+slept 1500 ms
+screencap B29_tablet_evidence_custody.png (722752 bytes) at 10:46:11.896
+ids: 158 nodes -> q/tablet_new_evidence_hash.txt

@@ -1,0 +1,1050 @@
+# adb -s emulator-5554 logcat -d -T "10-06 13:03:50.000" --pid=14767 (the DEMS app process), W/E/F levels only. Reduced: GPU/Skia/codec noise removed; stack traces cut to 6 frames; view-tree dumps cut after 40 lines; a message repeated more than 3 times is dropped with its stack. Dropped: stack frame beyond 6 607, view-tree dump line 2540, repeat of a message already shown 3 times 335, stack frame of a dropped repeat 1067. Device clock = host - 0.33 s.
+10-06 13:04:01.750 14767 14767 W Reanimated: synchronouslyUpdateUIProps failed for tag 21670
+10-06 13:04:01.750 14767 14767 W Reanimated: java.lang.reflect.InvocationTargetException
+10-06 13:04:01.750 14767 14767 W Reanimated: 	at java.lang.reflect.Method.invoke(Native Method)
+10-06 13:04:01.750 14767 14767 W Reanimated: 	at com.swmansion.reanimated.NativeProxy.synchronouslyUpdateUIProps$lambda$6(NativeProxy.kt:256)
+10-06 13:04:01.750 14767 14767 W Reanimated: 	at com.swmansion.reanimated.NativeProxy.$r8$lambda$nszQSFey3jrdMRcCI9ETRxf7PTg(Unknown Source:0)
+10-06 13:04:01.750 14767 14767 W Reanimated: 	at com.swmansion.reanimated.NativeProxy$$ExternalSyntheticLambda2.invoke(D8$$SyntheticClass:0)
+10-06 13:04:01.750 14767 14767 W Reanimated: 	at com.swmansion.reanimated.nativeProxy.SynchronousPropsBufferParser.parse(SynchronousPropsBufferParser.kt:257)
+10-06 13:04:01.750 14767 14767 W Reanimated: 	at com.swmansion.reanimated.NativeProxy.synchronouslyUpdateUIProps(NativeProxy.kt:253)
+10-06 13:04:01.752 14767 14767 W Reanimated: Caused by: com.facebook.react.bridge.RetryableMountingLayerException: Unable to find SurfaceMountingManager for tag: [21670]
+10-06 13:04:01.752 14767 14767 W Reanimated: 	at com.facebook.react.fabric.mounting.MountingManager.getSurfaceManagerForViewEnforced(MountingManager.kt:210)
+10-06 13:04:01.752 14767 14767 W Reanimated: 	at com.facebook.react.fabric.mounting.MountingManager.updatePropsSynchronously(MountingManager.kt:278)
+10-06 13:04:01.752 14767 14767 W Reanimated: 	... 142 more
+10-06 13:04:01.755 14767 14767 W Reanimated: synchronouslyUpdateUIProps failed for tag 21670
+10-06 13:04:01.755 14767 14767 W Reanimated: java.lang.reflect.InvocationTargetException
+10-06 13:04:01.755 14767 14767 W Reanimated: 	at java.lang.reflect.Method.invoke(Native Method)
+10-06 13:04:01.755 14767 14767 W Reanimated: 	at com.swmansion.reanimated.NativeProxy.synchronouslyUpdateUIProps$lambda$6(NativeProxy.kt:256)
+10-06 13:04:01.755 14767 14767 W Reanimated: 	at com.swmansion.reanimated.NativeProxy.$r8$lambda$nszQSFey3jrdMRcCI9ETRxf7PTg(Unknown Source:0)
+10-06 13:04:01.755 14767 14767 W Reanimated: 	at com.swmansion.reanimated.NativeProxy$$ExternalSyntheticLambda2.invoke(D8$$SyntheticClass:0)
+10-06 13:04:01.755 14767 14767 W Reanimated: 	at com.swmansion.reanimated.nativeProxy.SynchronousPropsBufferParser.parse(SynchronousPropsBufferParser.kt:257)
+10-06 13:04:01.755 14767 14767 W Reanimated: 	at com.swmansion.reanimated.NativeProxy.synchronouslyUpdateUIProps(NativeProxy.kt:253)
+10-06 13:04:01.755 14767 14767 W Reanimated: Caused by: com.facebook.react.bridge.RetryableMountingLayerException: Unable to find SurfaceMountingManager for tag: [21670]
+10-06 13:04:01.755 14767 14767 W Reanimated: 	at com.facebook.react.fabric.mounting.MountingManager.getSurfaceManagerForViewEnforced(MountingManager.kt:210)
+10-06 13:04:01.755 14767 14767 W Reanimated: 	at com.facebook.react.fabric.mounting.MountingManager.updatePropsSynchronously(MountingManager.kt:278)
+10-06 13:04:01.755 14767 14767 W Reanimated: 	... 140 more
+10-06 13:04:03.483 14767 14767 E unknown:SurfaceMountingManager:   <ViewGroup tag=20372 class=class com.facebook.react.views.view.ReactViewGroup>
+10-06 13:04:03.483 14767 14767 E unknown:SurfaceMountingManager:      <View idx=0 tag=19014 class=class com.facebook.react.views.view.ReactViewGroup>
+10-06 13:04:03.483 14767 14767 E unknown:SurfaceMountingManager:      <View idx=1 tag=21688 class=class com.facebook.react.views.view.ReactViewGroup>
+10-06 13:04:03.483 14767 14767 E unknown:SurfaceMountingManager:      <View idx=2 tag=20348 class=class com.facebook.react.views.scroll.ReactScrollView>
+10-06 13:04:03.483 14767 14767 E unknown:SurfaceMountingManager:      <View idx=3 tag=20370 class=class com.facebook.react.views.view.ReactViewGroup>
+10-06 13:04:03.483 14767 14767 E unknown:SurfaceMountingManager:   </ViewGroup tag=20372>
+10-06 13:04:03.484 14767 14767 E unknown:SurfaceMountingManager: Displaying Ancestors:
+10-06 13:04:03.484 14767 14767 E unknown:SurfaceMountingManager: <ViewParent tag=20378 class=class com.swmansion.rnscreens.ScreenContentWrapper>
+10-06 13:04:03.484 14767 14767 E unknown:SurfaceMountingManager: <ViewParent tag=20382 class=class com.swmansion.rnscreens.Screen>
+10-06 13:04:03.484 14767 14767 E unknown:SurfaceMountingManager: <ViewParent tag=-1 class=class com.swmansion.rnscreens.stack.views.ScreensCoordinatorLayout>
+10-06 13:04:03.484 14767 14767 E unknown:SurfaceMountingManager: <ViewParent tag=20384 class=class com.swmansion.rnscreens.ScreenStack>
+10-06 13:04:03.484 14767 14767 E unknown:SurfaceMountingManager: <ViewParent tag=20388 class=class com.swmansion.rnscreens.ScreenContentWrapper>
+10-06 13:04:03.484 14767 14767 E unknown:SurfaceMountingManager: <ViewParent tag=20392 class=class com.swmansion.rnscreens.Screen>
+10-06 13:04:03.484 14767 14767 E unknown:SurfaceMountingManager: <ViewParent tag=-1 class=class com.swmansion.rnscreens.stack.views.ScreensCoordinatorLayout>
+10-06 13:04:03.484 14767 14767 E unknown:SurfaceMountingManager: <ViewParent tag=1260 class=class com.swmansion.rnscreens.ScreenStack>
+10-06 13:04:03.484 14767 14767 E unknown:SurfaceMountingManager: <ViewParent tag=1264 class=class com.swmansion.rnscreens.ScreenContentWrapper>
+10-06 13:04:03.484 14767 14767 E unknown:SurfaceMountingManager: <ViewParent tag=1268 class=class com.swmansion.rnscreens.Screen>
+10-06 13:04:03.484 14767 14767 E unknown:SurfaceMountingManager: <ViewParent tag=-1 class=class com.swmansion.rnscreens.stack.views.ScreensCoordinatorLayout>
+10-06 13:04:03.484 14767 14767 E unknown:SurfaceMountingManager: <ViewParent tag=288 class=class com.swmansion.rnscreens.ScreenStack>
+10-06 13:04:03.485 14767 14767 E unknown:SurfaceMountingManager: <ViewParent tag=24 class=class com.facebook.react.views.view.ReactViewGroup>
+10-06 13:04:03.485 14767 14767 E unknown:SurfaceMountingManager: <ViewParent tag=14 class=class com.th3rdwave.safeareacontext.SafeAreaProvider>
+10-06 13:04:03.485 14767 14767 E unknown:SurfaceMountingManager: <ViewParent tag=16 class=class com.th3rdwave.safeareacontext.SafeAreaProvider>
+10-06 13:04:03.485 14767 14767 E unknown:SurfaceMountingManager: <ViewParent tag=18 class=class com.reactnativekeyboardcontroller.views.EdgeToEdgeReactViewGroup>
+10-06 13:04:03.485 14767 14767 E unknown:SurfaceMountingManager: <ViewParent tag=22 class=class com.swmansion.gesturehandler.react.RNGestureHandlerRootView>
+10-06 13:04:03.485 14767 14767 E unknown:SurfaceMountingManager: <ViewParent tag=10 class=class com.th3rdwave.safeareacontext.SafeAreaProvider>
+10-06 13:04:03.485 14767 14767 E unknown:SurfaceMountingManager: <ViewParent tag=1 class=class com.facebook.react.runtime.ReactSurfaceView>
+10-06 13:04:03.485 14767 14767 E unknown:SurfaceMountingManager: <ViewParent tag=16908290 class=class androidx.appcompat.widget.ContentFrameLayout>
+10-06 13:04:03.485 14767 14767 E unknown:SurfaceMountingManager: <ViewParent tag=2131361859 class=class androidx.appcompat.widget.FitWindowsLinearLayout>
+10-06 13:04:03.485 14767 14767 E unknown:SurfaceMountingManager: <ViewParent tag=-1 class=class android.widget.FrameLayout>
+10-06 13:04:03.485 14767 14767 E unknown:SurfaceMountingManager: <ViewParent tag=-1 class=class android.widget.LinearLayout>
+10-06 13:04:03.485 14767 14767 E unknown:SurfaceMountingManager: <ViewParent tag=-1 class=class com.android.internal.policy.DecorView>
+10-06 13:04:03.485 14767 14767 E unknown:SurfaceMountingManager: <ViewParent tag=-1 class=class android.view.ViewRootImpl>
+10-06 13:04:03.495 14767 14767 E unknown:SurfaceMountingManager: Unhandled SoftException
+10-06 13:04:03.495 14767 14767 E unknown:SurfaceMountingManager: java.lang.IllegalStateException: Tried to remove view [21688] of parent [20372] at index 0, but got view tag 19014 - actual index of view: 1
+10-06 13:04:03.495 14767 14767 E unknown:SurfaceMountingManager: 	at com.facebook.react.fabric.mounting.SurfaceMountingManager.removeViewAt(SurfaceMountingManager.kt:496)
+10-06 13:04:03.495 14767 14767 E unknown:SurfaceMountingManager: 	at com.facebook.react.fabric.mounting.mountitems.IntBufferBatchMountItem.execute(IntBufferBatchMountItem.kt:125)
+10-06 13:04:03.495 14767 14767 E unknown:SurfaceMountingManager: 	at com.facebook.react.fabric.mounting.MountItemDispatcher.executeOrEnqueue(MountItemDispatcher.kt:379)
+10-06 13:04:03.495 14767 14767 E unknown:SurfaceMountingManager: 	at com.facebook.react.fabric.mounting.MountItemDispatcher.dispatchMountItems$lambda$7$lambda$6(MountItemDispatcher.kt:269)
+10-06 13:04:03.495 14767 14767 E unknown:SurfaceMountingManager: 	at com.facebook.react.fabric.mounting.MountItemDispatcher.$r8$lambda$4xp_oXLXKRRjXh_WfqmwhGWbzaM(Unknown Source:0)
+10-06 13:04:03.495 14767 14767 E unknown:SurfaceMountingManager: 	at com.facebook.react.fabric.mounting.MountItemDispatcher$$ExternalSyntheticLambda4.invoke(D8$$SyntheticClass:0)
+10-06 13:04:03.518 14767 14767 E unknown:SurfaceMountingManager:   <ViewGroup tag=20378 class=class com.swmansion.rnscreens.ScreenContentWrapper>
+10-06 13:04:03.518 14767 14767 E unknown:SurfaceMountingManager:      <View idx=0 tag=20376 class=class com.facebook.react.views.view.ReactViewGroup>
+10-06 13:04:03.518 14767 14767 E unknown:SurfaceMountingManager:      <View idx=1 tag=20372 class=class com.facebook.react.views.view.ReactViewGroup>
+10-06 13:04:03.518 14767 14767 E unknown:SurfaceMountingManager:   </ViewGroup tag=20378>
+10-06 13:04:03.518 14767 14767 E unknown:SurfaceMountingManager: Displaying Ancestors:
+10-06 13:04:03.518 14767 14767 E unknown:SurfaceMountingManager: <ViewParent tag=20382 class=class com.swmansion.rnscreens.Screen>
+10-06 13:04:03.518 14767 14767 E unknown:SurfaceMountingManager: <ViewParent tag=-1 class=class com.swmansion.rnscreens.stack.views.ScreensCoordinatorLayout>
+10-06 13:04:03.518 14767 14767 E unknown:SurfaceMountingManager: <ViewParent tag=20384 class=class com.swmansion.rnscreens.ScreenStack>
+10-06 13:04:03.518 14767 14767 E unknown:SurfaceMountingManager: <ViewParent tag=20388 class=class com.swmansion.rnscreens.ScreenContentWrapper>
+10-06 13:04:03.519 14767 14767 E unknown:SurfaceMountingManager: <ViewParent tag=20392 class=class com.swmansion.rnscreens.Screen>
+10-06 13:04:03.523 14767 14767 E unknown:SurfaceMountingManager: Unhandled SoftException
+10-06 13:04:03.523 14767 14767 E unknown:SurfaceMountingManager: java.lang.IllegalStateException: Tried to remove view [20372] of parent [20378] at index 0, but got view tag 20376 - actual index of view: 1
+10-06 13:04:03.523 14767 14767 E unknown:SurfaceMountingManager: 	at com.facebook.react.fabric.mounting.SurfaceMountingManager.removeViewAt(SurfaceMountingManager.kt:496)
+10-06 13:04:03.523 14767 14767 E unknown:SurfaceMountingManager: 	at com.facebook.react.fabric.mounting.mountitems.IntBufferBatchMountItem.execute(IntBufferBatchMountItem.kt:125)
+10-06 13:04:03.523 14767 14767 E unknown:SurfaceMountingManager: 	at com.facebook.react.fabric.mounting.MountItemDispatcher.executeOrEnqueue(MountItemDispatcher.kt:379)
+10-06 13:04:03.523 14767 14767 E unknown:SurfaceMountingManager: 	at com.facebook.react.fabric.mounting.MountItemDispatcher.dispatchMountItems$lambda$7$lambda$6(MountItemDispatcher.kt:269)
+10-06 13:04:03.523 14767 14767 E unknown:SurfaceMountingManager: 	at com.facebook.react.fabric.mounting.MountItemDispatcher.$r8$lambda$4xp_oXLXKRRjXh_WfqmwhGWbzaM(Unknown Source:0)
+10-06 13:04:03.523 14767 14767 E unknown:SurfaceMountingManager: 	at com.facebook.react.fabric.mounting.MountItemDispatcher$$ExternalSyntheticLambda4.invoke(D8$$SyntheticClass:0)
+10-06 13:04:03.558 14767 14767 E ExpoVideo: Current activity does not support picture-in-picture. Make sure you have configured the `expo-video` config plugin correctly.
+10-06 13:04:03.628 14767 14767 E unknown:SurfaceMountingManager:MissingViewState: Unhandled SoftException
+10-06 13:04:03.628 14767 14767 E unknown:SurfaceMountingManager:MissingViewState: java.lang.IllegalStateException: Unable to find viewState for tag: [20372] for removeViewAt
+10-06 13:04:03.628 14767 14767 E unknown:SurfaceMountingManager:MissingViewState: 	at com.facebook.react.fabric.mounting.SurfaceMountingManager.removeViewAt(SurfaceMountingManager.kt:434)
+10-06 13:04:03.628 14767 14767 E unknown:SurfaceMountingManager:MissingViewState: 	at com.facebook.react.fabric.mounting.mountitems.IntBufferBatchMountItem.execute(IntBufferBatchMountItem.kt:125)
+10-06 13:04:03.628 14767 14767 E unknown:SurfaceMountingManager:MissingViewState: 	at com.facebook.react.fabric.mounting.MountItemDispatcher.executeOrEnqueue(MountItemDispatcher.kt:379)
+10-06 13:04:03.628 14767 14767 E unknown:SurfaceMountingManager:MissingViewState: 	at com.facebook.react.fabric.mounting.MountItemDispatcher.dispatchMountItems$lambda$7$lambda$6(MountItemDispatcher.kt:269)
+10-06 13:04:03.628 14767 14767 E unknown:SurfaceMountingManager:MissingViewState: 	at com.facebook.react.fabric.mounting.MountItemDispatcher.$r8$lambda$4xp_oXLXKRRjXh_WfqmwhGWbzaM(Unknown Source:0)
+10-06 13:04:03.628 14767 14767 E unknown:SurfaceMountingManager:MissingViewState: 	at com.facebook.react.fabric.mounting.MountItemDispatcher$$ExternalSyntheticLambda4.invoke(D8$$SyntheticClass:0)
+10-06 13:04:03.640 14767 14767 E unknown:SurfaceMountingManager:MissingViewState: Unhandled SoftException
+10-06 13:04:03.640 14767 14767 E unknown:SurfaceMountingManager:MissingViewState: java.lang.IllegalStateException: Unable to find viewState for tag: [20372] for removeViewAt
+10-06 13:04:03.640 14767 14767 E unknown:SurfaceMountingManager:MissingViewState: 	at com.facebook.react.fabric.mounting.SurfaceMountingManager.removeViewAt(SurfaceMountingManager.kt:434)
+10-06 13:04:03.640 14767 14767 E unknown:SurfaceMountingManager:MissingViewState: 	at com.facebook.react.fabric.mounting.mountitems.IntBufferBatchMountItem.execute(IntBufferBatchMountItem.kt:125)
+10-06 13:04:03.640 14767 14767 E unknown:SurfaceMountingManager:MissingViewState: 	at com.facebook.react.fabric.mounting.MountItemDispatcher.executeOrEnqueue(MountItemDispatcher.kt:379)
+10-06 13:04:03.640 14767 14767 E unknown:SurfaceMountingManager:MissingViewState: 	at com.facebook.react.fabric.mounting.MountItemDispatcher.dispatchMountItems$lambda$7$lambda$6(MountItemDispatcher.kt:269)
+10-06 13:04:03.640 14767 14767 E unknown:SurfaceMountingManager:MissingViewState: 	at com.facebook.react.fabric.mounting.MountItemDispatcher.$r8$lambda$4xp_oXLXKRRjXh_WfqmwhGWbzaM(Unknown Source:0)
+10-06 13:04:03.640 14767 14767 E unknown:SurfaceMountingManager:MissingViewState: 	at com.facebook.react.fabric.mounting.MountItemDispatcher$$ExternalSyntheticLambda4.invoke(D8$$SyntheticClass:0)
+10-06 13:04:03.645 14767 14767 E unknown:SurfaceMountingManager:MissingViewState: Unhandled SoftException
+10-06 13:04:03.645 14767 14767 E unknown:SurfaceMountingManager:MissingViewState: java.lang.IllegalStateException: Unable to find viewState for tag: [20372] for removeViewAt
+10-06 13:04:03.645 14767 14767 E unknown:SurfaceMountingManager:MissingViewState: 	at com.facebook.react.fabric.mounting.SurfaceMountingManager.removeViewAt(SurfaceMountingManager.kt:434)
+10-06 13:04:03.645 14767 14767 E unknown:SurfaceMountingManager:MissingViewState: 	at com.facebook.react.fabric.mounting.mountitems.IntBufferBatchMountItem.execute(IntBufferBatchMountItem.kt:125)
+10-06 13:04:03.645 14767 14767 E unknown:SurfaceMountingManager:MissingViewState: 	at com.facebook.react.fabric.mounting.MountItemDispatcher.executeOrEnqueue(MountItemDispatcher.kt:379)
+10-06 13:04:03.645 14767 14767 E unknown:SurfaceMountingManager:MissingViewState: 	at com.facebook.react.fabric.mounting.MountItemDispatcher.dispatchMountItems$lambda$7$lambda$6(MountItemDispatcher.kt:269)
+10-06 13:04:03.645 14767 14767 E unknown:SurfaceMountingManager:MissingViewState: 	at com.facebook.react.fabric.mounting.MountItemDispatcher.$r8$lambda$4xp_oXLXKRRjXh_WfqmwhGWbzaM(Unknown Source:0)
+10-06 13:04:03.645 14767 14767 E unknown:SurfaceMountingManager:MissingViewState: 	at com.facebook.react.fabric.mounting.MountItemDispatcher$$ExternalSyntheticLambda4.invoke(D8$$SyntheticClass:0)
+10-06 13:04:03.662 14767 14767 E unknown:MountItemDispatcher: dispatchMountItems: caught exception, displaying mount state
+10-06 13:04:03.662 14767 14767 E unknown:MountItemDispatcher: java.lang.IllegalStateException: addViewAt: failed to insert view [22216] into parent [20378] at index 1
+10-06 13:04:03.662 14767 14767 E unknown:MountItemDispatcher: 	at com.facebook.react.fabric.mounting.SurfaceMountingManager.addViewAt(SurfaceMountingManager.kt:389)
+10-06 13:04:03.662 14767 14767 E unknown:MountItemDispatcher: 	at com.facebook.react.fabric.mounting.mountitems.IntBufferBatchMountItem.execute(IntBufferBatchMountItem.kt:122)
+10-06 13:04:03.662 14767 14767 E unknown:MountItemDispatcher: 	at com.facebook.react.fabric.mounting.MountItemDispatcher.executeOrEnqueue(MountItemDispatcher.kt:379)
+10-06 13:04:03.662 14767 14767 E unknown:MountItemDispatcher: 	at com.facebook.react.fabric.mounting.MountItemDispatcher.dispatchMountItems$lambda$7$lambda$6(MountItemDispatcher.kt:269)
+10-06 13:04:03.662 14767 14767 E unknown:MountItemDispatcher: 	at com.facebook.react.fabric.mounting.MountItemDispatcher.$r8$lambda$4xp_oXLXKRRjXh_WfqmwhGWbzaM(Unknown Source:0)
+10-06 13:04:03.662 14767 14767 E unknown:MountItemDispatcher: 	at com.facebook.react.fabric.mounting.MountItemDispatcher$$ExternalSyntheticLambda4.invoke(D8$$SyntheticClass:0)
+10-06 13:04:03.662 14767 14767 E unknown:MountItemDispatcher: Caused by: java.lang.IndexOutOfBoundsException: index=1 count=0
+10-06 13:04:03.662 14767 14767 E unknown:MountItemDispatcher: 	at android.view.ViewGroup.addInArray(ViewGroup.java:5424)
+10-06 13:04:03.662 14767 14767 E unknown:MountItemDispatcher: 	at android.view.ViewGroup.addViewInner(ViewGroup.java:5311)
+10-06 13:04:03.662 14767 14767 E unknown:MountItemDispatcher: 	at android.view.ViewGroup.addView(ViewGroup.java:5118)
+10-06 13:04:03.662 14767 14767 E unknown:MountItemDispatcher: 	at android.view.ViewGroup.addView(ViewGroup.java:5058)
+10-06 13:04:03.662 14767 14767 E unknown:MountItemDispatcher: 	at com.facebook.react.uimanager.ViewGroupManager.addView(ViewGroupManager.kt:30)
+10-06 13:04:03.662 14767 14767 E unknown:MountItemDispatcher: 	at com.facebook.react.uimanager.ViewGroupManager.addView(ViewGroupManager.kt:16)
+10-06 13:04:03.662 14767 14767 E unknown:SurfaceMountingManager: Views created for surface 1:
+10-06 13:04:03.663 14767 14767 E unknown:SurfaceMountingManager: <RootView id=1 parentTag=16908290 isRoot=true />
+10-06 13:04:03.663 14767 14767 E unknown:SurfaceMountingManager: <DebuggingOverlay id=4 parentTag=6 isRoot=false />
+10-06 13:04:03.663 14767 14767 E unknown:SurfaceMountingManager: <RNCSafeAreaProvider id=10 parentTag=1 isRoot=false />
+10-06 13:04:03.663 14767 14767 E unknown:SurfaceMountingManager: <RNCSafeAreaProvider id=14 parentTag=16 isRoot=false />
+10-06 13:04:03.663 14767 14767 E unknown:SurfaceMountingManager: <RNCSafeAreaProvider id=16 parentTag=18 isRoot=false />
+10-06 13:04:03.663 14767 14767 E unknown:SurfaceMountingManager: <KeyboardControllerView id=18 parentTag=22 isRoot=false />
+10-06 13:04:03.663 14767 14767 E unknown:SurfaceMountingManager: <RNGestureHandlerRootView id=22 parentTag=10 isRoot=false />
+10-06 13:04:03.668 14767 14767 E unknown:SurfaceMountingManager: <RNSScreen id=8338 parentTag=-1 isRoot=false />
+10-06 13:04:03.668 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=8348 parentTag=8352 isRoot=false />
+10-06 13:04:03.668 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=8350 parentTag=8352 isRoot=false />
+10-06 13:04:03.669 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=8352 parentTag=8354 isRoot=false />
+10-06 13:04:03.669 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=8354 parentTag=8356 isRoot=false />
+10-06 13:04:03.669 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=8370 parentTag=8374 isRoot=false />
+10-06 13:04:03.669 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=8372 parentTag=8374 isRoot=false />
+10-06 13:04:03.669 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=8374 parentTag=8376 isRoot=false />
+10-06 13:04:03.669 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=8376 parentTag=8382 isRoot=false />
+10-06 13:04:03.669 14767 14767 E unknown:SurfaceMountingManager: <RNSScreenStack id=288 parentTag=24 isRoot=false />
+10-06 13:04:03.670 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=8482 parentTag=8484 isRoot=false />
+10-06 13:04:03.670 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=8484 parentTag=8486 isRoot=false />
+10-06 13:04:03.670 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=8486 parentTag=8488 isRoot=false />
+10-06 13:04:03.670 14767 14767 E unknown:SurfaceMountingManager: <AndroidTextInput id=8490 parentTag=8636 isRoot=false />
+10-06 13:04:03.670 14767 14767 E unknown:SurfaceMountingManager: <AndroidHorizontalScrollContentView id=8554 parentTag=8556 isRoot=false />
+10-06 13:04:03.670 14767 14767 E unknown:SurfaceMountingManager: <AndroidHorizontalScrollView id=8556 parentTag=8636 isRoot=false />
+10-06 13:04:03.672 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=8560 parentTag=8578 isRoot=false />
+10-06 13:04:03.672 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=8562 parentTag=8578 isRoot=false />
+10-06 13:04:03.672 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=8564 parentTag=8578 isRoot=false />
+10-06 13:04:03.672 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=8566 parentTag=8578 isRoot=false />
+10-06 13:04:03.672 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=8568 parentTag=8578 isRoot=false />
+10-06 13:04:03.672 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=8570 parentTag=8578 isRoot=false />
+10-06 13:04:03.672 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=8572 parentTag=8578 isRoot=false />
+10-06 13:04:03.672 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=8574 parentTag=8578 isRoot=false />
+10-06 13:04:03.672 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=8576 parentTag=8578 isRoot=false />
+10-06 13:04:03.673 14767 14767 E unknown:SurfaceMountingManager: <RNSVGLinearGradient id=386 parentTag=388 isRoot=false />
+10-06 13:04:03.673 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=8578 parentTag=8580 isRoot=false />
+10-06 13:04:03.673 14767 14767 E unknown:SurfaceMountingManager: <RNSVGDefs id=388 parentTag=404 isRoot=false />
+10-06 13:04:03.673 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=8580 parentTag=8586 isRoot=false />
+10-06 13:04:03.673 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=390 parentTag=404 isRoot=false />
+10-06 13:04:03.673 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=392 parentTag=404 isRoot=false />
+10-06 13:04:03.673 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=394 parentTag=404 isRoot=false />
+10-06 13:04:03.673 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=396 parentTag=404 isRoot=false />
+10-06 13:04:03.673 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=398 parentTag=404 isRoot=false />
+10-06 13:04:03.673 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=400 parentTag=404 isRoot=false />
+10-06 13:04:03.673 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=402 parentTag=404 isRoot=false />
+10-06 13:04:03.673 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=404 parentTag=406 isRoot=false />
+10-06 13:04:03.673 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=406 parentTag=408 isRoot=false />
+10-06 13:04:03.674 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=442 parentTag=446 isRoot=false />
+10-06 13:04:03.674 14767 14767 E unknown:SurfaceMountingManager: <RNSScreen id=8636 parentTag=-1 isRoot=false />
+10-06 13:04:03.674 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=444 parentTag=446 isRoot=false />
+10-06 13:04:03.674 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=446 parentTag=448 isRoot=false />
+10-06 13:04:03.674 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=448 parentTag=450 isRoot=false />
+10-06 13:04:03.674 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=514 parentTag=524 isRoot=false />
+10-06 13:04:03.674 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=516 parentTag=524 isRoot=false />
+10-06 13:04:03.674 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=518 parentTag=524 isRoot=false />
+10-06 13:04:03.674 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=520 parentTag=524 isRoot=false />
+10-06 13:04:03.674 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=522 parentTag=524 isRoot=false />
+10-06 13:04:03.675 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=524 parentTag=526 isRoot=false />
+10-06 13:04:03.675 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=526 parentTag=632 isRoot=false />
+10-06 13:04:03.675 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=638 parentTag=644 isRoot=false />
+10-06 13:04:03.675 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=640 parentTag=644 isRoot=false />
+10-06 13:04:03.676 14767 14767 E unknown:SurfaceMountingManager: <RNSVGRect id=642 parentTag=644 isRoot=false />
+10-06 13:04:03.676 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=644 parentTag=646 isRoot=false />
+10-06 13:04:03.676 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=646 parentTag=752 isRoot=false />
+10-06 13:04:03.677 14767 14767 E unknown:SurfaceMountingManager: <RNSVGEllipse id=758 parentTag=764 isRoot=false />
+10-06 13:04:03.677 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=760 parentTag=764 isRoot=false />
+10-06 13:04:03.677 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=762 parentTag=764 isRoot=false />
+10-06 13:04:03.677 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=764 parentTag=766 isRoot=false />
+10-06 13:04:03.677 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=766 parentTag=960 isRoot=false />
+10-06 13:04:03.680 14767 14767 E unknown:SurfaceMountingManager: <null id=974 parentTag=null isRoot=false />
+10-06 13:04:03.680 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=1010 parentTag=1020 isRoot=false />
+10-06 13:04:03.680 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=1012 parentTag=1020 isRoot=false />
+10-06 13:04:03.680 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=1014 parentTag=1020 isRoot=false />
+10-06 13:04:03.680 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=1016 parentTag=1020 isRoot=false />
+10-06 13:04:03.680 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=1018 parentTag=1020 isRoot=false />
+10-06 13:04:03.680 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=1020 parentTag=1022 isRoot=false />
+10-06 13:04:03.680 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=1022 parentTag=1028 isRoot=false />
+10-06 13:04:03.680 14767 14767 E unknown:SurfaceMountingManager: <null id=1040 parentTag=null isRoot=false />
+10-06 13:04:03.681 14767 14767 E unknown:SurfaceMountingManager: <RNSScreen id=1146 parentTag=-1 isRoot=false />
+10-06 13:04:03.681 14767 14767 E unknown:SurfaceMountingManager: <RNSScreenContainer id=1148 parentTag=1254 isRoot=false />
+10-06 13:04:03.681 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=1152 parentTag=1156 isRoot=false />
+10-06 13:04:03.681 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=1154 parentTag=1156 isRoot=false />
+10-06 13:04:03.681 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=1156 parentTag=1158 isRoot=false />
+10-06 13:04:03.681 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=1158 parentTag=1160 isRoot=false />
+10-06 13:04:03.681 14767 14767 E unknown:SurfaceMountingManager: <RNSVGRect id=1168 parentTag=1180 isRoot=false />
+10-06 13:04:03.681 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=1170 parentTag=1180 isRoot=false />
+10-06 13:04:03.681 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=1172 parentTag=1180 isRoot=false />
+10-06 13:04:03.681 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=1174 parentTag=1180 isRoot=false />
+10-06 13:04:03.682 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=1176 parentTag=1180 isRoot=false />
+10-06 13:04:03.682 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=9368 parentTag=9372 isRoot=false />
+10-06 13:04:03.682 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=1178 parentTag=1180 isRoot=false />
+10-06 13:04:03.682 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=9370 parentTag=9372 isRoot=false />
+10-06 13:04:03.682 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=1180 parentTag=1182 isRoot=false />
+10-06 13:04:03.682 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=9372 parentTag=9374 isRoot=false />
+10-06 13:04:03.682 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=1182 parentTag=1184 isRoot=false />
+10-06 13:04:03.682 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=9374 parentTag=9376 isRoot=false />
+10-06 13:04:03.682 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=1192 parentTag=1194 isRoot=false />
+10-06 13:04:03.682 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=1194 parentTag=1196 isRoot=false />
+10-06 13:04:03.682 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=1196 parentTag=1198 isRoot=false />
+10-06 13:04:03.682 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=1206 parentTag=1216 isRoot=false />
+10-06 13:04:03.682 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=1208 parentTag=1216 isRoot=false />
+10-06 13:04:03.682 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=1210 parentTag=1216 isRoot=false />
+10-06 13:04:03.682 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=1212 parentTag=1216 isRoot=false />
+10-06 13:04:03.682 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=1214 parentTag=1216 isRoot=false />
+10-06 13:04:03.682 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=1216 parentTag=1218 isRoot=false />
+10-06 13:04:03.682 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=9408 parentTag=9410 isRoot=false />
+10-06 13:04:03.682 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=1218 parentTag=1220 isRoot=false />
+10-06 13:04:03.682 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=9410 parentTag=9412 isRoot=false />
+10-06 13:04:03.682 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=9412 parentTag=9416 isRoot=false />
+10-06 13:04:03.683 14767 14767 E unknown:SurfaceMountingManager: <RNSVGCircle id=1228 parentTag=1234 isRoot=false />
+10-06 13:04:03.683 14767 14767 E unknown:SurfaceMountingManager: <RNSVGCircle id=1230 parentTag=1234 isRoot=false />
+10-06 13:04:03.683 14767 14767 E unknown:SurfaceMountingManager: <RNSVGCircle id=1232 parentTag=1234 isRoot=false />
+10-06 13:04:03.683 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=1234 parentTag=1236 isRoot=false />
+10-06 13:04:03.683 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=9426 parentTag=9434 isRoot=false />
+10-06 13:04:03.683 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=1236 parentTag=1238 isRoot=false />
+10-06 13:04:03.683 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=9428 parentTag=9434 isRoot=false />
+10-06 13:04:03.683 14767 14767 E unknown:SurfaceMountingManager: <RNSVGCircle id=9430 parentTag=9434 isRoot=false />
+10-06 13:04:03.683 14767 14767 E unknown:SurfaceMountingManager: <RNSVGCircle id=9432 parentTag=9434 isRoot=false />
+10-06 13:04:03.683 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=9434 parentTag=9436 isRoot=false />
+10-06 13:04:03.683 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=9436 parentTag=9454 isRoot=false />
+10-06 13:04:03.683 14767 14767 E unknown:SurfaceMountingManager: <RNSScreenContentWrapper id=1254 parentTag=1258 isRoot=false />
+10-06 13:04:03.683 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=9446 parentTag=9448 isRoot=false />
+10-06 13:04:03.683 14767 14767 E unknown:SurfaceMountingManager: <RNSScreenStackHeaderConfig id=1256 parentTag=1258 isRoot=false />
+10-06 13:04:03.683 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=9448 parentTag=9450 isRoot=false />
+10-06 13:04:03.683 14767 14767 E unknown:SurfaceMountingManager: <RNSScreen id=1258 parentTag=-1 isRoot=false />
+10-06 13:04:03.683 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=9450 parentTag=9454 isRoot=false />
+10-06 13:04:03.683 14767 14767 E unknown:SurfaceMountingManager: <RNSScreenStack id=1260 parentTag=1264 isRoot=false />
+10-06 13:04:03.683 14767 14767 E unknown:SurfaceMountingManager: <RNSScreenContentWrapper id=1264 parentTag=1268 isRoot=false />
+10-06 13:04:03.683 14767 14767 E unknown:SurfaceMountingManager: <RNSScreenStackHeaderConfig id=1266 parentTag=1268 isRoot=false />
+10-06 13:04:03.683 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=9458 parentTag=9462 isRoot=false />
+10-06 13:04:03.683 14767 14767 E unknown:SurfaceMountingManager: <RNSScreen id=1268 parentTag=-1 isRoot=false />
+10-06 13:04:03.683 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=9460 parentTag=9462 isRoot=false />
+10-06 13:04:03.683 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=9462 parentTag=9464 isRoot=false />
+10-06 13:04:03.683 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=9464 parentTag=9482 isRoot=false />
+10-06 13:04:03.683 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=9474 parentTag=9476 isRoot=false />
+10-06 13:04:03.683 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=9476 parentTag=9478 isRoot=false />
+10-06 13:04:03.683 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=9478 parentTag=9482 isRoot=false />
+10-06 13:04:03.683 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=9486 parentTag=9490 isRoot=false />
+10-06 13:04:03.683 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=9488 parentTag=9490 isRoot=false />
+10-06 13:04:03.683 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=9490 parentTag=9492 isRoot=false />
+10-06 13:04:03.683 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=9492 parentTag=9510 isRoot=false />
+10-06 13:04:03.684 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=9502 parentTag=9504 isRoot=false />
+10-06 13:04:03.684 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=9504 parentTag=9506 isRoot=false />
+10-06 13:04:03.684 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=9506 parentTag=9510 isRoot=false />
+10-06 13:04:03.684 14767 14767 E unknown:SurfaceMountingManager: <RNSVGLinearGradient id=1326 parentTag=1328 isRoot=false />
+10-06 13:04:03.684 14767 14767 E unknown:SurfaceMountingManager: <RNSVGDefs id=1328 parentTag=1344 isRoot=false />
+10-06 13:04:03.684 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=9520 parentTag=9544 isRoot=false />
+10-06 13:04:03.684 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=1330 parentTag=1344 isRoot=false />
+10-06 13:04:03.684 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=9522 parentTag=9544 isRoot=false />
+10-06 13:04:03.684 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=1332 parentTag=1344 isRoot=false />
+10-06 13:04:03.684 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=9524 parentTag=9544 isRoot=false />
+10-06 13:04:03.684 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=1334 parentTag=1344 isRoot=false />
+10-06 13:04:03.684 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=9526 parentTag=9544 isRoot=false />
+10-06 13:04:03.684 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=1336 parentTag=1344 isRoot=false />
+10-06 13:04:03.685 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=9528 parentTag=9544 isRoot=false />
+10-06 13:04:03.685 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=1338 parentTag=1344 isRoot=false />
+10-06 13:04:03.685 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=9530 parentTag=9544 isRoot=false />
+10-06 13:04:03.685 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=1340 parentTag=1344 isRoot=false />
+10-06 13:04:03.685 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=9532 parentTag=9544 isRoot=false />
+10-06 13:04:03.685 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=1342 parentTag=1344 isRoot=false />
+10-06 13:04:03.685 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=9534 parentTag=9544 isRoot=false />
+10-06 13:04:03.685 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=1344 parentTag=1346 isRoot=false />
+10-06 13:04:03.686 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=9536 parentTag=9544 isRoot=false />
+10-06 13:04:03.686 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=1346 parentTag=1348 isRoot=false />
+10-06 13:04:03.686 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=9538 parentTag=9544 isRoot=false />
+10-06 13:04:03.686 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=9540 parentTag=9544 isRoot=false />
+10-06 13:04:03.686 14767 14767 E unknown:SurfaceMountingManager: <RNSVGCircle id=9542 parentTag=9544 isRoot=false />
+10-06 13:04:03.686 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=9544 parentTag=9546 isRoot=false />
+10-06 13:04:03.686 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=9546 parentTag=9564 isRoot=false />
+10-06 13:04:03.687 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=1362 parentTag=1366 isRoot=false />
+10-06 13:04:03.687 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=1364 parentTag=1366 isRoot=false />
+10-06 13:04:03.687 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=9556 parentTag=9558 isRoot=false />
+10-06 13:04:03.687 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=1366 parentTag=1368 isRoot=false />
+10-06 13:04:03.687 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=9558 parentTag=9560 isRoot=false />
+10-06 13:04:03.687 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=1368 parentTag=1374 isRoot=false />
+10-06 13:04:03.687 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=9560 parentTag=9564 isRoot=false />
+10-06 13:04:03.688 14767 14767 E unknown:SurfaceMountingManager: <RNSVGEllipse id=9568 parentTag=9574 isRoot=false />
+10-06 13:04:03.688 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=9570 parentTag=9574 isRoot=false />
+10-06 13:04:03.688 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=9572 parentTag=9574 isRoot=false />
+10-06 13:04:03.688 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=1382 parentTag=1384 isRoot=false />
+10-06 13:04:03.688 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=9574 parentTag=9576 isRoot=false />
+10-06 13:04:03.688 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=1384 parentTag=1386 isRoot=false />
+10-06 13:04:03.688 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=9576 parentTag=9594 isRoot=false />
+10-06 13:04:03.688 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=1386 parentTag=1388 isRoot=false />
+10-06 13:04:03.688 14767 14767 E unknown:SurfaceMountingManager: <AndroidTextInput id=1390 parentTag=1396 isRoot=false />
+10-06 13:04:03.688 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=9586 parentTag=9588 isRoot=false />
+10-06 13:04:03.689 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=9588 parentTag=9590 isRoot=false />
+10-06 13:04:03.689 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=9590 parentTag=9594 isRoot=false />
+10-06 13:04:03.689 14767 14767 E unknown:SurfaceMountingManager: <RNSVGCircle id=9598 parentTag=9604 isRoot=false />
+10-06 13:04:03.689 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=9600 parentTag=9604 isRoot=false />
+10-06 13:04:03.689 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=9602 parentTag=9604 isRoot=false />
+10-06 13:04:03.689 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=9604 parentTag=9606 isRoot=false />
+10-06 13:04:03.689 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=9606 parentTag=9624 isRoot=false />
+10-06 13:04:03.689 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=9616 parentTag=9618 isRoot=false />
+10-06 13:04:03.689 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=9618 parentTag=9620 isRoot=false />
+10-06 13:04:03.689 14767 14767 E unknown:SurfaceMountingManager: <AndroidHorizontalScrollContentView id=1426 parentTag=1428 isRoot=false />
+10-06 13:04:03.689 14767 14767 E unknown:SurfaceMountingManager: <AndroidHorizontalScrollView id=1428 parentTag=1430 isRoot=false />
+10-06 13:04:03.689 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=9620 parentTag=9624 isRoot=false />
+10-06 13:04:03.689 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=9628 parentTag=9656 isRoot=false />
+10-06 13:04:03.689 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=9630 parentTag=9656 isRoot=false />
+10-06 13:04:03.689 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=9632 parentTag=9656 isRoot=false />
+10-06 13:04:03.689 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=9634 parentTag=9656 isRoot=false />
+10-06 13:04:03.689 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=9636 parentTag=9656 isRoot=false />
+10-06 13:04:03.689 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=9638 parentTag=9656 isRoot=false />
+10-06 13:04:03.689 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=9640 parentTag=9656 isRoot=false />
+10-06 13:04:03.689 14767 14767 E unknown:SurfaceMountingManager: <AndroidSwipeRefreshLayout id=1450 parentTag=1452 isRoot=false />
+10-06 13:04:03.689 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=9642 parentTag=9656 isRoot=false />
+10-06 13:04:03.689 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=9644 parentTag=9656 isRoot=false />
+10-06 13:04:03.689 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=9646 parentTag=9656 isRoot=false />
+10-06 13:04:03.689 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=9648 parentTag=9656 isRoot=false />
+10-06 13:04:03.689 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=9650 parentTag=9656 isRoot=false />
+10-06 13:04:03.689 14767 14767 E unknown:SurfaceMountingManager: <RNSScreenContentWrapper id=1460 parentTag=1464 isRoot=false />
+10-06 13:04:03.689 14767 14767 E unknown:SurfaceMountingManager: <RNSVGCircle id=9652 parentTag=9656 isRoot=false />
+10-06 13:04:03.689 14767 14767 E unknown:SurfaceMountingManager: <RNSVGCircle id=9654 parentTag=9656 isRoot=false />
+10-06 13:04:03.689 14767 14767 E unknown:SurfaceMountingManager: <RNSScreenStackHeaderConfig id=1462 parentTag=1464 isRoot=false />
+10-06 13:04:03.689 14767 14767 E unknown:SurfaceMountingManager: <RNSScreen id=1464 parentTag=-1 isRoot=false />
+10-06 13:04:03.689 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=9656 parentTag=9658 isRoot=false />
+10-06 13:04:03.689 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=9658 parentTag=9676 isRoot=false />
+10-06 13:04:03.689 14767 14767 E unknown:SurfaceMountingManager: <RNSScreenStack id=1466 parentTag=1474 isRoot=false />
+10-06 13:04:03.689 14767 14767 E unknown:SurfaceMountingManager: <RNSScreen id=1474 parentTag=-1 isRoot=false />
+10-06 13:04:03.689 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=9668 parentTag=9670 isRoot=false />
+10-06 13:04:03.689 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=9670 parentTag=9672 isRoot=false />
+10-06 13:04:03.689 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=9672 parentTag=9676 isRoot=false />
+10-06 13:04:03.690 14767 14767 E unknown:SurfaceMountingManager: <RNSVGCircle id=9680 parentTag=9686 isRoot=false />
+10-06 13:04:03.690 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=9682 parentTag=9686 isRoot=false />
+10-06 13:04:03.690 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=9684 parentTag=9686 isRoot=false />
+10-06 13:04:03.690 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=9686 parentTag=9688 isRoot=false />
+10-06 13:04:03.690 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=9688 parentTag=9706 isRoot=false />
+10-06 13:04:03.690 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=9698 parentTag=9700 isRoot=false />
+10-06 13:04:03.690 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=9700 parentTag=9702 isRoot=false />
+10-06 13:04:03.690 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=9702 parentTag=9706 isRoot=false />
+10-06 13:04:03.690 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=1520 parentTag=1522 isRoot=false />
+10-06 13:04:03.690 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=1522 parentTag=1524 isRoot=false />
+10-06 13:04:03.690 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=1524 parentTag=1530 isRoot=false />
+10-06 13:04:03.690 14767 14767 E unknown:SurfaceMountingManager: <RNSScreenContentWrapper id=9720 parentTag=9724 isRoot=false />
+10-06 13:04:03.690 14767 14767 E unknown:SurfaceMountingManager: <RNSScreenStackHeaderConfig id=9722 parentTag=9724 isRoot=false />
+10-06 13:04:03.690 14767 14767 E unknown:SurfaceMountingManager: <RNSScreen id=9724 parentTag=-1 isRoot=false />
+10-06 13:04:03.690 14767 14767 E unknown:SurfaceMountingManager: <RNSScreenStack id=9726 parentTag=9734 isRoot=false />
+10-06 13:04:03.690 14767 14767 E unknown:SurfaceMountingManager: <RNSScreen id=9734 parentTag=-1 isRoot=false />
+10-06 13:04:03.690 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=1584 parentTag=1586 isRoot=false />
+10-06 13:04:03.690 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=1586 parentTag=1588 isRoot=false />
+10-06 13:04:03.690 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=1588 parentTag=1594 isRoot=false />
+10-06 13:04:03.690 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=2190 parentTag=2196 isRoot=false />
+10-06 13:04:03.690 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=2192 parentTag=2196 isRoot=false />
+10-06 13:04:03.690 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=2194 parentTag=2196 isRoot=false />
+10-06 13:04:03.690 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=2196 parentTag=2198 isRoot=false />
+10-06 13:04:03.690 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=2198 parentTag=1518 isRoot=false />
+10-06 13:04:03.691 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=2212 parentTag=2218 isRoot=false />
+10-06 13:04:03.691 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=2214 parentTag=2218 isRoot=false />
+10-06 13:04:03.691 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=2216 parentTag=2218 isRoot=false />
+10-06 13:04:03.691 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=2218 parentTag=2220 isRoot=false />
+10-06 13:04:03.691 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=2220 parentTag=1582 isRoot=false />
+10-06 13:04:03.691 14767 14767 E unknown:SurfaceMountingManager: <RNSVGLinearGradient id=2512 parentTag=2514 isRoot=false />
+10-06 13:04:03.691 14767 14767 E unknown:SurfaceMountingManager: <RNSVGDefs id=2514 parentTag=2530 isRoot=false />
+10-06 13:04:03.691 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=2516 parentTag=2530 isRoot=false />
+10-06 13:04:03.691 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=2518 parentTag=2530 isRoot=false />
+10-06 13:04:03.691 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=2520 parentTag=2530 isRoot=false />
+10-06 13:04:03.691 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=2522 parentTag=2530 isRoot=false />
+10-06 13:04:03.691 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=2524 parentTag=2530 isRoot=false />
+10-06 13:04:03.691 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=2526 parentTag=2530 isRoot=false />
+10-06 13:04:03.691 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=2528 parentTag=2530 isRoot=false />
+10-06 13:04:03.691 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=2530 parentTag=2532 isRoot=false />
+10-06 13:04:03.691 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=2532 parentTag=2534 isRoot=false />
+10-06 13:04:03.691 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=2542 parentTag=2554 isRoot=false />
+10-06 13:04:03.691 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=2544 parentTag=2554 isRoot=false />
+10-06 13:04:03.691 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=2546 parentTag=2554 isRoot=false />
+10-06 13:04:03.691 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=2548 parentTag=2554 isRoot=false />
+10-06 13:04:03.691 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=2550 parentTag=2554 isRoot=false />
+10-06 13:04:03.691 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=2552 parentTag=2554 isRoot=false />
+10-06 13:04:03.691 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=2554 parentTag=2556 isRoot=false />
+10-06 13:04:03.691 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=2556 parentTag=2558 isRoot=false />
+10-06 13:04:03.691 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=2566 parentTag=2568 isRoot=false />
+10-06 13:04:03.691 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=2568 parentTag=2570 isRoot=false />
+10-06 13:04:03.691 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=2570 parentTag=2572 isRoot=false />
+10-06 13:04:03.691 14767 14767 E unknown:SurfaceMountingManager: <AndroidTextInput id=2574 parentTag=2618 isRoot=false />
+10-06 13:04:03.691 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=18978 parentTag=null isRoot=false />
+10-06 13:04:03.691 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=18980 parentTag=null isRoot=false />
+10-06 13:04:03.691 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=18982 parentTag=null isRoot=false />
+10-06 13:04:03.691 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=18984 parentTag=null isRoot=false />
+10-06 13:04:03.691 14767 14767 E unknown:SurfaceMountingManager: <AndroidHorizontalScrollContentView id=2614 parentTag=2616 isRoot=false />
+10-06 13:04:03.691 14767 14767 E unknown:SurfaceMountingManager: <AndroidHorizontalScrollView id=2616 parentTag=2618 isRoot=false />
+10-06 13:04:03.691 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=19000 parentTag=null isRoot=false />
+10-06 13:04:03.691 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=19002 parentTag=null isRoot=false />
+10-06 13:04:03.691 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=19004 parentTag=null isRoot=false />
+10-06 13:04:03.691 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=19006 parentTag=null isRoot=false />
+10-06 13:04:03.691 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=19008 parentTag=null isRoot=false />
+10-06 13:04:03.692 14767 14767 E unknown:SurfaceMountingManager: <RNSScreenContentWrapper id=2646 parentTag=2650 isRoot=false />
+10-06 13:04:03.692 14767 14767 E unknown:SurfaceMountingManager: <RNSScreenStackHeaderConfig id=2648 parentTag=2650 isRoot=false />
+10-06 13:04:03.692 14767 14767 E unknown:SurfaceMountingManager: <RNSScreen id=2650 parentTag=-1 isRoot=false />
+10-06 13:04:03.692 14767 14767 E unknown:SurfaceMountingManager: <RNSScreenStack id=2652 parentTag=2660 isRoot=false />
+10-06 13:04:03.692 14767 14767 E unknown:SurfaceMountingManager: <RNSScreen id=2660 parentTag=-1 isRoot=false />
+10-06 13:04:03.692 14767 14767 E unknown:SurfaceMountingManager: <RNSVGRect id=2690 parentTag=2694 isRoot=false />
+10-06 13:04:03.692 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=2692 parentTag=2694 isRoot=false />
+10-06 13:04:03.692 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=2694 parentTag=2696 isRoot=false />
+10-06 13:04:03.692 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=2696 parentTag=2702 isRoot=false />
+10-06 13:04:03.692 14767 14767 E unknown:SurfaceMountingManager: <RNSVGCircle id=2706 parentTag=2712 isRoot=false />
+10-06 13:04:03.692 14767 14767 E unknown:SurfaceMountingManager: <RNSVGCircle id=2708 parentTag=2712 isRoot=false />
+10-06 13:04:03.692 14767 14767 E unknown:SurfaceMountingManager: <RNSVGCircle id=2710 parentTag=2712 isRoot=false />
+10-06 13:04:03.693 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=2712 parentTag=2714 isRoot=false />
+10-06 13:04:03.693 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=2714 parentTag=2716 isRoot=false />
+10-06 13:04:03.693 14767 14767 E unknown:SurfaceMountingManager: <RNSVGRect id=2762 parentTag=2766 isRoot=false />
+10-06 13:04:03.693 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=2764 parentTag=2766 isRoot=false />
+10-06 13:04:03.694 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=2766 parentTag=2768 isRoot=false />
+10-06 13:04:03.694 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=2768 parentTag=2774 isRoot=false />
+10-06 13:04:03.694 14767 14767 E unknown:SurfaceMountingManager: <RNSVGCircle id=2778 parentTag=2784 isRoot=false />
+10-06 13:04:03.694 14767 14767 E unknown:SurfaceMountingManager: <RNSVGCircle id=2780 parentTag=2784 isRoot=false />
+10-06 13:04:03.694 14767 14767 E unknown:SurfaceMountingManager: <RNSVGCircle id=2782 parentTag=2784 isRoot=false />
+10-06 13:04:03.694 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=2784 parentTag=2786 isRoot=false />
+10-06 13:04:03.694 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=2786 parentTag=2788 isRoot=false />
+10-06 13:04:03.695 14767 14767 E unknown:SurfaceMountingManager: <RNSVGRect id=2834 parentTag=2838 isRoot=false />
+10-06 13:04:03.695 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=2836 parentTag=2838 isRoot=false />
+10-06 13:04:03.695 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=2838 parentTag=2840 isRoot=false />
+10-06 13:04:03.695 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=2840 parentTag=2846 isRoot=false />
+10-06 13:04:03.695 14767 14767 E unknown:SurfaceMountingManager: <RNSVGCircle id=2850 parentTag=2856 isRoot=false />
+10-06 13:04:03.695 14767 14767 E unknown:SurfaceMountingManager: <RNSVGCircle id=2852 parentTag=2856 isRoot=false />
+10-06 13:04:03.695 14767 14767 E unknown:SurfaceMountingManager: <RNSVGCircle id=2854 parentTag=2856 isRoot=false />
+10-06 13:04:03.695 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=2856 parentTag=2858 isRoot=false />
+10-06 13:04:03.695 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=2858 parentTag=2860 isRoot=false />
+10-06 13:04:03.695 14767 14767 E unknown:SurfaceMountingManager: <RNSVGRect id=2906 parentTag=2910 isRoot=false />
+10-06 13:04:03.695 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=2908 parentTag=2910 isRoot=false />
+10-06 13:04:03.695 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=2910 parentTag=2912 isRoot=false />
+10-06 13:04:03.695 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=2912 parentTag=2918 isRoot=false />
+10-06 13:04:03.696 14767 14767 E unknown:SurfaceMountingManager: <RNSVGCircle id=2922 parentTag=2928 isRoot=false />
+10-06 13:04:03.696 14767 14767 E unknown:SurfaceMountingManager: <RNSVGCircle id=2924 parentTag=2928 isRoot=false />
+10-06 13:04:03.696 14767 14767 E unknown:SurfaceMountingManager: <RNSVGCircle id=2926 parentTag=2928 isRoot=false />
+10-06 13:04:03.696 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=2928 parentTag=2930 isRoot=false />
+10-06 13:04:03.696 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=2930 parentTag=2932 isRoot=false />
+10-06 13:04:03.696 14767 14767 E unknown:SurfaceMountingManager: <RNSVGRect id=2978 parentTag=2982 isRoot=false />
+10-06 13:04:03.696 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=2980 parentTag=2982 isRoot=false />
+10-06 13:04:03.696 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=2982 parentTag=2984 isRoot=false />
+10-06 13:04:03.696 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=2984 parentTag=2990 isRoot=false />
+10-06 13:04:03.696 14767 14767 E unknown:SurfaceMountingManager: <RNSVGCircle id=2994 parentTag=3000 isRoot=false />
+10-06 13:04:03.696 14767 14767 E unknown:SurfaceMountingManager: <RNSVGCircle id=2996 parentTag=3000 isRoot=false />
+10-06 13:04:03.697 14767 14767 E unknown:SurfaceMountingManager: <RNSVGCircle id=2998 parentTag=3000 isRoot=false />
+10-06 13:04:03.697 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=3000 parentTag=3002 isRoot=false />
+10-06 13:04:03.697 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=3002 parentTag=3004 isRoot=false />
+10-06 13:04:03.697 14767 14767 E unknown:SurfaceMountingManager: <RNSVGCircle id=3050 parentTag=3052 isRoot=false />
+10-06 13:04:03.697 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=3052 parentTag=3054 isRoot=false />
+10-06 13:04:03.697 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=3054 parentTag=3060 isRoot=false />
+10-06 13:04:03.697 14767 14767 E unknown:SurfaceMountingManager: <RNSVGCircle id=3064 parentTag=3070 isRoot=false />
+10-06 13:04:03.697 14767 14767 E unknown:SurfaceMountingManager: <RNSVGCircle id=3066 parentTag=3070 isRoot=false />
+10-06 13:04:03.697 14767 14767 E unknown:SurfaceMountingManager: <RNSVGCircle id=3068 parentTag=3070 isRoot=false />
+10-06 13:04:03.697 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=3070 parentTag=3072 isRoot=false />
+10-06 13:04:03.697 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=3072 parentTag=3074 isRoot=false />
+10-06 13:04:03.698 14767 14767 E unknown:SurfaceMountingManager: <RNSVGRect id=3120 parentTag=3124 isRoot=false />
+10-06 13:04:03.698 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=3122 parentTag=3124 isRoot=false />
+10-06 13:04:03.698 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=3124 parentTag=3126 isRoot=false />
+10-06 13:04:03.698 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=3126 parentTag=3132 isRoot=false />
+10-06 13:04:03.700 14767 14767 E unknown:SurfaceMountingManager: <RNSVGCircle id=3136 parentTag=3142 isRoot=false />
+10-06 13:04:03.700 14767 14767 E unknown:SurfaceMountingManager: <RNSVGCircle id=3138 parentTag=3142 isRoot=false />
+10-06 13:04:03.700 14767 14767 E unknown:SurfaceMountingManager: <RNSVGCircle id=3140 parentTag=3142 isRoot=false />
+10-06 13:04:03.700 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=3142 parentTag=3144 isRoot=false />
+10-06 13:04:03.700 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=3144 parentTag=3146 isRoot=false />
+10-06 13:04:03.702 14767 14767 E unknown:SurfaceMountingManager: <RNSVGCircle id=19564 parentTag=null isRoot=false />
+10-06 13:04:03.702 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=19566 parentTag=null isRoot=false />
+10-06 13:04:03.702 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=19568 parentTag=null isRoot=false />
+10-06 13:04:03.702 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=19570 parentTag=null isRoot=false />
+10-06 13:04:03.702 14767 14767 E unknown:SurfaceMountingManager: <RNSVGRect id=3192 parentTag=3196 isRoot=false />
+10-06 13:04:03.702 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=3194 parentTag=3196 isRoot=false />
+10-06 13:04:03.702 14767 14767 E unknown:SurfaceMountingManager: <RNSVGCircle id=19578 parentTag=null isRoot=false />
+10-06 13:04:03.702 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=3196 parentTag=3198 isRoot=false />
+10-06 13:04:03.702 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=19580 parentTag=null isRoot=false />
+10-06 13:04:03.702 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=3198 parentTag=3204 isRoot=false />
+10-06 13:04:03.702 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=19582 parentTag=null isRoot=false />
+10-06 13:04:03.702 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=19584 parentTag=null isRoot=false />
+10-06 13:04:03.702 14767 14767 E unknown:SurfaceMountingManager: <RNSVGCircle id=3208 parentTag=3214 isRoot=false />
+10-06 13:04:03.702 14767 14767 E unknown:SurfaceMountingManager: <RNSVGCircle id=19592 parentTag=null isRoot=false />
+10-06 13:04:03.702 14767 14767 E unknown:SurfaceMountingManager: <RNSVGCircle id=3210 parentTag=3214 isRoot=false />
+10-06 13:04:03.702 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=19594 parentTag=null isRoot=false />
+10-06 13:04:03.702 14767 14767 E unknown:SurfaceMountingManager: <RNSVGCircle id=3212 parentTag=3214 isRoot=false />
+10-06 13:04:03.702 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=19596 parentTag=null isRoot=false />
+10-06 13:04:03.702 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=3214 parentTag=3216 isRoot=false />
+10-06 13:04:03.702 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=19598 parentTag=null isRoot=false />
+10-06 13:04:03.702 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=3216 parentTag=3218 isRoot=false />
+10-06 13:04:03.702 14767 14767 E unknown:SurfaceMountingManager: <RNSVGCircle id=19606 parentTag=null isRoot=false />
+10-06 13:04:03.702 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=19608 parentTag=null isRoot=false />
+10-06 13:04:03.702 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=19610 parentTag=null isRoot=false />
+10-06 13:04:03.702 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=19612 parentTag=null isRoot=false />
+10-06 13:04:03.702 14767 14767 E unknown:SurfaceMountingManager: <AndroidHorizontalScrollContentView id=19620 parentTag=null isRoot=false />
+10-06 13:04:03.702 14767 14767 E unknown:SurfaceMountingManager: <AndroidHorizontalScrollView id=19622 parentTag=null isRoot=false />
+10-06 13:04:03.703 14767 14767 E unknown:SurfaceMountingManager: <RNSVGRect id=3264 parentTag=3268 isRoot=false />
+10-06 13:04:03.703 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=3266 parentTag=3268 isRoot=false />
+10-06 13:04:03.703 14767 14767 E unknown:SurfaceMountingManager: <SkiaPictureView id=19650 parentTag=null isRoot=false />
+10-06 13:04:03.703 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=3268 parentTag=3270 isRoot=false />
+10-06 13:04:03.703 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=3270 parentTag=3276 isRoot=false />
+10-06 13:04:03.703 14767 14767 E unknown:SurfaceMountingManager: <RNSVGCircle id=3280 parentTag=3286 isRoot=false />
+10-06 13:04:03.703 14767 14767 E unknown:SurfaceMountingManager: <RNSVGCircle id=3282 parentTag=3286 isRoot=false />
+10-06 13:04:03.703 14767 14767 E unknown:SurfaceMountingManager: <RNSVGCircle id=3284 parentTag=3286 isRoot=false />
+10-06 13:04:03.703 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=3286 parentTag=3288 isRoot=false />
+10-06 13:04:03.703 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=3288 parentTag=3290 isRoot=false />
+10-06 13:04:03.704 14767 14767 E unknown:SurfaceMountingManager: <RNSVGRect id=3336 parentTag=3340 isRoot=false />
+10-06 13:04:03.704 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=3338 parentTag=3340 isRoot=false />
+10-06 13:04:03.704 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=3340 parentTag=3342 isRoot=false />
+10-06 13:04:03.704 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=3342 parentTag=3348 isRoot=false />
+10-06 13:04:03.704 14767 14767 E unknown:SurfaceMountingManager: <RNSVGCircle id=3352 parentTag=3358 isRoot=false />
+10-06 13:04:03.704 14767 14767 E unknown:SurfaceMountingManager: <RNSVGCircle id=3354 parentTag=3358 isRoot=false />
+10-06 13:04:03.704 14767 14767 E unknown:SurfaceMountingManager: <RNSVGCircle id=3356 parentTag=3358 isRoot=false />
+10-06 13:04:03.704 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=3358 parentTag=3360 isRoot=false />
+10-06 13:04:03.704 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=3360 parentTag=3362 isRoot=false />
+10-06 13:04:03.705 14767 14767 E unknown:SurfaceMountingManager: <RNSVGRect id=3408 parentTag=3412 isRoot=false />
+10-06 13:04:03.705 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=3410 parentTag=3412 isRoot=false />
+10-06 13:04:03.705 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=3412 parentTag=3414 isRoot=false />
+10-06 13:04:03.705 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=3414 parentTag=3420 isRoot=false />
+10-06 13:04:03.705 14767 14767 E unknown:SurfaceMountingManager: <RNSVGCircle id=3424 parentTag=3430 isRoot=false />
+10-06 13:04:03.705 14767 14767 E unknown:SurfaceMountingManager: <RNSVGCircle id=3426 parentTag=3430 isRoot=false />
+10-06 13:04:03.705 14767 14767 E unknown:SurfaceMountingManager: <RNSVGCircle id=3428 parentTag=3430 isRoot=false />
+10-06 13:04:03.705 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=3430 parentTag=3432 isRoot=false />
+10-06 13:04:03.705 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=3432 parentTag=3434 isRoot=false />
+10-06 13:04:03.705 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=3452 parentTag=3476 isRoot=false />
+10-06 13:04:03.706 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=3454 parentTag=3476 isRoot=false />
+10-06 13:04:03.706 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=3456 parentTag=3476 isRoot=false />
+10-06 13:04:03.706 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=3458 parentTag=3476 isRoot=false />
+10-06 13:04:03.706 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=3460 parentTag=3476 isRoot=false />
+10-06 13:04:03.706 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=3462 parentTag=3476 isRoot=false />
+10-06 13:04:03.706 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=3464 parentTag=3476 isRoot=false />
+10-06 13:04:03.706 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=3466 parentTag=3476 isRoot=false />
+10-06 13:04:03.706 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=3468 parentTag=3476 isRoot=false />
+10-06 13:04:03.706 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=3470 parentTag=3476 isRoot=false />
+10-06 13:04:03.706 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=3472 parentTag=3476 isRoot=false />
+10-06 13:04:03.706 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=3474 parentTag=3476 isRoot=false />
+10-06 13:04:03.706 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=3476 parentTag=3478 isRoot=false />
+10-06 13:04:03.706 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=3478 parentTag=3484 isRoot=false />
+10-06 13:04:03.706 14767 14767 E unknown:SurfaceMountingManager: <null id=3488 parentTag=null isRoot=false />
+10-06 13:04:03.706 14767 14767 E unknown:SurfaceMountingManager: <RNSVGCircle id=3512 parentTag=3514 isRoot=false />
+10-06 13:04:03.706 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=3514 parentTag=3516 isRoot=false />
+10-06 13:04:03.706 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=3516 parentTag=3522 isRoot=false />
+10-06 13:04:03.707 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=3526 parentTag=3528 isRoot=false />
+10-06 13:04:03.707 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=3528 parentTag=3530 isRoot=false />
+10-06 13:04:03.707 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=3530 parentTag=3534 isRoot=false />
+10-06 13:04:03.707 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=11738 parentTag=11742 isRoot=false />
+10-06 13:04:03.707 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=11740 parentTag=11742 isRoot=false />
+10-06 13:04:03.707 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=11742 parentTag=11744 isRoot=false />
+10-06 13:04:03.707 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=11744 parentTag=11746 isRoot=false />
+10-06 13:04:03.707 14767 14767 E unknown:SurfaceMountingManager: <RNSVGCircle id=3558 parentTag=3560 isRoot=false />
+10-06 13:04:03.707 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=3560 parentTag=3562 isRoot=false />
+10-06 13:04:03.707 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=3562 parentTag=3568 isRoot=false />
+10-06 13:04:03.707 14767 14767 E unknown:SurfaceMountingManager: <null id=11756 parentTag=null isRoot=false />
+10-06 13:04:03.707 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=3572 parentTag=3574 isRoot=false />
+10-06 13:04:03.707 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=3574 parentTag=3576 isRoot=false />
+10-06 13:04:03.707 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=3576 parentTag=3580 isRoot=false />
+10-06 13:04:03.708 14767 14767 E unknown:SurfaceMountingManager: <null id=3596 parentTag=null isRoot=false />
+10-06 13:04:03.708 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=3606 parentTag=3612 isRoot=false />
+10-06 13:04:03.708 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=3608 parentTag=3612 isRoot=false />
+10-06 13:04:03.708 14767 14767 E unknown:SurfaceMountingManager: <RNSVGRect id=3610 parentTag=3612 isRoot=false />
+10-06 13:04:03.708 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=3612 parentTag=3614 isRoot=false />
+10-06 13:04:03.708 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=3614 parentTag=3654 isRoot=false />
+10-06 13:04:03.709 14767 14767 E unknown:SurfaceMountingManager: <RNSVGCircle id=3632 parentTag=3634 isRoot=false />
+10-06 13:04:03.709 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=3634 parentTag=3636 isRoot=false />
+10-06 13:04:03.709 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=3636 parentTag=3642 isRoot=false />
+10-06 13:04:03.710 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=3646 parentTag=3648 isRoot=false />
+10-06 13:04:03.710 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=3648 parentTag=3650 isRoot=false />
+10-06 13:04:03.710 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=3650 parentTag=3654 isRoot=false />
+10-06 13:04:03.710 14767 14767 E unknown:SurfaceMountingManager: <null id=11842 parentTag=null isRoot=false />
+10-06 13:04:03.710 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=3664 parentTag=3670 isRoot=false />
+10-06 13:04:03.710 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=3666 parentTag=3670 isRoot=false />
+10-06 13:04:03.710 14767 14767 E unknown:SurfaceMountingManager: <RNSVGRect id=3668 parentTag=3670 isRoot=false />
+10-06 13:04:03.710 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=3670 parentTag=3672 isRoot=false />
+10-06 13:04:03.710 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=3672 parentTag=3712 isRoot=false />
+10-06 13:04:03.711 14767 14767 E unknown:SurfaceMountingManager: <RNSVGCircle id=3690 parentTag=3692 isRoot=false />
+10-06 13:04:03.711 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=3692 parentTag=3694 isRoot=false />
+10-06 13:04:03.711 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=3694 parentTag=3700 isRoot=false />
+10-06 13:04:03.711 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=3704 parentTag=3706 isRoot=false />
+10-06 13:04:03.711 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=3706 parentTag=3708 isRoot=false />
+10-06 13:04:03.711 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=3708 parentTag=3712 isRoot=false />
+10-06 13:04:03.711 14767 14767 E unknown:SurfaceMountingManager: <null id=3728 parentTag=null isRoot=false />
+10-06 13:04:03.711 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=3736 parentTag=3746 isRoot=false />
+10-06 13:04:03.712 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=3738 parentTag=3746 isRoot=false />
+10-06 13:04:03.712 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=3740 parentTag=3746 isRoot=false />
+10-06 13:04:03.712 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=3742 parentTag=3746 isRoot=false />
+10-06 13:04:03.712 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=3744 parentTag=3746 isRoot=false />
+10-06 13:04:03.712 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=3746 parentTag=3748 isRoot=false />
+10-06 13:04:03.712 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=3748 parentTag=3772 isRoot=false />
+10-06 13:04:03.712 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=3764 parentTag=3766 isRoot=false />
+10-06 13:04:03.712 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=3766 parentTag=3768 isRoot=false />
+10-06 13:04:03.712 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=3768 parentTag=3772 isRoot=false />
+10-06 13:04:03.712 14767 14767 E unknown:SurfaceMountingManager: <null id=11964 parentTag=null isRoot=false />
+10-06 13:04:03.712 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=3782 parentTag=3798 isRoot=false />
+10-06 13:04:03.713 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=3784 parentTag=3798 isRoot=false />
+10-06 13:04:03.713 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=3786 parentTag=3798 isRoot=false />
+10-06 13:04:03.713 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=3788 parentTag=3798 isRoot=false />
+10-06 13:04:03.713 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=3790 parentTag=3798 isRoot=false />
+10-06 13:04:03.713 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=3792 parentTag=3798 isRoot=false />
+10-06 13:04:03.713 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=3794 parentTag=3798 isRoot=false />
+10-06 13:04:03.713 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=3796 parentTag=3798 isRoot=false />
+10-06 13:04:03.713 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=3798 parentTag=3800 isRoot=false />
+10-06 13:04:03.713 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=3800 parentTag=3828 isRoot=false />
+10-06 13:04:03.713 14767 14767 E unknown:SurfaceMountingManager: <RNSScreenContentWrapper id=11998 parentTag=12002 isRoot=false />
+10-06 13:04:03.713 14767 14767 E unknown:SurfaceMountingManager: <RNSScreenStackHeaderConfig id=12000 parentTag=12002 isRoot=false />
+10-06 13:04:03.715 14767 14767 E unknown:SurfaceMountingManager: <RNSScreen id=12002 parentTag=-1 isRoot=false />
+10-06 13:04:03.715 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=3820 parentTag=3822 isRoot=false />
+10-06 13:04:03.715 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=3822 parentTag=3824 isRoot=false />
+10-06 13:04:03.715 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=3824 parentTag=3828 isRoot=false />
+10-06 13:04:03.715 14767 14767 E unknown:SurfaceMountingManager: <RNSVGRect id=3836 parentTag=3840 isRoot=false />
+10-06 13:04:03.715 14767 14767 E unknown:SurfaceMountingManager: <RNSVGLine id=3838 parentTag=3840 isRoot=false />
+10-06 13:04:03.715 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=3840 parentTag=3842 isRoot=false />
+10-06 13:04:03.715 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=3842 parentTag=3870 isRoot=false />
+10-06 13:04:03.715 14767 14767 E unknown:SurfaceMountingManager: <SkiaPictureView id=20226 parentTag=null isRoot=false />
+10-06 13:04:03.715 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=3862 parentTag=3864 isRoot=false />
+10-06 13:04:03.715 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=3864 parentTag=3866 isRoot=false />
+10-06 13:04:03.715 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=3866 parentTag=3870 isRoot=false />
+10-06 13:04:03.715 14767 14767 E unknown:SurfaceMountingManager: <SkiaPictureView id=20252 parentTag=null isRoot=false />
+10-06 13:04:03.715 14767 14767 E unknown:SurfaceMountingManager: <RNSScreenContentWrapper id=3892 parentTag=3896 isRoot=false />
+10-06 13:04:03.715 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=20276 parentTag=null isRoot=false />
+10-06 13:04:03.715 14767 14767 E unknown:SurfaceMountingManager: <RNSScreenStackHeaderConfig id=3894 parentTag=3896 isRoot=false />
+10-06 13:04:03.715 14767 14767 E unknown:SurfaceMountingManager: <RNSVGCircle id=20278 parentTag=null isRoot=false />
+10-06 13:04:03.715 14767 14767 E unknown:SurfaceMountingManager: <RNSScreen id=3896 parentTag=-1 isRoot=false />
+10-06 13:04:03.715 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=20280 parentTag=null isRoot=false />
+10-06 13:04:03.715 14767 14767 E unknown:SurfaceMountingManager: <RNSScreenStack id=3898 parentTag=3906 isRoot=false />
+10-06 13:04:03.715 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=20282 parentTag=null isRoot=false />
+10-06 13:04:03.715 14767 14767 E unknown:SurfaceMountingManager: <RNSScreen id=3906 parentTag=-1 isRoot=false />
+10-06 13:04:03.715 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=20292 parentTag=null isRoot=false />
+10-06 13:04:03.715 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=20294 parentTag=null isRoot=false />
+10-06 13:04:03.715 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=20296 parentTag=null isRoot=false />
+10-06 13:04:03.715 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=20310 parentTag=null isRoot=false />
+10-06 13:04:03.716 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=20312 parentTag=null isRoot=false />
+10-06 13:04:03.716 14767 14767 E unknown:SurfaceMountingManager: <RNSVGRect id=20314 parentTag=null isRoot=false />
+10-06 13:04:03.716 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=20316 parentTag=null isRoot=false />
+10-06 13:04:03.716 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=20318 parentTag=null isRoot=false />
+10-06 13:04:03.716 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=20328 parentTag=null isRoot=false />
+10-06 13:04:03.716 14767 14767 E unknown:SurfaceMountingManager: <RNSVGCircle id=20330 parentTag=null isRoot=false />
+10-06 13:04:03.716 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=20332 parentTag=null isRoot=false />
+10-06 13:04:03.716 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=20334 parentTag=null isRoot=false />
+10-06 13:04:03.716 14767 14767 E unknown:SurfaceMountingManager: <RNSVGRect id=20354 parentTag=null isRoot=false />
+10-06 13:04:03.716 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=20356 parentTag=null isRoot=false />
+10-06 13:04:03.716 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=20358 parentTag=null isRoot=false />
+10-06 13:04:03.716 14767 14767 E unknown:SurfaceMountingManager: <RNSScreenContentWrapper id=20378 parentTag=20382 isRoot=false />
+10-06 13:04:03.716 14767 14767 E unknown:SurfaceMountingManager: <RNSScreenStackHeaderConfig id=20380 parentTag=20382 isRoot=false />
+10-06 13:04:03.716 14767 14767 E unknown:SurfaceMountingManager: <RNSScreen id=20382 parentTag=-1 isRoot=false />
+10-06 13:04:03.716 14767 14767 E unknown:SurfaceMountingManager: <RNSScreenStack id=20384 parentTag=20388 isRoot=false />
+10-06 13:04:03.716 14767 14767 E unknown:SurfaceMountingManager: <RNSScreenContentWrapper id=20388 parentTag=20392 isRoot=false />
+10-06 13:04:03.716 14767 14767 E unknown:SurfaceMountingManager: <RNSScreenStackHeaderConfig id=20390 parentTag=20392 isRoot=false />
+10-06 13:04:03.716 14767 14767 E unknown:SurfaceMountingManager: <RNSScreen id=20392 parentTag=-1 isRoot=false />
+10-06 13:04:03.716 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=4204 parentTag=4208 isRoot=false />
+10-06 13:04:03.716 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=4206 parentTag=4208 isRoot=false />
+10-06 13:04:03.716 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=4208 parentTag=4210 isRoot=false />
+10-06 13:04:03.716 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=4210 parentTag=4212 isRoot=false />
+10-06 13:04:03.716 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=4226 parentTag=4232 isRoot=false />
+10-06 13:04:03.716 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=4228 parentTag=4232 isRoot=false />
+10-06 13:04:03.716 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=4230 parentTag=4232 isRoot=false />
+10-06 13:04:03.716 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=4232 parentTag=4234 isRoot=false />
+10-06 13:04:03.716 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=4234 parentTag=4240 isRoot=false />
+10-06 13:04:03.716 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=4272 parentTag=4274 isRoot=false />
+10-06 13:04:03.716 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=4274 parentTag=4276 isRoot=false />
+10-06 13:04:03.716 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=4276 parentTag=4278 isRoot=false />
+10-06 13:04:03.717 14767 14767 E unknown:SurfaceMountingManager: <null id=4296 parentTag=null isRoot=false />
+10-06 13:04:03.717 14767 14767 E unknown:SurfaceMountingManager: <RNSScreenContentWrapper id=4482 parentTag=4486 isRoot=false />
+10-06 13:04:03.717 14767 14767 E unknown:SurfaceMountingManager: <RNSScreenStackHeaderConfig id=4484 parentTag=4486 isRoot=false />
+10-06 13:04:03.717 14767 14767 E unknown:SurfaceMountingManager: <RNSScreen id=4486 parentTag=-1 isRoot=false />
+10-06 13:04:03.717 14767 14767 E unknown:SurfaceMountingManager: <RNSVGLinearGradient id=4492 parentTag=4494 isRoot=false />
+10-06 13:04:03.717 14767 14767 E unknown:SurfaceMountingManager: <RNSVGDefs id=4494 parentTag=4510 isRoot=false />
+10-06 13:04:03.717 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=4496 parentTag=4510 isRoot=false />
+10-06 13:04:03.717 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=4498 parentTag=4510 isRoot=false />
+10-06 13:04:03.717 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=4500 parentTag=4510 isRoot=false />
+10-06 13:04:03.718 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=4502 parentTag=4510 isRoot=false />
+10-06 13:04:03.718 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=4504 parentTag=4510 isRoot=false />
+10-06 13:04:03.718 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=4506 parentTag=4510 isRoot=false />
+10-06 13:04:03.718 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=4508 parentTag=4510 isRoot=false />
+10-06 13:04:03.718 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=4510 parentTag=4512 isRoot=false />
+10-06 13:04:03.718 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=4512 parentTag=4514 isRoot=false />
+10-06 13:04:03.718 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=4538 parentTag=4542 isRoot=false />
+10-06 13:04:03.718 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=4540 parentTag=4542 isRoot=false />
+10-06 13:04:03.719 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=4542 parentTag=4544 isRoot=false />
+10-06 13:04:03.719 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=4544 parentTag=4550 isRoot=false />
+10-06 13:04:03.719 14767 14767 E unknown:SurfaceMountingManager: <RNSVGRect id=4570 parentTag=4574 isRoot=false />
+10-06 13:04:03.719 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=4572 parentTag=4574 isRoot=false />
+10-06 13:04:03.719 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=4574 parentTag=4576 isRoot=false />
+10-06 13:04:03.719 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=4576 parentTag=4582 isRoot=false />
+10-06 13:04:03.719 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=4586 parentTag=4592 isRoot=false />
+10-06 13:04:03.719 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=4588 parentTag=4592 isRoot=false />
+10-06 13:04:03.719 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=4590 parentTag=4592 isRoot=false />
+10-06 13:04:03.719 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=4592 parentTag=4594 isRoot=false />
+10-06 13:04:03.719 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=4594 parentTag=4600 isRoot=false />
+10-06 13:04:03.722 14767 14767 E unknown:SurfaceMountingManager: <RNSVGRect id=4832 parentTag=4842 isRoot=false />
+10-06 13:04:03.722 14767 14767 E unknown:SurfaceMountingManager: <RNSVGRect id=4834 parentTag=4842 isRoot=false />
+10-06 13:04:03.722 14767 14767 E unknown:SurfaceMountingManager: <RNSVGRect id=4836 parentTag=4842 isRoot=false />
+10-06 13:04:03.722 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=4838 parentTag=4842 isRoot=false />
+10-06 13:04:03.722 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=4840 parentTag=4842 isRoot=false />
+10-06 13:04:03.722 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=4842 parentTag=4844 isRoot=false />
+10-06 13:04:03.722 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=4844 parentTag=4876 isRoot=false />
+10-06 13:04:03.722 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=4848 parentTag=4850 isRoot=false />
+10-06 13:04:03.722 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=4850 parentTag=4852 isRoot=false />
+10-06 13:04:03.722 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=4852 parentTag=4876 isRoot=false />
+10-06 13:04:03.722 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=4884 parentTag=4888 isRoot=false />
+10-06 13:04:03.723 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=4886 parentTag=4888 isRoot=false />
+10-06 13:04:03.723 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=4888 parentTag=4890 isRoot=false />
+10-06 13:04:03.723 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=4890 parentTag=4918 isRoot=false />
+10-06 13:04:03.723 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=4894 parentTag=4896 isRoot=false />
+10-06 13:04:03.723 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=4896 parentTag=4898 isRoot=false />
+10-06 13:04:03.723 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=4898 parentTag=4918 isRoot=false />
+10-06 13:04:03.723 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=4924 parentTag=4928 isRoot=false />
+10-06 13:04:03.723 14767 14767 E unknown:SurfaceMountingManager: <RNSVGCircle id=4926 parentTag=4928 isRoot=false />
+10-06 13:04:03.723 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=4928 parentTag=4930 isRoot=false />
+10-06 13:04:03.723 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=4930 parentTag=4958 isRoot=false />
+10-06 13:04:03.723 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=4934 parentTag=4936 isRoot=false />
+10-06 13:04:03.723 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=4936 parentTag=4938 isRoot=false />
+10-06 13:04:03.723 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=4938 parentTag=4958 isRoot=false />
+10-06 13:04:03.724 14767 14767 E unknown:SurfaceMountingManager: <null id=4970 parentTag=null isRoot=false />
+10-06 13:04:03.724 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=4978 parentTag=4984 isRoot=false />
+10-06 13:04:03.724 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=4980 parentTag=4984 isRoot=false />
+10-06 13:04:03.724 14767 14767 E unknown:SurfaceMountingManager: <RNSVGLine id=4982 parentTag=4984 isRoot=false />
+10-06 13:04:03.724 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=4984 parentTag=4986 isRoot=false />
+10-06 13:04:03.724 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=4986 parentTag=5018 isRoot=false />
+10-06 13:04:03.724 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=5008 parentTag=5010 isRoot=false />
+10-06 13:04:03.724 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=5010 parentTag=5012 isRoot=false />
+10-06 13:04:03.724 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=5012 parentTag=5018 isRoot=false />
+10-06 13:04:03.724 14767 14767 E unknown:SurfaceMountingManager: <RNSVGCircle id=5024 parentTag=5030 isRoot=false />
+10-06 13:04:03.724 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=5026 parentTag=5030 isRoot=false />
+10-06 13:04:03.724 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=5028 parentTag=5030 isRoot=false />
+10-06 13:04:03.724 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=5030 parentTag=5032 isRoot=false />
+10-06 13:04:03.724 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=5032 parentTag=5058 isRoot=false />
+10-06 13:04:03.724 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=5048 parentTag=5050 isRoot=false />
+10-06 13:04:03.725 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=5050 parentTag=5052 isRoot=false />
+10-06 13:04:03.725 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=5052 parentTag=5058 isRoot=false />
+10-06 13:04:03.725 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=5064 parentTag=5070 isRoot=false />
+10-06 13:04:03.725 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=5066 parentTag=5070 isRoot=false />
+10-06 13:04:03.725 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=5068 parentTag=5070 isRoot=false />
+10-06 13:04:03.725 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=5070 parentTag=5072 isRoot=false />
+10-06 13:04:03.725 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=5072 parentTag=5104 isRoot=false />
+10-06 13:04:03.725 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=5094 parentTag=5096 isRoot=false />
+10-06 13:04:03.725 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=5096 parentTag=5098 isRoot=false />
+10-06 13:04:03.725 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=5098 parentTag=5104 isRoot=false />
+10-06 13:04:03.725 14767 14767 E unknown:SurfaceMountingManager: <RNSVGLinearGradient id=5116 parentTag=5118 isRoot=false />
+10-06 13:04:03.725 14767 14767 E unknown:SurfaceMountingManager: <RNSVGDefs id=5118 parentTag=5134 isRoot=false />
+10-06 13:04:03.725 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=5120 parentTag=5134 isRoot=false />
+10-06 13:04:03.725 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=5122 parentTag=5134 isRoot=false />
+10-06 13:04:03.725 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=5124 parentTag=5134 isRoot=false />
+10-06 13:04:03.725 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=5126 parentTag=5134 isRoot=false />
+10-06 13:04:03.725 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=5128 parentTag=5134 isRoot=false />
+10-06 13:04:03.725 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=5130 parentTag=5134 isRoot=false />
+10-06 13:04:03.725 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=5132 parentTag=5134 isRoot=false />
+10-06 13:04:03.725 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=5134 parentTag=5136 isRoot=false />
+10-06 13:04:03.725 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=5136 parentTag=5138 isRoot=false />
+10-06 13:04:03.726 14767 14767 E unknown:SurfaceMountingManager: <RNSScreen id=5190 parentTag=-1 isRoot=false />
+10-06 13:04:03.726 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=5196 parentTag=5200 isRoot=false />
+10-06 13:04:03.726 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=5198 parentTag=5200 isRoot=false />
+10-06 13:04:03.726 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=5200 parentTag=5202 isRoot=false />
+10-06 13:04:03.726 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=5202 parentTag=5204 isRoot=false />
+10-06 13:04:03.726 14767 14767 E unknown:SurfaceMountingManager: <RNSVGRect id=5218 parentTag=5222 isRoot=false />
+10-06 13:04:03.726 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=5220 parentTag=5222 isRoot=false />
+10-06 13:04:03.726 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=5222 parentTag=5224 isRoot=false />
+10-06 13:04:03.726 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=5224 parentTag=5230 isRoot=false />
+10-06 13:04:03.727 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=5248 parentTag=5252 isRoot=false />
+10-06 13:04:03.727 14767 14767 E unknown:SurfaceMountingManager: <RNSVGRect id=5250 parentTag=5252 isRoot=false />
+10-06 13:04:03.727 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=5252 parentTag=5254 isRoot=false />
+10-06 13:04:03.727 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=5254 parentTag=5270 isRoot=false />
+10-06 13:04:03.727 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=5276 parentTag=5280 isRoot=false />
+10-06 13:04:03.727 14767 14767 E unknown:SurfaceMountingManager: <RNSVGCircle id=5278 parentTag=5280 isRoot=false />
+10-06 13:04:03.727 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=5280 parentTag=5282 isRoot=false />
+10-06 13:04:03.727 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=5282 parentTag=5306 isRoot=false />
+10-06 13:04:03.727 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=21692 parentTag=21700 isRoot=false />
+10-06 13:04:03.727 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=21694 parentTag=21700 isRoot=false />
+10-06 13:04:03.727 14767 14767 E unknown:SurfaceMountingManager: <RNSVGCircle id=5312 parentTag=5316 isRoot=false />
+10-06 13:04:03.727 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=21696 parentTag=21700 isRoot=false />
+10-06 13:04:03.727 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=5314 parentTag=5316 isRoot=false />
+10-06 13:04:03.727 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=21698 parentTag=21700 isRoot=false />
+10-06 13:04:03.727 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=5316 parentTag=5318 isRoot=false />
+10-06 13:04:03.727 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=21700 parentTag=21702 isRoot=false />
+10-06 13:04:03.727 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=5318 parentTag=5334 isRoot=false />
+10-06 13:04:03.727 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=21702 parentTag=438 isRoot=false />
+10-06 13:04:03.727 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=21706 parentTag=21714 isRoot=false />
+10-06 13:04:03.728 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=21708 parentTag=21714 isRoot=false />
+10-06 13:04:03.728 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=21710 parentTag=21714 isRoot=false />
+10-06 13:04:03.728 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=21712 parentTag=21714 isRoot=false />
+10-06 13:04:03.728 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=21714 parentTag=21716 isRoot=false />
+10-06 13:04:03.728 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=21716 parentTag=5166 isRoot=false />
+10-06 13:04:03.728 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=5340 parentTag=5344 isRoot=false />
+10-06 13:04:03.728 14767 14767 E unknown:SurfaceMountingManager: <RNSVGCircle id=5342 parentTag=5344 isRoot=false />
+10-06 13:04:03.728 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=5344 parentTag=5346 isRoot=false />
+10-06 13:04:03.728 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=5346 parentTag=5362 isRoot=false />
+10-06 13:04:03.728 14767 14767 E unknown:SurfaceMountingManager: <null id=21730 parentTag=null isRoot=false />
+10-06 13:04:03.728 14767 14767 E unknown:SurfaceMountingManager: <SkiaPictureView id=21738 parentTag=21750 isRoot=false />
+10-06 13:04:03.728 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=21740 parentTag=21744 isRoot=false />
+10-06 13:04:03.728 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=21742 parentTag=21744 isRoot=false />
+10-06 13:04:03.728 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=21744 parentTag=21746 isRoot=false />
+10-06 13:04:03.728 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=21746 parentTag=21748 isRoot=false />
+10-06 13:04:03.728 14767 14767 E unknown:SurfaceMountingManager: <RNSVGCircle id=5368 parentTag=5372 isRoot=false />
+10-06 13:04:03.728 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=5370 parentTag=5372 isRoot=false />
+10-06 13:04:03.728 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=5372 parentTag=5374 isRoot=false />
+10-06 13:04:03.729 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=5374 parentTag=5390 isRoot=false />
+10-06 13:04:03.729 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=21768 parentTag=21772 isRoot=false />
+10-06 13:04:03.729 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=21770 parentTag=21772 isRoot=false />
+10-06 13:04:03.729 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=21772 parentTag=21774 isRoot=false />
+10-06 13:04:03.729 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=21774 parentTag=1006 isRoot=false />
+10-06 13:04:03.729 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=5396 parentTag=5404 isRoot=false />
+10-06 13:04:03.729 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=5398 parentTag=5404 isRoot=false />
+10-06 13:04:03.729 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=5400 parentTag=5404 isRoot=false />
+10-06 13:04:03.729 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=5402 parentTag=5404 isRoot=false />
+10-06 13:04:03.729 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=5404 parentTag=5406 isRoot=false />
+10-06 13:04:03.729 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=5406 parentTag=5422 isRoot=false />
+10-06 13:04:03.729 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=5428 parentTag=5432 isRoot=false />
+10-06 13:04:03.729 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=5430 parentTag=5432 isRoot=false />
+10-06 13:04:03.729 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=5432 parentTag=5434 isRoot=false />
+10-06 13:04:03.729 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=5434 parentTag=5460 isRoot=false />
+10-06 13:04:03.729 14767 14767 E unknown:SurfaceMountingManager: <RNSVGRect id=5444 parentTag=5448 isRoot=false />
+10-06 13:04:03.729 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=5446 parentTag=5448 isRoot=false />
+10-06 13:04:03.729 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=5448 parentTag=5450 isRoot=false />
+10-06 13:04:03.729 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=5450 parentTag=5456 isRoot=false />
+10-06 13:04:03.730 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=21880 parentTag=21882 isRoot=false />
+10-06 13:04:03.730 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=21882 parentTag=21884 isRoot=false />
+10-06 13:04:03.730 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=21884 parentTag=21890 isRoot=false />
+10-06 13:04:03.730 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=5508 parentTag=5510 isRoot=false />
+10-06 13:04:03.730 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=5510 parentTag=5512 isRoot=false />
+10-06 13:04:03.730 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=5512 parentTag=5518 isRoot=false />
+10-06 13:04:03.730 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=5522 parentTag=5528 isRoot=false />
+10-06 13:04:03.731 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=5524 parentTag=5528 isRoot=false />
+10-06 13:04:03.731 14767 14767 E unknown:SurfaceMountingManager: <RNSVGLinearGradient id=21908 parentTag=21912 isRoot=false />
+10-06 13:04:03.731 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=5526 parentTag=5528 isRoot=false />
+10-06 13:04:03.731 14767 14767 E unknown:SurfaceMountingManager: <RNSVGLinearGradient id=21910 parentTag=21912 isRoot=false />
+10-06 13:04:03.731 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=5528 parentTag=5530 isRoot=false />
+10-06 13:04:03.731 14767 14767 E unknown:SurfaceMountingManager: <RNSVGDefs id=21912 parentTag=21922 isRoot=false />
+10-06 13:04:03.731 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=5530 parentTag=5536 isRoot=false />
+10-06 13:04:03.731 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=21914 parentTag=21920 isRoot=false />
+10-06 13:04:03.731 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=21916 parentTag=21920 isRoot=false />
+10-06 13:04:03.731 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=21918 parentTag=21920 isRoot=false />
+10-06 13:04:03.731 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=21920 parentTag=21922 isRoot=false />
+10-06 13:04:03.731 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=21922 parentTag=21924 isRoot=false />
+10-06 13:04:03.731 14767 14767 E unknown:SurfaceMountingManager: <RNSVGCircle id=5540 parentTag=5546 isRoot=false />
+10-06 13:04:03.731 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=21924 parentTag=21926 isRoot=false />
+10-06 13:04:03.731 14767 14767 E unknown:SurfaceMountingManager: <RNSVGCircle id=5542 parentTag=5546 isRoot=false />
+10-06 13:04:03.731 14767 14767 E unknown:SurfaceMountingManager: <RNSVGCircle id=5544 parentTag=5546 isRoot=false />
+10-06 13:04:03.731 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=5546 parentTag=5548 isRoot=false />
+10-06 13:04:03.731 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=5548 parentTag=5554 isRoot=false />
+10-06 13:04:03.731 14767 14767 E unknown:SurfaceMountingManager: <RNSScreenContentWrapper id=5566 parentTag=5570 isRoot=false />
+10-06 13:04:03.731 14767 14767 E unknown:SurfaceMountingManager: <RNSScreenStackHeaderConfig id=5568 parentTag=5570 isRoot=false />
+10-06 13:04:03.731 14767 14767 E unknown:SurfaceMountingManager: <RNSScreen id=5570 parentTag=-1 isRoot=false />
+10-06 13:04:03.733 14767 14767 E unknown:SurfaceMountingManager: <null id=22118 parentTag=null isRoot=false />
+10-06 13:04:03.734 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=5804 parentTag=5806 isRoot=false />
+10-06 13:04:03.734 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=5806 parentTag=5808 isRoot=false />
+10-06 13:04:03.734 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=5808 parentTag=5810 isRoot=false />
+10-06 13:04:03.735 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=5840 parentTag=5842 isRoot=false />
+10-06 13:04:03.735 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=5842 parentTag=5844 isRoot=false />
+10-06 13:04:03.735 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=5844 parentTag=5846 isRoot=false />
+10-06 13:04:03.735 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=5876 parentTag=5878 isRoot=false />
+10-06 13:04:03.735 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=5878 parentTag=5880 isRoot=false />
+10-06 13:04:03.735 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=5880 parentTag=5882 isRoot=false />
+10-06 13:04:03.736 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=5912 parentTag=5914 isRoot=false />
+10-06 13:04:03.736 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=5914 parentTag=5916 isRoot=false />
+10-06 13:04:03.736 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=5916 parentTag=5918 isRoot=false />
+10-06 13:04:03.736 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=5948 parentTag=5950 isRoot=false />
+10-06 13:04:03.737 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=5950 parentTag=5952 isRoot=false />
+10-06 13:04:03.737 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=5952 parentTag=5954 isRoot=false />
+10-06 13:04:03.737 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=5984 parentTag=5986 isRoot=false />
+10-06 13:04:03.737 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=5986 parentTag=5988 isRoot=false />
+10-06 13:04:03.737 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=5988 parentTag=5990 isRoot=false />
+10-06 13:04:03.737 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=6020 parentTag=6022 isRoot=false />
+10-06 13:04:03.737 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=6022 parentTag=6024 isRoot=false />
+10-06 13:04:03.737 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=6024 parentTag=6026 isRoot=false />
+10-06 13:04:03.738 14767 14767 E unknown:SurfaceMountingManager: <null id=14242 parentTag=null isRoot=false />
+10-06 13:04:03.738 14767 14767 E unknown:SurfaceMountingManager: <SkiaPictureView id=14250 parentTag=null isRoot=false />
+10-06 13:04:03.738 14767 14767 E unknown:SurfaceMountingManager: <RNSVGCircle id=14252 parentTag=null isRoot=false />
+10-06 13:04:03.738 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=14254 parentTag=null isRoot=false />
+10-06 13:04:03.738 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=14256 parentTag=null isRoot=false />
+10-06 13:04:03.738 14767 14767 E unknown:SurfaceMountingManager: <RNSVGCircle id=14270 parentTag=null isRoot=false />
+10-06 13:04:03.738 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=14272 parentTag=null isRoot=false />
+10-06 13:04:03.738 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=14274 parentTag=null isRoot=false />
+10-06 13:04:03.740 14767 14767 E unknown:SurfaceMountingManager: <AndroidHorizontalScrollContentView id=6218 parentTag=6220 isRoot=false />
+10-06 13:04:03.740 14767 14767 E unknown:SurfaceMountingManager: <AndroidHorizontalScrollView id=6220 parentTag=6330 isRoot=false />
+10-06 13:04:03.741 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=6244 parentTag=6246 isRoot=false />
+10-06 13:04:03.741 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=6246 parentTag=6248 isRoot=false />
+10-06 13:04:03.741 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=6248 parentTag=6254 isRoot=false />
+10-06 13:04:03.741 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=6278 parentTag=6280 isRoot=false />
+10-06 13:04:03.741 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=6280 parentTag=6282 isRoot=false />
+10-06 13:04:03.741 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=6282 parentTag=6288 isRoot=false />
+10-06 13:04:03.742 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=6310 parentTag=6312 isRoot=false />
+10-06 13:04:03.742 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=6312 parentTag=6314 isRoot=false />
+10-06 13:04:03.742 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=6314 parentTag=6320 isRoot=false />
+10-06 13:04:03.744 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=6618 parentTag=6622 isRoot=false />
+10-06 13:04:03.744 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=14810 parentTag=null isRoot=false />
+10-06 13:04:03.744 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=6620 parentTag=6622 isRoot=false />
+10-06 13:04:03.744 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=14812 parentTag=null isRoot=false />
+10-06 13:04:03.744 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=6622 parentTag=6624 isRoot=false />
+10-06 13:04:03.744 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=14814 parentTag=null isRoot=false />
+10-06 13:04:03.744 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=6624 parentTag=6626 isRoot=false />
+10-06 13:04:03.744 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=14816 parentTag=null isRoot=false />
+10-06 13:04:03.744 14767 14767 E unknown:SurfaceMountingManager: <RNSVGCircle id=14818 parentTag=null isRoot=false />
+10-06 13:04:03.744 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=14820 parentTag=null isRoot=false />
+10-06 13:04:03.744 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=14822 parentTag=null isRoot=false />
+10-06 13:04:03.745 14767 14767 E unknown:SurfaceMountingManager: <SkiaPictureView id=6634 parentTag=6816 isRoot=false />
+10-06 13:04:03.749 14767 14767 E unknown:SurfaceMountingManager: <null id=6956 parentTag=null isRoot=false />
+10-06 13:04:03.749 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=7042 parentTag=7048 isRoot=false />
+10-06 13:04:03.749 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=7044 parentTag=7048 isRoot=false />
+10-06 13:04:03.749 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=7046 parentTag=7048 isRoot=false />
+10-06 13:04:03.749 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=7048 parentTag=7050 isRoot=false />
+10-06 13:04:03.750 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=7050 parentTag=7056 isRoot=false />
+10-06 13:04:03.750 14767 14767 E unknown:SurfaceMountingManager: <RNSScreen id=7072 parentTag=-1 isRoot=false />
+10-06 13:04:03.750 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=7078 parentTag=7082 isRoot=false />
+10-06 13:04:03.750 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=7080 parentTag=7082 isRoot=false />
+10-06 13:04:03.750 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=7082 parentTag=7084 isRoot=false />
+10-06 13:04:03.750 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=7084 parentTag=7086 isRoot=false />
+10-06 13:04:03.750 14767 14767 E unknown:SurfaceMountingManager: <null id=7096 parentTag=null isRoot=false />
+10-06 13:04:03.751 14767 14767 E unknown:SurfaceMountingManager: <RNSVGRect id=7104 parentTag=7114 isRoot=false />
+10-06 13:04:03.751 14767 14767 E unknown:SurfaceMountingManager: <RNSVGRect id=7106 parentTag=7114 isRoot=false />
+10-06 13:04:03.751 14767 14767 E unknown:SurfaceMountingManager: <RNSVGRect id=7108 parentTag=7114 isRoot=false />
+10-06 13:04:03.751 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=7110 parentTag=7114 isRoot=false />
+10-06 13:04:03.751 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=7112 parentTag=7114 isRoot=false />
+10-06 13:04:03.751 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=7114 parentTag=7116 isRoot=false />
+10-06 13:04:03.751 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=7116 parentTag=7150 isRoot=false />
+10-06 13:04:03.751 14767 14767 E unknown:SurfaceMountingManager: <RNSVGCircle id=7130 parentTag=7132 isRoot=false />
+10-06 13:04:03.751 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=7132 parentTag=7134 isRoot=false />
+10-06 13:04:03.751 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=7134 parentTag=7140 isRoot=false />
+10-06 13:04:03.751 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=7142 parentTag=7144 isRoot=false />
+10-06 13:04:03.751 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=7144 parentTag=7146 isRoot=false />
+10-06 13:04:03.752 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=7146 parentTag=7150 isRoot=false />
+10-06 13:04:03.752 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=7154 parentTag=7164 isRoot=false />
+10-06 13:04:03.752 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=7156 parentTag=7164 isRoot=false />
+10-06 13:04:03.752 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=7158 parentTag=7164 isRoot=false />
+10-06 13:04:03.752 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=7160 parentTag=7164 isRoot=false />
+10-06 13:04:03.752 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=7162 parentTag=7164 isRoot=false />
+10-06 13:04:03.752 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=7164 parentTag=7166 isRoot=false />
+10-06 13:04:03.752 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=7166 parentTag=7194 isRoot=false />
+10-06 13:04:03.752 14767 14767 E unknown:SurfaceMountingManager: <RNSVGCircle id=7180 parentTag=7182 isRoot=false />
+10-06 13:04:03.752 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=7182 parentTag=7184 isRoot=false />
+10-06 13:04:03.752 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=7184 parentTag=7190 isRoot=false />
+10-06 13:04:03.752 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=7198 parentTag=7202 isRoot=false />
+10-06 13:04:03.752 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=7200 parentTag=7202 isRoot=false />
+10-06 13:04:03.752 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=7202 parentTag=7204 isRoot=false />
+10-06 13:04:03.752 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=7204 parentTag=7538 isRoot=false />
+10-06 13:04:03.755 14767 14767 E unknown:SurfaceMountingManager: <null id=7550 parentTag=null isRoot=false />
+10-06 13:04:03.755 14767 14767 E unknown:SurfaceMountingManager: <SkiaPictureView id=7558 parentTag=7560 isRoot=false />
+10-06 13:04:03.755 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=7562 parentTag=7572 isRoot=false />
+10-06 13:04:03.755 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=7564 parentTag=7572 isRoot=false />
+10-06 13:04:03.756 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=7566 parentTag=7572 isRoot=false />
+10-06 13:04:03.756 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=7568 parentTag=7572 isRoot=false />
+10-06 13:04:03.756 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=7570 parentTag=7572 isRoot=false />
+10-06 13:04:03.756 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=7572 parentTag=7574 isRoot=false />
+10-06 13:04:03.756 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=7574 parentTag=7606 isRoot=false />
+10-06 13:04:03.756 14767 14767 E unknown:SurfaceMountingManager: <RNSVGCircle id=7588 parentTag=7590 isRoot=false />
+10-06 13:04:03.756 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=7590 parentTag=7592 isRoot=false />
+10-06 13:04:03.756 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=7592 parentTag=7598 isRoot=false />
+10-06 13:04:03.756 14767 14767 E unknown:SurfaceMountingManager: <RNSVGCircle id=7610 parentTag=7614 isRoot=false />
+10-06 13:04:03.756 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=7612 parentTag=7614 isRoot=false />
+10-06 13:04:03.756 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=7614 parentTag=7616 isRoot=false />
+10-06 13:04:03.756 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=7616 parentTag=7632 isRoot=false />
+10-06 13:04:03.756 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=7636 parentTag=7646 isRoot=false />
+10-06 13:04:03.756 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=7638 parentTag=7646 isRoot=false />
+10-06 13:04:03.757 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=7640 parentTag=7646 isRoot=false />
+10-06 13:04:03.757 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=7642 parentTag=7646 isRoot=false />
+10-06 13:04:03.757 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=7644 parentTag=7646 isRoot=false />
+10-06 13:04:03.757 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=7646 parentTag=7648 isRoot=false />
+10-06 13:04:03.757 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=7648 parentTag=7664 isRoot=false />
+10-06 13:04:03.757 14767 14767 E unknown:SurfaceMountingManager: <RNSVGRect id=7668 parentTag=7676 isRoot=false />
+10-06 13:04:03.757 14767 14767 E unknown:SurfaceMountingManager: <RNSVGRect id=7670 parentTag=7676 isRoot=false />
+10-06 13:04:03.757 14767 14767 E unknown:SurfaceMountingManager: <RNSVGLine id=7672 parentTag=7676 isRoot=false />
+10-06 13:04:03.757 14767 14767 E unknown:SurfaceMountingManager: <RNSVGLine id=7674 parentTag=7676 isRoot=false />
+10-06 13:04:03.757 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=7676 parentTag=7678 isRoot=false />
+10-06 13:04:03.757 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=7678 parentTag=7694 isRoot=false />
+10-06 13:04:03.757 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=7714 parentTag=7716 isRoot=false />
+10-06 13:04:03.757 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=7716 parentTag=7718 isRoot=false />
+10-06 13:04:03.757 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=7718 parentTag=7754 isRoot=false />
+10-06 13:04:03.758 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=7734 parentTag=7736 isRoot=false />
+10-06 13:04:03.758 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=7736 parentTag=7738 isRoot=false />
+10-06 13:04:03.758 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=7738 parentTag=7754 isRoot=false />
+10-06 13:04:03.758 14767 14767 E unknown:SurfaceMountingManager: <null id=7766 parentTag=null isRoot=false />
+10-06 13:04:03.758 14767 14767 E unknown:SurfaceMountingManager: <RNSVGCircle id=7772 parentTag=7774 isRoot=false />
+10-06 13:04:03.758 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=7774 parentTag=7776 isRoot=false />
+10-06 13:04:03.758 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=7776 parentTag=7782 isRoot=false />
+10-06 13:04:03.758 14767 14767 E unknown:SurfaceMountingManager: <RNSVGCircle id=7788 parentTag=7792 isRoot=false />
+10-06 13:04:03.758 14767 14767 E unknown:SurfaceMountingManager: <RNSVGPath id=7790 parentTag=7792 isRoot=false />
+10-06 13:04:03.758 14767 14767 E unknown:SurfaceMountingManager: <RNSVGGroup id=7792 parentTag=7794 isRoot=false />
+10-06 13:04:03.758 14767 14767 E unknown:SurfaceMountingManager: <RNSVGSvgViewAndroid id=7794 parentTag=8322 isRoot=false />
+10-06 13:04:03.762 14767 14767 W unknown:BridgelessReact: ReactHost{0}.handleHostException(message = "addViewAt: failed to insert view [22216] into parent [20378] at index 1")
+10-06 13:04:03.762 14767 14767 E unknown:ReactNative: Exception in native call
+10-06 13:04:03.762 14767 14767 E unknown:ReactNative: java.lang.IllegalStateException: addViewAt: failed to insert view [22216] into parent [20378] at index 1
+10-06 13:04:03.762 14767 14767 E unknown:ReactNative: 	at com.facebook.react.fabric.mounting.SurfaceMountingManager.addViewAt(SurfaceMountingManager.kt:389)
+10-06 13:04:03.762 14767 14767 E unknown:ReactNative: 	at com.facebook.react.fabric.mounting.mountitems.IntBufferBatchMountItem.execute(IntBufferBatchMountItem.kt:122)
+10-06 13:04:03.762 14767 14767 E unknown:ReactNative: 	at com.facebook.react.fabric.mounting.MountItemDispatcher.executeOrEnqueue(MountItemDispatcher.kt:379)
+10-06 13:04:03.762 14767 14767 E unknown:ReactNative: 	at com.facebook.react.fabric.mounting.MountItemDispatcher.dispatchMountItems$lambda$7$lambda$6(MountItemDispatcher.kt:269)
+10-06 13:04:03.762 14767 14767 E unknown:ReactNative: 	at com.facebook.react.fabric.mounting.MountItemDispatcher.$r8$lambda$4xp_oXLXKRRjXh_WfqmwhGWbzaM(Unknown Source:0)
+10-06 13:04:03.762 14767 14767 E unknown:ReactNative: 	at com.facebook.react.fabric.mounting.MountItemDispatcher$$ExternalSyntheticLambda4.invoke(D8$$SyntheticClass:0)
+10-06 13:04:03.762 14767 14767 E unknown:ReactNative: Caused by: java.lang.IndexOutOfBoundsException: index=1 count=0
+10-06 13:04:03.762 14767 14767 E unknown:ReactNative: 	at android.view.ViewGroup.addInArray(ViewGroup.java:5424)
+10-06 13:04:03.762 14767 14767 E unknown:ReactNative: 	at android.view.ViewGroup.addViewInner(ViewGroup.java:5311)
+10-06 13:04:03.762 14767 14767 E unknown:ReactNative: 	at android.view.ViewGroup.addView(ViewGroup.java:5118)
+10-06 13:04:03.762 14767 14767 E unknown:ReactNative: 	at android.view.ViewGroup.addView(ViewGroup.java:5058)
+10-06 13:04:03.762 14767 14767 E unknown:ReactNative: 	at com.facebook.react.uimanager.ViewGroupManager.addView(ViewGroupManager.kt:30)
+10-06 13:04:03.762 14767 14767 E unknown:ReactNative: 	at com.facebook.react.uimanager.ViewGroupManager.addView(ViewGroupManager.kt:16)
+10-06 13:04:03.766 14767 14790 W unknown:BridgelessReact: ReactHost{0}.getOrCreateDestroyTask()
+10-06 13:04:03.766 14767 14790 W unknown:BridgelessReact: ReactHost{0}.getOrCreateDestroyTask(): Resetting createReactInstance task ref
+10-06 13:04:03.803 14767 15029 W unknown:BridgelessReact: ReactHost{0}.raiseSoftException(callWithExistingReactInstance(callFunctionOnModule("RCTDeviceEventEmitter", "emit"))): Execute: reactInstance is null. Dropping work.
+10-06 13:04:03.822 14767 15029 E unknown:ReactHost: Unhandled SoftException
+10-06 13:04:03.822 14767 15029 E unknown:ReactHost: com.facebook.react.bridge.ReactNoCrashSoftException: raiseSoftException(callWithExistingReactInstance(callFunctionOnModule("RCTDeviceEventEmitter", "emit"))): Execute: reactInstance is null. Dropping work.
+10-06 13:04:03.822 14767 15029 E unknown:ReactHost: 	at com.facebook.react.runtime.ReactHostImpl.raiseSoftException(ReactHostImpl.kt:919)
+10-06 13:04:03.822 14767 15029 E unknown:ReactHost: 	at com.facebook.react.runtime.ReactHostImpl.raiseSoftException$default(ReactHostImpl.kt:910)
+10-06 13:04:03.822 14767 15029 E unknown:ReactHost: 	at com.facebook.react.runtime.ReactHostImpl.callWithExistingReactInstance$lambda$32(ReactHostImpl.kt:935)
+10-06 13:04:03.822 14767 15029 E unknown:ReactHost: 	at com.facebook.react.runtime.ReactHostImpl.$r8$lambda$OnkS1FVBHx0tAZXPMEZwFodv3co(Unknown Source:0)
+10-06 13:04:03.822 14767 15029 E unknown:ReactHost: 	at com.facebook.react.runtime.ReactHostImpl$$ExternalSyntheticLambda31.then(D8$$SyntheticClass:0)
+10-06 13:04:03.822 14767 15029 E unknown:ReactHost: 	at com.facebook.react.runtime.internal.bolts.Task$Companion.completeImmediately$lambda$3(Task.kt:360)
+10-06 13:04:03.853 14767 15029 W unknown:BridgelessReact: ReactHost{0}.raiseSoftException(callWithExistingReactInstance(callFunctionOnModule("RCTDeviceEventEmitter", "emit"))): Execute: reactInstance is null. Dropping work.
+10-06 13:04:03.854 14767 15029 E unknown:ReactHost: Unhandled SoftException
+10-06 13:04:03.854 14767 15029 E unknown:ReactHost: com.facebook.react.bridge.ReactNoCrashSoftException: raiseSoftException(callWithExistingReactInstance(callFunctionOnModule("RCTDeviceEventEmitter", "emit"))): Execute: reactInstance is null. Dropping work.
+10-06 13:04:03.854 14767 15029 E unknown:ReactHost: 	at com.facebook.react.runtime.ReactHostImpl.raiseSoftException(ReactHostImpl.kt:919)
+10-06 13:04:03.854 14767 15029 E unknown:ReactHost: 	at com.facebook.react.runtime.ReactHostImpl.raiseSoftException$default(ReactHostImpl.kt:910)
+10-06 13:04:03.854 14767 15029 E unknown:ReactHost: 	at com.facebook.react.runtime.ReactHostImpl.callWithExistingReactInstance$lambda$32(ReactHostImpl.kt:935)
+10-06 13:04:03.854 14767 15029 E unknown:ReactHost: 	at com.facebook.react.runtime.ReactHostImpl.$r8$lambda$OnkS1FVBHx0tAZXPMEZwFodv3co(Unknown Source:0)
+10-06 13:04:03.854 14767 15029 E unknown:ReactHost: 	at com.facebook.react.runtime.ReactHostImpl$$ExternalSyntheticLambda31.then(D8$$SyntheticClass:0)
+10-06 13:04:03.854 14767 15029 E unknown:ReactHost: 	at com.facebook.react.runtime.internal.bolts.Task$Companion.completeImmediately$lambda$3(Task.kt:360)
+10-06 13:04:03.874 14767 14767 W unknown:BridgelessReact: ReactHost{0}.getOrCreateDestroyTask(): Starting React Native destruction
+10-06 13:04:03.881 14767 14767 W unknown:BridgelessReact: ReactHost{0}.getOrCreateDestroyTask(): DevSupportManager cleanup
+10-06 13:04:03.881 14767 14767 W unknown:BridgelessReact: ReactHost{0}.getOrCreateDestroyTask(): Move ReactHost to onHostDestroy()
+10-06 13:04:03.881 14767 14767 W unknown:BridgelessReact: ReactHost{0}.ReactContext.onHostPause()
+10-06 13:04:03.899 14767 14767 W unknown:BridgelessReact: ReactHost{0}.raiseSoftException(callWithExistingReactInstance(callFunctionOnModule("RCTDeviceEventEmitter", "emit"))): Execute: reactInstance is null. Dropping work.
+10-06 13:04:03.899 14767 14767 E unknown:ReactHost: Unhandled SoftException
+10-06 13:04:03.899 14767 14767 E unknown:ReactHost: com.facebook.react.bridge.ReactNoCrashSoftException: raiseSoftException(callWithExistingReactInstance(callFunctionOnModule("RCTDeviceEventEmitter", "emit"))): Execute: reactInstance is null. Dropping work.
+10-06 13:04:03.899 14767 14767 E unknown:ReactHost: 	at com.facebook.react.runtime.ReactHostImpl.raiseSoftException(ReactHostImpl.kt:919)
+10-06 13:04:03.899 14767 14767 E unknown:ReactHost: 	at com.facebook.react.runtime.ReactHostImpl.raiseSoftException$default(ReactHostImpl.kt:910)
+10-06 13:04:03.899 14767 14767 E unknown:ReactHost: 	at com.facebook.react.runtime.ReactHostImpl.callWithExistingReactInstance$lambda$32(ReactHostImpl.kt:935)
+10-06 13:04:03.899 14767 14767 E unknown:ReactHost: 	at com.facebook.react.runtime.ReactHostImpl.$r8$lambda$OnkS1FVBHx0tAZXPMEZwFodv3co(Unknown Source:0)
+10-06 13:04:03.899 14767 14767 E unknown:ReactHost: 	at com.facebook.react.runtime.ReactHostImpl$$ExternalSyntheticLambda31.then(D8$$SyntheticClass:0)
+10-06 13:04:03.899 14767 14767 E unknown:ReactHost: 	at com.facebook.react.runtime.internal.bolts.Task$Companion.completeImmediately$lambda$3(Task.kt:360)
+10-06 13:04:03.930 14767 14767 W unknown:BridgelessReact: ReactHost{0}.ReactContext.onHostDestroy()
+10-06 13:04:03.973 14767 14767 E unknown:ReactNative: Tried to remove non-existent frame callback
+10-06 13:04:03.979 14767 14790 W unknown:BridgelessReact: ReactHost{0}.getOrCreateDestroyTask(): Stopping all React Native surfaces
+10-06 13:04:03.980 14767 14790 E unknown:SurfaceMountingManager: Stopping surface [1]
+10-06 13:04:04.405 14767 14767 E ExpoVideo: Current activity does not support picture-in-picture. Make sure you have configured the `expo-video` config plugin correctly.
+10-06 13:04:04.467 14767 14767 E unknown:SurfaceMountingManager: Surface [1] was stopped on SurfaceMountingManager.
+10-06 13:04:04.550 14767 14767 W RemoteInputConnectionImpl: requestCursorUpdates on inactive InputConnection
+10-06 13:04:04.997 14767 14767 W unknown:BridgelessReact: ReactHost{0}.getOrCreateDestroyTask(): Destroying MemoryPressureRouter
+10-06 13:04:04.997 14767 14767 W unknown:BridgelessReact: ReactHost{0}.getOrCreateDestroyTask(): Resetting ReactContext ref
+10-06 13:04:04.997 14767 14767 W unknown:BridgelessReact: ReactHost{0}.getOrCreateDestroyTask(): Destroying ReactContext
+10-06 13:04:04.998 14767 14790 W unknown:BridgelessReact: ReactHost{0}.getOrCreateDestroyTask(): Resetting ReactInstance ptr
+10-06 13:04:04.999 14767 14790 W unknown:BridgelessReact: ReactHost{0}.getOrCreateDestroyTask(): Destroying ReactInstance
+10-06 13:04:05.026 14767 14797 W unknown:ReactNative: Tried to enqueue runnable on already finished thread: 'v_native... dropping Runnable.
+10-06 13:04:05.027 14767 14797 W unknown:ReactNative: Tried to enqueue runnable on already finished thread: 'v_native... dropping Runnable.
+10-06 13:04:05.798 14767 14797 W unknown:ReactNative: Tried to enqueue runnable on already finished thread: 'v_native... dropping Runnable.
+10-06 13:04:15.613 14767 14790 E unknown:ReactNative: Tried to remove non-existent frame callback
+10-06 13:04:15.615 14767 14790 W ReactNativeJNI: Scheduler::~Scheduler() was called (address: 0xb400007681d538d0).
+10-06 13:04:15.683 14767 14790 W ReactNativeJNI: UIManagerBinding::~UIManagerBinding() was called (address: 0xb400007631d6e108).
+10-06 13:04:17.757 14767 14790 W unknown:BridgelessReact: ReactHost{0}.getOrCreateDestroyTask(): Resetting start/destroy task ref

@@ -1,0 +1,33 @@
+2026-10-04 10:29:52 WIB
+$ python3 .cache/w31/mutate.py   (each mutation: one change in packages/shared/src/live/testing, then: npx vitest run --root packages/shared test/live-testing- --maxWorkers=2; the file is restored after each)
+BASE   exit=0  209 passed (209)
+CAUGHT M01 the request body is not parsed with its schema [contract.ts]  exit=1  3 failed | 206 passed (209)  fetch
+CAUGHT M02 the verdict on a scripted answer is ignored [contract.ts]  exit=1  11 failed | 198 passed (209)  fetch, log
+CAUGHT M03 every answer counts as a deliberate violation [http.ts]  exit=1  23 failed | 186 passed (209)  fetch, log
+CAUGHT M04 a static answer is not checked when it is scripted [http.ts]  exit=1  22 failed | 187 passed (209)  fetch, log
+CAUGHT M05 maskCredentials returns its input [errors.ts]  exit=1  6 failed | 203 passed (209)  fetch, log, socket
+CAUGHT M06 header values are printed as given [log.ts]  exit=1  6 failed | 203 passed (209)  live-socket, log, socket
+CAUGHT M07 server messages are not checked [socket.ts]  exit=1  15 failed | 194 passed (209)  socket
+CAUGHT M08 client messages are not parsed with the client union [socket.ts]  exit=1  4 failed | 205 passed (209)  socket
+CAUGHT M09 a credential in a URL is not looked for [contract.ts]  exit=1  8 failed | 201 passed (209)  fetch, socket
+CAUGHT M10 one-shot answers are taken from the end [http.ts]  exit=1  5 failed | 204 passed (209)  fetch
+CAUGHT M11 any close code is accepted from the server [socket.ts]  exit=1  1 failed | 208 passed (209)  socket
+CAUGHT M12 restore puts nothing back [install.ts]  exit=1  4 failed | 205 passed (209)  install
+CAUGHT M13 a 2xx of a POST needs no revision headers [contract.ts]  exit=1  2 failed | 207 passed (209)  fetch
+CAUGHT M14 the clock runs due tasks in the order they were scheduled [clock.ts]  exit=1  2 failed | 207 passed (209)  socket
+CAUGHT M15 a body on a 204 is accepted [contract.ts]  exit=1  1 failed | 208 passed (209)  fetch
+CAUGHT M16 assertNoViolations never throws [fake-transport.ts]  exit=1  10 failed | 199 passed (209)  fetch, socket
+CAUGHT M17 a request with no scripted answer is answered 200 without a body [http.ts]  exit=1  4 failed | 205 passed (209)  fetch, log
+CAUGHT M18 the request error has the name of its base class [errors.ts]  exit=1  11 failed | 198 passed (209)  fetch, platform-neutral
+CAUGHT M19 a body shows in the text of the log [log.ts]  exit=1  4 failed | 205 passed (209)  fetch, log
+CAUGHT M20 the fake adds no revision headers to a 2xx of a POST [http.ts]  exit=1  14 failed | 195 passed (209)  fetch, log
+CAUGHT M21 the query is not parsed with the query schema [contract.ts]  exit=1  1 failed | 208 passed (209)  fetch
+CAUGHT M22 the upgrade is not checked [socket.ts]  exit=1  14 failed | 195 passed (209)  socket
+CAUGHT M23 hello need not come first [socket.ts]  exit=1  2 failed | 207 passed (209)  socket
+CAUGHT M24 the principal of a connection is not looked at for server messages [socket.ts]  exit=1  5 failed | 204 passed (209)  socket
+CAUGHT M25 the bearer form is not checked [contract.ts]  exit=1  5 failed | 204 passed (209)  fetch, socket
+CAUGHT M26 the path parameter pattern is not checked [contract.ts]  exit=1  2 failed | 207 passed (209)  fetch
+AFTER  exit=0  209 passed (209)
+26 of 26 mutations caught
+source restored: identical to the pre-mutation copy
+10:30:21 WIB

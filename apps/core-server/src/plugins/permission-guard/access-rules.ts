@@ -34,6 +34,7 @@ import {
   type CoreApiOperation,
 } from '@dems/shared/api';
 import { AuditType, Permission } from '@dems/shared/sim';
+import type { RegistryOperationId } from '../../core';
 
 // ── Problems ───────────────────────────────────────────────────────────────────────────────────
 
@@ -156,7 +157,7 @@ export const REALTIME_CHANNEL_ID = 'realtimeChannel';
  * `PUBLIC`. Every other operation answers it 403 `DEVICE_REVOKED`, the two other `PUBLIC` ones
  * included (`signIn`, `getSignInStatus`; decision D78 DN-9).
  */
-export const RETIRED_DEVICE_OPERATIONS: readonly string[] = ['getServiceHealth', 'redeemPairingCode'];
+export const RETIRED_DEVICE_OPERATIONS: readonly string[] = ['getServiceHealth', 'redeemPairingCode'] satisfies RegistryOperationId[];
 
 /**
  * The three export operations (RB-5; DEPARTURE-3): their refusal keeps the simulator's
@@ -169,8 +170,8 @@ export const EXPORT_DENIALS: Readonly<Record<string, ExportDenialShape>> = {
   exportLogs: { scope: 'LOGS', label: 'Log export' },
 };
 
-/** The one operation whose refusal code is `FORBIDDEN`, as the existing contract has it (RB-5). */
-export const FORBIDDEN_OPERATION = 'exportEvidence';
+/** The one operation whose refusal code is `FORBIDDEN`, as the existing contract has it (RB-5). A registry operation ID (W91-5). */
+export const FORBIDDEN_OPERATION = 'exportEvidence' satisfies RegistryOperationId;
 
 /** Joins the alternatives of the any-of in `details.permission`. No permission name holds it. */
 export const ANY_OF_SEPARATOR = '_OR_';

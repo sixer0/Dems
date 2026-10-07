@@ -1,0 +1,1034 @@
+# FX-M2 changes: modified files against their rollback copies (.cache/rollback/FX-M2), then the new files in full
+--- a/apps/mobile/src/app/(app)/session/live.tsx
++++ b/apps/mobile/src/app/(app)/session/live.tsx
+@@ -1,13 +1,28 @@
+ import { Redirect } from 'expo-router';
++import { SessionFinalizingScreen } from '@/features/session-finalizing/session-finalizing-screen';
+ import { SessionLiveScreen } from '@/features/session-live/session-live-screen';
+ import { useSessionLiveRedirect } from '@/navigation';
+ 
+ /**
+  * Route `/session/live` (MB 4; 04_mobile_specs §4.5). Opens only while RECORDING; otherwise it goes
+  * where the current session belongs, or Home when there is none (§3.5).
++ *
++ * E-fix row FX-M2 (E2E-P-4, E2E-T-4): when the recording stops (on this device or on another
++ * console) the monitor hands over to Finalizing IN PLACE: the same commit that drops the monitor
++ * draws the Finalizing screen (no enter motion), and the redirect follows. Before, this route
++ * rendered only the redirect, which draws nothing, and the device showed an empty screen until the
++ * Finalizing route had mounted and faded in (about 1.2 s on the phone, 2 s on the tablet).
+  */
+ export default function SessionLiveRoute() {
+   const redirect = useSessionLiveRedirect();
++  if (redirect === '/session/finalizing') {
++    return (
++      <>
++        <SessionFinalizingScreen handover />
++        <Redirect href={redirect} />
++      </>
++    );
++  }
+   if (redirect !== null) return <Redirect href={redirect} />;
+   return <SessionLiveScreen />;
+ }
+--- a/apps/mobile/src/app/(app)/session/new.tsx
++++ b/apps/mobile/src/app/(app)/session/new.tsx
+@@ -1,14 +1,19 @@
+ import { Redirect, useLocalSearchParams } from 'expo-router';
+ import { SessionNewScreen } from '@/features/session-new/session-new-screen';
++import { useStartEntryGuard } from '@/features/session-new/use-start-entry-guard';
+ import { parseSessionStep, useSessionNewRedirect } from '@/navigation';
+ 
+ /**
+  * Route `/session/new?step=1|2|3` (MB 3; 04_mobile_specs §4.4). Refused with a toast while a
+- * session is busy (§3.5); the step is parsed with zod (invalid or absent → 1).
++ * session is busy (§3.5); the step is parsed with zod (invalid or absent → 1). R2 (E-fix row FX-M2,
++ * decision D201): an operator without `SESSION_START` is not shown the wizard either; the route goes
++ * to `/home` with "Not permitted / Requires the Investigator role" (`useStartEntryGuard`).
+  */
+ export default function SessionNewRoute() {
+   const { step } = useLocalSearchParams<{ step?: string }>();
+   const redirect = useSessionNewRedirect();
++  const refused = useStartEntryGuard({ enabled: redirect === null });
+   if (redirect !== null) return <Redirect href={redirect} />;
++  if (refused !== null) return <Redirect href={refused} />;
+   return <SessionNewScreen step={parseSessionStep(step)} />;
+ }
+--- a/apps/mobile/src/features/dashboard/quick-actions.tsx
++++ b/apps/mobile/src/features/dashboard/quick-actions.tsx
+@@ -7,6 +7,11 @@
+  *   The label stays dark on gold (D28/Q5). While a session is active the button leads back to it
+  *   ("Return to live session" while recording, §4.3 H4), with the target of the §3.7 table.
+  * - "View Evidence": kit `Button variant="outline"` → `/evidence`.
++ * - R2 (E-fix row FX-M2, E2E-P-5; decision D201): "Start Session" and "Continue setup" need
++ *   `SESSION_START`. For an operator without it (TECHNICIAN) the button stays in place, disabled, with
++ *   "Requires the Investigator role" under the buttons (`useRoleGate`, the device-restart pattern), as
++ *   the web console locks its Start; a role change pushed by the Core re-gates it in place. The ways back
++ *   to an active session (monitor, finalization, recovery, summary) are not gated: they open no session.
+  */
+ import { LinearGradient } from 'expo-linear-gradient';
+ import { useIsFocused, useRouter, type Href } from 'expo-router';
+@@ -14,7 +19,7 @@
+ import { FileText, Play, Radio, RotateCcw, type LucideIcon } from 'lucide-react-native';
+ import { useEffect } from 'react';
+ import { useTranslation } from 'react-i18next';
+-import { StyleSheet, View, type LayoutChangeEvent } from 'react-native';
++import { StyleSheet, Text, View, type LayoutChangeEvent } from 'react-native';
+ import Animated, {
+   cancelAnimation,
+   useAnimatedStyle,
+@@ -24,10 +29,12 @@
+   withSequence,
+   withTiming,
+ } from 'react-native-reanimated';
+-import { palette } from '@dems/shared/tokens';
++import { Permission } from '@dems/shared/sim';
++import { fontFamily, palette, typography } from '@dems/shared/tokens';
+ import { SectionCard } from '@/components/kit';
+ import { withAlpha } from '@/components/media/color';
+ import { EASING, durationMs, useAmbientLoop, useHaptics, useMotionSettings } from '@/motion';
++import { useRoleGate } from '@/features/rbac/use-role-gate';
+ import type { PrimaryAction, PrimaryActionKind } from './home-model';
+ import { HOME_BEATS, HOME_LOOPS, SHEEN_EVERY_MS, SHEEN_SWEEP_MS, homeEnter } from './home-motion';
+ 
+@@ -40,6 +47,11 @@
+   summary: FileText,
+ };
+ 
++/** The primary actions that open the Start Session wizard, and so need `SESSION_START` (R2). */
++export function startsWizard(kind: PrimaryActionKind): boolean {
++  return kind === 'start' || kind === 'continueSetup';
++}
++
+ export interface QuickActionsProps {
+   action: PrimaryAction;
+   /** Stack the two buttons (narrow tablet pane) instead of side by side (MB 2). */
+@@ -51,7 +63,10 @@
+   const router = useRouter();
+   const haptic = useHaptics();
+   const settings = useMotionSettings();
++  const startGate = useRoleGate(Permission.SESSION_START);
+   const Icon = PRIMARY_ICON[action.kind];
++  // R2: without SESSION_START the wizard's entries are locked (the Core would refuse the session).
++  const locked = startsWizard(action.kind) && !startGate.allowed;
+ 
+   return (
+     <Animated.View testID="home-actions" entering={homeEnter(HOME_BEATS.actions, settings)}>
+@@ -63,8 +78,11 @@
+             size="lg"
+             className={stacked ? 'h-16 flex-row gap-2' : 'h-20 flex-1 flex-col gap-1'}
+             accessibilityLabel={t(action.labelKey)}
+-            background={<PrimaryFill sheen={action.kind === 'start'} />}
++            isDisabled={locked}
++            {...(locked && startGate.hint ? { accessibilityHint: startGate.hint } : {})}
++            background={<PrimaryFill sheen={action.kind === 'start' && !locked} />}
+             onPress={() => {
++              if (locked) return;
+               haptic('primaryPress');
+               router.push(action.href as Href);
+             }}
+@@ -88,6 +106,11 @@
+             </Button.Label>
+           </Button>
+         </View>
++        {locked && startGate.hint ? (
++          <Text maxFontSizeMultiplier={1.2} style={styles.hint} testID="home-action-primary-locked">
++            {startGate.hint}
++          </Text>
++        ) : null}
+       </SectionCard>
+     </Animated.View>
+   );
+@@ -158,4 +181,11 @@
+   buttons: { flexDirection: 'row', gap: 12 },
+   stacked: { flexDirection: 'column' },
+   band: { position: 'absolute', top: -8, bottom: -8, width: '40%' },
++  hint: {
++    marginTop: 8,
++    fontFamily: fontFamily.native.normal,
++    fontSize: typography.caption.size,
++    lineHeight: typography.caption.lineHeight,
++    color: palette.gray,
++  },
+ });
+--- a/apps/mobile/src/features/devices/devices-live-static.test.ts
++++ b/apps/mobile/src/features/devices/devices-live-static.test.ts
+@@ -68,6 +68,8 @@
+       'diagnostics-sheet.tsx',
+       'health-chart.tsx',
+       'i18n.ts',
++      // E-fix row FX-M2 (E2E-T-2): the panel error boundary (the Storage folder's copy of step 77's).
++      'panel-boundary.tsx',
+       'sim-adapter.ts',
+       'use-devices-data.ts',
+       'use-pending-press.ts',
+@@ -118,7 +120,9 @@
+     // sheet's exit-animation unmount in `use-sheet-presence.tsx` (one of the KI-08 copies, unchanged since
+     // `acaff20`), which reads no Core time.
+     const timer = new RegExp(`\\b(?:${['set', 'Timeout'].join('')}|${['set', 'Interval'].join('')})\\b|${['Date', 'now'].join('\\.')}`);
+-    expect(matching(timer)).toEqual(['use-sheet-presence.tsx']);
++    // E-fix row FX-M2 (E2E-T-2) adds the panel boundary's Retry cooldown (a UI countdown of 3/6/12 s,
++    // the KI-08 boundary pattern of Home and Storage), which reads no Core time either.
++    expect(matching(timer)).toEqual(['panel-boundary.tsx', 'use-sheet-presence.tsx']);
+     // Through the barrel only (rule 9).
+     expect(matching(/from '@\/runtime\/[^']+'/)).toEqual([]);
+   });
+--- a/apps/mobile/src/features/devices/devices-screen.tsx
++++ b/apps/mobile/src/features/devices/devices-screen.tsx
+@@ -18,6 +18,12 @@
+  *
+  * On multi-pane windows the selection lives in `?selected=` (the route hands a deep-linked detail
+  * over to it), so rotation and split-screen keep it (MA-13). Mic rows carry a `compact` meter there.
++ *
++ * E2E-T-2 (E-fix row FX-M2; decision D200/D201): the screen always shows one of three things: the
++ * loading skeleton (until the runtime has hydrated), the data (the store, synchronously: this screen
++ * sends no request and waits for no query, suspense or focus effect), or the panel's error card with
++ * a rate-limited Retry (`PanelBoundary` around the list and around the detail pane). The blank pane
++ * seen once on the tablet is traced in `gateway_check/11d_efix_mobile_screens.md`.
+  */
+ import { useRouter, type Href } from 'expo-router';
+ import { Alert, ListGroup, Separator, SkeletonGroup } from 'heroui-native';
+@@ -34,6 +40,7 @@
+ import { DeviceDetail } from './device-detail';
+ import { DeviceRow } from './device-row';
+ import { DEVICE_SHORT_NAME_KEY, SECTIONS, STATUS_LABEL_KEY, STATUS_RANK, attentionDevices, type DeviceId, type DeviceSection, type DeviceStatus } from './devices-model';
++import { PanelBoundary } from './panel-boundary';
+ import { useDeviceStatuses } from './use-devices-data';
+ 
+ export interface DevicesScreenProps {
+@@ -56,7 +63,11 @@
+     [isMultiPane, router],
+   );
+ 
+-  const list = <DevicesList selectedId={isMultiPane ? selectedId : null} twoColumns={layoutClass === 'compact-landscape'} onSelect={select} />;
++  const list = (
++    <PanelBoundary name="list">
++      <DevicesList selectedId={isMultiPane ? selectedId : null} twoColumns={layoutClass === 'compact-landscape'} onSelect={select} />
++    </PanelBoundary>
++  );
+ 
+   return (
+     <SafeScreen id="devices">
+@@ -66,7 +77,9 @@
+             {list}
+           </Pane>
+           <Pane name="detail" flex={3} style={styles.flexBasisZero}>
+-            {selectedId ? <DeviceDetail key={selectedId} deviceId={selectedId} variant="pane" /> : <DetailPlaceholder />}
++            <PanelBoundary key={selectedId ?? 'none'} name="detail">
++              {selectedId ? <DeviceDetail key={selectedId} deviceId={selectedId} variant="pane" /> : <DetailPlaceholder />}
++            </PanelBoundary>
+           </Pane>
+         </PaneLayout>
+       ) : (
+--- a/apps/mobile/src/features/evidence/evidence-detail.tsx
++++ b/apps/mobile/src/features/evidence/evidence-detail.tsx
+@@ -271,7 +271,14 @@
+             onOpenMic={(mic) => setPlay({ camera: 'VIDEO-01', mic })}
+           />
+         ) : tab === 'metadata' ? (
+-          <MetadataTab evidenceId={item.id} pkg={pkg} />
++          // E2E-T-6 (E-fix FX-M2): an item without a package shows its record (the Core's in Live mode).
++          <MetadataTab
++            evidenceId={item.id}
++            pkg={pkg}
++            item={item}
++            live={live}
++            mediaStatus={mediaRef.status === 'loading' || mediaRef.status === 'unavailable' ? mediaRef.status : 'ready'}
++          />
+         ) : live || !integrity ? (
+           <LiveIntegrityTab
+             key={`integrity-${verifySeq ?? 0}`}
+--- a/apps/mobile/src/features/evidence/metadata-tab.tsx
++++ b/apps/mobile/src/features/evidence/metadata-tab.tsx
+@@ -3,6 +3,15 @@
+  * `KeyValueList`, then the package's `manifest.json` in mono `Text selectable` inside a
+  * `ScrollShadow` (S19). The text is `getDemoEvidenceDocuments(id).manifestJson`, byte-exact (hashing
+  * it gives the signed digest). For an exported item, the §19.2 export entry of the package follows.
++ *
++ * E2E-T-6 (E-fix row FX-M2; decision D200/D201): an item without a bundled DEMO package (in Live mode
++ * every item the Core recorded today, `media.source NONE`) showed only "No DEMO package for this item",
++ * while the web's Metadata tab shows the record. The tab now shows the same record as the web
++ * (`apps/core-web/src/features/evidence/metadata-tab.tsx`): the item's values as JSON, labelled "Core
++ * record" in Live mode (the Core server's record, never "simulated") and "Simulated evidence record"
++ * in Simulated mode, under a line that says why there is no manifest. While Live mode still asks the
++ * Core for the media reference, or when it got no answer, the line says that instead of claiming that
++ * no package exists (the web's W83 ledger #95 wording).
+  */
+ import { LinearGradient } from 'expo-linear-gradient';
+ import { ScrollShadow } from 'heroui-native';
+@@ -11,6 +20,7 @@
+ import { ScrollView, StyleSheet, Text, View } from 'react-native';
+ import { MANIFEST_FIELDS, getDemoEvidenceDocuments, type DemoEvidencePackage } from '@dems/shared/demo-data';
+ import { DATE_PATTERNS, formatDate } from '@dems/shared/realtime';
++import { toWibIso, type EvidenceItem } from '@dems/shared/sim';
+ import { derived, fontFamily, palette, radius, spacing, typography } from '@dems/shared/tokens';
+ import { KeyValueList, type KeyValueItem } from '@/components/kit';
+ import { reportRuntimeIssue } from '@/runtime';
+@@ -62,12 +72,58 @@
+   };
+ }
+ 
++/** What Live mode knows of the item's media reference (operation 40); `ready` in Simulated mode. */
++export type MetadataMediaStatus = 'loading' | 'ready' | 'unavailable';
++
++/**
++ * The item's record as the web's Metadata tab prints it for an item without a package (the same keys
++ * in the same order, times in WIB ISO form). Pure; exported for tests.
++ */
++export function evidenceRecordJson(item: EvidenceItem, options: { live: boolean; mediaStatus: MetadataMediaStatus }): string {
++  const { live, mediaStatus } = options;
++  return JSON.stringify(
++    {
++      ...(live
++        ? {
++            record: 'CORE',
++            note:
++              mediaStatus === 'ready'
++                ? "The Core server's record of this item; no DEMO package joins it."
++                : "The Core server's record of this item; its media reference is unavailable, so no DEMO package is shown.",
++          }
++        : { simulated: true, note: 'SIMULATED record from the in-app simulator; no DEMO package joins this item.' }),
++      evidenceId: item.id,
++      sessionId: item.sessionId,
++      caseNumber: item.caseNumber,
++      subject: { name: item.subjectName, type: item.subjectType },
++      investigatorId: item.investigatorId,
++      room: item.room,
++      recordedAt: toWibIso(item.recordedAt),
++      endedAt: toWibIso(item.endedAt),
++      sealedAt: item.sealedAt === null ? null : toWibIso(item.sealedAt),
++      status: item.status,
++      lifecycleStage: item.lifecycleStage,
++      manifestHash: item.manifestHash,
++      tracks: item.tracks,
++      signature: item.signature,
++    },
++    null,
++    2,
++  );
++}
++
+ export interface MetadataTabProps {
+   evidenceId: string;
+   pkg: DemoEvidencePackage | null;
++  /** The item; with it, an item without a package shows its record (E2E-T-6). */
++  item?: EvidenceItem | null;
++  /** Live mode (the evidence detail reads `useCoreLink().source`): the record is the Core server's. */
++  live?: boolean;
++  /** Live mode: the state of the Core's media reference (operation 40). */
++  mediaStatus?: MetadataMediaStatus;
+ }
+ 
+-export function MetadataTab({ evidenceId, pkg }: MetadataTabProps) {
++export function MetadataTab({ evidenceId, pkg, item = null, live = false, mediaStatus = 'ready' }: MetadataTabProps) {
+   const { t } = useTranslation();
+   const documents = useMemo(() => (pkg ? getDemoEvidenceDocuments(evidenceId) : null), [pkg, evidenceId]);
+   const manifest = useMemo(() => {
+@@ -93,10 +149,38 @@
+   }, [manifest, t]);
+ 
+   if (!documents || !manifest) {
++    const why = !live
++      ? t('features.evidence.metadata.notAvailable')
++      : mediaStatus === 'loading'
++        ? t('features.evidence.media.checking')
++        : mediaStatus === 'unavailable'
++          ? t('evidence.live.mediaUnavailable')
++          : t('evidence.live.noPackage');
++    if (item === null) {
++      return (
++        <Text maxFontSizeMultiplier={1.2} style={styles.note} testID="evidence-metadata-none">
++          {why}
++        </Text>
++      );
++    }
+     return (
+-      <Text maxFontSizeMultiplier={1.2} style={styles.note} testID="evidence-metadata-none">
+-        {t('features.evidence.metadata.notAvailable')}
+-      </Text>
++      <View style={styles.root} testID="evidence-metadata-record">
++        <Text maxFontSizeMultiplier={1.2} style={styles.note} testID="evidence-metadata-none">
++          {why}
++        </Text>
++        <Text maxFontSizeMultiplier={1.2} accessibilityRole="header" style={styles.label} testID="evidence-record-title">
++          {t(live ? 'evidence.live.coreRecord' : 'evidence.metadata.simulatedRecord')}
++        </Text>
++        <View style={styles.jsonBox}>
++          <ScrollShadow LinearGradientComponent={LinearGradient}>
++            <ScrollView nestedScrollEnabled style={styles.jsonScroll} contentContainerStyle={styles.jsonContent}>
++              <Text maxFontSizeMultiplier={1.2} selectable style={styles.json} testID="evidence-record-json">
++                {evidenceRecordJson(item, { live, mediaStatus })}
++              </Text>
++            </ScrollView>
++          </ScrollShadow>
++        </View>
++      </View>
+     );
+   }
+ 
+--- a/apps/mobile/src/features/home/home-screen.tsx
++++ b/apps/mobile/src/features/home/home-screen.tsx
+@@ -19,12 +19,24 @@
+ } from '@dems/shared/tokens';
+ import { TONE_ICONS } from '@/lib/tone-icons';
+ import { triggerHaptic } from '@/motion';
++import { useCoreLink, type CoreLinkSource } from '@/runtime';
+ import { PulseRing } from './pulse-ring';
+ import { useHealth } from './use-health';
+ 
+ /** `slow` is the Motion proof mode (`demsdemo://?motion=slow`, masterplan/01_specs.md §5.6). */
+ export type MotionMode = 'normal' | 'slow';
+ 
++/**
++ * E2E-P-2 (E-fix row FX-M2): the proof card names the data source the app really uses, from the
++ * runtime's Core link (`useCoreLink().source`), instead of always saying "the local mock-core". The
++ * Heartbeat and Service panels below follow the same source (`useHeartbeat`, `useHealth`).
++ */
++export const STACK_PROOF_SOURCE_LINE: Readonly<Record<CoreLinkSource, string>> = {
++  SIMULATED: 'Data source: Simulated. The Core runs inside the app; Heartbeat and Service below probe the local mock-core over adb reverse.',
++  HEARTBEAT: 'Data source: mock-core heartbeat. The Core link follows the local mock-core over adb reverse.',
++  LIVE: 'Data source: Live. Data, Heartbeat and Service come from the Core server over adb reverse.',
++};
++
+ /** Rev 3 (D17): two panes at >= 900 dp, one column below (phone portrait, narrow tablet). */
+ export const TWO_PANE_MIN_WIDTH = 900;
+ 
+@@ -136,6 +148,7 @@
+ 
+ function HeroCard() {
+   const { toast } = useToast();
++  const { source } = useCoreLink();
+   const secure = BADGES.SECURE;
+   const SecureIcon = TONE_ICONS[secure.icon];
+ 
+@@ -155,9 +168,11 @@
+       </Card.Header>
+       <Card.Body>
+         <Text className="text-body text-muted">
+-          Mobile stack proof: HeroUI Native on Uniwind, Reanimated, Skia, Expo Router and TanStack
+-          Query, wired to the local mock-core over adb reverse.
++          Mobile stack proof: HeroUI Native on Uniwind, Reanimated, Skia, Expo Router and TanStack Query.
+         </Text>
++        <Text testID="stack-proof-source" className="text-body text-muted">
++          {STACK_PROOF_SOURCE_LINE[source]}
++        </Text>
+       </Card.Body>
+       <Card.Footer>
+         <Button
+--- a/apps/mobile/src/features/session-finalizing/session-finalizing-screen.tsx
++++ b/apps/mobile/src/features/session-finalizing/session-finalizing-screen.tsx
+@@ -20,10 +20,14 @@
+  * "Finalizing — please wait"; there is no back arrow, the stack's back gesture is off for an active
+  * session (step 70), and Back never leaves the app mid-session (F-79-1). A fault (FAULT, RECOVERY)
+  * turns the running step red once and shows a calm Alert with the way to the Recovery status (P7).
++ *
++ * Hand-over from the monitor (E-fix row FX-M2; E2E-P-4, E2E-T-4): `/session/live` draws this screen
++ * in place (`handover`) in the commit that drops the monitor, so a stop shows no empty frame; that
++ * copy and the Finalizing route's copy right after it skip the enter motion (`handover.ts`).
+  */
+ import { useIsFocused, useRouter, type Href } from 'expo-router';
+ import { Alert, Button, Spinner, useToast } from 'heroui-native';
+-import { useCallback, useEffect, useRef, type ReactNode } from 'react';
++import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+ import { useTranslation } from 'react-i18next';
+ import { BackHandler, ScrollView, StyleSheet, Text, View } from 'react-native';
+ import Animated from 'react-native-reanimated';
+@@ -45,6 +49,7 @@
+   type FinalizingPhase,
+ } from './finalizing.model';
+ import { FlowBoundary } from './flow-boundary';
++import { isFinalizingHandover, markFinalizingHandover } from './handover';
+ import { SealedStamp } from './sealed-stamp';
+ import { useFinalizationSteps, useFinalizingSession, useSealedHandOffDue, type FinalizingSession } from './use-finalizing';
+ 
+@@ -60,11 +65,21 @@
+ /** One "please wait" toast per this many ms, however often Back is pressed. */
+ const BLOCKED_TOAST_GAP_MS = 2_000;
+ 
+-export function SessionFinalizingScreen() {
++export interface SessionFinalizingScreenProps {
++  /** Drawn in place by `/session/live` while it hands over to this route (E2E-P-4): no enter motion. */
++  readonly handover?: boolean;
++}
++
++export function SessionFinalizingScreen({ handover = false }: SessionFinalizingScreenProps = {}) {
+   const { t } = useTranslation();
+   const focused = useIsFocused();
+   const { layoutClass } = useLayoutClass();
+   const session = useFinalizingSession();
++  // E2E-P-4: the in-place copy, and the route's copy that replaces it, appear at once (no rise from 0).
++  const [enter] = useState(() => !handover && !isFinalizingHandover(session.id));
++  useLayoutEffect(() => {
++    if (handover) markFinalizingHandover(session.id);
++  }, [handover, session.id]);
+   const steps = useFinalizationSteps();
+   const phase = finalizingPhase(session.state);
+   const busy = isFinalizingBusy(phase);
+@@ -87,6 +102,7 @@
+     const resume = phase === 'open' ? sessionResyncHref(session.state, { sessionId: session.id }) : null;
+     body = (
+       <NoticeCard
++        enter={enter}
+         testID={`finalizing-${phase}`}
+         title={t(phase === 'idle' ? 'features.session-finalizing.idle.title' : 'features.session-finalizing.notEnded.title')}
+         body={t(phase === 'idle' ? 'features.session-finalizing.idle.body' : 'features.session-finalizing.notEnded.body')}
+@@ -98,14 +114,14 @@
+     body = (
+       <View style={[styles.cards, sideBySide ? styles.cardsRow : null]}>
+         <View style={sideBySide ? styles.mainColumn : styles.fullWidth}>
+-          {phase === 'interrupted' ? <InterruptedAlert faultKind={session.faultKind} onOpen={() => go('/session/recovery', 'recovery')} /> : null}
++          {phase === 'interrupted' ? <InterruptedAlert enter={enter} faultKind={session.faultKind} onOpen={() => go('/session/recovery', 'recovery')} /> : null}
+           <FlowBoundary scope="session-finalizing" name="pipeline">
+-            <PipelineCard session={session} phase={phase} steps={steps} onOpenSummary={summaryHref ? () => go(summaryHref, 'openSummary') : null} />
++            <PipelineCard enter={enter} session={session} phase={phase} steps={steps} onOpenSummary={summaryHref ? () => go(summaryHref, 'openSummary') : null} />
+           </FlowBoundary>
+         </View>
+         <View style={sideBySide ? styles.sideColumn : styles.fullWidth}>
+           <FlowBoundary scope="session-finalizing" name="session">
+-            <SessionCard session={session} />
++            <SessionCard enter={enter} session={session} />
+           </FlowBoundary>
+         </View>
+       </View>
+@@ -189,13 +205,15 @@
+ // ---------------------------------------------------------------------------------------------
+ 
+ interface PipelineCardProps {
++  /** False on a hand-over from the monitor: the card is there at once (E2E-P-4). */
++  enter: boolean;
+   session: FinalizingSession;
+   phase: FinalizingPhase;
+   steps: ReturnType<typeof useFinalizationSteps>;
+   onOpenSummary: (() => void) | null;
+ }
+ 
+-function PipelineCard({ session, phase, steps, onOpenSummary }: PipelineCardProps) {
++function PipelineCard({ enter, session, phase, steps, onOpenSummary }: PipelineCardProps) {
+   const { t } = useTranslation();
+   const settings = useMotionSettings();
+   const statuses = pipelineStatuses(steps, phase);
+@@ -205,7 +223,7 @@
+   const sealedIn = sealedAfterSeconds(session.stoppedAt, session.sealedAt);
+ 
+   return (
+-    <Animated.View entering={enterRise(0, settings)}>
++    <Animated.View entering={enter ? enterRise(0, settings) : undefined}>
+       <Pane name="finalization">
+         <SectionCard testID="finalizing-card">
+           <View style={styles.cardHead}>
+@@ -283,7 +301,7 @@
+   );
+ }
+ 
+-function SessionCard({ session }: { session: FinalizingSession }) {
++function SessionCard({ enter, session }: { enter: boolean; session: FinalizingSession }) {
+   const { t } = useTranslation();
+   const settings = useMotionSettings();
+   const length =
+@@ -313,7 +331,7 @@
+     },
+   ];
+   return (
+-    <Animated.View entering={enterRise(1, settings)}>
++    <Animated.View entering={enter ? enterRise(1, settings) : undefined}>
+       <Pane name="session">
+         <SectionCard title={t('features.session-finalizing.sessionCard')} testID="finalizing-session-card">
+           <KeyValueList items={items} />
+@@ -323,12 +341,12 @@
+   );
+ }
+ 
+-function InterruptedAlert({ faultKind, onOpen }: { faultKind: FinalizingSession['faultKind']; onOpen: () => void }) {
++function InterruptedAlert({ enter, faultKind, onOpen }: { enter: boolean; faultKind: FinalizingSession['faultKind']; onOpen: () => void }) {
+   const { t } = useTranslation();
+   const settings = useMotionSettings();
+   const fault = faultKind ? t(`common.faultKind.${faultKind}`) : t('features.session-finalizing.interrupted.unknownFault');
+   return (
+-    <Animated.View entering={enterRise(0, settings)} style={styles.alert} testID="finalizing-interrupted">
++    <Animated.View entering={enter ? enterRise(0, settings) : undefined} style={styles.alert} testID="finalizing-interrupted">
+       <Alert status="danger">
+         <Alert.Indicator />
+         <Alert.Content>
+@@ -346,6 +364,7 @@
+ }
+ 
+ interface NoticeCardProps {
++  enter: boolean;
+   testID: string;
+   title: string;
+   body: string;
+@@ -353,10 +372,10 @@
+   onAction: () => void;
+ }
+ 
+-function NoticeCard({ testID, title, body, actionLabel, onAction }: NoticeCardProps) {
++function NoticeCard({ enter, testID, title, body, actionLabel, onAction }: NoticeCardProps) {
+   const settings = useMotionSettings();
+   return (
+-    <Animated.View entering={enterRise(0, settings)}>
++    <Animated.View entering={enter ? enterRise(0, settings) : undefined}>
+       <SectionCard testID={testID}>
+         <Text accessibilityRole="header" maxFontSizeMultiplier={1.2} style={styles.title}>
+           {title}
+--- a/apps/mobile/src/features/session-new/session-new-screen.test.tsx
++++ b/apps/mobile/src/features/session-new/session-new-screen.test.tsx
+@@ -10,7 +10,7 @@
+ import { act, fireEvent, screen, within } from '@testing-library/react-native';
+ import { router } from 'expo-router';
+ import { BackHandler } from 'react-native';
+-import { OPERATORS, PRECHECK_TOTAL_MAX_MS, ScenarioName } from '@dems/shared/sim';
++import { DEMO_OPERATOR_PASSWORD, OPERATORS, PRECHECK_TOTAL_MAX_MS, ScenarioName } from '@dems/shared/sim';
+ import { getMissingKeys, i18n, resetMissingKeys } from '@/i18n';
+ import { resetMotionStateForTests } from '@/motion';
+ import type { TestSim } from '@/runtime/testing/test-sim';
+@@ -153,9 +153,26 @@
+     expect(h.app.getSearchParams().step).toBe('2');
+   });
+ 
+-  it('a TECHNICIAN cannot start a session: the create error is shown and nothing is created', async () => {
++  it('R2 (E-fix FX-M2, E2E-P-5): a TECHNICIAN is not shown the wizard: the route goes Home and nothing is created', async () => {
++    // Before ruling R2 (decision D201) the wizard opened and only Next was refused (the next test).
+     const h = await openFlow({ operator: 2 });
++    await settle();
++    expect(h.app.getPathname()).toBe('/home');
++    expect(screen.getByTestId('screen-home')).toBeTruthy();
++    expect(screen.queryByTestId('session-new-step-1')).toBeNull();
++    expect(h.state().session).toBeNull();
++  });
++
++  it('a role without SESSION_START at Next (the signed-in operator changed while the wizard was open): the create error is shown and nothing is created', async () => {
++    const h = await openFlow();
+     await fillStep1();
++    act(() => {
++      h.sim.actions.signOut();
++      expect(h.sim.actions.signIn(OPERATORS[2]!.username, DEMO_OPERATOR_PASSWORD).ok).toBe(true);
++    });
++    await settle();
++    // The entry was allowed, so the screen keeps its own rule for a loss (no second navigation).
++    expect(screen.getByTestId('session-new-step-1')).toBeTruthy();
+     await pressNextAsync();
+     expect(h.state().session).toBeNull();
+     expect(screen.getByTestId('session-new-create-error')).toBeTruthy();
+--- a/apps/mobile/src/features/session-summary/summary-live-static.test.ts
++++ b/apps/mobile/src/features/session-summary/summary-live-static.test.ts
+@@ -61,6 +61,8 @@
+       'session-finalizing/finalization-pipeline.tsx',
+       'session-finalizing/finalizing.model.ts',
+       'session-finalizing/flow-boundary.tsx',
++      // E-fix row FX-M2 (E2E-P-4): the monitor-to-Finalizing hand-over mark (one slot, no timer).
++      'session-finalizing/handover.ts',
+       'session-finalizing/i18n.ts',
+       'session-finalizing/sealed-stamp.tsx',
+       'session-finalizing/session-finalizing-screen.tsx',
+--- a/apps/mobile/src/features/sessions/hub-top.tsx
++++ b/apps/mobile/src/features/sessions/hub-top.tsx
+@@ -9,6 +9,9 @@
+  * - "Start New Session" opens `/session/new?step=1`; during CREATE/PRECHECK/ARMED it continues the
+  *   setup at its step (§3.7 table); while a session is busy it is disabled with a hint, matching the
+  *   route guard that refuses `/session/new` then (§3.5).
++ * - R2 (E-fix row FX-M2, E2E-P-5; decision D201): starting or continuing a setup needs
++ *   `SESSION_START`. Without it (TECHNICIAN) the button is disabled with "Requires the Investigator
++ *   role" (`useRoleGate`), as the web locks its Start; a role change pushed by the Core re-gates it.
+  */
+ import { Button } from 'heroui-native';
+ import { Plus } from 'lucide-react-native';
+@@ -16,12 +19,14 @@
+ import { StyleSheet, Text, View } from 'react-native';
+ import Animated from 'react-native-reanimated';
+ import { formatDuration } from '@dems/shared/realtime';
++import { Permission } from '@dems/shared/sim';
+ import { derived, fontFamily, palette, spacing, statusText, typography } from '@dems/shared/tokens';
+ import { RollingNumber } from '@/components/composed/rolling-number';
+ import { SectionCard, SubjectTypeChip } from '@/components/kit';
+ import { withAlpha } from '@/components/media/color';
+ import { enterRise, triggerHaptic, useMotionPolicy, useMotionSettings } from '@/motion';
+ import { isSessionBusy, sessionResyncHref } from '@/navigation';
++import { useRoleGate } from '@/features/rbac/use-role-gate';
+ import { RecDot } from './rec-dot';
+ import { SessionStatusChip } from './session-status-chip';
+ import { activeRow, type SessionRow } from './sessions-model';
+@@ -144,29 +149,39 @@
+   const { t } = useTranslation();
+   const push = useSafePush();
+   const state = useCurrentSessionState();
++  const startGate = useRoleGate(Permission.SESSION_START);
+   const busy = isSessionBusy(state);
++  // R2: no SESSION_START, no wizard (a busy session keeps its own reason, which comes first).
++  const locked = !busy && !startGate.allowed;
++  const disabled = busy || locked;
+   const setup = state === 'CREATE' || state === 'PRECHECK' || state === 'ARMED';
+   const href = setup ? (sessionResyncHref(state) ?? START_SESSION_HREF) : START_SESSION_HREF;
++  const hint = busy ? t('features.sessions.start.busyHint') : locked ? startGate.hint : null;
+   return (
+     <View style={styles.startWrap}>
+       <Button
+         testID="sessions-start"
+         variant="primary"
+         size="lg"
+-        isDisabled={busy}
+-        accessibilityHint={busy ? t('features.sessions.start.busyHint') : undefined}
++        isDisabled={disabled}
++        accessibilityHint={hint ?? undefined}
+         onPress={() => {
++          if (disabled) return;
+           triggerHaptic('primaryPress');
+           push(href, 'start', { state });
+         }}
+       >
+-        <Plus size={20} color={busy ? derived.foreground2 : palette.black} />
++        <Plus size={20} color={disabled ? derived.foreground2 : palette.black} />
+         <Button.Label>{setup ? t('features.sessions.start.continueSetup') : t('common.actions.startNewSession')}</Button.Label>
+       </Button>
+       {busy ? (
+         <Text maxFontSizeMultiplier={1.2} style={styles.caption} testID="sessions-start-busy">
+           {t('features.sessions.start.busyHint')}
+         </Text>
++      ) : locked && hint ? (
++        <Text maxFontSizeMultiplier={1.2} style={styles.caption} testID="sessions-start-locked">
++          {hint}
++        </Text>
+       ) : null}
+     </View>
+   );
+--- a/apps/mobile/src/features/settings/live-settings-sites.test.tsx
++++ b/apps/mobile/src/features/settings/live-settings-sites.test.tsx
+@@ -141,8 +141,22 @@
+     expect(saysSimulated()).toBe(false);
+   });
+ 
+-  it('refusal: a SUPERVISOR lacks MAINTENANCE: the Core\'s 403 (its `notPermitted` example) is the denied toast naming the Technician role', async () => {
++  it('R2 (E-fix FX-M2, O-2): a SUPERVISOR lacks MAINTENANCE: Install update is disabled with "Requires the Technician role" and a press sends nothing', async () => {
++    // Before ruling R2 (decision D201) the button was enabled and only the Core's 403 said no.
+     const b = await openSection('maintenance', { user: 'andi.pratama' });
++    expect(screen.getByTestId('settings-update-install').props.accessibilityState?.disabled).toBe(true);
++    expect(screen.getByTestId('settings-update-install-locked')).toHaveTextContent('Requires the Technician role');
++    await press('settings-update-install', b);
++    await b.elapse(200);
++    expect(b.requests('startSoftwareUpdate')).toHaveLength(0);
++    expect(shown(DENIED)).toBe(false);
++    expect(shown(/^Installing v/)).toBe(false);
++    expect(b.state().update.state).toBe('IDLE');
++  });
++
++  it('refusal: the Core\'s 403 (its `notPermitted` example, a role lost on the Core before the push) is still the denied toast naming the Technician role', async () => {
++    const b = await openSection('maintenance', { user: 'rina.wijaya' });
++    b.fake.answerOnce('startSoftwareUpdate', notPermitted('startSoftwareUpdate', 'MAINTENANCE', 'SUPERVISOR'));
+     await press('settings-update-install', b);
+     await b.elapse(200);
+     expect(b.requests('startSoftwareUpdate')).toHaveLength(1);
+--- a/apps/mobile/src/features/settings/maintenance-section.tsx
++++ b/apps/mobile/src/features/settings/maintenance-section.tsx
+@@ -33,6 +33,11 @@
+  * Core's demo flag (`session.demoControls`, AC-C-52), otherwise one line says why; and the copy says
+  * nothing about a simulation (`features.settings.live.*`; the diagnostics subtitle, the Install label and
+  * the started toast are the web console's shared `system.live.*`: closing copy round, D177 DN-5).
++ *
++ * O-2 / ruling R2 (E-fix row FX-M2; decision D201, amending 04_client_integration_spec §6.3): Install
++ * update needs `MAINTENANCE` (the Core's `startSoftwareUpdate`). Without it the button stays in place,
++ * disabled, with "Requires the Technician role" (`useRoleGate`, the device-restart pattern), in both
++ * modes; a role change pushed by the Core re-gates it in place.
+  */
+ import { settle, useCoreActions, useCorePermission, useLiveSelector } from '@dems/shared/live';
+ import { Accordion, Button, Chip, Spinner, TagGroup, useToast } from 'heroui-native';
+@@ -58,6 +63,7 @@
+ import { SectionCard } from '@/components/kit';
+ import { useMotionPolicy } from '@/motion';
+ import { PendingSpinner, busyState, reportRuntimeIssue, useCoreErrorPresenter, useCoreLink, usePendingPress, type MobileLiveSim } from '@/runtime';
++import { useRoleGate } from '@/features/rbac/use-role-gate';
+ import {
+   DEMO_FAULTS,
+   DEMO_SCENARIOS,
+@@ -258,12 +264,15 @@
+   const { toast } = useToast();
+   const motion = useMotionPolicy();
+   const update = useSim(selectUpdate);
++  const maintenance = useRoleGate(Permission.MAINTENANCE);
++  const locked = !maintenance.allowed;
+   const running = update.state === 'RUNNING';
+   const showPipeline = update.state !== 'IDLE';
+   const slot = targetSlotOf(update);
+ 
+   // S2-7: the started toast in `ok`, once the simulator or the Core accepted the update.
+   const install = () => {
++    if (locked) return;
+     press.run((release) =>
+       run(() => actions.startSoftwareUpdate(), {
+         source: 'settings.maintenance.startSoftwareUpdate',
+@@ -315,10 +324,25 @@
+         />
+       ) : null}
+       {update.availableVersion && !running && update.state !== 'PASS' ? (
+-        <Button testID="settings-update-install" variant="primary" size="lg" onPress={install} {...busyState(press.busy)}>
+-          {press.pending ? <PendingSpinner color={palette.black} testID="settings-update-install-spinner" /> : <Download size={18} color={palette.black} />}
+-          <Button.Label>{t(live ? 'system.live.install' : 'system.update.install')}</Button.Label>
+-        </Button>
++        <>
++          <Button
++            testID="settings-update-install"
++            variant="primary"
++            size="lg"
++            isDisabled={locked}
++            onPress={install}
++            {...(locked && maintenance.hint ? { accessibilityHint: maintenance.hint } : {})}
++            {...busyState(press.busy, locked)}
++          >
++            {press.pending ? <PendingSpinner color={palette.black} testID="settings-update-install-spinner" /> : <Download size={18} color={locked ? palette.gray : palette.black} />}
++            <Button.Label>{t(live ? 'system.live.install' : 'system.update.install')}</Button.Label>
++          </Button>
++          {locked && maintenance.hint ? (
++            <Text maxFontSizeMultiplier={1.2} style={settingsStyles.muted} testID="settings-update-install-locked">
++              {maintenance.hint}
++            </Text>
++          ) : null}
++        </>
+       ) : null}
+       {running ? (
+         <Text maxFontSizeMultiplier={1.2} style={settingsStyles.muted}>
+--- /dev/null
++++ b/apps/mobile/src/features/rbac/use-role-gate.ts
+@@ -0,0 +1,55 @@
++/**
++ * One role gate for the controls ruling R2 locks on the phone and the tablet (E-fix row FX-M2;
++ * decision D201 R2, which amends 04_client_integration_spec §6.3's mobile list): Start Session (Home
++ * quick action, Sessions hub, any start entry) needs `SESSION_START`; Install update needs
++ * `MAINTENANCE`. The web console locks the same controls (`selectCan` plus "Requires the X role",
++ * `apps/core-web/src/features/dashboard/active-session-panel.tsx`), and the Core refuses them with 403.
++ *
++ * The existing mobile pattern (device restart, archive, storage policy): the control stays in place,
++ * disabled, with the sentence "Requires the X role" naming the least privileged role that holds the
++ * permission (`requiredRoleFor`, the refusal presenter's own rule). The role is the store's
++ * (`selectCan`): in Live mode the replica's `operators` slice, which the Core replaces with the
++ * `session.updated` of a role change, so the gate follows a role change at once and without a new
++ * sign-in; in Simulated mode the simulator's signed-in operator.
++ *
++ * `known` is false while no signed-in operator is in the store (Live mode before the first
++ * snapshot): the control is disabled but no role sentence is shown, and a route guard does not leave.
++ */
++import { useMemo } from 'react';
++import { useTranslation } from 'react-i18next';
++import { roleHas, selectRole, useSim, type OperatorRole, type Permission } from '@dems/shared/sim';
++import { requiredRoleFor } from '@/runtime';
++
++export interface RoleGateState {
++  /** The signed-in operator's role holds the permission. */
++  readonly allowed: boolean;
++  /** A signed-in operator's role is known. */
++  readonly known: boolean;
++  /** The role is known and lacks the permission: the control is locked and says why. */
++  readonly locked: boolean;
++  /** The least privileged role that holds the permission (the one the sentence names), or null. */
++  readonly requiredRole: OperatorRole | null;
++}
++
++/** The gate for a role and a permission (pure; the hook below reads the role from the store). */
++export function roleGateFor(role: OperatorRole | null, permission: Permission): RoleGateState {
++  const allowed = roleHas(role, permission);
++  const known = role !== null;
++  return { allowed, known, locked: known && !allowed, requiredRole: requiredRoleFor(permission) };
++}
++
++export interface RoleGate extends RoleGateState {
++  /** "Requires the X role" while locked, else null. */
++  readonly hint: string | null;
++}
++
++export function useRoleGate(permission: Permission): RoleGate {
++  const { t } = useTranslation();
++  const role = useSim(selectRole);
++  return useMemo(() => {
++    const gate = roleGateFor(role, permission);
++    const hint =
++      gate.locked && gate.requiredRole !== null ? t('common.rbac.requiresRole', { role: t(`common.roles.${gate.requiredRole}`) }) : null;
++    return { ...gate, hint };
++  }, [role, permission, t]);
++}
+--- /dev/null
++++ b/apps/mobile/src/features/session-new/use-start-entry-guard.ts
+@@ -0,0 +1,47 @@
++/**
++ * R2 for every start entry (E-fix row FX-M2, E2E-P-5; decision D201, amending
++ * 04_client_integration_spec §6.3): the Home and Sessions buttons are locked without
++ * `SESSION_START`, and this guard covers the entries that are not buttons (a deep link, a pending
++ * href, a resync to a setup session left behind): an operator whose role is known and lacks
++ * `SESSION_START` does not get the wizard; the route goes to `/home` with one toast, "Not permitted"
++ * and "Requires the Investigator role", as the web's route guard sends such a role to the Dashboard.
++ *
++ * Only the ENTRY is decided here. Once the wizard was shown to an operator who held the permission,
++ * losing it is the screen's own rule (§6.3, AC-C-50: it leaves for `/home` and the runtime's
++ * role-change toast says why), so the two never navigate or toast twice. While no role is known yet
++ * (Live mode before the first snapshot) the wizard is not refused: the Core decides the create.
++ */
++import { useToast } from 'heroui-native';
++import { useEffect, useRef, useState } from 'react';
++import { useTranslation } from 'react-i18next';
++import { Permission } from '@dems/shared/sim';
++import { useRoleGate } from '@/features/rbac/use-role-gate';
++import { reportRuntimeIssue } from '@/runtime';
++
++export interface StartEntryGuardOptions {
++  /** False while the route leaves for another reason (a busy session has its own toast): nothing is shown twice. */
++  readonly enabled?: boolean;
++}
++
++export function useStartEntryGuard({ enabled = true }: StartEntryGuardOptions = {}): '/home' | null {
++  const { t } = useTranslation();
++  const { toast } = useToast();
++  const gate = useRoleGate(Permission.SESSION_START);
++  // The entry is complete once the wizard was allowed for a known role (adjusted during render).
++  const [entered, setEntered] = useState(false);
++  if (enabled && !entered && gate.known && gate.allowed) setEntered(true);
++  const refused = enabled && !entered && gate.locked;
++
++  // One toast and one log record per refused visit, however often the redirecting render repeats.
++  const shown = useRef(false);
++  useEffect(() => {
++    if (!refused || shown.current) return;
++    shown.current = true;
++    toast.show({ variant: 'danger', label: t('common.rbac.deniedTitle'), ...(gate.hint ? { description: gate.hint } : {}) });
++    reportRuntimeIssue('info', 'features.sessionNew.entryRefused', 'Start Session refused: the role lacks SESSION_START', {
++      requiredRole: gate.requiredRole,
++    });
++  }, [refused, gate.hint, gate.requiredRole, toast, t]);
++
++  return refused ? '/home' : null;
++}
+--- /dev/null
++++ b/apps/mobile/src/features/session-finalizing/handover.ts
+@@ -0,0 +1,29 @@
++/**
++ * The monitor-to-Finalizing hand-over (E-fix row FX-M2; defects E2E-P-4 and E2E-T-4, decision D201).
++ *
++ * When a recording stops (here or on another console), `/session/live` used to render only a
++ * `<Redirect>` to `/session/finalizing`: the monitor was gone in that commit and nothing was drawn
++ * until the Finalizing route had mounted and its cards had risen in, which the phone showed as about
++ * 1.2 s of empty screen (the tablet about 2 s, under a loaded host). Now the live route draws the
++ * Finalizing screen in place in the SAME commit that drops the monitor, without its enter motion,
++ * and the route follows.
++ *
++ * The in-place screen marks the session here; the Finalizing route's own screen, which replaces it a
++ * moment later (by that redirect, or by the runtime's route sync), reads the mark and skips its enter
++ * motion as well, so the swap of two identical screens shows no dip either. A mark only ever matches
++ * the one session that was handed over; a deep link or a relaunch into `/session/finalizing` enters
++ * as before. One slot, no timer: a session goes through Finalizing once.
++ */
++let handedOver: string | null = null;
++
++export function markFinalizingHandover(sessionId: string | null): void {
++  if (sessionId !== null) handedOver = sessionId;
++}
++
++export function isFinalizingHandover(sessionId: string | null): boolean {
++  return sessionId !== null && handedOver === sessionId;
++}
++
++export function resetFinalizingHandoverForTests(): void {
++  handedOver = null;
++}
+--- /dev/null
++++ b/apps/mobile/src/features/devices/panel-boundary.tsx
+@@ -0,0 +1,106 @@
++/**
++ * Panel error boundary for Devices & Inputs (E-fix row FX-M2, E2E-T-2; decision D200/D201): a copy of
++ * step 77's `features/dashboard/panel-boundary.tsx`, as the Storage folder keeps one (P6: no shared
++ * component outside the screen folders). The list and the detail pane each sit in one, so the screen
++ * always shows its loading skeleton, its data, or this card; a render failure never leaves the pane empty:
++ *
++ * 1. user feedback: a card with the shared panel copy (`common.errors.panelTitle`) in place of the panel;
++ * 2. persistent logging: the error goes to the runtime log (`dems.mobile.log.v1`, S73-9) with the
++ *    panel name and the component stack (no user data);
++ * 3. graceful degradation: a rate-limited Retry (3 s, then 6 s, then 12 s cooldown with a
++ *    countdown; at most 3 retries, then "Max retries reached"). The countdown is the only timer of
++ *    the folder's code besides the sheet presence: a UI cooldown, it reads no Core time (rule 7).
++ */
++import { Button, Card } from 'heroui-native';
++import { Component, type ErrorInfo, type ReactNode } from 'react';
++import { i18n } from '@/i18n';
++import { reportRuntimeIssue } from '@/runtime';
++
++export const PANEL_RETRY_BASE_MS = 3_000;
++export const PANEL_MAX_RETRIES = 3;
++
++/** Cooldown after the n-th retry (1-based): 3 s, 6 s, 12 s, capped at 15 s. */
++export function panelRetryCooldownMs(attempt: number): number {
++  return Math.min(PANEL_RETRY_BASE_MS * 2 ** Math.max(0, attempt - 1), 15_000);
++}
++
++interface PanelBoundaryProps {
++  /** Panel name for the log record and the fallback testID (`devices-panel-error-<name>`). */
++  name: string;
++  children: ReactNode;
++}
++
++interface PanelBoundaryState {
++  failed: boolean;
++  retries: number;
++  cooldownS: number;
++}
++
++export class PanelBoundary extends Component<PanelBoundaryProps, PanelBoundaryState> {
++  override state: PanelBoundaryState = { failed: false, retries: 0, cooldownS: 0 };
++  private timer: ReturnType<typeof setInterval> | null = null;
++
++  static getDerivedStateFromError(): Partial<PanelBoundaryState> {
++    return { failed: true };
++  }
++
++  override componentDidCatch(error: Error, info: ErrorInfo): void {
++    reportRuntimeIssue('error', `devices.panel.${this.props.name}`, error, {
++      panel: this.props.name,
++      componentStack: info.componentStack ?? null,
++      retries: this.state.retries,
++    });
++  }
++
++  override componentWillUnmount(): void {
++    if (this.timer) clearInterval(this.timer);
++  }
++
++  private readonly retry = () => {
++    if (this.state.cooldownS > 0 || this.state.retries >= PANEL_MAX_RETRIES) return;
++    const attempt = this.state.retries + 1;
++    const cooldownS = Math.ceil(panelRetryCooldownMs(attempt) / 1000);
++    this.setState({ failed: false, retries: attempt, cooldownS });
++    if (this.timer) clearInterval(this.timer);
++    this.timer = setInterval(() => {
++      this.setState((prev) => {
++        const next = Math.max(0, prev.cooldownS - 1);
++        if (next === 0 && this.timer) {
++          clearInterval(this.timer);
++          this.timer = null;
++        }
++        return { cooldownS: next };
++      });
++    }, 1000);
++  };
++
++  override render(): ReactNode {
++    if (!this.state.failed) return this.props.children;
++    const { retries, cooldownS } = this.state;
++    const exhausted = retries >= PANEL_MAX_RETRIES;
++    const label = exhausted
++      ? i18n.t('common.errors.maxRetries')
++      : cooldownS > 0
++        ? i18n.t('common.actions.retryIn', { seconds: cooldownS })
++        : i18n.t('common.actions.retry');
++    return (
++      <Card testID={`devices-panel-error-${this.props.name}`} className="rounded-xl">
++        <Card.Header>
++          <Card.Title>{i18n.t('common.errors.panelTitle')}</Card.Title>
++          <Card.Description>{i18n.t('common.errors.panelBody')}</Card.Description>
++        </Card.Header>
++        <Card.Footer>
++          <Button
++            testID={`devices-panel-retry-${this.props.name}`}
++            variant="outline"
++            size="sm"
++            isDisabled={exhausted || cooldownS > 0}
++            onPress={this.retry}
++          >
++            <Button.Label>{label}</Button.Label>
++          </Button>
++        </Card.Footer>
++      </Card>
++    );
++  }
++}

@@ -1,0 +1,47 @@
+## 01:44:58 $ npm run typecheck -w @dems/mobile
+
+> @dems/mobile@0.1.0 typecheck
+> tsc --noEmit
+
+src/features/session-recovery/live-recovery-sites.test.tsx(345,82): error TS2345: Argument of type 'string | null' is not assignable to parameter of type 'string'.
+  Type 'null' is not assignable to type 'string'.
+src/features/settings/live-settings-sites.test.tsx(352,82): error TS2345: Argument of type 'string | null' is not assignable to parameter of type 'string'.
+  Type 'null' is not assignable to type 'string'.
+npm error Lifecycle script `typecheck` failed with error:
+npm error code 2
+npm error path /Users/gsp-budi/Documents/DEMS/apps/mobile
+npm error workspace @dems/mobile@0.1.0
+npm error location /Users/gsp-budi/Documents/DEMS/apps/mobile
+npm error command failed
+npm error command sh -c tsc --noEmit
+exit=2
+## 01:45:05 $ npm run lint -w @dems/mobile
+
+> @dems/mobile@0.1.0 lint
+> eslint .
+
+
+/Users/gsp-budi/Documents/DEMS/apps/mobile/src/runtime/connection-banner-live.test.tsx
+  183:3  error  Error: Cannot reassign variables declared outside of the component/hook
+
+Variable `bumpOther` is declared outside of the component/hook. Reassigning this value during render is a form of side effect, which can cause unpredictable behavior depending on when the component happens to re-render. If this variable is used in rendering, use useState instead. Otherwise, consider updating it in an effect. (https://react.dev/reference/rules/components-and-hooks-must-be-pure#side-effects-must-run-outside-of-render).
+
+/Users/gsp-budi/Documents/DEMS/apps/mobile/src/runtime/connection-banner-live.test.tsx:183:3
+  181 | function Other() {
+  182 |   const [, setCount] = useState(0);
+> 183 |   bumpOther = () => setCount((count) => count + 1);
+      |   ^^^^^^^^^ `bumpOther` cannot be reassigned
+  184 |   return null;
+  185 | }
+  186 |  react-hooks/globals
+
+✖ 1 problem (1 error, 0 warnings)
+
+npm error Lifecycle script `lint` failed with error:
+npm error code 1
+npm error path /Users/gsp-budi/Documents/DEMS/apps/mobile
+npm error workspace @dems/mobile@0.1.0
+npm error location /Users/gsp-budi/Documents/DEMS/apps/mobile
+npm error command failed
+npm error command sh -c eslint .
+exit=1

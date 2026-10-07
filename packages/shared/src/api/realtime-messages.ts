@@ -134,8 +134,8 @@ export type SessionUpdatedReason = (typeof SessionUpdatedReason)[keyof typeof Se
 
 /**
  * `session.ended.reason` (01_specs §9.4, §5.4). `TOKEN_REUSE`: a used biometric token of the
- * session's device and operator was presented again, which ends the open sessions that were
- * created by biometric sign-in (SD-10). The stored end reasons `DEVICE_REVOKED` and
+ * session's device and operator was presented again, or a live one was presented by another paired
+ * device (CPS1-7), which ends the open sessions that were created by biometric sign-in (SD-10). The stored end reasons `DEVICE_REVOKED` and
  * `DEVICE_UNPAIRED` are not values here: those sockets get `device.revoked` and close 4403.
  */
 export const SessionEndedReason = {
@@ -169,6 +169,8 @@ export const RealtimeCloseCode = {
   GOING_AWAY: 1001,
   /** Protocol violation: reconnect. */
   POLICY_VIOLATION: 1008,
+  /** A client message larger than `REALTIME_CLIENT_MESSAGE_MAX_BYTES` (W83, gap W42-1): reconnect. */
+  MESSAGE_TOO_BIG: 1009,
   /** Connection cap: reconnect later. */
   TRY_AGAIN_LATER: 1013,
   /** The session ended (any reason of `session.ended`), or an invalid bearer: show the login screen. */
@@ -184,6 +186,7 @@ export type RealtimeCloseCode = (typeof RealtimeCloseCode)[keyof typeof Realtime
 export const REALTIME_CLOSE_CODES = [
   { code: RealtimeCloseCode.GOING_AWAY, when: 'Server shutdown.', reaction: 'Reconnect with the backoff.' },
   { code: RealtimeCloseCode.POLICY_VIOLATION, when: 'Protocol violation: an unknown message, one the principal may not send, or too many.', reaction: 'Reconnect.' },
+  { code: RealtimeCloseCode.MESSAGE_TOO_BIG, when: 'A client message larger than 65,536 bytes; the socket library refuses it before it is buffered.', reaction: 'Reconnect.' },
   { code: RealtimeCloseCode.TRY_AGAIN_LATER, when: 'The connection cap is reached.', reaction: 'Reconnect later.' },
   {
     code: RealtimeCloseCode.SESSION_ENDED,
@@ -340,7 +343,7 @@ export const MetersMessageSchema = z
     type: z.literal('meters'),
     v: z.literal(1),
     at: epochMs(),
-    seq: count().describe('Counts the frames the server produced; a skipped frame leaves a gap, by design.'),
+    seq: count().describe('Counts the frames the server produced; a skipped frame leaves a gap, by design. It never goes back on a connection, also across a new epoch.'),
     audio: AudioSliceSchema,
   })
   .describe('One audio frame of both channels. Sent only after `subscribe`; it carries no revision, and the latest value wins.');
@@ -426,7 +429,7 @@ export type UnsubscribeMessage = z.output<typeof UnsubscribeMessageSchema>;
 
 export const ResyncMessageSchema = z
   .strictObject({ type: z.literal('resync') })
-  .describe('Ask for a new `snapshot` after a revision gap or another epoch. At most one in 2 s.');
+  .describe('Ask for a new `snapshot` after a revision gap or another epoch. At most one in 2 s; one that comes sooner is answered when the 2 s have passed.');
 export type ResyncMessage = z.output<typeof ResyncMessageSchema>;
 
 /**
@@ -435,7 +438,7 @@ export type ResyncMessage = z.output<typeof ResyncMessageSchema>;
  */
 export const WsClientMessageSchema = z
   .discriminatedUnion('type', [SubscribeMessageSchema, UnsubscribeMessageSchema, ResyncMessageSchema])
-  .describe('A message a client sends on `/ws`. Anything else closes the connection with 1008.');
+  .describe('A message a client sends on `/ws`. Anything else closes the connection with 1008; a message larger than 65,536 bytes closes it with 1009.');
 export type WsClientMessage = z.output<typeof WsClientMessageSchema>;
 
 // ═══════════════════════════════════════════════════════════════════════════════════════
@@ -545,7 +548,7 @@ export interface RealtimeClientMessageInfo {
 export const REALTIME_CLIENT_MESSAGES = [
   { type: 'subscribe', principals: OPERATOR_ONLY, members: '`topic: meters`', effect: 'The server starts the `meters` frames.' },
   { type: 'unsubscribe', principals: OPERATOR_ONLY, members: '`topic: meters`', effect: 'The server stops them.' },
-  { type: 'resync', principals: OPERATOR_ONLY, members: 'none', effect: 'The server answers with a new `snapshot`. At most one in 2 s.' },
+  { type: 'resync', principals: OPERATOR_ONLY, members: 'none', effect: 'The server answers with a new `snapshot`. At most one in 2 s; one that comes sooner is answered when the 2 s have passed.' },
 ] as const satisfies readonly RealtimeClientMessageInfo[];
 
 /** True when a connection of `principal` may be sent a message of `type` (01_specs §9.2). */

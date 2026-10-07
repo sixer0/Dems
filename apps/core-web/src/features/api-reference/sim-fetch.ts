@@ -16,23 +16,25 @@
  * So nothing leaves the machine (NFR1): the only network request Try-it can make is the loopback
  * health call. The simulator applies the signed-in operator's role (export: INVESTIGATOR 403 plus
  * an EXPORT_DENIED audit row; SUPERVISOR 202 plus EVIDENCE_EXPORTED).
+ *
+ * Plan row W84 (backend task 04_client_integration_spec §11 AR-2): with `coreServerRefusal` set
+ * (the page sets it while "Show Core-server endpoints" is on), a request of one of the 65
+ * operations only the Core server answers is rejected before any request and before the simulator
+ * is asked (`TryItRefusedError`, reason `CORE_SERVER`): the page never fabricates an answer for
+ * them. Without it the routing is the table above, unchanged. Live mode has its own fetch
+ * (try-it.ts).
  */
 import { API_BASE_PATH, HEALTH_PATH, SIMULATED_HEADER_NAME } from '@dems/shared/api'
 import { coreHttpOrigin } from '@/lib/core-endpoint'
 import { answerSimulated, type SimTarget } from './sim-adapter'
 import { logApiReference } from './log'
+import { BlockedRequestError, coreServerOnlyOperation, TryItRefusedError } from './try-it'
 
 export type FetchLike = (input: string | URL | Request, init?: RequestInit) => Promise<Response>
 
-/** Rejection for a URL outside the Core API (nothing is sent). */
-export class BlockedRequestError extends TypeError {
-  readonly url: string
-  constructor(url: string, coreOrigin: string = coreHttpOrigin()) {
-    super(`Blocked: ${url} is outside the local Core API (${coreOrigin}${API_BASE_PATH}).`)
-    this.name = 'BlockedRequestError'
-    this.url = url
-  }
-}
+// The rejection for a URL outside the Core API lives beside the other Try-it rules (try-it.ts) and
+// keeps its import path here.
+export { BlockedRequestError }
 
 export type TryItMode = 'live' | 'simulated'
 
@@ -50,6 +52,11 @@ export interface SimAwareFetchOptions {
   networkFetch?: FetchLike
   /** Called after every answered exchange (not for blocked or failed ones). */
   onExchange?: (exchange: TryItExchange) => void
+  /**
+   * AR-2: when set, a request of an operation only the Core server answers is rejected with this
+   * sentence before any request. Unset (the default): routed as the table above says.
+   */
+  coreServerRefusal?: string
 }
 
 function requestUrl(input: string | URL | Request): string {
@@ -80,7 +87,7 @@ function toResponse(status: number, headers: Record<string, string>, body: unkno
 
 /** Builds the `customFetch` for one simulator. */
 export function createSimAwareFetch(options: SimAwareFetchOptions): FetchLike {
-  const { sim, onExchange } = options
+  const { sim, onExchange, coreServerRefusal } = options
   const networkFetch: FetchLike = options.networkFetch ?? ((input, init) => globalThis.fetch(input, init))
   const coreBase = coreHttpOrigin()
   const coreOrigin = new URL(coreBase).origin
@@ -98,8 +105,20 @@ export function createSimAwareFetch(options: SimAwareFetchOptions): FetchLike {
       url.origin === coreOrigin && (url.pathname === API_BASE_PATH || url.pathname.startsWith(`${API_BASE_PATH}/`))
     if (!inCoreApi) {
       const blocked = new BlockedRequestError(url.origin + url.pathname, coreBase)
-      logApiReference('warn', 'simAwareFetch.blocked', blocked, { method })
+      logApiReference('warn', 'simAwareFetch.blocked', blocked, 'A Try-it request outside the Core API was blocked.', {
+        method,
+        path: url.pathname,
+      })
       throw blocked
+    }
+
+    if (coreServerRefusal !== undefined && coreServerOnlyOperation(method, url.pathname) !== null) {
+      const refused = new TryItRefusedError('CORE_SERVER', coreServerRefusal, method, url.pathname)
+      logApiReference('warn', 'simAwareFetch.coreServer', refused, 'A Try-it request of a Core-server operation was refused in Simulated mode.', {
+        method,
+        path: url.pathname,
+      })
+      throw refused
     }
 
     // LIVE: the one endpoint mock-core serves goes to the network unchanged.
@@ -113,9 +132,10 @@ export function createSimAwareFetch(options: SimAwareFetchOptions): FetchLike {
     const body = method === 'GET' || method === 'HEAD' ? undefined : await requestBody(input, init)
     const answer = answerSimulated(sim, { method, path: url.pathname, ...(body !== undefined ? { body } : {}) })
     if (answer.headers[SIMULATED_HEADER_NAME] === undefined) {
-      logApiReference('warn', 'simAwareFetch.header', new Error('simulated response without x-dems-simulated'), {
+      logApiReference('warn', 'simAwareFetch.header', null, 'A simulated answer came without its x-dems-simulated header.', {
         method,
         path: url.pathname,
+        status: answer.status,
       })
     }
     onExchange?.({ mode: 'simulated', method, path: url.pathname, status: answer.status })

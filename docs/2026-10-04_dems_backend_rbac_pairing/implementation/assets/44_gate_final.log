@@ -1,0 +1,96 @@
+# Step 66 (W44): final gate, from /Users/gsp-budi/Documents/DEMS (no cd; every command as written)
+## 2026-10-04 12:32:01 WIB $ npm run test -w @dems/shared -- --maxWorkers=2
+
+ Test Files  64 passed (64)
+      Tests  1650 passed (1650)
+   Start at  12:32:01
+   Duration  5.36s (tests 51%, import 37%, transform 11%, worker 1%)
+
+    Isolate  64 workers spawned · ~42ms startup each (spawn + environment, per file)
+             at least ~1.30s faster with isolate: false — reuses workers across files instead of one per file
+
+exit=0
+
+## 12:32:06 the 28 test files that exist at acaff20 (git ls-tree -r acaff20 --name-only packages/shared/test), alone
+$ npm run test -w @dems/shared -- --maxWorkers=2 <the 28 files>
+
+ Test Files  28 passed (28)
+      Tests  517 passed (517)
+   Start at  12:32:07
+   Duration  2.05s (tests 49%, import 34%, transform 16%, worker 1%)
+
+    Isolate  28 workers spawned · ~42ms startup each (spawn + environment, per file)
+             at least ~545ms faster with isolate: false — reuses workers across files instead of one per file
+
+exit=0
+
+## 12:32:09 the seven new files, alone (every test name is in 44_tests_verbose.log)
+$ npm run test -w @dems/shared -- --maxWorkers=2 test/live-source-{replica,atomicity,bindings,session,react,simulated-isolation,platform-neutral}.test.ts
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/packages/shared
+
+
+ Test Files  7 passed (7)
+      Tests  244 passed (244)
+   Start at  12:32:09
+   Duration  1.27s (tests 50%, import 25%, transform 24%, worker 1%)
+
+exit=0
+
+## 12:32:10 $ npm run typecheck -w @dems/shared
+
+> @dems/shared@0.1.0 typecheck
+> tsc --noEmit
+
+exit=0
+## 12:32:13 $ npm run lint -w @dems/shared
+
+> @dems/shared@0.1.0 lint
+> oxlint
+
+exit=0
+## 12:32:13 $ npm run typecheck -w @dems/core-web
+
+> @dems/core-web@0.1.0 typecheck
+> tsc -b
+
+exit=0
+## 12:32:23 $ npm run typecheck -w @dems/mobile
+
+> @dems/mobile@0.1.0 typecheck
+> tsc --noEmit
+
+exit=0
+## 12:32:27 done
+
+# Confirmation run after the mutation run (12:36): the same gate, summary lines only.
+# The filter of this run (grep 'Test Files|Tests |Start at|Duration|FAIL|failed') also matched 30 lines
+# 'ERROR: failed to copy trust settings of system certificate-25291': the host's keychain message in the
+# sandbox, printed at process start, not a test result. They are collapsed to this note; the rest is as printed.
+## 2026-10-04 12:36:23 WIB $ npm run test -w @dems/shared -- --maxWorkers=2
+ Test Files  64 passed (64)
+      Tests  1650 passed (1650)
+   Start at  12:36:23
+   Duration  6.53s (tests 53%, import 36%, transform 10%, worker 1%)
+exit=0
+## 12:36:30 $ npm run typecheck -w @dems/shared
+> @dems/shared@0.1.0 typecheck
+> tsc --noEmit
+
+exit=0
+## 12:36:32 $ npm run lint -w @dems/shared
+> @dems/shared@0.1.0 lint
+> oxlint
+
+exit=0
+## 12:36:33 $ npm run typecheck -w @dems/core-web
+> @dems/core-web@0.1.0 typecheck
+> tsc -b
+
+exit=0
+## 12:36:42 $ npm run typecheck -w @dems/mobile
+> @dems/mobile@0.1.0 typecheck
+> tsc --noEmit
+
+exit=0
+## 12:36:46 done

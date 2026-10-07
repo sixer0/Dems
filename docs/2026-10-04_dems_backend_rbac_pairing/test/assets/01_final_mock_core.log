@@ -1,0 +1,6 @@
+> @dems/mock-core@0.1.0 test
+> vitest run --maxWorkers=2
+ Test Files  4 passed (4)
+      Tests  19 passed (19)
+   Start at  08:29:51
+   Duration  3.82s (tests 92%, import 4%, transform 4%)

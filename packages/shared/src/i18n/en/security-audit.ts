@@ -236,7 +236,14 @@ export const securityAudit = {
       head: 'Chain head',
       chain: 'Chain at export',
       reason: 'Reason',
-      reasonNote: 'Shown here only: the demo simulator does not record the export reason yet.',
+      /**
+       * Simulated mode. Closing copy round (decision D176 DC-5, finding F75-7, W83 ledger #94): the one
+       * deliberate change of Simulated copy in the round. The former note ("Shown here only: the demo
+       * simulator does not record the export reason yet.") stopped being true at step 54, when the
+       * simulator began to write the reason into the export's `AUDIT_EXPORTED` row. Worded like the
+       * Live note `live.exportAudit.reasonNote`.
+       */
+      reasonNote: 'Recorded by the simulator in the audit row of the export.',
     },
     denied: 'Audit export needs the {{role}} role.',
     notSignedIn: 'Sign in to export the audit log.',

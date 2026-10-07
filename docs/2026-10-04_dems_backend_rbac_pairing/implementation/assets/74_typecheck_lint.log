@@ -1,0 +1,8 @@
+## 23:55:36 $ npm run typecheck -w @dems/mobile
+> @dems/mobile@0.1.0 typecheck
+> tsc --noEmit
+
+exit=0
+## 23:55:41 $ npm run lint -w @dems/mobile -- --format json
+exit=0
+eslint json: files 490 errors 0 warnings 0

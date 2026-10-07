@@ -1,0 +1,11 @@
+P-1 a module names a file inside the core (the window helper by its file): DETECTED — Tests 1 failed | 9 passed (10)
+P-2 a production source imports the neutral test support: DETECTED — Tests 1 failed | 9 passed (10)
+P-3 the engine imports the store by its old path: DETECTED — Tests 2 failed | 22 passed (24)
+P-4 the identity support imports the guard support again (the cycle): DETECTED — Tests 1 failed | 9 passed (10)
+P-5 the health route is written by hand again (method and path beside the helper): DETECTED — Tests 1 failed | 1 passed (2)
+P-6 an identity route gets a hook of its own again: DETECTED — Tests 2 failed | 7 passed (9)
+P-7 the readiness hold is logged under the key reason again: DETECTED — Tests 3 failed | 34 passed (37)
+P-8 the unpair revokes with the reason of a revoke: DETECTED — Tests 1 failed | 26 passed (27)
+P-9 the shim of the old store path grows a statement of its own: DETECTED — Tests 1 failed | 8 passed (9)
+P-10 the administration module gets a statement on biometric_tokens of its own again: DETECTED — Tests 3 failed | 29 passed (32)
+10 of 10 detected

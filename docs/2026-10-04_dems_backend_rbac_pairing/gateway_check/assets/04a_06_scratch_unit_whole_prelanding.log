@@ -1,0 +1,9 @@
+
+ RUN  v5.0.3 /private/tmp/claude-501/-Users-gsp-budi-Documents-DEMS/0d71fd65-4a51-4019-9c48-5c92d11bbdaf/scratchpad/cpb1a/tree/apps/core-server
+
+
+ Test Files  110 passed (110)
+      Tests  2776 passed (2776)
+   Start at  15:31:50
+   Duration  40.44s (import 59%, tests 36%, transform 5%, worker 1%)
+

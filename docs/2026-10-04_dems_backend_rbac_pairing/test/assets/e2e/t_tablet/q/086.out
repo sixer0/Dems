@@ -1,0 +1,16 @@
+mark R2 tablet Home -> Start Session at 10:52:55.585
+tap 179,216 at 10:52:55.896
+slept 4000 ms
+tap 2210,1034 at 10:52:59.955
+slept 5000 ms
+tap 1736,379 at 10:53:05.025
+slept 1500 ms
+tap 920,568 at 10:53:06.583
+slept 1000 ms
+tap 1178,808 at 10:53:07.643
+slept 1200 ms
+text typed (Dewi Lestari); editor inputType 0x2001
+slept 1000 ms
+tap 1178,248 at 10:53:10.175
+slept 1500 ms
+screencap R2_01_wizard_filled.png (747229 bytes) at 10:53:11.979

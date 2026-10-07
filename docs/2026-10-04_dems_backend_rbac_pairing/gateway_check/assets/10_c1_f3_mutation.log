@@ -1,0 +1,31 @@
+## item 3 mutation check (rule M15: in memory, scratch vitest config outside the tree), 08:57:45
+## C1_MUT=none
+ Test Files  2 passed (2)
+      Tests  45 passed (45)
+## C1_MUT=order
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  test/api-openapi-scope.test.ts > scope all: every operation of the registry, as the Core server answers it > AC-B-11: is the committed openapi.json, byte for byte, with 75 operations and two security schemes
+AssertionError: expected '{\n  "openapi": "3.1.0",\n  "info": {…' to be '{\n  "openapi": "3.1.0",\n  "info": {…' // Object.is equality
+ FAIL  test/api-openapi-scope.test.ts > scope all: every operation of the registry, as the Core server answers it > holds one component per registry schema, and the ten existing operations with the schemas of the offline scope
+AssertionError: expected [ 'live', 'coreServer' ] to deeply equal [ 'coreServer', 'live' ]
+ FAIL  test/openapi.test.ts > AC-56: the OpenAPI document > the committed openapi/openapi.json matches the builder byte for byte (no drift)
+AssertionError: expected '{\n  "openapi": "3.1.0",\n  "info": {…' to be '{\n  "openapi": "3.1.0",\n  "info": {…' // Object.is equality
+ Test Files  2 failed (2)
+## C1_MUT=leak
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  test/api-openapi-scope.test.ts > scope offline: the default, and the document of the baseline > info, servers, tags, every path and the header component are byte-equal to acaff20, except the KI-18 sentence of the health path (W83)
+AssertionError: expected '9d02c99802b11894a8418d8fea1d7dc057068…' to be '184431cd5576b32c452a5a0af7b85babe5bae…' // Object.is equality
+ FAIL  test/api-openapi-scope.test.ts > scope offline: the default, and the document of the baseline > each of the ten operation objects is byte-equal to acaff20, except the KI-18 sentence of getServiceHealth (W83)
+AssertionError: expected { …(10) } to deeply equal { …(10) }
+ Test Files  1 failed | 1 passed (2)
+      Tests  2 failed | 43 passed (45)
+## C1_MUT=drop
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  test/api-openapi-scope.test.ts > scope all: every operation of the registry, as the Core server answers it > AC-B-11: is the committed openapi.json, byte for byte, with 75 operations and two security schemes
+AssertionError: expected '{\n  "openapi": "3.1.0",\n  "info": {…' to be '{\n  "openapi": "3.1.0",\n  "info": {…' // Object.is equality
+ FAIL  test/api-openapi-scope.test.ts > scope all: every operation of the registry, as the Core server answers it > holds one component per registry schema, and the ten existing operations with the schemas of the offline scope
+AssertionError: getServiceHealth 200: expected { 'application/json': { …(2) } } to deeply equal { 'application/json': { …(2) } }
+ FAIL  test/openapi.test.ts > AC-56: the OpenAPI document > the committed openapi/openapi.json matches the builder byte for byte (no drift)
+AssertionError: expected '{\n  "openapi": "3.1.0",\n  "info": {…' to be '{\n  "openapi": "3.1.0",\n  "info": {…' // Object.is equality
+ Test Files  2 failed (2)
+## openapi.ts sha256 after the runs: 03c15d670dc22e0ad598e29a984be038fcf9ac2198ed3e3474477d6e10b87776  -

@@ -1,0 +1,13 @@
+$ npm run typecheck
+
+> @dems/core-web@0.1.0 typecheck
+> tsc -b
+
+EXIT=0
+$ npx oxlint --format default   (the package script "lint" is "oxlint"; run in apps/core-web)
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+Found 0 warnings and 0 errors.
+Finished in 134ms on 488 files with 116 rules using 10 threads.
+EXIT=0

@@ -1,0 +1,498 @@
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/apps/core-server
+
+[test:db] PostgreSQL 18.4 on 127.0.0.1:4432; helper role dems_owner, code under test dems_app; run prefix dems_test_step_70_tmdsbmuu_
+[test:db] stale sweep: dropped 0; kept 0 of younger runs, 0 of live runs, 0 unrecognised; 0 failed
+[test:db] template dems_test_step_70_tmdsbmuu_tpl_schema: built in 103 ms (create 37 ms, hook 63 ms)
+[test:db] template dems_test_step_70_tmdsbmuu_tpl_seed: built in 151 ms (create 52 ms, hook 97 ms)
+stdout | test/acceptance/pairing-lifecycle.test.ts > the audit trail of the whole journey > is exactly this sequence of types with their actors and devices; every row belongs to a step of this file; the chain verifies
+[w48] the audit sequence of the journey: 39 rows after the boot (seq 84 to 122), 0 of them arrivals of the integrity stream (not listed)
+[w48]   seq  at          type                          actor    device    step
+[w48]    84  +0.00 s     AUTH_SUCCESS                  OPR-002  -         the portal signs in
+[w48]    85  +0.00 s     AUTH_SUCCESS                  OPR-001  -         the portal signs in
+[w48]    86  +0.00 s     SESSION_CREATED               OPR-001  -         the control: a pre-check with the Core link offline
+[w48]    87  +4.25 s     PRECHECK_BLOCKED              OPR-001  -         the control: a pre-check with the Core link offline
+[w48]    88  +5.00 s     SESSION_CANCELLED             OPR-001  -         the control: a pre-check with the Core link offline
+[w48]    89  +5.00 s     PAIRING_CODE_ISSUED           OPR-002  -         issue code A
+[w48]    90  +305.00 s   PAIRING_CODE_CLOSED           -        -         redeem code A at 300 s
+[w48]    91  +305.00 s   PAIRING_FAILED                -        -         redeem code A at 300 s
+[w48]    92  +606.00 s   PAIRING_CODE_ISSUED           OPR-002  -         issue code B
+[w48]    93  +606.00 s   PAIRING_FAILED                -        -         three wrong codes
+[w48]    94  +606.00 s   PAIRING_FAILED                -        -         three wrong codes
+[w48]    95  +606.00 s   PAIRING_FAILED                -        -         three wrong codes
+[w48]    96  +666.00 s   PAIRING_LOCKED                -        -         the right code during the lock
+[w48]    97  +666.00 s   PAIRING_FAILED                -        -         the fourth and the fifth wrong code
+[w48]    98  +666.00 s   PAIRING_FAILED                -        -         the fourth and the fifth wrong code
+[w48]    99  +666.00 s   PAIRING_CODE_CLOSED           -        -         the fourth and the fifth wrong code
+[w48]   100  +666.00 s   PAIRING_CODE_ISSUED           OPR-002  -         issue code C
+[w48]   101  +666.00 s   PAIRING_SUCCESS               -        DEV-0001  redeem code C
+[w48]   102  +666.00 s   PAIRING_FAILED                -        -         the used code and the exhausted code again
+[w48]   103  +666.00 s   PAIRING_FAILED                -        -         the used code and the exhausted code again
+[w48]   104  +666.00 s   TABLET_LINK_CHANGED           -        TABLET    tablet 1 opens its socket
+[w48]   105  +666.00 s   AUTH_SUCCESS                  OPR-001  DEV-0001  the investigator signs in on tablet 1
+[w48]   106  +666.00 s   BIOMETRIC_ENROLLMENT_CHANGED  OPR-001  DEV-0001  the investigator enrols a biometric token on tablet 1
+[w48]   107  +666.00 s   SESSION_CREATED               OPR-001  -         a recording is started from tablet 1
+[w48]   108  +669.92 s   PRECHECK_PASSED               OPR-001  -         a recording is started from tablet 1
+[w48]   109  +671.00 s   RECORDING_STARTED             OPR-001  -         a recording is started from tablet 1
+[w48]   110  +673.00 s   MARKER_ADDED                  OPR-001  -         tablet 1 calls after the revoke
+[w48]   111  +673.00 s   RECORDING_STOPPED             OPR-001  -         tablet 1 calls after the revoke
+[w48]   112  +673.00 s   AUTH_SUCCESS                  OPR-001  DEV-0001  tablet 1 calls after the revoke
+[w48]   113  +673.00 s   AUTH_SUCCESS                  OPR-001  DEV-0001  tablet 1 calls after the revoke
+[w48]   114  +673.00 s   PAIRING_CODE_ISSUED           OPR-002  -         issue code D
+[w48]   115  +673.00 s   PAIRING_SUCCESS               -        DEV-0002  redeem code D
+[w48]   116  +673.00 s   AUTH_FAILED                   OPR-001  DEV-0002  the new credential, the old credential, the old biometric token and the used code
+[w48]   117  +673.00 s   PAIRING_FAILED                -        -         the new credential, the old credential, the old biometric token and the used code
+[w48]   118  +673.00 s   AUTH_SUCCESS                  OPR-001  DEV-0002  a password session, an enrolment and a biometric sign-in on the tablet
+[w48]   119  +673.00 s   BIOMETRIC_ENROLLMENT_CHANGED  OPR-001  DEV-0002  a password session, an enrolment and a biometric sign-in on the tablet
+[w48]   120  +673.00 s   AUTH_SUCCESS                  OPR-001  DEV-0002  a password session, an enrolment and a biometric sign-in on the tablet
+[w48]   121  +673.00 s   AUTH_FAILED                   OPR-001  DEV-0002  the used biometric token is presented again
+[w48]   122  +673.00 s   AUTH_FAILED                   OPR-001  DEV-0002  the rotated token of the revoked family
+
+stdout | test/acceptance/pairing-lifecycle.test.ts > AC-B-41, AC-B-28: no secret is left behind > the audit rows and the events of the journey, and every realtime frame every socket received
+[w48] AC-B-41: 39 audit rows and 43 events of the journey, 180 realtime frames (1453889 characters) on 8 sockets: 0 codes, credentials or tokens found
+
+stdout | test/acceptance/pairing-lifecycle.test.ts > AC-B-41, AC-B-28: no secret is left behind > the answers of every refusal: no code is echoed and no credential
+[w48] AC-B-41: 23 answers of a refusal: 0 codes, credentials or tokens found
+
+stdout | test/acceptance/pairing-lifecycle.test.ts > AC-B-41, AC-B-28: no secret is left behind > the log of the server, captured at level trace from the boot to the close: none of them, no hash of one, and no line at level error
+[w48] AC-B-41 log capture: 100728 characters, 500 lines, 75 request lines, levels {"20":387,"30":111,"40":2}; searched: 4 pairing codes and 5 guesses, 2 device credentials, 5 session tokens, 3 biometric tokens, the demo password: 0 found; hashes of them: 0
+[w48]   GET /api/v1/auth/session                         {"200":1,"401":2}
+[w48]   GET /api/v1/auth/status                          {"200":2}
+[w48]   GET /api/v1/health                               {"200":1}
+[w48]   GET /api/v1/pairing/code                         {"200":4,"401":1}
+[w48]   GET /api/v1/pairing/device                       {"200":4,"401":1}
+[w48]   GET /api/v1/pairing/devices                      {"200":11,"401":1}
+[w48]   GET /api/v1/session/current                      {"200":6,"401":1}
+[w48]   POST /api/v1/auth/biometric                      {"200":2}
+[w48]   POST /api/v1/auth/biometric/sign-in              {"200":2,"401":3}
+[w48]   POST /api/v1/auth/sign-in                        {"200":5,"403":2}
+[w48]   POST /api/v1/pairing/code                        {"201":4}
+[w48]   POST /api/v1/pairing/redeem                      {"201":2,"401":8,"423":2}
+[w48]   POST /api/v1/session                             {"201":2}
+[w48]   POST /api/v1/session/:id/cancel                  {"204":1}
+[w48]   POST /api/v1/session/:id/markers                 {"204":1}
+[w48]   POST /api/v1/session/:id/start                   {"200":1,"202":2,"409":1}
+[w48]   POST /api/v1/session/:id/stop                    {"202":1,"409":1}
+
+ ❯ |db| test/acceptance/pairing-lifecycle.test.ts (31 tests | 13 failed) 5642ms
+   ❯ SC5: a tablet is paired from the portal, used, revoked, refused and paired again; every step has its audit row (16)
+     × AC-B-38: the supervisor revokes the tablet while it records: 200, the device REVOKED; DEVICE_REVOKED names the supervisor, the device and the session it ended 5ms
+     × AC-B-38: its socket was told device.revoked and closed with 4403 within 1 s; the retired credential and the retired session token open no socket again 5003ms
+     × AC-B-38: its next REST calls answer 403 DEVICE_REVOKED, with the session token and with the device credential alike, each with one ACCESS_DENIED row that names the device 49ms
+     × AC-B-38: its session is ended with the reason DEVICE_REVOKED and its biometric token is revoked; the registry shows the device REVOKED, offline, with nobody signed in 1ms
+     × AC-B-39: the session STAYS IN RECORDING and goes on recording, with the Core link OFFLINE now that the device is gone 1ms
+     × AC-B-39: ANOTHER operator stops it from the web console with a reason: 202, RECORDING_STOPPED names the supervisor; the recording is sealed with the link still OFFLINE 3ms
+     × AC-B-38: the tablet is paired AGAIN: a new code, a new device ID, a new credential; the old credential and the old biometric token stay refused; the old device stays REVOKED in the registry 11ms
+   ❯ AC-B-82, SR-74: a used biometric token presented again closes the socket of the BIOMETRIC session; a PASSWORD session of the same operator stays (5)
+     × the PASSWORD session of the same operator on the same device stays open, and so does its socket 1ms
+   ❯ the audit trail of the whole journey (1)
+     × is exactly this sequence of types with their actors and devices; every row belongs to a step of this file; the chain verifies 1ms
+   ❯ AC-B-41, AC-B-28: no secret is left behind (7)
+     × the scan is not blind: a code, half a credential and a token as hex, planted into columns of two tables as the owner role, are found, each in its form and its table; a token in a line of text is found in four forms 1ms
+     × the audit rows and the events of the journey, and every realtime frame every socket received 25ms
+     × the answers of every refusal: no code is echoed and no credential 0ms
+     × the log of the server, captured at level trace from the boot to the close: none of them, no hash of one, and no line at level error 3ms
+
+⎯⎯⎯⎯⎯⎯ Failed Tests 13 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |db| test/acceptance/pairing-lifecycle.test.ts > SC5: a tablet is paired from the portal, used, revoked, refused and paired again; every step has its audit row > AC-B-38: the supervisor revokes the tablet while it records: 200, the device REVOKED; DEVICE_REVOKED names the supervisor, the device and the session it ended
+AssertionError: revokeDevice 200: expected { ok: false, …(2) } to deeply equal { ok: true }
+
+- Expected
++ Received
+
+  {
+-   "ok": true,
++   "issues": [
++     "id: Invalid input: expected string, received undefined",
++     "name: Invalid input: expected string, received undefined",
++     "platform: Invalid input: expected string, received undefined",
++     "appVersion: Invalid input: expected string, received undefined",
++     "state: Invalid option: expected one of \"PAIRED\"|\"REVOKED\"|\"UNPAIRED\"",
++     "pairedAt: Invalid input: expected number, received undefined",
++     "pairedWithCodeId: Invalid input: expected string, received undefined",
++     "codeIssuedBy: Invalid input: expected string, received undefined",
++     "lastSeenAt: Invalid input: expected number, received undefined",
++     "online: Invalid input: expected boolean, received undefined",
++     "signedInOperatorId: Invalid input: expected string, received undefined",
++     "credentialRotatedAt: Invalid input: expected number, received undefined",
++     "revokedAt: Invalid input: expected number, received undefined",
++     "revokedBy: Invalid input: expected string, received undefined",
++     "revokeReason: Invalid input: expected string, received undefined",
++     "unpairedAt: Invalid input: expected number, received undefined",
++   ],
++   "ok": false,
++   "reason": "INVALID_BODY",
+  }
+
+ ❯ expectContract test/support/pairing.ts:148:116
+    146| export function expectContract(operationId: string, response: LightMyR…
+    147|   const body: unknown = response.body === '' ? undefined : response.js…
+    148|   expect(validateCoreApiResponse(operationId, response.statusCode, bod…
+       |                                                                                                                    ^
+    149| }
+    150|
+ ❯ test/acceptance/pairing-lifecycle.test.ts:1009:5
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/13]⎯
+
+ FAIL  |db| test/acceptance/pairing-lifecycle.test.ts > SC5: a tablet is paired from the portal, used, revoked, refused and paired again; every step has its audit row > AC-B-38: its socket was told device.revoked and closed with 4403 within 1 s; the retired credential and the retired session token open no socket again
+Error: tablet 1, with the investigator's session: the socket was not closed within 5000 ms; it received [hello, snapshot, heartbeat, delta]
+ ❯ Timeout._onTimeout test/acceptance/pairing-lifecycle.test.ts:388:14
+    386|     const guard = setTimeout(() => {
+    387|       wire.socket.ws.removeListener('close', onClose);
+    388|       reject(new Error(`${wire.label}: the socket was not closed withi…
+       |              ^
+    389|     }, SOCKET_EVENT_CAP_MS);
+    390|     wire.socket.ws.once('close', onClose);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/13]⎯
+
+ FAIL  |db| test/acceptance/pairing-lifecycle.test.ts > SC5: a tablet is paired from the portal, used, revoked, refused and paired again; every step has its audit row > AC-B-38: its next REST calls answer 403 DEVICE_REVOKED, with the session token and with the device credential alike, each with one ACCESS_DENIED row that names the device
+AssertionError: expected [ [ 200, null ], [ 204, null ], …(4) ] to deeply equal [ [ 403, 'DEVICE_REVOKED' ], …(5) ]
+
+- Expected
++ Received
+
+  [
+    [
+-     403,
+-     "DEVICE_REVOKED",
++     200,
++     null,
+    ],
+    [
+-     403,
+-     "DEVICE_REVOKED",
++     204,
++     null,
+    ],
+    [
+-     403,
+-     "DEVICE_REVOKED",
++     202,
++     null,
+    ],
+    [
+-     403,
+-     "DEVICE_REVOKED",
++     200,
++     null,
+    ],
+    [
+-     403,
+-     "DEVICE_REVOKED",
++     200,
++     null,
+    ],
+    [
+-     403,
+-     "DEVICE_REVOKED",
++     200,
++     null,
+    ],
+  ]
+
+ ❯ test/acceptance/pairing-lifecycle.test.ts:1057:34
+    1055|     ]);
+    1056|     const operations = ['getCurrentSession', 'addSessionMarker', 'stop…
+    1057|     expect(refused.map(outcome)).toEqual(operations.map(() => [403, 'D…
+       |                                  ^
+    1058|     refused.forEach((answer, index) => expectContract(operations[index…
+    1059|     expect(who(rows)).toEqual(operations.map(() => ['ACCESS_DENIED', n…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/13]⎯
+
+ FAIL  |db| test/acceptance/pairing-lifecycle.test.ts > SC5: a tablet is paired from the portal, used, revoked, refused and paired again; every step has its audit row > AC-B-38: its session is ended with the reason DEVICE_REVOKED and its biometric token is revoked; the registry shows the device REVOKED, offline, with nobody signed in
+AssertionError: expected { …(10) } to match object { deviceId: 'DEV-0001', …(3) }
+(6 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+    "deviceId": "DEV-0001",
+-   "endReason": "DEVICE_REVOKED",
+-   "endedAt": 1924992673000,
++   "endReason": null,
++   "endedAt": null,
+    "operatorId": "OPR-001",
+  }
+
+ ❯ test/acceptance/pairing-lifecycle.test.ts:1071:62
+    1069|   it('AC-B-38: its session is ended with the reason DEVICE_REVOKED and…
+    1070|     const deviceId = first.deviceId ?? '';
+    1071|     expect(await sessionOfToken(owner, revokedSessionToken)).toMatchOb…
+       |                                                              ^
+    1072|     expect(await countOf('SELECT count(*)::text AS n FROM public.auth_…
+    1073|     // SR-34: in the same transaction as the revoke.
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/13]⎯
+
+ FAIL  |db| test/acceptance/pairing-lifecycle.test.ts > SC5: a tablet is paired from the portal, used, revoked, refused and paired again; every step has its audit row > AC-B-39: the session STAYS IN RECORDING and goes on recording, with the Core link OFFLINE now that the device is gone
+AssertionError: expected [ 'SES-20310101-0025', 'STOPPING' ] to deeply equal [ 'SES-20310101-0025', 'RECORDING' ]
+
+- Expected
++ Received
+
+  [
+    "SES-20310101-0025",
+-   "RECORDING",
++   "STOPPING",
+  ]
+
+ ❯ test/acceptance/pairing-lifecycle.test.ts:1084:41
+    1082|   it('AC-B-39: the session STAYS IN RECORDING and goes on recording, w…
+    1083|     const before = await currentSession(supervisor);
+    1084|     expect([before?.id, before?.state]).toEqual([recordingId, 'RECORDI…
+       |                                         ^
+    1085|     expect(rt.engine.slice('tabletLink').state).toBe('OFFLINE');
+    1086|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/13]⎯
+
+ FAIL  |db| test/acceptance/pairing-lifecycle.test.ts > SC5: a tablet is paired from the portal, used, revoked, refused and paired again; every step has its audit row > AC-B-39: ANOTHER operator stops it from the web console with a reason: 202, RECORDING_STOPPED names the supervisor; the recording is sealed with the link still OFFLINE
+AssertionError: expected [ 409, 'INVALID_STATE' ] to deeply equal [ 202, null ]
+
+- Expected
++ Received
+
+  [
+-   202,
+-   null,
++   409,
++   "INVALID_STATE",
+  ]
+
+ ❯ test/acceptance/pairing-lifecycle.test.ts:1102:30
+    1100|       portalPost(rt.app, onSession(recordingId, 'stop'), supervisor.co…
+    1101|     );
+    1102|     expect(outcome(stopped)).toEqual([202, null]);
+       |                              ^
+    1103|     expectContract('stopSession', stopped);
+    1104|     expect(who(rows)).toEqual([['RECORDING_STOPPED', SUPERVISOR.id, nu…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/13]⎯
+
+ FAIL  |db| test/acceptance/pairing-lifecycle.test.ts > SC5: a tablet is paired from the portal, used, revoked, refused and paired again; every step has its audit row > AC-B-38: the tablet is paired AGAIN: a new code, a new device ID, a new credential; the old credential and the old biometric token stay refused; the old device stays REVOKED in the registry
+AssertionError: expected [ [ 200, null ], [ 200, null ], …(2) ] to deeply equal [ [ 200, null ], …(3) ]
+
+- Expected
++ Received
+
+@@ -2,12 +2,12 @@
+    [
+      200,
+      null,
+    ],
+    [
+-     403,
+-     "DEVICE_REVOKED",
++     200,
++     null,
+    ],
+    [
+      401,
+      "INVALID_CREDENTIALS",
+    ],
+
+ ❯ test/acceptance/pairing-lifecycle.test.ts:1148:88
+    1146|         ] as const,
+    1147|     );
+    1148|     expect([outcome(withNew), outcome(withOld), outcome(oldToken), out…
+       |                                                                                        ^
+    1149|       [200, null],
+    1150|       [403, 'DEVICE_REVOKED'],
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/13]⎯
+
+ FAIL  |db| test/acceptance/pairing-lifecycle.test.ts > AC-B-82, SR-74: a used biometric token presented again closes the socket of the BIOMETRIC session; a PASSWORD session of the same operator stays > the PASSWORD session of the same operator on the same device stays open, and so does its socket
+TypeError: Cannot read properties of null (reading 'socket')
+ ❯ isOpen test/acceptance/pairing-lifecycle.test.ts:376:46
+    374|
+    375| const typesOf = (wire: Wire): string[] => [...new Set(wire.socket.type…
+    376| const isOpen = (wire: Wire): boolean => wire.socket.ws.readyState === …
+       |                                              ^
+    377|
+    378| /** The close of a socket: a bounded wait for the event, never a pause…
+ ❯ test/acceptance/pairing-lifecycle.test.ts:1288:12
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/13]⎯
+
+ FAIL  |db| test/acceptance/pairing-lifecycle.test.ts > the audit trail of the whole journey > is exactly this sequence of types with their actors and devices; every row belongs to a step of this file; the chain verifies
+AssertionError: expected [ [ 'AUTH_SUCCESS', …(2) ], …(38) ] to deeply equal [ [ 'AUTH_SUCCESS', …(2) ], …(46) ]
+
+- Expected
++ Received
+
+@@ -128,88 +128,48 @@
+      "RECORDING_STARTED",
+      "OPR-001",
+      null,
+    ],
+    [
+-     "DEVICE_REVOKED",
+-     "OPR-002",
+-     "DEV-0001",
+-   ],
+-   [
+-     "TABLET_LINK_CHANGED",
++     "MARKER_ADDED",
++     "OPR-001",
+      null,
+-     "TABLET",
+    ],
+    [
+-     "ACCESS_DENIED",
++     "RECORDING_STOPPED",
++     "OPR-001",
+      null,
+-     "DEV-0001",
+    ],
+    [
+-     "ACCESS_DENIED",
+-     null,
++     "AUTH_SUCCESS",
++     "OPR-001",
+      "DEV-0001",
+    ],
+    [
+-     "ACCESS_DENIED",
+-     null,
+-     "DEV-0001",
+-   ],
+-   [
+-     "ACCESS_DENIED",
+-     null,
+-     "DEV-0001",
+-   ],
+-   [
+-     "ACCESS_DENIED",
+-     null,
++     "AUTH_SUCCESS",
++     "OPR-001",
+      "DEV-0001",
+    ],
+    [
+-     "ACCESS_DENIED",
+-     null,
+-     "DEV-0001",
+-   ],
+-   [
+-     "RECORDING_STOPPED",
+-     "OPR-002",
+-     null,
+-   ],
+-   [
+-     "EVIDENCE_SEALED",
+-     null,
+-     null,
+-   ],
+-   [
+      "PAIRING_CODE_ISSUED",
+      "OPR-002",
+      null,
+    ],
+    [
+      "PAIRING_SUCCESS",
+      null,
+      "DEV-0002",
+    ],
+    [
+-     "ACCESS_DENIED",
+-     null,
+-     "DEV-0001",
+-   ],
+-   [
+      "AUTH_FAILED",
+      "OPR-001",
+      "DEV-0002",
+    ],
+    [
+      "PAIRING_FAILED",
+      null,
+-     null,
+-   ],
+-   [
+-     "TABLET_LINK_CHANGED",
+      null,
+-     "TABLET",
+    ],
+    [
+      "AUTH_SUCCESS",
+      "OPR-001",
+      "DEV-0002",
+
+ ❯ test/acceptance/pairing-lifecycle.test.ts:1371:26
+    1369|       ['AUTH_FAILED', I, two],
+    1370|     ];
+    1371|     expect(who(journey)).toEqual(expected);
+       |                          ^
+    1372|
+    1373|     // Every row is stamped with the server clock, never before its pr…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[9/13]⎯
+
+ FAIL  |db| test/acceptance/pairing-lifecycle.test.ts > AC-B-41, AC-B-28: no secret is left behind > the scan is not blind: a code, half a credential and a token as hex, planted into columns of two tables as the owner role, are found, each in its form and its table; a token in a line of text is found in four forms
+error: new row for relation "paired_devices" violates check constraint "paired_devices_lifecycle_check"
+ ❯ ../../node_modules/pg/lib/client.js:694:17
+ ❯ test/acceptance/pairing-lifecycle.test.ts:1487:7
+    1485|       await client.query('BEGIN');
+    1486|       await client.query('UPDATE public.paired_devices SET name = $2 W…
+    1487|       await client.query('UPDATE public.paired_devices SET revoke_reas…
+       |       ^
+    1488|       await client.query('UPDATE public.operators SET name = $2 WHERE …
+    1489|       const found = leaksOfDump(await dumpOf(client), dumpAtBoot);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[10/13]⎯
+
+ FAIL  |db| test/acceptance/pairing-lifecycle.test.ts > AC-B-41, AC-B-28: no secret is left behind > the audit rows and the events of the journey, and every realtime frame every socket received
+AssertionError: expected 39 to be greater than or equal to 47
+ ❯ test/acceptance/pairing-lifecycle.test.ts:1517:26
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[11/13]⎯
+
+ FAIL  |db| test/acceptance/pairing-lifecycle.test.ts > AC-B-41, AC-B-28: no secret is left behind > the answers of every refusal: no code is echoed and no credential
+AssertionError: expected 23 to be greater than or equal to 25
+ ❯ test/acceptance/pairing-lifecycle.test.ts:1531:31
+    1529|     const found = leaksIn('the refusals', text);
+    1530|     console.info(`[w48] AC-B-41: ${refusals().length} answers of a ref…
+    1531|     expect(refusals().length).toBeGreaterThanOrEqual(25);
+       |                               ^
+    1532|     expect(found).toEqual([]);
+    1533|     expect(credentialLeaks(text)).toEqual([]);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[12/13]⎯
+
+ FAIL  |db| test/acceptance/pairing-lifecycle.test.ts > AC-B-41, AC-B-28: no secret is left behind > the log of the server, captured at level trace from the boot to the close: none of them, no hash of one, and no line at level error
+AssertionError: expected { '200': 2, '401': 3 } to deeply equal { '200': 1, '401': 3, '403': 1 }
+
+- Expected
++ Received
+
+  {
+-   "200": 1,
++   "200": 2,
+    "401": 3,
+-   "403": 1,
+  }
+
+ ❯ test/acceptance/pairing-lifecycle.test.ts:1559:60
+    1557|     expect(byRoute['POST /api/v1/pairing/redeem']).toEqual({ '201': 2,…
+    1558|     expect(byRoute['POST /api/v1/pairing/code']).toEqual({ '201': 4 });
+    1559|     expect(byRoute['POST /api/v1/auth/biometric/sign-in']).toEqual({ '…
+       |                                                            ^
+    1560|     for (const message of ['engine started', 'socket opened', 'socket …
+    1561|     expect(lines.filter((line) => Number(line['level']) >= 50)).toEqua…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[13/13]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  13 failed | 18 passed (31)
+   Start at  18:38:10
+   Duration  7.35s (tests 86%, transform 9%, import 5%)
+
+[test:db] forced drops that needed a retry: 0
+[test:db] teardown: dropped 2 database(s) in 67 ms; 0 remain with the run prefix dems_test_step_70_tmdsbmuu_

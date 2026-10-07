@@ -1,0 +1,9 @@
+$ npm run pg:remove-data
+# 2026-10-07 05:30:12
+
+> dems-demo@0.1.0 pg:remove-data
+> node scripts/pg/remove-data.mjs
+
+pg:remove-data: .data/ deleted (cluster, credential files, logs)
+  The PostgreSQL binaries are still installed. A new cluster: npm run pg:init
+exit=0

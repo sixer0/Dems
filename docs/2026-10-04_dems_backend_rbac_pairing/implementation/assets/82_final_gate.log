@@ -1,0 +1,25 @@
+## 2026-10-06 02:07:53 WIB load averages: 3.57 8.46 8.37
+## $ npm run test -w @dems/mobile -- --maxWorkers=2
+exit=1
+Test Suites: 1 failed, 137 passed, 138 total
+Tests:       1 failed, 1694 passed, 1695 total
+Snapshots:   0 total
+Time:        198.157 s
+FAIL src/features/network-time/network-time-screen.test.tsx (10.914 s)
+## 02:11:11
+## 02:11:58 $ npm run typecheck -w @dems/mobile
+> tsc --noEmit
+exit=0
+## 02:12:05 $ npm run lint -w @dems/mobile
+exit=0
+## 02:12:31 $ npm run lint -w @dems/mobile -- --max-warnings=0 --format json (counts)
+exit=0
+files 532, errors 0, warnings 0
+## 2026-10-06 02:13:46 WIB load averages: 6.01 8.89 8.84 (second whole run, the re-check of network-time-screen)
+## $ npm run test -w @dems/mobile -- --maxWorkers=2
+exit=0
+Test Suites: 138 passed, 138 total
+Tests:       1695 passed, 1695 total
+Snapshots:   0 total
+Time:        111.973 s, estimated 186 s
+## 02:15:38

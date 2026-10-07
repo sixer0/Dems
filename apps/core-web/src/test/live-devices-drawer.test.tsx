@@ -10,7 +10,7 @@
 // |-----------|-------------------------|
 // | G6: in Live mode the row is titled "Paired devices"; a holder of PAIRING_MANAGE sees "n paired, m online" from operation 19 with a link to the Paired Devices page | "PAIRING_MANAGE" |
 // | G6: any other operator sees whether a paired device is connected, from `tabletLink`, and no request is sent | "without PAIRING_MANAGE" |
-// | PG-6: the count follows `admin.changed` DEVICES; CONTRACT-GAP-W70-1: it also follows a change of the tablet link | "PAIRING_MANAGE" |
+// | PG-6: the count follows `admin.changed` DEVICES; RESIDUAL-W70-1 (W83 ledger #45): it also follows a change of the tablet link | "PAIRING_MANAGE" |
 // | Rule 2 / AC-C-48: a 403 of operation 19 is worded by the presenter; an outage and a 429 too; the row falls back to the tablet sentence with a rate-limited retry | "a refused or failed read" |
 // | Rule 6 / CL-22: with the link down the registry is not read | "a refused or failed read" |
 // | §3.2: the Health caption, the Log's command words and the display's label say nothing of a simulation in Live mode | "the drawer's other words" |
@@ -204,7 +204,7 @@ describe('G6 with PAIRING_MANAGE (the SUPERVISOR)', () => {
     expect(mounted.queryClient.getQueryData(CORE_QUERY_KEYS.pairedDevices)).toMatchObject({ devices: [{ id: 'DEV-0001' }, { id: 'DEV-0002' }] })
   })
 
-  it('CONTRACT-GAP-W70-1: a change of the replicated tablet link reads the registry again, so `online` does not go stale', async () => {
+  it('RESIDUAL-W70-1: a change of the replicated tablet link reads the registry again, so `online` does not go stale', async () => {
     const { bed } = await liveDevices({ script: (b) => b.fake.answerFromExample('listPairedDevices') })
     const overview = await openDrawer('TABLET')
     await waitFor(() => expect(within(overview).getByTestId('drawer-paired-summary')).toHaveTextContent(SUMMARY(1, 1)))
@@ -234,6 +234,25 @@ describe('G6 without PAIRING_MANAGE (the INVESTIGATOR)', () => {
     const overview = await openDrawer('TABLET')
     expect(within(overview).getByTestId('drawer-paired-link')).toHaveTextContent(G.none)
     expect(requests('listPairedDevices')).toHaveLength(0)
+  })
+})
+
+describe('FXR-W W92-3: the registry read holds the signed-in gate of D176', () => {
+  it('after a sign-out the drawer row asks nothing more, also while it is still on screen; no 401 was ever answered', async () => {
+    const { bed, page, mounted } = await liveDevices({ script: (b) => b.fake.answerFromExample('listPairedDevices') })
+    const overview = await openDrawer('TABLET')
+    await waitFor(() => expect(within(overview).getByTestId('drawer-paired-summary')).toHaveTextContent(SUMMARY(1, 1)))
+    expect(requests('listPairedDevices')).toHaveLength(1)
+    await act(async () => {
+      await page.live.actions.signOut('USER')
+    })
+    await bed.flush()
+    await waitFor(() => expect(mounted.router.state.location.pathname).toBe('/login'))
+    await bed.elapse(5_000, 500)
+    expect(requests('listPairedDevices')).toHaveLength(1)
+    expect(requests('listPairedDevices').filter((call) => call.status === 401)).toEqual([])
+    // The entry the bridge removed was not rebuilt with data of the earlier operator.
+    expect(mounted.queryClient.getQueryData(CORE_QUERY_KEYS.pairedDevices)).toBeUndefined()
   })
 })
 

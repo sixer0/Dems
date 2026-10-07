@@ -2236,3 +2236,27 @@ Status at revision 2: the points for row 16 were closed by the database contract
 ---
 *Generated: 2026-10-04 03:14*
 *Last Updated: 2026-10-04 06:16 (revision 2.2)*
+
+---
+
+## Errata (W83)
+
+Appended by the contract close-out W83 (plan step 105; decision D184, DQ-6). No line above is rewritten:
+where a row below and a line above disagree, the row below holds. Each row names the ledger row of
+`implementation/83_contract_closeout.md` and the decision it comes from.
+
+| # | Where above | Read as | Source |
+|--:|---|---|---|
+| S-1 | §5.2 ID-1 (b), line 547 | `signIn` is also accepted from a caller that presents a **session token bound to a paired device** (the rotation of ID-6 needs it); a password is still required. Any other caller gets 403 `DEVICE_NOT_PAIRED` | D117 DN-2 (F-W47-1); ledger #79 |
+| S-2 | §6.6, first line of the table, line 694 | A device in state UNPAIRED that still presents its old credential is answered 403 `DEVICE_REVOKED` with one `ACCESS_DENIED` row per call, as §4.1, §7.2 and RB-6 say; only a caller with no credential gets 401 | D117 (F-W47-2); ledger #80 |
+| S-3 | §4.2, marker `DEVICE`, line 405 | The device's own credential (registry condition `DEVICE_CREDENTIAL`) is required by operation 23 `rotateDeviceCredential` **and** by operation 8 `signInWithBiometric`; a session of an operator on the device gets 403 `DEVICE_NOT_PAIRED` with `details.reason: DEVICE_CREDENTIAL_REQUIRED` and no row | D118, D126 (G-2); ledger #81 |
+| S-4 | §8 ENG-14, line 1129 | Read with finding F-B2a-8: a system time that is set back while the process runs is followed by the engine's timer; the floor taken from the stored state at a start keeps instants from going back across a restart (D110) | D122 (F-B2a-8); ledger #76 |
+| S-5 | AC-B-05, line 1727 | The recovery writes the **five** rows that §8.6 lists, not four; `restart.test.ts` asserts the five | D110 F4; `test/06_restart_recovery.md:600`; ledger #77 |
+| S-6 | AC-B-10, line 1737 | "Validates" refuses an unknown top-level member for every answer of contract C and, since W83, of contract A (17 schemas made strict). The success answers of the ten existing operations, `HealthResponse` (shared with mock-core and the 0.1.0 launcher) and `ApiError` drop an unknown member instead; for those the conformance test compares the members itself | D115 (W52-F2), D184 DQ-3 (a); ledger #71 |
+| S-7 | AC-B-46, line 1793 | The `heartbeat` member of the union is not strict (it is mock-core's, unchanged), so "every message validates against the union" does not show that a heartbeat carries nothing undeclared; `shared-state.test.ts` checks the members of every heartbeat itself. (A strict union heartbeat was tried in W83 and reverted: it is the fallback (b) of DQ-3) | D119 (W49-F1), D184 DQ-3 (b); ledger #38 |
+| S-8 | AC-B-71, line 1833 | Every raised alert of a fault kind has an audit row of its fault: `FAULT_RAISED`, or `AUDIT_CHAIN_DISCONTINUITY` for the kind `AUDIT_TAMPER` | D104 DN-3 (gap W40-2); ledger #26 |
+| S-9 | SR-23 (line 1596) and SR-71 (line 1700) | A **verified** failed sign-in writes its `AUTH_FAILED` row beyond the denial budget too, and answers 429 | `implementation/24b_identity_security_lows.md:551`; D123; ledger #31 |
+| S-10 | §4.7 (504), §5.4 (581), §5.6 steps 4 and 6 (602, 604), SR-36 (1614), SR-74 (1703) | A reuse of a biometric token is a used token presented again, **or a live token presented by another paired device** (CPS1-7); both end the BIOMETRIC sessions of that device and operator with `TOKEN_REUSE` | D123 DN-5 (gap W41-5); ledger #31 |
+| S-11 | §13 (audit), and §4.7 / ID-4 | The `details.reason` of the `AUTH_FAILED` row of a refused biometric token is one of six values, `BiometricTokenRefusalReason` in the contract: `TOKEN_REUSE`, `USER_DISABLED`, `TOKEN_REVOKED`, `TOKEN_EXPIRED`, `OTHER_DEVICE`, `DEVICE_NOT_PAIRED` (the specification named the first two) | D105 DN-4 (gap W41-4); ledger #30 |
+| S-12 | §9.4, the close codes (lines 1274, 1280-1290) | One more close code: **1009**, a client message larger than 65,536 bytes (the socket library refuses it before it is buffered); the client reconnects. 1008 stays the code of every other protocol violation | D111 DN-1 (gap W42-1); ledger #32 |
+| S-13 | §7.1 API-7, line 732 | API-7 names the 2xx answers only: when a hosted action itself refuses an export, its `EXPORT_DENIED` row is committed and reaches clients through the `state` topic, and the 403 carries no revision headers | D122 (F-B2a-7); ledger #75 |

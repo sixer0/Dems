@@ -6,15 +6,16 @@ import { Activity, Cpu, EllipsisVertical, Info, Mic, RotateCw } from 'lucide-rea
 import { useTranslation } from 'react-i18next'
 import type { AudioTrackId, VideoTrackId } from '@dems/shared/domain'
 import { CoreMode, settle, useCoreActions, useCoreMode } from '@dems/shared/live'
-import { DeviceCommand, Permission, selectCan, useSim, type SimState } from '@dems/shared/sim'
+import { DeviceCommand, useSim, type SimState } from '@dems/shared/sim'
 import { motion as tokens, type StatusTone } from '@dems/shared/tokens'
 import { DbfsMeter } from '@/components/composed'
 import { CameraFeed } from '@/components/media'
 import { useCoreErrorPresenter } from '@/lib/core-errors'
+import { useDeviceCommandGate } from '@/lib/device-command-gate'
 import { usePendingControl } from '@/lib/pending-control'
 import { useMotionPolicy } from '@/motion'
 import { DashPanel, PanelLink } from './dash-panel'
-import { requiredRoleFor, TONE_TEXT_CLASS } from './dashboard-model'
+import { TONE_TEXT_CLASS } from './dashboard-model'
 import { DASH_BEATS, useBeatDelay } from './dashboard-motion'
 import { reportDashboardError } from './report'
 import { StatusDot } from './status-bits'
@@ -41,7 +42,6 @@ const selectMic = (id: AudioTrackId) => (s: SimState) => {
   if (!mic) return null
   return { deviceId: mic.deviceId, state: mic.state, clipLatched: mic.clipLatched }
 }
-const selectCanManage = (s: SimState) => selectCan(s, Permission.DEVICE_MANAGE)
 
 /**
  * The words of the two device commands. Simulated mode keeps its words, which say "simulated"
@@ -127,17 +127,25 @@ function useDeviceCommand(deviceId: string, name: string): DeviceCommandControl 
 }
 
 /**
- * The tile kebab (01_specs §14.5.1 E). The commands are device management, so they follow
- * DEVICE_MANAGE (S20): a role without it sees them disabled with the required role. Every outcome
- * is a toast (`useDeviceCommand`). The words of the two commands follow the data mode (§3.2).
+ * The tile kebab (01_specs §14.5.1 E). Each command follows the permission the Core server checks
+ * for it, as the Devices page does: Test signal (operation 49 `testDeviceSignal`) DIAGNOSTICS_RUN,
+ * Restart (operation 48 `restartDevice`) DEVICE_MANAGE. A role without one sees that command
+ * disabled with the first role that holds it. Ruling R3 (D201, E-fix FX-W, E2E-W1-2 = E2E-W2-1)
+ * amends F63-1 (D152), which had kept Test signal under DEVICE_MANAGE (S20's grouping). Restart is
+ * also disabled while a recording runs, as on the Devices page (FXR-W W92-14: one gate model for both
+ * menus, `lib/device-command-gate.ts`). Every outcome is a toast (`useDeviceCommand`). The words of the two commands follow the data mode (§3.2).
  */
 function DeviceMenu({ name, control }: { name: string; control: DeviceCommandControl }) {
   const { t } = useTranslation()
   const words = COMMAND_WORDS[useCoreMode()]
-  const canManage = useSim(selectCanManage)
-  const role = requiredRoleFor(Permission.DEVICE_MANAGE)
-  const needsRole = t('common.rbac.requiresRole', { role: role ? t(`common.roles.${role}`) : '' })
   const { busy, showPending, onAction } = control
+  // W92-14: the one gate of both device menus (`lib/device-command-gate.ts`): each command by the
+  // permission the Core checks, Restart also not while recording (409 RECORDING_ACTIVE), and LB-1
+  // (while a command is out both commands are disabled).
+  const gate = useDeviceCommandGate(busy)
+  const disabledKeys = [...(gate.blocks.testSignal ? ['test'] : []), ...(gate.blocks.restart ? ['restart'] : [])]
+  const testReason = gate.reasonOf('testSignal')
+  const restartReason = gate.reasonOf('restart')
 
   return (
     <Dropdown>
@@ -155,7 +163,7 @@ function DeviceMenu({ name, control }: { name: string; control: DeviceCommandCon
       <Dropdown.Popover placement="bottom end" className="min-w-[220px]">
         <Dropdown.Menu
           aria-label={t('common.deviceMenu.label')}
-          disabledKeys={canManage && !busy ? [] : ['test', 'restart']}
+          disabledKeys={disabledKeys}
           onAction={onAction}
         >
           <Dropdown.Item id="details" textValue={t('common.deviceMenu.details')}>
@@ -166,14 +174,14 @@ function DeviceMenu({ name, control }: { name: string; control: DeviceCommandCon
             <Activity aria-hidden="true" size={16} />
             <div className="flex flex-col">
               <Label>{t(words.test)}</Label>
-              {canManage ? null : <Description>{needsRole}</Description>}
+              {testReason ? <Description>{testReason}</Description> : null}
             </div>
           </Dropdown.Item>
           <Dropdown.Item id="restart" textValue={t(words.restart)}>
             <RotateCw aria-hidden="true" size={16} />
             <div className="flex flex-col">
               <Label>{t(words.restart)}</Label>
-              {canManage ? null : <Description>{needsRole}</Description>}
+              {restartReason ? <Description>{restartReason}</Description> : null}
             </div>
           </Dropdown.Item>
         </Dropdown.Menu>

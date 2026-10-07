@@ -59,18 +59,22 @@ const optionalReason = () =>
     .describe(`Optional free text for the audit row, at most ${ADMIN_REASON_MAX_LENGTH} characters after trimming. Empty means none.`);
 
 export const RoleMatrixSchema = z
-  .object({
+  .strictObject({
     roles: z.array(z.enum(OperatorRole)),
     permissions: z.array(z.enum(Permission)),
     grants: z
       .array(z.object({ role: z.enum(OperatorRole), permission: z.enum(Permission) }))
-      .describe('One entry per role that holds a permission: 18 in the seeded matrix.'),
+      .describe('One entry per role that holds a permission: 18 in the seeded matrix. A set: the order of the entries is not significant.'),
     editable: z.literal(false).describe('The matrix cannot be changed through the API in this release (RB-9).'),
   })
   .describe('The role and permission matrix the server enforces, read from PostgreSQL.');
 export type RoleMatrix = z.output<typeof RoleMatrixSchema>;
 
-export const AdminUserSchema = OperatorSchema.extend({
+// Strict at the top level, like every answer of the Core server (W83, finding W52-F2; decision D184 DQ-3).
+// Only the top level: nested Core-only objects (`OperatorSchema`, the `grants` items) still accept
+// unknown members, as `test/api-closeout.test.ts` names it (FXR-W W92-23).
+export const AdminUserSchema = z.strictObject({
+  ...OperatorSchema.shape,
   enabled: z.boolean().describe('A disabled operator cannot sign in; disabling ends the open sessions.'),
   lastSignInAt: nullableEpochMs(),
   activeSessions: count().describe('Open sessions of the operator, on the web console and on devices.'),
@@ -79,7 +83,7 @@ export const AdminUserSchema = OperatorSchema.extend({
 export type AdminUser = z.output<typeof AdminUserSchema>;
 
 export const AdminUserListSchema = z
-  .object({ users: z.array(AdminUserSchema) })
+  .strictObject({ users: z.array(AdminUserSchema) })
   .describe('Response of `GET /api/v1/admin/users`: every operator, in operator ID order.');
 export type AdminUserList = z.output<typeof AdminUserListSchema>;
 

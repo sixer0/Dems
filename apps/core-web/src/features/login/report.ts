@@ -1,9 +1,13 @@
 /**
  * Structured error reporting for the Login page.
  *
- * mock-core has no client-log endpoint (D3/D4, D41(g)), so, like the shell (DR-38-14) and the
- * route error boundary, unexpected failures go to the dev console as one structured object per
- * event: `timestamp`, `level`, `source`, `message`, `stack`, `context`, `correlationId`.
+ * mock-core has no client-log endpoint (D3/D4, D41(g)). An unexpected failure is one structured
+ * entry per event (`timestamp`, `level`, `source`, `message`, `context`, `correlationId`), written to
+ * the page's own log (`webErrorSink`: in memory, printed to the console in a dev build, never sent
+ * anywhere). FXR-W, finding W92-5 (decision D242): the entry's `message` is a fixed sentence built
+ * from the step's `source`, and the cause is named by its class (`context.errorName`); the error's
+ * own message and stack are never recorded (a sign-in error's text can quote what was typed). An
+ * `info` entry is recorded at `warn`, the sink's lowest level.
  *
  * **Never pass a credential in `context`** (§14.8, design book §20.1 "no credentials in logs").
  * Callers pass only non-secret facts (the method, a storage key, the result reason). The
@@ -14,7 +18,7 @@
  * anywhere), beside the Live source's own record of every rejected action. Its message is a
  * fixed sentence chosen by the caller, never the text of an unknown error.
  */
-import type { ErrorSink } from '@/runtime'
+import { webErrorSink, type ErrorSink } from '@/runtime'
 
 export type LoginLogLevel = 'error' | 'warn' | 'info'
 
@@ -23,7 +27,8 @@ export interface LoginLogEntry {
   level: LoginLogLevel
   source: string
   message: string
-  stack?: string
+  /** Never set (W92-5); kept in the shape so a reader of older records finds the same fields. */
+  stack?: undefined
   context?: Record<string, string | number | boolean | null>
   correlationId: string
 }
@@ -47,9 +52,8 @@ export function buildLoginLogEntry(
     timestamp: new Date().toISOString(),
     level,
     source,
-    message: error instanceof Error ? error.message : String(error),
-    ...(error instanceof Error && error.stack ? { stack: error.stack } : {}),
-    ...(context ? { context } : {}),
+    message: `The Login step "${source}" failed. The error text is not recorded.`,
+    context: { ...context, errorName: error instanceof Error ? error.name : typeof error },
     correlationId,
   }
 }
@@ -62,10 +66,13 @@ export function reportLoginIssue(
   correlationId?: string,
 ): LoginLogEntry {
   const entry = buildLoginLogEntry(level, source, error, context, correlationId)
-  if (import.meta.env.DEV) {
-    const sink = level === 'error' ? console.error : level === 'warn' ? console.warn : console.info
-    sink('[core-web] login', entry)
-  }
+  webErrorSink.report({
+    level: entry.level === 'error' ? 'error' : 'warn',
+    source: entry.source,
+    message: entry.message,
+    at: Date.now(),
+    context: { ...entry.context, correlationId: entry.correlationId },
+  })
   return entry
 }
 

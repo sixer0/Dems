@@ -521,9 +521,8 @@ describe('operation 42 exportEvidence: the hosted action `exportEvidence`', () =
   });
 
   it('line 8 before line 10: a body that breaks the schema answers 422 INVALID_INPUT before the engine, also for an unknown item and for one that was never sealed', async () => {
-    // CONTRACT-GAP-W35-2: the registry's text and example for the 422 of this operation name
-    // INVALID_REASON only; that the Core server also answers INVALID_INPUT here is said in the
-    // operation's description for the `all` scope, not at the status.
+    // Gap W35-2, closed by the contract close-out W83: the `all`-scope text of this 422 names
+    // INVALID_INPUT beside INVALID_REASON (the offline text, the simulator's, names INVALID_REASON).
     const { host } = app;
     for (const id of [UNKNOWN_EVIDENCE_ID, app.recorded.id, sealedItem(app, 2).id]) {
       for (const payload of [{ reason: 12_345 }, { reason: 'Prosecutor request', destination: 'd'.repeat(121) }, { reason: 'abc\u0000def' }]) {
@@ -752,8 +751,8 @@ describe('operation 43 archiveEvidence: the hosted action `archiveEvidence`', ()
     const state = await storedState(owner, app.recorded.id);
     const effect = await effectOf(app, () => host.post(archiveUrl(app.recorded.id), app.session.SUPERVISOR));
     expect(outcomeOf(effect.response)).toEqual([409, 'NOT_SEALED']);
-    // CONTRACT-GAP-W35-1: the contract's example of this answer shows `details.simCode` only; the
-    // server's answer also carries `from` and `event` of the refused transition (spec §7.2).
+    // Gap W35-1, closed by the contract close-out W83: the contract's example of this answer carries
+    // `from` and `event` of the refused transition beside `details.simCode` (spec §7.2), as the server does.
     expect(errorOf(effect.response).details).toEqual({ simCode: 'UNSEALED_EVIDENCE', from: null, event: 'archiveEvidence' });
     expect(errorOf(effect.response).message).toBe('Unsealed evidence cannot be archived.');
     expect(validateCoreApiResponse('archiveEvidence', 409, effect.response.json())).toEqual({ ok: true });

@@ -72,7 +72,7 @@ import {
   type OperatorProfile,
   type SignInCandidate,
 } from './session-store';
-import { issueSession, readDatabase } from './sessions';
+import { issueSession, publishDeviceSessions, readDatabase } from './sessions';
 
 const PASSWORD = 'PASSWORD';
 /** An operator ID that no row has (the CHECK wants `OPR-NNN`). */
@@ -240,6 +240,8 @@ export async function signInWithPassword(
       lockout.succeed(lockoutKey);
       if (replaced !== null) app.publish({ kind: 'session.ended', sessionIds: [replaced.id], reason: 'ROTATED' });
     });
+    // A sign-in on a paired device changes the operator Paired Devices shows for it (R4, E2E-S-2).
+    publishDeviceSessions(app, unit, [issued.session]);
     return { issued, operator, permissions };
   });
   if (decided === null) return refuseFailed(attempt, candidate.operatorId);

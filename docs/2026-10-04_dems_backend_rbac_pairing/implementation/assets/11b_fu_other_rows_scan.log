@@ -1,0 +1,29 @@
+# W11b follow-up: database test files of apps/core-server outside test/helpers/db, by a TEXT SCAN at 18:17:22 (a hypothesis-level list: the scan reads words, it does not run anything).
+files: 99
+  with vi.setConfig (limits set for the file): 31
+  without, and with no call that asks the helper for a clone or a template in the file itself (their clone comes from useTestDatabase, whose hooks carry 180 s): 44
+  without limits of any kind AND with such a call (.another(, withTestDatabase(, .createDatabase(, .ensureTemplate(): 24
+    src/core/__tests__/boot-checks.db.test.ts
+    src/core/__tests__/unit-of-work.db.test.ts
+    src/db/fixtures/__tests__/bulk-fixture.db.test.ts
+    src/db/seed/__tests__/cli.db.test.ts
+    src/db/seed/__tests__/seed-clock.db.test.ts
+    src/db/seed/__tests__/seed.db.test.ts
+    src/db/store/__tests__/write-through.db.test.ts
+    src/engine/__tests__/commands.db.test.ts
+    src/engine/__tests__/restart.db.test.ts
+    src/engine/__tests__/ticks.db.test.ts
+    src/modules/devices/__tests__/devices.db.test.ts
+    src/modules/evidence/__tests__/commands.db.test.ts
+    src/modules/evidence/__tests__/consistency.db.test.ts
+    src/modules/evidence/__tests__/edge.db.test.ts
+    src/modules/network-time/__tests__/network-time.db.test.ts
+    src/modules/rbac/__tests__/matrix.db.test.ts
+    src/modules/security-audit/__tests__/chain.db.test.ts
+    src/modules/storage/__tests__/storage.db.test.ts
+    src/plugins/db/__tests__/search-path.db.test.ts
+    test/db/boot-checks.db.test.ts
+    test/db/catalog.db.test.ts
+    test/db/commands.db.test.ts
+    test/db/pg-behaviours.db.test.ts
+    test/db/privileges.db.test.ts

@@ -1,0 +1,10 @@
+$ npm run pg:start
+# 2026-10-07 05:30:24
+
+> dems-demo@0.1.0 pg:start
+> node scripts/pg/start.mjs
+
+pg:start: already running, PID 32434 on 127.0.0.1:4432; nothing done
+  postgres 32434 gsp-budi    6u  IPv4 0xf25ac70720754e03      0t0  TCP 127.0.0.1:4432 (LISTEN)
+  PID file: .locks/postgres.pid. Stop with "npm run pg:stop".
+exit=0

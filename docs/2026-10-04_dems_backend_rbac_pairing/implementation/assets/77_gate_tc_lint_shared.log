@@ -1,0 +1,24 @@
+## 01:41:13 $ npm run typecheck -w @dems/core-web
+
+> @dems/core-web@0.1.0 typecheck
+> tsc -b
+
+exit=0
+## 01:41:30 $ npm run lint -w @dems/core-web
+
+> @dems/core-web@0.1.0 lint
+> oxlint
+
+exit=0
+Found 0 warnings and 0 errors.
+Finished in 56ms on 464 files with 116 rules using 10 threads.
+## 01:42:13 $ npm run test -w @dems/shared -- --maxWorkers=2
+ Test Files  68 passed (68)
+      Tests  1814 passed (1814)
+exit=0
+## 01:42:21 $ npm run typecheck -w @dems/shared
+exit=0
+## 01:42:25 $ npm run lint -w @dems/shared
+exit=0
+> oxlint
+

@@ -1,0 +1,6 @@
+10:11:02.754 js => {"seq":277,"id":"AUD-000277","at":1791256247223,"type":"MARKER_ADDED","category":"SESSION","severity":"INFO","actorId":"OPR-001","message":"Marker added: E2E-P phone note","sessionId":"SES-20261006-0030","evidenceId":null,"deviceId":null,"details":{"index":1,"label":"E2E-P phone note"},"prevHash":"f3e6ecefe300ccd4379b07aa7339b3172f6148845cd3f23b92c3aff163b698fc","hash":"9d1dd3c9926bf35ab34308ccfa99aa25627eb3a6a4b73bbb434dd325b636211a"}
+10:11:02.798 mark a27 at 10:11:02.798
+10:11:02.847 key 4
+10:11:02.949 slept 1500 ms
+10:11:04.491 screencap 33_back_guard_dialog.png 10:11:04.491..10:11:05.775
+10:11:06.143 focused true; keyguard false; inputType 0x0

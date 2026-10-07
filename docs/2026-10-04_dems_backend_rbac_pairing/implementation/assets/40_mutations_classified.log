@@ -1,0 +1,20 @@
+unit.log [unit]: 86 lines; detected (tests failed) 83; survived (all passed) 3; neither 0
+  SURVIVED M34 | 68: the validated body itself is the patch (equal for every body the schema lets through) | unit: Tests 178 passed (178) | db: -
+  SURVIVED M48 | 68: the answer is the slice with the patch over it (equal after a commit) | unit: Tests 178 passed (178) | db: -
+  SURVIVED M49 | 68: the answer always says presentation mode is off | unit: Tests 178 passed (178) | db: -
+db.log [db]: 86 lines; detected (tests failed) 71; survived (all passed) 14; neither 1
+  SURVIVED M03 | 64: the update always reads IDLE | unit: - | db: Tests 55 passed (55)
+  SURVIVED M16 | 68: another message text | unit: - | db: Tests 55 passed (55)
+  SURVIVED M17 | 68: another unit label | unit: - | db: Tests 55 passed (55)
+  SURVIVED M22 | 64: the answer is put together from two reads of the engine | unit: - | db: Tests 55 passed (55)
+  SURVIVED M27 | 66: a fixed number of services | unit: - | db: Tests 55 passed (55)
+  SURVIVED M32 | 68: a copy of the principal is handed on | unit: - | db: Tests 55 passed (55)
+  SURVIVED M34 | 68: the validated body itself is the patch (equal for every body the schema lets through) | unit: - | db: Tests 55 passed (55)
+  SURVIVED M47 | 68: the line is written after the read of the committed slice (lost when the engine stops in between) | unit: - | db: Tests 55 passed (55)
+  SURVIVED M48 | 68: the answer is the slice with the patch over it (equal after a commit) | unit: - | db: Tests 55 passed (55)
+  SURVIVED M52 | 64: no response schema | unit: - | db: Tests 55 passed (55)
+  SURVIVED M74 | 70: a copy of the principal is handed on | unit: - | db: Tests 55 passed (55)
+  SURVIVED M77 | 69: no response schema | unit: - | db: Tests 55 passed (55)
+  SURVIVED M85 | 70: another message text | unit: - | db: Tests 55 passed (55)
+  SURVIVED M86 | 70: another unit label | unit: - | db: Tests 55 passed (55)
+  NEITHER  M53 | 66 is registered under the entry of 67 (a route twice, one missing) | unit: - | db: Tests 55 skipped (55)

@@ -17,6 +17,7 @@ import '@/navigation/testing/router-harness';
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { act, fireEvent, screen, within } from '@testing-library/react-native';
 import { router } from 'expo-router';
+import { en } from '@dems/shared/i18n';
 import { OUTAGE } from '@dems/shared/live/testing';
 import { PRECHECK_TOTAL_MAX_MS } from '@dems/shared/sim';
 import { getMissingKeys, resetMissingKeys } from '@/i18n';
@@ -42,6 +43,8 @@ afterEach(() => {
 const SIMULATION = /simulat/i;
 const LIVE_HINT = 'Microphone levels from the Core server';
 const LIVE_SCAN = 'Fill in the next case number';
+/** W93-17 (D239): the explicit per-test budget of the load-flaky tests (ms). */
+const LOAD_TOLERANT_TIMEOUT_MS = 20_000;
 const SIMULATED_HINT = 'Speak to test (simulated)';
 const SIMULATED_SCAN = 'Scan case number (simulated)';
 const leave = () => screen.getByTestId('back-guard-leave');
@@ -161,6 +164,8 @@ describe('the cancel confirm holds while the cancel is out (S3-1, B-6, LB-6; the
   const stay = () => screen.getByTestId('back-guard-stay');
   const stayDisabled = () => stay().props.accessibilityState?.disabled === true;
 
+  // W93-17 (FXR-M; D239): ~0.3 s alone, but it passed 5 s at host load 16.7 (root `npm test` gives each
+  // workspace's jest every core). An explicit budget keeps the gate from flaking under load.
   for (const order of ['delta-first', 'answer-first'] as const) {
     it(`a confirmed cancel (${order}): "Keep session" is disabled and does not close the dialog while the cancel is out; the wizard leaves on the Core's answer`, async () => {
       const b = await liveCancelConfirm();
@@ -188,7 +193,7 @@ describe('the cancel confirm holds while the cancel is out (S3-1, B-6, LB-6; the
       expect(b.requests('cancelSession')).toHaveLength(1);
       expect(b.state().session).toBeNull();
       expect(b.app.getPathname()).toBe('/home');
-    });
+    }, LOAD_TOLERANT_TIMEOUT_MS);
   }
 
   it('a refused cancel (403, 1 s late): "Keep session" is disabled while it is out, enabled again after the refusal, and then keeps the session', async () => {
@@ -229,9 +234,10 @@ describe('truthful copy (§3.2, MD-8; F-2)', () => {
   }
 
   it('the two Live texts say nothing about a simulation, and are not the Simulated ones', () => {
-    expect(sessionNewEn.live.speakToTest).toBe(LIVE_HINT);
-    expect(sessionNewEn.live.scanCaseNumber).toBe(LIVE_SCAN);
-    for (const text of Object.values(sessionNewEn.live)) expect([text, SIMULATION.test(text)]).toEqual([text, false]);
+    // Closing copy round (D164 DN-5): the two Live texts are the shared `sessionNew.live.*` the web reads too.
+    expect(en.sessionNew.live.speakToTest).toBe(LIVE_HINT);
+    expect(en.sessionNew.live.scanCaseNumber).toBe(LIVE_SCAN);
+    for (const text of [...Object.values(sessionNewEn.live), ...Object.values(en.sessionNew.live)]) expect([text, SIMULATION.test(text)]).toEqual([text, false]);
   });
 
   it('LIVE: the case-number button\'s label and the step 2 hint say what is true; no text of steps 1 and 2 claims a simulation', async () => {

@@ -31,7 +31,7 @@
  *
  * Pure. It reads the operation registry for the access rule; it calls nothing.
  */
-import { ApiErrorCode, coreApiAccessPermissions, findCoreApiOperation } from '../../api/core-api';
+import { ApiErrorCode, coreApiAccessPermissions, findCoreApiOperation, permissionsOfDenialLabel } from '../../api/core-api';
 import type { CoreCallFailure } from '../../client/core-client';
 import { SimErrorCode, SimNotFoundError, SimPermissionError, SimTransitionError } from '../../sim/errors';
 import { CoreRefusalError, LiveTransportError } from '../errors';
@@ -126,7 +126,8 @@ export function rebuildRefusal(failure: CoreCallFailure, context: RefusalContext
 
   const { status } = failure;
   const { code } = failure.error;
-  const permission = (): string => detailText(failure, 'permission') ?? permissionLabelOf(context.operationId);
+  // One label for both clients (W83, ruling R-D1; finding F64): the any-of in any spelling becomes `A | B`.
+  const permission = (): string => permissionsOfDenialLabel(detailText(failure, 'permission') ?? permissionLabelOf(context.operationId)).join(' | ');
 
   if (isRefusal(failure, 401, ApiErrorCode.NOT_SIGNED_IN)) {
     return new SimPermissionError(context.action, permission(), SimErrorCode.NOT_SIGNED_IN);

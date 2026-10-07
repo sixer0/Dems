@@ -39,7 +39,7 @@ const SKELETON_ROWS = 3
  *   the gold highlight of M-C-07 for `HIGHLIGHT_FADE_MS`; the role chip cross-fades (M-C-10); the
  *   status chip plays one halo when it turns Disabled (an escalation) and changes colour only when it
  *   turns Enabled.
- * - CONTRACT-GAP-W77-1: a sign-in or a sign-out elsewhere publishes no `admin.changed`, so the active
+ * - RESIDUAL-W77-1 (W83 ledger #55): a sign-in or a sign-out elsewhere publishes no `admin.changed`, so the active
  *   sessions and the last sign-in are as of the last read (see the page's docblock).
  */
 export function UsersPanel({ users, matrix, failed, selfId, linkUp, onRetry, onAction }: UsersPanelProps) {

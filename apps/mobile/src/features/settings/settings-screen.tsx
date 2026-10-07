@@ -5,6 +5,9 @@
  *
  * - Compact and compact-landscape: the MB 10 list. A section row pushes `/settings/<section>`;
  *   Device Settings, Storage Management and Network & Time open the existing screens.
+ * - Those three rows open their tab at its ROOT (`useOpenTabRoot`, closing-fix CF-M2, R-P-3): a
+ *   device detail left open in the Devices tab is not stacked under the list, and one Back returns
+ *   to Settings (it used to be `router.push`, which stacked a second list over the detail).
  * - Medium and expanded (§2.4 "Categories 320 dp | section pane"): the list in `pane-categories`,
  *   the open section (`?selected=`, default App Preferences) in `pane-section`.
  * - The Account row opens the Profile sheet (role, permissions, Lock console, Sign out).
@@ -17,6 +20,7 @@ import { spacing } from '@dems/shared/tokens';
 import { useAuthSession } from '@/auth';
 import { Pane, PaneLayout, SafeScreen, useLayoutClass } from '@/layout';
 import type { SettingsSection } from '@/navigation/params';
+import { useOpenTabRoot } from '@/navigation/tab-root';
 import { useAuth, useCoreLink } from '@/runtime';
 import { ProfileSheet } from './profile-sheet';
 import { SectionBody } from './section-body';
@@ -48,7 +52,8 @@ export function SettingsScreen({ selectedSection }: SettingsScreenProps) {
     },
     [isMultiPane, router],
   );
-  const openRoute = useCallback((href: SettingsRouteHref) => router.push(href), [router]);
+  const openTabRoot = useOpenTabRoot();
+  const openRoute = useCallback((href: SettingsRouteHref) => openTabRoot(href), [openTabRoot]);
 
   const list = (
     <SettingsList

@@ -1,0 +1,6 @@
+password typed (not shown); editor inputType 0x80081
+slept 300 ms
+key 66 at 09:44:07.636
+signin 200 (10-06 09:44:07.425 POST /api/v1/auth/sign-in 200)
+slept 4000 ms
+screencap 03_biometric_offer.png (246335 bytes) at 09:44:12.864

@@ -1,0 +1,55 @@
+
+== 07:10:39 0. before: run id w12x071039; listeners on 4421 and on the Metro ports
+COMMAND   PID     USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
+node    13356 gsp-budi   31u  IPv4 0xa00932d6bfaedf30      0t0  TCP 127.0.0.1:8085 (LISTEN)
+ 7:10  up 2 days, 14:23, 1 user, load averages: 5.38 15.01 11.62
+
+== 07:10:39 1. start the proof harness on 127.0.0.1:4421 (node --import tsx)
+proof-harness listening on http://127.0.0.1:4421 pid 15183 log /Users/gsp-budi/Documents/DEMS/.cache/proof-harness/out_w12/harness.log
+COMMAND   PID     USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
+node    15183 gsp-budi   14u  IPv4 0x2ab6e29a453efc07      0t0  TCP 127.0.0.1:4421 (LISTEN)
+
+== 07:10:39 2. host control run: the same client under Node against the harness
+[HOST-CONTROL run=w12x071039] P1 GET getServiceHealth PASS {"ok":true,"status":200,"epoch":null,"revision":null,"requestId":"req-000003"}
+[HOST-CONTROL run=w12x071039] P2 POST createSession PASS {"ok":true,"status":201,"epoch":"1","revision":101,"requestId":"req-000004"}
+[HOST-CONTROL run=w12x071039] P3 POST exportEvidence 403 PASS {"ok":false,"kind":"FORBIDDEN","status":403,"code":"FORBIDDEN","retryAfterSeconds":null,"transport":null}
+[HOST-CONTROL run=w12x071039] P4 POST stopSession 429 retry-after PASS {"ok":false,"kind":"RATE_LIMITED","status":429,"code":"RATE_LIMITED","retryAfterSeconds":42,"transport":"UNAVAILABLE"}
+[HOST-CONTROL run=w12x071039] P5 GET getStorageStatus contract violation PASS {"ok":false,"kind":"CONTRACT_VIOLATION","status":200,"code":"CONTRACT_VIOLATION","retryAfterSeconds":null,"transport":"UNAVAILABLE"}
+[HOST-CONTROL run=w12x071039] P2b POST createSession without a credential is 401 PASS {"ok":false,"kind":"UNAUTHENTICATED","status":401,"code":"NOT_SIGNED_IN","retryAfterSeconds":null,"transport":null}
+[HOST-CONTROL run=w12x071039] P7 GET getVideoStatus time-out PASS {"ok":false,"kind":"TIMEOUT","status":null,"code":"TIMEOUT","retryAfterSeconds":null,"transport":"CORE_OFFLINE","elapsedMs":1001}
+[HOST-CONTROL run=w12x071039] DONE fail=0
+harness log lines after the host control run: 13
+
+== 07:10:40 3. device session: dems_phone, Metro 8082, device tcp:4420 -> host tcp:4421
+[device-session phone 07:13:58] lock held; hard cap 600 s, until 07:23:58 (watchdog PID 18252)
+[device-session phone 07:13:58] session serial: emulator-5554 (dems_phone)
+[device-session phone 07:13:58] Metro PID 18279 (own process group) on 127.0.0.1:8082 (log: /var/folders/rn/7bm_xjb14jxcbp36qw981phr0000gn/T//dems-metro-8082.log)
+[device-session phone 07:14:00] emulator-5554: WARNING could not set the bundler location (is com.dems.demo.tablet installed?); the app will use 10.0.2.2:8081
+[device-session phone 07:14:00] Metro ready; device tcp:8081 -> host tcp:8082, tcp:4400 -> tcp:4400 on emulator-5554
+[device-session phone 07:14:00] Core server: device tcp:4420 -> host tcp:4421 on emulator-5554
+-- serial emulator-5554 (dems_phone), app com.dems.demo.tablet, Metro port 8082
+-- adb reverse --list (start of commands):
+host-16 tcp:8081 tcp:8082
+host-16 tcp:4400 tcp:4400
+host-16 tcp:4420 tcp:4421
+
+-- installed build:
+    flags=0x0
+    versionCode=100 minSdk=24 targetSdk=36
+    versionName=0.1.0
+    flags=[ DEBUGGABLE HAS_CODE ALLOW_CLEAR_USER_DATA ]
+    lastUpdateTime=2026-10-04 07:08:42
+-- device time at launch: 10-04 07:14:00.000
+Starting: Intent { act=android.intent.action.VIEW dat=demsdemo:///... pkg=com.dems.demo.tablet }
+Error: Activity not started, unable to resolve Intent { act=android.intent.action.VIEW dat=demsdemo:///... flg=0x10000000 xflg=0x4 pkg=com.dems.demo.tablet }
+[device-session phone 07:16:51] Metro 18279 stopped
+[device-session phone 07:16:51] session ended with status 143
+device session exit=143
+
+== 07:16:51 4. stop the harness and check that nothing is left
+harness exit status: 0
+lsof exit 1 (1 with no output: no listener on 4421 or 8082)
+
+== 07:16:52 end of run w12x071039
+lockf exit=0
+07:16:52

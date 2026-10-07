@@ -1,0 +1,2 @@
+gfx reset phone 10:02:23.022; 10:02  up 5 days, 17:15, 2 users, load averages: 5.95 4.96 5.20
+gfx dump phone 10:03:04.792; 10:03  up 5 days, 17:16, 2 users, load averages: 7.52 5.46 5.36

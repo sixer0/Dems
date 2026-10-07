@@ -1,0 +1,7 @@
+> @dems/core-server@0.2.0 test:db
+> vitest run --project db --maxWorkers=2
+ Test Files  122 passed (122)
+      Tests  1740 passed (1740)
+   Start at  08:29:55
+   Duration  115.13s (tests 84%, import 15%, transform 1%)
+[test:db] teardown: dropped 8 database(s) in 301 ms; 0 remain with the run prefix dems_test_step_109_tmgphvey_

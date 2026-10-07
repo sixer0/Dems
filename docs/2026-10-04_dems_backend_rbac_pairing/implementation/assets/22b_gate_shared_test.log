@@ -1,0 +1,29 @@
+
+> @dems/shared@0.1.0 test
+> vitest run --maxWorkers=2
+
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/packages/shared
+
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+
+ Test Files  47 passed (47)
+      Tests  1012 passed (1012)
+   Start at  09:55:00
+   Duration  3.37s (tests 49%, import 38%, transform 12%, worker 1%)
+
+    Isolate  47 workers spawned · ~42ms startup each (spawn + environment, per file)
+             at least ~937ms faster with isolate: false — reuses workers across files instead of one per file
+
+exit=0

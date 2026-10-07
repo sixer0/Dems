@@ -1,0 +1,5 @@
+focused true; keyguard false; editor inputType 0x80001
+deep link demsdemo:///login?core=LIVE&motion=off at 09:43:03.905: Starting: Intent { act=android.intent.action.VIEW dat=demsdemo:///... pkg=com.dems.demo.tablet }
+slept 7000 ms
+any NOT SEEN in 5 s
+screencap 01_login_live.png (3300044 bytes) at 09:43:17.465

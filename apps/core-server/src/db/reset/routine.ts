@@ -197,6 +197,14 @@ export interface ResetOptions {
   readonly applicationName?: string | undefined;
   /** Longest wait, in milliseconds, for the sessions of the target to end (R-1, R-7). */
   readonly sessionDrainMs?: number | undefined;
+  /**
+   * The environment whose driver variables (`PG*`) R-0 removes before the owner file is read, so
+   * that the driver takes every field from that file (decision D26). The command line passes
+   * `process.env`. The server passes nothing: its entry removed them once at start
+   * (`src/index.ts`), so a request (`loadScenario`, `resetDemo`) never changes the process
+   * environment (review findings CPB1-22, W91-7). Omitted: nothing is removed.
+   */
+  readonly driverEnvironment?: Record<string, string | undefined> | undefined;
 }
 
 /** Seams for tests. No entry point sets any of them, and no argument or environment variable reaches them. */
@@ -463,7 +471,8 @@ export async function resetDatabase(options: ResetOptions, internals: ResetInter
     // ── R-0 Guard ──────────────────────────────────────────────────────────────────────────────
     await enter('R-0');
     // The driver must take every field from the owner file, and none from a variable of its own.
-    scrubDriverEnvironment(process.env);
+    // The caller names the environment to clean; the server's was cleaned at its start (W91-7).
+    if (options.driverEnvironment !== undefined) scrubDriverEnvironment(options.driverEnvironment);
     if (internals.openPool === undefined) {
       try {
         // HC-3: only now is the owner file read; the fields stay in this call.

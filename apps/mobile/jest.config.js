@@ -6,6 +6,10 @@
 module.exports = {
   preset: 'jest-expo',
   setupFilesAfterEnv: ['./jest.setup.ts'],
+  // Load flakes: 20 s per test, not jest's 5 s default, when the full suite runs loaded (D239, D246).
+  testTimeout: 20000,
+  // Half the cores: with every core jest loaded the host past 20 and two wall-clock-wait tests flaked (D239, D246, D247; T2 run).
+  maxWorkers: '50%',
   transformIgnorePatterns: [
     // §10.1: @noble/* is ESM only (VM-15), so it joins the transform allowlist.
     // D69 (F-70-3, step 75): standard-navigation, an ESM-only dependency of expo-router 57, joins it

@@ -1,0 +1,35 @@
+P1-a no skipExiting wrapper [src/app/(app)/session/live.tsx] -> DETECTED (jest exit 1; Tests:       3 failed, 3 passed, 6 total; 11.2 s)
+P1-b skipExiting false [src/app/(app)/session/live.tsx] -> DETECTED (jest exit 1; Tests:       3 failed, 3 passed, 6 total; 9.5 s)
+P1-c collapsable host [src/app/(app)/session/live.tsx] -> DETECTED (jest exit 1; Tests:       1 failed, 5 passed, 6 total; 9.4 s)
+P1-d banner exiting back [src/features/session-live/connection-banner.tsx] -> DETECTED (jest exit 1; Tests:       1 failed, 5 passed, 6 total; 11.2 s)
+P1-e banner slot flattenable [src/features/session-live/session-live-screen.tsx] -> DETECTED (jest exit 1; Tests:       1 failed, 5 passed, 6 total; 11.0 s)
+P2-a RollingNumber back [src/features/session-live/rec-indicator.tsx] -> DETECTED (jest exit 1; Tests:       6 failed, 7 passed, 13 total; 10.0 s)
+P2-b column position only in the animated style [src/features/session-live/timer-readout.tsx] -> DETECTED (jest exit 1; Tests:       6 failed, 7 passed, 13 total; 8.2 s)
+P2-c roll rests away from 0 [src/features/session-live/timer-readout.tsx] -> DETECTED (jest exit 1; Tests:       6 failed, 7 passed, 13 total; 7.9 s)
+P3-a no yield (late runs at once) [src/runtime/stall-tolerant-timers.ts] -> DETECTED (jest exit 1; Tests:       6 failed, 8 passed, 14 total; 3.7 s)
+P3-b unbounded yields [src/runtime/stall-tolerant-timers.ts] -> DETECTED (jest exit 1; Tests:       1 failed, 12 passed, 13 total; 2.4 s)
+P3-c cancel ignored during a yield [src/runtime/stall-tolerant-timers.ts] -> MISSED (jest exit 0; Tests:       13 passed, 13 total; 2.7 s)
+P3-d app does not wrap its timers [src/runtime/sim-adapters.ts] -> DETECTED (jest exit 1; Tests:       1 failed, 1 total; 19.2 s)
+P4-a no client-restart settling [src/runtime/ended-link.ts] -> DETECTED (jest exit 1; Tests:       3 failed, 1 passed, 4 total; 8.6 s)
+P4-b marker never set [src/runtime/sim-adapters.ts] -> DETECTED (jest exit 1; Tests:       3 failed, 1 passed, 4 total; 6.7 s)
+P4-c every restart settles (no consecutive rule) [src/runtime/sim-adapters.ts] -> DETECTED (jest exit 1; Tests:       1 failed, 3 passed, 4 total; 7.3 s)
+tree unchanged by the run: True
+  89cb86d54f706603 src/app/(app)/session/live.tsx
+  e9e9e2db4b64facb src/features/session-live/connection-banner.tsx
+  edc151ed444081c7 src/features/session-live/rec-indicator.tsx
+  15bc1e8946d9448b src/features/session-live/session-live-screen.tsx
+  727fd21f82547fcd src/features/session-live/timer-readout.tsx
+  0f2eb2a6c783ba64 src/runtime/ended-link.ts
+  b3d5cbab5b43ea7e src/runtime/sim-adapters.ts
+  e8e61fb25d2d173e src/runtime/stall-tolerant-timers.ts
+control (unmutated, 7 files): exit 0; Tests:       61 passed, 61 total; 78.4 s
+tree unchanged by the run: True
+  89cb86d54f706603 src/app/(app)/session/live.tsx
+  4f800037a5a6595b src/app/index.tsx
+  e9e9e2db4b64facb src/features/session-live/connection-banner.tsx
+  edc151ed444081c7 src/features/session-live/rec-indicator.tsx
+  15bc1e8946d9448b src/features/session-live/session-live-screen.tsx
+  727fd21f82547fcd src/features/session-live/timer-readout.tsx
+  0f2eb2a6c783ba64 src/runtime/ended-link.ts
+  b3d5cbab5b43ea7e src/runtime/sim-adapters.ts
+  e8e61fb25d2d173e src/runtime/stall-tolerant-timers.ts

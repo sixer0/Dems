@@ -1,0 +1,14 @@
+tap 760,568 at 10:24:50.035
+slept 1000 ms
+tap 1178,808 at 10:24:51.140
+slept 1200 ms
+text typed (Rbac Probe); editor inputType 0x2001
+slept 1000 ms
+key 4 at 10:24:53.958
+slept 1200 ms
+screencap 22g_technician_form_filled.png (486954 bytes) at 10:24:55.507
+mark technician Next (expect 403) at 10:24:55.507
+tap 1178,1455 at 10:24:55.571
+create NOT SEEN in 20 s
+slept 2500 ms
+screencap 22h_technician_next_refused.png (747831 bytes) at 10:25:22.151

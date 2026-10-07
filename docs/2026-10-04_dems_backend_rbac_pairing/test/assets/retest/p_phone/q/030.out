@@ -1,0 +1,20 @@
+13:01:26.217 mark d04 at 13:01:26.217
+13:01:26.292 declared screen live
+13:01:26.357 tap 539,1380
+13:01:26.521 slept 3000 ms
+13:01:29.558 declared screen home
+13:01:29.590 screencap 57_p3_home_recording_00.png 13:01:29.590..13:01:30.004
+13:01:30.239 screencap 57_p3_home_recording_01.png 13:01:30.239..13:01:30.649
+13:01:30.800 screencap 57_p3_home_recording_02.png 13:01:30.800..13:01:31.134
+13:01:31.264 screencap 57_p3_home_recording_03.png 13:01:31.264..13:01:31.632
+13:01:31.823 screencap 57_p3_home_recording_04.png 13:01:31.823..13:01:32.295
+13:01:32.400 screencap 57_p3_home_recording_05.png 13:01:32.400..13:01:32.761
+13:01:32.858 screencap 57_p3_home_recording_06.png 13:01:32.858..13:01:33.266
+13:01:33.390 screencap 57_p3_home_recording_07.png 13:01:33.390..13:01:33.758
+13:01:33.849 screenrecord p3_home_bar started (pid 86836) at 13:01:34.452
+13:01:34.502 slept 10500 ms
+13:01:45.103 screenrecord p3_home_bar pulled; every frame extracted (passthrough)
+13:01:46.250 warnlog since 10-06 13:01:25.000 (0): 
+13:01:46.353 serverlog since d04 (2):
+    13:01:28.074 GET /api/v1/health 200
+    13:01:38.079 GET /api/v1/health 200

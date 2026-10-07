@@ -1,0 +1,6 @@
+mark R2 web Dashboard REC watch armed at 10:53:55.645
+watch: truthy at 10:54:01.076 (started 10:53:55.645, 5431 ms): "ACTIVE SESSION Session setup in progress Armed SES-20261006-0026 Pre-check 8 of 8 Continue setup REC : : REC 00:00:00 Session ID SES-20261006-0026 Case Number LP/2026/1006-0010 Investigator AKP Budi Santoso Subject Tersa"
+shot R2_03_web_dashboard_rec_first.png at 10:54:01.291
+slept 3000
+text panel-d: "ACTIVE SESSION\nREC\n0\n1\n2\n3\n4\n5\n6\n7\n8\n9\n0\n1\n2\n3\n4\n5\n6\n7\n8\n9\n:\n0\n1\n2\n3\n4\n5\n6\n7\n8\n9\n0\n1\n2\n3\n4\n5\n6\n7\n8\n9\n:\n0\n1\n2\n3\n4\n5\n6\n7\n8\n9\n0\n1\n2\n3\n4\n5\n6\n7\n8\n9\nREC 00:00:02\nSession ID\nSES-20261006-0026\nCase Number\nLP/2026/1006-0010\nInvestigator\nAKP Budi Santoso\nSubject\nTersangka · Dewi Lestari\nStart Time\n6 Oct 2026 10:54:01 UTC+07:00\nOpen Session Monitor"
+shot R2_04_web_dashboard_rec_plus3s.png at 10:54:04.496

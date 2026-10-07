@@ -19,7 +19,7 @@
  * Every state change is one unit of the serial pipeline with its audit row (ENG-23); each
  * transition is one compare-and-set statement whose returned row decides (ENG-25).
  */
-import type { ActivePairingCode, PairingCodeIssued } from '@dems/shared/api';
+import { PairingCodeCloseReason, type ActivePairingCode, type PairingCodeIssued } from '@dems/shared/api';
 import type { FastifyInstance } from 'fastify';
 import type { UnitContext } from '../../core';
 import { appendActivity, codeClosed, codeIssued } from './activity';
@@ -39,7 +39,7 @@ function publishCodeChanged(app: FastifyInstance, unit: UnitContext): void {
  */
 export async function closeExpiredCode(unit: UnitContext, now: number): Promise<string | null> {
   const expired = await expireActiveCode(unit, now);
-  if (expired !== null) await appendActivity(unit, codeClosed({ codeId: expired, reason: 'EXPIRED', operatorId: null }));
+  if (expired !== null) await appendActivity(unit, codeClosed({ codeId: expired, reason: PairingCodeCloseReason.EXPIRED, operatorId: null }));
   return expired;
 }
 
@@ -50,7 +50,7 @@ export function issueCode(app: FastifyInstance, operatorId: string): Promise<Pai
     // One active code at a time (PR-P3): what stands is closed first, each with its own row.
     await closeExpiredCode(unit, now);
     const replaced = await cancelActiveCode(unit, now, operatorId);
-    if (replaced !== null) await appendActivity(unit, codeClosed({ codeId: replaced, reason: 'CANCELLED', operatorId }));
+    if (replaced !== null) await appendActivity(unit, codeClosed({ codeId: replaced, reason: PairingCodeCloseReason.CANCELLED, operatorId }));
 
     const codeId = pairingCodeIdOf(await nextRegistryNumber(unit, 'pairingCode'));
     const code = newPairingCode();
@@ -83,7 +83,7 @@ export function cancelCode(app: FastifyInstance, operatorId: string): Promise<vo
     const now = app.clock.now();
     const expired = await closeExpiredCode(unit, now);
     const cancelled = await cancelActiveCode(unit, now, operatorId);
-    if (cancelled !== null) await appendActivity(unit, codeClosed({ codeId: cancelled, reason: 'CANCELLED', operatorId }));
+    if (cancelled !== null) await appendActivity(unit, codeClosed({ codeId: cancelled, reason: PairingCodeCloseReason.CANCELLED, operatorId }));
     if (expired !== null || cancelled !== null) publishCodeChanged(app, unit);
   });
 }

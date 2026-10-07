@@ -1,0 +1,10 @@
+# W11b follow-up 3, second round (decision D134): the whole database-free project.
+# $ DEMS_TEST_STEP=w11b3 npm run test -w @dems/core-server -- --maxWorkers=2      (11:02, exit 0)
+# Summary lines only.
+
+> @dems/core-server@0.2.0 test
+> vitest run --project unit --maxWorkers=2
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/apps/core-server
+ Test Files  153 passed (153)
+      Tests  3912 passed (3912)
+   Duration  29.81s (import 60%, tests 36%, transform 3%, worker 1%)

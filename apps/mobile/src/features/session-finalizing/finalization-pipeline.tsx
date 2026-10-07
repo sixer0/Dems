@@ -14,6 +14,8 @@ export interface FinalizationPipelineProps {
   statuses: readonly StepStatus[];
   /** Seconds per finished step ("0.8"), pipeline order; null while a step runs or waits. */
   seconds: readonly (string | null)[];
+  /** False for the copy drawn in place on a hand-over (W93-7): the Stepper starts no motion. Default true. */
+  animate?: boolean;
   testID?: string;
 }
 
@@ -32,7 +34,7 @@ export function useFinalizingStepperWords(): StepStatusWords {
   };
 }
 
-export function FinalizationPipeline({ statuses, seconds, testID = 'finalizing-pipeline' }: FinalizationPipelineProps) {
+export function FinalizationPipeline({ statuses, seconds, animate = true, testID = 'finalizing-pipeline' }: FinalizationPipelineProps) {
   const { t } = useTranslation();
   const settings = useMotionSettings();
   const words = useFinalizingStepperWords();
@@ -54,6 +56,7 @@ export function FinalizationPipeline({ statuses, seconds, testID = 'finalizing-p
       statuses={statuses}
       orientation="vertical"
       motion={settings.policy}
+      animate={animate}
       statusWords={words}
     />
   );

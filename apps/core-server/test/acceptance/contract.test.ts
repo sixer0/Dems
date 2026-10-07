@@ -440,7 +440,8 @@ describe('AC-B-09: every registered route is an operation, every operation is re
       expect(Object.keys(entry.operation.responses).map(Number).sort((a, b) => a - b), entry.operation.operationId).toEqual(listCoreApiResponseStatuses(operation, 'all'));
     }
     expect(Object.keys(committed.components.securitySchemes ?? {}).sort()).toEqual(['bearerAuth', 'sessionCookie']);
-    expect(committed.info.version).toBe('0.2.0');
+    // 0.2.1 since the contract close-out W83 (decision D184 DQ-8); changed by design.
+    expect(committed.info.version).toBe('0.2.1');
     // What `gen-openapi --check` compares: the file, byte for byte, with the document of scope `all`.
     expect(text === serializeOpenApiDocument(createOpenApiDocument({ scope: 'all' }))).toBe(true);
   });
@@ -506,10 +507,9 @@ describe('AC-B-10: every operation answers what the contract documents', () => {
     await expectCall(main, 'reportBiometricFailure', tablet.credential, 'a failed biometric prompt of a known operator', { payload: { operatorId: operatorIdOf('INVESTIGATOR') } }, 200);
     await expectCall(main, 'reportBiometricFailure', tablet.credential, 'a body outside the schema', { payload: { operatorId: 5 } }, 422, 'INVALID_INPUT');
 
-    // Known gap CONTRACT-GAP-W41-2: turning it on in a session that no password opened is the same code with a reason.
+    // Gap W41-2, closed by W83: turning it on in a session that no password opened is the same code with a reason, which the 403 text now names.
     const viaBiometric = bearerCaller('INVESTIGATOR (biometric session on Interview tablet 01)', signedIn.sessionToken ?? '');
     const refused = await expectCall(main, 'setBiometricEnrollment', viaBiometric, 'turned on in a session that a token opened', { payload: { enabled: true } }, 403, 'DEVICE_NOT_PAIRED');
-    console.info(`[w52] gap CONTRACT-GAP-W41-2: setBiometricEnrollment in a BIOMETRIC session answers ${refused.status} ${refused.code}, details.reason ${JSON.stringify(detailsOf(refused)['reason'])}`);
     expect(detailsOf(refused)['reason']).toBe('PASSWORD_SESSION_REQUIRED');
     await expectCall(main, 'setBiometricEnrollment', tabletSession, 'biometric sign-in turned off', { payload: { enabled: false } }, 200);
     fresh(main);
@@ -522,10 +522,9 @@ describe('AC-B-10: every operation answers what the contract documents', () => {
     const technicianId = operatorIdOf('TECHNICIAN');
     const supervisorId = operatorIdOf('SUPERVISOR');
     const matrix = await expectCall(main, 'getRoleMatrix', web.INVESTIGATOR, 'the matrix, read by any operator', {}, 200);
-    // Known gap CONTRACT-GAP-6 (an example's order): the grants are the shared table's, as sets.
+    // Gap 6, closed by W83 (the contract now says the grants are a set): the grants are the shared table's, as sets.
     const { grants } = bodyOf<{ grants: Array<{ role: OperatorRole; permission: string }> }>(matrix);
     for (const role of ROLES) expect(grants.filter((grant) => grant.role === role).map((grant) => grant.permission).sort(), role).toEqual([...ROLE_PERMISSIONS[role]].sort());
-    console.info(`[w52] gap CONTRACT-GAP-6: getRoleMatrix answers ${grants.length} grants; per role they equal the shared table as sets, whatever their order`);
     await expectCall(main, 'listUsers', supervisor, 'the operators', {}, 200);
 
     await expectCall(main, 'assignUserRole', supervisor, 'the TECHNICIAN becomes an INVESTIGATOR', { id: technicianId, payload: { role: 'INVESTIGATOR', reason: 'Covers the interview shift this week' } }, 200);
@@ -558,9 +557,8 @@ describe('AC-B-10: every operation answers what the contract documents', () => {
     await expectCall(main, 'redeemPairingCode', UNPAIRED_DEVICE, 'six digits that are not the code', { payload: { code: wrong, deviceName: 'Tablet', platform: 'android', appVersion: '0.2.0' } }, 401, 'INVALID_CODE');
     await expectCall(main, 'redeemPairingCode', UNPAIRED_DEVICE, 'a code of two digits', { payload: { code: '12', deviceName: 'Tablet', platform: 'android', appVersion: '0.2.0' } }, 422, 'INVALID_INPUT');
     await expectCall(main, 'redeemPairingCode', UNPAIRED_DEVICE, 'an Origin that is on no list', { payload: { code, deviceName: 'Tablet', platform: 'android', appVersion: '0.2.0' }, headers: { origin: FOREIGN_ORIGIN } }, 403, 'ORIGIN_NOT_ALLOWED');
-    // Known gap CONTRACT-GAP-W32-2: a device name of the form of a credential is refused by the server.
-    const credentialForm = await expectCall(main, 'redeemPairingCode', UNPAIRED_DEVICE, 'a device name of the form of a credential', { payload: { code, deviceName: `dvc_${'A'.repeat(43)}`, platform: 'android', appVersion: '0.2.0' } }, 422, 'INVALID_INPUT');
-    console.info(`[w52] gap CONTRACT-GAP-W32-2: a device name of the form of a credential answers ${credentialForm.status} ${credentialForm.code}`);
+    // Gap W32-2, closed by W83 (the description says it): a device name of the form of a credential is refused by the server.
+    await expectCall(main, 'redeemPairingCode', UNPAIRED_DEVICE, 'a device name of the form of a credential', { payload: { code, deviceName: `dvc_${'A'.repeat(43)}`, platform: 'android', appVersion: '0.2.0' } }, 422, 'INVALID_INPUT');
     fresh(main);
     await expectCall(main, 'cancelPairingCode', supervisor, 'the code is cancelled', {}, 204);
 
@@ -613,9 +611,8 @@ describe('AC-B-10: every operation answers what the contract documents', () => {
     await expectCall(main, 'setStoragePolicy', supervisor, 'a holder of EVIDENCE_REVIEW changes the policy', { payload: { retentionPolicy: 'YEAR_1' } }, 200);
     await expectCall(main, 'setStoragePolicy', technician, 'a holder of MAINTENANCE changes it too', { payload: { autoArchive: false } }, 200);
     await expectCall(main, 'setStoragePolicy', supervisor, 'a value outside the set', { payload: { retentionPolicy: 'NOPE' } }, 422, 'INVALID_INPUT');
-    // Known gap CONTRACT-GAP-5: the denial of the any-of names both permissions, joined with `_OR_`.
+    // Gap 5, closed by W83 (the example uses the same spelling): the denial of the any-of names both permissions, joined with `_OR_`.
     const anyOf = await expectCall(main, 'setStoragePolicy', web.INVESTIGATOR, 'a holder of neither permission', { payload: { autoArchive: true } }, 403, 'NOT_PERMITTED');
-    console.info(`[w52] gap CONTRACT-GAP-5: the any-of denial answers details.permission ${JSON.stringify(detailsOf(anyOf)['permission'])}`);
     expect(detailsOf(anyOf)['permission']).toBe('EVIDENCE_REVIEW_OR_MAINTENANCE');
 
     await expectCall(main, 'listAuditRows', supervisor, 'the newest rows first', { query: '?order=DESC&limit=50' }, 200);
@@ -673,10 +670,9 @@ describe('AC-B-10: every operation answers what the contract documents', () => {
       if (operation.responses[404] !== undefined) await expectCall(main, operation.operationId, allowedCaller(operation), 'a session that is not the open session', { ...options, id: OTHER_SESSION }, 404, 'NOT_FOUND');
     }
     await expectCall(main, 'acknowledgeSessionSummary', investigator, 'a summary of a session that is not open: nothing to do', { id: OTHER_SESSION }, 204);
-    // Known gap CONTRACT-GAP-W34-3: the text of the 404 is fixed and quotes no part of the request.
+    // Gap W34-3, closed by W83 (the all-scope text says so): the text of the 404 is fixed and quotes no part of the request.
     const notOpen = await expectCall(main, 'startSession', investigator, 'a session that is not the open session', { id: OTHER_SESSION }, 404, 'NOT_FOUND');
     const notOpenError = bodyOf<{ error: { message: string } }>(notOpen).error;
-    console.info(`[w52] gap CONTRACT-GAP-W34-3: the 404 of a session operation says ${JSON.stringify(notOpenError.message)}, details ${JSON.stringify(detailsOf(notOpen))}`);
     expect(notOpenError.message).toBe('This session is not the open session.');
     expect(notOpenError.message).not.toContain(OTHER_SESSION);
     await expectCall(main, 'scanCaseNumber', investigator, 'a scanned case number', {}, 200);
@@ -689,8 +685,7 @@ describe('AC-B-10: every operation answers what the contract documents', () => {
     const blockedId = bodyOf<{ sessionId: string }>(first).sessionId;
     await expectCall(main, 'createSession', investigator, 'the same input again: the open session', { payload: input(1) }, 200);
     const active = await expectCall(main, 'createSession', investigator, 'another input while a session is open', { payload: input(2) }, 409, 'SESSION_ACTIVE');
-    // Known gap CONTRACT-GAP-W34-1: the 409 names the open session.
-    console.info(`[w52] gap CONTRACT-GAP-W34-1: 409 SESSION_ACTIVE carries details.sessionId: ${detailsOf(active)['sessionId'] === blockedId}`);
+    // Gap W34-1, closed by W83 (the envelope's `details` names `sessionId`): the 409 names the open session.
     expect(detailsOf(active)['sessionId']).toBe(blockedId);
     await expectCall(main, 'createSession', investigator, 'an input without its members', { payload: {} }, 422, 'INVALID_INPUT');
     await expectCall(main, 'beginPrecheck', investigator, 'the eight checks start', { id: blockedId }, 202);
@@ -739,7 +734,7 @@ describe('AC-B-10: every operation answers what the contract documents', () => {
     await expectCall(main, 'startSession', investigator, 'a recording cannot be started', { id: sessionId }, 409, 'INVALID_STATE');
     await expectCall(main, 'startSession', investigator, 'a body outside the schema', { id: sessionId, payload: { acknowledgeWarnings: 'yes' } }, 422, 'INVALID_INPUT');
     await expectCall(main, 'stopSession', investigator, 'a reason of four characters (AC-B-50)', { id: sessionId, payload: { reason: 'Done' } }, 422, 'INVALID_REASON');
-    // Known gap CONTRACT-GAP-W34-2: a reason that is no text is the schema stage's code, which the status text does not name.
+    // Gap W34-2, closed by W83: a reason that is no text is the schema stage's code, which the all-scope text of the status now names.
     await expectCall(main, 'stopSession', investigator, 'a reason that is no text', { id: sessionId, payload: { reason: null } }, 422, 'INVALID_INPUT');
     // Spec §7.14, operations 66 and 67, and §7.11, operation 48: refused while a session is open.
     await expectCall(main, 'restartServices', technician, 'a services restart during a session', {}, 409, 'SESSION_ACTIVE');
@@ -806,7 +801,7 @@ describe('AC-B-10: every operation answers what the contract documents', () => {
     await expectCall(main, 'exportEvidence', supervisor, 'an ID of another form (decision D92: 404 on this operation)', { id: 'x', payload: export_ }, 404, 'NOT_FOUND');
     await expectCall(main, 'exportEvidence', supervisor, 'an item that was never sealed', { id: unsealedEvidenceId, payload: export_ }, 409, 'NOT_SEALED');
     await expectCall(main, 'exportEvidence', supervisor, 'a reason of three characters', { id: sealedEvidenceId, payload: { reason: 'abc' } }, 422, 'INVALID_REASON');
-    // Known gap CONTRACT-GAP-W35-2: a body that breaks the schema is INVALID_INPUT, which the status text does not name.
+    // Gap W35-2, closed by W83: a body that breaks the schema is INVALID_INPUT, which the all-scope text of the status now names.
     await expectCall(main, 'exportEvidence', supervisor, 'a reason that is no text', { id: sealedEvidenceId, payload: { reason: 5 } }, 422, 'INVALID_INPUT');
     await expectCall(main, 'exportEvidence', web.INVESTIGATOR, 'a role without EVIDENCE_EXPORT (RB-5)', { id: sealedEvidenceId, payload: export_ }, 403, 'FORBIDDEN');
 
@@ -816,9 +811,8 @@ describe('AC-B-10: every operation answers what the contract documents', () => {
     await expectCall(main, 'clearFault', supervisor, 'the security fault is cleared', { payload: { kind: 'SECURITY_FAULT' } }, 204);
     await expectCall(main, 'exportEvidence', supervisor, 'an exported item is exported again', { id: sealedEvidenceId, payload: export_ }, 202);
 
-    // Known gap CONTRACT-GAP-W35-1: the 409 of an archive carries the transition.
+    // Gap W35-1, closed by W83 (the example carries it too): the 409 of an archive carries the transition.
     const unsealed = await expectCall(main, 'archiveEvidence', supervisor, 'an item that was never sealed', { id: unsealedEvidenceId }, 409, 'NOT_SEALED');
-    console.info(`[w52] gap CONTRACT-GAP-W35-1: archiveEvidence 409 answers details ${JSON.stringify(detailsOf(unsealed))}`);
     expect(detailsOf(unsealed)).toEqual({ simCode: 'UNSEALED_EVIDENCE', from: null, event: 'archiveEvidence' });
     await expectCall(main, 'archiveEvidence', supervisor, 'an item the Core does not have', { id: UNKNOWN }, 404, 'NOT_FOUND');
     await expectCall(main, 'archiveEvidence', supervisor, 'a malformed {id}', { id: 'x' }, 422, 'INVALID_INPUT');
@@ -924,7 +918,7 @@ describe('AC-B-14: the refusals of the stages, generated for every operation of 
     settle();
   });
 
-  it('known gaps CONTRACT-GAP-W36-1 and CONTRACT-GAP-W40-1: a POST without a request body answers 400 INVALID_JSON to a body that is no JSON object', async () => {
+  it('gaps W36-1 and W40-1, closed by W83: a POST without a request body answers 400 INVALID_JSON to a body that is no JSON object, which the contract documents at envelope level', async () => {
     const named = ['restartDevice', 'testDeviceSignal', 'identifyDevice', 'runDiagnostics', 'restartServices', 'startSoftwareUpdate', 'acknowledgeAlert'];
     for (const operationId of named) {
       fresh(main);
@@ -932,13 +926,14 @@ describe('AC-B-14: the refusals of the stages, generated for every operation of 
       expect(operation.requestBody, operationId).toBeUndefined();
       const answer = await call(main, operationId, allowedCaller(operation), 'a body that is a JSON list, on an operation without a request body', {
         raw: '[1]',
-        knownGap: operationId === 'restartDevice' || operationId === 'testDeviceSignal' || operationId === 'identifyDevice' ? 'CONTRACT-GAP-W36-1' : 'CONTRACT-GAP-W40-1',
+        knownGap: operationId === 'restartDevice' || operationId === 'testDeviceSignal' || operationId === 'identifyDevice' ? 'gap W36-1' : 'gap W40-1',
       });
-      // The server's behaviour is what the gap says; what the validator says about it is printed, not pinned.
+      // The server's behaviour is pinned here, and the validator's verdict on it is pinned below (W83 closed both gaps).
       expect([answer.status, answer.code], operationId).toEqual([400, 'INVALID_JSON']);
     }
-    for (const entry of ledger.gapVerdicts) console.info(`[w52] gap ${entry.gap}: ${entry.answer.operationId} answers ${entry.answer.status} ${entry.answer.code}; the validator says ${entry.verdict}`);
     expect(ledger.gapVerdicts).toHaveLength(named.length);
+    // W83: the envelope-level 400 makes each of these answers valid against the contract.
+    expect(ledger.gapVerdicts.map((entry) => entry.verdict)).toEqual(named.map(() => JSON.stringify({ ok: true })));
     fresh(main);
   });
 
@@ -1035,7 +1030,7 @@ describe('AC-B-14: the refusals of the stages, generated for every operation of 
     const wrong = String((Number(code) + 1) % 1_000_000).padStart(6, '0');
     await untilLocked('redeemPairingCode', UNPAIRED_DEVICE, { code: wrong, deviceName: 'Tablet', platform: 'android', appVersion: '0.2.0' }, 'INVALID_CODE');
     await untilLocked('signInWithBiometric', tablet.credential, { token: `bio_${'B'.repeat(43)}` }, 'INVALID_CREDENTIALS');
-    console.info(`[w52] 423, the attempts until the lock (known gaps CONTRACT-GAP-W32-1 and W41-3: the failure that locks answers 423 itself):\n${locks.map((line) => `[w52]   ${line}`).join('\n')}`);
+    console.info(`[w52] 423, the attempts until the lock (gaps W32-1 and W41-3, closed by W83: the contract says the failure that locks answers 423 itself):\n${locks.map((line) => `[w52]   ${line}`).join('\n')}`);
     fresh(main);
     await expectCall(main, 'cancelPairingCode', web.SUPERVISOR, 'the code is cancelled', {}, 204);
     settle();
@@ -1410,10 +1405,9 @@ describe('operations 72 and 75: a scenario load and a reset, through the real ro
     const loaded = await expectCall(server, 'loadScenario', supervisor, 'the scenario `recording` is loaded', { payload: { name: 'recording' } }, 200);
     expect(bodyOf<{ epoch: number }>(loaded).epoch).toBe(epoch + 1);
     const afterLoad = await loadedRow('the newest rows after the scenario load');
-    // Known gap CONTRACT-GAP-W39-1: a cursor of the discarded chain is no cursor any more.
-    const stale = await expectCall(server, 'listAuditRows', supervisor, 'a cursor of the chain that the rebuild discarded', { query: `?limit=10&cursor=${encodeURIComponent(staleCursor)}` }, 422, 'INVALID_INPUT');
-    const kept = await expectCall(server, 'listAuditRows', supervisor, 'a cursor on a row of the seed, which the rebuilt chain holds again', { query: `?limit=10&cursor=${encodeURIComponent(seedCursor)}` }, 200);
-    console.info(`[w52] gap CONTRACT-GAP-W39-1: after a rebuild, a cursor on a row only the discarded chain had answers ${stale.status} ${stale.code}; a cursor on a row of the seed answers ${kept.status}`);
+    // Gap W39-1, closed by W83 (the 422 text says it): a cursor on a row the rebuilt chain does not hold is no cursor any more.
+    await expectCall(server, 'listAuditRows', supervisor, 'a cursor of the chain that the rebuild discarded', { query: `?limit=10&cursor=${encodeURIComponent(staleCursor)}` }, 422, 'INVALID_INPUT');
+    await expectCall(server, 'listAuditRows', supervisor, 'a cursor on a row of the seed, which the rebuilt chain holds again', { query: `?limit=10&cursor=${encodeURIComponent(seedCursor)}` }, 200);
     const status = await expectCall(server, 'getDemoStatus', supervisor, 'the loaded scenario', {}, 200);
     expect(bodyOf<{ scenario: string }>(status).scenario).toBe('recording');
     const reset = await expectCall(server, 'resetDemo', supervisor, 'the demo is reset', {}, 200);
@@ -1447,17 +1441,11 @@ const NOT_PRODUCED: Readonly<Record<string, string>> = {};
 /**
  * Error codes the server answers that the registry does not name for that operation and status,
  * each one a contract gap a row ALREADY reported. A mismatch that is not listed fails the block.
+ * Emptied by the contract close-out W83 (decision D184): the seven entries it held (`stopSession`
+ * and `exportEvidence` 422 `INVALID_INPUT`; `DEVICE_NOT_PAIRED` on operations 21, 22, 23, 8 and 9)
+ * are now named by the registry, so the block itself proves the close-out.
  */
-const KNOWN_CODE_GAPS: Readonly<Record<string, string>> = {
-  'stopSession 422 INVALID_INPUT': 'CONTRACT-GAP-W34-2',
-  'exportEvidence 422 INVALID_INPUT': 'CONTRACT-GAP-W35-2',
-  'getDeviceRegistration 403 DEVICE_NOT_PAIRED': 'CONTRACT-GAP-W32-3',
-  'unpairDevice 403 DEVICE_NOT_PAIRED': 'CONTRACT-GAP-W32-3',
-  'rotateDeviceCredential 403 DEVICE_NOT_PAIRED': 'CONTRACT-GAP-W32-3',
-  // Found by this row: the same gap as W32-3 on the two device-only operations of the identity area.
-  'signInWithBiometric 403 DEVICE_NOT_PAIRED': 'CONTRACT-GAP-W52-1',
-  'reportBiometricFailure 403 DEVICE_NOT_PAIRED': 'CONTRACT-GAP-W52-1',
-};
+const KNOWN_CODE_GAPS: Readonly<Record<string, string>> = {};
 
 describe('SC6: what the whole file received', () => {
   it('AC-B-70: every answer that lists audio lists exactly AUDIO-01 and AUDIO-02', () => {

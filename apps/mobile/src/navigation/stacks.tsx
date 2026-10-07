@@ -30,8 +30,18 @@ export function AppStack() {
 }
 
 /**
+ * Session-flow routes whose previous screen already draws them IN PLACE, so the route change swaps two
+ * identical screens and must not fade (post-review fix FXR-M, finding W93-6; D236 RF-PH-3 residual):
+ * the monitor draws Finalizing in the commit that drops it (`session/live.tsx`, D201) and Finalizing draws
+ * the Summary once sealed (`session-finalizing-screen.tsx`, CF2-A). With the stack's `fade` the replace
+ * still showed one 30-70 ms empty frame at the Summary (5/6 phone, 2/3 tablet runs in RF2).
+ */
+export const IN_PLACE_FLOW_ROUTES = ['finalizing', 'summary/[sessionId]'] as const;
+
+/**
  * `(app)/session/_layout.tsx`: the session flow. While a session is active the back gesture is off
- * (04 §3.6 `gestureEnabled: false`); hardware back goes through the screens' back guards.
+ * (04 §3.6 `gestureEnabled: false`); hardware back goes through the screens' back guards. Entering the
+ * flow from the tabs keeps its motion: that belongs to `AppStack`'s `session` screen.
  */
 export function SessionFlowStack() {
   const motion = useMotionSettings();
@@ -44,7 +54,11 @@ export function SessionFlowStack() {
         gestureEnabled: !isSessionActive(state),
         contentStyle: CONTENT_STYLE,
       }}
-    />
+    >
+      {IN_PLACE_FLOW_ROUTES.map((name) => (
+        <Stack.Screen key={name} name={name} options={{ animation: 'none' }} />
+      ))}
+    </Stack>
   );
 }
 

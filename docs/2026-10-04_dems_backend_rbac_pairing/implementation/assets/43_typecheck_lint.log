@@ -1,0 +1,14 @@
+# typecheck
+
+> @dems/core-server@0.2.0 typecheck
+> tsc --noEmit
+
+
+# lint
+
+> @dems/core-server@0.2.0 lint
+> oxlint
+
+src/realtime/hub.ts:857:33: warning unicorn(no-useless-spread): Using a spread operator here creates a new array unnecessarily. help: `for…of` can iterate over iterable, it's unnecessary to convert to an array.
+src/realtime/hub.ts:860:33: warning unicorn(no-useless-spread): Using a spread operator here creates a new array unnecessarily. help: `for…of` can iterate over iterable, it's unnecessary to convert to an array.
+src/realtime/__tests__/support.ts:360:27: warning unicorn(no-useless-spread): Using a spread operator here creates a new array unnecessarily. help: `for…of` can iterate over iterable, it's unnecessary to convert to an array.

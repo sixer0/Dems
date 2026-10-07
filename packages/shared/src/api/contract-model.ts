@@ -12,6 +12,7 @@
  * | `query`    | Query parameters of a GET, as one object schema (D36, contract gap 2) | A `CORE_API_SCHEMAS` name |
  * | `coreServerDescription` | What the `all` scope says where `description` speaks of the simulator or of mock-core | Markdown; the ten existing operations only |
  * | `responses[status].services` | Which services send that status, when not every answerer of the operation does | Omitted for an answer the in-app simulator gives too |
+ * | `responses[status].coreServerDescription` | What the `all` scope says of that status where the Core server sends more codes than `description` names | The ten existing operations only (W83) |
  *
  * Two types, on purpose:
  * - `CoreApiOperation` is what a transport needs (the typed client, the route matcher, the OpenAPI
@@ -113,6 +114,12 @@ export type CoreApiAccessCondition = (typeof CoreApiAccessCondition)[keyof typeo
 /** `details.reason` of the `403 DEVICE_NOT_PAIRED` that the condition `DEVICE_CREDENTIAL` answers. */
 export const DEVICE_CREDENTIAL_REQUIRED_REASON = 'DEVICE_CREDENTIAL_REQUIRED';
 
+/**
+ * `details.reason` of the `403 DEVICE_NOT_PAIRED` of `setBiometricEnrollment` when `enabled: true` is
+ * sent on a session that was not created by password (W83, gap W41-2).
+ */
+export const PASSWORD_SESSION_REQUIRED_REASON = 'PASSWORD_SESSION_REQUIRED';
+
 export type CoreApiAccess = { readonly conditions?: readonly CoreApiAccessCondition[] } & (
   | { readonly kind: typeof CoreApiAccessKind.PUBLIC }
   | { readonly kind: typeof CoreApiAccessKind.DEVICE }
@@ -140,6 +147,34 @@ export function coreApiAccessPermissions(access: CoreApiAccess): readonly Permis
   if (access.kind === CoreApiAccessKind.PERMISSION) return [access.permission];
   if (access.kind === CoreApiAccessKind.ANY_OF) return access.permissions;
   return [];
+}
+
+/**
+ * Joins the alternatives of the any-of in `details.permission` of a refusal and of its ACCESS_DENIED
+ * row (decision D83 DN-1): one SCREAMING_SNAKE_CASE code, which the audit writer accepts. No
+ * permission name holds it (W83, gap 5 and finding F64).
+ */
+export const ANY_OF_DENIAL_SEPARATOR = '_OR_';
+
+/** `details.permission` of a refusal by `access`: its permission, or the any-of's alternatives joined with `_OR_`; null for a rule that names none. */
+export function denialPermissionOf(access: CoreApiAccess): string | null {
+  const permissions = coreApiAccessPermissions(access);
+  return permissions.length === 0 ? null : permissions.join(ANY_OF_DENIAL_SEPARATOR);
+}
+
+/**
+ * The permissions a refusal's `details.permission` names, whichever of its three spellings arrives
+ * (W83, gap 5 and finding F64): the Core server's `EVIDENCE_REVIEW_OR_MAINTENANCE`, the simulator's
+ * label `EVIDENCE_REVIEW | MAINTENANCE`, or the registry's marker `ANY-OF(EVIDENCE_REVIEW, MAINTENANCE)`.
+ * One permission is a list of one; an empty text is an empty list. This is the one mapping for clients.
+ */
+export function permissionsOfDenialLabel(label: string): string[] {
+  const text = label.trim();
+  const inner = /^ANY-OF\((.*)\)$/.exec(text)?.[1] ?? text;
+  return inner
+    .split(/_OR_|\||,/)
+    .map((part) => part.trim())
+    .filter((part) => part !== '');
 }
 
 /** The marker as 01_specs §4.2 writes it: `PUBLIC`, `DEVICE`, `AUTHENTICATED`, a permission, or `ANY-OF(A, B)`. */
@@ -181,6 +216,13 @@ export interface CoreApiAudit {
 
 export interface CoreApiResponseSpec {
   description: string;
+  /**
+   * Text of the `all` scope for a status of one of the ten existing operations whose `description`
+   * (the `offline` scope, pinned to the baseline) names fewer codes than the Core server sends
+   * (W83, gap W34-2 and gap W35-2). Omitted: `description` serves both scopes. A
+   * reader of the codes a status may carry reads both texts.
+   */
+  coreServerDescription?: string;
   /** Body schema; omitted for a response without a body. */
   schema?: CoreApiSchemaName;
   /**

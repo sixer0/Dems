@@ -1,0 +1,26 @@
+// E2E-S end: the Paired Devices page reloaded (DEV-0002 paired, the phone signed out), the audit rows of the
+// phone's sign-outs and of the revocation's session end, then THIS page's own SUPERVISOR session signs out.
+// No other session is touched.
+//   node --import tsx 08_final_web.mjs
+import { ORIGIN, applyMask, auditRows, connect, log, pdFacts, sleep, stamp, writeJson } from './lib.mjs'
+
+const page = await connect()
+await page.navigate(`${ORIGIN}/admin/devices`, 4000)
+await page.waitAny(['pd-devices-table', 'pd-empty', 'pd-error'], 15000)
+await applyMask(page)
+await sleep(1500)
+const facts = await pdFacts(page)
+const shot = await page.screenshot('08_web_final_paired_devices.png')
+log(`final list: ${JSON.stringify(facts.rows)}; summary ${JSON.stringify(facts.summary)}`)
+const registry = await page.evaluate(`(async () => { const r = await fetch('/api/v1/pairing/devices', { credentials: 'same-origin' }); const b = await r.json(); return b.devices.map((d) => ({ id: d.id, state: d.state, online: d.online, signedInOperatorId: d.signedInOperatorId })) })()`, 'registry')
+log(`registry: ${JSON.stringify(registry)}`)
+const audit = {}
+for (const type of ['AUTH_SIGNED_OUT', 'AUTH_LOGOUT', 'AUTH_EXPIRED']) {
+  audit[type] = await auditRows(page, type, 6)
+  for (const row of audit[type].rows.filter((r) => r.deviceId === 'DEV-0001' || r.deviceId === 'DEV-0002')) log(`audit ${row.id} ${row.at} ${row.type} actor ${row.actorId} device ${row.deviceId} "${row.message}" ${JSON.stringify(row.details)}`)
+}
+const out = await page.evaluate(`(async () => { const r = await fetch('/api/v1/auth/sign-out', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ reason: 'USER' }) }); return r.status })()`, 'sign-out')
+const back = await page.waitFor('page-login', true, 15000)
+log(`this page's SUPERVISOR session signed out: POST /api/v1/auth/sign-out ${out}; login shown ${back}`)
+writeJson('08_final_web.json', { at: stamp(), facts, screenshot: shot, registry, audit, signOut: { status: out, loginShown: back }, network: page.takeNetwork() })
+page.close()

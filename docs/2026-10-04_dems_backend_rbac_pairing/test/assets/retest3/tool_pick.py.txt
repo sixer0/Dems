@@ -1,0 +1,39 @@
+"""pick.py <run> <out.png> <coreStartHost>: contact sheet of one phone run: the Ready -> monitor change (2 frames before,
+2 after), timer samples (Core elapsed at the frame's host time beside the drawn value), the hand-over (last monitor
+frame, next 2 frames) and the last frame. Captions: frame, device time, what it shows."""
+import json, sys, os, subprocess
+R = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+run, out, st = sys.argv[1], sys.argv[2], sys.argv[3]
+def secs(t): h, m, s = t.split(':'); return int(h) * 3600 + int(m) * 60 + float(s)
+rows = json.load(open(f'{R}/phone/frames/{run}_rows.json'))[1:]
+mon = [i for i, r in enumerate(rows) if r['dot'] is not None]
+first, last = mon[0], mon[-1]
+pick = []
+for k in range(max(0, first - 2), first + 2): pick.append((k, 'Ready->monitor'))
+dec = [i for i in mon if rows[i].get('timer') and '?' not in rows[i]['timer']]
+for want in (3, 10, 20):
+    c = [i for i in dec if int(rows[i]['timer'][4:6]) + 60 * int(rows[i]['timer'][2:4]) == want]
+    if c: pick.append((c[len(c) // 2], 'timer sample'))
+for k in range(last, min(len(rows), last + 3)): pick.append((k, 'hand-over'))
+import PIL.Image as _I
+for k, r in enumerate(rows):
+    im = _I.open(f"{R}/phone/frames/{run}/{r['frame']}").convert('L'); px = im.load(); W, H = im.size
+    v = [px[x, y] for y in range(60, min(1170, H), 6) for x in range(0, W, 6)]
+    m = sum(v) / len(v); sd = (sum(a * a for a in v) / len(v) - m * m) ** 0.5
+    if sd < 6:
+        for j in (k - 1, k, k + 1):
+            if 0 <= j < len(rows): pick.append((j, 'EMPTY app area' if j == k else 'around empty frame'))
+pick.append((len(rows) - 1, 'last frame'))
+seen = set(); items = []
+for k, why in pick:
+    if k in seen: continue
+    seen.add(k); r = rows[k]
+    cap = f"{r['frame']} dev {r['dev']}"
+    if r['dot'] is not None and r.get('timer'):
+        el = secs(r['host']) - secs(st)
+        cap += f"|{why}: timer {int(r['timer'][4:6]) + 60*int(r['timer'][2:4])} s, Core {el:.1f} s"
+    else:
+        cap += f"|{why}"
+    items.append(f"{R}/phone/frames/{run}/{r['frame']}::{cap}")
+subprocess.run(['python3', f'{R}/tools/sheet2.py', out, '6', '0.42'] + items, check=True)
+print(out, len(items), 'tiles')

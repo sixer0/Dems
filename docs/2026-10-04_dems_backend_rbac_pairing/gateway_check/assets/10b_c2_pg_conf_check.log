@@ -1,0 +1,18 @@
+# postgres -C on a scratch folder holding only postgresql.conf = CONF_BLOCK (no server started, no port bound). 2026-10-06 09:40:48 WIB
+$ postgres (PostgreSQL) 18.4
+log_error_verbosity                terse
+logging_collector                  on
+log_directory                      log
+log_filename                       postgresql-%H.log
+log_file_mode                      384
+log_rotation_age                   60
+log_rotation_size                  0
+log_truncate_on_rotation           on
+listen_addresses                   127.0.0.1
+port                               4432
+unix_socket_directories            
+log_statement                      none
+log_min_duration_statement         -1
+log_parameter_max_length_on_error  0
+log_min_error_statement            error
+# folder contents after: postgresql.conf 

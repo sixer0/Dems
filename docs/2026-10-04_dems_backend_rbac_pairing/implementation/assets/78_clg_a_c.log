@@ -1,0 +1,63 @@
+## 2026-10-05 23:57:48 WIB CLG (a): the folder's existing test files are absent from git diff --stat acaff20
+$ git ls-tree -r --name-only acaff20 -- apps/mobile/src/features/devices | grep -E "test|testing/"
+apps/mobile/src/features/devices/devices-model.test.ts
+apps/mobile/src/features/devices/devices-screen.test.tsx
+apps/mobile/src/features/devices/testing/devices-harness.tsx
+apps/mobile/src/features/devices/testing/devices-test-setup.ts
+$ git diff --stat acaff20 -- <those files>   (empty = unchanged)
+exit=0
+$ git diff --stat acaff20 -- apps/mobile/src/features/devices
+ .../src/features/devices/device-command-dialog.tsx | 125 ++++++++++++++++-----
+ apps/mobile/src/features/devices/device-detail.tsx | 124 ++++++++++++++------
+ .../src/features/devices/diagnostics-sheet.tsx     |  56 +++++++--
+ apps/mobile/src/features/devices/health-chart.tsx  |   9 +-
+ apps/mobile/src/features/devices/i18n.ts           |  25 +++++
+ .../src/features/devices/use-devices-data.ts       |   7 +-
+ 6 files changed, 270 insertions(+), 76 deletions(-)
+$ git status --short -- apps/mobile/src/features/devices
+ M apps/mobile/src/features/devices/device-command-dialog.tsx
+ M apps/mobile/src/features/devices/device-detail.tsx
+ M apps/mobile/src/features/devices/diagnostics-sheet.tsx
+ M apps/mobile/src/features/devices/health-chart.tsx
+ M apps/mobile/src/features/devices/i18n.ts
+ M apps/mobile/src/features/devices/use-devices-data.ts
+?? apps/mobile/src/features/devices/busy-state.ts
+?? apps/mobile/src/features/devices/devices-live-static.test.ts
+?? apps/mobile/src/features/devices/live-devices-sites.test.tsx
+?? apps/mobile/src/features/devices/testing/live-devices-bed.tsx
+?? apps/mobile/src/features/devices/use-pending-press.ts
+
+## CLG (c): no useSimActions and no .actions read on a Sim in the production files
+$ grep -rnE "useSimActions|\.actions" apps/mobile/src/features/devices --exclude=*.test.ts --exclude=*.test.tsx --exclude-dir=testing
+apps/mobile/src/features/devices/device-detail.tsx:197:  const restartHint = !canManage ? t('features.devices.actions.restartNeedsTechnician') : recording ? t('devices.actions.restartWhileRecording') : undefined;
+apps/mobile/src/features/devices/device-detail.tsx:270:      <View style={styles.actions} testID="device-detail-actions">
+apps/mobile/src/features/devices/device-detail.tsx:279:          accessibilityLabel={t('features.devices.actions.diagnosticsLabel')}
+apps/mobile/src/features/devices/device-detail.tsx:284:          <Button.Label numberOfLines={1}>{t('features.devices.actions.diagnostics')}</Button.Label>
+apps/mobile/src/features/devices/device-detail.tsx:288:          <Button.Label numberOfLines={1}>{t('features.devices.actions.testSignal')}</Button.Label>
+apps/mobile/src/features/devices/device-detail.tsx:300:          <Button.Label numberOfLines={1}>{t('features.devices.actions.restart')}</Button.Label>
+apps/mobile/src/features/devices/device-command-dialog.tsx:50:  if (error instanceof SimTransitionError && error.code === SimErrorCode.RECORDING_ACTIVE) return t('devices.actions.restartWhileRecording');
+apps/mobile/src/features/devices/device-command-dialog.tsx:53:  return t('devices.actions.failed');
+apps/mobile/src/features/devices/device-command-dialog.tsx:79:                ? t('devices.actions.restarted', { name: deviceName })
+apps/mobile/src/features/devices/device-command-dialog.tsx:80:                : t('devices.actions.testSignalSent', { name: deviceName }),
+apps/mobile/src/features/devices/device-command-dialog.tsx:90:          toast.show({ variant: 'danger', label: live ? liveRefusalLabel(error, deviceName, t) : t('devices.actions.failed') });
+apps/mobile/src/features/devices/device-command-dialog.tsx:110:            {restart ? t('features.devices.actions.restartTitle', { name: deviceName }) : t('features.devices.actions.testSignalTitle', { name: deviceName })}
+apps/mobile/src/features/devices/device-command-dialog.tsx:118:                ? t('features.devices.actions.restartBody')
+apps/mobile/src/features/devices/device-command-dialog.tsx:119:                : t('features.devices.actions.testSignalBody')}
+apps/mobile/src/features/devices/device-command-dialog.tsx:121:          <View style={styles.actions}>
+apps/mobile/src/features/devices/device-command-dialog.tsx:123:              <Button.Label>{t('features.devices.actions.cancel')}</Button.Label>
+apps/mobile/src/features/devices/device-command-dialog.tsx:127:              <Button.Label>{t('features.devices.actions.confirm')}</Button.Label>
+grep exit=0 (every hit is inside a quoted i18n key or a style object; the corrected scan below strips quoted text first)
+
+## CLG (c), corrected: the same scan with quoted text (i18n keys) removed first, comments kept
+$ python3: for every production .ts/.tsx under features/devices (no *.test.*, no testing/): strip '...', "...", `...`; grep useSimActions|\.actions\b
+apps/mobile/src/features/devices/device-command-dialog.tsx:121: styles.actions
+apps/mobile/src/features/devices/device-detail.tsx:270: styles.actions
+2 hits: only style objects
+
+## KI-07 (no new SIM-GAP): IDs / markers in apps/mobile/src
+13 IDs / 62 markers
+## CONTRACT-GAP markers in the folder
+(none in code: the gaps are named in the report)
+## use-pending-press byte-equal to session-new's
+a1a38ac8249d7bda524ab84829d4ce8379a8a04a59a13b8d352e61ad59bee05f  apps/mobile/src/features/session-new/use-pending-press.ts
+a1a38ac8249d7bda524ab84829d4ce8379a8a04a59a13b8d352e61ad59bee05f  apps/mobile/src/features/devices/use-pending-press.ts

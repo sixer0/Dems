@@ -1,0 +1,13 @@
+$ npm run db:create -- --database dems_demo
+# 2026-10-07 05:30:38
+
+> dems-demo@0.1.0 db:create
+> npm run db:create -w @dems/core-server -- --database dems_demo
+
+
+> @dems/core-server@0.2.0 db:create
+> tsx src/db/commands/create.ts --database dems_demo
+
+db:create: created dems_demo (owner dems_owner, encoding UTF8, locale C) on PostgreSQL 18.4 as dems_owner.
+db:create: next: npm run db:migrate -w @dems/core-server -- --database dems_demo
+exit=0

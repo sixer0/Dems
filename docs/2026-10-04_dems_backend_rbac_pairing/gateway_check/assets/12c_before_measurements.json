@@ -1,0 +1,410 @@
+{
+  "phase": "before",
+  "wanted": "EV-20261006-0014",
+  "inventory": {
+    "keys": [
+      "items",
+      "nextCursor"
+    ],
+    "count": 14,
+    "out": [
+      {
+        "id": "EV-20261006-0014",
+        "status": "SEALED",
+        "media": [
+          "source",
+          "packageSuffix"
+        ],
+        "mediaSource": "DEMO_PACKAGE",
+        "multiWordDetails": [
+          {
+            "action": "RECORDING_STOPPED",
+            "detail": "R-W re-test: interview ended by the supervisor from the web console"
+          }
+        ]
+      },
+      {
+        "id": "EV-20261006-0013",
+        "status": "SEALED",
+        "media": [
+          "source",
+          "packageSuffix"
+        ],
+        "mediaSource": "DEMO_PACKAGE",
+        "multiWordDetails": []
+      },
+      {
+        "id": "EV-20261006-0012",
+        "status": "SEALED",
+        "media": [
+          "source",
+          "packageSuffix"
+        ],
+        "mediaSource": "DEMO_PACKAGE",
+        "multiWordDetails": []
+      },
+      {
+        "id": "EV-20261006-0011",
+        "status": "SEALED",
+        "media": [
+          "source",
+          "packageSuffix"
+        ],
+        "mediaSource": "DEMO_PACKAGE",
+        "multiWordDetails": []
+      },
+      {
+        "id": "EV-20261006-0010",
+        "status": "SEALED",
+        "media": [
+          "source",
+          "packageSuffix"
+        ],
+        "mediaSource": "DEMO_PACKAGE",
+        "multiWordDetails": []
+      },
+      {
+        "id": "EV-20261006-0009",
+        "status": "SEALED",
+        "media": [
+          "source",
+          "packageSuffix"
+        ],
+        "mediaSource": "DEMO_PACKAGE",
+        "multiWordDetails": []
+      },
+      {
+        "id": "EV-20261006-0008",
+        "status": "SEALED",
+        "media": [
+          "source",
+          "packageSuffix"
+        ],
+        "mediaSource": "DEMO_PACKAGE",
+        "multiWordDetails": []
+      },
+      {
+        "id": "EV-20261006-0007",
+        "status": "SEALED",
+        "media": [
+          "source",
+          "packageSuffix"
+        ],
+        "mediaSource": "DEMO_PACKAGE",
+        "multiWordDetails": []
+      },
+      {
+        "id": "EV-20261005-0006",
+        "status": "RECORDED",
+        "media": [
+          "source",
+          "packageSuffix"
+        ],
+        "mediaSource": "DEMO_PACKAGE",
+        "multiWordDetails": [
+          {
+            "action": "SESSION_INCOMPLETE",
+            "detail": "Power fail; recovered"
+          }
+        ]
+      },
+      {
+        "id": "EV-20261005-0005",
+        "status": "SEALED",
+        "media": [
+          "source",
+          "packageSuffix"
+        ],
+        "mediaSource": "DEMO_PACKAGE",
+        "multiWordDetails": []
+      },
+      {
+        "id": "EV-20261005-0004",
+        "status": "EXPORTED",
+        "media": [
+          "source",
+          "packageSuffix"
+        ],
+        "mediaSource": "DEMO_PACKAGE",
+        "multiWordDetails": [
+          {
+            "action": "EXPORTED",
+            "detail": "Case file transfer (simulated)"
+          }
+        ]
+      },
+      {
+        "id": "EV-20261005-0003",
+        "status": "UNDER_REVIEW",
+        "media": [
+          "source",
+          "packageSuffix"
+        ],
+        "mediaSource": "DEMO_PACKAGE",
+        "multiWordDetails": []
+      },
+      {
+        "id": "EV-20261004-0002",
+        "status": "SEALED",
+        "media": [
+          "source",
+          "packageSuffix"
+        ],
+        "mediaSource": "DEMO_PACKAGE",
+        "multiWordDetails": []
+      },
+      {
+        "id": "EV-20261004-0001",
+        "status": "SEALED",
+        "media": [
+          "source",
+          "packageSuffix"
+        ],
+        "mediaSource": "DEMO_PACKAGE",
+        "multiWordDetails": []
+      }
+    ]
+  },
+  "target": "EV-20261006-0014",
+  "custody": {
+    "1280x800": {
+      "viewport": "1280x800",
+      "card": 407,
+      "container": 375,
+      "table": 472,
+      "scrollWidth": 472,
+      "horizontalOverflow": 97,
+      "tableLayout": "auto",
+      "headers": [
+        {
+          "text": "Time UTC+07:00",
+          "width": 106
+        },
+        {
+          "text": "Action",
+          "width": 187
+        },
+        {
+          "text": "Actor",
+          "width": 87
+        },
+        {
+          "text": "Detail",
+          "width": 92
+        }
+      ],
+      "rows": [
+        {
+          "action": "SEALED",
+          "detail": "—",
+          "detailWidth": 92,
+          "detailVisible": 0,
+          "detailLines": 1,
+          "dateLines": 1,
+          "clockLines": 1,
+          "date": "6 Oct 2026",
+          "clock": "12:36:38",
+          "actionLines": 2,
+          "actionText": "SEALED",
+          "cellsOverflowing": 0
+        },
+        {
+          "action": "RECORDING_STOPPED",
+          "detail": "R-W re-test: interview ended by the supervisor from the web console",
+          "detailWidth": 92,
+          "detailVisible": 0,
+          "detailLines": 11,
+          "dateLines": 1,
+          "clockLines": 1,
+          "date": "6 Oct 2026",
+          "clock": "12:36:31",
+          "actionLines": 2,
+          "actionText": "RECORDING_STOPPED",
+          "cellsOverflowing": 0
+        },
+        {
+          "action": "RECORDING_STARTED",
+          "detail": "—",
+          "detailWidth": 92,
+          "detailVisible": 0,
+          "detailLines": 1,
+          "dateLines": 1,
+          "clockLines": 1,
+          "date": "6 Oct 2026",
+          "clock": "12:17:28",
+          "actionLines": 2,
+          "actionText": "RECORDING_STARTED",
+          "cellsOverflowing": 0
+        }
+      ]
+    },
+    "1440x900": {
+      "viewport": "1440x900",
+      "card": 473,
+      "container": 441,
+      "table": 472,
+      "scrollWidth": 472,
+      "horizontalOverflow": 31,
+      "tableLayout": "auto",
+      "headers": [
+        {
+          "text": "Time UTC+07:00",
+          "width": 106
+        },
+        {
+          "text": "Action",
+          "width": 187
+        },
+        {
+          "text": "Actor",
+          "width": 87
+        },
+        {
+          "text": "Detail",
+          "width": 92
+        }
+      ],
+      "rows": [
+        {
+          "action": "SEALED",
+          "detail": "—",
+          "detailWidth": 92,
+          "detailVisible": 62,
+          "detailLines": 1,
+          "dateLines": 1,
+          "clockLines": 1,
+          "date": "6 Oct 2026",
+          "clock": "12:36:38",
+          "actionLines": 2,
+          "actionText": "SEALED",
+          "cellsOverflowing": 0
+        },
+        {
+          "action": "RECORDING_STOPPED",
+          "detail": "R-W re-test: interview ended by the supervisor from the web console",
+          "detailWidth": 92,
+          "detailVisible": 62,
+          "detailLines": 11,
+          "dateLines": 1,
+          "clockLines": 1,
+          "date": "6 Oct 2026",
+          "clock": "12:36:31",
+          "actionLines": 2,
+          "actionText": "RECORDING_STOPPED",
+          "cellsOverflowing": 0
+        },
+        {
+          "action": "RECORDING_STARTED",
+          "detail": "—",
+          "detailWidth": 92,
+          "detailVisible": 62,
+          "detailLines": 1,
+          "dateLines": 1,
+          "clockLines": 1,
+          "date": "6 Oct 2026",
+          "clock": "12:17:28",
+          "actionLines": 2,
+          "actionText": "RECORDING_STARTED",
+          "cellsOverflowing": 0
+        }
+      ]
+    },
+    "1920x1080": {
+      "viewport": "1920x1080",
+      "card": 663,
+      "container": 631,
+      "table": 631,
+      "scrollWidth": 631,
+      "horizontalOverflow": 0,
+      "tableLayout": "auto",
+      "headers": [
+        {
+          "text": "Time UTC+07:00",
+          "width": 129
+        },
+        {
+          "text": "Action",
+          "width": 187
+        },
+        {
+          "text": "Actor",
+          "width": 109
+        },
+        {
+          "text": "Detail",
+          "width": 206
+        }
+      ],
+      "rows": [
+        {
+          "action": "SEALED",
+          "detail": "—",
+          "detailWidth": 206,
+          "detailVisible": 206,
+          "detailLines": 1,
+          "dateLines": 1,
+          "clockLines": 1,
+          "date": "6 Oct 2026",
+          "clock": "12:36:38",
+          "actionLines": 2,
+          "actionText": "SEALED",
+          "cellsOverflowing": 0
+        },
+        {
+          "action": "RECORDING_STOPPED",
+          "detail": "R-W re-test: interview ended by the supervisor from the web console",
+          "detailWidth": 206,
+          "detailVisible": 206,
+          "detailLines": 3,
+          "dateLines": 1,
+          "clockLines": 1,
+          "date": "6 Oct 2026",
+          "clock": "12:36:31",
+          "actionLines": 2,
+          "actionText": "RECORDING_STOPPED",
+          "cellsOverflowing": 0
+        },
+        {
+          "action": "RECORDING_STARTED",
+          "detail": "—",
+          "detailWidth": 206,
+          "detailVisible": 206,
+          "detailLines": 1,
+          "dateLines": 1,
+          "clockLines": 1,
+          "date": "6 Oct 2026",
+          "clock": "12:17:28",
+          "actionLines": 2,
+          "actionText": "RECORDING_STARTED",
+          "cellsOverflowing": 0
+        }
+      ]
+    }
+  },
+  "media": {
+    "mode": null,
+    "empty": true,
+    "source": null,
+    "title": "No DEMO media",
+    "body": "This item has no DEMO package, so there is nothing to play. Its record comes from the simulator.",
+    "packageChip": "Core record",
+    "packageChipKind": "core"
+  },
+  "rewrites": [
+    {
+      "mode": "none",
+      "url": "/api/v1/evidence/EV-20261006-0014",
+      "status": 200,
+      "mediaBefore": {
+        "source": "DEMO_PACKAGE",
+        "packageSuffix": "0014"
+      },
+      "mediaAfter": {
+        "source": "NONE",
+        "packageSuffix": null
+      }
+    }
+  ],
+  "exceptions": [],
+  "blocked": []
+}

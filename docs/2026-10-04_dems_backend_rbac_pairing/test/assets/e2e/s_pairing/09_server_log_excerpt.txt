@@ -1,0 +1,58 @@
+== step 2/3 issue and redeem (DEV-0001)
+   09:49:02.611 | POST | /api/v1/pairing/code | 201 | principal=operator:OPR-002 | request completed
+   09:49:02.614 | GET | /api/v1/pairing/code | 200 | principal=operator:OPR-002 | request completed
+   09:49:02.645 | GET | /api/v1/pairing/code | 200 | principal=operator:OPR-002 | request completed
+   09:49:08.378 | POST | /api/v1/pairing/redeem | 201 | principal=None | request completed
+   09:49:08.386 | GET | /api/v1/pairing/devices | 200 | principal=operator:OPR-002 | request completed
+   09:49:08.413 | GET | /api/v1/pairing/code | 200 | principal=operator:OPR-002 | request completed
+   09:49:08.431 | GET | /api/v1/pairing/code | 200 | principal=operator:OPR-002 | request completed
+   09:49:10.516 | - | - | - | principal=None | socket closed | code=1000 | closedBy=peer
+   09:49:10.567 | - | - | - | principal=device:DEV-0001 | socket opened | kind=DEVICE
+   09:49:10.678 | GET | /api/v1/pairing/devices | 200 | principal=operator:OPR-002 | request completed
+   09:49:13.324 | GET | /api/v1/auth/status | 200 | principal=device:DEV-0001 | request completed
+   09:49:13.994 | GET | /api/v1/health | 200 | principal=device:DEV-0001 | request completed
+== step 4 phone sign-in (DEV-0001)
+   09:55:09.782 | POST | /api/v1/auth/sign-in | 200 | principal=device:DEV-0001 | request completed
+   09:55:09.989 | - | - | - | principal=device:DEV-0001 | socket closed | code=1000 | closedBy=peer
+   09:55:10.119 | - | - | - | principal=operator:OPR-001 | socket opened | kind=OPERATOR
+   09:55:12.116 | GET | /api/v1/auth/session | 401 | principal=None | request completed | code=NOT_SIGNED_IN
+   09:55:12.119 | - | - | - | principal=None | socket opened | kind=ANONYMOUS
+   09:55:14.723 | POST | /api/v1/auth/sign-in | 200 | principal=None | request completed
+   09:55:14.753 | - | - | - | principal=None | socket closed | code=1000 | closedBy=peer
+   09:55:14.759 | - | - | - | principal=operator:OPR-001 | socket opened | kind=OPERATOR
+== step 5 revoke (DEV-0001) and what followed
+   10:08:24.587 | POST | /api/v1/pairing/devices/:id/revoke | 200 | principal=operator:OPR-002 | request completed
+   10:08:24.591 | - | - | - | principal=operator:OPR-001 | socket closed | code=4403 | closedBy=server
+   10:08:24.603 | GET | /api/v1/pairing/code | 200 | principal=operator:OPR-002 | request completed
+   10:08:24.605 | GET | /api/v1/pairing/devices | 200 | principal=operator:OPR-002 | request completed
+   10:08:24.651 | GET | /api/v1/pairing/devices | 200 | principal=operator:OPR-002 | request completed
+   10:08:24.675 | GET | /api/v1/pairing/devices | 200 | principal=operator:OPR-002 | request completed
+   10:08:27.668 | - | - | - | principal=None | socket opened | kind=ANONYMOUS
+== step 6 issue and redeem again (DEV-0002)
+   10:12:00.782 | POST | /api/v1/pairing/code | 201 | principal=operator:OPR-002 | request completed
+   10:12:00.785 | GET | /api/v1/pairing/code | 200 | principal=operator:OPR-002 | request completed
+   10:12:00.819 | GET | /api/v1/pairing/code | 200 | principal=operator:OPR-002 | request completed
+   10:12:06.270 | POST | /api/v1/pairing/redeem | 201 | principal=None | request completed
+   10:12:06.279 | GET | /api/v1/pairing/devices | 200 | principal=operator:OPR-002 | request completed
+   10:12:06.292 | GET | /api/v1/pairing/code | 200 | principal=operator:OPR-002 | request completed
+   10:12:06.295 | GET | /api/v1/pairing/code | 200 | principal=operator:OPR-002 | request completed
+   10:12:07.323 | - | - | - | principal=None | socket closed | code=1000 | closedBy=peer
+   10:12:07.343 | - | - | - | principal=device:DEV-0002 | socket opened | kind=DEVICE
+   10:12:07.385 | GET | /api/v1/pairing/devices | 200 | principal=operator:OPR-002 | request completed
+   10:12:11.128 | GET | /api/v1/auth/status | 200 | principal=device:DEV-0002 | request completed
+   10:12:11.858 | - | - | - | principal=device:DEV-0002 | socket closed | code=1000 | closedBy=peer
+   10:12:12.413 | GET | /api/v1/health | 200 | principal=device:DEV-0002 | request completed
+   10:12:12.583 | - | - | - | principal=device:DEV-0002 | socket opened | kind=DEVICE
+   10:12:13.161 | GET | /api/v1/health | 200 | principal=device:DEV-0002 | request completed
+== step 6 phone sign-in (DEV-0002)
+   10:14:09.089 | - | - | - | principal=operator:OPR-001 | socket opened | kind=OPERATOR
+   10:14:11.087 | POST | /api/v1/auth/sign-in | 200 | principal=device:DEV-0002 | request completed
+   10:14:11.657 | - | - | - | principal=device:DEV-0002 | socket closed | code=1000 | closedBy=peer
+   10:14:11.711 | - | - | - | principal=operator:OPR-001 | socket opened | kind=OPERATOR
+   10:14:12.994 | - | - | - | principal=operator:OPR-002 | socket closed | code=1001 | closedBy=peer
+   10:14:13.222 | - | - | - | principal=operator:OPR-002 | socket opened | kind=OPERATOR
+== end: phone sign-out (DEV-0002)
+   10:16:23.664 | POST | /api/v1/auth/sign-out | 204 | principal=operator:OPR-001 | request completed
+   10:16:23.666 | - | - | - | principal=operator:OPR-001 | socket closed | code=4401 | closedBy=server
+   10:16:24.361 | - | - | - | principal=device:DEV-0002 | socket opened | kind=DEVICE
+   10:16:24.418 | GET | /api/v1/auth/status | 200 | principal=device:DEV-0002 | request completed

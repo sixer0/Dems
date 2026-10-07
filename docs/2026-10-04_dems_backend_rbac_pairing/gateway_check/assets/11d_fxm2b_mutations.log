@@ -1,0 +1,81 @@
+# FX-M2b mutation check, 2026-10-06 12:30:44; the tree is not edited
+control (no mutation, 3 test files): exit=0 Tests:       23 passed, 23 total (7 s)
+C1   DETECTED     the old bar: Date.now() on its own 1 s interval (the rollback copy) | live-mini-bar.tsx | Tests:       1 failed, 1 total | failing: live-mini-bar-clock.test.tsx | first: E2E-P-3: Home's System Status timer and the Recording bar show the same time in every commit › 9 s of a recording in 370 ms steps: the two timers never differ, and both are the store's recording time (2 s)
+C2   DETECTED     the bar reads the device clock against the session start | live-mini-bar.tsx | Tests:       1 failed, 1 total | failing: live-mini-bar-clock.test.tsx | first: E2E-P-3: Home's System Status timer and the Recording bar show the same time in every commit › 9 s of a recording in 370 ms steps: the two timers never differ, and both are the store's recording time (2 s)
+N1   DETECTED     the old NavItem: icon opacities and label colour from UI-thread styles only (rollback copy + budget stub) | nav-item.tsx | Tests:       4 failed, 18 passed, 22 total | failing: chrome-lost-updates.test.tsx | first: E2E-P-1 (phone bar), every UI-thread update lost: the highlight still ends on the active tab › Sessions -> a session detail -> Evidence: Evidence gold (icon and label), Sessions grey, the pill on Evidence, the Evidence screen visible (5 s)
+N2   DETECTED     the old indicator: one animated view placed by a UI-thread transform (rollback copies of the track, bar and rail) | use-indicator.ts, bottom-tab-bar.tsx, nav-rail.tsx | Tests:       4 failed, 18 passed, 22 total | failing: chrome-lost-updates.test.tsx | first: E2E-P-1 (phone bar), every UI-thread update lost: the highlight still ends on the active tab › Sessions -> a session detail -> Evidence: Evidence gold (icon and label), Sessions grey, the pill on Evidence, the Evidence screen visible (5 s)
+N3   DETECTED     the old TabScreenFade: the content itself fades from opacity 0 on the UI thread (rollback copy + budget stub) | app-tabs.tsx | Tests:       4 failed, 18 passed, 22 total | failing: chrome-lost-updates.test.tsx | first: E2E-P-1 (phone bar), every UI-thread update lost: the highlight still ends on the active tab › Sessions -> a session detail -> Evidence: Evidence gold (icon and label), Sessions grey, the pill on Evidence, the Evidence screen visible (4 s)
+N4   DETECTED     an indicator trip never ends (no React commit removes the travelling copy) | use-indicator.ts | Tests:       3 failed, 19 passed, 22 total | failing: chrome-lost-updates.test.tsx | first: E2E-P-1 (phone bar), every UI-thread update lost: the highlight still ends on the active tab › Sessions -> a session detail -> Evidence: Evidence gold (icon and label), Sessions grey, the pill on Evidence, the Evidence screen visible (6 s)
+N5   DETECTED     a colour fade never ends (the old colours stay laid over the item) | nav-item.tsx | Tests:       3 failed, 19 passed, 22 total | failing: chrome-lost-updates.test.tsx | first: E2E-P-1 (phone bar), every UI-thread update lost: the highlight still ends on the active tab › Sessions -> a session detail -> Evidence: Evidence gold (icon and label), Sessions grey, the pill on Evidence, the Evidence screen visible (6 s)
+N6   DETECTED     the veil is never removed (the screen stays covered) | app-tabs.tsx | Tests:       3 failed, 19 passed, 22 total | failing: chrome-lost-updates.test.tsx | first: E2E-P-1 (phone bar), every UI-thread update lost: the highlight still ends on the active tab › Sessions -> a session detail -> Evidence: Evidence gold (icon and label), Sessions grey, the pill on Evidence, the Evidence screen visible (7 s)
+N7   DETECTED     the settled pill is not hidden while a copy travels (two pills) | bottom-tab-bar.tsx | Tests:       1 failed, 21 passed, 22 total | failing: chrome-lost-updates.test.tsx | first: E2E-P-1 (phone bar), every UI-thread update lost: the highlight still ends on the active tab › full motion keeps M-MB-01 and M-APP-04: the fading copy, the travelling pill and the veil exist during the motion, and React removes them after their budgets (6 s)
+N8   DETECTED     reduced motion still cross-fades the colours | nav-item.tsx | Tests:       1 failed, 21 passed, 22 total | failing: chrome-lost-updates.test.tsx | first: E2E-P-1 (phone bar), every UI-thread update lost: the highlight still ends on the active tab › reduced motion (the testers' motion=off): right at once, no overlay is ever drawn (7 s)
+N9   DETECTED     reduced motion still sends the indicator on a trip | use-indicator.ts | Tests:       1 failed, 21 passed, 22 total | failing: chrome-lost-updates.test.tsx | first: E2E-P-1 (phone bar), every UI-thread update lost: the highlight still ends on the active tab › reduced motion (the testers' motion=off): right at once, no overlay is ever drawn (7 s)
+N10  DETECTED     the rail's settled card stays hidden after a trip | nav-rail.tsx | Tests:       1 failed, 21 passed, 22 total | failing: chrome-lost-updates.test.tsx | first: E2E-T-2 (tablet rail), every UI-thread update lost: the Devices screen is never left invisible › Evidence detail -> rail Devices: the Devices screen visible, Devices gold, Evidence grey, the card on Devices (7 s)
+N11  DETECTED     the settled colours follow the first state only (a one-shot value, as the lost update did) | nav-item.tsx | Tests:       3 failed, 19 passed, 22 total | failing: chrome-lost-updates.test.tsx | first: E2E-P-1 (phone bar), every UI-thread update lost: the highlight still ends on the active tab › Sessions -> a session detail -> Evidence: Evidence gold (icon and label), Sessions grey, the pill on Evidence, the Evidence screen visible (6 s)
+## 13 detected, 0 not detected, 0 not applied, of 13
+## the mutated files in the tree, before and after: identical
+   4c859f78950a87c4  src/components/composed/nav/bottom-tab-bar.tsx
+   d39c1829b893762a  src/components/composed/nav/live-mini-bar.tsx
+   2a0bdfc0ec6583f3  src/components/composed/nav/nav-item.tsx
+   ef13f0e3ebfac554  src/components/composed/nav/nav-rail.tsx
+   c722bb26346bc644  src/components/composed/nav/use-indicator.ts
+   7396f469a12c5e6f  src/navigation/app-tabs.tsx
+# finished 12:32:01
+
+# What the three old-code mutants fail (first lines of each failing test; run at 12:30 on the same assertions)
+== N1
+  - E2E-P-1 (phone bar), every UI-thread update lost: the highlight still ends on the active tab › Sessions -> a session detail -> Evidence: Evi
+      expect(received).toEqual(expected) // deep equality
+      - Expected  - 2
+      + Received  + 2
+      -     "#FFC86B",
+  - E2E-P-1 (phone bar), every UI-thread update lost: the highlight still ends on the active tab › full motion keeps M-MB-01 and M-APP-04: the f
+  - E2E-P-1 (phone bar), every UI-thread update lost: the highlight still ends on the active tab › reduced motion (the testers' motion=off): rig
+      expect(received).toEqual(expected) // deep equality
+      - Expected  - 2
+      + Received  + 2
+      -     "#FFC86B",
+  - E2E-T-2 (tablet rail), every UI-thread update lost: the Devices screen is never left invisible › Evidence detail -> rail Devices: the Device
+      expect(received).toEqual(expected) // deep equality
+      - Expected  - 2
+      + Received  + 2
+      -     "#FFC86B",
+== N2
+  - E2E-P-1 (phone bar), every UI-thread update lost: the highlight still ends on the active tab › Sessions -> a session detail -> Evidence: Evi
+      expect(received).toEqual(expected) // deep equality
+      - Expected  - 2
+      + Received  + 2
+      -     "x": 177,
+  - E2E-P-1 (phone bar), every UI-thread update lost: the highlight still ends on the active tab › full motion keeps M-MB-01 and M-APP-04: the f
+  - E2E-P-1 (phone bar), every UI-thread update lost: the highlight still ends on the active tab › reduced motion (the testers' motion=off): rig
+      expect(received).toEqual(expected) // deep equality
+      - Expected  - 2
+      + Received  + 2
+      -     "x": 177,
+  - E2E-T-2 (tablet rail), every UI-thread update lost: the Devices screen is never left invisible › Evidence detail -> rail Devices: the Device
+      expect(received).toEqual(expected) // deep equality
+      - Expected  - 1
+      + Received  + 1
+      -     "y": 204,
+== N3
+  - E2E-P-1 (phone bar), every UI-thread update lost: the highlight still ends on the active tab › Sessions -> a session detail -> Evidence: Evi
+      expect(received).toBe(expected) // Object.is equality
+      Expected: 1
+      Received: 0
+      [0m [90m 146 |[39m     expect(app[33m.[39mgetPathname())[33m.[39mtoBe([32m'/evidence'[39m)[33m;[39m
+  - E2E-P-1 (phone bar), every UI-thread update lost: the highlight still ends on the active tab › full motion keeps M-MB-01 and M-APP-04: the f
+      expect(received).toBeGreaterThan(expected)
+      Expected: > 0
+      Received:   0
+      [0m [90m 175 |[39m     expect(screen[33m.[39mgetByTestId([32m'nav-item-sessions-fading-icon'[39m[33m,[39m [33mHIDDEN_TOO[39m))[33m.[39mtoBeTruthy()
+  - E2E-P-1 (phone bar), every UI-thread update lost: the highlight still ends on the active tab › reduced motion (the testers' motion=off): rig
+      expect(received).toBe(expected) // Object.is equality
+      Expected: 1
+      Received: 0
+      [0m [90m 199 |[39m     expect(visibleIndicators([32m'nav-bottom-indicator'[39m))[33m.[39mtoEqual([{ x[33m:[39m [35m2[39m [33m*[39m [33mBAR_ITEM_WI
+  - E2E-T-2 (tablet rail), every UI-thread update lost: the Devices screen is never left invisible › Evidence detail -> rail Devices: the Device
+      expect(received).toBe(expected) // Object.is equality
+      Expected: 1
+      Received: 0
+      [0m [90m 212 |[39m     expect(app[33m.[39mgetPathname())[33m.[39mtoBe([32m'/devices'[39m)[33m;[39m

@@ -1,0 +1,27 @@
+Wed Oct  7 05:11:33 WIB 2026
+
+> dems-demo@0.1.0 lint
+> npm run lint --workspaces --if-present
+
+
+> @dems/shared@0.1.0 lint
+> oxlint
+
+
+> @dems/core-server@0.2.0 lint
+> oxlint
+
+
+> @dems/core-web@0.1.0 lint
+> oxlint
+
+
+> @dems/mobile@0.1.0 lint
+> eslint .
+
+
+> @dems/mock-core@0.1.0 lint
+> oxlint
+
+npm run lint  19.14s user 1.11s system 156% cpu 12.956 total
+exit=0

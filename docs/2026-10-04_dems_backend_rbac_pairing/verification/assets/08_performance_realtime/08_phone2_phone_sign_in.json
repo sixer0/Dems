@@ -1,0 +1,79 @@
+{
+  "operator": {
+    "username": "rina.wijaya",
+    "id": "OPR-003",
+    "role": "TECHNICIAN"
+  },
+  "deviceT0": "10-07 09:57:39.000",
+  "clock": {
+    "offsetMs": -49881,
+    "bracketMs": 44
+  },
+  "prefill": {
+    "file": "08_phone2_phone_login_prefilled.png",
+    "bytes": 1250333,
+    "at": "09:58:34.597 (epoch 1791341914.597)"
+  },
+  "prefillDelayMs": 3132,
+  "submitAt": "09:58:34.625 (epoch 1791341914.625)",
+  "signIn": {
+    "deviceEpoch": 1791341864.813,
+    "method": "POST",
+    "path": "/api/v1/auth/sign-in",
+    "status": "200",
+    "deviceTime": "09:57:44.813 (epoch 1791341864.813)"
+  },
+  "after": {
+    "keyguard": "false",
+    "focus": "mCurrentFocus=Window{e1052b9 u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity}",
+    "appFocused": true
+  },
+  "afterShot": {
+    "file": "08_phone2_phone_signed_in.png",
+    "bytes": 447232,
+    "at": "09:58:41.675 (epoch 1791341921.675)"
+  },
+  "appRequests": [
+    "09:57:44.813 (epoch 1791341864.813) POST /api/v1/auth/sign-in 200"
+  ],
+  "serverLines": [
+    {
+      "at": "09:58:34.693 (epoch 1791341914.693)",
+      "atMs": 1791341914693,
+      "method": "POST",
+      "route": "/api/v1/auth/sign-in",
+      "status": 200,
+      "principal": "device:DEV-0002",
+      "msg": "request completed",
+      "code": null,
+      "closedBy": null,
+      "kind": null
+    },
+    {
+      "at": "09:58:34.715 (epoch 1791341914.715)",
+      "atMs": 1791341914715,
+      "method": null,
+      "route": null,
+      "status": null,
+      "principal": "device:DEV-0002",
+      "msg": "socket closed",
+      "code": 1000,
+      "closedBy": "peer",
+      "kind": null
+    },
+    {
+      "at": "09:58:34.727 (epoch 1791341914.727)",
+      "atMs": 1791341914727,
+      "method": null,
+      "route": null,
+      "status": null,
+      "principal": "operator:OPR-003",
+      "msg": "socket opened",
+      "code": null,
+      "closedBy": null,
+      "kind": "OPERATOR"
+    }
+  ],
+  "credentialLinesDeviceJs": 0,
+  "passwordInDeviceJs": 0
+}

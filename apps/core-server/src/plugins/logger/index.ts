@@ -18,11 +18,13 @@ export {
   codedCauseOf,
   createErrorLog,
   describeError,
+  rotatedErrorLogFile,
   type CodedCause,
   type ErrorDescription,
   type ErrorLog,
   type ErrorLogContext,
   type ErrorLogEntry,
+  type ErrorLogOptions,
 } from './error-log';
 export { CoreLogController } from './log-controller';
 export {

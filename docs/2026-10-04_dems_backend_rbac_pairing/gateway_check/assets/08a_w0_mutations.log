@@ -1,0 +1,100 @@
+## 2026-10-06 00:33:14 WIB batch ['E01', 'E02', 'E03', 'E04', 'E05']
+baseline (no mutation) exit 0 Test Files  3 passed (3) | Tests  39 passed (39) (11 s) over 3 files
+E01 detected    the helper starts at once (no deferral) | Test Files  2 failed (2) | Tests  6 failed | 17 passed (23) | × nothing runs in the call; the start runs after one task 3ms (12 s)
+E02 detected    the clean-up does not cancel the pending start | Test Files  1 failed | 1 passed (2) | Tests  3 failed | 20 passed (23) | × set-up, clean-up, set-up (what StrictMode does on mount): ONE start 2ms (12 s)
+E03 detected    the resume effect starts its pre-check in the set-up again (the pre-W0 shape) | Test Files  1 failed | 1 passed (2) | Tests  1 failed | 26 passed (27) | × a session left in CREATE, the page opened at step 2: one `beginPrecheck`, no failure toast, the gate runs 371ms (4 s)
+E04 detected    the list hand-off verifies in the set-up | Test Files  1 failed (1) | Tests  1 failed | 11 passed (12) | × the list's "Verify" hand-off opens the Integrity tab and sends ONE request of operation 41 1483ms (12 s)
+E05 detected    the wizard source check verifies in the set-up | Test Files  1 failed (1) | Tests  1 failed | 11 passed (12) | × the export wizard's source check sends ONE request of operation 41 per source 1077ms (12 s)
+## 2026-10-06 00:34:17 WIB 5 mutations: 5 detected, 0 survived [], 0 not applied []
+## the mutated files in the tree, before and after: identical
+   adeca53a51b92614  apps/core-web/src/features/evidence/detail-page.tsx
+   6c31a7e202a454d5  apps/core-web/src/features/evidence/export-wizard.tsx
+   79c65ee90861092f  apps/core-web/src/features/session-new/index.tsx
+   138e62ba7616d7c5  apps/core-web/src/lib/effect-start.ts
+## 2026-10-06 00:34:22 WIB batch ['G01', 'G02', 'G03', 'G04', 'G05', 'G06', 'G07', 'G08']
+G01 detected    guard: useLayoutEffect is not scanned | Test Files  1 failed (1) | Tests  1 failed | 10 passed (11) | × positive controls: each shape that sends twice under StrictMode, or hides how, is found 2ms (3 s)
+G02 detected    guard: a helper that is not returned passes | Test Files  1 failed (1) | Tests  1 failed | 10 passed (11) | × positive controls: each shape that sends twice under StrictMode, or hides how, is found 3ms (3 s)
+G03 detected    guard: the helper's argument is not set apart (a command inside it counts as outside) | Test Files  1 failed (1) | Tests  3 failed | 8 passed (11) | × positive controls: each shape that sends twice under StrictMode, or hides how, is found 3ms (3 s)
+G04 detected    guard: comments are not removed | Test Files  1 failed (1) | Tests  2 failed | 9 passed (11) | × negative controls: the helper returned, and effects that start no Core call, are not found 2ms (3 s)
+G05 detected    guard: the dependency list is scanned as part of the callback | Test Files  1 failed (1) | Tests  2 failed | 9 passed (11) | × negative controls: the helper returned, and effects that start no Core call, are not found 2ms (3 s)
+G06 detected    guard: the allowed list allows any file | Test Files  1 failed (1) | Tests  1 failed | 10 passed (11) | × the allowed list covers its own file and token only (a control on two made-up files) 2ms (3 s)
+G07 detected    guard: a call through a ref is not a Core call | Test Files  1 failed (1) | Tests  1 failed | 10 passed (11) | × positive controls: each shape that sends twice under StrictMode, or hides how, is found 3ms (3 s)
+G08 detected    guard: query refreshes are not Core calls | Test Files  1 failed (1) | Tests  2 failed | 9 passed (11) | × positive controls: each shape that sends twice under StrictMode, or hides how, is found 2ms (3 s)
+## 2026-10-06 00:34:44 WIB 8 mutations: 8 detected, 0 survived [], 0 not applied []
+## the mutated files in the tree, before and after: identical
+   0ce7a3a796889bc2  apps/core-web/src/test/live-strict-mode-starts.test.tsx
+## 2026-10-06 00:34:50 WIB batch ['H01', 'H02', 'H03', 'H04', 'H05', 'H06', 'H07', 'H08', 'H09', 'H10', 'H11', 'H12', 'H13']
+baseline (no mutation) exit 0 Test Files  2 passed (2) | Tests  32 passed (32) (2 s) over 2 files
+H01 detected    the press guard is gone: a second press sends a second command | Test Files  2 failed (2) | Tests  10 failed | 22 passed (32) | × while a command is out, a second `run` and a second `settle` return `false` and start nothing 4ms (2 s)
+H02 detected    the reveal delay is 0: the spinner shows at once | Test Files  2 failed (2) | Tests  9 failed | 23 passed (32) | × busy at once; not pending at 300 ms (or at 419 ms); pending at 420 ms; both cleared by the release 4ms (3 s)
+H03 detected    the reveal delay ignores the motion policy's time scale | Test Files  1 failed (1) | Tests  1 failed | 18 passed (19) | × proof mode (time scale 2): pending only at 840 ms 3ms (1 s)
+H04 detected    the busy mark is never written | Test Files  2 failed (2) | Tests  6 failed | 26 passed (32) | × set at the press, removed at the release; the control's content and other attributes untouched 3ms (2 s)
+H05 detected    the busy mark is never removed | Test Files  2 failed (2) | Tests  7 failed | 25 passed (32) | × set at the press, removed at the release; the control's content and other attributes untouched 3ms (3 s)
+H06 detected    a command settled in the press still marks the control busy (Simulated mode would stick) | Test Files  1 failed (1) | Tests  4 failed | 15 passed (19) | × `run` with a start that releases at once: started, no state, no new render, no mark 11ms (1 s)
+H07 detected    the release does not clear busy | Test Files  2 failed (2) | Tests  13 failed | 19 passed (32) | × a release called twice frees the control once (the second call changes nothing) 3ms (2 s)
+H08 detected    `onWait` runs also for a command settled in the press | Test Files  1 failed (1) | Tests  1 failed | 18 passed (19) | × `settle` with a plain value: `ok` and `done` run in the press, `onWait` never, no new render 3ms (1 s)
+H09 detected    `done` runs before the control is released | Test Files  1 failed (1) | Tests  1 failed | 18 passed (19) | × a Live result: `onWait` once right after the press; `ok` then `done` on the answer; `done` sees the control free 3ms (1 s)
+H10 detected    the key of the command out is not kept | Test Files  1 failed (1) | Tests  1 failed | 18 passed (19) | × `key` names the command out, and is cleared with it 2ms (1 s)
+H11 detected    a start that throws leaves the control busy | Test Files  1 failed (1) | Tests  1 failed | 18 passed (19) | × a start that throws frees the control and the error reaches the caller 2ms (1 s)
+H12 SURVIVED    the reveal outlives the busy state by one render | Test Files  1 passed (1) | Tests  19 passed (19) |  (1 s)
+H13 detected    the reveal timer is not cleared when the command settles early | Test Files  1 failed | 1 passed (2) | Tests  1 failed | 31 passed (32) | × an unmount while busy leaves no timer behind 2ms (3 s)
+## 2026-10-06 00:35:15 WIB 13 mutations: 12 detected, 1 survived ['H12'], 0 not applied []
+## the mutated files in the tree, before and after: identical
+   edc9faed2eebebe0  apps/core-web/src/lib/pending-control.ts
+## 2026-10-06 00:35:33 WIB batch ['H12']
+H12 detected    the reveal outlives the busy state by one render | Test Files  1 failed (1) | Tests  1 failed | 19 passed (20) | × the spinner leaves in the same commit as the command: no committed state is pending without being busy 3ms (1 s)
+## 2026-10-06 00:35:34 WIB 1 mutations: 1 detected, 0 survived [], 0 not applied []
+## the mutated files in the tree, before and after: identical
+   edc9faed2eebebe0  apps/core-web/src/lib/pending-control.ts
+## 2026-10-06 00:35:39 WIB batch ['S01', 'S02', 'S03', 'S04', 'M01', 'M02', 'M03', 'N01', 'N02', 'L01']
+baseline (no mutation) exit 0 Test Files  7 passed (7) | Tests  65 passed (65) (9 s) over 7 files
+S01 detected    Dashboard: the command never releases its control | Test Files  1 failed (1) | Tests  8 failed | 5 passed (13) | × Restart: one POST to operation 48 for the tile's device, the menu closes at the press, the toast follows the answer and says nothing of a simulation 622ms (4 s)
+S02 detected    Storage: Apply never releases its control | Test Files  1 failed (1) | Tests  6 failed | 6 passed (12) | × AC-C-48: a 403 NOT_PERMITTED (the contract's `notPermitted` example) shows the denied toast, no success toast; the drawer stays open with the draft and Apply is idle again 96ms (3 s)
+S03 detected    Devices: the clip reset never releases its control | Test Files  1 failed (1) | Tests  6 failed | 4 passed (10) | × one POST to operation 52 with the channel; the latch and the button leave with the Core's delta, and the toast follows 471ms (3 s)
+S04 detected    Session Monitor: the marker chip of LB-4 never shows (`onWait` dropped from the shared hook's settle) | Test Files  1 failed (1) | Tests  1 failed | 15 passed (16) | × success: one POST with the label, the chip waits at the button while the answer is out, a second press sends nothing, and the toast and the flight label are read in `ok` 135ms (5 s)
+M01 detected    meter: the presenter is skipped | Test Files  1 failed (1) | Tests  3 failed | 2 passed (5) | × a 403 FORBIDDEN is the presenter's denied toast; no generic sentence, no record of the meter 8116ms (26 s)
+M02 detected    meter: the reset ignores its result again (pre-W0) | Test Files  1 failed (1) | Tests  4 failed | 1 passed (5) | × a 403 FORBIDDEN is the presenter's denied toast; no generic sentence, no record of the meter 8100ms (34 s)
+M03 detected    meter: no record for what the presenter left | Test Files  1 failed (1) | Tests  1 failed | 4 passed (5) | × a 422 the presenter leaves: the generic sentence and ONE record with a fixed message and the cause's facts, never its text 63ms (2 s)
+N01 detected    Network & Time: the message is the error's text | Test Files  1 failed (1) | Tests  2 failed | 5 passed (7) | × one record: the fixed sentence, the error's name, the caller's context, a correlation ID; no text, no stack 4ms (1 s)
+N02 detected    Network & Time: the record is not written | Test Files  1 failed (1) | Tests  2 failed | 5 passed (7) | × one record: the fixed sentence, the error's name, the caller's context, a correlation ID; no text, no stack 3ms (1 s)
+L01 detected    the drawer Log words Identify as Restart again | Test Files  1 failed (1) | Tests  2 failed (2) | × an Identify row reads "Identify (blink)"; the test signal and the restart keep their Simulated words 546ms (2 s)
+## 2026-10-06 00:37:11 WIB 10 mutations: 10 detected, 0 survived [], 0 not applied []
+## the mutated files in the tree, before and after: identical
+   ea31b5e4ec2a6e7a  apps/core-web/src/components/composed/dbfs-meter.tsx
+   0cdfe77c36fca82b  apps/core-web/src/features/dashboard/devices-panel.tsx
+   c563c16bd8e6966e  apps/core-web/src/features/devices/audio-input-card.tsx
+   b6d703b4ce515f14  apps/core-web/src/features/devices/device-drawer.tsx
+   a1d1bb42b3b08135  apps/core-web/src/features/network-time/log.ts
+   deb10cd23d80b8c2  apps/core-web/src/features/session-monitor/action-bar.tsx
+   fd14488ada82138f  apps/core-web/src/features/storage/manage-drawer.tsx
+## 2026-10-06 00:37:16 WIB batch ['C01', 'C02', 'C03', 'C04', 'C05', 'R01', 'R02', 'R03', 'V01', 'V02', 'V03', 'V04']
+baseline (no mutation) exit 0 Test Files  5 passed (5) | Tests  46 passed (46) (7 s) over 5 files
+C01 detected    the Live OSD line keeps LIVE | Test Files  1 failed (1) | Tests  2 failed | 4 passed (6) | × Simulated keeps its line; Live keeps DEMO (P13) and drops LIVE 3ms (2 s)
+C02 detected    the Live accessible name calls the picture a live feed | Test Files  1 failed (1) | Tests  1 failed | 5 passed (6) | × Live (the Live source in the context, as on the Session Monitor): "Camera 1 · Bundled demo picture"; the picture is not called a live feed 29ms (2 s)
+C03 detected    the feed never sees Live mode | Test Files  1 failed (1) | Tests  2 failed | 4 passed (6) | × Simulated (a simulator in the context, or none): "Camera 1 · LIVE SESSION FEED", unchanged 57ms (2 s)
+C04 detected    the painter ignores the mode | Test Files  1 failed (1) | Tests  1 failed | 5 passed (6) | × the painter writes the line of its mode on the canvas 4ms (2 s)
+C05 detected    the Devices tile says "Live preview" in Live mode | Test Files  1 failed (1) | Tests  1 failed | 5 passed (6) | × Devices & Inputs, its camera tiles' own name: "Live preview, Camera 1" in Simulated mode (unchanged), "Camera 1, bundled demo picture" in Live mode 550ms (2 s)
+R01 detected    every page gets the Dashboard's prefix | Test Files  2 failed (2) | Tests  3 failed | 21 passed (24) | × the Devices record has the same shape with a `dev-` correlation ID, and its level can be `warn` 2ms (5 s)
+R02 detected    the level is always error | Test Files  1 failed (1) | Tests  1 failed | 6 passed (7) | × the Devices record has the same shape with a `dev-` correlation ID, and its level can be `warn` 3ms (1 s)
+R03 detected    the cause's code and status are dropped | Test Files  2 failed (2) | Tests  4 failed | 16 passed (20) | × the Dashboard's record: level error, the caller's fixed sentence, the cause by class, code and status, a `dash-` correlation ID 3ms (4 s)
+V01 detected    the Live Metadata label says simulated | Test Files  1 failed (1) | Tests  1 failed | 2 passed (3) | × the Metadata tab of the detail page (operation 40 answers NONE): "Core record", `"record": "CORE"`, no "simulated" word 476ms (2 s)
+V02 detected    the Live record body says simulated | Test Files  1 failed (1) | Tests  1 failed | 2 passed (3) | × the Metadata tab of the detail page (operation 40 answers NONE): "Core record", `"record": "CORE"`, no "simulated" word 477ms (2 s)
+V03 detected    the Live preview line says simulated | Test Files  1 failed (1) | Tests  1 failed | 2 passed (3) | × the preview card: "the Core server's record only", no "simulated" word 13ms (2 s)
+V04 detected    the Simulated record body takes the Live words | Test Files  1 failed (1) | Tests  1 failed | 2 passed (3) | × the Metadata tab: "Simulated evidence record" with `"simulated": true`; the preview: "simulated data only" 70ms (2 s)
+## 2026-10-06 00:37:52 WIB 12 mutations: 12 detected, 0 survived [], 0 not applied []
+## the mutated files in the tree, before and after: identical
+   4d76e94a23319ae3  apps/core-web/src/components/media/camera-feed.math.ts
+   672db315fa348e4f  apps/core-web/src/components/media/camera-feed.tsx
+   a76737fa288c0e61  apps/core-web/src/components/media/procedural-feed.ts
+   375813532d9e9ab6  apps/core-web/src/features/dashboard/report.ts
+   97ae9b506233c18f  apps/core-web/src/features/devices/camera-tile.tsx
+   f16c175afa03cfe7  apps/core-web/src/features/evidence/metadata-tab.tsx
+   cb8313ad140d4810  apps/core-web/src/features/evidence/preview-card.tsx
+## 2026-10-06 00:51:27 WIB batch ['R01b', 'R02b', 'R03b']
+baseline (no mutation) exit 0 Test Files  3 passed (3) | Tests  37 passed (37) (12 s) over 3 files
+R01b detected    W0b: every page gets one prefix (the helper in lib/) | Test Files  2 failed (2) | Tests  3 failed | 21 passed (24) | × the Devices record has the same shape with a `dev-` correlation ID, and its level can be `warn` 3ms (6 s)
+R02b detected    W0b: the level is always error | Test Files  1 failed (1) | Tests  1 failed | 6 passed (7) | × the Devices record has the same shape with a `dev-` correlation ID, and its level can be `warn` 4ms (2 s)
+R03b detected    W0b: the cause's code and status are dropped | Test Files  2 failed (2) | Tests  4 failed | 16 passed (20) | × the Dashboard's record: level error, the caller's fixed sentence, the cause by class, code and status, a `dash-` correlation ID 4ms (6 s)
+## 2026-10-06 00:51:53 WIB 3 mutations: 3 detected, 0 survived [], 0 not applied []
+## the mutated files in the tree, before and after: identical
+   f86f59af6a7a1caa  apps/core-web/src/lib/page-report.ts

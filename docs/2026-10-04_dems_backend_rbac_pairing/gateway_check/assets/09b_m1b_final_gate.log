@@ -1,0 +1,58 @@
+## 2026-10-06 00:46:54 WIB  0:46  2 users, load averages: 3.75 2.91 2.95
+## $ npm run test -w @dems/mobile -- --maxWorkers=2
+FAIL src/features/session-live/live-session-live-sites.test.tsx (5.823 s)
+FAIL src/features/audit/live-audit-screen.test.tsx
+FAIL src/features/session-live/live-session-live-sites.test.tsx (5.823 s)
+FAIL src/features/audit/live-audit-screen.test.tsx
+Test Suites: 2 failed, 121 passed, 123 total
+Tests:       5 failed, 1521 passed, 1526 total
+Time:        101.624 s
+exit=1
+## first whole run: the 2 red files (W68 live-session-live-sites, W80 live-audit-screen) were rewritten at 00:47:41 / 00:47:23 during the run; re-check of both at 00:48:55:
+PASS src/features/audit/live-audit-screen.test.tsx
+PASS src/features/session-live/live-session-live-sites.test.tsx (5.016 s)
+Tests:       19 passed, 19 total
+## 00:49:13 $ npm run typecheck -w @dems/mobile
+exit=2
+src/features/session-summary/testing/live-summary-bed.tsx(36,28): error TS2305: Module '"@testing-library/react-native"' has no exported member 'ReactTestInstance'.
+## 00:49:17 $ npm run lint -w @dems/mobile
+exit=0
+eslint json: files 515 errors 0 warnings 0
+## 2026-10-06 00:49:46 WIB  0:49  2 users, load averages: 4.68 4.23 3.52
+## second whole run: $ npm run test -w @dems/mobile -- --maxWorkers=2
+FAIL src/features/session-live/live-session-live-link.test.tsx (5.172 s)
+FAIL src/features/sessions/live-sessions.test.tsx
+Test Suites: 2 failed, 125 passed, 127 total
+Tests:       5 failed, 1559 passed, 1564 total
+Time:        111.863 s
+exit=1
+## re-check of the second run's red files at 00:52:23:
+FAIL src/features/session-live/live-session-live-link.test.tsx (10.309 s)
+PASS src/features/sessions/live-sessions.test.tsx (6.784 s)
+Tests:       2 failed, 17 passed, 19 total
+## W68's red file with the M1 seed reverted in memory (00:53):
+## W68 live-session-live-link.test.tsx with the M1 seed reverted IN MEMORY (M0 first render): exit=1
+FAIL src/features/session-live/live-session-live-link.test.tsx (11.112 s)
+Tests:       2 failed, 8 passed, 10 total
+baseline 72 vs acaff20 (lines of git diff --stat): 0
+W60 navigation tests + harness vs b90a3c6: 0
+142 test files hashed at 00:29: 139 OK, 3 changed:
+apps/mobile/src/features/devices/live-devices-sites.test.tsx: FAILED
+apps/mobile/src/features/session-new/live-session-new-followups.test.tsx: FAILED
+apps/mobile/src/navigation/__tests__/back-guard-busy.test.tsx: FAILED
+## 00:53:25 typecheck re-check
+exit=2
+src/features/session-summary/testing/live-summary-bed.tsx(36,28): error TS2305: Module '"@testing-library/react-native"' has no exported member 'ReactTestInstance'.
+errors outside the parallel rows:        0
+### f1_tests
+Test Suites: 5 passed, 5 total
+Tests:       59 passed, 59 total
+### f2_tests
+Test Suites: 21 passed, 21 total
+Tests:       290 passed, 290 total
+### f3_tests
+Test Suites: 5 passed, 5 total
+Tests:       56 passed, 56 total
+### f4_tests
+Test Suites: 16 passed, 16 total
+Tests:       234 passed, 234 total

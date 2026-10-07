@@ -1,0 +1,28 @@
+{
+  "tag": "w96_r2_web_b_watch_to_tech",
+  "expr": "(() => { const l = document.querySelector('[data-testid=start-new-session-locked]'), b = document.querySelector('[data-testid=start-new-session]'); return (l || b?.disabled ? 'LOCKED' : b ? 'UNLOCKED' : 'none') + (l ? ' (' + l.getAttribute('aria-label') + ')' : '') + ' | toasts: ' + [...document.querySelectorAll('[data-slot=toast]')].map(t => t.textContent.replace(/\\s+/g,' ').trim().slice(0,80)).join(' / ') })()",
+  "sameDocument": true,
+  "events": [
+    {
+      "at": "09:19:31.431 (epoch 1791339571.431)",
+      "atMs": 1791339571431,
+      "value": "\"UNLOCKED | toasts: \""
+    },
+    {
+      "at": "09:19:36.973 (epoch 1791339576.973)",
+      "atMs": 1791339576973,
+      "value": "\"LOCKED (Start New Session: Requires the Investigator role) | toasts: Your role is now Technician. The available actions have changed.\""
+    },
+    {
+      "at": "09:19:41.256 (epoch 1791339581.256)",
+      "atMs": 1791339581256,
+      "value": "\"LOCKED (Start New Session: Requires the Investigator role) | toasts: \""
+    }
+  ],
+  "network": {
+    "api": [],
+    "origins": [],
+    "sockets": [],
+    "console": []
+  }
+}

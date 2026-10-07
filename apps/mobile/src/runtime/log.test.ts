@@ -68,6 +68,49 @@ describe('records', () => {
   });
 });
 
+describe('credential prefixes (W100-1, row PT)', () => {
+  // Synthetic marker values shaped like a session token, a device credential and a biometric token.
+  const SES = 'ses_T3stSess10n-abc';
+  const DVC = 'dvc_T3stDev1ce_xyz';
+  const BIO = 'bio_T3stB10-q_9';
+  const leaky = (): Error => {
+    const error = new Error(`refused ${SES} for ${DVC} and ${BIO}`);
+    error.stack = `Error: refused ${SES}\n    at sign-in (${DVC}.js:1:1)\n    at enrol (${BIO})`;
+    return error;
+  };
+  const expectBlanked = (text: string | undefined): void => {
+    expect(text).toBeDefined();
+    for (const marker of [SES, DVC, BIO]) expect(text).not.toContain(marker);
+    for (const marker of [SES, DVC, BIO]) expect(text).not.toContain(marker.slice(4));
+  };
+
+  it('blanks ses_, dvc_ and bio_ values in the message, the stack and string context of a record', () => {
+    const record = toRuntimeLogRecord({ level: 'error', source: 'runtime.test', error: leaky(), context: { reason: `got ${DVC}` }, at: 0 });
+    expectBlanked(record.message);
+    expectBlanked(record.stack);
+    expectBlanked(record.context?.reason as string);
+    expect(record.message).toBe('refused ses_*** for dvc_*** and bio_***');
+    expect(JSON.stringify(record)).not.toMatch(/\b(ses|dvc|bio)_(?!\*\*\*)/);
+  });
+
+  it('blanks them in motion and navigation records routed into the app log too', () => {
+    const log = createRuntimeLog({ storage: memoryStorage(), console: false });
+    const uninstall = installRuntimeLogSinks(log);
+    try {
+      reportMotionIssue('warn', 'motion.prefs.write', leaky(), { note: SES });
+      reportNavigationIssue('error', 'navigation.railPrefs.read', leaky());
+    } finally {
+      uninstall();
+    }
+    expect(log.records()).toHaveLength(2);
+    for (const record of log.records()) {
+      expectBlanked(record.message);
+      expectBlanked(record.stack);
+    }
+    expect(JSON.stringify(log.records())).not.toMatch(/\b(ses|dvc|bio)_(?!\*\*\*)/);
+  });
+});
+
 describe('createRuntimeLog', () => {
   it('debounces writes into one JSON array under dems.mobile.log.v1', async () => {
     jest.useFakeTimers();

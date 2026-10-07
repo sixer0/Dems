@@ -24,7 +24,9 @@
  * | Credentials | Held IN MEMORY. The stored device credential is read once, at start, through the wrapper `./secure-credentials`; the client's credential provider and the socket's header provider read memory only (D81) |
  * | Secrets port | The session token: memory only. The device credential: memory first, then the wrapper. A value is gone from memory before the port resolves |
  * | Visibility | `AppState`, as for the simulator; coming back to the foreground with a STALE link reconnects at once |
- * | Reports | Every report of the Live source and every failure of the typed client goes to the persistent runtime log |
+ * | Reports | Every report of the Live source and every failure of the typed client goes to the persistent runtime log. A rejection without an answer of the Core is judged by the link first (R5, `probe-failure.ts`): never an `error` |
+ * | Probes | A probe or the keep-alive that timed out is asked once more before its result is handed on (row FX-M1, E2E-T-1): a starved JS thread must not read as an unreachable Core |
+ * | Pairing gate | Written to `pairing-gate-snapshot.ts` while the source runs, for `+native-intent` (row FX-M1, E2E-S-4) |
  *
  * **Release builds hold none of it.** The Live source, the typed client and the wrapper are loaded
  * inside a block under a literal `__DEV__` test (MD-6): Metro folds the block away in a release
@@ -49,6 +51,10 @@ import {
 } from '@dems/shared/sim';
 import { PAIRING_CHECKING, type PairingInfo, type PairingNotice } from './contract';
 import { reportRuntimeIssue } from './log';
+import { notePairingGate, releasePairingGate } from './pairing-gate-snapshot';
+import { PROBE_OPERATIONS, isRecheckable, isUnanswered, judgeLiveRejection, type JudgedReport } from './probe-failure';
+import { createCoreClock, registerCoreClock } from './core-clock';
+import { createStallTolerantTimers } from './stall-tolerant-timers';
 
 /** The simulator snapshot key (same as the web, 04 §5.3). */
 export const SIM_SNAPSHOT_KEY = SIM_STORAGE_KEY;
@@ -260,6 +266,24 @@ export interface MobileLive {
 
 const mobileLives = new WeakMap<Sim, MobileLive>();
 
+/** CF-M1 (R-S-2): per Live source of `createMobileLive`, whether its socket client is between a socket it gave up itself and the next one. */
+const clientRestarts = new WeakMap<object, () => boolean>();
+
+/**
+ * True while the app's own socket client has given a connection up by itself (SYNC_TIMEOUT, SEND_FAILED)
+ * and has not opened the next socket yet, for the first restart of a series only. Its OFFLINE then says
+ * nothing about the Core: the link is settling (DX-3's rule for an end the Core made, extended to a
+ * restart the client made; `ended-link.ts`). `false` for anything else, a simulator or a missing source.
+ */
+export function isClientRestart(live: unknown): boolean {
+  if (typeof live !== 'object' || live === null) return false;
+  try {
+    return clientRestarts.get(live)?.() ?? false;
+  } catch {
+    return false;
+  }
+}
+
 /** Jest runs with `__DEV__`; the request lines stay out of test output. */
 const IN_JEST = typeof process !== 'undefined' && process.env?.JEST_WORKER_ID !== undefined;
 
@@ -268,11 +292,17 @@ export function mobileLiveOf(sim: Sim): MobileLive | null {
   return mobileLives.get(sim) ?? null;
 }
 
-/** Reports of the Live source → the persistent runtime log. An envelope code travels as `errorCode`: the log drops a member named `code`. */
-export function logLiveReport(report: SimErrorReport): void {
+/**
+ * Reports of the Live source → the persistent runtime log. An envelope code travels as `errorCode`:
+ * the log drops a member named `code`. `judged` (R5, `judgeLiveRejection`) replaces the level and the
+ * message of a rejection without an answer of the Core, and adds how the link read.
+ */
+export function logLiveReport(report: SimErrorReport, judged: JudgedReport | null = null): void {
   const code = report.context?.code;
-  const context = typeof code === 'string' && /^[A-Z][A-Z0-9_]{1,63}$/.test(code) ? { ...report.context, errorCode: code } : report.context;
-  reportRuntimeIssue(report.level, report.source, Object.assign(new Error(report.message), report.stack ? { stack: report.stack } : {}), context);
+  const base = typeof code === 'string' && /^[A-Z][A-Z0-9_]{1,63}$/.test(code) ? { ...report.context, errorCode: code } : report.context;
+  const context = judged ? { ...base, ...judged.context } : base;
+  const message = judged ? judged.message : report.message;
+  reportRuntimeIssue(judged ? judged.level : report.level, report.source, Object.assign(new Error(message), report.stack ? { stack: report.stack } : {}), context);
 }
 
 const DEFAULT_LIVE_TIMERS: LiveSocketTimers = {
@@ -282,24 +312,52 @@ const DEFAULT_LIVE_TIMERS: LiveSocketTimers = {
   clearInterval: (handle) => clearInterval(handle as ReturnType<typeof setInterval>),
 };
 
+/** How a storage call that missed its budget ended, once it ended (W93-16): for the late-outcome log record. */
+export interface LateOutcome<T> {
+  readonly value: T | null;
+  /** From the call to its settling, on the source's clock (ms). */
+  readonly elapsedMs: number;
+}
+
 /**
  * What `task()` resolved with, or `null` when it threw, rejected or has not settled after
  * `budgetMs` (`late`). Never rejects. A throw or a rejection is logged under `source` by the name
  * of the error only: its text is the storage's own and is not passed on.
+ *
+ * Post-review fix FXR-M (finding W93-16; D203 risk 1): the budget is judged on the source's stall-tolerant
+ * timers, and `elapsedAtBudgetMs` says how much clock time had really passed when it ran out (a starved JS
+ * thread fires it late). A task that settles AFTER the budget is no longer forgotten: `onLate` hears how it
+ * ended and after how long, so a slow keystore write can be told from a starved thread (W98 sizes the budget
+ * from these records) and a write that landed after the failure was reported can be undone.
  */
-function withinBudget<T>(task: () => T | Promise<T>, budgetMs: number, timers: LiveSocketTimers, source: string): Promise<{ value: T | null; late: boolean }> {
+function withinBudget<T>(
+  task: () => T | Promise<T>,
+  budgetMs: number,
+  timers: LiveSocketTimers,
+  source: string,
+  now: () => number = Date.now,
+  onLate?: (outcome: LateOutcome<T>) => void,
+): Promise<{ value: T | null; late: boolean; elapsedAtBudgetMs: number | null }> {
+  const startedAt = now();
   return new Promise((resolve) => {
     let open = true;
     const handle = timers.setTimeout(() => {
       if (!open) return;
       open = false;
-      resolve({ value: null, late: true });
+      resolve({ value: null, late: true, elapsedAtBudgetMs: Math.max(0, now() - startedAt) });
     }, budgetMs);
     const settle = (value: T | null): void => {
-      if (!open) return;
+      if (!open) {
+        try {
+          onLate?.({ value, elapsedMs: Math.max(0, now() - startedAt) });
+        } catch (error) {
+          reportRuntimeIssue('error', source, error, { phase: 'lateOutcome' });
+        }
+        return;
+      }
       open = false;
       timers.clearTimeout(handle);
-      resolve({ value, late: false });
+      resolve({ value, late: false, elapsedAtBudgetMs: null });
     };
     const failed = (error: unknown): void => {
       reportRuntimeIssue('error', source, 'A storage call of the Live source failed', { errorName: error instanceof Error ? error.name : typeof error });
@@ -313,6 +371,14 @@ function withinBudget<T>(task: () => T | Promise<T>, budgetMs: number, timers: L
   });
 }
 
+/** The budget ran out at `elapsedAtBudgetMs` of clock time: how far its timer fired late (a starved thread), ms. */
+function budgetLateness(elapsedAtBudgetMs: number | null, budgetMs: number): number {
+  return elapsedAtBudgetMs === null ? 0 : Math.max(0, elapsedAtBudgetMs - budgetMs);
+}
+
+/** A typed-client time-out whose timer fired this much later than its budget was the JS thread, not the network (ms). */
+export const COMMAND_TIMEOUT_STARVED_MS = 1_000;
+
 /**
  * The app's Live source (MD-5: created only when the Core link source is LIVE). Nothing is sent
  * and no socket is opened until `start()`. Returns `null` in a release build (MD-6): the block
@@ -322,14 +388,18 @@ export function createMobileLive(options: MobileLiveOptions = {}): MobileLive | 
   if (__DEV__) {
     /* eslint-disable @typescript-eslint/no-require-imports -- the three modules must stay inside the __DEV__ block (MD-6) */
     const { LIVE_DEVICE_CLEANUP_GAVE_UP_CODE, asSim, createLiveSim } = require('@dems/shared/live/source') as typeof import('@dems/shared/live/source');
-    const { createCoreClient } = require('@dems/shared/client') as typeof import('@dems/shared/client');
+    const { LIVE_COMMAND_TIMEOUT_MS, createCoreClient } = require('@dems/shared/client') as typeof import('@dems/shared/client');
     const store = require('./secure-credentials') as typeof import('./secure-credentials');
     const Device = require('expo-device') as typeof import('expo-device');
     const Constants = (require('expo-constants') as typeof import('expo-constants')).default;
     /* eslint-enable @typescript-eslint/no-require-imports */
 
-    const timers = options.timers ?? DEFAULT_LIVE_TIMERS;
     const now = options.now ?? (() => Date.now());
+    // CF-M1 (R-P-2, R-S-2): every timer of the Live source (the socket client's housekeeping and
+    // reconnects, the command gate, the source's own deadlines, the storage budgets) lets the JS queue go
+    // first when it fires late after a stall, so a deadline is judged on what has really arrived
+    // (`stall-tolerant-timers.ts`).
+    const timers = createStallTolerantTimers(options.timers ?? DEFAULT_LIVE_TIMERS, now);
     const visibility = options.visibility ?? createAppStateVisibility();
 
     // ── Memory: the only place a request or a socket reads a credential from (D81). ──
@@ -340,9 +410,12 @@ export function createMobileLive(options: MobileLiveOptions = {}): MobileLive | 
 
     let pairing: PairingInfo = PAIRING_CHECKING;
     const listeners = new Set<() => void>();
+    /** This source's entry in the gate snapshot of `+native-intent` (E2E-S-4). */
+    const gateOwner = {};
     const setPairing = (state: 'UNPAIRED' | 'PAIRED', notice: PairingNotice | null, deviceId: string | null): void => {
       if (pairing.state === state && pairing.notice === notice && pairing.deviceId === deviceId) return;
       pairing = { required: true, state, notice, deviceId };
+      if (wanted) notePairingGate(gateOwner, pairing);
       for (const listener of [...listeners]) {
         try {
           listener();
@@ -351,6 +424,13 @@ export function createMobileLive(options: MobileLiveOptions = {}): MobileLive | 
         }
       }
     };
+
+    /**
+     * CF-M1 (R-S-2): the connection the socket client gave up BY ITSELF (SYNC_TIMEOUT: `hello` or a snapshot
+     * did not come in time; SEND_FAILED), or `null`. Between that and the client's next socket the link reads
+     * OFFLINE although nothing was heard from the Core about it; `isClientRestart` reads it as a transient.
+     */
+    let selfRestart: number | null = null;
 
     let biometric: LiveBiometricPort | null = null;
     /**
@@ -365,6 +445,9 @@ export function createMobileLive(options: MobileLiveOptions = {}): MobileLive | 
     // ── The typed client's reports: one per operation and kind in LIVE_CLIENT_REPORT_INTERVAL_MS. ──
     const reported = new Map<string, { at: number; skipped: number }>();
     const reportClientFailure = (report: CoreClientReport): void => {
+      // R5: a probe that timed out is asked again before anything is declared (`call` below); its
+      // first time-out is a note, and the re-check's own outcome is what the log judges.
+      const probeTimeout = report.kind === 'TIMEOUT' && PROBE_OPERATIONS.has(report.operationId);
       const key = `${report.operationId}|${report.kind}`;
       const at = now();
       const last = reported.get(key);
@@ -373,7 +456,8 @@ export function createMobileLive(options: MobileLiveOptions = {}): MobileLive | 
         return;
       }
       reported.set(key, { at, skipped: 0 });
-      reportRuntimeIssue(report.level, 'live.client', report.message, {
+      reportRuntimeIssue(probeTimeout ? 'info' : report.level, 'live.client', report.message, {
+        ...(probeTimeout ? { probe: true } : {}),
         operationId: report.operationId,
         method: report.method,
         path: report.path,
@@ -390,29 +474,79 @@ export function createMobileLive(options: MobileLiveOptions = {}): MobileLive | 
       now,
       report: reportClientFailure,
       // CL-6a: method, path template, status and request ID. Development console only, never the persistent log.
+      // The literal `__DEV__` makes "development only" true by construction (row PT, W100-5).
       log: (line: CoreClientLogLine): void => {
-        if (!IN_JEST) console.info(`[DEMS-LIVE] ${line.method} ${line.path} ${line.status ?? '-'} ${line.requestId ?? '-'}`);
+        if (__DEV__ && !IN_JEST) console.info(`[DEMS-LIVE] ${line.method} ${line.path} ${line.status ?? '-'} ${line.requestId ?? '-'}`);
       },
     };
     // The typed client has one credential provider per instance. Two instances, one choice per
     // operation: the session token when signed in, except where the Core wants the device itself.
     const sessionClient = createCoreClient({ ...transport, credentials: bearer });
     const deviceClient = createCoreClient({ ...transport, credentials: deviceBearer });
-    type LooseClient = { call(operationId: string, input?: unknown): Promise<unknown> };
+    type LooseResult = { readonly ok: boolean; readonly kind?: unknown; readonly status?: number | null };
+    type LooseClient = { call(operationId: string, input?: unknown): Promise<LooseResult> };
+    /** Probe attempts in a row without an answer, per operation (R5: the consecutive count of `judgeLiveRejection`). */
+    const probeFailures = new Map<string, number>();
+    const noteProbe = (operationId: string, result: LooseResult): void => {
+      if (!PROBE_OPERATIONS.has(operationId)) return;
+      probeFailures.set(operationId, isUnanswered(result) ? (probeFailures.get(operationId) ?? 0) + 1 : 0);
+    };
     const client: MobileCoreClient = {
       operationIds: sessionClient.operationIds,
       describe: (operationId) => sessionClient.describe(operationId),
-      // Same operations, same checks, same answers: only the instance, and with it the bearer value, is chosen here.
-      call: ((operationId: string, input?: unknown) => {
+      // Same operations, same checks, same answers: only the instance, and with it the bearer value, is
+      // chosen here. One addition (R5, row FX-M1): a probe whose attempt ran out of time is asked once
+      // more, and the second answer is the one handed on. The client's budget is a wall-clock timer, so
+      // a JS thread starved past it (E2E-T-1: the Core answered in 28 ms, the 8 s ran out) reads as "no
+      // answer"; by the re-check the thread has caught up, so its answer measures the network.
+      call: (async (operationId: string, input?: unknown) => {
         const chosen = (DEVICE_CREDENTIAL_OPERATIONS.includes(operationId) ? deviceClient : sessionClient) as unknown as LooseClient;
-        return chosen.call(operationId, input);
+        const calledAt = now();
+        const first = await chosen.call(operationId, input);
+        if (!isRecheckable(operationId, first)) {
+          noteProbe(operationId, first);
+          // W93-15 (FXR-M; D203 risk 3): a COMMAND is never sent again (it may have been applied). Its
+          // time-out is measured instead: the typed client's budget is a wall-clock timer, so when it fired
+          // much later than LIVE_COMMAND_TIMEOUT_MS the JS thread was starved and the time-out says nothing
+          // about the network. One info record per time-out (DX-5: an unanswered action is never an error).
+          if (!first.ok && first.kind === 'TIMEOUT' && !PROBE_OPERATIONS.has(operationId)) {
+            const elapsedMs = Math.max(0, now() - calledAt);
+            const timerLateMs = Math.max(0, elapsedMs - LIVE_COMMAND_TIMEOUT_MS);
+            reportRuntimeIssue('info', 'live.client.commandTimeout', 'A command got no answer within its budget; it is not sent again', {
+              operationId,
+              elapsedMs,
+              budgetMs: LIVE_COMMAND_TIMEOUT_MS,
+              timerLateMs,
+              verdict: timerLateMs > COMMAND_TIMEOUT_STARVED_MS ? 'js-starved' : 'no-answer',
+            });
+          }
+          return first;
+        }
+        const startedAt = now();
+        const second = await chosen.call(operationId, input);
+        noteProbe(operationId, second);
+        reportRuntimeIssue(
+          second.ok || !isUnanswered(second) ? 'info' : 'warn',
+          'live.client.recheck',
+          second.ok || !isUnanswered(second)
+            ? 'A probe ran out of time and its re-check was answered: the time-out was not the network'
+            : 'A probe got no answer, and its re-check none either',
+          { operationId, recheckMs: Math.max(0, now() - startedAt), status: second.status ?? null, failuresInARow: probeFailures.get(operationId) ?? 0 },
+        );
+        return second;
       }) as MobileCoreClient['call'],
     };
 
     /** Deletes the three stored items within the budget. The wrapper logs its own failure by code. */
     const removeStored = async (): Promise<void> => {
-      const removed = await withinBudget(() => store.deleteDeviceCredential(), MOBILE_SECRETS_BUDGET_MS, timers, 'runtime.live.credentials.delete');
-      if (removed.late) reportRuntimeIssue('error', 'runtime.live.credentials.delete', 'The stored device credential was not deleted in time');
+      const removed = await withinBudget(() => store.deleteDeviceCredential(), MOBILE_SECRETS_BUDGET_MS, timers, 'runtime.live.credentials.delete', now);
+      if (removed.late) {
+        reportRuntimeIssue('error', 'runtime.live.credentials.delete', 'The stored device credential was not deleted in time', {
+          budgetMs: MOBILE_SECRETS_BUDGET_MS,
+          elapsedAtBudgetMs: removed.elapsedAtBudgetMs,
+          budgetFiredLateMs: budgetLateness(removed.elapsedAtBudgetMs, MOBILE_SECRETS_BUDGET_MS),
+        });
+      }
     };
 
     /** The device is no longer paired: memory first, then the store, then a socket without the credential. */
@@ -463,16 +597,49 @@ export function createMobileLive(options: MobileLiveOptions = {}): MobileLive | 
           MOBILE_SECRETS_BUDGET_MS,
           timers,
           'runtime.live.biometricPort',
+          now,
         );
-        if (stored.late) reportRuntimeIssue('error', 'runtime.live.biometricPort', 'The biometric storage did not answer in time; the session is kept');
+        if (stored.late) {
+          reportRuntimeIssue('error', 'runtime.live.biometricPort', 'The biometric storage did not answer in time; the session is kept', {
+            budgetMs: MOBILE_SECRETS_BUDGET_MS,
+            elapsedAtBudgetMs: stored.elapsedAtBudgetMs,
+            budgetFiredLateMs: budgetLateness(stored.elapsedAtBudgetMs, MOBILE_SECRETS_BUDGET_MS),
+          });
+        }
       },
       sessionCleared: () => {
         memory.session = null;
       },
       biometricToken: (operatorId) => biometric?.token(operatorId) ?? null,
       devicePaired: async (redeemed) => {
-        const written = await withinBudget(() => store.writeDeviceCredential(redeemed), MOBILE_SECRETS_BUDGET_MS, timers, 'runtime.live.credentials.write');
-        if (written.late) reportRuntimeIssue('error', 'runtime.live.credentials.write', 'The device credential was not stored in time');
+        const written = await withinBudget(
+          () => store.writeDeviceCredential(redeemed),
+          MOBILE_SECRETS_BUDGET_MS,
+          timers,
+          'runtime.live.credentials.write',
+          now,
+          // W93-16: the late write's own outcome. A write that landed after the failure was reported (the
+          // registration is being abandoned) is removed again, so no credential stays that the app says it
+          // does not hold. Never the value: the outcome, the time, and the device ID only.
+          (late) => {
+            const ok = late.value !== null && late.value.ok;
+            reportRuntimeIssue(ok ? 'warn' : 'info', 'runtime.live.credentials.lateWrite', 'The device credential write finished after its budget', {
+              late: true,
+              ok,
+              elapsedMs: late.elapsedMs,
+              budgetMs: MOBILE_SECRETS_BUDGET_MS,
+              deviceId: redeemed.deviceId,
+            });
+            if (ok && memory.device !== redeemed) void removeStored();
+          },
+        );
+        if (written.late) {
+          reportRuntimeIssue('error', 'runtime.live.credentials.write', 'The device credential was not stored in time', {
+            budgetMs: MOBILE_SECRETS_BUDGET_MS,
+            elapsedAtBudgetMs: written.elapsedAtBudgetMs,
+            budgetFiredLateMs: budgetLateness(written.elapsedAtBudgetMs, MOBILE_SECRETS_BUDGET_MS),
+          });
+        }
         if (written.value === null || !written.value.ok) {
           // The one request of `abandonRegistration` presents the credential; nothing else does.
           memory.device = redeemed;
@@ -515,7 +682,12 @@ export function createMobileLive(options: MobileLiveOptions = {}): MobileLive | 
       // Started by `start()`, after the stored credential is in memory (brief row 8).
       autoStart: false,
       onError: (report) => {
-        logLiveReport(report);
+        // Before the socket client gives the connection up (it reports first, then abandons it).
+        if (report.source === 'live.socket' && (report.context?.code === 'SYNC_TIMEOUT' || report.context?.code === 'SEND_FAILED')) {
+          const connection = Number(report.context?.connection);
+          selfRestart = Number.isInteger(connection) ? connection : null;
+        }
+        logLiveReport(report, judgeLiveRejection(report, (operationId) => probeFailures.get(operationId) ?? 0));
         try {
           options.onError?.(report);
         } catch (error) {
@@ -614,6 +786,7 @@ export function createMobileLive(options: MobileLiveOptions = {}): MobileLive | 
       sim: asSim(live),
       async start() {
         wanted = true;
+        notePairingGate(gateOwner, pairing);
         await load();
         if (!wanted) return;
         if (memory.device !== null) live.setPairing({ core: memory.device.core, pairedAt: memory.device.pairedAt });
@@ -626,6 +799,7 @@ export function createMobileLive(options: MobileLiveOptions = {}): MobileLive | 
       },
       stop() {
         wanted = false;
+        releasePairingGate(gateOwner);
         unwatch?.();
         unwatch = null;
         live.stop();
@@ -644,6 +818,21 @@ export function createMobileLive(options: MobileLiveOptions = {}): MobileLive | 
       },
     };
     mobileLives.set(mobile.sim, mobile);
+    // CF2-A (RF-PH-1): the clock a running display re-reads (the monitor timer), on the PLAIN timers: the
+    // Live clock corrected for samples the busy JS thread handled late (`core-clock.ts`). It takes a
+    // reading at every publication of the store's clock, so it knows the offset from before a stall.
+    const coreClock = createCoreClock(() => live.clock.now(), now, options.timers ?? DEFAULT_LIVE_TIMERS);
+    registerCoreClock(mobile.sim, coreClock);
+    live.store.subscribe(
+      (state) => state.clock.now,
+      () => coreClock.sample(),
+    );
+    clientRestarts.set(live, () => {
+      if (selfRestart === null || live.link !== 'OFFLINE') return false;
+      // Only between the given-up socket and the next one, and only the first restart of a series: a Core
+      // that keeps not answering (the next socket also times out) shows the notice as before.
+      return live.socketStatus().connection === selfRestart && live.heartbeat.getSnapshot().reconnectAttempt <= 1;
+    });
     return mobile;
   }
   return null;

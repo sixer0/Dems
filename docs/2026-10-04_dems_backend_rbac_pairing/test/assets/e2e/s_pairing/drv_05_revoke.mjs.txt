@@ -1,0 +1,65 @@
+// E2E-S step 5: revoke ONLY the device this row paired, in Paired Devices, as the SUPERVISOR page; time it.
+// The device's screen recording (with the --bugreport time overlay) and a streamed device JS log run in the
+// background, started by the wrapper (05_revoke_wrapper.sh.txt). This script: the web side, then device
+// screencaps after the fact, then the server log lines of the device after the revoke (method, route, status).
+//   node --import tsx 05_revoke.mjs <deviceId>
+import { readFileSync } from 'node:fs'
+import { SERVER_LOG, auditRows, clockOffset, connect, deviceState, liveLines, log, pdFacts, screencap, sleep, stamp, writeJson } from './lib.mjs'
+
+const [deviceId, deviceT0] = process.argv.slice(2)
+if (!/^DEV-\d{4}$/.test(deviceId ?? '') || !deviceT0) { console.error('usage: 05_revoke.mjs <DEV-NNNN> <device T0>'); process.exit(64) }
+const REASON = 'E2E-S check: revoke the reserved phone2 pairing'
+const result = { deviceId, reasonLength: REASON.length, clockBefore: clockOffset() }
+const page = await connect()
+const before = await pdFacts(page)
+const row = before.rows.find((r) => r.id === deviceId)
+log(`before: row ${JSON.stringify(row)}; all rows ${JSON.stringify(before.rows.map((r) => `${r.id}:${r.state}`))}; device clock minus host ${result.clockBefore.offsetMs} ms`)
+if (!row || !row.revokeShown) { log('the row of this device or its Revoke button is missing: nothing revoked'); process.exit(3) }
+page.takeNetwork()
+
+const openedAt = await page.clickTestId(`pd-revoke-${deviceId}`)
+const dialog = await page.waitFor('pd-revoke-dialog', true, 8000)
+await sleep(600)
+await page.typeInto('[data-testid="pd-revoke-reason"]', REASON, 'revoke reason')
+await sleep(400)
+const dialogText = await page.text('pd-revoke-dialog')
+result.dialog = { openedAt: stamp(openedAt), shown: dialog, text: dialogText, screenshot: (await page.screenshot('05_web_revoke_dialog.png')).file }
+log(`dialog shown ${dialog}: "${dialogText}"`)
+
+const confirmAt = await page.clickTestId('pd-revoke-confirm')
+log(`confirm clicked ${stamp(confirmAt)}`)
+let call
+for (let i = 0; i < 100 && !call; i++) { await sleep(50); call = page.rawRequests().find((r) => r.method === 'POST' && /\/api\/v1\/pairing\/devices\/[^/]+\/revoke/.test(r.url) && r.status !== null) }
+log(`revoke call: ${call ? `POST ${call.url.replace(/^https?:\/\/[^/]+/, '')} ${call.status} sent ${stamp(call.sentAt)} answered ${call.doneAt ? stamp(call.doneAt) : '?'}` : 'NOT SEEN in 5 s'}`)
+const closed = await page.waitFor('pd-revoke-dialog', false, 8000)
+const toastAt = Date.now()
+await sleep(1200)
+const after = await pdFacts(page)
+result.web = { confirmAt: stamp(confirmAt), confirmAtMs: confirmAt, call: call ? { method: call.method, path: call.url.replace(/^https?:\/\/[^/]+/, ''), status: call.status, sentAtMs: call.sentAt, doneAtMs: call.doneAt, sent: stamp(call.sentAt), done: call.doneAt ? stamp(call.doneAt) : null } : null, dialogClosed: closed, toastSeenBy: stamp(toastAt), facts: after, screenshot: (await page.screenshot('05_web_revoked.png')).file }
+log(`web after: rows ${JSON.stringify(after.rows)}; toasts ${JSON.stringify(after.toasts)}; summary ${JSON.stringify(after.summary)}`)
+
+// device: what the app did (its own request lines), a screencap once the dust settled
+await sleep(5000)
+const s = deviceState()
+result.phone = { state: s, screencap: s.keyguard === 'false' ? screencap('05_phone_after_revoke_pair.png') : 'NOT TAKEN: keyguard', requestsSinceT0: liveLines(deviceT0).map((l) => `${stamp(Math.round(l.deviceEpoch * 1000))} ${l.method} ${l.path} ${l.status}`) }
+log(`phone after: keyguard ${s.keyguard}, focus ${s.focus.slice(0, 90)}; app requests since T0:\n   ${result.phone.requestsSinceT0.join('\n   ')}`)
+result.clockAfter = clockOffset()
+
+// the server's view: every line about this device (or anonymous) from 2 s before the confirm, method/route/status/principal/msg only
+const since = confirmAt - 2000
+const serverLines = []
+for (const line of readFileSync(SERVER_LOG, 'utf8').split('\n')) {
+  if (!line.startsWith('{')) continue
+  let r; try { r = JSON.parse(line) } catch { continue }
+  if (r.time < since) continue
+  const keep = { at: stamp(r.time), atMs: r.time, method: r.method ?? null, route: r.route ?? null, status: r.status ?? null, principal: r.principal ?? null, msg: r.msg, code: r.code ?? null, closeCode: r.closeCode ?? (r.msg === 'socket closed' ? r.code : null), closedBy: r.closedBy ?? null, kind: r.kind ?? null }
+  serverLines.push(keep)
+}
+result.serverLines = serverLines
+for (const l of serverLines.slice(0, 60)) log(`server ${l.at} ${l.method ?? ''} ${l.route ?? ''} ${l.status ?? ''} principal=${l.principal} ${l.msg}${l.code ? ` code=${l.code}` : ''}${l.closedBy ? ` closedBy=${l.closedBy}` : ''}${l.kind ? ` kind=${l.kind}` : ''}`)
+const revokedRows = await auditRows(page, 'DEVICE_REVOKED', 3)
+result.audit = { DEVICE_REVOKED: revokedRows }
+log(`audit DEVICE_REVOKED (newest): ${JSON.stringify(revokedRows.rows[0] ?? null)}`)
+result.network = page.takeNetwork()
+writeJson('05_revoke.json', result)
+page.close()

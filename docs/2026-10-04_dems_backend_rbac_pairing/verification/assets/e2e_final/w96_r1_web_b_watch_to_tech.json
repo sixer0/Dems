@@ -1,0 +1,28 @@
+{
+  "tag": "w96_r1_web_b_watch_to_tech",
+  "expr": "(() => { const u = document.querySelector('[data-testid=start-new-session]'), l = document.querySelector('[data-testid=start-new-session-locked]'); return (u ? 'UNLOCKED' : l ? 'LOCKED ' + (l.getAttribute('aria-label') ?? l.textContent.replace(/\\s+/g,' ').trim().slice(0,60)) : 'none') + ' | toasts: ' + [...document.querySelectorAll('[data-slot=toast]')].map(t => t.textContent.replace(/\\s+/g,' ').trim().slice(0,90)).join(' / ') })()",
+  "sameDocument": true,
+  "events": [
+    {
+      "at": "09:15:12.158 (epoch 1791339312.158)",
+      "atMs": 1791339312158,
+      "value": "\"UNLOCKED | toasts: \""
+    },
+    {
+      "at": "09:15:17.549 (epoch 1791339317.549)",
+      "atMs": 1791339317549,
+      "value": "\"UNLOCKED | toasts: Your role is now Technician. The available actions have changed.\""
+    },
+    {
+      "at": "09:15:21.905 (epoch 1791339321.905)",
+      "atMs": 1791339321905,
+      "value": "\"UNLOCKED | toasts: \""
+    }
+  ],
+  "network": {
+    "api": [],
+    "origins": [],
+    "sockets": [],
+    "console": []
+  }
+}

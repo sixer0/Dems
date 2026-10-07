@@ -84,10 +84,8 @@ export const sessionNewEn = {
     linkDownBody: 'This device is not connected to the Core server. Recording can start once the connection is back.',
     // Decision F69: in Live mode the Core link of the pre-check is set by a paired device's own connection.
     coreCheckHint: "In Live mode this check is this device's own connection to the Core server. Run the checks again once it is connected.",
-    // Row M1 (W67 F-2; §3.2, MD-8): in Live mode the screen says what is true and nothing about a
-    // simulation. The step 2 meters are the Core server's `meters` frames (the replica's audio slice).
-    speakToTest: 'Microphone levels from the Core server',
-    // The case-number button fills in the next free number from the replicated session records (S4-6): nothing is scanned.
-    scanCaseNumber: 'Fill in the next case number',
+    // Row M1's two Live words (W67 F-2; §3.2, MD-8), the step 2 hint and the case-number button's label,
+    // moved to the shared `sessionNew.live.speakToTest` / `.scanCaseNumber` in the closing copy round
+    // (decision D164 DN-5, W83 ledger #89), so the web console says the same.
   },
 } as const satisfies ResourceTree;

@@ -1,0 +1,71 @@
+
+== 01:42:29 0. the three ports must be free before anything is started (nothing is stopped that this check did not start)
+free: 4423 5178 9373
+2026-10-06 01:42:29 WIB
+ 1:42  up 4 days,  8:55, 2 users, load averages: 3.68 5.27 5.16
+
+== 01:42:29 1. lane database before the check: npm run db:status -w @dems/core-server -- --database dems_lane_3
+db:status exit 0
+seeded_at        2026-10-04T04:36:43.575Z (1791088603575)
+last_reset_at    2026-10-04T04:36:43.575Z (1791088603575)
+audit head       seq 146; hash a5297ad6f76b93e7...
+audit triggers   audit_chain_history_append_only=A, audit_log_append_only=A, audit_log_chain_guard=A
+  audit_log                146
+  auth_sessions            20
+  operators                3
+
+== 01:42:30 2. start the lane backend: DEMS_CORE_PORT=4423 npm run start -w @dems/core-server (demo flag OFF)
+backend up after 3 quarter seconds, npm pid 11880
+COMMAND   PID     USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
+node    11901 gsp-budi   17u  IPv4 0x532650a968f1810e      0t0  TCP 127.0.0.1:4423 (LISTEN)
+-- direct health on the backend:
+{"status":"ok","service":"dems-core-server","version":"0.2.0","apiVersion":"v1","serverTime":"2026-10-05T18:42:31.295Z","uptimeMs":135,"ws":{"path":"/ws","heartbeatIntervalMs":1000,"clients":0},"ready":{"database":true,"engine":true}}
+
+== 01:42:31 3. start Vite for lane 3: DEMS_CORE_PROXY_PORT=4423 VITE_DEMS_CORE_MODE=live npm run dev -w @dems/core-web -- --host 127.0.0.1 --port 5178 --strictPort
+waited 2 quarter seconds
+COMMAND   PID     USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
+node    11939 gsp-budi   14u  IPv4 0xc3f28ff40c3588f1      0t0  TCP 127.0.0.1:5178 (LISTEN)
+-- health through the dev server: 200
+
+== 01:42:31 4. Paired Devices in a real browser (headless Chromium over CDP): Live as SUPERVISOR; issue ONE code (digits and QR masked before the screenshot), the countdown, cancel; the list
+chrome pid 11951
+Google Chrome for Testing 153.0.8010.12
+cdp-driver exit 0
+steps idle, issue, cancel, after; 19 s
+
+== 01:42:51 5. what Vite printed (no page error)
+-- lines in Vite's log:       10
+
+== 01:42:51 6. lane database after the check
+db:status exit 0
+-- row counts that differ (before / after):
+< audit head       seq 146; hash a5297ad6f76b93e7...
+> audit head       seq 150; hash f177ab2443d647f3...
+<   audit_log                146
+<   auth_sessions            20
+>   audit_log                150
+>   auth_sessions            21
+<   events                   110
+>   events                   112
+<   pairing_codes            0
+>   pairing_codes            1
+-- the backend's log: lines       48; lines with level error or fatal: 0
+-- sign-in and sign-out lines of the backend's log (route, status; no body is logged):
+   1 "route":"/api/v1/auth/session","status":200
+   1 "route":"/api/v1/auth/session","status":401
+   1 "route":"/api/v1/auth/sign-in","status":200
+   1 "route":"/api/v1/auth/sign-out","status":204
+   2 "route":"/api/v1/auth/status","status":200
+-- pairing lines of the backend's log (route, status; no body is logged):
+   6 "route":"/api/v1/pairing/code","status":200
+   1 "route":"/api/v1/pairing/code","status":201
+   1 "route":"/api/v1/pairing/code/cancel","status":204
+   1 "route":"/api/v1/pairing/devices","status":200
+
+== 01:42:52 stop what this check started
+chrome stopped
+vite: npm exit status 143
+backend: npm exit status 0
+
+== 01:42:52 listeners left on 4423, 5178, 9373 (expect none):
+lsof exit 1 (1 with no output: no listener)

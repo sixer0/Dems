@@ -347,7 +347,10 @@ describe('A8 outage (LB-6, LB-10)', () => {
     })
     submit(await openDialog())
     await waitFor(() => expect(toastWith(READ_FAILED)).toHaveLength(1))
-    expect(toastWith(OFFLINE)).toHaveLength(1)
+    // FXR-W W92-13 (FW76-3), by design: the export was accepted, so the outage toast never says
+    // "Nothing was changed" beside the page's sentence that the Core recorded it.
+    expect(toastWith(en.common.coreErrors.offlineAfterAccepted)).toHaveLength(1)
+    expect(toastWith('Nothing was changed')).toHaveLength(0)
     expect(blobs).toHaveLength(0)
     const kept = records('System.Maintenance.exportLogs.read')
     expect(kept).toHaveLength(1)

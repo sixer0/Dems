@@ -1,0 +1,5 @@
+screenrecord e_run2b pulled at 17:12:17.928; 434 frames extracted to rec/e_run2b_frames/, PTS in rec/e_run2b_frame_pts.txt
+app pid 12423 at 17:12:17.961
+mCurrentFocus=Window{d3a6e79 u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity} ; isKeyguardShowing=false
+screencap E2_05_tablet_after_run2.png (258930 bytes) at 17:12:18.311
+screenrecord e_run2 pulled at 17:12:20.512; 154 frames extracted to rec/e_run2_frames/, PTS in rec/e_run2_frame_pts.txt

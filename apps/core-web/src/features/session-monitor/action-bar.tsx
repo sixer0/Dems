@@ -26,6 +26,7 @@ import { SessionState } from '@dems/shared/domain'
 import { useCoreActions } from '@dems/shared/live'
 import { formatClock } from '@dems/shared/realtime'
 import {
+  selectRole,
   SimErrorCode,
   SimTransitionError,
   STOP_REASON_MIN_LENGTH,
@@ -340,8 +341,17 @@ function MarkerAction({ enabled, timelineRef }: { enabled: boolean; timelineRef:
 }
 
 // ── 3. Session Note ──────────────────────────────────────────────────────────────────────
+/**
+ * Session Note: the drawer's title and the action's subtitle name the signed-in operator's role, as the
+ * timeline labels the note it adds by its author's role (E-fix FX-C, E2E-T-5: "Supervisor note",
+ * "Investigator note"). A supervisor's drawer said "Investigator note" (row FX-W2). Without a role
+ * the words are neutral ("Session note").
+ */
 function NoteAction({ enabled }: { enabled: boolean }) {
   const { t } = useTranslation()
+  const role = useSim(selectRole)
+  const drawerTitle = role ? t(`session.actions.sessionNote.drawerTitleBy.${role}`) : t('session.actions.sessionNote.drawerTitle')
+  const subtitle = role ? t(`session.actions.sessionNote.subtitleBy.${role}`) : t('session.actions.sessionNote.subtitle')
   const actions = useCoreActions()
   const presentCoreError = useCoreErrorPresenter()
   const press = usePendingControl()
@@ -377,15 +387,15 @@ function NoteAction({ enabled }: { enabled: boolean }) {
           <ActionLabel
             icon={<NotebookPen className="size-5" />}
             title={t('session.actions.sessionNote.title')}
-            subtitle={t('session.actions.sessionNote.subtitle')}
+            subtitle={subtitle}
           />
         </Button>
       </Unavailable>
       <Drawer.Backdrop isOpen={open} onOpenChange={setOpen}>
         <Drawer.Content placement="right">
-          <Drawer.Dialog aria-label={t('session.actions.sessionNote.drawerTitle')} className="sm-note-drawer" data-testid="sm-note-drawer">
+          <Drawer.Dialog aria-label={drawerTitle} className="sm-note-drawer" data-testid="sm-note-drawer" data-role={role ?? undefined}>
             <Drawer.Header>
-              <Drawer.Heading>{t('session.actions.sessionNote.drawerTitle')}</Drawer.Heading>
+              <Drawer.Heading>{drawerTitle}</Drawer.Heading>
               <Drawer.CloseTrigger aria-label={t('common.actions.close')} />
             </Drawer.Header>
             <Drawer.Body>

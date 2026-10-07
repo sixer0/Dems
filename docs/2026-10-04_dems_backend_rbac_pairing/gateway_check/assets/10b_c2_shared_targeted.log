@@ -1,0 +1,15 @@
+$ (packages/shared) vitest run test/i18n.test.ts test/i18n-vocabulary-sync.test.ts   (09:41:04)
+
+> @dems/shared@0.1.0 test
+> vitest run test/i18n.test.ts test/i18n-vocabulary-sync.test.ts
+
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/packages/shared
+
+
+ Test Files  2 passed (2)
+      Tests  50 passed (50)
+   Start at  09:41:04
+   Duration  159ms (transform 71%, import 18%, tests 9%, worker 2%)
+
+exit=0

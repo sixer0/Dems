@@ -1,0 +1,13 @@
+// W87 (step 109) scratch runner configuration, outside the tree (rule M15): the workspace's own
+// Vitest configuration plus ONE setup file (the response probe). No file of the tree is changed.
+import { mergeConfig } from '/Users/gsp-budi/Documents/DEMS/node_modules/vitest/dist/config.js';
+import base from '/Users/gsp-budi/Documents/DEMS/apps/core-server/vitest.config.ts';
+
+const ROOT = '/Users/gsp-budi/Documents/DEMS/apps/core-server';
+const PROBE = '/Users/gsp-budi/Documents/DEMS/.cache/w87/opmap/probe.setup.ts';
+const merged = mergeConfig(base, { root: ROOT });
+merged.test.projects = merged.test.projects.map((project: { test: { setupFiles?: string[] } }) => ({
+  ...project,
+  test: { ...project.test, setupFiles: [...(project.test.setupFiles ?? []), PROBE] },
+}));
+export default merged;

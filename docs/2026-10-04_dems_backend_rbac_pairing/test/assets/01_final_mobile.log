@@ -1,0 +1,6 @@
+> @dems/mobile@0.1.0 test
+> jest --maxWorkers=2
+A worker process has failed to exit gracefully and has been force exited. This is likely caused by tests leaking due to improper teardown. Try running with --detectOpenHandles to find leaks. Active timers can also cause this, ensure that .unref() was called on them.
+Test Suites: 145 passed, 145 total
+Tests:       1743 passed, 1743 total
+Time:        98.414 s

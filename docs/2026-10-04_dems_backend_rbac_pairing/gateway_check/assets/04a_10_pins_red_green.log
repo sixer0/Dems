@@ -1,0 +1,12 @@
+a later row adds a boot step between B-9 and the engine (unit) [before: the tests as they were]: RED (as expected; expected red) — exit 1; files 1 failed (1); tests 2 failed | 12 passed (14)
+a later row adds a boot step between B-9 and the engine (unit) [tree: the tests of fix round A]: GREEN (as expected; expected green) — exit 0; files 1 passed (1); tests 14 passed (14)
+a later row adds a boot step between B-9 and the engine (db) [before: the tests as they were]: RED (as expected; expected red) — exit 1; files 4 failed (4); tests 7 failed | 40 passed (47)
+a later row adds a boot step between B-9 and the engine (db) [tree: the tests of fix round A]: GREEN (as expected; expected green) — exit 0; files 4 passed (4); tests 47 passed (47)
+another unit logs a new, harmless key on a line of its own [before: the tests as they were]: RED (as expected; expected red) — exit 1; files 1 failed (1); tests 1 failed | 19 passed (20)
+another unit logs a new, harmless key on a line of its own [tree: the tests of fix round A]: GREEN (as expected; expected green) — exit 0; files 1 passed (1); tests 20 passed (20)
+another unit logs a key that names a secret [tree: the tests of fix round A]: RED (as expected; expected red) — exit 1; files 1 failed (1); tests 1 failed | 19 passed (20)
+another unit logs a value in the form of a session token [tree: the tests of fix round A]: RED (as expected; expected red) — exit 1; files 1 failed (1); tests 1 failed | 19 passed (20)
+the engine logs a new key on a line of its own [tree: the tests of fix round A]: RED (as expected; expected red) — exit 1; files 1 failed (1); tests 1 failed | 19 passed (20)
+a backend without a role (an autovacuum worker) is on the clone [before: the tests as they were]: RED (as expected; expected red) — exit 1; files 1 failed (1); tests 1 failed | 6 passed (7)
+a backend without a role (an autovacuum worker) is on the clone [tree: the tests of fix round A]: GREEN (as expected; expected green) — exit 0; files 1 passed (1); tests 7 passed (7)
+all as expected

@@ -45,7 +45,7 @@ export type ChannelLevels = Pick<AudioFrame, 'dbfs' | 'peak' | 'clip' | 'noSigna
  * The levels of one channel as the committed `mics` slice decides them: the frame the shared
  * simulator gives a channel at the moment it ENTERS the state the mic is in.
  *
- * THE FALLBACK OF `audioChannelsOf` (BE-GAP-W36-1, closed by decision D89). The simulator
+ * THE FALLBACK OF `audioChannelsOf` (a recorded difference, ruled by decision D89; formerly listed as gap BE-GAP-W36-1). The simulator
  * answers `dbfs` and `peak` from the newest frame of its `audio` slice. That slice is streamed
  * only (spec §3.2, class X): it is no durable slice, so `app.engine.state()` does not hold it.
  * The engine seam returns the newest frame of a start (`app.engine.meters()`), and null before

@@ -65,6 +65,7 @@
  * connection file itself, at R-0, into a local variable of its one call (HC-3); this file hands
  * it the DIRECTORY the configuration names, and gets a report of counts and integrity values.
  */
+import { DemoRebuildRefusalReason } from '@dems/shared/api';
 import type { OperatorRole, Permission, ScenarioName } from '@dems/shared/sim';
 import { OperatorRole as OperatorRoles, Permission as Permissions } from '@dems/shared/sim';
 import type { FastifyBaseLogger } from 'fastify';
@@ -141,12 +142,15 @@ export interface DemoReset {
   run(call: ResetCall): Promise<ResetReport>;
 }
 
-/** `details.reason` of the 503 of a reset that did not happen. */
+/**
+ * `details.reason` of the 503 of a reset that did not happen: the contract's
+ * `DemoRebuildRefusalReason` (W83, gap W43-1; review finding W92-15), under this module's keys.
+ */
 export const ResetRefusal = {
   /** Another reset of this database is running: in this server, or from the command line. */
-  IN_PROGRESS: 'RESET_IN_PROGRESS',
+  IN_PROGRESS: DemoRebuildRefusalReason.RESET_IN_PROGRESS,
   /** This reset did not happen. The server log names the routine's code and step. */
-  FAILED: 'RESET_FAILED',
+  FAILED: DemoRebuildRefusalReason.RESET_FAILED,
 } as const;
 export type ResetRefusal = (typeof ResetRefusal)[keyof typeof ResetRefusal];
 

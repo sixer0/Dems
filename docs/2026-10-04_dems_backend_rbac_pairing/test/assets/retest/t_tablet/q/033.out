@@ -1,0 +1,8 @@
+mark Part 2 sign in budi at 13:00:06.469
+tap 2022,406 at 13:00:06.643
+slept 1200 ms
+username typed (budi.santoso); editor inputType 0x80001
+slept 500 ms
+tap 2022,526 at 13:00:09.148
+slept 1200 ms
+focused true; keyguard false; editor inputType 0x80081

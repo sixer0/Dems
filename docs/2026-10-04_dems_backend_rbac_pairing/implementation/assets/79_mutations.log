@@ -1,0 +1,58 @@
+# W79 mutation check, group network-time, 2026-10-06 00:59:01; 3 test files per run; the tree is not edited
+control (no mutation): exit=0 Tests:       23 passed, 23 total (19 s)
+N1   detected     network-time-model.ts (3 s) — a fixed NTP server instead of the Core's; failing: live-network-time.test.tsx; Tests:       2 failed, 21 passed, 23 total
+       first failure: Network & Time on the Core's data (LIVE) › shows the Core's address, LAN, satellites, NTP server, PoE ports and clock; sends nothing of its own; says nothing about a simulation
+N2   detected     network-time-model.ts (3 s) — a fixed satellite count instead of the Core's; failing: live-network-time.test.tsx; Tests:       2 failed, 21 passed, 23 total
+       first failure: Network & Time on the Core's data (LIVE) › shows the Core's address, LAN, satellites, NTP server, PoE ports and clock; sends nothing of its own; says nothing about a simulation
+N3   detected     network-time-model.ts (3 s) — all PoE ports up whatever the Core says; failing: live-network-time.test.tsx; Tests:       1 failed, 22 passed, 23 total
+       first failure: Network & Time on the Core's data (LIVE) › shows the Core's address, LAN, satellites, NTP server, PoE ports and clock; sends nothing of its own; says nothing about a simulation
+N4   detected     network-time-model.ts (3 s) — the tablet link ignores the replica; failing: live-network-time.test.tsx; Tests:       1 failed, 22 passed, 23 total
+       first failure: Network & Time on the Core's data (LIVE) › the tablet link is the Core's: OFFLINE by delta reads Offline in the LAN sheet
+N5   detected     network-time-model.ts (3 s) — a fixed IP address instead of the Core's; failing: live-network-time.test.tsx; Tests:       1 failed, 22 passed, 23 total
+       first failure: Network & Time on the Core's data (LIVE) › shows the Core's address, LAN, satellites, NTP server, PoE ports and clock; sends nothing of its own; says nothing about a simulation
+N6   detected     use-network-time.ts (3 s) — no warning toast on a GNSS loss pushed by the Core; failing: live-network-time.test.tsx, network-time-screen.test.tsx; Tests:       2 failed, 21 passed, 23 total
+       first failure: Network & Time (04 §4.14, MB 9) › GNSS loss → NTP → RTC → restored: the tier indicator moves, chips escalate calmly, one toast each
+## 6 detected, 0 not detected, 0 not applied, of 6
+## the mutated files in the tree, before and after: identical
+# W79 mutation check, group storage, 2026-10-06 00:59:45; 4 test files per run; the tree is not edited
+control (no mutation): exit=0 Tests:       39 passed, 39 total (11 s)
+S1   detected     storage-screen.tsx (6 s) — the success toast shows at the press (optimistic), before the Core answered; failing: live-storage-sites.test.tsx; Tests:       8 failed, 31 passed, 39 total
+       first failure: S2-6: Apply in the Manage Storage sheet (operation 55) › success as the SUPERVISOR: busy at once, spinner late (LB-1); one request; the toast and the closing only after the Core's 200; the Core's word
+S2   detected     storage-screen.tsx (10 s) — the sheet closes at the press, not in ok; failing: live-storage-sites.test.tsx; Tests:       5 failed, 34 passed, 39 total
+       first failure: S2-6: Apply in the Manage Storage sheet (operation 55) › refusal: 403 (the contract's example `notPermitted`) → the denied toast, no role of the wrong kind; the sheet stays open with the draft; Apply 
+S3   detected     storage-screen.tsx (10 s) — the sheet closes on a refusal too; failing: live-storage-sites.test.tsx; Tests:       5 failed, 34 passed, 39 total
+       first failure: S2-6: Apply in the Manage Storage sheet (operation 55) › refusal: 403 (the contract's example `notPermitted`) → the denied toast, no role of the wrong kind; the sheet stays open with the draft; Apply 
+S4   detected     storage-screen.tsx (8 s) — a Live rejection skips the presenter (no denied / offline / limit toast); failing: live-storage-sites.test.tsx; Tests:       5 failed, 34 passed, 39 total
+       first failure: S2-6: Apply in the Manage Storage sheet (operation 55) › refusal: 403 (the contract's example `notPermitted`) → the denied toast, no role of the wrong kind; the sheet stays open with the draft; Apply 
+S5   detected     storage-screen.tsx (9 s) — the LIVE success toast is the Simulated "(simulated)" one; failing: live-storage-sites.test.tsx; Tests:       5 failed, 34 passed, 39 total
+       first failure: S2-6: Apply in the Manage Storage sheet (operation 55) › success as the SUPERVISOR: busy at once, spinner late (LB-1); one request; the toast and the closing only after the Core's 200; the Core's word
+S6   detected     storage-screen.tsx (6 s) — the screen never takes the LIVE branch; failing: live-storage-sites.test.tsx; Tests:       9 failed, 30 passed, 39 total
+       first failure: S2-6: Apply in the Manage Storage sheet (operation 55) › success as the SUPERVISOR: busy at once, spinner late (LB-1); one request; the toast and the closing only after the Core's 200; the Core's word
+S7   detected     storage-screen.tsx (10 s) — Apply never returns to idle (done dropped); failing: live-storage-sites.test.tsx; Tests:       3 failed, 36 passed, 39 total
+       first failure: S2-6: Apply in the Manage Storage sheet (operation 55) › refusal: 403 (the contract's example `notPermitted`) → the denied toast, no role of the wrong kind; the sheet stays open with the draft; Apply 
+S8   detected     storage-screen.tsx (10 s) — a presented refusal also shows the friendly failure toast; failing: live-storage-sites.test.tsx; Tests:       1 failed, 38 passed, 39 total
+       first failure: S2-6: Apply in the Manage Storage sheet (operation 55) › refusal: 403 (the contract's example `notPermitted`) → the denied toast, no role of the wrong kind; the sheet stays open with the draft; Apply 
+S9   detected     storage-screen.tsx (11 s) — a presented refusal is logged as an error, not a warning; failing: live-storage-sites.test.tsx; Tests:       1 failed, 38 passed, 39 total
+       first failure: S2-6: Apply in the Manage Storage sheet (operation 55) › refusal: 403 (the contract's example `notPermitted`) → the denied toast, no role of the wrong kind; the sheet stays open with the draft; Apply 
+S10  detected     storage-screen.tsx (6 s) — the command is fired and forgotten: ok runs at once; failing: live-storage-sites.test.tsx; Tests:       8 failed, 31 passed, 39 total
+       first failure: S2-6: Apply in the Manage Storage sheet (operation 55) › success as the SUPERVISOR: busy at once, spinner late (LB-1); one request; the toast and the closing only after the Core's 200; the Core's word
+S11  detected     storage-screen.tsx (10 s) — auto-archive is not sent as drafted; failing: live-storage-sites.test.tsx, storage-screen.test.tsx; Tests:       3 failed, 36 passed, 39 total
+       first failure: Storage screen › Manage Storage as a Supervisor: Apply writes the policy, toasts and adds the activity row
+SM1  detected     storage-screen.tsx (11 s) — a Core command starts from a mount effect (F69-1: twice under StrictMode); failing: live-storage-sites.test.tsx, storage-screen.test.tsx; Tests:       13 failed, 26 passed, 39 total
+       first failure: Storage screen › phone portrait: MB 8 regions in order, ring 20% USED, 3.2 TB Free of 4.0 TB, legend, KPIs, activity
+M1   detected     manage-storage-sheet.tsx (11 s) — Apply is not marked busy while the command is out (LB-1); failing: live-storage-sites.test.tsx; Tests:       2 failed, 37 passed, 39 total
+       first failure: S2-6: Apply in the Manage Storage sheet (operation 55) › success as the SUPERVISOR: busy at once, spinner late (LB-1); one request; the toast and the closing only after the Core's 200; the Core's word
+M2   detected     manage-storage-sheet.tsx (12 s) — no spinner after the reveal time (LB-1); failing: live-storage-sites.test.tsx; Tests:       1 failed, 38 passed, 39 total
+       first failure: S2-6: Apply in the Manage Storage sheet (operation 55) › success as the SUPERVISOR: busy at once, spinner late (LB-1); one request; the toast and the closing only after the Core's 200; the Core's word
+M3   detected     manage-storage-sheet.tsx (12 s) — the spinner shows at once (busy instead of pending); failing: live-storage-sites.test.tsx; Tests:       1 failed, 38 passed, 39 total
+       first failure: S2-6: Apply in the Manage Storage sheet (operation 55) › success as the SUPERVISOR: busy at once, spinner late (LB-1); one request; the toast and the closing only after the Core's 200; the Core's word
+M4   detected     manage-storage-sheet.tsx (13 s) — no in-flight guard: a second press sends a second command; failing: live-storage-sites.test.tsx; Tests:       2 failed, 37 passed, 39 total
+       first failure: S2-6: Apply in the Manage Storage sheet (operation 55) › success as the SUPERVISOR: busy at once, spinner late (LB-1); one request; the toast and the closing only after the Core's 200; the Core's word
+M5   detected     manage-storage-sheet.tsx (15 s) — the sheet never closes on success; failing: live-storage-sites.test.tsx, storage-screen.test.tsx; Tests:       5 failed, 34 passed, 39 total
+       first failure: Storage screen › Manage Storage as a Supervisor: Apply writes the policy, toasts and adds the activity row
+M6   detected     manage-storage-sheet.tsx (16 s) — S5-3: the role hint is dropped (an INVESTIGATOR may press Apply); failing: live-storage-sites.test.tsx, storage-screen.test.tsx; Tests:       2 failed, 37 passed, 39 total
+       first failure: Storage screen › Manage Storage as an Investigator: the policy is read-only with the reason (SIM-GAP-M85-2)
+I1   detected     i18n.ts (13 s) — the LIVE text says "(simulated)"; failing: live-storage-sites.test.tsx, storage-live-static.test.ts; Tests:       6 failed, 33 passed, 39 total
+       first failure: the copy (rule 8; §3.2) › the text LIVE mode adds says nothing about a simulation; the text it replaces did
+## 19 detected, 0 not detected, 0 not applied, of 19
+## the mutated files in the tree, before and after: identical

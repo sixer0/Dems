@@ -1,0 +1,13 @@
+export default async (c, lib) => {
+  await c.navigate(lib.ORIGIN + '/storage', 3000)
+  await c.click('storage-manage-open')
+  await c.waitFor('storage-manage-drawer', true, 6000)
+  await lib.sleep(1000)
+  const html = await c.evaluate(`document.querySelector('[data-testid="storage-auto-archive"]')?.outerHTML.slice(0, 1500)`)
+  // try clicking the control slot
+  const r1 = await c.clickSel('[data-testid="storage-auto-archive"] [data-slot="switch-control"], [data-testid="storage-auto-archive"] .switch__control', 'control')
+  await lib.sleep(500)
+  const after = await c.evaluate(`({ checked: document.querySelector('[data-testid="storage-auto-archive"] input')?.checked, apply: document.querySelector('[data-testid="storage-policy-apply"]')?.textContent, disabled: document.querySelector('[data-testid="storage-policy-apply"]')?.disabled })`)
+  await c.key('Escape','Escape',27)
+  return { html, r1: !!r1, after }
+}

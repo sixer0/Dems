@@ -1,0 +1,9 @@
+mark force-stop and cold relaunch (current bundle from Metro) at 16:38:07.133
+force-stop com.dems.demo.tablet at 16:38:07.335
+slept 1500 ms
+deep link demsdemo:///login?core=LIVE&motion=off at 16:38:09.300: Starting: Intent { act=android.intent.action.VIEW dat=demsdemo:///... pkg=com.dems.demo.tablet }
+slept 12000 ms
+any 401 (10-06 16:38:23.254 GET /api/v1/auth/session 401)
+app pid 12423 at 16:38:24.800
+mCurrentFocus=Window{d3a6e79 u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity} ; isKeyguardShowing=false
+screencap 01_login_live_after_relaunch.png (3299916 bytes) at 16:38:27.044

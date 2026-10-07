@@ -45,7 +45,7 @@ import { derived, fontFamily, palette, spacing, typography } from '@dems/shared/
 import { Stepper, type StepDef, type StepStatusWords } from '@/components/composed/stepper';
 import { KeyValueList, SectionCard, StatusChip, SubjectTypeChip, type KeyValueItem } from '@/components/kit';
 import { Pane, SafeScreen, useLayoutClass, type LayoutClass } from '@/layout';
-import { enterRise, useMotionSettings } from '@/motion';
+import { enterRise, useMotionSettings, type MotionSettings } from '@/motion';
 import { PendingSpinner, busyState, reportRuntimeIssue, useCoreLinkNotice, usePendingPress, type PendingPress } from '@/runtime';
 import { FinalizationPipeline } from '@/features/session-finalizing/finalization-pipeline';
 import { pipelineSeconds, pipelineStatuses, sealedAfterSeconds } from '@/features/session-finalizing/finalizing.model';
@@ -53,6 +53,7 @@ import { FlowBoundary } from '@/features/session-finalizing/flow-boundary';
 import { SealedStamp } from '@/features/session-finalizing/sealed-stamp';
 import { HashSheet, type HashSheetValue } from './hash-sheet';
 import { hasStamped, markStamped } from './stamp-once';
+import { isSummaryHandoff } from './summary-handoff';
 import { LIFECYCLE_STAGES, lifecycleStatuses, orderedTracks, shortHash, sizeParts, summaryAvailability } from './summary.model';
 import {
   useAcknowledgeSummary,
@@ -67,6 +68,8 @@ import {
 export interface SessionSummaryScreenProps {
   /** Validated session id from the path (`recordIdSchema`). */
   readonly sessionId: string;
+  /** Drawn in place by `/session/finalizing` at the seal (CF2-A, RF-PH-3): no enter rise. */
+  readonly handover?: boolean;
 }
 
 /** 04 §2.4: one centred column per class; tablets go two-pane. */
@@ -78,7 +81,7 @@ const COLUMN_MAX_WIDTH: Readonly<Record<LayoutClass, number | undefined>> = {
 };
 const LIFECYCLE_STEP_WIDTH = 92;
 
-export function SessionSummaryScreen({ sessionId }: SessionSummaryScreenProps) {
+export function SessionSummaryScreen({ sessionId, handover = false }: SessionSummaryScreenProps) {
   const { t } = useTranslation();
   const router = useRouter();
   const { toast } = useToast();
@@ -96,6 +99,8 @@ export function SessionSummaryScreen({ sessionId }: SessionSummaryScreenProps) {
 
   // The stamp plays on the first sight of an unacknowledged summary, once per session (F-80-1).
   const [playStamp] = useState(() => session.pending && !hasStamped(sessionId));
+  // CF2-A (RF-PH-3): opened by the sealed hand-off, the cards are drawn in place (no rise from opacity 0).
+  const [enter] = useState(() => !handover && !isSummaryHandoff(sessionId));
   useEffect(() => {
     if (playStamp) markStamped(sessionId);
   }, [playStamp, sessionId]);
@@ -178,11 +183,11 @@ export function SessionSummaryScreen({ sessionId }: SessionSummaryScreenProps) {
   }
 
   const openHash = (value: HashSheetValue) => setSheet(value);
-  const hero = <HeroCard sessionId={sessionId} session={session} evidence={evidence} playStamp={playStamp} index={0} />;
-  const details = <DetailsCard session={session} evidence={evidence} index={1} />;
-  const hashes = <HashesCard evidence={evidence} onOpen={openHash} index={2} />;
-  const pipeline = finalization ? <FinalizationCard finalization={finalization} index={twoPane ? 1 : 3} /> : null;
-  const lifecycle = evidence ? <LifecycleCard stage={evidence.lifecycleStage} index={twoPane ? 2 : 4} /> : null;
+  const hero = <HeroCard sessionId={sessionId} session={session} evidence={evidence} playStamp={playStamp} index={enter ? 0 : null} />;
+  const details = <DetailsCard session={session} evidence={evidence} index={enter ? 1 : null} />;
+  const hashes = <HashesCard evidence={evidence} onOpen={openHash} index={enter ? 2 : null} />;
+  const pipeline = finalization ? <FinalizationCard finalization={finalization} index={enter ? (twoPane ? 1 : 3) : null} /> : null;
+  const lifecycle = evidence ? <LifecycleCard stage={evidence.lifecycleStage} index={enter ? (twoPane ? 2 : 4) : null} animate={!handover} /> : null;
   const actions = (
     <SummaryActions
       canViewEvidence={evidence !== null}
@@ -243,6 +248,11 @@ export function SessionSummaryScreen({ sessionId }: SessionSummaryScreenProps) {
       <HashSheet value={sheet} onClose={() => setSheet(null)} />
     </SafeScreen>
   );
+}
+
+/** The card's enter rise, or none (`null`: opened by the sealed hand-off, CF2-A RF-PH-3). */
+function riseAt(index: number | null, settings: MotionSettings) {
+  return index === null ? undefined : enterRise(index, settings);
 }
 
 function Boundary({ name, children }: { name: string; children: ReactNode }) {
@@ -341,7 +351,7 @@ interface HeroCardProps {
   session: SummarySession;
   evidence: SummaryEvidence | null;
   playStamp: boolean;
-  index: number;
+  index: number | null;
 }
 
 function HeroCard({ sessionId, session, evidence, playStamp, index }: HeroCardProps) {
@@ -349,7 +359,7 @@ function HeroCard({ sessionId, session, evidence, playStamp, index }: HeroCardPr
   const settings = useMotionSettings();
   const sealed = session.outcome === 'SEALED';
   return (
-    <Animated.View entering={enterRise(index, settings)}>
+    <Animated.View entering={riseAt(index, settings)}>
       <SectionCard testID="summary-hero">
         {sealed ? (
           <SealedStamp
@@ -401,7 +411,7 @@ function TimeValue({ at, source, testID }: { at: number | null; source: string |
   );
 }
 
-function DetailsCard({ session, evidence, index }: { session: SummarySession; evidence: SummaryEvidence | null; index: number }) {
+function DetailsCard({ session, evidence, index }: { session: SummarySession; evidence: SummaryEvidence | null; index: number | null }) {
   const { t } = useTranslation();
   const settings = useMotionSettings();
   const size = sizeParts(session.sizeBytes);
@@ -429,7 +439,7 @@ function DetailsCard({ session, evidence, index }: { session: SummarySession; ev
     { id: 'evidence', label: t('session.details.evidenceId'), value: evidence?.id ?? '—', mono: true, testID: 'summary-evidence-id' },
   ];
   return (
-    <Animated.View entering={enterRise(index, settings)}>
+    <Animated.View entering={riseAt(index, settings)}>
       <SectionCard title={t('features.session-summary.sections.details')} testID="summary-details">
         <KeyValueList items={items} />
       </SectionCard>
@@ -472,12 +482,12 @@ function HashRow({ label, name, value, trailing, onPress, testID }: HashRowProps
   );
 }
 
-function HashesCard({ evidence, onOpen, index }: { evidence: SummaryEvidence | null; onOpen: (value: HashSheetValue) => void; index: number }) {
+function HashesCard({ evidence, onOpen, index }: { evidence: SummaryEvidence | null; onOpen: (value: HashSheetValue) => void; index: number | null }) {
   const { t } = useTranslation();
   const settings = useMotionSettings();
   if (!evidence) {
     return (
-      <Animated.View entering={enterRise(index, settings)}>
+      <Animated.View entering={riseAt(index, settings)}>
         <SectionCard title={t('features.session-summary.sections.hashes')} testID="summary-hashes">
           <Text maxFontSizeMultiplier={1.2} style={styles.body}>
             {t('features.session-summary.hashes.noEvidence')}
@@ -491,7 +501,7 @@ function HashesCard({ evidence, onOpen, index }: { evidence: SummaryEvidence | n
   const signatureLabel = t('features.session-summary.hashes.signature');
   const simulated = t('common.simulated.chip');
   return (
-    <Animated.View entering={enterRise(index, settings)}>
+    <Animated.View entering={riseAt(index, settings)}>
       <SectionCard
         title={t('features.session-summary.sections.hashes')}
         description={t('features.session-summary.hashes.hint')}
@@ -538,13 +548,13 @@ function HashesCard({ evidence, onOpen, index }: { evidence: SummaryEvidence | n
   );
 }
 
-function FinalizationCard({ finalization, index }: { finalization: SummaryFinalization; index: number }) {
+function FinalizationCard({ finalization, index }: { finalization: SummaryFinalization; index: number | null }) {
   const { t } = useTranslation();
   const settings = useMotionSettings();
   const statuses = pipelineStatuses(finalization.steps, finalization.sealedAt !== null ? 'sealed' : 'finalizing');
   const sealedIn = sealedAfterSeconds(finalization.stoppedAt, finalization.sealedAt);
   return (
-    <Animated.View entering={enterRise(index, settings)}>
+    <Animated.View entering={riseAt(index, settings)}>
       <SectionCard
         title={t('features.session-summary.sections.finalization')}
         {...(sealedIn ? { description: t('session.finalization.sealedIn', { seconds: sealedIn }) } : {})}
@@ -556,7 +566,8 @@ function FinalizationCard({ finalization, index }: { finalization: SummaryFinali
   );
 }
 
-function LifecycleCard({ stage, index }: { stage: string; index: number }) {
+/** `animate` false for the copy drawn in place on a hand-over: its Stepper starts no motion (W93-7). */
+function LifecycleCard({ stage, index, animate }: { stage: string; index: number | null; animate: boolean }) {
   const { t } = useTranslation();
   const settings = useMotionSettings();
   const steps: StepDef[] = LIFECYCLE_STAGES.map((key) => ({ key, label: t(`common.enums.evidenceLifecycleStage.${key}`) }));
@@ -574,7 +585,7 @@ function LifecycleCard({ stage, index }: { stage: string; index: number }) {
   // Scroll so the current stage (SEALED LOCAL EVIDENCE, the 8th) is in view on a phone.
   const current = Math.max(0, statuses.indexOf('active'));
   return (
-    <Animated.View entering={enterRise(index, settings)}>
+    <Animated.View entering={riseAt(index, settings)}>
       <SectionCard title={t('features.session-summary.sections.lifecycle')} testID="summary-lifecycle">
         <ScrollView
           horizontal
@@ -589,6 +600,7 @@ function LifecycleCard({ stage, index }: { stage: string; index: number }) {
             statuses={statuses}
             orientation="horizontal"
             motion={settings.policy}
+            animate={animate}
             statusWords={words}
             style={{ width: LIFECYCLE_STEP_WIDTH * steps.length }}
           />

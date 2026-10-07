@@ -1,0 +1,46 @@
+"""tscan.py <run> <anchorFrameIndex1Based> <anchorDeviceHH:MM:SS.mmm> <hostMinusDeviceMs> <coreStopHost> <out.png>:
+tablet recording (1280x800 -> 540 px frames). Device time per frame = anchor overlay time + (pts - anchor pts).
+Per frame: empty = app area (y 30..325) sd < 6; monitor = red 'End Session' button (x 432..532, y 290..312) > 40 % red.
+Prints counts, the hand-over (last monitor frame and the next frames), empty frames; writes a sheet of the hand-over and
+of every empty frame with its neighbours, and the last frame."""
+import sys, os, json, subprocess
+from PIL import Image
+R = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+run, ai, at, off, stop, out = sys.argv[1], int(sys.argv[2]), sys.argv[3], float(sys.argv[4]) / 1000, sys.argv[5], sys.argv[6]
+def secs(t): h, m, s = t.split(':'); return int(h) * 3600 + int(m) * 60 + float(s)
+def hms(x): h = int(x // 3600); m = int(x % 3600 // 60); return f"{h:02d}:{m:02d}:{x % 60:06.3f}"
+mp4 = f'{R}/tablet/assets/{run}.mp4'
+pts = [float(l) for l in subprocess.run(['ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries', 'frame=pts_time', '-of', 'csv=p=0', mp4], capture_output=True, text=True).stdout.split()]
+d = f'{R}/tablet/frames/{run}'
+files = sorted(os.listdir(d), key=lambda n: int(''.join(c for c in n if c.isdigit())))
+base = secs(at) - pts[ai - 1]
+rows = []
+for i, fn in enumerate(files):
+    im = Image.open(os.path.join(d, fn)).convert('RGB'); px = im.load()
+    g = [sum(px[x, y]) / 3 for y in range(30, 325, 4) for x in range(0, 540, 4)]
+    m = sum(g) / len(g); sd = (sum(v * v for v in g) / len(g) - m * m) ** 0.5
+    red = [px[x, y] for y in range(290, 312, 2) for x in range(432, 532, 2)]
+    rr = sum(1 for (r, gg, b) in red if r > 170 and gg < 110 and b < 110) / len(red)
+    dev = base + pts[i] if i < len(pts) else None
+    rows.append({'frame': fn, 'dev': hms(dev) if dev else None, 'host': hms(dev - off) if dev else None, 'empty': sd < 6, 'monitor': rr > 0.4, 'sd': round(sd, 1)})
+body = rows[1:]
+mon = [i for i, r in enumerate(body) if r['monitor']]
+last = mon[-1] if mon else None
+emp = [i for i, r in enumerate(body) if r['empty']]
+res = {'frames': len(body), 'monitorFrames': len(mon), 'firstMonitorDev': body[mon[0]]['dev'] if mon else None,
+       'lastMonitor': body[last] if last is not None else None, 'next': body[last + 1] if last is not None and last + 1 < len(body) else None,
+       'stopToNextFrameS': round(secs(body[last + 1]['host']) - secs(stop), 2) if last is not None and last + 1 < len(body) else None,
+       'emptyFrames': [(body[i]['frame'], body[i]['dev']) for i in emp]}
+print(json.dumps(res))
+pick = []
+if mon: pick += [(mon[0] - 1, 'before monitor'), (mon[0], 'first monitor frame')]
+if last is not None: pick += [(last, 'last monitor frame'), (last + 1, 'next frame'), (last + 2, 'next frame + 1')]
+for i in emp: pick += [(i - 1, 'before empty'), (i, 'EMPTY'), (i + 1, 'after empty')]
+pick.append((len(body) - 1, 'last frame'))
+seen = set(); items = []
+for i, why in pick:
+    if i < 0 or i >= len(body) or i in seen: continue
+    seen.add(i); r = body[i]
+    items.append(f"{d}/{r['frame']}::{r['frame']} dev {r['dev']}|{why}")
+subprocess.run(['python3', f'{R}/tools/sheet2.py', out, '4', '0.9'] + items, check=True)
+json.dump(rows, open(f'{R}/runs/{run}_tablet_rows.json', 'w'))

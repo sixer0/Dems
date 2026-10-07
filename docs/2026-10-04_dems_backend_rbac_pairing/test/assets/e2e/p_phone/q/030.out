@@ -1,0 +1,16 @@
+10:05:31.466 key 4
+10:05:31.772 slept 2000 ms
+10:05:33.858 declared screen settings-about
+10:05:33.923 screencap 22c_back_from_stack_check.png 10:05:33.923..10:05:35.206
+10:05:35.566 tapid settings-section-header-back at 95,216 "Back"
+10:05:40.903 slept 2000 ms
+10:05:44.449 mark a22 at 10:05:44.453
+10:05:44.821 tapid settings-account-row at 540,531 "Investigator, AKP Budi Santoso. Open profile"
+10:05:49.861 slept 2000 ms
+10:05:51.930 declared screen settings-profile
+10:05:51.979 screencap 23_settings_profile_sheet.png 10:05:51.979..10:05:53.893
+10:05:55.879 ids(12): screen-settings@540,1102 ; settings-profile-sheet@541,1382 ; settings-profile-sheet-close@986,1382 "Close" ; settings-profile-name@646,1488 "AKP Budi Santoso" ; settings-profile-role@646,1546 "Role: Investigator" ; settings-profile-permissions@541,1872 ; settings-profile-permission-SESSION_START@541,1767 ; settings-profile-permission-SESSION_NOTE@541,1841 ; settings-profile-permission-EVIDENCE_VIEW@541,1915 ; settings-profile-permission-DIAGNOSTICS_RUN@541,1989 ; settings-profile-lock@290,2194 "Lock console" ; settings-profile-sign-out@794,2194 "Sign out"
+10:06:02.879 js => {"status":200,"d":"{\"roles\":[\"INVESTIGATOR\",\"SUPERVISOR\",\"TECHNICIAN\"],\"permissions\":[\"SESSION_START\",\"SESSION_NOTE\",\"EVIDENCE_VIEW\",\"EVIDENCE_REVIEW\",\"EVIDENCE_EXPORT\",\"AUDIT_EXPORT\",\"DEVICE_MANAGE\",\"DIAGNOSTICS_RUN\",\"MAINTENANCE\",\"PAIRING_MANAGE\",\"USER_ADMIN\",\"DEMO_CONTROL\"],\"grants\":[{\"role\":\"INVESTIGATOR\",\"permission\":\"SESSION_START\"},{\"role\":\"INVESTIGATOR\",\"permission\":\"SESSION_NOTE\"},{\"role\":\"INVESTIGATOR\",\"permission\":\"EVIDENCE_VIEW\"},{\"role\":\"INVESTIGATOR\",\"permission\":\"DIAGNOSTICS_RUN\"},{\"role\":\"SUPERVISOR\",\"permission\":\"SESSION_START\"},{\"role\":\"SUPERVISOR\",\"permission\":\"SESSION_NOTE\"},{\"role\":\"SUPERVISOR\",\"permission\":\"EVIDENCE_VIEW\"},{\"role\":\"SUPERVISOR\",\"permission\":\"EVIDENCE_REVIEW\"},{\"role\":\"SUPERVISOR\",\"permission\":\"EVIDENCE_EXPORT\"},{\"role\":\"SUPERVISOR\",\"permission\":\"AUDIT_EXPORT\"},{\"role\":\"SUPERVISOR\",\"permission\":\"DIAGNOSTICS_RUN\"},{\"role\":\"SUPERVISOR\",\"permission\":\"PAIRING_MANAGE\"},{\"role\":\"SUPERVISOR\",\"permission\":\"USER_ADMIN\"},{\"role\":\"SUPERVISOR\",\"permission\":\"DEMO_CONTROL\"},{\"role\":\"TECHNICIAN\",\"permission\":\"EVIDENCE_VIEW\"},{\"role\":\"TECHNICIAN\",\"permission\":\"DEVICE_MANAGE\"},{\"role\":\"TECHNICIAN\",\"permission\":\"DIAGNOSTICS_RUN\"},{\"role\":\"TECHNICIAN\",\"permission\":\"MAINTENANCE\"}],\"editable\":false}"}
+10:06:03.116 serverlog since a22 (2):
+    10:05:47.509 POST /api/v1/auth/touch 200 operator:OPR-001
+    10:06:02.926 GET /api/v1/rbac/matrix 200 operator:OPR-002

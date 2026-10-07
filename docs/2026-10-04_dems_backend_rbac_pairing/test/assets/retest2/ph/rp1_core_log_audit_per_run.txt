@@ -1,0 +1,443 @@
+===== R00
+16:42:23.392 batch start; device time 10-06 16:42:22.000; host load 4.66
+16:42:26.407 host load 5.01 6.69 7.58
+16:42:26.455 device-host clock offset ms: -427, -429, -429, -429, -428
+16:42:26.640 screenrecord R00 started (pid 5045) at 16:42:27.241; load 5.01 6.69 7.58
+16:42:27.515 start 200 at device 10-06 16:42:30.397 (POST /api/v1/session/{id}/start 200)
+16:42:31.040 until true at 16:42:31.044 after 4 ms => "RECORDING"
+16:43:11.663 ERROR in "p ids monitor-marker": Command failed: adb -s emulator-5554 shell cat /sdcard/rfph.xml
+16:43:24.061 ERROR in "p tapid monitor-marker-submit": Command failed: adb -s emulator-5554 shell cat /sdcard/rfph.xml
+16:43:24.149 marker NOT SEEN in 15 s
+16:43:40.995 press sm-end-confirm ok at 16:43:41.000
+16:43:41.031 until true at 16:43:41.077 after 46 ms => "STOPPING"
+16:43:41.135 until true at 16:43:47.896 after 6761 ms => {"state":"SEALED","modal":"SEALED"}
+16:43:53.991 screenrecord R00 pulled (HUNG: killed by the watchdog); every frame extracted (passthrough)
+16:44:18.136 serverlog since R00 (5):
+    16:42:23.515 [socket closed]
+    16:42:23.788 GET /api/v1/auth/session 200
+    16:42:23.823 [socket opened]
+    16:42:30.816 POST /api/v1/session/:id/start 200
+    16:43:41.011 POST /api/v1/session/:id/stop 202
+===== R01
+16:47:49.606 batch start; device time 10-06 16:47:49.000; host load 7.68
+16:47:50.060 marker 204 at device 10-06 16:47:49.789 (POST /api/v1/session/{id}/markers 204)
+16:47:50.780 press sm-end-confirm ok at 16:47:50.786
+16:47:50.842 until true at 16:47:50.873 after 31 ms => "STOPPING"
+16:47:50.962 until true at 16:47:57.058 after 6096 ms => {"state":"SEALED","modal":"SEALED"}
+16:48:02.347 screenrecord R01 pulled; every frame extracted (passthrough)
+16:48:21.614 serverlog since R01 (9):
+    16:46:48.257 POST /api/v1/session/:id/summary/acknowledge 204
+    16:47:00.035 POST /api/v1/session 201
+    16:47:00.673 POST /api/v1/session/:id/precheck 202
+    16:47:10.826 [socket closed]
+    16:47:11.010 GET /api/v1/auth/session 200
+    16:47:11.029 [socket opened]
+    16:47:18.259 POST /api/v1/session/:id/start 200
+    16:47:50.150 POST /api/v1/session/:id/markers 204
+    16:47:50.799 POST /api/v1/session/:id/stop 202
+16:48:21.668 js => {"id":"SES-20261006-0060","state":"SEALED","subject":"RF PH R01","startedAt":"2026-10-06T16:47:18.248+07:00","stoppedAt":"2026-10-06T16:47:50.794+07:00","sealedAt":"2026-10-06T16:47:56.920+07:00","evidenceId":"EV-20261006-0047","elapsedMs":32546,"audit":[["AUD-001004","SESSION_CREATED","OPR-001","16:47:00.027",""],["AUD-001005","PRECHECK_PASSED","OPR-001","16:47:04.564",""],["AUD-001006","RECORDING_STARTED","OPR-001","16:47:18.248",""],["AUD-001007","WRITE_VERIFIED",null,"16:47:20.286",""],["AUD-001008","WRITE_VERIFIED",null,"16:47:21.210",""],["AUD-001009","WRITE_VERIFIED",null,"16:47:36.640",""],["AUD-001010","TIMESTAMP_CONFIRMED",null,"16:47:37.354",""],["AUD-001011","FRAME_HASH",null,"16:47:46.137",""],["AUD-001012","MARKER_ADDED","OPR-001","16:47:50.146",""],["AUD-001013","RECORDING_STOPPED","OPR-002","16:47:50.794","RF PH R01 web stop right after a bookmark"],["AUD-001014","EVIDENCE_SEALED",null,"16:47:56.920",""]]}
+16:46:47.726 batch start; device time 10-06 16:46:47.000; host load 6.56
+16:47:00.042 create 201 at device 10-06 16:46:59.730 (POST /api/v1/session 201)
+16:47:00.837 precheck 202 at device 10-06 16:47:00.236 (POST /api/v1/session/{id}/precheck 202)
+16:47:13.928 host load 7.56 7.74 7.87
+16:47:13.977 device-host clock offset ms: -428, -418, -430, -428, -430
+16:47:14.229 screenrecord R01 started (pid 10090) at 16:47:14.831; load 7.56 7.74 7.87
+16:47:15.034 start 200 at device 10-06 16:47:17.825 (POST /api/v1/session/{id}/start 200)
+16:47:18.438 until true at 16:47:18.438 after 0 ms => "RECORDING"
+===== R02
+16:50:19.177 batch start; device time 10-06 16:50:18.000; host load 6.10
+16:50:31.696 create 201 at device 10-06 16:50:31.306 (POST /api/v1/session 201)
+16:50:31.804 precheck 202 at device 10-06 16:50:31.476 (POST /api/v1/session/{id}/precheck 202)
+16:50:45.259 host load 6.29 7.20 7.63
+16:50:45.309 device-host clock offset ms: -431, -430, -430, -430, -430
+16:50:45.533 screenrecord R02 started (pid 13813) at 16:50:46.138; load 6.29 7.20 7.63
+16:50:46.296 start 200 at device 10-06 16:50:49.091 (POST /api/v1/session/{id}/start 200)
+16:50:49.730 until true at 16:50:49.733 after 3 ms => "RECORDING"
+16:50:50.480 press sm-end-confirm ok at 16:50:50.487
+16:50:50.556 until true at 16:50:50.608 after 52 ms => "STOPPING"
+16:50:50.713 until true at 16:50:57.604 after 6891 ms => {"state":"SEALED","modal":"SEALED"}
+16:51:03.219 screenrecord R02 pulled; every frame extracted (passthrough)
+16:51:19.615 serverlog since R02 (8):
+    16:50:19.791 POST /api/v1/session/:id/summary/acknowledge 204
+    16:50:31.696 POST /api/v1/session 201
+    16:50:31.916 POST /api/v1/session/:id/precheck 202
+    16:50:42.429 [socket closed]
+    16:50:42.552 [socket opened]
+    16:50:42.552 GET /api/v1/auth/session 200
+    16:50:49.518 POST /api/v1/session/:id/start 200
+    16:50:50.508 POST /api/v1/session/:id/stop 202
+16:51:19.678 js => {"id":"SES-20261006-0061","state":"SEALED","subject":"RF PH R02","startedAt":"2026-10-06T16:50:49.512+07:00","stoppedAt":"2026-10-06T16:50:50.501+07:00","sealedAt":"2026-10-06T16:50:57.388+07:00","evidenceId":"EV-20261006-0048","elapsedMs":989,"audit":[["AUD-001016","SESSION_CREATED","OPR-001","16:50:31.689",""],["AUD-001017","PRECHECK_PASSED","OPR-001","16:50:36.159",""],["AUD-001018","RECORDING_STARTED","OPR-001","16:50:49.512",""],["AUD-001019","RECORDING_STOPPED","OPR-002","16:50:50.501","RF PH R02 early web stop"],["AUD-001020","EVIDENCE_SEALED",null,"16:50:57.388",""]]}
+===== R03
+16:51:20.278 batch start; device time 10-06 16:51:19.000; host load 11.88
+16:51:32.350 create 201 at device 10-06 16:51:31.992 (POST /api/v1/session 201)
+16:51:32.506 precheck 202 at device 10-06 16:51:32.207 (POST /api/v1/session/{id}/precheck 202)
+16:51:46.728 host load 12.42 8.87 8.23
+16:51:46.778 device-host clock offset ms: -428, -432, -431, -428, -432
+16:51:46.992 screenrecord R03 started (pid 16099) at 16:51:47.596; load 12.42 8.87 8.23
+16:51:47.812 start 200 at device 10-06 16:51:50.670 (POST /api/v1/session/{id}/start 200)
+16:51:51.434 until true at 16:51:51.434 after 0 ms => "RECORDING"
+16:52:22.350 press sm-end-confirm ok at 16:52:22.357
+16:52:23.114 until true at 16:52:23.126 after 12 ms => "STOPPING"
+16:52:23.687 until true at 16:52:29.085 after 5398 ms => {"state":"SEALED","modal":"SEALED"}
+16:52:35.561 screenrecord R03 pulled; every frame extracted (passthrough)
+16:53:03.012 serverlog since R03 (8):
+    16:51:20.742 POST /api/v1/session/:id/summary/acknowledge 204
+    16:51:32.333 POST /api/v1/session 201
+    16:51:32.646 POST /api/v1/session/:id/precheck 202
+    16:51:43.941 [socket closed]
+    16:51:44.090 GET /api/v1/auth/session 200
+    16:51:44.097 [socket opened]
+    16:51:51.068 POST /api/v1/session/:id/start 200
+    16:52:22.386 POST /api/v1/session/:id/stop 202
+16:53:03.376 js => {"id":"SES-20261006-0062","state":"SEALED","subject":"RF PH R03","startedAt":"2026-10-06T16:51:51.063+07:00","stoppedAt":"2026-10-06T16:52:22.377+07:00","sealedAt":"2026-10-06T16:52:28.728+07:00","evidenceId":"EV-20261006-0049","elapsedMs":31314,"audit":[["AUD-001022","SESSION_CREATED","OPR-001","16:51:32.325",""],["AUD-001023","PRECHECK_PASSED","OPR-001","16:51:37.013",""],["AUD-001024","RECORDING_STARTED","OPR-001","16:51:51.063",""],["AUD-001025","WRITE_VERIFIED",null,"16:51:51.990",""],["AUD-001026","WRITE_VERIFIED",null,"16:51:52.910",""],["AUD-001027","TIMESTAMP_CONFIRMED",null,"16:51:53.938",""],["AUD-001028","FRAME_HASH",null,"16:51:57.268",""],["AUD-001029","TIMESTAMP_CONFIRMED",null,"16:52:10.632",""],["AUD-001030","TIMESTAMP_CONFIRMED",null,"16:52:14.514",""],["AUD-001031","RECORDING_STOPPED","OPR-002","16:52:22.377","RF PH R03 web stop after 30 s"],["AUD-001032","EVIDENCE_SEALED",null,"16:52:28.728",""]]}
+===== R04
+16:54:44.152 batch start; device time 10-06 16:54:43.000; host load 12.74
+16:54:56.785 create 201 at device 10-06 16:54:56.405 (POST /api/v1/session 201)
+16:54:57.615 precheck 202 at device 10-06 16:54:56.561 (POST /api/v1/session/{id}/precheck 202)
+16:55:10.421 host load 10.92 12.06 9.89
+16:55:10.471 device-host clock offset ms: -431, -432, -431, -433, -430
+16:55:10.697 screenrecord R04 started (pid 31588) at 16:55:11.301; load 10.92 12.06 9.89
+16:55:11.540 start 200 at device 10-06 16:55:14.648 (POST /api/v1/session/{id}/start 200)
+16:55:15.331 until true at 16:55:15.332 after 1 ms => "RECORDING"
+16:55:27.709 marker 204 at device 10-06 16:55:27.513 (POST /api/v1/session/{id}/markers 204)
+16:55:28.735 press sm-end-confirm ok at 16:55:28.747
+16:55:28.917 until true at 16:55:28.968 after 51 ms => "STOPPING"
+16:55:29.410 until true at 16:55:35.179 after 5769 ms => {"state":"SEALED","modal":"SEALED"}
+16:55:40.905 screenrecord R04 pulled; every frame extracted (passthrough)
+16:55:56.690 serverlog since R04 (9):
+    16:54:44.876 POST /api/v1/session/:id/summary/acknowledge 204
+    16:54:56.783 POST /api/v1/session 201
+    16:54:57.003 POST /api/v1/session/:id/precheck 202
+    16:55:07.653 [socket closed]
+    16:55:07.802 [socket opened]
+    16:55:07.803 GET /api/v1/auth/session 200
+    16:55:15.033 POST /api/v1/session/:id/start 200
+    16:55:27.929 POST /api/v1/session/:id/markers 204
+    16:55:28.785 POST /api/v1/session/:id/stop 202
+16:55:56.815 js => {"id":"SES-20261006-0063","state":"SEALED","subject":"RF PH R04","startedAt":"2026-10-06T16:55:15.023+07:00","stoppedAt":"2026-10-06T16:55:28.775+07:00","sealedAt":"2026-10-06T16:55:35.013+07:00","evidenceId":"EV-20261006-0050","elapsedMs":13752,"audit":[["AUD-001034","SESSION_CREATED","OPR-001","16:54:56.776",""],["AUD-001035","PRECHECK_PASSED","OPR-001","16:55:00.651",""],["AUD-001036","RECORDING_STARTED","OPR-001","16:55:15.023",""],["AUD-001037","FRAME_HASH",null,"16:55:20.513",""],["AUD-001038","MARKER_ADDED","OPR-001","16:55:27.918",""],["AUD-001039","RECORDING_STOPPED","OPR-002","16:55:28.775","RF PH R04 web stop right after a bookmark"],["AUD-001040","EVIDENCE_SEALED",null,"16:55:35.013",""]]}
+===== R05
+16:55:58.142 batch start; device time 10-06 16:55:57.000; host load 12.94
+16:56:10.655 create 201 at device 10-06 16:56:10.289 (POST /api/v1/session 201)
+16:56:10.787 precheck 202 at device 10-06 16:56:10.565 (POST /api/v1/session/{id}/precheck 202)
+16:56:24.202 host load 10.91 11.90 10.02
+16:56:24.246 device-host clock offset ms: -432, -432, -430, -432, -432
+16:56:24.451 screenrecord R05 started (pid 37874) at 16:56:25.053; load 10.91 11.90 10.02
+16:56:25.250 start 200 at device 10-06 16:56:28.256 (POST /api/v1/session/{id}/start 200)
+16:56:28.921 until true at 16:56:28.921 after 0 ms => "RECORDING"
+16:56:29.739 press sm-end-confirm ok at 16:56:29.745
+16:56:29.839 until true at 16:56:29.888 after 49 ms => "STOPPING"
+16:56:29.978 until true at 16:56:36.639 after 6661 ms => {"state":"SEALED","modal":"SEALED"}
+16:56:42.129 screenrecord R05 pulled; every frame extracted (passthrough)
+16:56:57.573 serverlog since R05 (8):
+    16:55:58.687 POST /api/v1/session/:id/summary/acknowledge 204
+    16:56:10.641 POST /api/v1/session 201
+    16:56:11.003 POST /api/v1/session/:id/precheck 202
+    16:56:21.423 [socket closed]
+    16:56:21.555 [socket opened]
+    16:56:21.556 GET /api/v1/auth/session 200
+    16:56:28.605 POST /api/v1/session/:id/start 200
+    16:56:29.757 POST /api/v1/session/:id/stop 202
+16:56:57.644 js => {"id":"SES-20261006-0064","state":"SEALED","subject":"RF PH R05","startedAt":"2026-10-06T16:56:28.595+07:00","stoppedAt":"2026-10-06T16:56:29.752+07:00","sealedAt":"2026-10-06T16:56:36.446+07:00","evidenceId":"EV-20261006-0051","elapsedMs":1157,"audit":[["AUD-001042","SESSION_CREATED","OPR-001","16:56:10.631",""],["AUD-001043","PRECHECK_PASSED","OPR-001","16:56:14.742",""],["AUD-001044","RECORDING_STARTED","OPR-001","16:56:28.595",""],["AUD-001045","RECORDING_STOPPED","OPR-002","16:56:29.752","RF PH R05 early web stop"],["AUD-001046","EVIDENCE_SEALED",null,"16:56:36.446",""]]}
+===== R06
+16:56:58.925 batch start; device time 10-06 16:56:58.000; host load 10.38
+16:57:11.103 create 201 at device 10-06 16:57:10.725 (POST /api/v1/session 201)
+16:57:11.858 precheck 202 at device 10-06 16:57:10.916 (POST /api/v1/session/{id}/precheck 202)
+16:57:24.853 host load 9.03 11.24 9.90
+16:57:24.916 device-host clock offset ms: -432, -433, -434, -432, -432
+16:57:25.136 screenrecord R06 started (pid 43305) at 16:57:25.739; load 9.03 11.24 9.90
+16:57:25.974 start 200 at device 10-06 16:57:28.951 (POST /api/v1/session/{id}/start 200)
+16:57:29.737 until true at 16:57:29.740 after 3 ms => "RECORDING"
+16:57:59.606 press sm-end-confirm ok at 16:57:59.613
+16:57:59.709 until true at 16:57:59.755 after 46 ms => "STOPPING"
+16:58:00.026 until true at 16:58:06.969 after 6943 ms => {"state":"SEALED","modal":"SEALED"}
+16:58:13.006 screenrecord R06 pulled; every frame extracted (passthrough)
+16:58:38.803 serverlog since R06 (8):
+    16:56:59.362 POST /api/v1/session/:id/summary/acknowledge 204
+    16:57:11.097 POST /api/v1/session 201
+    16:57:11.359 POST /api/v1/session/:id/precheck 202
+    16:57:21.923 [socket closed]
+    16:57:22.082 GET /api/v1/auth/session 200
+    16:57:22.094 [socket opened]
+    16:57:29.360 POST /api/v1/session/:id/start 200
+    16:57:59.630 POST /api/v1/session/:id/stop 202
+16:58:38.937 js => {"id":"SES-20261006-0065","state":"SEALED","subject":"RF PH R06","startedAt":"2026-10-06T16:57:29.352+07:00","stoppedAt":"2026-10-06T16:57:59.624+07:00","sealedAt":"2026-10-06T16:58:06.819+07:00","evidenceId":"EV-20261006-0052","elapsedMs":30272,"audit":[["AUD-001048","SESSION_CREATED","OPR-001","16:57:11.090",""],["AUD-001049","PRECHECK_PASSED","OPR-001","16:57:15.489",""],["AUD-001050","RECORDING_STARTED","OPR-001","16:57:29.352",""],["AUD-001051","TIMESTAMP_CONFIRMED",null,"16:57:37.096",""],["AUD-001052","FRAME_HASH",null,"16:57:46.329",""],["AUD-001053","FRAME_HASH",null,"16:57:53.089",""],["AUD-001054","RECORDING_STOPPED","OPR-002","16:57:59.624","RF PH R06 web stop after 30 s"],["AUD-001055","EVIDENCE_SEALED",null,"16:58:06.819",""]]}
+===== R07
+16:59:00.481 batch start; device time 10-06 16:59:00.000; host load 13.29
+16:59:13.780 create 201 at device 10-06 16:59:13.436 (POST /api/v1/session 201)
+16:59:14.672 precheck 202 at device 10-06 16:59:13.661 (POST /api/v1/session/{id}/precheck 202)
+16:59:27.486 host load 11.61 11.77 10.31
+16:59:27.539 device-host clock offset ms: -434, -434, -432, -433, -433
+16:59:27.779 screenrecord R07 started (pid 52786) at 16:59:28.382; load 11.61 11.77 10.31
+16:59:28.605 start 200 at device 10-06 16:59:31.602 (POST /api/v1/session/{id}/start 200)
+16:59:32.483 until true at 16:59:32.486 after 3 ms => "RECORDING"
+16:59:45.116 marker 204 at device 10-06 16:59:45.906 (POST /api/v1/session/{id}/markers 204)
+16:59:46.690 press sm-end-confirm ok at 16:59:46.696
+16:59:46.813 until true at 16:59:46.844 after 31 ms => "STOPPING"
+16:59:46.993 until true at 16:59:53.709 after 6716 ms => {"state":"SEALED","modal":"SEALED"}
+16:59:59.642 screenrecord R07 pulled; every frame extracted (passthrough)
+17:00:17.335 serverlog since R07 (9):
+    16:59:01.465 POST /api/v1/session/:id/summary/acknowledge 204
+    16:59:13.805 POST /api/v1/session 201
+    16:59:14.095 POST /api/v1/session/:id/precheck 202
+    16:59:24.666 [socket closed]
+    16:59:24.810 GET /api/v1/auth/session 200
+    16:59:24.816 [socket opened]
+    16:59:31.992 POST /api/v1/session/:id/start 200
+    16:59:45.841 POST /api/v1/session/:id/markers 204
+    16:59:46.720 POST /api/v1/session/:id/stop 202
+17:00:17.487 js => {"id":"SES-20261006-0066","state":"SEALED","subject":"RF PH R07","startedAt":"2026-10-06T16:59:31.980+07:00","stoppedAt":"2026-10-06T16:59:46.709+07:00","sealedAt":"2026-10-06T16:59:53.574+07:00","evidenceId":"EV-20261006-0053","elapsedMs":14729,"audit":[["AUD-001057","SESSION_CREATED","OPR-001","16:59:13.790",""],["AUD-001058","PRECHECK_PASSED","OPR-001","16:59:18.052",""],["AUD-001059","RECORDING_STARTED","OPR-001","16:59:31.980",""],["AUD-001060","FRAME_HASH",null,"16:59:36.976",""],["AUD-001061","TIMESTAMP_CONFIRMED",null,"16:59:44.912",""],["AUD-001062","MARKER_ADDED","OPR-001","16:59:45.833",""],["AUD-001063","RECORDING_STOPPED","OPR-002","16:59:46.709","RF PH R07 web stop right after a bookmark"],["AUD-001064","EVIDENCE_SEALED",null,"16:59:53.574",""]]}
+===== R08
+17:00:39.053 batch start; device time 10-06 17:00:38.000; host load 12.55
+17:00:51.780 create 201 at device 10-06 17:00:51.391 (POST /api/v1/session 201)
+17:00:51.892 precheck 202 at device 10-06 17:00:51.631 (POST /api/v1/session/{id}/precheck 202)
+17:01:05.316 host load 11.75 11.98 10.55
+17:01:05.367 device-host clock offset ms: -436, -434, -436, -436, -434
+17:01:05.654 screenrecord R08 started (pid 61008) at 17:01:06.259; load 11.75 11.98 10.55
+17:01:06.460 start 200 at device 10-06 17:01:09.468 (POST /api/v1/session/{id}/start 200)
+17:01:10.238 until true at 17:01:10.241 after 3 ms => "RECORDING"
+17:01:11.012 press sm-end-confirm ok at 17:01:11.019
+17:01:11.123 until true at 17:01:11.165 after 42 ms => "STOPPING"
+17:01:11.357 until true at 17:01:17.615 after 6258 ms => {"state":"SEALED","modal":"SEALED"}
+17:01:23.412 screenrecord R08 pulled; every frame extracted (passthrough)
+17:01:43.137 serverlog since R08 (8):
+    17:00:39.632 POST /api/v1/session/:id/summary/acknowledge 204
+    17:00:51.766 POST /api/v1/session 201
+    17:00:52.065 POST /api/v1/session/:id/precheck 202
+    17:01:02.536 [socket closed]
+    17:01:02.696 GET /api/v1/auth/session 200
+    17:01:02.731 [socket opened]
+    17:01:09.842 POST /api/v1/session/:id/start 200
+    17:01:11.040 POST /api/v1/session/:id/stop 202
+17:01:43.273 js => {"id":"SES-20261006-0067","state":"SEALED","subject":"RF PH R08","startedAt":"2026-10-06T17:01:09.834+07:00","stoppedAt":"2026-10-06T17:01:11.030+07:00","sealedAt":"2026-10-06T17:01:17.382+07:00","evidenceId":"EV-20261006-0054","elapsedMs":1196,"audit":[["AUD-001066","SESSION_CREATED","OPR-001","17:00:51.759",""],["AUD-001067","PRECHECK_PASSED","OPR-001","17:00:55.865",""],["AUD-001068","RECORDING_STARTED","OPR-001","17:01:09.834",""],["AUD-001069","RECORDING_STOPPED","OPR-002","17:01:11.030","RF PH R08 early web stop"],["AUD-001070","EVIDENCE_SEALED",null,"17:01:17.382",""]]}
+===== R09
+17:01:44.593 batch start; device time 10-06 17:01:44.000; host load 10.93
+17:01:57.100 create 201 at device 10-06 17:01:56.710 (POST /api/v1/session 201)
+17:01:57.210 precheck 202 at device 10-06 17:01:56.919 (POST /api/v1/session/{id}/precheck 202)
+17:02:10.648 host load 9.68 11.38 10.44
+17:02:10.722 device-host clock offset ms: -430, -432, -433, -434, -429
+17:02:10.989 screenrecord R09 started (pid 67344) at 17:02:11.592; load 9.68 11.38 10.44
+17:02:12.014 start 200 at device 10-06 17:02:15.294 (POST /api/v1/session/{id}/start 200)
+17:02:16.328 until true at 17:02:16.330 after 2 ms => "RECORDING"
+17:02:48.954 press sm-end-confirm ok at 17:02:48.964
+17:02:49.409 until true at 17:02:49.423 after 14 ms => "STOPPING"
+17:02:49.762 until true at 17:02:55.752 after 5990 ms => {"state":"SEALED","modal":"SEALED"}
+17:03:01.759 screenrecord R09 pulled; every frame extracted (passthrough)
+17:03:31.743 serverlog since R09 (8):
+    17:01:45.316 POST /api/v1/session/:id/summary/acknowledge 204
+    17:01:57.077 POST /api/v1/session 201
+    17:01:57.364 POST /api/v1/session/:id/precheck 202
+    17:02:07.840 [socket closed]
+    17:02:08.061 GET /api/v1/auth/session 200
+    17:02:08.068 [socket opened]
+    17:02:15.703 POST /api/v1/session/:id/start 200
+    17:02:49.004 POST /api/v1/session/:id/stop 202
+17:03:32.206 js => {"id":"SES-20261006-0068","state":"SEALED","subject":"RF PH R09","startedAt":"2026-10-06T17:02:15.688+07:00","stoppedAt":"2026-10-06T17:02:48.994+07:00","sealedAt":"2026-10-06T17:02:55.564+07:00","evidenceId":"EV-20261006-0055","elapsedMs":33306,"audit":[["AUD-001072","SESSION_CREATED","OPR-001","17:01:57.067",""],["AUD-001073","PRECHECK_PASSED","OPR-001","17:02:01.316",""],["AUD-001074","RECORDING_STARTED","OPR-001","17:02:15.688",""],["AUD-001075","FRAME_HASH",null,"17:02:16.454",""],["AUD-001076","TIMESTAMP_CONFIRMED",null,"17:02:24.860",""],["AUD-001077","TIMESTAMP_CONFIRMED",null,"17:02:33.974",""],["AUD-001078","WRITE_VERIFIED",null,"17:02:42.338",""],["AUD-001079","RECORDING_STOPPED","OPR-002","17:02:48.994","RF PH R09 web stop after 30 s"],["AUD-001080","EVIDENCE_SEALED",null,"17:02:55.564",""]]}
+===== R10
+17:04:13.814 batch start; device time 10-06 17:04:13.000; host load 13.74
+17:04:26.652 create 201 at device 10-06 17:04:26.383 (POST /api/v1/session 201)
+17:04:27.403 precheck 202 at device 10-06 17:04:26.850 (POST /api/v1/session/{id}/precheck 202)
+17:04:40.279 host load 14.03 12.96 11.26
+17:04:40.343 device-host clock offset ms: -432, -434, -436, -434, -433
+17:04:40.635 screenrecord R10 started (pid 27793) at 17:04:46.239; load 13.71 12.91 11.25 (waited 5 s for load <= 14)
+17:04:46.746 start 200 at device 10-06 17:04:50.022 (POST /api/v1/session/{id}/start 200)
+17:04:50.603 until true at 17:04:50.607 after 3 ms => "RECORDING"
+17:05:06.647 marker NOT SEEN in 15 s
+17:05:30.697 press sm-end-confirm ok at 17:05:30.711
+17:05:31.287 until true at 17:05:31.293 after 6 ms => "STOPPING"
+17:05:31.544 until true at 17:05:38.313 after 6768 ms => {"state":"SEALED","modal":"SEALED"}
+17:05:44.468 screenrecord R10 pulled; every frame extracted (passthrough)
+17:06:02.228 serverlog since R10 (8):
+    17:04:14.498 POST /api/v1/session/:id/summary/acknowledge 204
+    17:04:26.640 POST /api/v1/session 201
+    17:04:27.146 POST /api/v1/session/:id/precheck 202
+    17:04:37.377 [socket closed]
+    17:04:37.527 GET /api/v1/auth/session 200
+    17:04:37.534 [socket opened]
+    17:04:50.404 POST /api/v1/session/:id/start 200
+    17:05:30.761 POST /api/v1/session/:id/stop 202
+17:06:02.343 js => {"id":"SES-20261006-0069","state":"SEALED","subject":"RF PH R10","startedAt":"2026-10-06T17:04:50.396+07:00","stoppedAt":"2026-10-06T17:05:30.746+07:00","sealedAt":"2026-10-06T17:05:38.091+07:00","evidenceId":"EV-20261006-0056","elapsedMs":40350,"audit":[["AUD-001082","SESSION_CREATED","OPR-001","17:04:26.627",""],["AUD-001083","PRECHECK_PASSED","OPR-001","17:04:31.539",""],["AUD-001084","RECORDING_STARTED","OPR-001","17:04:50.396",""],["AUD-001085","TIMESTAMP_CONFIRMED",null,"17:04:53.168",""],["AUD-001086","FRAME_HASH",null,"17:04:55.577",""],["AUD-001087","FRAME_HASH",null,"17:04:56.496",""],["AUD-001088","FRAME_HASH",null,"17:05:00.519",""],["AUD-001089","WRITE_VERIFIED",null,"17:05:00.577",""],["AUD-001090","TIMESTAMP_CONFIRMED",null,"17:05:10.837",""],["AUD-001091","FRAME_HASH",null,"17:05:13.594",""],["AUD-001092","WRITE_VERIFIED",null,"17:05:19.076",""],["AUD-001093","WRITE_VERIFIED",null,"17:05:25.090",""],["AUD-001094","FRAME_HASH",null,"17:05:25.689",""],["AUD-001095","RECORDING_STOPPED","OPR-002","17:05:30.746","RF PH R10 web stop right after a bookmark"],["AUD-001096","EVIDENCE_SEALED",null,"17:05:38.091",""]]}
+===== R11
+17:06:44.218 batch start; device time 10-06 17:06:43.000; host load 13.66
+17:06:57.221 create 201 at device 10-06 17:06:56.871 (POST /api/v1/session 201)
+17:06:58.135 precheck 202 at device 10-06 17:06:57.103 (POST /api/v1/session/{id}/precheck 202)
+17:07:11.232 host load 11.65 13.22 11.70
+17:07:11.291 device-host clock offset ms: -434, -435, -436, -437, -433
+17:07:11.552 screenrecord R11 started (pid 5372) at 17:07:12.155; load 11.65 13.22 11.70
+17:07:12.413 start 200 at device 10-06 17:07:15.698 (POST /api/v1/session/{id}/start 200)
+17:07:16.950 until true at 17:07:16.951 after 1 ms => "RECORDING"
+17:07:18.416 press sm-end-confirm ok at 17:07:18.425
+17:07:18.684 until true at 17:07:18.686 after 2 ms => "STOPPING"
+17:07:19.097 until true at 17:07:25.993 after 6896 ms => {"state":"SEALED","modal":"SEALED"}
+17:07:33.533 screenrecord R11 pulled; every frame extracted (passthrough)
+17:08:14.226 serverlog since R11 (8):
+    17:06:44.915 POST /api/v1/session/:id/summary/acknowledge 204
+    17:06:57.220 POST /api/v1/session 201
+    17:06:57.549 POST /api/v1/session/:id/precheck 202
+    17:07:08.427 [socket closed]
+    17:07:08.570 GET /api/v1/auth/session 200
+    17:07:08.577 [socket opened]
+    17:07:15.983 POST /api/v1/session/:id/start 200
+    17:07:18.462 POST /api/v1/session/:id/stop 202
+17:08:14.770 js => {"id":"SES-20261006-0070","state":"SEALED","subject":"RF PH R11","startedAt":"2026-10-06T17:07:15.974+07:00","stoppedAt":"2026-10-06T17:07:18.441+07:00","sealedAt":"2026-10-06T17:07:25.843+07:00","evidenceId":"EV-20261006-0057","elapsedMs":2467,"audit":[["AUD-001098","SESSION_CREATED","OPR-001","17:06:57.208",""],["AUD-001099","PRECHECK_PASSED","OPR-001","17:07:01.594",""],["AUD-001100","RECORDING_STARTED","OPR-001","17:07:15.974",""],["AUD-001101","TIMESTAMP_CONFIRMED",null,"17:07:16.764",""],["AUD-001102","RECORDING_STOPPED","OPR-002","17:07:18.441","RF PH R11 early web stop"],["AUD-001103","EVIDENCE_SEALED",null,"17:07:25.843",""]]}
+===== R12
+17:09:17.071 batch start; device time 10-06 17:09:16.000; host load 12.48
+17:09:30.153 create 201 at device 10-06 17:09:29.774 (POST /api/v1/session 201)
+17:09:30.901 precheck 202 at device 10-06 17:09:29.929 (POST /api/v1/session/{id}/precheck 202)
+17:09:43.691 host load 12.37 14.08 12.39
+17:09:43.739 device-host clock offset ms: -439, -437, -440, -441, -438
+17:09:43.974 screenrecord R12 started (pid 50723) at 17:09:44.578; load 12.37 14.08 12.39
+17:09:44.870 start 200 at device 10-06 17:09:48.280 (POST /api/v1/session/{id}/start 200)
+17:09:49.087 until true at 17:09:49.106 after 19 ms => "RECORDING"
+17:10:19.390 press sm-end-confirm ok at 17:10:19.395
+17:10:19.531 until true at 17:10:19.534 after 3 ms => "STOPPING"
+17:10:19.654 until true at 17:10:25.933 after 6279 ms => {"state":"SEALED","modal":"SEALED"}
+17:10:31.605 screenrecord R12 pulled; every frame extracted (passthrough)
+17:10:50.400 serverlog since R12 (8):
+    17:09:17.703 POST /api/v1/session/:id/summary/acknowledge 204
+    17:09:30.156 POST /api/v1/session 201
+    17:09:30.377 POST /api/v1/session/:id/precheck 202
+    17:09:40.907 [socket closed]
+    17:09:41.030 GET /api/v1/auth/session 200
+    17:09:41.047 [socket opened]
+    17:09:48.700 POST /api/v1/session/:id/start 200
+    17:10:19.410 POST /api/v1/session/:id/stop 202
+17:10:50.903 js => {"id":"SES-20261006-0071","state":"SEALED","subject":"RF PH R12","startedAt":"2026-10-06T17:09:48.688+07:00","stoppedAt":"2026-10-06T17:10:19.404+07:00","sealedAt":"2026-10-06T17:10:25.779+07:00","evidenceId":"EV-20261006-0058","elapsedMs":30716,"audit":[["AUD-001105","SESSION_CREATED","OPR-001","17:09:30.150",""],["AUD-001106","PRECHECK_PASSED","OPR-001","17:09:34.332",""],["AUD-001107","RECORDING_STARTED","OPR-001","17:09:48.688",""],["AUD-001108","WRITE_VERIFIED",null,"17:10:05.893",""],["AUD-001109","TIMESTAMP_CONFIRMED",null,"17:10:14.870",""],["AUD-001110","FRAME_HASH",null,"17:10:15.397",""],["AUD-001111","WRITE_VERIFIED",null,"17:10:17.419",""],["AUD-001112","RECORDING_STOPPED","OPR-002","17:10:19.404","RF PH R12 web stop after 30 s"],["AUD-001113","EVIDENCE_SEALED",null,"17:10:25.779",""]]}
+===== R13
+17:18:56.412 batch start; device time 10-06 17:18:55.000; host load 10.66
+17:19:09.213 create 201 at device 10-06 17:19:08.859 (POST /api/v1/session 201)
+17:19:09.958 precheck 202 at device 10-06 17:19:09.017 (POST /api/v1/session/{id}/precheck 202)
+17:19:22.925 host load 10.36 9.67 10.56
+17:19:23.033 device-host clock offset ms: -441, -431, -427, -442, -443
+17:19:23.354 screenrecord R13 started (pid 56836) at 17:19:23.957; load 10.36 9.67 10.56
+17:19:24.479 start 200 at device 10-06 17:19:27.521 (POST /api/v1/session/{id}/start 200)
+17:19:28.159 until true at 17:19:28.163 after 4 ms => "RECORDING"
+17:19:36.481 press sm-end-confirm ok at 17:19:36.490
+17:19:36.928 until true at 17:19:36.931 after 3 ms => "STOPPING"
+17:19:37.097 until true at 17:19:43.591 after 6494 ms => {"state":"SEALED","modal":"SEALED"}
+17:19:49.358 screenrecord R13 pulled; every frame extracted (passthrough)
+17:20:15.942 serverlog since R13 (8):
+    17:18:57.179 POST /api/v1/session/:id/summary/acknowledge 204
+    17:19:09.191 POST /api/v1/session 201
+    17:19:09.470 POST /api/v1/session/:id/precheck 202
+    17:19:20.086 [socket closed]
+    17:19:20.239 [socket opened]
+    17:19:20.249 GET /api/v1/auth/session 200
+    17:19:27.962 POST /api/v1/session/:id/start 200
+    17:19:36.510 POST /api/v1/session/:id/stop 202
+17:20:16.020 js => {"id":"SES-20261006-0072","state":"SEALED","subject":"RF PH R13","startedAt":"2026-10-06T17:19:27.953+07:00","stoppedAt":"2026-10-06T17:19:36.502+07:00","sealedAt":"2026-10-06T17:19:43.443+07:00","evidenceId":"EV-20261006-0059","elapsedMs":8549,"audit":[["AUD-001115","SESSION_CREATED","OPR-001","17:19:09.182",""],["AUD-001116","PRECHECK_PASSED","OPR-001","17:19:13.764",""],["AUD-001117","RECORDING_STARTED","OPR-001","17:19:27.953",""],["AUD-001118","FRAME_HASH",null,"17:19:30.799",""],["AUD-001119","FRAME_HASH",null,"17:19:31.624",""],["AUD-001120","RECORDING_STOPPED","OPR-002","17:19:36.502","RF PH R13 web stop about 7 s after the start"],["AUD-001121","EVIDENCE_SEALED",null,"17:19:43.443",""]]}
+===== R14
+17:20:17.440 batch start; device time 10-06 17:20:16.000; host load 11.12
+17:20:29.999 create 201 at device 10-06 17:20:29.607 (POST /api/v1/session 201)
+17:20:30.123 precheck 202 at device 10-06 17:20:29.844 (POST /api/v1/session/{id}/precheck 202)
+17:20:43.440 host load 11.73 10.16 10.66
+17:20:43.499 device-host clock offset ms: -443, -443, -446, -445, -446
+17:20:43.716 screenrecord R14 started (pid 59010) at 17:20:44.319; load 11.73 10.16 10.66
+17:20:44.493 start 200 at device 10-06 17:20:47.369 (POST /api/v1/session/{id}/start 200)
+17:20:48.085 until true at 17:20:48.086 after 1 ms => "RECORDING"
+17:21:01.203 marker 204 at device 10-06 17:21:01.159 (POST /api/v1/session/{id}/markers 204)
+17:21:02.509 press sm-end-confirm ok at 17:21:02.516
+17:21:02.591 until true at 17:21:02.651 after 60 ms => "STOPPING"
+17:21:02.875 until true at 17:21:08.793 after 5918 ms => {"state":"SEALED","modal":"SEALED"}
+17:21:14.165 screenrecord R14 pulled; every frame extracted (passthrough)
+17:21:47.423 serverlog since R14 (9):
+    17:20:18.113 POST /api/v1/session/:id/summary/acknowledge 204
+    17:20:29.999 POST /api/v1/session 201
+    17:20:30.298 POST /api/v1/session/:id/precheck 202
+    17:20:40.689 [socket closed]
+    17:20:40.818 GET /api/v1/auth/session 200
+    17:20:40.832 [socket opened]
+    17:20:47.802 POST /api/v1/session/:id/start 200
+    17:21:01.460 POST /api/v1/session/:id/markers 204
+    17:21:02.541 POST /api/v1/session/:id/stop 202
+17:21:47.582 js => {"id":"SES-20261006-0073","state":"SEALED","subject":"RF PH R14","startedAt":"2026-10-06T17:20:47.793+07:00","stoppedAt":"2026-10-06T17:21:02.533+07:00","sealedAt":"2026-10-06T17:21:08.652+07:00","evidenceId":"EV-20261006-0060","elapsedMs":14740,"audit":[["AUD-001123","SESSION_CREATED","OPR-001","17:20:29.993",""],["AUD-001124","PRECHECK_PASSED","OPR-001","17:20:35.007",""],["AUD-001125","RECORDING_STARTED","OPR-001","17:20:47.793",""],["AUD-001126","FRAME_HASH",null,"17:20:56.851",""],["AUD-001127","MARKER_ADDED","OPR-001","17:21:01.445",""],["AUD-001128","RECORDING_STOPPED","OPR-002","17:21:02.533","RF PH R14 web stop right after a bookmark"],["AUD-001129","EVIDENCE_SEALED",null,"17:21:08.652",""]]}
+===== R15
+17:21:48.925 batch start; device time 10-06 17:21:48.000; host load 12.29
+17:22:01.341 create 201 at device 10-06 17:22:00.950 (POST /api/v1/session 201)
+17:22:02.079 precheck 202 at device 10-06 17:22:01.142 (POST /api/v1/session/{id}/precheck 202)
+17:22:14.921 host load 10.28 10.06 10.57
+17:22:14.965 device-host clock offset ms: -447, -446, -443, -447, -446
+17:22:15.182 screenrecord R15 started (pid 61632) at 17:22:15.784; load 10.28 10.06 10.57
+17:22:16.029 start 200 at device 10-06 17:22:19.015 (POST /api/v1/session/{id}/start 200)
+17:22:19.590 until true at 17:22:19.609 after 19 ms => "RECORDING"
+17:22:49.720 press sm-end-confirm ok at 17:22:49.726
+17:22:49.832 until true at 17:22:49.850 after 18 ms => "STOPPING"
+17:22:49.977 until true at 17:22:57.433 after 7456 ms => {"state":"SEALED","modal":"SEALED"}
+17:23:02.861 screenrecord R15 pulled; every frame extracted (passthrough)
+17:23:27.165 serverlog since R15 (8):
+    17:21:49.461 POST /api/v1/session/:id/summary/acknowledge 204
+    17:22:01.326 POST /api/v1/session 201
+    17:22:01.597 POST /api/v1/session/:id/precheck 202
+    17:22:12.175 [socket closed]
+    17:22:12.294 GET /api/v1/auth/session 200
+    17:22:12.307 [socket opened]
+    17:22:19.449 POST /api/v1/session/:id/start 200
+    17:22:49.750 POST /api/v1/session/:id/stop 202
+17:23:27.235 js => {"id":"SES-20261006-0074","state":"SEALED","subject":"RF PH R15","startedAt":"2026-10-06T17:22:19.439+07:00","stoppedAt":"2026-10-06T17:22:49.742+07:00","sealedAt":"2026-10-06T17:22:57.324+07:00","evidenceId":"EV-20261006-0061","elapsedMs":30303,"audit":[["AUD-001131","SESSION_CREATED","OPR-001","17:22:01.320",""],["AUD-001132","PRECHECK_PASSED","OPR-001","17:22:05.109",""],["AUD-001133","RECORDING_STARTED","OPR-001","17:22:19.439",""],["AUD-001134","FRAME_HASH",null,"17:22:27.299",""],["AUD-001135","WRITE_VERIFIED",null,"17:22:38.643",""],["AUD-001136","WRITE_VERIFIED",null,"17:22:40.646",""],["AUD-001137","FRAME_HASH",null,"17:22:43.279",""],["AUD-001138","FRAME_HASH",null,"17:22:43.920",""],["AUD-001139","FRAME_HASH",null,"17:22:47.445",""],["AUD-001140","RECORDING_STOPPED","OPR-002","17:22:49.742","RF PH R15 web stop after 30 s"],["AUD-001141","EVIDENCE_SEALED",null,"17:22:57.324",""]]}
+===== R16
+17:23:28.498 batch start; device time 10-06 17:23:28.000; host load 10.28
+17:23:41.241 create 201 at device 10-06 17:23:40.846 (POST /api/v1/session 201)
+17:23:41.349 precheck 202 at device 10-06 17:23:41.061 (POST /api/v1/session/{id}/precheck 202)
+17:23:54.629 host load 9.06 9.79 10.41
+17:23:54.685 device-host clock offset ms: -446, -447, -446, -446, -448
+17:23:54.904 screenrecord R16 started (pid 64303) at 17:23:55.508; load 9.06 9.79 10.41
+17:23:55.689 start 200 at device 10-06 17:23:58.728 (POST /api/v1/session/{id}/start 200)
+17:23:59.480 until true at 17:23:59.481 after 1 ms => "RECORDING"
+17:24:07.359 press sm-end-confirm ok at 17:24:07.364
+17:24:07.644 until true at 17:24:07.649 after 5 ms => "STOPPING"
+17:24:07.897 until true at 17:24:14.852 after 6955 ms => {"state":"SEALED","modal":"SEALED"}
+17:24:20.302 screenrecord R16 pulled; every frame extracted (passthrough)
+17:24:51.329 serverlog since R16 (8):
+    17:23:29.088 POST /api/v1/session/:id/summary/acknowledge 204
+    17:23:41.236 POST /api/v1/session 201
+    17:23:41.510 POST /api/v1/session/:id/precheck 202
+    17:23:51.900 [socket closed]
+    17:23:52.053 [socket opened]
+    17:23:52.053 GET /api/v1/auth/session 200
+    17:23:59.168 POST /api/v1/session/:id/start 200
+    17:24:07.387 POST /api/v1/session/:id/stop 202
+17:24:51.393 js => {"id":"SES-20261006-0075","state":"SEALED","subject":"RF PH R16","startedAt":"2026-10-06T17:23:59.156+07:00","stoppedAt":"2026-10-06T17:24:07.379+07:00","sealedAt":"2026-10-06T17:24:14.630+07:00","evidenceId":"EV-20261006-0062","elapsedMs":8223,"audit":[["AUD-001143","SESSION_CREATED","OPR-001","17:23:41.225",""],["AUD-001144","PRECHECK_PASSED","OPR-001","17:23:46.123",""],["AUD-001145","RECORDING_STARTED","OPR-001","17:23:59.156",""],["AUD-001146","WRITE_VERIFIED",null,"17:24:03.747",""],["AUD-001147","RECORDING_STOPPED","OPR-002","17:24:07.379","RF PH R16 web stop about 7 s after the start"],["AUD-001148","EVIDENCE_SEALED",null,"17:24:14.630",""]]}
+===== R17
+17:25:19.193 batch start; device time 10-06 17:25:18.000; host load 11.29
+17:25:31.748 create 201 at device 10-06 17:25:31.386 (POST /api/v1/session 201)
+17:25:32.476 precheck 202 at device 10-06 17:25:31.602 (POST /api/v1/session/{id}/precheck 202)
+17:25:45.529 host load 9.69 10.00 10.42
+17:25:45.615 device-host clock offset ms: -447, -448, -449, -449, -449
+17:25:45.819 screenrecord R17 started (pid 67405) at 17:25:46.422; load 9.69 10.00 10.42
+17:25:46.931 start 200 at device 10-06 17:25:50.058 (POST /api/v1/session/{id}/start 200)
+17:25:50.598 until true at 17:25:50.612 after 14 ms => "RECORDING"
+17:25:50.901 press sm-end-confirm ok at 17:25:50.905
+17:25:51.039 until true at 17:25:51.041 after 2 ms => "STOPPING"
+17:25:51.129 until true at 17:25:56.992 after 5863 ms => {"state":"SEALED","modal":"SEALED"}
+17:26:02.442 screenrecord R17 pulled; every frame extracted (passthrough)
+17:27:32.051 serverlog since R17 (8):
+    17:25:19.666 POST /api/v1/session/:id/summary/acknowledge 204
+    17:25:31.738 POST /api/v1/session 201
+    17:25:32.056 POST /api/v1/session/:id/precheck 202
+    17:25:42.697 [socket closed]
+    17:25:42.859 GET /api/v1/auth/session 200
+    17:25:42.871 [socket opened]
+    17:25:50.479 POST /api/v1/session/:id/start 200
+    17:25:50.919 POST /api/v1/session/:id/stop 202
+17:27:32.098 js => {"id":"SES-20261006-0076","state":"SEALED","subject":"RF PH R17","startedAt":"2026-10-06T17:25:50.468+07:00","stoppedAt":"2026-10-06T17:25:50.912+07:00","sealedAt":"2026-10-06T17:25:56.870+07:00","evidenceId":"EV-20261006-0063","elapsedMs":444,"audit":[["AUD-001150","SESSION_CREATED","OPR-001","17:25:31.731",""],["AUD-001151","PRECHECK_PASSED","OPR-001","17:25:36.093",""],["AUD-001152","RECORDING_STARTED","OPR-001","17:25:50.468",""],["AUD-001153","RECORDING_STOPPED","OPR-002","17:25:50.912","RF PH R17 web stop at once after the start"],["AUD-001154","EVIDENCE_SEALED",null,"17:25:56.870",""]]}
+===== R18
+17:55:33.367 batch start; device time 10-06 17:55:32.000; host load 5.02
+17:55:43.245 create 201 at device 10-06 17:55:42.825 (POST /api/v1/session 201)
+17:55:44.026 precheck 202 at device 10-06 17:55:42.924 (POST /api/v1/session/{id}/precheck 202)
+17:55:56.659 host load 5.33 4.91 5.30
+17:55:56.683 device-host clock offset ms: -463, -464, -463, -463, -463
+17:55:56.796 screenrecord R18 started (pid 80895) at 17:55:57.399; load 5.33 4.91 5.30
+17:55:57.538 start 200 at device 10-06 17:56:00.350 (POST /api/v1/session/{id}/start 200)
+17:56:01.178 until true at 17:56:01.178 after 0 ms => "RECORDING"
+17:56:30.741 press sm-end-confirm ok at 17:56:30.749
+17:56:30.824 until true at 17:56:30.870 after 46 ms => "STOPPING"
+17:56:31.028 until true at 17:56:37.606 after 6578 ms => {"state":"SEALED","modal":"SEALED"}
+17:56:42.883 screenrecord R18 pulled; every frame extracted (passthrough)
+17:57:10.206 serverlog since R18 (7):
+    17:55:43.256 POST /api/v1/session 201
+    17:55:43.393 POST /api/v1/session/:id/precheck 202
+    17:55:53.962 [socket closed]
+    17:55:54.076 GET /api/v1/auth/session 200
+    17:55:54.080 [socket opened]
+    17:56:00.794 POST /api/v1/session/:id/start 200
+    17:56:30.766 POST /api/v1/session/:id/stop 202
+17:57:10.248 js => {"id":"SES-20261006-0077","state":"SEALED","subject":"RF PH R18","startedAt":"2026-10-06T17:56:00.788+07:00","stoppedAt":"2026-10-06T17:56:30.759+07:00","sealedAt":"2026-10-06T17:56:37.485+07:00","evidenceId":"EV-20261006-0064","elapsedMs":29971,"audit":[["AUD-001166","SESSION_CREATED","OPR-001","17:55:43.249",""],["AUD-001167","PRECHECK_PASSED","OPR-001","17:55:47.738",""],["AUD-001168","RECORDING_STARTED","OPR-001","17:56:00.788",""],["AUD-001169","WRITE_VERIFIED",null,"17:56:12.981",""],["AUD-001170","WRITE_VERIFIED",null,"17:56:18.553",""],["AUD-001171","TIMESTAMP_CONFIRMED",null,"17:56:18.690",""],["AUD-001172","FRAME_HASH",null,"17:56:25.781",""],["AUD-001173","RECORDING_STOPPED","OPR-002","17:56:30.759","RF PH R18 web stop after 30 s"],["AUD-001174","EVIDENCE_SEALED",null,"17:56:37.485",""]]}

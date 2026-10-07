@@ -32,6 +32,8 @@ jest.mock('expo-router', () => ({
   useIsFocused: () => true,
 }));
 
+/** W93-17 (D239): the explicit per-test budget of the load-flaky tests (ms). */
+const LOAD_TOLERANT_TIMEOUT_MS = 20_000;
 const LAYOUTS: readonly WindowName[] = ['phonePortrait', 'phoneLandscape', 'tabletPortrait', 'tabletLandscape'];
 const SIMULATION_WORDING = /simulat|mock-core/i;
 
@@ -73,6 +75,7 @@ afterEach(() => {
 });
 
 describe('More in LIVE mode (MD-8, AC-C-30, §3.2)', () => {
+  // W93-17 (FXR-M; D239): ~0.2 s alone; passed 5 s at host load 16.7. An explicit budget, not the default.
   it('the footer reads "Core Live" and names the Core server as the source of the data; nothing claims a simulation, in any layout class', async () => {
     const more = await signedInMore();
     for (const window of LAYOUTS) {
@@ -84,7 +87,7 @@ describe('More in LIVE mode (MD-8, AC-C-30, §3.2)', () => {
       expect([window, claims]).toEqual([window, []]);
     }
     expect(getMissingKeys()).toEqual([]);
-  });
+  }, LOAD_TOLERANT_TIMEOUT_MS);
 
   it('shows the Core\'s data: the operator of the session, the pairing with the Core\'s own name, the audit count of the replica', async () => {
     const more = await signedInMore();

@@ -1,0 +1,16 @@
+
+> @dems/mock-core@0.1.0 test
+> vitest run --maxWorkers=2
+
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/apps/mock-core
+
+
+ Test Files  4 passed (4)
+      Tests  19 passed (19)
+   Start at  10:31:10
+   Duration  3.92s (tests 90%, import 6%, transform 4%)
+
+
+# 2026-10-07 10:31:19 git diff --stat acaff20 -- apps/mock-core scripts/release   (output follows, empty = no line)
+# lines=0; git status --porcelain (untracked/modified) lines=0

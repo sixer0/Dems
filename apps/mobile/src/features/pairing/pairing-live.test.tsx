@@ -76,11 +76,26 @@ jest.mock('expo-keep-awake', () => ({
   activateKeepAwakeAsync: jest.fn(async () => undefined),
   deactivateKeepAwake: jest.fn(async () => undefined),
 }));
-const mockRouter = { back: jest.fn(), replace: jest.fn(), push: jest.fn(), navigate: jest.fn(), canGoBack: jest.fn(() => false) };
+const mockRouter = {
+  back: jest.fn(),
+  replace: jest.fn(),
+  push: jest.fn(),
+  navigate: jest.fn(),
+  canGoBack: jest.fn(() => false),
+  // Row FX-M1 (E2E-S-1): the signed-out hand-off resets the stack to the boot router.
+  canDismiss: jest.fn(() => false),
+  dismissAll: jest.fn(),
+};
 jest.mock('expo-router', () => ({
   useRouter: () => mockRouter,
   useIsFocused: () => true,
 }));
+
+// Row CF-M1 (the same class as the controller's note on `pairing-handoff-routes.test.tsx`): in CF-M1's
+// full mobile run at host load 11, the 423 countdown test passed jest's default 5 s on the slow render of
+// the real Live source and Pair screen, and passed alone. The clocks here are the fake transport's
+// (`elapse`); real time only lets the kit's frames run. The budget is for slow rendering, per file.
+jest.setTimeout(30_000);
 
 /** The marker code (SD-23). Put together here, so that a search of the tree for it finds this line only. */
 const MARKER_CODE = ['604', '173'].join('');
@@ -349,6 +364,7 @@ beforeEach(async () => {
   resetMissingKeys();
   jest.clearAllMocks();
   mockRouter.canGoBack.mockImplementation(() => false);
+  mockRouter.canDismiss.mockImplementation(() => false);
   printed = [];
   consoleSpies = (['log', 'info', 'warn', 'error', 'debug'] as const).map((method) =>
     jest.spyOn(console, method).mockImplementation((...args: unknown[]) => {
@@ -504,15 +520,18 @@ describe('a correct code (AC-C-75, MP-5, MP-6)', () => {
     unmount();
   });
 
-  it('with a screen underneath (opened from sign-in), the hand-off goes back to it', async () => {
+  it('with screens underneath (deep links pushed Stack Check), the signed-out hand-off resets to the boot router, never back (E2E-S-1)', async () => {
     mockRouter.canGoBack.mockImplementation(() => true);
+    mockRouter.canDismiss.mockImplementation(() => true);
     core.redeem = accepting(REDEEMED);
     const { unmount } = await mount();
     await attempt(MARKER_CODE);
     expect(screen.getByTestId('pairing-paired-card')).toBeTruthy();
     await elapse(PAIR_TIMELINE.handoffAfter + 100);
-    expect(mockRouter.back).toHaveBeenCalledTimes(1);
-    expect(mockRouter.replace).not.toHaveBeenCalled();
+    expect(mockRouter.back).not.toHaveBeenCalled();
+    expect(mockRouter.dismissAll).toHaveBeenCalledTimes(1);
+    expect(mockRouter.replace).toHaveBeenCalledTimes(1);
+    expect(mockRouter.replace).toHaveBeenCalledWith('/');
     unmount();
   });
 });
@@ -1080,6 +1099,55 @@ describe('the notices of the gate (§9.4, §6.6)', () => {
     expect(screen.getByTestId('pairing-notice-revoked')).toBeTruthy();
     // Nobody was signed in and nothing recorded: the sentence about a recording is not added.
     expect(textOf('pairing-notice-body')).toBe("This tablet's pairing was revoked on the Core. Ask a supervisor for a new pairing code.");
+    expect(getMissingKeys()).toEqual([]);
+    unmount();
+  });
+
+  it('row FX-M1, E2E-S-3: while the revoked credential is deleted and before the socket is reopened, the screen never says "Core server unreachable"', async () => {
+    pairTablet();
+    const { live, unmount } = await mount();
+    expect(screen.getByTestId('pairing-paired-card')).toBeTruthy();
+    // The device's Keystore took about 3 s under load (4403 at 10:08:24.59, the anonymous socket at
+    // 10:08:27.67): every delete of the secure store waits here until the test releases it.
+    const deletes = jest.requireMock<{ deleteItemAsync: jest.MockedFunction<(key: string) => Promise<void>> }>(['expo', 'secure', 'store'].join('-')).deleteItemAsync;
+    const original = deletes.getMockImplementation();
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    deletes.mockImplementation(async (key: string) => {
+      await held;
+      await original?.(key);
+    });
+    try {
+      core.devices.set(REDEEMED.deviceCredential, { id: REDEEMED.deviceId, state: 'REVOKED' });
+      act(() => {
+        lastSocket().deviceRevoked('REVOKED');
+      });
+      await flush();
+      act(() => {
+        if (lastSocket().state === 'OPEN') lastSocket().close(4403);
+      });
+      await flush();
+      // The window: the Core ended the run on purpose, the socket is closed, nothing is reopened yet.
+      expect(live.live.link).toBe('OFFLINE');
+      expect(live.live.socketStatus().end).not.toBeNull();
+      expect(screen.getByTestId('pairing-notice-revoked')).toBeTruthy();
+      expect(screenText()).not.toMatch(/unreachable/i);
+      expect(label('pairing-identity-link')).toBe('Link, Connecting…');
+      await elapse(1000);
+      expect(screenText()).not.toMatch(/unreachable/i);
+
+      // The deletion lands and the socket is reopened without the credential: Connected.
+      release();
+      await flush();
+      await elapse(1000);
+      expect(store().keys()).toEqual([]);
+      expect(label('pairing-identity-link')).toBe('Link, Connected');
+      expect(screenText()).not.toMatch(/unreachable/i);
+    } finally {
+      if (original) deletes.mockImplementation(original);
+    }
     expect(getMissingKeys()).toEqual([]);
     unmount();
   });

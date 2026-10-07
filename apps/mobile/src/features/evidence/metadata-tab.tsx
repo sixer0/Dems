@@ -3,6 +3,15 @@
  * `KeyValueList`, then the package's `manifest.json` in mono `Text selectable` inside a
  * `ScrollShadow` (S19). The text is `getDemoEvidenceDocuments(id).manifestJson`, byte-exact (hashing
  * it gives the signed digest). For an exported item, the §19.2 export entry of the package follows.
+ *
+ * E2E-T-6 (E-fix row FX-M2; decision D200/D201): an item without a bundled DEMO package (in Live mode
+ * every item the Core recorded today, `media.source NONE`) showed only "No DEMO package for this item",
+ * while the web's Metadata tab shows the record. The tab now shows the same record as the web
+ * (`apps/core-web/src/features/evidence/metadata-tab.tsx`): the item's values as JSON, labelled "Core
+ * record" in Live mode (the Core server's record, never "simulated") and "Simulated evidence record"
+ * in Simulated mode, under a line that says why there is no manifest. While Live mode still asks the
+ * Core for the media reference, or when it got no answer, the line says that instead of claiming that
+ * no package exists (the web's W83 ledger #95 wording).
  */
 import { LinearGradient } from 'expo-linear-gradient';
 import { ScrollShadow } from 'heroui-native';
@@ -11,6 +20,7 @@ import { useTranslation } from 'react-i18next';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { MANIFEST_FIELDS, getDemoEvidenceDocuments, type DemoEvidencePackage } from '@dems/shared/demo-data';
 import { DATE_PATTERNS, formatDate } from '@dems/shared/realtime';
+import { toWibIso, type EvidenceItem } from '@dems/shared/sim';
 import { derived, fontFamily, palette, radius, spacing, typography } from '@dems/shared/tokens';
 import { KeyValueList, type KeyValueItem } from '@/components/kit';
 import { reportRuntimeIssue } from '@/runtime';
@@ -62,12 +72,58 @@ export function manifestSummaries(manifest: Json, t: (key: string, options?: Rec
   };
 }
 
+/** What Live mode knows of the item's media reference (operation 40); `ready` in Simulated mode. */
+export type MetadataMediaStatus = 'loading' | 'ready' | 'unavailable';
+
+/**
+ * The item's record as the web's Metadata tab prints it for an item without a package (the same keys
+ * in the same order, times in WIB ISO form). Pure; exported for tests.
+ */
+export function evidenceRecordJson(item: EvidenceItem, options: { live: boolean; mediaStatus: MetadataMediaStatus }): string {
+  const { live, mediaStatus } = options;
+  return JSON.stringify(
+    {
+      ...(live
+        ? {
+            record: 'CORE',
+            note:
+              mediaStatus === 'ready'
+                ? "The Core server's record of this item; no DEMO package joins it."
+                : "The Core server's record of this item; its media reference is unavailable, so no DEMO package is shown.",
+          }
+        : { simulated: true, note: 'SIMULATED record from the in-app simulator; no DEMO package joins this item.' }),
+      evidenceId: item.id,
+      sessionId: item.sessionId,
+      caseNumber: item.caseNumber,
+      subject: { name: item.subjectName, type: item.subjectType },
+      investigatorId: item.investigatorId,
+      room: item.room,
+      recordedAt: toWibIso(item.recordedAt),
+      endedAt: toWibIso(item.endedAt),
+      sealedAt: item.sealedAt === null ? null : toWibIso(item.sealedAt),
+      status: item.status,
+      lifecycleStage: item.lifecycleStage,
+      manifestHash: item.manifestHash,
+      tracks: item.tracks,
+      signature: item.signature,
+    },
+    null,
+    2,
+  );
+}
+
 export interface MetadataTabProps {
   evidenceId: string;
   pkg: DemoEvidencePackage | null;
+  /** The item; with it, an item without a package shows its record (E2E-T-6). */
+  item?: EvidenceItem | null;
+  /** Live mode (the evidence detail reads `useCoreLink().source`): the record is the Core server's. */
+  live?: boolean;
+  /** Live mode: the state of the Core's media reference (operation 40). */
+  mediaStatus?: MetadataMediaStatus;
 }
 
-export function MetadataTab({ evidenceId, pkg }: MetadataTabProps) {
+export function MetadataTab({ evidenceId, pkg, item = null, live = false, mediaStatus = 'ready' }: MetadataTabProps) {
   const { t } = useTranslation();
   const documents = useMemo(() => (pkg ? getDemoEvidenceDocuments(evidenceId) : null), [pkg, evidenceId]);
   const manifest = useMemo(() => {
@@ -93,10 +149,38 @@ export function MetadataTab({ evidenceId, pkg }: MetadataTabProps) {
   }, [manifest, t]);
 
   if (!documents || !manifest) {
+    const why = !live
+      ? t('features.evidence.metadata.notAvailable')
+      : mediaStatus === 'loading'
+        ? t('features.evidence.media.checking')
+        : mediaStatus === 'unavailable'
+          ? t('evidence.live.mediaUnavailable')
+          : t('evidence.live.noPackage');
+    if (item === null) {
+      return (
+        <Text maxFontSizeMultiplier={1.2} style={styles.note} testID="evidence-metadata-none">
+          {why}
+        </Text>
+      );
+    }
     return (
-      <Text maxFontSizeMultiplier={1.2} style={styles.note} testID="evidence-metadata-none">
-        {t('features.evidence.metadata.notAvailable')}
-      </Text>
+      <View style={styles.root} testID="evidence-metadata-record">
+        <Text maxFontSizeMultiplier={1.2} style={styles.note} testID="evidence-metadata-none">
+          {why}
+        </Text>
+        <Text maxFontSizeMultiplier={1.2} accessibilityRole="header" style={styles.label} testID="evidence-record-title">
+          {t(live ? 'evidence.live.coreRecord' : 'evidence.metadata.simulatedRecord')}
+        </Text>
+        <View style={styles.jsonBox}>
+          <ScrollShadow LinearGradientComponent={LinearGradient}>
+            <ScrollView nestedScrollEnabled style={styles.jsonScroll} contentContainerStyle={styles.jsonContent}>
+              <Text maxFontSizeMultiplier={1.2} selectable style={styles.json} testID="evidence-record-json">
+                {evidenceRecordJson(item, { live, mediaStatus })}
+              </Text>
+            </ScrollView>
+          </ScrollShadow>
+        </View>
+      </View>
     );
   }
 

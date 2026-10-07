@@ -43,7 +43,7 @@
  * presented code goes to the comparison and nowhere else. Neither reaches a row, an event, a
  * publication or a log line (SR-28, SR-31).
  */
-import { ApiErrorCode, type PairingRedeemRequest, type PairingRedeemed } from '@dems/shared/api';
+import { ApiErrorCode, PairingCodeCloseReason, type PairingRedeemRequest, type PairingRedeemed } from '@dems/shared/api';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { looksLikeSecret } from '../../core';
 import { authenticationOf, pairedDeviceOf } from '../../plugins/authenticate';
@@ -165,7 +165,7 @@ export async function redeemPairingCode(
     if (limited === null) {
       await appendActivity(unit, redeemFailed({ ...caller, attemptsRemaining: failure.attemptsRemaining, lockedUntil: failure.lockedUntil }));
     }
-    if (consumed !== null && exhausted) await appendActivity(unit, codeClosed({ codeId: consumed.codeId, reason: 'EXHAUSTED', operatorId: null }));
+    if (consumed !== null && exhausted) await appendActivity(unit, codeClosed({ codeId: consumed.codeId, reason: PairingCodeCloseReason.EXHAUSTED, operatorId: null }));
     if (consumed !== null || expired !== null) unit.afterCommit(() => app.publish({ kind: 'admin.changed', resource: 'PAIRING_CODE' }));
     return { kind: 'FAILED', failure, limited };
   });

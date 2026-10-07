@@ -1,0 +1,378 @@
+# 2026-10-07 10:41:49 WIB git diff --stat acaff20 -- packages/shared/src/sim
+ packages/shared/src/sim/auth.ts             |  5 ++
+ packages/shared/src/sim/evidence-actions.ts |  5 +-
+ packages/shared/src/sim/session-machine.ts  | 73 +++++++++++++++++++++++++----
+ packages/shared/src/sim/text-cut.ts         | 42 +++++++++++++++++
+ packages/shared/src/sim/types.ts            |  9 ++--
+ packages/shared/src/sim/views.ts            | 24 +++++++++-
+ packages/shared/src/sim/vocabulary.ts       | 27 +++++++++++
+ 7 files changed, 169 insertions(+), 16 deletions(-)
+
+# committed part: git log --oneline acaff20..HEAD -- packages/shared/src/sim
+b90a3c6 feat: PostgreSQL backend, RBAC, device pairing and first client rows; checkpoint 1 after the backend gate
+# uncommitted part: git diff --stat HEAD -- packages/shared/src/sim
+ packages/shared/src/sim/session-machine.ts | 66 ++++++++++++++++++++++++++----
+ packages/shared/src/sim/types.ts           |  9 ++--
+ packages/shared/src/sim/views.ts           | 24 ++++++++++-
+ 3 files changed, 87 insertions(+), 12 deletions(-)
+
+# full diff
+diff --git a/packages/shared/src/sim/auth.ts b/packages/shared/src/sim/auth.ts
+index e62d294..5f89ac9 100644
+--- a/packages/shared/src/sim/auth.ts
++++ b/packages/shared/src/sim/auth.ts
+@@ -57,6 +57,11 @@ export const ROLE_PERMISSIONS = {
+     Permission.EVIDENCE_REVIEW,
+     Permission.EVIDENCE_EXPORT,
+     Permission.AUDIT_EXPORT,
++    // Backend task W16 (2026-10-04 01_specs §4.4, §19.1): additive grants, enforced by the Core
++    // server. No simulator action checks them; a screen that lists a role's grants shows them.
++    Permission.PAIRING_MANAGE,
++    Permission.USER_ADMIN,
++    Permission.DEMO_CONTROL,
+   ],
+   TECHNICIAN: [
+     Permission.EVIDENCE_VIEW,
+diff --git a/packages/shared/src/sim/evidence-actions.ts b/packages/shared/src/sim/evidence-actions.ts
+index 219c9d2..7e44902 100644
+--- a/packages/shared/src/sim/evidence-actions.ts
++++ b/packages/shared/src/sim/evidence-actions.ts
+@@ -17,6 +17,7 @@ import { SimErrorCode, SimNotFoundError, SimPermissionError, SimTransitionError
+ import { recordActivity, verifyAuditChain } from './events';
+ import { EVIDENCE_STATUS_STAGE, verifyEvidenceItem } from './evidence';
+ import { signedInOperatorId } from './session-machine';
++import { cutText } from './text-cut';
+ import type {
+   AuditExportRequest,
+   EpochMs,
+@@ -155,7 +156,7 @@ export function exportEvidenceTransition(
+   }
+   const destination =
+     typeof request.destination === 'string' && request.destination.trim()
+-      ? request.destination.trim().slice(0, 120)
++      ? cutText(request.destination.trim(), 120) // code units; never splits a surrogate pair (SIM-GAP-1)
+       : DEFAULT_EXPORT_DESTINATION;
+   const { id: exportId, meta } = nextExportId(state.meta);
+   const exported: EvidenceItem = {
+@@ -272,7 +273,7 @@ export function exportAuditTransition(
+     request === undefined
+       ? null
+       : typeof request.destination === 'string' && request.destination.trim()
+-        ? request.destination.trim().slice(0, 120)
++        ? cutText(request.destination.trim(), 120) // code units; never splits a surrogate pair (SIM-GAP-1)
+         : DEFAULT_AUDIT_EXPORT_DESTINATION;
+   const { id: exportId, meta } = nextExportId(state.meta);
+   const chain = verifyAuditChain(state.audit);
+diff --git a/packages/shared/src/sim/session-machine.ts b/packages/shared/src/sim/session-machine.ts
+index b6b1520..b3a8275 100644
+--- a/packages/shared/src/sim/session-machine.ts
++++ b/packages/shared/src/sim/session-machine.ts
+@@ -43,6 +43,7 @@ import { SimErrorCode, SimTransitionError } from './errors';
+ import { nextItemId, pushRing, recordActivity, type ActivityInput } from './events';
+ import { createEvidenceItem } from './evidence';
+ import { RngStream, type Rng, type RngStreams } from './rng';
++import { cutText } from './text-cut';
+ import type {
+   ActiveSession,
+   CreateSessionResult,
+@@ -61,6 +62,7 @@ import {
+   CRITICAL_FAULTS,
+   FaultEvt,
+   FaultKind,
++  OperatorRole,
+   Permission,
+   PRECHECK_ORDER,
+   PrecheckReasonCode,
+@@ -817,6 +819,35 @@ function sessionMarkers(session: ActiveSession): EvidenceMarker[] {
+   return markers;
+ }
+ 
++/**
++ * The operator a custody entry names for the start or the stop of the recording (E-fix FX-C,
++ * ruling R1: a sealed chain of custody is evidence; E2E-W1-1, E2E-T-3). Before the fix both
++ * entries named `createdBy`, so a SUPERVISOR who stopped an INVESTIGATOR's session was recorded
++ * as the investigator while the audit row of the same instant named the supervisor.
++ *
++ * The custody follows the session's own audit row of that transition (RECORDING_STARTED,
++ * RECORDING_STOPPED), newest first: `startRecordingTransition` and `stopRecordingTransition` write
++ * the acting operator there (`requireSessionOperator`), never the creator standing in. The audit
++ * ring is kept by every host and is durable on the Core (`audit_log`; a reload restores the newest
++ * 1,000 rows), so a reload between the stop and the seal still finds the stop's row. The actor is
++ * deliberately NOT a member of the session: the Core stores the session as the columns of
++ * `active_session`, and a member without a column would break its lossless round trip (MR-1);
++ * a column is a database contract revision.
++ *
++ * Only when the row has left the 1,000-row ring does the creator stand in, as before the fix:
++ * never for the stop (sealed 5-9 s after its row), and for the start only after about 2 hours of
++ * recording (one integrity row per 8 s), and then it differs only if another operator started it.
++ */
++export function recordingActor(state: Pick<SimState, 'audit'>, session: ActiveSession, transition: 'START' | 'STOP'): string | null {
++  const type = transition === 'START' ? 'RECORDING_STARTED' : 'RECORDING_STOPPED';
++  const rows = state.audit.rows;
++  for (let i = rows.length - 1; i >= 0; i -= 1) {
++    const row = rows[i];
++    if (row?.type === type && row.sessionId === session.id) return row.actorId;
++  }
++  return session.createdBy;
++}
++
+ function seal(state: SimState, session: ActiveSession, at: EpochMs): SimState {
+   const evidenceId = session.evidenceId ?? evidenceIdFor(state.meta.counters.evidence, session.createdAt);
+   const recordedAt = session.startedAt ?? session.createdAt;
+@@ -836,8 +867,8 @@ function seal(state: SimState, session: ActiveSession, at: EpochMs): SimState {
+     sealedAt: at,
+     status: 'SEALED',
+     custody: [
+-      { at: recordedAt, action: 'RECORDING_STARTED', actorId: session.createdBy, detail: null },
+-      { at: endedAt, action: 'RECORDING_STOPPED', actorId: session.createdBy, detail: session.stopReason },
++      { at: recordedAt, action: 'RECORDING_STARTED', actorId: recordingActor(state, session, 'START'), detail: null },
++      { at: endedAt, action: 'RECORDING_STOPPED', actorId: recordingActor(state, session, 'STOP'), detail: session.stopReason },
+       { at, action: 'SEALED', actorId: null, detail: null },
+     ],
+     markers: sessionMarkers(session),
+@@ -1017,7 +1048,7 @@ function finishIncomplete(state: SimState, session: ActiveSession, at: EpochMs):
+       startTimeSource: session.startTimeSource ?? null,
+       endTimeSource: session.stopTimeSource ?? null,
+       custody: [
+-        { at: recordedAt, action: 'RECORDING_STARTED', actorId: session.createdBy, detail: null },
++        { at: recordedAt, action: 'RECORDING_STARTED', actorId: recordingActor(state, session, 'START'), detail: null },
+         {
+           at: endedAt,
+           action: 'SESSION_INCOMPLETE',
+@@ -1067,7 +1098,8 @@ function finishIncomplete(state: SimState, session: ActiveSession, at: EpochMs):
+ export function addMarkerTransition(state: SimState, now: EpochMs, label?: string): SimState {
+   const session = requireSession(state, 'addMarker', [SessionState.RECORDING]);
+   const count = session.markerCount + 1;
+-  const text = typeof label === 'string' && label.trim() ? label.trim().slice(0, 80) : `Marker ${count}`;
++  // 80 code units, cut so that a surrogate pair is never split (SIM-GAP-1).
++  const text = typeof label === 'string' && label.trim() ? cutText(label.trim(), 80) : `Marker ${count}`;
+   let next: SimState = { ...state, session: { ...session, markerCount: count } };
+   next = addTimelineItem(next, { at: now, kind: 'MARKER', label: text, detail: null, channel: null, params: { index: count, label: text } });
+   return record(next, now, {
+@@ -1082,6 +1114,24 @@ export function addMarkerTransition(state: SimState, now: EpochMs, label?: strin
+   });
+ }
+ 
++/**
++ * The English fallback label of a note by an author of `role` (E2E-T-5): "Supervisor note",
++ * "Investigator note", "Technician note"; "Note" when the author is not known. Clients render
++ * their own copy from the timeline item's `params.authorRole` (`timelineTitleKey`).
++ */
++export function noteLabel(role: OperatorRole | null): string {
++  switch (role) {
++    case OperatorRole.SUPERVISOR:
++      return 'Supervisor note';
++    case OperatorRole.INVESTIGATOR:
++      return 'Investigator note';
++    case OperatorRole.TECHNICIAN:
++      return 'Technician note';
++    default:
++      return 'Note';
++  }
++}
++
+ export function addNoteTransition(state: SimState, now: EpochMs, text: string): SimState {
+   const session = requireSession(state, 'addNote', [SessionState.RECORDING]);
+   const body = typeof text === 'string' ? text.trim() : '';
+@@ -1090,6 +1140,10 @@ export function addNoteTransition(state: SimState, now: EpochMs, text: string):
+   }
+   const { id, meta } = nextItemId(state.meta, 'NOTE');
+   const authorId = signedInOperatorId(state);
++  // E2E-T-5: the note is labelled by its author's role at the time of writing (a SUPERVISOR's note
++  // read "Investigator note"). The note record keeps `authorId`; the timeline item carries the role.
++  const authorRole = findOperatorById(state.operators, authorId)?.role ?? null;
++  const label = noteLabel(authorRole);
+   let next: SimState = {
+     ...state,
+     meta,
+@@ -1098,21 +1152,22 @@ export function addNoteTransition(state: SimState, now: EpochMs, text: string):
+   next = addTimelineItem(next, {
+     at: now,
+     kind: 'NOTE',
+-    label: 'Investigator note',
+-    detail: body.length > 140 ? `${body.slice(0, 139)}…` : body,
++    label,
++    // At most 139 code units and an ellipsis; the cut never splits a surrogate pair (SIM-GAP-1).
++    detail: body.length > 140 ? `${cutText(body, 139)}…` : body,
+     channel: null,
+-    params: { noteId: id, length: body.length },
++    params: authorRole === null ? { noteId: id, length: body.length } : { noteId: id, length: body.length, authorRole },
+   });
+   // The audit row proves a note was added; the note text stays in the session record.
+   return record(next, now, {
+     audit: {
+       type: 'NOTE_ADDED',
+-      message: 'Investigator note added',
++      message: `${label} added`,
+       actorId: authorId,
+       sessionId: session.id,
+       details: { noteId: id, length: body.length },
+     },
+-    event: { type: 'NOTE_ADDED', message: 'Investigator note added', sessionId: session.id },
++    event: { type: 'NOTE_ADDED', message: `${label} added`, sessionId: session.id },
+   });
+ }
+ 
+diff --git a/packages/shared/src/sim/text-cut.ts b/packages/shared/src/sim/text-cut.ts
+new file mode 100644
+index 0000000..0daa3b1
+--- /dev/null
++++ b/packages/shared/src/sim/text-cut.ts
+@@ -0,0 +1,42 @@
++/**
++ * Text cuts that never split a surrogate pair (SIM-GAP-1; implementation/22_contract_b.md F-1).
++ *
++ * The simulator bounds a few user texts by UTF-16 code units (a marker label, the timeline
++ * line of a note, an export destination). `String.prototype.slice` cuts between any two code
++ * units, so a character outside the Basic Multilingual Plane (two units: a high surrogate then
++ * a low one) lying across the limit left a lone high surrogate in the state, in one case
++ * inside a hashed audit row. Such text is ill-formed: it has no UTF-8 form, so a store that
++ * keeps UTF-8 cannot hold the row as it was hashed.
++ *
++ * Pure and framework-free: no dependency, no platform API. It is used by the transitions
++ * only and is not part of the `@dems/shared/sim` surface.
++ */
++
++const isHighSurrogate = (unit: number): boolean => unit >= 0xd800 && unit <= 0xdbff;
++const isLowSurrogate = (unit: number): boolean => unit >= 0xdc00 && unit <= 0xdfff;
++
++/**
++ * The longest prefix of `text` that holds at most `maxCodeUnits` UTF-16 code units and does not
++ * end between the two halves of a surrogate pair.
++ *
++ * - A text that fits is returned unchanged.
++ * - The limit counts **code units**, as `slice(0, maxCodeUnits)` does. For a text made only of
++ *   BMP characters the result is exactly that slice, so nothing that was stored or hashed
++ *   before this helper existed changes.
++ * - When a pair lies across the limit the cut moves one unit back and the whole character is
++ *   left out: the result is then one unit shorter than the limit.
++ * - Text that is already ill-formed is **not repaired**. A lone surrogate inside the prefix
++ *   stays where it is, and a lone low surrogate at the limit is cut exactly like any other
++ *   unit. The helper only guarantees that it adds no lone surrogate of its own: well-formed
++ *   in, well-formed out. (The API text rule refuses ill-formed input at the boundary.)
++ * - A limit that is not a positive number (0, negative, NaN) gives `''`; a fraction is
++ *   rounded down.
++ */
++export function cutText(text: string, maxCodeUnits: number): string {
++  const limit = maxCodeUnits > 0 ? Math.floor(maxCodeUnits) : 0;
++  if (text.length <= limit) return text;
++  // `limit` is the index of the first unit left out. The cut splits a pair exactly when that
++  // unit is a low surrogate and the unit before it is the high surrogate it belongs to.
++  const splitsPair = limit > 0 && isLowSurrogate(text.charCodeAt(limit)) && isHighSurrogate(text.charCodeAt(limit - 1));
++  return text.slice(0, splitsPair ? limit - 1 : limit);
++}
+diff --git a/packages/shared/src/sim/types.ts b/packages/shared/src/sim/types.ts
+index 0ef9c6b..d7b5c3c 100644
+--- a/packages/shared/src/sim/types.ts
++++ b/packages/shared/src/sim/types.ts
+@@ -338,10 +338,11 @@ export interface TimelineEvent {
+   detail: string | null;
+   channel: AudioTrackId | null;
+   /**
+-   * Structured values (step 54): START `{sessionId}`; NOTE `{noteId, length}`; MARKER `{index,
+-   * label}`; SNAPSHOT `{index, cameraId}`; AUDIO_PEAK `{dbfs, track}`; AUTOSAVE `{segment,
+-   * bytesWritten}`; CHECK `{source}`; HEALTH `{}`; FAULT `{kind, evt}`. Absent on items written
+-   * before step 54.
++   * Structured values (step 54): START `{sessionId}`; NOTE `{noteId, length, authorRole?}`
++   * (`authorRole`: the author's role when the note was written, E-fix FX-C E2E-T-5; absent on
++   * older items and for an author not in the operator list); MARKER `{index, label}`; SNAPSHOT
++   * `{index, cameraId}`; AUDIO_PEAK `{dbfs, track}`; AUTOSAVE `{segment, bytesWritten}`; CHECK
++   * `{source}`; HEALTH `{}`; FAULT `{kind, evt}`. Absent on items written before step 54.
+    */
+   params?: Details;
+ }
+diff --git a/packages/shared/src/sim/views.ts b/packages/shared/src/sim/views.ts
+index db7853c..d7b9fa6 100644
+--- a/packages/shared/src/sim/views.ts
++++ b/packages/shared/src/sim/views.ts
+@@ -9,11 +9,12 @@
+ import type { NetworkDomain } from '../domain';
+ import { syntheticFingerprint } from './dataset';
+ import { stableSelector } from './memo';
+-import type { AuditRow, EpochMs, ServiceEntry, SimEvent, SimState, StorageVolume } from './types';
++import type { AuditRow, EpochMs, ServiceEntry, SimEvent, SimState, StorageVolume, TimelineEvent } from './types';
+ import {
+   AvSyncState,
+   FAULT_EVENT_CATEGORY,
+   NetworkDomainState,
++  OperatorRole,
+   SIM_EVENT_CATEGORY,
+   SmartStatus,
+   type FaultKind,
+@@ -322,3 +323,24 @@ export function logBundle(s: SimState, exportId: string | null = null): LogBundl
+     events: s.events,
+   };
+ }
++
++// ── Session timeline titles (E-fix FX-C, E2E-T-5) ────────────────────────────────────────
++
++/** The i18n key of a session timeline row's title (typed, so a client's `t` accepts it). */
++export type TimelineTitleKey = `session.timeline.kind.${TimelineEvent['kind']}` | `session.timeline.noteBy.${OperatorRole}`;
++
++const NOTE_TITLE_ROLES: readonly string[] = Object.values(OperatorRole);
++const isNoteTitleRole = (value: unknown): value is OperatorRole => typeof value === 'string' && NOTE_TITLE_ROLES.includes(value);
++
++/**
++ * The i18n key of a session timeline row's title. A NOTE whose item names its author's role
++ * (`params.authorRole`, written by `addNoteTransition`) is titled by that role ("Supervisor Note
++ * Added"); any other NOTE by the neutral kind title ("Note Added"); every other kind by
++ * `session.timeline.kind.<KIND>`. A SUPERVISOR's note was titled "Investigator Note Added" on
++ * the web and the tablet (E2E-T-5).
++ */
++export function timelineTitleKey(event: Pick<TimelineEvent, 'kind' | 'params'>): TimelineTitleKey {
++  const role = event.kind === 'NOTE' ? event.params?.authorRole : undefined;
++  if (isNoteTitleRole(role)) return `session.timeline.noteBy.${role}`;
++  return `session.timeline.kind.${event.kind}`;
++}
+diff --git a/packages/shared/src/sim/vocabulary.ts b/packages/shared/src/sim/vocabulary.ts
+index 43354eb..d3236e0 100644
+--- a/packages/shared/src/sim/vocabulary.ts
++++ b/packages/shared/src/sim/vocabulary.ts
+@@ -30,6 +30,11 @@ export const Permission = {
+   DEVICE_MANAGE: 'DEVICE_MANAGE',
+   DIAGNOSTICS_RUN: 'DIAGNOSTICS_RUN',
+   MAINTENANCE: 'MAINTENANCE',
++  // Backend task W16 (2026-10-04 01_specs §4.3, §19.1; ADQ-9): additive. The Core server enforces
++  // these three; no simulator action checks them. SUPERVISOR holds all three (`auth.ts`).
++  PAIRING_MANAGE: 'PAIRING_MANAGE',
++  USER_ADMIN: 'USER_ADMIN',
++  DEMO_CONTROL: 'DEMO_CONTROL',
+ } as const;
+ export type Permission = ValueOf<typeof Permission>;
+ 
+@@ -340,6 +345,18 @@ export const AuditType = {
+   UPDATE_COMPLETED: 'UPDATE_COMPLETED',
+   SCENARIO_LOADED: 'SCENARIO_LOADED',
+   SYSTEM_BOOT: 'SYSTEM_BOOT',
++  // Backend task W16 (2026-10-04 01_specs §13.1, §19.2; ADQ-9): additive. Written by the Core
++  // server only (permission guard, pairing, user administration, identity); the simulator never
++  // emits them. "Device paired" stays PAIRING_SUCCESS.
++  ACCESS_DENIED: 'ACCESS_DENIED',
++  PAIRING_CODE_ISSUED: 'PAIRING_CODE_ISSUED',
++  PAIRING_CODE_CLOSED: 'PAIRING_CODE_CLOSED',
++  DEVICE_REVOKED: 'DEVICE_REVOKED',
++  DEVICE_CREDENTIAL_ROTATED: 'DEVICE_CREDENTIAL_ROTATED',
++  ROLE_CHANGED: 'ROLE_CHANGED',
++  USER_ENABLED: 'USER_ENABLED',
++  USER_DISABLED: 'USER_DISABLED',
++  BIOMETRIC_ENROLLMENT_CHANGED: 'BIOMETRIC_ENROLLMENT_CHANGED',
+ } as const;
+ export type AuditType = ValueOf<typeof AuditType>;
+ 
+@@ -389,6 +406,16 @@ export const AUDIT_TYPE_CATEGORY = {
+   UPDATE_COMPLETED: 'SYSTEM',
+   SCENARIO_LOADED: 'SYSTEM',
+   SYSTEM_BOOT: 'SYSTEM',
++  // Backend task W16: the nine server-written types, in the existing eight categories (§13.1).
++  ACCESS_DENIED: 'SECURITY',
++  PAIRING_CODE_ISSUED: 'PAIRING',
++  PAIRING_CODE_CLOSED: 'PAIRING',
++  DEVICE_REVOKED: 'PAIRING',
++  DEVICE_CREDENTIAL_ROTATED: 'PAIRING',
++  ROLE_CHANGED: 'SECURITY',
++  USER_ENABLED: 'SECURITY',
++  USER_DISABLED: 'SECURITY',
++  BIOMETRIC_ENROLLMENT_CHANGED: 'AUTH',
+ } as const satisfies Record<AuditType, AuditCategory>;
+ 
+ // ── Operational events (Recent Events, bell, timeline sources) ──────────────────────────

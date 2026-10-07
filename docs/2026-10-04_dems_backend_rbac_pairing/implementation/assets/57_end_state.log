@@ -1,0 +1,17 @@
+## 2026-10-04 22:00:53 WIB end state (after the third device session)
+$ adb -s emulator-5556 reverse --list
+
+exit=0 (no line above = no reverse rule)
+$ adb -s emulator-5556 shell pidof com.dems.demo.tablet
+exit=1 (1 = the app is not running)
+$ lsof -nP -iTCP:4422 -iTCP:8081-8086 -sTCP:LISTEN
+exit=1 (1 with no output = nothing listens on 4422 or on a Metro port 8081 to 8086)
+$ wc -c .locks/core-server.lane2.pid
+       0 .locks/core-server.lane2.pid
+$ adb -s emulator-5556 shell dumpsys window displays | grep -o "cur=[0-9x]*" | head -1
+cur=2560x1600
+$ adb devices
+List of devices attached
+emulator-5554	device
+emulator-5556	device
+emulator-5558	device

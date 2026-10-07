@@ -29,7 +29,7 @@
  * THE TOKEN is generated here, returned ONCE in the answer, and stored as its SHA-256. It reaches
  * no row, no event, no publication and no log line (SR-36, NL-2).
  */
-import { ApiErrorCode, type BiometricEnrollment } from '@dems/shared/api';
+import { ApiErrorCode, PASSWORD_SESSION_REQUIRED_REASON, type BiometricEnrollment } from '@dems/shared/api';
 import type { FastifyInstance } from 'fastify';
 import { notSignedIn } from '../../../plugins/authenticate';
 import { ApiFailure } from '../../../plugins/error-envelope';
@@ -41,8 +41,11 @@ import { BIOMETRIC_TOKEN_LIFETIME_MS, biometricTokenHash, newBiometricToken, new
 /** The labels of the two units. They appear in the pipeline's log lines. */
 export const ENROLMENT_UNIT_LABEL = { enrol: 'identity.biometric.enrol', disable: 'identity.biometric.disable' } as const;
 
-/** `details.reason` of the 403 for `enabled: true` in a session that was not created by password. */
-export const PASSWORD_SESSION_REQUIRED = 'PASSWORD_SESSION_REQUIRED';
+/**
+ * `details.reason` of the 403 for `enabled: true` in a session that was not created by password:
+ * the contract's `PASSWORD_SESSION_REQUIRED_REASON` (review finding W91-4), under this module's name.
+ */
+export const PASSWORD_SESSION_REQUIRED = PASSWORD_SESSION_REQUIRED_REASON;
 
 /** The answer the contract defines for a session that is not bound to a device. */
 export function notADeviceSession(): ApiFailure {

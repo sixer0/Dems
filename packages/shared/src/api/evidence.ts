@@ -372,6 +372,7 @@ export const EVIDENCE_EXAMPLES: Readonly<Record<string, OperationExamples>> = {
           'NOT_SEALED',
           'Unsealed evidence cannot be archived.',
           'UNSEALED_EVIDENCE',
+          { from: null, event: 'archiveEvidence' },
         ),
       },
       422: BAD_PATH,

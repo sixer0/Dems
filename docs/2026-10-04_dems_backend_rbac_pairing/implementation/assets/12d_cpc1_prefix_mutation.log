@@ -1,0 +1,10 @@
+13:13:32
+mutation: CREDENTIAL_PREFIX without bio_  (/^(?:dvc|ses)_/)
+70:const CREDENTIAL_PREFIX = /^(?:dvc|ses)_/;
+     × a value of the form of BIOMETRIC_TOKEN_PATTERN is refused in a query value and as a path parameter, before any request 4ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  test/client-credentials.test.ts > CPC1-12: the URL guard knows every bearer secret of the contract (CL-6a) > a value of the form of BIOMETRIC_TOKEN_PATTERN is refused in a query value and as a path parameter, before any request
+AssertionError: promise resolved "{ ok: true, …(6) }" instead of rejecting
+ Test Files  1 failed (1)
+      Tests  1 failed | 17 passed (18)
+restored: cmp equal, git hash-object 37a7782be460bd4cbcac3dfdec33268b420ca83d

@@ -1,0 +1,26 @@
+13:03:30.369 mark e02 at 13:03:30.369
+13:03:30.434 screenshot 61a_web_after_idle_expiry.png 13:03:30.434..13:03:30.695
+13:03:30.795 nav /login load=true
+13:03:33.482 signin andi.pratama (SUPERVISOR) dashboard after 1111 ms
+13:03:36.841 nav /session load=true
+13:03:40.075 wait page-session-monitor present: 19 ms (at 13:03:40.094)
+13:03:40.275 js => "RECORDING"
+13:03:40.358 screenshot 61_p4_web_session_monitor_before_stop.png 13:03:40.358..13:03:40.508
+13:03:40.560 press sm-action-end ok at 13:03:40.582
+13:03:40.693 wait sm-end-dialog present: 1 ms (at 13:03:40.694)
+13:03:40.785 slept 600 ms
+13:03:41.477 type into [data-testid="sm-end-reason"]: "RP web stop by supervisor"
+13:03:41.535 slept 500 ms
+13:03:42.083 screenshot 62_p4_web_end_dialog.png 13:03:42.083..13:03:42.219
+13:03:42.289 serverlog since e02 (11):
+    13:03:30.812 [socket closed]
+    13:03:30.919 GET /api/v1/auth/session 401 NOT_SIGNED_IN
+    13:03:30.923 GET /api/v1/auth/status 200
+    13:03:30.931 [socket opened]
+    13:03:30.997 GET /api/v1/health 200
+    13:03:33.614 POST /api/v1/auth/sign-in 200
+    13:03:33.616 [socket closed]
+    13:03:33.620 [socket opened]
+    13:03:36.851 [socket closed]
+    13:03:36.975 GET /api/v1/auth/session 200
+    13:03:36.978 [socket opened]

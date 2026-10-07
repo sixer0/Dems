@@ -1,0 +1,13 @@
+
+> @dems/core-server@0.2.0 test
+> vitest run --project unit --maxWorkers=2 test/static/log-calls.test.ts
+
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/apps/core-server
+
+
+ Test Files  1 passed (1)
+      Tests  7 passed (7)
+   Start at  10:46:01
+   Duration  244ms (import 77%, tests 12%, transform 11%, worker 1%)
+

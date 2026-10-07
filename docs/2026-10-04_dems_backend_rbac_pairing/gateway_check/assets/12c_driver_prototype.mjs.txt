@@ -1,0 +1,48 @@
+// CF-W prototype (read-only): two candidate stylesheets injected into THIS browser's page only.
+import { launch, openPage, signIn, signOut, sleep } from './cdp.mjs'
+const log = (line) => console.log(`${new Date().toISOString()} ${line}`)
+const BASE = `.evi-custody-table .table__content{table-layout:fixed}
+.evi-custody-table :is(.table__column,.table__cell){padding-inline:10px}
+.evi-custody-table th:nth-child(1){width:6.25rem}.evi-custody-table th:nth-child(2){width:30%}.evi-custody-table th:nth-child(3){width:22%}
+.evi-custody-table td:not(:first-child){overflow-wrap:anywhere}`
+const STACK = BASE + `
+.evi-custody-card{container:evi-custody/inline-size}
+@container evi-custody (width < 34rem){
+ .evi-custody-table .table__content,.evi-custody-table thead,.evi-custody-table tbody{display:block}
+ .evi-custody-table tr{display:grid;grid-template-columns:6.25rem minmax(0,1fr) minmax(0,30%)}
+ .evi-custody-table th:nth-child(4){position:absolute;width:1px;height:1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+ .evi-custody-table th:nth-child(3){border-start-end-radius:min(32px,var(--radius-2xl));border-end-end-radius:min(32px,var(--radius-2xl))}
+ .evi-custody-table th:nth-child(3)::after{content:none}
+ .evi-custody-table td:nth-child(1){grid-row:span 2}
+ .evi-custody-table td:nth-child(4){grid-column:2/-1;padding-top:0}
+ .evi-custody-table tbody td:is(:nth-child(2),:nth-child(3)){border-bottom-color:transparent}
+}`
+const apply = (css) => {
+  let s = document.getElementById('cfw-proto'); if (!s) { s = document.createElement('style'); s.id = 'cfw-proto'; document.head.appendChild(s) }
+  s.textContent = css
+  for (const el of document.querySelectorAll('[data-testid="evidence-custody"] tbody td:nth-child(2) .evi-strong')) el.innerHTML = el.textContent.split('_').join('_<wbr>')
+  const sc = document.querySelector('[data-testid="evidence-custody"] .table__scroll-container')
+  return { overflow: sc.scrollWidth - sc.clientWidth, container: sc.clientWidth }
+}
+const clip = () => { const b = document.querySelector('[data-testid="evidence-custody"]').getBoundingClientRect(); return { x: b.left - 10, y: Math.max(0, b.top - 10), width: b.width + 20, height: Math.min(innerHeight, b.height + 20) } }
+const browser = await launch(log)
+try {
+  const page = await openPage(browser.cdp, log)
+  await page.viewport(1440, 900)
+  await signIn(page, log)
+  for (const [w, h] of [[1280, 800], [1440, 900]]) {
+    await page.viewport(w, h)
+    await page.goto('/evidence/EV-20261006-0014?tab=integrity')
+    await page.waitFor(() => !!document.querySelector('[data-testid="evidence-custody"] tbody tr'), 20000)
+    await sleep(1500)
+    await page.eval(() => document.querySelector('[data-testid="evidence-custody"]').scrollIntoView({ block: 'center' }))
+    await sleep(500)
+    for (const [name, css] of [['fixed', BASE], ['stack', STACK]]) {
+      const r = await page.eval(apply, css)
+      await sleep(300)
+      log(`${w} ${name}: ${JSON.stringify(r)}`)
+      await page.shot(`probe/proto_${name}_${w}.png`, await page.eval(clip))
+    }
+  }
+  await signOut(page, log)
+} catch (e) { log(`ERROR ${e.message}`) } finally { await browser.close() }

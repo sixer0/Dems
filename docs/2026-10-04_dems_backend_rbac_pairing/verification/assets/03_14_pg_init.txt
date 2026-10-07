@@ -1,0 +1,185 @@
+$ npm run pg:init
+# 2026-10-07 05:30:17
+
+> dems-demo@0.1.0 pg:init
+> node scripts/pg/init.mjs
+
+pg:init: project-local PostgreSQL on 127.0.0.1:4432
+
+== Binaries (SU-1: SHA-256, recomputed here)
+  515d8e4c690ecd6ae86074eedd5d6d0ed50df434b3743274085b9692f1e923f9  node_modules/@embedded-postgres/darwin-arm64/native/bin/postgres
+  b81069a19bcec5d2dd263f5c9bce2ce0b5075ae0f9b8a5c81b79f34bef503c39  node_modules/@embedded-postgres/darwin-arm64/native/bin/initdb
+  2c37317f9f606d9716e493d6765ff14f84d8df9b8c07eaa722431de16446f071  node_modules/@embedded-postgres/darwin-arm64/native/bin/pg_ctl
+T2     PASS     [shell] node_modules/@embedded-postgres/darwin-arm64/native/bin/postgres --version
+                -> postgres (PostgreSQL) 18.4
+
+== CR-7: git check-ignore -v, before anything is created
+  .gitignore:70:/.data/	.data/postgres
+  .gitignore:70:/.data/	.data/pg.pwfile
+  .gitignore:70:/.data/	.data/pg.owner.env
+  .gitignore:70:/.data/	.data/pg.env
+  .gitignore:70:/.data/	.data/postgres.log
+  .gitignore:70:/.data/	.data/pg-scripts.log
+
+== RP-1: .data/ (0700) and the three credential files (0600, created exclusively)
+  created: .data/pg.pwfile, .data/pg.owner.env, .data/pg.env
+  three passwords of 32 random bytes each (crypto.randomBytes, base64url); none is printed
+
+== RP-2: initdb
+  $ node_modules/@embedded-postgres/darwin-arm64/native/bin/initdb -D .data/postgres -U dems_admin -A scram-sha-256 --pwfile=.data/pg.pwfile -E UTF8 --locale=C
+  | The files belonging to this database system will be owned by user "gsp-budi".
+  | This user must also own the server process.
+  | 
+  | The database cluster will be initialized with locale "C".
+  | The default text search configuration will be set to "english".
+  | 
+  | Data page checksums are enabled.
+  | 
+  | creating directory /Users/gsp-budi/Documents/DEMS/.data/postgres ... ok
+  | creating subdirectories ... ok
+  | selecting dynamic shared memory implementation ... posix
+  | selecting default "max_connections" ... 100
+  | selecting default "shared_buffers" ... 128MB
+  | selecting default time zone ... Asia/Jakarta
+  | creating configuration files ... ok
+  | running bootstrap script ... ok
+  | performing post-bootstrap initialization ... ok
+  | syncing data to disk ... ok
+  | 
+  | Success. You can now start the database server using:
+  | 
+  |     '/Users/gsp-budi/Documents/DEMS/node_modules/@embedded-postgres/darwin-arm64/native/bin/pg_ctl' -D /Users/gsp-budi/Documents/DEMS/.data/postgres -l logfile start
+  postgresql.conf: listen_addresses = '127.0.0.1', port = 4432, unix_socket_directories = '' appended
+  postgresql.conf: log_error_verbosity = terse and the hourly log ring in .data/postgres/log/ appended (ruling 14)
+T3     PASS     [shell] initdb exit 0; .data/postgres/PG_VERSION
+                -> 18
+
+== First start
+  $ lsof -nP -iTCP:4432 -sTCP:LISTEN
+  (no output)
+  connect probe to 127.0.0.1:4432: closed
+  waiting for server to start.... done
+  server started
+  started: PID 32434, recorded in .locks/postgres.pid
+  postgres 32434 gsp-budi    6u  IPv4 0xf25ac70720754e03      0t0  TCP 127.0.0.1:4432 (LISTEN)
+T4     PASS     [shell] lsof -nP -iTCP:4432 -sTCP:LISTEN
+                -> 1 listener line(s): 127.0.0.1:4432 (LISTEN)
+
+== RP-3: the two project roles (as dems_admin, on the maintenance database)
+  connected as dems_admin; the server's data_directory is .data/postgres (this project's)
+  role dems_owner: created (LOGIN NOSUPERUSER CREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS; PASSWORD given as a SCRAM-SHA-256 verifier, not printed)
+  role dems_app: created (LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS; PASSWORD given as a SCRAM-SHA-256 verifier, not printed)
+  the superuser session of RP-3 is closed
+
+== RP-4: host authentication HA-1 to HA-4
+  HA-1 PASS
+  HA-2 PASS
+  HA-3 PASS
+  effective lines of .data/postgres/pg_hba.conf (6):
+    local   all             all                                     scram-sha-256
+    host    all             all             127.0.0.1/32            scram-sha-256
+    host    all             all             ::1/128                 scram-sha-256
+    local   replication     all                                     scram-sha-256
+    host    replication     all             127.0.0.1/32            scram-sha-256
+    host    replication     all             ::1/128                 scram-sha-256
+T3-a   PASS     [file] HA-1 to HA-3 on .data/postgres/pg_hba.conf
+                -> 6 lines: no trust, loopback addresses only, scram-sha-256 on every line
+T3-b   PASS     [dems_app@postgres] a connection with a wrong password
+                -> refused, SQLSTATE 28P01
+
+== RP-5: the trial, as dems_owner (T5-j once as dems_admin)
+T5     PASS     [dems_owner@postgres] SELECT version(), current_user, inet_server_addr(), inet_server_port() through the Node driver "pg" on Node 26.8.2
+                -> PostgreSQL 18.4 on x86_64-apple-darwin24.6.0, compiled by Apple clang version 17.0.0 (clang-1700.6.3.2), 64-bit | role dems_owner, superuser false | server 127.0.0.1:4432
+T5-a   PASS     [dems_owner@postgres] CREATE DATABASE dems_trial_a OWNER dems_owner TEMPLATE template0 ENCODING 'UTF8' LOCALE 'C'
+                -> OK (CREATE)
+T5-b   PASS     [dems_owner@postgres] CREATE DATABASE dems_trial_b TEMPLATE dems_trial_a OWNER dems_owner
+                -> OK (CREATE)
+T5-c   PASS     [dems_owner@postgres] BEGIN; ALTER DATABASE dems_trial_b RENAME TO dems_trial_c; ALTER DATABASE dems_trial_c RENAME TO dems_trial_b; COMMIT;
+                -> OK; databases now: dems_trial_a, dems_trial_b
+T5-d   PASS     [dems_owner@postgres] ALTER DATABASE dems_trial_a WITH IS_TEMPLATE true ALLOW_CONNECTIONS false
+                -> OK (ALTER)
+T5-d   PASS     [dems_owner@postgres] ALTER DATABASE dems_trial_a WITH IS_TEMPLATE false ALLOW_CONNECTIONS true
+                -> OK (ALTER)
+T5-e   PASS     [dems_owner@postgres] DROP DATABASE dems_trial_b
+                -> OK (DROP)
+T5-f   PASS     [dems_owner@postgres] SET session_replication_role = replica
+                -> refused, SQLSTATE 42501: permission denied to set parameter "session_replication_role"
+T5-g   PASS     [dems_owner@postgres] CREATE ROLE dems_trial_role
+                -> refused, SQLSTATE 42501: permission denied to create role
+T5-i   PASS     [dems_owner@postgres] ALTER SYSTEM SET log_statement = 'all'
+                -> refused, SQLSTATE 42501: permission denied to set parameter "log_statement"
+T5-i   PASS     [dems_owner@postgres] ALTER DATABASE dems_trial_a SET log_statement = 'all'
+                -> refused, SQLSTATE 42501: permission denied to set parameter "log_statement"
+T5-j1  PASS     [dems_admin@dems_trial_a] scratch table, refusal trigger (text of contract 6.3 group 4), ENABLE ALWAYS TRIGGER
+                -> pg_trigger.tgenabled = 'A'
+T5-j2  PASS     [dems_admin@dems_trial_a] SET session_replication_role = replica
+                -> session_replication_role = replica; current_user is superuser = true
+T5-j3  PASS     [dems_admin@dems_trial_a] UPDATE public.trial_append_only SET note = 'changed' WHERE id = 1
+                -> refused, SQLSTATE ZA002: trial_append_only is append-only: UPDATE refused
+T5-j4  PASS     [dems_admin@dems_trial_a] DELETE FROM public.trial_append_only WHERE id = 1
+                -> refused, SQLSTATE ZA002: trial_append_only is append-only: DELETE refused
+T5-j5  PASS     [dems_admin@dems_trial_a] TRUNCATE public.trial_append_only
+                -> refused, SQLSTATE ZA002: trial_append_only is append-only: TRUNCATE refused
+T5-j6  PASS     [dems_admin@dems_trial_a] trigger back in the default mode (tgenabled = 'O'), still replica: UPDATE public.trial_append_only SET note = 'changed' WHERE id = 1
+                -> accepted, 1 row changed: the setting skips an ordinary trigger, so ALWAYS is what holds
+T5-j   PASS     [dems_admin@dems_trial_a] the superuser session of T5-j
+                -> closed; no superuser connection stays open
+T5-h   PASS     [dems_owner@postgres] SELECT datname, usename FROM pg_stat_activity WHERE datname = 'dems_trial_a' (one dems_app session is open on it)
+                -> (dems_trial_a, dems_app)
+T5-h   RECORDED [dems_owner@postgres] DROP DATABASE dems_trial_a WITH (FORCE)
+                -> refused, SQLSTATE 42501: permission denied to terminate process
+T5-e   PASS     [dems_owner@postgres] DROP DATABASE dems_trial_a
+                -> OK (DROP)
+T5-end PASS     [dems_owner@postgres] trial databases left behind
+                -> none
+
+== RP-6: no superuser session is open; nothing connects as dems_admin from here on
+  .data/pg.pwfile is read by scripts/pg/init.mjs and scripts/pg/check-superuser-trigger.mjs only
+  roles (pg_roles: flags only):
+    rolname       super  createdb  createrole  replication  bypassrls  login
+    dems_admin    true   true      true        true         true       true
+    dems_app      false  false     false       false        false      true
+    dems_owner    false  true      false       false        false      true
+
+== Files: modes (T-CR-1) and key names (AC-B-86)
+  700  .data
+  700  .data/postgres
+  600  .data/pg.pwfile
+  600  .data/pg.owner.env
+  600  .data/pg.env
+  600  .data/postgres.log
+  600  .data/pg-scripts.log
+  .data/pg.owner.env: DEMS_PG_HOST, DEMS_PG_PORT, DEMS_PG_DATABASE, DEMS_PG_OWNER_ROLE, DEMS_PG_OWNER_PASSWORD
+  .data/pg.env: DEMS_PG_HOST, DEMS_PG_PORT, DEMS_PG_DATABASE, DEMS_PG_APP_ROLE, DEMS_PG_APP_PASSWORD
+
+== Trial summary
+  T2     PASS
+  T3     PASS
+  T4     PASS
+  T3-a   PASS
+  T3-b   PASS
+  T5     PASS
+  T5-a   PASS
+  T5-b   PASS
+  T5-c   PASS
+  T5-d   PASS
+  T5-d   PASS
+  T5-e   PASS
+  T5-f   PASS
+  T5-g   PASS
+  T5-i   PASS
+  T5-i   PASS
+  T5-j1  PASS
+  T5-j2  PASS
+  T5-j3  PASS
+  T5-j4  PASS
+  T5-j5  PASS
+  T5-j6  PASS
+  T5-j   PASS
+  T5-h   PASS
+  T5-h   RECORDED
+  T5-e   PASS
+  T5-end PASS
+
+pg:init: done. The server is RUNNING on 127.0.0.1:4432 (PID 32434). Stop it with "npm run pg:stop".
+exit=0

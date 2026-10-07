@@ -6,7 +6,8 @@ import { useTranslation } from 'react-i18next'
 import { useRetryCooldown } from '@dems/shared/realtime'
 import { GlowLayer } from '@/motion'
 import { cn } from '@/lib/utils'
-import { logDevicesError, PANEL_BEAT_MS, usePanelVariants, type DevicesPanelId } from './motion'
+import { PANEL_BEAT_MS, usePanelVariants, type DevicesPanelId } from './motion'
+import { reportDevicesError } from './report'
 
 export interface DevicesPanelProps {
   id: DevicesPanelId
@@ -67,6 +68,9 @@ export function DevicesPanel({
   )
 }
 
+/** The fixed sentence of the boundary's record (never the error's text). */
+const PANEL_FAILED_RECORD = 'A panel of Devices & Inputs failed to render; it shows its fallback with a retry.'
+
 interface BoundaryProps {
   panel: string
   children: ReactNode
@@ -80,7 +84,9 @@ interface BoundaryState {
 /**
  * Catches a render failure inside one panel or the drawer: a friendly message with a
  * rate-limited retry (3 s → 6 s → 12 s, at most 3), while the rest of the page keeps working.
- * The structured record goes to the dev console (no client log endpoint, D41(g)).
+ * The record goes to the page's own log through `reportDevicesError` (FXR-W, W92-5: a fixed
+ * sentence, the panel and the error's class; never its message or stack, which the dev console got
+ * before).
  */
 export class DevicesErrorBoundary extends Component<BoundaryProps, BoundaryState> {
   override state: BoundaryState = { error: null, resets: 0 }
@@ -90,7 +96,7 @@ export class DevicesErrorBoundary extends Component<BoundaryProps, BoundaryState
   }
 
   override componentDidCatch(error: Error, info: ErrorInfo) {
-    logDevicesError('ErrorBoundary', error, { panel: this.props.panel, componentStack: info.componentStack })
+    reportDevicesError('Devices.ErrorBoundary', error, PANEL_FAILED_RECORD, { panel: this.props.panel, componentStack: info.componentStack ?? null })
   }
 
   private readonly reset = () => {

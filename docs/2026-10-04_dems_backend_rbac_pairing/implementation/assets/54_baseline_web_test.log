@@ -1,0 +1,27 @@
+## 2026-10-04 20:34:41 WIB baseline before the first edit of W54
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+
+ Test Files  48 passed (48)
+      Tests  598 passed (598)
+   Start at  20:34:42
+   Duration  46.20s (tests 62%, import 17%, environment 13%, setup 5%, transform 3%)
+
+    Isolate  48 workers spawned · ~297ms startup each (spawn + environment, per file)
+             at least ~6.84s faster with isolate: false — reuses workers across files instead of one per file
+
+exit=0

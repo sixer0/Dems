@@ -1,0 +1,264 @@
+# FX-M2b targeted run, 2026-10-06 12:35:13: CI=1 npx jest --maxWorkers=2 --verbose src/components/composed/nav src/navigation src/features/rbac src/features/home src/features/session-live/live-stop-handover.test.tsx src/features/evidence/live-evidence-metadata-record.test.tsx src/features/devices/devices-states.test.tsx src/features/dashboard
+jest exit=0
+PASS src/navigation/__tests__/routes.test.tsx (6.24 s)
+    ✓ covers every route of the registry (2 ms)
+    ✓ has a feature screen file for every route (screen steps own them, P6) (1 ms)
+    ✓ keeps test files out of src/app (Expo Router bundles every file there as a route)
+    ✓ /?motion=slow renders screen-<id> (124 ms)
+    ✓ /stack-check renders screen-<id> (26 ms)
+    ✓ /pair renders screen-<id> (319 ms)
+    ✓ /login renders screen-<id> (141 ms)
+    ✓ /home renders screen-<id> (131 ms)
+    ✓ /sessions renders screen-<id> (172 ms)
+    ✓ /sessions/SES-20261001-0017 renders screen-<id> (163 ms)
+    ✓ /evidence renders screen-<id> (209 ms)
+    ✓ /evidence/EV-20261001-0007 renders screen-<id> (234 ms)
+    ✓ /devices renders screen-<id> (288 ms)
+    ✓ /devices/CAM-01 renders screen-<id> (85 ms)
+    ✓ /storage renders screen-<id> (52 ms)
+    ✓ /network-time renders screen-<id> (51 ms)
+    ✓ /audit renders screen-<id> (241 ms)
+    ✓ /settings renders screen-<id> (85 ms)
+    ✓ /settings/about renders screen-<id> (90 ms)
+    ✓ /more renders screen-<id> (46 ms)
+    ✓ /session/new?step=2 renders screen-<id> (133 ms)
+    ✓ /session/live renders screen-<id> (146 ms)
+    ✓ /session/finalizing renders screen-<id> (64 ms)
+    ✓ /session/summary/SES-20261001-0017 renders screen-<id> (114 ms)
+    ✓ /session/recovery renders screen-<id> (68 ms)
+    ✓ shows the not-found screen for an unknown URL (19 ms)
+    ✓ parses params with zod: an out-of-range step falls back to 1 (110 ms)
+    ✓ sends a malformed id back to its list, and an unknown settings section to Settings (415 ms)
+PASS src/navigation/__tests__/chrome-lost-updates.test.tsx (8.029 s)
+    ✓ Sessions -> a session detail -> Evidence: Evidence gold (icon and label), Sessions grey, the pill on Evidence, the Evidence screen visible (2633 ms)
+    ✓ full motion keeps M-MB-01 and M-APP-04: the fading copy, the travelling pill and the veil exist during the motion, and React removes them after their budgets (1034 ms)
+    ✓ reduced motion (the testers' motion=off): right at once, no overlay is ever drawn (466 ms)
+    ✓ Evidence detail -> rail Devices: the Devices screen visible, Devices gold, Evidence grey, the card on Devices (1166 ms)
+PASS src/navigation/__tests__/pairing-gate.test.tsx
+    ✓ boots / to /pair and shows only the Pair screen (332 ms)
+    ✓ does not let /login through while blocked (lands on /pair) (86 ms)
+    ✓ does not let /home through while blocked (lands on /pair) (74 ms)
+    ✓ does not let /dev-gallery through while blocked (lands on /pair) (76 ms)
+    ✓ keeps /stack-check reachable while blocked (43 ms)
+    ✓ treats CHECKING (the credential still being read) as blocked too (72 ms)
+    ✓ blocks with the revoked notice set (the notice is the Pair screen’s, not the router’s) (71 ms)
+    ✓ blocks with the unknown notice set (the notice is the Pair screen’s, not the router’s) (64 ms)
+    ✓ records /evidence as pending and lands on /pair, then opens it after pairing and sign-in (279 ms)
+    ✓ drops the pending href on a sign-out, never resuming an old link across a re-pair (394 ms)
+    ✓ a paired, signed-out device boots / to /login (134 ms)
+    ✓ a paired, signed-out device sends a guarded route to /login, not /pair (71 ms)
+    ✓ a paired, signed-in device boots / to /home (86 ms)
+    ✓ releases /pair itself: a paired device still opens the Pair screen (Settings → Pairing details) (38 ms)
+    ✓ a revocation of a signed-in paired device routes /home back to /pair (99 ms)
+    ✓ an unknown credential (401 on operation 21) likewise routes back to /pair (AC-C-79) (121 ms)
+    ✓ removes the app screens on the block alone, even while the session still reads signed-in (MP-11) (214 ms)
+    ✓ with no pairing member (SIMULATED / HEARTBEAT) the guards behave as before: /login is reachable (112 ms)
+    ✓ signs in through the Login form on a paired device and lands on the guarded route (234 ms)
+PASS src/features/devices/devices-states.test.tsx
+    ✓ loading: before the runtime has hydrated, the header and the skeleton (the pane is never empty) (62 ms)
+    ✓ data: the three sections at once from the store; no request is involved (153 ms)
+    ✓ error in the list: the panel card with Retry, logged; a Retry that fails again is rate-limited (3 s countdown); one that works brings the data back (3351 ms)
+    ✓ error in the tablet detail pane: the list stays; the pane shows the card with Retry (231 ms)
+PASS src/navigation/__tests__/guard.test.tsx
+    ✓ sends an unauthenticated /evidence to /login and keeps /evidence as the pending href (360 ms)
+    ✓ opens the pending href after sign-in, then forgets it (293 ms)
+    ✓ keeps the query of the pending href but drops the global motion switches (306 ms)
+    ✓ lets the resync target win over the pending href while a session is recording (222 ms)
+    ✓ resyncs a CREATE session to /session/new after sign-in (224 ms)
+    ✓ resyncs a PRECHECK session to /session/new after sign-in (154 ms)
+    ✓ resyncs a ARMED session to /session/new after sign-in (109 ms)
+    ✓ resyncs a FINALIZING session to /session/finalizing after sign-in (71 ms)
+    ✓ resyncs a FAULT session to /session/recovery after sign-in (66 ms)
+    ✓ opens the pending href after a sign-in that started over a public screen (279 ms)
+    ✓ lands on /home after sign-in when nothing is pending or active (164 ms)
+    ✓ returns to /login on sign-out, and a later sign-in does not reuse an old link (417 ms)
+    ✓ never shows /login to a signed-in operator (78 ms)
+    ✓ keeps the public routes open while signed out (89 ms)
+    ✓ signs in through the Login form and then opens the pending href (162 ms)
+    ✓ redirects /session/live to /home when nothing is recording (221 ms)
+    ✓ refuses /session/new while a session is recording and opens the monitor instead (370 ms)
+    ✓ keeps the wizard open for its own states (ARMED on step 3) (132 ms)
+PASS src/features/dashboard/home-live.test.tsx
+    ✓ reads "Core Live" in the header of every layout class, and nothing on the screen claims a simulation (447 ms)
+    ✓ shows the Core's data: the operator of the session, the Core's recent sessions, and a brand still where no poster was named (RESIDUAL-W66-1) (101 ms)
+    ✓ an outage: "Core Offline" at the first down state, kept through every reconnect attempt, "Core Live" at the first heartbeat; the last state stays on screen (490 ms)
+    ✓ mounted twice by StrictMode, neither screen starts a Core command or query: the log holds the session's own operations only (295 ms)
+    ✓ success: the request goes to the Core and the bell clears when the Core's delta arrives (134 ms)
+    ✓ a denial (403 NOT_PERMITTED): the denied toast, the alert stays unacknowledged and its button can be pressed again (192 ms)
+    ✓ an outage on the request: the presenter's one "Core server unreachable" toast; nothing else happens (134 ms)
+    ✓ SIMULATED: no chip on phones and tablet portrait, "Core Simulated" on the expanded header (as before) (197 ms)
+    ✓ HEARTBEAT: "Core Simulated" while mock-core beats (it read "Live" before, MD-8), "Core Offline" when it is gone (225 ms)
+PASS src/features/dashboard/dashboard-screen.test.tsx
+    ✓ phone portrait: MB 2 regions H1–H5 in order, READY copy, 2/2, 2/2, 20% used, three recent rows (161 ms)
+    ✓ navigates: Start → /session/new?step=1, View Evidence, See All, a tile, a recent row (98 ms)
+    ✓ recording: the status card shows REC and the timer and opens the monitor; Start becomes "Return to live session" (130 ms)
+    ✓ storage full (MA-30 Home part): the storage tile turns red and the status goes CRITICAL with the reason (116 ms)
+    ✓ MIC 2 clip: the microphone tile warns and ATTENTION lists the device by name (109 ms)
+    ✓ bell: counts unacknowledged alerts, lists them in the popover and acknowledges one (142 ms)
+    ✓ avatar menu: Profile opens Settings; Lock console signs out without touching a recording (§3.3) (204 ms)
+    ✓ tablet landscape (expanded): 3 zones with the hero ring, chip row, 2x2 device tiles and sealed-today 7 (123 ms)
+    ✓ tablet portrait (medium): 2 columns (hero + status + tiles | actions + recent) (86 ms)
+    ✓ phone landscape: 2 columns (status, tiles, actions | recent) (78 ms)
+    ✓ ambient loops: ring breath and Start sheen under full motion (no rotation in mini mode); none under reduced motion (MA-18 unit part) (106 ms)
+    ✓ pauses every Home loop while the screen is not focused (04 §7.8) (73 ms)
+    ✓ tablet landscape registers the hero ring rotation and keeps the loop count within the P3 cap (120 ms)
+    ✓ new seal while Home is open: one success toast naming the evidence item (170 ms)
+PASS src/components/composed/nav/live-mini-bar-clock.test.tsx
+    ✓ 9 s of a recording in 370 ms steps: the two timers never differ, and both are the store's recording time (473 ms)
+PASS src/features/evidence/live-evidence-metadata-record.test.tsx
+    ✓ media NONE (a session recorded on the Core): "Core record" with the item's values; no claim of simulation (522 ms)
+    ✓ the Core did not answer operation 40: the record still shows, and the line says the reference is unavailable (no claim that no package exists) (292 ms)
+    ✓ a DEMO_PACKAGE item keeps the bundled manifest (unchanged), on the phone as well (221 ms)
+    ✓ Simulated mode says it is the simulator's record; Live mode never says so (163 ms)
+PASS src/features/session-live/live-stop-handover.test.tsx
+    ✓ phonePortrait: every commit after the pushed stop draws the monitor or Finalizing; the first one without the monitor draws the Finalizing card (283 ms)
+    ✓ tabletLandscape: every commit after the pushed stop draws the monitor or Finalizing; the first one without the monitor draws the Finalizing card (268 ms)
+    ✓ the in-place screen is the Finalizing card in its stopping state, with no enter motion (it is visible in that very commit) (145 ms)
+    ✓ matches only the session that was handed over; a deep link into Finalizing still enters with motion
+PASS src/navigation/__tests__/chrome.test.tsx
+    ✓ shows the five mockup destinations with Home active (367 ms)
+    ✓ switches tabs on press with one selection haptic (172 ms)
+    ✓ pads the bottom inset in the bar, so the screen above does not (04 §2.6) (89 ms)
+    ✓ reaches the More destinations without a visible trigger, highlights More, and goes back through history (170 ms)
+    ✓ phone landscape: an icon-only 72 dp rail with the five destinations, past the cutout inset (45 ms)
+    ✓ tablet portrait: an 88 dp rail with eight labelled destinations and no More (81 ms)
+    ✓ tablet landscape: the 232 dp extended rail with the version foot, collapsible and persisted by merge (120 ms)
+    ✓ restores a persisted collapsed rail (158 ms)
+    ✓ shows the simulator dataset version at the rail foot (web parity) (1 ms)
+    ✓ swaps the chrome without remounting the open screen or losing its selection (92 ms)
+    ✓ phone: bottom bar ↔ rail keeps the same screen instance (60 ms)
+    ✓ a tablet hands a detail URL over to the list pane (95 ms)
+    ✓ a phone turns a selection into a pushed detail; Back returns to the plain list (167 ms)
+    ✓ a tablet opens a Settings section in the list pane (133 ms)
+    ✓ appears above the bar while recording and opens the monitor (155 ms)
+    ✓ sits at the top of the content column on a tablet, and hides when the recording ends (112 ms)
+    ✓ is absent while idle (78 ms)
+    ✓ resolves every chrome string through i18n (MA-21) (161 ms)
+PASS src/navigation/__tests__/pairing-gate-live.test.tsx
+    ✓ no credential → UNPAIRED, required → the route tree boots to /pair (404 ms)
+    ✓ a credential the Core confirms → PAIRED → the route tree releases to /login (108 ms)
+    ✓ a credential the Core reports DEVICE_REVOKED → UNPAIRED with the revoked notice → /pair (AC-C-78) (65 ms)
+    ✓ a credential the Core does not know (401) → UNPAIRED with the unknown notice, item deleted → /pair (AC-C-79) (62 ms)
+PASS src/features/rbac/role-gate-r2.test.tsx
+    ✓ SESSION_START: INVESTIGATOR and SUPERVISOR hold it, TECHNICIAN is locked; the sentence names the Investigator role
+    ✓ MAINTENANCE: only the TECHNICIAN holds it (the Core refuses startSoftwareUpdate to the others) (2 ms)
+    ✓ no signed-in role yet: not allowed, but not "locked" (no sentence, and a route guard does not leave)
+    ✓ TECHNICIAN: the primary action is disabled with "Requires the Investigator role"; a press opens nothing (51 ms)
+    ✓ INVESTIGATOR: enabled, no sentence; a press opens the wizard (41 ms)
+    ✓ the ways back to an active session are not gated (they open no session): a TECHNICIAN keeps "Return to live session" (29 ms)
+    ✓ TECHNICIAN: disabled with "Requires the Investigator role"; a press opens nothing (146 ms)
+    ✓ SUPERVISOR: enabled (SESSION_START is part of the role), no sentence (108 ms)
+    ✓ TECHNICIAN, a deep link: Home, ONE toast "Not permitted" / "Requires the Investigator role", the wizard never renders (26 ms)
+    ✓ INVESTIGATOR, the same link: the wizard (17 ms)
+    ✓ TECHNICIAN after a later push of the link (the guard decides per visit) (23 ms)
+    ✓ INVESTIGATOR: disabled with "Requires the Technician role"; a press starts nothing (46 ms)
+    ✓ SUPERVISOR: disabled as well (the Core refuses the update to the role) (32 ms)
+    ✓ TECHNICIAN: enabled, no sentence; a press starts the update (63 ms)
+PASS src/navigation/__tests__/back-guard-busy.test.tsx
+    ✓ not passed, or false: the leave button is as before: no busy state, no spinner, a press runs the confirm action (90 ms)
+    ✓ busy: the leave button is marked busy and shows the kit's Spinner inside itself; nothing is added outside it (58 ms)
+    ✓ busy: a second and a third press are ignored (flow: the confirm action does not run again) (47 ms)
+    ✓ busy, monitor variant: "Go to Home" does not leave while busy; it leaves once not busy (58 ms)
+    ✓ busy holds the dialog (F5; S3-1, B-6): "Stay" is disabled and ignored; once not busy it drops the held attempt as before (47 ms)
+    ✓ busy: a request to dismiss the dialog (the kit's onOpenChange(false): overlay, close part) is ignored; not busy it drops the attempt as before (43 ms)
+    ✓ not busy: "Stay" carries no disabled state (the default dialog is unchanged) (32 ms)
+    ✓ DN-4, busy at the press and the spinner late: `busy` without `pending` marks the button busy and shows no spinner; `pending` adds the Spinner (68 ms)
+    ✓ `pending` alone shows the Spinner but does not hold the button (the caller decides what is busy) (37 ms)
+    ✓ `pending` omitted: the spinner follows `busy`, so a caller of the first form keeps its behaviour (42 ms)
+    ✓ is the dialog the navigation barrel hands out
+PASS src/features/rbac/live-role-gate-r2.test.tsx
+    ✓ INVESTIGATOR -> TECHNICIAN -> INVESTIGATOR: Start locks and unlocks; Install update unlocks and locks; one sign-in only (196 ms)
+PASS src/navigation/__tests__/back-guard.test.tsx
+    ✓ holds Back while enabled and opens the monitor dialog; Stay keeps the screen (71 ms)
+    ✓ "Go to Home" leaves the monitor for /home (04 §3.6) (54 ms)
+    ✓ flow variant: "Cancel session" runs the screen action, then performs the held Back (48 ms)
+    ✓ block mode drops the attempt and reports it (FINALIZING toast) (25 ms)
+    ✓ lets Back through when disabled (31 ms)
+PASS src/features/dashboard/dashboard-route.test.tsx
+    ✓ phone portrait: bottom bar with Home selected, MB 2 regions (375 ms)
+    ✓ tablet landscape (MA-12 home part): nav-rail with 8 items and the pane-status / pane-devices / pane-activity zones (197 ms)
+PASS src/features/home/home-screen.test.tsx
+    ✓ shows the title, then goes from Connecting to Live with the health version (85 ms)
+PASS src/features/dashboard/home-model.test.ts
+    ✓ maps each system state to its ring state, tone and copy (1 ms)
+    ✓ lists critical flags before warnings
+    ✓ turns every systemStatus() flag family into an i18n line (never a raw id)
+    ✓ camera: online / total, danger with the offline count
+    ✓ microphone: ready count; no signal and clip (incl. the latch) warn (1 ms)
+    ✓ storage: USED percent (D28/Q1) with READY / LOW / FULL tones (4 ms)
+    ✓ Start Session when there is no session, or the sealed summary was acknowledged (1 ms)
+    ✓ leads back to the active session otherwise
+    ✓ shows the evidence id, "today" at UTC+07:00, the subject type and the poster suffix
+    ✓ falls back to the session id and no poster for an incomplete session; limits the count
+    ✓ decides today / yesterday / earlier on the WIB day, not the UTC day
+    ✓ maps simulator subject types to the kit chip types without literals, and reads id suffixes
+    ✓ shows the sim clock at UTC+07:00 and elapsed time as HH:MM:SS
+    ✓ builds the Security, Time & Network chips (plus Storage on expanded) (1 ms)
+    ✓ uses the spec beats, capped stagger, proof ×10 and no delay when reduced
+    ✓ delays the panel enter to its beat and starts numbers after the card settles plus the held beat
+    ✓ rises 12 px from transparent (R1)
+    ✓ backs off 3 s, 6 s, 12 s and caps at 3 retries (1 ms)
+PASS src/features/home/stack-proof-source.test.tsx
+    ✓ LIVE: the card says Live and the Core server; it no longer claims the local mock-core (37 ms)
+    ✓ HEARTBEAT: the card names the mock-core heartbeat over adb reverse (19 ms)
+    ✓ SIMULATED (also the value outside the runtime provider): the card says the Core runs inside the app (13 ms)
+    ✓ the three lines differ, and none claims a source it is not (the LIVE line never says Simulated) (1 ms)
+PASS src/features/dashboard/panel-boundary.test.tsx
+    ✓ shows the shared panel copy, logs the error, and retries with a 3 s cooldown (59 ms)
+PASS src/features/dashboard/use-held-value.test.tsx
+    ✓ holds 0 for the delay, then shows the value; later changes are immediate (4 ms)
+    ✓ shows the value at once under reduced motion or without a delay (2 ms)
+PASS src/navigation/__tests__/navigation-units.test.ts
+    ✓ accepts record ids and rejects anything that could form a path, a query or a scheme (1 ms)
+    ✓ parses the wizard step with a fallback of 1
+    ✓ knows the five Settings sections (04 §4.15)
+    ✓ parses a debug scenario name
+    ✓ detects the proof-mode switch on the boot route
+    ✓ demsdemo:///evidence?selected=EV-1 → /evidence?selected=EV-1
+    ✓ demsdemo://evidence/EV-1 → /evidence/EV-1 (1 ms)
+    ✓ demsdemo://?motion=slow → /
+    ✓ /home?motion=off&debug=1&scenario=recording → /home?scenario=recording
+    ✓ /settings/about/ → /settings/about
+    ✓ rejects https://example.invalid
+    ✓ rejects exp://127.0.0.1:8081/--/home
+    ✓ rejects //host/home (1 ms)
+    ✓ rejects /a/../b
+    ✓ rejects /a b
+    ✓ rejects xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+    ✓ rejects 
+    ✓ records a guarded link received while signed out and opens /login instead, through +native-intent (1 ms)
+    ✓ leaves links alone while signed in
+    ✓ ignores public links and foreign schemes, and never throws
+    ✓ drops a pending link on sign-out and does not record links while signed in
+    ✓ null → null
+    ✓ CREATE → /session/new?step=1
+    ✓ PRECHECK → /session/new?step=2
+    ✓ ARMED → /session/new?step=3
+    ✓ RECORDING → /session/live
+    ✓ STOPPING → /session/finalizing
+    ✓ FINALIZING → /session/finalizing
+    ✓ SEALED → null
+    ✓ FAULT → /session/recovery
+    ✓ RECOVERY → /session/recovery
+    ✓ opens an unacknowledged SEALED summary, and stays when it is acknowledged or unknown
+    ✓ orders the post-sign-in target: resync, pending, Home
+    ✓ classifies busy and active states (1 ms)
+    ✓ shows five on phones and eight on tablets; the navigator holds all nine
+    ✓ highlights More for the More destinations on a phone only
+    ✓ finds the tab in route segments
+    ✓ marks exactly the (app) routes as guarded
+    ✓ registers one i18n tree per feature folder with a screen, plus the shell copy
+    ✓ reads only its own field from the shared prefs key
+PASS src/features/dashboard/home-more-live-static.test.ts
+    ✓ reads both folders: every production file, sub-folders included
+    ✓ no production file calls the simulator's action hook (1 ms)
+    ✓ no production file reads `.actions` of a `Sim`: every `.actions` left is a style or a motion beat (1 ms)
+    ✓ Home's one Core call: `useCoreActions`, through `settle`, its rejection handed to the presenter first (1 ms)
+    ✓ the folders name no network API, no Core server address, no storage package and no Live source module (1 ms)
+    ✓ the LIVE wording is picked from `useCoreLink().source`, never from a preference or the data-mode hook
+    ✓ the text LIVE mode adds says nothing about a simulation; the one it replaces did
+    ✓ no `SIM-GAP` marker in either folder (KI-07 stays 13 IDs / 62 markers); the one contract gap is marked for W83 (1 ms)
+    ✓ the copy of Simulated mode is as it was at `acaff20`: Home 79 texts, More 43 texts plus the one LIVE note (one digest each)
+Test Suites: 24 passed, 24 total
+Tests:       235 passed, 235 total
+Time:        23.263 s, estimated 25 s

@@ -1,0 +1,4 @@
+12:56:22 uiautomator node of Install update (Settings > System Maintenance, budi.santoso INVESTIGATOR):
+resource-id="settings-update-install" content-desc="Install update" clickable="true" enabled="false" long-clickable="false"
+hint node: settings-update-install-locked "Requires the Technician role" (q/maintenance_budi.txt)
+not pressed (D197 rule: Install update is never pressed on a shared instance)

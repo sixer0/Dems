@@ -1,0 +1,72 @@
+Wed Oct  7 05:22:02 WIB 2026
+ 5:22  1 user, load averages: 5.92 7.19 6.04
+
+> dems-demo@0.1.0 test:pg-scripts
+> node --test scripts/pg/
+
+✔ T-HA-1: the file initdb wrote with -A scram-sha-256 passes HA-1, HA-2 and HA-3 (4.337ms)
+✔ T-HA-1: an added trust line fails HA-1 (0.459125ms)
+✔ T-HA-1: an added line for 0.0.0.0/0 fails HA-2 (0.186792ms)
+✔ HA-1: peer, ident, password and md5 are refused, also on a local line (0.171917ms)
+✔ HA-2: only 127.0.0.1/32 and ::1/128; no other network, keyword, host name or mask form (0.140792ms)
+✔ HA-3: local and host only; other line types and include directives are refused (0.086584ms)
+✔ comments and blank lines are skipped; an empty rule set fails; an option after the method is allowed (0.120542ms)
+✔ the verifier has the stored form of PostgreSQL and matches the RFC 7677 example (3.180125ms)
+✔ each verifier gets its own random salt and never contains the password (1.048666ms)
+✔ CR-7: git ignores the cluster, the three credential files and the logs of the real workspace (25.2615ms)
+✔ CR-7: outside a git work tree the check is skipped, not failed (7.617041ms)
+✔ RP-1 and T-CR-1: .data/ has mode 700 and the three files mode 600, with the pinned keys (1.169417ms)
+✔ a second run changes no credential file (CR-5) (0.745416ms)
+✔ pg:init refuses an existing cluster or an existing credential file and changes nothing (0.764833ms)
+✔ initdb gets the superuser password as a file path, never as a value (CR-4, RP-2) (0.124708ms)
+✔ the settings block names the loopback address, port 4432 and no Unix socket; of the logging settings only those of ruling 14 (NL-5) (0.115334ms)
+✔ ruling 14 (CPS1-9): errors are terse; the server log is a ring of 24 hourly files, each truncated when its hour comes round again (0.540209ms)
+✔ PostgreSQL 18.4 reads the block as written: postgres -C on a folder that holds only this postgresql.conf (no server, no port) (492.418542ms)
+✔ the owner role may create databases and is not a superuser; the runtime role has no flag (0.124ms)
+✔ the endpoint is 127.0.0.1:4432 and nothing else (0.695791ms)
+✔ port 5432 is refused and named as the other server of the host (0.219208ms)
+✔ any host other than 127.0.0.1 is refused (0.100375ms)
+✔ any port other than 4432 is refused (0.057833ms)
+✔ the environment scrub removes every libpq variable and keeps the rest (0.247167ms)
+✔ a child process never inherits a libpq variable, even one set after the module loaded (29.164041ms)
+✔ the paths are the project data directory and the binaries under node_modules (0.196ms)
+✔ a password is at least 24 random bytes as base64url, and is never printed (0.174542ms)
+✔ a secret is refused as a process argument and in a child environment (CR-4) (2.242292ms)
+✔ a secret file is created exclusively with mode 600 and never overwritten (CR-5) (0.372458ms)
+✔ a connection file holds the five pinned keys and nothing else (CR-1) (0.505458ms)
+✔ T-CR-4: a credential file with mode 644 stops the loader; the message names the file, not the content (0.157292ms)
+✔ a connection file that names port 5432 or another host is refused (0.281375ms)
+✔ an extra key, a missing key, a duplicate or a malformed line is refused without printing a value (0.587ms)
+✔ the settings reader follows the server: the last assignment wins, the auto file overrides (0.642125ms)
+✔ a cluster configured for port 5432, another address or a Unix socket is refused (1.392375ms)
+✔ postmaster.pid is read by line; a missing file means no server (0.322958ms)
+✔ the stopped cluster of a DEMS workspace root is removed, and nothing else (6.754916ms)
+✔ the server is stopped first; a server that still runs stops the removal (1.368417ms)
+✔ any directory other than <root>/.data is refused (1.040167ms)
+✔ a root that is not the dems-demo workspace is refused (1.327833ms)
+✔ a .data that is a symbolic link is refused, and its target is untouched (0.767208ms)
+✔ pg:remove is RB-02 then RB-01: the uninstall under the npm lock, then the prune (0.085625ms)
+✔ no lifecycle command acts when the test runner executes it (56.615834ms)
+✔ pg:start refuses a cluster whose port is 5432, before pg_ctl is run (3.441917ms)
+✔ pg:start refuses a cluster whose host is not 127.0.0.1, before pg_ctl is run (5.927833ms)
+✔ pg:start refuses a cluster with a Unix socket directory or without the project settings (1.320291ms)
+✔ pg:start without a cluster stops with exit code 4 and runs nothing (0.499125ms)
+✔ pg:stop is a no-op without a cluster or without a server, and runs nothing (1.132125ms)
+✔ the server state is read from the cluster files; a dead PID or a refused port is "stopped" (0.774334ms)
+✔ a running server on another port, another address or with a socket directory is refused (0.119541ms)
+✔ the server command line pins the endpoint as well (0.065542ms)
+✔ scripts/ and the manifests hold no secret-carrying construct (T-CR-2 b, AC-B-86) (5.84625ms)
+✔ no npm script carries a secret, a credential file or a connection setting as an argument (0.55575ms)
+✔ the password file of the bootstrap superuser is read by init and by the trigger check only (0.931417ms)
+✔ child processes are started in lib.mjs only, where arguments and environment are checked (0.348417ms)
+✔ host and port never come from the environment, and 5432 is named only to be refused (0.690625ms)
+✔ only the pg driver, loaded in db.mjs, opens a connection; no Unix socket path is used (0.954333ms)
+ℹ tests 57
+ℹ suites 0
+ℹ pass 57
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 586.0455
+exit=0

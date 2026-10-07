@@ -1,0 +1,3 @@
+sleep 3000
+shot 22c_technician_after_start_tap_8s
+noshot

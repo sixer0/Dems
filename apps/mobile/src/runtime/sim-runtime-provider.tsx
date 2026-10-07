@@ -73,6 +73,7 @@ import {
   useCoreLinkSource,
 } from './core-link';
 import { applyLaunchCoreSource, useDebugHandle, useDebugScenarioLinks, type RuntimeDebugSnapshot } from './debug';
+import { heartbeatWhileEnded, isLinkSettling } from './ended-link';
 import { RuntimeInternalsContext, useRuntimeInternals, type RuntimeInternals } from './internals';
 import { KeepAwakeController } from './keep-awake';
 import { reportRuntimeIssue } from './log';
@@ -409,8 +410,18 @@ function LiveBridge({ mobile, resyncBus, children }: RuntimeProps & { mobile: Mo
   const ready = useLiveReady(mobile);
   const session = useSim(selectActiveSessionInfo);
   const tabletLink = useSim(selectTabletLink);
-  // The context above holds the Live source's heartbeat view: the one socket (CL-7).
-  const heartbeat = useHeartbeatState();
+  // The context above holds the Live source's heartbeat view: the one socket (CL-7). While the Core
+  // has ended the socket's run on purpose (4401, 4403) and the Live source reopens it, its OFFLINE is
+  // the app's own reconnect, not an outage (E2E-S-3, `ended-link.ts`): the link reads CONNECTING, so
+  // the banner, the Login notice and every page's notice keep what they show.
+  // CF-M1 (R-S-2): the same for a socket the app's own client gave up and is reopening (SYNC_TIMEOUT after
+  // the pairing hand-off showed "Core server unreachable" for up to 0.47 s on Login): `isLinkSettling`.
+  const ended = useSyncExternalStore(
+    live.heartbeat.subscribe,
+    () => isLinkSettling(live),
+    () => isLinkSettling(live),
+  );
+  const heartbeat = heartbeatWhileEnded(useHeartbeatState(), ended);
   const pairing = useSyncExternalStore<PairingInfo>(mobile.subscribe, mobile.getPairing, mobile.getPairing);
 
   useDebugScenarioLinks(sim);

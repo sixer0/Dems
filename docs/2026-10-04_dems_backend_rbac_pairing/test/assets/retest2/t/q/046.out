@@ -1,0 +1,6 @@
+swipe 870,500,870,1400 500 ms
+slept 1500 ms
+swipe 870,500,870,1400 500 ms
+slept 1500 ms
+screencap S03_evidence_list_scrolled_top.png (800832 bytes) at 17:23:35.629
+ids: 163 nodes -> q/evidence_list_top.txt

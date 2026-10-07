@@ -1,0 +1,60 @@
+// R-S: a background watcher on the open Paired Devices page (NO navigation, NO reload). It installs an in-page
+// MutationObserver that stamps (host clock, Date.now) every change of the rows' Operator / State / online cells,
+// and logs over CDP every realtime frame (type + resource only) and every /api/v1 answer (method, path, status).
+// Runs until the stop file exists or the time limit passes, then writes a JSON.
+//   node --import tsx watch.mjs <tag> <maxSeconds>
+import { existsSync, rmSync } from 'node:fs'
+import { join } from 'node:path'
+import { SCRATCH, connect, hms, log, sleep, stamp, writeJson } from './lib.mjs'
+
+const [tag = 'watch', maxSeconds = '600'] = process.argv.slice(2)
+const STOP = join(SCRATCH, `stop_${tag}`)
+if (existsSync(STOP)) rmSync(STOP)
+const page = await connect()
+const events = []
+page.onEvent((e) => {
+  if (e.kind === 'frame') {
+    // The 20 Hz meters, the 1 Hz heartbeat and the session deltas are not what this row looks at.
+    if (['ping', 'pong', 'meters', 'heartbeat', 'delta', '(not JSON)'].includes(e.type)) return
+    const recv = Date.now()
+    events.push({ at: e.at ?? recv, what: `ws frame ${e.type}${e.resource ? ' ' + e.resource : ''}` })
+    log(`ws frame at ${e.at ? hms(e.at) : '?'} (received by the watcher ${hms(recv)}): ${e.type}${e.resource ? ' ' + e.resource : ''}`)
+  } else if (e.kind === 'http' && e.url.includes('/api/v1/')) {
+    const path = e.url.replace(/^https?:\/\/[^/]+/, '')
+    events.push({ at: e.doneAt, what: `${e.method} ${path} ${e.status}` })
+    log(`http answered at ${e.doneAt ? hms(e.doneAt) : '?'} (sent ${hms(e.sentAt)}): ${e.method} ${path} ${e.status}`)
+  }
+})
+// One harmless GET from the page maps CDP's monotonic frame times to the wall clock.
+await page.evaluate(`fetch('/api/v1/health', { credentials: 'same-origin' }).then((r) => r.status)`, 'clock seed')
+const origin0 = await page.evaluate('performance.timeOrigin', 'time origin')
+const installed = await page.evaluate(`(() => {
+  const read = () => [...document.querySelectorAll('[data-testid^="pd-device-"]')].map((row) => {
+    const id = row.getAttribute('data-testid').slice('pd-device-'.length)
+    const q = (p) => document.querySelector('[data-testid="' + p + id + '"]')
+    return id + '|' + (q('pd-state-')?.textContent?.trim() ?? '') + '|' + (q('pd-operator-')?.textContent?.trim() ?? '') + '|' + (q('pd-online-')?.getAttribute('data-online') ?? '')
+  }).join(' ; ')
+  if (window.__rsWatch) { window.__rsWatch.observer.disconnect() }
+  const state = { log: [{ at: Date.now(), cells: read(), why: 'installed' }], last: read() }
+  state.observer = new MutationObserver(() => { const now = read(); if (now !== state.last) { state.last = now; state.log.push({ at: Date.now(), cells: now, why: 'mutation' }) } })
+  state.observer.observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['data-online'] })
+  window.__rsWatch = state
+  return state.log[0]
+})()`, 'install observer')
+log(`observer installed at ${hms(installed.at)}: ${installed.cells}`)
+const href = await page.href()
+log(`page ${href} (this watcher never navigates or reloads)`)
+let seen = 1
+const until = Date.now() + Number(maxSeconds) * 1000
+while (Date.now() < until && !existsSync(STOP)) {
+  await sleep(150)
+  const entries = await page.evaluate(`window.__rsWatch ? window.__rsWatch.log.slice(${seen}) : []`, 'read observer')
+  for (const e of entries) { seen++; events.push({ at: e.at, what: `DOM cells ${e.cells}` }); log(`DOM change at ${hms(e.at)}: ${e.cells}`) }
+}
+const origin1 = await page.evaluate('performance.timeOrigin', 'time origin')
+const stillObserving = await page.evaluate('window.__rsWatch !== undefined', 'observer alive')
+log(`stopped (${existsSync(STOP) ? 'stop file' : 'time limit'}); page still ${await page.href()}; document time origin at start ${hms(Math.round(origin0))}, at stop ${hms(Math.round(origin1))} -> ${origin0 === origin1 && stillObserving ? 'SAME document, no reload or navigation while watching' : 'the document CHANGED (reload or navigation)'}`)
+events.sort((a, b) => (a.at ?? 0) - (b.at ?? 0))
+writeJson(`${tag}.json`, { tag, documentTimeOrigin: { start: origin0, stop: origin1, sameDocument: origin0 === origin1 && stillObserving }, startedObserverAt: stamp(installed.at), initialCells: installed.cells, href, events: events.map((e) => ({ at: e.at ? stamp(e.at) : null, atMs: e.at, what: e.what })) })
+if (existsSync(STOP)) rmSync(STOP)
+page.close()

@@ -1,0 +1,119 @@
+## W36 whole-project runs, 2026-10-04 (WIB). Certificate warning lines of the sandbox are left out.
+
+## 14:52:10 $ npm run test -w @dems/core-server -- --maxWorkers=2      (whole unit project)   exit=0
+ Test Files  96 passed (96)
+      Tests  2540 passed (2540)
+   Start at  14:52:11
+   Duration  32.58s (import 56%, tests 38%, transform 6%, worker 1%)
+
+## 14:52:48 $ DEMS_TEST_STEP=58 npm run test:db -w @dems/core-server -- --maxWorkers=2      (whole db project)   exit=0
+[test:db] PostgreSQL 18.4 on 127.0.0.1:4432; helper role dems_owner, code under test dems_app; run prefix dems_test_step_58_tmdhw14j_
+[test:db] stale sweep: dropped 0; kept 8 of younger runs, 0 of live runs, 0 unrecognised; 0 failed
+ Test Files  67 passed (67)
+      Tests  1006 passed (1006)
+   Start at  14:52:49
+   Duration  127.64s (tests 86%, import 13%, transform 1%)
+[test:db] forced drops that needed a retry: 0
+[test:db] teardown: dropped 8 database(s) in 514 ms; 0 remain with the run prefix dems_test_step_58_tmdhw14j_
+
+## 14:55:18 $ npm run typecheck -w @dems/core-server      exit=2 (one error, in a test file of the pairing row in flight)
+src/modules/pairing/__tests__/routes.test.ts(184,94): error TS2345: Argument of type '"PAIRING_MANAGE"' is not assignable to parameter of type '"EVIDENCE_VIEW" | "DIAGNOSTICS_RUN"'.
+
+## 14:55:28 $ npm run lint -w @dems/core-server      exit=0 (five warnings, all in test files of the pairing row in flight)
+src/modules/pairing/__tests__/devices.db.test.ts:26:3: warning eslint(no-unused-vars): Identifier 'signInOnWeb' is imported but never used. help: Consider removing this import.
+src/modules/pairing/__tests__/devices.db.test.ts:48:3: warning eslint(no-unused-vars): Identifier 'redeem' is imported but never used. help: Consider removing this import.
+src/modules/pairing/__tests__/concurrency.db.test.ts:243:45: warning eslint(no-unsafe-optional-chaining): Unsafe usage of optional chaining help: If this short-circuits with 'undefined' the evaluation will throw TypeError
+src/modules/pairing/__tests__/concurrency.db.test.ts:261:21: warning eslint(no-unsafe-optional-chaining): Unsafe usage of optional chaining help: If this short-circuits with 'undefined' the evaluation will throw TypeError
+src/modules/pairing/__tests__/static.test.ts:147:21: warning unicorn(no-useless-spread): Using a spread operator here creates a new array unnecessarily. help: `code.flatMap` returns a new array. Spreading it into an array expression to create a new array is redundant.
+
+## 14:57:39 whole unit project      exit=1 (11 failures in two test files of the storage row)
+ ❯ |unit| src/modules/storage/__tests__/routes.test.ts (52 tests | 8 failed) 576ms
+ ❯ |unit| src/modules/storage/__tests__/projection.test.ts (16 tests | 3 failed) 28ms
+⎯⎯⎯⎯⎯⎯ Failed Tests 11 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  |unit| src/modules/storage/__tests__/projection.test.ts > storageStatusOf: the design-book summary > on the idle dataset it is the example the contract gives for the operation
+ FAIL  |unit| src/modules/storage/__tests__/projection.test.ts > storageStatusOf: the design-book summary > every member, from the evidence volume, the storage slice and the policy slice
+ FAIL  |unit| src/modules/storage/__tests__/projection.test.ts > storageStatusOf: the design-book summary > the state is the slice's own, the percentage is rounded to a whole number, the remaining time is a whole number of milliseconds
+ FAIL  |unit| src/modules/storage/__tests__/routes.test.ts > operation 53 getStorageStatus > INVESTIGATOR reads the summary: 200, valid against the contract, and equal to what the simulator answers in Simulated mode
+ FAIL  |unit| src/modules/storage/__tests__/routes.test.ts > operation 53 getStorageStatus > SUPERVISOR reads the summary: 200, valid against the contract, and equal to what the simulator answers in Simulated mode
+ FAIL  |unit| src/modules/storage/__tests__/routes.test.ts > operation 53 getStorageStatus > TECHNICIAN reads the summary: 200, valid against the contract, and equal to what the simulator answers in Simulated mode
+ FAIL  |unit| src/modules/storage/__tests__/routes.test.ts > operation 53 getStorageStatus > equals the simulator's answer while a recording fills the evidence volume, second by second
+ FAIL  |unit| src/modules/storage/__tests__/routes.test.ts > operation 53 getStorageStatus > equals the simulator's answer under the demo fault STORAGE_LOW: state LOW
+ FAIL  |unit| src/modules/storage/__tests__/routes.test.ts > operation 53 getStorageStatus > equals the simulator's answer under the demo fault STORAGE_FULL: state FULL
+ FAIL  |unit| src/modules/storage/__tests__/routes.test.ts > operation 53 getStorageStatus > shows the retention policy of the same committed state: after a policy change the summary names the new one
+ FAIL  |unit| src/modules/storage/__tests__/routes.test.ts > who may call is stage 6's, from the registry: this module is never reached by a caller it refuses > an operator on a paired device calls all three: the principal that reaches the action names the device session
+ Test Files  2 failed | 99 passed (101)
+      Tests  11 failed | 2636 passed (2647)
+   Start at  14:57:39
+   Duration  42.21s (import 56%, tests 38%, transform 6%, worker 1%)
+
+## 14:58:22 whole db project      exit=1 (storage row: 4; the helper's sweep test: 2, timed out under load)
+[test:db] PostgreSQL 18.4 on 127.0.0.1:4432; helper role dems_owner, code under test dems_app; run prefix dems_test_step_58_tmdi5apo_
+ ❯ |db| src/modules/storage/__tests__/storage.db.test.ts (18 tests | 4 failed) 7227ms
+ ❯ |db| test/helpers/db/__tests__/sweep.db.test.ts (3 tests | 2 failed) 7253ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 6 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  |db| src/modules/storage/__tests__/storage.db.test.ts > operations 53 and 54: the reads > INVESTIGATOR reads the summary and the detail: 200, valid against the contract, equal to the committed state; no row is written
+ FAIL  |db| src/modules/storage/__tests__/storage.db.test.ts > operations 53 and 54: the reads > SUPERVISOR reads the summary and the detail: 200, valid against the contract, equal to the committed state; no row is written
+ FAIL  |db| src/modules/storage/__tests__/storage.db.test.ts > operations 53 and 54: the reads > TECHNICIAN reads the summary and the detail: 200, valid against the contract, equal to the committed state; no row is written
+ FAIL  |db| src/modules/storage/__tests__/storage.db.test.ts > operation 53 while a recording runs, under a demo fault and with a changed policy (a clone of its own) > the summary is the hosted simulator's own answer in every state: recording, READY, LOW and FULL, and with a changed policy
+ FAIL  |db| test/helpers/db/__tests__/sweep.db.test.ts > TI-12: the stale sweep > drops a run that is older than six hours and dead; keeps an old run that is alive and a younger run
+Error: Test timed out in 5000ms.
+ FAIL  |db| test/helpers/db/__tests__/sweep.db.test.ts > TI-12: the stale sweep > once the old run that was alive has ended without cleaning up, the next sweep takes it
+ Test Files  2 failed | 68 passed (70)
+      Tests  6 failed | 1030 passed (1036)
+   Start at  14:58:22
+   Duration  178.92s (tests 85%, import 14%, transform 1%)
+[test:db] forced drops that needed a retry: 0
+[test:db] teardown: dropped 8 database(s) in 574 ms; 0 remain with the run prefix dems_test_step_58_tmdi5apo_
+
+## 15:01:22 typecheck exit=0;  15:01:34 lint exit=0, no warning
+
+## 15:05:28 whole unit project      exit=0   (FINAL)
+ Test Files  101 passed (101)
+      Tests  2647 passed (2647)
+   Start at  15:05:29
+   Duration  40.37s (import 59%, tests 34%, transform 7%, worker 1%)
+
+## 15:06:09 whole db project      exit=1 (sessions row: 1; the helper's templates test: 1, timed out under load)
+[test:db] PostgreSQL 18.4 on 127.0.0.1:4432; helper role dems_owner, code under test dems_app; run prefix dems_test_step_58_tmdiiatz_
+ ❯ |db| src/modules/sessions/__tests__/history.db.test.ts (13 tests | 1 failed) 9522ms
+ ❯ |db| test/helpers/db/__tests__/templates.db.test.ts (12 tests | 1 failed) 19155ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  |db| test/helpers/db/__tests__/templates.db.test.ts > a template build that fails leaves nothing behind > a hook that throws: the half-built database is dropped, and the error names the cause
+Error: Test timed out in 5000ms.
+ FAIL  |db| src/modules/sessions/__tests__/history.db.test.ts > the keyset when instants are equal, and a session that finishes while a client pages > three sessions that ended in the same millisecond are paged by their IDs: each once, whatever the page size; a session that finishes meanwhile is neither repeated nor shifts a later page
+AssertionError: limit 1: expected [ 'SES-20261001-9003', …(13) ] to deeply equal [ 'SES-20261001-9003', …(15) ]
+ Test Files  2 failed | 72 passed (74)
+      Tests  2 failed | 1069 passed (1071)
+   Start at  15:06:10
+   Duration  224.77s (tests 86%, import 13%, transform 1%)
+[test:db] forced drops that needed a retry: 0
+[test:db] teardown: dropped 8 database(s) in 905 ms; 0 remain with the run prefix dems_test_step_58_tmdiiatz_
+
+## 15:09:55 typecheck exit=0   (FINAL);  15:10:11 lint exit=0, no warning   (FINAL)
+
+> @dems/core-server@0.2.0 typecheck
+> tsc --noEmit
+
+
+> @dems/core-server@0.2.0 lint
+> oxlint
+
+
+## 15:10:22 the two helper files that had timed out, alone with this row's database tests      exit=0
+[test:db] PostgreSQL 18.4 on 127.0.0.1:4432; helper role dems_owner, code under test dems_app; run prefix dems_test_step_58_tmdipbcy_
+ Test Files  4 passed (4)
+      Tests  54 passed (54)
+   Start at  15:10:22
+   Duration  10.29s (tests 70%, transform 16%, import 14%)
+[test:db] forced drops that needed a retry: 0
+[test:db] teardown: dropped 3 database(s) in 235 ms; 0 remain with the run prefix dems_test_step_58_tmdipbcy_
+
+## 15:10:43 whole db project      exit=0   (FINAL)
+[test:db] PostgreSQL 18.4 on 127.0.0.1:4432; helper role dems_owner, code under test dems_app; run prefix dems_test_step_58_tmdipw0a_
+[test:db] stale sweep: dropped 0; kept 14 of younger runs, 0 of live runs, 0 unrecognised; 0 failed
+ Test Files  74 passed (74)
+      Tests  1071 passed (1071)
+   Start at  15:10:44
+   Duration  177.24s (tests 84%, import 14%, transform 1%)
+[test:db] forced drops that needed a retry: 0
+[test:db] teardown: dropped 8 database(s) in 743 ms; 0 remain with the run prefix dems_test_step_58_tmdipw0a_

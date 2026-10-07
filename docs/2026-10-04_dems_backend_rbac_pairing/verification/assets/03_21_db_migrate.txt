@@ -1,0 +1,16 @@
+$ /usr/bin/lockf -k .locks/db-migrate.lock npm run db:migrate -- --database dems_demo
+# 2026-10-07 05:30:39
+
+> dems-demo@0.1.0 db:migrate
+> npm run db:migrate -w @dems/core-server -- --database dems_demo
+
+
+> @dems/core-server@0.2.0 db:migrate
+> tsx src/db/commands/migrate.ts --database dems_demo
+
+db:migrate: dems_demo is migrated under the migrate lock: this command must be run as "/usr/bin/lockf -k .locks/db-migrate.lock npm run db:migrate ...".
+db:migrate: dems_demo on PostgreSQL 18.4 as dems_owner
+db:migrate: schema version before: none (not migrated)
+db:migrate: applied 4 migration(s): 0000_prelude, 0001_tables, 0002_audit_guards, 0003_privileges
+db:migrate: schema version after: 1 (dbc-2)
+exit=0

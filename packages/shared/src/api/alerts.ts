@@ -8,8 +8,9 @@
  * | 70 | `acknowledgeAlert` | AUTHENTICATED | NONE-P (a no-op for an unknown or acknowledged alert) | `acknowledgeAlert` |
  *
  * The rest of the area is the realtime channel `WS /ws` (`realtime-messages.ts`): heartbeat, state
- * changes, alerts, audio levels, reconnect and resync. Every alert has an audit entry: raising one
- * writes FAULT_RAISED. Acknowledging one writes no audit row and one log line (SR-82).
+ * changes, alerts, audio levels, reconnect and resync. Every alert of a fault kind has an audit
+ * entry: raising one writes FAULT_RAISED (AUDIT_CHAIN_DISCONTINUITY for the kind AUDIT_TAMPER).
+ * Acknowledging one writes no audit row and one log line (SR-82).
  */
 import { z } from 'zod';
 import { AuditType } from '../sim/vocabulary';
@@ -62,7 +63,7 @@ export const ALERT_OPERATIONS = [
     mode: CoreApiMode.LIVE,
     summary: 'Alerts',
     description: [
-      'The newest alerts of the Core, active and resolved, with their acknowledgement. Slice `alerts`. Every alert was raised by a fault, and raising it wrote a FAULT_RAISED audit row.',
+      'The newest alerts of the Core, active and resolved, with their acknowledgement. Slice `alerts`. Every alert of a fault kind was raised by a fault, and raising it wrote a FAULT_RAISED audit row (AUDIT_CHAIN_DISCONTINUITY for the kind AUDIT_TAMPER).',
       STATE_READ_NOTE,
     ].join('\n\n'),
     source: backendSource(SECTION, 69),

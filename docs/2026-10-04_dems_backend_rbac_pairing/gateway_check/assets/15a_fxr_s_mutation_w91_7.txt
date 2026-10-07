@@ -1,0 +1,9 @@
+FXR-S W91-7 (CPB1-22) mutation check (2026-10-07 ~06:18)
+Mutation: routine.ts R-0 set back to `scrubDriverEnvironment(process.env);`
+Command: npx vitest run --project unit src/db/reset/__tests__/guard.test.ts
+     × a call without `driverEnvironment` (the server's) leaves the process environment as it was 1ms
+     × the command line's environment, passed as `driverEnvironment`, loses its driver variables at R-0 and keeps the rest 1ms
+AssertionError: expected undefined to be 'kept' // Object.is equality
+AssertionError: expected { PGHOST: 'elsewhere', …(2) } to deeply equal { PATH: '/usr/bin' }
+      Tests  2 failed | 30 passed (32)
+Restored: Tests  32 passed (32); src/db/reset unit: Test Files 6 passed, Tests 162 passed

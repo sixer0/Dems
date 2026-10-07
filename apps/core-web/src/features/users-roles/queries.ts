@@ -19,13 +19,17 @@
  * - **Every failure to the presenter first** (rule 2): a 403 names the role, an outage or a 429 is
  *   worded once (coalesced). What the presenter leaves to the page gets one record in its own log.
  *   Under StrictMode a query is fetched once (W0 §15: reads belong in `useQuery`).
+ * - **FXR-W (W92-8):** the matrix key is shared with Security & Audit, so it is defined once, by
+ *   `roleMatrixQueryOptions` in `lib/core-queries.ts` (gate: Live, signed in, link up), narrowed here
+ *   by `USER_ADMIN`; its failure is presented by this hook after the render (`useQueryFailure`).
  */
 import { useQuery } from '@tanstack/react-query'
-import type { AdminUserList, RoleMatrix } from '@dems/shared/api'
+import type { AdminUserList } from '@dems/shared/api'
 import type { CoreCallFailure } from '@dems/shared/client'
 import { LiveLinkState, useCorePermission, useLiveLink } from '@dems/shared/live'
 import { Permission } from '@dems/shared/sim'
 import { useCoreErrorPresenter } from '@/lib/core-errors'
+import { CoreReadError, isForbiddenCoreRead, roleMatrixQueryOptions, useCoreSignedIn, useQueryFailure, useRoleMatrixGate } from '@/lib/core-queries'
 import { CORE_QUERY_KEYS, useWebLive } from '@/runtime'
 import { reportUsersError } from './report'
 
@@ -53,17 +57,18 @@ export class AdminReadError extends Error {
 
 /** The "Forbidden" state of §10.1: the read answered 403 (a stale hint; the guard normally prevents the visit). */
 export function isForbiddenRead(error: unknown): boolean {
-  return error instanceof AdminReadError && error.status === 403
+  return (error instanceof AdminReadError && error.status === 403) || isForbiddenCoreRead(error)
 }
 
 const NOT_LIVE = { status: null, error: { code: 'NOT_LIVE' } } as const
 
-/** Whether the page may read now: Live mode, `USER_ADMIN` in the session's list, the link up. */
+/** Whether the page may read now: Live mode, signed in (D176), `USER_ADMIN` in the session's list, the link up. */
 function useReadAllowed(): boolean {
   const live = useWebLive()
+  const signedIn = useCoreSignedIn()
   const allowed = useCorePermission(Permission.USER_ADMIN)
   const linkUp = useLiveLink() === LiveLinkState.ONLINE
-  return live !== null && allowed && linkUp
+  return live !== null && signedIn && allowed && linkUp
 }
 
 /** Operation 11, `listUsers`, under `CORE_QUERY_KEYS.users`. */
@@ -86,22 +91,17 @@ export function useUsersQuery() {
   })
 }
 
-/** Operation 10, `getRoleMatrix`, under `CORE_QUERY_KEYS.roleMatrix`. */
+/** Operation 10, `getRoleMatrix`, under `CORE_QUERY_KEYS.roleMatrix`: the one definition of `lib/core-queries.ts`, narrowed by `USER_ADMIN`. */
 export function useRoleMatrixQuery() {
-  const live = useWebLive()
-  const enabled = useReadAllowed()
+  const allowed = useCorePermission(Permission.USER_ADMIN)
   const presentCoreError = useCoreErrorPresenter()
-  return useQuery({
-    queryKey: CORE_QUERY_KEYS.roleMatrix,
-    enabled,
-    queryFn: async (): Promise<RoleMatrix> => {
-      if (live === null) throw new AdminReadError('getRoleMatrix', NOT_LIVE)
-      const answer = await live.client.call('getRoleMatrix')
-      if (answer.ok) return answer.data
-      if (presentCoreError(answer) === null) {
-        reportUsersError('features/users-roles.getRoleMatrix', answer, READ_FAILED.getRoleMatrix, { operationId: 'getRoleMatrix', code: answer.error.code }, 'warn')
-      }
-      throw new AdminReadError('getRoleMatrix', answer)
-    },
+  const query = useQuery(roleMatrixQueryOptions(useRoleMatrixGate(), allowed))
+  useQueryFailure(query, (error) => {
+    const answer = error instanceof CoreReadError ? error.failure : null
+    if (answer === null) return
+    if (presentCoreError(answer) === null) {
+      reportUsersError('features/users-roles.getRoleMatrix', answer, READ_FAILED.getRoleMatrix, { operationId: 'getRoleMatrix', code: answer.error.code }, 'warn')
+    }
   })
+  return query
 }

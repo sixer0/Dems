@@ -1,0 +1,14 @@
+13:19:49.642 declared screen login
+13:19:49.683 tap 540,1496
+13:19:49.860 slept 900 ms
+13:19:50.797 password typed (not shown); inputType 0x80081
+13:19:51.130 slept 300 ms
+13:19:51.461 key 66
+13:19:51.603 signin 200 at device 10-06 13:19:51.265 (POST /api/v1/auth/sign-in 200)
+13:19:51.663 slept 3500 ms
+13:19:55.214 declared screen home
+13:19:55.255 screencap 97_rina_after_signin.png 13:19:55.255..13:19:56.012
+13:19:56.096 serverlog since k01 (3):
+    13:19:51.578 POST /api/v1/auth/sign-in 200
+    13:19:51.614 [socket closed]
+    13:19:51.622 [socket opened]

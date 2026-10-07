@@ -60,6 +60,7 @@ import { ExportSheet } from './export-sheet';
 import { IntegrityTab } from './integrity-tab';
 import { LiveIntegrityTab } from './live-integrity-tab';
 import { MediaTab } from './media-tab';
+import { MenuItemText } from './menu-item-text';
 import { MetadataTab } from './metadata-tab';
 import { PlaySheet } from './play-sheet';
 import { useCanArchive, useEvidenceItem, useOperatorNames } from './use-evidence-data';
@@ -271,7 +272,14 @@ export function EvidenceDetail({ evidenceId, variant }: EvidenceDetailProps) {
             onOpenMic={(mic) => setPlay({ camera: 'VIDEO-01', mic })}
           />
         ) : tab === 'metadata' ? (
-          <MetadataTab evidenceId={item.id} pkg={pkg} />
+          // E2E-T-6 (E-fix FX-M2): an item without a package shows its record (the Core's in Live mode).
+          <MetadataTab
+            evidenceId={item.id}
+            pkg={pkg}
+            item={item}
+            live={live}
+            mediaStatus={mediaRef.status === 'loading' || mediaRef.status === 'unavailable' ? mediaRef.status : 'ready'}
+          />
         ) : live || !integrity ? (
           <LiveIntegrityTab
             key={`integrity-${verifySeq ?? 0}`}
@@ -334,8 +342,12 @@ export function EvidenceDetail({ evidenceId, variant }: EvidenceDetailProps) {
               variant="danger"
               onPress={() => setArchiveId(item.id)}
             >
-              <Menu.ItemTitle>{t('features.evidence.actions.archive')}</Menu.ItemTitle>
-              {canArchive ? null : <Menu.ItemDescription>{t('features.evidence.actions.archiveDisabled')}</Menu.ItemDescription>}
+              {/* CF-M2 (R-T-1): title and reason stacked, so a disabled item keeps its visible title. */}
+              <MenuItemText
+                title={t('features.evidence.actions.archive')}
+                description={canArchive ? null : t('features.evidence.actions.archiveDisabled')}
+                testID="evidence-more-archive-text"
+              />
             </Menu.Item>
             <Menu.Item
               testID="evidence-more-manifest"

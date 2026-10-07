@@ -1,0 +1,38 @@
+## 2026-10-05 22:33:13 WIB 22:33  2 users, load averages: 4.08 3.83 3.54
+## $ npm run test -w @dems/mobile -- --maxWorkers=2
+A worker process has failed to exit gracefully and has been force exited. This is likely caused by tests leaking due to improper teardown. Try running with --detectOpenHandles to find leaks. Active timers can also cause this, ensure that .unref() was called on them.
+Test Suites: 96 passed, 96 total
+Tests:       1257 passed, 1257 total
+Snapshots:   0 total
+Time:        57.596 s
+exit=0
+## 22:34:11 $ npm run typecheck -w @dems/mobile
+> tsc --noEmit
+
+exit=0
+## 22:34:17 $ npm run lint -w @dems/mobile
+> eslint .
+
+exit=0
+## 22:34:28 done
+eslint json: files 464 errors 0 warnings 0
+baseline 72 vs acaff20:
+       0
+W57/W59 tests + callers vs b90a3c6:
+       0
+ apps/mobile/src/features/login/login-live-model.ts | 25 +++++-------------
+ .../src/features/pairing/pairing-live-model.ts     | 30 +++++++---------------
+ apps/mobile/src/runtime/index.ts                   |  3 +++
+ 3 files changed, 19 insertions(+), 39 deletions(-)
+ M apps/mobile/src/features/login/login-live-model.ts
+ M apps/mobile/src/features/pairing/pairing-live-model.ts
+ M apps/mobile/src/runtime/index.ts
+?? apps/mobile/src/runtime/link-notice-static.test.ts
+?? apps/mobile/src/runtime/link-notice.test.ts
+?? apps/mobile/src/runtime/link-notice.ts
+8df54bdb2236eeee35477c8a08a0f432e6f65306a1ec62d052cef49acfaf1546  apps/mobile/src/runtime/link-notice.ts
+bad82c34224b6894a7a871b81b0623638e23e9d47e89f73456dc1192a01ec6b1  apps/mobile/src/runtime/link-notice.test.ts
+f9d6441cebf44a526ca4274ea3882bfa121d8b8825ad004a6c0ce5a32ac8d979  apps/mobile/src/runtime/link-notice-static.test.ts
+674928ede60e317d9baac9a79e1fc39d940d1d5d462381baa3266995cb7bf381  apps/mobile/src/features/pairing/pairing-live-model.ts
+1f3d8d1003a2658119362c2a3c0acfeafe414bf83e8bd8e33bbf302235a3ef21  apps/mobile/src/features/login/login-live-model.ts
+1f443f215f9e86fcf9acd0bb6345ab31b5e94638cc45236a6833c5a93d15b07b  apps/mobile/src/runtime/index.ts

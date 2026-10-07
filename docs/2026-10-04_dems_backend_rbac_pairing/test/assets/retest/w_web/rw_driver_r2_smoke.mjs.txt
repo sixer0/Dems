@@ -1,0 +1,222 @@
+// R-W Part 2: smoke walk of every web page as SUPERVISOR at 1440x900: one screenshot per page (more for tabs and the
+// drawer), console errors/warnings and page-origin-only network per page, one live 'try it' health request in the
+// API Reference, sign out through the user menu. Commands sent: sign-in, reads, one GET /api/v1/health from Try it,
+// sign-out. Nothing is created: Start New Session is opened at step 1 only (no Next).
+import { launch, openPage, signIn, signOutMenu, makeRun, writeEvents, sleep } from './rt_lib.mjs'
+
+const R = makeRun('r2_smoke')
+process.on('unhandledRejection', (e) => R.log(`unhandled: ${e?.message ?? e}`))
+const browser = await launch(R.log)
+let page
+const results = []
+const step = async (name, fn) => {
+  const t0 = Date.now()
+  try {
+    const out = await fn()
+    results.push({ page: name, ok: out?.ok !== false, ms: Date.now() - t0, ...out })
+  } catch (error) {
+    results.push({ page: name, ok: false, error: error.message })
+    R.log(`STEP FAILED ${name}: ${error.message}`)
+    try { await page.shot(`p2_fail_${name.toLowerCase().replace(/[^a-z0-9]+/g, '_')}.png`) } catch { /* none */ }
+  }
+}
+const sidebar = async (label, testid, path) => {
+  let res = await page.clickByText('aside a, nav a', label, { exact: true })
+  if (!res.found) res = await page.clickByText('aside a, nav a', label)
+  let ok = await page.waitFor(testid, true, 12000)
+  let via = 'sidebar'
+  if (!ok) { await page.goto(path, 1500); ok = await page.waitFor(testid, true, 15000); via = 'url' }
+  await sleep(2500)
+  return { via, ok }
+}
+const pageFacts = async (testid) => ({ facts: await page.facts(), present: await page.exists(testid) })
+
+try {
+  page = await openPage(browser.cdp, R.log)
+  await page.viewport(1440, 900)
+
+  await step('Login', async () => {
+    page.setLabel('Login')
+    await page.goto('/login', 2500)
+    const ok = await page.waitFor('page-login', true, 15000)
+    const strip = await page.eval(`(document.querySelector('[data-testid="page-login"]')?.innerText ?? '').replace(/\\s+/g, ' ').match(/(DATABASE \\S+|ENGINE \\S+|CORE LINK \\S+|MODE \\S+)/g)`, 'strip')
+    const shot = await page.shot('p2_01_login.png')
+    return { ok, strip, shot }
+  })
+  await step('Sign in', async () => {
+    page.setLabel('Login')
+    return { ok: await signIn(page, 'andi.pratama', R.log) }
+  })
+  await step('Stack Check', async () => {
+    page.setLabel('Stack Check')
+    await page.goto('/stack-check', 2500)
+    const ok = await page.waitFor('page-stack-check', true, 15000)
+    await sleep(1500)
+    const chip = await page.text('heartbeat-chip', 80)
+    const seq1 = await page.text('heartbeat-seq', 40)
+    await sleep(2200)
+    const seq2 = await page.text('heartbeat-seq', 40)
+    return { ok, chip, seq1, seq2, ...(await pageFacts('page-stack-check')), shot: await page.shot('p2_02_stack_check.png') }
+  })
+  await step('Dashboard', async () => {
+    page.setLabel('Dashboard')
+    const nav = await sidebar('Dashboard', 'page-dashboard', '/dashboard')
+    await sleep(1500)
+    return { ...nav, ring: await page.text('ring-status-line', 120), ...(await pageFacts('page-dashboard')), shot: await page.shot('p2_03_dashboard.png') }
+  })
+  await step('Start New Session (step 1)', async () => {
+    page.setLabel('Start New Session')
+    const c = await page.click('start-new-session')
+    const ok = await page.waitFor('page-session-new', true, 15000)
+    await sleep(2500)
+    const next = await page.eval(`(() => { const b = document.querySelector('[data-testid="sn-next"]'); return b ? { disabled: b.disabled || b.getAttribute('aria-disabled') === 'true' || b.hasAttribute('data-disabled'), text: b.innerText.trim() } : null })()`, 'next')
+    return { ok, clicked: c.found, next, ...(await pageFacts('page-session-new')), shot: await page.shot('p2_04_start_new_session_step1.png') }
+  })
+  await step('Session Monitor', async () => {
+    page.setLabel('Session Monitor')
+    const nav = await sidebar('Session Monitor', 'page-session-monitor', '/session')
+    const notes = await page.eval(`[...document.querySelectorAll('[data-testid="session-timeline"] [data-kind="NOTE"]')].map((e) => ({ text: e.innerText.replace(/\\s+/g, ' ').trim().slice(0, 160) }))`, 'notes')
+    return { ...nav, banner: await page.text('sm-status-banner', 200), notes, ...(await pageFacts('page-session-monitor')), shot: await page.shot('p2_05_session_monitor.png') }
+  })
+  await step('Evidence list', async () => {
+    page.setLabel('Evidence list')
+    const nav = await sidebar('Evidence', 'page-evidence', '/evidence')
+    const summary = await page.eval(`(document.querySelector('[data-testid="page-evidence"]')?.innerText ?? '').replace(/\\s+/g, ' ').match(/\\d+–\\d+ of \\d+/)?.[0] ?? null`, 'summary')
+    return { ...nav, summary, ...(await pageFacts('page-evidence')), shot: await page.shot('p2_06_evidence_list.png') }
+  })
+  await step('Evidence detail', async () => {
+    page.setLabel('Evidence detail')
+    // Open the row of EV-20261006-0012 from the list (row menu View would also work; a row press opens the detail).
+    let opened = await page.clickByText('[data-testid="page-evidence"] a', 'EV-20261006-0012')
+    let ok = opened.found && (await page.waitFor('page-evidence-detail', true, 10000))
+    let via = 'list link'
+    if (!ok) { await page.goto('/evidence/EV-20261006-0012', 1500); ok = await page.waitFor('page-evidence-detail', true, 15000); via = 'url' }
+    await sleep(2500)
+    const tabs = {}
+    for (const [key, file] of [['media', 'p2_07a_evidence_detail_media.png'], ['metadata', 'p2_07b_evidence_detail_metadata.png'], ['integrity', 'p2_07c_evidence_detail_integrity.png']]) {
+      const c = await page.click(`evidence-tab-${key}`)
+      await sleep(2200)
+      tabs[key] = {
+        clicked: c.found,
+        selected: await page.attr(`evidence-tab-${key}`, 'aria-selected'),
+        metadataPackage: key === 'metadata' ? await page.attr('evidence-metadata', 'data-package') : undefined,
+        verdict: key === 'integrity' ? await page.attr('[data-testid="evidence-verify-card"] [data-testid="evidence-verdict"]', 'data-verdict') : undefined,
+        verifyLast: key === 'integrity' ? await page.text('evidence-verify-last', 160) : undefined,
+        shot: await page.shot(file),
+      }
+    }
+    return { ok, via, tabs, header: await page.text('evidence-detail-header', 260), ...(await pageFacts('page-evidence-detail')) }
+  })
+  await step('Evidence detail custody probe (EV-20261006-0014)', async () => {
+    page.setLabel('Evidence detail')
+    await page.goto('/evidence/EV-20261006-0014?tab=integrity', 1500)
+    const ok = await page.waitFor('evidence-custody', true, 15000)
+    await sleep(2500)
+    await page.eval(`document.querySelector('[data-testid="evidence-custody"]').scrollIntoView({ block: 'center', behavior: 'instant' })`)
+    await sleep(700)
+    const probe = await page.eval(`(() => {
+      const custody = document.querySelector('[data-testid="evidence-custody"]')
+      const table = custody.querySelector('table')
+      const card = custody.getBoundingClientRect()
+      let scroller = table?.parentElement
+      while (scroller && scroller !== custody.parentElement) { const ox = getComputedStyle(scroller).overflowX; if (ox !== 'visible') break; scroller = scroller.parentElement }
+      const sx = scroller ? { tag: scroller.tagName, cls: String(scroller.className).slice(0, 80), overflowX: getComputedStyle(scroller).overflowX, scrollWidth: scroller.scrollWidth, clientWidth: scroller.clientWidth } : null
+      const ths = [...(table?.querySelectorAll('thead th') ?? [])].map((th) => ({ text: th.innerText.replace(/\\s+/g, ' ').trim(), width: Math.round(th.getBoundingClientRect().width) }))
+      const rows = [...(table?.querySelectorAll('tbody tr') ?? [])].map((tr) => {
+        const tds = [...tr.querySelectorAll('td')]
+        const d = tds[tds.length - 1]
+        const r = d.getBoundingClientRect()
+        return { action: tds[1]?.innerText.trim(), detailText: d.innerText.replace(/\\s+/g, ' ').trim().slice(0, 90), detailRight: Math.round(r.right), detailScrollW: d.scrollWidth, detailClientW: d.clientWidth, wordBreak: getComputedStyle(d).wordBreak, overflowWrap: getComputedStyle(d).overflowWrap, whiteSpace: getComputedStyle(d).whiteSpace }
+      })
+      return { cardLeft: Math.round(card.left), cardRight: Math.round(card.right), tableWidth: Math.round(table?.getBoundingClientRect().width ?? 0), tableRight: Math.round(table?.getBoundingClientRect().right ?? 0), scroller: sx, ths, rows }
+    })()`, 'custodyProbe')
+    const shot = await page.shot('p2_07d_custody_detail_column_ev0014.png', await page.elementClip('evidence-custody', 8, 880))
+    return { ok, probe, shot }
+  })
+  await step('Devices & Inputs', async () => {
+    page.setLabel('Devices & Inputs')
+    const nav = await sidebar('Devices & Inputs', 'page-devices', '/devices')
+    const shot = await page.shot('p2_08a_devices.png')
+    await page.click('device-menu-CAM-01')
+    await page.waitFor('[role="menu"]', true, 8000)
+    await sleep(500)
+    const menu = await page.menuItems()
+    await page.clickByText('[role="menu"] [role="menuitem"]', 'Details')
+    const drawer = await page.waitFor('device-drawer', true, 10000)
+    await sleep(1500)
+    const overview = await page.text('device-drawer', 300)
+    const shot2 = await page.shot('p2_08b_devices_camera1_drawer.png')
+    await page.key('Escape')
+    await sleep(900)
+    return { ...nav, menu, drawer, overview, drawerClosed: !(await page.exists('device-drawer')), ...(await pageFacts('page-devices')), shot, shot2 }
+  })
+  await step('Storage', async () => {
+    page.setLabel('Storage')
+    const nav = await sidebar('Storage', 'page-storage', '/storage')
+    return { ...nav, ...(await pageFacts('page-storage')), shot: await page.shot('p2_09_storage.png') }
+  })
+  await step('Network & Time', async () => {
+    page.setLabel('Network & Time')
+    const nav = await sidebar('Network & Time', 'page-network-time', '/network-time')
+    return { ...nav, ...(await pageFacts('page-network-time')), shot: await page.shot('p2_10_network_time.png') }
+  })
+  await step('Security & Audit', async () => {
+    page.setLabel('Security & Audit')
+    const nav = await sidebar('Security & Audit', 'page-security-audit', '/security-audit')
+    return { ...nav, ...(await pageFacts('page-security-audit')), shot: await page.shot('p2_11_security_audit.png') }
+  })
+  await step('System & Maintenance', async () => {
+    page.setLabel('System & Maintenance')
+    const nav = await sidebar('System & Maintenance', 'page-system', '/system')
+    const shot = await page.shot('p2_12a_system.png')
+    await page.eval(`document.querySelector('[data-testid="system-panel-demo"]')?.scrollIntoView({ block: 'start', behavior: 'instant' })`)
+    await sleep(800)
+    const demo = { panel: await page.exists('system-panel-demo'), body: await page.exists('system-demo-body'), badge: await page.text('system-demo-badge', 60), text: await page.text('system-panel-demo', 200) }
+    return { ...nav, demo, ...(await pageFacts('page-system')), shot, shot2: await page.shot('p2_12b_system_demo_control_panel.png') }
+  })
+  await step('Users & Roles', async () => {
+    page.setLabel('Users & Roles')
+    const nav = await sidebar('Users & Roles', 'page-users-roles', '/admin/users')
+    return { ...nav, ...(await pageFacts('page-users-roles')), shot: await page.shot('p2_13_users_roles.png') }
+  })
+  await step('Paired Devices', async () => {
+    page.setLabel('Paired Devices')
+    const nav = await sidebar('Paired Devices', 'page-paired-devices', '/admin/devices')
+    await page.mask()
+    const codeShown = await page.exists('pd-code')
+    return { ...nav, codeShown, summary: await page.eval(`(document.querySelector('[data-testid="page-paired-devices"]')?.innerText ?? '').replace(/\\s+/g, ' ').match(/\\d+ paired · \\d+ online/)?.[0] ?? null`, 'pd'), ...(await pageFacts('page-paired-devices')), shot: await page.shot('p2_14_paired_devices.png') }
+  })
+  await step('API Reference', async () => {
+    page.setLabel('API Reference')
+    const nav = await sidebar('API Reference', 'page-api-reference', '/developer/api')
+    await sleep(2500)
+    const banner = await page.text('api-service-banner', 200)
+    const shot = await page.shot('p2_15a_api_reference.png')
+    const op = await page.click('a[href="#tag/service/GET/api/v1/health"]')
+    await sleep(2000)
+    const t = await page.clickByText('[data-testid="page-api-reference"] button', 'Test Request')
+    await sleep(2500)
+    const sendAt = new Date().toISOString()
+    const send = await page.clickByText('button', 'Send Request')
+    await sleep(3000)
+    const response = await page.eval(`(() => { const d = [...document.querySelectorAll('[role="dialog"]')].find((e) => e.innerText.includes('/api/v1/health') && e.getClientRects().length) ?? document.body; const txt = String(d.innerText); const i = txt.search(/Response/); return txt.slice(Math.max(0, i), i + 500).replace(/\\s+/g, ' ') })()`, 'response')
+    const shot2 = await page.shot('p2_15b_api_reference_try_it_health_response.png')
+    // Close the client (its Close button; Escape is ignored by the Scalar client, O-16 of round 1).
+    const close = await page.clickByText('button', 'Close Client')
+    await sleep(800)
+    return { ...nav, banner, op: op.found, testRequest: t.found, send: send.found, sendAt, response, closeClient: close.found, ...(await pageFacts('page-api-reference')), shot, shot2 }
+  })
+  await step('Sign out', async () => {
+    page.setLabel('Sign out')
+    const out = await signOutMenu(page, R.log, 'p2_16_signed_out.png')
+    return { ok: out.login && out.state === 'signed-out', ...out }
+  })
+} catch (error) {
+  R.log(`FAILED: ${error.message}`)
+  R.obs.error = error.message
+} finally {
+  R.record('results', results)
+  if (page) R.record('consoleNetwork', writeEvents(R.run, page.events))
+  await browser.close()
+  R.flush()
+}

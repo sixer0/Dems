@@ -19,6 +19,7 @@ import { describe, expect, it } from '@jest/globals';
 import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
+import { en } from '@dems/shared/i18n';
 import { storageEn } from './i18n';
 
 const FOLDER = __dirname;
@@ -142,10 +143,12 @@ describe('one LIVE idiom (rule 5)', () => {
 
 describe('the copy (rule 8; §3.2)', () => {
   it('the text LIVE mode adds says nothing about a simulation; the text it replaces did', () => {
-    const live = leaves(storageEn.live);
+    // Closing copy round (D168 DN-2): the LIVE toast is the web console's shared key; the folder keeps no LIVE copy.
+    const live = leaves(en.storage.manage.live);
     expect(live).toEqual([{ key: 'applied', text: 'Storage policy updated' }]);
     expect(live.filter((leaf) => /simulat|demo\b|mock/i.test(leaf.text))).toEqual([]);
-    expect(fileText('storage-screen.tsx')).toMatch(/live \? t\('features\.storage\.live\.applied'\) : t\('storage\.manage\.applied'\)/);
+    expect(leaves(storageEn).filter((leaf) => leaf.key.startsWith('live.'))).toEqual([]);
+    expect(fileText('storage-screen.tsx')).toMatch(/live \? t\('storage\.manage\.live\.applied'\) : t\('storage\.manage\.applied'\)/);
   });
 
   it('no `SIM-GAP` marker was added or removed: the folder keeps its 10 markers of `acaff20` (KI-07 stays 13 IDs / 62 markers)', () => {

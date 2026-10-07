@@ -1,0 +1,28 @@
+{
+  "label": "08_a",
+  "reason": "W98 run A web stop",
+  "dialog": true,
+  "confirmAt": "10:03:50.371 (epoch 1791342230.371)",
+  "confirmAtMs": 1791342230371,
+  "stopCall": {
+    "status": 202,
+    "sent": "10:03:50.376 (epoch 1791342230.376)",
+    "sentAtMs": 1791342230376,
+    "done": "10:03:50.389 (epoch 1791342230.389)",
+    "doneAtMs": 1791342230389
+  },
+  "webStates": [
+    {
+      "state": "STOPPING",
+      "at": "10:03:50.456 (epoch 1791342230.456)"
+    },
+    {
+      "state": "FINALIZING",
+      "at": "10:03:51.996 (epoch 1791342231.996)"
+    },
+    {
+      "state": "SEALED",
+      "at": "10:03:57.524 (epoch 1791342237.524)"
+    }
+  ]
+}

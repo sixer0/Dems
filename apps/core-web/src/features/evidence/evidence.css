@@ -774,6 +774,145 @@
     padding: 14px 16px;
     gap: 10px;
   }
+  /*
+   * E2E-W1-7 (E-fix FX-W): a custody time is two tokens, the date and the clock. `.evi-mono` breaks
+   * anywhere (for hashes), which cut "6 Oct 2026 09:58:24" into "6 Oct 20 / 26 09:5 / 8:24" at 1440 px;
+   * here neither token breaks inside, so a narrow column puts the clock on a second line.
+   */
+  .evi-mono.evi-custody-time {
+    word-break: normal;
+    overflow-wrap: normal;
+  }
+  .evi-custody-date,
+  .evi-custody-clock {
+    white-space: nowrap;
+  }
+  /*
+   * R-W-1 (closing fix CF-W): the custody table fits its card at every width. The kit's automatic
+   * layout never made the table narrower than its columns' longest unbreakable words plus 16 px padding
+   * a side (date token 74 px, RECORDING_STOPPED 155 px, "Pratama", "supervisor"): 472 px in a 441 px
+   * card at 1440x900, 97 px over at 1280x800 with the Detail out of sight. Fixed column widths keep the
+   * table inside the card; the time column holds the date token whole (E2E-W1-7); an action code wraps
+   * after an underscore (`<wbr>`, integrity-tab.tsx); words longer than their column break as a last
+   * resort, never the time. The kit's table rules sit in the same `components` layer, so two classes
+   * win over its one.
+   */
+  .evi-custody-card {
+    container: evi-custody / inline-size;
+  }
+  .evi-custody-table .table__content {
+    table-layout: fixed;
+  }
+  .evi-custody-table :is(.table__column, .table__cell) {
+    padding-inline: 10px;
+  }
+  .evi-custody-table .evi-custody-col-time {
+    width: 6.25rem;
+  }
+  .evi-custody-table .evi-custody-col-action {
+    width: 30%;
+  }
+  .evi-custody-table .evi-custody-col-actor {
+    width: 22%;
+  }
+  .evi-custody-table :is(.evi-custody-action, .evi-custody-actor, .evi-custody-detail) {
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
+  /*
+   * A narrow card (the 1280 px layout: 375 px of content; the query measures the content box, 441 px at
+   * 1440 and 631 px at 1920 keep four columns) leaves a fourth column about 80 px, where "supervisor"
+   * no longer fits. There the row is a grid of three columns and the Detail sits under the action,
+   * across the action and the actor. The Detail heading, and the dash of an empty Detail, are hidden
+   * visually only, so assistive technology still reads four columns.
+   */
+  @container evi-custody (width < 26rem) {
+    .evi-custody-table .table__content,
+    .evi-custody-table .table__header,
+    .evi-custody-table .table__body {
+      display: block;
+    }
+    .evi-custody-table :is(.evi-custody-col-time, .evi-custody-col-action, .evi-custody-col-actor) {
+      width: auto;
+    }
+    .evi-custody-table tr {
+      position: relative;
+      display: grid;
+      grid-template-columns: 6.25rem minmax(0, 1fr) minmax(0, 30%);
+    }
+    .evi-custody-table .evi-custody-col-detail,
+    .evi-custody-table .evi-custody-detail[data-empty='true'] {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
+    .evi-custody-table .evi-custody-col-actor {
+      border-start-end-radius: min(32px, var(--radius-2xl));
+      border-end-end-radius: min(32px, var(--radius-2xl));
+    }
+    .evi-custody-table .evi-custody-col-actor::after {
+      content: none;
+    }
+    .evi-custody-table .evi-custody-detail {
+      grid-column: 2 / -1;
+      padding-top: 0;
+    }
+    .evi-custody-table tr[data-detail='true'] .evi-custody-time-cell {
+      grid-row: span 2;
+    }
+    .evi-custody-table tr[data-detail='true'] :is(.evi-custody-action-cell, .evi-custody-actor) {
+      border-bottom-color: transparent;
+    }
+  }
+  /*
+   * A phone-width card (390 px viewport: 286 px of content) cannot hold three columns: the time column,
+   * "RECORDING_" (110 px with padding) and "Pratama" (75 px) need 285 px or more. There the row has two
+   * columns: the time, and the action with the actor and the Detail under it. The Actor heading is hidden
+   * visually only. After the 26rem block, so these rules win where both apply.
+   */
+  @container evi-custody (width < 20rem) {
+    .evi-custody-table tr {
+      grid-template-columns: 6.25rem minmax(0, 1fr);
+    }
+    .evi-custody-table .evi-custody-col-actor {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
+    .evi-custody-table .evi-custody-col-action {
+      border-start-end-radius: min(32px, var(--radius-2xl));
+      border-end-end-radius: min(32px, var(--radius-2xl));
+    }
+    .evi-custody-table .evi-custody-col-action::after {
+      content: none;
+    }
+    /* `tr.table__row` outweighs the kit's `.table-root--secondary .table__row .table__cell` border colour. */
+    .evi-custody-table tr.table__row .evi-custody-action-cell {
+      padding-bottom: 0;
+      border-bottom-color: transparent;
+    }
+    .evi-custody-table .evi-custody-actor {
+      grid-column: 2;
+      padding-top: 2px;
+    }
+    .evi-custody-table .evi-custody-detail {
+      grid-column: 2;
+    }
+    .evi-custody-table .evi-custody-time-cell {
+      grid-row: span 2;
+    }
+    .evi-custody-table tr[data-detail='true'] .evi-custody-time-cell {
+      grid-row: span 3;
+    }
+  }
   .evi-verify-head {
     display: flex;
     flex-wrap: wrap;

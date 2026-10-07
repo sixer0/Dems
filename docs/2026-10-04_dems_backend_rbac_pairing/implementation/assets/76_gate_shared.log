@@ -1,0 +1,61 @@
+## 2026-10-06 02:11:57 WIB  2:11  2 users, load averages: 10.31 10.58 9.36
+## $ npm run test -w @dems/shared -- --maxWorkers=2
+
+> @dems/shared@0.1.0 test
+> vitest run --maxWorkers=2
+
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/packages/shared
+
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+
+ Test Files  68 passed (68)
+      Tests  1814 passed (1814)
+   Start at  02:11:57
+   Duration  11.21s (tests 60%, import 32%, transform 7%, worker 1%)
+
+    Isolate  68 workers spawned · ~72ms startup each (spawn + environment, per file)
+             at least ~2.39s faster with isolate: false — reuses workers across files instead of one per file
+
+exit=0
+## 02:12:08 $ npm run typecheck -w @dems/shared
+
+> @dems/shared@0.1.0 typecheck
+> tsc --noEmit
+
+exit=0
+## 02:12:12 $ npm run lint -w @dems/shared
+
+> @dems/shared@0.1.0 lint
+> oxlint
+
+exit=0

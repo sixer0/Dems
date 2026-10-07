@@ -1,0 +1,24 @@
+RF2 tablet (emulator-5556) check 7: one session per run, started on the tablet (budi.santoso), stopped on web 5177 (andi.pratama) about 10 s after RECORDING.
+Recording: screenrecord --bugreport --size 1280x800, frames at 540 px; device time per frame = an overlay reading (anchor) + PTS difference; host = device + |offset|.
+Monitor frame = red 'End Session' button present; empty = app-area sd < 6 (tools/tscan.py). Summary-in-place times read from the frames by eye (T3_finalizing_to_summary sheet).
+
+== T1 SES-20261006-0031 -> EV-20261006-0021  load 3.65  anchor f_400 = device 22:41:36.121, offset -459 ms
+   Core start 22:41:29.072  stop 22:41:39.823  sealed 22:41:46.552 (host)
+   frames 593; monitor frames 398; first monitor frame device 22:41:29.721
+   last monitor f_541.png device 22:41:39.589 -> f_542.png device 22:41:39.657 host 22:41:40.116 (Finalizing; empty=False); Core stop -> Finalizing 0.29 s; Core seal -> Finalizing -6.44 s
+   empty frames: []
+
+== T2 SES-20261006-0032 -> EV-20261006-0022  load 2.17  anchor f_400 = device 22:48:42.743, offset -462 ms
+   Core start 22:48:30.569  stop 22:48:41.672  sealed 22:48:48.816 (host)
+   frames 489; monitor frames 370; first monitor frame device 22:48:30.838
+   last monitor f_432.png device 22:48:44.008 -> f_433.png device 22:48:44.397 host 22:48:44.859 (Finalizing; empty=False); Core stop -> Finalizing 3.19 s; Core seal -> Finalizing -3.96 s
+   empty frames: [['f_470.png', '22:49:02.063']]
+
+== T3 SES-20261006-0033 -> EV-20261006-0023  load 3.77  anchor f_300 = device 22:51:01.603, offset -463 ms
+   Core start 22:50:53.017  stop 22:51:04.446  sealed 22:51:10.839 (host)
+   frames 588; monitor frames 459; first monitor frame device 22:50:53.238
+   last monitor f_532.png device 22:51:10.479 -> f_533.png device 22:51:10.713 host 22:51:11.176 (Finalizing; empty=False); Core stop -> Finalizing 6.73 s; Core seal -> Finalizing +0.34 s
+   empty frames: [['f_575.png', '22:51:28.286']]
+
+T3 frames by eye: Finalizing steps still running at device 22:51:16.948 ('33% complete') although the Core sealed at host 22:51:10.839; Summary first drawn at device 22:51:24.001 (host ~22:51:24.46, ~13.6 s after the seal); tablet JS log: 22:51:23.229 runtime.routeSync.transition 'Resynced route to the session state' {state: SEALED}.
+T1 JS log: routeSync SEALED at device 22:41:46.854 (Core seal 22:41:46.552). T2: routeSync SEALED at device 22:48:56.528 (Core seal 22:48:48.816).

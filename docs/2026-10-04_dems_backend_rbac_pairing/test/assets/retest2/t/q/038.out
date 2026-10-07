@@ -1,0 +1,6 @@
+crash misc/crash_after_run2.txt: 2349 crash-class lines since T0
+swipe 1280,1300,1280,300 600 ms
+slept 800 ms
+swipe 1280,1300,1280,300 600 ms
+slept 1500 ms
+screencap E2_06_summary_bottom_run2.png (241129 bytes) at 17:15:06.859

@@ -1,0 +1,16 @@
+2026-10-06T05:58:30.677Z browser pid 82172, HeadlessChrome/153.0.8010.12, CDP port 58352 (OS-assigned), owner verified (lsof + /json/version), profile rw_profile_db8d3z
+2026-10-06T05:58:30.718Z viewport 1440x900
+2026-10-06T05:58:30.718Z == page: Login (Live, Core paths blocked)
+2026-10-06T05:58:33.536Z loginStart: {"selector":"LIVE","stored":null}
+2026-10-06T05:58:34.563Z switchToSimulated: "Switch to Simulated mode? You will be signed out and the console reloads. Simulated data and Live data are separate. Cancel Switch to Simulated mode"
+2026-10-06T05:58:36.659Z == page: Login (Simulated)
+2026-10-06T05:58:37.664Z loginSimulated: {"selector":"SIMULATED","stored":"SIMULATED","coreMode":"SIMULATED","signInEnabled":true,"alerts":[],"strip":["CORE LINK Online"]}
+2026-10-06T05:58:38.011Z screenshot p4_main_sim_01_login_simulated.png
+2026-10-06T05:58:42.438Z sign-in andi.pratama: landed on /dashboard
+2026-10-06T05:58:42.438Z == page: Simulated: evidence 0012
+2026-10-06T05:58:42.439Z signedIn: {"ok":true,"facts":{"href":"/dashboard","title":"DEMS Edge Client · Core Console","page":["page-dashboard"],"mode":"SIMULATED","h1":"Dashboard","toasts":[],"dialogs":[],"alerts":[],"scrollWidth":1440,"clientWidth":1440}}
+2026-10-06T05:58:45.088Z evidenceList: {"ids":["EV-20261006-0013","EV-20261006-0012","EV-20261006-0011","EV-20261006-0010","EV-20261006-0009","EV-20261006-0008","EV-20261006-0007","EV-20261005-0006","EV-20261005-0005","EV-20261005-0004"],"item":"EV-20261006-0012"}
+2026-10-06T05:58:55.837Z openItem: {"item":"EV-20261006-0012","row":{"found":true,"disabled":false,"hit":true},"opened":false}
+2026-10-06T05:58:55.837Z FAILED: STOP: the row press did not open the detail
+2026-10-06T05:58:55.847Z consoleNetwork: {"Login (Live, Core paths blocked)":{"requests":511,"origins":{"http://127.0.0.1:5173":509,"blob:":2},"ws":["ws://127.0.0.1:5173/","ws://127.0.0.1:5173/","ws://127.0.0.1:4400/ws","ws://127.0.0.1:4400/ws"],"errors":["[core-web] live Object","[core-web] live Object","[core-web] live Object"],"warnings":["[core-web] live Object","[core-web] live Object"],"exceptions":[],"log":["warning network: WebSocket connection to 'ws://127.0.0.1:4400/ws' failed: WebSocket is closed before the connection is established. (/@fs/Users/gsp-budi/Documents/DEMS/packages/shared/src/realtime/heartbeat-client.ts)"],"responses4xx":[],"blocked":[],"wsHandshakes":[101,101,101],"wsGuardRefused":["ws://127.0.0.1:5173/ws","ws://127.0.0.1:5173/ws","ws://127.0.0.1:5173/ws"],"loadFailed":["inspector  /api/v1/auth/session","inspector  /api/v1/health","inspector  /api/v1/auth/session"]},"Login (Simulated)":{"requests":188,"origins":{"http://127.0.0.1:5173":188},"ws":[],"errors":[],"warnings":[],"exceptions":[],"log":[],"responses4xx":[],"blocked":[]},"Simulated: evidence 0012":{"requests":112,"origins":{"http://127.0.0.1:5173":111,"data:":1},"ws":[],"errors":[],"warnings":[],"exceptions":[],"log":[],"responses4xx":[],"blocked":[]}}
+2026-10-06T05:58:56.537Z browser closed (pid 82172), profile removed: true

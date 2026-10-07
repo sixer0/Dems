@@ -1,0 +1,108 @@
+{
+ "result": {
+  "role": "TECHNICIAN",
+  "operator": "OPR-003",
+  "operatorRole": "TECHNICIAN",
+  "page": "http://127.0.0.1:5173/dashboard",
+  "calls": [
+   {
+    "operation": "listUsers",
+    "method": "GET",
+    "path": "/api/v1/admin/users",
+    "expectedPermission": "USER_ADMIN",
+    "at": "2026-10-06T03:06:37.795Z",
+    "status": 403,
+    "code": "NOT_PERMITTED",
+    "details": {
+     "operationId": "listUsers",
+     "permission": "USER_ADMIN",
+     "role": "TECHNICIAN"
+    },
+    "message": "Your role does not allow this action. The attempt was audited.",
+    "requestId": "b50598e6-3bee-4e0b-8436-43b98690a162"
+   },
+   {
+    "operation": "listPairedDevices",
+    "method": "GET",
+    "path": "/api/v1/pairing/devices",
+    "expectedPermission": "PAIRING_MANAGE",
+    "at": "2026-10-06T03:06:38.227Z",
+    "status": 403,
+    "code": "NOT_PERMITTED",
+    "details": {
+     "operationId": "listPairedDevices",
+     "permission": "PAIRING_MANAGE",
+     "role": "TECHNICIAN"
+    },
+    "message": "Your role does not allow this action. The attempt was audited.",
+    "requestId": "229aa232-ff01-441d-9299-c44275abd85a"
+   },
+   {
+    "operation": "scanCaseNumber",
+    "method": "POST",
+    "path": "/api/v1/session/case-number",
+    "expectedPermission": "SESSION_START",
+    "at": "2026-10-06T03:06:38.644Z",
+    "status": 403,
+    "code": "NOT_PERMITTED",
+    "details": {
+     "operationId": "scanCaseNumber",
+     "permission": "SESSION_START",
+     "role": "TECHNICIAN"
+    },
+    "message": "Your role does not allow this action. The attempt was audited.",
+    "requestId": "af2f7679-83db-4cd5-bd8e-091c20fdab14"
+   },
+   {
+    "operation": "addSessionNote",
+    "method": "POST",
+    "path": "/api/v1/session/SES-99999999-9999/notes",
+    "expectedPermission": "SESSION_NOTE",
+    "at": "2026-10-06T03:06:39.145Z",
+    "status": 403,
+    "code": "NOT_PERMITTED",
+    "details": {
+     "operationId": "addSessionNote",
+     "permission": "SESSION_NOTE",
+     "role": "TECHNICIAN"
+    },
+    "message": "Your role does not allow this action. The attempt was audited.",
+    "requestId": "b4821d3d-6f83-4f4a-bbe8-311f06de9c50"
+   },
+   {
+    "operation": "getDemoStatus",
+    "method": "GET",
+    "path": "/api/v1/demo/status",
+    "expectedPermission": "DEMO_CONTROL",
+    "at": "2026-10-06T03:06:39.561Z",
+    "status": 403,
+    "code": "NOT_PERMITTED",
+    "details": {
+     "operationId": "getDemoStatus",
+     "permission": "DEMO_CONTROL",
+     "role": "TECHNICIAN"
+    },
+    "message": "Your role does not allow this action. The attempt was audited.",
+    "requestId": "346328a6-5e23-413f-a3ae-1489fb325fa8"
+   }
+  ]
+ },
+ "net": {
+  "api": [
+   "GET /api/v1/auth/session 200",
+   "GET /api/v1/auth/session 200",
+   "GET /api/v1/admin/users 403",
+   "GET /api/v1/pairing/devices 403",
+   "POST /api/v1/session/case-number 403",
+   "POST /api/v1/session/SES-99999999-9999/notes 403",
+   "GET /api/v1/demo/status 403"
+  ],
+  "console": [
+   "log-error (network): Failed to load resource: the server responded with a status of 403 (Forbidden) http://127.0.0.1:5173/api/v1/admin/users",
+   "log-error (network): Failed to load resource: the server responded with a status of 403 (Forbidden) http://127.0.0.1:5173/api/v1/pairing/devices",
+   "log-error (network): Failed to load resource: the server responded with a status of 403 (Forbidden) http://127.0.0.1:5173/api/v1/session/case-number",
+   "log-error (network): Failed to load resource: the server responded with a status of 403 (Forbidden) http://127.0.0.1:5173/api/v1/session/SES-99999999-9999/notes",
+   "log-error (network): Failed to load resource: the server responded with a status of 403 (Forbidden) http://127.0.0.1:5173/api/v1/demo/status"
+  ]
+ }
+}

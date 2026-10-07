@@ -1,0 +1,53 @@
+# W68 mutation check, 2026-10-06 01:01:46; 5 test files per run; the tree is not edited
+control (no mutation): exit=0 Tests:       78 passed, 78 total (33 s)
+U1  detected      14s  Live mode skips the presenter (the step-79 toasts instead)  | Tests:       11 failed, 67 passed, 78 total  | live-session-live-link.test.tsx, live-session-live-sites.test.tsx | S2-1 Snapshot (operation 36): the shutter at the press, the rest on the settle (LB-4) › refusal: 403 (example notPermitted) → the denied toast naming the role; 
+U2  detected      15s  the Core's 422 INVALID_REASON is not the reason field's error  | Tests:       1 failed, 77 passed, 78 total  | live-session-live-sites.test.tsx | S2-1 End Session (operation 26): the Dialog is busy, closes on the 202, stays on every refusal › 422 INVALID_REASON (F59: the Core is the judge) → the reason fi
+U3  detected      17s  LIVE keeps the step-79 read-only rule (a reconnect attempt reads as OFFLINE)  | Tests:       1 failed, 77 passed, 78 total  | live-session-live-link.test.tsx | the Core link (the runtime's one rule; [CS:§3.5] mobile: the banner and the read-only actions) › a reconnect with no outage before it (CL-11a "Retry now") is a 
+U4  detected      16s  the `ok` continuation never runs  | Tests:       6 failed, 72 passed, 78 total  | live-session-live-link.test.tsx, live-session-live-sites.test.tsx, session-live-screen.test.tsx | S2-1 Snapshot (operation 36): the shutter at the press, the rest on the settle (LB-4) › success: one request; the flash at the press, the flight, the counter an
+U5  detected      12s  the control is never released (`done` dropped)  | Tests:       16 failed, 62 passed, 78 total  | live-session-live-link.test.tsx, live-session-live-sites.test.tsx | S2-1 Snapshot (operation 36): the shutter at the press, the rest on the settle (LB-4) › success: one request; the flash at the press, the flight, the counter an
+U6  detected      12s  a refusal is not told to the control  | Tests:       1 failed, 77 passed, 78 total  | live-session-live-sites.test.tsx | S2-1 End Session (operation 26): the Dialog is busy, closes on the 202, stays on every refusal › 422 INVALID_REASON (F59: the Core is the judge) → the reason fi
+## 6 detected, 0 not detected, 0 not applied, of 6
+## the mutated files in the tree, before and after: identical
+   6284eb88da69f56a  src/features/session-live/action-tiles.tsx
+   e299a18f61f11ab5  src/features/session-live/end-session.tsx
+   7d1ae5bc41d403fb  src/features/session-live/live-feed.tsx
+   d3b44fc82cb94979  src/features/session-live/mic-card.tsx
+   ab117051a21633dd  src/features/session-live/session-live-screen.tsx
+   cf3dbc9876ea769f  src/features/session-live/use-monitor.ts
+# W68 mutation check, 2026-10-06 01:04:02; 5 test files per run; the tree is not edited
+S1  detected      16s  the shutter waits for the settle (no flash at the press, LB-4)  | Tests:       1 failed, 77 passed, 78 total  | live-session-live-sites.test.tsx | S2-1 Snapshot (operation 36): the shutter at the press, the rest on the settle (LB-4) › success: one request; the flash at the press, the flight, the counter an
+S2  detected      21s  the shutter flashes twice in Live mode (at the press and again in ok)  | Tests:       1 failed, 77 passed, 78 total  | live-session-live-sites.test.tsx | S2-1 Snapshot (operation 36): the shutter at the press, the rest on the settle (LB-4) › success: one request; the flash at the press, the flight, the counter an
+S3  detected      22s  the snapshot toast at the press (before the Core answered)  | Tests:       3 failed, 75 passed, 78 total  | live-session-live-sites.test.tsx | S2-1 Snapshot (operation 36): the shutter at the press, the rest on the settle (LB-4) › success: one request; the flash at the press, the flight, the counter an
+S4  detected      27s  the marker field closes at the press (S4-2 read not awaited)  | Tests:       3 failed, 75 passed, 78 total  | live-session-live-sites.test.tsx | S2-1 Marker (operation 34) and S4-2 (the timeline tail read in `ok`) › success: one request with the label; the toast shows the time of the Core's marker, read 
+S5  detected      29s  End Session's outcome is not handed to the Dialog  | Tests:       4 failed, 74 passed, 78 total  | live-session-live-sites.test.tsx | S2-1 End Session (operation 26): the Dialog is busy, closes on the 202, stays on every refusal › refusal: 403 (example notPermitted) → the denied toast; the Dia
+S6  detected      31s  no one-at-a-time guard for the camera  | Tests:       1 failed, 77 passed, 78 total  | live-session-live-link.test.tsx | camera and CLIP reset (results ignored, as before; a refusal is still worded) › camera: two quick taps while the Core has not answered send one request; the tap
+T1  detected      31s  the Snapshot tile has no in-flight guard  | Tests:       2 failed, 76 passed, 78 total  | live-session-live-sites.test.tsx | S2-1 Snapshot (operation 36): the shutter at the press, the rest on the settle (LB-4) › success: one request; the flash at the press, the flight, the counter an
+T2  detected      18s  the tile is never marked busy  | Tests:       2 failed, 76 passed, 78 total  | live-session-live-sites.test.tsx | S2-1 Snapshot (operation 36): the shutter at the press, the rest on the settle (LB-4) › success: one request; the flash at the press, the flight, the counter an
+T3  detected      17s  the tile never shows the Spinner  | Tests:       1 failed, 77 passed, 78 total  | live-session-live-sites.test.tsx | S2-1 Snapshot (operation 36): the shutter at the press, the rest on the settle (LB-4) › pending (LB-1): answer 1 s late — the tile busy at once, no spinner at 3
+T4  detected      14s  the marker field closes at the press, whatever the Core says  | Tests:       3 failed, 75 passed, 78 total  | live-session-live-sites.test.tsx | S2-1 Marker (operation 34) and S4-2 (the timeline tail read in `ok`) › success: one request with the label; the toast shows the time of the Core's marker, read 
+## 10 detected, 0 not detected, 0 not applied, of 10
+## the mutated files in the tree, before and after: identical
+   6284eb88da69f56a  src/features/session-live/action-tiles.tsx
+   e299a18f61f11ab5  src/features/session-live/end-session.tsx
+   7d1ae5bc41d403fb  src/features/session-live/live-feed.tsx
+   d3b44fc82cb94979  src/features/session-live/mic-card.tsx
+   ab117051a21633dd  src/features/session-live/session-live-screen.tsx
+   cf3dbc9876ea769f  src/features/session-live/use-monitor.ts
+# W68 mutation check, 2026-10-06 01:08:28; 5 test files per run; the tree is not edited
+E1  detected       9s  "Keep recording" closes the Dialog while the stop is out  | Tests:       1 failed, 77 passed, 78 total  | live-session-live-sites.test.tsx | S2-1 End Session (operation 26): the Dialog is busy, closes on the 202, stays on every refusal › pending (LB-1; AC-C-57/58, mobile form): answer 1 s late — one 
+E2  detected       9s  the confirm has no in-flight guard  | Tests:       1 failed, 77 passed, 78 total  | live-session-live-sites.test.tsx | S2-1 End Session (operation 26): the Dialog is busy, closes on the 202, stays on every refusal › pending (LB-1; AC-C-57/58, mobile form): answer 1 s late — one 
+E3  detected      10s  the Dialog closes on every refusal (the reason is lost)  | Tests:       5 failed, 73 passed, 78 total  | live-session-live-sites.test.tsx | S2-1 End Session (operation 26): the Dialog is busy, closes on the 202, stays on every refusal › refusal: 403 (example notPermitted) → the denied toast; the Dia
+E4  detected      10s  the Core's 422 does not reach the reason field  | Tests:       1 failed, 77 passed, 78 total  | live-session-live-sites.test.tsx | S2-1 End Session (operation 26): the Dialog is busy, closes on the 202, stays on every refusal › 422 INVALID_REASON (F59: the Core is the judge) → the reason fi
+E5  detected      11s  the confirm never shows the Spinner  | Tests:       1 failed, 77 passed, 78 total  | live-session-live-sites.test.tsx | S2-1 End Session (operation 26): the Dialog is busy, closes on the 202, stays on every refusal › pending (LB-1; AC-C-57/58, mobile form): answer 1 s late — one 
+E6  detected      10s  the confirm is never marked busy  | Tests:       1 failed, 77 passed, 78 total  | live-session-live-sites.test.tsx | S2-1 End Session (operation 26): the Dialog is busy, closes on the 202, stays on every refusal › pending (LB-1; AC-C-57/58, mobile form): answer 1 s late — one 
+E7  detected      11s  an edited reason keeps the Core's refusal  | Tests:       1 failed, 77 passed, 78 total  | live-session-live-sites.test.tsx | S2-1 End Session (operation 26): the Dialog is busy, closes on the 202, stays on every refusal › 422 INVALID_REASON (F59: the Core is the judge) → the reason fi
+F1  detected      14s  the camera tap target is never marked busy  | Tests:       1 failed, 77 passed, 78 total  | live-session-live-link.test.tsx | camera and CLIP reset (results ignored, as before; a refusal is still worded) › camera: two quick taps while the Core has not answered send one request; the tap
+M1  detected      12s  no one-at-a-time guard for the CLIP reset  | Tests:       1 failed, 77 passed, 78 total  | live-session-live-link.test.tsx | CLIP reset, one at a time › two quick taps on one meter's CLIP chip while the Core has not answered send one reset
+## 9 detected, 0 not detected, 0 not applied, of 9
+## the mutated files in the tree, before and after: identical
+   6284eb88da69f56a  src/features/session-live/action-tiles.tsx
+   e299a18f61f11ab5  src/features/session-live/end-session.tsx
+   7d1ae5bc41d403fb  src/features/session-live/live-feed.tsx
+   d3b44fc82cb94979  src/features/session-live/mic-card.tsx
+   ab117051a21633dd  src/features/session-live/session-live-screen.tsx
+   cf3dbc9876ea769f  src/features/session-live/use-monitor.ts

@@ -1,0 +1,71 @@
+"""RF-T: summarise one run's frame facts (output of frames.py in template mode).
+  python3 summarise.py <run.json> <device-host offset ms> <core start host HH:MM:SS.mmm> <out.txt>
+Reports: monitor span, blank frames, the hand-over (last monitor frame -> next frame), timer steps
+(value changes with device and host time), backward steps, holds > 1.5 s, timer lag vs the Core's start,
+and the banner probes (header row y shift, amber/green pixels in the band under the app header)."""
+import json, sys
+
+js, off_ms, core_start, out = sys.argv[1], float(sys.argv[2]), sys.argv[3], sys.argv[4]
+def to_s(h):
+    a, b, c = h.split(':'); return int(a) * 3600 + int(b) * 60 + float(c)
+def hms(x):
+    h = int(x // 3600); m = int((x % 3600) // 60); s = x - h * 3600 - m * 60
+    return f'{h:02d}:{m:02d}:{s:06.3f}'
+rows = json.load(open(js))['rows']
+cs = to_s(core_start)
+lines = []
+P = lines.append
+mon = [i for i, r in enumerate(rows) if r['monitor']]
+P(f'frames {len(rows)}; monitor frames {len(mon)}; blank frames {sum(r["blank"] for r in rows)}')
+for i, r in enumerate(rows):
+    if r['blank']:
+        prev = rows[i - 1]['frame'] if i else None
+        nxt = rows[i + 1]['frame'] if i + 1 < len(rows) else None
+        P(f'  BLANK {r["frame"]} (overlay f={r["overlay_f"]}) device {r["dev"]} sd {r["sd"]}; prev {prev} monitor={rows[i-1]["monitor"] if i else None}; next {nxt} monitor={rows[i+1]["monitor"] if i + 1 < len(rows) else None}')
+if mon:
+    a, b = mon[0], mon[-1]
+    P(f'first monitor frame {rows[a]["frame"]} device {rows[a]["dev"]}; last monitor frame {rows[b]["frame"]} device {rows[b]["dev"]}')
+    if b + 1 < len(rows):
+        n = rows[b + 1]
+        P(f'hand-over: last monitor {rows[b]["frame"]} (f={rows[b]["overlay_f"]}) {rows[b]["dev"]} -> next {n["frame"]} (f={n["overlay_f"]}) {n["dev"]} sd {n["sd"]} blank={n["blank"]} (+{(to_s(n["dev"]) - to_s(rows[b]["dev"])) * 1000:.0f} ms)')
+    gaps = [(rows[x]['frame'], rows[y]['frame']) for x, y in zip(mon, mon[1:]) if y - x > 1]
+    P(f'non-monitor frames inside the monitor span: {gaps}')
+# timer
+steps = []
+last = None
+unread = []
+for r in rows:
+    if not r['monitor']:
+        continue
+    t = r.get('timerS')
+    if t is None:
+        unread.append(r['frame'])
+        if len(unread) <= 3:
+            P(f'  UNREADABLE timer in {r["frame"]} ({r.get("timer")}, glyphs {r.get("nglyph")}, dist {r.get("tplDist")})')
+        continue
+    if last is None or t != last[1]:
+        steps.append((r, t))
+        last = (r, t)
+P(f'unreadable timer frames: {len(unread)}')
+back = [(steps[k - 1][1], steps[k][1], steps[k][0]['frame'], steps[k][0]['dev']) for k in range(1, len(steps)) if steps[k][1] < steps[k - 1][1]]
+P(f'timer values shown: {len(steps)} changes; backward steps: {len(back)} {back}')
+P('timer steps (frame, device time, host time = device - offset, value, lag = host - Core start - value):')
+holds = []
+for k, (r, t) in enumerate(steps):
+    dev = to_s(r['dev']); host = dev - off_ms / 1000.0
+    nxt = to_s(steps[k + 1][0]['dev']) if k + 1 < len(steps) else None
+    held = (nxt - dev) if nxt is not None else None
+    if held is not None and held > 1.5:
+        holds.append((t, r['frame'], r['dev'], round(held, 2), steps[k + 1][1]))
+    P(f'  {r["frame"]} dev {r["dev"]} host {hms(host)} timer {t:3d} lag {host - cs - t:+.2f} s' + (f' held {held:.2f} s' if held is not None else ''))
+P(f'holds > 1.5 s (value, first frame, device time, seconds held, next value): {holds}')
+# banner probes
+hy = [r.get('headerY') for r in rows if r['monitor']]
+base = max(set(hy), key=hy.count) if hy else None
+shift = [(r['frame'], r['dev'], r.get('headerY')) for r in rows if r['monitor'] and r.get('headerY') != base]
+amber = [(r['frame'], r['dev'], r['bandAmber']) for r in rows if r['monitor'] and r.get('bandAmber', 0) > 20]
+green = [(r['frame'], r['dev'], r['bandGreen']) for r in rows if r['monitor'] and r.get('bandGreen', 0) > 20]
+P(f'banner probes: header row y baseline {base}; frames shifted {len(shift)} {shift[:8]}; band amber>20 {len(amber)} {amber[:8]}; band green>20 {len(green)} {green[:8]}')
+P(f'band pixel maxima over monitor frames: amber {max((r.get("bandAmber", 0) for r in rows if r["monitor"]), default=0)}, green {max((r.get("bandGreen", 0) for r in rows if r["monitor"]), default=0)}')
+open(out, 'w').write('\n'.join(lines) + '\n')
+print('\n'.join(l for l in lines if not l.startswith('  ') or 'BLANK' in l or 'UNREADABLE' in l))

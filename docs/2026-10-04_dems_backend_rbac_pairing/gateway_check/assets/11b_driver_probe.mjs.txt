@@ -1,0 +1,52 @@
+// FX-W probe: reads the lane-3 state the captures need (read-only: GET requests only, then sign-out).
+import { launch, openPage, signIn, signOut, sleep } from './cdp.mjs'
+
+const lines = []
+const log = (line) => {
+  const stamped = `${new Date().toISOString()} ${line}`
+  lines.push(stamped)
+  console.log(stamped)
+}
+
+process.on("unhandledRejection", (error) => log(`unhandled: ${error?.message ?? error}`))
+const browser = await launch(log)
+try {
+  const page = await openPage(browser.cdp, log)
+  await page.viewport(1440, 900)
+  await signIn(page, log)
+  await sleep(1500)
+  const list = await page.eval(async () => {
+    const response = await fetch('/api/v1/evidence', { headers: { accept: 'application/json' } })
+    const body = await response.json()
+    const items = body.items ?? body.evidence ?? body.data ?? body
+    return {
+      status: response.status,
+      keys: Object.keys(body),
+      items: (Array.isArray(items) ? items : []).map((item) => ({
+        id: item.id,
+        sessionId: item.sessionId,
+        caseNumber: item.caseNumber,
+        status: item.status,
+        verification: item.verification,
+      })),
+    }
+  })
+  log(`GET /api/v1/evidence -> ${list.status} keys=${list.keys.join(',')}`)
+  for (const item of list.items) log(`  ${item.id} ${item.sessionId} ${item.caseNumber} ${item.status} verification=${JSON.stringify(item.verification)}`)
+  const ring = await page.eval(() => document.querySelector('[data-testid="glow-ring"]')?.getAttribute('data-state'))
+  log(`ring state ${ring}`)
+  const media = await page.eval(async (ids) => {
+    const out = []
+    for (const id of ids) {
+      const response = await fetch(`/api/v1/evidence/${id}`, { headers: { accept: 'application/json' } })
+      const body = await response.json()
+      out.push({ id, status: response.status, media: body.media })
+    }
+    return out
+  }, list.items.map((item) => item.id))
+  for (const entry of media) log(`  media ${entry.id} -> ${entry.status} ${JSON.stringify(entry.media)}`)
+  await signOut(page, log)
+  log(`exceptions ${page.exceptions.length}; blocked other-origin requests ${page.blocked.length}`)
+} finally {
+  await browser.close()
+}

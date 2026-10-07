@@ -1,0 +1,32 @@
+12:55:59.950 declared screen more
+12:55:59.994 tap 756,2283
+12:56:00.143 slept 2500 ms
+12:56:02.695 declared screen devices
+12:56:02.744 tapid device-row-CAM-01 at 540,499 "Camera 1, Interview Room 1, Online"
+12:56:05.350 slept 2500 ms
+12:56:07.881 declared screen device-detail
+12:56:07.909 tap 972,2283
+12:56:07.989 slept 2500 ms
+12:56:10.529 declared screen x-more
+12:56:10.578 ids(1): screen-more@540,1102
+12:56:12.933 tapid more-dest-settings at 797,1611 "Settings, Preferences, security, about, 5 sections"
+12:56:15.386 slept 2500 ms
+12:56:17.916 declared screen settings
+12:56:17.942 tapid settings-row-devices at 540,1512 "Device Settings"
+12:56:20.218 slept 2500 ms
+12:56:22.747 declared screen x-devices
+12:56:22.784 screencap 45_repro_device_settings_with_cam_detail_in_stack.png 12:56:22.784..12:56:23.055
+12:56:23.202 ids(1): screen-devices@540,1102
+12:56:25.581 key 4
+12:56:25.830 slept 2500 ms
+12:56:28.584 declared screen x-back1
+12:56:28.707 screencap 45b_repro_back_1.png 12:56:28.707..12:56:29.482
+12:56:29.584 ids(2): screen-device-detail@540,1102 ; device-detail-screen@540,1173
+12:56:32.035 key 4
+12:56:32.315 slept 2500 ms
+12:56:34.878 declared screen x-back2
+12:56:34.930 ids(1): screen-devices@540,1102
+12:56:37.678 key 4
+12:56:37.866 slept 2500 ms
+12:56:40.460 declared screen x-back3
+12:56:40.533 ids(1): screen-settings@540,1102

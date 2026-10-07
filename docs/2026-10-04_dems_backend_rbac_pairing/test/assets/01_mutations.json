@@ -1,0 +1,176 @@
+[
+ {
+  "id": "W-S1",
+  "app": "web",
+  "kind": "fs",
+  "file": "apps/core-web/src/features/evidence/use-archive.ts",
+  "append": "\nexport const probeW87 = (sim: { actions: { archiveEvidence(id: string): void } }) => sim.actions.archiveEvidence('EVD-1')\n",
+  "test": "src/test/live-static-ac-c-53.test.ts",
+  "note": "a page reads `.actions` on a Sim"
+ },
+ {
+  "id": "W-S2",
+  "app": "web",
+  "kind": "fs",
+  "file": "apps/core-web/src/features/storage/manage-drawer.tsx",
+  "append": "\nimport { useSimActions } from '@dems/shared/sim'\nexport const probeW87 = () => useSimActions()\n",
+  "test": "src/test/live-static-ac-c-53.test.ts",
+  "note": "a page imports and calls useSimActions"
+ },
+ {
+  "id": "W-S3",
+  "app": "web",
+  "kind": "fs",
+  "file": "apps/core-web/src/features/system/diagnostics.tsx",
+  "append": "\nimport { createFakeTransport } from '@dems/shared/live/testing'\nexport const probeW87 = createFakeTransport\n",
+  "test": "src/test/live-static-ac-c-53.test.ts",
+  "note": "a page imports the fake transport (TS-15)"
+ },
+ {
+  "id": "W-T1",
+  "app": "web",
+  "kind": "transform",
+  "file": "src/components/shell/mode-indicator.tsx",
+  "from": "const tone = state === 'RECONNECTING' && isLinkUp(link) ? 'warning' : CHIP_COLOR[state]",
+  "to": "const tone = state === 'RECONNECTING' ? 'warning' : CHIP_COLOR[state]",
+  "test": "src/test/live-gap-indicator-connecting.test.tsx",
+  "note": "CP-W1 mutant T1: every RECONNECTING reads warning"
+ },
+ {
+  "id": "W-T2",
+  "app": "web",
+  "kind": "transform",
+  "file": "src/components/shell/mode-indicator-state.ts",
+  "from": "if (link === LiveLinkState.CONNECTING || link === LiveLinkState.RESYNCING) return 'RECONNECTING'",
+  "to": "if (link === LiveLinkState.RESYNCING) return 'RECONNECTING'",
+  "test": "src/test/live-gap-indicator-connecting.test.tsx",
+  "note": "a CONNECTING link reads OFFLINE"
+ },
+ {
+  "id": "M-S1",
+  "app": "mobile",
+  "kind": "fs",
+  "file": "apps/mobile/src/features/login/use-login-controller.ts",
+  "append": "\nexport const probeW87 = (sim: { actions: { signIn(a: string, b: string): unknown } }) => sim.actions.signIn('a', 'b');\n",
+  "test": "src/lib/live-static-ac-c-53.test.ts",
+  "note": "a screen reads `.actions` on a Sim"
+ },
+ {
+  "id": "M-S2",
+  "app": "mobile",
+  "kind": "fs",
+  "file": "apps/mobile/src/auth/auth-provider.tsx",
+  "append": "\nimport { useSimActions } from '@dems/shared/sim';\nexport const probeW87 = () => useSimActions();\n",
+  "test": "src/lib/live-static-ac-c-53.test.ts",
+  "note": "the auth layer calls useSimActions"
+ },
+ {
+  "id": "M-S3",
+  "app": "mobile",
+  "kind": "fs",
+  "file": "apps/mobile/src/runtime/core-link.ts",
+  "append": "\nimport { createFakeTransport } from '@dems/shared/live/testing';\nexport const probeW87 = createFakeTransport;\n",
+  "test": "src/lib/live-static-ac-c-53.test.ts",
+  "note": "a production file imports the fake transport (TS-15)"
+ },
+ {
+  "id": "M-C1",
+  "app": "mobile",
+  "kind": "transform",
+  "file": "src/features/session-live/use-monitor.ts",
+  "from": "if (guarded && readOnly) {",
+  "to": "if (false) {",
+  "test": "src/features/session-live/live-gap-read-only-dialog.test.tsx",
+  "note": "M2 mutant C1: the monitor never refuses at the action"
+ },
+ {
+  "id": "M-C2",
+  "app": "mobile",
+  "kind": "transform",
+  "file": "src/features/session-live/use-monitor.ts",
+  "from": "toast.show({ variant: 'warning', label: t('features.session-live.errors.readOnly') });",
+  "to": "toast.show({ variant: 'warning', label: t('features.session-live.errors.readOnly') }); toast.show({ variant: 'warning', label: t('features.session-live.errors.readOnly') });",
+  "test": "src/features/session-live/live-gap-read-only-dialog.test.tsx",
+  "note": "D179 DC-6: two calls behind one toast on screen"
+ },
+ {
+  "id": "M-L1",
+  "app": "mobile",
+  "kind": "transform",
+  "file": "src/runtime/sim-runtime-provider.tsx",
+  "from": "const pairing = useSyncExternalStore<PairingInfo>(mobile.subscribe, mobile.getPairing, mobile.getPairing);",
+  "to": "const pairing = useSyncExternalStore<PairingInfo>(mobile.subscribe, mobile.getPairing, mobile.getPairing);\n  useTabletLinkFromHeartbeat(sim, ready, 'HEARTBEAT', heartbeat);",
+  "test": "src/features/session-live/live-gap-s4-7-tablet-link.test.tsx",
+  "note": "S4-7 active in LIVE: the heartbeat writes the tablet link"
+ },
+ {
+  "id": "M-B1",
+  "app": "mobile",
+  "kind": "transform",
+  "file": "src/auth/live-auth-provider.tsx",
+  "from": "const fate = biometricTokenFate(settled);",
+  "to": "const fate = 'kept';",
+  "test": "src/features/settings/live-gap-s1-2-biometric.test.tsx",
+  "note": "S1-2: the token is kept whatever the Core answered"
+ },
+ {
+  "id": "M-B2",
+  "app": "mobile",
+  "kind": "transform",
+  "file": "src/auth/live-auth-provider.tsx",
+  "from": "return { kind: 'signed-in', operatorId: settled.result.operatorId };",
+  "to": "return { kind: 'error' };",
+  "test": "src/features/settings/live-gap-s1-2-biometric.test.tsx",
+  "note": "S1-2: a 200 is not mapped to signed-in"
+ },
+ {
+  "id": "M-P1",
+  "app": "mobile",
+  "kind": "transform",
+  "file": "src/features/pairing/use-pairing-flow.ts",
+  "from": "settle(() => actions.pair(sending.code), {",
+  "to": "settle(() => actions.pair('000000'), {",
+  "test": "src/features/pairing/live-gap-sites.test.tsx",
+  "note": "S1-8: the typed code is not the one sent"
+ },
+ {
+  "id": "M-P2",
+  "app": "mobile",
+  "kind": "transform",
+  "file": "src/features/pairing/use-pairing-flow.ts",
+  "from": "settle(() => actions.unpair(), {",
+  "to": "settle(() => undefined, {",
+  "test": "src/features/pairing/live-gap-sites.test.tsx",
+  "note": "S2-5: no unpair request is sent"
+ },
+ {
+  "id": "F8-unref",
+  "app": "mobile",
+  "kind": "transform",
+  "file": "src/runtime/log.ts",
+  "from": "if (timer === null) timer = setTimeout(() => void flush(), flushMs);",
+  "to": "if (timer === null) { timer = setTimeout(() => void flush(), flushMs); (timer as unknown as { unref?: () => void }).unref?.(); }",
+  "test": "src/features/session-summary/session-summary-screen.test.tsx src/features/session-finalizing/session-finalizing-screen.test.tsx",
+  "note": "diagnosis of F-8 (not a mutation): the runtime log's flush timer unref'd in memory"
+ },
+ {
+  "id": "M-B3",
+  "app": "mobile",
+  "kind": "transform",
+  "file": "src/auth/biometric.ts",
+  "from": "return mapAnswer(auth.recordBiometricFailure(operatorId), (result) => (result.ok ? { kind: 'error' } : fromFailure(result)));",
+  "to": "return mapAnswer(auth.recordBiometricFailure(null), (result) => (result.ok ? { kind: 'error' } : fromFailure(result)));",
+  "test": "src/features/settings/live-gap-s1-2-biometric.test.tsx",
+  "note": "S1-3: the report names no operator"
+ },
+ {
+  "id": "M-B4",
+  "app": "mobile",
+  "kind": "transform",
+  "file": "src/auth/biometric.ts",
+  "from": "return result.reason === 'LOCKED'",
+  "to": "return result.reason !== 'LOCKED'",
+  "test": "src/features/settings/live-gap-s1-2-biometric.test.tsx",
+  "note": "S1-3: the failure union is mapped the wrong way round"
+ }
+]

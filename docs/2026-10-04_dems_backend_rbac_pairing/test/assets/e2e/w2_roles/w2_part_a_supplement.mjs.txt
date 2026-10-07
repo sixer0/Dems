@@ -1,0 +1,69 @@
+// E2E-W2 Part A supplement: the gated controls that sit below the fold, scrolled into view and captured
+// (System maintenance, Security & Audit export, Session Monitor action bar), per role. Fresh profile,
+// own sign-in through the form, sign-out through the user menu, profile removed.
+// Usage: TMPDIR=… node w2_part_a_supplement.mjs <INVESTIGATOR|TECHNICIAN> <assetsDir> <firstShotNumber>
+import * as lib from './w2_lib.mjs'
+import { join } from 'node:path'
+const [ROLE, ASSETS, FIRST] = process.argv.slice(2)
+const USER = { INVESTIGATOR: 'budi.santoso', TECHNICIAN: 'rina.wijaya' }[ROLE]
+const role = ROLE.toLowerCase()
+let k = Number(FIRST)
+const { sleep, ORIGIN } = lib
+const out = { role: ROLE, shots: [], facts: {} }
+const b = await lib.launch(`s_${role}`)
+const c = await lib.connect(b, role, ASSETS, join(ASSETS, 'w2_driver.log'))
+const snap = async (slug, caption) => {
+  const f = `${String(k++).padStart(2, '0')}_${role}_${slug}.png`
+  await c.screenshot(f)
+  out.shots.push({ file: f, caption })
+}
+const focus = (tid) => c.evaluate(`(() => { const el = document.querySelector('[data-testid="${tid}"]'); if (!el) return false; el.scrollIntoView({ block: 'center' }); return true })()`)
+const state = (tid) =>
+  c.evaluate(`(() => { const el = document.querySelector('[data-testid="${tid}"]'); if (!el) return 'absent'; return (el.disabled === true || el.getAttribute('aria-disabled') === 'true' || el.hasAttribute('data-disabled')) ? 'disabled' : 'enabled' })()`)
+try {
+  out.signIn = await lib.signIn(c, USER)
+  await c.navigate(ORIGIN + '/system', 4000)
+  await focus('system-restart-services')
+  await sleep(1200)
+  out.facts.system = {
+    restartServices: await state('system-restart-services'),
+    installUpdate: await state('system-update-install'),
+    exportLogs: await state('system-export-logs'),
+    runDiagnostics: await state('system-run-diagnostics'),
+    reasons: await lib.reasonFacts(c),
+  }
+  await snap('system_maintenance_controls', `${ROLE}: System, Diagnostics & Maintenance panel scrolled into view (Run diagnostics / Restart services / Export logs)`)
+  await focus('system-update-install')
+  await sleep(1000)
+  await snap('system_update_panel', `${ROLE}: System, Software update panel (Install update)`)
+  await c.navigate(ORIGIN + '/security-audit', 4000)
+  await focus('export-audit')
+  await sleep(1200)
+  out.facts.securityAudit = { exportAudit: await state('export-audit'), verifyChain: await state('verify-chain') }
+  await snap('security_audit_export_control', `${ROLE}: Security & Audit, audit log toolbar with Export audit`)
+  await c.navigate(ORIGIN + '/session', 4000)
+  await focus('panel-P')
+  await sleep(1000)
+  out.facts.sessionMonitor = {
+    end: await state('sm-action-end'),
+    endPermitted: await c.evaluate(`document.querySelector('[data-testid="sm-action-end"]')?.getAttribute('data-permitted') ?? null`),
+    startLink: await state('sm-start-new-session'),
+  }
+  await snap('session_monitor_action_bar', `${ROLE}: Session Monitor without a session: action bar and Start New Session link`)
+  // sign out (own session)
+  await c.navigate(ORIGIN + '/dashboard', 3000)
+  await c.click('user-menu')
+  await c.waitUntil(`document.querySelector('[role="menu"]') !== null`, 'menu', 5000)
+  await sleep(400)
+  await c.clickSel('[role="menu"] [role="menuitem"][data-key="signOut"]', 'sign out')
+  out.signOut = { loginShown: await c.waitFor('page-login', true, 15000), sessionAfter: (await c.pageFetch('GET', '/api/v1/auth/session')).status }
+} catch (e) {
+  out.error = String(e.message || e)
+}
+out.console = c.allConsole
+out.origins = [...new Set(c.allRequests.filter((r) => !/^(data|blob):/.test(r.url)).map((r) => { try { return new URL(r.url.replace('?…', '')).origin } catch { return r.url.slice(0, 30) } }))]
+lib.writeJson(join(ASSETS, `w2_part_a5_supplement_${role}.json`), out)
+console.log(lib.sanitize(JSON.stringify({ role: ROLE, error: out.error ?? null, facts: out.facts, signOut: out.signOut, origins: out.origins, shots: out.shots.map((s) => s.file) }, null, 1)))
+c.close()
+await lib.shutdown(b)
+process.exit(0)

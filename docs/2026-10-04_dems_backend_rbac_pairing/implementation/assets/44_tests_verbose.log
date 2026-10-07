@@ -1,0 +1,259 @@
+# Step 66 (W44): every test of the seven new files (2026-10-04 12:32:40 WIB)
+$ npm run test -w @dems/shared -- --maxWorkers=2 --reporter=verbose test/live-source-*.test.ts
+
+> @dems/shared@0.1.0 test
+> vitest run --maxWorkers=2 --reporter=verbose test/live-source-replica.test.ts test/live-source-atomicity.test.ts test/live-source-bindings.test.ts test/live-source-session.test.ts test/live-source-react.test.ts test/live-source-simulated-isolation.test.ts test/live-source-platform-neutral.test.ts
+
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/packages/shared
+
+ ✓ test/live-source-session.test.ts > the bootstrap (§5.1) and `ready` > signed out: the probe answers 401, the socket is anonymous, the lock state fills the lockout view, and no Core data is held 15ms
+ ✓ test/live-source-session.test.ts > the bootstrap (§5.1) and `ready` > signed in (a reload with a valid cookie): `auth` and the snapshot arrive in ONE store update, then `ready` resolves 25ms
+ ✓ test/live-source-session.test.ts > the bootstrap (§5.1) and `ready` > the Live handle of the light API: the mode, the link and the permission hint follow the source 9ms
+ ✓ test/live-source-session.test.ts > the bootstrap (§5.1) and `ready` > the session is known but no snapshot comes: `ready` resolves after the boot time-out with nobody signed in; the snapshot signs in when it comes 15ms
+ ✓ test/live-source-session.test.ts > the bootstrap (§5.1) and `ready` > no answer to the probe: `ready` resolves at once, and the question is asked again until the server answers 7ms
+ ✓ test/live-source-session.test.ts > the bootstrap (§5.1) and `ready` > an OPERATOR socket whose session the server does not name: nothing of it is shown, and the question is asked once for that socket 11ms
+ ✓ test/live-source-session.test.ts > the bootstrap (§5.1) and `ready` > with autoStart false nothing is sent and no socket is opened until start(); start and stop are idempotent; stop leaves no timer 16ms
+ ✓ test/live-source-atomicity.test.ts > AC-C-10: own-command atomicity, in both arrival orders > delta first: the delta is held while the command is in flight; the answer applies it and runs the continuation in one turn 35ms
+ ✓ test/live-source-atomicity.test.ts > AC-C-10: own-command atomicity, in both arrival orders > answer first: the action stays unsettled until the delta of its revision; the delta applies and settles in one synchronous turn 10ms
+ ✓ test/live-source-atomicity.test.ts > AC-C-10: own-command atomicity, in both arrival orders > the scripted command of the fake transport, delta-first: one update, then the continuation 10ms
+ ✓ test/live-source-atomicity.test.ts > AC-C-10: own-command atomicity, in both arrival orders > the scripted command of the fake transport, answer-first: one update, then the continuation 7ms
+ ✓ test/live-source-atomicity.test.ts > AC-C-10: own-command atomicity, in both arrival orders > CL-26: a Live result can be awaited, and the awaiting code sees the effect 8ms
+ ✓ test/live-source-atomicity.test.ts > AC-C-10: own-command atomicity, in both arrival orders > a delta of somebody else that arrives in flight is held too, and goes into the same single update 11ms
+ ✓ test/live-source-atomicity.test.ts > AC-C-10: own-command atomicity, in both arrival orders > deltas beyond the answered revision stay held while another command is in flight, and are applied when it settles 8ms
+ ✓ test/live-source-atomicity.test.ts > AC-C-10: own-command atomicity, in both arrival orders > with no other command in flight, the deltas beyond the answered revision go into the same update 7ms
+ ✓ test/live-source-session.test.ts > the bootstrap (§5.1) and `ready` > a source that is stopped before its bootstrap ended still resolves `ready` 4ms
+ ✓ test/live-source-session.test.ts > sign-in (§5.2, WS-1 to WS-4) > web: the answer, then a new socket, then its snapshot; only then the action settles, with `auth` and the data in one update 10ms
+ ✓ test/live-source-session.test.ts > sign-in (§5.2, WS-1 to WS-4) > a wrong password resolves with INVALID_CREDENTIALS and the attempts left; the lockout view follows (WS-2, WS-3) 4ms
+ ✓ test/live-source-session.test.ts > sign-in (§5.2, WS-1 to WS-4) > a locked console resolves with LOCKED, and the countdown runs on the Live clock to lockedUntil 5ms
+ ✓ test/live-source-session.test.ts > sign-in (§5.2, WS-1 to WS-4) > 403 rejects with CoreRefusalError; 429 rejects with LiveTransportError that keeps status and retry-after (LB-10); neither changes the link 5ms
+ ✓ test/live-source-session.test.ts > sign-in (§5.2, WS-1 to WS-4) > the snapshot does not arrive: the action rejects CORE_OFFLINE after the boot time-out; when it arrives later the client is signed in (§5.2 step 6) 14ms
+ ✓ test/live-source-session.test.ts > sign-in (§5.2, WS-1 to WS-4) > a sign-in on a client that is signed in: the ROTATED end of its previous session is not an end, and the new snapshot settles it 13ms
+ ✓ test/live-source-session.test.ts > sign-in (§5.2, WS-1 to WS-4) > while the link is not ONLINE the sign-in is not sent 5ms
+ ✓ test/live-source-session.test.ts > AC-C-39: the synthesised authLockout slice makes the shared lockoutStatus() answer what the server said > 1 attempts remaining 2ms
+ ✓ test/live-source-session.test.ts > AC-C-39: the synthesised authLockout slice makes the shared lockoutStatus() answer what the server said > 2 attempts remaining 2ms
+ ✓ test/live-source-session.test.ts > AC-C-39: the synthesised authLockout slice makes the shared lockoutStatus() answer what the server said > 3 attempts remaining 2ms
+ ✓ test/live-source-session.test.ts > AC-C-39: the synthesised authLockout slice makes the shared lockoutStatus() answer what the server said > 4 attempts remaining 2ms
+ ✓ test/live-source-session.test.ts > AC-C-39: the synthesised authLockout slice makes the shared lockoutStatus() answer what the server said > 5 attempts remaining 2ms
+ ✓ test/live-source-session.test.ts > AC-C-39: the synthesised authLockout slice makes the shared lockoutStatus() answer what the server said > locked for 18000 ms 2ms
+ ✓ test/live-source-session.test.ts > AC-C-39: the synthesised authLockout slice makes the shared lockoutStatus() answer what the server said > locked for 60000 ms 2ms
+ ✓ test/live-source-session.test.ts > AC-C-39: the synthesised authLockout slice makes the shared lockoutStatus() answer what the server said > a successful sign-in clears the view; a biometric failure report fills it from its SignInStatus 9ms
+ ✓ test/live-source-session.test.ts > `session.ended`, the close codes and the control messages (§6.5; 01_specs §9.4) > session.ended SIGNED_OUT: auth.status becomes SIGNED_OUT, the Core data goes, the reason is passed on once, and an anonymous socket is opened 7ms
+ ✓ test/live-source-session.test.ts > `session.ended`, the close codes and the control messages (§6.5; 01_specs §9.4) > session.ended IDLE_EXPIRED: auth.status becomes EXPIRED, the Core data goes, the reason is passed on once, and an anonymous socket is opened 8ms
+ ✓ test/live-source-atomicity.test.ts > AC-C-10: own-command atomicity, in both arrival orders > a refusal ends the hold: what was held is applied, and the action rejects with the rebuilt error 10ms
+ ✓ test/live-source-atomicity.test.ts > AC-C-10: own-command atomicity, in both arrival orders > meter frames are never held: one that arrives while a command is in flight shows at once 10ms
+ ✓ test/live-source-atomicity.test.ts > AC-C-10: own-command atomicity, in both arrival orders > a continuation that throws is contained and reported; the next delta is applied as if nothing happened (F40-3 c) 8ms
+ ✓ test/live-source-atomicity.test.ts > AC-C-14: the settle time-out (CL-17) > when the delta of the answered revision does not arrive within 2,000 ms: ONE resync, the action resolves, the link reads RESYNCING until the snapshot 16ms
+ ✓ test/live-source-atomicity.test.ts > AC-C-14: the settle time-out (CL-17) > two commands that both time out still send ONE resync, and both resolve 8ms
+ ✓ test/live-source-atomicity.test.ts > AC-C-14: the settle time-out (CL-17) > whatever was held is applied at the time-out, even though it does not reach the answered revision 6ms
+ ✓ test/live-source-atomicity.test.ts > AC-C-14: the settle time-out (CL-17) > a command answered without its revision header settles at once and is reported (decision D51) 8ms
+ ✓ test/live-source-atomicity.test.ts > AC-C-14: the settle time-out (CL-17) > the boot time-out is the sync deadline of the socket, and both are the specification's 4,000 ms 0ms
+ ✓ test/live-source-atomicity.test.ts > AC-C-15: a revision gap, and a new epoch (CL-18) > a gap sends resync at most once in 2 s, and the snapshot replaces the replica 15ms
+ ✓ test/live-source-atomicity.test.ts > AC-C-15: a revision gap, and a new epoch (CL-18) > a reset settles when the snapshot of its epoch is applied (snapshot first) 10ms
+ ✓ test/live-source-atomicity.test.ts > AC-C-15: a revision gap, and a new epoch (CL-18) > a reset settles when the snapshot of its epoch is applied (answer first) 10ms
+ ✓ test/live-source-atomicity.test.ts > CL-22 and CL-24: a command while the link is not ONLINE; a rejection nobody awaits (AC-C-12) > is refused at once with LiveTransportError CORE_OFFLINE, and no request is sent 8ms
+ ✓ test/live-source-atomicity.test.ts > CL-22 and CL-24: a command while the link is not ONLINE; a rejection nobody awaits (AC-C-12) > AC-C-12: a rejected Live action that nobody awaits raises no unhandled-rejection event and is reported once through onError 7ms
+ ✓ test/live-source-atomicity.test.ts > CL-22 and CL-24: a command while the link is not ONLINE; a rejection nobody awaits (AC-C-12) > a report never holds an argument of the action 10ms
+ ✓ test/live-source-atomicity.test.ts > CL-22 and CL-24: a command while the link is not ONLINE; a rejection nobody awaits (AC-C-12) > errors() keeps the last 50 reports 7ms
+ ✓ test/live-source-atomicity.test.ts > the gate by itself (CL-16 to CL-18) > with nothing in flight a state message is applied at once and moves the position 0ms
+ ✓ test/live-source-atomicity.test.ts > the gate by itself (CL-16 to CL-18) > in flight: held; `end` applies what is held and then settles 0ms
+ ✓ test/live-source-atomicity.test.ts > the gate by itself (CL-16 to CL-18) > a position that is already reached settles at once; a later epoch counts as reached 0ms
+ ✓ test/live-source-atomicity.test.ts > the gate by itself (CL-16 to CL-18) > the time-out: resync, everything held applied with the extra, settled as `timeout`; a timer that was cleared never fires 0ms
+ ✓ test/live-source-atomicity.test.ts > the gate by itself (CL-16 to CL-18) > a sign-in waits for the first snapshot of a later connection, with its extra in the same update; its time-out asks for no resync 0ms
+ ✓ test/live-source-atomicity.test.ts > the gate by itself (CL-16 to CL-18) > a hold keeps state messages back until it is released 0ms
+ ✓ test/live-source-atomicity.test.ts > the gate by itself (CL-16 to CL-18) > reset drops what is held, forgets the position and settles every waiting command as `dropped` 0ms
+ ✓ test/live-source-atomicity.test.ts > the gate by itself (CL-16 to CL-18) > what a settle callback throws is reported and the gate goes on 0ms
+ ✓ test/live-source-atomicity.test.ts > the Live result (CL-16, CL-24 to CL-26; the light API's O-1 and O-3) > runs its callbacks inside `resolve`, in the order they were given; later ones run inside `then` 1ms
+ ✓ test/live-source-atomicity.test.ts > the Live result (CL-16, CL-24 to CL-26; the light API's O-1 and O-3) > has the members of a promise: chains, catch, finally, await, and a thenable a callback returns is followed 1ms
+ ✓ test/live-source-atomicity.test.ts > the Live result (CL-16, CL-24 to CL-26; the light API's O-1 and O-3) > a callback that throws rejects the derived result and is reported; a rejection nobody handles reports nothing by itself 0ms
+ ✓ test/live-source-atomicity.test.ts > the Live result (CL-16, CL-24 to CL-26; the light API's O-1 and O-3) > settle() gets both handlers through one `then`; `ok` and `done` run inside the resolution 0ms
+ ✓ test/live-source-session.test.ts > `session.ended`, the close codes and the control messages (§6.5; 01_specs §9.4) > session.ended ABSOLUTE_EXPIRED: auth.status becomes EXPIRED, the Core data goes, the reason is passed on once, and an anonymous socket is opened 10ms
+ ✓ test/live-source-session.test.ts > `session.ended`, the close codes and the control messages (§6.5; 01_specs §9.4) > session.ended USER_DISABLED: auth.status becomes SIGNED_OUT, the Core data goes, the reason is passed on once, and an anonymous socket is opened 7ms
+ ✓ test/live-source-session.test.ts > `session.ended`, the close codes and the control messages (§6.5; 01_specs §9.4) > session.ended TOKEN_REUSE: auth.status becomes SIGNED_OUT, the Core data goes, the reason is passed on once, and an anonymous socket is opened 8ms
+ ✓ test/live-source-session.test.ts > `session.ended`, the close codes and the control messages (§6.5; 01_specs §9.4) > session.ended ROTATED: unchanged until the check; a valid session stays signed in on a new socket 13ms
+ ✓ test/live-source-session.test.ts > `session.ended`, the close codes and the control messages (§6.5; 01_specs §9.4) > session.ended ROTATED with no session left: signed out, with the reason ROTATED 9ms
+ ✓ test/live-source-session.test.ts > `session.ended`, the close codes and the control messages (§6.5; 01_specs §9.4) > close 4401 with no session.ended before it: signed out, no reason 6ms
+ ✓ test/live-source-session.test.ts > `session.ended`, the close codes and the control messages (§6.5; 01_specs §9.4) > a `hello` that refuses the cookie of a client that believes it is signed in ends the session 10ms
+ ✓ test/live-source-session.test.ts > `session.ended`, the close codes and the control messages (§6.5; 01_specs §9.4) > session.updated replaces the session object: the new role and permissions, and the light hint follows 11ms
+ ✓ test/live-source-session.test.ts > `session.ended`, the close codes and the control messages (§6.5; 01_specs §9.4) > admin.changed is passed on to onControl and changes nothing 12ms
+ ✓ test/live-source-session.test.ts > `session.ended`, the close codes and the control messages (§6.5; 01_specs §9.4) > a listener that throws is reported and the others still run 11ms
+ ✓ test/live-source-session.test.ts > sign-out (WS-12) > signOut(USER): one request with the reason; signed out, empty, one end with the reason this client sent; an anonymous socket 11ms
+ ✓ test/live-source-session.test.ts > sign-out (WS-12) > signOut(LOCK): one request with the reason; signed out, empty, one end with the reason this client sent; an anonymous socket 7ms
+ ✓ test/live-source-session.test.ts > sign-out (WS-12) > the server's own session.ended may arrive before the answer: still one end, and it carries the reason this client sent 8ms
+ ✓ test/live-source-session.test.ts > sign-out (WS-12) > signed out already: no request; an EXPIRED status becomes SIGNED_OUT, as in the simulator 9ms
+ ✓ test/live-source-session.test.ts > sign-out (WS-12) > a sign-out the server cannot answer rejects and leaves the client signed in 8ms
+ ✓ test/live-source-session.test.ts > AC-C-54: a 403 NOT_PERMITTED refreshes the permission hint once (CL-23) > one refusal causes one getAuthSession within 1 s; ten of them cause one 12ms
+ ✓ test/live-source-session.test.ts > AC-C-54: a 403 NOT_PERMITTED refreshes the permission hint once (CL-23) > a denied export (403 FORBIDDEN, a result union) refreshes the hint too; other refusals do not 8ms
+ ✓ test/live-source-session.test.ts > AC-C-13: the touchSession throttle (CL-27) > ten activity calls within 60 s send one request at once and one at the end of the window; then none without activity 38ms
+ ✓ test/live-source-session.test.ts > AC-C-13: the touchSession throttle (CL-27) > no activity sends none 22ms
+ ✓ test/live-source-session.test.ts > AC-C-13: the touchSession throttle (CL-27) > a successful POST restarts the window and clears what was remembered 10ms
+ ✓ test/live-source-session.test.ts > AC-C-13: the touchSession throttle (CL-27) > the answer updates the idle expiry of the session and lastActivityAt of the auth slice 5ms
+ ✓ test/live-source-session.test.ts > AC-C-13: the touchSession throttle (CL-27) > nothing is sent while signed out; a failed touch is reported and never thrown 8ms
+ ✓ test/live-source-session.test.ts > AC-C-13: the touchSession throttle (CL-27) > the throttle by itself: activity while offline is remembered and sent when the link is back 0ms
+ ✓ test/live-source-session.test.ts > the clock, the meters and the heartbeat view (§2.3; CL-7, CL-11b) > clock.now() is the local clock plus the offset learned from the server, and never moves backwards 0ms
+ ✓ test/live-source-session.test.ts > the clock, the meters and the heartbeat view (§2.3; CL-7, CL-11b) > the source learns the offset from hello and heartbeat, and publishes the clock slice in 100 ms steps 6ms
+ ✓ test/live-source-session.test.ts > the clock, the meters and the heartbeat view (§2.3; CL-7, CL-11b) > a meters frame becomes the audio slice; when the link goes STALE the meters fall to no signal 8ms
+ ✓ test/live-source-session.test.ts > the clock, the meters and the heartbeat view (§2.3; CL-7, CL-11b) > the meters are subscribed only while the page or the app is visible 7ms
+ ✓ test/live-source-session.test.ts > the clock, the meters and the heartbeat view (§2.3; CL-7, CL-11b) > the heartbeat view is the one socket's; a consumer of it can neither start nor stop the socket 5ms
+ ✓ test/live-source-session.test.ts > the clock, the meters and the heartbeat view (§2.3; CL-7, CL-11b) > a dropped frame of the socket is reported with its code and no content 6ms
+ ✓ test/live-source-session.test.ts > a paired device: the bearer value, the secrets port and the session token (§9.1, §9.2; MP-3) > starts as DEVICE with the device credential on every request and on the upgrade; nobody is signed in 2ms
+ ✓ test/live-source-session.test.ts > a paired device: the bearer value, the secrets port and the session token (§9.1, §9.2; MP-3) > a password sign-in hands the session token to the app BEFORE the socket is reopened, and keeps no copy 9ms
+ ✓ test/live-source-session.test.ts > a paired device: the bearer value, the secrets port and the session token (§9.1, §9.2; MP-3) > a biometric sign-in sends the token the app released and hands back the rotated one; without a stored token nothing is sent 9ms
+ ✓ test/live-source-session.test.ts > a paired device: the bearer value, the secrets port and the session token (§9.1, §9.2; MP-3) > a refused biometric token resolves with the union (the app then deletes it); a failed OS check is reported with operation 9 2ms
+ ✓ test/live-source-session.test.ts > a paired device: the bearer value, the secrets port and the session token (§9.1, §9.2; MP-3) > session.ended TOKEN_REUSE is passed on with its reason; the app drops the session token and the device socket takes over; the pairing stays 6ms
+ ✓ test/live-source-session.test.ts > a paired device: the bearer value, the secrets port and the session token (§9.1, §9.2; MP-3) > a port of the app that throws is reported, and the socket is still reopened 7ms
+ ✓ test/live-source-session.test.ts > a paired device: the bearer value, the secrets port and the session token (§9.1, §9.2; MP-3) > a device sign-in without the app's storage cannot keep its token: the action rejects, and nothing is kept 2ms
+ ✓ test/live-source-session.test.ts > a paired device: the bearer value, the secrets port and the session token (§9.1, §9.2; MP-3) > device.revoked (REVOKED and UNPAIRED), with close 4403: signed out, the pairing gone, the app told once, and an anonymous socket 5ms
+ ✓ test/live-source-session.test.ts > a paired device: the bearer value, the secrets port and the session token (§9.1, §9.2; MP-3) > a REST 403 DEVICE_REVOKED is treated as device.revoked (CL-23) 2ms
+ ✓ test/live-source-session.test.ts > a paired device: the bearer value, the secrets port and the session token (§9.1, §9.2; MP-3) > a credential the Core does not know (close 4401 with nobody signed in) is reported and NOT retried by itself; the app replaces it and reconnects 3ms
+ ✓ test/live-source-session.test.ts > pairing on the device (§9.4; MP-5 to MP-7) > pair: the code and the device description travel; the app stores the credential BEFORE the action settles; the next socket presents it 2ms
+ ✓ test/live-source-session.test.ts > pairing on the device (§9.4; MP-5 to MP-7) > a refused code resolves with INVALID_CODE and the attempts left; a lock resolves with LOCKED; the pairing slice says FAILED 3ms
+ ✓ test/live-source-session.test.ts > pairing on the device (§9.4; MP-5 to MP-7) > a credential the app could not store rejects the action with the app's own error 2ms
+ ✓ test/live-source-session.test.ts > pairing on the device (§9.4; MP-5 to MP-7) > the web console has no pairing: `pair` is refused without a request, and `unpair` does nothing 2ms
+ ✓ test/live-source-session.test.ts > pairing on the device (§9.4; MP-5 to MP-7) > unpair: operation 22 with the device credential; then the app deletes its items, the pairing is gone and the socket is anonymous 2ms
+ ✓ test/live-source-session.test.ts > pairing on the device (§9.4; MP-5 to MP-7) > unpair while the link is down is refused and nothing is deleted (MP-7) 2ms
+ ✓ test/live-source-session.test.ts > pairing on the device (§9.4; MP-5 to MP-7) > setPairing fills the client-built slice from the device registration, and null clears it 2ms
+ ✓ test/live-source-replica.test.ts > AC-C-07: a snapshot and the deltas of the recording scenario drive the selectors to the simulator's values > is a Live source: LIVE in the SimContext, signed in, the snapshot applied, the link ONLINE 40ms
+ ✓ test/live-source-replica.test.ts > AC-C-07: a snapshot and the deltas of the recording scenario drive the selectors to the simulator's values > compares the simulator's selectors of one argument, all but the one on a slice the server never sends 0ms
+ ✓ test/live-source-replica.test.ts > AC-C-07: a snapshot and the deltas of the recording scenario drive the selectors to the simulator's values > follows one engine through a session: recording, markers, faults, stop, seal, verify, export, archive, diagnostics, a new session 144ms
+ ✓ test/live-source-replica.test.ts > AC-C-08: structural sharing (CL-13) > after a delta that replaces one slice, every other slice reference is unchanged 7ms
+ ✓ test/live-source-replica.test.ts > AC-C-08: structural sharing (CL-13) > a snapshot equal to the current state changes no reference and tells no subscriber 9ms
+ ✓ test/live-source-replica.test.ts > AC-C-08: structural sharing (CL-13) > a replace whose value equals the slice keeps the slice; unchanged array elements keep their references 6ms
+ ✓ test/live-source-replica.test.ts > AC-C-08: structural sharing (CL-13) > a selector subscription does not fire for a delta that names another slice 10ms
+ ✓ test/live-source-replica.test.ts > AC-C-08: structural sharing (CL-13) > shareStructure: equal in, the previous reference out; an element that moved keeps its reference by its id 0ms
+ ✓ test/live-source-replica.test.ts > AC-C-08: structural sharing (CL-13) > the structural-sharing function can be injected (CA-04): the source uses the one it is given 4ms
+ ✓ test/live-source-replica.test.ts > CL-14: the audit ring and the event ring are built as the simulator builds them > an append keeps the rows it already holds, by reference, and takes head, total and dropped from the message 0ms
+ ✓ test/live-source-replica.test.ts > CL-14: the audit ring and the event ring are built as the simulator builds them > the audit ring holds at most 1000 rows and the event ring 500: the oldest go 0ms
+ ✓ test/live-source-replica.test.ts > CL-14: the audit ring and the event ring are built as the simulator builds them > several messages fold into one patch, in order; ops of one delta apply in order 0ms
+ ✓ test/live-source-replica.test.ts > CL-14: the audit ring and the event ring are built as the simulator builds them > a snapshot in the list replaces every slice; no message and an equal snapshot give an empty patch 0ms
+ ✓ test/live-source-replica.test.ts > CL-14: the audit ring and the event ring are built as the simulator builds them > replacementPatch names only the slices that differ; the five client-built slices are never in a patch 0ms
+ ✓ test/live-source-replica.test.ts > the neutral state: what a client holds while it holds no Core data (§2.3) > is a whole SimState with no Core data in it, and every selector runs on it 1ms
+ ✓ test/live-source-react.test.ts > ADQ-2: the Live source in the existing SimContext > the simulator's hooks and the light API's hooks read it: the selectors, the actions, the mode, the link, the permission hint 36ms
+ ✓ test/live-source-react.test.ts > ADQ-2: the Live source in the existing SimContext > a delta renders the hooks that read its slice, once; a delta of another slice renders nothing (CL-13) 17ms
+ ✓ test/live-source-react.test.ts > ADQ-2: the Live source in the existing SimContext > CL-16: no render happens between the store update that holds a command's effect and its continuation 11ms
+ ✓ test/live-source-react.test.ts > ADQ-2: the Live source in the existing SimContext > useLiveLink() and useCorePermission() follow the source: a lost link, a role change 14ms
+ ✓ test/live-source-react.test.ts > ADQ-2: the Live source in the existing SimContext > useAudioChannel() receives the meter frames of the socket without a render 7ms
+ ✓ test/live-source-react.test.ts > ADQ-2: the Live source in the existing SimContext > useSimReady() turns true when the bootstrap is over 1ms
+ ✓ test/live-source-bindings.test.ts > the 42 bindings, driven by SIM_ACTION_OPERATIONS (01_specs §7.17) > has one binding per member of SimActions: the keys of the contract table, of the bindings and of a real simulator are equal 2ms
+ ✓ test/live-source-bindings.test.ts > the 42 bindings, driven by SIM_ACTION_OPERATIONS (01_specs §7.17) > the flows: 33 commands, 1 read, 2 sign-ins, sign-out, touch, pair, unpair, 2 local 0ms
+ ✓ test/live-source-bindings.test.ts > the 42 bindings, driven by SIM_ACTION_OPERATIONS (01_specs §7.17) > signIn calls the operation the contract table names, with a request the contract accepts 1ms
+ ✓ test/live-source-bindings.test.ts > the 42 bindings, driven by SIM_ACTION_OPERATIONS (01_specs §7.17) > signInWithBiometric calls the operation the contract table names, with a request the contract accepts 0ms
+ ✓ test/live-source-bindings.test.ts > the 42 bindings, driven by SIM_ACTION_OPERATIONS (01_specs §7.17) > recordBiometricFailure calls the operation the contract table names, with a request the contract accepts 0ms
+ ✓ test/live-source-bindings.test.ts > the 42 bindings, driven by SIM_ACTION_OPERATIONS (01_specs §7.17) > signInWithSecurityKey calls the operation the contract table names, with a request the contract accepts 0ms
+ ✓ test/live-source-bindings.test.ts > the 42 bindings, driven by SIM_ACTION_OPERATIONS (01_specs §7.17) > signOut calls the operation the contract table names, with a request the contract accepts 0ms
+ ✓ test/live-source-bindings.test.ts > the 42 bindings, driven by SIM_ACTION_OPERATIONS (01_specs §7.17) > touch calls the operation the contract table names, with a request the contract accepts 0ms
+ ✓ test/live-source-bindings.test.ts > the 42 bindings, driven by SIM_ACTION_OPERATIONS (01_specs §7.17) > createSession calls the operation the contract table names, with a request the contract accepts 0ms
+ ✓ test/live-source-bindings.test.ts > the 42 bindings, driven by SIM_ACTION_OPERATIONS (01_specs §7.17) > beginPrecheck calls the operation the contract table names, with a request the contract accepts 0ms
+ ✓ test/live-source-bindings.test.ts > the 42 bindings, driven by SIM_ACTION_OPERATIONS (01_specs §7.17) > acknowledgePrecheckWarnings calls the operation the contract table names, with a request the contract accepts 0ms
+ ✓ test/live-source-bindings.test.ts > the 42 bindings, driven by SIM_ACTION_OPERATIONS (01_specs §7.17) > retryPrecheck calls the operation the contract table names, with a request the contract accepts 0ms
+ ✓ test/live-source-bindings.test.ts > the 42 bindings, driven by SIM_ACTION_OPERATIONS (01_specs §7.17) > startRecording calls the operation the contract table names, with a request the contract accepts 0ms
+ ✓ test/live-source-bindings.test.ts > the 42 bindings, driven by SIM_ACTION_OPERATIONS (01_specs §7.17) > stopRecording calls the operation the contract table names, with a request the contract accepts 0ms
+ ✓ test/live-source-bindings.test.ts > the 42 bindings, driven by SIM_ACTION_OPERATIONS (01_specs §7.17) > cancel calls the operation the contract table names, with a request the contract accepts 0ms
+ ✓ test/live-source-bindings.test.ts > the 42 bindings, driven by SIM_ACTION_OPERATIONS (01_specs §7.17) > scanCaseNumber calls the operation the contract table names, with a request the contract accepts 0ms
+ ✓ test/live-source-bindings.test.ts > the 42 bindings, driven by SIM_ACTION_OPERATIONS (01_specs §7.17) > recover calls the operation the contract table names, with a request the contract accepts 0ms
+ ✓ test/live-source-bindings.test.ts > the 42 bindings, driven by SIM_ACTION_OPERATIONS (01_specs §7.17) > addMarker calls the operation the contract table names, with a request the contract accepts 0ms
+ ✓ test/live-source-bindings.test.ts > the 42 bindings, driven by SIM_ACTION_OPERATIONS (01_specs §7.17) > addNote calls the operation the contract table names, with a request the contract accepts 0ms
+ ✓ test/live-source-bindings.test.ts > the 42 bindings, driven by SIM_ACTION_OPERATIONS (01_specs §7.17) > snapshot calls the operation the contract table names, with a request the contract accepts 0ms
+ ✓ test/live-source-bindings.test.ts > the 42 bindings, driven by SIM_ACTION_OPERATIONS (01_specs §7.17) > acknowledgeSummary calls the operation the contract table names, with a request the contract accepts 0ms
+ ✓ test/live-source-bindings.test.ts > the 42 bindings, driven by SIM_ACTION_OPERATIONS (01_specs §7.17) > verify calls the operation the contract table names, with a request the contract accepts 0ms
+ ✓ test/live-source-bindings.test.ts > the 42 bindings, driven by SIM_ACTION_OPERATIONS (01_specs §7.17) > exportEvidence calls the operation the contract table names, with a request the contract accepts 0ms
+ ✓ test/live-source-bindings.test.ts > the 42 bindings, driven by SIM_ACTION_OPERATIONS (01_specs §7.17) > archiveEvidence calls the operation the contract table names, with a request the contract accepts 0ms
+ ✓ test/live-source-bindings.test.ts > the 42 bindings, driven by SIM_ACTION_OPERATIONS (01_specs §7.17) > exportAudit calls the operation the contract table names, with a request the contract accepts 0ms
+ ✓ test/live-source-bindings.test.ts > the 42 bindings, driven by SIM_ACTION_OPERATIONS (01_specs §7.17) > exportLogs calls the operation the contract table names, with a request the contract accepts 0ms
+ ✓ test/live-source-bindings.test.ts > the 42 bindings, driven by SIM_ACTION_OPERATIONS (01_specs §7.17) > verifyAuditChain calls the operation the contract table names, with a request the contract accepts 0ms
+ ✓ test/live-source-bindings.test.ts > the 42 bindings, driven by SIM_ACTION_OPERATIONS (01_specs §7.17) > inject calls the operation the contract table names, with a request the contract accepts 0ms
+ ✓ test/live-source-bindings.test.ts > the 42 bindings, driven by SIM_ACTION_OPERATIONS (01_specs §7.17) > clearFault calls the operation the contract table names, with a request the contract accepts 0ms
+ ✓ test/live-source-bindings.test.ts > the 42 bindings, driven by SIM_ACTION_OPERATIONS (01_specs §7.17) > resetClip calls the operation the contract table names, with a request the contract accepts 0ms
+ ✓ test/live-source-bindings.test.ts > the 42 bindings, driven by SIM_ACTION_OPERATIONS (01_specs §7.17) > acknowledgeAlert calls the operation the contract table names, with a request the contract accepts 0ms
+ ✓ test/live-source-bindings.test.ts > the 42 bindings, driven by SIM_ACTION_OPERATIONS (01_specs §7.17) > loadScenario calls the operation the contract table names, with a request the contract accepts 0ms
+ ✓ test/live-source-bindings.test.ts > the 42 bindings, driven by SIM_ACTION_OPERATIONS (01_specs §7.17) > resetDemo calls the operation the contract table names, with a request the contract accepts 0ms
+ ✓ test/live-source-bindings.test.ts > the 42 bindings, driven by SIM_ACTION_OPERATIONS (01_specs §7.17) > runDiagnostics calls the operation the contract table names, with a request the contract accepts 0ms
+ ✓ test/live-source-bindings.test.ts > the 42 bindings, driven by SIM_ACTION_OPERATIONS (01_specs §7.17) > deviceCommand calls the operation the contract table names, with a request the contract accepts 0ms
+ ✓ test/live-source-bindings.test.ts > the 42 bindings, driven by SIM_ACTION_OPERATIONS (01_specs §7.17) > setStoragePolicy calls the operation the contract table names, with a request the contract accepts 0ms
+ ✓ test/live-source-bindings.test.ts > the 42 bindings, driven by SIM_ACTION_OPERATIONS (01_specs §7.17) > startSoftwareUpdate calls the operation the contract table names, with a request the contract accepts 0ms
+ ✓ test/live-source-bindings.test.ts > the 42 bindings, driven by SIM_ACTION_OPERATIONS (01_specs §7.17) > restartServices calls the operation the contract table names, with a request the contract accepts 0ms
+ ✓ test/live-source-bindings.test.ts > the 42 bindings, driven by SIM_ACTION_OPERATIONS (01_specs §7.17) > setActiveCamera calls the operation the contract table names, with a request the contract accepts 0ms
+ ✓ test/live-source-bindings.test.ts > the 42 bindings, driven by SIM_ACTION_OPERATIONS (01_specs §7.17) > setPresentationMode calls the operation the contract table names, with a request the contract accepts 0ms
+ ✓ test/live-source-bindings.test.ts > the 42 bindings, driven by SIM_ACTION_OPERATIONS (01_specs §7.17) > updateSettings calls the operation the contract table names, with a request the contract accepts 0ms
+ ✓ test/live-source-bindings.test.ts > the 42 bindings, driven by SIM_ACTION_OPERATIONS (01_specs §7.17) > pair calls the operation the contract table names, with a request the contract accepts 0ms
+ ✓ test/live-source-bindings.test.ts > the 42 bindings, driven by SIM_ACTION_OPERATIONS (01_specs §7.17) > unpair calls the operation the contract table names, with a request the contract accepts 0ms
+ ✓ test/live-source-bindings.test.ts > the 42 bindings, driven by SIM_ACTION_OPERATIONS (01_specs §7.17) > setTabletLink calls the operation the contract table names, with a request the contract accepts 0ms
+ ✓ test/live-source-bindings.test.ts > the 42 bindings, driven by SIM_ACTION_OPERATIONS (01_specs §7.17) > together the bindings reach the 41 operations of the table, and no other 0ms
+ ✓ test/live-source-bindings.test.ts > the 42 bindings, driven by SIM_ACTION_OPERATIONS (01_specs §7.17) > deviceCommand picks operation 48, 49 or 50 by its command, and refuses a command that is none of the three 0ms
+ ✓ test/live-source-bindings.test.ts > the 42 bindings, driven by SIM_ACTION_OPERATIONS (01_specs §7.17) > the input travels as the caller gave it: nothing is trimmed, cut or defaulted beyond what the simulator defaults 0ms
+ ✓ test/live-source-bindings.test.ts > the 42 bindings, driven by SIM_ACTION_OPERATIONS (01_specs §7.17) > answers locally what the simulator answers without a state change, with the simulator's own error where it throws 0ms
+ ✓ test/live-source-bindings.test.ts > AC-C-11: error rebuilding (CL-20, CL-21) > 401 NOT_SIGNED_IN and 403 NOT_PERMITTED become SimPermissionError, with the permission of the envelope or of the registry 0ms
+ ✓ test/live-source-bindings.test.ts > AC-C-11: error rebuilding (CL-20, CL-21) > 404 becomes SimNotFoundError with the entity and the ID the binding sent 0ms
+ ✓ test/live-source-bindings.test.ts > AC-C-11: error rebuilding (CL-20, CL-21) > 409 INVALID_STATE {"simCode":"ILLEGAL_STATE","from":"STOPPING","event":"addMarker"} becomes SimTransitionError ILLEGAL_STATE from STOPPING on addMarker 0ms
+ ✓ test/live-source-bindings.test.ts > AC-C-11: error rebuilding (CL-20, CL-21) > 409 INVALID_STATE {"simCode":"NO_WARNINGS","from":"PRECHECK","event":"acknowledgePrecheckWarnings"} becomes SimTransitionError NO_WARNINGS from PRECHECK on acknowledgePrecheckWarnings 0ms
+ ✓ test/live-source-bindings.test.ts > AC-C-11: error rebuilding (CL-20, CL-21) > 409 PRECHECK_RUNNING {"simCode":"CHECKS_RUNNING","from":"PRECHECK","event":"retryPrecheck"} becomes SimTransitionError CHECKS_RUNNING from PRECHECK on retryPrecheck 0ms
+ ✓ test/live-source-bindings.test.ts > AC-C-11: error rebuilding (CL-20, CL-21) > 409 NOT_SEALED {"simCode":"UNSEALED_EVIDENCE","from":null,"event":"archiveEvidence"} becomes SimTransitionError UNSEALED_EVIDENCE from null on archiveEvidence 1ms
+ ✓ test/live-source-bindings.test.ts > AC-C-11: error rebuilding (CL-20, CL-21) > 422 INVALID_INPUT {"simCode":"POLICY_RANGE","from":null,"event":"setStoragePolicy"} becomes SimTransitionError POLICY_RANGE from null on setStoragePolicy 0ms
+ ✓ test/live-source-bindings.test.ts > AC-C-11: error rebuilding (CL-20, CL-21) > 422 INVALID_INPUT {"simCode":"NOTE_INVALID","from":"RECORDING","event":"addNote"} becomes SimTransitionError NOTE_INVALID from RECORDING on addNote 0ms
+ ✓ test/live-source-bindings.test.ts > AC-C-11: error rebuilding (CL-20, CL-21) > 409 INVALID_STATE undefined becomes SimTransitionError ILLEGAL_STATE from RECORDING on archiveEvidence 0ms
+ ✓ test/live-source-bindings.test.ts > AC-C-11: error rebuilding (CL-20, CL-21) > 409 PRECHECK_RUNNING undefined becomes SimTransitionError CHECKS_RUNNING from RECORDING on archiveEvidence 0ms
+ ✓ test/live-source-bindings.test.ts > AC-C-11: error rebuilding (CL-20, CL-21) > 409 PRECHECK_WARNINGS undefined becomes SimTransitionError ILLEGAL_STATE from RECORDING on archiveEvidence 0ms
+ ✓ test/live-source-bindings.test.ts > AC-C-11: error rebuilding (CL-20, CL-21) > 409 PRECHECK_BLOCKED undefined becomes SimTransitionError ILLEGAL_STATE from RECORDING on archiveEvidence 0ms
+ ✓ test/live-source-bindings.test.ts > AC-C-11: error rebuilding (CL-20, CL-21) > 409 NOT_SEALED undefined becomes SimTransitionError UNSEALED_EVIDENCE from RECORDING on archiveEvidence 0ms
+ ✓ test/live-source-bindings.test.ts > AC-C-11: error rebuilding (CL-20, CL-21) > 409 SESSION_ACTIVE undefined becomes SimTransitionError SESSION_ACTIVE from RECORDING on archiveEvidence 0ms
+ ✓ test/live-source-bindings.test.ts > AC-C-11: error rebuilding (CL-20, CL-21) > 409 RECORDING_ACTIVE undefined becomes SimTransitionError RECORDING_ACTIVE from RECORDING on archiveEvidence 0ms
+ ✓ test/live-source-bindings.test.ts > AC-C-11: error rebuilding (CL-20, CL-21) > 409 COMMAND_UNSUPPORTED undefined becomes SimTransitionError COMMAND_UNSUPPORTED from RECORDING on archiveEvidence 0ms
+ ✓ test/live-source-bindings.test.ts > AC-C-11: error rebuilding (CL-20, CL-21) > 422 INVALID_REASON undefined becomes SimTransitionError REASON_TOO_SHORT from RECORDING on archiveEvidence 0ms
+ ✓ test/live-source-bindings.test.ts > AC-C-11: error rebuilding (CL-20, CL-21) > 422 INVALID_INPUT {"in":"body"} becomes SimTransitionError INVALID_INPUT from RECORDING on archiveEvidence 0ms
+ ✓ test/live-source-bindings.test.ts > AC-C-11: error rebuilding (CL-20, CL-21) > 409 INVALID_STATE {"simCode":"SOMETHING_ELSE"} becomes SimTransitionError ILLEGAL_STATE from RECORDING on archiveEvidence 0ms
+ ✓ test/live-source-bindings.test.ts > AC-C-11: error rebuilding (CL-20, CL-21) > a 422 without a simulator code takes the code the action gives its invalid input 0ms
+ ✓ test/live-source-bindings.test.ts > AC-C-11: error rebuilding (CL-20, CL-21) > the table read backwards names simulator codes only 0ms
+ ✓ test/live-source-bindings.test.ts > AC-C-11: error rebuilding (CL-20, CL-21) > 403 DEMO_DISABLED has no simulator class: CoreRefusalError with the code, the status and the request ID 0ms
+ ✓ test/live-source-bindings.test.ts > AC-C-11: error rebuilding (CL-20, CL-21) > 403 DEVICE_NOT_PAIRED has no simulator class: CoreRefusalError with the code, the status and the request ID 0ms
+ ✓ test/live-source-bindings.test.ts > AC-C-11: error rebuilding (CL-20, CL-21) > 403 DEVICE_REVOKED has no simulator class: CoreRefusalError with the code, the status and the request ID 0ms
+ ✓ test/live-source-bindings.test.ts > AC-C-11: error rebuilding (CL-20, CL-21) > 403 ORIGIN_NOT_ALLOWED has no simulator class: CoreRefusalError with the code, the status and the request ID 0ms
+ ✓ test/live-source-bindings.test.ts > AC-C-11: error rebuilding (CL-20, CL-21) > 409 LAST_ADMIN has no simulator class: CoreRefusalError with the code, the status and the request ID 0ms
+ ✓ test/live-source-bindings.test.ts > AC-C-11: error rebuilding (CL-20, CL-21) > 409 SECURITY_FAULT has no simulator class: CoreRefusalError with the code, the status and the request ID 0ms
+ ✓ test/live-source-bindings.test.ts > AC-C-11: error rebuilding (CL-20, CL-21) > 423 LOCKED has no simulator class: CoreRefusalError with the code, the status and the request ID 0ms
+ ✓ test/live-source-bindings.test.ts > AC-C-11: error rebuilding (CL-20, CL-21) > 401 INVALID_CODE has no simulator class: CoreRefusalError with the code, the status and the request ID 0ms
+ ✓ test/live-source-bindings.test.ts > AC-C-11: error rebuilding (CL-20, CL-21) > 401 INVALID_CREDENTIALS has no simulator class: CoreRefusalError with the code, the status and the request ID 0ms
+ ✓ test/live-source-bindings.test.ts > AC-C-11: error rebuilding (CL-20, CL-21) > 400 INVALID_JSON has no simulator class: CoreRefusalError with the code, the status and the request ID 0ms
+ ✓ test/live-source-bindings.test.ts > AC-C-11: error rebuilding (CL-20, CL-21) > 405 METHOD_NOT_ALLOWED has no simulator class: CoreRefusalError with the code, the status and the request ID 0ms
+ ✓ test/live-source-bindings.test.ts > AC-C-11: error rebuilding (CL-20, CL-21) > 413 PAYLOAD_TOO_LARGE has no simulator class: CoreRefusalError with the code, the status and the request ID 0ms
+ ✓ test/live-source-bindings.test.ts > AC-C-11: error rebuilding (CL-20, CL-21) > a NETWORK failure (status null) is a LiveTransportError, never a simulator error 0ms
+ ✓ test/live-source-bindings.test.ts > AC-C-11: error rebuilding (CL-20, CL-21) > a TIMEOUT failure (status null) is a LiveTransportError, never a simulator error 0ms
+ ✓ test/live-source-bindings.test.ts > AC-C-11: error rebuilding (CL-20, CL-21) > a NOT_READY failure (status 503) is a LiveTransportError, never a simulator error 0ms
+ ✓ test/live-source-bindings.test.ts > AC-C-11: error rebuilding (CL-20, CL-21) > a RATE_LIMITED failure (status 429) is a LiveTransportError, never a simulator error 0ms
+ ✓ test/live-source-bindings.test.ts > AC-C-11: error rebuilding (CL-20, CL-21) > a SERVER failure (status 500) is a LiveTransportError, never a simulator error 0ms
+ ✓ test/live-source-bindings.test.ts > AC-C-11: error rebuilding (CL-20, CL-21) > a CONTRACT_VIOLATION failure (status 200) is a LiveTransportError, never a simulator error 0ms
+ ✓ test/live-source-bindings.test.ts > AC-C-11: error rebuilding (CL-20, CL-21) > a CONTRACT_VIOLATION failure (status 502) is a LiveTransportError, never a simulator error 0ms
+ ✓ test/live-source-bindings.test.ts > AC-C-11: error rebuilding (CL-20, CL-21) > no error carries the server's message or a value of the envelope's details 0ms
+ ✓ test/live-source-bindings.test.ts > every command and read binding, called on a Live source over the fake transport > sends exactly the planned request and resolves with what the simulator's action returns for that answer 26ms
+ ✓ test/live-source-bindings.test.ts > every command and read binding, called on a Live source over the fake transport > the three device commands reach their three operations 5ms
+ ✓ test/live-source-bindings.test.ts > every command and read binding, called on a Live source over the fake transport > a local answer sends nothing 8ms
+ ✓ test/live-source-bindings.test.ts > refusals and failures through the transport (AC-C-11, CL-19, CL-21) > a void action rejects with the simulator's class, checked with instanceof 5ms
+ ✓ test/live-source-bindings.test.ts > refusals and failures through the transport (AC-C-11, CL-19, CL-21) > a result-union action resolves with ok: false and the mapped reason (CL-19) 5ms
+ ✓ test/live-source-bindings.test.ts > refusals and failures through the transport (AC-C-11, CL-19, CL-21) > a 401 on an export resolves with NOT_SIGNED_IN, and the client is signed out (CL-23) 7ms
+ ✓ test/live-source-bindings.test.ts > refusals and failures through the transport (AC-C-11, CL-19, CL-21) > a 429 keeps its status and retry-after in LiveTransportError, also for an action with a result union 3ms
+ ✓ test/live-source-bindings.test.ts > refusals and failures through the transport (AC-C-11, CL-19, CL-21) > no answer, a starting server, a server error and an answer outside the contract are LiveTransportError with their class 6ms
+ ✓ test/live-source-bindings.test.ts > refusals and failures through the transport (AC-C-11, CL-19, CL-21) > a usage error of the typed client (an ID that cannot travel in a path) rejects the action and is reported; nothing is sent 4ms
+ ✓ test/live-source-simulated-isolation.test.ts > AC-B-63 and AC-C-06: in Simulated mode nothing reaches the network, with the Live source module loaded > loading the Live source starts nothing: no request, no socket, no timer 21ms
+ ✓ test/live-source-simulated-isolation.test.ts > AC-B-63 and AC-C-06: in Simulated mode nothing reaches the network, with the Live source module loaded > over the recording scenario the spies count zero fetch calls and zero socket constructions; the actions are the simulator's own 19ms
+ ✓ test/live-source-simulated-isolation.test.ts > AC-B-63 and AC-C-06: in Simulated mode nothing reaches the network, with the Live source module loaded > control: a Live source that is given no transport DOES reach the spies, so the spies can count 2ms
+ ✓ test/live-source-simulated-isolation.test.ts > AC-B-63 and AC-C-06: in Simulated mode nothing reaches the network, with the Live source module loaded > control: a Live source on injected transports never touches what the runtime holds 27ms
+ ✓ test/live-source-platform-neutral.test.ts > static scan of the Live source (src/live/source) > scans the thirteen files of the folder 2ms
+ ✓ test/live-source-platform-neutral.test.ts > static scan of the Live source (src/live/source) > AC-C-02: no file names node:, react-native, expo, window or document (comments included) 1ms
+ ✓ test/live-source-platform-neutral.test.ts > static scan of the Live source (src/live/source) > D69: no request function and no connection class is named anywhere, comments included: every request goes through the typed client that is passed in 1ms
+ ✓ test/live-source-platform-neutral.test.ts > static scan of the Live source (src/live/source) > imports the contract, the simulator, the light Live API, the two transports and the store library; no Node built-in, no React, no test double 2ms
+ ✓ test/live-source-platform-neutral.test.ts > static scan of the Live source (src/live/source) > the typed client is taken as a type only: the client itself is injected, and so is its transport 6ms
+ ✓ test/live-source-platform-neutral.test.ts > static scan of the Live source (src/live/source) > loads the socket client by its own file, never through the barrel that holds the React context; no React file is loaded at all 5ms
+ ✓ test/live-source-platform-neutral.test.ts > static scan of the Live source (src/live/source) > reads no storage, writes nothing to the console and uses no global object 2ms
+ ✓ test/live-source-platform-neutral.test.ts > static scan of the Live source (src/live/source) > the clock and the timers are injected: the platform's own are named once, as the defaults of createLiveSim 2ms
+ ✓ test/live-source-platform-neutral.test.ts > static scan of the Live source (src/live/source) > holds declarations only at module level: loading it calls nothing that could start work 1ms
+ ✓ test/live-source-platform-neutral.test.ts > static scan of the Live source (src/live/source) > uses erasable syntax only: no enum, no namespace, no parameter property 2ms
+ ✓ test/live-source-platform-neutral.test.ts > static scan of the Live source (src/live/source) > has exactly one lint directive, and it carries its reason: the Live result is a thenable on purpose 1ms
+ ✓ test/live-source-platform-neutral.test.ts > the export subpath @dems/shared/live/source > resolves to src/live/source/index.ts: the same module objects as the file itself 0ms
+ ✓ test/live-source-platform-neutral.test.ts > the export subpath @dems/shared/live/source > exports the Live source and nothing else 0ms
+ ✓ test/live-source-platform-neutral.test.ts > the export subpath @dems/shared/live/source > the constants of §2.4 that belong to the source have the specification's values 0ms
+ ✓ test/live-source-platform-neutral.test.ts > the export subpath @dems/shared/live/source > the public surface of a Live source has no member that returns a credential or a token (MP-3) 1ms
+
+ Test Files  7 passed (7)
+      Tests  244 passed (244)
+   Start at  12:32:41
+   Duration  1.54s (tests 48%, transform 29%, import 23%)
+

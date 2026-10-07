@@ -23,6 +23,7 @@ import {
   type SimState,
   type SystemFlag,
 } from '@dems/shared/sim';
+import { useRecordingTickerSeconds } from '@/runtime';
 import type { SessionState } from '@dems/shared/domain';
 import {
   cameraTileFor,
@@ -88,9 +89,14 @@ export function usePrimaryAction(): PrimaryAction {
   );
 }
 
-/** Whole seconds of the current recording (clock-derived, S4), 1 Hz. */
+/**
+ * Whole seconds of the current recording (clock-derived, S4), 1 Hz. In LIVE the Core clock's ticker when it is
+ * ahead of the store (post-review fix FXR-M, W93-1: the same second as the monitor and the Recording bar, which
+ * share that ticker; `runtime/recording-elapsed.ts`).
+ */
 export function useElapsedSeconds(): number {
-  return useSim((s) => Math.floor(selectElapsedMs(s) / 1000));
+  const fromStore = useSim((s) => Math.floor(selectElapsedMs(s) / 1000));
+  return Math.max(fromStore, useRecordingTickerSeconds());
 }
 
 /** H3: Camera, Microphone and Storage tiles. */

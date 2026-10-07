@@ -1,0 +1,41 @@
+{
+  "label": "first",
+  "operator": {
+    "username": "budi.santoso",
+    "id": "OPR-001",
+    "role": "INVESTIGATOR"
+  },
+  "deviceT0": "10-06 09:55:05.000",
+  "clock": {
+    "offsetMs": -453,
+    "bracketMs": 29
+  },
+  "prefill": {
+    "file": "04_phone_login_prefilled.png",
+    "bytes": 1264253,
+    "at": "09:55:09.433 (epoch 1791255309.433)"
+  },
+  "submitAt": "09:55:09.485 (epoch 1791255309.485)",
+  "signIn": {
+    "deviceEpoch": 1791255309.5,
+    "method": "POST",
+    "path": "/api/v1/auth/sign-in",
+    "status": "200",
+    "deviceTime": "09:55:09.500 (epoch 1791255309.500)"
+  },
+  "after": {
+    "keyguard": "false",
+    "focus": "mCurrentFocus=Window{e557fa8 u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity}",
+    "appFocused": true
+  },
+  "afterShot": {
+    "file": "04_phone_signed_in.png",
+    "bytes": 487010,
+    "at": "09:55:19.102 (epoch 1791255319.102)"
+  },
+  "appRequests": [
+    "09:55:09.500 (epoch 1791255309.500) POST /api/v1/auth/sign-in 200"
+  ],
+  "credentialLinesDeviceJs": 0,
+  "passwordInDeviceJs": 0
+}

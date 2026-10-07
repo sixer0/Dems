@@ -29,6 +29,11 @@ export const enMobile = {
       collapseRail: 'Collapse navigation',
       expandRail: 'Expand navigation',
     },
+    // Post-review fix FXR-M, ruling W93-11 (decision D243): while the operator's role is not yet known,
+    // the role-gated controls are disabled with this reason, and a deep link to the wizard waits on it.
+    rbac: {
+      checking: 'Checking your permissions…',
+    },
     // §3.8: live mini-bar.
     miniBar: {
       recording: 'Recording',

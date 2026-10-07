@@ -1,0 +1,147 @@
+
+== 18:52:50 0. the three ports must be free before anything is started (nothing is stopped that this check did not start)
+free: 4423 5178 9398
+2026-10-04 18:52:50 WIB
+18:52  up 3 days,  2:05, 1 user, load averages: 6.89 6.84 6.06
+
+== 18:52:50 1. lane database before the check: npm run db:status -w @dems/core-server -- --database dems_lane_3
+db:status exit 0
+seeded_at        2026-10-04T04:36:43.575Z (1791088603575)
+last_reset_at    2026-10-04T04:36:43.575Z (1791088603575)
+audit head       seq 82; hash 777fa372a98d2e42...
+audit triggers   audit_chain_history_append_only=A, audit_log_append_only=A, audit_log_chain_guard=A
+  audit_log                82
+  auth_sessions            0
+  operators                3
+  pairing_codes            0
+
+== 18:52:51 2. start the lane backend: DEMS_CORE_PORT=4423 npm run start -w @dems/core-server (demo flag OFF)
+backend up after 3 quarter seconds (attempt 1), npm pid 2853
+COMMAND  PID     USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
+node    2874 gsp-budi   18u  IPv4 0xa1833a2c0b02820f      0t0  TCP 127.0.0.1:4423 (LISTEN)
+-- direct health on the backend:
+{"status":"ok","service":"dems-core-server","version":"0.2.0","apiVersion":"v1","serverTime":"2026-10-04T11:52:51.886Z","uptimeMs":176,"ws":{"path":"/ws","heartbeatIntervalMs":1000,"clients":0},"ready":{"database":true,"engine":true}}
+
+== 18:52:51 3. start Vite for lane 3: DEMS_CORE_PROXY_PORT=4423 VITE_DEMS_CORE_MODE=live npm run dev -w @dems/core-web -- --host 127.0.0.1 --port 5178 --strictPort
+waited 2 quarter seconds
+COMMAND  PID     USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
+node    2922 gsp-budi   25u  IPv4 0xb0380dfe02a2433a      0t0  TCP 127.0.0.1:5178 (LISTEN)
+
+== 18:52:52 4. AC-C-33: curl -si http://127.0.0.1:5178/api/v1/health
+HTTP/1.1 200 OK
+content-security-policy: default-src 'none'; frame-ancestors 'none'
+cross-origin-resource-policy: same-origin
+referrer-policy: no-referrer
+x-content-type-options: nosniff
+content-type: application/json; charset=utf-8
+cache-control: no-store
+x-request-id: d03a88d3-bdf2-4340-8b4f-6fc0d0dc73c0
+content-length: 234
+date: Sun, 04 Oct 2026 11:52:52 GMT
+connection: close
+
+{"status":"ok","service":"dems-core-server","version":"0.2.0","apiVersion":"v1","serverTime":"2026-10-04T11:52:52.539Z","uptimeMs":829,"ws":{"path":"/ws","heartbeatIntervalMs":1000,"clients":0},"ready":{"database":true,"engine":true}}
+-- access-control-allow- headers in that answer: 0
+-- service: "service":"dems-core-server"
+
+== 18:52:52 5. AC-C-34 (script half): the socket THROUGH the dev server, Node's global WebSocket
+-- a. no Origin header (what a script sends):
+ws-check: open ws://127.0.0.1:5178/ws (no Origin header)
+ws-check: message {"type":"hello","v":1,"connectionId":"23c9ec4a-2358-473a-bf51-bca8fc33f4f8","epoch":1,"principal":"ANONYMOUS","topics":["heartbeat"],"serverTime":1791114772619,"heartbeatIntervalMs":1000}
+ws-check: message {"type":"heartbeat","v":1,"seq":0,"serverTime":"2026-10-04T11:52:52.619Z","uptimeMs":0,"intervalMs":1000,"clients":1,"sessionState":null}
+ws-check: message {"type":"heartbeat","v":1,"seq":1,"serverTime":"2026-10-04T11:52:52.771Z","uptimeMs":152,"intervalMs":1000,"clients":1,"sessionState":null}
+ws-check: message {"type":"heartbeat","v":1,"seq":2,"serverTime":"2026-10-04T11:52:53.772Z","uptimeMs":1153,"intervalMs":1000,"clients":1,"sessionState":null}
+ws-check: closed with code 1000
+ws-check: 6 messages in 3504 ms; types in order: hello, heartbeat, heartbeat, heartbeat, heartbeat, heartbeat
+ws-check: hello received: true; heartbeat received: true
+ws-check exit 0
+-- b. the console's own Origin:
+ws-check: open ws://127.0.0.1:5178/ws (Origin: http://127.0.0.1:5178)
+ws-check: message {"type":"hello","v":1,"connectionId":"3f8683b3-be24-4ac2-a1df-ed8a92d88e9c","epoch":1,"principal":"ANONYMOUS","topics":["heartbeat"],"serverTime":1791114776173,"heartbeatIntervalMs":1000}
+ws-check: message {"type":"heartbeat","v":1,"seq":4,"serverTime":"2026-10-04T11:52:56.173Z","uptimeMs":3554,"intervalMs":1000,"clients":1,"sessionState":null}
+ws-check: message {"type":"heartbeat","v":1,"seq":5,"serverTime":"2026-10-04T11:52:56.776Z","uptimeMs":4157,"intervalMs":1000,"clients":1,"sessionState":null}
+ws-check: message {"type":"heartbeat","v":1,"seq":6,"serverTime":"2026-10-04T11:52:57.778Z","uptimeMs":5159,"intervalMs":1000,"clients":1,"sessionState":null}
+ws-check: closed with code 1000
+ws-check: 5 messages in 3501 ms; types in order: hello, heartbeat, heartbeat, heartbeat, heartbeat
+ws-check: hello received: true; heartbeat received: true
+ws-check exit 0
+
+== 18:52:59 6. AC-C-102: a sign-in POST through the dev server. The body is syntactically valid, names no seeded operator, and holds an obviously wrong password
+-- Origin: https://evil.example
+HTTP/1.1 403 Forbidden
+content-security-policy: default-src 'none'; frame-ancestors 'none'
+cross-origin-resource-policy: same-origin
+referrer-policy: no-referrer
+x-content-type-options: nosniff
+content-type: application/json; charset=utf-8
+cache-control: no-store
+x-request-id: 9f918464-fd3c-4334-9e53-89ab19aa7300
+content-length: 144
+date: Sun, 04 Oct 2026 11:52:59 GMT
+connection: close
+
+{"error":{"code":"ORIGIN_NOT_ALLOWED","message":"This origin may not call the Core server.","requestId":"9f918464-fd3c-4334-9e53-89ab19aa7300"}}
+
+-- Origin: http://localhost:5173
+HTTP/1.1 403 Forbidden
+content-security-policy: default-src 'none'; frame-ancestors 'none'
+cross-origin-resource-policy: same-origin
+referrer-policy: no-referrer
+x-content-type-options: nosniff
+content-type: application/json; charset=utf-8
+cache-control: no-store
+x-request-id: 4ebafe9b-5342-4e47-8841-54e2ce2074cb
+content-length: 144
+date: Sun, 04 Oct 2026 11:52:59 GMT
+connection: close
+
+{"error":{"code":"ORIGIN_NOT_ALLOWED","message":"This origin may not call the Core server.","requestId":"4ebafe9b-5342-4e47-8841-54e2ce2074cb"}}
+
+-- control, the console's own Origin (http://127.0.0.1:5178): the origin stage passes, and the wrong password is refused as such
+HTTP/1.1 401 Unauthorized
+content-security-policy: default-src 'none'; frame-ancestors 'none'
+cross-origin-resource-policy: same-origin
+referrer-policy: no-referrer
+x-content-type-options: nosniff
+content-type: application/json; charset=utf-8
+cache-control: no-store
+x-request-id: d626dcd8-7d53-4f77-8350-5f84f104feac
+content-length: 182
+date: Sun, 04 Oct 2026 11:52:59 GMT
+connection: close
+
+{"error":{"code":"INVALID_CREDENTIALS","message":"The username or the password is not correct.","details":{"attemptsRemaining":4},"requestId":"d626dcd8-7d53-4f77-8350-5f84f104feac"}}
+
+
+== 18:52:59 7. the console in a real browser, both modes (headless Chromium over CDP)
+chrome pid 2985
+cdp-driver exit 0
+  }
+}
+cdp-driver: the output held the seeded password before redaction: false
+
+== 18:53:23 8. what Vite printed (hot update lines; no page error)
+10:6:53:04 PM [vite] (client) hmr update /src/index.css, /src/routes/__root.tsx
+11:6:53:20 PM [vite] (client) [console.error] [core-web] live {"level":"error","source":"runtime.liveHost","message":"Live mode was not started: the console was opened at http://localhost:5178. The Core server accepts the web console only from http://127.0.0.1:5178 (it holds no other host in its origin list, and the session cookie is bound to that host), so a sign-in from here would be refused with ORIGIN_NOT_ALLOWED. Open http://127.0.0.1:5178/login instead.","context":{"cause":"HOST_NOT_ALLOWED","current":"http://localhost:5178","expected":"http://127.0.0.1:5178"},"at":1791114800316}
+-- lines in Vite's log:       11
+
+== 18:53:23 9. lane database after the check
+db:status exit 0
+-- row counts that differ (before / after):
+< audit head       seq 82; hash 777fa372a98d2e42...
+> audit head       seq 86; hash 02408880f257ad24...
+<   audit_log                82
+<   auth_sessions            0
+>   audit_log                86
+>   auth_sessions            1
+<   events                   59
+>   events                   63
+-- the backend's log: lines       45; lines with level error or fatal: 0
+
+== 18:53:24 stop what this check started
+chrome stopped
+vite: npm exit status 143
+backend: npm exit status 0
+
+== 18:53:24 listeners left on 4423, 5178, 9398 (expect none):
+lsof exit 1 (1 with no output: no listener)

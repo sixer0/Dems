@@ -1,0 +1,5 @@
+mark J web Dashboard watch armed at 12:45:18.005
+watch: truthy at 12:45:57.238 (started 12:45:18.005, 39233 ms): {"id":"SES-20261006-0027","text":"ACTIVE SESSION Sealed Evidence sealed Evidence ID EV-20261006-0016 Sealed at 6 Oct 2026 10:54:48 UTC+07:00 Manifest hash · NO MEDIA PACKAGE 3e6378c7dfa3b12f…8aa4a0a2 View evidence Start New Session Session setup in progress Create SES-20261006-0027 Pre-check 0 of 8 Continue setup"}
+shot J03_web_dashboard_session_appears.png at 12:45:57.447
+watch: truthy at 12:46:34.582 (started 12:45:57.447, 37135 ms): "ACTIVE SESSION Session setup in progress Armed SES-20261006-0027 Pre-check 8 of 8 Continue setup REC 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 : 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 : 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 REC 00:00:00 Session ID SES-20261006-0027 Case Number LP/2026/1006-0011 Inv"
+shot J04_web_dashboard_recording.png at 12:46:34.804

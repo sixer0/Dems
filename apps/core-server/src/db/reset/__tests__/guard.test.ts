@@ -215,6 +215,33 @@ describe('no message, log entry or error of a refusal holds anything of the conn
   });
 });
 
+describe('R-0: whose environment is cleaned (review findings CPB1-22, W91-7)', () => {
+  const refusedAtR0 = scriptOf([['FROM pg_roles', [{ rolname: 'dems_admin', rolsuper: true }]]]);
+  const VARIABLE = 'PGFXR_W91_7_PROBE';
+
+  afterEach(() => {
+    delete process.env[VARIABLE];
+  });
+
+  it('a call without `driverEnvironment` (the server\'s) leaves the process environment as it was', async () => {
+    process.env[VARIABLE] = 'kept';
+    const outcome = await resetDatabase({ database: 'dems_lane_3', dataDir: '/nonexistent/dems-w29' }, { openPool: stubPools(refusedAtR0).openPool }).then(
+      () => null,
+      (error: unknown) => error,
+    );
+    expect(outcome).toMatchObject({ code: 'RESET_ROLE_PRIVILEGED', step: 'R-0' });
+    expect(process.env[VARIABLE]).toBe('kept');
+  });
+
+  it('the command line\'s environment, passed as `driverEnvironment`, loses its driver variables at R-0 and keeps the rest', async () => {
+    const environment: Record<string, string | undefined> = { PGHOST: 'elsewhere', PGOPTIONS: '-c search_path=elsewhere', PATH: '/usr/bin' };
+    process.env[VARIABLE] = 'kept';
+    await resetDatabase({ database: 'dems_lane_3', dataDir: '/nonexistent/dems-w29', driverEnvironment: environment }, { openPool: stubPools(refusedAtR0).openPool }).catch(() => null);
+    expect(environment).toEqual({ PATH: '/usr/bin' });
+    expect(process.env[VARIABLE]).toBe('kept');
+  });
+});
+
 describe('R-9: the routine settles only when the driver has closed the owner connection', () => {
   // The driver's pool reports "ended" when it has ASKED its connections to close; it reports each
   // connection that has really ended with the event `remove`. The routine waits for that event.

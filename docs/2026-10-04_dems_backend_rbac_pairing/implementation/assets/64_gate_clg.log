@@ -1,0 +1,32 @@
+2026-10-05 22:58:06 WIB
+$ git diff --stat acaff20 -- apps/core-web/src/features/session-new/__tests__/session-new.test.tsx apps/core-web/src/features/session-new/__tests__/session-new-model.test.tsx
+exit 0 (no output: both files unchanged)
+$ git hash-object (the two existing test files; pre-image values in .cache/rollback/W64/pre-image-hashes.txt)
+1fef4f88df62a4cd4ed0fdccb83c7c97219cd82e
+1a295f1d34b26b7aab5a9b12a36babece1a582ab
+$ git diff --stat acaff20 -- apps/core-web/src/features/session-new packages/shared/src/i18n/en/session-new.ts
+ .../src/features/session-new/cancel-dialog.tsx     |  16 +-
+ .../src/features/session-new/devices-step.tsx      |  30 ++-
+ apps/core-web/src/features/session-new/index.tsx   | 245 ++++++++++++++++-----
+ .../src/features/session-new/info-step.tsx         |  17 +-
+ apps/core-web/src/features/session-new/log.ts      |  64 ++++--
+ .../src/features/session-new/ready-step.tsx        |  17 +-
+ .../src/features/session-new/sim-adapter.ts        |  48 +++-
+ packages/shared/src/i18n/en/session-new.ts         |  10 +
+ 8 files changed, 343 insertions(+), 104 deletions(-)
+$ npm run test -w @dems/core-web -- src/features/session-new  (CLG a: the folder tests)
+ Test Files  2 passed (2)
+      Tests  15 passed (15)
+   Start at  22:58:06
+exit 0
+$ grep -rnE "useSimActions|[A-Za-z_)\]]\.actions" (CLG c: production files of the folder, __tests__ excluded)
+grep exit 1 (1: no match)
+$ git diff --stat acaff20 -- the six protected test files, vite.config.ts, runtime, components/shell, routes, lib
+ .../src/lib/__tests__/live-core-endpoint.test.tsx  | 145 +++++++
+ .../src/lib/__tests__/live-core-errors.test.tsx    | 426 +++++++++++++++++++++
+ apps/core-web/vite.config.ts                       |  51 ++-
+ 3 files changed, 618 insertions(+), 4 deletions(-)
+exit 0
+9e8b97c80da596e0ae6e9b37aa69b64e99e3bbdd
+71f6f0337f2339d8e8d66ef232d7334dc0b67d1d
+status exit 0 (no lines: untouched)

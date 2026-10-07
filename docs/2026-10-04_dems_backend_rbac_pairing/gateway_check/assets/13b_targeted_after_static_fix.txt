@@ -1,0 +1,28 @@
+PASS src/features/evidence/live-evidence-strict.test.tsx (10.612 s)
+PASS src/features/evidence/live-evidence-archive.test.tsx (5.083 s)
+PASS src/features/evidence/evidence-detail.test.tsx (19.697 s)
+PASS src/features/evidence/live-evidence-verify.test.tsx (8.927 s)
+PASS src/features/evidence/evidence-model.test.ts
+PASS src/features/evidence/live-evidence-metadata-record.test.tsx
+PASS src/features/evidence/live-evidence-export.test.tsx (11.084 s)
+PASS src/features/evidence/evidence-more-menu-title.test.tsx
+PASS src/features/evidence/play-sheet.test.tsx
+PASS src/features/network-time/live-network-time.test.tsx
+PASS src/features/evidence/evidence-list.test.tsx (5.164 s)
+PASS src/features/evidence/live-evidence-stored-verification.test.tsx (7.555 s)
+PASS src/features/sessions/live-sessions.test.tsx (8.808 s)
+PASS src/features/network-time/time-sync-fit.test.tsx
+PASS src/features/sessions/sessions-screen.test.tsx (7.115 s)
+PASS src/features/network-time/network-time-screen.test.tsx
+PASS src/features/network-time/bandwidth-row-fit.test.tsx
+PASS src/features/sessions/hub-pane-split.test.tsx
+PASS src/features/evidence/live-evidence-static.test.ts
+PASS src/features/evidence/evidence-row-deselect-drawn.test.tsx
+PASS src/features/sessions/session-row-deselect-drawn.test.tsx
+PASS src/features/sessions/sessions-model.test.ts
+PASS src/features/network-time/network-time-model.test.ts
+PASS src/features/sessions/hub-pane-row-fit.test.tsx
+Test Suites: 24 passed, 24 total
+Tests:       166 passed, 166 total
+Time:        60.472 s
+exit 0

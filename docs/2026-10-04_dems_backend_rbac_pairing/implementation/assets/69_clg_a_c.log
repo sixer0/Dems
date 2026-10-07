@@ -1,0 +1,21 @@
+2026-10-05 23:22:21 WIB
+$ git diff --stat acaff20 -- apps/core-web/src/features/evidence/__tests__/{evidence-export,evidence-integrity,evidence-media}.test.tsx apps/core-web/src/features/evidence/__tests__/harness.ts apps/core-web/src/test/evidence-table.test.tsx
+(no output: the five files equal acaff20; exit 0)
+
+$ grep -rln useSimActions apps/core-web/src/features/evidence | grep -v __tests__ | wc -l
+       0
+$ grep -rlnE "sim\.actions" apps/core-web/src/features/evidence | grep -v __tests__ | wc -l
+       0
+
+$ git diff --stat acaff20 -- apps/core-web/src/features/evidence packages/shared/src/i18n/en/evidence.ts
+ .../core-web/src/features/evidence/detail-page.tsx |  91 +++++---
+ .../src/features/evidence/evidence-table.tsx       |  35 ++-
+ apps/core-web/src/features/evidence/evidence.css   |  11 +
+ .../src/features/evidence/export-wizard.tsx        | 236 +++++++++++++++++----
+ .../src/features/evidence/integrity-tab.tsx        |  55 ++++-
+ apps/core-web/src/features/evidence/list-page.tsx  |  42 +---
+ apps/core-web/src/features/evidence/log.ts         |  62 ++++--
+ apps/core-web/src/features/evidence/sim-adapter.ts |  34 +--
+ .../src/features/evidence/use-verification.ts      | 209 +++++++++++++++---
+ packages/shared/src/i18n/en/evidence.ts            |  26 +++
+ 10 files changed, 615 insertions(+), 186 deletions(-)

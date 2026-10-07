@@ -1,0 +1,6 @@
+press sm-action-note: true at 10:39:33.467
+slept 1500
+testids sm-note (3): sm-note-drawer sm-note-input sm-note-submit
+testids note (0): 
+eval: ["BUTTON:Close","sm-note-input:","BUTTON:Cancel","sm-note-submit:Save note"]
+shot B11_web_note_drawer.png at 10:39:35.185

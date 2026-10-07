@@ -1,0 +1,22 @@
+# f80.py files... : LogBox toast detector (yellow warning circle ~(250,180,40) and grey toast body (51,51,51)) in the lower half
+import sys, glob, os
+from PIL import Image
+def scan(p):
+  im=Image.open(p).convert('RGB')
+  if im.size!=(1080,2424): return None
+  px=im.load(); y1=0; grey=0; red=0
+  for x in range(30,160,2):
+    for y in range(1200,2400,2):
+      r,g,b=px[x,y]
+      if r>215 and 150<g<200 and b<70: y1+=1
+      if r>220 and g<80 and b<80: red+=1
+  for x in range(200,1000,8):
+    for y in range(1200,2400,4):
+      if px[x,y]==(51,51,51): grey+=1
+  return y1,grey,red
+for p in sys.argv[1:]:
+  r=scan(p)
+  if r is None: continue
+  y1,grey,red=r
+  flag='TOAST?' if (y1>40 and grey>150) else ''
+  print(f"{os.path.basename(p)} yellow={y1} grey={grey} {flag}")

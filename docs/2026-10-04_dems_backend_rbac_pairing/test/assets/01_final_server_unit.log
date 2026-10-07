@@ -1,0 +1,6 @@
+> @dems/core-server@0.2.0 test
+> vitest run --project unit --maxWorkers=2
+ Test Files  154 passed (154)
+      Tests  3916 passed (3916)
+   Start at  08:29:05
+   Duration  26.03s (import 59%, tests 37%, transform 3%)

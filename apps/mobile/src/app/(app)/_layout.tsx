@@ -1,5 +1,5 @@
 import { AppStack } from '@/navigation';
-import { KeepAwakeController, SessionRouteSync } from '@/runtime';
+import { KeepAwakeController, SessionDiagnostics, SessionRouteSync } from '@/runtime';
 
 /** Deep links into the session flow keep the tabs underneath, so Back leaves the flow to them. */
 export const unstable_settings = { initialRouteName: '(tabs)' };
@@ -14,6 +14,8 @@ export default function AppLayout() {
     <>
       <AppStack />
       <SessionRouteSync />
+      {/* W93-28 (FXR-M): quiet session-window measurements for W98 (runtime log only, no console). */}
+      <SessionDiagnostics />
       <KeepAwakeController />
     </>
   );

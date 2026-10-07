@@ -1,0 +1,5 @@
+M01 | 64: the device slice is altered in the answer | unit: - | db: Tests 5 failed | 50 passed (55)
+M02 | 64: the services are left out | unit: - | db: Tests 5 failed | 50 passed (55)
+M03 | 64: the update always reads IDLE | unit: - | db: Tests 2 failed | 53 passed (55)
+M04 | 64: the diagnostics run is never shown | unit: - | db: Tests 2 failed | 53 passed (55)
+M05 | 64: the time format always reads 24 | unit: - | db: Tests 1 failed | 54 passed (55)

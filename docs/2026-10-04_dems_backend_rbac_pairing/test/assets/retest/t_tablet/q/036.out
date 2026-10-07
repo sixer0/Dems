@@ -1,0 +1,11 @@
+mark evidence list at 13:01:29.594
+tap 227,424 at 13:01:29.744
+slept 3500 ms
+swipe 1920,500,1920,1400 500 ms
+slept 800 ms
+swipe 1920,500,1920,1400 500 ms
+slept 800 ms
+swipe 1920,500,1920,1400 500 ms
+slept 1500 ms
+screencap P06_evidence_list_and_detail.png (617965 bytes) at 13:01:38.397
+ids: 113 nodes -> q/p_evidence_detail_top.txt

@@ -5,16 +5,20 @@
  *   0.83 Hz, below the P8 flash limit); a halo ring scales 1 → 2.2 while fading 0.5 → 0 once per
  *   cycle. It is one ambient loop (`monitor-rec`) and stops under reduced motion, `?motion=off` or
  *   while the screen is unfocused: then a static red dot, and the timer still ticks.
- * - The timer is the C-6 RollingNumber in `slide` mode on the Orbitron readout, fed whole seconds
- *   from the simulator clock (S4), so it survives a relaunch without resetting (MA-08).
+ * - The timer is fed whole seconds by `useMonitorElapsedSeconds` (the runtime's `useRecordingElapsedSeconds`:
+ *   the store's clock, S4, so it survives a relaunch without resetting, MA-08; in LIVE the Core clock's ticker
+ *   when it is ahead, CF2-A RF-PH-1). It was the C-6 RollingNumber in `slide` mode; closing-fix row CF-M1 (R-P-2, R-P-1)
+ *   draws it with `TimerReadout`, the same columns positioned by React, because a JS stall made Reanimated
+ *   drop settled digit positions and the columns fell back to the digits of their mount ("04:22" ->
+ *   "04:12"; `timer-readout.tsx` has the mechanism). Full motion still rolls the digits that change.
  */
 import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { StyleSheet, Text, View } from 'react-native';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
 import { fontFamily, motion as motionTokens, palette, statusText, typography, type TypographyToken } from '@dems/shared/tokens';
-import { RollingNumber } from '@/components/composed/rolling-number';
 import { ambientPeriodMs, useAmbientLoop, useMotionPolicy, useMotionSettings } from '@/motion';
+import { TimerReadout } from './timer-readout';
 import { useMonitorElapsedSeconds } from './use-monitor';
 
 const DOT = 12;
@@ -74,21 +78,11 @@ export interface RecTimerProps {
   testID?: string;
 }
 
-/** HH:MM:SS since the recording started (1 Hz re-render of this component only). */
+/** HH:MM:SS since the recording started (1 Hz re-render of this component only), drawn by React (CF-M1). */
 export function RecTimer({ size = 'display', testID }: RecTimerProps) {
   const seconds = useMonitorElapsedSeconds();
   const policy = useMotionPolicy();
-  return (
-    <RollingNumber
-      value={seconds}
-      mode="slide"
-      format={{ kind: 'duration' }}
-      motion={policy}
-      size={size}
-      color={palette.foreground}
-      testID={testID}
-    />
-  );
+  return <TimerReadout seconds={seconds} motion={policy} size={size} color={palette.foreground} testID={testID} />;
 }
 
 export interface RecRowProps {

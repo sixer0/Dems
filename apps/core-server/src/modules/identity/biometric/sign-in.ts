@@ -91,7 +91,7 @@ import { ApiFailure } from '../../../plugins/error-envelope';
 import { appendActivity } from '../activity';
 import type { ConsoleLockout, FailureOutcome, LockRefusal } from '../lockout';
 import { markSignedIn, readRolePermissions } from '../session-store';
-import { issueSession } from '../sessions';
+import { issueSession, publishDeviceSessions } from '../sessions';
 import { authSessionInfo, consoleLocked } from '../sign-in';
 import { TokenRefusalReason, lockedOut, tokenRefused, tokenSignedIn } from './activity';
 import { claimToken, insertToken, readTokenState, revokeBiometricTokens, type TokenState } from './store';
@@ -232,10 +232,11 @@ export async function signInWithBiometricToken(
         });
         const issued = await issueSession(unit, { operatorId: operator.id, deviceId, method: AuthMethod.BIOMETRIC, now });
         await appendActivity(unit, tokenSignedIn({ operatorId: operator.id, displayName: operator.displayName, deviceId }));
-        // A success clears the device's count and its lock. It ends no session and publishes
-        // nothing: no session is presented with a biometric sign-in (the registry's condition
-        // `DEVICE_CREDENTIAL` on operation 8).
+        // A success clears the device's count and its lock. It ends no session: no session is
+        // presented with a biometric sign-in (the registry's condition `DEVICE_CREDENTIAL` on
+        // operation 8). It publishes only that the device's signed-in operator changed (R4).
         unit.afterCommit(() => lockout.succeed(deviceId));
+        publishDeviceSessions(app, unit, [issued.session]);
         return {
           kind: 'SIGNED_IN',
           sessionToken: issued.token,

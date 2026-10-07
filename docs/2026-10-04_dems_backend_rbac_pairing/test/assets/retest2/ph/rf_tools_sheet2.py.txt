@@ -1,0 +1,25 @@
+"""sheet2.py <out.png> <cols> <scale> <dir:frame:caption> ...: labelled contact sheet (caption above each tile)."""
+import sys, os
+from PIL import Image, ImageDraw, ImageFont
+out, cols, scale = sys.argv[1], int(sys.argv[2]), float(sys.argv[3])
+items = [a.split('::') for a in sys.argv[4:]]
+ims = [Image.open(p).convert('RGB') for p, _ in items]
+w, h = ims[0].size
+tw, th = int(w * scale), int(h * scale)
+try:
+    font = ImageFont.truetype('/System/Library/Fonts/Supplemental/Arial.ttf', 13)
+except Exception:
+    font = ImageFont.load_default()
+rows = (len(ims) + cols - 1) // cols
+LH = 34
+sheet = Image.new('RGB', (cols * (tw + 6), rows * (th + LH + 6)), 'white')
+dr = ImageDraw.Draw(sheet)
+for i, ((p, cap), im) in enumerate(zip(items, ims)):
+    x, y = (i % cols) * (tw + 6), (i // cols) * (th + LH + 6)
+    if im.size != (w, h):
+        im = im.resize((w, h))
+    sheet.paste(im.resize((tw, th)), (x, y + LH))
+    lines = cap.split('|')
+    for k, ln in enumerate(lines[:2]):
+        dr.text((x + 3, y + 2 + k * 15), ln, fill='black', font=font)
+sheet.save(out, optimize=True)

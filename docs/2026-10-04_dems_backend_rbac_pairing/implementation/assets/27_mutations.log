@@ -1,0 +1,168 @@
+# Mutation runs of blueprint step 49 (W27, contract C)
+# Each change is made to one source file on an isolated copy (.cache/W27/mut), never on the tree.
+
+## Pass 1: the committed document as it is (a change that shows in the document also fails the byte-for-byte drift check)
+Sun Oct  4 10:39:24 WIB 2026
+baseline tests exit 0
+M01 DETECTED by tests: a wrong path (beginPrecheck) [src/api/sessions.ts]
+      4 failing line(s); first: × AC-B-11: is the committed openapi.json, byte for byte, with 75 operations and two security schemes 108ms
+M02 DETECTED by tests: a wrong permission (addSessionNote takes SESSION_START) [src/api/sessions.ts]
+      5 failing line(s); first: × AC-B-11: is the committed openapi.json, byte for byte, with 75 operations and two security schemes 75ms
+M03 DETECTED by tests: a wrong audit rule (cancelSession writes none) [src/api/sessions.ts]
+      4 failing line(s); first: × AC-B-11: is the committed openapi.json, byte for byte, with 75 operations and two security schemes 45ms
+M04 DETECTED by tests: the any-of with a wrong permission [src/api/storage.ts]
+      7 failing line(s); first: × AC-B-11: is the committed openapi.json, byte for byte, with 75 operations and two security schemes 96ms
+M05 DETECTED by tests: the audit export with ACCESS_DENIED (RB-5) [src/api/security-audit.ts]
+      4 failing line(s); first: × AC-B-11: is the committed openapi.json, byte for byte, with 75 operations and two security schemes 59ms
+M06 DETECTED by tests: a GET that became a POST (verifyAuditChain) [src/api/security-audit.ts]
+      8 failing line(s); first: × AC-B-11: is the committed openapi.json, byte for byte, with 75 operations and two security schemes 54ms
+M07 DETECTED by tests: a wrong success status (archiveEvidence 200) [src/api/evidence.ts]
+      4 failing line(s); first: × AC-B-11: is the committed openapi.json, byte for byte, with 75 operations and two security schemes 113ms
+M08 DETECTED by tests: a missing specific refusal (testDeviceSignal without 409) [src/api/devices.ts]
+      5 failing line(s); first: × AC-B-11: is the committed openapi.json, byte for byte, with 75 operations and two security schemes 81ms
+M09 DETECTED by tests: a wrong access rule (acknowledgeAlert for a DEVICE) [src/api/alerts.ts]
+      5 failing line(s); first: × AC-B-11: is the committed openapi.json, byte for byte, with 75 operations and two security schemes 99ms
+M10 DETECTED by tests: the 401 of the reads not marked Core-server-only [src/api/core-api.ts]
+      6 failing line(s); first: × info, servers, tags, every path and the header component are byte-equal to acaff20 12ms
+M11 DETECTED by tests: the registry in another order (demo before sessions) [src/api/core-api.ts]
+      79 failing line(s); first: × AC-B-11: is the committed openapi.json, byte for byte, with 75 operations and two security schemes 212ms
+M12 DETECTED by tests: the evidence export destination without its bound [src/api/core-api.ts]
+      2 failing line(s); first: × an export destination of 120 code units is recorded as it was sent; a longer one is refused by all three export requests 44ms
+M13 DETECTED by tests: the marker label bound at 81 [src/api/sessions.ts]
+      3 failing line(s); first: × a marker label of 80 code units is stored as it was sent; a longer one is refused, never cut 11ms
+M14 DETECTED by tests: a bounded text without its code-unit bound [src/api/schema-parts.ts]
+      5 failing line(s); first: × a marker label of 80 code units is stored as it was sent; a longer one is refused, never cut 86ms
+M15 DETECTED by tests: a page limit up to 500 [src/api/schema-parts.ts]
+      5 failing line(s); first: × paging: an opaque cursor and a limit from 1 to 200, with 50 as the server's default 11ms
+M16 DETECTED by tests: a page limit with a default of its own [src/api/schema-parts.ts]
+      8 failing line(s); first: × AC-B-11: is the committed openapi.json, byte for byte, with 75 operations and two security schemes 132ms
+M17 DETECTED by tests: a cursor that may hold an underscore [src/api/patterns.ts]
+      5 failing line(s); first: × AC-B-11: is the committed openapi.json, byte for byte, with 75 operations and two security schemes 122ms
+M18 DETECTED by tests: AuditChainStatus without lineageTotal [src/api/security-audit.ts]
+      8 failing line(s); first: × AC-B-11: is the committed openapi.json, byte for byte, with 75 operations and two security schemes 97ms
+M19 DETECTED by tests: a lineage of up to 50 entries [src/api/security-audit.ts]
+      3 failing line(s); first: × AC-B-11: is the committed openapi.json, byte for byte, with 75 operations and two security schemes 130ms
+M20 DETECTED by tests: a media reference whose source and suffix need not agree [src/api/evidence.ts]
+      1 failing line(s); first: × every evidence item of the dataset is an `evidence` of getEvidence, with a media reference of one of the two forms 18ms
+M21 DETECTED by tests: a state read that is not strict (DeviceInventory) [src/api/devices.ts]
+      4 failing line(s); first: × each one is strict: a member it does not name is refused, a slice of another read included 45ms
+M22 DETECTED by tests: retention days up to 4,000 [src/api/storage.ts]
+      3 failing line(s); first: × AC-B-11: is the committed openapi.json, byte for byte, with 75 operations and two security schemes 202ms
+M23 DETECTED by tests: the text rule off for slice text [src/api/state-slices.ts]
+      2 failing line(s); first: × text carries the text rule API-13: what well-formed input leaves in the state is well-formed, and a slice with ill-formed text is refused 80ms
+M24 DETECTED by tests: info.version 0.1.1 in the all scope [src/api/openapi.ts]
+      3 failing line(s); first: × AC-B-11: is the committed openapi.json, byte for byte, with 75 operations and two security schemes 72ms
+M25 DETECTED by tests: a DEVICE operation that takes the cookie [src/api/openapi.ts]
+      3 failing line(s); first: × AC-B-11: is the committed openapi.json, byte for byte, with 75 operations and two security schemes 67ms
+M26 DETECTED by tests: the all scope with the simulator text of the ten [src/api/openapi.ts]
+      3 failing line(s); first: × AC-B-11: is the committed openapi.json, byte for byte, with 75 operations and two security schemes 53ms
+M27 DETECTED by tests: the offline document with the Core-server-only statuses [src/api/openapi.ts]
+      4 failing line(s); first: × info, servers, tags, every path and the header component are byte-equal to acaff20 7ms
+M28 DETECTED by tests: the committed scope back to offline [scripts/gen-openapi.ts]
+      4 failing line(s); first: × is not a file: the builder returns it, and the committed openapi.json holds the other scope 6ms
+M29 DETECTED by tests: an example slice that differs from the simulator [src/api/state-examples.ts]
+      3 failing line(s); first: × AC-B-11: is the committed openapi.json, byte for byte, with 75 operations and two security schemes 56ms
+M30 DETECTED by tests: an action marked server-native that is hosted [src/api/sim-actions.ts]
+      1 failing line(s); first: × 31 are hosted, 9 server-native, 1 is not available and 1 is internal 5ms
+M31 DETECTED by tests: SIMULATED badges in the all scope [src/api/openapi.ts]
+      3 failing line(s); first: × the committed openapi/openapi.json matches the builder byte for byte (no drift) 269ms
+M32 DETECTED by tests: one security scheme only [src/api/openapi.ts]
+      3 failing line(s); first: × AC-B-11: is the committed openapi.json, byte for byte, with 75 operations and two security schemes 77ms
+M33 DETECTED by tests: the Core server not the first server [src/api/openapi.ts]
+      3 failing line(s); first: × AC-B-11: is the committed openapi.json, byte for byte, with 75 operations and two security schemes 46ms
+M34 DETECTED by tests: a 404 for an unknown session on the summary acknowledgement [src/api/sessions.ts]
+      8 failing line(s); first: × AC-B-11: is the committed openapi.json, byte for byte, with 75 operations and two security schemes 40ms
+M35 DETECTED by tests: an export reason of 4 characters [src/api/security-audit.ts]
+      3 failing line(s); first: × AC-B-11: is the committed openapi.json, byte for byte, with 75 operations and two security schemes 40ms
+M36 DETECTED by tests: a credential-shaped example [src/api/sessions.ts]
+      3 failing line(s); first: × AC-B-11: is the committed openapi.json, byte for byte, with 75 operations and two security schemes 34ms
+36 of 36 detected
+Sun Oct  4 10:43:43 WIB 2026
+
+## Pass 2: the document regenerated after each change (the drift check cannot catch it; a semantic assertion must)
+Sun Oct  4 10:45:13 WIB 2026
+baseline tests exit 0
+M01 DETECTED by tests: a wrong path (beginPrecheck) [src/api/sessions.ts]
+      2 failing line(s); first: × the 38 operations of areas 4 to 11 have the method, path, access rule and audit rule of the specification 8ms
+M02 DETECTED by tests: a wrong permission (addSessionNote takes SESSION_START) [src/api/sessions.ts]
+      3 failing line(s); first: × the 38 operations of areas 4 to 11 have the method, path, access rule and audit rule of the specification 7ms
+M03 DETECTED by tests: a wrong audit rule (cancelSession writes none) [src/api/sessions.ts]
+      2 failing line(s); first: × the 38 operations of areas 4 to 11 have the method, path, access rule and audit rule of the specification 6ms
+M04 DETECTED by tests: the any-of with a wrong permission [src/api/storage.ts]
+      5 failing line(s); first: × the 38 operations of areas 4 to 11 have the method, path, access rule and audit rule of the specification 9ms
+M05 DETECTED by tests: the audit export with ACCESS_DENIED (RB-5) [src/api/security-audit.ts]
+      2 failing line(s); first: × the 38 operations of areas 4 to 11 have the method, path, access rule and audit rule of the specification 8ms
+M06 DETECTED by tests: a GET that became a POST (verifyAuditChain) [src/api/security-audit.ts]
+      6 failing line(s); first: × names every operation and every method-and-path once; 27 are GET and 48 are POST 7ms
+M07 DETECTED by tests: a wrong success status (archiveEvidence 200) [src/api/evidence.ts]
+      2 failing line(s); first: × a success has a schema unless it is 204 or the 202 of the software update; every refusal is the error envelope 5ms
+M08 DETECTED by tests: a missing specific refusal (testDeviceSignal without 409) [src/api/devices.ts]
+      3 failing line(s); first: × the specific refusals of 01_specs §7.8 to §7.15: 404 for an unknown resource, 409 for a state conflict 7ms
+M09 DETECTED by tests: a wrong access rule (acknowledgeAlert for a DEVICE) [src/api/alerts.ts]
+      3 failing line(s); first: × the 38 operations of areas 4 to 11 have the method, path, access rule and audit rule of the specification 6ms
+M10 DETECTED by tests: the 401 of the reads not marked Core-server-only [src/api/core-api.ts]
+      6 failing line(s); first: × path, method, path parameter, request schema and response schemas are those of acaff20 8ms
+M11 DETECTED by tests: the registry in another order (demo before sessions) [src/api/core-api.ts]
+      77 failing line(s); first: × API-12: the Core server 127.0.0.1:4420 is the first server, mock-core the second; version 0.2.0 11ms
+M12 DETECTED by tests: the evidence export destination without its bound [src/api/core-api.ts]
+      2 failing line(s); first: × an export destination of 120 code units is recorded as it was sent; a longer one is refused by all three export requests 13ms
+M13 DETECTED by tests: the marker label bound at 81 [src/api/sessions.ts]
+      1 failing line(s); first: × a marker label of 80 code units is stored as it was sent; a longer one is refused, never cut 5ms
+M14 DETECTED by tests: a bounded text without its code-unit bound [src/api/schema-parts.ts]
+      5 failing line(s); first: × a marker label of 80 code units is stored as it was sent; a longer one is refused, never cut 14ms
+M15 DETECTED by tests: a page limit up to 500 [src/api/schema-parts.ts]
+      3 failing line(s); first: × paging: an opaque cursor and a limit from 1 to 200, with 50 as the server's default 5ms
+M16 DETECTED by tests: a page limit with a default of its own [src/api/schema-parts.ts]
+      6 failing line(s); first: × a list read documents its query members as parameters 7ms
+M17 DETECTED by tests: a cursor that may hold an underscore [src/api/patterns.ts]
+      3 failing line(s); first: × a list read documents its query members as parameters 8ms
+M18 DETECTED by tests: AuditChainStatus without lineageTotal [src/api/security-audit.ts]
+      6 failing line(s); first: × AuditChainStatus: the view, the stored chain and the lineage of discarded chains, newest first and at most 20 8ms
+M19 DETECTED by tests: a lineage of up to 50 entries [src/api/security-audit.ts]
+      1 failing line(s); first: × AuditChainStatus: the view, the stored chain and the lineage of discarded chains, newest first and at most 20 7ms
+M20 DETECTED by tests: a media reference whose source and suffix need not agree [src/api/evidence.ts]
+      1 failing line(s); first: × every evidence item of the dataset is an `evidence` of getEvidence, with a media reference of one of the two forms 8ms
+M21 DETECTED by tests: a state read that is not strict (DeviceInventory) [src/api/devices.ts]
+      2 failing line(s); first: × each one is strict: a member it does not name is refused, a slice of another read included 9ms
+M22 DETECTED by tests: retention days up to 4,000 [src/api/storage.ts]
+      1 failing line(s); first: × setStoragePolicy: a partial policy; the days are a whole number from 1 to 3,650, as the simulator checks 5ms
+M23 DETECTED by tests: the text rule off for slice text [src/api/state-slices.ts]
+      2 failing line(s); first: × text carries the text rule API-13: what well-formed input leaves in the state is well-formed, and a slice with ill-formed text is refused 19ms
+M24 DETECTED by tests: info.version 0.1.1 in the all scope [src/api/openapi.ts]
+      2 failing line(s); first: × AC-B-11: is the committed openapi.json, byte for byte, with 75 operations and two security schemes 20ms
+M25 DETECTED by tests: a DEVICE operation that takes the cookie [src/api/openapi.ts]
+      1 failing line(s); first: × API-12: two security schemes, and each operation takes the credential its access rule names 6ms
+M26 DETECTED by tests: the all scope with the simulator text of the ten [src/api/openapi.ts]
+      1 failing line(s); first: × describes the Core server truthfully: no text of this scope says that mock-core or the browser answers an operation (KI-18) 9ms
+M27 DETECTED by tests: the offline document with the Core-server-only statuses [src/api/openapi.ts]
+      4 failing line(s); first: × info, servers, tags, every path and the header component are byte-equal to acaff20 12ms
+M28 DETECTED by tests: the committed scope back to offline [scripts/gen-openapi.ts]
+      4 failing line(s); first: × is not a file: the builder returns it, and the committed openapi.json holds the other scope 4ms
+M29 DETECTED by tests: an example slice that differs from the simulator [src/api/state-examples.ts]
+      1 failing line(s); first: × sixteen slices equal the state, with the four long series cut to their newest points 20ms
+M30 DETECTED by tests: an action marked server-native that is hosted [src/api/sim-actions.ts]
+      1 failing line(s); first: × 31 are hosted, 9 server-native, 1 is not available and 1 is internal 5ms
+M31 DETECTED by tests: SIMULATED badges in the all scope [src/api/openapi.ts]
+      1 failing line(s); first: × nine can be answered by the in-app simulator, 66 only by a service; "Show simulated endpoints" off keeps the 66 17ms
+M32 DETECTED by tests: one security scheme only [src/api/openapi.ts]
+      2 failing line(s); first: × AC-B-11: is the committed openapi.json, byte for byte, with 75 operations and two security schemes 25ms
+M33 DETECTED by tests: the Core server not the first server [src/api/openapi.ts]
+      2 failing line(s); first: × AC-B-11: is the committed openapi.json, byte for byte, with 75 operations and two security schemes 19ms
+M34 DETECTED by tests: a 404 for an unknown session on the summary acknowledgement [src/api/sessions.ts]
+      6 failing line(s); first: × every documented response with a body has at least one example, and every example parses 15ms
+M35 DETECTED by tests: an export reason of 4 characters [src/api/security-audit.ts]
+      1 failing line(s); first: × an export reason of 5 to 500 characters is mandatory in Live mode 8ms
+M36 DETECTED by tests: a credential-shaped example [src/api/sessions.ts]
+      1 failing line(s); first: × every credential-shaped value of every example is one of the placeholders 6ms
+36 of 36 detected
+Sun Oct  4 10:47:29 WIB 2026
+
+## Two more, after the export reason was bounded for all three exports (regenerated document)
+Sun Oct  4 10:51:09 WIB 2026
+baseline tests exit 0
+M37 DETECTED by tests: the evidence export reason without its upper bound [src/api/core-api.ts]
+      1 failing line(s); first: × all three exports need a body with a reason, so an export record never lacks one (01_specs §7.9, §7.13; 03_database_contract T-20) 3ms
+M38 DETECTED by tests: an audit export whose body is optional [src/api/security-audit.ts]
+      1 failing line(s); first: × all three exports need a body with a reason, so an export record never lacks one (01_specs §7.9, §7.13; 03_database_contract T-20) 3ms
+2 of 2 detected
+Sun Oct  4 10:51:15 WIB 2026

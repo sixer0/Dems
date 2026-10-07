@@ -1,0 +1,26 @@
+13:22:39.574 mark k05 at 13:22:39.574
+13:22:39.642 press sn-cancel ok at 13:22:39.675
+13:22:39.729 wait sn-cancel-dialog present: 1 ms (at 13:22:39.730)
+13:22:39.789 slept 500 ms
+13:22:40.340 press sn-cancel-confirm ok at 13:22:40.365
+13:22:40.431 slept 3000 ms
+13:22:43.489 js => "/dashboard"
+13:22:43.543 api GET /api/v1/session/current => {"status":200,"body":{"session":null,"serverTime":"2026-10-06T13:22:43.548+07:00"}}
+13:22:43.603 declared screen sessions
+13:22:43.657 screencap 105_p5_rina_sessions_hub_after_web_cancel.png 13:22:43.657..13:22:44.544
+13:22:44.690 ids(2): sessions-start@540,363 "Start New Session" ; sessions-start-locked@540,467 "Requires the Investigator role"
+13:22:47.418 tap 972,2283
+13:22:47.593 slept 2500 ms
+13:22:50.134 declared screen more
+13:22:50.159 tapid more-dest-settings at 797,1611 "Settings, Preferences, security, about, 5 sections"
+13:22:52.396 slept 2500 ms
+13:22:54.931 declared screen settings
+13:22:54.954 tapid settings-row-maintenance at 540,2003 "System Maintenance"
+13:22:57.093 slept 2500 ms
+13:22:59.619 declared screen settings-maintenance
+13:22:59.642 screencap 106_o2_rina_maintenance_install_enabled.png 13:22:59.642..13:22:59.898
+13:22:59.956 ids(5): settings-update@540,1046 ; settings-update-chip@927,830 "DEMO" ; settings-update-body@540,968 "v2.5.0 available" ; settings-update-live-note@540,1067 "The Core server runs a demonstration update: no software is installed." ; settings-update-install@540,1215 "Install update"
+13:23:01.988 warnlog since 10-06 13:22:39.000 (0): 
+13:23:02.053 serverlog since k05 (2):
+    13:22:40.380 POST /api/v1/session/:id/cancel 204
+    13:22:43.548 GET /api/v1/session/current 200

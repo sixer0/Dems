@@ -1,0 +1,27 @@
+Wed Oct  7 05:11:02 WIB 2026
+
+> dems-demo@0.1.0 typecheck
+> npm run typecheck --workspaces --if-present
+
+
+> @dems/shared@0.1.0 typecheck
+> tsc --noEmit
+
+
+> @dems/core-server@0.2.0 typecheck
+> tsc --noEmit
+
+
+> @dems/core-web@0.1.0 typecheck
+> tsc -b
+
+
+> @dems/mobile@0.1.0 typecheck
+> tsc --noEmit
+
+
+> @dems/mock-core@0.1.0 typecheck
+> tsc --noEmit
+
+npm run typecheck  38.80s user 1.74s system 162% cpu 25.012 total
+exit=0

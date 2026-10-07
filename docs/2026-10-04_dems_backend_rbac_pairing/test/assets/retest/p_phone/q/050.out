@@ -1,0 +1,22 @@
+13:20:23.856 mark k02 at 13:20:23.856
+13:20:23.907 declared screen home
+13:20:23.956 tap 540,1442
+13:20:24.190 slept 2000 ms
+13:20:26.223 screencap 98_p5_rina_home_start_locked.png 13:20:26.224..13:20:26.995
+13:20:27.056 tap 302,1239
+13:20:27.128 slept 2000 ms
+13:20:29.157 screencap 98b_p5_rina_home_after_press_locked_start.png 13:20:29.157..13:20:29.360
+13:20:29.453 tap 324,2283
+13:20:29.566 slept 2500 ms
+13:20:32.108 declared screen sessions
+13:20:32.141 screencap 99_p5_rina_sessions_hub_start_locked.png 13:20:32.141..13:20:32.324
+13:20:32.384 ids(2): sessions-start@540,363 "Start New Session" ; sessions-start-locked@540,467 "Requires the Investigator role"
+13:20:34.512 tap 540,363
+13:20:34.585 slept 1500 ms
+13:20:36.130 ids(1): screen-sessions@540,1102
+13:20:38.577 tap 108,2283
+13:20:38.686 slept 2000 ms
+13:20:40.722 declared screen home
+13:20:40.744 warnlog since 10-06 13:20:23.000 (0): 
+13:20:40.794 serverlog since k02 (1):
+    13:20:27.110 POST /api/v1/auth/touch 200

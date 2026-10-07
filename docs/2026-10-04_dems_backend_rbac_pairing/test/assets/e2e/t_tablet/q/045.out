@@ -1,0 +1,11 @@
+ids: 127 nodes -> q/settings_after.txt
+tap 784,1358 at 10:15:52.597
+slept 4500 ms
+screencap 18f_settings_network_time.png (478569 bytes) at 10:15:57.309
+tap 784,1482 at 10:15:57.361
+slept 4500 ms
+screencap 18g_settings_system_maintenance.png (478591 bytes) at 10:16:02.600
+swipe 784,1300,784,600 600 ms
+slept 2000 ms
+screencap 18h_settings_list_scrolled.png (477544 bytes) at 10:16:05.970
+ids: 121 nodes -> q/settings_scrolled.txt

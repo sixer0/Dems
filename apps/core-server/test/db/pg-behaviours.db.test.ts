@@ -2,12 +2,16 @@
 // already exercises them: PG-10, PG-11, PG-13, PG-15, PG-16, PG-19, PG-27; and the server-log
 // check of plan row W17 (contract §5.4 NL-3, §7.6; finding F-2 of the test-helper row).
 //
-// THE LOG CHECK reads `.data/postgres.log`, the file `pg_ctl -l` writes (mode 0600). It reads
-// only what the server appended while this file's statements ran, searches it for marker values
-// that this test made up (random per run), and prints nothing else of it. Nothing in
-// PostgreSQL's configuration is changed.
+// THE LOG CHECK reads the logging collector's current file, `.data/postgres/log/postgresql-HH.log`
+// (mode 0600), which `.data/postgres/current_logfiles` names (security ruling 14, CPS1-9: terse
+// errors and a ring of 24 hourly files, set by scripts/pg/init.mjs). Across an hour boundary it
+// reads the rest of the first file and the new file from its start. `.data/postgres.log`, the file
+// of `pg_ctl -l`, only holds what is written before the collector starts. The check reads only what
+// the server appended while this file's statements ran, searches it for marker values that this
+// test made up (random per run), and prints counts only. Nothing in PostgreSQL's configuration is
+// changed.
 import { randomBytes } from 'node:crypto';
-import { closeSync, openSync, readSync, statSync } from 'node:fs';
+import { closeSync, openSync, readFileSync, readSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Pool } from 'pg';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -105,14 +109,35 @@ describe('PG-27: what dems_owner sees of a session of another role', () => {
   });
 });
 
-describe('PG-16 and the server log: what a refused statement writes into .data/postgres.log', () => {
-  const logFile = (): string => join(db.run.dataDir, 'postgres.log');
+describe('PG-16 and the server log: what a refused statement writes into the collector file (ruling 14)', () => {
+  const clusterDir = (): string => join(db.run.dataDir, 'postgres');
+  /** The file of `pg_ctl -l`: what the server writes before the collector starts. */
+  const bootLog = (): string => join(db.run.dataDir, 'postgres.log');
 
-  function readFrom(offset: number): string {
-    const size = statSync(logFile()).size;
+  /** The collector's current file. `current_logfiles` holds one line per destination, here `stderr log/postgresql-HH.log`. */
+  function currentLogFile(): string {
+    const line = readFileSync(join(clusterDir(), 'current_logfiles'), 'utf8')
+      .split('\n')
+      .find((entry) => entry.startsWith('stderr '));
+    if (line === undefined) throw new Error('current_logfiles names no stderr file: is the logging collector on?');
+    return join(clusterDir(), line.slice('stderr '.length).trim());
+  }
+
+  interface LogMark {
+    readonly file: string;
+    readonly offset: number;
+  }
+
+  function mark(): LogMark {
+    const file = currentLogFile();
+    return { file, offset: statSync(file).size };
+  }
+
+  function readSegment(file: string, offset: number): string {
+    const size = statSync(file).size;
     const length = Math.max(0, size - offset);
     const buffer = Buffer.alloc(length);
-    const descriptor = openSync(logFile(), 'r');
+    const descriptor = openSync(file, 'r');
     try {
       readSync(descriptor, buffer, 0, length, offset);
     } finally {
@@ -121,26 +146,29 @@ describe('PG-16 and the server log: what a refused statement writes into .data/p
     return buffer.toString('utf8');
   }
 
-  /** The lines the server appended since `offset` that contain `needle`, once `expected` of them exist. */
-  async function appended(offset: number, needle: string, expected: number): Promise<string[]> {
+  /** What the server appended since `start`. Across an hour boundary: the rest of the first file, then the new file from 0. */
+  function readFrom(start: LogMark): string {
+    const now = currentLogFile();
+    return now === start.file ? readSegment(start.file, start.offset) : readSegment(start.file, start.offset) + readSegment(now, 0);
+  }
+
+  /** The lines appended since `start` that `match` accepts, once `expected` of them exist (the collector writes with a delay). */
+  async function appended(start: LogMark, match: (line: string) => boolean, expected: number): Promise<string[]> {
     for (let attempt = 0; attempt < 200; attempt += 1) {
-      const lines = readFrom(offset)
-        .split('\n')
-        .filter((line) => line.includes(needle));
+      const lines = readFrom(start).split('\n').filter(match);
       if (lines.length >= expected) return lines;
       await sleep(10);
     }
-    return readFrom(offset)
-      .split('\n')
-      .filter((line) => line.includes(needle));
+    return readFrom(start).split('\n').filter(match);
   }
 
-  it('the settings of NL-5 are the defaults; the four that decide what is logged can be changed by a superuser only', async () => {
+  it('what is logged stays at the NL-5 defaults, errors are terse (ruling 14); the settings that decide it can be changed by a superuser only', async () => {
     const { rows } = await app.query(
       "SELECT name, setting, context FROM pg_settings WHERE name IN ('log_statement', 'log_min_duration_statement', 'log_parameter_max_length_on_error', 'log_min_error_statement', 'log_error_verbosity', 'log_parameter_max_length') ORDER BY 1",
     );
     expect(rows).toEqual([
-      { name: 'log_error_verbosity', setting: 'default', context: 'superuser' },
+      // Ruling 14 (CPS1-9): no DETAIL, HINT, QUERY or CONTEXT line, so no failing row and no key value.
+      { name: 'log_error_verbosity', setting: 'terse', context: 'superuser' },
       { name: 'log_min_duration_statement', setting: '-1', context: 'superuser' },
       { name: 'log_min_error_statement', setting: 'error', context: 'superuser' },
       { name: 'log_parameter_max_length', setting: '-1', context: 'superuser' },
@@ -150,13 +178,20 @@ describe('PG-16 and the server log: what a refused statement writes into .data/p
     ]);
     for (const pool of [app, owner]) {
       await expectRefused(() => pool.query("SET log_statement = 'all'"), SQLSTATE.insufficientPrivilege);
-      await expectRefused(() => pool.query('SET log_error_verbosity = terse'), SQLSTATE.insufficientPrivilege);
+      // No role of the project can bring the DETAIL lines back for its own session.
+      await expectRefused(() => pool.query('SET log_error_verbosity = verbose'), SQLSTATE.insufficientPrivilege);
+      await expectRefused(() => pool.query('SET log_error_verbosity = default'), SQLSTATE.insufficientPrivilege);
       await expectRefused(() => pool.query('SET log_min_duration_statement = 0'), SQLSTATE.insufficientPrivilege);
     }
   });
 
-  it('a failed statement is logged with $n, never with its bind values; a DETAIL line can carry a column value, which is a hash and never the secret', async () => {
-    expect(statSync(logFile()).mode & 0o777).toBe(0o600);
+  it('a failed statement is logged with $n, never with its bind values; terse errors leave no DETAIL line, so no hash value reaches the log', async () => {
+    const start = mark();
+    // The collector's file is the ring of ruling 14: log/postgresql-HH.log, mode 0600.
+    expect(start.file.slice(clusterDir().length + 1)).toMatch(/^log\/postgresql-\d{2}\.log$/);
+    expect(statSync(start.file).mode & 0o777).toBe(0o600);
+    expect(statSync(join(clusterDir(), 'current_logfiles')).mode & 0o777).toBe(0o600);
+    const bootOffset = statSync(bootLog()).size;
     // Markers of this run. The "secret" is what a token would be; the database only ever gets its SHA-256.
     const secret = `ses_w17-log-check-${randomBytes(18).toString('hex')}`;
     const tokenHash = sha256(secret);
@@ -165,36 +200,19 @@ describe('PG-16 and the server log: what a refused statement writes into .data/p
     // from those of other rows that test at the same time.
     const tag = `/* w17-log-${randomBytes(6).toString('hex')} */`;
     const insert = `${tag} INSERT INTO auth_sessions (token_hash, operator_id, method, issued_at, last_seen_at, absolute_expires_at) VALUES ($1, $2, $3, $4, $4, $5)`;
-    const offset = statSync(logFile()).size;
 
     // 1. Accepted statements leave no trace.
     await app.query(insert, [tokenHash, 'OPR-002', 'PASSWORD', T, T + 1]);
     // 2. A unique violation on a hash column (23505): the same token hash again.
-    await expectRefused(
-      () =>
-        app.query(
-          insert,
-          [tokenHash, 'OPR-002', 'PASSWORD', T, T + 1],
-        ),
-      SQLSTATE.uniqueViolation,
-      'auth_sessions_token_hash_key',
-    );
-    // 3. A CHECK violation on a table with a hash column (23514): the whole failing row is described.
+    await expectRefused(() => app.query(insert, [tokenHash, 'OPR-002', 'PASSWORD', T, T + 1]), SQLSTATE.uniqueViolation, 'auth_sessions_token_hash_key');
+    // 3. A CHECK violation on a table with a hash column (23514).
     const other = sha256(`${secret}:second`);
-    await expectRefused(
-      () =>
-        app.query(
-          insert,
-          [other, 'OPR-002', 'PASSWORD', T, T - 1],
-        ),
-      SQLSTATE.checkViolation,
-      'auth_sessions_times_check',
-    );
-    // 4. A foreign-key violation (23503) names the key value, here an operator ID.
+    await expectRefused(() => app.query(insert, [other, 'OPR-002', 'PASSWORD', T, T - 1]), SQLSTATE.checkViolation, 'auth_sessions_times_check');
+    // 4. A foreign-key violation (23503) with an operator ID that does not exist (untagged statement).
     await expectRefused(() => insertRow(app, 'auth_sessions', authSession(`${secret}:third`, { operator_id: 'OPR-777' })), SQLSTATE.foreignKeyViolation);
     // 5. A refusal by privilege (42501) names the table only.
     await expectRefused(() => app.query(`${tag} UPDATE audit_log SET message = $1 WHERE seq = $2`, [`marker-${hex}`, 1]), SQLSTATE.insufficientPrivilege);
-    // 6. The re-hash of a password (SR-06) with a value the CHECK refuses: the row holds the salt and the hash.
+    // 6. The re-hash of a password (SR-06) with a value the CHECK refuses.
     const badHash = Buffer.from(sha256(`${secret}:password-hash`).subarray(0, 31));
     await expectRefused(
       () => app.query(`${tag} UPDATE operator_credentials SET hash = $1, hashed_at = $2 WHERE operator_id = $3`, [badHash, T + 9, 'OPR-002']),
@@ -221,15 +239,16 @@ describe('PG-16 and the server log: what a refused statement writes into .data/p
     await app.query(token, [bioHash, 'DEV-0001', 'OPR-002', T, T + 1_000, null]);
     await expectRefused(() => app.query(token, [bioHash, 'DEV-0001', 'OPR-002', T, T + 1_000, T + 1]), SQLSTATE.uniqueViolation, 'biometric_tokens_token_hash_key');
 
-    const keyLines = await appended(offset, hex, 1);
-    const text = readFrom(offset);
+    // Wait until the collector has written all seven tagged STATEMENT lines, then take the whole window.
+    const statements = await appended(start, (line) => line.includes('STATEMENT:') && line.includes(tag), 7);
+    const text = readFrom(start);
+    const lines = text.split('\n');
     const markers = [tokenHash, other, badHash, credentialHash, nextHash, bioHash].map((value) => value.toString('hex').slice(0, 40));
-    const mine = text.split('\n').filter((line) => markers.some((marker) => line.includes(marker)));
+    const mine = lines.filter((line) => markers.some((marker) => line.includes(marker)));
 
     // The secret itself never reached the server, so it cannot be in its log.
     expect(text.includes(secret)).toBe(false);
-    // The STATEMENT lines show placeholders only.
-    const statements = text.split('\n').filter((line) => line.includes('STATEMENT:') && line.includes(tag));
+    // The STATEMENT lines show placeholders only (finding F-4 of W90: terse keeps one per error).
     // Seven of this test's tagged statements were refused; the accepted ones left no line.
     expect(statements).toHaveLength(7);
     expect(statements.filter((line) => line.endsWith('VALUES ($1, $2, $3, $4, $4, $5)'))).toHaveLength(2);
@@ -239,34 +258,47 @@ describe('PG-16 and the server log: what a refused statement writes into .data/p
     // The bind value of the refused UPDATE (which carried the hash as a marker text) is not logged.
     expect(text.includes(`marker-${hex}`)).toBe(false);
 
-    // Finding: the DETAIL line of the unique violation carries the KEY VALUE, the stored hash.
-    expect(keyLines).toHaveLength(1);
-    expect(keyLines[0]).toContain(`DETAIL:  Key (token_hash)=(\\x${hex}) already exists.`);
-    // Finding: the DETAIL line of a CHECK violation describes the WHOLE failing row, hash columns
-    // included; a value longer than 64 bytes is cut, so 31 of the 32 bytes of a hash are shown.
-    const failing = text.split('\n').filter((line) => line.includes('Failing row contains') && line.includes(other.toString('hex').slice(0, 40)));
-    expect(failing).toHaveLength(1);
-    expect(failing[0]).toContain(`\\x${other.toString('hex').slice(0, 62)}...`);
-    expect(failing[0]?.includes(other.toString('hex'))).toBe(false);
-    // The same for the password table: the failing row shows the salt and the refused hash value.
-    const credential = text.split('\n').filter((line) => line.includes('Failing row contains') && line.includes(badHash.toString('hex').slice(0, 40)));
-    expect(credential).toHaveLength(1);
-    expect(credential[0]).toContain('(OPR-002, argon2id, 19456, 2, 1, \\x07070707070707070707070707070707, \\x');
-    // The three other hash columns behave the same: the DETAIL line carries the stored hash.
-    for (const [column, value] of [['current_hash', credentialHash], ['next_hash', nextHash], ['token_hash', bioHash]] as const) {
-      const lines = await appended(offset, value.toString('hex'), 1);
-      expect(lines, column).toHaveLength(1);
-      expect(lines[0], column).toContain(`DETAIL:  Key (${column})=(\\x${value.toString('hex')}) already exists.`);
-    }
-    // The foreign-key DETAIL names the missing key, an operator ID (not a secret).
-    expect(text).toContain('DETAIL:  Key (operator_id)=(OPR-777) is not present in table "operators".');
-    // The privilege refusal names the table and nothing else.
-    expect(text).toContain('ERROR:  permission denied for table audit_log');
+    // Ruling 14, the findings of the default verbosity inverted: no session can raise the verbosity
+    // (superuser only, test above), so no line of the window, from any test, is a DETAIL line.
+    expect(lines.filter((line) => line.includes('DETAIL:'))).toHaveLength(0);
+    expect(lines.filter((line) => line.includes('Failing row contains'))).toHaveLength(0);
+    expect(lines.filter((line) => line.includes('Key ('))).toHaveLength(0);
+    // No line carries a hash value of this test, and the missing operator ID is not named either.
+    expect(mine).toHaveLength(0);
+    expect(text.includes('OPR-777')).toBe(false);
+
+    // Each tagged STATEMENT line directly follows its own ERROR line (same backend), and that ERROR line
+    // names the constraint or the table: the message stays, nothing sits between the two.
+    const pid = (line: string): string | undefined => /\[(\d+)\]/.exec(line)?.[1];
+    const errors = lines
+      .map((line, index) => ({ line, index }))
+      .filter(({ line }) => line.includes('STATEMENT:') && line.includes(tag))
+      .map(({ line, index }) => {
+        const before = lines[index - 1] ?? '';
+        expect(pid(before), 'ERROR and STATEMENT from one backend').toBe(pid(line));
+        return before.slice(before.indexOf('ERROR:  ') + 'ERROR:  '.length);
+      });
+    expect([...errors].sort()).toEqual(
+      [
+        'duplicate key value violates unique constraint "auth_sessions_token_hash_key"',
+        'new row for relation "auth_sessions" violates check constraint "auth_sessions_times_check"',
+        'permission denied for table audit_log',
+        'new row for relation "operator_credentials" violates check constraint "operator_credentials_lengths_check"',
+        'duplicate key value violates unique constraint "device_credentials_current_hash_key"',
+        'duplicate key value violates unique constraint "device_credentials_next_hash_key"',
+        'duplicate key value violates unique constraint "biometric_tokens_token_hash_key"',
+      ].sort(),
+    );
+    // The untagged foreign-key refusal: the ERROR line names the constraint, not the key value.
+    expect(text).toContain('ERROR:  insert or update on table "auth_sessions" violates foreign key constraint "auth_sessions_operator_id_fkey"');
+
+    // The file of pg_ctl -l received none of it: the collector owns the server log.
+    expect(readSegment(bootLog(), bootOffset).split('\n').filter((line) => line.includes(tag))).toHaveLength(0);
 
     console.info(
-      `[w17] server log check: the made-up secret occurs 0 times in what the server appended; 7 STATEMENT lines, each with placeholders only; ` +
-        `${mine.length} DETAIL line(s) carry a stored hash value:\n` +
-        mine.map((line) => `  ${line.replace(/^.*?(DETAIL: {2})/, '$1').slice(0, 170)}`).join('\n'),
+      `[w17] server log check (${start.file.slice(clusterDir().length + 1)}): the made-up secret occurs 0 times in what the server appended; ` +
+        `${statements.length} STATEMENT lines, each with placeholders only; ${errors.length} ERROR lines naming the constraint or table; ` +
+        `${mine.length} line(s) carry a hash value of this test; 0 DETAIL lines (terse, ruling 14).`,
     );
 
     // The valid credential row was not changed by the refused UPDATE.

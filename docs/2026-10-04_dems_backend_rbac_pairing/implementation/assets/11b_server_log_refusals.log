@@ -1,0 +1,103 @@
+# .data/postgres.log, read 2026-10-04 12:31:43 WIB: only the lines named here were read out (no DETAIL of another statement, no row content).
+# 1. Every refusal 'permission denied to terminate process' with the statement it belongs to (line number: text)
+29:2026-10-04 07:12:24.656 WIB [16886] ERROR:  permission denied to terminate process
+31-2026-10-04 07:12:24.656 WIB [16886] STATEMENT:  DROP DATABASE dems_trial_a WITH (FORCE)
+69:2026-10-04 07:16:01.893 WIB [20689] ERROR:  permission denied to terminate process
+71-2026-10-04 07:16:01.893 WIB [20689] STATEMENT:  DROP DATABASE dems_trial_a WITH (FORCE)
+36377:2026-10-04 10:45:39.658 WIB [74715] ERROR:  permission denied to terminate process
+36379-2026-10-04 10:45:39.658 WIB [74715] STATEMENT:  DROP DATABASE IF EXISTS "dems_test_step_43_tmd6fqnr_f01_cleanup" WITH (FORCE)
+46175:2026-10-04 11:22:56.685 WIB [10234] ERROR:  permission denied to terminate process
+46177-2026-10-04 11:22:56.685 WIB [10234] STATEMENT:  DROP DATABASE IF EXISTS "dems_test_step_51_tmd85m2e_f02_rfbulk" WITH (FORCE)
+46178:2026-10-04 11:22:56.686 WIB [10234] ERROR:  permission denied to terminate process
+46180-2026-10-04 11:22:56.686 WIB [10234] STATEMENT:  DROP DATABASE IF EXISTS "dems_test_step_51_tmd85m2e_f02_rfbulk" WITH (FORCE)
+46183:2026-10-04 11:22:56.712 WIB [10229] ERROR:  permission denied to terminate process
+46185-2026-10-04 11:22:56.712 WIB [10229] STATEMENT:  DROP DATABASE IF EXISTS "dems_test_step_51_tmd85m2e_f02_rfbulk" WITH (FORCE)
+51667:2026-10-04 11:35:59.771 WIB [26615] ERROR:  permission denied to terminate process
+51669-2026-10-04 11:35:59.771 WIB [26615] STATEMENT:  DROP DATABASE IF EXISTS "dems_test_step_47_tmd8q196_f02_isolation_b" WITH (FORCE)
+59785:2026-10-04 12:03:02.579 WIB [39497] ERROR:  permission denied to terminate process
+59787-2026-10-04 12:03:02.579 WIB [39497] STATEMENT:  DROP DATABASE IF EXISTS "dems_test_step_33b_tmda128g_f01_diag_client" WITH (FORCE)
+59796:2026-10-04 12:03:12.806 WIB [39497] ERROR:  permission denied to terminate process
+59798-2026-10-04 12:03:12.806 WIB [39497] STATEMENT:  DROP DATABASE IF EXISTS "dems_test_step_33b_tmda128g_f01_diag_owner" WITH (FORCE)
+59799:2026-10-04 12:03:17.301 WIB [39507] ERROR:  permission denied to terminate process
+59801-2026-10-04 12:03:17.301 WIB [39507] STATEMENT:  DROP DATABASE IF EXISTS "dems_test_step_33b_tmda128g_f02_diag_av_forced" WITH (FORCE)
+59891:2026-10-04 12:05:09.753 WIB [39767] ERROR:  permission denied to terminate process
+59893-2026-10-04 12:05:09.753 WIB [39767] STATEMENT:  DROP DATABASE IF EXISTS "dems_test_step_33b_tmda46ut_f01_diag_pf3" WITH (FORCE)
+59900:2026-10-04 12:05:15.018 WIB [39767] ERROR:  permission denied to terminate process
+59902-2026-10-04 12:05:15.018 WIB [39767] STATEMENT:  DROP DATABASE IF EXISTS "dems_test_step_33b_tmda46ut_f01_diag_pf4" WITH (FORCE)
+59983:2026-10-04 12:06:13.396 WIB [40038] ERROR:  permission denied to terminate process
+59985-2026-10-04 12:06:13.396 WIB [40038] STATEMENT:  DROP DATABASE IF EXISTS "dems_test_step_33b_tmda621g_f01_diag_lk2" WITH (FORCE)
+60364:2026-10-04 12:08:38.697 WIB [41547] ERROR:  permission denied to terminate process
+60366-2026-10-04 12:08:38.697 WIB [41547] STATEMENT:  DROP DATABASE IF EXISTS "dems_test_step_46_tmdaaau5_tpl_schema" WITH (FORCE)
+64229:2026-10-04 12:15:49.556 WIB [49587] ERROR:  permission denied to terminate process
+64231-2026-10-04 12:15:49.556 WIB [49587] STATEMENT:  DROP DATABASE IF EXISTS "dems_test_step_48_tmdam67j_f05_recording" WITH (FORCE)
+67232:2026-10-04 12:20:14.778 WIB [54977] ERROR:  permission denied to terminate process
+67234-2026-10-04 12:20:14.778 WIB [54977] STATEMENT:  DROP DATABASE IF EXISTS "dems_test_step_48_tmdasyc0_f05_w26_boot_twice" WITH (FORCE)
+70437:2026-10-04 12:22:33.204 WIB [58683] ERROR:  permission denied to terminate process
+70439-2026-10-04 12:22:33.204 WIB [58683] STATEMENT:  DROP DATABASE IF EXISTS "dems_test_step_33b_tmdaxjq5_f02_client_leak" WITH (FORCE)
+73411:2026-10-04 12:25:33.908 WIB [59830] ERROR:  permission denied to terminate process
+73413-2026-10-04 12:25:33.908 WIB [59830] STATEMENT:  DROP DATABASE IF EXISTS "dems_test_step_33b_tmdaz29d_f01_fix_av_a" WITH (FORCE)
+73414:2026-10-04 12:25:34.160 WIB [59830] ERROR:  permission denied to terminate process
+73416-2026-10-04 12:25:34.160 WIB [59830] STATEMENT:  DROP DATABASE IF EXISTS "dems_test_step_33b_tmdaz29d_f01_fix_av_a" WITH (FORCE)
+73417:2026-10-04 12:25:34.410 WIB [59830] ERROR:  permission denied to terminate process
+73419-2026-10-04 12:25:34.410 WIB [59830] STATEMENT:  DROP DATABASE IF EXISTS "dems_test_step_33b_tmdaz29d_f01_fix_av_a" WITH (FORCE)
+73420:2026-10-04 12:25:34.662 WIB [59830] ERROR:  permission denied to terminate process
+73422-2026-10-04 12:25:34.662 WIB [59830] STATEMENT:  DROP DATABASE IF EXISTS "dems_test_step_33b_tmdaz29d_f01_fix_av_a" WITH (FORCE)
+73423:2026-10-04 12:25:34.912 WIB [59830] ERROR:  permission denied to terminate process
+73425-2026-10-04 12:25:34.912 WIB [59830] STATEMENT:  DROP DATABASE IF EXISTS "dems_test_step_33b_tmdaz29d_f01_fix_av_a" WITH (FORCE)
+73426:2026-10-04 12:25:35.164 WIB [59830] ERROR:  permission denied to terminate process
+73428-2026-10-04 12:25:35.164 WIB [59830] STATEMENT:  DROP DATABASE IF EXISTS "dems_test_step_33b_tmdaz29d_f01_fix_av_a" WITH (FORCE)
+73429:2026-10-04 12:25:35.414 WIB [59830] ERROR:  permission denied to terminate process
+73431-2026-10-04 12:25:35.414 WIB [59830] STATEMENT:  DROP DATABASE IF EXISTS "dems_test_step_33b_tmdaz29d_f01_fix_av_a" WITH (FORCE)
+73434:2026-10-04 12:25:39.914 WIB [59830] ERROR:  permission denied to terminate process
+73436-2026-10-04 12:25:39.914 WIB [59830] STATEMENT:  DROP DATABASE IF EXISTS "dems_test_step_33b_tmdaz29d_f02_fix_av_b" WITH (FORCE)
+73437:2026-10-04 12:25:40.167 WIB [59830] ERROR:  permission denied to terminate process
+73439-2026-10-04 12:25:40.167 WIB [59830] STATEMENT:  DROP DATABASE IF EXISTS "dems_test_step_33b_tmdaz29d_f02_fix_av_b" WITH (FORCE)
+73440:2026-10-04 12:25:40.420 WIB [59830] ERROR:  permission denied to terminate process
+73442-2026-10-04 12:25:40.420 WIB [59830] STATEMENT:  DROP DATABASE IF EXISTS "dems_test_step_33b_tmdaz29d_f02_fix_av_b" WITH (FORCE)
+73443:2026-10-04 12:25:40.674 WIB [59830] ERROR:  permission denied to terminate process
+73445-2026-10-04 12:25:40.674 WIB [59830] STATEMENT:  DROP DATABASE IF EXISTS "dems_test_step_33b_tmdaz29d_f02_fix_av_b" WITH (FORCE)
+73446:2026-10-04 12:25:40.928 WIB [59830] ERROR:  permission denied to terminate process
+73448-2026-10-04 12:25:40.928 WIB [59830] STATEMENT:  DROP DATABASE IF EXISTS "dems_test_step_33b_tmdaz29d_f02_fix_av_b" WITH (FORCE)
+73449:2026-10-04 12:25:41.182 WIB [59830] ERROR:  permission denied to terminate process
+73451-2026-10-04 12:25:41.182 WIB [59830] STATEMENT:  DROP DATABASE IF EXISTS "dems_test_step_33b_tmdaz29d_f02_fix_av_b" WITH (FORCE)
+73452:2026-10-04 12:25:41.437 WIB [59830] ERROR:  permission denied to terminate process
+73454-2026-10-04 12:25:41.437 WIB [59830] STATEMENT:  DROP DATABASE IF EXISTS "dems_test_step_33b_tmdaz29d_f02_fix_av_b" WITH (FORCE)
+73455:2026-10-04 12:25:41.690 WIB [59830] ERROR:  permission denied to terminate process
+73457-2026-10-04 12:25:41.690 WIB [59830] STATEMENT:  DROP DATABASE IF EXISTS "dems_test_step_33b_tmdaz29d_f02_fix_av_b" WITH (FORCE)
+73633:2026-10-04 12:26:28.811 WIB [63446] ERROR:  permission denied to terminate process
+73635-2026-10-04 12:26:28.811 WIB [63446] STATEMENT:  DROP DATABASE IF EXISTS "dems_test_step_33b_tmdb3vhs_f03_client_leak" WITH (FORCE)
+73638:2026-10-04 12:26:28.846 WIB [63448] ERROR:  permission denied to terminate process
+73640-2026-10-04 12:26:28.846 WIB [63448] STATEMENT:  DROP DATABASE IF EXISTS "dems_test_step_33b_tmdb3v94_f03_client_leak" WITH (FORCE)
+75939:2026-10-04 12:28:06.102 WIB [65601] ERROR:  permission denied to terminate process
+75941-2026-10-04 12:28:06.102 WIB [65601] STATEMENT:  DROP DATABASE IF EXISTS "dems_test_step_33b_tmdb6t3n_f03_client_leak" WITH (FORCE)
+76590:2026-10-04 12:28:54.762 WIB [66392] ERROR:  permission denied to terminate process
+76592-2026-10-04 12:28:54.762 WIB [66392] STATEMENT:  DROP DATABASE IF EXISTS "dems_test_step_33b_tmdb7hti_f03_client_leak" WITH (FORCE)
+# 2. 'terminating autovacuum process due to administrator command' (the server ends a worker itself: at a plain drop, a rename, a copy of a template)
+1364:2026-10-04 08:15:48.318 WIB [74509] FATAL:  terminating autovacuum process due to administrator command
+4563:2026-10-04 08:23:43.550 WIB [80250] FATAL:  terminating autovacuum process due to administrator command
+18617:2026-10-04 09:35:54.668 WIB [24544] FATAL:  terminating autovacuum process due to administrator command
+32787:2026-10-04 10:34:16.057 WIB [63455] FATAL:  terminating autovacuum process due to administrator command
+34325:2026-10-04 10:38:08.078 WIB [67770] FATAL:  terminating autovacuum process due to administrator command
+39543:2026-10-04 10:57:12.232 WIB [85649] FATAL:  terminating autovacuum process due to administrator command
+46388:2026-10-04 11:23:35.677 WIB [14975] FATAL:  terminating autovacuum process due to administrator command
+48623:2026-10-04 11:35:12.439 WIB [24666] FATAL:  terminating autovacuum process due to administrator command
+51887:2026-10-04 11:39:07.024 WIB [27929] FATAL:  terminating autovacuum process due to administrator command
+51975:2026-10-04 11:39:11.273 WIB [28028] FATAL:  terminating autovacuum process due to administrator command
+53732:2026-10-04 11:41:30.044 WIB [30259] FATAL:  terminating autovacuum process due to administrator command
+53906:2026-10-04 11:41:57.540 WIB [30847] FATAL:  terminating autovacuum process due to administrator command
+53913:2026-10-04 11:41:59.998 WIB [30916] FATAL:  terminating autovacuum process due to administrator command
+54321:2026-10-04 11:43:22.972 WIB [31945] FATAL:  terminating autovacuum process due to administrator command
+56504:2026-10-04 11:45:33.432 WIB [34367] FATAL:  terminating autovacuum process due to administrator command
+59620:2026-10-04 11:55:50.186 WIB [38281] FATAL:  terminating autovacuum process due to administrator command
+59854:2026-10-04 12:03:27.305 WIB [39677] FATAL:  terminating autovacuum process due to administrator command
+60089:2026-10-04 12:07:23.690 WIB [40486] FATAL:  terminating autovacuum process due to administrator command
+60555:2026-10-04 12:09:33.435 WIB [42454] FATAL:  terminating autovacuum process due to administrator command
+60983:2026-10-04 12:11:15.496 WIB [44337] FATAL:  terminating autovacuum process due to administrator command
+63617:2026-10-04 12:14:24.003 WIB [48285] FATAL:  terminating autovacuum process due to administrator command
+63983:2026-10-04 12:15:20.390 WIB [49219] FATAL:  terminating autovacuum process due to administrator command
+67528:2026-10-04 12:20:33.905 WIB [55567] FATAL:  terminating autovacuum process due to administrator command
+69547:2026-10-04 12:22:17.473 WIB [57930] FATAL:  terminating autovacuum process due to administrator command
+71584:2026-10-04 12:24:03.542 WIB [60672] FATAL:  terminating autovacuum process due to administrator command
+74112:2026-10-04 12:26:51.744 WIB [64032] FATAL:  terminating autovacuum process due to administrator command
+76271:2026-10-04 12:28:39.007 WIB [66022] FATAL:  terminating autovacuum process due to administrator command
+# 3. Lines 'automatic analyze of table' / 'automatic vacuum of table' in the whole log: 0 / 0 (log_autovacuum_min_duration is 600000 ms, so the server logs no such line for a short visit)

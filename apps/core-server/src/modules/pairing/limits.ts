@@ -5,21 +5,30 @@
  * They are the specification's, not configuration: no environment variable reaches them, and
  * the frozen `config.ts` holds none of them (the same rule as the identity module's and the
  * throttle's limits). Where the shared simulator already states a number, the server takes it
- * from there, so both modes lock alike (`packages/shared/src/sim/constants.ts`).
+ * from there, so both modes lock alike (`packages/shared/src/sim/constants.ts`). Where the
+ * contract states a number or a word (`@dems/shared/api`, the W83 close-out), the server
+ * re-exports it under the same name instead of restating it (review findings W91-4, W92-15), so
+ * the description a client reads and the value the server enforces are one value.
  */
 import { AUTH_FAILURE_WINDOW_MS, PAIRING_CODE_LENGTH, PAIRING_LOCKOUT_MS, PAIRING_MAX_FAILURES } from '@dems/shared/sim';
+
+/**
+ * From the contract: PR-P2 a code is valid this long after its issue (300 s); PR-P5 failed
+ * redeems of one code before it is closed as EXHAUSTED (the table's CHECK is the same bound,
+ * kept a literal there by design, MG-11); PR-P7 the QR payload is this text followed by the code
+ * (not a URL); PR-P8 the prefix of a device credential.
+ */
+export {
+  DEVICE_CREDENTIAL_PREFIX,
+  PAIRING_CODE_LIFETIME_MS,
+  PAIRING_CODE_MAX_FAILED_REDEEMS,
+  PAIRING_QR_PREFIX,
+} from '@dems/shared/api';
 
 /** PR-P1: a pairing code is this many decimal digits. */
 export const PAIRING_CODE_DIGITS = PAIRING_CODE_LENGTH;
 /** PR-P1: the number of different codes, 10^6. A code is drawn uniformly below it. */
 export const PAIRING_CODE_SPACE = 10 ** PAIRING_CODE_DIGITS;
-/** PR-P2: a code is valid this long after its issue (300 s). */
-export const PAIRING_CODE_LIFETIME_MS = 300_000;
-/** PR-P5: failed redeems of one code before it is closed as EXHAUSTED. The table's CHECK is the same bound. */
-export const PAIRING_CODE_MAX_FAILED_REDEEMS = 5;
-/** PR-P7: the QR payload is this text followed by the code. Not a URL. */
-export const PAIRING_QR_PREFIX = 'DEMS-PAIR:1:';
-
 /** PR-P4: failed redeems within the window before redeeming locks. */
 export const REDEEM_LOCK_MAX_FAILURES = PAIRING_MAX_FAILURES;
 /** PR-P4: the window of the count, 300 s. It opens at the first counted attempt. */
@@ -32,8 +41,7 @@ export const REDEEM_LOCK_DURATION_MS = PAIRING_LOCKOUT_MS;
  */
 export const REDEEM_LOCK_KEY = 'redeem';
 
-/** PR-P8: the prefix of a device credential, and its random part in bytes (256 bits). */
-export const DEVICE_CREDENTIAL_PREFIX = 'dvc_';
+/** PR-P8: the random part of a device credential in bytes (256 bits). Its prefix is the contract's (above). */
 export const DEVICE_CREDENTIAL_BYTES = 32;
 
 /** PR-P9: `DEV-NNNN`, at least four digits; and `PCD-NNNNNN`, at least six (database contract §4.7, §4.8). */

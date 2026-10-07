@@ -1,0 +1,11 @@
+tap 1736,379 at 10:32:38.270
+slept 1500 ms
+tap 760,568 at 10:32:39.827
+slept 1000 ms
+tap 1178,808 at 10:32:40.885
+slept 1200 ms
+text typed (Siti Rahmawati); editor inputType 0x2001
+slept 1000 ms
+tap 1178,248 at 10:32:43.437
+slept 1500 ms
+screencap B02_wizard_step1_filled.png (747557 bytes) at 10:32:45.235

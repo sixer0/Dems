@@ -1,0 +1,88 @@
+## 2026-10-04 10:31:11 WIB $ npm run test -w @dems/shared -- --maxWorkers=2
+
+> @dems/shared@0.1.0 test
+> vitest run --maxWorkers=2
+
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/packages/shared
+
+
+ Test Files  55 passed (55)
+      Tests  1351 passed (1351)
+   Start at  10:31:11
+   Duration  5.36s (tests 48%, import 39%, transform 12%, worker 1%)
+
+    Isolate  55 workers spawned · ~55ms startup each (spawn + environment, per file)
+             at least ~1.45s faster with isolate: false — reuses workers across files instead of one per file
+
+exit=0
+## 10:31:17 WIB $ npm run typecheck -w @dems/shared
+
+> @dems/shared@0.1.0 typecheck
+> tsc --noEmit
+
+exit=0
+## 10:31:23 WIB $ npm run lint -w @dems/shared
+
+> @dems/shared@0.1.0 lint
+> oxlint
+
+exit=0
+## 10:31:23 WIB $ npm run typecheck -w @dems/core-web
+
+> @dems/core-web@0.1.0 typecheck
+> tsc -b
+
+exit=0
+## 10:31:34 WIB $ npm run typecheck -w @dems/mobile
+
+> @dems/mobile@0.1.0 typecheck
+> tsc --noEmit
+
+exit=0
+## 10:31:39 WIB done
+
+## confirmation after the documents were written
+## 2026-10-04 10:37:09 WIB $ npm run test -w @dems/shared -- --maxWorkers=2
+
+> @dems/shared@0.1.0 test
+> vitest run --maxWorkers=2
+
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/packages/shared
+
+
+ Test Files  55 passed (55)
+      Tests  1351 passed (1351)
+   Start at  10:37:09
+   Duration  7.35s (tests 50%, import 38%, transform 11%, worker 1%)
+
+    Isolate  55 workers spawned · ~74ms startup each (spawn + environment, per file)
+             at least ~1.95s faster with isolate: false — reuses workers across files instead of one per file
+
+exit=0
+## 10:37:16 WIB $ npm run typecheck -w @dems/shared
+
+> @dems/shared@0.1.0 typecheck
+> tsc --noEmit
+
+exit=0
+## 10:37:28 WIB $ npm run lint -w @dems/shared
+
+> @dems/shared@0.1.0 lint
+> oxlint
+
+exit=0
+## 10:37:29 WIB $ npm run typecheck -w @dems/core-web
+
+> @dems/core-web@0.1.0 typecheck
+> tsc -b
+
+exit=0
+## 10:37:46 WIB $ npm run typecheck -w @dems/mobile
+
+> @dems/mobile@0.1.0 typecheck
+> tsc --noEmit
+
+exit=0
+## 10:37:54 WIB done

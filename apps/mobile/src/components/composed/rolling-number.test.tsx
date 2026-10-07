@@ -1,6 +1,7 @@
 // C-6 RollingNumber: deterministic formatting, digit columns and the odometer roll plan.
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { act, cleanup, render, screen } from '@testing-library/react-native';
+import { StyleSheet } from 'react-native';
 import { getAnimatedStyle, makeMutable } from 'react-native-reanimated';
 import { typography } from '@dems/shared/tokens';
 import { RollingNumber } from './rolling-number';
@@ -87,14 +88,16 @@ describe('RollingNumber component', () => {
       if (p === 3 || p === 6) continue;
       expect(screen.getByTestId(`timer-d${p}`, HIDDEN)).toBeTruthy();
     }
-    expect(getAnimatedStyle(screen.getByTestId('timer-d1', HIDDEN))).toEqual({ transform: [{ translateY: -8 * lh }] });
+    // W93-3 (FXR-M): the column's position is React's (the current digit's cell in its own props).
+    expect(StyleSheet.flatten(screen.getByTestId('timer-d1', HIDDEN).props.style)).toEqual({ transform: [{ translateY: -8 * lh }] });
   });
 
-  it('rolls the units column on the UI side when a shared-value timer ticks', () => {
+  it('a shared-value timer is copied into React, which places each column on its current digit (W93-3)', () => {
     const seconds = makeMutable(1458);
     render(
       <RollingNumber value={seconds} format={{ kind: 'duration' }} motion="full" testID="t" accessibilityLabel="Timer" />,
     );
+    const cellOf = (id: string) => -((StyleSheet.flatten(screen.getByTestId(id, HIDDEN).props.style) as { transform: { translateY: number }[] }).transform[0]!.translateY) / lh;
     act(() => {
       jest.advanceTimersByTime(50);
     });
@@ -102,13 +105,18 @@ describe('RollingNumber component', () => {
       seconds.set(1459);
       jest.advanceTimersByTime(400);
     });
-    expect(getAnimatedStyle(screen.getByTestId('t-d1', HIDDEN))).toEqual({ transform: [{ translateY: -9 * lh }] });
+    expect(cellOf('t-d1')).toBe(9);
     act(() => {
-      seconds.set(1460); // 9 → 0 rolls forward, then settles on the first decade
+      seconds.set(1460); // 9 → 0 rolls forward into the second decade, where the 0 stays
       jest.advanceTimersByTime(400);
     });
-    expect(getAnimatedStyle(screen.getByTestId('t-d1', HIDDEN))).toEqual({ transform: [{ translateY: -0 * lh }] });
-    expect(getAnimatedStyle(screen.getByTestId('t-d2', HIDDEN))).toEqual({ transform: [{ translateY: -2 * lh }] });
+    expect(cellOf('t-d1') % 10).toBe(0);
+    expect(cellOf('t-d2') % 10).toBe(2);
+    // The roll is an offset on the wrapper whose rest value is 0.
+    act(() => {
+      jest.advanceTimersByTime(400);
+    });
+    expect(getAnimatedStyle(screen.getByTestId('t-d1', HIDDEN).parent!.parent! as never)).toEqual({ transform: [{ translateY: 0 }] });
   });
 
   it('counts a KPI up after the held beat on digit drums, hiding the leading zero', () => {

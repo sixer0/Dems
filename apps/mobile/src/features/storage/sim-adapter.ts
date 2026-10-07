@@ -7,11 +7,12 @@
  * SIM-GAP-M85-1  No storage-activity selector: `SimEvent` has no category, so "events filtered to
  *                storage" (04 §4.13 T3) is a filter by type here. Same need as the web page's
  *                SIM-GAP-W49-2 (one shared fix closes both).
- * SIM-GAP-M85-2  No role check on `setStoragePolicy` and no storage-policy permission (web finding
- *                F-49-1, D77). The screen gates the Manage Storage controls in the UI: SUPERVISOR
- *                (governance: EVIDENCE_REVIEW) and TECHNICIAN (MAINTENANCE) may change the policy,
- *                INVESTIGATOR sees it read-only (04 §5 roles, S20 "RBAC in the UI via isDisabled +
- *                a reason"). The simulator itself would still accept the call from anyone.
+ * SIM-GAP-M85-2  (text corrected by the contract close-out W83, finding F79-1) The simulator now
+ *                checks EVIDENCE_REVIEW or MAINTENANCE on `setStoragePolicy` itself (step 54, web
+ *                finding F-49-1; `packages/shared/src/sim/maintenance.ts:293`). The screen also gates
+ *                the Manage Storage controls in the UI: SUPERVISOR (governance: EVIDENCE_REVIEW) and
+ *                TECHNICIAN (MAINTENANCE) may change the policy, INVESTIGATOR sees it read-only (04 §5
+ *                roles, S20 "RBAC in the UI via isDisabled + a reason").
  */
 import { Permission, roleHas, type OperatorRole, type SimEvent, type SimEventType, type SimState } from '@dems/shared/sim';
 

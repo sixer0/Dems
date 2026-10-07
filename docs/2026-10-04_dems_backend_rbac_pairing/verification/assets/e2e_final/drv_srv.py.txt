@@ -1,0 +1,14 @@
+# Server log lines (method, route, status, principal, msg) between two host times HH:MM:SS today.
+import json, sys, datetime
+log = '/Users/gsp-budi/Documents/DEMS/.cache/manual/main-server-w94.log'
+d = datetime.date.today()
+t0 = datetime.datetime.combine(d, datetime.time.fromisoformat(sys.argv[1])).timestamp() * 1000
+t1 = datetime.datetime.combine(d, datetime.time.fromisoformat(sys.argv[2])).timestamp() * 1000
+pat = sys.argv[3] if len(sys.argv) > 3 else ''
+for line in open(log):
+    if not line.startswith('{'): continue
+    try: r = json.loads(line)
+    except Exception: continue
+    if not (t0 <= r.get('time', 0) <= t1): continue
+    s = f"{datetime.datetime.fromtimestamp(r['time']/1000).strftime('%H:%M:%S.%f')[:-3]} {r.get('method','-')} {r.get('route','-')} {r.get('status','-')} principal={r.get('principal')} {r.get('msg')}" + (f" code={r['code']}" if 'code' in r else '')
+    if pat in s: print(s)

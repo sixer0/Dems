@@ -4,7 +4,7 @@
  * Each list is written out here as a literal, in the order of the contract, and is NOT derived
  * from the shared vocabulary at run time: a change of a closed set needs a migration (MG-11), so
  * it must be a visible edit of this file followed by `db:generate`, never a side effect of a
- * change elsewhere. The vocabulary test (CL-12, `test/db/vocabulary.db.test.ts`) compares the
+ * change elsewhere. The vocabulary test (CL-12, `test/db/contract-inventory.test.ts`) compares the
  * catalog text of each CHECK with the shared constant it cites and fails the gate when the two
  * differ (GD-05).
  *

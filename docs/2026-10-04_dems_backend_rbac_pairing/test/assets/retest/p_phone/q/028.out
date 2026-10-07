@@ -1,0 +1,22 @@
+12:59:32.220 mark d03 at 12:59:32.221
+12:59:32.279 declared screen session-new
+12:59:32.327 tap 540,2257
+12:59:32.504 start 200 at device 10-06 12:59:35.919 (POST /api/v1/session/{id}/start 200)
+12:59:36.655 slept 5000 ms
+12:59:41.758 declared screen live
+12:59:41.836 screencap 53_live_monitor.png 12:59:41.836..12:59:42.624
+12:59:42.816 key 4
+12:59:42.996 slept 1500 ms
+12:59:46.464 screencap 54_back_guard_dialog.png 12:59:46.464..12:59:47.843
+12:59:48.094 tap 539,1380
+12:59:48.445 slept 3000 ms
+12:59:51.596 declared screen home
+12:59:51.665 screencap 55_p3_home_recording_00.png 12:59:51.666..12:59:52.548
+12:59:52.712 screencap 55_p3_home_recording_01.png 12:59:52.712..12:59:53.260
+12:59:53.398 screencap 55_p3_home_recording_02.png 12:59:53.398..12:59:53.951
+12:59:54.487 screencap 55_p3_home_recording_03.png 12:59:54.488..12:59:55.201
+12:59:55.389 screencap 55_p3_home_recording_04.png 12:59:55.389..12:59:56.734
+12:59:56.900 screencap 55_p3_home_recording_05.png 12:59:56.900..12:59:57.723
+12:59:57.924 warnlog since 10-06 12:59:31.000 (0): 
+12:59:58.202 serverlog since d03 (1):
+    12:59:36.092 POST /api/v1/session/:id/start 200

@@ -1,0 +1,5 @@
+tap 1280,924 at 10:27:20.931
+slept 3000 ms
+deep link demsdemo:///more at 10:27:23.994: Starting: Intent { act=android.intent.action.VIEW dat=demsdemo:///... pkg=com.dems.demo.tablet }
+slept 5000 ms
+screencap 23_more_technician.png (323499 bytes) at 10:27:29.681

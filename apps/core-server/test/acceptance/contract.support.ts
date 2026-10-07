@@ -91,8 +91,16 @@ const CODE_WORD = /\b[A-Z][A-Z_]{3,}\b/g;
 const isCode = (word: string): boolean => (API_ERROR_CODES as readonly string[]).includes(word);
 
 /**
+ * The two texts of a status: `description`, and the `all`-scope text a status of one of the ten
+ * existing operations may add (`coreServerDescription`, W83 / decision D184 DQ-1).
+ */
+function statusTexts(spec: { description: string; coreServerDescription?: string }): string {
+  return spec.coreServerDescription === undefined ? spec.description : `${spec.description} ${spec.coreServerDescription}`;
+}
+
+/**
  * The codes the REGISTRY names for a status of an operation: the code words of the status's
- * description, and the codes of its examples. For a status the operation does not document, and
+ * texts (both scopes), and the codes of its examples. For a status the operation does not document, and
  * beside the operation's own for one it does: the codes of the envelope-level pipeline answers
  * (`CORE_API_ENVELOPE_RESPONSES`), which no operation repeats.
  */
@@ -100,7 +108,7 @@ export function registryCodes(operation: CoreApiRegistryOperation, status: numbe
   const codes = new Set<string>();
   const spec = operation.responses[status];
   if (spec !== undefined) {
-    for (const word of spec.description.match(CODE_WORD) ?? []) if (isCode(word)) codes.add(word);
+    for (const word of statusTexts(spec).match(CODE_WORD) ?? []) if (isCode(word)) codes.add(word);
     for (const example of Object.values(CORE_API_EXAMPLES[operation.operationId]?.responses[status] ?? {})) {
       const code = (example.value as { error?: { code?: unknown } } | null)?.error?.code;
       if (typeof code === 'string') codes.add(code);
@@ -116,7 +124,7 @@ export function registryCodes(operation: CoreApiRegistryOperation, status: numbe
 export function ownCodes(operation: CoreApiRegistryOperation, status: number): string[] {
   const spec = operation.responses[status];
   if (spec === undefined) return [];
-  const codes = new Set<string>((spec.description.match(CODE_WORD) ?? []).filter(isCode));
+  const codes = new Set<string>((statusTexts(spec).match(CODE_WORD) ?? []).filter(isCode));
   for (const example of Object.values(CORE_API_EXAMPLES[operation.operationId]?.responses[status] ?? {})) {
     const code = (example.value as { error?: { code?: unknown } } | null)?.error?.code;
     if (typeof code === 'string') codes.add(code);

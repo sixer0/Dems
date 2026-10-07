@@ -1,0 +1,26 @@
+13:11:15.336 mark g03 at 13:11:15.336
+13:11:15.390 declared screen summary
+13:11:15.474 tap 540,1442
+13:11:15.670 slept 1500 ms
+13:11:17.198 screencap 71_summary_ses0035_after_relaunch.png 13:11:17.198..13:11:17.396
+13:11:17.463 tap 760,2252
+13:11:17.539 sumack 204 at device 10-06 13:11:17.240 (POST /api/v1/session/{id}/summary/acknowledge 204)
+13:11:18.158 slept 3000 ms
+13:11:21.188 declared screen evidence-detail
+13:11:21.215 screencap 72_custody_phone_ev0023_detail.png 13:11:21.215..13:11:21.532
+13:11:21.596 ids(2): evidence-detail-id@540,673 "EV-20261006-0023" ; evidence-tab-integrity@703,1603 "Hash &amp; Integrity"
+13:11:23.797 tapid evidence-tab-integrity at 703,1603 "Hash &amp; Integrity"
+13:11:26.315 slept 2000 ms
+13:11:28.346 swipe 540,2000,540,400 600 ms
+13:11:29.044 slept 1000 ms
+13:11:30.091 swipe 540,2000,540,400 600 ms
+13:11:30.777 slept 1000 ms
+13:11:31.835 swipe 540,2000,540,400 600 ms
+13:11:32.587 slept 1500 ms
+13:11:34.142 screencap 73_custody_phone_ev0023_integrity_custody.png 13:11:34.142..13:11:34.538
+13:11:34.635 ids(4): evidence-custody@540,1622 ; evidence-custody-0@540,1426 "Sealed, 6 Oct 2026 13:04:04 · System" ; evidence-custody-1@540,1654 "Recording stopped, 6 Oct 2026 13:03:57 · AKP Andi Pratama · RP web sto" ; evidence-custody-2@540,1881 "Recording started, 6 Oct 2026 12:59:36 · AKP Budi Santoso"
+13:11:37.276 warnlog since 10-06 13:11:14.000 (0): 
+13:11:37.360 serverlog since g03 (3):
+    13:11:17.559 POST /api/v1/auth/touch 200
+    13:11:17.577 POST /api/v1/session/:id/summary/acknowledge 204
+    13:11:18.100 GET /api/v1/evidence/:id 200

@@ -49,6 +49,13 @@ export class PanelBoundary extends Component<PanelBoundaryProps, PanelBoundarySt
     });
   }
 
+  override componentDidUpdate(): void {
+    if (this.state.cooldownS === 0 && this.timer) {
+      clearInterval(this.timer);
+      this.timer = null;
+    }
+  }
+
   override componentWillUnmount(): void {
     if (this.timer) clearInterval(this.timer);
   }
@@ -60,14 +67,9 @@ export class PanelBoundary extends Component<PanelBoundaryProps, PanelBoundarySt
     this.setState({ failed: false, retries: attempt, cooldownS });
     if (this.timer) clearInterval(this.timer);
     this.timer = setInterval(() => {
-      this.setState((prev) => {
-        const next = Math.max(0, prev.cooldownS - 1);
-        if (next === 0 && this.timer) {
-          clearInterval(this.timer);
-          this.timer = null;
-        }
-        return { cooldownS: next };
-      });
+      // W93-24 (FXR-M): the updater stays pure (StrictMode may run it twice); the interval is cleared in
+      // `componentDidUpdate` once the countdown is over.
+      this.setState((prev) => ({ cooldownS: Math.max(0, prev.cooldownS - 1) }));
     }, 1000);
   };
 

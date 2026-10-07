@@ -1,0 +1,7 @@
+deep link demsdemo:///home at 13:09:02.993: Starting: Intent { act=android.intent.action.VIEW dat=demsdemo:///... pkg=com.dems.demo.tablet }
+slept 4000 ms
+screencap P16a_home_before_wizard.png (776008 bytes) at 13:09:07.290
+tap 2210,1034 at 13:09:07.340
+slept 5000 ms
+screencap P16_start_session_wizard_step1.png (739140 bytes) at 13:09:12.654
+ids: 93 nodes -> q/p_wizard_step1.txt

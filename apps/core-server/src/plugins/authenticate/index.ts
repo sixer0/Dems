@@ -53,14 +53,15 @@
  * CONTRACT with the scaffold (P25: `app.ts` is frozen): `authenticatePlugin`, `Principal` and
  * `ANONYMOUS_PRINCIPAL` keep their names and shapes.
  */
-import { ApiErrorCode, CREDENTIAL_CONFLICT_REASON, type CoreApiOperationTable } from '@dems/shared/api';
+import { ApiErrorCode, CREDENTIAL_CONFLICT_REASON } from '@dems/shared/api';
 import { AUTH_TOUCH_MIN_INTERVAL_MS, type OperatorRole, type Permission } from '@dems/shared/sim';
 import type { FastifyInstance, FastifyPluginAsync, FastifyRequest } from 'fastify';
 // Types only, through each module's index: what the seams `sessionRegistry` and `deviceResolver`
 // hand to this stage. No value of a module is imported here (review finding CPB1-10).
 import type { OpenSession, SessionResolution } from '../../modules/identity';
 import type { ResolvedDevice } from '../../modules/pairing';
-import { ApiFailure } from '../error-envelope';
+import type { RegistryOperationId } from '../../core';
+import { ApiFailure, NOT_SIGNED_IN_TEXT } from '../error-envelope';
 import { routeOf } from '../logger';
 import { readCredential } from './credentials';
 
@@ -138,7 +139,7 @@ export function authenticationOf(request: FastifyRequest): Authentication {
 
 /** The answer for a caller without a session. The text is fixed. */
 export function notSignedIn(): ApiFailure {
-  return new ApiFailure(401, ApiErrorCode.NOT_SIGNED_IN, 'Sign in first.');
+  return new ApiFailure(401, ApiErrorCode.NOT_SIGNED_IN, NOT_SIGNED_IN_TEXT);
 }
 
 /** The one refusal of stage 4 (ID-12). It says nothing about either credential. */
@@ -154,9 +155,6 @@ export function operatorSessionOf(request: FastifyRequest): OpenSession {
   if (request.principal.kind !== 'OPERATOR' || session === null) throw notSignedIn();
   return session;
 }
-
-/** An operation ID of the contract registry, as the registry's own table writes it. */
-type RegistryOperationId = CoreApiOperationTable[number]['operationId'];
 
 /**
  * Operations whose own unit of work settles the session, so the activity hook leaves it alone: a

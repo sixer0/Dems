@@ -1,0 +1,10 @@
+12:52:36.179 mark c04 at 12:52:36.179
+12:52:36.220 declared screen audit
+12:52:36.256 key 4
+12:52:36.424 slept 2000 ms
+12:52:38.483 declared screen more
+12:52:38.526 tapid more-dest-settings at 797,1611 "Settings, Preferences, security, about, 5 sections"
+12:52:41.118 slept 2500 ms
+12:52:43.644 declared screen settings
+12:52:43.669 screencap 33_settings.png 12:52:43.669..12:52:43.816
+12:52:43.880 ids(10): settings-account@540,473 ; settings-account-row@540,531 "Investigator, AKP Budi Santoso. Open profile" ; settings-row-preferences@540,886 "App Preferences" ; settings-row-notifications@540,1049 "Notifications" ; settings-row-security@540,1213 "Security &amp; Privacy" ; settings-row-devices@540,1512 "Device Settings" ; settings-row-storage@540,1675 "Storage Management" ; settings-row-network-time@540,1839 "Network &amp; Time" ; settings-row-maintenance@540,2003 "System Maintenance" ; settings-row-about@540,2150 "About DEMS"

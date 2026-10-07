@@ -1,0 +1,19 @@
+#!/bin/bash
+# loop.sh: the R-P-1 runs on lane 1 (plain runs, varied stop moment); analysis of each recording in the background.
+cd /private/tmp/claude-501/-Users-gsp-budi-Documents-DEMS/0d71fd65-4a51-4019-9c48-5c92d11bbdaf/scratchpad/rfph
+RUNS="${RUNS:-R02:early R03:s30 R04:bm R05:early R06:s30 R07:bm R08:early R09:s30 R10:bm R11:early R12:s30}"
+for r in $RUNS; do
+  IFS=: read NAME V <<< "$r"
+  L=$(uptime | sed 's/.*load averages*: //')
+  echo "=== $NAME $V $(date +%T) load $L"
+  L1=$(echo $L | awk '{print $1}' | tr -d ,)
+  while [ "$(echo "$L1 > 14" | bc)" = 1 ]; do echo "load $L1 > 14: pause 20 s"; sleep 20; L1=$(uptime | sed 's/.*load averages*: //' | awk '{print $1}' | tr -d ,); done
+  ./genrun.sh $NAME $V | node send.mjs q_phone 400 > runs/$NAME.out
+  grep -E "start 20|marker|press sm-end-confirm|until true|pulled|native|crash|ERROR|REFUSED|NOT|KEYGUARD|offset|stop 202" runs/$NAME.out | cut -c1-220
+  OFF=$(grep -o 'clock offset ms: -\?[0-9]*' runs/$NAME.out | tail -1 | grep -o -- '-\?[0-9]*$')
+  ( cd tools && nice -n 15 python3 analyze_run.py ../phone_frames/$NAME ../phone_assets/$NAME.mp4 ${OFF:--428} > ../runs/${NAME}_analysis.json 2>&1 ) &
+  if grep -q "KEYGUARD\|NOT FOCUSED" runs/$NAME.out; then echo "STOP: focus/keyguard problem"; break; fi
+  if ! grep -q "SEALED" runs/$NAME.out; then echo "STOP: run $NAME did not seal"; break; fi
+done
+wait
+echo "=== loop done $(date +%T)"

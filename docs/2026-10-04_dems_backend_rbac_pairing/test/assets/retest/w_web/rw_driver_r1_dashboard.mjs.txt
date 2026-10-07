@@ -1,0 +1,101 @@
+// R-W Part 1: E2E-W1-2 / E2E-W2-1 (Dashboard camera menu, Test signal pressed once) for one operator, and for the
+// SUPERVISOR run also E2E-W1-5 / -6 (ring word and status strip at 1440x900 and 390x844).
+// Usage: node r1_dashboard.mjs <username> <tag>   (tag: sup | inv)
+// Commands sent to Core 4423: sign-in, reads, ONE Test signal on Camera 1 from the Dashboard, sign-out (user menu).
+import { launch, openPage, signIn, signOutMenu, makeRun, writeEvents, sleep } from './rt_lib.mjs'
+import { MEASURE_RING, MEASURE_STRIP } from './rt_measure.mjs'
+
+const [username, tag] = process.argv.slice(2)
+if (!username || !['sup', 'inv'].includes(tag)) throw new Error('usage: r1_dashboard.mjs <username> <sup|inv>')
+const R = makeRun(`r1_${tag}_dashboard`)
+process.on('unhandledRejection', (e) => R.log(`unhandled: ${e?.message ?? e}`))
+const browser = await launch(R.log)
+let page
+try {
+  page = await openPage(browser.cdp, R.log)
+  await page.viewport(1440, 900)
+  page.setLabel('Login')
+  await page.goto('/login', 2000)
+  const signedIn = await signIn(page, username, R.log)
+  R.record('signedIn', { username, signedIn, t: new Date().toISOString() })
+  page.setLabel('Dashboard')
+  await sleep(4000)
+  R.record('dashboardFacts', await page.facts())
+
+  if (tag === 'sup') {
+    // E2E-W1-5 / -6 at 1440x900
+    R.record('ring1440', await page.eval(MEASURE_RING, 'ring'))
+    R.record('strip1440', await page.eval(MEASURE_STRIP, 'strip'))
+    await page.shot('p1_w1_5_6_dashboard_1440x900.png')
+    const ringClip = await page.eval(`(() => { const b = document.querySelector('[data-testid="glow-ring"]').getBoundingClientRect(); return { x: Math.max(0, b.left - 12), y: Math.max(0, b.top - 12), width: b.width + 24, height: b.height + 24 } })()`)
+    await page.shot('p1_w1_5_ring_1440x900.png', ringClip)
+    const stripClip = await page.elementClip('.dems-strip-card', 8, 300)
+    if (stripClip) await page.shot('p1_w1_6_strip_1440x900.png', stripClip)
+  }
+
+  // E2E-W1-2 / E2E-W2-1: Camera 1 menu
+  const trigger = await page.click('button[aria-label="Camera 1 actions"]')
+  await page.waitFor('[role="menu"]', true, 8000)
+  await sleep(600)
+  const menu = await page.menuItems()
+  R.record('camera1Menu', { trigger, menu })
+  const menuClip = await page.eval(`(() => { const m = document.querySelector('[role="menu"]').getBoundingClientRect(); const t = document.querySelector('button[aria-label="Camera 1 actions"]').getBoundingClientRect(); const left = Math.max(0, Math.min(m.left, t.left) - 300); const top = Math.max(0, Math.min(m.top, t.top) - 80); return { x: left, y: top, width: Math.min(1440 - left, Math.max(m.right, t.right) - left + 30), height: Math.max(m.bottom, t.bottom) - top + 30 } })()`)
+  await page.shot(`p1_w1_2_${tag}_camera1_menu.png`, menuClip)
+  await page.shot(`p1_w1_2_${tag}_camera1_menu_full.png`)
+  const testItem = menu.find((item) => /^Test signal/.test(item.text))
+  if (testItem && !testItem.disabled) {
+    const before = Date.now()
+    const press = await page.clickByText('[role="menu"] [role="menuitem"]', 'Test signal')
+    const toastShown = await page.waitForFn(`[...document.querySelectorAll('[data-slot="toast"]')].some((t) => /Test signal sent to Camera 1/.test(t.textContent ?? ''))`, 10000)
+    await sleep(500)
+    const facts = await page.facts()
+    R.record('testSignalPress', { press, toastShown, toasts: facts.toasts, pressedAt: new Date(before).toISOString() })
+    await page.shot(`p1_w1_2_${tag}_test_signal_toast.png`)
+    await sleep(1500)
+    R.record('auditDeviceCommand', await page.auditTail(3, '&type=DEVICE_COMMAND'))
+  } else {
+    R.record('testSignalPress', { skipped: true, reason: testItem ? 'Test signal disabled' : 'Test signal item not found' })
+    await page.key('Escape')
+  }
+  // Restart's state once more after the press (menu reopened), to show it stays disabled with the role hint.
+  await sleep(800)
+  await page.click('button[aria-label="Camera 1 actions"]')
+  await page.waitFor('[role="menu"]', true, 8000)
+  await sleep(500)
+  R.record('camera1MenuAfterPress', await page.menuItems())
+  await page.key('Escape')
+  await sleep(500)
+
+  if (tag === 'sup') {
+    // E2E-W1-5 / -6 at 390x844
+    await page.viewport(390, 844)
+    await page.goto('/dashboard', 2000)
+    await page.waitFor('[data-testid="glow-ring"]', true, 15000)
+    await sleep(4500)
+    R.record('ring390', await page.eval(MEASURE_RING, 'ring'))
+    R.record('facts390', await page.facts())
+    await page.shot('p1_w1_5_6_dashboard_390x844.png')
+    const ringClip390 = await page.eval(`(() => { const b = document.querySelector('[data-testid="glow-ring"]').getBoundingClientRect(); return { x: Math.max(0, b.left - 12), y: Math.max(0, b.top - 12), width: Math.min(390, b.width + 24), height: b.height + 24 } })()`)
+    await page.shot('p1_w1_5_ring_390x844.png', ringClip390)
+    await page.eval(`document.querySelector('.dems-strip-card')?.scrollIntoView({ block: 'center', behavior: 'instant' })`)
+    await sleep(900)
+    R.record('strip390', await page.eval(MEASURE_STRIP, 'strip'))
+    const stripClip390 = await page.eval(`(() => { const b = document.querySelector('.dems-strip-card').getBoundingClientRect(); return { x: 0, y: Math.max(0, b.top - 10), width: 390, height: Math.min(844, b.height + 20) } })()`)
+    await page.shot('p1_w1_6_strip_390x844.png', stripClip390)
+    await page.viewport(1440, 900)
+    await page.goto('/dashboard', 2500)
+  }
+
+  page.setLabel('Sign out')
+  R.record('signOut', await signOutMenu(page, R.log))
+} catch (error) {
+  R.log(`FAILED: ${error.message}`)
+  R.obs.error = error.message
+} finally {
+  if (page) {
+    const summary = writeEvents(R.run, page.events)
+    R.record('consoleNetwork', summary)
+  }
+  await browser.close()
+  R.flush()
+}

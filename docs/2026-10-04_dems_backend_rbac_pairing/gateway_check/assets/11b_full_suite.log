@@ -1,0 +1,8 @@
+# FX-W full core-web suite, final tree: npm run test -- --maxWorkers=2 (noise lines 'Not implemented: HTMLMediaElement…' and 'failed to copy trust settings…' removed)
+START 12:03:58 load averages: 8.65 7.68 7.23
+ Test Files  108 passed (108)
+      Tests  1422 passed (1422)
+   Start at  12:03:59
+   Duration  178.03s (tests 71%, import 15%, environment 10%, setup 3%, transform 2%)
+EXIT=0
+END 12:06:57

@@ -7,6 +7,7 @@
  * - `session-routes`, `session-guards`: the §3.7 resync table and the session deep-link policies.
  * - `back-guard`: `useBackGuard` + `BackGuardDialog` (§3.6).
  * - `master-detail`: list ↔ detail routing across layout classes (§2.5 rule 3).
+ * - `tab-root`: open another tab at its root screen (CF-M2, R-P-3: Settings > Device Settings).
  * - `app-tabs`, `stacks`: the headless tabs with the responsive chrome, and the nested stacks.
  *
  * Route files in `src/app/**` stay thin: they parse params here and render a screen from
@@ -68,6 +69,7 @@ export {
   type BackGuardOptions,
 } from './back-guard';
 export { useDetailPaneHandover, useSelectionPush, type MasterListPath } from './master-detail';
+export { findTabNavigation, tabForHref, useOpenTabRoot } from './tab-root';
 export { AppTabs, TAB_TRIGGERS } from './app-tabs';
 export { AppStack, AuthStack, DrillInStack, SessionFlowStack } from './stacks';
 export { useRailCollapse, type RailCollapse } from './rail-prefs';

@@ -1,0 +1,155 @@
+#!/usr/bin/env python3
+"""CF-M2 mutation check (nothing in the tree is written): each mutant puts the OLD code back, or breaks
+one guarantee of the new code, IN MEMORY (jest transformer `mutating-transformer.cjs`), and runs the
+tests that must catch it.
+
+  python3 mutate.py control          the unmutated test files, once
+  python3 mutate.py P M I N S        every mutant of the groups (or single ids)
+Groups: P R-P-3 Settings > Device Settings; M R-T-1 menu title; I R-T-2 stored verification;
+        N R-T-3 Bandwidth label; S R-T-4 Sessions pane row.
+"""
+import hashlib, json, os, re, subprocess, sys, time
+
+ROOT = '/Users/gsp-budi/Documents/DEMS'
+APP = ROOT + '/apps/mobile'
+HERE = os.path.dirname(os.path.abspath(__file__))
+SPEC = HERE + '/spec.json'
+CONFIG = HERE + '/jest.mut.config.cjs'
+RB = ROOT + '/.cache/rollback/CF-M2/apps/mobile/'
+
+SETTINGS = 'src/features/settings/settings-screen.tsx'
+TABROOT = 'src/navigation/tab-root.ts'
+DETAIL = 'src/features/evidence/evidence-detail.tsx'
+ROW = 'src/features/evidence/evidence-row.tsx'
+MIT = 'src/features/evidence/menu-item-text.tsx'
+LIVE = 'src/features/evidence/live-integrity-tab.tsx'
+MODEL = 'src/features/evidence/evidence-model.ts'
+NET = 'src/features/network-time/network-status-card.tsx'
+HUB = 'src/features/sessions/sessions-screen.tsx'
+SROW = 'src/features/sessions/session-row.tsx'
+
+TESTS = {
+    'P': ['src/navigation/__tests__/settings-tab-root.test.tsx', 'src/features/settings/settings-screen.test.tsx'],
+    'M': ['src/features/evidence/evidence-more-menu-title.test.tsx'],
+    'I': ['src/features/evidence/live-evidence-stored-verification.test.tsx'],
+    'N': ['src/features/network-time/bandwidth-row-fit.test.tsx'],
+    'S': ['src/features/sessions/hub-pane-row-fit.test.tsx'],
+}
+
+def e(frm, to):
+    return {'from': frm, 'to': to}
+
+def one(file, edits):
+    return {'files': [{'file': file, 'edits': edits}]}
+
+def old(file):
+    return {'files': [{'file': file, 'replaceWith': RB + file}]}
+
+M = [
+  # R-P-3
+  ('P1', 'the old Settings rows: router.push(href) (stacks a second Devices list over the detail)',
+   one(SETTINGS, [e('  const openRoute = useCallback((href: SettingsRouteHref) => openTabRoot(href), [openTabRoot]);', '  const openRoute = useCallback((href: SettingsRouteHref) => router.push(href), [router]);')])),
+  ('P2', 'the jump keeps the tab\'s nested stack (resetOnFocus false)',
+   one(TABROOT, [e('payload: { name: tab, resetOnFocus: true }', 'payload: { name: tab, resetOnFocus: false }')])),
+  ('P3', 'router.navigate(href) instead of the reset jump',
+   one(TABROOT, [e("        tabs.dispatch({ type: 'JUMP_TO', payload: { name: tab, resetOnFocus: true } });", '        router.navigate(href);')])),
+  ('P4', 'the tab navigator is never found (always the logged fallback)',
+   one(TABROOT, [e("    if (state?.type === 'tab' && state.routeNames?.includes(tab)) return current;", '    if (state?.type === "never") return current;')])),
+  # R-T-1
+  ('M1', 'the old Evidence detail Archive item (rollback copy): title and reason side by side', old(DETAIL)),
+  ('M2', 'the old Evidence row menu (rollback copy)', old(ROW)),
+  ('M3', 'the column has no flex (the title can collapse again)', one(MIT, [e('  column: { flex: 1 },', '  column: {},')])),
+  ('M4', 'no column: title and reason are direct children of the item row',
+   one(MIT, [e('    <View style={styles.column} testID={testID}>', '    <>'), e('    </View>\n  );', '    </>\n  );')])),
+  # R-T-2
+  ('I1', 'the old Live tab (rollback copy): heading always "Verified by the Core"', old(LIVE)),
+  ('I2', 'the heading ignores the record (screen verdict only)',
+   one(LIVE, [e('coreVerificationState(stored, done ? view.verdict : null)', 'coreVerificationState(null, done ? view.verdict : null)')])),
+  ('I3', 'no pinning: the replica\'s delta reveals the new verdict before the paced reveal',
+   one(LIVE, [e('  const stored = pinned !== undefined ? pinned : recordNow;', '  const stored = recordNow;')])),
+  ('I4', 'the actor is the latest entry of that verdict, not the one of the record\'s instant',
+   one(MODEL, [e('newestFirst.find((candidate) => candidate.at === at) ?? newestFirst[0] ?? null', 'newestFirst[0] ?? null')])),
+  ('I5', 'a FAIL record is headed "Verified by the Core"',
+   one(MODEL, [e("  FAIL: 'features.evidence.integrity.failedOnCore',", "  FAIL: 'features.evidence.integrity.verifiedByCore',")])),
+  ('I6', 'the last line drops the time and the operator',
+   one(LIVE, [e("  return t('evidence.verify.last.full', { result, at, actor });", "  return t('evidence.verify.last.resultOnly', { result });")])),
+  # R-T-3
+  ('N1', 'the old Network Status card (rollback copy)', old(NET)),
+  ('N2', 'never stacked (the one-line row everywhere)',
+   one(NET, [e('  const stacked = rowWidth === null ? isMultiPane : rowWidth < bandwidthInlineMinWidth(fontScale);', '  const stacked = false;')])),
+  ('N3', 'the budget forgets the readout',
+   one(NET, [e('(m.label + m.readout) * scale', 'm.label * scale')])),
+  ('N4', 'stacked, but the bars stay beside the readout (over the label again)',
+   one(NET, [e('          <View style={styles.stackedBars}>{bars}</View>', '          {null}'), e('        {stacked ? null : bars}', '        {bars}')])),
+  # R-T-4
+  ('S1', 'the expanded list pane without its 360 dp minimum',
+   one(HUB, [e('{ flex: 2, minWidth: LIST_MIN_WIDTH, style: styles.flexBasisZero }', '{ flex: 2, style: styles.flexBasisZero }')])),
+  ('S2', 'the pane row keeps the phone poster',
+   one(SROW, [e('  thumbPane: { width: PANE_ROW.thumbWidth, height: PANE_ROW.thumbHeight },', '  thumbPane: {},')])),
+  ('S3', 'the chip line never wraps (a value wraps inside itself again)',
+   one(SROW, [e("  chipsPane: { flexWrap: 'wrap', rowGap: 2 },", '  chipsPane: {},')])),
+  ('S4', 'the phone row takes the pane poster too',
+   one(SROW, [e('isMultiPane ? styles.thumbPane : null', 'styles.thumbPane')])),
+  ('S5', 'the pane poster back at 88 dp',
+   one(SROW, [e('export const PANE_ROW = { thumbWidth: 64,', 'export const PANE_ROW = { thumbWidth: 88,')])),
+]
+
+def sha(path):
+    with open(path, 'rb') as f:
+        return hashlib.sha256(f.read()).hexdigest()
+
+def jest(env, tests):
+    return subprocess.run(['node', ROOT + '/node_modules/jest/bin/jest.js', '--config', CONFIG, '--maxWorkers=2', '--silent', *tests],
+                          cwd=APP, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+
+def summary(out):
+    tail = [line.strip() for line in out.splitlines() if line.startswith('Tests:')]
+    files = sorted({line.split()[1].split('/')[-1] for line in out.splitlines() if line.startswith('FAIL ')})
+    first = [re.sub(r'\s+', ' ', line.strip().lstrip('●').strip()) for line in out.splitlines() if line.strip().startswith('● ') and 'Console' not in line]
+    return (tail[-1] if tail else 'no summary line'), files, first[:1]
+
+def load():
+    out = subprocess.run(['uptime'], stdout=subprocess.PIPE, text=True).stdout
+    m = re.search(r'load averages?: ([\d.]+)', out)
+    return float(m.group(1)) if m else 0.0
+
+def wait_for_load():
+    while load() > 14:
+        print('   (load %.1f > 14: pausing 30 s)' % load(), flush=True)
+        time.sleep(30)
+
+def main():
+    args = sys.argv[1:]
+    files = sorted({p['file'] for _, _, spec in M for p in spec['files']})
+    before = {f: sha(APP + '/' + f) for f in files}
+    env = dict(os.environ)
+    detected = 0
+    ran = 0
+    if args == ['control']:
+        wait_for_load()
+        env.pop('CFM2_MUT_SPEC', None)
+        tests = sorted({t for group in TESTS.values() for t in group})
+        r = jest(env, tests)
+        s, failed, first = summary(r.stdout)
+        print('control: %d files | %s | exit %d' % (len(tests), s, r.returncode))
+        if r.returncode != 0:
+            print(r.stdout[-4000:])
+    else:
+        wanted = [m for m in M if m[0] in args or m[0][0] in args]
+        for mid, why, spec in wanted:
+            wait_for_load()
+            with open(SPEC, 'w') as f:
+                json.dump({'id': mid, **spec}, f)
+            env['CFM2_MUT_SPEC'] = SPEC
+            r = jest(env, TESTS[mid[0]])
+            s, failed, first = summary(r.stdout)
+            ran += 1
+            caught = r.returncode != 0
+            detected += caught
+            print('%s %s: %s | %s | exit %d | failing: %s | first: %s' % (mid, 'DETECTED' if caught else 'SURVIVED', why, s, r.returncode, ','.join(failed) or '-', first[0][:160] if first else '-'), flush=True)
+        print('detected %d of %d' % (detected, ran))
+    after = {f: sha(APP + '/' + f) for f in files}
+    print('tree files unchanged: %s (%d files checked)' % (before == after, len(files)))
+
+if __name__ == '__main__':
+    main()

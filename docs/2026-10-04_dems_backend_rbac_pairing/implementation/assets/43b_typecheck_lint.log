@@ -1,0 +1,19 @@
+# typecheck
+
+> @dems/core-server@0.2.0 typecheck
+> tsc --noEmit
+
+
+# lint
+
+> @dems/core-server@0.2.0 lint
+> oxlint
+
+test/acceptance/restart.test.ts:12:23: warning eslint(no-unused-vars): Identifier 'deviceSignIn' is imported but never used. help: Consider removing this import.
+test/acceptance/restart.test.ts:12:62: warning eslint(no-unused-vars): Identifier 'bearer' is imported but never used. help: Consider removing this import.
+test/acceptance/restart.test.ts:13:10: warning eslint(no-unused-vars): Identifier 'CODE' is imported but never used. help: Consider removing this import.
+test/acceptance/restart.test.ts:13:16: warning eslint(no-unused-vars): Identifier 'DEVICES' is imported but never used. help: Consider removing this import.
+test/acceptance/restart.test.ts:13:25: warning eslint(no-unused-vars): Identifier 'devicePost' is imported but never used. help: Consider removing this import.
+test/acceptance/restart.test.ts:13:37: warning eslint(no-unused-vars): Identifier 'portalPost' is imported but never used. help: Consider removing this import.
+test/acceptance/restart.test.ts:13:49: warning eslint(no-unused-vars): Identifier 'redeem' is imported but never used. help: Consider removing this import.
+test/acceptance/restart.test.ts:14:10: warning eslint(no-unused-vars): Identifier 'roleUrl' is imported but never used. help: Consider removing this import.

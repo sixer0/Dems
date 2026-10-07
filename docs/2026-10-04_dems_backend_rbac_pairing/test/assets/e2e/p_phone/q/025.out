@@ -1,0 +1,9 @@
+10:02:32.708 mark a18 at 10:02:32.708
+10:02:32.765 tapid settings-security-pairing at 540,1333 "Core pairing"
+10:02:35.468 slept 2500 ms
+10:02:38.051 declared screen pairing-details
+10:02:38.117 screencap 19c_settings_security_core_pairing.png 10:02:38.117..10:02:39.332
+10:02:39.687 ids(25): screen-pair@540,1212 ; pairing-header@540,224 ; pairing-back@95,224 "Back" ; pairing-panes@540,1344 ; pairing-connection@540,1087 ; pairing-state-chip@927,395 "Paired" ; pairing-ring@200,547 "Pairing status: Paired" ; pairing-status-line@677,484 "Paired with DEMS-IR-01 as DEV-0001." ; pairing-stepper@540,794 ; pairing-stepper-step-0@237,847 "Step 1 of 3, Discover, complete" ; pairing-stepper-step-1@540,847 "Step 2 of 3, Verify code, complete" ; pairing-stepper-step-2@845,847 "Step 3 of 3, Paired, complete" ; pairing-identity@540,1249 "Core identity" ; pairing-identity-device@540,973 "Core device, DEMS-IR-01" ; pairing-identity-room@540,1111 "Core name, Interview Room 1" ; pairing-identity-tablet@540,1249 "This tablet, DEV-0001" ; pairing-identity-paired-at@540,1387 "Paired at, 5 Oct 2026 16:32:31" ; pairing-identity-last-audit@540,1525 "Last pairing audit, #88 Tablet paired · 16:32:31" ; pairing-fingerprint@540,1715 "Certificate fingerprint · SHA-256 (DEMO), 76:0B:E9:29:6D:40:F7:D8:93:2" ; pairing-simulated-chip@920,1651 "LIVE" ; pairing-paired-card@540,2125 ; pairing-paired-chip@906,1957 "Paired" ; pairing-paired-body@540,2047 "This tablet is registered with DEMS-IR-01 as DEV-0001. An operator can" ; pairing-continue@540,2206 "Done" ; pairing-unpair@540,2336 "Unpair"
+10:02:42.479 serverlog since a18 (0):
+    
+10:02:42.537 js => [[249,"AUTH_EXPIRED","OPR-002","10:00:20","null"],[248,"AUTH_SUCCESS","OPR-001","09:48:10","null"],[247,"AUTH_SUCCESS","OPR-002","09:47:54","null"]]

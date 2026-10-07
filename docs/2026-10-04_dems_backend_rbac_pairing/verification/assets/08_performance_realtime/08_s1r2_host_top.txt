@@ -1,0 +1,14 @@
+10:13:53
+10:13  up 5 days, 17:26, 2 users, load averages: 5.30 6.14 5.84
+ %CPU    RSS COMM
+ 99.1 156912 /Users/gsp-budi/Library/Caches/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-mac-arm64/chrome-headless-shell
+ 58.4 1708592 /Users/gsp-budi/Library/Android/sdk/emulator/qemu/darwin-aarch64/qemu-system-aarch64
+ 49.7  67824 /System/Library/PrivateFrameworks/SkyLight.framework/Resources/WindowServer
+ 35.7 606256 /Applications/Visual Studio Code.app/Contents/Frameworks/Code Helper (Renderer).app/Contents/MacOS/Code Helper (Renderer)
+ 27.0  63328 /Applications/Visual Studio Code.app/Contents/Frameworks/Code Helper.app/Contents/MacOS/Code Helper
+ 17.2 1435152 /Users/gsp-budi/Library/Android/sdk/emulator/qemu/darwin-aarch64/qemu-system-aarch64
+ 14.8 767024 /Users/gsp-budi/.vscode/extensions/kilocode.kilo-code-7.8.3-darwin-arm64/bin/kilo
+ 11.8 1950800 /Users/gsp-budi/Library/Android/sdk/emulator/qemu/darwin-aarch64/qemu-system-aarch64
+  6.8 438928 /Users/gsp-budi/Library/Caches/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-mac-arm64/chrome-headless-shell
+  6.5  65536 /Applications/Claude.app/Contents/Frameworks/Claude Helper.app/Contents/MacOS/Claude Helper
+  4.1 354016 /Applications/Claude.app/Contents/Frameworks/Claude Helper (Renderer).app/Contents/MacOS/Claude Helper (Renderer)

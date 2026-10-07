@@ -1,0 +1,57 @@
+
+> @dems/core-server@0.2.0 test
+> vitest run --project unit --maxWorkers=2 --reporter=verbose test/helpers/db/__tests__/drop-retry.test.ts
+
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/apps/core-server
+
+ ✓ |unit| test/helpers/db/__tests__/drop-retry.test.ts > the forced drop, refused while a background worker is on the database > not refused: one statement, no catalog read 1ms
+ ✓ |unit| test/helpers/db/__tests__/drop-retry.test.ts > the forced drop, refused while a background worker is on the database > refused 1 time(s), then it goes through: the same statement again, one catalog read per refusal 2ms
+ ✓ |unit| test/helpers/db/__tests__/drop-retry.test.ts > the forced drop, refused while a background worker is on the database > refused 2 time(s), then it goes through: the same statement again, one catalog read per refusal 3ms
+ ✓ |unit| test/helpers/db/__tests__/drop-retry.test.ts > the forced drop, refused while a background worker is on the database > refused 7 time(s), then it goes through: the same statement again, one catalog read per refusal 9ms
+ ✓ |unit| test/helpers/db/__tests__/drop-retry.test.ts > the forced drop, refused while a background worker is on the database > refused 19 time(s), then it goes through: the same statement again, one catalog read per refusal 25ms
+ ✓ |unit| test/helpers/db/__tests__/drop-retry.test.ts > the forced drop, refused while a background worker is on the database > the backend had left again when the helper looked: retried all the same 3ms
+ ✓ |unit| test/helpers/db/__tests__/drop-retry.test.ts > the forced drop, refused while a background worker is on the database > a leftover session of the owner role beside the worker does not change that: the forced drop ends it later 1ms
+ ✓ |unit| test/helpers/db/__tests__/drop-retry.test.ts > the forced drop, refused while a background worker is on the database > waits between two attempts 92ms
+ ✓ |unit| test/helpers/db/__tests__/drop-retry.test.ts > the forced drop, refused while a background worker is on the database > the default bound is 20 attempts, 250 ms apart 24ms
+ ✓ |unit| test/helpers/db/__tests__/drop-retry.test.ts > the forced drop, refused while a background worker is on the database > bounded: still refused at the last attempt, it fails with the last error and with what was on the database 4ms
+ ✓ |unit| test/helpers/db/__tests__/drop-retry.test.ts > the forced drop, refused while a background worker is on the database > bounded, and nothing was left to see: the message says so 1ms
+ ✓ |unit| test/helpers/db/__tests__/drop-retry.test.ts > the forced drop, refused while a background worker is on the database > an attempt count below one still sends the drop once 0ms
+ ✓ |unit| test/helpers/db/__tests__/drop-retry.test.ts > the forced drop, refused while a client session of another role is on the database > is not repeated: it fails at once and names the role and the application 0ms
+ ✓ |unit| test/helpers/db/__tests__/drop-retry.test.ts > the forced drop, refused while a client session of another role is on the database > a session that shows up at a later refusal ends the retry there 3ms
+ ✓ |unit| test/helpers/db/__tests__/drop-retry.test.ts > the forced drop, refused while a client session of another role is on the database > every role but the owner role counts, whatever its name 0ms
+ ✓ |unit| test/helpers/db/__tests__/drop-retry.test.ts > the forced drop, refused while a client session of another role is on the database > the helper asks for role and application name only: never for the statement, the state or the backend type 1ms
+ ✓ |unit| test/helpers/db/__tests__/drop-retry.test.ts > what is and what is not the refusal that is retried > the database is in use (55006): not retried, and the error comes back as it is 0ms
+ ✓ |unit| test/helpers/db/__tests__/drop-retry.test.ts > what is and what is not the refusal that is retried > not the owner of the database (42501, another message): not retried, and the error comes back as it is 0ms
+ ✓ |unit| test/helpers/db/__tests__/drop-retry.test.ts > what is and what is not the refusal that is retried > a template database (42809): not retried, and the error comes back as it is 0ms
+ ✓ |unit| test/helpers/db/__tests__/drop-retry.test.ts > what is and what is not the refusal that is retried > the same words without the SQLSTATE: not retried, and the error comes back as it is 0ms
+ ✓ |unit| test/helpers/db/__tests__/drop-retry.test.ts > what is and what is not the refusal that is retried > a lost connection: not retried, and the error comes back as it is 0ms
+ ✓ |unit| test/helpers/db/__tests__/drop-retry.test.ts > what is and what is not the refusal that is retried > SQLSTATE 42501 with the message of the server is the refusal 0ms
+ ✓ |unit| test/helpers/db/__tests__/drop-retry.test.ts > how backends are described > a worker by what it is, a session by role and application; the owner role is not "another role" 0ms
+ ✓ |unit| test/helpers/db/__tests__/drop-retry.test.ts > how backends are described > the line of the teardown: a count, and the refusals when there were any 0ms
+ ✓ |unit| test/helpers/db/__tests__/drop-retry.test.ts > a test file drops its database while a background worker is on it > the worker leaves after three refusals: the drop goes through, and only the own database was named 7ms
+ ✓ |unit| test/helpers/db/__tests__/drop-retry.test.ts > a test file drops its database while a background worker is on it > a leftover session of the owner role beside the worker: retried, then the forced drop ends it 2ms
+ ✓ |unit| test/helpers/db/__tests__/drop-retry.test.ts > a test file drops its database while a background worker is on it > no refusal, no entry: the usual drop is one statement as before 1ms
+ ✓ |unit| test/helpers/db/__tests__/drop-retry.test.ts > a test file drops its database while a background worker is on it > a session of the runtime role that is open before the drop: no DROP is sent, and role and application are named 34ms
+ ✓ |unit| test/helpers/db/__tests__/drop-retry.test.ts > a test file drops its database while a background worker is on it > a session of the runtime role that connects after the helper looked: the refused drop is not repeated 1ms
+ ✓ |unit| test/helpers/db/__tests__/drop-retry.test.ts > the owner of a run learns of the retried drops of its test files > a test file reports on the channel of the run; the teardown report holds them, and the owner's own 7ms
+ ✓ |unit| test/helpers/db/__tests__/drop-retry.test.ts > the owner of a run learns of the retried drops of its test files > a notification that is not such a report is ignored 1ms
+ ✓ |unit| test/helpers/db/__tests__/drop-retry.test.ts > a drop that stays refused: the database is left to the teardown of the run, which goes through the same retry > refused at every attempt in the file; the worker leaves during the teardown: dropped there, nothing remains 8ms
+ ✓ |unit| test/helpers/db/__tests__/drop-retry.test.ts > a drop that stays refused: the database is left to the teardown of the run, which goes through the same retry > refused at every attempt of the teardown too: reported as remaining, by name and reason, never as dropped 11ms
+ ✓ |unit| test/helpers/db/__tests__/drop-retry.test.ts > a drop that stays refused: the database is left to the teardown of the run, which goes through the same retry > the stale sweep goes through the same retry 3ms
+ ✓ |unit| test/helpers/db/__tests__/drop-retry.test.ts > the guards are what they were: the retry is behind them > dropDatabase("dems_demo") is refused before a statement is sent, whatever the retry policy 1ms
+ ✓ |unit| test/helpers/db/__tests__/drop-retry.test.ts > the guards are what they were: the retry is behind them > dropDatabase("dems_demo_next") is refused before a statement is sent, whatever the retry policy 1ms
+ ✓ |unit| test/helpers/db/__tests__/drop-retry.test.ts > the guards are what they were: the retry is behind them > dropDatabase("dems_lane_1") is refused before a statement is sent, whatever the retry policy 0ms
+ ✓ |unit| test/helpers/db/__tests__/drop-retry.test.ts > the guards are what they were: the retry is behind them > dropDatabase("postgres") is refused before a statement is sent, whatever the retry policy 1ms
+ ✓ |unit| test/helpers/db/__tests__/drop-retry.test.ts > the guards are what they were: the retry is behind them > dropDatabase("template0") is refused before a statement is sent, whatever the retry policy 1ms
+ ✓ |unit| test/helpers/db/__tests__/drop-retry.test.ts > the guards are what they were: the retry is behind them > dropDatabase("template1") is refused before a statement is sent, whatever the retry policy 1ms
+ ✓ |unit| test/helpers/db/__tests__/drop-retry.test.ts > the guards are what they were: the retry is behind them > dropDatabase("dems_test_step_41_tmd9ucy7_f01_identity") is refused before a statement is sent, whatever the retry policy 1ms
+ ✓ |unit| test/helpers/db/__tests__/drop-retry.test.ts > the guards are what they were: the retry is behind them > dropDatabase("dems_test_step_41_tmd9ucy7_tpl_schema") is refused before a statement is sent, whatever the retry policy 0ms
+ ✓ |unit| test/helpers/db/__tests__/drop-retry.test.ts > the guards are what they were: the retry is behind them > dropDatabase("some_other_database") is refused before a statement is sent, whatever the retry policy 0ms
+
+ Test Files  1 passed (1)
+      Tests  43 passed (43)
+   Start at  12:32:06
+   Duration  369ms (tests 78%, transform 16%, import 6%)
+
+exit=0

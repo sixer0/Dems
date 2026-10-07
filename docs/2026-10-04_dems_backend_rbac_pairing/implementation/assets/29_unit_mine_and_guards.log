@@ -1,0 +1,741 @@
+2026-10-04 11:42:53 WIB
+$ npm run test -w @dems/core-server -- --maxWorkers=2 --reporter=verbose src/db/reset test/static test/helpers/db src/db/mapping src/db/seed test/db
+
+> @dems/core-server@0.2.0 test
+> vitest run --project unit --maxWorkers=2 --reporter=verbose src/db/reset test/static test/helpers/db src/db/mapping src/db/seed test/db
+
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/apps/core-server
+
+ ✓ |unit| src/db/mapping/__tests__/changes.test.ts > write-through along a driven journey (model check) > recording, stopping, finalizing, sealed, export, verify, archive: the tables follow the engine exactly 69ms
+ ✓ |unit| src/db/mapping/__tests__/changes.test.ts > write-through along a driven journey (model check) > a fault, its alert, the recovery, the incomplete close, then a new session: insert, update, delete of the session row 15ms
+ ✓ |unit| src/db/mapping/__tests__/changes.test.ts > write-through along a driven journey (model check) > a finished session is replaced by the next one: DELETE, then INSERT 2ms
+ ✓ |unit| src/db/mapping/__tests__/changes.test.ts > write-through along a driven journey (model check) > MR-7: an altered ring row is never written; only rows above the stored head are 15ms
+ ✓ |unit| src/db/mapping/__tests__/round-trip.test.ts > fromRows(toRows(state)) equals the durable slices > for the idle state at the fixed instant, exactly (no negative zero occurs there) 6ms
+ ✓ |unit| src/db/mapping/__tests__/round-trip.test.ts > fromRows(toRows(state)) equals the durable slices > for scenario idle at the fixed instant, exactly 5ms
+ ✓ |unit| src/db/mapping/__tests__/round-trip.test.ts > fromRows(toRows(state)) equals the durable slices > for scenario recording at the fixed instant, exactly 5ms
+ ✓ |unit| src/db/mapping/__tests__/round-trip.test.ts > fromRows(toRows(state)) equals the durable slices > for scenario finalizing at the fixed instant, exactly 7ms
+ ✓ |unit| src/db/mapping/__tests__/round-trip.test.ts > fromRows(toRows(state)) equals the durable slices > for scenario fault-demo at the fixed instant, exactly 4ms
+ ✓ |unit| src/db/mapping/__tests__/round-trip.test.ts > fromRows(toRows(state)) equals the durable slices > for the idle state at one day later 24ms
+ ✓ |unit| src/db/mapping/__tests__/round-trip.test.ts > fromRows(toRows(state)) equals the durable slices > for the idle state at 00:10 WIB, when today's sessions fall on the previous day 21ms
+ ✓ |unit| src/db/mapping/__tests__/round-trip.test.ts > fromRows(toRows(state)) equals the durable slices > for the idle state at 02:00 WIB 20ms
+ ✓ |unit| src/db/mapping/__tests__/round-trip.test.ts > fromRows(toRows(state)) equals the durable slices > for the idle state at 06:59 WIB 20ms
+ ✓ |unit| src/db/mapping/__tests__/changes.test.ts > write-through along a driven journey (model check) > the diff is against the last WRITTEN state: one write a second sees the same rows as one per tick 11ms
+ ✓ |unit| src/db/mapping/__tests__/changes.test.ts > the new audit rows and events, in the shared shape (for a writer that takes shared rows) > are exactly the rows the diff inserts, and nothing when the slices did not change 19ms
+ ✓ |unit| src/db/mapping/__tests__/changes.test.ts > what the write-through never writes > the operators table: the engine slice is a mirror of it, not its source 0ms
+ ✓ |unit| src/db/mapping/__tests__/changes.test.ts > what the write-through never writes > the unmapped slices 0ms
+ ✓ |unit| src/db/mapping/__tests__/changes.test.ts > what the write-through never writes > a software update is the one change of the device record: two columns and the row time 0ms
+ ✓ |unit| src/db/mapping/__tests__/changes.test.ts > a change the runtime role cannot write is refused, not skipped > a sealed column of an evidence item 0ms
+ ✓ |unit| src/db/mapping/__tests__/changes.test.ts > a change the runtime role cannot write is refused, not skipped > a sealed track hash 0ms
+ ✓ |unit| src/db/mapping/__tests__/changes.test.ts > a change the runtime role cannot write is refused, not skipped > a custody entry that changed 0ms
+ ✓ |unit| src/db/mapping/__tests__/changes.test.ts > a change the runtime role cannot write is refused, not skipped > a custody entry that disappeared 0ms
+ ✓ |unit| src/db/mapping/__tests__/changes.test.ts > a change the runtime role cannot write is refused, not skipped > an evidence item that disappeared 0ms
+ ✓ |unit| src/db/mapping/__tests__/changes.test.ts > a change the runtime role cannot write is refused, not skipped > a history entry that changed 0ms
+ ✓ |unit| src/db/mapping/__tests__/changes.test.ts > a change the runtime role cannot write is refused, not skipped > a history entry that disappeared 0ms
+ ✓ |unit| src/db/mapping/__tests__/changes.test.ts > a change the runtime role cannot write is refused, not skipped > the seed of the state 0ms
+ ✓ |unit| src/db/mapping/__tests__/changes.test.ts > a change the runtime role cannot write is refused, not skipped > the loaded scenario (that is a reset) 0ms
+ ✓ |unit| src/db/mapping/__tests__/changes.test.ts > a change the runtime role cannot write is refused, not skipped > the name of the device 0ms
+ ✓ |unit| src/db/mapping/__tests__/changes.test.ts > a change the runtime role cannot write is refused, not skipped > a counter that disappeared 0ms
+ ✓ |unit| src/db/mapping/__tests__/changes.test.ts > a change the runtime role cannot write is refused, not skipped > a chain that lost rows 0ms
+ ✓ |unit| src/db/mapping/__tests__/changes.test.ts > a change the runtime role cannot write is refused, not skipped > more new audit rows than the ring holds 0ms
+ ✓ |unit| src/db/mapping/__tests__/changes.test.ts > a change the runtime role cannot write is refused, not skipped > more new events than the ring holds 0ms
+ ✓ |unit| src/db/mapping/__tests__/changes.test.ts > a change the runtime role cannot write is refused, not skipped > the message names the place and never a value of the row 0ms
+ ✓ |unit| src/db/mapping/__tests__/changes.test.ts > a change the runtime role cannot write is refused, not skipped > the seven columns of an evidence item that may change do change, and only they are named 0ms
+ ✓ |unit| src/db/mapping/__tests__/round-trip.test.ts > fromRows(toRows(state)) equals the durable slices > for the idle state at 23:59:59 WIB 20ms
+ ✓ |unit| src/db/mapping/__tests__/round-trip.test.ts > fromRows(toRows(state)) equals the durable slices > for the idle state at 00:30 WIB on 1 January, across a year boundary 20ms
+ ✓ |unit| src/db/mapping/__tests__/round-trip.test.ts > fromRows(toRows(state)) equals the durable slices > for the idle state at a leap day, 2028-02-29 12:00 WIB 20ms
+ ✓ |unit| src/db/mapping/__tests__/round-trip.test.ts > fromRows(toRows(state)) equals the durable slices > for the idle state at an instant with milliseconds 20ms
+ ✓ |unit| src/db/mapping/__tests__/round-trip.test.ts > fromRows(toRows(state)) equals the durable slices > a negative zero in a chart series is the only thing that changes, and it becomes zero 3ms
+ ✓ |unit| src/db/mapping/__tests__/round-trip.test.ts > fromRows(toRows(state)) equals the durable slices > whatever order the rows are read in 6ms
+ ✓ |unit| src/db/mapping/__tests__/round-trip.test.ts > toRows is pure > does not change the state it reads (the state is frozen), and gives the same rows twice 5ms
+ ✓ |unit| src/db/mapping/__tests__/round-trip.test.ts > toRows is pure > passes a JSON value through by reference, so that a host can compare references 2ms
+ ✓ |unit| src/db/mapping/__tests__/round-trip.test.ts > a driven journey: recording, stopping, finalizing, sealed, and on > is lossless at every step, through the seal, an export, a verification and an archive 77ms
+ ✓ |unit| test/helpers/db/__tests__/run.test.ts > T-TI-2: a refused request sends no statement > dropDatabase("dems_demo") is refused before a statement is sent 3ms
+ ✓ |unit| test/helpers/db/__tests__/run.test.ts > T-TI-2: a refused request sends no statement > dropDatabase("dems_demo_next") is refused before a statement is sent 1ms
+ ✓ |unit| test/helpers/db/__tests__/run.test.ts > T-TI-2: a refused request sends no statement > dropDatabase("dems_lane_1") is refused before a statement is sent 1ms
+ ✓ |unit| test/helpers/db/__tests__/run.test.ts > T-TI-2: a refused request sends no statement > dropDatabase("dems_lane_2") is refused before a statement is sent 1ms
+ ✓ |unit| test/helpers/db/__tests__/run.test.ts > T-TI-2: a refused request sends no statement > dropDatabase("dems_lane_3") is refused before a statement is sent 1ms
+ ✓ |unit| test/helpers/db/__tests__/run.test.ts > T-TI-2: a refused request sends no statement > dropDatabase("postgres") is refused before a statement is sent 1ms
+ ✓ |unit| test/helpers/db/__tests__/run.test.ts > T-TI-2: a refused request sends no statement > dropDatabase("template0") is refused before a statement is sent 1ms
+ ✓ |unit| test/helpers/db/__tests__/run.test.ts > T-TI-2: a refused request sends no statement > dropDatabase("template1") is refused before a statement is sent 1ms
+ ✓ |unit| test/helpers/db/__tests__/run.test.ts > T-TI-2: a refused request sends no statement > dropDatabase("dems_proof_drizzle_20261004003235_a") is refused before a statement is sent 1ms
+ ✓ |unit| test/helpers/db/__tests__/run.test.ts > T-TI-2: a refused request sends no statement > dropDatabase("dems_test_step_41_tmcxccy7_f01_identity") is refused before a statement is sent 1ms
+ ✓ |unit| test/helpers/db/__tests__/run.test.ts > T-TI-2: a refused request sends no statement > dropDatabase("dems_test_step_41_tmcxccy7_tpl_schema") is refused before a statement is sent 1ms
+ ✓ |unit| test/helpers/db/__tests__/run.test.ts > T-TI-2: a refused request sends no statement > dropDatabase("dems_test_step_29_tmc8e0k3_f01_identity") is refused before a statement is sent 1ms
+ ✓ |unit| test/helpers/db/__tests__/run.test.ts > T-TI-2: a refused request sends no statement > dropDatabase("dems_test_handmade") is refused before a statement is sent 1ms
+ ✓ |unit| test/helpers/db/__tests__/run.test.ts > T-TI-2: a refused request sends no statement > dropDatabase("some_other_database") is refused before a statement is sent 1ms
+ ✓ |unit| test/helpers/db/__tests__/run.test.ts > T-TI-2: a refused request sends no statement > no pool and no connection is handed out for "dems_demo" 1ms
+ ✓ |unit| test/helpers/db/__tests__/run.test.ts > T-TI-2: a refused request sends no statement > no pool and no connection is handed out for "dems_demo_next" 1ms
+ ✓ |unit| test/helpers/db/__tests__/run.test.ts > T-TI-2: a refused request sends no statement > no pool and no connection is handed out for "dems_lane_1" 1ms
+ ✓ |unit| test/helpers/db/__tests__/run.test.ts > T-TI-2: a refused request sends no statement > no pool and no connection is handed out for "dems_lane_2" 0ms
+ ✓ |unit| test/helpers/db/__tests__/run.test.ts > T-TI-2: a refused request sends no statement > no pool and no connection is handed out for "dems_lane_3" 1ms
+ ✓ |unit| test/helpers/db/__tests__/run.test.ts > T-TI-2: a refused request sends no statement > no pool and no connection is handed out for "postgres" 1ms
+ ✓ |unit| test/helpers/db/__tests__/run.test.ts > T-TI-2: a refused request sends no statement > no pool and no connection is handed out for "template0" 1ms
+ ✓ |unit| test/helpers/db/__tests__/run.test.ts > T-TI-2: a refused request sends no statement > no pool and no connection is handed out for "template1" 0ms
+ ✓ |unit| test/helpers/db/__tests__/run.test.ts > T-TI-2: a refused request sends no statement > no pool and no connection is handed out for "dems_proof_drizzle_20261004003235_a" 0ms
+ ✓ |unit| test/helpers/db/__tests__/run.test.ts > T-TI-2: a refused request sends no statement > no pool and no connection is handed out for "dems_test_step_41_tmcxccy7_f01_identity" 1ms
+ ✓ |unit| test/helpers/db/__tests__/run.test.ts > T-TI-2: a refused request sends no statement > no pool and no connection is handed out for "dems_test_step_41_tmcxccy7_tpl_schema" 1ms
+ ✓ |unit| test/helpers/db/__tests__/run.test.ts > T-TI-2: a refused request sends no statement > no pool and no connection is handed out for "dems_test_step_29_tmc8e0k3_f01_identity" 1ms
+ ✓ |unit| test/helpers/db/__tests__/run.test.ts > T-TI-2: a refused request sends no statement > no pool and no connection is handed out for "dems_test_handmade" 1ms
+ ✓ |unit| test/helpers/db/__tests__/run.test.ts > T-TI-2: a refused request sends no statement > no pool and no connection is handed out for "some_other_database" 1ms
+ ✓ |unit| test/helpers/db/__tests__/run.test.ts > T-TI-2: a refused request sends no statement > a pool and a connection are handed out for a database of the own run, with the role asked for 2ms
+ ✓ |unit| test/helpers/db/__tests__/run.test.ts > T-TI-2: a refused request sends no statement > a test file that asks for a clone of a foreign or unknown template is refused, and nothing is created 1ms
+ ✓ |unit| test/helpers/db/__tests__/run.test.ts > T-TI-2: a refused request sends no statement > the run is the owner role on the maintenance database, and a superuser session stops it 1ms
+ ✓ |unit| test/helpers/db/__tests__/run.test.ts > T-TI-2: a refused request sends no statement > a malformed row label stops the run before the probe and before any connection 0ms
+ ✓ |unit| test/helpers/db/__tests__/run.test.ts > T-TI-2: a refused request sends no statement > an unreachable server stops the run before a credential file is opened or a client is built 0ms
+ ✓ |unit| test/helpers/db/__tests__/run.test.ts > TI-2, TI-12: the run prefix and the liveness lock > takes the label from DEMS_TEST_STEP, a stamp from the clock, and the liveness lock of the stamp 1ms
+ ✓ |unit| test/helpers/db/__tests__/run.test.ts > TI-2, TI-12: the run prefix and the liveness lock > two runs of the same second and label get different prefixes 3ms
+ ✓ |unit| test/helpers/db/__tests__/run.test.ts > TI-2, TI-12: the run prefix and the liveness lock > a stamp whose liveness lock another session holds is not taken 2ms
+ ✓ |unit| test/helpers/db/__tests__/run.test.ts > TI-4 to TI-7: templates and clones > builds the three templates in order, each locked after its hook, each owned by dems_owner 1ms
+ ✓ |unit| test/helpers/db/__tests__/run.test.ts > TI-4 to TI-7: templates and clones > every CREATE DATABASE runs between taking and releasing the clone lock (442002, 0) 1ms
+ ✓ |unit| test/helpers/db/__tests__/run.test.ts > TI-4 to TI-7: templates and clones > clones get <prefix>f<nn>_<slug>, the lowest free counter, and name the own run only 1ms
+ ✓ |unit| test/helpers/db/__tests__/run.test.ts > TI-4 to TI-7: templates and clones > a hook that fails leaves no half-built template behind 1ms
+ ✓ |unit| test/helpers/db/__tests__/run.test.ts > TI-4 to TI-7: templates and clones > a hook that leaves a session open fails the build, and the template is removed 35ms
+ ✓ |unit| test/helpers/db/__tests__/run.test.ts > TI-10, TI-11: cleanup > a clone with a leaked session of the runtime role is not dropped, and no DROP is sent 33ms
+ ✓ |unit| test/helpers/db/__tests__/run.test.ts > TI-10, TI-11: cleanup > leftover sessions of the owner role do not stop a forced drop 1ms
+ ✓ |unit| test/helpers/db/__tests__/run.test.ts > TI-10, TI-11: cleanup > closes what the test registered, in reverse order, before the drop 1ms
+ ✓ |unit| test/helpers/db/__tests__/run.test.ts > TI-10, TI-11: cleanup > the teardown drops every database of the run, clones first, templates unlocked first, and nothing else 1ms
+ ✓ |unit| test/helpers/db/__tests__/run.test.ts > TI-10, TI-11: cleanup > the teardown reports a database it could not drop 35ms
+ ✓ |unit| test/helpers/db/__tests__/run.test.ts > TI-10, TI-11: cleanup > a test file attached to a run may clone and drop, but not sweep or tear the run down 2ms
+ ✓ |unit| test/helpers/db/__tests__/run.test.ts > TI-12: the stale sweep > drops only databases of runs that are older than six hours and not alive 1ms
+ ✓ |unit| test/helpers/db/__tests__/run.test.ts > TI-12: the stale sweep > leaves a stale database with a session of another role, and reports it 35ms
+ ✓ |unit| test/helpers/db/__tests__/run.test.ts > TI-12: the stale sweep > never sweeps its own databases 1ms
+ ✓ |unit| src/db/mapping/__tests__/to-rows.test.ts > the slices > 33 slices: 13 stored, 15 in the snapshot row, 5 not mapped, and no slice twice 3ms
+ ✓ |unit| src/db/mapping/__tests__/to-rows.test.ts > the slices > the result of fromRows has exactly the 28 durable slices 2ms
+ ✓ |unit| src/db/mapping/__tests__/to-rows.test.ts > the slices > the slice meta reaches the rows: a state that differs only there maps to other rows 4ms
+ ✓ |unit| src/db/mapping/__tests__/to-rows.test.ts > the slices > the slice device reaches the rows: a state that differs only there maps to other rows 5ms
+ ✓ |unit| src/db/mapping/__tests__/to-rows.test.ts > the slices > the slice operators reaches the rows: a state that differs only there maps to other rows 3ms
+ ✓ |unit| src/db/mapping/__tests__/to-rows.test.ts > the slices > the slice session reaches the rows: a state that differs only there maps to other rows 6ms
+ ✓ |unit| src/db/mapping/__tests__/to-rows.test.ts > the slices > the slice lastSealedSessionId reaches the rows: a state that differs only there maps to other rows 3ms
+ ✓ |unit| src/db/mapping/__tests__/to-rows.test.ts > the slices > the slice lastSealedAcknowledged reaches the rows: a state that differs only there maps to other rows 4ms
+ ✓ |unit| src/db/mapping/__tests__/to-rows.test.ts > the slices > the slice sessionHistory reaches the rows: a state that differs only there maps to other rows 2ms
+ ✓ |unit| src/db/mapping/__tests__/to-rows.test.ts > the slices > the slice storagePolicy reaches the rows: a state that differs only there maps to other rows 2ms
+ ✓ |unit| src/db/mapping/__tests__/to-rows.test.ts > the slices > the slice evidence reaches the rows: a state that differs only there maps to other rows 2ms
+ ✓ |unit| src/db/mapping/__tests__/to-rows.test.ts > the slices > the slice events reaches the rows: a state that differs only there maps to other rows 2ms
+ ✓ |unit| src/db/mapping/__tests__/to-rows.test.ts > the slices > the slice alerts reaches the rows: a state that differs only there maps to other rows 2ms
+ ✓ |unit| src/db/mapping/__tests__/to-rows.test.ts > the slices > the slice audit reaches the rows: a state that differs only there maps to other rows 2ms
+ ✓ |unit| src/db/mapping/__tests__/to-rows.test.ts > the slices > the slice settings reaches the rows: a state that differs only there maps to other rows 2ms
+ ✓ |unit| src/db/mapping/__tests__/to-rows.test.ts > the slices > the slice tabletLink reaches the rows: a state that differs only there maps to other rows 2ms
+ ✓ |unit| src/db/mapping/__tests__/to-rows.test.ts > the slices > the slice activeCameraId reaches the rows: a state that differs only there maps to other rows 2ms
+ ✓ |unit| src/db/mapping/__tests__/to-rows.test.ts > the slices > the slice cameras reaches the rows: a state that differs only there maps to other rows 2ms
+ ✓ |unit| src/db/mapping/__tests__/to-rows.test.ts > the slices > the slice mics reaches the rows: a state that differs only there maps to other rows 2ms
+ ✓ |unit| src/db/mapping/__tests__/to-rows.test.ts > the slices > the slice storage reaches the rows: a state that differs only there maps to other rows 2ms
+ ✓ |unit| src/db/mapping/__tests__/to-rows.test.ts > the slices > the slice time reaches the rows: a state that differs only there maps to other rows 2ms
+ ✓ |unit| src/db/mapping/__tests__/to-rows.test.ts > the slices > the slice network reaches the rows: a state that differs only there maps to other rows 2ms
+ ✓ |unit| src/db/mapping/__tests__/to-rows.test.ts > the slices > the slice security reaches the rows: a state that differs only there maps to other rows 2ms
+ ✓ |unit| src/db/mapping/__tests__/to-rows.test.ts > the slices > the slice services reaches the rows: a state that differs only there maps to other rows 2ms
+ ✓ |unit| src/db/mapping/__tests__/to-rows.test.ts > the slices > the slice health reaches the rows: a state that differs only there maps to other rows 2ms
+ ✓ |unit| src/db/mapping/__tests__/to-rows.test.ts > the slices > the slice otherDevices reaches the rows: a state that differs only there maps to other rows 2ms
+ ✓ |unit| src/db/mapping/__tests__/to-rows.test.ts > the slices > the slice ports reaches the rows: a state that differs only there maps to other rows 2ms
+ ✓ |unit| src/db/mapping/__tests__/to-rows.test.ts > the slices > the slice faults reaches the rows: a state that differs only there maps to other rows 2ms
+ ✓ |unit| src/db/mapping/__tests__/to-rows.test.ts > the slices > the slice diagnostics reaches the rows: a state that differs only there maps to other rows 2ms
+ ✓ |unit| src/db/mapping/__tests__/to-rows.test.ts > the slices > the slice update reaches the rows: a state that differs only there maps to other rows 2ms
+ ✓ |unit| src/db/mapping/__tests__/to-rows.test.ts > the slices > the slice clock is not mapped: it changes no row 2ms
+ ✓ |unit| src/db/mapping/__tests__/to-rows.test.ts > the slices > the slice auth is not mapped: it changes no row 2ms
+ ✓ |unit| src/db/mapping/__tests__/to-rows.test.ts > the slices > the slice authLockout is not mapped: it changes no row 2ms
+ ✓ |unit| src/db/mapping/__tests__/to-rows.test.ts > the slices > the slice audio is not mapped: it changes no row 2ms
+ ✓ |unit| src/db/mapping/__tests__/to-rows.test.ts > the slices > of the pairing slice only the certificate fingerprint is stored, in core_device 2ms
+ ✓ |unit| src/db/mapping/__tests__/to-rows.test.ts > the rows of the idle dataset at the fixed instant (contract §9.4) > has the row counts of the contract for the 17 mapped tables 0ms
+ ✓ |unit| src/db/mapping/__tests__/to-rows.test.ts > the rows of the idle dataset at the fixed instant (contract §9.4) > the chain head it implies is the last audit row: sequence 82 0ms
+ ✓ |unit| src/db/mapping/__tests__/to-rows.test.ts > the rows of the idle dataset at the fixed instant (contract §9.4) > the five counters: event 60, session 24, caseNumber 8, evidence 14, item 1; no export row 0ms
+ ✓ |unit| src/db/mapping/__tests__/to-rows.test.ts > the rows of the idle dataset at the fixed instant (contract §9.4) > the bookkeeping columns come from the context, never from a clock 2ms
+ ✓ |unit| src/db/mapping/__tests__/to-rows.test.ts > the rows of the idle dataset at the fixed instant (contract §9.4) > tracks are numbered 1 to 4 and custody entries 1 to n, per item 0ms
+ ✓ |unit| src/db/mapping/__tests__/to-rows.test.ts > the rows of the idle dataset at the fixed instant (contract §9.4) > the tampered item is evidence 0005 on AUDIO-02, and all 13 items are DEMO_PACKAGE 0ms
+ ✓ |unit| src/db/mapping/__tests__/to-rows.test.ts > the rows of the idle dataset at the fixed instant (contract §9.4) > every event row carries the category of the shared eventCategory, and each is a value of the CHECK 4ms
+ ✓ |unit| src/db/mapping/__tests__/to-rows.test.ts > an absent optional member (MR-2) > of an evidence item is stored as NULL or the empty list, and read back in the empty form of the shared code 0ms
+ ✓ |unit| src/db/mapping/__tests__/to-rows.test.ts > an absent optional member (MR-2) > of the active session (the two time sources) stays absent 2ms
+ ✓ |unit| src/db/mapping/__tests__/to-rows.test.ts > an absent optional member (MR-2) > of an alert: an absent target reads back as null, an absent params stays absent 1ms
+ ✓ |unit| src/db/mapping/__tests__/to-rows.test.ts > an absent optional member (MR-2) > the export counter has no row until the first export, and comes back absent 1ms
+ ✓ |unit| src/db/mapping/__tests__/to-rows.test.ts > what the mapping refuses > MR-9: a number that is not a safe integer, before it reaches an integer column 0ms
+ ✓ |unit| src/db/mapping/__tests__/to-rows.test.ts > what the mapping refuses > a number that is not finite inside a JSON value (JSON would write null) 0ms
+ ✓ |unit| src/db/mapping/__tests__/to-rows.test.ts > what the mapping refuses > a text PostgreSQL cannot store exactly: U+0000 or a lone surrogate. Nothing is sanitised 0ms
+ ✓ |unit| src/db/mapping/__tests__/to-rows.test.ts > what the mapping refuses > a whole-state write of a ring that has already dropped rows 0ms
+ ✓ |unit| src/db/mapping/__tests__/to-rows.test.ts > what the mapping refuses > rows that do not form a state: two core_state rows, a head that disagrees with the newest row 1ms
+ ✓ |unit| src/db/mapping/__tests__/to-rows.test.ts > export records are derived from audit rows (SD-7) > the dataset has one: EXP-000031 of evidence 0004, by the supervisor 0ms
+ ✓ |unit| src/db/mapping/__tests__/to-rows.test.ts > export records are derived from audit rows (SD-7) > an audit-log export and a log-bundle export give the scopes AUDIT and LOGS, with no evidence item 0ms
+ ✓ |unit| src/db/mapping/__tests__/to-rows.test.ts > export records are derived from audit rows (SD-7) > any other audit row gives none; an export the table cannot hold is refused, not dropped 0ms
+ ✓ |unit| src/db/mapping/__tests__/to-rows.test.ts > roles, permissions and grants come from the shared vocabulary (SD-5, AC-B-17) > 3 roles, 12 permissions and 18 grants (4, 10, 4), in declaration order 0ms
+ ✓ |unit| src/db/mapping/__tests__/to-rows.test.ts > roles, permissions and grants come from the shared vocabulary (SD-5, AC-B-17) > the grants are exactly ROLE_PERMISSIONS, role by role 0ms
+ ✓ |unit| src/db/mapping/__tests__/to-rows.test.ts > the health snapshot row > is a projection of six slices; fault_kind is set exactly when the cause is a fault 3ms
+ ✓ |unit| src/db/mapping/__tests__/to-rows.test.ts > the digest check of stored audit rows (boot check B-8, ST-2) > accepts the dataset chain, over all rows and over the newest rows only 1ms
+ ✓ |unit| src/db/mapping/__tests__/to-rows.test.ts > the digest check of stored audit rows (boot check B-8, ST-2) > names the first row whose digest is wrong, and a head that does not match 1ms
+ ✓ |unit| src/db/mapping/__tests__/to-rows.test.ts > diffSlices sees nothing between a state and itself > returns no change when no slice reference changed, and none for an equal copy of a singleton 1ms
+ ✓ |unit| src/db/seed/__tests__/cli.test.ts > db:seed: a wrong call exits 2 before anything is read > no argument: usage 1ms
+ ✓ |unit| src/db/seed/__tests__/cli.test.ts > db:seed: a wrong call exits 2 before anything is read > --database without a name: usage 0ms
+ ✓ |unit| src/db/seed/__tests__/cli.test.ts > db:seed: a wrong call exits 2 before anything is read > an unknown option: usage 0ms
+ ✓ |unit| src/db/seed/__tests__/cli.test.ts > db:seed: a wrong call exits 2 before anything is read > the name given twice: usage 0ms
+ ✓ |unit| src/db/seed/__tests__/cli.test.ts > db:seed: a wrong call exits 2 before anything is read > a positional argument: usage 0ms
+ ✓ |unit| src/db/seed/__tests__/cli.test.ts > db:seed: a wrong call exits 2 before anything is read > the database name postgres is refused before any connection, and is not echoed 0ms
+ ✓ |unit| src/db/seed/__tests__/cli.test.ts > db:seed: a wrong call exits 2 before anything is read > the database name template1 is refused before any connection, and is not echoed 0ms
+ ✓ |unit| src/db/seed/__tests__/cli.test.ts > db:seed: a wrong call exits 2 before anything is read > the database name dems_demo_next is refused before any connection, and is not echoed 0ms
+ ✓ |unit| src/db/seed/__tests__/cli.test.ts > db:seed: a wrong call exits 2 before anything is read > the database name dems_test_local_abc12345_f01_x is refused before any connection, and is not echoed 0ms
+ ✓ |unit| src/db/seed/__tests__/cli.test.ts > db:seed: a wrong call exits 2 before anything is read > the database name DEMS_DEMO is refused before any connection, and is not echoed 0ms
+ ✓ |unit| src/db/seed/__tests__/cli.test.ts > db:seed: a wrong call exits 2 before anything is read > the database name dems_demo; -- is refused before any connection, and is not echoed 0ms
+ ✓ |unit| src/db/seed/__tests__/cli.test.ts > db:seed: a wrong call exits 2 before anything is read > an accepted name with no owner connection file exits 1 and names the provisioning command 1ms
+ ✓ |unit| src/db/seed/__tests__/cli.test.ts > the lines of a finished seed > name the database, the instant, the totals, every table and the audit head 1ms
+ ✓ |unit| src/db/seed/__tests__/cli.test.ts > the dataset of a seed (SD-2) > is createIdleState for idle and buildScenarioState on that baseline for the three others 44ms
+ ✓ |unit| src/db/seed/__tests__/cli.test.ts > the dataset of a seed (SD-2) > the defaults: the shared seed, scenario idle, epoch 0; an epoch is carried into meta 2ms
+ ✓ |unit| src/db/seed/__tests__/cli.test.ts > the dataset of a seed (SD-2) > refuses a now that is not a whole number 0ms
+ ✓ |unit| src/db/seed/__tests__/cli.test.ts > the dataset of a seed (SD-2) > refuses a now of zero 0ms
+ ✓ |unit| src/db/seed/__tests__/cli.test.ts > the dataset of a seed (SD-2) > refuses a now that is not a number 0ms
+ ✓ |unit| src/db/seed/__tests__/cli.test.ts > the dataset of a seed (SD-2) > refuses an unknown scenario 0ms
+ ✓ |unit| src/db/seed/__tests__/cli.test.ts > the dataset of a seed (SD-2) > refuses a negative epoch 0ms
+ ✓ |unit| src/db/seed/__tests__/cli.test.ts > the dataset of a seed (SD-2) > refuses a seed that is not an integer 0ms
+ ✓ |unit| src/db/seed/__tests__/cli.test.ts > prepareSeed: everything a seed writes, before a transaction is open > hands the hasher the demo password once per operator and puts only the hash record into a row 4ms
+ ✓ |unit| src/db/seed/__tests__/cli.test.ts > prepareSeed: everything a seed writes, before a transaction is open > the real hasher gives three records with three different salts 61ms
+ ✓ |unit| src/db/seed/__tests__/cli.test.ts > prepareSeed: everything a seed writes, before a transaction is open > a failing hasher gives an error with a code and nothing of the input 3ms
+ ✓ |unit| src/db/seed/__tests__/cli.test.ts > prepareSeed: everything a seed writes, before a transaction is open > a dataset option the builders cannot use is a SeedError, not a crash 0ms
+ ✓ |unit| src/db/reset/__tests__/guard.test.ts > T-RS-4: the role check of R-0 > the bootstrap superuser: RESET_ROLE_PRIVILEGED before R-1, and no statement but the check was sent 3ms
+ ✓ |unit| src/db/reset/__tests__/guard.test.ts > T-RS-4: the role check of R-0 > the owner role, were it ever made a superuser: RESET_ROLE_PRIVILEGED before R-1, and no statement but the check was sent 0ms
+ ✓ |unit| src/db/reset/__tests__/guard.test.ts > T-RS-4: the role check of R-0 > the runtime role: RESET_ROLE_PRIVILEGED before R-1, and no statement but the check was sent 0ms
+ ✓ |unit| src/db/reset/__tests__/guard.test.ts > T-RS-4: the role check of R-0 > any other role: RESET_ROLE_PRIVILEGED before R-1, and no statement but the check was sent 0ms
+ ✓ |unit| src/db/reset/__tests__/guard.test.ts > T-RS-4: the role check of R-0 > no row at all: RESET_ROLE_PRIVILEGED before R-1, and no statement but the check was sent 0ms
+ ✓ |unit| src/db/reset/__tests__/guard.test.ts > T-RS-4: the role check of R-0 > two rows: RESET_ROLE_PRIVILEGED before R-1, and no statement but the check was sent 0ms
+ ✓ |unit| src/db/reset/__tests__/guard.test.ts > T-RS-4: the role check of R-0 > a superuser flag that is not a boolean: RESET_ROLE_PRIVILEGED before R-1, and no statement but the check was sent 0ms
+ ✓ |unit| src/db/reset/__tests__/guard.test.ts > T-RS-4: the role check of R-0 > the owner role, not a superuser, passes the check and goes on to the lock 0ms
+ ✓ |unit| src/db/reset/__tests__/guard.test.ts > R-0: the connection > nothing answers: RESET_DATABASE_UNREACHABLE, and the pool is closed 0ms
+ ✓ |unit| src/db/reset/__tests__/guard.test.ts > R-0: the connection > the owner connection file is read only at R-0, by the routine itself: a missing file stops it there 0ms
+ ✓ |unit| src/db/reset/__tests__/guard.test.ts > R-0: the connection > an owner file that group or others may read is refused, and nothing of it is read or shown 1ms
+ ✓ |unit| src/db/reset/__tests__/guard.test.ts > R-0: the connection > an owner file that names another role is refused before any connection 1ms
+ ✓ |unit| src/db/reset/__tests__/guard.test.ts > before R-0: a refused name or option opens nothing > postgres {} 0ms
+ ✓ |unit| src/db/reset/__tests__/guard.test.ts > before R-0: a refused name or option opens nothing > template1 {} 0ms
+ ✓ |unit| src/db/reset/__tests__/guard.test.ts > before R-0: a refused name or option opens nothing > dems_lane_3_next {} 0ms
+ ✓ |unit| src/db/reset/__tests__/guard.test.ts > before R-0: a refused name or option opens nothing > dems_lane_9 {} 0ms
+ ✓ |unit| src/db/reset/__tests__/guard.test.ts > before R-0: a refused name or option opens nothing > dems_lane_3 {"scenario":"night"} 0ms
+ ✓ |unit| src/db/reset/__tests__/guard.test.ts > before R-0: a refused name or option opens nothing > dems_lane_3 {"actorId":"someone"} 0ms
+ ✓ |unit| src/db/reset/__tests__/guard.test.ts > before R-0: a refused name or option opens nothing > dems_lane_3 {"reason":"CLEANUP"} 0ms
+ ✓ |unit| src/db/reset/__tests__/guard.test.ts > R-1: a database in use > sessions on the target: RESET_TARGET_IN_USE after the quiesce hook, with the roles and counts, and no statement that ends a session 32ms
+ ✓ |unit| src/db/reset/__tests__/guard.test.ts > R-2: only databases of the owner role are touched > the target belongs to the bootstrap superuser: RESET_TARGET_NOT_OURS, and nothing was created, renamed or dropped 1ms
+ ✓ |unit| src/db/reset/__tests__/guard.test.ts > R-2: only databases of the owner role are touched > a staging leftover belongs to another role: RESET_TARGET_NOT_OURS, and nothing was created, renamed or dropped 0ms
+ ✓ |unit| src/db/reset/__tests__/guard.test.ts > R-2: only databases of the owner role are touched > a previous leftover belongs to another role: RESET_TARGET_NOT_OURS, and nothing was created, renamed or dropped 0ms
+ ✓ |unit| src/db/reset/__tests__/guard.test.ts > R-2: only databases of the owner role are touched > the target is a template: RESET_TARGET_NOT_OURS, and nothing was created, renamed or dropped 0ms
+ ✓ |unit| src/db/reset/__tests__/guard.test.ts > R-2: only databases of the owner role are touched > a leftover that cannot be dropped stops the routine: RESET_LEFTOVER_FAILED, the target is not read 0ms
+ ✓ |unit| src/db/reset/__tests__/guard.test.ts > R-2: only databases of the owner role are touched > the target is missing and its previous database exists: one rename back, then RESET_RECOVERED_PREVIOUS 0ms
+ ✓ |unit| src/db/reset/__tests__/guard.test.ts > no message, log entry or error of a refusal holds anything of the connection > a server answer with a detail line is reduced to its SQLSTATE, constraint and table 3ms
+ ✓ |unit| test/helpers/db/__tests__/credentials.test.ts > CR-1, CR-2: five discrete fields, read by the helper itself > reads the owner file and the runtime file 3ms
+ ✓ |unit| test/helpers/db/__tests__/credentials.test.ts > CR-1, CR-2: five discrete fields, read by the helper itself > names the pinned keys of the plan 0ms
+ ✓ |unit| test/helpers/db/__tests__/credentials.test.ts > CR-1, CR-2: five discrete fields, read by the helper itself > a password cannot be printed by accident 1ms
+ ✓ |unit| test/helpers/db/__tests__/credentials.test.ts > CR-1, CR-2: five discrete fields, read by the helper itself > puts nothing into the process environment 1ms
+ ✓ |unit| test/helpers/db/__tests__/credentials.test.ts > CR-3, T-CR-4: a file that group or others may access stops the helper > mode 420: refused, the file is named, nothing is read 3ms
+ ✓ |unit| test/helpers/db/__tests__/credentials.test.ts > CR-3, T-CR-4: a file that group or others may access stops the helper > mode 416: refused, the file is named, nothing is read 1ms
+ ✓ |unit| test/helpers/db/__tests__/credentials.test.ts > CR-3, T-CR-4: a file that group or others may access stops the helper > mode 388: refused, the file is named, nothing is read 1ms
+ ✓ |unit| test/helpers/db/__tests__/credentials.test.ts > CR-3, T-CR-4: a file that group or others may access stops the helper > mode 432: refused, the file is named, nothing is read 1ms
+ ✓ |unit| test/helpers/db/__tests__/credentials.test.ts > CR-3, T-CR-4: a file that group or others may access stops the helper > mode 438: refused, the file is named, nothing is read 1ms
+ ✓ |unit| test/helpers/db/__tests__/credentials.test.ts > CR-3, T-CR-4: a file that group or others may access stops the helper > mode 392: refused, the file is named, nothing is read 1ms
+ ✓ |unit| test/helpers/db/__tests__/credentials.test.ts > CR-3, T-CR-4: a file that group or others may access stops the helper > mode 385: refused, the file is named, nothing is read 1ms
+ ✓ |unit| test/helpers/db/__tests__/credentials.test.ts > CR-3, T-CR-4: a file that group or others may access stops the helper > the runtime file is checked in the same way 1ms
+ ✓ |unit| test/helpers/db/__tests__/credentials.test.ts > CR-3, T-CR-4: a file that group or others may access stops the helper > mode 600 and mode 400 pass 1ms
+ ✓ |unit| test/helpers/db/__tests__/credentials.test.ts > a missing or malformed file > a missing file: the message names it and the command that creates it 1ms
+ ✓ |unit| test/helpers/db/__tests__/credentials.test.ts > a missing or malformed file > an unexpected key: the message names the key or the line, never a value 1ms
+ ✓ |unit| test/helpers/db/__tests__/credentials.test.ts > a missing or malformed file > a key of the other file: the message names the key or the line, never a value 1ms
+ ✓ |unit| test/helpers/db/__tests__/credentials.test.ts > a missing or malformed file > a key twice: the message names the key or the line, never a value 1ms
+ ✓ |unit| test/helpers/db/__tests__/credentials.test.ts > a missing or malformed file > a line that is not KEY=value: the message names the key or the line, never a value 1ms
+ ✓ |unit| test/helpers/db/__tests__/credentials.test.ts > a missing or malformed file > an export statement: the message names the key or the line, never a value 1ms
+ ✓ |unit| test/helpers/db/__tests__/credentials.test.ts > a missing or malformed file > an empty password: the message names the key or the line, never a value 1ms
+ ✓ |unit| test/helpers/db/__tests__/credentials.test.ts > a missing or malformed file > no role: the message names the key or the line, never a value 1ms
+ ✓ |unit| test/helpers/db/__tests__/credentials.test.ts > a missing or malformed file > an empty file: the message names the key or the line, never a value 1ms
+ ✓ |unit| test/helpers/db/__tests__/credentials.test.ts > D26, F27: the endpoint of a connection file > refuses PostgreSQL's default port and names the keys 1ms
+ ✓ |unit| test/helpers/db/__tests__/credentials.test.ts > D26, F27: the endpoint of a connection file > refuses the host localhost 1ms
+ ✓ |unit| test/helpers/db/__tests__/credentials.test.ts > D26, F27: the endpoint of a connection file > refuses the host ::1 1ms
+ ✓ |unit| test/helpers/db/__tests__/credentials.test.ts > D26, F27: the endpoint of a connection file > refuses the host 0.0.0.0 1ms
+ ✓ |unit| test/helpers/db/__tests__/credentials.test.ts > D26, F27: the endpoint of a connection file > refuses the host 10.1.2.3 1ms
+ ✓ |unit| test/helpers/db/__tests__/credentials.test.ts > D26, F27: the endpoint of a connection file > refuses any port that is not the project port 1ms
+ ✓ |unit| test/helpers/db/__tests__/credentials.test.ts > TI-9: the roles of the two files > refuses the bootstrap superuser in either file 1ms
+ ✓ |unit| test/helpers/db/__tests__/credentials.test.ts > TI-9: the roles of the two files > refuses the runtime role in the owner file, the owner role in the runtime file, and any other role 2ms
+ ✓ |unit| src/db/seed/__tests__/seed-order.test.ts > the write order of the seed is the contract's (§9.5) > scenario idle: 19 tables, in order; active_session and alerts are not written 10ms
+ ✓ |unit| src/db/seed/__tests__/seed-order.test.ts > the write order of the seed is the contract's (§9.5) > the chain lock is the first statement (AP-2), before the "not seeded yet" check and before any write (AP-7) 1ms
+ ✓ |unit| src/db/seed/__tests__/seed-order.test.ts > the write order of the seed is the contract's (§9.5) > the audit rows: one INSERT per row, in ascending sequence 1 to 82 (AP-4); nothing is written to the lineage or the head 0ms
+ ✓ |unit| src/db/seed/__tests__/seed-order.test.ts > the write order of the seed is the contract's (§9.5) > scenario recording: ["active_session"] come after exports and before the audit log; 218 audit rows 8ms
+ ✓ |unit| src/db/seed/__tests__/seed-order.test.ts > the write order of the seed is the contract's (§9.5) > scenario finalizing: ["active_session"] come after exports and before the audit log; 231 audit rows 4ms
+ ✓ |unit| src/db/seed/__tests__/seed-order.test.ts > the write order of the seed is the contract's (§9.5) > scenario fault-demo: ["active_session","alerts"] come after exports and before the audit log; 229 audit rows 7ms
+ ✓ |unit| src/db/seed/__tests__/seed-order.test.ts > the write order of the seed is the contract's (§9.5) > a database whose chain is not at its genesis, or whose core_state has a row, is refused before the first write 1ms
+ ✓ |unit| src/db/seed/__tests__/seed-order.test.ts > the write order of the seed is the contract's (§9.5) > a head that does not end at the dataset's head after the last row fails the seed (the caller rolls back) 0ms
+ ✓ |unit| src/db/seed/__tests__/seed-order.test.ts > the write order of the seed is the contract's (§9.5) > a refused statement becomes a SeedError that names the table and the SQLSTATE, and nothing of the row 1ms
+ ✓ |unit| test/static/credentials.test.ts > the scan itself > reads the server sources, the tests and the manifest, and no dependency 2ms
+ ✓ |unit| test/static/credentials.test.ts > the scan itself > finds each forbidden text when it is present (positive control) 1ms
+ ✓ |unit| test/static/credentials.test.ts > T-CR-2 (a): the superuser password file > is named by no file under apps/ and packages/ 7ms
+ ✓ |unit| test/static/credentials.test.ts > T-CR-2 (b), AC-B-86: no secret outside the connection file > apps/core-server holds no a password variable of the driver 1ms
+ ✓ |unit| test/static/credentials.test.ts > T-CR-2 (b), AC-B-86: no secret outside the connection file > apps/core-server holds no a connection-URL variable 1ms
+ ✓ |unit| test/static/credentials.test.ts > T-CR-2 (b), AC-B-86: no secret outside the connection file > apps/core-server holds no the Node option that loads an env file 1ms
+ ✓ |unit| test/static/credentials.test.ts > T-CR-2 (b), AC-B-86: no secret outside the connection file > apps/core-server holds no a connection URL with a user part 2ms
+ ✓ |unit| test/static/credentials.test.ts > T-CR-2 (b), AC-B-86: no secret outside the connection file > apps/core-server holds no a shell that sources a file of the data directory 9ms
+ ✓ |unit| test/static/credentials.test.ts > T-CR-2 (b), AC-B-86: no secret outside the connection file > no npm script of the workspace carries a secret or reads the data directory 0ms
+ ✓ |unit| test/static/credentials.test.ts > T-CR-2 (b), AC-B-86: no secret outside the connection file > the server runtime starts no child process, so no secret can become a process argument 1ms
+ ✓ |unit| test/static/credentials.test.ts > T-CR-2 (c): the owner-role file > is named under src/ only by the reset routine and the command folder 1ms
+ ✓ |unit| test/static/credentials.test.ts > T-CR-2 (c): the owner-role file > the scaffold of plan row W08 names neither of the two other credential files 1ms
+ ✓ |unit| test/static/credentials.test.ts > T-CR-2 (c): the owner-role file > the loader opens exactly one file of the data directory 1ms
+ ✓ |unit| test/helpers/db/__tests__/names.test.ts > TI-2: the run prefix > labels a run "local" without DEMS_TEST_STEP and "step_<row>" with it 1ms
+ ✓ |unit| test/helpers/db/__tests__/names.test.ts > TI-2: the run prefix > refuses the row label "3 3" 0ms
+ ✓ |unit| test/helpers/db/__tests__/names.test.ts > TI-2: the run prefix > refuses the row label "33;" 0ms
+ ✓ |unit| test/helpers/db/__tests__/names.test.ts > TI-2: the run prefix > refuses the row label "step_33" 0ms
+ ✓ |unit| test/helpers/db/__tests__/names.test.ts > TI-2: the run prefix > refuses the row label "../x" 0ms
+ ✓ |unit| test/helpers/db/__tests__/names.test.ts > TI-2: the run prefix > refuses the row label "aaaaaaaaaaaaa" 0ms
+ ✓ |unit| test/helpers/db/__tests__/names.test.ts > TI-2: the run prefix > refuses the row label "é" 0ms
+ ✓ |unit| test/helpers/db/__tests__/names.test.ts > TI-2: the run prefix > builds a stamp of eight base-36 characters: six for the second, two random 1ms
+ ✓ |unit| test/helpers/db/__tests__/names.test.ts > TI-2: the run prefix > gives the prefix dems_test_<label>_<stamp>_ 0ms
+ ✓ |unit| test/helpers/db/__tests__/names.test.ts > TI-2: the run prefix > names the three templates and a private one 0ms
+ ✓ |unit| test/helpers/db/__tests__/names.test.ts > TI-2: the run prefix > reduces a test file name to [a-z0-9_] 0ms
+ ✓ |unit| test/helpers/db/__tests__/names.test.ts > TI-2: the run prefix > names a per-file database <prefix>f<nn>_<slug> and cuts it to 63 bytes 0ms
+ ✓ |unit| test/helpers/db/__tests__/names.test.ts > TI-2: the run prefix > hands out the lowest counter no database of the run uses 0ms
+ ✓ |unit| test/helpers/db/__tests__/names.test.ts > TI-2: the run prefix > parses a name of the scheme and nothing else 0ms
+ ✓ |unit| test/helpers/db/__tests__/names.test.ts > TI-2: the run prefix > derives a liveness key from 1 to 2^30 - 1, never the clone lock key 0 14ms
+ ✓ |unit| test/helpers/db/__tests__/names.test.ts > TI-3: the guard passes only a database of the own run > passes the templates and the per-file databases of the run 0ms
+ ✓ |unit| test/helpers/db/__tests__/names.test.ts > TI-3: the guard passes only a database of the own run > refuses "dems_demo" (GUARD_PROTECTED_DATABASE) 0ms
+ ✓ |unit| test/helpers/db/__tests__/names.test.ts > TI-3: the guard passes only a database of the own run > refuses "dems_demo_next" (GUARD_PROTECTED_DATABASE) 0ms
+ ✓ |unit| test/helpers/db/__tests__/names.test.ts > TI-3: the guard passes only a database of the own run > refuses "dems_demo_prev" (GUARD_PROTECTED_DATABASE) 0ms
+ ✓ |unit| test/helpers/db/__tests__/names.test.ts > TI-3: the guard passes only a database of the own run > refuses "dems_lane_1" (GUARD_PROTECTED_DATABASE) 0ms
+ ✓ |unit| test/helpers/db/__tests__/names.test.ts > TI-3: the guard passes only a database of the own run > refuses "dems_lane_2" (GUARD_PROTECTED_DATABASE) 0ms
+ ✓ |unit| test/helpers/db/__tests__/names.test.ts > TI-3: the guard passes only a database of the own run > refuses "dems_lane_3_next" (GUARD_PROTECTED_DATABASE) 0ms
+ ✓ |unit| test/helpers/db/__tests__/names.test.ts > TI-3: the guard passes only a database of the own run > refuses "postgres" (GUARD_PROTECTED_DATABASE) 0ms
+ ✓ |unit| test/helpers/db/__tests__/names.test.ts > TI-3: the guard passes only a database of the own run > refuses "template0" (GUARD_PROTECTED_DATABASE) 0ms
+ ✓ |unit| test/helpers/db/__tests__/names.test.ts > TI-3: the guard passes only a database of the own run > refuses "template1" (GUARD_PROTECTED_DATABASE) 0ms
+ ✓ |unit| test/helpers/db/__tests__/names.test.ts > TI-3: the guard passes only a database of the own run > refuses "dems_proof_drizzle_20261004003235_a" (GUARD_PROTECTED_DATABASE) 0ms
+ ✓ |unit| test/helpers/db/__tests__/names.test.ts > TI-3: the guard passes only a database of the own run > refuses "dems_proof_anything" (GUARD_PROTECTED_DATABASE) 0ms
+ ✓ |unit| test/helpers/db/__tests__/names.test.ts > TI-3: the guard passes only a database of the own run > refuses "dems_trial_a" (GUARD_PROTECTED_DATABASE) 0ms
+ ✓ |unit| test/helpers/db/__tests__/names.test.ts > TI-3: the guard passes only a database of the own run > refuses "some_other_database" (GUARD_NOT_A_TEST_DATABASE) 0ms
+ ✓ |unit| test/helpers/db/__tests__/names.test.ts > TI-3: the guard passes only a database of the own run > refuses "DEMS_TEST_LOCAL_ABCDEFGH_F01_X" (GUARD_NOT_A_TEST_DATABASE) 0ms
+ ✓ |unit| test/helpers/db/__tests__/names.test.ts > TI-3: the guard passes only a database of the own run > refuses "dems_test_x\"; DROP DATABASE dems_demo; --" (GUARD_NOT_A_TEST_DATABASE) 0ms
+ ✓ |unit| test/helpers/db/__tests__/names.test.ts > TI-3: the guard passes only a database of the own run > refuses "dems_test_local_abcdefgh_f01 x" (GUARD_NOT_A_TEST_DATABASE) 0ms
+ ✓ |unit| test/helpers/db/__tests__/names.test.ts > TI-3: the guard passes only a database of the own run > refuses "dems_test_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" (GUARD_NOT_A_TEST_DATABASE) 0ms
+ ✓ |unit| test/helpers/db/__tests__/names.test.ts > TI-3: the guard passes only a database of the own run > refuses "" (GUARD_NOT_A_TEST_DATABASE) 0ms
+ ✓ |unit| test/helpers/db/__tests__/names.test.ts > TI-3: the guard passes only a database of the own run > refuses "dems_test_" (GUARD_NOT_A_TEST_DATABASE) 0ms
+ ✓ |unit| test/helpers/db/__tests__/names.test.ts > TI-3: the guard passes only a database of the own run > refuses a value that is not a string 0ms
+ ✓ |unit| test/helpers/db/__tests__/names.test.ts > TI-3: the guard passes only a database of the own run > refuses a database of another run, younger or older, and says whose it is 0ms
+ ✓ |unit| test/helpers/db/__tests__/names.test.ts > TI-3: the guard passes only a database of the own run > knows why a protected name is protected 0ms
+ ✓ |unit| test/helpers/db/__tests__/names.test.ts > TI-12: the stale sweep takes only old runs that are not alive > sorts the databases of a cluster 1ms
+ ✓ |unit| test/helpers/db/__tests__/names.test.ts > TI-12: the stale sweep takes only old runs that are not alive > passes a database of a stale run whose liveness lock the sweep holds 0ms
+ ✓ |unit| test/helpers/db/__tests__/names.test.ts > TI-12: the stale sweep takes only old runs that are not alive > refuses a younger database of another run, whatever claim is shown 0ms
+ ✓ |unit| test/helpers/db/__tests__/names.test.ts > TI-12: the stale sweep takes only old runs that are not alive > refuses a stale database without the liveness lock of its run 0ms
+ ✓ |unit| test/helpers/db/__tests__/names.test.ts > TI-12: the stale sweep takes only old runs that are not alive > refuses the own run, a protected name and a name outside the scheme 0ms
+ ✓ |unit| test/static/network.test.ts > the scan itself > finds each forbidden text when it is present (positive control) 2ms
+ ✓ |unit| test/static/network.test.ts > the scan itself > leaves comments out and keeps strings and line numbers 1ms
+ ✓ |unit| test/static/network.test.ts > SR-01: one listener, on loopback > only src/index.ts listens 8ms
+ ✓ |unit| test/static/network.test.ts > SR-01: one listener, on loopback > the entry point binds the constant host and the configured port, and the constant is 127.0.0.1 0ms
+ ✓ |unit| test/static/network.test.ts > SR-01: one listener, on loopback > no production source names the wildcard address 0ms
+ ✓ |unit| test/static/network.test.ts > SR-01: one listener, on loopback > the environment is read by the entry point only 0ms
+ ✓ |unit| test/static/network.test.ts > D26, F27: the database endpoint has no default > PostgreSQL's default port appears once: in src/config.ts, where it is refused 0ms
+ ✓ |unit| test/static/network.test.ts > D26, F27: the database endpoint has no default > no production source names a variable that the driver reads on its own 1ms
+ ✓ |unit| test/static/network.test.ts > SR-04, OR-5, OR-7: no CORS, no localhost origin > nothing under apps/core-server imports the CORS plugin, and the manifest does not list it 0ms
+ ✓ |unit| test/static/network.test.ts > SR-04, OR-5, OR-7: no CORS, no localhost origin > no production source sets a CORS header 1ms
+ ✓ |unit| test/static/network.test.ts > SR-04, OR-5, OR-7: no CORS, no localhost origin > no production source holds a localhost origin 0ms
+ ✓ |unit| test/static/network.test.ts > SR-03, P5, P21: nothing leaves the process, nothing comes from mock-core > the server runtime calls no global fetch and imports no outbound client 0ms
+ ✓ |unit| test/static/network.test.ts > SR-03, P5, P21: nothing leaves the process, nothing comes from mock-core > nothing under apps/core-server imports from mock-core 4ms
+ ✓ |unit| test/db/commands.test.ts > the argument > accepts --database <name> and --database=<name> 1ms
+ ✓ |unit| test/db/commands.test.ts > the argument > refuses [] as a wrong call (exit code 2) 0ms
+ ✓ |unit| test/db/commands.test.ts > the argument > refuses ["--database"] as a wrong call (exit code 2) 0ms
+ ✓ |unit| test/db/commands.test.ts > the argument > refuses ["--database",""] as a wrong call (exit code 2) 0ms
+ ✓ |unit| test/db/commands.test.ts > the argument > refuses ["dems_demo"] as a wrong call (exit code 2) 0ms
+ ✓ |unit| test/db/commands.test.ts > the argument > refuses ["--database","a","--database","b"] as a wrong call (exit code 2) 0ms
+ ✓ |unit| test/db/commands.test.ts > the argument > refuses ["--force"] as a wrong call (exit code 2) 0ms
+ ✓ |unit| test/db/commands.test.ts > the argument > refuses ["--database=dems_demo","--scenario","idle"] as a wrong call (exit code 2) 0ms
+ ✓ |unit| test/db/commands.test.ts > the argument > no command takes a secret as an argument: the usage names one option 0ms
+ ✓ |unit| test/db/commands.test.ts > the closed list of database names (contract §8.4) > accepts exactly dems_demo and the three lane databases 0ms
+ ✓ |unit| test/db/commands.test.ts > the closed list of database names (contract §8.4) > refuses "postgres", and does not echo it 0ms
+ ✓ |unit| test/db/commands.test.ts > the closed list of database names (contract §8.4) > refuses "template0", and does not echo it 0ms
+ ✓ |unit| test/db/commands.test.ts > the closed list of database names (contract §8.4) > refuses "template1", and does not echo it 0ms
+ ✓ |unit| test/db/commands.test.ts > the closed list of database names (contract §8.4) > refuses "dems_lane_4", and does not echo it 0ms
+ ✓ |unit| test/db/commands.test.ts > the closed list of database names (contract §8.4) > refuses "dems_lane_0", and does not echo it 0ms
+ ✓ |unit| test/db/commands.test.ts > the closed list of database names (contract §8.4) > refuses "DEMS_DEMO", and does not echo it 0ms
+ ✓ |unit| test/db/commands.test.ts > the closed list of database names (contract §8.4) > refuses "dems_demo ", and does not echo it 0ms
+ ✓ |unit| test/db/commands.test.ts > the closed list of database names (contract §8.4) > refuses "dems_demo;", and does not echo it 0ms
+ ✓ |unit| test/db/commands.test.ts > the closed list of database names (contract §8.4) > refuses "dems_demo_next", and does not echo it 0ms
+ ✓ |unit| test/db/commands.test.ts > the closed list of database names (contract §8.4) > refuses "dems_demo_prev", and does not echo it 0ms
+ ✓ |unit| test/db/commands.test.ts > the closed list of database names (contract §8.4) > refuses "dems_test_local_abc12345_f01_x", and does not echo it 0ms
+ ✓ |unit| test/db/commands.test.ts > the closed list of database names (contract §8.4) > refuses "dems_proof_x", and does not echo it 0ms
+ ✓ |unit| test/db/commands.test.ts > the closed list of database names (contract §8.4) > refuses "\"dems_demo\"", and does not echo it 0ms
+ ✓ |unit| test/db/commands.test.ts > the closed list of database names (contract §8.4) > refuses "dems_demo'; DROP TABLE x; --", and does not echo it 0ms
+ ✓ |unit| test/db/commands.test.ts > the closed list of database names (contract §8.4) > refuses "", and does not echo it 0ms
+ ✓ |unit| test/db/commands.test.ts > the closed list of database names (contract §8.4) > refuses "x", and does not echo it 0ms
+ ✓ |unit| test/db/commands.test.ts > the closed list of database names (contract §8.4) > refuses a value that is not a string: undefined 0ms
+ ✓ |unit| test/db/commands.test.ts > the closed list of database names (contract §8.4) > refuses a value that is not a string: null 0ms
+ ✓ |unit| test/db/commands.test.ts > the closed list of database names (contract §8.4) > refuses a value that is not a string: 42 0ms
+ ✓ |unit| test/db/commands.test.ts > the closed list of database names (contract §8.4) > refuses a value that is not a string: {} 0ms
+ ✓ |unit| test/db/commands.test.ts > the closed list of database names (contract §8.4) > refuses a value that is not a string: "dems_demo" 0ms
+ ✓ |unit| test/db/commands.test.ts > the closed list of database names (contract §8.4) > the test seam accepts a dems_test_ name of at most 63 bytes and nothing wider 0ms
+ ✓ |unit| test/db/commands.test.ts > the closed list of database names (contract §8.4) > the one statement built from a name: CREATE DATABASE with the owner, the empty template, UTF8 and locale C 0ms
+ ✓ |unit| test/db/commands.test.ts > the owner connection file (CR-1 to CR-3; D26) > reads five discrete fields; the password is wrapped and cannot be printed 1ms
+ ✓ |unit| test/db/commands.test.ts > the owner connection file (CR-1 to CR-3; D26) > refuses mode 420 before reading anything 0ms
+ ✓ |unit| test/db/commands.test.ts > the owner connection file (CR-1 to CR-3; D26) > refuses mode 416 before reading anything 0ms
+ ✓ |unit| test/db/commands.test.ts > the owner connection file (CR-1 to CR-3; D26) > refuses mode 388 before reading anything 0ms
+ ✓ |unit| test/db/commands.test.ts > the owner connection file (CR-1 to CR-3; D26) > refuses mode 432 before reading anything 0ms
+ ✓ |unit| test/db/commands.test.ts > the owner connection file (CR-1 to CR-3; D26) > refuses mode 438 before reading anything 0ms
+ ✓ |unit| test/db/commands.test.ts > the owner connection file (CR-1 to CR-3; D26) > refuses mode 480 before reading anything 0ms
+ ✓ |unit| test/db/commands.test.ts > the owner connection file (CR-1 to CR-3; D26) > refuses mode 385 before reading anything 0ms
+ ✓ |unit| test/db/commands.test.ts > the owner connection file (CR-1 to CR-3; D26) > a missing file names the provisioning command 0ms
+ ✓ |unit| test/db/commands.test.ts > the owner connection file (CR-1 to CR-3; D26) > refuses another role: the message names the file and the key, never a value 0ms
+ ✓ |unit| test/db/commands.test.ts > the owner connection file (CR-1 to CR-3; D26) > refuses the bootstrap superuser: the message names the file and the key, never a value 0ms
+ ✓ |unit| test/db/commands.test.ts > the owner connection file (CR-1 to CR-3; D26) > refuses a host that is not loopback IPv4: the message names the file and the key, never a value 0ms
+ ✓ |unit| test/db/commands.test.ts > the owner connection file (CR-1 to CR-3; D26) > refuses the wildcard address: the message names the file and the key, never a value 0ms
+ ✓ |unit| test/db/commands.test.ts > the owner connection file (CR-1 to CR-3; D26) > refuses PostgreSQL's default port (another server on this host): the message names the file and the key, never a value 0ms
+ ✓ |unit| test/db/commands.test.ts > the owner connection file (CR-1 to CR-3; D26) > refuses a port that is not a number: the message names the file and the key, never a value 0ms
+ ✓ |unit| test/db/commands.test.ts > the owner connection file (CR-1 to CR-3; D26) > refuses port 0: the message names the file and the key, never a value 0ms
+ ✓ |unit| test/db/commands.test.ts > the owner connection file (CR-1 to CR-3; D26) > refuses a missing key: the message names the file and the key, never a value 0ms
+ ✓ |unit| test/db/commands.test.ts > the owner connection file (CR-1 to CR-3; D26) > refuses an empty value: the message names the file and the key, never a value 0ms
+ ✓ |unit| test/db/commands.test.ts > the owner connection file (CR-1 to CR-3; D26) > refuses an unexpected key: the message names the file and the key, never a value 0ms
+ ✓ |unit| test/db/commands.test.ts > the owner connection file (CR-1 to CR-3; D26) > refuses a key twice: the message names the file and the key, never a value 0ms
+ ✓ |unit| test/db/commands.test.ts > the owner connection file (CR-1 to CR-3; D26) > refuses a line that is not KEY=value: the message names the file and the key, never a value 0ms
+ ✓ |unit| test/db/commands.test.ts > the owner connection file (CR-1 to CR-3; D26) > refuses the runtime role's keys: the message names the file and the key, never a value 0ms
+ ✓ |unit| test/db/commands.test.ts > the owner connection file (CR-1 to CR-3; D26) > host and port have no default: a file without them is refused, whatever the environment says 0ms
+ ✓ |unit| test/db/commands.test.ts > the owner connection file (CR-1 to CR-3; D26) > the pool gets five explicit fields, TLS off, and the password through a function 1ms
+ ✓ |unit| test/db/commands.test.ts > the order of a command: the name, then the file, then a connection > db:create refuses another name with exit code 2 before the owner file is opened 0ms
+ ✓ |unit| test/db/commands.test.ts > the order of a command: the name, then the file, then a connection > db:migrate refuses another name with exit code 2 before the owner file is opened 0ms
+ ✓ |unit| test/db/commands.test.ts > the order of a command: the name, then the file, then a connection > db:status refuses another name with exit code 2 before the owner file is opened 0ms
+ ✓ |unit| test/db/commands.test.ts > the order of a command: the name, then the file, then a connection > db:create refuses a dems_test_ name without the test seam, and prints the usage for a wrong call 0ms
+ ✓ |unit| test/db/commands.test.ts > the order of a command: the name, then the file, then a connection > db:migrate refuses a dems_test_ name without the test seam, and prints the usage for a wrong call 0ms
+ ✓ |unit| test/db/commands.test.ts > the order of a command: the name, then the file, then a connection > db:status refuses a dems_test_ name without the test seam, and prints the usage for a wrong call 0ms
+ ✓ |unit| test/db/commands.test.ts > the order of a command: the name, then the file, then a connection > with an accepted name and no owner file: exit code 1, the message names the file and pg:init, and no connection was tried 0ms
+ ✓ |unit| test/db/commands.test.ts > the order of a command: the name, then the file, then a connection > an unexpected failure is reported by its class and code only; a server error by its SQLSTATE and message 1ms
+ ✓ |unit| test/db/commands.test.ts > the ledger comparison (D38) > nothing applied: every file is pending, the ledger is in order 0ms
+ ✓ |unit| test/db/commands.test.ts > the ledger comparison (D38) > all applied with their hashes: nothing pending; the row IDs may have gaps 0ms
+ ✓ |unit| test/db/commands.test.ts > the ledger comparison (D38) > a newer file is pending 0ms
+ ✓ |unit| test/db/commands.test.ts > the ledger comparison (D38) > an applied file with another hash is "edited"; a file older than the newest applied one is "skipped"; an applied row without a file is unknown 0ms
+ ✓ |unit| test/db/commands.test.ts > db:status reads the tables of the typed schema > 30 table names, sorted, each a plain identifier 0ms
+ ✓ |unit| test/db/contract-inventory.test.ts > the inventory is the contract (sections 2.4 and 4) > parsing the contract today gives exactly the checked-in inventory 4ms
+ ✓ |unit| test/db/contract-inventory.test.ts > the inventory is the contract (sections 2.4 and 4) > holds the contract's own counts: 30 tables, 302 columns, 98 CHECKs, 25 foreign keys 1ms
+ ✓ |unit| test/db/contract-inventory.test.ts > the inventory is the contract (sections 2.4 and 4) > every name is lower-case snake_case, at most 63 bytes, with the suffix of its kind (N-1 to N-4, CL-06) 5ms
+ ✓ |unit| test/db/contract-inventory.test.ts > the typed schema declares what the contract lists > 30 tables with the same names 0ms
+ ✓ |unit| test/db/contract-inventory.test.ts > the typed schema declares what the contract lists > each table: the same columns in the same order, with type, nullability and default 0ms
+ ✓ |unit| test/db/contract-inventory.test.ts > the typed schema declares what the contract lists > each table: the same constraint and index names, by kind 2ms
+ ✓ |unit| test/db/contract-inventory.test.ts > the typed schema declares what the contract lists > time and byte counts are bigint read as a JavaScript number; no timestamp, no serial, no enum (TY-1, TY-3, CL-07) 2ms
+ ✓ |unit| test/db/contract-inventory.test.ts > the typed schema declares what the contract lists > one bytea type, used by exactly the seven hash and salt columns (TY-5, D38) 0ms
+ ✓ |unit| test/db/contract-inventory.test.ts > the typed schema declares what the contract lists > NL-6: the public column sets leave the hash columns out and nothing else 0ms
+ ✓ |unit| test/db/contract-inventory.test.ts > the hand-written migration files are the statements of the contract > 0000_prelude is the function of §8.3 0ms
+ ✓ |unit| test/db/contract-inventory.test.ts > the hand-written migration files are the statements of the contract > 0002_audit_guards is the six statement groups of §6.3 0ms
+ ✓ |unit| test/db/contract-inventory.test.ts > the hand-written migration files are the statements of the contract > 0003_privileges is the statements of §8.3: INSERT on 16 tables, audit_chain_history not among them 0ms
+ ✓ |unit| test/db/contract-inventory.test.ts > the hand-written migration files are the statements of the contract > the set is four files; the three hand-written ones never hold the marker inside a comment or a string (D38) 1ms
+ ✓ |unit| test/db/contract-inventory.test.ts > CL-12: the closed value sets equal the shared vocabulary > ROLE: contract list = shared constant 0ms
+ ✓ |unit| test/db/contract-inventory.test.ts > CL-12: the closed value sets equal the shared vocabulary > SEVERITY: contract list = shared constant 0ms
+ ✓ |unit| test/db/contract-inventory.test.ts > CL-12: the closed value sets equal the shared vocabulary > AUDIT_CATEGORY: contract list = shared constant 0ms
+ ✓ |unit| test/db/contract-inventory.test.ts > CL-12: the closed value sets equal the shared vocabulary > EVENT_CATEGORY: contract list = shared constant 0ms
+ ✓ |unit| test/db/contract-inventory.test.ts > CL-12: the closed value sets equal the shared vocabulary > SESSION_STATE: contract list = shared constant 0ms
+ ✓ |unit| test/db/contract-inventory.test.ts > CL-12: the closed value sets equal the shared vocabulary > SESSION_OUTCOME: contract list = shared constant 0ms
+ ✓ |unit| test/db/contract-inventory.test.ts > CL-12: the closed value sets equal the shared vocabulary > SUBJECT_TYPE: contract list = shared constant 0ms
+ ✓ |unit| test/db/contract-inventory.test.ts > CL-12: the closed value sets equal the shared vocabulary > PROFILE: contract list = shared constant 0ms
+ ✓ |unit| test/db/contract-inventory.test.ts > CL-12: the closed value sets equal the shared vocabulary > TIME_SOURCE: contract list = shared constant 0ms
+ ✓ |unit| test/db/contract-inventory.test.ts > CL-12: the closed value sets equal the shared vocabulary > TRACK_ID: contract list = shared constant 0ms
+ ✓ |unit| test/db/contract-inventory.test.ts > CL-12: the closed value sets equal the shared vocabulary > VIDEO_TRACK_ID: contract list = shared constant 0ms
+ ✓ |unit| test/db/contract-inventory.test.ts > CL-12: the closed value sets equal the shared vocabulary > FAULT_KIND: contract list = shared constant 0ms
+ ✓ |unit| test/db/contract-inventory.test.ts > CL-12: the closed value sets equal the shared vocabulary > EVIDENCE_STATUS: contract list = shared constant 0ms
+ ✓ |unit| test/db/contract-inventory.test.ts > CL-12: the closed value sets equal the shared vocabulary > LIFECYCLE_STAGE: contract list = shared constant 0ms
+ ✓ |unit| test/db/contract-inventory.test.ts > CL-12: the closed value sets equal the shared vocabulary > VERIFICATION: contract list = shared constant 0ms
+ ✓ |unit| test/db/contract-inventory.test.ts > CL-12: the closed value sets equal the shared vocabulary > INTEGRITY_SOURCE: contract list = shared constant 0ms
+ ✓ |unit| test/db/contract-inventory.test.ts > CL-12: the closed value sets equal the shared vocabulary > RETENTION: contract list = shared constant 0ms
+ ✓ |unit| test/db/contract-inventory.test.ts > CL-12: the closed value sets equal the shared vocabulary > SCENARIO: contract list = shared constant 0ms
+ ✓ |unit| test/db/contract-inventory.test.ts > CL-12: the closed value sets equal the shared vocabulary > STORAGE_STATE: contract list = shared constant 0ms
+ ✓ |unit| test/db/contract-inventory.test.ts > CL-12: the closed value sets equal the shared vocabulary > SECURITY_STATE: contract list = shared constant 0ms
+ ✓ |unit| test/db/contract-inventory.test.ts > CL-12: the closed value sets equal the shared vocabulary > AUTH_METHOD: contract list = shared constant 0ms
+ ✓ |unit| test/db/contract-inventory.test.ts > CL-12: the closed value sets equal the shared vocabulary > every value set of the contract is a constant of the typed schema, with the same values in the same order 0ms
+ ✓ |unit| test/db/contract-inventory.test.ts > CL-12: the closed value sets equal the shared vocabulary > the seven server-native sets have no shared constant yet; they are the lists of §2.4 0ms
+ ✓ |unit| test/db/contract-inventory.test.ts > CL-12: the closed value sets equal the shared vocabulary > the 17 denied key names: the CHECK text of the contract = the server constant 0ms
+ ✓ |unit| test/db/contract-inventory.test.ts > CL-12: the closed value sets equal the shared vocabulary > open sets pass the format check, so additive vocabulary needs no migration (MG-11) 0ms
+ ✓ |unit| test/helpers/db/__tests__/hooks.test.ts > the convention: one hook module per standard template, in a folder its row owns > pins the three paths and the rows that add them 2ms
+ ✓ |unit| test/helpers/db/__tests__/hooks.test.ts > the convention: one hook module per standard template, in a folder its row owns > a workspace without hook modules has no template plugged in 1ms
+ ✓ |unit| test/helpers/db/__tests__/hooks.test.ts > the convention: one hook module per standard template, in a folder its row owns > a hook module that exists is found and loaded when its template is asked for 8ms
+ ✓ |unit| test/helpers/db/__tests__/hooks.test.ts > the convention: one hook module per standard template, in a folder its row owns > a hook module that exports no function, or cannot be loaded, is an error that names the file 5ms
+ ✓ |unit| test/helpers/db/__tests__/hooks.test.ts > the convention: one hook module per standard template, in a folder its row owns > nothing is imported until a template has to be built 1ms
+ ✓ |unit| test/helpers/db/__tests__/hooks.test.ts > a template without a hook > names the file to add and the row that adds it 0ms
+ ✓ |unit| test/helpers/db/__tests__/hooks.test.ts > injected definitions (the helper's own tests, and private templates) > builds the standard definitions from a subset of hooks 0ms
+ ✓ |unit| test/helpers/db/__tests__/hooks.test.ts > injected definitions (the helper's own tests, and private templates) > an injected definition wins; an unknown key falls through to the next resolver 0ms
+ ✓ |unit| test/static/audit-protection.test.ts > T-AO-4: the audit protection is never removed > finds each statement when it is present, across a line break and in lower case (positive control) 1ms
+ ✓ |unit| test/static/audit-protection.test.ts > T-AO-4: the audit protection is never removed > no file under apps/core-server switches a trigger off 2ms
+ ✓ |unit| test/static/audit-protection.test.ts > T-AO-4: the audit protection is never removed > no file under apps/core-server drops a trigger 2ms
+ ✓ |unit| test/static/audit-protection.test.ts > T-AO-4: the audit protection is never removed > no file under apps/core-server changes a server setting 2ms
+ ✓ |unit| test/static/audit-protection.test.ts > T-AO-4: the audit protection is never removed > the session setting that skips triggers appears only in the database tests that expect its refusal 2ms
+ ✓ |unit| test/static/audit-protection.test.ts > T-AO-4: the audit protection is never removed > a function or a trigger is replaced only by a migration 2ms
+ ✓ |unit| test/static/audit-protection.test.ts > T-AO-4: the audit protection is never removed > a database is dropped only by the reset routine and the test helper 1ms
+ ✓ |unit| test/static/audit-protection.test.ts > NL-5: the PostgreSQL log never quotes bound parameters > finds the setting when it is present, in any case and in any kind of file (positive control) 0ms
+ ✓ |unit| test/static/audit-protection.test.ts > NL-5: the PostgreSQL log never quotes bound parameters > the setting that logs the parameters of a failed statement appears only in the database tests 1ms
+ ✓ |unit| src/db/reset/__tests__/plan.test.ts > the options of a call > default to scenario idle, reason RESET and no actor 1ms
+ ✓ |unit| src/db/reset/__tests__/plan.test.ts > the options of a call > an unknown scenario is refused before anything is opened, and its value is not echoed 0ms
+ ✓ |unit| src/db/reset/__tests__/plan.test.ts > the options of a call > an empty scenario is refused before anything is opened, and its value is not echoed 0ms
+ ✓ |unit| src/db/reset/__tests__/plan.test.ts > the options of a call > an unknown reason is refused before anything is opened, and its value is not echoed 0ms
+ ✓ |unit| src/db/reset/__tests__/plan.test.ts > the options of a call > an actor that is not an operator identifier is refused before anything is opened, and its value is not echoed 0ms
+ ✓ |unit| src/db/reset/__tests__/plan.test.ts > the options of a call > an actor with a statement in it is refused before anything is opened, and its value is not echoed 0ms
+ ✓ |unit| src/db/reset/__tests__/plan.test.ts > the options of a call > the clock must return a positive whole number of milliseconds 0ms
+ ✓ |unit| src/db/reset/__tests__/plan.test.ts > a first build: the target does not exist > starts at epoch 0, writes no lineage row and no SCENARIO_LOADED row 0ms
+ ✓ |unit| src/db/reset/__tests__/plan.test.ts > a reset of a seeded database > continues the epoch and records the chain that R-3 read (LN-2) 0ms
+ ✓ |unit| src/db/reset/__tests__/plan.test.ts > a reset of a seeded database > numbers the lineage row after the highest carried one (LN-1) 0ms
+ ✓ |unit| src/db/reset/__tests__/plan.test.ts > a reset of a seeded database > records a chain that is not intact as it is: nothing is "repaired" in the record 0ms
+ ✓ |unit| src/db/reset/__tests__/plan.test.ts > a reset of a seeded database > keeps every digit of a number beyond 2^53 in the lineage row 0ms
+ ✓ |unit| src/db/reset/__tests__/plan.test.ts > a reset of a seeded database > refuses an epoch or a row count the shared code cannot represent, before anything is built 0ms
+ ✓ |unit| src/db/reset/__tests__/plan.test.ts > a database that exists and was never seeded > starts at epoch 0 and writes no lineage row (LN-1); the new chain says it replaced an empty one 0ms
+ ✓ |unit| src/db/reset/__tests__/plan.test.ts > a database that exists and was never seeded > an empty audit log writes no lineage row even when the database was seeded once (LN-1) 0ms
+ ✓ |unit| src/db/reset/__tests__/plan.test.ts > a damaged database: a chain or a lineage, and no state row > takes the epoch after the newest one the lineage records, so the record can still be written 0ms
+ ✓ |unit| src/db/reset/__tests__/plan.test.ts > a damaged database: a chain or a lineage, and no state row > with no lineage either, the discarded chain is recorded under epoch 0 0ms
+ ✓ |unit| src/db/reset/__tests__/plan.test.ts > the SCENARIO_LOADED row and event > a reset: the shared simulator's messages, the four details of DC-7, the actor 0ms
+ ✓ |unit| src/db/reset/__tests__/plan.test.ts > the SCENARIO_LOADED row and event > a scenario load from the command line: no actor, reset false 0ms
+ ✓ |unit| src/db/reset/__tests__/plan.test.ts > the SCENARIO_LOADED row and event > holds no key the audit table refuses, and extends the seeded chain by exactly one verifiable row 7ms
+ ✓ |unit| test/helpers/db/__tests__/static.test.ts > the scan itself > reads the helper, its tests and the global setup 2ms
+ ✓ |unit| test/helpers/db/__tests__/static.test.ts > the scan itself > finds each forbidden text when it is present (positive control) 0ms
+ ✓ |unit| test/helpers/db/__tests__/static.test.ts > TI-9, HC-1: nothing in test:db is the bootstrap superuser > the superuser's password file is named by no file of the helper, tests included 0ms
+ ✓ |unit| test/helpers/db/__tests__/static.test.ts > TI-9, HC-1: nothing in test:db is the bootstrap superuser > the superuser's role is written once in the helper: the constant that is refused 1ms
+ ✓ |unit| test/helpers/db/__tests__/static.test.ts > TI-9, HC-1: nothing in test:db is the bootstrap superuser > the refused role is used only to refuse: compared, or printed in a refusal message 1ms
+ ✓ |unit| test/helpers/db/__tests__/static.test.ts > TI-9, HC-1: nothing in test:db is the bootstrap superuser > outside the helper code the role appears in tests only, where its refusal is asserted 0ms
+ ✓ |unit| test/helpers/db/__tests__/static.test.ts > D26: one place builds a connection, and it takes host and port from the connection file > the driver is imported by session.ts only (type imports apart) 0ms
+ ✓ |unit| test/helpers/db/__tests__/static.test.ts > D26: one place builds a connection, and it takes host and port from the connection file > a client or a pool is built in session.ts only 0ms
+ ✓ |unit| test/helpers/db/__tests__/static.test.ts > D26: one place builds a connection, and it takes host and port from the connection file > the environment is read in two places: the row label, and the scrub of driver variables 0ms
+ ✓ |unit| test/helpers/db/__tests__/static.test.ts > D26: one place builds a connection, and it takes host and port from the connection file > no file of the helper names a host, port, user or password variable of the driver 0ms
+ ✓ |unit| test/helpers/db/__tests__/static.test.ts > D26: one place builds a connection, and it takes host and port from the connection file > the default port of PostgreSQL is not written in the helper: it comes from the one constant that refuses it 0ms
+ ✓ |unit| test/helpers/db/__tests__/static.test.ts > CR-1, CR-2, CR-4: credentials stay in the connection files > no connection URL, no env-file option 0ms
+ ✓ |unit| test/helpers/db/__tests__/static.test.ts > CR-1, CR-2, CR-4: credentials stay in the connection files > the helper writes no file and starts no child process 0ms
+ ✓ |unit| test/helpers/db/__tests__/static.test.ts > CR-1, CR-2, CR-4: credentials stay in the connection files > a password is revealed in one place: the function handed to the driver 0ms
+ ✓ |unit| test/helpers/db/__tests__/static.test.ts > CR-1, CR-2, CR-4: credentials stay in the connection files > the one child process of the tests gets paths and names only 0ms
+ ✓ |unit| test/helpers/db/__tests__/static.test.ts > TI-3: statements on databases are written in one file > CREATE, ALTER and DROP DATABASE occur in ddl.ts only, and each takes a guarded name 0ms
+ ✓ |unit| test/helpers/db/__tests__/static.test.ts > TI-3: statements on databases are written in one file > no other statement that changes the cluster: no role, no setting, no trigger, no function 3ms
+ ✓ |unit| src/db/mapping/__tests__/static.test.ts > the two folders > are read: the files the row wrote, and nothing else under them 1ms
+ ✓ |unit| src/db/mapping/__tests__/static.test.ts > the mapping is pure > imports no database driver, no query builder, no file or network module, and nothing of the seed 1ms
+ ✓ |unit| src/db/mapping/__tests__/static.test.ts > the mapping is pure > reads no clock, no random source and no process state, and sends no statement 1ms
+ ✓ |unit| src/db/mapping/__tests__/static.test.ts > the mapping is pure > positive control: the same patterns find a clock, a statement and a driver import when they are there 0ms
+ ✓ |unit| src/db/mapping/__tests__/static.test.ts > the demo password and the demo pairing code > occur as VALUES in no file of the two folders, tests and comments included (counts only) 0ms
+ ✓ |unit| src/db/mapping/__tests__/static.test.ts > the demo password and the demo pairing code > the password constant is named by one production file, which hands it to the hasher and to nothing else 1ms
+ ✓ |unit| src/db/mapping/__tests__/static.test.ts > the demo password and the demo pairing code > no production file of the seed prints, logs or formats a credential column 0ms
+ ✓ |unit| src/db/mapping/__tests__/static.test.ts > SD-1, SR-62: the seed copies no dataset value into its own source > no operator name, username or subject name of the shared dataset is written in a production file 3ms
+ ✓ |unit| src/db/mapping/__tests__/static.test.ts > the template hook of tpl_seed > imports the helper for its type only and nothing of Vitest, and seeds a test database only 0ms
+ ✓ |unit| src/db/mapping/__tests__/round-trip.test.ts > a driven journey: recording, stopping, finalizing, sealed, and on > is lossless through a fault, a recovery and an incomplete close, and for a new session 50ms
+ ✓ |unit| src/db/mapping/__tests__/round-trip.test.ts > a driven journey: recording, stopping, finalizing, sealed, and on > is lossless when the audit ring has dropped rows: the ring, its total and its dropped count come back 4128ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > are four stage plugins, core, engine, realtime, thirteen stubbed modules and health 1ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > src/plugins/origin-guard/index.ts exports originGuardPlugin (owner W23) 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > src/plugins/throttle/index.ts exports throttlePlugin (owner W23) 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > src/plugins/authenticate/index.ts exports authenticatePlugin (owner W24) 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > src/plugins/permission-guard/index.ts exports permissionGuardPlugin (owner W28) 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > src/core/index.ts exports corePlugin (owner W21) 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > src/engine/index.ts exports enginePlugin (owner W26) 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > src/realtime/index.ts exports realtimePlugin (owner W42) 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > src/modules/identity/index.ts exports identityModule (owner W24) 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > src/modules/rbac/index.ts exports rbacModule (owner W28) 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > src/modules/admin/index.ts exports adminModule (owner W33) 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > src/modules/pairing/index.ts exports pairingModule (owner W32) 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > src/modules/sessions/index.ts exports sessionsModule (owner W34) 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > src/modules/evidence/index.ts exports evidenceModule (owner W35) 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > src/modules/devices/index.ts exports devicesModule (owner W36) 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > src/modules/storage/index.ts exports storageModule (owner W37) 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > src/modules/network-time/index.ts exports networkTimeModule (owner W37) 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > src/modules/security-audit/index.ts exports securityAuditModule (owner W39) 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > src/modules/system/index.ts exports systemModule (owner W40) 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > src/modules/alerts/index.ts exports alertsModule (owner W40) 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > src/modules/demo/index.ts exports demoModule (owner W43) 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > src/modules/health/index.ts exports healthModule (owner W08) 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > app.ts imports src/plugins/origin-guard statically and registers originGuardPlugin 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > app.ts imports src/plugins/throttle statically and registers throttlePlugin 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > app.ts imports src/plugins/authenticate statically and registers authenticatePlugin 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > app.ts imports src/plugins/permission-guard statically and registers permissionGuardPlugin 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > app.ts imports src/core statically and registers corePlugin 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > app.ts imports src/engine statically and registers enginePlugin 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > app.ts imports src/realtime statically and registers realtimePlugin 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > app.ts imports src/modules/identity statically and registers identityModule 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > app.ts imports src/modules/rbac statically and registers rbacModule 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > app.ts imports src/modules/admin statically and registers adminModule 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > app.ts imports src/modules/pairing statically and registers pairingModule 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > app.ts imports src/modules/sessions statically and registers sessionsModule 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > app.ts imports src/modules/evidence statically and registers evidenceModule 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > app.ts imports src/modules/devices statically and registers devicesModule 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > app.ts imports src/modules/storage statically and registers storageModule 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > app.ts imports src/modules/network-time statically and registers networkTimeModule 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > app.ts imports src/modules/security-audit statically and registers securityAuditModule 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > app.ts imports src/modules/system statically and registers systemModule 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > app.ts imports src/modules/alerts statically and registers alertsModule 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > app.ts imports src/modules/demo statically and registers demoModule 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > app.ts imports src/modules/health statically and registers healthModule 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > src/plugins/config has an index.ts 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > src/plugins/logger has an index.ts 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > src/plugins/error-envelope has an index.ts 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > src/plugins/response-headers has an index.ts 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > src/plugins/db has an index.ts 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > src/plugins/readiness has an index.ts 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > the factory loads nothing dynamically 0ms
+ ✓ |unit| test/static/scaffold.test.ts > the units of the scaffold > the factory does not listen and reads no environment 0ms
+ ✓ |unit| src/db/mapping/__tests__/round-trip.test.ts > a driven journey: recording, stopping, finalizing, sealed, and on > an audit row whose details hold a negative zero is stored as zero and still verifies 4ms
+ ✓ |unit| src/db/mapping/__tests__/round-trip.test.ts > the comparison can fail: one changed column in one stored row changes what comes back > operators.initials 3ms
+ ✓ |unit| src/db/mapping/__tests__/round-trip.test.ts > the comparison can fail: one changed column in one stored row changes what comes back > coreDevice.bspVersion 3ms
+ ✓ |unit| src/db/mapping/__tests__/round-trip.test.ts > the comparison can fail: one changed column in one stored row changes what comes back > coreState.lastSealedAcknowledged 2ms
+ ✓ |unit| src/db/mapping/__tests__/round-trip.test.ts > the comparison can fail: one changed column in one stored row changes what comes back > coreState.epoch 3ms
+ ✓ |unit| src/db/mapping/__tests__/round-trip.test.ts > the comparison can fail: one changed column in one stored row changes what comes back > storagePolicy.retentionDays 2ms
+ ✓ |unit| src/db/mapping/__tests__/round-trip.test.ts > the comparison can fail: one changed column in one stored row changes what comes back > consoleSettings.notifySound 1ms
+ ✓ |unit| src/db/mapping/__tests__/round-trip.test.ts > the comparison can fail: one changed column in one stored row changes what comes back > engineCounters.nextValue 3ms
+ ✓ |unit| src/db/mapping/__tests__/round-trip.test.ts > the comparison can fail: one changed column in one stored row changes what comes back > hardwareSnapshot.activeCameraId 2ms
+ ✓ |unit| src/db/mapping/__tests__/round-trip.test.ts > the comparison can fail: one changed column in one stored row changes what comes back > hardwareSnapshot.ports 1ms
+ ✓ |unit| src/db/mapping/__tests__/round-trip.test.ts > the comparison can fail: one changed column in one stored row changes what comes back > sessionHistory.durationMs 3ms
+ ✓ |unit| src/db/mapping/__tests__/round-trip.test.ts > the comparison can fail: one changed column in one stored row changes what comes back > evidenceItems.verificationStatus 3ms
+ ✓ |unit| src/db/mapping/__tests__/round-trip.test.ts > the comparison can fail: one changed column in one stored row changes what comes back > evidenceItems.signatureKeyId 2ms
+ ✓ |unit| src/db/mapping/__tests__/round-trip.test.ts > the comparison can fail: one changed column in one stored row changes what comes back > evidenceTracks.sha256 2ms
+ ✓ |unit| src/db/mapping/__tests__/round-trip.test.ts > the comparison can fail: one changed column in one stored row changes what comes back > evidenceCustody.detail 4ms
+ ✓ |unit| src/db/mapping/__tests__/round-trip.test.ts > the comparison can fail: one changed column in one stored row changes what comes back > activeSession.bytesWritten 3ms
+ ✓ |unit| src/db/mapping/__tests__/round-trip.test.ts > the comparison can fail: one changed column in one stored row changes what comes back > activeSession.inputNotes 3ms
+ ✓ |unit| src/db/mapping/__tests__/round-trip.test.ts > the comparison can fail: one changed column in one stored row changes what comes back > alerts.acknowledged 2ms
+ ✓ |unit| src/db/mapping/__tests__/round-trip.test.ts > the comparison can fail: one changed column in one stored row changes what comes back > auditLog.message 2ms
+ ✓ |unit| src/db/mapping/__tests__/round-trip.test.ts > the comparison can fail: one changed column in one stored row changes what comes back > events.severity 2ms
+ ✓ |unit| src/db/mapping/__tests__/round-trip.test.ts > the comparison can fail: one changed column in one stored row changes what comes back > and the unchanged rows come back equal 3ms
+ ✓ |unit| src/db/reset/__tests__/kept-tables.test.ts > the kept list > is the eight tables of the contract, in the carry-over order of R-5c 1ms
+ ✓ |unit| src/db/reset/__tests__/kept-tables.test.ts > the kept list > each key is the primary key of the typed schema, and each column list is the table's own 3ms
+ ✓ |unit| src/db/reset/__tests__/kept-tables.test.ts > the kept list > a parent is carried before the rows that name it 0ms
+ ✓ |unit| src/db/reset/__tests__/kept-tables.test.ts > the statements > a row is read as one image, in primary-key order 0ms
+ ✓ |unit| src/db/reset/__tests__/kept-tables.test.ts > the statements > a pairing code is read with its image and with the image without the three columns the reset may rewrite 0ms
+ ✓ |unit| src/db/reset/__tests__/kept-tables.test.ts > the statements > an insert names every column and takes the rows as one JSON parameter 0ms
+ ✓ |unit| src/db/reset/__tests__/kept-tables.test.ts > the statements > an update sets every column but the key from the carried row 0ms
+ ✓ |unit| src/db/reset/__tests__/kept-tables.test.ts > the statements > no statement holds a value: every one has exactly one parameter, the JSON array 0ms
+ ✓ |unit| src/db/reset/__tests__/kept-tables.test.ts > the statements > the two statements of R-5d and the lineage insert of R-5e 0ms
+ ✓ |unit| src/db/reset/__tests__/kept-tables.test.ts > the statements > the newest lineage row is found by the number, not by its text 0ms
+ ✓ |unit| src/db/reset/__tests__/kept-tables.test.ts > images > are joined into one JSON array without being parsed 0ms
+ ✓ |unit| src/db/reset/__tests__/kept-tables.test.ts > images > are sent in chunks of 500 rows 1ms
+ ✓ |unit| src/db/reset/__tests__/kept-tables.test.ts > R-6: carried over unchanged > equal images, the ACTIVE code closed by this reset, and one more lineage row: no problem 0ms
+ ✓ |unit| src/db/reset/__tests__/kept-tables.test.ts > R-6: carried over unchanged > a changed, a missing and an extra row are each named by table and position, never by value 0ms
+ ✓ |unit| src/db/reset/__tests__/kept-tables.test.ts > R-6: carried over unchanged > the lineage must grow by exactly one when a chain was discarded, and not at all otherwise 0ms
+ ✓ |unit| src/db/reset/__tests__/kept-tables.test.ts > R-6: carried over unchanged > the code that was ACTIVE: still ACTIVE is a problem 0ms
+ ✓ |unit| src/db/reset/__tests__/kept-tables.test.ts > R-6: carried over unchanged > the code that was ACTIVE: closed at another instant is a problem 0ms
+ ✓ |unit| src/db/reset/__tests__/kept-tables.test.ts > R-6: carried over unchanged > the code that was ACTIVE: closed by another operator is a problem 0ms
+ ✓ |unit| src/db/reset/__tests__/kept-tables.test.ts > R-6: carried over unchanged > the code that was ACTIVE: closed by nobody although an operator reset is a problem 0ms
+ ✓ |unit| src/db/reset/__tests__/kept-tables.test.ts > R-6: carried over unchanged > the code that was ACTIVE: another column changed too is a problem 0ms
+ ✓ |unit| src/db/reset/__tests__/kept-tables.test.ts > R-6: carried over unchanged > the code that was ACTIVE: closed with another state is a problem 0ms
+ ✓ |unit| src/db/reset/__tests__/kept-tables.test.ts > R-6: carried over unchanged > a code that was not ACTIVE must be equal as a whole 0ms
+ ✓ |unit| src/db/reset/__tests__/kept-tables.test.ts > R-6: carried over unchanged > from the command line the closing operator is null 0ms
+ ✓ |unit| src/db/reset/__tests__/kept-tables.test.ts > R-6: carried over unchanged > a database that was never seeded has no counter and no settings row: the seed's rows stay 0ms
+ ✓ |unit| test/helpers/db/__tests__/session.test.ts > D26: every connection carries the endpoint explicitly > hands the driver five discrete fields, TLS off, and no copy of the password 1ms
+ ✓ |unit| test/helpers/db/__tests__/session.test.ts > D26: every connection carries the endpoint explicitly > refuses the foreign default port before a client is built 1ms
+ ✓ |unit| test/helpers/db/__tests__/session.test.ts > D26: every connection carries the endpoint explicitly > refuses another port before a client is built 0ms
+ ✓ |unit| test/helpers/db/__tests__/session.test.ts > D26: every connection carries the endpoint explicitly > refuses localhost before a client is built 0ms
+ ✓ |unit| test/helpers/db/__tests__/session.test.ts > D26: every connection carries the endpoint explicitly > refuses IPv6 loopback before a client is built 0ms
+ ✓ |unit| test/helpers/db/__tests__/session.test.ts > D26: every connection carries the endpoint explicitly > refuses no host before a client is built 0ms
+ ✓ |unit| test/helpers/db/__tests__/session.test.ts > D26: every connection carries the endpoint explicitly > refuses no port before a client is built 0ms
+ ✓ |unit| test/helpers/db/__tests__/session.test.ts > D26: every connection carries the endpoint explicitly > removes the variables the driver reads on its own, and returns their names only 0ms
+ ✓ |unit| test/helpers/db/__tests__/session.test.ts > TI-9: the roles the helper may connect as > refuses the bootstrap superuser by name before a client is built 1ms
+ ✓ |unit| test/helpers/db/__tests__/session.test.ts > TI-9: the roles the helper may connect as > refuses any role that is not one of the two project roles 1ms
+ ✓ |unit| test/helpers/db/__tests__/session.test.ts > TI-9: the roles the helper may connect as > opens the session on the maintenance database and asks who it is first 0ms
+ ✓ |unit| test/helpers/db/__tests__/session.test.ts > TI-9, TI-17: a superuser session is refused > the helper closes a session that reports rolsuper, after its first statement 0ms
+ ✓ |unit| test/helpers/db/__tests__/session.test.ts > TI-9, TI-17: a superuser session is refused > a superuser is refused whatever name it carries, and so is an unknown answer 0ms
+ ✓ |unit| test/helpers/db/__tests__/session.test.ts > TI-9, TI-17: a superuser session is refused > the runtime role is checked in the same way and must hold no attribute 0ms
+ ✓ |unit| test/helpers/db/__tests__/session.test.ts > TI-9, TI-17: a superuser session is refused > refuses a session that is another role, or a server on another address or port 0ms
+ ✓ |unit| test/helpers/db/__tests__/session.test.ts > TI-1: a connection that fails > a refused connection says how to start the server 0ms
+ ✓ |unit| test/helpers/db/__tests__/session.test.ts > TI-1: a connection that fails > a sandbox refusal is named as such 0ms
+ ✓ |unit| test/helpers/db/__tests__/session.test.ts > TI-1: a connection that fails > a wrong password is reported by its SQLSTATE, without a value 0ms
+ ✓ |unit| src/db/reset/__tests__/cli.test.ts > db:reset: the arguments > --database is required; --scenario is optional; both forms of each are accepted 1ms
+ ✓ |unit| src/db/reset/__tests__/cli.test.ts > db:reset: the arguments > no argument: usage 0ms
+ ✓ |unit| src/db/reset/__tests__/cli.test.ts > db:reset: the arguments > --database without a name: usage 0ms
+ ✓ |unit| src/db/reset/__tests__/cli.test.ts > db:reset: the arguments > --database followed by another option: usage 0ms
+ ✓ |unit| src/db/reset/__tests__/cli.test.ts > db:reset: the arguments > an empty name: usage 0ms
+ ✓ |unit| src/db/reset/__tests__/cli.test.ts > db:reset: the arguments > the name given twice: usage 0ms
+ ✓ |unit| src/db/reset/__tests__/cli.test.ts > db:reset: the arguments > the scenario given twice: usage 0ms
+ ✓ |unit| src/db/reset/__tests__/cli.test.ts > db:reset: the arguments > --scenario without a name: usage 0ms
+ ✓ |unit| src/db/reset/__tests__/cli.test.ts > db:reset: the arguments > only a scenario: usage 0ms
+ ✓ |unit| src/db/reset/__tests__/cli.test.ts > db:reset: the arguments > a positional argument: usage 0ms
+ ✓ |unit| src/db/reset/__tests__/cli.test.ts > db:reset: the arguments > an unknown option: usage 0ms
+ ✓ |unit| src/db/reset/__tests__/cli.test.ts > db:reset: the arguments > an actor option (the command line has no actor): usage 0ms
+ ✓ |unit| src/db/reset/__tests__/cli.test.ts > db:reset: a wrong call exits 2 before anything is read > no argument: usage 0ms
+ ✓ |unit| src/db/reset/__tests__/cli.test.ts > db:reset: a wrong call exits 2 before anything is read > an unknown option: usage 0ms
+ ✓ |unit| src/db/reset/__tests__/cli.test.ts > db:reset: a wrong call exits 2 before anything is read > the name given twice: usage 0ms
+ ✓ |unit| src/db/reset/__tests__/cli.test.ts > db:reset: a wrong call exits 2 before anything is read > the database name postgres is refused before any connection, and is not echoed 1ms
+ ✓ |unit| src/db/reset/__tests__/cli.test.ts > db:reset: a wrong call exits 2 before anything is read > the database name template0 is refused before any connection, and is not echoed 0ms
+ ✓ |unit| src/db/reset/__tests__/cli.test.ts > db:reset: a wrong call exits 2 before anything is read > the database name template1 is refused before any connection, and is not echoed 0ms
+ ✓ |unit| src/db/reset/__tests__/cli.test.ts > db:reset: a wrong call exits 2 before anything is read > the database name dems_demo_next is refused before any connection, and is not echoed 0ms
+ ✓ |unit| src/db/reset/__tests__/cli.test.ts > db:reset: a wrong call exits 2 before anything is read > the database name dems_lane_1_prev is refused before any connection, and is not echoed 0ms
+ ✓ |unit| src/db/reset/__tests__/cli.test.ts > db:reset: a wrong call exits 2 before anything is read > the database name dems_lane_4 is refused before any connection, and is not echoed 0ms
+ ✓ |unit| src/db/reset/__tests__/cli.test.ts > db:reset: a wrong call exits 2 before anything is read > the database name dems_test_local_abc12345_f01_x is refused before any connection, and is not echoed 0ms
+ ✓ |unit| src/db/reset/__tests__/cli.test.ts > db:reset: a wrong call exits 2 before anything is read > the database name DEMS_DEMO is refused before any connection, and is not echoed 0ms
+ ✓ |unit| src/db/reset/__tests__/cli.test.ts > db:reset: a wrong call exits 2 before anything is read > the database name dems_demo; -- is refused before any connection, and is not echoed 0ms
+ ✓ |unit| src/db/reset/__tests__/cli.test.ts > db:reset: a wrong call exits 2 before anything is read > an unknown scenario is refused before any connection 0ms
+ ✓ |unit| src/db/reset/__tests__/cli.test.ts > db:reset: a wrong call exits 2 before anything is read > an accepted name with no owner connection file exits 1, names the provisioning command, and says that nothing changed 0ms
+ ✓ |unit| src/db/reset/__tests__/cli.test.ts > db:reset: a wrong call exits 2 before anything is read > for dems_demo the command first says that it runs under the migrate lock 0ms
+ ✓ |unit| src/db/reset/__tests__/cli.test.ts > db:reset: the lines of a finished reset > a reset: the epoch, the kept tables, the discarded chain with its whole head hash, the counts 1ms
+ ✓ |unit| src/db/reset/__tests__/cli.test.ts > db:reset: the lines of a finished reset > a first build: nothing carried, nothing discarded 0ms
+ ✓ |unit| src/db/reset/__tests__/cli.test.ts > db:reset: the lines of a finished reset > a previous database that could not be dropped is said 0ms
+ ✓ |unit| src/db/reset/__tests__/static.test.ts > the scan itself > reads the files of the routine and of its tests 1ms
+ ✓ |unit| src/db/reset/__tests__/static.test.ts > the scan itself > finds each forbidden text when it is present (positive control) 1ms
+ ✓ |unit| src/db/reset/__tests__/static.test.ts > §6.6: the routine rewrites no append-only table > no UPDATE, DELETE or TRUNCATE names audit_log or audit_chain_history 0ms
+ ✓ |unit| src/db/reset/__tests__/static.test.ts > §6.6: the routine rewrites no append-only table > the routine holds no DELETE and no TRUNCATE statement at all 0ms
+ ✓ |unit| src/db/reset/__tests__/static.test.ts > §6.6: the routine rewrites no append-only table > its UPDATE statements are in one file and name only the two seeded kept tables (by the builder), pairing_codes and operators 0ms
+ ✓ |unit| src/db/reset/__tests__/static.test.ts > a database is dropped in one place, never by force, and no session is ended > DROP DATABASE occurs once in the routine: in the statement builder of names.ts 0ms
+ ✓ |unit| src/db/reset/__tests__/static.test.ts > a database is dropped in one place, never by force, and no session is ended > the forced form occurs nowhere in the routine 0ms
+ ✓ |unit| src/db/reset/__tests__/static.test.ts > a database is dropped in one place, never by force, and no session is ended > nothing ends, cancels or signals a session 0ms
+ ✓ |unit| src/db/reset/__tests__/static.test.ts > roles and credentials > the routine names no superuser role and neither of the two credential files it does not parse 0ms
+ ✓ |unit| src/db/reset/__tests__/static.test.ts > roles and credentials > the owner connection is read in one statement of routine.ts and held in a local variable only 0ms
+ ✓ |unit| src/db/reset/__tests__/static.test.ts > roles and credentials > starts no child process and makes no console call 0ms
+ ✓ |unit| src/db/reset/__tests__/static.test.ts > errors > a ResetError is never given a cause 0ms
+ ✓ |unit| src/db/reset/__tests__/static.test.ts > errors > no message of the routine quotes the detail or the message of a database error 0ms
+ ✓ |unit| test/static/logging.test.ts > SR-48, SR-49: one way into the log > finds each forbidden text when it is present (positive control) 1ms
+ ✓ |unit| test/static/logging.test.ts > SR-48, SR-49: one way into the log > the server runtime makes no console call 2ms
+ ✓ |unit| test/static/logging.test.ts > SR-48, SR-49: one way into the log > only the logger and the error envelope read the raw request URL 1ms
+ ✓ |unit| test/helpers/db/__tests__/endpoint.test.ts > the one endpoint of the helper > is 127.0.0.1:4432 1ms
+ ✓ |unit| test/helpers/db/__tests__/endpoint.test.ts > the one endpoint of the helper > refuses PostgreSQL's default port by name: it is another server on this host 0ms
+ ✓ |unit| test/helpers/db/__tests__/endpoint.test.ts > the one endpoint of the helper > refuses the host "localhost" 0ms
+ ✓ |unit| test/helpers/db/__tests__/endpoint.test.ts > the one endpoint of the helper > refuses the host "::1" 0ms
+ ✓ |unit| test/helpers/db/__tests__/endpoint.test.ts > the one endpoint of the helper > refuses the host "0.0.0.0" 0ms
+ ✓ |unit| test/helpers/db/__tests__/endpoint.test.ts > the one endpoint of the helper > refuses the host "127.0.0.2" 0ms
+ ✓ |unit| test/helpers/db/__tests__/endpoint.test.ts > the one endpoint of the helper > refuses the host "192.168.1.10" 0ms
+ ✓ |unit| test/helpers/db/__tests__/endpoint.test.ts > the one endpoint of the helper > refuses the host "" 0ms
+ ✓ |unit| test/helpers/db/__tests__/endpoint.test.ts > the one endpoint of the helper > refuses the host undefined 0ms
+ ✓ |unit| test/helpers/db/__tests__/endpoint.test.ts > the one endpoint of the helper > refuses the host null 0ms
+ ✓ |unit| test/helpers/db/__tests__/endpoint.test.ts > the one endpoint of the helper > refuses the host 127 0ms
+ ✓ |unit| test/helpers/db/__tests__/endpoint.test.ts > the one endpoint of the helper > refuses the port 4431 0ms
+ ✓ |unit| test/helpers/db/__tests__/endpoint.test.ts > the one endpoint of the helper > refuses the port 4433 0ms
+ ✓ |unit| test/helpers/db/__tests__/endpoint.test.ts > the one endpoint of the helper > refuses the port 4420 0ms
+ ✓ |unit| test/helpers/db/__tests__/endpoint.test.ts > the one endpoint of the helper > refuses the port 0 0ms
+ ✓ |unit| test/helpers/db/__tests__/endpoint.test.ts > the one endpoint of the helper > refuses the port -1 0ms
+ ✓ |unit| test/helpers/db/__tests__/endpoint.test.ts > the one endpoint of the helper > refuses the port 65536 0ms
+ ✓ |unit| test/helpers/db/__tests__/endpoint.test.ts > the one endpoint of the helper > refuses the port 44.32 0ms
+ ✓ |unit| test/helpers/db/__tests__/endpoint.test.ts > the one endpoint of the helper > refuses the port "4432 " 0ms
+ ✓ |unit| test/helpers/db/__tests__/endpoint.test.ts > the one endpoint of the helper > refuses the port "0x1150" 0ms
+ ✓ |unit| test/helpers/db/__tests__/endpoint.test.ts > the one endpoint of the helper > refuses the port "abc" 0ms
+ ✓ |unit| test/helpers/db/__tests__/endpoint.test.ts > the one endpoint of the helper > refuses the port "" 0ms
+ ✓ |unit| test/helpers/db/__tests__/endpoint.test.ts > the one endpoint of the helper > refuses the port undefined 0ms
+ ✓ |unit| test/helpers/db/__tests__/endpoint.test.ts > the one endpoint of the helper > refuses the port null 0ms
+ ✓ |unit| test/helpers/db/__tests__/endpoint.test.ts > the one endpoint of the helper > refuses the port null 0ms
+ ✓ |unit| test/helpers/db/__tests__/endpoint.test.ts > the reachability probe (the test seam) > accepts any loopback port except the foreign one 0ms
+ ✓ |unit| test/helpers/db/__tests__/endpoint.test.ts > the reachability probe (the test seam) > refuses a forbidden target before a socket exists 0ms
+ ✓ |unit| test/helpers/db/__tests__/endpoint.test.ts > TI-1: an unreachable server fails the run and says what to do > a closed port: start the server; nothing is skipped 1ms
+ ✓ |unit| test/helpers/db/__tests__/endpoint.test.ts > TI-1: an unreachable server fails the run and says what to do > a command sandbox is not "server down": the message says so and does not ask for a start 0ms
+ ✓ |unit| test/helpers/db/__tests__/endpoint.test.ts > TI-1: an unreachable server fails the run and says what to do > a timeout or another error is reported with its code 0ms
+ ✓ |unit| src/db/reset/__tests__/names.test.ts > the four project databases are the only targets > each is accepted, with its staging and previous names and its lock slot (0 for dems_demo, 1 to 3 for the lanes) 1ms
+ ✓ |unit| src/db/reset/__tests__/names.test.ts > the four project databases are the only targets > the staging suffix is the one the seed accepts for a project database 1ms
+ ✓ |unit| src/db/reset/__tests__/names.test.ts > the four project databases are the only targets > the maintenance database is refused before anything is read, at R-0, and is not echoed 0ms
+ ✓ |unit| src/db/reset/__tests__/names.test.ts > the four project databases are the only targets > a template of PostgreSQL is refused before anything is read, at R-0, and is not echoed 0ms
+ ✓ |unit| src/db/reset/__tests__/names.test.ts > the four project databases are the only targets > a template of PostgreSQL is refused before anything is read, at R-0, and is not echoed 0ms
+ ✓ |unit| src/db/reset/__tests__/names.test.ts > the four project databases are the only targets > a staging copy is refused before anything is read, at R-0, and is not echoed 0ms
+ ✓ |unit| src/db/reset/__tests__/names.test.ts > the four project databases are the only targets > a previous copy is refused before anything is read, at R-0, and is not echoed 0ms
+ ✓ |unit| src/db/reset/__tests__/names.test.ts > the four project databases are the only targets > a staging copy of a staging copy is refused before anything is read, at R-0, and is not echoed 0ms
+ ✓ |unit| src/db/reset/__tests__/names.test.ts > the four project databases are the only targets > a fourth lane is refused before anything is read, at R-0, and is not echoed 0ms
+ ✓ |unit| src/db/reset/__tests__/names.test.ts > the four project databases are the only targets > lane zero is refused before anything is read, at R-0, and is not echoed 0ms
+ ✓ |unit| src/db/reset/__tests__/names.test.ts > the four project databases are the only targets > another case is refused before anything is read, at R-0, and is not echoed 0ms
+ ✓ |unit| src/db/reset/__tests__/names.test.ts > the four project databases are the only targets > a prefix of a project name is refused before anything is read, at R-0, and is not echoed 0ms
+ ✓ |unit| src/db/reset/__tests__/names.test.ts > the four project databases are the only targets > a project name with a tail is refused before anything is read, at R-0, and is not echoed 0ms
+ ✓ |unit| src/db/reset/__tests__/names.test.ts > the four project databases are the only targets > a project name with a space is refused before anything is read, at R-0, and is not echoed 0ms
+ ✓ |unit| src/db/reset/__tests__/names.test.ts > the four project databases are the only targets > an injected statement is refused before anything is read, at R-0, and is not echoed 0ms
+ ✓ |unit| src/db/reset/__tests__/names.test.ts > the four project databases are the only targets > a quoted name is refused before anything is read, at R-0, and is not echoed 0ms
+ ✓ |unit| src/db/reset/__tests__/names.test.ts > the four project databases are the only targets > a name with a line break is refused before anything is read, at R-0, and is not echoed 0ms
+ ✓ |unit| src/db/reset/__tests__/names.test.ts > the four project databases are the only targets > a proof database is refused before anything is read, at R-0, and is not echoed 0ms
+ ✓ |unit| src/db/reset/__tests__/names.test.ts > the four project databases are the only targets > a test database, with no test seam is refused before anything is read, at R-0, and is not echoed 0ms
+ ✓ |unit| src/db/reset/__tests__/names.test.ts > the four project databases are the only targets > an empty name is refused before anything is read, at R-0, and is not echoed 0ms
+ ✓ |unit| src/db/reset/__tests__/names.test.ts > the four project databases are the only targets > no name is refused before anything is read, at R-0, and is not echoed 0ms
+ ✓ |unit| src/db/reset/__tests__/names.test.ts > the four project databases are the only targets > a number is refused before anything is read, at R-0, and is not echoed 0ms
+ ✓ |unit| src/db/reset/__tests__/names.test.ts > the four project databases are the only targets > null is refused before anything is read, at R-0, and is not echoed 0ms
+ ✓ |unit| src/db/reset/__tests__/names.test.ts > the four project databases are the only targets > an array is refused before anything is read, at R-0, and is not echoed 0ms
+ ✓ |unit| src/db/reset/__tests__/names.test.ts > the four project databases are the only targets > the protected names are refused whatever the test seam says 0ms
+ ✓ |unit| src/db/reset/__tests__/names.test.ts > the test seam accepts only a per-file database of the caller's own run > accepts <prefix>f<nn>_<slug> of that run, with a slot outside 0 to 3 0ms
+ ✓ |unit| src/db/reset/__tests__/names.test.ts > the test seam accepts only a per-file database of the caller's own run > a database of another run is refused 0ms
+ ✓ |unit| src/db/reset/__tests__/names.test.ts > the test seam accepts only a per-file database of the caller's own run > a database of another row is refused 0ms
+ ✓ |unit| src/db/reset/__tests__/names.test.ts > the test seam accepts only a per-file database of the caller's own run > a template of the own run is refused 0ms
+ ✓ |unit| src/db/reset/__tests__/names.test.ts > the test seam accepts only a per-file database of the caller's own run > a private template of the own run is refused 0ms
+ ✓ |unit| src/db/reset/__tests__/names.test.ts > the test seam accepts only a per-file database of the caller's own run > the run prefix alone is refused 0ms
+ ✓ |unit| src/db/reset/__tests__/names.test.ts > the test seam accepts only a per-file database of the caller's own run > a staging copy of an own database is refused 0ms
+ ✓ |unit| src/db/reset/__tests__/names.test.ts > the test seam accepts only a per-file database of the caller's own run > a previous copy of an own database is refused 0ms
+ ✓ |unit| src/db/reset/__tests__/names.test.ts > the test seam accepts only a per-file database of the caller's own run > an own name with an upper-case letter is refused 0ms
+ ✓ |unit| src/db/reset/__tests__/names.test.ts > the test seam accepts only a per-file database of the caller's own run > an own name without a counter is refused 0ms
+ ✓ |unit| src/db/reset/__tests__/names.test.ts > the test seam accepts only a per-file database of the caller's own run > a prefix that is not a run prefix opens nothing 0ms
+ ✓ |unit| src/db/reset/__tests__/names.test.ts > the test seam accepts only a per-file database of the caller's own run > a name whose staging copy would not fit 63 bytes is refused 0ms
+ ✓ |unit| src/db/reset/__tests__/names.test.ts > the database-level statements > R-4 creates the staging database, empty, owned by the owner role 0ms
+ ✓ |unit| src/db/reset/__tests__/names.test.ts > the database-level statements > R-7 renames the target away and the staging database in; a first build has one rename 0ms
+ ✓ |unit| src/db/reset/__tests__/names.test.ts > the database-level statements > R-2 gives a previous database its name back 0ms
+ ✓ |unit| src/db/reset/__tests__/names.test.ts > the database-level statements > a drop names a staging or previous database only, and is never forced 0ms
+ ✓ |unit| src/db/reset/__tests__/names.test.ts > the database-level statements > a drop of the target itself cannot be built, even with the type system switched off 0ms
+ ✓ |unit| src/db/reset/__tests__/names.test.ts > the database-level statements > a name is checked again where it becomes statement text 0ms
+
+ Test Files  26 passed (26)
+      Tests  719 passed (719)
+   Start at  11:42:54
+   Duration  5.68s (tests 56%, import 37%, transform 6%, worker 1%)
+
+exit=0

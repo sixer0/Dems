@@ -1,0 +1,13 @@
+10:31:43.562 device-host clock offset ms: -250, -252, -251, -250, -254
+10:31:43.831 declared screen home
+10:31:43.895 screenrecord sc3_s1b_phone started (pid 3650) at 10:31:44.500
+10:31:44.553 mark b09 at 10:31:44.553
+10:31:44.613 press sn-start ok at 10:31:44.627
+10:31:44.699 until true at 10:31:47.827 after 3128 ms => true
+10:31:47.886 screenshot 68_sc3_s1b_web_recording.png 10:31:47.886..10:31:48.005
+10:31:48.059 slept 4000 ms
+10:31:52.126 screenrecord sc3_s1b_phone pulled; frames extracted at 5 fps
+10:31:57.969 screencap 68p_sc3_s1b_phone_home_recording.png 10:31:57.969..10:31:58.731
+10:31:58.795 device-host clock offset ms: -255, -252, -252, -254, -253
+10:31:59.019 serverlog since b09 (1):
+    10:31:47.668 POST /api/v1/session/:id/start 200 operator:OPR-002

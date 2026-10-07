@@ -1,0 +1,30 @@
+// FX-M2b item 4: transform every production file that names `OperatorRole` with the app's own Babel
+// options (jest-expo's, the babel-preset-expo the app uses), then list every reference to
+// `OperatorRole` in the OUTPUT that has no binding (what Hermes reports as
+// "ReferenceError: Property 'OperatorRole' doesn't exist"). Read-only.
+const path = require('node:path')
+const fs = require('node:fs')
+const { execSync } = require('node:child_process')
+const ROOT = '/Users/gsp-budi/Documents/DEMS'
+const APP = path.join(ROOT, 'apps/mobile')
+const babel = require(path.join(ROOT, 'node_modules/@babel/core'))
+const traverse = require(path.join(ROOT, 'node_modules/@babel/traverse')).default
+const { resolveBabelOptions } = require(path.join(ROOT, 'node_modules/jest-expo/src/resolveBabelOptions'))
+const base = resolveBabelOptions(APP)
+const files = execSync(`grep -rl "OperatorRole" ${APP}/src ${ROOT}/packages/shared/src --include=*.ts --include=*.tsx`, { encoding: 'utf8' })
+  .split('\n').filter(Boolean).filter((f) => !/\.test\.tsx?$/.test(f) && !/\/(testing|__tests__)\//.test(f)).sort()
+let unbound = 0
+for (const file of files) {
+  const source = fs.readFileSync(file, 'utf8')
+  const out = babel.transformSync(source, { ...base, filename: file, ast: true, code: true, babelrc: false, configFile: false, caller: { name: 'metro', platform: 'android', isDev: true } })
+  const free = []
+  traverse(out.ast, {
+    ReferencedIdentifier(p) {
+      if (p.node.name === 'OperatorRole' && !p.scope.hasBinding('OperatorRole', true)) free.push(p.node.loc ? p.node.loc.start.line : '?')
+    },
+  })
+  const mentions = (out.code.match(/\bOperatorRole\b/g) || []).length
+  unbound += free.length
+  console.log(`${free.length === 0 ? 'ok      ' : 'UNBOUND '} ${path.relative(ROOT, file)}  (output mentions: ${mentions}${free.length ? `; unbound at output lines ${free.join(',')}` : ''})`)
+}
+console.log(`## ${files.length} production files; unbound OperatorRole references in the transformed output: ${unbound}`)

@@ -1,0 +1,25 @@
+12:48:15.358 declared screen session-detail
+12:48:15.418 tapid session-detail-back at 95,216 "Back to Sessions"
+12:48:18.181 slept 1800 ms
+12:48:20.059 declared screen sessions
+12:48:20.119 ids(2): session-row-SES-20261006-0029@540,866 "SES-20261006-0029, Dewi W73 Device, Incomplete, 6 Oct 2026 01:53, dura" ; session-row-SES-20261004-0016@540,1161 "SES-20261004-0016, Hendra Wijaya, Incomplete, 4 Oct 2026 15:47, durati"
+12:48:22.598 tap 540,866
+12:48:22.740 slept 2500 ms
+12:48:25.287 declared screen session-detail
+12:48:25.333 screencap 14_p1_r2_a_session_detail.png 12:48:25.334..12:48:25.829
+12:48:25.942 ids(1): screen-session-detail@540,1102
+12:48:28.250 tap 540,2283
+12:48:28.385 slept 1200 ms
+12:48:29.657 declared screen evidence
+12:48:29.711 screencap 15_p1_r2_b_evidence_t1.png 12:48:29.711..12:48:30.100
+12:48:30.235 slept 1800 ms
+12:48:32.069 screencap 15_p1_r2_b_evidence_t3.png 12:48:32.069..12:48:32.388
+12:48:32.490 tap 756,2283
+12:48:32.635 slept 1200 ms
+12:48:33.876 declared screen devices
+12:48:33.919 screencap 16_p1_r2_c_devices_t1.png 12:48:33.919..12:48:34.286
+12:48:34.390 slept 1800 ms
+12:48:36.226 screencap 16_p1_r2_c_devices_t3.png 12:48:36.226..12:48:36.507
+12:48:36.602 warnlog since 10-06 12:48:14.000 (0): 
+12:48:36.688 serverlog since p1r2 (1):
+    12:48:32.170 POST /api/v1/auth/touch 200

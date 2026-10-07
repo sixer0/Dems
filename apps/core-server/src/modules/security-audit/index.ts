@@ -70,7 +70,7 @@ import {
 import type { AuditRow, ExportResult } from '@dems/shared/sim';
 import type { FastifyInstance, FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
-import { ApiFailure, invalidInput } from '../../plugins/error-envelope';
+import { ApiFailure, NOT_SIGNED_IN_TEXT, invalidInput } from '../../plugins/error-envelope';
 import { routeOfOperation } from '../../plugins/permission-guard';
 import { decodeAuditCursor, decodeEventCursor, encodeAuditCursor, encodeEventCursor, type AuditCursor, type EventCursor } from './cursor';
 import { NO_REASON, readAuditExportBody } from './export-request';
@@ -100,7 +100,7 @@ type ExportRefusal = Extract<ExportResult, { ok: false }>;
 function exportRefused(refusal: ExportRefusal): Error {
   switch (refusal.reason) {
     case 'NOT_SIGNED_IN':
-      return new ApiFailure(401, 'NOT_SIGNED_IN', 'Sign in first.');
+      return new ApiFailure(401, 'NOT_SIGNED_IN', NOT_SIGNED_IN_TEXT);
     case 'FORBIDDEN':
       return new ApiFailure(403, 'NOT_PERMITTED', 'Your role does not allow this action. The attempt was audited.');
     case 'INVALID_REASON':

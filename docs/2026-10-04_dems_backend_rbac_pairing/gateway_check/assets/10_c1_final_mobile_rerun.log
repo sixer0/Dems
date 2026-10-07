@@ -1,0 +1,8 @@
+## mobile full suite, alone, start 09:07:42, load averages: 7.87 14.60 10.94
+exit 0
+## end 09:08:44, load averages: 16.51 15.83 11.64
+Test Suites: 146 passed, 146 total
+Tests:       1744 passed, 1744 total
+full output (stdout and stderr together): docs/2026-10-04_dems_backend_rbac_pairing/gateway_check/assets/10_c1_final_mobile_rerun.raw.log,   238743 lines
+grep -c 'failed to exit gracefully': 1
+grep -c 'did not exit one second': 0

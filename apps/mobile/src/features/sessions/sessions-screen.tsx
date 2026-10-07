@@ -15,7 +15,7 @@
  * |---|---|
  * | compact, compact-landscape | one scrolling list; a row hands off (monitor, summary, evidence, detail) |
  * | medium (tablet portrait) | `pane-list` 360 dp \| `pane-detail` |
- * | expanded (tablet landscape) | `pane-filters` 280 dp \| `pane-list` 40% \| `pane-detail` 60% |
+ * | expanded (tablet landscape) | `pane-filters` 280 dp \| `pane-list` 360 dp \| `pane-detail` 340 dp, the rest split 2 : 3 |
  *
  * On multi-pane windows the selection lives in `?selected=` (the route hands a deep-linked detail
  * over to it), so rotation keeps it (MA-13); the selected row carries glow e2.
@@ -66,9 +66,36 @@ export interface SessionsScreenProps {
   readonly selectedId: string | null;
 }
 
-/** Medium: a 360 dp list (04 §2.4, as Evidence); expanded: filters 280 dp | list 40% | detail 60%. */
+/** Medium: a 360 dp list (04 §2.4, as Evidence) and the detail takes the rest. */
 const MEDIUM_LIST_WIDTH = 360;
-const EXPANDED_FILTERS_WIDTH = 280;
+/**
+ * Closing-fix CF-M2, defect R-T-4: the expanded list is never narrower than the medium list. At 1280 dp
+ * with the extended rail, 40% was about 283 dp: the rows' text column shrank below 60 dp (re-test
+ * `P04_sessions_hub`). At 360 dp the pane row (`session-row.tsx`, `PANE_ROW`) holds every value on one line.
+ */
+export const LIST_MIN_WIDTH = MEDIUM_LIST_WIDTH;
+/**
+ * Closing-fix CF2-B, defect RF-T-2 (decision D227): CF-M2 wrote the list as `flex: 2, minWidth: 360` next
+ * to a `flex: 3` detail, both on a zero basis. Yoga does not take a minimum out of the split: it raises the
+ * list's basis to 360 and then still gives it 2/5 of what is left (React Native's Yoga,
+ * `CalculateLayout.cpp`, `distributeFreeSpaceFirstPass`/`SecondPass`: the bounded basis plus the grow
+ * share). On the tablet (704 dp for list + detail) that was 360 + 0.4 x 344 = 497.6 dp for the list and
+ * 206.4 dp for the detail, exactly the re-test's 995 px | 413 px: labels broken inside words, the subject
+ * name not drawn.
+ *
+ * Now each pane STARTS at the width it needs (list 360 dp, detail 340 dp, no minimum, so Yoga has nothing
+ * to raise) and only the space beyond that is split 2 : 3. On the tablet: list about 362 dp, detail about
+ * 342 dp; with the rail collapsed the extra space goes 2 : 3 as before. Narrower windows shrink both in
+ * proportion to their start widths.
+ */
+export const DETAIL_MIN_WIDTH = 340;
+/** The expanded list pane's flex: a 360 dp start, 2 shares of the extra space. */
+export const LIST_PANE_FLEX = { flexGrow: 2, flexShrink: 1, flexBasis: LIST_MIN_WIDTH } as const;
+/** The expanded and medium detail pane's flex: a 340 dp start, 3 shares of the extra space. */
+export const DETAIL_PANE_FLEX = { flexGrow: 3, flexShrink: 1, flexBasis: DETAIL_MIN_WIDTH } as const;
+/** The rows' horizontal padding inside the list (`listContent`). */
+export const LIST_PADDING_X = spacing[3];
+export const EXPANDED_FILTERS_WIDTH = 280;
 /** Pull-to-refresh length on the simulator clock. */
 export const REFRESH_MS = 700;
 
@@ -95,13 +122,10 @@ export function SessionsScreen({ selectedId }: SessionsScreenProps) {
               <FiltersPane query={query} onQueryChange={setQuery} />
             </Pane>
           ) : null}
-          <Pane
-            name="list"
-            {...(expanded ? { flex: 2, style: styles.flexBasisZero } : { width: MEDIUM_LIST_WIDTH })}
-          >
+          <Pane name="list" {...(expanded ? { style: LIST_PANE_FLEX } : { width: MEDIUM_LIST_WIDTH })}>
             {list}
           </Pane>
-          <Pane name="detail" flex={3} style={styles.flexBasisZero}>
+          <Pane name="detail" style={expanded ? DETAIL_PANE_FLEX : styles.flexBasisZero}>
             {selectedId ? <SessionDetail key={selectedId} sessionId={selectedId} variant="pane" /> : <DetailPlaceholder />}
           </Pane>
         </PaneLayout>
@@ -414,7 +438,7 @@ const styles = StyleSheet.create({
   emptyWrap: { paddingTop: spacing[1] },
   linkDown: { paddingHorizontal: spacing[3], paddingBottom: spacing[2] },
   listWrap: { flex: 1 },
-  listContent: { paddingHorizontal: spacing[3], paddingBottom: spacing[3] },
+  listContent: { paddingHorizontal: LIST_PADDING_X, paddingBottom: spacing[3] },
   count: {
     fontFamily: fontFamily.native.normal,
     fontSize: typography.caption.size,

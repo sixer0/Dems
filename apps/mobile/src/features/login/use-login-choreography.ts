@@ -14,6 +14,23 @@
  *
  * Plus the in-place moments of M-C-22 and M-APP-01: `shake()` (one card shake on an error),
  * `exit()` (the card leaves when the sign-in succeeds, before the guard swaps the route).
+ *
+ * ## React holds the end of the entrance (closing-fix row CF2-A, defect RF-PH-4)
+ *
+ * After an idle sign-out under load the phone showed Login as the emblem ring ALONE on black for at
+ * least 3 min (no backdrop, wordmark, caption, card or Core line) until a relaunch; the other time the
+ * full Login with the "Session expired" dialog. Exactly the parts whose opacity lives only in a
+ * Reanimated shared value were missing; React holds the value they were mounted with: 0. It is the
+ * lost-update family of D214 (the timer digits): the screen mounted while the JS thread was stalled
+ * (an 8 s `getAuthSession` time-out logged 10 s late), Reanimated's direct updates of views not yet
+ * mounted fail (`Unable to find SurfaceMountingManager for tag`, 17,211 of them in the re-test), and
+ * the settled values it hands back to React are dropped after 2 s. Nothing on Login re-renders by
+ * itself, so nothing ever drew the end of the fades.
+ *
+ * So once the entrance is over (`entranceEndMs`, on a plain timer that runs whenever the thread does),
+ * every part is drawn from a style whose React value IS its resting value (opacity 1, no rise, no
+ * flight); the shake and the exit stay animated on top of it. Whatever Reanimated keeps or drops, the
+ * next commit draws a usable Login.
  */
 import { useCallback, useEffect, useState } from 'react';
 import { useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
@@ -48,6 +65,32 @@ export const CARD_SETTLE_MS = 450;
 export const CARD_EXIT_MS = 300;
 /** M-APP-02: the emblem starts at the header logo size (≈ 0.26 of its login size). */
 export const RETURN_EMBLEM_SCALE = 0.26;
+/** Reduced motion: every part fades in once (≤ 160 ms, `animateFade`). */
+const REDUCED_ENTRANCE_MS = 160;
+/** Extra time after the last beat before React takes over the resting values (CF2-A, RF-PH-4). */
+export const ENTRANCE_REST_MARGIN_MS = 250;
+
+/**
+ * When the entrance is over and the resting values are drawn by React (CF2-A, RF-PH-4): the last of the
+ * backdrop fade, the text fades and the card settle (and, for `return`, the emblem's flight), plus a margin.
+ */
+export function entranceEndMs(entrance: LoginEntrance, settings: MotionSettings): number {
+  if (settings.policy === 'reduced') return REDUCED_ENTRANCE_MS + ENTRANCE_REST_MARGIN_MS;
+  const beats = LOGIN_BEATS[entrance];
+  const last = Math.max(
+    beats.backdrop + BACKDROP_FADE_MS[entrance],
+    beats.wordmark + TEXT_FADE_MS,
+    beats.caption + TEXT_FADE_MS,
+    beats.card + CARD_SETTLE_MS,
+    // M-APP-02: the emblem's `gentle` flight starts once its slot is measured (about the card's settle).
+    entrance === 'return' ? beats.card + 2 * CARD_SETTLE_MS : 0,
+  );
+  return durationMs(last, settings) + ENTRANCE_REST_MARGIN_MS;
+}
+
+/** The resting picture of the parts that only fade, rise or fly in: drawn by React (no shared value). */
+const BACKDROP_REST = { opacity: 1 } as const;
+const EMBLEM_REST = { transform: [{ translateX: 0 }, { translateY: 0 }, { scale: 1 }] };
 
 export interface EmblemOrigin {
   /** Offset from the emblem's resting centre to the header logo slot, dp. */
@@ -74,6 +117,12 @@ export function useLoginChoreography(entrance: LoginEntrance, settings: MotionSe
   const [emblemReady, setEmblemReady] = useState(reduced || beats.emblem === 0);
   const [cardSettled, setCardSettled] = useState(reduced);
   const [beamActive, setBeamActive] = useState(!reduced && beats.beam !== null);
+  // CF2-A (RF-PH-4): from here on React draws the resting values (header of this file).
+  const [entranceOver, setEntranceOver] = useState(false);
+  useEffect(() => {
+    const timer = setTimeout(() => setEntranceOver(true), entranceEndMs(initial.entrance, initial.settings));
+    return () => clearTimeout(timer);
+  }, [initial]);
 
   useEffect(() => {
     const m = initial.settings;
@@ -154,9 +203,25 @@ export function useLoginChoreography(entrance: LoginEntrance, settings: MotionSe
     };
   });
 
+  // CF2-A (RF-PH-4): after the entrance, styles whose React value is the resting one (opacity 1, no
+  // rise); only the exit and the shake stay animated on top. Their first (React) value has `exit` and
+  // `shakeX` at 0, so a commit can only ever draw the resting picture.
+  const wordmarkRest = useAnimatedStyle(() => ({ opacity: 1 - exit.get(), transform: [{ scale: 1 }] }));
+  const captionRest = useAnimatedStyle(() => ({ opacity: 1 - exit.get() }));
+  const cardRest = useAnimatedStyle(() => {
+    const out = exit.get();
+    return {
+      opacity: 1 - out,
+      transform: [{ translateX: shakeX.get() }, { translateY: motion.distance.exitDrop * out }, { scale: 1 - 0.04 * out }],
+    };
+  });
+  const companionRest = useAnimatedStyle(() => ({ opacity: 1 - exit.get(), transform: [{ translateY: 0 }] }));
+
   return {
     reduced,
     entrance: initial.entrance,
+    /** True once the entrance is over and React draws the resting values (CF2-A, RF-PH-4). */
+    entranceOver,
     /** GlowRing `sweepDelayMs` (the ring scales its own beats; proof mode is applied here). */
     ringDelayMs: reduced ? 0 : durationMs(beats.ring, initial.settings),
     /** Delay of the L9 Alert's entering animation. */
@@ -169,11 +234,11 @@ export function useLoginChoreography(entrance: LoginEntrance, settings: MotionSe
     flyEmblemFrom,
     shake,
     leave,
-    backdropStyle,
-    wordmarkStyle,
-    captionStyle,
-    cardStyle,
-    companionStyle,
-    emblemStyle,
+    backdropStyle: entranceOver ? BACKDROP_REST : backdropStyle,
+    wordmarkStyle: entranceOver ? wordmarkRest : wordmarkStyle,
+    captionStyle: entranceOver ? captionRest : captionStyle,
+    cardStyle: entranceOver ? cardRest : cardStyle,
+    companionStyle: entranceOver ? companionRest : companionStyle,
+    emblemStyle: entranceOver ? EMBLEM_REST : emblemStyle,
   };
 }

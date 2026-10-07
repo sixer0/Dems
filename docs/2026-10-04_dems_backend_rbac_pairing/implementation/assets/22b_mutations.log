@@ -1,0 +1,17 @@
+unmutated: exit 0 | Test Files  1 passed (1) | Tests  35 passed (35)
+M01 helper: no step back (the plain slice): KILLED (exit 1) | Test Files  1 failed (1) | Tests  13 failed | 22 passed (35) | ⎯⎯⎯⎯⎯⎯ Failed Tests 13 ⎯⎯⎯⎯⎯⎯⎯ | restored: True
+M02 helper: steps back at any low surrogate (repairs a lone low): KILLED (exit 1) | Test Files  1 failed (1) | Tests  1 failed | 34 passed (35) | ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯ | restored: True
+M03 helper: steps back after any high surrogate (repairs a lone high): KILLED (exit 1) | Test Files  1 failed (1) | Tests  2 failed | 33 passed (35) | ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯ | restored: True
+M04 helper: steps back two units: KILLED (exit 1) | Test Files  1 failed (1) | Tests  12 failed | 23 passed (35) | ⎯⎯⎯⎯⎯⎯ Failed Tests 12 ⎯⎯⎯⎯⎯⎯⎯ | restored: True
+M05 helper: looks one unit too early: KILLED (exit 1) | Test Files  1 failed (1) | Tests  15 failed | 20 passed (35) | ⎯⎯⎯⎯⎯⎯ Failed Tests 15 ⎯⎯⎯⎯⎯⎯⎯ | restored: True
+M06 helper: the early return misses a text exactly as long as the limit (EQUIVALENT): NO CHANGE, as expected (exit 0) | Test Files  1 passed (1) | Tests  35 passed (35) | restored: True
+M07 helper: a non-positive limit cuts nothing: KILLED (exit 1) | Test Files  1 failed (1) | Tests  5 failed | 30 passed (35) | ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 5 ⎯⎯⎯⎯⎯⎯⎯ | restored: True
+M08 site: marker label back to slice(0, 80): KILLED (exit 1) | Test Files  1 failed (1) | Tests  2 failed | 33 passed (35) | ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯ | restored: True
+M09 site: note line back to slice(0, 139): KILLED (exit 1) | Test Files  1 failed (1) | Tests  2 failed | 33 passed (35) | ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯ | restored: True
+M10 site: evidence export destination back to slice(0, 120): KILLED (exit 1) | Test Files  1 failed (1) | Tests  2 failed | 33 passed (35) | ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯ | restored: True
+M11 site: audit and log export destination back to slice(0, 120): KILLED (exit 1) | Test Files  1 failed (1) | Tests  2 failed | 33 passed (35) | ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯ | restored: True
+M12 site: marker limit 80 -> 81 (a limit moved): KILLED (exit 1) | Test Files  1 failed (1) | Tests  4 failed | 31 passed (35) | ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯ | restored: True
+M13 site: note limit 139 -> 138 (a limit moved): KILLED (exit 1) | Test Files  1 failed (1) | Tests  1 failed | 34 passed (35) | ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯ | restored: True
+M14 site: destination limit 120 -> 119 at both sites (a limit moved): KILLED (exit 1) | Test Files  1 failed (1) | Tests  2 failed | 33 passed (35) | ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯ | restored: True
+after restore: exit 0 | Test Files  1 passed (1) | Tests  35 passed (35)
+13 of 13 behaviour-changing mutations killed; 0 survived; 1 equivalent mutation(s) changed nothing

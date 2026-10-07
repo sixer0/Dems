@@ -90,7 +90,6 @@ export {
   type TouchOutcome,
 } from './sessions';
 export { authSessionInfo, consoleLocked, invalidCredentials, normalizeUsername } from './sign-in';
-export { createSweeper, type Sweeper } from './sweeper';
 export { SESSION_TOKEN_BYTES, SESSION_TOKEN_PREFIX, isSessionToken, newSessionToken, sessionTokenHash } from './tokens';
 
 /**

@@ -94,14 +94,14 @@ export const ScenarioLoadRequestSchema = z
 export type ScenarioLoadRequest = z.output<typeof ScenarioLoadRequestSchema>;
 
 export const DemoEpochSchema = z
-  .object({
+  .strictObject({
     epoch: epoch().describe('The epoch the Core state now has. Every operator socket receives a new snapshot with it.'),
   })
   .describe('Result of a scenario load or a reset.');
 export type DemoEpoch = z.output<typeof DemoEpochSchema>;
 
 export const DemoStatusSchema = z
-  .object({
+  .strictObject({
     scenarios: z.array(z.enum(ScenarioName)).describe('The scenarios the server can load.'),
     scenario: z.enum(ScenarioName).describe('The scenario that is loaded.'),
     activeFaults: z
@@ -141,6 +141,21 @@ const DEMO_CONTROL = {
 } as const;
 const DEMO_REFUSED = notPermitted(Permission.DEMO_CONTROL, DEMO_FLAG_OFF);
 const GATE = 'Needs DEMO_CONTROL and the server-side demo flag, which is off unless the server was started with it.';
+
+/**
+ * `details.reason` of the `503 NOT_READY` of a scenario load or a reset that did not happen (W83,
+ * gap W43-1). The 503 that another request gets WHILE a rebuild runs names no reason.
+ */
+export const DemoRebuildRefusalReason = {
+  /** Another reset of this Core's database is running: try again. */
+  RESET_IN_PROGRESS: 'RESET_IN_PROGRESS',
+  /** This rebuild did not happen: the state is unchanged, or the server is not ready. */
+  RESET_FAILED: 'RESET_FAILED',
+} as const;
+export type DemoRebuildRefusalReason = (typeof DemoRebuildRefusalReason)[keyof typeof DemoRebuildRefusalReason];
+
+const REBUILD_REFUSED =
+  'When the rebuild cannot run, the answer is `503 NOT_READY` with `details.reason`: `RESET_IN_PROGRESS` when another reset of this Core\'s database is running (try again), or `RESET_FAILED` when this one did not happen (the state is unchanged, or the server is not ready).';
 const REBUILD =
   'The Core state is rebuilt from the seed, so the audit chain restarts; the discarded chain is kept in the chain lineage. Auth sessions, paired devices, biometric tokens, settings and pairing codes are kept: nobody is signed out and no device has to pair again. While the rebuild runs, every other request answers `503 NOT_READY`.';
 
@@ -178,6 +193,7 @@ export const DEMO_OPERATIONS = [
       'Loads one of the four scenarios: `idle`, `recording`, `finalizing`, `fault-demo`.',
       REBUILD,
       'Writes SCENARIO_LOADED as the first row after the seed history of the new chain; it names the operator, the scenario, and the head hash and row count of the discarded chain.',
+      REBUILD_REFUSED,
       GATE,
       CORE_SERVER_NOTE,
     ].join('\n\n'),
@@ -258,6 +274,7 @@ export const DEMO_OPERATIONS = [
       'Resets the Core to the seed state: the scenario `idle`.',
       REBUILD,
       'Writes SCENARIO_LOADED with `details.reset: true`.',
+      REBUILD_REFUSED,
       GATE,
       CORE_SERVER_NOTE,
     ].join('\n\n'),

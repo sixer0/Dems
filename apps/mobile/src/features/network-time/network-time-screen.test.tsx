@@ -122,7 +122,7 @@ describe('Network & Time (04 §4.14, MB 9)', () => {
     );
   });
 
-  it('GNSS loss → NTP → RTC → restored: the tier indicator moves, chips escalate calmly, one toast each', async () => {
+  it('GNSS loss → NTP → RTC → restored: the tier indicator moves, chips escalate calmly, 1 toast per change (its drawn count does not grow on later ticks)', async () => {
     const h = renderNetworkTimeApp();
     await settle();
     const toastCount = (text: string) => screen.queryAllByText(text).length;
@@ -135,7 +135,13 @@ describe('Network & Time (04 §4.14, MB 9)', () => {
     expect(within(screen.getByTestId('network-time-sync-chip')).getByText('NTP fallback')).toBeTruthy();
     expect(textOf('network-time-source-value')).toBe('NTP Server (Stratum-3)');
     expect(within(screen.getByTestId('network-time-system-chip')).getByText('Synchronized')).toBeTruthy();
-    expect(toastCount('GNSS signal lost')).toBeGreaterThan(0);
+    {
+      // W93-17/R16 (FXR-M): one toast, counted: what one toast draws must not grow on the next ticks.
+      const drawn = toastCount('GNSS signal lost');
+      expect(drawn).toBeGreaterThan(0);
+      act(() => h.advance(2_000));
+      expect(toastCount('GNSS signal lost')).toBe(drawn);
+    }
     // The orbit loop stops while GNSS has no fix.
     expect(activeLoopNames()).not.toContain('network-time-orbit');
 
@@ -145,13 +151,25 @@ describe('Network & Time (04 §4.14, MB 9)', () => {
     expect(within(screen.getByTestId('network-time-tier-NTP')).getByText('Unreachable')).toBeTruthy();
     expect(within(screen.getByTestId('network-time-sync-chip')).getByText('RTC holdover')).toBeTruthy();
     expect(within(screen.getByTestId('network-time-system-chip')).getByText('Free-running')).toBeTruthy();
-    expect(toastCount('No time reference')).toBeGreaterThan(0);
+    {
+      // W93-17/R16 (FXR-M): one toast, counted: what one toast draws must not grow on the next ticks.
+      const drawn = toastCount('No time reference');
+      expect(drawn).toBeGreaterThan(0);
+      act(() => h.advance(2_000));
+      expect(toastCount('No time reference')).toBe(drawn);
+    }
 
     act(() => h.sim.actions.clearFault('GNSS_LOSS'));
     act(() => h.advance(1_000));
     expect(tierSelected('GNSS')).toBe(true);
     expect(within(screen.getByTestId('network-time-sync-chip')).getByText('Synchronized')).toBeTruthy();
-    expect(toastCount('GNSS lock restored')).toBeGreaterThan(0);
+    {
+      // W93-17/R16 (FXR-M): one toast, counted: what one toast draws must not grow on the next ticks.
+      const drawn = toastCount('GNSS lock restored');
+      expect(drawn).toBeGreaterThan(0);
+      act(() => h.advance(2_000));
+      expect(toastCount('GNSS lock restored')).toBe(drawn);
+    }
     expect(activeLoopNames()).toContain('network-time-orbit');
     expect(getMissingKeys()).toEqual([]);
   });

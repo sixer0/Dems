@@ -1,0 +1,5 @@
+mark fresh process for Part B (after force-stop) at 10:30:21.644
+deep link demsdemo:///login?core=LIVE&motion=off at 10:30:21.839: Starting: Intent { act=android.intent.action.VIEW dat=demsdemo:///... pkg=com.dems.demo.tablet }
+slept 10000 ms
+any 200 (10-06 09:43:40.047 GET /api/v1/pairing/device 200)
+screencap 25_login_fresh_partB.png (126787 bytes) at 10:30:32.556

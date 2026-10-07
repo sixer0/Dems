@@ -1,0 +1,143 @@
+{
+  "at": "12:58:58.781 (epoch 1791266338.781)",
+  "facts": {
+    "href": "http://127.0.0.1:5173/admin/devices",
+    "onPage": true,
+    "issueState": "IDLE",
+    "codeShown": false,
+    "codeDigitCount": 0,
+    "qrShown": false,
+    "countdownSeconds": null,
+    "attempts": null,
+    "redeemedText": null,
+    "activeElsewhere": false,
+    "list": "table",
+    "rows": [
+      {
+        "id": "DEV-0002",
+        "state": "Revoked",
+        "online": "Offline",
+        "operator": "—",
+        "lastSeen": "12 min ago",
+        "revokeShown": false
+      },
+      {
+        "id": "DEV-0001",
+        "state": "Revoked",
+        "online": "Offline",
+        "operator": "—",
+        "lastSeen": "2 h ago",
+        "revokeShown": false
+      }
+    ],
+    "summary": {
+      "paired": "0",
+      "online": "0",
+      "text": "0 paired · 0 online0 paired · 0 online"
+    },
+    "toasts": []
+  },
+  "registry": {
+    "status": 200,
+    "devices": [
+      {
+        "id": "DEV-0002",
+        "state": "REVOKED",
+        "online": false,
+        "signedInOperatorId": null,
+        "revokedAt": "2026-10-06T05:49:21.176Z"
+      },
+      {
+        "id": "DEV-0001",
+        "state": "REVOKED",
+        "online": false,
+        "signedInOperatorId": null,
+        "revokedAt": "2026-10-06T03:08:24.580Z"
+      }
+    ]
+  },
+  "documentTimeOrigin": 1791265669672.8,
+  "screenshot": {
+    "file": "02_web_while_unpaired.png",
+    "at": "12:58:58.735 (epoch 1791266338.735)"
+  },
+  "audit": {
+    "*": {
+      "status": 200,
+      "rows": [
+        {
+          "id": "AUD-000177",
+          "atMs": 1791265761197,
+          "type": "TABLET_LINK_CHANGED",
+          "severity": "WARNING",
+          "actorId": null,
+          "deviceId": "TABLET",
+          "message": "Tablet control offline — recording continues",
+          "details": {
+            "state": "OFFLINE"
+          }
+        },
+        {
+          "id": "AUD-000176",
+          "atMs": 1791265761180,
+          "type": "DEVICE_REVOKED",
+          "severity": "WARNING",
+          "actorId": "OPR-002",
+          "deviceId": "DEV-0002",
+          "message": "Device DEV-0002 revoked",
+          "details": {
+            "reason": "R-S re-test",
+            "sessionsEnded": 0
+          }
+        },
+        {
+          "id": "AUD-000175",
+          "atMs": 1791265673583,
+          "type": "AUTH_SUCCESS",
+          "severity": "INFO",
+          "actorId": "OPR-002",
+          "deviceId": null,
+          "message": "Operator signed in (AKP Andi Pratama) via password",
+          "details": {
+            "method": "PASSWORD"
+          }
+        },
+        {
+          "id": "AUD-000174",
+          "atMs": 1791265564179,
+          "type": "TABLET_LINK_CHANGED",
+          "severity": "INFO",
+          "actorId": null,
+          "deviceId": "TABLET",
+          "message": "Tablet control connected",
+          "details": {
+            "state": "CONNECTED"
+          }
+        }
+      ]
+    }
+  },
+  "network": {
+    "api": [
+      {
+        "sent": "12:58:58.749 (epoch 1791266338.749)",
+        "method": "GET",
+        "path": "/api/v1/pairing/devices",
+        "status": 200,
+        "done": "12:58:58.763 (epoch 1791266338.763)"
+      },
+      {
+        "sent": "12:58:58.769 (epoch 1791266338.769)",
+        "method": "GET",
+        "path": "/api/v1/audit?…",
+        "status": 200,
+        "done": "12:58:58.780 (epoch 1791266338.780)"
+      }
+    ],
+    "origins": [
+      "http://127.0.0.1:5173"
+    ],
+    "sockets": [],
+    "console": []
+  }
+}

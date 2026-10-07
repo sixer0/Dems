@@ -1,0 +1,40 @@
+## W57 final gate — @dems/mobile. Fresh run 2026-10-05 11:35–11:38 WIB by coder-execution-local (step-79 evidence repair). Node v26.8.2, npm 11.19.1. One workspace at a time, --maxWorkers=2. Load average before the runs: 3.88 (P9 guard not fired).
+## Read-only on the tree: no source or test file changed; no device session run. Only runner SUMMARY blocks are embedded here — the raw whole-workspace stdout (8 MB, which carries other rows' login/auth console noise) is deliberately NOT copied into this asset. Every log quoted here was scanned for secrets: 0 seeded-password literal, 0 pairing-code literal, 0 credential-prefix (ses_/dvc_/bio_), 0 bearer value, 0 cookie name.
+
+$ npm run test -w @dems/mobile -- --maxWorkers=2          # started 11:36:56, ended 11:37:55
+Test Suites: 92 passed, 92 total
+Tests:       1207 passed, 1207 total
+Snapshots:   0 total
+Time:        58.65 s
+MOBILE_TEST_EXIT=0
+## Whole workspace green. 92 suites / 1,207 tests is above the read-only verifier's 10:09 figure (90 / 1,187) because W59's apps/mobile/src/features/login/** files were created after that snapshot (live-login.test.tsx born 10:14:33; login-live-model.test.ts); all of them are green under jest. W57's own share is the pairing folder below, plus the one granted line of home-screen.tsx pinned by stack-check-service-name.test.tsx inside it.
+
+$ npm run test -w @dems/mobile -- src/features/pairing --maxWorkers=2       # 11:35:43 to 11:35:58
+Test Suites: 6 passed, 6 total
+Tests:       66 passed, 66 total
+Snapshots:   0 total
+Time:        14.004 s
+PAIRING_EXIT=0
+## Per file (fresh --json run at 11:41, 0 failed): pairing-screen.test.tsx 8 | pairing-model.test.ts 7 | stack-check-service-name.test.tsx 2 | pairing-live-model.test.ts 12 | pairing-live-static.test.ts 10 | pairing-live.test.tsx 27. Four new files = 51; two existing (unchanged, blob-equal to acaff20) = 15. The row's claim "the folder: 6 suites, 66 tests" is exact.
+
+$ npm run test -w @dems/mobile -- src/features/pairing/pairing-live.test.tsx src/features/pairing/pairing-live-model.test.ts src/features/pairing/pairing-live-static.test.ts src/features/pairing/stack-check-service-name.test.tsx --maxWorkers=2 --verbose        # 11:36:24 to 11:36:38
+Test Suites: 4 passed, 4 total
+Tests:       51 passed, 51 total
+Snapshots:   0 total
+Time:        13.901 s
+LIVE_EXIT=0
+## The four new Live files only; the full per-test listing is assets/57_live_tests_verbose.txt.
+
+$ npm run typecheck -w @dems/mobile          # 11:38:37
+> @dems/mobile@0.1.0 typecheck
+> tsc --noEmit
+(no output)
+TYPECHECK_EXIT=0
+
+$ npm run lint -w @dems/mobile               # 11:38:42 to 11:38:54
+> @dems/mobile@0.1.0 lint
+> eslint .
+(no finding)
+LINT_EXIT=0
+
+## Attribution (protocol P11). The read-only verifier (gateway_check/06a_w54_w57_gate_evidence.md, sections A.4 and A.5) recorded @dems/mobile typecheck exit 2 and lint exit 1 at 10:14–10:15, with every error inside apps/mobile/src/features/login/** (W59, D133), whose owner was mid-edit at that moment (live-login.test.tsx born 10:14:33). Those reds named no file under features/pairing and not the granted line of home-screen.tsx. On this fresh 11:38 run both commands are exit 0: W59 has since edited those files (mtimes 10:26:29 and 10:27:02) and they now typecheck and lint clean. The earlier reds were transient W59 noise, not W57's — whoever gates W57 must not read them as W57's, and on the current tree they are resolved.

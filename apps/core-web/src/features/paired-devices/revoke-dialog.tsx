@@ -28,7 +28,7 @@ export interface RevokeDialogProps {
  * |--------|------------------------|
  * | 200 | The dialog closes; toast "{{device ID}} revoked"; the row morphs to REVOKED (the answer is written into the registry entry, then refetched) |
  * | 422 `INVALID_REASON` | The field's error ("at least 5 characters"; the Core counts the trimmed text itself, F59); the dialog stays |
- * | 422 `INVALID_INPUT` | The field's error (the Core refuses a reason of the form of a credential, CONTRACT-GAP-W32-2); the dialog stays |
+ * | 422 `INVALID_INPUT` | The field's error (the Core refuses a reason of the form of a credential, as the contract says since W83: gap W32-2); the dialog stays |
  * | 409 `INVALID_STATE`, 404 | The dialog closes; info toast "already revoked or unpaired"; refetch |
  * | 403 | The dialog closes; the presenter's denied toast names the role (PG-11) |
  * | An outage, a time-out, a 429 | The presenter's words; the dialog stays open with the reason (LB-6, LB-7, LB-10) |

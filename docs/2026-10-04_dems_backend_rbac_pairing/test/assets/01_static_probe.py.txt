@@ -1,0 +1,25 @@
+import os,re
+R='/Users/gsp-budi/Documents/DEMS'
+def files(root):
+    for dp,dn,fn in os.walk(root):
+        for f in fn:
+            if re.search(r'\.tsx?$',f): yield os.path.join(dp,f)
+def is_test(p):
+    return bool(re.search(r'\.test\.tsx?$',p) or re.search(r'/(testing|__tests__)/',p))
+def code(t):
+    t=re.sub(r'/\*[\s\S]*?\*/',' ',t); t=re.sub(r'(?<!:)//.*$','',t,flags=re.M); return t
+def unq(t): return re.sub(r"'[^'\n]*'|\"[^\"\n]*\"|`[^`\n]*`","''",t)
+for root in ['apps/core-web/src/features','apps/mobile/src/features','apps/mobile/src/auth']:
+    prod=[p for p in files(f'{R}/{root}') if not is_test(p)]
+    hits=[]
+    for p in prod:
+        t=unq(code(open(p).read()))
+        if re.search(r'\buseSimActions\b',t): hits.append((p,'useSimActions'))
+        for m in re.finditer(r'[\w.$\])]*\.actions\b',t): hits.append((p,m.group(0)))
+    print(root,len(prod),'production files; hits:',hits[:10])
+for root in ['apps/core-web/src','apps/mobile/src']:
+    imp=[]
+    for p in files(f'{R}/{root}'):
+        t=open(p).read()
+        if re.search(r"['\"]@dems/shared/live/testing['\"]",t) and not re.search(r'\.test\.tsx?$',p): imp.append(os.path.relpath(p,R))
+    print(root,'non-test importers of live/testing:',imp)

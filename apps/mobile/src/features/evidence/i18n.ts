@@ -153,6 +153,10 @@ export const evidenceEn = {
     // Live mode (backend task W74; 04_client_integration_spec §14 point 7): the Core's verdict is the record.
     coreLabel: 'Core record',
     coreNote: 'The Core runs the verification and returns the verdict of record; this tablet shows it as it is.',
+    // Closing-fix CF-M2 (R-T-2): the Live card's heading follows the verification the Core holds.
+    failedOnCore: 'Verification failed on the Core',
+    notVerifiedYet: 'Not verified yet',
+    coreNotRun: 'The Core holds no verification of this item yet. Verify asks the Core now.',
     bundledResult: 'Bundled demo package: {{verdict}} ({{label}})',
     bundledDiffers: 'The bundled demo package differs from the Core’s record. The Core’s verdict is the record.',
   },
@@ -225,7 +229,8 @@ export const evidenceEn = {
     zipSha: 'Package SHA-256 ({{file}})',
     zipNote: 'Package built on the Core (simulated); its hash is recorded in the export manifest.',
     zipNoteLive: 'The Core recorded this export. No file is sent to this tablet.',
-    successLive: 'Export of {{id}} accepted by the Core',
+    // The LIVE success toast is the shared `evidence.live.export.success`: row W74's own `successLive` was
+    // merged into it in the closing copy round (decision D162 DN-5, W83 ledger #93).
     destinationValue: 'Destination',
     reasonValue: 'Reason',
     doneTitle: 'Export accepted',

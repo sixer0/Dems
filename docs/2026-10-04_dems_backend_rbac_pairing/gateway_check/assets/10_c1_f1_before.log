@@ -1,0 +1,9 @@
+## before (tree as it is, 08:51:02): the two baseline suites, two workers
+PASS src/features/session-finalizing/session-finalizing-screen.test.tsx
+    > 137 |     act(() => h.sim.actions.inject('POWER_FAIL'));
+    > 137 |     act(() => h.sim.actions.inject('POWER_FAIL'));
+PASS src/features/session-summary/session-summary-screen.test.tsx
+A worker process has failed to exit gracefully and has been force exited. This is likely caused by tests leaking due to improper teardown. Try running with --detectOpenHandles to find leaks. Active timers can also cause this, ensure that .unref() was called on them.
+Test Suites: 2 passed, 2 total
+Tests:       17 passed, 17 total
+exit 0

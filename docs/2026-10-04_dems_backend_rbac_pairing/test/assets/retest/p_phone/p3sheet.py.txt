@@ -1,0 +1,20 @@
+import sys, glob, os
+from PIL import Image, ImageDraw
+A='/Users/gsp-budi/Documents/DEMS/docs/2026-10-04_dems_backend_rbac_pairing/test/assets/retest/p_phone/'
+mode=sys.argv[1]; out=sys.argv[2]
+rows=[]
+if mode=='caps':
+  for f in sys.argv[3:]:
+    im=Image.open(A+f+'.png').convert('RGB')
+    h=im.crop((470,565,720,645)); b=im.crop((750,2080,960,2150))
+    r=Image.new('RGB',(760,90),(0,0,0)); d=ImageDraw.Draw(r); d.text((4,4),f,fill=(255,255,0))
+    r.paste(h,(250,5)); r.paste(b,(530,10)); rows.append(r)
+else:
+  for f in sorted(glob.glob(sys.argv[3]+'/f_*.png')):
+    im=Image.open(f).convert('RGB')
+    o=im.crop((0,0,230,22)).resize((345,33)); h=im.crop((235,282,360,323)); b=im.crop((375,1040,480,1075))
+    r=Image.new('RGB',(760,50),(0,0,0)); d=ImageDraw.Draw(r); d.text((4,30),os.path.basename(f),fill=(255,255,0))
+    r.paste(o,(0,0)); r.paste(h,(400,4)); r.paste(b,(640,8)); rows.append(r)
+H=sum(r.height for r in rows); s=Image.new('RGB',(760,H),(60,60,60)); y=0
+for r in rows: s.paste(r,(0,y)); y+=r.height
+s.save(out)

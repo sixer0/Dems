@@ -1,0 +1,16 @@
+# C2 item 1, rule M15: mutations of CONF_BLOCK on a scratch copy (/private/tmp/claude-501/-Users-gsp-budi-Documents-DEMS/0d71fd65-4a51-4019-9c48-5c92d11bbdaf/scratchpad/c2-m15/scripts/pg, node_modules symlinked).
+# Workspace scripts/pg/init.mjs sha256 before: 4d3b2f808a2db58980bb8b79592067799413249ac6ea5b55d413b948ec00c740
+# Command per mutation: node --test --test-name-pattern='settings block|ruling 14|PostgreSQL 18.4 reads' <scratch>/scripts/pg/init.test.mjs
+baseline (no mutation) => ℹ pass 3 ℹ fail 0 
+M1 terse line removed => ℹ pass 0 ℹ fail 3 
+M2 verbosity default => ℹ pass 0 ℹ fail 3 
+M3 verbosity typo (tersee) => ℹ pass 0 ℹ fail 3 
+M4 collector off => ℹ pass 0 ℹ fail 3 
+M5 filename per minute (%H%M) => ℹ pass 0 ℹ fail 3 
+M6 size rotation line removed (default 10MB) => ℹ pass 0 ℹ fail 3 
+M7 no truncation => ℹ pass 0 ℹ fail 3 
+M8 rotation age 1d => ℹ pass 0 ℹ fail 3 
+M9 file mode 0644 => ℹ pass 0 ℹ fail 3 
+M10 statement logging added => ℹ pass 1 ℹ fail 2 
+M11 unknown parameter name => ℹ pass 0 ℹ fail 3 
+# Workspace scripts/pg/init.mjs sha256 after:  4d3b2f808a2db58980bb8b79592067799413249ac6ea5b55d413b948ec00c740

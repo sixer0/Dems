@@ -1,0 +1,20 @@
+10:48:41.688 declared screen login
+10:48:41.748 mark r01 at 10:48:41.748
+10:48:41.817 tap 539,1342
+10:48:42.117 slept 800 ms
+10:48:42.971 focused true; keyguard false; inputType 0x80001
+10:48:43.225 username typed (budi.santoso); inputType 0x80001
+10:48:43.456 slept 500 ms
+10:48:44.003 tap 539,1499
+10:48:44.105 slept 800 ms
+10:48:44.936 password typed (not shown); inputType 0x80081
+10:48:45.245 slept 300 ms
+10:48:45.577 key 66
+10:48:45.705 signin 200 at device 10-06 10:48:45.446 (POST /api/v1/auth/sign-in 200)
+10:48:45.767 slept 5000 ms
+10:48:50.903 declared screen home
+10:48:50.976 screencap 99a_retest_after_signin.png 10:48:50.976..10:48:51.461
+10:48:51.534 serverlog since r01 (3):
+    10:48:45.689 POST /api/v1/auth/sign-in 200 device:DEV-0001
+    10:48:45.725 [socket closed] device:DEV-0001
+    10:48:45.732 [socket opened] operator:OPR-001

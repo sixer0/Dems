@@ -1,0 +1,102 @@
+W44 third round (D100): why each new test is RED on the code before the round (the first failing assertion of each).
+Run: npx vitest run --root .cache/w44/before-round3/shared test/live-source-local-end.test.ts test/live-source-platform-neutral.test.ts
+(the copy holds src/live/source as it was before the round, and today's tests)
+
+ 1. CPC1-33 / D100: a session that is taken after a debt check is this client's again: when the Core closes its socket with 4401 and no `session.ended` arrives, that is an en
+     AssertionError: expected [] to match object [ { kind: 'SESSION_ENDED', …(3) } ]
+     ❯ test/live-source-local-end.test.ts:590:22
+ 2. CPC1-36 / D100: a payment the Core refuses again and again is not repeated without end: after five refusals in a row the source stops asking by itself, says so once, and 
+     AssertionError: expected [ +0, 2000, 6000, 14000, 30000, …(18) ] to deeply equal [ +0, 2000, 6000, 14000, 30000 ]
+     ❯ test/live-source-local-end.test.ts:646:70
+ 3. CPC1-34 / D100: a stored value that is no debt (a text, a record with a credential-like member and no reason) is dropped, cleared and reported, and the start is CLOSED: i
+     AssertionError: "LOCK": expected true to be false // Object.is equality
+     ❯ test/live-source-local-end.test.ts:1089:53
+ 4. CPC1-34 / D100: a `read` that THROWS is "a debt may exist": the Core is asked, the session it names is NOT taken, one report says why, and a fresh sign-in is required; th
+     AssertionError: expected true to be false // Object.is equality
+     ❯ test/live-source-local-end.test.ts:1140:27
+ 5. CPC1-34 / D100: a `read` that never answers: nothing is asked for 5,000 ms, then the start goes on CLOSED, with the two reports
+     AssertionError: expected true to be false // Object.is equality
+     ❯ test/live-source-local-end.test.ts:1193:27
+ 6. CPC1-34 / D100: after a closed start, a session another tab signs in to LATER is another session, and it is taken
+     AssertionError: expected true to be false // Object.is equality
+     ❯ test/live-source-local-end.test.ts:1261:27
+ 7. a `clear` that is still out does not erase a debt that is written after it was asked for: the write is made only when the storage has finished the clear
+     AssertionError: expected [ 'read', 'clear', 'write' ] to deeply equal [ 'read', 'clear' ]
+     ❯ test/live-source-local-end.test.ts:1309:24
+ 8. a `write` that is still out is not overtaken by the `clear` that follows it: the paid debt is gone from the storage
+     AssertionError: expected [ 'read', 'write', 'clear' ] to deeply equal [ 'read', 'write' ]
+     ❯ test/live-source-local-end.test.ts:1350:24
+ 9. `stop()` ends the waiting and the reports, not the order: a call that waits is still made in its turn
+     AssertionError: expected [ 'read', 'clear', 'write' ] to deeply equal [ 'read', 'clear' ]
+     ❯ test/live-source-local-end.test.ts:1368:24
+10. a call that waits behind one the storage never finishes is not made: the storage failed, which is reported once, and it is not asked again
+     AssertionError: expected [ 'read', 'write', 'clear' ] to deeply equal [ 'read', 'write' ]
+     ❯ test/live-source-local-end.test.ts:1394:24
+11. ANOTHER operator signs in with the same browser while this tab is offline: at the reconnect ONE question, the earlier session ends here (ROTATED, nothing owed), and the n
+     AssertionError: expected [ …(91) ] to deeply equal []
+     ❯ test/live-source-local-end.test.ts:1454:103
+12. the SAME operator signed in again elsewhere (another session of the same operator): the same end, and the new session is taken
+     AssertionError: expected [] to match object [ { kind: 'SESSION_ENDED', …(3) } ]
+     ❯ test/live-source-local-end.test.ts:1484:20
+13. another operator whose session was issued at the very instant of the earlier one is another session all the same
+     AssertionError: expected [] to match object [ { kind: 'SESSION_ENDED', …(2) } ]
+     ❯ test/live-source-local-end.test.ts:1498:20
+14. the session is still the same one: ONE question, no end, and it goes on with the Core's present instants and the state of the new socket
+     AssertionError: expected { …(10) } to match object { issuedAt: 1790823600000, …(2) }
+     ❯ test/live-source-local-end.test.ts:1517:30
+15. while the question has no answer nothing of the new socket is shown and nothing is sent for the operator; it is asked again after 2 s, 4 s, 8 s; a Lock ends the session H
+     AssertionError: expected undefined to be 'RECORDING' // Object.is equality
+     ❯ test/live-source-local-end.test.ts:1566:54
+16. the question is answered 401 (the session ended while the socket was being opened): the session ends as after any 401
+     AssertionError: expected LiveTransportError: The Core server is un… { …(5) } to match object { name: 'LiveTransportError', …(2) }
+     ❯ test/live-source-local-end.test.ts:1604:62
+17. the question is answered 401 (the session ended while the socket was being opened): the session ends as after any 401
+     
+     
+18. a Lock while the question is out ends the question with the session: after the next sign-in nothing waits for the old answer
+     FakeTransportUnscriptedError: Fake transport: no answer is scripted for POST /api/v1/session/{id}/markers (addSessionMarker) [NO_ANSWER_SCRIPTED]
+     
+19. the socket is lost AGAIN while the question is out: the answer "the same session" confirms nothing for the newer socket, which is asked about itself
+     AssertionError: expected [ …(196) ] to deeply equal []
+     ❯ test/live-source-local-end.test.ts:1658:103
+20. a start with a session in memory (`stop()`, another operator signs in elsewhere, `start()`): the earlier session ends (ROTATED) and the new one is taken; with the same se
+     AssertionError: expected [] to match object [ { kind: 'SESSION_ENDED', …(3) } ]
+     ❯ test/live-source-local-end.test.ts:1679:20
+21. activity while the session waits to be confirmed is remembered, and sent when it is confirmed
+     AssertionError: expected 1 to be +0 // Object.is equality
+     ❯ test/live-source-local-end.test.ts:1696:38
+22. the back-off of the question belongs to one socket: after a confirmation, and at a new socket, it starts again at 2 s
+     AssertionError: 1: expected [] to deeply equal [ +0, 2000, 6000 ]
+     ❯ test/live-source-local-end.test.ts:1712:93
+23. inside the Core's `retry-after` the question is not asked again, whatever suggests it (the socket is lost and returns once more)
+     AssertionError: expected 1 to be 2 // Object.is equality
+     ❯ test/live-source-local-end.test.ts:1728:25
+24. a ROTATED that is heard while the question waits to be asked again: its own check takes the session, and the tab is not left waiting
+     AssertionError: expected 2 to be 6 // Object.is equality
+     ❯ test/live-source-local-end.test.ts:1754:25
+25. a Lock while the question is out ends the question with the session: after the next sign-in nothing waits for the old answer
+     AssertionError: expected LiveTransportError: The Core server is un… { …(5) } to match object { name: 'LiveTransportError', …(2) }
+     ❯ test/live-source-local-end.test.ts:1801:62
+26. a Lock while the question is out, and the credential names another session: that session is taken, and nothing waits for the old answer
+     AssertionError: expected 1 to be +0 // Object.is equality
+     ❯ test/live-source-local-end.test.ts:1823:24
+27. an answer that only brings the present values of the session (the expiry check) confirms nothing for a socket that is being opened: its `hello` is asked about all the sam
+     AssertionError: expected [ …(101) ] to deeply equal []
+     ❯ test/live-source-local-end.test.ts:1894:103
+28. an answer of the expiry check that was asked earlier and arrives while the session waits to be confirmed releases nothing
+     AssertionError: expected [ …(12) ] to deeply equal []
+     ❯ test/live-source-local-end.test.ts:1928:55
+29. an answer of the permission refresh that was asked earlier and arrives while the session waits to be confirmed releases nothing
+     AssertionError: expected [ …(11) ] to deeply equal []
+     ❯ test/live-source-local-end.test.ts:1928:55
+30. an answer that names ANOTHER session is never taken over in silence: the expiry check ends the known session (ROTATED) and the new one starts fresh
+     AssertionError: expected [] to match object [ { kind: 'SESSION_ENDED', …(3) } ]
+     ❯ test/live-source-local-end.test.ts:1947:22
+31. the same for the permission refresh after a page's 403
+     AssertionError: expected [] to match object [ { kind: 'SESSION_ENDED', …(3) } ]
+     ❯ test/live-source-local-end.test.ts:1960:22
+32. CPC1-6: each local adapter carries its ID as a text a search finds
+     AssertionError: live-sim.ts names CONTRACT-GAP-W44-1: expected false to be true // Object.is equality
+     ❯ test/live-source-platform-neutral.test.ts:239:5
+
+Tests  30 failed | 76 passed (106)

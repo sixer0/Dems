@@ -1,0 +1,45 @@
+## 2026-10-06 04:45:33 WIB batch ['C1W1', 'C1W2', 'C1W3', 'C1W4', 'C1W5', 'C1W6']
+baseline (no mutation) exit 0 Test Files  1 passed (1) | Tests  5 passed (5) (2 s) over 1 files
+C1W1 detected    Live meters hint falls back to the Simulated words | Test Files  1 failed (1) | Tests  1 failed | 4 passed (5) | × step 2: the meters' hint says "Microphone levels from the Core server" 114ms (2 s)
+C1W2 detected    Simulated meters hint takes the Live words | Test Files  1 failed (1) | Tests  1 failed | 4 passed (5) | × step 2: the meters' hint says "Speak to test (simulated)" 27ms (2 s)
+C1W3 detected    Live scan label falls back to the Simulated words | Test Files  1 failed (1) | Tests  1 failed | 4 passed (5) | × step 1: the case-number button says "Fill in the next case number"; nothing on the step claims a simulation 176ms (2 s)
+C1W4 detected    Simulated scan label takes the Live words | Test Files  1 failed (1) | Tests  1 failed | 4 passed (5) | × step 1: the case-number button says "Scan case number (simulated)" 97ms (2 s)
+C1W5 detected    the page does not pass `live` to step 1 | Test Files  1 failed (1) | Tests  1 failed | 4 passed (5) | × step 1: the case-number button says "Fill in the next case number"; nothing on the step claims a simulation 191ms (2 s)
+C1W6 SURVIVED    the tooltip keeps the Simulated words (only the label moves) | Test Files  1 passed (1) | Tests  5 passed (5) |  (2 s)
+## 2026-10-06 04:45:47 WIB 6 mutations: 5 detected, 1 survived ['C1W6'], 0 not applied []
+## the mutated files in the tree, before and after: identical
+   917e113663ac3c52  apps/core-web/src/features/session-new/devices-step.tsx
+   47784e73f24801b8  apps/core-web/src/features/session-new/index.tsx
+   569ea5941ec9a964  apps/core-web/src/features/session-new/info-step.tsx
+## 2026-10-06 04:46:20 WIB batch ['C1W6']
+C1W6 detected    the tooltip keeps the Simulated words (only the label moves) | Test Files  1 failed (1) | Tests  1 failed | 4 passed (5) | × step 1: the case-number button and its tooltip say "Fill in the next case number"; nothing on the step claims a simulation 189ms (2 s)
+## 2026-10-06 04:46:22 WIB 1 mutations: 1 detected, 0 survived [], 0 not applied []
+## the mutated files in the tree, before and after: identical
+   569ea5941ec9a964  apps/core-web/src/features/session-new/info-step.tsx
+## 2026-10-06 04:57:56 WIB batch ['C6W1', 'C6W2']
+C6W1 detected    the Simulated note says the old, untrue sentence again | Test Files  1 failed | 1 passed (2) | Tests  1 failed | 11 passed (12) | × says the reason is recorded, in the words of the Live note, and no longer that it is not 3ms (9 s)
+C6W2 detected    Simulated mode shows the Live note | Test Files  1 failed (1) | Tests  1 failed | 9 passed (10) | × the Supervisor exports through the simulator in the press: the AUDIT_EXPORTED row at once, the "(simulated)" toast, the Simulated words, no file 1281ms (9 s)
+## 2026-10-06 04:58:13 WIB 2 mutations: 2 detected, 0 survived [], 0 not applied []
+## the mutated files in the tree, before and after: identical
+   27cf185189e3dece  apps/core-web/src/features/security-audit/export-audit-dialog.tsx
+   8b645046b081f407  packages/shared/src/i18n/en/security-audit.ts
+## 2026-10-06 05:00:22 WIB batch ['C7W1', 'C7W2', 'C7W3', 'C7W4', 'C7W5']
+baseline (no mutation) exit 0 Test Files  2 passed (2) | Tests  6 passed (6) (2 s) over 2 files
+C7W1 detected    the empty state keeps "No DEMO package" when the reference is unavailable | Test Files  1 failed | 1 passed (2) | Tests  1 failed | 5 passed (6) | × operation 40 unanswered: "Media reference unavailable", the header chip's words; nothing claims there is no package 62ms (2 s)
+C7W2 detected    the record keeps "no DEMO package joins it" when the reference is unavailable | Test Files  1 failed | 1 passed (2) | Tests  1 failed | 5 passed (6) | × operation 40 unanswered: "Media reference unavailable", the header chip's words; nothing claims there is no package 66ms (2 s)
+C7W3 detected    the prop is honoured in Simulated mode too | Test Files  1 failed | 1 passed (2) | Tests  1 failed | 5 passed (6) | × the prop changes nothing: "No DEMO package for this item" and the SIMULATED record 61ms (2 s)
+C7W4 detected    the unavailable words show whenever Live has no package (NONE as well) | Test Files  2 failed (2) | Tests  2 failed | 4 passed (6) | × the Metadata tab of the detail page (operation 40 answers NONE): "Core record", `"record": "CORE"`, no "simulated" word 464ms (2 s)
+C7W5 detected    the page does not pass the media state to the tab | Test Files  1 failed | 1 passed (2) | Tests  1 failed | 5 passed (6) | × operation 40 unanswered: "Media reference unavailable", the header chip's words; nothing claims there is no package 65ms (2 s)
+## 2026-10-06 05:00:35 WIB 5 mutations: 5 detected, 0 survived [], 0 not applied []
+## the mutated files in the tree, before and after: identical
+   a5b0e20a6cc90727  apps/core-web/src/features/evidence/detail-page.tsx
+   032d224ab0bd4443  apps/core-web/src/features/evidence/metadata-tab.tsx
+## 2026-10-06 05:14:17 WIB batch ['C2W1', 'C2W2', 'C2W3']
+baseline (no mutation) exit 0 Test Files  1 passed (1) | Tests  3 passed (3) (2 s) over 1 files
+C2W1 detected    the shared Live caption says "Last N samples" again | Test Files  1 failed (1) | Tests  2 failed | 1 passed (3) | × says the line is derived from the Core's data, names no device or browser, and nothing about a simulation 3ms (3 s)
+C2W2 detected    Live mode takes the Simulated caption | Test Files  1 failed (1) | Tests  1 failed | 2 passed (3) | × Camera 1: "Derived from the Core's data · …"; nothing on the tab claims a simulation 1452ms (3 s)
+C2W3 detected    Simulated mode takes the Live caption | Test Files  1 failed (1) | Tests  1 failed | 2 passed (3) | × the Health chart says "Simulated · last N samples" 23ms (2 s)
+## 2026-10-06 05:14:28 WIB 3 mutations: 3 detected, 0 survived [], 0 not applied []
+## the mutated files in the tree, before and after: identical
+   b5ef9012aa43a697  apps/core-web/src/features/devices/live.ts
+   977a9d5892ee3bc1  packages/shared/src/i18n/en/devices.ts

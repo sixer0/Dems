@@ -1,0 +1,14 @@
+
+> @dems/core-server@0.2.0 test
+> vitest run --project unit --maxWorkers=2
+
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/apps/core-server
+
+
+ Test Files  153 passed (153)
+      Tests  3912 passed (3912)
+   Start at  17:16:52
+   Duration  34.82s (import 59%, tests 37%, transform 4%)
+
+EXIT=0

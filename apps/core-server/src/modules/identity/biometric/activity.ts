@@ -21,6 +21,7 @@
  * names an operator only where that operator is enabled and has an enrolment on the reporting
  * device (SR-37; security checkpoint CPS1-8).
  */
+import { BiometricTokenRefusalReason } from '@dems/shared/api';
 import { AuthMethod } from '@dems/shared/sim';
 import type { AuditEntry } from '../../../core';
 import { attemptFailed, attemptLocked, signedIn, type Activity } from '../activity';
@@ -31,24 +32,15 @@ const BIOMETRIC = AuthMethod.BIOMETRIC;
  * `details.reason` of an `AUTH_FAILED` row of a refused token. The answer to the caller is the
  * same for all of them; the row is for whoever reads the trail.
  */
-export const TokenRefusalReason = {
-  /**
-   * A reuse: the token was used before (spec §5.6 step 6), or it is live and a device it was not
-   * issued to presented it (security checkpoint CPS1-7). The row also carries `sessionsEnded`.
-   */
-  TOKEN_REUSE: 'TOKEN_REUSE',
-  /** The operator is disabled, or the token was revoked when the operator was disabled (ID-4). */
-  USER_DISABLED: 'USER_DISABLED',
-  /** The token was revoked: turned off, replaced by a new enrolment, a reused family, a retired device. */
-  TOKEN_REVOKED: 'TOKEN_REVOKED',
-  /** The token was not used within its 30 days. */
-  TOKEN_EXPIRED: 'TOKEN_EXPIRED',
-  /** The token belongs to another device than the one that presented it, and is no longer live (revoked or expired). */
-  OTHER_DEVICE: 'OTHER_DEVICE',
-  /** The token was right and its device is no longer PAIRED. */
-  DEVICE_NOT_PAIRED: 'DEVICE_NOT_PAIRED',
-} as const;
-export type TokenRefusalReason = (typeof TokenRefusalReason)[keyof typeof TokenRefusalReason];
+// The contract's `BiometricTokenRefusalReason` (W83, gap W41-4), under this module's name (review
+// findings W91-4, W92-15). TOKEN_REUSE: the token was used before (spec §5.6 step 6), or it is live
+// and a device it was not issued to presented it (security checkpoint CPS1-7); the row also
+// carries `sessionsEnded`. USER_DISABLED: the operator is disabled, or the token was revoked when
+// the operator was disabled (ID-4). TOKEN_REVOKED, TOKEN_EXPIRED (30 days), OTHER_DEVICE (another
+// device's token that is no longer live), DEVICE_NOT_PAIRED (the token was right, its device is
+// no longer PAIRED).
+export const TokenRefusalReason = BiometricTokenRefusalReason;
+export type TokenRefusalReason = BiometricTokenRefusalReason;
 
 export interface EnrolmentChanged {
   readonly operatorId: string;

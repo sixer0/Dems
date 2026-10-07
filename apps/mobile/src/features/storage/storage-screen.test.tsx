@@ -153,15 +153,23 @@ describe('Storage screen', () => {
     expect(mockBack).toHaveBeenCalledTimes(1);
   });
 
-  it('LOW then FULL: inline Alert, one toast and one haptic per escalation, ring 99%, fault rows', async () => {
+  it('LOW then FULL: inline Alert, 1 toast per escalation (its drawn count does not grow on later ticks), 1 haptic each, ring 99%, fault rows', async () => {
     const test = await mount();
     expect(screen.queryByTestId('storage-alert-LOW')).toBeNull();
+    const haptics = () => jest.mocked(notificationAsync).mock.calls.length;
+    const hapticsBefore = haptics();
     act(() => {
       test.sim.actions.inject('STORAGE_LOW');
       test.advance(200);
     });
     expect(screen.getByTestId('storage-alert-LOW')).toBeTruthy();
-    expect(screen.getAllByText('Evidence storage is low').length).toBeGreaterThan(0);
+    // W93-17/R16 (FXR-M): "one toast" with a count. The kit draws a toast's text more than once, so the
+    // count is what ONE toast draws, and later ticks of the same escalation must not add another.
+    const drawnByOneLowToast = screen.getAllByText('Evidence storage is low').length;
+    expect(drawnByOneLowToast).toBeGreaterThan(0);
+    act(() => test.advance(2_000));
+    expect(screen.getAllByText('Evidence storage is low')).toHaveLength(drawnByOneLowToast);
+    expect(haptics() - hapticsBefore).toBe(1);
     expect(jest.mocked(notificationAsync)).toHaveBeenCalledWith(NotificationFeedbackType.Warning);
     expect(label('storage-ring')).toBe('Evidence storage 86% used, LOW');
 
@@ -176,8 +184,12 @@ describe('Storage screen', () => {
     expect(screen.getByTestId('storage-alert-FULL')).toBeTruthy();
     expect(screen.queryByTestId('storage-alert-LOW')).toBeNull();
     expect(textOf('storage-alert-FULL')).toContain('Storage full. Recording is blocked.');
-    expect(screen.getAllByText('Evidence storage is full').length).toBeGreaterThan(0);
+    const drawnByOneFullToast = screen.getAllByText('Evidence storage is full').length;
+    expect(drawnByOneFullToast).toBeGreaterThan(0);
+    act(() => test.advance(2_000));
+    expect(screen.getAllByText('Evidence storage is full')).toHaveLength(drawnByOneFullToast);
     expect(jest.mocked(notificationAsync)).toHaveBeenCalledWith(NotificationFeedbackType.Error);
+    expect(haptics() - hapticsBefore).toBe(2);
     expect(label('storage-ring')).toBe('Evidence storage 99% used, FULL');
     expect(label('storage-ring-percent')).toBe('99%');
     expect(rowLabels()[0]).toContain('Fault raised · Storage full');

@@ -1,0 +1,39 @@
+baseline live-login-model.test.tsx                                  0 failed of 25
+baseline live-login-page.test.tsx                                   0 failed of 31
+baseline live-login-presentation.test.tsx                           0 failed of 5
+baseline live-shell-indicator.test.tsx                              0 failed of 22
+baseline live-shell-indicator.test.tsx,live-login-page.test.tsx     0 failed of 53
+baseline live-shell-indicator.test.tsx,live-login-page.test.tsx,live-shell-notices.test.tsx,live-shell-admin.test.tsx 3 failed of 115
+R1 the sink writes the raw message of the error again (CPW1-8 undone)          DETECTED (+2 over baseline 0, 2/53)
+R2 the Login page stops naming itself: the source argument is dropped          DETECTED (+1 over baseline 0, 1/31)
+R3 the surviving copy renames its dialog test ID (the four pinning surfaces)   DETECTED (+12 over baseline 3, 15/115)
+R4 the switch no longer refuses a second press while it runs                   SURVIVED (+0 over baseline 0, 0/22)
+T1 the tone ignores the link: every RECONNECTING reads warning                 SURVIVED (+0 over baseline 0, 0/22)
+T2 the tone comes from the label alone again (D144(2) undone)                  DETECTED (+1 over baseline 0, 1/22)
+P1 the follow-up no longer writes the tab-local flag                           DETECTED (+3 over baseline 0, 3/5)
+P2 the follow-up does not fire at the load                                     DETECTED (+1 over baseline 0, 1/5)
+P3 the root installs it twice (the loose pin of CPW1-5 must catch it)          DETECTED (+1 over baseline 0, 1/25)
+H1 the bed no longer owns the global fetch (CPW1-3 undone)                     DETECTED (+4 over baseline 0, 4/31)
+H2 the bed leaves getServiceHealth unscripted                                  DETECTED (+28 over baseline 0, 28/31)
+C1 the date rule of 1520 px hides another item instead                         DETECTED (+1 over baseline 0, 1/22)
+C2 the Live-only date rule loses its mode key                                  DETECTED (+1 over baseline 0, 1/22)
+C3 the date yields at another width than the measured one                      DETECTED (+1 over baseline 0, 1/22)
+C4 the clock rule of 432 px disappears                                         DETECTED (+1 over baseline 0, 1/22)
+
+13 of 15 mutations detected.
+  DETECTED (2 failed, baseline 0, of 53)         R1 the sink writes the raw message of the error again (CPW1-8 undone)
+  DETECTED (1 failed, baseline 0, of 31)         R2 the Login page stops naming itself: the source argument is dropped
+  DETECTED (15 failed, baseline 3, of 115)       R3 the surviving copy renames its dialog test ID (the four pinning surfaces)
+  SURVIVED (0 failed, baseline 0, of 22)         R4 the switch no longer refuses a second press while it runs
+  SURVIVED (0 failed, baseline 0, of 22)         T1 the tone ignores the link: every RECONNECTING reads warning
+  DETECTED (1 failed, baseline 0, of 22)         T2 the tone comes from the label alone again (D144(2) undone)
+  DETECTED (3 failed, baseline 0, of 5)          P1 the follow-up no longer writes the tab-local flag
+  DETECTED (1 failed, baseline 0, of 5)          P2 the follow-up does not fire at the load
+  DETECTED (1 failed, baseline 0, of 25)         P3 the root installs it twice (the loose pin of CPW1-5 must catch it)
+  DETECTED (4 failed, baseline 0, of 31)         H1 the bed no longer owns the global fetch (CPW1-3 undone)
+  DETECTED (28 failed, baseline 0, of 31)        H2 the bed leaves getServiceHealth unscripted
+  DETECTED (1 failed, baseline 0, of 22)         C1 the date rule of 1520 px hides another item instead
+  DETECTED (1 failed, baseline 0, of 22)         C2 the Live-only date rule loses its mode key
+  DETECTED (1 failed, baseline 0, of 22)         C3 the date yields at another width than the measured one
+  DETECTED (1 failed, baseline 0, of 22)         C4 the clock rule of 432 px disappears
+MUT_EXIT=0

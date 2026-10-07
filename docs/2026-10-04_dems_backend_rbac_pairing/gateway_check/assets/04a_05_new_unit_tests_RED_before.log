@@ -1,0 +1,908 @@
+
+ RUN  v5.0.3 /private/tmp/claude-501/-Users-gsp-budi-Documents-DEMS/0d71fd65-4a51-4019-9c48-5c92d11bbdaf/scratchpad/cpb1a/before/apps/core-server
+
+ × |unit| src/core/__tests__/connection-lost.test.ts > which failures mean that the connection or the server went away > SQLSTATE class 08, 57P01 to 57P03 and the socket errors of the driver; nothing else 5ms
+   → isConnectionFailureCode is not a function
+ × |unit| src/core/__tests__/connection-lost.test.ts > a statement of a unit fails with a code of the connection class > 08000: 503 DATABASE_UNAVAILABLE with the driver's error as cause; readiness is told; the connection is closed 10ms
+   → expected Error: MARK-driver-text-5e1b 08000 { code: '…' } to be an instance of PipelineFailure
+ × |unit| src/core/__tests__/connection-lost.test.ts > a statement of a unit fails with a code of the connection class > 08003: 503 DATABASE_UNAVAILABLE with the driver's error as cause; readiness is told; the connection is closed 2ms
+   → expected Error: MARK-driver-text-5e1b 08003 { code: '…' } to be an instance of PipelineFailure
+ × |unit| src/core/__tests__/connection-lost.test.ts > a statement of a unit fails with a code of the connection class > 08006: 503 DATABASE_UNAVAILABLE with the driver's error as cause; readiness is told; the connection is closed 1ms
+   → expected Error: MARK-driver-text-5e1b 08006 { code: '…' } to be an instance of PipelineFailure
+ × |unit| src/core/__tests__/connection-lost.test.ts > a statement of a unit fails with a code of the connection class > 08001: 503 DATABASE_UNAVAILABLE with the driver's error as cause; readiness is told; the connection is closed 1ms
+   → expected Error: MARK-driver-text-5e1b 08001 { code: '…' } to be an instance of PipelineFailure
+ × |unit| src/core/__tests__/connection-lost.test.ts > a statement of a unit fails with a code of the connection class > 08004: 503 DATABASE_UNAVAILABLE with the driver's error as cause; readiness is told; the connection is closed 1ms
+   → expected Error: MARK-driver-text-5e1b 08004 { code: '…' } to be an instance of PipelineFailure
+ × |unit| src/core/__tests__/connection-lost.test.ts > a statement of a unit fails with a code of the connection class > 08007: 503 DATABASE_UNAVAILABLE with the driver's error as cause; readiness is told; the connection is closed 1ms
+   → expected Error: MARK-driver-text-5e1b 08007 { code: '…' } to be an instance of PipelineFailure
+ × |unit| src/core/__tests__/connection-lost.test.ts > a statement of a unit fails with a code of the connection class > 08P01: 503 DATABASE_UNAVAILABLE with the driver's error as cause; readiness is told; the connection is closed 1ms
+   → expected Error: MARK-driver-text-5e1b 08P01 { code: '…' } to be an instance of PipelineFailure
+ × |unit| src/core/__tests__/connection-lost.test.ts > a statement of a unit fails with a code of the connection class > 57P01: 503 DATABASE_UNAVAILABLE with the driver's error as cause; readiness is told; the connection is closed 1ms
+   → expected Error: MARK-driver-text-5e1b 57P01 { code: '…' } to be an instance of PipelineFailure
+ × |unit| src/core/__tests__/connection-lost.test.ts > a statement of a unit fails with a code of the connection class > 57P02: 503 DATABASE_UNAVAILABLE with the driver's error as cause; readiness is told; the connection is closed 1ms
+   → expected Error: MARK-driver-text-5e1b 57P02 { code: '…' } to be an instance of PipelineFailure
+ × |unit| src/core/__tests__/connection-lost.test.ts > a statement of a unit fails with a code of the connection class > 57P03: 503 DATABASE_UNAVAILABLE with the driver's error as cause; readiness is told; the connection is closed 1ms
+   → expected Error: MARK-driver-text-5e1b 57P03 { code: '…' } to be an instance of PipelineFailure
+ × |unit| src/core/__tests__/connection-lost.test.ts > a statement of a unit fails with a code of the connection class > ECONNRESET: 503 DATABASE_UNAVAILABLE with the driver's error as cause; readiness is told; the connection is closed 1ms
+   → expected Error: MARK-driver-text-5e1b ECONNRESET { code: '…' } to be an instance of PipelineFailure
+ × |unit| src/core/__tests__/connection-lost.test.ts > a statement of a unit fails with a code of the connection class > EPIPE: 503 DATABASE_UNAVAILABLE with the driver's error as cause; readiness is told; the connection is closed 1ms
+   → expected Error: MARK-driver-text-5e1b EPIPE { code: '…' } to be an instance of PipelineFailure
+ × |unit| src/core/__tests__/connection-lost.test.ts > a statement of a unit fails with a code of the connection class > ETIMEDOUT: 503 DATABASE_UNAVAILABLE with the driver's error as cause; readiness is told; the connection is closed 1ms
+   → expected Error: MARK-driver-text-5e1b ETIMEDOUT { code: '…' } to be an instance of PipelineFailure
+ × |unit| src/core/__tests__/connection-lost.test.ts > a statement of a unit fails with a code of the connection class > ECONNREFUSED: 503 DATABASE_UNAVAILABLE with the driver's error as cause; readiness is told; the connection is closed 1ms
+   → expected Error: MARK-driver-text-5e1b ECONNREFUSED { code: '…' } to be an instance of PipelineFailure
+ × |unit| src/core/__tests__/connection-lost.test.ts > a statement of a unit fails with a code of the connection class > ENOTCONN: 503 DATABASE_UNAVAILABLE with the driver's error as cause; readiness is told; the connection is closed 0ms
+   → expected Error: MARK-driver-text-5e1b ENOTCONN { code: '…' } to be an instance of PipelineFailure
+ × |unit| src/core/__tests__/connection-lost.test.ts > a statement of a unit fails with a code of the connection class > through the query builder: the caller of the unit gets the 503, not the wrapper that quotes the statement 3ms
+   → expected Error: Failed query: select "singleton", … { …(2) } to be an instance of PipelineFailure
+ × |unit| src/core/__tests__/connection-lost.test.ts > a statement of a unit fails with a code of the connection class > the work caught the failure and returned, or threw a refusal of its own: the answer is still 503 5ms
+   → expected Error: MARK-driver-text-5e1b 08006 { code: '…' } to match object { statusCode: 503, …(1) }
+(1 matching property omitted from actual)
+ × |unit| src/core/__tests__/connection-lost.test.ts > the connection reports an error while the unit holds it > the driver's error without a code, as a closed socket gives it: 503, whatever the statement then rejects with 2ms
+   → expected Error: Connection terminated unexpectedly… to match object { statusCode: 503, …(1) }
+ × |unit| src/core/__tests__/connection-lost.test.ts > the connection reports an error while the unit holds it > between two statements, and the work returns: no COMMIT is sent, 503 1ms
+   → expected Error: MARK-driver-text-5e1b 57P01 { code: '…' } to match object { statusCode: 503, …(1) }
+(1 matching property omitted from actual)
+ ✓ |unit| src/core/__tests__/connection-lost.test.ts > what stays as it was > a statement that fails with 22012 is the caller's failure: the same error, a rollback, readiness is not told 1ms
+ ✓ |unit| src/core/__tests__/connection-lost.test.ts > what stays as it was > a statement that fails with 23505 is the caller's failure: the same error, a rollback, readiness is not told 0ms
+ ✓ |unit| src/core/__tests__/connection-lost.test.ts > what stays as it was > a statement that fails with 23503 is the caller's failure: the same error, a rollback, readiness is not told 0ms
+ ✓ |unit| src/core/__tests__/connection-lost.test.ts > what stays as it was > a statement that fails with 40001 is the caller's failure: the same error, a rollback, readiness is not told 0ms
+ ✓ |unit| src/core/__tests__/connection-lost.test.ts > what stays as it was > a statement that fails with 40P01 is the caller's failure: the same error, a rollback, readiness is not told 0ms
+ ✓ |unit| src/core/__tests__/connection-lost.test.ts > what stays as it was > a statement that fails with 42P01 is the caller's failure: the same error, a rollback, readiness is not told 0ms
+ ✓ |unit| src/core/__tests__/connection-lost.test.ts > what stays as it was > a statement that fails with 25P02 is the caller's failure: the same error, a rollback, readiness is not told 0ms
+ ✓ |unit| src/core/__tests__/connection-lost.test.ts > what stays as it was > a statement that fails with 53300 is the caller's failure: the same error, a rollback, readiness is not told 0ms
+ ✓ |unit| src/core/__tests__/connection-lost.test.ts > what stays as it was > a statement that fails with 57000 is the caller's failure: the same error, a rollback, readiness is not told 0ms
+ ✓ |unit| src/core/__tests__/connection-lost.test.ts > what stays as it was > a statement that fails with ZA001 is the caller's failure: the same error, a rollback, readiness is not told 0ms
+ ✓ |unit| src/core/__tests__/connection-lost.test.ts > what stays as it was > a statement that fails with ERR_INVALID_ARG_TYPE is the caller's failure: the same error, a rollback, readiness is not told 0ms
+ ✓ |unit| src/core/__tests__/connection-lost.test.ts > what stays as it was > a failure without a code and without an error of the connection (a value the driver cannot send) is not a loss 0ms
+ ✓ |unit| src/core/__tests__/connection-lost.test.ts > what stays as it was > what the work throws without any failed statement reaches the caller as it is 0ms
+ ✓ |unit| src/core/__tests__/connection-lost.test.ts > what stays as it was > the statement limit of the unit (57014) is still the time-out refusal, and no connection at the start is still told once 2ms
+ × |unit| src/core/__tests__/connection-lost.test.ts > in the app: the answer and readiness > the request answers 503 NOT_READY, not 500; the flag goes off at once and on again when the next probe succeeds 42ms
+   → expected 500 to be 503 // Object.is equality
+ × |unit| src/core/__tests__/connection-lost.test.ts > in the app: the answer and readiness > while the database stays away the flag stays off 16ms
+   → expected 500 to be 503 // Object.is equality
+ × |unit| src/plugins/logger/__tests__/safe-log-object.test.ts > loggedError > is what the err serializer writes: type, code, message (the code or the name) and the frames 5ms
+   → loggedError is not a function
+ × |unit| src/plugins/logger/__tests__/safe-log-object.test.ts > safeLogObject > returns the same object when it holds no error, and never changes the object it was given 1ms
+   → safeLogObject is not a function
+ × |unit| src/plugins/logger/__tests__/safe-log-object.test.ts > safeLogObject > leaves req, res and err at the top to their serializers, and nowhere else 0ms
+   → safeLogObject is not a function
+ × |unit| src/plugins/logger/__tests__/safe-log-object.test.ts > safeLogObject > describes an error at any depth it reads, and does not write what lies deeper than the limit 0ms
+   → safeLogObject is not a function
+ × |unit| src/plugins/logger/__tests__/safe-log-object.test.ts > safeLogObject > a structure that refers to itself ends 0ms
+   → safeLogObject is not a function
+ × |unit| src/plugins/logger/__tests__/safe-log-object.test.ts > safeLogObject > a container with more members than the limit is not written, so nothing unread is 0ms
+   → safeLogObject is not a function
+ × |unit| src/plugins/logger/__tests__/safe-log-object.test.ts > safeLogObject > reads what an object gives as its JSON form, and a member that throws is not written 0ms
+   → safeLogObject is not a function
+ × |unit| src/plugins/logger/__tests__/safe-log-object.test.ts > safeLogObject > an object that is not plain is read like the serialiser reads it: its own members 0ms
+   → safeLogObject is not a function
+ × |unit| src/plugins/logger/__tests__/safe-log-object.test.ts > through the logger > a line at every level, and a line of a request, are written safe 121ms
+   → expected { Object (level, time, ...) } to match object { error: { code: '23505' }, …(1) }
+(15 matching properties omitted from actual)
+ × |unit| src/plugins/logger/__tests__/safe-log-object.test.ts > through the logger > the persistent error log gets the code and the name of the cause, and nothing of the error 2ms
+   → expected { …(8) } to match object { level: 'error', …(6) }
+(3 matching properties omitted from actual)
+ × |unit| src/plugins/logger/__tests__/safe-log-object.test.ts > codedCauseOf: the one walk over a cause chain > gives the error that carries the code, its code and how far down it was 0ms
+   → codedCauseOf is not a function
+ × |unit| src/plugins/logger/__tests__/safe-log-object.test.ts > codedCauseOf: the one walk over a cause chain > reads at most CAUSE_CHAIN_DEPTH errors 0ms
+   → expected undefined to be 4 // Object.is equality
+ ✓ |unit| test/static/log-calls.test.ts > the scan itself > finds the log calls of a text and the members of the objects they log (positive control) 4ms
+ ✓ |unit| test/static/log-calls.test.ts > the scan itself > knows a value that is fixed in the source from one that could have been caught 1ms
+ ✓ |unit| test/static/log-calls.test.ts > the scan itself > finds a child logger 0ms
+ ✓ |unit| test/static/log-calls.test.ts > the scan itself > reads the production sources of the server, the module folders included 13ms
+ ✓ |unit| test/static/log-calls.test.ts > CPB1-2: an error is logged as { err } > the list of exceptions is explicit, and its foundation part is the one hold name 0ms
+ ✓ |unit| test/static/log-calls.test.ts > CPB1-2: an error is logged as { err } > no log call of a production source holds a member named error, cause, e or reason 2ms
+ ✓ |unit| test/static/log-calls.test.ts > CPB1-2: an error is logged as { err } > no production source creates a child logger 1ms
+ ✓ |unit| test/static/search-path.test.ts > the scan itself > finds each forbidden text when it is present, in any case, in code and in strings (positive control) 2ms
+ ✓ |unit| test/static/search-path.test.ts > the scan itself > reads the production sources of the server: TypeScript and SQL, the module folders included 0ms
+ × |unit| test/static/search-path.test.ts > finding F53: nothing but the places that pin the path names a temporary object or the path > the list of places is exact 22ms
+   → expected [ 'src/core/unit-of-work.ts', …(1) ] to deeply equal [ 'src/core/unit-of-work.ts', …(2) ]
+ × |unit| test/static/search-path.test.ts > finding F53: nothing but the places that pin the path names a temporary object or the path > each listed place holds what the list says it does 1ms
+   → expected 0 to be greater than or equal to 2
+ × |unit| src/plugins/db/__tests__/read.test.ts > a read that succeeds > gets the current pool and returns what the work returned; nothing is logged and nothing is probed 82ms
+   → app.db.read is not a function
+ × |unit| src/plugins/db/__tests__/read.test.ts > a read that succeeds > after a reopen the work gets the new pool 8ms
+   → app.db.read is not a function
+ × |unit| src/plugins/db/__tests__/read.test.ts > a read that fails > rejects with 503 NOT_READY; one error line and one persistent entry by the code; the probe follows 13ms
+   → app.db.read is not a function
+ × |unit| src/plugins/db/__tests__/read.test.ts > a read that fails > a failure the query builder wrapped: the SQLSTATE of the driver is in the line, the statement is not 16ms
+   → app.db.read is not a function
+ × |unit| src/plugins/db/__tests__/read.test.ts > a read that fails > a refusal the work throws passes unchanged: it is an answer, not a failure of the database 9ms
+   → app.db.read is not a function
+ × |unit| src/plugins/db/__tests__/read.test.ts > a read that fails > a closed pool: 503, and the probe leaves the flag off 5ms
+   → app.db.read is not a function
+ × |unit| src/plugins/db/__tests__/read.test.ts > a read that fails > in a handler: the request answers 503 with the envelope, and no "unexpected error" is written 22ms
+   → expected 500 to be 503 // Object.is equality
+ × |unit| src/plugins/db/__tests__/search-path.test.ts > the pinned value > is the project schema, then the temporary schema, named so that it comes last 5ms
+   → expected undefined to be 'public,pg_temp' // Object.is equality
+ ✓ |unit| src/plugins/db/__tests__/search-path.test.ts > the pinned value > is an option of every connection the runtime pool opens 1ms
+ × |unit| src/plugins/db/__tests__/search-path.test.ts > boot step B-1, second half: a pooled connection has exactly the pinned search path > passes when it has: the boot goes on to B-2, and B-1 is two statements 81ms
+   → expected [ 'SELECT 1', …(1) ] to deeply equal [ 'SELECT 1', undefined ]
+ × |unit| src/plugins/db/__tests__/search-path.test.ts > boot step B-1, second half: a pooled connection has exactly the pinned search path > the default of PostgreSQL ("$user", public): the boot stops at B-1 with the code SEARCH_PATH_NOT_PINNED 11ms
+   → expected 'B-2' to be 'B-1' // Object.is equality
+ × |unit| src/plugins/db/__tests__/search-path.test.ts > boot step B-1, second half: a pooled connection has exactly the pinned search path > the temporary schema first (pg_temp,public): the boot stops at B-1 with the code SEARCH_PATH_NOT_PINNED 9ms
+   → expected 'B-2' to be 'B-1' // Object.is equality
+ × |unit| src/plugins/db/__tests__/search-path.test.ts > boot step B-1, second half: a pooled connection has exactly the pinned search path > the same schemas with a space (public, pg_temp): the boot stops at B-1 with the code SEARCH_PATH_NOT_PINNED 7ms
+   → expected 'B-2' to be 'B-1' // Object.is equality
+ × |unit| src/plugins/db/__tests__/search-path.test.ts > boot step B-1, second half: a pooled connection has exactly the pinned search path > only the project schema (public): the boot stops at B-1 with the code SEARCH_PATH_NOT_PINNED 9ms
+   → expected 'B-2' to be 'B-1' // Object.is equality
+ × |unit| src/plugins/db/__tests__/search-path.test.ts > boot step B-1, second half: a pooled connection has exactly the pinned search path > another schema before it (other,public,pg_temp): the boot stops at B-1 with the code SEARCH_PATH_NOT_PINNED 8ms
+   → expected 'B-2' to be 'B-1' // Object.is equality
+ × |unit| src/plugins/db/__tests__/search-path.test.ts > boot step B-1, second half: a pooled connection has exactly the pinned search path > an empty path (): the boot stops at B-1 with the code SEARCH_PATH_NOT_PINNED 10ms
+   → expected 'B-2' to be 'B-1' // Object.is equality
+ × |unit| src/plugins/db/__tests__/search-path.test.ts > boot step B-1, second half: a pooled connection has exactly the pinned search path > a pool that gives no row, or a value that is not a text: refused the same way, with nothing found 9ms
+   → expected 'B-2' to be 'B-1' // Object.is equality
+ × |unit| src/plugins/db/__tests__/search-path.test.ts > boot step B-1, second half: a pooled connection has exactly the pinned search path > a long value is cut in the log 8ms
+   → expected 'undefined' to have a length of 120 but got 9
+ × |unit| src/plugins/db/__tests__/search-path.test.ts > boot step B-1, second half: a pooled connection has exactly the pinned search path > the question itself fails: B-1 fails as "the database does not answer", by the driver's code 14ms
+   → expected 'B-2' to be 'B-1' // Object.is equality
+
+⎯⎯⎯⎯⎯⎯ Failed Suites 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |unit| src/core/__tests__/unit-statement.test.ts [ src/core/__tests__/unit-statement.test.ts ]
+Error: Cannot find module '../unit-statement' imported from /private/tmp/claude-501/-Users-gsp-budi-Documents-DEMS/0d71fd65-4a51-4019-9c48-5c92d11bbdaf/scratchpad/cpb1a/before/apps/core-server/src/core/__tests__/unit-statement.test.ts
+ ❯ src/core/__tests__/unit-statement.test.ts:16:1
+     14| import { createPipeline } from '../pipeline';
+     15| import { UNIT_STATEMENTS, asUnitQuery, isTransactionControl } from '..…
+     16| import { UnitStatementRule, unitStatementRefusal, withoutLiterals } fr…
+       | ^
+     17| import { CLOCK_START, recordingErrorLog, standInDatabase, testLogger }…
+     18|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+Serialized Error: { code: 'ERR_MODULE_NOT_FOUND' }
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/55]⎯
+
+
+⎯⎯⎯⎯⎯⎯ Failed Tests 54 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |unit| test/static/search-path.test.ts > finding F53: nothing but the places that pin the path names a temporary object or the path > the list of places is exact
+AssertionError: expected [ 'src/core/unit-of-work.ts', …(1) ] to deeply equal [ 'src/core/unit-of-work.ts', …(2) ]
+
+- Expected
++ Received
+
+  [
+    "src/core/unit-of-work.ts",
+    "src/db/migrations/0002_audit_guards.sql",
+-   "src/plugins/db/index.ts",
+  ]
+
+ ❯ test/static/search-path.test.ts:88:41
+     86| describe('finding F53: nothing but the places that pin the path names …
+     87|   it('the list of places is exact', () => {
+     88|     expect(filesOf(places(production))).toEqual(Object.keys(ALLOWED).s…
+       |                                         ^
+     89|   });
+     90|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/55]⎯
+
+ FAIL  |unit| test/static/search-path.test.ts > finding F53: nothing but the places that pin the path names a temporary object or the path > each listed place holds what the list says it does
+AssertionError: expected 0 to be greater than or equal to 2
+ ❯ test/static/search-path.test.ts:96:60
+     94|
+     95|     // The pool: the value, the start-up option, the question of the b…
+     96|     expect(count('src/plugins/db/index.ts', PATH_SETTING)).toBeGreater…
+       |                                                            ^
+     97|     expect(count('src/plugins/db/index.ts', SETTING_FUNCTION)).toBe(0);
+     98|     expect(count('src/plugins/db/index.ts', TEMP_WORD)).toBe(0);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/55]⎯
+
+ FAIL  |unit| src/core/__tests__/connection-lost.test.ts > which failures mean that the connection or the server went away > SQLSTATE class 08, 57P01 to 57P03 and the socket errors of the driver; nothing else
+TypeError: isConnectionFailureCode is not a function
+ ❯ src/core/__tests__/connection-lost.test.ts:65:14
+     63|   it('SQLSTATE class 08, 57P01 to 57P03 and the socket errors of the d…
+     64|     for (const code of CONNECTION_CODES) {
+     65|       expect(isConnectionFailureCode(code), code).toBe(true);
+       |              ^
+     66|       expect(isConnectionFailure(coded(code)), code).toBe(true);
+     67|       // Also when the query builder wrapped it.
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/55]⎯
+
+ FAIL  |unit| src/core/__tests__/connection-lost.test.ts > a statement of a unit fails with a code of the connection class > 08000: 503 DATABASE_UNAVAILABLE with the driver's error as cause; readiness is told; the connection is closed
+AssertionError: expected Error: MARK-driver-text-5e1b 08000 { code: '…' } to be an instance of PipelineFailure
+ ❯ src/core/__tests__/connection-lost.test.ts:89:19
+     87|       }),
+     88|     );
+     89|     expect(error).toBeInstanceOf(PipelineFailure);
+       |                   ^
+     90|     expect(error).toMatchObject({ statusCode: 503, code: 'NOT_READY', …
+     91|     expect((error as PipelineFailure).cause).toBe(failure);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/55]⎯
+
+ FAIL  |unit| src/core/__tests__/connection-lost.test.ts > a statement of a unit fails with a code of the connection class > 08003: 503 DATABASE_UNAVAILABLE with the driver's error as cause; readiness is told; the connection is closed
+AssertionError: expected Error: MARK-driver-text-5e1b 08003 { code: '…' } to be an instance of PipelineFailure
+ ❯ src/core/__tests__/connection-lost.test.ts:89:19
+     87|       }),
+     88|     );
+     89|     expect(error).toBeInstanceOf(PipelineFailure);
+       |                   ^
+     90|     expect(error).toMatchObject({ statusCode: 503, code: 'NOT_READY', …
+     91|     expect((error as PipelineFailure).cause).toBe(failure);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/55]⎯
+
+ FAIL  |unit| src/core/__tests__/connection-lost.test.ts > a statement of a unit fails with a code of the connection class > 08006: 503 DATABASE_UNAVAILABLE with the driver's error as cause; readiness is told; the connection is closed
+AssertionError: expected Error: MARK-driver-text-5e1b 08006 { code: '…' } to be an instance of PipelineFailure
+ ❯ src/core/__tests__/connection-lost.test.ts:89:19
+     87|       }),
+     88|     );
+     89|     expect(error).toBeInstanceOf(PipelineFailure);
+       |                   ^
+     90|     expect(error).toMatchObject({ statusCode: 503, code: 'NOT_READY', …
+     91|     expect((error as PipelineFailure).cause).toBe(failure);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/55]⎯
+
+ FAIL  |unit| src/core/__tests__/connection-lost.test.ts > a statement of a unit fails with a code of the connection class > 08001: 503 DATABASE_UNAVAILABLE with the driver's error as cause; readiness is told; the connection is closed
+AssertionError: expected Error: MARK-driver-text-5e1b 08001 { code: '…' } to be an instance of PipelineFailure
+ ❯ src/core/__tests__/connection-lost.test.ts:89:19
+     87|       }),
+     88|     );
+     89|     expect(error).toBeInstanceOf(PipelineFailure);
+       |                   ^
+     90|     expect(error).toMatchObject({ statusCode: 503, code: 'NOT_READY', …
+     91|     expect((error as PipelineFailure).cause).toBe(failure);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/55]⎯
+
+ FAIL  |unit| src/core/__tests__/connection-lost.test.ts > a statement of a unit fails with a code of the connection class > 08004: 503 DATABASE_UNAVAILABLE with the driver's error as cause; readiness is told; the connection is closed
+AssertionError: expected Error: MARK-driver-text-5e1b 08004 { code: '…' } to be an instance of PipelineFailure
+ ❯ src/core/__tests__/connection-lost.test.ts:89:19
+     87|       }),
+     88|     );
+     89|     expect(error).toBeInstanceOf(PipelineFailure);
+       |                   ^
+     90|     expect(error).toMatchObject({ statusCode: 503, code: 'NOT_READY', …
+     91|     expect((error as PipelineFailure).cause).toBe(failure);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[9/55]⎯
+
+ FAIL  |unit| src/core/__tests__/connection-lost.test.ts > a statement of a unit fails with a code of the connection class > 08007: 503 DATABASE_UNAVAILABLE with the driver's error as cause; readiness is told; the connection is closed
+AssertionError: expected Error: MARK-driver-text-5e1b 08007 { code: '…' } to be an instance of PipelineFailure
+ ❯ src/core/__tests__/connection-lost.test.ts:89:19
+     87|       }),
+     88|     );
+     89|     expect(error).toBeInstanceOf(PipelineFailure);
+       |                   ^
+     90|     expect(error).toMatchObject({ statusCode: 503, code: 'NOT_READY', …
+     91|     expect((error as PipelineFailure).cause).toBe(failure);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[10/55]⎯
+
+ FAIL  |unit| src/core/__tests__/connection-lost.test.ts > a statement of a unit fails with a code of the connection class > 08P01: 503 DATABASE_UNAVAILABLE with the driver's error as cause; readiness is told; the connection is closed
+AssertionError: expected Error: MARK-driver-text-5e1b 08P01 { code: '…' } to be an instance of PipelineFailure
+ ❯ src/core/__tests__/connection-lost.test.ts:89:19
+     87|       }),
+     88|     );
+     89|     expect(error).toBeInstanceOf(PipelineFailure);
+       |                   ^
+     90|     expect(error).toMatchObject({ statusCode: 503, code: 'NOT_READY', …
+     91|     expect((error as PipelineFailure).cause).toBe(failure);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[11/55]⎯
+
+ FAIL  |unit| src/core/__tests__/connection-lost.test.ts > a statement of a unit fails with a code of the connection class > 57P01: 503 DATABASE_UNAVAILABLE with the driver's error as cause; readiness is told; the connection is closed
+AssertionError: expected Error: MARK-driver-text-5e1b 57P01 { code: '…' } to be an instance of PipelineFailure
+ ❯ src/core/__tests__/connection-lost.test.ts:89:19
+     87|       }),
+     88|     );
+     89|     expect(error).toBeInstanceOf(PipelineFailure);
+       |                   ^
+     90|     expect(error).toMatchObject({ statusCode: 503, code: 'NOT_READY', …
+     91|     expect((error as PipelineFailure).cause).toBe(failure);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[12/55]⎯
+
+ FAIL  |unit| src/core/__tests__/connection-lost.test.ts > a statement of a unit fails with a code of the connection class > 57P02: 503 DATABASE_UNAVAILABLE with the driver's error as cause; readiness is told; the connection is closed
+AssertionError: expected Error: MARK-driver-text-5e1b 57P02 { code: '…' } to be an instance of PipelineFailure
+ ❯ src/core/__tests__/connection-lost.test.ts:89:19
+     87|       }),
+     88|     );
+     89|     expect(error).toBeInstanceOf(PipelineFailure);
+       |                   ^
+     90|     expect(error).toMatchObject({ statusCode: 503, code: 'NOT_READY', …
+     91|     expect((error as PipelineFailure).cause).toBe(failure);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[13/55]⎯
+
+ FAIL  |unit| src/core/__tests__/connection-lost.test.ts > a statement of a unit fails with a code of the connection class > 57P03: 503 DATABASE_UNAVAILABLE with the driver's error as cause; readiness is told; the connection is closed
+AssertionError: expected Error: MARK-driver-text-5e1b 57P03 { code: '…' } to be an instance of PipelineFailure
+ ❯ src/core/__tests__/connection-lost.test.ts:89:19
+     87|       }),
+     88|     );
+     89|     expect(error).toBeInstanceOf(PipelineFailure);
+       |                   ^
+     90|     expect(error).toMatchObject({ statusCode: 503, code: 'NOT_READY', …
+     91|     expect((error as PipelineFailure).cause).toBe(failure);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[14/55]⎯
+
+ FAIL  |unit| src/core/__tests__/connection-lost.test.ts > a statement of a unit fails with a code of the connection class > ECONNRESET: 503 DATABASE_UNAVAILABLE with the driver's error as cause; readiness is told; the connection is closed
+AssertionError: expected Error: MARK-driver-text-5e1b ECONNRESET { code: '…' } to be an instance of PipelineFailure
+ ❯ src/core/__tests__/connection-lost.test.ts:89:19
+     87|       }),
+     88|     );
+     89|     expect(error).toBeInstanceOf(PipelineFailure);
+       |                   ^
+     90|     expect(error).toMatchObject({ statusCode: 503, code: 'NOT_READY', …
+     91|     expect((error as PipelineFailure).cause).toBe(failure);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[15/55]⎯
+
+ FAIL  |unit| src/core/__tests__/connection-lost.test.ts > a statement of a unit fails with a code of the connection class > EPIPE: 503 DATABASE_UNAVAILABLE with the driver's error as cause; readiness is told; the connection is closed
+AssertionError: expected Error: MARK-driver-text-5e1b EPIPE { code: '…' } to be an instance of PipelineFailure
+ ❯ src/core/__tests__/connection-lost.test.ts:89:19
+     87|       }),
+     88|     );
+     89|     expect(error).toBeInstanceOf(PipelineFailure);
+       |                   ^
+     90|     expect(error).toMatchObject({ statusCode: 503, code: 'NOT_READY', …
+     91|     expect((error as PipelineFailure).cause).toBe(failure);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[16/55]⎯
+
+ FAIL  |unit| src/core/__tests__/connection-lost.test.ts > a statement of a unit fails with a code of the connection class > ETIMEDOUT: 503 DATABASE_UNAVAILABLE with the driver's error as cause; readiness is told; the connection is closed
+AssertionError: expected Error: MARK-driver-text-5e1b ETIMEDOUT { code: '…' } to be an instance of PipelineFailure
+ ❯ src/core/__tests__/connection-lost.test.ts:89:19
+     87|       }),
+     88|     );
+     89|     expect(error).toBeInstanceOf(PipelineFailure);
+       |                   ^
+     90|     expect(error).toMatchObject({ statusCode: 503, code: 'NOT_READY', …
+     91|     expect((error as PipelineFailure).cause).toBe(failure);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[17/55]⎯
+
+ FAIL  |unit| src/core/__tests__/connection-lost.test.ts > a statement of a unit fails with a code of the connection class > ECONNREFUSED: 503 DATABASE_UNAVAILABLE with the driver's error as cause; readiness is told; the connection is closed
+AssertionError: expected Error: MARK-driver-text-5e1b ECONNREFUSED { code: '…' } to be an instance of PipelineFailure
+ ❯ src/core/__tests__/connection-lost.test.ts:89:19
+     87|       }),
+     88|     );
+     89|     expect(error).toBeInstanceOf(PipelineFailure);
+       |                   ^
+     90|     expect(error).toMatchObject({ statusCode: 503, code: 'NOT_READY', …
+     91|     expect((error as PipelineFailure).cause).toBe(failure);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[18/55]⎯
+
+ FAIL  |unit| src/core/__tests__/connection-lost.test.ts > a statement of a unit fails with a code of the connection class > ENOTCONN: 503 DATABASE_UNAVAILABLE with the driver's error as cause; readiness is told; the connection is closed
+AssertionError: expected Error: MARK-driver-text-5e1b ENOTCONN { code: '…' } to be an instance of PipelineFailure
+ ❯ src/core/__tests__/connection-lost.test.ts:89:19
+     87|       }),
+     88|     );
+     89|     expect(error).toBeInstanceOf(PipelineFailure);
+       |                   ^
+     90|     expect(error).toMatchObject({ statusCode: 503, code: 'NOT_READY', …
+     91|     expect((error as PipelineFailure).cause).toBe(failure);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[19/55]⎯
+
+ FAIL  |unit| src/core/__tests__/connection-lost.test.ts > a statement of a unit fails with a code of the connection class > through the query builder: the caller of the unit gets the 503, not the wrapper that quotes the statement
+AssertionError: expected Error: Failed query: select "singleton", … { …(2) } to be an instance of PipelineFailure
+ ❯ src/core/__tests__/connection-lost.test.ts:111:19
+    109|     const { pipeline, told } = rig({ failOn: (text) => (text.startsWit…
+    110|     const error = await caught(pipeline.run('test.builder', (unit) => …
+    111|     expect(error).toBeInstanceOf(PipelineFailure);
+       |                   ^
+    112|     expect(error).toMatchObject({ statusCode: 503, reason: 'DATABASE_U…
+    113|     expect((error as PipelineFailure).cause).toBe(failure);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[20/55]⎯
+
+ FAIL  |unit| src/core/__tests__/connection-lost.test.ts > a statement of a unit fails with a code of the connection class > the work caught the failure and returned, or threw a refusal of its own: the answer is still 503
+AssertionError: expected Error: MARK-driver-text-5e1b 08006 { code: '…' } to match object { statusCode: 503, …(1) }
+(1 matching property omitted from actual)
+
+- Expected
++ Received
+
+- {
+-   "reason": "DATABASE_UNAVAILABLE",
+-   "statusCode": 503,
++ Error {
++   "message": "MARK-driver-text-5e1b 08006",
++   "code": "08006",
+  }
+
+ ❯ src/core/__tests__/connection-lost.test.ts:127:25
+    125|       }),
+    126|     );
+    127|     expect(afterReturn).toMatchObject({ statusCode: 503, reason: 'DATA…
+       |                         ^
+    128|     expect((afterReturn as PipelineFailure).cause).toBe(failure);
+    129|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[21/55]⎯
+
+ FAIL  |unit| src/core/__tests__/connection-lost.test.ts > the connection reports an error while the unit holds it > the driver's error without a code, as a closed socket gives it: 503, whatever the statement then rejects with
+AssertionError: expected Error: Connection terminated unexpectedly… to match object { statusCode: 503, …(1) }
+
+- Expected
++ Received
+
+- {
+-   "reason": "DATABASE_UNAVAILABLE",
+-   "statusCode": 503,
++ Error {
++   "message": "Connection terminated unexpectedly MARK-driver-text-5e1b",
+  }
+
+ ❯ src/core/__tests__/connection-lost.test.ts:156:19
+    154|       }),
+    155|     );
+    156|     expect(error).toMatchObject({ statusCode: 503, reason: 'DATABASE_U…
+       |                   ^
+    157|     expect((error as PipelineFailure).cause).toBe(terminated);
+    158|     expect(told).toEqual(['lost', 'failure']);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[22/55]⎯
+
+ FAIL  |unit| src/core/__tests__/connection-lost.test.ts > the connection reports an error while the unit holds it > between two statements, and the work returns: no COMMIT is sent, 503
+AssertionError: expected Error: MARK-driver-text-5e1b 57P01 { code: '…' } to match object { statusCode: 503, …(1) }
+(1 matching property omitted from actual)
+
+- Expected
++ Received
+
+- {
+-   "reason": "DATABASE_UNAVAILABLE",
+-   "statusCode": 503,
++ Error {
++   "message": "MARK-driver-text-5e1b 57P01",
++   "code": "57P01",
+  }
+
+ ❯ src/core/__tests__/connection-lost.test.ts:175:19
+    173|       }),
+    174|     );
+    175|     expect(error).toMatchObject({ statusCode: 503, reason: 'DATABASE_U…
+       |                   ^
+    176|     expect((error as PipelineFailure).cause).toBe(lost);
+    177|     expect(told).toEqual(['lost', 'failure']);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[23/55]⎯
+
+ FAIL  |unit| src/core/__tests__/connection-lost.test.ts > in the app: the answer and readiness > the request answers 503 NOT_READY, not 500; the flag goes off at once and on again when the next probe succeeds
+AssertionError: expected 500 to be 503 // Object.is equality
+
+- Expected
++ Received
+
+- 503
++ 500
+
+ ❯ src/core/__tests__/connection-lost.test.ts:257:33
+    255|
+    256|     const response = await app.inject({ method: 'POST', url: '/api/v1/…
+    257|     expect(response.statusCode).toBe(503);
+       |                                 ^
+    258|     expect((response.json() as { error: { code: string } }).error.code…
+    259|     // Off at the loss; the probe that was started with it has set it …
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[24/55]⎯
+
+ FAIL  |unit| src/core/__tests__/connection-lost.test.ts > in the app: the answer and readiness > while the database stays away the flag stays off
+AssertionError: expected 500 to be 503 // Object.is equality
+
+- Expected
++ Received
+
+- 503
++ 500
+
+ ❯ src/core/__tests__/connection-lost.test.ts:281:94
+    279|     expect(await app.db.probe({ fresh: true })).toBe(true);
+    280|     down = true;
+    281|     expect((await app.inject({ method: 'POST', url: '/api/v1/scratch/c…
+       |                                                                                              ^
+    282|     // No earlier probe result is reused after a loss: the answer of a…
+    283|     expect(await app.db.probe()).toBe(false);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[25/55]⎯
+
+ FAIL  |unit| src/plugins/db/__tests__/read.test.ts > a read that succeeds > gets the current pool and returns what the work returned; nothing is logged and nothing is probed
+TypeError: app.db.read is not a function
+ ❯ src/plugins/db/__tests__/read.test.ts:59:31
+     57|     const { app, fake, log, persisted } = await appWith(async (text) =…
+     58|     let given: Pool | undefined;
+     59|     const rows = await app.db.read('test.read', async (pool) => {
+       |                               ^
+     60|       given = pool;
+     61|       return (await pool.query('SELECT name FROM public.roles')).rows;
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[26/55]⎯
+
+ FAIL  |unit| src/plugins/db/__tests__/read.test.ts > a read that succeeds > after a reopen the work gets the new pool
+TypeError: app.db.read is not a function
+ ❯ src/plugins/db/__tests__/read.test.ts:77:18
+     75|     await app.ready();
+     76|     await app.db.reopen();
+     77|     await app.db.read('test.read', (pool) => pool.query('SELECT 1'));
+       |                  ^
+     78|     expect(fakes[0]?.queries).toEqual([]);
+     79|     expect(fakes[1]?.queries).toEqual(['SELECT 1']);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[27/55]⎯
+
+ FAIL  |unit| src/plugins/db/__tests__/read.test.ts > a read that fails > rejects with 503 NOT_READY; one error line and one persistent entry by the code; the probe follows
+TypeError: app.db.read is not a function
+ ❯ src/plugins/db/__tests__/read.test.ts:93:39
+     91|     up = false;
+     92|
+     93|     const error = await caught(app.db.read('identity.findSession', (po…
+       |                                       ^
+     94|     expect(error).toBeInstanceOf(ApiFailure);
+     95|     expect(error).toMatchObject({ statusCode: 503, code: 'NOT_READY', …
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[28/55]⎯
+
+ FAIL  |unit| src/plugins/db/__tests__/read.test.ts > a read that fails > a failure the query builder wrapped: the SQLSTATE of the driver is in the line, the statement is not
+TypeError: app.db.read is not a function
+ ❯ src/plugins/db/__tests__/read.test.ts:125:14
+    123|     const driver = Object.assign(new Error(`relation does not exist ${…
+    124|     const error = await caught(
+    125|       app.db.read('rbac.getRoleMatrix', async () => {
+       |              ^
+    126|         throw new DrizzleQueryError(`select '${MARK}' from "roles"`, […
+    127|       }),
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[29/55]⎯
+
+ FAIL  |unit| src/plugins/db/__tests__/read.test.ts > a read that fails > a refusal the work throws passes unchanged: it is an answer, not a failure of the database
+TypeError: app.db.read is not a function
+ ❯ src/plugins/db/__tests__/read.test.ts:139:14
+    137|     const refusal = new ApiFailure(404, 'NOT_FOUND', 'No such session.…
+    138|     const error = await caught(
+    139|       app.db.read('test.read', async () => {
+       |              ^
+    140|         throw refusal;
+    141|       }),
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[30/55]⎯
+
+ FAIL  |unit| src/plugins/db/__tests__/read.test.ts > a read that fails > a closed pool: 503, and the probe leaves the flag off
+TypeError: app.db.read is not a function
+ ❯ src/plugins/db/__tests__/read.test.ts:154:39
+    152|     await app.ready();
+    153|     await app.db.close();
+    154|     const error = await caught(app.db.read('test.read', (pool) => pool…
+       |                                       ^
+    155|     expect(error).toMatchObject({ statusCode: 503, code: 'NOT_READY' }…
+    156|     expect(await app.db.probe()).toBe(false);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[31/55]⎯
+
+ FAIL  |unit| src/plugins/db/__tests__/read.test.ts > a read that fails > in a handler: the request answers 503 with the envelope, and no "unexpected error" is written
+AssertionError: expected 500 to be 503 // Object.is equality
+
+- Expected
++ Received
+
+- 503
++ 500
+
+ ❯ src/plugins/db/__tests__/read.test.ts:171:33
+    169|     for (const stage of ['readiness', 'originGuard', 'authenticate', '…
+    170|     const response = await app.inject({ method: 'GET', url: '/api/v1/s…
+    171|     expect(response.statusCode).toBe(503);
+       |                                 ^
+    172|     expect((response.json() as { error: { code: string } }).error.code…
+    173|     expect(log.lines().some((entry) => entry['msg'] === 'unexpected er…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[32/55]⎯
+
+ FAIL  |unit| src/plugins/db/__tests__/search-path.test.ts > the pinned value > is the project schema, then the temporary schema, named so that it comes last
+AssertionError: expected undefined to be 'public,pg_temp' // Object.is equality
+
+- Expected:
+"public,pg_temp"
+
++ Received:
+undefined
+
+ ❯ src/plugins/db/__tests__/search-path.test.ts:67:33
+     65| describe('the pinned value', () => {
+     66|   it('is the project schema, then the temporary schema, named so that …
+     67|     expect(RUNTIME_SEARCH_PATH).toBe('public,pg_temp');
+       |                                 ^
+     68|     expect(RUNTIME_SEARCH_PATH.split(',')).toEqual(['public', 'pg_temp…
+     69|     // The start-up option is split at white space by the server: the …
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[33/55]⎯
+
+ FAIL  |unit| src/plugins/db/__tests__/search-path.test.ts > boot step B-1, second half: a pooled connection has exactly the pinned search path > passes when it has: the boot goes on to B-2, and B-1 is two statements
+AssertionError: expected [ 'SELECT 1', …(1) ] to deeply equal [ 'SELECT 1', undefined ]
+
+- Expected
++ Received
+
+  [
+    "SELECT 1",
+-   undefined,
++   "SHOW server_version_num",
+  ]
+
+ ❯ src/plugins/db/__tests__/search-path.test.ts:87:38
+     85|     expect((error as BootError).stepId).toBe('B-2');
+     86|     expect(passed).toEqual([BOOT_STEP_DATABASE_ANSWERS]);
+     87|     expect(fake.queries.slice(0, 2)).toEqual(['SELECT 1', SEARCH_PATH_…
+       |                                      ^
+     88|     expect(log.lines().some((line) => line['code'] === SEARCH_PATH_NOT…
+     89|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[34/55]⎯
+
+ FAIL  |unit| src/plugins/db/__tests__/search-path.test.ts > boot step B-1, second half: a pooled connection has exactly the pinned search path > the default of PostgreSQL ("$user", public): the boot stops at B-1 with the code SEARCH_PATH_NOT_PINNED
+ FAIL  |unit| src/plugins/db/__tests__/search-path.test.ts > boot step B-1, second half: a pooled connection has exactly the pinned search path > the temporary schema first (pg_temp,public): the boot stops at B-1 with the code SEARCH_PATH_NOT_PINNED
+ FAIL  |unit| src/plugins/db/__tests__/search-path.test.ts > boot step B-1, second half: a pooled connection has exactly the pinned search path > the same schemas with a space (public, pg_temp): the boot stops at B-1 with the code SEARCH_PATH_NOT_PINNED
+ FAIL  |unit| src/plugins/db/__tests__/search-path.test.ts > boot step B-1, second half: a pooled connection has exactly the pinned search path > only the project schema (public): the boot stops at B-1 with the code SEARCH_PATH_NOT_PINNED
+ FAIL  |unit| src/plugins/db/__tests__/search-path.test.ts > boot step B-1, second half: a pooled connection has exactly the pinned search path > another schema before it (other,public,pg_temp): the boot stops at B-1 with the code SEARCH_PATH_NOT_PINNED
+ FAIL  |unit| src/plugins/db/__tests__/search-path.test.ts > boot step B-1, second half: a pooled connection has exactly the pinned search path > an empty path (): the boot stops at B-1 with the code SEARCH_PATH_NOT_PINNED
+AssertionError: expected 'B-2' to be 'B-1' // Object.is equality
+
+Expected: "B-1"
+Received: "B-2"
+
+ ❯ src/plugins/db/__tests__/search-path.test.ts:101:41
+     99|     const { app, error, passed, log, persisted } = await bootWith(path…
+    100|     expect(error).toBeInstanceOf(BootError);
+    101|     expect((error as BootError).stepId).toBe(BOOT_STEP_DATABASE_ANSWER…
+       |                                         ^
+    102|     const cause = (error as BootError).cause;
+    103|     expect(cause).toBeInstanceOf(DatabaseBootError);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[35/55]⎯
+
+ FAIL  |unit| src/plugins/db/__tests__/search-path.test.ts > boot step B-1, second half: a pooled connection has exactly the pinned search path > a pool that gives no row, or a value that is not a text: refused the same way, with nothing found
+AssertionError: expected 'B-2' to be 'B-1' // Object.is equality
+
+Expected: "B-1"
+Received: "B-2"
+
+ ❯ src/plugins/db/__tests__/search-path.test.ts:129:43
+    127|     for (const answer of [async () => ({ rows: [] as unknown[] }), pat…
+    128|       const { error, log } = await bootWith(answer);
+    129|       expect((error as BootError).stepId).toBe('B-1');
+       |                                           ^
+    130|       expect((error as BootError).cause).toMatchObject({ code: SEARCH_…
+    131|       expect(log.lines().find((line) => line['msg'] === 'boot check fa…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[36/55]⎯
+
+ FAIL  |unit| src/plugins/db/__tests__/search-path.test.ts > boot step B-1, second half: a pooled connection has exactly the pinned search path > a long value is cut in the log
+AssertionError: expected 'undefined' to have a length of 120 but got 9
+
+- Expected
++ Received
+
+- 120
++ 9
+
+ ❯ src/plugins/db/__tests__/search-path.test.ts:137:96
+    135|   it('a long value is cut in the log', async () => {
+    136|     const { log } = await bootWith(pathIs(`public,${'x'.repeat(500)}`)…
+    137|     expect(String(log.lines().find((line) => line['msg'] === 'boot che…
+       |                                                                                                ^
+    138|   });
+    139|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[37/55]⎯
+
+ FAIL  |unit| src/plugins/db/__tests__/search-path.test.ts > boot step B-1, second half: a pooled connection has exactly the pinned search path > the question itself fails: B-1 fails as "the database does not answer", by the driver's code
+AssertionError: expected 'B-2' to be 'B-1' // Object.is equality
+
+Expected: "B-1"
+Received: "B-2"
+
+ ❯ src/plugins/db/__tests__/search-path.test.ts:146:41
+    144|       return { rows: [] };
+    145|     });
+    146|     expect((error as BootError).stepId).toBe('B-1');
+       |                                         ^
+    147|     expect((error as BootError).cause).not.toBeInstanceOf(DatabaseBoot…
+    148|     expect(describeError(error)).toMatchObject({ code: '57P01' });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[38/55]⎯
+
+ FAIL  |unit| src/plugins/logger/__tests__/safe-log-object.test.ts > loggedError > is what the err serializer writes: type, code, message (the code or the name) and the frames
+TypeError: loggedError is not a function
+ ❯ src/plugins/logger/__tests__/safe-log-object.test.ts:35:25
+     33| describe('loggedError', () => {
+     34|   it('is what the err serializer writes: type, code, message (the code…
+     35|     const description = loggedError(wrapped());
+       |                         ^
+     36|     expect(description).toMatchObject({ type: 'Error', code: '23505', …
+     37|     expect(description.stack).toContain('safe-log-object.test.ts');
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[39/55]⎯
+
+ FAIL  |unit| src/plugins/logger/__tests__/safe-log-object.test.ts > safeLogObject > returns the same object when it holds no error, and never changes the object it was given
+TypeError: safeLogObject is not a function
+ ❯ src/plugins/logger/__tests__/safe-log-object.test.ts:48:12
+     46|   it('returns the same object when it holds no error, and never change…
+     47|     const clean = { unit: 1, label: 'x', nested: { list: [1, 'two', { …
+     48|     expect(safeLogObject(clean)).toBe(clean);
+       |            ^
+     49|
+     50|     const error = wrapped();
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[40/55]⎯
+
+ FAIL  |unit| src/plugins/logger/__tests__/safe-log-object.test.ts > safeLogObject > leaves req, res and err at the top to their serializers, and nowhere else
+TypeError: safeLogObject is not a function
+ ❯ src/plugins/logger/__tests__/safe-log-object.test.ts:66:18
+     64|     const error = wrapped();
+     65|     const marker = { raw: 'a request object' };
+     66|     const safe = safeLogObject({ err: error, req: marker, res: marker,…
+       |                  ^
+     67|     expect(safe['err']).toBe(error);
+     68|     expect(safe['req']).toBe(marker);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[41/55]⎯
+
+ FAIL  |unit| src/plugins/logger/__tests__/safe-log-object.test.ts > safeLogObject > describes an error at any depth it reads, and does not write what lies deeper than the limit
+TypeError: safeLogObject is not a function
+ ❯ src/plugins/logger/__tests__/safe-log-object.test.ts:76:18
+     74|     let deep: Record<string, unknown> = { failure: wrapped(), leaf: SE…
+     75|     for (let level = 0; level < LOG_DEPTH_LIMIT + 3; level += 1) deep …
+     76|     const safe = safeLogObject({ deep });
+       |                  ^
+     77|     const text = JSON.stringify(safe);
+     78|     expect(text).not.toContain(SECRET);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[42/55]⎯
+
+ FAIL  |unit| src/plugins/logger/__tests__/safe-log-object.test.ts > safeLogObject > a structure that refers to itself ends
+TypeError: safeLogObject is not a function
+ ❯ src/plugins/logger/__tests__/safe-log-object.test.ts:93:18
+     91|     const loop: Record<string, unknown> = { failure: wrapped() };
+     92|     loop['self'] = loop;
+     93|     const safe = safeLogObject({ loop });
+       |                  ^
+     94|     expect(JSON.stringify(safe)).not.toContain(SECRET);
+     95|     expect(JSON.stringify(safe)).toContain(NOT_LOGGED);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[43/55]⎯
+
+ FAIL  |unit| src/plugins/logger/__tests__/safe-log-object.test.ts > safeLogObject > a container with more members than the limit is not written, so nothing unread is
+TypeError: safeLogObject is not a function
+ ❯ src/plugins/logger/__tests__/safe-log-object.test.ts:100:18
+     98|   it('a container with more members than the limit is not written, so …
+     99|     const many = Array.from({ length: LOG_MEMBER_LIMIT + 5 }, (_, inde…
+    100|     const safe = safeLogObject({ many, after: { failure: wrapped() } }…
+       |                  ^
+    101|     expect(safe['many']).toBe(NOT_LOGGED);
+    102|     expect(safe['after']).toBe(NOT_LOGGED);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[44/55]⎯
+
+ FAIL  |unit| src/plugins/logger/__tests__/safe-log-object.test.ts > safeLogObject > reads what an object gives as its JSON form, and a member that throws is not written
+TypeError: safeLogObject is not a function
+ ❯ src/plugins/logger/__tests__/safe-log-object.test.ts:118:18
+    116|       },
+    117|     });
+    118|     const safe = safeLogObject({ withJson, throwing, when: new Date(0)…
+       |                  ^
+    119|     expect(safe['withJson']).toMatchObject({ inner: { code: '23505' } …
+    120|     expect(safe['throwing']).toBe(NOT_LOGGED);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[45/55]⎯
+
+ FAIL  |unit| src/plugins/logger/__tests__/safe-log-object.test.ts > safeLogObject > an object that is not plain is read like the serialiser reads it: its own members
+TypeError: safeLogObject is not a function
+ ❯ src/plugins/logger/__tests__/safe-log-object.test.ts:130:18
+    128|       readonly failure = wrapped();
+    129|     }
+    130|     const safe = safeLogObject({ outcome: new Outcome(), map: new Map(…
+       |                  ^
+    131|     expect(safe['outcome']).toMatchObject({ ok: false, failure: { code…
+    132|     expect(JSON.stringify(safe)).not.toContain(SECRET);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[46/55]⎯
+
+ FAIL  |unit| src/plugins/logger/__tests__/safe-log-object.test.ts > through the logger > a line at every level, and a line of a request, are written safe
+AssertionError: expected { Object (level, time, ...) } to match object { error: { code: '23505' }, …(1) }
+(15 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+    "cause": {
+      "code": "23505",
+-     "type": "error",
+    },
+    "error": {
++     "cause": {
+        "code": "23505",
++       "detail": "Key (hash)=(MARK-secret-in-an-error-4c7a)",
++       "length": 10,
++       "name": "error",
++     },
++     "params": [
++       "MARK-secret-in-an-error-4c7a",
++     ],
++     "query": "select 'MARK-secret-in-an-error-4c7a'",
+    },
+  }
+
+ ❯ src/plugins/logger/__tests__/safe-log-object.test.ts:152:67
+    150|     const lines = captured.lines();
+    151|     for (const level of ['trace', 'debug', 'info', 'warn', 'error', 'f…
+    152|       expect(lines.find((line) => line['msg'] === `at ${level}`)).toMa…
+       |                                                                   ^
+    153|     }
+    154|     const fromRequest = lines.find((line) => line['msg'] === 'from a r…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[47/55]⎯
+
+ FAIL  |unit| src/plugins/logger/__tests__/safe-log-object.test.ts > through the logger > the persistent error log gets the code and the name of the cause, and nothing of the error
+AssertionError: expected { …(8) } to match object { level: 'error', …(6) }
+(3 matching properties omitted from actual)
+
+- Expected
++ Received
+
+@@ -1,8 +1,6 @@
+  {
+-   "causeName": "error",
+-   "code": "23505",
+    "context": {
+      "unit": 3,
+    },
+    "errorName": "Error",
+    "level": "error",
+
+ ❯ src/plugins/logger/__tests__/safe-log-object.test.ts:168:32
+    166|       const text = readFileSync(file, 'utf8');
+    167|       expect(text).not.toContain(SECRET);
+    168|       expect(JSON.parse(text)).toMatchObject({
+       |                                ^
+    169|         level: 'error',
+    170|         source: 'test.read',
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[48/55]⎯
+
+ FAIL  |unit| src/plugins/logger/__tests__/safe-log-object.test.ts > codedCauseOf: the one walk over a cause chain > gives the error that carries the code, its code and how far down it was
+TypeError: codedCauseOf is not a function
+ ❯ src/plugins/logger/__tests__/safe-log-object.test.ts:187:12
+    185|     const driver = driverError('40001');
+    186|     const error = new DrizzleQueryError('select 1', [], driver);
+    187|     expect(codedCauseOf(error)).toEqual({ error: driver, code: '40001'…
+       |            ^
+    188|     expect(codedCauseOf(driver)).toEqual({ error: driver, code: '40001…
+    189|     expect(codedCauseOf(new Error('none'))).toBeUndefined();
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[49/55]⎯
+
+ FAIL  |unit| src/plugins/logger/__tests__/safe-log-object.test.ts > codedCauseOf: the one walk over a cause chain > reads at most CAUSE_CHAIN_DEPTH errors
+AssertionError: expected undefined to be 4 // Object.is equality
+
+- Expected:
+4
+
++ Received:
+undefined
+
+ ❯ src/plugins/logger/__tests__/safe-log-object.test.ts:196:31
+    194|
+    195|   it('reads at most CAUSE_CHAIN_DEPTH errors', () => {
+    196|     expect(CAUSE_CHAIN_DEPTH).toBe(4);
+       |                               ^
+    197|     let error: Error = driverError();
+    198|     for (let level = 0; level < CAUSE_CHAIN_DEPTH - 1; level += 1) err…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[50/55]⎯
+
+
+ Test Files  6 failed | 1 passed (7)
+      Tests  54 failed | 24 passed (78)
+   Start at  15:30:40
+   Duration  4.52s (import 57%, transform 31%, tests 11%)
+

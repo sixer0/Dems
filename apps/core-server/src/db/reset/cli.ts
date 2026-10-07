@@ -187,6 +187,9 @@ export async function runReset(argv: readonly string[], options: ResetCommandOpt
         dataDir: options.dataDir,
         onCheckpoint: options.onCheckpoint,
         sessionDrainMs: options.sessionDrainMs,
+        // A command-line run owns its process: the routine cleans the driver's variables of it
+        // (its `main` already did; again is a no-op). The server never passes this (W91-7).
+        driverEnvironment: process.env,
         log,
       },
       options.internals,

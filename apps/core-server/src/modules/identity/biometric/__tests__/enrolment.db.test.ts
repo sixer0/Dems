@@ -81,6 +81,9 @@ const changed = (operatorId: string, deviceId: string, enabled: boolean): Return
 describe('SR-36: a token is issued inside a password session on a paired device', () => {
   it('answers 200 with the token ONCE and its expiry; stores its SHA-256 with the device, the operator and a family; writes BIOMETRIC_ENROLLMENT_CHANGED and no event', async () => {
     const sessionToken = await passwordSession(bio.app, tablet, INVESTIGATOR.username);
+    // The sign-in on the device told the channel its operator changed (E-fix FX-C, R4); the enrolment below publishes nothing.
+    expect(bio.published).toEqual([{ kind: 'device.session', deviceIds: [tablet.deviceId] }]);
+    bio.published.length = 0;
     const before = await trailLength(owner);
     const events = (await readEvents(owner)).length;
     bio.clock.advance(3_000);
@@ -193,6 +196,12 @@ describe('spec §5.6 step 8: turning biometric sign-in off revokes the family', 
   it('revokes every token of the operator on that device (DISABLED), answers { enabled: false } without a token, writes the row; the token then signs nobody in', async () => {
     const enrolled = await enrolledOperator(bio.app, tablet, INVESTIGATOR.username);
     const signedIn = await signInWithToken(bio.app, tablet.credential, enrolled.token);
+    // The password sign-in and the biometric sign-in each told the channel the device's operator changed (R4).
+    expect(bio.published).toEqual([
+      { kind: 'device.session', deviceIds: [tablet.deviceId] },
+      { kind: 'device.session', deviceIds: [tablet.deviceId] },
+    ]);
+    bio.published.length = 0;
     const before = await trailLength(owner);
     bio.clock.advance(MINUTE);
 

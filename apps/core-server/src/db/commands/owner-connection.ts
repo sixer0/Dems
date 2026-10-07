@@ -7,7 +7,9 @@
  * nothing is passed as an argument, and no connection text with a password exists (CR-1, CR-4).
  *
  * This folder and the reset routine are the only places under `src/` that may name that file
- * (T-CR-2 c). The running server never imports this module: its pool is the runtime role's.
+ * (T-CR-2 c). The running server's pool is the runtime role's. The server imports this module only
+ * through the demo reset routine, and never reads the owner's credential file while the demo flag
+ * is off (text corrected by the contract close-out W83, finding CPS1-13).
  *
  * ISOLATION (decision D26, finding F27). Another PostgreSQL server, not this project's, listens
  * on the default port of this host. Host and port come from the file and from nowhere else:

@@ -2,9 +2,18 @@
  * The types of the core services (plan row W21): the pipeline, the unit of work and its two
  * writers. Types only; `index.ts` re-exports them, and that is where other units import from.
  */
+import type { CoreApiOperationTable } from '@dems/shared/api';
 import type { AuditRow, AuditType, Details, Severity, SimEvent, SimEventType } from '@dems/shared/sim';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type { QueryResult, QueryResultRow } from 'pg';
+
+/**
+ * An operation ID of the contract registry, as the registry's own table writes it. A list of
+ * operations typed with it does not compile with a name that is no operation of the registry
+ * (review findings CPB1-18, W91-5). A route's operation ID at run time is a plain string, so a
+ * lookup goes through a `Set<string>` or a `satisfies` check, not this type.
+ */
+export type RegistryOperationId = CoreApiOperationTable[number]['operationId'];
 
 // ── The unit of work ───────────────────────────────────────────────────────────────────────────
 

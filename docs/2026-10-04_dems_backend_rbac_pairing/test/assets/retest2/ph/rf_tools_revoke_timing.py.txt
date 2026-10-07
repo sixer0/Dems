@@ -1,0 +1,42 @@
+"""revoke_timing.py <frames_dir> <mp4> <offsetMs> <revoke200Host> : phone2 frames classified (CF-M1's classify_screen:
+login / login-unreachable / pair / blank / other) plus an app-area empty test (y 60..1170 uniform, sd < 6) and a dark test
+(whole frame sd < 10); device time from the overlay (anchored to pts), host = device - offset. Prints the class changes
+and: first frame that differs from the last pre-revoke frame, first Pair frame, empty/dark frames between."""
+import json, os, sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from fx import classify_screen, overlay_time, hms_of, pts_list
+from PIL import Image
+def secs(t):
+    h, m, s = t.split(':'); return int(h) * 3600 + int(m) * 60 + float(s)
+d, mp4, off, rv = sys.argv[1], sys.argv[2], float(sys.argv[3]) / 1000, secs(sys.argv[4])
+files = sorted([f for f in os.listdir(d) if f.endswith('.png')], key=lambda n: int(''.join(c for c in n if c.isdigit())))
+pts = pts_list(mp4)
+ocr = [overlay_time(os.path.join(d, f)) for f in files]
+deltas = sorted(o - p for o, p in zip(ocr, pts) if o is not None)
+base = deltas[len(deltas) // 2]
+rows = []
+for i, f in enumerate(files):
+    if i == 0: continue
+    cls, facts = classify_screen(os.path.join(d, f))
+    im = Image.open(os.path.join(d, f)).convert('L'); px = im.load(); W, H = im.size
+    vals = [px[x, y] for y in range(60, min(1170, H), 6) for x in range(0, W, 6)]
+    m = sum(vals) / len(vals); sd = (sum(v * v for v in vals) / len(vals) - m * m) ** 0.5
+    t = base + pts[i]
+    rows.append({'frame': f, 'dev': hms_of(t), 'host': hms_of(t - off), 'h': t - off, 'cls': cls, 'empty': sd < 6, 'dark': facts['sd'] < 10, 'mean': facts['mean'], 'sd': facts['sd'], 'title': facts.get('title'), 'red': facts.get('red'), 'gold': facts.get('gold')})
+prev = None
+for r in rows:
+    k = (r['cls'], r['empty'])
+    if k != prev:
+        print(r['frame'], 'host', r['host'], r['cls'], 'EMPTY' if r['empty'] else '', 'mean', r['mean'], 'sd', r['sd'], 'title', r['title'], 'gold', r['gold'], 'red', r['red'], '(+%d ms)' % round((r['h'] - rv) * 1000))
+        prev = k
+pre = [r for r in rows if r['h'] < rv]
+post = [r for r in rows if r['h'] >= rv]
+last = pre[-1] if pre else None
+change = next((r for r in post if last and (abs(r['mean'] - last['mean']) > 2 or r['cls'] != last['cls'])), None)
+pair = next((r for r in post if r['cls'] == 'pair'), None)
+between = [r for r in post if pair and r['h'] <= pair['h'] and (r['empty'] or r['dark'])]
+out = {'preClass': last['cls'] if last else None, 'firstChange': change and change['host'], 'firstChangeMs': change and round((change['h'] - rv) * 1000),
+       'firstPair': pair and pair['host'], 'firstPairFrame': pair and pair['frame'], 'toPairMs': pair and round((pair['h'] - rv) * 1000),
+       'emptyOrDarkBeforePair': [(r['frame'], r['host'], r['mean'], r['sd'], 'empty' if r['empty'] else 'dark') for r in between],
+       'unreachableFrames': sum(1 for r in rows if r['cls'] == 'login-unreachable'), 'frames': len(rows)}
+print(json.dumps(out))

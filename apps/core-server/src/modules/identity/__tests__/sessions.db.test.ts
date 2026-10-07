@@ -335,8 +335,10 @@ describe('the sweeper (ID-P8)', () => {
     expect(new Set(rows.map((row) => `${row.actorId} ${row.deviceId} ${String(row.details['reason'])}`))).toEqual(
       new Set([`${SUPERVISOR.id} null IDLE`, `${TECHNICIAN.id} ${DEVICE} IDLE`]),
     );
-    expect(published).toHaveLength(1);
+    // One session.ended for the reason, then the device among the ended sessions (E-fix FX-C, R4).
+    expect(published).toHaveLength(2);
     expect(published[0]).toMatchObject({ kind: 'session.ended', reason: 'IDLE_EXPIRED' });
+    expect(published[1]).toEqual({ kind: 'device.session', deviceIds: [DEVICE] });
 
     expect((await get(identity.app, SESSION, fresh.cookie)).statusCode).toBe(401);
     expect((await get(identity.app, SESSION, bearer(deviceToken))).statusCode).toBe(401);

@@ -1,0 +1,64 @@
+#!/bin/bash
+# trun.sh <name> [step1]: tablet run of check 7. With 'step1' it first goes Summary Done -> Home Start Session -> step 1.
+# Then: Next (create + precheck) -> Devices Check -> Ready -> screenrecord -> Start Recording; web 5177 andi stops it
+# about 10 s after the Core shows RECORDING; finish.sh (web STOPPING/SEALED, rec pull, Summary capture, logs, row).
+N=$1
+cat <<B
+mark $N
+B
+if [ "$2" = step1 ]; then cat <<B
+p screen summary
+p swipe 1280 1300 1280 300 600
+sleep 800
+p swipe 1280 1300 1280 300 600
+sleep 1500
+p tap 1350 1431
+p waitlog sumack 15
+sleep 5000
+B
+fi
+if [ "$2" = step1 ] || [ "$2" = home ]; then cat <<B
+p screen home
+p tap 2210 1034
+sleep 5000
+p tap 1736 379
+sleep 1500
+p tap 760 568
+sleep 1000
+p tap 1178 808
+sleep 1200
+p screen session-new
+p text RF2 $N
+sleep 1000
+p tap 1178 248
+sleep 1500
+p shot ${N}_a_wizard_step1_filled
+B
+fi
+cat <<B
+p tap 1178 1455
+p waitlog create 20
+p waitlog precheck 20
+sleep 9000
+p tap 1178 1455
+sleep 3000
+w1 nav /session 2500
+w1 wait page-session-monitor present 15000
+w1 js document.querySelector('[data-testid="page-session-monitor"]')?.getAttribute('data-session-state')
+p screen live
+load
+p clock
+p shot ${N}_b_ready
+p rec start $N 60
+p tap 1178 1455
+p waitlog start 25
+w1 until 15000 (()=>{const s=document.querySelector('[data-testid="page-session-monitor"]')?.getAttribute('data-session-state'); return s==='RECORDING' ? s : false})()
+sleep 9000
+w1 press sm-action-end
+w1 wait sm-end-dialog present 5000
+sleep 400
+w1 type [data-testid="sm-end-reason"] RF2 $N tablet web stop
+sleep 1000
+w1 press sm-end-confirm
+B
+$(dirname $0)/finish.sh $N

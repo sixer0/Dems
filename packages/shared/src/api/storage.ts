@@ -17,6 +17,7 @@ import { z } from 'zod';
 import { AuditType, Permission, RetentionPolicyId } from '../sim/vocabulary';
 import { API_BASE_PATH } from './constants';
 import {
+  ANY_OF_DENIAL_SEPARATOR,
   AUTHENTICATED_ACCESS,
   CORE_SERVER_ONLY,
   CoreApiAuditNone,
@@ -171,12 +172,13 @@ export const STORAGE_EXAMPLES: Readonly<Record<string, OperationExamples>> = {
       400: { invalidJson: ERROR_EXAMPLES.invalidJson },
       401: SIGNED_OUT,
       403: {
-        // RB-4 names `operationId`, `permission` and `role`; for the one any-of the example gives the rule's marker.
+        // RB-4 names `operationId`, `permission` and `role`; for the one any-of `permission` is the
+        // alternatives joined with `_OR_`, as the Core server writes it (W83, gap 5 and finding F64).
         notPermitted: {
           summary: 'INVESTIGATOR holds neither EVIDENCE_REVIEW nor MAINTENANCE',
           value: apiErrorExample('NOT_PERMITTED', 'Your role does not allow this action. The attempt was audited.', {
             operationId: 'setStoragePolicy',
-            permission: 'ANY-OF(EVIDENCE_REVIEW, MAINTENANCE)',
+            permission: `${Permission.EVIDENCE_REVIEW}${ANY_OF_DENIAL_SEPARATOR}${Permission.MAINTENANCE}`,
             role: 'INVESTIGATOR',
           }),
         },

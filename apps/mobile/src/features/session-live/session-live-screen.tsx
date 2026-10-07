@@ -39,13 +39,13 @@
 import { useIsFocused, useRouter } from 'expo-router';
 import { Button, useToast } from 'heroui-native';
 import { ArrowLeft, History } from 'lucide-react-native';
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { BackHandler, ScrollView, StyleSheet, Text, View, useWindowDimensions, type View as RNView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { useAnimatedStyle, useSharedValue, withSequence, withSpring, withTiming } from 'react-native-reanimated';
 import type { AudioTrackId, VideoTrackId } from '@dems/shared/domain';
-import { useSimInstance } from '@dems/shared/sim';
+import { timelineTitleKey, useSimInstance } from '@dems/shared/sim';
 import { useCoreLinkReadOnly, usePendingPress } from '@/runtime';
 import { derived, fontFamily, motion as motionTokens, palette, spacing, statusText, typography } from '@dems/shared/tokens';
 import { SectionCard } from '@/components/kit';
@@ -61,6 +61,7 @@ import { EndSession } from './end-session';
 import { LiveFeed } from './live-feed';
 import { MarkerFlight, type FlightRect, type MarkerFlightSpec } from './marker-flight';
 import { MicCard } from './mic-card';
+import { isMonitorHandoff } from './monitor-handoff';
 import { AudioMonitorSheet, MonitorSettingsSheet, TimelineSheet } from './monitor-sheets';
 import { RecDot, RecRow, RecTimer } from './rec-indicator';
 import {
@@ -117,6 +118,8 @@ export function SessionLiveScreen() {
   const arrangement = monitorArrangement(layoutClass);
 
   const session = useMonitorSession();
+  // CF2-A (RF-PH-3): after the start hand-off the monitor draws in place, without its enter rise (`monitor-handoff.ts`).
+  const [enter] = useState(() => !isMonitorHandoff(session.id));
   const { activeCameraId, cameras } = useMonitorCameras();
   const mics = useMonitorMics();
   const events = useMonitorTimeline();
@@ -144,10 +147,13 @@ export function SessionLiveScreen() {
   const timelineRef = useRef<RNView>(null);
   const flightKey = useRef(0);
 
+  // W93-23 (FXR-M): the source events by id, built once per `events` (was a linear `find` per item: O(n²)).
+  const eventsById = useMemo(() => new Map(events.map((event) => [event.id, event] as const)), [events]);
   const items: TimelineItem[] = timelineItems(events).map((item) => ({
     id: item.id,
     at: item.at,
-    title: t(`session.timeline.kind.${item.kind}`),
+    // A NOTE is titled by its author's role (E2E-T-5): the role is on the source event's params.
+    title: t(timelineTitleKey(eventsById.get(item.id) ?? item)),
     tone: item.tone,
     ...(item.detail ? { detail: item.detail } : {}),
   }));
@@ -297,6 +303,7 @@ export function SessionLiveScreen() {
       onBack={onBack}
       onHistory={inlineTimeline ? null : () => openSheet('timeline')}
       historyRef={historyRef}
+      enter={enter}
     />
   );
 
@@ -304,7 +311,9 @@ export function SessionLiveScreen() {
     <SafeScreen id="session-live" style={styles.root}>
       <View ref={rootRef} collapsable={false} style={styles.fill}>
         {header}
-        <View style={styles.banner}>
+        {/* CF-M1 (R-P-1): a container of its own that Fabric never flattens, so the banner's insert and
+            removal happen inside it and never shift the index of the monitor's other children. */}
+        <View style={styles.banner} collapsable={false} testID="monitor-banner-slot">
           <ConnectionBanner />
         </View>
         <MonitorBody
@@ -315,6 +324,7 @@ export function SessionLiveScreen() {
           tiles={tiles}
           endSession={endSession}
           timeline={timeline}
+          enter={enter}
         />
         <MarkerFlight flight={flight} onDone={onFlightDone} />
       </View>
@@ -426,9 +436,11 @@ interface MonitorHeaderProps {
   /** `null` on tablets (the timeline is inline). */
   onHistory: (() => void) | null;
   historyRef: React.RefObject<RNView | null>;
+  /** False after the start hand-off: no enter rise (CF2-A, RF-PH-3). */
+  enter: boolean;
 }
 
-function MonitorHeader({ arrangement, sessionId, unseen, onBack, onHistory, historyRef }: MonitorHeaderProps) {
+function MonitorHeader({ arrangement, sessionId, unseen, onBack, onHistory, historyRef, enter }: MonitorHeaderProps) {
   const { t } = useTranslation();
   const settings = useMotionSettings();
   const condensed = arrangement === 'split';
@@ -443,7 +455,7 @@ function MonitorHeader({ arrangement, sessionId, unseen, onBack, onHistory, hist
   const popStyle = useAnimatedStyle(() => ({ transform: [{ scale: pop.get() }] }));
 
   return (
-    <Animated.View entering={enterRise(0, settings)} style={[styles.header, condensed ? styles.headerCondensed : null]}>
+    <Animated.View entering={enter ? enterRise(0, settings) : undefined} style={[styles.header, condensed ? styles.headerCondensed : null]}>
       <Button
         testID="monitor-back"
         isIconOnly
@@ -520,14 +532,16 @@ interface MonitorBodyProps {
   tiles: (layout: 'row' | 'grid') => ReactNode;
   endSession: ReactNode;
   timeline: ReactNode;
+  /** False after the start hand-off: the regions are drawn in place (CF2-A, RF-PH-3). */
+  enter: boolean;
 }
 
-function MonitorBody({ arrangement, paused, feed, micCards, tiles, endSession, timeline }: MonitorBodyProps) {
+function MonitorBody({ arrangement, paused, feed, micCards, tiles, endSession, timeline, enter }: MonitorBodyProps) {
   const { t } = useTranslation();
   const settings = useMotionSettings();
   const window = useWindowDimensions();
   const insets = useSafeAreaInsets();
-  const rise = (index: number, afterMs: number) => enterRise(index, settings, { afterMs });
+  const rise = (index: number, afterMs: number) => (enter ? enterRise(index, settings, { afterMs }) : undefined);
   // Column widths are computed, not left to flex ratios: with flex ratios the 16:9 feed sized its
   // column from the row's height on dems_phone landscape and overflowed the screen (step 79 device run).
   const metersKey = useSettledKey(arrangement === 'tablet-landscape');

@@ -16,8 +16,8 @@
  * Method, path, access rule and audit rule are the registry's: this file names the operations
  * and nothing about them.
  */
-import { CORE_API_OPERATIONS, SIM_ACTION_OPERATIONS, type CoreApiRegistryOperation } from '@dems/shared/api';
-import { DeviceCommand } from '@dems/shared/sim';
+import { CORE_API_OPERATIONS, DEVICE_COMMAND_OPERATIONS, SIM_ACTION_OPERATIONS, type CoreApiRegistryOperation } from '@dems/shared/api';
+import type { DeviceCommand } from '@dems/shared/sim';
 
 /** The operations this module answers, in registry order (operations 44 to 52). */
 export const DEVICES_OPERATIONS = [
@@ -39,18 +39,17 @@ export type DeviceCommandOperation = (typeof SIM_ACTION_OPERATIONS)['deviceComma
 /**
  * Which `DeviceCommand` each of the three operations of `deviceCommand` runs.
  *
- * CONTRACT-GAP-3 (local adapter): `SIM_ACTION_OPERATIONS.deviceCommand` of the contract lists the
- * three operations and does not say which command reaches which. On the server each operation
- * runs exactly one command, so the link is this table. The keys are held to the contract's list
- * at compile time; a test holds each value to the path of its operation and to the action the
- * registry entry names. When the contract's table carries the link, read it there and delete
- * this constant.
+ * The contract's table `DEVICE_COMMAND_OPERATIONS` (command -> operation), inverted (W83 closed
+ * the local adapter of gap 3; review finding W91-12: derived, not restated; the name stays for
+ * this module's callers). On the server each operation runs exactly one command. The contract
+ * table's type holds its keys to `DeviceCommand` and its values to the action's operations; a test
+ * holds each value to the path of its operation and to the action the registry entry names.
  */
-export const DEVICE_COMMAND_OF_OPERATION = {
-  restartDevice: DeviceCommand.RESTART,
-  testDeviceSignal: DeviceCommand.TEST_SIGNAL,
-  identifyDevice: DeviceCommand.IDENTIFY,
-} as const satisfies Record<DeviceCommandOperation, DeviceCommand>;
+export const DEVICE_COMMAND_OF_OPERATION: Readonly<Record<DeviceCommandOperation, DeviceCommand>> = Object.freeze(
+  Object.fromEntries(
+    (Object.entries(DEVICE_COMMAND_OPERATIONS) as [DeviceCommand, DeviceCommandOperation][]).map(([command, operationId]) => [operationId, command]),
+  ) as Record<DeviceCommandOperation, DeviceCommand>,
+);
 
 /** The registry entry of one of this module's operations. Throws at load for a name the registry does not hold. */
 export function operationOf(operationId: DevicesOperation): CoreApiRegistryOperation {

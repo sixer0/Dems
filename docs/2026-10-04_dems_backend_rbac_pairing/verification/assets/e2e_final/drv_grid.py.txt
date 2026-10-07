@@ -1,0 +1,15 @@
+# Compact grid of frames (overlay strip + small screen) for reading; scratch only.
+import os, sys
+from PIL import Image, ImageDraw
+fdir, out, start, end = sys.argv[1], sys.argv[2], int(sys.argv[3]), int(sys.argv[4])
+files = sorted(os.listdir(fdir))[start:end]
+tw, th, cols = 150, 337, 8
+rows = (len(files) + cols - 1) // cols
+s = Image.new('RGB', (cols * (tw + 4), rows * (th + 34)), 'white'); d = ImageDraw.Draw(s)
+for k, n in enumerate(files):
+    im = Image.open(f'{fdir}/{n}').convert('RGB')
+    x, y = (k % cols) * (tw + 4), (k // cols) * (th + 34)
+    d.text((x + 2, y + 1), n, fill='black')
+    s.paste(im.crop((0, 0, 270, 22)).resize((tw, 14)), (x, y + 13))
+    s.paste(im.resize((tw, th)), (x, y + 32))
+s.save(out); print(len(files))

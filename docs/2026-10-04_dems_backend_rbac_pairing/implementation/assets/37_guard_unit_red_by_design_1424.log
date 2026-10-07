@@ -1,0 +1,133 @@
+
+> @dems/core-server@0.2.0 test
+> vitest run --project unit --maxWorkers=2 src/plugins/permission-guard/__tests__/guard.test.ts
+
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/apps/core-server
+
+ ❯ |unit| src/plugins/permission-guard/__tests__/guard.test.ts (29 tests | 12 failed) 83ms
+   ❯ RB-1, AC-B-12: the boot check of app.ready() (9)
+     × the server as it stands is ready: every registered route is a registry operation with its rules 27ms
+     × registry operations whose module does not exist yet can be registered: all 68 of them, and the socket route 2ms
+   ❯ a route that was added before the plugins ran (decision D82, condition 4) (7)
+     × the printed route table gives back exactly the routes the guard was shown: all 75 operations and the socket 1ms
+   ❯ stage 6 in the pipeline (10)
+     × a denied call answers 403 and commits exactly one row in one unit; an allowed call commits none and reaches the handler 1ms
+     × a 401 writes no row, runs no unit and takes no place in the denial budget 1ms
+     × DEVICE_NOT_PAIRED and DEMO_DISABLED write no row and take no place; each is one warn line 1ms
+     × the console rule ID-1 is applied by the stage itself: signIn without a console identity is refused here, with the stage's own line 3ms
+     × with the demo flag on, a holder of DEMO_CONTROL reaches the demo operation 1ms
+     × SR-71: the place in the budget is taken before the row: with the budget used up the answer is 429 and no unit runs 1ms
+     × 100 denied calls at once write exactly 20 rows: the calls that pass stage 5 together are held back by the place they must take first 1ms
+     × a denial whose row cannot be written is still refused, never let through: 503 without a database, 500 when the insert itself fails 1ms
+     × the log of a refusal holds codes and identifiers and nothing a caller sent 1ms
+
+⎯⎯⎯⎯⎯⎯ Failed Tests 12 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |unit| src/plugins/permission-guard/__tests__/guard.test.ts > RB-1, AC-B-12: the boot check of app.ready() > the server as it stands is ready: every registered route is a registry operation with its rules
+AssertionError: expected [ 'getServiceHealth', 'signIn', …(10) ] to deeply equal [ 'getServiceHealth', 'signIn', …(5) ]
+
+- Expected
++ Received
+
+@@ -4,6 +4,11 @@
+    "getSignInStatus",
+    "getAuthSession",
+    "signOut",
+    "touchSession",
+    "getRoleMatrix",
++   "getStorageStatus",
++   "getStorageDetail",
++   "setStoragePolicy",
++   "getNetworkStatus",
++   "getTimeStatus",
+  ]
+
+ ❯ src/plugins/permission-guard/__tests__/guard.test.ts:139:69
+    137|     const guard = permissionGuard(app);
+    138|     expect(guard.routeProblems()).toEqual([]);
+    139|     expect(guard.registeredRules().map((rule) => rule.operationId)).to…
+       |                                                                     ^
+    140|     for (const rule of guard.registeredRules()) expect(operationOf(rul…
+    141|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/12]⎯
+
+ FAIL  |unit| src/plugins/permission-guard/__tests__/guard.test.ts > RB-1, AC-B-12: the boot check of app.ready() > registry operations whose module does not exist yet can be registered: all 68 of them, and the socket route
+FastifyError: Method 'GET' already declared for route '/api/v1/storage/status'
+ ❯ Object.addNewRoute ../../node_modules/fastify/lib/route.js:369:19
+ ❯ Object.route ../../node_modules/fastify/lib/route.js:269:19
+ ❯ Object._route [as route] ../../node_modules/fastify/fastify.js:215:27
+ ❯ registryRoutes src/plugins/permission-guard/__tests__/support.ts:77:9
+     75| export function registryRoutes(app: FastifyInstance, operationIds: rea…
+     76|   for (const operationId of operationIds) {
+     77|     app.route({
+       |         ^
+     78|       ...routeOfOperation(operationOf(operationId)),
+     79|       handler: async (): Promise<StandInAnswer> => {
+ ❯ routes src/plugins/permission-guard/__tests__/guard.test.ts:202:9
+ ❯ src/plugins/permission-guard/__tests__/guard.test.ts:70:43
+ ❯ Plugin.exec ../../node_modules/avvio/lib/plugin.js:125:28
+ ❯ Boot._loadPlugin ../../node_modules/avvio/index.js:446:10
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/12]⎯
+
+ FAIL  |unit| src/plugins/permission-guard/__tests__/guard.test.ts > a route that was added before the plugins ran (decision D82, condition 4) > the printed route table gives back exactly the routes the guard was shown: all 75 operations and the socket
+FastifyError: Method 'GET' already declared for route '/api/v1/storage/status'
+ ❯ Object.addNewRoute ../../node_modules/fastify/lib/route.js:369:19
+ ❯ Object.route ../../node_modules/fastify/lib/route.js:269:19
+ ❯ Object._route [as route] ../../node_modules/fastify/fastify.js:215:27
+ ❯ registryRoutes src/plugins/permission-guard/__tests__/support.ts:77:9
+     75| export function registryRoutes(app: FastifyInstance, operationIds: rea…
+     76|   for (const operationId of operationIds) {
+     77|     app.route({
+       |         ^
+     78|       ...routeOfOperation(operationOf(operationId)),
+     79|       handler: async (): Promise<StandInAnswer> => {
+ ❯ routes src/plugins/permission-guard/__tests__/guard.test.ts:309:9
+ ❯ src/plugins/permission-guard/__tests__/guard.test.ts:70:43
+ ❯ Plugin.exec ../../node_modules/avvio/lib/plugin.js:125:28
+ ❯ Boot._loadPlugin ../../node_modules/avvio/index.js:446:10
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/12]⎯
+
+ FAIL  |unit| src/plugins/permission-guard/__tests__/guard.test.ts > stage 6 in the pipeline > a denied call answers 403 and commits exactly one row in one unit; an allowed call commits none and reaches the handler
+ FAIL  |unit| src/plugins/permission-guard/__tests__/guard.test.ts > stage 6 in the pipeline > a 401 writes no row, runs no unit and takes no place in the denial budget
+ FAIL  |unit| src/plugins/permission-guard/__tests__/guard.test.ts > stage 6 in the pipeline > DEVICE_NOT_PAIRED and DEMO_DISABLED write no row and take no place; each is one warn line
+ FAIL  |unit| src/plugins/permission-guard/__tests__/guard.test.ts > stage 6 in the pipeline > the console rule ID-1 is applied by the stage itself: signIn without a console identity is refused here, with the stage's own line
+ FAIL  |unit| src/plugins/permission-guard/__tests__/guard.test.ts > stage 6 in the pipeline > with the demo flag on, a holder of DEMO_CONTROL reaches the demo operation
+ FAIL  |unit| src/plugins/permission-guard/__tests__/guard.test.ts > stage 6 in the pipeline > SR-71: the place in the budget is taken before the row: with the budget used up the answer is 429 and no unit runs
+ FAIL  |unit| src/plugins/permission-guard/__tests__/guard.test.ts > stage 6 in the pipeline > 100 denied calls at once write exactly 20 rows: the calls that pass stage 5 together are held back by the place they must take first
+ FAIL  |unit| src/plugins/permission-guard/__tests__/guard.test.ts > stage 6 in the pipeline > a denial whose row cannot be written is still refused, never let through: 503 without a database, 500 when the insert itself fails
+ FAIL  |unit| src/plugins/permission-guard/__tests__/guard.test.ts > stage 6 in the pipeline > the log of a refusal holds codes and identifiers and nothing a caller sent
+FastifyError: Method 'POST' already declared for route '/api/v1/storage/policy'
+ ❯ Object.addNewRoute ../../node_modules/fastify/lib/route.js:369:19
+ ❯ Object.route ../../node_modules/fastify/lib/route.js:269:19
+ ❯ Object._route [as route] ../../node_modules/fastify/fastify.js:215:27
+ ❯ registryRoutes src/plugins/permission-guard/__tests__/support.ts:77:9
+     75| export function registryRoutes(app: FastifyInstance, operationIds: rea…
+     76|   for (const operationId of operationIds) {
+     77|     app.route({
+       |         ^
+     78|       ...routeOfOperation(operationOf(operationId)),
+     79|       handler: async (): Promise<StandInAnswer> => {
+ ❯ routes src/plugins/permission-guard/__tests__/guard.test.ts:376:9
+ ❯ src/plugins/permission-guard/__tests__/guard.test.ts:70:43
+ ❯ Plugin.exec ../../node_modules/avvio/lib/plugin.js:125:28
+ ❯ Boot._loadPlugin ../../node_modules/avvio/index.js:446:10
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/12]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  12 failed | 17 passed (29)
+   Start at  14:25:17
+   Duration  721ms (transform 51%, import 37%, tests 12%)
+
+npm error Lifecycle script `test` failed with error:
+npm error code 1
+npm error path /Users/gsp-budi/Documents/DEMS/apps/core-server
+npm error workspace @dems/core-server@0.2.0
+npm error location /Users/gsp-budi/Documents/DEMS/apps/core-server
+npm error command failed
+npm error command sh -c vitest run --project unit --maxWorkers=2 src/plugins/permission-guard/__tests__/guard.test.ts

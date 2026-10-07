@@ -1337,7 +1337,7 @@ export function createLiveSim<Client extends LiveClient>(options: CreateLiveSimO
         return open ? taken(info) : later(null);
       }
       // The same session, still open, and the operator asked for its end: the debt is paid.
-      // CONTRACT-GAP-W44-2 (no adapter is possible here): the sign-out request names no session, so
+      // RESIDUAL-W44-2 (W83 ledger #37) (no adapter is possible here): the sign-out request names no session, so
       // between the question above and this payment (one round trip) another tab can sign in, and
       // the payment then ends that new session. Only a sign-out that names the session it is for
       // (its `issuedAt`) closes that; the contract has no such member.
@@ -1470,7 +1470,7 @@ export function createLiveSim<Client extends LiveClient>(options: CreateLiveSimO
    * is one of a later connection. A socket that was never lost says `hello` once, so it causes no
    * request; a socket that was lost causes exactly one per new connection.
    *
-   * CONTRACT-GAP-W44-1 (local adapter): `hello` names a principal and no session. If it named the
+   * RESIDUAL-W44-1 (W83 ledger #36) (local adapter): `hello` names a principal and no session. If it named the
    * operator and the instant the session was issued, the client could compare at once: this
    * request would not be needed, and the windows it cannot close would close too (an answer that
    * was asked before a sign-in elsewhere and arrives after the socket was reopened, and the socket

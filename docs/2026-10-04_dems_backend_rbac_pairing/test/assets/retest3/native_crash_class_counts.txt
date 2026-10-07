@@ -1,0 +1,18 @@
+RF2 per-run app-process native W/E/F log scan (driver verb 'native': app pid only, from each run's batch start to its end).
+crashClass = FATAL|addViewAt|Tried to remove view|handleHostException|reactInstance is null|IndexOutOfBounds|AndroidRuntime (CF-M1/RF-PH list)
+deadThreadWarn = lines matching 'Handler on a dead thread' (W LegacyMessageQueue 'IllegalStateException: Handler (...) sending message to a Handler on a dead thread' MediaCodec / Choreographer handlers; warnings, the process kept running)
+reanimated = W Reanimated RetryableMountingLayerException 'Unable to find SurfaceMountingManager' lines (the D234/D236 family, routed to W93)
+run  device       pid  crashClass  deadThreadWarn  reanimated
+S1   phone       17766           0               0        1481
+S2   phone       17766           0               0        1513
+S3   phone      17766           0               2        1486
+X1   phone      17766           0               0        1608
+X2   phone      17766           0               8        1623
+X3   phone      17766           0               8        1465
+T1   tablet     24946           0               2        1370
+T2   tablet     24946           0               0        1535
+T3   tablet     24946           0               2        1500
+
+Whole-window scan of every tag (driver verb 'crash', AndroidRuntime included):
+  phone  10-06 22:18:33 -> 22:34:35: 15 lines, all AndroidRuntime lines of the uiautomator launcher (uid 2000) for 3 dumps on More; app pid 17766 from the relaunch to the end
+  tablet 10-06 22:35:07 -> 22:54:36: 45 lines, all AndroidRuntime lines of the uiautomator launcher (uid 2000) for 9 dumps (Evidence 2, Sessions 3, Settings 1, Account 3); app pid 24946 from the relaunch to the end

@@ -1,0 +1,3 @@
+top
+shot E2_03_ready_before_start
+noshot

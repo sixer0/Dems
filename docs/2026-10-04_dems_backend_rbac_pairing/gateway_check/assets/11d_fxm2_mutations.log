@@ -1,0 +1,56 @@
+# FX-M2 mutation check, 2026-10-06 11:54:01; the tree is not edited
+P1  DETECTED     the old literal copy is back (always "the local mock-core") | src/features/home/home-screen.tsx | Tests:       3 failed, 2 passed, 5 total | failing: stack-proof-source.test.tsx | first: Stack Check names the data source the app really uses (E2E-P-2) › LIVE: the card says Live and the Core server; it no longer claims the local mock-core (307 s)
+P2  DETECTED     the line ignores the Core link source (always SIMULATED) | src/features/home/home-screen.tsx | Tests:       2 failed, 3 passed, 5 total | failing: stack-proof-source.test.tsx | first: Stack Check names the data source the app really uses (E2E-P-2) › LIVE: the card says Live and the Core server; it no longer claims the local mock-core (7 s)
+R1  DETECTED     Home Start is never locked | src/features/dashboard/quick-actions.tsx | Tests:       2 failed, 55 passed, 57 total | failing: live-role-gate-r2.test.tsx, role-gate-r2.test.tsx | first: Home quick action: Start Session needs SESSION_START (E2E-P-5) › TECHNICIAN: the primary action is disabled with "Requires the Investigator role"; a press opens nothing (14 s)
+R2  DETECTED     the lock covers Start only (Continue setup open to a TECHNICIAN) and the hint is never drawn | src/features/dashboard/quick-actions.tsx | Tests:       2 failed, 55 passed, 57 total | failing: live-role-gate-r2.test.tsx, role-gate-r2.test.tsx | first: R2 in LIVE mode: a role change pushed by the Core re-gates the controls in place, without a sign-in › INVESTIGATOR -> TECHNICIAN -> INVESTIGATOR: Start locks and unlocks; Install update unlocks and locks; one sign-in only (8 s)
+R3  DETECTED     the Sessions hub Start is never locked | src/features/sessions/hub-top.tsx | Tests:       2 failed, 55 passed, 57 total | failing: live-role-gate-r2.test.tsx, role-gate-r2.test.tsx | first: R2 in LIVE mode: a role change pushed by the Core re-gates the controls in place, without a sign-in › INVESTIGATOR -> TECHNICIAN -> INVESTIGATOR: Start locks and unlocks; Install update unlocks and locks; one sign-in only (14 s)
+R4  DETECTED     the route has no entry guard (a deep link opens the wizard) | src/app/(app)/session/new.tsx | Tests:       3 failed, 54 passed, 57 total | failing: role-gate-r2.test.tsx, session-new-screen.test.tsx | first: /session/new by any other way: the route refuses a role without SESSION_START › TECHNICIAN, a deep link: Home, ONE toast "Not permitted" / "Requires the Investigator role", the wizard never renders (12 s)
+R5  DETECTED     Install update is never locked | src/features/settings/maintenance-section.tsx | Tests:       4 failed, 53 passed, 57 total | failing: live-role-gate-r2.test.tsx, live-settings-sites.test.tsx, role-gate-r2.test.tsx | first: System Maintenance: Install update needs MAINTENANCE (O-2) › INVESTIGATOR: disabled with "Requires the Technician role"; a press starts nothing (11 s)
+R6  DETECTED     the gate keeps the first role (a pushed role change is not followed) | src/features/rbac/use-role-gate.ts | Tests:       1 failed, 56 passed, 57 total | failing: live-role-gate-r2.test.tsx | first: R2 in LIVE mode: a role change pushed by the Core re-gates the controls in place, without a sign-in › INVESTIGATOR -> TECHNICIAN -> INVESTIGATOR: Start locks and unlocks; Install update unlocks and locks; one sign-in only (9 s)
+R7  DETECTED     an unknown role counts as locked (the sentence and the guard act before the role is known) | src/features/rbac/use-role-gate.ts | Tests:       1 failed, 56 passed, 57 total | failing: role-gate-r2.test.tsx | first: roleGateFor (pure): the permission, the role the sentence names, and an unknown role › no signed-in role yet: not allowed, but not "locked" (no sentence, and a route guard does not leave) (9 s)
+R8  DETECTED     the guard decides on every render (a loss while open navigates a second time) | src/features/session-new/use-start-entry-guard.ts | Tests:       1 failed, 56 passed, 57 total | failing: session-new-screen.test.tsx | first: step 1: Session Information (MB 3, D62) › a role without SESSION_START at Next (the signed-in operator changed while the wizard was open): the create error is shown and nothing is created (9 s)
+R9  DETECTED     the sentence names the wrong role | src/features/rbac/use-role-gate.ts | Tests:       7 failed, 50 passed, 57 total | failing: live-role-gate-r2.test.tsx, live-settings-sites.test.tsx, role-gate-r2.test.tsx | first: S2-7: Install update (operation 67) › R2 (E-fix FX-M2, O-2): a SUPERVISOR lacks MAINTENANCE: Install update is disabled with "Requires the Technician role" and a press sends nothing (9 s)
+M1  DETECTED     the record is never shown (only the one line, as before) | src/features/evidence/metadata-tab.tsx | Tests:       2 failed, 2 passed, 4 total | failing: live-evidence-metadata-record.test.tsx | first: E2E-T-6: the Metadata tab of a Core-only item shows the Core record (web parity) › media NONE (a session recorded on the Core): "Core record" with the item's values; no claim of simulation (5 s)
+M2  NOT APPLIED  the detail does not hand the item to the tab | src/features/evidence/evidence-detail.tsx | Tests:       0 total | failing: live-evidence-metadata-record.test.tsx | first: Test suite failed to run (2 s)
+M3  DETECTED     an unanswered media reference claims that no package exists | src/features/evidence/metadata-tab.tsx | Tests:       1 failed, 3 passed, 4 total | failing: live-evidence-metadata-record.test.tsx | first: E2E-T-6: the Metadata tab of a Core-only item shows the Core record (web parity) › the Core did not answer operation 40: the record still shows, and the line says the reference is unavailable (no claim that no package exists) (5 s)
+M4  DETECTED     the Live record is labelled as the simulator's | src/features/evidence/metadata-tab.tsx | Tests:       2 failed, 2 passed, 4 total | failing: live-evidence-metadata-record.test.tsx | first: E2E-T-6: the Metadata tab of a Core-only item shows the Core record (web parity) › media NONE (a session recorded on the Core): "Core record" with the item's values; no claim of simulation (5 s)
+H1  DETECTED     the live route renders only the redirect again (the empty frame) | src/app/(app)/session/live.tsx | Tests:       3 failed, 1 passed, 4 total | failing: live-stop-handover.test.tsx | first: E2E-P-4 / E2E-T-4: a stop made on another console hands the monitor over to Finalizing without an empty frame › phonePortrait: every commit after the pushed stop draws the monitor or Finalizing; the first one without the monitor draws the Finalizing card (5 s)
+H2  DETECTED     the in-place screen enters with motion (rises from opacity 0) | src/app/(app)/session/live.tsx | Tests:       3 failed, 1 passed, 4 total | failing: live-stop-handover.test.tsx | first: E2E-P-4 / E2E-T-4: a stop made on another console hands the monitor over to Finalizing without an empty frame › phonePortrait: every commit after the pushed stop draws the monitor or Finalizing; the first one without the monitor draws the Finalizing card (5 s)
+H3  DETECTED     the in-place screen does not mark the hand-over (the route copy rises in) | src/features/session-finalizing/session-finalizing-screen.tsx | Tests:       2 failed, 2 passed, 4 total | failing: live-stop-handover.test.tsx | first: E2E-P-4 / E2E-T-4: a stop made on another console hands the monitor over to Finalizing without an empty frame › phonePortrait: every commit after the pushed stop draws the monitor or Finalizing; the first one without the monitor draws the Finalizing card (3 s)
+B1  DETECTED     no boundary around the list (a render failure blanks the screen) | src/features/devices/devices-screen.tsx | Tests:       1 failed, 3 passed, 4 total | failing: devices-states.test.tsx | first: E2E-T-2: Devices always shows loading, data or an error with a Retry › error in the list: the panel card with Retry, logged; a Retry that fails again is rate-limited (3 s countdown); one that works brings the data back (3 s)
+B2  DETECTED     Retry is not rate-limited | src/features/devices/panel-boundary.tsx | Tests:       1 failed, 3 passed, 4 total | failing: devices-states.test.tsx | first: E2E-T-2: Devices always shows loading, data or an error with a Retry › error in the list: the panel card with Retry, logged; a Retry that fails again is rate-limited (3 s countdown); one that works brings the data back (2 s)
+B3  DETECTED     no boundary around the detail pane | src/features/devices/devices-screen.tsx | Tests:       1 failed, 3 passed, 4 total | failing: devices-states.test.tsx | first: E2E-T-2: Devices always shows loading, data or an error with a Retry › error in the tablet detail pane: the list stays; the pane shows the card with Retry (6 s)
+## 20 detected, 0 not detected, 1 not applied, of 21
+## the mutated files in the tree, before and after: identical
+   abf6ed25fd8d331a  src/app/(app)/session/live.tsx
+   ece8a4be2c1f81a1  src/app/(app)/session/new.tsx
+   c4d23f9d8b7562fd  src/features/dashboard/quick-actions.tsx
+   51cac0de7540378b  src/features/devices/devices-screen.tsx
+   3aa138b96ba870c3  src/features/devices/panel-boundary.tsx
+   0d0bdd26161fc26d  src/features/evidence/evidence-detail.tsx
+   cb9b7bf6e78d28ca  src/features/evidence/metadata-tab.tsx
+   89acca00c0475a8f  src/features/home/home-screen.tsx
+   cd7e2f6f8d15f876  src/features/rbac/use-role-gate.ts
+   94150ac54d7cebda  src/features/session-finalizing/session-finalizing-screen.tsx
+   69b48f519d11160b  src/features/session-new/use-start-entry-guard.ts
+   17430a67bc7937f7  src/features/sessions/hub-top.tsx
+   b7c97e7ba9cc4d69  src/features/settings/maintenance-section.tsx
+# finished 12:01:30
+# FX-M2 mutation check, 2026-10-06 12:01:54; the tree is not edited
+M2  DETECTED     the detail does not hand the item to the tab | src/features/evidence/evidence-detail.tsx | Tests:       2 failed, 2 passed, 4 total | failing: live-evidence-metadata-record.test.tsx | first: E2E-T-6: the Metadata tab of a Core-only item shows the Core record (web parity) › media NONE (a session recorded on the Core): "Core record" with the item's values; no claim of simulation (5 s)
+## 1 detected, 0 not detected, 0 not applied, of 1
+## the mutated files in the tree, before and after: identical
+   abf6ed25fd8d331a  src/app/(app)/session/live.tsx
+   ece8a4be2c1f81a1  src/app/(app)/session/new.tsx
+   c4d23f9d8b7562fd  src/features/dashboard/quick-actions.tsx
+   51cac0de7540378b  src/features/devices/devices-screen.tsx
+   3aa138b96ba870c3  src/features/devices/panel-boundary.tsx
+   0d0bdd26161fc26d  src/features/evidence/evidence-detail.tsx
+   cb9b7bf6e78d28ca  src/features/evidence/metadata-tab.tsx
+   89acca00c0475a8f  src/features/home/home-screen.tsx
+   cd7e2f6f8d15f876  src/features/rbac/use-role-gate.ts
+   94150ac54d7cebda  src/features/session-finalizing/session-finalizing-screen.tsx
+   69b48f519d11160b  src/features/session-new/use-start-entry-guard.ts
+   17430a67bc7937f7  src/features/sessions/hub-top.tsx
+   b7c97e7ba9cc4d69  src/features/settings/maintenance-section.tsx
+# finished 12:01:59

@@ -1,0 +1,12 @@
+mark final sign out (budi) at 13:10:07.645
+deep link demsdemo:///more at 13:10:07.684: Starting: Intent { act=android.intent.action.VIEW dat=demsdemo:///... pkg=com.dems.demo.tablet }
+slept 4000 ms
+screencap P17a_more_before_signout.png (326636 bytes) at 13:10:11.884
+tap 1862,453 at 13:10:11.939
+signout 204 (10-06 13:10:12.968 POST /api/v1/auth/sign-out 204)
+slept 4000 ms
+screencap P17_signout_lands_on_login.png (3255780 bytes) at 13:10:19.427
+mCurrentFocus=Window{477e1c3 u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity} ; isKeyguardShowing=false
+jslog jslog_tablet_full.txt: 41 lines
+jserr jserr_tablet_full.txt: 0 lines
+jswarn jswarn_tablet_full.txt: 1 lines

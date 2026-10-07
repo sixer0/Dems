@@ -42,7 +42,7 @@ import { engineControl, simRefusal, withActorScope, type EngineControl, type Eng
 import { manualTimer, type ManualTimer } from '../../../../test/support/engine';
 import type { Principal } from '../../../plugins/authenticate';
 import { captureLog, unitTestConfig, type CapturedLog } from '../../../../test/support/config';
-import { ApiFailure } from '../../../plugins/error-envelope';
+import { ApiFailure, NOT_SIGNED_IN_TEXT } from '../../../plugins/error-envelope';
 import { buildGuardApp, type GuardApp, type GuardTarget } from '../../../../test/support/guard';
 import type { Publication } from '../../../realtime';
 
@@ -199,7 +199,7 @@ export async function engineDouble(clock: ControllableClock, scenario?: Scenario
         commands.push({ principal, action, args });
         takeFailure();
         if (!double.running) throw notRunning();
-        if (principal.kind !== 'OPERATOR') throw new ApiFailure(401, 'NOT_SIGNED_IN', 'Sign in to continue.');
+        if (principal.kind !== 'OPERATOR') throw new ApiFailure(401, 'NOT_SIGNED_IN', NOT_SIGNED_IN_TEXT);
         const before = sim.store.getState();
         const run = sim.actions[action] as (...parameters: unknown[]) => unknown;
         let value: unknown;

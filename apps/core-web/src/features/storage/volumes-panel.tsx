@@ -17,7 +17,7 @@ const TEMP_TONE: Record<TempLevel, StatusTone> = { OK: 'success', WARM: 'warning
 /**
  * The footnote on the SMART values, by data mode. Live mode (plan row W71): the volumes and the
  * temperatures are the Core server's (`storage`, `health`), but the Core server reports no SMART
- * counters (CONTRACT-GAP-W71-1): the console derives them with the same `driveHealth`, and the
+ * counters (RESIDUAL-W71-1, W83 ledger #47): the console derives them with the same `driveHealth`, and the
  * footnote says so without naming a simulator (04_client_integration_spec §3.2).
  */
 const DERIVED_NOTE = {

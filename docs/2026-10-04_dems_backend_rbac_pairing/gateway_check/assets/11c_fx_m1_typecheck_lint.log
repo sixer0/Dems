@@ -1,0 +1,13 @@
+# cd apps/mobile && npm run typecheck
+
+> @dems/mobile@0.1.0 typecheck
+> tsc --noEmit
+
+typecheck exit=0
+
+# cd apps/mobile && npm run lint
+
+> @dems/mobile@0.1.0 lint
+> eslint .
+
+lint exit=0

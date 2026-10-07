@@ -1,0 +1,748 @@
+{
+ "results": [
+  {
+   "page": "Login",
+   "ok": true,
+   "ms": 3070,
+   "strip": [
+    "DATABASE Ready",
+    "ENGINE Ready",
+    "CORE LINK Online",
+    "MODE Live"
+   ],
+   "shot": "p2_01_login.png"
+  },
+  {
+   "page": "Sign in",
+   "ok": true,
+   "ms": 4401
+  },
+  {
+   "page": "Stack Check",
+   "ok": true,
+   "ms": 6656,
+   "chip": "Live",
+   "seq1": "0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 ",
+   "seq2": "0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 ",
+   "facts": {
+    "href": "/stack-check",
+    "title": "DEMS Edge Client · Core Console",
+    "page": [
+     "page-stack-check",
+     "page-header"
+    ],
+    "mode": "LIVE",
+    "h1": "STACK CHECK\nSTACK CHECK",
+    "toasts": [],
+    "dialogs": [],
+    "alerts": [],
+    "scrollWidth": 1440,
+    "clientWidth": 1440
+   },
+   "present": true,
+   "shot": "p2_02_stack_check.png"
+  },
+  {
+   "page": "Dashboard",
+   "ok": true,
+   "ms": 4785,
+   "via": "sidebar",
+   "ring": "1 ISSUE",
+   "facts": {
+    "href": "/dashboard",
+    "title": "DEMS Edge Client · Core Console",
+    "page": [
+     "page-dashboard"
+    ],
+    "mode": "LIVE",
+    "h1": "Dashboard",
+    "toasts": [],
+    "dialogs": [],
+    "alerts": [],
+    "scrollWidth": 1440,
+    "clientWidth": 1440
+   },
+   "present": true,
+   "shot": "p2_03_dashboard.png"
+  },
+  {
+   "page": "Start New Session (step 1)",
+   "ok": true,
+   "ms": 3200,
+   "clicked": true,
+   "next": {
+    "disabled": true,
+    "text": "Next"
+   },
+   "facts": {
+    "href": "/session/new?step=1",
+    "title": "DEMS Edge Client · Core Console",
+    "page": [
+     "page-session-new",
+     "page-header"
+    ],
+    "mode": "LIVE",
+    "h1": "START NEW SESSION\nSTART NEW SESSION",
+    "toasts": [],
+    "dialogs": [],
+    "alerts": [],
+    "scrollWidth": 1440,
+    "clientWidth": 1440
+   },
+   "present": true,
+   "shot": "p2_04_start_new_session_step1.png"
+  },
+  {
+   "page": "Session Monitor",
+   "ok": true,
+   "ms": 3248,
+   "via": "sidebar",
+   "banner": "SESSION SEALED Evidence EV-20261006-0014 sealed • Ready for the next session Start New Session",
+   "notes": [
+    {
+     "text": "12:20:38 Investigator Note Added Subject identity and rights read and confirmed"
+    },
+    {
+     "text": "12:36:23 Supervisor Note Added R-W re-test note: supervisor checks the note drawer title on lane three."
+    }
+   ],
+   "facts": {
+    "href": "/session",
+    "title": "DEMS Edge Client · Core Console",
+    "page": [
+     "page-session-monitor",
+     "page-header"
+    ],
+    "mode": "LIVE",
+    "h1": "SESSION MONITOR\nSESSION MONITOR\nSESSION MONITOR",
+    "toasts": [],
+    "dialogs": [],
+    "alerts": [],
+    "scrollWidth": 1440,
+    "clientWidth": 1440
+   },
+   "present": true,
+   "shot": "p2_05_session_monitor.png"
+  },
+  {
+   "page": "Evidence list",
+   "ok": true,
+   "ms": 3225,
+   "via": "sidebar",
+   "summary": "1–10 of 14",
+   "facts": {
+    "href": "/evidence",
+    "title": "DEMS Edge Client · Core Console",
+    "page": [
+     "page-evidence",
+     "page-header"
+    ],
+    "mode": "LIVE",
+    "h1": "EVIDENCE\nEVIDENCE",
+    "toasts": [],
+    "dialogs": [],
+    "alerts": [],
+    "scrollWidth": 1440,
+    "clientWidth": 1440
+   },
+   "present": true,
+   "shot": "p2_06_evidence_list.png"
+  },
+  {
+   "page": "Evidence detail",
+   "ok": true,
+   "ms": 13275,
+   "via": "url",
+   "tabs": {
+    "media": {
+     "clicked": true,
+     "selected": "true",
+     "shot": "p2_07a_evidence_detail_media.png"
+    },
+    "metadata": {
+     "clicked": true,
+     "selected": "true",
+     "metadataPackage": "foreign",
+     "shot": "p2_07b_evidence_detail_metadata.png"
+    },
+    "integrity": {
+     "clicked": true,
+     "selected": "true",
+     "verdict": "NOT_RUN",
+     "verifyLast": null,
+     "shot": "p2_07c_evidence_detail_integrity.png"
+    }
+   },
+   "header": "Sealed DEMO package EV-20261006-0012 6 Oct 2026 10:53:23 – 11:26:43 UTC+07:00 Case Number LP/2026/1005-0004 Subject Indah Permata Saksi Investigator AKP Andi Pratama Location Interview Room 1 Duration 00:33:20 File Size 4.6 GB Status Sealed Session SES-2026100",
+   "facts": {
+    "href": "/evidence/EV-20261006-0012?tab=integrity",
+    "title": "DEMS Edge Client · Core Console",
+    "page": [
+     "page-evidence-detail",
+     "page-header"
+    ],
+    "mode": "LIVE",
+    "h1": "EVIDENCE DETAILS\nEVIDENCE DETAILS",
+    "toasts": [],
+    "dialogs": [],
+    "alerts": [],
+    "scrollWidth": 1440,
+    "clientWidth": 1440
+   },
+   "present": true
+  },
+  {
+   "page": "Evidence detail custody probe (EV-20261006-0014)",
+   "ok": true,
+   "ms": 5086,
+   "probe": {
+    "cardLeft": 931,
+    "cardRight": 1404,
+    "tableWidth": 472,
+    "tableRight": 1419,
+    "scroller": {
+     "tag": "DIV",
+     "cls": "table__scroll-container",
+     "overflowX": "auto",
+     "scrollWidth": 472,
+     "clientWidth": 441
+    },
+    "ths": [
+     {
+      "text": "Time UTC+07:00",
+      "width": 106
+     },
+     {
+      "text": "Action",
+      "width": 187
+     },
+     {
+      "text": "Actor",
+      "width": 87
+     },
+     {
+      "text": "Detail",
+      "width": 92
+     }
+    ],
+    "rows": [
+     {
+      "action": "SEALED",
+      "detailText": "—",
+      "detailRight": 1419,
+      "detailScrollW": 92,
+      "detailClientW": 92,
+      "wordBreak": "normal",
+      "overflowWrap": "normal",
+      "whiteSpace": "normal"
+     },
+     {
+      "action": "RECORDING_STOPPED",
+      "detailText": "R-W re-test: interview ended by the supervisor from the web console",
+      "detailRight": 1419,
+      "detailScrollW": 92,
+      "detailClientW": 92,
+      "wordBreak": "normal",
+      "overflowWrap": "normal",
+      "whiteSpace": "normal"
+     },
+     {
+      "action": "RECORDING_STARTED",
+      "detailText": "—",
+      "detailRight": 1419,
+      "detailScrollW": 92,
+      "detailClientW": 92,
+      "wordBreak": "normal",
+      "overflowWrap": "normal",
+      "whiteSpace": "normal"
+     }
+    ]
+   },
+   "shot": "p2_07d_custody_detail_column_ev0014.png"
+  },
+  {
+   "page": "Devices & Inputs",
+   "ok": true,
+   "ms": 7723,
+   "via": "sidebar",
+   "menu": [
+    {
+     "text": "Details",
+     "disabled": false
+    },
+    {
+     "text": "Test signal",
+     "disabled": false
+    },
+    {
+     "text": "Identify (blink)",
+     "disabled": false
+    },
+    {
+     "text": "Restart Requires the Technician role",
+     "disabled": true
+    }
+   ],
+   "drawer": true,
+   "overview": "Camera 1 Camera lens · CAM-01 READY Overview Health Log Status READY Device ID CAM-01 Model Dual-lens IP camera DL-2 (lens 1) Firmware 3.8.14 Track VIDEO-01 Format 1080p • 25 fps • H.264 Bitrate 9 Mbps Port PoE CAM 1 Recording track —",
+   "drawerClosed": true,
+   "facts": {
+    "href": "/devices",
+    "title": "DEMS Edge Client · Core Console",
+    "page": [
+     "page-devices",
+     "page-header"
+    ],
+    "mode": "LIVE",
+    "h1": "DEVICES & INPUTS\nDEVICES & INPUTS",
+    "toasts": [],
+    "dialogs": [],
+    "alerts": [],
+    "scrollWidth": 1440,
+    "clientWidth": 1440
+   },
+   "present": true,
+   "shot": "p2_08a_devices.png",
+   "shot2": "p2_08b_devices_camera1_drawer.png"
+  },
+  {
+   "page": "Storage",
+   "ok": true,
+   "ms": 3225,
+   "via": "sidebar",
+   "facts": {
+    "href": "/storage",
+    "title": "DEMS Edge Client · Core Console",
+    "page": [
+     "page-storage",
+     "page-header"
+    ],
+    "mode": "LIVE",
+    "h1": "STORAGE\nSTORAGE",
+    "toasts": [],
+    "dialogs": [],
+    "alerts": [],
+    "scrollWidth": 1440,
+    "clientWidth": 1440
+   },
+   "present": true,
+   "shot": "p2_09_storage.png"
+  },
+  {
+   "page": "Network & Time",
+   "ok": true,
+   "ms": 3218,
+   "via": "sidebar",
+   "facts": {
+    "href": "/network-time",
+    "title": "DEMS Edge Client · Core Console",
+    "page": [
+     "page-network-time",
+     "page-header"
+    ],
+    "mode": "LIVE",
+    "h1": "NETWORK & TIME\nNETWORK & TIME",
+    "toasts": [],
+    "dialogs": [],
+    "alerts": [],
+    "scrollWidth": 1440,
+    "clientWidth": 1440
+   },
+   "present": true,
+   "shot": "p2_10_network_time.png"
+  },
+  {
+   "page": "Security & Audit",
+   "ok": true,
+   "ms": 3228,
+   "via": "sidebar",
+   "facts": {
+    "href": "/security-audit",
+    "title": "DEMS Edge Client · Core Console",
+    "page": [
+     "page-security-audit",
+     "page-header"
+    ],
+    "mode": "LIVE",
+    "h1": "SECURITY & AUDIT\nSECURITY & AUDIT",
+    "toasts": [],
+    "dialogs": [],
+    "alerts": [],
+    "scrollWidth": 1440,
+    "clientWidth": 1440
+   },
+   "present": true,
+   "shot": "p2_11_security_audit.png"
+  },
+  {
+   "page": "System & Maintenance",
+   "ok": true,
+   "ms": 4131,
+   "via": "sidebar",
+   "demo": {
+    "panel": true,
+    "body": false,
+    "badge": "DEMO",
+    "text": "DEMO CONTROL PANEL DEMO Demo controls Demo tooling is hidden. Turn on Demo controls to load scenarios and inject simulated faults."
+   },
+   "facts": {
+    "href": "/system",
+    "title": "DEMS Edge Client · Core Console",
+    "page": [
+     "page-system",
+     "page-header"
+    ],
+    "mode": "LIVE",
+    "h1": "SYSTEM & MAINTENANCE\nSYSTEM & MAINTENANCE",
+    "toasts": [],
+    "dialogs": [],
+    "alerts": [],
+    "scrollWidth": 1440,
+    "clientWidth": 1440
+   },
+   "present": true,
+   "shot": "p2_12a_system.png",
+   "shot2": "p2_12b_system_demo_control_panel.png"
+  },
+  {
+   "page": "Users & Roles",
+   "ok": true,
+   "ms": 3238,
+   "via": "sidebar",
+   "facts": {
+    "href": "/admin/users",
+    "title": "DEMS Edge Client · Core Console",
+    "page": [
+     "page-users-roles",
+     "page-header"
+    ],
+    "mode": "LIVE",
+    "h1": "USERS & ROLES\nUSERS & ROLES",
+    "toasts": [],
+    "dialogs": [],
+    "alerts": [],
+    "scrollWidth": 1440,
+    "clientWidth": 1440
+   },
+   "present": true,
+   "shot": "p2_13_users_roles.png"
+  },
+  {
+   "page": "Paired Devices",
+   "ok": true,
+   "ms": 3170,
+   "via": "sidebar",
+   "codeShown": false,
+   "summary": "0 paired · 0 online",
+   "facts": {
+    "href": "/admin/devices",
+    "title": "DEMS Edge Client · Core Console",
+    "page": [
+     "page-paired-devices",
+     "page-header"
+    ],
+    "mode": "LIVE",
+    "h1": "PAIRED DEVICES\nPAIRED DEVICES",
+    "toasts": [],
+    "dialogs": [],
+    "alerts": [],
+    "scrollWidth": 1440,
+    "clientWidth": 1440
+   },
+   "present": true,
+   "shot": "p2_14_paired_devices.png"
+  },
+  {
+   "page": "API Reference",
+   "ok": true,
+   "ms": 16521,
+   "via": "sidebar",
+   "banner": "CORE SERVER ONLINE • dems-core-server v0.2.0 • READY Try it goes to the Core server through 127.0.0.1:5178, as the signed-in operator",
+   "op": true,
+   "testRequest": true,
+   "send": true,
+   "sendAt": "2026-10-06T05:40:34.615Z",
+   "response": "Response Response Information, Duration: 7ms , Size: 238 B , Status: 200 OK All Cookies Headers Body All Cookies (Collapsed) Request Headers (Collapsed) 1 Item Response Headers (Collapsed) 10 Items Body Download Response Body application/json Preview Raw 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 { \"status\": \"ok\", \"service\": \"dems-core-server\", \"version\": \"0.2.0\", \"apiVersion\": \"v1\", \"serverTime\": \"2026-10-06T05:40:34.805Z\", \"uptimeMs\": 1707193, \"ws\": { \"path\": \"/ws\", \"heart",
+   "closeClient": true,
+   "facts": {
+    "href": "/developer/api#tag/service/GET/api/v1/health",
+    "title": "DEMS Edge Client · Core Console",
+    "page": [
+     "page-api-reference",
+     "page-header"
+    ],
+    "mode": "LIVE",
+    "h1": "API REFERENCE\nAPI REFERENCE",
+    "toasts": [],
+    "dialogs": [
+     ": "
+    ],
+    "alerts": [],
+    "scrollWidth": 1440,
+    "clientWidth": 1440
+   },
+   "present": true,
+   "shot": "p2_15a_api_reference.png",
+   "shot2": "p2_15b_api_reference_try_it_health_response.png"
+  },
+  {
+   "page": "Sign out",
+   "ok": true,
+   "ms": 3656,
+   "menu": [
+    {
+     "text": "Profile AKP Andi Pratama",
+     "disabled": true
+    },
+    {
+     "text": "Role: Supervisor",
+     "disabled": true
+    },
+    {
+     "text": "Lock console",
+     "disabled": false
+    },
+    {
+     "text": "Sign out",
+     "disabled": false
+    }
+   ],
+   "clicked": true,
+   "login": true,
+   "state": "signed-out",
+   "alert": "You have been signed out.",
+   "shot": "p2_16_signed_out.png"
+  }
+ ],
+ "consoleNetwork": {
+  "Login": {
+   "requests": 442,
+   "origins": {
+    "http://127.0.0.1:5178": 441,
+    "blob:": 1
+   },
+   "ws": [
+    "ws://127.0.0.1:5178/",
+    "ws://127.0.0.1:5178/ws",
+    "ws://127.0.0.1:5178/ws"
+   ],
+   "errors": [],
+   "warnings": [],
+   "exceptions": [],
+   "log": [
+    "error network: Failed to load resource: the server responded with a status of 401 (Unauthorized) (/api/v1/auth/session)"
+   ],
+   "responses4xx": [
+    "401 GET /api/v1/auth/session"
+   ],
+   "blocked": []
+  },
+  "Stack Check": {
+   "requests": 257,
+   "origins": {
+    "http://127.0.0.1:5178": 257
+   },
+   "ws": [
+    "ws://127.0.0.1:5178/",
+    "ws://127.0.0.1:5178/ws"
+   ],
+   "errors": [],
+   "warnings": [],
+   "exceptions": [],
+   "log": [],
+   "responses4xx": [],
+   "blocked": []
+  },
+  "Dashboard": {
+   "requests": 171,
+   "origins": {
+    "http://127.0.0.1:5178": 171
+   },
+   "ws": [],
+   "errors": [],
+   "warnings": [],
+   "exceptions": [],
+   "log": [],
+   "responses4xx": [],
+   "blocked": []
+  },
+  "Start New Session": {
+   "requests": 16,
+   "origins": {
+    "http://127.0.0.1:5178": 16
+   },
+   "ws": [],
+   "errors": [],
+   "warnings": [],
+   "exceptions": [],
+   "log": [],
+   "responses4xx": [],
+   "blocked": []
+  },
+  "Session Monitor": {
+   "requests": 24,
+   "origins": {
+    "http://127.0.0.1:5178": 24
+   },
+   "ws": [],
+   "errors": [],
+   "warnings": [],
+   "exceptions": [],
+   "log": [],
+   "responses4xx": [],
+   "blocked": []
+  },
+  "Evidence list": {
+   "requests": 108,
+   "origins": {
+    "http://127.0.0.1:5178": 107,
+    "data:": 1
+   },
+   "ws": [],
+   "errors": [],
+   "warnings": [],
+   "exceptions": [],
+   "log": [],
+   "responses4xx": [],
+   "blocked": []
+  },
+  "Evidence detail": {
+   "requests": 963,
+   "origins": {
+    "http://127.0.0.1:5178": 963
+   },
+   "ws": [
+    "ws://127.0.0.1:5178/",
+    "ws://127.0.0.1:5178/ws",
+    "ws://127.0.0.1:5178/",
+    "ws://127.0.0.1:5178/ws"
+   ],
+   "errors": [],
+   "warnings": [],
+   "exceptions": [],
+   "log": [],
+   "responses4xx": [],
+   "blocked": []
+  },
+  "Devices & Inputs": {
+   "requests": 50,
+   "origins": {
+    "http://127.0.0.1:5178": 50
+   },
+   "ws": [],
+   "errors": [],
+   "warnings": [],
+   "exceptions": [],
+   "log": [],
+   "responses4xx": [],
+   "blocked": []
+  },
+  "Storage": {
+   "requests": 24,
+   "origins": {
+    "http://127.0.0.1:5178": 24
+   },
+   "ws": [],
+   "errors": [],
+   "warnings": [],
+   "exceptions": [],
+   "log": [],
+   "responses4xx": [],
+   "blocked": []
+  },
+  "Network & Time": {
+   "requests": 19,
+   "origins": {
+    "http://127.0.0.1:5178": 19
+   },
+   "ws": [],
+   "errors": [],
+   "warnings": [],
+   "exceptions": [],
+   "log": [],
+   "responses4xx": [],
+   "blocked": []
+  },
+  "Security & Audit": {
+   "requests": 29,
+   "origins": {
+    "http://127.0.0.1:5178": 29
+   },
+   "ws": [],
+   "errors": [],
+   "warnings": [],
+   "exceptions": [],
+   "log": [],
+   "responses4xx": [],
+   "blocked": []
+  },
+  "System & Maintenance": {
+   "requests": 22,
+   "origins": {
+    "http://127.0.0.1:5178": 22
+   },
+   "ws": [],
+   "errors": [],
+   "warnings": [],
+   "exceptions": [],
+   "log": [],
+   "responses4xx": [],
+   "blocked": []
+  },
+  "Users & Roles": {
+   "requests": 15,
+   "origins": {
+    "http://127.0.0.1:5178": 15
+   },
+   "ws": [],
+   "errors": [],
+   "warnings": [],
+   "exceptions": [],
+   "log": [],
+   "responses4xx": [],
+   "blocked": []
+  },
+  "Paired Devices": {
+   "requests": 16,
+   "origins": {
+    "http://127.0.0.1:5178": 16
+   },
+   "ws": [],
+   "errors": [],
+   "warnings": [],
+   "exceptions": [],
+   "log": [],
+   "responses4xx": [],
+   "blocked": []
+  },
+  "API Reference": {
+   "requests": 36,
+   "origins": {
+    "http://127.0.0.1:5178": 36
+   },
+   "ws": [],
+   "errors": [],
+   "warnings": [],
+   "exceptions": [],
+   "log": [],
+   "responses4xx": [],
+   "blocked": []
+  },
+  "Sign out": {
+   "requests": 25,
+   "origins": {
+    "http://127.0.0.1:5178": 24,
+    "blob:": 1
+   },
+   "ws": [
+    "ws://127.0.0.1:5178/ws"
+   ],
+   "errors": [],
+   "warnings": [],
+   "exceptions": [],
+   "log": [],
+   "responses4xx": [],
+   "blocked": []
+  }
+ }
+}

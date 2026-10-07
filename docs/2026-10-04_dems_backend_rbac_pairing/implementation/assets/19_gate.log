@@ -1,0 +1,114 @@
+# Gate run of plan row W19 (step 41) on the finished tree, 2026-10-04 08:38:40 WIB, cwd /Users/gsp-budi/Documents/DEMS
+
+$ npm run test -w @dems/shared -- --maxWorkers=2
+ ❯ test/client-core.test.ts (63 tests | 1 failed) 21ms
+ FAIL  test/client-core.test.ts > AC-C-01: every registry operation is callable > calls each operation and returns every documented example as a typed success or a typed error envelope
+Error: no example for signOut 204
+ ❯ test/client-core.test.ts:118:22
+ Test Files  1 failed | 43 passed (44)
+      Tests  1 failed | 784 passed (785)
+   Start at  08:38:40
+exit=1
+
+$ node --import tsx packages/shared/scripts/gen-openapi.ts --check
+packages/shared/openapi/openapi.json is up to date (offline (committed): 10 operations; all: 37 operations)
+exit=0
+
+$ npm run test -w @dems/core-web -- --maxWorkers=2
+ Test Files  39 passed (39)
+      Tests  438 passed (438)
+   Start at  08:38:44
+exit=0
+
+$ git diff --stat acaff20 -- apps/core-web/src/test/scalar-config.test.ts   (prints nothing when unchanged)
+(end)
+
+$ npm run typecheck -w @dems/shared
+test/client-types.test.ts(123,46): error TS2344: Type '{ code: string; message: string; }' does not satisfy the constraint '{ message: string; code: string; details: "Expected: never, Actual: undefined" | "Expected: never, Actual: ..."; requestId: "Expected: never, Actual: undefined" | "Expected: never, Actual: string"; }'.
+exit=2
+
+$ npm run typecheck -w @dems/core-web
+exit=0
+
+$ npm run typecheck -w @dems/mobile
+exit=0
+
+$ npm run typecheck -w @dems/mock-core
+exit=0
+
+$ npm run typecheck -w @dems/core-server
+exit=0
+
+$ npm run lint -w @dems/shared
+exit=0
+
+$ npm run lint -w @dems/core-web
+exit=0
+
+$ npm run lint -w @dems/mobile
+exit=0
+
+$ npm run test -w @dems/core-server -- --maxWorkers=2   (project unit; no database; not a gate of this row)
+ Test Files  24 passed (24)
+      Tests  526 passed (526)
+   Start at  08:40:02
+exit=0
+
+$ npm run test -w @dems/mobile -- --maxWorkers=2   (not a gate of this row)
+Test Suites: 72 passed, 72 total
+Tests:       833 passed, 833 total
+exit=0
+
+$ git diff acaff20 --stat -- packages/shared/src/sim apps/mock-core release   (the two files are step 38's)
+ packages/shared/src/sim/auth.ts       |  5 +++++
+ packages/shared/src/sim/vocabulary.ts | 27 +++++++++++++++++++++++++++
+ 2 files changed, 32 insertions(+)
+
+$ git diff acaff20 --stat -- <the tracked paths of this row>
+ packages/shared/openapi/openapi.json            |  42 ++-
+ packages/shared/scripts/gen-openapi.ts          |  51 +++-
+ packages/shared/src/api/constants.ts            |  31 ++
+ packages/shared/src/api/core-api.ts             | 391 +++++++++++++++++++-----
+ packages/shared/src/api/examples.ts             |  14 +
+ packages/shared/src/api/health.ts               |  23 +-
+ packages/shared/src/api/index.ts                |   9 +
+ packages/shared/src/api/openapi.ts              | 228 +++++++++++++-
+ packages/shared/src/api/patterns.ts             |  24 ++
+ packages/shared/src/api/session-schema.ts       |  18 +-
+ packages/shared/test/openapi.test.ts            |  35 ++-
+ packages/shared/test/schemas.test.ts            |  28 ++
+ packages/shared/test/sim-api-validation.test.ts |  26 +-
+ 13 files changed, 815 insertions(+), 105 deletions(-)
+
+$ git status --short -- packages/shared/src/api packages/shared/test | grep "?? .*src/api\|?? .*test/api-"   (new files of this row)
+?? packages/shared/src/api/administration.ts
+?? packages/shared/src/api/contract-model.ts
+?? packages/shared/src/api/demo-controls.ts
+?? packages/shared/src/api/example-parts.ts
+?? packages/shared/src/api/identity.ts
+?? packages/shared/src/api/operation-parts.ts
+?? packages/shared/src/api/operation-table.ts
+?? packages/shared/src/api/pairing.ts
+?? packages/shared/src/api/schema-parts.ts
+?? packages/shared/src/api/text.ts
+?? packages/shared/test/api-envelope.test.ts
+?? packages/shared/test/api-examples.test.ts
+?? packages/shared/test/api-openapi-scope.test.ts
+?? packages/shared/test/api-registry.test.ts
+?? packages/shared/test/api-schemas.test.ts
+?? packages/shared/test/api-text-rule.test.ts
+
+$ shasum -a 256 packages/shared/openapi/openapi.json; wc -c
+3d62fa662ad85295c1e207d2670673afd68229db935daa0659da6f8e3a21f6b3  packages/shared/openapi/openapi.json
+   96541 packages/shared/openapi/openapi.json
+
+$ stat   (files of step 34 that this row did not edit)
+2026-10-04 07:02:48 packages/shared/test/client-core.test.ts
+2026-10-04 07:12:48 packages/shared/test/client-types.test.ts
+2026-10-04 07:03:36 packages/shared/test/client-platform-neutral.test.ts
+2026-10-04 07:12:48 packages/shared/src/client/core-client.ts
+2026-10-04 07:07:49 apps/mobile/src/runtime/dev-probes.ts
+
+$ grep -rn "CONTRACT-GAP" <the paths of this row> | wc -l
+       0
+# end 08:40:41 WIB

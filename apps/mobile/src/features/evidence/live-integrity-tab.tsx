@@ -10,7 +10,16 @@
  * assumed on the tablet, and no demo control is called.
  *
  * Before a verdict the tab shows the Core's sealed record from the replica (the four track hashes,
- * the manifest hash, the signature) and "Not verified on this screen yet".
+ * the manifest hash, the signature).
+ *
+ * **The verification the record holds** (closing-fix CF-M2, defect R-T-2; the web console's rule
+ * after E2E-W1-3, `storedVerification`): the heading names the Core's state of the item, never a
+ * fixed "Verified by the Core": PASS "Verified by the Core", FAIL "Verification failed on the Core",
+ * NOT_RUN "Not verified yet". A line under the note names the record's last verification (result,
+ * time, who: the actor of its custody entry). A new Verify replaces the heading with its own verdict
+ * when that verdict is revealed; while the run is paced ("Asking the Core…", the scramble) the card
+ * keeps what it showed when the run started, so the replica's delta (which arrives before the answer,
+ * CL-16) never reveals the verdict early. Afterwards the line follows the record (the new run).
  *
  * **The bundled demo package** (only when the Core's media reference is `DEMO_PACKAGE`; the detail
  * passes the package the Core named, else `null`): its precomputed result is shown beside the Core's
@@ -27,10 +36,20 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Text, View } from 'react-native';
 import type { DemoEvidencePackage } from '@dems/shared/demo-data';
+import { DATE_PATTERNS, formatDate } from '@dems/shared/realtime';
 import { useSimInstance, type EpochMs, type EvidenceItem } from '@dems/shared/sim';
 import { StatusChip } from '@/components/kit';
 import { triggerHaptic, useMotionPolicy } from '@/motion';
-import { bundledDiffers, coreIntegrityView, packageIntegrity, type CoreVerdict } from './evidence-model';
+import {
+  CORE_HEADING_KEYS,
+  bundledDiffers,
+  coreIntegrityView,
+  coreVerificationState,
+  packageIntegrity,
+  storedVerification,
+  type CoreVerdict,
+  type StoredVerification,
+} from './evidence-model';
 import {
   CheckLine,
   CustodyLog,
@@ -68,6 +87,10 @@ export function LiveIntegrityTab({ item, operatorNames, autoVerify = false, bund
   const [scrambleAt, setScrambleAt] = useState<EpochMs | null>(null);
   const [resultKey, setResultKey] = useState(0);
   const [autoPending, setAutoPending] = useState(autoVerify);
+  /** The record's verification as it was when the current run started (`undefined`: no run is paced). */
+  const [pinned, setPinned] = useState<StoredVerification | null | undefined>(undefined);
+  const recordNow = storedVerification(item);
+  const stored = pinned !== undefined ? pinned : recordNow;
 
   const onVerdict = useCallback(
     (next: CoreVerdict) => {
@@ -80,6 +103,7 @@ export function LiveIntegrityTab({ item, operatorNames, autoVerify = false, bund
   const onNoVerdict = useCallback(
     (presented: boolean) => {
       setPhase(verdict === null ? 'idle' : 'done');
+      setPinned(undefined);
       if (!presented) toast.show({ variant: 'danger', label: t('features.evidence.integrity.verifyError') });
     },
     [verdict, t, toast],
@@ -89,7 +113,10 @@ export function LiveIntegrityTab({ item, operatorNames, autoVerify = false, bund
 
   const verify = () => {
     if (phase === 'asking' || phase === 'scrambling') return;
-    if (run()) setPhase('asking');
+    if (run()) {
+      setPinned(recordNow);
+      setPhase('asking');
+    }
   };
 
   // Kebab "Verify": one request once the tab is mounted (a microtask, so a StrictMode re-run sends one).
@@ -99,16 +126,20 @@ export function LiveIntegrityTab({ item, operatorNames, autoVerify = false, bund
     queueMicrotask(() => {
       if (disposed) return;
       setAutoPending(false);
-      if (run()) setPhase('asking');
+      if (run()) {
+        setPinned(storedVerification(item));
+        setPhase('asking');
+      }
     });
     return () => {
       disposed = true;
     };
-  }, [autoPending, run]);
+  }, [autoPending, run, item]);
 
   const onScrambled = useCallback(() => {
     setScrambleAt(null);
     setPhase('done');
+    setPinned(undefined);
     setResultKey((k) => k + 1);
     const pass = verdict?.ok === true;
     triggerHaptic(pass ? 'verifyPass' : 'verifyFail');
@@ -124,14 +155,16 @@ export function LiveIntegrityTab({ item, operatorNames, autoVerify = false, bund
   const done = phase === 'done' && view.verdict !== null;
   const busy = phase === 'asking' || phase === 'scrambling';
   const differs = done && verdict !== null && bundledModel !== null && bundledDiffers(bundledModel, verdict);
+  const headingState = coreVerificationState(stored, done ? view.verdict : null);
+  const lastLine = stored === null ? null : lastVerificationLine(stored, operatorNames, t);
 
   return (
     <View style={styles.root} testID="evidence-integrity">
       <View style={styles.verifyCard}>
         <View style={styles.verifyHead}>
           <View style={styles.verifyTitle}>
-            <Text maxFontSizeMultiplier={1.2} style={styles.h3}>
-              {t('features.evidence.integrity.verifiedByCore')}
+            <Text maxFontSizeMultiplier={1.2} style={styles.h3} testID={`evidence-integrity-heading-${headingState}`}>
+              {t(CORE_HEADING_KEYS[headingState])}
             </Text>
             <StatusChip size="sm" tone="sealed" icon={null} label={t('features.evidence.integrity.coreLabel')} testID="evidence-integrity-label" />
           </View>
@@ -140,7 +173,7 @@ export function LiveIntegrityTab({ item, operatorNames, autoVerify = false, bund
             <Button.Label>
               {busy
                 ? t('features.evidence.integrity.verifying')
-                : done
+                : done || stored !== null
                   ? t('features.evidence.integrity.verifyAgain')
                   : t('features.evidence.integrity.verify')}
             </Button.Label>
@@ -149,11 +182,21 @@ export function LiveIntegrityTab({ item, operatorNames, autoVerify = false, bund
         <Text maxFontSizeMultiplier={1.2} style={styles.note}>
           {t('features.evidence.integrity.coreNote')}
         </Text>
-        {view.verdict !== null ? (
+        {lastLine !== null && stored !== null ? (
+          <Text maxFontSizeMultiplier={1.2} style={styles.caption} testID={`evidence-verify-last-${stored.status}`}>
+            {lastLine}
+          </Text>
+        ) : null}
+        {done && view.verdict !== null ? (
           <VerdictLine verdict={view.verdict} failed={view.failed} done={done} resultKey={resultKey} />
+        ) : stored !== null ? (
+          // The per-check list belongs to a run: the record holds only the verdict (web parity).
+          <Text maxFontSizeMultiplier={1.2} style={styles.caption} testID="evidence-verify-stored-hint">
+            {t('evidence.verify.storedHint')}
+          </Text>
         ) : (
           <Text maxFontSizeMultiplier={1.2} style={styles.caption} testID="evidence-verdict-pending">
-            {t('features.evidence.integrity.notVerified')}
+            {t('features.evidence.integrity.coreNotRun')}
           </Text>
         )}
         {done && bundledModel ? (
@@ -197,4 +240,18 @@ export function LiveIntegrityTab({ item, operatorNames, autoVerify = false, bund
       <CustodyLog item={item} operatorNames={operatorNames} />
     </View>
   );
+}
+
+/** "Last verification PASS · 6 Oct 2026 12:47:58 UTC+07:00 · AKP Andi Pratama" (the web's copy, shared keys). */
+function lastVerificationLine(
+  stored: StoredVerification,
+  operatorNames: Readonly<Record<string, string>>,
+  t: (key: string, options?: Record<string, unknown>) => string,
+): string {
+  const result = t(`common.verificationStatus.${stored.status}`);
+  if (stored.at === null) return t('evidence.verify.last.resultOnly', { result });
+  const at = `${formatDate(stored.at, DATE_PATTERNS.dateTime)} ${formatDate(stored.at, DATE_PATTERNS.zone)}`;
+  if (!stored.actorKnown) return t('evidence.verify.last.noActor', { result, at });
+  const actor = stored.actorId === null ? t('features.evidence.integrity.system') : (operatorNames[stored.actorId] ?? stored.actorId);
+  return t('evidence.verify.last.full', { result, at, actor });
 }

@@ -1,0 +1,17 @@
+10:35:40.147 device-host clock offset ms: -256, -257, -257, -257, -257
+10:35:40.356 declared screen device-detail
+10:35:40.404 screenrecord sc4_to_tech_phone started (pid 6662) at 10:35:41.009
+10:35:41.062 mark c02 at 10:35:41.062
+10:35:41.108 press ur-role-confirm ok at 10:35:41.117
+10:35:41.221 [0] until true at 10:35:41.223 after 1 ms => true ;; [1] until true at 10:35:41.265 after 43 ms => "Role of AKP Budi Santoso is now Technician"
+10:35:41.330 screenshot 77_sc4_w2_after_change_locked.png 10:35:41.330..10:35:41.608
+10:35:41.822 screenshot 77b_sc4_w1_after_change.png 10:35:41.822..10:35:41.970
+10:35:42.031 js => {"start":true,"locked":true,"lockedLabel":"Start New Session: Requires the Investigator role","toasts":["Your role is now Technician. The available actions have changed."],"path":"/dashboard"}
+10:35:42.096 slept 3000 ms
+10:35:45.234 screenrecord sc4_to_tech_phone pulled; frames extracted at 5 fps
+10:35:54.470 screencap 78_sc4_phone_after_change.png 10:35:54.470..10:35:55.261
+10:35:55.338 ids(3): device-action-diagnostics@200,2132 "Run diagnostics" ; device-action-test-signal@538,2132 "Test signal" ; device-action-restart@878,2132 "Restart"
+10:35:58.220 serverlog since c02 (3):
+    10:35:41.135 POST /api/v1/admin/users/:id/role 200 operator:OPR-002
+    10:35:41.139 GET /api/v1/admin/users 200 operator:OPR-002
+    10:35:41.147 GET /api/v1/admin/users 200 operator:OPR-002

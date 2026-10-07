@@ -2668,3 +2668,16 @@ Recorded by revision 2.1 from the controller's rulings on row 20a [DEC:D18, D19]
 ---
 *Generated: 2026-10-04 03:53 (revision 1)*
 *Last Updated: 2026-10-04 06:06 (revision 2.2, contract revision `dbc-2`)*
+
+---
+
+## Errata (W83)
+
+Appended by the contract close-out W83 (plan step 105; decision D184, DQ-6). No line above is rewritten:
+where a row below and a line above disagree, the row below holds. Ledger: `implementation/83_contract_closeout.md`.
+
+| # | Where above | Read as | Source |
+|--:|---|---|---|
+| D-1 | NL-6, line 1356 | A repository function that feeds an answer or a log uses **an explicit column list that leaves out the hash columns** (the query-builder column sets cannot go into constant SQL texts), never `SELECT *` | D112 DN-4; `gateway_check/04c_cp_backend_fix_round_b2b.md:81` (CPB1-21); ledger #78 |
+| D-2 | LN-6 (line 1760) and T-AO-4 (line 1734) | `DROP DATABASE` also appears in `apps/core-server/test/support/reset.ts:117`, which the static test names, besides the reset routine, the test helper and the trial | `gateway_check/05_cp_access_control_security.md:447-449` (CPS1-13); ledger #83 |
+| D-3 | §5.4 NL-1, line 1351 | NL-1 binds the project's own outputs. The PostgreSQL server's own log is not covered by it: constraint failures in test runs wrote rows with hash columns there (CPS1-9); its remedy is ruling 14 of the security checkpoint | `gateway_check/05_cp_access_control_security.md:427-433`; ledger #83 |

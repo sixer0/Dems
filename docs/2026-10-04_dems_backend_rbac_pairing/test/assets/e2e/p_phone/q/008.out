@@ -1,0 +1,9 @@
+09:50:04.306 mark a04 at 09:50:04.306
+09:50:04.359 tap 539,1160
+09:50:04.710 slept 2500 ms
+09:50:07.518 declared screen session-detail
+09:50:07.676 screencap 07_session_detail.png 09:50:07.676..09:50:10.081
+09:50:10.654 ids(1): screen-evidence-detail@540,1102
+09:50:13.578 serverlog since a04 (2):
+    09:50:05.575 GET /api/v1/evidence/:id 200 operator:OPR-001
+    09:50:07.873 POST /api/v1/auth/touch 200 operator:OPR-001

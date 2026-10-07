@@ -179,7 +179,23 @@ export function fingerprintLines(fingerprint: string): string[] {
 /** Where the screen goes when it is done (hand-off) or cancelled, per the §3.3 guard. */
 export type LeaveTarget = 'back' | 'boot';
 
-/** Back to the screen underneath (Login, Settings) if there is one; else the boot router `/`. */
-export function leaveTargetFor(canGoBack: boolean): LeaveTarget {
+/** Why the screen is left: the hand-off after a success of this visit, or Cancel / the header's back. */
+export type LeaveReason = 'handoff' | 'cancel';
+
+/**
+ * Where the screen goes when it is left (row FX-M1, defect E2E-S-1 of the end-to-end round, D201).
+ *
+ * | Reason | Signed in | Target |
+ * |---|---|---|
+ * | `cancel` | any | back to the screen underneath (Login, Settings) if there is one, else the boot router `/` |
+ * | `handoff` | yes | the same: back to Settings, from where the operator came |
+ * | `handoff` | no | the boot router `/`, which now opens Login: the stack is reset, nothing visited before stays |
+ *
+ * The signed-out hand-off never goes back. On the phone of E2E-S-1 deep links had pushed Stack Check
+ * under the Pair screen, so "back" after a redeem landed on Stack Check, twice, and Login was never
+ * reached by itself. Whatever was underneath, Login is where a paired, signed-out tablet goes.
+ */
+export function leaveTargetFor(canGoBack: boolean, reason: LeaveReason = 'cancel', signedIn = false): LeaveTarget {
+  if (reason === 'handoff' && !signedIn) return 'boot';
   return canGoBack ? 'back' : 'boot';
 }

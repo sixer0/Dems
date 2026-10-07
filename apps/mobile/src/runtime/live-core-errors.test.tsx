@@ -253,7 +253,7 @@ describe('the presenter as a hook', () => {
     expect(trigger).toHaveBeenCalledWith('gateBlock');
   });
 
-  it('five refusals on a dead link are one toast; after the window the next one shows again', () => {
+  it('five refusals on a dead link are 1 toast (the trigger called once); after the window the next one shows again', () => {
     jest.useFakeTimers({ doNotFake: ['queueMicrotask', 'nextTick'] });
     const trigger = jest.spyOn(haptics, 'trigger');
     mount([new LiveTransportError('CORE_OFFLINE')]);

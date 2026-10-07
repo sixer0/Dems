@@ -1,5 +1,5 @@
 // Step 34 (SCR-05; 01_specs §14.11; 04_mobile_specs §9): the shared English resources are
-// one plain, deep-mergeable object with 13 namespaces, keep the Indonesian domain terms
+// one plain, deep-mergeable object with 15 namespaces, keep the Indonesian domain terms
 // verbatim, and follow the copy decisions (D28/Q3, D38 "End Session", research/04 §9 #2).
 import { readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';

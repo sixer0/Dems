@@ -462,6 +462,7 @@ export function SessionNewPage() {
         enterDelayMs={enterDelayMs}
         scanPending={scanPending}
         scanRef={scanRef}
+        live={live}
       />
     </FlowErrorBoundary>,
     <FlowErrorBoundary key="devices" part="devices">

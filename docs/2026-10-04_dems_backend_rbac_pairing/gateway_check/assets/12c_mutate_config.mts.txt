@@ -1,0 +1,43 @@
+// CF-W in-memory mutation config (derived from FX-W 11b_mutate_config.mts). Nothing on disk changes.
+// Source mutation: MUT_FILE (path suffix) + MUT_FROM_B64 / MUT_TO_B64 — a load-time transform of the
+//   module Vite serves to the tests; the anchor must occur exactly once.
+// Stylesheet mutation: CSS_FROM_B64 / CSS_TO_B64 — the CF-W test reads evidence.css with readFileSync;
+//   the transform wraps that one read in the served test module with `.replace(from, to)`, so the
+//   tests see the mutated text in memory. The runner checks the anchor occurs once in the file.
+import { mergeConfig } from '/Users/gsp-budi/Documents/DEMS/node_modules/vite/dist/node/index.js'
+import base from '/Users/gsp-budi/Documents/DEMS/apps/core-web/vite.config.ts'
+
+const decode = (name: string) => Buffer.from(process.env[name] ?? '', 'base64').toString('utf8')
+const target = process.env.MUT_FILE ?? ''
+const from = decode('MUT_FROM_B64')
+const to = decode('MUT_TO_B64')
+const cssFrom = decode('CSS_FROM_B64')
+const cssTo = decode('CSS_TO_B64')
+const READ = "readFileSync(EVIDENCE_CSS, 'utf8')"
+
+export default (env: { mode: string; command: 'build' | 'serve' }) =>
+  mergeConfig(typeof base === 'function' ? (base as (e: typeof env) => object)(env) : base, {
+    root: '/Users/gsp-budi/Documents/DEMS/apps/core-web',
+    plugins: [
+      {
+        name: 'cfw-mutate',
+        enforce: 'pre',
+        transform(code: string, id: string) {
+          const file = id.split('?')[0]
+          if (target !== '' && from !== '' && file.endsWith(target)) {
+            const count = code.split(from).length - 1
+            if (count !== 1) throw new Error(`cfw-mutate: anchor found ${count} times in ${id}`)
+            console.log(`[cfw-mutate] applied to ${file.split('/apps/core-web/')[1] ?? file}`)
+            return code.replace(from, to)
+          }
+          if (cssFrom !== '' && file.endsWith('/cf-web-custody-media.test.tsx')) {
+            const count = code.split(READ).length - 1
+            if (count !== 1) throw new Error(`cfw-mutate: stylesheet read found ${count} times`)
+            console.log('[cfw-mutate] applied to evidence.css (in memory, as read by cf-web-custody-media.test.tsx)')
+            return code.replace(READ, `${READ}.replace(${JSON.stringify(cssFrom)}, ${JSON.stringify(cssTo)})`)
+          }
+          return null
+        },
+      },
+    ],
+  })

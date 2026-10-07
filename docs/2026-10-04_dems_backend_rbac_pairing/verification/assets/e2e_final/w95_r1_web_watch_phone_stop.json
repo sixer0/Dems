@@ -1,0 +1,40 @@
+{
+  "tag": "w95_r1_web_watch_phone_stop",
+  "expr": "[document.querySelector('[data-testid=page-session-monitor]')?.getAttribute('data-session-state') ?? null, document.querySelector('[data-testid=finalization-modal]') ? 'final-modal' : null, document.querySelector('[data-testid=sm-final-sealed]')?.textContent?.replace(/\\s+/g,' ').trim() ?? null]",
+  "sameDocument": true,
+  "events": [
+    {
+      "at": "09:03:50.668 (epoch 1791338630.668)",
+      "atMs": 1791338630668,
+      "value": "[\"RECORDING\",null,null]"
+    },
+    {
+      "at": "09:03:55.604 (epoch 1791338635.604)",
+      "atMs": 1791338635604,
+      "value": "[\"STOPPING\",\"final-modal\",null]"
+    },
+    {
+      "at": "09:03:57.156 (epoch 1791338637.156)",
+      "atMs": 1791338637156,
+      "value": "[\"FINALIZING\",\"final-modal\",null]"
+    },
+    {
+      "at": "09:04:03.297 (epoch 1791338643.297)",
+      "atMs": 1791338643297,
+      "value": "[\"SEALED\",\"final-modal\",\"SEALEDEvidence EV-20261007-0014 sealedSealed 7.6 s after the recording endedLoading package details…\"]"
+    },
+    {
+      "at": "09:04:03.382 (epoch 1791338643.382)",
+      "atMs": 1791338643382,
+      "value": "[\"SEALED\",\"final-modal\",\"SEALEDEvidence EV-20261007-0014 sealedSealed 7.6 s after the recording endedManifest SHA-256LIVEManifest SHA-256fa60eea5c1c7093d81037e4e…No DEMO package exists for this item.\"]"
+    }
+  ],
+  "network": {
+    "api": [],
+    "origins": [
+      "http://127.0.0.1:5173"
+    ],
+    "sockets": [],
+    "console": []
+  }
+}

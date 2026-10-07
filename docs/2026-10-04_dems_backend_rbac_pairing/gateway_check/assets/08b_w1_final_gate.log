@@ -1,0 +1,52 @@
+## 2026-10-06 02:59:22 WIB   2:59  2 users, load averages: 1.20 1.96 2.41
+## $ npm run test -w @dems/core-web -- --maxWorkers=2
+ Test Files  93 passed (93)
+      Tests  1244 passed (1244)
+exit=0
+## 03:01:32 $ npm run typecheck -w @dems/core-web
+> @dems/core-web@0.1.0 typecheck
+> tsc -b
+
+exit=0
+## 03:01:41 $ npm run lint -w @dems/core-web
+
+> @dems/core-web@0.1.0 lint
+> oxlint
+
+exit=0
+## protected test files (sha256 recorded 02:28:59 before any edit)
+  apps/core-web/src/test/routes.test.tsx: OK
+  apps/core-web/src/test/sim-fetch.test.ts: OK
+  apps/core-web/src/features/storage/__tests__/storage-page.test.tsx: OK
+  apps/core-web/src/lib/__tests__/core-endpoint.test.tsx: OK
+  apps/core-web/src/lib/__tests__/packaged-csp.test.ts: OK
+  apps/core-web/src/features/dashboard/__tests__/dashboard.test.tsx: OK
+## files of apps/core-web/src, packages/shared/src, apps/core-server/src modified since 02:28:59 (the baseline file)
+apps/core-web/src/features/paired-devices/index.tsx
+apps/core-web/src/features/security-audit/export-audit-dialog.tsx
+apps/core-web/src/features/security-audit/export-file.ts
+apps/core-web/src/features/system/export-logs-dialog.tsx
+apps/core-web/src/features/system/live-log-export.ts
+apps/core-web/src/features/users-roles/index.tsx
+apps/core-web/src/lib/core-page-walk.ts
+apps/core-web/src/test/live-shell-admin.test.tsx
+apps/core-web/src/test/live-strict-mode-starts.test.tsx
+## git status --porcelain over the forbidden paths
+ M apps/core-web/src/components/composed/dbfs-meter.tsx
+ M apps/core-web/src/components/media/camera-feed.math.ts
+ M apps/core-web/src/components/media/camera-feed.tsx
+ M apps/core-web/src/components/media/procedural-feed.ts
+ M apps/core-web/src/runtime/testing/live-harness.ts
+ M packages/shared/src/i18n/en/dashboard.ts
+ M packages/shared/src/i18n/en/devices.ts
+ M packages/shared/src/i18n/en/evidence.ts
+ M packages/shared/src/i18n/en/paired-devices.ts
+ M packages/shared/src/i18n/en/security-audit.ts
+ M packages/shared/src/i18n/en/session-new.ts
+ M packages/shared/src/i18n/en/session.ts
+ M packages/shared/src/i18n/en/storage.ts
+ M packages/shared/src/i18n/en/system.ts
+ M packages/shared/src/i18n/en/users-roles.ts
+?? apps/core-web/src/lib/effect-start.ts
+?? apps/core-web/src/lib/page-report.ts
+?? apps/core-web/src/lib/pending-control.ts

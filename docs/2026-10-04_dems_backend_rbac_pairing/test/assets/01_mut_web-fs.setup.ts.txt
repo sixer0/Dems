@@ -1,0 +1,2 @@
+import { createRequire } from 'node:module'
+createRequire(import.meta.url)('/Users/gsp-budi/Documents/DEMS/.cache/w87/mut/fs-inject.cjs')

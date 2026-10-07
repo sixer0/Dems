@@ -1,0 +1,27 @@
+C1: 1093 "synchronouslyUpdateUIProps failed for tag N ... Unable to find SurfaceMountingManager" warnings (device time)
+  21:16:27.617 -> 21:16:31.307  237 warnings, 12 tags (3404..4592), 3.69 s, per tag 42
+  21:17:18.675 -> 21:17:25.006  856 warnings, 85 tags (5592..8924), 6.33 s, per tag 15
+C2: 1643 "synchronouslyUpdateUIProps failed for tag N ... Unable to find SurfaceMountingManager" warnings (device time)
+  21:22:28.531 -> 21:22:32.721  235 warnings, 12 tags (10400..11588), 4.19 s, per tag 42
+  21:22:50.360 -> 21:22:51.185  220 warnings, 44 tags (12056..14270), 0.82 s, per tag 5
+  21:22:52.747 -> 21:22:58.017  660 warnings, 60 tags (14616..15694), 5.27 s, per tag 15
+  21:23:00.822 -> 21:23:02.924  528 warnings, 12 tags (15720..15910), 2.10 s, per tag 44
+C3: 1488 "synchronouslyUpdateUIProps failed for tag N ... Unable to find SurfaceMountingManager" warnings (device time)
+  21:28:34.215 -> 21:28:37.905  230 warnings, 12 tags (18238..19426), 3.69 s, per tag 40
+  21:29:28.222 -> 21:29:28.271  10 warnings, 2 tags (20342..20426), 0.05 s, per tag 5
+  21:29:29.844 -> 21:29:30.001  60 warnings, 12 tags (21964..22116), 0.16 s, per tag 5
+  21:29:32.104 -> 21:29:36.737  660 warnings, 60 tags (22462..23540), 4.63 s, per tag 15
+  21:29:38.783 -> 21:29:40.533  528 warnings, 12 tags (23566..23756), 1.75 s, per tag 44
+P2: 1616 "synchronouslyUpdateUIProps failed for tag N ... Unable to find SurfaceMountingManager" warnings (device time)
+  21:38:39.300 -> 21:38:43.239  235 warnings, 12 tags (41848..43036), 3.94 s, per tag 42
+  21:39:06.021 -> 21:39:06.681  160 warnings, 32 tags (43504..45466), 0.66 s, per tag 5
+  21:39:08.692 -> 21:39:08.828  60 warnings, 12 tags (45566..45718), 0.14 s, per tag 5
+  21:39:12.755 -> 21:39:16.562  478 warnings, 48 tags (46064..46934), 3.81 s, per tag 13
+  21:39:18.467 -> 21:39:19.037  180 warnings, 12 tags (46960..47142), 0.57 s, per tag 15
+  21:39:21.641 -> 21:39:23.385  503 warnings, 12 tags (47168..47358), 1.74 s, per tag 44
+V1: 1475 "synchronouslyUpdateUIProps failed for tag N ... Unable to find SurfaceMountingManager" warnings (device time)
+  21:44:45.554 -> 21:44:48.975  232 warnings, 12 tags (57572..58760), 3.42 s, per tag 42
+  21:45:38.755 -> 21:45:38.791  5 warnings, 1 tags (59760..59760), 0.04 s, per tag 5
+  21:45:40.979 -> 21:45:41.223  60 warnings, 12 tags (61296..61448), 0.24 s, per tag 5
+  21:45:44.065 -> 21:45:49.639  654 warnings, 60 tags (61794..62872), 5.57 s, per tag 15
+  21:45:52.233 -> 21:45:53.465  524 warnings, 12 tags (62898..63088), 1.23 s, per tag 44

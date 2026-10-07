@@ -1,0 +1,237 @@
+== 06:38:45 0. pre-state (2026-10-04 WIB, node v26.8.2, cwd /Users/gsp-budi/Documents/DEMS)
+-- listeners on the ports of the port table, all addresses (name, pid, address):
+-- (end; an empty list means none)
+
+== 06:38:45 1. start the proof harness on 127.0.0.1:4421
+proof-harness listening on http://127.0.0.1:4421 pid 89532 log /Users/gsp-budi/Documents/DEMS/.cache/proof-harness/harness.log
+   node pid 89532 127.0.0.1:4421
+
+== 06:38:45 2. start Vite for lane 1: DEMS_CORE_PROXY_PORT=4421 VITE_DEMS_CORE_MODE=live npm run dev -w @dems/core-web -- --host 127.0.0.1 --port 5176 --strictPort
+PID of the background job (npm): 89548; PID of the listener on 5176: 89568
+   89548 89509 npm run dev --host 127.0.0.1 --port 5176 --strictPort           
+   89568 89548 node /Users/gsp-budi/Documents/DEMS/node_modules/.bin/vite --host 127.0.0.1 --port 5176 --strictPort
+-- parent chain of the listener:
+   parent 89548: npm run dev --host 127.0.0.1 --port 5176 --strictPort           
+   node pid 89568 127.0.0.1:5176
+   > @dems/core-web@0.1.0 dev
+   > vite --host 127.0.0.1 --port 5176 --strictPort
+   6:38:46 AM [vite] (client) Re-optimizing dependencies because lockfile has changed
+     VITE v8.3.1  ready in 273 ms
+     ➜  Local:   http://127.0.0.1:5176/
+
+== 06:38:46 3. curl through the dev server (http://127.0.0.1:5176)
+-- 3a. POST /api/v1/proof/sign-in  (curl -si, Origin: http://127.0.0.1:5176):
+HTTP/1.1 200 OK
+Access-Control-Allow-Origin: http://127.0.0.1:5176
+Vary: Origin
+set-cookie: dems_session_4421=gWLFAA[rest not shown]; HttpOnly; SameSite=Strict; Path=/
+x-dems-epoch: 1
+x-dems-revision: 101
+retry-after: 7
+cache-control: no-store
+content-type: application/json; charset=utf-8
+-- 3b. the next request, with the cookie: POST /api/v1/proof/echo
+HTTP/1.1 200 OK
+Access-Control-Allow-Origin: http://127.0.0.1:5176
+Vary: Origin
+x-dems-epoch: 1
+x-dems-revision: 102
+{"host":"127.0.0.1:5176","origin":"http://127.0.0.1:5176","cookiePresent":true,"cookieEqualsIssued":true,"secFetch":{},"forwarded":{}}
+-- 3c. GET /api/v1/health without an Origin header (all response headers):
+HTTP/1.1 200 OK
+Vary: Origin
+cache-control: no-store
+content-type: application/json; charset=utf-8
+content-length: 68
+date: Sat, 03 Oct 2026 23:38:46 GMT
+connection: close
+
+{"service":"proof-harness","port":4421,"note":"not the Core server"}
+-- 3d. POST /api/v1/proof/limited (a 429 with retry-after):
+HTTP/1.1 429 Too Many Requests
+Access-Control-Allow-Origin: http://127.0.0.1:5176
+Vary: Origin
+retry-after: 42
+cache-control: no-store
+content-type: application/json; charset=utf-8
+-- 3e. negative cases through the dev server, POST /api/v1/proof/guarded (the harness stands in for the Origin guard):
+   Origin: http://localhost:5176        -> 403 {"error":{"code":"ORIGIN_NOT_ALLOWED","message":"proof-harness stand-i
+
+   Origin: http://127.0.0.1:5174        -> 403 {"error":{"code":"ORIGIN_NOT_ALLOWED","message":"proof-harness stand-i
+
+   Origin: null                         -> 403 {"error":{"code":"ORIGIN_NOT_ALLOWED","message":"proof-harness stand-i
+
+   Origin: http://127.0.0.1:5176/       -> 403 {"error":{"code":"ORIGIN_NOT_ALLOWED","message":"proof-harness stand-i
+
+   Origin: HTTP://127.0.0.1:5176        -> 403 {"error":{"code":"ORIGIN_NOT_ALLOWED","message":"proof-harness stand-i
+
+   Origin: http://127.0.0.1:5176        -> 200 {"ok":true,"origin":"http://127.0.0.1:5176"}
+   (no Origin header)                   -> 403 {"error":{"code":"ORIGIN_NOT_ALLOWED","message":"proof-harness stand-i
+
+-- 3f. response headers of the same POST, direct to 4421 against through 5176 (date and revision normalised):
+   differences (< direct, > through the dev server):
+   0a1
+   > access-control-allow-origin: http://127.0.0.1:5176
+   2c3
+   < connection: keep-alive
+   ---
+   > connection: close
+   7c8
+   < keep-alive: timeout=72
+   ---
+   > vary: origin
+-- 3g. a CORS preflight sent to the dev server from another loopback origin (http://127.0.0.1:5174):
+   HTTP/1.1 204 No Content
+   Access-Control-Allow-Origin: http://127.0.0.1:5174
+   Vary: Origin, Access-Control-Request-Headers
+   Access-Control-Allow-Methods: GET,HEAD,PUT,PATCH,POST,DELETE
+   Access-Control-Allow-Headers: content-type
+   Content-Length: 0
+   Date: Sat, 03 Oct 2026 23:38:46 GMT
+   Connection: keep-alive
+   Keep-Alive: timeout=5
+-- 3g2. the same preflight from a non-loopback origin (https://example.org):
+   HTTP/1.1 204 No Content
+   Vary: Origin, Access-Control-Request-Headers
+   Access-Control-Allow-Methods: GET,HEAD,PUT,PATCH,POST,DELETE
+   Access-Control-Allow-Headers: content-type
+   Content-Length: 0
+   Date: Sat, 03 Oct 2026 23:38:46 GMT
+   Connection: keep-alive
+   Keep-Alive: timeout=5
+-- 3h. socket upgrade through the dev server with the cookie (node ws client):
+   ws-client -> ws://127.0.0.1:5176/ws sent {"origin":"http://127.0.0.1:5176","cookie":"dems_session_4421=(value not printed)","protocol":"(none)"}
+   ws-client: handshake 101, protocol ""
+   ws-client: message {"type":"hello","origin":"http://127.0.0.1:5176","host":"127.0.0.1:5176","cookiePresent":true,"cookieEqualsIssued":true}
+   ws-client: message echo:ping-curl
+   ws-client: closed with code 1000
+-- 3i. socket upgrade with Origin http://localhost:5176 (negative case: what reaches the server):
+   ws-client -> ws://127.0.0.1:5176/ws sent {"origin":"http://localhost:5176","cookie":"(none)","protocol":"(none)"}
+   ws-client: handshake 101, protocol ""
+   ws-client: message {"type":"hello","origin":"http://localhost:5176","host":"127.0.0.1:5176","cookiePresent":false,"cookieEqualsIssued":false}
+   ws-client: message echo:ping-localhost
+   ws-client: closed with code 1000
+-- 3j. Vite's own endpoints with the proxy block present:
+   GET /                -> 200 text/html
+   GET /src/main.tsx    -> 200 text/javascript
+   GET /@vite/client    -> 200 text/javascript
+-- 3k. Vite's own socket (subprotocol vite-hmr on /), node ws client without an Origin:
+   ws-client -> ws://127.0.0.1:5176/ sent {"origin":"(none)","cookie":"(none)","protocol":"vite-hmr"}
+   ws-client: handshake 101, protocol "vite-hmr"
+   ws-client: message {"type":"connected"}
+   ws-client: closed with code 1000
+
+== 06:38:47 4. headless Chromium over CDP (DevTools 127.0.0.1:9396)
+chrome pid 89681
+      "Browser": "HeadlessChrome/153.0.8010.12",
+   chrome-he pid 89681 127.0.0.1:9396
+driver exit 0
+chrome stopped
+-- result file: .cache/proof-harness/out/browser_run.json (9913 bytes)
+-- Vite log after the browser run (proxy errors would show here):
+     VITE v8.3.1  ready in 273 ms
+     ➜  Local:   http://127.0.0.1:5176/
+   (end)
+
+== 06:38:51 5. stop Vite, way A: SIGTERM to the PID of the background job (npm, 89548)
+port 5176 was released within 5 s after the kill of the npm PID
+npm job exit status: 143
+listener pid 89568 gone
+
+== 06:38:51 6. Vite WITHOUT DEMS_CORE_PROXY_PORT (the dev server as before)
+npm pid 89730, listener pid 89750
+-- GET /api/v1/health          -> 200 text/html; body starts: <!doctype html> <html lang="en" class="dark" data-theme="dar
+-- POST /api/v1/proof/sign-in  ->
+   HTTP/1.1 404 Not Found
+   Access-Control-Allow-Origin: http://127.0.0.1:5176
+   Vary: Origin
+   Date: Sat, 03 Oct 2026 23:38:51 GMT
+   Connection: keep-alive
+   Keep-Alive: timeout=5
+   Content-Length: 0
+-- socket /ws:
+   ws-client -> ws://127.0.0.1:5176/ws sent {"origin":"http://127.0.0.1:5176","cookie":"(none)","protocol":"(none)"}
+   ws-client: no handshake answer within 3 s (nothing handled the upgrade)
+   ws-client: error WebSocket was closed before the connection was established
+   ws-client: closed with code 1006
+-- Vite's own socket:
+   ws-client -> ws://127.0.0.1:5176/ sent {"origin":"(none)","cookie":"(none)","protocol":"vite-hmr"}
+   ws-client: handshake 101, protocol "vite-hmr"
+   ws-client: message {"type":"connected"}
+   ws-client: closed with code 1000
+-- requests the harness logged before / after this phase: 24 / 24
+-- stop Vite, way B: SIGTERM to the listener PID (89750), found by the port
+port 5176 released
+the npm job (89730) ended by itself, exit status 143
+
+== 06:38:55 7. Vite with an invalid value: DEMS_CORE_PROXY_PORT=9999
+the dev server command ended by itself, exit status 1
+   > @dems/core-web@0.1.0 dev
+   > vite --host 127.0.0.1 --port 5176 --strictPort
+   failed to load config from /Users/gsp-budi/Documents/DEMS/apps/core-web/vite.config.ts
+   error when starting dev server:
+   Error: DEMS_CORE_PROXY_PORT must be one of 4420, 4421, 4422, 4423 (got "9999"). Unset it to run without the Core proxy.
+       at coreDevProxy (file:///Users/gsp-budi/Documents/DEMS/apps/core-web/node_modules/.vite-temp/vite.config.ts.timestamp-1791070735309-549e184aa75848.mjs:81:46)
+       at file:///Users/gsp-budi/Documents/DEMS/apps/core-web/node_modules/.vite-temp/vite.config.ts.timestamp-1791070735309-549e184aa75848.mjs:106:46
+       at loadConfigFromFile (file:///Users/gsp-budi/Documents/DEMS/node_modules/vite/dist/node/chunks/node.js:37672:62)
+       at async resolveConfig (file:///Users/gsp-budi/Documents/DEMS/node_modules/vite/dist/node/chunks/node.js:37271:22)
+port 5176 is not bound
+
+== 06:38:55 8. the harness log (cookie value cut to 6 characters)
+#1 listening {"address":"127.0.0.1:4421","pid":89532,"cookieName":"dems_session_4421","cookieValueLength":32}
+---- 3a curl POST sign-in through 5176, Origin http://127.0.0.1:5176
+#2 http    POST /api/v1/proof/sign-in | Host: 127.0.0.1:5176 | Origin: http://127.0.0.1:5176 | Cookie: (none) | Sec-Fetch: (none) | forwarded: {} | Connection: close
+---- 3b curl POST echo through 5176 with the cookie, Origin http://127.0.0.1:5176
+#3 http    POST /api/v1/proof/echo | Host: 127.0.0.1:5176 | Origin: http://127.0.0.1:5176 | Cookie: dems_session_4421=gWLFAA…(32 chars) equalsIssued=true | Sec-Fetch: (none) | forwarded: {} | Connection: close
+---- 3c curl GET health through 5176, no Origin
+#4 http    GET  /api/v1/health | Host: 127.0.0.1:5176 | Origin: (none) | Cookie: (none) | Sec-Fetch: (none) | forwarded: {} | Connection: close
+---- 3d curl POST limited through 5176
+#5 http    POST /api/v1/proof/limited | Host: 127.0.0.1:5176 | Origin: http://127.0.0.1:5176 | Cookie: (none) | Sec-Fetch: (none) | forwarded: {} | Connection: close
+---- 3e negative: Origin http://localhost:5176, http://127.0.0.1:5174, null, none
+#6 http    POST /api/v1/proof/guarded | Host: 127.0.0.1:5176 | Origin: http://localhost:5176 | Cookie: (none) | Sec-Fetch: (none) | forwarded: {} | Connection: close
+#7 http    POST /api/v1/proof/guarded | Host: 127.0.0.1:5176 | Origin: http://127.0.0.1:5174 | Cookie: (none) | Sec-Fetch: (none) | forwarded: {} | Connection: close
+#8 http    POST /api/v1/proof/guarded | Host: 127.0.0.1:5176 | Origin: null | Cookie: (none) | Sec-Fetch: (none) | forwarded: {} | Connection: close
+#9 http    POST /api/v1/proof/guarded | Host: 127.0.0.1:5176 | Origin: http://127.0.0.1:5176/ | Cookie: (none) | Sec-Fetch: (none) | forwarded: {} | Connection: close
+#10 http    POST /api/v1/proof/guarded | Host: 127.0.0.1:5176 | Origin: HTTP://127.0.0.1:5176 | Cookie: (none) | Sec-Fetch: (none) | forwarded: {} | Connection: close
+#11 http    POST /api/v1/proof/guarded | Host: 127.0.0.1:5176 | Origin: http://127.0.0.1:5176 | Cookie: (none) | Sec-Fetch: (none) | forwarded: {} | Connection: close
+#12 http    POST /api/v1/proof/guarded | Host: 127.0.0.1:5176 | Origin: (none) | Cookie: (none) | Sec-Fetch: (none) | forwarded: {} | Connection: close
+---- 3f direct to 4421 (for the header comparison)
+#13 http    POST /api/v1/proof/echo | Host: 127.0.0.1:4421 | Origin: http://127.0.0.1:5176 | Cookie: (none) | Sec-Fetch: (none) | forwarded: {}
+#14 http    POST /api/v1/proof/echo | Host: 127.0.0.1:5176 | Origin: http://127.0.0.1:5176 | Cookie: (none) | Sec-Fetch: (none) | forwarded: {} | Connection: close
+---- 3g preflight OPTIONS through 5176 from http://127.0.0.1:5174
+---- 3h ws client through 5176 with the cookie, Origin http://127.0.0.1:5176
+#15 upgrade GET  /ws | Host: 127.0.0.1:5176 | Origin: http://127.0.0.1:5176 | Cookie: dems_session_4421=gWLFAA…(32 chars) equalsIssued=true | Sec-Fetch: (none) | forwarded: {} | Connection: Upgrade
+#16 ws-open      /ws | Host: 127.0.0.1:5176 | Origin: http://127.0.0.1:5176 | Cookie: dems_session_4421=gWLFAA…(32 chars) equalsIssued=true | Sec-Fetch: (none) | forwarded: -
+#17 ws-message {"text":"ping-curl"}
+#18 ws-close {"code":1000}
+---- 3i ws client through 5176, Origin http://localhost:5176, no cookie
+#19 upgrade GET  /ws | Host: 127.0.0.1:5176 | Origin: http://localhost:5176 | Cookie: (none) | Sec-Fetch: (none) | forwarded: {} | Connection: Upgrade
+#20 ws-open      /ws | Host: 127.0.0.1:5176 | Origin: http://localhost:5176 | Cookie: (none) | Sec-Fetch: (none) | forwarded: -
+#21 ws-message {"text":"ping-localhost"}
+#22 ws-close {"code":1000}
+---- 4 browser run: page http://127.0.0.1:5176, then page http://localhost:5176
+#23 http    POST /api/v1/proof/sign-in | Host: 127.0.0.1:5176 | Origin: http://127.0.0.1:5176 | Cookie: (none) | Sec-Fetch: site=same-origin,mode=cors,dest=empty | forwarded: {} | Connection: close
+#24 http    POST /api/v1/proof/echo | Host: 127.0.0.1:5176 | Origin: http://127.0.0.1:5176 | Cookie: dems_session_4421=gWLFAA…(32 chars) equalsIssued=true | Sec-Fetch: site=same-origin,mode=cors,dest=empty | forwarded: {} | Connection: close
+#25 http    GET  /api/v1/health | Host: 127.0.0.1:5176 | Origin: (none) | Cookie: dems_session_4421=gWLFAA…(32 chars) equalsIssued=true | Sec-Fetch: site=same-origin,mode=cors,dest=empty | forwarded: {} | Connection: close
+#26 http    POST /api/v1/proof/limited | Host: 127.0.0.1:5176 | Origin: http://127.0.0.1:5176 | Cookie: dems_session_4421=gWLFAA…(32 chars) equalsIssued=true | Sec-Fetch: site=same-origin,mode=cors,dest=empty | forwarded: {} | Connection: close
+#27 http    POST /api/v1/proof/guarded | Host: 127.0.0.1:5176 | Origin: http://127.0.0.1:5176 | Cookie: dems_session_4421=gWLFAA…(32 chars) equalsIssued=true | Sec-Fetch: site=same-origin,mode=cors,dest=empty | forwarded: {} | Connection: close
+#28 upgrade GET  /ws | Host: 127.0.0.1:5176 | Origin: http://127.0.0.1:5176 | Cookie: dems_session_4421=gWLFAA…(32 chars) equalsIssued=true | Sec-Fetch: (none) | forwarded: {} | Connection: Upgrade
+#29 ws-open      /ws | Host: 127.0.0.1:5176 | Origin: http://127.0.0.1:5176 | Cookie: dems_session_4421=gWLFAA…(32 chars) equalsIssued=true | Sec-Fetch: (none) | forwarded: -
+#30 ws-message {"text":"ping-1"}
+#31 ws-close {"code":1000}
+#32 upgrade GET  /ws | Host: 127.0.0.1:5176 | Origin: http://127.0.0.1:5176 | Cookie: dems_session_4421=gWLFAA…(32 chars) equalsIssued=true | Sec-Fetch: (none) | forwarded: {} | Connection: Upgrade
+#33 ws-open      /ws | Host: 127.0.0.1:5176 | Origin: http://127.0.0.1:5176 | Cookie: dems_session_4421=gWLFAA…(32 chars) equalsIssued=true | Sec-Fetch: (none) | forwarded: -
+#34 ws-message {"text":"close:4403"}
+#35 ws-close {"code":4403}
+#36 http    POST /api/v1/proof/guarded | Host: localhost:5176 | Origin: http://localhost:5176 | Cookie: (none) | Sec-Fetch: site=same-origin,mode=cors,dest=empty | forwarded: {} | Connection: close
+#37 http    POST /api/v1/proof/echo | Host: localhost:5176 | Origin: http://localhost:5176 | Cookie: (none) | Sec-Fetch: site=same-origin,mode=cors,dest=empty | forwarded: {} | Connection: close
+---- 6 Vite without the variable: nothing below this line may come from port 5176
+
+== 06:38:55 9. stop the harness and check that nothing is left
+harness exit status: 0
+-- lsof -nP -iTCP:4421 -iTCP:5176 -iTCP:9396 -sTCP:LISTEN
+   (lsof exit 1; 1 with no output means no listener)
+-- listeners on 5173, 5174, 5175: unchanged (0 lines before and after)
+-- processes of this check still alive:
+   (none)
+== 06:38:56 done

@@ -1,0 +1,56 @@
+# R-S: frames of a `screenrecord --bugreport` capture. Every frame is extracted (ffmpeg, passthrough) and drawn
+# as one tile: its device-time overlay (top strip, full resolution) above a crop of the screen region named on
+# the command line, so every frame can be read. Also writes a compact contact sheet of all frames.
+#   python3 frames.py <mp4> <frames dir> <out prefix> <crop y0> <crop y1> [tiles per sheet]
+import os
+import subprocess
+import sys
+
+from PIL import Image, ImageDraw
+
+mp4, fdir, prefix, y0, y1 = sys.argv[1], sys.argv[2], sys.argv[3], int(sys.argv[4]), int(sys.argv[5])
+per = int(sys.argv[6]) if len(sys.argv) > 6 else 12
+os.makedirs(fdir, exist_ok=True)
+for n in os.listdir(fdir):
+    os.remove(os.path.join(fdir, n))
+subprocess.run(['ffmpeg', '-loglevel', 'quiet', '-i', mp4, '-fps_mode', 'passthrough', os.path.join(fdir, 'f_%04d.png')], check=True)
+pts = subprocess.run(['ffprobe', '-loglevel', 'error', '-select_streams', 'v:0', '-show_entries', 'frame=pts_time', '-of', 'csv=p=0', mp4], capture_output=True, text=True, check=True).stdout.split()
+files = sorted(n for n in os.listdir(fdir) if n.endswith('.png'))
+print(f'frames: {len(files)}; pts values: {len(pts)}')
+SCALE = 0.5
+TW = int(1080 * SCALE)
+OVER_H = 60
+tiles = []
+for i, name in enumerate(files):
+    im = Image.open(os.path.join(fdir, name)).convert('RGB')
+    over = im.crop((0, 0, 1080, OVER_H)).resize((TW, int(OVER_H * SCALE * 1.4)))
+    body = im.crop((0, y0, 1080, y1)).resize((TW, int((y1 - y0) * SCALE)))
+    tile = Image.new('RGB', (TW, 22 + over.height + body.height), 'white')
+    d = ImageDraw.Draw(tile)
+    d.text((4, 4), f'{name}  pts {float(pts[i]) if i < len(pts) else -1:.3f} s', fill='black')
+    tile.paste(over, (0, 22))
+    tile.paste(body, (0, 22 + over.height))
+    tiles.append(tile)
+cols = 4
+for s in range(0, len(tiles), per):
+    group = tiles[s:s + per]
+    rows = (len(group) + cols - 1) // cols
+    th = max(t.height for t in group)
+    sheet = Image.new('RGB', (cols * (TW + 6), rows * (th + 6)), 'white')
+    for k, t in enumerate(group):
+        sheet.paste(t, ((k % cols) * (TW + 6), (k // cols) * (th + 6)))
+    out = f'{prefix}_frames_{s // per + 1}.png'
+    sheet.save(out)
+    print(f'sheet {out}: frames {s + 1}-{s + len(group)}')
+# compact contact sheet: every frame, 8 per row
+cw, ch = 135, 303
+rows = (len(files) + 7) // 8
+sheet = Image.new('RGB', (8 * (cw + 4), rows * (ch + 18)), 'white')
+d = ImageDraw.Draw(sheet)
+for k, name in enumerate(files):
+    im = Image.open(os.path.join(fdir, name)).convert('RGB').resize((cw, ch))
+    x, y = (k % 8) * (cw + 4), (k // 8) * (ch + 18)
+    d.text((x + 2, y + 2), name.replace('.png', ''), fill='black')
+    sheet.paste(im, (x, y + 16))
+sheet.save(f'{prefix}_contact_sheet.png')
+print(f'contact sheet {prefix}_contact_sheet.png')

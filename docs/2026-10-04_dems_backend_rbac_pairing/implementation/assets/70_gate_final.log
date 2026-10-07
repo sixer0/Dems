@@ -1,0 +1,99 @@
+# W70 gate (2026-10-05). Commands from /Users/gsp-budi/Documents/DEMS.
+
+## typecheck and lint of @dems/core-web
+== 2026-10-05 23:26:55 WIB uptime: 23:26  2 users, load averages: 8.12 8.99 8.01
+$ npm run typecheck -w @dems/core-web
+> @dems/core-web@0.1.0 typecheck
+> tsc -b
+
+typecheck exit 0
+typecheck exit (re-read) 0
+$ npm run lint -w @dems/core-web
+> @dems/core-web@0.1.0 lint
+> oxlint
+
+lint exit 0
+
+## npm run test -w @dems/core-web -- --maxWorkers=2 (summary lines)
+== start 23:27:40 23:27  2 users, load averages: 9.02 9.18 8.13
+ Test Files  71 passed (71)
+      Tests  958 passed (958)
+   Start at  23:27:40
+   Duration  119.10s (tests 73%, import 13%, environment 9%, setup 3%, transform 2%)
+suite exit 0
+== end 23:29:40
+
+## npm run test -w @dems/shared -- --maxWorkers=2 (23:02:44 - 23:03:01)
+ Test Files  68 passed (68)
+      Tests  1814 passed (1814)
+   Start at  23:02:44
+   Duration  16.57s (tests 60%, import 30%, transform 9%, worker 1%)
+shared exit 0; npm run typecheck -w @dems/shared exit 0; npm run lint -w @dems/shared exit 0
+
+## the row's three files and the folder's existing test (verbose)
+ ✓ src/test/live-devices-drawer.test.tsx > G6 with PAIRING_MANAGE (the SUPERVISOR) > the row is titled "Paired devices" and reads "n paired, m online" from operation 19, with a link to the Paired Devices page; no "Pairing" row 765ms
+ ✓ src/test/live-devices-commands.test.tsx > B-7 success (§8.3; LB-3; §3.2) > Restart: one POST to operation 48 for the tile's device, the menu closes at the press, the toast follows the answer and says nothing of a simulation 834ms
+ ✓ src/test/live-devices-drawer.test.tsx > G6 with PAIRING_MANAGE (the SUPERVISOR) > counts only PAIRED devices, and of them the online ones 186ms
+ ✓ src/test/live-devices-commands.test.tsx > B-7 success (§8.3; LB-3; §3.2) > Test signal: one POST to operation 49 for the microphone's device and its own toast 195ms
+ ✓ src/test/live-devices-drawer.test.tsx > G6 with PAIRING_MANAGE (the SUPERVISOR) > the link opens the Paired Devices page 193ms
+ ✓ src/test/live-devices-commands.test.tsx > B-7 refusal (§6.2; AC-C-48; LB-5) > AC-C-48: a 403 NOT_PERMITTED (the contract's `notPermitted` example) shows the denied toast naming the Technician role, no success toast, and the control returns to idle 240ms
+ ✓ src/test/live-devices-drawer.test.tsx > G6 with PAIRING_MANAGE (the SUPERVISOR) > PG-6: an `admin.changed` DEVICES reads the registry again and the count follows 161ms
+ ✓ src/test/live-devices-commands.test.tsx > B-7 refusal (§6.2; AC-C-48; LB-5) > a 403 NOT_PERMITTED of operation 49 names the first role that holds DIAGNOSTICS_RUN (CONTRACT-GAP-W70-2: no `notPermitted` example) 172ms
+ ✓ src/test/live-devices-drawer.test.tsx > G6 with PAIRING_MANAGE (the SUPERVISOR) > CONTRACT-GAP-W70-1: a change of the replicated tablet link reads the registry again, so `online` does not go stale 178ms
+ ✓ src/test/live-devices-drawer.test.tsx > G6 without PAIRING_MANAGE (the INVESTIGATOR) > a connected tablet link reads "A paired device is connected", and the registry is not asked 117ms
+ ✓ src/test/live-devices-commands.test.tsx > B-7 refusal (§6.2; AC-C-48; LB-5) > 409 RECORDING_ACTIVE (rebuilt as `SimTransitionError`) keeps the existing friendly toast and writes one record with code and status only 152ms
+ ✓ src/test/live-devices-drawer.test.tsx > G6 without PAIRING_MANAGE (the INVESTIGATOR) > an offline tablet link reads "No paired device is connected" 124ms
+ ✓ src/test/live-devices-commands.test.tsx > B-7 refusal (§6.2; AC-C-48; LB-5) > 409 COMMAND_UNSUPPORTED of operation 49 keeps the same friendly toast 152ms
+ ✓ src/test/live-devices-drawer.test.tsx > a refused or failed read of the registry (rule 2; LB-6; LB-10; rule 6) > AC-C-48: a 403 NOT_PERMITTED (the contract's `notPermitted` example) shows the denied toast naming the Supervisor; the row falls back to the tablet sentence with a retry 137ms
+ ✓ src/test/live-devices-commands.test.tsx > B-7 outage (LB-6, CL-22; LB-10) > a request that gets no answer shows "Core server unreachable. Nothing was changed.", no success toast, and the control returns to idle 146ms
+ ✓ src/test/live-devices-drawer.test.tsx > a refused or failed read of the registry (rule 2; LB-6; LB-10; rule 6) > an outage shows the presenter's sentence; Retry reads again and then cools down 133ms
+ ✓ src/test/live-devices-drawer.test.tsx > a refused or failed read of the registry (rule 2; LB-6; LB-10; rule 6) > LB-10: a 429 shows the limit toast, never the outage sentence 130ms
+ ✓ src/test/live-devices-commands.test.tsx > B-7 outage (LB-6, CL-22; LB-10) > with the link down a command is refused at once without a request, and five presses show one toast 555ms
+ ✓ src/test/live-devices-commands.test.tsx > B-7 outage (LB-6, CL-22; LB-10) > LB-10: a 429 shows the limit toast with the seconds of `retry-after`, never the outage sentence 144ms
+ ✓ src/test/live-devices-drawer.test.tsx > a refused or failed read of the registry (rule 2; LB-6; LB-10; rule 6) > with the link down the registry is not read and the row shows the tablet sentence; no toast of the page's own 484ms
+ ✓ src/test/live-devices-commands.test.tsx > D-5 identify (§8.4: the local state is set in `ok`) > the ring blinks only after the Core answered operation 50, with the info toast 120ms
+ ✓ src/test/live-devices-drawer.test.tsx > the drawer's other words in Live mode (§3.2) > the Health caption, the display's label and the Log's command words say nothing of a simulation 143ms
+ ✓ src/test/live-devices-drawer.test.tsx > Simulated mode is unchanged (CLG (a)) > the tablet drawer shows the "Pairing" row with the simulator's pairing state, the simulated words, and asks no registry 86ms
+ ✓ src/test/live-devices-commands.test.tsx > D-5 identify (§8.4: the local state is set in `ok`) > a 403 NOT_PERMITTED of operation 50 (envelope without `details.permission`: the access rule names DIAGNOSTICS_RUN) shows the denied toast and no blink 111ms
+ ✓ src/test/live-devices-commands.test.tsx > D-5 identify (§8.4: the local state is set in `ok`) > an outage shows the presenter's sentence and no blink 120ms
+ ✓ src/test/live-devices-commands.test.tsx > LB-1 pending (busy at once, spinner late) > while a command is out the device's three commands are disabled, a second press sends nothing, the head is busy, and the spinner replaces the icon only after LIVE_PENDING_REVEAL_MS 552ms
+ ✓ src/test/live-devices-clip.test.tsx > B-8 success (§8.3: settle; the CLIP chip leaves when the delta arrives) > one POST to operation 52 with the channel; the latch and the button leave with the Core's delta, and the toast follows 437ms
+ ✓ src/test/live-devices-clip.test.tsx > B-8 success (§8.3: settle; the CLIP chip leaves when the delta arrives) > when the answer comes first, nothing is announced until the delta arrives: the button stays busy, then leaves with the toast (CL-16) 185ms
+ ✓ src/test/live-devices-commands.test.tsx > LB-1 pending (busy at once, spinner late) > a command answered within LIVE_PENDING_REVEAL_MS never shows the spinner 783ms
+ ✓ src/test/live-devices-clip.test.tsx > B-8 refusal (§6.2; LB-5) > a 403 FORBIDDEN is worded by the presenter as the denied toast; the latch stays and the button is idle again, with no record of the page's own 139ms
+ ✓ src/test/live-devices-commands.test.tsx > Simulated mode is unchanged (CLG (a); §3.2) > a TECHNICIAN sees the simulated words, and a restart shows its "(simulated)" toast at once, with the simulator's audit row and no busy mark 131ms
+ ✓ src/test/live-devices-clip.test.tsx > B-8 refusal (§6.2; LB-5) > the contract's own 403 of a web console (`originNotAllowed`) names the address to open (WT-2a) 113ms
+ ✓ src/test/live-devices-clip.test.tsx > B-8 refusal (§6.2; LB-5) > a refusal the presenter leaves to the page (422 INVALID_INPUT) keeps the existing friendly toast and writes one record with code and status only 100ms
+ ✓ src/test/live-devices-commands.test.tsx > Simulated mode is unchanged (CLG (a); §3.2) > Identify blinks in the press, as before 164ms
+ ✓ src/test/live-devices-commands.test.tsx > Simulated mode is unchanged (CLG (a); §3.2) > while recording, Restart stays disabled with its reason, as before 126ms
+ ✓ src/test/live-devices-clip.test.tsx > B-8 outage (LB-6; LB-10) > a request that gets no answer shows the presenter's sentence; the latch stays and the button is idle 103ms
+ ✓ src/test/live-devices-clip.test.tsx > B-8 outage (LB-6; LB-10) > with the link down the reset is refused at once without a request 468ms
+ ✓ src/test/live-devices-clip.test.tsx > B-8 outage (LB-6; LB-10) > LB-10: a 429 shows the limit toast, never the outage sentence 122ms
+ ✓ src/test/live-devices-clip.test.tsx > B-8 pending (LB-1: busy at once, spinner late) > a second press while the reset is out sends nothing; the spinner replaces the icon only after LIVE_PENDING_REVEAL_MS 557ms
+ ✓ src/test/live-devices-clip.test.tsx > Simulated mode is unchanged (CLG (a)) > the reset clears the latch in the press, shows its toast, and never marks the fact busy 188ms
+ ✓ src/features/devices/__tests__/devices-page.test.tsx > Devices & Inputs: idle scenario (row 48 render test) > renders the page test ID and every §14.5.4 panel test ID, with 0 missing i18n keys 479ms
+ ✓ src/features/devices/__tests__/devices-page.test.tsx > Devices & Inputs: idle scenario (row 48 render test) > cycles the LCD pages with UP / DOWN and returns home with BACK 152ms
+ ✓ src/features/devices/__tests__/devices-page.test.tsx > Device drawer (Overview, Health, Log) > opens from a camera tile with the three tabs and switches to Health and Log 218ms
+ ✓ src/features/devices/__tests__/devices-page.test.tsx > Device drawer (Overview, Health, Log) > opens the GNSS receiver from its Other Devices row 102ms
+ ✓ src/features/devices/__tests__/devices-page.test.tsx > Fault states render calmly (P7) and follow the simulator > shows NO SIGNAL, a camera loss and the banner escalation without touching the other lens 117ms
+ ✓ src/features/devices/__tests__/devices-page.test.tsx > Fault states render calmly (P7) and follow the simulator > latches CLIP and resets it from the card once the fault is cleared 133ms
+ ✓ src/features/devices/__tests__/devices-page.test.tsx > Fault states render calmly (P7) and follow the simulator > slides in the "recording continues" Alert when the tablet goes OFFLINE (S9) 134ms
+ ✓ src/features/devices/__tests__/devices-page.test.tsx > Recording scenario > lights the SEDANG MEREKAM lamp and the RECORD LED, and shows REC on both tracks 72ms
+ ✓ src/features/devices/__tests__/devices-page.test.tsx > Kebab actions (simulated device commands; Identify audited since step 54) > sends a test signal (audit DEVICE_COMMAND) and blinks Identify 128ms
+ ✓ src/features/devices/__tests__/devices-page.test.tsx > Kebab actions (simulated device commands; Identify audited since step 54) > keeps Restart unavailable without DEVICE_MANAGE (INVESTIGATOR) and allows it for a TECHNICIAN 172ms
+ ✓ src/features/devices/__tests__/devices-page.test.tsx > Reduced motion (§8, AC-70) > keeps the recording lamp steady: marked reduced and not looping 12ms
+ ✓ src/features/devices/__tests__/devices-page.test.tsx > Simulator device views (W48-1..4, step 54) > presents the book PoE view: PoE CAM 1 active while either lens streams, CAM 2/AUX spare 3ms
+ ✓ src/features/devices/__tests__/devices-page.test.tsx > Simulator device views (W48-1..4, step 54) > derives the five front-panel LEDs from the simulator state 8ms
+ ✓ src/features/devices/__tests__/devices-page.test.tsx > Simulator device views (W48-1..4, step 54) > builds health series from the simulator series and the page mic sampler 3ms
+ ✓ src/features/devices/__tests__/devices-page.test.tsx > Simulator device views (W48-1..4, step 54) > files audit rows under their device for the drawer Log 8ms
+ ✓ src/features/devices/__tests__/devices-page.test.tsx > Simulator device views (W48-1..4, step 54) > counts 9 devices and summarises faults for the banner and the metric cards 2ms
+ ✓ src/features/devices/__tests__/devices-page.test.tsx > Simulator device views (W48-1..4, step 54) > renders standalone without the router (SimProvider only) 7ms
+ Test Files  4 passed (4)
+      Tests  57 passed (57)
+
+## first whole-suite run 23:00:26 - 23:02:12 (red files not this row's)
+ FAIL  src/test/live-evidence-probe.test.tsx [ src/test/live-evidence-probe.test.tsx ]
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  src/test/live-storage-page.test.tsx > the page on the Core's data (G13; §3.2) > renders every panel on the Live source with the Core's policy and fill, the shell says LIVE, and no word of the page says "simulated"
+ Test Files  2 failed | 66 passed (68)
+      Tests  1 failed | 915 passed (916)

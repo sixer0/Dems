@@ -1,0 +1,18 @@
+Crash-class scan since T0 10-06 20:44:30 (driver verb crash):
+lines total:     2529
+Reanimated SurfaceMountingManager warnings: 2459
+AndroidRuntime lines of the uiautomator process (not the app): 70
+FATAL/addViewAt/Tried to remove view/handleHostException/reactInstance is null/IndexOutOfBounds: 0
+Reanimated warnings per second:
+  28 20:46:42
+ 192 20:58:25
+ 656 20:58:26
+ 308 20:58:27
+  10 20:58:44
+  18 20:58:45
+ 126 21:01:51
+ 850 21:01:52
+ 116 21:02:12
+  84 21:02:13
+  57 21:06:47
+  14 21:06:48

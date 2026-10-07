@@ -1,0 +1,90 @@
+# W56 mutation check, 2026-10-04 21:21:31; 6 test files per run; the tree is not edited
+M01  detected        5s  LIVE with the link down does not block the sign-in  | Tests:       2 failed, 169 passed, 171 total  | live-auth-model.test.ts, live-auth.test.tsx
+M02  detected        4s  SIMULATED is blocked too  | Tests:       1 failed, 170 passed, 171 total  | live-auth-model.test.ts
+M03  detected        4s  Lock console reads as a sign-out  | Tests:       4 failed, 167 passed, 171 total  | live-auth-model.test.ts, live-auth.test.tsx
+M04  detected        4s  an idle expiry has no Login notice  | Tests:       3 failed, 168 passed, 171 total  | live-auth-model.test.ts, live-auth.test.tsx
+M05  detected        6s  a reuse gets the Alert of MB-3  | Tests:       3 failed, 168 passed, 171 total  | live-auth-model.test.ts, live-auth.test.tsx
+M06  NOT DETECTED    6s  the end of the pairing counts as a session end  | Tests:       171 passed, 171 total  | 
+M07  detected        6s  an outage is UNAVAILABLE  | Tests:       3 failed, 168 passed, 171 total  | live-auth-model.test.ts, live-auth.test.tsx
+M08  detected        5s  no limit toast  | Tests:       7 failed, 164 passed, 171 total  | live-auth-model.test.ts, live-auth.test.tsx
+M09  detected        6s  a 401 keeps the token  | Tests:       2 failed, 169 passed, 171 total  | live-auth-model.test.ts, live-auth.test.tsx
+M10  detected        5s  a limit costs the enrolment  | Tests:       3 failed, 168 passed, 171 total  | live-auth-model.test.ts, live-auth.test.tsx
+M11  detected        5s  A LOST ANSWER KEEPS THE TOKEN: it would be sent again  | Tests:       8 failed, 163 passed, 171 total  | live-auth-model.test.ts, live-auth.test.tsx
+M12  detected        6s  a 401 NOT_SIGNED_IN costs the enrolment  | Tests:       1 failed, 170 passed, 171 total  | live-auth-model.test.ts
+M13  detected        7s  an emulator with a protected item gets no OS prompt first  | Tests:       2 failed, 169 passed, 171 total  | live-auth-model.test.ts, live-biometric.test.ts
+M14  detected        8s  the 8-hour limit shows the idle sentence  | Tests:       2 failed, 169 passed, 171 total  | live-auth-model.test.ts, live-auth.test.tsx
+M15  detected        6s  a reuse deletes nothing  | Tests:       2 failed, 169 passed, 171 total  | live-auth-model.test.ts, live-auth.test.tsx
+M16  detected        5s  a Core that is not ready costs the enrolment  | Tests:       2 failed, 169 passed, 171 total  | live-auth-model.test.ts, live-auth.test.tsx
+M17  detected        5s  a revoked device keeps the token  | Tests:       1 failed, 170 passed, 171 total  | live-auth-model.test.ts
+B01  detected        5s  never a protected write  | Tests:       4 failed, 167 passed, 171 total  | live-auth.test.tsx, live-biometric.test.ts
+B02  detected        6s  a fallback the ruling did not choose  | Tests:       8 failed, 163 passed, 171 total  | live-auth.test.tsx, live-biometric.test.ts
+B03  detected        4s  a token is handed out twice in one attempt  | Tests:       1 failed, 170 passed, 171 total  | live-biometric.test.ts
+B04  detected        4s  the token of another operator is handed out  | Tests:       1 failed, 170 passed, 171 total  | live-biometric.test.ts
+B05  detected        4s  an enrolment of an earlier pairing is used  | Tests:       2 failed, 169 passed, 171 total  | live-auth.test.tsx, live-biometric.test.ts
+B06  detected        3s  the storage is asked while the tablet is not paired  | Tests:       18 failed, 153 passed, 171 total  | live-auth.test.tsx, live-biometric.test.ts
+B07  detected        4s  an unreadable item stays  | Tests:       1 failed, 170 passed, 171 total  | live-biometric.test.ts
+B08  detected        5s  the next token is deleted at the end of the attempt  | Tests:       6 failed, 165 passed, 171 total  | live-auth.test.tsx, live-biometric.test.ts
+B09  detected        6s  the next token is not stored  | Tests:       9 failed, 162 passed, 171 total  | live-auth.test.tsx, live-biometric.test.ts
+B10  detected        4s  a sign-in without a released token rotates  | Tests:       1 failed, 170 passed, 171 total  | live-biometric.test.ts
+B11  detected        5s  a missing next token is written  | Tests:       1 failed, 170 passed, 171 total  | live-biometric.test.ts
+B12  detected        5s  two attempts at once  | Tests:       1 failed, 170 passed, 171 total  | live-biometric.test.ts
+B13  detected        5s  a spent token is never deleted  | Tests:       4 failed, 167 passed, 171 total  | live-auth.test.tsx, live-biometric.test.ts
+B14  detected        4s  the items are deleted although nothing left the store  | Tests:       8 failed, 163 passed, 171 total  | live-biometric.test.ts
+B15  detected        7s  the rotated token is deleted when the attempt ends  | Tests:       6 failed, 165 passed, 171 total  | live-auth.test.tsx, live-biometric.test.ts
+B16  detected        7s  an OS lockout is reported as a failed check  | Tests:       1 failed, 170 passed, 171 total  | live-biometric.test.ts
+B17  detected        5s  an unreadable item reads as a cancelled prompt  | Tests:       1 failed, 170 passed, 171 total  | live-biometric.test.ts
+B18  detected        5s  a released token does not count as presented  | Tests:       14 failed, 157 passed, 171 total  | live-auth.test.tsx, live-biometric.test.ts
+B19  detected        4s  a cancelled protected read is a failed check  | Tests:       1 failed, 170 passed, 171 total  | live-biometric.test.ts
+B20  detected        5s  a marker without a token stays  | Tests:       1 failed, 170 passed, 171 total  | live-biometric.test.ts
+P01  detected        7s  a tablet that is not paired sends a sign-in  | Tests:       1 failed, 170 passed, 171 total  | live-auth.test.tsx
+P02  detected       11s  no toast for a refused sign-in  | Tests:       2 failed, 169 passed, 171 total  | live-auth.test.tsx
+P03  detected        8s  the refusal of the last attempt is not exposed  | Tests:       5 failed, 166 passed, 171 total  | live-auth.test.tsx
+P04  detected        7s  OPERATION 7 IS SENT IN A BIOMETRIC SESSION  | Tests:       1 failed, 170 passed, 171 total  | live-auth.test.tsx
+P05  detected        8s  the enrolment is offered although it exists  | Tests:       1 failed, 170 passed, 171 total  | live-auth.test.tsx
+P06  detected        7s  turning it off deletes nothing  | Tests:       1 failed, 170 passed, 171 total  | live-auth.test.tsx
+P07  detected        7s  the items are deleted although the Core was not told  | Tests:       1 failed, 171 passed, 172 total  | live-auth.test.tsx
+P08  detected        7s  a failed enrolment leaves a live token on the Core  | Tests:       1 failed, 171 passed, 172 total  | live-auth.test.tsx
+P09  detected        7s  TOKEN_REUSE DELETES NOTHING  | Tests:       1 failed, 171 passed, 172 total  | live-auth.test.tsx
+P10  detected        7s  the notice of the last end outlives the next sign-in  | Tests:       2 failed, 170 passed, 172 total  | live-auth.test.tsx
+P11  detected        5s  an Alert while signed in  | Tests:       1 failed, 171 passed, 172 total  | live-auth.test.tsx
+P12  detected        5s  the token storage is never registered  | Tests:       11 failed, 161 passed, 172 total  | live-auth.test.tsx
+P13  detected        5s  A DOUBLE TAP IS TWO SIGN-INS  | Tests:       1 failed, 171 passed, 172 total  | live-auth.test.tsx
+P14  detected        5s  a token is sent while the device is locked  | Tests:       1 failed, 171 passed, 172 total  | live-auth.test.tsx
+P15  detected        6s  NO OS CHECK BEFORE THE TOKEN IS SENT  | Tests:       6 failed, 166 passed, 172 total  | live-auth.test.tsx
+P16  detected        7s  A CANCELLED PROMPT SENDS THE TOKEN  | Tests:       2 failed, 170 passed, 172 total  | live-auth.test.tsx
+P17  detected        6s  a dead token is reported as a failed attempt  | Tests:       2 failed, 170 passed, 172 total  | live-auth.test.tsx
+P18  detected        8s  no Alert after a dead token  | Tests:       2 failed, 170 passed, 172 total  | live-auth.test.tsx
+P19  detected        6s  Lock console is sent as a sign-out  | Tests:       2 failed, 170 passed, 172 total  | live-auth.test.tsx
+P20  detected        6s  the switch is not blocked in a biometric session  | Tests:       3 failed, 169 passed, 172 total  | live-auth.test.tsx
+P21  detected        7s  the session does not say how the token is stored  | Tests:       9 failed, 163 passed, 172 total  | live-auth.test.tsx
+P22  detected        6s  biometric sign-in always reads as enabled  | Tests:       9 failed, 163 passed, 172 total  | live-auth.test.tsx
+P23  detected        5s  the expiry dialog cannot be closed  | Tests:       1 failed, 171 passed, 172 total  | live-auth.test.tsx
+P24  detected        8s  the dialog of the 8-hour limit says 15 minutes  | Tests:       1 failed, 171 passed, 172 total  | live-auth.test.tsx
+P25  detected        7s  the LIVE offer says "Simulated identity binding"  | Tests:       1 failed, 171 passed, 172 total  | live-auth.test.tsx
+P26  detected        7s  the Alert of a dead token comes back after a password sign-in  | Tests:       1 failed, 171 passed, 172 total  | live-auth.test.tsx
+P27  detected        6s  a failed enrolment is reported as done  | Tests:       1 failed, 171 passed, 172 total  | live-auth.test.tsx
+P28  detected        6s  NO TOKEN IS EVER DELETED AFTER AN ATTEMPT  | Tests:       2 failed, 170 passed, 172 total  | live-auth.test.tsx
+P29  NOT DETECTED    8s  the expiry dialog reopens after the next sign-in  | Tests:       172 passed, 172 total  | 
+P30  detected        8s  the offer names another operator  | Tests:       10 failed, 162 passed, 172 total  | live-auth.test.tsx
+A01  detected        8s  the providers are swapped  | Tests:       38 failed, 134 passed, 172 total  | auth-provider.test.tsx, live-auth.test.tsx
+A02  detected        7s  the simulated sign-in drops the password  | Tests:       6 failed, 166 passed, 172 total  | auth-provider.test.tsx
+A03  detected        6s  the simulated Lock console is a sign-out  | Tests:       1 failed, 171 passed, 172 total  | auth-provider.test.tsx
+A04  detected        6s  the simulated fingerprint never signs in  | Tests:       1 failed, 171 passed, 172 total  | auth-provider.test.tsx
+S01  detected        6s  no touch is ever reported  | Tests:       2 failed, 170 passed, 172 total  | auth-provider.test.tsx, live-auth.test.tsx
+S02  detected        6s  a touch calls nothing  | Tests:       2 failed, 170 passed, 172 total  | auth-provider.test.tsx, live-auth.test.tsx
+S03  detected        5s  a lockout reads as a wrong password  | Tests:       2 failed, 170 passed, 172 total  | auth-provider.test.tsx, live-auth.test.tsx
+I01  detected        5s  a Live answer is read as a value  | Tests:       2 failed, 170 passed, 172 total  | live-auth.test.tsx
+I02  detected        6s  a failed OS check reports nothing  | Tests:       3 failed, 169 passed, 172 total  | biometric.test.ts, live-auth.test.tsx
+N01  detected        4s  the Alert is never drawn  | Tests:       41 failed, 131 passed, 172 total  | live-auth.test.tsx
+N02  detected        6s  the Alert shows no sentence  | Tests:       3 failed, 169 passed, 172 total  | live-auth.test.tsx
+## 76 detected, 2 not detected, 0 not applied, of 78
+## not detected: M06 P29
+## the mutated files in the tree, before and after: identical
+   c16fc8a030e1a6fe  src/auth/auth-notice.tsx
+   de53b257a31cda4f  src/auth/auth-provider.tsx
+   ff80fe7e221b441c  src/auth/auth-session.tsx
+   e66bcd5ce90af81f  src/auth/biometric.ts
+   8ae3d33f872d5a54  src/auth/live-auth-model.ts
+   66ea7ce04de75c66  src/auth/live-auth-provider.tsx
+   40dc4bff27b0ba0c  src/auth/live-biometric.ts
+# finished 21:29:09

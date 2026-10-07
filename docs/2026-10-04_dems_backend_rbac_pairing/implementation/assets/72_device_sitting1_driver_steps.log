@@ -1,0 +1,15 @@
+screencap 72_phone_login_live.png (1721131 bytes)
+tap 540,1105
+slept 900 ms
+username typed (budi.santoso); editor inputType 0x80001
+slept 400 ms
+tap 540,1265
+slept 900 ms
+focused true; editor inputType 0x80081
+screencap 001.png (1232768 bytes)
+password typed (not shown); editor inputType 0x80081
+slept 300 ms
+key 66
+signin 200 (POST /api/v1/auth/sign-in 200)
+slept 4500 ms
+screencap 002.png (395804 bytes)

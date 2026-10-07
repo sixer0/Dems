@@ -1,0 +1,215 @@
+## 2026-10-04 19:32:09 WIB $ npm run test -w @dems/core-server -- --maxWorkers=2 --reporter=verbose src/realtime
+
+> @dems/core-server@0.2.0 test
+> vitest run --project unit --maxWorkers=2 --reporter=verbose src/realtime
+
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/apps/core-server
+
+ ✓ |unit| src/realtime/__tests__/hub.state.test.ts > snapshot, then deltas in commit order without a gap (RT-1, RT-2, AC-B-46) > every committed change reaches every OPERATOR socket as the next revision; replayed, each socket holds the engine's state 73ms
+ ✓ |unit| src/realtime/__tests__/hub.state.test.ts > snapshot, then deltas in commit order without a gap (RT-1, RT-2, AC-B-46) > the ops of a delta are the engine's, unchanged, and the engine's state is not altered by sending it 10ms
+ ✓ |unit| src/realtime/__tests__/hub.state.test.ts > snapshot, then deltas in commit order without a gap (RT-1, RT-2, AC-B-46) > a socket that opens between two commits starts at the engine's revision and is sent only what comes after 15ms
+ ✓ |unit| src/realtime/__tests__/hub.state.test.ts > snapshot, then deltas in commit order without a gap (RT-1, RT-2, AC-B-46) > state messages go to OPERATOR sockets only: an ANONYMOUS and a DEVICE socket get none 7ms
+ ✓ |unit| src/realtime/__tests__/hub.state.test.ts > snapshot, then deltas in commit order without a gap (RT-1, RT-2, AC-B-46) > with no OPERATOR socket a change costs nothing and nothing waits for the one that connects next 4ms
+ ✓ |unit| src/realtime/__tests__/hub.state.test.ts > snapshot, then deltas in commit order without a gap (RT-1, RT-2, AC-B-46) > a delta that would not continue a socket's position is never sent: the socket gets a snapshot, and no gap is on the wire 22ms
+ ✓ |unit| src/realtime/__tests__/hub.state.test.ts > a new epoch (RT-7) > a start sends one snapshot of the new epoch at revision 0 to every OPERATOR socket, and deltas continue from it 29ms
+ ✓ |unit| src/realtime/__tests__/hub.state.test.ts > a new epoch (RT-7) > paced deltas of the old epoch that still waited are not sent after the snapshot of the new one 9ms
+ ✓ |unit| src/realtime/__tests__/hub.state.test.ts > delta pacing (RT-P11) > a delta caused only by the 1 Hz steps waits for the pace step; a command or a record change is sent at once 3ms
+ ✓ |unit| src/realtime/__tests__/hub.state.test.ts > delta pacing (RT-P11) > a delta of any other cause is sent at once, also when no record changed: a command is read back by its caller (RT-5) 10ms
+ ✓ |unit| src/realtime/__tests__/hub.state.test.ts > delta pacing (RT-P11) > a tick that changed a record is not paced 5ms
+ ✓ |unit| src/realtime/__tests__/hub.state.test.ts > delta pacing (RT-P11) > what waits is sent first, in order, when a delta that may not wait arrives: the order on the wire is the commit order 10ms
+ ✓ |unit| src/realtime/__tests__/hub.state.test.ts > delta pacing (RT-P11) > a socket that opened while a delta waited holds it in its snapshot and is not sent it again 13ms
+ ✓ |unit| src/realtime/__tests__/hub.state.test.ts > resync (RT-6) > is answered with a new snapshot at the engine's position, and deltas continue from it 15ms
+ ✓ |unit| src/realtime/__tests__/hub.state.test.ts > resync (RT-6) > a resynchronised socket holds what a fresh socket holds 11ms
+ ✓ |unit| src/realtime/__tests__/hub.state.test.ts > resync (RT-6) > a delta that waited for the pace step is inside the snapshot of a resync and is not sent after it 4ms
+ ✓ |unit| src/realtime/__tests__/hub.state.test.ts > resync (RT-6) > at most one snapshot in 2 s: a resync that comes sooner is answered once, at the pace step after the interval 10ms
+ ✓ |unit| src/realtime/__tests__/hub.state.test.ts > resync (RT-6) > while the engine does not run a resync is answered by the snapshot of its start 6ms
+ ✓ |unit| src/realtime/__tests__/hub.state.test.ts > meter frames (RT-8, RT-P8, RT-P9) > go only to OPERATOR sockets that subscribed, carry no revision, and stop with unsubscribe 6ms
+ ✓ |unit| src/realtime/__tests__/hub.state.test.ts > meter frames (RT-8, RT-P8, RT-P9) > a frame is skipped for a socket whose buffer is above 65,536 bytes; the next frame that finds room is the newest 4ms
+ ✓ |unit| src/realtime/__tests__/hub.state.test.ts > meter frames (RT-8, RT-P8, RT-P9) > a stalled socket loses meter frames and no state delta (AC-B-48) 13ms
+ ✓ |unit| src/realtime/__tests__/hub.state.test.ts > meter frames (RT-8, RT-P8, RT-P9) > at most 20 frames in a second of the server clock are put on the wire 9ms
+ ✓ |unit| src/realtime/__tests__/hub.state.test.ts > meter frames (RT-8, RT-P8, RT-P9) > seq on the wire never goes back: when the engine counts from 1 again, the wire number continues 6ms
+ ✓ |unit| src/realtime/__tests__/hub.state.test.ts > the send policy: a state message is never dropped, a slow consumer is closed (RT-4, RT-P10, AC-B-48) > a socket whose buffer is above 4,194,304 bytes after a state message is closed with 4408; the message was queued before the close 15ms
+ ✓ |unit| src/realtime/__tests__/hub.state.test.ts > the send policy: a state message is never dropped, a slow consumer is closed (RT-4, RT-P10, AC-B-48) > the pace step closes a socket whose buffer grew above the limit between two state messages 3ms
+ ✓ |unit| src/realtime/__tests__/hub.state.test.ts > the send policy: a state message is never dropped, a slow consumer is closed (RT-4, RT-P10, AC-B-48) > a socket that is closed with 4408 in the middle of a flush is sent none of the deltas that follow 14ms
+ ✓ |unit| src/realtime/__tests__/hub.state.test.ts > the send policy: a state message is never dropped, a slow consumer is closed (RT-4, RT-P10, AC-B-48) > a socket whose FIRST snapshot crosses the limit is closed with 4408, is sent nothing after it, and never counts as a socket of its device 6ms
+ ✓ |unit| src/realtime/__tests__/hub.state.test.ts > the send policy: a state message is never dropped, a slow consumer is closed (RT-4, RT-P10, AC-B-48) > a snapshot is held to the same rule: after the first snapshot and after a resync 7ms
+ ✓ |unit| src/realtime/__tests__/hub.state.test.ts > the send policy: a state message is never dropped, a slow consumer is closed (RT-4, RT-P10, AC-B-48) > an ANONYMOUS or a DEVICE socket is never closed for its buffer by the pace step: it is sent heartbeats only, and the ping ends a dead peer 1ms
+ ✓ |unit| src/realtime/__tests__/hub.state.test.ts > the seam never throws (the contract of `app.publish`) > a socket that cannot be written to is destroyed and the other sockets are served 6ms
+ ✓ |unit| src/realtime/__tests__/hub.state.test.ts > the seam never throws (the contract of `app.publish`) > a failure inside the hub is logged as { err } with the kind, written to the error log, and not passed on 7ms
+ ✓ |unit| src/realtime/__tests__/plugin.test.ts > the seam publish (P25) > is provided by this unit, with its controls behind it; another function behind the seam has none 59ms
+ ✓ |unit| src/realtime/__tests__/plugin.test.ts > the seam publish (P25) > returns at once and never throws, for every kind of publication, with nobody connected and with the engine not started 9ms
+ ✓ |unit| src/realtime/__tests__/plugin.test.ts > the socket route (decision D83 DN-3) > is GET /ws, the one route of this unit, under the guard's fixed rule and outside the registry 7ms
+ ✓ |unit| src/realtime/__tests__/plugin.test.ts > the socket route (decision D83 DN-3) > a GET without an upgrade answers 404 NOT_FOUND in the envelope; while not ready the handshake answers 503 22ms
+ ✓ |unit| src/realtime/__tests__/plugin.test.ts > the socket route (decision D83 DN-3) > an upgrade passes the real stages: a foreign Origin is refused with 403 before the channel sees it 11ms
+ ✓ |unit| src/realtime/__tests__/hub.principal-cap.test.ts > a web session: four sockets, then the newest takes the place of the oldest > four tabs are open side by side; the fifth is admitted and the FIRST is closed with 1013 45ms
+ ✓ |unit| src/realtime/__tests__/hub.principal-cap.test.ts > a web session: four sockets, then the newest takes the place of the oldest > a second operator is still admitted, and so is another session of the same operator: each session has its own four 13ms
+ ✓ |unit| src/realtime/__tests__/hub.principal-cap.test.ts > a web session: four sockets, then the newest takes the place of the oldest > the displaced socket is sent nothing more, and the log names it, its principal and the socket that replaced it, nothing else 13ms
+ ✓ |unit| src/realtime/__tests__/hub.principal-cap.test.ts > a web session: four sockets, then the newest takes the place of the oldest > a socket that is being closed, or that the client closed, holds no place: the next one displaces nobody 7ms
+ ✓ |unit| src/realtime/__tests__/hub.principal-cap.test.ts > a paired device: two sockets of its device credential; a session on it is a principal of its own > two sockets of the device credential are open; a third is admitted and the oldest is closed with 1013 3ms
+ ✓ |unit| src/realtime/__tests__/hub.principal-cap.test.ts > a paired device: two sockets of its device credential; a session on it is a principal of its own > the device's own socket, a password session and a biometric session of one operator on that device are three principals: all three stay open 3ms
+ ✓ |unit| src/realtime/__tests__/hub.principal-cap.test.ts > a paired device: two sockets of its device credential; a session on it is a principal of its own > a session on a device has the four of any session: its fifth socket closes its own oldest, and neither the device's socket nor another session on the device 4ms
+ ✓ |unit| src/realtime/__tests__/hub.principal-cap.test.ts > a paired device: two sockets of its device credential; a session on it is a principal of its own > another device, and a web session of the same operator, are other principals 4ms
+ ✓ |unit| src/realtime/__tests__/hub.principal-cap.test.ts > a reconnect storm of one client does not lock it out, and costs nobody else anything > forty sockets of one session in a row, none of them closed by the client: every one is admitted, four are open, the others were displaced 43ms
+ ✓ |unit| src/realtime/__tests__/hub.principal-cap.test.ts > a reconnect storm of one client does not lock it out, and costs nobody else anything > the same for a device that reconnects again and again with its device credential: two are open, never more, and the session on it is not touched 3ms
+ ✓ |unit| src/realtime/__tests__/hub.principal-cap.test.ts > a reconnect storm of one client does not lock it out, and costs nobody else anything > displaced sockets that their peer never closes are destroyed at the close deadline and forgotten: the storm leaves nothing behind 9ms
+ ✓ |unit| src/realtime/__tests__/hub.principal-cap.test.ts > the caps shared by everybody are unchanged > sixteen sockets are open with every principal at its own cap; a seventeenth of a NEW principal is closed with 1013 and displaces nobody 7ms
+ ✓ |unit| src/realtime/__tests__/hub.principal-cap.test.ts > the caps shared by everybody are unchanged > with the hub full, a principal at its own cap still reconnects: its newest takes the place of its oldest and the total stays 16 7ms
+ ✓ |unit| src/realtime/__tests__/hub.principal-cap.test.ts > the caps shared by everybody are unchanged > with the hub full, a principal BELOW its own cap is refused like anybody, as before: its sockets are not swapped to make room 6ms
+ ✓ |unit| src/realtime/__tests__/hub.principal-cap.test.ts > the caps shared by everybody are unchanged > a socket without a principal has no cap of its own: the seventh is refused, not swapped for the first 1ms
+ ✓ |unit| src/realtime/__tests__/hub.principal-cap.test.ts > the caps shared by everybody are unchanged > an upgrade whose session ended before it arrived is admitted without a principal and counts under none 2ms
+ ✓ |unit| src/realtime/__tests__/hub.principal-cap.test.ts > the caps shared by everybody are unchanged > a bearer value that did not resolve is told so and counts under no principal 2ms
+ ✓ |unit| src/realtime/__tests__/plugin.test.ts > the socket route (decision D83 DN-3) > a socket the route took is the socket library's: the guard holds none, and its bound never ends an open socket 763ms
+ ✓ |unit| src/realtime/__tests__/hub.control.test.ts > session.updated: a role change (AC-B-19) > goes to every socket of that operator's sessions, on the web and on a device, and to nobody else; nobody is closed 15ms
+ ✓ |unit| src/realtime/__tests__/hub.control.test.ts > session.updated: a role change (AC-B-19) > the permissions sent are the publication's, as read in the unit that changed the role, not a table of this process 5ms
+ ✓ |unit| src/realtime/__tests__/hub.control.test.ts > session.updated: a role change (AC-B-19) > the topic membership follows at once: admin.changed goes to whoever holds the permission after the change 5ms
+ ✓ |unit| src/realtime/__tests__/hub.control.test.ts > admin.changed: a hint for the holders of the permission (spec §9.2) > USERS goes to OPERATOR sockets that hold USER_ADMIN, names the list only, and reaches no DEVICE or ANONYMOUS socket 4ms
+ ✓ |unit| src/realtime/__tests__/hub.control.test.ts > admin.changed: a hint for the holders of the permission (spec §9.2) > DEVICES goes to OPERATOR sockets that hold PAIRING_MANAGE, names the list only, and reaches no DEVICE or ANONYMOUS socket 4ms
+ ✓ |unit| src/realtime/__tests__/hub.control.test.ts > admin.changed: a hint for the holders of the permission (spec §9.2) > PAIRING_CODE goes to OPERATOR sockets that hold PAIRING_MANAGE, names the list only, and reaches no DEVICE or ANONYMOUS socket 4ms
+ ✓ |unit| src/realtime/__tests__/hub.control.test.ts > session.ended: the event, then close 4401, on exactly the sockets of those sessions (SR-41, AC-B-20) > SIGNED_OUT 6ms
+ ✓ |unit| src/realtime/__tests__/hub.control.test.ts > session.ended: the event, then close 4401, on exactly the sockets of those sessions (SR-41, AC-B-20) > IDLE_EXPIRED 9ms
+ ✓ |unit| src/realtime/__tests__/hub.control.test.ts > session.ended: the event, then close 4401, on exactly the sockets of those sessions (SR-41, AC-B-20) > ABSOLUTE_EXPIRED 4ms
+ ✓ |unit| src/realtime/__tests__/hub.control.test.ts > session.ended: the event, then close 4401, on exactly the sockets of those sessions (SR-41, AC-B-20) > ROTATED 4ms
+ ✓ |unit| src/realtime/__tests__/hub.control.test.ts > session.ended: the event, then close 4401, on exactly the sockets of those sessions (SR-41, AC-B-20) > USER_DISABLED 4ms
+ ✓ |unit| src/realtime/__tests__/hub.control.test.ts > session.ended: the event, then close 4401, on exactly the sockets of those sessions (SR-41, AC-B-20) > TOKEN_REUSE 3ms
+ ✓ |unit| src/realtime/__tests__/hub.control.test.ts > session.ended: the event, then close 4401, on exactly the sockets of those sessions (SR-41, AC-B-20) > the reasons of the seam are the reasons of the contract 1ms
+ ✓ |unit| src/realtime/__tests__/hub.control.test.ts > session.ended: the event, then close 4401, on exactly the sockets of those sessions (SR-41, AC-B-20) > several sessions in one publication (a disabled user): each of their sockets, and another session of nobody else 4ms
+ ✓ |unit| src/realtime/__tests__/hub.control.test.ts > session.ended: the event, then close 4401, on exactly the sockets of those sessions (SR-41, AC-B-20) > nothing is sent after the close, and a session nobody holds a socket for changes nothing 13ms
+ ✓ |unit| src/realtime/__tests__/hub.control.test.ts > device.revoked: the event, then close 4403, on every socket of the device (spec §4.7) > REVOKED: its DEVICE socket and the sockets of sessions bound to it; no other device, no web session 4ms
+ ✓ |unit| src/realtime/__tests__/hub.control.test.ts > device.revoked: the event, then close 4403, on every socket of the device (spec §4.7) > UNPAIRED: its DEVICE socket and the sockets of sessions bound to it; no other device, no web session 3ms
+ ✓ |unit| src/realtime/__tests__/hub.control.test.ts > device.revoked: the event, then close 4403, on every socket of the device (spec §4.7) > a DEVICE socket is sent nothing else of the control topic 4ms
+ ✓ |unit| src/realtime/__tests__/hub.control.test.ts > an upgrade that was resolved before a publication and arrives after it (SR-41) > a web session that ended meanwhile is admitted as ANONYMOUS with SESSION_INVALID and gets no state 8ms
+ ✓ |unit| src/realtime/__tests__/hub.control.test.ts > an upgrade that was resolved before a publication and arrives after it (SR-41) > a bearer session that ended meanwhile gets hello with SESSION_INVALID and close 4401 1ms
+ ✓ |unit| src/realtime/__tests__/hub.control.test.ts > an upgrade that was resolved before a publication and arrives after it (SR-41) > a device that was retired meanwhile gets hello with DEVICE_REVOKED and close 4403, as DEVICE and as the session of an operator 1ms
+ ✓ |unit| src/realtime/__tests__/hub.control.test.ts > an upgrade that was resolved before a publication and arrives after it (SR-41) > a role that changed meanwhile: the socket is admitted with the published role and its permissions 21ms
+ ✓ |unit| src/realtime/__tests__/hub.control.test.ts > an upgrade that was resolved before a publication and arrives after it (SR-41) > a new epoch forgets the published roles (a reset re-seeds them) and keeps the ended sessions 4ms
+ ✓ |unit| src/realtime/__tests__/hub.control.test.ts > an upgrade that was resolved before a publication and arrives after it (SR-41) > the memory lasts 60 s of the server clock and is cleared by the pace step 3ms
+ ✓ |unit| src/realtime/__tests__/hub.control.test.ts > the presence counter and the tablet link (spec §6.5, §6.8; decision D93 DN-6) > a DEVICE socket and an OPERATOR socket bound to a device count; a web session and an anonymous socket do not 3ms
+ ✓ |unit| src/realtime/__tests__/hub.control.test.ts > the presence counter and the tablet link (spec §6.5, §6.8; decision D93 DN-6) > the link goes OFFLINE 5 s after the last device socket closed, at the pace step, and not earlier 1ms
+ ✓ |unit| src/realtime/__tests__/hub.control.test.ts > the presence counter and the tablet link (spec §6.5, §6.8; decision D93 DN-6) > a device that reconnects within 5 s does not toggle the link 1ms
+ ✓ |unit| src/realtime/__tests__/hub.control.test.ts > the presence counter and the tablet link (spec §6.5, §6.8; decision D93 DN-6) > a revoked device takes the link OFFLINE at once when no other device socket is open, and not while one is 1ms
+ ✓ |unit| src/realtime/__tests__/hub.control.test.ts > the presence counter and the tablet link (spec §6.5, §6.8; decision D93 DN-6) > a socket that the server closes leaves the presence counter with the close, not when the peer answers 1ms
+ ✓ |unit| src/realtime/__tests__/hub.control.test.ts > the presence counter and the tablet link (spec §6.5, §6.8; decision D93 DN-6) > a call that was not committed is tried again, not before 1 s, and reported once 6ms
+ ✓ |unit| src/realtime/__tests__/hub.control.test.ts > the presence counter and the tablet link (spec §6.5, §6.8; decision D93 DN-6) > a run of failures is reported once; after a call that was committed, the next failure is reported again 2ms
+ ✓ |unit| src/realtime/__tests__/hub.control.test.ts > the presence counter and the tablet link (spec §6.5, §6.8; decision D93 DN-6) > while the engine does not run nothing is set; after its start the link follows the open sockets again 3ms
+ ✓ |unit| src/realtime/__tests__/hub.control.test.ts > the presence counter and the tablet link (spec §6.5, §6.8; decision D93 DN-6) > the stop of the server sets nothing: the engine has stopped, and the next start writes the truthful row 2ms
+ ✓ |unit| src/realtime/__tests__/plugin.test.ts > the socket route (decision D83 DN-3) > a socket without a credential: hello and a heartbeat, epoch 0 while the engine never started, and nothing of what is published 761ms
+ ✓ |unit| src/realtime/__tests__/plugin.test.ts > the timers and the stop (spec §8.6) > no timer runs before the server listens; the timer can be replaced until then 7ms
+ ✓ |unit| src/realtime/__tests__/hub.lifetime.test.ts > one socket: what it is sent when it opens > ANONYMOUS: hello with the heartbeat topic, then a connect-time heartbeat without a session state, and nothing else 14ms
+ ✓ |unit| src/realtime/__tests__/hub.lifetime.test.ts > one socket: what it is sent when it opens > a cookie that no longer resolves: the same, with hello.reason SESSION_INVALID, and the socket stays open 3ms
+ ✓ |unit| src/realtime/__tests__/hub.lifetime.test.ts > one socket: what it is sent when it opens > DEVICE: hello with heartbeat and control, then the heartbeat without a session state 6ms
+ ✓ |unit| src/realtime/__tests__/hub.lifetime.test.ts > one socket: what it is sent when it opens > OPERATOR: hello, ONE snapshot of the 28 slices at the engine's position, then the heartbeat with the real session state 37ms
+ ✓ |unit| src/realtime/__tests__/hub.lifetime.test.ts > one socket: what it is sent when it opens > an OPERATOR with USER_ADMIN or PAIRING_MANAGE is also given the admin topic 5ms
+ ✓ |unit| src/realtime/__tests__/hub.lifetime.test.ts > one socket: what it is sent when it opens > while the engine does not run an OPERATOR gets hello and the heartbeat; the snapshot comes with the start 4ms
+ ✓ |unit| src/realtime/__tests__/hub.lifetime.test.ts > one socket: what it is sent when it opens > a bearer value that did not resolve: hello with the reason, then close 4401; nothing more, and it counts nowhere 2ms
+ ✓ |unit| src/realtime/__tests__/hub.lifetime.test.ts > one socket: what it is sent when it opens > a bearer value of a retired device: hello with DEVICE_REVOKED, then close 4403 1ms
+ ✓ |unit| src/realtime/__tests__/hub.lifetime.test.ts > one socket: what it is sent when it opens > every connection has its own ID, and the log names a socket by that ID and a principal reference only 2ms
+ ✓ |unit| src/realtime/__tests__/hub.lifetime.test.ts > the caps: 16 connections, of which 6 anonymous (RT-P6, SR-42, AC-B-85) > the seventh anonymous socket is closed with 1013 and gets nothing, while an operator and a device are accepted 2ms
+ ✓ |unit| src/realtime/__tests__/hub.lifetime.test.ts > the caps: 16 connections, of which 6 anonymous (RT-P6, SR-42, AC-B-85) > a bearer value that does not resolve is told so, also while the anonymous places are taken 1ms
+ ✓ |unit| src/realtime/__tests__/hub.lifetime.test.ts > the caps: 16 connections, of which 6 anonymous (RT-P6, SR-42, AC-B-85) > the 17th connection of any kind is closed with 1013 8ms
+ ✓ |unit| src/realtime/__tests__/hub.lifetime.test.ts > the caps: 16 connections, of which 6 anonymous (RT-P6, SR-42, AC-B-85) > a socket that closed, or that the server is closing, frees its place at once 3ms
+ ✓ |unit| src/realtime/__tests__/hub.lifetime.test.ts > the caps: 16 connections, of which 6 anonymous (RT-P6, SR-42, AC-B-85) > the cap refusal is logged with the counts and no credential 2ms
+ ✓ |unit| src/realtime/__tests__/hub.lifetime.test.ts > the heartbeat (RT-P1) > goes to every open socket with a growing seq, the server time, the uptime and the number of clients 6ms
+ ✓ |unit| src/realtime/__tests__/hub.lifetime.test.ts > the heartbeat (RT-P1) > a socket that is being closed gets no heartbeat 2ms
+ ✓ |unit| src/realtime/__tests__/hub.lifetime.test.ts > the protocol ping (RT-P3) > pings every socket; a socket that answered is pinged again, one that did not is destroyed 2ms
+ ✓ |unit| src/realtime/__tests__/hub.lifetime.test.ts > the close deadline (RT-P12) > a socket the server closed is destroyed at the pace step that finds the grace passed, and not before 2ms
+ ✓ |unit| src/realtime/__tests__/hub.lifetime.test.ts > the close deadline (RT-P12) > a socket that answered the close frame in time is not destroyed 2ms
+ ✓ |unit| src/realtime/__tests__/hub.lifetime.test.ts > the close deadline (RT-P12) > a socket that reported an error is given the grace, then destroyed; one that cannot be written to is destroyed at once 1ms
+ ✓ |unit| src/realtime/__tests__/hub.lifetime.test.ts > the close deadline (RT-P12) > the log line of a closed socket names the code, who closed it, the principal reference and the duration 2ms
+ ✓ |unit| src/realtime/__tests__/hub.lifetime.test.ts > the stop (spec §8.6) > closes every socket with 1001, admits no other, and destroys on request what is left 2ms
+ ✓ |unit| src/realtime/__tests__/hub.lifetime.test.ts > the stop (spec §8.6) > onChange tells a listener about every admission and every closing, and stops when asked 1ms
+ ✓ |unit| src/realtime/__tests__/hub.lifetime.test.ts > client messages (spec §9.4; RT-P5; SR-38, SR-51) > a binary frame closes an OPERATOR socket with 1008 1ms
+ ✓ |unit| src/realtime/__tests__/hub.lifetime.test.ts > client messages (spec §9.4; RT-P5; SR-38, SR-51) > a valid message in a binary frame closes an OPERATOR socket with 1008 1ms
+ ✓ |unit| src/realtime/__tests__/hub.lifetime.test.ts > client messages (spec §9.4; RT-P5; SR-38, SR-51) > text that is not JSON closes an OPERATOR socket with 1008 1ms
+ ✓ |unit| src/realtime/__tests__/hub.lifetime.test.ts > client messages (spec §9.4; RT-P5; SR-38, SR-51) > an empty frame closes an OPERATOR socket with 1008 2ms
+ ✓ |unit| src/realtime/__tests__/hub.lifetime.test.ts > client messages (spec §9.4; RT-P5; SR-38, SR-51) > JSON that is no object closes an OPERATOR socket with 1008 2ms
+ ✓ |unit| src/realtime/__tests__/hub.lifetime.test.ts > client messages (spec §9.4; RT-P5; SR-38, SR-51) > an unknown type closes an OPERATOR socket with 1008 2ms
+ ✓ |unit| src/realtime/__tests__/hub.lifetime.test.ts > client messages (spec §9.4; RT-P5; SR-38, SR-51) > a server message closes an OPERATOR socket with 1008 2ms
+ ✓ |unit| src/realtime/__tests__/hub.lifetime.test.ts > client messages (spec §9.4; RT-P5; SR-38, SR-51) > a subscribe to another topic closes an OPERATOR socket with 1008 3ms
+ ✓ |unit| src/realtime/__tests__/hub.lifetime.test.ts > client messages (spec §9.4; RT-P5; SR-38, SR-51) > a subscribe without a topic closes an OPERATOR socket with 1008 3ms
+ ✓ |unit| src/realtime/__tests__/hub.lifetime.test.ts > client messages (spec §9.4; RT-P5; SR-38, SR-51) > a resync with a token member closes an OPERATOR socket with 1008 2ms
+ ✓ |unit| src/realtime/__tests__/hub.lifetime.test.ts > client messages (spec §9.4; RT-P5; SR-38, SR-51) > an authenticate message closes an OPERATOR socket with 1008 2ms
+ ✓ |unit| src/realtime/__tests__/hub.lifetime.test.ts > client messages (spec §9.4; RT-P5; SR-38, SR-51) > a message authenticates nothing and nothing of it reaches the log (SR-38, SR-51) 2ms
+ ✓ |unit| src/realtime/__tests__/hub.lifetime.test.ts > client messages (spec §9.4; RT-P5; SR-38, SR-51) > subscribe from an ANONYMOUS or a DEVICE socket closes it with 1008: only an OPERATOR may send 2ms
+ ✓ |unit| src/realtime/__tests__/hub.lifetime.test.ts > client messages (spec §9.4; RT-P5; SR-38, SR-51) > unsubscribe from an ANONYMOUS or a DEVICE socket closes it with 1008: only an OPERATOR may send 2ms
+ ✓ |unit| src/realtime/__tests__/hub.lifetime.test.ts > client messages (spec §9.4; RT-P5; SR-38, SR-51) > resync from an ANONYMOUS or a DEVICE socket closes it with 1008: only an OPERATOR may send 2ms
+ ✓ |unit| src/realtime/__tests__/hub.lifetime.test.ts > client messages (spec §9.4; RT-P5; SR-38, SR-51) > subscribe and unsubscribe switch the meters of an OPERATOR socket and are answered with nothing 2ms
+ ✓ |unit| src/realtime/__tests__/hub.lifetime.test.ts > client messages (spec §9.4; RT-P5; SR-38, SR-51) > 30 messages in 10 s are accepted, the 31st closes with 1008; a window later the count starts again 3ms
+ ✓ |unit| src/realtime/__tests__/hub.lifetime.test.ts > client messages (spec §9.4; RT-P5; SR-38, SR-51) > the window is 10 s to the millisecond: 30 messages at one instant block a 31st for 9,999 ms and no longer 4ms
+ ✓ |unit| src/realtime/__tests__/hub.lifetime.test.ts > client messages (spec §9.4; RT-P5; SR-38, SR-51) > messages that are refused count too, and a socket that is being closed is not read any more 1ms
+ ✓ |unit| src/realtime/__tests__/plugin.test.ts > the timers and the stop (spec §8.6) > closing the app closes every socket with 1001, and the log names each socket by its ID only 760ms
+ ✓ |unit| src/realtime/__tests__/static.test.ts > the scan itself > reads the production sources of the folder 1ms
+ ✓ |unit| src/realtime/__tests__/static.test.ts > the scan itself > finds each forbidden text when it is present (positive control) 2ms
+ ✓ |unit| src/realtime/__tests__/static.test.ts > SR-38: authentication is not decided in this folder > nothing reads a header, a cookie, the URL, a query string or a subprotocol 0ms
+ ✓ |unit| src/realtime/__tests__/static.test.ts > SR-38: authentication is not decided in this folder > nothing resolves a credential: the route reads request.principal and authenticationOf(request) 1ms
+ ✓ |unit| src/realtime/__tests__/static.test.ts > SR-38: authentication is not decided in this folder > nothing holds a token, a cookie value, a credential or a password (spec §9.5) 0ms
+ ✓ |unit| src/realtime/__tests__/static.test.ts > M8: one clock, and no timer of its own > no production file reads the system time, sets a timer or draws a random number 0ms
+ ✓ |unit| src/realtime/__tests__/static.test.ts > M8: one clock, and no timer of its own > the three steps come from the injected timer, and only the plugin starts them 0ms
+ ✓ |unit| src/realtime/__tests__/static.test.ts > M8: one clock, and no timer of its own > CPS1-4: the bound of a handshake is the server clock's, checked at the pace step; no socket gets a timer of its own 0ms
+ ✓ |unit| src/realtime/__tests__/static.test.ts > M8: one clock, and no timer of its own > CPS1-4: every upgrade is handed to the guard first, and the guard is told of every way a handshake ends 1ms
+ ✓ |unit| src/realtime/__tests__/static.test.ts > the channel writes nothing > no unit of work, no statement, no audit row, no hosted command 0ms
+ ✓ |unit| src/realtime/__tests__/static.test.ts > the channel writes nothing > the one call that changes state is setTabletLink, in the tablet link 0ms
+ ✓ |unit| src/realtime/__tests__/static.test.ts > the channel writes nothing > nothing reads the environment or listens 0ms
+ ✓ |unit| src/realtime/__tests__/static.test.ts > the socket library is behind the transport > only index.ts names it; the hub, the admission and the messages run without it 0ms
+ ✓ |unit| src/realtime/__tests__/static.test.ts > the socket library is behind the transport > RT-P4, RT-P7, SR-38: the message size is capped, compression is off, no subprotocol is selected 0ms
+ ✓ |unit| src/realtime/__tests__/static.test.ts > the socket library is behind the transport > exactly one route is registered, on the contract's path 0ms
+ ✓ |unit| src/realtime/__tests__/static.test.ts > the numbers of the protocol are constants > no close code is written as a number: they are the contract's RealtimeCloseCode 0ms
+ ✓ |unit| src/realtime/__tests__/static.test.ts > the numbers of the protocol are constants > the numbers a client and the server share are imported from the contract, not repeated 0ms
+ ✓ |unit| src/realtime/__tests__/static.test.ts > RB-3: the role table of this process decides nothing > no role name and no role table: a socket's permissions are what stage 4 read and what a publication carried 0ms
+ ✓ |unit| src/realtime/__tests__/static.test.ts > SR-48, SR-51: logging > no console call, and no log call names a frame, a message or a state 0ms
+ ✓ |unit| src/realtime/__tests__/messages.test.ts > each builder gives a message of its schema and of the union > hello: with and without a reason, for each principal 6ms
+ ✓ |unit| src/realtime/__tests__/messages.test.ts > each builder gives a message of its schema and of the union > heartbeat: the unchanged member, with an ISO time and a session state or null 18ms
+ ✓ |unit| src/realtime/__tests__/messages.test.ts > each builder gives a message of its schema and of the union > snapshot: exactly the 28 replicated slices of a real state, and none of the five others 96ms
+ ✓ |unit| src/realtime/__tests__/messages.test.ts > each builder gives a message of its schema and of the union > delta: the ops of a real change, unchanged 16ms
+ ✓ |unit| src/realtime/__tests__/messages.test.ts > each builder gives a message of its schema and of the union > meters: the audio slice of a real state 5ms
+ ✓ |unit| src/realtime/__tests__/messages.test.ts > each builder gives a message of its schema and of the union > the four control messages 1ms
+ ✓ |unit| src/realtime/__tests__/messages.test.ts > each builder gives a message of its schema and of the union > there is a builder for every member of the union, and no other 0ms
+ ✓ |unit| src/realtime/__tests__/admission.test.ts > admissionOf: who a socket is > an OPERATOR principal is an OPERATOR socket with the IDs and the permissions stage 4 read, from a cookie or a bearer 2ms
+ ✓ |unit| src/realtime/__tests__/admission.test.ts > admissionOf: who a socket is > a DEVICE principal is a DEVICE socket 0ms
+ ✓ |unit| src/realtime/__tests__/admission.test.ts > admissionOf: who a socket is > no credential: ANONYMOUS, no reason, the socket stays open 0ms
+ ✓ |unit| src/realtime/__tests__/admission.test.ts > admissionOf: who a socket is > the cookie that does not resolve (MALFORMED): ANONYMOUS with SESSION_INVALID, and the socket stays open 0ms
+ ✓ |unit| src/realtime/__tests__/admission.test.ts > admissionOf: who a socket is > the cookie that does not resolve (UNKNOWN): ANONYMOUS with SESSION_INVALID, and the socket stays open 0ms
+ ✓ |unit| src/realtime/__tests__/admission.test.ts > admissionOf: who a socket is > the cookie that does not resolve (ENDED): ANONYMOUS with SESSION_INVALID, and the socket stays open 0ms
+ ✓ |unit| src/realtime/__tests__/admission.test.ts > admissionOf: who a socket is > the cookie that does not resolve (OPERATOR_DISABLED): ANONYMOUS with SESSION_INVALID, and the socket stays open 0ms
+ ✓ |unit| src/realtime/__tests__/admission.test.ts > admissionOf: who a socket is > the cookie that does not resolve (DEVICE_UNKNOWN): ANONYMOUS with SESSION_INVALID, and the socket stays open 0ms
+ ✓ |unit| src/realtime/__tests__/admission.test.ts > admissionOf: who a socket is > the cookie that does not resolve (DEVICE_RETIRED): ANONYMOUS with SESSION_INVALID, and the socket stays open 0ms
+ ✓ |unit| src/realtime/__tests__/admission.test.ts > admissionOf: who a socket is > a bearer value that does not resolve (MALFORMED): hello with SESSION_INVALID, then close 4401 0ms
+ ✓ |unit| src/realtime/__tests__/admission.test.ts > admissionOf: who a socket is > a bearer value that does not resolve (UNKNOWN): hello with SESSION_INVALID, then close 4401 0ms
+ ✓ |unit| src/realtime/__tests__/admission.test.ts > admissionOf: who a socket is > a bearer value that does not resolve (ENDED): hello with SESSION_INVALID, then close 4401 0ms
+ ✓ |unit| src/realtime/__tests__/admission.test.ts > admissionOf: who a socket is > a bearer value that does not resolve (OPERATOR_DISABLED): hello with SESSION_INVALID, then close 4401 0ms
+ ✓ |unit| src/realtime/__tests__/admission.test.ts > admissionOf: who a socket is > a bearer value that does not resolve (DEVICE_UNKNOWN): hello with SESSION_INVALID, then close 4401 0ms
+ ✓ |unit| src/realtime/__tests__/admission.test.ts > admissionOf: who a socket is > a bearer value of a retired device: hello with DEVICE_REVOKED, then close 4403, by the principal or by the failure 0ms
+ ✓ |unit| src/realtime/__tests__/admission.test.ts > admissionOf: who a socket is > a bearer value is never left open as ANONYMOUS, whatever stage 4 says about it 0ms
+ ✓ |unit| src/realtime/__tests__/admission.test.ts > admissionOf: who a socket is > the two builders name the two reasons and the two codes 0ms
+ ✓ |unit| src/realtime/__tests__/admission.test.ts > beyondCap: 16 connections, of which 6 anonymous (RT-P6, AC-B-85) > the numbers are the specification's 0ms
+ ✓ |unit| src/realtime/__tests__/admission.test.ts > beyondCap: 16 connections, of which 6 anonymous (RT-P6, AC-B-85) > the sixth anonymous socket is accepted, the seventh is not; an operator and a device still are 0ms
+ ✓ |unit| src/realtime/__tests__/admission.test.ts > beyondCap: 16 connections, of which 6 anonymous (RT-P6, AC-B-85) > anonymous sockets are counted apart: ten operators leave six anonymous places, not fewer 0ms
+ ✓ |unit| src/realtime/__tests__/admission.test.ts > beyondCap: 16 connections, of which 6 anonymous (RT-P6, AC-B-85) > the 17th connection of any kind is beyond the cap 0ms
+ ✓ |unit| src/realtime/__tests__/admission.test.ts > the cap of one principal (review finding CPS1-5) > the numbers: four sockets of one operator session (four tabs of a console), two of one device credential (its socket and the overlap of a reconnect) 0ms
+ ✓ |unit| src/realtime/__tests__/admission.test.ts > the cap of one principal (review finding CPS1-5) > principalKeyOf: an OPERATOR socket by its session row, on the web and on a device; a DEVICE socket by its device; nothing without a principal 0ms
+ ✓ |unit| src/realtime/__tests__/admission.test.ts > the cap of one principal (review finding CPS1-5) > two sessions of ONE operator are two principals, on the web and on one device; the device's own socket is a third 0ms
+ ✓ |unit| src/realtime/__tests__/admission.test.ts > the cap of one principal (review finding CPS1-5) > principalCapOf: the device cap for a device key, the session cap for a session key 0ms
+ ✓ |unit| src/realtime/__tests__/admission.test.ts > the cap of one principal (review finding CPS1-5) > displacedBy: nobody below the cap, the oldest one at the cap, and as many as it takes above it 0ms
+ ✓ |unit| src/realtime/__tests__/admission.test.ts > topicsOf: what hello names (spec §9.2) > ANONYMOUS: the heartbeat and nothing else, with or without a reason 0ms
+ ✓ |unit| src/realtime/__tests__/admission.test.ts > topicsOf: what hello names (spec §9.2) > DEVICE: the heartbeat and control 0ms
+ ✓ |unit| src/realtime/__tests__/admission.test.ts > topicsOf: what hello names (spec §9.2) > OPERATOR: control, state and meters; admin only with USER_ADMIN or PAIRING_MANAGE 0ms
+ ✓ |unit| src/realtime/__tests__/admission.test.ts > topicsOf: what hello names (spec §9.2) > never more than the contract gives the principal, each topic once, the heartbeat always 1ms
+ ✓ |unit| src/realtime/__tests__/handshake.test.ts > the numbers > a handshake has 5,000 ms, longer than a client waits for hello; 32 sockets may wait at one time, twice the connection cap 1ms
+ ✓ |unit| src/realtime/__tests__/handshake.test.ts > one upgrade request ends in one of three ways > taken by the socket route: the guard forgets it, takes its listeners off and never touches it again 1ms
+ ✓ |unit| src/realtime/__tests__/handshake.test.ts > one upgrade request ends in one of three ways > answered over HTTP: the socket is destroyed at once, and an error on it afterwards is still caught 1ms
+ ✓ |unit| src/realtime/__tests__/handshake.test.ts > one upgrade request ends in one of three ways > neither: destroyed by the sweep at the bound, and not a millisecond before 0ms
+ ✓ |unit| src/realtime/__tests__/handshake.test.ts > one upgrade request ends in one of three ways > a request the guard does not know changes nothing 0ms
+ ✓ |unit| src/realtime/__tests__/handshake.test.ts > the peer, while the socket waits > a peer that resets the connection is no unhandled error: the socket is destroyed and forgotten 0ms
+ ✓ |unit| src/realtime/__tests__/handshake.test.ts > the peer, while the socket waits > a peer that ends is not left half open 0ms
+ ✓ |unit| src/realtime/__tests__/handshake.test.ts > the peer, while the socket waits > after the route took the socket, an end or an error is the socket library's, not the guard's 0ms
+ ✓ |unit| src/realtime/__tests__/handshake.test.ts > the sweep > destroys those whose time is up, in the order they came, and leaves the others 0ms
+ ✓ |unit| src/realtime/__tests__/handshake.test.ts > the sweep > the stop destroys everything that waits 0ms
+ ✓ |unit| src/realtime/__tests__/handshake.test.ts > the cap of waiting sockets > at the cap the oldest waiting socket is destroyed and the new one waits in its place: a new upgrade is never kept out 0ms
+ ✓ |unit| src/realtime/__tests__/handshake.test.ts > the cap of waiting sockets > a flood of upgrades that never complete holds 32 sockets and no more, and a place that was freed is not counted 1ms
+
+ Test Files  9 passed (9)
+      Tests  200 passed (200)
+   Start at  19:32:09
+   Duration  4.37s (tests 44%, import 40%, transform 16%)
+
+exit=0

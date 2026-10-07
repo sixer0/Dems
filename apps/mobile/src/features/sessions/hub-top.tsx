@@ -9,6 +9,9 @@
  * - "Start New Session" opens `/session/new?step=1`; during CREATE/PRECHECK/ARMED it continues the
  *   setup at its step (§3.7 table); while a session is busy it is disabled with a hint, matching the
  *   route guard that refuses `/session/new` then (§3.5).
+ * - R2 (E-fix row FX-M2, E2E-P-5; decision D201): starting or continuing a setup needs
+ *   `SESSION_START`. Without it (TECHNICIAN) the button is disabled with "Requires the Investigator
+ *   role" (`useRoleGate`), as the web locks its Start; a role change pushed by the Core re-gates it.
  */
 import { Button } from 'heroui-native';
 import { Plus } from 'lucide-react-native';
@@ -16,12 +19,14 @@ import { useTranslation } from 'react-i18next';
 import { StyleSheet, Text, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { formatDuration } from '@dems/shared/realtime';
+import { Permission } from '@dems/shared/sim';
 import { derived, fontFamily, palette, spacing, statusText, typography } from '@dems/shared/tokens';
 import { RollingNumber } from '@/components/composed/rolling-number';
 import { SectionCard, SubjectTypeChip } from '@/components/kit';
 import { withAlpha } from '@/components/media/color';
 import { enterRise, triggerHaptic, useMotionPolicy, useMotionSettings } from '@/motion';
 import { isSessionBusy, sessionResyncHref } from '@/navigation';
+import { useRoleGate } from '@/features/rbac/use-role-gate';
 import { RecDot } from './rec-dot';
 import { SessionStatusChip } from './session-status-chip';
 import { activeRow, type SessionRow } from './sessions-model';
@@ -144,28 +149,39 @@ function StartButton() {
   const { t } = useTranslation();
   const push = useSafePush();
   const state = useCurrentSessionState();
+  const startGate = useRoleGate(Permission.SESSION_START);
   const busy = isSessionBusy(state);
+  // R2: no SESSION_START, no wizard (a busy session keeps its own reason, which comes first); an unknown role
+  // locks it too, with "Checking your permissions…" (ruling W93-11).
+  const locked = !busy && !startGate.allowed;
+  const disabled = busy || locked;
   const setup = state === 'CREATE' || state === 'PRECHECK' || state === 'ARMED';
   const href = setup ? (sessionResyncHref(state) ?? START_SESSION_HREF) : START_SESSION_HREF;
+  const hint = busy ? t('features.sessions.start.busyHint') : locked ? startGate.hint : null;
   return (
     <View style={styles.startWrap}>
       <Button
         testID="sessions-start"
         variant="primary"
         size="lg"
-        isDisabled={busy}
-        accessibilityHint={busy ? t('features.sessions.start.busyHint') : undefined}
+        isDisabled={disabled}
+        accessibilityHint={hint ?? undefined}
         onPress={() => {
+          if (disabled) return;
           triggerHaptic('primaryPress');
           push(href, 'start', { state });
         }}
       >
-        <Plus size={20} color={busy ? derived.foreground2 : palette.black} />
+        <Plus size={20} color={disabled ? derived.foreground2 : palette.black} />
         <Button.Label>{setup ? t('features.sessions.start.continueSetup') : t('common.actions.startNewSession')}</Button.Label>
       </Button>
       {busy ? (
         <Text maxFontSizeMultiplier={1.2} style={styles.caption} testID="sessions-start-busy">
           {t('features.sessions.start.busyHint')}
+        </Text>
+      ) : locked && hint ? (
+        <Text maxFontSizeMultiplier={1.2} style={styles.caption} testID="sessions-start-locked">
+          {hint}
         </Text>
       ) : null}
     </View>

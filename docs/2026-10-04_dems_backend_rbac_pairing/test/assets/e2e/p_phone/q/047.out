@@ -1,0 +1,12 @@
+10:17:56.829 declared screen live
+10:17:56.915 tap 540,1444
+10:17:57.164 slept 1500 ms
+10:17:58.715 screencap 43_monitor_resumed_after_relaunch.png 10:17:58.715..10:17:59.268
+10:17:59.324 mark a30 at 10:17:59.324
+10:17:59.390 deep link demsdemo:///session/recovery
+10:17:59.592 slept 4000 ms
+10:18:03.702 declared screen recovery
+10:18:03.749 screencap 44_recovery_deeplink_while_recording.png 10:18:03.749..10:18:04.334
+10:18:04.411 ids(3): screen-session-recovery@540,1212 ; recovery-other@540,1252 ; recovery-other-action@540,1374 "Return to the session"
+10:18:07.404 serverlog since a30 (0):
+    

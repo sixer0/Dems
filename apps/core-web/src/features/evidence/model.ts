@@ -117,6 +117,49 @@ export function buildEvidenceRow(item: EvidenceItem, operators: readonly SimOper
   }
 }
 
+/**
+ * Whether the DEMO package the guarded join gave the row describes THIS record: the package's own
+ * evidence ID, session ID and case number equal the item's (E-fix FX-W, E2E-W1-4). The join ignores
+ * the dated parts on purpose (D84 on F-47-1), so on any day but the generator's `asOf` day the joined
+ * package is the same demo interview with another record (`EV-20261001-0012` for `EV-20261006-0012`):
+ * its media may play, but its manifest is not this item's metadata.
+ */
+export function packageDescribesItem(
+  pkg: Pick<DemoEvidencePackage, 'evidenceId' | 'sessionId' | 'caseNumber'> | null,
+  item: Pick<EvidenceItem, 'id' | 'sessionId' | 'caseNumber'>,
+): boolean {
+  return pkg !== null && pkg.evidenceId === item.id && pkg.sessionId === item.sessionId && pkg.caseNumber === item.caseNumber
+}
+
+// ── Stored verification (E-fix FX-W, E2E-W1-3) ─────────────────────────────────────────────
+
+/** The custody action each verdict writes (simulator `verifyEvidenceTransition`; the Core's operation 41). */
+const VERIFY_CUSTODY_ACTION = { PASS: 'VERIFIED', FAIL: 'VERIFY_FAILED' } as const
+
+/** The record's last verification: its verdict, when, and who ran it. */
+export interface StoredVerification {
+  status: 'PASS' | 'FAIL'
+  at: EpochMs | null
+  /** The operator of the verification's custody entry; null for the system. */
+  actorId: string | null
+  /** False when the custody list holds no entry of that verification (who ran it is then not known). */
+  actorKnown: boolean
+}
+
+/**
+ * The verification the record holds (`item.verification`, kept by the Core server in Live mode and by
+ * the simulator in Simulated mode), with the actor of its custody entry: the entry of the same verdict
+ * at the same instant, else the latest entry of that verdict. Null when the record holds none.
+ */
+export function storedVerification(item: Pick<EvidenceItem, 'verification' | 'custody'>): StoredVerification | null {
+  const { status, at } = item.verification
+  if (status !== 'PASS' && status !== 'FAIL') return null
+  const action = VERIFY_CUSTODY_ACTION[status]
+  const entries = item.custody.filter((entry) => entry.action === action)
+  const entry = entries.findLast((candidate) => candidate.at === at) ?? entries.at(-1) ?? null
+  return { status, at, actorId: entry?.actorId ?? null, actorKnown: entry !== null }
+}
+
 /** Newest first (the list's default order). */
 export function buildEvidenceRows(items: readonly EvidenceItem[], operators: readonly SimOperator[]): EvidenceRow[] {
   return items.map((item) => buildEvidenceRow(item, operators)).sort((a, b) => b.item.recordedAt - a.item.recordedAt)

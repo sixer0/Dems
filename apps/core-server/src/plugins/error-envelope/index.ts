@@ -48,6 +48,7 @@ export {
   invalidJson,
   invalidPath,
   methodNotAllowed,
+  NOT_SIGNED_IN_TEXT,
   notFound,
   notReady,
   payloadTooLarge,

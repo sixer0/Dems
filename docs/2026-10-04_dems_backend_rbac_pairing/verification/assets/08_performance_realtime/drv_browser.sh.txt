@@ -1,0 +1,44 @@
+#!/bin/sh
+# R-S re-test: this row's OWN headless shell (Playwright cache chromium_headless_shell-1243), raw CDP on an
+# OS-assigned port (--remote-debugging-port=0, read back from DevToolsActivePort), fresh profile in $TMPDIR.
+#   sh browser.sh start | check | stop
+set -u
+SP=/private/tmp/claude-501/-Users-gsp-budi-Documents-DEMS/0d71fd65-4a51-4019-9c48-5c92d11bbdaf/scratchpad/w98
+OUT=/Users/gsp-budi/Documents/DEMS/docs/2026-10-04_dems_backend_rbac_pairing/verification/assets/08_performance_realtime
+BIN="$HOME/Library/Caches/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-mac-arm64/chrome-headless-shell"
+TMPBASE=${TMPDIR:-/tmp/claude-501}
+C=${2:-a}
+case "$1" in
+start)
+  PROFILE="$TMPBASE/w98_profile_${C}_$(date +%H%M%S)"
+  mkdir -p "$PROFILE"
+  echo "$PROFILE" > "$SP/profile_dir_$C"
+  nohup "$BIN" --remote-debugging-port=0 --remote-debugging-address=127.0.0.1 --user-data-dir="$PROFILE" \
+    --no-first-run --no-default-browser-check --disable-background-networking --disable-component-update --disable-sync --disable-default-apps --disable-domain-reliability --window-size=1920,1080 about:blank > "$SP/chrome_$C.log" 2>&1 &
+  PID=$!
+  echo "$PID" > "$SP/browser_pid_$C"
+  i=0; until [ -s "$PROFILE/DevToolsActivePort" ] || [ $i -ge 100 ]; do i=$((i + 1)); sleep 0.2; done
+  PORT=$(head -n 1 "$PROFILE/DevToolsActivePort")
+  echo "$PORT" > "$SP/cdp_port_$C"
+  echo "-- started pid $PID; profile $PROFILE; CDP port $PORT (OS-assigned)"
+  ps -p "$PID" -o pid=,command= | cut -c1-260
+  ;;
+check)
+  PID=$(cat "$SP/browser_pid_$C"); PROFILE=$(cat "$SP/profile_dir_$C"); PORT=$(cat "$SP/cdp_port_$C")
+  CMD=$(ps -p "$PID" -o command= 2>/dev/null)
+  case "$CMD" in *"$PROFILE"*) echo "-- pid $PID is this row's browser (profile $PROFILE), CDP port $PORT";; *) echo "-- pid $PID is NOT this row's browser: '$CMD'"; exit 3;; esac
+  lsof -nP -a -p "$PID" -iTCP -sTCP:LISTEN 2>/dev/null | tail -n +2 | awk '{print "   listening:", $9}'
+  ;;
+stop)
+  PID=$(cat "$SP/browser_pid_$C"); PROFILE=$(cat "$SP/profile_dir_$C")
+  CMD=$(ps -p "$PID" -o command= 2>/dev/null)
+  case "$CMD" in
+    *"$PROFILE"*) kill "$PID"; sleep 2; ps -p "$PID" >/dev/null 2>&1 && kill -9 "$PID"; echo "-- stopped pid $PID";;
+    "") echo "-- pid $PID already gone";;
+    *) echo "-- pid $PID is not this row's browser; nothing killed"; exit 3;;
+  esac
+  LEFT=$(ps -axo pid=,command= | grep -F "$PROFILE" | grep -v grep | awk '{print $1}')
+  [ -n "$LEFT" ] && { echo "-- helper processes of this profile still running: $LEFT; stopping them"; kill $LEFT 2>/dev/null; }
+  rm -rf "$PROFILE" && echo "-- profile removed: $PROFILE"
+  ;;
+esac

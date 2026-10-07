@@ -1,0 +1,12 @@
+10:26:07.036 declared screen home
+10:26:07.107 screencap 56p_sc3_s2_phone_home_before.png 10:26:07.107..10:26:08.046
+10:26:08.292 tap 302,1239
+10:26:08.625 slept 2500 ms
+10:26:11.255 declared screen live
+10:26:11.344 tap 539,2266
+10:26:11.515 slept 1800 ms
+10:26:13.469 tap 539,1279
+10:26:13.847 slept 900 ms
+10:26:14.792 text typed (SC3 stop on phone); inputType 0x24001
+10:26:15.845 slept 1000 ms
+10:26:16.890 screencap 56q_sc3_s2_phone_end_dialog.png 10:26:16.891..10:26:17.212

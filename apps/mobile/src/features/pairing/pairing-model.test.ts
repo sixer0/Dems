@@ -93,4 +93,21 @@ describe('pairing model', () => {
     expect(leaveTargetFor(true)).toBe('back');
     expect(leaveTargetFor(false)).toBe('boot');
   });
+
+  it('row FX-M1 (E2E-S-1): the signed-out hand-off always goes to the boot router; Cancel and the signed-in hand-off follow the stack', () => {
+    // [canGoBack, reason, signedIn, target]
+    const table: [boolean, 'handoff' | 'cancel', boolean, 'back' | 'boot'][] = [
+      [true, 'handoff', false, 'boot'], // the phone of E2E-S-1: Stack Check underneath, Login is the target
+      [false, 'handoff', false, 'boot'],
+      [true, 'handoff', true, 'back'], // Settings → Security → Pair: back to Settings
+      [false, 'handoff', true, 'boot'],
+      [true, 'cancel', false, 'back'], // Cancel goes back to Login (the trust line) or wherever it came from
+      [false, 'cancel', false, 'boot'],
+      [true, 'cancel', true, 'back'],
+      [false, 'cancel', true, 'boot'],
+    ];
+    for (const [canGoBack, reason, signedIn, target] of table) {
+      expect([canGoBack, reason, signedIn, leaveTargetFor(canGoBack, reason, signedIn)]).toEqual([canGoBack, reason, signedIn, target]);
+    }
+  });
 });

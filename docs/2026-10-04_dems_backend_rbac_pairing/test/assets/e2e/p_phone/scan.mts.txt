@@ -1,0 +1,17 @@
+// E2E-P secret scan: counts (never prints) the demo password and token shapes in every text file given.
+import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { join } from 'node:path';
+import { DEMO_OPERATOR_PASSWORD } from '/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/dataset';
+const roots = process.argv.slice(2);
+const files: string[] = [];
+const walk = (p: string) => { const s = statSync(p); if (s.isDirectory()) for (const e of readdirSync(p)) walk(join(p, e)); else if (!/\.(png|mp4)$/.test(p)) files.push(p); };
+roots.forEach(walk);
+let pw = 0, tok = 0;
+for (const f of files) {
+  const t = readFileSync(f, 'utf8');
+  const a = t.split(DEMO_OPERATOR_PASSWORD).length - 1;
+  const b = (t.match(/\b(dvc|ses|bio)_[A-Za-z0-9_-]{6,}/g) ?? []).length;
+  if (a || b) console.log(`HIT ${f}: password ${a}, token shapes ${b}`);
+  pw += a; tok += b;
+}
+console.log(`scanned ${files.length} text files: password occurrences ${pw}, token-shape occurrences ${tok}`);

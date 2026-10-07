@@ -1,0 +1,23 @@
+10:16:30.107 w1: HeadlessChrome/153.0.8010.12 headless=true devtools 127.0.0.1:9561, fresh profile in TMPDIR
+10:16:30.529 nav /login load=true
+10:16:33.266 signin andi.pratama (SUPERVISOR) dashboard after 1155 ms
+10:16:36.656 declared screen home
+10:16:36.793 tap 995,2233
+10:16:37.016 slept 800 ms
+10:16:37.862 tap 995,2093
+10:16:37.986 slept 1000 ms
+10:16:39.015 screencap 40_home_recording_logbox_dismissed.png 10:16:39.016..10:16:39.229
+10:16:39.254 mark a28 at 10:16:39.254
+10:16:39.283 force-stopped the app
+10:16:39.412 slept 2000 ms
+10:16:41.439 deep link demsdemo:///login?core=LIVE&motion=off
+10:16:52.356 slept 8000 ms
+10:17:00.540 declared screen unknown
+10:17:00.610 screencap 41_relaunch_after_forcestop.png 10:17:00.610..10:17:02.834
+10:17:02.929 corelog (3): 10:16:55.615 GET /api/v1/auth/session 401 | 10:16:55.629 GET /api/v1/pairing/device 200 | 10:16:55.637 GET /api/v1/auth/status 200
+10:17:03.144 serverlog since a28 (5):
+    10:16:39.725 [socket closed] operator:OPR-001
+    10:16:53.439 [socket opened] device:DEV-0001
+    10:16:53.489 GET /api/v1/auth/session 401 NOT_SIGNED_IN device:DEV-0001
+    10:16:53.502 GET /api/v1/pairing/device 200 device:DEV-0001
+    10:16:53.509 GET /api/v1/auth/status 200 device:DEV-0001

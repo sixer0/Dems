@@ -1,0 +1,6 @@
+> @dems/shared@0.1.0 test
+> vitest run --maxWorkers=2
+ Test Files  69 passed (69)
+      Tests  1840 passed (1840)
+   Start at  08:25:01
+   Duration  7.37s (tests 60%, import 30%, transform 9%, worker 1%)

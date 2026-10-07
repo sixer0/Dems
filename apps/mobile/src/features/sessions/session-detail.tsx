@@ -132,7 +132,10 @@ function Hero({ row }: { row: SessionRow }) {
           style={StyleSheet.absoluteFill}
           pointerEvents="none"
         />
-        <View style={styles.heroChip}>
+        {/* W93-9 (FXR-M; O-CF2-B-2): an opaque backplate under the chip laid over the photo, as the Evidence
+            hero does (`evidence-detail.tsx` heroChip): the chip's soft tone is see-through and read faded
+            over the bright ceiling of the still. */}
+        <View style={styles.heroChip} testID="session-detail-status-plate">
           <SessionStatusChip status={row.status} size="md" testID="session-detail-status" />
         </View>
       </View>
@@ -192,8 +195,8 @@ function Details({ row }: { row: SessionRow }) {
       id: 'subject',
       label: t('session.details.subject'),
       value: (
-        <View style={styles.subject}>
-          <Text maxFontSizeMultiplier={1.2} numberOfLines={2} style={styles.valueText}>
+        <View style={styles.subject} testID="session-detail-subject-row">
+          <Text maxFontSizeMultiplier={1.2} numberOfLines={2} style={[styles.valueText, styles.subjectName]} testID="session-detail-subject-name">
             {row.subjectName}
           </Text>
           <SubjectTypeChip type={row.subjectType} size="sm" />
@@ -287,6 +290,9 @@ function Actions({ row }: { row: SessionRow }) {
   );
 }
 
+/** The opaque backplate of a chip laid over media (W93-9; the Evidence hero's recipe). */
+export const MEDIA_CHIP_PLATE = withAlpha(palette.black, 0.7);
+
 const styles = StyleSheet.create({
   root: { flex: 1 },
   header: { flexDirection: 'row', alignItems: 'center', gap: spacing[0], minHeight: 56, paddingHorizontal: spacing[1] },
@@ -301,7 +307,7 @@ const styles = StyleSheet.create({
   missing: { paddingHorizontal: spacing[3], paddingTop: spacing[3] },
   scroll: { paddingHorizontal: spacing[3], paddingBottom: spacing[4], gap: spacing[3] },
   heroMedia: { height: 150, borderRadius: radius.px.lg, overflow: 'hidden', backgroundColor: derived.surfaceSecondary },
-  heroChip: { position: 'absolute', top: spacing[1], right: spacing[1] },
+  heroChip: { position: 'absolute', top: spacing[1], right: spacing[1], borderRadius: radius.px.full, backgroundColor: MEDIA_CHIP_PLATE },
   heroId: {
     fontFamily: fontFamily.native.monoMedium,
     fontSize: typography.h2.size,
@@ -323,7 +329,12 @@ const styles = StyleSheet.create({
     lineHeight: typography.data.lineHeight,
     color: palette.foreground,
   },
-  subject: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: spacing[1], flexShrink: 1 },
+  // W93-8 (FXR-M; RF2-1): the row WRAPS, and the name is never shrunk below its own width (`flexShrink: 0`),
+  // capped at the row (`maxWidth: '100%'`): a long name breaks between its words over the full value width,
+  // and the chip moves under it. Before, Yoga shrank the name below its longest word next to the chip and
+  // Android broke inside the word ("Retno W / ulandari", "Siti Rahm / awati" on the tablet's detail pane).
+  subject: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'flex-end', gap: spacing[1], flexShrink: 1 },
+  subjectName: { flexShrink: 0, maxWidth: '100%' },
   valueText: {
     flexShrink: 1,
     textAlign: 'right',

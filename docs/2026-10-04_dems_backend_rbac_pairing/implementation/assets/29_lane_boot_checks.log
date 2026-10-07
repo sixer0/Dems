@@ -1,0 +1,5 @@
+2026-10-04 11:37:32 WIB
+port 4421: dems_app on dems_lane_1; blocking checks passed: B-2, B-3, B-4, B-5, B-6, B-7, B-9; B-8 ok=true rows=82 linkBreaks=0 digests=ok lineage=none; epoch 0, scenario idle
+port 4422: dems_app on dems_lane_2; blocking checks passed: B-2, B-3, B-4, B-5, B-6, B-7, B-9; B-8 ok=true rows=82 linkBreaks=0 digests=ok lineage=none; epoch 0, scenario idle
+port 4423: dems_app on dems_lane_3; blocking checks passed: B-2, B-3, B-4, B-5, B-6, B-7, B-9; B-8 ok=true rows=82 linkBreaks=0 digests=ok lineage=none; epoch 0, scenario idle
+exit=0

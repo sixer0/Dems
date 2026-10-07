@@ -1,0 +1,14 @@
+10:02:22
+10:02  up 5 days, 17:15, 2 users, load averages: 5.95 4.96 5.20
+ %CPU    RSS COMM
+243.3 1859392 /Users/gsp-budi/Library/Android/sdk/emulator/qemu/darwin-aarch64/qemu-system-aarch64
+ 98.3  13216 /Users/gsp-budi/Library/Android/sdk/emulator/netsimd
+ 96.6 2012032 /Users/gsp-budi/Library/Android/sdk/emulator/qemu/darwin-aarch64/qemu-system-aarch64
+ 54.1 1022832 /Users/gsp-budi/Library/Android/sdk/emulator/qemu/darwin-aarch64/qemu-system-aarch64
+ 32.2 748656 /Users/gsp-budi/.vscode/extensions/kilocode.kilo-code-7.8.3-darwin-arm64/bin/kilo
+ 29.9 375360 /Users/gsp-budi/Library/Caches/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-mac-arm64/chrome-headless-shell
+ 28.6 101120 /Users/gsp-budi/Library/Caches/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-mac-arm64/chrome-headless-shell
+ 21.0  51280 /System/Library/PrivateFrameworks/SkyLight.framework/Resources/WindowServer
+ 17.6 202960 /Applications/Visual Studio Code.app/Contents/Frameworks/Code Helper (Renderer).app/Contents/MacOS/Code Helper (Renderer)
+  8.3  19472 /System/Library/ExtensionKit/Extensions/WallpaperAerialsExtension.appex/Contents/MacOS/WallpaperAerialsExtension
+  4.1  87488 /System/Library/Frameworks/VideoToolbox.framework/Versions/A/XPCServices/VTDecoderXPCService.xpc/Contents/MacOS/VTDecoderXPCService

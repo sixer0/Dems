@@ -14,6 +14,14 @@
  * `error.cause`, not on the error (decision D38).
  *
  * Writing never throws: the error log must not take the service down.
+ *
+ * Hand-built (decision D241 DN-W91-1, HBX-4: accepted with a rotation test instead of a switch to
+ * a pino file transport). The writes stay synchronous ON PURPOSE: the entry point appends a
+ * `fatal` entry and calls `process.exit(1)` in the next statement (`src/index.ts`), and an
+ * asynchronous write would be lost there. An append is bounded to two calls in the steady state
+ * (review finding W91-8): the size check for the rotation and the append itself. The folder is
+ * made and the mode set to 0600 once per file (again after a rotation or a failed append), not on
+ * every entry.
  */
 import { appendFileSync, chmodSync, mkdirSync, renameSync, statSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -32,6 +40,20 @@ export const DEFAULT_ERROR_LOG_FILE = resolve(
 
 /** At this size the file is moved to `errors.1.log` (one generation) and a new one is started. */
 export const ERROR_LOG_ROTATE_BYTES = 5 * 1024 * 1024;
+
+/**
+ * The name of the one older generation: `errors.log` -> `errors.1.log`. A path that does not end
+ * in `.log` gets `.1` appended (review finding W91-8): replacing a missing `.log` would return
+ * the same name, and the rename would leave the file growing forever.
+ */
+export function rotatedErrorLogFile(file: string): string {
+  return file.endsWith('.log') ? `${file.slice(0, -'.log'.length)}.1.log` : `${file}.1`;
+}
+
+export interface ErrorLogOptions {
+  /** The size at which the file is rotated. Default `ERROR_LOG_ROTATE_BYTES`; a test passes a small one. */
+  readonly rotateBytes?: number | undefined;
+}
 
 export type ErrorLogContext = Readonly<Record<string, string | number | boolean | null>>;
 
@@ -144,28 +166,40 @@ export function describeError(error: unknown): ErrorDescription {
   };
 }
 
-function rotateIfLarge(file: string): void {
+/** True when the file was moved aside: the next append starts a new file. */
+function rotateIfLarge(file: string, rotateBytes: number): boolean {
   try {
-    if (statSync(file).size < ERROR_LOG_ROTATE_BYTES) return;
-    renameSync(file, file.replace(/\.log$/, '.1.log'));
+    if (statSync(file).size < rotateBytes) return false;
+    renameSync(file, rotatedErrorLogFile(file));
+    return true;
   } catch {
     // No file yet, or it cannot be moved: appending decides what happens next.
+    return false;
   }
 }
 
-export function createErrorLog(file: string | null): ErrorLog {
+export function createErrorLog(file: string | null, options: ErrorLogOptions = {}): ErrorLog {
+  const rotateBytes = options.rotateBytes ?? ERROR_LOG_ROTATE_BYTES;
+  /** False until the folder exists and the file's mode was set in this process. */
+  let prepared = false;
   return {
     file,
     append(entry) {
       if (file === null) return;
       try {
-        mkdirSync(dirname(file), { recursive: true });
-        rotateIfLarge(file);
+        if (!prepared) mkdirSync(dirname(file), { recursive: true });
+        if (rotateIfLarge(file, rotateBytes)) prepared = false;
         const row = { timestamp: new Date().toISOString(), service: SERVICE_NAME, ...entry };
+        // `mode` applies to a file this call creates; an existing file keeps its mode, so the
+        // first append of this process (and the first after a rotation) sets it.
         appendFileSync(file, `${JSON.stringify(row)}\n`, { mode: 0o600 });
-        chmodSync(file, 0o600);
+        if (!prepared) {
+          chmodSync(file, 0o600);
+          prepared = true;
+        }
       } catch {
-        // The stream logger still has the event.
+        // The stream logger still has the event. The next append prepares the file again.
+        prepared = false;
       }
     },
   };

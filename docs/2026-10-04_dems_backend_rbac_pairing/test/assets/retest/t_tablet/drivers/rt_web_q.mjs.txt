@@ -1,0 +1,324 @@
+// R-T re-test (lane 2 web console http://127.0.0.1:5177, Live): the E2E-T web queue driver reused unchanged
+// (Node's built-in WebSocket) against the Playwright-cache headless shell, adapted from the lane CDP
+// drivers of rows W65/W69 (implementation/assets/*_lane_cdp_driver.mjs.txt).
+// The agent writes `<out>/wq/NNN.cmd`; the driver runs each line, writes `NNN.out`, logs `ACK NNN` to
+// `<out>/wq/events.log`. Every request the page makes is recorded (method, origin+path, status); the
+// origin set is reported by `net`. Never stored or printed: the seeded password, a cookie value, a
+// token. `signin <ROLE>` reads the password from the shared dataset constant and types it with
+// Input.insertText; outputs are scrubbed of the password and token shapes before they are written.
+//   node --import tsx rt_web_q.mjs <devtoolsPort> <out>
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { DEMO_OPERATOR_PASSWORD, OPERATORS } from '/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/dataset.ts'
+
+const [devPort, out] = process.argv.slice(2)
+const ORIGIN = 'http://127.0.0.1:5177'
+const Q = join(out, 'wq')
+mkdirSync(Q, { recursive: true })
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+const stamp = () => {
+  const d = new Date()
+  return `${d.toTimeString().slice(0, 8)}.${String(d.getMilliseconds()).padStart(3, '0')}`
+}
+const scrub = (text) => String(text).split(DEMO_OPERATOR_PASSWORD).join('***').replace(/\b(ses|dvc|bio)_[A-Za-z0-9_-]+/g, '$1_***')
+const event = (line) => {
+  appendFileSync(join(Q, 'events.log'), `${stamp()} ${scrub(line)}\n`)
+  console.log(`-- ${stamp()} ${scrub(line).slice(0, 600)}`)
+}
+
+const list = await (await fetch(`http://127.0.0.1:${devPort}/json/list`)).json()
+const target = list.find((t) => t.type === 'page')
+const ws = new WebSocket(target.webSocketDebuggerUrl)
+await new Promise((r) => ws.addEventListener('open', r, { once: true }))
+
+let id = 0
+const pending = new Map()
+let requests = []
+const allOrigins = new Map()
+const sockets = new Map()
+let consoleLines = []
+let loadFired = false
+const cleanUrl = (url) => String(url).replace(/\?.*$/, (q) => (q.length > 1 ? '?…' : ''))
+const typeOf = (payload) => {
+  try {
+    return JSON.parse(payload).type ?? '(no type)'
+  } catch {
+    return '(not JSON)'
+  }
+}
+const frameLog = []
+
+ws.addEventListener('message', (ev) => {
+  const msg = JSON.parse(ev.data)
+  if (msg.id && pending.has(msg.id)) {
+    const { resolve, reject } = pending.get(msg.id)
+    pending.delete(msg.id)
+    msg.error ? reject(new Error(`CDP error ${msg.error.code} ${msg.error.message}`)) : resolve(msg.result)
+    return
+  }
+  const p = msg.params ?? {}
+  switch (msg.method) {
+    case 'Page.loadEventFired':
+      loadFired = true
+      break
+    case 'Network.requestWillBeSent': {
+      const url = String(p.request.url)
+      let origin = '(other)'
+      try { origin = new URL(url).origin } catch { origin = url.slice(0, 30) }
+      allOrigins.set(origin, (allOrigins.get(origin) ?? 0) + 1)
+      requests.push({ rid: p.requestId, at: stamp(), method: p.request.method, url: cleanUrl(url), status: null })
+      break
+    }
+    case 'Network.responseReceived': {
+      const e = requests.findLast((r) => r.rid === p.requestId)
+      if (e) e.status = p.response.status
+      break
+    }
+    case 'Network.loadingFailed': {
+      const e = requests.findLast((r) => r.rid === p.requestId)
+      if (e && e.status === null) e.status = `failed: ${p.errorText}`
+      break
+    }
+    case 'Network.webSocketCreated': {
+      let origin = '(other)'
+      try { origin = new URL(p.url).origin } catch {}
+      allOrigins.set(origin, (allOrigins.get(origin) ?? 0) + 1)
+      sockets.set(p.requestId, { url: cleanUrl(p.url), frames: new Map() })
+      break
+    }
+    case 'Network.webSocketFrameReceived': {
+      const e = sockets.get(p.requestId)
+      if (e) {
+        const type = typeOf(p.response.payloadData)
+        e.frames.set(type, (e.frames.get(type) ?? 0) + 1)
+        if (type !== 'heartbeat' && type !== 'meters' && frameLog.length < 4000) frameLog.push(`${stamp()} ${type}`)
+      }
+      break
+    }
+    case 'Runtime.exceptionThrown':
+      consoleLines.push(`${stamp()} exception: ${String(p.exceptionDetails?.exception?.description ?? p.exceptionDetails?.text).slice(0, 240)}`)
+      break
+    case 'Runtime.consoleAPICalled':
+      if (p.type === 'error' || p.type === 'warning') {
+        const text = (p.args ?? []).map((a) => (a.value !== undefined ? String(a.value) : String(a.description ?? a.type))).join(' ')
+        consoleLines.push(`${stamp()} ${p.type}: ${text.slice(0, 300)}`)
+      }
+      break
+  }
+})
+
+const send = (method, params = {}) =>
+  new Promise((resolve, reject) => {
+    const n = ++id
+    pending.set(n, { resolve, reject })
+    ws.send(JSON.stringify({ id: n, method, params }))
+  })
+const evaluate = async (expression, label) => {
+  const r = await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true })
+  if (r.exceptionDetails) throw new Error(`page script failed: ${label}: ${String(r.exceptionDetails.exception?.description ?? r.exceptionDetails.text).slice(0, 200)}`)
+  return r.result.value
+}
+const q = (s) => JSON.stringify(s)
+const navigate = async (url, settleMs = 3000) => {
+  loadFired = false
+  await send('Page.navigate', { url })
+  for (let i = 0; i < 150 && !loadFired; i++) await sleep(100)
+  await sleep(settleMs)
+  return loadFired
+}
+const waitFor = async (sel, present = true, timeoutMs = 15000) => {
+  const until = Date.now() + timeoutMs
+  while (Date.now() < until) {
+    const found = await evaluate(`document.querySelector(${q(sel)}) !== null`, `wait ${sel}`)
+    if (found === present) return true
+    await sleep(100)
+  }
+  return false
+}
+const tid = (t) => (t.startsWith('[') || t.startsWith('.') || t.startsWith('#') || t.includes(' ') ? t : `[data-testid="${t}"]`)
+const screenshot = async (name, full = false) => {
+  const params = { format: 'png' }
+  if (full) {
+    const m = await send('Page.getLayoutMetrics')
+    params.captureBeyondViewport = true
+    params.clip = { x: 0, y: 0, width: m.cssContentSize.width, height: Math.min(m.cssContentSize.height, 6000), scale: 1 }
+  }
+  const { data } = await send('Page.captureScreenshot', params)
+  writeFileSync(join(out, `${name}.png`), Buffer.from(data, 'base64'))
+  return `${name}.png at ${stamp()}`
+}
+const typeInto = async (sel, text, label) => {
+  const ok = await evaluate(`(() => { const el = document.querySelector(${q(sel)}); if (!el) return false; el.focus(); if (el.select) el.select(); return document.activeElement === el })()`, `focus ${label}`)
+  if (!ok) throw new Error(`the field ${label} could not be focused`)
+  await send('Input.insertText', { text })
+  return true
+}
+
+async function run(line) {
+  const [verb, ...rest] = line.trim().split(/\s+/)
+  const arg = line.trim().slice(verb.length).trim()
+  switch (verb) {
+    case 'nav':
+      return `nav ${rest[0]} load=${await navigate(ORIGIN + rest[0], Number(rest[1] ?? 3000))} at ${stamp()}`
+    case 'wait':
+      return `wait ${rest[0]}: ${await waitFor(tid(rest[0]), true, Number(rest[1] ?? 15000))} at ${stamp()}`
+    case 'waitgone':
+      return `waitgone ${rest[0]}: ${await waitFor(tid(rest[0]), false, Number(rest[1] ?? 15000))} at ${stamp()}`
+    case 'press':
+      return `press ${rest[0]}: ${await evaluate(`(() => { const el = document.querySelector(${q(tid(rest[0]))}); if (!el) return false; el.click(); return true })()`, 'press')} at ${stamp()}`
+    case 'clicktext': {
+      // The first visible clickable element whose trimmed text equals (or starts with) the given text.
+      const r = await evaluate(`(() => { const want = ${q(arg)}; const els = [...document.querySelectorAll('button,a,[role=button],[role=tab],[role=menuitem],[role=option],[role=link],[role=row],label,li')]; const vis = (e) => { const b = e.getBoundingClientRect(); return b.width > 0 && b.height > 0 }; const el = els.find((e) => vis(e) && e.textContent.trim() === want) ?? els.find((e) => vis(e) && e.textContent.trim().startsWith(want)); if (!el) return 'not found'; el.click(); return (el.getAttribute('data-testid') ?? el.tagName) })()`, 'clicktext')
+      return `clicktext "${arg}": ${r} at ${stamp()}`
+    }
+    case 'mouse': {
+      // A real pointer click at the centre of the element (for kit components that ignore el.click()).
+      const box = await evaluate(`(() => { const el = document.querySelector(${q(tid(rest[0]))}); if (!el) return null; el.scrollIntoView({block:'center'}); const b = el.getBoundingClientRect(); return { x: b.x + b.width / 2, y: b.y + b.height / 2 } })()`, 'box')
+      if (!box) return `mouse ${rest[0]}: not found`
+      for (const type of ['mouseMoved', 'mousePressed', 'mouseReleased']) await send('Input.dispatchMouseEvent', { type, x: box.x, y: box.y, button: 'left', clickCount: 1 })
+      return `mouse ${rest[0]} at ${Math.round(box.x)},${Math.round(box.y)} ${stamp()}`
+    }
+    case 'mousetext': {
+      const box = await evaluate(`(() => { const want = ${q(arg)}; const els = [...document.querySelectorAll('button,a,[role=button],[role=tab],[role=menuitem],[role=option],[role=link],[role=row],[role=gridcell],td,label,li,span,div')]; const vis = (e) => { const b = e.getBoundingClientRect(); return b.width > 0 && b.height > 0 }; const el = els.find((e) => vis(e) && e.textContent.trim() === want); if (!el) return null; el.scrollIntoView({block:'center'}); const b = el.getBoundingClientRect(); return { x: b.x + b.width / 2, y: b.y + b.height / 2, tag: el.tagName } })()`, 'boxtext')
+      if (!box) return `mousetext "${arg}": not found`
+      for (const type of ['mouseMoved', 'mousePressed', 'mouseReleased']) await send('Input.dispatchMouseEvent', { type, x: box.x, y: box.y, button: 'left', clickCount: 1 })
+      return `mousetext "${arg}" ${box.tag} at ${Math.round(box.x)},${Math.round(box.y)} ${stamp()}`
+    }
+    case 'type': {
+      const sel = tid(rest[0])
+      const text = rest.slice(1).join(' ')
+      await typeInto(sel, text, rest[0])
+      return `typed into ${rest[0]}: ${text}`
+    }
+    case 'key': {
+      const key = rest[0]
+      const codes = { Enter: 13, Escape: 27, Tab: 9 }
+      await send('Input.dispatchKeyEvent', { type: 'keyDown', key, code: key, windowsVirtualKeyCode: codes[key] ?? 0 })
+      await send('Input.dispatchKeyEvent', { type: 'keyUp', key, code: key, windowsVirtualKeyCode: codes[key] ?? 0 })
+      return `key ${key}`
+    }
+    case 'signin': {
+      const op = OPERATORS.find((o) => o.role === (rest[0] ?? 'SUPERVISOR').toUpperCase())
+      if (!op) return 'no such operator'
+      await navigate(`${ORIGIN}/login`)
+      await waitFor('[data-testid="page-login"]')
+      await typeInto('[data-testid="login-username-field"] input', op.username, 'username')
+      await typeInto('[data-testid="login-password-field"] input', DEMO_OPERATOR_PASSWORD, 'password') // never printed
+      await evaluate(`document.querySelector('[data-testid="login-submit"]')?.click()`, 'submit')
+      const arrived = await waitFor('[data-testid="page-dashboard"]', true, 20000)
+      await sleep(1200)
+      return `signin ${op.username} (${op.role}): dashboard ${arrived} at ${stamp()}`
+    }
+    case 'shot':
+      return `shot ${await screenshot(rest[0])}`
+    case 'fullshot':
+      return `fullshot ${await screenshot(rest[0], true)}`
+    case 'text': {
+      const t = await evaluate(`document.querySelector(${q(tid(rest[0]))})?.innerText ?? null`, 'text')
+      return `text ${rest[0]}: ${t === null ? 'null' : JSON.stringify(t.slice(0, Number(rest[1] ?? 1500)))}`
+    }
+    case 'texts': {
+      const t = await evaluate(`[...document.querySelectorAll(${q(tid(rest[0]))})].slice(0, 80).map((e) => e.innerText.replace(/\\s+/g, ' ').trim().slice(0, 240))`, 'texts')
+      return `texts ${rest[0]} (${t.length}): ${JSON.stringify(t)}`
+    }
+    case 'testids': {
+      const t = await evaluate(`[...new Set([...document.querySelectorAll('[data-testid]')].map((e) => e.getAttribute('data-testid')))].filter((x) => x.startsWith(${q(rest[0] ?? '')}))`, 'testids')
+      return `testids ${rest[0] ?? ''} (${t.length}): ${t.join(' ')}`
+    }
+    case 'attrs': {
+      const t = await evaluate(`(() => { const el = document.querySelector(${q(tid(rest[0]))}); if (!el) return null; return Object.fromEntries([...el.attributes].filter((a) => a.name.startsWith('data-') || a.name.startsWith('aria-')).map((a) => [a.name, a.value.slice(0, 120)])) })()`, 'attrs')
+      return `attrs ${rest[0]}: ${JSON.stringify(t)}`
+    }
+    case 'api': {
+      const [method, path, ...b] = rest
+      const body = b.length ? b.join(' ') : undefined
+      const r = await evaluate(`(async () => { const a = await fetch(${q(path)}, { method: ${q(method)}, credentials: 'same-origin', headers: { 'content-type': 'application/json' }${body ? `, body: ${q(body)}` : ''} }); let t = await a.text(); return { status: a.status, body: t } })()`, 'api')
+      const file = `api_${Date.now()}.json`
+      writeFileSync(join(Q, file), scrub(r.body))
+      return `api ${method} ${path} -> ${r.status} (${r.body.length} bytes, wq/${file}): ${scrub(r.body).slice(0, Number(process.env.API_CUT ?? 700))}`
+    }
+    case 'watch': {
+      // watch <timeoutMs> <js expression>: poll every 100 ms; the first truthy value and its time.
+      const timeout = Number(rest[0])
+      const expr = rest.slice(1).join(' ')
+      const started = Date.now()
+      const startedAt = stamp()
+      while (Date.now() - started < timeout) {
+        const v = await evaluate(`(() => { try { return (${expr}) } catch { return null } })()`, 'watch')
+        if (v) return `watch: truthy at ${stamp()} (started ${startedAt}, ${Date.now() - started} ms): ${JSON.stringify(v).slice(0, 400)}`
+        await sleep(100)
+      }
+      return `watch: NOT truthy within ${timeout} ms (started ${startedAt})`
+    }
+    case 'eval': {
+      const v = await evaluate(`(() => { return (${arg}) })()`, 'eval')
+      return `eval: ${scrub(JSON.stringify(v)).slice(0, 2500)}`
+    }
+    case 'net': {
+      const file = `net_${rest[0] ?? Date.now()}.txt`
+      const lines = requests.map((r) => `${r.at} ${r.method} ${r.url} ${r.status}`)
+      const sock = [...sockets.values()].map((s) => `socket ${s.url} frames ${JSON.stringify(Object.fromEntries(s.frames))}`)
+      writeFileSync(join(Q, file), scrub([...lines, ...sock, `origins ${JSON.stringify(Object.fromEntries(allOrigins))}`, ...consoleLines.map((c) => `console ${c}`)].join('\n') + '\n'))
+      const apiLines = requests.filter((r) => r.url.includes('/api/v1/')).map((r) => `${r.method} ${r.url.replace(ORIGIN, '')} ${r.status}`)
+      const summary = `net -> wq/${file}: ${lines.length} requests, api ${JSON.stringify(apiLines).slice(0, 1500)}; origins ${JSON.stringify(Object.fromEntries(allOrigins))}; console ${consoleLines.length}`
+      requests = []
+      consoleLines = []
+      for (const s of sockets.values()) s.frames = new Map()
+      return summary
+    }
+    case 'frames': {
+      const file = `frames_${rest[0] ?? Date.now()}.txt`
+      writeFileSync(join(Q, file), frameLog.join('\n') + '\n')
+      const n = frameLog.length
+      frameLog.length = 0
+      return `frames -> wq/${file}: ${n} non-heartbeat/meter frames`
+    }
+    case 'sleep':
+      await sleep(Number(rest[0] ?? 1000))
+      return `slept ${rest[0]}`
+    case 'mark':
+      return `mark ${arg} at ${stamp()}`
+    default:
+      return `unknown: ${line}`
+  }
+}
+
+await send('Network.enable')
+await send('Page.enable')
+await send('Runtime.enable')
+await send('Emulation.setDeviceMetricsOverride', { width: 1600, height: 1000, deviceScaleFactor: 1, mobile: false })
+const version = await send('Browser.getVersion')
+event(`browser ${version.product} headless=${/Headless/i.test(version.userAgent)}`)
+
+let next = 1
+for (;;) {
+  const n = String(next).padStart(3, '0')
+  const file = join(Q, `${n}.cmd`)
+  let waited = 0
+  while (!existsSync(file) && waited < 3_600_000) {
+    await sleep(150)
+    waited += 150
+  }
+  if (!existsSync(file)) {
+    event(`EXIT 6 no command ${n}`)
+    break
+  }
+  await sleep(120)
+  const lines = readFileSync(file, 'utf8').split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#'))
+  const results = []
+  let stop = false
+  for (const line of lines) {
+    if (/^done\b/.test(line)) { stop = true; break }
+    try {
+      results.push(await run(line))
+    } catch (error) {
+      results.push(`ERROR in "${line.split(/\s+/)[0]}": ${String(error?.message ?? error).slice(0, 300)}`)
+    }
+  }
+  writeFileSync(join(Q, `${n}.out`), scrub(results.join('\n')) + '\n')
+  event(`ACK ${n} | ${results.join(' | ')}`)
+  if (stop) break
+  next += 1
+}
+ws.close()
+process.exit(0)

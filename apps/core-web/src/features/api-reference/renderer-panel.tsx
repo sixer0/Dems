@@ -29,6 +29,12 @@ export interface RendererPanelProps {
   customFetch: FetchLike
   /** Flips `a` / `b` on every answered Try-it exchange (response reveal in scalar-theme.ts); null before the first. */
   exchangeParity: 'a' | 'b' | null
+  /**
+   * Plan row W84: the name of the view, the cross-fade key and `data-filter` (`all`, `live`,
+   * `all+core`, `live+core`, `core` for Live mode). Default: `all` / `live` from `includeSimulated`,
+   * as before.
+   */
+  viewKey?: string
 }
 
 /**
@@ -37,7 +43,7 @@ export interface RendererPanelProps {
  * "Show simulated endpoints" switch swaps the document, and the renderer cross-fades (160 ms)
  * because Scalar re-renders everything.
  */
-export function RendererPanel({ document, includeSimulated, customFetch, exchangeParity }: RendererPanelProps) {
+export function RendererPanel({ document, includeSimulated, customFetch, exchangeParity, viewKey }: RendererPanelProps) {
   const { t } = useTranslation()
   const m = useMotionPolicy()
   const routeDelay = useRouteEnterDelay()
@@ -53,14 +59,15 @@ export function RendererPanel({ document, includeSimulated, customFetch, exchang
     [document, customFetch],
   )
   const exchange = exchangeParity === null ? {} : { [EXCHANGE_ATTRIBUTE]: exchangeParity }
+  const view = viewKey ?? (includeSimulated ? 'all' : 'live')
   return (
     <ApiPanel id="renderer" icon={BookOpenText} title={t('apiReference.renderer.title')} className="api-renderer-panel" bodyClassName="api-renderer-body">
       <AnimatePresence mode="wait" initial={false}>
         <motion.div
-          key={includeSimulated ? 'all' : 'live'}
+          key={view}
           className="dems-api-renderer"
           data-testid="api-renderer"
-          data-filter={includeSimulated ? 'all' : 'live'}
+          data-filter={view}
           {...exchange}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1, transition: { duration: m.seconds(RENDERER_SWAP_MS) } }}

@@ -7,14 +7,14 @@ import {
   type TabsSlotRenderOptions,
   type UseTabsWithTriggersOptions,
 } from 'expo-router/ui';
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 import type { Edge } from 'react-native-safe-area-context';
 import { palette } from '@dems/shared/tokens';
 import { LiveMiniBar, ResponsiveTabList } from '@/components/composed/nav';
 import { BREAKPOINTS, ChromeInsetsProvider, useLayoutClass } from '@/layout';
-import { animateFade, useMotionSettings } from '@/motion';
+import { animateFade, durationMs, useMotionSettings, type MotionSettings } from '@/motion';
 import { useActiveSession } from '@/runtime';
 import { useRailCollapse } from './rail-prefs';
 import { ALL_TABS, PHONE_TABS, TABLET_TABS, TAB_DESTINATIONS, activeDestination, tabForSegments } from './routes';
@@ -100,19 +100,70 @@ function renderTabScreen(descriptor: TabsDescriptor, options: TabsSlotRenderOpti
   );
 }
 
-/** 04 §7.2 M-APP-04: "Tab switches cross-fade content 160 ms" (reduced: the same short fade). */
+/** How long the fade veil may stay before a React commit removes it (the `fast` fade, ×10 in proof mode, plus a frame budget). */
+export function tabFadeBudgetMs(m: MotionSettings): number {
+  return durationMs('fast', m) + 80;
+}
+
+/**
+ * E-fix row FX-M2b: a veil for each time the screen gains focus (its key), or null. A screen that
+ * mounts focused gets one too. A React commit removes it after `tabFadeBudgetMs`.
+ */
+function useFocusVeil(focused: boolean, m: MotionSettings): number | null {
+  const [seenFocused, setSeenFocused] = useState(false);
+  const [veil, setVeil] = useState<number | null>(null);
+  const [count, setCount] = useState(0);
+  if (seenFocused !== focused) {
+    setSeenFocused(focused);
+    setVeil(focused ? count + 1 : null);
+    if (focused) setCount(count + 1);
+  }
+  useEffect(() => {
+    if (veil === null) return undefined;
+    const timer = setTimeout(() => setVeil((current) => (current === veil ? null : current)), tabFadeBudgetMs(m));
+    return () => clearTimeout(timer);
+  }, [veil, m]);
+  return veil;
+}
+
+/**
+ * 04 §7.2 M-APP-04: "Tab switches cross-fade content 160 ms" (reduced: the same short fade).
+ *
+ * E-fix row FX-M2b (E2E-T-2; decision D201): the content itself used to fade from opacity 0 on the
+ * UI thread. On the tablet that update was lost once (12_devices_blank): the Devices screen stayed
+ * mounted at opacity 0 for minutes, a blank pane drawing no frames, while the rail showed the same
+ * lost update (label moved, icon and indicator not). Now the content is ALWAYS drawn at full opacity
+ * by React; the fade is a veil in the canvas colour laid over it and faded out on the UI thread
+ * (`FadeVeil`), which React unmounts after `tabFadeBudgetMs`. A lost UI-thread update can keep the
+ * veil for that budget (about a quarter of a second), never longer: the screen cannot stay invisible.
+ */
 function TabScreenFade({ focused, children }: { focused: boolean; children: ReactNode }) {
   const settings = useMotionSettings();
-  const opacity = useSharedValue(focused ? 0 : 1);
+  const veil = useFocusVeil(focused, settings);
+  return (
+    <View style={styles.slot}>
+      {children}
+      {veil !== null ? <FadeVeil key={veil} settings={settings} /> : null}
+    </View>
+  );
+}
 
+/** The canvas-coloured veil over a newly focused screen, from 1 to 0 on the UI thread; untouchable, hidden from TalkBack. */
+function FadeVeil({ settings }: { settings: MotionSettings }) {
+  const opacity = useSharedValue(1);
   useEffect(() => {
-    if (!focused) return;
-    opacity.set(0);
-    opacity.set(animateFade(1, settings, 'fast'));
-  }, [focused, settings, opacity]);
-
+    opacity.set(animateFade(0, settings, 'fast'));
+  }, [settings, opacity]);
   const style = useAnimatedStyle(() => ({ opacity: opacity.get() }));
-  return <Animated.View style={[styles.slot, style]}>{children}</Animated.View>;
+  return (
+    <Animated.View
+      testID="tab-fade-veil"
+      pointerEvents="none"
+      importantForAccessibility="no-hide-descendants"
+      accessibilityElementsHidden
+      style={[StyleSheet.absoluteFill, styles.veil, style]}
+    />
+  );
 }
 
 const styles = StyleSheet.create({
@@ -121,4 +172,5 @@ const styles = StyleSheet.create({
   column: { flexDirection: 'column' },
   content: { flex: 1 },
   slot: { flex: 1 },
+  veil: { backgroundColor: palette.black },
 });

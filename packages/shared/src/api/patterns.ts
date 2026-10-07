@@ -53,6 +53,18 @@ export const SESSION_TOKEN_PATTERN = /^ses_[A-Za-z0-9_-]{43}$/;
 export const DEVICE_CREDENTIAL_PATTERN = /^dvc_[A-Za-z0-9_-]{43}$/;
 export const BIOMETRIC_TOKEN_PATTERN = /^bio_[A-Za-z0-9_-]{43}$/;
 
+// Contract close-out W83 (gap 4, gap W32-4): the literal head of each of the three
+// patterns above, so that a guard which must refuse a secret in a URL (CL-6a) and the server's
+// token builders read one list. test/api-closeout.test.ts holds each prefix to its pattern.
+/** Prefix of a session token (`SESSION_TOKEN_PATTERN`). */
+export const SESSION_TOKEN_PREFIX = 'ses_';
+/** Prefix of a device credential (`DEVICE_CREDENTIAL_PATTERN`, PR-P8). */
+export const DEVICE_CREDENTIAL_PREFIX = 'dvc_';
+/** Prefix of a biometric token (`BIOMETRIC_TOKEN_PATTERN`). */
+export const BIOMETRIC_TOKEN_PREFIX = 'bio_';
+/** The prefixes of every bearer secret of the contract. A value that starts with one never travels in a URL. */
+export const BEARER_SECRET_PREFIXES = [SESSION_TOKEN_PREFIX, DEVICE_CREDENTIAL_PREFIX, BIOMETRIC_TOKEN_PREFIX] as const;
+
 // ── Hashes on the wire (backend task: 2026-10-04 01_specs §8.3 ENG-9; `sim/events.ts`, `sim/evidence.ts`) ──
 
 /**
@@ -86,6 +98,8 @@ export const DEMO_PACKAGE_SUFFIX_PATTERN = /^\d{4}$/;
  * The cursor of a list read (API-9): opaque to a client, 1 to 128 letters, digits or hyphens. It
  * has no underscore, so no bearer value fits (`ses_…`, `dvc_…`, `bio_…`) and a cursor can never be
  * mistaken for a credential in a URL (CL-6a). A sequence number, or a time and an identifier
- * joined by hyphens, both fit.
+ * joined by hyphens, both fit. So does a row's identifier with a mark of that row
+ * (`AUD-000150-9f86d081884c7d65`, `LOG-000150-1790823600000`), the form of the audit list and of
+ * the events (W83, gap W39-3).
  */
 export const LIST_CURSOR_PATTERN = /^[A-Za-z0-9-]{1,128}$/;

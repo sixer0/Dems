@@ -103,7 +103,7 @@ describe('the heavy modules have one way in (MD-6; brief list rows 1, 21)', () =
     expect(boot).toMatch(/import\.meta\.env\.DEV\s*\?\s*\(\)\s*=>\s*import\(\s*['"]\.\/live-start['"]\s*\)\s*:\s*null/)
   })
 
-  it('`main.tsx` loads its data source after `z.config`: its static imports are the ones it has always had, plus the i18n provider', () => {
+  it('`main.tsx` loads its data source after `z.config`: its static imports are the ones it has always had, plus the i18n provider and the page\'s error sink (CPW1-7), which imports no value', () => {
     const main = PRODUCTION.find(({ file }) => file === 'main.tsx')?.text ?? ''
     expect(
       importsOf(main)
@@ -120,7 +120,12 @@ describe('the heavy modules have one way in (MD-6; brief list rows 1, 21)', () =
       '@tanstack/react-router',
       'react-i18next',
       'zod',
+      './runtime/error-sink',
     ])
+    // CPW1-7: the sink is loaded before the call, so it must load no module that could build a schema.
+    const sink = PRODUCTION.find(({ file }) => file === 'runtime/error-sink.ts')?.text ?? ''
+    expect(sink).not.toBe('')
+    expect(importsOf(sink).filter((use) => use.kind !== 'type')).toEqual([])
     const afterConfig = code(main).split('z.config({ jitless: true })')[1] ?? ''
     expect(importsOf(main).filter((use) => use.kind === 'dynamic').map((use) => use.specifier)).toEqual([
       './runtime/boot',

@@ -1,0 +1,10 @@
+== W30 scratch run, 2026-10-04 10:16:26 WIB: the Live socket client on the fake transport of W31 (src/live/testing as it stood then; a copy under .cache/W30/mut, not the tree) ==
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/.cache/W30/mut/shared
+
+
+ Test Files  1 passed (1)
+      Tests  2 passed (2)
+   Start at  10:16:26
+   Duration  217ms (transform 63%, import 25%, tests 11%, worker 1%)
+

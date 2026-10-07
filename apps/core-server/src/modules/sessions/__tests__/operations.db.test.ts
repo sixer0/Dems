@@ -12,8 +12,8 @@ import type { AuditRow } from '@dems/shared/sim';
 import type { LightMyRequestResponse } from 'fastify';
 import { describe, expect, it, vi } from 'vitest';
 import { useTestDatabase } from '../../../../test/helpers/db';
-import { linkProblems, readEvents, readHead, readTrail, verifyTrail } from '../../../core/__tests__/support';
-import { storedSlices } from '../../../engine/__tests__/support';
+import { linkProblems, readEvents, readHead, readTrail, verifyTrail } from '../../../../test/support/core';
+import { storedSlices } from '../../../../test/support/engine';
 import { withoutNegativeZeros } from '../../../../test/support/seed';
 import { CASE_NUMBER, CURRENT, OTHER_SESSION, SESSION, bodyOf, errorOf, on, outcome, sessionInput, sessionsApp, typesOf, type Caller, type SessionsApp } from './support';
 

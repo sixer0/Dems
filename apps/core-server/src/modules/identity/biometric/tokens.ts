@@ -14,12 +14,16 @@
  * This is the one file of the folder that names the crypto module.
  */
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { BIOMETRIC_TOKEN_PREFIX } from '@dems/shared/api';
 
-export const BIOMETRIC_TOKEN_PREFIX = 'bio_';
+/**
+ * From the contract (review findings W91-4, W92-15): the prefix `bio_` of
+ * `BIOMETRIC_TOKEN_PATTERN`, and ID-P11, a token that is not used within 30 days of its issue is
+ * no longer accepted.
+ */
+export { BIOMETRIC_TOKEN_LIFETIME_MS, BIOMETRIC_TOKEN_PREFIX } from '@dems/shared/api';
 /** 256 bits (SR-36). */
 export const BIOMETRIC_TOKEN_BYTES = 32;
-/** ID-P11: a token that is not used within 30 days of its issue is no longer accepted. */
-export const BIOMETRIC_TOKEN_LIFETIME_MS = 30 * 24 * 60 * 60_000;
 
 /** A new token. `random` is the seam of a test; production uses `crypto.randomBytes`. */
 export function newBiometricToken(random: (size: number) => Buffer = randomBytes): string {

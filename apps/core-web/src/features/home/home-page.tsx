@@ -17,7 +17,7 @@ import { useAmbientLoop } from '@/motion'
 import { SlidingNumber } from '@/components/ui/sliding-number'
 import { TONE_ICONS } from '@/lib/tone-icons'
 import { enterTransition, enterVariants, type MotionMode } from './motion-variants'
-import { useHealth } from './use-health'
+import { useHealth } from '@/lib/health-query'
 
 export interface HomePageProps {
   motionMode: MotionMode

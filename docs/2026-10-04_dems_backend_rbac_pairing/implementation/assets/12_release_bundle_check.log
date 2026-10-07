@@ -1,0 +1,35 @@
+## 1. Metro's release transform of apps/mobile/src/runtime/debug.ts (node .cache/proof-harness/release_gate_w12.cjs)
+debug build  (dev=true)  {"required":["react","react-native","@dems/shared/sim","./core-link","./log","./dev-probes"],"hasProbeModule":true,"hasProbeHook":true,"hasParser":true}
+release build (dev=false) {"required":["react","react-native","@dems/shared/sim","./core-link","./log"],"hasProbeModule":false,"hasProbeHook":false,"hasParser":false}
+
+## 2. Development bundle
+$ EXPO_NO_TELEMETRY=1 EXPO_OFFLINE=1 CI=1 npm exec -w @dems/mobile -- expo export --dev --platform android --no-bytecode --output-dir <tmp>/dev
+_expo/static/js/android/entry-d41d8cd98f00b204e9800998ecf8427e.js (13MB)
+Exported: /tmp/claude-501/w12-export/dev
+exit=0
+bundle bytes:  12915692 (a count is the number of bundle lines that hold the text)
+  DEMS-PROBE-W12               1
+  runtime/dev-probes.ts        1
+  client/core-client.ts        1
+  CoreClientUsageError         2
+  winter/fetch/fetch.ts        1
+positive control:
+  runtime.sim.hydrated         1
+
+## 3. Release bundle
+$ EXPO_NO_TELEMETRY=1 EXPO_OFFLINE=1 CI=1 npm exec -w @dems/mobile -- expo export --platform android --no-bytecode --output-dir <tmp>/release
+_expo/static/js/android/entry-2277ab0dc9455d7d3a90f130df7f5547.js (9.7MB)
+Exported: /tmp/claude-501/w12-export/release
+exit=0
+bundle bytes:  9702095
+  DEMS-PROBE-W12               0
+  dev-probes                   0
+  runDevProbe                  0
+  devProbeFromUrl              0
+  probe=                       0
+  createCoreClient             0
+  CoreClientUsageError         0
+  CONTRACT_VIOLATION           0
+positive controls (text of the same file, debug.ts, and of the runtime that must be there):
+  runtime.sim.hydrated         1
+  scenario=                    1

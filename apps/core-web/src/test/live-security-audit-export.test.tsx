@@ -389,7 +389,10 @@ describe('the file (no partial file)', () => {
     fireEvent.click(within(dialog).getByTestId('export-confirm'))
     const failed = LX.fileFailed.replace('{{exportId}}', EXPORT_ID)
     await waitFor(() => expect(within(screen.getByTestId('export-audit-dialog')).getByRole('alert')).toHaveTextContent(failed), { timeout: 12_000 })
-    expect(toastWith(OFFLINE)).toHaveLength(1)
+    // FXR-W W92-13 (FW76-3), by design: the export was accepted, so the outage toast never says
+    // "Nothing was changed" beside the page's sentence that the Core recorded it.
+    expect(toastWith(en.common.coreErrors.offlineAfterAccepted)).toHaveLength(1)
+    expect(toastWith('Nothing was changed')).toHaveLength(0)
     // The presenter spoke for the outage: the page adds no toast of its own and no record.
     expect(toastWith(failed)).toHaveLength(0)
     expect(records('SecurityAudit.ExportAuditDialog.buildFile')).toHaveLength(0)

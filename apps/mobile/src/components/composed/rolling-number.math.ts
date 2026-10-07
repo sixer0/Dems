@@ -127,6 +127,29 @@ export function rollPlan(previous: number, next: number): RollPlan {
 }
 
 /**
+ * One roll of a React-positioned digit column (post-review fix FXR-M, finding W93-3; the D214 recipe of
+ * the monitor timer, now the kit's own): the column shows cell `fromCell` and must show `digit`.
+ * `to` is the cell React keeps in the column's own props (the rest position, 0..19, always the new
+ * digit); `from` is the cell the roll starts from (the previous digit, in the first or second decade).
+ *
+ * - `forward` (timers and clocks): always rolls up, the way time runs, across the 9 → 0 wrap into the
+ *   second decade (a jump after a stall never rolls backwards);
+ * - otherwise the shorter way round (`rollPlan`'s rule): up by at most 5 steps, else down from the
+ *   second decade.
+ */
+export function rollCells(fromCell: number, digit: number, forward: boolean): { from: number; to: number } {
+  const previous = ((fromCell % 10) + 10) % 10;
+  const up = (digit - previous + 10) % 10;
+  if (forward || up <= 5) return { from: previous, to: previous + up };
+  return { from: previous + 10, to: previous + up };
+}
+
+/** Whether a format only ever counts up (timers and clocks): its digit columns roll forward only. */
+export function rollsForward(format: RollingFormat): boolean {
+  return format.kind === 'duration' || format.kind === 'clock';
+}
+
+/**
  * Decimal place of each template character (`null` for separators): `dd.d` → [1, 0, null, -1].
  * Used by `count` mode, whose columns are continuous drums.
  */

@@ -45,7 +45,7 @@
  */
 import type { FastifyInstance, FastifyPluginAsync } from 'fastify';
 import { describeError } from '../../plugins/logger';
-import { createSweeper, type Sweeper } from '../identity';
+import { createSweeper, type Sweeper } from '../../core';
 import { sweepCodes } from './codes';
 import { PAIRING_CODE_SWEEP_INTERVAL_MS } from './limits';
 import { createDevicePresence, type DevicePresence } from './presence';

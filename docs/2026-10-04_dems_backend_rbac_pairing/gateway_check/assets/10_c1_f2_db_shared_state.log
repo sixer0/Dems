@@ -1,0 +1,11 @@
+## item 2: db file test/acceptance/shared-state.test.ts at 08:54:41
+ Test Files  1 passed (1)
+      Tests  6 passed (6)
+[test:db] teardown: dropped 2 database(s) in 74 ms; 0 remain with the run prefix dems_test_local_tmgqn6pc_
+exit 0
+## item 2: the same db file with --silent=false, to show the printed sentence, at 08:55:21
+[w49] demo reset: the Core link: OFFLINE in the snapshot of the new epoch, OFFLINE at 2/0: OFFLINE from the first snapshot of the new epoch (the engine starts it with the link of the open sockets, D127)
+ Test Files  1 passed (1)
+      Tests  6 passed (6)
+[test:db] teardown: dropped 2 database(s) in 73 ms; 0 remain with the run prefix dems_test_local_tmgqo9jb_
+exit 0

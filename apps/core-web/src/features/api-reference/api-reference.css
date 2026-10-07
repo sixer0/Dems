@@ -227,6 +227,8 @@
     white-space: pre;
     overflow-x: auto;
   }
+  /* Live mode (W84): an entry's slice list wraps instead of scrolling sideways. */
+  .api-rt-json-wrap { white-space: pre-wrap; overflow-wrap: anywhere; }
 
   .api-spin { animation: api-spin 1s linear infinite; }
 

@@ -1,0 +1,17 @@
+10:07:47.904 ids(1): session-new-next@540,2257 "busy"
+10:07:50.328 tap 540,2257
+10:07:50.474 slept 2000 ms
+10:07:52.528 screencap 27_start_session_step3_ready.png 10:07:52.528..10:07:53.343
+10:07:53.592 ids(8): session-new-ready-ring@540,726 ; session-new-ready@540,1539 ; session-new-summary-case@540,1105 "Case, LP/2026/1006-0014" ; session-new-summary-subject@712,1253 ; session-new-summary-investigator@540,1402 "Investigator, AKP Budi Santoso" ; session-new-summary-devices@540,1816 "Devices" ; session-new-countdown@147,1980 "3-2-1 countdown, on" ; session-new-start@540,2257 "busy"
+10:07:55.855 mark a25 at 10:07:55.855
+10:07:55.889 tap 540,2257
+10:07:56.019 poll: 28_countdown_00.png 10:07:56.019..10:07:56.935 ; 28_countdown_01.png 10:07:56.938..10:07:57.730
+10:07:57.927 start 200 at device 10-06 10:07:59.159 (POST /api/v1/session/{id}/start 200)
+10:07:59.705 slept 3000 ms
+10:08:02.776 declared screen live
+10:08:02.866 screencap 29_live_monitor_a.png 10:08:02.867..10:08:03.653
+10:08:03.923 slept 3000 ms
+10:08:07.244 screencap 29b_live_monitor_b.png 10:08:07.244..10:08:09.556
+10:08:09.822 serverlog since a25 (1):
+    10:07:59.377 POST /api/v1/session/:id/start 200 operator:OPR-001
+10:08:09.880 js => {"id":"SES-20261006-0030","state":"RECORDING","startedAt":"10:07:59","evidenceId":null}

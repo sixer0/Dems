@@ -221,7 +221,7 @@ export function LiveFeed({
               <Chip size="sm" variant="secondary" style={[styles.darkChip, styles.recChip]} testID="monitor-feed-rec">
                 <View style={styles.recDot} />
                 <Chip.Label style={styles.recLabel}>{t('session.feed.rec')}</Chip.Label>
-                <RecTimer size="data" />
+                <RecTimer size="data" testID="monitor-feed-timer" />
               </Chip>
             </View>
           </View>

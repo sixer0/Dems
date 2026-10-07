@@ -6,9 +6,18 @@
  * badges, kit `Separator` tracks and `Spinner`, with Reanimated fills: connectors grow with
  * `scaleX`/`scaleY` (420 ms `luxe`), the check draws in 300 ms, an activated or escalated badge
  * pulses its halo once (03M R8). Composite-only properties; reduced motion is instant.
+ *
+ * Post-review fix FXR-M (finding W93-7; D236, the FX-M2b pattern of D208): React holds every REST value —
+ * the connector fill (`scaleX`/`scaleY` 0 or 1), the glow ring (opacity 0 or 1) and the drawn check — in the
+ * views' own props. Each motion is an overlay mounted for one change and removed by React after its budget
+ * (`useChangeOverlay`); while it plays, the React-held view of that part is hidden. So a Reanimated update
+ * that is dropped (a JS stall, or a view removed while its animation runs) can never leave a half-filled
+ * connector, a missing check or a stuck ring: after the budget React draws the final state. `animate={false}`
+ * (the in-place hand-over copies, which mount and are removed within ~0.5 s, CF2-A's "Unable to find
+ * SurfaceMountingManager" bursts) starts no motion at all: no overlay, no entering fade, a still Spinner.
  */
 import { Chip, Separator, Spinner, Typography } from 'heroui-native';
-import { useEffect, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import Animated, {
   Easing,
@@ -52,6 +61,10 @@ export interface StepperProps {
   statusWords?: StepStatusWords;
   /** Optional: lets the operator jump back to a completed step. */
   onStepPress?: (index: number) => void;
+  /**
+   * False for a copy drawn in place for a moment (a hand-over): no motion is started (W93-7). Default true.
+   */
+  animate?: boolean;
   style?: StyleProp<ViewStyle>;
   testID?: string;
 }
@@ -71,10 +84,14 @@ export function Stepper({
   motion,
   statusWords = DEFAULT_STATUS_WORDS,
   onStepPress,
+  animate = true,
   style,
   testID,
 }: StepperProps) {
   const reduced = motion === 'reduced';
+  // No motion at all: reduced motion, or a copy drawn in place for a moment (W93-7).
+  const still = reduced || !animate;
+  const partId = (part: string, i: number): string | undefined => (testID ? `${testID}-${part}-${i}` : undefined);
   const statuses = explicit ?? deriveStatuses(steps.length, current);
   const last = steps.length - 1;
 
@@ -86,16 +103,17 @@ export function Stepper({
           return (
             <Animated.View
               key={step.key}
-              entering={reduced ? undefined : FadeIn.duration(motionTokens.duration.base).delay(staggerDelay(i))}
+              entering={still ? undefined : FadeIn.duration(motionTokens.duration.base).delay(staggerDelay(i))}
               style={{ flexDirection: 'row', gap: 14 }}
             >
               <View style={{ alignItems: 'center', width: BADGE }}>
-                <StepBadge index={i} status={status} reduced={reduced} />
+                <StepBadge index={i} status={status} still={still} testID={partId('badge', i)} />
                 {i < last ? (
                   <ConnectorHalf
+                    testID={partId('fill', i)}
                     orientation="vertical"
                     filled={status === 'done'}
-                    reduced={reduced}
+                    still={still}
                     duration={CONNECTOR_FILL_MS}
                     easing={LUXE}
                     style={{ width: 2, flex: 1, minHeight: 18, marginVertical: 4 }}
@@ -127,26 +145,28 @@ export function Stepper({
         return (
           <Animated.View
             key={step.key}
-            entering={reduced ? undefined : FadeIn.duration(motionTokens.duration.base).delay(staggerDelay(i))}
+            entering={still ? undefined : FadeIn.duration(motionTokens.duration.base).delay(staggerDelay(i))}
             style={{ flex: 1, alignItems: 'center', gap: 8 }}
           >
             <View style={{ flexDirection: 'row', alignItems: 'center', alignSelf: 'stretch' }}>
               {/* The connector between two badges is two halves: the right half of step i fills as
                   soon as it starts; the left half of step i + 1 follows once step i is done. */}
               <ConnectorHalf
+                testID={partId('fill-left', i)}
                 orientation="horizontal"
                 filled={leftFilled}
-                reduced={reduced}
+                still={still}
                 duration={CONNECTOR_FILL_MS / 2}
                 delay={CONNECTOR_FILL_MS / 2}
                 easing={EASE_OUT}
                 style={{ flex: 1, height: 2 }}
               />
-              <StepBadge index={i} status={status} reduced={reduced} />
+              <StepBadge index={i} status={status} still={still} testID={partId('badge', i)} />
               <ConnectorHalf
+                testID={partId('fill-right', i)}
                 orientation="horizontal"
                 filled={rightFilled}
-                reduced={reduced}
+                still={still}
                 duration={CONNECTOR_FILL_MS / 2}
                 easing={EASE_IN}
                 style={{ flex: 1, height: 2 }}
@@ -202,91 +222,118 @@ function StepText({ testID, label, description, status, a11y, align = 'start', s
   );
 }
 
+/** Extra time an overlay stays mounted after its motion's own duration, before React removes it (ms). */
+export const STEPPER_OVERLAY_SLACK_MS = 80;
+
+/**
+ * The motion of one change of `value` while it plays (the FX-M2b pattern): `{ id, from }` from the change
+ * until `budgetMs` later, then `null`; always `null` while `enabled` is false. The caller draws the FINAL
+ * state with React whenever this is `null`, and an overlay keyed by `id` while it is not.
+ */
+function useChangeOverlay<T>(value: T, enabled: boolean, budgetMs: number): { readonly id: number; readonly from: T } | null {
+  const [state, setState] = useState<{ value: T; seq: number; run: { id: number; from: T } | null }>({ value, seq: 0, run: null });
+  let current = state;
+  if (state.value !== value) {
+    // "Adjusting state when a prop changes": the run starts in the render that sees the change.
+    const seq = state.seq + 1;
+    current = { value, seq, run: enabled ? { id: seq, from: state.value } : null };
+    setState(current);
+  }
+  const runId = current.run?.id ?? null;
+  useEffect(() => {
+    if (runId === null) return undefined;
+    const handle = setTimeout(() => setState((s) => (s.run?.id === runId ? { ...s, run: null } : s)), budgetMs);
+    return () => clearTimeout(handle);
+  }, [runId, budgetMs]);
+  return current.run;
+}
+
 interface ConnectorHalfProps {
   orientation: 'horizontal' | 'vertical';
   filled: boolean;
-  reduced: boolean;
+  still: boolean;
   duration: number;
   delay?: number;
   easing: ReturnType<typeof Easing.bezier>;
   style?: StyleProp<ViewStyle>;
+  testID?: string;
 }
 
-/** A kit Separator track with a gold fill that grows from its start edge. */
-function ConnectorHalf({ orientation, filled, reduced, duration, delay = 0, easing, style }: ConnectorHalfProps) {
-  const fill = useSharedValue(filled ? 1 : 0);
-  useEffect(() => {
-    const target = filled ? 1 : 0;
-    if (reduced) {
-      fill.set(target);
-      return;
-    }
-    const timing = withTiming(target, { duration, easing });
-    fill.set(filled ? withDelay(delay, timing) : timing);
-  }, [filled, reduced, duration, delay, easing, fill]);
+const scaleFor = (horizontal: boolean, value: number) => (horizontal ? { scaleX: value } : { scaleY: value });
 
+/** A kit Separator track with a gold fill that grows from its start edge; React holds the rest fill (W93-7). */
+function ConnectorHalf({ orientation, filled, still, duration, delay = 0, easing, style, testID }: ConnectorHalfProps) {
+  const run = useChangeOverlay(filled, !still, delay + duration + STEPPER_OVERLAY_SLACK_MS);
   const horizontal = orientation === 'horizontal';
-  const fillStyle = useAnimatedStyle(() =>
-    horizontal ? { transform: [{ scaleX: fill.get() }] } : { transform: [{ scaleY: fill.get() }] },
-  );
+  const fillLook = { backgroundColor: palette.gold, borderRadius: 1, transformOrigin: horizontal ? 'left' : 'top' } as const;
   return (
     <View style={[{ justifyContent: 'center' }, style]} importantForAccessibility="no-hide-descendants">
       <Separator orientation={orientation} thickness={2} style={StyleSheet.absoluteFill} />
-      <Animated.View
-        style={[
-          StyleSheet.absoluteFill,
-          { backgroundColor: palette.gold, borderRadius: 1, transformOrigin: horizontal ? 'left' : 'top' },
-          fillStyle,
-        ]}
-      />
+      {/* The rest value, drawn by React; hidden while the overlay below plays the change. */}
+      <View testID={testID} style={[StyleSheet.absoluteFill, fillLook, { transform: [scaleFor(horizontal, run || !filled ? 0 : 1)] }]} />
+      {run ? (
+        <FillMotion
+          key={run.id}
+          testID={testID ? `${testID}-motion` : undefined}
+          horizontal={horizontal}
+          from={run.from ? 1 : 0}
+          to={filled ? 1 : 0}
+          duration={duration}
+          delay={filled ? delay : 0}
+          easing={easing}
+          look={fillLook}
+        />
+      ) : null}
     </View>
   );
+}
+
+interface FillMotionProps {
+  testID?: string;
+  horizontal: boolean;
+  from: number;
+  to: number;
+  duration: number;
+  delay: number;
+  easing: ReturnType<typeof Easing.bezier>;
+  look: ViewStyle;
+}
+
+/** The removable overlay of one connector change: a fill from `from` to `to`. */
+function FillMotion({ testID, horizontal, from, to, duration, delay, easing, look }: FillMotionProps) {
+  const fill = useSharedValue(from);
+  useEffect(() => {
+    const timing = withTiming(to, { duration, easing });
+    fill.set(delay > 0 ? withDelay(delay, timing) : timing);
+  }, [to, duration, delay, easing, fill]);
+  const fillStyle = useAnimatedStyle(() => ({ transform: [scaleFor(horizontal, fill.get())] }));
+  return <Animated.View testID={testID} style={[StyleSheet.absoluteFill, look, fillStyle]} />;
 }
 
 interface StepBadgeProps {
   index: number;
   status: StepStatus;
-  reduced: boolean;
+  still: boolean;
+  testID?: string;
 }
 
-/** Numbered kit Chip; done draws a check, running shows a Spinner; a glow ring marks the current step. */
-function StepBadge({ index, status, reduced }: StepBadgeProps) {
+const isLit = (status: StepStatus): boolean => status === 'active' || status === 'running';
+const pulses = (status: StepStatus): boolean => isLit(status) || status === 'warn' || status === 'error';
+
+/**
+ * Numbered kit Chip; done draws a check, running shows a Spinner; a glow ring marks the current step.
+ * React holds the ring's opacity and the drawn check (W93-7); the ring fade, the check draw and the halo
+ * pulse are overlays for one change each.
+ */
+function StepBadge({ index, status, still, testID }: StepBadgeProps) {
   const tone = stepTone(status);
-  const lit = status === 'active' || status === 'running';
-  const ring = useSharedValue(lit ? 1 : 0);
-  const halo = useSharedValue(0);
-  const check = useSharedValue(status === 'done' ? 1 : 0);
-  const previous = useRef(status);
-
-  useEffect(() => {
-    const from = previous.current;
-    previous.current = status;
-    if (from === status) return;
-    const nowLit = status === 'active' || status === 'running';
-    if (reduced) {
-      ring.set(nowLit ? 1 : 0);
-      check.set(status === 'done' ? 1 : 0);
-      return;
-    }
-    ring.set(withTiming(nowLit ? 1 : 0, { duration: motionTokens.duration.base, easing: LUXE }));
-    if (status === 'done') {
-      check.set(0);
-      check.set(withTiming(1, { duration: CHECK_DRAW_MS, easing: LUXE }));
-    } else {
-      check.set(0);
-    }
-    if (nowLit || status === 'warn' || status === 'error') {
-      halo.set(0);
-      halo.set(withTiming(1, { duration: HALO_PULSE_MS, easing: LUXE }));
-    }
-  }, [status, reduced, ring, halo, check]);
-
-  const ringStyle = useAnimatedStyle(() => ({ opacity: ring.get() }));
-  const haloStyle = useAnimatedStyle(() => {
-    const h = halo.get();
-    return { opacity: h > 0 && h < 1 ? 0.5 * (1 - h) : 0, transform: [{ scale: 1 + 0.35 * h }] };
-  });
-  const checkProps = useAnimatedProps(() => ({ strokeDashoffset: CHECK_LENGTH * (1 - check.get()) }));
+  const lit = isLit(status);
+  const done = status === 'done';
+  const ringRun = useChangeOverlay(lit, !still, motionTokens.duration.base + STEPPER_OVERLAY_SLACK_MS);
+  const checkRun = useChangeOverlay(done, !still, CHECK_DRAW_MS + STEPPER_OVERLAY_SLACK_MS);
+  const haloRun = useChangeOverlay(status, !still, HALO_PULSE_MS + STEPPER_OVERLAY_SLACK_MS);
+  const drawCheck = checkRun !== null && done;
+  const part = (name: string): string | undefined => (testID ? `${testID}-${name}` : undefined);
 
   const toneColor = toneHex[tone];
   const chip =
@@ -295,22 +342,22 @@ function StepBadge({ index, status, reduced }: StepBadgeProps) {
       : status === 'pending'
         ? { variant: 'tertiary' as const, color: 'default' as const }
         : { variant: 'soft' as const, color: tone };
+  const ringLook: ViewStyle = {
+    width: BADGE + 10,
+    height: BADGE + 10,
+    borderRadius: (BADGE + 10) / 2,
+    borderWidth: 1,
+    borderColor: withAlpha(palette.gold, 0.45),
+    backgroundColor: withAlpha(palette.gold, 0.1),
+  };
 
   return (
     <View style={{ width: BADGE, height: BADGE, alignItems: 'center', justifyContent: 'center' }}>
-      <Animated.View
-        pointerEvents="none"
-        style={[
-          styles.circle,
-          { width: BADGE + 10, height: BADGE + 10, borderRadius: (BADGE + 10) / 2 },
-          { borderWidth: 1, borderColor: withAlpha(palette.gold, 0.45), backgroundColor: withAlpha(palette.gold, 0.1) },
-          ringStyle,
-        ]}
-      />
-      <Animated.View
-        pointerEvents="none"
-        style={[styles.circle, { width: BADGE, height: BADGE, borderRadius: BADGE / 2, backgroundColor: withAlpha(toneColor, 0.45) }, haloStyle]}
-      />
+      <View testID={part('ring')} pointerEvents="none" style={[styles.circle, ringLook, { opacity: ringRun || !lit ? 0 : 1 }]} />
+      {ringRun ? <FadeMotion key={ringRun.id} testID={part('ring-motion')} from={ringRun.from ? 1 : 0} to={lit ? 1 : 0} look={ringLook} /> : null}
+      {haloRun && pulses(status) ? (
+        <HaloMotion key={haloRun.id} testID={part('halo-motion')} look={{ width: BADGE, height: BADGE, borderRadius: BADGE / 2, backgroundColor: withAlpha(toneColor, 0.45) }} />
+      ) : null}
       <Chip
         variant={chip.variant}
         color={chip.color}
@@ -320,25 +367,66 @@ function StepBadge({ index, status, reduced }: StepBadgeProps) {
         accessible={false}
       >
         {status === 'running' ? (
-          <Spinner size="sm" color={palette.gold} />
-        ) : status === 'done' ? (
+          <Spinner size="sm" color={palette.gold} {...(still ? { animation: 'disable-all' as const } : {})} />
+        ) : done ? (
           <Svg width={18} height={18} viewBox="0 0 24 24">
-            <AnimatedPath
-              d="M5 12.5l4.2 4.2L19 7"
-              stroke={palette.gold}
-              strokeWidth={2.4}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              fill="none"
-              strokeDasharray={[CHECK_LENGTH, CHECK_LENGTH]}
-              animatedProps={checkProps}
-            />
+            {drawCheck ? (
+              <CheckDrawMotion key={checkRun.id} />
+            ) : (
+              <Path testID={part('check')} d={CHECK_PATH} stroke={palette.gold} strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" fill="none" />
+            )}
           </Svg>
         ) : (
           <Chip.Label>{String(index + 1)}</Chip.Label>
         )}
       </Chip>
     </View>
+  );
+}
+
+const CHECK_PATH = 'M5 12.5l4.2 4.2L19 7';
+
+/** The ring's removable fade overlay. */
+function FadeMotion({ testID, from, to, look }: { testID?: string; from: number; to: number; look: ViewStyle }) {
+  const opacity = useSharedValue(from);
+  useEffect(() => {
+    opacity.set(withTiming(to, { duration: motionTokens.duration.base, easing: LUXE }));
+  }, [to, opacity]);
+  const style = useAnimatedStyle(() => ({ opacity: opacity.get() }));
+  return <Animated.View testID={testID} pointerEvents="none" style={[styles.circle, look, style]} />;
+}
+
+/** One halo pulse (03M R8): rest opacity 0, removed after `HALO_PULSE_MS`. */
+function HaloMotion({ testID, look }: { testID?: string; look: ViewStyle }) {
+  const halo = useSharedValue(0);
+  useEffect(() => {
+    halo.set(withTiming(1, { duration: HALO_PULSE_MS, easing: LUXE }));
+  }, [halo]);
+  const style = useAnimatedStyle(() => {
+    const h = halo.get();
+    return { opacity: h > 0 && h < 1 ? 0.5 * (1 - h) : 0, transform: [{ scale: 1 + 0.35 * h }] };
+  });
+  return <Animated.View testID={testID} pointerEvents="none" style={[styles.circle, look, style]} />;
+}
+
+/** The check drawing itself in (300 ms); replaced by the React-drawn check once its budget is over. */
+function CheckDrawMotion() {
+  const check = useSharedValue(0);
+  useEffect(() => {
+    check.set(withTiming(1, { duration: CHECK_DRAW_MS, easing: LUXE }));
+  }, [check]);
+  const checkProps = useAnimatedProps(() => ({ strokeDashoffset: CHECK_LENGTH * (1 - check.get()) }));
+  return (
+    <AnimatedPath
+      d={CHECK_PATH}
+      stroke={palette.gold}
+      strokeWidth={2.4}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      fill="none"
+      strokeDasharray={[CHECK_LENGTH, CHECK_LENGTH]}
+      animatedProps={checkProps}
+    />
   );
 }
 

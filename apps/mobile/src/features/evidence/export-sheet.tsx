@@ -173,7 +173,7 @@ function ExportWizard({ evidenceId, onClose, live }: { evidenceId: string; onClo
     // The reason stays empty on purpose (F59): a role the hint has not caught up with gets the Core's
     // 422, never an export. The Core reads the role before the body and audits a denied role whatever
     // the body (implementation/35 §6.2); the request schema of operation 42 cannot say "after the
-    // guard", so a contract-checked client or fake would refuse this body (CONTRACT-GAP-W74-1).
+    // guard", so a contract-checked client or fake would refuse this body (RESIDUAL-W74-1, W83 ledger #49).
     settle(() => actions.exportEvidence(evidenceId, { reason: '', destination: '' }), {
       ok: (result) => {
         logDenied(evidenceId, operator.role, result, correlationId);
@@ -228,8 +228,8 @@ function ExportWizard({ evidenceId, onClose, live }: { evidenceId: string; onClo
         setExportId(result.exportId);
         setStep(5);
         triggerHaptic('sealedStamp');
-        // The shared success sentence says "(simulated)": Live mode has its own (rule 8).
-        toast.show({ variant: 'success', label: t(live ? 'features.evidence.export.successLive' : 'evidence.exportWizard.success', { id: evidenceId }) });
+        // The shared success sentence says "(simulated)": Live mode has its shared twin (rule 8; closing copy round, D162 DN-5).
+        toast.show({ variant: 'success', label: t(live ? 'evidence.live.export.success' : 'evidence.exportWizard.success', { id: evidenceId }) });
         return;
       }
       const reasonCode: FailureReason = result && !result.ok ? result.reason : 'UNKNOWN';
@@ -526,7 +526,10 @@ function LiveSourceStep({ source, failed }: { source: SourceCheck; failed: reado
         <Alert.Title>
           {pass ? t('features.evidence.export.sourcePass') : t('features.evidence.export.sourceFail', { checks: failedCheckNames(failed).join(', ') })}
         </Alert.Title>
-        <Alert.Description>{`${t('features.evidence.integrity.verifiedByCore')} · ${t('features.evidence.integrity.coreLabel')}`}</Alert.Description>
+        {/* W93-5 (FXR-M; O-CF-M2-1): the source line follows the verdict, never "Verified" under a Core FAIL. */}
+        <Alert.Description testID="evidence-export-source-line">
+          {`${t(pass ? 'features.evidence.integrity.verifiedByCore' : 'features.evidence.integrity.failedOnCore')} · ${t('features.evidence.integrity.coreLabel')}`}
+        </Alert.Description>
       </Alert.Content>
     </Alert>
   );

@@ -1,0 +1,23 @@
+mark settings sections at 13:06:25.610
+tap 227,944 at 13:06:25.761
+slept 4000 ms
+screencap P14a_settings_app_preferences.png (479333 bytes) at 13:06:30.262
+tap 784,755 at 13:06:30.354
+slept 3000 ms
+screencap P14b_settings_notifications.png (421643 bytes) at 13:06:33.614
+tap 784,880 at 13:06:33.680
+slept 3000 ms
+screencap P14c_settings_security_privacy.png (428881 bytes) at 13:06:36.937
+tap 784,1108 at 13:06:37.004
+slept 3500 ms
+screencap P14d_settings_device_settings_opens_devices.png (413110 bytes) at 13:06:40.836
+tap 227,944 at 13:06:40.924
+slept 3500 ms
+tap 784,1233 at 13:06:44.504
+slept 3500 ms
+screencap P14e_settings_storage_management.png (382985 bytes) at 13:06:48.297
+tap 227,944 at 13:06:48.379
+slept 3500 ms
+tap 784,1358 at 13:06:51.948
+slept 3500 ms
+screencap P14f_settings_network_time.png (344067 bytes) at 13:06:55.670

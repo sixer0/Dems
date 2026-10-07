@@ -1,0 +1,160 @@
+## 2026-10-04 18:38:01 WIB $ DEMS_TEST_STEP=70 npm run test:db -w @dems/core-server -- test/acceptance/pairing-lifecycle.test.ts --reporter=verbose
+
+> @dems/core-server@0.2.0 test:db
+> vitest run --project db test/acceptance/pairing-lifecycle.test.ts --reporter=verbose
+
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/apps/core-server
+
+[test:db] PostgreSQL 18.4 on 127.0.0.1:4432; helper role dems_owner, code under test dems_app; run prefix dems_test_step_70_tmdsbdlq_
+[test:db] stale sweep: dropped 0; kept 3 of younger runs, 0 of live runs, 0 unrecognised; 0 failed
+[test:db] template dems_test_step_70_tmdsbdlq_tpl_schema: built in 1267 ms (create 32 ms, hook 69 ms)
+[test:db] template dems_test_step_70_tmdsbdlq_tpl_seed: built in 146 ms (create 44 ms, hook 101 ms)
+ ✓ |db| test/acceptance/pairing-lifecycle.test.ts > SC5: a tablet is paired from the portal, used, revoked, refused and paired again; every step has its audit row > AC-B-32: before it is paired, the app reads the sign-in status and the service health, is refused the sign-in with 403 DEVICE_NOT_PAIRED with no Origin and with the own origin alike, gets 401 elsewhere, and its socket is told hello and heartbeat only 19ms
+stdout | test/acceptance/pairing-lifecycle.test.ts > SC5: a tablet is paired from the portal, used, revoked, refused and paired again; every step has its audit row > AC-B-33: the portal issues a code: six digits, valid 300 s; PAIRING_CODE_ISSUED names the supervisor and the code ID; the table holds a hash and not the code
+[w48] pairing_codes row PCD-000001: columns [closed_at, closed_by_operator_id, code_hash, expires_at, failed_attempts, id, issued_at, issued_by_operator_id, state]; code_hash holds 32 bytes, equal to SHA-256(<code ID>:<code>): true; the code in the row: 0 as digits as text, 0 as the QR payload, 0 as hex, 0 as base64
+
+ ✓ |db| test/acceptance/pairing-lifecycle.test.ts > SC5: a tablet is paired from the portal, used, revoked, refused and paired again; every step has its audit row > the control: with no paired device connected the Core link is OFFLINE and the pre-check of a session blocks on that check alone, so nothing can be recorded 108ms
+ ✓ |db| test/acceptance/pairing-lifecycle.test.ts > SC5: a tablet is paired from the portal, used, revoked, refused and paired again; every step has its audit row > AC-B-33: the portal issues a code: six digits, valid 300 s; PAIRING_CODE_ISSUED names the supervisor and the code ID; the table holds a hash and not the code 8ms
+ ✓ |db| test/acceptance/pairing-lifecycle.test.ts > SC5: a tablet is paired from the portal, used, revoked, refused and paired again; every step has its audit row > AC-B-35: one millisecond before 300 s the code is still active; at 300 s on the manual clock the redeem answers the generic 401 INVALID_CODE and PAIRING_CODE_CLOSED says EXPIRED 9ms
+ ✓ |db| test/acceptance/pairing-lifecycle.test.ts > SC5: a tablet is paired from the portal, used, revoked, refused and paired again; every step has its audit row > AC-B-36: three wrong codes lock redeeming for 60 s (423; the right code is then not even looked at: PAIRING_LOCKED); the fifth wrong code closes the code as EXHAUSTED 21ms
+ ✓ |db| test/acceptance/pairing-lifecycle.test.ts > SC5: a tablet is paired from the portal, used, revoked, refused and paired again; every step has its audit row > AC-B-34: a new code is redeemed: 201 with a device ID and a credential; PAIRING_SUCCESS names the device; no later answer holds the credential; the same code and the exhausted one never pair again 16ms
+ ✓ |db| test/acceptance/pairing-lifecycle.test.ts > SC5: a tablet is paired from the portal, used, revoked, refused and paired again; every step has its audit row > the registry lists the device as PAIRED; ONLINE while its real socket is open and offline after it closes; the first device socket connects the Core link 10ms
+ ✓ |db| test/acceptance/pairing-lifecycle.test.ts > SC5: a tablet is paired from the portal, used, revoked, refused and paired again; every step has its audit row > AC-B-37: a password sign-in on the paired device creates a session bound to it: AUTH_SUCCESS and the registry name the device and the operator; the operator turns biometric sign-in on 33ms
+stdout | test/acceptance/pairing-lifecycle.test.ts > SC5: a tablet is paired from the portal, used, revoked, refused and paired again; every step has its audit row > AC-B-38: its socket was told device.revoked and closed with 4403 within 1 s; the retired credential and the retired session token open no socket again
+[w48] revoke: the tablet's socket closed with 4403, 5.1 ms after the request was sent (bound 1000 ms; the test's real clock)
+
+stdout | test/acceptance/pairing-lifecycle.test.ts > SC5: a tablet is paired from the portal, used, revoked, refused and paired again; every step has its audit row > AC-B-39: the session STAYS IN RECORDING and goes on recording, with the Core link OFFLINE now that the device is gone
+[w48] after the revoke: session SES-20310101-0025 RECORDING, elapsed 2000 ms -> 4000 ms, 4555556 -> 9111111 bytes; Core link OFFLINE
+
+stdout | test/acceptance/pairing-lifecycle.test.ts > SC5: a tablet is paired from the portal, used, revoked, refused and paired again; every step has its audit row > AC-B-39: ANOTHER operator stops it from the web console with a reason: 202, RECORDING_STOPPED names the supervisor; the recording is sealed with the link still OFFLINE
+[w48] the stop by OPR-002 with the Core link OFFLINE: 202; session SES-20310101-0025 SEALED after 4000 ms of recording
+
+ ✓ |db| test/acceptance/pairing-lifecycle.test.ts > SC5: a tablet is paired from the portal, used, revoked, refused and paired again; every step has its audit row > the investigator starts a recording from the tablet: the pre-check passes because the Core link is connected by the tablet's own socket 53ms
+ ✓ |db| test/acceptance/pairing-lifecycle.test.ts > SC5: a tablet is paired from the portal, used, revoked, refused and paired again; every step has its audit row > AC-B-38: the supervisor revokes the tablet while it records: 200, the device REVOKED; DEVICE_REVOKED names the supervisor, the device and the session it ended 8ms
+ ✓ |db| test/acceptance/pairing-lifecycle.test.ts > SC5: a tablet is paired from the portal, used, revoked, refused and paired again; every step has its audit row > AC-B-38: its socket was told device.revoked and closed with 4403 within 1 s; the retired credential and the retired session token open no socket again 3ms
+ ✓ |db| test/acceptance/pairing-lifecycle.test.ts > SC5: a tablet is paired from the portal, used, revoked, refused and paired again; every step has its audit row > AC-B-38: its next REST calls answer 403 DEVICE_REVOKED, with the session token and with the device credential alike, each with one ACCESS_DENIED row that names the device 12ms
+ ✓ |db| test/acceptance/pairing-lifecycle.test.ts > SC5: a tablet is paired from the portal, used, revoked, refused and paired again; every step has its audit row > AC-B-38: its session is ended with the reason DEVICE_REVOKED and its biometric token is revoked; the registry shows the device REVOKED, offline, with nobody signed in 2ms
+ ✓ |db| test/acceptance/pairing-lifecycle.test.ts > SC5: a tablet is paired from the portal, used, revoked, refused and paired again; every step has its audit row > AC-B-39: the session STAYS IN RECORDING and goes on recording, with the Core link OFFLINE now that the device is gone 9ms
+ ✓ |db| test/acceptance/pairing-lifecycle.test.ts > SC5: a tablet is paired from the portal, used, revoked, refused and paired again; every step has its audit row > AC-B-39: ANOTHER operator stops it from the web console with a reason: 202, RECORDING_STOPPED names the supervisor; the recording is sealed with the link still OFFLINE 77ms
+stdout | test/acceptance/pairing-lifecycle.test.ts > AC-B-82, SR-74: a used biometric token presented again closes the socket of the BIOMETRIC session; a PASSWORD session of the same operator stays > the socket of the BIOMETRIC session was told session.ended with TOKEN_REUSE and closed with 4401 within 1 s
+[w48] token reuse: the BIOMETRIC session's socket closed with 4401, 3.4 ms after the request was sent (bound 1000 ms; the test's real clock)
+
+stdout | test/acceptance/pairing-lifecycle.test.ts > the audit trail of the whole journey > is exactly this sequence of types with their actors and devices; every row belongs to a step of this file; the chain verifies
+[w48] the audit sequence of the journey: 47 rows after the boot (seq 84 to 130), 0 of them arrivals of the integrity stream (not listed)
+[w48]   seq  at          type                          actor    device    step
+[w48]    84  +0.00 s     AUTH_SUCCESS                  OPR-002  -         the portal signs in
+[w48]    85  +0.00 s     AUTH_SUCCESS                  OPR-001  -         the portal signs in
+[w48]    86  +0.00 s     SESSION_CREATED               OPR-001  -         the control: a pre-check with the Core link offline
+[w48]    87  +4.25 s     PRECHECK_BLOCKED              OPR-001  -         the control: a pre-check with the Core link offline
+[w48]    88  +5.00 s     SESSION_CANCELLED             OPR-001  -         the control: a pre-check with the Core link offline
+[w48]    89  +5.00 s     PAIRING_CODE_ISSUED           OPR-002  -         issue code A
+[w48]    90  +305.00 s   PAIRING_CODE_CLOSED           -        -         redeem code A at 300 s
+[w48]    91  +305.00 s   PAIRING_FAILED                -        -         redeem code A at 300 s
+[w48]    92  +606.00 s   PAIRING_CODE_ISSUED           OPR-002  -         issue code B
+[w48]    93  +606.00 s   PAIRING_FAILED                -        -         three wrong codes
+[w48]    94  +606.00 s   PAIRING_FAILED                -        -         three wrong codes
+[w48]    95  +606.00 s   PAIRING_FAILED                -        -         three wrong codes
+[w48]    96  +666.00 s   PAIRING_LOCKED                -        -         the right code during the lock
+[w48]    97  +666.00 s   PAIRING_FAILED                -        -         the fourth and the fifth wrong code
+[w48]    98  +666.00 s   PAIRING_FAILED                -        -         the fourth and the fifth wrong code
+[w48]    99  +666.00 s   PAIRING_CODE_CLOSED           -        -         the fourth and the fifth wrong code
+[w48]   100  +666.00 s   PAIRING_CODE_ISSUED           OPR-002  -         issue code C
+[w48]   101  +666.00 s   PAIRING_SUCCESS               -        DEV-0001  redeem code C
+[w48]   102  +666.00 s   PAIRING_FAILED                -        -         the used code and the exhausted code again
+[w48]   103  +666.00 s   PAIRING_FAILED                -        -         the used code and the exhausted code again
+[w48]   104  +666.00 s   TABLET_LINK_CHANGED           -        TABLET    tablet 1 opens its socket
+[w48]   105  +666.00 s   AUTH_SUCCESS                  OPR-001  DEV-0001  the investigator signs in on tablet 1
+[w48]   106  +666.00 s   BIOMETRIC_ENROLLMENT_CHANGED  OPR-001  DEV-0001  the investigator enrols a biometric token on tablet 1
+[w48]   107  +666.00 s   SESSION_CREATED               OPR-001  -         a recording is started from tablet 1
+[w48]   108  +669.92 s   PRECHECK_PASSED               OPR-001  -         a recording is started from tablet 1
+[w48]   109  +671.00 s   RECORDING_STARTED             OPR-001  -         a recording is started from tablet 1
+[w48]   110  +673.00 s   DEVICE_REVOKED                OPR-002  DEV-0001  the supervisor revokes tablet 1
+[w48]   111  +673.00 s   TABLET_LINK_CHANGED           -        TABLET    the supervisor revokes tablet 1
+[w48]   112  +673.00 s   ACCESS_DENIED                 -        DEV-0001  tablet 1 calls after the revoke
+[w48]   113  +673.00 s   ACCESS_DENIED                 -        DEV-0001  tablet 1 calls after the revoke
+[w48]   114  +673.00 s   ACCESS_DENIED                 -        DEV-0001  tablet 1 calls after the revoke
+[w48]   115  +673.00 s   ACCESS_DENIED                 -        DEV-0001  tablet 1 calls after the revoke
+[w48]   116  +673.00 s   ACCESS_DENIED                 -        DEV-0001  tablet 1 calls after the revoke
+[w48]   117  +673.00 s   ACCESS_DENIED                 -        DEV-0001  tablet 1 calls after the revoke
+[w48]   118  +675.00 s   RECORDING_STOPPED             OPR-002  -         the supervisor stops the recording from the web console
+[w48]   119  +682.26 s   EVIDENCE_SEALED               -        -         the Core finalises and seals the recording
+[w48]   120  +695.00 s   PAIRING_CODE_ISSUED           OPR-002  -         issue code D
+[w48]   121  +695.00 s   PAIRING_SUCCESS               -        DEV-0002  redeem code D
+[w48]   122  +695.00 s   ACCESS_DENIED                 -        DEV-0001  the new credential, the old credential, the old biometric token and the used code
+[w48]   123  +695.00 s   AUTH_FAILED                   OPR-001  DEV-0002  the new credential, the old credential, the old biometric token and the used code
+[w48]   124  +695.00 s   PAIRING_FAILED                -        -         the new credential, the old credential, the old biometric token and the used code
+[w48]   125  +695.00 s   TABLET_LINK_CHANGED           -        TABLET    the re-paired tablet opens its socket
+[w48]   126  +695.00 s   AUTH_SUCCESS                  OPR-001  DEV-0002  a password session, an enrolment and a biometric sign-in on the tablet
+[w48]   127  +695.00 s   BIOMETRIC_ENROLLMENT_CHANGED  OPR-001  DEV-0002  a password session, an enrolment and a biometric sign-in on the tablet
+[w48]   128  +695.00 s   AUTH_SUCCESS                  OPR-001  DEV-0002  a password session, an enrolment and a biometric sign-in on the tablet
+[w48]   129  +695.00 s   AUTH_FAILED                   OPR-001  DEV-0002  the used biometric token is presented again
+[w48]   130  +695.00 s   AUTH_FAILED                   OPR-001  DEV-0002  the rotated token of the revoked family
+
+stdout | test/acceptance/pairing-lifecycle.test.ts > the end of the run: no socket and no listener of this file remains > the socket of the device that never paired received hello and heartbeat only, whatever happened on the server; the portal beside it was told of every change
+[w48] sockets: 11 opened by the test; the unpaired device received 40 frames of types [hello, heartbeat]; the portal 155 frames of types [hello, snapshot, heartbeat, delta, admin.changed]
+
+stdout | test/acceptance/pairing-lifecycle.test.ts > the end of the run: no socket and no listener of this file remains > every socket is closed, every frame was a message of the contract, and nothing listens on the port any more
+[w48] end: 11 sockets opened, 11 closed, 0 open; the listener on 127.0.0.1:55350 is closed (a connection is refused: ECONNREFUSED)
+
+stdout | test/acceptance/pairing-lifecycle.test.ts > AC-B-41, AC-B-28: no secret is left behind > each secret was handed out in exactly one answer of the journey: a code by its issue, a credential by its redeem, a token by its sign-in or enrolment; a web session token in none (the cookie); a guess in none
+[w48] returned once: 82 answers of the journey; holding a secret: 8 of 10 tokens in exactly one answer, 2 in none (the web sessions: cookie only); 4 of 4 codes in exactly one
+
+stdout | test/acceptance/pairing-lifecycle.test.ts > AC-B-41, AC-B-28: no secret is left behind > a dump of the clone, every table as the owner role: none of the codes, credentials and tokens in any form; each is there only as the hash it is stored as
+[w48] dump of dems_test_step_70_tmdsbdlq_f01_pairing_lifecycle: 30 tables, 421 rows, 185403 characters (at boot: 303 rows); searched: 4 pairing codes and 5 guesses, 2 device credentials, 5 session tokens, 3 biometric tokens, the demo password; a code in 4 forms, a credential or token in 8 forms: 0 found; stored hashes present once: codes 4 of 4, credentials and tokens 10 of 10; six digits of a code as a bare number (not judged): 0
+
+stdout | test/acceptance/pairing-lifecycle.test.ts > AC-B-41, AC-B-28: no secret is left behind > the scan is not blind: a code, half a credential and a token as hex, planted into columns of two tables as the owner role, are found, each in its form and its table; a token in a line of text is found in four forms
+[w48] positive control (rolled back): 3 values planted as the owner role; the scan reports 3 finding(s): tablet 1 paired again: the rotated biometric token as hex in table operators; code C (redeemed by tablet 1) as digits as text in table paired_devices; tablet 1: device credential as last half in table paired_devices
+
+ ✓ |db| test/acceptance/pairing-lifecycle.test.ts > SC5: a tablet is paired from the portal, used, revoked, refused and paired again; every step has its audit row > AC-B-38: the tablet is paired AGAIN: a new code, a new device ID, a new credential; the old credential and the old biometric token stay refused; the old device stays REVOKED in the registry 24ms
+ ✓ |db| test/acceptance/pairing-lifecycle.test.ts > AC-B-82, SR-74: a used biometric token presented again closes the socket of the BIOMETRIC session; a PASSWORD session of the same operator stays > on the paired tablet the investigator signs in with the password, enrols, and signs in with the token: a PASSWORD and a BIOMETRIC session, each with its own real socket 35ms
+ ✓ |db| test/acceptance/pairing-lifecycle.test.ts > AC-B-82, SR-74: a used biometric token presented again closes the socket of the BIOMETRIC session; a PASSWORD session of the same operator stays > the USED token presented again answers the generic 401; AUTH_FAILED says TOKEN_REUSE and that one session was ended 3ms
+ ✓ |db| test/acceptance/pairing-lifecycle.test.ts > AC-B-82, SR-74: a used biometric token presented again closes the socket of the BIOMETRIC session; a PASSWORD session of the same operator stays > the socket of the BIOMETRIC session was told session.ended with TOKEN_REUSE and closed with 4401 within 1 s 0ms
+ ✓ |db| test/acceptance/pairing-lifecycle.test.ts > AC-B-82, SR-74: a used biometric token presented again closes the socket of the BIOMETRIC session; a PASSWORD session of the same operator stays > that session is ended with the reason TOKEN_REUSE and its token answers 401; the family is revoked: the rotated token signs nobody in 5ms
+ ✓ |db| test/acceptance/pairing-lifecycle.test.ts > AC-B-82, SR-74: a used biometric token presented again closes the socket of the BIOMETRIC session; a PASSWORD session of the same operator stays > the PASSWORD session of the same operator on the same device stays open, and so does its socket 1ms
+ ✓ |db| test/acceptance/pairing-lifecycle.test.ts > the audit trail of the whole journey > is exactly this sequence of types with their actors and devices; every row belongs to a step of this file; the chain verifies 3ms
+ ✓ |db| test/acceptance/pairing-lifecycle.test.ts > the end of the run: no socket and no listener of this file remains > the socket of the device that never paired received hello and heartbeat only, whatever happened on the server; the portal beside it was told of every change 0ms
+ ✓ |db| test/acceptance/pairing-lifecycle.test.ts > the end of the run: no socket and no listener of this file remains > every socket is closed, every frame was a message of the contract, and nothing listens on the port any more 2ms
+ ✓ |db| test/acceptance/pairing-lifecycle.test.ts > AC-B-41, AC-B-28: no secret is left behind > the test holds what it must look for: four codes, five guesses, two device credentials, five session tokens and three biometric tokens, all different 0ms
+ ✓ |db| test/acceptance/pairing-lifecycle.test.ts > AC-B-41, AC-B-28: no secret is left behind > each secret was handed out in exactly one answer of the journey: a code by its issue, a credential by its redeem, a token by its sign-in or enrolment; a web session token in none (the cookie); a guess in none 1ms
+ ✓ |db| test/acceptance/pairing-lifecycle.test.ts > AC-B-41, AC-B-28: no secret is left behind > a dump of the clone, every table as the owner role: none of the codes, credentials and tokens in any form; each is there only as the hash it is stored as 19ms
+stdout | test/acceptance/pairing-lifecycle.test.ts > AC-B-41, AC-B-28: no secret is left behind > the audit rows and the events of the journey, and every realtime frame every socket received
+[w48] AC-B-41: 47 audit rows and 45 events of the journey, 254 realtime frames (2359072 characters) on 11 sockets: 0 codes, credentials or tokens found
+
+stdout | test/acceptance/pairing-lifecycle.test.ts > AC-B-41, AC-B-28: no secret is left behind > the answers of every refusal: no code is echoed and no credential
+[w48] AC-B-41: 29 answers of a refusal: 0 codes, credentials or tokens found
+
+stdout | test/acceptance/pairing-lifecycle.test.ts > AC-B-41, AC-B-28: no secret is left behind > the log of the server, captured at level trace from the boot to the close: none of them, no hash of one, and no line at level error
+[w48] AC-B-41 log capture: 191809 characters, 973 lines, 82 request lines, levels {"20":840,"30":124,"40":9}; searched: 4 pairing codes and 5 guesses, 2 device credentials, 5 session tokens, 3 biometric tokens, the demo password: 0 found; hashes of them: 0
+[w48]   GET /api/v1/auth/session                         {"200":1,"401":2}
+[w48]   GET /api/v1/auth/status                          {"200":2}
+[w48]   GET /api/v1/health                               {"200":2}
+[w48]   GET /api/v1/pairing/code                         {"200":5,"401":1}
+[w48]   GET /api/v1/pairing/device                       {"200":2,"401":1,"403":2}
+[w48]   GET /api/v1/pairing/devices                      {"200":13,"401":1}
+[w48]   GET /api/v1/session/current                      {"200":7,"401":1,"403":1}
+[w48]   POST /api/v1/auth/biometric                      {"200":2}
+[w48]   POST /api/v1/auth/biometric/sign-in              {"200":1,"401":3,"403":1}
+[w48]   POST /api/v1/auth/sign-in                        {"200":4,"403":3}
+[w48]   POST /api/v1/pairing/code                        {"201":4}
+[w48]   POST /api/v1/pairing/devices/:id/revoke          {"200":1}
+[w48]   POST /api/v1/pairing/redeem                      {"201":2,"401":8,"423":2}
+[w48]   POST /api/v1/session                             {"201":2}
+[w48]   POST /api/v1/session/:id/cancel                  {"204":1}
+[w48]   POST /api/v1/session/:id/markers                 {"403":1}
+[w48]   POST /api/v1/session/:id/start                   {"200":1,"202":2,"409":1}
+[w48]   POST /api/v1/session/:id/stop                    {"202":1,"403":1}
+
+ ✓ |db| test/acceptance/pairing-lifecycle.test.ts > AC-B-41, AC-B-28: no secret is left behind > the scan is not blind: a code, half a credential and a token as hex, planted into columns of two tables as the owner role, are found, each in its form and its table; a token in a line of text is found in four forms 25ms
+ ✓ |db| test/acceptance/pairing-lifecycle.test.ts > AC-B-41, AC-B-28: no secret is left behind > the audit rows and the events of the journey, and every realtime frame every socket received 61ms
+ ✓ |db| test/acceptance/pairing-lifecycle.test.ts > AC-B-41, AC-B-28: no secret is left behind > the answers of every refusal: no code is echoed and no credential 0ms
+ ✓ |db| test/acceptance/pairing-lifecycle.test.ts > AC-B-41, AC-B-28: no secret is left behind > the log of the server, captured at level trace from the boot to the close: none of them, no hash of one, and no line at level error 7ms
+
+ Test Files  1 passed (1)
+      Tests  31 passed (31)
+   Start at  18:38:01
+   Duration  4.16s (tests 50%, transform 32%, import 18%)
+
+[test:db] forced drops that needed a retry: 0
+[test:db] teardown: dropped 2 database(s) in 82 ms; 0 remain with the run prefix dems_test_step_70_tmdsbdlq_
+## exit 0 at 18:38:05

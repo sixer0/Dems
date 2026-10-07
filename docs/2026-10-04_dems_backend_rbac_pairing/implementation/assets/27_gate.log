@@ -1,0 +1,1194 @@
+Gate of blueprint step 49 (plan row W27, contract C)
+Tree: /Users/gsp-budi/Documents/DEMS, 2026-10-04 10:52:00 WIB. The contract paths were last written at 10:50:52.
+Every line that begins with $ is the command as run; the line 'exit=' is its exit status.
+
+=== PART 1: the tree as this row leaves it ===
+
+$ npm run test -w @dems/shared -- --maxWorkers=2
+
+> @dems/shared@0.1.0 test
+> vitest run --maxWorkers=2
+
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/packages/shared
+
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ ❯ test/client-core.test.ts (81 tests | 1 failed) 54ms
+   ❯ contract A: a success without a body (the five 204 operations) (4)
+     × each of them resolves as a success with undefined data 2ms
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  test/client-core.test.ts > contract A: a success without a body (the five 204 operations) > each of them resolves as a success with undefined data
+CoreClientUsageError: cancelSession needs the path parameter "id"
+ ❯ usage src/client/core-client.ts:392:10
+    390|
+    391| function usage(message: string): CoreClientUsageError {
+    392|   return new CoreClientUsageError(message);
+       |          ^
+    393| }
+    394|
+ ❯ src/client/core-client.ts:454:13
+ ❯ buildPath src/client/core-client.ts:451:31
+ ❯ Object.call src/client/core-client.ts:550:18
+ ❯ test/client-core.test.ts:485:22
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 56 passed (57)
+      Tests  1 failed | 1404 passed (1405)
+   Start at  10:52:00
+   Duration  4.60s (tests 48%, import 38%, transform 13%, worker 1%)
+
+    Isolate  57 workers spawned · ~43ms startup each (spawn + environment, per file)
+             at least ~1.18s faster with isolate: false — reuses workers across files instead of one per file
+
+npm error Lifecycle script `test` failed with error:
+npm error code 1
+npm error path /Users/gsp-budi/Documents/DEMS/packages/shared
+npm error workspace @dems/shared@0.1.0
+npm error location /Users/gsp-budi/Documents/DEMS/packages/shared
+npm error command failed
+npm error command sh -c vitest run --maxWorkers=2
+exit=1 (10:52:04)
+
+$ node --import tsx packages/shared/scripts/gen-openapi.ts --check
+packages/shared/openapi/openapi.json is up to date (all (committed): 75 operations, 2 security schemes, version 0.2.0; offline: 10 operations, 0 security schemes, version 0.1.0)
+exit=0 (10:52:05)
+
+$ npm run typecheck -w @dems/shared
+
+> @dems/shared@0.1.0 typecheck
+> tsc --noEmit
+
+test/api-registry.test.ts(841,29): error TS2590: Expression produces a union type that is too complex to represent.
+test/api-registry.test.ts(857,7): error TS2578: Unused '@ts-expect-error' directive.
+test/api-registry.test.ts(859,7): error TS2578: Unused '@ts-expect-error' directive.
+test/api-registry.test.ts(861,7): error TS2578: Unused '@ts-expect-error' directive.
+test/api-registry.test.ts(863,7): error TS2578: Unused '@ts-expect-error' directive.
+test/api-registry.test.ts(865,7): error TS2578: Unused '@ts-expect-error' directive.
+test/client-types.test.ts(211,5): error TS2578: Unused '@ts-expect-error' directive.
+test/client-types.test.ts(213,5): error TS2578: Unused '@ts-expect-error' directive.
+test/client-types.test.ts(215,5): error TS2578: Unused '@ts-expect-error' directive.
+test/client-types.test.ts(217,5): error TS2578: Unused '@ts-expect-error' directive.
+npm error Lifecycle script `typecheck` failed with error:
+npm error code 2
+npm error path /Users/gsp-budi/Documents/DEMS/packages/shared
+npm error workspace @dems/shared@0.1.0
+npm error location /Users/gsp-budi/Documents/DEMS/packages/shared
+npm error command failed
+npm error command sh -c tsc --noEmit
+exit=2 (10:52:07)
+
+$ npm run lint -w @dems/shared
+
+> @dems/shared@0.1.0 lint
+> oxlint
+
+exit=0 (10:52:07)
+
+$ npm run typecheck -w @dems/core-web
+
+> @dems/core-web@0.1.0 typecheck
+> tsc -b
+
+exit=0 (10:52:16)
+
+$ npm run typecheck -w @dems/mobile
+
+> @dems/mobile@0.1.0 typecheck
+> tsc --noEmit
+
+src/runtime/dev-probes.ts(225,24): error TS2590: Expression produces a union type that is too complex to represent.
+npm error Lifecycle script `typecheck` failed with error:
+npm error code 2
+npm error path /Users/gsp-budi/Documents/DEMS/apps/mobile
+npm error workspace @dems/mobile@0.1.0
+npm error location /Users/gsp-budi/Documents/DEMS/apps/mobile
+npm error command failed
+npm error command sh -c tsc --noEmit
+exit=2 (10:52:19)
+
+$ npm run typecheck -w @dems/core-server
+
+> @dems/core-server@0.2.0 typecheck
+> tsc --noEmit
+
+src/core/__tests__/pipeline.test.ts(9,10): error TS2305: Module '"../audit-writer"' has no exported member 'AUDIT_INSERT'.
+npm error Lifecycle script `typecheck` failed with error:
+npm error code 2
+npm error path /Users/gsp-budi/Documents/DEMS/apps/core-server
+npm error workspace @dems/core-server@0.2.0
+npm error location /Users/gsp-budi/Documents/DEMS/apps/core-server
+npm error command failed
+npm error command sh -c tsc --noEmit
+exit=2 (10:52:22)
+
+$ npm run typecheck -w @dems/mock-core
+
+> @dems/mock-core@0.1.0 typecheck
+> tsc --noEmit
+
+exit=0 (10:52:23)
+
+$ npm run test -w @dems/core-web -- --maxWorkers=2
+
+> @dems/core-web@0.1.0 test
+> vitest run --maxWorkers=2
+
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/apps/core-web
+
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's pause() method
+Not implemented: HTMLMediaElement's play() method
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+
+ Test Files  39 passed (39)
+      Tests  438 passed (438)
+   Start at  10:52:24
+   Duration  35.32s (tests 69%, import 13%, environment 11%, setup 4%, transform 2%)
+
+    Isolate  39 workers spawned · ~240ms startup each (spawn + environment, per file)
+             at least ~4.45s faster with isolate: false — reuses workers across files instead of one per file
+
+exit=0 (10:52:59)
+
+$ git diff --stat acaff20 -- apps/core-web/src/test/scalar-config.test.ts   (prints nothing when unchanged)
+(end)
+
+$ git diff acaff20 --stat -- apps/mock-core release   (prints nothing when unchanged)
+(end)
+
+$ npm run test -w @dems/core-server -- --maxWorkers=2
+
+> @dems/core-server@0.2.0 test
+> vitest run --project unit --maxWorkers=2
+
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/apps/core-server
+
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ ❯ |unit| src/plugins/db/__tests__/db.test.ts (17 tests | 1 failed) 73ms
+   ❯ boot step B-1 (2)
+     × passes when the database answers and sets the flag 2ms
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ ❯ |unit| src/core/__tests__/pipeline.test.ts (38 tests | 13 failed) 440ms
+   ❯ order (ENG-6) (2)
+     × units submitted together run strictly one after another, in the order of submission 64ms
+   ❯ one unit, one transaction (6)
+     × the statements of a unit that appends a row and an event, exactly 1ms
+     × the category column of an event is derived with the shared code: a fault event takes its fault kind's 1ms
+     × two appends started together in one unit run one after the other: consecutive sequences 0ms
+     × the pool is read when a unit starts: a pool that was replaced (a reset) is the one the next unit uses 0ms
+   ❯ never a half-written unit (9)
+     × a row the database refuses as not continuing the chain (ZA001): 503 and one error line by the code 1ms
+   ❯ what a unit refuses, before a statement is sent (4)
+     × the refusals reach nothing: no statement, and the unit goes on and commits 0ms
+   ❯ AP-6: rows and events the engine built (4)
+     × that continue the head of the unit are inserted as they are; the event counter is raised above them 1ms
+     × that do not continue it: no statement of theirs is sent, one line with both sequence numbers, 503 3ms
+   ❯ the bounded length (2)
+     × at most maxPending units wait; one more is refused at once with 503, and announced once 1ms
+   ❯ the watchdog (3)
+     × a unit that never returns is abandoned at the limit: 503, the connection is closed, the queue goes on 61ms
+   ❯ no nesting (2)
+     × a unit that submits another unit is refused at once; it would wait for itself 0ms
+   ❯ after the commit (2)
+     × the commit listeners, then the unit's tasks in order, then the caller, then the next unit 1ms
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ ❯ |unit| src/core/__tests__/core-plugin.test.ts (14 tests | 3 failed) 93ms
+   ❯ the seams of the core unit (P25) (4)
+     × the writers stamp with the clock that is in the seam when they are called, also one replaced after ready() 7ms
+     × closing the app closes the pipeline: a unit in flight ends first, a later one is refused 23ms
+   ❯ a handler and its unit (spec §2.3 stages 8 and 9) (2)
+     × the answer is sent after the commit; a refusal thrown in the unit is the answer and nothing is stored 7ms
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ ❯ |unit| src/core/__tests__/writers.test.ts (49 tests | 1 failed) 13ms
+   ❯ a row as it is stored (both origins) (5)
+     × the digest, the identifier, the category and the link fields are checked 3ms
+ ❯ |unit| src/core/__tests__/static.test.ts (7 tests | 1 failed) 6ms
+   ❯ one hash (SR-53, ENG-9) (2)
+     × the audit writer builds its rows with the shared functions 2ms
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+ERROR: failed to copy trust settings of system certificate-25291
+
+⎯⎯⎯⎯⎯⎯ Failed Tests 19 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |unit| src/core/__tests__/core-plugin.test.ts > the seams of the core unit (P25) > the writers stamp with the clock that is in the seam when they are called, also one replaced after ready()
+AssertionError: expected '0000000000000000000000000000000000000…' to be '249b7f12cd994627ebe799aae40c99020098d…' // Object.is equality
+
+Expected: "249b7f12cd994627ebe799aae40c99020098de0c4dadf8451aabf06f7a42ee37"
+Received: "0000000000000000000000000000000000000000000000000000000000000000"
+
+ ❯ src/core/__tests__/core-plugin.test.ts:79:30
+     77|     });
+     78|     expect([first.at, second?.at]).toEqual([CLOCK_START, CLOCK_START +…
+     79|     expect(second?.prevHash).toBe(first.hash);
+       |                              ^
+     80|   });
+     81|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/19]⎯
+
+ FAIL  |unit| src/core/__tests__/core-plugin.test.ts > the seams of the core unit (P25) > closing the app closes the pipeline: a unit in flight ends first, a later one is refused
+AssertionError: expected [] to deeply equal [ 1 ]
+
+- Expected
++ Received
+
+- [
+-   1,
+- ]
++ []
+
+ ❯ src/core/__tests__/core-plugin.test.ts:108:42
+    106|     await app.close();
+    107|     expect((await inFlight).seq).toBe(1);
+    108|     expect(database.committed.auditSeqs).toEqual([1]);
+       |                                          ^
+    109|     expect(app.pipeline.snapshot()).toMatchObject({ accepting: false, …
+    110|     await expect(app.pipeline.run('test.late', async () => 1)).rejects…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/19]⎯
+
+ FAIL  |unit| src/core/__tests__/core-plugin.test.ts > a handler and its unit (spec §2.3 stages 8 and 9) > the answer is sent after the commit; a refusal thrown in the unit is the answer and nothing is stored
+AssertionError: expected { seq: 1, …(1) } to deeply equal { seq: 1, …(1) }
+
+- Expected
++ Received
+
+  {
+-   "committedBeforeTheAnswer": true,
++   "committedBeforeTheAnswer": false,
+    "seq": 1,
+  }
+
+ ❯ src/core/__tests__/core-plugin.test.ts:149:29
+    147|     const committed = await app.inject({ method: 'POST', url: '/api/v1…
+    148|     expect(committed.statusCode).toBe(200);
+    149|     expect(body(committed)).toEqual({ seq: 1, committedBeforeTheAnswer…
+       |                             ^
+    150|
+    151|     const refused = await app.inject({ method: 'POST', url: '/api/v1/s…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/19]⎯
+
+ FAIL  |unit| src/core/__tests__/pipeline.test.ts > order (ENG-6) > units submitted together run strictly one after another, in the order of submission
+AssertionError: expected [] to deeply equal [ Array(20) ]
+
+- Expected
++ Received
+
+- [
+-   1,
+-   2,
+-   3,
+-   4,
+-   5,
+-   6,
+-   7,
+-   8,
+-   9,
+-   10,
+-   11,
+-   12,
+-   13,
+-   14,
+-   15,
+-   16,
+-   17,
+-   18,
+-   19,
+-   20,
+- ]
++ []
+
+ ❯ src/core/__tests__/pipeline.test.ts:95:42
+     93|     expect(trace).toEqual(Array.from({ length: 20 }, (_, index) => [`s…
+     94|     expect(most).toBe(1);
+     95|     expect(database.committed.auditSeqs).toEqual(Array.from({ length: …
+       |                                          ^
+     96|     // Twenty transactions, never nested: each BEGIN is followed by it…
+     97|     const control = database.statements.filter((text) => text === UNIT…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/19]⎯
+
+ FAIL  |unit| src/core/__tests__/pipeline.test.ts > one unit, one transaction > the statements of a unit that appends a row and an event, exactly
+AssertionError: expected [ …(8) ] to deeply equal [ …(8) ]
+
+- Expected
++ Received
+
+  [
+    "BEGIN ISOLATION LEVEL READ COMMITTED",
+    "SELECT seq, hash FROM public.audit_chain_lock()",
+    "SELECT set_config('statement_timeout', $1, true)",
+-   undefined,
++   "insert into \"audit_log\" (\"seq\", \"id\", \"at\", \"type\", \"category\", \"severity\", \"actor_id\", \"message\", \"session_id\", \"evidence_id\", \"device_id\", \"details\", \"prev_hash\", \"hash\") values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)",
+    "UPDATE public.engine_counters SET next_value = next_value + $2 WHERE name = $1 RETURNING next_value - $2 AS first_seq",
+-   undefined,
++   "insert into \"events\" (\"seq\", \"id\", \"at\", \"type\", \"category\", \"severity\", \"message\", \"params\", \"session_id\", \"device_id\") values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
+    "UPDATE public.operators SET enabled = $2 WHERE id = $1",
+    "COMMIT",
+  ]
+
+ ❯ src/core/__tests__/pipeline.test.ts:122:33
+    120|       return { row, event };
+    121|     });
+    122|     expect(database.statements).toEqual([
+       |                                 ^
+    123|       'BEGIN ISOLATION LEVEL READ COMMITTED',
+    124|       'SELECT seq, hash FROM public.audit_chain_lock()',
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/19]⎯
+
+ FAIL  |unit| src/core/__tests__/pipeline.test.ts > one unit, one transaction > the category column of an event is derived with the shared code: a fault event takes its fault kind's
+AssertionError: expected [] to deeply equal [ 'NETWORK', 'STORAGE', …(2) ]
+
+- Expected
++ Received
+
+- [
+-   "NETWORK",
+-   "STORAGE",
+-   "SECURITY",
+-   "DEVICE",
+- ]
++ []
+
+ ❯ src/core/__tests__/pipeline.test.ts:147:48
+    145|       ]),
+    146|     );
+    147|     expect(database.committed.eventCategories).toEqual(['NETWORK', 'ST…
+       |                                                ^
+    148|     expect(database.committed.eventSeqs).toEqual([1, 2, 3, 4]);
+    149|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/19]⎯
+
+ FAIL  |unit| src/core/__tests__/pipeline.test.ts > one unit, one transaction > two appends started together in one unit run one after the other: consecutive sequences
+AssertionError: expected [] to deeply equal [ 1, 2 ]
+
+- Expected
++ Received
+
+- [
+-   1,
+-   2,
+- ]
++ []
+
+ ❯ src/core/__tests__/pipeline.test.ts:179:42
+    177|     expect(rows.map((row) => row.seq)).toEqual([1, 2]);
+    178|     expect(rows[1]?.prevHash).toBe(rows[0]?.hash);
+    179|     expect(database.committed.auditSeqs).toEqual([1, 2]);
+       |                                          ^
+    180|   });
+    181|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/19]⎯
+
+ FAIL  |unit| src/core/__tests__/pipeline.test.ts > one unit, one transaction > the pool is read when a unit starts: a pool that was replaced (a reset) is the one the next unit uses
+AssertionError: expected [] to deeply equal [ 1 ]
+
+- Expected
++ Received
+
+- [
+-   1,
+- ]
++ []
+
+ ❯ src/core/__tests__/pipeline.test.ts:190:39
+    188|     current = second;
+    189|     await pipeline.run('test.generation', (unit) => unit.audit.append(…
+    190|     expect(first.committed.auditSeqs).toEqual([1]);
+       |                                       ^
+    191|     expect(second.committed.auditSeqs).toEqual([1]);
+    192|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/19]⎯
+
+ FAIL  |unit| src/core/__tests__/pipeline.test.ts > never a half-written unit > a row the database refuses as not continuing the chain (ZA001): 503 and one error line by the code
+AssertionError: expected null to match object { statusCode: 503, …(1) }
+
+- Expected:
+{
+  "reason": "AUDIT_CHAIN_REFUSED",
+  "statusCode": 503,
+}
+
++ Received:
+null
+
+ ❯ src/core/__tests__/pipeline.test.ts:311:19
+    309|     const { pipeline, database, errorLog, lines } = rig({}, { failOn: …
+    310|     const error = await caught(pipeline.run('test.chain', (unit) => un…
+    311|     expect(error).toMatchObject({ statusCode: 503, reason: 'AUDIT_CHAI…
+       |                   ^
+    312|     expect((error as PipelineFailure).cause).toBe(refusal);
+    313|     expect(database.statements.at(-1)).toBe('ROLLBACK');
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[9/19]⎯
+
+ FAIL  |unit| src/core/__tests__/pipeline.test.ts > what a unit refuses, before a statement is sent > the refusals reach nothing: no statement, and the unit goes on and commits
+AssertionError: expected [ …(6) ] to deeply equal [ …(6) ]
+
+- Expected
++ Received
+
+  [
+    "BEGIN ISOLATION LEVEL READ COMMITTED",
+    "SELECT seq, hash FROM public.audit_chain_lock()",
+    "SELECT set_config('statement_timeout', $1, true)",
+    "SELECT 1",
+-   undefined,
++   "insert into \"audit_log\" (\"seq\", \"id\", \"at\", \"type\", \"category\", \"severity\", \"actor_id\", \"message\", \"session_id\", \"evidence_id\", \"device_id\", \"details\", \"prev_hash\", \"hash\") values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)",
+    "COMMIT",
+  ]
+
+ ❯ src/core/__tests__/pipeline.test.ts:420:33
+    418|     });
+    419|     expect(codes).toEqual(Array.from({ length: 6 }, () => 'UNIT_STATEM…
+    420|     expect(database.statements).toEqual([...OPENING, 'SELECT 1', AUDIT…
+       |                                 ^
+    421|     expect(database.committed.auditSeqs).toEqual([1]);
+    422|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[10/19]⎯
+
+ FAIL  |unit| src/core/__tests__/pipeline.test.ts > AP-6: rows and events the engine built > that continue the head of the unit are inserted as they are; the event counter is raised above them
+AssertionError: expected [ …(8) ] to deeply equal [ …(8) ]
+
+- Expected
++ Received
+
+  [
+    "BEGIN ISOLATION LEVEL READ COMMITTED",
+    "SELECT seq, hash FROM public.audit_chain_lock()",
+    "SELECT set_config('statement_timeout', $1, true)",
+-   undefined,
+-   undefined,
+-   undefined,
++   "insert into \"audit_log\" (\"seq\", \"id\", \"at\", \"type\", \"category\", \"severity\", \"actor_id\", \"message\", \"session_id\", \"evidence_id\", \"device_id\", \"details\", \"prev_hash\", \"hash\") values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)",
++   "insert into \"audit_log\" (\"seq\", \"id\", \"at\", \"type\", \"category\", \"severity\", \"actor_id\", \"message\", \"session_id\", \"evidence_id\", \"device_id\", \"details\", \"prev_hash\", \"hash\") values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)",
++   "insert into \"events\" (\"seq\", \"id\", \"at\", \"type\", \"category\", \"severity\", \"message\", \"params\", \"session_id\", \"device_id\") values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
+    "UPDATE public.engine_counters SET next_value = GREATEST(next_value, $2) WHERE name = $1 RETURNING next_value",
+    "COMMIT",
+  ]
+
+ ❯ src/core/__tests__/pipeline.test.ts:466:33
+    464|       expect(await unit.audit.head()).toEqual({ seq: 2, hash: built.au…
+    465|     });
+    466|     expect(database.statements).toEqual([...OPENING, AUDIT_INSERT, AUD…
+       |                                 ^
+    467|     expect(database.committed).toMatchObject({ head: { seq: 2, hash: b…
+    468|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[11/19]⎯
+
+ FAIL  |unit| src/core/__tests__/pipeline.test.ts > AP-6: rows and events the engine built > that do not continue it: no statement of theirs is sent, one line with both sequence numbers, 503
+AssertionError: expected null to be an instance of PipelineFailure
+ ❯ src/core/__tests__/pipeline.test.ts:476:19
+    474|     const before = database.statements.length;
+    475|     const error = await caught(pipeline.run('engine.tick', (unit) => u…
+    476|     expect(error).toBeInstanceOf(PipelineFailure);
+       |                   ^
+    477|     expect(error).toMatchObject({ statusCode: 503, code: 'NOT_READY', …
+    478|     expect(database.statements.slice(before)).toEqual([...OPENING, 'RO…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[12/19]⎯
+
+ FAIL  |unit| src/core/__tests__/pipeline.test.ts > the bounded length > at most maxPending units wait; one more is refused at once with 503, and announced once
+AssertionError: expected [ 1, 1, 1 ] to deeply equal [ 1, 2, 3 ]
+
+- Expected
++ Received
+
+  [
+    1,
+-   2,
+-   3,
++   1,
++   1,
+  ]
+
+ ❯ src/core/__tests__/pipeline.test.ts:529:64
+    527|     hold.open();
+    528|     expect(await running).toBe('holder');
+    529|     expect((await Promise.all(waiting)).map((row) => row.seq)).toEqual…
+       |                                                                ^
+    530|     // Room again: the next submission is accepted.
+    531|     expect((await pipeline.run('test.later', (unit) => unit.audit.appe…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[13/19]⎯
+
+ FAIL  |unit| src/core/__tests__/pipeline.test.ts > the watchdog > a unit that never returns is abandoned at the limit: 503, the connection is closed, the queue goes on
+AssertionError: expected [] to deeply equal [ 1 ]
+
+- Expected
++ Received
+
+- [
+-   1,
+- ]
++ []
+
+ ❯ src/core/__tests__/pipeline.test.ts:567:42
+    565|     expect((await next).seq).toBe(1);
+    566|     expect(database.connections).toEqual({ opened: 2, released: 1, des…
+    567|     expect(database.committed.auditSeqs).toEqual([1]);
+       |                                          ^
+    568|
+    569|     resume.open();
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[14/19]⎯
+
+ FAIL  |unit| src/core/__tests__/pipeline.test.ts > no nesting > a unit that submits another unit is refused at once; it would wait for itself
+AssertionError: expected [] to deeply equal [ 1 ]
+
+- Expected
++ Received
+
+- [
+-   1,
+- ]
++ []
+
+ ❯ src/core/__tests__/pipeline.test.ts:617:42
+    615|     expect(outcome).toBeInstanceOf(CoreError);
+    616|     expect((outcome as CoreError).code).toBe('PIPELINE_REENTRANT');
+    617|     expect(database.committed.auditSeqs).toEqual([1]);
+       |                                          ^
+    618|   });
+    619|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[15/19]⎯
+
+ FAIL  |unit| src/core/__tests__/pipeline.test.ts > after the commit > the commit listeners, then the unit's tasks in order, then the caller, then the next unit
+AssertionError: expected [ 'a works', …(7) ] to deeply equal [ 'a works', …(7) ]
+
+- Expected
++ Received
+
+@@ -3,8 +3,8 @@
+    "listener test.a rows 1,2 head 2",
+    "a task 1",
+    "a task 3",
+    "a caller",
+    "b works",
+-   "listener test.b rows 3 head 3",
++   "listener test.b rows 1 head 1",
+    "b task",
+  ]
+
+ ❯ src/core/__tests__/pipeline.test.ts:654:19
+    652|     });
+    653|     await Promise.all([first, second]);
+    654|     expect(trace).toEqual([
+       |                   ^
+    655|       'a works',
+    656|       'listener test.a rows 1,2 head 2',
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[16/19]⎯
+
+ FAIL  |unit| src/core/__tests__/static.test.ts > one hash (SR-53, ENG-9) > the audit writer builds its rows with the shared functions
+AssertionError: eventCategory: expected ' Severity, SimEventType, appendEvent,…' to match /\beventCategory\b/
+
+- Expected:
+/\beventCategory\b/
+
++ Received:
+" Severity, SimEventType, appendEvent, eventId, type EventInput, type SimEvent "
+
+ ❯ src/core/__tests__/static.test.ts:106:39
+    104|     const importedForEvents = /import\s*\{([^}]*)\}\s*from\s*'@dems\/s…
+    105|     for (const name of ['appendEvent', 'eventCategory', 'eventId']) {
+    106|       expect(importedForEvents, name).toMatch(new RegExp(`\\b${name}\\…
+       |                                       ^
+    107|     }
+    108|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[17/19]⎯
+
+ FAIL  |unit| src/core/__tests__/writers.test.ts > a row as it is stored (both origins) > the digest, the identifier, the category and the link fields are checked
+AssertionError: expected 'AUDIT_ROW_HASH_MISMATCH' to be 'AUDIT_ROW_INVALID' // Object.is equality
+
+Expected: "AUDIT_ROW_INVALID"
+Received: "AUDIT_ROW_HASH_MISMATCH"
+
+ ❯ src/core/__tests__/writers.test.ts:367:74
+    365|     expect(codeOf(() => checkAuditRow({ ...row, category: 'AUTH' }, 'p…
+    366|     expect(codeOf(() => checkAuditRow({ ...row, seq: 0 }, 'prepared'))…
+    367|     expect(codeOf(() => checkAuditRow({ ...row, at: 1.5 }, 'prepared')…
+       |                                                                          ^
+    368|     expect(codeOf(() => checkAuditRow({ ...row, prevHash: 'short' }, '…
+    369|     expect(codeOf(() => checkAuditRow({ ...row, hash: row.prevHash }, …
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[18/19]⎯
+
+ FAIL  |unit| src/plugins/db/__tests__/db.test.ts > boot step B-1 > passes when the database answers and sets the flag
+AssertionError: promise rejected "BootError: boot step B-2 failed { …(1) }" instead of resolving
+ ❯ src/plugins/db/__tests__/db.test.ts:226:39
+    224|   it('passes when the database answers and sets the flag', async () =>…
+    225|     const app = await readyApp({ createPool: () => createFakePool().po…
+    226|     await expect(app.readiness.boot()).resolves.toBeUndefined();
+       |                                       ^
+    227|     expect(app.readiness.snapshot().database).toBe(true);
+    228|   });
+
+Caused by: BootError: boot step B-2 failed
+ ❯ Object.boot src/plugins/readiness/index.ts:96:17
+ ❯ src/plugins/db/__tests__/db.test.ts:226:5
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+Serialized Error: { stepId: 'B-2' }
+Caused by: BootCheckError: B-2: the server reports version number NaN; PostgreSQL 18 is expected.
+ ❯ Object.checkServerVersion [as run] src/db/schema/boot-checks.ts:85:11
+ ❯ Object.run src/core/boot-checks.ts:55:11
+ ❯ Object.boot src/plugins/readiness/index.ts:94:11
+ ❯ src/plugins/db/__tests__/db.test.ts:226:5
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+Serialized Error: { checkId: 'B-2' }
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[19/19]⎯
+
+
+ Test Files  5 failed | 36 passed (41)
+      Tests  19 failed | 1257 passed (1276)
+   Start at  10:52:59
+   Duration  6.78s (tests 47%, import 47%, transform 6%, worker 1%)
+
+npm error Lifecycle script `test` failed with error:
+npm error code 1
+npm error path /Users/gsp-budi/Documents/DEMS/apps/core-server
+npm error workspace @dems/core-server@0.2.0
+npm error location /Users/gsp-budi/Documents/DEMS/apps/core-server
+npm error command failed
+npm error command sh -c vitest run --project unit --maxWorkers=2
+exit=1 (10:53:06)
+
+=== PART 1b: the core server suite again (P11: another row was writing apps/core-server/src/core/** at 10:51 to 10:54) ===
+
+$ npm run typecheck -w @dems/core-server   (second run, 10:54:18)
+src/core/__tests__/pipeline.test.ts(9,10): error TS2305: Module '"../audit-writer"' has no exported member 'AUDIT_INSERT'.
+src/core/__tests__/pipeline.test.ts(11,54): error TS2305: Module '"../event-writer"' has no exported member 'EVENT_INSERT'.
+exit=2
+
+$ npm run test -w @dems/core-server -- --maxWorkers=2   (second run, 10:54:25)
+⎯⎯⎯⎯⎯⎯ Failed Tests 19 ⎯⎯⎯⎯⎯⎯⎯
+ Test Files  5 failed | 36 passed (41)
+      Tests  19 failed | 1257 passed (1276)
+exit=1 (19 failures, all in src/core/__tests__ and src/plugins/db/__tests__/db.test.ts: files of the row that was writing them)
+
+$ npm run test -w @dems/core-server -- --maxWorkers=2 src/plugins/throttle src/plugins/config src/plugins/origin-guard src/plugins/error-envelope src/plugins/response-headers src/modules/health   (every server test file that imports the shared contract; 10:54:40)
+ Test Files  9 passed (9)
+      Tests  459 passed (459)
+exit=0
+
+=== PART 2: the same contract with implementation/assets/27_proposed_client_changes.patch applied ===
+An isolated copy of packages/shared under .cache/W27/mut (git-ignored): every file equals the tree's, except
+src/client/core-client.ts and test/client-core.test.ts, which carry the patch. Nothing in the tree was changed.
+
+$ vitest run --root .cache/W27/mut/packages/shared --maxWorkers=2
+ Test Files  57 passed (57)
+      Tests  1405 passed (1405)
+   Duration  4.48s (tests 48%, import 40%, transform 11%, worker 1%)
+exit=0 (10:55:00)
+
+$ tsc --noEmit -p .cache/W27/mut/packages/shared/tsconfig.json
+exit=0 (10:55:02)
+
+$ tsc -p .cache/W27/tsconfig.mobile.tree.json      (apps/mobile/src/runtime/dev-probes.ts against the tree's shared package: the control)
+apps/mobile/src/runtime/dev-probes.ts(225,24): error TS2590: Expression produces a union type that is too complex to represent.
+exit=2 (10:55:03)
+
+$ tsc -p .cache/W27/tsconfig.mobile.patched.json   (the same file against the copy with the patch)
+exit=0 (10:55:04)
+
+=== PART 1c: the core server suite, third run (after the other row saved its files at 10:55:49) ===
+
+$ npm run typecheck -w @dems/core-server
+exit=0 (10:55:54)
+
+$ npm run test -w @dems/core-server -- --maxWorkers=2
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  |unit| src/plugins/db/__tests__/db.test.ts > boot step B-1 > passes when the database answers and sets the flag
+ Test Files  1 failed | 40 passed (41)
+      Tests  1 failed | 1279 passed (1280)
+Caused by: BootCheckError: B-2: the server reports version number NaN; PostgreSQL 18 is expected.
+ ❯ Object.checkServerVersion [as run] src/db/schema/boot-checks.ts:85:11
+ ❯ Object.run src/core/boot-checks.ts:55:11
+exit=1 (10:56:01)

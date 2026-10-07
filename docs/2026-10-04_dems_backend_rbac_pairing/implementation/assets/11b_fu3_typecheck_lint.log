@@ -1,0 +1,12 @@
+== typecheck 16:38:07
+
+> @dems/core-server@0.2.0 typecheck
+> tsc --noEmit
+
+typecheck exit=0
+== lint 16:38:14
+
+> @dems/core-server@0.2.0 lint
+> oxlint
+
+lint exit=0

@@ -1,0 +1,292 @@
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/apps/core-server
+
+ ✓ |unit| src/core/__tests__/core-plugin.test.ts > the server clock (ENG-13 to ENG-16) > the system clock never moves backwards, also when the wall clock is set back 2ms
+ ✓ |unit| src/core/__tests__/core-plugin.test.ts > the server clock (ENG-13 to ENG-16) > a clock that follows another reads it each time; a stamp is a whole number of milliseconds 1ms
+ ✓ |unit| src/core/__tests__/core-plugin.test.ts > the seams of the core unit (P25) > clock, pipeline and auditWriter are provided; the plugin opens no connection 80ms
+ ✓ |unit| src/core/__tests__/pipeline.test.ts > the limits > are the constants of limits.ts: 256 waiting, 5 s a unit, 6 s to close 2ms
+ ✓ |unit| src/core/__tests__/pipeline.test.ts > order (ENG-6) > units submitted together run strictly one after another, in the order of submission 84ms
+ ✓ |unit| src/core/__tests__/pipeline.test.ts > order (ENG-6) > the work never runs inside the caller's own turn, and the caller continues before the next unit starts 1ms
+ ✓ |unit| src/core/__tests__/pipeline.test.ts > one unit, one transaction > the statements of a unit that appends a row and an event, exactly 4ms
+ ✓ |unit| src/core/__tests__/pipeline.test.ts > one unit, one transaction > the third statement carries the unit's statement limit and the pinned search path, for the transaction only 1ms
+ ✓ |unit| src/core/__tests__/pipeline.test.ts > one unit, one transaction > the category column of an event is derived with the shared code: a fault event takes its fault kind's 1ms
+ ✓ |unit| src/core/__tests__/pipeline.test.ts > one unit, one transaction > a unit that touches no table opens no transaction and takes no connection 1ms
+ ✓ |unit| src/core/__tests__/pipeline.test.ts > one unit, one transaction > the chain lock is taken by every unit that opens a transaction, before its first statement (AT-2, AP-7) 0ms
+ ✓ |unit| src/core/__tests__/pipeline.test.ts > one unit, one transaction > two appends started together in one unit run one after the other: consecutive sequences 1ms
+ ✓ |unit| src/core/__tests__/pipeline.test.ts > one unit, one transaction > the pool is read when a unit starts: a pool that was replaced (a reset) is the one the next unit uses 1ms
+ ✓ |unit| src/core/__tests__/core-plugin.test.ts > the seams of the core unit (P25) > the writers stamp with the clock that is in the seam when they are called, also one replaced after ready() 17ms
+ ✓ |unit| src/core/__tests__/core-plugin.test.ts > the seams of the core unit (P25) > a unit that cannot reach the database answers 503 and readiness follows the pool (ENG-5) 30ms
+ ✓ |unit| src/core/__tests__/core-plugin.test.ts > the seams of the core unit (P25) > closing the app closes the pipeline: a unit in flight ends first, a later one is refused 30ms
+ ✓ |unit| src/core/__tests__/core-plugin.test.ts > a handler and its unit (spec §2.3 stages 8 and 9) > the answer is sent after the commit; a refusal thrown in the unit is the answer and nothing is stored 30ms
+ ✓ |unit| src/core/__tests__/pipeline.test.ts > never a half-written unit > a unit that throws: ROLLBACK, the original error, nothing committed, and the next unit runs 6ms
+ ✓ |unit| src/core/__tests__/pipeline.test.ts > never a half-written unit > a statement that failed: ROLLBACK, also when the work caught the failure; the rejection is that failure 1ms
+ ✓ |unit| src/core/__tests__/pipeline.test.ts > never a half-written unit > COMMIT that the server answers with ROLLBACK is not a commit: 503, the connection is closed, readiness is told 3ms
+ ✓ |unit| src/core/__tests__/pipeline.test.ts > never a half-written unit > no connection: 503 with the cause, one persistent entry by the driver's code, readiness is told 1ms
+ ✓ |unit| src/core/__tests__/pipeline.test.ts > never a half-written unit > an outage is announced once: one error line and one persistent entry until a unit commits again 6ms
+ ✓ |unit| src/core/__tests__/pipeline.test.ts > never a half-written unit > the connection is lost while the unit holds it: the unit cannot commit, and the answer is 503 with the loss as its cause 1ms
+ ✓ |unit| src/core/__tests__/pipeline.test.ts > never a half-written unit > a row the database refuses as not continuing the chain (ZA001): 503 and one error line by the code 2ms
+ ✓ |unit| src/core/__tests__/pipeline.test.ts > never a half-written unit > an insert of the writers that fails reaches the caller as the driver's error, not as the query builder's wrapper 1ms
+ ✓ |unit| src/core/__tests__/pipeline.test.ts > never a half-written unit > a row that breaks a rule of the writers is refused before any statement: nothing is sent 1ms
+ ✓ |unit| src/core/__tests__/pipeline.test.ts > never a half-written unit > a clock that gives a fraction: refused before any statement (the column is a whole number) 0ms
+ ✓ |unit| src/core/__tests__/pipeline.test.ts > what a unit refuses, before a statement is sent > transaction control and session settings, whatever stands before them 1ms
+ ✓ |unit| src/core/__tests__/pipeline.test.ts > what a unit refuses, before a statement is sent > an insert into audit_log or events that does not come from the two writers 0ms
+ ✓ |unit| src/core/__tests__/pipeline.test.ts > what a unit refuses, before a statement is sent > the refusals reach nothing: no statement, and the unit goes on and commits 1ms
+ ✓ |unit| src/core/__tests__/pipeline.test.ts > what a unit refuses, before a statement is sent > a handle that outlived its unit: every tool refuses 2ms
+ ✓ |unit| src/core/__tests__/pipeline.test.ts > AP-6: rows and events the engine built > that continue the head of the unit are inserted as they are; the event counter is raised above them 3ms
+ ✓ |unit| src/core/__tests__/pipeline.test.ts > AP-6: rows and events the engine built > that do not continue it: no statement of theirs is sent, one line with both sequence numbers, 503 1ms
+ ✓ |unit| src/core/__tests__/pipeline.test.ts > AP-6: rows and events the engine built > a batch whose rows do not continue each other, and events whose sequences do not rise, are refused 2ms
+ ✓ |unit| src/core/__tests__/pipeline.test.ts > AP-6: rows and events the engine built > an event counter that has no row (a database never seeded) is refused by its code 0ms
+ ✓ |unit| src/core/__tests__/pipeline.test.ts > the bounded length > at most maxPending units wait; one more is refused at once with 503, and announced once 10ms
+ ✓ |unit| src/core/__tests__/pipeline.test.ts > the bounded length > from idle, a burst of maxPending + 1 is accepted: the first is the one that runs, not one that waits 1ms
+ ✓ |unit| src/core/__tests__/core-plugin.test.ts > a handler and its unit (spec §2.3 stages 8 and 9) > a refusal of the pipeline is the envelope's 503 NOT_READY; a broken rule of the writers is 500 without a detail 21ms
+ ✓ |unit| src/core/__tests__/core-plugin.test.ts > the boot steps the core unit registers (decision D40) > are B-2 to B-9 of the migration row, B-8 the reported one 1ms
+ ✓ |unit| src/core/__tests__/core-plugin.test.ts > the boot steps the core unit registers (decision D40) > run in the order of the contract after B-1, B-8 between B-7 and B-9 16ms
+ ✓ |unit| src/core/__tests__/core-plugin.test.ts > the boot steps the core unit registers (decision D40) > B-8 is reported and never blocks: a stored row with a wrong digest is one error line, and B-9 still runs 11ms
+ ✓ |unit| src/core/__tests__/core-plugin.test.ts > the boot steps the core unit registers (decision D40) > a blocking check that fails stops the boot there: B-6 on a database that is not seeded 8ms
+ ✓ |unit| src/core/__tests__/core-plugin.test.ts > the boot steps the core unit registers (decision D40) > follow B-1: with a pool that answers no check, the boot stops at B-2 and the log names it 11ms
+ ✓ |unit| src/core/__tests__/core-plugin.test.ts > the boot steps the core unit registers (decision D40) > a check that cannot be run at all (the database fails under it) is logged by the driver's code, without a text 7ms
+ ✓ |unit| src/core/__tests__/pipeline.test.ts > the watchdog > a unit that never returns is abandoned at the limit: 503, the connection is closed, the queue goes on 68ms
+ ✓ |unit| src/core/__tests__/pipeline.test.ts > the watchdog > statements slower than the limit: the unit is abandoned and never commits 174ms
+ ✓ |unit| src/core/__tests__/pipeline.test.ts > the watchdog > a statement the server cancelled at the unit's statement limit (57014) is the same refusal 1ms
+ ✓ |unit| src/core/__tests__/pipeline.test.ts > no nesting > a unit that submits another unit is refused at once; it would wait for itself 1ms
+ ✓ |unit| src/core/__tests__/pipeline.test.ts > no nesting > after the unit ended, the same chain of calls may submit: from afterCommit, and from a timer the unit started 22ms
+ ✓ |unit| src/core/__tests__/pipeline.test.ts > after the commit > the commit listeners, then the unit's tasks in order, then the caller, then the next unit 2ms
+ ✓ |unit| src/core/__tests__/pipeline.test.ts > after the commit > nothing runs after a unit that rolled back; a listener that was removed is not called 1ms
+ ✓ |unit| src/core/__tests__/pipeline.test.ts > the label of a unit > is a name chosen in the code: anything else is refused before the unit is queued 3ms
+ ✓ |unit| src/core/__tests__/pipeline.test.ts > drain and close > drain() resolves at once when idle, and otherwise when nothing runs or waits any more 20ms
+ ✓ |unit| src/core/__tests__/pipeline.test.ts > drain and close > close() past its limit: the waiting units are refused in order, the running one is abandoned, and close() ends 77ms
+ ✓ |unit| src/plugins/db/__tests__/db.test.ts > the pool is lazy > building and readying the app sends nothing to the database 77ms
+ ✓ |unit| src/plugins/db/__tests__/db.test.ts > the pool is lazy > the real pool is created from the five fields and connects to nothing by itself 1ms
+ ✓ |unit| src/plugins/db/__tests__/db.test.ts > the pool is lazy > the pool keeps no printable copy of the password 1ms
+ ✓ |unit| src/plugins/db/__tests__/db.test.ts > probe() and ready.database > a database that answers sets the flag; the statement is SELECT 1 9ms
+ ✓ |unit| src/plugins/db/__tests__/db.test.ts > probe() and ready.database > a database that does not answer leaves the flag off and never throws 10ms
+ ✓ |unit| src/plugins/db/__tests__/db.test.ts > probe() and ready.database > a real pool pointed at a closed port: false, quickly, and the process stays up 24ms
+ ✓ |unit| src/plugins/db/__tests__/db.test.ts > probe() and ready.database > a result is reused for one second, and concurrent probes share one statement 8ms
+ ✓ |unit| src/plugins/db/__tests__/db.test.ts > probe() and ready.database > follows the database: off when it stops, on again when it is back 7ms
+ ✓ |unit| src/plugins/db/__tests__/db.test.ts > probe() and ready.database > an error on an idle connection sets the flag off at once and does not end the process 6ms
+ ✓ |unit| src/plugins/db/__tests__/db.test.ts > probe() and ready.database > a failure is logged and persisted by its code, once per outage, without the driver message 13ms
+ ✓ |unit| src/plugins/db/__tests__/db.test.ts > connectionLost(): a holder of a connection lost it (checkpoint CP-B1, finding CPB1-6) > sets the flag off at once, forgets the last probe result and starts a probe; the flag is on again when the database answers 6ms
+ ✓ |unit| src/plugins/db/__tests__/db.test.ts > connectionLost(): a holder of a connection lost it (checkpoint CP-B1, finding CPB1-6) > while the database stays away the flag stays off; on a closed pool it does nothing 5ms
+ ✓ |unit| src/plugins/db/__tests__/db.test.ts > close() and reopen() (reset steps R-1 and R-9) > close() ends the pool, sets the flag off, and probe() then gives false without a statement 5ms
+ ✓ |unit| src/plugins/db/__tests__/db.test.ts > close() and reopen() (reset steps R-1 and R-9) > reopen() creates a new pool from the same configuration and raises the generation 4ms
+ ✓ |unit| src/plugins/db/__tests__/db.test.ts > close() and reopen() (reset steps R-1 and R-9) > closing the app closes the pool 5ms
+ ✓ |unit| src/plugins/db/__tests__/db.test.ts > close() and reopen() (reset steps R-1 and R-9) > a real closed pool: every query is rejected and health still answers 200 6ms
+ ✓ |unit| src/plugins/db/__tests__/db.test.ts > boot step B-1 > passes when the database answers and sets the flag 6ms
+ ✓ |unit| src/plugins/db/__tests__/db.test.ts > boot step B-1 > stops the boot, by its ID, when the database does not answer 9ms
+ ✓ |unit| src/plugins/db/__tests__/db.test.ts > removeDriverEnvironment (decision D26) > removes every variable the driver would read on its own and returns the names only 0ms
+ ✓ |unit| src/engine/__tests__/plugin.test.ts > the seam before a start > app.engine is the host: stopped, epoch 0, revision 0; building the app opens no connection and schedules nothing 68ms
+ ✓ |unit| src/engine/__tests__/plugin.test.ts > the seam before a start > a command, a read and the tablet link answer 503 NOT_READY; nothing is submitted to the pipeline 9ms
+ ✓ |unit| src/engine/__tests__/plugin.test.ts > the seam before a start > stop on a host that never started does nothing, twice; closing the app submits no unit 8ms
+ ✓ |unit| src/engine/__tests__/plugin.test.ts > the seam before a start > engineControl refuses an object that a test put behind the seam 7ms
+ ✓ |unit| src/engine/__tests__/plugin.test.ts > the boot step > is named engine.rehydrate and runs after the checks: a boot that stops at B-2 never reaches it 9ms
+ ✓ |unit| src/engine/__tests__/plugin.test.ts > the boot step > a database that answers and holds no state: the start is refused by code, nothing is written, nothing is scheduled, the server stays not ready 26ms
+ ✓ |unit| src/engine/__tests__/plugin.test.ts > the boot step > a database that does not answer: the start is the pipeline's own 503 NOT_READY, not a failed read of a table 9ms
+ ✓ |unit| src/engine/__tests__/plugin.test.ts > the boot step > the timer is replaced only while the host is stopped, and a stopped host accepts it 6ms
+ ✓ |unit| src/plugins/db/__tests__/search-path.test.ts > the pinned value > is the project schema, then the temporary schema, named so that it comes last 2ms
+ ✓ |unit| src/plugins/db/__tests__/search-path.test.ts > the pinned value > is an option of every connection the runtime pool opens 1ms
+ ✓ |unit| src/plugins/db/__tests__/search-path.test.ts > boot step B-1, second half: a pooled connection has exactly the pinned search path > passes when it has: the boot goes on to B-2, and B-1 is two statements 80ms
+ ✓ |unit| src/plugins/db/__tests__/search-path.test.ts > boot step B-1, second half: a pooled connection has exactly the pinned search path > the default of PostgreSQL ("$user", public): the boot stops at B-1 with the code SEARCH_PATH_NOT_PINNED 10ms
+ ✓ |unit| src/plugins/db/__tests__/search-path.test.ts > boot step B-1, second half: a pooled connection has exactly the pinned search path > the temporary schema first (pg_temp,public): the boot stops at B-1 with the code SEARCH_PATH_NOT_PINNED 8ms
+ ✓ |unit| src/plugins/db/__tests__/search-path.test.ts > boot step B-1, second half: a pooled connection has exactly the pinned search path > the same schemas with a space (public, pg_temp): the boot stops at B-1 with the code SEARCH_PATH_NOT_PINNED 8ms
+ ✓ |unit| src/plugins/db/__tests__/search-path.test.ts > boot step B-1, second half: a pooled connection has exactly the pinned search path > only the project schema (public): the boot stops at B-1 with the code SEARCH_PATH_NOT_PINNED 7ms
+ ✓ |unit| src/plugins/db/__tests__/search-path.test.ts > boot step B-1, second half: a pooled connection has exactly the pinned search path > another schema before it (other,public,pg_temp): the boot stops at B-1 with the code SEARCH_PATH_NOT_PINNED 5ms
+ ✓ |unit| src/plugins/db/__tests__/search-path.test.ts > boot step B-1, second half: a pooled connection has exactly the pinned search path > an empty path (): the boot stops at B-1 with the code SEARCH_PATH_NOT_PINNED 5ms
+ ✓ |unit| src/plugins/db/__tests__/search-path.test.ts > boot step B-1, second half: a pooled connection has exactly the pinned search path > a pool that gives no row, or a value that is not a text: refused the same way, with nothing found 25ms
+ ✓ |unit| src/plugins/db/__tests__/search-path.test.ts > boot step B-1, second half: a pooled connection has exactly the pinned search path > a long value is cut in the log 5ms
+ ✓ |unit| src/plugins/db/__tests__/search-path.test.ts > boot step B-1, second half: a pooled connection has exactly the pinned search path > the question itself fails: B-1 fails as "the database does not answer", by the driver's code 6ms
+ ✓ |unit| src/plugins/db/__tests__/read.test.ts > a read that succeeds > gets the current pool and returns what the work returned; nothing is logged and nothing is probed 75ms
+ ✓ |unit| src/plugins/db/__tests__/read.test.ts > a read that succeeds > after a reopen the work gets the new pool 8ms
+ ✓ |unit| src/plugins/db/__tests__/read.test.ts > a read that fails > rejects with 503 NOT_READY; one error line and one persistent entry by the code; the probe follows 16ms
+ ✓ |unit| src/plugins/db/__tests__/read.test.ts > a read that fails > a failure the query builder wrapped: the SQLSTATE of the driver is in the line, the statement is not 10ms
+ ✓ |unit| src/plugins/db/__tests__/read.test.ts > a read that fails > a refusal the work throws passes unchanged: it is an answer, not a failure of the database 6ms
+ ✓ |unit| src/plugins/db/__tests__/read.test.ts > a read that fails > a closed pool: 503, and the probe leaves the flag off 6ms
+ ✓ |unit| src/plugins/db/__tests__/read.test.ts > a read that fails > in a handler: the request answers 503 with the envelope, and no "unexpected error" is written 18ms
+stdout | src/plugins/logger/__tests__/error-keys.test.ts > CPB1-2: an error logged under any key is written as its name, its code and its frames > the five lines of the table, as the review printed them
+[cpb1-2] the table of the review
+A key err               | statement:false param:false pgDetail:false code:"23505" type:"Error"
+B key error             | statement:false param:false pgDetail:false code:"23505" type:"Error"
+C key cause             | statement:false param:false pgDetail:false code:"23505" type:"Error"
+D nested                | statement:false param:false pgDetail:false code:"23505" type:"Error"
+E key err, driver error | statement:false param:false pgDetail:false code:"23505" type:"error"
+
+ ✓ |unit| src/plugins/logger/__tests__/error-keys.test.ts > CPB1-2: an error logged under any key is written as its name, its code and its frames > A key err: no statement, no parameter, no DETAIL; the SQLSTATE and the name are there 65ms
+ ✓ |unit| src/plugins/logger/__tests__/error-keys.test.ts > CPB1-2: an error logged under any key is written as its name, its code and its frames > B key error: no statement, no parameter, no DETAIL; the SQLSTATE and the name are there 2ms
+ ✓ |unit| src/plugins/logger/__tests__/error-keys.test.ts > CPB1-2: an error logged under any key is written as its name, its code and its frames > C key cause: no statement, no parameter, no DETAIL; the SQLSTATE and the name are there 1ms
+ ✓ |unit| src/plugins/logger/__tests__/error-keys.test.ts > CPB1-2: an error logged under any key is written as its name, its code and its frames > D nested: no statement, no parameter, no DETAIL; the SQLSTATE and the name are there 1ms
+ ✓ |unit| src/plugins/logger/__tests__/error-keys.test.ts > CPB1-2: an error logged under any key is written as its name, its code and its frames > E key err, driver error: no statement, no parameter, no DETAIL; the SQLSTATE and the name are there 1ms
+ ✓ |unit| src/plugins/logger/__tests__/error-keys.test.ts > CPB1-2: an error logged under any key is written as its name, its code and its frames > the five lines of the table, as the review printed them 2ms
+ ✓ |unit| src/plugins/logger/__tests__/error-keys.test.ts > CPB1-2: an error logged under any key is written as its name, its code and its frames > two and more levels deep, inside arrays, under any name, beside other members 2ms
+ ✓ |unit| src/plugins/logger/__tests__/error-keys.test.ts > CPB1-2: an error logged under any key is written as its name, its code and its frames > a driver error under another key: no DETAIL, no HINT, no WHERE, no message 1ms
+ ✓ |unit| src/plugins/logger/__tests__/error-keys.test.ts > CPB1-2: an error logged under any key is written as its name, its code and its frames > an error given as a value for the text of a line is described the same way 1ms
+ ✓ |unit| src/plugins/logger/__tests__/error-keys.test.ts > CPB1-2: an error logged under any key is written as its name, its code and its frames > the whole captured log of this file holds no part of the error 2ms
+ ✓ |unit| src/plugins/logger/__tests__/error-keys.test.ts > CPB1-7: the safe description follows `cause` for the code > a wrapped database error: the SQLSTATE of the driver, the name of the driver's error, no text of the wrapper 0ms
+ ✓ |unit| src/plugins/logger/__tests__/error-keys.test.ts > CPB1-7: the safe description follows `cause` for the code > the error's own code comes first; a cause is read only when the error has none 1ms
+ ✓ |unit| src/plugins/logger/__tests__/error-keys.test.ts > CPB1-7: the safe description follows `cause` for the code > the chain is read to a bounded depth, and a chain that loops ends 0ms
+ ✓ |unit| src/plugins/logger/__tests__/error-keys.test.ts > CPB1-7: the safe description follows `cause` for the code > a cause that is not an error, or a code that is not a text, is not reported 0ms
+ ✓ |unit| src/plugins/logger/__tests__/error-keys.test.ts > CPB1-23: the frames of a stack, never a line of the message > a line of the statement that has the form of a frame is not kept 0ms
+ ✓ |unit| src/plugins/logger/__tests__/error-keys.test.ts > CPB1-23: the frames of a stack, never a line of the message > an error whose message was changed after its stack was written: only lines in the form of a frame are kept 0ms
+ ✓ |unit| src/plugins/logger/__tests__/error-keys.test.ts > CPB1-23: the frames of a stack, never a line of the message > an error without a message, and one without a stack 0ms
+ ✓ |unit| src/plugins/logger/__tests__/log-capture.test.ts > the captured log > holds no credential, no body, no query value, no path parameter value and no error message 1ms
+ ✓ |unit| src/plugins/logger/__tests__/log-capture.test.ts > the captured log > has one request line per request, with exactly the fields of SR-49 1ms
+ ✓ |unit| src/plugins/logger/__tests__/log-capture.test.ts > the captured log > the request ID is the correlation key: an error answer names the reqId of its log line 2ms
+ ✓ |unit| src/plugins/logger/__tests__/log-capture.test.ts > the captured log > names the route pattern, never the raw URL 0ms
+ ✓ |unit| src/plugins/logger/__tests__/log-capture.test.ts > the captured log > logs a parse failure by its code only 0ms
+ ✓ |unit| src/plugins/logger/__tests__/log-capture.test.ts > the captured log > logs every refusal with its code 0ms
+ ✓ |unit| src/plugins/logger/__tests__/log-capture.test.ts > the captured log > logs an unexpected failure with its name and stack frames, without its message 0ms
+ ✓ |unit| src/plugins/logger/__tests__/log-capture.test.ts > the captured log > redacts authorization, cookie and set-cookie where a header object is logged by hand 1ms
+ ✓ |unit| src/plugins/logger/__tests__/log-capture.test.ts > the captured log > never makes an error message the log message 0ms
+ ✓ |unit| src/plugins/logger/__tests__/log-capture.test.ts > the captured log > keeps the raw URL out of Fastify's own warning about a second answer 0ms
+ ✓ |unit| src/plugins/logger/__tests__/log-capture.test.ts > the captured log > replaces a quoted path in a message text (the other form of that warning) 0ms
+ ✓ |unit| src/plugins/logger/__tests__/log-capture.test.ts > the credential search (positive control) > finds a bearer value, a token of each prefix and a session cookie with its value 0ms
+ ✓ |unit| src/plugins/logger/__tests__/log-capture.test.ts > the credential search (positive control) > does not take a field name, a code, a cookie name or a sentence for a credential 0ms
+ ✓ |unit| src/plugins/logger/__tests__/log-capture.test.ts > the credential search (positive control) > finds a deliberate leak end to end: an app that logs the headers and the body it received 13ms
+ ✓ |unit| src/plugins/logger/__tests__/log-capture.test.ts > the persistent error log > gets one entry for the unexpected failure: identifiers and frames, no message, no URL 0ms
+ ✓ |unit| src/plugins/logger/__tests__/log-capture.test.ts > the persistent error log > is a file of mode 0600 0ms
+ ✓ |unit| src/plugins/logger/__tests__/log-capture.test.ts > the persistent error log > the app factory writes none unless a file is given 1ms
+ ✓ |unit| src/plugins/logger/__tests__/log-capture.test.ts > the principal reference of a request line > is the operator ID or the device ID, and null for an anonymous caller 9ms
+ ✓ |unit| src/plugins/logger/__tests__/log-capture.test.ts > the principal reference of a request line > principalReference never returns more than an identifier 0ms
+ ✓ |unit| src/plugins/logger/__tests__/log-capture.test.ts > the helpers > pathWithoutQuery cuts the query, the fragment, control characters and an overlong path 0ms
+ ✓ |unit| src/plugins/logger/__tests__/log-capture.test.ts > the helpers > scrubMessage replaces a quoted absolute path and leaves other text alone 0ms
+ ✓ |unit| src/plugins/logger/__tests__/log-capture.test.ts > the helpers > describeError gives the name, the code and the frames, never the message 0ms
+ ✓ |unit| src/plugins/logger/__tests__/safe-log-object.test.ts > loggedError > is what the err serializer writes: type, code, message (the code or the name) and the frames 6ms
+ ✓ |unit| src/plugins/logger/__tests__/safe-log-object.test.ts > safeLogObject > returns the same object when it holds no error, and never changes the object it was given 2ms
+ ✓ |unit| src/plugins/logger/__tests__/safe-log-object.test.ts > safeLogObject > leaves req, res and err at the top to their serializers, and nowhere else 0ms
+ ✓ |unit| src/plugins/logger/__tests__/safe-log-object.test.ts > safeLogObject > describes an error at any depth it reads, and does not write what lies deeper than the limit 1ms
+ ✓ |unit| src/plugins/logger/__tests__/safe-log-object.test.ts > safeLogObject > a structure that refers to itself ends 0ms
+ ✓ |unit| src/plugins/logger/__tests__/safe-log-object.test.ts > safeLogObject > a container with more members than the limit is not written, so nothing unread is 1ms
+ ✓ |unit| src/plugins/logger/__tests__/safe-log-object.test.ts > safeLogObject > reads what an object gives as its JSON form, and a member that throws is not written 0ms
+ ✓ |unit| src/plugins/logger/__tests__/safe-log-object.test.ts > safeLogObject > an object that is not plain is read like the serialiser reads it: its own members 0ms
+ ✓ |unit| src/plugins/logger/__tests__/safe-log-object.test.ts > through the logger > a line at every level, and a line of a request, are written safe 86ms
+ ✓ |unit| src/plugins/logger/__tests__/safe-log-object.test.ts > through the logger > the persistent error log gets the code and the name of the cause, and nothing of the error 2ms
+ ✓ |unit| src/plugins/logger/__tests__/safe-log-object.test.ts > codedCauseOf: the one walk over a cause chain > gives the error that carries the code, its code and how far down it was 0ms
+ ✓ |unit| src/plugins/logger/__tests__/safe-log-object.test.ts > codedCauseOf: the one walk over a cause chain > reads at most CAUSE_CHAIN_DEPTH errors 0ms
+ ✓ |unit| src/core/__tests__/connection-lost.test.ts > which failures mean that the connection or the server went away > SQLSTATE class 08, 57P01 to 57P03 and the socket errors of the driver; nothing else 5ms
+ ✓ |unit| src/core/__tests__/connection-lost.test.ts > a statement of a unit fails with a code of the connection class > 08000: 503 DATABASE_UNAVAILABLE with the driver's error as cause; readiness is told; the connection is closed 22ms
+ ✓ |unit| src/core/__tests__/connection-lost.test.ts > a statement of a unit fails with a code of the connection class > 08003: 503 DATABASE_UNAVAILABLE with the driver's error as cause; readiness is told; the connection is closed 3ms
+ ✓ |unit| src/core/__tests__/connection-lost.test.ts > a statement of a unit fails with a code of the connection class > 08006: 503 DATABASE_UNAVAILABLE with the driver's error as cause; readiness is told; the connection is closed 2ms
+ ✓ |unit| src/core/__tests__/connection-lost.test.ts > a statement of a unit fails with a code of the connection class > 08001: 503 DATABASE_UNAVAILABLE with the driver's error as cause; readiness is told; the connection is closed 1ms
+ ✓ |unit| src/core/__tests__/connection-lost.test.ts > a statement of a unit fails with a code of the connection class > 08004: 503 DATABASE_UNAVAILABLE with the driver's error as cause; readiness is told; the connection is closed 1ms
+ ✓ |unit| src/core/__tests__/connection-lost.test.ts > a statement of a unit fails with a code of the connection class > 08007: 503 DATABASE_UNAVAILABLE with the driver's error as cause; readiness is told; the connection is closed 1ms
+ ✓ |unit| src/core/__tests__/connection-lost.test.ts > a statement of a unit fails with a code of the connection class > 08P01: 503 DATABASE_UNAVAILABLE with the driver's error as cause; readiness is told; the connection is closed 1ms
+ ✓ |unit| src/core/__tests__/connection-lost.test.ts > a statement of a unit fails with a code of the connection class > 57P01: 503 DATABASE_UNAVAILABLE with the driver's error as cause; readiness is told; the connection is closed 4ms
+ ✓ |unit| src/core/__tests__/connection-lost.test.ts > a statement of a unit fails with a code of the connection class > 57P02: 503 DATABASE_UNAVAILABLE with the driver's error as cause; readiness is told; the connection is closed 2ms
+ ✓ |unit| src/core/__tests__/connection-lost.test.ts > a statement of a unit fails with a code of the connection class > 57P03: 503 DATABASE_UNAVAILABLE with the driver's error as cause; readiness is told; the connection is closed 2ms
+ ✓ |unit| src/core/__tests__/connection-lost.test.ts > a statement of a unit fails with a code of the connection class > ECONNRESET: 503 DATABASE_UNAVAILABLE with the driver's error as cause; readiness is told; the connection is closed 2ms
+ ✓ |unit| src/core/__tests__/connection-lost.test.ts > a statement of a unit fails with a code of the connection class > EPIPE: 503 DATABASE_UNAVAILABLE with the driver's error as cause; readiness is told; the connection is closed 2ms
+ ✓ |unit| src/core/__tests__/connection-lost.test.ts > a statement of a unit fails with a code of the connection class > ETIMEDOUT: 503 DATABASE_UNAVAILABLE with the driver's error as cause; readiness is told; the connection is closed 1ms
+ ✓ |unit| src/core/__tests__/connection-lost.test.ts > a statement of a unit fails with a code of the connection class > ECONNREFUSED: 503 DATABASE_UNAVAILABLE with the driver's error as cause; readiness is told; the connection is closed 1ms
+ ✓ |unit| src/core/__tests__/connection-lost.test.ts > a statement of a unit fails with a code of the connection class > ENOTCONN: 503 DATABASE_UNAVAILABLE with the driver's error as cause; readiness is told; the connection is closed 1ms
+ ✓ |unit| src/core/__tests__/connection-lost.test.ts > a statement of a unit fails with a code of the connection class > through the query builder: the caller of the unit gets the 503, not the wrapper that quotes the statement 2ms
+ ✓ |unit| src/core/__tests__/connection-lost.test.ts > a statement of a unit fails with a code of the connection class > the work caught the failure and returned, or threw a refusal of its own: the answer is still 503 1ms
+ ✓ |unit| src/core/__tests__/connection-lost.test.ts > the connection reports an error while the unit holds it > the driver's error without a code, as a closed socket gives it: 503, whatever the statement then rejects with 1ms
+ ✓ |unit| src/core/__tests__/connection-lost.test.ts > the connection reports an error while the unit holds it > between two statements, and the work returns: no COMMIT is sent, 503 1ms
+ ✓ |unit| src/core/__tests__/connection-lost.test.ts > what stays as it was > a statement that fails with 22012 is the caller's failure: the same error, a rollback, readiness is not told 1ms
+ ✓ |unit| src/core/__tests__/connection-lost.test.ts > what stays as it was > a statement that fails with 23505 is the caller's failure: the same error, a rollback, readiness is not told 0ms
+ ✓ |unit| src/core/__tests__/connection-lost.test.ts > what stays as it was > a statement that fails with 23503 is the caller's failure: the same error, a rollback, readiness is not told 0ms
+ ✓ |unit| src/core/__tests__/connection-lost.test.ts > what stays as it was > a statement that fails with 40001 is the caller's failure: the same error, a rollback, readiness is not told 0ms
+ ✓ |unit| src/core/__tests__/connection-lost.test.ts > what stays as it was > a statement that fails with 40P01 is the caller's failure: the same error, a rollback, readiness is not told 0ms
+ ✓ |unit| src/core/__tests__/connection-lost.test.ts > what stays as it was > a statement that fails with 42P01 is the caller's failure: the same error, a rollback, readiness is not told 0ms
+ ✓ |unit| src/core/__tests__/connection-lost.test.ts > what stays as it was > a statement that fails with 25P02 is the caller's failure: the same error, a rollback, readiness is not told 0ms
+ ✓ |unit| src/core/__tests__/connection-lost.test.ts > what stays as it was > a statement that fails with 53300 is the caller's failure: the same error, a rollback, readiness is not told 0ms
+ ✓ |unit| src/core/__tests__/connection-lost.test.ts > what stays as it was > a statement that fails with 57000 is the caller's failure: the same error, a rollback, readiness is not told 0ms
+ ✓ |unit| src/core/__tests__/connection-lost.test.ts > what stays as it was > a statement that fails with ZA001 is the caller's failure: the same error, a rollback, readiness is not told 0ms
+ ✓ |unit| src/core/__tests__/connection-lost.test.ts > what stays as it was > a statement that fails with ERR_INVALID_ARG_TYPE is the caller's failure: the same error, a rollback, readiness is not told 0ms
+ ✓ |unit| src/core/__tests__/connection-lost.test.ts > what stays as it was > a failure without a code and without an error of the connection (a value the driver cannot send) is not a loss 0ms
+ ✓ |unit| src/core/__tests__/connection-lost.test.ts > what stays as it was > what the work throws without any failed statement reaches the caller as it is 0ms
+ ✓ |unit| src/core/__tests__/connection-lost.test.ts > what stays as it was > the statement limit of the unit (57014) is still the time-out refusal, and no connection at the start is still told once 1ms
+ ✓ |unit| src/core/__tests__/connection-lost.test.ts > in the app: the answer and readiness > the request answers 503 NOT_READY, not 500; the flag goes off at once and on again when the next probe succeeds 47ms
+ ✓ |unit| src/core/__tests__/connection-lost.test.ts > in the app: the answer and readiness > while the database stays away the flag stays off 8ms
+ ✓ |unit| test/static/log-calls.test.ts > the scan itself > finds the log calls of a text and the members of the objects they log (positive control) 4ms
+ ✓ |unit| test/static/log-calls.test.ts > the scan itself > knows a value that is fixed in the source from one that could have been caught 1ms
+ ✓ |unit| test/static/log-calls.test.ts > the scan itself > finds a child logger 0ms
+ ✓ |unit| test/static/log-calls.test.ts > the scan itself > reads the production sources of the server, the module folders included 17ms
+ ✓ |unit| test/static/log-calls.test.ts > CPB1-2: an error is logged as { err } > the list of exceptions is explicit, and its foundation part is the one hold name 0ms
+ ✓ |unit| test/static/log-calls.test.ts > CPB1-2: an error is logged as { err } > no log call of a production source holds a member named error, cause, e or reason 2ms
+ ✓ |unit| test/static/log-calls.test.ts > CPB1-2: an error is logged as { err } > no production source creates a child logger 1ms
+ ✓ |unit| src/core/__tests__/unit-statement.test.ts > the statements the server sends pass unchanged > the writers of the core: the event counter, and the inserts of the query builder 9ms
+ ✓ |unit| src/core/__tests__/unit-statement.test.ts > the statements the server sends pass unchanged > every statement of the identity module 1ms
+ ✓ |unit| src/core/__tests__/unit-statement.test.ts > the statements the server sends pass unchanged > row statements in every form a module may write 1ms
+ ✓ |unit| src/core/__tests__/unit-statement.test.ts > what is refused, by the rule that refuses it > NOT_A_ROW_STATEMENT 1ms
+ ✓ |unit| src/core/__tests__/unit-statement.test.ts > what is refused, by the rule that refuses it > SEVERAL_STATEMENTS 0ms
+ ✓ |unit| src/core/__tests__/unit-statement.test.ts > what is refused, by the rule that refuses it > CREATES_A_TABLE 0ms
+ ✓ |unit| src/core/__tests__/unit-statement.test.ts > what is refused, by the rule that refuses it > TRANSACTION_CONTROL 0ms
+ ✓ |unit| src/core/__tests__/unit-statement.test.ts > what is refused, by the rule that refuses it > SESSION_SETTING 0ms
+ ✓ |unit| src/core/__tests__/unit-statement.test.ts > what is refused, by the rule that refuses it > TEMPORARY_SCHEMA 0ms
+ ✓ |unit| src/core/__tests__/unit-statement.test.ts > what is refused, by the rule that refuses it > UNREADABLE 0ms
+ ✓ |unit| src/core/__tests__/unit-statement.test.ts > what is refused, by the rule that refuses it > every rule has a case 1ms
+ ✓ |unit| src/core/__tests__/unit-statement.test.ts > withoutLiterals: the text the rules read > removes the content of strings, quoted names and dollar-quoted strings, and replaces comments by a space 0ms
+ ✓ |unit| src/core/__tests__/unit-statement.test.ts > withoutLiterals: the text the rules read > a backslash escapes only in a string with the prefix E, as the server reads it 0ms
+ ✓ |unit| src/core/__tests__/unit-statement.test.ts > withoutLiterals: the text the rules read > gives null when a quote or a comment does not end 0ms
+ ✓ |unit| src/core/__tests__/unit-statement.test.ts > inside a unit: refused before it is sent, and sent with the extended protocol > the forms of the review reach no connection; the unit goes on and commits 3ms
+ ✓ |unit| src/core/__tests__/unit-statement.test.ts > inside a unit: refused before it is sent, and sent with the extended protocol > every statement of the unit's user asks for the extended protocol, with values or without; the unit's own five do not need to 3ms
+ ✓ |unit| src/core/__tests__/unit-statement.test.ts > inside a unit: refused before it is sent, and sent with the extended protocol > asUnitQuery copies what the caller gave and adds the protocol 0ms
+ ✓ |unit| test/static/search-path.test.ts > the scan itself > finds each forbidden text when it is present, in any case, in code and in strings (positive control) 2ms
+ ✓ |unit| test/static/search-path.test.ts > the scan itself > reads the production sources of the server: TypeScript and SQL, the module folders included 0ms
+ ✓ |unit| test/static/search-path.test.ts > finding F53: nothing but the places that pin the path names a temporary object or the path > the list of places is exact 20ms
+ ✓ |unit| test/static/search-path.test.ts > finding F53: nothing but the places that pin the path names a temporary object or the path > each listed place holds what the list says it does 1ms
+ ✓ |unit| src/core/__tests__/writers.test.ts > the vocabulary > every one of the 53 shared audit types is accepted, with the category of the shared map 9ms
+ ✓ |unit| src/core/__tests__/writers.test.ts > the vocabulary > a type outside the vocabulary is refused, also one that only has the right format 1ms
+ ✓ |unit| src/core/__tests__/writers.test.ts > the vocabulary > every one of the 46 shared event types is accepted; another one is refused 3ms
+ ✓ |unit| src/core/__tests__/writers.test.ts > an entry: what the caller gives and what it cannot give > the defaults: severity INFO, references null; undefined members of the details are dropped 2ms
+ ✓ |unit| src/core/__tests__/writers.test.ts > an entry: what the caller gives and what it cannot give > a member that is the writer's (time, sequence, identifier, category, hashes) is refused (SR-65, AC-B-55) 1ms
+ ✓ |unit| src/core/__tests__/writers.test.ts > an entry: what the caller gives and what it cannot give > the actor and the device must be stated, null included 1ms
+ ✓ |unit| src/core/__tests__/writers.test.ts > an entry: what the caller gives and what it cannot give > the actor is an operator ID or null: never a name that was typed 4ms
+ ✓ |unit| src/core/__tests__/writers.test.ts > an entry: what the caller gives and what it cannot give > severity, message and references 1ms
+ ✓ |unit| src/core/__tests__/writers.test.ts > the payload map (database contract FLAT, NO_SECRET_KEYS; SR-54) > flat values only 1ms
+ ✓ |unit| src/core/__tests__/writers.test.ts > the payload map (database contract FLAT, NO_SECRET_KEYS; SR-54) > none of the 17 key names that may name a secret, in any letter case 2ms
+ ✓ |unit| src/core/__tests__/writers.test.ts > the payload map (database contract FLAT, NO_SECRET_KEYS; SR-54) > a native key is a camelCase name; at most 16 keys; a text of at most 500 characters 5ms
+ ✓ |unit| src/core/__tests__/writers.test.ts > the payload map (database contract FLAT, NO_SECRET_KEYS; SR-54) > no text of a row has the form of a credential: not a value, not the message, not a reference 3ms
+ ✓ |unit| src/core/__tests__/writers.test.ts > the payload map (database contract FLAT, NO_SECRET_KEYS; SR-54) > a text that PostgreSQL could not store unchanged is refused: U+0000 and an unpaired surrogate 0ms
+ ✓ |unit| src/core/__tests__/writers.test.ts > the payload map (database contract FLAT, NO_SECRET_KEYS; SR-54) > a refusal quotes nothing of the row: neither the key nor the value 1ms
+ ✓ |unit| src/core/__tests__/writers.test.ts > the allow-list of the nine server-written types (spec §13.1) > covers exactly the nine types the backend task added; the simulator's 44 have no list 0ms
+ ✓ |unit| src/core/__tests__/writers.test.ts > the allow-list of the nine server-written types (spec §13.1) > the keys of each type are those of the specification's table 0ms
+ ✓ |unit| src/core/__tests__/writers.test.ts > the allow-list of the nine server-written types (spec §13.1) > ACCESS_DENIED: the rows of the specification are accepted 0ms
+ ✓ |unit| src/core/__tests__/writers.test.ts > the allow-list of the nine server-written types (spec §13.1) > PAIRING_CODE_ISSUED: the rows of the specification are accepted 0ms
+ ✓ |unit| src/core/__tests__/writers.test.ts > the allow-list of the nine server-written types (spec §13.1) > PAIRING_CODE_CLOSED: the rows of the specification are accepted 0ms
+ ✓ |unit| src/core/__tests__/writers.test.ts > the allow-list of the nine server-written types (spec §13.1) > DEVICE_REVOKED: the rows of the specification are accepted 0ms
+ ✓ |unit| src/core/__tests__/writers.test.ts > the allow-list of the nine server-written types (spec §13.1) > DEVICE_CREDENTIAL_ROTATED: the rows of the specification are accepted 0ms
+ ✓ |unit| src/core/__tests__/writers.test.ts > the allow-list of the nine server-written types (spec §13.1) > ROLE_CHANGED: the rows of the specification are accepted 0ms
+ ✓ |unit| src/core/__tests__/writers.test.ts > the allow-list of the nine server-written types (spec §13.1) > USER_ENABLED: the rows of the specification are accepted 0ms
+ ✓ |unit| src/core/__tests__/writers.test.ts > the allow-list of the nine server-written types (spec §13.1) > USER_DISABLED: the rows of the specification are accepted 0ms
+ ✓ |unit| src/core/__tests__/writers.test.ts > the allow-list of the nine server-written types (spec §13.1) > BIOMETRIC_ENROLLMENT_CHANGED: the rows of the specification are accepted 0ms
+ ✓ |unit| src/core/__tests__/writers.test.ts > the allow-list of the nine server-written types (spec §13.1) > ACCESS_DENIED: a key the specification does not name is refused 0ms
+ ✓ |unit| src/core/__tests__/writers.test.ts > the allow-list of the nine server-written types (spec §13.1) > PAIRING_CODE_ISSUED: a key the specification does not name is refused 0ms
+ ✓ |unit| src/core/__tests__/writers.test.ts > the allow-list of the nine server-written types (spec §13.1) > PAIRING_CODE_CLOSED: a key the specification does not name is refused 0ms
+ ✓ |unit| src/core/__tests__/writers.test.ts > the allow-list of the nine server-written types (spec §13.1) > DEVICE_REVOKED: a key the specification does not name is refused 0ms
+ ✓ |unit| src/core/__tests__/writers.test.ts > the allow-list of the nine server-written types (spec §13.1) > DEVICE_CREDENTIAL_ROTATED: a key the specification does not name is refused 0ms
+ ✓ |unit| src/core/__tests__/writers.test.ts > the allow-list of the nine server-written types (spec §13.1) > ROLE_CHANGED: a key the specification does not name is refused 0ms
+ ✓ |unit| src/core/__tests__/writers.test.ts > the allow-list of the nine server-written types (spec §13.1) > USER_ENABLED: a key the specification does not name is refused 0ms
+ ✓ |unit| src/core/__tests__/writers.test.ts > the allow-list of the nine server-written types (spec §13.1) > USER_DISABLED: a key the specification does not name is refused 0ms
+ ✓ |unit| src/core/__tests__/writers.test.ts > the allow-list of the nine server-written types (spec §13.1) > BIOMETRIC_ENROLLMENT_CHANGED: a key the specification does not name is refused 0ms
+ ✓ |unit| src/core/__tests__/writers.test.ts > the allow-list of the nine server-written types (spec §13.1) > ACCESS_DENIED: a required key that is missing is refused 0ms
+ ✓ |unit| src/core/__tests__/writers.test.ts > the allow-list of the nine server-written types (spec §13.1) > PAIRING_CODE_ISSUED: a required key that is missing is refused 0ms
+ ✓ |unit| src/core/__tests__/writers.test.ts > the allow-list of the nine server-written types (spec §13.1) > PAIRING_CODE_CLOSED: a required key that is missing is refused 0ms
+ ✓ |unit| src/core/__tests__/writers.test.ts > the allow-list of the nine server-written types (spec §13.1) > DEVICE_REVOKED: a required key that is missing is refused 0ms
+ ✓ |unit| src/core/__tests__/writers.test.ts > the allow-list of the nine server-written types (spec §13.1) > DEVICE_CREDENTIAL_ROTATED: a required key that is missing is refused 0ms
+ ✓ |unit| src/core/__tests__/writers.test.ts > the allow-list of the nine server-written types (spec §13.1) > ROLE_CHANGED: a required key that is missing is refused 0ms
+ ✓ |unit| src/core/__tests__/writers.test.ts > the allow-list of the nine server-written types (spec §13.1) > USER_ENABLED: a required key that is missing is refused 0ms
+ ✓ |unit| src/core/__tests__/writers.test.ts > the allow-list of the nine server-written types (spec §13.1) > USER_DISABLED: a required key that is missing is refused 0ms
+ ✓ |unit| src/core/__tests__/writers.test.ts > the allow-list of the nine server-written types (spec §13.1) > BIOMETRIC_ENROLLMENT_CHANGED: a required key that is missing is refused 0ms
+ ✓ |unit| src/core/__tests__/writers.test.ts > the allow-list of the nine server-written types (spec §13.1) > a value that does not have the form of its key is refused: a pairing code is not a code ID 0ms
+ ✓ |unit| src/core/__tests__/writers.test.ts > a row as it is stored (both origins) > a row the shared code built is accepted as it is 0ms
+ ✓ |unit| src/core/__tests__/writers.test.ts > a row as it is stored (both origins) > a prepared row keeps the simulator's freedom: any key, any length, an empty message 1ms
+ ✓ |unit| src/core/__tests__/writers.test.ts > a row as it is stored (both origins) > and still: no forbidden key, no credential form, flat values, storable text 1ms
+ ✓ |unit| src/core/__tests__/writers.test.ts > a row as it is stored (both origins) > the stored form of a row is the mapping module's: the writers map nothing themselves (MR-1) 1ms
+ ✓ |unit| src/core/__tests__/writers.test.ts > a row as it is stored (both origins) > what cannot be stored exactly is refused by the mapping module's own rule, not by a copy of it 1ms
+ ✓ |unit| src/core/__tests__/writers.test.ts > a row as it is stored (both origins) > the digest, the identifier, the category and the link fields are checked 1ms
+ ✓ |unit| src/core/__tests__/writers.test.ts > a row as it is stored (both origins) > an event: sequence, identifier, time and type 1ms
+ ✓ |unit| src/core/__tests__/static.test.ts > the scan itself > reads the production sources of the core folder 6ms
+ ✓ |unit| src/core/__tests__/static.test.ts > the scan itself > finds each forbidden text when it is present (positive control) 3ms
+ ✓ |unit| src/core/__tests__/static.test.ts > one clock (ENG-13) > under src/core only clock.ts reads the system time 4ms
+ ✓ |unit| src/core/__tests__/static.test.ts > one insert path (database contract §6.4; spec §8.3) > in the server runtime only the audit writer inserts into the audit table 4ms
+ ✓ |unit| src/core/__tests__/static.test.ts > one insert path (database contract §6.4; spec §8.3) > in the server runtime only the event writer inserts into the events table 2ms
+ ✓ |unit| src/core/__tests__/static.test.ts > one hash (SR-53, ENG-9) > the core services compute no digest of their own 1ms
+ ✓ |unit| src/core/__tests__/static.test.ts > one hash (SR-53, ENG-9) > the audit writer builds its rows with the shared functions 1ms
+ ✓ |unit| src/core/__tests__/static.test.ts > one mapping (database contract MR-1) > the writers and the boot checks take the row builders and the digest check from the mapping module 1ms
+ ✓ |unit| src/core/__tests__/static.test.ts > one mapping (database contract MR-1) > the core services name no column of the two tables and bind none: the typed table and the mapped row do 1ms
+
+ Test Files  15 passed (15)
+      Tests  275 passed (275)
+   Start at  15:46:11
+   Duration  7.89s (import 65%, transform 19%, tests 15%)
+

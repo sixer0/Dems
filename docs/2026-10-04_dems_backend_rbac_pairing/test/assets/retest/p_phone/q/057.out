@@ -1,0 +1,34 @@
+13:24:28.711 mark l02 at 13:24:28.711
+13:24:28.756 declared screen home
+13:24:28.803 tap 540,1442
+13:24:28.923 slept 2000 ms
+13:24:30.952 screencap 110_andi_home_supervisor.png 13:24:30.952..13:24:31.828
+13:24:31.919 tap 972,2283
+13:24:32.123 slept 2500 ms
+13:24:34.648 declared screen more
+13:24:34.673 tapid more-dest-settings at 797,1611 "Settings, Preferences, security, about, 5 sections"
+13:24:37.126 slept 2500 ms
+13:24:39.652 declared screen settings
+13:24:39.675 tapid settings-row-maintenance at 540,2003 "System Maintenance"
+13:24:41.809 slept 2500 ms
+13:24:44.342 declared screen settings-maintenance
+13:24:44.366 screencap 111_o2_andi_supervisor_maintenance_install_locked.png 13:24:44.366..13:24:44.522
+13:24:44.581 ids(9): settings-update@540,1083 ; settings-update-chip@927,830 "DEMO" ; settings-update-body@540,968 "v2.5.0 available" ; settings-update-live-note@540,1067 "The Core server runs a demonstration update: no software is installed." ; settings-update-install@540,1215 "Install update" ; settings-update-install-locked@540,1340 "Requires the Technician role" ; settings-demo@540,1521 ; settings-demo-trigger@540,1522 "Demo controls" ; settings-demo-badge@580,1517 "DEMO"
+13:24:46.607 key 4
+13:24:46.679 slept 1800 ms
+13:24:48.559 key 4
+13:24:48.782 slept 2000 ms
+13:24:50.830 declared screen more
+13:24:50.879 ids(3): more-operator-name@651,387 "AKP Andi Pratama" ; more-operator-role@431,456 "Supervisor" ; more-sign-out@776,663 "Sign out"
+13:24:53.769 tapid more-sign-out at 776,663 "Sign out"
+13:24:56.807 slept 3500 ms
+13:25:00.344 declared screen login
+13:25:00.367 screencap 112_e2e_s1_after_sign_out_andi_end_state.png 13:25:00.367..13:25:01.538
+13:25:01.605 corelog (3): 13:24:32.235 POST /api/v1/auth/touch 200 | 13:24:56.880 POST /api/v1/auth/sign-out 204 | 13:24:56.975 GET /api/v1/auth/status 200
+13:25:01.662 warnlog since 10-06 13:24:28.000 (0): 
+13:25:01.717 serverlog since l02 (5):
+    13:24:32.046 POST /api/v1/auth/touch 200
+    13:24:56.809 POST /api/v1/auth/sign-out 204
+    13:24:56.812 [socket closed]
+    13:24:57.194 [socket opened]
+    13:24:57.255 GET /api/v1/auth/status 200

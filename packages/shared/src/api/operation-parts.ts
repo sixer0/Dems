@@ -12,6 +12,12 @@
 import type { Permission } from '../sim/vocabulary';
 import { DEVICE_CREDENTIAL_REQUIRED_REASON, type CoreApiResponseSpec } from './contract-model';
 
+/**
+ * The 403 part of a device-only operation called by an operator's web console session (spec §7.2).
+ * One copy for the identity and pairing operations (FXR-W W92-24; it was written in both files).
+ */
+export const WEB_SESSION_REFUSED = "an operator's web console session called a device-only operation (DEVICE_NOT_PAIRED; no audit row)";
+
 /** Last paragraph of every operation that only the Core server answers. */
 export const CORE_SERVER_NOTE =
   'Core server only: the in-app simulator has no such operation, so it is not available in Simulated mode.';
@@ -54,7 +60,7 @@ export const INVALID_PATH_PARAMETER = refusal('The path parameter does not match
 
 /** 422 of a list read (SR-64: a query is validated like a body). */
 export const INVALID_QUERY = refusal(
-  'A query parameter does not match its schema (INVALID_INPUT): a value outside its set, a `limit` outside 1 to 200, a cursor that is not one, or text that holds U+0000 or an unpaired surrogate (API-13).',
+  'A query parameter does not match its schema (INVALID_INPUT): a value outside its set, a `limit` outside 1 to 200, a cursor that is not one of this list (also a cursor on a row that the chain rebuilt by a demo reset or a scenario load does not hold: start the walk again), or text that holds U+0000 or an unpaired surrogate (API-13).',
 );
 
 /** 401 of an operation that needs an OPERATOR. */
@@ -68,7 +74,8 @@ export const NO_DEVICE_CREDENTIAL = refusal(
 );
 
 const ORIGIN = 'the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED)';
-const REVOKED = 'the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row)';
+const REVOKED =
+  'the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight)';
 
 /** 403 of an operation that a retired device may still call: only the Origin guard refuses. */
 export const ORIGIN_REFUSED = refusal(`Refused: ${ORIGIN}.`);
@@ -90,6 +97,14 @@ export function notPermitted(permission: Permission, ...extra: string[]) {
 export function notPermittedAnyOf(first: Permission, second: Permission) {
   return forbidden(`the operator's role holds neither ${first} nor ${second} (NOT_PERMITTED; one ACCESS_DENIED audit row)`);
 }
+
+/**
+ * The three exports (W83, finding F-B2a-7): when the hosted action itself refuses the export, its
+ * EXPORT_DENIED row is committed and reaches every client through the `state` topic; the 403 carries
+ * no revision headers, because API-7 names 2xx answers only.
+ */
+export const EXPORT_DENIAL_NOTE =
+  'A refused export is still recorded: the EXPORT_DENIED row is committed and reaches every client through the `state` topic. The `403` carries no `x-dems-epoch` or `x-dems-revision` header (API-7 names the 2xx answers only).';
 
 /**
  * 403 of the audit export and the log export (RB-5): the denial keeps today's audit type

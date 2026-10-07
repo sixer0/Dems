@@ -201,6 +201,17 @@ export const evidence = {
     exactBytes: 'Shown exactly as stored: hashing manifest.json gives the signed digest.',
     noPackage: 'No DEMO package for this item',
     simulatedRecord: 'Simulated evidence record',
+    /**
+     * E-fix FX-W (E2E-W1-4), Live mode only (ruling of row FX-W2): the joined DEMO package is another
+     * record than the Core server's (its evidence ID, session or case number differ), so its documents
+     * are not that record's metadata. `record` is the record's label ("Core record").
+     */
+    foreign: {
+      title: 'The bundled DEMO package is another record',
+      body: 'This item plays the demo media of the bundled package {{id}} (session {{session}}, recorded {{date}}). Its documents describe that package, not this item. This item\'s metadata is the {{record}}.',
+      recordTitle: 'Record of this item',
+      packageTitle: 'Bundled DEMO package · {{id}}',
+    },
   },
 
   verify: {
@@ -215,6 +226,17 @@ export const evidence = {
     trustNote: 'Hashes are recomputed with SHA-256; the Ed25519 signature and the DEMO certificate are checked with WebCrypto.',
     simulatedNote: 'The simulator compares its own synthetic hashes. Not a cryptographic check.',
     retryExhausted: 'Reload to retry',
+    /**
+     * E-fix FX-W (E2E-W1-3): the record's last verification (the Core server's in Live mode), shown when
+     * the tab opens and kept current after every run. `at` carries its zone.
+     */
+    last: {
+      full: 'Last verification {{result}} · {{at}} · {{actor}}',
+      noActor: 'Last verification {{result}} · {{at}}',
+      resultOnly: 'Last verification {{result}}',
+    },
+    /** Instead of "0 of 6 checks" while the card shows the stored verdict: the per-check list is a run's. */
+    storedHint: 'Verify again to see each check.',
     toastPass: 'Integrity verified: {{id}} PASS',
     toastFail: 'Integrity FAILED for {{id}}: {{checks}}',
     errorToast: 'Verification could not run. Please try again.',
@@ -340,6 +362,12 @@ export const evidence = {
     export: {
       reasonRefused: 'The Core server did not accept this reason. Change it and try again.',
       notCompleted: 'The Core server could not complete this export.',
+      /**
+       * The Live twin of `exportWizard.success`, which says "(simulated)" (closing copy round, decision
+       * D162 DN-5, W83 ledger #93; first written as the mobile app's own key in row W74). The
+       * destination labels keep "(simulated)" in both modes (D158 DC-4).
+       */
+      success: 'Export of {{id}} accepted by the Core',
     },
   },
 } as const satisfies ResourceTree;

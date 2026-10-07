@@ -10,7 +10,7 @@
 // |-----------|-------------------------|
 // | §10.3: order (PAIRED first, then newest `pairedAt`), the columns, the filter, the header chip, "Last seen" every 30 s | "the list" |
 // | PG-6 / decision D156 (3): operation 19's raw answer under `CORE_QUERY_KEYS.pairedDevices`; `admin.changed` DEVICES refetches; a new row is highlighted | "the list" |
-// | CONTRACT-GAP-W70-1 (decision D156 (2)): a change of the replicated tablet link reads the list again | "the list" |
+// | RESIDUAL-W70-1 (W83 ledger #45) (decision D156 (2)): a change of the replicated tablet link reads the list again | "the list" |
 // | AC-C-98: revoke needs a reason of 5+ characters (validated on submit), sends operation 20, the row morphs to REVOKED; 422 keeps the dialog; 409 / 404 close it with the info toast | "AC-C-98" |
 // | AC-C-48 / PG-11: a refused revoke (403 by `notPermitted`) closes the dialog with the denied toast; an outage and a 429 keep it open (LB-6, LB-10); LB-1 on the confirm | "AC-C-98" |
 // | AC-C-99: loading, empty, error (with a rate-limited Retry), forbidden (one denied toast for both reads) and "Live mode only" | "AC-C-99" |
@@ -123,7 +123,7 @@ afterEach(async () => {
   vi.unstubAllGlobals()
 })
 
-describe('the list (§10.3; PG-6; CONTRACT-GAP-W70-1)', () => {
+describe('the list (§10.3; PG-6; RESIDUAL-W70-1)', () => {
   it('PAIRED first, then by `pairedAt` newest first; every column; the revoke action on PAIRED rows only; the header chip', async () => {
     const { mounted, core } = await openPairedDevices({ script: (bed, c) => (c.devices = threeDevices(bed)), waitFor: 'pd-devices-table' })
     expect(rowIds()).toEqual(['pd-device-DEV-0003', 'pd-device-DEV-0002', 'pd-device-DEV-0001'])
@@ -196,7 +196,7 @@ describe('the list (§10.3; PG-6; CONTRACT-GAP-W70-1)', () => {
     await waitFor(() => expect(screen.getByTestId('pd-summary')).toHaveAttribute('data-paired', '3'))
   })
 
-  it('CONTRACT-GAP-W70-1: a change of the replicated tablet link reads the list again, so `online` does not go stale', async () => {
+  it('RESIDUAL-W70-1: a change of the replicated tablet link reads the list again, so `online` does not go stale', async () => {
     const { bed, core, requests } = await openPairedDevices({ script: (b, c) => (c.devices = threeDevices(b)), waitFor: 'pd-devices-table' })
     const reads = requests('listPairedDevices').length
     core.devices = core.devices.map((device) => (device.id === 'DEV-0003' ? { ...device, online: false } : device))

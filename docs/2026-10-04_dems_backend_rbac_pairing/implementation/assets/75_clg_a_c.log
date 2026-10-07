@@ -1,0 +1,22 @@
+## 2026-10-06 01:36:59 WIB CLG (a): the folder's existing test files against acaff20
+$ git diff --stat acaff20 -- apps/core-web/src/features/security-audit/__tests__/security-audit.test.tsx
+ .../src/features/security-audit/__tests__/security-audit.test.tsx       | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+$ git hash-object apps/core-web/src/features/security-audit/__tests__/security-audit.test.tsx   (W01c reference, D42: 5470ce3fdcd98fd8c0926cd6afe03a1a1c1af58f)
+5470ce3fdcd98fd8c0926cd6afe03a1a1c1af58f
+$ git status --porcelain -- apps/core-web/src/features/security-audit/__tests__/
+?? apps/core-web/src/features/security-audit/__tests__/live-security-audit-bed.ts
+
+## CLG (c): production files of the folder (tests excluded)
+$ grep -rln "useSimActions" apps/core-web/src/features/security-audit --include=*.ts --include=*.tsx --exclude-dir=__tests__ | wc -l
+       0
+$ grep -rnE "\.actions" (minus the i18n words common.actions.*) in the same files | wc -l
+       0
+$ grep -rn "settle(() => actions\." (every action call site)
+apps/core-web/src/features/security-audit/sim-adapter.ts:120:    result = coreActionsOf(sim).exportAudit({ reason })
+apps/core-web/src/features/security-audit/export-audit-dialog.tsx:260:      settle(() => actions.exportAudit({ reason: reasonText }), {
+apps/core-web/src/features/security-audit/chain-panel.tsx:112:      settle(() => actions.verifyAuditChain(), {
+apps/core-web/src/features/security-audit/chain-panel.tsx:135:      settle(() => actions.acknowledgeAlert(alertId), {
+$ grep -rn "client.call(" (the operations that are no action)
+apps/core-web/src/features/security-audit/rbac-panel.tsx:156:      const answer = await live.client.call('getRoleMatrix')
+apps/core-web/src/features/security-audit/export-audit-dialog.tsx:57:    live.client.call('listAuditRows', { query: { limit: AUDIT_PAGE_LIMIT, ...(cursor === null ? {} : { cursor }) } })

@@ -107,17 +107,21 @@ describe('Finalization (04 §4.6)', () => {
     expect(trigger.mock.calls.filter(([event]) => event === 'sealedStamp')).toHaveLength(1);
   });
 
-  it('without the route sync, shows the sealed chip and opens the Summary itself 1.2 s after the seal', async () => {
+  // CF2-A (RF-PH-3): sealed with the summary pending, the Finalizing route draws the Summary IN PLACE at once
+  // (the D201 hand-over recipe); the route follows 1.2 s after the seal. Before, it showed the sealed card
+  // ("Evidence sealed", "Opening the session summary…") until the route changed, which on the phones took up to
+  // 2 s and cut in with an empty frame.
+  it('without the route sync, draws the Summary in place at the seal and opens its route itself 1.2 s after it', async () => {
     const h = renderFlowApp({ routeSync: false });
     await settle();
     act(() => advanceUntilSealed(h));
     expect(h.app.getPathname()).toBe('/session/finalizing');
-    expect(screen.getByText('Evidence sealed')).toBeTruthy();
-    expect(within(screen.getByTestId('finalizing-sealed')).getByText('SEALED')).toBeTruthy();
-    expect(screen.getByText('Opening the session summary…')).toBeTruthy();
-    for (let i = 0; i < 6; i += 1) expect(stepLabel(i)).toMatch(/completed$/);
+    expect(screen.getByTestId('screen-session-summary')).toBeTruthy();
+    expect(within(screen.getByTestId('summary-sealed')).getByText('SEALED')).toBeTruthy();
+    expect(screen.queryByText('Evidence sealed')).toBeNull();
     h.run(SEALED_HANDOFF_MS + 100);
     expect(h.app.getPathname()).toBe(`/session/summary/${h.sessionId}`);
+    expect(screen.getByTestId('screen-session-summary')).toBeTruthy();
   });
 
   it('§3.6: Back while FINALIZING is consumed with "Finalizing — please wait" and changes nothing', async () => {

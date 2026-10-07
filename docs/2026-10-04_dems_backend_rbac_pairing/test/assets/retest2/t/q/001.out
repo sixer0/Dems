@@ -1,0 +1,5 @@
+mark RF-T start: state before the relaunch at 16:37:54.639
+mCurrentFocus=Window{477e1c3 u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity} ; isKeyguardShowing=false
+device-host clock offset ms: -459, -460, -459, -459, -460 at 16:37:54.782
+app pid 8856 at 16:37:54.805
+screencap 00_before_relaunch.png (3299704 bytes) at 16:37:56.939

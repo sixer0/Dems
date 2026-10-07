@@ -1,7 +1,7 @@
 import { useRouter } from 'expo-router';
 import { PressableFeedback, Surface } from 'heroui-native';
 import { ChevronRight } from 'lucide-react-native';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { StyleSheet, Text, View } from 'react-native';
 import Animated, {
@@ -25,7 +25,7 @@ import {
   useMotionSettings,
   type MotionSettings,
 } from '@/motion';
-import type { ActiveSessionInfo } from '@/runtime';
+import { useRecordingElapsedSeconds, type ActiveSessionInfo } from '@/runtime';
 
 export type LiveMiniBarPlacement = 'above-bar' | 'top';
 
@@ -48,25 +48,24 @@ function miniBarEntering(settings: MotionSettings): EntryOrExitLayoutType {
   return builder.withInitialValues({ opacity: 0, translateY: MINI_BAR_DROP }).reduceMotion(ReduceMotion.System);
 }
 
-/** Whole seconds since the recording started (1 Hz, 04 §7.8 "timers and clocks 1 Hz"). */
-export function elapsedSeconds(startedAtMs: number | null, nowMs: number): number {
-  if (startedAtMs === null || !Number.isFinite(startedAtMs)) return 0;
-  return Math.max(0, Math.floor((nowMs - startedAtMs) / 1000));
-}
-
-function useElapsedSeconds(startedAtMs: number | null): number {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, []);
-  return elapsedSeconds(startedAtMs, now);
+/**
+ * The recording time: the runtime's one rule (`useRecordingElapsedSeconds`, `runtime/recording-elapsed.ts`).
+ *
+ * E2E-P-3 (FX-M2b, D201): the bar used to sample `Date.now()` on its own 1 s interval and showed one second
+ * less than Home's System Status timer for part of each second; it then read the store's clock. Post-review
+ * fix FXR-M (W93-1, D243): the store's clock alone holds for 5-21 s under load in LIVE (RF-PH-1), which CF2-A
+ * fixed for the monitor only. The bar now reads the monitor's own rule (the store's clock, or the Core clock's
+ * ticker when it is ahead) and shares its ticker with the monitor, Home and the Sessions hub, so all of them
+ * draw the same second in every commit.
+ */
+function useRecordingSeconds(): number {
+  return useRecordingElapsedSeconds();
 }
 
 /**
  * Live mini-bar (C-5; 04_mobile_specs §3.8): shown while RECORDING on any tab route (the monitor
  * itself is a flow screen without chrome). REC dot (M-C-05), "Recording", the session id in mono,
- * the timer (C-6 RollingNumber, slide) and a chevron, on a `Surface` with a danger-tinted hairline;
+ * the timer (C-6 RollingNumber, slide: digit columns positioned by React, W93-3) and a chevron, on a `Surface` with a danger-tinted hairline;
  * a tap opens `/session/live`. Motion M-MB-02: it drops in from y −24 on the `gentle` spring with
  * opacity and fades out in 160 ms; reduced motion: fades only, static red dot.
  */
@@ -76,7 +75,7 @@ export function LiveMiniBar({ session, placement }: LiveMiniBarProps) {
   const insets = useSafeAreaInsets();
   const settings = useMotionSettings();
   const policy = useMotionPolicy();
-  const seconds = useElapsedSeconds(session.startedAtMs);
+  const seconds = useRecordingSeconds();
   const pulsing = useAmbientLoop('mini-bar-rec', { active: true });
   const dot = useSharedValue(1);
 

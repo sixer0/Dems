@@ -1,0 +1,20 @@
+13:26:47.526 mark z01 at 13:26:47.526
+13:26:47.585 api GET /api/v1/session/current => {"status":200,"body":{"session":null,"serverTime":"2026-10-06T13:26:47.590+07:00"}}
+13:26:47.646 js => [["OPR-001","budi.santoso","INVESTIGATOR",true],["OPR-002","andi.pratama","SUPERVISOR",true],["OPR-003","rina.wijaya","TECHNICIAN",true]]
+13:26:47.705 js => {"view":true,"stored":true,"checked":517}
+13:26:47.772 origins in w1_network.log: {"http://127.0.0.1:5176":3270,"ws://127.0.0.1:5176":20}
+13:26:47.826 console (0): 
+13:26:47.873 signout status 204
+13:26:48.020 keyguard false
+13:26:48.157 mCurrentFocus=Window{64f8467 u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity} ; isKeyguardShowing=false
+13:26:48.354 declared screen login
+13:26:48.413 screencap 113_end_state_login_live_signed_out.png 13:26:48.413..13:26:50.107
+13:26:50.248 serverlog since z01 (8):
+    13:26:47.590 GET /api/v1/session/current 200
+    13:26:47.650 GET /api/v1/admin/users 200
+    13:26:47.720 GET /api/v1/audit/chain 200
+    13:26:47.880 POST /api/v1/auth/sign-out 204
+    13:26:47.881 [socket closed]
+    13:26:47.941 [socket opened]
+    13:26:47.970 GET /api/v1/auth/status 200
+    13:26:48.297 GET /api/v1/health 200

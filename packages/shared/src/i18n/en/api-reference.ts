@@ -1,18 +1,32 @@
 /**
  * `apiReference.*`: the API Reference page frame (01_specs §14.9; research/04 §5.9).
  * Copy inside the Scalar renderer comes from the OpenAPI document, not from here.
+ * Plan row W84 added the keys of Live mode and of the "Show Core-server endpoints" switch (backend
+ * task 04_client_integration_spec §11): `subtitleLive`, `banner.live`, `server.showCoreServer`,
+ * `badges.CORE_SERVER`, `tooltips.coreServer`, `tooltips.liveCore`, `tryIt`, `liveWarning`,
+ * `realtime.live`.
  */
 import type { ResourceTree } from '../resource-tree';
 
 export const apiReference = {
   title: 'API REFERENCE',
   subtitle: 'Core API v1 • OpenAPI • local mock-core {{address}}',
+  subtitleLive: 'Core API v1 • OpenAPI • Core server through {{address}}',
   banner: {
     ONLINE: 'MOCK-CORE ONLINE • v{{version}} • WS 1 Hz',
     ONLINE_NO_VERSION: 'MOCK-CORE ONLINE • WS 1 Hz',
     CONNECTING: 'CONNECTING',
     OFFLINE: 'MOCK-CORE OFFLINE • live try-it unavailable',
     detail: 'LIVE try-it goes to {{address}}; SIMULATED try-it is answered in this browser',
+    live: {
+      ONLINE: 'CORE SERVER ONLINE • {{service}} v{{version}} • {{readiness}}',
+      ONLINE_NO_VERSION: 'CORE SERVER ONLINE • WS 1 Hz',
+      CONNECTING: 'CONNECTING TO THE CORE SERVER',
+      OFFLINE: 'CORE SERVER OFFLINE • try-it unavailable',
+      ready: 'READY',
+      starting: 'STARTING',
+      detail: 'Try it goes to the Core server through {{address}}, as the signed-in operator',
+    },
   },
 
   server: {
@@ -21,6 +35,7 @@ export const apiReference = {
     download: 'Download openapi.json',
     copyBaseUrl: 'Copy base URL',
     showSimulated: 'Show simulated endpoints',
+    showCoreServer: 'Show Core-server endpoints',
     legend: 'Legend',
     copied: 'Base URL copied',
     copyFailed: 'Could not copy the base URL',
@@ -38,6 +53,7 @@ export const apiReference = {
     LIVE: 'LIVE',
     SIMULATED: 'SIMULATED',
     RBAC_AUDIT: 'RBAC + AUDIT',
+    CORE_SERVER: 'CORE SERVER',
   },
 
   bookGaps: {
@@ -50,6 +66,18 @@ export const apiReference = {
     simulated: 'Simulated in the browser. No network call is made.',
     rbac: 'Checked against the role of the signed-in operator, and audited.',
     offline: 'mock-core unreachable at {{address}}',
+    coreServer: 'Answered by the Core server only. Switch to Live mode to try it.',
+    liveCore: 'Answered over the network by the Core server, as the signed-in operator.',
+  },
+
+  tryIt: {
+    coreServerOnly: 'This operation is answered by the Core server. Switch to Live mode to try it.',
+    secretDenied: 'This operation carries or returns a secret and cannot be tried from the reference page.',
+  },
+
+  liveWarning: {
+    body: "Try it sends real requests to the Core server as {{operator}}. Commands change the Core's state and are recorded in the audit log.",
+    unknownOperator: 'the signed-in operator',
   },
 
   realtime: {
@@ -82,6 +110,15 @@ export const apiReference = {
     reconnecting: 'mock-core unreachable at {{address}}. Reconnecting automatically.',
     originBlocked:
       'The live heartbeat needs the dev origin {{origin}} (mock-core allowlist). This page is served from {{current}}.',
+    live: {
+      note: "The console's one socket to the Core server. State payloads are not shown.",
+      reconnecting: 'Core server unreachable at {{address}}. The console reconnects by itself.',
+      epoch: 'Epoch',
+      revision: 'Revision',
+      meters: 'Meter frames',
+      metersRate: '{{rate}} per second',
+      metersNone: 'none',
+    },
   },
 
   states: {

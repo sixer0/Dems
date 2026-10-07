@@ -1,8 +1,12 @@
 /**
  * C-6 RollingNumber (04_mobile_specs §4.0, §7.4 M-C-02; 03_motion_spec M-C-02, App. A).
  *
- * - `slide` (clocks and timers): per-digit columns whose `translateY` rolls on the UI thread
- *   (240 ms `standard`), odometer-style across wraps; tabular figures, so nothing jitters.
+ * - `slide` (clocks, timers, counters): per-digit columns, odometer-style across wraps (240 ms
+ *   `standard`); tabular figures, so nothing jitters. Post-review fix FXR-M (finding W93-3, the D214
+ *   defect): React holds each column's position (the current digit's cell); the roll is a removable
+ *   offset whose rest value is 0. A Reanimated update dropped after a JS stall can no longer leave a
+ *   column on the digit it was mounted with ("04:24 read 04:12" on the monitor; the same component drew
+ *   the bottom Recording bar, the Home and System Time clocks and nine other readouts).
  * - `count` (KPIs): the same clipped digit columns as continuous drums driven by a `counter`
  *   spring, after the 120 ms held beat on first mount (03M R4). No React render per animation frame
  *   in either mode.
@@ -11,10 +15,12 @@
  * is written by `useAnimatedProps` did not update on the Fabric debug build (device check,
  * step 71), so `count` reuses the digit columns.
  *
- * `value` may be a number (React) or a shared value (UI thread, e.g. a clock-derived timer).
- * Reduced motion: values jump to their final state (03M §8).
+ * `value` may be a number (React) or a shared value (copied into React when its text changes; only the
+ * dev gallery passes one). Reduced motion: values jump to their final state (03M §8).
+ *
+ * `count` mode (KPI drums) is unchanged: its only user is the dev gallery (no product screen counts).
  */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Text, View, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
 import Animated, {
   Easing,
@@ -35,11 +41,11 @@ import {
   INTEGER,
   SLIDE_MS,
   baseTemplate,
-  digitFromEnd,
   drumPosition,
   formatRolling,
   placesOf,
-  rollPlan,
+  rollCells,
+  rollsForward,
   templateOf,
   type RollingFormat,
 } from './rolling-number.math';
@@ -150,46 +156,44 @@ interface SlideNumberProps {
   suffix: string;
 }
 
-function SlideNumber({ testID, value, format, textStyle, lineHeight, reduced, prefix, suffix }: SlideNumberProps) {
+/**
+ * The value React draws. A number is drawn as given. A shared value is copied into React state when its
+ * FORMATTED text changes (at most the screen's refresh rate, ≤ 1 Hz for the clocks it is meant for), so
+ * the digit positions below are always React's, whatever kind of value feeds them.
+ */
+function useDrawnValue(value: number | SharedValue<number>, format: RollingFormat): number {
   const external = typeof value === 'number' ? null : value;
-  const numeric = typeof value === 'number' ? value : null;
-  const internal = useSharedValue(numeric ?? 0);
-  const source = external ?? internal;
-  useEffect(() => {
-    if (numeric !== null) internal.set(numeric);
-  }, [numeric, internal]);
-
-  // The column layout (digits vs separators) follows the formatted value; it changes rarely
-  // (9 → 10, a sign), so a React update is fine there, never per animation frame.
-  const [template, setTemplate] = useState(() =>
-    numeric !== null ? templateOf(formatRolling(numeric, format)) : baseTemplate(format),
-  );
-  const currentTemplate = useSharedValue(template);
+  const [mirrored, setMirrored] = useState(() => (external ? external.get() : 0));
   useAnimatedReaction(
-    () => templateOf(formatRolling(source.get(), format)),
-    (next) => {
-      if (next !== currentTemplate.get()) {
-        currentTemplate.set(next);
-        scheduleOnRN(setTemplate, next);
-      }
+    () => (external ? external.get() : null),
+    (next, previous) => {
+      if (next === null) return;
+      if (previous !== null && previous !== undefined && formatRolling(next, format) === formatRolling(previous, format)) return;
+      scheduleOnRN(setMirrored, next);
     },
-    [format],
+    [external, format],
   );
+  return typeof value === 'number' ? value : mirrored;
+}
 
-  const chars = template.split('');
+function SlideNumber({ testID, value, format, textStyle, lineHeight, reduced, prefix, suffix }: SlideNumberProps) {
+  const drawn = useDrawnValue(value, format);
+  const forward = rollsForward(format);
+  // The column layout (digits vs separators) follows the formatted value; columns are keyed from the
+  // right, so a value growing from 9 to 10 keeps its units column and adds a tens column.
+  const chars = formatRolling(drawn, format).split('');
   return (
     <>
       {prefix ? <Text style={textStyle}>{prefix}</Text> : null}
       {chars.map((ch, i) => {
         const fromEnd = chars.length - i;
-        return ch === 'd' ? (
+        const digit = ch.charCodeAt(0) - 48;
+        return digit >= 0 && digit <= 9 ? (
           <DigitColumn
             key={`d${fromEnd}`}
             testID={testID ? `${testID}-d${fromEnd}` : undefined}
-            source={source}
-            format={format}
-            positionFromEnd={fromEnd}
-            initialDigit={numeric !== null ? digitFromEnd(numeric, format, fromEnd) : -1}
+            digit={digit}
+            forward={forward}
             textStyle={textStyle}
             lineHeight={lineHeight}
             reduced={reduced}
@@ -207,47 +211,48 @@ function SlideNumber({ testID, value, format, textStyle, lineHeight, reduced, pr
 
 interface DigitColumnProps {
   testID?: string;
-  source: SharedValue<number>;
-  format: RollingFormat;
-  positionFromEnd: number;
-  initialDigit: number;
+  digit: number;
+  forward: boolean;
   textStyle: TextStyle;
   lineHeight: number;
   reduced: boolean;
 }
 
-/** One digit: a clipped column of 20 cells rolled by `translateY` on the UI thread. */
-function DigitColumn({ testID, source, format, positionFromEnd, initialDigit, textStyle, lineHeight, reduced }: DigitColumnProps) {
-  const cell = useSharedValue(initialDigit >= 0 ? initialDigit : 0);
-  useAnimatedReaction(
-    () => digitFromEnd(source.get(), format, positionFromEnd),
-    (digit, previous) => {
-      if (digit < 0) return;
-      if (previous === null || previous < 0 || reduced) {
-        cell.set(digit);
-        return;
-      }
-      const plan = rollPlan(previous, digit);
-      if (plan.from !== null) cell.set(plan.from);
-      const settle = plan.settle;
-      cell.set(
-        withTiming(plan.to, { duration: SLIDE_MS, easing: STANDARD }, (finished) => {
-          if (finished && settle !== null) cell.set(settle);
-        }),
-      );
-    },
-    [format, positionFromEnd, reduced],
-  );
-  const roll = useAnimatedStyle(() => ({ transform: [{ translateY: -cell.get() * lineHeight }] }));
+/**
+ * One digit: a clipped column of 20 cells (0-9 twice). React places the CURRENT digit's cell in the
+ * column's own props (`translateY: -cell × lineHeight` on the inner view), so a commit can only ever draw
+ * the current value, whatever Reanimated keeps or drops (D214: Reanimated 4.5 drops a settled animated
+ * value the stalled JS thread did not take back in time, and the next commit re-applies React's props).
+ * The roll of M-C-02 is an extra offset on a wrapper, animated from "the previous cell" to 0; its rest
+ * value is 0, which is also its first value, so a dropped or reverted offset leaves the final picture.
+ * Reduced motion: no offset at all, the digit changes in place.
+ */
+function DigitColumn({ testID, digit, forward, textStyle, lineHeight, reduced }: DigitColumnProps) {
+  // "Adjusting state when a prop changes": the rest cell and the roll it needs are worked out in render.
+  const [shown, setShown] = useState({ digit, cell: digit, from: digit, roll: 0 });
+  if (shown.digit !== digit) {
+    const step = rollCells(shown.cell, digit, forward);
+    setShown({ digit, cell: step.to, from: step.from, roll: shown.roll + 1 });
+  }
+  const offset = useSharedValue(0);
+  useLayoutEffect(() => {
+    if (shown.roll === 0 || reduced) return;
+    // Start on the previous cell, end at rest: 0, the value React also holds.
+    offset.set((shown.cell - shown.from) * lineHeight);
+    offset.set(withTiming(0, { duration: SLIDE_MS, easing: STANDARD }));
+  }, [shown.roll, shown.cell, shown.from, reduced, lineHeight, offset]);
+  const roll = useAnimatedStyle(() => ({ transform: [{ translateY: offset.get() }] }));
 
   return (
     <View style={{ height: lineHeight, overflow: 'hidden' }} importantForAccessibility="no-hide-descendants">
-      <Animated.View testID={testID} style={roll}>
-        {CELLS.map((d, i) => (
-          <Text key={i} style={[textStyle, { height: lineHeight }]}>
-            {d}
-          </Text>
-        ))}
+      <Animated.View style={roll}>
+        <View testID={testID} style={{ transform: [{ translateY: -shown.cell * lineHeight }] }}>
+          {CELLS.map((d, i) => (
+            <Text key={i} style={[textStyle, { height: lineHeight }]}>
+              {d}
+            </Text>
+          ))}
+        </View>
       </Animated.View>
     </View>
   );

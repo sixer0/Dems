@@ -1,0 +1,11 @@
+# npm run typecheck -w @dems/core-server (15:02 WIB) — exit 0
+
+> @dems/core-server@0.2.0 typecheck
+> tsc --noEmit
+
+
+# npm run lint -w @dems/core-server (15:02 WIB) — exit 0
+
+> @dems/core-server@0.2.0 lint
+> oxlint
+

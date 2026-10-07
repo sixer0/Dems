@@ -1,0 +1,162 @@
+
+# 2026-10-04 15:00:29 WIB  tree: /tmp/claude-501/w34m/apps/core-server
+# command: /Users/gsp-budi/Documents/DEMS/node_modules/.bin/vitest run --root /tmp/claude-501/w34m/apps/core-server --project unit --maxWorkers=2 src/modules/sessions
+M01 detected: 6 test(s) failed | routes.ts: the {id} is not compared: a request acts on a session it did not name
+M02 detected: 36 test(s) failed | routes.ts: the comparison of the {id} is inverted
+M03 detected: 6 test(s) failed | routes.ts: create answers 200 for a new session and 201 for a replay
+M04 detected: 1 test(s) failed | routes.ts: a replayed create names CREATE whatever state the session is in
+M05 detected: 5 test(s) failed | routes.ts: a refusal in the result of createSession is answered as a success
+M06 detected: 5 test(s) failed | routes.ts: the composite start runs the pre-check from ARMED instead of CREATE
+M07 detected: 2 test(s) failed | routes.ts: warnings are acknowledged without acknowledgeWarnings
+M08 detected: 2 test(s) failed | routes.ts: a blocked pre-check is answered as a warning
+M09 detected: 2 test(s) failed | routes.ts: a start without the flag counts as an acknowledgement
+M10 detected: 4 test(s) failed | routes.ts: a start from CREATE answers 200 RECORDING
+M11 detected: 3 test(s) failed | routes.ts: the acknowledgement is not run before the start
+M12 detected: 11 test(s) failed | routes.ts: the stop ignores what the schema stage refused
+M13 detected: 18 test(s) failed | refusals.ts: a short reason stays INVALID_INPUT
+M14 detected: 2 test(s) failed | routes.ts: a stop names the wrong state
+M15 detected: 2 test(s) failed | routes.ts: the stop passes the session ID as the reason
+M16 detected: 2 test(s) failed | routes.ts: a recovery names the wrong state
+M17 detected: 2 test(s) failed | routes.ts: an acknowledgement names the wrong state
+M18 detected: 3 test(s) failed | routes.ts: the marker label is dropped
+M19 detected: 2 test(s) failed | routes.ts: the note text is changed on its way
+M20 detected: 2 test(s) failed | routes.ts: any {id} acknowledges the summary of the session sealed last
+M21 detected: 10 test(s) failed | routes.ts: the two headers of API-7 are swapped
+M22 detected: 4 test(s) failed | routes.ts: a cancel carries no state position
+M23 detected: 13 test(s) failed | routes.ts: the monitor does not read the server clock
+M24 detected: 19 test(s) failed | routes.ts: every unit has the same label
+M25 detected: 8 test(s) failed | routes.ts: a start from ARMED runs the pre-check action
+M26 detected: 2 test(s) failed | routes.ts: a retry runs beginPrecheck
+M27 detected: 9 test(s) failed | routes.ts: a cancel runs another action
+M28 detected: 1 test(s) failed | routes.ts: the scanner answers a fixed number
+M29 detected: 11 test(s) failed | refusals.ts: another session answers 409 instead of 404
+M30 detected: 3 test(s) failed | refusals.ts: running checks answer INVALID_STATE
+M31 detected: 9 test(s) failed | refusals.ts: a missing reason is INVALID_INPUT
+M32 detected: 1 test(s) failed | refusals.ts: an issue about another member counts as a short reason
+M33 detected: 1 test(s) failed | refusals.ts: a refused path parameter counts as a short reason
+M34 detected: 1 test(s) failed | refusals.ts: one length issue among others is enough
+M35 detected: 2 test(s) failed | refusals.ts: SESSION_ACTIVE does not name the open session
+M36 detected: 3 test(s) failed | refusals.ts: the block text names the warnings
+M37 detected: 16 test(s) failed | refusals.ts: no refusal of the module carries details.simCode
+M38 detected: 3 test(s) failed | refusals.ts: a warning is answered as a block
+M39 detected: 1 test(s) failed | operations.ts: an operation bound to two actions takes the first
+M40 detected: 1 test(s) failed | operations.ts: a status the contract does not document is accepted
+M41 detected: 83 test(s) failed | operations.ts: refusals count as documented successes
+M42 detected: 7 test(s) failed | history.ts: a cursor with any text after the instant is a position
+M43 detected: 3 test(s) failed | history.ts: an instant beyond the safe integers is a position
+M44 detected: 1 test(s) failed | history.ts: a cursor that is no position reads from the newest
+M45 detected: 1 test(s) failed | history.ts: the cursor is written the other way round
+M46 detected: 2 test(s) failed | history.ts: the error is logged under another key (M14)
+M47 detected: 1 test(s) failed | history.ts: a database failure is answered 500
+M48 detected: 1 test(s) failed | history.ts: the error itself is spread into the persistent entry
+M49 detected: 7 test(s) failed | current.ts: the recording time does not follow the clock
+M50 detected: 11 test(s) failed | current.ts: the server time is not the clock's
+M51 detected: 13 test(s) failed | current.ts: the investigator has no name
+M52 detected: 12 test(s) failed | routes.ts: the schema stage answers a short reason itself, as INVALID_INPUT
+M53 detected: 1 test(s) failed | routes.ts: create replaces the investigator of the body
+M54 detected: 3 test(s) failed | routes.ts: the {id} of a snapshot is not validated
+# 54 of 54 detected
+
+# 2026-10-04 15:04:51 WIB  tree: /Users/gsp-budi/Documents/DEMS/apps/core-server
+# NOTE: this batch changed history.ts IN PLACE, one mutation at a time, 15:04:51 to 15:06:36, before rule M15 (decision D88) was issued.
+#       The file was restored after each mutation (SHA-256 equal before and after). The batch was run again through a transform below.
+# command: npm run test:db -w @dems/core-server -- --maxWorkers=2 src/modules/sessions/__tests__/history.db.test.ts
+D01 detected: 8 test(s) failed | history.ts: the next page repeats the last item of the page before
+D02 detected: 1 test(s) failed | history.ts: sessions that ended together are ordered against the keyset
+D03 detected: 9 test(s) failed | history.ts: a page never has a cursor
+D04 detected: 2 test(s) failed | history.ts: the last full page promises one more
+D05 detected: 9 test(s) failed | history.ts: a session without an evidence item is not listed
+D06 detected: 1 test(s) failed | history.ts: no entry names its evidence item
+D07 detected: 1 test(s) failed | history.ts: the keyset ignores the ID: sessions that ended together are skipped
+D08 detected: 1 test(s) failed | history.ts: the default page is not the contract's 50
+# 8 of 8 detected
+# transform runner (rule M15): no file of the tree changes
+
+# 2026-10-04 15:14:42 WIB  tree: /Users/gsp-budi/Documents/DEMS/apps/core-server
+# command: /Users/gsp-budi/Documents/DEMS/node_modules/.bin/vitest run --config /tmp/claude-501/w34cfg/vitest.mutate.config.ts --root /Users/gsp-budi/Documents/DEMS/apps/core-server --project db --maxWorkers=2 src/modules/sessions/__tests__/history.db.test.ts 
+D01 detected: 9 test(s) failed | history.ts: the next page repeats the last item of the page before
+D02 detected: 1 test(s) failed | history.ts: sessions that ended together are ordered against the keyset
+D03 detected: 10 test(s) failed | history.ts: a page never has a cursor
+D04 detected: 2 test(s) failed | history.ts: the last full page promises one more
+D05 detected: 9 test(s) failed | history.ts: a session without an evidence item is not listed
+D06 detected: 2 test(s) failed | history.ts: no entry names its evidence item
+D07 detected: 1 test(s) failed | history.ts: the keyset ignores the ID: sessions that ended together are skipped
+D08 detected: 1 test(s) failed | history.ts: the default page is not the contract's 50
+# 8 of 8 detected
+
+# ── Follow-up of decision D94 (one error precedence): the whole unit-level list on the changed module ──
+# 2026-10-04 17:15:20 WIB  tree: /tmp/claude-501/w34b/m/apps/core-server (a scratch copy; rule M15)
+# command: /Users/gsp-budi/Documents/DEMS/node_modules/.bin/vitest run --root /tmp/claude-501/w34b/m/apps/core-server --project unit --maxWorkers=2 src/modules/sessions
+T01 detected: 10 test(s) failed | text-body.ts: a reason that is null or a number counts as missing
+T02 detected: 4 test(s) failed | text-body.ts: one lower-bound issue among others is enough
+T03 detected: 1 test(s) failed | text-body.ts: a member of the same name deeper in the body counts
+T04 detected: 1 test(s) failed | text-body.ts: the lower bound of another member counts
+T05 detected: 44 test(s) failed | text-body.ts: missing and invalid are swapped
+T06 detected: 19 test(s) failed | text-body.ts: the stand-in for a missing text is one the action accepts
+T07 detected: 16 test(s) failed | text-body.ts: an absent member is never seen as absent
+T08 detected: 5 test(s) failed | text-body.ts: a valid body is handed on as sent, not as parsed
+T09 detected: 26 test(s) failed | text-body.ts: a text that is too short is the schema stage's again
+R01 detected: 4 test(s) failed | routes.ts: a stop body of the wrong shape reaches the engine
+R02 detected: 3 test(s) failed | routes.ts: a note body of the wrong shape reaches the engine
+R03 detected: 13 test(s) failed | routes.ts: the refused reason itself reaches the engine
+R04 detected: 20 test(s) failed | routes.ts: THE OLD ORDER: a short reason is refused before the session is looked at
+R05 detected: 2 test(s) failed | routes.ts: THE OLD ORDER: an empty note is refused before the session is looked at
+R06 detected: 2 test(s) failed | routes.ts: a missing note text becomes a text the action accepts
+R07 detected: 20 test(s) failed | routes.ts: the stop reads the lower bound of another member
+R08 detected: 2 test(s) failed | routes.ts: the note reads the lower bound of another member
+R09 detected: 25 test(s) failed | routes.ts: the stop body is read with another schema
+R10 detected: 3 test(s) failed | routes.ts: a refused stop body names the wrong part of the request
+R11 detected: 21 test(s) failed | routes.ts: the stop route has a body schema again: stage 7 answers the short reason
+R12 detected: 3 test(s) failed | routes.ts: the note route has a body schema again
+R13 detected: 23 test(s) failed | routes.ts: the valid reason is replaced by the empty text
+R14 detected: 5 test(s) failed | routes.ts: the note body is read with the marker schema (an empty text is valid there)
+O01 detected: 1 test(s) failed | operations.ts: bodySchemaOf accepts a schema the registry does not name
+O02 detected: 1 test(s) failed | operations.ts: bodySchemaOf accepts a schema for an operation without a body
+M01 detected: 14 test(s) failed | routes.ts: the {id} is not compared: a request acts on a session it did not name
+M02 detected: 51 test(s) failed | routes.ts: the comparison of the {id} is inverted
+M03 detected: 6 test(s) failed | routes.ts: create answers 200 for a new session and 201 for a replay
+M04 detected: 1 test(s) failed | routes.ts: a replayed create names CREATE whatever state the session is in
+M05 detected: 5 test(s) failed | routes.ts: a refusal in the result of createSession is answered as a success
+M06 detected: 5 test(s) failed | routes.ts: the composite start runs the pre-check from ARMED instead of CREATE
+M07 detected: 2 test(s) failed | routes.ts: warnings are acknowledged without acknowledgeWarnings
+M08 detected: 2 test(s) failed | routes.ts: a blocked pre-check is answered as a warning
+M09 detected: 2 test(s) failed | routes.ts: a start without the flag counts as an acknowledgement
+M10 detected: 4 test(s) failed | routes.ts: a start from CREATE answers 200 RECORDING
+M11 detected: 3 test(s) failed | routes.ts: the acknowledgement is not run before the start
+M14 detected: 2 test(s) failed | routes.ts: a stop names the wrong state
+M15 detected: 19 test(s) failed | routes.ts: the stop passes the session ID as the reason
+M16 detected: 2 test(s) failed | routes.ts: a recovery names the wrong state
+M17 detected: 2 test(s) failed | routes.ts: an acknowledgement names the wrong state
+M18 detected: 3 test(s) failed | routes.ts: the marker label is dropped
+M19 detected: 2 test(s) failed | routes.ts: the note text is changed on its way
+M20 detected: 2 test(s) failed | routes.ts: any {id} acknowledges the summary of the session sealed last
+M21 detected: 10 test(s) failed | routes.ts: the two headers of API-7 are swapped
+M22 detected: 4 test(s) failed | routes.ts: a cancel carries no state position
+M23 detected: 13 test(s) failed | routes.ts: the monitor does not read the server clock
+M24 detected: 24 test(s) failed | routes.ts: every unit has the same label
+M25 detected: 8 test(s) failed | routes.ts: a start from ARMED runs the pre-check action
+M26 detected: 2 test(s) failed | routes.ts: a retry runs beginPrecheck
+M27 detected: 9 test(s) failed | routes.ts: a cancel runs another action
+M28 detected: 1 test(s) failed | routes.ts: the scanner answers a fixed number
+M29 detected: 21 test(s) failed | refusals.ts: another session answers 409 instead of 404
+M30 detected: 3 test(s) failed | refusals.ts: running checks answer INVALID_STATE
+M35 detected: 2 test(s) failed | refusals.ts: SESSION_ACTIVE does not name the open session
+M36 detected: 3 test(s) failed | refusals.ts: the block text names the warnings
+M37 detected: 10 test(s) failed | refusals.ts: no refusal of the module carries details.simCode
+M38 detected: 3 test(s) failed | refusals.ts: a warning is answered as a block
+M39 detected: 1 test(s) failed | operations.ts: an operation bound to two actions takes the first
+M40 detected: 1 test(s) failed | operations.ts: a status the contract does not document is accepted
+M41 detected: 91 test(s) failed | operations.ts: refusals count as documented successes
+M42 detected: 7 test(s) failed | history.ts: a cursor with any text after the instant is a position
+M43 detected: 3 test(s) failed | history.ts: an instant beyond the safe integers is a position
+M44 detected: 1 test(s) failed | history.ts: a cursor that is no position reads from the newest
+M45 detected: 1 test(s) failed | history.ts: the cursor is written the other way round
+M46 detected: 2 test(s) failed | history.ts: the error is logged under another key (M14)
+M47 detected: 1 test(s) failed | history.ts: a database failure is answered 500
+M48 detected: 1 test(s) failed | history.ts: the error itself is spread into the persistent entry
+M49 detected: 7 test(s) failed | current.ts: the recording time does not follow the clock
+M50 detected: 11 test(s) failed | current.ts: the server time is not the clock's
+M51 detected: 13 test(s) failed | current.ts: the investigator has no name
+M53 detected: 1 test(s) failed | routes.ts: create replaces the investigator of the body
+M54 detected: 3 test(s) failed | routes.ts: the {id} of a snapshot is not validated
+# 72 of 72 detected

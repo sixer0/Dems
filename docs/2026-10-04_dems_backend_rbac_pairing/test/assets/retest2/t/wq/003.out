@@ -1,0 +1,7 @@
+slept 3000
+mark web Verify on EV-20261006-0017 (andi) at 16:44:59.535
+press evidence-verify: true at 16:44:59.589
+watch: truthy at 16:44:59.696 (started 16:44:59.589, 107 ms): "VERIFYING Verdict of the Core server The Core server's verdict is the record: it is written to the audit trail and to the chain of custody. Last verification PASS · 6 Oct 2026 16:44:59 UTC+07:00 · AKP Andi Pratama Verifying… 0 of 6 checks VIDEO-01 · Camera 1 SHA-256 Checking VIDEO-02 · Camera 2 SHA-"
+slept 1500
+shot W03_web_evidence_0017_after_verify.png at 16:45:01.331
+text evidence-verify-card: "PASS\nVerdict of the Core server\nThe Core server's verdict is the record: it is written to the audit trail and to the chain of custody.\nLast verification PASS · 6 Oct 2026 16:44:59 UTC+07:00 · AKP Andi Pratama\nVerify again\n6 of 6 checks\nVIDEO-01 · Camera 1 SHA-256\nPASS\nFOUND\n64f89aed70…0a78c33282\nVIDEO-02 · Camera 2 SHA-256\nPASS\nFOUND\n96e7c1e7ef…81befb2228\nAUDIO-01 · MIC 1 - Interviewer SHA-256\nPASS\nFOUND\nb2f0d7cf4a…3aff42a7d4\nAUDIO-02 · MIC 2 - Subject SHA-256\nPASS\nFOUND\n15c382e769…d443aa797d\nManifest digest\nPASS\nFOUND\nVALID\nEd25519 signature\nPASS\nFOUND\nVALI9"

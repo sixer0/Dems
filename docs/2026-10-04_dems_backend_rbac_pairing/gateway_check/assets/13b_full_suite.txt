@@ -1,0 +1,190 @@
+start 21:07:57
+PASS src/features/audit/live-audit-screen.test.tsx
+PASS src/features/pairing/pairing-live.test.tsx (9.719 s)
+PASS src/features/devices/devices-screen.test.tsx
+PASS src/features/storage/live-storage-sites.test.tsx (9.188 s)
+PASS src/navigation/__tests__/chrome-lost-updates.test.tsx (5.065 s)
+PASS src/navigation/__tests__/pairing-gate.test.tsx
+PASS src/navigation/__tests__/chrome.test.tsx
+PASS src/features/evidence/evidence-detail.test.tsx (8.32 s)
+PASS src/features/evidence/live-evidence-stored-verification.test.tsx
+PASS src/features/pairing/pairing-handoff-routes.test.tsx
+PASS src/navigation/__tests__/guard.test.tsx
+PASS src/navigation/__tests__/routes.test.tsx
+PASS src/features/audit/audit-screen.test.tsx
+PASS src/auth/live-auth.test.tsx
+PASS src/features/settings/live-settings-boundary.test.tsx
+PASS src/features/sessions/live-sessions.test.tsx
+PASS src/features/session-recovery/live-recovery-sites.test.tsx
+PASS src/runtime/connection-banner-live.test.tsx (5.021 s)
+PASS src/features/audit/live-audit-chain.test.tsx
+PASS src/features/dashboard/home-live.test.tsx
+PASS src/navigation/__tests__/settings-tab-root.test.tsx
+PASS src/features/evidence/live-evidence-export.test.tsx
+PASS src/features/session-recovery/live-recovery-restart.test.tsx
+PASS src/features/settings/live-settings-sites.test.tsx
+PASS src/features/devices/devices-states.test.tsx
+PASS src/features/sessions/sessions-screen.test.tsx
+PASS src/features/evidence/live-evidence-verify.test.tsx
+PASS src/features/session-live/live-session-live-link.test.tsx (6.032 s)
+PASS src/features/evidence/play-sheet.test.tsx
+PASS src/features/evidence/evidence-row-deselect-drawn.test.tsx
+PASS src/features/devices/live-devices-sites.test.tsx (5.853 s)
+PASS src/features/sessions/hub-pane-row-fit.test.tsx
+PASS src/features/sessions/hub-pane-split.test.tsx
+PASS src/features/evidence/evidence-list.test.tsx
+PASS src/features/sessions/session-row-deselect-drawn.test.tsx
+PASS src/features/session-new/live-session-new-handoff.test.tsx
+PASS src/features/session-live/session-live-screen.test.tsx (7.086 s)
+PASS src/features/pairing/live-gap-sites.test.tsx
+PASS src/features/session-new/live-session-new-sites.test.tsx (8.99 s)
+PASS src/features/session-live/live-session-live-sites.test.tsx (8.74 s)
+PASS src/features/login/login.test.tsx (7.076 s)
+PASS src/features/session-summary/live-summary-sites.test.tsx (5.895 s)
+PASS src/features/evidence/live-evidence-metadata-record.test.tsx
+PASS src/features/login/login-entrance-rest.test.tsx (5.242 s)
+PASS src/features/session-recovery/session-recovery-screen.test.tsx
+PASS src/features/session-new/session-new-screen.test.tsx (6.539 s)
+PASS src/features/session-new/live-session-new-followups.test.tsx (5.865 s)
+PASS src/features/network-time/network-time-screen.test.tsx
+PASS src/features/session-new/live-session-new-replica.test.tsx (6.746 s)
+PASS src/features/pairing/pairing-screen.test.tsx
+PASS src/features/evidence/live-evidence-strict.test.tsx
+PASS src/features/network-time/time-sync-fit.test.tsx
+PASS src/features/session-finalizing/session-finalizing-screen.test.tsx
+PASS src/features/session-live/monitor-timer-drawn.test.tsx (6.997 s)
+PASS src/features/evidence/live-evidence-archive.test.tsx
+PASS src/features/settings/live-gap-s1-2-biometric.test.tsx
+PASS src/features/storage/storage-screen.test.tsx
+PASS src/features/dashboard/dashboard-screen.test.tsx
+PASS src/features/session-finalizing/live-finalizing.test.tsx (8.117 s)
+PASS src/features/login/live-login.test.tsx
+PASS src/features/session-live/live-handover-exit.test.tsx
+PASS src/features/session-live/back-guard.test.tsx (7.723 s)
+PASS src/features/devices/live-devices-health-caption.test.tsx
+PASS src/features/session-summary/session-summary-screen.test.tsx
+PASS src/features/session-live/live-stop-handover.test.tsx
+PASS src/runtime/live-screens.test.tsx
+PASS src/features/session-live/live-monitor-timer-core-clock.test.tsx
+PASS src/features/more/more-live.test.tsx
+PASS src/features/session-new/live-start-handoff-in-place.test.tsx
+PASS src/features/evidence/evidence-more-menu-title.test.tsx
+PASS src/features/session-live/monitor-handoff-in-place.test.tsx
+PASS src/features/network-time/live-network-time.test.tsx
+PASS src/features/dashboard/dashboard-route.test.tsx
+PASS src/features/settings/live-settings-biometric.test.tsx
+PASS src/features/session-live/live-client-restart.test.tsx
+PASS src/components/composed/nav/live-mini-bar-clock.test.tsx
+PASS src/features/session-live/live-gap-s4-7-tablet-link.test.tsx
+PASS src/navigation/__tests__/pairing-gate-live.test.tsx
+PASS src/features/session-live/live-gap-read-only-dialog.test.tsx
+PASS src/features/network-time/bandwidth-row-fit.test.tsx
+PASS src/features/more/more-screen.test.tsx
+PASS src/features/session-new/session-new-model.test.ts
+PASS src/features/session-new/precheck.test.tsx
+PASS src/features/rbac/role-gate-r2.test.tsx
+PASS src/motion/policy.test.tsx
+PASS src/runtime/use-audio-shared-values.test.tsx
+PASS src/runtime/live-health.test.tsx
+PASS src/features/settings/settings-screen.test.tsx
+PASS src/runtime/use-core-link-notice.test.tsx
+PASS src/runtime/runtime.test.tsx
+PASS src/features/login/live-login-link-visuals.test.tsx
+PASS src/features/session-summary/summary-handoff-in-place.test.tsx
+PASS src/navigation/__tests__/back-guard-busy.test.tsx
+PASS src/features/audit/audit-model.test.ts
+PASS src/runtime/use-core-link-read-only.test.tsx
+PASS src/runtime/live-device.test.tsx
+PASS src/runtime/live-runtime.test.tsx
+PASS src/runtime/live-core-errors.test.tsx
+PASS src/features/settings/settings-model.test.ts
+PASS src/features/evidence/evidence-model.test.ts
+PASS src/components/media/brand-media.test.ts
+PASS src/features/dashboard/home-model.test.ts
+PASS src/features/rbac/live-role-gate-r2.test.tsx
+PASS src/auth/auth-provider.test.tsx
+PASS src/navigation/__tests__/back-guard.test.tsx
+PASS src/features/pairing/pairing-model.test.ts
+PASS src/features/login/login-live-model.test.ts
+PASS src/components/media/media.test.tsx
+PASS src/runtime/session-route-sync-live.test.tsx
+PASS src/features/pairing/stack-check-service-name.test.tsx
+PASS src/features/settings/heartbeat-release-gate.test.tsx
+PASS src/providers/app-providers.test.tsx
+PASS src/runtime/live-settings.test.tsx
+PASS src/runtime/pending-control.test.tsx
+PASS src/features/home/home-screen.test.tsx
+PASS src/features/session-summary/summary-live-static.test.ts
+PASS src/components/composed/stepper.test.tsx
+PASS src/runtime/live-core-link.test.tsx
+PASS src/features/home/stack-proof-source.test.tsx
+PASS src/components/media/camera-feed-video.test.tsx
+PASS src/features/devices/devices-model.test.ts
+PASS src/auth/biometric.test.ts
+PASS src/components/composed/session-timeline.test.tsx
+PASS src/features/more/use-core-link-chip.test.tsx
+PASS src/features/sessions/sessions-model.test.ts
+PASS src/components/kit/kit.test.tsx
+PASS src/runtime/log.test.ts
+PASS src/runtime/link-notice.test.ts
+PASS src/runtime/sim-adapters.test.ts
+PASS src/runtime/ended-link.test.tsx
+PASS src/navigation/__tests__/navigation-units.test.ts
+PASS src/auth/live-biometric.test.ts
+PASS src/runtime/use-pending-press.test.tsx
+PASS src/providers/runtime-contract.test.tsx
+PASS src/runtime/live-no-raw-fetch.test.tsx
+PASS src/features/dashboard/panel-boundary.test.tsx
+PASS src/runtime/route-sync.test.ts
+PASS src/auth/live-auth-model.test.ts
+PASS src/motion/haptics.test.ts
+PASS src/features/settings/settings-live-model.test.ts
+PASS src/components/composed/dbfs-meter.test.tsx
+PASS src/features/login/login-model.test.ts
+PASS src/components/composed/glow-ring.test.tsx
+PASS src/features/pairing/pairing-live-model.test.ts
+PASS src/runtime/session-route-sync.test.tsx
+PASS src/runtime/probe-failure.test.ts
+PASS src/lib/live-static-ac-c-53.test.ts
+PASS src/features/storage/storage-model.test.ts
+PASS src/motion/glow-layer.test.tsx
+PASS src/features/network-time/network-time-model.test.ts
+PASS src/runtime/secure-credentials.test.ts
+PASS src/motion/debug-overlay.test.tsx
+PASS src/runtime/pairing-gate-snapshot.test.ts
+PASS src/components/composed/rolling-number.test.tsx
+PASS src/layout/use-layout-class.test.ts
+PASS src/runtime/live-stall-link.test.ts
+PASS src/runtime/secure-store-import.test.ts
+PASS src/features/session-recovery/recovery.model.test.ts
+PASS src/layout/layout.test.tsx
+PASS src/runtime/signed-out-landing.test.ts
+PASS src/features/dashboard/use-held-value.test.tsx
+PASS src/auth/live-auth-static.test.ts
+PASS src/i18n/i18n.test.ts
+PASS src/features/pairing/pairing-live-static.test.ts
+FAIL src/features/evidence/live-evidence-static.test.ts
+  ● Evidence takes the Core through the light Live API (CLG c, AC-C-53) › reads the folder: every production file, sub-folders included
+PASS src/features/session-live/session-live.math.test.ts
+PASS src/runtime/link-notice-static.test.ts
+PASS src/features/devices/devices-live-static.test.ts
+PASS src/features/settings/settings-live-static.test.ts
+PASS src/runtime/log-flush-timer.test.ts
+PASS src/runtime/log-console.test.ts
+PASS src/features/storage/storage-live-static.test.ts
+PASS src/features/dashboard/home-more-live-static.test.ts
+PASS src/motion/builders.test.ts
+PASS src/runtime/stall-tolerant-timers.test.ts
+PASS src/features/session-summary/summary.model.test.ts
+PASS src/features/session-recovery/recovery-live-static.test.ts
+PASS src/features/audit/audit-live-static.test.ts
+PASS src/features/session-finalizing/finalizing.model.test.ts
+PASS src/runtime/core-clock.test.ts
+FAIL src/features/evidence/live-evidence-static.test.ts
+  ● Evidence takes the Core through the light Live API (CLG c, AC-C-53) › reads the folder: every production file, sub-folders included
+Test Suites: 1 failed, 179 passed, 180 total
+Tests:       1 failed, 1928 passed, 1929 total
+Snapshots:   0 total
+Time:        229.183 s
+exit 1
+end 21:11:46

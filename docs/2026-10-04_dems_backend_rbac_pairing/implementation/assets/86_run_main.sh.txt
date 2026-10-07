@@ -1,0 +1,116 @@
+#!/bin/sh
+# W86 README check, main instance (4420, dems_demo), following README "Live mode" steps 1 to 4 literally.
+# Run from the workspace root, INSIDE the main lock:
+#   /usr/bin/lockf -k -t 900 .locks/core-server.lock /bin/sh .cache/w86/run_main.sh
+# Not run here, by the brief: pg:start / pg:stop (W90's clean-state rebuild), pg:remove-data, pg:remove.
+# It starts only its own processes (two Core server runs on 4420, Vite on 5173 inside the vite lock,
+# one headless Chromium on 9397) and stops each of them. Never touches 5432, 5174/5175, 4400, 4421-4423.
+# No credential file is read or printed; the seeded password is used by the browser driver only.
+set -u
+ROOT=/Users/gsp-budi/Documents/DEMS
+[ "$(pwd)" = "$ROOT" ] || { echo "ABORT: run from $ROOT"; exit 9; }
+OUT=.cache/w86/out
+mkdir -p "$OUT"
+START_EPOCH=$(date +%s)
+stamp() { date '+%H:%M:%S'; }
+say() { echo; echo "== $(stamp) $*"; }
+listening() { lsof -nP -iTCP:"$1" -sTCP:LISTEN >/dev/null 2>&1; }
+run() { # run <label> <command...>: prints the command, its exit status and the time
+  label=$1; shift
+  echo "-- $(stamp) \$ $*"
+  "$@" > "$OUT/$label.txt" 2>&1; rc=$?
+  echo "-- $(stamp) exit $rc  (full output: $OUT/$label.txt, $(wc -l < "$OUT/$label.txt" | tr -d ' ') lines)"
+  return $rc
+}
+SERVER_NPM=""; SERVER_PID=""
+stop_server() {
+  [ -n "$SERVER_NPM" ] || return 0
+  echo "-- $(stamp) \$ lsof -nP -iTCP:4420 -sTCP:LISTEN"
+  lsof -nP -iTCP:4420 -sTCP:LISTEN
+  SERVER_PID=$(lsof -nP -tiTCP:4420 -sTCP:LISTEN 2>/dev/null | head -n 1)
+  if [ -n "$SERVER_PID" ]; then
+    echo "-- $(stamp) \$ kill -TERM $SERVER_PID"
+    kill -TERM "$SERVER_PID"
+  fi
+  i=0; while listening 4420 && [ $i -lt 60 ]; do i=$((i + 1)); sleep 0.25; done
+  wait "$SERVER_NPM" 2>/dev/null; echo "-- $(stamp) npm exit status $? after $i quarter seconds"
+  SERVER_NPM=""
+  : > .locks/core-server.pid
+}
+trap 'stop_server' EXIT
+
+say "0. ports 4420, 5173, 9397 must be free (nothing is stopped that this check did not start)"
+for p in 4420 5173 9397; do
+  if listening $p; then echo "port $p in use:"; lsof -nP -iTCP:$p -sTCP:LISTEN; echo "ABORT"; exit 3; fi
+done
+echo "free: 4420 5173 9397"; date '+%Y-%m-%d %H:%M:%S %Z'
+
+say "1. README step 1: pg:status, and pg:init once (expected: refusal on an initialised host)"
+run a01_pg_status npm run pg:status; tail -n 1 "$OUT/a01_pg_status.txt"
+run a02_pg_init npm run pg:init; grep -E "refused|Nothing was changed|pg:init:" "$OUT/a02_pg_init.txt" | head -5
+
+say "2. README step 2: create, migrate, seed (expected: refusal, seeded), status"
+run a03_db_create npm run db:create -- --database dems_demo; grep -E "^db:create" "$OUT/a03_db_create.txt"
+run a04_db_migrate /usr/bin/lockf -k .locks/db-migrate.lock npm run db:migrate -- --database dems_demo; grep -E "^db:migrate" "$OUT/a04_db_migrate.txt"
+run a05_db_seed /usr/bin/lockf -k .locks/db-migrate.lock npm run db:seed -- --database dems_demo; grep -E "^db:seed" "$OUT/a05_db_seed.txt"
+run a06_db_status npm run db:status -- --database dems_demo; grep -E "^(audit head|seeded_at|last_reset_at|  (audit_log|auth_sessions|paired_devices|session_history) )|^db:status" "$OUT/a06_db_status.txt"
+
+say "2b. README step 2: reset to the seed (the Core server of dems_demo is not running: 4420 free)"
+listening 4420 && { echo "ABORT: 4420 in use"; exit 3; }
+run a07_db_reset /usr/bin/lockf -k .locks/db-migrate.lock npm run db:reset -- --database dems_demo; grep -E "^db:reset" "$OUT/a07_db_reset.txt" | head -12
+run a08_db_status_after_reset npm run db:status -- --database dems_demo; grep -E "^(audit head|seeded_at|last_reset_at|lineage|  (audit_log|auth_sessions|paired_devices|session_history) )|^db:status" "$OUT/a08_db_status_after_reset.txt"
+
+say "3. README step 3: npm run start:server (demo controls off), health"
+npm run start:server > "$OUT/a09_server.log" 2>&1 &
+SERVER_NPM=$!
+i=0; code=000
+while [ $i -lt 240 ]; do
+  code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:4420/api/v1/health 2>/dev/null)
+  [ "$code" = "200" ] && break
+  kill -0 "$SERVER_NPM" 2>/dev/null || break
+  i=$((i + 1)); sleep 0.25
+done
+[ "$code" = "200" ] || { echo "ABORT: no health 200 (last $code)"; tail -n 15 "$OUT/a09_server.log"; exit 4; }
+lsof -nP -tiTCP:4420 -sTCP:LISTEN | head -n 1 > .locks/core-server.pid
+echo "-- up after $i quarter seconds; npm PID $SERVER_NPM; listener PID $(cat .locks/core-server.pid) (recorded in .locks/core-server.pid)"
+grep -o '"port":[0-9]*,"database":"[a-z_0-9]*","demoControls":[a-z]*' "$OUT/a09_server.log" | head -n 1
+echo "-- $(stamp) \$ curl -s http://127.0.0.1:4420/api/v1/health"
+curl -s http://127.0.0.1:4420/api/v1/health | tee "$OUT/a10_health.json"; echo
+SERVER_LINES_BEFORE_WEB=$(grep -c . "$OUT/a09_server.log")
+
+say "4. README step 4: the web console in Live mode (inside .locks/vite.lock)"
+/usr/bin/lockf -k -t 60 .locks/vite.lock /bin/sh .cache/w86/web_step.sh; echo "-- web step exit $?"
+
+say "5. the Core server's request log during the web step (method, route, status; no body is logged)"
+tail -n +$((SERVER_LINES_BEFORE_WEB + 1)) "$OUT/a09_server.log" > "$OUT/a09_server_web_part.log"
+grep '"msg":"request completed"' "$OUT/a09_server_web_part.log" | sed -E 's/.*"method":"([^"]*)","route":"([^"]*)","status":([0-9]*).*/\1 \2 \3/' | sort | uniq -c | sed 's/^/   /'
+echo "-- credential-shaped values in the server log (must be 0): $(grep -c -E 'ses_[A-Za-z0-9]|dvc_[A-Za-z0-9]|bio_[A-Za-z0-9]|[Bb]earer [A-Za-z0-9]' "$OUT/a09_server.log")"
+echo "-- lines with level error or fatal: $(grep -c -E '"level":(50|60)|"level":"(error|fatal)"' "$OUT/a09_server.log")"
+
+say "6. README step 3: stop the server (lsof, kill -TERM), then DEMS_DEMO_CONTROLS=1 npm run start:server"
+stop_server
+grep -E '"msg":"(shutdown requested|shutdown complete)"' "$OUT/a09_server.log" | sed -E 's/.*"msg":"([^"]*)".*/   \1/'
+listening 4420 && { echo "ABORT: 4420 still in use"; exit 3; }
+DEMS_DEMO_CONTROLS=1 npm run start:server > "$OUT/a11_server_demo.log" 2>&1 &
+SERVER_NPM=$!
+i=0; code=000
+while [ $i -lt 240 ]; do
+  code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:4420/api/v1/health 2>/dev/null)
+  [ "$code" = "200" ] && break
+  kill -0 "$SERVER_NPM" 2>/dev/null || break
+  i=$((i + 1)); sleep 0.25
+done
+[ "$code" = "200" ] || { echo "ABORT: no health 200 (last $code)"; tail -n 15 "$OUT/a11_server_demo.log"; exit 4; }
+lsof -nP -tiTCP:4420 -sTCP:LISTEN | head -n 1 > .locks/core-server.pid
+echo "-- up after $i quarter seconds"
+grep -o '"port":[0-9]*,"database":"[a-z_0-9]*","demoControls":[a-z]*' "$OUT/a11_server_demo.log" | head -n 1
+echo "-- $(stamp) \$ curl -s http://127.0.0.1:4420/api/v1/health"
+curl -s http://127.0.0.1:4420/api/v1/health | tee "$OUT/a12_health_demo.json"; echo
+stop_server
+grep -E '"msg":"(shutdown requested|shutdown complete)"' "$OUT/a11_server_demo.log" | sed -E 's/.*"msg":"([^"]*)".*/   \1/'
+
+say "7. after: listeners on 4420, 5173, 9397 (expect none); dems_demo status"
+lsof -nP -iTCP:4420 -iTCP:5173 -iTCP:9397 -sTCP:LISTEN; echo "lsof exit $? (1: none)"
+run a13_db_status_end npm run db:status -- --database dems_demo; grep -E "^(audit head|  (audit_log|auth_sessions|paired_devices) )|^db:status" "$OUT/a13_db_status_end.txt"
+echo "-- credential-shaped values in both server logs (must be 0): $(cat "$OUT/a09_server.log" "$OUT/a11_server_demo.log" | grep -c -E 'ses_[A-Za-z0-9]|dvc_[A-Za-z0-9]|bio_[A-Za-z0-9]|[Bb]earer [A-Za-z0-9]')"
+echo "-- the check took $(( $(date +%s) - START_EPOCH )) s"

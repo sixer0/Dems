@@ -34,7 +34,7 @@
  * link is down the runtime's one notice shows ("Core server unreachable") and a press is refused
  * locally; Back is not held then, because the analysis runs on the Core, not on this device. One LIVE
  * line says that the check results are derived on this device from the Core's data (the Core reports
- * the stage and the outcome only, CONTRACT-GAP-W73-1). Simulated mode looks and behaves as at step 81.
+ * the stage and the outcome only, RESIDUAL-W73-1 (W83 ledger #48)). Simulated mode looks and behaves as at step 81.
  */
 import { useIsFocused, useRouter, type Href } from 'expo-router';
 import { Alert, Button, useToast } from 'heroui-native';

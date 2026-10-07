@@ -867,3 +867,12 @@ them except the two revocations.
 ---
 *Generated: 2026-10-04 16:58*
 *Last Updated: 2026-10-04 17:01*
+
+---
+
+**Note (W83, decision D184 DQ-6; ledger #81 and #82 of `implementation/83_contract_closeout.md`).** Two parts of
+this log are superseded and are kept as written: (1) the sequence with a presented session (`unit END_SESSION`,
+reason `ROTATED`, `replaced: true`; lines 119-122, 322-326, 346, 423) no longer happens: operation 8 requires
+the device credential itself (decision D126 GD-1 removed that branch); (2) section 8.2's "keeps the token and
+tries once" after a lost answer is superseded by decision D129 DN-4: a lost answer costs the enrolment (the
+token is deleted and never presented again).

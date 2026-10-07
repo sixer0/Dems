@@ -1,0 +1,46 @@
+## 01:46:56 $ git diff --stat acaff20 -- apps/mobile/src/features/session-recovery
+ apps/mobile/src/features/session-recovery/i18n.ts  |   6 +
+ .../session-recovery/session-recovery-screen.tsx   |  56 ++++++++-
+ .../src/features/session-recovery/sim-adapter.ts   |  11 +-
+ .../src/features/session-recovery/use-recovery.ts  | 127 +++++++++++++++------
+ 4 files changed, 161 insertions(+), 39 deletions(-)
+## untracked (new) files in the folder
+ M apps/mobile/src/features/session-recovery/i18n.ts
+ M apps/mobile/src/features/session-recovery/session-recovery-screen.tsx
+ M apps/mobile/src/features/session-recovery/sim-adapter.ts
+ M apps/mobile/src/features/session-recovery/use-recovery.ts
+?? apps/mobile/src/features/session-recovery/live-recovery-restart.test.tsx
+?? apps/mobile/src/features/session-recovery/live-recovery-sites.test.tsx
+?? apps/mobile/src/features/session-recovery/recovery-live-static.test.ts
+?? apps/mobile/src/features/session-recovery/testing/live-recovery-bed.tsx
+## existing test files vs acaff20 (git rev-parse acaff20:<file> = git hash-object <file>)
+same  da4e1f17f662  session-recovery-screen.test.tsx
+same  306e06379d4b  recovery.model.test.ts
+same  705fdf7166b3  testing/recovery-harness.tsx
+same  12549d9a8ad0  testing/recovery-test-setup.ts
+## CLG (c): useSimActions in production files
+grep exit (1 = none): 1
+## CLG (c): .actions reads outside quotes in production files
+session-recovery-screen.tsx:171:recovery.actions
+session-recovery-screen.tsx:171:recovery.actions
+session-recovery-screen.tsx:246:recovery.actions
+session-recovery-screen.tsx:279:recovery.actions
+session-recovery-screen.tsx:408:styles.actions
+session-recovery-screen.tsx:411:recovery.actions
+session-recovery-screen.tsx:415:recovery.actions
+session-recovery-screen.tsx:416:recovery.actions
+session-recovery-screen.tsx:419:recovery.actions
+session-recovery-screen.tsx:547:styles.actions
+use-recovery.ts:255:recovery.actions
+use-recovery.ts:271:recovery.actions
+use-recovery.ts:274:recovery.actions
+use-recovery.ts:277:recovery.actions
+use-recovery.ts:292:recovery.actions
+## KI-07: SIM-GAP markers in apps/mobile/src
+13 IDs / 62 markers
+## 01:47:05 CLG (c), re-run with perl (the BSD sed class [^'
+] above also excluded the letter n): .actions reads outside quotes in production files
+session-recovery-screen.tsx:408:styles.actions
+session-recovery-screen.tsx:547:styles.actions
+## the only match is the screen's StyleSheet key (step 81):
+715:  actions: { gap: spacing[1] },

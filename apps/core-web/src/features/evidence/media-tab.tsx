@@ -5,6 +5,7 @@ import { motion } from 'motion/react'
 import { AudioLines, Film, Mic, Pause, Play, Video } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { AudioTrackId, VideoTrackId } from '@dems/shared/domain'
+import { CoreMode, useCoreMode } from '@dems/shared/live'
 import type { DemoTrackEntry } from '@dems/shared/demo-data'
 import { excerptPositionSec } from '@/components/media/demo-media'
 import { useMotionPolicy } from '@/motion'
@@ -25,6 +26,13 @@ export interface MediaTabProps {
   /** Set by the header's Play button; the tab starts playback once and reports it handled. */
   playToken: number | null
   onPlayHandled: () => void
+  /**
+   * Live mode: the Core's media reference (operation 40) did not answer, so whether a DEMO package
+   * belongs to the item is not known. The empty state then says so in the header chip's words
+   * (`evidence.live.mediaUnavailable`), as the Metadata tab does (W83 ledger #95), and claims no
+   * absence. False in Simulated mode and whenever the Core answered.
+   */
+  mediaUnavailable?: boolean
 }
 
 function playSafely(element: HTMLMediaElement | null, source: string): void {
@@ -55,11 +63,15 @@ function playSafely(element: HTMLMediaElement | null, source: string): void {
  *   "DEMO excerpt". Markers: the dataset items keep none; the live session's markers
  *   (`EvidenceItem.markers`, step 54) are a scrub-bar follow-up (step 91).
  * - Camera switch: the new camera fades in over 320 ms at the same position (M-C-12).
- * - Items without a package show an EmptyState (simulated evidence has no media).
+ * - Items without a package show an EmptyState (simulated evidence has no media). Its words follow the
+ *   mode (closing fix CF-W, O-RT-1): Simulated mode says the record comes from the simulator; Live mode
+ *   says what the preview card says (plan row W0 item 9, D158) — no DEMO package, the Core server's
+ *   record only — or, when operation 40 did not answer, only that the media reference is unavailable.
  */
-export function MediaTab({ row, playToken, onPlayHandled }: MediaTabProps) {
+export function MediaTab({ row, playToken, onPlayHandled, mediaUnavailable = false }: MediaTabProps) {
   const { t } = useTranslation()
   const m = useMotionPolicy()
+  const live = useCoreMode() === CoreMode.LIVE
   const { urlFor } = useEvidenceAssets()
   const pkg = row.pkg
   const [camera, setCamera] = useState<VideoTrackId>('VIDEO-01')
@@ -185,11 +197,13 @@ export function MediaTab({ row, playToken, onPlayHandled }: MediaTabProps) {
   }
 
   if (!pkg) {
+    // O-RT-1: the record is the simulator's only in Simulated mode; in Live mode it is the Core server's.
+    const source = !live ? 'simulated' : mediaUnavailable ? 'unavailable' : 'core'
     return (
-      <EmptyState className="evi-empty" data-testid="evidence-media-empty">
+      <EmptyState className="evi-empty" data-testid="evidence-media-empty" data-source={source}>
         <Film className="size-8 text-foreground-2" aria-hidden="true" />
-        <p className="evi-empty-title">{t('evidence.media.noMedia')}</p>
-        <p className="evi-empty-body">{t('evidence.media.noMediaBody')}</p>
+        <p className="evi-empty-title">{t(source === 'unavailable' ? 'evidence.live.mediaUnavailable' : 'evidence.media.noMedia')}</p>
+        {source === 'unavailable' ? null : <p className="evi-empty-body">{t(source === 'core' ? 'evidence.live.noPackage' : 'evidence.media.noMediaBody')}</p>}
       </EmptyState>
     )
   }

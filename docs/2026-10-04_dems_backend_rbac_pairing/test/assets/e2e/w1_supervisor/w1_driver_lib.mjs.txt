@@ -1,0 +1,299 @@
+// E2E-W1 driver library: raw CDP over Node's built-in WebSocket, against ONE headless shell that stays up for
+// the whole walk (devtools 127.0.0.1:9473; 9431 abandoned after a port collision with another agent). Every step script connects to the same page target, so the browser
+// session (cookie, page state) carries over between steps exactly as for a person at the keyboard.
+//
+// Never stored or printed: a request body, a cookie value, the demo password, a pairing code, a session token,
+// a device credential. The password is read from README.md (Quick start table, row andi.pratama) inside this
+// module and only ever handed to Input.insertText. Every text this module returns passes redact().
+import { readFileSync, writeFileSync, appendFileSync } from 'node:fs'
+import { join } from 'node:path'
+
+export const ASSETS = '/Users/gsp-budi/Documents/DEMS/docs/2026-10-04_dems_backend_rbac_pairing/test/assets/e2e/w1_supervisor'
+export const ORIGIN = 'http://127.0.0.1:5178'
+// From 10:27 the browser runs on an OS-assigned port (--remote-debugging-port=0, controller instruction after IN-1):
+// devtools.json holds the port and the browser path read from the profile's own DevToolsActivePort file, and the
+// endpoint is used only when its /json/version names that same browser (no other agent's browser can match).
+const DEVTOOLS = JSON.parse(readFileSync(new URL('./devtools.json', import.meta.url), 'utf8'))
+export const DEV = String(DEVTOOLS.port)
+async function assertOwnBrowser() {
+  const ver = await (await fetch(`http://127.0.0.1:${DEV}/json/version`)).json()
+  if (!String(ver.webSocketDebuggerUrl).endsWith(DEVTOOLS.browserPath)) throw new Error('the DevTools endpoint is not this walk\'s browser: refusing to connect')
+}
+export const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+
+function readPassword() {
+  const readme = readFileSync('/Users/gsp-budi/Documents/DEMS/README.md', 'utf8')
+  const line = readme.split('\n').find((l) => l.startsWith('| `andi.pratama`'))
+  if (!line) throw new Error('README has no andi.pratama row')
+  const cells = line.split('|').map((s) => s.trim())
+  const pw = (cells[4] ?? '').replace(/`/g, '')
+  if (!pw) throw new Error('README andi.pratama row has no password cell')
+  return pw
+}
+const PASSWORD = readPassword()
+export const USERNAME = 'andi.pratama'
+
+/** Removes the password, any 6-digit run and any ses_/dvc_/bio_ token from every string of a value. */
+function redactString(text) {
+  let t = String(text).split(PASSWORD).join('***')
+  t = t.replace(/(?<![0-9A-Za-z])\d{6}(?![0-9A-Za-z])/g, '######')
+  t = t.replace(/(?<![0-9A-Za-z])\d{3}[\s\u00a0\u2009-]\d{3}(?![0-9A-Za-z])/g, '### ###') // a code shown as two groups (added after the slip at step 73)
+  t = t.replace(/\b(ses|dvc|bio)_[A-Za-z0-9_-]+/g, '$1_***')
+  return t
+}
+export function redact(value) {
+  if (typeof value === 'string') return redactString(value)
+  if (Array.isArray(value)) return value.map(redact)
+  if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([k, v]) => [redactString(k), redact(v)]))
+  return value
+}
+
+let ws = null
+let id = 0
+const pending = new Map()
+
+export async function connect() {
+  await assertOwnBrowser()
+  const list = await (await fetch(`http://127.0.0.1:${DEV}/json/list`)).json()
+  const target = list.find((t) => t.type === 'page')
+  if (!target) throw new Error('no page target')
+  ws = new WebSocket(target.webSocketDebuggerUrl)
+  await new Promise((r, j) => {
+    ws.addEventListener('open', r, { once: true })
+    ws.addEventListener('error', () => j(new Error('ws error')), { once: true })
+  })
+  ws.addEventListener('message', (event) => {
+    const msg = JSON.parse(event.data)
+    if (msg.id && pending.has(msg.id)) {
+      const { resolve, reject } = pending.get(msg.id)
+      pending.delete(msg.id)
+      msg.error ? reject(new Error(`CDP error ${msg.error.code}`)) : resolve(msg.result)
+    }
+  })
+  await send('Page.enable')
+  await send('Runtime.enable')
+  return target
+}
+export const close = () => ws?.close()
+
+export const send = (method, params = {}) =>
+  new Promise((resolve, reject) => {
+    const n = ++id
+    pending.set(n, { resolve, reject })
+    ws.send(JSON.stringify({ id: n, method, params }))
+  })
+
+/** Page script; a failure is reported by label only (its text could quote the expression). */
+export async function evaluate(expression, label = 'eval') {
+  const result = await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true })
+  if (result.exceptionDetails) throw new Error(`page script failed: ${label}`)
+  return result.result.value
+}
+
+export async function viewport(width = 1440, height = 900, mobile = false) {
+  await send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile })
+}
+
+export async function navigate(url, settleMs = 2500) {
+  await send('Page.navigate', { url })
+  const until = Date.now() + 15000
+  while (Date.now() < until) {
+    const state = await evaluate('document.readyState', 'readyState').catch(() => 'loading')
+    if (state === 'complete') break
+    await sleep(100)
+  }
+  await sleep(settleMs)
+}
+
+export const q = (sel) => (/[\[\].#\s>:,]/.test(sel) ? sel : `[data-testid="${sel}"]`)
+
+export async function exists(sel) {
+  return evaluate(`document.querySelector(${JSON.stringify(q(sel))}) !== null`, `exists ${sel}`)
+}
+export async function waitFor(sel, present = true, timeoutMs = 15000) {
+  const until = Date.now() + timeoutMs
+  while (Date.now() < until) {
+    if ((await exists(sel).catch(() => false)) === present) return true
+    await sleep(150)
+  }
+  return false
+}
+export async function waitText(needle, timeoutMs = 10000, scope = 'body') {
+  const until = Date.now() + timeoutMs
+  while (Date.now() < until) {
+    const found = await evaluate(`(document.querySelector(${JSON.stringify(scope)})?.innerText ?? '').includes(${JSON.stringify(needle)})`, 'waitText')
+    if (found) return true
+    await sleep(150)
+  }
+  return false
+}
+export async function text(sel, max = 600) {
+  const t = await evaluate(`(() => { const el = document.querySelector(${JSON.stringify(q(sel))}); return el ? String(el.innerText ?? el.textContent ?? '').replace(/\\s+/g, ' ').trim() : null })()`, `text ${sel}`)
+  return t === null ? null : redact(t.slice(0, max))
+}
+export async function attr(sel, name) {
+  return evaluate(`document.querySelector(${JSON.stringify(q(sel))})?.getAttribute(${JSON.stringify(name)}) ?? null`, `attr ${sel}`)
+}
+
+/** A real mouse click at the centre of the element: scrolled into view instantly, then measured until its
+ *  position is stable (smooth scrolling and entrance motion would otherwise move it under the pointer). */
+export async function click(sel, opts = {}) {
+  const S = JSON.stringify(q(sel))
+  const box = await evaluate(
+    `(() => { const el = document.querySelector(${S}); if (!el) return null; el.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'instant' }); return { disabled: el.disabled === true || el.getAttribute('aria-disabled') === 'true' || el.hasAttribute('data-disabled') } })()`,
+    `box ${sel}`,
+  )
+  if (!box) return { found: false }
+  const measure = () => evaluate(`(() => { const el = document.querySelector(${S}); if (!el) return null; const r = el.getBoundingClientRect(); return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) } })()`, `box2 ${sel}`)
+  let prev = await measure()
+  for (let i = 0; i < 30; i++) {
+    await sleep(100)
+    const cur = await measure()
+    if (cur && prev && cur.x === prev.x && cur.y === prev.y) break
+    prev = cur
+  }
+  if (!prev) return { found: false }
+  const { x, y } = prev
+  // What is under the pointer must be the element itself or inside it.
+  const hit = await evaluate(`(() => { const el = document.querySelector(${S}); const top = document.elementFromPoint(${x}, ${y}); return !!(el && top && (el === top || el.contains(top) || top.contains(el))) })()`, `hit ${sel}`)
+  await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y })
+  await send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1 })
+  await sleep(opts.hold ?? 60)
+  await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 })
+  await sleep(opts.after ?? 400)
+  return { found: true, disabled: box.disabled, hit }
+}
+/** Clicks the first element matching a CSS selector whose text includes `needle`. */
+export async function clickByText(cssSel, needle, opts = {}) {
+  const marked = await evaluate(
+    `(() => { const el = [...document.querySelectorAll(${JSON.stringify(cssSel)})].find((e) => (e.innerText ?? e.textContent ?? '').includes(${JSON.stringify(needle)}) && e.getClientRects().length > 0); if (!el) return false; document.querySelectorAll('[data-w1-target]').forEach((e) => e.removeAttribute('data-w1-target')); el.setAttribute('data-w1-target', '1'); return true })()`,
+    `mark ${needle}`,
+  )
+  if (!marked) return { found: false }
+  return click('[data-w1-target="1"]', opts)
+}
+export async function key(keyName, code = keyName, keyCode = 0) {
+  const map = { Enter: 13, Escape: 27, ArrowDown: 40, ArrowUp: 38, Tab: 9, Backspace: 8, Space: 32 }
+  const vk = keyCode || map[keyName] || 0
+  const textFor = keyName === 'Enter' ? '\r' : undefined
+  await send('Input.dispatchKeyEvent', { type: 'keyDown', key: keyName === 'Space' ? ' ' : keyName, code: keyName === 'Space' ? 'Space' : code, windowsVirtualKeyCode: vk, text: textFor })
+  await send('Input.dispatchKeyEvent', { type: 'keyUp', key: keyName === 'Space' ? ' ' : keyName, code: keyName === 'Space' ? 'Space' : code, windowsVirtualKeyCode: vk })
+  await sleep(150)
+}
+/** Focuses an input (by its own selector or the input inside a field), selects it and inserts the text (not echoed). */
+export async function type(sel, value, { clear = true } = {}) {
+  const s = q(sel)
+  const ok = await evaluate(
+    `(() => { let el = document.querySelector(${JSON.stringify(s)}); if (!el) return false; if (!['INPUT','TEXTAREA'].includes(el.tagName)) el = el.querySelector('input, textarea'); if (!el) return false; el.scrollIntoView({ block: 'center' }); el.focus(); if (${clear}) el.select?.(); return document.activeElement === el })()`,
+    `focus ${sel}`,
+  )
+  if (!ok) throw new Error(`cannot focus ${sel}`)
+  if (clear) {
+    await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Backspace', code: 'Backspace', windowsVirtualKeyCode: 8 })
+    await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Backspace', code: 'Backspace', windowsVirtualKeyCode: 8 })
+  }
+  if (value) await send('Input.insertText', { text: value })
+  await sleep(200)
+}
+export async function typePassword(sel) {
+  return type(sel, PASSWORD)
+}
+
+let shotCount = 0
+export async function shot(name) {
+  const { data } = await send('Page.captureScreenshot', { format: 'png' })
+  writeFileSync(join(ASSETS, name), Buffer.from(data, 'base64'))
+  shotCount++
+  return name
+}
+
+/** Hides pairing codes on screen: blur on the code, the QR and any element holding a 6-digit run. */
+export async function maskCodes() {
+  return evaluate(
+    `(() => {
+      let style = document.getElementById('w1-mask')
+      if (!style) { style = document.createElement('style'); style.id = 'w1-mask'; document.head.appendChild(style) }
+      style.textContent = '[data-testid="pd-code"], [data-testid="pd-qr"], [data-w1-mask] { filter: blur(16px) !important; }'
+      let n = 0
+      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT)
+      while (walker.nextNode()) {
+        const t = walker.currentNode.nodeValue ?? ''
+        if (/(?<![0-9A-Za-z])\\d{3}\\s?\\d{3}(?![0-9A-Za-z])/.test(t) && walker.currentNode.parentElement) { walker.currentNode.parentElement.setAttribute('data-w1-mask', '1'); n++ }
+      }
+      return { maskStyle: true, extraMasked: n, codeEl: document.querySelector('[data-testid="pd-code"]') !== null }
+    })()`,
+    'mask codes',
+  )
+}
+
+/** Marks a step in the walk: the recorder's events and the Core log are split by these instants. */
+export function mark(label) {
+  appendFileSync(join(ASSETS, 'w1_markers.jsonl'), `${JSON.stringify({ t: Date.now(), label })}\n`)
+}
+/** Appends a structured observation to the walk's record (always redacted). */
+export function record(step, data) {
+  appendFileSync(join(ASSETS, 'w1_observations.jsonl'), `${JSON.stringify(redact({ t: Date.now(), step, ...data }))}\n`)
+}
+
+/** A page request with the page's own cookie; returns status and a projection of the body by the given function source. */
+export async function pageFetch(path, { method = 'GET', body = undefined, project = '(b) => b' } = {}) {
+  const res = await evaluate(
+    `(async () => { const r = await fetch(${JSON.stringify(path)}, { method: ${JSON.stringify(method)}, credentials: 'same-origin', headers: { 'content-type': 'application/json' }, ${body ? `body: ${JSON.stringify(JSON.stringify(body))}` : ''} }); let b = null; try { b = await r.json() } catch {} let p = null; try { p = (${project})(b) } catch (e) { p = '(projection failed)' } return { status: r.status, body: p } })()`,
+    `fetch ${path}`,
+  )
+  return redact(res)
+}
+
+/** Newest audit rows (projection: no hashes, details kept flat). */
+export async function auditTail(limit = 10, extraQuery = '') {
+  return pageFetch(`/api/v1/audit?order=DESC&limit=${limit}${extraQuery}`, {
+    project: `(b) => ({ total: b?.total, rows: (b?.rows ?? []).map((r) => ({ seq: r.seq, at: new Date(r.at).toISOString(), type: r.type, category: r.category, severity: r.severity, actorId: r.actorId, sessionId: r.sessionId, evidenceId: r.evidenceId, deviceId: r.deviceId, message: String(r.message).slice(0, 160) })) })`,
+  })
+}
+
+/** Interactive controls of the page (buttons, links, inputs, tabs, menu items): text cut short, redacted. */
+export async function controls(scope = 'main, [role="dialog"], body') {
+  const list = await evaluate(
+    `(() => {
+      const root = document.querySelector(${JSON.stringify(scope)}) ?? document.body
+      const els = [...root.querySelectorAll('button, a[href], input, textarea, select, [role="tab"], [role="menuitem"], [role="option"], [role="switch"], [role="checkbox"], [role="radio"], [role="button"]')]
+      return els.filter((el) => el.getClientRects().length > 0).map((el) => ({
+        tag: el.tagName.toLowerCase(), role: el.getAttribute('role'), testid: el.getAttribute('data-testid') ?? el.closest('[data-testid]')?.getAttribute('data-testid') ?? null,
+        text: (el.innerText || el.getAttribute('aria-label') || el.getAttribute('placeholder') || el.value || '').replace(/\\s+/g, ' ').trim().slice(0, 60),
+        disabled: el.disabled === true || el.getAttribute('aria-disabled') === 'true' || el.hasAttribute('data-disabled'),
+        href: el.getAttribute('href'),
+      }))
+    })()`,
+    'controls',
+  )
+  return redact(list)
+}
+
+/** Facts any page shows: where, mode, title, the toasts, dialogs, alerts. */
+export async function pageFacts() {
+  return redact(
+    await evaluate(
+      `(() => ({
+        href: location.href,
+        title: document.title,
+        page: [...document.querySelectorAll('[data-testid^="page-"]')].map((e) => e.getAttribute('data-testid')),
+        mode: document.querySelector('[data-testid="shell-mode"]')?.innerText?.trim() ?? document.querySelector('[data-core-mode]')?.getAttribute('data-core-mode') ?? null,
+        heading: document.querySelector('h1')?.innerText?.trim() ?? null,
+        toasts: [...document.querySelectorAll('[data-slot="toast"]')].map((e) => e.innerText.replace(/\\s+/g, ' ').trim().slice(0, 200)),
+        dialogs: [...document.querySelectorAll('[role="dialog"], [role="alertdialog"]')].map((e) => (e.getAttribute('data-testid') ?? '') + ': ' + e.innerText.replace(/\\s+/g, ' ').trim().slice(0, 240)),
+        alerts: [...document.querySelectorAll('[role="alert"]')].map((e) => e.innerText.replace(/\\s+/g, ' ').trim().slice(0, 200)).filter(Boolean),
+      }))()`,
+      'facts',
+    ),
+  )
+}
+
+export async function signIn() {
+  await waitFor('page-login', true, 15000)
+  await type('login-username-field', USERNAME)
+  await typePassword('login-password-field')
+  await click('login-submit')
+  const arrived = await waitFor('page-dashboard', true, 25000)
+  await sleep(2500)
+  return arrived
+}

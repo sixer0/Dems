@@ -1,0 +1,10 @@
+#!/bin/zsh
+# RF-T (from R-T): launch the Playwright-cache headless shell with an OS-assigned CDP port and a fresh profile.
+# The run folder is the literal sandbox temp path (R-T's D-RT-1: $TMPDIR differs in an unsandboxed shell).
+R=/tmp/claude-501/rf_t
+CHROME=$HOME/Library/Caches/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-mac-arm64/chrome-headless-shell
+PROFILE=$R/chrome_profile
+rm -rf "$PROFILE"; mkdir -p "$PROFILE"
+"$CHROME" --headless --remote-debugging-port=0 --remote-debugging-address=127.0.0.1 --user-data-dir="$PROFILE" --no-first-run --no-default-browser-check --window-size=1600,1000 about:blank > $R/chrome.log 2>&1 &
+echo $! > $R/chrome.pid
+wait

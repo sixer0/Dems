@@ -1,0 +1,19 @@
+// The check's control: a planted half-edit (value use, type-only import) must be reported as unbound.
+const path = require('node:path')
+const ROOT = '/Users/gsp-budi/Documents/DEMS'
+const babel = require(path.join(ROOT, 'node_modules/@babel/core'))
+const traverse = require(path.join(ROOT, 'node_modules/@babel/traverse')).default
+const { resolveBabelOptions } = require(path.join(ROOT, 'node_modules/jest-expo/src/resolveBabelOptions'))
+const base = resolveBabelOptions(path.join(ROOT, 'apps/mobile'))
+const samples = {
+  'value use, type-only import (a half edit)': "import { type OperatorRole } from '@dems/shared/sim';\nexport const first = OperatorRole.INVESTIGATOR;\n",
+  'value use, no import yet (a half edit)': "export function label(r: string) { switch (r) { case OperatorRole.SUPERVISOR: return 'S'; default: return '?'; } }\n",
+  'value use, value import (the finished edit)': "import { OperatorRole } from '@dems/shared/sim';\nexport const first = OperatorRole.INVESTIGATOR;\n",
+  'type use only (use-role-gate.ts style)': "import { type OperatorRole } from '@dems/shared/sim';\nexport function f(r: OperatorRole | null): boolean { return r !== null; }\n",
+}
+for (const [name, code] of Object.entries(samples)) {
+  const out = babel.transformSync(code, { ...base, filename: path.join(ROOT, 'apps/mobile/src/sample.ts'), ast: true, babelrc: false, configFile: false, caller: { name: 'metro', platform: 'android', isDev: true } })
+  let free = 0
+  traverse(out.ast, { ReferencedIdentifier(p) { if (p.node.name === 'OperatorRole' && !p.scope.hasBinding('OperatorRole', true)) free += 1 } })
+  console.log(`${free > 0 ? 'UNBOUND' : 'ok     '}  ${name}`)
+}

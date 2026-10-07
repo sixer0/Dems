@@ -1,0 +1,32 @@
+// E2E-S probe: what the Core's registry says (operation listPairedDevices, read by the signed-in SUPERVISOR page)
+// and the newest audit rows of given types; optionally reloads the Paired Devices page and screenshots it.
+//   node --import tsx probe_registry.mjs <tag> [AUDIT_TYPE:limit,...] [reload-screenshot.png|-]
+import { ORIGIN, applyMask, auditRows, connect, log, pdFacts, sleep, stamp, writeJson } from './lib.mjs'
+
+const [tag, types = '', reloadShot = '-'] = process.argv.slice(2)
+const page = await connect()
+const registry = await page.evaluate(`(async () => {
+  const r = await fetch('/api/v1/pairing/devices', { credentials: 'same-origin' })
+  if (r.status !== 200) return { status: r.status }
+  const b = await r.json()
+  return { status: r.status, devices: b.devices.map((d) => ({ id: d.id, state: d.state, online: d.online, signedInOperatorId: d.signedInOperatorId, lastSeenAt: d.lastSeenAt ? new Date(d.lastSeenAt).toISOString() : null, pairedAt: d.pairedAt ? new Date(d.pairedAt).toISOString() : null, revokedAt: d.revokedAt ? new Date(d.revokedAt).toISOString() : null, revokedBy: d.revokedBy ?? null, platform: d.platform, appVersion: d.appVersion })) }
+})()`, 'registry')
+log(`GET /api/v1/pairing/devices ${registry.status}: ${JSON.stringify(registry.devices)}`)
+const audit = {}
+for (const spec of types.split(',').filter(Boolean)) {
+  const [type, limit = '5'] = spec.split(':')
+  audit[type] = await auditRows(page, type, Number(limit))
+  for (const row of audit[type].rows) log(`audit ${row.id} ${row.at} ${row.type} actor ${row.actorId} device ${row.deviceId} "${row.message}" ${JSON.stringify(row.details)}`)
+}
+let reload = null
+if (reloadShot !== '-') {
+  await page.navigate(`${ORIGIN}/admin/devices`, 4000)
+  await page.waitAny(['pd-devices-table', 'pd-empty', 'pd-error'], 15000)
+  await applyMask(page)
+  await sleep(1500)
+  const facts = await pdFacts(page)
+  reload = { facts, screenshot: await page.screenshot(reloadShot) }
+  log(`after a reload of /admin/devices: rows ${JSON.stringify(facts.rows)}; summary ${JSON.stringify(facts.summary)}`)
+}
+writeJson(`probe_${tag}.json`, { at: stamp(), registry, audit, reload, network: page.takeNetwork() })
+page.close()

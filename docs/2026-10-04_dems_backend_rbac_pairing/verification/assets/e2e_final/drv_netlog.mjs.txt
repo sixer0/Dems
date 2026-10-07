@@ -1,0 +1,26 @@
+// Background network log of ONE context's page (separate CDP session, never navigates): every HTTP request and
+// WebSocket with origin, method, path (query cut) and status; until the stop file. Writes <tag>.json + origin counts.
+//   CTX=a node --import tsx netlog.mjs <tag> <maxSeconds>
+import { existsSync, rmSync } from 'node:fs'
+import { join } from 'node:path'
+import { SCRATCH, connect, log, sleep, stamp, writeJson } from './lib.mjs'
+const [tag, maxSeconds = '3600'] = process.argv.slice(2)
+const STOP = join(SCRATCH, `stop_${tag}`)
+if (existsSync(STOP)) rmSync(STOP)
+const page = await connect({ viewport: false })
+const started = stamp()
+const until = Date.now() + Number(maxSeconds) * 1000
+while (Date.now() < until && !existsSync(STOP)) await sleep(500)
+const reqs = page.rawRequests()
+const net = page.takeNetwork()
+const originOf = (u) => { try { return new URL(u).origin } catch { return '(unparsed)' } }
+const counts = {}
+for (const r of reqs) counts[originOf(r.url)] = (counts[originOf(r.url)] ?? 0) + 1
+for (const s of net.sockets) { const o = originOf(s.url); counts[o] = (counts[o] ?? 0) + 1 }
+const statuses = {}
+for (const a of net.api) { const k = `${a.method} ${a.path.replace(/SES-\d{8}-\d{4}|OPR-\d{3}|DEV-\d{4}|EV-\d{8}-\d{4}/g, ':id')} ${a.status}`; statuses[k] = (statuses[k] ?? 0) + 1 }
+log(`window ${started} .. ${stamp()}; requests ${reqs.length}; sockets ${net.sockets.length}; origins ${JSON.stringify(counts)}`)
+log(`api by method/path/status: ${JSON.stringify(statuses)}`)
+writeJson(`${tag}.json`, { tag, started, stopped: stamp(), originCounts: counts, apiCounts: statuses, sockets: net.sockets, api: net.api, console: net.console })
+if (existsSync(STOP)) rmSync(STOP)
+page.close()

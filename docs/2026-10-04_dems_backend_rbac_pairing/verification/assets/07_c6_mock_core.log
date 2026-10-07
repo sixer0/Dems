@@ -1,0 +1,32 @@
+
+> dems-demo@0.1.0 dev:mock
+> npm run dev -w @dems/mock-core
+
+
+> @dems/mock-core@0.1.0 dev
+> tsx watch src/index.ts
+
+{"level":30,"time":1791344143780,"pid":17554,"hostname":"GSP-Budis-MacBook-Air.local","msg":"Server listening at http://127.0.0.1:4400"}
+{"level":30,"time":1791344144217,"pid":17554,"hostname":"GSP-Budis-MacBook-Air.local","reqId":"req-1","req":{"method":"GET","url":"/api/v1/health","host":"127.0.0.1:4400","remoteAddress":"127.0.0.1","remotePort":49952},"msg":"incoming request"}
+{"level":30,"time":1791344144220,"pid":17554,"hostname":"GSP-Budis-MacBook-Air.local","reqId":"req-1","res":{"statusCode":200},"responseTime":3.0661249999999427,"msg":"request completed"}
+{"level":30,"time":1791344144239,"pid":17554,"hostname":"GSP-Budis-MacBook-Air.local","reqId":"req-2","req":{"method":"GET","url":"/api/v1/health","host":"127.0.0.1:4400","remoteAddress":"127.0.0.1","remotePort":49953},"msg":"incoming request"}
+{"level":30,"time":1791344144239,"pid":17554,"hostname":"GSP-Budis-MacBook-Air.local","reqId":"req-2","res":{"statusCode":200},"responseTime":0.26741600000002563,"msg":"request completed"}
+{"level":30,"time":1791344223880,"pid":17554,"hostname":"GSP-Budis-MacBook-Air.local","reqId":"req-3","req":{"method":"GET","url":"/ws","host":"127.0.0.1:4400","remoteAddress":"127.0.0.1","remotePort":50069},"msg":"incoming request"}
+{"level":30,"time":1791344223881,"pid":17554,"hostname":"GSP-Budis-MacBook-Air.local","reqId":"req-3","clientId":1,"clients":1,"origin":"http://127.0.0.1:5173","msg":"ws client connected"}
+{"level":30,"time":1791344223896,"pid":17554,"hostname":"GSP-Budis-MacBook-Air.local","reqId":"req-4","req":{"method":"GET","url":"/ws","host":"127.0.0.1:4400","remoteAddress":"127.0.0.1","remotePort":50070},"msg":"incoming request"}
+{"level":30,"time":1791344223896,"pid":17554,"hostname":"GSP-Budis-MacBook-Air.local","reqId":"req-4","clientId":2,"clients":2,"origin":"http://127.0.0.1:5173","msg":"ws client connected"}
+{"level":30,"time":1791344223933,"pid":17554,"hostname":"GSP-Budis-MacBook-Air.local","reqId":"req-3","clientId":1,"clients":1,"code":1001,"msg":"ws client disconnected"}
+{"level":30,"time":1791344245023,"pid":17554,"hostname":"GSP-Budis-MacBook-Air.local","reqId":"req-4","clientId":2,"clients":0,"code":1001,"msg":"ws client disconnected"}
+{"level":30,"time":1791344389538,"pid":17554,"hostname":"GSP-Budis-MacBook-Air.local","reqId":"req-5","req":{"method":"GET","url":"/ws","host":"127.0.0.1:4400","remoteAddress":"127.0.0.1","remotePort":50405},"msg":"incoming request"}
+{"level":30,"time":1791344389539,"pid":17554,"hostname":"GSP-Budis-MacBook-Air.local","reqId":"req-5","clientId":3,"clients":1,"origin":"http://127.0.0.1:4400","msg":"ws client connected"}
+{"level":30,"time":1791344456569,"pid":17554,"hostname":"GSP-Budis-MacBook-Air.local","signal":"SIGTERM","msg":"shutdown requested"}
+{"level":50,"time":1791344456569,"pid":17554,"hostname":"GSP-Budis-MacBook-Air.local","signal":"SIGTERM","msg":"second signal during shutdown; forcing exit"}
+10:40:56 AM [tsx] Previous process hasn't exited yet. Force killing...
+10:40:56 AM [tsx] Previous process hasn't exited yet. Force killing...
+npm error Lifecycle script `dev` failed with error:
+npm error code 1
+npm error path /Users/gsp-budi/Documents/DEMS/apps/mock-core
+npm error workspace @dems/mock-core@0.1.0
+npm error location /Users/gsp-budi/Documents/DEMS/apps/mock-core
+npm error command failed
+npm error command sh -c tsx watch src/index.ts

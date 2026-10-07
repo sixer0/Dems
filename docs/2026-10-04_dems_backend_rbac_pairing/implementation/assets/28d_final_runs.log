@@ -1,0 +1,136 @@
+# Runs of step c of plan row W28 (finding CPS1-3; decisions D113, D118), 2026-10-04, WIB. Summary lines of the runner, unchanged.
+
+== shared-test
+ Test Files  68 passed (68)
+      Tests  1813 passed (1813)
+   Start at  19:36:18
+   Duration  8.92s (tests 59%, import 31%, transform 9%, worker 1%)
+
+== own-unit-final
+ Test Files  19 passed (19)
+      Tests  297 passed (297)
+   Start at  19:48:14
+   Duration  4.39s (import 66%, transform 20%, tests 14%, worker 1%)
+
+== own-unit-only-final
+ Test Files  9 passed (9)
+      Tests  170 passed (170)
+   Start at  19:49:19
+   Duration  3.25s (import 63%, transform 25%, tests 12%)
+
+== own-db-final
+ Test Files  4 passed (4)
+      Tests  121 passed (121)
+   Start at  19:47:50
+   Duration  6.58s (tests 50%, import 28%, transform 22%)
+[test:db] forced drops that needed a retry: 0
+[test:db] teardown: dropped 2 database(s) in 100 ms; 0 remain with the run prefix dems_test_step_50c_tmdvjqbd_
+
+== pairing-db-1
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  |db| src/modules/pairing/__tests__/concurrency.db.test.ts > a revoke racing requests of that device (SR-34, SR-35) > the device is revoked exactly once; every answer is that of a request in flight or a refusal; nothing of the device succeeds afterwards
+AssertionError: expected 'DEVICE_NOT_PAIRED' to be 'DEVICE_REVOKED' // Object.is equality
+ Test Files  1 failed | 6 passed (7)
+      Tests  1 failed | 78 passed (79)
+   Start at  19:35:40
+   Duration  6.49s (tests 67%, import 22%, transform 10%)
+[test:db] forced drops that needed a retry: 0
+[test:db] teardown: dropped 3 database(s) in 101 ms; 0 remain with the run prefix dems_test_step_50c_tmduzgut_
+
+== pairing-conc-1
+ Test Files  1 passed (1)
+      Tests  14 passed (14)
+   Start at  19:38:12
+   Duration  3.14s (tests 58%, transform 27%, import 15%)
+[test:db] forced drops that needed a retry: 0
+[test:db] teardown: dropped 2 database(s) in 81 ms; 0 remain with the run prefix dems_test_step_50c_tmdv3oi7_
+
+== pairing-conc-2
+ Test Files  1 passed (1)
+      Tests  14 passed (14)
+   Start at  19:38:16
+   Duration  3.26s (tests 56%, transform 28%, import 16%)
+[test:db] forced drops that needed a retry: 0
+[test:db] teardown: dropped 2 database(s) in 83 ms; 0 remain with the run prefix dems_test_step_50c_tmdv3szs_
+
+== pairing-conc-3
+ Test Files  1 passed (1)
+      Tests  14 passed (14)
+   Start at  19:38:19
+   Duration  3.38s (tests 55%, transform 30%, import 15%)
+[test:db] forced drops that needed a retry: 0
+[test:db] teardown: dropped 2 database(s) in 78 ms; 0 remain with the run prefix dems_test_step_50c_tmdv3vr5_
+
+== pairing-db-2
+ Test Files  7 passed (7)
+      Tests  79 passed (79)
+   Start at  19:38:23
+   Duration  8.00s (tests 67%, import 21%, transform 12%)
+[test:db] forced drops that needed a retry: 0
+[test:db] teardown: dropped 3 database(s) in 126 ms; 0 remain with the run prefix dems_test_step_50c_tmdv3z5s_
+
+== pairing-granted-final
+ Test Files  2 passed (2)
+      Tests  30 passed (30)
+   Start at  19:47:57
+   Duration  5.80s (tests 58%, transform 26%, import 16%)
+[test:db] forced drops that needed a retry: 0
+[test:db] teardown: dropped 2 database(s) in 126 ms; 0 remain with the run prefix dems_test_step_50c_tmdvjyw0_
+
+== whole-unit
+ Test Files  146 passed (146)
+      Tests  3783 passed (3783)
+   Start at  19:38:37
+   Duration  42.58s (import 60%, tests 36%, transform 4%, worker 1%)
+
+== whole-db
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 5 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  |db| test/acceptance/rbac-matrix.test.ts > the matrix, 75 operations: a paired device, and the three roles signed in on it (the bearer path) > INVESTIGATOR@DEVICE: the seeded INVESTIGATOR, signed in on a paired device (the session token as a bearer valu
+AssertionError: expected [ Array(1) ] to deeply equal []
+ FAIL  |db| test/acceptance/rbac-matrix.test.ts > the matrix, 75 operations: a paired device, and the three roles signed in on it (the bearer path) > SUPERVISOR@DEVICE: the seeded SUPERVISOR, signed in on a paired device (the session token as a bearer value)
+AssertionError: expected [ Array(1) ] to deeply equal []
+ FAIL  |db| test/acceptance/rbac-matrix.test.ts > the matrix, 75 operations: a paired device, and the three roles signed in on it (the bearer path) > TECHNICIAN@DEVICE: the seeded TECHNICIAN, signed in on a paired device (the session token as a bearer value)
+AssertionError: expected [ Array(1) ] to deeply equal []
+ FAIL  |db| test/acceptance/rbac-matrix.test.ts > the denial budget and the throttle (F25, GS-20) > no cell of this file was answered 429, no limit was reached, and the server counted the refusals of every key as the test did
+AssertionError: expected [ …(3) ] to deeply equal []
+ FAIL  |db| src/modules/demo/__tests__/reset-failures.db.test.ts > finding F-5: an AUDIT_TAMPER fault across a reload of the engine that is no process start > RUN through a failed reset: the stored chain is intact and the server is usable; what the fault list 
+AssertionError: expected [ …(87) ] to have a length of 86 but got 87
+ Test Files  2 failed | 116 passed (118)
+      Tests  5 failed | 1696 passed (1701)
+   Start at  19:39:27
+   Duration  170.87s (tests 82%, import 17%, transform 1%)
+[test:db] forced drops that needed a retry: 0
+[test:db] teardown: dropped 8 database(s) in 391 ms; 0 remain with the run prefix dems_test_step_50c_tmdv5ry6_
+
+== rbac-matrix-alone
+ Test Files  1 passed (1)
+      Tests  37 passed (37)
+   Start at  19:42:54
+   Duration  8.30s (tests 86%, transform 9%, import 5%)
+[test:db] forced drops that needed a retry: 0
+[test:db] teardown: dropped 3 database(s) in 133 ms; 0 remain with the run prefix dems_test_step_50c_tmdvbitq_
+
+== demo-reset-alone
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  |db| src/modules/demo/__tests__/reset-failures.db.test.ts > finding F-5: an AUDIT_TAMPER fault across a reload of the engine that is no process start > RUN through a failed reset: the stored chain is intact and the server is usable; what the fault list 
+AssertionError: expected [ …(87) ] to have a length of 86 but got 87
+ Test Files  1 failed (1)
+      Tests  1 failed | 13 passed (14)
+   Start at  19:42:47
+   Duration  6.32s (tests 77%, transform 14%, import 8%)
+[test:db] forced drops that needed a retry: 0
+[test:db] teardown: dropped 2 database(s) in 93 ms; 0 remain with the run prefix dems_test_step_50c_tmdvbb9y_
+
+== acceptance-final
+ ✓ |db| test/acceptance/rbac-matrix.test.ts > the contract registry against the operation tables of spec §7: all 75 rows, read from the document > each permission is enforced at exactly the operations spec §4.3 lists for it 0ms
+ Test Files  5 passed (5)
+      Tests  124 passed (124)
+   Start at  19:49:38
+   Duration  18.88s (tests 85%, import 7%, transform 7%)
+[test:db] forced drops that needed a retry: 0
+[test:db] teardown: dropped 3 database(s) in 177 ms; 0 remain with the run prefix dems_test_step_50c_tmdvmq2f_
+
+== gen-openapi --check (19:36:27)
+packages/shared/openapi/openapi.json is up to date (all (committed): 75 operations, 2 security schemes, version 0.2.0; offline: 10 operations, 0 security schemes, version 0.1.0)
+
+== exit codes: typecheck @dems/core-server 0 (19:35:08, 19:36:59, 19:38:05, 19:48:25); lint @dems/core-server 0, no finding (19:35:21, 19:38:05, 19:48:25); typecheck and lint @dems/shared 0 (19:36:30); typecheck @dems/core-web 0 (19:36:47); typecheck @dems/mobile 0 (19:36:52)

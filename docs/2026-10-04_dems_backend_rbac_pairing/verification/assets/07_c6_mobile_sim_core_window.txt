@@ -1,0 +1,3 @@
+window 2026-10-07 10:37:58.201 WIB .. 2026-10-07 10:39:17.212 WIB; log lines total 537
+  2026-10-07 10:37:59.039 WIB | socket closed |  | device:DEV-0005
+request lines: 0; socket lines: 1; other lines: 0

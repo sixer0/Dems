@@ -12,8 +12,9 @@
  * This file and the reset routine are the only places of the server workspace that drop a
  * database (T-AO-4, LN-6).
  */
-import { CLONE_LOCK_KEY, DROP_RETRY_ATTEMPTS, DROP_RETRY_PAUSE_MS, EMPTY_TEMPLATE, LOCK_CLASS, OWNER_ROLE } from './constants';
+import { CLONE_LOCK_KEY, DROP_RETRY_ATTEMPTS, DROP_RETRY_PAUSE_MS, LOCK_CLASS, OWNER_ROLE } from './constants';
 import { DbTestHelperError, errorCode, errorMessage } from './errors';
+import { createEmptyDatabaseStatement } from '../../../src/db/commands/statements';
 import { quoteDatabaseName, type GuardedDatabaseName } from './names';
 import type { StatementRunner } from './session';
 
@@ -227,9 +228,8 @@ export async function waitForQuietCluster(runner: Runner, budgetMs: number): Pro
 
 /** §10.1: the first template of a run, from the empty template of PostgreSQL. */
 export async function createEmptyDatabase(runner: Runner, name: GuardedDatabaseName): Promise<void> {
-  await runner.run(
-    `CREATE DATABASE ${quoteDatabaseName(name)} OWNER ${OWNER_IDENTIFIER} TEMPLATE ${EMPTY_TEMPLATE} ENCODING 'UTF8' LOCALE 'C'`,
-  );
+  // The statement text is the server's (`src/db/commands/statements.ts`, review finding CPB1-19).
+  await runner.run(createEmptyDatabaseStatement(quoteDatabaseName(name), OWNER_IDENTIFIER));
 }
 
 /** TI-6: a copy of a template of the same run, default copy strategy, owned by `dems_owner`. */

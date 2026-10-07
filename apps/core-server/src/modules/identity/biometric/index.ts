@@ -31,9 +31,11 @@
  * whose `revoked_at` is set signs nobody in.
  *
  * FOR THE REALTIME CHANNEL: after the commit of a reuse this folder publishes
- * `{ kind: 'session.ended', sessionIds, reason: 'TOKEN_REUSE' }`. A biometric sign-in ends no
- * other session and publishes nothing: no session is presented with it (decision D118), so the
- * end reason `ROTATED` comes from the password sign-in only.
+ * `{ kind: 'session.ended', sessionIds, reason: 'TOKEN_REUSE' }` (and the registry's
+ * `endBiometricSessions` registers `device.session` for the device). A biometric sign-in ends no
+ * other session, so it publishes no `session.ended`: no session is presented with it (decision
+ * D118), and the end reason `ROTATED` comes from the password sign-in only. It does publish
+ * `device.session` after its commit (FX-C, R4): the operator signed in on the device changed.
  */
 export { TokenRefusalReason } from './activity';
 export { ENROLMENT_UNIT_LABEL, PASSWORD_SESSION_REQUIRED } from './enrolment';

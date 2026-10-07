@@ -1,0 +1,7 @@
+mark B3 tablet Start Recording pressed at 10:36:55.404
+tap 1178,1455 at 10:36:55.792
+slept 1200 ms
+screencap B07_countdown.png (381994 bytes) at 10:36:57.333
+start 200 (10-06 10:36:58.870 POST /api/v1/session/{id}/start 200)
+slept 3000 ms
+screencap B08_tablet_live_monitor.png (783362 bytes) at 10:37:03.360

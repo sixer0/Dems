@@ -63,7 +63,7 @@ async function openDemo(b: LiveSettingsBed): Promise<void> {
 describe('S2-7: Run diagnostics (operation 65)', () => {
   it('success: the sheet opens only after the Core accepted the run; busy at once, spinner late (LB-1); one request; the Core\'s words', async () => {
     const b = await openSection('maintenance', { answerDelayMs: 2_000 });
-    expect(screen.getByText('Eight health checks on the Core, one after another.')).toBeTruthy();
+    expect(screen.getByText('Eight health checks on the Core server, one after another.')).toBeTruthy();
     expect(saysSimulated()).toBe(false);
     await press('settings-run-diagnostics', b);
     expect(b.requests('runDiagnostics')).toHaveLength(1);
@@ -141,8 +141,22 @@ describe('S2-7: Install update (operation 67)', () => {
     expect(saysSimulated()).toBe(false);
   });
 
-  it('refusal: a SUPERVISOR lacks MAINTENANCE: the Core\'s 403 (its `notPermitted` example) is the denied toast naming the Technician role', async () => {
+  it('R2 (E-fix FX-M2, O-2): a SUPERVISOR lacks MAINTENANCE: Install update is disabled with "Requires the Technician role" and a press sends nothing', async () => {
+    // Before ruling R2 (decision D201) the button was enabled and only the Core's 403 said no.
     const b = await openSection('maintenance', { user: 'andi.pratama' });
+    expect(screen.getByTestId('settings-update-install').props.accessibilityState?.disabled).toBe(true);
+    expect(screen.getByTestId('settings-update-install-locked')).toHaveTextContent('Requires the Technician role');
+    await press('settings-update-install', b);
+    await b.elapse(200);
+    expect(b.requests('startSoftwareUpdate')).toHaveLength(0);
+    expect(shown(DENIED)).toBe(false);
+    expect(shown(/^Installing v/)).toBe(false);
+    expect(b.state().update.state).toBe('IDLE');
+  });
+
+  it('refusal: the Core\'s 403 (its `notPermitted` example, a role lost on the Core before the push) is still the denied toast naming the Technician role', async () => {
+    const b = await openSection('maintenance', { user: 'rina.wijaya' });
+    b.fake.answerOnce('startSoftwareUpdate', notPermitted('startSoftwareUpdate', 'MAINTENANCE', 'SUPERVISOR'));
     await press('settings-update-install', b);
     await b.elapse(200);
     expect(b.requests('startSoftwareUpdate')).toHaveLength(1);

@@ -23,6 +23,7 @@ import {
 import type { DeviceSlice, EvidenceVerifyResult, SimOperator } from '@dems/shared/sim'
 import { toWibIso } from '@dems/shared/sim'
 import type { EvidenceRow } from './model'
+import { canDownload, downloadBlob } from '@/lib/download'
 
 export type ExportDownloadPlan =
   | {
@@ -177,19 +178,10 @@ export function buildDemoExportManifest(input: DemoExportManifestInput): string 
   )}\n`
 }
 
-/** Hands bytes to the browser as a download. Returns false where Blob URLs are unavailable. */
+/** Hands bytes to the browser as a download (`lib/download.ts`, W92-7). Returns false where Blob URLs are unavailable. */
 export function saveBytes(data: Uint8Array | string, fileName: string, mimeType: string): boolean {
-  if (typeof URL.createObjectURL !== 'function') return false
+  if (!canDownload()) return false
   const part: BlobPart = typeof data === 'string' ? data : new Uint8Array(data)
-  const url = URL.createObjectURL(new Blob([part], { type: mimeType }))
-  const anchor = document.createElement('a')
-  anchor.href = url
-  anchor.download = fileName
-  anchor.rel = 'noopener'
-  anchor.style.display = 'none'
-  document.body.appendChild(anchor)
-  anchor.click()
-  anchor.remove()
-  setTimeout(() => URL.revokeObjectURL(url), 30_000)
+  downloadBlob(new Blob([part], { type: mimeType }), fileName)
   return true
 }

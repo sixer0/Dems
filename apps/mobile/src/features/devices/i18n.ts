@@ -96,10 +96,10 @@ export const devicesEn = {
       RESTART: 'Restart',
       IDENTIFY: 'Identify',
     },
-    // Row M1 follow-up (D160, CONTRACT-GAP-W78-2): the Core serves no per-device health history, so the
-    // LIVE line is computed on this device from the Core's data (§3.2: say what is true).
-    samples_one: "Derived on this device from the Core's data · {{count}} sample",
-    samples_other: "Derived on this device from the Core's data · last {{count}} samples",
-    diagnosticsSubtitle: 'Eight health checks on the Core, one after another.',
+    // The LIVE health caption (row M1 follow-up, D160; RESIDUAL-W78-2, W83 ledger #57) is the shared
+    // `devices.live.samples`, one sentence for both clients ("Derived from the Core's data · last N samples"):
+    // row M1's own `samples_*` were merged into it in the closing copy round (decision D186).
+    // The LIVE diagnostics subtitle is the shared `system.live.diagnosticsSubtitle` (the web console's and
+    // Settings' words; closing copy round, D177 DN-5): row W78's own key was merged into it.
   },
 } as const satisfies ResourceTree;

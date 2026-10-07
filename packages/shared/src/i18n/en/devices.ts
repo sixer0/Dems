@@ -327,8 +327,14 @@ export const devices = {
     lcdLabel: 'Local status display, page {{page}}',
     /** The camera picture's accessible name: the bundled demo loop (MS-1), not the Core's camera (plan row W0, item 7). */
     feedAria: '{{name}}, bundled demo picture',
-    samples_one: '{{count}} sample',
-    samples_other: 'Last {{count}} samples',
+    /**
+     * The Health line's caption in Live mode, for both clients (closing copy round, decision D186 on
+     * W83 ledger #90): the Core serves no per-device health history, so the line is derived on the
+     * client from the Core's data. One sentence, true on the web and on the tablet. Simulated mode
+     * keeps `drawer.health.samples_*`.
+     */
+    samples_one: "Derived from the Core's data · {{count}} sample",
+    samples_other: "Derived from the Core's data · last {{count}} samples",
     /** The tablet row of the device drawer in Live mode (note G6): the web console does not pair. */
     pairedDevices: {
       label: 'Paired devices',

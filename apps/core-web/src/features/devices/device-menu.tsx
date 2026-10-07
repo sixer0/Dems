@@ -3,12 +3,11 @@ import { Button, Description, Dropdown, Label, Spinner } from '@heroui/react'
 import { motion } from 'motion/react'
 import { Activity, EllipsisVertical, Info, Lightbulb, RotateCcw } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { Permission, selectCan, useSim } from '@dems/shared/sim'
+import { useDeviceCommandGate } from '@/lib/device-command-gate'
 import { usePendingReveal } from '@/lib/pending-control'
 import { useMotionPolicy } from '@/motion'
 import { useDeviceActions, useIdentify, type DeviceAction } from './context'
 import { useDeviceWords } from './live'
-import { selectIsRecordingNow } from './model'
 import { COMMANDABLE, IDENTIFY_BLINKS, IDENTIFY_PERIOD_MS, type DeviceId } from './sim-adapter'
 
 export interface DeviceMenuProps {
@@ -26,7 +25,9 @@ function isDeviceAction(key: Key): key is DeviceAction {
  * Kebab `Dropdown` on an `isIconOnly` ghost `Button` (01_specs §14.5.4; research/04 §5.2): Details,
  * Test signal, Identify (blink) and Restart, all simulated `deviceCommand`s (audit DEVICE_COMMAND).
  * Test signal and Restart exist on the commandable devices; Identify on every device (step 54).
- * Restart needs DEVICE_MANAGE (TECHNICIAN) and is unavailable while recording.
+ * Each command follows the permission the Core server checks (FXR-W W92-14, the one gate of both
+ * device menus, `lib/device-command-gate.ts`): Test signal and Identify DIAGNOSTICS_RUN, Restart
+ * DEVICE_MANAGE and not while recording; a blocked item names the first role that holds it.
  *
  * Live mode (plan row W70; LB-1, §3.2): while a command of this device is out its three command
  * items are disabled (Details stays), and after `LIVE_PENDING_REVEAL_MS` the trigger shows the
@@ -40,16 +41,16 @@ export function DeviceMenu({ deviceId, name }: DeviceMenuProps) {
   const busy = pending.has(deviceId)
   const showPending = usePendingReveal(busy)
   const m = useMotionPolicy()
-  const canManage = useSim((s) => selectCan(s, Permission.DEVICE_MANAGE))
-  const recording = useSim(selectIsRecordingNow)
   const commandable = COMMANDABLE.has(deviceId)
-  const restartReason = !canManage
-    ? t('common.rbac.requiresRole', { role: t('common.roles.TECHNICIAN') })
-    : recording
-      ? t('devices.actions.restartWhileRecording')
-      : null
+  // W92-14: the one gate of both device menus (`lib/device-command-gate.ts`): Test signal and Identify
+  // by DIAGNOSTICS_RUN, Restart by DEVICE_MANAGE and not while recording, each role named by the first
+  // one that holds the permission; LB-1 while a command of this device is out.
+  const gate = useDeviceCommandGate(busy)
+  const testReason = gate.reasonOf('testSignal')
+  const identifyReason = gate.reasonOf('identify')
+  const restartReason = gate.reasonOf('restart')
   const label = `${t('common.deviceMenu.label')}: ${name}`
-  const disabledKeys = busy ? ['testSignal', 'identify', 'restart'] : restartReason ? ['restart'] : []
+  const disabledKeys = (['testSignal', 'identify', 'restart'] as const).filter((key) => gate.blocks[key] !== null)
 
   return (
     <Dropdown>
@@ -86,12 +87,18 @@ export function DeviceMenu({ deviceId, name }: DeviceMenuProps) {
           {commandable ? (
             <Dropdown.Item id="testSignal" textValue={t(words.testSignal)}>
               <Activity aria-hidden="true" size={16} />
-              <Label>{t(words.testSignal)}</Label>
+              <div className="flex flex-col">
+                <Label>{t(words.testSignal)}</Label>
+                {testReason ? <Description>{testReason}</Description> : null}
+              </div>
             </Dropdown.Item>
           ) : null}
           <Dropdown.Item id="identify" textValue={t('common.deviceMenu.identify')}>
             <Lightbulb aria-hidden="true" size={16} />
-            <Label>{t('common.deviceMenu.identify')}</Label>
+            <div className="flex flex-col">
+              <Label>{t('common.deviceMenu.identify')}</Label>
+              {identifyReason ? <Description>{identifyReason}</Description> : null}
+            </div>
           </Dropdown.Item>
           {commandable ? (
             <Dropdown.Item id="restart" textValue={t(words.restart)}>

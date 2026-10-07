@@ -784,9 +784,10 @@ describe('what no message can carry (01_specs §9.5; SR-15, SR-28, SR-38)', () =
 });
 
 describe('the protocol\'s constants', () => {
-  it('close codes are the six of §9.4', () => {
-    expect(RealtimeCloseCode).toEqual({ GOING_AWAY: 1001, POLICY_VIOLATION: 1008, TRY_AGAIN_LATER: 1013, SESSION_ENDED: 4401, DEVICE_REVOKED: 4403, SLOW_CONSUMER: 4408 });
-    expect(REALTIME_CLOSE_CODES.map((entry) => entry.code)).toEqual([1001, 1008, 1013, 4401, 4403, 4408]);
+  // Changed by design (W83, gap W42-1; decision D111 DN-1): 1009 for a message over 65,536 bytes joins the six of §9.4.
+  it('close codes are the six of §9.4 and 1009 (a client message that is too big)', () => {
+    expect(RealtimeCloseCode).toEqual({ GOING_AWAY: 1001, POLICY_VIOLATION: 1008, MESSAGE_TOO_BIG: 1009, TRY_AGAIN_LATER: 1013, SESSION_ENDED: 4401, DEVICE_REVOKED: 4403, SLOW_CONSUMER: 4408 });
+    expect(REALTIME_CLOSE_CODES.map((entry) => entry.code)).toEqual([1001, 1008, 1009, 1013, 4401, 4403, 4408]);
     for (const entry of REALTIME_CLOSE_CODES) {
       expect(entry.when.length, String(entry.code)).toBeGreaterThan(10);
       expect(entry.reaction.length, String(entry.code)).toBeGreaterThan(5);

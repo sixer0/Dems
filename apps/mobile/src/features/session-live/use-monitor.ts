@@ -46,8 +46,17 @@ import {
   type MicStatus,
   type TimelineEvent,
 } from '@dems/shared/sim';
-import { reportRuntimeIssue, useCoreErrorPresenter, useCoreLink, useCoreLinkReadOnly } from '@/runtime';
-import { elapsedSecondsAt, statusStrip, type StripChip } from './session-live.math';
+import {
+  ELAPSED_TICK_MS,
+  createElapsedTicker,
+  reportRuntimeIssue,
+  useCoreErrorPresenter,
+  useCoreLink,
+  useCoreLinkReadOnly,
+  useRecordingElapsedSeconds,
+  type ElapsedTicker,
+} from '@/runtime';
+import { statusStrip, type StripChip } from './session-live.math';
 
 /** The recording session's identity and counters (primitives only). */
 export interface MonitorSession {
@@ -74,10 +83,18 @@ export function useMonitorSession(): MonitorSession {
   }));
 }
 
-/** Whole seconds since the recording started, on the simulator clock; re-renders at 1 Hz. */
+/**
+ * Whole seconds since the recording started; re-renders at 1 Hz. The runtime's one rule for the recording
+ * time (`useRecordingElapsedSeconds`, `runtime/recording-elapsed.ts`): the store's clock, or in LIVE the Core
+ * clock's ticker when it is ahead (CF2-A, RF-PH-1). Post-review fix FXR-M (W93-1) moved it out of this
+ * feature so the bottom Recording bar, Home and the Sessions hub draw the same second as the monitor.
+ */
 export function useMonitorElapsedSeconds(): number {
-  return useSim((s) => elapsedSecondsAt(s.session?.startedAt ?? null, s.clock.now));
+  return useRecordingElapsedSeconds();
 }
+
+/** Re-exported for the monitor's tests; the ticker now lives in the runtime (`recording-elapsed.ts`). */
+export { ELAPSED_TICK_MS, createElapsedTicker, type ElapsedTicker };
 
 export interface MonitorCameras {
   readonly activeCameraId: VideoTrackId;

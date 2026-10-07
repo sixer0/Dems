@@ -1,0 +1,2643 @@
+[
+ {
+  "id": "AC-B-01",
+  "criterion": "On an empty database the migration command creates the schema; a second run changes nothing",
+  "testedBy": "The migration command twice; second output shows no pending migration; catalog query",
+  "row": "",
+  "files": [
+   "apps/core-server/test/db/commands.db.test.ts",
+   "apps/core-server/test/db/migrate.db.test.ts"
+  ],
+  "projects": [
+   "server-db"
+  ]
+ },
+ {
+  "id": "AC-B-02",
+  "criterion": "The seed loads the dataset: 3 operators, 3 roles, 12 permissions, 18 grants, 1 Core device, 13 evidence items with 52 tracks, 13 history entries; audit and event row counts equal those of the shared `createIdleState` for the same `now` (82 and 59 by static count, SA-09)",
+  "testedBy": "Count queries after the seed, compared in a test with the shared function",
+  "row": "",
+  "files": [
+   "apps/core-server/src/db/seed/__tests__/seed.db.test.ts"
+  ],
+  "projects": [
+   "server-db"
+  ]
+ },
+ {
+  "id": "AC-B-03",
+  "criterion": "The server starts from the documented command; `lsof -nP -iTCP:4420 -sTCP:LISTEN` shows one listener on `127.0.0.1`; the same for 4432; no other address",
+  "testedBy": "The two `lsof` commands",
+  "row": "",
+  "files": [],
+  "projects": []
+ },
+ {
+  "id": "AC-B-04",
+  "criterion": "State survives a restart: after a policy change, a sealed session, a role change and a paired device, every stored entity of section 3.3 is equal before and after",
+  "testedBy": "`test/acceptance/restart.test.ts`; checksums per table",
+  "row": "",
+  "files": [
+   "apps/core-server/src/engine/__tests__/restart.db.test.ts",
+   "apps/core-server/test/acceptance/restart.test.ts"
+  ],
+  "projects": [
+   "server-db"
+  ]
+ },
+ {
+  "id": "AC-B-05",
+  "criterion": "A session in RECORDING at stop is in FAULT after the restart with a `FAULT_RAISED` row; `recoverSession` leads to an INCOMPLETE history entry and a RECORDED evidence item, with `SYSTEM_BOOT`, `RECOVERY_STARTED`, `SESSION_INCOMPLETE`, `RECOVERY_COMPLETED` rows",
+  "testedBy": "`restart.test.ts`",
+  "row": "",
+  "files": [
+   "apps/core-server/test/acceptance/restart.test.ts"
+  ],
+  "projects": [
+   "server-db"
+  ]
+ },
+ {
+  "id": "AC-B-06",
+  "criterion": "The same for a session in FINALIZING at stop",
+  "testedBy": "`restart.test.ts`",
+  "row": "",
+  "files": [
+   "apps/core-server/test/acceptance/restart.test.ts"
+  ],
+  "projects": [
+   "server-db"
+  ]
+ },
+ {
+  "id": "AC-B-07",
+  "criterion": "A 60 s recording stores zero meter-frame rows, and the audit table grows only by the rows the engine wrote",
+  "testedBy": "Count query before and after",
+  "row": "",
+  "files": [
+   "apps/core-server/src/engine/__tests__/recording.db.test.ts",
+   "apps/core-server/src/engine/__tests__/write-plan.test.ts"
+  ],
+  "projects": [
+   "server-db",
+   "server-unit"
+  ]
+ },
+ {
+  "id": "AC-B-08",
+  "criterion": "`GET /api/v1/health` validates against `HealthResponseSchema` with `service: dems-core-server`, `version: 0.2.0`, `ready` both true; with PostgreSQL stopped it answers 200 with `ready.database: false` and the process stays up",
+  "testedBy": "`curl` and a test",
+  "row": "",
+  "files": [
+   "apps/core-server/src/modules/health/__tests__/health.test.ts",
+   "apps/core-server/test/acceptance/contract.test.ts"
+  ],
+  "projects": [
+   "server-db",
+   "server-unit"
+  ]
+ },
+ {
+  "id": "AC-B-09",
+  "criterion": "The registry holds exactly 75 operations; every registered route is in the registry and every registry operation is registered; 27 are GET and 48 are POST; no GET handler writes",
+  "testedBy": "`test/acceptance/contract.test.ts`",
+  "row": "",
+  "files": [
+   "apps/core-server/test/acceptance/contract.test.ts",
+   "packages/shared/test/api-registry.test.ts"
+  ],
+  "projects": [
+   "server-db",
+   "shared"
+  ]
+ },
+ {
+  "id": "AC-B-10",
+  "criterion": "Every response produced in the tests validates against its documented schema with `validateCoreApiResponse`",
+  "testedBy": "`contract.test.ts`",
+  "row": "",
+  "files": [
+   "apps/core-server/test/acceptance/contract.test.ts",
+   "packages/shared/test/api-closeout.test.ts"
+  ],
+  "projects": [
+   "server-db",
+   "shared"
+  ]
+ },
+ {
+  "id": "AC-B-11",
+  "criterion": "The OpenAPI document is regenerated; the generator's `--check` exits 0; the drift test passes; the document lists 75 operations and two security schemes",
+  "testedBy": "`node --import tsx scripts/gen-openapi.ts --check` in `packages/shared`; the shared test run",
+  "row": "",
+  "files": [
+   "packages/shared/test/api-openapi-scope.test.ts",
+   "packages/shared/test/openapi.test.ts"
+  ],
+  "projects": [
+   "shared"
+  ]
+ },
+ {
+  "id": "AC-B-12",
+  "criterion": "A route registered without an access rule or an audit rule makes the application fail to boot",
+  "testedBy": "A boot test",
+  "row": "",
+  "files": [
+   "apps/core-server/src/modules/rbac/__tests__/matrix.db.test.ts",
+   "apps/core-server/src/plugins/permission-guard/__tests__/access-rules.test.ts",
+   "apps/core-server/src/plugins/permission-guard/__tests__/boot-registry.test.ts",
+   "apps/core-server/src/plugins/permission-guard/__tests__/guard.test.ts"
+  ],
+  "projects": [
+   "server-db",
+   "server-unit"
+  ]
+ },
+ {
+  "id": "AC-B-13",
+  "criterion": "The ten existing operations keep path, method, request schema and response schema",
+  "testedBy": "A test comparing the registry entries with the baseline shapes",
+  "row": "",
+  "files": [
+   "packages/shared/test/api-openapi-scope.test.ts",
+   "packages/shared/test/api-registry.test.ts",
+   "packages/shared/test/api-text-rule.test.ts"
+  ],
+  "projects": [
+   "shared"
+  ]
+ },
+ {
+  "id": "AC-B-14",
+  "criterion": "Each of 401, 403, 404, 405 (with `allow`), 409, 413, 422, 423, 429 (with `retry-after`) is produced by at least one test and validates against `ApiError`; no answer contains a stack trace. Every answer the test produces, success or error, carries the five headers of OR-9 with their values; a JSON body is `application/json; charset=utf-8`; no answer carries `Strict-Transport-Security`",
+  "testedBy": "`contract.test.ts`",
+  "row": "",
+  "files": [
+   "apps/core-server/src/plugins/error-envelope/__tests__/error-envelope.test.ts",
+   "apps/core-server/src/plugins/origin-guard/__tests__/origin-guard.test.ts",
+   "apps/core-server/src/plugins/response-headers/__tests__/response-headers.test.ts",
+   "apps/core-server/src/plugins/throttle/__tests__/throttle.test.ts",
+   "apps/core-server/test/acceptance/contract.test.ts"
+  ],
+  "projects": [
+   "server-db",
+   "server-unit"
+  ]
+ },
+ {
+  "id": "AC-B-15",
+  "criterion": "Role-by-endpoint matrix: all 75 operations for five callers (the three roles, an unauthenticated caller, an unpaired device); every cell equals sections 4.4 and 7. The credential-misuse callers of AC-B-81 are further cells of the same file",
+  "testedBy": "`test/acceptance/rbac-matrix.test.ts`, generated from the registry",
+  "row": "",
+  "files": [
+   "apps/core-server/test/acceptance/rbac-matrix.test.ts"
+  ],
+  "projects": [
+   "server-db"
+  ]
+ },
+ {
+  "id": "AC-B-16",
+  "criterion": "Every denied cell of an operator wrote exactly one row (`ACCESS_DENIED`, or `EXPORT_DENIED` for operations 42, 61, 62) naming actor, operation and permission; an allowed call wrote none. The test keeps every caller inside the denial budget (ID-P13): the matrix gives the INVESTIGATOR 22 denied cells and the TECHNICIAN 31, so the test advances the clock by 60 s or resets the budget after at most 20 denied cells of one key, and no cell is answered 429 (GS-20)",
+  "testedBy": "`rbac-matrix.test.ts`",
+  "row": "",
+  "files": [
+   "apps/core-server/src/modules/rbac/__tests__/matrix.db.test.ts",
+   "apps/core-server/src/plugins/permission-guard/__tests__/decision.test.ts",
+   "apps/core-server/src/plugins/permission-guard/__tests__/denial.db.test.ts",
+   "apps/core-server/test/acceptance/rbac-matrix.test.ts"
+  ],
+  "projects": [
+   "server-db",
+   "server-unit"
+  ]
+ },
+ {
+  "id": "AC-B-17",
+  "criterion": "The seeded matrix equals the shared `ROLE_PERMISSIONS` table",
+  "testedBy": "A test",
+  "row": "",
+  "files": [
+   "apps/core-server/src/db/mapping/__tests__/to-rows.test.ts",
+   "apps/core-server/src/db/seed/__tests__/seed.db.test.ts",
+   "apps/core-server/src/modules/rbac/__tests__/matrix.db.test.ts",
+   "apps/core-web/src/test/live-shell-admin.test.tsx",
+   "apps/core-web/src/test/live-users-roles-model.test.tsx",
+   "packages/shared/test/auth.test.ts"
+  ],
+  "projects": [
+   "server-db",
+   "server-unit",
+   "shared",
+   "web"
+  ]
+ },
+ {
+  "id": "AC-B-18",
+  "criterion": "A role change applies to the next request with no new sign-in: the same session gets 403 before and 2xx after (and the reverse)",
+  "testedBy": "An integration test",
+  "row": "",
+  "files": [
+   "apps/core-server/src/modules/admin/__tests__/users.db.test.ts",
+   "apps/core-server/src/plugins/permission-guard/__tests__/denial.db.test.ts"
+  ],
+  "projects": [
+   "server-db"
+  ]
+ },
+ {
+  "id": "AC-B-19",
+  "criterion": "A role change pushes `session.updated` to every socket of that operator within 1 s and a `delta` of `operators` to every operator socket",
+  "testedBy": "A socket test",
+  "row": "",
+  "files": [
+   "apps/core-server/src/realtime/__tests__/control.db.test.ts",
+   "apps/core-server/src/realtime/__tests__/hub.control.test.ts"
+  ],
+  "projects": [
+   "server-db",
+   "server-unit"
+  ]
+ },
+ {
+  "id": "AC-B-20",
+  "criterion": "Disabling a user ends the sessions, closes the sockets with 4401 within 1 s, makes the next request answer 401 and the next sign-in the generic 401, and writes `USER_DISABLED`",
+  "testedBy": "An integration test",
+  "row": "",
+  "files": [
+   "apps/core-server/src/modules/admin/__tests__/status.db.test.ts",
+   "apps/core-server/src/realtime/__tests__/control.db.test.ts",
+   "apps/core-server/src/realtime/__tests__/hub.control.test.ts"
+  ],
+  "projects": [
+   "server-db",
+   "server-unit"
+  ]
+ },
+ {
+  "id": "AC-B-21",
+  "criterion": "Demoting or disabling the last enabled SUPERVISOR answers 409 `LAST_ADMIN` and changes nothing",
+  "testedBy": "An integration test",
+  "row": "",
+  "files": [
+   "apps/core-server/src/modules/admin/__tests__/rule.test.ts",
+   "apps/core-server/src/modules/admin/__tests__/status.db.test.ts",
+   "apps/core-server/src/modules/admin/__tests__/users.db.test.ts"
+  ],
+  "projects": [
+   "server-db",
+   "server-unit"
+  ]
+ },
+ {
+  "id": "AC-B-22",
+  "criterion": "Two clients: an operator signed in on the web console and on an emulator loses (and regains) an action on both within 1 s of a role change made in the portal, without signing in again; a now-denied call is refused by the server with its audit row",
+  "testedBy": "Observable: before and after captures on both clients, the 403 and the audit row (verification row 107 (W96))",
+  "row": "",
+  "files": [],
+  "projects": []
+ },
+ {
+  "id": "AC-B-23",
+  "criterion": "Web sign-in sets `dems_session_<listen port>` with exactly `HttpOnly; SameSite=Strict; Path=/`: no `Secure`, no `Domain`, no `Max-Age`, no `Expires`, and no token in the body; a device sign-in returns the token in the body and sets no cookie; a second sign-in ends the presented session",
+  "testedBy": "An integration test reading `Set-Cookie`",
+  "row": "",
+  "files": [
+   "apps/core-server/src/modules/identity/__tests__/sign-in.db.test.ts",
+   "apps/core-server/src/modules/identity/__tests__/tokens-cookie.test.ts"
+  ],
+  "projects": [
+   "server-db",
+   "server-unit"
+  ]
+ },
+ {
+  "id": "AC-B-24",
+  "criterion": "Wrong password, unknown user and disabled user give byte-identical bodies (apart from `attemptsRemaining`); each writes one `AUTH_FAILED` row; the typed unknown username is in no row; the Argon2id function is invoked exactly once per attempt in all three cases (a spy)",
+  "testedBy": "An integration test",
+  "row": "",
+  "files": [
+   "apps/core-server/src/modules/identity/__tests__/sign-in.db.test.ts",
+   "apps/core-server/src/modules/identity/password-hash/password-hash.test.ts"
+  ],
+  "projects": [
+   "server-db",
+   "server-unit"
+  ]
+ },
+ {
+  "id": "AC-B-25",
+  "criterion": "The fifth failure within 5 minutes locks: 423 with `lockedUntil`; attempts write `AUTH_LOCKED`; after 60 s (manual clock) a correct sign-in succeeds",
+  "testedBy": "An integration test",
+  "row": "",
+  "files": [
+   "apps/core-server/src/modules/identity/__tests__/sign-in.db.test.ts"
+  ],
+  "projects": [
+   "server-db"
+  ]
+ },
+ {
+  "id": "AC-B-26",
+  "criterion": "With a manual clock: 15 minutes without activity end the session (401, `AUTH_EXPIRED`, socket closed 4401); 8 hours end it regardless of activity; a GET does not extend it",
+  "testedBy": "An integration test",
+  "row": "",
+  "files": [
+   "apps/core-server/src/modules/identity/__tests__/sessions.db.test.ts"
+  ],
+  "projects": [
+   "server-db"
+  ]
+ },
+ {
+  "id": "AC-B-27",
+  "criterion": "Sign-out makes the token unusable, clears the cookie and writes `AUTH_SIGNED_OUT`",
+  "testedBy": "An integration test",
+  "row": "",
+  "files": [
+   "apps/core-server/src/modules/identity/__tests__/sessions.db.test.ts"
+  ],
+  "projects": [
+   "server-db"
+  ]
+ },
+ {
+  "id": "AC-B-28",
+  "criterion": "A full dump of the database contains no password, no session token, no device credential, no biometric token and no pairing code that the test issued or used",
+  "testedBy": "The test greps the dump for the values it holds",
+  "row": "",
+  "files": [
+   "apps/core-server/src/db/seed/__tests__/seed.db.test.ts",
+   "apps/core-server/src/modules/identity/__tests__/secrets.db.test.ts",
+   "apps/core-server/src/modules/identity/biometric/__tests__/secrets.db.test.ts",
+   "apps/core-server/src/modules/pairing/__tests__/secrets.db.test.ts",
+   "apps/core-server/test/acceptance/pairing-lifecycle.test.ts"
+  ],
+  "projects": [
+   "server-db"
+  ]
+ },
+ {
+  "id": "AC-B-29",
+  "criterion": "A log capture contains none of those values, no cookie value and no marker value: (a) during the sign-in, biometric and pairing flows; (b) after a socket upgrade and a GET that carry `?token=<marker>`; (c) after malformed JSON that contains a marker, sent to operations 2 and 18; (d) over the log of the whole acceptance run. No request log line holds a query string",
+  "testedBy": "A log-capture test; a scan of the acceptance run's log",
+  "row": "",
+  "files": [
+   "apps/core-server/src/modules/identity/__tests__/secrets.db.test.ts",
+   "apps/core-server/src/modules/identity/biometric/__tests__/secrets.db.test.ts",
+   "apps/core-server/src/modules/pairing/__tests__/secrets.db.test.ts"
+  ],
+  "projects": [
+   "server-db"
+  ]
+ },
+ {
+  "id": "AC-B-30",
+  "criterion": "The stored hash record states argon2id, 19,456 KiB, 2 passes, parallelism 1, a 16-byte salt and a 32-byte hash; a known-vector test passes",
+  "testedBy": "A unit test and a query",
+  "row": "",
+  "files": [
+   "apps/core-server/src/modules/identity/__tests__/sign-in.db.test.ts",
+   "apps/core-server/src/modules/identity/password-hash/argon2-builtin.test.ts",
+   "apps/core-server/src/modules/identity/password-hash/password-hash.test.ts"
+  ],
+  "projects": [
+   "server-db",
+   "server-unit"
+  ]
+ },
+ {
+  "id": "AC-B-31",
+  "criterion": "A valid biometric token signs in (`method: BIOMETRIC`) and is replaced; presenting the old token again answers 401, revokes the family and writes `AUTH_FAILED` (the sessions it ends: AC-B-82); no request without a valid token creates a session",
+  "testedBy": "An integration test",
+  "row": "",
+  "files": [
+   "apps/core-server/src/modules/identity/biometric/__tests__/sign-in.db.test.ts"
+  ],
+  "projects": [
+   "server-db"
+  ]
+ },
+ {
+  "id": "AC-B-32",
+  "criterion": "A device without a credential: `signIn` answers 403 `DEVICE_NOT_PAIRED`, with no `Origin` and with one of the instance's own origins alike; only `getServiceHealth`, `redeemPairingCode` and `getSignInStatus` (the web console's lock state, GS-29) succeed; its socket receives `hello` and `heartbeat` only",
+  "testedBy": "`test/acceptance/pairing-lifecycle.test.ts`",
+  "row": "",
+  "files": [
+   "apps/core-server/src/modules/pairing/__tests__/lifecycle.db.test.ts",
+   "apps/core-server/test/acceptance/pairing-lifecycle.test.ts"
+  ],
+  "projects": [
+   "server-db"
+  ]
+ },
+ {
+  "id": "AC-B-33",
+  "criterion": "`issuePairingCode` returns six digits and `expiresAt = issuedAt + 300 s`, writes `PAIRING_CODE_ISSUED` without the code, and the table holds only a hash",
+  "testedBy": "`pairing-lifecycle.test.ts`",
+  "row": "",
+  "files": [
+   "apps/core-server/src/modules/pairing/__tests__/lifecycle.db.test.ts",
+   "apps/core-server/test/acceptance/pairing-lifecycle.test.ts"
+  ],
+  "projects": [
+   "server-db"
+  ]
+ },
+ {
+  "id": "AC-B-34",
+  "criterion": "Redeeming the code returns a device ID and a credential; the device is listed as PAIRED; `PAIRING_SUCCESS` is written; a second redeem of the same code answers 401 `INVALID_CODE`",
+  "testedBy": "`pairing-lifecycle.test.ts`",
+  "row": "",
+  "files": [
+   "apps/core-server/src/modules/pairing/__tests__/lifecycle.db.test.ts",
+   "apps/core-server/test/acceptance/pairing-lifecycle.test.ts"
+  ],
+  "projects": [
+   "server-db"
+  ]
+ },
+ {
+  "id": "AC-B-35",
+  "criterion": "After 300 s (manual clock) the code answers 401 `INVALID_CODE` and a `PAIRING_CODE_CLOSED` row with `reason: EXPIRED` exists",
+  "testedBy": "`pairing-lifecycle.test.ts`",
+  "row": "",
+  "files": [
+   "apps/core-server/src/modules/pairing/__tests__/lifecycle.db.test.ts",
+   "apps/core-server/test/acceptance/pairing-lifecycle.test.ts"
+  ],
+  "projects": [
+   "server-db"
+  ]
+ },
+ {
+  "id": "AC-B-36",
+  "criterion": "Three wrong codes lock redeeming for 60 s (423, `PAIRING_LOCKED`); the fifth wrong code closes the active code (`reason: EXHAUSTED`)",
+  "testedBy": "`pairing-lifecycle.test.ts`",
+  "row": "",
+  "files": [
+   "apps/core-server/src/modules/pairing/__tests__/lifecycle.db.test.ts",
+   "apps/core-server/test/acceptance/pairing-lifecycle.test.ts"
+  ],
+  "projects": [
+   "server-db"
+  ]
+ },
+ {
+  "id": "AC-B-37",
+  "criterion": "A sign-in on a paired device creates a session bound to it: the `AUTH_SUCCESS` row and `listPairedDevices` name the device and the operator",
+  "testedBy": "`pairing-lifecycle.test.ts`",
+  "row": "",
+  "files": [
+   "apps/core-server/src/modules/pairing/__tests__/devices.db.test.ts",
+   "apps/core-server/test/acceptance/pairing-lifecycle.test.ts"
+  ],
+  "projects": [
+   "server-db"
+  ]
+ },
+ {
+  "id": "AC-B-38",
+  "criterion": "`revokeDevice`: the device's sessions end, its socket closes with 4403 within 1 s, its next REST call answers 403 `DEVICE_REVOKED`, `DEVICE_REVOKED` is written; a new redeem creates a new device ID",
+  "testedBy": "`pairing-lifecycle.test.ts`",
+  "row": "",
+  "files": [
+   "apps/core-server/src/modules/pairing/__tests__/devices.db.test.ts",
+   "apps/core-server/test/acceptance/pairing-lifecycle.test.ts"
+  ],
+  "projects": [
+   "server-db"
+  ]
+ },
+ {
+  "id": "AC-B-39",
+  "criterion": "Revoking a device during its recording leaves the session in RECORDING; another operator with `SESSION_START` stops it",
+  "testedBy": "An integration test",
+  "row": "",
+  "files": [
+   "apps/core-server/test/acceptance/pairing-lifecycle.test.ts"
+  ],
+  "projects": [
+   "server-db"
+  ]
+ },
+ {
+  "id": "AC-B-40",
+  "criterion": "Two clients: a freshly installed app in Live mode cannot leave the pairing screen; it pairs with a code issued in the portal; it appears in Paired Devices; revoking it there returns the app to the pairing screen; each step has its audit row",
+  "testedBy": "Observable: captures and the audit rows (verification row 108 (W94))",
+  "row": "",
+  "files": [],
+  "projects": []
+ },
+ {
+  "id": "AC-B-41",
+  "criterion": "No audit row, event, realtime message or log line of the whole lifecycle contains a code or a credential",
+  "testedBy": "The tests scan what they captured",
+  "row": "",
+  "files": [
+   "apps/core-server/src/modules/pairing/__tests__/secrets.db.test.ts",
+   "apps/core-server/test/acceptance/pairing-lifecycle.test.ts"
+  ],
+  "projects": [
+   "server-db"
+  ]
+ },
+ {
+  "id": "AC-B-42",
+  "criterion": "A socket without a credential receives `hello` and `heartbeat` only, with `sessionState: null`; a `?token=` query on the upgrade authenticates nothing. The test puts a marker value there, never an issued token, and the marker is absent from the server log (SR-49)",
+  "testedBy": "A socket test",
+  "row": "",
+  "files": [
+   "apps/core-server/src/realtime/__tests__/hub.lifetime.test.ts",
+   "apps/core-server/src/realtime/__tests__/upgrade.db.test.ts"
+  ],
+  "projects": [
+   "server-db",
+   "server-unit"
+  ]
+ },
+ {
+  "id": "AC-B-43",
+  "criterion": "An upgrade or a POST with a foreign `Origin` answers 403; a POST with the cookie and no `Origin` answers 403; a POST with the cookie and one of the instance's own origins answers 403; no answer carries an `Access-Control-Allow-*` header",
+  "testedBy": "An integration test",
+  "row": "",
+  "files": [
+   "apps/core-server/src/plugins/origin-guard/__tests__/origin-guard.test.ts",
+   "apps/core-server/src/plugins/permission-guard/__tests__/pipeline.db.test.ts",
+   "apps/core-server/src/realtime/__tests__/upgrade.db.test.ts"
+  ],
+  "projects": [
+   "server-db",
+   "server-unit"
+  ]
+ },
+ {
+  "id": "AC-B-44",
+  "criterion": "Client A starts a session; client B receives the deltas; after start, marker and stop, B's state equals A's",
+  "testedBy": "`test/acceptance/shared-state.test.ts`",
+  "row": "",
+  "files": [
+   "apps/core-server/test/acceptance/shared-state.test.ts"
+  ],
+  "projects": [
+   "server-db"
+  ]
+ },
+ {
+  "id": "AC-B-45",
+  "criterion": "After a dropped socket, B reconnects and its state equals a fresh client's snapshot",
+  "testedBy": "`shared-state.test.ts`",
+  "row": "",
+  "files": [
+   "apps/core-server/test/acceptance/shared-state.test.ts"
+  ],
+  "projects": [
+   "server-db"
+  ]
+ },
+ {
+  "id": "AC-B-46",
+  "criterion": "Every message validates against the contract's union; revisions are gap-free within an epoch",
+  "testedBy": "`shared-state.test.ts`",
+  "row": "",
+  "files": [
+   "apps/core-server/src/realtime/__tests__/hub.state.test.ts",
+   "apps/core-server/src/realtime/__tests__/messages.test.ts",
+   "apps/core-server/src/realtime/__tests__/state.db.test.ts",
+   "apps/core-server/test/acceptance/shared-state.test.ts",
+   "packages/shared/test/api-closeout.test.ts",
+   "packages/shared/test/api-realtime.test.ts"
+  ],
+  "projects": [
+   "server-db",
+   "server-unit",
+   "shared"
+  ]
+ },
+ {
+  "id": "AC-B-47",
+  "criterion": "For a command answered with revision N, a store that has applied revision N shows the command's effect",
+  "testedBy": "`shared-state.test.ts`",
+  "row": "",
+  "files": [
+   "apps/core-server/test/acceptance/shared-state.test.ts"
+  ],
+  "projects": [
+   "server-db"
+  ]
+ },
+ {
+  "id": "AC-B-48",
+  "criterion": "A subscribed client receives meter frames at the wire rate; for a client that stops reading, meter frames are skipped and state deltas are either all delivered or the connection is closed with 4408; a 30 s ping keeps a healthy link open",
+  "testedBy": "A socket test",
+  "row": "",
+  "files": [
+   "apps/core-server/src/realtime/__tests__/backpressure.db.test.ts",
+   "apps/core-server/src/realtime/__tests__/hub.lifetime.test.ts",
+   "apps/core-server/src/realtime/__tests__/hub.state.test.ts",
+   "apps/core-server/src/realtime/__tests__/state.db.test.ts"
+  ],
+  "projects": [
+   "server-db",
+   "server-unit"
+  ]
+ },
+ {
+  "id": "AC-B-49",
+  "criterion": "A second `createSession` while one is active answers 409 `SESSION_ACTIVE`; two simultaneous creates give one 201 and one 409 (or 200 with `created: false` for equal input)",
+  "testedBy": "An integration test",
+  "row": "",
+  "files": [
+   "apps/core-server/src/modules/sessions/__tests__/concurrency.db.test.ts",
+   "apps/core-server/src/modules/sessions/__tests__/journey.db.test.ts",
+   "apps/core-server/src/modules/sessions/__tests__/routes.test.ts"
+  ],
+  "projects": [
+   "server-db",
+   "server-unit"
+  ]
+ },
+ {
+  "id": "AC-B-50",
+  "criterion": "An operator who did not start the session stops it with a reason of at least 5 characters; `RECORDING_STOPPED` names that operator; a shorter reason answers 422 `INVALID_REASON`",
+  "testedBy": "An integration test",
+  "row": "",
+  "files": [
+   "apps/core-server/src/modules/sessions/__tests__/journey.db.test.ts",
+   "apps/core-server/src/modules/sessions/__tests__/routes.test.ts",
+   "apps/core-server/test/acceptance/contract.test.ts",
+   "apps/core-server/test/acceptance/shared-state.test.ts"
+  ],
+  "projects": [
+   "server-db",
+   "server-unit"
+  ]
+ },
+ {
+  "id": "AC-B-51",
+  "criterion": "Two clients: a session started on the web console appears on the emulator within 2 s, and a stop on the emulator appears on the web console (and the reverse)",
+  "testedBy": "Observable: captures and the matching rows (verification row 106 (W95))",
+  "row": "",
+  "files": [],
+  "projects": []
+ },
+ {
+  "id": "AC-B-52",
+  "criterion": "With a fixed seed and a manual clock, the audit-type sequence of the recording scenario equals the shared simulator's",
+  "testedBy": "An engine test",
+  "row": "",
+  "files": [
+   "apps/core-server/src/engine/__tests__/recording.db.test.ts"
+  ],
+  "projects": [
+   "server-db"
+  ]
+ },
+ {
+  "id": "AC-B-53",
+  "criterion": "After every command the engine's `auth` slice is signed out, also after a command that the hosted action refuses by throwing; rows written by the engine itself have no operator",
+  "testedBy": "An engine test",
+  "row": "",
+  "files": [
+   "apps/core-server/src/engine/__tests__/actor-scope.test.ts",
+   "apps/core-server/src/engine/__tests__/commands.db.test.ts",
+   "apps/core-server/src/engine/__tests__/recording.db.test.ts",
+   "apps/core-server/src/modules/devices/__tests__/devices.db.test.ts",
+   "apps/core-server/src/modules/system/__tests__/system.db.test.ts"
+  ],
+  "projects": [
+   "server-db",
+   "server-unit"
+  ]
+ },
+ {
+  "id": "AC-B-54",
+  "criterion": "50 concurrent audit appends produce a chain that verifies; UPDATE, DELETE and TRUNCATE on the audit table by the runtime role are rejected; a row that does not continue the chain is rejected",
+  "testedBy": "`npm run test:db -w @dems/core-server`",
+  "row": "",
+  "files": [
+   "apps/core-server/src/core/__tests__/audit-chain.db.test.ts",
+   "apps/core-server/test/db/audit-guards.db.test.ts",
+   "apps/core-server/test/db/privileges.db.test.ts"
+  ],
+  "projects": [
+   "server-db"
+  ]
+ },
+ {
+  "id": "AC-B-55",
+  "criterion": "Every `at` value follows the injected clock; no request field can set a time or an actor",
+  "testedBy": "An engine test",
+  "row": "",
+  "files": [
+   "apps/core-server/src/core/__tests__/audit-chain.db.test.ts",
+   "apps/core-server/src/core/__tests__/writers.test.ts",
+   "apps/core-server/src/engine/__tests__/commands.db.test.ts",
+   "apps/core-server/src/engine/__tests__/recording.db.test.ts"
+  ],
+  "projects": [
+   "server-db",
+   "server-unit"
+  ]
+ },
+ {
+  "id": "AC-B-56",
+  "criterion": "With the demo flag off, the five demo operations answer 403 `DEMO_DISABLED` for a SUPERVISOR and 403 `NOT_PERMITTED` (with an audit row) for the other roles",
+  "testedBy": "An integration test",
+  "row": "",
+  "files": [
+   "apps/core-server/src/modules/demo/__tests__/gate.db.test.ts",
+   "apps/core-server/test/acceptance/rbac-matrix.test.ts"
+  ],
+  "projects": [
+   "server-db"
+  ]
+ },
+ {
+  "id": "AC-B-57",
+  "criterion": "With the flag on: a fault is raised and cleared with its rows and alert; an `AUDIT_TAMPER` fault breaks `view` and leaves `stored` intact; `resetDemo` returns the domain tables to the seed checksums; keeps sessions, devices, device credentials, biometric tokens, settings, pairing codes, the device and pairing-code counters and the chain lineage; writes a code that was ACTIVE as `CANCELLED`; raises the epoch by exactly 1; and sends a snapshot to every operator socket",
+  "testedBy": "An integration test",
+  "row": "",
+  "files": [
+   "apps/core-server/src/db/reset/__tests__/reset.db.test.ts",
+   "apps/core-server/src/modules/demo/__tests__/faults.db.test.ts",
+   "apps/core-server/src/modules/demo/__tests__/reset.db.test.ts"
+  ],
+  "projects": [
+   "server-db"
+  ]
+ },
+ {
+  "id": "AC-B-58",
+  "criterion": "`npm run typecheck`, `npm run lint` and `npm test` at the workspace root exit 0 with no PostgreSQL running (the two baseline failures of [DEC:F20] excepted until their fix slot lands, [DEC:D10])",
+  "testedBy": "The three commands, with `pg_ctl status` showing no server",
+  "row": "",
+  "files": [],
+  "projects": []
+ },
+ {
+  "id": "AC-B-59",
+  "criterion": "The 61 simulator-dependent test files (28 web, 33 mobile, [AN:611, AN:614]) pass, and their diff against `acaff20` holds only recorded changes",
+  "testedBy": "The per-workspace test runs with `-- --maxWorkers=2`; `git diff --stat acaff20` over those files",
+  "row": "",
+  "files": [],
+  "projects": []
+ },
+ {
+  "id": "AC-B-60",
+  "criterion": "`release/` is byte-identical: its checksum files verify for all files",
+  "testedBy": "`shasum -a 256 -c` over the checksum files under `release/`",
+  "row": "",
+  "files": [],
+  "projects": []
+ },
+ {
+  "id": "AC-B-61",
+  "criterion": "mock-core is untouched: `git diff --stat acaff20 -- apps/mock-core scripts/release` prints nothing; its 19 tests pass",
+  "testedBy": "The `git` command and the mock-core test run",
+  "row": "",
+  "files": [],
+  "projects": []
+ },
+ {
+  "id": "AC-B-62",
+  "criterion": "`git diff acaff20 -- packages/shared/src/sim` shows additions only, and only in `vocabulary.ts` and `auth.ts`",
+  "testedBy": "The `git` command",
+  "row": "",
+  "files": [],
+  "projects": []
+ },
+ {
+  "id": "AC-B-63",
+  "criterion": "A client in Simulated mode sends nothing to the Core server: with the server running, a Simulated session leaves no request line in its log",
+  "testedBy": "Observable: the server log; spies in the shared tests [BP:333]",
+  "row": "",
+  "files": [
+   "packages/shared/test/live-source-simulated-isolation.test.ts"
+  ],
+  "projects": [
+   "shared"
+  ]
+ },
+ {
+  "id": "AC-B-64",
+  "criterion": "`git check-ignore -v` matches `.data/postgres`, `.data/pg.pwfile`, `.data/pg.env` and `.data/pg.owner.env`; `git status --porcelain` lists nothing under `.data/`; `stat` shows mode 0700 on `.data/` and 0600 on each of the three secret files and on every log file under `.data/`",
+  "testedBy": "The two `git` commands and `stat -f '%Lp'`",
+  "row": "",
+  "files": [],
+  "projects": []
+ },
+ {
+  "id": "AC-B-65",
+  "criterion": "A dump of the seeded database holds no person name and no e-mail beyond the synthetic operators and subjects of the shared dataset",
+  "testedBy": "A grep over the dump against the dataset's name list",
+  "row": "",
+  "files": [
+   "apps/core-server/src/db/seed/__tests__/seed.db.test.ts"
+  ],
+  "projects": [
+   "server-db"
+  ]
+ },
+ {
+  "id": "AC-B-66",
+  "criterion": "The server process has no socket other than loopback ones",
+  "testedBy": "`lsof -nP -a -p <pid> -i`",
+  "row": "",
+  "files": [],
+  "projects": []
+ },
+ {
+  "id": "AC-B-67",
+  "criterion": "The Live-mode commands of `README.md` (start PostgreSQL, migrate, seed, start the server) run as written and exit 0",
+  "testedBy": "Verification row 105 (W90) follows the README literally",
+  "row": "",
+  "files": [],
+  "projects": []
+ },
+ {
+  "id": "AC-B-68",
+  "criterion": "Every operation has a success test; every operation with a permission has a denial test; every operation with a body has a validation test",
+  "testedBy": "The test report's operation-to-test table",
+  "row": "",
+  "files": [
+   "apps/core-server/src/modules/network-time/__tests__/network-time.db.test.ts",
+   "apps/core-server/src/modules/network-time/__tests__/routes.test.ts",
+   "apps/core-server/src/modules/storage/__tests__/routes.test.ts",
+   "apps/core-server/src/modules/storage/__tests__/storage.db.test.ts"
+  ],
+  "projects": [
+   "server-db",
+   "server-unit"
+  ]
+ },
+ {
+  "id": "AC-B-69",
+  "criterion": "After verify, export, archive and an evidence tamper fault, the tracks, track hashes, manifest hash and signature of the item are unchanged",
+  "testedBy": "An integration test",
+  "row": "",
+  "files": [
+   "apps/core-server/src/modules/evidence/__tests__/immutability.db.test.ts"
+  ],
+  "projects": [
+   "server-db"
+  ]
+ },
+ {
+  "id": "AC-B-70",
+  "criterion": "Every answer that lists audio has exactly two entries, AUDIO-01 and AUDIO-02",
+  "testedBy": "`contract.test.ts`",
+  "row": "",
+  "files": [
+   "apps/core-server/src/modules/evidence/__tests__/bulk.db.test.ts",
+   "apps/core-server/src/modules/evidence/__tests__/reads.db.test.ts",
+   "apps/core-server/test/acceptance/contract.test.ts"
+  ],
+  "projects": [
+   "server-db"
+  ]
+ },
+ {
+  "id": "AC-B-71",
+  "criterion": "Every raised alert has a `FAULT_RAISED` audit row",
+  "testedBy": "An integration test",
+  "row": "",
+  "files": [
+   "apps/core-server/src/modules/alerts/__tests__/alerts.db.test.ts",
+   "apps/core-server/src/modules/alerts/__tests__/routes.test.ts"
+  ],
+  "projects": [
+   "server-db",
+   "server-unit"
+  ]
+ },
+ {
+  "id": "AC-B-72",
+  "criterion": "The server's pool reports `current_user` = `dems_app`. With the demo flag on, the reset connection reports `current_user` = `dems_owner` and `rolsuper` false. The role check of the reset routine, given a role that is a superuser, stops with `RESET_ROLE_PRIVILEGED` and changes nothing; it is tested with a stub of the role query, because no test of the server connects as the superuser (SR-68). The one check that needs a real superuser, the trigger check of SD-06, is provisioning trial step T5-j [DB:\u00a77.1]; [DEC:D19]. With the demo flag off the server starts and runs while `.data/pg.owner.env` is unreadable. No file under `apps/core-server/` contains the name of the superuser's password file",
+  "testedBy": "An integration test (`npm run test:db -w @dems/core-server`); a static test",
+  "row": "",
+  "files": [
+   "apps/core-server/src/db/reset/__tests__/guard.db.test.ts",
+   "apps/core-server/src/db/reset/__tests__/guard.test.ts",
+   "apps/core-server/src/db/reset/__tests__/reset.db.test.ts",
+   "apps/core-server/src/modules/demo/__tests__/gate.db.test.ts",
+   "apps/core-server/src/modules/demo/__tests__/reset.db.test.ts"
+  ],
+  "projects": [
+   "server-db",
+   "server-unit"
+  ]
+ },
+ {
+  "id": "AC-B-73",
+  "criterion": "Every cell of the two decision tables of section 14.2 gives the stated answer. Among them: `signIn` with one of the instance's own origins and no bearer answers 403 `DEVICE_NOT_PAIRED`; a POST with the cookie and the own origin answers 403; an upgrade with a bearer and the own origin is accepted",
+  "testedBy": "A table-driven integration test",
+  "row": "",
+  "files": [
+   "apps/core-server/src/plugins/origin-guard/__tests__/origin-decision.test.ts",
+   "apps/core-server/src/plugins/origin-guard/__tests__/origin-guard.test.ts",
+   "apps/core-server/src/plugins/permission-guard/__tests__/pipeline.db.test.ts",
+   "apps/core-server/src/realtime/__tests__/upgrade.db.test.ts"
+  ],
+  "projects": [
+   "server-db",
+   "server-unit"
+  ]
+ },
+ {
+  "id": "AC-B-74",
+  "criterion": "`http://localhost:5173`, `null`, `http://127.0.0.1:5173/` (trailing slash), `HTTP://127.0.0.1:5173` and `http://127.0.0.1:5174` as `Origin` each answer 403 `ORIGIN_NOT_ALLOWED` on a POST and on the upgrade",
+  "testedBy": "An integration test",
+  "row": "",
+  "files": [
+   "apps/core-server/src/plugins/origin-guard/__tests__/origin-decision.test.ts",
+   "apps/core-server/src/plugins/origin-guard/__tests__/origin-guard.test.ts",
+   "apps/core-server/src/plugins/permission-guard/__tests__/pipeline.db.test.ts",
+   "apps/core-server/src/realtime/__tests__/upgrade.db.test.ts"
+  ],
+  "projects": [
+   "server-db",
+   "server-unit"
+  ]
+ },
+ {
+  "id": "AC-B-75",
+  "criterion": "100 denied calls of one operator within 10 s write exactly 20 `ACCESS_DENIED` rows; the other 80 answer 429 and write none; after the 60 s window a denied call is audited again. 25 calls that present five different retired device credentials write at most 20 rows in all: they share the class bucket",
+  "testedBy": "An integration test with the manual clock (or a reset of the counter, SA-14)",
+  "row": "",
+  "files": [
+   "apps/core-server/src/modules/pairing/__tests__/concurrency.db.test.ts",
+   "apps/core-server/src/plugins/permission-guard/__tests__/denial.db.test.ts",
+   "apps/core-server/src/plugins/throttle/__tests__/denial-budget.test.ts"
+  ],
+  "projects": [
+   "server-db",
+   "server-unit"
+  ]
+ },
+ {
+  "id": "AC-B-76",
+  "criterion": "Concurrent wrong redeems never get more guesses than PR-P4 and PR-P5 allow. Of 20 concurrent wrong redeems exactly three are counted as failed attempts and the other 17 answer 423 (the 60 s lock); after the lock a second burst of 20 counts exactly two more, and the code is closed as `EXHAUSTED` with a failed-attempt count of exactly five. The accepted pairing parameters stand (CF-1, DECIDED [DEC:D18]): the review's wording of this test, five consumed in one burst [SDR:SD-04], is not used, because the lock after three failures makes it impossible",
+  "testedBy": "A concurrency test (`test:db`), manual clock",
+  "row": "",
+  "files": [
+   "apps/core-server/src/modules/pairing/__tests__/concurrency.db.test.ts"
+  ],
+  "projects": [
+   "server-db"
+  ]
+ },
+ {
+  "id": "AC-B-77",
+  "criterion": "Two concurrent redeems of the right code give one 201 and one 401 `INVALID_CODE`; exactly one device row and one `PAIRING_SUCCESS` row exist",
+  "testedBy": "A concurrency test (`test:db`)",
+  "row": "",
+  "files": [
+   "apps/core-server/src/modules/pairing/__tests__/concurrency.db.test.ts"
+  ],
+  "projects": [
+   "server-db"
+  ]
+ },
+ {
+  "id": "AC-B-78",
+  "criterion": "Two concurrent uses of one valid biometric token issue exactly one session (one `AUTH_SUCCESS` row); the other use answers 401 and is handled as a reuse (section 5.6 step 6)",
+  "testedBy": "A concurrency test (`test:db`)",
+  "row": "",
+  "files": [
+   "apps/core-server/src/modules/identity/biometric/__tests__/concurrency.db.test.ts"
+  ],
+  "projects": [
+   "server-db"
+  ]
+ },
+ {
+  "id": "AC-B-79",
+  "criterion": "With two enabled holders of `USER_ADMIN`, two concurrent demotions, one of each holder, give one 200 and one 409 `LAST_ADMIN`; one enabled holder remains",
+  "testedBy": "A concurrency test (`test:db`)",
+  "row": "",
+  "files": [
+   "apps/core-server/src/modules/admin/__tests__/last-admin.db.test.ts",
+   "apps/core-server/src/modules/admin/__tests__/rule.test.ts"
+  ],
+  "projects": [
+   "server-db",
+   "server-unit"
+  ]
+ },
+ {
+  "id": "AC-B-80",
+  "criterion": "20 concurrent wrong-password sign-ins on one console key verify exactly five attempts (five `AUTH_FAILED` rows, the fifth marked as locking) and answer 423 with `AUTH_LOCKED` to the other 15. The review names four concurrency tests and counts five [SDR:\u00a77 item 4; DEC:D16]; this one, the test of ENG-24 for sign-in, is the fifth (GS-24, DECIDED [DEC:D18])",
+  "testedBy": "A concurrency test (`test:db`)",
+  "row": "",
+  "files": [
+   "apps/core-server/src/modules/identity/__tests__/concurrency.db.test.ts"
+  ],
+  "projects": [
+   "server-db"
+  ]
+ },
+ {
+  "id": "AC-B-81",
+  "criterion": "Credential misuse: a request with the cookie and an `Authorization` header answers 401 with `details.reason: CREDENTIAL_CONFLICT`; a bearer request with a web console origin answers 403; a device session's token sent as the cookie, and a web session's token sent as a bearer, both answer 401 on an operation that is not public. None of them resolves a principal or changes state",
+  "testedBy": "Cells of `rbac-matrix.test.ts`",
+  "row": "",
+  "files": [
+   "apps/core-server/src/plugins/authenticate/__tests__/authenticate.db.test.ts",
+   "apps/core-server/src/plugins/authenticate/__tests__/authenticate.test.ts",
+   "apps/core-server/test/acceptance/rbac-matrix.test.ts"
+  ],
+  "projects": [
+   "server-db",
+   "server-unit"
+  ]
+ },
+ {
+  "id": "AC-B-82",
+  "criterion": "After a biometric sign-in, presenting the used token again ends that BIOMETRIC session: `session.ended` with `TOKEN_REUSE`, the socket closed with 4401 within 1 s, the session token answering 401, the session row's end reason `TOKEN_REUSE`. A password session of the same operator on the same device stays open",
+  "testedBy": "An integration test with a socket",
+  "row": "",
+  "files": [
+   "apps/core-server/src/modules/identity/biometric/__tests__/sign-in.db.test.ts",
+   "apps/core-server/src/realtime/__tests__/hub.principal-cap.test.ts",
+   "apps/core-server/test/acceptance/pairing-lifecycle.test.ts"
+  ],
+  "projects": [
+   "server-db",
+   "server-unit"
+  ]
+ },
+ {
+  "id": "AC-B-83",
+  "criterion": "`reportBiometricFailure` that names an operator with no biometric token on that device writes `AUTH_FAILED` with a null actor and the device ID; naming an enrolled operator writes it with that operator",
+  "testedBy": "An integration test",
+  "row": "",
+  "files": [
+   "apps/core-server/src/modules/identity/biometric/__tests__/failure.db.test.ts"
+  ],
+  "projects": [
+   "server-db"
+  ]
+ },
+ {
+  "id": "AC-B-84",
+  "criterion": "31 requests within 60 s that carry 31 different unknown bearer values share one bucket: the 31st answers 429. Socket upgrades are counted: after 30 anonymous upgrades within 60 s the next one is refused with 429 at the handshake",
+  "testedBy": "An integration test",
+  "row": "",
+  "files": [
+   "apps/core-server/src/plugins/permission-guard/__tests__/pipeline.db.test.ts",
+   "apps/core-server/src/plugins/throttle/__tests__/throttle.test.ts",
+   "apps/core-server/src/realtime/__tests__/upgrade.db.test.ts"
+  ],
+  "projects": [
+   "server-db",
+   "server-unit"
+  ]
+ },
+ {
+  "id": "AC-B-85",
+  "criterion": "With six anonymous sockets open, a seventh anonymous upgrade is closed with 1013, while an operator's and a device's upgrade are still accepted; the 17th connection of any kind is closed with 1013",
+  "testedBy": "A socket test",
+  "row": "",
+  "files": [
+   "apps/core-server/src/realtime/__tests__/admission.test.ts",
+   "apps/core-server/src/realtime/__tests__/hub.lifetime.test.ts",
+   "apps/core-server/src/realtime/__tests__/upgrade.db.test.ts"
+  ],
+  "projects": [
+   "server-db",
+   "server-unit"
+  ]
+ },
+ {
+  "id": "AC-B-86",
+  "criterion": "A static check finds, in `scripts/`, the package manifests and `apps/core-server/`: no secret passed as a process argument, no `--env-file`, no `source` of a file under `.data/`, no exported `PGPASSWORD`, no connection URL that contains a password. The two connection files hold the five field names and nothing else (the check prints names, never values)",
+  "testedBy": "A static test; a key-name check of the two files",
+  "row": "",
+  "files": [
+   "apps/core-server/test/static/credentials.test.ts",
+   "scripts/pg/static.test.mjs"
+  ],
+  "projects": [
+   "pg-scripts",
+   "server-unit"
+  ]
+ },
+ {
+  "id": "AC-B-87",
+  "criterion": "After two resets the chain-lineage table holds two rows with epoch, row count, head hash, reset time, actor and reason; the first row is byte-equal before and after the second reset; `verifyAuditChain` returns both in `lineage`, newest first; UPDATE and DELETE on the table are rejected for every role, and INSERT by the runtime role is rejected (CF-2, DECIDED [DEC:D18])",
+  "testedBy": "An integration test (`test:db`)",
+  "row": "",
+  "files": [
+   "apps/core-server/src/db/reset/__tests__/reset.db.test.ts",
+   "apps/core-server/src/modules/security-audit/__tests__/reset.db.test.ts",
+   "apps/core-server/test/db/audit-guards.db.test.ts",
+   "apps/core-server/test/db/privileges.db.test.ts"
+  ],
+  "projects": [
+   "server-db"
+  ]
+ },
+ {
+  "id": "AC-B-88",
+  "criterion": "After one full verification, a `verifyAuditChain` call that follows k appended rows reads exactly k audit rows (a query spy); two concurrent calls run one verification",
+  "testedBy": "An integration test",
+  "row": "",
+  "files": [
+   "apps/core-server/src/modules/security-audit/__tests__/chain.db.test.ts",
+   "apps/core-server/src/modules/security-audit/__tests__/stored-chain.test.ts"
+  ],
+  "projects": [
+   "server-db",
+   "server-unit"
+  ]
+ },
+ {
+  "id": "AC-B-89",
+  "criterion": "`acknowledgeAlert` and `updateSettings` each write no audit row and exactly one log line, which holds the operator ID and the alert ID, or the names of the changed keys and none of their values",
+  "testedBy": "A log-capture test",
+  "row": "",
+  "files": [
+   "apps/core-server/src/modules/alerts/__tests__/acknowledge.test.ts",
+   "apps/core-server/src/modules/alerts/__tests__/alerts.db.test.ts",
+   "apps/core-server/src/modules/alerts/__tests__/routes.test.ts",
+   "apps/core-server/src/modules/system/__tests__/routes.test.ts",
+   "apps/core-server/src/modules/system/__tests__/settings.test.ts",
+   "apps/core-server/src/modules/system/__tests__/system.db.test.ts"
+  ],
+  "projects": [
+   "server-db",
+   "server-unit"
+  ]
+ },
+ {
+  "id": "AC-B-90",
+  "criterion": "Two instances on two ports, used with one cookie jar: a sign-in on the second leaves the first instance's cookie and session valid, and each instance ignores the other's cookie",
+  "testedBy": "An integration test with two application instances",
+  "row": "",
+  "files": [
+   "apps/core-server/src/modules/identity/__tests__/two-instances.db.test.ts"
+  ],
+  "projects": [
+   "server-db"
+  ]
+ },
+ {
+  "id": "AC-B-91",
+  "criterion": "The provisioning record holds the five SHA-256 values of SU-1 and the `npm audit` outputs of SU-2; recomputing the five hashes gives the recorded values",
+  "testedBy": "The records of rows 23, 25, 57 and 77 (W03, W07, W08, W13, W14); `shasum -a 256` in verification row 105 (W90)",
+  "row": "",
+  "files": [],
+  "projects": []
+ },
+ {
+  "id": "AC-B-92",
+  "criterion": "The Live section of `README.md` says in plain words that the seeded accounts use published demo credentials for synthetic accounts on a local demo, and that Live mode is for loopback only (C1 and C4 of SR-63). It prints no credential value that is not already published there",
+  "testedBy": "Row 101 (W86) writes it; verification row 105 (W90) reads it",
+  "row": "",
+  "files": [],
+  "projects": []
+ },
+ {
+  "id": "AC-B-93",
+  "criterion": "A body whose free-text field contains U+0000 or an unpaired surrogate answers 422 `INVALID_INPUT` on `addSessionNote`, `revokeDevice` and `redeemPairingCode`, and writes no row",
+  "testedBy": "`contract.test.ts`",
+  "row": "",
+  "files": [
+   "apps/core-server/test/acceptance/contract.test.ts",
+   "packages/shared/test/api-text-rule.test.ts"
+  ],
+  "projects": [
+   "server-db",
+   "shared"
+  ]
+ },
+ {
+  "id": "AC-C-01",
+  "criterion": "Every registry operation can be called through the typed client; the number of callable operation IDs equals the registry's count (75)",
+  "testedBy": "Unit test in `packages/shared/src/client`",
+  "row": "58 (W12)",
+  "files": [
+   "packages/shared/test/api-registry.test.ts",
+   "packages/shared/test/client-core.test.ts"
+  ],
+  "projects": [
+   "shared"
+  ]
+ },
+ {
+  "id": "AC-C-02",
+  "criterion": "No file under `packages/shared/src/client`, `src/live` or the new files of `src/realtime` names `node:`, `react-native`, `expo`, `window` or `document`",
+  "testedBy": "Static test, as the simulator has [AN:519]",
+  "row": "58-60 (W12, W18, W30, W31, W44)",
+  "files": [
+   "packages/shared/test/client-platform-neutral.test.ts",
+   "packages/shared/test/live-light-platform-neutral.test.ts",
+   "packages/shared/test/live-source-platform-neutral.test.ts",
+   "packages/shared/test/live-testing-platform-neutral.test.ts",
+   "packages/shared/test/realtime-live-platform-neutral.test.ts"
+  ],
+  "projects": [
+   "shared"
+  ]
+ },
+ {
+  "id": "AC-C-03",
+  "criterion": "A 2xx body that violates its schema is returned as `CONTRACT_VIOLATION` and never reaches the store; a non-2xx body parses as `ApiError`",
+  "testedBy": "Unit test with the fake transport",
+  "row": "58 (W12)",
+  "files": [
+   "packages/shared/test/client-core.test.ts"
+  ],
+  "projects": [
+   "shared"
+  ]
+ },
+ {
+  "id": "AC-C-04",
+  "criterion": "In the call log of the client tests no URL contains a token, a credential or a code; the web client sends no `Authorization` header; the mobile client sends exactly one",
+  "testedBy": "The fake transport's log",
+  "row": "58 (W12)",
+  "files": [
+   "packages/shared/test/client-core.test.ts",
+   "packages/shared/test/live-testing-log.test.ts"
+  ],
+  "projects": [
+   "shared"
+  ]
+ },
+ {
+  "id": "AC-C-05",
+  "criterion": "On an emulator, through `adb reverse`, one GET, one POST with a body and one error envelope are answered and validated by zod",
+  "testedBy": "Device check: screencap and log lines",
+  "row": "58 (W12)",
+  "files": [],
+  "projects": []
+ },
+ {
+  "id": "AC-C-06",
+  "criterion": "Simulated isolation: with a simulator in the context, `useCoreActions()` returns `sim.actions` itself; over the recording scenario, spies count zero `fetch` calls and zero socket constructions",
+  "testedBy": "Shared test [BP:333]",
+  "row": "60 (W18, W31, W44)",
+  "files": [
+   "packages/shared/test/live-light-core-actions.test.ts",
+   "packages/shared/test/live-light-hooks.test.ts",
+   "packages/shared/test/live-source-simulated-isolation.test.ts"
+  ],
+  "projects": [
+   "shared"
+  ]
+ },
+ {
+  "id": "AC-C-07",
+  "criterion": "Live replica: a `snapshot` and the deltas of the recording scenario drive the selectors to the values the simulator has at the same instants",
+  "testedBy": "Shared test",
+  "row": "60 (W18, W31, W44)",
+  "files": [
+   "packages/shared/test/live-source-replica.test.ts"
+  ],
+  "projects": [
+   "shared"
+  ]
+ },
+ {
+  "id": "AC-C-08",
+  "criterion": "Structural sharing: after a `delta` that replaces one slice, every other slice reference is unchanged; a `snapshot` equal to the current state changes no reference; unchanged array elements keep their references",
+  "testedBy": "Shared test",
+  "row": "60 (W18, W31, W44)",
+  "files": [
+   "packages/shared/test/live-source-replica.test.ts"
+  ],
+  "projects": [
+   "shared"
+  ]
+ },
+ {
+  "id": "AC-C-09",
+  "criterion": "`settle` with a plain value runs `ok` and `done` before it returns; with a synchronous throw it runs `fail` and `done` before it returns",
+  "testedBy": "Unit test",
+  "row": "60 (W18, W31, W44)",
+  "files": [
+   "packages/shared/test/live-light-settle.test.ts"
+  ],
+  "projects": [
+   "shared"
+  ]
+ },
+ {
+  "id": "AC-C-10",
+  "criterion": "Own-command atomicity: in both arrival orders the continuation sees the command's effect, and no subscriber is notified between the update that holds the effect and the continuation",
+  "testedBy": "Unit test with the fake transport",
+  "row": "60 (W18, W31, W44)",
+  "files": [
+   "packages/shared/test/live-source-atomicity.test.ts"
+  ],
+  "projects": [
+   "shared"
+  ]
+ },
+ {
+  "id": "AC-C-11",
+  "criterion": "Error rebuilding: a table of envelopes yields `SimPermissionError`, `SimTransitionError` and `SimNotFoundError` (checked with `instanceof`) with the expected `code`, `permission`, `from`, `event`; result-union actions resolve with `ok: false` and the mapped reason",
+  "testedBy": "Unit test",
+  "row": "60 (W18, W31, W44)",
+  "files": [
+   "packages/shared/test/live-source-bindings.test.ts"
+  ],
+  "projects": [
+   "shared"
+  ]
+ },
+ {
+  "id": "AC-C-12",
+  "criterion": "A rejected Live action that nobody awaits raises no unhandled-rejection event and is reported once through `onError`",
+  "testedBy": "Unit test",
+  "row": "60 (W18, W31, W44)",
+  "files": [
+   "packages/shared/test/live-source-atomicity.test.ts"
+  ],
+  "projects": [
+   "shared"
+  ]
+ },
+ {
+  "id": "AC-C-13",
+  "criterion": "`touchSession`: ten activity calls within 60 s send one request at once and one at the end of the window; no activity sends none; a successful POST restarts the window",
+  "testedBy": "Unit test with fake timers",
+  "row": "60 (W18, W31, W44)",
+  "files": [
+   "packages/shared/test/live-source-session.test.ts"
+  ],
+  "projects": [
+   "shared"
+  ]
+ },
+ {
+  "id": "AC-C-14",
+  "criterion": "Settle time-out: when the delta of the answered revision does not arrive within 2,000 ms, one `resync` is sent, the action resolves, and the link reads RESYNCING until the snapshot",
+  "testedBy": "Unit test",
+  "row": "60 (W18, W31, W44)",
+  "files": [
+   "packages/shared/test/live-source-atomicity.test.ts"
+  ],
+  "projects": [
+   "shared"
+  ]
+ },
+ {
+  "id": "AC-C-15",
+  "criterion": "A revision gap or a new epoch sends `resync` at most once in 2 s; the snapshot replaces the replica",
+  "testedBy": "Unit test",
+  "row": "59, 60 (W18, W30, W31, W44)",
+  "files": [
+   "packages/shared/test/live-source-atomicity.test.ts",
+   "packages/shared/test/realtime-live-socket.test.ts"
+  ],
+  "projects": [
+   "shared"
+  ]
+ },
+ {
+  "id": "AC-C-16",
+  "criterion": "Close codes: 4401 moves `auth.status` away from SIGNED_IN and records the reason; 4403 calls the revocation handler; 1001, 1013 and 4408 reconnect with the existing backoff constants",
+  "testedBy": "Unit test with the fake socket",
+  "row": "59 (W30)",
+  "files": [
+   "packages/shared/test/realtime-live-socket.test.ts"
+  ],
+  "projects": [
+   "shared"
+  ]
+ },
+ {
+  "id": "AC-C-17",
+  "criterion": "The fake transport refuses a scripted response that violates the contract: the test fails with a named error",
+  "testedBy": "Unit test of HB-11",
+  "row": "60 (W18, W31, W44)",
+  "files": [
+   "packages/shared/test/live-testing-fetch.test.ts"
+  ],
+  "projects": [
+   "shared"
+  ]
+ },
+ {
+  "id": "AC-C-18",
+  "criterion": "One socket per client in Live mode: with the API Reference page open, no second socket is constructed",
+  "testedBy": "Web test with the fake transport",
+  "row": "62, 99 (W05, W50, W54, W84)",
+  "files": [
+   "apps/core-web/src/test/live-api-reference-page.test.tsx",
+   "apps/core-web/src/test/live-runtime-startup.test.tsx"
+  ],
+  "projects": [
+   "web"
+  ]
+ },
+ {
+  "id": "AC-C-19",
+  "criterion": "Web dev build, no stored key, no preselection: Simulated; the simulator is constructed and the Live source module is not requested",
+  "testedBy": "Unit test of the resolver and the entry",
+  "row": "62 (W05, W50, W54)",
+  "files": [
+   "apps/core-web/src/test/live-runtime-mode.test.tsx"
+  ],
+  "projects": [
+   "web"
+  ]
+ },
+ {
+  "id": "AC-C-20",
+  "criterion": "With the packaged flag, or in a production build, the resolver returns SIMULATED whatever the stored key and the environment say, and no selector is rendered",
+  "testedBy": "Unit test with `vi.stubEnv`",
+  "row": "62 (W05, W50, W54)",
+  "files": [
+   "apps/core-web/src/test/live-runtime-mode.test.tsx"
+  ],
+  "projects": [
+   "web"
+  ]
+ },
+ {
+  "id": "AC-C-21",
+  "criterion": "With `dems.core.mode.v1` = `LIVE` in a dev build the Live source is created; after a Live session the values under `dems.sim.v1` and `dems.auth` are byte-equal to before",
+  "testedBy": "Web test",
+  "row": "62 (W05, W50, W54)",
+  "files": [
+   "apps/core-web/src/test/live-runtime-mode.test.tsx",
+   "apps/core-web/src/test/live-runtime-startup.test.tsx"
+  ],
+  "projects": [
+   "web"
+  ]
+ },
+ {
+  "id": "AC-C-22",
+  "criterion": "`VITE_DEMS_CORE_MODE=live` with no stored key selects Live; a stored `SIMULATED` wins over it",
+  "testedBy": "Unit test",
+  "row": "62 (W05, W50, W54)",
+  "files": [
+   "apps/core-web/src/test/live-runtime-mode.test.tsx"
+  ],
+  "projects": [
+   "web"
+  ]
+ },
+ {
+  "id": "AC-C-23",
+  "criterion": "Switching the mode shows the confirmation, signs out, writes the key and reloads to `/login`",
+  "testedBy": "Web test with the reload stubbed",
+  "row": "62, 64 (W05, W50, W54, W55)",
+  "files": [
+   "apps/core-web/src/test/live-login-page.test.tsx",
+   "apps/core-web/src/test/live-runtime-mode.test.tsx"
+  ],
+  "projects": [
+   "web"
+  ]
+ },
+ {
+  "id": "AC-C-24",
+  "criterion": "The indicator `shell-mode` reads SIMULATED with the simulator, LIVE with the Live source and the link up, LIVE \u00b7 OFFLINE with the link down; it is rendered at every shell width",
+  "testedBy": "Web test at three widths",
+  "row": "63 (W54)",
+  "files": [
+   "apps/core-web/src/test/live-gap-indicator-connecting.test.tsx",
+   "apps/core-web/src/test/live-shell-indicator.test.tsx"
+  ],
+  "projects": [
+   "web"
+  ]
+ },
+ {
+  "id": "AC-C-25",
+  "criterion": "No silent fallback: Live mode with the server unreachable at start shows the Login page with the offline Alert, Retry and \"Use Simulated mode\"; the simulator is not constructed and the replica holds no evidence, session or operator",
+  "testedBy": "Web test with a failing fake transport",
+  "row": "62, 64 (W05, W50, W54, W55)",
+  "files": [
+   "apps/core-web/src/test/live-login-page.test.tsx",
+   "apps/core-web/src/test/live-runtime-startup.test.tsx"
+  ],
+  "projects": [
+   "web"
+  ]
+ },
+ {
+  "id": "AC-C-26",
+  "criterion": "Link lost while signed in: one persistent toast, the indicator LIVE \u00b7 OFFLINE, meters at \"no signal\", a command rejects without a request; after the link returns the replica equals a fresh snapshot",
+  "testedBy": "Web test",
+  "row": "63 (W54)",
+  "files": [
+   "apps/core-web/src/test/live-shell-notices.test.tsx"
+  ],
+  "projects": [
+   "web"
+  ]
+ },
+ {
+  "id": "AC-C-27",
+  "criterion": "A client in Simulated mode sends nothing to the Core server",
+  "testedBy": "The server log [SP:AC-B-63]; the spies of AC-C-06",
+  "row": "109 (W97)",
+  "files": [],
+  "projects": []
+ },
+ {
+  "id": "AC-C-28",
+  "criterion": "Mobile: the default source is SIMULATED; `isCoreLinkSourceAvailable('LIVE', false)` is false; `effectiveCoreLinkSource('LIVE', false)` is SIMULATED; a stored LIVE hydrates as SIMULATED in a release build",
+  "testedBy": "jest, beside the existing release-gate test",
+  "row": "78 (W15, W51)",
+  "files": [
+   "apps/mobile/src/runtime/live-core-link.test.tsx",
+   "apps/mobile/src/runtime/live-runtime.test.tsx"
+  ],
+  "projects": [
+   "mobile"
+  ]
+ },
+ {
+  "id": "AC-C-29",
+  "criterion": "Mobile: in LIVE mode the simulator is not started; `dems.sim.v1` and `dems.mobile.auth.v1` in AsyncStorage are unchanged after a Live session",
+  "testedBy": "jest",
+  "row": "78 (W15, W51)",
+  "files": [
+   "apps/mobile/src/runtime/live-runtime.test.tsx"
+  ],
+  "projects": [
+   "mobile"
+  ]
+ },
+ {
+  "id": "AC-C-30",
+  "criterion": "Mobile: the two Core chips read \"Simulated\" in SIMULATED and in HEARTBEAT mode and \"Live\" only in LIVE mode",
+  "testedBy": "jest",
+  "row": "84, 85 (W66)",
+  "files": [
+   "apps/mobile/src/features/dashboard/home-live.test.tsx",
+   "apps/mobile/src/features/more/more-live.test.tsx",
+   "apps/mobile/src/features/more/use-core-link-chip.test.tsx"
+  ],
+  "projects": [
+   "mobile"
+  ]
+ },
+ {
+  "id": "AC-C-31",
+  "criterion": "Mobile: selecting LIVE in Settings shows the dialog, signs out and lands on `/pair` (no credential) or `/login` (credential)",
+  "testedBy": "jest with the route harness",
+  "row": "82, 97 (W60, W82)",
+  "files": [
+   "apps/mobile/src/features/settings/live-settings-boundary.test.tsx",
+   "apps/mobile/src/features/settings/settings-live-model.test.ts",
+   "apps/mobile/src/navigation/__tests__/pairing-gate.test.tsx"
+  ],
+  "projects": [
+   "mobile"
+  ]
+ },
+ {
+  "id": "AC-C-32",
+  "criterion": "The debug parameter `core=LIVE` sets the source in a debug build and does nothing in a release build; `scenario=` is ignored in LIVE mode",
+  "testedBy": "jest",
+  "row": "78 (W15, W51)",
+  "files": [
+   "apps/mobile/src/runtime/live-core-link.test.tsx"
+  ],
+  "projects": [
+   "mobile"
+  ]
+ },
+ {
+  "id": "AC-C-33",
+  "criterion": "With the dev server and the backend running, `curl -si http://127.0.0.1:5173/api/v1/health` answers 200 with `service: dems-core-server` and no `access-control-allow-` header",
+  "testedBy": "The command, in the row's live check",
+  "row": "62 (W05, W50, W54)",
+  "files": [],
+  "projects": []
+ },
+ {
+  "id": "AC-C-34",
+  "criterion": "In Live mode the browser's socket to `/ws` on the dev server's port receives `hello` and `heartbeat`, and a source edit still hot-reloads the page",
+  "testedBy": "Observable on the lane",
+  "row": "62 (W05, W50, W54)",
+  "files": [],
+  "projects": []
+ },
+ {
+  "id": "AC-C-35",
+  "criterion": "`git diff acaff20 -- apps/core-web/src/lib/packaged-csp.ts apps/mock-core` prints nothing; `packaged-csp.test.ts` passes unchanged",
+  "testedBy": "The command and the test run",
+  "row": "62 (W05, W50, W54)",
+  "files": [],
+  "projects": []
+ },
+ {
+  "id": "AC-C-36",
+  "criterion": "`core-endpoint.test.tsx` passes unchanged; new tests cover the Live row of section 4.2",
+  "testedBy": "Test run",
+  "row": "62 (W05, W50, W54)",
+  "files": [
+   "apps/core-web/src/lib/__tests__/live-core-endpoint.test.tsx"
+  ],
+  "projects": [
+   "web"
+  ]
+ },
+ {
+  "id": "AC-C-37",
+  "criterion": "Over a Live web session every request goes to the page's own origin",
+  "testedBy": "The browser's network log in the live check; the fake transport's log",
+  "row": "62, 106 (W05, W50, W54, W95)",
+  "files": [
+   "apps/core-web/src/test/live-login-page.test.tsx",
+   "apps/core-web/src/test/live-runtime-startup.test.tsx"
+  ],
+  "projects": [
+   "web"
+  ]
+ },
+ {
+  "id": "AC-C-38",
+  "criterion": "After a Live sign-in, `document.cookie` does not show the session cookie (`dems_session_<port>`), no value in `localStorage` or `sessionStorage` starts with `ses_`, and `dems.auth` is not written",
+  "testedBy": "Web test; the live check",
+  "row": "64 (W55)",
+  "files": [
+   "apps/core-web/src/test/live-login-signin.test.tsx"
+  ],
+  "projects": [
+   "web"
+  ]
+ },
+ {
+  "id": "AC-C-39",
+  "criterion": "For a `SignInStatus` with n attempts remaining and a `lockedUntil`, `selectLockout` on the replica returns the same `locked`, `lockedUntil` and `attemptsRemaining`",
+  "testedBy": "Unit test",
+  "row": "60, 64 (W18, W31, W44, W55)",
+  "files": [
+   "apps/core-web/src/test/live-login-signin.test.tsx",
+   "packages/shared/test/live-source-session.test.ts"
+  ],
+  "projects": [
+   "shared",
+   "web"
+  ]
+ },
+ {
+  "id": "AC-C-40",
+  "criterion": "A reload while signed in returns to the same route without credentials; a reload after the server ended the session lands on `/login`",
+  "testedBy": "Web test; the live check",
+  "row": "62, 64 (W05, W50, W54, W55)",
+  "files": [
+   "apps/core-web/src/test/live-runtime-startup.test.tsx"
+  ],
+  "projects": [
+   "web"
+  ]
+ },
+ {
+  "id": "AC-C-41",
+  "criterion": "`git diff acaff20 -- apps/core-web/src/routes/_app.tsx apps/core-web/src/routes/login.tsx apps/core-web/src/routes/_app/session/new.tsx` prints nothing; `routes.test.tsx` passes unchanged; a Live route test sends an anonymous visit to `/login` with `redirect`",
+  "testedBy": "The command and the tests",
+  "row": "62 (W05, W50, W54)",
+  "files": [
+   "apps/core-web/src/test/live-runtime-startup.test.tsx"
+  ],
+  "projects": [
+   "web"
+  ]
+ },
+ {
+  "id": "AC-C-42",
+  "criterion": "The trust line shows the Simulated strings with the simulator and the Live string with the Live source; the Live string contains neither \"simulated\" nor \"paired\"",
+  "testedBy": "Web test",
+  "row": "64 (W55)",
+  "files": [
+   "apps/core-web/src/test/live-login-model.test.tsx",
+   "apps/core-web/src/test/live-login-page.test.tsx"
+  ],
+  "projects": [
+   "web"
+  ]
+ },
+ {
+  "id": "AC-C-43",
+  "criterion": "`login-security-key` is in the DOM in Simulated mode and absent in Live mode",
+  "testedBy": "Web test",
+  "row": "64 (W55)",
+  "files": [
+   "apps/core-web/src/test/live-login-page.test.tsx"
+  ],
+  "projects": [
+   "web"
+  ]
+ },
+ {
+  "id": "AC-C-44",
+  "criterion": "Wrong password, lockout (423 with a countdown) and success behave as section 5.5 says; the password state is empty once the request is sent",
+  "testedBy": "Web test with the fake transport",
+  "row": "64 (W55)",
+  "files": [
+   "apps/core-web/src/test/live-login-signin.test.tsx"
+  ],
+  "projects": [
+   "web"
+  ]
+ },
+ {
+  "id": "AC-C-45",
+  "criterion": "`session.ended` with `IDLE_EXPIRED` leads to `/login?redirect=<href>` with the expired notice; `ABSOLUTE_EXPIRED` shows the 8-hour sentence; `USER_DISABLED` shows the disabled Alert",
+  "testedBy": "Web test",
+  "row": "63, 64 (W54, W55)",
+  "files": [
+   "apps/core-web/src/test/live-login-page.test.tsx",
+   "apps/core-web/src/test/live-shell-notices.test.tsx"
+  ],
+  "projects": [
+   "web"
+  ]
+ },
+ {
+  "id": "AC-C-46",
+  "criterion": "After a sign-in and after a sign-out the socket is a new connection; the socket after a sign-out receives no `state` message",
+  "testedBy": "Web test with the fake socket",
+  "row": "62 (W05, W50, W54)",
+  "files": [
+   "apps/core-web/src/test/live-runtime-startup.test.tsx"
+  ],
+  "projects": [
+   "web"
+  ]
+ },
+ {
+  "id": "AC-C-47",
+  "criterion": "The demo-operator disclosure is hidden while `dems.presentation.v1` is on; in Live mode it shows no role chip; the server's presentation setting is copied into the flag while signed in",
+  "testedBy": "Web test",
+  "row": "64 (W55)",
+  "files": [
+   "apps/core-web/src/test/live-login-page.test.tsx",
+   "apps/core-web/src/test/live-login-presentation.test.tsx"
+  ],
+  "projects": [
+   "web"
+  ]
+ },
+ {
+  "id": "AC-C-48",
+  "criterion": "A 403 `NOT_PERMITTED` shows the denied toast that names the required role, and the control returns to idle",
+  "testedBy": "One Live test per page row and per screen row",
+  "row": "66-74, 84-97 (W63 to W76, W78 to W80, W82)",
+  "files": [
+   "apps/core-web/src/test/live-dashboard-devices.test.tsx",
+   "apps/core-web/src/test/live-devices-clip.test.tsx",
+   "apps/core-web/src/test/live-devices-commands.test.tsx",
+   "apps/core-web/src/test/live-devices-drawer.test.tsx",
+   "apps/core-web/src/test/live-evidence-archive.test.tsx",
+   "apps/core-web/src/test/live-evidence-verify.test.tsx",
+   "apps/core-web/src/test/live-paired-devices-issue.test.tsx",
+   "apps/core-web/src/test/live-paired-devices-list.test.tsx",
+   "apps/core-web/src/test/live-security-audit-chain.test.tsx",
+   "apps/core-web/src/test/live-security-audit-export.test.tsx",
+   "apps/core-web/src/test/live-session-monitor-actions.test.tsx",
+   "apps/core-web/src/test/live-session-monitor-panels.test.tsx",
+   "apps/core-web/src/test/live-session-new-create.test.tsx",
+   "apps/core-web/src/test/live-session-new-precheck.test.tsx",
+   "apps/core-web/src/test/live-storage-policy.test.tsx",
+   "apps/core-web/src/test/live-system-demo.test.tsx",
+   "apps/core-web/src/test/live-system-export.test.tsx",
+   "apps/core-web/src/test/live-system-maintenance.test.tsx",
+   "apps/core-web/src/test/live-users-roles-commands.test.tsx",
+   "apps/mobile/src/features/audit/live-audit-chain.test.tsx",
+   "apps/mobile/src/features/dashboard/home-live.test.tsx",
+   "apps/mobile/src/features/devices/live-devices-sites.test.tsx",
+   "apps/mobile/src/features/evidence/live-evidence-archive.test.tsx",
+   "apps/mobile/src/features/evidence/live-evidence-export.test.tsx",
+   "apps/mobile/src/features/session-live/live-session-live-sites.test.tsx",
+   "apps/mobile/src/features/session-new/live-session-new-handoff.test.tsx",
+   "apps/mobile/src/features/session-new/live-session-new-sites.test.tsx",
+   "apps/mobile/src/features/session-recovery/live-recovery-sites.test.tsx",
+   "apps/mobile/src/features/session-summary/live-summary-sites.test.tsx",
+   "apps/mobile/src/features/settings/live-settings-sites.test.tsx",
+   "apps/mobile/src/features/storage/live-storage-sites.test.tsx"
+  ],
+  "projects": [
+   "mobile",
+   "web"
+  ]
+ },
+ {
+  "id": "AC-C-49",
+  "criterion": "`session.updated` changes the gated controls without a reload or a sign-in and shows the role notice",
+  "testedBy": "Web test; jest",
+  "row": "63, 78 (W15, W51, W54)",
+  "files": [
+   "apps/core-web/src/test/live-shell-notices.test.tsx",
+   "apps/mobile/src/runtime/live-device.test.tsx"
+  ],
+  "projects": [
+   "mobile",
+   "web"
+  ]
+ },
+ {
+  "id": "AC-C-50",
+  "criterion": "Losing the permission of the current route leaves `/session/new`, `/admin/users` and `/admin/devices` for `/dashboard` on the web, and `/session/new` for `/home` on mobile; every other route stays",
+  "testedBy": "Web route test; jest route test",
+  "row": "63, 82, 86 (W54, W60, W67)",
+  "files": [
+   "apps/core-web/src/test/live-shell-admin.test.tsx",
+   "apps/mobile/src/features/session-new/live-session-new-replica.test.tsx",
+   "apps/mobile/src/navigation/__tests__/pairing-gate.test.tsx"
+  ],
+  "projects": [
+   "mobile",
+   "web"
+  ]
+ },
+ {
+  "id": "AC-C-51",
+  "criterion": "The ADMINISTRATION entries are rendered only in Live mode and only with their permission; they appear and disappear on `session.updated`",
+  "testedBy": "Web test",
+  "row": "63 (W54)",
+  "files": [
+   "apps/core-web/src/test/live-shell-admin.test.tsx"
+  ],
+  "projects": [
+   "web"
+  ]
+ },
+ {
+  "id": "AC-C-52",
+  "criterion": "The Demo Control Panel (web) and the demo controls (mobile) are rendered in Live mode only with `DEMO_CONTROL` and `demoControls`; in Simulated mode they are as today",
+  "testedBy": "Web test; jest",
+  "row": "74, 97 (W76, W82)",
+  "files": [
+   "apps/core-web/src/test/live-system-demo.test.tsx",
+   "apps/mobile/src/features/settings/live-settings-sites.test.tsx",
+   "apps/mobile/src/features/settings/settings-live-model.test.ts"
+  ],
+  "projects": [
+   "mobile",
+   "web"
+  ]
+ },
+ {
+  "id": "AC-C-53",
+  "criterion": "No production file under `apps/core-web/src/features`, `apps/mobile/src/features` or `apps/mobile/src/auth` imports `useSimActions` or reads `.actions` from a `Sim`",
+  "testedBy": "Static test in each app",
+  "row": "64-74, 79-97 (W55 to W57, W59 to W76, W78 to W80, W82)",
+  "files": [
+   "apps/core-web/src/test/live-dashboard-page.test.tsx",
+   "apps/core-web/src/test/live-evidence-archive.test.tsx",
+   "apps/core-web/src/test/live-login-model.test.tsx",
+   "apps/core-web/src/test/live-network-time-page.test.tsx",
+   "apps/core-web/src/test/live-security-audit-page.test.tsx",
+   "apps/core-web/src/test/live-session-new-pending.test.tsx",
+   "apps/core-web/src/test/live-shell-admin.test.tsx",
+   "apps/core-web/src/test/live-static-ac-c-53.test.ts",
+   "apps/core-web/src/test/live-storage-page.test.tsx",
+   "apps/core-web/src/test/live-system-settings.test.tsx",
+   "apps/core-web/src/test/live-users-roles-model.test.tsx",
+   "apps/mobile/src/auth/live-auth-static.test.ts",
+   "apps/mobile/src/features/audit/audit-live-static.test.ts",
+   "apps/mobile/src/features/dashboard/home-more-live-static.test.ts",
+   "apps/mobile/src/features/devices/devices-live-static.test.ts",
+   "apps/mobile/src/features/evidence/live-evidence-static.test.ts",
+   "apps/mobile/src/features/login/login-live-model.test.ts",
+   "apps/mobile/src/features/network-time/live-network-time.test.tsx",
+   "apps/mobile/src/features/pairing/pairing-live-static.test.ts",
+   "apps/mobile/src/features/session-recovery/recovery-live-static.test.ts",
+   "apps/mobile/src/features/session-summary/summary-live-static.test.ts",
+   "apps/mobile/src/features/settings/settings-live-static.test.ts",
+   "apps/mobile/src/features/storage/storage-live-static.test.ts",
+   "apps/mobile/src/lib/live-static-ac-c-53.test.ts",
+   "packages/shared/test/live-source-misuse.test.ts"
+  ],
+  "projects": [
+   "mobile",
+   "shared",
+   "web"
+  ]
+ },
+ {
+  "id": "AC-C-54",
+  "criterion": "A 403 `NOT_PERMITTED` causes one `getAuthSession` within 1 s; ten of them cause one",
+  "testedBy": "Unit test",
+  "row": "60 (W18, W31, W44)",
+  "files": [
+   "packages/shared/test/live-source-session.test.ts"
+  ],
+  "projects": [
+   "shared"
+  ]
+ },
+ {
+  "id": "AC-C-55",
+  "criterion": "Two clients: after a role change in the portal, the affected operator's controls change on the web console and on an emulator within 1 s; a now-denied action shows the denied toast on both",
+  "testedBy": "Verification row 107 (W96) [SP:AC-B-22]",
+  "row": "107 (W96)",
+  "files": [],
+  "projects": []
+ },
+ {
+  "id": "AC-C-56",
+  "criterion": "Every site ID of section 8 that is not marked \"no change\" or \"not reachable\" has a Live test that names the ID",
+  "testedBy": "The test report's site-to-test table",
+  "row": "102 (W87)",
+  "files": [
+   "apps/mobile/src/features/pairing/live-gap-sites.test.tsx",
+   "apps/mobile/src/features/session-live/live-gap-s4-7-tablet-link.test.tsx",
+   "apps/mobile/src/features/settings/live-gap-s1-2-biometric.test.tsx"
+  ],
+  "projects": [
+   "mobile"
+  ]
+ },
+ {
+  "id": "AC-C-57",
+  "criterion": "Pending: with an answer delayed by 1 s, two quick presses send one request, the control shows no spinner at 300 ms and shows its in-button spinner at 500 ms; with an answer after 50 ms no spinner is rendered",
+  "testedBy": "One test per client with fake timers",
+  "row": "67, 86 (W64, W67)",
+  "files": [
+   "apps/core-web/src/test/live-evidence-archive.test.tsx",
+   "apps/core-web/src/test/live-pending-control.test.tsx",
+   "apps/core-web/src/test/live-session-new-pending.test.tsx",
+   "apps/core-web/src/test/live-system-maintenance.test.tsx",
+   "apps/mobile/src/features/session-live/live-session-live-sites.test.tsx",
+   "apps/mobile/src/features/session-new/live-session-new-followups.test.tsx",
+   "apps/mobile/src/features/session-new/live-session-new-handoff.test.tsx",
+   "apps/mobile/src/features/session-summary/live-summary-sites.test.tsx",
+   "apps/mobile/src/runtime/pending-control.test.tsx",
+   "apps/mobile/src/runtime/use-pending-press.test.tsx",
+   "packages/shared/test/live-light-constants.test.ts"
+  ],
+  "projects": [
+   "mobile",
+   "shared",
+   "web"
+  ]
+ },
+ {
+  "id": "AC-C-58",
+  "criterion": "The pending state adds no element outside the pressed control",
+  "testedBy": "DOM assertion in the test of AC-C-57",
+  "row": "67, 86 (W64, W67)",
+  "files": [
+   "apps/core-web/src/test/live-evidence-archive.test.tsx",
+   "apps/core-web/src/test/live-pending-control.test.tsx",
+   "apps/core-web/src/test/live-session-new-pending.test.tsx",
+   "apps/core-web/src/test/live-storage-policy.test.tsx",
+   "apps/core-web/src/test/live-system-maintenance.test.tsx",
+   "apps/mobile/src/features/session-new/live-session-new-followups.test.tsx",
+   "apps/mobile/src/features/session-new/live-session-new-handoff.test.tsx",
+   "apps/mobile/src/features/session-summary/live-summary-sites.test.tsx",
+   "apps/mobile/src/runtime/pending-control.test.tsx",
+   "apps/mobile/src/runtime/use-pending-press.test.tsx"
+  ],
+  "projects": [
+   "mobile",
+   "web"
+  ]
+ },
+ {
+  "id": "AC-C-59",
+  "criterion": "Offline: a command rejects at once, five presses show one toast, and no request is sent",
+  "testedBy": "One test per client",
+  "row": "63, 78 (W15, W51, W54)",
+  "files": [
+   "apps/core-web/src/lib/__tests__/live-core-errors.test.tsx",
+   "apps/core-web/src/test/live-shell-notices.test.tsx",
+   "apps/core-web/src/test/live-storage-policy.test.tsx",
+   "apps/mobile/src/runtime/live-device.test.tsx"
+  ],
+  "projects": [
+   "mobile",
+   "web"
+  ]
+ },
+ {
+  "id": "AC-C-60",
+  "criterion": "The web audit and log export files are built from all pages of operations 59 and 63: with 450 rows on the fake server the file holds 450 rows",
+  "testedBy": "Web test",
+  "row": "73, 74 (W75, W76)",
+  "files": [
+   "apps/core-web/src/test/live-security-audit-export.test.tsx",
+   "apps/core-web/src/test/live-system-export.test.tsx"
+  ],
+  "projects": [
+   "web"
+  ]
+ },
+ {
+  "id": "AC-C-61",
+  "criterion": "Evidence verification in Live mode calls operation 41 and no demo operation; the verdict shown is the server's",
+  "testedBy": "Web test; jest; the fake transport's log",
+  "row": "69, 92 (W69, W74)",
+  "files": [
+   "apps/core-web/src/test/live-evidence-verify.test.tsx",
+   "apps/mobile/src/features/evidence/live-evidence-verify.test.tsx"
+  ],
+  "projects": [
+   "mobile",
+   "web"
+  ]
+ },
+ {
+  "id": "AC-C-62",
+  "criterion": "Mobile start-recording hand-off: in both arrival orders the monitor opens and no \"session busy\" toast shows",
+  "testedBy": "jest with the fake transport",
+  "row": "86 (W67)",
+  "files": [
+   "apps/mobile/src/features/session-new/live-session-new-handoff.test.tsx"
+  ],
+  "projects": [
+   "mobile"
+  ]
+ },
+ {
+  "id": "AC-C-63",
+  "criterion": "The mobile archive and device-command dialogs show the success toast only after the server's 2xx, and the danger toast on a refusal",
+  "testedBy": "jest",
+  "row": "92, 93 (W74, W78)",
+  "files": [
+   "apps/mobile/src/features/devices/devices-live-static.test.ts",
+   "apps/mobile/src/features/devices/live-devices-sites.test.tsx",
+   "apps/mobile/src/features/evidence/live-evidence-archive.test.tsx"
+  ],
+  "projects": [
+   "mobile"
+  ]
+ },
+ {
+  "id": "AC-C-64",
+  "criterion": "A session started on one client appears on the other, and a stop on the second appears on the first",
+  "testedBy": "Verification row 106 (W95) [SP:AC-B-51]",
+  "row": "106 (W95)",
+  "files": [],
+  "projects": []
+ },
+ {
+  "id": "AC-C-65",
+  "criterion": "After pairing, sign-in and biometric enrolment, AsyncStorage and the runtime log (the persisted `dems.mobile.log.v1` included) contain no string that starts with `dvc_`, `ses_` or `bio_`, and neither the marker password nor the marker pairing code that the test used",
+  "testedBy": "jest with the storage mocks; a device log check",
+  "row": "79, 112 (W15, W56, W100)",
+  "files": [
+   "apps/mobile/src/auth/live-auth.test.tsx",
+   "apps/mobile/src/features/pairing/pairing-live.test.tsx"
+  ],
+  "projects": [
+   "mobile"
+  ]
+ },
+ {
+  "id": "AC-C-66",
+  "criterion": "`expo-secure-store` is imported by exactly one source file",
+  "testedBy": "Static test",
+  "row": "78 (W15, W51)",
+  "files": [
+   "apps/mobile/src/runtime/secure-store-import.test.ts"
+  ],
+  "projects": [
+   "mobile"
+  ]
+ },
+ {
+  "id": "AC-C-67",
+  "criterion": "A cold start in LIVE mode on a paired device opens the Login screen",
+  "testedBy": "jest; device check",
+  "row": "79 (W15, W56)",
+  "files": [
+   "apps/mobile/src/auth/live-auth.test.tsx"
+  ],
+  "projects": [
+   "mobile"
+  ]
+ },
+ {
+  "id": "AC-C-68",
+  "criterion": "Biometric enrolment calls operation 7 only in a password session; in a biometric session the switch is disabled",
+  "testedBy": "jest",
+  "row": "79, 97 (W15, W56, W82)",
+  "files": [
+   "apps/mobile/src/auth/live-auth.test.tsx",
+   "apps/mobile/src/features/settings/live-settings-biometric.test.tsx",
+   "apps/mobile/src/features/settings/settings-live-model.test.ts"
+  ],
+  "projects": [
+   "mobile"
+  ]
+ },
+ {
+  "id": "AC-C-69",
+  "criterion": "Biometric sign-in sends the stored token with operation 8, stores the rotated token and signs in; a 401 deletes the token and the marker and shows the Alert",
+  "testedBy": "jest with the secure-store mock",
+  "row": "79 (W15, W56)",
+  "files": [
+   "apps/mobile/src/auth/live-auth.test.tsx"
+  ],
+  "projects": [
+   "mobile"
+  ]
+ },
+ {
+  "id": "AC-C-70",
+  "criterion": "A failed OS check calls operation 9; a cancelled prompt calls nothing",
+  "testedBy": "jest",
+  "row": "79 (W15, W56)",
+  "files": [
+   "apps/mobile/src/auth/live-auth.test.tsx"
+  ],
+  "projects": [
+   "mobile"
+  ]
+ },
+ {
+  "id": "AC-C-71",
+  "criterion": "The log of row 79 (W15, W56) records, for each AVD, the three observations of MB-8 and the case of MB-5 in use",
+  "testedBy": "The row log",
+  "row": "79 (W15, W56)",
+  "files": [],
+  "projects": []
+ },
+ {
+  "id": "AC-C-72",
+  "criterion": "The Login screen in LIVE mode shows no pairing-code hint and no role chip; its trust line names the device ID",
+  "testedBy": "jest",
+  "row": "80 (W59)",
+  "files": [
+   "apps/mobile/src/features/login/live-login.test.tsx",
+   "apps/mobile/src/features/login/login-live-model.test.ts"
+  ],
+  "projects": [
+   "mobile"
+  ]
+ },
+ {
+  "id": "AC-C-73",
+  "criterion": "LIVE mode without a credential: the boot route is `/pair`; `/login`, `/home` and `/dev-gallery` are not reachable; `/stack-check` is",
+  "testedBy": "jest route tests",
+  "row": "82 (W60)",
+  "files": [
+   "apps/mobile/src/navigation/__tests__/pairing-gate.test.tsx"
+  ],
+  "projects": [
+   "mobile"
+  ]
+ },
+ {
+  "id": "AC-C-74",
+  "criterion": "In Simulated and Heartbeat mode the guards behave as today: the existing guard tests pass unchanged",
+  "testedBy": "jest",
+  "row": "82 (W60)",
+  "files": [
+   "apps/mobile/src/navigation/__tests__/pairing-gate.test.tsx"
+  ],
+  "projects": [
+   "mobile"
+  ]
+ },
+ {
+  "id": "AC-C-75",
+  "criterion": "A correct code stores the credential, sets the gate to PAIRED and hands off to `/login`; the code (the test uses a marker code) is in no storage and no log",
+  "testedBy": "jest",
+  "row": "81 (W57)",
+  "files": [
+   "apps/mobile/src/features/pairing/live-gap-sites.test.tsx",
+   "apps/mobile/src/features/pairing/pairing-live.test.tsx"
+  ],
+  "projects": [
+   "mobile"
+  ]
+ },
+ {
+  "id": "AC-C-76",
+  "criterion": "A wrong code shows the Alert with the attempts left; a 423 shows the countdown to `lockedUntil`; neither says why the code failed",
+  "testedBy": "jest",
+  "row": "81 (W57)",
+  "files": [
+   "apps/mobile/src/features/pairing/live-gap-sites.test.tsx",
+   "apps/mobile/src/features/pairing/pairing-live.test.tsx"
+  ],
+  "projects": [
+   "mobile"
+  ]
+ },
+ {
+  "id": "AC-C-77",
+  "criterion": "Cancel before `commitAt` sends no request",
+  "testedBy": "jest with fake time",
+  "row": "81 (W57)",
+  "files": [
+   "apps/mobile/src/features/pairing/pairing-live.test.tsx"
+  ],
+  "projects": [
+   "mobile"
+  ]
+ },
+ {
+  "id": "AC-C-78",
+  "criterion": "`device.revoked`, a close with 4403, or a 403 `DEVICE_REVOKED` deletes the three items, signs out and opens `/pair` with the revoked notice",
+  "testedBy": "jest",
+  "row": "78, 82 (W15, W51, W60)",
+  "files": [
+   "apps/mobile/src/navigation/__tests__/pairing-gate-live.test.tsx",
+   "apps/mobile/src/navigation/__tests__/pairing-gate.test.tsx",
+   "apps/mobile/src/runtime/live-device.test.tsx"
+  ],
+  "projects": [
+   "mobile"
+  ]
+ },
+ {
+  "id": "AC-C-79",
+  "criterion": "A stored credential that the Core does not know (401 on operation 21) is deleted, and `/pair` shows the \"not registered\" notice",
+  "testedBy": "jest",
+  "row": "78, 82 (W15, W51, W60)",
+  "files": [
+   "apps/mobile/src/navigation/__tests__/pairing-gate-live.test.tsx",
+   "apps/mobile/src/navigation/__tests__/pairing-gate.test.tsx",
+   "apps/mobile/src/runtime/live-device.test.tsx"
+  ],
+  "projects": [
+   "mobile"
+  ]
+ },
+ {
+  "id": "AC-C-80",
+  "criterion": "Unpair on the device calls operation 22, deletes the three items and stays on `/pair`; while the link is down it is refused and nothing is deleted",
+  "testedBy": "jest",
+  "row": "81 (W57)",
+  "files": [
+   "apps/mobile/src/features/pairing/live-gap-sites.test.tsx",
+   "apps/mobile/src/features/pairing/pairing-live.test.tsx"
+  ],
+  "projects": [
+   "mobile"
+  ]
+ },
+ {
+  "id": "AC-C-81",
+  "criterion": "With an empty secure store the app opens `/pair`; a new pairing shows a new device ID",
+  "testedBy": "jest; the device check of row 108 (W94)",
+  "row": "81, 108 (W57, W94)",
+  "files": [
+   "apps/mobile/src/features/pairing/pairing-live.test.tsx"
+  ],
+  "projects": [
+   "mobile"
+  ]
+ },
+ {
+  "id": "AC-C-82",
+  "criterion": "A freshly installed app in Live mode cannot leave the Pair screen; it pairs with a code issued in the portal; it appears in Paired Devices; revoking it there returns it to the Pair screen",
+  "testedBy": "Verification row 108 (W94) [SP:AC-B-40]",
+  "row": "108 (W94)",
+  "files": [],
+  "projects": []
+ },
+ {
+  "id": "AC-C-83",
+  "criterion": "The Settings control has three segments; `settings-core-link-LIVE` is disabled in a release build; the existing release-gate test passes unchanged",
+  "testedBy": "jest",
+  "row": "97 (W82)",
+  "files": [
+   "apps/mobile/src/features/settings/live-settings-boundary.test.tsx"
+  ],
+  "projects": [
+   "mobile"
+  ]
+ },
+ {
+  "id": "AC-C-84",
+  "criterion": "`npm run reverse -w @dems/mobile` maps `tcp:4420`. `device-session.sh` with `DEMS_CORE_HOST_PORT=4421` maps device `tcp:4420` to host `tcp:4421` and removes the rule at the end; with the variable unset it behaves as today",
+  "testedBy": "`adb reverse --list` before, during and after",
+  "row": "77 (W13)",
+  "files": [],
+  "projects": []
+ },
+ {
+  "id": "AC-C-85",
+  "criterion": "The merged release manifest has no cleartext attribute; `app.json` lists seven plugins",
+  "testedBy": "grep; the existing plugin-count test",
+  "row": "77 (W13)",
+  "files": [],
+  "projects": []
+ },
+ {
+  "id": "AC-C-86",
+  "criterion": "The page renders the test IDs of section 10.2, with three operators and twelve matrix rows from the fake transport",
+  "testedBy": "Render test",
+  "row": "75 (W77)",
+  "files": [
+   "apps/core-web/src/test/live-users-roles-page.test.tsx"
+  ],
+  "projects": [
+   "web"
+  ]
+ },
+ {
+  "id": "AC-C-87",
+  "criterion": "A role change sends operation 12, closes the dialog, shows the toast and updates the row; the confirm is disabled while the role is unchanged",
+  "testedBy": "Render test",
+  "row": "75 (W77)",
+  "files": [
+   "apps/core-web/src/test/live-users-roles-commands.test.tsx"
+  ],
+  "projects": [
+   "web"
+  ]
+ },
+ {
+  "id": "AC-C-88",
+  "criterion": "409 `LAST_ADMIN` shows the inline Alert, keeps the dialog open and changes nothing; the hint disables the options for the last administrator",
+  "testedBy": "Render test",
+  "row": "75 (W77)",
+  "files": [
+   "apps/core-web/src/test/live-users-roles-commands.test.tsx"
+  ],
+  "projects": [
+   "web"
+  ]
+ },
+ {
+  "id": "AC-C-89",
+  "criterion": "Disable and enable send operations 14 and 13 and morph the status chip; disabling the caller's own account warns first",
+  "testedBy": "Render test",
+  "row": "75 (W77)",
+  "files": [
+   "apps/core-web/src/test/live-users-roles-commands.test.tsx"
+  ],
+  "projects": [
+   "web"
+  ]
+ },
+ {
+  "id": "AC-C-90",
+  "criterion": "`admin.changed` with `USERS` refetches the list without a reload",
+  "testedBy": "Render test with the fake socket",
+  "row": "75 (W77)",
+  "files": [
+   "apps/core-web/src/test/live-runtime-bridge.test.tsx",
+   "apps/core-web/src/test/live-users-roles-page.test.tsx"
+  ],
+  "projects": [
+   "web"
+  ]
+ },
+ {
+  "id": "AC-C-91",
+  "criterion": "The loading, empty, error, forbidden and \"Live mode only\" states render as section 10.1 says; in Simulated mode the navigation entry is absent",
+  "testedBy": "Render test",
+  "row": "75 (W77)",
+  "files": [
+   "apps/core-web/src/test/live-users-roles-page.test.tsx"
+  ],
+  "projects": [
+   "web"
+  ]
+ },
+ {
+  "id": "AC-C-92",
+  "criterion": "Issue sends operation 15 and shows six digits, the QR and the countdown; the QR component receives exactly the answer's `qrPayload`, which is the fixed prefix plus the digits shown",
+  "testedBy": "Render test with the QR stub",
+  "row": "76 (W81)",
+  "files": [
+   "apps/core-web/src/test/live-paired-devices-issue.test.tsx"
+  ],
+  "projects": [
+   "web"
+  ]
+ },
+ {
+  "id": "AC-C-93",
+  "criterion": "The countdown reaches zero at `expiresAt` and the expired state shows",
+  "testedBy": "Render test with fake time",
+  "row": "76 (W81)",
+  "files": [
+   "apps/core-web/src/test/live-paired-devices-issue.test.tsx"
+  ],
+  "projects": [
+   "web"
+  ]
+ },
+ {
+  "id": "AC-C-94",
+  "criterion": "While a code is active no second issue is offered beside it; \"Cancel code\" sends operation 17 and returns to Idle",
+  "testedBy": "Render test",
+  "row": "76 (W81)",
+  "files": [
+   "apps/core-web/src/test/live-paired-devices-issue.test.tsx"
+  ],
+  "projects": [
+   "web"
+  ]
+ },
+ {
+  "id": "AC-C-95",
+  "criterion": "A fresh mount with an active code on the server shows \"A pairing code is active\" and no digits",
+  "testedBy": "Render test",
+  "row": "76 (W81)",
+  "files": [
+   "apps/core-web/src/test/live-paired-devices-issue.test.tsx"
+  ],
+  "projects": [
+   "web"
+  ]
+ },
+ {
+  "id": "AC-C-96",
+  "criterion": "The code appears in no web-storage value, no URL and no query-cache entry",
+  "testedBy": "Render test that inspects the three",
+  "row": "76 (W81)",
+  "files": [
+   "apps/core-web/src/test/live-paired-devices-memory.test.tsx"
+  ],
+  "projects": [
+   "web"
+  ]
+ },
+ {
+  "id": "AC-C-97",
+  "criterion": "`admin.changed` with `DEVICES` after a redeem shows the Paired state in the panel and a new highlighted row in the list",
+  "testedBy": "Render test",
+  "row": "76 (W81)",
+  "files": [
+   "apps/core-web/src/test/live-paired-devices-issue.test.tsx"
+  ],
+  "projects": [
+   "web"
+  ]
+ },
+ {
+  "id": "AC-C-98",
+  "criterion": "Revoke needs a reason of at least five characters, sends operation 20 and morphs the row to REVOKED; a 409 closes the dialog with the info toast",
+  "testedBy": "Render test",
+  "row": "76 (W81)",
+  "files": [
+   "apps/core-web/src/test/live-paired-devices-list.test.tsx"
+  ],
+  "projects": [
+   "web"
+  ]
+ },
+ {
+  "id": "AC-C-99",
+  "criterion": "The loading, empty, error, forbidden and \"Live mode only\" states render; a refused issue (403) shows the denied toast",
+  "testedBy": "Render test",
+  "row": "76 (W81)",
+  "files": [
+   "apps/core-web/src/test/live-paired-devices-issue.test.tsx",
+   "apps/core-web/src/test/live-paired-devices-list.test.tsx"
+  ],
+  "projects": [
+   "web"
+  ]
+ },
+ {
+  "id": "AC-C-100",
+  "criterion": "Simulated mode: the page's document has the ten operations it has today and Try-it routes as today; with \"Show Core-server endpoints\" on it lists 75, and Try-it of a Core-server operation is rejected without a request. Live mode: 75 operations, all `LIVE`; one Try-it call of `getServiceHealth` answers `dems-core-server`; a URL outside `{page origin}/api/v1` is rejected. The deny list and the storage and log checks of Live mode are AC-C-103",
+  "testedBy": "Web tests; one live call with a screenshot",
+  "row": "99 (W84)",
+  "files": [
+   "apps/core-web/src/test/live-api-reference-document.test.tsx",
+   "apps/core-web/src/test/live-api-reference-page.test.tsx"
+  ],
+  "projects": [
+   "web"
+  ]
+ },
+ {
+  "id": "AC-C-101",
+  "criterion": "The 61 simulator-dependent test files pass, and `git diff --stat acaff20` over them prints only recorded changes; typecheck and lint exit 0 in every workspace after each client row",
+  "testedBy": "The per-workspace runs [SP:AC-B-59]",
+  "row": "Every client row; 104 (W89)",
+  "files": [],
+  "projects": []
+ },
+ {
+  "id": "AC-C-102",
+  "criterion": "A POST to `/api/v1/auth/sign-in` sent **through the dev server** with a foreign `Origin`, and one with `Origin: http://localhost:5173`, are each answered 403 `ORIGIN_NOT_ALLOWED` by the Core server. The proxy block of `vite.config.ts` has no `headers` option, no `changeOrigin` and no hook that changes a request header",
+  "testedBy": "`curl -si -X POST -H 'Origin: <value>'` against the dev server in the row's live check; a static test over the config",
+  "row": "62 (W05, W50, W54)",
+  "files": [
+   "apps/core-web/src/test/live-runtime-static.test.tsx"
+  ],
+  "projects": [
+   "web"
+  ]
+ },
+ {
+  "id": "AC-C-103",
+  "criterion": "Live mode: Try-it of operations 2, 7, 8, 15, 18 and 23 is rejected before a request (the fake transport's log shows none) with the message of AR-3a. After Try-it calls of one GET and one POST, no value in `localStorage` or `sessionStorage` holds a request body or an answer, and the page's own log lines hold method, path and status only",
+  "testedBy": "Web tests with the fake transport; an inspection of web storage in the row's live check",
+  "row": "99 (W84)",
+  "files": [
+   "apps/core-web/src/test/live-api-reference-document.test.tsx",
+   "apps/core-web/src/test/live-api-reference-page.test.tsx"
+  ],
+  "projects": [
+   "web"
+  ]
+ },
+ {
+  "id": "AC-C-104",
+  "criterion": "In Live mode the disclosure on the web Login page and on the mobile Login screen carries the plain sentence of WS-9 (C1), shows the three usernames without a role chip or any other server data, and is hidden in presentation mode. In Simulated mode both disclosures are as today",
+  "testedBy": "Web test; jest",
+  "row": "64, 80 (W55, W59)",
+  "files": [
+   "apps/core-web/src/test/live-login-model.test.tsx",
+   "apps/core-web/src/test/live-login-page.test.tsx",
+   "apps/mobile/src/features/login/live-login.test.tsx",
+   "apps/mobile/src/features/login/login-live-model.test.ts"
+  ],
+  "projects": [
+   "mobile",
+   "web"
+  ]
+ },
+ {
+  "id": "AC-C-105",
+  "criterion": "The unprotected biometric item (MB-5 case c) is written only when `isDevice` is false or the build is a debug build. With `isDevice` true in a build that is not a debug build, a failing protected write turns biometric sign-in off and stores no token. While the marker says `protected: false`, no rendered text says that the token is protected by the device's hardware",
+  "testedBy": "jest with the secure-store mock, a stubbed `isDevice` and a stubbed build flag",
+  "row": "79 (W15, W56)",
+  "files": [
+   "apps/mobile/src/auth/live-auth-static.test.ts",
+   "apps/mobile/src/auth/live-auth.test.tsx",
+   "apps/mobile/src/auth/live-biometric.test.ts",
+   "apps/mobile/src/runtime/secure-credentials.test.ts"
+  ],
+  "projects": [
+   "mobile"
+  ]
+ },
+ {
+  "id": "AC-C-106",
+  "criterion": "After a sign-out, after `session.ended`, and after a `session.updated` that removes `USER_ADMIN` or `PAIRING_MANAGE`, the query cache holds no `['core', \u2026]` entry and the Paired Devices feature holds no code. A second operator who signs in on the same page load sees no row and no digit of the first",
+  "testedBy": "Web test with the fake transport",
+  "row": "62, 76 (W05, W50, W54, W81)",
+  "files": [
+   "apps/core-web/src/features/paired-devices/__tests__/code-memory.test.ts",
+   "apps/core-web/src/test/live-paired-devices-memory.test.tsx",
+   "apps/core-web/src/test/live-runtime-bridge.test.tsx",
+   "apps/core-web/src/test/live-runtime-startup.test.tsx"
+  ],
+  "projects": [
+   "web"
+  ]
+ },
+ {
+  "id": "AC-C-107",
+  "criterion": "After a Live sign-in with a marker password, the issue of a pairing code and Try-it calls, the web's error sink and the API Reference page's log contain no marker password, no pairing code and no string that starts with `ses_`, `dvc_` or `bio_`",
+  "testedBy": "Web tests",
+  "row": "64, 76, 99 (W55, W81, W84)",
+  "files": [
+   "apps/core-web/src/test/live-api-reference-document.test.tsx",
+   "apps/core-web/src/test/live-api-reference-page.test.tsx",
+   "apps/core-web/src/test/live-login-signin.test.tsx",
+   "apps/core-web/src/test/live-paired-devices-memory.test.tsx"
+  ],
+  "projects": [
+   "web"
+  ]
+ },
+ {
+  "id": "AC-C-108",
+  "criterion": "`session.ended` with `TOKEN_REUSE` signs the app out to the Login screen, deletes the biometric token and its marker, and shows the Alert of section 6.5; the device credential stays",
+  "testedBy": "jest with the fake socket",
+  "row": "79 (W15, W56)",
+  "files": [
+   "apps/mobile/src/auth/live-auth.test.tsx"
+  ],
+  "projects": [
+   "mobile"
+  ]
+ },
+ {
+  "id": "AC-C-109",
+  "criterion": "In Live mode the chain panel shows the stored-chain line and, when `lineage` is not empty, the \"Earlier chains\" line with one entry per discarded chain; in Simulated mode the panel is as today",
+  "testedBy": "Web test with the fake transport",
+  "row": "73 (W75)",
+  "files": [
+   "apps/core-web/src/test/live-security-audit-chain.test.tsx"
+  ],
+  "projects": [
+   "web"
+  ]
+ },
+ {
+  "id": "AC-C-110",
+  "criterion": "A 429 shows the limit toast with the seconds of `retry-after`, keeps the form or dialog filled, and shows neither the offline notice nor a changed mode indicator, on the web Login page and on the mobile Login screen",
+  "testedBy": "Web test; jest",
+  "row": "64, 80 (W55, W59)",
+  "files": [
+   "apps/core-web/src/test/live-login-signin.test.tsx",
+   "apps/core-web/src/test/live-shell-notices.test.tsx",
+   "apps/mobile/src/features/login/live-login.test.tsx",
+   "apps/mobile/src/features/login/login-live-model.test.ts"
+  ],
+  "projects": [
+   "mobile",
+   "web"
+  ]
+ }
+]

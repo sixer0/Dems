@@ -1,0 +1,33 @@
+# 2026-10-07 05:34:57
+$ lsof -nP -iTCP:4420 -sTCP:LISTEN
+COMMAND   PID     USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
+node    35020 gsp-budi   17u  IPv4 0xfa3f51735b0428fd      0t0  TCP 127.0.0.1:4420 (LISTEN)
+$ kill -TERM 35020
+exit=0
+== end state 05:34:58
+ 5:34  up 5 days, 12:47, 1 user, load averages: 3.84 3.93 4.56
+4400: free
+4410: free
+4411: free
+4420: free
+4421: free
+4422: free
+4423: free
+4432: postgres 32434 gsp-budi    6u  IPv4 0xf25ac70720754e03      0t0  TCP 127.0.0.1:4432 (LISTEN)
+5173: free
+5176: free
+5177: free
+5178: free
+8081: free
+launchers: none
+.locks/postgres.pid = 32434
+server     RUNNING, PID 32434 (postmaster.pid: 127.0.0.1:4432, status "ready", connect probe: open)
+host authentication (HA-1 to HA-4)
+  HA-1 PASS
+  HA-2 PASS
+  HA-3 PASS
+  HA-4 PASS | a connection as dems_app with a wrong password: SQLSTATE 28P01
+pg:status: OK, running
+tracked-modified count:      210
+4e6785b2b6372a9cfe852db07c05abd3ec27ab9c394d3b17020e4e9365f7dc92  -
+15688668e99d94298b2a5c1694fbce091f8036c759c3233a0991da868aa9d8f3  -

@@ -1,0 +1,19 @@
+10:42:39.689 press ur-actions-OPR-001 ok at 10:42:39.709
+10:42:39.803 wait ur-change-role-OPR-001 present: 0 ms (at 10:42:39.803)
+10:42:39.892 slept 300 ms
+10:42:40.284 press ur-change-role-OPR-001 ok at 10:42:40.383
+10:42:40.440 wait ur-role-dialog present: 0 ms (at 10:42:40.440)
+10:42:40.495 slept 600 ms
+10:42:41.164 js => true
+10:42:41.256 slept 400 ms
+10:42:41.715 device-host clock offset ms: -259, -258, -260, -258, -258
+10:42:41.938 screenrecord sc4_cycle2_tech_phone started (pid 11621) at 10:42:42.542
+10:42:42.686 mark c07 at 10:42:42.686
+10:42:42.839 press ur-role-confirm ok at 10:42:42.858
+10:42:43.117 [0] until true at 10:42:43.120 after 3 ms => true ;; [1] until true at 10:42:43.121 after 4 ms => "Role of AKP Budi Santoso is now Technician"
+10:42:43.251 slept 4000 ms
+10:42:47.538 screenrecord sc4_cycle2_tech_phone pulled; frames extracted at 5 fps
+10:42:54.183 serverlog since c07 (3):
+    10:42:42.919 POST /api/v1/admin/users/:id/role 200 operator:OPR-002
+    10:42:42.933 GET /api/v1/admin/users 200 operator:OPR-002
+    10:42:42.954 GET /api/v1/admin/users 200 operator:OPR-002

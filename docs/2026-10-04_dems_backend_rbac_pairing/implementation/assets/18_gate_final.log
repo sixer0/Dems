@@ -1,0 +1,100 @@
+# Step 40 (W18): final gate, from /Users/gsp-budi/Documents/DEMS
+2026-10-04 07:54:15 WIB
+ 7:54  1 user, load averages: 5.18 4.06 4.10
+
+$ npm run test -w @dems/shared -- --maxWorkers=2   (07:54:15)
+
+> @dems/shared@0.1.0 test
+> vitest run --maxWorkers=2
+
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/packages/shared
+
+
+ Test Files  37 passed (37)
+      Tests  680 passed (680)
+   Start at  07:54:15
+   Duration  3.15s (tests 46%, import 39%, transform 13%, worker 2%)
+
+    Isolate  37 workers spawned · ~56ms startup each (spawn + environment, per file)
+             at least ~977ms faster with isolate: false — reuses workers across files instead of one per file
+
+exit=0
+
+$ npm run typecheck -w @dems/shared   (07:54:18)
+
+> @dems/shared@0.1.0 typecheck
+> tsc --noEmit
+
+exit=0
+
+$ npm run lint -w @dems/shared   (07:54:20)
+
+> @dems/shared@0.1.0 lint
+> oxlint
+
+exit=0
+
+$ npm run typecheck -w @dems/core-web   (07:54:20)
+
+> @dems/core-web@0.1.0 typecheck
+> tsc -b
+
+exit=0
+
+$ npm run typecheck -w @dems/mobile   (07:54:33)
+
+> @dems/mobile@0.1.0 typecheck
+> tsc --noEmit
+
+exit=0
+
+# Confirmation run after the documents were written
+2026-10-04 07:58:28 WIB
+
+$ npm run test -w @dems/shared -- --maxWorkers=2   (07:58:28)
+
+> @dems/shared@0.1.0 test
+> vitest run --maxWorkers=2
+
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/packages/shared
+
+
+ Test Files  37 passed (37)
+      Tests  680 passed (680)
+   Start at  07:58:28
+   Duration  2.31s (tests 48%, import 37%, transform 14%, worker 2%)
+
+    Isolate  37 workers spawned · ~42ms startup each (spawn + environment, per file)
+             at least ~732ms faster with isolate: false — reuses workers across files instead of one per file
+
+exit=0
+
+$ npm run typecheck -w @dems/shared   (07:58:30)
+
+> @dems/shared@0.1.0 typecheck
+> tsc --noEmit
+
+exit=0
+
+$ npm run lint -w @dems/shared   (07:58:32)
+
+> @dems/shared@0.1.0 lint
+> oxlint
+
+exit=0
+
+$ npm run typecheck -w @dems/core-web   (07:58:32)
+
+> @dems/core-web@0.1.0 typecheck
+> tsc -b
+
+exit=0
+
+$ npm run typecheck -w @dems/mobile   (07:58:39)
+
+> @dems/mobile@0.1.0 typecheck
+> tsc --noEmit
+
+exit=0

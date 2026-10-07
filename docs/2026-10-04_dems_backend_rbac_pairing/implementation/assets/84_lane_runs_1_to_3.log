@@ -1,0 +1,234 @@
+
+== 05:04:31 0. the three ports must be free before anything is started (nothing is stopped that this check did not start)
+free: 4423 5178 9398
+2026-10-06 05:04:31 WIB
+ 5:04  up 4 days, 12:17, 2 users, load averages: 4.35 3.37 2.73
+
+== 05:04:31 1. lane database before the check: npm run db:status -w @dems/core-server -- --database dems_lane_3
+db:status exit 0
+seeded_at        2026-10-05T19:06:24.606Z (1791227184606)
+last_reset_at    2026-10-05T19:06:24.606Z (1791227184606)
+audit head       seq 86; hash 59a47d56a7d448d6...
+audit triggers   audit_chain_history_append_only=A, audit_log_append_only=A, audit_log_chain_guard=A
+  audit_log                86
+  auth_sessions            24
+  operators                3
+  pairing_codes            1
+
+== 05:04:32 2. start the lane backend: DEMS_CORE_PORT=4423 npm run start -w @dems/core-server (demo flag OFF)
+backend up after 4 quarter seconds (attempt 1), npm pid 3308
+COMMAND  PID     USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
+node    3336 gsp-budi   18u  IPv4 0xe7f36f75c465c44e      0t0  TCP 127.0.0.1:4423 (LISTEN)
+-- direct health on the backend:
+{"status":"ok","service":"dems-core-server","version":"0.2.0","apiVersion":"v1","serverTime":"2026-10-05T22:04:33.130Z","uptimeMs":298,"ws":{"path":"/ws","heartbeatIntervalMs":1000,"clients":0},"ready":{"database":true,"engine":true}}
+
+== 05:04:33 3. start Vite for lane 3: DEMS_CORE_PROXY_PORT=4423 VITE_DEMS_CORE_MODE=live npm run dev -w @dems/core-web -- --host 127.0.0.1 --port 5178 --strictPort
+waited 2 quarter seconds
+COMMAND  PID     USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
+node    3376 gsp-budi   14u  IPv4 0x48d4f099ba9ff2d6      0t0  TCP 127.0.0.1:5178 (LISTEN)
+
+== 05:04:33 4. AC-C-33: curl -si http://127.0.0.1:5178/api/v1/health
+HTTP/1.1 200 OK
+content-security-policy: default-src 'none'; frame-ancestors 'none'
+cross-origin-resource-policy: same-origin
+referrer-policy: no-referrer
+x-content-type-options: nosniff
+content-type: application/json; charset=utf-8
+cache-control: no-store
+x-request-id: 3c44e3a8-ec92-40a5-9b4a-aa848efb8095
+content-length: 234
+date: Mon, 05 Oct 2026 22:04:33 GMT
+connection: close
+
+{"status":"ok","service":"dems-core-server","version":"0.2.0","apiVersion":"v1","serverTime":"2026-10-05T22:04:33.788Z","uptimeMs":956,"ws":{"path":"/ws","heartbeatIntervalMs":1000,"clients":0},"ready":{"database":true,"engine":true}}
+-- access-control-allow- headers in that answer: 0
+-- service: "service":"dems-core-server"
+
+== 05:04:33 7. the API Reference page in a real browser, both modes (headless Chromium over CDP)
+chrome pid 3395
+cdp-driver exit 0
+  "elapsedSeconds": 84
+}
+cdp-driver: the output held the seeded password before redaction: false
+
+== 05:05:58 8. what Vite printed (hot update lines; no page error)
+-- lines in Vite's log:        8
+
+== 05:05:58 9. lane database after the check
+db:status exit 0
+-- row counts that differ (before / after):
+< audit head       seq 86; hash 59a47d56a7d448d6...
+> audit head       seq 88; hash 81065c3a5977d808...
+<   audit_log                86
+<   auth_sessions            24
+>   audit_log                88
+>   auth_sessions            25
+<   events                   63
+>   events                   66
+<   health_snapshots         0
+>   health_snapshots         1
+-- the backend's log: lines       46; lines with level error or fatal: 0
+
+== 05:05:58 stop what this check started
+chrome stopped
+vite: npm exit status 143
+backend: npm exit status 0
+
+== 05:05:59 listeners left on 4423, 5178, 9398 (expect none):
+lsof exit 1 (1 with no output: no listener)
+
+== 05:07:26 0. the three ports must be free before anything is started (nothing is stopped that this check did not start)
+free: 4423 5178 9398
+2026-10-06 05:07:26 WIB
+ 5:07  up 4 days, 12:20, 2 users, load averages: 3.75 3.79 3.04
+
+== 05:07:26 1. lane database before the check: npm run db:status -w @dems/core-server -- --database dems_lane_3
+db:status exit 0
+seeded_at        2026-10-05T19:06:24.606Z (1791227184606)
+last_reset_at    2026-10-05T19:06:24.606Z (1791227184606)
+audit head       seq 88; hash 81065c3a5977d808...
+audit triggers   audit_chain_history_append_only=A, audit_log_append_only=A, audit_log_chain_guard=A
+  audit_log                88
+  auth_sessions            25
+  operators                3
+  pairing_codes            1
+
+== 05:07:27 2. start the lane backend: DEMS_CORE_PORT=4423 npm run start -w @dems/core-server (demo flag OFF)
+backend up after 3 quarter seconds (attempt 1), npm pid 4423
+COMMAND  PID     USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
+node    4444 gsp-budi   17u  IPv4 0xa0d6f8c5dc0d0dea      0t0  TCP 127.0.0.1:4423 (LISTEN)
+-- direct health on the backend:
+{"status":"ok","service":"dems-core-server","version":"0.2.0","apiVersion":"v1","serverTime":"2026-10-05T22:07:27.975Z","uptimeMs":224,"ws":{"path":"/ws","heartbeatIntervalMs":1000,"clients":0},"ready":{"database":true,"engine":true}}
+
+== 05:07:27 3. start Vite for lane 3: DEMS_CORE_PROXY_PORT=4423 VITE_DEMS_CORE_MODE=live npm run dev -w @dems/core-web -- --host 127.0.0.1 --port 5178 --strictPort
+waited 2 quarter seconds
+COMMAND  PID     USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
+node    4479 gsp-budi   14u  IPv4 0x148e21278bbd6242      0t0  TCP 127.0.0.1:5178 (LISTEN)
+
+== 05:07:28 4. AC-C-33: curl -si http://127.0.0.1:5178/api/v1/health
+HTTP/1.1 200 OK
+content-security-policy: default-src 'none'; frame-ancestors 'none'
+cross-origin-resource-policy: same-origin
+referrer-policy: no-referrer
+x-content-type-options: nosniff
+content-type: application/json; charset=utf-8
+cache-control: no-store
+x-request-id: bdb60efa-a7cd-443d-990f-7f037cad0ea8
+content-length: 234
+date: Mon, 05 Oct 2026 22:07:28 GMT
+connection: close
+
+{"status":"ok","service":"dems-core-server","version":"0.2.0","apiVersion":"v1","serverTime":"2026-10-05T22:07:28.638Z","uptimeMs":887,"ws":{"path":"/ws","heartbeatIntervalMs":1000,"clients":0},"ready":{"database":true,"engine":true}}
+-- access-control-allow- headers in that answer: 0
+-- service: "service":"dems-core-server"
+
+== 05:07:28 7. the API Reference page in a real browser, both modes (headless Chromium over CDP)
+chrome pid 4497
+cdp-driver exit 0
+  "elapsedSeconds": 91
+}
+cdp-driver: the output held the seeded password before redaction: false
+
+== 05:08:59 8. what Vite printed (hot update lines; no page error)
+-- lines in Vite's log:        9
+
+== 05:08:59 9. lane database after the check
+db:status exit 0
+-- row counts that differ (before / after):
+< audit head       seq 88; hash 81065c3a5977d808...
+> audit head       seq 90; hash 51af15751aace419...
+<   audit_log                88
+<   auth_sessions            25
+>   audit_log                90
+>   auth_sessions            26
+<   events                   66
+>   events                   69
+<   health_snapshots         1
+>   health_snapshots         2
+-- the backend's log: lines       47; lines with level error or fatal: 0
+
+== 05:09:00 stop what this check started
+chrome stopped
+vite: npm exit status 143
+backend: npm exit status 0
+
+== 05:09:00 listeners left on 4423, 5178, 9398 (expect none):
+lsof exit 1 (1 with no output: no listener)
+
+== 05:09:45 0. the three ports must be free before anything is started (nothing is stopped that this check did not start)
+free: 4423 5178 9398
+2026-10-06 05:09:45 WIB
+ 5:09  up 4 days, 12:22, 2 users, load averages: 2.69 3.34 2.96
+
+== 05:09:45 1. lane database before the check: npm run db:status -w @dems/core-server -- --database dems_lane_3
+db:status exit 0
+seeded_at        2026-10-05T19:06:24.606Z (1791227184606)
+last_reset_at    2026-10-05T19:06:24.606Z (1791227184606)
+audit head       seq 90; hash 51af15751aace419...
+audit triggers   audit_chain_history_append_only=A, audit_log_append_only=A, audit_log_chain_guard=A
+  audit_log                90
+  auth_sessions            26
+  operators                3
+  pairing_codes            1
+
+== 05:09:45 2. start the lane backend: DEMS_CORE_PORT=4423 npm run start -w @dems/core-server (demo flag OFF)
+backend up after 3 quarter seconds (attempt 1), npm pid 5300
+COMMAND  PID     USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
+node    5321 gsp-budi   17u  IPv4 0x6223789639214b8a      0t0  TCP 127.0.0.1:4423 (LISTEN)
+-- direct health on the backend:
+{"status":"ok","service":"dems-core-server","version":"0.2.0","apiVersion":"v1","serverTime":"2026-10-05T22:09:46.676Z","uptimeMs":367,"ws":{"path":"/ws","heartbeatIntervalMs":1000,"clients":0},"ready":{"database":true,"engine":true}}
+
+== 05:09:46 3. start Vite for lane 3: DEMS_CORE_PROXY_PORT=4423 VITE_DEMS_CORE_MODE=live npm run dev -w @dems/core-web -- --host 127.0.0.1 --port 5178 --strictPort
+waited 1 quarter seconds
+COMMAND  PID     USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
+node    5356 gsp-budi   14u  IPv4 0xecdb0512f12ee0e2      0t0  TCP 127.0.0.1:5178 (LISTEN)
+
+== 05:09:47 4. AC-C-33: curl -si http://127.0.0.1:5178/api/v1/health
+HTTP/1.1 200 OK
+content-security-policy: default-src 'none'; frame-ancestors 'none'
+cross-origin-resource-policy: same-origin
+referrer-policy: no-referrer
+x-content-type-options: nosniff
+content-type: application/json; charset=utf-8
+cache-control: no-store
+x-request-id: 61509a58-45b2-411f-aa1d-3ee806fb2ab4
+content-length: 234
+date: Mon, 05 Oct 2026 22:09:47 GMT
+connection: close
+
+{"status":"ok","service":"dems-core-server","version":"0.2.0","apiVersion":"v1","serverTime":"2026-10-05T22:09:47.033Z","uptimeMs":725,"ws":{"path":"/ws","heartbeatIntervalMs":1000,"clients":0},"ready":{"database":true,"engine":true}}
+-- access-control-allow- headers in that answer: 0
+-- service: "service":"dems-core-server"
+
+== 05:09:47 7. the API Reference page in a real browser, both modes (headless Chromium over CDP)
+chrome pid 5382
+cdp-driver exit 0
+  "elapsedSeconds": 143
+}
+cdp-driver: the output held the seeded password before redaction: false
+
+== 05:12:10 8. what Vite printed (hot update lines; no page error)
+-- lines in Vite's log:        8
+
+== 05:12:10 9. lane database after the check
+db:status exit 0
+-- row counts that differ (before / after):
+< audit head       seq 90; hash 51af15751aace419...
+> audit head       seq 92; hash cc76471ab80269b4...
+<   audit_log                90
+<   auth_sessions            26
+>   audit_log                92
+>   auth_sessions            27
+<   events                   69
+>   events                   73
+<   health_snapshots         2
+>   health_snapshots         4
+-- the backend's log: lines       57; lines with level error or fatal: 0
+
+== 05:12:11 stop what this check started
+chrome stopped
+vite: npm exit status 143
+backend: npm exit status 0
+
+== 05:12:11 listeners left on 4423, 5178, 9398 (expect none):
+lsof exit 1 (1 with no output: no listener)

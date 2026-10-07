@@ -156,7 +156,10 @@ describe('the folder\'s production files (CLG (c); rules 1, 3; 08a §15)', () =>
       for (const match of text.matchAll(/^import\s+(type\s+)?[^\n]*?from\s+'(@dems\/shared\/client|@dems\/shared\/live\/source)'/gm)) expect(match[1], `${name}: ${match[0]}`).toBe('type ')
     }
     const calls = files.flatMap(({ text }) => [...text.matchAll(/client\.call\('([A-Za-z]+)'/g)].map((match) => match[1]))
-    expect(calls.sort()).toEqual(['assignUserRole', 'disableUser', 'enableUser', 'getRoleMatrix', 'listUsers'])
+    // FXR-W W92-8 (by design): operation 10's key is shared with Security & Audit, so its one call lives in
+    // `lib/core-queries.ts`; the page reads it through `roleMatrixQueryOptions`.
+    expect(calls.sort()).toEqual(['assignUserRole', 'disableUser', 'enableUser', 'listUsers'])
+    expect(files.find(({ name }) => name === 'queries.ts')?.text).toMatch(/useQuery\(roleMatrixQueryOptions\(useRoleMatrixGate\(\), allowed\)\)/)
   })
 
   it('rule 3: every query key is one of `CORE_QUERY_KEYS`; no literal key starts with `\'core\'`', () => {

@@ -61,6 +61,8 @@ describe('the three folders take the Core through the light Live API (CLG c, AC-
       'session-finalizing/finalization-pipeline.tsx',
       'session-finalizing/finalizing.model.ts',
       'session-finalizing/flow-boundary.tsx',
+      // E-fix row FX-M2 (E2E-P-4): the monitor-to-Finalizing hand-over mark (one slot, no timer).
+      'session-finalizing/handover.ts',
       'session-finalizing/i18n.ts',
       'session-finalizing/sealed-stamp.tsx',
       'session-finalizing/session-finalizing-screen.tsx',
@@ -70,6 +72,7 @@ describe('the three folders take the Core through the light Live API (CLG c, AC-
       'session-summary/session-summary-screen.tsx',
       'session-summary/sim-adapter.ts',
       'session-summary/stamp-once.ts',
+      'session-summary/summary-handoff.ts',
       'session-summary/summary.model.ts',
       'session-summary/use-sheet-presence.tsx',
       'session-summary/use-summary.ts',

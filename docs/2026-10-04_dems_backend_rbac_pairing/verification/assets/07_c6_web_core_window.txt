@@ -1,0 +1,11 @@
+T0=1791344219650 corelog_lines_before=     533
+T1=1791344245743 corelog_lines_after=     538
+window 2026-10-07 10:36:59.650 WIB .. 2026-10-07 10:37:25.743 WIB; log lines total 536
+  2026-10-07 10:37:00.370 WIB | socket opened |  |  ANONYMOUS
+  2026-10-07 10:37:00.374 WIB | request completed | GET /api/v1/auth/session 401 |
+  2026-10-07 10:37:00.374 WIB | request completed | GET /api/v1/auth/status 200 |
+  2026-10-07 10:37:00.515 WIB | request completed | GET /api/v1/health 200 |
+  2026-10-07 10:37:03.658 WIB | socket closed |  |
+request lines: 3; socket lines: 2; other lines: 0
+window 2026-10-07 10:37:05.569 WIB .. 2026-10-07 10:37:25.743 WIB; log lines total 536
+request lines: 0; socket lines: 0; other lines: 0

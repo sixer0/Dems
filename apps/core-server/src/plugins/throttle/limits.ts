@@ -11,6 +11,7 @@
  *   device:<device ID>    operations 2, 3, 8 and 9                    every other request and upgrade
  *   operator:<operator>   (none)                                      every request and upgrade
  */
+import type { RegistryOperationId } from '../../core';
 import type { Principal } from '../authenticate';
 import { OriginCategory } from '../origin-guard';
 
@@ -52,16 +53,19 @@ export const THROTTLE_BUCKET_MAX: Readonly<Record<ThrottleBucket, number>> = {
   WIDE: THROTTLE_WIDE_MAX,
 };
 
-/** Operation 1 of the registry: counted apart for a class, and never blocked by the denial budget. */
-export const HEALTH_OPERATION = 'getServiceHealth';
+/**
+ * Operation 1 of the registry: counted apart for a class, and never blocked by the denial budget.
+ * Checked against the registry's operation IDs at compile time (review findings CPB1-18, W91-5).
+ */
+export const HEALTH_OPERATION = 'getServiceHealth' satisfies RegistryOperationId;
 
-/** Operations 2, 3, 8 and 9 of the registry: the sign-in entry points of a paired device. */
+/** Operations 2, 3, 8 and 9 of the registry: the sign-in entry points of a paired device. Checked as above. */
 export const DEVICE_SIGN_IN_OPERATIONS: readonly string[] = [
   'signIn',
   'getSignInStatus',
   'signInWithBiometric',
   'reportBiometricFailure',
-];
+] satisfies RegistryOperationId[];
 
 /**
  * The key of a resolved principal; null for ANONYMOUS. All sessions of one operator share a

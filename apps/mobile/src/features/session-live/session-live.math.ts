@@ -82,11 +82,9 @@ export function usesCameraTabs(arrangement: MonitorArrangement): boolean {
 // Timer (S2; S4: clock-derived, so it survives a reconnect or relaunch without resetting)
 // ---------------------------------------------------------------------------------------------
 
-/** Whole seconds since `startedAtMs` at `nowMs` (both on the simulator clock); 0 before start. */
-export function elapsedSecondsAt(startedAtMs: number | null | undefined, nowMs: number): number {
-  if (startedAtMs === null || startedAtMs === undefined || !Number.isFinite(startedAtMs) || !Number.isFinite(nowMs)) return 0;
-  return Math.max(0, Math.floor((nowMs - startedAtMs) / 1000));
-}
+// The timer's maths moved to the runtime with the recording time itself (post-review fix FXR-M, W93-1):
+// `runtime/recording-elapsed.ts` is the one rule. Re-exported here for the feature's tests.
+export { SECOND_TICK_MARGIN_MS, SECOND_TICK_MIN_MS, elapsedSecondsAt, msToNextSecond } from '@/runtime';
 
 // ---------------------------------------------------------------------------------------------
 // Camera identity

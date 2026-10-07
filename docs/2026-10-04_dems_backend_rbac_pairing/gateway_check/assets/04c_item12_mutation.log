@@ -1,0 +1,10 @@
+PASS  touch=no   biometric sign-in as a DEVICE principal (no session) — the ONLY production shape of op 8
+PASS  touch=no   same, with the OLD list: identical outcome (the entry was inert)
+PASS  touch=no   password sign-in presenting a session (exempt)
+PASS  touch=no   sign-out presenting a session (exempt)
+PASS  touch=YES  a normal command presenting a session (not exempt, interval passed) — vacuity
+PASS  touch=no   UNREACHABLE in production: operator session on op 8 — OLD avoids touch, NEW touches (why the old unit test had to change)
+
+Unreachable-input contrast: OLD touch=false vs NEW touch=true (differs only here; every reachable input is identical)
+
+ALL CASES AS EXPECTED

@@ -1,0 +1,19 @@
+# 2026-10-07 10:32:01 WIB KI-07 (plan §17 command): grep -rhoE "SIM-GAP-M[0-9]+-[0-9]+" apps/mobile/src | sort | uniq -c
+   4 SIM-GAP-M80-1
+   9 SIM-GAP-M81-1
+   5 SIM-GAP-M81-2
+   6 SIM-GAP-M81-3
+   1 SIM-GAP-M81-4
+   6 SIM-GAP-M83-1
+   2 SIM-GAP-M83-2
+   6 SIM-GAP-M84-1
+   8 SIM-GAP-M84-2
+   3 SIM-GAP-M84-3
+   5 SIM-GAP-M85-1
+   5 SIM-GAP-M85-2
+   2 SIM-GAP-M88-1
+IDs=13 markers=62
+# grep -rc form (sum of per-file line counts, files with >0):
+files=27 lines=61
+# at acaff20 (git grep, same regex):
+markers=62 IDs=13

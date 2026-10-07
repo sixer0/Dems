@@ -1,0 +1,37 @@
+## 2026-10-06 01:27:17 WIB  1:27  2 users, load averages: 4.81 4.55 4.92
+## $ npm run test -w @dems/mobile -- --maxWorkers=2
+exit=1
+FAIL src/runtime/session-route-sync-live.test.tsx
+Test Suites: 1 failed, 128 passed, 129 total
+Tests:       1 failed, 1583 passed, 1584 total
+Time:        120.775 s
+## 01:29:18 $ npm run typecheck -w @dems/mobile
+exit=0
+## 01:29:26 $ npm run lint -w @dems/mobile
+exit=0
+lint lines with warning/problem: 0
+## 01:29:43 $ git diff --stat acaff20 -- apps/mobile/src/features/sessions
+ apps/mobile/src/features/sessions/i18n.ts          |  6 ++++
+ .../src/features/sessions/sessions-screen.tsx      | 34 ++++++++++++++++++----
+ 2 files changed, 34 insertions(+), 6 deletions(-)
+$ git status --short --untracked-files=all -- apps/mobile/src/features/sessions apps/mobile/src/features/session-finalizing
+ M apps/mobile/src/features/sessions/i18n.ts
+ M apps/mobile/src/features/sessions/sessions-screen.tsx
+?? apps/mobile/src/features/session-finalizing/live-finalizing.test.tsx
+?? apps/mobile/src/features/sessions/live-sessions.test.tsx
+$ git diff --stat acaff20 -- apps/mobile/src/features/session-finalizing
+(end)
+$ git diff --stat acaff20 -- <the 10 existing test files>: 0 lines
+## KI-07: 13 IDs / 62 markers
+## the hub suites in this run:
+PASS src/features/session-finalizing/finalizing.model.test.ts
+PASS src/features/session-finalizing/live-finalizing.test.tsx
+PASS src/features/session-finalizing/session-finalizing-screen.test.tsx
+PASS src/features/session-summary/live-summary-sites.test.tsx
+PASS src/features/session-summary/session-summary-screen.test.tsx
+PASS src/features/session-summary/summary-live-static.test.ts
+PASS src/features/session-summary/summary.model.test.ts
+PASS src/features/sessions/live-sessions.test.tsx
+PASS src/features/sessions/sessions-model.test.ts
+PASS src/features/sessions/sessions-screen.test.tsx
+## finished 01:29:43

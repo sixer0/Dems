@@ -1,0 +1,10 @@
+mark E2E-T-2 cycle 1: Evidence detail -> More -> tap outside -> rail Devices at 12:52:57.992
+tap 2395,1463 at 12:52:58.119
+slept 1500 ms
+screencap T2_c1a_evidence_more_menu.png (801358 bytes) at 12:52:59.905
+tap 1700,110 at 12:52:59.968
+slept 1000 ms
+tap 227,528 at 12:53:01.051
+slept 1500 ms
+screencap T2_c1_devices_1500ms.png (414206 bytes) at 12:53:02.942
+ids: 93 nodes -> q/t2_c1_devices.txt

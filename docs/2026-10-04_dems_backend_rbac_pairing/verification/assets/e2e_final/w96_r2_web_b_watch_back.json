@@ -1,0 +1,28 @@
+{
+  "tag": "w96_r2_web_b_watch_back",
+  "expr": "(() => { const l = document.querySelector('[data-testid=start-new-session-locked]'), b = document.querySelector('[data-testid=start-new-session]'); return (l || b?.disabled ? 'LOCKED' : b ? 'UNLOCKED' : 'none') + (l ? ' (' + l.getAttribute('aria-label') + ')' : '') + ' | toasts: ' + [...document.querySelectorAll('[data-slot=toast]')].map(t => t.textContent.replace(/\\s+/g,' ').trim().slice(0,80)).join(' / ') })()",
+  "sameDocument": true,
+  "events": [
+    {
+      "at": "09:20:26.926 (epoch 1791339626.926)",
+      "atMs": 1791339626926,
+      "value": "\"LOCKED (Start New Session: Requires the Investigator role) | toasts: \""
+    },
+    {
+      "at": "09:20:32.356 (epoch 1791339632.356)",
+      "atMs": 1791339632356,
+      "value": "\"UNLOCKED | toasts: Your role is now Investigator. The available actions have changed.\""
+    },
+    {
+      "at": "09:20:36.671 (epoch 1791339636.671)",
+      "atMs": 1791339636671,
+      "value": "\"UNLOCKED | toasts: \""
+    }
+  ],
+  "network": {
+    "api": [],
+    "origins": [],
+    "sockets": [],
+    "console": []
+  }
+}

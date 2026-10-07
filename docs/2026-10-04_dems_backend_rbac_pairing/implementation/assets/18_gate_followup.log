@@ -1,0 +1,226 @@
+# Step 40 (W18), follow-up F40-2 (light constants): gate, from /Users/gsp-budi/Documents/DEMS
+2026-10-04 08:02:43 WIB
+ 8:02  1 user, load averages: 3.36 3.68 3.99
+
+$ npm run test -w @dems/shared -- --maxWorkers=2   (08:02:43)
+
+> @dems/shared@0.1.0 test
+> vitest run --maxWorkers=2
+
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/packages/shared
+
+
+ Test Files  38 passed (38)
+      Tests  689 passed (689)
+   Start at  08:02:43
+   Duration  2.63s (tests 47%, import 37%, transform 14%, worker 2%)
+
+    Isolate  38 workers spawned · ~46ms startup each (spawn + environment, per file)
+             at least ~820ms faster with isolate: false — reuses workers across files instead of one per file
+
+exit=0
+
+$ npm run typecheck -w @dems/shared   (08:02:46)
+
+> @dems/shared@0.1.0 typecheck
+> tsc --noEmit
+
+exit=0
+
+$ npm run lint -w @dems/shared   (08:02:47)
+
+> @dems/shared@0.1.0 lint
+> oxlint
+
+exit=0
+
+$ npm run typecheck -w @dems/core-web   (08:02:47)
+
+> @dems/core-web@0.1.0 typecheck
+> tsc -b
+
+exit=0
+
+$ npm run typecheck -w @dems/mobile   (08:02:56)
+
+> @dems/mobile@0.1.0 typecheck
+> tsc --noEmit
+
+exit=0
+
+# Confirmation run after the documents were written
+2026-10-04 08:04:44 WIB
+
+$ npm run test -w @dems/shared -- --maxWorkers=2   (08:04:44)
+
+> @dems/shared@0.1.0 test
+> vitest run --maxWorkers=2
+
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/packages/shared
+
+ ❯ test/openapi.test.ts (21 tests | 1 failed) 92ms
+   ❯ AC-56: the OpenAPI document (11)
+     × matches the committed openapi/openapi.json byte for byte (no drift) 12ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  test/openapi.test.ts > AC-56: the OpenAPI document > matches the committed openapi/openapi.json byte for byte (no drift)
+AssertionError: expected '{\n  "openapi": "3.1.0",\n  "info": {…' to be '{\n  "openapi": "3.1.0",\n  "info": {…' // Object.is equality
+
+- Expected
++ Received
+
+@@ -1719,14 +1719,11 @@
+              "type": "string",
+              "const": "ok"
+            },
+            "service": {
+              "type": "string",
+-             "enum": [
+-               "dems-mock-core",
+-               "dems-core-server"
+-             ]
++             "const": "dems-mock-core"
+            },
+            "version": {
+              "type": "string",
+              "minLength": 1
+            },
+@@ -1760,25 +1757,10 @@
+              },
+              "required": [
+                "path",
+                "heartbeatIntervalMs",
+                "clients"
+-             ]
+-           },
+-           "ready": {
+-             "type": "object",
+-             "properties": {
+-               "database": {
+-                 "type": "boolean"
+-               },
+-               "engine": {
+-                 "type": "boolean"
+-               }
+-             },
+-             "required": [
+-               "database",
+-               "engine"
+              ]
+            }
+          },
+          "required": [
+            "status",
+
+ ❯ test/openapi.test.ts:139:23
+    137|     const committed = readFileSync(OPENAPI_JSON_PATH, 'utf8');
+    138|     expect(renderOpenApiJson()).toBe(serializeOpenApiDocument(document…
+    139|     expect(committed).toBe(renderOpenApiJson());
+       |                       ^
+    140|   });
+    141|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 37 passed (38)
+      Tests  1 failed | 688 passed (689)
+   Start at  08:04:44
+   Duration  2.75s (tests 47%, import 38%, transform 13%, worker 2%)
+
+    Isolate  38 workers spawned · ~47ms startup each (spawn + environment, per file)
+             at least ~839ms faster with isolate: false — reuses workers across files instead of one per file
+
+npm error Lifecycle script `test` failed with error:
+npm error code 1
+npm error path /Users/gsp-budi/Documents/DEMS/packages/shared
+npm error workspace @dems/shared@0.1.0
+npm error location /Users/gsp-budi/Documents/DEMS/packages/shared
+npm error command failed
+npm error command sh -c vitest run --maxWorkers=2
+exit=1
+
+$ npm run typecheck -w @dems/shared   (08:04:47)
+
+> @dems/shared@0.1.0 typecheck
+> tsc --noEmit
+
+exit=0
+
+$ npm run lint -w @dems/shared   (08:04:49)
+
+> @dems/shared@0.1.0 lint
+> oxlint
+
+exit=0
+
+$ npm run typecheck -w @dems/core-web   (08:04:49)
+
+> @dems/core-web@0.1.0 typecheck
+> tsc -b
+
+exit=0
+
+$ npm run typecheck -w @dems/mobile   (08:04:59)
+
+> @dems/mobile@0.1.0 typecheck
+> tsc --noEmit
+
+exit=0
+
+# Re-runs (P11): the one failure is in test/openapi.test.ts, a file of the contract-owner row, which is editing packages/shared/src/api/** right now
+2026-10-04 08:05:40 WIB
+$ stat (modification times of the contract files changed after the green gate of 08:02:43)
+10-01 10:26:43  packages/shared/src/api/openapi.ts
+10-04 08:03:00  packages/shared/src/api/constants.ts
+10-04 08:03:08  packages/shared/src/api/patterns.ts
+10-04 08:03:25  packages/shared/src/api/text.ts
+10-04 08:03:57  packages/shared/src/api/health.ts
+10-04 08:04:55  packages/shared/src/api/contract-model.ts
+10-04 08:05:12  packages/shared/src/api/schema-parts.ts
+
+$ npm run test -w @dems/shared -- --maxWorkers=2   (08:05:40)
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/packages/shared
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  test/openapi.test.ts > AC-56: the OpenAPI document > matches the committed openapi/openapi.json byte for byte (no drift)
+ Test Files  1 failed | 37 passed (38)
+      Tests  1 failed | 688 passed (689)
+   Start at  08:05:40
+exit=1
+
+$ npm run test -w @dems/shared -- --maxWorkers=2 --exclude test/openapi.test.ts   (08:05:43)
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/packages/shared
+ Test Files  37 passed (37)
+      Tests  668 passed (668)
+   Start at  08:05:43
+exit=0
+
+$ npm run test -w @dems/shared -- --maxWorkers=2 test/live-light   (08:05:46)
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/packages/shared
+ Test Files  7 passed (7)
+      Tests  102 passed (102)
+   Start at  08:05:46
+exit=0
+
+# Last reading before the return (2026-10-04 08:07:01 WIB): both red results are in files of the contract-owner row, mid-edit
+$ npm run test -w @dems/shared -- --maxWorkers=2
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  test/openapi.test.ts > AC-56: the OpenAPI document > matches the committed openapi/openapi.json byte for byte (no drift)
+ Test Files  1 failed | 37 passed (38)
+      Tests  1 failed | 688 passed (689)
+   Start at  08:07:01
+exit=1
+$ npm run typecheck -w @dems/shared
+src/api/example-parts.ts(46,51): error TS2339: Property 'details' does not exist on type '{ code: string; message: string; }'.
+src/api/example-parts.ts(49,69): error TS2353: Object literal may only specify known properties, and 'requestId' does not exist in type '{ code: string; message: string; }'.
+exit=2
+$ npm run lint -w @dems/shared
+exit=0
+$ stat
+10-04 08:04:55  packages/shared/src/api/contract-model.ts
+10-04 08:05:12  packages/shared/src/api/schema-parts.ts
+10-04 08:06:30  packages/shared/src/api/example-parts.ts
+10-04 08:06:50  packages/shared/src/api/response-specs.ts

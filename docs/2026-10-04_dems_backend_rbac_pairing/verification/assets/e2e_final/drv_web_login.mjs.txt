@@ -1,0 +1,22 @@
+// Sign in THROUGH THE FORM on context CTX as <username> (password from the seed constant, never printed), land on <path>.
+//   CTX=b node --import tsx web_login.mjs <username> <path> <shot.png>
+import { DEMO_OPERATOR_PASSWORD, OPERATORS } from '/Users/gsp-budi/Documents/DEMS/packages/shared/src/sim/dataset.ts'
+import { ORIGIN, connect, log, sleep } from './lib.mjs'
+const [username, path = '/', shot] = process.argv.slice(2)
+const op = OPERATORS.find((o) => o.username === username)
+if (!op) throw new Error('unknown operator')
+const page = await connect()
+await page.navigate(`${ORIGIN}/login`)
+log(`login at ${await page.href()}; core mode ${await page.evaluate(`document.querySelector('[data-testid="page-login"]')?.getAttribute('data-core-mode') ?? null`, 'mode')}`)
+await page.typeInto('[data-testid="login-username-field"] input', op.username, 'username')
+await page.typeInto('[data-testid="login-password-field"] input', DEMO_OPERATOR_PASSWORD, 'password')
+await page.press('login-submit')
+log(`dashboard: ${await page.waitFor('page-dashboard', true, 25000)}; signed in as ${op.username} (${op.id})`)
+await sleep(1500)
+if (path !== '/') await page.navigate(`${ORIGIN}${path}`, 3000)
+log(`at ${await page.href()}`)
+await sleep(2600)
+if (shot) log(JSON.stringify(await page.screenshot(shot)))
+const net = page.takeNetwork()
+log(`api: ${net.api.map((a) => `${a.method} ${a.path} ${a.status}`).join(' | ')}; origins ${net.origins.join(', ')}`)
+page.close()

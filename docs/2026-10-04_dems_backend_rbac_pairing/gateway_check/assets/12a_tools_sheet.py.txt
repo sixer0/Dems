@@ -1,0 +1,17 @@
+"""sheet.py <frames_dir> <out.png> <scale> <frame names...> : labelled contact sheet."""
+import sys, os
+from PIL import Image, ImageDraw
+d, out, scale = sys.argv[1], sys.argv[2], float(sys.argv[3])
+names = sys.argv[4:]
+ims = [Image.open(os.path.join(d, n)).convert('RGB') for n in names]
+w, h = ims[0].size
+tw, th = int(w * scale), int(h * scale)
+cols = min(len(ims), 6)
+rows = (len(ims) + cols - 1) // cols
+sheet = Image.new('RGB', (cols * tw, rows * (th + 16)), 'white')
+dr = ImageDraw.Draw(sheet)
+for i, (n, im) in enumerate(zip(names, ims)):
+    x, y = (i % cols) * tw, (i // cols) * (th + 16)
+    sheet.paste(im.resize((tw, th)), (x, y + 16))
+    dr.text((x + 3, y + 2), n, fill='black')
+sheet.save(out)

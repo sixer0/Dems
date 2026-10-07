@@ -1,0 +1,125 @@
+#!/usr/bin/env python3
+"""FX-M2b mutation check (nothing in the tree is written): each mutant puts the OLD code back, or breaks
+one guarantee of the new code, IN MEMORY (jest transformer `mutating-transformer.cjs`), and runs the
+tests that must catch it.
+
+  python3 mutate_b.py control        the unmutated test files, once
+  python3 mutate_b.py C N            every mutant of the groups (or single ids)
+Groups: C E2E-P-3 mini-bar clock; N E2E-P-1 / E2E-T-2 nav chrome.
+"""
+import hashlib, json, os, re, subprocess, sys, time
+
+ROOT = '/Users/gsp-budi/Documents/DEMS'
+APP = ROOT + '/apps/mobile'
+HERE = os.path.dirname(os.path.abspath(__file__))
+SPEC = HERE + '/spec_b.json'
+CONFIG = HERE + '/jest.mut.config.cjs'
+RB = ROOT + '/.cache/rollback/FX-M2/apps/mobile/'
+
+MINI = 'src/components/composed/nav/live-mini-bar.tsx'
+ITEM = 'src/components/composed/nav/nav-item.tsx'
+TRACK = 'src/components/composed/nav/use-indicator.ts'
+BAR = 'src/components/composed/nav/bottom-tab-bar.tsx'
+RAIL = 'src/components/composed/nav/nav-rail.tsx'
+TABS = 'src/navigation/app-tabs.tsx'
+
+TESTS = {
+    'C': ['src/components/composed/nav/live-mini-bar-clock.test.tsx'],
+    'N': ['src/navigation/__tests__/chrome-lost-updates.test.tsx', 'src/navigation/__tests__/chrome.test.tsx'],
+}
+
+def e(frm, to):
+    return {'from': frm, 'to': to}
+
+def one(file, edits):
+    return {'files': [{'file': file, 'edits': edits}]}
+
+def old(*pairs):
+    return {'files': [{'file': f, 'replaceWith': w} for f, w in pairs]}
+
+M = [
+  ('C1', 'the old bar: Date.now() on its own 1 s interval (the rollback copy)', old((MINI, RB + MINI))),
+  ('C2', 'the bar reads the device clock against the session start', one(MINI, [e('  return useSim(selectElapsedSeconds);', '  return useSim((s) => Math.max(0, Math.floor((Date.now() - (s.session?.startedAt ?? Date.now())) / 1000)));')])),
+  ('N1', 'the old NavItem: icon opacities and label colour from UI-thread styles only (rollback copy + budget stub)', old((ITEM, HERE + '/old-nav-item.tsx'))),
+  ('N2', 'the old indicator: one animated view placed by a UI-thread transform (rollback copies of the track, bar and rail)', old((TRACK, HERE + '/old-use-indicator.ts'), (BAR, RB + BAR), (RAIL, RB + RAIL))),
+  ('N3', 'the old TabScreenFade: the content itself fades from opacity 0 on the UI thread (rollback copy + budget stub)', old((TABS, HERE + '/old-app-tabs.tsx'))),
+  ('N4', 'an indicator trip never ends (no React commit removes the travelling copy)', one(TRACK, [e('    const timer = setTimeout(() => setTravel((current) => (current?.id === travel.id ? null : current)), indicatorTravelBudgetMs(motion));\n    return () => clearTimeout(timer);', '    return undefined;')])),
+  ('N5', 'a colour fade never ends (the old colours stay laid over the item)', one(ITEM, [e('    const timer = setTimeout(() => setFade((current) => (current?.id === fade.id ? null : current)), colorFadeBudgetMs(m));\n    return () => clearTimeout(timer);', '    return undefined;')])),
+  ('N6', 'the veil is never removed (the screen stays covered)', one(TABS, [e('    const timer = setTimeout(() => setVeil((current) => (current === veil ? null : current)), tabFadeBudgetMs(m));\n    return () => clearTimeout(timer);', '    return undefined;')])),
+  ('N7', 'the settled pill is not hidden while a copy travels (two pills)', one(BAR, [e('style={[styles.pill, settledBoxStyle(pillBox(frame)), travel ? styles.hidden : null]}', 'style={[styles.pill, settledBoxStyle(pillBox(frame))]}')])),
+  ('N8', 'reduced motion still cross-fades the colours', one(ITEM, [e("setFade(m.policy === 'reduced' ? null : { wasActive: seen, id: (fade?.id ?? 0) + 1 });", 'setFade({ wasActive: seen, id: (fade?.id ?? 0) + 1 });')])),
+  ('N9', 'reduced motion still sends the indicator on a trip', one(TRACK, [e("motion.policy !== 'reduced'", 'true')])),
+  ('N10', 'the rail\'s settled card stays hidden after a trip', one(RAIL, [e('travel ? styles.hidden : null]}>', 'styles.hidden]}>')])),
+  ('N11', 'the settled colours follow the first state only (a one-shot value, as the lost update did)', one(ITEM, [e('  const tint = active ? palette.gold : palette.gray;', '  const [first] = useState(active);\n  const tint = first ? palette.gold : palette.gray;')])),
+]
+
+def sha(path):
+    with open(path, 'rb') as f:
+        return hashlib.sha256(f.read()).hexdigest()
+
+def jest(env, tests):
+    return subprocess.run(['node', ROOT + '/node_modules/jest/bin/jest.js', '--config', CONFIG, '--maxWorkers=2', '--silent', *tests],
+                          cwd=APP, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+
+def summary(out):
+    tail = [line.strip() for line in out.splitlines() if line.startswith('Tests:')]
+    files = sorted({line.split()[1].split('/')[-1] for line in out.splitlines() if line.startswith('FAIL ')})
+    first = [re.sub(r'\s+', ' ', line.strip().lstrip('●').strip()) for line in out.splitlines() if line.strip().startswith('● ') and 'Console' not in line]
+    return (tail[-1] if tail else 'no summary line'), files, first[:1]
+
+def load():
+    out = subprocess.run(['uptime'], stdout=subprocess.PIPE, text=True).stdout
+    m = re.search(r'load averages?: ([\d.]+)', out)
+    return float(m.group(1)) if m else 0.0
+
+def wait_for_load():
+    while load() > 14:
+        print('   (load %.1f > 14: pausing 30 s)' % load(), flush=True)
+        time.sleep(30)
+
+def main():
+    wanted = sys.argv[1:]
+    files = sorted({p['file'] for m in M for p in m[2]['files']})
+    before = {f: sha(APP + '/' + f) for f in files}
+    print('# FX-M2b mutation check, %s; the tree is not edited' % time.strftime('%Y-%m-%d %H:%M:%S'), flush=True)
+    if 'control' in wanted:
+        tests = sorted({t for group in TESTS.values() for t in group})
+        wait_for_load()
+        started = time.time()
+        run = jest(dict(os.environ, CI='1'), tests)
+        tail, failed, _ = summary(run.stdout)
+        print('control (no mutation, %d test files): exit=%d %s (%.0f s)' % (len(tests), run.returncode, tail, time.time() - started), flush=True)
+        if run.returncode != 0:
+            print(run.stdout[-4000:])
+            sys.exit(1)
+    chosen = [m for m in M if m[0] in wanted or m[0].rstrip('0123456789') in wanted]
+    detected = missed = unapplied = 0
+    for mid, what, spec in chosen:
+        group = mid.rstrip('0123456789')
+        with open(SPEC, 'w') as f:
+            json.dump(dict(spec, id=mid), f)
+        wait_for_load()
+        started = time.time()
+        run = jest(dict(os.environ, CI='1', FXM2_MUT_SPEC=SPEC), TESTS[group])
+        tail, failed, first = summary(run.stdout)
+        if 'expected exactly 1' in run.stdout:
+            unapplied += 1
+            verdict = 'NOT APPLIED'
+        elif run.returncode != 0:
+            detected += 1
+            verdict = 'DETECTED'
+        else:
+            missed += 1
+            verdict = 'not detected'
+        where = ', '.join(p['file'].split('/')[-1] for p in spec['files'])
+        print('%-4s %-12s %s | %s | %s | failing: %s | first: %s (%.0f s)' % (mid, verdict, what, where, tail, ', '.join(failed) or '-', ' / '.join(first) or '-', time.time() - started), flush=True)
+    if chosen:
+        print('## %d detected, %d not detected, %d not applied, of %d' % (detected, missed, unapplied, len(chosen)), flush=True)
+    after = {f: sha(APP + '/' + f) for f in files}
+    print('## the mutated files in the tree, before and after: %s' % ('identical' if before == after else 'CHANGED'), flush=True)
+    for f in files:
+        print('   %s  %s' % (after[f][:16], f), flush=True)
+    print('# finished %s' % time.strftime('%H:%M:%S'), flush=True)
+
+if __name__ == '__main__':
+    main()

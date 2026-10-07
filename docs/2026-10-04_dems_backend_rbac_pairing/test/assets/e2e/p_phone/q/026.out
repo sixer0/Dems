@@ -1,0 +1,22 @@
+10:02:56.831 tapid pairing-back at 95,224 "Back"
+10:03:00.355 slept 2000 ms
+10:03:02.440 screencap 19d_back_from_pairing.png 10:03:02.440..10:03:04.288
+10:03:04.606 tapid settings-section-header-back at 95,216 "Back"
+10:03:07.368 slept 2000 ms
+10:03:09.448 mark a19 at 10:03:09.448
+10:03:09.531 tapid settings-row-maintenance at 540,2003 "System Maintenance"
+10:03:12.515 slept 2500 ms
+10:03:15.862 declared screen settings-maintenance
+10:03:15.984 screencap 20_settings_maintenance.png 10:03:15.984..10:03:17.369
+10:03:18.355 ids(13): screen-settings-section@540,1102 ; settings-section-header@540,216 ; settings-section-header-back@95,216 "Back" ; settings-section-maintenance@540,1247 ; settings-maintenance@540,851 ; settings-diagnostics@540,505 ; settings-run-diagnostics@540,605 "Run diagnostics" ; settings-update@540,1046 ; settings-update-chip@927,830 "DEMO" ; settings-update-body@540,968 "v2.5.0 available" ; settings-update-live-note@540,1067 "The Core server runs a demonstration update: no software is installed." ; settings-update-install@540,1215 "Install update" ; settings-demo-not-permitted@540,1392 "Your role does not include the demo controls."
+10:03:22.454 swipe 540,1900,540,800 600 ms
+10:03:23.751 slept 1200 ms
+10:03:25.348 screencap 20b_settings_maintenance_scrolled.png 10:03:25.348..10:03:26.477
+10:03:26.755 ids(13): screen-settings-section@540,1102 ; settings-section-header@540,216 ; settings-section-header-back@95,216 "Back" ; settings-section-maintenance@540,1247 ; settings-maintenance@540,851 ; settings-diagnostics@540,505 ; settings-run-diagnostics@540,605 "Run diagnostics" ; settings-update@540,1046 ; settings-update-chip@927,830 "DEMO" ; settings-update-body@540,968 "v2.5.0 available" ; settings-update-live-note@540,1067 "The Core server runs a demonstration update: no software is installed." ; settings-update-install@540,1215 "Install update" ; settings-demo-not-permitted@540,1392 "Your role does not include the demo controls."
+10:03:29.836 js => {"status":401,"d":"{\"error\":{\"code\":\"NOT_SIGNED_IN\",\"message\":\"Sign in first.\",\"requestId\":\"14c3f920-8559-40a6-b0cb-2f01ab73171d\"}}"}
+10:03:29.993 js => {"status":401,"d":"{\"error\":{\"code\":\"NOT_SIGNED_IN\",\"message\":\"Sign in first.\",\"requestId\":\"68957f3c-ae63-4193-8736-5e6a2304eb44\"}}"}
+10:03:30.348 serverlog since a19 (4):
+    10:03:15.370 GET /api/v1/health 200 null
+    10:03:25.396 GET /api/v1/health 200 null
+    10:03:29.882 GET /api/v1/system/status 401 NOT_SIGNED_IN null
+    10:03:30.080 GET /api/v1/demo/status 401 NOT_SIGNED_IN null

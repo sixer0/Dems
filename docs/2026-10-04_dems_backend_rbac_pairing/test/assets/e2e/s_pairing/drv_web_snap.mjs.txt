@@ -1,0 +1,30 @@
+// E2E-S: one look at the Paired Devices page of the signed-in SUPERVISOR page (no navigation unless asked):
+// facts, an optional wait for a device's operator cell, a screenshot, and the newest audit rows of given types.
+//   node --import tsx web_snap.mjs <screenshot.png> [waitOperatorDeviceId|-] [auditType,auditType...]
+import { applyMask, auditRows, connect, log, pdFacts, sleep, stamp, writeJson } from './lib.mjs'
+
+const [shotName, waitDevice = '-', types = ''] = process.argv.slice(2)
+const page = await connect()
+await applyMask(page) // harmless when no code is shown; keeps any digits blurred
+let waited = null
+if (waitDevice !== '-') {
+  const until = Date.now() + 20000
+  const start = Date.now()
+  while (Date.now() < until) {
+    const op = await page.text(`pd-operator-${waitDevice}`)
+    if (op && op !== '—' && op !== '-') { waited = { operator: op, afterMs: Date.now() - start, at: stamp() }; break }
+    await sleep(200)
+  }
+  log(`operator cell of ${waitDevice}: ${waited ? `"${waited.operator}" after ${waited.afterMs} ms` : 'still empty after 20 s'}`)
+  await sleep(800)
+}
+const facts = await pdFacts(page)
+const shot = await page.screenshot(shotName)
+log(`facts: ${JSON.stringify({ issueState: facts.issueState, codeDigitCount: facts.codeDigitCount, rows: facts.rows, summary: facts.summary, toasts: facts.toasts })}`)
+const audit = {}
+for (const type of types.split(',').filter(Boolean)) {
+  audit[type] = await auditRows(page, type, 3)
+  log(`audit ${type} (newest): ${JSON.stringify(audit[type].rows[0] ?? null)}`)
+}
+writeJson(shotName.replace(/\.png$/, '.json'), { at: stamp(), waited, facts, screenshot: shot, audit, network: page.takeNetwork() })
+page.close()

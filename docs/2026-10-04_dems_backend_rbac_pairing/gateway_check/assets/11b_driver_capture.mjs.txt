@@ -1,0 +1,278 @@
+// FX-W before/after captures on lane 3 (http://127.0.0.1:5178, Live, Core 4423).
+// Usage: node capture.mjs <before|after> <assetDir>
+// Commands sent to the Core: sign-in, reads, one Verify of EV-20261006-0012 per phase, and (after only)
+// one Test signal from the Dashboard. No demo reset, scenario or fault; sign-out at the end.
+import { writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { launch, openPage, signIn, signOut, sleep } from './cdp.mjs'
+
+const phase = process.argv[2]
+const dir = process.argv[3]
+if (!['before', 'after', 'check'].includes(phase) || !dir) throw new Error('usage: capture.mjs <before|after|check> <dir>')
+const ITEM = 'EV-20261006-0012'
+const lines = []
+const log = (line) => {
+  const stamped = `${new Date().toISOString()} ${line}`
+  lines.push(stamped)
+  console.log(stamped)
+}
+const file = (name) => join(dir, `11b_${phase}_${name}.png`)
+process.on('unhandledRejection', (error) => log(`unhandled: ${error?.message ?? error}`))
+
+/** Ring measurement: the ring's size, the state word's rendered width and its share of the inner ring. */
+const measureRing = () => {
+  const ring = document.querySelector('[data-testid="glow-ring"]')
+  if (!ring) return null
+  const center = ring.querySelector('[data-ring-center]')
+  const word = center ? [...center.querySelectorAll('span')].find((span) => /font-display/.test(span.className)) : null
+  const ringBox = ring.getBoundingClientRect()
+  const wordBox = word?.getBoundingClientRect()
+  const inner = ringBox.width * 0.74
+  return {
+    state: ring.getAttribute('data-state'),
+    size: Math.round(ringBox.width),
+    word: word?.textContent?.replace(/\s+/g, '').slice(0, 20) ?? null,
+    wordWidth: wordBox ? Math.round(wordBox.width) : null,
+    fontSize: word ? getComputedStyle(word).fontSize : null,
+    innerDiameter: Math.round(inner),
+    wordLeftInsideInner: wordBox ? Math.round(wordBox.left - (ringBox.left + (ringBox.width - inner) / 2)) : null,
+    wordRightInsideInner: wordBox ? Math.round(ringBox.left + (ringBox.width + inner) / 2 - wordBox.right) : null,
+  }
+}
+
+/** Strip measurement: overlaps between the six cells' texts and values that overflow their cell. */
+const measureStrip = () => {
+  const cells = [...document.querySelectorAll('.dems-strip-cell')]
+  const boxes = cells.map((cell) => {
+    const text = cell.querySelector('.dems-strip-text')
+    const value = cell.querySelector('.dems-strip-value')
+    const cellBox = cell.getBoundingClientRect()
+    const valueRange = document.createRange()
+    valueRange.selectNodeContents(value)
+    const valueBox = valueRange.getBoundingClientRect()
+    return {
+      id: cell.getAttribute('data-testid'),
+      cell: { left: Math.round(cellBox.left), right: Math.round(cellBox.right), top: Math.round(cellBox.top), bottom: Math.round(cellBox.bottom) },
+      valueText: value?.textContent ?? '',
+      valueLeft: Math.round(valueBox.left),
+      valueRight: Math.round(valueBox.right),
+      // What the eye sees: the text up to the box that clips it (the after-fix ellipsis span), else all of it.
+      visibleRight: Math.round(cell.querySelector('.dems-strip-value-text') ? Math.min(valueBox.right, cell.querySelector('.dems-strip-value-text').getBoundingClientRect().right) : valueBox.right),
+      truncated: (() => {
+        const clip = cell.querySelector('.dems-strip-value-text')
+        return clip ? clip.scrollWidth > clip.clientWidth + 1 : false
+      })(),
+    }
+  })
+  const overlaps = []
+  for (let i = 0; i < boxes.length; i += 1) {
+    for (let j = i + 1; j < boxes.length; j += 1) {
+      const a = boxes[i]
+      const b = boxes[j]
+      const sameRow = Math.abs(a.cell.top - b.cell.top) < 8
+      const textOverlap = sameRow && a.visibleRight > b.cell.left && a.valueLeft < b.cell.left
+      if (textOverlap) overlaps.push(`${a.id} value overruns ${b.id}`)
+    }
+  }
+  const viewport = document.documentElement.clientWidth
+  const offscreen = boxes.filter((box) => box.cell.right > viewport + 1).map((box) => box.id)
+  return { boxes, overlaps, offscreen, rows: new Set(boxes.map((box) => box.cell.top)).size }
+}
+
+const browser = await launch(log)
+const results = { phase, item: ITEM }
+try {
+  const page = await openPage(browser.cdp, log)
+  await page.viewport(1440, 900)
+  await signIn(page, log)
+  await sleep(5000)
+
+  // ── D4 / D5 at 1440x900 ──
+  results.ring1440 = await page.eval(measureRing)
+  log(`ring 1440: ${JSON.stringify(results.ring1440)}`)
+  results.strip1440 = await page.eval(measureStrip)
+  log(`strip 1440: rows=${results.strip1440.rows} overlaps=${JSON.stringify(results.strip1440.overlaps)} offscreen=${JSON.stringify(results.strip1440.offscreen)}`)
+  await page.shot(file('d4d5_dashboard_1440x900'))
+  const ringClip = await page.eval(() => {
+    const box = document.querySelector('[data-testid="glow-ring"]').getBoundingClientRect()
+    return { x: Math.max(0, box.left - 12), y: Math.max(0, box.top - 12), width: box.width + 24, height: box.height + 24 }
+  })
+  await page.shot(file('d4_ring_1440x900'), ringClip)
+
+  // ── D1: the Camera 1 tile menu ──
+  await page.clickSelector('button[aria-label="Camera 1 actions"]')
+  await page.waitFor(() => !!document.querySelector('[role="menu"]'), 8000)
+  await sleep(500)
+  results.menu = await page.eval(() =>
+    [...document.querySelectorAll('[role="menu"] [role="menuitem"]')].map((item) => ({
+      text: item.textContent,
+      disabled: item.getAttribute('aria-disabled') === 'true',
+    })),
+  )
+  log(`camera 1 menu: ${JSON.stringify(results.menu)}`)
+  const menuClip = await page.eval(() => {
+    const menu = document.querySelector('[role="menu"]').getBoundingClientRect()
+    const trigger = document.querySelector('button[aria-label="Camera 1 actions"]').getBoundingClientRect()
+    const left = Math.min(menu.left, trigger.left) - 260
+    const top = Math.min(menu.top, trigger.top) - 70
+    return { x: Math.max(0, left), y: Math.max(0, top), width: Math.max(menu.right, trigger.right) - left + 24, height: Math.max(menu.bottom, trigger.bottom) - top + 24 }
+  })
+  await page.shot(file('d1_dashboard_camera1_menu'), menuClip)
+  if (phase === 'after') {
+    const item = await page.eval(() => {
+      const entry = [...document.querySelectorAll('[role="menu"] [role="menuitem"]')].find((element) => /^Test signal/.test(element.textContent ?? ''))
+      if (!entry) return null
+      const rect = entry.getBoundingClientRect()
+      return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
+    })
+    if (item) {
+      await page.clickAt(item.x, item.y)
+      await page.waitFor(() => [...document.querySelectorAll('[data-slot="toast"]')].some((toast) => /Test signal sent to Camera 1/.test(toast.textContent ?? '')), 10000)
+      await sleep(400)
+      results.testSignalToast = await page.eval(() => [...document.querySelectorAll('[data-slot="toast"]')].map((toast) => toast.textContent).join(' | '))
+      log(`test signal toast: ${results.testSignalToast}`)
+      await page.shot(file('d1_dashboard_test_signal_toast'))
+    }
+  } else {
+    await page.key('Escape')
+  }
+  await sleep(600)
+
+  // ── D4 / D5 at 390x844 ──
+  await page.viewport(390, 844)
+  await page.goto('/dashboard')
+  await page.waitFor(() => !!document.querySelector('[data-testid="glow-ring"]'), 15000)
+  await sleep(5000)
+  results.ring390 = await page.eval(measureRing)
+  log(`ring 390: ${JSON.stringify(results.ring390)}`)
+  await page.shot(file('d4d5_dashboard_390x844'))
+  const ringClip390 = await page.eval(() => {
+    const box = document.querySelector('[data-testid="glow-ring"]').getBoundingClientRect()
+    return { x: Math.max(0, box.left - 12), y: Math.max(0, box.top + window.scrollY - 12), width: Math.min(390, box.width + 24), height: box.height + 24 }
+  })
+  await page.shot(file('d4_ring_390x844'), ringClip390)
+  await page.eval(() => document.querySelector('.dems-strip-card')?.scrollIntoView({ block: 'center' }))
+  await sleep(800)
+  results.strip390 = await page.eval(measureStrip)
+  log(`strip 390: rows=${results.strip390.rows} overlaps=${JSON.stringify(results.strip390.overlaps)} offscreen=${JSON.stringify(results.strip390.offscreen)}`)
+  log(`strip 390 values: ${JSON.stringify(results.strip390.boxes.map((box) => [box.id, box.valueText, box.valueLeft, box.valueRight, box.cell.left, box.cell.right, box.visibleRight, box.truncated]))}`)
+  const stripClip = await page.eval(() => {
+    const box = document.querySelector('.dems-strip-card').getBoundingClientRect()
+    return { x: 0, y: Math.max(0, box.top - 10), width: 390, height: box.height + 20 }
+  })
+  await page.shot(file('d5_strip_390x844'), stripClip)
+
+  // ── D3 / D2 / D6 on the evidence detail at 1440x900 ──
+  await page.viewport(1440, 900)
+  await page.goto(`/evidence/${ITEM}?tab=metadata`)
+  await page.waitFor(() => !!document.querySelector('[data-testid="evidence-metadata"]'), 20000)
+  await sleep(2500)
+  results.metadata = await page.eval(() => {
+    const metadata = document.querySelector('[data-testid="evidence-metadata"]')
+    const regions = [...metadata.querySelectorAll('[role="region"]')].map((region) => region.getAttribute('aria-label'))
+    const firstJson = metadata.querySelector('[role="region"]')?.textContent ?? ''
+    const ids = [...new Set(firstJson.match(/EV-\d{8}-\d{4}/g) ?? [])]
+    const alert = metadata.querySelector('[role="alert"], [data-testid="evidence-foreign-package"]')?.textContent ?? null
+    return { dataPackage: metadata.getAttribute('data-package'), regions, firstJsonIds: ids, alert, headings: [...metadata.querySelectorAll('h3')].map((h) => h.textContent) }
+  })
+  log(`metadata: ${JSON.stringify(results.metadata)}`)
+  await page.shot(file('d3_metadata_tab'))
+
+  await page.goto(`/evidence/${ITEM}?tab=integrity`)
+  await page.waitFor(() => !!document.querySelector('[data-testid="evidence-verify-card"]'), 20000)
+  await sleep(2500)
+  const readCard = () => {
+    const card = document.querySelector('[data-testid="evidence-verify-card"]')
+    return {
+      verdict: card.querySelector('[data-testid="evidence-verdict"]')?.getAttribute('data-verdict'),
+      last: card.querySelector('[data-testid="evidence-verify-last"]')?.textContent ?? null,
+      button: card.querySelector('[data-testid="evidence-verify"]')?.textContent,
+      progress: [...card.querySelectorAll('.evi-caption')].map((caption) => caption.textContent).join(' | '),
+    }
+  }
+  const coreVerification = () =>
+    fetch('/api/v1/evidence/EV-20261006-0012', { headers: { accept: 'application/json' } })
+      .then((response) => response.json())
+      .then((body) => ({ verification: body.evidence?.verification, lastCustody: body.evidence?.custody?.slice(-1)[0] ?? null }))
+  const cardClip = () => {
+    const box = document.querySelector('[data-testid="evidence-verify-card"]').getBoundingClientRect()
+    return { x: box.left - 8, y: Math.max(0, box.top - 8), width: box.width + 16, height: Math.min(box.height + 16, 880) }
+  }
+  results.integrityOpen = { card: await page.eval(readCard), core: await page.eval(coreVerification) }
+  log(`integrity on open: ${JSON.stringify(results.integrityOpen)}`)
+  await page.eval(() => document.querySelector('[data-testid="evidence-verify-card"]').scrollIntoView({ block: 'start' }))
+  await sleep(400)
+  await page.shot(file('d2_integrity_on_open'), await page.eval(cardClip))
+
+  // One Verify per phase: before, to give the Core a stored PASS; after, to show a new run updates the line.
+  if (phase !== 'check') {
+  await page.clickSelector('[data-testid="evidence-verify"]')
+  await page.waitFor(() => {
+    const verdict = document.querySelector('[data-testid="evidence-verify-card"] [data-testid="evidence-verdict"]')?.getAttribute('data-verdict')
+    return verdict === 'PASS' || verdict === 'FAIL' || verdict === 'ERROR'
+  }, 30000)
+  await sleep(1500)
+  results.integrityVerified = { card: await page.eval(readCard), core: await page.eval(coreVerification) }
+  log(`integrity after Verify: ${JSON.stringify(results.integrityVerified)}`)
+  await page.shot(file('d2_integrity_after_verify'), await page.eval(cardClip))
+  }
+
+  await page.goto(`/evidence/${ITEM}?tab=integrity`)
+  await page.waitFor(() => !!document.querySelector('[data-testid="evidence-verify-card"]'), 20000)
+  await sleep(2500)
+  results.integrityReload = { card: await page.eval(readCard), core: await page.eval(coreVerification) }
+  log(`integrity after reload: ${JSON.stringify(results.integrityReload)}`)
+  await page.eval(() => document.querySelector('[data-testid="evidence-verify-card"]').scrollIntoView({ block: 'start' }))
+  await sleep(400)
+  await page.shot(file('d2_integrity_after_reload'), await page.eval(cardClip))
+
+  // ── D6: chain of custody ──
+  await page.eval(() => document.querySelector('[data-testid="evidence-custody"]').scrollIntoView({ block: 'center' }))
+  await sleep(800)
+  results.custody = await page.eval(() =>
+    [...document.querySelectorAll('[data-testid="evidence-custody"] tbody tr, [data-testid="evidence-custody"] [role="row"]')]
+      .map((row) => {
+        const cell = row.querySelector('td, [role="rowheader"], [role="gridcell"]')
+        if (!cell) return null
+        const range = document.createRange()
+        range.selectNodeContents(cell)
+        const rects = [...range.getClientRects()]
+        const lineTops = [...new Set(rects.map((rect) => Math.round(rect.top)))]
+        // The text of each rendered line of the time cell.
+        const walker = document.createTreeWalker(cell, NodeFilter.SHOW_TEXT)
+        const perLine = new Map()
+        let node
+        while ((node = walker.nextNode())) {
+          for (let i = 0; i < node.textContent.length; i += 1) {
+            const charRange = document.createRange()
+            charRange.setStart(node, i)
+            charRange.setEnd(node, i + 1)
+            const rect = charRange.getBoundingClientRect()
+            if (rect.width === 0 && node.textContent[i] === ' ') continue
+            const top = Math.round(rect.top)
+            perLine.set(top, (perLine.get(top) ?? '') + node.textContent[i])
+          }
+        }
+        return { lines: lineTops.length, text: [...perLine.values()].map((text) => text.trim()).filter(Boolean) }
+      })
+      .filter(Boolean),
+  )
+  log(`custody time cells: ${JSON.stringify(results.custody)}`)
+  const custodyClip = await page.eval(() => {
+    const box = document.querySelector('[data-testid="evidence-custody"]').getBoundingClientRect()
+    return { x: box.left - 8, y: Math.max(0, box.top - 8), width: box.width + 16, height: Math.min(box.height + 16, 880) }
+  })
+  await page.shot(file('d6_custody_1440x900'), custodyClip)
+
+  await signOut(page, log)
+  results.exceptions = page.exceptions
+  results.blocked = page.blocked
+  log(`exceptions ${page.exceptions.length}; blocked other-origin requests ${page.blocked.length}`)
+} catch (error) {
+  log(`FAILED: ${error.message}`)
+  results.error = error.message
+} finally {
+  await browser.close()
+  writeFileSync(join(dir, `11b_${phase}_capture.log`), `${lines.join('\n')}\n`)
+  writeFileSync(join(dir, `11b_${phase}_measurements.json`), `${JSON.stringify(results, null, 2)}\n`)
+}

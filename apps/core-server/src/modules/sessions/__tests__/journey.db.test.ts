@@ -16,8 +16,8 @@ import type { AuditRow } from '@dems/shared/sim';
 import type { LightMyRequestResponse } from 'fastify';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { useTestDatabase } from '../../../../test/helpers/db';
-import { linkProblems, readHead, readTrail, verifyTrail } from '../../../core/__tests__/support';
-import { FIXED_NOW, storedSlices } from '../../../engine/__tests__/support';
+import { linkProblems, readHead, readTrail, verifyTrail } from '../../../../test/support/core';
+import { FIXED_NOW, storedSlices } from '../../../../test/support/engine';
 import { createHost, withoutNegativeZeros, type Host } from '../../../../test/support/seed';
 import {
   CURRENT,

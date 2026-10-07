@@ -1,0 +1,5 @@
+session: role=dems_owner server=18.4 port=4432 postmaster started 2026-10-04 07:14:26.046351+07
+databases with this row's prefix (dems_test_step_59_*): 0
+test databases of all rows at this moment: 11
+project databases: dems_demo, dems_lane_1, dems_lane_2, dems_lane_3
+sessions on this row's databases still open: 0

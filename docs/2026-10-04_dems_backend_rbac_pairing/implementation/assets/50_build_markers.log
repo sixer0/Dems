@@ -1,0 +1,24 @@
+== build_plain: 517 asset files
+   files containing 'dems.core.mode.v1': 1
+   files containing 'dems.live.owedSignOut': 0
+   files containing 'browser-cookie': 0
+   files containing 'live.owed': 0
+   files containing 'CONTRACT-GAP': 0
+   files containing 'DEVICE_CLEANUP_GAVE_UP': 0
+   files containing 'x-dems-revision': 1
+   files containing 'createLiveSim': 0
+   files containing 'live-start': 0
+   files containing 'runtime.live.storage': 0
+   files containing 'Live mode was not started': 1
+== build_packaged: 517 asset files
+   files containing 'dems.core.mode.v1': 1
+   files containing 'dems.live.owedSignOut': 0
+   files containing 'browser-cookie': 0
+   files containing 'live.owed': 0
+   files containing 'CONTRACT-GAP': 0
+   files containing 'DEVICE_CLEANUP_GAVE_UP': 0
+   files containing 'x-dems-revision': 1
+   files containing 'createLiveSim': 0
+   files containing 'live-start': 0
+   files containing 'runtime.live.storage': 0
+   files containing 'Live mode was not started': 1

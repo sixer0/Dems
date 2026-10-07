@@ -1,0 +1,119 @@
+# W11b follow-up 3, second round: the names of the new tests, as run. 2026-10-05, label DEMS_TEST_STEP=w11b3v.
+# needs.test.ts (66) and static.test.ts (19, of which 3 are new for this round): the database-free project, one worker.
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/apps/core-server
+ ✓ |unit| test/helpers/db/__tests__/needs.test.ts > a stated need is checked where it is stated > refuses "zero, which would mean no limit at all" for the limit of a test 1ms
+ ✓ |unit| test/helpers/db/__tests__/needs.test.ts > a stated need is checked where it is stated > refuses "a negative number" for the limit of a test 0ms
+ ✓ |unit| test/helpers/db/__tests__/needs.test.ts > a stated need is checked where it is stated > refuses "a fraction of a millisecond" for the limit of a test 0ms
+ ✓ |unit| test/helpers/db/__tests__/needs.test.ts > a stated need is checked where it is stated > refuses "NaN" for the limit of a test 0ms
+ ✓ |unit| test/helpers/db/__tests__/needs.test.ts > a stated need is checked where it is stated > refuses "infinity, which would hang the run for ever" for the limit of a test 0ms
+ ✓ |unit| test/helpers/db/__tests__/needs.test.ts > a stated need is checked where it is stated > refuses "one above the ceiling" for the limit of a test 0ms
+ ✓ |unit| test/helpers/db/__tests__/needs.test.ts > a stated need is checked where it is stated > refuses "a value in seconds instead of milliseconds" for the limit of a test 0ms
+ ✓ |unit| test/helpers/db/__tests__/needs.test.ts > a stated need is checked where it is stated > refuses "zero, which would mean no limit at all" for the limit of a hook 0ms
+ ✓ |unit| test/helpers/db/__tests__/needs.test.ts > a stated need is checked where it is stated > refuses "a negative number" for the limit of a hook 0ms
+ ✓ |unit| test/helpers/db/__tests__/needs.test.ts > a stated need is checked where it is stated > refuses "a fraction of a millisecond" for the limit of a hook 0ms
+ ✓ |unit| test/helpers/db/__tests__/needs.test.ts > a stated need is checked where it is stated > refuses "NaN" for the limit of a hook 0ms
+ ✓ |unit| test/helpers/db/__tests__/needs.test.ts > a stated need is checked where it is stated > refuses "infinity, which would hang the run for ever" for the limit of a hook 0ms
+ ✓ |unit| test/helpers/db/__tests__/needs.test.ts > a stated need is checked where it is stated > refuses "one above the ceiling" for the limit of a hook 0ms
+ ✓ |unit| test/helpers/db/__tests__/needs.test.ts > a stated need is checked where it is stated > refuses "a value in seconds instead of milliseconds" for the limit of a hook 0ms
+ ✓ |unit| test/helpers/db/__tests__/needs.test.ts > a stated need is checked where it is stated > refuses "zero, which would mean no limit at all" for the wait of a connection 0ms
+ ✓ |unit| test/helpers/db/__tests__/needs.test.ts > a stated need is checked where it is stated > refuses "a negative number" for the wait of a connection 0ms
+ ✓ |unit| test/helpers/db/__tests__/needs.test.ts > a stated need is checked where it is stated > refuses "a fraction of a millisecond" for the wait of a connection 0ms
+ ✓ |unit| test/helpers/db/__tests__/needs.test.ts > a stated need is checked where it is stated > refuses "NaN" for the wait of a connection 0ms
+ ✓ |unit| test/helpers/db/__tests__/needs.test.ts > a stated need is checked where it is stated > refuses "infinity, which would hang the run for ever" for the wait of a connection 0ms
+ ✓ |unit| test/helpers/db/__tests__/needs.test.ts > a stated need is checked where it is stated > refuses "one above the ceiling" for the wait of a connection 0ms
+ ✓ |unit| test/helpers/db/__tests__/needs.test.ts > a stated need is checked where it is stated > refuses "a value in seconds instead of milliseconds" for the wait of a connection 0ms
+ ✓ |unit| test/helpers/db/__tests__/needs.test.ts > a stated need is checked where it is stated > names the ceiling and the cap it would otherwise have used 0ms
+ ✓ |unit| test/helpers/db/__tests__/needs.test.ts > a stated need is checked where it is stated > takes quietCluster true 0ms
+ ✓ |unit| test/helpers/db/__tests__/needs.test.ts > a stated need is checked where it is stated > takes quietCluster false 0ms
+ ✓ |unit| test/helpers/db/__tests__/needs.test.ts > a stated need is checked where it is stated > takes quietCluster undefined 0ms
+ ✓ |unit| test/helpers/db/__tests__/needs.test.ts > a stated need is checked where it is stated > refuses a quietCluster that is no boolean: "yes" 0ms
+ ✓ |unit| test/helpers/db/__tests__/needs.test.ts > a stated need is checked where it is stated > refuses a quietCluster that is no boolean: 1 0ms
+ ✓ |unit| test/helpers/db/__tests__/needs.test.ts > a stated need is checked where it is stated > refuses a quietCluster that is no boolean: 0 0ms
+ ✓ |unit| test/helpers/db/__tests__/needs.test.ts > a stated need is checked where it is stated > refuses a quietCluster that is no boolean: [[]] 0ms
+ ✓ |unit| test/helpers/db/__tests__/needs.test.ts > a stated need is checked where it is stated > refuses a quietCluster that is no boolean: [{}] 0ms
+ ✓ |unit| test/helpers/db/__tests__/needs.test.ts > a stated need is checked where it is stated > keeps every part of a whole statement, and the ceiling itself 0ms
+ ✓ |unit| test/helpers/db/__tests__/needs.test.ts > a stated need is checked where it is stated > of a call that states nothing, only the quiet is definite: false 0ms
+ ✓ |unit| test/helpers/db/__tests__/needs.test.ts > a stated need is checked where it is stated > hands back a frozen object, so a caller cannot change what the helper already applied 0ms
+ ✓ |unit| test/helpers/db/__tests__/needs.test.ts > a stated limit is a floor the helper raises to, and never a ceiling > from the runner’s own 5 s and 10 s, a stated 240 s and 300 s win over the caps 0ms
+ ✓ |unit| test/helpers/db/__tests__/needs.test.ts > a stated limit is a floor the helper raises to, and never a ceiling > a stated need BELOW the cap does not lower what the helper already raised 0ms
+ ✓ |unit| test/helpers/db/__tests__/needs.test.ts > a stated limit is a floor the helper raises to, and never a ceiling > of a file that set a higher limit itself, that higher limit stays 0ms
+ ✓ |unit| test/helpers/db/__tests__/needs.test.ts > a stated limit is a floor the helper raises to, and never a ceiling > "no limit" stays no limit: a stated need never ends a debugging session 0ms
+ ✓ |unit| test/helpers/db/__tests__/needs.test.ts > a stated limit is a floor the helper raises to, and never a ceiling > the two limits are raised by their own part of the statement, not by the other 0ms
+ ✓ |unit| test/helpers/db/__tests__/needs.test.ts > a stated limit is a floor the helper raises to, and never a ceiling > with nothing stated, the rule of decision D114 holds unchanged 0ms
+ ✓ |unit| test/helpers/db/__tests__/needs.test.ts > a stated limit is a floor the helper raises to, and never a ceiling > where the runner’s limits cannot be read, the caps are the floor under a stated need 0ms
+ ✓ |unit| test/helpers/db/__tests__/needs.test.ts > a stated limit is a floor the helper raises to, and never a ceiling > a value that is no number of milliseconds is replaced by the stated need or the cap 0ms
+ ✓ |unit| test/helpers/db/__tests__/needs.test.ts > a stated limit is a floor the helper raises to, and never a ceiling > the higher of 5000 held and 1 stated is 5000 0ms
+ ✓ |unit| test/helpers/db/__tests__/needs.test.ts > a stated limit is a floor the helper raises to, and never a ceiling > the higher of 5000 held and 60000 stated is 60000 0ms
+ ✓ |unit| test/helpers/db/__tests__/needs.test.ts > a stated limit is a floor the helper raises to, and never a ceiling > the higher of 5000 held and 120000 stated is 120000 0ms
+ ✓ |unit| test/helpers/db/__tests__/needs.test.ts > a stated limit is a floor the helper raises to, and never a ceiling > the higher of 5000 held and 240000 stated is 240000 0ms
+ ✓ |unit| test/helpers/db/__tests__/needs.test.ts > a stated limit is a floor the helper raises to, and never a ceiling > the higher of 120000 held and 60000 stated is 120000 0ms
+ ✓ |unit| test/helpers/db/__tests__/needs.test.ts > a stated limit is a floor the helper raises to, and never a ceiling > the higher of 120000 held and 900000 stated is 900000 0ms
+ ✓ |unit| test/helpers/db/__tests__/needs.test.ts > a stated limit is a floor the helper raises to, and never a ceiling > the higher of 600000 held and 120001 stated is 600000 0ms
+ ✓ |unit| test/helpers/db/__tests__/needs.test.ts > a stated limit is a floor the helper raises to, and never a ceiling > never turns a cap the helper raised itself into a shorter limit 0ms
+ ✓ |unit| test/helpers/db/__tests__/needs.test.ts > the helper's own hooks > carry their own 180 s when nothing is stated 0ms
+ ✓ |unit| test/helpers/db/__tests__/needs.test.ts > the helper's own hooks > are never shortened by a file that states a shorter hook need 0ms
+ ✓ |unit| test/helpers/db/__tests__/needs.test.ts > the helper's own hooks > are lengthened by a file that states a longer one 0ms
+ ✓ |unit| test/helpers/db/__tests__/needs.test.ts > the helper's own hooks > keep "no limit" of a run that was started without limits 0ms
+ ✓ |unit| test/helpers/db/__tests__/needs.test.ts > the wait for a connection > is left alone when nothing is stated: the pools are exactly what they were 0ms
+ ✓ |unit| test/helpers/db/__tests__/needs.test.ts > the wait for a connection > is never shortened below the helper’s own 5 s 0ms
+ ✓ |unit| test/helpers/db/__tests__/needs.test.ts > the wait for a connection > is lengthened to what is stated above it 0ms
+ ✓ |unit| test/helpers/db/__tests__/needs.test.ts > a clone request that asks for a quiet cluster (decision D134) > that asks for nothing reads nothing and reports that nothing was asked 5ms
+ ✓ |unit| test/helpers/db/__tests__/needs.test.ts > a clone request that asks for a quiet cluster (decision D134) > reads the clone-lock queue once on a quiet cluster, before its CREATE DATABASE 1ms
+ ✓ |unit| test/helpers/db/__tests__/needs.test.ts > a clone request that asks for a quiet cluster (decision D134) > asks again while another session is on the clone lock, and goes when the queue empties 33ms
+ ✓ |unit| test/helpers/db/__tests__/needs.test.ts > a clone request that asks for a quiet cluster (decision D134) > gives up at its bound, says so, and creates the database anyway 203ms
+ ✓ |unit| test/helpers/db/__tests__/needs.test.ts > a clone request that asks for a quiet cluster (decision D134) > takes nothing for itself: the advisory-lock statements are the two of the clone 3ms
+ ✓ |unit| test/helpers/db/__tests__/needs.test.ts > a clone request that asks for a quiet cluster (decision D134) > defaults to the bound of the helper where the run states none 2ms
+ ✓ |unit| test/helpers/db/__tests__/needs.test.ts > a stated connect wait reaches the pools of that clone > of a caller that states nothing: the helper’s defaults, and TI-14’s five and two 1ms
+ ✓ |unit| test/helpers/db/__tests__/needs.test.ts > a stated connect wait reaches the pools of that clone > of a caller that states one: both pools of that clone carry it, the ceilings do not move 1ms
+ ✓ |unit| test/helpers/db/__tests__/needs.test.ts > a stated connect wait reaches the pools of that clone > is per clone: the next database that states nothing gets the default again 1ms
+ ✓ |unit| test/helpers/db/__tests__/needs.test.ts > a stated connect wait reaches the pools of that clone > never changes the endpoint, the role or the ceiling of either pool 2ms
+ ✓ |unit| test/helpers/db/__tests__/static.test.ts > the scan itself > reads the helper, its tests and the global setup 1ms
+ ✓ |unit| test/helpers/db/__tests__/static.test.ts > the scan itself > finds each forbidden text when it is present (positive control) 0ms
+ ✓ |unit| test/helpers/db/__tests__/static.test.ts > TI-9, HC-1: nothing in test:db is the bootstrap superuser > the superuser's password file is named by no file of the helper, tests included 0ms
+ ✓ |unit| test/helpers/db/__tests__/static.test.ts > TI-9, HC-1: nothing in test:db is the bootstrap superuser > the superuser's role is written once in the helper: the constant that is refused 0ms
+ ✓ |unit| test/helpers/db/__tests__/static.test.ts > TI-9, HC-1: nothing in test:db is the bootstrap superuser > the refused role is used only to refuse: compared, or printed in a refusal message 1ms
+ ✓ |unit| test/helpers/db/__tests__/static.test.ts > TI-9, HC-1: nothing in test:db is the bootstrap superuser > outside the helper code the role appears in tests only, where its refusal is asserted 0ms
+ ✓ |unit| test/helpers/db/__tests__/static.test.ts > D26: one place builds a connection, and it takes host and port from the connection file > the driver is imported by session.ts only (type imports apart) 1ms
+ ✓ |unit| test/helpers/db/__tests__/static.test.ts > D26: one place builds a connection, and it takes host and port from the connection file > a client or a pool is built in session.ts only 1ms
+ ✓ |unit| test/helpers/db/__tests__/static.test.ts > D26: one place builds a connection, and it takes host and port from the connection file > the environment is read in two places: the row label, and the scrub of driver variables 0ms
+ ✓ |unit| test/helpers/db/__tests__/static.test.ts > D26: one place builds a connection, and it takes host and port from the connection file > no file of the helper names a host, port, user or password variable of the driver 0ms
+ ✓ |unit| test/helpers/db/__tests__/static.test.ts > D26: one place builds a connection, and it takes host and port from the connection file > the default port of PostgreSQL is not written in the helper: it comes from the one constant that refuses it 0ms
+ ✓ |unit| test/helpers/db/__tests__/static.test.ts > CR-1, CR-2, CR-4: credentials stay in the connection files > no connection URL, no env-file option 0ms
+ ✓ |unit| test/helpers/db/__tests__/static.test.ts > CR-1, CR-2, CR-4: credentials stay in the connection files > the helper writes no file and starts no child process 0ms
+ ✓ |unit| test/helpers/db/__tests__/static.test.ts > CR-1, CR-2, CR-4: credentials stay in the connection files > a password is revealed in one place: the function handed to the driver 0ms
+ ✓ |unit| test/helpers/db/__tests__/static.test.ts > CR-1, CR-2, CR-4: credentials stay in the connection files > the one child process of the tests gets paths and names only 0ms
+ ✓ |unit| test/helpers/db/__tests__/static.test.ts > TI-3: statements on databases are written in one file > CREATE, ALTER and DROP DATABASE occur in ddl.ts only, and each takes a guarded name 0ms
+ ✓ |unit| test/helpers/db/__tests__/static.test.ts > TI-3: statements on databases are written in one file > no other statement that changes the cluster: no role, no setting, no trigger, no function 3ms
+ ✓ |unit| test/helpers/db/__tests__/static.test.ts > F-8: a catalog read of the shared cluster is keyed by the session that asks > the clone-lock queue is read in ddl.ts only 0ms
+ ✓ |unit| test/helpers/db/__tests__/static.test.ts > F-8: a catalog read of the shared cluster is keyed by the session that asks > and that one read leaves its own session out (decision D134) 0ms
+ Test Files  2 passed (2)
+      Tests  85 passed (85)
+   Duration  623ms (tests 53%, import 31%, transform 16%, worker 1%)
+
+# needs.db.test.ts (13): the database project, one worker, against the project PostgreSQL.
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/apps/core-server
+[test:db] PostgreSQL 18.4 on 127.0.0.1:4432; helper role dems_owner, code under test dems_app; run prefix dems_test_step_w11b3v_tmf29a83_
+[test:db] stale sweep: dropped 0; kept 0 of younger runs, 0 of live runs, 0 unrecognised; 0 failed
+[test:db] template dems_test_step_w11b3v_tmf29a83_tpl_schema: built in 139 ms (create 59 ms, hook 77 ms)
+[test:db] template dems_test_step_w11b3v_tmf29a83_tpl_seed: built in 172 ms (create 66 ms, hook 104 ms)
+ ✓ |db| test/helpers/db/__tests__/needs.db.test.ts > a database test file that states its needs > holds the two floors the file stated, above the caps of decision D114 1ms
+ ✓ |db| test/helpers/db/__tests__/needs.db.test.ts > a database test file that states its needs > gives a test of this file the floor it stated, not the cap 0ms
+ ✓ |db| test/helpers/db/__tests__/needs.db.test.ts > a database test file that states its needs > hands the connect floor to the two real pools of its clone, and TI-14 keeps its ceilings 8ms
+ ✓ |db| test/helpers/db/__tests__/needs.db.test.ts > a database test file that states its needs > applies the floor the file stated to every clone of that file, later ones included 297ms
+ ✓ |db| test/helpers/db/__tests__/needs.db.test.ts > a database test file that states its needs > applies a need stated inside a running test to its own clone, not to the test’s limit 79ms
+ ✓ |db| test/helpers/db/__tests__/needs.db.test.ts > a database test file that states its needs > refuses a need that is no whole number of milliseconds, before asking the cluster for anything 1ms
+[test:db] keying: this session on the clone lock -> counted 1, keyed by the reader 0 (before it: 0 / 0)
+ ✓ |db| test/helpers/db/__tests__/needs.db.test.ts > a database test file that states its needs > changes no runner limit for a need that states none of them 85ms
+ ✓ |db| test/helpers/db/__tests__/needs.db.test.ts > the quiet cluster a caller asks for (decision D134) > leaves its own session out of the count, and counts itself when it does not 5ms
+ ✓ |db| test/helpers/db/__tests__/needs.db.test.ts > the quiet cluster a caller asks for (decision D134) > leaves a lock of another key of the same class out 7ms
+[test:db] quiet: waited 201 ms of its 200 ms bound while another session held the clone lock; cloned in 95 ms after a lock wait of 77 ms
+ ✓ |db| test/helpers/db/__tests__/needs.db.test.ts > the quiet cluster a caller asks for (decision D134) > waits while another session holds the clone lock, says it did not get quiet, and clones anyway 425ms
+[test:db] quiet, nobody asked to hold the lock: {"waitedMs":0.3297500000001037,"obtained":true,"budgetMs":200}
+ ✓ |db| test/helpers/db/__tests__/needs.db.test.ts > the quiet cluster a caller asks for (decision D134) > never waits longer than its bound, and reports what it saw 103ms
+ ✓ |db| test/helpers/db/__tests__/needs.db.test.ts > the quiet cluster a caller asks for (decision D134) > through the public entry: the clone carries the request, its bound is the helper’s 93ms
+ ✓ |db| test/helpers/db/__tests__/needs.db.test.ts > the quiet cluster a caller asks for (decision D134) > asks for nothing where a file states nothing: no bound, no wait, no read 87ms
+ Test Files  1 passed (1)
+      Tests  13 passed (13)
+   Duration  2.40s (tests 95%, transform 3%, import 2%, worker 1%)
+[test:db] forced drops that needed a retry: 0
+[test:db] teardown: dropped 3 database(s) in 129 ms; 0 remain with the run prefix dems_test_step_w11b3v_tmf29a83_

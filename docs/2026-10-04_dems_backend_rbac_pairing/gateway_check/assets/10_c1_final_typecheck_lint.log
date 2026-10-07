@@ -1,0 +1,6 @@
+## final typecheck and lint, 08:59:16
+@dems/shared typecheck exit 0, lint exit 0
+@dems/core-server typecheck exit 0, lint exit 0
+@dems/core-web typecheck exit 0, lint exit 0
+@dems/mobile typecheck exit 0, lint exit 0
+## done 08:59:50

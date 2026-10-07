@@ -14,6 +14,7 @@ import '@/navigation/testing/router-harness';
 
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { fireEvent, screen } from '@testing-library/react-native';
+import { en } from '@dems/shared/i18n';
 import { EvidenceStatus } from '@dems/shared/sim';
 import { runtimeLog } from '@/runtime';
 import { EXPORT_AUTH_MS, EXPORT_BUILD_MS } from './export-sheet';
@@ -139,6 +140,22 @@ describe('Verify source on the Core\'s verdict (§14 point 7)', () => {
     expect(b.requests('exportEvidence')).toHaveLength(0);
   });
 
+  it('W93-5 (FXR-M): the source line under a Core FAIL says the verification failed on the Core, never "Verified by the Core"', async () => {
+    const { b } = await openExport('0005');
+    await throughSource(b);
+    await b.elapse(VERIFY_ASK_MS + 100);
+    const fail = screen.getByTestId('evidence-export-source-fail');
+    expect(fail).toHaveTextContent(/Verification failed on the Core/);
+    expect(fail).not.toHaveTextContent(/Verified by the Core/);
+  });
+
+  it('W93-5 (FXR-M): under PASS the source line still reads "Verified by the Core"', async () => {
+    const { b } = await openExport('0001');
+    await throughSource(b);
+    await b.elapse(VERIFY_ASK_MS + 100);
+    expect(screen.getByTestId('evidence-export-source-pass')).toHaveTextContent(/Verified by the Core/);
+  });
+
   it('outage: the presenter\'s toast, no verdict, "Verify again" asks once more', async () => {
     const { b } = await openExport('0001');
     b.fake.failOnce('verifyEvidence');
@@ -177,7 +194,7 @@ describe('S1-6: the export — the request starts with the build step; the resul
     expect(screen.getByTestId('evidence-export-id')).toHaveTextContent(/EXP-\d+/);
     expect(screen.getByText(evidenceEn.export.zipNoteLive)).toBeTruthy();
     // The Live success sentence names the Core, never a simulation (rule 8).
-    expect(toastShown(evidenceEn.export.successLive.replace('{{id}}', id))).toBe(true);
+    expect(toastShown(en.evidence.live.export.success.replace('{{id}}', id))).toBe(true);
     // The one text that says "simulated" is the destination the operator chose, the shared label the
     // Core records as given (no transfer happens in either mode; finding F-4 of the row's report).
     const simulatedTexts = screen.queryAllByText(/simulated/i).map((node) => String(node.props.children));

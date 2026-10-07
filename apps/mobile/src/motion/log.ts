@@ -24,8 +24,10 @@ export type MotionLogSink = (record: MotionLogRecord) => void;
 
 const consoleSink: MotionLogSink = (record) => {
   if (!__DEV__) return;
+  // W93-14 (FXR-M; the DX-6 rule of D203, as `runtime/log.ts`): only an app fault goes to `console.error`. A
+  // `warn` record (a recoverable state) goes to `console.info`: every `console.warn` raises LogBox's yellow
+  // "Open debugger to view warnings" bar over the operator's screen (F80). The record keeps its level.
   if (record.level === 'error') console.error('[motion]', record);
-  else if (record.level === 'warn') console.warn('[motion]', record);
   else console.info('[motion]', record);
 };
 

@@ -53,7 +53,8 @@ export function DevicePreviews({ layout, live, paused, testID = 'session-new-pre
   const micSignals = useMicSignals();
   const testSwitch = useMotionState((s) => s.linkMotion === 'off');
   const [liveIndex, setLiveIndex] = useState(0);
-  // Live mode says where the levels come from instead of "(simulated)" (row M1, W67 F-2; §3.2).
+  // Live mode says where the levels come from instead of "(simulated)" (row M1, W67 F-2; §3.2); the words are
+  // shared with the web console (`sessionNew.live.*`, closing copy round, D164 DN-5).
   const liveSource = useCoreLink().source === 'LIVE';
   return (
     <View testID={testID} style={styles.previews}>
@@ -82,7 +83,7 @@ export function DevicePreviews({ layout, live, paused, testID = 'session-new-pre
         ))}
       </View>
       <Typography type="body-xs" color="muted" testID={`${testID}-hint`}>
-        {t(liveSource ? 'features.session-new.live.speakToTest' : 'sessionNew.devices.speakToTest')}
+        {t(liveSource ? 'sessionNew.live.speakToTest' : 'sessionNew.devices.speakToTest')}
       </Typography>
     </View>
   );

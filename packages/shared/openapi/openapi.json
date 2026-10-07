@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "DEMS Core API",
-    "version": "0.2.0",
+    "version": "0.2.1",
     "summary": "Core API v1 of the DEMS Edge Client demo, as the Core server answers it: 75 operations and one WebSocket channel.",
     "description": "Reference for the Core API v1 of the **DEMS Edge Client demo** (device DEMS-IR-01), as the **Core server** answers it. The design book (§21.2) names nine endpoints; this document adds their bodies, and the operations both clients need beyond them: sign-in, user administration, pairing, the session lifecycle, evidence, devices, storage, network and time, security and audit, system, alerts and the demo controls.\n\n### Who answers\n\n| Service | Address | Answers |\n|---|---|---|\n| The Core server (`dems-core-server`) | `http://127.0.0.1:4420` | Every operation of this document and `WS /ws`. It keeps the Core state in PostgreSQL and is the only authority on who may do what. Loopback only. |\n| mock-core (`dems-mock-core`) | `http://127.0.0.1:4400` | `GET /api/v1/health` and a heartbeat-only `WS /ws`. It is the service of Simulated mode and answers no other operation. |\n| The in-app simulator | none | In Simulated mode, the nine design-book operations (`x-dems-mode: simulated`), inside the app and without a request. Its answers carry `x-dems-simulated: 1`; the Core server never sends that header. |\n\nEvery operation carries the badge **LIVE**: the Core server answers it over the network. `x-dems-services` names the services that answer an operation, and `x-dems-mode` says whether the in-app simulator can answer it too (`simulated`) or only a service can (`live`).\n\n### Access\n\nThe Core server decides on every request, before the body is read, from the credential the request carries:\n- a **web console** sends the session cookie that `signIn` set (scheme `sessionCookie`);\n- a **paired device** sends `Authorization: Bearer` (scheme `bearerAuth`): its device credential on the device operations and at sign-in, its session token once an operator is signed in.\n\nA request carries one credential, never both. Each operation states its access rule as `x-dems-access` (PUBLIC, DEVICE, AUTHENTICATED, one permission, or the one any-of) and the audit row it writes as `x-dems-audit`. A refusal for a missing permission answers `403` and writes one audit row; the role and its permissions are read from the database for each request.\n\n### Answers every operation shares\n\nThe answers that do not depend on the operation are defined once, under Responses: a malformed path, an unknown route, a wrong method, a server that is not ready, an Origin outside the allowed lists, two credentials in one request, the request throttle, a body over 65,536 bytes, and an unexpected failure. Every answer carries `x-request-id`, and an error repeats it as `error.requestId`. A 2xx answer of a POST carries `x-dems-epoch` and `x-dems-revision`: the state revision that holds the effect of the command.\n\n### Lists\n\nA list is cursor-paged: `cursor` is the `nextCursor` of the page before, `limit` is 1 to 200 (50 when omitted), and `nextCursor` is null on the last page.\n\n### Not part of this API\n\n- Media and evidence package files are not served: the clients keep their bundled demo media, and the server owns the records, the hashes and the verdicts.\n- No operation creates or deletes a user, changes a password or edits the role matrix.\n- No operation takes a file or resolves a path that a client sent.\n\n### Examples\n\nExamples are frozen at 2026-10-01 10:00:00 WIB and follow the canonical demo dataset: session SES-20261001-0024 (case LP/2026/1001-0007) and evidence EV-20260930-0004, exported by the SUPERVISOR operator. The nine design-book operations write times as ISO-8601 text; every other operation writes epoch milliseconds on the server clock. A password, a pairing code, a session token, a device credential and a biometric token appear only as placeholders that open nothing. All data is synthetic."
   },
@@ -71,7 +71,7 @@
     },
     {
       "name": "Realtime",
-      "description": "WebSocket `/ws`. OpenAPI 3.1 cannot describe a socket, so it is documented here. Two services serve it:\n\n| Service | URL | Sends |\n|---|---|---|\n| The Core server (`dems-core-server`) | `ws://127.0.0.1:4420/ws` | The protocol of the section \"Core server\": `hello`, the heartbeat, the replicated Core state, the audio meters and the control messages |\n| mock-core (`dems-mock-core`) | `ws://127.0.0.1:4400/ws` | The heartbeat only (section \"mock-core\"): the socket of Simulated mode |\n\n### Core server\n\nThe Core server serves `ws://127.0.0.1:4420/ws` with the protocol below. A lane instance serves the same path on its own port.\n\n**Who a connection is.** Decided once, at the upgrade, from the request headers only: the session cookie of a web console, or `Authorization: Bearer` of a paired device. Nothing in the URL, in a subprotocol or in a message authenticates. The principal stays for the life of the connection, so a client opens a new socket after a sign-in or a sign-out.\n\n| Principal | Receives |\n|---|---|\n| ANONYMOUS | `hello`, `heartbeat` |\n| DEVICE | `hello`, `heartbeat`, `device.revoked` |\n| OPERATOR | `hello`, `heartbeat`, `snapshot`, `delta`, `meters`, `session.updated`, `session.ended`, `device.revoked`, `admin.changed` |\n\n**Server to client.** One JSON object per text frame; every message carries `type` and `v: 1`.\n\n| `type` | Topic | Members | Model | Sent to |\n|---|---|---|---|---|\n| `hello` | none | `connectionId`, `epoch`, `principal`, `reason?`, `topics`, `serverTime`, `heartbeatIntervalMs` | RealtimeHello | Every connection, first. |\n| `heartbeat` | heartbeat | `seq`, `serverTime`, `uptimeMs`, `intervalMs`, `clients`, `sessionState` | Heartbeat | Every connection, once a second. `sessionState` is null unless the principal is OPERATOR. |\n| `snapshot` | state | `epoch`, `revision`, `serverTime`, `state` | RealtimeSnapshot | OPERATOR: after `hello`, as the answer to `resync`, and when a new epoch starts. |\n| `delta` | state | `epoch`, `revision`, `serverTime`, `ops` | RealtimeDelta | OPERATOR, for every change of a replicated slice. |\n| `meters` | meters | `at`, `seq`, `audio` | RealtimeMeters | OPERATOR, after `subscribe`. |\n| `session.updated` | control | `operator` (`id`, `role`), `permissions`, `reason` | RealtimeSessionUpdated | The sockets of the operator's sessions. |\n| `session.ended` | control | `reason` | RealtimeSessionEnded | The sockets of the session, which are then closed with 4401. |\n| `device.revoked` | control | `reason` | RealtimeDeviceRevoked | The sockets of the device, signed in or not, which are then closed with 4403. |\n| `admin.changed` | admin | `resource` | RealtimeAdminChanged | OPERATOR holding USER_ADMIN (`USERS`) or PAIRING_MANAGE (`DEVICES`, `PAIRING_CODE`). |\n\n**Client to server.** Anything else, or a message from a principal that may not send it, closes the connection with 1008.\n\n| `type` | Members | Allowed for | Effect |\n|---|---|---|---|\n| `subscribe` | `topic: meters` | OPERATOR | The server starts the `meters` frames. |\n| `unsubscribe` | `topic: meters` | OPERATOR | The server stops them. |\n| `resync` | none | OPERATOR | The server answers with a new `snapshot`. At most one in 2 s. |\n\n**State.** After `hello` an OPERATOR connection gets one `snapshot` with the 28 replicated slices (the ReplicatedState model). Every later change is a `delta` whose `revision` is the previous one plus 1 within the `epoch`: revisions have no gap, and a state delta is never dropped. A delta holds operations: `replace` carries one whole slice, `append` carries new rows of `audit` (with `head`, `total` and `dropped`) or of `events`. A slice that no operation names did not change. A client that sees a gap, or another epoch, sends `resync` (at most one in 2 s) and gets a new `snapshot`. A demo reset, a scenario load and a server start begin a new epoch. A 2xx answer of a POST carries the same two numbers in `x-dems-epoch` and `x-dems-revision`, so a client knows which delta holds the effect of its command. Not replicated: `clock`, `auth`, `authLockout`, `pairing`, `audio`. The audio frames travel in `meters` only; a client builds the other four itself, from the server time and from the answers of the identity and pairing operations.\n\n**Time.** `heartbeat.serverTime` is an ISO-8601 string, as mock-core writes it too. Every other time of the protocol is epoch milliseconds on the server clock.\n\n**Close codes.**\n\n| Code | When | What a client does |\n|--:|---|---|\n| 1001 | Server shutdown. | Reconnect with the backoff. |\n| 1008 | Protocol violation: an unknown message, one the principal may not send, or too many. | Reconnect. |\n| 1013 | The connection cap is reached. | Reconnect later. |\n| 4401 | The session ended (any reason of `session.ended`), or the bearer value is not valid. | Show the login screen. A web console opens an anonymous socket for the heartbeat. |\n| 4403 | The device was revoked or unpaired. | Delete the device credential and show the pairing screen. |\n| 4408 | The client did not read fast enough; no state delta is dropped instead. | Reconnect and resynchronise. |\n\n**Never in a message.** A password, a session token, a cookie value, a device credential, a biometric token, a pairing code or a QR payload, or any hash or salt of those; the `enabled` flag or the session list of another operator; the list of paired devices; the lockout state of another console. `admin.changed` names the list that changed and holds no row of it.\n\n**Examples.**\n\n`hello` to a signed-in investigator:\n\n```json\n{\n  \"type\": \"hello\",\n  \"v\": 1,\n  \"connectionId\": \"00000000-0000-4000-8000-0000000000a1\",\n  \"epoch\": 3,\n  \"principal\": \"OPERATOR\",\n  \"topics\": [\n    \"heartbeat\",\n    \"control\",\n    \"state\",\n    \"meters\"\n  ],\n  \"serverTime\": 1790823600000,\n  \"heartbeatIntervalMs\": 1000\n}\n```\n\n`hello` to a connection whose cookie no longer resolves to a session:\n\n```json\n{\n  \"type\": \"hello\",\n  \"v\": 1,\n  \"connectionId\": \"00000000-0000-4000-8000-0000000000a5\",\n  \"epoch\": 3,\n  \"principal\": \"ANONYMOUS\",\n  \"reason\": \"SESSION_INVALID\",\n  \"topics\": [\n    \"heartbeat\"\n  ],\n  \"serverTime\": 1790823600000,\n  \"heartbeatIntervalMs\": 1000\n}\n```\n\n`delta`:\n\n```json\n{\n  \"type\": \"delta\",\n  \"v\": 1,\n  \"epoch\": 3,\n  \"revision\": 129,\n  \"serverTime\": 1790823600000,\n  \"ops\": [\n    {\n      \"op\": \"replace\",\n      \"slice\": \"tabletLink\",\n      \"value\": {\n        \"state\": \"CONNECTED\",\n        \"changedAt\": 1790823600000\n      }\n    },\n    {\n      \"op\": \"append\",\n      \"slice\": \"events\",\n      \"rows\": [\n        {\n          \"id\": \"LOG-000061\",\n          \"seq\": 61,\n          \"at\": 1790823600000,\n          \"type\": \"TABLET_CONNECTED\",\n          \"severity\": \"INFO\",\n          \"message\": \"Tablet connected\",\n          \"params\": {\n            \"state\": \"CONNECTED\"\n          },\n          \"sessionId\": \"SES-20261001-0024\",\n          \"deviceId\": \"TABLET\"\n        }\n      ]\n    }\n  ]\n}\n```\n\n`meters`:\n\n```json\n{\n  \"type\": \"meters\",\n  \"v\": 1,\n  \"at\": 1790823600000,\n  \"seq\": 22440,\n  \"audio\": {\n    \"channels\": {\n      \"AUDIO-01\": {\n        \"seq\": 22440,\n        \"at\": 1790823600000,\n        \"dbfs\": -18.4,\n        \"peak\": -12.1,\n        \"clip\": false,\n        \"noSignal\": false\n      },\n      \"AUDIO-02\": {\n        \"seq\": 22440,\n        \"at\": 1790823600000,\n        \"dbfs\": -51.7,\n        \"peak\": -50.9,\n        \"clip\": false,\n        \"noSignal\": false\n      }\n    }\n  }\n}\n```\n\n`session.updated`:\n\n```json\n{\n  \"type\": \"session.updated\",\n  \"v\": 1,\n  \"operator\": {\n    \"id\": \"OPR-001\",\n    \"role\": \"TECHNICIAN\"\n  },\n  \"permissions\": [\n    \"EVIDENCE_VIEW\",\n    \"DEVICE_MANAGE\",\n    \"DIAGNOSTICS_RUN\",\n    \"MAINTENANCE\"\n  ],\n  \"reason\": \"ROLE_CHANGED\"\n}\n```\n\n`session.ended`:\n\n```json\n{\n  \"type\": \"session.ended\",\n  \"v\": 1,\n  \"reason\": \"TOKEN_REUSE\"\n}\n```\n\n`device.revoked`:\n\n```json\n{\n  \"type\": \"device.revoked\",\n  \"v\": 1,\n  \"reason\": \"REVOKED\"\n}\n```\n\n`admin.changed`:\n\n```json\n{\n  \"type\": \"admin.changed\",\n  \"v\": 1,\n  \"resource\": \"USERS\"\n}\n```\n\n`subscribe`, sent by a client:\n\n```json\n{\n  \"type\": \"subscribe\",\n  \"topic\": \"meters\"\n}\n```\n\n`resync`, sent by a client:\n\n```json\n{\n  \"type\": \"resync\"\n}\n```\n\n### mock-core\n\n- Server to client only: one JSON `Heartbeat` message (see the Heartbeat model) per text frame every 1000 ms, plus one immediately after connecting.\n- `seq` counts ticks since the server started. `sessionState` is `null` in this demo phase.\n- Upgrades from origins other than the web dev origins and the service's own origins are refused with 403.\n- Clients show the link as STALE after 2500 ms without a heartbeat and reconnect after 0.5 s, 1 s, 2 s, 4 s, 8 s (the last delay repeats), plus up to 250 ms of jitter.\n- Messages sent by clients are ignored.\n\nExample message:\n\n```json\n{\n  \"type\": \"heartbeat\",\n  \"v\": 1,\n  \"seq\": 5400,\n  \"serverTime\": \"2026-10-01T03:00:00.000Z\",\n  \"uptimeMs\": 5400012,\n  \"intervalMs\": 1000,\n  \"clients\": 2,\n  \"sessionState\": null\n}\n```",
+      "description": "WebSocket `/ws`. OpenAPI 3.1 cannot describe a socket, so it is documented here. Two services serve it:\n\n| Service | URL | Sends |\n|---|---|---|\n| The Core server (`dems-core-server`) | `ws://127.0.0.1:4420/ws` | The protocol of the section \"Core server\": `hello`, the heartbeat, the replicated Core state, the audio meters and the control messages |\n| mock-core (`dems-mock-core`) | `ws://127.0.0.1:4400/ws` | The heartbeat only (section \"mock-core\"): the socket of Simulated mode |\n\n### Core server\n\nThe Core server serves `ws://127.0.0.1:4420/ws` with the protocol below. A lane instance serves the same path on its own port.\n\n**Who a connection is.** Decided once, at the upgrade, from the request headers only: the session cookie of a web console, or `Authorization: Bearer` of a paired device. Nothing in the URL, in a subprotocol or in a message authenticates. The principal stays for the life of the connection, so a client opens a new socket after a sign-in or a sign-out.\n\n| Principal | Receives |\n|---|---|\n| ANONYMOUS | `hello`, `heartbeat` |\n| DEVICE | `hello`, `heartbeat`, `device.revoked` |\n| OPERATOR | `hello`, `heartbeat`, `snapshot`, `delta`, `meters`, `session.updated`, `session.ended`, `device.revoked`, `admin.changed` |\n\n**Server to client.** One JSON object per text frame; every message carries `type` and `v: 1`.\n\n| `type` | Topic | Members | Model | Sent to |\n|---|---|---|---|---|\n| `hello` | none | `connectionId`, `epoch`, `principal`, `reason?`, `topics`, `serverTime`, `heartbeatIntervalMs` | RealtimeHello | Every connection, first. |\n| `heartbeat` | heartbeat | `seq`, `serverTime`, `uptimeMs`, `intervalMs`, `clients`, `sessionState` | Heartbeat | Every connection, once a second. `sessionState` is null unless the principal is OPERATOR. |\n| `snapshot` | state | `epoch`, `revision`, `serverTime`, `state` | RealtimeSnapshot | OPERATOR: after `hello`, as the answer to `resync`, and when a new epoch starts. |\n| `delta` | state | `epoch`, `revision`, `serverTime`, `ops` | RealtimeDelta | OPERATOR, for every change of a replicated slice. |\n| `meters` | meters | `at`, `seq`, `audio` | RealtimeMeters | OPERATOR, after `subscribe`. |\n| `session.updated` | control | `operator` (`id`, `role`), `permissions`, `reason` | RealtimeSessionUpdated | The sockets of the operator's sessions. |\n| `session.ended` | control | `reason` | RealtimeSessionEnded | The sockets of the session, which are then closed with 4401. |\n| `device.revoked` | control | `reason` | RealtimeDeviceRevoked | The sockets of the device, signed in or not, which are then closed with 4403. |\n| `admin.changed` | admin | `resource` | RealtimeAdminChanged | OPERATOR holding USER_ADMIN (`USERS`) or PAIRING_MANAGE (`DEVICES`, `PAIRING_CODE`). |\n\n**Client to server.** Anything else, or a message from a principal that may not send it, closes the connection with 1008.\n\n| `type` | Members | Allowed for | Effect |\n|---|---|---|---|\n| `subscribe` | `topic: meters` | OPERATOR | The server starts the `meters` frames. |\n| `unsubscribe` | `topic: meters` | OPERATOR | The server stops them. |\n| `resync` | none | OPERATOR | The server answers with a new `snapshot`. At most one in 2 s; one that comes sooner is answered when the 2 s have passed. |\n\n**State.** After `hello` an OPERATOR connection gets one `snapshot` with the 28 replicated slices (the ReplicatedState model). Every later change is a `delta` whose `revision` is the previous one plus 1 within the `epoch`: revisions have no gap, and a state delta is never dropped. A delta holds operations: `replace` carries one whole slice, `append` carries new rows of `audit` (with `head`, `total` and `dropped`) or of `events`. A slice that no operation names did not change. A client that sees a gap, or another epoch, sends `resync` (at most one in 2 s) and gets a new `snapshot`. A demo reset, a scenario load and a server start begin a new epoch. A 2xx answer of a POST carries the same two numbers in `x-dems-epoch` and `x-dems-revision`, so a client knows which delta holds the effect of its command. Not replicated: `clock`, `auth`, `authLockout`, `pairing`, `audio`. The audio frames travel in `meters` only; a client builds the other four itself, from the server time and from the answers of the identity and pairing operations.\n\n**Time.** `heartbeat.serverTime` is an ISO-8601 string, as mock-core writes it too. Every other time of the protocol is epoch milliseconds on the server clock.\n\n**Close codes.**\n\n| Code | When | What a client does |\n|--:|---|---|\n| 1001 | Server shutdown. | Reconnect with the backoff. |\n| 1008 | Protocol violation: an unknown message, one the principal may not send, or too many. | Reconnect. |\n| 1009 | A client message larger than 65,536 bytes; the socket library refuses it before it is buffered. | Reconnect. |\n| 1013 | The connection cap is reached. | Reconnect later. |\n| 4401 | The session ended (any reason of `session.ended`), or the bearer value is not valid. | Show the login screen. A web console opens an anonymous socket for the heartbeat. |\n| 4403 | The device was revoked or unpaired. | Delete the device credential and show the pairing screen. |\n| 4408 | The client did not read fast enough; no state delta is dropped instead. | Reconnect and resynchronise. |\n\n**Never in a message.** A password, a session token, a cookie value, a device credential, a biometric token, a pairing code or a QR payload, or any hash or salt of those; the `enabled` flag or the session list of another operator; the list of paired devices; the lockout state of another console. `admin.changed` names the list that changed and holds no row of it.\n\n**Examples.**\n\n`hello` to a signed-in investigator:\n\n```json\n{\n  \"type\": \"hello\",\n  \"v\": 1,\n  \"connectionId\": \"00000000-0000-4000-8000-0000000000a1\",\n  \"epoch\": 3,\n  \"principal\": \"OPERATOR\",\n  \"topics\": [\n    \"heartbeat\",\n    \"control\",\n    \"state\",\n    \"meters\"\n  ],\n  \"serverTime\": 1790823600000,\n  \"heartbeatIntervalMs\": 1000\n}\n```\n\n`hello` to a connection whose cookie no longer resolves to a session:\n\n```json\n{\n  \"type\": \"hello\",\n  \"v\": 1,\n  \"connectionId\": \"00000000-0000-4000-8000-0000000000a5\",\n  \"epoch\": 3,\n  \"principal\": \"ANONYMOUS\",\n  \"reason\": \"SESSION_INVALID\",\n  \"topics\": [\n    \"heartbeat\"\n  ],\n  \"serverTime\": 1790823600000,\n  \"heartbeatIntervalMs\": 1000\n}\n```\n\n`delta`:\n\n```json\n{\n  \"type\": \"delta\",\n  \"v\": 1,\n  \"epoch\": 3,\n  \"revision\": 129,\n  \"serverTime\": 1790823600000,\n  \"ops\": [\n    {\n      \"op\": \"replace\",\n      \"slice\": \"tabletLink\",\n      \"value\": {\n        \"state\": \"CONNECTED\",\n        \"changedAt\": 1790823600000\n      }\n    },\n    {\n      \"op\": \"append\",\n      \"slice\": \"events\",\n      \"rows\": [\n        {\n          \"id\": \"LOG-000061\",\n          \"seq\": 61,\n          \"at\": 1790823600000,\n          \"type\": \"TABLET_CONNECTED\",\n          \"severity\": \"INFO\",\n          \"message\": \"Tablet connected\",\n          \"params\": {\n            \"state\": \"CONNECTED\"\n          },\n          \"sessionId\": \"SES-20261001-0024\",\n          \"deviceId\": \"TABLET\"\n        }\n      ]\n    }\n  ]\n}\n```\n\n`meters`:\n\n```json\n{\n  \"type\": \"meters\",\n  \"v\": 1,\n  \"at\": 1790823600000,\n  \"seq\": 22440,\n  \"audio\": {\n    \"channels\": {\n      \"AUDIO-01\": {\n        \"seq\": 22440,\n        \"at\": 1790823600000,\n        \"dbfs\": -18.4,\n        \"peak\": -12.1,\n        \"clip\": false,\n        \"noSignal\": false\n      },\n      \"AUDIO-02\": {\n        \"seq\": 22440,\n        \"at\": 1790823600000,\n        \"dbfs\": -51.7,\n        \"peak\": -50.9,\n        \"clip\": false,\n        \"noSignal\": false\n      }\n    }\n  }\n}\n```\n\n`session.updated`:\n\n```json\n{\n  \"type\": \"session.updated\",\n  \"v\": 1,\n  \"operator\": {\n    \"id\": \"OPR-001\",\n    \"role\": \"TECHNICIAN\"\n  },\n  \"permissions\": [\n    \"EVIDENCE_VIEW\",\n    \"DEVICE_MANAGE\",\n    \"DIAGNOSTICS_RUN\",\n    \"MAINTENANCE\"\n  ],\n  \"reason\": \"ROLE_CHANGED\"\n}\n```\n\n`session.ended`:\n\n```json\n{\n  \"type\": \"session.ended\",\n  \"v\": 1,\n  \"reason\": \"TOKEN_REUSE\"\n}\n```\n\n`device.revoked`:\n\n```json\n{\n  \"type\": \"device.revoked\",\n  \"v\": 1,\n  \"reason\": \"REVOKED\"\n}\n```\n\n`admin.changed`:\n\n```json\n{\n  \"type\": \"admin.changed\",\n  \"v\": 1,\n  \"resource\": \"USERS\"\n}\n```\n\n`subscribe`, sent by a client:\n\n```json\n{\n  \"type\": \"subscribe\",\n  \"topic\": \"meters\"\n}\n```\n\n`resync`, sent by a client:\n\n```json\n{\n  \"type\": \"resync\"\n}\n```\n\n### mock-core\n\n- Server to client only: one JSON `Heartbeat` message (see the Heartbeat model) per text frame every 1000 ms, plus one immediately after connecting.\n- `seq` counts ticks since the server started. `sessionState` is `null` in this demo phase.\n- Upgrades from origins other than the web dev origins and the service's own origins are refused with 403.\n- Clients show the link as STALE after 2500 ms without a heartbeat and reconnect after 0.5 s, 1 s, 2 s, 4 s, 8 s (the last delay repeats), plus up to 250 ms of jitter.\n- Messages sent by clients are ignored.\n\nExample message:\n\n```json\n{\n  \"type\": \"heartbeat\",\n  \"v\": 1,\n  \"seq\": 5400,\n  \"serverTime\": \"2026-10-01T03:00:00.000Z\",\n  \"uptimeMs\": 5400012,\n  \"intervalMs\": 1000,\n  \"clients\": 2,\n  \"sessionState\": null\n}\n```",
       "x-dems-mode": "live"
     }
   ],
@@ -93,6 +93,26 @@
                   "$ref": "#/components/schemas/HealthResponse"
                 },
                 "examples": {
+                  "coreServer": {
+                    "summary": "The Core server is up, database and engine ready",
+                    "value": {
+                      "status": "ok",
+                      "service": "dems-core-server",
+                      "version": "0.2.0",
+                      "apiVersion": "v1",
+                      "serverTime": "2026-10-01T03:00:00.000Z",
+                      "uptimeMs": 5400000,
+                      "ws": {
+                        "path": "/ws",
+                        "heartbeatIntervalMs": 1000,
+                        "clients": 2
+                      },
+                      "ready": {
+                        "database": true,
+                        "engine": true
+                      }
+                    }
+                  },
                   "live": {
                     "summary": "mock-core is up",
                     "value": {
@@ -147,7 +167,7 @@
           "Session"
         ],
         "summary": "Create session",
-        "description": "Creates a session and returns its Session ID; the session enters **CREATE** (book §6.2, §12.2 steps 1-2).\n\nIdempotent (S26): the same input while that session is still open returns it with `200` and `created: false`.\n\nRequires a signed-in operator holding SESSION_START; writes the SESSION_CREATED audit row.\n\nOne session is open per Core, and any operator holding SESSION_START may act on it. A caller whose role lacks the permission is refused with `403 NOT_PERMITTED` and one ACCESS_DENIED audit row, before the body is read.\n\nAnswered by the Core server. In Simulated mode the in-app simulator answers the same operation inside the app, without a request, and marks its answer with the header `x-dems-simulated: 1`; the Core server never sends that header.",
+        "description": "Creates a session and returns its Session ID; the session enters **CREATE** (book §6.2, §12.2 steps 1-2).\n\nIdempotent (S26): the same input while that session is still open returns it with `200` and `created: false`.\n\nRequires a signed-in operator holding SESSION_START; writes the SESSION_CREATED audit row.\n\nOne session is open per Core, and any operator holding SESSION_START may act on it. A caller whose role lacks the permission is refused with `403 NOT_PERMITTED` and one ACCESS_DENIED audit row, before the body is read.\n\nThe Core server's refusal texts are fixed and quote no part of the request: a session that is not the open one answers `404 NOT_FOUND` \"This session is not the open session.\" (`details.simCode: NOT_FOUND`), and an action that does not fit the session's state answers `409 INVALID_STATE` \"The action is not allowed in the current state.\" with `details.simCode: ILLEGAL_STATE`, `from` and `event`. A `409 SESSION_ACTIVE` names the open session in `details.sessionId`. The examples show the texts of the in-app simulator.\n\nAnswered by the Core server. In Simulated mode the in-app simulator answers the same operation inside the app, without a request, and marks its answer with the header `x-dems-simulated: 1`; the Core server never sends that header.",
         "responses": {
           "200": {
             "description": "The same input was already created: the open session is returned.",
@@ -416,7 +436,7 @@
           "Session"
         ],
         "summary": "Start recording",
-        "description": "Runs the Core pre-check (book §5.3: 8 checks) and starts recording.\n\n- From **CREATE**: begins the pre-check and answers `202` with state **PRECHECK**. Poll `GET /api/v1/session/current` and call again once it is **ARMED**.\n- From **ARMED**: starts recording and answers `200` with state **RECORDING**.\n- Pre-check ended with **WARN**: send `{\"acknowledgeWarnings\": true}` to acknowledge and start; without it the answer is `409 PRECHECK_WARNINGS`.\n- Pre-check with a **BLOCK** (Core offline, lens fault, storage full, security fault): `409 PRECHECK_BLOCKED` with the reasons.\n\nRequires a signed-in operator holding SESSION_START; the audit rows name that operator.\n\nOne session is open per Core, and any operator holding SESSION_START may act on it. A caller whose role lacks the permission is refused with `403 NOT_PERMITTED` and one ACCESS_DENIED audit row, before the body is read.\n\nA body that does not match its schema answers `422 INVALID_INPUT`. The pre-check and its outcome also have operations of their own: `beginPrecheck`, `retryPrecheck` and `acknowledgePrecheckWarnings`.\n\nAnswered by the Core server. In Simulated mode the in-app simulator answers the same operation inside the app, without a request, and marks its answer with the header `x-dems-simulated: 1`; the Core server never sends that header.",
+        "description": "Runs the Core pre-check (book §5.3: 8 checks) and starts recording.\n\n- From **CREATE**: begins the pre-check and answers `202` with state **PRECHECK**. Poll `GET /api/v1/session/current` and call again once it is **ARMED**.\n- From **ARMED**: starts recording and answers `200` with state **RECORDING**.\n- Pre-check ended with **WARN**: send `{\"acknowledgeWarnings\": true}` to acknowledge and start; without it the answer is `409 PRECHECK_WARNINGS`.\n- Pre-check with a **BLOCK** (Core offline, lens fault, storage full, security fault): `409 PRECHECK_BLOCKED` with the reasons.\n\nRequires a signed-in operator holding SESSION_START; the audit rows name that operator.\n\nOne session is open per Core, and any operator holding SESSION_START may act on it. A caller whose role lacks the permission is refused with `403 NOT_PERMITTED` and one ACCESS_DENIED audit row, before the body is read.\n\nA body that does not match its schema answers `422 INVALID_INPUT`. The pre-check and its outcome also have operations of their own: `beginPrecheck`, `retryPrecheck` and `acknowledgePrecheckWarnings`.\n\nThe Core server's refusal texts are fixed and quote no part of the request: a session that is not the open one answers `404 NOT_FOUND` \"This session is not the open session.\" (`details.simCode: NOT_FOUND`), and an action that does not fit the session's state answers `409 INVALID_STATE` \"The action is not allowed in the current state.\" with `details.simCode: ILLEGAL_STATE`, `from` and `event`. A `409 SESSION_ACTIVE` names the open session in `details.sessionId`. The examples show the texts of the in-app simulator.\n\nAnswered by the Core server. In Simulated mode the in-app simulator answers the same operation inside the app, without a request, and marks its answer with the header `x-dems-simulated: 1`; the Core server never sends that header.",
         "responses": {
           "200": {
             "description": "Recording started (state RECORDING).",
@@ -733,7 +753,7 @@
           "Session"
         ],
         "summary": "Stop recording",
-        "description": "Stops the recording with a mandatory reason and moves the session to finalization: **STOPPING** → **FINALIZING** (hashes, manifest, encryption, signature) → **SEALED** (book §6.2, §12.2 steps 5-10).\n\nAnswers `202` at STOPPING; poll `GET /api/v1/session/current` for the seal.\n\nRequires a signed-in operator holding SESSION_START; the RECORDING_STOPPED row names that operator.\n\nOne session is open per Core, and any operator holding SESSION_START may act on it. A caller whose role lacks the permission is refused with `403 NOT_PERMITTED` and one ACCESS_DENIED audit row, before the body is read.\n\nThe operator who stops a recording need not be the one who started it. A reason that the schema refuses for another cause than its length answers `422 INVALID_INPUT`.\n\nAnswered by the Core server. In Simulated mode the in-app simulator answers the same operation inside the app, without a request, and marks its answer with the header `x-dems-simulated: 1`; the Core server never sends that header.",
+        "description": "Stops the recording with a mandatory reason and moves the session to finalization: **STOPPING** → **FINALIZING** (hashes, manifest, encryption, signature) → **SEALED** (book §6.2, §12.2 steps 5-10).\n\nAnswers `202` at STOPPING; poll `GET /api/v1/session/current` for the seal.\n\nRequires a signed-in operator holding SESSION_START; the RECORDING_STOPPED row names that operator.\n\nOne session is open per Core, and any operator holding SESSION_START may act on it. A caller whose role lacks the permission is refused with `403 NOT_PERMITTED` and one ACCESS_DENIED audit row, before the body is read.\n\nThe operator who stops a recording need not be the one who started it. A reason that is absent, or shorter than 5 characters after trimming, answers `422 INVALID_REASON` after the `404` and the `409`; a reason that is not text, holds U+0000 or an unpaired surrogate, or is longer than its maximum, and a malformed `{id}`, answer `422 INVALID_INPUT`.\n\nThe Core server's refusal texts are fixed and quote no part of the request: a session that is not the open one answers `404 NOT_FOUND` \"This session is not the open session.\" (`details.simCode: NOT_FOUND`), and an action that does not fit the session's state answers `409 INVALID_STATE` \"The action is not allowed in the current state.\" with `details.simCode: ILLEGAL_STATE`, `from` and `event`. A `409 SESSION_ACTIVE` names the open session in `details.sessionId`. The examples show the texts of the in-app simulator.\n\nAnswered by the Core server. In Simulated mode the in-app simulator answers the same operation inside the app, without a request, and marks its answer with the header `x-dems-simulated: 1`; the Core server never sends that header.",
         "responses": {
           "202": {
             "description": "Stop accepted (state STOPPING); finalization follows.",
@@ -896,7 +916,7 @@
             }
           },
           "422": {
-            "description": "The reason is shorter than 5 characters (INVALID_REASON).",
+            "description": "The reason is absent or shorter than 5 characters after trimming (INVALID_REASON), decided after the 404 and the 409; or the body or the path does not match its schema (INVALID_INPUT, Core server only): a reason that is not text, holds U+0000 or an unpaired surrogate, or is longer than its maximum, or a malformed `{id}`.",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -1214,7 +1234,7 @@
             }
           },
           "403": {
-            "description": "Refused: the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "description": "Refused: the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -1534,7 +1554,7 @@
             }
           },
           "403": {
-            "description": "Refused: the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "description": "Refused: the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -1693,7 +1713,7 @@
             }
           },
           "403": {
-            "description": "Refused: the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "description": "Refused: the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -1850,7 +1870,7 @@
             }
           },
           "403": {
-            "description": "Refused: the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "description": "Refused: the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -2010,7 +2030,7 @@
             }
           },
           "403": {
-            "description": "Refused: the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "description": "Refused: the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -2089,7 +2109,7 @@
           "Evidence"
         ],
         "summary": "Authorized export",
-        "description": "**RBAC + audit required** (book §19.3, §21.2). The Core server applies the role of the operator whose session the request carries, before the body is read.\n\n- SUPERVISOR (holds EVIDENCE_EXPORT): `202`, and an EVIDENCE_EXPORTED audit row (the ExportEvent).\n- INVESTIGATOR or TECHNICIAN: `403 FORBIDDEN`, and an EXPORT_DENIED audit row (EVT-26).\n\nOnly SEALED, UNDER_REVIEW or EXPORTED evidence can be exported, and the sealed source is never modified (book §19.3 rule 1).\n\nThe answer holds no file: the server records the export, and a client keeps its bundled export archive (01_specs §11). The reason is mandatory. A reason longer than 500 UTF-16 code units, a destination longer than 120, and any other body that does not match its schema, answers `422 INVALID_INPUT`; the server does not cut a text.\n\nAnswered by the Core server. In Simulated mode the in-app simulator answers the same operation inside the app, without a request, and marks its answer with the header `x-dems-simulated: 1`; the Core server never sends that header.",
+        "description": "**RBAC + audit required** (book §19.3, §21.2). The Core server applies the role of the operator whose session the request carries, before the body is read.\n\n- SUPERVISOR (holds EVIDENCE_EXPORT): `202`, and an EVIDENCE_EXPORTED audit row (the ExportEvent).\n- INVESTIGATOR or TECHNICIAN: `403 FORBIDDEN`, and an EXPORT_DENIED audit row (EVT-26).\n\nOnly SEALED, UNDER_REVIEW or EXPORTED evidence can be exported, and the sealed source is never modified (book §19.3 rule 1).\n\nThe answer holds no file: the server records the export, and a client keeps its bundled export archive (01_specs §11). The reason is mandatory. A reason longer than 500 UTF-16 code units, a destination longer than 120, and any other body that does not match its schema, answers `422 INVALID_INPUT`; the server does not cut a text.\n\nA refused export is still recorded: the EXPORT_DENIED row is committed and reaches every client through the `state` topic. The `403` carries no `x-dems-epoch` or `x-dems-revision` header (API-7 names the 2xx answers only).\n\nAnswered by the Core server. In Simulated mode the in-app simulator answers the same operation inside the app, without a request, and marks its answer with the header `x-dems-simulated: 1`; the Core server never sends that header.",
         "responses": {
           "202": {
             "description": "Export accepted and audited.",
@@ -2253,7 +2273,7 @@
             }
           },
           "422": {
-            "description": "The reason is shorter than 5 characters (INVALID_REASON).",
+            "description": "The reason is missing or shorter than 5 characters (INVALID_REASON), decided after the 404 and the 409; or the body does not match its schema (INVALID_INPUT, Core server only): a reason that is not text or is longer than 500 UTF-16 code units, a destination longer than 120, U+0000 or an unpaired surrogate.",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -2531,7 +2551,7 @@
             }
           },
           "403": {
-            "description": "Refused: the caller is neither a web console nor a paired device (DEVICE_NOT_PAIRED); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "description": "Refused: the caller is neither a web console nor a paired device (DEVICE_NOT_PAIRED); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -2611,7 +2631,7 @@
             }
           },
           "423": {
-            "description": "The console is locked after 5 failures within 5 minutes (LOCKED), for 60 s; `details.lockedUntil` and `details.retryInMs` say how long. The attempt is not verified and writes AUTH_LOCKED.",
+            "description": "The console is locked after 5 failures within 5 minutes (LOCKED), for 60 s; `details.lockedUntil` and `details.retryInMs` say how long. The failure that locks the console also answers 423; it was verified and writes AUTH_FAILED with `details.lockedUntil`. An attempt during the lock is not verified and writes AUTH_LOCKED.",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -2744,7 +2764,7 @@
             }
           },
           "403": {
-            "description": "Refused: the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "description": "Refused: the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -2925,7 +2945,7 @@
             }
           },
           "403": {
-            "description": "Refused: the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "description": "Refused: the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -3075,7 +3095,7 @@
             }
           },
           "403": {
-            "description": "Refused: the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "description": "Refused: the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -3262,7 +3282,7 @@
             }
           },
           "403": {
-            "description": "Refused: the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "description": "Refused: the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -3436,7 +3456,7 @@
             }
           },
           "403": {
-            "description": "Refused: the session is not bound to a device, or `enabled: true` was sent on a session that was not created by password (DEVICE_NOT_PAIRED); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "description": "Refused: the session is not bound to a device, or `enabled: true` was sent on a session that was not created by password (DEVICE_NOT_PAIRED with `details.reason: PASSWORD_SESSION_REQUIRED`); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -3454,6 +3474,19 @@
                       "error": {
                         "code": "DEVICE_NOT_PAIRED",
                         "message": "Biometric sign-in is set up on a paired device.",
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  },
+                  "passwordSessionRequired": {
+                    "summary": "Turning it on in a session that no password opened",
+                    "value": {
+                      "error": {
+                        "code": "DEVICE_NOT_PAIRED",
+                        "message": "Sign in with your password to turn biometric sign-in on.",
+                        "details": {
+                          "reason": "PASSWORD_SESSION_REQUIRED"
+                        },
                         "requestId": "00000000-0000-4000-8000-000000000000"
                       }
                     }
@@ -3572,7 +3605,7 @@
           "Identity"
         ],
         "summary": "Sign in with the biometric token",
-        "description": "Creates a session from the token that the device's biometric prompt released (§5.6). The server never accepts a claim that a biometric check passed; it accepts only the token, sent with the device credential.\n\nThe request must present the device credential itself. The session token of an operator who is signed in on this device is refused with `403 DEVICE_NOT_PAIRED` (`details.reason: DEVICE_CREDENTIAL_REQUIRED`): a session that is still open must not be able to renew itself with a token.\n\nEach use rotates the token: the answer carries the next one in `biometricToken`. A token that was already used revokes its whole family, ends the open biometric sessions of that device and operator, and answers the generic `401 INVALID_CREDENTIALS`.\n\nEvery attempt counts toward the device's lockout and writes one audit row: AUTH_SUCCESS (`details.method: BIOMETRIC`), AUTH_FAILED or AUTH_LOCKED.\n\nThe body or the answer holds a secret. It is never logged, and the API Reference offers no \"Try it\" for this operation in Live mode.\n\nCore server only: the in-app simulator has no such operation, so it is not available in Simulated mode.",
+        "description": "Creates a session from the token that the device's biometric prompt released (§5.6). The server never accepts a claim that a biometric check passed; it accepts only the token, sent with the device credential.\n\nThe request must present the device credential itself. The session token of an operator who is signed in on this device is refused with `403 DEVICE_NOT_PAIRED` (`details.reason: DEVICE_CREDENTIAL_REQUIRED`): a session that is still open must not be able to renew itself with a token.\n\nEach use rotates the token: the answer carries the next one in `biometricToken`. A token that was already used, or a live one presented by another paired device, revokes its whole family, ends the open biometric sessions of that device and operator, and answers the generic `401 INVALID_CREDENTIALS`.\n\nEvery attempt counts toward the device's lockout and writes one audit row: AUTH_SUCCESS (`details.method: BIOMETRIC`), AUTH_FAILED or AUTH_LOCKED.\n\nThe body or the answer holds a secret. It is never logged, and the API Reference offers no \"Try it\" for this operation in Live mode.\n\nCore server only: the in-app simulator has no such operation, so it is not available in Simulated mode.",
         "responses": {
           "200": {
             "description": "Signed in; `sessionToken` and the rotated `biometricToken` are returned once.",
@@ -3698,7 +3731,7 @@
             }
           },
           "403": {
-            "description": "Refused: the request presented the session token of an operator who is signed in on this device, not the device credential itself (DEVICE_NOT_PAIRED, `details.reason: DEVICE_CREDENTIAL_REQUIRED`; no audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "description": "Refused: an operator's web console session called a device-only operation (DEVICE_NOT_PAIRED; no audit row); the request presented the session token of an operator who is signed in on this device, not the device credential itself (DEVICE_NOT_PAIRED, `details.reason: DEVICE_CREDENTIAL_REQUIRED`; no audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -3720,6 +3753,17 @@
                         "details": {
                           "reason": "DEVICE_CREDENTIAL_REQUIRED"
                         },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  },
+                  "webConsoleSession": {
+                    "summary": "A web console session on a device-only operation",
+                    "description": "The caller is an operator signed in on the web console, not a paired device. No audit row is written.",
+                    "value": {
+                      "error": {
+                        "code": "DEVICE_NOT_PAIRED",
+                        "message": "This operation is available on a paired device only.",
                         "requestId": "00000000-0000-4000-8000-000000000000"
                       }
                     }
@@ -3782,7 +3826,7 @@
             }
           },
           "423": {
-            "description": "The console is locked after 5 failures within 5 minutes (LOCKED), for 60 s; `details.lockedUntil` and `details.retryInMs` say how long. The attempt is not verified and writes AUTH_LOCKED.",
+            "description": "The console is locked after 5 failures within 5 minutes (LOCKED), for 60 s; `details.lockedUntil` and `details.retryInMs` say how long. The failure that locks the console also answers 423; it was verified and writes AUTH_FAILED with `details.lockedUntil`. An attempt during the lock is not verified and writes AUTH_LOCKED.",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -3973,7 +4017,7 @@
             }
           },
           "403": {
-            "description": "Refused: the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "description": "Refused: an operator's web console session called a device-only operation (DEVICE_NOT_PAIRED; no audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -3985,6 +4029,17 @@
                   "$ref": "#/components/schemas/ApiError"
                 },
                 "examples": {
+                  "webConsoleSession": {
+                    "summary": "A web console session on a device-only operation",
+                    "description": "The caller is an operator signed in on the web console, not a paired device. No audit row is written.",
+                    "value": {
+                      "error": {
+                        "code": "DEVICE_NOT_PAIRED",
+                        "message": "This operation is available on a paired device only.",
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  },
                   "deviceRevoked": {
                     "summary": "The device is no longer paired",
                     "value": {
@@ -4251,7 +4306,7 @@
             }
           },
           "403": {
-            "description": "Refused: the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "description": "Refused: the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -4423,7 +4478,7 @@
             }
           },
           "403": {
-            "description": "Refused: the operator's role lacks USER_ADMIN (NOT_PERMITTED; one ACCESS_DENIED audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "description": "Refused: the operator's role lacks USER_ADMIN (NOT_PERMITTED; one ACCESS_DENIED audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -4615,7 +4670,7 @@
             }
           },
           "403": {
-            "description": "Refused: the operator's role lacks USER_ADMIN (NOT_PERMITTED; one ACCESS_DENIED audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "description": "Refused: the operator's role lacks USER_ADMIN (NOT_PERMITTED; one ACCESS_DENIED audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -4923,7 +4978,7 @@
             }
           },
           "403": {
-            "description": "Refused: the operator's role lacks USER_ADMIN (NOT_PERMITTED; one ACCESS_DENIED audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "description": "Refused: the operator's role lacks USER_ADMIN (NOT_PERMITTED; one ACCESS_DENIED audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -5203,7 +5258,7 @@
             }
           },
           "403": {
-            "description": "Refused: the operator's role lacks USER_ADMIN (NOT_PERMITTED; one ACCESS_DENIED audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "description": "Refused: the operator's role lacks USER_ADMIN (NOT_PERMITTED; one ACCESS_DENIED audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -5414,7 +5469,7 @@
           "Pairing"
         ],
         "summary": "Issue a pairing code",
-        "description": "Issues a one-time pairing code: six digits, valid for 300 s, closed after five failed redeems. The answer is the only place the code ever appears; reloading the portal cannot show it again.\n\nOne code is active at a time: issuing a new one cancels the previous one. Writes PAIRING_CODE_ISSUED, and PAIRING_CODE_CLOSED for a code it replaced.\n\nThe body or the answer holds a secret. It is never logged, and the API Reference offers no \"Try it\" for this operation in Live mode.\n\nCore server only: the in-app simulator has no such operation, so it is not available in Simulated mode.",
+        "description": "Issues a one-time pairing code: six digits, valid for 300 s, closed after five failed redeems. The answer is the only place the code ever appears; reloading the portal cannot show it again.\n\nOne code is active at a time: issuing a new one cancels the previous one. Writes PAIRING_CODE_ISSUED, and PAIRING_CODE_CLOSED (`details.reason: CANCELLED`) for a code it replaced.\n\nThe body or the answer holds a secret. It is never logged, and the API Reference offers no \"Try it\" for this operation in Live mode.\n\nCore server only: the in-app simulator has no such operation, so it is not available in Simulated mode.",
         "responses": {
           "201": {
             "description": "The code, once.",
@@ -5479,7 +5534,7 @@
             }
           },
           "403": {
-            "description": "Refused: the operator's role lacks PAIRING_MANAGE (NOT_PERMITTED; one ACCESS_DENIED audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "description": "Refused: the operator's role lacks PAIRING_MANAGE (NOT_PERMITTED; one ACCESS_DENIED audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -5640,7 +5695,7 @@
             }
           },
           "403": {
-            "description": "Refused: the operator's role lacks PAIRING_MANAGE (NOT_PERMITTED; one ACCESS_DENIED audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "description": "Refused: the operator's role lacks PAIRING_MANAGE (NOT_PERMITTED; one ACCESS_DENIED audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -5736,7 +5791,7 @@
           "Pairing"
         ],
         "summary": "Cancel the pairing code",
-        "description": "Cancels the active code. Writes PAIRING_CODE_CLOSED with `details.reason: CANCELLED`; when no code is active it writes nothing and still answers `204`.\n\nCore server only: the in-app simulator has no such operation, so it is not available in Simulated mode.",
+        "description": "Cancels the active code. Writes PAIRING_CODE_CLOSED with `details.reason: CANCELLED`; when no code is active it writes nothing and still answers `204`. The other close reasons are EXPIRED and EXHAUSTED (`PairingCodeCloseReason`).\n\nCore server only: the in-app simulator has no such operation, so it is not available in Simulated mode.",
         "responses": {
           "204": {
             "description": "No code is active now.",
@@ -5780,7 +5835,7 @@
             }
           },
           "403": {
-            "description": "Refused: the operator's role lacks PAIRING_MANAGE (NOT_PERMITTED; one ACCESS_DENIED audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "description": "Refused: the operator's role lacks PAIRING_MANAGE (NOT_PERMITTED; one ACCESS_DENIED audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -6030,7 +6085,7 @@
             }
           },
           "423": {
-            "description": "Redeeming is locked for 60 s after 3 failures (LOCKED); `details.lockedUntil` and `details.retryInMs` say how long. The attempt is not compared and writes PAIRING_LOCKED.",
+            "description": "Redeeming is locked for 60 s after 3 failures (LOCKED); `details.lockedUntil` and `details.retryInMs` say how long. The failure that locks answers this too and writes PAIRING_FAILED; an attempt during the lock is not compared and writes PAIRING_LOCKED.",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -6191,7 +6246,7 @@
             }
           },
           "403": {
-            "description": "Refused: the operator's role lacks PAIRING_MANAGE (NOT_PERMITTED; one ACCESS_DENIED audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "description": "Refused: the operator's role lacks PAIRING_MANAGE (NOT_PERMITTED; one ACCESS_DENIED audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -6388,7 +6443,7 @@
             }
           },
           "403": {
-            "description": "Refused: the operator's role lacks PAIRING_MANAGE (NOT_PERMITTED; one ACCESS_DENIED audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "description": "Refused: the operator's role lacks PAIRING_MANAGE (NOT_PERMITTED; one ACCESS_DENIED audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -6671,7 +6726,7 @@
             }
           },
           "403": {
-            "description": "Refused: the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "description": "Refused: an operator's web console session called a device-only operation (DEVICE_NOT_PAIRED; no audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -6683,6 +6738,17 @@
                   "$ref": "#/components/schemas/ApiError"
                 },
                 "examples": {
+                  "webConsoleSession": {
+                    "summary": "A web console session on a device-only operation",
+                    "description": "The caller is an operator signed in on the web console, not a paired device. No audit row is written.",
+                    "value": {
+                      "error": {
+                        "code": "DEVICE_NOT_PAIRED",
+                        "message": "This operation is available on a paired device only.",
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  },
                   "deviceRevoked": {
                     "summary": "The device is no longer paired",
                     "value": {
@@ -6791,7 +6857,7 @@
             }
           },
           "403": {
-            "description": "Refused: the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "description": "Refused: an operator's web console session called a device-only operation (DEVICE_NOT_PAIRED; no audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -6803,6 +6869,17 @@
                   "$ref": "#/components/schemas/ApiError"
                 },
                 "examples": {
+                  "webConsoleSession": {
+                    "summary": "A web console session on a device-only operation",
+                    "description": "The caller is an operator signed in on the web console, not a paired device. No audit row is written.",
+                    "value": {
+                      "error": {
+                        "code": "DEVICE_NOT_PAIRED",
+                        "message": "This operation is available on a paired device only.",
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  },
                   "deviceRevoked": {
                     "summary": "The device is no longer paired",
                     "value": {
@@ -6928,7 +7005,7 @@
             }
           },
           "403": {
-            "description": "Refused: the request presented the session token of an operator who is signed in on this device, not the device credential itself (DEVICE_NOT_PAIRED, `details.reason: DEVICE_CREDENTIAL_REQUIRED`; no audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "description": "Refused: an operator's web console session called a device-only operation (DEVICE_NOT_PAIRED; no audit row); the request presented the session token of an operator who is signed in on this device, not the device credential itself (DEVICE_NOT_PAIRED, `details.reason: DEVICE_CREDENTIAL_REQUIRED`; no audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -6950,6 +7027,17 @@
                         "details": {
                           "reason": "DEVICE_CREDENTIAL_REQUIRED"
                         },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  },
+                  "webConsoleSession": {
+                    "summary": "A web console session on a device-only operation",
+                    "description": "The caller is an operator signed in on the web console, not a paired device. No audit row is written.",
+                    "value": {
+                      "error": {
+                        "code": "DEVICE_NOT_PAIRED",
+                        "message": "This operation is available on a paired device only.",
                         "requestId": "00000000-0000-4000-8000-000000000000"
                       }
                     }
@@ -7080,7 +7168,7 @@
             }
           },
           "403": {
-            "description": "Refused: the operator's role lacks SESSION_START (NOT_PERMITTED; one ACCESS_DENIED audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "description": "Refused: the operator's role lacks SESSION_START (NOT_PERMITTED; one ACCESS_DENIED audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -7152,7 +7240,7 @@
                     "value": {
                       "error": {
                         "code": "NOT_FOUND",
-                        "message": "Session SES-20261001-0099 is not the current session.",
+                        "message": "This session is not the open session.",
                         "details": {
                           "simCode": "NOT_FOUND"
                         },
@@ -7182,7 +7270,7 @@
                     "value": {
                       "error": {
                         "code": "INVALID_STATE",
-                        "message": "Session SES-20261001-0024 is ARMED.",
+                        "message": "The action is not allowed in the current state.",
                         "details": {
                           "simCode": "ILLEGAL_STATE",
                           "from": "ARMED",
@@ -7341,7 +7429,7 @@
             }
           },
           "403": {
-            "description": "Refused: the operator's role lacks SESSION_START (NOT_PERMITTED; one ACCESS_DENIED audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "description": "Refused: the operator's role lacks SESSION_START (NOT_PERMITTED; one ACCESS_DENIED audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -7413,7 +7501,7 @@
                     "value": {
                       "error": {
                         "code": "NOT_FOUND",
-                        "message": "Session SES-20261001-0099 is not the current session.",
+                        "message": "This session is not the open session.",
                         "details": {
                           "simCode": "NOT_FOUND"
                         },
@@ -7458,7 +7546,7 @@
                     "value": {
                       "error": {
                         "code": "INVALID_STATE",
-                        "message": "Session SES-20261001-0024 is CREATE.",
+                        "message": "The action is not allowed in the current state.",
                         "details": {
                           "simCode": "ILLEGAL_STATE",
                           "from": "CREATE",
@@ -7617,7 +7705,7 @@
             }
           },
           "403": {
-            "description": "Refused: the operator's role lacks SESSION_START (NOT_PERMITTED; one ACCESS_DENIED audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "description": "Refused: the operator's role lacks SESSION_START (NOT_PERMITTED; one ACCESS_DENIED audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -7689,7 +7777,7 @@
                     "value": {
                       "error": {
                         "code": "NOT_FOUND",
-                        "message": "Session SES-20261001-0099 is not the current session.",
+                        "message": "This session is not the open session.",
                         "details": {
                           "simCode": "NOT_FOUND"
                         },
@@ -7877,7 +7965,7 @@
             }
           },
           "403": {
-            "description": "Refused: the operator's role lacks SESSION_START (NOT_PERMITTED; one ACCESS_DENIED audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "description": "Refused: the operator's role lacks SESSION_START (NOT_PERMITTED; one ACCESS_DENIED audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -7949,7 +8037,7 @@
                     "value": {
                       "error": {
                         "code": "NOT_FOUND",
-                        "message": "Session SES-20261001-0099 is not the current session.",
+                        "message": "This session is not the open session.",
                         "details": {
                           "simCode": "NOT_FOUND"
                         },
@@ -7979,7 +8067,7 @@
                     "value": {
                       "error": {
                         "code": "INVALID_STATE",
-                        "message": "Session SES-20261001-0024 is RECORDING.",
+                        "message": "The action is not allowed in the current state.",
                         "details": {
                           "simCode": "ILLEGAL_STATE",
                           "from": "RECORDING",
@@ -8137,7 +8225,7 @@
             }
           },
           "403": {
-            "description": "Refused: the operator's role lacks SESSION_START (NOT_PERMITTED; one ACCESS_DENIED audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "description": "Refused: the operator's role lacks SESSION_START (NOT_PERMITTED; one ACCESS_DENIED audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -8293,7 +8381,7 @@
             }
           },
           "403": {
-            "description": "Refused: the operator's role lacks SESSION_START (NOT_PERMITTED; one ACCESS_DENIED audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "description": "Refused: the operator's role lacks SESSION_START (NOT_PERMITTED; one ACCESS_DENIED audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -8365,7 +8453,7 @@
                     "value": {
                       "error": {
                         "code": "NOT_FOUND",
-                        "message": "Session SES-20261001-0099 is not the current session.",
+                        "message": "This session is not the open session.",
                         "details": {
                           "simCode": "NOT_FOUND"
                         },
@@ -8395,7 +8483,7 @@
                     "value": {
                       "error": {
                         "code": "INVALID_STATE",
-                        "message": "Session SES-20261001-0024 is RECORDING.",
+                        "message": "The action is not allowed in the current state.",
                         "details": {
                           "simCode": "ILLEGAL_STATE",
                           "from": "RECORDING",
@@ -8568,7 +8656,7 @@
             }
           },
           "403": {
-            "description": "Refused: the operator's role lacks SESSION_NOTE (NOT_PERMITTED; one ACCESS_DENIED audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "description": "Refused: the operator's role lacks SESSION_NOTE (NOT_PERMITTED; one ACCESS_DENIED audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -8640,7 +8728,7 @@
                     "value": {
                       "error": {
                         "code": "NOT_FOUND",
-                        "message": "Session SES-20261001-0099 is not the current session.",
+                        "message": "This session is not the open session.",
                         "details": {
                           "simCode": "NOT_FOUND"
                         },
@@ -8670,7 +8758,7 @@
                     "value": {
                       "error": {
                         "code": "INVALID_STATE",
-                        "message": "Session SES-20261001-0024 is ARMED.",
+                        "message": "The action is not allowed in the current state.",
                         "details": {
                           "simCode": "ILLEGAL_STATE",
                           "from": "ARMED",
@@ -8862,7 +8950,7 @@
             }
           },
           "403": {
-            "description": "Refused: the operator's role lacks SESSION_NOTE (NOT_PERMITTED; one ACCESS_DENIED audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "description": "Refused: the operator's role lacks SESSION_NOTE (NOT_PERMITTED; one ACCESS_DENIED audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -8934,7 +9022,7 @@
                     "value": {
                       "error": {
                         "code": "NOT_FOUND",
-                        "message": "Session SES-20261001-0099 is not the current session.",
+                        "message": "This session is not the open session.",
                         "details": {
                           "simCode": "NOT_FOUND"
                         },
@@ -8964,7 +9052,7 @@
                     "value": {
                       "error": {
                         "code": "INVALID_STATE",
-                        "message": "Session SES-20261001-0024 is STOPPING.",
+                        "message": "The action is not allowed in the current state.",
                         "details": {
                           "simCode": "ILLEGAL_STATE",
                           "from": "STOPPING",
@@ -9125,7 +9213,7 @@
             }
           },
           "403": {
-            "description": "Refused: the operator's role lacks SESSION_NOTE (NOT_PERMITTED; one ACCESS_DENIED audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "description": "Refused: the operator's role lacks SESSION_NOTE (NOT_PERMITTED; one ACCESS_DENIED audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -9197,7 +9285,7 @@
                     "value": {
                       "error": {
                         "code": "NOT_FOUND",
-                        "message": "Session SES-20261001-0099 is not the current session.",
+                        "message": "This session is not the open session.",
                         "details": {
                           "simCode": "NOT_FOUND"
                         },
@@ -9227,7 +9315,7 @@
                     "value": {
                       "error": {
                         "code": "INVALID_STATE",
-                        "message": "Session SES-20261001-0024 is ARMED.",
+                        "message": "The action is not allowed in the current state.",
                         "details": {
                           "simCode": "ILLEGAL_STATE",
                           "from": "ARMED",
@@ -9370,7 +9458,7 @@
             }
           },
           "403": {
-            "description": "Refused: the operator's role lacks SESSION_START (NOT_PERMITTED; one ACCESS_DENIED audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "description": "Refused: the operator's role lacks SESSION_START (NOT_PERMITTED; one ACCESS_DENIED audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -9609,7 +9697,7 @@
             }
           },
           "403": {
-            "description": "Refused: the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "description": "Refused: the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -9649,7 +9737,7 @@
             }
           },
           "422": {
-            "description": "A query parameter does not match its schema (INVALID_INPUT): a value outside its set, a `limit` outside 1 to 200, a cursor that is not one, or text that holds U+0000 or an unpaired surrogate (API-13).",
+            "description": "A query parameter does not match its schema (INVALID_INPUT): a value outside its set, a `limit` outside 1 to 200, a cursor that is not one of this list (also a cursor on a row that the chain rebuilt by a demo reset or a scenario load does not hold: start the walk again), or text that holds U+0000 or an unpaired surrogate (API-13).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -9885,7 +9973,7 @@
             }
           },
           "403": {
-            "description": "Refused: the operator's role lacks EVIDENCE_VIEW (NOT_PERMITTED; one ACCESS_DENIED audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "description": "Refused: the operator's role lacks EVIDENCE_VIEW (NOT_PERMITTED; one ACCESS_DENIED audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -9925,7 +10013,7 @@
             }
           },
           "422": {
-            "description": "A query parameter does not match its schema (INVALID_INPUT): a value outside its set, a `limit` outside 1 to 200, a cursor that is not one, or text that holds U+0000 or an unpaired surrogate (API-13).",
+            "description": "A query parameter does not match its schema (INVALID_INPUT): a value outside its set, a `limit` outside 1 to 200, a cursor that is not one of this list (also a cursor on a row that the chain rebuilt by a demo reset or a scenario load does not hold: start the walk again), or text that holds U+0000 or an unpaired surrogate (API-13).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -10198,7 +10286,7 @@
             }
           },
           "403": {
-            "description": "Refused: the operator's role lacks EVIDENCE_VIEW (NOT_PERMITTED; one ACCESS_DENIED audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "description": "Refused: the operator's role lacks EVIDENCE_VIEW (NOT_PERMITTED; one ACCESS_DENIED audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -10477,7 +10565,7 @@
             }
           },
           "403": {
-            "description": "Refused: the operator's role lacks EVIDENCE_VIEW (NOT_PERMITTED; one ACCESS_DENIED audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "description": "Refused: the operator's role lacks EVIDENCE_VIEW (NOT_PERMITTED; one ACCESS_DENIED audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -10677,7 +10765,7 @@
             }
           },
           "403": {
-            "description": "Refused: the operator's role lacks EVIDENCE_REVIEW (NOT_PERMITTED; one ACCESS_DENIED audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "description": "Refused: the operator's role lacks EVIDENCE_REVIEW (NOT_PERMITTED; one ACCESS_DENIED audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -10781,7 +10869,9 @@
                         "code": "NOT_SEALED",
                         "message": "Unsealed evidence cannot be archived.",
                         "details": {
-                          "simCode": "UNSEALED_EVIDENCE"
+                          "simCode": "UNSEALED_EVIDENCE",
+                          "from": null,
+                          "event": "archiveEvidence"
                         },
                         "requestId": "00000000-0000-4000-8000-000000000000"
                       }
@@ -11074,7 +11164,7 @@
             }
           },
           "403": {
-            "description": "Refused: the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "description": "Refused: the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -11197,7 +11287,7 @@
             }
           },
           "403": {
-            "description": "Refused: the operator's role lacks DEVICE_MANAGE (NOT_PERMITTED; one ACCESS_DENIED audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "description": "Refused: the operator's role lacks DEVICE_MANAGE (NOT_PERMITTED; one ACCESS_DENIED audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -11456,7 +11546,7 @@
             }
           },
           "403": {
-            "description": "Refused: the operator's role lacks DIAGNOSTICS_RUN (NOT_PERMITTED; one ACCESS_DENIED audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "description": "Refused: the operator's role lacks DIAGNOSTICS_RUN (NOT_PERMITTED; one ACCESS_DENIED audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -11685,7 +11775,7 @@
             }
           },
           "403": {
-            "description": "Refused: the operator's role lacks DIAGNOSTICS_RUN (NOT_PERMITTED; one ACCESS_DENIED audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "description": "Refused: the operator's role lacks DIAGNOSTICS_RUN (NOT_PERMITTED; one ACCESS_DENIED audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -11910,7 +12000,7 @@
             }
           },
           "403": {
-            "description": "Refused: the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "description": "Refused: the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -12108,7 +12198,7 @@
             }
           },
           "403": {
-            "description": "Refused: the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "description": "Refused: the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -12335,7 +12425,7 @@
             }
           },
           "403": {
-            "description": "Refused: the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "description": "Refused: the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -12502,7 +12592,7 @@
             }
           },
           "403": {
-            "description": "Refused: the operator's role holds neither EVIDENCE_REVIEW nor MAINTENANCE (NOT_PERMITTED; one ACCESS_DENIED audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "description": "Refused: the operator's role holds neither EVIDENCE_REVIEW nor MAINTENANCE (NOT_PERMITTED; one ACCESS_DENIED audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -12522,7 +12612,7 @@
                         "message": "Your role does not allow this action. The attempt was audited.",
                         "details": {
                           "operationId": "setStoragePolicy",
-                          "permission": "ANY-OF(EVIDENCE_REVIEW, MAINTENANCE)",
+                          "permission": "EVIDENCE_REVIEW_OR_MAINTENANCE",
                           "role": "INVESTIGATOR"
                         },
                         "requestId": "00000000-0000-4000-8000-000000000000"
@@ -12762,7 +12852,7 @@
             }
           },
           "403": {
-            "description": "Refused: the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "description": "Refused: the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -12924,7 +13014,7 @@
             }
           },
           "403": {
-            "description": "Refused: the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "description": "Refused: the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -13136,7 +13226,7 @@
             }
           },
           "403": {
-            "description": "Refused: the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "description": "Refused: the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -13308,7 +13398,7 @@
             }
           },
           "403": {
-            "description": "Refused: the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "description": "Refused: the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -13348,7 +13438,7 @@
             }
           },
           "422": {
-            "description": "A query parameter does not match its schema (INVALID_INPUT): a value outside its set, a `limit` outside 1 to 200, a cursor that is not one, or text that holds U+0000 or an unpaired surrogate (API-13).",
+            "description": "A query parameter does not match its schema (INVALID_INPUT): a value outside its set, a `limit` outside 1 to 200, a cursor that is not one of this list (also a cursor on a row that the chain rebuilt by a demo reset or a scenario load does not hold: start the walk again), or text that holds U+0000 or an unpaired surrogate (API-13).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -13661,7 +13751,7 @@
             }
           },
           "403": {
-            "description": "Refused: the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "description": "Refused: the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -13740,7 +13830,7 @@
           "Security"
         ],
         "summary": "Export the audit log",
-        "description": "Accepts an export of the audit log with a mandatory reason and records it. **RBAC + audit**: a role without AUDIT_EXPORT is refused with `403` and one EXPORT_DENIED row.\n\nWrites AUDIT_EXPORTED with the export ID, the row count, the head hash, the reason and the destination.\n\nThe answer holds no file. The client builds it from the pages of `GET /api/v1/audit` (and of `GET /api/v1/events` for the log bundle) once the export is accepted.\n\nCore server only: the server runs the shared simulator action `exportAudit` under the caller's identity. In Simulated mode a client calls that action in its own simulator and sends no request.",
+        "description": "Accepts an export of the audit log with a mandatory reason and records it. **RBAC + audit**: a role without AUDIT_EXPORT is refused with `403` and one EXPORT_DENIED row.\n\nWrites AUDIT_EXPORTED with the export ID, the row count, the head hash, the reason and the destination.\n\nA refused export is still recorded: the EXPORT_DENIED row is committed and reaches every client through the `state` topic. The `403` carries no `x-dems-epoch` or `x-dems-revision` header (API-7 names the 2xx answers only).\n\nThe answer holds no file. The client builds it from the pages of `GET /api/v1/audit` (and of `GET /api/v1/events` for the log bundle) once the export is accepted.\n\nCore server only: the server runs the shared simulator action `exportAudit` under the caller's identity. In Simulated mode a client calls that action in its own simulator and sends no request.",
         "responses": {
           "202": {
             "description": "Export accepted and audited.",
@@ -13829,7 +13919,7 @@
             }
           },
           "403": {
-            "description": "Refused: the operator's role lacks AUDIT_EXPORT (NOT_PERMITTED; one EXPORT_DENIED audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "description": "Refused: the operator's role lacks AUDIT_EXPORT (NOT_PERMITTED; one EXPORT_DENIED audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -13987,7 +14077,7 @@
           "Security"
         ],
         "summary": "Export the log bundle",
-        "description": "Accepts an export of the log bundle, which is the audit chain and the operational events, with a mandatory reason and records it. **RBAC + audit**: a role without AUDIT_EXPORT is refused with `403` and one EXPORT_DENIED row.\n\nWrites AUDIT_EXPORTED with `details.scope: LOGS`, the export ID, the counts, the head hash, the reason and the destination.\n\nThe answer holds no file. The client builds it from the pages of `GET /api/v1/audit` (and of `GET /api/v1/events` for the log bundle) once the export is accepted.\n\nCore server only: the server runs the shared simulator action `exportLogs` under the caller's identity. In Simulated mode a client calls that action in its own simulator and sends no request.",
+        "description": "Accepts an export of the log bundle, which is the audit chain and the operational events, with a mandatory reason and records it. **RBAC + audit**: a role without AUDIT_EXPORT is refused with `403` and one EXPORT_DENIED row.\n\nWrites AUDIT_EXPORTED with `details.scope: LOGS`, the export ID, the counts, the head hash, the reason and the destination.\n\nA refused export is still recorded: the EXPORT_DENIED row is committed and reaches every client through the `state` topic. The `403` carries no `x-dems-epoch` or `x-dems-revision` header (API-7 names the 2xx answers only).\n\nThe answer holds no file. The client builds it from the pages of `GET /api/v1/audit` (and of `GET /api/v1/events` for the log bundle) once the export is accepted.\n\nCore server only: the server runs the shared simulator action `exportLogs` under the caller's identity. In Simulated mode a client calls that action in its own simulator and sends no request.",
         "responses": {
           "202": {
             "description": "Export accepted and audited.",
@@ -14076,7 +14166,7 @@
             }
           },
           "403": {
-            "description": "Refused: the operator's role lacks AUDIT_EXPORT (NOT_PERMITTED; one EXPORT_DENIED audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "description": "Refused: the operator's role lacks AUDIT_EXPORT (NOT_PERMITTED; one EXPORT_DENIED audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -14313,7 +14403,7 @@
             }
           },
           "403": {
-            "description": "Refused: the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "description": "Refused: the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -14353,7 +14443,7 @@
             }
           },
           "422": {
-            "description": "A query parameter does not match its schema (INVALID_INPUT): a value outside its set, a `limit` outside 1 to 200, a cursor that is not one, or text that holds U+0000 or an unpaired surrogate (API-13).",
+            "description": "A query parameter does not match its schema (INVALID_INPUT): a value outside its set, a `limit` outside 1 to 200, a cursor that is not one of this list (also a cursor on a row that the chain rebuilt by a demo reset or a scenario load does not hold: start the walk again), or text that holds U+0000 or an unpaired surrogate (API-13).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -14752,7 +14842,7 @@
             }
           },
           "403": {
-            "description": "Refused: the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "description": "Refused: the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -14890,7 +14980,7 @@
             }
           },
           "403": {
-            "description": "Refused: the operator's role lacks DIAGNOSTICS_RUN (NOT_PERMITTED; one ACCESS_DENIED audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "description": "Refused: the operator's role lacks DIAGNOSTICS_RUN (NOT_PERMITTED; one ACCESS_DENIED audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -15030,7 +15120,7 @@
             }
           },
           "403": {
-            "description": "Refused: the operator's role lacks MAINTENANCE (NOT_PERMITTED; one ACCESS_DENIED audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "description": "Refused: the operator's role lacks MAINTENANCE (NOT_PERMITTED; one ACCESS_DENIED audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -15202,7 +15292,7 @@
             }
           },
           "403": {
-            "description": "Refused: the operator's role lacks MAINTENANCE (NOT_PERMITTED; one ACCESS_DENIED audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "description": "Refused: the operator's role lacks MAINTENANCE (NOT_PERMITTED; one ACCESS_DENIED audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -15419,7 +15509,7 @@
             }
           },
           "403": {
-            "description": "Refused: the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "description": "Refused: the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -15553,7 +15643,7 @@
           "Alerts"
         ],
         "summary": "Alerts",
-        "description": "The newest alerts of the Core, active and resolved, with their acknowledgement. Slice `alerts`. Every alert was raised by a fault, and raising it wrote a FAULT_RAISED audit row.\n\nCore server only: the answer holds the named slices in their wire form, the same JSON as the `state` topic of the socket (API-6). In Simulated mode a client reads them from its own simulator and sends no request.",
+        "description": "The newest alerts of the Core, active and resolved, with their acknowledgement. Slice `alerts`. Every alert of a fault kind was raised by a fault, and raising it wrote a FAULT_RAISED audit row (AUDIT_CHAIN_DISCONTINUITY for the kind AUDIT_TAMPER).\n\nCore server only: the answer holds the named slices in their wire form, the same JSON as the `state` topic of the socket (API-6). In Simulated mode a client reads them from its own simulator and sends no request.",
         "responses": {
           "200": {
             "description": "The slice, under its name.",
@@ -15630,7 +15720,7 @@
             }
           },
           "403": {
-            "description": "Refused: the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "description": "Refused: the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -15753,7 +15843,7 @@
             }
           },
           "403": {
-            "description": "Refused: the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "description": "Refused: the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -15960,7 +16050,7 @@
             }
           },
           "403": {
-            "description": "Refused: the operator's role lacks DEMO_CONTROL (NOT_PERMITTED; one ACCESS_DENIED audit row); the demo flag of the server is off (DEMO_DISABLED; no audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "description": "Refused: the operator's role lacks DEMO_CONTROL (NOT_PERMITTED; one ACCESS_DENIED audit row); the demo flag of the server is off (DEMO_DISABLED; no audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -16068,7 +16158,7 @@
           "Demo"
         ],
         "summary": "Load a scenario",
-        "description": "Loads one of the four scenarios: `idle`, `recording`, `finalizing`, `fault-demo`.\n\nThe Core state is rebuilt from the seed, so the audit chain restarts; the discarded chain is kept in the chain lineage. Auth sessions, paired devices, biometric tokens, settings and pairing codes are kept: nobody is signed out and no device has to pair again. While the rebuild runs, every other request answers `503 NOT_READY`.\n\nWrites SCENARIO_LOADED as the first row after the seed history of the new chain; it names the operator, the scenario, and the head hash and row count of the discarded chain.\n\nNeeds DEMO_CONTROL and the server-side demo flag, which is off unless the server was started with it.\n\nCore server only: the in-app simulator has no such operation, so it is not available in Simulated mode.",
+        "description": "Loads one of the four scenarios: `idle`, `recording`, `finalizing`, `fault-demo`.\n\nThe Core state is rebuilt from the seed, so the audit chain restarts; the discarded chain is kept in the chain lineage. Auth sessions, paired devices, biometric tokens, settings and pairing codes are kept: nobody is signed out and no device has to pair again. While the rebuild runs, every other request answers `503 NOT_READY`.\n\nWrites SCENARIO_LOADED as the first row after the seed history of the new chain; it names the operator, the scenario, and the head hash and row count of the discarded chain.\n\nWhen the rebuild cannot run, the answer is `503 NOT_READY` with `details.reason`: `RESET_IN_PROGRESS` when another reset of this Core's database is running (try again), or `RESET_FAILED` when this one did not happen (the state is unchanged, or the server is not ready).\n\nNeeds DEMO_CONTROL and the server-side demo flag, which is off unless the server was started with it.\n\nCore server only: the in-app simulator has no such operation, so it is not available in Simulated mode.",
         "responses": {
           "200": {
             "description": "Loaded; the new epoch.",
@@ -16154,7 +16244,7 @@
             }
           },
           "403": {
-            "description": "Refused: the operator's role lacks DEMO_CONTROL (NOT_PERMITTED; one ACCESS_DENIED audit row); the demo flag of the server is off (DEMO_DISABLED; no audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "description": "Refused: the operator's role lacks DEMO_CONTROL (NOT_PERMITTED; one ACCESS_DENIED audit row); the demo flag of the server is off (DEMO_DISABLED; no audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -16381,7 +16471,7 @@
             }
           },
           "403": {
-            "description": "Refused: the operator's role lacks DEMO_CONTROL (NOT_PERMITTED; one ACCESS_DENIED audit row); the demo flag of the server is off (DEMO_DISABLED; no audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "description": "Refused: the operator's role lacks DEMO_CONTROL (NOT_PERMITTED; one ACCESS_DENIED audit row); the demo flag of the server is off (DEMO_DISABLED; no audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -16646,7 +16736,7 @@
             }
           },
           "403": {
-            "description": "Refused: the operator's role lacks DEMO_CONTROL (NOT_PERMITTED; one ACCESS_DENIED audit row); the demo flag of the server is off (DEMO_DISABLED; no audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "description": "Refused: the operator's role lacks DEMO_CONTROL (NOT_PERMITTED; one ACCESS_DENIED audit row); the demo flag of the server is off (DEMO_DISABLED; no audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -16805,7 +16895,7 @@
           "Demo"
         ],
         "summary": "Reset to the seed state",
-        "description": "Resets the Core to the seed state: the scenario `idle`.\n\nThe Core state is rebuilt from the seed, so the audit chain restarts; the discarded chain is kept in the chain lineage. Auth sessions, paired devices, biometric tokens, settings and pairing codes are kept: nobody is signed out and no device has to pair again. While the rebuild runs, every other request answers `503 NOT_READY`.\n\nWrites SCENARIO_LOADED with `details.reset: true`.\n\nNeeds DEMO_CONTROL and the server-side demo flag, which is off unless the server was started with it.\n\nCore server only: the in-app simulator has no such operation, so it is not available in Simulated mode.",
+        "description": "Resets the Core to the seed state: the scenario `idle`.\n\nThe Core state is rebuilt from the seed, so the audit chain restarts; the discarded chain is kept in the chain lineage. Auth sessions, paired devices, biometric tokens, settings and pairing codes are kept: nobody is signed out and no device has to pair again. While the rebuild runs, every other request answers `503 NOT_READY`.\n\nWrites SCENARIO_LOADED with `details.reset: true`.\n\nWhen the rebuild cannot run, the answer is `503 NOT_READY` with `details.reason`: `RESET_IN_PROGRESS` when another reset of this Core's database is running (try again), or `RESET_FAILED` when this one did not happen (the state is unchanged, or the server is not ready).\n\nNeeds DEMO_CONTROL and the server-side demo flag, which is off unless the server was started with it.\n\nCore server only: the in-app simulator has no such operation, so it is not available in Simulated mode.",
         "responses": {
           "200": {
             "description": "Reset; the new epoch.",
@@ -16864,7 +16954,7 @@
             }
           },
           "403": {
-            "description": "Refused: the operator's role lacks DEMO_CONTROL (NOT_PERMITTED; one ACCESS_DENIED audit row); the demo flag of the server is off (DEMO_DISABLED; no audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "description": "Refused: the operator's role lacks DEMO_CONTROL (NOT_PERMITTED; one ACCESS_DENIED audit row); the demo flag of the server is off (DEMO_DISABLED; no audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -18057,7 +18147,7 @@
                 "description": "Operator-safe English text. Never contains credentials."
               },
               "details": {
-                "description": "Optional machine-readable context, a flat map: `simCode`, `permission`, `from`, `event`, `attemptsRemaining`, `lockedUntil`, `retryInMs`, `reason`, `in`. Never a credential or a part of the input.",
+                "description": "Optional machine-readable context, a flat map: `simCode`, `permission`, `from`, `event`, `attemptsRemaining`, `lockedUntil`, `retryInMs`, `reason`, `in`, `sessionId` (409 `SESSION_ACTIVE` of the Core server: the open session). Never a credential or a part of the input.",
                 "type": "object",
                 "propertyNames": {
                   "type": "string"
@@ -18313,6 +18403,7 @@
           "demoControls",
           "serverTime"
         ],
+        "additionalProperties": false,
         "description": "The caller's own auth session."
       },
       "SignInResponse": {
@@ -18327,7 +18418,7 @@
             "pattern": "^ses_[A-Za-z0-9_-]{43}$"
           },
           "biometricToken": {
-            "description": "`signInWithBiometric` only: the rotated token for the next biometric sign-in. The one that was sent is used up.",
+            "description": "`signInWithBiometric` only: the rotated token for the next biometric sign-in. The one that was sent is used up. It expires `BIOMETRIC_TOKEN_LIFETIME_MS` (30 days) after `session.issuedAt`.",
             "type": "string",
             "pattern": "^bio_[A-Za-z0-9_-]{43}$"
           }
@@ -18335,6 +18426,7 @@
         "required": [
           "session"
         ],
+        "additionalProperties": false,
         "description": "Result of a sign-in."
       },
       "SignInStatus": {
@@ -18377,6 +18469,7 @@
           "attemptsRemaining",
           "serverTime"
         ],
+        "additionalProperties": false,
         "description": "Lock state of one console: the members of the simulator's `LockoutStatus`, plus the server time."
       },
       "SignOutRequest": {
@@ -18409,6 +18502,7 @@
           "idleExpiresAt",
           "absoluteExpiresAt"
         ],
+        "additionalProperties": false,
         "description": "The two expiry times of the caller's session after a touch."
       },
       "BiometricEnrollmentRequest": {
@@ -18436,7 +18530,7 @@
             "pattern": "^bio_[A-Za-z0-9_-]{43}$"
           },
           "expiresAt": {
-            "description": "After `enabled: true` only: 30 days from issue (ID-P11).",
+            "description": "After `enabled: true` only: the issue plus `BIOMETRIC_TOKEN_LIFETIME_MS`, 30 days (ID-P11).",
             "type": "integer",
             "minimum": 0
           }
@@ -18444,6 +18538,7 @@
         "required": [
           "enabled"
         ],
+        "additionalProperties": false,
         "description": "Biometric sign-in of the caller on this device."
       },
       "BiometricSignInRequest": {
@@ -18552,7 +18647,7 @@
                 "permission"
               ]
             },
-            "description": "One entry per role that holds a permission: 18 in the seeded matrix."
+            "description": "One entry per role that holds a permission: 18 in the seeded matrix. A set: the order of the entries is not significant."
           },
           "editable": {
             "type": "boolean",
@@ -18566,6 +18661,7 @@
           "grants",
           "editable"
         ],
+        "additionalProperties": false,
         "description": "The role and permission matrix the server enforces, read from PostgreSQL."
       },
       "AdminUser": {
@@ -18653,6 +18749,7 @@
           "activeSessions",
           "roleChangedAt"
         ],
+        "additionalProperties": false,
         "description": "An operator as user administration sees it."
       },
       "AdminUserList": {
@@ -18668,6 +18765,7 @@
         "required": [
           "users"
         ],
+        "additionalProperties": false,
         "description": "Response of `GET /api/v1/admin/users`: every operator, in operator ID order."
       },
       "UserRoleRequest": {
@@ -18720,7 +18818,7 @@
           "qrPayload": {
             "type": "string",
             "pattern": "^DEMS-PAIR:1:\\d{6}$",
-            "description": "`DEMS-PAIR:1:` and the code, for the QR on the portal. Not a URL: a code must not appear in one."
+            "description": "`DEMS-PAIR:1:` (`PAIRING_QR_PREFIX`) and the code, for the QR on the portal. Not a URL: a code must not appear in one."
           },
           "issuedAt": {
             "type": "integer",
@@ -18729,12 +18827,12 @@
           "expiresAt": {
             "type": "integer",
             "minimum": 0,
-            "description": "`issuedAt` plus 300 s."
+            "description": "`issuedAt` plus 300 s (`PAIRING_CODE_LIFETIME_MS`)."
           },
           "attemptsAllowed": {
             "type": "integer",
             "exclusiveMinimum": 0,
-            "description": "Failed redeems before the code is closed: 5."
+            "description": "Failed redeems before the code is closed: 5 (`PAIRING_CODE_MAX_FAILED_REDEEMS`)."
           }
         },
         "required": [
@@ -18745,6 +18843,7 @@
           "expiresAt",
           "attemptsAllowed"
         ],
+        "additionalProperties": false,
         "description": "A freshly issued pairing code. One code is active at a time: issuing closes the previous one."
       },
       "PairingCodeStatus": {
@@ -18798,6 +18897,7 @@
         "required": [
           "active"
         ],
+        "additionalProperties": false,
         "description": "Response of `GET /api/v1/pairing/code`."
       },
       "PairingRedeemRequest": {
@@ -18812,7 +18912,7 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 60,
-            "description": "What the registry shows for this device, 1 to 60 characters after trimming."
+            "description": "What the registry shows for this device, 1 to 60 characters after trimming. It must not hold the pairing code or anything of the form of a credential: such a body is refused with 422 INVALID_INPUT."
           },
           "platform": {
             "type": "string",
@@ -18885,6 +18985,7 @@
           "pairedAt",
           "core"
         ],
+        "additionalProperties": false,
         "description": "A device that has just been paired."
       },
       "PairedDevice": {
@@ -19016,6 +19117,7 @@
           "revokeReason",
           "unpairedAt"
         ],
+        "additionalProperties": false,
         "description": "A device of the registry. It never carries a credential or its hash."
       },
       "PairedDeviceList": {
@@ -19031,6 +19133,7 @@
         "required": [
           "devices"
         ],
+        "additionalProperties": false,
         "description": "Response of `GET /api/v1/pairing/devices`: every device ever paired, newest first."
       },
       "DeviceRevokeRequest": {
@@ -19040,7 +19143,7 @@
             "type": "string",
             "minLength": 5,
             "maxLength": 500,
-            "description": "Why the device is revoked: 5 to 500 characters after trimming. Written to the audit row."
+            "description": "Why the device is revoked: 5 to 500 characters after trimming. Written to the audit row. It must not hold anything of the form of a credential (422 INVALID_INPUT)."
           }
         },
         "required": [
@@ -19094,6 +19197,7 @@
           "credentialRotatedAt",
           "core"
         ],
+        "additionalProperties": false,
         "description": "A device's own registration, read at app start."
       },
       "DeviceCredentialRotated": {
@@ -19113,6 +19217,7 @@
           "deviceCredential",
           "rotatedAt"
         ],
+        "additionalProperties": false,
         "description": "Response of `POST /api/v1/pairing/device/credential`."
       },
       "FaultTarget": {
@@ -19225,6 +19330,7 @@
         "required": [
           "epoch"
         ],
+        "additionalProperties": false,
         "description": "Result of a scenario load or a reset."
       },
       "DemoStatus": {
@@ -19323,6 +19429,7 @@
           "lastResetAt",
           "epoch"
         ],
+        "additionalProperties": false,
         "description": "State of the demo controls."
       },
       "MetaSlice": {
@@ -23643,7 +23750,7 @@
           "seq": {
             "type": "integer",
             "minimum": 0,
-            "description": "Counts the frames the server produced; a skipped frame leaves a gap, by design."
+            "description": "Counts the frames the server produced; a skipped frame leaves a gap, by design. It never goes back on a connection, also across a new epoch."
           },
           "audio": {
             "$ref": "#/components/schemas/AudioSlice"
@@ -23900,10 +24007,10 @@
               "type"
             ],
             "additionalProperties": false,
-            "description": "Ask for a new `snapshot` after a revision gap or another epoch. At most one in 2 s."
+            "description": "Ask for a new `snapshot` after a revision gap or another epoch. At most one in 2 s; one that comes sooner is answered when the 2 s have passed."
           }
         ],
-        "description": "A message a client sends on `/ws`. Anything else closes the connection with 1008."
+        "description": "A message a client sends on `/ws`. Anything else closes the connection with 1008; a message larger than 65,536 bytes closes it with 1009."
       },
       "SessionMarkerRequest": {
         "type": "object",
@@ -24751,12 +24858,12 @@
           "rows": {
             "type": "integer",
             "minimum": 0,
-            "description": "Audit rows the export covers."
+            "description": "Stored audit rows the export covers: every row before the AUDIT_EXPORTED row it wrote."
           },
           "head": {
             "type": "string",
             "pattern": "^[0-9a-f]{64}$",
-            "description": "Head hash of the chain the export covers."
+            "description": "Hash of the last of those rows: the `prevHash` of the AUDIT_EXPORTED row."
           }
         },
         "required": [
@@ -25112,6 +25219,16 @@
       },
       "PayloadTooLarge": {
         "description": "413 PAYLOAD_TOO_LARGE. The request body is larger than 65,536 bytes.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiError"
+            }
+          }
+        }
+      },
+      "InvalidJson": {
+        "description": "400 INVALID_JSON. A body was sent that is not a JSON object. Every POST, also one that takes no body; an empty body is no body.",
         "content": {
           "application/json": {
             "schema": {

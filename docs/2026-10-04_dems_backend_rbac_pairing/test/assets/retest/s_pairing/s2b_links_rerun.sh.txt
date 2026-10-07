@@ -1,0 +1,27 @@
+#!/bin/sh
+# R-S step 2, re-run of 2c-2e WITH a screencap of Stack Check before each guarded link (the UI dump of the
+# animated Stack Check returns 0 bytes, so the first run had no 'before' picture for 2c-2e). emulator-5558 ONLY.
+set -u
+OUT=/Users/gsp-budi/Documents/DEMS/docs/2026-10-04_dems_backend_rbac_pairing/test/assets/retest/s_pairing
+S=emulator-5558
+APP=com.dems.demo.tablet
+a() { adb -s "$S" "$@"; }
+now() { python3 -c 'import time; t=time.time(); print(time.strftime("%H:%M:%S", time.localtime(t)) + ".%03d" % int((t % 1) * 1000))'; }
+kg() { a shell dumpsys window 2>/dev/null | tr -d '\r' | grep -o 'isKeyguardShowing=[a-z]*' | head -n 1; }
+shot() { a exec-out screencap -p >"$OUT/$1"; echo "   screencap $1 ($(wc -c <"$OUT/$1" | tr -d ' ') bytes) at host $(now); $(kg)"; }
+dump() {
+  a shell uiautomator dump /sdcard/rs_ui.xml >/dev/null 2>&1; a shell cat /sdcard/rs_ui.xml >"$OUT/$1" 2>/dev/null; a shell rm -f /sdcard/rs_ui.xml
+  echo "   UI dump $1 ($(wc -c <"$OUT/$1" | tr -d ' ') bytes): screen ids [$(grep -o 'resource-id="screen-[a-z-]*"' "$OUT/$1" | sed 's/resource-id=//; s/"//g' | sort -u | tr '\n' ' ')]"
+}
+link() { echo "-- host $(now) warm link '$1'"; a shell "am start -W -a android.intent.action.VIEW -d '$1' $APP" 2>&1 | tr -d '\r' | grep -E "Status|Error" | sed 's/^/   /'; }
+echo "== R-S step 2 re-run of 2c-2e — host $(now); $(kg); uptime: $(uptime | sed 's/.*load/load/')"
+for pair in 'c:login' 'd:sessions' 'e:home'; do
+  k=${pair%%:*}; route=${pair#*:}
+  echo; echo "== 2$k (re-run). Stack Check, then demsdemo:///$route"
+  link 'demsdemo:///stack-check'; sleep 5
+  shot "02${k}_rerun_stack_check_before.png"
+  link "demsdemo:///$route"; sleep 2
+  shot "02${k}_rerun_after_2s.png"; sleep 4
+  shot "02${k}_rerun_after_6s.png"; dump "02${k}_rerun_ui_after.xml"
+done
+echo "-- end host $(now); $(kg)"

@@ -1,0 +1,126 @@
+// E2E-W1 recorder: a second CDP client on the same page target for the whole walk. It writes one JSON line per
+// event to w1_cdp_events.jsonl: requests (method, URL without query values, status), WebSocket handshakes and
+// the TYPE of each frame (never the payload), console errors/warnings, exceptions, Log entries, navigations.
+// Never: a request body (postData), a header value, a cookie, a frame payload.
+import { appendFileSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
+
+const ASSETS = '/Users/gsp-budi/Documents/DEMS/docs/2026-10-04_dems_backend_rbac_pairing/test/assets/e2e/w1_supervisor'
+const OUT = join(ASSETS, 'w1_cdp_events.jsonl')
+const DEVTOOLS = JSON.parse(readFileSync(new URL('./devtools.json', import.meta.url), 'utf8'))
+const DEV = String(DEVTOOLS.port)
+{
+  const ver = await (await fetch(`http://127.0.0.1:${DEV}/json/version`)).json()
+  if (!String(ver.webSocketDebuggerUrl).endsWith(DEVTOOLS.browserPath)) throw new Error('not this walk\'s browser')
+}
+const redactText0 = (t) => String(t).replace(/(?<![0-9A-Za-z])\d{6}(?![0-9A-Za-z])/g, '######').replace(/\b(ses|dvc|bio)_[A-Za-z0-9_-]+/g, '$1_***')
+// Query strings are kept (filters, paging, sorting are evidence) but redacted and cut; the app authenticates by cookie only.
+const cleanUrl = (url) => redactText0(String(url)).slice(0, 300)
+const redactText = (t) => String(t).replace(/(?<![0-9A-Za-z])\d{6}(?![0-9A-Za-z])/g, '######').replace(/(?<![0-9A-Za-z])\d{3}[\s\u00a0\u2009-]\d{3}(?![0-9A-Za-z])/g, '### ###').replace(/\b(ses|dvc|bio)_[A-Za-z0-9_-]+/g, '$1_***')
+const write = (e) => appendFileSync(OUT, `${JSON.stringify({ t: Date.now(), ...e })}\n`)
+const typeOf = (payload) => {
+  try {
+    return JSON.parse(payload).type ?? '(no type)'
+  } catch {
+    return '(not JSON)'
+  }
+}
+
+const list = await (await fetch(`http://127.0.0.1:${DEV}/json/list`)).json()
+const target = list.find((t) => t.type === 'page')
+const ws = new WebSocket(target.webSocketDebuggerUrl)
+await new Promise((r) => ws.addEventListener('open', r, { once: true }))
+let n = 0
+const send = (method, params = {}) => ws.send(JSON.stringify({ id: ++n, method, params }))
+const requests = new Map()
+const frames = new Map() // socket requestId -> { url, counts }
+const flushFrames = () => {
+  for (const [rid, s] of frames) {
+    if (Object.keys(s.counts).length) write({ ev: 'ws.frames', rid, url: s.url, counts: s.counts })
+    s.counts = {}
+  }
+}
+setInterval(flushFrames, 5000)
+
+ws.addEventListener('message', (event) => {
+  const msg = JSON.parse(event.data)
+  const p = msg.params ?? {}
+  switch (msg.method) {
+    case 'Network.requestWillBeSent':
+      requests.set(p.requestId, { method: p.request.method, url: cleanUrl(p.request.url) })
+      write({ ev: 'req', rid: p.requestId, method: p.request.method, url: cleanUrl(p.request.url), type: p.type, initiator: p.initiator?.type })
+      break
+    case 'Network.responseReceived':
+      write({ ev: 'res', rid: p.requestId, status: p.response.status, url: cleanUrl(p.response.url), fromCache: p.response.fromDiskCache || p.response.fromServiceWorker || undefined })
+      break
+    case 'Network.loadingFailed':
+      write({ ev: 'fail', rid: p.requestId, url: requests.get(p.requestId)?.url, error: p.errorText, canceled: p.canceled, blocked: p.blockedReason })
+      break
+    case 'Network.webSocketCreated':
+      frames.set(p.requestId, { url: cleanUrl(p.url), counts: {} })
+      write({ ev: 'ws.created', rid: p.requestId, url: cleanUrl(p.url) })
+      break
+    case 'Network.webSocketHandshakeResponseReceived':
+      write({ ev: 'ws.handshake', rid: p.requestId, status: p.response.status })
+      break
+    case 'Network.webSocketFrameReceived': {
+      const s = frames.get(p.requestId)
+      if (s) {
+        const ty = typeOf(p.response.payloadData)
+        s.counts[ty] = (s.counts[ty] ?? 0) + 1
+      }
+      break
+    }
+    case 'Network.webSocketFrameError':
+      write({ ev: 'ws.error', rid: p.requestId, error: p.errorMessage })
+      break
+    case 'Network.webSocketClosed':
+      flushFrames()
+      write({ ev: 'ws.closed', rid: p.requestId, url: frames.get(p.requestId)?.url })
+      break
+    case 'Runtime.exceptionThrown':
+      write({ ev: 'exception', text: redactText(String(p.exceptionDetails?.exception?.description ?? p.exceptionDetails?.text).slice(0, 400)) })
+      break
+    case 'Runtime.consoleAPICalled':
+      if (p.type === 'error' || p.type === 'warning' || p.type === 'assert') {
+        const textOut = (p.args ?? [])
+          .map((arg) => {
+            if (arg.value !== undefined) return String(arg.value)
+            const preview = arg.preview?.properties?.map((property) => `${property.name}: ${property.value}`).join(', ')
+            return preview ? `{${preview}}` : String(arg.description ?? arg.type)
+          })
+          .join(' ')
+        write({ ev: 'console', level: p.type, text: redactText(textOut.slice(0, 500)) })
+      }
+      break
+    case 'Log.entryAdded':
+      write({ ev: 'log', level: p.entry.level, source: p.entry.source, text: redactText(String(p.entry.text).slice(0, 300)), url: p.entry.url ? cleanUrl(p.entry.url) : undefined })
+      break
+    case 'Page.frameNavigated':
+      if (!p.frame.parentId) write({ ev: 'nav', url: cleanUrl(p.frame.url) })
+      break
+    case 'Page.loadEventFired':
+      write({ ev: 'load' })
+      break
+    case 'Inspector.detached':
+    case 'Inspector.targetCrashed':
+      write({ ev: msg.method })
+      break
+  }
+})
+send('Network.enable')
+send('Page.enable')
+send('Runtime.enable')
+send('Log.enable')
+send('Inspector.enable')
+write({ ev: 'recorder.start', target: target.url })
+ws.addEventListener('close', () => {
+  flushFrames()
+  write({ ev: 'recorder.closed' })
+  process.exit(0)
+})
+process.on('SIGTERM', () => {
+  flushFrames()
+  write({ ev: 'recorder.stop' })
+  process.exit(0)
+})

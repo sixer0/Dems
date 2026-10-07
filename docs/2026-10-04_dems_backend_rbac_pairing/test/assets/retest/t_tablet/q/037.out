@@ -1,0 +1,14 @@
+tap 867,480 at 13:02:00.475
+slept 3500 ms
+screencap P07a_evidence_detail_media.png (1333000 bytes) at 13:02:04.366
+tap 1603,1248 at 13:02:04.419
+slept 2500 ms
+screencap P07b_evidence_detail_metadata.png (1341407 bytes) at 13:02:07.333
+tap 1853,1248 at 13:02:07.419
+slept 2500 ms
+screencap P07c_evidence_detail_hash_integrity.png (1333700 bytes) at 13:02:10.397
+swipe 1920,1350,1920,450 600 ms
+slept 1200 ms
+swipe 1920,1350,1920,450 600 ms
+slept 1500 ms
+screencap P07d_evidence_detail_custody.png (763033 bytes) at 13:02:14.638

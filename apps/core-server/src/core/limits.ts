@@ -6,6 +6,7 @@
  * this row's choice. They are not configuration: no environment variable reaches them, and the
  * frozen `config.ts` holds none of them (the same rule as the throttle's `limits.ts`).
  */
+import type { EngineCounterName } from '../db/schema';
 
 /**
  * Units that may WAIT for their turn. The unit that is running is not counted. The next
@@ -51,5 +52,5 @@ export const NATIVE_PAYLOAD_KEYS_MAX = 16;
 /** A reference (session, evidence, device) in a row: a short identifier, never free text. */
 export const REFERENCE_MAX_LENGTH = 64;
 
-/** The counter of `engine_counters` that numbers the events (database contract §4.24). */
-export const EVENT_COUNTER_NAME = 'event';
+/** The counter of `engine_counters` that numbers the events (database contract §4.24). A name of the table's CHECK list (W91-6). */
+export const EVENT_COUNTER_NAME = 'event' satisfies EngineCounterName;

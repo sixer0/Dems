@@ -1,0 +1,19 @@
+10:41:14.552 device-host clock offset ms: -248, -251, -218, -234, -256
+10:41:15.045 js => {"locked":true}
+10:41:15.155 screenrecord sc4_back_phone started (pid 10446) at 10:41:15.757
+10:41:15.882 mark c06 at 10:41:15.882
+10:41:16.210 press ur-role-confirm ok at 10:41:16.269
+10:41:16.573 [0] until true at 10:41:16.575 after 1 ms => true ;; [1] until true at 10:41:16.589 after 15 ms => "Role of AKP Budi Santoso is now Investigator"
+10:41:16.721 screenshot 90_sc4_w2_after_back_unlocked.png 10:41:16.721..10:41:17.035
+10:41:17.778 screenshot 90b_sc4_w1_after_back.png 10:41:17.778..10:41:17.956
+10:41:18.111 js => {"start":true,"locked":false,"toasts":["Your role is now Investigator. The available actions have changed."]}
+10:41:18.211 slept 3000 ms
+10:41:21.401 screenrecord sc4_back_phone pulled; frames extracted at 5 fps
+10:41:29.324 screencap 91_sc4_phone_after_back.png 10:41:29.324..10:41:30.252
+10:41:30.322 ids(4): device-action-diagnostics@200,2069 "Run diagnostics" ; device-action-test-signal@538,2069 "Test signal" ; device-action-restart@878,2069 "Restart" ; device-restart-hint@540,2173 "Requires the Technician role"
+10:41:33.461 serverlog since c06 (3):
+    10:41:16.320 POST /api/v1/admin/users/:id/role 200 operator:OPR-002
+    10:41:16.334 GET /api/v1/admin/users 200 operator:OPR-002
+    10:41:16.346 GET /api/v1/admin/users 200 operator:OPR-002
+10:41:33.540 js => [["OPR-001","budi.santoso","INVESTIGATOR"],["OPR-002","andi.pratama","SUPERVISOR"],["OPR-003","rina.wijaya","TECHNICIAN"]]
+10:41:33.651 js => [[417,"ROLE_CHANGED","OPR-002","10:41:16.305","Role of OPR-001 changed from TECHNICIAN to INVESTIGATOR","{\"to\":\"INVESTIGATOR\",\"from\":\"TECHNICIAN\",\"targetOperatorId\":\"OPR-001\"}"],[414,"ROLE_CHANGED","OPR-002","10:35:41.127","Role of OPR-001 changed from INVESTIGATOR to TECHNICIAN","{\"to\":\"TECHNICIAN\",\"from\":\"INVESTIGATOR\",\"targetOperatorId\":\"OPR-001\"}"]]

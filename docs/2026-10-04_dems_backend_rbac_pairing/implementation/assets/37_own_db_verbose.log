@@ -1,0 +1,77 @@
+
+> @dems/core-server@0.2.0 test:db
+> vitest run --project db --maxWorkers=2 --silent=false --reporter=verbose src/modules/storage src/modules/network-time
+
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/apps/core-server
+
+[test:db] PostgreSQL 18.4 on 127.0.0.1:4432; helper role dems_owner, code under test dems_app; run prefix dems_test_step_59_tmdia365_
+[test:db] stale sweep: dropped 0; kept 21 of younger runs, 0 of live runs, 0 unrecognised; 0 failed
+[test:db] template dems_test_step_59_tmdia365_tpl_schema: built in 253 ms (create 65 ms, hook 181 ms)
+[test:db] template dems_test_step_59_tmdia365_tpl_seed: built in 378 ms (create 118 ms, hook 251 ms)
+ ✓ |db| src/modules/network-time/__tests__/network-time.db.test.ts > operations 56 and 57: the reads > INVESTIGATOR reads the network status and the time status: 200, valid against the contract, equal to the committed state; no row is written 21ms
+ ✓ |db| src/modules/network-time/__tests__/network-time.db.test.ts > operations 56 and 57: the reads > SUPERVISOR reads the network status and the time status: 200, valid against the contract, equal to the committed state; no row is written 7ms
+ ✓ |db| src/modules/network-time/__tests__/network-time.db.test.ts > operations 56 and 57: the reads > TECHNICIAN reads the network status and the time status: 200, valid against the contract, equal to the committed state; no row is written 7ms
+ ✓ |db| src/modules/network-time/__tests__/network-time.db.test.ts > operations 56 and 57: the reads > an operator on a paired device reads both with the bearer session 43ms
+ ✓ |db| src/modules/network-time/__tests__/network-time.db.test.ts > operations 56 and 57: the reads > the refusals are the guard's: nobody without a session (401, no row), a foreign Origin (403, no row), a retired device (403 with its one row) 33ms
+ ✓ |db| src/modules/network-time/__tests__/network-time.db.test.ts > Q15, ENG-13: every time value of the two reads follows the injected clock > at the boot: the tablet link went OFFLINE at the injected instant; every other instant is the seed's; none lies where this machine's clock stands 8ms
+ ✓ |db| src/modules/network-time/__tests__/network-time.db.test.ts > Q15, ENG-13: every time value of the two reads follows the injected clock > second by second: 20 s of the manual clock give one bandwidth point per second of that clock, a time sync and a history point, none later than the clock 299ms
+ ✓ |db| src/modules/network-time/__tests__/network-time.db.test.ts > Q15, ENG-13: every time value of the two reads follows the injected clock > a jump: the clock is moved three hours ahead in one step, and the next tick stamps every new value at that instant 144ms
+ ✓ |db| src/modules/network-time/__tests__/network-time.db.test.ts > Q15, ENG-13: every time value of the two reads follows the injected clock > a clock that stands still: ticks and real time change no value 59ms
+ ✓ |db| src/modules/network-time/__tests__/network-time.db.test.ts > Q15, ENG-13: every time value of the two reads follows the injected clock > the tablet link is set by the server and stamped by the same clock: what `app.engine.setTabletLink` committed is what a client reads 15ms
+ ✓ |db| src/modules/storage/__tests__/storage.db.test.ts > the booted server > runs the real engine on the manual clock, with the seeded policy and no error line 14ms
+ ✓ |db| src/modules/storage/__tests__/storage.db.test.ts > the booted server > the stored matrix decides: SUPERVISOR holds EVIDENCE_REVIEW only, TECHNICIAN holds MAINTENANCE only, INVESTIGATOR holds neither 5ms
+ ✓ |db| src/modules/storage/__tests__/storage.db.test.ts > operations 53 and 54: the reads > INVESTIGATOR reads the summary and the detail: 200, valid against the contract, equal to the committed state; no row is written 19ms
+ ✓ |db| src/modules/storage/__tests__/storage.db.test.ts > operations 53 and 54: the reads > SUPERVISOR reads the summary and the detail: 200, valid against the contract, equal to the committed state; no row is written 13ms
+ ✓ |db| src/modules/storage/__tests__/storage.db.test.ts > operations 53 and 54: the reads > TECHNICIAN reads the summary and the detail: 200, valid against the contract, equal to the committed state; no row is written 13ms
+ ✓ |db| src/modules/storage/__tests__/storage.db.test.ts > operations 53 and 54: the reads > the refusals are the guard's: nobody without a session (401, no row), a foreign Origin (403, no row), a retired device (403 with its one row) 30ms
+ ✓ |db| src/modules/storage/__tests__/storage.db.test.ts > operation 53 while a recording runs, under a demo fault and with a changed policy (a clone of its own) > the summary is the hosted simulator's own answer in every state: recording, READY, LOW and FULL, and with a changed policy 712ms
+ ✓ |db| src/modules/storage/__tests__/storage.db.test.ts > operation 55 setStoragePolicy: the any-of through the real stages > a holder of EVIDENCE_REVIEW changes the policy: one STORAGE_POLICY_CHANGED row with the session's actor, one event, the stored row, and the revision of the change in the header 72ms
+ ✓ |db| src/modules/storage/__tests__/storage.db.test.ts > operation 55 setStoragePolicy: the any-of through the real stages > a holder of MAINTENANCE changes it too, with the same single row under that operator 13ms
+ ✓ |db| src/modules/storage/__tests__/storage.db.test.ts > operation 55 setStoragePolicy: the any-of through the real stages > a holder of neither is refused by the guard, before the body is read: 403 and one ACCESS_DENIED row that names both permissions as one code; the policy stays 19ms
+ ✓ |db| src/modules/storage/__tests__/storage.db.test.ts > operation 55 setStoragePolicy: the any-of through the real stages > a body that changes nothing answers 200 with the policy and writes nothing: no row, no event, no publication, the same revision 24ms
+ ✓ |db| src/modules/storage/__tests__/storage.db.test.ts > operation 55 setStoragePolicy: the any-of through the real stages > 422 INVALID_INPUT for a value outside the bounds: nothing is written and the engine is not asked 12ms
+ ✓ |db| src/modules/storage/__tests__/storage.db.test.ts > operation 55 setStoragePolicy: the any-of through the real stages > the bounds are the simulator's on the real host too: asked directly, the hosted action refuses 0 days with 422 and its own code, and nothing is stored 10ms
+ ✓ |db| src/modules/storage/__tests__/storage.db.test.ts > operation 55 setStoragePolicy: the any-of through the real stages > an operator on a paired device changes the policy with the bearer session and no Origin; the row names that operator 57ms
+ ✓ |db| src/modules/storage/__tests__/storage.db.test.ts > the stored matrix decides, request by request (a test-only change of role_permissions in the clone, as dems_owner) > a TECHNICIAN whose role loses MAINTENANCE holds neither: refused by the guard with one row; with the grant back, allowed again 23ms
+ ✓ |db| src/modules/storage/__tests__/storage.db.test.ts > the stored matrix decides, request by request (a test-only change of role_permissions in the clone, as dems_owner) > finding F-W37-1: a stored grant the shared table does not have passes the guard and is refused by the hosted action itself: 403 with the simulator's code, no row, nothing changed 13ms
+ ✓ |db| src/modules/network-time/__tests__/network-time.db.test.ts > two servers, two clocks: the values are each server's own clock, on the same seed > a server whose clock stands a year later answers instants a year later; after its stop a new server on the same database answers what was stored 604ms
+ ✓ |db| src/modules/storage/__tests__/storage.db.test.ts > a policy change is durable: it is there after the engine stopped, the app closed and a new app started on the same database > the policy, its STORAGE_POLICY_CHANGED row and the chain are what the first process left; the next change continues the chain 382ms
+stdout | src/modules/storage/__tests__/storage.db.test.ts > measured: the statements of one command (M13) > a policy change is ONE transaction of the pipeline; an unchanged policy sends the unit's frame and no write
+[w37]   a change: BEGIN ISOLATION LEVEL READ COMMITTED
+[w37]   a change: SELECT seq, hash FROM public.audit_chain_lock()
+[w37]   a change: SELECT set_config('statement_timeout', $1, true)
+[w37]   a change: UPDATE public.auth_sessions SET last_seen_at = $2 WHERE id = $1 AND ende
+[w37]   a change: COMMIT
+[w37]   a change: BEGIN ISOLATION LEVEL READ COMMITTED
+[w37]   a change: SELECT seq, hash FROM public.audit_chain_lock()
+[w37]   a change: SELECT set_config('statement_timeout', $1, true)
+[w37]   a change: select "id", "username", "rank", "name", "display_name", "initials", "ro
+[w37]   a change: insert into "audit_log" ("seq", "id", "at", "type", "category", "severit
+[w37]   a change: insert into "events" ("seq", "id", "at", "type", "category", "severity",
+[w37]   a change: UPDATE public.engine_counters SET next_value = GREATEST(next_value, $2) 
+[w37]   a change: update "storage_policy" set "retention_policy" = $1, "retention_days" = 
+[w37]   a change: update "engine_counters" set "next_value" = $1 where "engine_counters"."
+[w37]   a change: COMMIT
+[w37] round trips of POST /api/v1/storage/policy (a change): 15 statements in the request, 10 in the command's transaction
+
+stdout | src/modules/storage/__tests__/storage.db.test.ts > measured: the statements of one command (M13) > a policy change is ONE transaction of the pipeline; an unchanged policy sends the unit's frame and no write
+[w37] round trips of POST /api/v1/storage/policy (unchanged): 5 statements in the request, 5 in the command's transaction
+[w37]   unchanged: BEGIN ISOLATION LEVEL READ COMMITTED
+[w37]   unchanged: SELECT seq, hash FROM public.audit_chain_lock()
+[w37]   unchanged: SELECT set_config('statement_timeout', $1, true)
+[w37]   unchanged: select "id", "username", "rank", "name", "display_name", "initials", "ro
+[w37]   unchanged: COMMIT
+
+stdout | src/modules/storage/__tests__/storage.db.test.ts > measured: the statements of one command (M13) > a policy change is ONE transaction of the pipeline; an unchanged policy sends the unit's frame and no write
+[w37] round trips of the two reads: 0 statements on a pipeline connection (the session lookup of stage 4 runs on the pool)
+
+ ✓ |db| src/modules/storage/__tests__/storage.db.test.ts > measured: the statements of one command (M13) > a policy change is ONE transaction of the pipeline; an unchanged policy sends the unit's frame and no write 218ms
+
+ Test Files  2 passed (2)
+      Tests  29 passed (29)
+   Start at  15:01:15
+   Duration  7.99s (tests 42%, transform 39%, import 19%)
+
+[test:db] forced drops that needed a retry: 0
+[test:db] teardown: dropped 2 database(s) in 181 ms; 0 remain with the run prefix dems_test_step_59_tmdia365_

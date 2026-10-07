@@ -1,9 +1,11 @@
 /**
  * Copy and Download for the server strip and the Realtime panel. Each shows a friendly toast on
- * success and on failure (layer 1) and logs the failure (layer 2; no client log endpoint, D41(g)).
+ * success and on failure (layer 1) and writes the failure to the page's own log (layer 2; no client
+ * log endpoint, D41(g); a fixed sentence and the cause's class, never the copied text, AR-9).
  * Nothing here touches the network: Download builds a Blob from the in-memory document.
  */
 import { toast } from '@heroui/react'
+import { downloadBlob } from '@/lib/download'
 import { logApiReference } from './log'
 
 export async function copyToClipboard(text: string, messages: { ok: string; failed: string }, source: string): Promise<boolean> {
@@ -13,13 +15,13 @@ export async function copyToClipboard(text: string, messages: { ok: string; fail
     toast.success(messages.ok)
     return true
   } catch (error) {
-    logApiReference('warn', source, error, { length: text.length })
+    logApiReference('warn', source, error, 'The clipboard did not take the text.')
     toast.danger(messages.failed)
     return false
   }
 }
 
-/** Saves `text` as a file through a Blob URL (revoked right after the click). */
+/** Saves `text` as a file through the console's one Blob-URL download (`lib/download.ts`, W92-7: revoked after 30 s, no longer in the click's turn). */
 export function downloadText(
   text: string,
   fileName: string,
@@ -27,19 +29,11 @@ export function downloadText(
   source: string,
 ): boolean {
   try {
-    const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }))
-    const anchor = document.createElement('a')
-    anchor.href = url
-    anchor.download = fileName
-    anchor.rel = 'noopener'
-    document.body.append(anchor)
-    anchor.click()
-    anchor.remove()
-    setTimeout(() => URL.revokeObjectURL(url), 0)
+    downloadBlob(new Blob([text], { type: 'application/json' }), fileName)
     toast.success(messages.ok)
     return true
   } catch (error) {
-    logApiReference('error', source, error, { fileName })
+    logApiReference('error', source, error, 'The file could not be created.')
     toast.danger(messages.failed)
     return false
   }

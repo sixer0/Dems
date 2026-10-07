@@ -1,0 +1,18 @@
+# git diff --stat acaff20 -- <61 files>  (2026-10-07 10:29:48 WIB)
+ .../dashboard/__tests__/dashboard.test.tsx         | 13 ++++++-
+ .../features/login/__tests__/login-model.test.tsx  |  6 ++--
+ .../__tests__/security-audit.test.tsx              |  2 +-
+ .../storage/__tests__/storage-page.test.tsx        | 13 ++++++-
+ apps/core-web/src/test/sim-fetch.test.ts           | 13 ++++++-
+ .../src/features/pairing/pairing-model.test.ts     | 17 +++++++++
+ .../src/features/pairing/pairing-screen.test.tsx   | 41 +++++++++++++++++++---
+ .../session-new/session-new-screen.test.tsx        | 21 +++++++++--
+ .../src/features/settings/settings-screen.test.tsx | 14 +++++---
+ .../src/features/storage/storage-screen.test.tsx   | 18 ++++++++--
+ 10 files changed, 138 insertions(+), 20 deletions(-)
+
+# git hash-object (W01 D25, W01b D25/D165, W01c D42)
+9e8b97c80da596e0ae6e9b37aa69b64e99e3bbdd
+71f6f0337f2339d8e8d66ef232d7334dc0b67d1d
+1ab07579e928b9b545003899ec3265d4b8b6c762
+5470ce3fdcd98fd8c0926cd6afe03a1a1c1af58f

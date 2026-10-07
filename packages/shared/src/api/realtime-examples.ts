@@ -175,7 +175,7 @@ export const REALTIME_SERVER_EXAMPLES = {
     rotated: { summary: 'A new sign-in presented this session and replaced it', value: sessionEnded('ROTATED') },
     userDisabled: { summary: 'An administrator disabled the account', value: sessionEnded('USER_DISABLED') },
     tokenReuse: {
-      summary: 'A used biometric token was presented again: biometric sessions of this device and operator end',
+      summary: 'A used biometric token was presented again, or a live one by another device: biometric sessions of this device and operator end',
       value: sessionEnded('TOKEN_REUSE'),
     },
   } satisfies Named<SessionEndedMessage>,

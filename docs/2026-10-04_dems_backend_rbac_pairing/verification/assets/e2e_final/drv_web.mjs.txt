@@ -1,0 +1,38 @@
+// General CDP command tool for THIS row's headless contexts (CTX=a|b; ownership-checked in lib.connect; origin
+// http://127.0.0.1:5173 only). Never types or prints a password (sign-in uses web_login.mjs).
+//   CTX=a node --import tsx web.mjs <cmd> [args...]
+//   nav <path> | click <css> | clicktext <css> <text> | type <css> <text> | key <Key> | eval <js> | shot <name.png>
+//   wait <css> [ms] | gone <css> [ms] | text <css> | hold <css> <ms>
+import { ORIGIN, connect, log, sleep, stamp } from './lib.mjs'
+const [cmd, ...args] = process.argv.slice(2)
+const page = await connect()
+const q = (s) => JSON.stringify(s)
+const box = (sel, text) => page.evaluate(`(() => { const all = [...document.querySelectorAll(${q(sel)})]; const el = ${text === undefined ? 'all[0]' : `all.find((e) => e.textContent.replace(/\\s+/g, ' ').trim().includes(${q(text ?? '')}))`}; if (!el) return null; el.scrollIntoView({ block: 'center', inline: 'center' }); const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2, w: r.width, h: r.height, disabled: el.matches(':disabled,[aria-disabled="true"],[data-disabled="true"]') } })()`, 'box')
+async function mouse(b, holdMs = 0) {
+  await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: b.x, y: b.y })
+  await page.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: b.x, y: b.y, button: 'left', clickCount: 1 })
+  if (holdMs) await sleep(holdMs)
+  const at = Date.now()
+  await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: b.x, y: b.y, button: 'left', clickCount: 1 })
+  return at
+}
+let out
+switch (cmd) {
+  case 'nav': out = await page.navigate(`${ORIGIN}${args[0]}`, Number(args[1] ?? 3500)); out = `loaded ${out}; at ${await page.href()}`; break
+  case 'click': case 'clicktext': case 'hold': {
+    const b = await box(args[0], cmd === 'clicktext' ? args[1] : undefined)
+    if (!b) { out = `NOT FOUND ${args.join(' ')}`; break }
+    const at = await mouse(b, cmd === 'hold' ? Number(args[1]) : 0)
+    out = `${cmd} ${args[0]}${cmd === 'clicktext' ? ` "${args[1]}"` : ''} at ${b.x.toFixed(0)},${b.y.toFixed(0)} disabled=${b.disabled} released ${stamp(at)}`; break
+  }
+  case 'type': await page.typeInto(args[0], args.slice(1).join(' '), args[0]); out = `typed into ${args[0]}: "${args.slice(1).join(' ')}"`; break
+  case 'key': for (const type of ['keyDown', 'keyUp']) await page.send('Input.dispatchKeyEvent', { type, key: args[0], code: args[0], windowsVirtualKeyCode: { Enter: 13, Escape: 27, ArrowDown: 40, ArrowUp: 38, Tab: 9 }[args[0]] ?? 0 }); out = `key ${args[0]}`; break
+  case 'eval': out = JSON.stringify(await page.evaluate(args.join(' '), 'eval')); break
+  case 'shot': out = JSON.stringify(await page.screenshot(args[0])); break
+  case 'wait': out = `wait ${args[0]}: ${await (async () => { const until = Date.now() + Number(args[1] ?? 15000); while (Date.now() < until) { if (await page.evaluate(`document.querySelector(${q(args[0])}) !== null`, 'w')) return `present at ${stamp()}`; await sleep(100) } return 'TIMEOUT' })()}`; break
+  case 'gone': out = `gone ${args[0]}: ${await (async () => { const until = Date.now() + Number(args[1] ?? 15000); while (Date.now() < until) { if (await page.evaluate(`document.querySelector(${q(args[0])}) === null`, 'g')) return `gone at ${stamp()}`; await sleep(100) } return 'TIMEOUT' })()}`; break
+  case 'text': out = await page.evaluate(`document.querySelector(${q(args[0])})?.textContent?.replace(/\\s+/g, ' ').trim() ?? null`, 'text'); break
+  default: out = `unknown ${cmd}`
+}
+log(out)
+page.close()

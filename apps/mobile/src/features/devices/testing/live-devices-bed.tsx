@@ -121,7 +121,7 @@ const bearerOf = (headers: Readonly<Record<string, unknown>> | undefined): strin
   return typeof value === 'string' && value.startsWith('Bearer ') ? value.slice('Bearer '.length) : null;
 };
 
-/** The device command of an operation (operations 48 and 49 of the contract, CONTRACT-GAP-3's link). */
+/** The device command of an operation (operations 48 and 49; the contract's table `DEVICE_COMMAND_OPERATIONS` since W83, gap 3). */
 const COMMAND_OF: Readonly<Record<string, DeviceCommand>> = { restartDevice: 'RESTART', testDeviceSignal: 'TEST_SIGNAL' };
 
 export type DeltaOrder = 'delta-first' | 'answer-first';

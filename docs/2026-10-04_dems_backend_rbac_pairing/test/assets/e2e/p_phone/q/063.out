@@ -1,0 +1,10 @@
+10:28:17.369 mark b06 at 10:28:17.369
+10:28:17.450 tap 540,2257
+10:28:17.686 until true at 10:28:20.964 after 3278 ms => {"rec":true,"text":"REC0012345678900123456789:0012345678900123456789:0012345678900123456789REC 00:00:00Session IDSES-20261006-0032Case NumberLP/2026/1006-0016InvestigatorAKP Budi S"}
+10:28:21.014 screenshot 62_sc3_s3_web_dashboard_recording.png 10:28:21.014..10:28:21.309
+10:28:21.366 start 200 at device 10-06 10:28:20.673 (POST /api/v1/session/{id}/start 200)
+10:28:21.528 slept 2000 ms
+10:28:23.730 declared screen live
+10:28:23.837 screencap 62p_sc3_s3_phone_monitor.png 10:28:23.837..10:28:24.616
+10:28:24.686 serverlog since b06 (1):
+    10:28:20.912 POST /api/v1/session/:id/start 200 operator:OPR-001

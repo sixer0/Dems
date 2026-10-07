@@ -24,16 +24,13 @@ import {
 } from './cli';
 import type { TargetDatabase } from './database-names';
 import { DbCommandError, OWNER_ROLE, assertProjectRoles } from './owner-connection';
+import { DATABASE_ENCODING as ENCODING, DATABASE_LOCALE as LOCALE, createEmptyDatabaseStatement } from './statements';
 
 const COMMAND = 'db:create';
-const ENCODING = 'UTF8';
-const LOCALE = 'C';
-/** The empty template of PostgreSQL: a project database starts from nothing (TI-6, DA-11). */
-const EMPTY_TEMPLATE = 'template0';
 
-/** The one statement of this command. `target` passed the name guard; the rest is constant text. */
+/** The one statement of this command. `target` passed the name guard; the rest is constant text (`statements.ts`). */
 export function createDatabaseStatement(target: TargetDatabase): string {
-  return `CREATE DATABASE ${target} OWNER ${OWNER_ROLE} TEMPLATE ${EMPTY_TEMPLATE} ENCODING '${ENCODING}' LOCALE '${LOCALE}'`;
+  return createEmptyDatabaseStatement(target, OWNER_ROLE);
 }
 
 function describe(facts: DatabaseFacts): string {

@@ -1,0 +1,63 @@
+# W75 gate (commands from the repository root)
+
+## whole web suite, run 1
+ ❯ src/test/live-shell-admin.test.tsx (40 tests | 17 failed) 3518ms
+ ❯ src/test/live-pending-control.test.tsx (20 tests | 1 failed) 86ms
+ ❯ src/test/live-devices-drawer.test.tsx (13 tests | 1 failed) 1987ms
+⎯⎯⎯⎯⎯⎯ Failed Tests 19 ⎯⎯⎯⎯⎯⎯⎯
+ ❯ src/test/live-pending-control.test.tsx:421:21
+ Test Files  3 failed | 90 passed (93)
+      Tests  19 failed | 1219 passed (1238)
+   Start at  01:53:00
+exit=1
+
+## whole web suite, run 2
+## 2026-10-06 02:00:57 WIB  2:00  2 users, load averages: 8.59 8.92 7.61
+ Test Files  93 passed (93)
+      Tests  1242 passed (1242)
+   Start at  02:00:57
+   Duration  229.28s (tests 69%, import 15%, environment 10%, setup 4%, transform 2%)
+exit=0
+
+## typecheck / lint, first pass
+## 01:57:22 $ npm run typecheck -w @dems/core-web
+npm error workspace @dems/core-web@0.1.0
+npm error location /Users/gsp-budi/Documents/DEMS/apps/core-web
+npm error command failed
+npm error command sh -c tsc -b
+exit=2
+## 01:57:47 $ npm run lint -w @dems/core-web
+> @dems/core-web@0.1.0 lint
+> oxlint
+
+src/test/live-system-demo.test.tsx:408:13: warning eslint(no-unused-vars): Variable 'bed' is declared but never used. Unused variables should start with a '_'. help: Consider removing this declaration.
+exit=0
+## 01:57:47 $ npm run typecheck -w @dems/shared
+> @dems/shared@0.1.0 typecheck
+> tsc --noEmit
+
+exit=0
+## 01:57:54 $ npm run lint -w @dems/shared
+> @dems/shared@0.1.0 lint
+> oxlint
+
+exit=0
+
+## typecheck / lint, second pass
+## 02:05:19 $ npm run typecheck -w @dems/core-web
+> @dems/core-web@0.1.0 typecheck
+> tsc -b
+exit=0
+## 02:05:43 $ npm run lint -w @dems/core-web
+
+src/features/paired-devices/code-display.tsx:36:105: warning react-hooks(exhaustive-deps): React Hook useEffect has missing dependencies: 'revealed', and 'scramble' help: Either include it or remove the dependency array.
+src/features/paired-devices/code-display.tsx:39:20: warning react-hooks(exhaustive-deps): React Hook useEffect has missing dependencies: 'onRevealed', and 'revealed' help: Either include it or remove the dependency array.
+exit=0
+
+## shared suite (01:58:37)
+ Test Files  68 passed (68)
+      Tests  1814 passed (1814)
+exit=0
+
+## folder test file hash (02:05)
+5470ce3fdcd98fd8c0926cd6afe03a1a1c1af58f

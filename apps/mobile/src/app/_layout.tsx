@@ -11,17 +11,15 @@ import { useFonts } from 'expo-font';
 import { type ErrorBoundaryProps } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import { Button, Card, HeroUINativeProvider } from 'heroui-native';
-import { View } from 'react-native';
+import { HeroUINativeProvider } from 'heroui-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider, initialWindowMetrics } from 'react-native-safe-area-context';
 import { Uniwind } from 'uniwind';
-import { useRetryCooldown } from '@dems/shared/realtime';
-import { palette } from '@dems/shared/tokens';
-import { i18n } from '@/i18n';
 import { MotionPolicyProvider } from '@/motion';
 import { RootNavigator } from '@/navigation';
+import { RouteErrorFallback } from '@/navigation/route-error-fallback';
 import { AppProviders, BootGate, heroUIConfig } from '@/providers';
+import { SignedOutLanding } from '@/runtime/signed-out-landing';
 
 void SplashScreen.preventAutoHideAsync();
 Uniwind.setTheme('dark');
@@ -36,7 +34,10 @@ Uniwind.setTheme('dark');
  *    read, through a hook, a provider that it renders itself;
  * 2. `AppProviders` (step 68, then 73) with `reducedMotion` → HeroUI `animation: 'disable-all'`;
  * 3. `BootGate`: the splash stays up until the runtime has hydrated (at most 2 s, then a Skeleton);
- * 4. `RootNavigator` (step 70): the root stack with the `Stack.Protected` auth guard.
+ * 4. `RootNavigator` (step 70): the root stack with the `Stack.Protected` auth guard, and beside it
+ *    `SignedOutLanding` (row FX-M1, E2E-S-1): after a sign-out that leaves a public screen on top
+ *    (Pair, Stack Check), the stack is reset to `/`, so the boot router opens Login (or Pair while
+ *    the pairing gate holds) whatever was visited before.
  *
  * Owner: step 70 (P6).
  */
@@ -61,7 +62,10 @@ export default function RootLayout() {
       {(policy) => (
         <AppProviders reducedMotion={policy === 'reduced'}>
           <BootGate>
-            <RootNavigator />
+            <>
+              <RootNavigator />
+              <SignedOutLanding />
+            </>
           </BootGate>
           <StatusBar style="light" />
         </AppProviders>
@@ -84,37 +88,5 @@ export function ErrorBoundary(props: ErrorBoundaryProps) {
         </HeroUINativeProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
-  );
-}
-
-function RouteErrorFallback({ error, retry }: ErrorBoundaryProps) {
-  const { retry: guardedRetry, cooldown, exhausted, canRetry } = useRetryCooldown(() => {
-    void retry();
-  });
-  if (__DEV__) {
-    // No client-log endpoint exists in the mock-core scaffold (D3/D4, D41(g)); dev console only.
-    console.error('[mobile] route error', { message: error.message, stack: error.stack });
-  }
-  // `i18n.t` (not the hook): the boundary can render outside the provider tree.
-  return (
-    <View style={{ flex: 1, justifyContent: 'center', padding: 24, backgroundColor: palette.black }}>
-      <Card className="rounded-xl">
-        <Card.Header>
-          <Card.Title>{i18n.t('mobile.errorBoundary.title')}</Card.Title>
-          <Card.Description>{i18n.t('mobile.errorBoundary.description')}</Card.Description>
-        </Card.Header>
-        <Card.Footer>
-          <Button variant="primary" isDisabled={!canRetry} onPress={guardedRetry}>
-            <Button.Label>
-              {exhausted
-                ? i18n.t('mobile.errorBoundary.restart')
-                : cooldown > 0
-                  ? i18n.t('mobile.errorBoundary.retryIn', { seconds: cooldown })
-                  : i18n.t('mobile.errorBoundary.retry')}
-            </Button.Label>
-          </Button>
-        </Card.Footer>
-      </Card>
-    </View>
   );
 }

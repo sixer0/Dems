@@ -1,0 +1,23 @@
+19: WARN  [Reanimated] Reduced motion setting is overwritten with mode 'never'.
+31: WARN  [Reanimated] Reduced motion setting is overwritten with mode 'never'.
+44: WARN  [Reanimated] Reduced motion setting is overwritten with mode 'always'.
+55: WARN  [Reanimated] Reduced motion setting is overwritten with mode 'always'.
+75: WARN  [Reanimated] Reduced motion setting is overwritten with mode 'always'.
+97: WARN  [Reanimated] Reduced motion setting is overwritten with mode 'always'.
+174: WARN  [runtime] {"context": {"kind": "TIMEOUT", "method": "POST", "operationId": "touchSession", "path": "/api/v1/auth/touch", "requestId": null, "skippedBefore": 0, "status": null}, "correlationId": "Lmuw2r1is", "level": "warn", "mess
+175: ERROR  [runtime] 
+251: WARN  [runtime] {"context": {"kind": "TIMEOUT", "method": "GET", "operationId": "getServiceHealth", "path": "/api/v1/health", "requestId": null, "skippedBefore": 0, "status": null}, "correlationId": "Lmuw2ph6m", "level": "warn", "messa
+354: WARN  [runtime] 
+363: WARN  [runtime] {"context": {"kind": "TIMEOUT", "method": "GET", "operationId": "getServiceHealth", "path": "/api/v1/health", "requestId": null, "skippedBefore": 0, "status": null}, "correlationId": "Lmuw2ph6m", "level": "warn", "messa
+370: WARN  [runtime] {"context": {"kind": "TIMEOUT", "method": "POST", "operationId": "touchSession", "path": "/api/v1/auth/touch", "requestId": null, "skippedBefore": 0, "status": null}, "correlationId": "Lmuw281i8", "level": "warn", "mess
+371: ERROR  [runtime] 
+399: WARN  [Reanimated] Reduced motion setting is overwritten with mode 'always'.
+440: WARN  [runtime] {"context": {"reason": "NOT_PERMITTED", "state": "SEALED"}, "correlationId": "Lmuw2r1is", "level": "warn", "message": "createSession refused: NOT_PERMITTED", "source": "features.sessionNew.create", "timestamp": "2026-10
+460: WARN  [Reanimated] Reduced motion setting is overwritten with mode 'always'.
+496: WARN  [runtime] {"context": {"reason": "NOT_PERMITTED", "state": "SEALED"}, "correlationId": "Lmuw3xpu5", "level": "warn", "message": "createSession refused: NOT_PERMITTED", "source": "features.sessionNew.create", "timestamp": "2026-10
+643: ERROR  [ReferenceError: Property 'OperatorRole' doesn't exist]
+644: ERROR  [ReferenceError: Property 'OperatorRole' doesn't exist]
+645: ERROR  [ReferenceError: Property 'OperatorRole' doesn't exist]
+679: WARN  [Reanimated] Reduced motion setting is overwritten with mode 'always'.
+689: WARN  [Reanimated] Reduced motion setting is overwritten with mode 'always'.
+707: WARN  [Reanimated] Reduced motion setting is overwritten with mode 'always'.

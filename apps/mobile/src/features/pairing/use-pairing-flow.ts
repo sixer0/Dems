@@ -9,8 +9,10 @@
  *   Core writes exactly one audit row per committed attempt (PAIRING_SUCCESS / PAIRING_FAILED /
  *   PAIRING_LOCKED) and owns the 3-failure → 60 s lockout.
  * - `unpair()` calls the Core (one UNPAIRED audit row).
- * - `leave()` hands off per the §3.3 guard: back to the screen underneath (Login, Settings) if
- *   there is one, else the boot router `/` (→ `/login` signed out, the §3.3 target signed in).
+ * - `leave()` hands off per the §3.3 guard (`leaveTargetFor`): Cancel goes back to the screen
+ *   underneath (Login, Settings) if there is one, else to the boot router `/`. The hand-off after a
+ *   success goes back to Settings when an operator is signed in; signed out it resets the stack to the
+ *   boot router, which opens Login, whatever deep links had pushed underneath (row FX-M1, E2E-S-1).
  *
  * The code lives in this hook's memory only: never stored, logged or put in an audit row (§6.1).
  *
@@ -30,16 +32,19 @@
  */
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { settle, useCoreActions, useLiveLink } from '@dems/shared/live';
+import { settle, useCoreActions } from '@dems/shared/live';
 import { useRetryCooldown, type RetryCooldown } from '@dems/shared/realtime';
 import { PAIRING_CODE_LENGTH, useSim, useSimInstance, type EpochMs, type PairingState } from '@dems/shared/sim';
 import { useHaptics } from '@/motion';
 import {
   isPairingBlocked,
   reportRuntimeIssue,
+  resetToBootRouter,
   setCoreLinkSource,
+  useAuth,
   useCoreLink,
   useMobileLive,
+  useNoticeLiveLink,
   usePairing,
   type PairingNotice,
 } from '@/runtime';
@@ -62,6 +67,7 @@ import {
   phaseAt,
   selectLockSeconds,
   selectPairingState,
+  type LeaveReason,
   type PairOutcome,
   type PairPhase,
   type PairingView,
@@ -96,7 +102,8 @@ export interface PairingFlow {
   pair: () => void;
   /** Aborts an attempt in flight (nothing is committed) and leaves. Does nothing once the request is out. */
   cancel: () => void;
-  leave: () => void;
+  /** Leaves the screen; `reason` defaults to `cancel` (the header's back, Cancel). */
+  leave: (reason?: LeaveReason) => void;
   /** Unpairs. The simulator answers before this returns; the Core server answers later. */
   unpair: (handlers: UnpairHandlers) => void;
 
@@ -131,7 +138,10 @@ export function usePairingFlow(): PairingFlow {
   const router = useRouter();
   const haptic = useHaptics();
   const live = useCoreLink().source === 'LIVE';
-  const liveLink = useLiveLink();
+  // The Live link as the notice reads it: a run the Core ended on purpose (the 4403 of a revocation)
+  // is the app's own reconnect, not "Core server unreachable" (E2E-S-3, `@/runtime` `ended-link`).
+  const liveLink = useNoticeLiveLink();
+  const { isAuthenticated } = useAuth();
   const gate = usePairing();
   const mobileLive = useMobileLive();
   const simState = useSim(selectPairingState);
@@ -179,12 +189,18 @@ export function usePairingFlow(): PairingFlow {
   const retrySeconds = useSim((s) => lockSecondsAt(retryAt, s.clock.now));
   const blocked = isPairingBlocked(gate);
 
-  const leave = useCallback(() => {
-    if (left.current) return;
-    left.current = true;
-    if (leaveTargetFor(router.canGoBack()) === 'back') router.back();
-    else router.replace('/');
-  }, [router]);
+  const leave = useCallback(
+    (reason: LeaveReason = 'cancel') => {
+      if (left.current) return;
+      left.current = true;
+      const target = leaveTargetFor(router.canGoBack(), reason, isAuthenticated);
+      if (target === 'back') router.back();
+      // The signed-out hand-off resets the stack (E2E-S-1); Cancel without a screen underneath replaces this one.
+      else if (reason === 'handoff') resetToBootRouter(router);
+      else router.replace('/');
+    },
+    [router, isAuthenticated],
+  );
 
   /** Sends the code of `sending` to the Core, once, and takes the answer. */
   const commit = useCallback(
@@ -269,7 +285,7 @@ export function usePairingFlow(): PairingFlow {
         if (!due || fired) return;
         fired = true;
         queueMicrotask(() => {
-          if (!disposed) leave();
+          if (!disposed) leave('handoff');
         });
       },
       { fireImmediately: true },

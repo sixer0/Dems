@@ -1,6 +1,7 @@
 // Tests of the provisioning steps that need no server: the ignore rule (CR-7), the data
 // directory and the three credential files (RP-1, T-CR-1), the refusal to overwrite, the
-// arguments of initdb (CR-4) and the settings block (NL-5). Everything runs in a temporary root.
+// arguments of initdb (CR-4) and the settings block (NL-5; security ruling 14). Everything runs in
+// a temporary root.
 
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -8,7 +9,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { after, test } from 'node:test';
 
-import { APP_KEYS, OWNER_KEYS, connectionFileKeys, projectPaths, readConnectionFile, readPwfile, redact } from './lib.mjs';
+import { APP_KEYS, OWNER_KEYS, assertClusterEndpoint, connectionFileKeys, projectPaths, readConnectionFile, readPwfile, readSettings, redact, run } from './lib.mjs';
 import {
   APP_ATTRIBUTES,
   CONF_BLOCK,
@@ -103,10 +104,73 @@ test('initdb gets the superuser password as a file path, never as a value (CR-4,
   ]);
 });
 
-test('the settings block names the loopback address, port 4432 and no Unix socket, and no logging setting (NL-5)', () => {
+test('the settings block names the loopback address, port 4432 and no Unix socket; of the logging settings only those of ruling 14 (NL-5)', () => {
   const lines = CONF_BLOCK.split('\n').filter((line) => line !== '' && !line.startsWith('#'));
-  assert.deepEqual(lines, ["listen_addresses = '127.0.0.1'", 'port = 4432', "unix_socket_directories = ''"]);
-  assert.doesNotMatch(CONF_BLOCK, /log_|logging_collector/);
+  assert.deepEqual(lines, [
+    "listen_addresses = '127.0.0.1'",
+    'port = 4432',
+    "unix_socket_directories = ''",
+    'log_error_verbosity = terse',
+    'logging_collector = on',
+    "log_directory = 'log'",
+    "log_filename = 'postgresql-%H.log'",
+    'log_file_mode = 0600',
+    'log_rotation_age = 1h',
+    'log_rotation_size = 0',
+    'log_truncate_on_rotation = on',
+  ]);
+  // WHAT is logged stays at the defaults (NL-5): no statement, duration or bind-parameter setting.
+  assert.doesNotMatch(lines.join('\n'), /log_statement|log_min_duration|log_min_error_statement|log_parameter|log_min_messages|log_destination/);
+});
+
+test('ruling 14 (CPS1-9): errors are terse; the server log is a ring of 24 hourly files, each truncated when its hour comes round again', () => {
+  const p = root('conf');
+  fs.mkdirSync(p.pgdata, { recursive: true });
+  fs.writeFileSync(path.join(p.pgdata, 'postgresql.conf'), CONF_BLOCK);
+  // The project's own reader, the one pg:start's endpoint check uses, reads every line of the block.
+  const settings = readSettings(p.pgdata);
+  assert.doesNotThrow(() => assertClusterEndpoint(p.pgdata));
+  // No DETAIL, HINT, QUERY or CONTEXT line: no failing row, no key value.
+  assert.equal(settings.get('log_error_verbosity'), 'terse');
+  // The bound: the collector writes into .data/postgres/log/ (inside the cluster directory, mode
+  // 0700), under one strftime escape, the hour, so 24 names at most; a time-driven rotation every
+  // hour truncates the file it opens.
+  assert.equal(settings.get('logging_collector'), 'on');
+  assert.equal(settings.get('log_directory'), 'log');
+  assert.equal(settings.get('log_filename'), 'postgresql-%H.log');
+  assert.deepEqual(settings.get('log_filename').match(/%./g), ['%H']);
+  assert.equal(settings.get('log_rotation_age'), '1h');
+  assert.equal(settings.get('log_truncate_on_rotation'), 'on');
+  // Size-driven rotation is off: at its default (10MB) it would reopen the same hour file and
+  // append, since truncation happens on time-driven rotation only.
+  assert.equal(settings.get('log_rotation_size'), '0');
+  assert.equal(settings.get('log_file_mode'), '0600');
+});
+
+test('PostgreSQL 18.4 reads the block as written: postgres -C on a folder that holds only this postgresql.conf (no server, no port)', () => {
+  const dir = fs.mkdtempSync(path.join(tmp, 'conf-check-'));
+  fs.writeFileSync(path.join(dir, 'postgresql.conf'), CONF_BLOCK, { mode: 0o600 });
+  // -C prints the value the server would run with, in base units (minutes, kB, a decimal mode), and exits.
+  const expected = {
+    log_error_verbosity: 'terse',
+    logging_collector: 'on',
+    log_directory: 'log',
+    log_filename: 'postgresql-%H.log',
+    log_file_mode: String(0o600),
+    log_rotation_age: '60',
+    log_rotation_size: '0',
+    log_truncate_on_rotation: 'on',
+    // NL-5: these stay at the defaults.
+    log_statement: 'none',
+    log_min_duration_statement: '-1',
+    log_parameter_max_length_on_error: '0',
+  };
+  for (const [name, value] of Object.entries(expected)) {
+    const r = run(projectPaths().postgres, ['-D', dir, '-C', name]);
+    assert.equal(r.status, 0, name);
+    assert.equal(r.stdout.trim(), value, name);
+  }
+  assert.deepEqual(fs.readdirSync(dir), ['postgresql.conf']);
 });
 
 test('the owner role may create databases and is not a superuser; the runtime role has no flag', () => {

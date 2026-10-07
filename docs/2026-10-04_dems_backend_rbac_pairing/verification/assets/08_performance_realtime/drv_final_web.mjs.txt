@@ -1,0 +1,12 @@
+// End state: registry, current session, then the SUPERVISOR signs out (operation sign-out from the page). Facts only.
+import { connect, log, registry, writeJson, stamp } from './lib.mjs'
+const page = await connect({ viewport: true })
+await page.navigate('http://127.0.0.1:5173/admin/devices', 4000)
+const reg = await registry(page)
+const cur = await page.evaluate(`(async () => { const r = await fetch('/api/v1/session/current', { credentials: 'same-origin' }); const b = await r.json(); return { status: r.status, id: b.session?.id ?? null, state: b.session?.state ?? 'IDLE' } })()`, 'current')
+const shot = await page.screenshot('08_end_web_paired_devices.png')
+const out = await page.evaluate(`(async () => { const r = await fetch('/api/v1/auth/sign-out', { method: 'POST', credentials: 'same-origin' }); return r.status })()`, 'sign-out')
+const net = page.takeNetwork()
+writeJson('08_end_web_state.json', { at: stamp(), registry: reg, currentSession: cur, signOutStatus: out, screenshot: shot.file, origins: net.origins })
+log(JSON.stringify({ registry: reg, currentSession: cur, signOutStatus: out, origins: net.origins }))
+page.close()

@@ -1,0 +1,27 @@
+13:18:31.563 mark j01 at 13:18:31.563
+13:18:31.608 js => [[507,"ROLE_CHANGED","OPR-002","2026-10-06T06:16:30.445Z","Role of OPR-001 changed from INVESTIGATOR to TECHNICIAN"],[508,"ROLE_CHANGED","OPR-002","2026-10-06T06:17:43.836Z","Role of OPR-001 changed from TECHNICIAN to INVESTIGATOR"]]
+13:18:31.654 declared screen home
+13:18:31.696 tap 324,2283
+13:18:31.834 slept 2500 ms
+13:18:34.372 declared screen sessions
+13:18:34.396 screencap 93_sessions_hub_investigator_unlocked.png 13:18:34.396..13:18:34.906
+13:18:34.964 ids(1): sessions-start@540,363 "Start New Session"
+13:18:37.048 tap 972,2283
+13:18:37.174 slept 2500 ms
+13:18:39.709 declared screen more
+13:18:39.735 screencap 94_more_before_sign_out.png 13:18:39.735..13:18:39.884
+13:18:39.941 ids(2): more-operator-name@651,387 "AKP Budi Santoso" ; more-operator-role@438,456 "Investigator"
+13:18:42.041 tapid more-sign-out at 776,663 "Sign out"
+13:18:44.410 slept 3500 ms
+13:18:47.949 declared screen login
+13:18:47.975 screencap 95_e2e_s1_after_sign_out_budi.png 13:18:47.976..13:18:48.571
+13:18:48.634 slept 2000 ms
+13:18:50.700 screencap 95b_e2e_s1_after_sign_out_budi_t2.png 13:18:50.700..13:18:51.929
+13:18:52.038 corelog (2): 13:18:44.719 POST /api/v1/auth/sign-out 204 | 13:18:44.842 GET /api/v1/auth/status 200
+13:18:52.147 warnlog since 10-06 13:18:31.000 (0): 
+13:18:52.231 serverlog since j01 (5):
+    13:18:31.612 GET /api/v1/audit 200
+    13:18:44.415 POST /api/v1/auth/sign-out 204
+    13:18:44.417 [socket closed]
+    13:18:45.044 [socket opened]
+    13:18:45.138 GET /api/v1/auth/status 200

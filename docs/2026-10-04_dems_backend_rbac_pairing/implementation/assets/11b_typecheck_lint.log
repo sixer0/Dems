@@ -1,0 +1,14 @@
+=== npm run typecheck -w @dems/core-server (12:28:19)
+
+> @dems/core-server@0.2.0 typecheck
+> tsc --noEmit
+
+exit=0
+=== npm run lint -w @dems/core-server (12:28:22)
+
+> @dems/core-server@0.2.0 lint
+> oxlint
+
+src/plugins/readiness/__tests__/readiness.test.ts:250:11: warning eslint(no-unused-vars): Variable 'app' is declared but never used. Unused variables should start with a '_'. help: Consider removing this declaration.
+src/plugins/readiness/__tests__/readiness.test.ts:251:11: warning eslint(no-unused-vars): Variable 'unit' is declared but never used. Unused variables should start with a '_'. help: Consider removing this declaration.
+exit=0

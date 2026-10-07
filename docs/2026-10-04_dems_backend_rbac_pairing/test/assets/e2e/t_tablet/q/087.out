@@ -1,0 +1,7 @@
+tap 1178,1455 at 10:53:31.854
+create 201 (10-06 10:53:31.666 POST /api/v1/session 201)
+precheck 202 (10-06 10:53:31.794 POST /api/v1/session/{id}/precheck 202)
+slept 5000 ms
+tap 1178,1455 at 10:53:38.697
+slept 4000 ms
+screencap R2_02_ready.png (779908 bytes) at 10:53:42.973

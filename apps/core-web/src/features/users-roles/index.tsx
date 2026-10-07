@@ -17,7 +17,7 @@
  * operator. Commands (operations 12, 14, 13) go through `useWebLive()?.client.call(…)` on the
  * dialog's `usePendingControl()` (W0 §15), every failure through the presenter first (rule 2).
  *
- * **CONTRACT-GAP-W77-1.** §10.2 "Live update" expects "a sign-in elsewhere (active sessions, last
+ * **RESIDUAL-W77-1 (W83 ledger #55).** §10.2 "Live update" expects "a sign-in elsewhere (active sessions, last
  * sign-in)" to appear without a reload. The Core publishes no `admin.changed` for a sign-in, a
  * sign-out or an expiry (`apps/core-server/src/modules/identity/sign-in.ts:241`,
  * `apps/core-server/src/modules/identity/sessions.ts:191`, `:310` publish `session.ended` only;
@@ -31,6 +31,7 @@
  */
 import { useState } from 'react'
 import { Card, Chip, EmptyState } from '@heroui/react'
+import { useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { ShieldX, UsersRound } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -39,7 +40,8 @@ import { CoreMode, LiveLinkState, useCoreMode, useLiveLink, useLiveSelector } fr
 import { LiveOnlyState } from '@/components/shell/live-only-state'
 import { PageHeader } from '@/components/shell/page-header'
 import { AnimatedNumber } from '@/components/ui/animated-number'
-import type { WebLive } from '@/runtime'
+import { retryCoreQuery } from '@/lib/core-queries'
+import { CORE_QUERY_KEYS, type WebLive } from '@/runtime'
 import { matrixOf, summaryOf, usersOf } from './model'
 import { MatrixPanel } from './matrix-panel'
 import { isForbiddenRead, useRoleMatrixQuery, useUsersQuery } from './queries'
@@ -80,6 +82,8 @@ const CLOSED: DialogState = { kind: null, target: null, open: false, seq: 0 }
 function UsersRolesLive() {
   const { t } = useTranslation()
   const usersQuery = useUsersQuery()
+  // W92-4: Retry through the key, so each read's gate (USER_ADMIN, signed in, link up) holds for a press.
+  const queryClient = useQueryClient()
   const matrixQuery = useRoleMatrixQuery()
   const linkUp = useLiveLink() === LiveLinkState.ONLINE
   const selfId = useLiveSelector((live: WebLive | null) => live?.session?.operator.id ?? null)
@@ -124,10 +128,10 @@ function UsersRolesLive() {
           failed={usersQuery.isError}
           selfId={selfId}
           linkUp={linkUp}
-          onRetry={() => void usersQuery.refetch()}
+          onRetry={() => retryCoreQuery(queryClient, CORE_QUERY_KEYS.users)}
           onAction={open}
         />
-        <MatrixPanel matrix={matrix} failed={matrixQuery.isError} linkUp={linkUp} onRetry={() => void matrixQuery.refetch()} />
+        <MatrixPanel matrix={matrix} failed={matrixQuery.isError} linkUp={linkUp} onRetry={() => retryCoreQuery(queryClient, CORE_QUERY_KEYS.roleMatrix)} />
       </div>
       <RoleDialog
         key={`role-${dialog.seq}`}

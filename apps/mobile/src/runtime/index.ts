@@ -23,6 +23,10 @@
  * | `use-pending-press` | `usePendingPress`: "busy at once, spinner late" for one control that sends a Core command (LB-1; row M1) |
  * | `use-core-link-notice` | `useCoreLinkNotice`: the offline notice of a screen in one call, its first render seeded from the connection banner (row M1) |
  * | `pending-control` | `busyState` and `PendingSpinner`: the look of a pending control, beside `usePendingPress` (LB-1; row M1 follow-up) |
+ * | `ended-link` | A run the Core ended on purpose (4401, 4403) reads as settling, not as an outage (row FX-M1, E2E-S-3) |
+ * | `probe-failure` | Probes and the keep-alive: re-checked once on a time-out, judged by the link, never an error (row FX-M1, R5) |
+ * | `pairing-gate-snapshot` | The pairing gate for `+native-intent`, outside React (row FX-M1, E2E-S-4) |
+ * | `signed-out-landing` | `SignedOutLanding`: after a sign-out over a public screen, the boot router chooses (row FX-M1, E2E-S-1) |
  *
  * Auth (`useAuth().signIn` against the simulator's `auth.ts`, lockout, biometric, idle lock) is
  * provided by `AuthProvider` in `src/auth`, one layer below `SimRuntimeProvider`.
@@ -208,3 +212,21 @@ export { usePendingPress, type PendingPress } from './use-pending-press';
 export { useCoreLinkNotice, type CoreLinkNotice } from './use-core-link-notice';
 export { useCoreLinkReadOnly } from './use-core-link-read-only';
 export { PendingSpinner, busyState, type PendingSpinnerProps } from './pending-control';
+export { heartbeatWhileEnded, isLinkSettling, isRunEndedByCore, liveLinkWhileEnded, useNoticeLiveLink, type EndedRunSource } from './ended-link';
+export { createStallTolerantTimers, STALL_LATENESS_MS, STALL_MAX_POSTPONE_MS, STALL_MAX_YIELDS, STALL_YIELD_MS } from './stall-tolerant-timers';
+export { CORE_CLOCK_WINDOW_MS, coreClockOf, createCoreClock, registerCoreClock, type CoreClock } from './core-clock';
+export {
+  ELAPSED_TICK_MS,
+  SECOND_TICK_MARGIN_MS,
+  SECOND_TICK_MIN_MS,
+  createElapsedTicker,
+  elapsedSecondsAt,
+  msToNextSecond,
+  useRecordingElapsedSeconds,
+  useRecordingTickerSeconds,
+  type ElapsedTicker,
+} from './recording-elapsed';
+export { JS_LAG_SAMPLE_MS, SessionDiagnostics, createJsLagSampler, socketDiagnosticsOf, type JsLagSampler, type JsLagWindow } from './session-diagnostics';
+export { PROBE_FAILURES_BEFORE_WARN, PROBE_OPERATIONS, isRecheckable, isUnanswered, judgeLiveRejection, type JudgedReport } from './probe-failure';
+export { isPairingGateHeld, notePairingGate, releasePairingGate, resetPairingGateForTests } from './pairing-gate-snapshot';
+export { SignedOutLanding, resetToBootRouter, signedOutLandingFor, type BootResetRouter, type SignedOutLandingStep } from './signed-out-landing';

@@ -1,0 +1,8 @@
+13:19:18.976 mark k01 at 13:19:18.976
+13:19:19.026 declared screen login
+13:19:19.077 tap 539,1184
+13:19:19.245 slept 1200 ms
+13:19:20.516 focused true; keyguard false; inputType 0x80001
+13:19:21.112 username typed (rina.wijaya, TECHNICIAN); inputType 0x80001
+13:19:22.068 slept 500 ms
+13:19:22.624 screencap 96_login_username_typed_rina.png 13:19:22.624..13:19:24.059

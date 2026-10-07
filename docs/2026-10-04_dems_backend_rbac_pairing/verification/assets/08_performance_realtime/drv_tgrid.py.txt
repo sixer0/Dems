@@ -1,0 +1,13 @@
+# Contact sheet of tablet frames (864x540): each tile 432x270 with the file name. python3 tgrid.py <dir> <out> <start> <end> [cols]
+import os, sys
+from PIL import Image, ImageDraw
+d, out, a, b = sys.argv[1], sys.argv[2], int(sys.argv[3]), int(sys.argv[4]); cols = int(sys.argv[5]) if len(sys.argv) > 5 else 4
+files = sorted(os.listdir(d))[a:b]
+tw, th = 432, 270
+rows = (len(files) + cols - 1) // cols
+s = Image.new('RGB', (cols * (tw + 4), rows * (th + 16)), 'white'); dr = ImageDraw.Draw(s)
+for k, n in enumerate(files):
+    im = Image.open(f'{d}/{n}').convert('RGB').resize((tw, th))
+    x, y = (k % cols) * (tw + 4), (k // cols) * (th + 16)
+    dr.text((x + 2, y + 1), n, fill='black'); s.paste(im, (x, y + 15))
+s.save(out); print(out, len(files))

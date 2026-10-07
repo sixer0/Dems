@@ -12,6 +12,7 @@ import {
   CoreApiAccessKind,
   CoreApiAuditNone,
   CoreApiTag,
+  DEVICE_COMMAND_OPERATIONS,
   HARDWARE_DEVICE_ID_PATTERN,
   SIM_ACTION_OPERATIONS,
   matchCoreApiOperation,
@@ -154,9 +155,11 @@ describe('MODG: the route list of the module equals its registry operations', ()
   });
 });
 
-describe('CONTRACT-GAP-3: which device command each of the three operations runs', () => {
+describe('which device command each of the three operations runs (the contract table DEVICE_COMMAND_OPERATIONS; W83 closed the adapter of gap 3)', () => {
   it('the table has exactly the three operations the contract lists for deviceCommand, and each command exactly once', () => {
     expect(Object.keys(DEVICE_COMMAND_OF_OPERATION)).toEqual([...SIM_ACTION_OPERATIONS.deviceCommand.operations]);
+    // The server's table is the contract's, read the other way round.
+    for (const [command, operationId] of Object.entries(DEVICE_COMMAND_OPERATIONS)) expect(DEVICE_COMMAND_OF_OPERATION[operationId], operationId).toBe(command);
     expect(Object.values(DEVICE_COMMAND_OF_OPERATION).sort()).toEqual(Object.values(DeviceCommand).sort());
     expect(DEVICE_COMMAND_OF_OPERATION).toEqual({ restartDevice: 'RESTART', testDeviceSignal: 'TEST_SIGNAL', identifyDevice: 'IDENTIFY' });
   });
@@ -478,10 +481,10 @@ describe('stage 7: a malformed path ID or body is refused before the engine is r
         const response = await post(built, url, payload, json);
         expect(outcome(response), `${operationId} ${payload}`).toEqual([400, 'INVALID_JSON']);
       }
-      // CONTRACT-GAP-W36-1: the registry documents no 400 for an operation without a request
-      // body. Printed, not asserted: the contract's close-out row decides and changes it.
+      // Gap W36-1, closed by the contract close-out W83: the 400 of a body that is no JSON object is
+      // an envelope-level answer of every POST, so the contract accepts it.
       const verdict = validateCoreApiResponse(operationId, 400, (await post(built, url, '{"command":', json)).json());
-      console.info(`[w36] CONTRACT-GAP-W36-1 ${operationId}: 400 INVALID_JSON against the contract: ${JSON.stringify(verdict)}`);
+      expect(verdict, operationId).toEqual({ ok: true });
       // An empty body and an empty object are what a client sends: both run the command.
       expect((await post(built, url, '', json)).statusCode, operationId).toBe(204);
       expect((await post(built, url, {})).statusCode, operationId).toBe(204);

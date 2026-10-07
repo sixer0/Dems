@@ -1,0 +1,12 @@
+// Audit rows (operation 59, read by THIS context's signed-in page) of given types since a host time (HH:MM:SS today).
+//   CTX=a node --import tsx audit_dump.mjs <out.json> <HH:MM:SS> TYPE1,TYPE2,...
+import { auditRows, connect, fmtAudit, log, writeJson } from './lib.mjs'
+const [outName, since, types] = process.argv.slice(2)
+const d = new Date(); const [h, m, s] = since.split(':').map(Number); d.setHours(h, m, s, 0)
+const page = await connect({ viewport: false })
+const all = []
+for (const t of types.split(',')) { const r = await auditRows(page, t, 30); for (const row of r.rows) if (row.atMs >= d.getTime()) all.push(row) }
+all.sort((a, b) => a.atMs - b.atMs)
+for (const r of all) log(fmtAudit(r) + (r.sessionId ? ` session ${r.sessionId}` : ''))
+writeJson(outName, { since, types, rows: all })
+page.close()

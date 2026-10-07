@@ -1,0 +1,32 @@
+{
+ "marks": {
+  "start": 1791344220040,
+  "switchConfirm": 1791344223282,
+  "simulatedReady": 1791344225569,
+  "end": 1791344245020
+ },
+ "requestsByOriginAll": {
+  "http://127.0.0.1:5173": 861,
+  "blob:": 3,
+  "data:": 1
+ },
+ "simulatedPhase": {
+  "requestsByOrigin": {
+   "http://127.0.0.1:5173": 348,
+   "data:": 1,
+   "blob:": 1
+  },
+  "apiOrWsOn5173": [],
+  "webSockets": [],
+  "responses4xx": [],
+  "exceptions": []
+ },
+ "beforeSwitch": {
+  "apiOrWsOn5173": [
+   "2026-10-07T03:37:00.372Z ws  /ws",
+   "2026-10-07T03:37:00.373Z request GET /api/v1/auth/session",
+   "2026-10-07T03:37:00.373Z request GET /api/v1/auth/status",
+   "2026-10-07T03:37:00.532Z request GET /api/v1/health"
+  ]
+ }
+}

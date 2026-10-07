@@ -1,0 +1,7 @@
+export default async (c, lib) => {
+  await c.navigate(lib.ORIGIN + '/network-time', 3000)
+  const t = await c.evaluate(`(() => { const q=(id)=>document.querySelector('[data-testid="'+id+'"]')?.textContent?.replace(/\\s+/g,' ').trim().slice(0,200) ?? null; return { tablet: q('network-time-tablet-state'), alert: q('network-time-tablet-alert'), sync: q('network-time-sync-chip') } })()`)
+  const inv = await c.pageFetch('GET', '/api/v1/device/inventory')
+  const sys = await c.pageFetch('GET', '/api/v1/system/status')
+  return { t, inv: JSON.stringify(inv.body).slice(0, 1500), sys: JSON.stringify(sys.body).slice(0, 600) }
+}

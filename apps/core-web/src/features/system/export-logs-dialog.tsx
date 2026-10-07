@@ -124,7 +124,8 @@ export function ExportLogsDialog({ isOpen, onOpenChange }: ExportLogsDialogProps
       if (error instanceof LogWalkError && error.code === ApiErrorCode.NOT_SIGNED_IN) return
       // A refused page or an outage goes to the presenter first (the limit, the outage, a session end);
       // the export itself was recorded by the Core, which the page's own sentence says.
-      const notice = presentCoreError(error instanceof LogWalkError && error.reason.kind === 'CALL' ? error.reason.failure : error)
+      // W92-13: the export was accepted, so the outage sentence leaves out "Nothing was changed".
+      const notice = presentCoreError(error instanceof LogWalkError && error.reason.kind === 'CALL' ? error.reason.failure : error, { afterAcceptedCommand: true })
       if (notice?.kind === CoreErrorNoticeKind.SIGNED_OUT || notice?.kind === CoreErrorNoticeKind.STOPPED) return
       toast.warning(t('system.live.export.readFailed', { exportId }))
       logSystemError('Maintenance.exportLogs.read', error, {

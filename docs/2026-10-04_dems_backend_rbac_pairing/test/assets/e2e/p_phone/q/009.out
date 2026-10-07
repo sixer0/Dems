@@ -1,0 +1,11 @@
+09:51:07.477 key 4
+09:51:08.578 slept 2000 ms
+09:51:10.978 screencap 07b_back_to_sessions.png 09:51:10.978..09:51:13.945
+09:51:14.961 mark a05 at 09:51:14.961
+09:51:15.359 tap 539,864
+09:51:17.154 slept 2500 ms
+09:51:20.639 declared screen session-detail
+09:51:21.065 screencap 07_session_detail_incomplete.png 09:51:21.065..09:51:25.954
+09:51:26.624 ids(15): screen-session-detail@540,1102 ; session-detail-screen@540,1173 ; session-detail-back@95,216 "Back to Sessions" ; session-detail-hero@540,660 ; session-detail-status@822,389 "Incomplete" ; session-detail-id@540,793 "SES-20261006-0029" ; session-detail-range@540,882 "6 Oct 2026 01:53:38 – 01:53:56" ; session-detail-subject-chip@534,962 "Tersangka" ; session-detail-incomplete@540,1215 "Session marked INCOMPLETE, Power failure. It will never be sealed (SYS" ; session-detail-details@540,1802 ; session-detail-case@540,1573 "Case Number, LP/2026/1006-0013" ; session-detail-subject@540,1737 "Subject, Dewi W73 Device" ; session-detail-investigator@540,1902 "Investigator, AKP Budi Santoso" ; session-detail-room@540,2040 "Interview Room, Interview Room 1" ; session-detail-start@540,2157 "Start Time, 6 Oct 2026 01:53:38"
+09:51:32.527 serverlog since a05 (1):
+    09:51:16.428 POST /api/v1/auth/touch 200 operator:OPR-001

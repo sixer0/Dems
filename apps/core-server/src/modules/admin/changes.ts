@@ -154,8 +154,10 @@ export function disableUser(app: FastifyInstance, actor: Actor, operatorId: stri
     if (leavesNoAdministrator(operators, administratorRoles, { kind: 'DISABLE', operatorId })) throw lastAdministrator();
 
     if (!(await disableOperator(unit, operatorId, now))) throw lockedRowChanged();
-    // SR-12: the sessions end in the same transaction. The registry writes no row and publishes
-    // nothing; this unit's row counts them and this unit publishes after its commit.
+    // SR-12: the sessions end in the same transaction. The registry writes no row; it registers
+    // only the device side (`device.session`, FX-C) for sessions bound to a paired device. This
+    // unit's row counts the ended sessions and this unit publishes `session.ended` and
+    // `admin.changed USERS` after its commit.
     const sessionIds = await app.sessionRegistry.endForOperator(unit, operatorId, 'USER_DISABLED');
     await revokeBiometricTokens(unit, { scope: 'OPERATOR', operatorId, reason: 'USER_DISABLED' }, now);
     await unit.audit.append({

@@ -91,6 +91,7 @@ export { looksLikeSecret } from './payload-rules';
 export { PIPELINE_LIMITS, createPipeline, type PipelineDependencies, type PipelineLimits } from './pipeline';
 export { UnitStatementRule, unitStatementRefusal } from './unit-statement';
 export { counterName, createFixedWindows, retryAfterSeconds, type FixedWindows, type OpenWindow } from './windows';
+export { createSweeper, type Sweeper, type SweeperOptions } from './sweeper';
 export type {
   AuditEntry,
   AuditWriter,
@@ -104,6 +105,7 @@ export type {
   UnitDatabase,
   UnitEventWriter,
   UnitOfWork,
+  RegistryOperationId,
 } from './types';
 
 /**

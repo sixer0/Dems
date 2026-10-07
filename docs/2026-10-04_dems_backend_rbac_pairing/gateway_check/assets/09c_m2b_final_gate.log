@@ -1,0 +1,22 @@
+## 2026-10-06 02:54:35 WIB  2:54  2 users, load averages: 2.53 2.26 2.63
+## $ npm run test -w @dems/mobile -- --maxWorkers=2
+Test Suites: 140 passed, 140 total
+Tests:       1721 passed, 1721 total
+Time:        83.124 s
+exit=0
+## 02:56:11 $ npm run typecheck -w @dems/mobile
+exit=0
+TS errors: 0
+## 02:56:15 $ npm run lint -w @dems/mobile
+exit=0
+eslint json: files 535 errors 0 warnings 0
+baseline 72 vs acaff20 (lines of git diff --stat): 0 (incl. login-model.test.ts, login.test.tsx)
+W60 navigation tests + harness vs b90a3c6 (lines of git diff --stat): 0
+28 test files of features/login + runtime hashed at 02:46: 28 OK; changed: none
+files changed in apps/mobile/src + packages/shared/src since 02:46: 6
+apps/mobile/src/features/login/i18n.ts
+apps/mobile/src/features/login/live-login-link-visuals.test.tsx
+apps/mobile/src/features/login/login-card.tsx
+apps/mobile/src/features/login/login-model.ts
+apps/mobile/src/features/login/login-screen.tsx
+apps/mobile/src/features/login/use-login-controller.ts

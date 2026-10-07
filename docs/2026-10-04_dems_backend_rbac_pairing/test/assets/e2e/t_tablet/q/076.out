@@ -1,0 +1,5 @@
+mark B5 back-guard: tap back arrow on Live at 10:40:32.986
+tap 72,111 at 10:40:33.356
+slept 2500 ms
+screencap B14_back_guard_dialog.png (601248 bytes) at 10:40:37.024
+ids: uiautomator could not dump within 12 s

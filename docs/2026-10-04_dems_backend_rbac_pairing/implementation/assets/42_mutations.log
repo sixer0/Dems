@@ -1,0 +1,99 @@
+A1    detected  admission.ts      5.1s  Tests  6 failed | 157 passed (163)  × a bearer value that does not resolve (MALFORMED): hello with SESSION_INVALID, then close 4401 6ms
+A2    detected  admission.ts      5.2s  Tests  13 failed | 150 passed (163)  × the cookie that does not resolve (MALFORMED): ANONYMOUS with SESSION_INVALID, and the socket stays open 7ms
+A3    detected  admission.ts      6.2s  Tests  6 failed | 157 passed (163)  × the cookie that does not resolve (MALFORMED): ANONYMOUS with SESSION_INVALID, and the socket stays open 10ms
+A4    detected  admission.ts      5.3s  Tests  15 failed | 148 passed (163)  × the cookie that does not resolve (MALFORMED): ANONYMOUS with SESSION_INVALID, and the socket stays open 6ms
+A5    detected  admission.ts      5.4s  Tests  1 failed | 162 passed (163)  × a bearer value of a retired device: hello with DEVICE_REVOKED, then close 4403, by the principal or by the failure 7ms
+A6    detected  admission.ts      5.9s  Tests  2 failed | 161 passed (163)  × the 17th connection of any kind is closed with 1013 11ms
+A7    detected  admission.ts      4.8s  Tests  4 failed | 159 passed (163)  × the sixth anonymous socket is accepted, the seventh is not; an operator and a device still are 5ms
+A8    detected  admission.ts      6.4s  Tests  3 failed | 160 passed (163)  × the sixth anonymous socket is accepted, the seventh is not; an operator and a device still are 8ms
+A9    detected  admission.ts      6.3s  Tests  2 failed | 161 passed (163)  × DEVICE: the heartbeat and control 5ms
+A10   detected  admission.ts      5.6s  Tests  3 failed | 160 passed (163)  × OPERATOR: control, state and meters; admin only with USER_ADMIN or PAIRING_MANAGE 6ms
+A11   detected  admission.ts      7.3s  Tests  4 failed | 159 passed (163)  × a device that was retired meanwhile gets hello with DEVICE_REVOKED and close 4403, as DEVICE and as the session of an operator 12ms
+A12   detected  admission.ts      5.5s  Tests  3 failed | 160 passed (163)  × a DEVICE principal is a DEVICE socket 8ms
+H1    detected  hub.ts            5.3s  Tests  7 failed | 156 passed (163)  × a socket whose buffer is above 4,194,304 bytes after a state message is closed with 4408; the message was queued before the close 19ms
+H2    detected  hub.ts            6.0s  Tests  4 failed | 159 passed (163)  × a DEVICE socket and an OPERATOR socket bound to a device count; a web session and an anonymous socket do not 10ms
+H3    detected  hub.ts            5.1s  Tests  2 failed | 161 passed (163)  × a socket whose buffer is above 4,194,304 bytes after a state message is closed with 4408; the message was queued before the close 10ms
+H4    detected  hub.ts            4.7s  Tests  5 failed | 158 passed (163)  × a socket whose buffer is above 4,194,304 bytes after a state message is closed with 4408; the message was queued before the close 10ms
+H5    detected  hub.ts            4.7s  Tests  2 failed | 161 passed (163)  × a socket that opened while a delta waited holds it in its snapshot and is not sent it again 17ms
+H6    detected  hub.ts            5.6s  Tests  1 failed | 162 passed (163)  × a delta that would not continue a socket's position is never sent: the socket gets a snapshot, and no gap is on the wire 14ms
+H7    detected  hub.ts            5.6s  Tests  6 failed | 157 passed (163)  × every committed change reaches every OPERATOR socket as the next revision; replayed, each socket holds the engine's state 153ms
+H8    detected  hub.ts            5.9s  Tests  1 failed | 162 passed (163)  × paced deltas of the old epoch that still waited are not sent after the snapshot of the new one 20ms
+H9    detected  hub.ts            6.0s  Tests  3 failed | 160 passed (163)  × every committed change reaches every OPERATOR socket as the next revision; replayed, each socket holds the engine's state 138ms
+H10   detected  hub.ts            5.1s  Tests  1 failed | 162 passed (163)  × a delta of any other cause is sent at once, also when no record changed: a command is read back by its caller (RT-5) 10ms
+H11   detected  hub.ts            5.0s  Tests  1 failed | 162 passed (163)  × what waits is sent first, in order, when a delta that may not wait arrives: the order on the wire is the commit order 28ms
+H12   detected  hub.ts            4.7s  Tests  5 failed | 158 passed (163)  × paced deltas of the old epoch that still waited are not sent after the snapshot of the new one 9ms
+H13   detected  hub.ts            4.1s  Tests  1 failed | 162 passed (163)  × a frame is skipped for a socket whose buffer is above 65,536 bytes; the next frame that finds room is the newest 10ms
+H14   detected  hub.ts            4.1s  Tests  1 failed | 162 passed (163)  × go only to OPERATOR sockets that subscribed, carry no revision, and stop with unsubscribe 12ms
+H15   detected  hub.ts            4.2s  Tests  1 failed | 162 passed (163)  × at most 20 frames in a second of the server clock are put on the wire 11ms
+H16   detected  hub.ts            4.1s  Tests  1 failed | 162 passed (163)  × seq on the wire never goes back: when the engine counts from 1 again, the wire number continues 13ms
+H17   detected  hub.ts            4.2s  Tests  2 failed | 161 passed (163)  × the permissions sent are the publication's, as read in the unit that changed the role, not a table of this process 11ms
+H18   detected  hub.ts            4.6s  Tests  7 failed | 156 passed (163)  × SIGNED_OUT 15ms
+H19   detected  hub.ts            5.0s  Tests  8 failed | 155 passed (163)  × SIGNED_OUT 13ms
+H20   detected  hub.ts            5.0s  Tests  4 failed | 159 passed (163)  × a web session that ended meanwhile is admitted as ANONYMOUS with SESSION_INVALID and gets no state 9ms
+H21   detected  hub.ts            3.4s  Tests  2 failed | 161 passed (163)  × REVOKED: its DEVICE socket and the sockets of sessions bound to it; no other device, no web session 8ms
+H22   detected  hub.ts            3.4s  Tests  2 failed | 161 passed (163)  × a device that was retired meanwhile gets hello with DEVICE_REVOKED and close 4403, as DEVICE and as the session of an operator 5ms
+H23   detected  hub.ts            3.3s  Tests  1 failed | 162 passed (163)  × a revoked device takes the link OFFLINE at once when no other device socket is open, and not while one is 5ms
+H24   detected  hub.ts            3.4s  Tests  4 failed | 159 passed (163)  × the topic membership follows at once: admin.changed goes to whoever holds the permission after the change 9ms
+H26   detected  hub.ts            3.4s  Tests  2 failed | 161 passed (163)  × 30 messages in 10 s are accepted, the 31st closes with 1008; a window later the count starts again 4ms
+H27   detected  hub.ts            3.4s  Tests  2 failed | 161 passed (163)  × a binary frame closes an OPERATOR socket with 1008 6ms
+H28   detected  hub.ts            3.7s  Tests  5 failed | 158 passed (163)  × a socket that closed, or that the server is closing, frees its place at once 6ms
+H29   detected  hub.ts            3.6s  Tests  1 failed | 162 passed (163)  × at most one snapshot in 2 s: a resync that comes sooner is answered once, at the pace step after the interval 14ms
+H30   detected  hub.ts            3.2s  Tests  1 failed | 162 passed (163)  × at most one snapshot in 2 s: a resync that comes sooner is answered once, at the pace step after the interval 10ms
+H31   detected  hub.ts            2.8s  Tests  2 failed | 161 passed (163)  × a web session that ended meanwhile is admitted as ANONYMOUS with SESSION_INVALID and gets no state 4ms
+H32   detected  hub.ts            3.1s  Tests  1 failed | 162 passed (163)  × a role that changed meanwhile: the socket is admitted with the published role and its permissions 23ms
+H33   detected  hub.ts            3.1s  Tests  5 failed | 158 passed (163)  × a bearer session that ended meanwhile gets hello with SESSION_INVALID and close 4401 5ms
+H34   detected  hub.ts            3.8s  Tests  4 failed | 159 passed (163)  × the seventh anonymous socket is closed with 1013 and gets nothing, while an operator and a device are accepted 4ms
+H35   detected  hub.ts            3.4s  Tests  6 failed | 157 passed (163)  × ANONYMOUS: hello with the heartbeat topic, then a connect-time heartbeat without a session state, and nothing else 16ms
+H36   detected  hub.ts            4.3s  Tests  2 failed | 161 passed (163)  × DEVICE: hello with heartbeat and control, then the heartbeat without a session state 11ms
+H37   detected  hub.ts            3.4s  Tests  2 failed | 161 passed (163)  × a socket the server closed is destroyed at the pace step that finds the grace passed, and not before 5ms
+H38   detected  hub.ts            3.4s  Tests  1 failed | 162 passed (163)  × pings every socket; a socket that answered is pinged again, one that did not is destroyed 5ms
+H39   detected  hub.ts            3.4s  Tests  1 failed | 162 passed (163)  × a new epoch forgets the published roles (a reset re-seeds them) and keeps the ended sessions 7ms
+H40   detected  hub.ts            3.3s  Tests  1 failed | 162 passed (163)  × the memory lasts 60 s of the server clock and is cleared by the pace step 6ms
+H41   detected  hub.ts            3.3s  Tests  3 failed | 160 passed (163)  × state messages go to OPERATOR sockets only: an ANONYMOUS and a DEVICE socket get none 10ms
+H42   detected  hub.ts            4.2s  Tests  14 failed | 149 passed (163)  × every committed change reaches every OPERATOR socket as the next revision; replayed, each socket holds the engine's state 97ms
+H43   detected  hub.ts            2.9s  Tests  8 failed | 155 passed (163)  × nothing is sent after the close, and a session nobody holds a socket for changes nothing 9ms
+H44   detected  hub.ts            3.0s  Tests  1 failed | 162 passed (163)  × at most one snapshot in 2 s: a resync that comes sooner is answered once, at the pace step after the interval 6ms
+H45   detected  hub.ts            2.6s  Tests  3 failed | 160 passed (163)  × goes to every socket of that operator's sessions, on the web and on a device, and to nobody else; nobody is closed 12ms
+H46   detected  hub.ts            3.1s  Tests  8 failed | 155 passed (163)  × SIGNED_OUT 9ms
+H47   detected  hub.ts            2.9s  Tests  2 failed | 161 passed (163)  × a socket that is closed with 4408 in the middle of a flush is sent none of the deltas that follow 8ms
+H48   detected  hub.ts            3.2s  Tests  1 failed | 162 passed (163)  × an ANONYMOUS or a DEVICE socket is never closed for its buffer by the pace step: it is sent heartbeats only, and the ping ends a dead peer 6ms
+H49   detected  hub.ts            3.1s  Tests  1 failed | 162 passed (163)  × at most 20 frames in a second of the server clock are put on the wire 7ms
+H50   detected  hub.ts            2.6s  Tests  1 failed | 162 passed (163)  × the memory lasts 60 s of the server clock and is cleared by the pace step 5ms
+H51   detected  hub.ts            2.5s  Tests  2 failed | 161 passed (163)  × 30 messages in 10 s are accepted, the 31st closes with 1008; a window later the count starts again 3ms
+H52   detected  hub.ts            2.5s  Tests  1 failed | 162 passed (163)  × closes every socket with 1001, admits no other, and destroys on request what is left 3ms
+T1    detected  tablet-link.ts    3.0s  Tests  3 failed | 160 passed (163)  × the link goes OFFLINE 5 s after the last device socket closed, at the pace step, and not earlier 4ms
+T2    detected  tablet-link.ts    2.9s  Tests  2 failed | 161 passed (163)  × the link goes OFFLINE 5 s after the last device socket closed, at the pace step, and not earlier 5ms
+T3    detected  tablet-link.ts    3.0s  Tests  8 failed | 155 passed (163)  × REVOKED: its DEVICE socket and the sockets of sessions bound to it; no other device, no web session 8ms
+T4    detected  tablet-link.ts    3.8s  Tests  1 failed | 162 passed (163)  × a revoked device takes the link OFFLINE at once when no other device socket is open, and not while one is 5ms
+T5    detected  tablet-link.ts    2.5s  Tests  1 failed | 162 passed (163)  × a call that was not committed is tried again, not before 1 s, and reported once 4ms
+T6    detected  tablet-link.ts    2.5s  Tests  1 failed | 162 passed (163)  × a run of failures is reported once; after a call that was committed, the next failure is reported again 2ms
+T7    detected  tablet-link.ts    2.5s  Tests  3 failed | 160 passed (163)  × while the engine does not run nothing is set; after its start the link follows the open sockets again 1ms
+T8    detected  tablet-link.ts    2.9s  Tests  5 failed | 158 passed (163)  × a DEVICE socket and an OPERATOR socket bound to a device count; a web session and an anonymous socket do not 4ms
+H53   detected  hub.ts            2.7s  Tests  1 failed | 162 passed (163)  × a socket whose FIRST snapshot crosses the limit is closed with 4408, is sent nothing after it, and never counts as a socket of its device 6ms
+H54   detected  hub.ts            3.0s  Tests  2 failed | 161 passed (163)  × a socket whose FIRST snapshot crosses the limit is closed with 4408, is sent nothing after it, and never counts as a socket of its device 8ms
+H55   detected  hub.ts            3.5s  Tests  6 failed | 157 passed (163)  × a DEVICE socket and an OPERATOR socket bound to a device count; a web session and an anonymous socket do not 5ms
+M1    detected  messages.ts       3.2s  Tests  7 failed | 156 passed (163)  × a web session that ended meanwhile is admitted as ANONYMOUS with SESSION_INVALID and gets no state 7ms
+M2    detected  messages.ts       4.1s  Tests  3 failed | 160 passed (163)  × OPERATOR: hello, ONE snapshot of the 28 slices at the engine's position, then the heartbeat with the real session state 36ms
+M3    detected  messages.ts       3.8s  Tests  3 failed | 160 passed (163)  × delta: the ops of a real change, unchanged 33ms
+M4    detected  messages.ts       3.0s  Tests  1 failed | 162 passed (163)  × snapshot: exactly the 28 replicated slices of a real state, and none of the five others 16ms
+M5    detected  messages.ts       2.5s  Tests  3 failed | 160 passed (163)  × heartbeat: the unchanged member, with an ISO time and a session state or null 4ms
+I1    detected  index.ts          2.0s  Tests  1 failed | 64 passed (65)  × compression is off (RT-P7): an offered permessage-deflate is not negotiated 3ms
+I2    detected  index.ts          7.0s  Tests  1 failed | 64 passed (65)  × a subprotocol authenticates nothing: none is selected or echoed, the caller is ANONYMOUS, and the marker is not in the log 5007ms
+I3    detected  index.ts        202.3s  Tests  4 failed | 61 passed (65)  × after a 403, a 401, a 404 and a 429 the socket of the upgrade is destroyed by the server, whatever the client does 20008ms
+I4    detected  index.ts          3.8s  Tests  65 passed (65)  
+I5    detected  index.ts        184.2s  Tests  3 failed | 62 passed (65)  × a path the router cannot decode answers 400 INVALID_PATH; the socket is gone when the peer ends 102ms
+I6    detected  index.ts         32.0s  Tests  7 failed | 58 passed (65)  × an upgrade on a REST route answers HTTP 404 NOT_FOUND at the handshake; no socket opens and the query is not logged 1ms
+I7    detected  index.ts          7.1s  Tests  1 failed | 64 passed (65)  × a message of exactly 65,536 bytes is read; one byte more closes the socket with 1009 before it is buffered 5008ms
+I8    detected  index.ts          2.5s  Tests  1 failed | 7 passed (8)  × closing the app closes every socket with 1001, and the log names each socket by its ID only 768ms
+I16   SURVIVED  index.ts          1.8s  Tests  1 passed (1)  
+I9    detected  index.ts          2.0s  Tests  2 failed | 6 passed (8)  × a delta of the 1 Hz step waits for the pace step; over five seconds none is lost and none is sent twice 6ms
+I10   detected  index.ts          2.0s  Tests  1 failed | 7 passed (8)  × three timers run; the heartbeat goes to every socket once in 1,000 ms of the server clock, with the next seq and the server time 2ms
+I11   detected  index.ts         36.9s  Tests  1 failed | 1 passed (2)  × a peer that answers stays open ping after ping; a peer that does not is destroyed at the second ping 5009ms
+I12   detected  index.ts         41.9s  Tests  1 failed | 1 passed (2)  × a peer that answers stays open ping after ping; a peer that does not is destroyed at the second ping 10007ms
+I13   detected  index.ts          2.2s  Tests  2 failed | 9 passed (11)  × the registry lists a device online while it holds a socket; the link is CONNECTED with the first device socket and OFFLINE 5 s after the last one cl
+I14   detected  index.ts         41.9s  Tests  8 failed (8)  × an OPERATOR socket is sent hello, the 28 slices at the engine's epoch and revision, then the heartbeat with the session state 5013ms
+I15   detected  index.ts        372.2s  Tests  61 failed | 4 passed (65)  × S-C3a: with a web console origin and a session that resolves: OPERATOR, with the snapshot 5009ms
+
+94 of 95 mutations detected in 1259 s; not detected: ['I16']
+exit=0
+17:46:45

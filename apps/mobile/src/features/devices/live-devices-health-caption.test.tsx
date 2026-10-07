@@ -1,4 +1,4 @@
-// Row M1 follow-up (decision D160 ruling 4; CONTRACT-GAP-W78-2): the Core serves no per-device health
+// Row M1 follow-up (decision D160 ruling 4; RESIDUAL-W78-2 (W83 ledger #57)): the Core serves no per-device health
 // history, so in LIVE mode the health line of every device is computed on this device from the Core's
 // data (cameras, tablet and PoE switch from its network data, the lamp from its session state, the
 // microphones from 1 s peaks of its meter frames). The caption under the line says so (§3.2: say what
@@ -14,9 +14,9 @@ import '@/navigation/testing/router-harness';
 
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { fireEvent, render, screen } from '@testing-library/react-native';
+import { en } from '@dems/shared/i18n';
 import { getMissingKeys, resetMissingKeys } from '@/i18n';
 import { HealthChart } from './health-chart';
-import { devicesEn } from './i18n';
 import { HEALTH_METRIC, type HealthMetric, type HealthSeries } from './sim-adapter';
 import { renderDevicesApp, settle } from './testing/devices-harness';
 import { renderLiveDevices, resetLiveDevicesBed, type LiveDevicesBed } from './testing/live-devices-bed';
@@ -36,7 +36,7 @@ afterEach(() => {
   expect(getMissingKeys()).toEqual([]);
 });
 
-const LIVE_CAPTION = /^Derived on this device from the Core's data · last (\d+) samples$/;
+const LIVE_CAPTION = /^Derived from the Core's data · last (\d+) samples$/;
 const SIMULATED_CAPTION = /^Simulated · last (\d+) samples$/;
 const caption = (): string => {
   const node = screen.getByTestId('device-health-samples');
@@ -52,18 +52,19 @@ const seriesOf = (metric: HealthMetric, count: number): HealthSeries => ({
 });
 
 describe('the LIVE texts', () => {
-  it('say the line is derived on this device from the Core\'s data, and nothing about a simulation', () => {
-    expect(devicesEn.live.samples_other).toBe("Derived on this device from the Core's data · last {{count}} samples");
-    expect(devicesEn.live.samples_one).toBe("Derived on this device from the Core's data · {{count}} sample");
-    for (const text of [devicesEn.live.samples_one, devicesEn.live.samples_other]) expect(/simulat|demo\b|mock/i.test(text)).toBe(false);
+  // Closing copy round (decision D186): one shared sentence for both clients, `devices.live.samples`.
+  it('say the line is derived from the Core\'s data, and nothing about a simulation', () => {
+    expect(en.devices.live.samples_other).toBe("Derived from the Core's data · last {{count}} samples");
+    expect(en.devices.live.samples_one).toBe("Derived from the Core's data · {{count}} sample");
+    for (const text of [en.devices.live.samples_one, en.devices.live.samples_other]) expect(/simulat|demo\b|mock/i.test(text)).toBe(false);
   });
 });
 
 describe('the chart caption, for every metric (D160)', () => {
-  it('LIVE: "Derived on this device from the Core\'s data · last N samples"', () => {
+  it('LIVE: "Derived from the Core\'s data · last N samples"', () => {
     for (const metric of METRICS) {
       const view = render(<HealthChart series={seriesOf(metric, 7)} testID="device-health" live />);
-      expect([metric, caption()]).toEqual([metric, "Derived on this device from the Core's data · last 7 samples"]);
+      expect([metric, caption()]).toEqual([metric, "Derived from the Core's data · last 7 samples"]);
       view.unmount();
     }
     const one = render(<HealthChart series={seriesOf('linkQuality', 1)} testID="device-health" live />);

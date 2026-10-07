@@ -1,0 +1,5 @@
+swipe 1280,1300,1280,300 600 ms
+slept 800 ms
+swipe 1280,1300,1280,300 600 ms
+slept 1500 ms
+screencap E1_07_summary_bottom.png (240821 bytes) at 17:01:36.051

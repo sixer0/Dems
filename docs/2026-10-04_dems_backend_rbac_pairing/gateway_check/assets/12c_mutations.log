@@ -1,0 +1,39 @@
+M0 baseline (no mutation) => applied:0 anchorErrors:0  Test Files 2 passed (2); Tests 9 passed (9);
+M1a R-W-1 no <wbr> in action code => applied:1 anchorErrors:0  Test Files 1 failed | 1 passed (2); Tests 1 failed | 8 passed (9);
+     × an action code may break only after an underscore: a <wbr> follows each "_" and the words are unchanged 143ms
+M1b R-W-1 automatic table layout => applied:1 anchorErrors:0  Test Files 1 failed | 1 passed (2); Tests 1 failed | 8 passed (9);
+     × lays the table out with fixed column widths, so it is never wider than its card 5ms
+M1c R-W-1 narrow: Detail not under the action => applied:1 anchorErrors:0  Test Files 1 failed | 1 passed (2); Tests 1 failed | 8 passed (9);
+     × on a narrow card (< 26rem of content, the 1280 px layout) the Detail goes under the action (three columns), its heading kept for assistive technology 5ms
+M1d R-W-1 time column too narrow for the date => applied:1 anchorErrors:0  Test Files 1 failed | 1 passed (2); Tests 1 failed | 8 passed (9);
+     × lays the table out with fixed column widths, so it is never wider than its card 5ms
+M1e R-W-1 empty Detail not marked => applied:1 anchorErrors:0  Test Files 1 failed | 1 passed (2); Tests 1 failed | 8 passed (9);
+     × the columns and cells carry the classes the fixed widths and the narrow layout use; an empty Detail is marked 134ms
+M1f R-W-1 narrow: Detail heading display:none => applied:1 anchorErrors:0  Test Files 1 failed | 1 passed (2); Tests 1 failed | 8 passed (9);
+     × on a narrow card (< 26rem of content, the 1280 px layout) the Detail goes under the action (three columns), its heading kept for assistive technology 5ms
+M1g R-W-1 narrow: no width reset in grid rows => applied:1 anchorErrors:0  Test Files 1 failed | 1 passed (2); Tests 1 failed | 8 passed (9);
+     × on a narrow card (< 26rem of content, the 1280 px layout) the Detail goes under the action (three columns), its heading kept for assistive technology 5ms
+M1h R-W-1 Detail column class missing => applied:1 anchorErrors:0  Test Files 1 failed | 1 passed (2); Tests 1 failed | 8 passed (9);
+     × the columns and cells carry the classes the fixed widths and the narrow layout use; an empty Detail is marked 157ms
+M1i R-W-1 phone: three columns kept => applied:1 anchorErrors:0  Test Files 1 failed | 1 passed (2); Tests 1 failed | 8 passed (9);
+     × on a phone-width card (< 20rem of content) the actor and the Detail go under the action (two columns), no code word broken 4ms
+M1j R-W-1 phone: time cell spans two rows with a Detail => applied:1 anchorErrors:0  Test Files 1 failed | 1 passed (2); Tests 1 failed | 8 passed (9);
+     × on a phone-width card (< 20rem of content) the actor and the Detail go under the action (two columns), no code word broken 5ms
+M1k R-W-1 phone: action border rule loses to the kit => applied:1 anchorErrors:0  Test Files 1 failed | 1 passed (2); Tests 1 failed | 8 passed (9);
+     × on a phone-width card (< 20rem of content) the actor and the Detail go under the action (two columns), no code word broken 9ms
+M1l R-W-1 action cell class missing => applied:1 anchorErrors:0  Test Files 1 failed | 1 passed (2); Tests 1 failed | 8 passed (9);
+     × the columns and cells carry the classes the fixed widths and the narrow layout use; an empty Detail is marked 148ms
+M2a O-RT-1 Live body = the Simulated sentence (pre-fix wording) => applied:1 anchorErrors:0  Test Files 1 failed | 1 passed (2); Tests 1 failed | 8 passed (9);
+     × operation 40 answers NONE: the record is the Core server's, and no word of a simulator 1026ms
+M2b O-RT-1 unavailable reference treated as NONE => applied:1 anchorErrors:0  Test Files 1 failed | 1 passed (2); Tests 1 failed | 8 passed (9);
+     × operation 40 does not answer: the tab says the reference is unavailable, as the chip does, and claims no absence 258ms
+M2c O-RT-1 detail page does not pass the media state => applied:1 anchorErrors:0  Test Files 1 failed | 1 passed (2); Tests 1 failed | 8 passed (9);
+     × operation 40 does not answer: the tab says the reference is unavailable, as the chip does, and claims no absence 264ms
+M2d O-RT-1 mode inverted => applied:1 anchorErrors:0  Test Files 2 failed (2); Tests 3 failed | 6 passed (9);
+     × an item without a DEMO package: "No DEMO media", and its record comes from the simulator 11ms
+     × operation 40 answers NONE: the record is the Core server's, and no word of a simulator 1039ms
+     × operation 40 does not answer: the tab says the reference is unavailable, as the chip does, and claims no absence 251ms
+M2a-recheck tree-untouched demo => applied:1 anchorErrors:0  Test Files 1 failed (1); Tests 1 failed | 1 passed (2);
+     × operation 40 answers NONE: the record is the Core server's, and no word of a simulator 836ms
+M1b-recheck tree-untouched demo => applied:1 anchorErrors:0  Test Files 1 failed (1); Tests 1 failed | 6 passed (7);
+     × lays the table out with fixed column widths, so it is never wider than its card 4ms

@@ -1,0 +1,25 @@
+// Session start through the API from the signed-in SUPERVISOR page (same-origin fetch with the page's cookie):
+// case-number scan -> create -> precheck -> wait for the outcome -> start (acknowledgeWarnings). Prints ids, states and times only.
+//   CTX=a node session.mjs start "<subject name>" | current
+import { connect, log, sleep, stamp, writeJson } from './lib.mjs'
+const [cmd, subject = 'W98 performance'] = process.argv.slice(2)
+const page = await connect({ viewport: false })
+const call = (method, path, body) => page.evaluate(`(async () => { const r = await fetch(${JSON.stringify(path)}, { method: ${JSON.stringify(method)}, credentials: 'same-origin', headers: { accept: 'application/json', ...(${body !== undefined} ? { 'content-type': 'application/json' } : {}) }, ${body !== undefined ? `body: ${JSON.stringify(JSON.stringify(body))},` : ''} }); let j = null; try { j = await r.json() } catch {} return { status: r.status, at: Date.now(), body: j } })()`, `${method} ${path}`)
+const cur = async () => { const r = await call('GET', '/api/v1/session/current'); const s = r.body?.session; return s ? { id: s.id, state: s.state, outcome: s.precheck?.outcome ?? null, elapsedMs: s.elapsedMs, startedAt: s.startedAt, stoppedAt: s.stoppedAt, sealedAt: s.sealedAt, evidenceId: s.evidenceId } : { state: 'IDLE' } }
+const out = { cmd, steps: [] }
+const step = (name, r) => { const e = { name, status: r.status, at: stamp(r.at), atMs: r.at, sessionId: r.body?.sessionId ?? null, state: r.body?.state ?? null, code: r.body?.code ?? null }; out.steps.push(e); log(`${name}: ${r.status} ${e.sessionId ?? ''} ${e.state ?? ''} ${e.code ?? ''} at ${e.at}`); return r }
+if (cmd === 'current') { log(JSON.stringify(await cur())); process.exit(0) }
+const before = await cur(); log(`current before: ${JSON.stringify(before)}`)
+const scan = step('scan case number', await call('POST', '/api/v1/session/case-number'))
+const create = step('create', await call('POST', '/api/v1/session', { caseNumber: scan.body.caseNumber, subjectType: 'SAKSI', subjectName: subject, investigatorId: 'OPR-001', room: 'Interview Room 1', profileId: 'STANDARD_1080P25' }))
+const id = create.body.sessionId
+step('precheck', await call('POST', `/api/v1/session/${id}/precheck`))
+let c
+for (let i = 0; i < 120; i++) { c = await cur(); if (c.outcome) break; await sleep(500) }
+log(`precheck outcome ${c.outcome} (state ${c.state}) at ${stamp()}`)
+const start = step('start', await call('POST', `/api/v1/session/${id}/start`, { acknowledgeWarnings: true }))
+await sleep(800)
+c = await cur(); log(`current after start: ${JSON.stringify(c)}`)
+out.sessionId = id; out.precheckOutcome = c.outcome; out.startAtMs = start.at; out.after = c
+writeJson(`08_session_start_${id}.json`, out)
+page.close()

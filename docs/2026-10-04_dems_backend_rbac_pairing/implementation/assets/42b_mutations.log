@@ -1,0 +1,73 @@
+# Follow-up of plan row W42: mutation re-run. Unit scope (admission.ts, limits.ts, hub.ts displacement, handshake.ts)
+19:15:06
+A1    detected  admission.ts      5.1s  Tests  6 failed | 194 passed (200)  × a bearer value that does not resolve (MALFORMED): hello with SESSION_INVALID, then close 4401 6ms  
+A2    detected  admission.ts      4.8s  Tests  13 failed | 187 passed (200)  × the cookie that does not resolve (MALFORMED): ANONYMOUS with SESSION_INVALID, and the socket stays open 6ms  
+A3    detected  admission.ts      4.5s  Tests  6 failed | 194 passed (200)  × the cookie that does not resolve (MALFORMED): ANONYMOUS with SESSION_INVALID, and the socket stays open 4ms  
+A4    detected  admission.ts      4.8s  Tests  16 failed | 184 passed (200)  × the cookie that does not resolve (MALFORMED): ANONYMOUS with SESSION_INVALID, and the socket stays open 5ms  
+A5    detected  admission.ts      5.2s  Tests  1 failed | 199 passed (200)  × a bearer value of a retired device: hello with DEVICE_REVOKED, then close 4403, by the principal or by the failure 5ms  
+A6    detected  admission.ts      4.9s  Tests  4 failed | 196 passed (200)  × the 17th connection of any kind is beyond the cap 4ms  
+A7    detected  admission.ts      6.0s  Tests  6 failed | 194 passed (200)  × the seventh anonymous socket is closed with 1013 and gets nothing, while an operator and a device are accepted 7ms  
+A8    detected  admission.ts      6.1s  Tests  7 failed | 193 passed (200)  × forty sockets of one session in a row, none of them closed by the client: every one is admitted, four are open, the others were displaced   
+A9    detected  admission.ts      6.3s  Tests  2 failed | 198 passed (200)  × DEVICE: hello with heartbeat and control, then the heartbeat without a session state 18ms  
+A10   detected  admission.ts      5.5s  Tests  3 failed | 197 passed (200)  × OPERATOR: control, state and meters; admin only with USER_ADMIN or PAIRING_MANAGE 5ms  
+A11   detected  admission.ts      6.2s  Tests  4 failed | 196 passed (200)  × a device that was retired meanwhile gets hello with DEVICE_REVOKED and close 4403, as DEVICE and as the session of an operator 6ms  
+A12   detected  admission.ts      6.4s  Tests  4 failed | 196 passed (200)  × a DEVICE principal is a DEVICE socket 8ms  
+P1    detected  admission.ts      5.6s  Tests  5 failed | 195 passed (200)  × principalKeyOf: an OPERATOR socket by its session row, on the web and on a device; a DEVICE socket by its device; nothing without a princi  
+P2    detected  admission.ts      5.3s  Tests  11 failed | 189 passed (200)  × principalKeyOf: an OPERATOR socket by its session row, on the web and on a device; a DEVICE socket by its device; nothing without a princi  
+P3    detected  admission.ts      6.1s  Tests  5 failed | 195 passed (200)  × the 17th connection of any kind is closed with 1013 13ms  
+P4    detected  admission.ts      6.2s  Tests  7 failed | 193 passed (200)  × the device's own socket, a password session and a biometric session of one operator on that device are three principals: all three stay op  
+P5    detected  admission.ts      6.5s  Tests  14 failed | 186 passed (200)  × principalCapOf: the device cap for a device key, the session cap for a session key 6ms  
+P6    detected  admission.ts      6.4s  Tests  10 failed | 190 passed (200)  × displacedBy: nobody below the cap, the oldest one at the cap, and as many as it takes above it 5ms  
+P7    detected  admission.ts      6.5s  Tests  14 failed | 186 passed (200)  × displacedBy: nobody below the cap, the oldest one at the cap, and as many as it takes above it 6ms  
+P8    detected  admission.ts      5.8s  Tests  12 failed | 188 passed (200)  × displacedBy: nobody below the cap, the oldest one at the cap, and as many as it takes above it 6ms  
+P9    detected  admission.ts      5.4s  Tests  1 failed | 199 passed (200)  × displacedBy: nobody below the cap, the oldest one at the cap, and as many as it takes above it 5ms  
+L1    detected  limits.ts         6.0s  Tests  9 failed | 191 passed (200)  × the numbers: four sockets of one operator session (four tabs of a console), two of one device credential (its socket and the overlap of a   
+L2    detected  limits.ts         6.7s  Tests  5 failed | 195 passed (200)  × the numbers: four sockets of one operator session (four tabs of a console), two of one device credential (its socket and the overlap of a   
+L3    detected  limits.ts         6.7s  Tests  1 failed | 199 passed (200)  × a handshake has 5,000 ms, longer than a client waits for hello; 32 sockets may wait at one time, twice the connection cap 7ms  
+L4    detected  limits.ts         7.3s  Tests  2 failed | 198 passed (200)  × a handshake has 5,000 ms, longer than a client waits for hello; 32 sockets may wait at one time, twice the connection cap 9ms  
+L5    detected  limits.ts         7.3s  Tests  1 failed | 199 passed (200)  × four tabs are open side by side; the fifth is admitted and the FIRST is closed with 1013 8ms  
+D1    detected  hub.ts            7.5s  Tests  9 failed | 191 passed (200)  × four tabs are open side by side; the fifth is admitted and the FIRST is closed with 1013 35ms  
+D2    detected  hub.ts            7.5s  Tests  13 failed | 187 passed (200)  × four tabs are open side by side; the fifth is admitted and the FIRST is closed with 1013 26ms  
+D3    detected  hub.ts            6.7s  Tests  6 failed | 194 passed (200)  × four tabs are open side by side; the fifth is admitted and the FIRST is closed with 1013 60ms  
+D4    detected  hub.ts            5.6s  Tests  4 failed | 196 passed (200)  × four tabs are open side by side; the fifth is admitted and the FIRST is closed with 1013 23ms  
+D5    detected  hub.ts            4.9s  Tests  8 failed | 192 passed (200)  × four tabs are open side by side; the fifth is admitted and the FIRST is closed with 1013 22ms  
+D6    detected  hub.ts            5.4s  Tests  9 failed | 191 passed (200)  × four tabs are open side by side; the fifth is admitted and the FIRST is closed with 1013 26ms  
+D7    detected  hub.ts           64.3s  Tests  53 failed | 147 passed (200)  × forty sockets of one session in a row, none of them closed by the client: every one is admitted, four are open, the others were displaced   
+D8    detected  hub.ts            3.9s  Tests  1 failed | 199 passed (200)  × with the hub full, a principal at its own cap still reconnects: its newest takes the place of its oldest and the total stays 16 6ms  
+D9    detected  hub.ts            3.6s  Tests  2 failed | 198 passed (200)  × the displaced socket is sent nothing more, and the log names it, its principal and the socket that replaced it, nothing else 15ms  
+D10   detected  hub.ts            3.9s  Tests  1 failed | 199 passed (200)  × an upgrade whose session ended before it arrived is admitted without a principal and counts under none 6ms  
+D11   detected  hub.ts            3.8s  Tests  27 failed | 173 passed (200)  × a second operator is still admitted, and so is another session of the same operator: each session has its own four 9ms  
+D12   detected  hub.ts            4.5s  Tests  3 failed | 197 passed (200)  × two sockets of the device credential are open; a third is admitted and the oldest is closed with 1013 4ms  
+G1    detected  handshake.ts      3.3s  Tests  2 failed | 198 passed (200)  × at the cap the oldest waiting socket is destroyed and the new one waits in its place: a new upgrade is never kept out 3ms  
+G2    detected  handshake.ts      3.3s  Tests  2 failed | 198 passed (200)  × at the cap the oldest waiting socket is destroyed and the new one waits in its place: a new upgrade is never kept out 2ms  
+G3    detected  handshake.ts      4.2s  Tests  2 failed | 198 passed (200)  × neither: destroyed by the sweep at the bound, and not a millisecond before 4ms  
+G4    detected  handshake.ts      3.8s  Tests  2 failed | 198 passed (200)  × neither: destroyed by the sweep at the bound, and not a millisecond before 3ms  
+G5    detected  handshake.ts      4.1s  Tests  3 failed | 197 passed (200)  × taken by the socket route: the guard forgets it, takes its listeners off and never touches it again 5ms  
+G6    detected  handshake.ts      3.8s  Tests  2 failed | 198 passed (200)  × taken by the socket route: the guard forgets it, takes its listeners off and never touches it again 4ms  
+G7    detected  handshake.ts      4.5s  Tests  1 failed | 199 passed (200)  × taken by the socket route: the guard forgets it, takes its listeners off and never touches it again 5ms  
+G8    detected  handshake.ts      3.8s  Tests  5 failed | 195 passed (200)  × taken by the socket route: the guard forgets it, takes its listeners off and never touches it again 4ms  
+G9    detected  handshake.ts      4.4s  Tests  2 failed | 198 passed (200)  × neither: destroyed by the sweep at the bound, and not a millisecond before 4ms  
+G10   detected  handshake.ts      4.3s  Tests  8 failed | 192 passed (200)  × answered over HTTP: the socket is destroyed at once, and an error on it afterwards is still caught 3ms  
+G11   detected  handshake.ts      3.8s  Tests  9 failed | 191 passed (200)  × answered over HTTP: the socket is destroyed at once, and an error on it afterwards is still caught 4ms  
+G12   detected  handshake.ts      4.4s  Tests  1 failed | 199 passed (200)  × taken by the socket route: the guard forgets it, takes its listeners off and never touches it again 4ms  
+G13   detected  handshake.ts      5.5s  Tests  1 failed | 199 passed (200)  × taken by the socket route: the guard forgets it, takes its listeners off and never touches it again 7ms  
+G14   detected  handshake.ts      4.9s  Tests  1 failed | 199 passed (200)  × the stop destroys everything that waits 4ms  
+G15   detected  handshake.ts      5.2s  Tests  2 failed | 198 passed (200)  × at the cap the oldest waiting socket is destroyed and the new one waits in its place: a new upgrade is never kept out 5ms  
+G16   detected  handshake.ts      5.1s  Tests  2 failed | 198 passed (200)  × neither: destroyed by the sweep at the bound, and not a millisecond before 5ms  
+
+54 of 54 mutations detected in 344 s; not detected: []
+19:20:50
+
+# Real-socket scope (the wiring in index.ts and limits.ts; each run reached its teardown)
+19:21:03
+W1    detected  index.ts          4.6s  Tests  5 failed | 65 passed (70)  × CPS1-4: an upgrade on a path the router cannot decode, whose peer keeps the connection: answered 400, held by the guard, destroyed at the   s; 0 remain with the run prefix dems_test_step_64b_tmdub4sw_
+W2    detected  index.ts         25.5s  Tests  7 failed | 63 passed (70)  × after a 403, a 401, a 404 and a 429 the socket of the upgrade is destroyed by the server, whatever the client does 20010ms  s; 0 remain with the run prefix dems_test_step_64b_tmdub8ng_
+W3    detected  index.ts          9.1s  Tests  3 failed | 75 passed (78)  × CPS1-4: a flood of such upgrades holds 32 sockets and no more: the 33rd destroys the oldest; none takes a place of the hub, and a real han  s; 0 remain with the run prefix dems_test_step_64b_tmdubyzj_
+W4    detected  index.ts        227.1s  Tests  7 failed | 63 passed (70)  × after a 403, a 401, a 404 and a 429 the socket of the upgrade is destroyed by the server, whatever the client does 20006ms  s; 0 remain with the run prefix dems_test_step_64b_tmduc765_
+W5    detected  limits.ts        14.7s  Tests  3 failed | 67 passed (70)  × with six anonymous sockets open a seventh is closed with 1013, an operator's and a device's upgrade are accepted, and the 17th connection   s; 0 remain with the run prefix dems_test_step_64b_tmduiiwl_
+W6    detected  limits.ts         8.7s  Tests  1 failed | 69 passed (70)  × one web session: four tabs are open; a fifth is admitted and the first is closed with 1013; a second operator and a device are not touched  s; 0 remain with the run prefix dems_test_step_64b_tmduiwq4_
+W7    detected  index.ts          4.4s  Tests  2 failed | 6 passed (8)  × a delta of the 1 Hz step waits for the pace step; over five seconds none is lost and none is sent twice 10ms  s; 0 remain with the run prefix dems_test_step_64b_tmduj5eo_
+W8    detected  index.ts          3.9s  Tests  1 failed | 7 passed (8)  × a delta of the 1 Hz step waits for the pace step; over five seconds none is lost and none is sent twice 12ms  s; 0 remain with the run prefix dems_test_step_64b_tmduja2b_
+
+8 of 8 mutations detected in 298 s; not detected: []
+19:26:01

@@ -9,6 +9,7 @@ import { LiveLinkState, useLiveLink } from '@dems/shared/live'
 import { DATE_PATTERNS, EMPTY_DATE_TEXT, formatDate, useRetryCooldown } from '@dems/shared/realtime'
 import { useSim, type SimOperator } from '@dems/shared/sim'
 import { HIGHLIGHT_FADE_MS, HIGHLIGHT_FROM_OPACITY } from '@/components/ui/animated-list'
+import { retryCoreQuery } from '@/lib/core-queries'
 import { deferEffectStart } from '@/lib/effect-start'
 import { cn } from '@/lib/utils'
 import { ROW_STAGGER_CAP, ROW_STAGGER_MS, HELD_BEAT_MS, useMotionPolicy } from '@/motion'
@@ -29,10 +30,15 @@ const SKELETON_ROWS = 3
  *
  * The registry is operation 19's answer under `CORE_QUERY_KEYS.pairedDevices` (the entry the
  * Devices drawer shares). The bridge refetches it on `admin.changed` DEVICES and on a resync.
- * **CONTRACT-GAP-W70-1** (decision D156 (2)): a paired device connecting or disconnecting publishes
- * no `admin.changed` DEVICES (`apps/core-server/src/realtime/hub.ts`), so the `online` column would
- * go stale; the replicated tablet link changes with those sockets, so its change reads the list
- * again — as the drawer does, through `deferEffectStart` (one request under StrictMode).
+ * **RESIDUAL-W70-1 (W83 ledger #45), closed by E-fix FX-C** (decision D156 (2); ruling R4 of D201,
+ * gated in D202): the Core server now publishes one debounced `admin.changed` DEVICES (1 s after the
+ * last change, at most 5 s after the first) when a paired device's socket is admitted or departs and
+ * when a device signs in or out, so the bridge refetch above keeps the `online` column current. The
+ * refetch on a change of the replicated tablet link, added while that message was missing, stays as
+ * a second path (one extra read per link change). The drawer has the same second path; this panel
+ * starts its invalidation through `deferEffectStart` (one request under StrictMode), while the drawer
+ * invalidates directly and is the StrictMode guard's one allowed exception
+ * (`test/live-strict-mode-starts.test.tsx`).
  *
  * A new row enters with the gold highlight (M-C-07); PAIRED → REVOKED plays one halo; "Last seen"
  * refreshes every 30 s on the Live clock without animation. With the link down the last data
@@ -47,7 +53,8 @@ export function DevicesPanel({ reads }: { reads: PairingReads }) {
   const query = reads.devices
   const devices = query.data?.devices
 
-  // CONTRACT-GAP-W70-1: the tablet link is the replicated sign that a paired device came or went.
+  // RESIDUAL-W70-1 (closed, D202): the tablet link changes when a paired device comes or goes; this read
+  // came before the Core's debounced `admin.changed` DEVICES and stays as a second path.
   const tabletChangedAt = useSim((s) => s.tabletLink.changedAt)
   const seenTabletChange = useRef(tabletChangedAt)
   useEffect(() => {
@@ -59,8 +66,9 @@ export function DevicesPanel({ reads }: { reads: PairingReads }) {
   }, [queryClient, tabletChangedAt])
 
   const { added, revoked } = useRowChanges(devices)
+  // W92-4: Retry through the key, so the read's gate (signed in, PAIRING_MANAGE, link up) holds for a press.
   const { retry, cooldown, exhausted, canRetry } = useRetryCooldown(() => {
-    void query.refetch()
+    retryCoreQuery(queryClient, CORE_QUERY_KEYS.pairedDevices)
   })
 
   const rows = useMemo(() => orderDevices(filterDevices(devices ?? [], filter)), [devices, filter])

@@ -18,6 +18,7 @@ import {
   useSim,
   type SessionHistoryEntry,
 } from '@dems/shared/sim';
+import { useRecordingTickerSeconds } from '@/runtime';
 import {
   buildRows,
   elapsedSeconds,
@@ -130,9 +131,14 @@ export function useSessionRow(sessionId: string | null): SessionRow | null {
   }, [entry, pendingId, active, sessionId]);
 }
 
-/** Whole recording seconds of the current session on the simulator clock (1 Hz re-render). */
+/**
+ * Whole recording seconds of the current session on the simulator clock (1 Hz re-render). In LIVE the Core
+ * clock's ticker when it is ahead while RECORDING (post-review fix FXR-M, W93-1: the same second as the monitor,
+ * the Recording bar and Home; `runtime/recording-elapsed.ts`).
+ */
 export function useLiveElapsedSeconds(): number {
-  return useSim((s) => elapsedSeconds(s.session?.startedAt ?? null, s.session?.stoppedAt ?? null, s.clock.now));
+  const fromStore = useSim((s) => elapsedSeconds(s.session?.startedAt ?? null, s.session?.stoppedAt ?? null, s.clock.now));
+  return Math.max(fromStore, useRecordingTickerSeconds());
 }
 
 /** An operator's display name, or null (the investigator key-value). */

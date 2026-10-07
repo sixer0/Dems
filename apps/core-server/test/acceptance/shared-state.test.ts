@@ -704,11 +704,12 @@ describe('RT-7, a new epoch under the same listener', () => {
         expect(b.control.filter((message) => message.type === 'session.updated'), "B is not told of A's session events").toEqual([]);
         expect(a.live.session, 'the sessions of the operators are kept by a reset').toMatchObject({ operator: { id: INVESTIGATOR.id } });
         // Spec §12.4: after a reset the Core link is recomputed from the open sockets. No paired device
-        // holds one here, so it is OFFLINE (the comparison above ran the channel's pace step).
+        // holds one here, so it is OFFLINE from the first snapshot of the new epoch (the engine starts
+        // it with the link of the open sockets, D127).
         expect(stage.engine.slice('tabletLink').state, 'the Core link after the reset, with no device socket').toBe('OFFLINE');
         const firstSnapshotOfTheEpoch = stateMessagesOf(a.station.wire()).find((message) => message.position.epoch === renewed.epoch);
         const linkInSnapshot = (firstSnapshotOfTheEpoch?.frame.json as { state?: { tabletLink?: { state?: string } } } | undefined)?.state?.tabletLink?.state;
-        say(scene, `the Core link: ${String(linkInSnapshot)} in the snapshot of the new epoch, ${stage.engine.slice('tabletLink').state} at ${positionText(renewed)} (recomputed from the open sockets at the channel's pace step)`);
+        say(scene, `the Core link: ${String(linkInSnapshot)} in the snapshot of the new epoch, ${stage.engine.slice('tabletLink').state} at ${positionText(renewed)}: OFFLINE from the first snapshot of the new epoch (the engine starts it with the link of the open sockets, D127)`);
         const sinceTheReset = stateMessagesOf(a.station.wire())
           .filter((message) => message.position.epoch === renewed.epoch)
           .map((message) => {

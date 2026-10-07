@@ -1,0 +1,7 @@
+FXR-S W91-3 mutation check (2026-10-07 05:47)
+Mutation: hub.ts devicesChanged() cap reverted to `devicesChange.firstAt + limits.tabletLinkDebounceMs`
+Command: npx vitest run --project unit src/realtime/__tests__/hub.devices-changed.test.ts
+     × the longest wait is the device change's own limit, not the tablet link's (W91-3): retuning one leaves the other 6ms
+AssertionError: expected 2000 to be 4000 // Object.is equality
+      Tests  1 failed | 10 passed (11)
+Restored: hub.ts from copy; same file with fix: Tests 11 passed (11)

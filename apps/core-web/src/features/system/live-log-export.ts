@@ -25,6 +25,7 @@
  */
 import type { AuditPage, EventPage } from '@dems/shared/api'
 import type { AuditRow, DiagnosticsRun, ServiceEntry, SimEvent } from '@dems/shared/sim'
+import { downloadJsonFile } from '@/lib/download'
 import {
   CORE_PAGE_LIMIT,
   walkAllEvents,
@@ -145,17 +146,7 @@ export function buildLogExportFile(input: {
   }
 }
 
-/** Triggers a JSON download in the browser. Throws when the platform cannot create the file. */
+/** Triggers a JSON download in the browser (`lib/download.ts`, W92-7). Throws when the platform cannot create the file. */
 export function downloadJson(fileName: string, data: unknown): void {
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
-  const url = URL.createObjectURL(blob)
-  const anchor = document.createElement('a')
-  anchor.href = url
-  anchor.download = fileName
-  anchor.rel = 'noopener'
-  document.body.append(anchor)
-  anchor.click()
-  anchor.remove()
-  // `revokeObjectURL` is optional here only because a test page (jsdom) has no Blob URLs.
-  setTimeout(() => URL.revokeObjectURL?.(url), 1000)
+  downloadJsonFile(fileName, data)
 }

@@ -1,14 +1,13 @@
 import { memo, useMemo } from 'react'
 import { Avatar, Button, Chip, Spinner, Table } from '@heroui/react'
 import { Check, Minus, UsersRound } from 'lucide-react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import type { RoleMatrix as CoreRoleMatrixBody } from '@dems/shared/api'
-import { useLiveSelector } from '@dems/shared/live'
 import { DATE_PATTERNS, formatDate, useRetryCooldown } from '@dems/shared/realtime'
 import { useSim, type OperatorRole, type Permission } from '@dems/shared/sim'
 import { useCoreErrorPresenter } from '@/lib/core-errors'
-import { CORE_QUERY_KEYS, useWebLive, type WebLive } from '@/runtime'
+import { CoreReadError, retryCoreQuery, roleMatrixQueryOptions, useQueryFailure, useRoleMatrixGate } from '@/lib/core-queries'
+import { CORE_QUERY_KEYS, useWebLive } from '@/runtime'
 import { useAuditLog } from './audit-context'
 import { logSecurityAudit } from './log'
 import { coreGrantSet, lastSignInByOperator, PERMISSION_ORDER, ROLE_ORDER, roleGrants } from './model'
@@ -78,7 +77,7 @@ export const RbacPanel = memo(function RbacPanel({ className }: RbacPanelProps) 
             )
           })}
         </div>
-        {live === null ? <RoleMatrix /> : <CoreRoleMatrix live={live} />}
+        {live === null ? <RoleMatrix /> : <CoreRoleMatrix />}
       </div>
     </Panel>
   )
@@ -125,43 +124,29 @@ const RoleMatrix = memo(function RoleMatrix() {
   )
 })
 
-/** A failed answer of operation 10, carried through the query's error (its status and code, never its text). */
-class RoleMatrixReadError extends Error {
-  override readonly name = 'RoleMatrixReadError'
-  readonly status: number | null
-  readonly code: string
-  constructor(failure: { readonly status: number | null; readonly error: { readonly code: string } }) {
-    super('The role matrix of the Core could not be read.')
-    this.status = failure.status
-    this.code = failure.error.code
-  }
-}
-
 /**
  * Live mode: the matrix the Core server enforces (operation 10). While it is on its way a status
  * line; without an answer the presenter's toast (an outage, a refusal it words) or one record, an
  * inline message and a rate-limited Retry (3 s, 6 s, 12 s; at most three).
+ *
+ * FXR-W (W92-8): the key is shared with Users & Roles, so the read is the one definition of
+ * `lib/core-queries.ts`. Its gate holds the signed-in term (when the session ends the bridge removes
+ * the entry in the same turn, and a page that is still on screen until the shell leaves must not ask
+ * again: a read the Core can only answer 401, seen on lane 3, then red-tested) and the link. The
+ * failure is presented here, after the render. Retry goes through the key (W92-4).
  */
-function CoreRoleMatrix({ live }: { live: WebLive }) {
+function CoreRoleMatrix() {
   const { t } = useTranslation()
   const presentCoreError = useCoreErrorPresenter()
-  // Read only while signed in: when the session ends the bridge removes the entry in the same turn,
-  // and a page that is still on screen until the shell leaves must not ask again (a read the Core
-  // can only answer 401; seen on lane 3, then red-tested).
-  const signedIn = useLiveSelector((source: WebLive | null) => source?.session != null)
-  const query = useQuery({
-    queryKey: CORE_QUERY_KEYS.roleMatrix,
-    enabled: signedIn,
-    queryFn: async (): Promise<CoreRoleMatrixBody> => {
-      const answer = await live.client.call('getRoleMatrix')
-      if (answer.ok) return answer.data
-      const error = new RoleMatrixReadError(answer)
-      if (presentCoreError(answer) === null) logSecurityAudit('warn', 'RbacPanel.roleMatrix', error, { status: answer.status })
-      throw error
-    },
+  const queryClient = useQueryClient()
+  const query = useQuery(roleMatrixQueryOptions(useRoleMatrixGate()))
+  useQueryFailure(query, (error) => {
+    const answer = error instanceof CoreReadError ? error.failure : null
+    if (answer === null) return
+    if (presentCoreError(answer) === null) logSecurityAudit('warn', 'RbacPanel.roleMatrix', error, { status: answer.status })
   })
   const { retry, cooldown, exhausted, canRetry } = useRetryCooldown(() => {
-    void query.refetch()
+    retryCoreQuery(queryClient, CORE_QUERY_KEYS.roleMatrix)
   })
   const matrix = query.data
   const grants = useMemo(() => (matrix ? coreGrantSet(matrix.grants) : null), [matrix])

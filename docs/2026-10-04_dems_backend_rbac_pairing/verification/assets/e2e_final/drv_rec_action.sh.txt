@@ -1,0 +1,22 @@
+#!/bin/sh
+# Record ONE device (540 px, --bugreport overlay, <secs> s) around ONE action command; print device-host offset and
+# the server lines of the window.   sh rec_action.sh <serial> <name> <secs> <lead s> <command...>
+set -u
+S=$1; N=$2; SECS=$3; LEAD=$4; shift 4
+case "$S" in emulator-5554|emulator-5556|emulator-5558) ;; *) echo "serial refused"; exit 64;; esac
+OUT=/Users/gsp-budi/Documents/DEMS/docs/2026-10-04_dems_backend_rbac_pairing/verification/assets/e2e_final
+SIZE=540x1212; [ "$S" = emulator-5556 ] && SIZE=864x540
+a() { adb -s "$S" "$@"; }
+now() { python3 -c 'import time; t=time.time(); print(time.strftime("%H:%M:%S", time.localtime(t)) + ".%03d" % int((t % 1) * 1000))'; }
+case "$(a shell dumpsys window | tr -d '\r' | grep -o 'isKeyguardShowing=[a-z]*' | head -n 1)" in *true*) echo "KEYGUARD: stop"; exit 77;; esac
+B=$(python3 -c 'import time; print(time.time())'); D=$(a shell date +%s.%N | tr -d '\r'); A=$(python3 -c 'import time; print(time.time())')
+echo "== $N on $S — host $(now); device-minus-host $(python3 -c "print(round(($D - ($B + $A) / 2) * 1000))") ms (bracket $(python3 -c "print(round(($A - $B) * 1000))") ms); load $(uptime | sed 's/.*averages: //')"
+a shell screenrecord --bugreport --size $SIZE --time-limit "$SECS" /sdcard/e2f_$N.mp4 &
+REC=$!
+sleep "$LEAD"
+echo "-- action at host $(now): $*"
+"$@"
+wait $REC; sleep 1
+a pull /sdcard/e2f_$N.mp4 "$OUT/${N}.mp4" 2>&1 | tail -n 1
+a shell rm -f /sdcard/e2f_$N.mp4
+echo "-- end host $(now)"

@@ -71,3 +71,12 @@ apps/mobile/signing/
 
 # Test runner output (vitest JSON reporter); generated, never versioned.
 .vitest/
+
+# Backend task 2026-10-04 (plan W103, D227, D257): frame dumps stay on disk, never versioned.
+docs/**/rec/*_frames/
+
+# Evidence logs enter the commit after a count-only secret scan (D257). `*.log` above stays the
+# default; only `assets/*.log` of the docs tree is re-included. Scan hits stay out, by name.
+!docs/**/assets/*.log
+docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/31_live_testing_tests_verbose.log
+docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/12d_cpc1_red_before.log

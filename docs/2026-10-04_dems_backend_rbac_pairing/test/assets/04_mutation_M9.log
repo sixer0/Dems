@@ -1,0 +1,142 @@
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/apps/core-server
+
+[test:db] PostgreSQL 18.4 on 127.0.0.1:4432; helper role dems_owner, code under test dems_app; run prefix dems_test_step_70_tmdscqvh_
+[test:db] stale sweep: dropped 0; kept 7 of younger runs, 0 of live runs, 0 unrecognised; 0 failed
+[test:db] template dems_test_step_70_tmdscqvh_tpl_schema: built in 97 ms (create 35 ms, hook 59 ms)
+[test:db] template dems_test_step_70_tmdscqvh_tpl_seed: built in 188 ms (create 58 ms, hook 129 ms)
+stdout | test/acceptance/pairing-lifecycle.test.ts > AC-B-41, AC-B-28: no secret is left behind > each secret was handed out in exactly one answer of the journey: a code by its issue, a credential by its redeem, a token by its sign-in or enrolment; a web session token in none (the cookie); a guess in none
+[w48] returned once: 82 answers of the journey; holding a secret: 8 of 10 tokens in exactly one answer, 2 in none (the web sessions: cookie only); 3 of 4 codes in exactly one
+
+stdout | test/acceptance/pairing-lifecycle.test.ts > AC-B-41, AC-B-28: no secret is left behind > the answers of every refusal: no code is echoed and no credential
+[w48] AC-B-41: 30 answers of a refusal: 1 codes, credentials or tokens found
+
+stdout | test/acceptance/pairing-lifecycle.test.ts > AC-B-41, AC-B-28: no secret is left behind > the log of the server, captured at level trace from the boot to the close: none of them, no hash of one, and no line at level error
+[w48] AC-B-41 log capture: 191541 characters, 972 lines, 81 request lines, levels {"20":840,"30":123,"40":9}; searched: 4 pairing codes and 5 guesses, 2 device credentials, 5 session tokens, 3 biometric tokens, the demo password: 0 found; hashes of them: 0
+[w48]   GET /api/v1/auth/session                         {"200":1,"401":2}
+[w48]   GET /api/v1/auth/status                          {"200":2}
+[w48]   GET /api/v1/health                               {"200":2}
+[w48]   GET /api/v1/pairing/code                         {"200":5,"401":1}
+[w48]   GET /api/v1/pairing/device                       {"200":2,"401":1,"403":2}
+[w48]   GET /api/v1/pairing/devices                      {"200":12,"401":1}
+[w48]   GET /api/v1/session/current                      {"200":7,"401":1,"403":1}
+[w48]   POST /api/v1/auth/biometric                      {"200":2}
+[w48]   POST /api/v1/auth/biometric/sign-in              {"200":1,"401":3,"403":1}
+[w48]   POST /api/v1/auth/sign-in                        {"200":4,"403":3}
+[w48]   POST /api/v1/pairing/code                        {"201":4}
+[w48]   POST /api/v1/pairing/devices/:id/revoke          {"200":1}
+[w48]   POST /api/v1/pairing/redeem                      {"201":2,"401":8,"423":2}
+[w48]   POST /api/v1/session                             {"201":2}
+[w48]   POST /api/v1/session/:id/cancel                  {"204":1}
+[w48]   POST /api/v1/session/:id/markers                 {"403":1}
+[w48]   POST /api/v1/session/:id/start                   {"200":1,"202":2,"409":1}
+[w48]   POST /api/v1/session/:id/stop                    {"202":1,"403":1}
+
+ ❯ |db| test/acceptance/pairing-lifecycle.test.ts (31 tests | 4 failed) 1154ms
+   ❯ SC5: a tablet is paired from the portal, used, revoked, refused and paired again; every step has its audit row (16)
+     × AC-B-35: one millisecond before 300 s the code is still active; at 300 s on the manual clock the redeem answers the generic 401 INVALID_CODE and PAIRING_CODE_CLOSED says EXPIRED 12ms
+   ❯ AC-B-41, AC-B-28: no secret is left behind (7)
+     × each secret was handed out in exactly one answer of the journey: a code by its issue, a credential by its redeem, a token by its sign-in or enrolment; a web session token in none (the cookie); a guess in none 2ms
+     × the answers of every refusal: no code is echoed and no credential 1ms
+     × the log of the server, captured at level trace from the boot to the close: none of them, no hash of one, and no line at level error 8ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |db| test/acceptance/pairing-lifecycle.test.ts > SC5: a tablet is paired from the portal, used, revoked, refused and paired again; every step has its audit row > AC-B-35: one millisecond before 300 s the code is still active; at 300 s on the manual clock the redeem answers the generic 401 INVALID_CODE and PAIRING_CODE_CLOSED says EXPIRED
+AssertionError: expected [ Array(1) ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   "code A (left to expire) as digits as text in the body of a refusal",
++ ]
+
+ ❯ outcome test/acceptance/pairing-lifecycle.test.ts:181:93
+    179|     answers.push({ status: response.statusCode, body: response.body });
+    180|     // A refusal that echoed a secret fails HERE, named by label and f…
+    181|     if (response.statusCode >= 400) expect(leaksIn('the body of a refu…
+       |                                                                                             ^
+    182|   }
+    183|   if (response.body === '') return [response.statusCode, null];
+ ❯ test/acceptance/pairing-lifecycle.test.ts:785:5
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/4]⎯
+
+ FAIL  |db| test/acceptance/pairing-lifecycle.test.ts > AC-B-41, AC-B-28: no secret is left behind > each secret was handed out in exactly one answer of the journey: a code by its issue, a credential by its redeem, a token by its sign-in or enrolment; a web session token in none (the cookie); a guess in none
+AssertionError: expected [ …(4) ] to deeply equal [ …(4) ]
+
+- Expected
++ Received
+
+@@ -1,9 +1,9 @@
+  [
+    [
+      "code A (left to expire)",
+-     1,
++     2,
+    ],
+    [
+      "code B (guessed at until it closes)",
+      1,
+    ],
+
+ ❯ test/acceptance/pairing-lifecycle.test.ts:1447:120
+    1445|     expect(perToken.filter(([label, count]) => count !== (onTheWeb(lab…
+    1446|     expect([...codes].map(([label, { code }]) => [label, bodies.filter…
+    1447|     expect([...guesses].map(([label, guess]) => [label, bodies.filter(…
+       |                                                                                                                        ^
+    1448|   });
+    1449|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/4]⎯
+
+ FAIL  |db| test/acceptance/pairing-lifecycle.test.ts > AC-B-41, AC-B-28: no secret is left behind > the answers of every refusal: no code is echoed and no credential
+AssertionError: expected [ Array(1) ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   "code A (left to expire) as digits as text in the refusals",
++ ]
+
+ ❯ test/acceptance/pairing-lifecycle.test.ts:1533:19
+    1531|     expect(refusals().length).toBeGreaterThanOrEqual(25);
+    1532|     expect(found).toEqual([]);
+    1533|     expect(credentialLeaks(text)).toEqual([]);
+       |                   ^
+    1534|   });
+    1535|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/4]⎯
+
+ FAIL  |db| test/acceptance/pairing-lifecycle.test.ts > AC-B-41, AC-B-28: no secret is left behind > the log of the server, captured at level trace from the boot to the close: none of them, no hash of one, and no line at level error
+AssertionError: expected 81 to be 82 // Object.is equality
+
+- Expected
++ Received
+
+- 82
++ 81
+
+ ❯ test/acceptance/pairing-lifecycle.test.ts:1557:29
+    1555|     // Not vacuous: the journey is in it, request by request, from the…
+    1556|     expect(requests.length).toBe(answers.length);
+    1557|     expect(byRoute['POST /api/v1/pairing/redeem']).toEqual({ '201': 2,…
+       |                             ^
+    1558|     expect(byRoute['POST /api/v1/pairing/code']).toEqual({ '201': 4 });
+    1559|     expect(byRoute['POST /api/v1/auth/biometric/sign-in']).toEqual({ '…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/4]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  4 failed | 27 passed (31)
+   Start at  18:38:50
+   Duration  3.68s (tests 41%, transform 39%, import 20%)
+
+[test:db] forced drops that needed a retry: 0
+[test:db] teardown: dropped 2 database(s) in 135 ms; 0 remain with the run prefix dems_test_step_70_tmdscqvh_

@@ -80,7 +80,7 @@ export function SessionInfoStep({ form, investigators, arrangement, onScan, crea
                 variant="ghost"
                 size="sm"
                 hitSlop={8}
-                accessibilityLabel={t(live ? 'features.session-new.live.scanCaseNumber' : 'sessionNew.info.caseNumber.scan')}
+                accessibilityLabel={t(live ? 'sessionNew.live.scanCaseNumber' : 'sessionNew.info.caseNumber.scan')}
                 onPress={onScan}
               >
                 <ScanLine size={ICON} color={palette.gold} />

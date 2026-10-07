@@ -43,7 +43,7 @@ export function answerSimulated(sim: SimTarget, request: SimulatedRequest): SimA
   try {
     return sim.request({ method, path: request.path, ...(request.body !== undefined ? { body: request.body } : {}) })
   } catch (error) {
-    logApiReference('error', 'answerSimulated', error, { method, path: request.path })
+    logApiReference('error', 'answerSimulated', error, 'The simulator could not answer a Try-it request.', { method, path: request.path })
     return errorResponse(500, 'SIMULATOR_ERROR', 'The simulator could not answer this request.')
   }
 }

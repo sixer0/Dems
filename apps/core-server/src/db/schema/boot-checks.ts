@@ -25,6 +25,7 @@
  * (`../commands/migrations.ts`). B-3 compares the schema version that the last migration file
  * wrote into `schema_meta`.
  */
+import { GENESIS_HASH } from '@dems/shared/sim';
 import type { Pool } from 'pg';
 import type { AuditLogRow } from './audit';
 import { DB_CONTRACT_REVISION, DB_SCHEMA_VERSION } from './meta';
@@ -48,8 +49,8 @@ export const EXPECTED_AUDIT_TRIGGERS = [
   'audit_log_chain_guard',
 ] as const;
 export const TRIGGER_MODE_ALWAYS = 'A';
-/** 64 zero digits: the head of an empty chain (`constants.ts:44`). */
-export const GENESIS_HASH = '0'.repeat(64);
+/** 64 zero digits: the head of an empty chain, the simulator's own constant (review findings CPB1-19, W91-6). */
+export { GENESIS_HASH };
 /** B-8 checks the rows the engine's ring holds at start: the newest 1,000 (MR-4). */
 export const STORED_CHAIN_CHECK_ROWS = 1_000;
 

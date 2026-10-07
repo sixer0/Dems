@@ -1,0 +1,155 @@
+
+== 21:34:50 0. before: run id w56attempt213450 (mode attempt); listeners on 4421 and on the Metro port 8082
+(no listener on 4421, none on 8082)
+21:34  up 3 days,  4:47, 1 user, load averages: 5.81 7.49 6.76
+
+== 21:34:50 1. start the lane backend from the tree: DEMS_CORE_PORT=4421 npm run start:server (demo flag off)
+npm PID 43382, listener PID 43432 (recorded in .locks/core-server.lane1.pid), attempt 1
+COMMAND   PID     USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
+node    43432 gsp-budi   17u  IPv4 0x908f20961e3165e0      0t0  TCP 127.0.0.1:4421 (LISTEN)
+"port":4421,"database":"dems_lane_1","demoControls":false
+
+== 21:34:52 2. the server's health, from the host (curl)
+{"status":"ok","service":"dems-core-server","version":"0.2.0","apiVersion":"v1","serverTime":"2026-10-04T14:34:52.109Z","uptimeMs":477,"ws":{"path":"/ws","heartbeatIntervalMs":1000,"clients":0},"ready":{"database":true,"engine":true}}
+server log lines before the device session: 22
+
+== 21:34:52 3. device session: phone (emulator-5554), Metro 8082, device tcp:4420 -> host tcp:4421
+[device-session phone 21:34:52] lock held; hard cap 420 s, until 21:41:52 (watchdog PID 43489)
+[device-session phone 21:34:52] session serial: emulator-5554 (dems2_phone)
+[device-session phone 21:34:52] emulator-5554: screen awake, no keyguard
+[device-session phone 21:34:52] Metro PID 43529 (own process group) on 127.0.0.1:8082 (log: /var/folders/rn/7bm_xjb14jxcbp36qw981phr0000gn/T//dems-metro-8082.log)
+[device-session phone 21:34:55] emulator-5554: bundler location set to localhost:8081 (H-MB-09)
+[device-session phone 21:34:55] Metro ready; device tcp:8081 -> host tcp:8082, tcp:4400 -> tcp:4400 on emulator-5554
+[device-session phone 21:34:55] Core server: device tcp:4420 -> host tcp:4421 on emulator-5554
+-- serial emulator-5554 (dems2_phone), app com.dems.demo.tablet, Metro port 8082, mode attempt
+-- adb reverse --list (start of commands):
+host-17 tcp:8081 tcp:8082
+host-17 tcp:4400 tcp:4400
+host-17 tcp:4420 tcp:4421
+
+-- lock state (start of the session; read-only queries):
+   isKeyguardShowing=false
+   user 0: State: RUNNING_UNLOCKED
+   CredentialType: PIN
+   fingerprints enrolled: "count":1
+-- app data (before the first launch): AsyncStorage keys with the length of each value; names of the secure-store entries
+   key: dems.mobile.log.v1|5594
+   key: dems.mobile.prefs.v1|30
+   key: dems.sim.v1|119929
+   secure-store entries (entry names of shared_prefs/SecureStore.xml; none listed = none stored):
+-- dems.mobile.prefs.v1 (before the first launch; absent = the default source, SIMULATED): {"coreLinkSource":"SIMULATED"}
+
+-- device time at the first launch: 10-04 21:33:56.000
+
+== A. cold start in LIVE mode on the Login screen: demsdemo:///login?core=LIVE (the device is not paired)
+-- am start -W -a android.intent.action.VIEW -d 'demsdemo:///login?core=LIVE' com.dems.demo.tablet
+   Status: ok
+   LaunchState: COLD
+   Activity: com.dems.demo.tablet/.MainActivity
+   TotalTime: 10071
+-- waited 0 s for: runtime.live.ready
+-- waited 1 s for: DEMS-LIVE\] GET /api/v1/auth/session
+-- focus: mCurrentFocus=Window{3fe12f u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity}
+-- screencap: 56_login_live_unpaired.png (1714092 bytes)
+-- dems.mobile.prefs.v1 (after the launch with core=LIVE; absent = the default source, SIMULATED): {"coreLinkSource":"LIVE"}
+
+-- soft keyboard: mInputShown=false
+-- focus before the taps: mCurrentFocus=Window{3fe12f u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity}
+-- screencap (scratch): scratch_no_keyboard.png
+
+== B. the demo-operator list is opened (a tap on the app's own row)
+-- input tap 540 1975   (Demo operators)
+
+== C. ONE sign-in attempt on the unpaired device, through the app's own controls
+-- input tap 400 2205   (one demo operator: the app fills its own form)
+-- screencap (scratch): scratch_filled.png; soft keyboard: mInputShown=false
+-- input tap 540 1428   (Sign In)
+-- waited 0 s for: not paired with the Core server
+-- screencap (scratch until it was looked at): scratch_refused.png
+
+-- the app's request lines in the device log ([DEMS-LIVE] method, path template, status, request ID):
+     1 DEMS-LIVE] GET /api/v1/auth/session 401
+     1 DEMS-LIVE] GET /api/v1/auth/status 200
+   request lines in all: 2
+   sign-in request lines (POST /api/v1/auth/sign-in or /auth/biometric...; must be 0): 0
+-- records of the auth layer and of the Live start in the device log (source, message, context):
+  source: 'runtime.debug.core',
+  message: 'Core link source set from a deep link',
+  context: { source: 'LIVE', origin: 'launch' },
+  source: 'runtime.live.ready',
+  message: 'Live source ready',
+  context: { pairing: 'UNPAIRED' },
+  source: 'auth.signIn',
+  message: 'Sign-in refused: this tablet is not paired with the Core server; nothing was sent',
+  correlationId: 'Lmutx8xr7/signin-2' }
+-- a misuse report of a Live action (live.misuse) in the device log (count; must be 0): 0
+-- an error of the JS runtime in the device log (lines with 'Error:' or 'Invariant'; count): 0
+-- a credential, a bearer value or a password in the device log of this run (count of lines; must be 0):
+0
+-- app data (in LIVE mode, unpaired, after the attempt): AsyncStorage keys with the length of each value; names of the secure-store entries
+   key: dems.mobile.log.v1|6374
+   key: dems.mobile.prefs.v1|25
+   key: dems.sim.v1|119929
+   secure-store entries (entry names of shared_prefs/SecureStore.xml; none listed = none stored):
+
+== D. back to the default: stop the app, then a launch with core=SIMULATED
+-- am start -W -a android.intent.action.VIEW -d 'demsdemo:///?core=SIMULATED' com.dems.demo.tablet
+   Status: ok
+   LaunchState: COLD
+   Activity: com.dems.demo.tablet/.MainActivity
+   TotalTime: 10144
+-- waited 0 s for: runtime.sim.hydrated
+  source: 'runtime.debug.core',
+  source: 'runtime.sim.hydrated',
+-- request lines to the Core server after the reset (must be 0): 0
+-- focus: mCurrentFocus=Window{817a0ca u0 com.dems.demo.tablet/com.dems.demo.tablet.MainActivity}
+-- screencap: 56_after_reset_simulated.png (1727887 bytes)
+-- dems.mobile.prefs.v1 (after the launch with core=SIMULATED; absent = the default source, SIMULATED): {"coreLinkSource":"SIMULATED"}
+
+-- app data (after the reset): AsyncStorage keys with the length of each value; names of the secure-store entries
+   key: dems.mobile.log.v1|6774
+   key: dems.mobile.prefs.v1|30
+   key: dems.sim.v1|119939
+   secure-store entries (entry names of shared_prefs/SecureStore.xml; none listed = none stored):
+-- Metro log (bundle and error lines):
+Android Bundled 1608ms node_modules/expo-router/entry.js (6121 modules)
+Android Bundled 97ms node_modules/expo-router/entry.js (1 module)
+-- lock state (end of the commands; read-only queries):
+   isKeyguardShowing=false
+   user 0: State: RUNNING_UNLOCKED
+   CredentialType: PIN
+   fingerprints enrolled: "count":1
+-- adb reverse --list (end of commands; device-session.sh removes its own rules after this):
+host-17 tcp:8081 tcp:8082
+host-17 tcp:4400 tcp:4400
+host-17 tcp:4420 tcp:4421
+
+[device-session phone 21:35:51] Metro 43529 stopped
+[device-session phone 21:35:51] session ended with status 0
+device session exit=0
+
+== 21:35:51 4. the backend's request log during the device session (lines after line 22)
+request lines: 3
+-- by method, route, status and principal:
+   1 GET /api/v1/auth/session 401 principal=null
+   1 GET /api/v1/auth/status 200 principal=null
+   1 GET /api/v1/health 200 principal=null
+-- requests to the sign-in operations (2: /auth/sign-in, 8: /auth/biometric/sign-in, 9: /auth/biometric/failure, 7: /auth/biometric); must be 0:
+0
+-- state-changing requests (POST) in all; must be 0:
+0
+-- socket lines:
+{"level":30,"connectionId":"fe632d79-c703-4f64-9cfe-5047395ece40","principal":null,"kind":"ANONYMOUS","msg":"socket opened"}
+{"level":30,"connectionId":"fe632d79-c703-4f64-9cfe-5047395ece40","code":1006,"closedBy":"peer","principal":null,"durationMs":27207,"msg":"socket closed"}
+-- a bearer value, a cookie or a credential in the server log of this run (count of lines; must be 0):
+0
+
+== 21:35:51 5. stop the backend and check that nothing is left
+npm exit status: 0
+{"level":30,"time":1791124551649,"pid":43432,"part":"database","ready":false,"msg":"readiness changed"}
+{"level":30,"time":1791124551650,"pid":43432,"msg":"shutdown complete"}
+lsof exit 1 (1 with no output: no listener on 4421 or 8082)
+process 43432 is gone
+
+== 21:35:51 end of run w56attempt213450
+run exit=0

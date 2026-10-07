@@ -369,7 +369,7 @@ export const common = {
     SESSION_INCOMPLETE: 'Session marked incomplete',
     SUMMARY_ACKNOWLEDGED: 'Summary acknowledged',
     MARKER_ADDED: 'Marker added',
-    NOTE_ADDED: 'Investigator note added',
+    NOTE_ADDED: 'Note added',
     SNAPSHOT_TAKEN: 'Snapshot captured',
     FRAME_HASH: 'Video frame hash recorded',
     WRITE_VERIFIED: 'Storage write verified',
@@ -449,7 +449,7 @@ export const common = {
     EVIDENCE_REVIEW: 'Evidence opened for review',
     EVIDENCE_ARCHIVED: 'Evidence archived',
     MARKER_ADDED: 'Marker added',
-    NOTE_ADDED: 'Investigator note added',
+    NOTE_ADDED: 'Note added',
     SNAPSHOT_TAKEN: 'Snapshot captured',
     AUTOSAVE: 'Evidence auto-saved',
     FAULT_RAISED: 'Fault raised',
@@ -565,7 +565,9 @@ export const common = {
     requiresRole: 'Requires the {{role}} role',
     /**
      * Backend task W16: labels of the three permissions added to the sim `Permission` set
-     * (2026-10-04 01_specs §4.3). The nine earlier ones are `securityAudit.rbac.permissions.*`.
+     * (2026-10-04 01_specs §4.3). The map the clients read is `securityAudit.rbac.permissions.*`,
+     * which holds all twelve, these three included (D37, D41); a label here must read the same
+     * there (`test/i18n-vocabulary-sync.test.ts`).
      */
     permissions: {
       PAIRING_MANAGE: 'Manage pairing and paired devices',
@@ -626,6 +628,13 @@ export const common = {
   coreErrors: {
     offline: 'Core server unreachable. Nothing was changed.',
     starting: 'The Core server is starting. Nothing was changed.',
+    /**
+     * FXR-W W92-13 (FW76-3): the outage and starting sentences for a read that follows a command the
+     * Core already ACCEPTED (an export's paged walk). "Nothing was changed" would contradict the page,
+     * which says the Core recorded the export.
+     */
+    offlineAfterAccepted: 'Core server unreachable.',
+    startingAfterAccepted: 'The Core server is starting.',
     timedOut:
       'Core server unreachable. The command may or may not have been applied; the screen updates when the Core is reachable.',
     limited: 'The Core server is limiting requests from this console. Try again in {{seconds}} s.',

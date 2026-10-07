@@ -2,7 +2,7 @@ import { Redirect, Stack, useRouter, useSegments, type Href } from 'expo-router'
 import { useEffect, useRef } from 'react';
 import { palette } from '@dems/shared/tokens';
 import { stackAnimation, useMotionSettings } from '@/motion';
-import { isPairingBlocked, useActiveSession, useAuth, usePairing, type ActiveSessionInfo } from '@/runtime';
+import { isPairingBlocked, useActiveSession, useAuth, usePairing } from '@/runtime';
 import { clearPendingHref, peekPendingHref, setSignedInSnapshot } from './pending-href';
 import { postSignInHref, sessionResyncHref } from './session-routes';
 
@@ -21,13 +21,21 @@ import { postSignInHref, sessionResyncHref } from './session-routes';
  * (AC-C-74): the existing guard tests pass unchanged.
  *
  * When a guard removes the current group (sign-in, sign-out, idle expiry, Lock console, a revocation
- * or an unknown credential), Expo Router falls back to the anchor `/`, and the boot router picks the
- * target — `/pair` first when blocked (§9.4 route table, AC-C-73, AC-C-78), else the §3.3 order. One
- * case needs help: `/login` opened over a public screen (a guarded deep link arriving on
- * `/stack-check` or `/pair`, see `+native-intent`). After sign-in that public screen is still
- * underneath, so there is no fallback to `/`; the navigator then replaces it with `/`, so the boot
- * router still applies the order (resync target, pending href, Home). While blocked, `/login` is
- * itself guarded out, so such a link falls through `/` to `/pair` and stays pending (MP-12).
+ * or an unknown credential), React Navigation keeps every route that is still allowed. Only when
+ * nothing is left underneath does Expo Router fall back to the anchor `/`, where the boot router
+ * picks the target: `/pair` first when blocked (§9.4 route table, AC-C-73, AC-C-78), else the §3.3
+ * order. A public screen left underneath needs help, in each direction:
+ *
+ * - After a SIGN-IN (this navigator): `/login` opened over a public screen (a guarded deep link
+ *   arriving on `/stack-check` or `/pair`, see `+native-intent`) leaves that screen underneath; the
+ *   effect below replaces it with `/`, so the boot router still applies the order (resync target,
+ *   pending href, Home). While blocked, `/login` is itself guarded out, so such a link falls through
+ *   `/` to `/pair` and stays pending (MP-12).
+ * - After a SIGN-OUT (not this navigator): `SignedOutLanding` (`src/runtime/signed-out-landing.tsx`,
+ *   row FX-M1, E2E-S-1; decision DX-2: the landing is mounted by `src/app/_layout.tsx` beside this
+ *   navigator) resets the stack to `/` when a public screen is left on top, so the boot router
+ *   chooses `/login`, or `/pair` while the gate holds.
+ *
  * Recording is never touched by the auth guard (§3.3).
  */
 export function RootNavigator() {
@@ -81,12 +89,6 @@ export function RootNavigator() {
   );
 }
 
-/** Reads `summaryAcknowledged` if the runtime (step 73, SCR-02) adds it to the session summary. */
-function summaryAcknowledgedOf(session: ActiveSessionInfo): boolean | undefined {
-  const value = (session as ActiveSessionInfo & { readonly summaryAcknowledged?: unknown }).summaryAcknowledged;
-  return typeof value === 'boolean' ? value : undefined;
-}
-
 /**
  * The boot router's target (04 §3.1 `index.tsx`, §3.3; §9.4 MP-11): `/pair` FIRST while the pairing
  * gate blocks (LIVE mode, device not PAIRED — AC-C-73); else `/login` while signed out; after
@@ -102,9 +104,10 @@ export function useBootHref(): string {
   const session = useActiveSession();
   if (isPairingBlocked(usePairing())) return '/pair';
   if (!isAuthenticated) return '/login';
+  // W93-22 (FXR-M): the runtime's contract declares `summaryAcknowledged` (`runtime/contract.ts`); read directly.
   const resync = sessionResyncHref(session.state, {
     sessionId: session.sessionId,
-    summaryAcknowledged: summaryAcknowledgedOf(session),
+    ...(session.summaryAcknowledged !== undefined ? { summaryAcknowledged: session.summaryAcknowledged } : {}),
   });
   return postSignInHref(resync, peekPendingHref());
 }

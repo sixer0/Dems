@@ -1,0 +1,8 @@
+tap 784,1434 at 10:19:48.772
+slept 5000 ms
+screencap 18h_settings_about.png (406296 bytes) at 10:19:54.003
+swipe 784,700,784,1400 700 ms
+slept 2500 ms
+tap 784,360 at 10:19:57.471
+slept 5000 ms
+screencap 18i_settings_account_profile.png (227214 bytes) at 10:20:02.648

@@ -1,0 +1,5 @@
+swipe 1700,1400,1700,300 500 ms
+slept 1200 ms
+swipe 1700,1400,1700,300 500 ms
+slept 1500 ms
+screencap 006.png (242734 bytes) at 09:46:24.880

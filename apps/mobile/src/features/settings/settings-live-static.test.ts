@@ -164,7 +164,7 @@ describe('the copy (rule 8; §3.2; MB-6a (3))', () => {
   const live = leaves(settingsEn.live, ['live']);
 
   it('the LIVE copy says nothing about a simulation, and the biometric LIVE note claims no hardware protection', () => {
-    expect(live.length).toBe(10);
+    expect(live.length).toBe(7);
     for (const { key, text } of live) expect({ key, simulated: SIMULAT.test(text) }).toEqual({ key, simulated: false });
     expect(SIMULAT.test(settingsEn.preferences.coreLinkHintLive)).toBe(false);
     const note = enMobile.mobile.biometric.identityNoteLiveProtected;

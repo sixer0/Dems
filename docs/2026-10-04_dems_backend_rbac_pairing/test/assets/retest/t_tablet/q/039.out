@@ -1,0 +1,8 @@
+mark devices at 13:04:25.540
+tap 227,528 at 13:04:25.655
+slept 3000 ms
+screencap P08_devices.png (412863 bytes) at 13:04:28.965
+tap 845,335 at 13:04:29.040
+slept 3500 ms
+screencap P09_device_detail_camera1.png (1223743 bytes) at 13:04:33.095
+ids: 132 nodes -> q/p_device_detail.txt

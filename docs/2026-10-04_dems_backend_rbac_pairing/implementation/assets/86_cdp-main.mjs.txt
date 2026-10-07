@@ -1,0 +1,247 @@
+// W86 README check, main instance: the web console in Live mode at http://127.0.0.1:5173 in a real
+// headless Chromium over raw CDP (Node's built-in WebSocket; no install). Adapted from W64's driver.
+// Usage: node --import tsx .cache/w86/cdp-main.mjs <devtoolsPort> <vitePort> <outJson> <assetsDir>
+//
+// Steps: (1) the Live Login page at 127.0.0.1 (mode selector, demo notice, no localhost);
+// (2) sign in through the form with the seeded SUPERVISOR, read from the project's seed source;
+// (3) one screenshot of the Live dashboard; (4) sign out; (5) switch the Data mode to Simulated
+// through the selector and its dialog, read the stored key; (6) run the README's
+// localStorage.removeItem('dems.core.mode.v1') and read it back.
+//
+// Never stored or printed: a request body, a cookie value, the seeded password, the whole text of
+// a page. The demo-operators disclosure (which shows the published password) is never expanded.
+import { writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { DEMO_OPERATOR_PASSWORD, OPERATORS } from '../../packages/shared/src/sim/dataset.ts'
+
+const [devPort, vitePort, outJson, assetsDir] = process.argv.slice(2)
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+const ORIGIN = `http://127.0.0.1:${vitePort}`
+const supervisor = OPERATORS.find((operator) => operator.role === 'SUPERVISOR')
+if (!supervisor || typeof DEMO_OPERATOR_PASSWORD !== 'string') throw new Error('the seed source has no SUPERVISOR or no demo password constant')
+
+const list = await (await fetch(`http://127.0.0.1:${devPort}/json/list`)).json()
+const target = list.find((t) => t.type === 'page')
+const ws = new WebSocket(target.webSocketDebuggerUrl)
+await new Promise((r) => ws.addEventListener('open', r, { once: true }))
+
+let id = 0
+const pending = new Map()
+let requests = new Map()
+let consoleLines = []
+let loadFired = false
+const cleanUrl = (url) => String(url).replace(/\?.*$/, (query) => (query.length > 1 ? '?…' : ''))
+
+ws.addEventListener('message', (event) => {
+  const msg = JSON.parse(event.data)
+  if (msg.id && pending.has(msg.id)) {
+    const { resolve, reject } = pending.get(msg.id)
+    pending.delete(msg.id)
+    msg.error ? reject(new Error(`CDP error ${msg.error.code}`)) : resolve(msg.result)
+    return
+  }
+  const p = msg.params ?? {}
+  switch (msg.method) {
+    case 'Page.loadEventFired':
+      loadFired = true
+      break
+    case 'Network.requestWillBeSent':
+      requests.set(p.requestId, { method: p.request.method, url: cleanUrl(p.request.url), status: null })
+      break
+    case 'Network.responseReceived': {
+      const entry = requests.get(p.requestId)
+      if (entry) entry.status = p.response.status
+      break
+    }
+    case 'Network.loadingFailed': {
+      const entry = requests.get(p.requestId)
+      if (entry && entry.status === null) entry.status = `failed: ${p.errorText}`
+      break
+    }
+    case 'Runtime.exceptionThrown':
+      consoleLines.push(`exception: ${String(p.exceptionDetails?.exception?.description ?? p.exceptionDetails?.text).slice(0, 240)}`)
+      break
+    case 'Runtime.consoleAPICalled':
+      if (p.type === 'error' || p.type === 'warning') {
+        const text = (p.args ?? []).map((arg) => (arg.value !== undefined ? String(arg.value) : String(arg.description ?? arg.type))).join(' ')
+        consoleLines.push(`${p.type}: ${text.slice(0, 300)}`)
+      }
+      break
+  }
+})
+
+const send = (method, params = {}) =>
+  new Promise((resolve, reject) => {
+    const n = ++id
+    pending.set(n, { resolve, reject })
+    ws.send(JSON.stringify({ id: n, method, params }))
+  })
+const evaluate = async (expression, label) => {
+  const result = await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true })
+  if (result.exceptionDetails) throw new Error(`page script failed: ${label}`)
+  return result.result.value
+}
+const navigate = async (url, settleMs = 3500) => {
+  loadFired = false
+  await send('Page.navigate', { url })
+  for (let i = 0; i < 150 && !loadFired; i++) await sleep(100)
+  await sleep(settleMs)
+  return loadFired
+}
+const waitUntil = async (expression, label, timeoutMs = 15000) => {
+  const until = Date.now() + timeoutMs
+  while (Date.now() < until) {
+    try {
+      if ((await evaluate(expression, label)) === true) return true
+    } catch {
+      // the page is reloading
+    }
+    await sleep(150)
+  }
+  return false
+}
+const waitFor = (testId, present = true, timeoutMs = 15000) =>
+  waitUntil(`(document.querySelector('[data-testid="${testId}"]') !== null) === ${present}`, `wait ${testId}`, timeoutMs)
+const screenshot = async (name) => {
+  const { data } = await send('Page.captureScreenshot', { format: 'png' })
+  const file = join(assetsDir, name)
+  writeFileSync(file, Buffer.from(data, 'base64'))
+  return file
+}
+/** Types into an input by script (focus, select, insert). The text is not echoed. */
+const typeInto = async (selector, text, label) => {
+  const focused = await evaluate(
+    `(() => { const el = document.querySelector('${selector}'); if (!el) return false; el.focus(); el.select(); return document.activeElement === el })()`,
+    `focus ${label}`,
+  )
+  if (!focused) throw new Error(`the field ${label} could not be focused`)
+  await send('Input.insertText', { text })
+}
+const press = (testId) => evaluate(`(() => { const el = document.querySelector('[data-testid="${testId}"]'); if (!el) return false; el.click(); return true })()`, `press ${testId}`)
+/** A real mouse click at the element's centre (for kit controls that listen to pointer events). */
+const mouseClick = async (testId) => {
+  const box = await evaluate(
+    `(() => { const el = document.querySelector('[data-testid="${testId}"]'); if (!el) return null; el.scrollIntoView({ block: 'center' }); const r = el.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 } })()`,
+    `box ${testId}`,
+  )
+  if (!box) return false
+  for (const type of ['mouseMoved', 'mousePressed', 'mouseReleased']) {
+    await send('Input.dispatchMouseEvent', { type, x: box.x, y: box.y, button: 'left', clickCount: type === 'mouseMoved' ? 0 : 1 })
+    await sleep(60)
+  }
+  return true
+}
+const takeNetwork = () => {
+  const taken = { api: [...requests.values()].filter((entry) => entry.url.includes('/api/v1/')), console: consoleLines }
+  requests = new Map()
+  consoleLines = []
+  return taken
+}
+/** Named elements of the Login page only. */
+const loginFacts = () =>
+  evaluate(
+    `(() => {
+      const q = (id) => document.querySelector('[data-testid="' + id + '"]')
+      const text = (id) => q(id)?.textContent?.replace(/\\s+/g, ' ').trim() ?? null
+      const selector = q('login-mode-selector')
+      const pressed = (id) => { const el = q(id); if (!el) return null; return el.getAttribute('aria-pressed') ?? el.getAttribute('data-selected') ?? el.getAttribute('aria-checked') }
+      return {
+        href: location.origin + location.pathname + (location.search ? '?…' : ''),
+        loginPage: q('page-login') !== null,
+        modeSelector: selector ? selector.getAttribute('data-mode') : null,
+        modeLabel: document.getElementById('login-mode-label')?.textContent?.trim() ?? null,
+        livePressed: pressed('login-mode-LIVE'),
+        simulatedPressed: pressed('login-mode-SIMULATED'),
+        demoNotice: text('login-demo-notice'),
+        demoDisclosurePresent: q('login-demo-operators') !== null,
+        liveHostWarning: document.body.textContent.includes('Live mode needs another address'),
+        storedMode: localStorage.getItem('dems.core.mode.v1'),
+      }
+    })()`,
+    'login facts',
+  )
+
+await send('Network.enable')
+await send('Page.enable')
+await send('Runtime.enable')
+await send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false })
+const version = await send('Browser.getVersion')
+const result = { browser: { product: version.product, headless: /Headless/i.test(version.userAgent) }, origin: ORIGIN, steps: {} }
+
+// ── 1. The Live Login page at 127.0.0.1 ──
+await navigate(`${ORIGIN}/login`)
+result.steps.loginLive = { shown: await waitFor('page-login'), facts: await loginFacts(), network: takeNetwork() }
+result.steps.loginLive.screenshot = await screenshot('86_w1_live_login.png')
+
+// ── 2. Sign in through the form as the seeded SUPERVISOR ──
+await typeInto('[data-testid="login-username-field"] input', supervisor.username, 'username')
+await typeInto('[data-testid="login-password-field"] input', DEMO_OPERATOR_PASSWORD, 'password')
+await press('login-submit')
+const arrived = await waitFor('page-dashboard', true, 25000)
+await sleep(3000)
+result.steps.signIn = {
+  operator: supervisor.username,
+  role: supervisor.role,
+  dashboardShown: arrived,
+  shell: await evaluate(
+    `(() => ({ href: location.origin + location.pathname, coreMode: document.querySelector('[data-core-mode]')?.getAttribute('data-core-mode') ?? null, modeChip: document.querySelector('[data-testid="shell-mode"]')?.textContent?.replace(/\\s+/g, ' ').trim() ?? null, cookieNames: document.cookie === '' ? [] : document.cookie.split(';').map((c) => c.split('=')[0].trim()) }))()`,
+    'shell facts',
+  ),
+  network: takeNetwork(),
+}
+// ── 3. One screenshot of the Live dashboard ──
+result.steps.signIn.screenshot = await screenshot('86_w2_live_dashboard.png')
+
+// ── 4. Sign out (a request of the page, as W64; the Login page follows) ──
+{
+  const signOut = await evaluate(
+    `(async () => { const a = await fetch('/api/v1/auth/sign-out', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ reason: 'USER' }) }); return { status: a.status } })()`,
+    'sign-out',
+  )
+  const back = await waitFor('page-login', true, 15000)
+  await sleep(1500)
+  result.steps.signOut = { signOut, loginShown: back, network: takeNetwork() }
+}
+
+// ── 5. Switch the Data mode to Simulated with the selector and its dialog ──
+{
+  const before = await loginFacts()
+  let clicked = await mouseClick('login-mode-SIMULATED')
+  let dialog = await waitFor('mode-switch-dialog', true, 4000)
+  let via = 'mouse'
+  if (!dialog) {
+    via = 'element.click()'
+    clicked = await press('login-mode-SIMULATED')
+    dialog = await waitFor('mode-switch-dialog', true, 4000)
+  }
+  const dialogText = dialog
+    ? await evaluate(`document.querySelector('[data-testid="mode-switch-dialog"]')?.textContent?.replace(/\\s+/g, ' ').trim().slice(0, 240) ?? null`, 'dialog text')
+    : null
+  if (dialog) await screenshot('86_w3_switch_dialog.png')
+  let confirmed = false
+  if (dialog) {
+    confirmed = await mouseClick('mode-switch-confirm')
+    if (!(await waitUntil(`localStorage.getItem('dems.core.mode.v1') === 'SIMULATED'`, 'stored', 8000))) {
+      await press('mode-switch-confirm')
+    }
+  }
+  await sleep(4000)
+  await waitFor('page-login', true, 15000)
+  await sleep(1500)
+  const after = await loginFacts()
+  if (dialog) await screenshot('86_w4_simulated_login_after_switch.png')
+  result.steps.switchToSimulated = { before, clicked, via, dialog, dialogText, confirmed, after, network: takeNetwork() }
+}
+
+// ── 6. The README's browser clean-up statement ──
+result.steps.removeModeKey = await evaluate(
+  `(() => { const before = localStorage.getItem('dems.core.mode.v1'); localStorage.removeItem('dems.core.mode.v1'); return { before, after: localStorage.getItem('dems.core.mode.v1') } })()`,
+  'remove key',
+)
+
+let text = JSON.stringify(result, null, 2)
+if (text.includes(DEMO_OPERATOR_PASSWORD)) text = text.split(DEMO_OPERATOR_PASSWORD).join('***')
+text = text.replace(/\b(ses|dvc|bio)_[A-Za-z0-9_-]+/g, '$1_***')
+writeFileSync(outJson, `${text}\n`)
+console.log(text)
+ws.close()

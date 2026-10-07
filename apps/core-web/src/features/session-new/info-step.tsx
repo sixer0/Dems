@@ -58,6 +58,13 @@ export interface InfoStepProps {
   scanPending?: boolean
   /** The scan button's element (`aria-busy` while the scan is in flight, `usePendingControl`). */
   scanRef?: RefObject<HTMLButtonElement | null>
+  /**
+   * Live mode: the scan button names what it does (the Core server reserves the next number,
+   * operation 32; nothing is scanned), with the words the mobile app shows
+   * (`sessionNew.live.scanCaseNumber`: closing copy round, D164 DN-5). False in Simulated mode, where
+   * the button keeps `sessionNew.info.caseNumber.scan`.
+   */
+  live?: boolean
 }
 
 function selectStartOperators(s: { operators: SimOperator[] }): SimOperator[] {
@@ -80,8 +87,9 @@ function useErrorText() {
  * `FieldError`. React Hook Form with the shared `sessionCreateSchema` lives in the page so the
  * values survive the step change. Motion (M-PG-NEW): rows stagger 30 ms; errors slide in (160).
  */
-export function InfoStep({ control, submitted, onSubmit, onScan, enterDelayMs, scanPending = false, scanRef }: InfoStepProps) {
+export function InfoStep({ control, submitted, onSubmit, onScan, enterDelayMs, scanPending = false, scanRef, live = false }: InfoStepProps) {
   const { t } = useTranslation()
+  const scanLabel = t(live ? 'sessionNew.live.scanCaseNumber' : 'sessionNew.info.caseNumber.scan')
   const m = useMotionPolicy()
   const errorText = useErrorText()
   const operators = useSim(selectStartOperators)
@@ -151,14 +159,14 @@ export function InfoStep({ control, submitted, onSubmit, onScan, enterDelayMs, s
                               isIconOnly
                               size="sm"
                               variant="ghost"
-                              aria-label={t('sessionNew.info.caseNumber.scan')}
+                              aria-label={scanLabel}
                               onPress={onScan}
                               isPending={scanPending}
                               data-testid="sn-scan"
                             >
                               {scanPending ? <Spinner size="sm" color="current" aria-hidden="true" /> : <ScanLine className="size-4" aria-hidden="true" />}
                             </Button>
-                            <Tooltip.Content placement="top">{t('sessionNew.info.caseNumber.scan')}</Tooltip.Content>
+                            <Tooltip.Content placement="top">{scanLabel}</Tooltip.Content>
                           </Tooltip>
                         </InputGroup.Suffix>
                       </InputGroup>

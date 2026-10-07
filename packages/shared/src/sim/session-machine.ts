@@ -62,6 +62,7 @@ import {
   CRITICAL_FAULTS,
   FaultEvt,
   FaultKind,
+  OperatorRole,
   Permission,
   PRECHECK_ORDER,
   PrecheckReasonCode,
@@ -818,6 +819,35 @@ function sessionMarkers(session: ActiveSession): EvidenceMarker[] {
   return markers;
 }
 
+/**
+ * The operator a custody entry names for the start or the stop of the recording (E-fix FX-C,
+ * ruling R1: a sealed chain of custody is evidence; E2E-W1-1, E2E-T-3). Before the fix both
+ * entries named `createdBy`, so a SUPERVISOR who stopped an INVESTIGATOR's session was recorded
+ * as the investigator while the audit row of the same instant named the supervisor.
+ *
+ * The custody follows the session's own audit row of that transition (RECORDING_STARTED,
+ * RECORDING_STOPPED), newest first: `startRecordingTransition` and `stopRecordingTransition` write
+ * the acting operator there (`requireSessionOperator`), never the creator standing in. The audit
+ * ring is kept by every host and is durable on the Core (`audit_log`; a reload restores the newest
+ * 1,000 rows), so a reload between the stop and the seal still finds the stop's row. The actor is
+ * deliberately NOT a member of the session: the Core stores the session as the columns of
+ * `active_session`, and a member without a column would break its lossless round trip (MR-1);
+ * a column is a database contract revision.
+ *
+ * Only when the row has left the 1,000-row ring does the creator stand in, as before the fix:
+ * never for the stop (sealed 5-9 s after its row), and for the start only after about 2 hours of
+ * recording (one integrity row per 8 s), and then it differs only if another operator started it.
+ */
+export function recordingActor(state: Pick<SimState, 'audit'>, session: ActiveSession, transition: 'START' | 'STOP'): string | null {
+  const type = transition === 'START' ? 'RECORDING_STARTED' : 'RECORDING_STOPPED';
+  const rows = state.audit.rows;
+  for (let i = rows.length - 1; i >= 0; i -= 1) {
+    const row = rows[i];
+    if (row?.type === type && row.sessionId === session.id) return row.actorId;
+  }
+  return session.createdBy;
+}
+
 function seal(state: SimState, session: ActiveSession, at: EpochMs): SimState {
   const evidenceId = session.evidenceId ?? evidenceIdFor(state.meta.counters.evidence, session.createdAt);
   const recordedAt = session.startedAt ?? session.createdAt;
@@ -837,8 +867,8 @@ function seal(state: SimState, session: ActiveSession, at: EpochMs): SimState {
     sealedAt: at,
     status: 'SEALED',
     custody: [
-      { at: recordedAt, action: 'RECORDING_STARTED', actorId: session.createdBy, detail: null },
-      { at: endedAt, action: 'RECORDING_STOPPED', actorId: session.createdBy, detail: session.stopReason },
+      { at: recordedAt, action: 'RECORDING_STARTED', actorId: recordingActor(state, session, 'START'), detail: null },
+      { at: endedAt, action: 'RECORDING_STOPPED', actorId: recordingActor(state, session, 'STOP'), detail: session.stopReason },
       { at, action: 'SEALED', actorId: null, detail: null },
     ],
     markers: sessionMarkers(session),
@@ -1018,7 +1048,7 @@ function finishIncomplete(state: SimState, session: ActiveSession, at: EpochMs):
       startTimeSource: session.startTimeSource ?? null,
       endTimeSource: session.stopTimeSource ?? null,
       custody: [
-        { at: recordedAt, action: 'RECORDING_STARTED', actorId: session.createdBy, detail: null },
+        { at: recordedAt, action: 'RECORDING_STARTED', actorId: recordingActor(state, session, 'START'), detail: null },
         {
           at: endedAt,
           action: 'SESSION_INCOMPLETE',
@@ -1084,6 +1114,24 @@ export function addMarkerTransition(state: SimState, now: EpochMs, label?: strin
   });
 }
 
+/**
+ * The English fallback label of a note by an author of `role` (E2E-T-5): "Supervisor note",
+ * "Investigator note", "Technician note"; "Note" when the author is not known. Clients render
+ * their own copy from the timeline item's `params.authorRole` (`timelineTitleKey`).
+ */
+export function noteLabel(role: OperatorRole | null): string {
+  switch (role) {
+    case OperatorRole.SUPERVISOR:
+      return 'Supervisor note';
+    case OperatorRole.INVESTIGATOR:
+      return 'Investigator note';
+    case OperatorRole.TECHNICIAN:
+      return 'Technician note';
+    default:
+      return 'Note';
+  }
+}
+
 export function addNoteTransition(state: SimState, now: EpochMs, text: string): SimState {
   const session = requireSession(state, 'addNote', [SessionState.RECORDING]);
   const body = typeof text === 'string' ? text.trim() : '';
@@ -1092,6 +1140,10 @@ export function addNoteTransition(state: SimState, now: EpochMs, text: string): 
   }
   const { id, meta } = nextItemId(state.meta, 'NOTE');
   const authorId = signedInOperatorId(state);
+  // E2E-T-5: the note is labelled by its author's role at the time of writing (a SUPERVISOR's note
+  // read "Investigator note"). The note record keeps `authorId`; the timeline item carries the role.
+  const authorRole = findOperatorById(state.operators, authorId)?.role ?? null;
+  const label = noteLabel(authorRole);
   let next: SimState = {
     ...state,
     meta,
@@ -1100,22 +1152,22 @@ export function addNoteTransition(state: SimState, now: EpochMs, text: string): 
   next = addTimelineItem(next, {
     at: now,
     kind: 'NOTE',
-    label: 'Investigator note',
+    label,
     // At most 139 code units and an ellipsis; the cut never splits a surrogate pair (SIM-GAP-1).
     detail: body.length > 140 ? `${cutText(body, 139)}…` : body,
     channel: null,
-    params: { noteId: id, length: body.length },
+    params: authorRole === null ? { noteId: id, length: body.length } : { noteId: id, length: body.length, authorRole },
   });
   // The audit row proves a note was added; the note text stays in the session record.
   return record(next, now, {
     audit: {
       type: 'NOTE_ADDED',
-      message: 'Investigator note added',
+      message: `${label} added`,
       actorId: authorId,
       sessionId: session.id,
       details: { noteId: id, length: body.length },
     },
-    event: { type: 'NOTE_ADDED', message: 'Investigator note added', sessionId: session.id },
+    event: { type: 'NOTE_ADDED', message: `${label} added`, sessionId: session.id },
   });
 }
 

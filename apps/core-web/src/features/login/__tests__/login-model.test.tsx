@@ -168,8 +168,10 @@ describe('choreography (M-PG-LOGIN, M-APP-01, §8)', () => {
 describe('structured log entries', () => {
   it('carry the required fields and only the context they are given', () => {
     const entry = buildLoginLogEntry('error', 'login.signIn', new Error('boom'), { method: 'password' }, 'login-x-1')
-    expect(entry).toMatchObject({ level: 'error', source: 'login.signIn', message: 'boom', context: { method: 'password' }, correlationId: 'login-x-1' })
+    // FXR-W W92-5 (by design): a fixed sentence and the class, never the error's message or stack.
+    expect(entry).toMatchObject({ level: 'error', source: 'login.signIn', context: { method: 'password', errorName: 'Error' }, correlationId: 'login-x-1' })
     expect(typeof entry.timestamp).toBe('string')
-    expect(entry.stack).toContain('boom')
+    expect(JSON.stringify(entry)).not.toContain('boom')
+    expect(entry.stack).toBeUndefined()
   })
 })

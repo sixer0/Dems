@@ -1,0 +1,31 @@
+# M2b red before: the two LIVE lines of login-model.ts removed IN MEMORY (= the pre-image's two-valued LIVE chip and ring), 2026-10-06 02:54:22
+    ✓ every view × notice: the notice or a down view is offline, up is up, settling without the notice is connecting (1 ms)
+    ✕ the chip and the ring of every look; a lockout still wins on the ring (2 ms)
+    ✕ LIVE: the look decides, not the two-valued state (a connecting link reads OFFLINE there) (1 ms)
+    ✕ LIVE without a look reads the view alone: never critical while connecting
+    ✓ SIMULATED and HEARTBEAT: exactly the answers of before, for every state, heartbeat and lockout, whatever look is handed in (6 ms)
+    ✓ the state of every source × heartbeat × tablet link: a heartbeat that is not LIVE is OFFLINE in HEARTBEAT and LIVE
+    ✓ the runtime builds a heartbeat into its link only for HEARTBEAT and LIVE, with the state of `coreLinkStateFor` (the only two places)
+    ✕ a cold start (the socket still connecting) shows no "Core offline" chip and no critical ring; the first heartbeat makes them ready (128 ms)
+    ✓ a real outage shows the "Core offline" chip and the critical ring with the Alert, keeps them through a reconnect attempt, and the link back clears them (113 ms)
+    ✕ the ambient loops (full motion): at a cold start the gold dust runs and the chip does not breathe; in an outage the chip breathes and the dust yields (45 ms)
+    ✓ SIMULATED: "Core online" and a ready ring; the simulator's tablet link dropped: "Core offline" and a critical ring (61 ms)
+    ✓ HEARTBEAT: a heartbeat that is still connecting reads "Core offline" and a critical ring, as before (only LIVE changed) (47 ms)
+Tests:       5 failed, 7 passed, 12 total
+exit=1
+# green after (no mutation), 02:54:26
+Tests:       12 passed, 12 total
+exit=0
+
+## the login folder and the static guards after the last edit
+## 02:56:45 $ npm run test -w @dems/mobile -- --maxWorkers=2 src/features/login src/runtime/link-notice-static src/runtime/use-core-link-read-only
+PASS src/features/login/live-login.test.tsx
+PASS src/features/login/live-login-link-visuals.test.tsx
+PASS src/runtime/use-core-link-read-only.test.tsx
+PASS src/features/login/login.test.tsx
+PASS src/features/login/login-model.test.ts
+PASS src/runtime/link-notice-static.test.ts
+PASS src/features/login/login-live-model.test.ts
+Test Suites: 7 passed, 7 total
+Tests:       89 passed, 89 total
+exit=0

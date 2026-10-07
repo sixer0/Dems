@@ -1,0 +1,4 @@
+eval: "audit-table 1556"
+slept 1500
+eval: "#127\n10:37:06\n6 Oct 2026\nSecure timestamp confirmed\nSES-20261006-0025\nSystem\nSecurity\nInfo\nLinked\n1d624a\n#126\n10:36:59\n6 Oct 2026\nRecording started\nSES-20261006-0025\nAKP Budi Santoso\nSession\nInfo\nLinked\n405a83\n#125\n10:33:26\n6 Oct 2026\nPre-check passed\nSES-20261006-0025\nAKP Budi Santoso\nSession\nInfo\nLinked\n15472f\n#124\n10:33:22\n6 Oct 2026\nSession created\nSES-20261006-0025 • LP/2026/1006-0009\nAKP Budi Santoso\nSession\nInfo\nLinked\n6067ef"
+shot B38_web_audit_session_start_rows.png at 10:52:00.417

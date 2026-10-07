@@ -1,0 +1,5 @@
+tap 1560 278
+sleep 3000
+shot D2_sessions_hub_with_detail_pane
+ids rt4_sessions_hub_selected
+noshot

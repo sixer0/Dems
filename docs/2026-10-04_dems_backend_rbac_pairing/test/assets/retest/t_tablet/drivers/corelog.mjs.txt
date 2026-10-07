@@ -1,0 +1,29 @@
+// R-T (reused from E2E-T): the lane-2 Core log's request lines in a time window — time (local), method, route, status,
+// and the client: [tablet] when the request ID is one the tablet app logged ([DEMS-LIVE] lines in its
+// logcat, read by `adb -s emulator-5556 logcat -d`), else [web/other].
+//   node corelog.mjs <fromHH:MM:SS> [toHH:MM:SS|-] [routeFilterRegex]
+import { readFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+const LOG = '/Users/gsp-budi/Documents/DEMS/.cache/manual/lane2-server.log'
+const [from, to, filter] = process.argv.slice(2)
+let tabletIds = new Set()
+try {
+  const lc = execFileSync('adb', ['-s', 'emulator-5556', 'logcat', '-d', '-s', 'ReactNativeJS:V'], { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 })
+  tabletIds = new Set([...lc.matchAll(/DEMS-LIVE\] \S+ \S+ \d{3} ([0-9a-f-]{36})/g)].map((m) => m[1]))
+} catch {}
+const today = new Date()
+const at = (hms) => { const [h, m, s] = hms.split(':').map(Number); const d = new Date(today); d.setHours(h, m, s, 0); return d.getTime() }
+const lo = from ? at(from) : 0
+const hi = to && to !== '-' ? at(to) + 999 : Number.MAX_SAFE_INTEGER
+const re = filter ? new RegExp(filter) : null
+const pad = (n, w = 2) => String(n).padStart(w, '0')
+for (const line of readFileSync(LOG, 'utf8').split('\n')) {
+  if (!line.includes('"request completed"')) continue
+  let j
+  try { j = JSON.parse(line) } catch { continue }
+  if (j.time < lo || j.time > hi) continue
+  if (re && !re.test(j.route ?? '')) continue
+  const d = new Date(j.time)
+  const who = tabletIds.has(j.reqId) ? '[tablet]' : '[web/other]'
+  console.log(`${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${pad(d.getMilliseconds(), 3)} ${j.method} ${j.route} ${j.status} ${who}`)
+}

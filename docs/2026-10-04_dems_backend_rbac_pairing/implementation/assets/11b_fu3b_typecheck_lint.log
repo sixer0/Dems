@@ -1,0 +1,12 @@
+# W11b follow-up 3, second round: typecheck and lint of the workspace (both exit 0).
+# $ npm run typecheck -w @dems/core-server      (11:01)
+# $ npm run lint -w @dems/core-server           (11:01)
+
+> @dems/core-server@0.2.0 typecheck
+> tsc --noEmit
+
+
+
+> @dems/core-server@0.2.0 lint
+> oxlint
+

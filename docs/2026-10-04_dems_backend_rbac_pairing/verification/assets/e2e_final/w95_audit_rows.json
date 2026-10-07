@@ -1,0 +1,278 @@
+{
+  "since": "09:00:00",
+  "types": "SESSION_CREATED,RECORDING_STARTED,RECORDING_STOPPED,EVIDENCE_SEALED",
+  "rows": [
+    {
+      "seq": 103,
+      "id": "AUD-000103",
+      "at": "2026-10-07T02:01:07.153Z",
+      "atMs": 1791338467153,
+      "type": "SESSION_CREATED",
+      "category": "SESSION",
+      "severity": "INFO",
+      "actorId": "OPR-002",
+      "deviceId": null,
+      "sessionId": "SES-20261007-0024",
+      "message": "Session SES-20261007-0024 created",
+      "details": {
+        "caseNumber": "LP/2026/1007-0008",
+        "subjectType": "TERSANGKA"
+      }
+    },
+    {
+      "seq": 105,
+      "id": "AUD-000105",
+      "at": "2026-10-07T02:01:58.184Z",
+      "atMs": 1791338518184,
+      "type": "RECORDING_STARTED",
+      "category": "SESSION",
+      "severity": "INFO",
+      "actorId": "OPR-002",
+      "deviceId": null,
+      "sessionId": "SES-20261007-0024",
+      "message": "Recording started (SES-20261007-0024)",
+      "details": {
+        "timeSource": "GNSS"
+      }
+    },
+    {
+      "seq": 124,
+      "id": "AUD-000124",
+      "at": "2026-10-07T02:03:55.592Z",
+      "atMs": 1791338635592,
+      "type": "RECORDING_STOPPED",
+      "category": "SESSION",
+      "severity": "INFO",
+      "actorId": "OPR-001",
+      "deviceId": null,
+      "sessionId": "SES-20261007-0024",
+      "message": "Recording stopped (SES-20261007-0024)",
+      "details": {
+        "reason": "W95 stop on phone R1",
+        "durationMs": 117408
+      }
+    },
+    {
+      "seq": 125,
+      "id": "AUD-000125",
+      "at": "2026-10-07T02:04:03.236Z",
+      "atMs": 1791338643236,
+      "type": "EVIDENCE_SEALED",
+      "category": "EVIDENCE",
+      "severity": "INFO",
+      "actorId": null,
+      "deviceId": null,
+      "sessionId": "SES-20261007-0024",
+      "message": "Evidence EV-20261007-0014 sealed",
+      "details": {
+        "tracks": 4,
+        "sizeBytes": 267429333,
+        "manifestHash": "fa60eea5c1c7093d81037e4e6e37ab2b81ed4a63f7a7f395ccdff9d055c4b026"
+      }
+    },
+    {
+      "seq": 127,
+      "id": "AUD-000127",
+      "at": "2026-10-07T02:05:24.631Z",
+      "atMs": 1791338724631,
+      "type": "SESSION_CREATED",
+      "category": "SESSION",
+      "severity": "INFO",
+      "actorId": "OPR-001",
+      "deviceId": null,
+      "sessionId": "SES-20261007-0025",
+      "message": "Session SES-20261007-0025 created",
+      "details": {
+        "caseNumber": "LP/2026/1007-0009",
+        "subjectType": "SAKSI"
+      }
+    },
+    {
+      "seq": 129,
+      "id": "AUD-000129",
+      "at": "2026-10-07T02:06:16.696Z",
+      "atMs": 1791338776696,
+      "type": "RECORDING_STARTED",
+      "category": "SESSION",
+      "severity": "INFO",
+      "actorId": "OPR-001",
+      "deviceId": null,
+      "sessionId": "SES-20261007-0025",
+      "message": "Recording started (SES-20261007-0025)",
+      "details": {
+        "timeSource": "GNSS"
+      }
+    },
+    {
+      "seq": 132,
+      "id": "AUD-000132",
+      "at": "2026-10-07T02:06:56.349Z",
+      "atMs": 1791338816349,
+      "type": "RECORDING_STOPPED",
+      "category": "SESSION",
+      "severity": "INFO",
+      "actorId": "OPR-002",
+      "deviceId": null,
+      "sessionId": "SES-20261007-0025",
+      "message": "Recording stopped (SES-20261007-0025)",
+      "details": {
+        "reason": "W95 stop on web R1",
+        "durationMs": 39653
+      }
+    },
+    {
+      "seq": 133,
+      "id": "AUD-000133",
+      "at": "2026-10-07T02:07:02.971Z",
+      "atMs": 1791338822971,
+      "type": "EVIDENCE_SEALED",
+      "category": "EVIDENCE",
+      "severity": "INFO",
+      "actorId": null,
+      "deviceId": null,
+      "sessionId": "SES-20261007-0025",
+      "message": "Evidence EV-20261007-0015 sealed",
+      "details": {
+        "tracks": 4,
+        "sizeBytes": 90320722,
+        "manifestHash": "a5551e02ac1218d12842e087f31814365536e18db5609d3e6f0667524231483b"
+      }
+    },
+    {
+      "seq": 135,
+      "id": "AUD-000135",
+      "at": "2026-10-07T02:08:45.846Z",
+      "atMs": 1791338925846,
+      "type": "SESSION_CREATED",
+      "category": "SESSION",
+      "severity": "INFO",
+      "actorId": "OPR-002",
+      "deviceId": null,
+      "sessionId": "SES-20261007-0026",
+      "message": "Session SES-20261007-0026 created",
+      "details": {
+        "caseNumber": "LP/2026/1007-0010",
+        "subjectType": "SAKSI"
+      }
+    },
+    {
+      "seq": 137,
+      "id": "AUD-000137",
+      "at": "2026-10-07T02:09:15.326Z",
+      "atMs": 1791338955326,
+      "type": "RECORDING_STARTED",
+      "category": "SESSION",
+      "severity": "INFO",
+      "actorId": "OPR-002",
+      "deviceId": null,
+      "sessionId": "SES-20261007-0026",
+      "message": "Recording started (SES-20261007-0026)",
+      "details": {
+        "timeSource": "GNSS"
+      }
+    },
+    {
+      "seq": 143,
+      "id": "AUD-000143",
+      "at": "2026-10-07T02:10:02.231Z",
+      "atMs": 1791339002231,
+      "type": "RECORDING_STOPPED",
+      "category": "SESSION",
+      "severity": "INFO",
+      "actorId": "OPR-001",
+      "deviceId": null,
+      "sessionId": "SES-20261007-0026",
+      "message": "Recording stopped (SES-20261007-0026)",
+      "details": {
+        "reason": "W95 stop phone R2",
+        "durationMs": 46905
+      }
+    },
+    {
+      "seq": 144,
+      "id": "AUD-000144",
+      "at": "2026-10-07T02:10:09.310Z",
+      "atMs": 1791339009310,
+      "type": "EVIDENCE_SEALED",
+      "category": "EVIDENCE",
+      "severity": "INFO",
+      "actorId": null,
+      "deviceId": null,
+      "sessionId": "SES-20261007-0026",
+      "message": "Evidence EV-20261007-0016 sealed",
+      "details": {
+        "tracks": 4,
+        "sizeBytes": 106839167,
+        "manifestHash": "3464408308a06e5224c8e069fc87877261cd95bf0e15ec2b32e32ce7537e1321"
+      }
+    },
+    {
+      "seq": 146,
+      "id": "AUD-000146",
+      "at": "2026-10-07T02:10:52.801Z",
+      "atMs": 1791339052801,
+      "type": "SESSION_CREATED",
+      "category": "SESSION",
+      "severity": "INFO",
+      "actorId": "OPR-001",
+      "deviceId": null,
+      "sessionId": "SES-20261007-0027",
+      "message": "Session SES-20261007-0027 created",
+      "details": {
+        "caseNumber": "LP/2026/1007-0011",
+        "subjectType": "TERSANGKA"
+      }
+    },
+    {
+      "seq": 148,
+      "id": "AUD-000148",
+      "at": "2026-10-07T02:11:26.544Z",
+      "atMs": 1791339086544,
+      "type": "RECORDING_STARTED",
+      "category": "SESSION",
+      "severity": "INFO",
+      "actorId": "OPR-001",
+      "deviceId": null,
+      "sessionId": "SES-20261007-0027",
+      "message": "Recording started (SES-20261007-0027)",
+      "details": {
+        "timeSource": "GNSS"
+      }
+    },
+    {
+      "seq": 152,
+      "id": "AUD-000152",
+      "at": "2026-10-07T02:11:53.265Z",
+      "atMs": 1791339113265,
+      "type": "RECORDING_STOPPED",
+      "category": "SESSION",
+      "severity": "INFO",
+      "actorId": "OPR-002",
+      "deviceId": null,
+      "sessionId": "SES-20261007-0027",
+      "message": "Recording stopped (SES-20261007-0027)",
+      "details": {
+        "reason": "W95 stop on web R2",
+        "durationMs": 26721
+      }
+    },
+    {
+      "seq": 153,
+      "id": "AUD-000153",
+      "at": "2026-10-07T02:11:59.983Z",
+      "atMs": 1791339119983,
+      "type": "EVIDENCE_SEALED",
+      "category": "EVIDENCE",
+      "severity": "INFO",
+      "actorId": null,
+      "deviceId": null,
+      "sessionId": "SES-20261007-0027",
+      "message": "Evidence EV-20261007-0017 sealed",
+      "details": {
+        "tracks": 4,
+        "sizeBytes": 60864500,
+        "manifestHash": "3b700829f847faebcd0be1126f39c9982f98c4ec419cc265ab3385bc69d00164"
+      }
+    }
+  ]
+}

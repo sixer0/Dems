@@ -1,0 +1,27 @@
+#!/bin/sh
+# W94 step 5 wrapper: a 540 px screen recording with the device-time overlay (--bugreport) and a streamed device
+# JS log on emulator-5558 ONLY around the web revoke (revoke.mjs). No setting, lock or reverse rule is touched.
+#   sh revoke_wrapper.sh <deviceId> <prefix>
+set -u
+OUT=/Users/gsp-budi/Documents/DEMS/docs/2026-10-04_dems_backend_rbac_pairing/verification/assets/08_performance_realtime
+SP=/private/tmp/claude-501/-Users-gsp-budi-Documents-DEMS/0d71fd65-4a51-4019-9c48-5c92d11bbdaf/scratchpad/w98
+DEV=$1; P=$2
+a() { adb -s emulator-5558 "$@"; }
+T0=$(a shell "date '+%m-%d %H:%M:%S.000'" | tr -d '\r')
+echo "== W98 revoke-to-Pair — device T0 $T0; host $(date '+%H:%M:%S'); $(a shell dumpsys window | tr -d '\r' | grep -o 'isKeyguardShowing=[a-z]*' | head -n 1); load $(uptime | sed 's/.*averages: //')"
+a shell screenrecord --bugreport --size 540x1212 --time-limit 20 /sdcard/w98_revoke.mp4 &
+REC=$!
+a logcat -v epoch -T "$T0" -s ReactNativeJS:V > "$OUT/${P}_device_js_stream.log" 2>&1 &
+LOGP=$!
+sleep 3
+(cd /Users/gsp-budi/Documents/DEMS && SERIAL=emulator-5558 CTX=a node --import tsx "$SP/revoke.mjs" "$DEV" "$T0" "$P")
+echo "-- waiting for the 20 s screen recording to end"
+wait $REC
+sleep 1
+kill $LOGP 2>/dev/null
+a pull /sdcard/w98_revoke.mp4 "$OUT/${P}_phone_revoke_screenrecord.mp4" 2>&1 | tail -n 1
+a shell rm -f /sdcard/w98_revoke.mp4
+echo "-- recording: $(wc -c < "$OUT/${P}_phone_revoke_screenrecord.mp4" | tr -d ' ') bytes; device JS stream lines: $(wc -l < "$OUT/${P}_device_js_stream.log" | tr -d ' ')"
+echo "-- credential/token lines in the streamed JS log (must be 0): $(grep -c -E 'dvc_|ses_|bio_' "$OUT/${P}_device_js_stream.log")"
+echo "-- the app's session-end / link records in the stream:"
+grep -E 'sessionEnd|DEVICE_REVOKED|deviceUnpaired|live\.socket|DEMS-LIVE|kind:' "$OUT/${P}_device_js_stream.log" | sed -E 's/ [0-9a-f]{8}-[0-9a-f-]{27}//' | cut -c1-240 | head -40

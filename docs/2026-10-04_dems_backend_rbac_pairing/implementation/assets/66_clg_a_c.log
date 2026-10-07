@@ -1,0 +1,54 @@
+## 23:09:39 CLG (a): the folders' existing test files vs acaff20 (expect no output)
+$ git diff --stat acaff20 -- $(git ls-tree -r --name-only acaff20 apps/mobile/src/features/dashboard apps/mobile/src/features/more | grep -E "\.test\.tsx?$")
+exit=0
+-- the existing test files of the two folders at acaff20:
+apps/mobile/src/features/dashboard/dashboard-route.test.tsx
+apps/mobile/src/features/dashboard/dashboard-screen.test.tsx
+apps/mobile/src/features/dashboard/home-model.test.ts
+apps/mobile/src/features/dashboard/panel-boundary.test.tsx
+apps/mobile/src/features/dashboard/use-held-value.test.tsx
+apps/mobile/src/features/more/more-screen.test.tsx
+
+$ git diff --stat acaff20 -- apps/mobile/src/features/dashboard apps/mobile/src/features/more
+ apps/mobile/src/features/dashboard/home-header.tsx | 54 +++++++++++++++-------
+ .../src/features/dashboard/recent-sessions.tsx     | 12 ++++-
+ apps/mobile/src/features/more/i18n.ts              |  2 +
+ apps/mobile/src/features/more/more-links.tsx       | 24 +++++-----
+ apps/mobile/src/features/more/more-model.ts        | 35 ++++++++++----
+ 5 files changed, 90 insertions(+), 37 deletions(-)
+$ git status --short -- apps/mobile/src/features/dashboard apps/mobile/src/features/more
+ M apps/mobile/src/features/dashboard/home-header.tsx
+ M apps/mobile/src/features/dashboard/recent-sessions.tsx
+ M apps/mobile/src/features/more/i18n.ts
+ M apps/mobile/src/features/more/more-links.tsx
+ M apps/mobile/src/features/more/more-model.ts
+?? apps/mobile/src/features/dashboard/home-live.test.tsx
+?? apps/mobile/src/features/dashboard/home-more-live-static.test.ts
+?? apps/mobile/src/features/dashboard/testing/
+?? apps/mobile/src/features/more/more-live.test.tsx
+?? apps/mobile/src/features/more/use-core-link-chip.test.tsx
+?? apps/mobile/src/features/more/use-core-link-chip.ts
+
+## CLG (c): useSimActions and .actions on a Sim in the folders' production files (expect no output)
+$ grep -rnE 'useSimActions|(sim|test\.sim|instance)\.actions' <production files>
+exit=1 (1 = no match)
+-- every '.actions' token left in those files:
+apps/mobile/src/features/dashboard/quick-actions.tsx:57:HOME_BEATS.actions
+apps/mobile/src/features/dashboard/quick-actions.tsx:58:features.dashboard.actions
+apps/mobile/src/features/dashboard/quick-actions.tsx:82:features.dashboard.actions
+apps/mobile/src/features/dashboard/quick-actions.tsx:87:features.dashboard.actions
+apps/mobile/src/features/dashboard/panel-boundary.tsx:81:common.actions
+apps/mobile/src/features/dashboard/panel-boundary.tsx:82:common.actions
+apps/mobile/src/features/dashboard/home-model.ts:194:features.dashboard.actions
+apps/mobile/src/features/dashboard/home-model.ts:228:features.dashboard.actions
+apps/mobile/src/features/dashboard/home-model.ts:230:features.dashboard.actions
+apps/mobile/src/features/dashboard/home-header.tsx:72:styles.actions
+apps/mobile/src/features/dashboard/home-header.tsx:240:common.actions
+apps/mobile/src/features/dashboard/i18n.ts:9:common.actions
+apps/mobile/src/features/more/more-boundary.tsx:83:common.actions
+apps/mobile/src/features/more/more-boundary.tsx:84:common.actions
+apps/mobile/src/features/more/operator-card.tsx:84:styles.actions
+
+## KI-07: SIM-GAP markers in apps/mobile/src, now and at acaff20
+now: 13 IDs / 62 markers
+acaff20: 13 IDs / 62 markers

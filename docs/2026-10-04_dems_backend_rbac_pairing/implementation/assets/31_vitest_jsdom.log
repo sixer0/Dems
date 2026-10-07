@@ -1,0 +1,12 @@
+2026-10-04 10:29:30 WIB
+$ npx vitest run --root packages/shared test/live-testing-fetch test/live-testing-socket test/live-testing-log test/live-testing-install test/live-testing-live-socket --environment jsdom --maxWorkers=2
+
+ Test Files  5 passed (5)
+      Tests  189 passed (189)
+   Start at  10:29:30
+   Duration  1.47s (environment 59%, transform 17%, import 13%, tests 11%)
+
+    Isolate  5 workers spawned · ~338ms startup each (spawn + environment, per file)
+             at least ~507ms faster with isolate: false — reuses workers across files instead of one per file
+
+exit=0

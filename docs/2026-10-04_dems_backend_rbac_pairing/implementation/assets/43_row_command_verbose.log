@@ -1,0 +1,139 @@
+
+> @dems/core-server@0.2.0 test:db
+> vitest run --project db src/modules/demo --reporter=verbose
+
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/apps/core-server
+
+[test:db] PostgreSQL 18.4 on 127.0.0.1:4432; helper role dems_owner, code under test dems_app; run prefix dems_test_step_65_tmdmr3qr_
+[test:db] stale sweep: dropped 0; kept 24 of younger runs, 0 of live runs, 0 unrecognised; 0 failed
+[test:db] template dems_test_step_65_tmdmr3qr_tpl_schema: built in 287 ms (create 66 ms, hook 215 ms)
+[test:db] template dems_test_step_65_tmdmr3qr_tpl_seed: built in 455 ms (create 102 ms, hook 225 ms)
+ ✓ |db| src/modules/demo/__tests__/reset.db.test.ts > AC-B-72: the roles of the running server > the pool reports the runtime role, which is no superuser, on the pinned path; the flag is on 3ms
+ ✓ |db| src/modules/demo/__tests__/reset-failures.db.test.ts > refused at R-0: nothing of the server was stopped > RESET_ALREADY_RUNNING: another session holds the reset lock of this database: 503 with RESET_IN_PROGRESS; no hold, engine and pool untouched; the next command works 133ms
+ ✓ |db| src/modules/demo/__tests__/reset-failures.db.test.ts > refused at R-0: nothing of the server was stopped > two resets at once through HTTP: one runs, the other is answered 503; the epoch moves by exactly 1 1008ms
+stdout | src/modules/demo/__tests__/reset.db.test.ts > AC-B-57: resetDemo through the routine, inside the running server > rebuilds the database, keeps the eight kept tables, closes the ACTIVE code, raises the epoch by exactly 1, publishes the new epoch, and answers 200 to the same request
+[w43] resetDemo, the order as logged: demo reset requested | routine R-0 | routine R-1 | hold demo-reset true | ready.engine false | engine stopped | ready.database false | routine R-2 | routine R-3 | routine R-4 | routine R-5a | routine R-5b | routine R-5c | routine R-5d | routine R-5e | routine R-5f | routine R-5:commit | routine R-6 | routine R-7 | routine R-7:rename | routine R-8 | routine R-9 | ready.database true | boot checks passed (B-8 reported) | engine started (reset, epoch 2) | ready.engine true | hold demo-reset false | demo reset done
+[w43] the reset's connections, as the server lists them: dems_owner (superuser false) on <t>_next; dems_owner (superuser false) on postgres
+
+ ✓ |db| src/modules/demo/__tests__/reset-failures.db.test.ts > failed after the quiesce, the database untouched: the server is brought back on it > a failure at R-4: 503 with RESET_FAILED; pool reopened, engine reloaded with the SAME epoch, hold released; the same database, and the next command continues its chain 138ms
+stdout | src/modules/demo/__tests__/reset.db.test.ts > AC-B-57: resetDemo through the routine, inside the running server > rebuilds the database, keeps the eight kept tables, closes the ACTIVE code, raises the epoch by exactly 1, publishes the new epoch, and answers 200 to the same request
+[w43] kept tables, rows before = after the reset: registry_counters 2; console_settings 1; paired_devices 2; device_credentials 2; auth_sessions 6; biometric_tokens 3; pairing_codes 5; audit_chain_history 0 -> 1
+
+ ✓ |db| src/modules/demo/__tests__/reset-failures.db.test.ts > failed after the quiesce, the database untouched: the server is brought back on it > a failure at R-5c: 503 with RESET_FAILED; pool reopened, engine reloaded with the SAME epoch, hold released; the same database, and the next command continues its chain 682ms
+ ✓ |db| src/modules/demo/__tests__/reset-failures.db.test.ts > failed after the quiesce, the database untouched: the server is brought back on it > a failure at R-6: 503 with RESET_FAILED; pool reopened, engine reloaded with the SAME epoch, hold released; the same database, and the next command continues its chain 369ms
+ ✓ |db| src/modules/demo/__tests__/reset-failures.db.test.ts > failed after the quiesce, the database untouched: the server is brought back on it > a failure at R-7:rename: 503 with RESET_FAILED; pool reopened, engine reloaded with the SAME epoch, hold released; the same database, and the next command continues its chain 312ms
+ ✓ |db| src/modules/demo/__tests__/reset-failures.db.test.ts > failed after the quiesce, the database untouched: the server is brought back on it > RESET_TARGET_IN_USE: a session of somebody else is on the database: nobody is disconnected, 503, the server is brought back 554ms
+ ✓ |db| src/modules/demo/__tests__/reset-failures.db.test.ts > the swap's outcome is unknown (the routine rejects with the target NOT untouched) > the name points at the NEW database: the boot checks pass on it, the engine reloads with the new epoch and publishes it; the answer is still 503 291ms
+stdout | src/modules/demo/__tests__/reset.db.test.ts > AC-B-57: resetDemo through the routine, inside the running server > rebuilds the database, keeps the eight kept tables, closes the ACTIVE code, raises the epoch by exactly 1, publishes the new epoch, and answers 200 to the same request
+[w43] domain tables equal to a fresh seed at the reset's instant and epoch: 16 of 16 (active_session, alerts, core_device, core_state, evidence_custody, evidence_items, evidence_tracks, exports, hardware_snapshot, health_snapshots, permissions, role_permissions, roles, schema_meta, session_history, storage_policy)
+
+stdout | src/modules/demo/__tests__/reset.db.test.ts > AC-B-57: resetDemo through the routine, inside the running server > rebuilds the database, keeps the eight kept tables, closes the ACTIVE code, raises the epoch by exactly 1, publishes the new epoch, and answers 200 to the same request
+[w43] resetDemo: routine 1055 ms (R-0 15, R-1 8, R-2 3, R-3 18, R-4 86, R-5 433, R-6 37, R-7 15, R-8 435, R-9 4)
+[w43] statements of the runtime role for the reset request, before its pool closed (6):
+        read: SELECT s.id, s.operator_id, s.device_id, s.method, s.issued_at, s.last_seen_at, s.absolute
+        read: SELECT s.id, s.operator_id, s.device_id, s.method, s.issued_at, s.last_seen_at, s.absolute
+        read: SELECT seeded_at::text AS seeded_at, last_reset_at::text AS last_reset_at FROM public.core
+        read: SELECT s.id, s.operator_id, s.device_id, s.method, s.issued_at, s.last_seen_at, s.absolute
+        read: SELECT seeded_at::text AS seeded_at, last_reset_at::text AS last_reset_at FROM public.core
+        read: SELECT id, role_id AS role FROM public.operators ORDER BY id
+[w43] statements of the runtime role on the reopened pool, up to the answer (37):
+        read: SELECT 1
+        read: SELECT current_setting('search_path') AS search_path
+        read: SHOW server_version_num
+        read: SHOW server_encoding
+        read: SELECT schema_version, contract_revision FROM schema_meta
+        read: SELECT rolname::text AS rolname, rolsuper, rolcreatedb, rolcreaterole, rolreplication, rol
+        read: SELECT x.table_name AS object, x.privilege_name AS privilege, has_table_privilege(current_
+        read: SELECT tgname::text AS tgname, tgenabled::text AS tgenabled FROM pg_trigger WHERE tgrelid 
+        read: SELECT count(*) AS rows FROM core_state
+        read: SELECT h.seq, h.hash, (SELECT max(seq) FROM audit_log) AS max_seq, (SELECT hash FROM audit
+        read: SELECT seq, id, at, type, category, severity, actor_id, message, session_id, evidence_id, 
+        read: SELECT head_hash, row_count FROM audit_chain_history ORDER BY reset_no DESC LIMIT 1
+        read: SELECT details ->> 'previousRows' AS previous_rows FROM audit_log WHERE type = 'SCENARIO_L
+        read: SELECT rolsuper, rolcreaterole, rolreplication, rolbypassrls FROM pg_roles WHERE rolname =
+        read: SELECT 'database ' || datname::text AS object, pg_get_userbyid(datdba)::text AS owner FROM
+        read: SELECT (SELECT COALESCE(json_agg(r.id ORDER BY r.sort_order), '[]'::json) FROM public.role
+        unit: BEGIN ISOLATION LEVEL READ COMMITTED
+        unit: SELECT seq, hash FROM public.audit_chain_lock()
+        unit: SELECT set_config('statement_timeout', $1, true), set_config('search_path', $2, true)
+        unit: select "id", "username", "rank", "name", "display_name", "initials", "role_id", "enabled",
+        unit: select "singleton", "id", "name", "room", "product_name", "software_version", "certificate
+        unit: select "singleton", "seed", "sim_schema_version", "scenario", "epoch", "created_at", "seed
+        unit: select "singleton", "retention_policy", "retention_days", "auto_archive", "updated_at" fro
+        unit: select "singleton", "presentation_mode", "time_format", "notify_warnings", "notify_sound",
+        unit: select "name", "next_value" from "engine_counters"
+        unit: select "singleton", "sim_schema_version", "tablet_link", "active_camera_id", "cameras", "m
+        unit: select "id", "outcome", "case_number", "subject_name", "subject_type", "investigator_id", 
+        unit: select "id", "session_id", "case_number", "subject_name", "subject_type", "investigator_id
+        unit: select "evidence_id", "track_id", "position", "label", "size_bytes", "sha256" from "eviden
+        unit: select "evidence_id", "seq", "at", "action", "actor_id", "detail" from "evidence_custody" 
+        unit: select "singleton", "id", "state", "case_number", "subject_type", "subject_name", "investi
+        unit: select "id", "at", "severity", "kind", "message", "active", "acknowledged", "resolved_at",
+        unit: select "singleton", "seq", "hash" from "audit_chain_head"
+        unit: select "seq", "id", "at", "type", "category", "severity", "actor_id", "message", "session_
+        unit: select "seq", "id", "at", "type", "category", "severity", "message", "params", "session_id
+        unit: COMMIT
+        read: SELECT id, role_id AS role FROM public.operators ORDER BY id
+
+ ✓ |db| src/modules/demo/__tests__/reset.db.test.ts > AC-B-57: resetDemo through the routine, inside the running server > rebuilds the database, keeps the eight kept tables, closes the ACTIVE code, raises the epoch by exactly 1, publishes the new epoch, and answers 200 to the same request 3687ms
+ ✓ |db| src/modules/demo/__tests__/reset.db.test.ts > AC-B-57: resetDemo through the routine, inside the running server > the session of the operator who reset still resolves, and the operator the seed re-enabled is served again with the seed's role 9ms
+ ✓ |db| src/modules/demo/__tests__/reset.db.test.ts > AC-B-57: resetDemo through the routine, inside the running server > a unit of work after the reset works on the reopened pool: the next rows continue the NEW chain 30ms
+ ✓ |db| src/modules/demo/__tests__/reset-failures.db.test.ts > after every failure above, a reset still works > resetDemo: 200, the epoch moves by exactly 1, no connection of the routine is left 510ms
+ ✓ |db| src/modules/demo/__tests__/reset-failures.db.test.ts > decision D95: the stored matrix of the rebuilt database is refused > reloadMatrix rejects with STORED_GRANTS_MISMATCH after a reset: 503, the hold is kept, every request but health answers 503, the log says the state and the recovery 813ms
+ ✓ |db| src/modules/demo/__tests__/reset.db.test.ts > loadScenario, and a reset while a recording runs > loadScenario recording: epoch + 1 again, two lineage rows of which the first is byte-equal, every kept table byte-equal, the recording runs with no restart fault 1032ms
+ ✓ |db| src/modules/demo/__tests__/reset.db.test.ts > loadScenario, and a reset while a recording runs > resetDemo while the recording runs is not refused (spec §12.4 names no state in which a reset is): the session is gone with its chain, the epoch moves by 1, the lineage has a third row 934ms
+ ✓ |db| src/modules/demo/__tests__/reset.db.test.ts > loadScenario, and a reset while a recording runs > after three resets: no connection of the reset is left, the pool is the runtime role on its pinned path, and no credential is in the log 4ms
+ ✓ |db| src/modules/demo/__tests__/reset-failures.db.test.ts > a boot check does not pass on the rebuilt database > B-5 fails after the swap (the runtime role was granted UPDATE on the audit table): the server does not come back; the step is named; 503 on everything but health 1267ms
+stdout | src/modules/demo/__tests__/faults.db.test.ts > AC-B-57: a fault is raised and cleared with its rows and its alert > injectFault MIC_NO_SIGNAL on AUDIO-02: 204, one FAULT_RAISED row without an actor, one active alert, the fault in the status, one info line with the operator
+[w43] injectFault MIC_NO_SIGNAL and one getDemoStatus: 16 statements of the runtime role; 1 audit row; revision 4
+        read: SELECT s.id, s.operator_id, s.device_id, s.method, s.issued_at, s.last_seen_at, s.
+        unit: BEGIN ISOLATION LEVEL READ COMMITTED
+        unit: SELECT seq, hash FROM public.audit_chain_lock()
+        unit: SELECT set_config('statement_timeout', $1, true), set_config('search_path', $2, tr
+        unit: select "id", "username", "rank", "name", "display_name", "initials", "role_id" fro
+        unit: insert into "audit_log" ("seq", "id", "at", "type", "category", "severity", "actor
+        unit: insert into "events" ("seq", "id", "at", "type", "category", "severity", "message"
+        unit: UPDATE public.engine_counters SET next_value = GREATEST(next_value, $2) WHERE name
+        unit: update "engine_counters" set "next_value" = $1 where "engine_counters"."name" = $2
+        unit: update "engine_counters" set "next_value" = $1 where "engine_counters"."name" = $2
+        unit: update "hardware_snapshot" set "mics" = $1, "services" = $2, "ports" = $3, "faults
+        unit: insert into "alerts" ("id", "at", "severity", "kind", "message", "active", "acknow
+        unit: insert into "health_snapshots" ("id", "at", "cause", "fault_kind", "cpu_percent", 
+        unit: COMMIT
+        read: SELECT s.id, s.operator_id, s.device_id, s.method, s.issued_at, s.last_seen_at, s.
+        read: SELECT seeded_at::text AS seeded_at, last_reset_at::text AS last_reset_at FROM pub
+
+ ✓ |db| src/modules/demo/__tests__/faults.db.test.ts > operation 71 getDemoStatus on the booted server > answers the loaded scenario, no fault, the seed instant of the database, no reset, and the engine's epoch 15ms
+ ✓ |db| src/modules/demo/__tests__/faults.db.test.ts > AC-B-57: a fault is raised and cleared with its rows and its alert > injectFault MIC_NO_SIGNAL on AUDIO-02: 204, one FAULT_RAISED row without an actor, one active alert, the fault in the status, one info line with the operator 23ms
+ ✓ |db| src/modules/demo/__tests__/faults.db.test.ts > AC-B-57: a fault is raised and cleared with its rows and its alert > the same fault again: 204, nothing is written (it is already active) 10ms
+ ✓ |db| src/modules/demo/__tests__/faults.db.test.ts > AC-B-57: a fault is raised and cleared with its rows and its alert > clearFault: 204, one FAULT_CLEARED row without an actor, the alert resolved, the status empty; a second clear writes nothing 34ms
+ ✓ |db| src/modules/demo/__tests__/faults.db.test.ts > AC-B-57: a fault is raised and cleared with its rows and its alert > a TAMPER fault for evidence the Core does not have: 404 NOT_FOUND, nothing is written, no line names an injection 13ms
+stdout | src/modules/demo/__tests__/faults.db.test.ts > SR-59, AC-B-57: AUDIT_TAMPER breaks the view and leaves the stored chain intact > injectFault AUDIT_TAMPER: 204; the view-level verification reports the break; every stored row is byte-equal and the stored chain verifies with its digests
+[w43] AUDIT_TAMPER: view {"ok":false,"checked":83,"index":83,"seq":84,"reason":"HASH_MISMATCH"}; stored ok, 89 rows, digests ok, no altered row
+
+ ✓ |db| src/modules/demo/__tests__/gate.db.test.ts > AC-B-72: with the demo flag off the server starts and runs while the owner connection file is unreadable > the file of the configured data directory exists and cannot be read; the server booted, is ready and serves 38ms
+ ✓ |db| src/modules/demo/__tests__/gate.db.test.ts > AC-B-72: with the demo flag off the server starts and runs while the owner connection file is unreadable > the pool of the running server is the runtime role, and so is every session it holds on its database 8ms
+ ✓ |db| src/modules/demo/__tests__/gate.db.test.ts > AC-B-56: with the demo flag off > a SUPERVISOR gets 403 DEMO_DISABLED on all five: no audit row, one log line each, and no handler ran 10ms
+ ✓ |db| src/modules/demo/__tests__/gate.db.test.ts > AC-B-56: with the demo flag off > a INVESTIGATOR gets 403 NOT_PERMITTED on all five, with exactly one ACCESS_DENIED row per call that names the operation, the permission and the role 31ms
+ ✓ |db| src/modules/demo/__tests__/gate.db.test.ts > AC-B-56: with the demo flag off > a TECHNICIAN gets 403 NOT_PERMITTED on all five, with exactly one ACCESS_DENIED row per call that names the operation, the permission and the role 22ms
+ ✓ |db| src/modules/demo/__tests__/faults.db.test.ts > AC-B-57: a fault is raised and cleared with its rows and its alert > an unknown kind: NaN 422 from the schema stage, nothing is written 5ms
+ ✓ |db| src/modules/demo/__tests__/faults.db.test.ts > AC-B-57: a fault is raised and cleared with its rows and its alert > a body that is no JSON: NaN 400 from the schema stage, nothing is written 4ms
+ ✓ |db| src/modules/demo/__tests__/faults.db.test.ts > SR-59, AC-B-57: AUDIT_TAMPER breaks the view and leaves the stored chain intact > before the fault the view verifies and the stored chain verifies 6ms
+ ✓ |db| src/modules/demo/__tests__/faults.db.test.ts > SR-59, AC-B-57: AUDIT_TAMPER breaks the view and leaves the stored chain intact > injectFault AUDIT_TAMPER: 204; the view-level verification reports the break; every stored row is byte-equal and the stored chain verifies with its digests 29ms
+ ✓ |db| src/modules/demo/__tests__/faults.db.test.ts > SR-59, AC-B-57: AUDIT_TAMPER breaks the view and leaves the stored chain intact > while the view is broken, the engine goes on writing: the stored chain grows and still verifies 25ms
+ ✓ |db| src/modules/demo/__tests__/faults.db.test.ts > SR-59, AC-B-57: AUDIT_TAMPER breaks the view and leaves the stored chain intact > clearFault AUDIT_TAMPER: the view verifies again; the stored chain was never touched 22ms
+ ✓ |db| src/modules/demo/__tests__/faults.db.test.ts > SR-59, AC-B-57: AUDIT_TAMPER breaks the view and leaves the stored chain intact > afterwards what the tables hold is the committed state of the engine, and no credential is in the log 19ms
+ ✓ |db| src/modules/demo/__tests__/gate.db.test.ts > AC-B-56: with the demo flag off > nobody signed in: 401 NOT_SIGNED_IN on all five, and no row 3ms
+ ✓ |db| src/modules/demo/__tests__/gate.db.test.ts > AC-B-56: with the demo flag off > HC-2: the routine was never asked, nothing was held, the pool was never closed, the epoch did not move, and the server still serves 2ms
+ ✓ |db| src/modules/demo/__tests__/gate.db.test.ts > with the demo flag ON and the owner connection file unreadable > the five operations are reachable for the SUPERVISOR; the read and the two faults work without the owner file 13ms
+ ✓ |db| src/modules/demo/__tests__/gate.db.test.ts > with the demo flag ON and the owner connection file unreadable > the routine as the SERVER calls it refuses a database that is no project database before it reads any file: 503, nothing stopped 11ms
+ ✓ |db| src/modules/demo/__tests__/gate.db.test.ts > with the demo flag ON and the owner connection file unreadable > a reset that reaches R-0 cannot read the owner file: 503, the routine's code is RESET_OWNER_CREDENTIALS, nothing was stopped, the next command works 17ms
+
+ Test Files  4 passed (4)
+      Tests  40 passed (40)
+   Start at  16:37:51
+   Duration  14.41s (tests 68%, transform 17%, import 15%)
+
+[test:db] forced drops that needed a retry: 0
+[test:db] teardown: dropped 2 database(s) in 149 ms; 0 remain with the run prefix dems_test_step_65_tmdmr3qr_

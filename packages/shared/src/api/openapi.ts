@@ -10,7 +10,7 @@
  * | Describes | What a client can call without the Core server: Simulated mode | The API as the Core server answers it: Live mode |
  * | Operations | 10: `GET /api/v1/health` (mock-core) and the 9 book §21.2 endpoints (the in-app simulator) | 75 |
  * | Who reads it | The API Reference page in Simulated mode: `createOpenApiDocument()` | The committed `openapi/openapi.json`, its drift test, and the API Reference page in Live mode |
- * | `info.version` | 0.1.0 | 0.2.0 |
+ * | `info.version` | 0.1.0 | 0.2.1 (0.2.0 until the contract close-out W83) |
  * | Servers | mock-core | The Core server `http://127.0.0.1:4420`, then mock-core |
  * | Security | none: the simulator acts as the operator signed in to the console | Two schemes, the session cookie and HTTP bearer; each operation states which it takes |
  * | Badges | LIVE on health, SIMULATED on the nine, RBAC + AUDIT on the export | LIVE on all 75: the Core server answers each over the network |
@@ -82,7 +82,7 @@ import {
   type CoreApiRegistryOperation,
   type CoreApiSchemaName,
 } from './core-api';
-import { CORE_API_EXAMPLES, HEARTBEAT_EXAMPLE, type OpenApiExample } from './examples';
+import { CORE_API_EXAMPLES, HEARTBEAT_EXAMPLE, type OpenApiExample, type OperationExamples } from './examples';
 import { REALTIME_CLIENT_EXAMPLES, REALTIME_SERVER_EXAMPLES } from './realtime-examples';
 import {
   REALTIME_CLIENT_MESSAGES,
@@ -101,7 +101,9 @@ export const OPENAPI_VERSION = '3.1.0';
 /** `info.version` of the `offline` scope: the version of that API description (the server strip's "Spec version"). */
 export const OPENAPI_DOCUMENT_VERSION = '0.1.0';
 /** `info.version` of the `all` scope (API-12): the version of the Core server, which answers it. */
-export const OPENAPI_CORE_SERVER_DOCUMENT_VERSION = '0.2.0';
+// 0.2.1 since the contract close-out W83 (decision D184 DQ-8): a documented envelope 400, the all-scope
+// texts of two statuses, the strict answers of contract A.
+export const OPENAPI_CORE_SERVER_DOCUMENT_VERSION = '0.2.1';
 export const OPENAPI_TITLE = 'DEMS Core API';
 
 /**
@@ -649,6 +651,21 @@ function copyExamples(
   return JSON.parse(JSON.stringify(examples)) as Record<string, OpenApiExample<unknown>>;
 }
 
+/**
+ * The examples of one status. The `all` scope lists the Core server's own first (F84-3:
+ * `coreServerResponses`), so a renderer that prefills from the first shows the Core server's answer;
+ * the `offline` scope reads `responses` only, as before.
+ */
+function responseExamplesFor(
+  examples: OperationExamples | undefined,
+  status: number,
+  all: boolean,
+): Readonly<Record<string, OpenApiExample<unknown>>> | undefined {
+  const shared = examples?.responses[status];
+  const coreServer = all ? examples?.coreServerResponses?.[status] : undefined;
+  return coreServer ? { ...coreServer, ...shared } : shared;
+}
+
 function buildOperation(
   operation: CoreApiRegistryOperation,
   scope: CoreApiScope,
@@ -695,7 +712,7 @@ function buildOperation(
   for (const status of listCoreApiResponseStatuses(operation, scope)) {
     const spec = operation.responses[status];
     if (!spec) continue;
-    const response: OpenApiResponseObject = { description: spec.description };
+    const response: OpenApiResponseObject = { description: all ? (spec.coreServerDescription ?? spec.description) : spec.description };
     if (simulated) {
       response.headers = { [SIMULATED_HEADER_NAME]: { $ref: `${HEADER_REF_PREFIX}${SIMULATED_HEADER_COMPONENT}` } };
     }
@@ -708,7 +725,7 @@ function buildOperation(
     }
     if (spec.schema) {
       const media: OpenApiMediaType = { schema: schemaRef(spec.schema) };
-      const responseExamples = copyExamples(examples?.responses[status]);
+      const responseExamples = copyExamples(responseExamplesFor(examples, status, all));
       if (responseExamples) media.examples = responseExamples;
       response.content = { 'application/json': media };
     }

@@ -1,0 +1,39 @@
+== 06:40:22 start harness and Vite with the inline override server.cors=false
+vite (inline cors:false) listening on http://127.0.0.1:5176/ pid 90712; proxy {"/api/v1":{"target":"http://127.0.0.1:4421","prependPath":true},"/ws":{"target":"http://127.0.0.1:4421","ws":true,"prependPath":true}}
+-- POST sign-in through 5176 with Origin http://127.0.0.1:5176 (all response headers, cookie value cut):
+   HTTP/1.1 200 OK
+   set-cookie: dems_session_4421=OY0p4p[rest not shown]; HttpOnly; SameSite=Strict; Path=/
+   x-dems-epoch: 1
+   x-dems-revision: 101
+   retry-after: 7
+   cache-control: no-store
+   content-type: application/json; charset=utf-8
+   content-length: 40
+   date: Sat, 03 Oct 2026 23:40:22 GMT
+   connection: close
+-- preflight OPTIONS from http://127.0.0.1:5174:
+   HTTP/1.1 404 Not Found
+   content-type: application/json; charset=utf-8
+   content-length: 93
+   date: Sat, 03 Oct 2026 23:40:22 GMT
+   connection: close
+   {"message":"Route OPTIONS:/api/v1/proof/echo not found","error":"Not Found","statusCode":404}
+-- Vite's own endpoints and socket:
+   GET /                -> 200 text/html
+   GET /src/main.tsx    -> 200 text/javascript
+   GET /@vite/client    -> 200 text/javascript
+   ws-client -> ws://127.0.0.1:5176/ sent {"origin":"(none)","cookie":"(none)","protocol":"vite-hmr"}
+   ws-client: handshake 101, protocol "vite-hmr"
+   ws-client: message {"type":"connected"}
+   ws-client: closed with code 1000
+-- browser driver exit 0
+   browser: HeadlessChrome/153.0.8010.12 | page loaded: true | title: DEMS Edge Client · Core Console
+   sign-in: 200 epoch 1 revision 102 retry-after 7
+   echo: cookiePresent true equalsIssued true origin http://127.0.0.1:5176
+   socket /ws: ["{\"type\":\"hello\",\"origin\":\"http://127.0.0.1:5176\",\"host\":\"127.0.0.1:5176\",\"cookiePresent\":true,\"cookieEqualsIssued\":true}","echo:ping-1"] close 1000
+   access-control-allow-origin on the 5 API answers: [null,null,null,null,null]
+   Vite socket: ws://127.0.0.1:5176/?token=… status 101 first frame {"type":"connected"}
+   page errors: []
+== 06:40:27 stop
+lsof exit 1 (1 with no output: no listener)
+no process of this check is left

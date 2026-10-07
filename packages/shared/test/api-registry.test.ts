@@ -588,7 +588,8 @@ describe('decision D113 (finding CPS1-3): operations 23 and 8 need the device cr
 
   it('the example of the refusal is the error envelope with the existing code and the reason', () => {
     const examples = CORE_API_EXAMPLES['rotateDeviceCredential']?.responses[403] ?? {};
-    expect(Object.keys(examples)).toEqual(['deviceCredentialRequired', 'deviceRevoked', 'originNotAllowed']);
+    // W83 (gap W32-3, gap W52-1): the refusal of a web console session by the marker joins them, by design.
+    expect(Object.keys(examples)).toEqual(['deviceCredentialRequired', 'webConsoleSession', 'deviceRevoked', 'originNotAllowed']);
     const refusal = examples['deviceCredentialRequired']?.value;
     expect(examples['deviceCredentialRequired']?.summary).toBe('A session token of the device instead of the device credential');
     expect(ApiErrorSchema.safeParse(refusal).success).toBe(true);

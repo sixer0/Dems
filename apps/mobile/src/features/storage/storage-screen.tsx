@@ -193,10 +193,11 @@ function ManageStorageButton({ onPress }: { onPress: () => void }) {
  * | Mode | The command | Success | A refusal |
  * |---|---|---|---|
  * | SIMULATED | the simulator, settled before `settle` returns (CL-25) | "Storage policy updated (simulated)", as before | "could not be updated", as before |
- * | LIVE | operation 55 on the Core; `ok` runs once the replica holds the revision the answer named (CL-16) | "Storage policy updated": the Core applied it (rule 8) | the presenter first (a 403, an outage, a 429: LB-5 to LB-10), else the Core's 422 `POLICY_RANGE` keeps "could not be updated" |
+ * | LIVE | operation 55 on the Core; `ok` runs once the replica holds the revision the answer named (CL-16) | "Storage policy updated": the Core applied it (rule 8); the web console's shared key `storage.manage.live.applied` (closing copy round, D168 DN-2) | the presenter first (a 403, an outage, a 429: LB-5 to LB-10), else the Core's 422 `POLICY_RANGE` keeps "could not be updated" |
  *
  * The Core's 403 names the any-of permission in its own spelling (`EVIDENCE_REVIEW_OR_MAINTENANCE`,
- * F64 / CONTRACT-GAP-5), so the denied toast names no role until the contract close-out (W83) maps it.
+ * finding F64); the Live source maps every spelling to `A | B` (W83, ruling R-D1), so the denied toast
+ * names the Supervisor, the first role that holds one of the two.
  */
 function useApplyStoragePolicy(): (draft: PolicyDraft, handlers: ApplyHandlers) => void {
   const { t } = useTranslation();
@@ -210,7 +211,7 @@ function useApplyStoragePolicy(): (draft: PolicyDraft, handlers: ApplyHandlers) 
       settle(() => actions.setStoragePolicy({ retentionPolicy: draft.retentionPolicy, autoArchive: draft.autoArchive }), {
         ok: () => {
           reportRuntimeIssue('info', 'storage.manage.apply', 'Storage policy applied', { ...draft }, correlationId);
-          toast.show({ variant: 'success', label: live ? t('features.storage.live.applied') : t('storage.manage.applied') });
+          toast.show({ variant: 'success', label: live ? t('storage.manage.live.applied') : t('storage.manage.applied') });
           handlers.applied();
         },
         fail: (error) => {

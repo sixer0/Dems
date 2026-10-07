@@ -261,10 +261,10 @@ describe('CPC1-3: the credential provider is inside the call\'s one time-out (CL
 });
 
 describe('CPC1-12: the URL guard knows every bearer secret of the contract (CL-6a)', () => {
-  // The contract states the three secrets as patterns (`api/patterns.ts`), not as a list of prefixes
-  // (CONTRACT-GAP-4). Until it exports one, this test reads the literal head of every token pattern the
-  // contract exports and holds the client's guard to it. A fourth secret added to the contract turns
-  // the first test red.
+  // The contract states the three secrets as patterns (`api/patterns.ts`) and, since the close-out W83,
+  // also as the list `BEARER_SECRET_PREFIXES`, which the client's guard is built from. This test reads
+  // the literal head of every token pattern the contract exports, holds the list to those heads and the
+  // guard to both. A fourth secret added to the contract turns the first test red.
   const secrets = Object.entries(contractPatterns)
     .filter((entry): entry is [string, RegExp] => /(?:_TOKEN|_CREDENTIAL)_PATTERN$/.test(entry[0]) && entry[1] instanceof RegExp)
     .map(([name, pattern]) => ({ name, pattern, head: /^\^([a-z]+_)/.exec(pattern.source)?.[1] ?? '' }));
@@ -275,6 +275,8 @@ describe('CPC1-12: the URL guard knows every bearer secret of the contract (CL-6
       ['DEVICE_CREDENTIAL_PATTERN', 'dvc_'],
       ['BIOMETRIC_TOKEN_PATTERN', 'bio_'],
     ]);
+    // The contract's list of prefixes is exactly those heads (W83).
+    expect([...contractPatterns.BEARER_SECRET_PREFIXES]).toEqual(secrets.map(({ head }) => head));
   });
 
   it.each(secrets)('a value of the form of $name is refused in a query value and as a path parameter, before any request', async ({ pattern, head }) => {

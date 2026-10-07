@@ -1,0 +1,24 @@
+## shared full suite, start 09:00:01
+ Test Files  69 passed (69)
+      Tests  1840 passed (1840)
+exit 0
+## core-web full suite, start 09:00:11
+     × /session renders page-session-monitor inside the shell for a signed-in operator 1036ms
+     × /session/new renders page-session-new inside the shell for a signed-in operator 1488ms
+     × sends operation 15 once; the QR stub receives exactly the answer's `qrPayload`, which is the prefix plus the digits shown 3631ms
+     × renders the page test ID and every §14.5.4 panel test ID, with 0 missing i18n keys 5191ms
+     × uses a fixture of at least 11 rows and paginates 10 per page 5188ms
+     × status filter Sealed shows only sealed rows (toggle and URL) 6778ms
+     × search matches the evidence ID, the case number and the subject 5448ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 7 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  src/test/evidence-table.test.tsx > evidence table (AC-64) > uses a fixture of at least 11 rows and paginates 10 per page
+ FAIL  src/test/evidence-table.test.tsx > evidence table (AC-64) > status filter Sealed shows only sealed rows (toggle and URL)
+ FAIL  src/test/evidence-table.test.tsx > evidence table (AC-64) > search matches the evidence ID, the case number and the subject
+ FAIL  src/test/live-paired-devices-issue.test.tsx > AC-C-92: issue shows six digits, the QR and the countdown > sends operation 15 once; the QR stub receives exactly the answer's `qrPayload`, which is the prefix plus the digits shown
+ FAIL  src/test/routes.test.tsx > routes (AC-48 at stub level) > /session renders page-session-monitor inside the shell for a signed-in operator
+ FAIL  src/test/routes.test.tsx > routes (AC-48 at stub level) > /session/new renders page-session-new inside the shell for a signed-in operator
+ FAIL  src/features/devices/__tests__/devices-page.test.tsx > Devices & Inputs: idle scenario (row 48 render test) > renders the page test ID and every §14.5.4 panel test ID, with 0 missing i18n keys
+ Test Files  4 failed | 99 passed (103)
+      Tests  7 failed | 1385 passed (1392)
+exit 1
+## end 09:04:06

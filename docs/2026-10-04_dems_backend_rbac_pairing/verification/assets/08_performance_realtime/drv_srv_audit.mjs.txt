@@ -1,0 +1,13 @@
+// Server log lines (host clock; method, route, status, principal, msg, code only) in a window + the newest audit rows of the
+// session lifecycle types read by the signed-in page.   CTX=a node srv_audit.mjs <label> <fromHH:MM:SS> <toHH:MM:SS>
+import { auditRows, connect, fmtAudit, fmtServer, log, serverLines, writeJson } from './lib.mjs'
+const [label, from, to] = process.argv.slice(2)
+const ms = (hms) => { const d = new Date(); const [h, m, s] = hms.split(':').map(Number); d.setHours(h, m, s, 0); return d.getTime() }
+const lines = serverLines(ms(from), ms(to)).filter((l) => (l.route ?? '').includes('/session') || l.msg.startsWith('socket') || (l.status ?? 0) >= 400)
+const page = await connect({ viewport: false })
+const audit = {}
+for (const t of ['SESSION_CREATED', 'RECORDING_STARTED', 'RECORDING_STOPPED', 'EVIDENCE_SEALED']) audit[t] = (await auditRows(page, t, 2)).rows
+page.close()
+writeJson(`${label}_server_and_audit.json`, { window: [from, to], serverLines: lines, audit })
+for (const l of lines) log(`server ${fmtServer(l)}`)
+for (const [t, rows] of Object.entries(audit)) log(`audit ${t}: ${fmtAudit(rows[0])}`)

@@ -1,0 +1,7 @@
+# 2026-10-07 05:34:33 databases on the new cluster (names only)
+connected as dems_owner to 127.0.0.1/32:4432 (PostgreSQL 18.4)
+database dems_demo (owner dems_owner)
+database postgres (owner dems_admin)
+database template0 (owner dems_admin)
+database template1 (owner dems_admin)
+exit=0

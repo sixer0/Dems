@@ -1,0 +1,91 @@
+== 2026-10-06 02:05:57 WIB W76 lane check, lane 3, waiting for .locks/core-server.lane3.lock (at most 240 s)
+
+== 02:05:57 0. the three ports must be free before anything is started (nothing is stopped that this check did not start)
+free: 4423 5178 9398
+2026-10-06 02:05:57 WIB
+ 2:05  up 4 days,  9:18, 2 users, load averages: 9.20 11.07 9.16
+
+== 02:05:57 1. lane database before the check: npm run db:status -w @dems/core-server -- --database dems_lane_3
+db:status exit 0
+seeded_at        2026-10-04T04:36:43.575Z (1791088603575)
+last_reset_at    2026-10-04T04:36:43.575Z (1791088603575)
+audit head       seq 153; hash 1b8e6ca3e5a9f661...
+audit triggers   audit_chain_history_append_only=A, audit_log_append_only=A, audit_log_chain_guard=A
+  audit_log                153
+  auth_sessions            22
+  operators                3
+
+== 02:05:58 2. start the lane backend: DEMS_CORE_PORT=4423 npm run start -w @dems/core-server (demo flag ON: DEMS_DEMO_CONTROLS=1, this backend only)
+backend up after 4 quarter seconds, npm pid 30222
+COMMAND   PID     USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
+node    30252 gsp-budi   17u  IPv4 0x3028899637ab4d0c      0t0  TCP 127.0.0.1:4423 (LISTEN)
+-- direct health on the backend:
+{"status":"ok","service":"dems-core-server","version":"0.2.0","apiVersion":"v1","serverTime":"2026-10-05T19:05:59.444Z","uptimeMs":340,"ws":{"path":"/ws","heartbeatIntervalMs":1000,"clients":0},"ready":{"database":true,"engine":true}}
+
+== 02:05:59 3. start Vite for lane 3: DEMS_CORE_PROXY_PORT=4423 VITE_DEMS_CORE_MODE=live npm run dev -w @dems/core-web -- --host 127.0.0.1 --port 5178 --strictPort
+waited 2 quarter seconds
+COMMAND   PID     USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
+node    30296 gsp-budi   14u  IPv4 0x214e5a958af97e84      0t0  TCP 127.0.0.1:5178 (LISTEN)
+-- health through the dev server: 200
+
+== 02:06:00 4. The System page in a real browser (headless Chromium over CDP): SUPERVISOR (A10, A8 with a reason, ONE reset), then INVESTIGATOR (no panel)
+chrome pid 30308
+Google Chrome for Testing 153.0.8010.12
+cdp-driver exit 0
+== 02:06:23 WIB DEMO ACTION ANNOUNCED: resetDemo (operation 75) on LANE 3 only (127.0.0.1:4423, dems_lane_3), epoch before 18
+== 02:06:27 WIB DEMO ACTION DONE: epoch 18 -> 19; snapshot frames seen: []
+driver done in 41 s
+
+== 02:06:41 5. what Vite printed (no page error)
+-- lines in Vite's log:        8
+
+== 02:06:41 6. lane database after the check
+db:status exit 0
+-- row counts that differ (before / after):
+< seeded_at        2026-10-04T04:36:43.575Z (1791088603575)
+< last_reset_at    2026-10-04T04:36:43.575Z (1791088603575)
+< audit head       seq 153; hash 1b8e6ca3e5a9f661...
+> seeded_at        2026-10-05T19:06:24.606Z (1791227184606)
+> last_reset_at    2026-10-05T19:06:24.606Z (1791227184606)
+> audit head       seq 86; hash 59a47d56a7d448d6...
+< lineage          0 row(s)
+> lineage          1 row(s); newest: reset_no 1, epoch 18, rows 156, head 7987f351fef46fe9..., reset_at 2026-10-05T19:06:24.606Z (1791227184606), actor OPR-002, reason RESET, scenario idle
+<   audit_chain_history      0
+<   audit_log                153
+<   auth_sessions            22
+>   audit_chain_history      1
+>   audit_log                86
+>   auth_sessions            24
+<   engine_counters          6
+<   events                   114
+<   evidence_custody         32
+>   engine_counters          5
+>   events                   63
+>   evidence_custody         28
+<   exports                  3
+>   exports                  1
+<   health_snapshots         2
+>   health_snapshots         0
+-- the backend's log: lines       72; lines with level error or fatal: 0
+-- sign-in and sign-out lines of the backend's log (route, status; no body is logged):
+   2 "route":"/api/v1/auth/session","status":200
+   1 "route":"/api/v1/auth/session","status":401
+   2 "route":"/api/v1/auth/sign-in","status":200
+   2 "route":"/api/v1/auth/sign-out","status":204
+   3 "route":"/api/v1/auth/status","status":200
+-- system and demo lines of the backend's log (route, status; no body is logged):
+-- reset lines of the backend's log (message only):
+   1 "msg":"demo reset done"
+   1 "msg":"demo reset requested"
+   2 "msg":"readiness hold"
+-- the demo flag as the backend read it:
+   1 "demoControls":true
+
+== 02:06:41 stop what this check started
+chrome stopped
+vite: npm exit status 143
+backend: npm exit status 0
+
+== 02:06:41 listeners left on 4423, 5178, 9398 (expect none):
+lsof exit 1 (1 with no output: no listener)
+lockf exit=0

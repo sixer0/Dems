@@ -1,0 +1,7 @@
+tap 1280,924 at 10:32:08.104
+slept 2500 ms
+screencap B00_home_before_start.png (775863 bytes) at 10:32:10.862
+mark B1 Start Session from Home quick action at 10:32:10.862
+tap 2210,1034 at 10:32:10.910
+slept 6000 ms
+screencap B01_wizard_step1.png (739731 bytes) at 10:32:17.796

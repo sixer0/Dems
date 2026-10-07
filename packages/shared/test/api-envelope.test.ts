@@ -116,6 +116,8 @@ describe('answers defined once for every operation (CORE_API_ENVELOPE_RESPONSES)
       [401, ['NOT_SIGNED_IN'], 'pipeline'],
       [429, ['RATE_LIMITED'], 'pipeline'],
       [413, ['PAYLOAD_TOO_LARGE'], 'pipeline'],
+      // Changed by design (W83, gap W36-1 and gap W40-1): a body that is no JSON object, on a POST that takes none.
+      [400, ['INVALID_JSON'], 'pipeline'],
       [500, ['INTERNAL_ERROR', 'SIMULATOR_ERROR'], 'pipeline'],
     ]);
     // "400 INVALID_PATH, 404 unknown route, 405, 413, 429, 500 and 503 are defined once at envelope level."

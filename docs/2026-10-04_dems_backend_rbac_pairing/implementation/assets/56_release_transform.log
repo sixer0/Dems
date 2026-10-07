@@ -1,0 +1,46 @@
+# W56 release transform check, 2026-10-04 21:18:11 WIB
+$ node docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/56_release_gate_w56.cjs
+debug build   auth-dialogs.tsx         required: ["heroui-native","react-i18next","react-native","@dems/shared/tokens","@dems/shared/sim","react/jsx-runtime"]
+debug build   auth-notice.tsx          required: ["heroui-native","react-i18next","./auth-session","./i18n-bundle","react/jsx-runtime"]
+debug build   auth-prefs.ts            required: ["@babel/runtime/helpers/interopRequireDefault","@babel/runtime/helpers/asyncToGenerator","@react-native-async-storage/async-storage","react","zustand","@/runtime"]
+debug build   auth-provider.tsx        required: ["@babel/runtime/helpers/interopRequireDefault","@babel/runtime/helpers/asyncToGenerator","@babel/runtime/helpers/slicedToArray","react","react-i18next","@dems/shared/live","@dems/shared/sim","@/runtime","./auth-dialogs","./auth-prefs","./auth-session","./biometric","./live-auth-provider","./operators","react/jsx-runtime"]
+debug build   auth-session.tsx         required: ["@babel/runtime/helpers/interopRequireDefault","@babel/runtime/helpers/asyncToGenerator","react","react-native","@dems/shared/live","@dems/shared/sim","@/runtime","./live-auth-model","react/jsx-runtime"]
+debug build   biometric.ts             required: ["@babel/runtime/helpers/interopRequireWildcard","@babel/runtime/helpers/interopRequireDefault","@babel/runtime/helpers/asyncToGenerator","expo-local-authentication","@/runtime"]
+debug build   i18n-bundle.ts           required: ["@/i18n","./i18n"]
+debug build   i18n.ts                  required: []
+debug build   index.ts                 required: ["./auth-provider","./auth-session","./auth-dialogs","./auth-notice","./auth-prefs","./biometric","./i18n","./live-auth-model","./operators"]
+debug build   live-auth-model.ts       required: ["@dems/shared/live","@/runtime"]
+debug build   live-auth-provider.tsx   required: ["@babel/runtime/helpers/interopRequireDefault","@babel/runtime/helpers/asyncToGenerator","@babel/runtime/helpers/slicedToArray","heroui-native","react","react-i18next","@dems/shared/live","@dems/shared/sim","@/runtime","./auth-dialogs","./auth-session","./biometric","./i18n-bundle","./live-auth-model","./operators","react/jsx-runtime","./live-biometric"]
+debug build   live-biometric.ts        required: ["@babel/runtime/helpers/interopRequireWildcard","@babel/runtime/helpers/interopRequireDefault","@babel/runtime/helpers/asyncToGenerator","expo-device","@/runtime","@/runtime/secure-credentials","./live-auth-model"]
+debug build   operators.ts             required: []
+debug build   biometricStoreOf: "if (__DEV__) { var existing = stores.get(mobile); if (existing !== undefined) return existing; var _ref = require('./live-biometric'), createLiveBiometricSto..."
+    debug build: the provider loads the token storage=ok debug build: the token storage loads the wrapper and the device module=ok debug build: no other file loads them=ok
+release build auth-dialogs.tsx         required: ["heroui-native","react-i18next","react-native","@dems/shared/tokens","@dems/shared/sim","react/jsx-runtime"]
+release build auth-notice.tsx          required: ["heroui-native","react-i18next","./auth-session","./i18n-bundle","react/jsx-runtime"]
+release build auth-prefs.ts            required: ["@babel/runtime/helpers/interopRequireDefault","@babel/runtime/helpers/asyncToGenerator","@react-native-async-storage/async-storage","react","zustand","@/runtime"]
+release build auth-provider.tsx        required: ["@babel/runtime/helpers/interopRequireDefault","@babel/runtime/helpers/asyncToGenerator","@babel/runtime/helpers/slicedToArray","react","react-i18next","@dems/shared/live","@dems/shared/sim","@/runtime","./auth-dialogs","./auth-prefs","./auth-session","./biometric","./live-auth-provider","./operators","react/jsx-runtime"]
+release build auth-session.tsx         required: ["@babel/runtime/helpers/interopRequireDefault","@babel/runtime/helpers/asyncToGenerator","react","react-native","@dems/shared/live","@dems/shared/sim","@/runtime","./live-auth-model","react/jsx-runtime"]
+release build biometric.ts             required: ["@babel/runtime/helpers/interopRequireWildcard","@babel/runtime/helpers/interopRequireDefault","@babel/runtime/helpers/asyncToGenerator","expo-local-authentication","@/runtime"]
+release build i18n-bundle.ts           required: ["@/i18n","./i18n"]
+release build i18n.ts                  required: []
+release build index.ts                 required: ["./auth-provider","./auth-session","./auth-dialogs","./auth-notice","./auth-prefs","./biometric","./i18n","./live-auth-model","./operators"]
+release build live-auth-model.ts       required: ["@dems/shared/live","@/runtime"]
+release build live-auth-provider.tsx   required: ["@babel/runtime/helpers/interopRequireDefault","@babel/runtime/helpers/asyncToGenerator","@babel/runtime/helpers/slicedToArray","heroui-native","react","react-i18next","@dems/shared/live","@dems/shared/sim","@/runtime","./auth-dialogs","./auth-session","./biometric","./i18n-bundle","./live-auth-model","./operators","react/jsx-runtime"]
+release build live-biometric.ts        required: ["@babel/runtime/helpers/interopRequireWildcard","@babel/runtime/helpers/interopRequireDefault","@babel/runtime/helpers/asyncToGenerator","expo-device","@/runtime","@/runtime/secure-credentials","./live-auth-model"]
+release build operators.ts             required: []
+release build biometricStoreOf: "return null;"
+    release: no file of the auth layer that is part of the bundle loads the token storage, the wrapper, the device module, the Live source or the typed client=ok release: biometricStoreOf is `return null`=ok release: the provider names no secure item and no token storage=ok
+exit=0
+
+## The earlier rows' transform checks, unchanged scripts
+$ node docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/51_release_gate_w51.cjs
+    debug build loads the Live source, the typed client and the wrapper=ok debug build applies core==ok
+    release: sim-adapters.ts loads none of the five modules=ok release: createMobileLive is `return null`=ok release: no createLiveSim, no createCoreClient, no bearer header, no request log=ok
+    release: debug.ts holds no probe=ok release: core= is not applied (empty function)=ok release: no other file of the row loads the Live source or the typed client=ok
+exit=0
+$ node docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/15_release_gate_w15.cjs
+release build (dev=false) debug.ts              {"required":["react","react-native","@dems/shared/live","@dems/shared/sim","./core-link","./log"],"hasProbeModule":false,"hasProbeHook":false}
+release build (dev=false) secure-credentials.ts {"required":["@babel/runtime/helpers/interopRequireWildcard","@babel/runtime/helpers/interopRequireDefault","@babel/runtime/helpers/asyncToGenerator","expo-device","expo-secure-store","zod","@dems/shared/api","./log"],"hasProbeItemName":false,"hasProbePromptTitle":false,"probeExport":"null","hasDeviceItemName":true,"hasUnprotectedRule":true}
+    release build holds no probe=ok release build keeps the wrapper=ok
+    MB-6a rule as a release build holds it: return Device.isDevice === false || false;
+exit=0

@@ -1,0 +1,14 @@
+mark more / storage / network-time / audit at 13:04:54.516
+deep link demsdemo:///more at 13:04:54.578: Starting: Intent { act=android.intent.action.VIEW dat=demsdemo:///... pkg=com.dems.demo.tablet }
+slept 4000 ms
+screencap P10_more.png (326977 bytes) at 13:04:58.838
+tap 227,631 at 13:04:58.906
+slept 3500 ms
+screencap P11_storage.png (383248 bytes) at 13:05:02.633
+tap 227,736 at 13:05:02.700
+slept 3500 ms
+screencap P12_network_time.png (344341 bytes) at 13:05:06.433
+tap 227,840 at 13:05:06.501
+slept 4000 ms
+screencap P13_audit.png (427345 bytes) at 13:05:10.755
+ids: 138 nodes -> q/p_audit.txt

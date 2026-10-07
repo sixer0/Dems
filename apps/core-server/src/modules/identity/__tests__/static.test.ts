@@ -85,9 +85,9 @@ describe('rule 1: one clock', () => {
     expect(occurrences(code, SYSTEM_TIME)).toEqual([]);
   });
 
-  it('the only timer is the sweeper\'s interval', () => {
-    expect(files(TIMER)).toEqual(['src/modules/identity/sweeper.ts']);
-    expect(occurrences(code, TIMER)).toHaveLength(1);
+  it('no timer of its own: the sweeper\'s interval is the core\'s (`src/core/sweeper.ts`, review finding W91-11)', () => {
+    expect(files(TIMER)).toEqual([]);
+    expect(all.find((file) => file.path === 'src/modules/identity/sweeper.ts')?.text).toContain("from '../../core'");
   });
 
   it('the sweeper is started by the listener and stopped before the close, not by the app factory', () => {

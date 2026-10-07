@@ -18,6 +18,7 @@
 // | LB-1 (row W0 §15): busy at once with the busy mark, one request for two presses, the spinner after the reveal; StrictMode sends one request per read and per press | "pending and StrictMode" |
 import { createElement } from 'react'
 import { act, cleanup, configure, fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { toast } from '@heroui/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { en } from '@dems/shared/i18n'
 import { rateLimited } from '@dems/shared/live/testing'
@@ -102,6 +103,19 @@ afterEach(async () => {
   disposeBed()
   vi.restoreAllMocks()
 })
+
+
+/**
+ * FXR-W W92-16 (D179 DC-6): a test that claims ONE toast counts the toast CALLS, not the toasts on
+ * screen — `waitFor(… toHaveLength(1))` resolves on the first toast, and a second identical toast
+ * that arrives later would pass. Each method of the kit's `toast` is spied (the toast still shows).
+ */
+function spyToastCalls(): () => number {
+  const spies = (['success', 'danger', 'warning', 'info'] as const)
+    .filter((method) => typeof (toast as unknown as Record<string, unknown>)[method] === 'function')
+    .map((method) => vi.spyOn(toast, method))
+  return () => spies.reduce((sum, spy) => sum + spy.mock.calls.length, 0)
+}
 
 describe('AC-C-92: issue shows six digits, the QR and the countdown', () => {
   it('sends operation 15 once; the QR stub receives exactly the answer\'s `qrPayload`, which is the prefix plus the digits shown', async () => {
@@ -350,8 +364,15 @@ describe('refusals, outages and limits (AC-C-99, AC-C-48, LB-6, LB-10)', () => {
   it('a 429 is a limit: one warning toast with the seconds of `retry-after`, no Error state, no offline words, the button idle', async () => {
     const { bed } = await openPairedDevices()
     bed.fake.answerOnce('issuePairingCode', rateLimited(42))
+    const toastCalls = spyToastCalls()
     await pressIssue()
     await waitFor(() => expect(toastsWith(LIMITED(42))).toHaveLength(1))
+    // W92-16: after a flush, ONE toast call — not only one toast on screen.
+    await bed.flush()
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50))
+    })
+    expect(toastCalls()).toBe(1)
     expect(toastsWith(OFFLINE)).toEqual([])
     expect(screen.queryByTestId('pd-issue-error')).not.toBeInTheDocument()
     expect(screen.getByTestId('pd-issue')).not.toHaveAttribute('aria-busy')

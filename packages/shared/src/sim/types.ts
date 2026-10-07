@@ -338,10 +338,11 @@ export interface TimelineEvent {
   detail: string | null;
   channel: AudioTrackId | null;
   /**
-   * Structured values (step 54): START `{sessionId}`; NOTE `{noteId, length}`; MARKER `{index,
-   * label}`; SNAPSHOT `{index, cameraId}`; AUDIO_PEAK `{dbfs, track}`; AUTOSAVE `{segment,
-   * bytesWritten}`; CHECK `{source}`; HEALTH `{}`; FAULT `{kind, evt}`. Absent on items written
-   * before step 54.
+   * Structured values (step 54): START `{sessionId}`; NOTE `{noteId, length, authorRole?}`
+   * (`authorRole`: the author's role when the note was written, E-fix FX-C E2E-T-5; absent on
+   * older items and for an author not in the operator list); MARKER `{index, label}`; SNAPSHOT
+   * `{index, cameraId}`; AUDIO_PEAK `{dbfs, track}`; AUTOSAVE `{segment, bytesWritten}`; CHECK
+   * `{source}`; HEALTH `{}`; FAULT `{kind, evt}`. Absent on items written before step 54.
    */
   params?: Details;
 }

@@ -234,7 +234,7 @@ describe('A10 Run Diagnostics (§8.2 A10)', () => {
 
   it('AC-C-48: a 403 NOT_PERMITTED shows the denied toast naming the first role with DIAGNOSTICS_RUN; the modal does not open', async () => {
     const { bed } = await liveSystem()
-    // Operation 65 has no `notPermitted` example (every seeded role holds DIAGNOSTICS_RUN; the CONTRACT-GAP-W63-1 pattern): the envelope is written here.
+    // Operation 65 has no `notPermitted` example (every seeded role holds DIAGNOSTICS_RUN; the RESIDUAL-W63-1 (W83 ledger #40) pattern): the envelope is written here.
     bed.fake.answerOnce('runDiagnostics', refusal(403, 'NOT_PERMITTED', 'Not permitted.', { permission: 'DIAGNOSTICS_RUN' }))
     fireEvent.click(runButton())
     await waitFor(() => expect(toastWith(DENIED)).toHaveLength(1))

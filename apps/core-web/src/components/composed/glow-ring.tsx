@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { AnimatePresence, animate, motion, type Transition } from 'motion/react'
 import { Shield, ShieldAlert, ShieldQuestion, ShieldX } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -21,10 +21,12 @@ import {
   arcPath,
   BRACKET_ARCS,
   circlePath,
+  INNER_RING_STROKE,
   isEscalation,
   RING_COLOURS,
   RING_RADII,
   RING_VIEWBOX,
+  ringWordScale,
   tickLines,
   type GlowRingMode,
   type GlowRingState,
@@ -148,6 +150,117 @@ function RingEmblem({ size, drawDelayS, drawS, draw }: { size: number; drawDelay
   )
 }
 
+interface RingWordProps {
+  text: string
+  size: number
+  /** TextEffect delay in seconds. */
+  delay: number
+}
+
+/** The word's ink box in the ring's own px (origin: the ring's top-left corner). */
+interface InkBox {
+  left: number
+  right: number
+  top: number
+  bottom: number
+}
+
+/**
+ * One 2D context for every ink measurement (FXR-W W92-22): a fit runs on every ResizeObserver callback,
+ * and a new `<canvas>` per fit was a small, avoidable cost. Created on first use; `null` is kept too
+ * (a page without a 2D canvas, such as jsdom, asks once).
+ */
+let measureContext: CanvasRenderingContext2D | null | undefined
+function measuringContext(): CanvasRenderingContext2D | null {
+  if (measureContext === undefined) measureContext = document.createElement('canvas').getContext('2d')
+  return measureContext
+}
+
+/**
+ * Where the word's ink sits, in the ring's px: canvas text metrics of its computed font (the glyphs'
+ * real extent, without side bearings or the empty top of the line box), placed at the word box's
+ * position. Without a canvas the layout box stands in. Null without layout (jsdom).
+ */
+function inkBoxOf(word: HTMLElement, ring: HTMLElement, size: number, text: string): InkBox | null {
+  const ringBox = ring.getBoundingClientRect()
+  const wordBox = word.getBoundingClientRect()
+  if (!(ringBox.width > 0) || !(wordBox.width > 0)) return null
+  // The page entrance may scale the panel: positions in the ring's own px.
+  const unit = ringBox.width / size
+  const left = (wordBox.left - ringBox.left) / unit
+  const top = (wordBox.top - ringBox.top) / unit
+  const box: InkBox = { left, right: left + word.offsetWidth, top, bottom: top + word.offsetHeight }
+  const context = measuringContext()
+  if (!context) return box
+  const style = getComputedStyle(word)
+  context.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`
+  if ('letterSpacing' in context) context.letterSpacing = style.letterSpacing
+  const metrics = context.measureText(text)
+  const fontHeight = metrics.fontBoundingBoxAscent + metrics.fontBoundingBoxDescent
+  if (!(fontHeight > 0)) return box
+  const baseline = top + (word.offsetHeight - fontHeight) / 2 + metrics.fontBoundingBoxAscent
+  return {
+    left: left - metrics.actualBoundingBoxLeft,
+    right: left + metrics.actualBoundingBoxRight,
+    top: baseline - metrics.actualBoundingBoxAscent,
+    bottom: baseline + metrics.actualBoundingBoxDescent,
+  }
+}
+
+/**
+ * The state word of the default centre, fitted to the ring (E-fix FX-W, E2E-W1-5). Orbitron at the
+ * display size made "ATTENTION" wider than the inner ring at 1440 x 900 (a 258 px ring) and at
+ * 390 x 844 (284 px). The word's ink is measured where it sits: how far it reaches from the ring's
+ * centre sideways (at the display size) and up or down. `ringWordScale` returns 1 while the ink clears
+ * the inner ring, so a word that fits keeps its look; otherwise the font size shrinks until the ink
+ * sits inside with air. It re-measures when its own box changes (the web font arriving, a new size).
+ * In jsdom (no layout) every box is empty and the scale stays 1.
+ */
+function RingWord({ text, size, delay }: RingWordProps) {
+  const wordRef = useRef<HTMLSpanElement>(null)
+  const scaleRef = useRef(1)
+  const [scale, setScale] = useState(1)
+
+  useLayoutEffect(() => {
+    const word = wordRef.current
+    // The ring's root, from the DOM: a parent's ref is not attached yet when a child's layout effect
+    // first runs. Its box gives the centre and the transform scale of the page's entrance.
+    const ring = word?.closest<HTMLElement>('[data-ring-root]')
+    if (!word || !ring) return undefined
+    const fit = () => {
+      const ink = inkBoxOf(word, ring, size, text)
+      if (!ink) return
+      const centre = size / 2
+      // Twice the farther side's reach, at the display size; the vertical reach as it sits now.
+      const naturalWidth = (2 * Math.max(centre - ink.left, ink.right - centre)) / scaleRef.current
+      const dy = Math.max(Math.abs(ink.top - centre), Math.abs(ink.bottom - centre))
+      const next = ringWordScale(naturalWidth, size, dy)
+      if (Math.abs(next - scaleRef.current) < 0.005) return
+      scaleRef.current = next
+      setScale(next)
+    }
+    fit()
+    if (typeof ResizeObserver !== 'function') return undefined
+    const observer = new ResizeObserver(fit)
+    observer.observe(word)
+    return () => observer.disconnect()
+  }, [size, text])
+
+  return (
+    <span
+      ref={wordRef}
+      data-ring-word=""
+      data-fit-scale={scale < 1 ? scale.toFixed(3) : undefined}
+      className="inline-block whitespace-nowrap font-display text-display font-bold uppercase leading-none"
+      style={scale < 1 ? { fontSize: `calc(var(--text-display) * ${scale})` } : undefined}
+    >
+      <TextEffect as="span" per="char" preset="fade-in-blur" delay={delay}>
+        {text}
+      </TextEffect>
+    </span>
+  )
+}
+
 /**
  * GlowRing, the SYSTEM READY ring (01_specs §14.6; 03_motion_spec M-C-01; research/04 §3.1 A).
  *
@@ -157,7 +270,8 @@ function RingEmblem({ size, drawDelayS, drawS, draw }: { size: number; drawDelay
  *    over a pre-blurred glow copy whose opacity breathes 0.55 ↔ 1 over `glowBreath`;
  * 3. an inner solid ring that draws from 200 ms over 1,200 ms;
  * 4. the centre: a shield whose check draws at 900 ms (or the brand emblem), then "SYSTEM" and the
- *    state word through Motion Primitives TextEffect (`fade-in-blur`, per character, 1,000 ms).
+ *    state word through Motion Primitives TextEffect (`fade-in-blur`, per character, 1,000 ms); the
+ *    state word is fitted inside the inner ring when it would cross it (`RingWord`, E2E-W1-5).
  *
  * State morph: `--ring-color` and `--ring-arc-color` move between gold, amber, red and grey in
  * 600 ms; an escalation adds one bloom pulse (R8). RECORDING turns the arcs red, pulses them at
@@ -302,15 +416,11 @@ export function GlowRing({
               >
                 {t('dashboard.systemRing.overline')}
               </TextEffect>
-              <TextEffect
-                as="span"
-                per="char"
-                preset="fade-in-blur"
+              <RingWord
+                text={t(`common.systemState.${state}`)}
+                size={size}
                 delay={entrance ? (TIMELINE.wordsStartMs + delayMs + 120) / 1000 : 0}
-                className="font-display text-display font-bold uppercase leading-none"
-              >
-                {t(`common.systemState.${state}`)}
-              </TextEffect>
+              />
             </>
           )}
         </motion.div>
@@ -323,6 +433,7 @@ export function GlowRing({
     <motion.div
       ref={rootRef}
       data-testid="glow-ring"
+      data-ring-root=""
       data-state={state}
       data-mode={mode}
       data-motion={m.policy}
@@ -424,7 +535,7 @@ export function GlowRing({
         <g aria-hidden="true" data-ring-layer="inner" style={{ stroke: 'var(--ring-color)' }}>
           <motion.path
             d={circlePath(RING_RADII.inner)}
-            strokeWidth={2.5}
+            strokeWidth={INNER_RING_STROKE}
             strokeLinecap="round"
             initial={draw ? { pathLength: 0 } : false}
             animate={{ pathLength: 1 }}

@@ -68,6 +68,8 @@ describe('Devices takes the Core through the light Live API (CLG c, AC-C-53)', (
       'diagnostics-sheet.tsx',
       'health-chart.tsx',
       'i18n.ts',
+      // E-fix row FX-M2 (E2E-T-2): the panel error boundary (the Storage folder's copy of step 77's).
+      'panel-boundary.tsx',
       'sim-adapter.ts',
       'use-devices-data.ts',
       'use-pending-press.ts',
@@ -118,7 +120,9 @@ describe('what belongs to the runtime stays there (rules 3, 4 and 7)', () => {
     // sheet's exit-animation unmount in `use-sheet-presence.tsx` (one of the KI-08 copies, unchanged since
     // `acaff20`), which reads no Core time.
     const timer = new RegExp(`\\b(?:${['set', 'Timeout'].join('')}|${['set', 'Interval'].join('')})\\b|${['Date', 'now'].join('\\.')}`);
-    expect(matching(timer)).toEqual(['use-sheet-presence.tsx']);
+    // E-fix row FX-M2 (E2E-T-2) adds the panel boundary's Retry cooldown (a UI countdown of 3/6/12 s,
+    // the KI-08 boundary pattern of Home and Storage), which reads no Core time either.
+    expect(matching(timer)).toEqual(['panel-boundary.tsx', 'use-sheet-presence.tsx']);
     // Through the barrel only (rule 9).
     expect(matching(/from '@\/runtime\/[^']+'/)).toEqual([]);
   });
@@ -136,7 +140,7 @@ describe('one LIVE idiom (rule 5)', () => {
 describe('the copy (rule 8; §3.2)', () => {
   it('the text LIVE mode adds says nothing about a simulation; the texts it replaces did', () => {
     const live = leaves(devicesEn.live);
-    expect(live).toHaveLength(11);
+    expect(live).toHaveLength(8);
     expect(live.filter((leaf) => /simulat|demo\b|mock/i.test(leaf.text))).toEqual([]);
     expect(devicesEn.actions.testSignalBody).toMatch(/^Simulated\./);
     expect(devicesEn.actions.restartBody).toMatch(/^Simulated\./);

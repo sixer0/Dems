@@ -18,7 +18,7 @@
  * server) and `all` (every operation of the registry, as the Core server answers it). The
  * committed file holds `OPENAPI_COMMITTED_SCOPE`, which is `all` since the registry is complete
  * (plan row W27, contract C): 75 operations, two security schemes, the server 127.0.0.1:4420,
- * version 0.2.0.
+ * version 0.2.1 (0.2.0 until the contract close-out W83).
  *
  * The `offline` document is not a file. It is what `createOpenApiDocument()` returns by default,
  * and the web API Reference builds it in the browser from the registry; no app reads

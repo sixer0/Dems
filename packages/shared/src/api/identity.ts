@@ -33,6 +33,7 @@ import {
   CoreApiTag,
   DEVICE_ACCESS,
   DEVICE_CREDENTIAL_REQUIRED_REASON,
+  PASSWORD_SESSION_REQUIRED_REASON,
   PUBLIC_ACCESS,
   type CoreApiRegistryOperation,
 } from './contract-model';
@@ -56,6 +57,7 @@ import {
   SECRET_NOTE,
   backendSource,
   forbidden,
+  WEB_SESSION_REFUSED,
 } from './operation-parts';
 import { BIOMETRIC_TOKEN_PATTERN, SESSION_TOKEN_PATTERN } from './patterns';
 import { count, deviceId, displayText, epochMs, nullableEpochMs, operatorId } from './schema-parts';
@@ -77,6 +79,35 @@ export const SIGN_IN_LIMITS = {
   /** A bearer secret is 47 characters; this bounds a request member that carries one. */
   tokenMax: 256,
 } as const;
+
+/**
+ * ID-P11: a biometric token is valid this long after its issue, 30 days (W83, gap W41-1). The
+ * answer of `signInWithBiometric` carries the rotated token without its expiry: it is this long after
+ * the new session's `issuedAt`.
+ */
+export const BIOMETRIC_TOKEN_LIFETIME_MS = 30 * 24 * 60 * 60_000;
+
+/**
+ * `details.reason` of the AUTH_FAILED row of a refused biometric token (W83, gap W41-4). The
+ * caller's answer is the same generic `401 INVALID_CREDENTIALS` for all of them; the row is for whoever
+ * reads the trail.
+ */
+export const BiometricTokenRefusalReason = {
+  /** The token was used before, or it is live and another paired device presented it. The row also carries `sessionsEnded`. */
+  TOKEN_REUSE: 'TOKEN_REUSE',
+  /** The operator is disabled, or the token was revoked when the operator was disabled. */
+  USER_DISABLED: 'USER_DISABLED',
+  /** The token was revoked: turned off, replaced by a new enrolment, a reused family, a retired device. */
+  TOKEN_REVOKED: 'TOKEN_REVOKED',
+  /** The token was not used within `BIOMETRIC_TOKEN_LIFETIME_MS`. */
+  TOKEN_EXPIRED: 'TOKEN_EXPIRED',
+  /** A token of another device that is no longer live (revoked or expired). */
+  OTHER_DEVICE: 'OTHER_DEVICE',
+  /** The token was right and its device is no longer PAIRED. */
+  DEVICE_NOT_PAIRED: 'DEVICE_NOT_PAIRED',
+} as const;
+export type BiometricTokenRefusalReason = (typeof BiometricTokenRefusalReason)[keyof typeof BiometricTokenRefusalReason];
+
 
 /** Message of the code-unit bound of the password. It quotes no input. */
 export const PASSWORD_TOO_LONG_MESSAGE = `The password is longer than ${SIGN_IN_LIMITS.passwordMax} UTF-16 code units.`;
@@ -112,7 +143,7 @@ export const OperatorSchema = z
 export type OperatorBody = z.output<typeof OperatorSchema>;
 
 export const AuthSessionInfoSchema = z
-  .object({
+  .strictObject({
     operator: OperatorSchema,
     permissions: z
       .array(z.enum(Permission))
@@ -132,7 +163,7 @@ export const AuthSessionInfoSchema = z
 export type AuthSessionInfo = z.output<typeof AuthSessionInfoSchema>;
 
 export const SignInResponseSchema = z
-  .object({
+  .strictObject({
     session: AuthSessionInfoSchema,
     sessionToken: z
       .string()
@@ -143,13 +174,15 @@ export const SignInResponseSchema = z
       .string()
       .regex(BIOMETRIC_TOKEN_PATTERN)
       .optional()
-      .describe('`signInWithBiometric` only: the rotated token for the next biometric sign-in. The one that was sent is used up.'),
+      .describe(
+        '`signInWithBiometric` only: the rotated token for the next biometric sign-in. The one that was sent is used up. It expires `BIOMETRIC_TOKEN_LIFETIME_MS` (30 days) after `session.issuedAt`.',
+      ),
   })
   .describe('Result of a sign-in.');
 export type SignInResponse = z.output<typeof SignInResponseSchema>;
 
 export const SignInStatusSchema = z
-  .object({
+  .strictObject({
     locked: z.boolean(),
     lockedUntil: nullableEpochMs().describe('End of the 60 s lock; null when not locked.'),
     retryInMs: count().describe('0 when not locked.'),
@@ -170,7 +203,7 @@ export const SignOutRequestSchema = z
 export type SignOutRequest = z.output<typeof SignOutRequestSchema>;
 
 export const AuthSessionExpirySchema = z
-  .object({
+  .strictObject({
     idleExpiresAt: epochMs(),
     absoluteExpiresAt: epochMs(),
   })
@@ -185,14 +218,14 @@ export const BiometricEnrollmentRequestSchema = z
 export type BiometricEnrollmentRequest = z.output<typeof BiometricEnrollmentRequestSchema>;
 
 export const BiometricEnrollmentSchema = z
-  .object({
+  .strictObject({
     enabled: z.boolean(),
     token: z
       .string()
       .regex(BIOMETRIC_TOKEN_PATTERN)
       .optional()
       .describe('After `enabled: true` only, returned once: the token the app keeps in the device\'s protected storage.'),
-    expiresAt: epochMs().optional().describe('After `enabled: true` only: 30 days from issue (ID-P11).'),
+    expiresAt: epochMs().optional().describe('After `enabled: true` only: the issue plus `BIOMETRIC_TOKEN_LIFETIME_MS`, 30 days (ID-P11).'),
   })
   .describe('Biometric sign-in of the caller on this device.');
 export type BiometricEnrollment = z.output<typeof BiometricEnrollmentSchema>;
@@ -241,7 +274,7 @@ const AUTH_ATTEMPT_ROWS = [AuditType.AUTH_FAILED, AuditType.AUTH_LOCKED] as cons
 
 const LOCKED = {
   description:
-    'The console is locked after 5 failures within 5 minutes (LOCKED), for 60 s; `details.lockedUntil` and `details.retryInMs` say how long. The attempt is not verified and writes AUTH_LOCKED.',
+    'The console is locked after 5 failures within 5 minutes (LOCKED), for 60 s; `details.lockedUntil` and `details.retryInMs` say how long. The failure that locks the console also answers 423; it was verified and writes AUTH_FAILED with `details.lockedUntil`. An attempt during the lock is not verified and writes AUTH_LOCKED.',
   schema: 'ApiError',
 } as const;
 
@@ -396,7 +429,7 @@ export const IDENTITY_OPERATIONS = [
       400: INVALID_JSON,
       401: NOT_SIGNED_IN,
       403: forbidden(
-        'the session is not bound to a device, or `enabled: true` was sent on a session that was not created by password (DEVICE_NOT_PAIRED)',
+        `the session is not bound to a device, or \`enabled: true\` was sent on a session that was not created by password (DEVICE_NOT_PAIRED with \`details.reason: ${PASSWORD_SESSION_REQUIRED_REASON}\`)`,
       ),
       422: INVALID_INPUT,
     },
@@ -414,7 +447,7 @@ export const IDENTITY_OPERATIONS = [
     description: [
       'Creates a session from the token that the device\'s biometric prompt released (§5.6). The server never accepts a claim that a biometric check passed; it accepts only the token, sent with the device credential.',
       `The request must present the device credential itself. The session token of an operator who is signed in on this device is refused with \`403 DEVICE_NOT_PAIRED\` (\`details.reason: ${DEVICE_CREDENTIAL_REQUIRED_REASON}\`): a session that is still open must not be able to renew itself with a token.`,
-      'Each use rotates the token: the answer carries the next one in `biometricToken`. A token that was already used revokes its whole family, ends the open biometric sessions of that device and operator, and answers the generic `401 INVALID_CREDENTIALS`.',
+      'Each use rotates the token: the answer carries the next one in `biometricToken`. A token that was already used, or a live one presented by another paired device, revokes its whole family, ends the open biometric sessions of that device and operator, and answers the generic `401 INVALID_CREDENTIALS`.',
       'Every attempt counts toward the device\'s lockout and writes one audit row: AUTH_SUCCESS (`details.method: BIOMETRIC`), AUTH_FAILED or AUTH_LOCKED.',
       SECRET_NOTE,
       CORE_SERVER_NOTE,
@@ -429,7 +462,7 @@ export const IDENTITY_OPERATIONS = [
           'The token is not accepted (INVALID_CREDENTIALS; the same answer for every cause), or the request has no valid device credential (NOT_SIGNED_IN).',
         schema: 'ApiError',
       },
-      403: forbidden(DEVICE_CREDENTIAL_REFUSED),
+      403: forbidden(WEB_SESSION_REFUSED, DEVICE_CREDENTIAL_REFUSED),
       422: INVALID_INPUT,
       423: LOCKED,
     },
@@ -455,7 +488,7 @@ export const IDENTITY_OPERATIONS = [
       200: { description: 'The device\'s lock state after the failure was counted.', schema: 'SignInStatus' },
       400: INVALID_JSON,
       401: NO_DEVICE_CREDENTIAL,
-      403: forbidden(),
+      403: forbidden(WEB_SESSION_REFUSED),
       422: INVALID_INPUT,
     },
     access: DEVICE_ACCESS,
@@ -638,7 +671,7 @@ export const IDENTITY_EXAMPLES: Readonly<Record<string, OperationExamples>> = {
           value: {
             enabled: true,
             token: EXAMPLE_PLACEHOLDERS.biometricToken,
-            expiresAt: EXAMPLE_INSTANT_MS + 30 * 24 * 60 * 60_000,
+            expiresAt: EXAMPLE_INSTANT_MS + BIOMETRIC_TOKEN_LIFETIME_MS,
           } satisfies BiometricEnrollment,
         },
         disabled: { summary: 'Turned off: the token family is revoked', value: { enabled: false } satisfies BiometricEnrollment },
@@ -649,6 +682,12 @@ export const IDENTITY_EXAMPLES: Readonly<Record<string, OperationExamples>> = {
         notADeviceSession: {
           summary: 'A web console session',
           value: apiErrorExample('DEVICE_NOT_PAIRED', 'Biometric sign-in is set up on a paired device.'),
+        },
+        passwordSessionRequired: {
+          summary: 'Turning it on in a session that no password opened',
+          value: apiErrorExample('DEVICE_NOT_PAIRED', 'Sign in with your password to turn biometric sign-in on.', {
+            reason: PASSWORD_SESSION_REQUIRED_REASON,
+          }),
         },
         ...BASIC_403,
       },
@@ -685,7 +724,7 @@ export const IDENTITY_EXAMPLES: Readonly<Record<string, OperationExamples>> = {
         },
         noDeviceCredential: ERROR_EXAMPLES.noDeviceCredential,
       },
-      403: { deviceCredentialRequired: ERROR_EXAMPLES.deviceCredentialRequired, ...BASIC_403 },
+      403: { deviceCredentialRequired: ERROR_EXAMPLES.deviceCredentialRequired, webConsoleSession: ERROR_EXAMPLES.webConsoleSession, ...BASIC_403 },
       422: { invalidInput: ERROR_EXAMPLES.invalidInput },
       423: { locked: SIGN_IN_LOCKED },
     },
@@ -705,7 +744,7 @@ export const IDENTITY_EXAMPLES: Readonly<Record<string, OperationExamples>> = {
       },
       400: { invalidJson: ERROR_EXAMPLES.invalidJson },
       401: { noDeviceCredential: ERROR_EXAMPLES.noDeviceCredential },
-      403: BASIC_403,
+      403: { webConsoleSession: ERROR_EXAMPLES.webConsoleSession, ...BASIC_403 },
       422: { invalidInput: ERROR_EXAMPLES.invalidInput },
     },
   },

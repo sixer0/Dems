@@ -10,6 +10,11 @@
  *   fades (M-C-07). A recycled FlashList cell plays it once per entry.
  * - The broken entry (AUDIT_TAMPER) holds a slow red `glowBreath` until the break is acknowledged
  *   (03M M-C-21 / P7), then a steady red edge. On tablets the selected row carries glow e2.
+ * - Post-review fix FXR-M (W93-2, the CF2-B RF-T-1 cause, D235): a selection change is a colour change only.
+ *   The card keeps a 1 dp border in every state (`ROW_CARD_BORDER`; selected gold, broken red) and the
+ *   selection glow is the always-mounted `SelectionGlow`, the row's last child. Before, the kit Card went from
+ *   no border to a 1 dp border and back, and a `GlowLayer` was mounted and removed with the selection: the
+ *   shape that left deselected Evidence and Sessions rows drawn as empty cards on the tablet.
  */
 import { Card, PressableFeedback } from 'heroui-native';
 import { memo, useEffect } from 'react';
@@ -19,6 +24,7 @@ import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from '
 import { DATE_PATTERNS, formatDate } from '@dems/shared/realtime';
 import type { AuditRow } from '@dems/shared/sim';
 import { derived, fontFamily, palette, radius, spacing, statusText, typography } from '@dems/shared/tokens';
+import { ROW_CARD_BORDER, SelectionGlow } from '@/components/composed/selection-glow';
 import { StatusChip } from '@/components/kit';
 import { GlowLayer, SPEC_LITERALS, durationMs, listInsert, useMotionSettings } from '@/motion';
 import { shortHash, type ChainLink } from './audit-model';
@@ -61,8 +67,6 @@ function AuditRowImpl({ row, label, actor, secondary, chain, breathing, selected
     <View style={styles.wrap}>
       {broken ? (
         <GlowLayer level={breathing ? 2 : 1} tone="danger" breathe={breathing} radius={radius.px.xl} testID={`audit-row-glow-${row.seq}`} />
-      ) : selected ? (
-        <GlowLayer level={2} radius={radius.px.xl} testID={`audit-row-selected-${row.seq}`} />
       ) : null}
       <PressableFeedback
         testID={`audit-row-${row.seq}`}
@@ -72,7 +76,11 @@ function AuditRowImpl({ row, label, actor, secondary, chain, breathing, selected
         onPress={() => onPress(row.seq)}
         style={styles.pressable}
       >
-        <Card className="rounded-xl" style={[styles.card, selected ? styles.cardSelected : null, broken ? styles.cardBroken : null]}>
+        <Card
+          className="rounded-xl"
+          style={[styles.card, selected ? styles.cardSelected : null, broken ? styles.cardBroken : null]}
+          testID={`audit-row-card-${row.seq}`}
+        >
           {playEntrance ? <FreshHighlight id={row.id} /> : null}
           <View style={styles.row}>
             <View style={styles.timeCol}>
@@ -114,6 +122,8 @@ function AuditRowImpl({ row, label, actor, secondary, chain, breathing, selected
           </View>
         </Card>
       </PressableFeedback>
+      {/* W93-2: always mounted, last; React sets its opacity (the broken row keeps its red glow instead). */}
+      <SelectionGlow selected={selected && !broken} radius={radius.px.xl} testID={`audit-row-selected-${row.seq}`} />
     </View>
   );
 
@@ -144,9 +154,11 @@ function FreshHighlight({ id }: { id: string }) {
 const styles = StyleSheet.create({
   wrap: { marginBottom: spacing[1], borderRadius: radius.px.xl },
   pressable: { borderRadius: radius.px.xl },
-  card: { paddingVertical: spacing[1], paddingHorizontal: spacing[1] + 2, overflow: 'hidden' },
-  cardSelected: { borderColor: palette.gold, borderWidth: 1 },
-  cardBroken: { borderColor: palette.danger, borderWidth: 1 },
+  // W93-2 (FXR-M; the RF-T-1 cause, CF2-B D235): a 1 dp border in EVERY state, only its colour follows the
+  // selection or the break (`ROW_CARD_BORDER`), so the kit Card's insets, layout and clip never change.
+  card: { paddingVertical: spacing[1], paddingHorizontal: spacing[1] + 2, overflow: 'hidden', ...ROW_CARD_BORDER },
+  cardSelected: { borderColor: palette.gold },
+  cardBroken: { borderColor: palette.danger },
   highlight: { backgroundColor: palette.gold, borderRadius: radius.px.xl },
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing[1] + 2 },
   timeCol: { width: 64 },

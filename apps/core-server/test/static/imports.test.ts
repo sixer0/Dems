@@ -97,8 +97,8 @@ const BELOW_THE_MODULES: readonly string[] = ['src/core', 'src/engine', 'src/rea
  *                         UPDATE of `biometric_tokens` (decision D105);
  *   pairing -> identity   the same function (D105), in the unit of a revoke and of an unpair;
  *                         `SESSION_IDLE_TIMEOUT_MS`, the limit the registry read applies to a
- *                         device's session; `createSweeper`, the timer helper of the expiry
- *                         sweeps (review CPB1-10 proposes the core as its home).
+ *                         device's session. (`createSweeper`, the timer helper of the expiry
+ *                         sweeps, moved to the core: review findings CPB1-10, W91-11.)
  */
 const MODULE_TO_MODULE: readonly string[] = ['src/modules/admin -> src/modules/identity', 'src/modules/pairing -> src/modules/identity'];
 

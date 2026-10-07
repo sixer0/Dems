@@ -16,13 +16,13 @@ import { ROLE_PERMISSIONS, type OperatorRole, type SimOperator, type SimState } 
 import type { FastifyInstance, LightMyRequestResponse } from 'fastify';
 import type { Pool } from 'pg';
 import { buildApp } from '../../../app';
-import { standInDatabase, type StandInDatabase } from '../../../core/__tests__/support';
+import { standInDatabase, type StandInDatabase } from '../../../../test/support/core';
 import { DURABLE_SLICE_KEYS, pickDurable, type DurableSliceKey, type DurableSlices } from '../../../db/mapping';
 import { createHost, type Host } from '../../../../test/support/seed';
 import { simRefusal, type EngineHost, type EngineOutcome, type EngineUnit, type HostedActionName } from '../../../engine';
 import { ANONYMOUS_PRINCIPAL, type Principal } from '../../../plugins/authenticate';
 import { captureLog, unitTestConfig, type CapturedLog } from '../../../../test/support/config';
-import { ApiFailure } from '../../../plugins/error-envelope';
+import { ApiFailure, NOT_SIGNED_IN_TEXT } from '../../../plugins/error-envelope';
 import { WEB_ORIGIN } from '../../../../test/support/identity';
 
 /** The fixed instant of the shared suites: 2026-10-01 10:00:00 WIB. */
@@ -74,7 +74,7 @@ export async function memoryEngine(): Promise<MemoryEngine> {
   let running = true;
 
   const operatorOf = (principal: Principal): SimOperator => {
-    if (principal.kind !== 'OPERATOR') throw new ApiFailure(401, 'NOT_SIGNED_IN', 'Sign in to continue.');
+    if (principal.kind !== 'OPERATOR') throw new ApiFailure(401, 'NOT_SIGNED_IN', NOT_SIGNED_IN_TEXT);
     const operator = host.state().operators.find((candidate) => candidate.id === principal.operatorId);
     if (operator === undefined) throw new Error(`the memory engine has no operator ${principal.operatorId}`);
     return operator;

@@ -1,0 +1,30 @@
+2026-10-06T04:27:00.473Z browser pid 23988, CDP port 54615 (OS-assigned), owner verified
+2026-10-06T04:27:00.529Z viewport 1440x900
+2026-10-06T04:27:02.715Z signed in as andi.pratama (SUPERVISOR); landed on /dashboard
+2026-10-06T04:27:07.718Z ring 1440: {"state":"ATTENTION","size":258,"word":"ATTENTIONATTENTION","wordWidth":214,"fontSize":"32px","innerDiameter":191,"wordLeftInsideInner":-11,"wordRightInsideInner":-11}
+2026-10-06T04:27:07.719Z strip 1440: rows=1 overlaps=[] offscreen=[]
+2026-10-06T04:27:07.894Z screenshot 11b_before_d4d5_dashboard_1440x900.png
+2026-10-06T04:27:07.954Z screenshot 11b_before_d4_ring_1440x900.png
+2026-10-06T04:27:08.492Z camera 1 menu: [{"text":"Details","disabled":false},{"text":"Test signalRequires the Technician role","disabled":true},{"text":"RestartRequires the Technician role","disabled":true}]
+2026-10-06T04:27:08.570Z screenshot 11b_before_d1_dashboard_camera1_menu.png
+2026-10-06T04:27:09.198Z viewport 390x844
+2026-10-06T04:27:14.886Z ring 390: {"state":"ATTENTION","size":284,"word":"ATTENTIONATTENTION","wordWidth":214,"fontSize":"32px","innerDiameter":210,"wordLeftInsideInner":-2,"wordRightInsideInner":-2}
+2026-10-06T04:27:14.986Z screenshot 11b_before_d4d5_dashboard_390x844.png
+2026-10-06T04:27:15.040Z screenshot 11b_before_d4_ring_390x844.png
+2026-10-06T04:27:15.842Z strip 390: rows=1 overlaps=["strip-cameras value overruns strip-mics","strip-mics value overruns strip-storage","strip-storage value overruns strip-time","strip-time value overruns strip-security","strip-security value overruns strip-network"] offscreen=[]
+2026-10-06T04:27:15.843Z strip 390 values: [["strip-cameras","Ready",53,98,19,78,true],["strip-mics","Ready",112,156,78,136,true],["strip-storage","3.2 TB Free",170,241,136,195,true],["strip-time","Synchronized",229,311,195,254,true],["strip-security","Secure",288,336,254,312,true],["strip-network","Connected",346,414,312,371,true]]
+2026-10-06T04:27:15.896Z screenshot 11b_before_d5_strip_390x844.png
+2026-10-06T04:27:15.915Z viewport 1440x900
+2026-10-06T04:27:19.342Z metadata: {"dataPackage":"demo","regions":["manifest.json"],"firstJsonIds":["EV-20261001-0012"],"alert":null,"headings":["Manifest fields (design book §11.3)DEMO","Package contents · SESSION-SES-20261001-0022","Session notes"]}
+2026-10-06T04:27:19.492Z screenshot 11b_before_d3_metadata_tab.png
+2026-10-06T04:27:22.643Z integrity on open: {"card":{"verdict":"NOT_RUN","last":null,"button":"Verify","progress":"The Core server's verdict is the record: it is written to the audit trail and to the chain of custody. | 0 of 6 checks"},"core":{"verification":{"status":"NOT_RUN","at":null},"lastCustody":{"at":1791254053000,"action":"SEALED","actorId":null,"detail":null}}}
+2026-10-06T04:27:23.081Z screenshot 11b_before_d2_integrity_on_open.png
+2026-10-06T04:27:25.868Z integrity after Verify: {"card":{"verdict":"PASS","last":null,"button":"Verify again","progress":"The Core server's verdict is the record: it is written to the audit trail and to the chain of custody. | 6 of 6 checks | DEMO - recomputed · Recomputed in this browser for display only. It writes nothing and is not the record."},"core":{"verification":{"status":"PASS","at":1791260843146},"lastCustody":{"at":1791260843146,"action":"VERIFIED","actorId":"OPR-002","detail":null}}}
+2026-10-06T04:27:25.917Z screenshot 11b_before_d2_integrity_after_verify.png
+2026-10-06T04:27:29.042Z integrity after reload: {"card":{"verdict":"NOT_RUN","last":null,"button":"Verify","progress":"The Core server's verdict is the record: it is written to the audit trail and to the chain of custody. | 0 of 6 checks"},"core":{"verification":{"status":"PASS","at":1791260843146},"lastCustody":{"at":1791260843146,"action":"VERIFIED","actorId":"OPR-002","detail":null}}}
+2026-10-06T04:27:29.502Z screenshot 11b_before_d2_integrity_after_reload.png
+2026-10-06T04:27:30.304Z custody time cells: [{"lines":3,"text":["6 Oct 20","26 11:2","7:23"]},{"lines":3,"text":["6 Oct 20","26 09:3","4:13"]},{"lines":3,"text":["6 Oct 20","26 09:1","4:49"]}]
+2026-10-06T04:27:30.332Z screenshot 11b_before_d6_custody_1440x900.png
+2026-10-06T04:27:30.367Z sign-out POST /api/v1/auth/sign-out -> 204
+2026-10-06T04:27:30.367Z exceptions 0; blocked other-origin requests 0
+2026-10-06T04:27:30.915Z browser closed, profile removed

@@ -147,7 +147,8 @@ describe('the copy (rule 8; §3.2)', () => {
   it('no `SIM-GAP` marker in either folder (KI-07 stays 13 IDs / 62 markers); the one contract gap is marked for W83', () => {
     const marker = ['SIM', 'GAP'].join('-');
     expect(raw.filter((file) => file.source.includes(marker)).map((file) => file.name)).toEqual([]);
-    const gap = ['CONTRACT', 'GAP', 'W66', '1'].join('-');
+    // Renamed by the contract close-out W83 (decision D184 DQ-5): the gap is a residual of the demo now.
+    const gap = ['RESIDUAL', 'W66', '1'].join('-');
     expect(raw.filter((file) => file.source.includes(gap)).map((file) => file.name)).toEqual(['dashboard/recent-sessions.tsx']);
   });
 

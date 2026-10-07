@@ -73,20 +73,3 @@ export function useHeroBloomDelayMs(): number | null {
   const routeDelay = useRouteEnterDelay()
   return m.reduced || !m.flags.flashes ? null : (routeDelay + HERO_BLOOM_MS) * m.timeScale
 }
-
-/**
- * The page's structured error record (level, source, message, stack, context). Mock-core has no
- * client log endpoint (D3/D4, D41(g)), so it goes to the dev console only, as in steps 38, 39 and
- * 44. No personal data goes into `context`: device IDs and action names only.
- */
-export function logDevicesError(source: string, error: unknown, context: Record<string, unknown> = {}) {
-  if (!import.meta.env.DEV) return
-  console.error('[core-web] devices', {
-    level: 'error',
-    source: `Devices.${source}`,
-    message: error instanceof Error ? error.message : String(error),
-    stack: error instanceof Error ? error.stack : undefined,
-    context,
-    timestamp: new Date().toISOString(),
-  })
-}

@@ -1,0 +1,23 @@
+2026-10-04 11:36:29 WIB
+$ npm run db:reset -w @dems/core-server --
+db:reset: usage: npm run db:reset -w @dems/core-server -- --database <dems_demo|dems_lane_1|dems_lane_2|dems_lane_3> [--scenario <idle|recording|finalizing|fault-demo>]
+exit=2
+$ npm run db:reset -w @dems/core-server -- --database postgres
+db:reset: refused before any connection: the maintenance database and the templates of PostgreSQL are never reset. A reset takes one of dems_demo, dems_lane_1, dems_lane_2, dems_lane_3.
+exit=2
+$ npm run db:reset -w @dems/core-server -- --database dems_lane_9
+db:reset: refused before any connection: the database name is not a project database. A reset takes one of dems_demo, dems_lane_1, dems_lane_2, dems_lane_3.
+exit=2
+$ npm run db:reset -- --database=template1
+db:reset: refused before any connection: the maintenance database and the templates of PostgreSQL are never reset. A reset takes one of dems_demo, dems_lane_1, dems_lane_2, dems_lane_3.
+exit=2
+$ npm run db:reset -- --database dems_lane_1_next
+db:reset: refused before any connection: a staging or previous copy of a database is not a target; name the database itself. A reset takes one of dems_demo, dems_lane_1, dems_lane_2, dems_lane_3.
+exit=2
+$ npm run db:reset -- --database dems_lane_1 --scenario night
+db:reset: refused: scenario must be one of idle, recording, finalizing, fault-demo.
+exit=2
+$ npm run db:reset -- --database dems_lane_1 --force
+db:reset: usage: npm run db:reset -w @dems/core-server -- --database <dems_demo|dems_lane_1|dems_lane_2|dems_lane_3> [--scenario <idle|recording|finalizing|fault-demo>]
+unexpected argument.
+exit=2

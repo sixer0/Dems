@@ -1,0 +1,12 @@
+Sun Oct  4 09:50:46 WIB 2026
+
+> @dems/shared@0.1.0 typecheck
+> tsc --noEmit
+
+typecheck exit=0
+
+> @dems/shared@0.1.0 lint
+> oxlint
+
+lint exit=0
+Sun Oct  4 09:50:51 WIB 2026

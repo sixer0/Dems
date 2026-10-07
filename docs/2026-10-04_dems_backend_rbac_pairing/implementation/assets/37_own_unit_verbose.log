@@ -1,0 +1,151 @@
+
+> @dems/core-server@0.2.0 test
+> vitest run --project unit --maxWorkers=2 --silent=false --reporter=verbose src/modules/storage src/modules/network-time
+
+
+ RUN  v5.0.3 /Users/gsp-budi/Documents/DEMS/apps/core-server
+
+ ✓ |unit| src/modules/storage/__tests__/projection.test.ts > storageStatusOf: the design-book summary > on the idle dataset it is the example the contract gives for the operation 8ms
+ ✓ |unit| src/modules/storage/__tests__/projection.test.ts > storageStatusOf: the design-book summary > every member, from the evidence volume, the storage slice and the policy slice 0ms
+ ✓ |unit| src/modules/storage/__tests__/projection.test.ts > storageStatusOf: the design-book summary > the totals are the EVIDENCE volume's, not the system volume's and not a sum 0ms
+ ✓ |unit| src/modules/storage/__tests__/projection.test.ts > storageStatusOf: the design-book summary > the state is the slice's own, the percentage is rounded to a whole number, the remaining time is a whole number of milliseconds 2ms
+ ✓ |unit| src/modules/storage/__tests__/projection.test.ts > storageStatusOf: the design-book summary > a full volume answers 100 %, 0 bytes free and 0 ms remaining; a volume that reports more than its size never answers a negative number 0ms
+ ✓ |unit| src/modules/storage/__tests__/projection.test.ts > storageStatusOf: the design-book summary > copies the five members of a volume and nothing else of it, and changes neither slice 0ms
+ ✓ |unit| src/modules/storage/__tests__/projection.test.ts > storageStatusOf: the design-book summary > no instant is in the answer: the summary is the same at any clock 2ms
+ ✓ |unit| src/modules/storage/__tests__/projection.test.ts > policyPatchOf: what of a body reaches the hosted action > nothing: a member is in the patch exactly when the body held it 0ms
+ ✓ |unit| src/modules/storage/__tests__/projection.test.ts > policyPatchOf: what of a body reaches the hosted action > the policy alone: a member is in the patch exactly when the body held it 0ms
+ ✓ |unit| src/modules/storage/__tests__/projection.test.ts > policyPatchOf: what of a body reaches the hosted action > the days alone: a member is in the patch exactly when the body held it 0ms
+ ✓ |unit| src/modules/storage/__tests__/projection.test.ts > policyPatchOf: what of a body reaches the hosted action > the automatic archive alone, switched off: a member is in the patch exactly when the body held it 0ms
+ ✓ |unit| src/modules/storage/__tests__/projection.test.ts > policyPatchOf: what of a body reaches the hosted action > all three: a member is in the patch exactly when the body held it 0ms
+ ✓ |unit| src/modules/storage/__tests__/projection.test.ts > policyPatchOf: what of a body reaches the hosted action > a member that is present but undefined is not passed on as a key 0ms
+ ✓ |unit| src/modules/storage/__tests__/projection.test.ts > policyPatchOf: what of a body reaches the hosted action > `false` and the smallest number of days are values, not absences 0ms
+ ✓ |unit| src/modules/storage/__tests__/projection.test.ts > policyPatchOf: what of a body reaches the hosted action > nothing else of a body is copied, whatever it holds 0ms
+ ✓ |unit| src/modules/storage/__tests__/projection.test.ts > policyPatchOf: what of a body reaches the hosted action > the request examples of the contract parse, and each becomes the patch it names 0ms
+stdout | src/modules/storage/__tests__/routes.test.ts > MODG: the route list of the storage module equals its registry operations > registers exactly the three operations of the registry tag Storage, each with the method, the path and the operation ID of the registry
+[w37] MODG routes of src/modules/storage:   GET /api/v1/storage/status getStorageStatus | GET /api/v1/storage/detail getStorageDetail | POST /api/v1/storage/policy setStoragePolicy
+[w37] MODG registry, tag Storage (53-55):   GET /api/v1/storage/status getStorageStatus | GET /api/v1/storage/detail getStorageDetail | POST /api/v1/storage/policy setStoragePolicy
+
+ ✓ |unit| src/modules/storage/__tests__/routes.test.ts > MODG: the route list of the storage module equals its registry operations > registers exactly the three operations of the registry tag Storage, each with the method, the path and the operation ID of the registry 27ms
+ ✓ |unit| src/modules/storage/__tests__/routes.test.ts > MODG: the route list of the storage module equals its registry operations > in the real app: the same three routes, nothing else under /api/v1/storage, and each matches its registry entry 28ms
+ ✓ |unit| src/modules/storage/__tests__/routes.test.ts > MODG: the route list of the storage module equals its registry operations > the operations are 53 (design book), 54 and 55 of the specification 0ms
+ ✓ |unit| src/modules/storage/__tests__/routes.test.ts > MODG: the route list of the storage module equals its registry operations > the schemas of each route are the registry's own objects: the body of 55 and the 200 answer of all three 1ms
+ ✓ |unit| src/modules/storage/__tests__/routes.test.ts > MODG: the route list of the storage module equals its registry operations > no route carries a hook or a rule of its own: the route configuration is the operation ID and nothing else 1ms
+ ✓ |unit| src/modules/storage/__tests__/routes.test.ts > MODG: the route list of the storage module equals its registry operations > the rules stage 6 applies to the three routes are the registry's: two AUTHENTICATED reads and the one any-of 7ms
+ ✓ |unit| src/modules/storage/__tests__/routes.test.ts > MODG: the route list of the storage module equals its registry operations > spec §7.17 member 34: operation 55 runs the one hosted action the contract maps to it 0ms
+ ✓ |unit| src/modules/storage/__tests__/routes.test.ts > operation 53 getStorageStatus > INVESTIGATOR reads the summary: 200, valid against the contract, and equal to what the simulator answers in Simulated mode 17ms
+ ✓ |unit| src/modules/storage/__tests__/routes.test.ts > operation 53 getStorageStatus > SUPERVISOR reads the summary: 200, valid against the contract, and equal to what the simulator answers in Simulated mode 9ms
+ ✓ |unit| src/modules/storage/__tests__/routes.test.ts > operation 53 getStorageStatus > TECHNICIAN reads the summary: 200, valid against the contract, and equal to what the simulator answers in Simulated mode 6ms
+ ✓ |unit| src/modules/storage/__tests__/routes.test.ts > operation 53 getStorageStatus > equals the simulator's answer while a recording fills the evidence volume, second by second 14ms
+ ✓ |unit| src/modules/storage/__tests__/routes.test.ts > operation 53 getStorageStatus > equals the simulator's answer under the demo fault STORAGE_LOW: state LOW 6ms
+ ✓ |unit| src/modules/storage/__tests__/routes.test.ts > operation 53 getStorageStatus > equals the simulator's answer under the demo fault STORAGE_FULL: state FULL 5ms
+ ✓ |unit| src/modules/storage/__tests__/routes.test.ts > operation 53 getStorageStatus > shows the retention policy of the same committed state: after a policy change the summary names the new one 7ms
+ ✓ |unit| src/modules/storage/__tests__/routes.test.ts > operation 54 getStorageDetail > INVESTIGATOR reads the two slices in their wire form: 200, valid against the contract, equal to the committed state 9ms
+ ✓ |unit| src/modules/storage/__tests__/routes.test.ts > operation 54 getStorageDetail > SUPERVISOR reads the two slices in their wire form: 200, valid against the contract, equal to the committed state 5ms
+ ✓ |unit| src/modules/storage/__tests__/routes.test.ts > operation 54 getStorageDetail > TECHNICIAN reads the two slices in their wire form: 200, valid against the contract, equal to the committed state 4ms
+ ✓ |unit| src/modules/storage/__tests__/routes.test.ts > operation 54 getStorageDetail > answers the slice as it is, the optional members of the storage slice included, and never changes the engine's state 6ms
+ ✓ |unit| src/modules/storage/__tests__/routes.test.ts > operation 55 setStoragePolicy: a hosted action > a holder of EVIDENCE_REVIEW changes the policy: 200 with the committed policy, the action ran as the caller, the headers are the outcome's 8ms
+ ✓ |unit| src/modules/storage/__tests__/routes.test.ts > operation 55 setStoragePolicy: a hosted action > a holder of MAINTENANCE changes it too; each member alone keeps the others 6ms
+ ✓ |unit| src/modules/storage/__tests__/routes.test.ts > operation 55 setStoragePolicy: a hosted action > a body that changes nothing (an empty object) answers 200 with the policy, writes no row and keeps the revision 4ms
+ ✓ |unit| src/modules/storage/__tests__/routes.test.ts > operation 55 setStoragePolicy: a hosted action > a body that changes nothing (the values the policy already has) answers 200 with the policy, writes no row and keeps the revision 5ms
+ ✓ |unit| src/modules/storage/__tests__/routes.test.ts > operation 55 setStoragePolicy: a hosted action > a body that changes nothing (no body at all) answers 200 with the policy, writes no row and keeps the revision 4ms
+ ✓ |unit| src/modules/storage/__tests__/routes.test.ts > operation 55 setStoragePolicy: a hosted action > SR-65: nothing else of a body reaches the action: an actor, a role, a time or a revision a client sends is dropped 5ms
+ ✓ |unit| src/modules/storage/__tests__/routes.test.ts > operation 55 setStoragePolicy: a hosted action > 422 INVALID_INPUT for retentionDays 0: the engine is not asked and nothing changes 8ms
+ ✓ |unit| src/modules/storage/__tests__/routes.test.ts > operation 55 setStoragePolicy: a hosted action > 422 INVALID_INPUT for retentionDays 3,651: the engine is not asked and nothing changes 8ms
+ ✓ |unit| src/modules/storage/__tests__/routes.test.ts > operation 55 setStoragePolicy: a hosted action > 422 INVALID_INPUT for retentionDays -1: the engine is not asked and nothing changes 4ms
+ ✓ |unit| src/modules/storage/__tests__/routes.test.ts > operation 55 setStoragePolicy: a hosted action > 422 INVALID_INPUT for retentionDays 1.5: the engine is not asked and nothing changes 4ms
+ ✓ |unit| src/modules/storage/__tests__/routes.test.ts > operation 55 setStoragePolicy: a hosted action > 422 INVALID_INPUT for retentionDays as a text: the engine is not asked and nothing changes 6ms
+ ✓ |unit| src/modules/storage/__tests__/routes.test.ts > operation 55 setStoragePolicy: a hosted action > 422 INVALID_INPUT for retentionDays null: the engine is not asked and nothing changes 4ms
+ ✓ |unit| src/modules/storage/__tests__/routes.test.ts > operation 55 setStoragePolicy: a hosted action > 422 INVALID_INPUT for an unknown policy: the engine is not asked and nothing changes 7ms
+ ✓ |unit| src/modules/storage/__tests__/routes.test.ts > operation 55 setStoragePolicy: a hosted action > 422 INVALID_INPUT for a policy in another case: the engine is not asked and nothing changes 5ms
+ ✓ |unit| src/modules/storage/__tests__/routes.test.ts > operation 55 setStoragePolicy: a hosted action > 422 INVALID_INPUT for autoArchive as a text: the engine is not asked and nothing changes 7ms
+ ✓ |unit| src/modules/storage/__tests__/routes.test.ts > operation 55 setStoragePolicy: a hosted action > 422 INVALID_INPUT for autoArchive as a number: the engine is not asked and nothing changes 15ms
+ ✓ |unit| src/modules/storage/__tests__/routes.test.ts > operation 55 setStoragePolicy: a hosted action > 422 INVALID_INPUT for one valid and one invalid member: the engine is not asked and nothing changes 5ms
+ ✓ |unit| src/modules/storage/__tests__/routes.test.ts > operation 55 setStoragePolicy: a hosted action > the bounds are accepted: 1 day and 3,650 days 5ms
+ ✓ |unit| src/modules/storage/__tests__/routes.test.ts > operation 55 setStoragePolicy: a hosted action > the bounds are the simulator's: the request schema accepts exactly what the hosted action accepts, for the days and for the policy names 6ms
+ ✓ |unit| src/modules/storage/__tests__/routes.test.ts > operation 55 setStoragePolicy: a hosted action > 400 INVALID_JSON for a body that is an array: the engine is not asked 5ms
+ ✓ |unit| src/modules/storage/__tests__/routes.test.ts > operation 55 setStoragePolicy: a hosted action > 400 INVALID_JSON for a body that is a text: the engine is not asked 6ms
+ ✓ |unit| src/modules/storage/__tests__/routes.test.ts > operation 55 setStoragePolicy: a hosted action > 400 INVALID_JSON for a body that is null: the engine is not asked 6ms
+ ✓ |unit| src/modules/storage/__tests__/routes.test.ts > operation 55 setStoragePolicy: a hosted action > 400 INVALID_JSON for a body that is a number: the engine is not asked 6ms
+ ✓ |unit| src/modules/storage/__tests__/routes.test.ts > operation 55 setStoragePolicy: a hosted action > 400 INVALID_JSON for a body that is text that is no JSON: the engine is not asked 4ms
+ ✓ |unit| src/modules/storage/__tests__/routes.test.ts > who may call is stage 6's, from the registry: this module is never reached by a caller it refuses > the any-of: a holder of neither permission is refused with one audited row that names both as one code, before the body is read 11ms
+ ✓ |unit| src/modules/storage/__tests__/routes.test.ts > who may call is stage 6's, from the registry: this module is never reached by a caller it refuses > a holder of either permission is allowed and writes no denial row 5ms
+ ✓ |unit| src/modules/storage/__tests__/routes.test.ts > who may call is stage 6's, from the registry: this module is never reached by a caller it refuses > nobody: 401 NOT_SIGNED_IN on all three operations, no row, the engine untouched 5ms
+ ✓ |unit| src/modules/storage/__tests__/routes.test.ts > who may call is stage 6's, from the registry: this module is never reached by a caller it refuses > a paired device without an operator: 401 NOT_SIGNED_IN on all three operations, no row, the engine untouched 5ms
+ ✓ |unit| src/modules/storage/__tests__/routes.test.ts > who may call is stage 6's, from the registry: this module is never reached by a caller it refuses > an operator on a paired device calls all three: the principal that reaches the action names the device session 9ms
+ ✓ |unit| src/modules/storage/__tests__/routes.test.ts > the answers that are not this module's own > 405 with `allow` for the other method on each path 6ms
+ ✓ |unit| src/modules/storage/__tests__/routes.test.ts > the answers that are not this module's own > 503 NOT_READY from the readiness stage while the engine is not ready: no operation reaches the engine 5ms
+ ✓ |unit| src/modules/storage/__tests__/routes.test.ts > the answers that are not this module's own > a refusal of the engine host is left to propagate as it is: 503 of a host that stopped, and the simulator's 422 with its code 5ms
+ ✓ |unit| src/modules/storage/__tests__/routes.test.ts > the answers that are not this module's own > finding F-W37-2: an engine that stops between the commit and the answer: 503 NOT_READY without the two headers, although the change is committed 6ms
+ ✓ |unit| src/modules/storage/__tests__/routes.test.ts > the answers that are not this module's own > an unexpected failure answers 500 INTERNAL_ERROR with no detail, and is in the log and in the persistent error log by its name 12ms
+ ✓ |unit| src/modules/network-time/__tests__/static.test.ts > the scan itself > reads the production sources of the folder: one file 1ms
+ ✓ |unit| src/modules/network-time/__tests__/static.test.ts > the scan itself > every pattern finds each of its planted texts (positive control) 3ms
+ ✓ |unit| src/modules/network-time/__tests__/static.test.ts > rule 1 (Q15, ENG-13): no clock, no timer > the folder does not read the system time and sets no timer 0ms
+ ✓ |unit| src/modules/network-time/__tests__/static.test.ts > rule 1 (Q15, ENG-13): no clock, no timer > the folder reads no clock at all, not even the server clock: the engine stamps what is stamped 0ms
+ ✓ |unit| src/modules/network-time/__tests__/static.test.ts > rule 2: nothing of the host > no module of the runtime is imported: no os, no dns, no net, no other 0ms
+ ✓ |unit| src/modules/network-time/__tests__/static.test.ts > rule 2: nothing of the host > no interface, address, host name, lookup, socket, process or listener of the server is named 0ms
+ ✓ |unit| src/modules/network-time/__tests__/static.test.ts > rule 2: nothing of the host > no console, no random source, no log line of its own 0ms
+ ✓ |unit| src/modules/network-time/__tests__/static.test.ts > rule 3 (M3): who may call is stage 6, only > nothing of the caller is read: no role, permission, session, device, kind, and not the principal either 0ms
+ ✓ |unit| src/modules/network-time/__tests__/static.test.ts > rule 3 (M3): who may call is stage 6, only > no denial row, no refusal, no place in the denial budget, no hook, no caught error 0ms
+ ✓ |unit| src/modules/network-time/__tests__/static.test.ts > rule 4 (M4, M5): the committed state, read only > of the engine it uses `state()` and `slice()`: no command, no unit, nothing that changes the state 0ms
+ ✓ |unit| src/modules/network-time/__tests__/static.test.ts > rule 4 (M4, M5): the committed state, read only > no unit of work, no table, no statement, no audit writer, no publication 0ms
+ ✓ |unit| src/modules/network-time/__tests__/static.test.ts > rule 4 (M4, M5): the committed state, read only > nothing is assigned into a slice: the answers hold the engine's own objects under their slice names 0ms
+ ✓ |unit| src/modules/network-time/__tests__/static.test.ts > rule 4 (M4, M5): the committed state, read only > no slot of the scaffold is provided or replaced, and no test file is imported 0ms
+ ✓ |unit| src/modules/network-time/__tests__/static.test.ts > rule 5 (M2): routes come from the registry > two routes, each spread from its registry entry; no method shorthand and no literal path 0ms
+ ✓ |unit| src/modules/network-time/__tests__/static.test.ts > rule 5 (M2): routes come from the registry > the plugin keeps the name the frozen app factory imports 0ms
+ ✓ |unit| src/modules/network-time/__tests__/static.test.ts > rule 6: nothing of a request is read > no handler takes the request or the reply: no body, query, header, parameter, address or URL can reach an answer 0ms
+stdout | src/modules/network-time/__tests__/routes.test.ts > MODG: the route list of the network-time module equals its registry operations > registers exactly the two operations of the registry tag Network, each with the method, the path and the operation ID of the registry
+[w37] MODG routes of src/modules/network-time: GET /api/v1/network/status getNetworkStatus | GET /api/v1/time/status getTimeStatus
+[w37] MODG registry, tag Network (56-57):      GET /api/v1/network/status getNetworkStatus | GET /api/v1/time/status getTimeStatus
+
+ ✓ |unit| src/modules/storage/__tests__/static.test.ts > the scan itself > reads the production sources of the folder 2ms
+ ✓ |unit| src/modules/storage/__tests__/static.test.ts > the scan itself > every pattern finds each of its planted texts (positive control) 3ms
+ ✓ |unit| src/modules/storage/__tests__/static.test.ts > rule 1: no clock, no timer, nothing of the host > no file reads the system time or sets a timer 0ms
+ ✓ |unit| src/modules/storage/__tests__/static.test.ts > rule 1: no clock, no timer, nothing of the host > no file reads a clock at all: the engine stamps what is stamped 0ms
+ ✓ |unit| src/modules/storage/__tests__/static.test.ts > rule 1: no clock, no timer, nothing of the host > no file imports a module of the runtime or names the host's network state 0ms
+ ✓ |unit| src/modules/storage/__tests__/static.test.ts > rule 1: no clock, no timer, nothing of the host > the imports of the folder are the contract, the shared simulator's selector and types, Fastify's types, the guard's route helper and its own files 1ms
+ ✓ |unit| src/modules/storage/__tests__/static.test.ts > rule 1: no clock, no timer, nothing of the host > no console, no environment, no random source, no log line of its own 0ms
+ ✓ |unit| src/modules/storage/__tests__/static.test.ts > rule 2 (M3): who may call is stage 6, only > no file reads a role, a permission, a session, a device or the kind of the caller 0ms
+ ✓ |unit| src/modules/storage/__tests__/static.test.ts > rule 2 (M3): who may call is stage 6, only > no file writes a denial row, builds a refusal, takes a place in the denial budget or adds a hook 0ms
+ ✓ |unit| src/modules/storage/__tests__/static.test.ts > rule 2 (M3): who may call is stage 6, only > the principal of the request is named once: handed on, as it is, as the first argument of the hosted command 0ms
+ ✓ |unit| src/modules/storage/__tests__/static.test.ts > rule 2 (M3): who may call is stage 6, only > no error is caught: what the engine host or the simulator refuses is left to propagate 0ms
+ ✓ |unit| src/modules/storage/__tests__/static.test.ts > rule 3 (M4, M5): one state, through the seam > no unit of work, no table, no statement, no audit writer, no publication 0ms
+ ✓ |unit| src/modules/storage/__tests__/static.test.ts > rule 3 (M4, M5): one state, through the seam > of the engine it uses `state()` for the reads, and `command` then `slice` for the command: nothing else 0ms
+ ✓ |unit| src/modules/storage/__tests__/static.test.ts > rule 3 (M4, M5): one state, through the seam > the command awaits the hosted action, then reads the committed slice, then sets the two headers, then answers that slice 0ms
+ ✓ |unit| src/modules/storage/__tests__/static.test.ts > rule 3 (M4, M5): one state, through the seam > no slot of the scaffold is provided or replaced, and no test file is imported 0ms
+ ✓ |unit| src/modules/storage/__tests__/static.test.ts > rule 4 (M2): routes come from the registry > three routes, each spread from its registry entry; no method shorthand and no literal path 0ms
+ ✓ |unit| src/modules/storage/__tests__/static.test.ts > rule 4 (M2): routes come from the registry > the plugin keeps the name the frozen app factory imports 0ms
+ ✓ |unit| src/modules/storage/__tests__/static.test.ts > rule 5: what of a request is read > the validated body, once, as the argument of the patch builder; the principal, once; nothing else 1ms
+ ✓ |unit| src/modules/network-time/__tests__/routes.test.ts > MODG: the route list of the network-time module equals its registry operations > registers exactly the two operations of the registry tag Network, each with the method, the path and the operation ID of the registry 38ms
+ ✓ |unit| src/modules/network-time/__tests__/routes.test.ts > MODG: the route list of the network-time module equals its registry operations > in the real app: the same two routes, nothing else under /api/v1/network or /api/v1/time, and each matches its registry entry 40ms
+ ✓ |unit| src/modules/network-time/__tests__/routes.test.ts > MODG: the route list of the network-time module equals its registry operations > the operations are 56 and 57 of the specification, both reads: the area has no command 0ms
+ ✓ |unit| src/modules/network-time/__tests__/routes.test.ts > MODG: the route list of the network-time module equals its registry operations > the 200 schema of each route is the registry's own object; no route has a body, a query or a path parameter 2ms
+ ✓ |unit| src/modules/network-time/__tests__/routes.test.ts > MODG: the route list of the network-time module equals its registry operations > no route carries a hook or a rule of its own: the route configuration is the operation ID and nothing else 1ms
+ ✓ |unit| src/modules/network-time/__tests__/routes.test.ts > MODG: the route list of the network-time module equals its registry operations > the rules stage 6 applies to the two routes are the registry's: AUTHENTICATED, no permission 10ms
+ ✓ |unit| src/modules/network-time/__tests__/routes.test.ts > operation 56 getNetworkStatus > INVESTIGATOR reads the two slices in their wire form: 200, valid against the contract, equal to the committed state 24ms
+ ✓ |unit| src/modules/network-time/__tests__/routes.test.ts > operation 56 getNetworkStatus > SUPERVISOR reads the two slices in their wire form: 200, valid against the contract, equal to the committed state 10ms
+ ✓ |unit| src/modules/network-time/__tests__/routes.test.ts > operation 56 getNetworkStatus > TECHNICIAN reads the two slices in their wire form: 200, valid against the contract, equal to the committed state 10ms
+ ✓ |unit| src/modules/network-time/__tests__/routes.test.ts > operation 56 getNetworkStatus > the answer has the members of the contract example, slice by slice 7ms
+ ✓ |unit| src/modules/network-time/__tests__/routes.test.ts > operation 56 getNetworkStatus > the tablet link is the engine's slice: what the server set from real connections is what a client reads, stamped by the clock 9ms
+ ✓ |unit| src/modules/network-time/__tests__/routes.test.ts > operation 56 getNetworkStatus > whatever the committed slice holds is answered: a link that is down, with no speed 8ms
+ ✓ |unit| src/modules/network-time/__tests__/routes.test.ts > operation 57 getTimeStatus > INVESTIGATOR reads the slice under its name: 200, valid against the contract, equal to the committed state 8ms
+ ✓ |unit| src/modules/network-time/__tests__/routes.test.ts > operation 57 getTimeStatus > SUPERVISOR reads the slice under its name: 200, valid against the contract, equal to the committed state 10ms
+ ✓ |unit| src/modules/network-time/__tests__/routes.test.ts > operation 57 getTimeStatus > TECHNICIAN reads the slice under its name: 200, valid against the contract, equal to the committed state 10ms
+ ✓ |unit| src/modules/network-time/__tests__/routes.test.ts > operation 57 getTimeStatus > the answer has the members of the contract example and no time of the server itself 9ms
+ ✓ |unit| src/modules/network-time/__tests__/routes.test.ts > operation 57 getTimeStatus > a lost time source is answered as the slice has it (the demo fault GNSS_LOSS: NTP, then RTC holdover) 9ms
+ ✓ |unit| src/modules/network-time/__tests__/routes.test.ts > Q15, ENG-13: every instant of the two reads follows the injected clock > second by second: the newest point of each history is the clock's second, and no instant lies outside the window of the manual clock 32ms
+ ✓ |unit| src/modules/network-time/__tests__/routes.test.ts > Q15, ENG-13: every instant of the two reads follows the injected clock > a jump of the clock is followed at the next step: three hours ahead, then every new instant is there 9ms
+ ✓ |unit| src/modules/network-time/__tests__/routes.test.ts > Q15, ENG-13: every instant of the two reads follows the injected clock > a clock that stands still gives the same answers, however much real time passes between two reads 39ms
+ ✓ |unit| src/modules/network-time/__tests__/routes.test.ts > who may call is stage 6's, from the registry > nobody: 401 NOT_SIGNED_IN on both operations, no row, the engine untouched 10ms
+ ✓ |unit| src/modules/network-time/__tests__/routes.test.ts > who may call is stage 6's, from the registry > a paired device without an operator: 401 NOT_SIGNED_IN on both operations, no row, the engine untouched 8ms
+ ✓ |unit| src/modules/network-time/__tests__/routes.test.ts > who may call is stage 6's, from the registry > an operator on a paired device reads both 8ms
+ ✓ |unit| src/modules/network-time/__tests__/routes.test.ts > the answers that are not this module's own > 405 with `allow: GET` for a POST on either path: the area has no command 14ms
+ ✓ |unit| src/modules/network-time/__tests__/routes.test.ts > the answers that are not this module's own > nothing a client sends changes an answer: a query string and headers that name a time are not read 8ms
+ ✓ |unit| src/modules/network-time/__tests__/routes.test.ts > the answers that are not this module's own > 503 NOT_READY from the readiness stage while the engine is not ready, and from the host itself when it has stopped 10ms
+ ✓ |unit| src/modules/network-time/__tests__/routes.test.ts > the answers that are not this module's own > an unexpected failure answers 500 INTERNAL_ERROR with no detail, and is in the log and in the persistent error log by its name 11ms
+ ✓ |unit| src/modules/network-time/__tests__/routes.test.ts > the answers that are not this module's own > a slice that does not fit the contract never leaves the server: the response schema refuses the answer (500) 7ms
+
+ Test Files  5 passed (5)
+      Tests  130 passed (130)
+   Start at  15:01:06
+   Duration  2.29s (import 41%, transform 39%, tests 20%)
+

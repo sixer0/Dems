@@ -1,0 +1,21 @@
+=== limits.test.ts
+ Test Files  1 passed (1)
+      Tests  18 passed (18)
+=== needs.test.ts
+ Test Files  1 passed (1)
+      Tests  66 passed (66)
+=== static.test.ts
+ Test Files  1 passed (1)
+      Tests  19 passed (19)
+=== limits.db.test.ts
+ Test Files  1 passed (1)
+      Tests  6 passed (6)
+[test:db] teardown: dropped 2 database(s) in 143 ms; 0 remain with the run prefix dems_test_step_33d_tmfhce72_
+=== limits-own.db.test.ts
+ Test Files  1 passed (1)
+      Tests  5 passed (5)
+[test:db] teardown: dropped 3 database(s) in 127 ms; 0 remain with the run prefix dems_test_step_33d_tmfhcfvf_
+=== needs.db.test.ts
+ Test Files  1 passed (1)
+      Tests  13 passed (13)
+[test:db] teardown: dropped 3 database(s) in 120 ms; 0 remain with the run prefix dems_test_step_33d_tmfhchg7_

@@ -1606,3 +1606,17 @@ Status at revision 2: the points for row 20 were ruled by the security design re
 *Generated: 2026-10-04 04:02*
 *Last Updated: 2026-10-04 06:16 (revision 2.2)*
 
+
+---
+
+## Errata (W83)
+
+Appended by the contract close-out W83 (plan step 105; decision D184, DQ-6). No line above is rewritten:
+where a row below and a line above disagree, the row below holds. Ledger: `implementation/83_contract_closeout.md`.
+
+| # | Where above | Read as | Source |
+|--:|---|---|---|
+| C-1 | B-7, line 759 | Test signal: the web Dashboard's device menu asks `DEVICE_MANAGE` (stricter than the Core's `DIAGNOSTICS_RUN`; kept on purpose, the safe direction), while the Devices page offers it to every role, as the Core does. The mobile app follows the Core | D152 (1) F63-1, D156 (4) F70-7, D160; ledger #85 |
+| C-2 | S5-2, line 829 | The Recovery Start button stays **enabled** with the role hint in both modes, as in Simulated mode; a press by a role without `SESSION_START` is refused by the Core with the denied toast. The hint does not disable it | D175 DN-1; ledger #86 |
+| C-3 | AC-C-106, line 1339 | After the clearing, "the query cache holds no `['core', …]` entry **that holds data**": a page that is still on screen rebuilds empty entries | D179 DC-3; ledger #87 |
+| C-4 | The Stack Check line (§3, lines 424 and 704) | Stack Check prints the answering service **without** its `dems-` prefix: "core-server v0.2.0 · api v1" in Live mode, "mock-core v0.1.0 · api v1" in Simulated mode, unchanged | D137 DN-3 (W57 DV-2); ledger #84 |

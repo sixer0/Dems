@@ -1,0 +1,6 @@
+deep link demsdemo:///more at 10:28:44.044: Starting: Intent { act=android.intent.action.VIEW dat=demsdemo:///... pkg=com.dems.demo.tablet }
+slept 5000 ms
+mark sign out (rina) at 10:28:49.045
+tap 1861,453 at 10:28:49.235
+slept 4000 ms
+screencap 24_signed_out_after_technician.png (3256372 bytes) at 10:28:55.688

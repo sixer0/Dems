@@ -198,9 +198,10 @@ function EvidenceDetail({ item, media, tab, onTab }: EvidenceDetailProps) {
               {poster ? (
                 <img src={poster} alt={t('evidence.preview.posterAlt', { id: item.id })} decoding="async" />
               ) : (
-                <span className="evi-preview-still-empty">
+                <span className="evi-preview-still-empty" data-testid="evidence-detail-still-empty">
                   <FileVideo className="size-8" aria-hidden="true" />
-                  <span>{t('evidence.media.noMedia')}</span>
+                  {/* FXR-W W92-11 (D217): a failed lookup says what the chip says, as the Media and Metadata tabs do (CF-W). */}
+                  <span>{live && media.status === 'unavailable' ? t('evidence.live.mediaUnavailable') : t('evidence.media.noMedia')}</span>
                 </span>
               )}
             </div>
@@ -334,9 +335,9 @@ function EvidenceDetail({ item, media, tab, onTab }: EvidenceDetailProps) {
                   transition={m.reduced ? m.transitions.crossFade : m.transitions.enter}
                 >
                   {key === 'media' ? (
-                    <MediaTab row={row} playToken={playToken} onPlayHandled={onPlayHandled} />
+                    <MediaTab row={row} playToken={playToken} onPlayHandled={onPlayHandled} mediaUnavailable={media.status === 'unavailable'} />
                   ) : key === 'metadata' ? (
-                    <MetadataTab row={row} />
+                    <MetadataTab row={row} mediaUnavailable={media.status === 'unavailable'} />
                   ) : (
                     <IntegrityTab row={row} verification={verification} />
                   )}
