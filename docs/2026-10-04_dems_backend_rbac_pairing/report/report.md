@@ -57,7 +57,7 @@ Project-local PostgreSQL 18 (data in `.data/`, scripts in `scripts/pg/`, running
 
 ## 6. Commit
 
-Local commit only, no remote (D1). Staging rules for W103 are in D257: evidence logs enter via `!docs/**/assets/*.log` after a count-only secret scan; the six frame-dump folders are ignored with `docs/**/rec/*_frames/`; `release/`, `.data/`, `.cache/`, `.locks/`, env files, credential files, `apps/mobile/signing/` and the design book are never staged. The commit hash and its stat are recorded in `report/02_git_final_commit.md` (W103).
+Local commit only, no remote (D1). Staging rules for W103 are in D257: evidence logs enter via `!docs/**/assets/*.log` after a count-only secret scan; the six frame-dump folders are ignored with `docs/**/rec/*_frames/`; `release/`, `.data/`, `.cache/`, `.locks/`, env files, credential files, `apps/mobile/signing/` and the design book are never staged. **Commit `0a9e31728af6a917e2f67f7692825985ec2f5a55`** on `main` (parent `057fc17`): 4,601 files, staged blobs 1,203 MiB; credential scan of the staged content 0 hits; `git remote -v` empty; `.git` now 1.5 GB (local; evidence can be moved out later, e.g. to Git LFS or an archive, if the repository is ever pushed). Details: `report/02_git_final_commit.md` (W103, D259). A follow-up docs commit carries this report's final state.
 
 ## 7. Agents and models
 
