@@ -4,7 +4,27 @@
 
 ---
 
-## 1. Status in one paragraph
+## 0. UPDATE 2026-10-08 — read this first (supersedes §1, §2 and §5 where they differ)
+
+**What happened since the first handoff.** Kilo completed rev-1 rows 1-40 (rows 11, 13, 14 skipped/deferred) and proposed blueprint rev 2.0. The Claude Code controller then audited Kilo's work hands-on at the user's request (D16): code and tests re-run from scratch (AU-1, `verification/20_audit_code_tests.md`), spikes and STT re-executed with independent scripts (AU-2, `verification/21_audit_spikes_stt.md`), specs and rev 2.0 audited against the approved plan (AU-3, `verification/22_audit_docs_decisions.md`). Confirmed mismatches were revised: RV-CODE (`implementation/09_rv_code_audit_fixes.md`, D21), RV-SPEC (84 errata + R-8 sections, `masterplan/11_audit_errata.md`, D22), RV-BP (blueprint **rev 2.1**, rows 41-119, V1-V7 PASS, D23). The user added requirement **R-8** (D20: STT server configurable, active/deactivate via a configuration menu, configuration stored in the database) and gave the **second BLUEPRINT_APPROVAL with all recommended answers** (D24: Q-SEC-1 a, Q-SEC-2 a, Q-INST-1 c, Q-D7 a, Q-STT-ROUTE a, Q-WORKER a, Q-GOP a, Q-CLICK a, Q-STT-CFG a). A local checkpoint commit holds rows 1-40 + the audit revisions.
+
+**Where Kilo resumes.** Phase C (IMPLEMENTATION) with blueprint **rev 2.1 rows 41-119**, in the order of the rebuilt wave table (`identification/02_structured.md` §10; rows 41 = gate-file renumber, 42 done, 106 spec-coverage check before M2 opens; 107-110 CPU-only STT proof on this Mac; 111 worker proofs first; 112-119 R-8). The class-C pack (§9) stays deferred until hardware arrives (Q-HW). Every milestone ends at its verification gate; stop and ask the user only at the points in §10 below.
+
+**Current ledger (D21):** shared 71/1,851; core-web 117/1,495; mobile 194 suites/1,997; core-server unit 160/3,954; db 124/1,751.
+
+**Rules added by the audit (binding for Kilo):**
+1. **Never drop or re-scope an approved row silently.** A user instruction that changes an approved row (like D7) is recorded, and the parts of the approved plan it does not cancel (D7(b): the CPU path) must stay as concrete rows with tests — not "a later wave".
+2. **Record every deviation in the Drift Log** of `decisions/decisions.md` when it happens (tiering variants, skips, deferrals, re-scopes).
+3. **Measurements must be able to fail.** Validate every metric with a negative control (e.g. a copy with samples removed must fail the gap check; a known offset must be measured as that offset with sample-exact analysis). Keep product tolerances (±40 ms) separate from regression tolerances (2 ms on deterministic fixtures).
+4. **Never claim code exists before it does** ("both backends already coded" was wrong); quote file paths for every "done".
+5. **Fix the recorded failure site**, not a nearby line (AU1-1); re-run the original failing scenario as the proof.
+6. **The Core's recorded duration wins once the stop is known** (D19(b)); forward-only display applies only while the Core reports RECORDING.
+7. **No Homebrew installs that upgrade shared libraries** (GStreamer, whisper.cpp via Homebrew both would — openssl@3, ffmpeg, omlx, openjdk); build from source under `.cache/` as approved (Q-STT-ROUTE a). oMLX is a shared host service (SMART WMS): never upgrade it, never bind port 8000, serialise use, log start/stop, never print its API key.
+8. **Dependency risk is measured by unique root advisories**, not npm's package count (AU1-3).
+
+---
+
+## 1. Status in one paragraph (original handoff of 2026-10-07)
 
 Planning is complete and **approved**: the blueprint `identification/02_structured.md` (40 rows, milestones M0-M9) passed the pre-approval checks V1-V7 (D3) and the user gave **BLUEPRINT_APPROVAL with output format A (Markdown) and "all defaults"** for every gate question (D4). **Nothing has been executed** for this task: no research row, spike, install or code change. The user asked that implementation be delegated to Kilo. Kilo resumes the master-controller protocol at **phase B (RESEARCH), step B.7**, with rows 1-40 of the blueprint, and stops at the **second approval gate after row 40** (blueprint rev 2 adds the M2-M9 implementation rows; that is a MAJOR change by definition, RF-9).
 

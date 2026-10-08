@@ -10,7 +10,16 @@
  * offset. So the value is ALSO worked out from the session's start instant and the runtime's Core clock
  * (`coreClockOf`: the Live clock corrected for late samples) by a PLAIN timer that re-reads it several times a
  * second (`createElapsedTicker`). The larger of the two is drawn; both only grow within a session, so the time
- * never steps back.
+ * never steps back WHILE THE CORE STILL REPORTS RECORDING.
+ *
+ * The stop (ruling D19(b), audit AU1-2; refines RC-1/D255): once the Core reports the stop — the session left
+ * RECORDING (STOPPING, FINALIZING, SEALED) or its stop instant `stoppedAt` is known — the ticker half is
+ * dropped and every screen draws the Core's AUTHORITATIVE recorded duration (`stoppedAt - startedAt`, the
+ * store's frozen clock). That is the duration the sealed evidence records (`session-machine.ts`
+ * `historyEntry`: `endedAt = stoppedAt`), so the value is corrected ONCE, at the moment the stop is learned,
+ * and never steps again through FINALIZING and SEALED, and it is never above the sealed duration. (The
+ * row-22 hold kept the ticker's larger second after the stop; it only moved the step back to the seal,
+ * 1129 -> 1122 in AU-1's probe, and showed a duration the evidence does not have.)
  *
  * CF2-A fixed this for the monitor only; the bottom Recording bar kept the store clock alone (W93-1). The
  * monitor, the Recording bar, Home's System Status timer and the Sessions hub timer now read this one module,
@@ -20,7 +29,7 @@
  * The ticker is an external store for `useSyncExternalStore`: React renders its change synchronously at the
  * end of the tick's task (a plain state update waited a further 0.4-0.75 s in React's queue on the phone).
  */
-import { useMemo, useSyncExternalStore } from 'react';
+import { useEffect, useMemo, useSyncExternalStore } from 'react';
 import { selectElapsedSeconds, useSim, useSimInstance } from '@dems/shared/sim';
 import { coreClockOf, type CoreClock } from './core-clock';
 import { reportRuntimeIssue } from './log';
@@ -51,6 +60,15 @@ export function msToNextSecond(nowMs: number, startedAtMs: number): number {
 export interface ElapsedTicker {
   subscribe(onChange: () => void): () => void;
   getSnapshot(): number;
+  /**
+   * Retire the ticker: no further clock read, no re-arm; the snapshot keeps the last second it drew.
+   * `releaseStoppedTicker` calls it once the Core reports the stop of the ticker's session (D19(b)), so a
+   * ticker can never count past the stop. Idempotent; a later `subscribe` never re-arms a frozen ticker.
+   * A frozen ticker is never handed out again: `sharedTicker` replaces it (audit AU1-6).
+   */
+  freeze(): void;
+  /** True once `freeze()` ran. */
+  isFrozen(): boolean;
 }
 
 /**
@@ -64,10 +82,12 @@ export interface ElapsedTicker {
  */
 export function createElapsedTicker(clock: CoreClock, startedAt: number, sessionId: string | null): ElapsedTicker {
   let seconds = elapsedSecondsAt(startedAt, clock.now());
+  let stopped = false;
   const listeners = new Set<() => void>();
   let handle: unknown = null;
   const tick = (): void => {
     handle = null;
+    if (stopped) return;
     let wait = ELAPSED_TICK_MS;
     try {
       const now = clock.now();
@@ -81,7 +101,7 @@ export function createElapsedTicker(clock: CoreClock, startedAt: number, session
       // The store's clock still draws the time meanwhile; the failure is logged, never swallowed.
       reportRuntimeIssue('error', 'sessionLive.elapsedTick', error, { sessionId: sessionId ?? 'none' });
     } finally {
-      if (listeners.size > 0 && handle === null) {
+      if (!stopped && listeners.size > 0 && handle === null) {
         try {
           handle = clock.timers.setTimeout(tick, wait);
         } catch (error) {
@@ -93,7 +113,7 @@ export function createElapsedTicker(clock: CoreClock, startedAt: number, session
   return {
     subscribe(onChange) {
       listeners.add(onChange);
-      if (handle === null) handle = clock.timers.setTimeout(tick, 0);
+      if (!stopped && handle === null) handle = clock.timers.setTimeout(tick, 0);
       return () => {
         listeners.delete(onChange);
         if (listeners.size === 0 && handle !== null) {
@@ -103,19 +123,48 @@ export function createElapsedTicker(clock: CoreClock, startedAt: number, session
       };
     },
     getSnapshot: () => seconds,
+    isFrozen: () => stopped,
+    freeze() {
+      if (stopped) return;
+      stopped = true;
+      if (handle !== null) {
+        clock.timers.clearTimeout(handle);
+        handle = null;
+      }
+    },
   };
 }
 
 /** The ticker of the current recording, per Core clock: every reader of one session shares it. */
-const tickers = new WeakMap<CoreClock, { readonly key: string; readonly ticker: ElapsedTicker }>();
+const tickers = new WeakMap<CoreClock, { readonly key: string; readonly sessionId: string | null; readonly ticker: ElapsedTicker }>();
 
+/**
+ * The shared ticker of one recording (`sessionId|startedAt`) on one Core clock. Audit AU1-6: a cached ticker
+ * that was frozen (its stop was reported) is REPLACED by a fresh one, never handed out frozen. The session
+ * machine has one entry to RECORDING (`startRecordingTransition`, ARMED -> RECORDING, a new `startedAt`), so
+ * a stopped recording does not re-enter RECORDING today; if it ever did, it would count again from its own
+ * start on the Core clock instead of showing a frozen second.
+ */
 function sharedTicker(clock: CoreClock, startedAt: number, sessionId: string | null): ElapsedTicker {
   const key = `${sessionId ?? '-'}|${startedAt}`;
   const cached = tickers.get(clock);
-  if (cached && cached.key === key) return cached.ticker;
+  if (cached && cached.key === key && !cached.ticker.isFrozen()) return cached.ticker;
   const ticker = createElapsedTicker(clock, startedAt, sessionId);
-  tickers.set(clock, { key, ticker });
+  tickers.set(clock, { key, sessionId, ticker });
   return ticker;
+}
+
+/**
+ * D19(b): the Core reported the stop of `sessionId`; retire its ticker (freeze, drop it from the cache) so
+ * nothing draws or arms it again. A no-op when the clock's ticker belongs to another session (a newer one
+ * replaced it, or this session never recorded on this clock). Runs in an effect, never during render.
+ */
+function releaseStoppedTicker(clock: CoreClock, sessionId: string | null): void {
+  if (sessionId === null) return;
+  const cached = tickers.get(clock);
+  if (cached === undefined || cached.sessionId !== sessionId) return;
+  cached.ticker.freeze();
+  tickers.delete(clock);
 }
 
 const subscribeNothing = (): (() => void) => () => undefined;
@@ -123,16 +172,24 @@ const zeroSeconds = (): number => 0;
 
 /**
  * The LIVE half alone: seconds of the RECORDING session on the Core clock, or 0 (no Core clock, i.e.
- * SIMULATED/HEARTBEAT; no recording). A screen that has its own store-derived time draws the larger of the two.
+ * SIMULATED/HEARTBEAT; or the Core reported the stop). D19(b): the ticker applies only while the Core still
+ * reports RECORDING and no stop instant is known; from the stop on it is 0, so a screen that draws the
+ * larger of this and its store-derived time draws exactly the Core's recorded duration. A screen that has
+ * its own store-derived time draws the larger of the two.
  */
 export function useRecordingTickerSeconds(): number {
-  const startedAt = useSim((s) => (s.session?.state === 'RECORDING' ? (s.session.startedAt ?? null) : null));
+  const startedAt = useSim((s) =>
+    s.session?.state === 'RECORDING' && s.session.stoppedAt === null ? (s.session.startedAt ?? null) : null,
+  );
   const sessionId = useSim((s) => s.session?.id ?? null);
   const coreClock = coreClockOf(useSimInstance());
   const ticker = useMemo(
     () => (coreClock === null || startedAt === null ? null : sharedTicker(coreClock, startedAt, sessionId)),
     [coreClock, startedAt, sessionId],
   );
+  useEffect(() => {
+    if (coreClock !== null && startedAt === null) releaseStoppedTicker(coreClock, sessionId);
+  }, [coreClock, startedAt, sessionId]);
   return useSyncExternalStore(ticker?.subscribe ?? subscribeNothing, ticker?.getSnapshot ?? zeroSeconds);
 }
 

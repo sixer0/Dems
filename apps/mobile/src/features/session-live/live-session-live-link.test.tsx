@@ -10,8 +10,9 @@
 import './testing/monitor-test-setup';
 import '@/navigation/testing/router-harness';
 
-import { afterEach, beforeEach, describe, expect, it } from '@jest/globals';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { act, fireEvent, screen, within } from '@testing-library/react-native';
+import { promisify } from 'node:util';
 import { DbfsMeter } from '@/components/composed/dbfs-meter';
 import { AUDIO_FLOOR_DBFS } from '@/runtime';
 import { LiveFeed } from './live-feed';
@@ -21,13 +22,32 @@ import { meterFrame, renderLiveMonitor, resetLiveMonitorBed, type LiveMonitorBed
 
 let bed: LiveMonitorBed | null = null;
 
+/** One turn of the event loop's queue: a hand-over, never a duration wait (no timer is involved). */
+const nextTurn = promisify(setImmediate) as () => Promise<void>;
+
+beforeAll(async () => {
+  // Reanimated prepares its UI-side frame-callback registry through one 0 ms timer that the worklets
+  // mock runs when the module loads, on the real queue (S72-12, as in live-settings-boundary.test.tsx).
+  // Yield two scheduler turns so that timer has run before the first test takes the clock in
+  // `beforeEach`: a registration on the runner's fake clock then always finds the registry.
+  await nextTurn();
+  await nextTurn();
+});
+
 beforeEach(async () => {
+  // The runner owns the clock for the whole test (the pattern proven on this tree shape in
+  // live-settings-boundary.test.tsx:233-238; probe-failure.test.ts:213). `nextTick`, `queueMicrotask`
+  // and `setImmediate` stay real: promise jobs, `act` hand-overs and the worklets mock's `runOnJS`
+  // must not wait on a clock advance. The bed's own virtual transport clock (`clock.ts:81`) is a
+  // separate scheduler: `b.flush`/`b.elapse` are microtask-driven and unaffected by this install.
+  jest.useFakeTimers({ doNotFake: ['nextTick', 'queueMicrotask', 'setImmediate'] });
   await resetLiveMonitorBed();
 });
 
 afterEach(() => {
   bed?.stop();
   bed = null;
+  jest.useRealTimers();
 });
 
 const OFFLINE = 'Core server unreachable';
@@ -48,10 +68,14 @@ function levelOf(testID: string): number {
   return (meter.props as MeterProps).level.value;
 }
 const a11yOf = (testID: string) => screen.getByTestId(testID).props.accessibilityValue as { now: number; text: string };
-/** The meters' accessible value refreshes once a second on the JS clock (`useAudioAccessibilityValue`). */
+/** The meters' accessible value refreshes once a second on the JS clock (`useAudioAccessibilityValue`
+ *  arms a 1 s JS interval, `use-audio-shared-values.ts:101-106`); with the runner's fake timers
+ *  installed in `beforeEach` one clock advance fires that tick deterministically. */
 async function waitA11yTick(): Promise<void> {
   await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 1_100));
+    jest.advanceTimersByTime(1_100);
+    // The bed's own flush convention (`live-monitor-bed.tsx:167-171`): let the promise jobs settle.
+    for (let turn = 0; turn < 40; turn += 1) await Promise.resolve();
   });
 }
 

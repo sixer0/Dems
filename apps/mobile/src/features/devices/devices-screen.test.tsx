@@ -4,7 +4,7 @@
  * clip reset), calm fault escalation (03M P7) and the tablet list | detail split (§2.4).
  * Real route files, real simulator, real providers; real timers (Reanimated in Jest, S72-12).
  */
-import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
+import { afterEach, beforeEach, describe, expect, it } from '@jest/globals';
 import './testing/devices-test-setup';
 import '@/navigation/testing/router-harness';
 
@@ -12,8 +12,6 @@ import { fireEvent, screen, within } from '@testing-library/react-native';
 import { FaultKind } from '@dems/shared/sim';
 import { getMissingKeys, resetMissingKeys } from '@/i18n';
 import { renderDevicesApp, settle, type DevicesHarness } from './testing/devices-harness';
-
-jest.setTimeout(20_000);
 
 beforeEach(() => resetMissingKeys());
 // MA-21: every string the screens render comes from an i18n key.

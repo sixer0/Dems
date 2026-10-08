@@ -24,6 +24,7 @@ import { act, fireEvent, screen } from '@testing-library/react-native';
 import { router, type Href } from 'expo-router';
 import { useEffect } from 'react';
 import type { Metrics } from 'react-native-safe-area-context';
+import { promisify } from 'node:util';
 import { CORE_API_EXAMPLES, pickReplicatedState, type AuthSessionInfo, type PairingRedeemed, type ReplicatedState } from '@dems/shared/api';
 import { settle, useCoreActions, type CoreActions } from '@dems/shared/live';
 import { FAKE_CREDENTIALS, clockFromTimers, createFakeTransport, installFakeTransport, type FakeClock, type FakeHttpCall, type FakeTransport } from '@dems/shared/live/testing';
@@ -44,8 +45,6 @@ import {
 import { SECURE_ITEM_KEYS } from '@/runtime/secure-credentials';
 import { createTestSim } from '@/runtime/testing/test-sim';
 import { resetSettingsPrefsForTests } from './settings-prefs';
-
-jest.setTimeout(40_000);
 
 const REDEEMED = CORE_API_EXAMPLES.redeemPairingCode?.responses[201]?.paired?.value as PairingRedeemed;
 const DEVICE_SESSION = CORE_API_EXAMPLES.getAuthSession?.responses[200]?.pairedDevice?.value as AuthSessionInfo;
@@ -153,10 +152,12 @@ function scriptCore(engine: Sim): void {
   });
 }
 
-/** Real time passes inside `act`: the runtime builds its source on the runner's clock, as on a device. */
+/** `ms` of runner time passes inside `act`: the runner's fake clock advances and promise jobs settle. */
 async function wait(ms: number): Promise<void> {
   await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, ms));
+    jest.advanceTimersByTime(ms);
+    // The bed's own flush convention (`live-monitor-bed.tsx:167-171`): let the promise jobs run.
+    for (let turn = 0; turn < 40; turn += 1) await Promise.resolve();
   });
 }
 
@@ -215,12 +216,24 @@ async function openPreferences(app: ReturnType<typeof mountApp>): Promise<void> 
   await until(() => screen.queryByTestId('settings-preferences') !== null, 'Settings → App Preferences');
 }
 
+/** One turn of the event loop's queue: a hand-over, never a duration wait (no timer is involved). */
+const nextTurn = promisify(setImmediate) as () => Promise<void>;
+
 beforeAll(async () => {
-  // Reanimated's UI-side frame-callback registry initialises on real timers (S72-12).
-  await new Promise((resolve) => setTimeout(resolve, 50));
+  // Reanimated prepares its UI-side frame-callback registry through one 0 ms timer that the worklets
+  // mock runs when the module loads, on the real queue (S72-12). Yield two scheduler turns so that
+  // timer has run before the first test takes the clock in `beforeEach`: a registration on the
+  // runner's fake clock then always finds the registry. Turns, not duration waits.
+  await nextTurn();
+  await nextTurn();
 });
 
 beforeEach(async () => {
+  // The runner owns the clock for the whole test: every timer this file and the fake transport
+  // schedule runs on it (`clockFromTimers` reads these globals at call time, clock.ts:9-11).
+  // `nextTick`, `queueMicrotask` and `setImmediate` stay real: promise jobs, `act` hand-overs and
+  // the worklets mock's `runOnJS` must not wait on a clock advance (probe-failure.test.ts:213).
+  jest.useFakeTimers({ doNotFake: ['nextTick', 'queueMicrotask', 'setImmediate'] });
   resetMissingKeys();
   await AsyncStorage.clear();
   resetShellState();
@@ -252,6 +265,7 @@ afterEach(async () => {
   restoreTransport();
   fake.assertNoViolations();
   expect(getMissingKeys()).toEqual([]);
+  jest.useRealTimers();
 });
 
 describe('SIMULATED → LIVE (§3.3, AC-C-31)', () => {

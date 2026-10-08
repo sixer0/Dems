@@ -16,8 +16,6 @@ import { DEMO_MEDIA_EVIDENCE } from '@/components/media/demo-media';
 import { resetMotionStateForTests } from '@/motion';
 import { renderEvidenceApp, settle } from './testing/evidence-harness';
 
-jest.setTimeout(20_000);
-
 interface MockPlayer {
   source: unknown;
   muted: boolean;

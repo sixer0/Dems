@@ -6,7 +6,7 @@
  * RBAC, source check and reason rule; the list's kebab "Verify" opens the integrity tab and runs.
  * Real route files, real simulator, real providers; real timers (Reanimated in Jest, S72-12).
  */
-import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
+import { afterEach, beforeEach, describe, expect, it } from '@jest/globals';
 import './testing/evidence-test-setup';
 import '@/navigation/testing/router-harness';
 
@@ -20,8 +20,6 @@ import { VERIFY_ASK_MS } from './integrity-tab';
 import { renderEvidenceApp, settle, type EvidenceHarness } from './testing/evidence-harness';
 import { pressMenuItem } from './testing/kit-helpers';
 import { SCRAMBLE_MS } from './use-scramble';
-
-jest.setTimeout(20_000);
 
 beforeEach(() => resetMissingKeys());
 // MA-21: every string the Evidence detail renders comes from an i18n key.

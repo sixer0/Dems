@@ -13,11 +13,12 @@
 // The real route tree runs (W70's router harness: the real AppTabs, BottomTabBar, NavRail, screens).
 // What only the devices can confirm is listed in gateway_check/11d_efix_mobile_screens.md (FX-M2b).
 // `@jest/globals` first: the Reanimated mock below runs while the harness loads, and it needs `jest`.
-import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, jest } from '@jest/globals';
 // The harness next: its first import prepares the module mocks the route tree needs (see its header).
 import { FakeRuntime, renderApp, resetShellState, routeTestSim } from '../testing/router-harness';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { act, fireEvent, screen } from '@testing-library/react-native';
+import { promisify } from 'node:util';
 import { router } from 'expo-router';
 import { StyleSheet, type TextStyle, type ViewStyle } from 'react-native';
 import type { ReactTestInstance } from 'react-test-renderer';
@@ -120,13 +121,32 @@ function visibleVeils(): number {
   return screen.queryAllByTestId('tab-fade-veil', HIDDEN_TOO).filter((node) => effectiveOpacity(node) > 0).length;
 }
 
+/**
+ * B10-f (D246): the motion budgets run on the runner's fake clock, not on wall time. One `wait` drives the
+ * clock past every budget; the timers that remove the fades, the travelling pill and the veil
+ * (`nav-item.tsx:57`, `use-indicator.ts:81`, `app-tabs.tsx:123`) fire on the advance, exactly as they did
+ * in real time. The 40 promise turns are the bed's flush convention (`live-monitor-bed.tsx:167-171`).
+ */
 async function wait(ms: number): Promise<void> {
   await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, ms));
+    jest.advanceTimersByTime(ms);
+    for (let turn = 0; turn < 40; turn += 1) await Promise.resolve();
   });
 }
 
+/** S72-12 priming: two scheduler hand-overs drain the worklets mock's 0 ms registry timer before the
+ * first fake install (`promisify(setImmediate)`, the row 17/18 guard for trees touching Reanimated). */
+const nextTurn = promisify(setImmediate) as () => Promise<void>;
+
+beforeAll(async () => {
+  await nextTurn();
+  await nextTurn();
+});
+
 beforeEach(async () => {
+  // The exact doNotFake list proven for promise-heavy trees in this workspace (`probe-failure.test.ts:213`):
+  // act hand-overs and the worklets mock runOnJS must stay off the faked clock.
+  jest.useFakeTimers({ doNotFake: ['nextTick', 'queueMicrotask', 'setImmediate'] });
   resetShellState();
   resetMotionStateForTests();
   await AsyncStorage.clear();
@@ -134,6 +154,7 @@ beforeEach(async () => {
 
 afterEach(() => {
   resetMotionStateForTests();
+  jest.useRealTimers();
 });
 
 describe('E2E-P-1 (phone bar), every UI-thread update lost: the highlight still ends on the active tab', () => {

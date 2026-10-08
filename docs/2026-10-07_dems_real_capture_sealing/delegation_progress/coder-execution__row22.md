@@ -1,0 +1,22 @@
+# coder-execution — row 22 (B12/A4 RC-1 fix, M0, class A, tier 3)
+
+Status: DONE — fixed, proven RED-before/GREEN-after, verification passed. Date: 2026-10-07. Session: coder-execution subagent (row 22 delegation).
+
+Deliverable: `docs/2026-10-07_dems_real_capture_sealing/implementation/07_rc1_recording_elapsed_monotonic.md`
+
+Depends on: row 21 (gated); method precedents: row 16 (root-cause first), rows 17-21 (fake-clock test patterns), D255 ruling, DEC-FXR-M-2 (fix the ticker, not the monitor).
+
+## Result summary
+
+- Mechanism root-caused at the pre-fix `recording-elapsed.ts:129` the blueprint names: `useRecordingTickerSeconds` gates `startedAt` on `'RECORDING'`, so the ticker half collapses to `zeroSeconds` (`:136`) the moment a late stop leaves the state; the Sessions hub (`use-sessions-data.ts:140-141`, stays mounted) then falls back to the store value frozen at the LAGGING `stoppedAt` (`session-machine.ts:705`) and the duration steps back by δ (RC-1's 00:00:19→00:00:11; RF2-2 δ = 7.7-12.4 s). Inside the ticker `:75` `Math.max` was already forward-only — the defect is the drop-to-0 at the hook boundary.
+- Fix = ONE file, `apps/mobile/src/runtime/recording-elapsed.ts`, +46/−7 (six hunks, blob `9ba1468..4da7cd7`): `ElapsedTicker` gains idempotent `freeze()` (stops re-arm and further clock reads); the per-clock ticker cache records `sessionId`; new `heldAfterStop` returns the same-session ticker FROZEN when the state left RECORDING — the hook draws the held last second instead of 0 ("keep the larger value"), frozen so it never grows past the stop either. SIMULATED/HEARTBEAT (`coreClockOf = null`) and no-ticker sessions unchanged. `use-monitor.ts` untouched: `git diff -- apps/mobile/src/features/session-live/use-monitor.ts | wc -l` = 0.
+- New test: `apps/mobile/src/features/session-live/live-rc1-elapsed-stop-hold.test.tsx` (3 tests) — the module's convention (manual virtual `CoreClock` + `createTestSim` + `registerCoreClock`, per `live-mini-bar-core-clock.test.tsx`; sign-in via `sim.actions.signIn`, per `home-live.test.tsx:240`); NO wall-clock waits (grep `new Promise|Date\.now|performance\.now|jest\.setTimeout|sleep|wait\(` prints nothing, exit 1).
+- Hard gate: PRE-FAIL twice — first on the untouched tree, then the formal `git stash push -- recording-elapsed.ts` cycle on the final files — identical expected failure mode, verbatim `Expected: >= 1129 / Received: 1122` on tests 1-2 (the RC-1 step back), SIMULATED guard green, `npm-exit=1`. POST-FIX: stash popped, file byte-identical to backup (`cmp identical`), 3/3 green, `npm-exit=0`. Harness detours recorded honestly in the report §4 (import-path fix; scenario store hydrates SIGNED_OUT — NOT_SIGNED_IN error, not RC-1 — fixed with the workspace's own sign-in convention; scratch debug file created and deleted).
+- Official 3/3 on the final tree: `npm run test -w @dems/mobile -- src/features/session-live/live-rc1-elapsed-stop-hold --maxWorkers=2` → r1/r2/r3 exit 0, `Tests: 3 passed, 3 total` (1.453/1.125/1.167 s); load 6.11, zero flakes, no timeout raised. Neighbors: `elapsed-ticker|live-mini-bar-core-clock|live-monitor-timer-core-clock|features/sessions/live-sessions` 4 suites / 19 tests exit 0. `typecheck -w @dems/mobile` exit 0; `eslint` on both row files exit 0 (one unused-import warning found and fixed, then re-verified).
+- Production diff: exactly one production file in `git diff --name-only -- apps/ packages/ scripts/ release/` belongs to this row (`recording-elapsed.ts`); the other 11 are the gated row 17-21 test files (attributed, untouched); one untracked addition is this row's test file.
+
+## For row 26 (senior review) / the chain
+
+Report §7 residuals, headline: (1) history-row replacement at SEALED can still show the Core's lower true duration (data-source change D255 accepted — hold applies to the active row); (2) `ElapsedTicker.freeze()` is now a required interface member (sole producer `createElapsedTicker`; no unit-level freeze test on the ticker factory — covered through the hook); (3) accepted δ-overshoot in the held value (ruling: keep the larger); (4) the hold now also covers monitor/mini-bar/Home (all their suites green); (5) A4's device half stays pre-handover (not run here).
+
+Files written: the deliverable above, this progress note, `apps/mobile/src/runtime/recording-elapsed.ts` (modified) and `apps/mobile/src/features/session-live/live-rc1-elapsed-stop-hold.test.tsx` (new). Blockers: none. Mobile jest runner released for the next row needing it (row 23 is lockfile work, row 27 the regression wave).

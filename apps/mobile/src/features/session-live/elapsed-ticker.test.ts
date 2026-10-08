@@ -86,6 +86,50 @@ describe('createElapsedTicker', () => {
     expect(f.pending()).toBe(0);
   });
 
+  // RC-1 (D255), the `freeze()` member added by row 22, the direct unit contract per row-26 review finding
+  // F3. Since ruling D19(b) (RV-CODE) the hook retires a session's ticker with it once the Core reports the
+  // stop (the drawn value is then the Core's recorded duration; `live-rc1-elapsed-stop-hold.test.tsx`), and
+  // a frozen ticker is never handed out again (`isFrozen`, audit AU1-6).
+  it('RC-1: freeze() stops the advancement at the last drawn second and drops the armed timer', () => {
+    const start = 5_000_000;
+    const f = fakeClock(start);
+    const ticker = createElapsedTicker(f.clock, start, 'SES-F1');
+    const heard: number[] = [];
+    const off = ticker.subscribe(() => heard.push(ticker.getSnapshot()));
+    f.advance(3_000);
+    expect(ticker.getSnapshot()).toBe(3);
+    const before = heard.length;
+    expect(ticker.isFrozen()).toBe(false);
+    ticker.freeze(); // the Core reported the stop: retire the ticker at the last second it drew
+    expect(ticker.isFrozen()).toBe(true);
+    expect(f.pending()).toBe(0); // the armed timer is dropped AT the freeze, not at the next tick
+    f.advance(6_000);
+    expect(ticker.getSnapshot()).toBe(3); // frozen: no clock read, no growth past the stop
+    expect(heard.length).toBe(before); // and no subscriber is ever notified again
+    off();
+  });
+
+  it('RC-1: freeze() is idempotent, and a subscribe after a freeze keeps drawing the frozen second', () => {
+    const start = 6_000_000;
+    const f = fakeClock(start);
+    const ticker = createElapsedTicker(f.clock, start, 'SES-F2');
+    const off = ticker.subscribe(() => undefined);
+    f.advance(4_000);
+    expect(ticker.getSnapshot()).toBe(4);
+    off(); // every subscriber left: the timer is dropped (the stopped flag is not yet set)
+    ticker.freeze();
+    ticker.freeze(); // idempotent: the second freeze is a no-op, it must not throw
+    expect(f.pending()).toBe(0);
+    const heard: number[] = [];
+    const off2 = ticker.subscribe(() => heard.push(ticker.getSnapshot()));
+    expect(ticker.getSnapshot()).toBe(4); // subscribe after freeze returns the frozen value
+    f.advance(5_000);
+    expect(ticker.getSnapshot()).toBe(4); // a frozen ticker never re-arms: neither via subscribe nor tick
+    expect(heard).toEqual([]);
+    expect(f.pending()).toBe(0);
+    off2();
+  });
+
   it('W93-12 (FXR-M): a tick that throws once is logged and the ticker keeps running (it used to stop for the session)', () => {
     const start = 4_000_000;
     const f = fakeClock(start);

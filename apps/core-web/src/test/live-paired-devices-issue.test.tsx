@@ -73,11 +73,35 @@ async function pressIssue(testId = 'pd-issue') {
   })
 }
 
-/** Issues the marker code and waits until its digits are revealed. */
+/**
+ * Past the reveal: `CodeDigits` scrambles for `SCRAMBLE_SECONDS` = 0.6 s (`code-display.tsx:13`) in frames of
+ * 40 ms (`text-scramble.tsx:78-106`, 16 frames = 640 ms); one second covers it with room to spare.
+ */
+const SCRAMBLE_SETTLE_MS = 1_000
+
+/**
+ * Issues the marker code and plays its reveal to the end, deterministically (RV-CODE, audit AU1-1).
+ *
+ * The reveal is a REAL 40 ms `setInterval` whose first frame already shows the final digits, so waiting for
+ * `shownDigits() === MARKER_CODE` could finish BEFORE the scramble started, and the assertions after this
+ * helper then raced the timer (the D256 failure at the "AC-C-92" digit check). Only `setInterval` and
+ * `clearInterval` are faked, only inside this helper: the page's own clock is the bed's fake Live clock, and
+ * `setTimeout`/`Date` stay real. The fake interval is advanced past the scramble, and the helper asserts that
+ * no fake interval is left (the scramble cleared its own) before the real timers come back.
+ */
 async function issueMarker() {
-  await pressIssue()
-  await screen.findByTestId('pd-code')
-  await waitFor(() => expect(shownDigits()).toBe(MARKER_CODE))
+  vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+  try {
+    await pressIssue()
+    await screen.findByTestId('pd-code')
+    await act(async () => {
+      vi.advanceTimersByTime(SCRAMBLE_SETTLE_MS)
+    })
+    expect(vi.getTimerCount()).toBe(0) // the scramble ran to its end and cleared its interval
+  } finally {
+    vi.useRealTimers()
+  }
+  expect(shownDigits()).toBe(MARKER_CODE)
 }
 
 let restoreStubs: () => void = () => undefined
@@ -368,10 +392,11 @@ describe('refusals, outages and limits (AC-C-99, AC-C-48, LB-6, LB-10)', () => {
     await pressIssue()
     await waitFor(() => expect(toastsWith(LIMITED(42))).toHaveLength(1))
     // W92-16: after a flush, ONE toast call — not only one toast on screen.
+    // B10-d (row 20): the quiet window is the bed's fake clock, not wall time — `elapse` moves it in
+    // virtual ms and flushes the promise jobs after each step (`live-harness.ts:446-453`), so every
+    // runtime timer and every delayed answer of the fake transport (`clock.ts:81`) runs inside it.
     await bed.flush()
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 50))
-    })
+    await bed.elapse(50, 50)
     expect(toastCalls()).toBe(1)
     expect(toastsWith(OFFLINE)).toEqual([])
     expect(screen.queryByTestId('pd-issue-error')).not.toBeInTheDocument()

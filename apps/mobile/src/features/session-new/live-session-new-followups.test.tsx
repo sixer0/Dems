@@ -43,8 +43,6 @@ afterEach(() => {
 const SIMULATION = /simulat/i;
 const LIVE_HINT = 'Microphone levels from the Core server';
 const LIVE_SCAN = 'Fill in the next case number';
-/** W93-17 (D239): the explicit per-test budget of the load-flaky tests (ms). */
-const LOAD_TOLERANT_TIMEOUT_MS = 20_000;
 const SIMULATED_HINT = 'Speak to test (simulated)';
 const SIMULATED_SCAN = 'Scan case number (simulated)';
 const leave = () => screen.getByTestId('back-guard-leave');
@@ -164,8 +162,8 @@ describe('the cancel confirm holds while the cancel is out (S3-1, B-6, LB-6; the
   const stay = () => screen.getByTestId('back-guard-stay');
   const stayDisabled = () => stay().props.accessibilityState?.disabled === true;
 
-  // W93-17 (FXR-M; D239): ~0.3 s alone, but it passed 5 s at host load 16.7 (root `npm test` gives each
-  // workspace's jest every core). An explicit budget keeps the gate from flaking under load.
+  // RC-8 (row 19): the W93-17 explicit 20 s budget is removed — T1 set testTimeout: 20000 globally
+  // (jest.config.js:10), so the per-test budget equalled the default and changed nothing (D239, D255).
   for (const order of ['delta-first', 'answer-first'] as const) {
     it(`a confirmed cancel (${order}): "Keep session" is disabled and does not close the dialog while the cancel is out; the wizard leaves on the Core's answer`, async () => {
       const b = await liveCancelConfirm();
@@ -193,7 +191,7 @@ describe('the cancel confirm holds while the cancel is out (S3-1, B-6, LB-6; the
       expect(b.requests('cancelSession')).toHaveLength(1);
       expect(b.state().session).toBeNull();
       expect(b.app.getPathname()).toBe('/home');
-    }, LOAD_TOLERANT_TIMEOUT_MS);
+    });
   }
 
   it('a refused cancel (403, 1 s late): "Keep session" is disabled while it is out, enabled again after the refusal, and then keeps the session', async () => {

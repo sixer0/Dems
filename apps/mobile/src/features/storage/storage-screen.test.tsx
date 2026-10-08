@@ -35,8 +35,6 @@ jest.mock('expo-router', () => ({
   useIsFocused: () => true,
 }));
 
-jest.setTimeout(20_000);
-
 const WINDOWS = {
   phonePortrait: { width: 411, height: 923 },
   tabletLandscape: { width: 1280, height: 800 },

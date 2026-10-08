@@ -13,7 +13,7 @@
 // The device re-test confirms the pixels.
 //
 // Import order: the test setup first, then the router harness (see their headers).
-import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
+import { afterEach, beforeEach, describe, expect, it } from '@jest/globals';
 import './testing/evidence-test-setup';
 import '@/navigation/testing/router-harness';
 
@@ -24,8 +24,6 @@ import { getMissingKeys, resetMissingKeys } from '@/i18n';
 import { evidenceEn } from './i18n';
 import { renderEvidenceApp, settle, type DemoUsername } from './testing/evidence-harness';
 import { layoutAncestors, stubMeasure } from './testing/kit-helpers';
-
-jest.setTimeout(20_000);
 
 beforeEach(() => resetMissingKeys());
 afterEach(() => expect(getMissingKeys()).toEqual([]));
