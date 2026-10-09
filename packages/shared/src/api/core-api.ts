@@ -31,7 +31,7 @@
  * | The model of an entry: `mode`, `services`, `access`, `audit`, `query` | `contract-model.ts` |
  * | Area 1 identity, area 2 administration, area 3 pairing, area 13 demo controls: schemas, operations, examples | `identity.ts`, `administration.ts`, `pairing.ts`, `demo-controls.ts` |
  * | Areas 4 to 11 (plan row W27, contract C): sessions, evidence, devices, storage, network and time, security and audit, system, alerts | `sessions.ts`, `evidence.ts`, `devices.ts`, `storage.ts`, `network-time.ts`, `security-audit.ts`, `system.ts`, `alerts.ts`; their state examples in `state-examples.ts` |
- * | The 45 simulator actions and the operation each one reaches (01_specs §7.17) | `sim-actions.ts` |
+ * | The 47 simulator actions and the operation each one reaches (01_specs §7.17) | `sim-actions.ts` |
  * | The text rule API-13 | `text.ts` |
  * | The Core state on the wire: one schema per replicated slice (plan row W22, contract B) | `state-slices.ts` |
  * | The messages of WS `/ws`: the union the Core server sends, the client messages, close codes | `realtime-messages.ts`, `realtime-examples.ts` |
@@ -49,7 +49,7 @@
  * - `mode` keeps its two values: `simulated` for the nine design-book operations (the in-app
  *   simulator can answer them), `live` for every other one (only a service answers it).
  *   `listCoreApiOperations('offline')` is what a client can call without the Core server (the
- *   ten above); `'all'` is every entry: 92 operations, 35 GET and 57 POST.
+ *   ten above); `'all'` is every entry: 97 operations, 36 GET and 61 POST.
  * - `CORE_API_OPERATION_TABLE` (`operation-table.ts`) is the same table with literal types;
  *   `CORE_API_OPERATIONS` is the widened view.
  */
@@ -87,6 +87,7 @@ import {
 } from '../sim/vocabulary';
 import { ADMINISTRATION_OPERATIONS, ADMINISTRATION_SCHEMAS } from './administration';
 import { ALERT_OPERATIONS, ALERT_SCHEMAS } from './alerts';
+import { CAPTURE_DISCOVERY_OPERATIONS, CAPTURE_DISCOVERY_SCHEMAS } from './capture-discovery';
 import { ALLOW_HEADER_NAME, API_BASE_PATH, EXPORT_REASON_MAX_LENGTH, HEALTH_PATH, RETRY_AFTER_HEADER_NAME } from './constants';
 import {
   AUTHENTICATED_ACCESS,
@@ -342,6 +343,10 @@ export const SessionResourceSchema = z
       .nullable()
       .optional()
       .describe('The active/standby mic pair of this session (op 81 moves it).'),
+    captureDurable: z
+      .boolean()
+      .optional()
+      .describe('False from the accepted start until the first durable fragment ("connecting cameras"), then true; the state stays RECORDING (D84, D91 R-1). Absent reads as true.'),
     finalization: z
       .strictObject({
         steps: z
@@ -503,7 +508,7 @@ export const DeviceHealthResponseSchema = z
     }),
     services: z
       .array(z.object({ id: z.string().min(1), name: z.string().min(1), status: z.enum(ServiceStatus) }))
-      .describe('The 16 book §6.1 Core services.'),
+      .describe('The 16 book §6.1 Core services and the transcriber service.'),
     serverTime: isoTime(),
   })
   .describe('Device health snapshot: camera, audio, storage, time and security, plus services.');
@@ -630,6 +635,8 @@ export const CORE_API_SCHEMAS = {
   ...TRANSCRIPT_MEDIA_SCHEMAS,
   // Task 3 M6 (blueprint row 113; C3 §2.5; R-8): the STT configuration schemas of operations 90-92.
   ...STT_CONFIG_SCHEMAS,
+  // Task 3 R-9..R-11 (blueprint row 132, decision D106; C3 §2.6): the eight schemas of operations 93-97.
+  ...CAPTURE_DISCOVERY_SCHEMAS,
 } as const;
 export type CoreApiSchemaName = keyof typeof CORE_API_SCHEMAS;
 
@@ -1033,6 +1040,9 @@ const OPERATION_TABLE = [
   // Task 3 M6 (blueprint row 113; C3 §2.5; R-8): Q-STT-CFG was confirmed at the second gate (D24),
   // so operations 90-92 join the table: 89 + 3 = 92 operations, 35 GET / 57 POST (CF-11).
   ...STT_CONFIG_OPERATIONS, // 90-92
+  // Task 3 R-9..R-11 (blueprint row 132, decision D106; C3 §2.6, §10.1): camera search, connection
+  // test, adoption and the local-input re-read. 92 + 5 = 97 operations, 36 GET / 61 POST.
+  ...CAPTURE_DISCOVERY_OPERATIONS, // 93-97
 ] as const satisfies readonly CoreApiRegistryOperation[];
 
 /** The type of the table with literal operation IDs and schema names (`CORE_API_OPERATION_TABLE`). */

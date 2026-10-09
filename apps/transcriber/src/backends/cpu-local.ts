@@ -38,7 +38,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { accessSync, closeSync, constants, mkdirSync, openSync, readFileSync, readSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { getPriority } from 'node:os';
-import { join, sep } from 'node:path';
+import { dirname, join, sep } from 'node:path';
 import { z } from 'zod';
 import type { CpuLocalConfig } from '../config';
 import { STT_NICE, engineIsBelowCaptureWorker, engineIsLowered, threadPlanHolds } from '../cpu-priority';
@@ -121,6 +121,13 @@ const WhisperCliOutputSchema = z.looseObject({
  * (the Core, row 115): the transcriber never looks a worker up by name.
  */
 export type CaptureWorkerPid = () => number | null;
+
+/**
+ * The explicit statement "no capture worker runs beside this transcriber" (a test, a development
+ * run, the functional checks on a finished file). A composition for a live session must state the
+ * worker — a function, or this — so that the sibling rule is never off by omission (N-10).
+ */
+export const NO_CAPTURE_WORKER: CaptureWorkerPid = () => null;
 
 export type CaptureWorkerVerdict =
   | { readonly ok: true; readonly workerNice: number | null }
@@ -244,6 +251,71 @@ export interface LoweredProcessHost {
 }
 
 const STDOUT_CAPTURE_BYTES = 4_000_000;
+
+// ── The engine guard: no engine outlives the pipeline that started it (navigator finding N-2) ──
+
+/** The record of the one engine a session may have running, under `<session scratch>/work`. */
+export const ENGINE_RECORD_FILE = 'engine.json';
+
+export interface EngineGuard {
+  /** Hand this to every engine module as `onEngineStart`: the pid is on the disk before the engine has done any work. */
+  readonly record: (engine: { readonly pid: number }) => void;
+  /** The engine ended in the ordinary way: nothing is left to reap. */
+  clear(): void;
+  /**
+   * Stops the engine a killed pipeline left behind, if it is still THAT process (same pid AND same
+   * start instant as recorded — a pid that was given to another process is left alone), waits
+   * until it is gone, and removes the record. Returns the pid it stopped, or null.
+   */
+  reap(): number | null;
+}
+
+/** When the operating system says the process started, as its own text; null when there is no such process. */
+function processStart(pid: number): string | null {
+  try {
+    const answer = spawnSync('ps', ['-o', 'lstart=', '-p', String(pid)], { stdio: ['ignore', 'pipe', 'ignore'], shell: false, env: ENGINE_ENVIRONMENT, encoding: 'utf8', timeout: NICE_PROBE_TIMEOUT_MS });
+    const text = answer.stdout.trim();
+    return answer.status === 0 && text !== '' ? text : null;
+  } catch {
+    return null;
+  }
+}
+
+const REAP_POLLS = 200;
+
+export function createEngineGuard(sessionScratchDir: string): EngineGuard {
+  const path = join(sessionScratchDir, 'work', ENGINE_RECORD_FILE);
+  const clear = (): void => rmSync(path, { force: true });
+  return Object.freeze({
+    clear,
+    record(engine: { readonly pid: number }): void {
+      mkdirSync(dirname(path), { recursive: true });
+      writeFileSync(path, JSON.stringify({ pid: engine.pid, started: processStart(engine.pid) }), { mode: 0o600 });
+    },
+    reap(): number | null {
+      let stored: { pid?: unknown; started?: unknown };
+      try {
+        stored = JSON.parse(readFileSync(path, 'utf8')) as { pid?: unknown; started?: unknown };
+      } catch {
+        clear(); // no record, or one a kill tore: there is nothing that names a process
+        return null;
+      }
+      const pid = typeof stored.pid === 'number' && Number.isInteger(stored.pid) && stored.pid > 1 ? stored.pid : null;
+      let stopped: number | null = null;
+      if (pid !== null && typeof stored.started === 'string' && processStart(pid) === stored.started) {
+        try {
+          process.kill(pid, 'SIGKILL');
+          stopped = pid;
+        } catch {
+          stopped = null; // it ended between the question and the signal
+        }
+        for (let poll = 0; poll < REAP_POLLS && processStart(pid) === stored.started; poll += 1) spawnSync('sleep', ['0.05'], { stdio: 'ignore', shell: false, env: ENGINE_ENVIRONMENT });
+      }
+      clear();
+      return stopped;
+    },
+  });
+}
 
 /**
  * THE ONE PLACE THAT STARTS AN ENGINE PROCESS (the STT engine here, the VAD engine of

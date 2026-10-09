@@ -49,7 +49,8 @@
     "pg:status": "node scripts/pg/status.mjs",
     "pg:remove-data": "node scripts/pg/remove-data.mjs",
     "pg:remove": "node scripts/pg/remove.mjs",
-    "test:pg-scripts": "node --test scripts/pg/"
+    "test:pg-scripts": "node --test scripts/pg/",
+    "capture:dev-setup": "node scripts/capture/dev-setup.mjs"
   },
   "devDependencies": {
     "embedded-postgres": "18.4.0-beta.17",

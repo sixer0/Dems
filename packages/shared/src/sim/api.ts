@@ -1,10 +1,12 @@
 /**
- * Simulated REST handlers for the 25 simulated operations: the 9 §21.2 endpoints
+ * Simulated REST handlers for the 30 simulated operations: the 9 §21.2 endpoints
  * (masterplan/01_specs.md §14.7 `api.ts`, §14.9 `simAwareFetch`; AC-58) plus the 13 capture,
  * audio-source, sealing and transcript operations of schema v2 (task 3 M2-W9b, blueprint row 51a;
  * OD-17 "the simulator emulates v2" supersedes the old "simulator untouched" rule, OD-23;
  * `masterplan/03_api_contract.md` (C3) §2) plus the 3 STT configuration operations 90-92 (task 3 M6,
- * blueprint row 113; C3 §2.5; R-8).
+ * blueprint row 113; C3 §2.5; R-8) plus the 5 camera-search, connection-test, adoption and
+ * local-input operations 93-97 (task 3 R-9..R-11, blueprint row 132, decision D106; C3 §2.6
+ * "Simulator").
  *
  * `handleSimApiRequest(sim, { method, path, body })` → `{ status, headers, body }`:
  * - every response carries `x-dems-simulated: 1` and `content-type: application/json`;
@@ -17,7 +19,33 @@
  * `GET /api/v1/health` is LIVE (mock-core) and is not handled here (404).
  * The body types below are the contract for step 33's OpenAPI schemas.
  */
-import { EXPORT_JOB_ID_PATTERN, HARDWARE_DEVICE_ID_PATTERN } from '../api/patterns';
+import { CAPTURE_DISCOVERY_RESULT_TTL_MS, CAPTURE_CONNECTION_TEST_MAX_FAILURES, CAPTURE_CONNECTION_TEST_VALIDITY_MS } from '../api/capture';
+import {
+  CaptureCandidateAdoptRequestSchema,
+  CaptureCandidateStatus,
+  CaptureConnectionOutcome,
+  CaptureConnectionTestRequestSchema,
+  CaptureDiscoveryReason,
+  CaptureDiscoveryScope,
+  CaptureDiscoveryTrigger,
+  CaptureSourceClass,
+  SIM_ADOPTED_DEVICE_ID,
+  SIM_CAPTURE_ADAPTER,
+  captureCandidateAdoptedDetails,
+  captureConnectionTestedDetails,
+  captureDiscoverySearchedDetails,
+  simCaptureCandidates,
+  simCaptureDiscoverySearch,
+  type CaptureCandidate,
+  type CaptureCandidateAdoption,
+  type CaptureConnectionTest,
+  type CaptureDiscoverySearch,
+  type CaptureDiscoveryStateBody,
+  type CaptureInputScan,
+} from '../api/capture-discovery';
+import { WEB_CONSOLE_ONLY_REASON } from '../api/contract-model';
+import { CaptureCredentialWriteRequestSchema } from '../api/devices';
+import { EXPORT_JOB_ID_PATTERN, HARDWARE_DEVICE_ID_PATTERN, MIC_INPUT_ID_PATTERN } from '../api/patterns';
 import {
   STT_CONFIG_CHANGED_MESSAGE,
   STT_CONFIG_DEFAULT,
@@ -41,6 +69,8 @@ import { MIC_INPUT_OF_CHANNEL } from './audio';
 import { SEALING_ETA_STEP_MS, SEALING_FIRST_ATTEMPT } from './constants';
 import { toWibIso } from './clock';
 import { findOperatorById, roleHas } from './auth';
+import { setCaptureConfigTransition } from './capture-config';
+import { nextCaptureCameraId, registerCaptureDeviceTransition } from './capture-registry';
 import { describeError, SimErrorCode, SimNotFoundError, SimPermissionError, SimTransitionError } from './errors';
 import { canonicalJSON, recordActivity, sha256Hex } from './events';
 import { SIMULATED_SIGNING_KEY_ID } from './evidence';
@@ -49,6 +79,7 @@ import { selectElapsedMs, selectSystemState, storageSummary } from './selectors'
 import type { SimStore } from './store';
 import type {
   ActiveSession,
+  CaptureConfigChange,
   CaptureConfigSlice,
   CaptureDevicesSlice,
   EpochMs,
@@ -80,7 +111,8 @@ export interface SimApiRoute {
 
 /**
  * The simulated operations (method, OpenAPI path template, operationId): the nine of book §21.2
- * followed by the thirteen of schema v2 (ops 76-87 and 89, C3 §2.2), in registry order. Op 88
+ * followed by the thirteen of schema v2 (ops 76-87 and 89, C3 §2.2), the three of the STT
+ * configuration (90-92) and the five of the camera search (93-97), in registry order. Op 88
  * (`createEvidenceMediaSession`) is LIVE-only and is deliberately absent: Simulated mode plays the
  * bundled demo media instead (C3 §2.4). The set is pinned against the registry's `mode: 'simulated'`
  * operations by `test/openapi.test.ts`.
@@ -113,6 +145,12 @@ export const SIM_API_ROUTES: readonly SimApiRoute[] = [
   { method: 'GET', path: '/api/v1/transcription/config', operationId: 'getSttConfig' },
   { method: 'POST', path: '/api/v1/transcription/config', operationId: 'updateSttConfig' },
   { method: 'POST', path: '/api/v1/transcription/config/test', operationId: 'testSttConnection' },
+  // ── Camera search, connection test, adoption, local inputs (task 3 R-9..R-11, row 132; C3 §2.6 ops 93-97) ──
+  { method: 'POST', path: '/api/v1/capture/discovery', operationId: 'startCaptureDiscovery' },
+  { method: 'GET', path: '/api/v1/capture/discovery', operationId: 'getCaptureDiscovery' },
+  { method: 'POST', path: '/api/v1/capture/discovery/candidates/{id}/test', operationId: 'testCaptureCandidateConnection' },
+  { method: 'POST', path: '/api/v1/capture/discovery/candidates/{id}/adopt', operationId: 'adoptCaptureCandidate' },
+  { method: 'POST', path: '/api/v1/capture/inputs/rescan', operationId: 'rescanCaptureInputs' },
 ];
 
 
@@ -397,6 +435,14 @@ export interface SimApiTarget {
   store: SimStore;
   actions: SimActions;
   clock: SimClock;
+  /**
+   * True when this simulator runs inside a tablet or phone app (`CreateSimOptions.deviceConsole`):
+   * the operator's session is then "bound to a paired device", and the three operations that carry
+   * a camera credential (89, 95, 96) answer `403 NOT_PERMITTED` with `details.reason:
+   * WEB_CONSOLE_ONLY`, as the Core server does (C3 §2.6 "Simulator"; D80(3)). Default false: the
+   * web console.
+   */
+  deviceConsole?: boolean;
 }
 
 function respond(status: number, body: unknown, extra: Record<string, string> = {}): SimApiResponse {
@@ -596,7 +642,7 @@ interface CaptureCameraLine {
 
 /** One mic line of the op 78 body. */
 interface CaptureMicLine {
-  inputId: MicInputId;
+  inputId: string;
   deviceId: string;
   transport?: string;
 }
@@ -639,8 +685,8 @@ function checkCaptureConfigUpdate(body: Record<string, unknown>): BodyCheck & { 
       if (!item) return { ok: false, path: `mics.${index}`, message: 'Expected an object.' };
       const extra = Object.keys(item).find((key) => key !== 'inputId' && key !== 'deviceId' && key !== 'transport');
       if (extra !== undefined) return { ok: false, path: `mics.${index}.${extra}`, message: 'Unknown member.' };
-      if (item.inputId !== MicInputId.MIC_01 && item.inputId !== MicInputId.MIC_02) {
-        return { ok: false, path: `mics.${index}.inputId`, message: 'Expected MIC-01 or MIC-02.' };
+      if (typeof item.inputId !== 'string' || !MIC_INPUT_ID_PATTERN.test(item.inputId)) {
+        return { ok: false, path: `mics.${index}.inputId`, message: 'Expected a mic input id, e.g. MIC-01.' };
       }
       if (!isCode(item.deviceId, 32) || !HARDWARE_DEVICE_ID_PATTERN.test(item.deviceId.trim())) {
         return { ok: false, path: `mics.${index}.deviceId`, message: 'Expected a capture device id, e.g. MIC-01.' };
@@ -664,92 +710,37 @@ function unknownCaptureDevice(id: string): SimApiResponse {
   return fail(404, 'NOT_FOUND', `The capture registry has no device ${id}.`);
 }
 
-/** Writes one CAPTURE_CONFIG_CHANGED row with exactly the detail keys of C3 §5.2. */
-function auditCaptureConfigChange(
-  state: SimState,
-  now: EpochMs,
-  actorId: string | null,
-  details: Record<string, string | number | null>,
-): SimState {
-  return {
-    ...state,
-    ...recordActivity(state, now, {
-      audit: {
-        type: AuditType.CAPTURE_CONFIG_CHANGED,
-        message: `Capture configuration changed (${String(details.field ?? 'FIELD')})`,
-        actorId,
-        details,
-      },
-    }),
-  };
+/**
+ * One edit of the selector (ops 78, 79, 80) through the SAME transition the hosted action
+ * `setCaptureConfig` runs (`capture-config.ts`; decision D106 (3)): the audit keys are exactly those
+ * of C3 §5.2, a line that names no registered device of the right class is refused, and so is one
+ * camera on both tracks with one profile. An edit that changes nothing writes no row.
+ */
+function editCaptureConfig({ store, clock }: SimApiTarget, change: CaptureConfigChange): SimApiResponse {
+  const state = store.getState();
+  try {
+    const next = setCaptureConfigTransition(state, clock.now(), change);
+    if (next !== state) store.setState(next);
+    return respond(200, captureConfigBody(next));
+  } catch (error) {
+    // What the selector as a whole refuses (C3 §2.4): the Core server answers the same 422.
+    if (error instanceof SimTransitionError && error.code === SimErrorCode.INVALID_INPUT) {
+      return fail(422, 'INVALID_INPUT', 'The capture configuration is not accepted: a line names no registered device of its class, or the selector would hold one source twice.');
+    }
+    throw error;
+  }
 }
 
-/** Applies one validated op 78 body to the selector and returns the new state plus its audit rows. */
-function applyCaptureConfigUpdate(state: SimState, now: EpochMs, actorId: string | null, patch: { cameras?: CaptureCameraLine[]; mics?: CaptureMicLine[] }): SimState {
-  let cameras = state.captureConfig.cameras;
-  let mics = state.captureConfig.mics;
-  let next: SimState = state;
-  for (const line of patch.cameras ?? []) {
-    const previous = cameras.find((entry) => entry.trackId === line.trackId);
-    const device = captureDevice(state, line.deviceId);
-    cameras = cameras.map((entry) =>
-      entry.trackId === line.trackId
-        ? {
-            ...entry,
-            deviceId: line.deviceId,
-            ...(line.profile === undefined ? {} : { profile: line.profile }),
-            online: device?.online ?? entry.online,
-            streamState: device?.streamState ?? entry.streamState,
-          }
-        : entry,
-    );
-    next = auditCaptureConfigChange({ ...next, captureConfig: { ...next.captureConfig, cameras } }, now, actorId, {
-      operationId: 'updateCaptureConfig',
-      scope: 'CAMERA',
-      field: 'SOURCE',
-      trackId: line.trackId,
-      deviceId: line.deviceId,
-      from: previous?.deviceId ?? null,
-      to: line.deviceId,
-    });
-    cameras = next.captureConfig.cameras;
-  }
-  for (const line of patch.mics ?? []) {
-    const previous = mics.find((entry) => entry.inputId === line.inputId);
-    mics = mics.map((entry) =>
-      entry.inputId === line.inputId
-        ? { ...entry, deviceId: line.deviceId, ...(line.transport === undefined ? {} : { transport: line.transport }) }
-        : entry,
-    );
-    next = auditCaptureConfigChange({ ...next, captureConfig: { ...next.captureConfig, mics } }, now, actorId, {
-      operationId: 'updateCaptureConfig',
-      scope: 'MIC',
-      field: 'DEVICE',
-      inputId: line.inputId,
-      deviceId: line.deviceId,
-      from: previous?.deviceId ?? null,
-      to: line.deviceId,
-    });
-    mics = next.captureConfig.mics;
-  }
-  return { ...next, captureConfig: { ...next.captureConfig, cameras, mics, updatedAt: now } };
-}
-
-/** Swaps the PRIMARY/STANDBY roles so that `inputId` becomes PRIMARY, and mirrors the pair onto the mics. */
-function applyPrimaryMic(state: SimState, inputId: MicInputId): SimState {
-  const mics = state.captureConfig.mics.map((entry) => ({
-    ...entry,
-    role: entry.inputId === inputId ? MicRole.PRIMARY : MicRole.STANDBY,
-  }));
-  return {
-    ...state,
-    captureConfig: { ...state.captureConfig, mics },
-    // The mic slice carries the same capture role so that health, audio status and the selector agree.
-    mics: state.mics.map((mic) => ({
-      ...mic,
-      micRole: mics.find((entry) => entry.inputId === MIC_INPUT_OF_CHANNEL[mic.id])?.role ?? mic.micRole,
-    })),
-  };
+/**
+ * `403 NOT_PERMITTED` of the three credential-carrying operations (89, 95, 96) inside a tablet or
+ * phone app (C3 §2.6 "Simulator"; D80(3)): the same code and reason as the Core server's condition
+ * `WEB_CONSOLE_SESSION`. Decided before the body is looked at.
+ */
+function webConsoleOnlyRefusal(target: SimApiTarget): SimApiResponse | null {
+  if (target.deviceConsole !== true) return null;
+  return respond(403, {
+    error: { code: 'NOT_PERMITTED', message: 'This action is available on the web console only.', details: { reason: WEB_CONSOLE_ONLY_REASON } },
+  });
 }
 
 /** The audio-source intervals of one session, newest first (op 82). */
@@ -1115,6 +1106,371 @@ const STT_ROUTES: readonly Route[] = [
   },
 ];
 
+// ── Camera search, connection test, adoption, local inputs (task 3 R-9..R-11; blueprint row 132, ──
+// ── decision D106; C3 §2.6 "Simulator" ops 93-97) ────────────────────────────────────────────────
+
+/**
+ * The simulator's camera search. Like the STT configuration it is NOT a member of `SimState`: C3
+ * §2.6 "Why no slice" keeps the candidate list out of the replicated state, so it is held beside
+ * the store, as data of the operator session that searched. It is gone when that session ends,
+ * when its life is over, when a new search replaces it and when a demo reset or a scenario load
+ * replaces the dataset. The simulator opens no socket and waits on no timer: a search is COMPLETE
+ * when it is answered, with the two fixed candidates of `simCaptureCandidates`.
+ *
+ * It never holds a credential: the `credential` member of operations 95 and 96 is accepted
+ * opaquely — its presence is the one fact read from it.
+ */
+interface SimDiscovery {
+  /** The dataset the search belongs to (`meta.createdAt`): another one means a reset happened. */
+  datasetCreatedAt: EpochMs;
+  /** The operator session that owns the search: the operator and the instant of the sign-in. */
+  ownerId: string;
+  ownerSince: EpochMs | null;
+  search: CaptureDiscoverySearch;
+  candidates: CaptureCandidate[];
+}
+
+interface SimDiscoveryHolder {
+  /** Counts the searches of this store: `DSC-000001`, `DSC-000002`, … (also the local-input re-reads). */
+  searches: number;
+  held: SimDiscovery | null;
+  /** What the next connection test of the new candidate answers (`setSimConnectionTestOutcome`). */
+  outcome: CaptureConnectionOutcome;
+}
+
+const SIM_DISCOVERY = new WeakMap<SimStore, SimDiscoveryHolder>();
+const DISCOVERY_DENIED = 'Your role cannot search for cameras or connect one (RBAC).';
+
+function simDiscoveryHolder(store: SimStore): SimDiscoveryHolder {
+  let holder = SIM_DISCOVERY.get(store);
+  if (holder === undefined) {
+    holder = { searches: 0, held: null, outcome: CaptureConnectionOutcome.REACHABLE };
+    SIM_DISCOVERY.set(store, holder);
+  }
+  return holder;
+}
+
+/**
+ * A FIXTURE of the simulator, for a client that shows every outcome of a connection test in
+ * Simulated mode (C3 §2.6: "each is reachable on fixtures"): what the next tests of the simulator's
+ * new candidate answer. The default, and the value after `null`, is `REACHABLE`. No request can
+ * set it: the body of operation 95 has no such member.
+ */
+export function setSimConnectionTestOutcome(store: SimStore, outcome: CaptureConnectionOutcome | null): void {
+  simDiscoveryHolder(store).outcome = outcome ?? CaptureConnectionOutcome.REACHABLE;
+}
+
+const nextSearchId = (holder: SimDiscoveryHolder): string => {
+  holder.searches += 1;
+  return `DSC-${String(holder.searches).padStart(6, '0')}`;
+};
+
+/** The live search of the calling operator session, or null: not the owner, expired, or another dataset. */
+function liveDiscovery(store: SimStore, state: SimState, now: EpochMs): SimDiscovery | null {
+  const holder = simDiscoveryHolder(store);
+  const held = holder.held;
+  if (held === null) return null;
+  const sameOwner = state.auth.operatorId === held.ownerId && state.auth.issuedAt === held.ownerSince;
+  if (!sameOwner || held.datasetCreatedAt !== state.meta.createdAt || now >= held.search.expiresAt) {
+    holder.held = null;
+    return null;
+  }
+  return held;
+}
+
+/** The candidate as operation 94 lists it now: `adoptable` follows the age of its passing test. */
+function candidateView(candidate: CaptureCandidate, now: EpochMs): CaptureCandidate {
+  const last = candidate.lastTest;
+  const fresh = last !== null && last.outcome === CaptureConnectionOutcome.REACHABLE && now - last.testedAt < CAPTURE_CONNECTION_TEST_VALIDITY_MS;
+  return { ...candidate, adoptable: candidate.status === CaptureCandidateStatus.NEW && fresh };
+}
+
+/** An error body of operations 95 and 96 with its named reason (C3 §4). Never a part of the input. */
+function discoveryRefusal(status: number, code: string, message: string, reason: CaptureDiscoveryReason, extra: Record<string, string> = {}): SimApiResponse {
+  return respond(status, { error: { code, message, details: { reason, ...extra } } });
+}
+
+/**
+ * What operations 95 and 96 check before they look at a candidate, in the Core server's order:
+ * the role, the web-console condition, the idle lock (no audit row), then the candidate of the
+ * caller's own live search — one 404 for an unknown, an expired and a foreign id.
+ */
+function candidateOfRequest(target: SimApiTarget, id: string): { refused: SimApiResponse } | { held: SimDiscovery; candidate: CaptureCandidate } {
+  const state = target.store.getState();
+  const refused = capabilityRefusal(state, Permission.CAPTURE_CONFIG, DISCOVERY_DENIED) ?? webConsoleOnlyRefusal(target) ?? captureLockedRefusal(state);
+  if (refused) return { refused };
+  const held = liveDiscovery(target.store, state, target.clock.now());
+  const candidate = held?.candidates.find((entry) => entry.candidateId === id);
+  if (!held || !candidate) return { refused: fail(404, 'NOT_FOUND', 'No candidate has this ID.') };
+  if (candidate.status === CaptureCandidateStatus.REGISTERED) {
+    return {
+      refused: discoveryRefusal(
+        409,
+        'INVALID_STATE',
+        'This camera is already a capture device.',
+        CaptureDiscoveryReason.CANDIDATE_ALREADY_REGISTERED,
+        candidate.deviceId === null ? {} : { deviceId: candidate.deviceId },
+      ),
+    };
+  }
+  return { held, candidate };
+}
+
+/** One CAPTURE_CONNECTION_TESTED row (C3 §5.2). The simulator's candidates are DEVELOPMENT: no `host`, no `endpointRef`. */
+function auditConnectionTest(
+  state: SimState,
+  now: EpochMs,
+  held: SimDiscovery,
+  candidate: CaptureCandidate,
+  outcome: CaptureConnectionOutcome,
+  authenticated: boolean,
+  operationId: 'testCaptureCandidateConnection' | 'adoptCaptureCandidate',
+): SimState {
+  return {
+    ...state,
+    ...recordActivity(state, now, {
+      audit: {
+        type: AuditType.CAPTURE_CONNECTION_TESTED,
+        message: `Camera connection tested (${outcome})`,
+        actorId: signedInOperatorId(state),
+        details: captureConnectionTestedDetails({
+          candidateId: candidate.candidateId,
+          searchId: held.search.searchId,
+          outcome,
+          authenticated,
+          adapter: candidate.adapter,
+          sourceClass: candidate.sourceClass,
+          operationId,
+          permission: Permission.CAPTURE_CONFIG,
+        }),
+      },
+    }),
+  };
+}
+
+const DISCOVERY_ROUTES: readonly Route[] = [
+  {
+    // 93 startCaptureDiscovery
+    method: 'POST',
+    pattern: /^\/api\/v1\/capture\/discovery$/,
+    handle: ({ store, clock }) => {
+      const state = store.getState();
+      const refused = capabilityRefusal(state, Permission.CAPTURE_CONFIG, DISCOVERY_DENIED);
+      if (refused) return refused;
+      const now = clock.now();
+      const holder = simDiscoveryHolder(store);
+      const registered = new Set(state.captureDevices.devices.map((device) => device.id));
+      // A candidate reads REGISTERED when the registry holds its device: the built-in camera always,
+      // the new one once it was adopted (until a demo reset takes the device away again).
+      const candidates = simCaptureCandidates().map((candidate): CaptureCandidate => {
+        if (candidate.status === CaptureCandidateStatus.REGISTERED) return candidate;
+        return registered.has(SIM_ADOPTED_DEVICE_ID) ? { ...candidate, status: CaptureCandidateStatus.REGISTERED, deviceId: SIM_ADOPTED_DEVICE_ID } : candidate;
+      });
+      const registeredCount = candidates.filter((candidate) => candidate.status === CaptureCandidateStatus.REGISTERED).length;
+      const search: CaptureDiscoverySearch = {
+        ...simCaptureDiscoverySearch(nextSearchId(holder), now, now + CAPTURE_DISCOVERY_RESULT_TTL_MS, true),
+        responderCount: candidates.length,
+        newCount: candidates.length - registeredCount,
+        registeredCount,
+      };
+      // The new list replaces the old one: its candidate ids die with their test results.
+      holder.held = { datasetCreatedAt: state.meta.createdAt, ownerId: state.auth.operatorId ?? '', ownerSince: state.auth.issuedAt, search, candidates };
+      const open = hasActiveSession(state) ? (state.session?.id ?? null) : null;
+      store.setState({
+        ...state,
+        ...recordActivity(state, now, {
+          audit: {
+            type: AuditType.CAPTURE_DISCOVERY_SEARCHED,
+            message: `Camera search performed (${search.responderCount} answered)`,
+            actorId: signedInOperatorId(state),
+            // C3 §5.2: ids, the trigger, the outcome and four counts. Never an address or a device text.
+            details: captureDiscoverySearchedDetails({
+              searchId: search.searchId,
+              scope: CaptureDiscoveryScope.CAMERA_NETWORK,
+              trigger: CaptureDiscoveryTrigger.MANUAL,
+              outcome: 'COMPLETE',
+              responderCount: search.responderCount,
+              newCount: search.newCount,
+              registeredCount: search.registeredCount,
+              interfaceCount: search.interfaceCount,
+              sessionId: open,
+              operationId: 'startCaptureDiscovery',
+              permission: Permission.CAPTURE_CONFIG,
+            }),
+          },
+        }),
+      });
+      return respond(202, search);
+    },
+  },
+  {
+    // 94 getCaptureDiscovery
+    method: 'GET',
+    pattern: /^\/api\/v1\/capture\/discovery$/,
+    handle: ({ store, clock }) => {
+      const state = store.getState();
+      const refused = capabilityRefusal(state, Permission.CAPTURE_CONFIG, DISCOVERY_DENIED);
+      if (refused) return refused;
+      const now = clock.now();
+      const held = liveDiscovery(store, state, now);
+      if (held === null) return respond(200, { search: null, candidates: [], truncated: false } satisfies CaptureDiscoveryStateBody);
+      return respond(200, {
+        search: { ...held.search, created: false },
+        candidates: held.candidates.map((candidate) => candidateView(candidate, now)),
+        truncated: false,
+      } satisfies CaptureDiscoveryStateBody);
+    },
+  },
+  {
+    // 95 testCaptureCandidateConnection
+    method: 'POST',
+    pattern: /^\/api\/v1\/capture\/discovery\/candidates\/([^/]+)\/test$/,
+    handle: (target, [id = ''], body) => {
+      const found = candidateOfRequest(target, id);
+      if ('refused' in found) return found.refused;
+      const parsed = CaptureConnectionTestRequestSchema.safeParse(body);
+      // E-30: the refusal names where, never what — the body may hold a credential.
+      if (!parsed.success) return failWith(422, 'INVALID_INPUT', 'The request does not match the expected input.', { in: 'body' });
+      const { store, clock } = target;
+      const now = clock.now();
+      // The one fact read from the body: whether a credential was sent. The pair itself is dropped here.
+      const authenticated = parsed.data.credential !== undefined;
+      const outcome = simDiscoveryHolder(store).outcome;
+      const reachable = outcome === CaptureConnectionOutcome.REACHABLE;
+      found.candidate.lastTest = { outcome, authenticated, testedAt: now };
+      store.setState(auditConnectionTest(store.getState(), now, found.held, found.candidate, outcome, authenticated, 'testCaptureCandidateConnection'));
+      return respond(200, {
+        candidateId: found.candidate.candidateId,
+        outcome,
+        authenticated,
+        testedAt: now,
+        usableProfileCount: reachable ? 1 : 0,
+        // The simulator keeps no lock-out guard: the bound of the contract, every time.
+        failedAttemptsRemaining: CAPTURE_CONNECTION_TEST_MAX_FAILURES,
+      } satisfies CaptureConnectionTest);
+    },
+  },
+  {
+    // 96 adoptCaptureCandidate
+    method: 'POST',
+    pattern: /^\/api\/v1\/capture\/discovery\/candidates\/([^/]+)\/adopt$/,
+    handle: (target, [id = ''], body) => {
+      const found = candidateOfRequest(target, id);
+      if ('refused' in found) return found.refused;
+      const { store, clock } = target;
+      const now = clock.now();
+      const { held, candidate } = found;
+      if (!candidateView(candidate, now).adoptable) {
+        return discoveryRefusal(409, 'INVALID_STATE', 'Test the connection to this camera first.', CaptureDiscoveryReason.CANDIDATE_NOT_TESTED);
+      }
+      const parsed = CaptureCandidateAdoptRequestSchema.safeParse(body);
+      if (!parsed.success) return failWith(422, 'INVALID_INPUT', 'The request does not match the expected input.', { in: 'body' });
+      // The simulator has no credential store (as for operation 89): nothing of the pair is kept.
+      const credentialSet = parsed.data.credential !== undefined;
+      const actorId = signedInOperatorId(store.getState());
+      // The Core server's rows, in its order: the verification, the adoption, the credential fact.
+      let next = auditConnectionTest(store.getState(), now, held, candidate, CaptureConnectionOutcome.REACHABLE, credentialSet, 'adoptCaptureCandidate');
+      // The device joins the registry through the transition of the INTERNAL action the Core runs
+      // inside operation 96 (`registerCaptureDevice`): the next free CAM-NN, never a reused id.
+      const registered = registerCaptureDeviceTransition(next, {
+        id: nextCaptureCameraId(next.captureDevices.devices),
+        model: candidate.model,
+        host: candidate.host,
+        adapter: candidate.adapter,
+      });
+      next = registered.state;
+      const device = registered.result;
+      next = {
+        ...next,
+        ...recordActivity(next, now, [
+          {
+            audit: {
+              type: AuditType.CAPTURE_CANDIDATE_ADOPTED,
+              message: `Camera added as ${device.id}`,
+              actorId,
+              deviceId: device.id,
+              details: captureCandidateAdoptedDetails({
+                deviceId: device.id,
+                candidateId: candidate.candidateId,
+                searchId: held.search.searchId,
+                adapter: candidate.adapter,
+                sourceClass: candidate.sourceClass,
+                credentialSet,
+                permission: Permission.CAPTURE_CONFIG,
+              }),
+            },
+          },
+          ...(credentialSet
+            ? [
+                {
+                  audit: {
+                    type: AuditType.CAPTURE_CREDENTIAL_SET,
+                    message: `Credential stored for ${device.id}`,
+                    actorId,
+                    deviceId: device.id,
+                    details: { operationId: 'adoptCaptureCandidate', deviceId: device.id, permission: Permission.CAPTURE_CONFIG },
+                  },
+                },
+              ]
+            : []),
+        ]),
+      };
+      store.setState(next);
+      // At most one device per candidate: a repeat answers 409 CANDIDATE_ALREADY_REGISTERED.
+      candidate.status = CaptureCandidateStatus.REGISTERED;
+      candidate.deviceId = device.id;
+      return respond(201, { deviceId: device.id, device, credentialSet } satisfies CaptureCandidateAdoption);
+    },
+  },
+  {
+    // 97 rescanCaptureInputs
+    method: 'POST',
+    pattern: /^\/api\/v1\/capture\/inputs\/rescan$/,
+    handle: ({ store, clock }) => {
+      const state = store.getState();
+      const refused = capabilityRefusal(state, Permission.CAPTURE_CONFIG, DISCOVERY_DENIED);
+      if (refused) return refused;
+      const now = clock.now();
+      // One entry per REGISTERED microphone, `present` from the simulator's device state.
+      const inputs = state.captureDevices.devices
+        .filter((device) => device.kind === 'MIC')
+        .map((device) => ({
+          deviceId: device.id,
+          inputId: state.captureConfig.mics.find((mic) => mic.deviceId === device.id)?.inputId ?? null,
+          present: device.online,
+          adapter: SIM_CAPTURE_ADAPTER,
+          sourceClass: CaptureSourceClass.DEVELOPMENT,
+          errorCode: null,
+        }));
+      const open = hasActiveSession(state) ? (state.session?.id ?? null) : null;
+      store.setState({
+        ...state,
+        ...recordActivity(state, now, {
+          audit: {
+            type: AuditType.CAPTURE_DISCOVERY_SEARCHED,
+            message: 'Microphone inputs read again',
+            actorId: signedInOperatorId(state),
+            details: captureDiscoverySearchedDetails({
+              searchId: nextSearchId(simDiscoveryHolder(store)),
+              scope: CaptureDiscoveryScope.MIC_LOCAL,
+              trigger: CaptureDiscoveryTrigger.MANUAL,
+              outcome: 'COMPLETE',
+              responderCount: inputs.filter((input) => input.present).length,
+              newCount: 0,
+              registeredCount: inputs.length,
+              interfaceCount: 0,
+              sessionId: open,
+              operationId: 'rescanCaptureInputs',
+              permission: Permission.CAPTURE_CONFIG,
+            }),
+          },
+        }),
+      });
+      return respond(200, { scannedAt: now, inputs, unregisteredCount: 0 } satisfies CaptureInputScan);
+    },
+  },
+];
+
 const CAPTURE_ROUTES: readonly Route[] = [
   {
     method: 'GET',
@@ -1139,28 +1495,26 @@ const CAPTURE_ROUTES: readonly Route[] = [
   {
     method: 'POST',
     pattern: /^\/api\/v1\/capture\/config$/,
-    handle: ({ store, clock }, _params, body) => {
-      const state = store.getState();
+    handle: (target, _params, body) => {
+      const state = target.store.getState();
       const refused = capabilityRefusal(state, Permission.CAPTURE_CONFIG, CAPTURE_DENIED);
       if (refused) return refused;
       const locked = captureLockedRefusal(state);
       if (locked) return locked;
       const update = checkCaptureConfigUpdate(body);
       if (!update.ok) return fail(422, 'INVALID_INPUT', `${update.path}: ${update.message}`);
-      const actorId = signedInOperatorId(state);
-      const next = applyCaptureConfigUpdate(state, clock.now(), actorId, {
+      return editCaptureConfig(target, {
+        kind: 'UPDATE',
         ...(update.cameras === undefined ? {} : { cameras: update.cameras }),
         ...(update.mics === undefined ? {} : { mics: update.mics }),
       });
-      store.setState(next);
-      return respond(200, captureConfigBody(next));
     },
   },
   {
     method: 'POST',
     pattern: /^\/api\/v1\/capture\/cameras\/([^/]+)\/source$/,
-    handle: ({ store, clock }, [id = ''], body) => {
-      const state = store.getState();
+    handle: (target, [id = ''], body) => {
+      const state = target.store.getState();
       const refused = capabilityRefusal(state, Permission.CAPTURE_CONFIG, CAPTURE_DENIED);
       if (refused) return refused;
       const device = captureDevice(state, id);
@@ -1171,70 +1525,41 @@ const CAPTURE_ROUTES: readonly Route[] = [
       if (extra !== undefined || (body.trackId !== TrackId.VIDEO_01 && body.trackId !== TrackId.VIDEO_02)) {
         return fail(422, 'INVALID_INPUT', 'trackId: Expected VIDEO-01 or VIDEO-02.');
       }
-      const trackId = body.trackId;
-      const previous = state.captureConfig.cameras.find((entry) => entry.trackId === trackId);
-      const cameras = state.captureConfig.cameras.map((entry) =>
-        entry.trackId === trackId
-          ? { ...entry, deviceId: device.id, online: device.online, streamState: device.streamState ?? entry.streamState }
-          : entry,
-      );
-      const next = auditCaptureConfigChange({ ...state, captureConfig: { ...state.captureConfig, cameras, updatedAt: clock.now() } }, clock.now(), signedInOperatorId(state), {
-        operationId: 'setCaptureCameraSource',
-        scope: 'CAMERA',
-        field: 'SOURCE',
-        trackId,
-        deviceId: device.id,
-        from: previous?.deviceId ?? null,
-        to: device.id,
-      });
-      store.setState(next);
-      return respond(200, captureConfigBody(next));
+      return editCaptureConfig(target, { kind: 'CAMERA_SOURCE', deviceId: device.id, trackId: body.trackId });
     },
   },
   {
     method: 'POST',
     pattern: /^\/api\/v1\/capture\/mics\/([^/]+)\/primary$/,
-    handle: ({ store, clock }, [id = '']) => {
-      const state = store.getState();
+    handle: (target, [id = '']) => {
+      const state = target.store.getState();
       const refused = capabilityRefusal(state, Permission.CAPTURE_CONFIG, CAPTURE_DENIED);
       if (refused) return refused;
       const slot = state.captureConfig.mics.find((entry) => entry.inputId === id);
       if (!slot) return unknownCaptureDevice(id);
       const locked = captureLockedRefusal(state);
       if (locked) return locked;
-      const previousRole = slot.role;
-      const swapped = applyPrimaryMic(state, id as MicInputId);
-      const next = auditCaptureConfigChange(
-        { ...swapped, captureConfig: { ...swapped.captureConfig, updatedAt: clock.now() } },
-        clock.now(),
-        signedInOperatorId(state),
-        {
-          operationId: 'setPrimaryMic',
-          scope: 'MIC',
-          field: 'ROLE',
-          inputId: id,
-          deviceId: slot.deviceId,
-          from: previousRole,
-          to: MicRole.PRIMARY,
-        },
-      );
-      store.setState(next);
-      return respond(200, captureConfigBody(next));
+      return editCaptureConfig(target, { kind: 'PRIMARY_MIC', inputId: slot.inputId });
     },
   },
   {
     method: 'POST',
     pattern: /^\/api\/v1\/capture\/devices\/([^/]+)\/credential$/,
-    handle: ({ store, clock }, [id = ''], body) => {
+    handle: (target, [id = ''], body) => {
+      const { store, clock } = target;
       const state = store.getState();
       const refused = capabilityRefusal(state, Permission.CAPTURE_CONFIG, CAPTURE_DENIED);
       if (refused) return refused;
+      // C3 §3.1 (erratum PE-121-05): web console only, decided before the body is looked at.
+      const webOnly = webConsoleOnlyRefusal(target);
+      if (webOnly) return webOnly;
       const device = captureDevice(state, id);
       if (!device || device.kind !== 'CAMERA') return unknownCaptureDevice(id);
       const locked = captureLockedRefusal(state);
       if (locked) return locked;
-      const extra = Object.keys(body).find((key) => key !== 'username' && key !== 'secret');
-      if (extra !== undefined || !isCode(body.username, 255) || !isCode(body.secret, 1024)) {
+      // The contract's own schema (printable ASCII, erratum PE-128-27). Its outcome is all that is
+      // read: the pair is never stored, never inspected further and never echoed.
+      if (!CaptureCredentialWriteRequestSchema.safeParse(body).success) {
         // RK-12: the refusal names the field, never its content.
         return fail(422, 'INVALID_INPUT', 'username/secret: Both members are required and are never echoed back.');
       }
@@ -1382,6 +1707,7 @@ const CAPTURE_ROUTES: readonly Route[] = [
 const ROUTES: readonly Route[] = [
   ...CAPTURE_ROUTES,
   ...STT_ROUTES,
+  ...DISCOVERY_ROUTES,
   {
     method: 'POST',
     pattern: /^\/api\/v1\/session$/,    handle: ({ store, actions }, _params, body) => {

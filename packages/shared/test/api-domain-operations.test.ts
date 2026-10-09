@@ -18,6 +18,7 @@ import {
   AuditExportRequestSchema,
   AuditListQuerySchema,
   AuditPageSchema,
+  CAPTURE_CONFIG_CHANGE_OPERATIONS,
   CORE_API_OPERATIONS,
   CORE_API_SCHEMAS,
   CaseNumberScanSchema,
@@ -83,6 +84,7 @@ import {
 import { EXAMPLE_INSTANT_MS, EXAMPLE_PLACEHOLDERS } from '../src/api/example-parts';
 import { codeUnitBoundMessage } from '../src/api/schema-parts';
 import {
+  CAPTURE_CONFIG_CHANGE_OPERATION_ID,
   DEFAULT_SEED,
   DEMO_OPERATOR_PASSWORD,
   PLATFORM_DEVICE_NAMES,
@@ -351,7 +353,7 @@ describe('the answers of the hosted actions parse with their schemas', () => {
     // A run in progress is returned as it is.
     expect(technician.actions.runDiagnostics()).toBe(runId);
     const restarted = technician.actions.restartServices();
-    expect(ServicesRestartedSchema.parse({ restarted })).toEqual({ restarted: 16 });
+    expect(ServicesRestartedSchema.parse({ restarted })).toEqual({ restarted: 17 });
     expect(SystemStatusSchema.shape.diagnostics.safeParse(wire(technician.state().diagnostics)).success).toBe(true);
   });
 
@@ -629,38 +631,50 @@ describe('the list queries (API-9; decision D51)', () => {
   });
 });
 
-describe('the 45 simulator actions and the operations they reach (01_specs §7.17; task 3 SH-18)', () => {
+describe('the 48 simulator actions and the operations they reach (01_specs §7.17; task 3 SH-18, R-9)', () => {
   const names = Object.keys(SIM_ACTION_OPERATIONS) as (keyof typeof SIM_ACTION_OPERATIONS)[];
   const byExecution = (execution: string) => names.filter((name) => SIM_ACTION_OPERATIONS[name].execution === execution);
 
   it('names exactly the actions of the real simulator', () => {
     const { actions } = rig('idle');
     expect([...names].sort()).toEqual(Object.keys(actions).sort());
-    expect(names).toHaveLength(45);
+    expect(names).toHaveLength(48);
   });
 
-  it('31 are hosted, 9 server-native, 1 is not available and 4 are internal', () => {
-    expect([SimActionExecution.HOSTED, SimActionExecution.SERVER_NATIVE, SimActionExecution.NOT_AVAILABLE, SimActionExecution.INTERNAL].map((execution) => byExecution(execution).length)).toEqual([31, 9, 1, 4]);
+  it('33 are hosted, 9 server-native, 1 is not available and 5 are internal', () => {
+    expect([SimActionExecution.HOSTED, SimActionExecution.SERVER_NATIVE, SimActionExecution.NOT_AVAILABLE, SimActionExecution.INTERNAL].map((execution) => byExecution(execution).length)).toEqual([33, 9, 1, 5]);
+    // Blueprint row 66 (SH-18, C3 §2.4): the hosted pair of the capture selector and the mic switch,
+    // the last two members. One is three operations (78, 79, 80), as `deviceCommand` is.
+    expect(byExecution('hosted').slice(-2)).toEqual(['setCaptureConfig', 'switchAudioSource']);
+    expect(SIM_ACTION_OPERATIONS.setCaptureConfig.operations).toEqual(['updateCaptureConfig', 'setCaptureCameraSource', 'setPrimaryMic']);
+    expect(Object.values(CAPTURE_CONFIG_CHANGE_OPERATIONS)).toEqual([...SIM_ACTION_OPERATIONS.setCaptureConfig.operations]);
+    expect(CAPTURE_CONFIG_CHANGE_OPERATIONS).toEqual(CAPTURE_CONFIG_CHANGE_OPERATION_ID);
+    expect(SIM_ACTION_OPERATIONS.switchAudioSource.operations).toEqual(['switchAudioSource']);
     expect(byExecution('server-native')).toEqual(['signIn', 'signInWithBiometric', 'recordBiometricFailure', 'signOut', 'touch', 'loadScenario', 'resetDemo', 'pair', 'unpair']);
     // X-1 and X-2: no operation issues a session without a credential, and no client sets the tablet link.
     expect(byExecution('not-available')).toEqual(['signInWithSecurityKey']);
     // SH-18: the capture supervisor's three actions join the tablet link; no client reaches any of the four.
-    expect(byExecution('internal')).toEqual(['setTabletLink', 'applyCaptureTelemetry', 'raiseCaptureWarning', 'clearCaptureWarning']);
+    // R-9 (row 132; C3 §2.6): the adoption's `registerCaptureDevice` is the fifth - run by the Core inside
+    // operation 96's unit, reached by no client and by no operation of its own.
+    expect(byExecution('internal')).toEqual(['setTabletLink', 'applyCaptureTelemetry', 'raiseCaptureWarning', 'clearCaptureWarning', 'registerCaptureDevice']);
     for (const name of [...byExecution('not-available'), ...byExecution('internal')]) expect(SIM_ACTION_OPERATIONS[name].operations, name).toEqual([]);
-    expect(CORE_API_OPERATIONS.filter((operation) => /tablet-?link|security-?key|telemetry|capture-?warning/i.test(operation.path))).toEqual([]);
+    expect(CORE_API_OPERATIONS.filter((operation) => /tablet-?link|security-?key|telemetry|capture-?warning|register/i.test(operation.path))).toEqual([]);
   });
 
-  it('40 actions reach 41 operations, every one of them in the registry; the other 51 are reads and server functions', () => {
+  it('42 actions reach 45 operations, every one of them in the registry; the other 52 are reads and server functions', () => {
     const reaching = names.filter((name) => SIM_ACTION_OPERATIONS[name].operations.length > 0);
-    expect(reaching).toHaveLength(40);
+    expect(reaching).toHaveLength(42);
     const reached = [...new Set(reaching.flatMap((name) => [...SIM_ACTION_OPERATIONS[name].operations]))];
-    expect(reached).toHaveLength(41);
+    expect(reached).toHaveLength(45);
     for (const operationId of reached) expect(findCoreApiOperation(operationId), operationId).toBeDefined();
     // Task 3 M2-W7 adds fourteen operations, none reached by a simulator action (the thirteen
     // simulated ones are answered by the sim route table, op 88 is live): 89 - 41 = 48. Task 3 M6 row
     // 113 adds the three STT configuration operations 90-92, also answered by the sim route table and
-    // reached by no simulator action: 92 - 41 = 51.
-    expect(CORE_API_OPERATIONS.length - reached.length).toBe(51);
+    // reached by no simulator action: 92 - 41 = 51. Blueprint row 66 lands the hosted pair of SH-18:
+    // operations 78, 79, 80 (`setCaptureConfig`) and 81 (`switchAudioSource`) are reached now, 51 - 4 = 47.
+    // Task 3 R-9..R-11 (row 132, D106) add the five operations 93-97, answered by the sim route table
+    // and by server modules, reached by no simulator action: 97 - 45 = 52.
+    expect(CORE_API_OPERATIONS.length - reached.length).toBe(52);
     // `deviceCommand` is three operations with one permission each; two settings actions share one.
     expect(SIM_ACTION_OPERATIONS.deviceCommand.operations).toEqual(['restartDevice', 'testDeviceSignal', 'identifyDevice']);
     expect(simActionsOfOperation('updateSettings')).toEqual(['setPresentationMode', 'updateSettings']);

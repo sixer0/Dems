@@ -2,7 +2,7 @@
 // §B.13; SEC35-14; E-30/E-31). They read production sources as text, with the scaffold's scanner,
 // and keep these rules true for every later row:
 //
-//   1. THE REVEAL FUNCTION HAS ONE CALLER, AND TODAY IT HAS NONE. `dems_stt_credential_reveal()`
+//   1. THE REVEAL FUNCTION HAS ONE CALLER (since row 115; none before it). `dems_stt_credential_reveal()`
 //      is granted to the one runtime role (D-DB-07 forbids a fourth), it writes no audit row
 //      (no reveal type exists in the contract), so NOTHING in the database narrows who reads the
 //      STT credential back. This rule is that narrowing - the only control there is (row 112,
@@ -28,11 +28,12 @@ const REVEAL_FUNCTION = ['dems', 'stt', 'credential', 'reveal'].join('_');
 const CREDENTIAL_COLUMNS = ['credential_ref', 'secret_ciphertext', 'nonce'] as const;
 
 /**
- * The production sources that may call the reveal function. EMPTY: no caller exists yet. Row 115
- * (the transcriber key-loader, `07_transcript_spec.md` §B.2) adds its ONE file; a second entry is
- * a second reader of the STT credential and needs a decision, not an edit.
+ * The production sources that may call the reveal function: ONE file, the reveal caller of the
+ * Core's transcription composition (row 115; it reads how the credential is held and hands a
+ * REFERENCE to the transcriber's single key-loader, `07_transcript_spec.md` §B.2). A second entry
+ * is a second reader of the STT credential and needs a decision, not an edit.
  */
-const STT_REVEAL_CALLERS: readonly string[] = [];
+const STT_REVEAL_CALLERS: readonly string[] = ['src/transcription/credential-reveal.ts'];
 /** Where the function is defined and described: the migration set, never a caller. */
 const DEFINED_IN = 'src/db/migrations/';
 
@@ -86,13 +87,13 @@ function selectsCredential(text: string): boolean {
   return CREDENTIAL_COLUMNS.some((column) => new RegExp(`\\b${column}\\b`).test(outside));
 }
 
-describe('rule 1: the reveal function has one caller, and today none', () => {
+describe('rule 1: the reveal function has one caller', () => {
   it('no production source outside the migration set names the function, except the listed caller', () => {
     // Code only: a sentence in a comment that names the function is not a call of it. A call sits
     // in a statement text, and string literals are kept by the scanner.
     const named = places(productionCode, new RegExp(REVEAL_FUNCTION, 'g')).filter((place) => !place.startsWith(DEFINED_IN));
     const callers = [...new Set(named.map((place) => place.replace(/:\d+$/, '')))];
-    console.info(`[row113] reveal-function callers outside ${DEFINED_IN}: ${callers.length === 0 ? '(none)' : callers.join(', ')} | allowed: ${STT_REVEAL_CALLERS.length === 0 ? '(none yet; row 115 adds one)' : STT_REVEAL_CALLERS.join(', ')}`);
+    console.info(`[row113] reveal-function callers outside ${DEFINED_IN}: ${callers.length === 0 ? '(none)' : callers.join(', ')} | allowed: ${STT_REVEAL_CALLERS.join(', ')}`);
     expect(callers).toEqual([...STT_REVEAL_CALLERS]);
     expect(STT_REVEAL_CALLERS.length).toBeLessThanOrEqual(1);
   });

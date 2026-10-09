@@ -158,7 +158,9 @@ describe('M6-AD-1: selection is configuration, never automatic mid-session', () 
     expect(cpu.backend).toBe('cpu-local');
     expect(server.backend).toBe('omlx-server');
     expect(Object.isFrozen(cpu)).toBe(true);
-    expect(Object.keys(cpu).sort()).toEqual(['backend', 'model', 'queue', 'transcribe']);
+    expect(Object.keys(cpu).sort()).toEqual(['backend', 'captureWorkerStated', 'model', 'queue', 'transcribe']);
+    // N-10: this composition handed in no capture worker, and the adapter says so; the server backend starts no process.
+    expect([cpu.captureWorkerStated, server.captureWorkerStated]).toEqual([false, true]);
     expect(() => {
       (cpu as { backend: string }).backend = 'omlx-server';
     }).toThrow(TypeError);

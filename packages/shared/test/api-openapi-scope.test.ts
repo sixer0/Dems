@@ -5,7 +5,7 @@
 //   by section, except the widened components (AC-B-13); OD-17 (D4) supersedes that byte-for-byte pin
 //   and grows it to 23 operations at version 0.2.0 (the ten baseline plus the thirteen simulated
 //   capture/transcript operations). The web API Reference builds it in Simulated mode.
-// - `all` holds every operation of the registry, as the Core server answers it: 92 operations, two
+// - `all` holds every operation of the registry, as the Core server answers it: 97 operations, two
 //   security schemes, the server 127.0.0.1:4420, version 0.3.0 (0.2.1 until M2 row 50). It is the committed openapi.json.
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
@@ -115,6 +115,10 @@ const OFFLINE_OP_IDS = [
   // Task 3 M6 (blueprint row 113; C3 §2.5): the three simulated STT configuration operations 90-92
   // join the offline scope (23 -> 26); `info.version` stays 0.2.0 (C3 §2.5 names no version change).
   'getSttConfig', 'updateSttConfig', 'testSttConnection',
+  // Task 3 R-9..R-11 (blueprint row 132, D106; C3 §2.6, §10.1): the five simulated operations 93-97
+  // join the offline scope (26 -> 31), in builder order (a path's GET before its POST);
+  // `info.version` stays 0.2.0 (D69: the versions step once, at the M6 gate).
+  'getCaptureDiscovery', 'startCaptureDiscovery', 'testCaptureCandidateConnection', 'adoptCaptureCandidate', 'rescanCaptureInputs',
 ];
 const OFFLINE_SCHEMA_NAMES = [
   'HealthResponse', 'SessionCreateRequest', 'SessionStartRequest', 'SessionStopRequest', 'SessionCommandResponse',
@@ -127,6 +131,9 @@ const OFFLINE_SCHEMA_NAMES = [
   'TranscriptDocument', 'TranscriptRevisionRequest', 'TranscriptRevision', 'TranscriptRevisionPage', 'EvidenceExportJob',
   // Task 3 M6 (row 113; C3 §2.5): the six STT configuration schemas (39 -> 45 components).
   'SttLastTest', 'SttConfig', 'SttCredentialWrite', 'SttConfigUpdateRequest', 'SttConfigUpdateResult', 'SttConnectionTest',
+  // Task 3 R-9..R-11 (row 132, D106; C3 §2.6): the eight schemas of operations 93-97 (45 -> 53 components).
+  'CaptureDiscoverySearch', 'CaptureCandidate', 'CaptureDiscoveryState', 'CaptureConnectionTestRequest', 'CaptureConnectionTest',
+  'CaptureCandidateAdoptRequest', 'CaptureCandidateAdoption', 'CaptureInputScan',
 ];
 /** Baseline operations whose OpenAPI object C3 §3 modified in M2 (op 42 QUEUED, op 44 device-health v2, audio re-key). */
 const OPS_CHANGED_BY_M2 = ['getDeviceHealth', 'getAudioStatus', 'getVideoStatus', 'exportEvidence'];
@@ -161,7 +168,7 @@ function extensionKeys(value: unknown, out: string[] = [], inHeaders = false): s
 describe('scope offline: the default, and the document of the baseline', () => {
   const offline = createOpenApiDocument();
 
-  it('is what createOpenApiDocument() returns, and holds the 26 offline operations (23 of OD-17 plus STT 90-92)', () => {
+  it('is what createOpenApiDocument() returns, and holds the 31 offline operations (23 of OD-17, STT 90-92 and the camera search 93-97)', () => {
     expect(serializeOpenApiDocument(offline)).toBe(serializeOpenApiDocument(createOpenApiDocument({ scope: 'offline' })));
     expect(serializeOpenApiDocument(offline)).toBe(serializeOpenApiDocument(createOpenApiDocument({ scope: CoreApiScope.OFFLINE, includeSimulated: true })));
     expect(listOpenApiOperations(offline).map((entry) => entry.operation.operationId)).toEqual(OFFLINE_OP_IDS);
@@ -180,7 +187,7 @@ describe('scope offline: the default, and the document of the baseline', () => {
     expect(OPENAPI_DOCUMENT_VERSION).toBe('0.2.0');
   });
 
-  it('keeps the six untouched baseline operations byte-equal to acaff20; the four M2-modified ones, the thirteen capture operations and the three STT ones are new content', () => {
+  it('keeps the six untouched baseline operations byte-equal to acaff20; the four M2-modified ones, the thirteen capture operations, the three STT ones and the five of the camera search are new content', () => {
     const now = Object.fromEntries(listOpenApiOperations(offline).map((entry) => [entry.operation.operationId, sha256(entry.operation)]));
     expect(Object.keys(now)).toEqual(OFFLINE_OP_IDS);
     for (const [id, hash] of Object.entries(BASELINE.operations)) {
@@ -189,7 +196,7 @@ describe('scope offline: the default, and the document of the baseline', () => {
     }
   });
 
-  it('holds the 45 offline components (39 of OD-17 plus 6 of STT 90-92); the eight untouched baseline schemas stay byte-equal to acaff20 and the rest legitimately diverge', () => {
+  it('holds the 53 offline components (39 of OD-17, 6 of STT 90-92 and 8 of the camera search 93-97); the eight untouched baseline schemas stay byte-equal to acaff20 and the rest legitimately diverge', () => {
     expect(Object.keys(offline.components.schemas)).toEqual(OFFLINE_SCHEMA_NAMES);
     for (const [name, hash] of Object.entries(BASELINE.schemas)) {
       const now = sha256(offline.components.schemas[name]);
@@ -244,7 +251,7 @@ describe('scope offline: the default, and the document of the baseline', () => {
     const committed = readFileSync(OPENAPI_JSON_PATH, 'utf8');
     expect(committed).not.toBe(serializeOpenApiDocument(offline));
     expect(renderOpenApiJson('offline')).toBe(serializeOpenApiDocument(offline));
-    expect(listOpenApiOperations(JSON.parse(renderOpenApiJson('offline')) as OpenApiDocument)).toHaveLength(26);
+    expect(listOpenApiOperations(JSON.parse(renderOpenApiJson('offline')) as OpenApiDocument)).toHaveLength(31);
   });
 
   it('leaves out what only the Core server sends: its statuses, its text, its headers, its security', () => {
@@ -282,25 +289,27 @@ describe('scope all: every operation of the registry, as the Core server answers
     expect(text).not.toBe(renderOpenApiJson('offline'));
   });
 
-  it('AC-B-11: is the committed openapi.json, byte for byte, with 92 operations and two security schemes', () => {
+  it('AC-B-11: is the committed openapi.json, byte for byte, with 97 operations and two security schemes', () => {
     expect(OPENAPI_COMMITTED_SCOPE).toBe(CoreApiScope.ALL);
     const committed = readFileSync(OPENAPI_JSON_PATH, 'utf8');
     expect(committed).toBe(renderOpenApiJson());
     expect(committed).toBe(serializeOpenApiDocument(all));
     const parsed = JSON.parse(committed) as OpenApiDocument;
-    expect(listOpenApiOperations(parsed)).toHaveLength(92); // C3 §2.5 total (M6 row 113; was 89 at M2 row 50)
+    expect(listOpenApiOperations(parsed)).toHaveLength(97); // C3 §10.1 total (row 132, D106; was 92 at M6 row 113, 89 at M2 row 50)
     expect(Object.keys(parsed.components.securitySchemes ?? {})).toHaveLength(2);
     expect(parsed.info.version).toBe('0.3.0'); // changed by design (M2 row 50; C3 §8; was 0.2.1 at W83)
     expect(parsed.servers[0]?.url).toBe('http://127.0.0.1:4420');
   });
 
-  it('has 92 operations on 87 paths: 35 GET and 57 POST', () => {
+  it('has 97 operations on 91 paths: 36 GET and 61 POST', () => {
     // C3 §2.5 (M6 row 113): ops 90-92 add two paths (`/transcription/config` GET+POST, `.../test`).
-    expect(operations).toHaveLength(92);
-    expect(Object.keys(all.paths)).toHaveLength(87);
+    // C3 §2.6 (row 132, D106): ops 93-97 add four (`/capture/discovery` POST+GET, the candidate's
+    // `.../test` and `.../adopt`, `/capture/inputs/rescan`).
+    expect(operations).toHaveLength(97);
+    expect(Object.keys(all.paths)).toHaveLength(91);
     expect(new Set(operations.map((entry) => entry.operation.operationId))).toEqual(new Set(CORE_API_OPERATIONS.map((operation) => operation.operationId)));
-    expect(operations.filter((entry) => entry.method === 'get')).toHaveLength(35);
-    expect(operations.filter((entry) => entry.method === 'post')).toHaveLength(57);
+    expect(operations.filter((entry) => entry.method === 'get')).toHaveLength(36);
+    expect(operations.filter((entry) => entry.method === 'post')).toHaveLength(61);
     expect(Object.keys(all.paths['/api/v1/pairing/code'] ?? {})).toEqual(['post', 'get']);
     expect(all.tags.map((tag) => tag.name)).toEqual([
       'Service', 'Identity', 'Administration', 'Pairing', 'Session', 'Device', 'Storage', 'Evidence', 'Network', 'Security', 'System', 'Alerts', 'Demo', 'Realtime',
@@ -310,9 +319,10 @@ describe('scope all: every operation of the registry, as the Core server answers
     expect([...used].sort()).toEqual(all.tags.map((tag) => tag.name).filter((name) => name !== 'Realtime').sort());
   });
 
-  it('twenty-five can be answered by the in-app simulator, 67 only by a service; "Show simulated endpoints" off keeps the 67', () => {
-    // M6 row 113: the three STT configuration operations are simulated (22 -> 25); the live count stays 67.
-    expect(operations.filter((entry) => entry.operation['x-dems-mode'] === 'simulated')).toHaveLength(25);
+  it('thirty can be answered by the in-app simulator, 67 only by a service; "Show simulated endpoints" off keeps the 67', () => {
+    // M6 row 113: the three STT configuration operations are simulated (22 -> 25); row 132 (D106):
+    // the five of the camera search are simulated too (25 -> 30). The live count stays 67.
+    expect(operations.filter((entry) => entry.operation['x-dems-mode'] === 'simulated')).toHaveLength(30);
     expect(operations.filter((entry) => entry.operation['x-dems-mode'] === 'live')).toHaveLength(67);
     expect(listOpenApiOperations(createOpenApiDocument({ scope: 'all', includeSimulated: false }))).toHaveLength(67);
     // AR-3: in this scope every operation carries LIVE, because the Core server answers each one.
@@ -365,12 +375,13 @@ describe('scope all: every operation of the registry, as the Core server answers
     expect(serializeOpenApiDocument(all).split('DEVICE_CREDENTIAL_REQUIRED')).toHaveLength(7);
     // The offline document has no operation 23, so nothing of the condition reaches it.
     expect(serializeOpenApiDocument(createOpenApiDocument())).not.toContain('DEVICE_CREDENTIAL');
-    // 53 operations carry a permission (01_specs §7.19; grew from 41 in M2 with the capture ops, and
-    // from 51 in M6 with the STT configuration write and test, ops 91/92).
+    // 58 operations carry a permission (01_specs §7.19; grew from 41 in M2 with the capture ops,
+    // from 51 in M6 with the STT configuration write and test, ops 91/92, and from 53 with the five
+    // CAPTURE_CONFIG operations 93-97 of R-9..R-11).
     // Only the four simulated commands keep
     // `x-dems-rbac`, which lists the simulator's role holders; the role holders of the Core server
     // are data, read with `getRoleMatrix`.
-    expect(operations.filter((entry) => (entry.operation['x-dems-access']?.permissions ?? []).length > 0)).toHaveLength(53);
+    expect(operations.filter((entry) => (entry.operation['x-dems-access']?.permissions ?? []).length > 0)).toHaveLength(58);
     expect(operations.filter((entry) => entry.operation['x-dems-rbac']).map((entry) => entry.operation.operationId).sort()).toEqual([
       'createSession', 'exportEvidence', 'startSession', 'stopSession',
     ]);
@@ -414,10 +425,15 @@ describe('scope all: every operation of the registry, as the Core server answers
     expect(securityOf('setBiometricEnrollment')).toEqual(bearer);
     expect(securityOf('getCurrentSession')).toEqual(cookieOrBearer);
     expect(securityOf('exportAudit')).toEqual(cookieOrBearer);
-    // By count: 3 take none, 1 an optional bearer, 6 the bearer, 82 the cookie or the bearer (79 + ops 90-92).
+    // Task 3 R-9 (C3 §0 `WEB_CONSOLE_SESSION`; D80(3)): the three web-console-only operations keep the
+    // credential of an OPERATOR in the document — the bearer of a paired device authenticates there and
+    // is then refused 403 `WEB_CONSOLE_ONLY`, which their 403 documents. The condition is in `x-dems-access`.
+    expect(securityOf('testCaptureCandidateConnection')).toEqual(cookieOrBearer);
+    expect(entryOf('testCaptureCandidateConnection').access.conditions).toEqual(['WEB_CONSOLE_SESSION']);
+    // By count: 3 take none, 1 an optional bearer, 6 the bearer, 87 the cookie or the bearer (79 + ops 90-92 + ops 93-97).
     const shape = (security: unknown) => JSON.stringify(security);
     const count = (expected: unknown) => operations.filter((entry) => shape(entry.operation.security) === shape(expected)).length;
-    expect([count([]), count([{}, { bearerAuth: [] }]), count(bearer), count(cookieOrBearer)]).toEqual([3, 1, 6, 82]);
+    expect([count([]), count([{}, { bearerAuth: [] }]), count(bearer), count(cookieOrBearer)]).toEqual([3, 1, 6, 87]);
   });
 
   it('API-12: the Core server 127.0.0.1:4420 is the first server, mock-core the second; version 0.3.0 (M2)', () => {
@@ -428,7 +444,7 @@ describe('scope all: every operation of the registry, as the Core server answers
     expect(hostsOf(all).sort()).toEqual(['127.0.0.1:4400', '127.0.0.1:4420']);
     expect(all.info.version).toBe(OPENAPI_CORE_SERVER_DOCUMENT_VERSION);
     expect(OPENAPI_CORE_SERVER_DOCUMENT_VERSION).toBe('0.3.0');
-    expect(all.info.summary).toContain('92 operations');
+    expect(all.info.summary).toContain('97 operations');
     expect(createOpenApiDocument({ scope: 'all', includeSimulated: false }).info.summary).toContain('67 operations');
     // Each build is independent: a caller may change the servers of its own copy.
     const mine = createOpenApiDocument({ scope: 'all' });
@@ -523,7 +539,7 @@ describe('scope all: every operation of the registry, as the Core server answers
 
   it('holds one component per registry schema, and the ten existing operations with the schemas of the offline scope', () => {
     expect(Object.keys(all.components.schemas)).toEqual(Object.keys(CORE_API_SCHEMAS));
-    expect(Object.keys(all.components.schemas)).toHaveLength(158); // 152 + the six STT configuration schemas (M6 row 113)
+    expect(Object.keys(all.components.schemas)).toHaveLength(166); // 152 + the six STT configuration schemas (M6 row 113) + the eight of ops 93-97 (row 132)
     const offline = createOpenApiDocument();
     for (const [name, schema] of Object.entries(offline.components.schemas)) expect(all.components.schemas[name], name).toEqual(schema);
     // Changed by design (W27; 01_specs §7.19): in this scope the ten are described as the Core

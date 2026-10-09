@@ -21,6 +21,8 @@ export {
   segmentOpacity,
   segmentTone,
 } from './dbfs-meter.math'
+export { AudioSourceBand, type AudioSourceBandInterval, type AudioSourceBandProps, type AudioSourceBandSegment } from './audio-source-band'
+export { audioSourceBandSegments, formatMediaMs } from './audio-source-band.math'
 export { timelineNodeStyle } from './session-timeline.math'
 export {
   SessionTimeline,

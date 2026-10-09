@@ -435,6 +435,19 @@ export function bodyOf(response: LightMyRequestResponse): unknown {
   return response.body === '' ? undefined : response.json();
 }
 
+// ── Read 64: the two processes laid over the `services` slice (blueprint row 62, CS-10) ─────────
+
+/**
+ * The `services` slice as read 64 answers it, written out by hand (not with the module's own
+ * function): no transcriber is mounted, so `Transcription Service` is stopped and never started;
+ * `Recording Engine` is stopped while the capture supervisor is not booted (phase CLOSED), which
+ * is how a test server stands unless the test boots it.
+ */
+export function servicesAsRead<Entry extends { name: string }>(services: readonly Entry[], app: FastifyInstance): Entry[] {
+  const stopped = app.capture.status().phase === 'CLOSED' ? ['Recording Engine', 'Transcription Service'] : ['Transcription Service'];
+  return services.map((entry) => (stopped.includes(entry.name) ? { ...entry, status: 'STOPPED', startedAt: null } : entry));
+}
+
 // ── Readers of the captured log ────────────────────────────────────────────────────────────────
 
 export type LogLine = Record<string, unknown>;

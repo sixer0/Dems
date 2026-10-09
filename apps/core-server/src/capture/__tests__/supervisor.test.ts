@@ -50,7 +50,7 @@ describe('a session', () => {
     const { supervisor, fake, named } = await recording();
     expect(fake.workers).toHaveLength(1);
     const [start] = fake.last().commands(SupervisorMessageType.START);
-    expect(start).toMatchObject({ v: 2, sessionId: SESSION, attempt: 1, plan: capturePlan(SESSION) });
+    expect(start).toMatchObject({ v: 3, sessionId: SESSION, attempt: 1, plan: capturePlan(SESSION) });
     expect(supervisor.status()).toMatchObject({ phase: CapturePhase.RECORDING, sessionId: SESSION, workerPid: fake.last().pid, attempt: 1, restarts: 0, heartbeatAgeMs: 0, lastCrash: null });
     expect(named('phase').map((event) => `${event.previous}>${event.phase}`)).toEqual(['IDLE>STARTING', 'STARTING>RECORDING']);
   });

@@ -30,6 +30,16 @@
  * 600 ms scramble of the Core's hashes follows (M-C-21), then the verdict pops. Both waits run on the
  * store's clock (rule 7), which in Live mode follows the Core's clock. A refusal or an outage goes to
  * the refusal presenter first; the button returns to idle and the last verdict, if any, stays.
+ *
+ * **Verify v2** (blueprint row 87; evidence package spec §D, §F.3; UX spec flow 5, P-16; MB-12). An
+ * answer with a `files` member is a schema-v2 result (`verify-v2.ts`, the one reader of this app):
+ * the card draws `VerifyV2Report` (per camera file the stored bytes, the decrypted bytes and the
+ * fragment chain; the transcript hash; the manifest; the signature; the failed fragment by name and
+ * the transcript state where the answer carries them). The verdict is the Core's `ok`
+ * (`verdictOfAnswer`). A v2 answer has no hashes to scramble, so nothing is paced after it: the whole
+ * result shows when the "asking" state ends, and no timer of this screen reveals or counts a part of
+ * it. The v1 per-track rows are not marked for a v2 answer (it judges files, not tracks). The pinned
+ * record line (CF-M2) is the same rule for v1 and v2.
  */
 import { Alert, Button, Spinner, useToast } from 'heroui-native';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -40,6 +50,7 @@ import { DATE_PATTERNS, formatDate } from '@dems/shared/realtime';
 import { useSimInstance, type EpochMs, type EvidenceItem } from '@dems/shared/sim';
 import { StatusChip } from '@/components/kit';
 import { triggerHaptic, useMotionPolicy } from '@/motion';
+import { reportRuntimeIssue } from '@/runtime';
 import {
   CORE_HEADING_KEYS,
   bundledDiffers,
@@ -64,6 +75,8 @@ import {
 import { useClockDue } from './use-clock-due';
 import { useCoreVerify } from './use-core-verify';
 import { SCRAMBLE_MS } from './use-scramble';
+import { readVerifyV2, v2FailedNames, verdictOfAnswer } from './verify-v2';
+import { VerifyV2Report } from './verify-v2-report';
 
 export interface LiveIntegrityTabProps {
   item: EvidenceItem;
@@ -92,13 +105,41 @@ export function LiveIntegrityTab({ item, operatorNames, autoVerify = false, bund
   const recordNow = storedVerification(item);
   const stored = pinned !== undefined ? pinned : recordNow;
 
+  /** The run is over: the verdict is revealed, with its haptic and toast. */
+  const reveal = useCallback(
+    (final: CoreVerdict | null) => {
+      setScrambleAt(null);
+      setPhase('done');
+      setPinned(undefined);
+      setResultKey((k) => k + 1);
+      const pass = final !== null && verdictOfAnswer(final, readVerifyV2(final)) === 'PASS';
+      triggerHaptic(pass ? 'verifyPass' : 'verifyFail');
+      toast.show({
+        variant: pass ? 'success' : 'danger',
+        label: pass ? t('features.evidence.integrity.passToast', { id: item.id }) : t('features.evidence.integrity.failToast', { id: item.id }),
+      });
+    },
+    [item.id, t, toast],
+  );
   const onVerdict = useCallback(
     (next: CoreVerdict) => {
       setVerdict(next);
+      const nextV2 = readVerifyV2(next);
+      if (nextV2 !== null) {
+        if (nextV2.malformed.length > 0) {
+          reportRuntimeIssue('warn', 'evidence.verify.v2.malformed', new Error('The verify answer carries members this client cannot read.'), {
+            evidenceId: item.id,
+            members: nextV2.malformed.join(','),
+          });
+        }
+        // Row 87: a v2 answer is shown whole. There is no hash to scramble and nothing is paced.
+        reveal(next);
+        return;
+      }
       setPhase('scrambling');
       setScrambleAt(sim.store.getState().clock.now);
     },
-    [sim],
+    [sim, reveal, item.id],
   );
   const onNoVerdict = useCallback(
     (presented: boolean) => {
@@ -136,26 +177,23 @@ export function LiveIntegrityTab({ item, operatorNames, autoVerify = false, bund
     };
   }, [autoPending, run, item]);
 
-  const onScrambled = useCallback(() => {
-    setScrambleAt(null);
-    setPhase('done');
-    setPinned(undefined);
-    setResultKey((k) => k + 1);
-    const pass = verdict?.ok === true;
-    triggerHaptic(pass ? 'verifyPass' : 'verifyFail');
-    toast.show({
-      variant: pass ? 'success' : 'danger',
-      label: pass ? t('features.evidence.integrity.passToast', { id: item.id }) : t('features.evidence.integrity.failToast', { id: item.id }),
-    });
-  }, [verdict, item.id, t, toast]);
+  const onScrambled = useCallback(() => reveal(verdict), [reveal, verdict]);
   useClockDue(scrambleAt, reduced ? 0 : SCRAMBLE_MS, onScrambled);
 
   const view = useMemo(() => coreIntegrityView(item, verdict), [item, verdict]);
+  const v2 = useMemo(() => (verdict === null ? null : readVerifyV2(verdict)), [verdict]);
+  /** The verdict drawn: the Core's `ok`, through the one mapping (`verdictOfAnswer`). */
+  const shownVerdict = verdict === null ? null : verdictOfAnswer(verdict, v2);
+  const shownFailed = v2 !== null ? v2FailedNames(v2, t) : view.failed;
   const bundledModel = useMemo(() => (bundled ? packageIntegrity(bundled) : null), [bundled]);
-  const done = phase === 'done' && view.verdict !== null;
+  const done = phase === 'done' && shownVerdict !== null;
   const busy = phase === 'asking' || phase === 'scrambling';
-  const differs = done && verdict !== null && bundledModel !== null && bundledDiffers(bundledModel, verdict);
-  const headingState = coreVerificationState(stored, done ? view.verdict : null);
+  // A v2 answer has no v1 tracks to compare with the bundled package: only the two verdicts are.
+  const differs =
+    done && verdict !== null && bundledModel !== null && (v2 !== null ? bundledModel.verdict !== v2.verdict : bundledDiffers(bundledModel, verdict));
+  const headingState = coreVerificationState(stored, done ? shownVerdict : null);
+  /** The v1 per-track and per-check marks belong to a v1 answer. */
+  const v1Revealed = done && v2 === null;
   const lastLine = stored === null ? null : lastVerificationLine(stored, operatorNames, t);
 
   return (
@@ -187,8 +225,8 @@ export function LiveIntegrityTab({ item, operatorNames, autoVerify = false, bund
             {lastLine}
           </Text>
         ) : null}
-        {done && view.verdict !== null ? (
-          <VerdictLine verdict={view.verdict} failed={view.failed} done={done} resultKey={resultKey} />
+        {done && shownVerdict !== null ? (
+          <VerdictLine verdict={shownVerdict} failed={shownFailed} done={done} resultKey={resultKey} />
         ) : stored !== null ? (
           // The per-check list belongs to a run: the record holds only the verdict (web parity).
           <Text maxFontSizeMultiplier={1.2} style={styles.caption} testID="evidence-verify-stored-hint">
@@ -199,6 +237,7 @@ export function LiveIntegrityTab({ item, operatorNames, autoVerify = false, bund
             {t('features.evidence.integrity.coreNotRun')}
           </Text>
         )}
+        {done && v2 !== null ? <VerifyV2Report answer={v2} /> : null}
         {done && bundledModel ? (
           <Text maxFontSizeMultiplier={1.2} style={styles.caption} testID={`evidence-bundled-${bundledModel.verdict}`}>
             {t('features.evidence.integrity.bundledResult', {
@@ -219,13 +258,13 @@ export function LiveIntegrityTab({ item, operatorNames, autoVerify = false, bund
 
       <Section title={t('features.evidence.integrity.trackTitle')}>
         {view.tracks.map((row) => (
-          <TrackHashRow key={row.id} row={row} scrambling={phase === 'scrambling'} reduced={reduced} revealed={done} />
+          <TrackHashRow key={row.id} row={row} scrambling={phase === 'scrambling'} reduced={reduced} revealed={v1Revealed} />
         ))}
       </Section>
 
       <Section title={t('features.evidence.integrity.manifestHash')}>
         <HashText testID="evidence-manifest-hash" value={view.manifestHash} />
-        <CheckLine row={view.checks.find((row) => row.id === 'manifest')} revealed={done} label={t('features.evidence.integrity.checks.manifest')} />
+        <CheckLine row={view.checks.find((row) => row.id === 'manifest')} revealed={v1Revealed} label={t('features.evidence.integrity.checks.manifest')} />
       </Section>
 
       <Section title={view.signature.algorithm === 'Ed25519' ? t('features.evidence.integrity.signature') : t('features.evidence.integrity.signatureSimulated')}>
@@ -233,7 +272,7 @@ export function LiveIntegrityTab({ item, operatorNames, autoVerify = false, bund
         <Text maxFontSizeMultiplier={1.2} style={styles.caption}>
           {t('features.evidence.integrity.keyId')}: {view.signature.keyId}
         </Text>
-        <CheckLine row={view.checks.find((row) => row.id === 'signature')} revealed={done} label={t('features.evidence.integrity.checks.signature')} />
+        <CheckLine row={view.checks.find((row) => row.id === 'signature')} revealed={v1Revealed} label={t('features.evidence.integrity.checks.signature')} />
       </Section>
 
       <LifecycleStrip stage={item.lifecycleStage} />

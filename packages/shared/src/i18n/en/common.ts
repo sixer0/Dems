@@ -426,6 +426,11 @@ export const common = {
     CAPTURE_CREDENTIAL_REVEALED: 'Camera credential revealed',
     // Task 3 M6 (blueprint row 113; C3 §2.5; R-8).
     STT_CONFIG_CHANGED: 'Transcription configuration changed',
+    // Task 3 R-9..R-11 (blueprint row 132, decision D106; C3 §5.2; UX spec §14.2 item 3).
+    CAPTURE_DISCOVERY_SEARCHED: 'Camera search performed',
+    CAPTURE_CONNECTION_TESTED: 'Camera connection tested',
+    CAPTURE_CANDIDATE_ADOPTED: 'Camera added',
+    CAPTURE_DEVICE_UNREACHABLE: 'Capture device not reachable',
   },
 
   /** Audit filter categories (sim `AuditCategory`). */
@@ -693,5 +698,215 @@ export const common = {
     panelBody: 'The rest of the console keeps working.',
     notFoundTitle: 'Page not found',
     notFoundBody: 'The page you asked for does not exist.',
+  },
+
+  /**
+   * Task 3, R-9 / R-10 / R-11 (blueprint rows 137 web, 138 tablet and phone; `08_client_ux_spec.md`
+   * §14.2, flows 9 to 13): the six blocks below are the spec's keys, verbatim. Vocabulary of §14.1:
+   * "search", "camera", "connect", "add" — never "discovery", "candidate", "credential", "adopt".
+   * A text written "(s)" in the spec is an i18next `_one` / `_other` pair here.
+   */
+  captureSearch: {
+    action: 'Search for cameras',
+    again: 'Search again',
+    intro: 'Search the network for cameras. Searching connects to nothing.',
+    searching: 'Searching the network for cameras…',
+    searchingHint: 'This takes up to {{seconds}} seconds.',
+    finishing: 'Finishing the search…',
+    summary: '{{count}} found · {{newCount}} new · {{registeredCount}} already registered',
+    freshness: 'Searched at {{searchedAt}}. Kept until {{keptUntil}}.',
+    ownerNote: 'Only you see this list, on this device.',
+    trustNote: 'Make, model and name are what each device announced. They are not checked.',
+    emptyTitle: 'No camera answered the search',
+    emptyBody: 'Check that each camera is powered and on the same network as the Core, then search again.',
+    truncated: 'More than {{max}} devices answered. The first {{max}} are listed.',
+    failed: 'The search could not be completed. Nothing was changed.',
+    unavailable: 'Camera search is not available on this Core yet.',
+    busy: 'Another operator is searching right now. Search again when their search has finished.',
+    expired: 'This search result is no longer kept. Search again to see the cameras.',
+    developmentGroup: 'Development sources',
+    columns: {
+      address: 'Address',
+      makeModel: 'Make and model',
+      name: 'Name',
+      status: 'Status',
+    },
+    makeModelUnknown: 'Make and model not announced',
+    status: {
+      NEW: 'New',
+      REGISTERED: 'Already registered',
+    },
+    registeredAs: 'Already registered as {{device}}',
+    notTestable: 'Cannot be connected',
+    notTestableBody: 'This device announced an address that is not its own.',
+    viewDevice: 'View device',
+    conflict: 'Two devices announce the same identity. Neither can be connected.',
+    addressChanged: 'This camera now answers from another address than the registered one.',
+    networksSearched_one: 'Searched {{count}} network.',
+    networksSearched_other: 'Searched {{count}} networks.',
+    recordingLocked: 'Camera search is not available while a session is recording.',
+    a11y: {
+      progress: 'Camera search in progress',
+      done: 'Search finished: {{count}} found, {{newCount}} new.',
+    },
+  },
+
+  captureConnect: {
+    action: 'Connect',
+    webOnly: 'Connect this camera from the web console.',
+    webOnlyNote: 'Camera passwords are entered on the web console only. Open Devices on the web console and search there.',
+    locked: 'A camera cannot be connected while a session is open.',
+    title: 'Connect {{name}}',
+    reference: 'Device reference',
+    unverified: 'This device has not been verified. Its name and model are what it announced.',
+    intro: 'Enter the user name and password set on this camera. They are used for this connection only and are never shown again.',
+    digestNote:
+      'Sent as a digest: not readable in transit, but a device that receives it can test guesses against it. Use a password that is used for this camera only.',
+    username: 'Camera user name',
+    password: 'Camera password',
+    required: 'Enter the camera user name and password.',
+    charset: 'Use letters, digits and common symbols only (printable ASCII).',
+    reveal: {
+      show: 'Show password',
+      hide: 'Hide password',
+    },
+    confirmDevice: 'I have checked that {{address}} is this camera',
+    noPasswordNeeded: 'This development source needs no password.',
+    enterPassword: 'Enter a user name and password',
+    change: 'Change',
+    test: 'Test connection',
+    testing: 'Testing the connection…',
+    testingHint: 'This can take up to {{seconds}} seconds.',
+    outcome: {
+      REACHABLE: 'Connection works. This camera can be added.',
+      UNREACHABLE: 'The camera did not answer. Check its power and network cable, then test again.',
+      AUTHENTICATION_FAILED: 'The camera refused this user name or password.',
+      WRONG_PROFILE:
+        'The camera answered, but it offers no video profile this system can use. Change the video settings on the camera, then test again.',
+      NOT_H264: 'The camera answered, but none of its video profiles is H.264. Set the camera to H.264, then test again.',
+    },
+    outcomeShort: {
+      REACHABLE: 'Connection works',
+      UNREACHABLE: 'No answer',
+      AUTHENTICATION_FAILED: 'Password refused',
+      WRONG_PROFILE: 'No usable profile',
+      NOT_H264: 'Not H.264',
+    },
+    profiles_one: '{{count}} usable video profile',
+    profiles_other: '{{count}} usable video profiles',
+    attemptsLeft_one: '{{count}} more attempt before testing this camera is paused.',
+    attemptsLeft_other: '{{count}} more attempts before testing this camera is paused.',
+    lockoutGuard: 'Testing this camera is paused so that the camera does not lock its account. Try again after {{time}}.',
+    inProgress: 'A connection test for this camera is already running.',
+    add: 'Add as camera',
+    adding: 'Adding the camera…',
+    added: '{{device}} was added.',
+    passwordStored: 'Password stored.',
+    noPasswordUsed: 'No password is used for this source.',
+    addedNext: 'The camera is registered but not yet used. Assign it to Camera 1 or Camera 2.',
+    assign: 'Assign to a camera slot',
+    storeNotReady: 'This Core cannot store camera passwords yet, so this camera cannot be added. Nothing was saved.',
+    testTooOld: 'The connection test is too old. Test the connection again.',
+    finalCheckFailed: 'The camera did not pass the final check, so it was not added.',
+    alreadyRegistered: 'This camera is already registered as {{device}}.',
+    resultGone: 'This search result is no longer kept. Search again.',
+  },
+
+  captureNotice: {
+    discoveryEmpty: {
+      title: 'No camera found',
+      body: 'The last search found no camera on the network.',
+    },
+    unreachable: {
+      precheck: {
+        title: '{{device}} is not reachable',
+        camera_one: 'It did not answer the pre-check. A search found {{count}} camera.',
+        camera_other: 'It did not answer the pre-check. A search found {{count}} cameras.',
+        microphone: 'It did not answer the pre-check.',
+      },
+      sessionStart: {
+        title: '{{device}} is not connected',
+        body: 'The session is recording one camera only.',
+      },
+    },
+    noCamera: {
+      title: 'No camera connected',
+      body: 'Nothing was recorded.',
+    },
+    cause: {
+      UNREACHABLE: 'It did not answer.',
+      AUTHENTICATION_FAILED: 'It refused the stored password. Set the camera password again on the web console.',
+      NOT_CONNECTED: 'It did not connect in time.',
+      PERMISSION_DENIED: 'macOS has not allowed access for the Core.',
+      DEVICE_BUSY: 'Another application is using it.',
+      DEVICE_NOT_FOUND: 'It was not found.',
+    },
+    start: {
+      noCamera: 'No camera is reachable. A session cannot start.',
+      oneCamera: '{{device}} is not reachable. The session will record one camera only.',
+      noMicrophone: 'No microphone is reachable. A session cannot start.',
+      activeMicrophone:
+        '{{device}} is the active microphone and is not reachable. Cancel this session, make {{other}} the primary microphone on Devices, then start again.',
+      activeMicrophoneFallback: 'Cancel this session, make {{other}} the primary microphone on Devices, then start again.',
+      noStandby: '{{device}} is not reachable. The session will record with no standby microphone.',
+      oneMicrophone: '{{device}} is not reachable. The session will record with one microphone and no standby.',
+      notRecordable: '{{device}} cannot be recorded by this version of the system.',
+    },
+  },
+
+  sourceClass: {
+    badge: 'Development source',
+    kind: {
+      localCamera: "This Mac's camera",
+      localMicrophone: "This Mac's microphone",
+      test: 'Test source',
+    },
+    notAllowed: 'This source can only be used in the development configuration.',
+    verify: {
+      development: 'DEVELOPMENT SOURCES — this package was not recorded from production devices.',
+      production: 'Sources: declared as production devices by the Core that sealed this package.',
+      untrusted: 'Sources: not trustworthy — the manifest was altered',
+      v1: 'Sources: not recorded (v1 package)',
+    },
+    microphoneOn: {
+      web: "This Mac's microphone is on",
+      mobile: "Core Mac's microphone is on",
+    },
+    cameraOn: {
+      web: "This Mac's camera is on",
+      mobile: "Core Mac's camera is on",
+    },
+  },
+
+  localDevice: {
+    state: {
+      READY: 'Ready',
+      PERMISSION_DENIED: 'Permission needed',
+      DEVICE_BUSY: 'In use',
+      DEVICE_NOT_FOUND: 'Not found',
+    },
+    permissionCamera:
+      'macOS has not allowed camera access for the Core. On the Mac that runs the Core, open System Settings > Privacy & Security > Camera, allow it, then search again.',
+    permissionMicrophone:
+      'macOS has not allowed microphone access for the Core. On the Mac that runs the Core, open System Settings > Privacy & Security > Microphone, allow it, then search again.',
+    busyCamera: 'Another application is using this camera. Close that application, then search again.',
+    busyMicrophone: 'Another application is using this microphone. Close that application, then search again.',
+    notFoundCamera: "This Mac's camera was not found.",
+    notFoundMicrophone: "This Mac's microphone was not found.",
+    openFailed: {
+      chip: 'Could not be opened',
+      body: "This Mac's camera (microphone) could not be opened. Check its permission on the Mac that runs the Core, then search again.",
+      /** The same sentence with the one device it is about (row 137: a row names its own kind). */
+      camera: "This Mac's camera could not be opened. Check its permission on the Mac that runs the Core, then search again.",
+      microphone: "This Mac's microphone could not be opened. Check its permission on the Mac that runs the Core, then search again.",
+    },
+  },
+
+  captureInputs: {
+    againLabel: 'Search again for microphones',
+    description: 'Re-reads the microphones connected to the Core. Microphones are not searched on the network.',
+    checkedAt: 'Checked at {{time}}',
+    unregistered_one: '{{count}} other microphone is connected to the Core but not registered.',
+    unregistered_other: '{{count}} other microphones are connected to the Core but not registered.',
   },
 } as const satisfies ResourceTree;

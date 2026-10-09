@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CAPTURE_IPC_DEFAULTS, CAPTURE_MEDIA_PORT_MAX, CAPTURE_MEDIA_PORT_MIN, CAPTURE_PROTOCOL_VERSION, CaptureIngestState, CaptureMicRole, CaptureRecordKind, CaptureWarningCode, WorkerMessageType } from '@dems/capture-protocol';
-import { CAPTURE_AUDIO_CHANNELS, CAPTURE_AUDIO_SAMPLE_RATE_HZ, CAPTURE_MEDIA_TIME_ORIGIN_SAMPLES } from '@dems/shared/api';
+import { CAPTURE_AAC_FRAME_SAMPLES, CAPTURE_AUDIO_CHANNELS, CAPTURE_AUDIO_SAMPLE_RATE_HZ, CAPTURE_MEDIA_TIME_ORIGIN_SAMPLES } from '@dems/shared/api';
 import { MicRole } from '@dems/shared/domain';
 import { FaultKind } from '@dems/shared/sim';
 import { describe, expect, it } from 'vitest';
@@ -50,7 +50,8 @@ describe('what the C capture worker restates from the protocol package and the c
     expect(written('type').every((type) => (Object.values(WorkerMessageType) as string[]).includes(type))).toBe(true);
     // PROGRESS is the sealing rows': the worker of this row writes none.
     expect(written('type')).not.toContain(WorkerMessageType.PROGRESS);
-    expect(written('kind')).toEqual([CaptureRecordKind.FIRST_DURABLE_FRAGMENT, CaptureRecordKind.FIRST_VIDEO_SAMPLE].sort());
+    // Row 59: the fMP4 writer's checkpoint and the observed keyframe interval joined the two of row 58.
+    expect(written('kind')).toEqual([CaptureRecordKind.FIRST_DURABLE_FRAGMENT, CaptureRecordKind.FIRST_VIDEO_SAMPLE, CaptureRecordKind.FRAGMENT_CHECKPOINT, CaptureRecordKind.KEYFRAME_INTERVAL].sort());
     for (const state of Object.values(CaptureIngestState)) expect(all, state).toContain(`"${state}"`);
     for (const role of Object.values(CaptureMicRole)) expect(all, role).toContain(`"${role}"`);
     expect(all).toContain(`send_warning("${CaptureWarningCode.CAPTURE_FAULT}"`);
@@ -62,5 +63,7 @@ describe('what the C capture worker restates from the protocol package and the c
     // empty_moov without delay_moov: no edit list, the priming is presented (capture spec §F, erratum PE-111-06).
     expect(CAPTURE_MEDIA_TIME_ORIGIN_SAMPLES).toBe(flags.includes('delay_moov') ? 0 : Number(define('AAC_FRAME')));
     expect(CAPTURE_MEDIA_TIME_ORIGIN_SAMPLES).toBe(1_024);
+    // Row 78's request (D-77-6): the shared AAC frame length is the worker's define, not a second number.
+    expect(CAPTURE_AAC_FRAME_SAMPLES).toBe(Number(define('AAC_FRAME')));
   });
 });

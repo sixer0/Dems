@@ -80,7 +80,11 @@ function expected(operation: CoreApiRegistryOperation, principal: Principal): Ou
   const deviceSession = (access.conditions ?? []).includes(CoreApiAccessCondition.DEVICE_SESSION);
   if (access.kind === CoreApiAccessKind.AUTHENTICATED) return deviceSession && principal.deviceId === null ? '403 DEVICE_NOT_PAIRED' : 'ALLOW';
   const needed = access.kind === CoreApiAccessKind.PERMISSION ? [access.permission] : [...access.permissions];
-  return needed.some((permission) => principal.permissions.includes(permission)) ? 'ALLOW' : '403 NOT_PERMITTED';
+  if (!needed.some((permission) => principal.permissions.includes(permission))) return '403 NOT_PERMITTED';
+  // C3 §0, §2.6 (D80(3)): the operations whose body carries a camera credential are web console
+  // only. A holder of the permission whose session is bound to a paired device is refused, audited.
+  const webOnly = (access.conditions ?? []).includes(CoreApiAccessCondition.WEB_CONSOLE_SESSION);
+  return webOnly && principal.deviceId !== null ? '403 NOT_PERMITTED' : 'ALLOW';
 }
 
 const CALLERS: ReadonlyArray<readonly [label: string, principal: Principal]> = [
@@ -102,10 +106,10 @@ describe('AC-B-16, unit form: all 75 operations for nine callers', () => {
     expect(wrong).toEqual([]);
   });
 
-  it('the cells are 92 x 9 = 828; the denied cells of an operator are re-derived from the registry and the role table (29 INVESTIGATOR, 3 SUPERVISOR, 34 TECHNICIAN at 92 operations), as spec AC-B-16 counts them', () => {
+  it('the cells are 97 x 9 = 873; the denied cells of an operator are re-derived from the registry and the role table (34 INVESTIGATOR, 3 SUPERVISOR, 34 TECHNICIAN at 97 operations), as spec AC-B-16 counts them', () => {
     const cells = CORE_API_OPERATIONS.length * CALLERS.length;
-    // C3 §2.5 (blueprint row 113): 92 operations x 9 callers.
-    expect(cells).toBe(828);
+    // C3 §2.5 (blueprint row 113): 92 operations x 9 callers. C3 §10.1 (blueprint row 132, D106): 97 x 9.
+    expect(cells).toBe(873);
     const denied = (role: OperatorRole): string[] =>
       CORE_API_OPERATIONS.filter((operation) => outcomeOf(decideAccess(ruleOf(operation.operationId), granted(operator(role, null)))) === '403 NOT_PERMITTED').map(
         (operation) => operation.operationId,
@@ -123,12 +127,18 @@ describe('AC-B-16, unit form: all 75 operations for nine callers', () => {
       }).map((operation) => operation.operationId);
     for (const role of ROLES) expect(denied(role), role).toEqual(deniedByRoleTable(role));
     console.log(`[ac-b-16] denied cells over ${CORE_API_OPERATIONS.length} operations: ${ROLES.map((role) => `${role} ${denied(role).length}`).join(', ')}`);
-    // The same on a device: the transport changes no permission.
+    expect(Object.fromEntries(ROLES.map((role) => [role, denied(role).length]))).toEqual({ INVESTIGATOR: 34, SUPERVISOR: 3, TECHNICIAN: 34 });
+    // The same on a device: the transport changes no permission. What it adds is the one condition
+    // that names the transport (C3 §0 `WEB_CONSOLE_SESSION`, D80(3)): the three operations whose body
+    // carries a camera credential refuse a HOLDER of their permission there too.
+    const WEB_ONLY = ['setCaptureDeviceCredential', 'testCaptureCandidateConnection', 'adoptCaptureCandidate'];
     for (const role of ROLES) {
       const onDevice = CORE_API_OPERATIONS.filter(
         (operation) => outcomeOf(decideAccess(ruleOf(operation.operationId), granted(operator(role, 'DEV-0001')))) === '403 NOT_PERMITTED',
       ).map((operation) => operation.operationId);
-      expect(onDevice).toEqual(denied(role));
+      const inRegistryOrder = CORE_API_OPERATIONS.map((operation) => operation.operationId).filter((id) => denied(role).includes(id) || WEB_ONLY.includes(id));
+      expect(onDevice, role).toEqual(inRegistryOrder);
+      expect(onDevice.filter((id) => !denied(role).includes(id)), role).toEqual(role === 'INVESTIGATOR' ? [] : WEB_ONLY);
     }
   });
 
@@ -343,6 +353,80 @@ describe('the conditions of a rule (spec §7.3 line 7)', () => {
     expect(() => decideAccess(broken, granted(operator('SUPERVISOR', null)))).toThrow(/has none to check/);
     // Without a principal the 401 still comes first.
     expect(outcomeOf(decideAccess(broken, granted(ANONYMOUS)))).toBe('401');
+  });
+});
+
+describe('WEB_CONSOLE_SESSION: the operations whose body carries a camera credential are web console only (C3 §0, §2.6; D80(3); SEC35-45)', () => {
+  const WEB_ONLY = ['setCaptureDeviceCredential', 'testCaptureCandidateConnection', 'adoptCaptureCandidate'];
+  const refusalOf = (operationId: string, principal: Principal) => {
+    const decision = decideAccess(ruleOf(operationId), granted(principal));
+    return decision.allowed ? null : decision.refusal;
+  };
+
+  it('operations 89, 95 and 96 carry it, each on the permission CAPTURE_CONFIG; no other operation does', () => {
+    const carriers = CORE_API_OPERATIONS.filter((operation) => ruleOf(operation.operationId).conditions.includes(CoreApiAccessCondition.WEB_CONSOLE_SESSION));
+    expect(carriers.map((operation) => operation.operationId)).toEqual(WEB_ONLY);
+    for (const operationId of WEB_ONLY) {
+      expect(ruleOf(operationId).kind).toBe(CoreApiAccessKind.PERMISSION);
+      expect(ruleOf(operationId).permissions).toEqual([Permission.CAPTURE_CONFIG]);
+    }
+  });
+
+  it('a web console session of a holder passes; the same holder on a paired device is refused 403 NOT_PERMITTED with the reason WEB_CONSOLE_ONLY, audited', () => {
+    for (const operationId of WEB_ONLY) {
+      for (const role of ['SUPERVISOR', 'TECHNICIAN'] as const) {
+        expect(decideAccess(ruleOf(operationId), granted(operator(role, null))).allowed, `${operationId} ${role} web`).toBe(true);
+        const refusal = refusalOf(operationId, operator(role, 'DEV-0001'));
+        expect(refusal, `${operationId} ${role} device`).toEqual({
+          kind: AccessRefusalKind.NOT_PERMITTED,
+          operatorId: OPERATOR_OF[role],
+          role,
+          deviceId: 'DEV-0001',
+          denial: ruleOf(operationId).denial,
+          reason: 'WEB_CONSOLE_ONLY',
+        });
+        expect(refusal !== null && isAudited(refusal)).toBe(true);
+      }
+    }
+  });
+
+  it('the permission is decided first: a role without CAPTURE_CONFIG is refused for the permission on either console, with no reason', () => {
+    for (const operationId of WEB_ONLY) {
+      for (const deviceId of [null, 'DEV-0001']) {
+        const refusal = refusalOf(operationId, operator('INVESTIGATOR', deviceId));
+        expect(refusal?.kind, operationId).toBe(AccessRefusalKind.NOT_PERMITTED);
+        expect(refusal !== null && 'reason' in refusal ? refusal.reason : undefined, operationId).toBeUndefined();
+      }
+    }
+  });
+
+  it('the device itself, an anonymous caller and a retired device are answered by the marker, before the condition', () => {
+    for (const operationId of WEB_ONLY) {
+      expect(outcomeOf(decideAccess(ruleOf(operationId), granted(DEVICE)))).toBe('401');
+      expect(outcomeOf(decideAccess(ruleOf(operationId), granted(ANONYMOUS)))).toBe('401');
+      expect(outcomeOf(decideAccess(ruleOf(operationId), granted(RETIRED)))).toBe('403 DEVICE_REVOKED');
+    }
+  });
+
+  it('nothing but the session binding is asked: the console identity, the demo flag and the session holder change no answer; the three that are open to a tablet stay open', () => {
+    const technician = operator('TECHNICIAN', 'DEV-0001');
+    for (const operationId of WEB_ONLY) {
+      for (const consoleIdentity of [true, false]) {
+        for (const demoControls of [true, false]) {
+          for (const sessionCreatorId of [null, 'OPR-003', 'OPR-001']) {
+            const caller: AccessCaller = { principal: technician, consoleIdentity, demoControls, sessionCreatorId };
+            expect(outcomeOf(decideAccess(ruleOf(operationId), caller))).toBe('403 NOT_PERMITTED');
+            expect(decideAccess(ruleOf(operationId), { ...caller, principal: operator('TECHNICIAN', null) }).allowed).toBe(true);
+          }
+        }
+      }
+    }
+    // Operations 93, 94 and 97 take the same permission and no condition: a tablet may search and read.
+    for (const operationId of ['startCaptureDiscovery', 'getCaptureDiscovery', 'rescanCaptureInputs']) {
+      expect(ruleOf(operationId).conditions).toEqual([]);
+      expect(decideAccess(ruleOf(operationId), granted(technician)).allowed, operationId).toBe(true);
+      expect(outcomeOf(decideAccess(ruleOf(operationId), granted(operator('INVESTIGATOR', 'DEV-0001')))), operationId).toBe('403 NOT_PERMITTED');
+    }
   });
 });
 

@@ -78,6 +78,16 @@ export function pipelineStatuses(steps: readonly FinalizationStepState[] | null,
   });
 }
 
+/**
+ * Blueprint row 87 (E-13; UX spec §4.7, §5.7): the statuses the screen draws, forward-only. A step the
+ * view already drew DONE (`drawn` percent 100, the memory of `sealing-progress.ts`) stays `done`,
+ * whatever a resumed attempt reports for it now; every other step keeps the status of
+ * `pipelineStatuses`. `percents` gives the Core's percent of a step where it reported one.
+ */
+export function forwardStatuses(statuses: readonly StepStatus[], drawn: readonly { readonly id: string; readonly percent: number }[]): StepStatus[] {
+  return FINALIZATION_STEPS.map((id, index) => ((drawn.find((step) => step.id === id)?.percent ?? 0) >= 100 ? 'done' : (statuses[index] ?? 'pending')));
+}
+
 /** Whole percent of the pipeline done (0 … 100). */
 export function pipelinePercent(statuses: readonly StepStatus[]): number {
   if (statuses.length === 0) return 0;

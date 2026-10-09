@@ -58,6 +58,16 @@ const CLOSED_UNITS: readonly string[] = [
   'src/realtime',
   // The capture supervisor (task 3 row 57): closed from its first day.
   'src/capture',
+  // The Core credential store (task 3 row 84): closed from its first day; not registered by app.ts.
+  'src/credential-store',
+  // The sealing steps (task 3 row 79, `FINALIZE_TRANSCRIPT`): closed from its first day; not registered by app.ts.
+  'src/sealing',
+  // Verify v2 at the Core (task 3 row 85): closed from its first day; not registered by app.ts.
+  'src/evidence-verify',
+  // The transcription composition (task 3 row 115): closed from its first day; mounted by modules/stt-config, not by app.ts.
+  'src/transcription',
+  // The no-device notices (task 3 row 133): closed from its first day; reached through `captureNotices(app)`, not registered by app.ts.
+  'src/capture-notices',
   'src/plugins/',
   'src/modules/',
   'src/db/mapping',
@@ -83,9 +93,20 @@ const CLOSED_UNITS: readonly string[] = [
  *   db/schema/boot-checks            the boot checks live beside the schema and are NOT
  *                                    re-exported by its index, which is the entry of
  *                                    `drizzle-kit` and loads table definitions only (the
- *                                    schema's own header; the folder is the migration writer's).
+ *                                    schema's own header; the folder is the migration writer's);
+ *   capture/adapters                 the adapter layer (task 3 blueprint row 65), a folder of
+ *                                    another row inside the capture unit, with an index of its
+ *                                    own that the capture index does NOT re-export: importing the
+ *                                    supervisor's unit must not load the adapters. The
+ *                                    capture-config module (row 66: the plan builder and rule
+ *                                    RG-3 of the selector) imports that index and nothing deeper;
+ *   capture/fence                    the capture fence (row 136), likewise a folder with an index
+ *                                    of its own inside the capture unit. The capture-config module
+ *                                    reads `captureFenceControl(app).registry()` in its boot step
+ *                                    (integration pass C1, decision D115 (3)): the capture unit
+ *                                    cannot hand the registry over itself without a unit cycle.
  */
-const EXPOSED: readonly string[] = ['src/modules/identity/password-hash', 'src/modules/identity/biometric', 'src/db/schema/boot-checks'];
+const EXPOSED: readonly string[] = ['src/modules/identity/password-hash', 'src/modules/identity/biometric', 'src/db/schema/boot-checks', 'src/capture/adapters', 'src/capture/fence'];
 
 /** The folders whose units are BELOW the modules: none of them imports a value of a module. */
 const BELOW_THE_MODULES: readonly string[] = ['src/core', 'src/engine', 'src/realtime', 'src/plugins/'];

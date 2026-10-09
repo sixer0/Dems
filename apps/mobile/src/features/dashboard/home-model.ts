@@ -77,6 +77,43 @@ export const TRACK_NAME_KEY: Readonly<Record<string, string>> = {
   'AUDIO-02': 'common.devices.mic2',
 };
 
+// ── Tablet device tiles: the level line of a MIC tile (task 3 M5, row 73; MB-01, B15, E-14) ──
+
+/**
+ * What the line under a MIC tile's meter says.
+ *
+ * | Kind | When | The line |
+ * |---|---|---|
+ * | `LEVEL` | the newest meter frame of the input carries a level | "-18 dBFS" |
+ * | `NO_SIGNAL` | the frame is flat AND the Core says the microphone has no signal (its state, the word the tile's chip shows too) | "No signal" |
+ * | `NO_LEVEL` | the frame is flat and the microphone is not in that state: no meter frame has arrived (an idle Core sends none; the link is stale) | "— dBFS" |
+ *
+ * B15 (D249 observation O-3; O-RF-T-7): the tile read "No signal" beside a READY chip, also while a
+ * session recorded. The line took the word from the flat frame alone — which only says "no frame
+ * yet" — so a tile could contradict its own chip. "No signal" is a state of the microphone; a
+ * missing frame is not. The second half of the defect (the line held for the whole recording under
+ * the `?motion=off` test switch) is fixed where the line is drawn (`device-tiles.tsx`).
+ */
+export type MicReadoutKind = 'LEVEL' | 'NO_SIGNAL' | 'NO_LEVEL';
+
+export function micReadoutKind(input: { readonly frameFlat: boolean; readonly state: string }): MicReadoutKind {
+  if (!input.frameFlat) return 'LEVEL';
+  return input.state === 'NO_SIGNAL' ? 'NO_SIGNAL' : 'NO_LEVEL';
+}
+
+/** The level line without a level: the unit with the app's "no value" mark. Not a word, so not in the copy. */
+export const MIC_NO_LEVEL_TEXT = '— dBFS';
+
+/**
+ * What a MIC tile says about its input while a session records: the one inside `AUDIO-01`
+ * ("Active") or the hot standby ("Standby"); `null` without a recording (ux §3.6 MB-01; D105: the
+ * session's pair, not the configured Primary). Pure.
+ */
+export function micTileSourceRole(input: { readonly recording: boolean; readonly inputId: string | undefined; readonly activeInputId: string }): 'ACTIVE' | 'STANDBY' | null {
+  if (!input.recording || input.inputId === undefined) return null;
+  return input.inputId === input.activeInputId ? 'ACTIVE' : 'STANDBY';
+}
+
 const FIXED_FLAGS = new Set([
   'SESSION_FAULT',
   'POWER_FAIL',

@@ -49,7 +49,7 @@ function firstResponse<T>(operationId: string, status: number, name: string): T 
   return example!.value as T;
 }
 
-describe('the examples of the 82 operations that only the Core server answers', () => {
+describe('the examples of the 87 operations that only the Core server answers', () => {
   it('every operation has examples: a request for each body, an ID for each path parameter, a body for each answer that has one', () => {
     let responses = 0;
     for (const operation of NEW_OPERATIONS) {
@@ -72,8 +72,9 @@ describe('the examples of the 82 operations that only the Core server answers', 
         }
       }
     }
-    // 65 of the backend task, 14 of task 3 M2-W7 and the 3 STT configuration operations of M6 row 113 (C3 §2.5).
-    expect(NEW_OPERATIONS).toHaveLength(82);
+    // 65 of the backend task, 14 of task 3 M2-W7, the 3 STT configuration operations of M6 row 113
+    // (C3 §2.5) and the 5 of the camera search of R-9..R-11 (row 132, D106; C3 §2.6).
+    expect(NEW_OPERATIONS).toHaveLength(87);
     expect(responses).toBeGreaterThan(300);
   });
 
@@ -165,7 +166,8 @@ describe('no example holds a secret', () => {
     for (const [path, value] of strings(CORE_API_EXAMPLES)) {
       const looksSecret = /^(ses|dvc|bio)_/.test(value) || /^\d{6}$/.test(value) || value.startsWith('DEMS-PAIR:');
       // `error.code` is the machine-readable error code, not a pairing code.
-      const namedSecret = secretKeys.test(path) && !path.endsWith('.error.code');
+      // Neither are the state codes of the verify report of operation 41 (rows 119, 141): closed value sets, e.g. READY, DEVELOPMENT.
+      const namedSecret = secretKeys.test(path) && !path.endsWith('.error.code') && !/\.(transcriptState|sources)\.code$/.test(path);
       if (!looksSecret && !namedSecret) continue;
       expect(allowed.has(value), `${path} = ${value}`).toBe(true);
       seen += 1;
@@ -180,7 +182,7 @@ describe('no example holds a secret', () => {
     for (const operation of contractC) {
       for (const [path, value] of strings(CORE_API_EXAMPLES[operation.operationId])) {
         expect(/^(ses|dvc|bio)_/.test(value) || /^\d{6}$/.test(value) || value.startsWith('DEMS-PAIR:'), `${operation.operationId}${path}`).toBe(false);
-        expect(secretKeys.test(path) && !path.endsWith('.error.code'), `${operation.operationId}${path}`).toBe(false);
+        expect(secretKeys.test(path) && !path.endsWith('.error.code') && !/\.(transcriptState|sources)\.code$/.test(path), `${operation.operationId}${path}`).toBe(false);
       }
     }
   });

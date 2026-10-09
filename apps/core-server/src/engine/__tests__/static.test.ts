@@ -37,10 +37,11 @@ const places = (files: readonly SourceFile[], pattern: RegExp): string[] => [...
 describe('the scan itself', () => {
   it('reads the production sources of the engine folder', () => {
     const paths = production.map((file) => file.path);
-    for (const expected of ['index.ts', 'host.ts', 'types.ts', 'limits.ts', 'timer.ts', 'scheduler.ts', 'headless-sim.ts', 'actor-scope.ts', 'hosted-actions.ts', 'write-plan.ts', 'delta.ts', 'ring.ts', 'rehydrate.ts', 'errors.ts', 'api-headers.ts']) {
+    for (const expected of ['index.ts', 'host.ts', 'types.ts', 'limits.ts', 'timer.ts', 'scheduler.ts', 'headless-sim.ts', 'actor-scope.ts', 'hosted-actions.ts', 'write-plan.ts', 'delta.ts', 'ring.ts', 'rehydrate.ts', 'errors.ts', 'api-headers.ts', 'internal-actions.ts']) {
       expect(paths, expected).toContain(`src/engine/${expected}`);
     }
-    expect(paths).toHaveLength(15);
+    // 15 until task 3 row 132 added `internal-actions.ts` (the in-unit door of `registerCaptureDevice`).
+    expect(paths).toHaveLength(16);
     expect(paths.some((path) => path.includes('__tests__'))).toBe(false);
   });
 

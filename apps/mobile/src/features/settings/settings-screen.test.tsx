@@ -132,6 +132,8 @@ describe('Settings', () => {
       'Device Settings',
       'Storage Management',
       'Network & Time',
+      'Capture', // task 3 row 68 (MB-09)
+      'Transcription status', // task 3 row 118 (R-8)
       'System Maintenance',
       'About DEMS',
     ]);

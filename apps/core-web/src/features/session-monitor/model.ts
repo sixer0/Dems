@@ -49,6 +49,29 @@ export function phaseOf(state: SessionState | null): SessionPhase {
   }
 }
 
+/**
+ * Whether the capture of `session` has its first durable fragment (decisions D84, D91 ruling R-1
+ * option A; ux §8 step 5, erratum PE-128-79). The stored state stays `RECORDING` from the accepted
+ * start; the session payload member `captureDurable` is `false` until the first durable fragment,
+ * and until then the console reads "Connecting cameras…", never "Recording".
+ *
+ * The member is not in the shared session schema yet (request filed by blueprint row 72), so this
+ * ONE helper reads it defensively: only an explicit `false` means "not durable yet". A session
+ * without the member (the simulator, a Core before rows 66/71) reads as durable, as before.
+ */
+export function captureDurableOf(session: unknown): boolean {
+  if (typeof session !== 'object' || session === null) return true
+  return (session as { captureDurable?: unknown }).captureDurable !== false
+}
+
+/** RECORDING and durable: the only state the console presents as "recording". */
+export const selectRecordingDurable = (s: SimState): boolean =>
+  s.session?.state === SessionState.RECORDING && captureDurableOf(s.session)
+
+/** RECORDING, before the first durable fragment: "Connecting cameras…". */
+export const selectConnectingCameras = (s: SimState): boolean =>
+  s.session?.state === SessionState.RECORDING && !captureDurableOf(s.session)
+
 /** The fields the page shell needs; changes only on a session transition. */
 export interface PageModel {
   state: SessionState | null
@@ -74,6 +97,8 @@ export function selectPageModel(s: SimState): PageModel {
 // ── K: status banner ─────────────────────────────────────────────────────────────────────
 export type BannerKind =
   | 'ACTIVE'
+  /** RECORDING before the first durable fragment (D84): "Connecting cameras…", never "Recording". */
+  | 'CONNECTING'
   | 'ATTENTION'
   | 'FAULT'
   | 'NO_SESSION'
@@ -86,6 +111,7 @@ export type BannerTone = 'success' | 'warning' | 'danger' | 'default' | 'accent'
 
 export const BANNER_TONE: Record<BannerKind, BannerTone> = {
   ACTIVE: 'success',
+  CONNECTING: 'accent',
   ATTENTION: 'warning',
   FAULT: 'danger',
   NO_SESSION: 'default',
@@ -101,6 +127,7 @@ export const BANNER_RANK: Record<BannerKind, number> = {
   SEALED: 0,
   SETUP: 0,
   ACTIVE: 0,
+  CONNECTING: 0,
   FINALIZING: 0,
   ATTENTION: 1,
   RECOVERY: 1,
@@ -163,6 +190,9 @@ export function selectBanner(s: SimState): BannerModel {
     case 'RECOVERY':
       return { ...base, kind: 'RECOVERY', recoveryStage: session?.recovery?.stage ?? null }
     case 'RECORDING': {
+      // D84: nothing claims to record before the first durable fragment, an alert's
+      // "Recording continues" included.
+      if (!captureDurableOf(session)) return { ...base, kind: 'CONNECTING' }
       const worst = selectWorstAlert(s)
       if (!worst) return { ...base, kind: 'ACTIVE' }
       const reasonKind = worst.kind === 'SYSTEM' ? null : worst.kind
@@ -288,6 +318,14 @@ export function micTiles(mics: SimState['mics']): MicTileModel[] {
   return mics.map((mic) => ({ id: mic.id, name: mic.name, state: mic.state, clipLatched: mic.clipLatched }))
 }
 
+/** The short name of a mic input ("MIC 1"): the key under `common.devices`. */
+export const MIC_INPUT_LABEL_KEY = { 'MIC-01': 'common.devices.mic1', 'MIC-02': 'common.devices.mic2' } as const
+
+/** `MIC_INPUT_LABEL_KEY` for a value read from a payload; `null` when it is not a mic input. */
+export function micInputLabelKey(value: unknown): (typeof MIC_INPUT_LABEL_KEY)[keyof typeof MIC_INPUT_LABEL_KEY] | null {
+  return value === 'MIC-01' || value === 'MIC-02' ? MIC_INPUT_LABEL_KEY[value] : null
+}
+
 /** Dot tone of a microphone (research/04 §3.2 O: READY, NO SIGNAL, CLIP). */
 export function micTone(mic: MicTileModel): 'success' | 'warning' | 'danger' | 'muted' {
   if (mic.state === 'NO_SIGNAL') return 'muted'
@@ -311,7 +349,8 @@ export interface FeedModel {
 
 export function selectFeed(s: SimState): FeedModel {
   const camera = s.cameras.find((c) => c.id === s.activeCameraId) ?? s.cameras[0]
-  const recording = s.session?.state === SessionState.RECORDING
+  // D84: the REC indicator and the timer start with the first durable fragment.
+  const recording = selectRecordingDurable(s)
   return {
     activeCameraId: s.activeCameraId,
     cameraName: camera?.name ?? s.activeCameraId,

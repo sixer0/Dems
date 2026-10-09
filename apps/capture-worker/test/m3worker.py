@@ -1,22 +1,34 @@
 #!/usr/bin/env python3
-"""Row 58 harness: the REAL capture worker on fake devices (blueprint row 58; checks M3-WI-1,
-M3-KC-1 file half, M3-RTSP-BIND-1 worker half, the row-111 H-4 / H-10 regressions, the mux-flag
-evaluation of part P4). Test code only. Run from the repository root, sandbox off (it binds
-127.0.0.1:8555 and 127.0.0.1:8557):
+"""Capture end-to-end harness: the REAL capture worker on the NM-14 fixtures (blueprint rows 58
+and 60; checks M3-WI-1, M3-AV-1, M3-AV-2 (a)/(b), M3-RTSP-BIND-1, M3-KC-1 file half, M3-KC-3, the
+H-4 regression, continuity AU2-05, the long-GOP camera, the mux-flag evaluation of row 58 part P4).
+Test code only. It binds two loopback ports of 8554-8564 (default 127.0.0.1:8555 and :8557; set
+M3_PORTS=8559,8561 to use another pair), so it needs the sandbox off.
 
-    python3 apps/capture-worker/test/m3worker.py build
-    python3 apps/capture-worker/test/m3worker.py <case> <run name> [options]
+    make -C apps/capture-worker e2e                        THE documented entry point (test/e2e.py):
+                                                           the whole series, one aggregate exit code
+    python3 apps/capture-worker/test/m3worker.py build     the worker, its proof builds, the fixtures
+    python3 apps/capture-worker/test/m3worker.py <case> <run name> [options]      one check
 
-Sources: two fake cameras (the row-111 `fake_cam`, a separate process each, RTSP push over TCP) and
-the fake mics of `fake_mic.c` (ONE separate process with its own clock reads; capture spec W-5).
+Sources: two fake cameras (`test-fixtures/fake_cam.c`, a separate process each with its own clock,
+RTSP push over TCP) and the fake mics of `test-fixtures/fake_mic.c` (ONE separate process with its
+own clock reads and, with --ppm, its own sample clock; capture spec W-5). The analysers are
+`test-fixtures/av_analyse.py`. Nothing is read from the docs tree or from git history.
 This script is the supervisor's stand-in for the worker-level cases: it speaks
 @dems/capture-protocol on the worker's standard streams, with an EMPTY environment. The cases that
 need the real supervisor go through `apps/core-server/test/support/capture-session-driver.ts`
 (sub-command `sup`).
 
 Everything a run writes lands under .cache/m3worker/ (git-ignored): 0 media in git (OD-25).
-Every check prints one JSON result with "verdict"; a negative control must FAIL and is run with
---expect-fail, which turns its failure into exit 0 and its success into exit 1.
+Every check prints one JSON result with "verdict" and, where the case names them, "criteria"
+(one PASS/FAIL each). A negative control must FAIL and is run with --expect-fail, which turns its
+failure into exit 0 and its success into exit 1; with --must-fail-on a,b it must fail on exactly
+those criteria (plus any named by --may-fail-on): a control that fails for another reason is an
+error, not a pass.
+
+Leftovers are judged on the processes THIS run started (their process groups and descendants),
+never on program names host-wide (pair-58 re-check R-7): another harness on the same host is not
+ours, and ours cannot hide behind it.
 """
 import argparse, hashlib, json, os, shutil, signal, struct, subprocess, sys, threading, time
 from fractions import Fraction
@@ -25,18 +37,26 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.abspath(os.path.join(HERE, "..", "..", ".."))
 APP = os.path.join(REPO, "apps", "capture-worker")
 BUILD = os.path.join(APP, "build")
-EVID = os.path.join(REPO, "docs", "2026-10-07_dems_real_capture_sealing", "implementation", "evidence", "59_m3proof")
-RUNS = os.path.join(REPO, ".cache", "m3worker", "runs")
+FIX = os.path.join(APP, "test-fixtures")                 # NM-14: the fixture set (capture spec A.8)
+RUNS = os.environ.get("M3_RUNS") or os.path.join(REPO, ".cache", "m3worker", "runs")
 WORKER = os.path.join(BUILD, "capture-worker")
 VARIANTS = {"worker": WORKER, "negctl": os.path.join(BUILD, "capture-worker-negctl"), "delaymoov": os.path.join(BUILD, "capture-worker-delaymoov"),
             "skeleton": os.path.join(BUILD, "capture-worker-skeleton111"), "norefusal": os.path.join(BUILD, "capture-worker-norefusal"), "nocomp": os.path.join(BUILD, "capture-worker-nocomp")}
 CAM, MIC = os.path.join(BUILD, "fake_cam"), os.path.join(BUILD, "fake_mic")
 DRIVER = os.path.join(REPO, "apps", "core-server", "test", "support", "capture-session-driver.ts")
-PORTS = (8555, 8557)            # 8554 / 8556 / 8558 belong to the Android emulators: never touched
-V = 2                           # CAPTURE_PROTOCOL_VERSION
+PORT_MIN, PORT_MAX = 8554, 8564                      # CAPTURE_MEDIA_PORT_MIN/MAX: every fixture and worker listener (SEC35-23)
+RESERVED_PORTS = (8554, 8556, 8558)                  # the Android emulators' gRPC endpoints on this host: never touched
+PORTS = tuple(int(x) for x in os.environ.get("M3_PORTS", "8555,8557").split(","))
+if len(PORTS) != 2 or PORTS[0] == PORTS[1] or any(p < PORT_MIN or p > PORT_MAX or p in RESERVED_PORTS for p in PORTS):
+    sys.exit("M3_PORTS must name two different ports of %d-%d other than %r" % (PORT_MIN, PORT_MAX, RESERVED_PORTS))
+# Ports of other systems on this host that no process of a run may ever hold or reach (the SMART WMS stack and the
+# DEMS dev servers): checked on every socket snapshot.
+FOREIGN_PORTS = frozenset((5173, 5174, 5175, 5176, 5177, 5178, 8000, 5432, 4421, 4422, 4423, 4432, 8081))
+V = 3                           # CAPTURE_PROTOCOL_VERSION (row 59: 3 since the checkpoint content)
 FPS, FRAME_US, SR = 50, 20000, 48000
 REGRESSION_MS, PRODUCT_MS = 2.0, 40.0      # two different tolerances (AU2-04): never merged
 PRIMING = 1024
+ROW58_RECORD_KINDS = ("FIRST_VIDEO_SAMPLE", "FIRST_DURABLE_FRAGMENT")     # once per camera (row 58); row 59 adds FRAGMENT_CHECKPOINT and KEYFRAME_INTERVAL
 CASES = {  # per camera: (injected offset ms, drift ppm); flash/beep events per camera
     "zero": {"cams": [(0, 0.0), (0, 0.0)], "events": 3},
     "pm80": {"cams": [(80, 0.0), (-80, 0.0)], "events": 3},
@@ -44,9 +64,9 @@ CASES = {  # per camera: (injected offset ms, drift ppm); flash/beep events per 
     "long": {"cams": [(0, 0.0), (0, 0.0)], "events": 8},
 }
 
-sys.dont_write_bytecode = True      # the analysers are imported from the docs tree: no cache file is left there
-sys.path.insert(0, EVID)
-import m3proof as P111          # the row-111 analysers (committed evidence copy): box walk, packets, onsets, flashes
+sys.dont_write_bytecode = True      # no cache file is left beside the fixtures
+sys.path.insert(0, FIX)
+import av_analyse as P111       # the NM-14 analysers (vendored and corrected row-111 code): box walk, packets, onsets, flashes
 FF, FP = P111.FF, P111.FP
 
 
@@ -63,58 +83,146 @@ def rundir(name, fresh=False):
 
 
 def tcp_listeners():
+    """Listeners on the two media ports of this run, whoever owns them (the "ports busy" check before a start)."""
     txt = sh(["lsof", "-nP", "-iTCP", "-sTCP:LISTEN"]).stdout
     return [l for l in txt.splitlines() if any(l.rstrip().endswith(":%d (LISTEN)" % p) for p in PORTS)]
 
 
-def sockets_of(pid):
-    """Every internet socket of one process, TCP and UDP (M3-RTSP-BIND-1 as widened by erratum PE-111-03)."""
-    rows = [l for l in sh(["lsof", "-nP", "-a", "-p", str(pid), "-i"]).stdout.splitlines()[1:] if l.strip()]
+# Every process this run started, and the pids a process of ours started on our behalf (the worker the
+# supervisor launched). Leftovers and socket snapshots are taken over THESE, never over program names.
+OWN, OWN_EXTRA_PIDS = [], set()
+
+
+def spawn(args, **kw):
+    """Popen in a process group of its own, remembered as ours."""
+    kw.setdefault("start_new_session", True)
+    p = subprocess.Popen(args, **kw)
+    OWN.append(p)
+    return p
+
+
+def own_processes():
+    """Live processes that are ours: in a process group we created, a pid we were told about, or a descendant of either."""
+    rows = []
+    for line in sh(["ps", "-axo", "pid=,ppid=,pgid=,stat=,command="]).stdout.splitlines():
+        parts = line.split(None, 4)
+        if len(parts) == 5 and not parts[3].startswith("Z"):
+            rows.append((int(parts[0]), int(parts[1]), int(parts[2]), parts[4]))
+    groups = {p.pid for p in OWN}
+    mine = {pid for pid, _, pgid, _ in rows if pgid in groups or pid in groups or pid in OWN_EXTRA_PIDS}
+    grew = True
+    while grew:
+        more = {pid for pid, ppid, _, _ in rows if ppid in mine and pid not in mine}
+        grew = bool(more)
+        mine |= more
+    mine.discard(os.getpid())
+    return [(pid, cmd) for pid, _, _, cmd in rows if pid in mine]
+
+
+def endpoints(row):
+    """(host, port) of both ends of one lsof row: 'TCP 127.0.0.1:8555->127.0.0.1:53211 (ESTABLISHED)' or 'UDP *:5000'."""
+    parts = row.split()
+    name = parts[8] if len(parts) > 8 else ""
+    out = []
+    for end in name.split("->"):
+        host, _, port = end.rpartition(":")
+        out.append((host, port))
+    return out
+
+
+def judge_sockets(rows):
     udp = [l for l in rows if " UDP " in l]
-    off = [l for l in rows if "127.0.0.1:" not in l]
-    return {"rows": rows, "udp": udp, "not_loopback": off}
+    off = [l for l in rows if any(h != "127.0.0.1" for h, _ in endpoints(l))]
+    foreign = [l for l in rows if any(p.isdigit() and int(p) in FOREIGN_PORTS for _, p in endpoints(l))]
+    listen = sorted({"%s:%s" % e for l in rows if "(LISTEN)" in l for e in endpoints(l)})
+    return {"rows": rows, "udp": udp, "not_loopback": off, "foreign_ports": foreign, "listeners": listen}
+
+
+def sockets_of(pid):
+    """Every internet socket of one process, TCP and UDP (M3-RTSP-BIND-1 as widened by erratum PE-111-03).
+    Loopback means BOTH ends of a connection are 127.0.0.1, not that the text occurs in the row."""
+    return judge_sockets([l for l in sh(["lsof", "-nP", "-a", "-p", str(pid), "-i"]).stdout.splitlines()[1:] if l.strip()])
+
+
+def own_sockets():
+    """Every internet socket of every live process of this run (worker, fixtures, supervisor driver): the
+    listener snapshot of the row - 127.0.0.1 only, inside 8554-8564, no port of another system."""
+    pids = [pid for pid, _ in own_processes()]
+    if not pids:
+        return judge_sockets([])
+    s = judge_sockets([l for l in sh(["lsof", "-nP", "-a", "-p", ",".join(str(p) for p in pids), "-i"]).stdout.splitlines()[1:] if l.strip()])
+    s["processes"] = len(pids)
+    s["listeners_outside_range"] = [l for l in s["listeners"] if not (l.rpartition(":")[2].isdigit() and PORT_MIN <= int(l.rpartition(":")[2]) <= PORT_MAX)]
+    return s
+
+
+def sockets_clean(s, udp_allowed=False):
+    return not s["not_loopback"] and not s["foreign_ports"] and not s.get("listeners_outside_range") and (udp_allowed or not s["udp"])
 
 
 def leftovers():
-    """Processes of this harness that are still alive, by the NAME OF THE PROGRAM (a shell or an editor whose
-    command line merely mentions one of the names is not one of them), and listeners on the two media ports."""
-    ours = {os.path.basename(v) for v in VARIANTS.values()} | {"fake_cam", "fake_mic"}
-    found = []
-    for line in sh(["ps", "-axo", "pid=,args="]).stdout.splitlines():
-        parts = line.split()
-        if len(parts) < 2:
-            continue
-        program = os.path.basename(parts[1])
-        if program in ours or (program in ("node", "tsx") and "capture-session-driver.ts" in line):
-            found.append(line.strip()[:160])
-    return {"processes": found, "listeners": tcp_listeners()}
+    """What this run left behind: its own processes still alive and the listeners they hold. A process of
+    another run on this host (same program names, other ports) is not ours and is not reported (R-7)."""
+    procs = own_processes()
+    pids = {pid for pid, _ in procs}
+    held = []
+    for l in sh(["lsof", "-nP", "-iTCP", "-sTCP:LISTEN"]).stdout.splitlines()[1:]:
+        parts = l.split()
+        if len(parts) > 1 and parts[1].isdigit() and int(parts[1]) in pids:
+            held.append(l.strip())
+    return {"processes": ["%d %s" % (pid, cmd[:150]) for pid, cmd in procs], "listeners": held}
 
 
-def finish(result, ok, expect_fail=False, d=None):
+class Crit(dict):
+    """Named criteria of one check: v("name", condition). The verdict is their conjunction, and a negative
+    control states WHICH of them it must fail on."""
+
+    def __call__(self, name, cond):
+        self[name] = bool(cond) and self.get(name, True)
+        return bool(cond)
+
+    @property
+    def ok(self):
+        return all(self.values())
+
+
+ARGS = None     # the parsed command line (for --must-fail-on / --may-fail-on)
+
+
+def finish(result, ok, expect_fail=False, d=None, crit=None):
+    if crit is not None:
+        ok = bool(ok) and crit.ok
+        result["criteria"] = {k: ("PASS" if v else "FAIL") for k, v in crit.items()}
+        result["failed_criteria"] = sorted(k for k, v in crit.items() if not v)
     result["verdict"] = "PASS" if ok else "FAIL"
+    must = [x for x in (getattr(ARGS, "must_fail_on", None) or "").split(",") if x]
+    may = [x for x in (getattr(ARGS, "may_fail_on", None) or "").split(",") if x]
+    good = ok != expect_fail
     if expect_fail:
         result["negative_control"] = "failed as required" if not ok else "DID NOT FAIL - the control is broken"
+        if must and not ok:
+            failed = set(result.get("failed_criteria", []))
+            if not set(must) <= failed or not failed <= set(must) | set(may):
+                result["negative_control"] = "FAILED FOR ANOTHER REASON - expected exactly %r (optionally %r), failed on %r" % (sorted(must), sorted(may), sorted(failed))
+                good = False
+            else:
+                result["negative_control"] = "failed as required, on %s" % ", ".join(sorted(failed))
+    elif must:
+        sys.exit("--must-fail-on needs --expect-fail")
     if d:
         json.dump(result, open(os.path.join(d, "result.json"), "w"), indent=1)
     print(json.dumps(result, indent=1))
-    sys.exit(0 if (ok != expect_fail) else 1)
+    sys.exit(0 if good else 1)
 
 
 # ------------------------------------------------------------------------------------------ build
 def cmd_build(_):
     os.makedirs(BUILD, exist_ok=True)
-    subprocess.run(["make", "-C", APP], check=True)
-    subprocess.run(["make", "-C", APP, "proof"], check=True)
-    av = subprocess.run(["pkg-config", "--cflags", "--libs", "libavformat", "libavcodec", "libavutil"], capture_output=True, text=True, check=True).stdout.split()
-    subprocess.run(["clang", "-O2", "-Wall", "-Wextra", "-o", CAM, os.path.join(EVID, "fake_cam.c")] + av + ["-lm"], check=True)
-    subprocess.run(["clang", "-std=c11", "-O2", "-Wall", "-Wextra", "-Werror", "-o", MIC, os.path.join(HERE, "fake_mic.c"), "-lm"], check=True)
-    # The row-111 skeleton as committed at 101ce62: the binary the widened bind check must FAIL on.
-    src = subprocess.run(["git", "-C", REPO, "show", "101ce62:apps/capture-worker/src/capture_worker.c"], capture_output=True, text=True, check=True).stdout
-    skel = os.path.join(BUILD, "skeleton111.c")
-    open(skel, "w").write(src)
-    avf = subprocess.run(["pkg-config", "--cflags", "--libs", "libavformat", "libavcodec", "libavfilter", "libavutil"], capture_output=True, text=True, check=True).stdout.split()
-    subprocess.run(["clang", "-std=c11", "-O2", "-o", VARIANTS["skeleton"], skel] + avf + ["-lm", "-lpthread"], check=True)
-    print(json.dumps({"built": sorted(os.listdir(BUILD))}))
+    # Everything is built by the Makefile from sources in this folder tree: the worker (with its static rules and
+    # unit checks), the proof builds, and the NM-14 fixtures incl. the vendored row-111 skeleton (the binary the
+    # widened bind check must FAIL on). No file of the docs tree and no commit is read (pair-58 F-14).
+    subprocess.run(["make", "-C", APP, "all", "proof", "fixtures"], check=True)
+    print(json.dumps({"built": sorted(n for n in os.listdir(BUILD) if not n.endswith(".dSYM"))}))
 
 
 # ------------------------------------------------------------------------------------------ the worker under test
@@ -127,7 +235,7 @@ class Worker:
         if manifest:
             args += ["--audio-manifest", os.path.join(d, "manifest.jsonl")]
         self.t_spawn = time.monotonic()
-        self.p = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, env={}, start_new_session=True)
+        self.p = spawn(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, env={})
         self.seq = 0
         threading.Thread(target=self._read, daemon=True).start()
 
@@ -214,7 +322,7 @@ def make_plan(d, sid, cams=2, mics=2, tap=None, names=("cam1", "cam2")):
     }
 
 
-def build_truth(case_name, lead_us=5_000_000, frames_override=None):
+def build_truth(case_name, lead_us=5_000_000, frames_override=None, gop=FPS):
     case = CASES[case_name]
     ev = case["events"]
     frames = 200 + 200 * (ev - 1) + 50
@@ -231,20 +339,21 @@ def build_truth(case_name, lead_us=5_000_000, frames_override=None):
         n = frames if not frames_override else frames_override[i]
         cams.append({"cam": i + 1, "port": PORTS[i], "inject_ms": inj_ms, "drift_ppm": ppm, "flash_first": first, "flash_every": 200,
                      "claimed_epoch_us": c0 - inj_ms * 1000, "events": [e for e in evs if e["frame"] < n], "frames": n})
-    return {"case": case_name, "epoch_us": c0, "frames": frames, "cams": cams, "beeps": sorted(beeps)}
+    return {"case": case_name, "epoch_us": c0, "frames": frames, "gop": gop, "cams": cams, "beeps": sorted(beeps)}
 
 
 def start_sources(d, truth, plan, procs, mic_seconds, mic_extra=()):
     """The fake mics first (they define T0), then the cameras. Each is a process of its own."""
-    mic = subprocess.Popen([MIC, "--out1", plan["mics"][0]["input"]["path"]] + (["--out2", plan["mics"][1]["input"]["path"]] if len(plan["mics"]) > 1 else []) +
-                           ["--manifest", os.path.join(d, "mic.jsonl"), "--seconds", "%.3f" % mic_seconds, "--beep-at-us", ",".join(str(b) for b in truth["beeps"])] + list(mic_extra),
-                           stdin=subprocess.DEVNULL, stderr=open(os.path.join(d, "mic.err"), "w"), start_new_session=True)
+    mic = spawn([MIC, "--out1", plan["mics"][0]["input"]["path"]] + (["--out2", plan["mics"][1]["input"]["path"]] if len(plan["mics"]) > 1 else []) +
+                ["--manifest", os.path.join(d, "mic.jsonl"), "--seconds", "%.3f" % mic_seconds, "--beep-at-us", ",".join(str(b) for b in truth["beeps"])] + list(mic_extra),
+                stdin=subprocess.DEVNULL, stderr=open(os.path.join(d, "mic.err"), "w"))
     procs.append(mic)
     cps = []
     for c, pc in zip(truth["cams"], plan["cameras"]):
-        cp = subprocess.Popen([CAM, "--url", pc["ingestUrl"], "--epoch-us", str(truth["epoch_us"]), "--claimed-epoch-us", str(c["claimed_epoch_us"]),
-                               "--drift-ppm", str(c["drift_ppm"]), "--frames", str(c["frames"]), "--flash-first", str(c["flash_first"]), "--flash-every", str(c["flash_every"])],
-                              stdin=subprocess.DEVNULL, stderr=open(os.path.join(d, "cam%d.err" % c["cam"]), "w"), start_new_session=True)
+        cp = spawn([CAM, "--url", pc["ingestUrl"], "--epoch-us", str(truth["epoch_us"]), "--claimed-epoch-us", str(c["claimed_epoch_us"]),
+                    "--drift-ppm", str(c["drift_ppm"]), "--frames", str(c["frames"]), "--flash-first", str(c["flash_first"]), "--flash-every", str(c["flash_every"]),
+                    "--gop", str(truth.get("gop", FPS))],
+                   stdin=subprocess.DEVNULL, stderr=open(os.path.join(d, "cam%d.err" % c["cam"]), "w"))
         procs.append(cp)
         cps.append(cp)
     return mic, cps
@@ -344,38 +453,52 @@ def h4(d, paths):
     return ok, res
 
 
-def av_offsets(d, truth, paths, exclude_first_video_sample=True, bound_ms=REGRESSION_MS, keep=None):
-    """Flash-to-beep offset per camera file, sample-exact (row-111 method). The truth comes from the
-    case definition and the mic process's own manifest, never from the worker."""
-    res, ok = {}, True
-    for c, p in zip(truth["cams"], paths):
-        flashes, nframes, bright = P111.video_flashes(p)
-        x, a0, _ = P111.audio_pcm(p)
-        on = [Fraction(a0 + i, SR) for i in P111.onsets(x)]
-        rows = []
-        if len(flashes) != len(c["events"]) or not on:
-            res["cam%d" % c["cam"]] = {"error": "flash/beep count", "flashes": len(flashes), "events": len(c["events"]), "beeps": len(on)}
+def av_offsets(d, truth, paths, bound_ms=REGRESSION_MS, keep=None, allow_stray=False, assume_drift_ppm=None):
+    """Flash-to-beep offset per camera file, sample-exact, paired by identity (test-fixtures/av_analyse.py).
+    The truth comes from the case definition and the mic process's own manifest in `d`, never from the worker.
+    Returns (regression bound holds, product bound holds, detail): two verdicts, never merged (AU2-04)."""
+    mic, beeps = P111.mic_truth(os.path.join(d, "mic.jsonl"))
+    return P111.av_offsets(paths, truth, mic, beeps, bound_ms=bound_ms, keep=keep, gop=truth.get("gop", FPS), allow_stray=allow_stray, assume_drift_ppm=assume_drift_ppm)
+
+
+def slope_matches(truth, rav):
+    """M3-AV-2 (b): the fitted slope of a drifting camera is the INJECTED one (never 'near 0'), within what the
+    2 ms regression bound allows over the span of its events."""
+    out, ok = {}, True
+    for c in truth["cams"]:
+        r = rav.get("cam%d" % c["cam"], {})
+        ev = r.get("events") or []
+        if len(ev) < 3:
             ok = False
             continue
-        for f, e in zip(flashes, c["events"]):
-            if keep and not keep(e):
-                continue
-            b = min(on, key=lambda t: abs(t - f))
-            off, tr = float((b - f) * 1000), e["truth_offset_us"] / 1000.0
-            rows.append({"frame": e["frame"], "flash_s": round(float(f), 6), "beep_s": round(float(b), 6), "offset_ms": round(off, 4), "truth_ms": round(tr, 4), "error_ms": round(off - tr, 4)})
-        n = len(rows)
-        mx, my = sum(r["flash_s"] for r in rows) / n, sum(r["offset_ms"] for r in rows) / n
-        sxx = sum((r["flash_s"] - mx) ** 2 for r in rows)
-        slope = sum((r["flash_s"] - mx) * (r["offset_ms"] - my) for r in rows) / sxx * 1000 if sxx else 0.0
-        max_err = max(abs(r["error_ms"]) for r in rows)
-        sign_ok = c["inject_ms"] == 0 or (my > 0) == (c["inject_ms"] > 0)
-        reg = max_err <= bound_ms and sign_ok
-        ok &= reg
-        res["cam%d" % c["cam"]] = {"inject_ms": c["inject_ms"], "inject_drift_ppm": c["drift_ppm"], "events": rows, "mean_offset_ms": round(my, 4), "fitted_slope_ppm": round(slope, 2),
-                                  "max_abs_error_vs_truth_ms": round(max_err, 4), "bound_ms": bound_ms, "regression_bound_2ms": "PASS" if reg else "FAIL",
-                                  "product_bound_40ms": "WITHIN" if max(abs(r["error_ms"]) for r in rows) <= PRODUCT_MS else "EXCEEDED",
-                                  "first_video_sample_excluded": exclude_first_video_sample, "flash_frame_indexes": bright}
-    return ok, res
+        span = ev[-1]["flash_s"] - ev[0]["flash_s"]
+        tol = REGRESSION_MS / span * 1000.0
+        good = abs(r["fitted_slope_ppm"] - c["drift_ppm"]) <= tol
+        out["cam%d" % c["cam"]] = {"injected_ppm": c["drift_ppm"], "fitted_ppm": r["fitted_slope_ppm"], "tolerance_ppm": round(tol, 1), "span_s": round(span, 2), "holds": good}
+        ok &= good
+    return ok, out
+
+
+def gop_report(d, truth, paths):
+    """What the camera's GOP is IN THE FILE (keyframe distances, video samples per fragment) and what the worker
+    said about it. A fixture check: the writer's rule for a long GOP is row 59's (OP-GOP)."""
+    want = truth.get("gop", FPS)
+    files, ok = {}, True
+    for p in paths:
+        k = P111.keyframe_intervals(p)
+        frag = [b["tracks"].get(1, {}).get("samples", 0) for b in boxes(p)["boxes"] if b["type"] == "moof"]
+        good = len(k["intervals"]) >= 1 and all(i == want for i in k["intervals"])
+        files[os.path.basename(p)] = {"keyframes": k["keyframes"], "keyframe_intervals_frames": sorted(set(k["intervals"])), "video_samples_per_fragment": frag,
+                                      "longest_fragment_s": round(max(frag) / FPS, 2) if frag else None, "equals_camera_gop": good}
+        ok &= good
+    log = worker_log(d)
+    # Any line of the worker's log, any WARNING frame code, that names the keyframe distance it OBSERVED (the plan's own
+    # gopFrames, echoed at the start, is not an observation).
+    words = ("keyframe", "key_frame", "gop", "keyint")
+    said = [l for l in log if any(w in str(l.get("message", "")).lower() or any(w in k.lower() for k in l) for w in words)]
+    return ok, {"camera_gop_frames": want, "camera_gop_s": want / FPS, "plan_gop_frames": 50, "files": files,
+                "worker_log_lines_about_keyframe_interval": [l.get("message") for l in said],
+                "worker_reports_observed_keyframe_interval": bool(said)}
 
 
 def first_video(path):
@@ -395,7 +518,7 @@ def worker_log(d):
 
 # ------------------------------------------------------------------------------------------ session (M3-WI-1, H-4, H-10)
 def run_session(a, d, binary, truth, after_start=None, mic_extra=(), stop_after_last_cam=1.5):
-    sid = "S-M3W-%s" % a.name.upper().replace("_", "-")[:40]
+    sid = "S-M3W-%s" % a.name.upper().replace("_", "-")[-40:].strip("-")
     if tcp_listeners():
         sys.exit("ports busy before start: %r" % tcp_listeners())
     plan = make_plan(d, sid, tap=os.path.join(d, "tap.s16") if getattr(a, "tap", False) else None)
@@ -417,14 +540,26 @@ def run_session(a, d, binary, truth, after_start=None, mic_extra=(), stop_after_
             return w, plan, info, procs
         sampler = Sampler(plan)
         sampler.start()
+        # The listener snapshot (SEC35-23): both ingest listeners are up before any source exists.
+        t_l = time.monotonic()
+        while len(tcp_listeners()) < 2 and time.monotonic() - t_l < 5:
+            time.sleep(0.05)
+        info["own_sockets_listening"] = own_sockets()
         mic_seconds = (truth["epoch_us"] / 1e6 - time.time()) + max(c["frames"] for c in truth["cams"]) / FPS + stop_after_last_cam + 6
         mic, cps = start_sources(d, truth, plan, procs, mic_seconds, mic_extra)
+
+        def snapshot():                                      # every socket of every process of this run, one second into the streams
+            time.sleep(max(0.0, truth["epoch_us"] / 1e6 - time.time()) + 1.0)
+            info["own_sockets_mid_session"] = own_sockets()
+        snap = threading.Thread(target=snapshot, daemon=True)
+        snap.start()
         if after_start:
             after_start(w, plan, sid, info, cps, truth)
         rc = {}
         for i, cp in enumerate(cps):
             rc["cam%d" % (i + 1)] = cp.wait(timeout=120)
         time.sleep(stop_after_last_cam)
+        snap.join(timeout=30)
         info["sockets_before_stop"] = sockets_of(w.p.pid)
         sampler.on = False
         t_stop = time.monotonic()
@@ -463,7 +598,7 @@ def frame_stats(w, info):
 def cmd_session(a):
     binary = VARIANTS[a.variant]
     d = rundir(a.name, fresh=True)
-    truth = build_truth(a.case)
+    truth = build_truth(a.case, gop=a.gop)
     marks = {}
 
     def mid(w, plan, sid, info, cps, truth_):
@@ -488,28 +623,38 @@ def cmd_session(a):
                 marks.setdefault("switch_ack_ms", []).append([to, f["ok"], round((t2 - t) * 1000, 2)])
                 time.sleep(0.5)
 
-    w, plan, info, _ = run_session(a, d, binary, truth, after_start=mid)
+    mic_extra = ("--deliver-late-us", str(a.mic_late_us)) if a.mic_late_us else ()
+    w, plan, info, _ = run_session(a, d, binary, truth, after_start=mid, mic_extra=mic_extra)
     frame_stats(w, info)
     info.update(marks)
-    res = {"check": "M3-WI-1 session", "run": a.name, "case": a.case, "variant": a.variant, "info": info}
+    res = {"check": "M3-WI-1 / M3-AV-1 / M3-AV-2 session", "run": a.name, "case": a.case, "variant": a.variant, "camera_gop_frames": a.gop, "mic_deliver_late_us": a.mic_late_us, "info": info}
     paths = [c["outputPath"] for c in plan["cameras"]]
-    ok = info.get("rc") == {"cam1": 0, "cam2": 0, "worker": 0} and all(os.path.exists(p) for p in paths)
-    if ok:
+    v = Crit()
+    v("sources_and_worker_exit_0", info.get("rc") == {"cam1": 0, "cam2": 0, "worker": 0})
+    v("both_files_exist", all(os.path.exists(p) for p in paths))
+    if v.ok:
         pl = [playable(p) for p in paths]
         res["files"] = {os.path.basename(p): r for p, (_, r) in zip(paths, pl)}
-        ok &= all(o for o, _ in pl)
+        v("files_playable", all(o for o, _ in pl))
         # (a) both files exist and GROW during the session, sampled before STOP.
         rows = [r for r in info["size_samples"] if r[1] is not None and r[2] is not None]
         grew = [len(set(r[i] for r in rows)) for i in (1, 2)]
         res["growth"] = {"samples_with_both_files": len(rows), "distinct_sizes_per_file": grew, "first": rows[:1], "last_before_stop": rows[-1:], "final": sizes(plan)}
         res["fragments"] = {os.path.basename(p): [[b["tracks"].get(1, {}).get("samples", 0), b["tracks"].get(2, {}).get("samples", 0)] for b in boxes(p)["boxes"] if b["type"] == "moof"] for p in paths}
-        ok &= len(rows) >= 4 and min(grew) >= 3
+        v("files_grow_during_session", len(rows) >= 4 and min(grew) >= 3)
         o4, r4 = h4(d, paths)
         res["h4_one_encoder_both_files"] = r4
-        ok &= o4
-        oav, rav = av_offsets(d, truth, paths)
+        v("h4_one_encoder_both_files", o4)
+        # M3-AV-1 / M3-AV-2: the regression bound and the product bound are two assertions (AU2-04).
+        reg, prod, rav = av_offsets(d, truth, paths)
         res["av_offsets"] = rav
-        ok &= oav
+        v("av_regression_2ms", reg)
+        v("av_product_40ms", prod)
+        if any(c["drift_ppm"] for c in truth["cams"]):
+            osl, res["drift_slope"] = slope_matches(truth, rav)
+            v("drift_slope_is_the_injected_one", osl)
+        ogop, res["gop"] = gop_report(d, truth, paths)
+        v("file_keyframe_interval_equals_camera_gop", ogop)
         res["first_video_packets"] = {os.path.basename(p): first_video(p) for p in paths}
         res["video_started_log"] = [{"source": l["source"], "first_pts": l["first_pts"]} for l in worker_log(d) if l["message"] == "video_started"]
         mic, _ = mic_manifest(d)
@@ -517,21 +662,125 @@ def cmd_session(a):
         res["t0"] = {"mic_e0_real_us": mic["e0_real_us"], "worker_t0_real_us": t0, "t0_error_us": t0 - mic["e0_real_us"]}
         recs = info["records"]
         kinds = sorted((r["record"]["kind"], r["record"]["deviceId"]) for r in recs)
-        res["records_ok"] = [r["seq"] for r in recs] == [1, 2, 3, 4] and kinds == [("FIRST_DURABLE_FRAGMENT", "CAM-01"), ("FIRST_DURABLE_FRAGMENT", "CAM-02"), ("FIRST_VIDEO_SAMPLE", "CAM-01"), ("FIRST_VIDEO_SAMPLE", "CAM-02")]
+        # Row 59: the writer's checkpoints and the keyframe-interval record travel in the same sequence; the four
+        # once-only records of row 58 are still exactly these four, and the sequence has no gap.
+        kinds = [k for k in kinds if k[0] in ROW58_RECORD_KINDS]
+        res["records_ok"] = [r["seq"] for r in recs] == list(range(1, len(recs) + 1)) and kinds == [("FIRST_DURABLE_FRAGMENT", "CAM-01"), ("FIRST_DURABLE_FRAGMENT", "CAM-02"), ("FIRST_VIDEO_SAMPLE", "CAM-01"), ("FIRST_VIDEO_SAMPLE", "CAM-02")]
         # The record states the TRUE first video pts: what the worker logged, and (under the pinned flags) NOT what the file shows.
         logged = sorted(l["first_pts"] for l in worker_log(d) if l["message"] == "video_started")
         res["first_video_sample_records"] = sorted((r["record"]["deviceId"], r["record"]["pts"], r["record"]["timescale"]) for r in recs if r["record"]["kind"] == "FIRST_VIDEO_SAMPLE")
         res["records_ok"] &= sorted(x[1] for x in res["first_video_sample_records"]) == logged
-        ok &= res["records_ok"] and info["first_frame_is_hello"] and not info["lines_that_are_no_frame"] and not info["crash"] and info["heartbeats"]["counter_strictly_growing"]
-        ok &= not info["sockets_before_stop"]["udp"] and not info["sockets_before_stop"]["not_loopback"]
+        v("records", res["records_ok"])
+        writer_criteria(v, res, d, paths, recs, truth)        # row 59: chains, checkpoints, tail validation, observed keyframe interval
+        v("frames_clean", info["first_frame_is_hello"] and not info["lines_that_are_no_frame"] and not info["crash"] and info["heartbeats"]["counter_strictly_growing"])
+        v("worker_sockets_tcp_loopback_only", sockets_clean(info["sockets_before_stop"]))
+        # The listener snapshot of the row: worker AND fixtures, one second into the streams.
+        own = info.get("own_sockets_mid_session")
+        v("fixture_and_worker_sockets_loopback_only", bool(own) and sockets_clean(own) and bool(own["rows"]) and all(any(("127.0.0.1", str(p)) in endpoints(l) for l in own["rows"]) for p in PORTS))
+        lis = info.get("own_sockets_listening")
+        v("listeners_are_the_two_loopback_ports", bool(lis) and sockets_clean(lis) and lis["listeners"] == sorted("127.0.0.1:%d" % p for p in PORTS))
         if a.switch:
-            ok &= all(m[1] for m in marks.get("switch_ack_ms", [])) and len(marks.get("switch_ack_ms", [])) == 2
+            v("mic_switch_acknowledged", all(m[1] for m in marks.get("switch_ack_ms", [])) and len(marks.get("switch_ack_ms", [])) == 2)
         if getattr(a, "tap", False):
             tap = os.path.join(d, "tap.s16")
             x, a0, _ = P111.audio_pcm(paths[0])
             res["tap"] = {"bytes": os.path.getsize(tap), "samples": os.path.getsize(tap) // 2, "decoded_samples": len(x), "decoded_minus_tap": len(x) - os.path.getsize(tap) // 2, "audio_first_pts": a0}
-    ok &= not info["leftovers"]["processes"] and not info["leftovers"]["listeners"]
-    finish(res, ok, a.expect_fail, d)
+    v("no_leftover", not info["leftovers"]["processes"] and not info["leftovers"]["listeners"])
+    finish(res, True, a.expect_fail, d, v)
+
+
+# ------------------------------------------------------------------------------------------ re-judging a finished run (controls)
+def finished(a):
+    d = rundir(a.name)
+    plan_paths = [os.path.join(d, "media", "VIDEO-0%d.mp4" % i) for i in (1, 2)]
+    return d, json.load(open(os.path.join(d, "truth.json"))), plan_paths
+
+
+def cmd_avcheck(a):
+    """The AV judgement of a finished session, again, against a truth the caller changes. With
+    --assume-drift-ppm 0 a +-200 ppm run is judged as if no drift had been injected: the expectation the spec
+    says this fixture can never meet (capture spec F). It must FAIL the regression bound and stay inside the
+    product bound - the control of M3-AV-2 (b) that shows the analyser sees the slope."""
+    d, truth, paths = finished(a)
+    v = Crit()
+    reg, prod, rav = av_offsets(d, truth, paths, assume_drift_ppm=a.assume_drift_ppm)
+    v("av_regression_2ms", reg)
+    v("av_product_40ms", prod)
+    finish({"check": "AV judgement of a finished run", "run": a.name, "assume_drift_ppm": a.assume_drift_ppm, "av_offsets": rav}, True, a.expect_fail, None, v)
+
+
+def cmd_gopcheck(a):
+    """The keyframe-interval check of a finished session against another GOP than its camera had: a GOP-50 run
+    judged as GOP 250 must FAIL (the control of the long-GOP fixture check)."""
+    d, truth, paths = finished(a)
+    truth["gop"] = a.gop
+    v = Crit()
+    ok, rep_ = gop_report(d, truth, paths)
+    v("file_keyframe_interval_equals_camera_gop", ok)
+    finish({"check": "keyframe interval of a finished run", "run": a.name, "gop": rep_}, True, a.expect_fail, None, v)
+
+
+def cmd_continuity(a):
+    """AU2-05 on the files of a finished session whose mics ran on the host clock: decoded sample count against
+    the encoder's input count, spacing and position of the reference beeps against the mic manifest, and (when the
+    session switched to the standby) the phase of the standby's 880 Hz reference tone. Judged on decoded samples;
+    the packet grid is printed and never judged.
+       --control cut      1,000 samples removed between two beeps (of the decoded samples, in memory): must FAIL
+       --control toneslip 100 samples removed inside the standby's window and 100 repeated later in it: count,
+                          spacing and position still hold - only the tone's phase can see it: must FAIL on `tone`"""
+    d, truth, paths = finished(a)
+    mic, beeps = P111.mic_truth(os.path.join(d, "mic.jsonl"))
+    end = [json.loads(l) for l in open(os.path.join(d, "manifest.jsonl")) if '"end"' in l]
+    samples_in = [r for r in end if r["type"] == "end"][0]["samples_in"]
+    switched = bool(json.load(open(os.path.join(d, "result.json")))["info"].get("switch_ack_ms"))
+    v, res = Crit(), {"check": "continuity (AU2-05)", "run": a.name, "control": a.control, "switch_in_session": switched, "files": {}}
+    for p in paths:
+        x, _, _ = P111.audio_pcm(p)
+        if a.control:
+            on = P111.onsets(x)
+            if a.control == "cut":
+                at = (on[1] + on[2]) // 2
+                x = x[:at] + x[at + 1000:]
+            else:
+                t = P111.tone_phase(x)
+                third = (t["last_sample"] - t["first_sample"]) // 3
+                c1, c2 = t["first_sample"] + third, t["first_sample"] + 2 * third
+                x = x[:c1] + x[c1 + 100:c2] + x[c2 - 100:c2] + x[c2:]          # 100 lost, 100 repeated: the length is unchanged
+        ok, r = P111.continuity(x, mic, beeps, samples_in, expect_tone=switched)
+        r["packet_grid_deltas_not_judged"] = P111.packet_grid(p)
+        res["files"][os.path.basename(p)] = r
+        for k, val in r["criteria"].items():
+            v(k, val == "PASS")
+    finish(res, True, a.expect_fail, None, v)
+
+
+def cmd_selfcheck(a):
+    """The harness's own leftover check, measured (R-7). (1) A fixture this run started and left running IS
+    reported, and is gone from the report after its kill. (2) The same program started outside this run's
+    registry (as another harness on this host would) is NOT reported while it runs."""
+    d = rundir(a.name, fresh=True)
+    v, res = Crit(), {"check": "leftover scope (R-7)", "run": a.name}
+    fifo = os.path.join(d, "blocked.pcm")
+    os.mkfifo(fifo, 0o600)
+    args = [MIC, "--out1", fifo, "--manifest", os.path.join(d, "mic.jsonl"), "--seconds", "30"]
+    os.mkfifo(fifo + ".foreign", 0o600)
+    foreign = subprocess.Popen([MIC, "--out1", fifo + ".foreign", "--manifest", os.path.join(d, "foreign.jsonl"), "--seconds", "30"],
+                               stdin=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)       # NOT registered: another run's process
+    time.sleep(0.3)
+    try:
+        res["with_only_a_foreign_fake_mic"] = leftovers()
+        v("foreign_process_is_not_ours", foreign.poll() is None and not res["with_only_a_foreign_fake_mic"]["processes"])
+        mine = spawn(args, stdin=subprocess.DEVNULL, stderr=subprocess.DEVNULL)          # blocks opening the pipe: nobody reads it
+        time.sleep(0.5)
+        res["with_our_fake_mic_alive"] = leftovers()
+        v("own_live_process_is_reported", mine.poll() is None and len(res["with_our_fake_mic_alive"]["processes"]) == 1 and str(mine.pid) in res["with_our_fake_mic_alive"]["processes"][0])
+        killall([mine])
+        time.sleep(0.3)
+        res["after_kill"] = leftovers()
+        v("gone_after_kill", not res["after_kill"]["processes"] and foreign.poll() is None)
+    finally:
+        killall([foreign])
+    finish(res, True, a.expect_fail, d, v)
 
 
 # ------------------------------------------------------------------------------------------ H-4 negative control
@@ -707,7 +956,7 @@ def cmd_fatal(a):
         elif a.mode == "planted":
             open(plan["cameras"][0]["outputPath"], "wb").write(marker)
 
-    sid = "S-M3W-%s" % a.name.upper().replace("_", "-")[:40]
+    sid = "S-M3W-%s" % a.name.upper().replace("_", "-")[-40:].strip("-")
     if a.mode == "exists":
         plan0 = make_plan(d, sid)
         open(plan0["cameras"][0]["outputPath"], "wb").write(marker)
@@ -753,8 +1002,8 @@ def cmd_udp(a):
     w = None
     try:
         if a.variant == "skeleton":
-            sk = subprocess.Popen([VARIANTS["skeleton"], "--cam1", plan["cameras"][0]["ingestUrl"], "--out1", plan["cameras"][0]["outputPath"], "--cam2", plan["cameras"][1]["ingestUrl"],
-                                   "--out2", plan["cameras"][1]["outputPath"], "--duration", "8", "--listen-timeout", "10"], stdin=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+            sk = spawn([VARIANTS["skeleton"], "--cam1", plan["cameras"][0]["ingestUrl"], "--out1", plan["cameras"][0]["outputPath"], "--cam2", plan["cameras"][1]["ingestUrl"],
+                        "--out2", plan["cameras"][1]["outputPath"], "--duration", "8", "--listen-timeout", "10"], stdin=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             procs.append(sk)
             pid = sk.pid
         else:
@@ -770,19 +1019,23 @@ def cmd_udp(a):
         snaps.append(["listening", sockets_of(pid)])
         mic = None
         if w:
-            mic = subprocess.Popen([MIC, "--out1", plan["mics"][0]["input"]["path"], "--out2", plan["mics"][1]["input"]["path"], "--manifest", os.path.join(d, "mic.jsonl"), "--seconds", "14"],
-                                   stdin=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+            mic = spawn([MIC, "--out1", plan["mics"][0]["input"]["path"], "--out2", plan["mics"][1]["input"]["path"], "--manifest", os.path.join(d, "mic.jsonl"), "--seconds", "14"],
+                        stdin=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             procs.append(mic)
-        push = lambda url, transport: subprocess.Popen([FF, "-hide_banner", "-loglevel", "error", "-re", "-f", "lavfi", "-i", "testsrc=size=320x240:rate=25", "-t", "7", "-c:v", "libx264", "-preset", "ultrafast",
+        push = lambda url, transport: spawn([FF, "-hide_banner", "-loglevel", "error", "-re", "-f", "lavfi", "-i", "testsrc=size=320x240:rate=25", "-t", "7", "-c:v", "libx264", "-preset", "ultrafast",
                                                         "-tune", "zerolatency", "-g", "25", "-bf", "0", "-f", "rtsp", "-rtsp_transport", transport, url],
-                                                       stdin=subprocess.DEVNULL, stderr=open(os.path.join(d, "push_%s.err" % transport), "w"), start_new_session=True)
+                                                       stdin=subprocess.DEVNULL, stderr=open(os.path.join(d, "push_%s.err" % transport), "w"))
         udp_client = push(plan["cameras"][0]["ingestUrl"], "udp")
         tcp_client = push(plan["cameras"][1]["ingestUrl"], "tcp")
         procs += [udp_client, tcp_client]
         # Snapshots every 100 ms while the UDP client is (or tries to be) connected.
+        stimulus = []
         for i in range(40):
             time.sleep(0.1)
             snaps.append(["t+%.1fs udp_client_running=%s" % ((i + 1) / 10, udp_client.poll() is None), sockets_of(pid)])
+            if udp_client.poll() is None:                     # the hostile client's own sockets: reported, not judged (it is the stimulus, not a fixture listener)
+                stimulus += sockets_of(udp_client.pid)["rows"]
+        res["stimulus_client_sockets_not_judged"] = sorted(set(" ".join(r.split()[7:]) for r in stimulus))
         try:
             res["udp_client_rc"] = udp_client.wait(timeout=30 if a.variant != "norefusal" else 4)
         except subprocess.TimeoutExpired:                     # a worker that does not refuse leaves the client waiting
@@ -800,12 +1053,17 @@ def cmd_udp(a):
         killall(procs)
     udp_rows = sorted(set(r for _, s in snaps for r in s["udp"]))
     off = sorted(set(r for _, s in snaps for r in s["not_loopback"]))
+    foreign = sorted(set(r for _, s in snaps for r in s["foreign_ports"]))
     every = sorted(set(" ".join(r.split()[-2:]) for _, s in snaps for r in s["rows"]))
     res["snapshots"] = len(snaps)
     res["sockets_seen"] = every
     res["udp_sockets"] = udp_rows
     res["sockets_not_on_loopback"] = off
-    ok = not udp_rows and not off and len(snaps) >= 40 and any("127.0.0.1:%d" % PORTS[0] in e for e in every)
+    res["sockets_on_foreign_ports"] = foreign
+    v = Crit()
+    v("no_udp_socket", not udp_rows)
+    v("every_socket_on_loopback", not off and not foreign)
+    v("snapshots_taken_with_the_listener_up", len(snaps) >= 40 and any("127.0.0.1:%d" % PORTS[0] in e for e in every))
     if w and a.variant == "norefusal":
         # F-2: a worker that does NOT recognise the refusal (what a reworded or different libav would give). Sockets
         # still fail closed (checked above); the damage must stay bounded: the log is rate-limited, the healthy camera
@@ -817,21 +1075,23 @@ def cmd_udp(a):
         res["log_suppressed_lines"] = sum(l.get("lines", 0) for l in worker_log(d) if l["message"] == "log_lines_suppressed")
         res["camera2_playable"] = playable(p2)[1] if os.path.exists(p2) else None
         res["camera2_fragments_in_last_telemetry_vs_file"] = [res["telemetry"]["last"]["fragments"][-1]["count"], res["camera2_playable"]["top_level"].get("moof") if res["camera2_playable"] else None]
-        ok &= res["worker_rc"] == 70 and [(c["code"], c["exitCode"]) for c in res["crash"]] == [("INGEST_THREAD_STUCK", 70)]
-        ok &= bool(res["camera2_playable"]) and res["camera2_playable"]["playable"] and res["camera2_playable"]["decoded_frames"]["video"] >= 150
-        ok &= res["log_bytes"] < 2 * 1024 * 1024 and res["log_suppressed_lines"] > 1000
+        v("stuck_ingest_ends_in_crash_exit_70", res["worker_rc"] == 70 and [(c["code"], c["exitCode"]) for c in res["crash"]] == [("INGEST_THREAD_STUCK", 70)])
+        v("healthy_camera_recorded_whole", bool(res["camera2_playable"]) and res["camera2_playable"]["playable"] and res["camera2_playable"]["decoded_frames"]["video"] >= 150)
+        v("log_bounded", res["log_bytes"] < 2 * 1024 * 1024 and res["log_suppressed_lines"] > 1000)
     elif w:
         p2 = plan["cameras"][1]["outputPath"]
         res["camera1_file_exists"] = os.path.exists(plan["cameras"][0]["outputPath"])
         res["camera2_playable"] = playable(p2)[1] if os.path.exists(p2) else None
-        res["refusal_logged"] = [l["message"] for l in worker_log(d) if l["message"] in ("INGEST_TRANSPORT_REFUSED", "INGEST_OPEN_STUCK")]
+        res["refusal_logged"] = [l["message"] for l in worker_log(d) if l["message"] in ("INGEST_OPEN_REFUSED", "INGEST_OPEN_STUCK")]
+        res["libav_error_lines_before_the_refusal"] = sum(1 for l in worker_log(d) if l["message"] == "LIBAV_MESSAGE")
         # The refused camera is reported as a fault, records nothing, and the other camera is not disturbed.
-        ok &= res["worker_rc"] == 0 and {"v": V, "type": "WARNING", "sessionId": sid, "code": "CAPTURE_FAULT", "state": "ACTIVE", "subject": "CAM-01"} in res["warnings"]
-        ok &= not res["camera1_file_exists"] and bool(res["camera2_playable"]) and res["camera2_playable"]["playable"] and res["refusal_logged"] == ["INGEST_TRANSPORT_REFUSED"]
+        v("refused_camera_is_a_fault_and_worker_exits_0", res["worker_rc"] == 0 and {"v": V, "type": "WARNING", "sessionId": sid, "code": "CAPTURE_FAULT", "state": "ACTIVE", "subject": "CAM-01"} in res["warnings"])
+        v("refused_camera_has_no_file", not res["camera1_file_exists"] and res["refusal_logged"] == ["INGEST_OPEN_REFUSED"])
+        v("other_camera_recorded", bool(res["camera2_playable"]) and res["camera2_playable"]["playable"])
     time.sleep(0.3)
     res["leftovers"] = leftovers()
-    ok &= not res["leftovers"]["processes"] and not res["leftovers"]["listeners"]
-    finish(res, ok, a.expect_fail, d)
+    v("no_leftover", not res["leftovers"]["processes"] and not res["leftovers"]["listeners"])
+    finish(res, True, a.expect_fail, d, v)
 
 
 # ------------------------------------------------------------------------------------------ fix round 1: mics (F-4), no camera (D72(k))
@@ -844,21 +1104,31 @@ def rms_per_second(path):
     return out
 
 
+MIC_MODES = {  # mode: (fake_mic arguments, bound in ms, why that bound)
+    "slow": (("--ppm", "-2000"), 5.0, "D58-14: an extreme clock (2,000 ppm slow); measured about 2 ms"),
+    "p100": (("--ppm", "100"), REGRESSION_MS, "an ordinary crystal, 100 ppm fast: the ordinary 2 ms regression bound (pair-58 re-check R.3)"),
+    "m100": (("--ppm", "-100"), REGRESSION_MS, "an ordinary crystal, 100 ppm slow: the ordinary 2 ms regression bound"),
+    "gap": (("--stop-at", "12", "--resume-at", "17"), 15.0, "D58-14: after a return the mic is re-placed by arrival, one 10 ms chunk coarse"),
+}
+
+
 def cmd_mic(a):
-    """mode slow: both mics run 2,000 ppm SLOW for a 33 s session. They must stay audible to the end, and every beep
-                  must sit within MIC_SLOW_BOUND_MS of its truth (the resampler follows the mic's clock; the product bound is +-40 ms).
+    """The fake mic on its OWN sample clock, and the mic that stops and returns (33 s sessions).
+       mode slow: both mics 2,000 ppm SLOW. Audible to the end, every beep within 5 ms of its truth.
+       mode p100 / m100: both mics 100 ppm fast / slow - the realistic case - within the ordinary 2 ms regression bound.
        mode gap : the mic process delivers nothing from second 12 to second 17 (its own time) and then goes on.
-                  Silence in between, sound again after second 17, and the beeps after the return within MIC_RETURN_BOUND_MS."""
-    MIC_SLOW_BOUND_MS, MIC_RETURN_BOUND_MS = 5.0, 15.0
+                  Silence in between, sound again after second 17, and the beeps after the return within 15 ms.
+    The product bound (+-40 ms) is a separate assertion in every mode."""
+    extra, bound, why = MIC_MODES[a.mode]
     d = rundir(a.name, fresh=True)
     truth = build_truth("long")
-    extra = ("--ppm", "-2000") if a.mode == "slow" else ("--stop-at", "12", "--resume-at", "17")
     w, plan, info, _ = run_session(a, d, VARIANTS[a.variant], truth, mic_extra=extra)
     frame_stats(w, info)
-    res = {"check": "F-4 mic on its own clock / mic that stops and returns (%s)" % a.mode, "run": a.name, "info": info}
+    res = {"check": "mic on its own sample clock / mic that stops and returns (%s)" % a.mode, "run": a.name, "mode": a.mode, "variant": a.variant, "bound_ms": bound, "bound_reason": why, "info": info}
     paths = [c["outputPath"] for c in plan["cameras"]]
-    ok = info.get("rc", {}).get("worker") == 0 and all(os.path.exists(p) for p in paths)
-    if ok:
+    v = Crit()
+    v("worker_exit_0_and_files", info.get("rc", {}).get("worker") == 0 and all(os.path.exists(p) for p in paths))
+    if v.ok:
         mic, _ = mic_manifest(d)
         e0 = mic["e0_real_us"]
         rms = rms_per_second(paths[0])
@@ -867,25 +1137,30 @@ def cmd_mic(a):
         tel = [f for _, f in w.of("TELEMETRY")]
         nulls = sum(1 for f in tel if any(lv["role"] == "PRIMARY" and lv["dbfs"] is None for lv in f["levels"]))
         res["telemetry_frames_with_primary_null"] = nulls
-        if a.mode == "slow":
-            oav, rav = av_offsets(d, truth, paths, bound_ms=MIC_SLOW_BOUND_MS)
-            res["av_offsets"], res["bound_ms"] = rav, MIC_SLOW_BOUND_MS
+        if a.mode != "gap":
+            reg, prod, rav = av_offsets(d, truth, paths, bound_ms=bound)
+            res["av_offsets"] = rav
+            v("av_within_mic_bound_%gms" % bound, reg)
+            v("av_product_40ms", prod)
             # Audible for the whole session: no second of the file is silent (the quiet noise alone is about 0.0058 RMS).
-            res["silent_seconds"] = [i for i, v in enumerate(rms[:-1]) if v < 0.003]
-            ok &= oav and not res["silent_seconds"] and len(rms) >= 30 and nulls == 0
+            res["silent_seconds"] = [i for i, x in enumerate(rms[:-1]) if x < 0.003]
+            v("audible_every_second", not res["silent_seconds"] and len(rms) >= 30)
+            v("no_telemetry_frame_without_signal", nulls == 0)
         else:
             t_of = lambda e: (e["beep_at_us"] - e0) / 1e6                     # the beep's instant in the mic's own seconds
-            oav, rav = av_offsets(d, truth, paths, bound_ms=MIC_RETURN_BOUND_MS, keep=lambda e: t_of(e) < 11.5 or t_of(e) > 18.0)
-            res["av_offsets"], res["bound_ms"] = rav, MIC_RETURN_BOUND_MS
-            after = [r for c in rav.values() for r in c.get("events", []) if True]
+            reg, prod, rav = av_offsets(d, truth, paths, bound_ms=bound, keep=lambda e: t_of(e) < 11.5 or t_of(e) > 18.0, allow_stray=True)
+            res["av_offsets"] = rav
             res["events_judged"] = sum(len(c.get("events", [])) for c in rav.values())
             res["events_after_return"] = sum(1 for c in truth["cams"] for e in c["events"] if t_of(e) > 18.0)
             # file second i covers mic seconds i..i+1 (file time 0 = T0 - 21 ms): 13..15 are inside the gap, 18.. after the return.
             res["rms_in_gap"], res["rms_after_return"] = rms[13:16], rms[18:24]
-            ok &= oav and res["events_after_return"] >= 3 and max(rms[13:16]) < 0.0005 and min(rms[18:24]) > 0.003 and min(rms[2:11]) > 0.003
-            ok &= nulls >= 60 and any(s["restarts"] >= 1 for s in res["mic_summary"])     # 5 s of NO SIGNAL at 20 Hz, then heard again
-    ok &= not info["leftovers"]["processes"] and not info["leftovers"]["listeners"]
-    finish(res, ok, a.expect_fail, d)
+            v("av_within_mic_bound_%gms" % bound, reg and res["events_after_return"] >= 3)
+            v("av_product_40ms", prod)
+            v("silent_in_the_gap", max(rms[13:16]) < 0.0005)
+            v("heard_again_after_the_return", min(rms[18:24]) > 0.003 and min(rms[2:11]) > 0.003)
+            v("no_signal_reported_then_restarted", nulls >= 60 and any(s["restarts"] >= 1 for s in res["mic_summary"]))     # 5 s of NO SIGNAL at 20 Hz, then heard again
+    v("no_leftover", not info["leftovers"]["processes"] and not info["leftovers"]["listeners"])
+    finish(res, True, a.expect_fail, d, v)
 
 
 def cmd_nocam(a):
@@ -904,13 +1179,13 @@ def cmd_nocam(a):
         _, f = w.ack(w.command(sid, "START", attempt=1, plan=plan))
         assert f["ok"], f
         truth = build_truth("zero", lead_us=2_000_000, frames_override=(450, 450))
-        mic = subprocess.Popen([MIC, "--out1", plan["mics"][0]["input"]["path"], "--out2", plan["mics"][1]["input"]["path"], "--manifest", os.path.join(d, "mic.jsonl"), "--seconds", "20",
-                                "--beep-at-us", ",".join(str(b) for b in truth["beeps"])], stdin=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+        mic = spawn([MIC, "--out1", plan["mics"][0]["input"]["path"], "--out2", plan["mics"][1]["input"]["path"], "--manifest", os.path.join(d, "mic.jsonl"), "--seconds", "20",
+                     "--beep-at-us", ",".join(str(b) for b in truth["beeps"])], stdin=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         procs.append(mic)
         if a.mode == "one":
             c = truth["cams"][0]
-            cam = subprocess.Popen([CAM, "--url", plan["cameras"][0]["ingestUrl"], "--epoch-us", str(truth["epoch_us"]), "--claimed-epoch-us", str(c["claimed_epoch_us"]), "--drift-ppm", "0",
-                                    "--frames", str(c["frames"]), "--flash-first", str(c["flash_first"]), "--flash-every", str(c["flash_every"])], stdin=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+            cam = spawn([CAM, "--url", plan["cameras"][0]["ingestUrl"], "--epoch-us", str(truth["epoch_us"]), "--claimed-epoch-us", str(c["claimed_epoch_us"]), "--drift-ppm", "0",
+                         "--frames", str(c["frames"]), "--flash-first", str(c["flash_first"]), "--flash-every", str(c["flash_every"])], stdin=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             procs.append(cam)
             cam.wait(timeout=60)
             time.sleep(1.0)
@@ -1002,7 +1277,7 @@ class Driver:
         self.events, self.lock = [], threading.Lock()
         cfg = os.path.join(d, "driver.json")
         json.dump(config, open(cfg, "w"), indent=1)
-        self.p = subprocess.Popen(["npx", "tsx", DRIVER, cfg], cwd=REPO, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=open(os.path.join(d, "driver.err"), "w"), start_new_session=True)
+        self.p = spawn(["npx", "tsx", DRIVER, cfg], cwd=REPO, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=open(os.path.join(d, "driver.err"), "w"))
         threading.Thread(target=self._read, daemon=True).start()
 
     def _read(self):
@@ -1038,7 +1313,10 @@ class Driver:
         n = len(self.all("status"))
         self.say(cmd="status")
         self.wait(lambda e: len(self.all("status")) > n, 5, "status")
-        return self.all("status")[-1]["status"]
+        st = self.all("status")[-1]["status"]
+        if st.get("workerPid"):
+            OWN_EXTRA_PIDS.add(st["workerPid"])              # the worker the supervisor started for us: ours for the leftover check
+        return st
 
     def close(self):
         if self.p.poll() is None:
@@ -1083,7 +1361,7 @@ def sup_session(drv, d, sid, truth, procs, seconds_after=1.5, kill_at=None, fram
     mic_seconds = (truth["epoch_us"] / 1e6 - time.time()) + max(c["frames"] for c in truth["cams"]) / FPS + seconds_after + 6
     mic, cps = start_sources(d, truth, plan, procs, mic_seconds)
     if kill_at == "after":
-        drv.wait(lambda e: e.get("event") == "record" and e.get("sessionId") == sid and e.get("seq") == 4, 60, "both durable records of " + sid)
+        drv.wait(lambda e: len([x for x in drv.all("record") if x.get("sessionId") == sid and x["record"]["kind"] == "FIRST_DURABLE_FRAGMENT"]) == 2, 60, "both durable records of " + sid)   # row 59: by kind (checkpoints share the sequence)
         time.sleep(2.5)
         pid = drv.status()["workerPid"]
         out["sizes_before_kill"] = sizes(plan)
@@ -1117,7 +1395,7 @@ def cmd_sup(a):
     d = rundir(a.name, fresh=True)
     if tcp_listeners():
         sys.exit("ports busy before start: %r" % tcp_listeners())
-    procs, res, ok = [], {"check": "supervisor + real worker (%s)" % a.mode, "run": a.name}, True
+    procs, res, ok, v, early = [], {"check": "supervisor + real worker (%s)" % a.mode, "run": a.name}, True, Crit(), False
     cfg = {"command": VARIANTS[a.variant], "args": ["--log", os.path.join(d, "worker.jsonl"), "--audio-manifest", os.path.join(d, "manifest.jsonl")] + (["--listen-timeout-s", "4"] if a.mode == "nocam" else []),
            "limits": json.loads(a.limits)}
     drv = Driver(d, cfg)
@@ -1136,11 +1414,13 @@ def cmd_sup(a):
             grew = [len(set(r[i] for r in rows)) for i in (1, 2)]
             res["growth"] = {"samples_with_both_files": len(rows), "distinct_sizes_per_file": grew}
             o4, r4 = h4(d, paths)
-            oav, rav = av_offsets(d, truth, paths)
+            reg, prod, rav = av_offsets(d, truth, paths)
             res["h4_one_encoder_both_files"], res["av_offsets"] = r4, rav
             recs = drv.all("record")
             res["records"] = [[e["seq"], e["record"]["kind"], e["record"]["deviceId"]] for e in recs]
-            ok &= all(o for o, _ in pl) and min(grew) >= 3 and o4 and oav and [r[0] for r in res["records"]] == [1, 2, 3, 4] and sorted(r[1] for r in res["records"]) == ["FIRST_DURABLE_FRAGMENT"] * 2 + ["FIRST_VIDEO_SAMPLE"] * 2
+            v("av_regression_2ms", reg)
+            v("av_product_40ms", prod)
+            v("files_growth_h4_records", all(o for o, _ in pl) and min(grew) >= 3 and o4 and [r[0] for r in res["records"]] == list(range(1, len(res["records"]) + 1)) and sorted(r[1] for r in res["records"] if r[1] in ROW58_RECORD_KINDS) == ["FIRST_DURABLE_FRAGMENT"] * 2 + ["FIRST_VIDEO_SAMPLE"] * 2)
         elif a.mode == "kc1":
             truth1 = build_truth("zero", frames_override=(600, 600))
             os.makedirs(d + "/s1", exist_ok=True)
@@ -1163,11 +1443,11 @@ def cmd_sup(a):
             res["session2_next_session"] = out2
             pl2 = [playable(p) for p in out2["plan_outputs"]]
             res["session2_files"] = {os.path.basename(p): r for p, (_, r) in zip(out2["plan_outputs"], pl2)}
-            oav, rav = av_offsets(d, truth2, out2["plan_outputs"])
+            reg2, prod2, rav = av_offsets(d + "/s2", truth2, out2["plan_outputs"])
             res["session2_av_offsets"] = rav
-            ok &= all(o for o, _ in pl2) and oav and out2["worker_pid"] != out1["worker_pid"] and set(out2["plan_outputs"]).isdisjoint(out1["plan_outputs"])
+            ok &= all(o for o, _ in pl2) and reg2 and prod2 and out2["worker_pid"] != out1["worker_pid"] and set(out2["plan_outputs"]).isdisjoint(out1["plan_outputs"])
             recs2 = [e for e in drv.all("record") if e["sessionId"] == "S-M3SUP-KC1-B"]
-            ok &= [e["seq"] for e in recs2] == [1, 2, 3, 4]
+            ok &= [e["seq"] for e in recs2] == list(range(1, len(recs2) + 1)) and len([e for e in recs2 if e["record"]["kind"] in ROW58_RECORD_KINDS]) == 4   # row 59: a new worker counts from 1 again, without a gap
         elif a.mode == "kc3":
             truth = build_truth("zero", lead_us=9_000_000)
             json.dump(truth, open(os.path.join(d, "truth.json"), "w"), indent=1)
@@ -1175,22 +1455,24 @@ def cmd_sup(a):
             res["session"] = out
             if out.get("not_restarted"):
                 res["worker_down"] = [[e["down"]["code"], e["down"]["signal"], e["restartInMs"]] for e in drv.all("workerDown")]
-                finish(res, False, a.expect_fail, d)
-            downs = [e for e in drv.all("workerDown")]
-            res["worker_down"] = [[e["down"]["code"], e["down"]["signal"], e["restartInMs"]] for e in downs]
-            pl = [playable(p) for p in out["plan_outputs"]]
-            res["files"] = {os.path.basename(p): r for p, (_, r) in zip(out["plan_outputs"], pl)}
-            oav, rav = av_offsets(d, truth, out["plan_outputs"])
-            res["av_offsets"] = rav
-            ok &= out["attempt_after_kill"] == 2 and out["respawned_pid"] != out["worker_pid"] and len(downs) == 1 and downs[0]["restartInMs"] == drv.all("booted")[0]["limits"]["backoffBaseMs"]
-            ok &= all(o for o, _ in pl) and oav
+                v("restarted_after_a_kill_before_any_fragment", False)
+                early = True
+            if not early:
+                downs = [e for e in drv.all("workerDown")]
+                res["worker_down"] = [[e["down"]["code"], e["down"]["signal"], e["restartInMs"]] for e in downs]
+                pl = [playable(p) for p in out["plan_outputs"]]
+                res["files"] = {os.path.basename(p): r for p, (_, r) in zip(out["plan_outputs"], pl)}
+                reg, prod, rav = av_offsets(d, truth, out["plan_outputs"])
+                res["av_offsets"] = rav
+                v("restarted_after_a_kill_before_any_fragment", out["attempt_after_kill"] == 2 and out["respawned_pid"] != out["worker_pid"] and len(downs) == 1 and downs[0]["restartInMs"] == drv.all("booted")[0]["limits"]["backoffBaseMs"])
+                v("respawned_worker_records", all(o for o, _ in pl) and reg and prod)
         elif a.mode == "nocam":
             # D72(k) through the supervisor: no camera connects -> the session does not stay "recording" with nothing durable.
             plan = make_plan(d, "S-M3SUP-NOCAM")
             drv.say(cmd="start", sessionId="S-M3SUP-NOCAM", plan=plan)
             drv.wait(lambda e: e.get("event") == "started", 15, "started")
-            mic = subprocess.Popen([MIC, "--out1", plan["mics"][0]["input"]["path"], "--out2", plan["mics"][1]["input"]["path"], "--manifest", os.path.join(d, "mic.jsonl"), "--seconds", "20"],
-                                   stdin=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+            mic = spawn([MIC, "--out1", plan["mics"][0]["input"]["path"], "--out2", plan["mics"][1]["input"]["path"], "--manifest", os.path.join(d, "mic.jsonl"), "--seconds", "20"],
+                        stdin=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             procs.append(mic)
             t = time.monotonic()
             drv.wait(lambda e: e.get("event") == "phase" and e.get("phase") == "FAULTED", 20, "FAULTED")
@@ -1209,14 +1491,561 @@ def cmd_sup(a):
             ok &= sorted(w[2] or "" for w in res["warnings"]) == ["", "CAM-01", "CAM-02"] and res["seconds_to_faulted"] < 12
         res["timing"] = [e for e in drv.all("timing")]
         res["supervisor_reports"] = [e for e in drv.all("report")]
-        ok &= not res["supervisor_reports"]
+        v("mode_checks", ok)
+        v("no_supervisor_report", not res["supervisor_reports"])
     finally:
         drv.close()
         killall(procs)
     time.sleep(0.3)
     res["leftovers"] = leftovers()
-    ok &= not res["leftovers"]["processes"] and not res["leftovers"]["listeners"]
-    finish(res, ok, a.expect_fail, d)
+    v("no_leftover", not res["leftovers"]["processes"] and not res["leftovers"]["listeners"])
+    finish(res, True, a.expect_fail, d, v)
+
+
+# ------------------------------------------------------------------------------------------ row 62: cameras with hand-written sender reports
+# M3-AV-2 case (c) and the camera-clock telemetry (capture spec A.8 (2), F; pair-58 navigator B R-2, F-6; D85).
+# Added by blueprint row 62; nothing above is changed. The camera is `test-fixtures/fake_cam_sr.py`: it writes
+# its RTCP sender reports itself, so a report can pair a TRUE wall clock with a DRIFTING media clock.
+CAM_SR = os.path.join(FIX, "fake_cam_sr.py")
+if os.environ.get("M3_WORKER_PROPOSED"):            # a worker built OUTSIDE the tree from a proposed change: --variant proposed
+    VARIANTS["proposed"] = os.environ["M3_WORKER_PROPOSED"]
+CASES["long20"] = {"cams": [(0, 0.0), (0, 0.0)], "events": 20}      # 81 s: long enough for the slew limit to move the video by 30 ms
+NEAR_BOUND_MS, CLOCK_SANITY_MS = 30.0, 2000.0    # what the checks hold the worker to (anchor.h: CLOCK_NEAR_BOUND_MS; the sanity bound is the row-62 request)
+SR_MODES = {     # per camera: the arguments of the fixture; `base` = the case of CASES that gives the events and the beeps
+    # (c) +-200 ppm on the MEDIA clock, the wall clock true: the reports express the drift, the file shows none.
+    "drift": {"base": "drift", "cams": [{"drift-ppm": 200.0}, {"drift-ppm": -200.0}]},
+    # R-2: a correct clock behind a steady 35 ms encode-and-network delay is NOT "near the bound".
+    "delay": {"base": "long", "cams": [{"delay-ms": 35.0}, {"delay-ms": 35.0}]},
+    # R-2: the same delay, and camera 1's wall clock steps by 100 ms eight seconds in. The worker follows a changed
+    # clock by at most 500 us per second (the slew limit), and the lag is measured against where it PLACES the video:
+    # the placement is 30 ms from the baseline 60 s after the step, so the flag is due from second 68 on (81 s run).
+    "step": {"base": "long20", "cams": [{"delay-ms": 35.0, "clock-step-ms": 100.0, "clock-step-at-s": 8.0}, {"delay-ms": 35.0}]},
+    # F-6: camera 1's wall clock is 10 s ahead from the start: beyond any delay, so it is given up, not recorded at a wrong time.
+    "offset": {"base": "long", "cams": [{"clock-offset-ms": 10000.0}, {}]},
+}
+
+
+def playable_own_timebase(path):
+    """`playable`, with the decode run at the FILE's time base. A camera whose media clock drifts is placed by its
+    true time, so its frames are not exactly 20 ms apart; `playable` decodes at the nominal 1/50 s grid, where two
+    such frames can land on one tick (ffmpeg then reports a non-increasing dts of ITS OWN output, not of the file).
+    The file's own timestamps are checked here to be strictly increasing."""
+    _, rep = playable(path)
+    dec = sh([FF, "-v", "error", "-xerror", "-i", path, "-map", "0", "-fps_mode", "passthrough", "-enc_time_base:v", "1:90000", "-f", "null", "-"])
+    dts = [int(p["dts"]) for p in P111.probe_packets(path, "v:0")]
+    rising = all(y > x for x, y in zip(dts, dts[1:]))
+    shape = sorted((s[0], s[1]) for s in rep["streams"]) == [("audio", "aac"), ("video", "h264")]
+    ok = dec.returncode == 0 and dec.stderr.strip() == "" and rising and shape and rep["tiles_exactly"] and rep["decoded_frames"].get("video", 0) > 0 and rep["decoded_frames"].get("audio", 0) > 0
+    return ok, dict(rep, playable=ok, decode_at_file_timebase_rc=dec.returncode, video_dts_strictly_increasing=rising, playable_at_nominal_grid=rep["playable"])
+
+
+def cmd_srcam(a):
+    """mode drift : M3-AV-2 (c). Flash-to-beep offset 0 within the 2 ms regression bound on every event and a fitted
+                    slope near 0, although both media clocks drift by 200 ppm. With --sr linear the same cameras send
+                    reports WITHOUT rate information (what libavformat's writer sends): the control, which must fail.
+       mode delay : nearBound stays false for a correct clock behind a steady 35 ms delay; lagMs reports the delay.
+       mode step  : nearBound becomes true for the camera whose clock stepped by 60 ms, and only for that one.
+       mode offset: a camera whose wall clock is 10 s off is given up with CAMERA_CLOCK_OUT_OF_BOUND and leaves no
+                    video at a wrong time; the other camera records, the worker exits 0."""
+    global start_sources
+    binary = VARIANTS[a.variant]
+    d = rundir(a.name, fresh=True)
+    mode = SR_MODES[a.mode]
+    truth = build_truth(mode["base"])
+    for c, extra in zip(truth["cams"], mode["cams"]):
+        c["sr"] = dict(extra, sr=a.sr)
+        c["drift_ppm"] = extra.get("drift-ppm", 0.0)
+        for e in c["events"]:
+            e["truth_offset_us"] = 0        # the wall clock of the reports is true: the file must show no offset at any event
+    truth["case"] = "srcam-%s" % a.mode
+
+    def sources(d_, truth_, plan, procs, mic_seconds, mic_extra=()):
+        mic = spawn([MIC, "--out1", plan["mics"][0]["input"]["path"], "--out2", plan["mics"][1]["input"]["path"], "--manifest", os.path.join(d_, "mic.jsonl"),
+                     "--seconds", "%.3f" % mic_seconds, "--beep-at-us", ",".join(str(b) for b in truth_["beeps"])] + list(mic_extra),
+                    stdin=subprocess.DEVNULL, stderr=open(os.path.join(d_, "mic.err"), "w"))
+        procs.append(mic)
+        cps = []
+        for c, pc in zip(truth_["cams"], plan["cameras"]):
+            args = [sys.executable, "-B", CAM_SR, "--url", pc["ingestUrl"], "--epoch-us", str(truth_["epoch_us"]), "--work", d_, "--frames", str(c["frames"]),
+                    "--flash-first", str(c["flash_first"]), "--flash-every", str(c["flash_every"])]
+            for k, val in c["sr"].items():
+                args += ["--" + k, str(val)]
+            cp = spawn(args, stdin=subprocess.DEVNULL, stderr=open(os.path.join(d_, "cam%d.err" % c["cam"]), "w"))
+            procs.append(cp)
+            cps.append(cp)
+        return mic, cps
+
+    plain, start_sources = start_sources, sources         # run_session starts the sources through this name
+    try:
+        mono_epoch = time.monotonic() + (truth["epoch_us"] / 1e6 - time.time())
+        w, plan, info, _ = run_session(a, d, binary, truth)
+    finally:
+        start_sources = plain
+    frame_stats(w, info)
+    res = {"check": "row 62: camera with hand-written sender reports (%s, reports %s)" % (a.mode, a.sr), "run": a.name, "mode": a.mode, "sr": a.sr, "variant": a.variant, "info": info}
+    paths = [c["outputPath"] for c in plan["cameras"]]
+    log = worker_log(d)
+    tel = [(t - mono_epoch, f) for t, f in w.of("TELEMETRY")]
+    clocks = {}                                           # deviceId -> [(seconds after the epoch, lagMs, nearBound)]
+    for t, f in tel:
+        for c in f.get("clocks", []):
+            clocks.setdefault(c["deviceId"], []).append((round(t, 2), c["lagMs"], c["nearBound"]))
+    res["clocks"] = {k: {"frames": len(rows), "near_bound_true_frames": sum(1 for r in rows if r[2]), "first_true_at_s": next((r[0] for r in rows if r[2]), None),
+                         "lag_ms_first_last": [rows[0][1], rows[-1][1]] if rows else None} for k, rows in clocks.items()}
+    # Per second after the epoch: [second, last lagMs of that second, nearBound true in it] - the evidence behind the flags.
+    res["clock_series"] = {k: [[s, [r[1] for r in rows if int(r[0]) == s][-1], any(r[2] for r in rows if int(r[0]) == s)] for s in sorted({int(r[0]) for r in rows})] for k, rows in clocks.items()}
+    stream_end = max(c["frames"] for c in truth["cams"]) / FPS      # after the cameras' last frame the telemetry says nothing about a clock
+    res["anchored"] = [{"source": l["source"], "mode": l.get("mode"), "shift_us": l.get("shift_us")} for l in log if l["message"] == "video_anchored"]
+    v = Crit()
+    rc = info.get("rc") or {}
+    v("worker_exit_0", rc.get("worker") == 0 and not info["crash"])
+    v("frames_clean", info["first_frame_is_hello"] and not info["lines_that_are_no_frame"])
+    v("worker_sockets_tcp_loopback_only", sockets_clean(info["sockets_before_stop"]))
+
+    def near(dev, lo=None, hi=None):
+        return [r for r in clocks.get(dev, []) if (lo is None or r[0] >= lo) and (hi is None or r[0] < hi)]
+
+    if a.mode in ("drift", "delay"):
+        v("sources_exit_0", rc.get("cam1") == 0 and rc.get("cam2") == 0)
+        pl = [playable_own_timebase(p) if os.path.exists(p) else (False, None) for p in paths]
+        res["files"] = {os.path.basename(p): r for p, (_, r) in zip(paths, pl)}
+        v("both_files_playable", all(o for o, _ in pl))
+        v("anchored_on_the_sender_reports", sorted((x["source"].rpartition(".")[2], x["mode"]) for x in res["anchored"]) == [("ingest1", "prft"), ("ingest2", "prft")])
+        if v.ok:
+            reg, prod, rav = av_offsets(d, truth, paths)
+            res["av_offsets"] = rav
+            v("av_regression_2ms", reg)
+            v("av_product_40ms", prod)
+    if a.mode == "drift" and "av_offsets" in res:
+        slopes, near0 = {}, True
+        for c in truth["cams"]:
+            r = res["av_offsets"].get("cam%d" % c["cam"], {})
+            ev = r.get("events") or []
+            span = ev[-1]["flash_s"] - ev[0]["flash_s"] if len(ev) >= 3 else 0
+            tol = REGRESSION_MS / span * 1000.0 if span else 0.0
+            good = span > 0 and abs(r["fitted_slope_ppm"]) <= tol
+            slopes["cam%d" % c["cam"]] = {"media_clock_drift_ppm": c["drift_ppm"], "fitted_ppm": r.get("fitted_slope_ppm"), "tolerance_ppm": round(tol, 1), "span_s": round(span, 2), "near_zero": good}
+            near0 &= good
+        res["drift_slope"] = slopes
+        v("drift_slope_near_zero", near0)
+    if a.mode == "delay":
+        # While the cameras stream. The delay is a LOWER bound of the lag: the receiver hands a frame over when the next
+        # one arrives (one frame, 20 ms, more) - measured 55 ms for a 35 ms delay. Not vacuous: without the delay it is ~20.
+        last = {dev: near(dev, 5, stream_end - 1)[-1][1] for dev in clocks if near(dev, 5, stream_end - 1)}
+        res["lag_while_streaming_ms"] = last
+        v("lag_reports_the_delay", sorted(last) == ["CAM-01", "CAM-02"] and all(35.0 <= x <= 35.0 + 20.0 + 10.0 for x in last.values()))
+        v("near_bound_false_with_a_steady_delay", sorted(clocks) == ["CAM-01", "CAM-02"] and not any(r[2] for rows in clocks.values() for r in rows))
+    if a.mode == "step":
+        # Step at second 8; the placement has moved 26 ms at second 60 and 30 ms at second 68.
+        v("near_bound_false_before_the_step", len(near("CAM-01", 3, 8)) > 20 and not any(r[2] for r in near("CAM-01", None, 60)))
+        v("near_bound_true_after_a_clock_step", len(near("CAM-01", 74, stream_end - 1)) > 20 and all(r[2] for r in near("CAM-01", 74, stream_end - 1)))
+        v("near_bound_false_for_the_steady_camera", len(near("CAM-02", None, stream_end - 1)) > 100 and not any(r[2] for r in near("CAM-02", None, stream_end - 1)))
+    if a.mode == "offset":
+        given_up = [l for l in log if l["message"] == "CAMERA_CLOCK_OUT_OF_BOUND"]
+        res["given_up"] = given_up
+        res["warnings"] = sorted((x["code"], x["subject"]) for x in info["warnings"])
+        v("camera_with_a_wrong_clock_is_given_up", [str(l.get("source")).rpartition(".")[2] for l in given_up] == ["ingest1"] and ("CAPTURE_FAULT", "CAM-01") in res["warnings"])
+        video1 = len(P111.probe_packets(paths[0], "v:0")) if os.path.exists(paths[0]) else 0
+        res["video_packets_of_the_wrong_clock_camera"] = video1
+        v("no_video_recorded_at_a_wrong_time", video1 == 0)
+        ok2 = os.path.exists(paths[1]) and playable_own_timebase(paths[1])[0]
+        v("the_other_camera_records", ok2)
+        if ok2:
+            reg, prod, rav = av_offsets(d, dict(truth, cams=truth["cams"][1:]), paths[1:])
+            res["av_offsets"] = rav
+            v("av_regression_2ms", reg)
+    v("no_leftover", not info["leftovers"]["processes"] and not info["leftovers"]["listeners"])
+    finish(res, True, a.expect_fail, d, v)
+
+
+# ------------------------------------------------------------------------------------------ row 59: the fMP4 writer
+# Chains, checkpoints, tail validation, failed write, observed keyframe interval (checks M3-WI-1 "running hash ==
+# closed-file re-hash, checkpoints contiguous", M3-KC-2, M3-KC-4, M3-MG-1; capture spec A.5, C.1-C.5). Added by
+# blueprint row 59. In the code above it changed only: V (protocol 3), and the four places that held the record
+# sequence to exactly [1, 2, 3, 4] (checkpoints now travel in the same sequence); `cmd_session` got one call.
+TAILCHECK = os.path.join(HERE, "tail_check.ts")              # the Core's validateCameraFile on one file (the product function)
+REPLAY = os.path.join(BUILD, "writer_replay")
+VARIANTS.update({"writefault": os.path.join(BUILD, "capture-worker-writefault"), "writefault-notrunc": os.path.join(BUILD, "capture-worker-writefault-notrunc")})
+GENESIS = hashlib.sha256(b"").digest()
+GOP_TOLERANCE = 0.05                                         # the worker's GOP_TOLERANCE_PERMILLE
+
+
+def checkpoints_of(records, device):
+    """The FRAGMENT_CHECKPOINT records of one camera, in the order they arrived (frames or supervisor events)."""
+    return [r["record"] for r in records if r["record"]["kind"] == "FRAGMENT_CHECKPOINT" and r["record"].get("deviceId") == device]
+
+
+def rehash(path):
+    """THIS HARNESS'S OWN re-derivation from the closed file (hashlib, the box walk of boxes()): per fragment its
+    byte range, digest, chain and running prefix - nothing of the worker and nothing of the Core is used."""
+    data = open(path, "rb").read()
+    bw = boxes(path)
+    out, chain, bx = [], GENESIS, bw["boxes"]
+    for j, b in enumerate(bx):
+        if b["type"] != "moof" or j + 1 >= len(bx) or bx[j + 1]["type"] != "mdat":
+            continue
+        s, e = b["offset"], bx[j + 1]["offset"] + bx[j + 1]["size"]
+        frag = hashlib.sha256(data[s:e]).digest()
+        chain = hashlib.sha256(chain + frag).digest()
+        out.append({"index": len(out) + 1, "start": s, "len": e - s, "fragSha256": frag.hex(), "chainSha256": chain.hex(), "prefixSha256": hashlib.sha256(data[:e]).hexdigest(),
+                    "video_samples": b["tracks"].get(1, {}).get("samples", 0), "moof_size": b["size"]})
+    init = next((b["offset"] for b in bx if b["type"] == "moof"), len(data))
+    return {"fragments": out, "init_bytes": init, "bytes": len(data), "tiles_exactly": bw["tiles_exactly"], "whole_file_sha256": hashlib.sha256(data).hexdigest(),
+            "only_fragments_after_init": [b["type"] for b in bx if b["offset"] >= init] == ["moof", "mdat"] * len(out)}
+
+
+def tail_check(path, records=None):
+    """The Core's tail validation (apps/core-server/src/capture/fragments.ts) on one file, through its test tool."""
+    cmd = ["npx", "tsx", TAILCHECK, path]
+    if records is not None:
+        rp = path + ".records.json"
+        json.dump(records, open(rp, "w"))
+        cmd += ["--records", rp]
+    p = sh(cmd, cwd=REPO)
+    if records is not None:
+        os.remove(rp)
+    try:
+        return json.loads(p.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return {"ok": False, "flags": ["TOOL_FAILED"], "error": (p.stderr or p.stdout)[-400:]}
+
+
+SAME = ("index", "start", "len", "fragSha256", "chainSha256", "prefixSha256")
+
+
+def writer_criteria(v, res, d, paths, records, truth, log=None):
+    """What every recorded session must show of the writer (M3-WI-1): the checkpoints the worker gave ARE the closed
+    file re-hashed by this harness, they are contiguous, the Core's tail validation agrees, and the keyframe
+    interval the worker observed is the camera's."""
+    out = {}
+    log = worker_log(d) if log is None else log
+    gop_ms = truth.get("gop", FPS) * 1000.0 / FPS
+    for i, p in enumerate(paths):
+        dev, name = "CAM-0%d" % (i + 1), os.path.basename(p)
+        cps, own = checkpoints_of(records, dev), rehash(p)
+        tc = tail_check(p, cps)
+        first = [r for r in records if r["record"]["kind"] == "FIRST_DURABLE_FRAGMENT" and r["record"]["deviceId"] == dev]
+        first_cp = [r for r in records if r["record"]["kind"] == "FRAGMENT_CHECKPOINT" and r["record"]["deviceId"] == dev][:1]
+        kf = [r["record"] for r in records if r["record"]["kind"] == "KEYFRAME_INTERVAL" and r["record"]["deviceId"] == dev]
+        said_above = any(l.get("message") == "keyframe_interval_above_bound" and l.get("cam") == i + 1 for l in log)
+        out[name] = {"checkpoints": len(cps), "fragments_in_file": len(own["fragments"]), "init_bytes": own["init_bytes"], "bytes": own["bytes"], "last_chain": cps[-1]["chainSha256"] if cps else None,
+                     "tail_validation": {k: tc.get(k) for k in ("ok", "flags", "state", "durableLength", "comparison", "partNames", "walkMs", "error") if k in tc}, "keyframe_interval": kf,
+                     "camera_gop_ms": gop_ms, "warned_above_bound_in_log": said_above}
+        v("checkpoints_contiguous", bool(cps) and [c["index"] for c in cps] == list(range(1, len(cps) + 1)) and cps[0]["start"] == own["init_bytes"]
+          and all(b["start"] == a_["start"] + a_["len"] for a_, b in zip(cps, cps[1:])))
+        v("running_hash_equals_closed_file_rehash", len(cps) == len(own["fragments"]) > 0 and all(c[k] == o[k] for c, o in zip(cps, own["fragments"]) for k in SAME)
+          and cps[-1]["prefixSha256"] == own["whole_file_sha256"] and cps[-1]["start"] + cps[-1]["len"] == own["bytes"] and own["tiles_exactly"] and own["only_fragments_after_init"])
+        v("plaintext_chain_equals_stored_chain_without_cipher", all(c["plaintextSha256"] == c["fragSha256"] and c["plaintextChainSha256"] == c["chainSha256"] and c["keyId"] is None and c["gcmIv"] is None and c["gcmTag"] is None for c in cps))
+        v("tail_validation_clean_and_matches_records", tc.get("ok") is True and tc.get("flags") == [] and (tc.get("comparison") or {}).get("verdict") == "MATCH" and tc["comparison"]["matched"] == len(cps) and not tc.get("partNames"))
+        # Two implementations (the worker's C, the Core's TypeScript) read the same media time and keyframe flag out of every moof.
+        v("media_time_equals_the_file_walk", len(tc.get("fragments", [])) == len(cps) > 0 and all(f["media"] == {"mediaStartMs": c["mediaStartMs"], "mediaDurationMs": c["mediaDurationMs"], "keyframe": c["keyframe"]} for f, c in zip(tc["fragments"], cps))
+          and all(c["keyframe"] == (o["video_samples"] > 0) for c, o in zip(cps, own["fragments"])))
+        v("first_durable_fragment_is_the_first_checkpoint", len(first) == 1 and len(first_cp) == 1 and bool(cps) and first[0]["record"]["bytes"] == cps[0]["start"] + cps[0]["len"] and first_cp[0]["seq"] > first[0]["seq"])     # before it; a record of the other camera may lie between the two
+        v("durable_instants_grow", all(b["durableAt"] >= a_["durableAt"] for a_, b in zip(cps, cps[1:])) and all(abs(c["durableAt"] / 1000.0 - time.time()) < 3600 for c in cps))
+        v("keyframe_interval_reported", len(kf) == 1 and kf[0]["boundMs"] == 2000 and kf[0]["intervals"] >= 1 and abs(kf[0]["observedMs"] - gop_ms) <= GOP_TOLERANCE * gop_ms
+          and kf[0]["aboveBound"] == (gop_ms > 2000 * (1 + GOP_TOLERANCE)) and said_above == kf[0]["aboveBound"])
+    res["writer"] = out
+
+
+def run_until(a, d, binary, truth, ready, hold_s):
+    """A worker-level session that is ended by SIGKILL: sources started, `ready(worker)` awaited, `hold_s` slept, kill.
+    Returns (worker, plan, info): info carries the kill instant and how long the harness needed to know the tail."""
+    sid = "S-M3W-%s" % a.name.upper().replace("_", "-")[-40:].strip("-")
+    if tcp_listeners():
+        sys.exit("ports busy before start: %r" % tcp_listeners())
+    plan = make_plan(d, sid)
+    json.dump(truth, open(os.path.join(d, "truth.json"), "w"), indent=1)
+    procs, info = [], {"sessionId": sid}
+    paths = [c["outputPath"] for c in plan["cameras"]]
+    w = Worker(d, binary)
+    procs.append(w.p)
+    try:
+        w.wait(lambda f: f.get("type") == "HELLO", 5, "HELLO")
+        _, ackf = w.ack(w.command(sid, "START", attempt=1, plan=plan))
+        assert ackf["ok"], ackf
+        t_l = time.monotonic()
+        while len(tcp_listeners()) < 2 and time.monotonic() - t_l < 5:
+            time.sleep(0.05)
+        start_sources(d, truth, plan, procs, (truth["epoch_us"] / 1e6 - time.time()) + max(c["frames"] for c in truth["cams"]) / FPS + 8)
+        end = time.monotonic() + 60
+        while not ready(w) and time.monotonic() < end and w.p.poll() is None:
+            time.sleep(0.01)
+        info["ready"] = bool(ready(w))
+        time.sleep(hold_s)
+        info["worker_alive_at_kill"] = w.p.poll() is None
+        info["kill_wall_us"] = time.time_ns() // 1000
+        t_kill = time.monotonic()
+        os.kill(w.p.pid, signal.SIGKILL)
+        w.p.wait()
+        tails = [boxes(p) if os.path.exists(p) else None for p in paths]          # the S1 monitor's step: the tail of each file, known
+        info["truncation_detected_ms"] = round((time.monotonic() - t_kill) * 1000, 3)
+        info["tails_at_detection"] = [None if t is None else {"tiles_exactly": t["tiles_exactly"], "moofs": t["kinds"].count("moof"), "last_two": t["kinds"][-2:]} for t in tails]
+        time.sleep(0.4)                                       # the frames that were in the pipe are read
+    finally:
+        killall(procs)
+    time.sleep(0.3)
+    frame_stats(w, info)
+    info["leftovers"] = leftovers()
+    return w, plan, info
+
+
+def enough_checkpoints(n):
+    """Both cameras have `n` checkpoints of fragments WITH VIDEO (before a camera's first keyframe its file gets
+    audio-only fragments from the stall cut: they are checkpoints too, and no video is durable yet)."""
+    def ready(w):
+        recs = [f for _, f in w.of("RECORD")]
+        return all(len([c for c in checkpoints_of(recs, dev) if c["keyframe"]]) >= n for dev in ("CAM-01", "CAM-02"))
+    return ready
+
+
+def killed_file(v, p, cps, label):
+    """A file a SIGKILL left: it ends on a fragment boundary, every checkpoint that arrived equals the bytes, and what
+    the file holds beyond them is whole fragments (written, not yet reported). Returns (own re-hash, Core verdict)."""
+    own, tc = rehash(p), tail_check(p, cps)
+    v("killed_files_end_on_a_fragment_boundary", own["tiles_exactly"] and own["only_fragments_after_init"] and tc.get("state") == "CLEAN")
+    cmpn = tc.get("comparison") or {}
+    v("no_torn_fragment_and_records_match_the_file", set(tc.get("flags", ["?"])) <= {"FRAGMENTS_BEYOND_RECORDS"} and cmpn.get("matched") == len(cps) and cmpn.get("missing") == 0 and cmpn.get("firstMismatch") is None
+      and len(own["fragments"]) >= len(cps) and all(c[k] == o[k] for c, o in zip(cps, own["fragments"]) for k in SAME))
+    end = cps[-1]["start"] + cps[-1]["len"] if cps else 0
+    v("durable_prefix_rehashes_to_the_recorded_prefix", bool(cps) and sha_prefix(p, end) == cps[-1]["prefixSha256"])
+    return own, {"file": label, "bytes": own["bytes"], "fragments_in_file": len(own["fragments"]), "checkpoints_received": len(cps), "whole_fragments_beyond_records": len(own["fragments"]) - len(cps),
+                 "tail_validation": {k: tc.get(k) for k in ("ok", "flags", "state", "durableLength", "comparison", "walkMs", "error") if k in tc}}
+
+
+def cmd_kc2(a):
+    """M3-KC-2: the worker is killed with SIGKILL in the middle of a recording.
+       (1) the truncation is known within 20 ms of the kill (the harness's own box walk of both tails, as S1's monitor did);
+       (2) both files end on a fragment boundary, every checkpoint that arrived equals the bytes, the durable prefix
+           re-hashes to the recorded prefix (no torn fragment enters custody);
+       (3) THE CUT INSIDE AN MDAT: a copy of file 1 cut 37 bytes into the payload of its last recorded fragment is
+           ACCEPTED by ffprobe and by the decoder (exit 0), and FLAGGED by the Core's tail validation (TORN_TAIL: the
+           declared size exceeds the bytes present); the drop-fragment rule (cut the copy at the durable length)
+           gives a clean file that hashes to the prefix recorded for the fragment before;
+       (4) a `.part` hard link beside a camera file is a second NAME of it, not a second file (pair-58 R-5).
+       --control nocut: (3) on a copy that is NOT cut - the validation must not flag it: the check must FAIL there."""
+    d = rundir(a.name, fresh=True)
+    truth = build_truth("zero", frames_override=(900, 900))
+    w, plan, info = run_until(a, d, VARIANTS[a.variant], truth, enough_checkpoints(3), 0.35)
+    recs = info["records"]
+    paths = [c["outputPath"] for c in plan["cameras"]]
+    res, v = {"check": "M3-KC-2 worker SIGKILL mid-write + RECOVERY tail validation", "run": a.name, "control": a.control, "info": info, "files": {}}, Crit()
+    v("killed_while_recording", info["ready"] and info["worker_alive_at_kill"] and all(os.path.exists(p) for p in paths))
+    if v.ok:
+        v("truncation_detected_within_20ms", info["truncation_detected_ms"] <= 20.0 and all(t is not None for t in info["tails_at_detection"]))
+        owns = []
+        for i, p in enumerate(paths):
+            own, rep_ = killed_file(v, p, checkpoints_of(recs, "CAM-0%d" % (i + 1)), os.path.basename(p))
+            owns.append(own)
+            res["files"][os.path.basename(p)] = rep_
+        # (3) the cut inside the mdat of the last RECORDED fragment of file 1
+        cps = checkpoints_of(recs, "CAM-01")
+        last, frag = cps[-1], owns[0]["fragments"][len(cps) - 1]
+        cutdir = os.path.join(d, "cut")
+        os.makedirs(cutdir, exist_ok=True)
+        cut = os.path.join(cutdir, "VIDEO-01.mp4")
+        data = open(paths[0], "rb").read()
+        cut_at = last["start"] + frag["moof_size"] + 8 + 37
+        open(cut, "wb").write(data if a.control == "nocut" else data[:cut_at])
+        probe = sh([FP, "-v", "error", "-show_entries", "format=duration", "-of", "json", cut])
+        dec = sh([FF, "-v", "error", "-i", cut, "-map", "0", "-f", "null", "-"])
+        tc = tail_check(cut, cps)
+        tail = tc.get("tail") or {}
+        res["cut"] = {"cut_at_byte": None if a.control == "nocut" else cut_at, "fragment": last["index"], "bytes": os.path.getsize(cut), "ffprobe_rc": probe.returncode,
+                      "ffprobe_duration_s": (json.loads(probe.stdout or "{}").get("format") or {}).get("duration"), "decoder_rc": dec.returncode, "decoder_error_lines": len(dec.stderr.strip().splitlines()),
+                      "tail_validation": {k: tc.get(k) for k in ("ok", "flags", "state", "durableLength", "tail", "comparison", "walkMs", "error") if k in tc}}
+        v("ffprobe_and_decoder_accept_the_cut_file", probe.returncode == 0 and dec.returncode == 0)
+        v("tail_validation_flags_the_cut", tc.get("state") == "TORN_TAIL" and tail.get("reason") == "DECLARED_SIZE_EXCEEDS_BYTES_PRESENT" and tail.get("boxType") == "mdat" and tc.get("durableLength") == last["start"]
+          and tail.get("start") == last["start"] and tail.get("bytesPresent") == cut_at - last["start"] and "TORN_TAIL" in tc.get("flags", []) and "FILE_SHORTER_THAN_RECORDS" in tc.get("flags", []))
+        # The drop-fragment rule on the copy: [durable length, end) is dropped; what is left is the prefix recorded for the fragment before.
+        os.truncate(cut, tc.get("durableLength") or 0)
+        after = tail_check(cut, cps[:-1])
+        res["cut"]["after_drop"] = {"bytes": os.path.getsize(cut), "state": after.get("state"), "flags": after.get("flags"), "sha256": sha_prefix(cut, os.path.getsize(cut)), "recorded_prefix_of_the_fragment_before": cps[-2]["prefixSha256"]}
+        v("drop_fragment_rule_recovers_the_previous_prefix", after.get("ok") is True and res["cut"]["after_drop"]["sha256"] == cps[-2]["prefixSha256"] and os.path.getsize(cut) == last["start"])
+        # (4) the names a killed worker can leave beside a camera file
+        pdir = os.path.join(d, "parts")
+        os.makedirs(pdir, exist_ok=True)
+        cam = os.path.join(pdir, "VIDEO-01.mp4")
+        open(cam, "wb").write(data)
+        os.link(cam, cam + ".4711.part")                      # a kill between link() and unlink(): the SAME file under its temporary name
+        open(cam + ".4712.part", "wb").write(data[:cps[0]["start"] + cps[0]["len"]])      # a kill before link(): a file of its own
+        names = tail_check(cam, cps[:len(owns[0]["fragments"])]).get("partNames")
+        res["part_names"] = names
+        v("part_name_is_a_second_name_not_a_second_file", names == [{"name": "VIDEO-01.mp4.4711.part", "kind": "SECOND_NAME_OF_CAMERA_FILE", "nameMayBeRemoved": True},
+                                                                   {"name": "VIDEO-01.mp4.4712.part", "kind": "ORPHAN_OF_A_DEAD_WORKER", "nameMayBeRemoved": False}] and os.stat(cam).st_nlink == 2)
+        shutil.rmtree(cutdir)
+        shutil.rmtree(pdir)
+    v("no_leftover", not info["leftovers"]["processes"] and not info["leftovers"]["listeners"])
+    finish(res, True, a.expect_fail, d, v)
+
+
+def cmd_kc4(a):
+    """M3-KC-4: a camera with a long GOP (--gop 250: a keyframe every 5 s) and a worker that is killed in the middle
+    of a GOP. The loss is bounded by ONE FRAGMENT - on stream copy the smallest whole number of camera GOPs that
+    reaches the 2 s fragment minimum: one GOP for this camera - and it is REPORTED: the warning of the capture
+    channel before the kill, and the record that names the interval, which covers the loss that then happened.
+    With --gop 50 (a camera inside the bound) nothing is warned and the record says so: the control must FAIL on
+    exactly the two 'reported' criteria."""
+    d = rundir(a.name, fresh=True)
+    truth = build_truth("long", gop=a.gop)
+    gop_s = a.gop / FPS
+    # Killed half a GOP after BOTH the first video fragment was durable and the worker said what interval it observed
+    # (a long-GOP camera: at its second keyframe; a camera inside the bound: after three intervals).
+    video, said = enough_checkpoints(1), lambda w_: len([f for _, f in w_.of("RECORD") if f["record"]["kind"] == "KEYFRAME_INTERVAL"]) == 2
+    w, plan, info = run_until(a, d, VARIANTS[a.variant], truth, lambda w_: video(w_) and said(w_), gop_s / 2.0)
+    recs, log = info["records"], worker_log(d)
+    paths = [c["outputPath"] for c in plan["cameras"]]
+    res, v = {"check": "M3-KC-4 long-GOP crash loss: bounded by one fragment and reported", "run": a.name, "camera_gop_frames": a.gop, "camera_gop_s": gop_s, "info": info, "files": {}}, Crit()
+    v("killed_while_recording", info["ready"] and info["worker_alive_at_kill"] and all(os.path.exists(p) for p in paths))
+    if v.ok:
+        t0 = [l for l in log if l["message"] == "audio_started"][0]["t0_real_us"]
+        fragment_gops = max(1, -(-2000 // int(gop_s * 1000)))            # whole GOPs per fragment: ceil(2 s / GOP)
+        for i, p in enumerate(paths):
+            dev, cam = "CAM-0%d" % (i + 1), truth["cams"][i]
+            own, rep_ = killed_file(v, p, checkpoints_of(recs, dev), os.path.basename(p))
+            fvs = [r["record"] for r in recs if r["record"]["kind"] == "FIRST_VIDEO_SAMPLE" and r["record"]["deviceId"] == dev][0]
+            first_frame = round((t0 + fvs["pts"] * 1e6 / fvs["timescale"] - cam["claimed_epoch_us"]) / FRAME_US)       # the camera frame the file starts with
+            sent = min(cam["frames"], (info["kill_wall_us"] - truth["epoch_us"]) // FRAME_US + 1)                      # frames the camera had pushed when the worker died
+            durable = sum(f["video_samples"] for f in own["fragments"])
+            loss_s = (sent - first_frame - durable) / FPS
+            kf = [r["record"] for r in recs if r["record"]["kind"] == "KEYFRAME_INTERVAL" and r["record"]["deviceId"] == dev]
+            warned = [f for f in info["warnings"] if f["code"] == "CAPTURE_FAULT" and f["state"] == "ACTIVE" and f["subject"] == dev]
+            lines = [l["message"] for l in log if l.get("cam") == i + 1 and str(l.get("message", "")).startswith("keyframe_interval")]
+            rep_.update({"first_camera_frame_in_file": first_frame, "camera_frames_pushed_at_kill": sent, "video_frames_durable": durable, "video_lost_s": round(loss_s, 3), "lost_more_than_the_2s_target": loss_s > 2.0,
+                         "keyframe_interval_record": kf, "capture_fault_warnings_before_kill": len(warned), "log_lines": lines})
+            res["files"][os.path.basename(p)] = rep_
+            v("file_starts_on_a_camera_keyframe", first_frame >= 0 and first_frame % a.gop == 0 and durable > 0 and durable % a.gop == 0)
+            v("loss_bounded_by_one_fragment", 0 < loss_s <= fragment_gops * gop_s + 0.3)
+            v("gop_warning_raised_before_the_kill", len(warned) == 1 and "keyframe_interval_above_bound" in lines)
+            v("keyframe_interval_record_names_the_camera_gop", len(kf) == 1 and kf[0]["aboveBound"] is True and kf[0]["complete"] is True and kf[0]["boundMs"] == 2000 and abs(kf[0]["observedMs"] - gop_s * 1000) <= GOP_TOLERANCE * gop_s * 1000)
+            # What the Core can state from the record alone: the loss window of this file is ceil(target / observed) GOPs.
+            stated_ms = (-(-2000 // max(1, kf[0]["observedMs"])) * kf[0]["observedMs"]) if kf else 0
+            rep_["loss_window_stated_from_the_record_ms"] = stated_ms
+            v("reported_interval_covers_the_loss", bool(kf) and loss_s * 1000 <= stated_ms * (1 + GOP_TOLERANCE) + 300)
+    v("no_leftover", not info["leftovers"]["processes"] and not info["leftovers"]["listeners"])
+    finish(res, True, a.expect_fail, d, v)
+
+
+def cmd_writefault(a):
+    """A write that comes back SHORT and then fails (the proof build `writefault`: fragment 3 of camera 1, half of
+    it reaches the file, then ENOSPC). The worker must leave file 1 AT ITS LAST GOOD LENGTH (the end of fragment 2),
+    give no checkpoint for the failed fragment, close the other camera's file whole, and exit 70 with CRASH.
+    With --variant writefault-notrunc (the same fault, the truncation switched off) the torn tail stays and the
+    Core's tail validation FLAGS the file: that run must FAIL on exactly the two criteria of the truncation."""
+    d = rundir(a.name, fresh=True)
+    truth = build_truth("zero", frames_override=(450, 450))
+    w, plan, info, _ = run_session(a, d, VARIANTS[a.variant], truth)
+    frame_stats(w, info) if w.of("HEARTBEAT") else None
+    recs, log = info.get("records", []), worker_log(d)
+    paths = [c["outputPath"] for c in plan["cameras"]]
+    res, v = {"check": "failed / short write: the file goes back to its last good length", "run": a.name, "variant": a.variant, "info": info, "files": {}}, Crit()
+    crash = [f for _, f in w.of("CRASH")]
+    res["worker_rc"], res["crash"] = info.get("rc", {}).get("worker"), crash
+    v("worker_exits_70_with_crash", res["worker_rc"] == 70 and len(crash) == 1 and crash[0]["exitCode"] == 70)
+    v("both_files_exist", all(os.path.exists(p) for p in paths))
+    if v["both_files_exist"]:
+        cps1, cps2 = checkpoints_of(recs, "CAM-01"), checkpoints_of(recs, "CAM-02")
+        own1, tc1, tc2 = rehash(paths[0]), tail_check(paths[0], cps1), tail_check(paths[1], cps2)
+        good = cps1[-1]["start"] + cps1[-1]["len"] if cps1 else -1
+        said = [l for l in log if l.get("message") == "WRITER_WRITE_FAILED"]
+        res["files"] = {"VIDEO-01.mp4": {"bytes": own1["bytes"], "last_good_length_by_the_checkpoints": good, "checkpoints": [c["index"] for c in cps1], "whole_fragments_in_file": len(own1["fragments"]), "tiles_exactly": own1["tiles_exactly"],
+                                         "tail_validation": {k: tc1.get(k) for k in ("ok", "flags", "state", "durableLength", "tail", "comparison") if k in tc1}},
+                        "VIDEO-02.mp4": {"checkpoints": len(cps2), "tail_validation": {k: tc2.get(k) for k in ("ok", "flags", "state", "comparison") if k in tc2}}}
+        res["log_line_of_the_failed_write"] = said
+        v("no_checkpoint_for_the_failed_fragment", [c["index"] for c in cps1] == [1, 2])
+        v("file1_is_at_its_last_good_length", own1["bytes"] == good and sha_prefix(paths[0], own1["bytes"]) == (cps1[-1]["prefixSha256"] if cps1 else None))
+        v("tail_validation_clean", tc1.get("ok") is True and tc1.get("flags") == [] and (tc1.get("comparison") or {}).get("verdict") == "MATCH")
+        v("log_names_the_failed_write", len(said) == 1 and said[0].get("cam") == 1 and said[0].get("last_good_bytes") == good and said[0].get("durable_fragments") == 2)
+        v("other_camera_closed_whole", tc2.get("ok") is True and (tc2.get("comparison") or {}).get("verdict") == "MATCH" and len(cps2) >= 2 and playable(paths[1])[0])
+        v("durable_prefix_of_file1_plays", own1["bytes"] != good or playable(paths[0])[0])
+    v("no_leftover", not info["leftovers"]["processes"] and not info["leftovers"]["listeners"])
+    finish(res, True, a.expect_fail, d, v)
+
+
+def moof_fields(path):
+    bw = boxes(path)["boxes"]
+    return [{"size": b["size"], "tracks": b["tracks"]} for b in bw if b["type"] == "moof"], [b["size"] for b in bw if b["type"] == "mdat"]
+
+
+def cmd_replay(a):
+    """Chain equality (the S1 pattern), on the files of a FINISHED session. The bytes of each recorded file are pushed
+    through the fMP4 writer a second time (build/writer_replay): the checkpoints must be the worker's own records of
+    the live run, value for value (everything but the wall clock of the sync), and the new file byte-identical. The
+    chain therefore covers the stored bytes and nothing else.
+       --control flip   one byte inside fragment 3 is changed before the replay: must FAIL (the chain differs from 3 on).
+       --other RUN      also says where the files of ANOTHER live run of the same fixture differ (reported, not judged:
+                        two live runs do not produce the same bytes)."""
+    d, truth, paths = finished(a)
+    recs = json.load(open(os.path.join(d, "result.json")))["info"]["records"]
+    out = os.path.join(d, "replay")
+    shutil.rmtree(out, ignore_errors=True)
+    os.makedirs(out)
+    res, v = {"check": "chain equality: the same bytes through the writer again", "run": a.name, "control": a.control, "files": {}}, Crit()
+    keys = SAME + ("plaintextSha256", "plaintextChainSha256", "mediaStartMs", "mediaDurationMs", "keyframe")
+    for i, p in enumerate(paths):
+        cps, src = checkpoints_of(recs, "CAM-0%d" % (i + 1)), p
+        if a.control == "flip":
+            data = bytearray(open(p, "rb").read())
+            data[cps[2]["start"] + cps[2]["len"] - 100] ^= 1
+            src = os.path.join(out, "flipped%d.mp4" % (i + 1))
+            open(src, "wb").write(data)
+        again = os.path.join(out, "VIDEO-0%d.mp4" % (i + 1))
+        r = sh([REPLAY, src, again])
+        rows = [json.loads(l) for l in r.stdout.splitlines() if l.startswith("{")]
+        differ = [c["index"] for c, n in zip(cps, rows) if any(c[k] != n[k] for k in keys)]
+        same_bytes = os.path.exists(again) and sha_prefix(again, os.path.getsize(again)) == sha_prefix(p, os.path.getsize(p))
+        res["files"][os.path.basename(p)] = {"replay_rc": r.returncode, "live_checkpoints": len(cps), "replayed_checkpoints": len(rows), "fragments_that_differ": differ, "byte_identical": same_bytes,
+                                             "live_last_chain": cps[-1]["chainSha256"] if cps else None, "replayed_last_chain": rows[-1]["chainSha256"] if rows else None}
+        v("replay_gives_the_same_checkpoints", r.returncode == 0 and len(rows) == len(cps) > 0 and not differ)
+        v("replayed_file_is_byte_identical", same_bytes)
+    if a.other:
+        # "sibling": the other run of the same check in a two-run series (..._r1 <-> ..._r2), if it has been made.
+        other = (a.name[:-1] + ("2" if a.name.endswith("1") else "1")) if a.other == "sibling" and a.name[-3:] in ("_r1", "_r2") else a.other
+        d2 = os.path.join(RUNS, other)
+        cmp_ = {}
+        for i in (1, 2):
+            p1, p2 = os.path.join(d, "media", "VIDEO-0%d.mp4" % i), os.path.join(d2, "media", "VIDEO-0%d.mp4" % i)
+            if not os.path.exists(p2):
+                continue
+            r1, r2 = rehash(p1), rehash(p2)
+            (m1, x1), (m2, x2) = moof_fields(p1), moof_fields(p2)
+            n = min(len(r1["fragments"]), len(r2["fragments"]))
+            cmp_["VIDEO-0%d.mp4" % i] = {
+                "init_segment_identical": sha_prefix(p1, r1["init_bytes"]) == sha_prefix(p2, r2["init_bytes"]) and r1["init_bytes"] == r2["init_bytes"], "fragments": [len(r1["fragments"]), len(r2["fragments"])],
+                "fragments_with_the_same_digest": sum(1 for k in range(n) if r1["fragments"][k]["fragSha256"] == r2["fragments"][k]["fragSha256"]),
+                "fragments_with_the_same_video_decode_time": sum(1 for k in range(n) if m1[k]["tracks"].get(1, {}).get("tfdt") == m2[k]["tracks"].get(1, {}).get("tfdt")),
+                "fragments_with_the_same_sample_counts": sum(1 for k in range(n) if {t: s["samples"] for t, s in m1[k]["tracks"].items()} == {t: s["samples"] for t, s in m2[k]["tracks"].items()}),
+                "fragments_with_the_same_mdat_size": sum(1 for k in range(n) if x1[k] == x2[k]), "last_chain": [r1["fragments"][-1]["chainSha256"], r2["fragments"][-1]["chainSha256"]]}
+        res["two_live_runs_not_judged"] = {"other_run": other, "files": cmp_}
+    shutil.rmtree(out, ignore_errors=True)
+    finish(res, True, a.expect_fail, None, v)
+
+
+MEDIA_IN_STATUS = r"\.(mp4|m4a|m4s|mov|mkv|aac|wav|pcm|s16|h264|264|part)$"
+
+
+def media_lines(porcelain):
+    import re
+    return [l for l in porcelain.splitlines() if re.search(MEDIA_IN_STATUS, l.strip().strip('"'), re.I)]
+
+
+def cmd_mg1(a):
+    """M3-MG-1: 0 media in git after the capture sessions of this series. `git status --porcelain` (untracked files
+    included) names no media file, and everything a run writes lies under a git-ignored folder. The pattern has its
+    control inside the check: the same search over a status text that names a camera file must find it."""
+    res, v = {"check": "M3-MG-1 0 media in git", "run": a.name}, Crit()
+    st = sh(["git", "status", "--porcelain", "--untracked-files=all"], cwd=REPO)
+    found = media_lines(st.stdout)
+    ignored = {p: sh(["git", "check-ignore", "-q", p], cwd=REPO).returncode == 0 for p in (RUNS, BUILD, os.path.join(REPO, ".cache", "m3worker", "e2e"))}
+    runs = [n for n in os.listdir(RUNS)] if os.path.isdir(RUNS) else []
+    on_disk = sum(1 for n in runs for _r, _d, fs in os.walk(os.path.join(RUNS, n)) for f in fs if f.endswith(".mp4"))
+    res.update({"status_lines": len(st.stdout.splitlines()), "media_lines_in_status": found, "git_ignored": {os.path.relpath(p, REPO): ok for p, ok in ignored.items()}, "runs_on_disk": len(runs), "camera_files_under_the_runs_folder": on_disk})
+    v("git_status_ran", st.returncode == 0)
+    v("no_media_file_in_git_status", not found)
+    v("every_run_folder_is_git_ignored", all(ignored.values()) and os.path.realpath(RUNS).startswith(os.path.realpath(os.path.join(REPO, ".cache")) + os.sep))
+    v("camera_files_exist_where_they_are_ignored", on_disk > 0)          # the series DID record: an empty disk would prove nothing
+    planted = "?? apps/capture-worker/test/VIDEO-01.mp4\n M apps/capture-worker/src/sink.c\n?? docs/x/VIDEO-02.mp4.4711.part\n"
+    v("control_the_search_finds_a_planted_media_line", [l.split()[-1] for l in media_lines(planted)] == ["apps/capture-worker/test/VIDEO-01.mp4", "docs/x/VIDEO-02.mp4.4711.part"])
+    finish(res, True, a.expect_fail, None, v)
 
 
 def main():
@@ -1229,22 +2058,40 @@ def main():
         p.add_argument("name")
         p.add_argument("--variant", choices=list(VARIANTS), default="worker")
         p.add_argument("--expect-fail", action="store_true")
+        p.add_argument("--must-fail-on", default="", help="with --expect-fail: the criteria the control must fail on, exactly (comma-separated)")
+        p.add_argument("--may-fail-on", default="", help="with --must-fail-on: criteria that may fail as well")
         for k, v in extra.items():
             p.add_argument("--" + k, **v)
         p.set_defaults(fn=fn)
 
-    case("session", cmd_session, case={"choices": list(CASES), "default": "zero"}, switch={"action": "store_true"}, tap={"action": "store_true"}, stall={"action": "store_true"})
+    case("session", cmd_session, case={"choices": list(CASES), "default": "zero"}, switch={"action": "store_true"}, tap={"action": "store_true"}, stall={"action": "store_true"},
+         gop={"type": int, "default": FPS, "help": "the fake cameras' GOP in frames (250 = the long-GOP camera, a keyframe every 5 s)"},
+         **{"mic-late-us": {"type": int, "default": 0, "help": "the fake mics hand every chunk over this late (a device latency the worker cannot know)"}})
+    case("avcheck", cmd_avcheck, **{"assume-drift-ppm": {"type": float, "default": None}})
+    case("gopcheck", cmd_gopcheck, gop={"type": int, "required": True})
+    case("continuity", cmd_continuity, control={"choices": ["cut", "toneslip"], "default": None})
+    case("selfcheck", cmd_selfcheck)
     case("h4neg", cmd_h4neg)
     case("proto", cmd_proto)
     case("camstop", cmd_camstop)
     case("fatal", cmd_fatal, mode={"choices": ["rmdir", "planted", "exists", "clean"], "required": True})
     case("udp", cmd_udp)
     case("shape", cmd_shape)
-    case("mic", cmd_mic, mode={"choices": ["slow", "gap"], "required": True})
+    case("mic", cmd_mic, mode={"choices": list(MIC_MODES), "required": True})
     case("nocam", cmd_nocam, mode={"choices": ["none", "one"], "required": True})
     case("sup", cmd_sup, mode={"choices": ["run", "kc1", "kc3", "nocam"], "required": True}, case={"choices": list(CASES), "default": "zero"},
          limits={"default": "{}", "help": "overrides of CAPTURE_IPC_DEFAULTS as JSON (negative controls: '{\"maxRestarts\":0}')"})
-    a = ap.parse_args()
+    # Row 62: cameras with hand-written sender reports (M3-AV-2 (c); nearBound; the camera clock sanity bound).
+    case("srcam", cmd_srcam, mode={"choices": list(SR_MODES), "required": True},
+         sr={"choices": ["true", "linear"], "default": "true", "help": "linear: reports without rate information (the control of mode drift)"})
+    # Row 59: the fMP4 writer (M3-KC-2, M3-KC-4, failed write, chain equality, M3-MG-1).
+    case("kc2", cmd_kc2, control={"choices": ["nocut"], "default": None})
+    case("kc4", cmd_kc4, gop={"type": int, "default": 250})
+    case("writefault", cmd_writefault)
+    case("replay", cmd_replay, control={"choices": ["flip"], "default": None}, other={"default": None})
+    case("mg1", cmd_mg1)
+    global ARGS
+    a = ARGS = ap.parse_args()
     a.fn(a)
 
 

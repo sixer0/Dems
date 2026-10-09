@@ -8,6 +8,8 @@ import { useTranslation } from 'react-i18next';
 import { useMotionPreferences } from '@/motion';
 import type { SettingsSection } from '@/navigation/params';
 import { useCoreLinkSourceSetting } from '@/runtime';
+import { CaptureSection } from '@/features/capture-selector/settings-capture-section';
+import { TranscriptionSection } from '@/features/transcription/stt-status-section';
 import { AboutSection } from './about-section';
 import { MaintenanceSection } from './maintenance-section';
 import { NotificationsSection } from './notifications-section';
@@ -28,6 +30,12 @@ export function SectionBody({ section }: { section: SettingsSection }) {
       return <MaintenanceSection />;
     case 'about':
       return <AboutSection />;
+    // Row 118 (R-8; ux §8a "Settings → Transcription status"): its own read-only section, mounted by request (D95).
+    case 'transcription':
+      return <TranscriptionSection />;
+    // Row 68 (MB-09; ux §2 flow 1): the device selector.
+    case 'capture':
+      return <CaptureSection />;
   }
 }
 

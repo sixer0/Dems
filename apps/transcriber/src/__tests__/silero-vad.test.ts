@@ -6,10 +6,11 @@ import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { createMemoryLog } from '../log';
+import { NO_CAPTURE_WORKER } from '../backends/cpu-local';
 import { openPcmSource } from '../pipeline/audio-source';
 import { QaFlag } from '../pipeline/constants';
 import { captureTapTimeline } from '../pipeline/media-time';
-import { createTranscriptRunner } from '../pipeline/runner';
+import { NO_TAP_SIGNAL, createTranscriptRunner } from '../pipeline/runner';
 import { buildVadArgs, createSileroVad, parseVadOutput, resolveSileroVadConfig } from '../pipeline/silero-vad';
 import { TranscriberError, TranscriberErrorCode } from '../types';
 import { encodeWavPcm16 } from '../wav';
@@ -123,9 +124,10 @@ describe('Silero VAD engine: a real process, started through nice', () => {
         adapter: createStubAdapter(),
         timeline: captureTapTimeline(),
         source: openPcmSource({ container: 'raw', path: writeTap(dir, samples), sampleRateHz: TAP_RATE }),
-        vad: createSileroVad(config, { log }),
+        vad: createSileroVad(config, { log, captureWorkerPid: NO_CAPTURE_WORKER }),
         sessionScratchDir: dir,
         log,
+        tapLost: NO_TAP_SIGNAL,
       });
       const report = await runner.step({ final: true });
       return { flags: report.qaFlags, chunks: runner.checkpoint().chunks.map((chunk) => [chunk.startMs, chunk.endMs]) };

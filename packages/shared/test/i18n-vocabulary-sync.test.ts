@@ -133,11 +133,13 @@ describe('i18n ↔ sim/vocabulary.ts (D52)', () => {
 
   // Backend task W16 (GP-06; 2026-10-04 01_specs §13.1, §19.2): nine audit types the Core server
   // writes, in the existing eight categories; no event type was added.
-  it('AuditType: 63 values; the nine task-3 capture types and STT_CONFIG_CHANGED sit in the existing categories (M2-W7, M6 row 113)', () => {
+  it('AuditType: 67 values; the nine task-3 capture types, STT_CONFIG_CHANGED and the four of the camera search sit in the existing categories (M2-W7, M6 row 113, R-9..R-11 row 132)', () => {
     // Task 3 M2-W7 (blueprint row 48; C3 §5.2/§5.3): 53 -> 62. Each new type joins an EXISTING
     // category (no new AuditCategory), and each is labelled in `common.auditType` (checked above).
     // Task 3 M6 (blueprint row 113; C3 §2.5): 62 -> 63 with STT_CONFIG_CHANGED, category DEVICE.
-    expect(values(V.AuditType)).toHaveLength(63);
+    // Task 3 R-9..R-11 (blueprint row 132, D106; C3 §5.2, §10.1): 63 -> 67 with the four types of the
+    // camera search, the connection test, the adoption and the no-device warning.
+    expect(values(V.AuditType)).toHaveLength(67);
     expect(values(V.AuditCategory)).toHaveLength(8);
     expect(values(V.SimEventType)).toHaveLength(46);
     const added = {
@@ -155,8 +157,17 @@ describe('i18n ↔ sim/vocabulary.ts (D52)', () => {
       expect(V.AuditType[type]).toBe(type);
       expect(V.AUDIT_TYPE_CATEGORY[type]).toBe(added[type]);
     }
-    expect(values(V.AuditType).slice(-10, -1)).toEqual(Object.keys(added));
-    expect(values(V.AuditType).at(-1)).toBe('STT_CONFIG_CHANGED');
+    expect(values(V.AuditType).slice(-14, -5)).toEqual(Object.keys(added));
+    expect(values(V.AuditType).at(-5)).toBe('STT_CONFIG_CHANGED');
     expect(V.AUDIT_TYPE_CATEGORY.STT_CONFIG_CHANGED).toBe('DEVICE');
+    // C3 §5.3 (erratum PE-121-09): exactly four entries, each in an EXISTING category.
+    const discovery = {
+      CAPTURE_DISCOVERY_SEARCHED: 'DEVICE',
+      CAPTURE_CONNECTION_TESTED: 'SECURITY',
+      CAPTURE_CANDIDATE_ADOPTED: 'DEVICE',
+      CAPTURE_DEVICE_UNREACHABLE: 'DEVICE',
+    } as const satisfies Partial<Record<V.AuditType, V.AuditCategory>>;
+    expect(values(V.AuditType).slice(-4)).toEqual(Object.keys(discovery));
+    for (const type of Object.keys(discovery) as (keyof typeof discovery)[]) expect(V.AUDIT_TYPE_CATEGORY[type]).toBe(discovery[type]);
   });
 });

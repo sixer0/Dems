@@ -88,6 +88,14 @@ export const SHA256_HEX_PATTERN = /^[0-9a-f]{64}$/;
  */
 export const HARDWARE_DEVICE_ID_PATTERN = /^[A-Z][A-Z0-9-]{0,31}$/;
 
+/**
+ * A microphone input of the device selector: `MIC-NN`, the numbered form a camera has (`CAM-NN`).
+ * The built-in pair is `MIC-01` / `MIC-02`; a microphone registered later (the local microphone of
+ * the development operation is `MIC-03`) is an input under its own device ID (decisions D106 (4),
+ * D115 (2)). It is the stored rule too (`capture_devices_id_check`: `^MIC-[0-9]{2,}$`).
+ */
+export const MIC_INPUT_ID_PATTERN = /^MIC-\d{2,}$/;
+
 /** Alert `ALR-NNNNNN`, e.g. `ALR-000042` (the simulator's item counter). */
 export const ALERT_ID_PATTERN = /^ALR-\d{6,}$/;
 

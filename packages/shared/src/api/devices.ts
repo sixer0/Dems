@@ -20,19 +20,21 @@
  * `MIC-02`, `GNSS`, `TPM`, `FRONT-PANEL`), never a paired device of the registry (`DEV-NNNN`).
  */
 import { z } from 'zod';
-import { MicInputId, TrackId } from '../domain/enums';
+import { TrackId } from '../domain/enums';
 import { AuditType, DeviceCommand, Permission } from '../sim/vocabulary';
 import { API_BASE_PATH } from './constants';
 import {
   AUTHENTICATED_ACCESS,
   CORE_SERVER_ONLY,
+  CoreApiAccessCondition,
   CoreApiAuditNone,
   CoreApiMode,
   CoreApiTag,
+  WEB_CONSOLE_ONLY_REASON,
   permissionAccess,
   type CoreApiRegistryOperation,
 } from './contract-model';
-import { BASIC_403_EXAMPLES, ERROR_EXAMPLES, deniedExamples, simRefusalExample } from './example-parts';
+import { BASIC_403_EXAMPLES, ERROR_EXAMPLES, apiErrorExample, deniedExamples, simRefusalExample } from './example-parts';
 import type { OperationExamples } from './examples';
 import {
   INVALID_INPUT,
@@ -46,8 +48,9 @@ import {
   hostedNote,
   notPermitted,
 } from './operation-parts';
-import { HARDWARE_DEVICE_ID_PATTERN } from './patterns';
+import { HARDWARE_DEVICE_ID_PATTERN, MIC_INPUT_ID_PATTERN } from './patterns';
 import { trimmedText } from './schema-parts';
+import { apiText } from './text';
 import { EXAMPLE_SLICES, STATE_EXAMPLE_IDS } from './state-examples';
 import { REPLICATED_SLICE_SCHEMAS } from './state-slices';
 
@@ -114,7 +117,7 @@ export type CaptureConfigCameraUpdate = z.output<typeof CaptureConfigCameraUpdat
 /** One mic line of the whole-config update (op 78). The PRIMARY role itself moves through op 80. */
 export const CaptureConfigMicUpdateSchema = z
   .strictObject({
-    inputId: z.enum(MicInputId),
+    inputId: z.string().regex(MIC_INPUT_ID_PATTERN).describe('A mic input of the selector, `MIC-NN`.'),
     deviceId: z.string().regex(HARDWARE_DEVICE_ID_PATTERN).describe('A capture device of the registry, e.g. `MIC-01`.'),
     transport: trimmedText(32)
       .optional()
@@ -141,15 +144,36 @@ export const CaptureCameraSourceRequestSchema = z
 export type CaptureCameraSourceRequest = z.output<typeof CaptureCameraSourceRequestSchema>;
 
 /**
- * Request body of op 89 (`setCaptureDeviceCredential`; SEC35-01; RK-12; specs C-N8). Both fields
+ * The characters of a camera credential (`C3 §2.3` op 89, §2.6 ops 95 and 96; erratum PE-128-27;
+ * SEC35-35): printable ASCII, and for the username none of `<`, `>`, `&`, `"`, `'` and backslash.
+ * Anything else is `422 INVALID_INPUT` before any network request. A limit of this phase: a camera
+ * whose password holds a non-ASCII character cannot be tested or stored.
+ */
+export const CAPTURE_CREDENTIAL_USERNAME_PATTERN = /^[\x20\x21\x23-\x25\x28-\x3B\x3D\x3F-\x5B\x5D-\x7E]+$/;
+export const CAPTURE_CREDENTIAL_SECRET_PATTERN = /^[\x20-\x7E]+$/;
+/** The longest camera username: the bound of the stored column (`capture_device_credentials`; decision D117). */
+export const CAPTURE_CREDENTIAL_USERNAME_MAX_LENGTH = 120;
+export const CAPTURE_CREDENTIAL_SECRET_MAX_LENGTH = 1024;
+
+/**
+ * Request body of op 89 (`setCaptureDeviceCredential`; SEC35-01; RK-12; specs C-N8), and the
+ * `credential` member of ops 95 and 96 (`C3 §2.6`: one schema for the three). Both fields
  * are **write-only**: the answer, every slice, every log line and the audit row carry none of them,
  * and no operation ever returns them. The store is encrypted at rest (`dbc-3 §B.3`) and read only
  * through the single owning module plus the audited supervisor reveal path (SEC35-02).
  */
 export const CaptureCredentialWriteRequestSchema = z
   .strictObject({
-    username: trimmedText(255).describe('Camera credential username. Write-only: never returned, logged or audited (RK-12).'),
-    secret: trimmedText(1024).describe('Camera credential secret. Write-only: never returned, logged or audited (RK-12; C-N8).'),
+    username: trimmedText(CAPTURE_CREDENTIAL_USERNAME_MAX_LENGTH)
+      .regex(CAPTURE_CREDENTIAL_USERNAME_PATTERN)
+      .describe('Camera credential username: 1 to 120 printable ASCII characters without `<`, `>`, `&`, `"`, `\'` and backslash. Write-only: never returned, logged or audited (RK-12).'),
+    // NEVER trimmed, never altered (decision D117): a password is stored and sent exactly as it was typed,
+    // leading and trailing spaces included. The text rule, the length and the character set are all that is checked.
+    secret: apiText()
+      .min(1)
+      .max(CAPTURE_CREDENTIAL_SECRET_MAX_LENGTH)
+      .regex(CAPTURE_CREDENTIAL_SECRET_PATTERN)
+      .describe('Camera credential secret: 1 to 1024 printable ASCII characters, taken exactly as sent (never trimmed). Write-only: never returned, logged or audited (RK-12; C-N8).'),
   })
   .describe(
     'Request body of `POST /api/v1/capture/devices/{id}/credential` (C3 §2.3 op 89). A write-only pair: the value never comes back on any path.',
@@ -364,7 +388,8 @@ const CONFIG_LOCKED = {
 const UNKNOWN_CAPTURE_DEVICE = { description: 'The capture registry has no device with this ID (NOT_FOUND).', schema: 'ApiError' } as const;
 const CAPTURE_DEVICE_PARAM = {
   name: 'id',
-  description: 'A capture device of the registry (`dbc-3 §B.2`): `CAM-01`, `CAM-02`, `MIC-01`, `MIC-02`, `POE-SWITCH`.',
+  description:
+    'A registered capture device (`dbc-4 §N`): a built-in one (`CAM-01`, `CAM-02`, `MIC-01`, `MIC-02`, `POE-SWITCH`) or one that operation 96 added (`CAM-03` and up). Never a candidate id of a camera search.',
   pattern: HARDWARE_DEVICE_ID_PATTERN,
 } as const;
 
@@ -524,6 +549,7 @@ export const CAPTURE_CREDENTIAL_OPERATION = {
   summary: 'Store a camera credential (write-only)',
   description: [
     'Stores the `{ username, secret }` pair for the camera in the path, encrypted at rest (`dbc-3 §B.3`). Needs CAPTURE_CONFIG (SUPERVISOR, TECHNICIAN — D4 OD-10) and is idle-only (`409 CAPTURE_CONFIG_LOCKED`, no audit row — SEC35-19).',
+    '**Web console only** (`C3 §3.1`, erratum PE-121-05; D80(3)): the condition `WEB_CONSOLE_SESSION` refuses a session of a tablet or a phone with `403 NOT_PERMITTED`, `details.reason: WEB_CONSOLE_ONLY` and one ACCESS_DENIED row, before the body is used. `{id}` is always a registered capture device: a candidate of a camera search is adopted with operation 96, which stores its credential in the same transaction. Both fields are printable ASCII. On the Core server the answer is `503 NOT_READY` with `details.reason: CREDENTIAL_STORE_NOT_READY` while the Core credential store is not available; nothing is stored then.',
     '**Write-only** (RK-12; specs C-N8; M2-CRD-1): the answer is the plain `CaptureConfig` snapshot and never echoes either field; no slice, log line or audit row carries the username, the secret, the ciphertext, the nonce or the key; no operation returns a credential. The CAPTURE_CREDENTIAL_SET row names `deviceId` (and the optional operationId/permission) only (`C3 §5.2`).',
     'Reading the store belongs to the single owning module and the audited supervisor reveal path (`dbc-3 §B.3/§D`; SEC35-02; the CAPTURE_CREDENTIAL_REVEALED row carries `deviceId` and a SCREAMING_SNAKE reason, never the value).',
     SIM_V2_NOTE,
@@ -535,12 +561,16 @@ export const CAPTURE_CREDENTIAL_OPERATION = {
     200: { description: 'The capture-config snapshot. Neither credential field is ever echoed.', schema: 'CaptureConfigSlice' },
     400: INVALID_JSON,
     401: NOT_SIGNED_IN,
-    403: notPermitted(Permission.CAPTURE_CONFIG),
+    403: notPermitted(
+      Permission.CAPTURE_CONFIG,
+      `the operator's session is bound to a paired tablet or phone (NOT_PERMITTED, \`details.reason: ${WEB_CONSOLE_ONLY_REASON}\`; one ACCESS_DENIED audit row; refused before the body is used)`,
+    ),
     404: UNKNOWN_CAPTURE_DEVICE,
     409: CONFIG_LOCKED,
     422: INVALID_INPUT,
   },
-  access: CAPTURE_CONFIG,
+  // Task 3 R-9 (blueprint row 132, D106; C3 §3.1): CAPTURE_CONFIG on a web console session only.
+  access: { ...CAPTURE_CONFIG, conditions: [CoreApiAccessCondition.WEB_CONSOLE_SESSION] },
   audit: { success: AuditType.CAPTURE_CREDENTIAL_SET, ...DENIED },
   services: CORE_SERVER_ONLY,
 } as const satisfies CoreApiRegistryOperation;
@@ -737,14 +767,26 @@ export const DEVICE_EXAMPLES: Readonly<Record<string, OperationExamples>> = {
     request: {
       pair: {
         summary: 'Store the ONVIF credential pair of CAM-01 (placeholders; the value never returns)',
-        value: { username: '<username>', secret: '<secret>' } satisfies CaptureCredentialWriteRequest,
+        value: { username: 'USERNAME', secret: 'SECRET' } satisfies CaptureCredentialWriteRequest,
       },
     },
     responses: {
       200: { updated: { summary: 'The capture-config snapshot (no credential echoed)', value: EXAMPLE_SLICES.captureConfig } },
       ...BODY_REFUSALS,
       401: SIGNED_OUT,
-      403: deniedExamples('setCaptureDeviceCredential', 'CAPTURE_CONFIG', 'INVESTIGATOR'),
+      403: {
+        ...deniedExamples('setCaptureDeviceCredential', 'CAPTURE_CONFIG', 'INVESTIGATOR'),
+        webConsoleOnly: {
+          summary: 'A tablet or phone session on a web-console-only operation',
+          description: 'The caller holds CAPTURE_CONFIG, but the session is bound to a paired device. One ACCESS_DENIED row is written; the body is not used.',
+          value: apiErrorExample('NOT_PERMITTED', 'Your role does not allow this action. The attempt was audited.', {
+            operationId: 'setCaptureDeviceCredential',
+            permission: 'CAPTURE_CONFIG',
+            role: 'TECHNICIAN',
+            reason: WEB_CONSOLE_ONLY_REASON,
+          }),
+        },
+      },
       404: NOT_FOUND,
       409: {
         locked: simRefusalExample(

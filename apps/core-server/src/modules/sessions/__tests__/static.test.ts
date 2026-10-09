@@ -230,6 +230,7 @@ describe('what the module depends on', () => {
         if (source.startsWith('../')) imported.add(source);
       }
     }
-    expect([...imported].sort()).toEqual(['../../db/mapping', '../../db/schema', '../../engine', '../../plugins/error-envelope', '../../plugins/permission-guard']);
+    // `../../capture-notices`: the gate of a pre-check run (task 3 row 133; C3 §3.1).
+    expect([...imported].sort()).toEqual(['../../capture-notices', '../../db/mapping', '../../db/schema', '../../engine', '../../plugins/error-envelope', '../../plugins/permission-guard']);
   });
 });

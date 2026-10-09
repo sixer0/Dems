@@ -2,7 +2,7 @@
 // D72(d)). The known-offset check passes with the shared constant and FAILS with any other origin
 // (report §0 rule 3). The companion file `media-time-wrong-constant.test.ts` replaces the constant
 // of `@dems/shared` itself and shows the same check failing.
-import { CAPTURE_AUDIO_SAMPLE_RATE_HZ, CAPTURE_MEDIA_TIME_ORIGIN_SAMPLES } from '@dems/shared/api';
+import { CAPTURE_AAC_FRAME_SAMPLES, CAPTURE_AUDIO_SAMPLE_RATE_HZ, CAPTURE_MEDIA_TIME_ORIGIN_SAMPLES } from '@dems/shared/api';
 import { describe, expect, it } from 'vitest';
 import { AudioSourceKind, captureTapTimeline, chunkSecondsToMediaMs, decodedFileTimeline, msToSamples, sampleToMediaMs, snapToGrid, type AudioTimeline } from '../pipeline/media-time';
 import { TranscriberError } from '../types';
@@ -51,8 +51,19 @@ describe('row 77 known-offset check: a burst at a known tap sample lands at its 
     expect(half.segmentStartMs).not.toBe(EXPECTED_SEGMENT_START_MS);
   });
 
-  it('an origin that gives no frame grid is refused, never replaced by a guess', () => {
-    for (const origin of [0, -1, 1.5, Number.NaN]) expect(() => captureTapTimeline(origin)).toThrow(TranscriberError);
+  it('an origin that is no sample count is refused, never replaced by a guess', () => {
+    for (const origin of [-1, 1.5, Number.NaN]) expect(() => captureTapTimeline(origin)).toThrow(TranscriberError);
+  });
+
+  // CHANGED BY THE ROW-77 REVIEW (D-77-6, navigator finding N-14; coordinator instruction of row 78):
+  // this file used to hold "origin 0 is refused". The grid is now the AAC frame constant of the
+  // capture contract, so a capture contract with origin 0 (`delay_moov`) gives a valid timeline.
+  it('origin 0 is a legal capture contract: the grid stays one AAC frame, and tap sample n is file sample n', () => {
+    const zero = captureTapTimeline(0);
+    expect([zero.originSamples, zero.gridSamples, sampleToMediaMs(zero, 48_000)]).toEqual([0, CAPTURE_AAC_FRAME_SAMPLES, 1000]);
+    expect(captureTapTimeline().gridSamples).toBe(CAPTURE_AAC_FRAME_SAMPLES);
+    // The grid does not follow the origin any more: another priming length keeps the frame grid.
+    expect(captureTapTimeline(2112).gridSamples).toBe(CAPTURE_AAC_FRAME_SAMPLES);
   });
 });
 

@@ -54,7 +54,7 @@ import { linkProblems, readEvents, readHead, readTrail, verifyTrail } from '../.
 import { createHost, withoutNegativeZeros, type Host } from '../../../../test/support/seed';
 import { actorAuth } from '../../../engine';
 import { storedSlices } from '../../../../test/support/engine';
-import { DIAGNOSTICS, SERVICES_RESTART, SYSTEM_STATUS, TICK_MS, UPDATE, bodyOf, bootedServer, content, whole, type BootedServer } from './support';
+import { DIAGNOSTICS, SERVICES_RESTART, SYSTEM_STATUS, TICK_MS, UPDATE, bodyOf, bootedServer, content, servicesAsRead, whole, type BootedServer } from './support';
 
 // On a loaded host a database test can pass the runner's default limit: a cap, not a wait.
 vi.setConfig({ testTimeout: 120_000, hookTimeout: 180_000 });
@@ -251,7 +251,7 @@ describe('restartServices: the restart is complete with its row', () => {
     const services = server.engine.slice('services');
     expect(services).toEqual(built.state.services);
     expect(services).toEqual(reference.state().services);
-    expect(services.map((service) => [service.status, service.startedAt])).toEqual(Array.from({ length: 16 }, () => ['RUNNING', at]));
+    expect(services.map((service) => [service.status, service.startedAt])).toEqual(Array.from({ length: 17 }, () => ['RUNNING', at]));
 
     // Five seconds of ticks: no service goes down or comes up, nothing else is written.
     for (let elapsed = 0; elapsed < 5_000; elapsed += TICK_MS) await tickBoth();
@@ -260,7 +260,7 @@ describe('restartServices: the restart is complete with its row', () => {
     await server.app.pipeline.drain();
     expect(await server.trailLength()).toBe(trail + 1);
     expect((await storedSlices(server.owner)).services).toEqual(services);
-    console.info(`[w40] restartServices: 200 { restarted: 16 }; all 16 services started at the command's instant; stored row = the shared transition's (hash ${expectedRow.hash.slice(0, 12)}…) = the reference simulator's content; 100 ticks afterwards: no service changed, no row`);
+    console.info(`[w40] restartServices: 200 { restarted: 17 }; all 17 services started at the command's instant; stored row = the shared transition's (hash ${expectedRow.hash.slice(0, 12)}…) = the reference simulator's content; 100 ticks afterwards: no service changed, no row`);
   });
 });
 
@@ -348,7 +348,7 @@ describe('startSoftwareUpdate: the six steps resolve on the engine\'s ticks, as 
     expect(state.security.controls.find((control) => control.id === 'SIGNED_FIRMWARE')?.detail).toBe('v2.5.0');
     // The reboot step restarted every service at its own instant; before it they ran since the last restart.
     expect(new Set(servicesBefore).size).toBe(1);
-    expect(state.services.map((service) => service.startedAt)).toEqual(Array.from({ length: 16 }, () => rebootAt));
+    expect(state.services.map((service) => service.startedAt)).toEqual(Array.from({ length: 17 }, () => rebootAt));
     expect(state.services.map((service) => service.startedAt)).toEqual(reference.state().services.map((service) => service.startedAt));
     expect(state.device.softwareVersion).toBe(reference.state().device.softwareVersion);
 
@@ -369,7 +369,7 @@ describe('startSoftwareUpdate: the six steps resolve on the engine\'s ticks, as 
     // The read shows it; a further call starts nothing, because no version is available.
     const read = await server.get('SUPERVISOR', SYSTEM_STATUS);
     const committedNow = server.engine.state();
-    expect(read.json()).toEqual(wire({ device: committedNow.device, services: committedNow.services, update: committedNow.update, diagnostics: committedNow.diagnostics, settings: committedNow.settings }));
+    expect(read.json()).toEqual(wire({ device: committedNow.device, services: servicesAsRead(committedNow.services, server.app), update: committedNow.update, diagnostics: committedNow.diagnostics, settings: committedNow.settings }));
     expect((read.json() as { update: unknown }).update).toMatchObject({ state: 'PASS', currentVersion: '2.5.0', availableVersion: null, activeSlot: 'B' });
     expect((read.json() as { device: unknown }).device).toMatchObject({ softwareVersion: '2.5.0' });
     expect(validateCoreApiResponse('getSystemStatus', 200, read.json())).toEqual({ ok: true });

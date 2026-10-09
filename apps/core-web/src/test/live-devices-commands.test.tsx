@@ -67,7 +67,11 @@ const TECHNICIAN_SESSION: Pick<AuthSessionInfo, 'operator' | 'permissions'> = {
 }
 
 const L = en.devices.live
-const RESTARTED = (name: string) => L.actions.restarted.replace('{{name}}', name)
+// Task 3, decision D100 (2) (blueprint row 137; C3 §3 op 48; OD-22): on a Core server a CAMERA's Restart is
+// the confirmed PoE cycle. The kebab asks for the confirmation, then sends operation 48 with
+// `{ confirm: true }`; its toast is the cycle's. Every other rule of this file (LB-1, LB-5, LB-6, LB-10,
+// CL-22) is proven on that same path.
+const RESTARTED = (name: string) => en.devices.selector.poe.requested.replace('{{name}}', name)
 const TEST_SENT = (name: string) => L.actions.testSignalSent.replace('{{name}}', name)
 const IDENTIFYING = (name: string) => en.devices.actions.identifying.replace('{{name}}', name)
 const FAILED = en.devices.actions.failed
@@ -113,6 +117,11 @@ async function openMenu(deviceId: string): Promise<HTMLElement> {
 async function press(deviceId: string, item: RegExp): Promise<void> {
   const menu = await openMenu(deviceId)
   fireEvent.click(within(menu).getByRole('menuitem', { name: item }))
+}
+/** Live mode, a camera: Restart from the kebab, then the confirmation of the PoE cycle (D100 (2)). */
+async function pressRestart(deviceId: string): Promise<void> {
+  await press(deviceId, /^Restart/)
+  fireEvent.click(await screen.findByTestId('camera-restart-confirm'))
 }
 const requests = (operationId: string) => bed!.fake.log.requestsOf(operationId)
 const pageRecords = () => webErrorSink.records().filter((record) => record.source === PAGE_SOURCE)
@@ -171,11 +180,15 @@ describe('B-7 success (§8.3; LB-3; §3.2)', () => {
     expect(menu.textContent ?? '').not.toMatch(/simulat/i)
     fireEvent.click(within(menu).getByRole('menuitem', { name: /^Restart/ }))
     await waitFor(() => expect(screen.queryByRole('menu')).not.toBeInTheDocument())
+    // D100 (2): nothing is sent until the operator confirmed the PoE cycle.
+    const confirm = await screen.findByTestId('camera-restart-confirm')
+    expect(requests('restartDevice')).toHaveLength(0)
+    fireEvent.click(confirm)
 
     await waitFor(() => expect(toastWith(RESTARTED('Camera 1'))).toHaveLength(1))
     expect(command.deltaSent).toBe(true)
     expect(requests('restartDevice')).toHaveLength(1)
-    expect(requests('restartDevice')[0]).toMatchObject({ method: 'POST', path: '/api/v1/device/CAM-01/restart', params: { id: 'CAM-01' } })
+    expect(requests('restartDevice')[0]).toMatchObject({ method: 'POST', path: '/api/v1/device/CAM-01/restart', params: { id: 'CAM-01' }, body: { confirm: true } })
     expect(requests('testDeviceSignal')).toHaveLength(0)
     expect(requests('identifyDevice')).toHaveLength(0)
     // The tile shows the Core's state of the device: the delta was applied before the toast (CL-16).
@@ -203,7 +216,7 @@ describe('B-7 refusal (§6.2; AC-C-48; LB-5)', () => {
     const { bed } = await liveDevices()
     bed.fake.answerOnce('restartDevice', bed.fake.example('restartDevice', 403, 'notPermitted'))
     const danger = vi.spyOn(toast, 'danger')
-    await press('CAM-02', /^Restart/)
+    await pressRestart('CAM-02')
 
     await waitFor(() => expect(toastWith(DENIED)).toHaveLength(1))
     expect(toastWith(DENIED)[0]).toContain(REQUIRES(en.common.roles.TECHNICIAN))
@@ -232,7 +245,7 @@ describe('B-7 refusal (§6.2; AC-C-48; LB-5)', () => {
     const { bed } = await liveDevices()
     vi.spyOn(console, 'error').mockImplementation(() => undefined)
     bed.fake.answerOnce('restartDevice', bed.fake.example('restartDevice', 409, 'recordingActive'))
-    await press('CAM-02', /^Restart/)
+    await pressRestart('CAM-02')
     await waitFor(() => expect(toastWith(FAILED)).toHaveLength(1))
     expect(toastWith(DENIED)).toHaveLength(0)
     expect(toastWith(OFFLINE)).toHaveLength(0)
@@ -240,7 +253,7 @@ describe('B-7 refusal (§6.2; AC-C-48; LB-5)', () => {
     const records = pageRecords()
     expect(records).toHaveLength(1)
     expect(records[0]).toMatchObject({ level: 'error', message: 'A device command of Devices & Inputs was not carried out.' })
-    expect(records[0]?.context).toMatchObject({ deviceId: 'CAM-02', command: 'RESTART', errorName: 'SimTransitionError', code: 'RECORDING_ACTIVE' })
+    expect(records[0]?.context).toMatchObject({ deviceId: 'CAM-02', command: 'POE_CYCLE', errorName: 'SimTransitionError', code: 'RECORDING_ACTIVE' })
     expect(String(records[0]?.context?.correlationId)).toMatch(/^dev-/)
     // Rule M14: neither the server's text nor a stack reaches the record.
     expect(JSON.stringify(records[0])).not.toContain('Restart is unavailable while recording')
@@ -262,7 +275,7 @@ describe('B-7 outage (LB-6, CL-22; LB-10)', () => {
   it('a request that gets no answer shows "Core server unreachable. Nothing was changed.", no success toast, and the control returns to idle', async () => {
     const { bed } = await liveDevices()
     bed.fake.failOnce('restartDevice')
-    await press('CAM-01', /^Restart/)
+    await pressRestart('CAM-01')
     await waitFor(() => expect(toastWith(OFFLINE)).toHaveLength(1))
     expect(toastWith(RESTARTED('Camera 1'))).toHaveLength(0)
     expect(toastWith(FAILED)).toHaveLength(0)
@@ -277,7 +290,7 @@ describe('B-7 outage (LB-6, CL-22; LB-10)', () => {
     await bed.flush()
     expect(page.live.link).toBe(LiveLinkState.OFFLINE)
     for (let pressNumber = 0; pressNumber < 5; pressNumber += 1) {
-      await press('CAM-01', /^Restart/)
+      await pressRestart('CAM-01')
       await bed.flush()
     }
     await waitFor(() => expect(toastWith(OFFLINE)).toHaveLength(1))
@@ -344,7 +357,7 @@ describe('LB-1 pending (busy at once, spinner late)', () => {
   it('while a command is out the device\'s three commands are disabled, a second press sends nothing, the head is busy, and the spinner replaces the icon only after LIVE_PENDING_REVEAL_MS', async () => {
     const { bed } = await liveDevices()
     const held = bed.fake.hold('restartDevice')
-    await press('CAM-01', /^Restart/)
+    await pressRestart('CAM-01')
     await waitFor(() => expect(requests('restartDevice')).toHaveLength(1))
     await bed.flush()
     // Busy at once, same look: no spinner yet.

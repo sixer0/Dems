@@ -39,6 +39,7 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { describeError } from '../plugins/logger';
 import { CAPTURE_IPC_DEFAULTS } from '@dems/capture-protocol';
+import { mountCaptureFence } from './fence';
 import { forwardCaptureEvents } from './forwarder';
 import { createProcessLauncher, unconfiguredLauncher } from './ipc';
 import { createCaptureSupervisor } from './supervisor';
@@ -49,6 +50,10 @@ export { CAPTURE_WARNING_CLEAR_HOLD_MS, ForwarderReportCode, forwardCaptureEvent
 export { createProcessLauncher, unconfiguredLauncher, type ProcessLauncherOptions } from './ipc';
 export { MAX_SESSION_ID_CHARS, OUTPUT_EXISTS, createCaptureSupervisor } from './supervisor';
 export { createSystemTimers } from './timers';
+// The evidence signer (row 83): reached through this index like the rest of the closed unit.
+export * from './signer';
+// The camera file read again (row 59): box walk, fragment chain, tail validation of RECOVERY.
+export * from './fragments';
 export {
   CapturePhase,
   CaptureRefusal,
@@ -150,6 +155,26 @@ export const captureModule: FastifyPluginAsync = async (app) => {
     },
   };
   app.seams.provide('capture', seam);
+
+  // The capture fence (blueprint row 136; capture spec §A.1.2): the boot step that refuses an
+  // unsafe combination of capture mode, demo controls, development flag and stored sources, and
+  // the device registry of the running capture operation. Its lines are written here: this is
+  // the one file of the folder that logs.
+  mountCaptureFence(app, {
+    timers: createSystemTimers(),
+    sinks: {
+      info: (fields, message) => app.log.info(fields, message),
+      warn: (fields, message) => app.log.warn(fields, message),
+      error: (fields, message) => app.log.error(fields, message),
+      persist: (entry) => app.errorLog.append(entry),
+    },
+    // A device row the boot registered is read by the engine at its next start: started again here, once.
+    async reloadState() {
+      if (!app.seams.has('engine')) return;
+      await app.engine.stop();
+      await app.engine.start('resync');
+    },
+  });
 
   app.addHook('onClose', async () => {
     await seam.shutdown();

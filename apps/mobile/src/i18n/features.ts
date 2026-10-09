@@ -1,4 +1,5 @@
 import { auditEn } from '@/features/audit/i18n';
+import { captureSelectorEn } from '@/features/capture-selector/i18n';
 import { dashboardEn } from '@/features/dashboard/i18n';
 import { devicesEn } from '@/features/devices/i18n';
 import { evidenceEn } from '@/features/evidence/i18n';
@@ -14,6 +15,7 @@ import { sessionSummaryEn } from '@/features/session-summary/i18n';
 import { sessionsEn } from '@/features/sessions/i18n';
 import { settingsEn } from '@/features/settings/i18n';
 import { storageEn } from '@/features/storage/i18n';
+import { transcriptionEn } from '@/features/transcription/i18n';
 import { navigationEn } from '@/navigation/i18n';
 import type { ResourceTree } from './resources';
 
@@ -27,6 +29,7 @@ import type { ResourceTree } from './resources';
  */
 export const FEATURE_RESOURCES: Readonly<Record<string, ResourceTree>> = {
   audit: auditEn,
+  'capture-selector': captureSelectorEn,
   dashboard: dashboardEn,
   devices: devicesEn,
   evidence: evidenceEn,
@@ -43,4 +46,5 @@ export const FEATURE_RESOURCES: Readonly<Record<string, ResourceTree>> = {
   sessions: sessionsEn,
   settings: settingsEn,
   storage: storageEn,
+  transcription: transcriptionEn,
 };

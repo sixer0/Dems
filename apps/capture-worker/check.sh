@@ -1,6 +1,7 @@
 #!/bin/sh
-# Static rules of the capture worker's C sources (blueprint row 58; check M3-SR-2, row 58 part;
-# capture spec C.4, E, A.2; errata AU2-07, PE-111-02, PE-111-03; register W1-C1).
+# Static rules of the capture worker's C sources (blueprint rows 58 and 59; checks M3-SR-2 (row 58
+# part) and M3-SR-3 (worker part); capture spec C.2, C.4, C.5, E, A.2; errata AU2-07, PE-111-02,
+# PE-111-03; register W1-C1).
 #
 #   sh check.sh <source dir>     the rules over one directory of sources; exit 0 only if all hold
 #   sh check.sh --selftest       the rules over copies of src/ with ONE planted line each
@@ -57,6 +58,23 @@ rules() {
   [ "$(count '[ (]link([a-z]')" = "1" ] && [ "$(files '[ (]link([a-z]')" = "sink.c" ] || say "D58-2: the final name of a camera file is reached by exactly one link() in sink.c"
   [ "$(count 'rename(')" = "1" ] && [ "$(files 'rename(')" = "ipc.c" ] || say "D58-1: rename() is used for the log rotation only"
   [ "$(count 'fopen([^)]*, "w[b+]*")')" = "1" ] && [ "$(files 'fopen([^)]*, "w[b+]*")')" = "audio.c" ] || say "D58-1: a stream opened for (over)writing other than the diagnostic manifest"
+  # Row 59 (decisions D59-2, D59-3): the writer of the camera files.
+  #   - ONE truncation in the worker: sink.c cutting a failed write back to the last good length.
+  #     Nothing truncates by path, and nothing else calls it.
+  [ "$(count 'ftruncat[e](')" = "1" ] && [ "$(files 'ftruncat[e](')" = "sink.c" ] || say "D59-3: exactly one ftruncate(), in sink.c (a failed write goes back to the last good length)"
+  [ "$(count '[^f]truncat[e](')" = "0" ] || say "D59-3: truncate() by path in the worker"
+  grep -q 'st.st_size > good && ftruncate(s->fd, good)' "$dir/sink.c" 2>/dev/null || say "D59-3: the truncation is not bound to the last good length"
+  #   - the sync of a fragment is the strongest the platform has, and the directory is synced after the link.
+  [ "$(count 'fcntl(fd, F_FULLFSYN[C])')" = "1" ] && [ "$(files 'fcntl(fd, F_FULLFSYN[C])')" = "sink.c" ] || say "D59-2: the full sync of a fragment is missing from sink.c"
+  [ "$(count 'sync_dir(s->path)')" = "1" ] || say "D59-2: the directory is not synced after the link"
+  #   - the write-fault seam is set by nothing but the proof build, behind its own switch.
+  [ "$(count 'sink_fault_hook [=] ')" = "1" ] || say "D59-4: the write-fault seam is assigned outside the proof build"
+  [ "$(grep -B1 'sink_fault_hook = proof_write_fault;' "$dir/capture_worker.c" 2>/dev/null | head -1)" = "#ifdef DEMS_PROOF_WRITE_FAULT" ] || say "D59-4: the write-fault seam is not behind the proof-build switch"
+  [ "$(count 'DEMS_PROOF_KEEP_TORN_TAI[L]')" = "1" ] && [ "$(files 'DEMS_PROOF_KEEP_TORN_TAI[L]')" = "sink.c" ] || say "D59-4: the no-truncation control is named outside its one place in sink.c"
+  # M3-SR-3 (worker part): the options set on an input or an output context are the decided ones.
+  # The muxer gets movflags (the four pinned flags), flush_packets and min_frag_duration, nothing else.
+  opts=$(cat "$dir"/*.c 2>/dev/null | grep -o 'av_dict_set\(_int\)\{0,1\}(&o, "[a-z_]*"' | sed 's/.*"\(.*\)"/\1/' | sort -u | tr '\n' ' ' | sed 's/ $//')
+  [ "$opts" = "flush_packets listen_timeout min_frag_duration movflags protocol_whitelist rtsp_flags" ] || say "SR-3: the options the worker sets are not the decided set: $opts"
   # F-2: the refusal of a non-TCP transport reads no message text of the library.
   [ "$(count 'not on whitelis[t]')" = "0" ] || say "F-2: the worker keys on a message text of libavformat"
 
@@ -66,6 +84,22 @@ rules() {
   [ "$(files 'STDOUT_FILENO')" = "ipc.c" ] || say "B.2: standard output is written outside ipc.c: $(files 'STDOUT_FILENO')"
   [ "$(count '[^fnsv]printf(\|puts(\|putchar(\|fputs(\|stdou[t]')" = "0" ] || say "B.2: a print to standard output (only frames go there)"
   [ "$(count 'geten[v](')" = "0" ] || say "B.2: the worker reads no environment variable"
+  return $fail
+}
+
+# NM-14 media fixtures (blueprint row 60; SEC35-23): the fake camera and the fake mics open no
+# listener and name no wildcard address; the fake camera pushes to 127.0.0.1 and nowhere else.
+# test-fixtures/negative-control/ is NOT covered: that vendored program exists to fail a check.
+fixture_rules() {
+  dir=$1
+  fail=0
+  say() { echo "check.sh: $dir: $1"; fail=1; }
+  # fake_cam_sr.py: the camera with hand-written sender reports (blueprint row 62; its request of 10:14:20Z).
+  count() { cat "$dir"/fake_cam.c "$dir"/fake_mic.c "$dir"/av_analyse.py "$dir"/fake_cam_sr.py 2>/dev/null | grep -c -- "$1"; }
+  [ "$(count '0\.0\.0\.[0]\|INADDR_AN[Y]\|rtsp:/[/]:\|\[:[:]\]')" = "0" ] || say "SEC35-23 (fixtures): a wildcard address in a fixture"
+  [ "$(count '[^a-z_]bin[d](\|[^a-z_]liste[n](\|[^a-z_]accep[t](\|"liste[n]"\|rtsp_flag[s]')" = "0" ] || say "SEC35-23 (fixtures): a media fixture opens a listener"
+  [ "$(grep -c 'strncmp(url, "rtsp://127.0.0.1:", 17)' "$dir/fake_cam.c" 2>/dev/null)" = "1" ] || say "SEC35-23 (fixtures): the fake camera's loopback-only URL guard is missing"
+  [ "$(grep -c 'a.url.startswith("rtsp://127.0.0.1:")' "$dir/fake_cam_sr.py" 2>/dev/null)" = "1" ] || say "SEC35-23 (fixtures): the sender-report camera's loopback-only URL guard is missing"
   return $fail
 }
 
@@ -88,7 +122,28 @@ if [ "${1:-}" = "--selftest" ]; then
     elif ! echo "$out" | grep -q ": $tag"; then echo "check.sh selftest: planted line $n was refused, but not by rule $tag: $out"; bad=1
     else echo "check.sh selftest: refused as required ($tag): $(echo "$out" | head -1 | sed "s|^check.sh: $dir: ||")"; fi
   done < test/static/planted.tsv
-  [ "$n" -ge 18 ] || { echo "check.sh selftest: expected at least 18 planted lines, found $n"; bad=1; }
+  [ "$n" -ge 23 ] || { echo "check.sh selftest: expected at least 23 planted lines, found $n"; bad=1; }
+  # The fixture rules, the same way: an untouched copy passes, each planted line is refused.
+  mkdir -p "$work/fix0"; cp test-fixtures/fake_cam.c test-fixtures/fake_mic.c test-fixtures/av_analyse.py test-fixtures/fake_cam_sr.py "$work/fix0/"
+  fixture_rules "$work/fix0" >/dev/null 2>&1 || { echo "check.sh selftest: an untouched copy of the fixtures is refused"; bad=1; }
+  m=0
+  for planted in 'fake_cam.c|static const char *planted = "rtsp://0.0.0.0:8555/cam";|a wildcard address' \
+                 'fake_mic.c|static int planted(int s) { return listen(s, 1); }|opens a listener' \
+                 'fake_cam.c|static void planted(AVDictionary **o) { av_dict_set(o, "rtsp_flags", "listen", 0); }|opens a listener' \
+                 'av_analyse.py|PLANTED = "0.0.0.0"|a wildcard address' \
+                 'fake_cam_sr.py|PLANTED = "rtsp://0.0.0.0:8555/cam"|a wildcard address'; do
+    m=$((m + 1))
+    file=${planted%%|*}; rest=${planted#*|}; line=${rest%|*}; want=${rest##*|}
+    dir="$work/fix$m"; mkdir -p "$dir"; cp "$work/fix0"/* "$dir/"
+    printf '%s\n' "$line" >> "$dir/$file"
+    out=$(fixture_rules "$dir" 2>&1)
+    if [ $? -eq 0 ]; then echo "check.sh selftest: planted fixture line $m ($file) was NOT refused: the rule cannot fail"; bad=1
+    elif ! echo "$out" | grep -q "$want"; then echo "check.sh selftest: planted fixture line $m was refused, but not by its rule: $out"; bad=1
+    else echo "check.sh selftest: refused as required (fixtures): $(echo "$out" | head -1 | sed "s|^check.sh: $dir: ||")"; fi
+  done
+  # The guard itself: a fake camera without its loopback-only check is refused.
+  mkdir -p "$work/fixg"; cp "$work/fix0"/* "$work/fixg/"; sed 's/strncmp(url, "rtsp:\/\/127.0.0.1:", 17)/0/' "$work/fix0/fake_cam.c" > "$work/fixg/fake_cam.c"
+  fixture_rules "$work/fixg" 2>&1 | grep -q "URL guard is missing" && echo "check.sh selftest: refused as required (fixtures): the fake camera without its loopback-only URL guard" || { echo "check.sh selftest: a fake camera without its URL guard was NOT refused"; bad=1; }
   rm -rf "$work"
   exit $bad
 fi
@@ -99,4 +154,5 @@ rules "$1" || exit 1
 n=$(grep -c 'use_editlis[t]\|negative_cts_offset[s]\|avoid_negative_t[s]' Makefile)
 [ "$n" = "1" ] || { echo "check.sh: Makefile: expected exactly 1 line with a forbidden mux option (the proof build), found $n"; exit 1; }
 grep -q 'DEMS_PROOF_MUX_EXTRA=.*use_editlis[t]=1.*capture-worker-negctl' Makefile || { echo "check.sh: Makefile: the forbidden option is not on the line of the negative-control build"; exit 1; }
-echo "check.sh: $1: static rules OK (AU2-07, N-10, C.4 forbidden options, W1-C1, H-4 one encoder, W-1, W-4, B.2, D58-1/2 exclusive create, F-2)"
+fixture_rules test-fixtures || exit 1
+echo "check.sh: $1: static rules OK (AU2-07, N-10, C.4 forbidden options, W1-C1, SR-3 mux options, H-4 one encoder, W-1, W-4, B.2, D58-1/2 exclusive create, D59-2 sync, D59-3 one truncation, D59-4 fault seam, F-2; fixtures: SEC35-23)"

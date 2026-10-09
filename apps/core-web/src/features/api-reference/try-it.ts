@@ -5,8 +5,8 @@
  *
  * | Mode | A request to | Goes |
  * |------|--------------|------|
- * | Live | `{page origin}/api/v1/*`, not one of the eight of AR-3a | To the network unchanged, with the browser's session cookie (`credentials: 'same-origin'`): the Core server answers as the signed-in operator and audits it. `sim.request` is never called |
- * | Live | One of the eight operations whose body or answer holds a secret | Nowhere: rejected before any request (`TryItRefusedError`, reason `SECRET`) |
+ * | Live | `{page origin}/api/v1/*`, not one of the ten of AR-3a | To the network unchanged, with the browser's session cookie (`credentials: 'same-origin'`): the Core server answers as the signed-in operator and audits it. `sim.request` is never called |
+ * | Live | One of the ten operations whose body or answer holds a secret | Nowhere: rejected before any request (`TryItRefusedError`, reason `SECRET`) |
  * | Live | Anything outside `{page origin}/api/v1` | Nowhere: `BlockedRequestError`, as in Simulated mode |
  * | Simulated, "Show Core-server endpoints" on | One of the 65 operations only the Core server answers | Nowhere: rejected before any request (`TryItRefusedError`, reason `CORE_SERVER`); the page never fabricates an answer (sim-fetch.ts) |
  *
@@ -32,9 +32,12 @@ import type { FetchLike, TryItExchange } from './sim-fetch'
  * `signInWithBiometric`), a pairing code (`issuePairingCode`), a device credential
  * (`redeemPairingCode`, `rotateDeviceCredential`). Two of task 3 (blueprint row 113, fix round 1,
  * navigator finding N-2): a camera credential in the body (`setCaptureDeviceCredential`, op 89) and
- * the write-only STT credential in the body (`updateSttConfig`, op 91). Eight in all. They stay
- * documented; only Try-it is refused. The read and the test of the STT configuration (ops 90, 92)
- * carry no credential and stay allowed.
+ * the write-only STT credential in the body (`updateSttConfig`, op 91). Two of the camera connect
+ * flow (task 3 R-9, blueprint row 132, decision D106; C3 §2.6 "Web Try-it", §10.1): a camera
+ * credential in the body of the connection test (`testCaptureCandidateConnection`, op 95) and of the
+ * adoption (`adoptCaptureCandidate`, op 96). Ten in all. They stay documented; only Try-it is
+ * refused. The read and the test of the STT configuration (ops 90, 92) and the camera search, its
+ * candidate read and the microphone re-read (ops 93, 94, 97) carry no credential and stay allowed.
  */
 export const TRY_IT_DENIED_OPERATIONS = [
   'signIn',
@@ -45,6 +48,8 @@ export const TRY_IT_DENIED_OPERATIONS = [
   'rotateDeviceCredential',
   'setCaptureDeviceCredential',
   'updateSttConfig',
+  'testCaptureCandidateConnection',
+  'adoptCaptureCandidate',
 ] as const
 export type TryItDeniedOperation = (typeof TRY_IT_DENIED_OPERATIONS)[number]
 

@@ -281,7 +281,7 @@ const SECURITY: SecuritySliceBody = {
   ],
 };
 
-/** Slice `services`: the 16 Core services. */
+/** Slice `services`: the 17 Core services (the 16 of book §6.1 and the transcriber service). */
 const SERVICES: ServicesSliceBody = [
   { id: 'SVC-01', name: 'API Gateway', status: 'RUNNING', startedAt: 1_790_811_162_000 },
   { id: 'SVC-02', name: 'Authentication Service', status: 'RUNNING', startedAt: 1_790_811_162_000 },
@@ -299,6 +299,7 @@ const SERVICES: ServicesSliceBody = [
   { id: 'SVC-14', name: 'LCD Display Service', status: 'RUNNING', startedAt: 1_790_811_162_000 },
   { id: 'SVC-15', name: 'Health Monitor', status: 'RUNNING', startedAt: 1_790_811_162_000 },
   { id: 'SVC-16', name: 'Audit Service', status: 'RUNNING', startedAt: 1_790_811_162_000 },
+  { id: 'SVC-17', name: 'Transcription Service', status: 'RUNNING', startedAt: 1_790_811_162_000 },
 ];
 
 /** Slice `update`. */

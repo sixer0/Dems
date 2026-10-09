@@ -22,12 +22,29 @@ import {
   type CoreApiSchemaName,
 } from '@dems/shared/api';
 import { DEFAULT_SETTINGS, Permission, SERVICES_RESTART_SCOPE, type OperatorRole, type SettingsSlice } from '@dems/shared/sim';
-import type { FastifyInstance } from 'fastify';
+import Fastify, { type FastifyInstance } from 'fastify';
+import { serializerCompiler, validatorCompiler } from 'fastify-type-provider-zod';
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
+import { CapturePhase } from '../../../capture';
 import { hostedActionsOfOperation } from '../../../engine';
 import { ApiFailure } from '../../../plugins/error-envelope';
 import { permissionGuard } from '../../../plugins/permission-guard';
-import { SETTINGS_CHANGED_MESSAGE, SETTINGS_UNIT_LABEL, SYSTEM_ACTION_OF_OPERATION, SYSTEM_MODULE_OPERATIONS, systemModule, systemStatusOf } from '../index';
+import { mountTranscription } from '../../../transcription';
+import {
+  CAPTURE_PHASE_VERDICT,
+  CAPTURE_WORKER_SERVICE,
+  SETTINGS_CHANGED_MESSAGE,
+  SETTINGS_UNIT_LABEL,
+  SYSTEM_ACTION_OF_OPERATION,
+  SYSTEM_MODULE_OPERATIONS,
+  TRANSCRIBER_NOT_MOUNTED,
+  TRANSCRIBER_SERVICE,
+  serviceReportsOf,
+  servicesWithProcesses,
+  systemModule,
+  systemStatusOf,
+  type TranscriberServiceReport,
+} from '../index';
 import {
   ANONYMOUS,
   DIAGNOSTICS,
@@ -94,6 +111,17 @@ const state = (built: ModuleApp) => built.engine.state();
 const lastAudit = (built: ModuleApp) => state(built).audit.rows.at(-1);
 const auditTotal = (built: ModuleApp): number => state(built).audit.total;
 const wire = <Value>(value: Value): Value => JSON.parse(JSON.stringify(value)) as Value;
+
+/**
+ * Blueprint row 62 (CS-10): what read 64 lays over the engine's `services` slice, written out by
+ * hand (not with the module's own function). No transcriber is mounted, so its entry is stopped
+ * and never started; the module app does not boot the capture supervisor (the entry point does),
+ * so the supervisor is CLOSED and the capture worker's entry is stopped too unless a test boots it.
+ */
+function withProcesses<Entry extends { name: string }>(services: readonly Entry[], capture: 'closed' | 'booted' = 'closed'): Entry[] {
+  const stopped = capture === 'closed' ? ['Recording Engine', 'Transcription Service'] : ['Transcription Service'];
+  return services.map((entry) => (stopped.includes(entry.name) ? { ...entry, status: 'STOPPED', startedAt: null } : entry));
+}
 
 const SESSION_INPUT = {
   caseNumber: 'LP/2026/1001-0099',
@@ -229,7 +257,7 @@ describe('64 getSystemStatus', () => {
     const response = await built.app.inject({ method: 'GET', url: SYSTEM_STATUS });
     expect(response.statusCode).toBe(200);
     const { device, services, update, diagnostics, settings } = state(built);
-    expect(response.json()).toEqual(wire({ device, services, update, diagnostics, settings }));
+    expect(response.json()).toEqual(wire({ device, services: withProcesses(services), update, diagnostics, settings }));
     expect(Object.keys(response.json() as object)).toEqual(['device', 'services', 'update', 'diagnostics', 'settings']);
     expect(validateCoreApiResponse('getSystemStatus', 200, response.json())).toEqual({ ok: true });
     expect(response.headers[EPOCH_HEADER_NAME]).toBeUndefined();
@@ -247,12 +275,19 @@ describe('64 getSystemStatus', () => {
     expect(built.database.committed.auditSeqs).toEqual([]);
   });
 
-  it('the idle Core: sixteen services running, version 2.5.0 available, no diagnostics run yet, the default settings', async () => {
+  it('the idle Core: seventeen services, sixteen running and the transcriber not configured (row 62), version 2.5.0 available, no diagnostics run yet, the default settings', async () => {
     const built = await build();
     built.actAs(operatorOf('TECHNICIAN'));
+    // As the entry point does after the boot steps: an idle, booted supervisor (no worker process, by design).
+    await built.app.capture.boot();
+    expect(built.app.capture.status().phase).toBe('IDLE');
     const body = (await built.app.inject({ method: 'GET', url: SYSTEM_STATUS })).json() as ReturnType<typeof systemStatusOf>;
-    expect(body.services).toHaveLength(16);
-    expect(body.services.every((service) => service.status === 'RUNNING')).toBe(true);
+    expect(body.services).toHaveLength(17);
+    expect(body.services.filter((service) => service.status === 'RUNNING').map((service) => service.name)).toEqual(state(built).services.slice(0, 16).map((service) => service.name));
+    expect(body.services.at(-1)).toEqual({ ...wire(state(built).services.at(-1)), status: 'STOPPED', startedAt: null });
+    expect(body.services.at(-1)?.name).toBe('Transcription Service');
+    // The engine's slice is untouched: the two processes are laid over the ANSWER only.
+    expect(state(built).services.every((service) => service.status === 'RUNNING')).toBe(true);
     expect(body.update).toMatchObject({ state: 'IDLE', currentVersion: '2.4.1', availableVersion: '2.5.0', activeSlot: 'A' });
     expect(body.diagnostics).toBeNull();
     expect(body.settings).toEqual(DEFAULT_SETTINGS);
@@ -271,7 +306,7 @@ describe('64 getSystemStatus', () => {
     expect(body.update.state).toBe('RUNNING');
     expect(body.settings.timeFormat).toBe('12');
     const now = state(built);
-    expect(body).toEqual(wire({ device: now.device, services: now.services, update: now.update, diagnostics: now.diagnostics, settings: now.settings }));
+    expect(body).toEqual(wire({ device: now.device, services: withProcesses(now.services), update: now.update, diagnostics: now.diagnostics, settings: now.settings }));
     expect(validateCoreApiResponse('getSystemStatus', 200, body)).toEqual({ ok: true });
   });
 
@@ -301,6 +336,177 @@ describe('64 getSystemStatus', () => {
     const status = systemStatusOf(whole);
     expect(Object.keys(status)).toEqual(['device', 'services', 'update', 'diagnostics', 'settings']);
     for (const key of ['device', 'services', 'update', 'diagnostics', 'settings'] as const) expect(status[key]).toBe(whole[key]);
+  });
+});
+
+// Blueprint row 62 (register CS-10; API contract row 64): two entries of the `services` slice stand for
+// real processes. The capture worker's comes from the capture supervisor, the transcriber's from the
+// module's seam (row 115 mounts it; until then it is not configured).
+describe('64 getSystemStatus: the capture worker and the transcriber as services (CS-10)', () => {
+  const entryOf = (body: { services: ReadonlyArray<{ name: string; status: string; startedAt?: number | null }> }, name: string) => body.services.find((service) => service.name === name);
+  const read = async (built: ModuleApp) => {
+    const response = await built.app.inject({ method: 'GET', url: SYSTEM_STATUS });
+    expect(response.statusCode).toBe(200);
+    expect(validateCoreApiResponse('getSystemStatus', 200, response.json())).toEqual({ ok: true });
+    return response.json() as ReturnType<typeof systemStatusOf>;
+  };
+  /** The capture seam with a supervisor that stands in the given phase; everything else is the real seam's. */
+  const capturePhase = (built: ModuleApp, phase: CapturePhase): void => {
+    const real = built.app.capture;
+    built.app.seams.replace('capture', { ...real, status: () => ({ ...real.status(), phase }) });
+  };
+
+  it.each([
+    ['CLOSED', 'STOPPED'],
+    ['IDLE', 'RUNNING'],
+    ['STARTING', 'RUNNING'],
+    ['RECORDING', 'RUNNING'],
+    ['STOPPING', 'RUNNING'],
+    ['RESTARTING', 'DEGRADED'],
+    ['FAULTED', 'STOPPED'],
+  ] as const)('the supervisor in phase %s: `Recording Engine` reads %s; no other entry moves', async (phase, status) => {
+    const built = await build();
+    built.actAs(operatorOf('TECHNICIAN'));
+    capturePhase(built, phase);
+    const body = await read(built);
+    const engine = wire(state(built).services);
+    expect(entryOf(body, CAPTURE_WORKER_SERVICE)).toEqual({ ...engine.find((service) => service.name === CAPTURE_WORKER_SERVICE), status, ...(status === 'STOPPED' ? { startedAt: null } : {}) });
+    const others = (services: ReadonlyArray<{ name: string }>) => services.filter((service) => service.name !== CAPTURE_WORKER_SERVICE && service.name !== TRANSCRIBER_SERVICE);
+    expect(others(body.services)).toEqual(others(engine));
+  });
+
+  it('every phase of the supervisor has a verdict (a new phase cannot be forgotten)', () => {
+    expect(Object.keys(CAPTURE_PHASE_VERDICT).sort()).toEqual(Object.values(CapturePhase).sort());
+  });
+
+  it('the worse verdict wins: a simulator fault on the entry is not hidden by a healthy worker, and a faulted worker is not hidden by a healthy engine', async () => {
+    const built = await build({ scenario: 'recording' });
+    built.actAs(operatorOf('TECHNICIAN'));
+    capturePhase(built, 'RECORDING');
+    expect(entryOf(await read(built), CAPTURE_WORKER_SERVICE)?.status).toBe('RUNNING');
+    // The simulator's own fault: the evidence volume is full, the engine marks the entry DEGRADED.
+    built.engine.sim.actions.inject('STORAGE_FULL');
+    expect(state(built).services.find((service) => service.name === CAPTURE_WORKER_SERVICE)?.status).toBe('DEGRADED');
+    expect(entryOf(await read(built), CAPTURE_WORKER_SERVICE)?.status).toBe('DEGRADED');
+    capturePhase(built, 'FAULTED');
+    expect(entryOf(await read(built), CAPTURE_WORKER_SERVICE)).toMatchObject({ status: 'STOPPED', startedAt: null });
+  });
+
+  it('the transcriber is not mounted: its entry is STOPPED and never started, whatever the engine says; the reason is NOT_CONFIGURED', async () => {
+    const built = await build();
+    built.actAs(operatorOf('SUPERVISOR'));
+    expect(state(built).services.find((service) => service.name === TRANSCRIBER_SERVICE)).toMatchObject({ status: 'RUNNING' });
+    expect(entryOf(await read(built), TRANSCRIBER_SERVICE)).toMatchObject({ id: 'SVC-17', status: 'STOPPED', startedAt: null });
+    expect(TRANSCRIBER_NOT_MOUNTED()).toEqual({ state: 'NOT_CONFIGURED', startedAt: null });
+    expect(serviceReportsOf({ capture: { phase: 'IDLE' }, transcriber: TRANSCRIBER_NOT_MOUNTED() })).toEqual([
+      { service: 'Recording Engine', status: 'RUNNING', because: 'IDLE' },
+      { service: 'Transcription Service', status: 'STOPPED', because: 'NOT_CONFIGURED' },
+    ]);
+  });
+
+  it('the seam of row 115: a module registered with a transcriber source answers that source\'s state and start instant', async () => {
+    const built = await build();
+    const whole = state(built);
+    let report: TranscriberServiceReport = { state: 'RUNNING', startedAt: 1_760_000_000_000 };
+    const app = Fastify();
+    apps.push(app);
+    app.setValidatorCompiler(validatorCompiler);
+    app.setSerializerCompiler(serializerCompiler);
+    app.decorate('engine', { state: () => whole } as never);
+    app.decorate('capture', { status: () => ({ phase: 'IDLE' }) } as never);
+    await app.register(systemModule, { transcriber: () => report });
+    const get = async () => entryOf((await app.inject({ method: 'GET', url: SYSTEM_STATUS })).json() as ReturnType<typeof systemStatusOf>, TRANSCRIBER_SERVICE);
+    expect(await get()).toMatchObject({ status: 'RUNNING', startedAt: 1_760_000_000_000 });
+    report = { state: 'DEGRADED', startedAt: 1_760_000_000_000 };
+    expect(await get()).toMatchObject({ status: 'DEGRADED', startedAt: 1_760_000_000_000 });
+    report = { state: 'STOPPED', startedAt: 1_760_000_000_000 };
+    expect(await get()).toMatchObject({ status: 'STOPPED', startedAt: null });
+    report = { state: 'NOT_CONFIGURED', startedAt: null };
+    expect(await get()).toMatchObject({ status: 'STOPPED', startedAt: null });
+  });
+
+  // Integration pass A (D109): `app.ts` registers the module WITHOUT options, so the default source
+  // must be the transcription composition of the SAME app - the real `mountTranscription`, not a double.
+  it('registered without options: the entry follows the transcription composition mounted on the same app (not configured -> running -> stopped)', async () => {
+    const built = await build();
+    const whole = state(built);
+    const dataDir = mkdtempSync(join(tmpdir(), 'dems-passA-system-'));
+    const stages = {};
+    let now = 1_760_000_500_000;
+    let enabled = true;
+    const bootSteps: { run(): Promise<void> }[] = [];
+    const quiet = { info: () => undefined, warn: () => undefined, error: () => undefined };
+    const control = mountTranscription(
+      {
+        stages,
+        config: { dataDir, captureMode: 'real' },
+        log: quiet,
+        errorLog: { append: () => undefined },
+        clock: { now: () => now },
+        capture: { status: () => ({ sessionId: null, workerPid: null, phase: 'IDLE' }), on: () => () => undefined },
+        db: { pool: { query: async () => ({ rows: [], rowCount: 0 }) } },
+        readiness: { addBootStep: (step) => void bootSteps.push(step) },
+      },
+      { readConfig: async () => ({ enabled, backend: 'omlx-server', endpoint: 'http://127.0.0.1:18921', model: 'whisper-large-v3-turbo', language: 'id', diarization: true, credentialKind: null, revision: 1 }) },
+    );
+    const mountSystem = async (options?: Parameters<typeof systemModule>[1]) => {
+      const app = Fastify();
+      apps.push(app);
+      app.setValidatorCompiler(validatorCompiler);
+      app.setSerializerCompiler(serializerCompiler);
+      app.decorate('stages', stages as never);
+      app.decorate('engine', { state: () => whole } as never);
+      app.decorate('capture', { status: () => ({ phase: 'IDLE' }) } as never);
+      await (options === undefined ? app.register(systemModule) : app.register(systemModule, options));
+      return async () => entryOf((await app.inject({ method: 'GET', url: SYSTEM_STATUS })).json() as ReturnType<typeof systemStatusOf>, TRANSCRIBER_SERVICE);
+    };
+    try {
+      const get = await mountSystem();
+      // Before the boot step ran: the composition says NOT_CONFIGURED.
+      expect(await get()).toMatchObject({ status: 'STOPPED', startedAt: null });
+      await bootSteps[0]?.run();
+      const started = now;
+      expect(control.serviceState()).toEqual({ state: 'RUNNING', startedAt: started });
+      expect(await get()).toMatchObject({ status: 'RUNNING', startedAt: started });
+      // Read at each request, never captured at registration: operation 91 switches STT off, then on.
+      now += 5_000;
+      enabled = false;
+      control.noteConfigChange(false);
+      expect(await get()).toMatchObject({ status: 'STOPPED', startedAt: null });
+      control.noteConfigChange(true);
+      expect(await get()).toMatchObject({ status: 'RUNNING', startedAt: started });
+      // The option still wins over the default.
+      const withOption = await mountSystem({ transcriber: () => ({ state: 'DEGRADED', startedAt: 7 }) });
+      expect(await withOption()).toMatchObject({ status: 'DEGRADED', startedAt: 7 });
+    } finally {
+      rmSync(dataDir, { recursive: true, force: true });
+    }
+  });
+
+  it('pure and by reference: entries that are no process are the engine\'s own objects; without probes the slice is the engine\'s', async () => {
+    const built = await build();
+    const whole = state(built);
+    const probes = { capture: { phase: 'RESTARTING' }, transcriber: TRANSCRIBER_NOT_MOUNTED() } as const;
+    const laid = servicesWithProcesses(whole.services, probes);
+    const before = wire(whole.services);
+    whole.services.forEach((entry, index) => {
+      if (entry.name === CAPTURE_WORKER_SERVICE || entry.name === TRANSCRIBER_SERVICE) expect(laid[index]).not.toBe(entry);
+      else expect(laid[index]).toBe(entry);
+    });
+    expect(wire(whole.services)).toEqual(before);
+    expect(systemStatusOf(whole).services).toBe(whole.services);
+    expect(systemStatusOf(whole, probes).services).toEqual(laid);
+  });
+
+  it('the read asks the supervisor ONCE per call and opens no unit of work', async () => {
+    const built = await build();
+    built.actAs(operatorOf('INVESTIGATOR'));
+    const real = built.app.capture;
+    let asked = 0;
+    built.app.seams.replace('capture', { ...real, status: () => ((asked += 1), real.status()) });
+    await read(built);
+    expect(asked).toBe(1);
+    expect(built.engine.units).toEqual([]);
   });
 });
 
@@ -396,7 +602,7 @@ describe('66 restartServices', () => {
     const before = auditTotal(built);
     const response = await post(built.app, SERVICES_RESTART);
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual({ restarted: 16 });
+    expect(response.json()).toEqual({ restarted: 17 });
     expect(validateCoreApiResponse('restartServices', 200, response.json())).toEqual({ ok: true });
     expect(response.headers[EPOCH_HEADER_NAME]).toBe(String(built.engine.position.epoch));
     expect(response.headers[REVISION_HEADER_NAME]).toBe(String(built.engine.position.revision));
@@ -404,8 +610,8 @@ describe('66 restartServices', () => {
     expect(built.engine.actions.at(-1)?.principal).toBe(caller);
     expect(built.engine.actions.at(-1)?.args).toEqual([]);
     expect(auditTotal(built)).toBe(before + 1);
-    expect(lastAudit(built)).toMatchObject({ type: 'DEVICE_COMMAND', actorId: caller.operatorId, at: now, details: { command: 'RESTART', scope: SERVICES_RESTART_SCOPE, services: 16 } });
-    expect(state(built).services.map((service) => service.startedAt)).toEqual(Array.from({ length: 16 }, () => now));
+    expect(lastAudit(built)).toMatchObject({ type: 'DEVICE_COMMAND', actorId: caller.operatorId, at: now, details: { command: 'RESTART', scope: SERVICES_RESTART_SCOPE, services: 17 } });
+    expect(state(built).services.map((service) => service.startedAt)).toEqual(Array.from({ length: 17 }, () => now));
   });
 
   it('the number is the simulator\'s: a service that is stopped is not restarted and not counted', async () => {
@@ -417,9 +623,9 @@ describe('66 restartServices', () => {
     built.engine.sim.store.setState({ services: services.map((service) => (service === stopped ? { ...service, status: 'STOPPED' as const } : service)) });
     drive(built, 1_000);
     const response = await post(built.app, SERVICES_RESTART);
-    expect(response.json()).toEqual({ restarted: 15 });
+    expect(response.json()).toEqual({ restarted: 16 });
     expect(state(built).services.find((service) => service.id === stopped.id)?.startedAt).toBe(stopped.startedAt);
-    expect(lastAudit(built)?.details).toMatchObject({ services: 15 });
+    expect(lastAudit(built)?.details).toMatchObject({ services: 16 });
   });
 
   it.each(['INVESTIGATOR', 'SUPERVISOR'] as const)('%s lacks MAINTENANCE: 403 NOT_PERMITTED by stage 6 with one denial row; the engine is not reached', async (role) => {

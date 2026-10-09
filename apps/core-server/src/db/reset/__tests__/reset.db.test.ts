@@ -237,7 +237,9 @@ describe('T-RS-1: two resets of a used database', () => {
     // 22 (was 16 on the 30-table schema): the six v2 data tables - intervals, fragments, chunks,
     // transcripts, revisions, sealing jobs - join the rebuilt set; stt_config is KEPT (§B.13) and
     // the capture trio is upsert-kept (§E.1), so they stay out of this list.
-    expect(rebuilt).toHaveLength(22);
+    // 23 since dbc-4: `session_capture_sources` (T-41) is rebuilt, never kept.
+    // 24 since PE-129b-01: `session_stt_config` (T-42) is rebuilt too.
+    expect(rebuilt).toHaveLength(24);
     for (const table of rebuilt) expect(built[table], table).toBe(seeded[table]);
     const withoutSignIn = { without: { operators: ['last_sign_in_at'] } };
     expect((await digestAll(owner, withoutSignIn))['operators']).toBe((await digestAll(reference.ownerPool(), withoutSignIn))['operators']);

@@ -85,9 +85,10 @@ import {
 } from '@dems/shared/api';
 import { SessionState } from '@dems/shared/domain';
 import type { ActiveSession } from '@dems/shared/sim';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
+import { captureNotices } from '../../capture-notices';
 import type { EngineOutcome, EngineUnit } from '../../engine';
 import { invalidInput } from '../../plugins/error-envelope';
 import { routeOfOperation } from '../../plugins/permission-guard';
@@ -127,6 +128,16 @@ export function registerSessionRoutes(app: FastifyInstance): void {
     takeSessionSnapshot: actionOf('takeSessionSnapshot'),
     acknowledgeSessionSummary: actionOf('acknowledgeSessionSummary'),
   } as const;
+
+  /**
+   * Task 3 row 133 (C3 §3.1; R-10 AC-2): BEFORE the unit of a pre-check run, the gate of
+   * `src/capture-notices` asks every configured camera and microphone and writes what the checks
+   * read. It runs in units of its own, so it cannot run inside `onOpenSession`. It does nothing
+   * while no adapter is registered, nothing for a request the action will refuse (another session,
+   * another state), and it never rejects: a pre-check is not failed by its gate. The request is
+   * handed on as it is (rule M3): the gate, not this module, reads who started the pre-check.
+   */
+  const beforePrecheck = (request: FastifyRequest, id: string, kind: 'BEGIN' | 'RETRY'): Promise<unknown> => captureNotices(app).beforePrecheckOf(request, id, kind);
 
   /**
    * One unit of work on the open session: `work` runs only when `id` names it, on the state
@@ -180,6 +191,8 @@ export function registerSessionRoutes(app: FastifyInstance): void {
       handler: async (request, reply): Promise<SessionCommandResponse> => {
         const { id } = request.params;
         const acknowledge = request.body.acknowledgeWarnings === true;
+        // From CREATE this start is the pre-check run (row 133): the gate asks only then.
+        await beforePrecheck(request, id, 'BEGIN');
         const outcome = await onOpenSession('startSession', id, async (scope, session) => {
           if (session.state === SessionState.CREATE) {
             await scope.command(request.principal, action.beginPrecheck);
@@ -245,6 +258,7 @@ export function registerSessionRoutes(app: FastifyInstance): void {
       schema: { params: sessionParams(operationId), response: { 202: SessionCommandResponseSchema } },
       handler: async (request, reply): Promise<SessionCommandResponse> => {
         const { id } = request.params;
+        if (operationId !== 'recoverSession') await beforePrecheck(request, id, operationId === 'beginPrecheck' ? 'BEGIN' : 'RETRY');
         await onOpenSession(operationId, id, (scope) => scope.command(request.principal, hosted));
         void reply.code(accepted);
         return { sessionId: id, state };

@@ -4,17 +4,23 @@
 // Blueprint row 58 (M3-W2) adds: protocol version 2, the lossless RECORD class (check M3-REC-1,
 // frame half; the supervisor half is `apps/core-server/src/capture/__tests__/records.test.ts`),
 // the mic inputs and the PCM tap of the plan, and the loopback media port range.
+//
+// Blueprint row 59 (M3-W3) adds: protocol version 3 (decision D84 R-7), the content of the
+// FRAGMENT_CHECKPOINT record (both chains, media time, keyframe flag, durable instant) and the
+// KEYFRAME_INTERVAL record.
 import { describe, expect, it } from 'vitest';
 import {
   CAPTURE_IPC_DEFAULTS,
   CAPTURE_MEDIA_PORT_MAX,
   CAPTURE_MEDIA_PORT_MIN,
+  CAPTURE_CHAIN_GENESIS_SHA256,
   CAPTURE_PROTOCOL_VERSION,
   CapturePlanSchema,
   CaptureRecordKind,
   DURABLE_RECORD_KINDS,
   FrameViolation,
   LOOPBACK_RTSP_URL,
+  ONCE_PER_CAMERA_RECORD_KINDS,
   SupervisorMessageType,
   WorkerMessageType,
   backoffDelayMs,
@@ -41,14 +47,36 @@ const plan: CapturePlan = {
   constants: { fragmentTargetMs: 2_000, minFragDurationMs: 2_000, gopFrames: 50, meterRateHz: 20, audioSampleRateHz: 48_000, audioChannels: 1 },
 };
 const v = CAPTURE_PROTOCOL_VERSION;
+/** A checkpoint as the worker writes it while no cipher is set: the plaintext chain equals the stored-bytes chain. */
+const checkpointRecord = {
+  kind: 'FRAGMENT_CHECKPOINT',
+  deviceId: 'CAM-01',
+  index: 1,
+  start: 1231,
+  len: 3900,
+  fragSha256: 'a'.repeat(64),
+  chainSha256: 'b'.repeat(64),
+  prefixSha256: 'c'.repeat(64),
+  plaintextSha256: 'a'.repeat(64),
+  plaintextChainSha256: 'b'.repeat(64),
+  mediaStartMs: 0,
+  mediaDurationMs: 2000,
+  keyframe: true,
+  durableAt: 1_791_529_000_123,
+  gcmIv: null,
+  gcmTag: null,
+  keyId: null,
+} as const;
 
 describe('the messages', () => {
-  it('the protocol has the three commands and the eight worker messages of spec §B.2 (the eight of its table, HELLO, ACK and, since version 2, RECORD)', () => {
-    expect(CAPTURE_PROTOCOL_VERSION).toBe(2);
+  it('the protocol has the three commands and the eight worker messages of spec §B.2 (the eight of its table, HELLO, ACK and, since version 2, RECORD); version 3 since the checkpoint content', () => {
+    expect(CAPTURE_PROTOCOL_VERSION).toBe(3);
     expect(Object.values(SupervisorMessageType)).toEqual(['START', 'STOP', 'SWITCH_AUDIO_SOURCE']);
     expect(Object.values(WorkerMessageType)).toEqual(['HELLO', 'ACK', 'TELEMETRY', 'PROGRESS', 'HEARTBEAT', 'WARNING', 'CRASH', 'RECORD']);
-    expect(Object.values(CaptureRecordKind)).toEqual(['FIRST_VIDEO_SAMPLE', 'FIRST_DURABLE_FRAGMENT', 'FRAGMENT_CHECKPOINT', 'SEAL_COMPLETE']);
+    expect(Object.values(CaptureRecordKind)).toEqual(['FIRST_VIDEO_SAMPLE', 'FIRST_DURABLE_FRAGMENT', 'FRAGMENT_CHECKPOINT', 'KEYFRAME_INTERVAL', 'SEAL_COMPLETE']);
     expect(DURABLE_RECORD_KINDS).toEqual(['FIRST_DURABLE_FRAGMENT', 'FRAGMENT_CHECKPOINT']);
+    // The observed keyframe interval says nothing about the disk: it is no sign of durability.
+    expect(ONCE_PER_CAMERA_RECORD_KINDS).toEqual(['FIRST_VIDEO_SAMPLE', 'FIRST_DURABLE_FRAGMENT', 'KEYFRAME_INTERVAL']);
   });
 
   it('every message survives a frame: encode, split, decode gives the same value', () => {
@@ -68,13 +96,9 @@ describe('the messages', () => {
       { v, type: 'WARNING', sessionId: 'S-1', code: 'CAPTURE_FAULT', state: 'CLEARED', subject: 'CAM-02' },
       { v, type: 'CRASH', sessionId: null, code: 'ENCODER_INIT', signal: null, exitCode: 3 },
       { v, type: 'RECORD', sessionId: 'S-1', seq: 1, record: { kind: 'FIRST_DURABLE_FRAGMENT', deviceId: 'VIDEO-01', bytes: 5131 } },
-      {
-        v,
-        type: 'RECORD',
-        sessionId: 'S-1',
-        seq: 2,
-        record: { kind: 'FRAGMENT_CHECKPOINT', deviceId: 'VIDEO-01', index: 1, start: 1231, len: 3900, fragSha256: 'a'.repeat(64), chainSha256: 'b'.repeat(64), prefixSha256: 'c'.repeat(64), plaintextSha256: null, gcmIv: null, gcmTag: null, keyId: null },
-      },
+      { v, type: 'RECORD', sessionId: 'S-1', seq: 2, record: checkpointRecord },
+      { v, type: 'RECORD', sessionId: 'S-1', seq: 5, record: { ...checkpointRecord, index: 2, plaintextSha256: 'd'.repeat(64), plaintextChainSha256: 'e'.repeat(64), gcmIv: '0'.repeat(24), gcmTag: 'f'.repeat(32), keyId: 'KID-S-1' } },
+      { v, type: 'RECORD', sessionId: 'S-1', seq: 6, record: { kind: 'KEYFRAME_INTERVAL', deviceId: 'CAM-01', observedMs: 5000, boundMs: 2000, intervals: 1, complete: true, aboveBound: true } },
       { v, type: 'RECORD', sessionId: 'S-1', seq: 3, record: { kind: 'SEAL_COMPLETE' } },
       { v, type: 'RECORD', sessionId: 'S-1', seq: 4, record: { kind: 'FIRST_VIDEO_SAMPLE', deviceId: 'VIDEO-01', pts: 526386, timescale: 90000 } },
     ];
@@ -99,11 +123,70 @@ describe('the messages', () => {
     expect(not({ v, type: 'WARNING', sessionId: 'S-1', code: 'MIC_SILENT', state: 'GONE', subject: null })).toEqual(refused);
     expect(not({ v, type: 'WARNING', sessionId: 'S-1', code: 'MIC_SILENT', state: 'CLEARED', subject: null })).toMatchObject({ ok: true });
     expect(not({ v, type: 'STOP', sessionId: 'S-1', correlationId: 'c', reason: 'STOPPED' })).toEqual(refused);
-    expect(decodeWorkerLine('{"v":2,')).toEqual({ ok: false, violation: FrameViolation.NOT_JSON });
+    expect(decodeWorkerLine('{"v":3,')).toEqual({ ok: false, violation: FrameViolation.NOT_JSON });
     expect(decodeWorkerLine(JSON.stringify({ v, type: 'HEARTBEAT', counter: 1 }), 10)).toEqual({ ok: false, violation: FrameViolation.TOO_LONG });
   });
 
-  it('M3-REC-1 (frame): a record carries a sequence number from 1 and one of three kinds; anything else is no message', () => {
+  it('version 3 (D84 R-7): no frame of a version-2 worker decodes, not even one that has every member of today', () => {
+    const frames = [
+      { type: 'HELLO', protocolVersion: 2, workerVersion: 'capture-worker/0.2.0' },
+      { type: 'HEARTBEAT', counter: 1 },
+      { type: 'WARNING', sessionId: 'S-1', code: 'CAPTURE_FAULT', state: 'ACTIVE', subject: 'CAM-01' },
+      { type: 'RECORD', sessionId: 'S-1', seq: 1, record: checkpointRecord },
+    ];
+    for (const frame of frames) {
+      expect(decodeWorkerLine(JSON.stringify({ v: 2, ...frame })), frame.type).toEqual({ ok: false, violation: FrameViolation.NOT_A_MESSAGE });
+      // CONTROL: the same frame under version 3 is a message (the version is what refuses it).
+      expect(decodeWorkerLine(JSON.stringify({ v: 3, ...frame })).ok, frame.type).toBe(true);
+    }
+    // What version 2 allowed inside the version: a WARNING without `state`. It is no message of version 3.
+    expect(decodeWorkerLine(JSON.stringify({ v: 3, type: 'WARNING', sessionId: 'S-1', code: 'CAPTURE_FAULT', subject: 'CAM-01' })).ok).toBe(false);
+    // A command of version 2 is no command for a version-3 worker either.
+    expect(decodeSupervisorLine(JSON.stringify({ v: 2, type: 'STOP', sessionId: 'S-1', correlationId: 'c', reason: 'STOPPED' })).ok).toBe(false);
+  });
+
+  it('the checkpoint of a durable fragment: both chains, media time, keyframe flag and the durable instant are required', () => {
+    const ok = (record: unknown): boolean => decodeWorkerLine(JSON.stringify({ v, type: 'RECORD', sessionId: 'S-1', seq: 1, record })).ok;
+    expect(ok(checkpointRecord)).toBe(true);
+    // The checkpoint of version 2 (no plaintext chain, no media time, no durable instant) is no record any more.
+    expect(ok({ kind: 'FRAGMENT_CHECKPOINT', deviceId: 'CAM-01', index: 1, start: 1231, len: 3900, fragSha256: 'a'.repeat(64), chainSha256: 'b'.repeat(64), prefixSha256: 'c'.repeat(64), plaintextSha256: null, gcmIv: null, gcmTag: null, keyId: null })).toBe(false);
+    for (const member of ['plaintextSha256', 'plaintextChainSha256', 'mediaStartMs', 'mediaDurationMs', 'keyframe', 'durableAt', 'prefixSha256', 'chainSha256', 'gcmIv'] as const) {
+      const { [member]: _dropped, ...rest } = checkpointRecord;
+      expect(ok(rest), member).toBe(false);
+    }
+    expect(ok({ ...checkpointRecord, mediaDurationMs: 0 })).toBe(false);
+    expect(ok({ ...checkpointRecord, mediaStartMs: -1 })).toBe(false);
+    expect(ok({ ...checkpointRecord, durableAt: 0 })).toBe(false);
+    expect(ok({ ...checkpointRecord, keyframe: 1 })).toBe(false);
+    // A fragment never starts at byte 0: the init segment is before the first one.
+    expect(ok({ ...checkpointRecord, start: 0 })).toBe(false);
+    expect(ok({ ...checkpointRecord, outputPath: '/data/x.mp4' })).toBe(false);
+    // No cipher: the plaintext IS the stored bytes, so the two chains must be equal ...
+    expect(ok({ ...checkpointRecord, plaintextSha256: 'd'.repeat(64) })).toBe(false);
+    expect(ok({ ...checkpointRecord, plaintextChainSha256: 'd'.repeat(64) })).toBe(false);
+    // ... and with a cipher (row 84) they may differ, and its three members come together.
+    const sealed = { ...checkpointRecord, plaintextSha256: 'd'.repeat(64), plaintextChainSha256: 'e'.repeat(64), gcmIv: '1'.repeat(24), gcmTag: '2'.repeat(32), keyId: 'KID-S-1' };
+    expect(ok(sealed)).toBe(true);
+    expect(ok({ ...sealed, gcmTag: null })).toBe(false);
+    expect(ok({ ...sealed, keyId: null })).toBe(false);
+    expect(ok({ ...sealed, gcmIv: 'short' })).toBe(false);
+    expect(CAPTURE_CHAIN_GENESIS_SHA256).toBe('e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855');
+  });
+
+  it('the observed keyframe interval: a number, its bound and whether it is above it; nothing else', () => {
+    const ok = (record: unknown): boolean => decodeWorkerLine(JSON.stringify({ v, type: 'RECORD', sessionId: 'S-1', seq: 1, record })).ok;
+    const interval = { kind: 'KEYFRAME_INTERVAL', deviceId: 'CAM-02', observedMs: 1000, boundMs: 2000, intervals: 3, complete: true, aboveBound: false };
+    expect(ok(interval)).toBe(true);
+    expect(ok({ ...interval, observedMs: 5000, intervals: 0, complete: false, aboveBound: true })).toBe(true);
+    expect(ok({ ...interval, boundMs: 0 })).toBe(false);
+    expect(ok({ ...interval, observedMs: -1 })).toBe(false);
+    expect(ok({ ...interval, aboveBound: 'yes' })).toBe(false);
+    expect(ok({ ...interval, reason: 'free text' })).toBe(false);
+    const { deviceId: _dropped, ...noCamera } = interval;
+    expect(ok(noCamera)).toBe(false);
+  });
+
+  it('M3-REC-1 (frame): a record carries a sequence number from 1 and one of its kinds; anything else is no message', () => {
     const not = (value: unknown) => decodeWorkerLine(JSON.stringify(value)).ok;
     const first = { v, type: 'RECORD', sessionId: 'S-1', seq: 1, record: { kind: 'FIRST_DURABLE_FRAGMENT', deviceId: 'VIDEO-01', bytes: 5131 } };
     expect(not(first)).toBe(true);
@@ -116,7 +199,7 @@ describe('the messages', () => {
     expect(not({ ...first, record: { kind: 'FRAGMENT_DROPPED', deviceId: 'VIDEO-01' } })).toBe(false);
     expect(not({ ...first, record: { ...first.record, outputPath: '/data/x.mp4' } })).toBe(false);
     expect(not({ ...first, record: { kind: 'SEAL_COMPLETE', progress: 1 } })).toBe(false);
-    const checkpoint = { kind: 'FRAGMENT_CHECKPOINT', deviceId: 'VIDEO-01', index: 1, start: 0, len: 10, fragSha256: 'a'.repeat(64), chainSha256: 'b'.repeat(64), prefixSha256: 'c'.repeat(64), plaintextSha256: null, gcmIv: null, gcmTag: null, keyId: null };
+    const checkpoint = { ...checkpointRecord, deviceId: 'VIDEO-01', start: 1231, len: 10 };
     expect(not({ ...first, record: checkpoint })).toBe(true);
     expect(not({ ...first, record: { ...checkpoint, fragSha256: 'A'.repeat(64) } })).toBe(false);
     expect(not({ ...first, record: { ...checkpoint, index: 0 } })).toBe(false);

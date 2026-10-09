@@ -50,7 +50,12 @@ const char *const MUX_MOVFLAGS = DEMS_MOVFLAGS;
 #define AVIO_BUFFER 65536
 #define PENDING_AUDIO_LIMIT 4096
 
-#define OPEN_ERROR_LIMIT 4
+/* Decision D58-16 as accepted by D85: a count of error-level reports during ONE open, not a
+ * message text. A normal TCP open reports 0, a listen timeout 1; the refused transport reports
+ * about 700,000 a second, so 32 is reached within a millisecond and a legitimate open that logs
+ * a handful of errors is not refused. The code is neutral (INGEST_OPEN_REFUSED): the worker
+ * knows that the open kept failing, not why. */
+#define OPEN_ERROR_LIMIT 32
 static _Thread_local Cam *tls_opening;      /* the camera whose ingest this thread is opening */
 static _Thread_local int tls_open_errors;   /* error-level reports of libav during that open */
 
@@ -105,7 +110,7 @@ static void av_log_cb(void *avcl, int level, const char *fmt, va_list vl) {
         close_sockets_of_port(c->port);
         /* The context of this ingest is abandoned as it stands: it is in the middle of a call. */
         c->in = NULL;
-        ingest_over(c, "ingest", "INGEST_TRANSPORT_REFUSED", AVERROR(EPROTONOSUPPORT));
+        ingest_over(c, "ingest", "INGEST_OPEN_REFUSED", AVERROR(EPROTONOSUPPORT));
         atomic_store(&c->th_done, 1);
         pthread_exit(NULL);
     }
@@ -137,13 +142,88 @@ int open_encoder(Session *s) {
     return avcodec_open2(x, codec, NULL);
 }
 
-/* Called under the camera's mutex after every mux write. */
-void cam_after_write(Cam *c) {
-    if (atomic_load(&c->first_reported) || atomic_load(&c->sink.fragments) < 1) return;
-    atomic_store(&c->first_reported, 1);
-    int64_t bytes = atomic_load(&c->sink.bytes);
-    logj("info", "sink", "first_durable_fragment", "\"cam\":%d,\"bytes\":%lld", c->idx + 1, (long long)bytes);
-    send_record("\"kind\":\"FIRST_DURABLE_FRAGMENT\",\"deviceId\":\"%s\",\"bytes\":%lld", c->device_id, (long long)bytes);
+/* The writer's sync thread, once per fragment, in fragment order, AFTER the sync that covers the
+ * fragment returned (sink.c, "the durability point"). The first fragment of a file also says that
+ * the session holds evidence. Takes no lock of the camera. */
+void cam_fragment_durable(void *cam, const Checkpoint *cp) {
+    Cam *c = cam;
+    char frag[65], chain[65], prefix[65], plain[65], plain_chain[65], seal[256];
+    if (cp->first && !atomic_exchange(&c->first_reported, 1)) {
+        logj("info", "sink", "first_durable_fragment", "\"cam\":%d,\"bytes\":%lld,\"sync\":\"%s\"", c->idx + 1, (long long)(cp->start + cp->len), sink_sync_level());
+        send_record("\"kind\":\"FIRST_DURABLE_FRAGMENT\",\"deviceId\":\"%s\",\"bytes\":%lld", c->device_id, (long long)(cp->start + cp->len));
+    }
+    sha256_hex(cp->frag, frag);
+    sha256_hex(cp->chain, chain);
+    sha256_hex(cp->prefix, prefix);
+    sha256_hex(cp->plain, plain);
+    sha256_hex(cp->plain_chain, plain_chain);
+    if (cp->sealed && c->sink.cipher) {
+        char iv[25], tag[33];
+        static const char hex[] = "0123456789abcdef";
+        for (int i = 0; i < 12; i++) { iv[2 * i] = hex[cp->iv[i] >> 4]; iv[2 * i + 1] = hex[cp->iv[i] & 15]; }
+        for (int i = 0; i < 16; i++) { tag[2 * i] = hex[cp->tag[i] >> 4]; tag[2 * i + 1] = hex[cp->tag[i] & 15]; }
+        iv[24] = tag[32] = 0;
+        snprintf(seal, sizeof seal, "\"gcmIv\":\"%s\",\"gcmTag\":\"%s\",\"keyId\":\"%s\"", iv, tag, c->sink.cipher->key_id);
+    } else snprintf(seal, sizeof seal, "\"gcmIv\":null,\"gcmTag\":null,\"keyId\":null");
+    send_record("\"kind\":\"FRAGMENT_CHECKPOINT\",\"deviceId\":\"%s\",\"index\":%u,\"start\":%lld,\"len\":%lld,\"fragSha256\":\"%s\",\"chainSha256\":\"%s\",\"prefixSha256\":\"%s\","
+                "\"plaintextSha256\":\"%s\",\"plaintextChainSha256\":\"%s\",\"mediaStartMs\":%lld,\"mediaDurationMs\":%lld,\"keyframe\":%s,\"durableAt\":%lld,%s",
+                c->device_id, cp->index, (long long)cp->start, (long long)cp->len, frag, chain, prefix, plain, plain_chain, (long long)cp->media_start_ms, (long long)cp->media_duration_ms,
+                cp->keyframe ? "true" : "false", (long long)cp->durable_at_ms, seal);
+}
+
+/* A sync, the link to the final name or the directory sync failed: nothing more of this file is claimed durable. */
+void cam_sync_failed(void *cam, const char *code, int averror) {
+    (void)cam;
+    fatal("sink", code, averror);
+}
+
+/* ---------------------------------------------------------------- observed keyframe interval (Q-GOP) */
+/* Spec C.1 (erratum AU2-08), gate answer Q-GOP (a). On stream copy the CAMERA sets the keyframe
+ * interval, and a crash loses the open fragment = one camera GOP. The worker therefore MEASURES
+ * the interval on the video samples as it hands them to the muxer (their sync flag and their time
+ * in the file: the same samples the first fragments are made of, re-derivable from the `trun`
+ * boxes), and says what it saw:
+ *   - the moment an interval - complete, or still open - is longer than the target of the plan
+ *     (`fragmentTargetMs`, the contract's 2 s) by more than GOP_TOLERANCE_PERMILLE, a WARNING on
+ *     the existing capture-warning channel (code CAPTURE_FAULT, subject = the camera; no new
+ *     error or audit code), once per camera;
+ *   - ONE record `KEYFRAME_INTERVAL` per camera with the number (lossless: the manifest states
+ *     the crash-loss window of the file from it): after GOP_OBSERVE_INTERVALS complete intervals,
+ *     or at the first complete interval once the warning was raised, or at the end of the ingest
+ *     with what was seen until then.
+ * Nothing is cut and nothing is refused here: the loss stays bounded by one camera GOP and is
+ * REPORTED (a hard ceiling by `frag_duration` would make fragments without a keyframe, spec C.1). */
+#define GOP_OBSERVE_INTERVALS 3
+#define GOP_TOLERANCE_PERMILLE 50       /* a 2.000 s camera on a clock a few hundred ppm off is not "too long" */
+
+static void gop_report(Cam *c, const char *src, int complete) {
+    if (c->gop_reported || c->gop_last_key_us == AV_NOPTS_VALUE) return;
+    c->gop_reported = 1;
+    int64_t open_us = c->gop_last_us - c->gop_last_key_us, seen = c->gop_max_us > open_us ? c->gop_max_us : open_us;
+    int64_t bound_ms = S.fragment_target_ms, observed_ms = (seen + 500) / 1000;
+    int above = seen > bound_ms * (1000 + GOP_TOLERANCE_PERMILLE);
+    logj(above ? "warn" : "info", src, "keyframe_interval_observed", "\"cam\":%d,\"observed_ms\":%lld,\"bound_ms\":%lld,\"intervals\":%d,\"complete\":%s,\"above_bound\":%s",
+         c->idx + 1, (long long)observed_ms, (long long)bound_ms, c->gop_intervals, complete ? "true" : "false", above ? "true" : "false");
+    send_record("\"kind\":\"KEYFRAME_INTERVAL\",\"deviceId\":\"%s\",\"observedMs\":%lld,\"boundMs\":%lld,\"intervals\":%d,\"complete\":%s,\"aboveBound\":%s",
+                c->device_id, (long long)observed_ms, (long long)bound_ms, c->gop_intervals, complete ? "true" : "false", above ? "true" : "false");
+}
+
+/* One video sample that went into the file: `pts_us` is its time in the file. */
+static void gop_observe(Cam *c, const char *src, int key, int64_t pts_us) {
+    int64_t bound_us = (int64_t)S.fragment_target_ms * (1000 + GOP_TOLERANCE_PERMILLE);
+    if (c->gop_last_key_us == AV_NOPTS_VALUE) { if (key) c->gop_last_key_us = c->gop_last_us = pts_us; return; }
+    if (pts_us > c->gop_last_us) c->gop_last_us = pts_us;
+    int64_t since = pts_us - c->gop_last_key_us;
+    if (since > bound_us && !c->gop_warned) {
+        c->gop_warned = 1;
+        logj("warn", src, "keyframe_interval_above_bound", "\"cam\":%d,\"since_keyframe_ms\":%lld,\"bound_ms\":%d,\"open\":%s", c->idx + 1, (long long)(since / 1000), S.fragment_target_ms, key ? "false" : "true");
+        send_warning("CAPTURE_FAULT", c->device_id);
+    }
+    if (!key || since <= 0) return;
+    if (since > c->gop_max_us) c->gop_max_us = since;
+    c->gop_intervals++;
+    c->gop_last_key_us = pts_us;
+    if (c->gop_intervals >= GOP_OBSERVE_INTERVALS || c->gop_warned) gop_report(c, src, 1);
 }
 
 static int open_output(Cam *c) {
@@ -154,6 +234,10 @@ static int open_output(Cam *c) {
     /* Not seekable: the file is append-only by construction. */
     c->pb = avio_alloc_context(buffer, AVIO_BUFFER, 1, &c->sink, NULL, sink_write, NULL);
     if (!c->pb) { av_free(buffer); return AVERROR(ENOMEM); }
+    /* The writer reports each durable fragment and a failed sync through these (its own thread). */
+    c->sink.on_durable = cam_fragment_durable;
+    c->sink.on_sync_failure = cam_sync_failed;
+    c->sink.opaque = c;
     c->out->pb = c->pb;
     c->out->flags |= AVFMT_FLAG_CUSTOM_IO;
     AVStream *is = c->in->streams[c->vidx];
@@ -181,7 +265,7 @@ static int mux_audio_locked(Cam *c, AVPacket *q) {
     q->stream_index = c->oa->index;
     av_packet_rescale_ts(q, S.enc->time_base, c->oa->time_base);
     int r = av_write_frame(c->out, q);
-    if (r >= 0) { atomic_fetch_add(&c->a_written, 1); cam_after_write(c); }
+    if (r >= 0) atomic_fetch_add(&c->a_written, 1);
     return r;
 }
 
@@ -232,7 +316,7 @@ int cam_cut_if_stalled(Cam *c, int64_t now, int64_t stall_us) {
     r = av_write_frame(c->out, NULL);
     /* Cut or not, the next look is one stall time away. */
     atomic_store(&c->sink.last_fragment_mono_us, now);
-    if (r >= 0) { r = 0; cam_after_write(c); }
+    if (r >= 0) r = 0;
     pthread_mutex_unlock(&c->mx);
     return r;
 }
@@ -246,9 +330,12 @@ int cam_close(Cam *c) {
             if (r >= 0) avio_flush(c->pb);
         }
         atomic_store(&c->out_ready, 0);
+        /* Waits for the sync of every written fragment: its checkpoints leave before the file is closed. */
         int s = sink_close(&c->sink);
         if (r >= 0 && s < 0) r = s;
-        if (r >= 0) cam_after_write(c);
+        if (c->sink.fail_code || c->sink.dropped_tail_bytes)
+            logj("error", "sink", c->sink.fail_code ? c->sink.fail_code : "tail_not_written", "\"cam\":%d,\"last_good_bytes\":%lld,\"fragments\":%lld,\"durable_fragments\":%lld,\"tail_bytes_not_written\":%lld",
+                 c->idx + 1, (long long)atomic_load(&c->sink.bytes), (long long)atomic_load(&c->sink.fragments), (long long)atomic_load(&c->sink.durable_fragments), (long long)c->sink.dropped_tail_bytes);
         if (c->pb) { av_freep(&c->pb->buffer); avio_context_free(&c->pb); }
         avformat_free_context(c->out);
         c->out = NULL;
@@ -319,10 +406,12 @@ static void *ingest_body(Cam *c) {
     atomic_store(&c->ever_connected, 1);
     atomic_store(&c->state, ING_CONNECTED);
 
-    int64_t live_after = mono_us() + US;
+    int64_t opened_mono = mono_us();     /* a packet handed over from here on waited at most since now (F-6) */
+    int64_t live_after = opened_mono + US;
+    c->gop_last_key_us = c->gop_last_us = AV_NOPTS_VALUE;
     AVPacket *p = av_packet_alloc();
     if (!p) { fatal(src, "PACKET_ALLOC_FAILED", AVERROR(ENOMEM)); atomic_store(&c->state, ING_ENDED); return NULL; }
-    int end = 0;
+    int end = 0, clock_refused = 0;
     while (!atomic_load(&g_stop_ingest)) {
         r = av_read_frame(c->in, p);
         if (r < 0) { end = r; break; }      /* the listen ingest ends on the client's TEARDOWN: one session by design (S1 G-1) */
@@ -347,14 +436,31 @@ static void *ingest_body(Cam *c) {
                 av_packet_unref(p);
                 continue;
             }
+            /* F-6: a camera whose wall clock is beyond any delay is not recorded at a wrong time. The
+             * packet may have waited inside libavformat since the stream opened: that much is allowed. */
+            double lag0 = (double)(real_us() - (seen + pts_us)) / 1000.0;
+            if (!clock_lag_sane(lag0, (double)(mono_us() - opened_mono) / 1000.0)) {
+                logj("error", src, "camera_clock_out_of_bound", "\"lag_ms\":%.1f,\"bound_ms\":%.0f", lag0, CLOCK_SANITY_MS);
+                av_packet_unref(p);
+                end = AVERROR(ERANGE);
+                clock_refused = 1;
+                break;
+            }
             c->anchored = 1;
             anchor_start(&c->anchor, seen, pts_us);
             logj("info", src, "video_anchored", "\"mode\":\"%s\",\"shift_us\":%lld", sd ? "prft" : "rtcp_sr", (long long)(c->anchor.anchor_us - atomic_load(&S.t0_real_us)));
         } else if (seen != AV_NOPTS_VALUE) {
             anchor_follow(&c->anchor, seen, pts_us);       /* slew-limited; the allowance never accumulates (F-1) */
+        } else {
+            anchor_tick(&c->anchor, pts_us);               /* no report on this packet: no allowance from it either (R-1) */
         }
         /* The packets that waited inside libavformat while it analysed the stream are handed over
          * at once: their arrival says nothing. The trend starts when the ingest is live. */
+        /* Row 62 proposed a second look at the same bound on the first packet that did not wait (a clock that is
+         * behind by less than the wait at anchoring). It is NOT applied (row 59): a camera that STALLS for a few
+         * seconds delivers its first live packet that late with a correct clock, and was given up for it (the stall
+         * regression of row 58, `p4_stall_pinned`: lag 3.9 s and 4.1 s, both cameras lost). One packet cannot tell a
+         * late delivery from a slow clock; that case needs a rule over several packets (follow-up, row 71). */
         if (mono_us() >= live_after) {
             pthread_mutex_lock(&c->trend_mx);
             trend_add(&c->trend, (double)pts_us / US, (double)(real_us() - (c->anchor.anchor_us + pts_us)) / 1000.0);
@@ -383,17 +489,20 @@ static void *ingest_body(Cam *c) {
         p->duration = av_rescale_q(p->duration, is->time_base, c->ov->time_base);
         p->pos = -1;
         p->stream_index = c->ov->index;
+        int key = (p->flags & AV_PKT_FLAG_KEY) != 0;
+        int64_t file_us = av_rescale_q(pts, c->ov->time_base, AV_TIME_BASE_Q);
         pthread_mutex_lock(&c->mx);
         r = av_write_frame(c->out, p);
-        if (r >= 0) cam_after_write(c);
         pthread_mutex_unlock(&c->mx);
         av_packet_unref(p);
         if (r < 0) { fatal(src, "VIDEO_MUX_WRITE_FAILED", r); break; }
+        gop_observe(c, src, key, file_us);
         atomic_fetch_add(&c->v_written, 1);
         atomic_store(&c->last_video_mono_us, mono_us());
     }
     av_packet_free(&p);
-    ingest_over(c, src, "INGEST_ENDED", end);
+    gop_report(c, src, 0);                                  /* what was seen, if the record has not left yet */
+    ingest_over(c, src, clock_refused ? "CAMERA_CLOCK_OUT_OF_BOUND" : "INGEST_ENDED", end);
     return NULL;
 }
 

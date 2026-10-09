@@ -105,9 +105,15 @@ export async function collectStatus(
 
   let content: DatabaseStatus['content'] = null;
   if (version !== null) {
+    // A database one migration set behind this code lacks the tables of the pending files (for
+    // example `session_capture_sources` before set 4, dbc-4 §N.8): the command must still print
+    // its version and its pending files, so only the tables that exist are counted. The pending
+    // set is already a problem line above.
+    const existing = await pool.query<{ t: string }>("SELECT tablename::text AS t FROM pg_tables WHERE schemaname = 'public'");
+    const present = new Set(existing.rows.map((row) => row.t));
+    const counted = SCHEMA_TABLE_NAMES.filter((table) => present.has(table));
     const counts = await pool.query<{ t: string; rows: string }>(
-      SCHEMA_TABLE_NAMES.map((table) => `SELECT '${table}' AS t, count(*) AS rows FROM public.${table}`).join(' UNION ALL ') +
-        ' ORDER BY t',
+      counted.map((table) => `SELECT '${table}' AS t, count(*) AS rows FROM public.${table}`).join(' UNION ALL ') + ' ORDER BY t',
     );
     const state = await pool.query<{ seeded_at: string; last_reset_at: string | null }>(
       'SELECT seeded_at, last_reset_at FROM public.core_state',

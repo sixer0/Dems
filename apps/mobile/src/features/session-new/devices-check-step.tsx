@@ -20,14 +20,16 @@ import { Fragment, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { StyleSheet, View } from 'react-native';
 import Animated, { FadeIn, ReduceMotion, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
-import type { PrecheckItem, PrecheckSlice } from '@dems/shared/sim';
+import { useSim, type PrecheckItem, type PrecheckSlice } from '@dems/shared/sim';
 import { spacing } from '@dems/shared/tokens';
 import { SectionCard, StatusChip } from '@/components/kit';
+import { PrecheckCaptureNotices, precheckSentence, usePrecheckSentence } from '@/features/capture-selector/capture-notices';
+import { PrecheckSourceBadge } from '@/features/capture-selector/development-source-badge';
 import { REDUCED_FADE_MS, SPEC_LITERALS, animatePulseOnce, rowReveal, triggerHaptic, useMotionSettings, type MotionSettings } from '@/motion';
 import { PendingSpinner, busyState } from '@/runtime';
 import { CheckIcon } from './check-icon';
 import { DevicePreviews } from './device-previews';
-import { CHECK_ORDER, itemsWith, precheckTone, resolvedCount, valueKey, type GatePhase } from './session-new-model';
+import { CHECK_ORDER, checkMicBinding, itemsWith, micRoleLine, precheckTone, resolvedCount, valueKey, type GatePhase } from './session-new-model';
 
 export interface DevicesCheckStepProps {
   precheck: PrecheckSlice | null;
@@ -79,11 +81,14 @@ export function DevicesCheckStep({
   useGateHaptics(phase);
 
   const reasons = blocks
-    .map((item) =>
-      t('features.session-new.devices.reasonItem', {
-        check: t(`sessionNew.devices.checks.${item.id}`),
-        value: t(valueKey(item.id, item.value ?? ''), { defaultValue: item.value ?? '' }),
-      }),
+    .map(
+      (item) =>
+        // Task 3 row 138 (D114; ux §8g.3): an unreachable capture device is worded from `params.rule`, never as a lens or signal state.
+        precheckSentence(t, item) ??
+        t('features.session-new.devices.reasonItem', {
+          check: t(`sessionNew.devices.checks.${item.id}`),
+          value: t(valueKey(item.id, item.value ?? ''), { defaultValue: item.value ?? '' }),
+        }),
     )
     .join(', ');
 
@@ -147,6 +152,10 @@ export function DevicesCheckStep({
         {phase === 'pass' ? (
           <StatusChip tone="success" label={t('features.session-new.devices.passed')} icon="CircleCheck" testID="session-new-gate-pass" />
         ) : null}
+        {/* Task 3 row 138 (ux §8e.2 situation B, §8g.3): the unreachable devices by name, the count of the one
+            search this pre-check ran, and "Search again" (G13 cameras, G17 microphones). No control switches
+            the microphone here (D83). Nothing is drawn when every configured source answered. */}
+        {phase === 'block' || phase === 'warn' ? <PrecheckCaptureNotices items={items} testID="session-new-capture-notices" /> : null}
 
         <ListGroup variant="transparent" testID="session-new-checks">
           {CHECK_ORDER.map((id, index) => {
@@ -187,14 +196,21 @@ interface CheckRowProps {
 
 function CheckRow({ item, id, settings }: CheckRowProps) {
   const { t } = useTranslation();
+  const roleLine = useSim(micRoleLine);
   const status = item?.status ?? 'PENDING';
   const resolved = status === 'PASS' || status === 'WARN' || status === 'BLOCK';
   const tone = precheckTone(status);
   const value = item?.value ?? null;
+  // Task 3 row 138 (D114): the sentence of an unreachable capture device, from `params.rule`; null for any other item.
+  const unreachable = usePrecheckSentence(resolved ? item : null);
   let description: string;
   if (!resolved) description = status === 'RUNNING' ? t('sessionNew.devices.resolving') : t('common.precheckStatus.PENDING');
+  else if (unreachable !== null) description = unreachable;
   else if (id === 'SECURITY' && status === 'WARN') description = t('features.session-new.devices.tamper');
   else description = t(valueKey(id, value ?? ''), { defaultValue: value ?? '' });
+  // Task 3 row 68 (MB-02): a microphone row names the role its input holds in the selector, and the input.
+  const binding = checkMicBinding(id, roleLine);
+  const roleText = binding ? t('features.capture-selector.precheck.micRole', { role: t(`features.capture-selector.selector.role.${binding.role}`), input: binding.inputId }) : null;
 
   return (
     <ListGroup.Item testID={`session-new-check-${id}`} accessibilityLabel={`${t(`sessionNew.devices.checks.${id}`)}, ${description}, ${t(`common.precheckStatus.${status}`)}`}>
@@ -204,6 +220,8 @@ function CheckRow({ item, id, settings }: CheckRowProps) {
       <ListGroup.ItemContent>
         <ListGroup.ItemTitle>{t(`sessionNew.devices.checks.${id}`)}</ListGroup.ItemTitle>
         <ListGroup.ItemDescription testID={`session-new-check-${id}-value`}>{description}</ListGroup.ItemDescription>
+        {roleText ? <ListGroup.ItemDescription testID={`session-new-check-${id}-role`}>{roleText}</ListGroup.ItemDescription> : null}
+        <PrecheckSourceBadge checkId={id} />
       </ListGroup.ItemContent>
       <ListGroup.ItemSuffix>
         {resolved ? (

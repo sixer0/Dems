@@ -3,7 +3,7 @@
   "info": {
     "title": "DEMS Core API",
     "version": "0.3.0",
-    "summary": "Core API v1 of the DEMS Edge Client demo, as the Core server answers it: 92 operations and one WebSocket channel.",
+    "summary": "Core API v1 of the DEMS Edge Client demo, as the Core server answers it: 97 operations and one WebSocket channel.",
     "description": "Reference for the Core API v1 of the **DEMS Edge Client demo** (device DEMS-IR-01), as the **Core server** answers it. The design book (§21.2) names nine endpoints; this document adds their bodies, and the operations both clients need beyond them: sign-in, user administration, pairing, the session lifecycle, evidence, devices, storage, network and time, security and audit, system, alerts and the demo controls.\n\n### Who answers\n\n| Service | Address | Answers |\n|---|---|---|\n| The Core server (`dems-core-server`) | `http://127.0.0.1:4420` | Every operation of this document and `WS /ws`. It keeps the Core state in PostgreSQL and is the only authority on who may do what. Loopback only. |\n| mock-core (`dems-mock-core`) | `http://127.0.0.1:4400` | `GET /api/v1/health` and a heartbeat-only `WS /ws`. It is the service of Simulated mode and answers no other operation. |\n| The in-app simulator | none | In Simulated mode, the nine design-book operations (`x-dems-mode: simulated`), inside the app and without a request. Its answers carry `x-dems-simulated: 1`; the Core server never sends that header. |\n\nEvery operation carries the badge **LIVE**: the Core server answers it over the network. `x-dems-services` names the services that answer an operation, and `x-dems-mode` says whether the in-app simulator can answer it too (`simulated`) or only a service can (`live`).\n\n### Access\n\nThe Core server decides on every request, before the body is read, from the credential the request carries:\n- a **web console** sends the session cookie that `signIn` set (scheme `sessionCookie`);\n- a **paired device** sends `Authorization: Bearer` (scheme `bearerAuth`): its device credential on the device operations and at sign-in, its session token once an operator is signed in.\n\nA request carries one credential, never both. Each operation states its access rule as `x-dems-access` (PUBLIC, DEVICE, AUTHENTICATED, one permission, or the one any-of) and the audit row it writes as `x-dems-audit`. A refusal for a missing permission answers `403` and writes one audit row; the role and its permissions are read from the database for each request.\n\n### Answers every operation shares\n\nThe answers that do not depend on the operation are defined once, under Responses: a malformed path, an unknown route, a wrong method, a server that is not ready, an Origin outside the allowed lists, two credentials in one request, the request throttle, a body over 65,536 bytes, and an unexpected failure. Every answer carries `x-request-id`, and an error repeats it as `error.requestId`. A 2xx answer of a POST carries `x-dems-epoch` and `x-dems-revision`: the state revision that holds the effect of the command.\n\n### Lists\n\nA list is cursor-paged: `cursor` is the `nextCursor` of the page before, `limit` is 1 to 200 (50 when omitted), and `nextCursor` is null on the last page.\n\n### Not part of this API\n\n- Media and evidence package files are not served: the clients keep their bundled demo media, and the server owns the records, the hashes and the verdicts.\n- No operation creates or deletes a user, changes a password or edits the role matrix.\n- No operation takes a file or resolves a path that a client sent.\n\n### Examples\n\nExamples are frozen at 2026-10-01 10:00:00 WIB and follow the canonical demo dataset: session SES-20261001-0024 (case LP/2026/1001-0007) and evidence EV-20260930-0004, exported by the SUPERVISOR operator. The nine design-book operations write times as ISO-8601 text; every other operation writes epoch milliseconds on the server clock. A password, a pairing code, a session token, a device credential and a biometric token appear only as placeholders that open nothing. All data is synthetic."
   },
   "servers": [
@@ -1523,6 +1523,11 @@
                         {
                           "id": "SVC-16",
                           "name": "Audit Service",
+                          "status": "RUNNING"
+                        },
+                        {
+                          "id": "SVC-17",
+                          "name": "Transcription Service",
                           "status": "RUNNING"
                         }
                       ],
@@ -10571,6 +10576,203 @@
                       "manifestOk": true,
                       "signatureOk": true
                     }
+                  },
+                  "passedDevelopmentSources": {
+                    "summary": "Schema v2, recorded from development sources: every check passes and the source class is reported (V-15)",
+                    "value": {
+                      "evidenceId": "EV-20261009-0001",
+                      "ok": true,
+                      "at": 1791500000000,
+                      "tracks": [],
+                      "files": [
+                        {
+                          "fileId": "fragments/VIDEO-01.mp4",
+                          "trackId": "VIDEO-01",
+                          "storedOk": true,
+                          "plainOk": true,
+                          "chainOk": true,
+                          "fragmentCount": 5,
+                          "ok": true
+                        },
+                        {
+                          "fileId": "fragments/VIDEO-02.mp4",
+                          "trackId": "VIDEO-02",
+                          "storedOk": true,
+                          "plainOk": true,
+                          "chainOk": true,
+                          "fragmentCount": 5,
+                          "ok": true
+                        }
+                      ],
+                      "transcriptOk": true,
+                      "manifestOk": true,
+                      "signatureOk": true,
+                      "overall": "PASS",
+                      "interrupted": false,
+                      "checks": [
+                        {
+                          "id": "V-01",
+                          "name": "Manifest structure",
+                          "status": "PASS",
+                          "failureClass": null,
+                          "skipped": null,
+                          "findings": []
+                        },
+                        {
+                          "id": "V-02",
+                          "name": "Manifest internal consistency",
+                          "status": "PASS",
+                          "failureClass": null,
+                          "skipped": null,
+                          "findings": []
+                        },
+                        {
+                          "id": "V-03",
+                          "name": "Manifest hash",
+                          "status": "PASS",
+                          "failureClass": null,
+                          "skipped": null,
+                          "findings": []
+                        },
+                        {
+                          "id": "V-04",
+                          "name": "Per-fragment stored-bytes hash",
+                          "status": "PASS",
+                          "failureClass": null,
+                          "skipped": null,
+                          "findings": []
+                        },
+                        {
+                          "id": "V-05",
+                          "name": "Plaintext hash after decryption",
+                          "status": "PASS",
+                          "failureClass": null,
+                          "skipped": null,
+                          "findings": []
+                        },
+                        {
+                          "id": "V-06",
+                          "name": "Chain-hash continuity",
+                          "status": "PASS",
+                          "failureClass": null,
+                          "skipped": null,
+                          "findings": []
+                        },
+                        {
+                          "id": "V-07",
+                          "name": "Sequence contiguity",
+                          "status": "PASS",
+                          "failureClass": null,
+                          "skipped": null,
+                          "findings": []
+                        },
+                        {
+                          "id": "V-08",
+                          "name": "One-fragment tamper expectation",
+                          "status": "PASS",
+                          "failureClass": null,
+                          "skipped": null,
+                          "findings": []
+                        },
+                        {
+                          "id": "V-09",
+                          "name": "Signature verification",
+                          "status": "PASS",
+                          "failureClass": null,
+                          "skipped": null,
+                          "findings": []
+                        },
+                        {
+                          "id": "V-10",
+                          "name": "Transcript hash match",
+                          "status": "PASS",
+                          "failureClass": null,
+                          "skipped": null,
+                          "findings": []
+                        },
+                        {
+                          "id": "V-11",
+                          "name": "Revision signatures",
+                          "status": "PASS",
+                          "failureClass": null,
+                          "skipped": null,
+                          "findings": []
+                        },
+                        {
+                          "id": "V-12",
+                          "name": "Interrupted-seal flag",
+                          "status": "PASS",
+                          "failureClass": null,
+                          "skipped": null,
+                          "findings": []
+                        },
+                        {
+                          "id": "V-13",
+                          "name": "Certificate validity",
+                          "status": "PASS",
+                          "failureClass": null,
+                          "skipped": null,
+                          "findings": []
+                        },
+                        {
+                          "id": "V-14",
+                          "name": "File completeness",
+                          "status": "PASS",
+                          "failureClass": null,
+                          "skipped": null,
+                          "findings": []
+                        },
+                        {
+                          "id": "V-15",
+                          "name": "Source class",
+                          "status": "PASS",
+                          "failureClass": null,
+                          "skipped": null,
+                          "findings": []
+                        }
+                      ],
+                      "fragments": [],
+                      "failedFragmentCount": 0,
+                      "transcriptState": {
+                        "code": "READY",
+                        "report": "Transcript sealed",
+                        "sealedState": "ASSEMBLED",
+                        "reason": null,
+                        "documentSealed": true,
+                        "failedChunks": 0,
+                        "backendUnreachable": false
+                      },
+                      "sources": {
+                        "ok": true,
+                        "code": "DEVELOPMENT",
+                        "development": true,
+                        "report": "DEVELOPMENT SOURCES — this package was not recorded from production devices.",
+                        "tracks": [
+                          {
+                            "trackId": "VIDEO-01",
+                            "deviceId": "CAM-03",
+                            "sourceClass": "LOCAL_DEVICE"
+                          },
+                          {
+                            "trackId": "VIDEO-02",
+                            "deviceId": "CAM-02",
+                            "sourceClass": "FAKE"
+                          }
+                        ],
+                        "audioIntervals": [
+                          {
+                            "seq": 1,
+                            "micDeviceId": "MIC-03",
+                            "sourceClass": "LOCAL_DEVICE"
+                          },
+                          {
+                            "seq": 2,
+                            "micDeviceId": "MIC-02",
+                            "sourceClass": "FAKE"
+                          }
+                        ]
+                      }
+                    }
                   }
                 }
               }
@@ -13691,7 +13893,11 @@
                 "EVIDENCE_EXPORT_FAILED",
                 "CAPTURE_CREDENTIAL_SET",
                 "CAPTURE_CREDENTIAL_REVEALED",
-                "STT_CONFIG_CHANGED"
+                "STT_CONFIG_CHANGED",
+                "CAPTURE_DISCOVERY_SEARCHED",
+                "CAPTURE_CONNECTION_TESTED",
+                "CAPTURE_CANDIDATE_ADOPTED",
+                "CAPTURE_DEVICE_UNREACHABLE"
               ]
             }
           },
@@ -14778,7 +14984,7 @@
                 },
                 "examples": {
                   "idle": {
-                    "summary": "Sixteen services running, version 2.5.0 available, no diagnostics run yet",
+                    "summary": "Seventeen services running, version 2.5.0 available, no diagnostics run yet",
                     "value": {
                       "device": {
                         "id": "DEMS-IR-01",
@@ -14897,6 +15103,12 @@
                         {
                           "id": "SVC-16",
                           "name": "Audit Service",
+                          "status": "RUNNING",
+                          "startedAt": 1790811162000
+                        },
+                        {
+                          "id": "SVC-17",
+                          "name": "Transcription Service",
                           "status": "RUNNING",
                           "startedAt": 1790811162000
                         }
@@ -15217,9 +15429,9 @@
                 },
                 "examples": {
                   "restarted": {
-                    "summary": "All sixteen services restarted",
+                    "summary": "All seventeen services restarted",
                     "value": {
-                      "restarted": 16
+                      "restarted": 17
                     }
                   }
                 }
@@ -18167,7 +18379,7 @@
             "name": "id",
             "in": "path",
             "required": true,
-            "description": "A capture device of the registry (`dbc-3 §B.2`): `CAM-01`, `CAM-02`, `MIC-01`, `MIC-02`, `POE-SWITCH`.",
+            "description": "A registered capture device (`dbc-4 §N`): a built-in one (`CAM-01`, `CAM-02`, `MIC-01`, `MIC-02`, `POE-SWITCH`) or one that operation 96 added (`CAM-03` and up). Never a candidate id of a camera search.",
             "schema": {
               "type": "string",
               "pattern": "^[A-Z][A-Z0-9-]{0,31}$"
@@ -18476,7 +18688,7 @@
             "name": "id",
             "in": "path",
             "required": true,
-            "description": "A capture device of the registry (`dbc-3 §B.2`): `CAM-01`, `CAM-02`, `MIC-01`, `MIC-02`, `POE-SWITCH`.",
+            "description": "A registered capture device (`dbc-4 §N`): a built-in one (`CAM-01`, `CAM-02`, `MIC-01`, `MIC-02`, `POE-SWITCH`) or one that operation 96 added (`CAM-03` and up). Never a candidate id of a camera search.",
             "schema": {
               "type": "string",
               "pattern": "^[A-Z][A-Z0-9-]{0,31}$"
@@ -20735,7 +20947,7 @@
           "Device"
         ],
         "summary": "Store a camera credential (write-only)",
-        "description": "Stores the `{ username, secret }` pair for the camera in the path, encrypted at rest (`dbc-3 §B.3`). Needs CAPTURE_CONFIG (SUPERVISOR, TECHNICIAN — D4 OD-10) and is idle-only (`409 CAPTURE_CONFIG_LOCKED`, no audit row — SEC35-19).\n\n**Write-only** (RK-12; specs C-N8; M2-CRD-1): the answer is the plain `CaptureConfig` snapshot and never echoes either field; no slice, log line or audit row carries the username, the secret, the ciphertext, the nonce or the key; no operation returns a credential. The CAPTURE_CREDENTIAL_SET row names `deviceId` (and the optional operationId/permission) only (`C3 §5.2`).\n\nReading the store belongs to the single owning module and the audited supervisor reveal path (`dbc-3 §B.3/§D`; SEC35-02; the CAPTURE_CREDENTIAL_REVEALED row carries `deviceId` and a SCREAMING_SNAKE reason, never the value).\n\nSimulated: the in-app simulator emulates this operation (OD-17 supersedes the old \"simulator untouched\" rule, OD-23); in Simulated mode a client calls it inside its own simulator.",
+        "description": "Stores the `{ username, secret }` pair for the camera in the path, encrypted at rest (`dbc-3 §B.3`). Needs CAPTURE_CONFIG (SUPERVISOR, TECHNICIAN — D4 OD-10) and is idle-only (`409 CAPTURE_CONFIG_LOCKED`, no audit row — SEC35-19).\n\n**Web console only** (`C3 §3.1`, erratum PE-121-05; D80(3)): the condition `WEB_CONSOLE_SESSION` refuses a session of a tablet or a phone with `403 NOT_PERMITTED`, `details.reason: WEB_CONSOLE_ONLY` and one ACCESS_DENIED row, before the body is used. `{id}` is always a registered capture device: a candidate of a camera search is adopted with operation 96, which stores its credential in the same transaction. Both fields are printable ASCII. On the Core server the answer is `503 NOT_READY` with `details.reason: CREDENTIAL_STORE_NOT_READY` while the Core credential store is not available; nothing is stored then.\n\n**Write-only** (RK-12; specs C-N8; M2-CRD-1): the answer is the plain `CaptureConfig` snapshot and never echoes either field; no slice, log line or audit row carries the username, the secret, the ciphertext, the nonce or the key; no operation returns a credential. The CAPTURE_CREDENTIAL_SET row names `deviceId` (and the optional operationId/permission) only (`C3 §5.2`).\n\nReading the store belongs to the single owning module and the audited supervisor reveal path (`dbc-3 §B.3/§D`; SEC35-02; the CAPTURE_CREDENTIAL_REVEALED row carries `deviceId` and a SCREAMING_SNAKE reason, never the value).\n\nSimulated: the in-app simulator emulates this operation (OD-17 supersedes the old \"simulator untouched\" rule, OD-23); in Simulated mode a client calls it inside its own simulator.",
         "responses": {
           "200": {
             "description": "The capture-config snapshot. Neither credential field is ever echoed.",
@@ -20854,7 +21066,7 @@
             }
           },
           "403": {
-            "description": "Refused: the operator's role lacks CAPTURE_CONFIG (NOT_PERMITTED; one ACCESS_DENIED audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "description": "Refused: the operator's role lacks CAPTURE_CONFIG (NOT_PERMITTED; one ACCESS_DENIED audit row); the operator's session is bound to a paired tablet or phone (NOT_PERMITTED, `details.reason: WEB_CONSOLE_ONLY`; one ACCESS_DENIED audit row; refused before the body is used); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -20900,6 +21112,23 @@
                       "error": {
                         "code": "ORIGIN_NOT_ALLOWED",
                         "message": "This origin may not call the Core server.",
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  },
+                  "webConsoleOnly": {
+                    "summary": "A tablet or phone session on a web-console-only operation",
+                    "description": "The caller holds CAPTURE_CONFIG, but the session is bound to a paired device. One ACCESS_DENIED row is written; the body is not used.",
+                    "value": {
+                      "error": {
+                        "code": "NOT_PERMITTED",
+                        "message": "Your role does not allow this action. The attempt was audited.",
+                        "details": {
+                          "operationId": "setCaptureDeviceCredential",
+                          "permission": "CAPTURE_CONFIG",
+                          "role": "TECHNICIAN",
+                          "reason": "WEB_CONSOLE_ONLY"
+                        },
                         "requestId": "00000000-0000-4000-8000-000000000000"
                       }
                     }
@@ -21013,7 +21242,7 @@
             "name": "id",
             "in": "path",
             "required": true,
-            "description": "A capture device of the registry (`dbc-3 §B.2`): `CAM-01`, `CAM-02`, `MIC-01`, `MIC-02`, `POE-SWITCH`.",
+            "description": "A registered capture device (`dbc-4 §N`): a built-in one (`CAM-01`, `CAM-02`, `MIC-01`, `MIC-02`, `POE-SWITCH`) or one that operation 96 added (`CAM-03` and up). Never a candidate id of a camera search.",
             "schema": {
               "type": "string",
               "pattern": "^[A-Z][A-Z0-9-]{0,31}$"
@@ -21032,8 +21261,8 @@
                 "pair": {
                   "summary": "Store the ONVIF credential pair of CAM-01 (placeholders; the value never returns)",
                   "value": {
-                    "username": "<username>",
-                    "secret": "<secret>"
+                    "username": "USERNAME",
+                    "secret": "SECRET"
                   }
                 }
               }
@@ -21053,7 +21282,9 @@
           "permissions": [
             "CAPTURE_CONFIG"
           ],
-          "conditions": []
+          "conditions": [
+            "WEB_CONSOLE_SESSION"
+          ]
         },
         "x-dems-audit": {
           "success": "CAPTURE_CREDENTIAL_SET",
@@ -21700,6 +21931,1402 @@
           "dems-core-server"
         ]
       }
+    },
+    "/api/v1/capture/discovery": {
+      "post": {
+        "operationId": "startCaptureDiscovery",
+        "tags": [
+          "Device"
+        ],
+        "summary": "Search for cameras",
+        "description": "Starts one camera search: an unauthenticated WS-Discovery probe on the network of the Core, for a fixed listening window. **No body.** No address, subnet, interface, port, timeout or filter can be sent: a search always probes the fixed multicast group. It opens no connection to any device, authenticates nothing and registers nothing.\n\nNeeds CAPTURE_CONFIG (SUPERVISOR, TECHNICIAN), on the web console, a tablet or a phone. Answers `202` with the new search; `200` with the same object and `created: false` when the caller's own search is still RUNNING (no second probe). The candidates are read with operation 94, by the session that started the search and by no other.\n\nA search is allowed while a session is open. While that session is in `RECORDING` it is allowed only because `CAPTURE_DISCOVERY_DURING_RECORDING_ENABLED` is true (D86 C-4); with the constant off the answer is `409 INVALID_STATE` (`DISCOVERY_NOT_ALLOWED_WHILE_RECORDING`): 0 datagrams, no audit row, no alert. Another operator session's running search answers `409 INVALID_STATE` (`DISCOVERY_IN_PROGRESS`): one socket per Core. Never `409 CAPTURE_CONFIG_LOCKED`.\n\nWrites one CAPTURE_DISCOVERY_SEARCHED row when the window closes or the search fails: the search id, the trigger, the outcome and four counts, never an address or a device text. A search with no responder writes that one row and raises one WARNING alert (`SYSTEM`, `params.reason: CAPTURE_DISCOVERY_EMPTY`); the next search with a responder resolves it.\n\nOver a bound the Core server answers `429 RATE_LIMITED` with `retry-after` and `details.reason` `DISCOVERY_RATE_LIMITED`: nothing is sent and no audit row is written. `503 NOT_READY` carries `details.reason` `DISCOVERY_NOT_READY` when no discovery adapter is provided or capture is not ready. Both are envelope-level answers of the contract.\n\nSimulated: the in-app simulator emulates this operation (OD-17 supersedes the old \"simulator untouched\" rule, OD-23); in Simulated mode a client calls it inside its own simulator. The simulator opens no socket and waits on no timer: it answers `202` with a search that is already COMPLETE (`windowMs: 0`) and two fixed candidates.",
+        "responses": {
+          "200": {
+            "description": "The caller's own search is still RUNNING: the same search, `created: false`. No second probe was sent.",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              },
+              "x-dems-epoch": {
+                "$ref": "#/components/headers/XDemsEpoch"
+              },
+              "x-dems-revision": {
+                "$ref": "#/components/headers/XDemsRevision"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaptureDiscoverySearch"
+                },
+                "examples": {
+                  "running": {
+                    "summary": "The caller's own search is still running",
+                    "value": {
+                      "searchId": "DSC-000001",
+                      "scope": "CAMERA_NETWORK",
+                      "trigger": "MANUAL",
+                      "state": "RUNNING",
+                      "startedAt": 1790823600000,
+                      "windowMs": 3000,
+                      "completesAt": 1790823603000,
+                      "expiresAt": 1790824203000,
+                      "responderCount": 0,
+                      "newCount": 0,
+                      "registeredCount": 0,
+                      "interfaceCount": 1,
+                      "failureReason": null,
+                      "created": false
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "A new search. Read its candidates with operation 94.",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              },
+              "x-dems-epoch": {
+                "$ref": "#/components/headers/XDemsEpoch"
+              },
+              "x-dems-revision": {
+                "$ref": "#/components/headers/XDemsRevision"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaptureDiscoverySearch"
+                },
+                "examples": {
+                  "started": {
+                    "summary": "The simulator's search: complete at once, two responders",
+                    "value": {
+                      "searchId": "DSC-000001",
+                      "scope": "CAMERA_NETWORK",
+                      "trigger": "MANUAL",
+                      "state": "COMPLETE",
+                      "startedAt": 1790823600000,
+                      "windowMs": 0,
+                      "completesAt": 1790823600000,
+                      "expiresAt": 1790824200000,
+                      "responderCount": 2,
+                      "newCount": 1,
+                      "registeredCount": 1,
+                      "interfaceCount": 0,
+                      "failureReason": null,
+                      "created": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session (NOT_SIGNED_IN): none was sent, it expired or ended, or the request carried two credentials (`details.reason: CREDENTIAL_CONFLICT`).",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "notSignedIn": {
+                    "summary": "No valid session",
+                    "value": {
+                      "error": {
+                        "code": "NOT_SIGNED_IN",
+                        "message": "Sign in first.",
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refused: the operator's role lacks CAPTURE_CONFIG (NOT_PERMITTED; one ACCESS_DENIED audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "notPermitted": {
+                    "summary": "INVESTIGATOR lacks CAPTURE_CONFIG",
+                    "value": {
+                      "error": {
+                        "code": "NOT_PERMITTED",
+                        "message": "Your role does not allow this action. The attempt was audited.",
+                        "details": {
+                          "operationId": "startCaptureDiscovery",
+                          "permission": "CAPTURE_CONFIG",
+                          "role": "INVESTIGATOR"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  },
+                  "deviceRevoked": {
+                    "summary": "The device is no longer paired",
+                    "value": {
+                      "error": {
+                        "code": "DEVICE_REVOKED",
+                        "message": "This device is no longer paired with the Core.",
+                        "details": {
+                          "reason": "DEVICE_REVOKED"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  },
+                  "originNotAllowed": {
+                    "summary": "An Origin outside the allowed lists",
+                    "value": {
+                      "error": {
+                        "code": "ORIGIN_NOT_ALLOWED",
+                        "message": "This origin may not call the Core server.",
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Another operator session's search is running (INVALID_STATE, `details.reason: DISCOVERY_IN_PROGRESS`), or the session is RECORDING while searching during a recording is switched off (INVALID_STATE, `details.reason: DISCOVERY_NOT_ALLOWED_WHILE_RECORDING`). No probe is sent, no audit row is written and no alert is raised.",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "inProgress": {
+                    "summary": "Another session's search is running",
+                    "value": {
+                      "error": {
+                        "code": "INVALID_STATE",
+                        "message": "Another camera search is running. Try again shortly.",
+                        "details": {
+                          "reason": "DISCOVERY_IN_PROGRESS"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  },
+                  "recording": {
+                    "summary": "Searching during a recording is switched off",
+                    "value": {
+                      "error": {
+                        "code": "INVALID_STATE",
+                        "message": "A camera search cannot run while a session is recording.",
+                        "details": {
+                          "reason": "DISCOVERY_NOT_ALLOWED_WHILE_RECORDING"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-badges": [
+          {
+            "name": "LIVE",
+            "position": "after",
+            "color": "#22C55E"
+          }
+        ],
+        "x-dems-mode": "simulated",
+        "x-dems-source": "Task 3 R-9, blueprint row 132; C3 §2.6 operation 93; decisions D80, D86 C-4, D91 (not in the design book)",
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-dems-access": {
+          "rule": "CAPTURE_CONFIG",
+          "permissions": [
+            "CAPTURE_CONFIG"
+          ],
+          "conditions": []
+        },
+        "x-dems-audit": {
+          "success": "CAPTURE_DISCOVERY_SEARCHED",
+          "denial": "ACCESS_DENIED",
+          "also": []
+        },
+        "x-dems-services": [
+          "dems-core-server"
+        ]
+      },
+      "get": {
+        "operationId": "getCaptureDiscovery",
+        "tags": [
+          "Device"
+        ],
+        "summary": "Camera search result",
+        "description": "The camera search of the calling operator session and its candidates. `search: null` and `candidates: []` when the session has no live search: none was started, it expired, or a new one replaced it. The list is empty while the search is RUNNING and complete once it is COMPLETE; it never shrinks or reorders during its life.\n\n**Owner session only.** There is no search id in any path: no role, SUPERVISOR included, reads another session's search. What every client sees of a search is its outcome as an alert, never the list. Needs CAPTURE_CONFIG.\n\nA candidate is built from the probe answer only. Its `vendor`, `model`, `name` and `endpointRef` are **untrusted device text**: a client draws them as text and trusts none of them. `conflict` and `addressChanged` say when two devices announce one identity or a registered identity answers from another address; such a row must be shown, not hidden.\n\nA read never probes: it sends nothing to the network. A client polls it while a search is RUNNING, not faster than once per second. Candidates never appear in operation 77 or in the `captureDevices` slice.\n\nSimulated: the in-app simulator emulates this operation (OD-17 supersedes the old \"simulator untouched\" rule, OD-23); in Simulated mode a client calls it inside its own simulator.",
+        "responses": {
+          "200": {
+            "description": "The caller's own search and its candidates.",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaptureDiscoveryState"
+                },
+                "examples": {
+                  "none": {
+                    "summary": "No live search in this session",
+                    "value": {
+                      "search": null,
+                      "candidates": [],
+                      "truncated": false
+                    }
+                  },
+                  "complete": {
+                    "summary": "A complete search: one new test source, one registered camera",
+                    "value": {
+                      "search": {
+                        "searchId": "DSC-000001",
+                        "scope": "CAMERA_NETWORK",
+                        "trigger": "MANUAL",
+                        "state": "COMPLETE",
+                        "startedAt": 1790823600000,
+                        "windowMs": 0,
+                        "completesAt": 1790823600000,
+                        "expiresAt": 1790824200000,
+                        "responderCount": 2,
+                        "newCount": 1,
+                        "registeredCount": 1,
+                        "interfaceCount": 0,
+                        "failureReason": null,
+                        "created": false
+                      },
+                      "candidates": [
+                        {
+                          "candidateId": "CND-000000000001",
+                          "adapter": "FAKE",
+                          "sourceClass": "DEVELOPMENT",
+                          "host": "127.0.0.1",
+                          "endpointRef": "urn:uuid:00000000-0000-4000-8000-000000000001",
+                          "vendor": "DEMS",
+                          "model": "Test source",
+                          "name": "Test camera 3",
+                          "status": "NEW",
+                          "deviceId": null,
+                          "testable": true,
+                          "conflict": false,
+                          "addressChanged": false,
+                          "lastTest": null,
+                          "adoptable": false
+                        },
+                        {
+                          "candidateId": "CND-000000000002",
+                          "adapter": "FAKE",
+                          "sourceClass": "DEVELOPMENT",
+                          "host": "127.0.0.1",
+                          "endpointRef": "urn:uuid:00000000-0000-4000-8000-000000000002",
+                          "vendor": "DEMS",
+                          "model": "Test source",
+                          "name": "Test camera 1",
+                          "status": "REGISTERED",
+                          "deviceId": "CAM-01",
+                          "testable": true,
+                          "conflict": false,
+                          "addressChanged": false,
+                          "lastTest": null,
+                          "adoptable": false
+                        }
+                      ],
+                      "truncated": false
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session (NOT_SIGNED_IN): none was sent, it expired or ended, or the request carried two credentials (`details.reason: CREDENTIAL_CONFLICT`).",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "notSignedIn": {
+                    "summary": "No valid session",
+                    "value": {
+                      "error": {
+                        "code": "NOT_SIGNED_IN",
+                        "message": "Sign in first.",
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refused: the operator's role lacks CAPTURE_CONFIG (NOT_PERMITTED; one ACCESS_DENIED audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "notPermitted": {
+                    "summary": "INVESTIGATOR lacks CAPTURE_CONFIG",
+                    "value": {
+                      "error": {
+                        "code": "NOT_PERMITTED",
+                        "message": "Your role does not allow this action. The attempt was audited.",
+                        "details": {
+                          "operationId": "getCaptureDiscovery",
+                          "permission": "CAPTURE_CONFIG",
+                          "role": "INVESTIGATOR"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  },
+                  "deviceRevoked": {
+                    "summary": "The device is no longer paired",
+                    "value": {
+                      "error": {
+                        "code": "DEVICE_REVOKED",
+                        "message": "This device is no longer paired with the Core.",
+                        "details": {
+                          "reason": "DEVICE_REVOKED"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  },
+                  "originNotAllowed": {
+                    "summary": "An Origin outside the allowed lists",
+                    "value": {
+                      "error": {
+                        "code": "ORIGIN_NOT_ALLOWED",
+                        "message": "This origin may not call the Core server.",
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-badges": [
+          {
+            "name": "LIVE",
+            "position": "after",
+            "color": "#22C55E"
+          }
+        ],
+        "x-dems-mode": "simulated",
+        "x-dems-source": "Task 3 R-9, blueprint row 132; C3 §2.6 operation 94; decisions D80, D83, D86 (not in the design book)",
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-dems-access": {
+          "rule": "CAPTURE_CONFIG",
+          "permissions": [
+            "CAPTURE_CONFIG"
+          ],
+          "conditions": []
+        },
+        "x-dems-audit": {
+          "success": "NONE-R",
+          "denial": "ACCESS_DENIED",
+          "also": []
+        },
+        "x-dems-services": [
+          "dems-core-server"
+        ]
+      }
+    },
+    "/api/v1/capture/discovery/candidates/{id}/test": {
+      "post": {
+        "operationId": "testCaptureCandidateConnection",
+        "tags": [
+          "Device"
+        ],
+        "summary": "Test the connection to a candidate camera",
+        "description": "One read-only connection attempt against the candidate in the path, inside one time limit: authenticate, list the media profiles, look for a usable H.264 profile. It changes no setting of the camera and is never repeated without a new operator action.\n\n**Web console only.** Needs CAPTURE_CONFIG and a web console session (`WEB_CONSOLE_SESSION`): a session of a tablet or a phone is refused `403 NOT_PERMITTED` with `details.reason: WEB_CONSOLE_ONLY` and one ACCESS_DENIED row, before the body is used. Idle only: with a session open it answers `409 CAPTURE_CONFIG_LOCKED` and writes no audit row.\n\n**The target is the candidate in the path and nothing else** (R-9 AC-10): the Core takes the address from its own search state. A foreign id, an expired id and a candidate that is not testable are refused with 0 outbound requests.\n\n`credential` is required for a `PRODUCTION` candidate (`422 INVALID_INPUT`, `details.reason: CREDENTIAL_REQUIRED`): no credential means no connection attempt. A `DEVELOPMENT` candidate (a fixture on loopback) may be tested without one. Both fields are 1 or more printable ASCII characters. **The credential is write-only and lives for this one request** (C-N15; SEC35-34): it is not kept in the candidate state, not cached for a later request, and never written to a log line, an audit row, an error or a file. A retry is a new request with a newly sent credential.\n\n**A failed test is a `200` result, not an HTTP error.** Exactly five outcomes: `REACHABLE`, `AUTHENTICATION_FAILED`, `WRONG_PROFILE`, `NOT_H264`, `UNREACHABLE`. The answer holds no device error text, no URL and no credential member. Every accepted attempt writes one CAPTURE_CONNECTION_TESTED row, whatever the outcome: ids, the outcome and facts, never the username, the secret or a URL (`host` and `endpointRef` for a PRODUCTION candidate only).\n\nOther refusals, each before any request leaves the Core: `409 INVALID_STATE` with `details.reason` `CANDIDATE_ALREADY_REGISTERED` (plus `details.deviceId`), `CANDIDATE_NOT_TESTABLE` or `CONNECTION_TEST_IN_PROGRESS`.\n\nOver a bound the Core server answers `429 RATE_LIMITED` with `retry-after` and `details.reason` `CONNECTION_TEST_RATE_LIMITED` or `CONNECTION_TEST_LOCKOUT_GUARD` (too many refused credentials on this host): nothing is sent and no audit row is written. `503 NOT_READY` carries `details.reason` `DISCOVERY_NOT_READY`. Both are envelope-level answers of the contract.\n\nSimulated: the in-app simulator emulates this operation (OD-17 supersedes the old \"simulator untouched\" rule, OD-23); in Simulated mode a client calls it inside its own simulator. The simulator contacts nothing: the first fixed candidate answers `REACHABLE`, and the body is accepted opaquely, never stored and never echoed. On a tablet or phone the simulator refuses with the same `403`.",
+        "responses": {
+          "200": {
+            "description": "The outcome of the test. A failed test is a result, not an error. Never the credential.",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              },
+              "x-dems-epoch": {
+                "$ref": "#/components/headers/XDemsEpoch"
+              },
+              "x-dems-revision": {
+                "$ref": "#/components/headers/XDemsRevision"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaptureConnectionTest"
+                },
+                "examples": {
+                  "reachable": {
+                    "summary": "The camera answered and has a usable H.264 profile",
+                    "value": {
+                      "candidateId": "CND-000000000001",
+                      "outcome": "REACHABLE",
+                      "authenticated": false,
+                      "testedAt": 1790823600000,
+                      "usableProfileCount": 1,
+                      "failedAttemptsRemaining": 2
+                    }
+                  },
+                  "authenticationFailed": {
+                    "summary": "The camera refused the credential: a result, not an error",
+                    "value": {
+                      "candidateId": "CND-000000000001",
+                      "outcome": "AUTHENTICATION_FAILED",
+                      "authenticated": true,
+                      "testedAt": 1790823600000,
+                      "usableProfileCount": 0,
+                      "failedAttemptsRemaining": 1
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not a JSON object (INVALID_JSON).",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "invalidJson": {
+                    "summary": "Not a JSON object",
+                    "value": {
+                      "error": {
+                        "code": "INVALID_JSON",
+                        "message": "The request body must be a JSON object.",
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session (NOT_SIGNED_IN): none was sent, it expired or ended, or the request carried two credentials (`details.reason: CREDENTIAL_CONFLICT`).",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "notSignedIn": {
+                    "summary": "No valid session",
+                    "value": {
+                      "error": {
+                        "code": "NOT_SIGNED_IN",
+                        "message": "Sign in first.",
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refused: the operator's role lacks CAPTURE_CONFIG (NOT_PERMITTED; one ACCESS_DENIED audit row); the operator's session is bound to a paired tablet or phone (NOT_PERMITTED, `details.reason: WEB_CONSOLE_ONLY`; one ACCESS_DENIED audit row; refused before the body is used); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "notPermitted": {
+                    "summary": "INVESTIGATOR lacks CAPTURE_CONFIG",
+                    "value": {
+                      "error": {
+                        "code": "NOT_PERMITTED",
+                        "message": "Your role does not allow this action. The attempt was audited.",
+                        "details": {
+                          "operationId": "testCaptureCandidateConnection",
+                          "permission": "CAPTURE_CONFIG",
+                          "role": "INVESTIGATOR"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  },
+                  "deviceRevoked": {
+                    "summary": "The device is no longer paired",
+                    "value": {
+                      "error": {
+                        "code": "DEVICE_REVOKED",
+                        "message": "This device is no longer paired with the Core.",
+                        "details": {
+                          "reason": "DEVICE_REVOKED"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  },
+                  "originNotAllowed": {
+                    "summary": "An Origin outside the allowed lists",
+                    "value": {
+                      "error": {
+                        "code": "ORIGIN_NOT_ALLOWED",
+                        "message": "This origin may not call the Core server.",
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  },
+                  "webConsoleOnly": {
+                    "summary": "A tablet or phone session on a web-console-only operation",
+                    "description": "The caller holds CAPTURE_CONFIG, but the session is bound to a paired device. One ACCESS_DENIED row is written; the body is not used.",
+                    "value": {
+                      "error": {
+                        "code": "NOT_PERMITTED",
+                        "message": "Your role does not allow this action. The attempt was audited.",
+                        "details": {
+                          "operationId": "testCaptureCandidateConnection",
+                          "permission": "CAPTURE_CONFIG",
+                          "role": "TECHNICIAN",
+                          "reason": "WEB_CONSOLE_ONLY"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The id is unknown, expired, or belongs to another session's search: one answer for all three (NOT_FOUND). No request is sent to any device.",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "notFound": {
+                    "summary": "No such candidate in this session's search",
+                    "value": {
+                      "error": {
+                        "code": "NOT_FOUND",
+                        "message": "No candidate has this ID.",
+                        "details": {
+                          "simCode": "NOT_FOUND"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A session is open (CAPTURE_CONFIG_LOCKED; no audit row), or the candidate cannot be tested (INVALID_STATE, `details.reason`: CANDIDATE_ALREADY_REGISTERED with `details.deviceId`, CANDIDATE_NOT_TESTABLE or CONNECTION_TEST_IN_PROGRESS). No request is sent to any device.",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "locked": {
+                    "summary": "A session is open",
+                    "value": {
+                      "error": {
+                        "code": "CAPTURE_CONFIG_LOCKED",
+                        "message": "The capture configuration cannot be changed while a session is open.",
+                        "details": {
+                          "simCode": "CAPTURE_CONFIG_LOCKED"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  },
+                  "alreadyRegistered": {
+                    "summary": "The candidate is a registered capture device",
+                    "value": {
+                      "error": {
+                        "code": "INVALID_STATE",
+                        "message": "This camera is already a capture device.",
+                        "details": {
+                          "reason": "CANDIDATE_ALREADY_REGISTERED",
+                          "deviceId": "CAM-01"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The body or the path parameter does not match its schema, or a PRODUCTION candidate was sent without a credential (INVALID_INPUT, `details.reason: CREDENTIAL_REQUIRED`). The refusal never quotes the input. No request is sent to any device.",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "invalidInput": {
+                    "summary": "The body does not match its schema",
+                    "value": {
+                      "error": {
+                        "code": "INVALID_INPUT",
+                        "message": "The request does not match the expected input.",
+                        "details": {
+                          "in": "body"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  },
+                  "credentialRequired": {
+                    "summary": "A production camera without a credential",
+                    "value": {
+                      "error": {
+                        "code": "INVALID_INPUT",
+                        "message": "A credential is needed to test this camera.",
+                        "details": {
+                          "in": "body",
+                          "reason": "CREDENTIAL_REQUIRED"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-badges": [
+          {
+            "name": "LIVE",
+            "position": "after",
+            "color": "#22C55E"
+          }
+        ],
+        "x-dems-mode": "simulated",
+        "x-dems-source": "Task 3 R-9, blueprint row 142 (contract landed by row 132, D106); C3 §2.6 operation 95; decisions D80(3), D80(7), D86 C-2 (not in the design book)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "A candidate of the caller's own live search, e.g. `CND-4F2A91C0D377`. Never an address and never a capture device id.",
+            "schema": {
+              "type": "string",
+              "pattern": "^CND-[0-9A-F]{12}$"
+            },
+            "example": "CND-000000000001"
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CaptureConnectionTestRequest"
+              },
+              "examples": {
+                "development": {
+                  "summary": "A test source on loopback: no credential",
+                  "value": {}
+                },
+                "credential": {
+                  "summary": "With a credential (placeholders; the value never returns)",
+                  "value": {
+                    "credential": {
+                      "username": "USERNAME",
+                      "secret": "SECRET"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-dems-access": {
+          "rule": "CAPTURE_CONFIG",
+          "permissions": [
+            "CAPTURE_CONFIG"
+          ],
+          "conditions": [
+            "WEB_CONSOLE_SESSION"
+          ]
+        },
+        "x-dems-audit": {
+          "success": "CAPTURE_CONNECTION_TESTED",
+          "denial": "ACCESS_DENIED",
+          "also": []
+        },
+        "x-dems-services": [
+          "dems-core-server"
+        ]
+      }
+    },
+    "/api/v1/capture/discovery/candidates/{id}/adopt": {
+      "post": {
+        "operationId": "adoptCaptureCandidate",
+        "tags": [
+          "Device"
+        ],
+        "summary": "Add a tested candidate camera to the capture devices",
+        "description": "Registers the candidate in the path as a capture device. **This is the one place a `capture_devices` row comes into being.** The candidate must be `NEW` and hold a `REACHABLE` test that is still valid; the Core then verifies it once more with the credential of this request and, in one database transaction, writes the device, the credential when one is sent, and the audit rows. Any failure before or inside the transaction leaves nothing behind: there is no pending row.\n\n**Web console only**, as operation 95 (`WEB_CONSOLE_SESSION`), and idle only (`409 CAPTURE_CONFIG_LOCKED`, no audit row).\n\n**The target is the candidate in the path and nothing else** (R-9 AC-10): the Core takes the address from its own search state. A foreign id, an expired id and a candidate that is not testable are refused with 0 outbound requests. The adoption decides no track, no role and no address: assigning the new device to a video track is operation 78 or 79, which accept registered device ids only.\n\n`credential` is the same pair as the body of operation 89 and must be present exactly when the passing test was authenticated: `422 INVALID_INPUT` with `details.reason` `CREDENTIAL_REQUIRED` or `CREDENTIAL_NOT_EXPECTED` otherwise. **The credential is write-only and lives for this one request** (C-N15; SEC35-34): it is not kept in the candidate state, not cached for a later request, and never written to a log line, an audit row, an error or a file. A retry is a new request with a newly sent credential. The answer says `credentialSet` and never echoes either field.\n\nOther refusals, each storing nothing: `409 INVALID_STATE` with `details.reason` `CANDIDATE_ALREADY_REGISTERED` (plus `details.deviceId`; a repeat of an adoption answers this), `CANDIDATE_NOT_TESTED`, `CONNECTION_TEST_FAILED` (plus `details.outcome`, or `details.cause: DEVICE_CHANGED` when the device answers with other profiles than it did in the test) or `CONNECTION_TEST_IN_PROGRESS`.\n\nWrites CAPTURE_CANDIDATE_ADOPTED, one CAPTURE_CONNECTION_TESTED row for the verification, and CAPTURE_CREDENTIAL_SET (the device id only) when a credential is stored. Publishes the `captureDevices` slice; `captureConfig` is not changed.\n\nOver a bound the Core server answers `429 RATE_LIMITED` with `retry-after` and `details.reason` as operation 95: nothing is sent and no audit row is written. `503 NOT_READY` carries `details.reason` `CREDENTIAL_STORE_NOT_READY` when a credential is in the body and the Core credential store is not available, or `DISCOVERY_NOT_READY`. Both are envelope-level answers of the contract.\n\nSimulated: the in-app simulator emulates this operation (OD-17 supersedes the old \"simulator untouched\" rule, OD-23); in Simulated mode a client calls it inside its own simulator. The simulator registers `CAM-03` for the first fixed candidate after a REACHABLE test, stores nothing of a credential and answers `credentialSet` as whether one was sent; a demo reset removes the device.",
+        "responses": {
+          "201": {
+            "description": "The new capture device. The credential is never echoed.",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              },
+              "x-dems-epoch": {
+                "$ref": "#/components/headers/XDemsEpoch"
+              },
+              "x-dems-revision": {
+                "$ref": "#/components/headers/XDemsRevision"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaptureCandidateAdoption"
+                },
+                "examples": {
+                  "adopted": {
+                    "summary": "The new capture device; no credential stored",
+                    "value": {
+                      "deviceId": "CAM-03",
+                      "device": {
+                        "id": "CAM-03",
+                        "kind": "CAMERA",
+                        "model": "Test source",
+                        "firmware": null,
+                        "host": "127.0.0.1",
+                        "poePort": null,
+                        "online": true,
+                        "streamState": null,
+                        "capabilities": [
+                          "VIDEO"
+                        ],
+                        "adapter": "FAKE",
+                        "sourceClass": "DEVELOPMENT"
+                      },
+                      "credentialSet": false
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not a JSON object (INVALID_JSON).",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "invalidJson": {
+                    "summary": "Not a JSON object",
+                    "value": {
+                      "error": {
+                        "code": "INVALID_JSON",
+                        "message": "The request body must be a JSON object.",
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session (NOT_SIGNED_IN): none was sent, it expired or ended, or the request carried two credentials (`details.reason: CREDENTIAL_CONFLICT`).",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "notSignedIn": {
+                    "summary": "No valid session",
+                    "value": {
+                      "error": {
+                        "code": "NOT_SIGNED_IN",
+                        "message": "Sign in first.",
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refused: the operator's role lacks CAPTURE_CONFIG (NOT_PERMITTED; one ACCESS_DENIED audit row); the operator's session is bound to a paired tablet or phone (NOT_PERMITTED, `details.reason: WEB_CONSOLE_ONLY`; one ACCESS_DENIED audit row; refused before the body is used); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "notPermitted": {
+                    "summary": "INVESTIGATOR lacks CAPTURE_CONFIG",
+                    "value": {
+                      "error": {
+                        "code": "NOT_PERMITTED",
+                        "message": "Your role does not allow this action. The attempt was audited.",
+                        "details": {
+                          "operationId": "adoptCaptureCandidate",
+                          "permission": "CAPTURE_CONFIG",
+                          "role": "INVESTIGATOR"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  },
+                  "deviceRevoked": {
+                    "summary": "The device is no longer paired",
+                    "value": {
+                      "error": {
+                        "code": "DEVICE_REVOKED",
+                        "message": "This device is no longer paired with the Core.",
+                        "details": {
+                          "reason": "DEVICE_REVOKED"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  },
+                  "originNotAllowed": {
+                    "summary": "An Origin outside the allowed lists",
+                    "value": {
+                      "error": {
+                        "code": "ORIGIN_NOT_ALLOWED",
+                        "message": "This origin may not call the Core server.",
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  },
+                  "webConsoleOnly": {
+                    "summary": "A tablet or phone session on a web-console-only operation",
+                    "description": "The caller holds CAPTURE_CONFIG, but the session is bound to a paired device. One ACCESS_DENIED row is written; the body is not used.",
+                    "value": {
+                      "error": {
+                        "code": "NOT_PERMITTED",
+                        "message": "Your role does not allow this action. The attempt was audited.",
+                        "details": {
+                          "operationId": "adoptCaptureCandidate",
+                          "permission": "CAPTURE_CONFIG",
+                          "role": "TECHNICIAN",
+                          "reason": "WEB_CONSOLE_ONLY"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The id is unknown, expired, or belongs to another session's search: one answer for all three (NOT_FOUND). No request is sent to any device.",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "notFound": {
+                    "summary": "No such candidate in this session's search",
+                    "value": {
+                      "error": {
+                        "code": "NOT_FOUND",
+                        "message": "No candidate has this ID.",
+                        "details": {
+                          "simCode": "NOT_FOUND"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A session is open (CAPTURE_CONFIG_LOCKED; no audit row), or the candidate cannot be adopted (INVALID_STATE, `details.reason`: CANDIDATE_ALREADY_REGISTERED with `details.deviceId`, CANDIDATE_NOT_TESTED, CONNECTION_TEST_FAILED with `details.outcome` or `details.cause`, or CONNECTION_TEST_IN_PROGRESS). Nothing is stored.",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "locked": {
+                    "summary": "A session is open",
+                    "value": {
+                      "error": {
+                        "code": "CAPTURE_CONFIG_LOCKED",
+                        "message": "The capture configuration cannot be changed while a session is open.",
+                        "details": {
+                          "simCode": "CAPTURE_CONFIG_LOCKED"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  },
+                  "alreadyRegistered": {
+                    "summary": "The candidate is a registered capture device",
+                    "value": {
+                      "error": {
+                        "code": "INVALID_STATE",
+                        "message": "This camera is already a capture device.",
+                        "details": {
+                          "reason": "CANDIDATE_ALREADY_REGISTERED",
+                          "deviceId": "CAM-01"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  },
+                  "notTested": {
+                    "summary": "No passing test that is still valid",
+                    "value": {
+                      "error": {
+                        "code": "INVALID_STATE",
+                        "message": "Test the connection to this camera first.",
+                        "details": {
+                          "reason": "CANDIDATE_NOT_TESTED"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The body or the path parameter does not match its schema, or the credential is missing or not expected (INVALID_INPUT, `details.reason`: CREDENTIAL_REQUIRED or CREDENTIAL_NOT_EXPECTED). The refusal never quotes the input. Nothing is stored.",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "invalidInput": {
+                    "summary": "The body does not match its schema",
+                    "value": {
+                      "error": {
+                        "code": "INVALID_INPUT",
+                        "message": "The request does not match the expected input.",
+                        "details": {
+                          "in": "body"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  },
+                  "credentialNotExpected": {
+                    "summary": "A credential although the test passed without one",
+                    "value": {
+                      "error": {
+                        "code": "INVALID_INPUT",
+                        "message": "This camera was tested without a credential.",
+                        "details": {
+                          "in": "body",
+                          "reason": "CREDENTIAL_NOT_EXPECTED"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-badges": [
+          {
+            "name": "LIVE",
+            "position": "after",
+            "color": "#22C55E"
+          }
+        ],
+        "x-dems-mode": "simulated",
+        "x-dems-source": "Task 3 R-9, blueprint row 142 (contract landed by row 132, D106); C3 §2.6 operation 96; decisions D80(7), D81, D83 (not in the design book)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "A candidate of the caller's own live search, e.g. `CND-4F2A91C0D377`. Never an address and never a capture device id.",
+            "schema": {
+              "type": "string",
+              "pattern": "^CND-[0-9A-F]{12}$"
+            },
+            "example": "CND-000000000001"
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CaptureCandidateAdoptRequest"
+              },
+              "examples": {
+                "development": {
+                  "summary": "A test source that was tested without a credential",
+                  "value": {}
+                },
+                "credential": {
+                  "summary": "With the credential the test passed with (placeholders; the value never returns)",
+                  "value": {
+                    "credential": {
+                      "username": "USERNAME",
+                      "secret": "SECRET"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-dems-access": {
+          "rule": "CAPTURE_CONFIG",
+          "permissions": [
+            "CAPTURE_CONFIG"
+          ],
+          "conditions": [
+            "WEB_CONSOLE_SESSION"
+          ]
+        },
+        "x-dems-audit": {
+          "success": "CAPTURE_CANDIDATE_ADOPTED",
+          "denial": "ACCESS_DENIED",
+          "also": [
+            "CAPTURE_CONNECTION_TESTED",
+            "CAPTURE_CREDENTIAL_SET"
+          ]
+        },
+        "x-dems-services": [
+          "dems-core-server"
+        ]
+      }
+    },
+    "/api/v1/capture/inputs/rescan": {
+      "post": {
+        "operationId": "rescanCaptureInputs",
+        "tags": [
+          "Device"
+        ],
+        "summary": "Search again for microphones",
+        "description": "Reads the local microphone inputs again and reports each **registered** microphone as present or not, with the named cause when a local input cannot be opened. **No body.** There is no network microphone discovery and no microphone adoption: the operation registers nothing and never replaces a local device by another one. Local inputs that are no registered microphone are counted only.\n\nNeeds CAPTURE_CONFIG, on the web console, a tablet or a phone, and is allowed while a session is open.\n\nWrites one CAPTURE_DISCOVERY_SEARCHED row with `scope: MIC_LOCAL`. Publishes the `captureDevices` slice (`online` of the microphones).\n\nOver a bound the Core server answers `429 RATE_LIMITED` with `retry-after` and `details.reason` `INPUT_RESCAN_RATE_LIMITED`: nothing is sent and no audit row is written. `503 NOT_READY` carries `details.reason` `CAPTURE_NOT_READY`. Both are envelope-level answers of the contract.\n\nSimulated: the in-app simulator emulates this operation (OD-17 supersedes the old \"simulator untouched\" rule, OD-23); in Simulated mode a client calls it inside its own simulator. The simulator answers its two microphones, `present` from its device state.",
+        "responses": {
+          "200": {
+            "description": "The registered microphones as the re-read found them.",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              },
+              "x-dems-epoch": {
+                "$ref": "#/components/headers/XDemsEpoch"
+              },
+              "x-dems-revision": {
+                "$ref": "#/components/headers/XDemsRevision"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaptureInputScan"
+                },
+                "examples": {
+                  "both": {
+                    "summary": "Both registered microphones are present",
+                    "value": {
+                      "scannedAt": 1790823600000,
+                      "inputs": [
+                        {
+                          "deviceId": "MIC-01",
+                          "inputId": "MIC-01",
+                          "present": true,
+                          "adapter": "FAKE",
+                          "sourceClass": "DEVELOPMENT",
+                          "errorCode": null
+                        },
+                        {
+                          "deviceId": "MIC-02",
+                          "inputId": "MIC-02",
+                          "present": true,
+                          "adapter": "FAKE",
+                          "sourceClass": "DEVELOPMENT",
+                          "errorCode": null
+                        }
+                      ],
+                      "unregisteredCount": 0
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session (NOT_SIGNED_IN): none was sent, it expired or ended, or the request carried two credentials (`details.reason: CREDENTIAL_CONFLICT`).",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "notSignedIn": {
+                    "summary": "No valid session",
+                    "value": {
+                      "error": {
+                        "code": "NOT_SIGNED_IN",
+                        "message": "Sign in first.",
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refused: the operator's role lacks CAPTURE_CONFIG (NOT_PERMITTED; one ACCESS_DENIED audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "notPermitted": {
+                    "summary": "INVESTIGATOR lacks CAPTURE_CONFIG",
+                    "value": {
+                      "error": {
+                        "code": "NOT_PERMITTED",
+                        "message": "Your role does not allow this action. The attempt was audited.",
+                        "details": {
+                          "operationId": "rescanCaptureInputs",
+                          "permission": "CAPTURE_CONFIG",
+                          "role": "INVESTIGATOR"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  },
+                  "deviceRevoked": {
+                    "summary": "The device is no longer paired",
+                    "value": {
+                      "error": {
+                        "code": "DEVICE_REVOKED",
+                        "message": "This device is no longer paired with the Core.",
+                        "details": {
+                          "reason": "DEVICE_REVOKED"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  },
+                  "originNotAllowed": {
+                    "summary": "An Origin outside the allowed lists",
+                    "value": {
+                      "error": {
+                        "code": "ORIGIN_NOT_ALLOWED",
+                        "message": "This origin may not call the Core server.",
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-badges": [
+          {
+            "name": "LIVE",
+            "position": "after",
+            "color": "#22C55E"
+          }
+        ],
+        "x-dems-mode": "simulated",
+        "x-dems-source": "Task 3 R-10, blueprint row 133 (contract landed by row 132, D106); C3 §2.6 operation 97; decision D80(5) (not in the design book)",
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-dems-access": {
+          "rule": "CAPTURE_CONFIG",
+          "permissions": [
+            "CAPTURE_CONFIG"
+          ],
+          "conditions": []
+        },
+        "x-dems-audit": {
+          "success": "CAPTURE_DISCOVERY_SEARCHED",
+          "denial": "ACCESS_DENIED",
+          "also": []
+        },
+        "x-dems-services": [
+          "dems-core-server"
+        ]
+      }
     }
   },
   "components": {
@@ -22216,14 +23843,13 @@
                   "properties": {
                     "inputId": {
                       "type": "string",
-                      "enum": [
-                        "MIC-01",
-                        "MIC-02"
-                      ]
+                      "pattern": "^MIC-\\d{2,}$",
+                      "description": "The mic input, `MIC-NN`: the built-in `MIC-01` / `MIC-02`, or a microphone registered later (D115 (2))."
                     },
                     "deviceId": {
                       "type": "string",
-                      "minLength": 1
+                      "minLength": 1,
+                      "description": "The microphone behind the input: the device of the same ID (D106 (4))."
                     },
                     "role": {
                       "type": "string",
@@ -22320,6 +23946,10 @@
                 "type": "null"
               }
             ]
+          },
+          "captureDurable": {
+            "description": "False from the accepted start until the first durable fragment (\"connecting cameras\"), then true; the state stays RECORDING (D84, D91 R-1). Absent reads as true.",
+            "type": "boolean"
           },
           "finalization": {
             "description": "Finalization v2 of this session; absent before sealing starts.",
@@ -23057,7 +24687,7 @@
                 "status"
               ]
             },
-            "description": "The 16 book §6.1 Core services."
+            "description": "The 16 book §6.1 Core services and the transcriber service."
           },
           "serverTime": {
             "type": "string",
@@ -25561,7 +27191,7 @@
           ],
           "additionalProperties": false
         },
-        "description": "Slice `services`: the 16 Core services of book §6.1."
+        "description": "Slice `services`: the 17 Core services (the 16 of book §6.1 and the transcriber service)."
       },
       "HealthSlice": {
         "type": "object",
@@ -26137,14 +27767,13 @@
               "properties": {
                 "inputId": {
                   "type": "string",
-                  "enum": [
-                    "MIC-01",
-                    "MIC-02"
-                  ]
+                  "pattern": "^MIC-\\d{2,}$",
+                  "description": "The mic input, `MIC-NN`: the built-in `MIC-01` / `MIC-02`, or a microphone registered later (D115 (2))."
                 },
                 "deviceId": {
                   "type": "string",
-                  "minLength": 1
+                  "minLength": 1,
+                  "description": "The microphone behind the input: the device of the same ID (D106 (4))."
                 },
                 "role": {
                   "type": "string",
@@ -26172,7 +27801,7 @@
               "additionalProperties": false,
               "description": "One microphone slot of the device selector."
             },
-            "description": "The PRIMARY input first, then the STANDBY."
+            "description": "In input order (ascending input ID): MIC-01, then MIC-02; the role is a member of the row."
           },
           "locked": {
             "type": "boolean",
@@ -26264,6 +27893,19 @@
                     "minLength": 1
                   },
                   "description": "Capability codes the adapters reported; an open set."
+                },
+                "adapter": {
+                  "description": "The adapter kind behind the device (C3 §2.6 \"Device shapes\"): `ONVIF_RTSP`, `USB_AUDIO`, `SNMP_POE`, `FAKE` or `LOCAL_DEVICE`. Present on a device that operation 96 registered.",
+                  "type": "string",
+                  "pattern": "^[A-Z][A-Z0-9_]{0,63}$"
+                },
+                "sourceClass": {
+                  "description": "Derived by the Core from `adapter`: `DEVELOPMENT` exactly for `FAKE` and `LOCAL_DEVICE`. Never set by a client.",
+                  "type": "string",
+                  "enum": [
+                    "PRODUCTION",
+                    "DEVELOPMENT"
+                  ]
                 }
               },
               "required": [
@@ -27240,14 +28882,13 @@
                       "properties": {
                         "inputId": {
                           "type": "string",
-                          "enum": [
-                            "MIC-01",
-                            "MIC-02"
-                          ]
+                          "pattern": "^MIC-\\d{2,}$",
+                          "description": "The mic input, `MIC-NN`: the built-in `MIC-01` / `MIC-02`, or a microphone registered later (D115 (2))."
                         },
                         "deviceId": {
                           "type": "string",
-                          "minLength": 1
+                          "minLength": 1,
+                          "description": "The microphone behind the input: the device of the same ID (D106 (4))."
                         },
                         "role": {
                           "type": "string",
@@ -27354,6 +28995,10 @@
                 "type": "null"
               }
             ]
+          },
+          "captureDurable": {
+            "description": "False from the accepted start until the first durable fragment (\"connecting cameras\"), then true; the state stays RECORDING (D84, D91 R-1). Absent reads as true.",
+            "type": "boolean"
           },
           "transcript": {
             "description": "Transcript progress of the open session.",
@@ -28042,6 +29687,34 @@
               }
             ]
           },
+          "manifestVersion": {
+            "description": "Manifest version of the seal (`evidence_items.manifest_version`, dbc-3 §B.11): 2 for every v2 seal, also one without a transcript hash. Absent: derived as before.",
+            "anyOf": [
+              {
+                "type": "number",
+                "const": 1
+              },
+              {
+                "type": "number",
+                "const": 2
+              }
+            ]
+          },
+          "labelsStatus": {
+            "description": "Whether the sealed transcript carries speaker labels (`evidence_items.labels_status`); null or absent when the seal states none.",
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "LABELLED",
+                  "UNAVAILABLE"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "audioSourceIntervals": {
             "description": "Schema v2: which mic input fed AUDIO-01 over which media-pts spans (op 82 serves the full rows).",
             "type": "array",
@@ -28163,6 +29836,15 @@
                     "type": "integer",
                     "minimum": 0,
                     "description": "Current max(revision_no); 0 when no revision exists (SEC35-21)."
+                  },
+                  "failedChunks": {
+                    "description": "Chunks (not attempts) that ended FAILED; above 0 only with state PARTIAL. No text stands in for a failed chunk (D-EV-1; manifest field 93).",
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "backendUnreachable": {
+                    "description": "True when STT was enabled but the configured backend could not be reached for one or more chunks (manifest field 122).",
+                    "type": "boolean"
                   }
                 },
                 "required": [
@@ -28515,7 +30197,11 @@
               "EVIDENCE_EXPORT_FAILED",
               "CAPTURE_CREDENTIAL_SET",
               "CAPTURE_CREDENTIAL_REVEALED",
-              "STT_CONFIG_CHANGED"
+              "STT_CONFIG_CHANGED",
+              "CAPTURE_DISCOVERY_SEARCHED",
+              "CAPTURE_CONNECTION_TESTED",
+              "CAPTURE_CANDIDATE_ADOPTED",
+              "CAPTURE_DEVICE_UNREACHABLE"
             ]
           },
           "category": {
@@ -30149,6 +31835,407 @@
           "signatureOk": {
             "type": "boolean",
             "description": "Schema v2: a real Ed25519 signature is verified with the Core public key (OD-02)."
+          },
+          "overall": {
+            "description": "Schema v2: PASS, or the gravest failure class among the findings.",
+            "type": "string",
+            "enum": [
+              "PASS",
+              "TAMPERED",
+              "CORRUPT",
+              "MISSING",
+              "UNREADABLE"
+            ]
+          },
+          "interrupted": {
+            "description": "Schema v2: the package is the sealed durable prefix of an interrupted recording (V-12). A state, not a failure.",
+            "type": "boolean"
+          },
+          "checks": {
+            "description": "Schema v2: the per-check report, V-01 to V-15 in order, so that a client can name the check that failed.",
+            "maxItems": 32,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "pattern": "^V-[0-9]{2}$",
+                  "description": "`V-01` to `V-15` (`ev` §D)."
+                },
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "PASS",
+                    "FAIL",
+                    "SKIPPED"
+                  ],
+                  "description": "SKIPPED is never a pass."
+                },
+                "failureClass": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "enum": [
+                        "TAMPERED",
+                        "CORRUPT",
+                        "MISSING",
+                        "UNREADABLE"
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "The class of the first finding; null unless the status is FAIL."
+                },
+                "skipped": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "enum": [
+                        "BLOCKED",
+                        "KEY_UNAVAILABLE",
+                        "OUT_OF_SCOPE"
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "findings": {
+                  "maxItems": 64,
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "code": {
+                        "type": "string",
+                        "pattern": "^[A-Z][A-Z0-9_]{2,63}$",
+                        "description": "What was found, e.g. `FRAGMENT_TAMPERED`, `SOURCE_CLASS_MISSING`."
+                      },
+                      "failureClass": {
+                        "type": "string",
+                        "enum": [
+                          "TAMPERED",
+                          "CORRUPT",
+                          "MISSING",
+                          "UNREADABLE"
+                        ]
+                      },
+                      "trackId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 64
+                      },
+                      "seq": {
+                        "description": "The fragment the finding names.",
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "file": {
+                        "description": "A path inside the package, `/` separated; never a host path.",
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 256
+                      },
+                      "member": {
+                        "description": "A dotted member path of the manifest.",
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 256
+                      },
+                      "revisionNo": {
+                        "type": "integer",
+                        "minimum": 0
+                      }
+                    },
+                    "required": [
+                      "code",
+                      "failureClass"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "description": "WHERE the check found something: names, never a value of the package."
+                },
+                "findingCount": {
+                  "description": "How many findings the check has when `findings` was cut; absent when it lists them all.",
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "status",
+                "failureClass",
+                "skipped",
+                "findings"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "fragments": {
+            "description": "Schema v2: the fragments that did not verify, over both camera files (V-08 names the fragment). Fragments that verified are counted in `files`, not listed.",
+            "maxItems": 256,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "trackId": {
+                  "type": "string",
+                  "enum": [
+                    "VIDEO-01",
+                    "VIDEO-02"
+                  ]
+                },
+                "seq": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "ok": {
+                  "type": "boolean",
+                  "const": false
+                },
+                "reason": {
+                  "type": "string",
+                  "enum": [
+                    "TAMPERED",
+                    "CORRUPT",
+                    "MISSING",
+                    "UNREADABLE"
+                  ]
+                },
+                "storedOk": {
+                  "type": "boolean",
+                  "description": "The stored bytes of the fragment hash to the sealed value (V-04)."
+                },
+                "plainOk": {
+                  "description": "The decrypted fragment hashes to the sealed value (V-05); null: not checked.",
+                  "type": [
+                    "boolean",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "trackId",
+                "seq",
+                "ok",
+                "reason",
+                "storedOk",
+                "plainOk"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "failedFragmentCount": {
+            "description": "Schema v2: how many fragments did not verify; larger than `fragments.length` when the list was cut.",
+            "type": "integer",
+            "minimum": 0
+          },
+          "transcriptState": {
+            "description": "Schema v2: what the verified package says of its transcript (seven codes; D110).",
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "enum": [
+                  "READY",
+                  "PARTIAL",
+                  "PARTIAL_BACKEND_UNREACHABLE",
+                  "DISABLED_BY_CONFIGURATION",
+                  "UNAVAILABLE_AT_SEAL",
+                  "NOT_TRUSTWORTHY",
+                  "UNKNOWN"
+                ]
+              },
+              "report": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160,
+                "description": "The English report line of the state; a client words the state by `code`."
+              },
+              "sealedState": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "ASSEMBLED",
+                      "PARTIAL",
+                      "DISABLED"
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "reason": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "DISABLED_BY_CONFIGURATION",
+                      "TRANSCRIPT_UNAVAILABLE_AT_SEAL"
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "documentSealed": {
+                "type": [
+                  "boolean",
+                  "null"
+                ]
+              },
+              "failedChunks": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "backendUnreachable": {
+                "type": [
+                  "boolean",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "code",
+              "report",
+              "sealedState",
+              "reason",
+              "documentSealed",
+              "failedChunks",
+              "backendUnreachable"
+            ],
+            "additionalProperties": false
+          },
+          "sources": {
+            "description": "Schema v2 (V-15; R-11): the source class of every recorded source. A development package verifies with `ok: true` at the top level and `sources.code: DEVELOPMENT`; the value of the mark never changes the verdict. Absent for a v1 item: its source class is not recorded, which is never read as production.",
+            "type": "object",
+            "properties": {
+              "ok": {
+                "type": "boolean",
+                "description": "V-15 passed: the mark is present, well-formed and consistent. It says nothing of the value of the mark."
+              },
+              "code": {
+                "type": "string",
+                "enum": [
+                  "DEVELOPMENT",
+                  "DECLARED_PRODUCTION",
+                  "NOT_TRUSTWORTHY",
+                  "UNKNOWN"
+                ],
+                "description": "DEVELOPMENT: at least one source is LOCAL_DEVICE or FAKE (not a failure). DECLARED_PRODUCTION: every source reads PRODUCTION - a statement of the Core that sealed the package, not a fact the verifier proved. NOT_TRUSTWORTHY: the manifest is not the signed one or its mark is missing or inconsistent; no class is stated. UNKNOWN: no readable v2 manifest."
+              },
+              "development": {
+                "description": "Recomputed by the verifier from the classes. null exactly when `code` is NOT_TRUSTWORTHY or UNKNOWN: nothing is stated, and null is never read as production.",
+                "type": [
+                  "boolean",
+                  "null"
+                ]
+              },
+              "report": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160,
+                "description": "The English source line, the first line of a verify report; a client words the state by `code`."
+              },
+              "tracks": {
+                "maxItems": 2,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "trackId": {
+                      "type": "string",
+                      "enum": [
+                        "VIDEO-01",
+                        "VIDEO-02"
+                      ]
+                    },
+                    "deviceId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 64
+                    },
+                    "sourceClass": {
+                      "type": "string",
+                      "enum": [
+                        "PRODUCTION",
+                        "LOCAL_DEVICE",
+                        "FAKE"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "trackId",
+                    "deviceId",
+                    "sourceClass"
+                  ],
+                  "additionalProperties": false
+                },
+                "description": "Manifest field 124 of each camera file; empty when nothing is stated."
+              },
+              "audioIntervals": {
+                "maxItems": 4096,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "seq": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "micDeviceId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 64
+                    },
+                    "sourceClass": {
+                      "type": "string",
+                      "enum": [
+                        "PRODUCTION",
+                        "LOCAL_DEVICE",
+                        "FAKE"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "seq",
+                    "micDeviceId",
+                    "sourceClass"
+                  ],
+                  "additionalProperties": false
+                },
+                "description": "Manifest field 125 of each interval of the session audio track; empty when nothing is stated."
+              }
+            },
+            "required": [
+              "ok",
+              "code",
+              "development",
+              "report",
+              "tracks",
+              "audioIntervals"
+            ],
+            "additionalProperties": false
           }
         },
         "required": [
@@ -30466,7 +32553,11 @@
               "EVIDENCE_EXPORT_FAILED",
               "CAPTURE_CREDENTIAL_SET",
               "CAPTURE_CREDENTIAL_REVEALED",
-              "STT_CONFIG_CHANGED"
+              "STT_CONFIG_CHANGED",
+              "CAPTURE_DISCOVERY_SEARCHED",
+              "CAPTURE_CONNECTION_TESTED",
+              "CAPTURE_CANDIDATE_ADOPTED",
+              "CAPTURE_DEVICE_UNREACHABLE"
             ]
           },
           "actorId": {
@@ -31058,10 +33149,8 @@
         "properties": {
           "inputId": {
             "type": "string",
-            "enum": [
-              "MIC-01",
-              "MIC-02"
-            ]
+            "pattern": "^MIC-\\d{2,}$",
+            "description": "A mic input of the selector, `MIC-NN`."
           },
           "deviceId": {
             "type": "string",
@@ -31129,14 +33218,16 @@
           "username": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 255,
-            "description": "Camera credential username. Write-only: never returned, logged or audited (RK-12)."
+            "maxLength": 120,
+            "pattern": "^[\\x20\\x21\\x23-\\x25\\x28-\\x3B\\x3D\\x3F-\\x5B\\x5D-\\x7E]+$",
+            "description": "Camera credential username: 1 to 120 printable ASCII characters without `<`, `>`, `&`, `\"`, `'` and backslash. Write-only: never returned, logged or audited (RK-12)."
           },
           "secret": {
             "type": "string",
             "minLength": 1,
             "maxLength": 1024,
-            "description": "Camera credential secret. Write-only: never returned, logged or audited (RK-12; C-N8)."
+            "pattern": "^[\\x20-\\x7E]+$",
+            "description": "Camera credential secret: 1 to 1024 printable ASCII characters, taken exactly as sent (never trimmed). Write-only: never returned, logged or audited (RK-12; C-N8)."
           }
         },
         "required": [
@@ -32065,7 +34156,7 @@
             "maxLength": 64
           },
           "endpoint": {
-            "description": "Loopback only: scheme `http`, host `127.0.0.1` or `localhost`, optional port and path; anything else: ENDPOINT_NOT_LOOPBACK.",
+            "description": "Loopback only: scheme `http`, host `127.0.0.1` or `localhost`, optional port and path, and no `?`, `#`, backslash, white space or control character; anything else: ENDPOINT_NOT_LOOPBACK.",
             "type": "string",
             "minLength": 1,
             "maxLength": 2048
@@ -32221,6 +34312,591 @@
         ],
         "additionalProperties": false,
         "description": "The result of `testSttConnection` (C3 §2.5 op 92). No audio is sent and no speed figure is reported (D230)."
+      },
+      "CaptureDiscoverySearch": {
+        "type": "object",
+        "properties": {
+          "searchId": {
+            "type": "string",
+            "pattern": "^DSC-[0-9]{6,}$",
+            "description": "`DSC-NNNNNN`. It is in no path: operation 94 answers the caller's own search only."
+          },
+          "scope": {
+            "type": "string",
+            "const": "CAMERA_NETWORK",
+            "description": "A search of operation 93 looks for cameras on the network."
+          },
+          "trigger": {
+            "type": "string",
+            "enum": [
+              "MANUAL",
+              "PRECHECK"
+            ],
+            "description": "MANUAL: operation 93. PRECHECK: the one search of a pre-check run with an unreachable camera."
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "RUNNING",
+              "COMPLETE",
+              "FAILED"
+            ],
+            "description": "RUNNING until the window closes; then COMPLETE, or FAILED when the search could not run."
+          },
+          "startedAt": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "windowMs": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How long the search listens (ms)."
+          },
+          "completesAt": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "`startedAt` + `windowMs`."
+          },
+          "expiresAt": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "When the candidate list is discarded: `completesAt` + the result life."
+          },
+          "responderCount": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Devices that answered. 0 while RUNNING."
+          },
+          "newCount": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Answers that match no registered capture device. 0 while RUNNING."
+          },
+          "registeredCount": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Answers that match a registered capture device. 0 while RUNNING."
+          },
+          "interfaceCount": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Network interfaces probed: a count, never a name or an address."
+          },
+          "failureReason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[A-Z][A-Z0-9_]{0,63}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why a FAILED search could not run, as a code (e.g. `NO_ELIGIBLE_INTERFACE`, `SOCKET_ERROR`); null otherwise."
+          },
+          "created": {
+            "type": "boolean",
+            "description": "True for a new search (202). False when the caller's own search is still RUNNING and no second probe was sent (200)."
+          }
+        },
+        "required": [
+          "searchId",
+          "scope",
+          "trigger",
+          "state",
+          "startedAt",
+          "windowMs",
+          "completesAt",
+          "expiresAt",
+          "responderCount",
+          "newCount",
+          "registeredCount",
+          "interfaceCount",
+          "failureReason",
+          "created"
+        ],
+        "additionalProperties": false,
+        "description": "One camera search (C3 §2.6). Counts and codes only: no address, no device text."
+      },
+      "CaptureCandidate": {
+        "type": "object",
+        "properties": {
+          "candidateId": {
+            "type": "string",
+            "pattern": "^CND-[0-9A-F]{12}$",
+            "description": "Minted by the Core at random per search; meaningful only inside the owner session."
+          },
+          "adapter": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]{0,63}$",
+            "description": "The adapter kind: `ONVIF_RTSP`, or `FAKE` for a fixture source on loopback."
+          },
+          "sourceClass": {
+            "type": "string",
+            "enum": [
+              "PRODUCTION",
+              "DEVELOPMENT"
+            ],
+            "description": "Derived by the Core from `adapter`; never set by a client."
+          },
+          "host": {
+            "type": "string",
+            "pattern": "^(?:\\d{1,3}(?:\\.\\d{1,3}){3}|[0-9A-Fa-f:]{2,39})$",
+            "description": "The address the answer came from: an IP literal, never a URL, never `user:password@`."
+          },
+          "endpointRef": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The announced endpoint reference. Untrusted device text."
+          },
+          "vendor": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Announced. Untrusted device text: draw it as text only."
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Announced. Untrusted device text: draw it as text only."
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Announced. Untrusted device text: draw it as text only."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "NEW",
+              "REGISTERED"
+            ],
+            "description": "REGISTERED when it matches a capture device: by its endpoint reference, else by its whole address."
+          },
+          "deviceId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[A-Z][A-Z0-9-]{0,31}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The registered capture device when `status` is REGISTERED; null otherwise."
+          },
+          "testable": {
+            "type": "boolean",
+            "description": "False when no announced service address qualifies, or its host is not `host`: such a candidate is listed and can never be tested."
+          },
+          "conflict": {
+            "type": "boolean",
+            "description": "Two answers share one endpoint reference from different addresses, or one address announced two references: every such row is listed and none is testable."
+          },
+          "addressChanged": {
+            "type": "boolean",
+            "description": "REGISTERED by endpoint reference while the answering address differs from the stored one."
+          },
+          "lastTest": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "outcome": {
+                    "type": "string",
+                    "enum": [
+                      "REACHABLE",
+                      "AUTHENTICATION_FAILED",
+                      "WRONG_PROFILE",
+                      "NOT_H264",
+                      "UNREACHABLE"
+                    ]
+                  },
+                  "authenticated": {
+                    "type": "boolean",
+                    "description": "Whether a credential was supplied: a fact, never a value."
+                  },
+                  "testedAt": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                },
+                "required": [
+                  "outcome",
+                  "authenticated",
+                  "testedAt"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The last connection test of this candidate in this search; null before the first."
+          },
+          "adoptable": {
+            "type": "boolean",
+            "description": "`status` NEW and a REACHABLE `lastTest` that is still valid."
+          }
+        },
+        "required": [
+          "candidateId",
+          "adapter",
+          "sourceClass",
+          "host",
+          "endpointRef",
+          "vendor",
+          "model",
+          "name",
+          "status",
+          "deviceId",
+          "testable",
+          "conflict",
+          "addressChanged",
+          "lastTest",
+          "adoptable"
+        ],
+        "additionalProperties": false,
+        "description": "One candidate of a camera search (C3 §2.6). Not a capture device: it registers nothing and is in no slice. Carries no credential."
+      },
+      "CaptureDiscoveryState": {
+        "type": "object",
+        "properties": {
+          "search": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CaptureDiscoverySearch"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null when the caller's session has no live search: never started, expired, or replaced."
+          },
+          "candidates": {
+            "maxItems": 64,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CaptureCandidate"
+            },
+            "description": "Empty while RUNNING, complete once COMPLETE. Registered matches first, then arrival order; the list never shrinks or reorders during its life."
+          },
+          "truncated": {
+            "type": "boolean",
+            "description": "True when more than 64 devices answered: a warning, not a note."
+          }
+        },
+        "required": [
+          "search",
+          "candidates",
+          "truncated"
+        ],
+        "additionalProperties": false,
+        "description": "The camera search of the calling operator session (C3 §2.6). Another session, whatever its role, reads its own."
+      },
+      "CaptureConnectionTestRequest": {
+        "type": "object",
+        "properties": {
+          "credential": {
+            "description": "The camera credential to test with. Write-only: never stored, returned, logged or audited.",
+            "$ref": "#/components/schemas/CaptureCredentialWriteRequest"
+          }
+        },
+        "additionalProperties": false,
+        "description": "Request body of `POST /api/v1/capture/discovery/candidates/{id}/test` (C3 §2.6 op 95). No address, host, port, URL, path or profile member exists."
+      },
+      "CaptureConnectionTest": {
+        "type": "object",
+        "properties": {
+          "candidateId": {
+            "type": "string",
+            "pattern": "^CND-[0-9A-F]{12}$"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "REACHABLE",
+              "AUTHENTICATION_FAILED",
+              "WRONG_PROFILE",
+              "NOT_H264",
+              "UNREACHABLE"
+            ]
+          },
+          "authenticated": {
+            "type": "boolean",
+            "description": "Whether a credential was supplied: a fact, never a value."
+          },
+          "testedAt": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "usableProfileCount": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Usable H.264 media profiles the test read. A count: no profile name."
+          },
+          "failedAttemptsRemaining": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Refused credentials this host may still see before the lock-out guard closes."
+          }
+        },
+        "required": [
+          "candidateId",
+          "outcome",
+          "authenticated",
+          "testedAt",
+          "usableProfileCount",
+          "failedAttemptsRemaining"
+        ],
+        "additionalProperties": false,
+        "description": "The outcome of one connection test (C3 §2.6 op 95). No device error text, no URL, no credential member."
+      },
+      "CaptureCandidateAdoptRequest": {
+        "type": "object",
+        "properties": {
+          "credential": {
+            "description": "The camera credential to store with the new device. Write-only: never returned, logged or audited.",
+            "$ref": "#/components/schemas/CaptureCredentialWriteRequest"
+          }
+        },
+        "additionalProperties": false,
+        "description": "Request body of `POST /api/v1/capture/discovery/candidates/{id}/adopt` (C3 §2.6 op 96)."
+      },
+      "CaptureCandidateAdoption": {
+        "type": "object",
+        "properties": {
+          "deviceId": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9-]{0,31}$",
+            "description": "The new capture device, e.g. `CAM-03`: the next free number, minted by the Core."
+          },
+          "device": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "description": "`CAM-nn`, `MIC-nn` or `POE-…` (`dbc-3 §B.2` id CHECK)."
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "CAMERA",
+                  "MIC",
+                  "POE"
+                ],
+                "description": "The `capture_devices.kind` value set: CAMERA, MIC, POE."
+              },
+              "model": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "firmware": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "host": {
+                "description": "Host or address only; never a credential URL (C-N8).",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "poePort": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "online": {
+                "type": "boolean"
+              },
+              "streamState": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "LIVE",
+                      "LOST"
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Null for a device with no stream (a mic, the PoE switch)."
+              },
+              "capabilities": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "description": "Capability codes the adapters reported; an open set."
+              },
+              "adapter": {
+                "description": "The adapter kind behind the device (C3 §2.6 \"Device shapes\"): `ONVIF_RTSP`, `USB_AUDIO`, `SNMP_POE`, `FAKE` or `LOCAL_DEVICE`. Present on a device that operation 96 registered.",
+                "type": "string",
+                "pattern": "^[A-Z][A-Z0-9_]{0,63}$"
+              },
+              "sourceClass": {
+                "description": "Derived by the Core from `adapter`: `DEVELOPMENT` exactly for `FAKE` and `LOCAL_DEVICE`. Never set by a client.",
+                "type": "string",
+                "enum": [
+                  "PRODUCTION",
+                  "DEVELOPMENT"
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "kind",
+              "model",
+              "firmware",
+              "host",
+              "poePort",
+              "online",
+              "streamState",
+              "capabilities"
+            ],
+            "additionalProperties": false,
+            "description": "One capture device (`dbc-3 §B.2`); carries no credential (RK-12)."
+          },
+          "credentialSet": {
+            "type": "boolean",
+            "description": "Whether a credential was stored with the device: a fact, never a value."
+          }
+        },
+        "required": [
+          "deviceId",
+          "device",
+          "credentialSet"
+        ],
+        "additionalProperties": false,
+        "description": "The capture device an adoption registered (C3 §2.6 op 96)."
+      },
+      "CaptureInputScan": {
+        "type": "object",
+        "properties": {
+          "scannedAt": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "inputs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "deviceId": {
+                  "type": "string",
+                  "pattern": "^[A-Z][A-Z0-9-]{0,31}$"
+                },
+                "inputId": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "pattern": "^MIC-\\d{2,}$"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "The mic input (`MIC-NN`) this device stands behind in the selector; null when it is assigned to none."
+                },
+                "present": {
+                  "type": "boolean"
+                },
+                "adapter": {
+                  "type": "string",
+                  "pattern": "^[A-Z][A-Z0-9_]{0,63}$"
+                },
+                "sourceClass": {
+                  "type": "string",
+                  "enum": [
+                    "PRODUCTION",
+                    "DEVELOPMENT"
+                  ]
+                },
+                "errorCode": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "enum": [
+                        "PERMISSION_DENIED",
+                        "DEVICE_BUSY",
+                        "DEVICE_NOT_FOUND",
+                        "OPEN_FAILED",
+                        "HELPER_EXITED"
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "The named cause when a local input cannot be opened; null otherwise."
+                }
+              },
+              "required": [
+                "deviceId",
+                "inputId",
+                "present",
+                "adapter",
+                "sourceClass",
+                "errorCode"
+              ],
+              "additionalProperties": false
+            },
+            "description": "One entry per registered microphone."
+          },
+          "unregisteredCount": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Local inputs that are no registered microphone: a count only."
+          }
+        },
+        "required": [
+          "scannedAt",
+          "inputs",
+          "unregisteredCount"
+        ],
+        "additionalProperties": false,
+        "description": "The local microphone inputs as a re-read found them (C3 §2.6 op 97). It registers nothing."
       }
     },
     "headers": {

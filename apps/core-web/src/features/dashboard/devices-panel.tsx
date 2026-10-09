@@ -1,5 +1,5 @@
 import { useCallback, useMemo, type Key, type ReactNode } from 'react'
-import { Button, Description, Dropdown, Label, Spinner, toast } from '@heroui/react'
+import { Button, Chip, Description, Dropdown, Label, Spinner, toast } from '@heroui/react'
 import { useNavigate } from '@tanstack/react-router'
 import { motion } from 'motion/react'
 import { Activity, Cpu, EllipsisVertical, Info, Mic, RotateCw } from 'lucide-react'
@@ -40,7 +40,13 @@ const selectCamera = (id: VideoTrackId) => (s: SimState) => {
 const selectMic = (id: AudioTrackId) => (s: SimState) => {
   const mic = s.mics.find((entry) => entry.id === id)
   if (!mic) return null
-  return { deviceId: mic.deviceId, state: mic.state, clipLatched: mic.clipLatched }
+  // Task 3 M4 (blueprint row 67; WB-02): the role the input holds in the capture configuration (slice 29).
+  const role = s.captureConfig.mics.find((entry) => entry.inputId === mic.deviceId)?.role ?? null
+  // Task 3 M5 (blueprint row 72; WB-02; ux §3.6): while a session records, the tile says which input
+  // is inside the session audio track now (operation 81 moves it) — the Core's pair, never a guess.
+  const activeInputId = s.session?.state === 'RECORDING' ? (s.session.audioSource?.activeInputId ?? s.audio.activeInputId) : null
+  const source = activeInputId === null ? null : activeInputId === mic.deviceId ? ('ACTIVE' as const) : ('STANDBY' as const)
+  return { deviceId: mic.deviceId, state: mic.state, clipLatched: mic.clipLatched, role, source }
 }
 
 /**
@@ -264,7 +270,16 @@ function MicTile({ channel, index, beatMs }: { channel: AudioTrackId; index: num
   return (
     <Tile index={index} beatMs={beatMs} testId={`device-tile-${channel}`}>
       <TileHead tone={tone} name={name} state={state} deviceId={mic.deviceId} />
-      <div className="dems-mic-body">
+      <div className="dems-mic-body" data-role={mic.role ?? undefined}>
+        {mic.source ? (
+          <Chip size="sm" variant="soft" color={mic.source === 'ACTIVE' ? 'accent' : 'default'} className="dems-mic-role" data-testid={`device-tile-source-${channel}`} data-source={mic.source}>
+            <Chip.Label>{t(`session.audioSource.role.${mic.source}`)}</Chip.Label>
+          </Chip>
+        ) : mic.role ? (
+          <Chip size="sm" variant="soft" color={mic.role === 'PRIMARY' ? 'accent' : 'default'} className="dems-mic-role" data-testid={`device-tile-role-${channel}`}>
+            <Chip.Label>{t(`devices.selector.role.${mic.role}`)}</Chip.Label>
+          </Chip>
+        ) : null}
         <span className="dems-mic-ring" aria-hidden="true">
           <Mic strokeWidth={1.6} />
         </span>

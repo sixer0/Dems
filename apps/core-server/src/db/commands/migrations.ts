@@ -32,7 +32,13 @@ export const MIGRATIONS_FOLDER = resolve(dirname(fileURLToPath(import.meta.url))
 /** The migrator's default bookkeeping table: the one exception to "everything is in `public`" (D38). */
 export const MIGRATIONS_SCHEMA = 'drizzle';
 export const MIGRATIONS_TABLE = '__drizzle_migrations';
-/** The eight files of schema version 2, in order (dbc-3 §A.1 plus the R-8 pair §B.13 / row 112). */
+/**
+ * The ten files of schema version 3, in order: dbc-3 §A.1, the R-8 pair (§B.13 / row 112), and
+ * migration set 4 of dbc-4 §N.8 (row 129) - `0008` generated, `0009` hand-written. The eleventh
+ * file is migration set 5 (row 129a, erratum PE-129a-01): `0010`, hand-written, schema version 4.
+ * Files twelve and thirteen are migration set 6 (row 129b, erratum PE-129b-01): `0011` generated,
+ * `0012` hand-written, schema version 5.
+ */
 export const INITIAL_MIGRATION_TAGS = [
   '0000_prelude',
   '0001_tables',
@@ -42,6 +48,11 @@ export const INITIAL_MIGRATION_TAGS = [
   '0005_capture_privileges',
   '0006_stt_config',
   '0007_stt_config_privileges',
+  '0008_capture_sources',
+  '0009_capture_sources_privileges',
+  '0010_credential_replace_privileges',
+  '0011_session_stt_config',
+  '0012_session_stt_config_privileges',
 ] as const;
 
 export interface MigrationFile {

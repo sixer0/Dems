@@ -107,8 +107,8 @@ describe('T-M10 Devices Check: the §5.3 gate (MA-29 step 2, MA-30)', () => {
     h.tick(PRECHECK_TOTAL_MAX_MS);
     expect(h.state().session!.precheck.outcome).toBe('WARN');
     expect(h.state().session!.state).toBe('PRECHECK');
-    expect(screen.getByTestId('session-new-check-MIC_2-status')).toBeTruthy();
-    expect(screen.getByTestId('session-new-check-MIC_2-value').props.children).toBe('NO SIGNAL');
+    expect(screen.getByTestId('session-new-check-MIC_STANDBY-status')).toBeTruthy();
+    expect(screen.getByTestId('session-new-check-MIC_STANDBY-value').props.children).toBe('NO SIGNAL');
     expect(screen.getByTestId('session-new-gate-warn')).toBeTruthy();
     expect(screen.queryByTestId('session-new-gate-block')).toBeNull();
     expect(nextButton().props.accessibilityState?.disabled).toBe(true);

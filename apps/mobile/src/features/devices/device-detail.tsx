@@ -43,7 +43,7 @@ import Animated from 'react-native-reanimated';
 import type { AudioTrackId } from '@dems/shared/domain';
 import { EMPTY_DATE_TEXT, formatClock } from '@dems/shared/realtime';
 import { settle, useCoreActions } from '@dems/shared/live';
-import type { AuditRow, DeviceCommand } from '@dems/shared/sim';
+import { selectRole, useSim, type AuditRow, type DeviceCommand } from '@dems/shared/sim';
 import { derived, fontFamily, palette, radius, spacing, toneHex, typography } from '@dems/shared/tokens';
 import { KeyValueList, type KeyValueItem } from '@/components/kit';
 import { CameraFeed } from '@/components/media';
@@ -51,6 +51,7 @@ import { DEMO_MEDIA_LIVE } from '@/components/media/demo-media';
 import { useLayoutClass } from '@/layout';
 import { crossFadeIn, enterRise, triggerHaptic, useMotionPolicy, useMotionSettings, useMotionState } from '@/motion';
 import { PendingSpinner, busyState, reportRuntimeIssue, useCoreErrorPresenter, useCoreLink } from '@/runtime';
+import { DevelopmentSourceBadge } from '@/features/capture-selector/development-source-badge';
 import { DeviceCommandDialog } from './device-command-dialog';
 import { DeviceMicMeter } from './device-mic-meter';
 import { DeviceStatusChip } from './device-status-chip';
@@ -151,6 +152,7 @@ function KnownDeviceDetail({ deviceId, variant, header }: { deviceId: DeviceId; 
   const status = useDeviceStatus(deviceId);
   const recording = useIsRecording();
   const canManage = useCanManageDevices();
+  const roleKnown = useSim((state) => selectRole(state) !== null);
   const { layoutClass } = useLayoutClass();
   const [tab, setTab] = useState<DetailTab>('overview');
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
@@ -194,7 +196,14 @@ function KnownDeviceDetail({ deviceId, variant, header }: { deviceId: DeviceId; 
   );
 
   const restartBlocked = !canManage || recording;
-  const restartHint = !canManage ? t('features.devices.actions.restartNeedsTechnician') : recording ? t('devices.actions.restartWhileRecording') : undefined;
+  // Task 3 row 68 (G9; ux §11, E-16): an unknown role reads "Checking your permissions…", never "Requires …".
+  const restartHint = !roleKnown
+    ? t('mobile.rbac.checking')
+    : !canManage
+      ? t('features.devices.actions.restartNeedsTechnician')
+      : recording
+        ? t('devices.actions.restartWhileRecording')
+        : undefined;
   const landscape = variant === 'screen' && layoutClass === 'compact-landscape';
 
   const top = (
@@ -206,6 +215,8 @@ function KnownDeviceDetail({ deviceId, variant, header }: { deviceId: DeviceId; 
           {deviceId}
         </Text>
       </View>
+      {/* Task 3 row 138 (ux §8f.2 "Devices rows"): the one "Development source" badge; no node when the Core sent no class. */}
+      <DevelopmentSourceBadge deviceId={deviceId} testID="device-detail-source" />
       {deviceId === 'TABLET' && status === 'OFFLINE' ? (
         <Alert status="warning" testID="device-tablet-offline">
           <Alert.Indicator />

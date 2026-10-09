@@ -41,6 +41,10 @@ export * from './capture';
 // Task 3 M6 (blueprint row 113; C3 §2.5; R-8, D20/D24): the STT configuration of operations 90-92
 // (schemas, operations, examples) and the one rule of an update the simulator and the server share.
 export * from './transcription';
+// Task 3 R-9..R-11 (blueprint row 132, decision D106; C3 §2.6): camera search, connection test,
+// adoption and the local-input re-read of operations 93-97 (schemas, operations, examples, the
+// audit-detail builders the Core server and the simulator share).
+export * from './capture-discovery';
 // Task 3 row 113, fix round 1 (navigator finding N-1): the one rule set of the two client
 // log-blanking lists (web error sink, mobile runtime log). Dependency-free.
 export * from './redaction';

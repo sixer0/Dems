@@ -9,22 +9,32 @@
  * show their still poster, the meters stop and their dBFS line holds, so uiautomator can reach idle
  * (MA-12 on this screen);
  * OS reduce-motion keeps them live, like the monitor (S72-2).
+ *
+ * Task 3 M5 (row 73; ux §3.6 MB-01; B15, E-14). The level line of a MIC tile:
+ * - says "No signal" only when the Core says the microphone has no signal (the word of the tile's chip);
+ *   a flat frame alone — no meter frame yet, as on an idle Core — reads "— dBFS" (`micReadoutKind`);
+ * - under the test switch it still holds its number, but it is read again in the render in which the
+ *   input's no-signal flag flips, so a tile mounted before the recording no longer keeps "No signal"
+ *   for the whole recording (D249 O-3). The flag is a boolean selector: one render per flip, none per frame;
+ * - while a session records, the tile says "Active" or "Standby" (the session's pair, read from the store).
  */
 import { useIsFocused, useRouter, type Href } from 'expo-router';
 import { PressableFeedback, Surface } from 'heroui-native';
 import { Mic } from 'lucide-react-native';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { StyleSheet, Text, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import type { AudioTrackId } from '@dems/shared/domain';
+import { MIC_INPUT_OF_CHANNEL, useSim, useSimInstance } from '@dems/shared/sim';
 import { fontFamily, palette, toneHex, typography, type StatusTone } from '@dems/shared/tokens';
 import { DbfsMeter } from '@/components/composed/dbfs-meter';
 import { StatusChip } from '@/components/kit';
 import { CameraFeed } from '@/components/media/camera-feed';
 import { DEMO_MEDIA_LIVE } from '@/components/media/demo-media';
 import { useMotionPolicy, useMotionSettings, useMotionState } from '@/motion';
-import { useAudioAccessibilityValue, useAudioSharedValues } from '@/runtime';
-import { TRACK_NAME_KEY } from './home-model';
+import { AUDIO_FLOOR_DBFS, audioAccessibilityValue, useAudioAccessibilityValue, useAudioSharedValues, type AudioAccessibilityValue } from '@/runtime';
+import { MIC_NO_LEVEL_TEXT, TRACK_NAME_KEY, micReadoutKind } from './home-model';
 import { HOME_BEATS, beatAt, homeEnter } from './home-motion';
 import { useDeviceTiles, type DeviceTileInfo } from './use-home-data';
 
@@ -115,6 +125,30 @@ function FeedThumb({ tile, name }: { tile: DeviceTileInfo; name: string }) {
   );
 }
 
+/**
+ * The level line of a MIC tile and the meter's accessible value (B15; the rule is `micReadoutKind`).
+ * The number is the runtime's 1 Hz readout (01S §14.6), frozen with the meter under the D43 test
+ * switch (uiautomator idle) — and read again when the input's no-signal flag flips, in both modes.
+ */
+function useMicReadout(channel: AudioTrackId, state: string, frozen: boolean): AudioAccessibilityValue {
+  const { t } = useTranslation();
+  const sim = useSimInstance();
+  const input = MIC_INPUT_OF_CHANNEL[channel];
+  // Change-only: a boolean selector re-renders the tile when the flag flips, never per frame.
+  const frameFlat = useSim((s) => s.audio.inputs[input]?.noSignal ?? true);
+  const ticking = useAudioAccessibilityValue(channel, frozen ? { intervalMs: TEST_SWITCH_READOUT_MS } : {});
+  // Render-time "adjust state when an input changed" (no effect, no timer): the level at the flip.
+  const [held, setHeld] = useState({ frameFlat, now: ticking.now });
+  if (held.frameFlat !== frameFlat) {
+    const frame = sim.store.getState().audio.inputs[input];
+    setHeld({ frameFlat, now: audioAccessibilityValue(frame?.dbfs ?? AUDIO_FLOOR_DBFS).now });
+  }
+  const now = frozen ? held.now : ticking.now;
+  const kind = micReadoutKind({ frameFlat, state });
+  const text = kind === 'LEVEL' ? `${now} dBFS` : kind === 'NO_SIGNAL' ? t('common.status.noSignal') : MIC_NO_LEVEL_TEXT;
+  return { min: ticking.min, max: ticking.max, now, text };
+}
+
 function MicMeter({ tile, name }: { tile: DeviceTileInfo; name: string }) {
   const { t } = useTranslation();
   const policy = useMotionPolicy();
@@ -122,11 +156,7 @@ function MicMeter({ tile, name }: { tile: DeviceTileInfo; name: string }) {
   const testSwitch = useMotionState((s) => s.linkMotion === 'off');
   const channel = tile.trackId as AudioTrackId;
   const values = useAudioSharedValues(channel);
-  // 1 Hz readout (01S §14.6); frozen with the meter under the D43 test switch (uiautomator idle).
-  const a11y = useAudioAccessibilityValue(channel, {
-    noSignalText: t('common.status.noSignal'),
-    ...(testSwitch ? { intervalMs: TEST_SWITCH_READOUT_MS } : {}),
-  });
+  const a11y = useMicReadout(channel, tile.state, testSwitch);
   return (
     <View style={styles.meterBody}>
       <View style={styles.meterRow}>
@@ -145,9 +175,20 @@ function MicMeter({ tile, name }: { tile: DeviceTileInfo; name: string }) {
           style={styles.meter}
         />
       </View>
-      <Text testID={`home-device-${tile.trackId}-dbfs`} maxFontSizeMultiplier={1.2} style={styles.dbfs}>
-        {a11y.text}
-      </Text>
+      <View style={styles.readoutRow}>
+        <Text testID={`home-device-${tile.trackId}-dbfs`} maxFontSizeMultiplier={1.2} numberOfLines={1} style={styles.dbfs}>
+          {a11y.text}
+        </Text>
+        {tile.sourceRole !== null ? (
+          <StatusChip
+            testID={`home-device-${tile.trackId}-role`}
+            size="sm"
+            tone={tile.sourceRole === 'ACTIVE' ? 'success' : 'default'}
+            label={t(`session.audioSource.role.${tile.sourceRole}`)}
+            icon={null}
+          />
+        ) : null}
+      </View>
     </View>
   );
 }
@@ -170,7 +211,9 @@ const styles = StyleSheet.create({
   meterBody: { flex: 1, justifyContent: 'center', gap: 8, minHeight: 64 },
   meterRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   meter: { flex: 1, height: 12 },
+  readoutRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   dbfs: {
+    flexShrink: 1,
     fontFamily: fontFamily.native.mono,
     fontSize: typography.data.size,
     lineHeight: typography.data.lineHeight,

@@ -102,7 +102,7 @@ import {
 } from './kept-tables';
 import { RESET_LOCK_CLASS, createStagingStatement, dropStatement, guardResetTarget, recoverStatement, swapStatements, type DisposableDatabase, type ResetTarget } from './names';
 import { assertNow, planReset, resolveRequest, scenarioLoadedActivity, type LineageRow, type ResetPlan, type ResetRequest, type SourceFacts } from './plan';
-import { findRealSealedEvidence, realEvidenceDetails, realEvidenceMessage } from './real-evidence';
+import { developmentPackagesMessage, findRealSealedEvidence, realEvidenceDetails, realEvidenceMessage } from './real-evidence';
 
 /** `application_name` of every connection of the routine, unless the caller names another. */
 export const RESET_APPLICATION_NAME = 'dems-db-reset';
@@ -945,6 +945,12 @@ async function readSource(
         const refusal = realEvidenceMessage(evidence);
         guard.log({ level: 'warn', code: 'RESET_BLOCKED_REAL_EVIDENCE', message: refusal, details: realEvidenceDetails(evidence) });
         throw new ResetError('RESET_BLOCKED_REAL_EVIDENCE', 'R-3', refusal);
+      }
+      // SEC35-42 (3): a permitted reset says how many development packages it is about to erase,
+      // before R-4 builds anything. The caller's own confirmation (the command line, or the
+      // confirmation of operation 75) is what let the routine start.
+      if (evidence.developmentSessions.length > 0) {
+        guard.log({ level: 'warn', code: 'RESET_DEVELOPMENT_PACKAGES', message: developmentPackagesMessage(evidence), details: realEvidenceDetails(evidence) });
       }
       const kept = await readKept(client);
       const read = await client.query<{

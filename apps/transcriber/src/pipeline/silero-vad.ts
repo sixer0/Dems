@@ -80,6 +80,8 @@ export interface SpeechSpan {
 }
 
 export interface VoiceActivityDetector {
+  /** True when the composition stated the capture worker of the sibling rule (§C; N-10). In-process stand-ins start no engine and need not say. */
+  readonly captureWorkerStated?: boolean;
   /** The speech runs of `wavPath`, in order. An empty list: the file holds no speech. */
   detect(wavPath: string, correlationId?: string): Promise<SpeechSpan[]>;
 }
@@ -199,5 +201,5 @@ export function createSileroVad(config: SileroVadConfig, deps: SileroVadDeps): V
     return spans;
   }
 
-  return Object.freeze({ detect });
+  return Object.freeze({ detect, captureWorkerStated: deps.captureWorkerPid !== undefined });
 }

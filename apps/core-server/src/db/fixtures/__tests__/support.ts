@@ -83,10 +83,14 @@ const DUMP_ORDER: Readonly<Record<string, string>> = {
   transcript_revisions: 'evidence_id, revision_no',
   sealing_jobs: 'session_id, step',
   stt_config: 'singleton',
+  // Schema v3 (dbc-4 §N.3): T-41, keyed by (session_id, slot).
+  session_capture_sources: 'session_id, slot',
+  // Schema v5 (PE-129b-01): T-42, one row per session.
+  session_stt_config: 'session_id',
 };
 
 /**
- * A digest of each of the 40 tables over a stable, ordered dump (the recipe of contract §9.6,
+ * A digest of each of the 41 tables over a stable, ordered dump (the recipe of contract §9.6,
  * with SHA-256): `to_jsonb` of every row, in key order. Every column is part of it, the generated
  * identifiers and the hash columns included, so two databases with equal digests hold equal rows.
  */
@@ -103,7 +107,7 @@ export async function tableDigests(pool: Pool): Promise<Record<string, string>> 
   return digests;
 }
 
-/** One digest over the 40 table digests. */
+/** One digest over the 41 table digests. */
 export function overallDigest(digests: Readonly<Record<string, string>>): string {
   const text = Object.keys(digests)
     .sort()

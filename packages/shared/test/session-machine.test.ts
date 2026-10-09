@@ -125,7 +125,7 @@ describe('allowed transitions (§14.7 table)', () => {
     h.run(5_000);
     const items = h.state().session?.precheck.items ?? [];
     expect(h.state().session?.precheck.outcome).toBe('WARN');
-    expect(items.find((item) => item.id === 'MIC_2')).toMatchObject({ status: 'WARN', value: 'CLIP' });
+    expect(items.find((item) => item.id === 'MIC_STANDBY')).toMatchObject({ status: 'WARN', value: 'CLIP' });
     expect(items.find((item) => item.id === 'TIME')).toMatchObject({ status: 'WARN', value: 'RTC' });
     expect(sessionState(h.state())).toBe('PRECHECK');
     h.run(10_000);

@@ -12,7 +12,10 @@ import {
   flagLineFor,
   homeStatusFor,
   idSuffix,
+  MIC_NO_LEVEL_TEXT,
+  micReadoutKind,
   micTileFor,
+  micTileSourceRole,
   primaryActionFor,
   recentRowsFor,
   storageTileFor,
@@ -105,6 +108,23 @@ describe('H3 tiles', () => {
     expect(micTileFor([{ state: 'READY', clipLatched: false }, { state: 'READY', clipLatched: false }])).toMatchObject({ value: 2, total: 2, tone: 'success' });
     expect(micTileFor([{ state: 'READY', clipLatched: false }, { state: 'READY', clipLatched: true }])).toMatchObject({ value: 2, stateKey: 'clipping', tone: 'warning' });
     expect(micTileFor([{ state: 'NO_SIGNAL', clipLatched: false }, { state: 'CLIP', clipLatched: true }])).toMatchObject({ value: 0, stateKey: 'noSignal' });
+  });
+
+  // Task 3 M5, row 73 (MB-01, B15, E-14).
+  it('MIC tile level line (B15): "No signal" needs the microphone\'s own state; a flat frame alone is "no level"', () => {
+    expect(micReadoutKind({ frameFlat: false, state: 'READY' })).toBe('LEVEL');
+    expect(micReadoutKind({ frameFlat: false, state: 'NO_SIGNAL' })).toBe('LEVEL');
+    expect(micReadoutKind({ frameFlat: true, state: 'NO_SIGNAL' })).toBe('NO_SIGNAL');
+    expect(micReadoutKind({ frameFlat: true, state: 'READY' })).toBe('NO_LEVEL');
+    expect(micReadoutKind({ frameFlat: true, state: 'CLIP' })).toBe('NO_LEVEL');
+    expect(/signal/i.test(MIC_NO_LEVEL_TEXT)).toBe(false);
+  });
+
+  it('MIC tile source role: Active / Standby only while a session records', () => {
+    expect(micTileSourceRole({ recording: true, inputId: 'MIC-01', activeInputId: 'MIC-01' })).toBe('ACTIVE');
+    expect(micTileSourceRole({ recording: true, inputId: 'MIC-02', activeInputId: 'MIC-01' })).toBe('STANDBY');
+    expect(micTileSourceRole({ recording: false, inputId: 'MIC-01', activeInputId: 'MIC-01' })).toBeNull();
+    expect(micTileSourceRole({ recording: true, inputId: undefined, activeInputId: 'MIC-01' })).toBeNull();
   });
 
   it('storage: USED percent (D28/Q1) with READY / LOW / FULL tones', () => {

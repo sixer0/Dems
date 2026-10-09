@@ -71,6 +71,7 @@ import type {
   SessionHistoryRow,
   StoragePolicyRow,
 } from '../schema';
+import type { CaptureAdapterKindValue, CaptureDeviceKindValue } from '../schema';
 import { MappingError, safeInteger, safeIntegerOrNull, storableJson, storableText, storableTextOrNull } from './guards';
 import { SNAPSHOT_SLICE_KEYS, type DurableSlices, type MappableState } from './slices';
 
@@ -389,8 +390,53 @@ export function sessionHistoryFromRow(row: SessionHistoryRow, evidenceId: string
 
 // ── evidence_items, evidence_tracks, evidence_custody ──────────────────────────────────────────
 
+/**
+ * THE THREE SEALED COLUMNS OF A V2 ITEM (dbc-3 §B.11), as the seal hands them to the item's INSERT:
+ * `FinalizedTranscript.itemColumns` of `src/sealing` (`SealedItemColumns`; mirrored structurally,
+ * the mapping imports no unit). The seal spreads them onto the state item - `transcriptSha256` is a
+ * member of the shared item already; `manifestVersion` and `labelsStatus` are read here as optional
+ * members the shared `EvidenceItem` type does not declare yet (request filed by row 129b: two
+ * optional members beside `transcriptSha256` in `sim/types.ts` and in the evidence item schema).
+ *
+ * WHY NOT DERIVED FROM THE HASH ALONE (row 79's finding): a v2 item sealed with STT DISABLED, or
+ * with no document at the seal, carries no transcript hash by design (ev §B.7a). The derivation
+ * `transcriptSha256 != null` stored such an item as version 1.
+ */
+export type SealedLabelsStatus = 'LABELLED' | 'UNAVAILABLE';
+export interface SealedItemMembers {
+  readonly manifestVersion?: 1 | 2;
+  readonly labelsStatus?: SealedLabelsStatus | null;
+}
+export type SealedEvidenceItem = EvidenceItem & SealedItemMembers;
+
+const SEALED_LABELS: readonly string[] = ['LABELLED', 'UNAVAILABLE'];
+
+/** `manifest_version` and `labels_status` of one item; refuses a combination no seal produces. */
+function sealedColumnsOf(item: EvidenceItem): { manifestVersion: 1 | 2; labelsStatus: SealedLabelsStatus | null } {
+  const members = item as { manifestVersion?: unknown; labelsStatus?: unknown };
+  const stated = members.manifestVersion;
+  const labels = members.labelsStatus ?? null;
+  if (stated !== undefined && stated !== 1 && stated !== 2) {
+    throw new MappingError('ROW_SHAPE', `evidence_items.manifest_version (${item.id})`, 'the manifest version of an item is 1 or 2.');
+  }
+  if (labels !== null && (typeof labels !== 'string' || !SEALED_LABELS.includes(labels))) {
+    throw new MappingError('ROW_SHAPE', `evidence_items.labels_status (${item.id})`, 'the speaker state of a sealed item is LABELLED, UNAVAILABLE or absent.');
+  }
+  // 2 for every v2 seal: the seal says so itself, or (the items written before the member existed,
+  // and the simulator's own seal) the item binds a transcript hash.
+  const manifestVersion = stated === 2 || item.transcriptSha256 != null ? 2 : 1;
+  if (stated === 1 && manifestVersion === 2) {
+    throw new MappingError('ROW_SHAPE', `evidence_items.manifest_version (${item.id})`, 'an item that binds a transcript hash is a version 2 item; it states version 1.');
+  }
+  if (manifestVersion === 1 && labels !== null) {
+    throw new MappingError('ROW_SHAPE', `evidence_items.labels_status (${item.id})`, 'a version 1 item has no speaker state.');
+  }
+  return { manifestVersion, labelsStatus: labels as SealedLabelsStatus | null };
+}
+
 export function evidenceItemToRow(item: EvidenceItem, context: RowContext): EvidenceItemRow {
   const place = (column: string): string => `evidence_items.${column} (${item.id})`;
+  const sealed = sealedColumnsOf(item);
   return {
     id: storableText(item.id, 'evidence_items.id'),
     sessionId: storableText(item.sessionId, place('session_id')),
@@ -422,14 +468,17 @@ export function evidenceItemToRow(item: EvidenceItem, context: RowContext): Evid
     integritySource: item.integritySource ?? null,
     startTimeSource: item.startTimeSource ?? null,
     endTimeSource: item.endTimeSource ?? null,
-    // Schema v2 (CS-18; dbc-3 §B.11). `manifest_version` is derived, never a state member: a v2
-    // sealed item binds its transcript (`transcript_sha256` non-null, D-DB-01/MT-7), so it reads 2;
-    // a v1 item (no bound transcript) keeps 1. Deriving from `transcriptSha256` — a field the way
-    // back restores — keeps `toRow(fromRow(row))` byte-stable. `labels_status` has no sim home on
-    // the item (it lives on `transcripts`), so the mapping stores NULL and the way back ignores it.
-    manifestVersion: item.transcriptSha256 != null ? 2 : 1,
+    // Schema v2 (CS-18; dbc-3 §B.11; row 129b): the three sealed columns, see `sealedColumnsOf`.
+    // `manifest_version` is 2 for EVERY v2 seal - also the one sealed without a transcript hash
+    // (STT disabled) - and `labels_status` is the seal's speaker state. An item that states
+    // neither keeps the old reading: 2 when it binds a transcript hash, else 1; NULL labels.
+    // `evidenceItemFromRows` restores what the item carried, so `toRow(fromRow(row))` is byte-stable.
+    manifestVersion: sealed.manifestVersion,
     transcriptSha256: item.transcriptSha256 ?? null,
-    labelsStatus: null,
+    labelsStatus: sealed.labelsStatus,
+    // Schema v3 (dbc-4 §N.4, MR-E1): the copy of manifest field 126. The state does not carry it
+    // until the v2 seal of rows 83 / 141 writes it in the item's INSERT; NULL reads "not recorded".
+    developmentSources: null,
     createdAt: safeInteger(context.at, place('created_at')),
     updatedAt: safeInteger(context.at, place('updated_at')),
   };
@@ -570,14 +619,41 @@ export function evidenceItemFromRows(
     markers: row.markers,
     notes: row.notes,
     ...(row.integritySource === null ? {} : { integritySource: row.integritySource }),
-    // Schema v2 (CS-18): a bound transcript hash round-trips; absent stays absent (MR-2).
-    ...(row.transcriptSha256 === null ? {} : { transcriptSha256: row.transcriptSha256 }),
+    // Schema v2 (CS-18; row 129b): the sealed columns round-trip; absent stays absent (MR-2).
+    ...sealedMembersOf(row),
     // Schema v2 (D44 R5): the sealed file list and the running chain head round-trip through the
     // file rows of `evidence_tracks`; a v1 item gets neither key back.
     ...(files === null ? {} : { files, fragmentChainHead: fileRows[0]?.fragmentChainHead ?? null }),
     startTimeSource: row.startTimeSource,
     endTimeSource: row.endTimeSource,
   };
+}
+
+/**
+ * The way back of the three sealed columns. Three row shapes exist, and each names its writer:
+ *   (1, NULL, NULL)        a v1 item: no member comes back;
+ *   (2, hash, NULL)        an item that only binds a hash (written before the seal stated its
+ *                          columns; the simulator's own seal): `transcriptSha256` alone, as before;
+ *   (2, hash, labels) and  the seal's `SealedItemColumns`: all three members come back, the hash
+ *   (2, NULL, NULL)        as `null` where the seal carried none (STT disabled).
+ * A real seal never writes the second shape: a sealed document always has a speaker state. Any
+ * other combination is not a row the mapping wrote, and is refused.
+ */
+function sealedMembersOf(row: EvidenceItemRow): { transcriptSha256?: string | null } & SealedItemMembers {
+  if (row.manifestVersion === 1) {
+    if (row.transcriptSha256 !== null || row.labelsStatus !== null) {
+      throw new MappingError('ROW_SHAPE', `evidence_items.manifest_version (${row.id})`, 'a version 1 item holds a transcript hash or a speaker state.');
+    }
+    return {};
+  }
+  if (row.manifestVersion !== 2) {
+    throw new MappingError('ROW_SHAPE', `evidence_items.manifest_version (${row.id})`, `the manifest version of an item is 1 or 2; the row holds ${row.manifestVersion}.`);
+  }
+  if (row.transcriptSha256 === null && row.labelsStatus !== null) {
+    throw new MappingError('ROW_SHAPE', `evidence_items.labels_status (${row.id})`, 'the row holds a speaker state and no transcript hash.');
+  }
+  if (row.transcriptSha256 !== null && row.labelsStatus === null) return { transcriptSha256: row.transcriptSha256 };
+  return { manifestVersion: 2, transcriptSha256: row.transcriptSha256, labelsStatus: row.labelsStatus };
 }
 
 // ── capture_config, capture_devices (register SH-16; D44 R5) ──────────────────────────────────
@@ -675,6 +751,38 @@ export function captureConfigToRow(slice: CaptureConfigSlice): CaptureConfigRow 
 }
 
 /**
+ * The adapter kinds a device class may carry (dbc-4 §N.2, `capture_devices_adapter_pairing_check`).
+ * Stated here because the mapping imports TYPES of the schema only (its static rule); the M4-MT-12
+ * test holds this table equal to `CAPTURE_ADAPTER_KINDS_BY_DEVICE_KIND` of the typed schema.
+ */
+export const MAPPED_ADAPTER_KINDS_BY_DEVICE_KIND = {
+  CAMERA: ['ONVIF_RTSP', 'FAKE', 'LOCAL_DEVICE'],
+  MIC: ['USB_AUDIO', 'FAKE', 'LOCAL_DEVICE'],
+  POE: ['SNMP_POE', 'FAKE'],
+} as const satisfies Record<CaptureDeviceKindValue, readonly CaptureAdapterKindValue[]>;
+
+/** The adapter kind a device row is written with when the slice names none: a development source (D-DB-12). */
+export const DEFAULT_CAPTURE_ADAPTER_KIND: CaptureAdapterKindValue = 'FAKE';
+
+/**
+ * The adapter kind of one slice device (dbc-4 §N.2). The slice member `adapter` is added to the
+ * shared slice by the rows that surface it (132 / 136); until it exists the engine state names no
+ * adapter and the row is written with the safe default `FAKE` - in the VALUES list only: the
+ * store's UPSERT never names `adapter_kind` in its SET list, so an existing row keeps what it was
+ * inserted with. A value outside the closed set, or one the device class may not carry, is refused
+ * here instead of at the CHECK.
+ */
+function adapterKindOf(device: CaptureDevicesSlice['devices'][number]): CaptureAdapterKindValue {
+  const named: unknown = (device as { adapter?: unknown }).adapter;
+  if (named === undefined || named === null) return DEFAULT_CAPTURE_ADAPTER_KIND;
+  const allowed: readonly string[] = MAPPED_ADAPTER_KINDS_BY_DEVICE_KIND[device.kind];
+  if (typeof named !== 'string' || !allowed.includes(named)) {
+    throw new MappingError('ROW_SHAPE', `capture_devices.adapter_kind (${device.id})`, `the adapter is not one a ${device.kind} device may carry.`);
+  }
+  return named as CaptureAdapterKindValue;
+}
+
+/**
  * Slice 30 to its registry rows (T-32), in id order. `enabled` carries the slice's `online`; the
  * mic rows take their `transport` from the selector slot that names the same device (the only
  * home the state has for it); `address` is the slice's `host`, never a credential URL (C-N8).
@@ -699,6 +807,7 @@ export function captureDevicesToRows(slice: CaptureDevicesSlice, config: Capture
       poePort: storableTextOrNull(device.poePort, `capture_devices.poe_port (${device.id})`),
       enabled: device.online,
       lastSeenAt: null,
+      adapterKind: adapterKindOf(device),
     }));
 }
 
@@ -712,10 +821,21 @@ function captureDeviceFromRow(row: CaptureDeviceRow): Omit<CaptureDevicesSlice['
     host: row.address,
     poePort: row.poePort,
     online: row.enabled,
-    streamState: row.kind === 'CAMERA' ? (row.enabled ? 'LIVE' : 'LOST') : null,
-    capabilities: [...(BUILT_IN_CAPABILITIES.get(row.id) ?? [])],
+    streamState: row.kind === 'CAMERA' ? (BUILT_IN_CAPABILITIES.has(row.id) ? (row.enabled ? 'LIVE' : 'LOST') : null) : null,
+    capabilities: [...(BUILT_IN_CAPABILITIES.get(row.id) ?? (row.kind === 'CAMERA' ? ADOPTED_CAMERA_CAPABILITIES : []))],
+    // A device that operation 96 registered (the INTERNAL action `registerCaptureDevice`, row 132)
+    // carries its adapter and the class derived from it, and reads back exactly as it was
+    // registered: no stream until a track is assigned, the one capability of a camera. The
+    // built-in devices keep the shape they had: they gain the two members with the rows that
+    // surface them (136 / 139).
+    ...(BUILT_IN_CAPABILITIES.has(row.id) ? {} : { adapter: row.adapterKind, sourceClass: DEVELOPMENT_ADAPTER_KINDS.has(row.adapterKind) ? ('DEVELOPMENT' as const) : ('PRODUCTION' as const) }),
   };
 }
+
+/** What `registerCaptureDevice` gives a camera it registers (`packages/shared/src/sim/capture-registry.ts`). */
+const ADOPTED_CAMERA_CAPABILITIES: readonly string[] = ['VIDEO'];
+/** The adapter kinds of a source that is not a production device (dbc-4 §N.2). */
+const DEVELOPMENT_ADAPTER_KINDS: ReadonlySet<string> = new Set(['FAKE', 'LOCAL_DEVICE']);
 
 /**
  * Slice 29 back from its row and the registry rows (the same derivations the capture-config
@@ -724,6 +844,11 @@ function captureDeviceFromRow(row: CaptureDeviceRow): Omit<CaptureDevicesSlice['
  * and the mic slots' `transport`/`online` come from the registry row the selector names; `locked`
  * is false because the sim never stores the lock in the slice (op 76 recomputes it per answer).
  * A named device the registry does not hold is a refusal, never an invented row (fail closed).
+ *
+ * THE MICROPHONES COME BACK IN INPUT ORDER - `MIC-01`, then `MIC-02` - whichever of them is the
+ * PRIMARY (decision D106 (1); AC-B-70; the simulator and the hosted action `setCaptureConfig` list
+ * them so). The role is a member of the line, not its position: after `setPrimaryMic(MIC-02)` the
+ * stored selector reads back as the engine holds it, so a restarted Core replicates the same order.
  */
 export function captureConfigFromRow(row: CaptureConfigRow, devices: readonly CaptureDeviceRow[]): CaptureConfigSlice {
   const byId = new Map(devices.map((device) => [device.id, device] as const));
@@ -744,7 +869,9 @@ export function captureConfigFromRow(row: CaptureConfigRow, devices: readonly Ca
   };
   return {
     cameras: [camera('VIDEO-01', row.video01DeviceId, codeToProfile(row.video01Profile, 'capture_config.video_01_profile')), camera('VIDEO-02', row.video02DeviceId, codeToProfile(row.video02Profile, 'capture_config.video_02_profile'))],
-    mics: [mic(row.micPrimaryId as 'MIC-01' | 'MIC-02', row.micPrimaryId, 'PRIMARY'), mic(row.micStandbyId as 'MIC-01' | 'MIC-02', row.micStandbyId, 'STANDBY')],
+    mics: [mic(row.micPrimaryId as 'MIC-01' | 'MIC-02', row.micPrimaryId, 'PRIMARY'), mic(row.micStandbyId as 'MIC-01' | 'MIC-02', row.micStandbyId, 'STANDBY')].sort((left, right) =>
+      compareIds(left.inputId, right.inputId),
+    ),
     locked: false,
     updatedAt: row.updatedAt,
   };

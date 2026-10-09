@@ -28,7 +28,7 @@ import { captureLog, unitTestConfig, type CapturedLog } from '../../../../test/s
 import { ApiFailure, notReady } from '../../../plugins/error-envelope';
 import type { ErrorLogEntry } from '../../../plugins/logger';
 import { permissionGuard, routePatternOf } from '../../../plugins/permission-guard';
-import { EVIDENCE_MODULE_OPERATIONS } from '../index';
+import { EVIDENCE_MODULE_OPERATIONS, evidenceVerification } from '../index';
 import { NO_REASON } from '../export-request';
 import { EVIDENCE, UNKNOWN_EVIDENCE_ID, WEB_ORIGIN, archiveUrl, errorOf, exportUrl, itemUrl, outcomeOf, verifyUrl } from './support';
 
@@ -485,6 +485,100 @@ describe('operation 41 verifyEvidence: the hosted action `verify`', () => {
     const refused = await built.post(verifyUrl(ID));
     expect(outcomeOf(refused)).toEqual([403, 'NOT_PERMITTED']);
     expect(errorOf(refused)).toMatchObject({ message: 'Your role does not allow this action.', details: { simCode: 'NOT_PERMITTED', permission: 'EVIDENCE_VIEW' } });
+  });
+});
+
+describe('operation 41 verifyEvidence: an item with a real sealed package (task 3 row 85)', () => {
+  const REAL_ID = 'EV-20261009-0001';
+  const REAL_VERDICT = {
+    evidenceId: REAL_ID,
+    ok: false,
+    at: 1_791_600_000_000,
+    tracks: [],
+    files: [
+      { fileId: 'fragments/VIDEO-01.mp4', trackId: 'VIDEO-01', storedOk: true, plainOk: true, chainOk: true, fragmentCount: 5, ok: true },
+      { fileId: 'fragments/VIDEO-02.mp4', trackId: 'VIDEO-02', storedOk: false, plainOk: false, chainOk: false, fragmentCount: 5, ok: false },
+    ],
+    transcriptOk: true,
+    manifestOk: true,
+    signatureOk: true,
+  } as const;
+
+  /** A provided verification that owns REAL_ID only and records what it was handed. */
+  function provided(built: Built, answer: () => Promise<unknown>) {
+    const asked: { principal: Principal; evidenceId: string }[] = [];
+    evidenceVerification(built.app).provide({
+      verify: async (principal, evidenceId) => {
+        asked.push({ principal, evidenceId });
+        return evidenceId === REAL_ID ? ((await answer()) as never) : null;
+      },
+    });
+    return asked;
+  }
+
+  it('the verdict of the provided verification is the answer, in the contract\'s v2 shape, and the simulator is not asked', async () => {
+    const built = await build();
+    const caller = operator('INVESTIGATOR');
+    built.actAs(caller);
+    const asked = provided(built, async () => REAL_VERDICT);
+    const response = await built.post(verifyUrl(REAL_ID));
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual(REAL_VERDICT);
+    expect(validateCoreApiResponse('verifyEvidence', 200, response.json())).toEqual({ ok: true });
+    expect(built.calls).toEqual([]);
+    // The principal of stage 4, whole; the ID of the path.
+    expect(asked).toHaveLength(1);
+    expect(asked[0]?.principal).toBe(caller);
+    expect(asked[0]?.evidenceId).toBe(REAL_ID);
+  });
+
+  it('an item the provided verification does not own takes the hosted `verify` exactly as before', async () => {
+    const built = await build();
+    built.actAs(operator('TECHNICIAN'));
+    built.engineAnswers(VERDICT);
+    const asked = provided(built, async () => REAL_VERDICT);
+    const response = await built.post(verifyUrl(ID));
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual(VERDICT);
+    expect(response.headers[EPOCH_HEADER_NAME]).toBe(String(EPOCH));
+    expect(asked.map((entry) => entry.evidenceId)).toEqual([ID]);
+    expect(built.calls.map((call) => [call.action, call.args])).toEqual([['verify', [ID]]]);
+  });
+
+  it('a verification that fails to record its verdict answers no verdict, and the simulator is NOT used in its place', async () => {
+    const built = await build();
+    built.actAs(operator('SUPERVISOR'));
+    built.engineAnswers(VERDICT);
+    let failure: Error = notReady();
+    provided(built, async () => Promise.reject(failure));
+    expect(outcomeOf(await built.post(verifyUrl(REAL_ID)))).toEqual([503, 'NOT_READY']);
+    failure = new TypeError(`unexpected ${MARKER}`);
+    const failed = await built.post(verifyUrl(REAL_ID));
+    expect(outcomeOf(failed)).toEqual([500, 'INTERNAL_ERROR']);
+    expect(failed.body).not.toContain(MARKER);
+    expect(built.calls).toEqual([]);
+  });
+
+  it('a verdict with a member the contract does not have never leaves the server (500): no path, no hash of a run', async () => {
+    const built = await build();
+    built.actAs(operator('SUPERVISOR'));
+    provided(built, async () => ({ ...REAL_VERDICT, packageDir: '/var/dems/media/sessions/SES-1' }));
+    const response = await built.post(verifyUrl(REAL_ID));
+    expect(response.statusCode).toBe(500);
+    expect(response.body).not.toContain('/var/dems');
+  });
+
+  it('who may call is still stage 6: without an operator session the provided verification is not reached', async () => {
+    const built = await build();
+    const asked = provided(built, async () => REAL_VERDICT);
+    expect((await built.post(verifyUrl(REAL_ID))).statusCode).toBe(401);
+    expect(asked).toEqual([]);
+  });
+
+  it('a verification is provided once per app', async () => {
+    const built = await build();
+    provided(built, async () => REAL_VERDICT);
+    expect(() => provided(built, async () => REAL_VERDICT)).toThrow(/provided twice/);
   });
 });
 

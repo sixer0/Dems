@@ -152,6 +152,9 @@ export function captureBuiltInDevices(): CaptureDeviceRow[] {
     poePort,
     enabled: true,
     lastSeenAt: null,
+    // dbc-4 §N.10: the five built-ins are development sources. The seed NAMES the value; it does
+    // not lean on the column default (SEC35-41 (c): every INSERT into capture_devices names it).
+    adapterKind: 'FAKE',
   });
   return [
     device('CAM-01', 'CAMERA', 'RTSP', 'Dual-lens IP camera DL-2', '3.8.14', '127.0.0.1:8554', 'POE_CAM_1'),

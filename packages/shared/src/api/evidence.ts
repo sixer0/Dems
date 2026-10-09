@@ -120,6 +120,88 @@ export const EvidenceDetailSchema = z
   .describe('One evidence item and the reference to its media.');
 export type EvidenceDetail = z.output<typeof EvidenceDetailSchema>;
 
+// ── The verify-v2 report members of operation 41 (rows 85, 119, 141; D107(5), D113; `ev` §D, §D.1) ──
+// The value sets are the verifier's (`@dems/shared/evidence-verify`, `evidence-package`), restated
+// here so that this module does not load the package format; a test holds them equal.
+export const VERIFY_REPORT_OVERALL = ['PASS', 'TAMPERED', 'CORRUPT', 'MISSING', 'UNREADABLE'] as const;
+export const VERIFY_REPORT_FAILURE_CLASSES = ['TAMPERED', 'CORRUPT', 'MISSING', 'UNREADABLE'] as const;
+export const VERIFY_REPORT_CHECK_STATUSES = ['PASS', 'FAIL', 'SKIPPED'] as const;
+export const VERIFY_REPORT_SKIP_REASONS = ['BLOCKED', 'KEY_UNAVAILABLE', 'OUT_OF_SCOPE'] as const;
+export const VERIFY_REPORT_TRANSCRIPT_STATES = ['READY', 'PARTIAL', 'PARTIAL_BACKEND_UNREACHABLE', 'DISABLED_BY_CONFIGURATION', 'UNAVAILABLE_AT_SEAL', 'NOT_TRUSTWORTHY', 'UNKNOWN'] as const;
+export const VERIFY_REPORT_SOURCES_STATES = ['DEVELOPMENT', 'DECLARED_PRODUCTION', 'NOT_TRUSTWORTHY', 'UNKNOWN'] as const;
+/** The manifest's three source classes (`ev` §B.12 fields 124, 125) - not the two-valued class of the device shapes. */
+export const VERIFY_REPORT_SOURCE_CLASSES = ['PRODUCTION', 'LOCAL_DEVICE', 'FAKE'] as const;
+/** The most the answer carries; the Core cuts a longer list and says how many there were. */
+export const VERIFY_REPORT_MAX_CHECKS = 32;
+export const VERIFY_REPORT_MAX_FINDINGS = 64;
+export const VERIFY_REPORT_MAX_FRAGMENTS = 256;
+export const VERIFY_REPORT_MAX_INTERVALS = 4096;
+
+const verifyFailureClass = () => z.enum(VERIFY_REPORT_FAILURE_CLASSES);
+const verifySourceClass = () => z.enum(VERIFY_REPORT_SOURCE_CLASSES);
+const cameraTrackId = () => z.enum([TrackId.VIDEO_01, TrackId.VIDEO_02]);
+
+const VerifyFindingSchema = z.strictObject({
+  code: z.string().regex(/^[A-Z][A-Z0-9_]{2,63}$/).describe('What was found, e.g. `FRAGMENT_TAMPERED`, `SOURCE_CLASS_MISSING`.'),
+  failureClass: verifyFailureClass(),
+  trackId: trimmedText(64).optional(),
+  seq: count().optional().describe('The fragment the finding names.'),
+  file: trimmedText(256).optional().describe('A path inside the package, `/` separated; never a host path.'),
+  member: trimmedText(256).optional().describe('A dotted member path of the manifest.'),
+  revisionNo: count().optional(),
+});
+
+const VerifyCheckSchema = z.strictObject({
+  id: z.string().regex(/^V-[0-9]{2}$/).describe('`V-01` to `V-15` (`ev` §D).'),
+  name: trimmedText(64),
+  status: z.enum(VERIFY_REPORT_CHECK_STATUSES).describe('SKIPPED is never a pass.'),
+  failureClass: verifyFailureClass().nullable().describe('The class of the first finding; null unless the status is FAIL.'),
+  skipped: z.enum(VERIFY_REPORT_SKIP_REASONS).nullable(),
+  findings: z.array(VerifyFindingSchema).max(VERIFY_REPORT_MAX_FINDINGS).describe('WHERE the check found something: names, never a value of the package.'),
+  findingCount: count().optional().describe('How many findings the check has when `findings` was cut; absent when it lists them all.'),
+});
+
+const VerifyFragmentSchema = z.strictObject({
+  trackId: cameraTrackId(),
+  seq: count(),
+  ok: z.literal(false),
+  reason: verifyFailureClass(),
+  storedOk: z.boolean().describe('The stored bytes of the fragment hash to the sealed value (V-04).'),
+  plainOk: z.boolean().nullable().describe('The decrypted fragment hashes to the sealed value (V-05); null: not checked.'),
+});
+
+const VerifyTranscriptStateSchema = z.strictObject({
+  code: z.enum(VERIFY_REPORT_TRANSCRIPT_STATES),
+  report: trimmedText(160).describe('The English report line of the state; a client words the state by `code`.'),
+  sealedState: z.enum(['ASSEMBLED', 'PARTIAL', 'DISABLED']).nullable(),
+  reason: z.enum(['DISABLED_BY_CONFIGURATION', 'TRANSCRIPT_UNAVAILABLE_AT_SEAL']).nullable(),
+  documentSealed: z.boolean().nullable(),
+  failedChunks: count().nullable(),
+  backendUnreachable: z.boolean().nullable(),
+});
+
+const VerifySourcesSchema = z.strictObject({
+  ok: z.boolean().describe('V-15 passed: the mark is present, well-formed and consistent. It says nothing of the value of the mark.'),
+  code: z
+    .enum(VERIFY_REPORT_SOURCES_STATES)
+    .describe(
+      'DEVELOPMENT: at least one source is LOCAL_DEVICE or FAKE (not a failure). DECLARED_PRODUCTION: every source reads PRODUCTION - a statement of the Core that sealed the package, not a fact the verifier proved. NOT_TRUSTWORTHY: the manifest is not the signed one or its mark is missing or inconsistent; no class is stated. UNKNOWN: no readable v2 manifest.',
+    ),
+  development: z
+    .boolean()
+    .nullable()
+    .describe('Recomputed by the verifier from the classes. null exactly when `code` is NOT_TRUSTWORTHY or UNKNOWN: nothing is stated, and null is never read as production.'),
+  report: trimmedText(160).describe('The English source line, the first line of a verify report; a client words the state by `code`.'),
+  tracks: z
+    .array(z.strictObject({ trackId: cameraTrackId(), deviceId: trimmedText(64), sourceClass: verifySourceClass() }))
+    .max(2)
+    .describe('Manifest field 124 of each camera file; empty when nothing is stated.'),
+  audioIntervals: z
+    .array(z.strictObject({ seq: count(), micDeviceId: trimmedText(64), sourceClass: verifySourceClass() }))
+    .max(VERIFY_REPORT_MAX_INTERVALS)
+    .describe('Manifest field 125 of each interval of the session audio track; empty when nothing is stated.'),
+});
+
 export const EvidenceVerifyResultSchema = z
   .strictObject({
     evidenceId: evidenceId(),
@@ -156,6 +238,24 @@ export const EvidenceVerifyResultSchema = z
       .describe('Schema v2: the sealed transcript hash matches the stored document; absent for an item without a transcript.'),
     manifestOk: z.boolean(),
     signatureOk: z.boolean().describe('Schema v2: a real Ed25519 signature is verified with the Core public key (OD-02).'),
+    // The verify-v2 report (rows 85, 119, 141). Every member is optional: a v1 answer carries none.
+    overall: z.enum(VERIFY_REPORT_OVERALL).optional().describe('Schema v2: PASS, or the gravest failure class among the findings.'),
+    interrupted: z.boolean().optional().describe('Schema v2: the package is the sealed durable prefix of an interrupted recording (V-12). A state, not a failure.'),
+    checks: z
+      .array(VerifyCheckSchema)
+      .max(VERIFY_REPORT_MAX_CHECKS)
+      .optional()
+      .describe('Schema v2: the per-check report, V-01 to V-15 in order, so that a client can name the check that failed.'),
+    fragments: z
+      .array(VerifyFragmentSchema)
+      .max(VERIFY_REPORT_MAX_FRAGMENTS)
+      .optional()
+      .describe('Schema v2: the fragments that did not verify, over both camera files (V-08 names the fragment). Fragments that verified are counted in `files`, not listed.'),
+    failedFragmentCount: count().optional().describe('Schema v2: how many fragments did not verify; larger than `fragments.length` when the list was cut.'),
+    transcriptState: VerifyTranscriptStateSchema.optional().describe('Schema v2: what the verified package says of its transcript (seven codes; D110).'),
+    sources: VerifySourcesSchema.optional().describe(
+      'Schema v2 (V-15; R-11): the source class of every recorded source. A development package verifies with `ok: true` at the top level and `sources.code: DEVELOPMENT`; the value of the mark never changes the verdict. Absent for a v1 item: its source class is not recorded, which is never read as production.',
+    ),
   })
   .describe('The verdict of record of an integrity verification (schema v2: per-file chains, transcript hash, real signature).');
 export type EvidenceVerifyResultBody = z.output<typeof EvidenceVerifyResultSchema>;
@@ -617,6 +717,59 @@ const VERIFY_PASSED: EvidenceVerifyResultBody = {
   signatureOk: true,
 };
 
+/**
+ * The verdict of the Core for a schema-v2 item recorded in development mode (D74(2)): this Mac's
+ * camera and microphone in slot 1, the test sources in slot 2, one microphone switch. It PASSES:
+ * the source class is reported, never judged (`ev` §D.1). No simulator item answers this shape
+ * yet (the demo dataset is v1 until SH-24 regenerates it).
+ */
+const VERIFY_PASSED_DEVELOPMENT: EvidenceVerifyResultBody = {
+  evidenceId: 'EV-20261009-0001',
+  ok: true,
+  at: 1_791_500_000_000,
+  tracks: [],
+  files: (['VIDEO-01', 'VIDEO-02'] as const).map((trackId) => ({ fileId: `fragments/${trackId}.mp4`, trackId, storedOk: true, plainOk: true, chainOk: true, fragmentCount: 5, ok: true })),
+  transcriptOk: true,
+  manifestOk: true,
+  signatureOk: true,
+  overall: 'PASS',
+  interrupted: false,
+  checks: [
+    'Manifest structure',
+    'Manifest internal consistency',
+    'Manifest hash',
+    'Per-fragment stored-bytes hash',
+    'Plaintext hash after decryption',
+    'Chain-hash continuity',
+    'Sequence contiguity',
+    'One-fragment tamper expectation',
+    'Signature verification',
+    'Transcript hash match',
+    'Revision signatures',
+    'Interrupted-seal flag',
+    'Certificate validity',
+    'File completeness',
+    'Source class',
+  ].map((name, index) => ({ id: `V-${String(index + 1).padStart(2, '0')}`, name, status: 'PASS' as const, failureClass: null, skipped: null, findings: [] })),
+  fragments: [],
+  failedFragmentCount: 0,
+  transcriptState: { code: 'READY', report: 'Transcript sealed', sealedState: 'ASSEMBLED', reason: null, documentSealed: true, failedChunks: 0, backendUnreachable: false },
+  sources: {
+    ok: true,
+    code: 'DEVELOPMENT',
+    development: true,
+    report: 'DEVELOPMENT SOURCES \u2014 this package was not recorded from production devices.',
+    tracks: [
+      { trackId: 'VIDEO-01', deviceId: 'CAM-03', sourceClass: 'LOCAL_DEVICE' },
+      { trackId: 'VIDEO-02', deviceId: 'CAM-02', sourceClass: 'FAKE' },
+    ],
+    audioIntervals: [
+      { seq: 1, micDeviceId: 'MIC-03', sourceClass: 'LOCAL_DEVICE' },
+      { seq: 2, micDeviceId: 'MIC-02', sourceClass: 'FAKE' },
+    ],
+  },
+};
+
 /** The verdict of the simulator for `EV-20260930-0005`, whose AUDIO-02 track was altered. */
 const VERIFY_FAILED: EvidenceVerifyResultBody = {
   evidenceId: STATE_EXAMPLE_IDS.tamperedEvidenceId,
@@ -691,6 +844,10 @@ export const EVIDENCE_EXAMPLES: Readonly<Record<string, OperationExamples>> = {
       200: {
         passed: { summary: 'Every track, the manifest and the signature verify', value: VERIFY_PASSED },
         failed: { summary: `${STATE_EXAMPLE_IDS.tamperedEvidenceId}: AUDIO-02 does not match its sealed hash`, value: VERIFY_FAILED },
+        passedDevelopmentSources: {
+          summary: 'Schema v2, recorded from development sources: every check passes and the source class is reported (V-15)',
+          value: VERIFY_PASSED_DEVELOPMENT,
+        },
       },
       401: SIGNED_OUT,
       403: VIEW_DENIED,

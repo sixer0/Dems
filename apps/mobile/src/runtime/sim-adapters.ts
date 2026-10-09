@@ -133,6 +133,10 @@ export function createMobileSim(options: MobileSimOptions = {}): Sim {
   const snapshots = storage === undefined ? createAsyncStoragePersistStorage() : storage;
   return createSim({
     ...rest,
+    // Task 3 row 138 (C3 §2.6 "Simulator"; D80(3)): this simulator runs inside a tablet or phone app, so
+    // it refuses the three credential-carrying operations (89, 95, 96) with `403 NOT_PERMITTED /
+    // WEB_CONSOLE_ONLY`, as the Core server refuses a device session. Set after `rest`: no caller turns it off.
+    deviceConsole: true,
     storage: snapshots !== null && storageAllowed ? createDeferredPersistStorage(snapshots, storageAllowed) : snapshots,
     authStorage: null,
     visibility: visibility ?? createAppStateVisibility(),

@@ -21,6 +21,7 @@ import { derived, fontFamily, palette, radius, spacing, toneHex, typography } fr
 import { ROW_CARD_BORDER, SelectionGlow } from '@/components/composed/selection-glow';
 import { withAlpha } from '@/components/media';
 import { DEMO_MEDIA_LIVE } from '@/components/media/demo-media';
+import { DevelopmentSourceBadge } from '@/features/capture-selector/development-source-badge';
 import { useLayoutClass } from '@/layout';
 import { animateBreath, animateFade, useAmbientLoop, useMotionSettings, useMotionState } from '@/motion';
 import { DeviceMicMeter } from './device-mic-meter';
@@ -204,6 +205,8 @@ function RowFrame({ deviceId, selected, onPress, name, detail, statusText, prefi
             </Text>
           ) : null}
           {extra}
+          {/* Task 3 row 138 (ux §8f.2 "Devices rows"): the one "Development source" badge; no node when the Core sent no class. */}
+          <DevelopmentSourceBadge deviceId={deviceId} testID={`device-row-source-${deviceId}`} />
         </ListGroup.ItemContent>
         <ListGroup.ItemSuffix style={styles.suffix}>
           {suffix}

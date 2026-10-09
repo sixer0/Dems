@@ -161,6 +161,10 @@ export const TranscriberErrorCode = {
   CHECKPOINT_INVALID: 'CHECKPOINT_INVALID',
   /** The engine would not run at a lower priority than the capture worker, so no engine is started (§C). */
   ENGINE_NOT_BELOW_CAPTURE_WORKER: 'ENGINE_NOT_BELOW_CAPTURE_WORKER',
+  /** The diarization engine gave no usable answer (§A.4). `detail.reason` says why; the transcript is sealed unlabelled. */
+  DIARIZATION_FAILED: 'DIARIZATION_FAILED',
+  /** The transcript cannot be assembled: chunks are still to decode, or an assembled document does not match its record (§A.5). */
+  ASSEMBLY_REFUSED: 'ASSEMBLY_REFUSED',
 } as const;
 export type TranscriberErrorCode = (typeof TranscriberErrorCode)[keyof typeof TranscriberErrorCode];
 

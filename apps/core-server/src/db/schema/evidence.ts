@@ -106,6 +106,11 @@ export const evidenceItems = pgTable(
     manifestVersion: smallint('manifest_version').notNull().default(1),
     transcriptSha256: text('transcript_sha256'),
     labelsStatus: text('labels_status').$type<LabelsStatusValue>(),
+    // ── schema v3 addition (dbc-4 §N.4, D-DB-16). Declared LAST: `0008_capture_sources.sql`
+    //    appends it. The copy of manifest field 126 `developmentSources`; NULL on a v1 item and on
+    //    every row older than 0008, which reads "not recorded", never "production". Written in the
+    //    item's INSERT; no UPDATE grant (`0009`). The reset guard exempts only `IS TRUE` (§N.10). ──
+    developmentSources: boolean('development_sources'),
   },
   (t) => [
     unique('evidence_items_session_id_key').on(t.sessionId),

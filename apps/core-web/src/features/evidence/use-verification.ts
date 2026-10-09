@@ -31,6 +31,18 @@
  *   stays the record.
  * - A refusal or an outage goes to the refusal presenter first (rule 2 of the page rows); what it
  *   leaves to the page keeps the existing error state and toast.
+ *
+ * **Verify v2** (blueprint row 87; evidence package spec §D, §F.3; UX spec flow 5, P-16). An answer
+ * with a `files` member is a schema-v2 result (`verify-v2.ts`, the one reader of this app): per
+ * camera file the stored bytes, the plaintext and the fragment chain; the transcript hash; the
+ * manifest; the signature; and, where the answer carries them, the per-check report, the failed
+ * fragment and the transcript state. Rules of the v2 run:
+ * - the verdict is the Core's `ok` (`verdictOfAnswer`), never a conjunction made here;
+ * - NOTHING is paced: while the request is out the view says it is waiting, and the whole result is
+ *   shown in the commit that receives the answer. No client timer reveals, counts or completes
+ *   anything, so no progress is drawn that the Core did not report;
+ * - a v2 ITEM (`item.files`) never shows the six v1 rows, not even while it waits (`awaitsV2`).
+ * A v1 answer (the 14 demo packages, Simulated mode) keeps the paced list above, unchanged.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from '@heroui/react'
@@ -52,6 +64,7 @@ import { useEvidenceAssets } from './demo-assets'
 import { logEvidence, logEvidenceError, newCorrelationId } from './log'
 import type { EvidenceRow } from './model'
 import { failedTracksOf, recordPackageVerification, simTamperedTrack, withSimulatedTamper } from './sim-adapter'
+import { readVerifyV2, v2FailedNames, verdictOfAnswer, type VerifyV2Answer } from './verify-v2'
 
 /** M-C-21 pacing: one result revealed per `fast` (160 ms), time-scaled. */
 export const VERIFY_STEP_MS = tokens.duration.fast
@@ -94,6 +107,15 @@ export interface VerifyState {
   bundled: BundledCheck | null
   /** Live mode only: the bundled package's result differs from the Core's verdict. */
   differs: boolean
+  /** The schema-v2 result of this run (row 87); null (or absent) for a v1 answer and before an answer. */
+  v2?: VerifyV2Answer | null | undefined
+  /** The item is schema v2: the view waits for (and then draws) a v2 result, never the v1 rows. Absent = false. */
+  awaitsV2?: boolean | undefined
+}
+
+/** Whether the item is a schema-v2 item: it carries sealed FILES (the legacy v1 items carry none). */
+export function isV2Item(row: EvidenceRow | null): boolean {
+  return Array.isArray(row?.item.files) && (row?.item.files.length ?? 0) > 0
 }
 
 const SIM_CHECK_ORDER: DemoCheckId[] = ['track:VIDEO-01', 'track:VIDEO-02', 'track:AUDIO-01', 'track:AUDIO-02', 'manifest', 'signature']
@@ -104,6 +126,8 @@ function orderFor(row: EvidenceRow | null, live: boolean): DemoCheckId[] {
 }
 
 function pendingChecks(row: EvidenceRow | null, live: boolean): VerifyCheckView[] {
+  // A v2 item has no v1 rows: its result is the Core's v2 answer, drawn when it arrives.
+  if (live && isV2Item(row)) return []
   return orderFor(row, live).map((id) => ({ id, phase: 'pending', expected: null, actual: null, source: null }))
 }
 
@@ -118,6 +142,8 @@ function initialState(row: EvidenceRow | null, live: boolean): VerifyState {
     runId: 0,
     bundled: null,
     differs: false,
+    v2: null,
+    awaitsV2: live && isV2Item(row),
   }
 }
 
@@ -169,11 +195,12 @@ type VerifyAnswer = { ok: true; result: EvidenceVerifyResult } | { ok: false; er
 type BundledOutcome = { ok: true; report: DemoVerificationReport } | { ok: false; error: unknown }
 
 /** The bundled line of the state for an outcome, compared with the Core's result. */
-function bundledView(outcome: BundledOutcome, core: EvidenceVerifyResult): Pick<VerifyState, 'bundled' | 'differs'> {
+function bundledView(outcome: BundledOutcome, core: EvidenceVerifyResult, v2: VerifyV2Answer | null = null): Pick<VerifyState, 'bundled' | 'differs'> {
   if (!outcome.ok) return { bundled: { phase: 'error', verdict: null, label: null }, differs: false }
   return {
     bundled: { phase: 'done', verdict: outcome.report.result, label: outcome.report.label },
-    differs: bundledDiffers(outcome.report, core),
+    // A v2 answer has no v1 tracks to compare: only the two verdicts are.
+    differs: v2 !== null ? outcome.report.result !== v2.verdict : bundledDiffers(outcome.report, core),
   }
 }
 
@@ -248,7 +275,10 @@ export function useEvidenceVerification(row: EvidenceRow | null, options: Eviden
       ...initialState(target, live),
       phase: 'running',
       runId,
-      checks: order.map((id, index) => ({ id, phase: index === 0 ? 'running' : 'pending', expected: null, actual: null, source: null })),
+      checks:
+        live && isV2Item(target)
+          ? []
+          : order.map((id, index) => ({ id, phase: index === 0 ? 'running' : 'pending', expected: null, actual: null, source: null })),
       bundled: bundledPkg ? { phase: 'running', verdict: null, label: null } : null,
     })
 
@@ -301,7 +331,7 @@ export function useEvidenceVerification(row: EvidenceRow | null, options: Eviden
       let final: VerifyState
       if (live) {
         // What the bundled check found, and the Core's result once known: the two may settle in either order.
-        const box: { outcome: BundledOutcome | null; core: EvidenceVerifyResult | null } = { outcome: null, core: null }
+        const box: { outcome: BundledOutcome | null; core: EvidenceVerifyResult | null; v2: VerifyV2Answer | null } = { outcome: null, core: null, v2: null }
         const bundledRun = bundledPkg
           ? verifyDemoPackage(bundledPkg, assets.load, {
               trust: demoVerificationTrust(),
@@ -317,22 +347,34 @@ export function useEvidenceVerification(row: EvidenceRow | null, options: Eviden
           const core = box.core
           // Before the Core's verdict is shown, the final state reads `box.outcome` itself.
           if (!alive() || core === null) return
-          setState((previous) => (previous.runId === runId ? { ...previous, ...bundledView(outcome, core) } : previous))
+          setState((previous) => (previous.runId === runId ? { ...previous, ...bundledView(outcome, core, box.v2) } : previous))
         })
         const answer = await askVerify()
         if (!alive()) return null
         if (!answer.ok) return refused(answer.error)
-        const views = resultChecks(answer.result, 'core')
+        // Row 87: a v2 answer is shown whole, in this commit; nothing of it is paced or counted here.
+        const v2 = readVerifyV2(answer.result)
+        if (v2 !== null && v2.malformed.length > 0) {
+          logEvidence('warn', 'verify.v2.malformed', new Error('The verify answer carries members this client cannot read.'), {
+            evidenceId: target.id,
+            members: v2.malformed.join(','),
+            correlationId,
+          })
+        }
+        const views = v2 !== null ? [] : resultChecks(answer.result, 'core')
         for (const view of views) reveal(view)
         await draining
         if (!alive()) return null
         const coreResult = answer.result
         box.core = coreResult
+        box.v2 = v2
         final = {
           phase: 'done',
           mode: 'core',
           checks: views,
-          verdict: coreResult.ok ? 'PASS' : 'FAIL',
+          verdict: verdictOfAnswer(coreResult, v2),
+          v2,
+          awaitsV2: v2 !== null,
           label: null,
           report: null,
           runId,
@@ -340,7 +382,7 @@ export function useEvidenceVerification(row: EvidenceRow | null, options: Eviden
             ? { bundled: null, differs: false }
             : box.outcome === null
               ? { bundled: { phase: 'running', verdict: null, label: null }, differs: false }
-              : bundledView(box.outcome, coreResult)),
+              : bundledView(box.outcome, coreResult, v2)),
         }
       } else if (target.pkg) {
         const pkg = target.pkg
@@ -362,6 +404,8 @@ export function useEvidenceVerification(row: EvidenceRow | null, options: Eviden
           runId,
           bundled: null,
           differs: false,
+          v2: null,
+          awaitsV2: false,
         }
         if (record) {
           recordPackageVerification(actions, sim.store.getState(), target.id, report, (error) =>
@@ -381,17 +425,20 @@ export function useEvidenceVerification(row: EvidenceRow | null, options: Eviden
           phase: 'done',
           mode: 'simulated',
           checks: views,
-          verdict: result.ok ? 'PASS' : 'FAIL',
+          verdict: verdictOfAnswer(result, null),
           label: null,
           report: null,
           runId,
           bundled: null,
           differs: false,
+          v2: null,
+          awaitsV2: false,
         }
       }
       setState(final)
       if (toasts) {
-        const failed = final.checks.filter((check) => check.phase === 'fail').map((check) => check.id.replace('track:', ''))
+        const failed =
+          final.v2 != null ? v2FailedNames(final.v2, t) : final.checks.filter((check) => check.phase === 'fail').map((check) => check.id.replace('track:', ''))
         if (final.verdict === 'PASS') toast.success(t('evidence.verify.toastPass', { id: target.id }))
         else toast.danger(t('evidence.verify.toastFail', { id: target.id, checks: failed.join(', ') }))
       }

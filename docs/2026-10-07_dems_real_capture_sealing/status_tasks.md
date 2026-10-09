@@ -165,3 +165,33 @@ Row 56 = satisfied by D61 + D62. Stale rows 50a/51a above are closed (scope done
 | 120, 121, 122, 123, 124, 125 | data-analyst / database-specialist | spec gate 128 | **done** (D80-D83); 126 in flight; schema change -> rows 129, 130 run |
 | 60 | coder-execution | verifier | launched |
 | 77 | coder-execution | verifier | driver launched early (D79) |
+
+## PAUSE POINT — 2026-10-09 (user: "setelah ini pause dulu"; decisions D120-D131)
+
+Controller: Claude Code (rows 57 onward). No new row starts until the user says to continue.
+
+### Landed (code + targeted tests; milestone gates NOT run)
+Rows 41-60, 62, 65-68, 72, 73, 76-79, 83-85, 87, 106-138 (incl. 129a / 129b), 141, 142; integration passes A, B, C1, C2.
+Last wave (uncommitted until the checkpoint commit): 59, 87, 137, 138, 141, C1, C2.
+
+### Ready to start at the resume (row 59 is in)
+- 61 static rules + boot (adopts the capture-mode function; storage check tests `link()`)
+- 71 switch mechanics + session wiring (mount recorder, `captureDurable`, mic lateness, audit keys, `SOURCE_KIND_NOT_RECORDABLE`, `KEYFRAME_INTERVAL` record, unwritten first GOP, clock gap < 2 s)
+- 82 sealing pipeline (needs the package-layout ruling of D124(2) first)
+- 86 kill matrix; 139; 140 (blocked by the op 78 microphone-slot decision, D123(1), and the microphone helper fix, D128)
+- then review rows 63 / 69 / 74 / 80 / 88, gates 64 / 70 / 75 / 81 / 89 (kept separate, D125), M8 rows 90-94, M9 rows 95-101, final chain.
+
+### Rulings needed first (controller recommendation in the decision named)
+1. op 78: how a new microphone input is assigned — D123(1)
+2. package folder layout — D124(2); orphan folder after a reset — D124(3)
+3. local microphone delivers 8/9 of the declared rate — fix row, D128
+4. local camera: fixed-grid check vs variable frame rate; one `CAPTURE_FAULT` warning — D130
+
+### Next integration pass (small seams, collected)
+`EvidenceItem.developmentSources` (ops 39 / 40); redaction rule for `{ field, value }` credential records (D131); rows 87's `verify-v2` tests after the op 41 members (15 checks); `integration-c1.test.ts:144` type error; `set4-rules.test.ts` vs `capture-discovery/adoption.ts:28`; `credential.test.ts` `endpointRef` audit rule; `capture-discovery.db.test.ts:557` guard; stale count pins in `contract.test.ts`; mobile badge follows `sourceClass` only (D131); Dashboard kebab Restart confirm; WB-07 link.
+
+### Working rules in force
+`delegation_progress/driver_rules_d94.md` (incl. D122: one run, long checks by a Sonnet test runner), `file_ownership_d95.md`, `file_claims.md`, `file_requests.md`. Pairing OFF. Gates separate.
+
+### Host
+Emulators and the lane stack are stopped. Project PostgreSQL on 127.0.0.1:4432. Local-device recordings kept under `.data/capture-local/runs/` (`l134_cam_t1`, `l134_cam_t2`) until the user says to delete them.

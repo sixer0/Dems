@@ -47,6 +47,12 @@ export interface MonitorHarnessOptions {
    * monitor is the only route, as after a sign-in or relaunch resync (F-79-1).
    */
   initialUrl?: '/home' | '/session/live';
+  /**
+   * Task 3 M5 (row 73; register MB-13): who is signed in, by username (default: the first demo
+   * operator, the investigator who opened the recording scenario's session). The mic switch is for
+   * that session holder or a SUPERVISOR (OD-09), so its gate tests sign in the other roles.
+   */
+  operator?: string;
 }
 
 export interface MonitorHarness extends TestSim {
@@ -86,11 +92,18 @@ function monitorRoot(sim: Sim, window: WindowName, sockets: FakeHeartbeatSocket[
 }
 
 /** Renders Home with the monitor route available; call `openMonitor()` to push it. */
-export function renderMonitorApp({ window = 'phonePortrait', onRender, recording = true, initialUrl = '/home' }: MonitorHarnessOptions = {}): MonitorHarness {
+export function renderMonitorApp({
+  window = 'phonePortrait',
+  onRender,
+  recording = true,
+  initialUrl = '/home',
+  operator: username,
+}: MonitorHarnessOptions = {}): MonitorHarness {
   resetShellState();
   setWindow(window);
   const test = createTestSim();
-  const operator = OPERATORS[0]!;
+  const operator = username === undefined ? OPERATORS[0]! : OPERATORS.find((entry) => entry.username === username);
+  if (operator === undefined) throw new Error(`monitor harness: no demo operator "${username}"`);
   const signIn = test.sim.actions.signIn(operator.username, DEMO_OPERATOR_PASSWORD);
   if (!signIn.ok) throw new Error('monitor harness: demo sign-in failed');
   if (recording) test.sim.actions.loadScenario(ScenarioName.RECORDING);

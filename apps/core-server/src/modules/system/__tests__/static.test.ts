@@ -51,8 +51,12 @@ describe('rule 1: no clock, no timer, nothing of the host', () => {
 
   it('the imports of the folder are the contract, types of the shared simulator, Fastify\'s types, the guard\'s route helper, the type of a principal and its own files', () => {
     expect(rules.importSources(code)).toEqual([
+      // Blueprint row 62 (CS-10): the TYPE of the capture supervisor's status, for the capture worker's entry.
+      '../../capture',
       '../../plugins/authenticate',
       '../../plugins/permission-guard',
+      // Integration pass A (D109): the default source of the transcriber's state (`transcriptionServiceSource`), read at each request.
+      '../../transcription',
       './operations',
       './settings',
       './status',
@@ -181,7 +185,9 @@ describe('rule 5 (M2): routes come from the registry', () => {
   });
 
   it('the plugin keeps the name the frozen app factory imports', () => {
-    expect(index).toMatch(/export const systemModule: FastifyPluginAsync = async \(app\) => \{/);
+    // Row 62: the module takes ONE option, the transcriber seam of row 115; the factory registers it without options.
+    expect(index).toMatch(/export const systemModule: FastifyPluginAsync<SystemModuleOptions> = async \(app, options\) => \{/);
+    expect(index.match(/\boptions\s*\.\s*([a-zA-Z]+)/g)).toEqual(['options.transcriber']);
   });
 
   it('of a request it reads the principal, the validated body and the logger: nothing else', () => {

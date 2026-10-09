@@ -1,5 +1,5 @@
 {
-  "source": "docs/2026-10-04_dems_backend_rbac_pairing/masterplan/03_database_contract.md (sections 2.4 and 4) composed with docs/2026-10-07_dems_real_capture_sealing/masterplan/04_database_contract.md (dbc-3 sections A.2, B, C, E.3; delta module contract-v2-delta.ts)",
+  "source": "docs/2026-10-04_dems_backend_rbac_pairing/masterplan/03_database_contract.md (sections 2.4 and 4) composed with docs/2026-10-07_dems_real_capture_sealing/masterplan/04_database_contract.md (dbc-3 sections A.2, B, C, E.3; delta module contract-v2-delta.ts; dbc-4 section N; delta module contract-v3-delta.ts; erratum PE-129b-01; delta module contract-v5-delta.ts)",
   "valueSets": {
     "ROLE": [
       "INVESTIGATOR",
@@ -252,6 +252,19 @@
     "REGISTRY_COUNTER": [
       "device",
       "pairingCode"
+    ],
+    "CAPTURE_ADAPTER_KIND": [
+      "ONVIF_RTSP",
+      "USB_AUDIO",
+      "SNMP_POE",
+      "FAKE",
+      "LOCAL_DEVICE"
+    ],
+    "CAPTURE_SOURCE_SLOT": [
+      "VIDEO-01",
+      "VIDEO-02",
+      "MIC-PRIMARY",
+      "MIC-STANDBY"
     ]
   },
   "formats": {
@@ -2144,6 +2157,12 @@
           "type": "text",
           "notNull": false,
           "default": null
+        },
+        {
+          "name": "development_sources",
+          "type": "boolean",
+          "notNull": false,
+          "default": null
         }
       ],
       "constraints": [
@@ -3478,6 +3497,12 @@
           "type": "bigint",
           "notNull": false,
           "default": null
+        },
+        {
+          "name": "adapter_kind",
+          "type": "text",
+          "notNull": true,
+          "default": "'FAKE'"
         }
       ],
       "constraints": [
@@ -3520,6 +3545,21 @@
           "name": "capture_devices_kind_idx",
           "kind": "INDEX",
           "definition": "(kind)"
+        },
+        {
+          "name": "capture_devices_onvif_uuid_key",
+          "kind": "UNIQUE INDEX",
+          "definition": "(onvif_uuid) WHERE onvif_uuid IS NOT NULL"
+        },
+        {
+          "name": "capture_devices_adapter_kind_check",
+          "kind": "CHECK",
+          "definition": "\"capture_devices\".\"adapter_kind\" IN ('ONVIF_RTSP', 'USB_AUDIO', 'SNMP_POE', 'FAKE', 'LOCAL_DEVICE')"
+        },
+        {
+          "name": "capture_devices_adapter_pairing_check",
+          "kind": "CHECK",
+          "definition": "(\"capture_devices\".\"kind\" = 'CAMERA' AND \"capture_devices\".\"adapter_kind\" IN ('ONVIF_RTSP', 'FAKE', 'LOCAL_DEVICE')) OR (\"capture_devices\".\"kind\" = 'MIC' AND \"capture_devices\".\"adapter_kind\" IN ('USB_AUDIO', 'FAKE', 'LOCAL_DEVICE')) OR (\"capture_devices\".\"kind\" = 'POE' AND \"capture_devices\".\"adapter_kind\" IN ('SNMP_POE', 'FAKE'))"
         }
       ]
     },
@@ -4529,16 +4569,192 @@
           "definition": "(updated_by) REFERENCES operators (id)"
         }
       ]
+    },
+    {
+      "id": "T-41",
+      "name": "session_capture_sources",
+      "columns": [
+        {
+          "name": "session_id",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "slot",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "device_id",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "adapter_kind",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "recorded_at",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        }
+      ],
+      "constraints": [
+        {
+          "name": "session_capture_sources_pkey",
+          "kind": "PRIMARY KEY",
+          "definition": "(session_id, slot)"
+        },
+        {
+          "name": "session_capture_sources_session_check",
+          "kind": "CHECK",
+          "definition": "\"session_capture_sources\".\"session_id\" ~ '^SES-[0-9]{8}-[0-9]{4}$'"
+        },
+        {
+          "name": "session_capture_sources_slot_check",
+          "kind": "CHECK",
+          "definition": "\"session_capture_sources\".\"slot\" IN ('VIDEO-01', 'VIDEO-02', 'MIC-PRIMARY', 'MIC-STANDBY')"
+        },
+        {
+          "name": "session_capture_sources_adapter_kind_check",
+          "kind": "CHECK",
+          "definition": "\"session_capture_sources\".\"adapter_kind\" IN ('ONVIF_RTSP', 'USB_AUDIO', 'SNMP_POE', 'FAKE', 'LOCAL_DEVICE')"
+        },
+        {
+          "name": "session_capture_sources_pairing_check",
+          "kind": "CHECK",
+          "definition": "(\"session_capture_sources\".\"slot\" IN ('VIDEO-01', 'VIDEO-02') AND \"session_capture_sources\".\"adapter_kind\" IN ('ONVIF_RTSP', 'FAKE', 'LOCAL_DEVICE')) OR (\"session_capture_sources\".\"slot\" IN ('MIC-PRIMARY', 'MIC-STANDBY') AND \"session_capture_sources\".\"adapter_kind\" IN ('USB_AUDIO', 'FAKE', 'LOCAL_DEVICE'))"
+        },
+        {
+          "name": "session_capture_sources_device_id_fkey",
+          "kind": "FOREIGN KEY",
+          "definition": "(device_id) REFERENCES capture_devices (id)"
+        }
+      ]
+    },
+    {
+      "id": "T-42",
+      "name": "session_stt_config",
+      "columns": [
+        {
+          "name": "session_id",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "enabled",
+          "type": "boolean",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "backend",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "endpoint",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "model",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "language",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "diarization",
+          "type": "boolean",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "credential_kind",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "config_revision",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "taken_at",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        }
+      ],
+      "constraints": [
+        {
+          "name": "session_stt_config_pkey",
+          "kind": "PRIMARY KEY",
+          "definition": "(session_id)"
+        },
+        {
+          "name": "session_stt_config_session_check",
+          "kind": "CHECK",
+          "definition": "\"session_stt_config\".\"session_id\" ~ '^SES-[0-9]{8}-[0-9]{4}$'"
+        },
+        {
+          "name": "session_stt_config_backend_check",
+          "kind": "CHECK",
+          "definition": "\"session_stt_config\".\"backend\" IN ('omlx-server', 'cpu-local')"
+        },
+        {
+          "name": "session_stt_config_endpoint_required_check",
+          "kind": "CHECK",
+          "definition": "\"session_stt_config\".\"backend\" <> 'omlx-server' OR \"session_stt_config\".\"endpoint\" IS NOT NULL"
+        },
+        {
+          "name": "session_stt_config_endpoint_loopback_check",
+          "kind": "CHECK",
+          "definition": "\"session_stt_config\".\"endpoint\" IS NULL OR \"session_stt_config\".\"endpoint\" ~ '^http://(127\\.0\\.0\\.1|localhost)(:[0-9]{1,5})?(/.*)?$'"
+        },
+        {
+          "name": "session_stt_config_language_check",
+          "kind": "CHECK",
+          "definition": "\"session_stt_config\".\"language\" = 'id'"
+        },
+        {
+          "name": "session_stt_config_credential_kind_check",
+          "kind": "CHECK",
+          "definition": "\"session_stt_config\".\"credential_kind\" IS NULL OR \"session_stt_config\".\"credential_kind\" IN ('REFERENCE', 'ENCRYPTED')"
+        },
+        {
+          "name": "session_stt_config_revision_check",
+          "kind": "CHECK",
+          "definition": "\"session_stt_config\".\"config_revision\" >= 1"
+        }
+      ]
     }
   ],
   "counts": {
-    "tables": 40,
-    "columns": 419,
-    "primaryKeys": 40,
-    "foreignKeys": 39,
+    "tables": 42,
+    "columns": 436,
+    "primaryKeys": 42,
+    "foreignKeys": 40,
     "uniques": 15,
-    "uniqueIndexes": 3,
+    "uniqueIndexes": 4,
     "indexes": 23,
-    "checks": 166
+    "checks": 179
   }
 }

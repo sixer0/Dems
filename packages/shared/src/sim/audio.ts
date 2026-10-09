@@ -62,6 +62,20 @@ export const CHANNEL_OF_MIC_INPUT: Readonly<Record<MicInputId, AudioTrackId>> = 
   'MIC-02': 'AUDIO-02',
 };
 
+/**
+ * The built-in (metered) input a selector input is, or null for a `MIC-NN` beyond the built-in
+ * pair: such an input has no meter channel and no session audio source in this contract version.
+ */
+export function builtInMicInputOf(inputId: string): MicInputId | null {
+  return Object.hasOwn(CHANNEL_OF_MIC_INPUT, inputId) ? (inputId as MicInputId) : null;
+}
+
+/** The channel key of a selector input; null when the input is not one of the two built-in inputs. */
+export function channelOfMicInput(inputId: string): AudioTrackId | null {
+  const builtIn = builtInMicInputOf(inputId);
+  return builtIn === null ? null : CHANNEL_OF_MIC_INPUT[builtIn];
+}
+
 // ── Meter ballistics (pure; AC-53) ───────────────────────────────────────────────────────
 
 export interface MeterState {

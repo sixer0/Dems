@@ -484,8 +484,8 @@ export function buildOperations(world: World, directory: OperatorDirectory, reco
  * The nine capture-phase types of task 3 (C3 §5.2; register CS-14). The fixture states ONE row of
  * each, with details exactly in the form of the audit writer's list (`SERVER_AUDIT_DETAIL_RULES`),
  * so that every gate over the allow-list - the writer's own `auditInputOf`, the key scan, the
- * table of printed references - covers all 63 types from the first load (the 63rd, STT_CONFIG_CHANGED
- * of row 113, is the last row below). The modules that will
+ * table of printed references - covers all 67 types from the first load (the 63rd, STT_CONFIG_CHANGED
+ * of row 113, and the four of row 132 are the last rows below). The modules that will
  * write these rows on a live path land with their milestones (op 81 with row 71, the transcript
  * revisions with M7/M8, the credential paths with row 66): until then the fixture is the reference
  * holder, and each row names the actor whose permission owns the future operation. No credential,
@@ -593,6 +593,48 @@ function buildCaptureActivity(world: World, directory: OperatorDirectory): void 
       actorId: technician(at(9)),
       deviceId: null,
       details: { changedFields: 'backend,endpoint,credential', enabled: true, backend: 'omlx-server', credentialChanged: true, revision: 2 },
+    },
+  });
+  // Task 3 R-9, R-10 (blueprint row 132, decision D106; C3 §5.2): the four types of the camera
+  // search, the connection test, the adoption and the no-device warning - ONE row of each, in the
+  // form of the audit writer's list, so that the fixture keeps covering every type (67). Ids,
+  // counts, codes and facts only: no address, no device text, no username, no secret (D86 C-3: the
+  // candidate is a DEVELOPMENT one, so no `host` and no `endpointRef`).
+  world.record(at(10), {
+    audit: {
+      type: 'CAPTURE_DISCOVERY_SEARCHED',
+      message: 'Camera search performed',
+      actorId: technician(at(10)),
+      deviceId: null,
+      details: { searchId: 'DSC-000001', scope: 'CAMERA_NETWORK', trigger: 'MANUAL', outcome: 'COMPLETE', responderCount: 1, newCount: 1, registeredCount: 0, interfaceCount: 1, operationId: 'startCaptureDiscovery', permission: 'CAPTURE_CONFIG' },
+    },
+  });
+  world.record(at(11), {
+    audit: {
+      type: 'CAPTURE_CONNECTION_TESTED',
+      message: 'Camera connection tested',
+      actorId: technician(at(11)),
+      deviceId: null,
+      details: { candidateId: 'CND-0000000000A1', searchId: 'DSC-000001', outcome: 'REACHABLE', authenticated: false, adapter: 'FAKE', sourceClass: 'DEVELOPMENT', operationId: 'testCaptureCandidateConnection', permission: 'CAPTURE_CONFIG' },
+    },
+  });
+  world.record(at(12), {
+    audit: {
+      type: 'CAPTURE_CANDIDATE_ADOPTED',
+      message: 'Camera added',
+      actorId: supervisor(at(12)),
+      deviceId: null,
+      details: { deviceId: 'CAM-03', candidateId: 'CND-0000000000A1', searchId: 'DSC-000001', adapter: 'FAKE', sourceClass: 'DEVELOPMENT', credentialSet: false, operationId: 'adoptCaptureCandidate', permission: 'CAPTURE_CONFIG' },
+    },
+  });
+  world.record(at(13), {
+    audit: {
+      type: 'CAPTURE_DEVICE_UNREACHABLE',
+      message: 'Capture device not reachable',
+      actorId: investigator(at(13)),
+      deviceId: null,
+      severity: 'WARNING',
+      details: { deviceId: 'CAM-02', deviceKind: 'CAMERA', phase: 'PRECHECK', reason: 'UNREACHABLE', degraded: true, sessionId: 'SES-20261001-0001' },
     },
   });
 }

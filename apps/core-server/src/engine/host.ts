@@ -49,8 +49,10 @@ import {
   captureTelemetryIgnored,
   type CaptureLevelSource,
   type AudioSlice,
+  type CaptureDeviceStatus,
   type CaptureTelemetryInput,
   type CaptureWarningInput,
+  type RegisterCaptureDeviceInput,
   type Sim,
   type SimClock,
   type SimErrorReport,
@@ -75,6 +77,7 @@ import { withActorScope } from './actor-scope';
 import { changedSlices, changesRecords, deltaOps } from './delta';
 import { EngineError, engineNotReady, operatorRequired, simCodeOf, simRefusal } from './errors';
 import { isHostedAction, type HostedActionArguments, type HostedActionName, type HostedActionResult } from './hosted-actions';
+import { bindInternalActions } from './internal-actions';
 import { createHeadlessSim, engineClock } from './headless-sim';
 import {
   ENGINE_BOOT_STEP,
@@ -628,7 +631,7 @@ export function createEngineHost(dependencies: EngineHostDependencies): EngineHo
   ): Promise<HostedActionResult<Action>> {
     if (principal.kind !== 'OPERATOR') throw operatorRequired();
     if (!isHostedAction(action)) {
-      throw new EngineError('ENGINE_ACTION_NOT_HOSTED', 'this simulator action is not hosted: the engine runs the 31 hosted actions of the specification');
+      throw new EngineError('ENGINE_ACTION_NOT_HOSTED', 'this simulator action is not hosted: the engine runs the 33 hosted actions of the specification');
     }
     const where = { unit: scope.unit.id, label: scope.unit.label, action };
     // Before the action: the ring holds what this unit already appended, the stored head is the
@@ -660,12 +663,45 @@ export function createEngineHost(dependencies: EngineHostDependencies): EngineHo
     return result;
   }
 
+  /**
+   * The INTERNAL action `registerCaptureDevice` in a module's own unit (C3 §2.6 "Adoption";
+   * `internal-actions.ts`): the steps of a hosted command without an actor - the action checks no
+   * permission, the operation that runs it (96) has passed stage 6 - and the registry entry it added.
+   */
+  async function registerCaptureDeviceInScope(scope: Scope, device: RegisterCaptureDeviceInput): Promise<CaptureDeviceStatus> {
+    const where = { unit: scope.unit.id, label: scope.unit.label, action: 'registerCaptureDevice' };
+    syncNative(scope);
+    await checkHead(scope);
+    const { sim } = scope.live;
+    counters.commands += 1;
+    try {
+      sim.actions.registerCaptureDevice(device);
+    } catch (error) {
+      const refusal = simRefusal(error);
+      if (refusal !== null) {
+        counters.commandsRefused += 1;
+        log.debug({ ...where, code: refusal.code, simCode: simCodeOf(refusal) }, 'internal action refused');
+        throw refusal;
+      }
+      log.error({ ...where, code: codeOf(error) }, 'internal action failed');
+      persist('error', 'an internal action failed', error, where);
+      throw error;
+    }
+    await flush(scope);
+    const registered = sim.store.getState().captureDevices.devices.find((entry) => entry.id === device.id);
+    if (registered === undefined) throw new EngineError('ENGINE_ACTION_NOT_HOSTED', 'the registered capture device is not in the state after its action');
+    return registered;
+  }
+
   function engineUnitOf(scope: Scope): EngineUnit {
-    return {
-      unit: scope.unit,
-      command: (principal, action, ...args) => commandIn(scope, principal, action, args),
-      pending: () => durableOf(scope.live.sim.store.getState()),
-    };
+    return bindInternalActions(
+      {
+        unit: scope.unit,
+        command: (principal, action, ...args) => commandIn(scope, principal, action, args),
+        pending: () => durableOf(scope.live.sim.store.getState()),
+      },
+      { registerCaptureDevice: (device) => registerCaptureDeviceInScope(scope, device) },
+    );
   }
 
   // ── Ticks ────────────────────────────────────────────────────────────────────────────────────
@@ -928,7 +964,7 @@ export function createEngineHost(dependencies: EngineHostDependencies): EngineHo
       if (principal.kind !== 'OPERATOR') return Promise.reject(operatorRequired());
       if (!isHostedAction(action)) {
         return Promise.reject(
-          new EngineError('ENGINE_ACTION_NOT_HOSTED', 'this simulator action is not hosted: the engine runs the 31 hosted actions of the specification'),
+          new EngineError('ENGINE_ACTION_NOT_HOSTED', 'this simulator action is not hosted: the engine runs the 33 hosted actions of the specification'),
         );
       }
       return inUnit(`engine.${action}`, 'command', (scope) => commandIn(scope, principal, action, args));

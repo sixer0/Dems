@@ -127,7 +127,7 @@ describe('codes and params instead of English text (W44-2, W46-2, review 40 m4)'
     expect(h.state().session?.precheck.items.every((item) => item.reasonCode === null)).toBe(true);
     h.run(5_000);
     const items = h.state().session?.precheck.items ?? [];
-    expect(items.find((item) => item.id === 'MIC_2')).toMatchObject({ status: 'WARN', reasonCode: 'MIC_CLIP', params: { track: 'AUDIO-02' } });
+    expect(items.find((item) => item.id === 'MIC_STANDBY')).toMatchObject({ status: 'WARN', reasonCode: 'MIC_CLIP', params: { track: 'AUDIO-02' } });
     expect(items.find((item) => item.id === 'TIME')).toMatchObject({ status: 'WARN', reasonCode: 'TIME_RTC', params: { source: 'RTC' } });
     expect(items.find((item) => item.id === 'CORE')).toMatchObject({ status: 'PASS', reasonCode: null });
   });
@@ -291,11 +291,11 @@ describe('System & Maintenance (W52-1, W52-2, W52-3, W52-4, W52-5, W52-8)', () =
     const bootSince = selectServicesSince(h.state());
     expect(bootSince).toBeLessThan(START);
     h.run(2_000);
-    expect(h.sim.actions.restartServices()).toBe(16);
+    expect(h.sim.actions.restartServices()).toBe(17);
     expect(h.state().audit.rows.at(-1)).toMatchObject({
       type: 'DEVICE_COMMAND',
       actorId: 'OPR-003',
-      details: { command: 'RESTART', scope: 'CORE_SERVICES', services: 16 },
+      details: { command: 'RESTART', scope: 'CORE_SERVICES', services: 17 },
     });
     expect(selectServicesSince(h.state())).toBe(h.clock.now());
   });

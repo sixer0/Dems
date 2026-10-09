@@ -85,6 +85,14 @@ describe('captureConfigSliceOf: the selector row plus the registry make slice 29
     expect(slice.updatedAt).toBe(seededConfig.updatedAt);
   });
 
+  it('the mic rows are in input order whichever input is PRIMARY (AC-B-70; blueprint row 66): a swapped selector row lists MIC-01 first', () => {
+    const swapped = captureConfigSliceOf({ ...seededConfig, micPrimaryId: 'MIC-02', micStandbyId: 'MIC-01' }, seededDevices, false);
+    expect(swapped.mics.map((mic) => [mic.inputId, mic.deviceId, mic.role])).toEqual([
+      ['MIC-01', 'MIC-01', 'STANDBY'],
+      ['MIC-02', 'MIC-02', 'PRIMARY'],
+    ]);
+  });
+
   it('locked is the caller fact about the open session, never a table value (OD-10)', () => {
     expect(captureConfigSliceOf(seededConfig, seededDevices, true).locked).toBe(true);
     expect(baselineCaptureConfig(true).locked).toBe(true);
@@ -111,7 +119,7 @@ describe('captureConfigSliceOf: the selector row plus the registry make slice 29
       expect((cause as CaptureSliceError).code).toBe('CAPTURE_DEVICE_UNKNOWN');
       expect((cause as CaptureSliceError).context).toEqual({ trackId: 'VIDEO-01', deviceId: 'CAM-09' });
     }
-    expect(() => captureConfigSliceOf({ ...seededConfig, micPrimaryId: 'CAM-01' }, seededDevices, false)).toThrow(/outside the MIC-01\/MIC-02 input set/);
+    expect(() => captureConfigSliceOf({ ...seededConfig, micPrimaryId: 'CAM-01' }, seededDevices, false)).toThrow(/outside the MIC-NN input form/);
   });
 });
 

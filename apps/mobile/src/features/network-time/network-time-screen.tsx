@@ -33,6 +33,7 @@ import { fontFamily, palette, spacing, typography } from '@dems/shared/tokens';
 import { StatusChip } from '@/components/kit';
 import { Pane, PaneLayout, SafeScreen, useLayoutClass, type LayoutClass } from '@/layout';
 import { enterRise, useMotionSettings } from '@/motion';
+import { CameraClockCard } from '@/features/capture-selector/camera-clock-card';
 import { CardBoundary } from './card-boundary';
 import { LanSheet } from './lan-sheet';
 import { LAN_TONE, TIME_TONE, lanLevel, timeLevel } from './network-time-model';
@@ -66,6 +67,12 @@ export function NetworkTimeScreen() {
       <CardBoundary name="time">
         <TimeSyncCard time={time} escalationKey={escalationKey} />
       </CardBoundary>
+      {/* Task 3 row 68 (MB-10): camera clock offsets (op 57), in their own boundary. */}
+      <View style={styles.cameraClocks}>
+        <CardBoundary name="camera-clocks">
+          <CameraClockCard />
+        </CardBoundary>
+      </View>
     </Animated.View>
   );
   const networkCard = (
@@ -183,6 +190,7 @@ function Header({ layoutClass }: { layoutClass: LayoutClass }) {
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
+  cameraClocks: { marginTop: spacing[3] },
   header: { flexDirection: 'row', alignItems: 'center', gap: spacing[1], minHeight: 56, paddingHorizontal: spacing[1] },
   headerCondensed: { minHeight: 48 },
   tabletHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing[2], minHeight: 64, paddingHorizontal: spacing[3] },

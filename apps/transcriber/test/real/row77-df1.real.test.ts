@@ -216,12 +216,18 @@ describe('M6-DF-1: no dropped capture fragment while cpu-local STT runs', () => 
       expect(verdict.firstSequence).toBe(1);
       expect(verdict.lastSequence).toBe(verdict.fragments);
     }
-    expect(verdicts[0]!.fragments).toBe(verdicts[1]!.fragments);
+    // Across the two files: the SAME samples, not the same cuts. Each camera file is cut at its own
+    // keyframes, so one file may hold one fragment more than the other (17 and 16 in a run of
+    // 2026-10-09) with every sample of both tracks present in both. A dropped fragment would take its
+    // samples with it: the totals below and the continuous timelines above would both show it.
+    expect(verdicts[0]!.samplesPerTrack).toEqual(verdicts[1]!.samplesPerTrack);
     // No audio packet missing or repeated against what the one encoder produced.
     expect(h4).toBeDefined();
     expect(h4!.packets_differing_between_files).toBe(0);
     expect(h4!.payload_mismatches_vs_encoder).toEqual([0, 0]);
     expect(h4!.audio_packets).toEqual([h4!.encoder_packets_in_manifest, h4!.encoder_packets_in_manifest]);
+    // The audio track of each file holds exactly the packets the encoder produced (track 2).
+    for (const verdict of verdicts) expect(verdict.samplesPerTrack['2']).toBe(h4!.encoder_packets_in_manifest);
     // Row 58's own condition on distinct payloads (`m3worker.py` h4, pair-111 N-9): nearly every packet is
     // unique, so the position-by-position equality above bites. It is NOT "all distinct": the one encoder
     // itself emits the same payload for stretches of identical input (25 of 1,850 in the first run of

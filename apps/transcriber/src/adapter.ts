@@ -16,7 +16,7 @@ import { createOmlxHttp, type FetchLike } from './backends/omlx-http';
 import { createOmlxServerBackend } from './backends/omlx-server';
 import type { TranscriberConfig } from './config';
 import { SerialQueue } from './cpu-priority';
-import { loadCredential } from './key-loader';
+import { credentialOf, type EncryptedCredentialSource } from './key-loader';
 import type { TranscriberLog } from './log';
 import {
   TranscriberBackendId,
@@ -42,6 +42,11 @@ export interface TranscriberAdapterDeps {
   readonly fetchImpl?: FetchLike;
   /** One queue may be shared by every adapter of a process that talks to the same server. */
   readonly queue?: SerialQueue;
+  /**
+   * `omlx-server`: stated when the stored credential is an ENCRYPTED one. Its `open` is the
+   * composition's opener; without it the adapter is not built (`CREDENTIAL_UNAVAILABLE`).
+   */
+  readonly encryptedCredential?: EncryptedCredentialSource;
 }
 
 export interface TranscriberAdapter {
@@ -49,6 +54,12 @@ export interface TranscriberAdapter {
   readonly backend: TranscriberBackendId;
   readonly model: string;
   readonly queue: SerialQueue;
+  /**
+   * True when the composition STATED the capture worker of the sibling rule (§C): a function, or
+   * the explicit `NO_CAPTURE_WORKER`; always true for `omlx-server`, which starts no process. The
+   * runner of a live session (a tap timeline) refuses an adapter that does not say so (N-10).
+   */
+  readonly captureWorkerStated?: boolean;
   transcribe(chunk: TranscriberChunk, options: TranscribeOptions): Promise<TranscribeResult>;
 }
 
@@ -57,7 +68,7 @@ function buildBackend(config: TranscriberConfig, deps: TranscriberAdapterDeps): 
     return createCpuLocalBackend(config, { log: deps.log, onEngineRun: deps.onEngineRun, onEngineStart: deps.onEngineStart, captureWorkerPid: deps.captureWorkerPid });
   }
   // The key is read here, once, through the single key-loader, into memory only.
-  const credential = config.credentialRef === null ? null : loadCredential(config.credentialRef, config.settingsPath === null ? {} : { settingsPath: config.settingsPath });
+  const credential = credentialOf(config, deps.encryptedCredential);
   deps.log.protect(credential);
   const http = createOmlxHttp({ endpoint: config.endpoint, credential, timeoutMs: config.timeoutMs, fetchImpl: deps.fetchImpl });
   return createOmlxServerBackend(config, { http, log: deps.log, onEngineRun: deps.onEngineRun });
@@ -76,6 +87,7 @@ export function createTranscriberAdapter(config: TranscriberConfig, deps: Transc
     backend: backend.id,
     model: backend.model,
     queue,
+    captureWorkerStated: config.backend !== TranscriberBackendId.CPU_LOCAL || deps.captureWorkerPid !== undefined,
     // A backend logs its own failure with its code; the adapter adds nothing and tries nothing else.
     transcribe: (chunk: TranscriberChunk, options: TranscribeOptions) => queue.run(() => backend.transcribe(chunk, options)),
   });

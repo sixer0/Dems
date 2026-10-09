@@ -1,6 +1,7 @@
 /**
- * The 45 action bindings (HB-14; backend task 04_client_integration_spec §2.5 "The 42 action
- * bindings", CL-19; 01_specs §7.17; task 3 register SH-18 adds the three capture actions).
+ * The 47 action bindings (HB-14; backend task 04_client_integration_spec §2.5 "The 42 action
+ * bindings", CL-19; 01_specs §7.17; task 3 register SH-18 adds the three capture actions, and
+ * blueprint row 66 the hosted pair `setCaptureConfig` / `switchAudioSource`).
  *
  * Every member of the simulator's `SimActions` has one entry here: which operation the Live
  * action calls, how its arguments become the request, what it resolves with, and which refusals
@@ -12,13 +13,13 @@
  *
  * | Flow | Bindings | How the Live source runs it (`./live-sim`) |
  * |------|---------:|--------------------------------------------|
- * | `command` | 33 | A POST through the atomicity gate: it settles in the turn in which the store reaches the revision the answer named (CL-16), or the epoch it named (CL-18) |
+ * | `command` | 35 | A POST through the atomicity gate: it settles in the turn in which the store reaches the revision the answer named (CL-16), or the epoch it named (CL-18) |
  * | `read` | 1 | A GET (`verifyAuditChain`): it settles with the answer |
  * | `sign-in` | 2 | `signIn`, `signInWithBiometric`: the answer, then a new socket, then the snapshot of that socket (§5.2) |
  * | `sign-out` | 1 | `signOut`: the answer ends the session and drops the Core data (WS-12) |
  * | `touch` | 1 | Throttled (CL-27) |
  * | `pair`, `unpair` | 2 | The device credential goes to, and is deleted by, the app's own storage (MP-6, MP-7) |
- * | `local` | 5 | No operation exists: `signInWithSecurityKey` is refused (X-1); `setTabletLink` (X-2), `applyCaptureTelemetry`, `raiseCaptureWarning` and `clearCaptureWarning` (SH-18) resolve |
+ * | `local` | 6 | No operation exists: `signInWithSecurityKey` is refused (X-1); `setTabletLink` (X-2), `applyCaptureTelemetry`, `raiseCaptureWarning` and `clearCaptureWarning` (SH-18) and `registerCaptureDevice` (R-9: the Core registers a camera inside operation 96) resolve |
  *
  * A binding of any flow may also answer by itself, without a request, where the simulator's action
  * changes nothing or throws before it looks at anything the server holds: `startRecording` outside
@@ -46,13 +47,14 @@ import type { SignInResponse, SignInStatus } from '../../api/identity';
 import type { PairingRedeemed } from '../../api/pairing';
 import type { AuditChainStatus, AuditExportAccepted } from '../../api/security-audit';
 import type { CaseNumberScan } from '../../api/sessions';
-import { DEVICE_COMMAND_OPERATIONS, SIM_ACTION_OPERATIONS, type SimActionName } from '../../api/sim-actions';
+import { CAPTURE_CONFIG_CHANGE_OPERATIONS, DEVICE_COMMAND_OPERATIONS, SIM_ACTION_OPERATIONS, type SimActionName } from '../../api/sim-actions';
 import type { DiagnosticsRunStarted, ServicesRestarted } from '../../api/system';
 import type { CoreCallFailure, CoreCallSuccess, CoreLooseCallInput } from '../../client/core-client';
 import { AUTH_LOCKOUT_MS, PAIRING_LOCKOUT_MS } from '../../sim/constants';
 import { SimErrorCode, SimTransitionError } from '../../sim/errors';
 import type {
   AuditExportRequest,
+  CaptureConfigChange,
   CreateSessionResult,
   EpochMs,
   ExportRequest,
@@ -171,6 +173,24 @@ export const DEVICE_COMMAND_OPERATION_INDEX: Readonly<Record<DeviceCommand, numb
 function deviceCommandIndex(command: unknown): number | undefined {
   return typeof command === 'string' && Object.prototype.hasOwnProperty.call(DEVICE_COMMAND_OPERATION_INDEX, command)
     ? DEVICE_COMMAND_OPERATION_INDEX[command as DeviceCommand]
+    : undefined;
+}
+
+/**
+ * Which of `setCaptureConfig`'s three operations a kind of change reaches, as an index into the
+ * contract's list (78, 79, 80). Read from the contract's table `CAPTURE_CONFIG_CHANGE_OPERATIONS`.
+ */
+const CAPTURE_CONFIG_OPERATION_LIST: readonly string[] = SIM_ACTION_OPERATIONS.setCaptureConfig.operations;
+export const CAPTURE_CONFIG_CHANGE_OPERATION_INDEX: Readonly<Record<CaptureConfigChange['kind'], number>> = {
+  UPDATE: CAPTURE_CONFIG_OPERATION_LIST.indexOf(CAPTURE_CONFIG_CHANGE_OPERATIONS.UPDATE),
+  CAMERA_SOURCE: CAPTURE_CONFIG_OPERATION_LIST.indexOf(CAPTURE_CONFIG_CHANGE_OPERATIONS.CAMERA_SOURCE),
+  PRIMARY_MIC: CAPTURE_CONFIG_OPERATION_LIST.indexOf(CAPTURE_CONFIG_CHANGE_OPERATIONS.PRIMARY_MIC),
+};
+
+/** The operation index of a kind of change. Own keys only, as for a device command. */
+function captureConfigChangeIndex(kind: unknown): number | undefined {
+  return typeof kind === 'string' && Object.prototype.hasOwnProperty.call(CAPTURE_CONFIG_CHANGE_OPERATION_INDEX, kind)
+    ? CAPTURE_CONFIG_CHANGE_OPERATION_INDEX[kind as CaptureConfigChange['kind']]
     : undefined;
 }
 
@@ -458,7 +478,11 @@ export const LIVE_BINDINGS: LiveBindings = {
     plan: ([deviceId, command]) => {
       const index = deviceCommandIndex(command);
       if (index === undefined) return reject(new SimTransitionError(null, 'deviceCommand', undefined, SimErrorCode.COMMAND_UNSUPPORTED));
-      return call(operationOf('deviceCommand', index), { params: { id: deviceId } }, { kind: 'device', id: deviceId });
+      // Task 3, decision D100 (2) (C3 §3 op 48; OD-22): a PoE cycle is a command a client issues only
+      // after the operator confirmed it, and the Core takes it only with `{ confirm: true }`. RESTART
+      // stays bodyless: for a camera the Core refuses it, for every other device it is the plain restart.
+      const request = command === DeviceCommand.POE_CYCLE ? { params: { id: deviceId }, body: { confirm: true } } : { params: { id: deviceId } };
+      return call(operationOf('deviceCommand', index), request, { kind: 'device', id: deviceId });
     },
     result: nothing,
   },
@@ -549,9 +573,41 @@ export const LIVE_BINDINGS: LiveBindings = {
     plan: () => resolve(undefined),
     result: nothing,
   },
+
+  // ── The capture selector and the mic switch (C3 §2.4, operations 78 to 81; register SH-18) ──
+  setCaptureConfig: {
+    flow: LiveActionFlow.COMMAND,
+    plan: ([change]) => {
+      const index = captureConfigChangeIndex(change?.kind);
+      if (index === undefined) return reject(new SimTransitionError(null, 'setCaptureConfig', undefined, SimErrorCode.INVALID_INPUT));
+      const operationId = operationOf('setCaptureConfig', index);
+      if (change.kind === 'CAMERA_SOURCE') {
+        return call(operationId, { params: { id: change.deviceId }, body: { trackId: change.trackId } }, { kind: 'device', id: change.deviceId });
+      }
+      if (change.kind === 'PRIMARY_MIC') return call(operationId, { params: { id: change.inputId } }, { kind: 'device', id: change.inputId });
+      return call(operationId, {
+        body: { ...(change.cameras === undefined ? {} : { cameras: change.cameras }), ...(change.mics === undefined ? {} : { mics: change.mics }) },
+      });
+    },
+    result: nothing,
+    invalidInputCode: SimErrorCode.INVALID_INPUT,
+  },
+  switchAudioSource: {
+    flow: LiveActionFlow.COMMAND,
+    plan: ([inputId], view) => onSession('switchAudioSource', { inputId })([], view),
+    result: nothing,
+  },
+  registerCaptureDevice: {
+    flow: LiveActionFlow.LOCAL,
+    // R-9 (C3 §2.6): no client registers a capture device. The Core does it inside operation 96
+    // (`adoptCaptureCandidate`), which a client calls as a request; the device then arrives in the
+    // replicated `captureDevices` slice.
+    plan: () => resolve(undefined),
+    result: nothing,
+  },
 };
 
-/** The names of the 45 bindings, in the order of `SimActions`. */
+/** The names of the 47 bindings, in the order of `SimActions`. */
 export const LIVE_BINDING_NAMES = Object.keys(LIVE_BINDINGS) as readonly SimActionName[];
 
 /** The actions whose simulator signature returns a value: the other ones return nothing. */

@@ -107,8 +107,11 @@ describe('T-CR-2 (b), AC-B-86: no secret outside the connection file', () => {
     const CAPTURE_PROCESS_CHANNEL = 'src/capture/ipc.ts';
     const childProcess = new RegExp(`['"](?:node:)?${['child', 'process'].join('_')}['"]`, 'g');
     const runtime = (path: string): boolean => isProductionSource(path) && !path.startsWith('src/db/');
-    expect(occurrences(server, childProcess, (path) => runtime(path) && path !== CAPTURE_PROCESS_CHANNEL)).toEqual([]);
-    expect([...new Set(occurrences(server, childProcess, runtime).map((place) => place.replace(/:\d+$/, '')))]).toEqual([CAPTURE_PROCESS_CHANNEL]);
+    // A SECOND pinned file (task 3 row 134; decision D95; capture spec §A.6.4 HL-2): the door of the
+    // local-device helpers. Same rules, held by `src/capture/adapters/local/__tests__/camera-helper.test.ts`.
+    const LOCAL_HELPER_DOOR = 'src/capture/adapters/local/process-door.ts';
+    expect(occurrences(server, childProcess, (path) => runtime(path) && path !== CAPTURE_PROCESS_CHANNEL && path !== LOCAL_HELPER_DOOR)).toEqual([]);
+    expect([...new Set(occurrences(server, childProcess, runtime).map((place) => place.replace(/:\d+$/, '')))].sort()).toEqual([LOCAL_HELPER_DOOR, CAPTURE_PROCESS_CHANNEL]);
   });
 });
 

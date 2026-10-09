@@ -110,6 +110,11 @@ export interface Specification {
    * that needs the device's own credential, called with a session of the device".
    */
   readonly deviceCredentialReason: string;
+  /**
+   * C3 §4 (erratum PE-121-08), the row of `NOT_PERMITTED`: `details.reason` of the refusal of "a
+   * device-bound session on a credential-carrying operation" (the condition `WEB_CONSOLE_SESSION`).
+   */
+  readonly webConsoleOnlyReason: string;
 }
 
 export interface Grant {
@@ -270,19 +275,23 @@ export function deniedCellsFromTable(operations: readonly SpecOperation[], grant
 
 interface ApiContractDelta {
   readonly operations: readonly SpecOperation[];
+  readonly webConsoleOnlyReason: string;
   readonly newPermissions: readonly string[];
   readonly grants: readonly Grant[];
 }
 
 /**
  * The identity tables of C3 that add operations to the closed base, each with the rows it must
- * hold: §2.2 (operations 76 to 89) and §2.5 (the STT configuration operations 90 to 92 of task 3
- * row 113; R-8, confirmed as Q-STT-CFG at the second gate, decision D24). Both tables have the
- * same columns.
+ * hold: §2.2 (operations 76 to 89), §2.5 (the STT configuration operations 90 to 92 of task 3
+ * row 113; R-8, confirmed as Q-STT-CFG at the second gate, decision D24) and §2.6 (operations 93 to
+ * 97 of R-9..R-11; blueprint row 132). The three tables have the same columns.
  */
 export const API_CONTRACT_SECTIONS: ReadonlyArray<{ readonly heading: string; readonly section: string; readonly rows: number; readonly what: string }> = [
   { heading: '### 2.2 ', section: 'C3 §2.2', rows: 14, what: 'the fourteen of operations 76 to 89' },
   { heading: '### 2.5 ', section: 'C3 §2.5', rows: 3, what: 'the three of operations 90 to 92' },
+  // Task 3 R-9..R-11 (blueprint row 132, decision D106): the camera search, the connection test, the
+  // adoption and the local-input re-read. The identity table of §2.6 has the columns of §2.2.
+  { heading: '### 2.6 ', section: 'C3 §2.6', rows: 5, what: 'the five of operations 93 to 97' },
 ];
 
 /** True for a row the composed table takes from C3, not from the closed task-2 base. */
@@ -298,7 +307,7 @@ function auditSuccessOf(auditCell: string, number: string): string {
   return firstCode(auditCell, `the audit rule of C3 operation ${number}`);
 }
 
-/** Operations 76 to 92, the two new permissions and their grants, read from C3 §2.2, §2.5 and §2.1. */
+/** Operations 76 to 97, the two new permissions and their grants, read from C3 §2.2, §2.5, §2.6, §3.1 and §2.1. */
 function readApiContract(): ApiContractDelta {
   const lines = readFileSync(API_CONTRACT_FILE, 'utf8').split('\n');
   const operations: SpecOperation[] = [];
@@ -307,7 +316,34 @@ function readApiContract(): ApiContractDelta {
     readContractTable(lines, table.heading, table.section, operations);
     if (operations.length - before !== table.rows) unreadable(`the identity table of ${table.section} (read ${operations.length - before} rows, expected ${table.what})`);
   }
-  return { operations, ...readNewPermissions(lines) };
+  // C3 §4: `| \`NOT_PERMITTED\` | 403 | \`WEB_CONSOLE_ONLY\` | 89, 95, 96 | a device-bound session on a credential-carrying operation (\`WEB_CONSOLE_SESSION\`) ...`.
+  const webOnlyRow = lines.find((line) => line.startsWith('| `NOT_PERMITTED` | 403 |') && line.includes('`WEB_CONSOLE_SESSION`'));
+  const webConsoleOnlyReason = firstCode(cellsOf(webOnlyRow ?? unreadable('the row of NOT_PERMITTED for a device-bound session (C3 §4)'))[2], 'the reason of the condition WEB_CONSOLE_SESSION (C3 §4)');
+  return { operations: applyContractChanges(lines, operations), webConsoleOnlyReason, ...readNewPermissions(lines) };
+}
+
+/**
+ * C3 §3.1 ("Changes made by R-9..R-11", erratum PE-121-07): a row of that table whose "After" cell
+ * names the condition `WEB_CONSOLE_SESSION` adds it to an operation an earlier table of C3 already
+ * holds. Today that is operation 89 (erratum PE-121-05: "web console only"), whose row of §2.2 was
+ * written before the condition existed. The table is read; no operation is named here.
+ */
+function applyContractChanges(lines: readonly string[], operations: readonly SpecOperation[]): SpecOperation[] {
+  const webOnly = new Set<string>();
+  for (const { text } of sectionOf(lines, '### 3.1 ')) {
+    const row = /^\| (\d+) \| `([A-Za-z]+)` \|/.exec(text);
+    if (row === null) continue;
+    if (/`WEB_CONSOLE_SESSION`/.test(cellsOf(text)[3] ?? '')) webOnly.add(row[2] ?? '');
+  }
+  if (webOnly.size === 0) unreadable('the row of C3 §3.1 that makes an operation web console only');
+  for (const operationId of webOnly) {
+    if (!operations.some((operation) => operation.operationId === operationId)) unreadable(`the operation ${operationId} that C3 §3.1 changes, in the identity tables of C3`);
+  }
+  return operations.map((operation) =>
+    webOnly.has(operation.operationId) && !operation.conditions.includes(CoreApiAccessCondition.WEB_CONSOLE_SESSION)
+      ? { ...operation, conditions: [...operation.conditions, CoreApiAccessCondition.WEB_CONSOLE_SESSION].sort() }
+      : operation,
+  );
 }
 
 /** The rows of one identity table of C3, appended to `operations`. */
@@ -326,7 +362,11 @@ function readContractTable(lines: readonly string[], heading: string, section: s
       // C3 writes the marker decorated (`PERMISSION X`); the canonical document form is the bare
       // permission name, as the closed §7 table writes it and as describeCoreApiAccess answers.
       access: firstCode(accessCell, `the access marker of C3 operation ${row[1]}`).replace(/^PERMISSION +/, ''),
-      conditions: /`SESSION_HOLDER`/.test(accessCell) ? [CoreApiAccessCondition.SESSION_HOLDER] : [],
+      // The two conditions a C3 access cell names beside its marker (§2.2 operation 81; §2.6 operations 95, 96).
+      conditions: [
+        ...(/`SESSION_HOLDER`/.test(accessCell) ? [CoreApiAccessCondition.SESSION_HOLDER] : []),
+        ...(/`WEB_CONSOLE_SESSION`/.test(accessCell) ? [CoreApiAccessCondition.WEB_CONSOLE_SESSION] : []),
+      ],
       auditSuccess: auditSuccessOf(auditCell, row[1] ?? ''),
       auditDenial: /EXPORT_DENIED/.test(auditCell) ? 'EXPORT_DENIED' : 'ACCESS_DENIED',
       denialCode: 'NOT_PERMITTED',
@@ -409,6 +449,7 @@ export function readSpecification(): Specification {
     windowMs: Number(budget[2]) * 1000,
     statedDeniedCells: { INVESTIGATOR: Number(denied[1]), TECHNICIAN: Number(denied[2]) },
     deviceCredentialReason: ownCredential[1] ?? '',
+    webConsoleOnlyReason: delta.webConsoleOnlyReason,
   };
 }
 
@@ -516,6 +557,8 @@ export interface ExpectationInput {
   readonly denialCode: 'NOT_PERMITTED' | 'FORBIDDEN';
   /** Section 7.2: `details.reason` of the refusal of the condition `DEVICE_CREDENTIAL`. */
   readonly deviceCredentialReason: string;
+  /** C3 §4: the reason of the refusal of the condition `WEB_CONSOLE_SESSION`. */
+  readonly webConsoleOnlyReason: string;
 }
 
 /**
@@ -609,6 +652,24 @@ export function expectationOf(input: ExpectationInput): Expectation {
         if (!holds) {
           const permission = denialPermissionOf(operation);
           const named = { operationId: operation.operationId, permission, role: identity.role, reason: CoreApiAccessCondition.SESSION_HOLDER };
+          return refused(403, input.denialCode, named, {
+            type: operation.audit.denial,
+            actorId: identity.operatorId,
+            deviceId: identity.deviceId,
+            details: named,
+          });
+        }
+        break;
+      }
+      case CoreApiAccessCondition.WEB_CONSOLE_SESSION: {
+        // C3 §0 (erratum PE-121-04), §2.6 access notes, §4; D80(3); SEC35-45 (3): the caller's operator
+        // session is not bound to a paired device. A session of a tablet or a phone is refused 403
+        // `NOT_PERMITTED` with `details.reason: WEB_CONSOLE_ONLY` and one ACCESS_DENIED row, before the
+        // body is used. The permission of the marker was checked before this loop.
+        if (identity.kind !== 'OPERATOR') break; // the marker refused others before this loop
+        if (identity.deviceId !== null) {
+          const permission = denialPermissionOf(operation);
+          const named = { operationId: operation.operationId, permission, role: identity.role, reason: input.webConsoleOnlyReason };
           return refused(403, input.denialCode, named, {
             type: operation.audit.denial,
             actorId: identity.operatorId,

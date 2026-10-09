@@ -52,7 +52,7 @@ export interface BulkFixture {
   readonly expectedHead: { readonly seq: number; readonly hash: string };
   /** Rows inserted per table, by SQL name. */
   readonly added: Readonly<Record<string, number>>;
-  /** The row count of each of the 40 tables after the load, by SQL name. */
+  /** The row count of each of the 42 tables after the load, by SQL name. */
   readonly expectedCounts: Readonly<Record<string, number>>;
   /** SHA-256 of a stable dump of `rows` and `updates`. */
   readonly digest: string;
@@ -71,6 +71,8 @@ const EMPTY_IN_BASE = [
   'active_session',
   // Schema v2 (dbc-3 §G): the seed writes no credential and no pipeline row; the fixture does.
   'capture_device_credentials',
+  // Schema v3 (dbc-4 §N.10, rule S-1): the seed writes no source row while it writes no interval.
+  'session_capture_sources',
   'session_audio_intervals',
   'recording_fragments',
   'transcript_chunks',
@@ -190,6 +192,7 @@ export function buildBulkFixture(options: BulkFixtureOptions, base: BulkBase): B
     // Schema v2 (dbc-3 §G): the capture variants and the six pipeline tables (CS-20).
     captureDevices: pipeline.captureDevices,
     captureDeviceCredentials: pipeline.captureDeviceCredentials,
+    sessionCaptureSources: pipeline.sessionCaptureSources,
     sessionAudioIntervals: pipeline.sessionAudioIntervals,
     recordingFragments: pipeline.recordingFragments,
     transcriptChunks: pipeline.transcriptChunks,

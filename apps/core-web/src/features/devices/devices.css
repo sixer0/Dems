@@ -57,6 +57,230 @@
     grid-column: span 5;
   }
 
+  /* Task 3 M4 (blueprint row 67): the capture device selector, a full row. */
+  .dev-panel-selector {
+    grid-column: span 12;
+    scroll-margin-top: 16px;
+  }
+
+  .dev-sel,
+  .dev-sel-pending {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .dev-sel-group {
+    margin: 0 0 8px;
+    font-size: var(--text-caption, 12px);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .dev-sel-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .dems-shell[data-shell-tier='sm'] .dev-sel-list,
+  .dems-shell[data-shell-tier='xs'] .dev-sel-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dev-sel-row {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px;
+    border: 1px solid color-mix(in oklab, var(--muted) 30%, transparent);
+    border-radius: 12px;
+  }
+
+  .dev-sel-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .dev-sel-icon {
+    flex: none;
+    width: 18px;
+    height: 18px;
+  }
+
+  .dev-sel-titles {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  .dev-sel-chips {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .dev-sel-edit {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 8px;
+  }
+
+  .dev-sel-select {
+    flex: 1;
+    min-width: 200px;
+  }
+
+  .dev-sel-reason,
+  .dev-sel-message {
+    margin: 0;
+    font-size: var(--text-caption, 12px);
+    color: var(--muted);
+  }
+
+  .dev-sel-message {
+    color: var(--danger);
+  }
+
+  .dev-sel-skeleton {
+    height: 64px;
+    border-radius: 12px;
+  }
+
+  .dev-sel-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 16px;
+  }
+
+  /* Task 3 R-9 / R-10 / R-11 (blueprint row 137): the camera search, the notices and the source badge. */
+  .dev-panel-search {
+    grid-column: span 12;
+    scroll-margin-top: 16px;
+  }
+
+  .dev-header-status {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 12px;
+  }
+
+  .dev-notices {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: var(--shell-gutter, 16px);
+  }
+
+  .dev-search,
+  .dev-search-results,
+  .dev-search-progress,
+  .dev-scan,
+  .dev-scan-result {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .dev-scan {
+    margin-top: 16px;
+  }
+
+  .dev-search-control {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+
+  .dev-search-status,
+  .dev-scan-head,
+  .dev-scan-row,
+  .dev-source-badge,
+  .dev-unreachable {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+  }
+
+  /* Untrusted device text: one line with an ellipsis; the whole text is in the accessible name. */
+  .dev-search-device-text {
+    display: block;
+    max-width: 28ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .dev-scan-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .dev-source-kind,
+  .dev-source-on {
+    font-size: var(--text-caption, 12px);
+    color: var(--muted);
+  }
+
+  .dev-source-on {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--warning);
+  }
+
+  .dev-connect-body {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .dev-connect-fields {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .dev-connect-line {
+    margin: 0;
+    font-size: var(--text-caption, 12px);
+    color: var(--muted);
+  }
+
+  .dev-connect-target {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    margin: 0;
+  }
+
+  .dev-connect-target dt {
+    font-size: var(--text-caption, 12px);
+    color: var(--muted);
+  }
+
+  .dev-connect-target dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
+
   .dev-panel-ports {
     grid-column: span 7;
   }

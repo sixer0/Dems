@@ -16,7 +16,7 @@ import { checkCpuLocalFiles } from './backends/cpu-local';
 import { createOmlxHttp, OMLX_PATHS, type FetchLike } from './backends/omlx-http';
 import { resolveTranscriberConfig, type SttSelection, type TranscriberRuntime } from './config';
 import type { SerialQueue } from './cpu-priority';
-import { loadCredential } from './key-loader';
+import { credentialOf, releaseCredential, type Credential, type EncryptedCredentialSource } from './key-loader';
 import type { TranscriberLog } from './log';
 import { TranscriberBackendId, TranscriberError, TranscriberErrorCode } from './types';
 
@@ -46,6 +46,12 @@ export interface ProbeDeps {
   readonly fetchImpl?: FetchLike;
   /** The queue of the oMLX calls of this process: a probe is serialised with them (D7(d)). */
   readonly queue?: SerialQueue;
+  /**
+   * Stated when the stored credential is an ENCRYPTED one (`credentialRef` then answers null). Its
+   * `open` is the composition's opener; without it the test is answered without a connection. The
+   * opened key lives for the ONE request of the test and is released when it is over.
+   */
+  readonly encryptedCredential?: EncryptedCredentialSource;
 }
 
 const result = (reachable: boolean, modelAvailable: boolean, detailCode: string): ProbeResult => ({ reachable, modelAvailable, detailCode });
@@ -79,8 +85,9 @@ export function createConnectionProbe(deps: ProbeDeps): (target: ProbeTarget, op
     }
 
     const ask = async (): Promise<ProbeResult> => {
+      let credential: Credential | null = null;
       try {
-        const credential = config.credentialRef === null ? null : loadCredential(config.credentialRef, config.settingsPath === null ? {} : { settingsPath: config.settingsPath });
+        credential = credentialOf(config, deps.encryptedCredential);
         log.protect(credential);
         const http = createOmlxHttp({ endpoint: config.endpoint, credential, timeoutMs: options.timeoutMs, fetchImpl: deps.fetchImpl });
         const response = await http.get(OMLX_PATHS.MODELS, options.signal);
@@ -95,6 +102,9 @@ export function createConnectionProbe(deps: ProbeDeps): (target: ProbeTarget, op
           return result(false, false, SttConnectionDetailCode.CREDENTIAL_REJECTED);
         }
         return result(false, false, SttConnectionDetailCode.UNREACHABLE);
+      } finally {
+        // Request scope of an OPENED key: after the one request (and its log line) the holder is empty.
+        if (deps.encryptedCredential !== undefined) releaseCredential(credential);
       }
     };
     return deps.queue === undefined ? ask() : deps.queue.run(ask);

@@ -1,5 +1,5 @@
 // Backend task 2026-10-04, plan rows W19 (contract A) and W27 (contract C): the registry model and
-// the operation table. AC-B-09 (registry side: exactly 92 operations, 35 GET and 57 POST), AC-B-13
+// the operation table. AC-B-09 (registry side: exactly 97 operations, 36 GET and 61 POST), AC-B-13
 // (the ten existing operations keep path, method and schemas), RB-1 / API-8 (every entry carries
 // exactly one access rule and one audit rule), API-2 / API-3 (two methods, one path parameter named
 // `id`), AC-C-01 (the typed client calls every operation), and decision D36 (contract gap 1: the
@@ -175,8 +175,22 @@ const M6_OPERATIONS: typeof M2_OPERATIONS = [
   [91, 'updateSttConfig', 'post', '/api/v1/transcription/config', 'CAPTURE_CONFIG', 'STT_CONFIG_CHANGED', 'ACCESS_DENIED', 'simulated'],
   [92, 'testSttConnection', 'post', '/api/v1/transcription/config/test', 'CAPTURE_CONFIG', 'NONE-P', 'ACCESS_DENIED', 'simulated'],
 ];
-/** The thirteen simulated M2 operations plus the three of M6, in number order — the ones the `offline` scope gains. */
-const M2_SIMULATED_IDS = [...M2_OPERATIONS, ...M6_OPERATIONS].filter((entry) => entry[7] === 'simulated').map((entry) => entry[1]);
+/**
+ * Task 3 R-9..R-11 (blueprint row 132, decision D106; `C3 §2.6`, §10.1): the five operations of the
+ * camera search, the connection test, the adoption and the local-input re-read, 93-97, appended
+ * after op 92 in number order. Same columns as `M2_OPERATIONS`. All five are `simulated`, so the
+ * `offline` scope gains them too (26 -> 31). The pinned totals follow C3 §10.1: registry 97
+ * operations, 36 GET / 61 POST, audit types 67.
+ */
+const M4_DISCOVERY_OPERATIONS: typeof M2_OPERATIONS = [
+  [93, 'startCaptureDiscovery', 'post', '/api/v1/capture/discovery', 'CAPTURE_CONFIG', 'CAPTURE_DISCOVERY_SEARCHED', 'ACCESS_DENIED', 'simulated'],
+  [94, 'getCaptureDiscovery', 'get', '/api/v1/capture/discovery', 'CAPTURE_CONFIG', 'NONE-R', 'ACCESS_DENIED', 'simulated'],
+  [95, 'testCaptureCandidateConnection', 'post', '/api/v1/capture/discovery/candidates/{id}/test', 'CAPTURE_CONFIG', 'CAPTURE_CONNECTION_TESTED', 'ACCESS_DENIED', 'simulated'],
+  [96, 'adoptCaptureCandidate', 'post', '/api/v1/capture/discovery/candidates/{id}/adopt', 'CAPTURE_CONFIG', 'CAPTURE_CANDIDATE_ADOPTED', 'ACCESS_DENIED', 'simulated'],
+  [97, 'rescanCaptureInputs', 'post', '/api/v1/capture/inputs/rescan', 'CAPTURE_CONFIG', 'CAPTURE_DISCOVERY_SEARCHED', 'ACCESS_DENIED', 'simulated'],
+];
+/** The thirteen simulated M2 operations, the three of M6 and the five of R-9..R-11, in number order — the ones the `offline` scope gains. */
+const M2_SIMULATED_IDS = [...M2_OPERATIONS, ...M6_OPERATIONS, ...M4_DISCOVERY_OPERATIONS].filter((entry) => entry[7] === 'simulated').map((entry) => entry[1]);
 
 /** The spec numbers of the ten existing operations (01_specs §7.4, §7.8 to §7.11), in registry order. */
 const EXISTING_NUMBERS = [1, 24, 25, 26, 27, 44, 45, 46, 53, 42];
@@ -280,17 +294,18 @@ function concretePath(operation: CoreApiOperation): string {
   return operation.pathParam ? operation.path.replace('{id}', id ?? 'MISSING') : operation.path;
 }
 
-describe('AC-B-09: the registry holds exactly 92 operations', () => {
-  it('holds the 10 existing operations first, then the 65 that only the Core server answers, then the 17 of task 3 (14 of M2, 3 of M6), by area in spec order', () => {
-    expect(CORE_API_OPERATIONS).toHaveLength(92);
+describe('AC-B-09: the registry holds exactly 97 operations', () => {
+  it('holds the 10 existing operations first, then the 65 that only the Core server answers, then the 22 of task 3 (14 of M2, 3 of M6, 5 of R-9..R-11), by area in spec order', () => {
+    expect(CORE_API_OPERATIONS).toHaveLength(97);
     expect(CORE_API_OPERATIONS.slice(0, 10).map((operation) => operation.operationId)).toEqual(BASELINE.map(([id]) => id));
     // Areas 1, 2 and 3 (contract A), then areas 4 to 11 (contract C), then area 13 (contract A),
-    // then task 3 M2-W7's operations 76-89 and M6's 90-92 appended in number order.
+    // then task 3 M2-W7's operations 76-89, M6's 90-92 and the 93-97 of R-9..R-11 appended in number order.
     const byNumber = [
       ...NEW_OPERATIONS.map(([number, id]) => [number, id] as const),
       ...CONTRACT_C_OPERATIONS.map(([number, id]) => [number, id] as const),
       ...M2_OPERATIONS.map(([number, id]) => [number, id] as const),
       ...M6_OPERATIONS.map(([number, id]) => [number, id] as const),
+      ...M4_DISCOVERY_OPERATIONS.map(([number, id]) => [number, id] as const),
     ].sort((a, b) => a[0] - b[0]);
     expect(CORE_API_OPERATIONS.slice(10).map((operation) => operation.operationId)).toEqual(byNumber.map(([, id]) => id));
     expect(NEW_OPERATIONS).toHaveLength(27);
@@ -298,21 +313,22 @@ describe('AC-B-09: the registry holds exactly 92 operations', () => {
     expect(CONTRACT_C_OPERATIONS).toHaveLength(38);
     expect(M2_OPERATIONS).toHaveLength(14);
     expect(M6_OPERATIONS).toHaveLength(3);
-    // Every number of 01_specs §7 from 1 to 75 plus task 3's 76 to 92 is one operation of the registry.
+    expect(M4_DISCOVERY_OPERATIONS).toHaveLength(5);
+    // Every number of 01_specs §7 from 1 to 75 plus task 3's 76 to 97 is one operation of the registry.
     const numbers = [...EXISTING_NUMBERS, ...byNumber.map(([number]) => number)].sort((a, b) => a - b);
-    expect(numbers).toEqual([...Array.from({ length: 75 }, (_, index) => index + 1), ...Array.from({ length: 17 }, (_, index) => index + 76)]);
+    expect(numbers).toEqual([...Array.from({ length: 75 }, (_, index) => index + 1), ...Array.from({ length: 22 }, (_, index) => index + 76)]);
     // Areas 4 to 11 are the numbers 24 to 70: 47 operations, 9 of them existing and 38 new.
     expect(numbers.filter((number) => number >= 24 && number <= 70)).toHaveLength(47);
     expect(EXISTING_NUMBERS.filter((number) => number >= 24 && number <= 70)).toHaveLength(9);
   });
 
-  it('names every operation and every method-and-path once; 35 are GET and 57 are POST', () => {
+  it('names every operation and every method-and-path once; 36 are GET and 61 are POST', () => {
     const ids = CORE_API_OPERATIONS.map((operation) => operation.operationId);
-    expect(new Set(ids).size).toBe(92);
+    expect(new Set(ids).size).toBe(97);
     const routes = CORE_API_OPERATIONS.map((operation) => `${operation.method} ${operation.path}`);
-    expect(new Set(routes).size).toBe(92);
-    expect(CORE_API_OPERATIONS.filter((operation) => operation.method === 'get')).toHaveLength(35);
-    expect(CORE_API_OPERATIONS.filter((operation) => operation.method === 'post')).toHaveLength(57);
+    expect(new Set(routes).size).toBe(97);
+    expect(CORE_API_OPERATIONS.filter((operation) => operation.method === 'get')).toHaveLength(36);
+    expect(CORE_API_OPERATIONS.filter((operation) => operation.method === 'post')).toHaveLength(61);
     for (const id of ids) expect(findCoreApiOperation(id)?.operationId).toBe(id);
   });
 
@@ -368,7 +384,11 @@ describe('AC-B-13: the ten existing operations equal their baseline', () => {
         if (spec.services === undefined) continue;
         // Only the Core server, only a refusal, and only on an operation the simulator answers too.
         expect(spec.services, `${operation.operationId} ${status}`).toEqual([CoreApiService.CORE_SERVER]);
-        expect(spec.schema, `${operation.operationId} ${status}`).toBe('ApiError');
+        // The ONE answer that is no refusal (C3 §2.6 op 93): `200` with `created: false` while the
+        // caller's own search is still RUNNING. The simulator's search is COMPLETE when it is answered,
+        // so it never has a running search to repeat. Named here; every other one is a refusal.
+        const coreOnlySuccess = operation.operationId === 'startCaptureDiscovery' && status === '200';
+        expect(spec.schema, `${operation.operationId} ${status}`).toBe(coreOnlySuccess ? 'CaptureDiscoverySearch' : 'ApiError');
         expect(operation.mode, operation.operationId).toBe(CoreApiMode.SIMULATED);
         expect(CORE_API_EXAMPLES[operation.operationId]?.responses[Number(status)], `${operation.operationId} ${status}`).toBeDefined();
       }
@@ -409,8 +429,9 @@ describe('AC-B-13: the ten existing operations equal their baseline', () => {
       ['exportEvidence', 'EVIDENCE_EXPORT', ['EVIDENCE_EXPORTED', 'EXPORT_DENIED']],
     ]);
     // Outside these ten nothing is simulated EXCEPT task 3's thirteen simulated capture/transcript
-    // operations (op 88 stays live; `C3 §8`, OD-17) and the three STT configuration operations 90-92
-    // (`C3 §2.5`). The rest of areas 4 to 11 remain Core-server-only.
+    // operations (op 88 stays live; `C3 §8`, OD-17), the three STT configuration operations 90-92
+    // (`C3 §2.5`) and the five of the camera search 93-97 (`C3 §2.6`). The rest of areas 4 to 11
+    // remain Core-server-only.
     const simulatedOutsideTen = CORE_API_OPERATIONS.slice(10).filter((operation) => operation.mode === CoreApiMode.SIMULATED);
     expect(simulatedOutsideTen.map((operation) => operation.operationId)).toEqual(M2_SIMULATED_IDS);
   });
@@ -465,18 +486,20 @@ describe('RB-1, API-8: every entry carries exactly one access rule and one audit
       'exportLogs',
     ]);
     // The vocabulary this file relies on (D37; task 3 M2-W7 adds nine types, 53 -> 62; M6 row 113
-    // adds STT_CONFIG_CHANGED, 62 -> 63 — the C3 §2.5 total).
+    // adds STT_CONFIG_CHANGED, 62 -> 63 — the C3 §2.5 total; R-9..R-11 add the four of C3 §5.2
+    // (search, connection test, adoption, device unreachable), 63 -> 67 — the C3 §10.1 total).
     expect(PERMISSIONS).toHaveLength(14);
-    expect(AUDIT_TYPES).toHaveLength(63);
+    expect(AUDIT_TYPES).toHaveLength(67);
   });
 
-  it('counts by access rule: 4 PUBLIC, 5 DEVICE, 30 AUTHENTICATED, 52 with one permission, 1 any-of', () => {
+  it('counts by access rule: 4 PUBLIC, 5 DEVICE, 30 AUTHENTICATED, 57 with one permission, 1 any-of', () => {
     const count = (kind: string) => CORE_API_OPERATIONS.filter((operation) => operation.access.kind === kind).length;
     // M6 row 113 (C3 §2.5): op 90 is AUTHENTICATED (29 -> 30); ops 91 and 92 need CAPTURE_CONFIG (50 -> 52).
-    expect([count('PUBLIC'), count('DEVICE'), count('AUTHENTICATED'), count('PERMISSION'), count('ANY_OF')]).toEqual([4, 5, 30, 52, 1]);
-    // 53 operations carry a permission: the 40 of contract C plus the one any-of, plus task 3's twelve
-    // permission operations (78/79/80/81/84/85/86/87/88/89 and 91/92).
-    expect(CORE_API_OPERATIONS.filter((operation) => coreApiAccessPermissions(operation.access).length > 0)).toHaveLength(53);
+    // R-9..R-11 (C3 §2.6): all five of 93-97 need CAPTURE_CONFIG (52 -> 57).
+    expect([count('PUBLIC'), count('DEVICE'), count('AUTHENTICATED'), count('PERMISSION'), count('ANY_OF')]).toEqual([4, 5, 30, 57, 1]);
+    // 58 operations carry a permission: the 40 of contract C plus the one any-of, plus task 3's seventeen
+    // permission operations (78/79/80/81/84/85/86/87/88/89, 91/92 and 93-97).
+    expect(CORE_API_OPERATIONS.filter((operation) => coreApiAccessPermissions(operation.access).length > 0)).toHaveLength(58);
     const byPermission = (permission: string) =>
       CORE_API_OPERATIONS.filter((operation) => describeCoreApiAccess(operation.access) === permission).map((operation) => operation.operationId);
     expect(byPermission('USER_ADMIN')).toEqual(['listUsers', 'assignUserRole', 'enableUser', 'disableUser']);
@@ -506,7 +529,9 @@ describe('RB-1, API-8: every entry carries exactly one access rule and one audit
       // 78/79/80/89 and TRANSCRIPT_REVISE at 85 (`C3 §2.2`). Op 81 adds SESSION_START with the new
       // `SESSION_HOLDER` condition; ops 84/86/88 add EVIDENCE_VIEW; op 87 adds EVIDENCE_EXPORT.
       // M6 row 113 (C3 §2.5): the STT configuration write (91) and test (92) take the same permission.
-      ['CAPTURE_CONFIG', [78, 79, 80, 89, 91, 92]],
+      // R-9..R-11 (C3 §2.6): no new permission — the search, the candidate read, the test, the adoption
+      // and the local-input re-read all take CAPTURE_CONFIG (R-9 AC-12).
+      ['CAPTURE_CONFIG', [78, 79, 80, 89, 91, 92, 93, 94, 95, 96, 97]],
       ['TRANSCRIPT_REVISE', [85]],
     ];
     expect(ENFORCED_AT.map(([permission]) => permission)).toEqual(PERMISSIONS);
@@ -516,8 +541,9 @@ describe('RB-1, API-8: every entry carries exactly one access rule and one audit
       ...CONTRACT_C_OPERATIONS.map(([number, id]) => [id, number] as const),
       ...M2_OPERATIONS.map(([number, id]) => [id, number] as const),
       ...M6_OPERATIONS.map(([number, id]) => [id, number] as const),
+      ...M4_DISCOVERY_OPERATIONS.map(([number, id]) => [id, number] as const),
     ]);
-    expect(numberOf.size).toBe(92);
+    expect(numberOf.size).toBe(97);
     for (const [permission, numbers] of ENFORCED_AT) {
       const found = CORE_API_OPERATIONS.filter((operation) => (coreApiAccessPermissions(operation.access) as string[]).includes(permission))
         .map((operation) => numberOf.get(operation.operationId))
@@ -536,9 +562,12 @@ describe('RB-1, API-8: every entry carries exactly one access rule and one audit
     expect(withCondition('DEMO_FLAG')).toEqual(['getDemoStatus', 'loadScenario', 'injectFault', 'clearFault', 'resetDemo']);
     // Task 3 M2-W7 (`C3 §0`, SEC35-18 deferred to M2): op 81 adds the SESSION_HOLDER condition.
     expect(withCondition('SESSION_HOLDER')).toEqual(['switchAudioSource']);
-    // Ten operations carry a condition, each exactly one; the other 79 carry none.
+    // Task 3 R-9 (`C3 §0` erratum PE-121-04, §3.1; D80(3)): the three operations whose body carries a
+    // camera credential are web console only — op 89, and ops 95 and 96 of the connect flow.
+    expect(withCondition('WEB_CONSOLE_SESSION')).toEqual(['setCaptureDeviceCredential', 'testCaptureCandidateConnection', 'adoptCaptureCandidate']);
+    // Thirteen operations carry a condition, each exactly one; the other 84 carry none.
     const conditioned = CORE_API_OPERATIONS.filter((operation) => operation.access.conditions !== undefined);
-    expect(conditioned).toHaveLength(10);
+    expect(conditioned).toHaveLength(13);
     for (const operation of conditioned) expect(operation.access.conditions, operation.operationId).toHaveLength(1);
   });
 
@@ -586,8 +615,8 @@ describe('decision D113 (finding CPS1-3): operations 23 and 8 need the device cr
   const biometric = findCoreApiOperation('signInWithBiometric')!;
   const NEEDS_CREDENTIAL = [biometric, rotate];
 
-  it('the vocabulary of conditions has five members, DEVICE_CREDENTIAL among them', () => {
-    expect(Object.values(CoreApiAccessCondition)).toEqual(['CONSOLE_IDENTITY', 'DEVICE_SESSION', 'DEVICE_CREDENTIAL', 'DEMO_FLAG', 'SESSION_HOLDER']);
+  it('the vocabulary of conditions has six members, DEVICE_CREDENTIAL among them (C3 §10.1: 5 -> 6 with WEB_CONSOLE_SESSION)', () => {
+    expect(Object.values(CoreApiAccessCondition)).toEqual(['CONSOLE_IDENTITY', 'DEVICE_SESSION', 'DEVICE_CREDENTIAL', 'DEMO_FLAG', 'SESSION_HOLDER', 'WEB_CONSOLE_SESSION']);
     expect(Object.keys(CoreApiAccessCondition)).toEqual(Object.values(CoreApiAccessCondition));
     expect(CoreApiAccessCondition.DEVICE_CREDENTIAL).toBe('DEVICE_CREDENTIAL');
     expect(DEVICE_CREDENTIAL_REQUIRED_REASON).toBe('DEVICE_CREDENTIAL_REQUIRED');
@@ -682,14 +711,14 @@ describe('answering services and the two scopes (AR-1)', () => {
     expect([CoreApiService.MOCK_CORE, CoreApiService.CORE_SERVER]).toEqual(['dems-mock-core', 'dems-core-server']);
   });
 
-  it('the offline scope is the ten existing operations plus the sixteen simulated task-3 ones (13 of M2, 3 of M6); the all scope is every one', () => {
+  it('the offline scope is the ten existing operations plus the twenty-one simulated task-3 ones (13 of M2, 3 of M6, 5 of R-9..R-11); the all scope is every one', () => {
     expect(listCoreApiOperations(CoreApiScope.OFFLINE).map((operation) => operation.operationId)).toEqual([
       ...BASELINE.map(([id]) => id),
       ...M2_SIMULATED_IDS,
     ]);
-    expect(listCoreApiOperations(CoreApiScope.ALL)).toHaveLength(92);
-    expect(listCoreApiOperations()).toHaveLength(92);
-    expect(CORE_API_OPERATIONS.filter(isOfflineCoreApiOperation)).toHaveLength(26);
+    expect(listCoreApiOperations(CoreApiScope.ALL)).toHaveLength(97);
+    expect(listCoreApiOperations()).toHaveLength(97);
+    expect(CORE_API_OPERATIONS.filter(isOfflineCoreApiOperation)).toHaveLength(31);
   });
 
   it('the new tags hold the new areas', () => {
@@ -697,12 +726,13 @@ describe('answering services and the two scopes (AR-1)', () => {
     expect([byTag(CoreApiTag.IDENTITY), byTag(CoreApiTag.ADMINISTRATION), byTag(CoreApiTag.PAIRING), byTag(CoreApiTag.DEMO)]).toEqual([8, 5, 9, 5]);
     // Areas 4 to 7 extend the four existing tags; areas 8 to 11 have a tag each. Task 3 M2-W7 adds
     // three Session ops (81/82/83), five Evidence ops (84-88) and six Device ops (76-80, 89); M6 row
-    // 113 adds three more Device ops (90-92, `C3 §2.5` tag column).
-    expect([byTag(CoreApiTag.SESSION), byTag(CoreApiTag.EVIDENCE), byTag(CoreApiTag.DEVICE), byTag(CoreApiTag.STORAGE)]).toEqual([4 + 11 + 3, 1 + 4 + 5, 3 + 6 + 6 + 3, 1 + 2]);
+    // 113 adds three more Device ops (90-92, `C3 §2.5` tag column); R-9..R-11 add five more (93-97,
+    // `C3 §2.6` tag column).
+    expect([byTag(CoreApiTag.SESSION), byTag(CoreApiTag.EVIDENCE), byTag(CoreApiTag.DEVICE), byTag(CoreApiTag.STORAGE)]).toEqual([4 + 11 + 3, 1 + 4 + 5, 3 + 6 + 6 + 3 + 5, 1 + 2]);
     expect([byTag(CoreApiTag.NETWORK), byTag(CoreApiTag.SECURITY), byTag(CoreApiTag.SYSTEM), byTag(CoreApiTag.ALERTS)]).toEqual([2, 6, 5, 2]);
     expect(byTag(CoreApiTag.SERVICE)).toBe(1);
     expect(byTag(CoreApiTag.REALTIME)).toBe(0);
-    expect(Object.values(CoreApiTag).reduce((sum, tag) => sum + byTag(tag), 0)).toBe(92);
+    expect(Object.values(CoreApiTag).reduce((sum, tag) => sum + byTag(tag), 0)).toBe(97);
   });
 });
 
@@ -741,6 +771,9 @@ describe('structure of every entry (API-2, API-3, 01_specs §7.3)', () => {
       'EvidenceExportCompositeOptions', 'CaptureConfigCameraUpdate', 'CaptureConfigMicUpdate', 'AudioSourceIntervalEntry', 'SealingProgressStep', 'TranscriptSegment',
       // Task 3 M6 row 113 (`C3 §2.5`): the nested parts of `SttConfig` and of `SttConfigUpdateRequest`.
       'SttLastTest', 'SttCredentialWrite',
+      // Task 3 R-9 (`C3 §2.6`): a search and a candidate are parts of `CaptureDiscoveryState` (a
+      // search is also the answer of operation 93).
+      'CaptureCandidate',
     ];
     for (const name of nested) used.add(name);
     // Changed by design (W22, contract B): the registry also holds the Core state on the wire (the
@@ -754,8 +787,9 @@ describe('structure of every entry (API-2, API-3, 01_specs §7.3)', () => {
     // Changed by design (W27, contract C): 32 schemas of areas 4 to 11 follow, appended. Task 3
     // M2-W7 adds one composite-export options schema to the contract-A block (50 -> 51), one request
     // schema to op 48 in the contract-C block (32 -> 33), and eighteen operation/nested schemas of
-    // operations 76-89 at the end. M6 row 113 appends the six STT configuration schemas of 90-92.
-    expect(Object.keys(CORE_API_SCHEMAS)).toHaveLength(51 + 39 + 11 + 33 + 18 + 6);
+    // operations 76-89 at the end. M6 row 113 appends the six STT configuration schemas of 90-92;
+    // R-9..R-11 append the eight of operations 93-97.
+    expect(Object.keys(CORE_API_SCHEMAS)).toHaveLength(51 + 39 + 11 + 33 + 18 + 6 + 8);
     // The 51 of contract A stay first and in their order, then the socket's schemas.
     expect(Object.keys(CORE_API_SCHEMAS).slice(51, 51 + 39 + 11)).toEqual(socket);
     expect(Object.keys(CORE_API_SCHEMAS).slice(51 + 39 + 11)).toEqual([
@@ -777,6 +811,9 @@ describe('structure of every entry (API-2, API-3, 01_specs §7.3)', () => {
       'EvidenceExportJob', 'EvidenceMediaSession',
       // Task 3 M6 row 113 (`C3 §2.5`): the STT configuration schemas of operations 90-92.
       'SttLastTest', 'SttConfig', 'SttCredentialWrite', 'SttConfigUpdateRequest', 'SttConfigUpdateResult', 'SttConnectionTest',
+      // Task 3 R-9..R-11 (blueprint row 132, D106; `C3 §2.6`): the schemas of operations 93-97.
+      'CaptureDiscoverySearch', 'CaptureCandidate', 'CaptureDiscoveryState', 'CaptureConnectionTestRequest', 'CaptureConnectionTest',
+      'CaptureCandidateAdoptRequest', 'CaptureCandidateAdoption', 'CaptureInputScan',
     ]);
     // API-6: a read of contract C answers slices, so two operations answer a slice component directly.
     // Task 3 M2-W7 (`C3 §2.3`, API-6): the six capture-config/credential operations answer the
@@ -918,7 +955,7 @@ describe('structure of every entry (API-2, API-3, 01_specs §7.3)', () => {
       // Contract A/C sources cite the design book; task 3 M2-W7 cites C3 §2.2 and the register instead.
       // Task 3 M6 (row 113) cites C3 §2.5 the same way. All forms name their origin and an operation
       // number; matched without depending on § spacing.
-      expect(operation.source, operation.operationId).toMatch(/^(Backend task 2026-10-04|Task 3 M2-W7|Task 3 M6)/);
+      expect(operation.source, operation.operationId).toMatch(/^(Backend task 2026-10-04|Task 3 M2-W7|Task 3 M6|Task 3 R-(?:9|10),)/);
       expect(operation.source, operation.operationId).toMatch(/operation \d+/);
     }
     const secret = CORE_API_OPERATIONS.filter((operation) => operation.description.includes('holds a secret')).map((operation) => operation.operationId);
@@ -927,7 +964,7 @@ describe('structure of every entry (API-2, API-3, 01_specs §7.3)', () => {
   });
 });
 
-describe('routing over 92 operations', () => {
+describe('routing over 97 operations', () => {
   it('a concrete path of one operation matches that operation and no other route', () => {
     for (const operation of CORE_API_OPERATIONS) {
       const path = concretePath(operation);
@@ -996,7 +1033,7 @@ describe('contract gap 1: CORE_API_OPERATION_TABLE is the table with literal typ
     expectTypeOf(CORE_API_OPERATIONS).toEqualTypeOf<readonly CoreApiRegistryOperation[]>();
     expectTypeOf<Table>().toExtend<readonly CoreApiRegistryOperation[]>();
     expectTypeOf<Table>().toExtend<readonly CoreApiOperation[]>();
-    expectTypeOf<Table['length']>().toEqualTypeOf<92>();
+    expectTypeOf<Table['length']>().toEqualTypeOf<97>();
     expectTypeOf<Table[0]['operationId']>().toEqualTypeOf<'getServiceHealth'>();
     expectTypeOf<Table[10]['operationId']>().toEqualTypeOf<'signIn'>();
     // Areas 4 to 11 sit between pairing and the demo controls, which stay last.
@@ -1011,6 +1048,10 @@ describe('contract gap 1: CORE_API_OPERATION_TABLE is the table with literal typ
     // Task 3 M6 row 113 appends operations 90-92 after op 89 (`C3 §2.5`).
     expectTypeOf<Table[89]['operationId']>().toEqualTypeOf<'getSttConfig'>();
     expectTypeOf<Table[91]['path']>().toEqualTypeOf<'/api/v1/transcription/config/test'>();
+    // Task 3 R-9..R-11 (row 132, D106) append operations 93-97 after op 92 (`C3 §2.6`).
+    expectTypeOf<Table[92]['operationId']>().toEqualTypeOf<'startCaptureDiscovery'>();
+    expectTypeOf<Table[93]['operationId']>().toEqualTypeOf<'getCaptureDiscovery'>();
+    expectTypeOf<Table[96]['path']>().toEqualTypeOf<'/api/v1/capture/inputs/rescan'>();
   });
 
   it('gives the typed client one typed call per operation', async () => {
@@ -1046,8 +1087,8 @@ describe('contract gap 1: CORE_API_OPERATION_TABLE is the table with literal typ
     expectTypeOf<AuditListQuery['limit']>().toEqualTypeOf<number | undefined>();
 
     const client = createCoreClient({ baseUrl: 'http://127.0.0.1:4420', credentials: 'browser-cookie', fetch: noAnswer, operations: CORE_API_OPERATION_TABLE });
-    // AC-C-01: the callable operation count of the typed client is the registry's, 92.
-    expect(client.operationIds).toHaveLength(92);
+    // AC-C-01: the callable operation count of the typed client is the registry's, 97.
+    expect(client.operationIds).toHaveLength(97);
     expect(client.operationIds).toEqual(CORE_API_OPERATIONS.map((operation) => operation.operationId));
     const signedOut = await client.call('signOut', { body: { reason: 'LOCK' } });
     expectTypeOf(signedOut).toEqualTypeOf<CoreCallSuccess<204, undefined> | CoreCallFailure>();
@@ -1080,7 +1121,7 @@ describe('contract gap 1: CORE_API_OPERATION_TABLE is the table with literal typ
   });
 });
 
-describe('the typed client calls all 92 operations (AC-C-01)', () => {
+describe('the typed client calls all 97 operations (AC-C-01)', () => {
   it('returns every documented example as a success or as the error envelope, a success without a body included', async () => {
     // The widened view on purpose: the loop passes operation IDs as plain strings.
     const operations: readonly CoreApiOperation[] = CORE_API_OPERATIONS;

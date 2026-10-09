@@ -145,6 +145,9 @@ async function insertInto(executor: RowExecutor, table: WrittenTable, rows: read
       // `kind` is NOT in the SET list: migration 0005 grants `dems_app` no UPDATE on it (a
       // device's kind never changes under its id), and naming it made every update of an
       // existing row fail with 42501 (found by blueprint row 58, the first writer of this path).
+      // `adapter_kind` is NOT in the SET list either (dbc-4 §N.2, D-DB-13/D83; row 129 owns this
+      // rule): it is written at INSERT, `0009` grants no UPDATE on it, and naming it here would be
+      // the D72(f) defect again. It travels in the VALUES list only (M4-MT-12 pins both names out).
       const d = schema.captureDevices;
       for (const row of rows as MappedRows['captureDevices']) {
         await executor
@@ -157,12 +160,13 @@ async function insertInto(executor: RowExecutor, table: WrittenTable, rows: read
               model: row.model,
               firmware: row.firmware,
               address: row.address,
-              mac: row.mac,
-              onvifUuid: row.onvifUuid,
-              profiles: row.profiles,
               poePort: row.poePort,
               enabled: row.enabled,
-              lastSeenAt: row.lastSeenAt,
+              // Row 65 (D72(e), D72(l); pair-58 A-11) owns this rule: `mac`, `onvif_uuid`,
+              // `profiles` and `last_seen_at` are NOT in the SET list. The engine state does not
+              // model them (`captureDevicesToRows` gives their empty forms), so naming them here
+              // blanked what discovery and adoption stored at the camera's first ingest-state
+              // change. They travel in the VALUES list only, until a writer that knows them exists.
             },
           });
       }
@@ -399,7 +403,7 @@ export async function applyChanges(executor: RowExecutor, changes: readonly RowC
 
 // ── Counts ─────────────────────────────────────────────────────────────────────────────────────
 
-/** The 40 tables of the typed schema (schema v2 + R-8): binding name and SQL name, sorted by SQL name. */
+/** The 42 tables of the typed schema (schema v5: v2 + R-8 + T-41 of dbc-4 + T-42 of PE-129b-01): binding name and SQL name, sorted by SQL name. */
 export const ALL_TABLES: ReadonlyArray<{ readonly sqlName: string; readonly table: PgTable }> = [
   ['roles', schema.roles],
   ['permissions', schema.permissions],
@@ -444,11 +448,16 @@ export const ALL_TABLES: ReadonlyArray<{ readonly sqlName: string; readonly tabl
   ['transcript_revisions', schema.transcriptRevisions],
   ['sealing_jobs', schema.sealingJobs],
   ['stt_config', schema.sttConfig],
+  // Schema v3 (dbc-4 §N.3; row 129): the session-start source record.
+  ['session_capture_sources', schema.sessionCaptureSources],
+  // Schema v5 (erratum PE-129b-01; row 129b): the per-session STT snapshot. Counted here only;
+  // the engine's write-through never names it.
+  ['session_stt_config', schema.sessionSttConfig],
 ]
   .map(([sqlName, table]) => ({ sqlName: sqlName as string, table: table as PgTable }))
   .sort((a, b) => (a.sqlName < b.sqlName ? -1 : 1));
 
-/** The row count of each of the 30 tables, by SQL name. */
+/** The row count of each of the 42 tables, by SQL name. */
 export async function countAllTables(executor: RowExecutor): Promise<Record<string, number>> {
   const counts: Record<string, number> = {};
   for (const { sqlName, table } of ALL_TABLES) {

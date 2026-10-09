@@ -1,0 +1,297 @@
+/**
+ * The capture fence (blueprint row 136, R-11; capture spec §A.1.1, §A.1.2, §A.6.4, §A.7.1; `dbc-4`
+ * §N.2, §N.3, §N.9; SEC35-40, SEC35-41, SEC35-43; decisions D74, D82(e), D83, D86 C-5, D91, D108).
+ *
+ * WHAT IT OWNS.
+ *   - `operation.ts`  THE one definition of the capture operation (`SIMULATED` | `REAL_PRODUCTION`
+ *                     | `REAL_DEVELOPMENT`) and the only reader of the development flag;
+ *   - `boot.ts`       the boot step `capture.fence`: the refusals of the allowed-combinations
+ *                     table, the helper-program rule, the boot audit row;
+ *   - `registration.ts`, `statements.ts`  this Mac's camera and microphone as NEW device rows of
+ *                     kind `LOCAL_DEVICE`, in `REAL_DEVELOPMENT` only;
+ *   - `generated-sources.ts`  the development test sources (kind `FAKE`) that feed the worker;
+ *   - `sources.ts`    the four `session_capture_sources` rows of a session, the re-read check, and
+ *                     what a client is told about a source (adapter, source class, label);
+ *   - this file       the device registry of the running operation, and the mount.
+ *
+ * WHAT IT DOES NOT DO. It opens no camera and no microphone (the device LIST is read; listing
+ * opens nothing and asks for no permission). It starts and stops no session and writes no
+ * `session_capture_sources` row (row 71). It draws nothing (rows 137 / 138).
+ *
+ * MOUNTED BY THE CAPTURE UNIT (`../index.ts`), which hands in the log sinks: the capture folder
+ * has one file that logs. `app.ts` is not touched (capture spec §I: the adapters are registered
+ * inside the existing `capture` unit).
+ */
+import type { FastifyInstance } from 'fastify';
+import type { CaptureTimers } from '../types';
+import { CaptureAdapterKind, CaptureOperation } from '../adapters/kinds';
+import { createFakePoeController } from '../adapters/fake';
+import { createCaptureDeviceRegistry } from '../adapters/registry';
+import type { CaptureAdapter, CaptureDeviceRegistry } from '../adapters/types';
+import {
+  LOCAL_CAMERA_DEVICE_NAME,
+  LOCAL_MIC_DEVICE_NAME,
+  MicGeneratedTone,
+  createCameraHelpers,
+  createLocalCameraAdapter,
+  createLocalMicAdapter,
+  createMicHelper,
+  inspectProgram,
+  leftoverHelperPids,
+  startHelperProcess,
+  type HelperDoor,
+  type LocalSourceError,
+  type ProgramInspector,
+} from '../adapters/local';
+import { CAPTURE_FENCE_BOOT_STEP, runCaptureFenceBoot, type CaptureFenceOutcome, type CaptureFenceSinks } from './boot';
+import { createGeneratedCameraAdapter, createGeneratedMicAdapter } from './generated-sources';
+import { captureOperationDecisionOf, type CaptureOperationDecision } from './operation';
+import type { LocalDeviceClass, StoredCaptureDevice } from './registration';
+
+export {
+  BOOT_AUDIT_OPERATIONS,
+  CAPTURE_FENCE_BOOT_STEP,
+  CaptureFenceError,
+  CaptureFenceRefusal,
+  DEVELOPMENT_FENCE_REFUSALS,
+  HelperProgramProblem,
+  captureFenceRefusalOf,
+  helperProgramProblemOf,
+  runCaptureFenceBoot,
+  type AssignedSource,
+  type CaptureFenceBootDeps,
+  type CaptureFenceOutcome,
+  type CaptureFenceSinks,
+  type CaptureFenceUnit,
+} from './boot';
+export { createGeneratedCameraAdapter, createGeneratedMicAdapter, type GeneratedCameraAdapter, type GeneratedCameraOptions, type GeneratedMicAdapter, type GeneratedMicOptions } from './generated-sources';
+export { CaptureFlagRefusal, captureOperationDecisionOf, captureOperationOf, type CaptureOperationDecision, type CaptureOperationInput } from './operation';
+export { LOCAL_DEVICE_ROWS, readStoredDevices, registerLocalDevices, type FenceExecutor, type LocalDeviceClass, type LocalDeviceRegistration, type StoredCaptureDevice } from './registration';
+export {
+  CAPTURE_SOURCE_SLOTS,
+  DevelopmentSourceLabel,
+  assertOperationRecordable,
+  assertSessionSourcesOfOperation,
+  buildSessionCaptureSources,
+  developmentSourceLabelOf,
+  deviceSourceFieldsOf,
+  type CaptureSourceSlot,
+  type DeviceSourceFields,
+  type RecordedSlot,
+  type SessionCaptureSource,
+  type SessionCaptureSourcesInput,
+} from './sources';
+export { CAPTURE_FENCE_WRITES, READ_ASSIGNED_SOURCES, READ_STORED_DEVICES, REGISTER_LOCAL_DEVICE } from './statements';
+
+/** `<dataDir>/run/capture`: where the pipes of the sessions live (spec §A.7.1 ML-2). */
+const RUN_SUBPATH = 'run/capture';
+
+export interface DevelopmentRegistryInput {
+  /** The registry as stored: every row of a development kind gets its adapter. */
+  readonly devices: readonly StoredCaptureDevice[];
+  readonly local: { readonly cameraId: string; readonly micId: string };
+  /** The helper program the boot fence vouched for. */
+  readonly program: string;
+  readonly runDir: string;
+  readonly now: () => number;
+  readonly timers: CaptureTimers;
+  readonly locked?: () => boolean;
+  readonly door?: HelperDoor;
+  readonly inspect?: ProgramInspector;
+  readonly onSourceLost?: (deviceId: string, error: LocalSourceError) => void;
+}
+
+export interface BuiltCaptureRegistry {
+  readonly registry: CaptureDeviceRegistry;
+  /** The local devices whose source is open now (`sourceOpen`, SEC35-44 (4)). */
+  openSources(): readonly string[];
+  /** Stops every helper and removes every pipe. */
+  closeAll(): Promise<void>;
+}
+
+/**
+ * The registry of `REAL_DEVELOPMENT` (rule RG-1; spec §A.1.1 "Development slots"): the local
+ * camera and the local microphone behind their own ids, and a generated test source behind every
+ * stored `FAKE` camera and microphone (slot 2 is `CAM-02` / `MIC-02`, D74(2)); the stored `FAKE`
+ * switch gets the in-memory controller. A stored PRODUCTION device gets no adapter here: it is not
+ * assignable in this operation (rule RG-3), and the search half of `ONVIF_RTSP` is the discovery
+ * rows' to register.
+ */
+export function buildDevelopmentRegistry(input: DevelopmentRegistryInput): BuiltCaptureRegistry {
+  const registry = createCaptureDeviceRegistry({ operation: CaptureOperation.REAL_DEVELOPMENT, ...(input.locked === undefined ? {} : { locked: input.locked }) });
+  const shared = {
+    program: input.program,
+    timers: input.timers,
+    ...(input.door === undefined ? {} : { door: input.door }),
+    ...(input.inspect === undefined ? {} : { inspect: input.inspect }),
+    ...(input.onSourceLost === undefined ? {} : { onSourceLost: input.onSourceLost }),
+  };
+  const labelOf = (id: string): string => input.devices.find((device) => device.id === id)?.model ?? id;
+  const camera = createLocalCameraAdapter({ ...shared, id: input.local.cameraId, label: labelOf(input.local.cameraId), now: input.now });
+  const mic = createLocalMicAdapter({ ...shared, id: input.local.micId, label: labelOf(input.local.micId), runDir: input.runDir });
+  const closers: Array<() => Promise<void>> = [() => camera.closeAll(), () => mic.closeAll()];
+  const adapters: CaptureAdapter[] = [camera, mic];
+  const fakes = input.devices.filter((device) => device.adapterKind === CaptureAdapterKind.FAKE);
+  for (const device of fakes) {
+    const label = device.model ?? device.id;
+    if (device.kind === 'CAMERA') {
+      const generated = createGeneratedCameraAdapter({ ...shared, id: device.id, label, now: input.now });
+      adapters.push(generated);
+      closers.push(() => generated.closeAll());
+    } else if (device.kind === 'MIC') {
+      // The first fake microphone sounds 440 Hz, every other one 880 Hz: two test tones a listener can tell apart.
+      const tone = device.id === fakes.find((other) => other.kind === 'MIC')?.id ? MicGeneratedTone.TONE_440 : MicGeneratedTone.TONE_880;
+      const generated = createGeneratedMicAdapter({ ...shared, id: device.id, label, runDir: input.runDir, tone });
+      adapters.push(generated);
+      closers.push(() => generated.closeAll());
+    } else {
+      adapters.push(createFakePoeController({ id: device.id, label, ports: [], capabilities: ['SNMP'] }));
+    }
+  }
+  for (const adapter of adapters) registry.register(adapter);
+  return {
+    registry,
+    openSources: () => Object.freeze([...camera.openSources(), ...mic.openSources()]),
+    closeAll: async () => {
+      await Promise.all(closers.map((close) => close()));
+    },
+  };
+}
+
+/**
+ * The registry of `REAL_PRODUCTION` in this phase: NO adapter. The production kinds are class C
+ * (no opener); their loader is not called here, so that nothing of class C is evaluated. Every
+ * assignment is refused by the registry (unknown to it), and every plan by the plan builder
+ * (`SOURCE_KIND_NOT_RECORDABLE`): search, test, adoption and assignment of a production camera are
+ * the discovery rows', which register that half when they land.
+ */
+export function buildProductionRegistry(locked?: () => boolean): BuiltCaptureRegistry {
+  const registry = createCaptureDeviceRegistry({ operation: CaptureOperation.REAL_PRODUCTION, ...(locked === undefined ? {} : { locked }) });
+  return { registry, openSources: () => Object.freeze([]), closeAll: async () => {} };
+}
+
+/** What the fence offers after the boot: for the session wiring (row 71), the boot checks (row 61), the selector and the clients' device shapes. */
+export interface CaptureFenceControl {
+  /** The decision of the one function for this app's configuration. Available at once. */
+  readonly decision: CaptureOperationDecision;
+  /** The capture operation of this app. Available at once; a refused configuration answers `SIMULATED`. */
+  readonly operation: CaptureOperation;
+  /** What the boot step decided; null until it passed. */
+  outcome(): CaptureFenceOutcome | null;
+  /** The device registry of the running operation; null in `SIMULATED` (no adapter is registered) and until the boot step passed. */
+  registry(): CaptureDeviceRegistry | null;
+  /** The local devices whose source is open now. */
+  openSources(): readonly string[];
+  /**
+   * SEC35-43 (d): the helper processes of an earlier run, by the exact program path. Capture must
+   * not start while the answer is not an empty list (null: the process table could not be read).
+   * Nothing is killed: the fence reports.
+   */
+  leftoverHelpers(): Promise<readonly number[] | null>;
+}
+
+const controls = new WeakMap<object, CaptureFenceControl>();
+
+/** The fence of an app. Available after the capture unit was registered. */
+export function captureFenceControl(app: { readonly stages: object }): CaptureFenceControl {
+  const control = controls.get(app.stages);
+  if (control === undefined) throw new Error('the capture fence is not mounted: the capture unit registers it');
+  return control;
+}
+
+export interface CaptureFenceMount {
+  readonly sinks: CaptureFenceSinks;
+  readonly timers: CaptureTimers;
+  /** Called after the boot inserted a device row: the engine reads the registry again, so that the first development boot lists it. */
+  reloadState(): Promise<void>;
+  /** True while a session is open (OD-10). */
+  readonly locked?: () => boolean;
+  /** Test seams. Defaults: the real file-system inspector and the real process door. */
+  readonly inspect?: ProgramInspector;
+  readonly door?: HelperDoor;
+}
+
+/** Mounts the fence on the app: the control, the boot step, the shutdown hook. Called once, by the capture unit. */
+export function mountCaptureFence(app: FastifyInstance, mount: CaptureFenceMount): CaptureFenceControl {
+  const decision = captureOperationDecisionOf(app.config);
+  const inspect = mount.inspect ?? inspectProgram;
+  const door = mount.door ?? startHelperProcess;
+  const now = (): number => app.clock.now();
+  let outcome: CaptureFenceOutcome | null = null;
+  let built: BuiltCaptureRegistry | null = null;
+
+  const control: CaptureFenceControl = {
+    decision,
+    operation: decision.operation,
+    outcome: () => outcome,
+    registry: () => built?.registry ?? null,
+    openSources: () => built?.openSources() ?? Object.freeze([]),
+    async leftoverHelpers() {
+      const program = outcome?.helperProgram ?? null;
+      return program === null ? Object.freeze([]) : leftoverHelperPids(door, mount.timers, program);
+    },
+  };
+  controls.set(app.stages, control);
+
+  /** The device list of this host says whether a local device is there. It opens nothing. */
+  const listed = async (deviceClass: LocalDeviceClass, program: string): Promise<boolean> => {
+    const error =
+      deviceClass === 'CAMERA'
+        ? await createCameraHelpers({ program, now, timers: mount.timers, door, inspect }).presence('LOCAL')
+        : await createMicHelper({ program, runDir: `${app.config.dataDir}/${RUN_SUBPATH}`, timers: mount.timers, door, inspect }).presence('LOCAL', LOCAL_MIC_DEVICE_NAME);
+    return error === null;
+  };
+
+  app.readiness.addBootStep({
+    id: CAPTURE_FENCE_BOOT_STEP,
+    async run() {
+      const passed = await runCaptureFenceBoot({
+        config: app.config,
+        inUnit: (work) =>
+          app.pipeline.run('capture.fence.boot', (unit) =>
+            work({
+              query: (text, values) => unit.query(text, values),
+              async appendBootAudit(operation) {
+                // SEC35-41 (b), C3 §5.2: one row per boot of a real operation, naming it (`BOOT_AUDIT_OPERATIONS`).
+                await unit.audit.append({ type: 'SYSTEM_BOOT', message: 'Core started', actorId: null, deviceId: null, details: { captureOperation: operation } });
+              },
+            }),
+          ),
+        inspect,
+        labels: { CAMERA: LOCAL_CAMERA_DEVICE_NAME, MIC: LOCAL_MIC_DEVICE_NAME },
+        listed,
+        sinks: mount.sinks,
+      });
+      if (passed.operation === CaptureOperation.REAL_DEVELOPMENT && passed.local !== null && passed.helperProgram !== null) {
+        built = buildDevelopmentRegistry({
+          devices: passed.devices,
+          local: passed.local,
+          program: passed.helperProgram,
+          runDir: `${app.config.dataDir}/${RUN_SUBPATH}`,
+          now,
+          timers: mount.timers,
+          door,
+          inspect,
+          ...(mount.locked === undefined ? {} : { locked: mount.locked }),
+        });
+      } else if (passed.operation === CaptureOperation.REAL_PRODUCTION) {
+        built = buildProductionRegistry(mount.locked);
+      }
+      outcome = passed;
+      if (passed.inserted.length > 0) await mount.reloadState();
+      if (passed.helperProgram !== null) {
+        const leftover = await leftoverHelperPids(door, mount.timers, passed.helperProgram);
+        if (leftover === null || leftover.length > 0) {
+          const context = { code: 'DEV_HELPER_LEFTOVER', count: leftover === null ? -1 : leftover.length };
+          mount.sinks.warn(context, 'helper processes of an earlier run are left: capture must not start until none is');
+          mount.sinks.persist({ level: 'warn', source: 'capture.fence', message: 'helper processes of an earlier run are left', code: context.code, context });
+        }
+      }
+    },
+  });
+
+  app.addHook('onClose', async () => {
+    await built?.closeAll();
+  });
+  return control;
+}

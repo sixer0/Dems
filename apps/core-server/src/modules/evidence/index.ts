@@ -32,6 +32,12 @@
  *   - A refusal the simulator reports IN ITS RESULT (the export's) is taken out of the unit as
  *     a value and answered AFTER the unit has ended: such a result may have written a row.
  *
+ * OPERATION 41 AND A REAL PACKAGE (task 3 row 85). An item whose package is a real sealed
+ * `dems.evidence-manifest/2` folder is not verified by the simulator: the route hands it to the
+ * verification another unit provides (`real-verification.ts`), which reads the files, forms the
+ * verdict of the 14 checks of the evidence package spec §D and records it. Every other item -
+ * every item of today - takes the hosted `verify` unchanged.
+ *
  * WHAT NO OPERATION DOES (I11, AC-B-69): none changes a track, a track hash, the manifest hash
  * or the signature of an item. A verification, an export and an archive add a custody entry and
  * an audit row and change the status or the verification state; the sealed columns cannot be
@@ -72,10 +78,12 @@ import { decodeEvidenceCursor, encodeEvidenceCursor, type EvidenceCursor } from 
 import { NO_REASON, readExportBody } from './export-request';
 import { mediaRefOf } from './media';
 import { readEvidenceItem, readEvidencePage } from './reads';
+import { evidenceVerification } from './real-verification';
 
 /** The operations this module answers, in registry order of their numbers (39 to 43). */
 export const EVIDENCE_MODULE_OPERATIONS = ['listEvidence', 'getEvidence', 'verifyEvidence', 'exportEvidence', 'archiveEvidence'] as const;
 export type EvidenceModuleOperation = (typeof EVIDENCE_MODULE_OPERATIONS)[number];
+export { evidenceVerification, type EvidenceVerificationControl, type RealEvidenceVerification } from './real-verification';
 
 /** The one text of every "no such item" answer of the area: the contract's example text. */
 const NOT_FOUND_TEXT = 'Evidence not found.';
@@ -152,6 +160,7 @@ export const evidenceModule: FastifyPluginAsync = async (app) => {
     archiveEvidence: operationOf('archiveEvidence'),
   } as const satisfies Record<EvidenceModuleOperation, CoreApiRegistryOperation>;
   const exportIdPattern = idPatternOf(operations.exportEvidence);
+  const realVerification = evidenceVerification(app);
 
   /**
    * One read on the pool of the runtime role, through the pool plugin's helper (`app.db.read`;
@@ -211,11 +220,18 @@ export const evidenceModule: FastifyPluginAsync = async (app) => {
     },
   });
 
-  // 41 verifyEvidence: hosted `verify`. A failed verification is an answer (200, `ok: false`), not an error.
+  // 41 verifyEvidence. A failed verification is an answer (200, `ok: false`), not an error.
+  // An item with a real sealed v2 package is verified by the provided verification
+  // (`real-verification.ts`); it answers null for every other item, and that item is verified by
+  // the hosted `verify` exactly as before (the dataset items, the v1 demo packages).
   routes.route({
     ...routeOfOperation(operations.verifyEvidence),
     schema: { params: idParams(operations.verifyEvidence), response: { 200: EvidenceVerifyResultSchema } },
-    handler: async (request): Promise<EvidenceVerifyResultBody> => (await hosted(() => app.engine.command(request.principal, 'verify', request.params.id))).value,
+    handler: async (request): Promise<EvidenceVerifyResultBody> => {
+      const real = await (realVerification.current()?.verify(request.principal, request.params.id) ?? null);
+      if (real !== null) return real;
+      return (await hosted(() => app.engine.command(request.principal, 'verify', request.params.id))).value;
+    },
   });
 
   // 42 exportEvidence: hosted `exportEvidence`. The design-book operation: its `{id}` has no

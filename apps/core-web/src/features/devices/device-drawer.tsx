@@ -49,6 +49,7 @@ import {
   POE_PORT_BUDGET_W,
   type DeviceId,
 } from './sim-adapter'
+import { DeviceSourceMarks } from './source-badge'
 import { StatusChip, StatusDot } from './status-chip'
 
 type DrawerTab = 'overview' | 'health' | 'log'
@@ -123,6 +124,8 @@ function DrawerContent({ deviceId }: { deviceId: DeviceId }) {
           <p className="dev-drawer-sub">
             {labels.kind(deviceId)} · {deviceId === 'FRONT-PANEL' ? DEVICE_IDENTITY.serialNumber : deviceId}
           </p>
+          {/* Task 3 R-11 (blueprint row 137; ux §8f.2 "the device drawer header"): the one badge, from the Core's `sourceClass`. */}
+          <DeviceSourceMarks deviceId={deviceId} place="drawer" />
         </div>
         {counted ? (
           <StatusChip tone={STATUS_TONE[status]} label={t(`devices.status.${status}`)} severity={STATUS_SEVERITY[status]} testId="drawer-status" />

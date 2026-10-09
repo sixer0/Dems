@@ -4,12 +4,16 @@
 // supervisor from one of its own events), N-2 (events of a session that is over), N-3 (warning
 // subjects).
 //
+// Blueprint row 59 (M3-W3) adds, at the end of this file: the version gate of protocol 3 (decision
+// D84 R-7), the once-per-camera rule of the KEYFRAME_INTERVAL record, and the two guards of the
+// late-record path that no test pinned (pair-58 re-check R-5: navigator mutations NB and NC).
+//
 // On a FakeWorkerProcess with manual timers: nothing here starts a process or waits in real time.
 // EVERY RULE HAS ITS CONTROL: the case in which the same measurement must read the opposite.
-import { CAPTURE_IPC_DEFAULTS, CaptureWarningCode, type CaptureIpcLimits, type CaptureRecord } from '@dems/capture-protocol';
+import { CAPTURE_IPC_DEFAULTS, CAPTURE_PROTOCOL_VERSION, CaptureWarningCode, WorkerMessageType, type CaptureIpcLimits, type CaptureRecord } from '@dems/capture-protocol';
 import { describe, expect, it } from 'vitest';
 import { capturePlan, fakeLauncher, flush, manualCaptureTimers } from '../../../test/support/capture';
-import { CapturePhase, WorkerDownCode, createCaptureSupervisor, type CaptureEvent, type CaptureReport } from '../index';
+import { CapturePhase, WorkerDownCode, createCaptureSupervisor, type CaptureEvent, type CaptureReport, type WorkerChannelHandlers, type WorkerLauncher } from '../index';
 
 const SESSION = 'S-TEST-0001';
 const LIMITS = CAPTURE_IPC_DEFAULTS;
@@ -24,7 +28,12 @@ const checkpoint = (index: number, deviceId = 'CAM-01'): CaptureRecord => ({
   fragSha256: sha('a'),
   chainSha256: sha('b'),
   prefixSha256: sha('c'),
-  plaintextSha256: null,
+  plaintextSha256: sha('a'),
+  plaintextChainSha256: sha('b'),
+  mediaStartMs: (index - 1) * 2_000,
+  mediaDurationMs: 2_000,
+  keyframe: true,
+  durableAt: 1_791_529_000_000 + index,
   gcmIv: null,
   gcmTag: null,
   keyId: null,
@@ -542,5 +551,155 @@ describe('D72 (A-2): the supervisor\'s own CAPTURE_FAULT ends when a later sessi
     expect(said).toHaveLength(2);
     fake.last().exit(1);
     expect(said.at(-1)).toBe('S-TEST-0003 CAPTURE_FAULT ACTIVE supervisor');
+  });
+});
+
+// ── Blueprint row 59 ───────────────────────────────────────────────────────────────────────────
+
+describe('row 59: protocol version 3 is a gate at HELLO (decision D84 R-7)', () => {
+  it('the supervisor speaks version 3, and a worker that says 2 (the worker before the checkpoint content) is refused at HELLO and not started again', async () => {
+    expect(CAPTURE_PROTOCOL_VERSION).toBe(3);
+    const clock = manualCaptureTimers();
+    const fake = fakeLauncher({ protocolVersion: 2 });
+    const supervisor = createCaptureSupervisor({ now: clock.now, timers: clock.timers, launcher: fake.launcher });
+    await supervisor.boot();
+    await expect(supervisor.start(SESSION, capturePlan(SESSION))).rejects.toMatchObject({ code: 'CAPTURE_FAULT', detail: WorkerDownCode.PROTOCOL_MISMATCH });
+    // Not one command was written to it (no plan reaches a worker of another version), and no second worker follows.
+    expect(fake.last().received).toEqual([]);
+    clock.advance(LIMITS.backoffMaxMs * 10);
+    await flush();
+    expect(fake.calls()).toBe(1);
+    expect(supervisor.status()).toMatchObject({ phase: CapturePhase.IDLE, lastCrash: { code: WorkerDownCode.PROTOCOL_MISMATCH, detail: 'V2' } });
+  });
+
+  it('CONTROL: the same start with a worker that says 3 records, and its START carries version 3', async () => {
+    const { supervisor, fake } = await recording();
+    expect(supervisor.status()).toMatchObject({ phase: CapturePhase.RECORDING, lastCrash: null });
+    expect(fake.last().commands('START')[0]).toMatchObject({ v: 3, attempt: 1 });
+  });
+});
+
+describe('row 59: the observed keyframe interval is a record of its own, once per camera', () => {
+  const interval = (deviceId: string, observedMs: number): CaptureRecord => ({ kind: 'KEYFRAME_INTERVAL', deviceId, observedMs, boundMs: 2_000, intervals: 1, complete: true, aboveBound: observedMs > 2_100 });
+
+  it('it is handed on at once with its number, and it is no sign of durability: a crash after it is still restarted', async () => {
+    const { supervisor, fake, clock } = await recording();
+    const seen: CaptureRecord[] = [];
+    supervisor.on('record', (event) => void seen.push(event.record));
+    fake.last().record(interval('CAM-01', 5_000));
+    fake.last().record(interval('CAM-02', 1_000));
+    expect(seen).toEqual([interval('CAM-01', 5_000), interval('CAM-02', 1_000)]);
+    expect(supervisor.status()).toMatchObject({ durable: false, lastRecordSeq: 2, lastCrash: null });
+    fake.last().exit(1);
+    clock.advance(LIMITS.backoffBaseMs);
+    await flush();
+    expect(fake.calls()).toBe(2);
+  });
+
+  it('a second one of the same camera is a PROTOCOL_VIOLATION (RECORD_REPEATED); CONTROL: one for the other camera is not', async () => {
+    const { supervisor, fake } = await recording();
+    fake.last().record(interval('CAM-01', 5_000));
+    fake.last().record(interval('CAM-02', 5_000));
+    expect(supervisor.status().lastCrash).toBeNull();
+    fake.last().record(interval('CAM-01', 5_100));
+    expect(supervisor.status().lastCrash).toMatchObject({ code: WorkerDownCode.PROTOCOL_VIOLATION, detail: 'RECORD_REPEATED' });
+  });
+
+  it('a checkpoint is NOT once-only: fragment after fragment of one camera is taken', async () => {
+    const { supervisor, fake } = await recording();
+    for (let index = 1; index <= 5; index += 1) fake.last().record(checkpoint(index));
+    expect(supervisor.status()).toMatchObject({ lastCrash: null, lastRecordSeq: 5, durable: true });
+  });
+});
+
+describe('row 59 (pair-58 re-check R-5): the two guards of the late-record path', () => {
+  /** A launcher that also keeps what each worker reports through, so that a line can arrive after the fake's own exit. */
+  function tapped() {
+    const clock = manualCaptureTimers();
+    const fake = fakeLauncher();
+    const lines: WorkerChannelHandlers[] = [];
+    const launcher: WorkerLauncher = (launch, handlers) => {
+      lines.push(handlers);
+      return fake.launcher(launch, handlers);
+    };
+    const supervisor = createCaptureSupervisor({ now: clock.now, timers: clock.timers, launcher });
+    return { clock, fake, lines, supervisor };
+  }
+  const durableLine = (sessionId: string) => ({ v: CAPTURE_PROTOCOL_VERSION, type: WorkerMessageType.RECORD, sessionId, seq: 1, record: { kind: 'FIRST_DURABLE_FRAGMENT', deviceId: 'CAM-01', bytes: 5_131 } }) as const;
+
+  it('guard 1 (NB): a durable record from the dying worker of ANOTHER session does not mark this session durable and does not call its restart off', async () => {
+    const { clock, fake, lines, supervisor } = tapped();
+    await supervisor.boot();
+    await supervisor.start(SESSION, capturePlan(SESSION));
+    await supervisor.stop(SESSION, 'STOPPED');
+    await supervisor.start('S-TEST-0002', capturePlan('S-TEST-0002'));
+    // The second session's worker goes down before any fragment: a restart is waiting.
+    fake.last().exit(1);
+    expect(supervisor.status()).toMatchObject({ sessionId: 'S-TEST-0002', phase: CapturePhase.RESTARTING, durable: false });
+    // A last line of the FIRST session's worker arrives now (it was started and acknowledged, in its own session).
+    lines[0]?.message(durableLine(SESSION));
+    expect(supervisor.status()).toMatchObject({ sessionId: 'S-TEST-0002', phase: CapturePhase.RESTARTING, durable: false });
+    clock.advance(LIMITS.backoffBaseMs);
+    await flush();
+    expect(fake.calls()).toBe(3);
+    expect(supervisor.status()).toMatchObject({ phase: CapturePhase.RECORDING, attempt: 2, durable: false });
+  });
+
+  it('CONTROL for guard 1: the same line from the session\'s OWN ended worker does call the restart off (FAULTED, durable)', async () => {
+    const { clock, fake, lines, supervisor } = tapped();
+    await supervisor.boot();
+    await supervisor.start(SESSION, capturePlan(SESSION));
+    await supervisor.stop(SESSION, 'STOPPED');
+    await supervisor.start('S-TEST-0002', capturePlan('S-TEST-0002'));
+    fake.last().exit(1);
+    lines[1]?.message(durableLine('S-TEST-0002'));
+    expect(supervisor.status()).toMatchObject({ sessionId: 'S-TEST-0002', phase: CapturePhase.FAULTED, durable: true });
+    clock.advance(LIMITS.backoffMaxMs * 10);
+    await flush();
+    expect(fake.calls()).toBe(2);
+  });
+
+  it('guard 2 (NC): a durable record from a worker whose START was never acknowledged marks nothing durable; the session is still restarted after a later crash', async () => {
+    const clock = manualCaptureTimers();
+    const fake = fakeLauncher({ ackStart: false, exitOnKill: false });
+    const supervisor = createCaptureSupervisor({ now: clock.now, timers: clock.timers, launcher: fake.launcher });
+    await supervisor.boot();
+    const starting = supervisor.start(SESSION, capturePlan(SESSION));
+    await flush();
+    // START is never answered (and no heartbeat follows): the worker is ended before it ever started
+    // (its process has not exited yet) and a restart waits.
+    clock.advance(LIMITS.heartbeatTimeoutMs);
+    expect(fake.last().kills).toEqual(['SIGKILL']);
+    expect(fake.last().commands('START')).toHaveLength(1);
+    expect(supervisor.status()).toMatchObject({ phase: CapturePhase.STARTING, durable: false, lastCrash: { code: WorkerDownCode.HEARTBEAT_TIMEOUT, attempt: 1 } });
+    // Its last line claims a fragment. It never started: it wrote nothing.
+    fake.last().firstDurableFragment('CAM-01');
+    expect(supervisor.status()).toMatchObject({ phase: CapturePhase.STARTING, durable: false });
+    // The next worker starts and records; when IT goes down before a fragment, the session is restarted again
+    // (a session marked durable by the line above would go to FAULTED here).
+    fake.behaviour.ackStart = true;
+    fake.behaviour.exitOnKill = true;
+    fake.last().exit(null, 'SIGKILL');
+    clock.advance(LIMITS.backoffBaseMs);
+    await flush();
+    await starting;
+    expect(supervisor.status()).toMatchObject({ phase: CapturePhase.RECORDING, attempt: 2, durable: false });
+    fake.last().exit(1);
+    expect(supervisor.status()).toMatchObject({ phase: CapturePhase.RESTARTING, durable: false });
+    clock.advance(LIMITS.backoffBaseMs * LIMITS.backoffFactor);       // the second restart of the row
+    await flush();
+    expect(fake.calls()).toBe(3);
+    expect(supervisor.status()).toMatchObject({ phase: CapturePhase.RECORDING, attempt: 3, durable: false });
+  });
+
+  it('CONTROL for guard 2: the same line from a worker that WAS started and then ended is taken (A-8)', async () => {
+    const clock = manualCaptureTimers();
+    const fake = fakeLauncher({ exitOnKill: false });
+    const supervisor = createCaptureSupervisor({ now: clock.now, timers: clock.timers, launcher: fake.launcher });
+    await supervisor.boot();
+    await supervisor.start(SESSION, capturePlan(SESSION));
+    clock.advance(LIMITS.heartbeatTimeoutMs);
+    fake.last().firstDurableFragment('CAM-01');
+    expect(supervisor.status()).toMatchObject({ phase: CapturePhase.FAULTED, durable: true });
   });
 });

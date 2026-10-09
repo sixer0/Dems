@@ -1,0 +1,170 @@
+capture e2e series row60   ports [8559, 8561]   libav 63.1.102 63.1.102 12.1.102 7.1.102 61.1.102   heavy-host lock held (.locks/heavy-host.lock)
+
+static_rules                             expect PASS got PASS      rc 0       ok         load  5.48    2.9 s
+      check.sh: src: static rules OK (AU2-07, N-10, C.4 forbidden options, W1-C1, H-4 one encoder, W-1, W-4, B.2, D58-1/2 exclusive create, F-2; fixtures: SEC35-23) | check.sh selftest: refused as required (AU2-07): AU2-07: expected exactly 1 call site of the graph command, found 2 | check.sh selftest: refused as required (N-10): N-10: libavfilter is named outside audio.c: audio.c capture_worker.c | check.sh selftest: refused as required (N-10): N-10: av_opt_set is not used by the worker (a second way to command the graph) | check.sh selftest: refused as required (C.4): C.4: forbidden mux option use
+unit_r1                                  expect PASS got PASS      rc 0       ok         load  5.28    1.7 s
+      anchor_test: all checks hold | anchor_test: the old slew rule fails it, as required (negative control) | anchor_test: without the tick on report-less packets it fails, as required (negative control, R-1) | sink_kill_test: 200 kills in 0.9 s: final name absent 19, present with init + whole first fragment 181 (of those refused untouched by the next worker 181), children that finished before the kill 161, .part files left 13, violations 0
+harness_leftover_scope_r1                expect PASS got PASS      rc 0       ok         load  5.28    1.4 s
+proto_r1                                 expect PASS got PASS      rc 0       ok         load  5.28    4.2 s
+av1_zero_switch_tap_r1                   expect PASS got PASS      rc 0       ok         load  5.26   20.9 s
+      cam1 mean +0.0278 ms, max err 0.0278 ms (bound 2: PASS; product 40: PASS); cam2 mean +0.0241 ms, max err 0.0278 ms (bound 2: PASS; product 40: PASS); T0 error 14 us; listeners before the sources ['127.0.0.1:8559', '127.0.0.1:8561']; mid-session 4 sockets of 4 own processes, off loopback 0, UDP 0, foreign ports 0; camera GOP 50: keyframe intervals {'VIDEO-01.mp4': [50], 'VIDEO-02.mp4': [50]}, longest fragment 2.0 s, worker reports the interval: False
+av1_av2a_pm80_r1                         expect PASS got PASS      rc 0       ok         load  4.41   20.8 s
+      cam1 mean +80.0375 ms, max err 0.0375 ms (bound 2: PASS; product 40: PASS); cam2 mean -79.9625 ms, max err 0.0375 ms (bound 2: PASS; product 40: PASS); T0 error 16 us; listeners before the sources ['127.0.0.1:8559', '127.0.0.1:8561']; mid-session 4 sockets of 4 own processes, off loopback 0, UDP 0, foreign ports 0; camera GOP 50: keyframe intervals {'VIDEO-01.mp4': [50], 'VIDEO-02.mp4': [50]}, longest fragment 2.0 s, worker reports the interval: False
+av2b_drift_200ppm_r1                     expect PASS got PASS      rc 0       ok         load  6.78   41.3 s
+      cam1 mean +3.2240 ms, max err 0.0333 ms (bound 2: PASS; product 40: PASS), slope +200.02 ppm of +200; cam2 mean -3.5755 ms, max err 0.0333 ms (bound 2: PASS; product 40: PASS), slope -200.09 ppm of -200; T0 error 13 us; listeners before the sources ['127.0.0.1:8559', '127.0.0.1:8561']; mid-session 4 sockets of 4 own processes, off loopback 0, UDP 0, foreign ports 0; camera GOP 50: keyframe intervals {'VIDEO-01.mp4': [50], 'VIDEO-02.mp4': [50]}, longest fragment 2.0 s, worker reports the interval: False
+continuity_r1                            expect PASS got PASS      rc 0       ok         load  7.81    0.5 s
+      VIDEO-01.mp4: decoded-input 2016, spacing err [0, 0, 0, 0, 0], position err [0.0, 0.0, 0.0, 0.0, 0.0, 0.0], tone {'tone_windows': 38, 'first_sample': 357600, 'last_sample': 380400, 'seconds': 0.475, 'max_phase_deviation_rad': 0.0033, 'mean_amplitude': 0.0999}; VIDEO-02.mp4: decoded-input 2016, spacing err [0, 0, 0, 0, 0], position err [0.0, 0.0, 0.0, 0.0, 0.0, 0.0], tone {'tone_windows': 38, 'first_sample': 357600, 'last_sample': 380400, 'seconds': 0.475, 'max_phase_deviation_rad': 0.0033, 'mean_amplitude': 0.0999}
+wi1_camstop_r1                           expect PASS got PASS      rc 0       ok         load  7.81   20.1 s
+      listeners before the sources ['127.0.0.1:8559', '127.0.0.1:8561']; mid-session 4 sockets of 4 own processes, off loopback 0, UDP 0, foreign ports 0
+wi1_fatal_rmdir_r1                       expect PASS got PASS      rc 0       ok         load  6.80    9.4 s
+      listeners before the sources ['127.0.0.1:8559', '127.0.0.1:8561']; mid-session 4 sockets of 4 own processes, off loopback 0, UDP 0, foreign ports 0
+optc_planted_r1                          expect PASS got PASS      rc 0       ok         load  6.06    9.4 s
+      listeners before the sources ['127.0.0.1:8559', '127.0.0.1:8561']; mid-session 4 sockets of 4 own processes, off loopback 0, UDP 0, foreign ports 0
+optc_exists_r1                           expect PASS got PASS      rc 0       ok         load  5.43    0.5 s
+fatal_clean_control_r1                   expect PASS got PASS      rc 0       ok         load  5.43   13.4 s
+      listeners before the sources ['127.0.0.1:8559', '127.0.0.1:8561']; mid-session 4 sockets of 4 own processes, off loopback 0, UDP 0, foreign ports 0
+bind_udp_r1                              expect PASS got PASS      rc 0       ok         load  5.39    7.9 s
+      41 snapshots, UDP [], off loopback 0, seen ['127.0.0.1:8559 (LISTEN)', '127.0.0.1:8561 (LISTEN)', '127.0.0.1:8561->127.0.0.1:62672 (ESTABLISHED)']
+sup_av2_pm80_r1                          expect PASS got PASS      rc 0       ok         load  4.88   21.2 s
+      cam1 mean +80.0278 ms, max err 0.0278 ms (bound 2: PASS; product 40: PASS); cam2 mean -79.9722 ms, max err 0.0278 ms (bound 2: PASS; product 40: PASS)
+kc1_r1                                   expect PASS got PASS      rc 0       ok         load  4.85   33.9 s
+      cam1 mean +0.0278 ms, max err 0.0278 ms (bound 2: PASS; product 40: PASS); cam2 mean +0.0278 ms, max err 0.0278 ms (bound 2: PASS; product 40: PASS)
+kc3_r1                                   expect PASS got PASS      rc 0       ok         load  5.70   25.4 s
+      cam1 mean +0.0181 ms, max err 0.0181 ms (bound 2: PASS; product 40: PASS); cam2 mean +0.0181 ms, max err 0.0181 ms (bound 2: PASS; product 40: PASS)
+mic_2000ppm_slow_r1                      expect PASS got PASS      rc 0       ok         load  7.87   40.9 s
+      cam1 mean -0.9840 ms, max err 1.8069 ms (bound 5: PASS; product 40: PASS); cam2 mean -0.8747 ms, max err 1.8486 ms (bound 5: PASS; product 40: PASS); listeners before the sources ['127.0.0.1:8559', '127.0.0.1:8561']; mid-session 4 sockets of 4 own processes, off loopback 0, UDP 0, foreign ports 0; mic [(1, 2036.1, 0), (2, 2037.2, 0)]; silent seconds []; null-level frames 0
+mic_100ppm_fast_r1                       expect PASS got PASS      rc 0       ok         load  7.29   41.1 s
+      cam1 mean -0.2889 ms, max err 0.6431 ms (bound 2: PASS; product 40: PASS); cam2 mean -0.3384 ms, max err 0.6847 ms (bound 2: PASS; product 40: PASS); listeners before the sources ['127.0.0.1:8559', '127.0.0.1:8561']; mid-session 4 sockets of 4 own processes, off loopback 0, UDP 0, foreign ports 0; mic [(1, -131.6, 0), (2, -131.5, 0)]; silent seconds []; null-level frames 0
+mic_100ppm_slow_r1                       expect PASS got PASS      rc 0       ok         load  7.36   40.8 s
+      cam1 mean -1.0087 ms, max err 1.1806 ms (bound 2: PASS; product 40: PASS); cam2 mean -1.0425 ms, max err 1.2014 ms (bound 2: PASS; product 40: PASS); listeners before the sources ['127.0.0.1:8559', '127.0.0.1:8561']; mid-session 4 sockets of 4 own processes, off loopback 0, UDP 0, foreign ports 0; mic [(1, 101.4, 0), (2, 103.9, 0)]; silent seconds []; null-level frames 0
+mic_stop_and_return_r1                   expect PASS got PASS      rc 0       ok         load  7.06   41.0 s
+      cam1 mean +0.4437 ms, max err 1.7681 ms (bound 15: PASS; product 40: PASS); cam2 mean +0.3202 ms, max err 1.2056 ms (bound 15: PASS; product 40: PASS); listeners before the sources ['127.0.0.1:8559', '127.0.0.1:8561']; mid-session 4 sockets of 4 own processes, off loopback 0, UDP 0, foreign ports 0; mic [(1, 1067.1, 1), (2, -23.6, 1)]; silent seconds None; null-level frames 100
+longgop_250_r1                           expect PASS got PASS      rc 0       ok         load  5.20   41.1 s
+      cam1 mean +0.0222 ms, max err 0.0222 ms (bound 2: PASS; product 40: PASS); cam2 mean +0.0222 ms, max err 0.0222 ms (bound 2: PASS; product 40: PASS); T0 error 10 us; listeners before the sources ['127.0.0.1:8559', '127.0.0.1:8561']; mid-session 4 sockets of 4 own processes, off loopback 0, UDP 0, foreign ports 0; camera GOP 250: keyframe intervals {'VIDEO-01.mp4': [250], 'VIDEO-02.mp4': [250]}, longest fragment 5.0 s, worker reports the interval: False
+nocam_none_r1                            expect PASS got PASS      rc 0       ok         load  3.70    4.7 s
+nocam_one_r1                             expect PASS got PASS      rc 0       ok         load  3.65   12.6 s
+sup_nocam_r1                             expect PASS got PASS      rc 0       ok         load  3.51    8.1 s
+f2_norefusal_r1                          expect PASS got PASS      rc 0       ok         load  3.87   15.8 s
+      41 snapshots, UDP [], off loopback 0, seen ['127.0.0.1:8559 (LISTEN)', '127.0.0.1:8559->127.0.0.1:63103 (ESTABLISHED)', '127.0.0.1:8561 (LISTEN)', '127.0.0.1:8561->127.0.0.1:63104 (CLOSED)', '127.0.0.1:8561->127.0.0.1:63104 (ESTABLISHED)']
+neg_h4_reencoded_r1                      expect FAIL got FAIL      rc 0       ok         load  3.84    0.3 s
+      control: failed as required
+neg_av_forbidden_mux_option_r1           expect FAIL got FAIL      rc 0       ok         load  3.84   20.9 s
+      control: failed as required, on av_product_40ms, av_regression_2ms
+      cam1 mean +5558.4375 ms, max err 5478.4375 ms (bound 2: FAIL; product 40: FAIL); cam2 mean +5558.4375 ms, max err 5638.4375 ms (bound 2: FAIL; product 40: FAIL); T0 error 12 us; listeners before the sources ['127.0.0.1:8559', '127.0.0.1:8561']; mid-session 4 sockets of 4 own processes, off loopback 0, UDP 0, foreign ports 0; camera GOP 50: keyframe intervals {'VIDEO-01.mp4': [50], 'VIDEO-02.mp4': [50]}, longest fragment 2.0 s, worker reports the interval: False; failed on: av_product_40ms, av_regression_2ms
+neg_av_mic_latency_5ms_r1                expect FAIL got FAIL      rc 0       ok         load  4.42   21.0 s
+      control: failed as required, on av_regression_2ms
+      cam1 mean +5.0292 ms, max err 5.0292 ms (bound 2: FAIL; product 40: PASS); cam2 mean +5.0292 ms, max err 5.0292 ms (bound 2: FAIL; product 40: PASS); T0 error 5011 us; listeners before the sources ['127.0.0.1:8559', '127.0.0.1:8561']; mid-session 4 sockets of 4 own processes, off loopback 0, UDP 0, foreign ports 0; camera GOP 50: keyframe intervals {'VIDEO-01.mp4': [50], 'VIDEO-02.mp4': [50]}, longest fragment 2.0 s, worker reports the interval: False; failed on: av_regression_2ms
+neg_av2b_drift_judged_as_none_r1         expect FAIL got FAIL      rc 0       ok         load  5.15    0.8 s
+      control: failed as required, on av_regression_2ms
+      cam1 mean +3.2240 ms, max err 6.0208 ms (bound 2: FAIL; product 40: PASS), slope +200.02 ppm of +200; cam2 mean -3.5755 ms, max err 6.3750 ms (bound 2: FAIL; product 40: PASS), slope -200.09 ppm of -200; failed on: av_regression_2ms
+neg_bind_skeleton_r1                     expect FAIL got FAIL      rc 0       ok         load  5.15    9.9 s
+      control: failed as required, on every_socket_on_loopback, no_udp_socket
+      41 snapshots, UDP ['UDP *:5000', 'UDP *:5001'], off loopback 2, seen ['127.0.0.1:8559 (LISTEN)', '127.0.0.1:8559->127.0.0.1:63179 (ESTABLISHED)', '127.0.0.1:8561 (LISTEN)', '127.0.0.1:8561->127.0.0.1:63180 (ESTABLISHED)', 'UDP *:5000', 'UDP *:5001']; failed on: every_socket_on_loopback, no_udp_socket
+neg_sup_forbidden_mux_option_r1          expect FAIL got FAIL      rc 0       ok         load  4.91   21.3 s
+      control: failed as required, on av_product_40ms, av_regression_2ms
+      cam1 mean +5947.7292 ms, max err 5867.7292 ms (bound 2: FAIL; product 40: FAIL); cam2 mean +5947.7255 ms, max err 6027.7292 ms (bound 2: FAIL; product 40: FAIL); failed on: av_product_40ms, av_regression_2ms
+neg_mic_no_compensation_r1               expect FAIL got FAIL      rc 0       ok         load  4.85   41.1 s
+      control: failed as required, on av_within_mic_bound_5ms
+      cam1 mean -21.9496 ms, max err 30.6111 ms (bound 5: FAIL; product 40: PASS); cam2 mean -24.6554 ms, max err 34.6111 ms (bound 5: FAIL; product 40: PASS); listeners before the sources ['127.0.0.1:8559', '127.0.0.1:8561']; mid-session 4 sockets of 4 own processes, off loopback 0, UDP 0, foreign ports 0; mic [(1, 0.0, 0), (2, 0.0, 0)]; silent seconds []; null-level frames 0; failed on: av_within_mic_bound_5ms
+neg_kc3_no_restart_allowed_r1            expect FAIL got FAIL      rc 0       ok         load  7.46    0.9 s
+      control: failed as required, on restarted_after_a_kill_before_any_fragment
+      failed on: restarted_after_a_kill_before_any_fragment
+neg_continuity_cut_r1                    expect FAIL got FAIL      rc 0       ok         load  7.10    0.6 s
+      control: failed as required, on count, position, spacing
+      VIDEO-01.mp4: decoded-input 1016, spacing err [0, -1000, 0, 0, 0], position err [0.0, 0.0, -1000.0, -1000.0, -1000.0, -1000.0], tone {'tone_windows': 38, 'first_sample': 357600, 'last_sample': 380400, 'seconds': 0.475, 'max_phase_deviation_rad': 0.0033, 'mean_amplitude': 0.0999}; VIDEO-02.mp4: decoded-input 1016, spacing err [0, -1000, 0, 0, 0], position err [0.0, 0.0, -1000.0, -1000.0, -1000.0, -1000.0], tone {'tone_windows': 38, 'first_sample': 357600, 'last_sample': 380400, 'seconds': 0.475, 'max_phase_deviation_rad': 0.0033, 'mean_amplitude': 0.0999}; failed on: count, position, spacing
+neg_continuity_toneslip_r1               expect FAIL got FAIL      rc 0       ok         load  7.10    0.7 s
+      control: failed as required, on tone
+      VIDEO-01.mp4: decoded-input 2016, spacing err [0, 0, 0, 0, 0], position err [0.0, 0.0, 0.0, 0.0, 0.0, 0.0], tone {'tone_windows': 38, 'first_sample': 357600, 'last_sample': 380400, 'seconds': 0.475, 'max_phase_deviation_rad': 1.0483, 'mean_amplitude': 0.0994}; VIDEO-02.mp4: decoded-input 2016, spacing err [0, 0, 0, 0, 0], position err [0.0, 0.0, 0.0, 0.0, 0.0, 0.0], tone {'tone_windows': 38, 'first_sample': 357600, 'last_sample': 380400, 'seconds': 0.475, 'max_phase_deviation_rad': 1.0483, 'mean_amplitude': 0.0994}; failed on: tone
+neg_gop50_judged_as_250_r1               expect FAIL got FAIL      rc 0       ok         load  7.10    0.1 s
+      control: failed as required, on file_keyframe_interval_equals_camera_gop
+      camera GOP 250: keyframe intervals {'VIDEO-01.mp4': [50], 'VIDEO-02.mp4': [50]}, longest fragment 2.0 s, worker reports the interval: False; failed on: file_keyframe_interval_equals_camera_gop
+unit_r2                                  expect PASS got PASS      rc 0       ok         load  7.10    2.3 s
+      anchor_test: all checks hold | anchor_test: the old slew rule fails it, as required (negative control) | anchor_test: without the tick on report-less packets it fails, as required (negative control, R-1) | sink_kill_test: 200 kills in 0.8 s: final name absent 25, present with init + whole first fragment 175 (of those refused untouched by the next worker 175), children that finished before the kill 141, .part files left 21, violations 0
+harness_leftover_scope_r2                expect PASS got PASS      rc 0       ok         load  7.10    1.3 s
+proto_r2                                 expect PASS got PASS      rc 0       ok         load  6.85    3.9 s
+av1_zero_switch_tap_r2                   expect PASS got PASS      rc 0       ok         load  6.85   20.9 s
+      cam1 mean +0.0333 ms, max err 0.0333 ms (bound 2: PASS; product 40: PASS); cam2 mean +0.0333 ms, max err 0.0333 ms (bound 2: PASS; product 40: PASS); T0 error 13 us; listeners before the sources ['127.0.0.1:8559', '127.0.0.1:8561']; mid-session 4 sockets of 4 own processes, off loopback 0, UDP 0, foreign ports 0; camera GOP 50: keyframe intervals {'VIDEO-01.mp4': [50], 'VIDEO-02.mp4': [50]}, longest fragment 2.0 s, worker reports the interval: False
+av1_av2a_pm80_r2                         expect PASS got PASS      rc 0       ok         load  6.10   20.8 s
+      cam1 mean +80.0250 ms, max err 0.0250 ms (bound 2: PASS; product 40: PASS); cam2 mean -79.9750 ms, max err 0.0250 ms (bound 2: PASS; product 40: PASS); T0 error 14 us; listeners before the sources ['127.0.0.1:8559', '127.0.0.1:8561']; mid-session 4 sockets of 4 own processes, off loopback 0, UDP 0, foreign ports 0; camera GOP 50: keyframe intervals {'VIDEO-01.mp4': [50], 'VIDEO-02.mp4': [50]}, longest fragment 2.0 s, worker reports the interval: False
+av2b_drift_200ppm_r2                     expect PASS got PASS      rc 0       ok         load  5.00   41.6 s
+      cam1 mean +3.2228 ms, max err 0.0306 ms (bound 2: PASS; product 40: PASS), slope +200.09 ppm of +200; cam2 mean -3.5767 ms, max err 0.0306 ms (bound 2: PASS; product 40: PASS), slope -200.03 ppm of -200; T0 error 12 us; listeners before the sources ['127.0.0.1:8559', '127.0.0.1:8561']; mid-session 4 sockets of 4 own processes, off loopback 0, UDP 0, foreign ports 0; camera GOP 50: keyframe intervals {'VIDEO-01.mp4': [50], 'VIDEO-02.mp4': [50]}, longest fragment 2.0 s, worker reports the interval: False
+continuity_r2                            expect PASS got PASS      rc 0       ok         load  3.58    0.6 s
+      VIDEO-01.mp4: decoded-input 1056, spacing err [0, 0, 0, 0, 0], position err [0.0, 0.0, 0.0, 0.0, 0.0, 0.0], tone {'tone_windows': 38, 'first_sample': 357600, 'last_sample': 380400, 'seconds': 0.475, 'max_phase_deviation_rad': 0.0033, 'mean_amplitude': 0.0999}; VIDEO-02.mp4: decoded-input 1056, spacing err [0, 0, 0, 0, 0], position err [0.0, 0.0, 0.0, 0.0, 0.0, 0.0], tone {'tone_windows': 38, 'first_sample': 357600, 'last_sample': 380400, 'seconds': 0.475, 'max_phase_deviation_rad': 0.0033, 'mean_amplitude': 0.0999}
+wi1_camstop_r2                           expect PASS got PASS      rc 0       ok         load  3.58   20.1 s
+      listeners before the sources ['127.0.0.1:8559', '127.0.0.1:8561']; mid-session 4 sockets of 4 own processes, off loopback 0, UDP 0, foreign ports 0
+wi1_fatal_rmdir_r2                       expect PASS got PASS      rc 0       ok         load  2.97    9.4 s
+      listeners before the sources ['127.0.0.1:8559', '127.0.0.1:8561']; mid-session 4 sockets of 4 own processes, off loopback 0, UDP 0, foreign ports 0
+optc_planted_r2                          expect PASS got PASS      rc 0       ok         load  2.98    9.4 s
+      listeners before the sources ['127.0.0.1:8559', '127.0.0.1:8561']; mid-session 4 sockets of 4 own processes, off loopback 0, UDP 0, foreign ports 0
+optc_exists_r2                           expect PASS got PASS      rc 0       ok         load  2.92    0.5 s
+fatal_clean_control_r2                   expect PASS got PASS      rc 0       ok         load  2.92   13.4 s
+      listeners before the sources ['127.0.0.1:8559', '127.0.0.1:8561']; mid-session 4 sockets of 4 own processes, off loopback 0, UDP 0, foreign ports 0
+bind_udp_r2                              expect PASS got PASS      rc 0       ok         load  3.37    7.8 s
+      41 snapshots, UDP [], off loopback 0, seen ['127.0.0.1:8559 (LISTEN)', '127.0.0.1:8561 (LISTEN)', '127.0.0.1:8561->127.0.0.1:64336 (ESTABLISHED)']
+sup_av2_pm80_r2                          expect PASS got PASS      rc 0       ok         load  3.66   21.1 s
+      cam1 mean +80.0236 ms, max err 0.0236 ms (bound 2: PASS; product 40: PASS); cam2 mean -79.9764 ms, max err 0.0236 ms (bound 2: PASS; product 40: PASS)
+kc1_r2                                   expect PASS got PASS      rc 0       ok         load  5.85   33.8 s
+      cam1 mean +0.0181 ms, max err 0.0181 ms (bound 2: PASS; product 40: PASS); cam2 mean +0.0181 ms, max err 0.0181 ms (bound 2: PASS; product 40: PASS)
+kc3_r2                                   expect PASS got PASS      rc 0       ok         load  6.60   25.6 s
+      cam1 mean +0.0306 ms, max err 0.0306 ms (bound 2: PASS; product 40: PASS); cam2 mean +0.0306 ms, max err 0.0306 ms (bound 2: PASS; product 40: PASS)
+mic_2000ppm_slow_r2                      expect PASS got PASS      rc 0       ok         load  4.93   40.8 s
+      cam1 mean -1.5672 ms, max err 1.9083 ms (bound 5: PASS; product 40: PASS); cam2 mean -1.5386 ms, max err 1.8875 ms (bound 5: PASS; product 40: PASS); listeners before the sources ['127.0.0.1:8559', '127.0.0.1:8561']; mid-session 4 sockets of 4 own processes, off loopback 0, UDP 0, foreign ports 0; mic [(1, 2032.8, 0), (2, 2060.2, 0)]; silent seconds []; null-level frames 0
+mic_100ppm_fast_r2                       expect PASS got PASS      rc 0       ok         load  5.14   40.8 s
+      cam1 mean +0.0052 ms, max err 0.7500 ms (bound 2: PASS; product 40: PASS); cam2 mean -0.1198 ms, max err 0.7708 ms (bound 2: PASS; product 40: PASS); listeners before the sources ['127.0.0.1:8559', '127.0.0.1:8561']; mid-session 4 sockets of 4 own processes, off loopback 0, UDP 0, foreign ports 0; mic [(1, -152.3, 0), (2, -127.4, 0)]; silent seconds []; null-level frames 0
+mic_100ppm_slow_r2                       expect PASS got PASS      rc 0       ok         load  4.63   40.7 s
+      cam1 mean -0.7750 ms, max err 1.0875 ms (bound 2: PASS; product 40: PASS); cam2 mean -0.7802 ms, max err 1.2125 ms (bound 2: PASS; product 40: PASS); listeners before the sources ['127.0.0.1:8559', '127.0.0.1:8561']; mid-session 4 sockets of 4 own processes, off loopback 0, UDP 0, foreign ports 0; mic [(1, 128.1, 0), (2, 127.8, 0)]; silent seconds []; null-level frames 0
+mic_stop_and_return_r2                   expect PASS got PASS      rc 0       ok         load  4.06   40.7 s
+      cam1 mean +0.9318 ms, max err 1.3097 ms (bound 15: PASS; product 40: PASS); cam2 mean +1.0771 ms, max err 1.2889 ms (bound 15: PASS; product 40: PASS); listeners before the sources ['127.0.0.1:8559', '127.0.0.1:8561']; mid-session 4 sockets of 4 own processes, off loopback 0, UDP 0, foreign ports 0; mic [(1, 0.0, 1), (2, 0.0, 1)]; silent seconds None; null-level frames 100
+longgop_250_r2                           expect PASS got PASS      rc 0       ok         load  3.67   41.0 s
+      cam1 mean +0.0123 ms, max err 0.0153 ms (bound 2: PASS; product 40: PASS); cam2 mean +0.0153 ms, max err 0.0153 ms (bound 2: PASS; product 40: PASS); T0 error 12 us; listeners before the sources ['127.0.0.1:8559', '127.0.0.1:8561']; mid-session 4 sockets of 4 own processes, off loopback 0, UDP 0, foreign ports 0; camera GOP 250: keyframe intervals {'VIDEO-01.mp4': [250], 'VIDEO-02.mp4': [250]}, longest fragment 5.0 s, worker reports the interval: False
+nocam_none_r2                            expect PASS got PASS      rc 0       ok         load  2.70    4.6 s
+nocam_one_r2                             expect PASS got PASS      rc 0       ok         load  2.72   12.6 s
+sup_nocam_r2                             expect PASS got PASS      rc 0       ok         load  2.70    8.0 s
+f2_norefusal_r2                          expect PASS got PASS      rc 0       ok         load  2.81   14.9 s
+      41 snapshots, UDP [], off loopback 0, seen ['127.0.0.1:8559 (LISTEN)', '127.0.0.1:8559->127.0.0.1:64969 (ESTABLISHED)', '127.0.0.1:8561 (LISTEN)', '127.0.0.1:8561->127.0.0.1:64970 (ESTABLISHED)']
+neg_h4_reencoded_r2                      expect FAIL got FAIL      rc 0       ok         load  2.76    0.2 s
+      control: failed as required
+neg_av_forbidden_mux_option_r2           expect FAIL got FAIL      rc 0       ok         load  2.76   20.8 s
+      control: failed as required, on av_product_40ms, av_regression_2ms
+      cam1 mean +5868.2292 ms, max err 5788.2292 ms (bound 2: FAIL; product 40: FAIL); cam2 mean +5868.2292 ms, max err 5948.2292 ms (bound 2: FAIL; product 40: FAIL); T0 error 11 us; listeners before the sources ['127.0.0.1:8559', '127.0.0.1:8561']; mid-session 4 sockets of 4 own processes, off loopback 0, UDP 0, foreign ports 0; camera GOP 50: keyframe intervals {'VIDEO-01.mp4': [50], 'VIDEO-02.mp4': [50]}, longest fragment 2.0 s, worker reports the interval: False; failed on: av_product_40ms, av_regression_2ms
+neg_av_mic_latency_5ms_r2                expect FAIL got FAIL      rc 0       ok         load  2.28   20.8 s
+      control: failed as required, on av_regression_2ms
+      cam1 mean +5.0250 ms, max err 5.0250 ms (bound 2: FAIL; product 40: PASS); cam2 mean +5.0250 ms, max err 5.0250 ms (bound 2: FAIL; product 40: PASS); T0 error 5009 us; listeners before the sources ['127.0.0.1:8559', '127.0.0.1:8561']; mid-session 4 sockets of 4 own processes, off loopback 0, UDP 0, foreign ports 0; camera GOP 50: keyframe intervals {'VIDEO-01.mp4': [50], 'VIDEO-02.mp4': [50]}, longest fragment 2.0 s, worker reports the interval: False; failed on: av_regression_2ms
+neg_av2b_drift_judged_as_none_r2         expect FAIL got FAIL      rc 0       ok         load  2.36    0.7 s
+      control: failed as required, on av_regression_2ms
+      cam1 mean +3.2228 ms, max err 6.0222 ms (bound 2: FAIL; product 40: PASS), slope +200.09 ppm of +200; cam2 mean -3.5767 ms, max err 6.3736 ms (bound 2: FAIL; product 40: PASS), slope -200.03 ppm of -200; failed on: av_regression_2ms
+neg_bind_skeleton_r2                     expect FAIL got FAIL      rc 0       ok         load  2.36    9.2 s
+      control: failed as required, on every_socket_on_loopback, no_udp_socket
+      41 snapshots, UDP ['UDP *:5000', 'UDP *:5001'], off loopback 2, seen ['127.0.0.1:8559 (LISTEN)', '127.0.0.1:8559->127.0.0.1:64990 (ESTABLISHED)', '127.0.0.1:8561 (LISTEN)', '127.0.0.1:8561->127.0.0.1:64991 (ESTABLISHED)', 'UDP *:5000', 'UDP *:5001']; failed on: every_socket_on_loopback, no_udp_socket
+neg_sup_forbidden_mux_option_r2          expect FAIL got FAIL      rc 0       ok         load  3.06   20.9 s
+      control: failed as required, on av_product_40ms, av_regression_2ms
+      cam1 mean +5944.4583 ms, max err 5864.4583 ms (bound 2: FAIL; product 40: FAIL); cam2 mean +5944.4583 ms, max err 6024.4583 ms (bound 2: FAIL; product 40: FAIL); failed on: av_product_40ms, av_regression_2ms
+neg_mic_no_compensation_r2               expect FAIL got FAIL      rc 0       ok         load  2.85   40.7 s
+      control: failed as required, on av_within_mic_bound_5ms
+      cam1 mean -28.8566 ms, max err 37.2681 ms (bound 5: FAIL; product 40: PASS); cam2 mean -31.6066 ms, max err 39.2681 ms (bound 5: FAIL; product 40: PASS); listeners before the sources ['127.0.0.1:8559', '127.0.0.1:8561']; mid-session 4 sockets of 4 own processes, off loopback 0, UDP 0, foreign ports 0; mic [(1, 0.0, 0), (2, 0.0, 0)]; silent seconds []; null-level frames 0; failed on: av_within_mic_bound_5ms
+neg_kc3_no_restart_allowed_r2            expect FAIL got FAIL      rc 0       ok         load  2.35    0.9 s
+      control: failed as required, on restarted_after_a_kill_before_any_fragment
+      failed on: restarted_after_a_kill_before_any_fragment
+neg_continuity_cut_r2                    expect FAIL got FAIL      rc 0       ok         load  2.35    0.5 s
+      control: failed as required, on count, position, spacing
+      VIDEO-01.mp4: decoded-input 56, spacing err [0, -1000, 0, 0, 0], position err [0.0, 0.0, -1000.0, -1000.0, -1000.0, -1000.0], tone {'tone_windows': 38, 'first_sample': 357600, 'last_sample': 380400, 'seconds': 0.475, 'max_phase_deviation_rad': 0.0033, 'mean_amplitude': 0.0999}; VIDEO-02.mp4: decoded-input 56, spacing err [0, -1000, 0, 0, 0], position err [0.0, 0.0, -1000.0, -1000.0, -1000.0, -1000.0], tone {'tone_windows': 38, 'first_sample': 357600, 'last_sample': 380400, 'seconds': 0.475, 'max_phase_deviation_rad': 0.0033, 'mean_amplitude': 0.0999}; failed on: count, position, spacing
+neg_continuity_toneslip_r2               expect FAIL got FAIL      rc 0       ok         load  2.35    0.6 s
+      control: failed as required, on tone
+      VIDEO-01.mp4: decoded-input 1056, spacing err [0, 0, 0, 0, 0], position err [0.0, 0.0, 0.0, 0.0, 0.0, 0.0], tone {'tone_windows': 38, 'first_sample': 357600, 'last_sample': 380400, 'seconds': 0.475, 'max_phase_deviation_rad': 1.0482, 'mean_amplitude': 0.0994}; VIDEO-02.mp4: decoded-input 1056, spacing err [0, 0, 0, 0, 0], position err [0.0, 0.0, 0.0, 0.0, 0.0, 0.0], tone {'tone_windows': 38, 'first_sample': 357600, 'last_sample': 380400, 'seconds': 0.475, 'max_phase_deviation_rad': 1.0482, 'mean_amplitude': 0.0994}; failed on: tone
+neg_gop50_judged_as_250_r2               expect FAIL got FAIL      rc 0       ok         load  2.35    0.1 s
+      control: failed as required, on file_keyframe_interval_equals_camera_gop
+      camera GOP 250: keyframe intervals {'VIDEO-01.mp4': [50], 'VIDEO-02.mp4': [50]}, longest fragment 2.0 s, worker reports the interval: False; failed on: file_keyframe_interval_equals_camera_gop
+p4_delay_pm80                            expect PASS got PASS      rc 0       ok         load  2.35   20.8 s
+      cam1 mean +80.0236 ms, max err 0.0236 ms (bound 2: PASS; product 40: PASS); cam2 mean -79.9764 ms, max err 0.0236 ms (bound 2: PASS; product 40: PASS); T0 error 15 us; listeners before the sources ['127.0.0.1:8559', '127.0.0.1:8561']; mid-session 4 sockets of 4 own processes, off loopback 0, UDP 0, foreign ports 0; camera GOP 50: keyframe intervals {'VIDEO-01.mp4': [50], 'VIDEO-02.mp4': [50]}, longest fragment 2.0 s, worker reports the interval: False
+p4_shape_pinned                          expect PASS got PASS      rc 0       ok         load  2.90    0.3 s
+p4_shape_delay                           expect PASS got PASS      rc 0       ok         load  2.90    0.3 s
+p4_stall_pinned                          expect PASS got PASS      rc 0       ok         load  2.90   20.7 s
+      cam1 mean +80.0264 ms, max err 0.0264 ms (bound 2: PASS; product 40: PASS); cam2 mean -79.9736 ms, max err 0.0264 ms (bound 2: PASS; product 40: PASS); T0 error 14 us; listeners before the sources ['127.0.0.1:8559', '127.0.0.1:8561']; mid-session 4 sockets of 4 own processes, off loopback 0, UDP 0, foreign ports 0; camera GOP 50: keyframe intervals {'VIDEO-01.mp4': [50], 'VIDEO-02.mp4': [50]}, longest fragment 2.0 s, worker reports the interval: False
+neg_p4_stall_delay_moov                  expect FAIL got FAIL      rc 0       ok         load  3.22   20.8 s
+      control: failed as required, on av_product_40ms, av_regression_2ms
+      cam1 mean +5858.8333 ms, max err 5778.8333 ms (bound 2: FAIL; product 40: FAIL); cam2 mean +5858.8333 ms, max err 5938.8333 ms (bound 2: FAIL; product 40: FAIL); T0 error 10 us; listeners before the sources ['127.0.0.1:8559', '127.0.0.1:8561']; mid-session 4 sockets of 4 own processes, off loopback 0, UDP 0, foreign ports 0; camera GOP 50: keyframe intervals {'VIDEO-01.mp4': [50], 'VIDEO-02.mp4': [50]}, longest fragment 2.0 s, worker reports the interval: False; failed on: av_product_40ms, av_regression_2ms
+
+78 checks (55 expected PASS, 23 negative controls expected FAIL): 78 as expected, 0 unexpected
+ports still listening after the series: none
+load at the start of the timing-sensitive checks: 2.28 .. 7.87
+AGGREGATE EXIT CODE 0

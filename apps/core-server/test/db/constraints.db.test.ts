@@ -23,6 +23,8 @@ import {
   captureConfig,
   captureDevice,
   captureDeviceCredential,
+  captureSource,
+  sessionSttSnapshot,
   consoleSettings,
   coreDevice,
   coreState,
@@ -237,6 +239,21 @@ const REFUSED_BY_CHECK: ReadonlyArray<readonly [string, string, Row]> = [
   ['evidence_items_signature_value_check', 'evidence_items', evidenceItem({ signature_value: 'ab'.repeat(64) })],
   ['evidence_tracks_kind_check', 'evidence_tracks', evidenceTrack('VIDEO-01', 1, { kind: 'STREAM' })],
   ['evidence_tracks_audio_check', 'evidence_tracks', evidenceTrack('VIDEO-01', 1, { contains_audio: false })],
+  // ── schema v3 (dbc-4 §N.2, §N.3): the two CHECKs `capture_devices` gained and three of the four
+  //    of T-41 (the fourth, the slot list, is shadowed by the pairing rule - see SHADOWED). ──
+  ['capture_devices_adapter_kind_check', 'capture_devices', captureDevice('CAM-01', 'CAMERA', { adapter_kind: 'RTMP' })],
+  ['capture_devices_adapter_pairing_check', 'capture_devices', captureDevice('CAM-01', 'CAMERA', { adapter_kind: 'USB_AUDIO' })],
+  ['session_capture_sources_session_check', 'session_capture_sources', captureSource('VIDEO-01', { session_id: 'SES-1' })],
+  ['session_capture_sources_adapter_kind_check', 'session_capture_sources', captureSource('VIDEO-01', { adapter_kind: 'RTMP' })],
+  ['session_capture_sources_pairing_check', 'session_capture_sources', captureSource('VIDEO-01', { adapter_kind: 'USB_AUDIO' })],
+  // ── schema v5 (erratum PE-129b-01): the seven CHECKs of T-42, each alone (none is shadowed). ──
+  ['session_stt_config_session_check', 'session_stt_config', sessionSttSnapshot({ session_id: 'SES-1' })],
+  ['session_stt_config_backend_check', 'session_stt_config', sessionSttSnapshot({ backend: 'cloud' })],
+  ['session_stt_config_endpoint_required_check', 'session_stt_config', sessionSttSnapshot({ endpoint: null })],
+  ['session_stt_config_endpoint_loopback_check', 'session_stt_config', sessionSttSnapshot({ endpoint: 'http://192.0.2.10:8000' })],
+  ['session_stt_config_language_check', 'session_stt_config', sessionSttSnapshot({ language: 'en' })],
+  ['session_stt_config_credential_kind_check', 'session_stt_config', sessionSttSnapshot({ credential_kind: 'PLAIN' })],
+  ['session_stt_config_revision_check', 'session_stt_config', sessionSttSnapshot({ config_revision: 0 })],
 ];
 
 /**
@@ -249,12 +266,16 @@ const SHADOWED: ReadonlyArray<readonly [string, string, Row, string, string | un
   ['audit_log_seq_check', 'audit_log', auditRow({ seq: 0, id: 'AUD-000000' }), SQLSTATE.chainDiscontinuity, undefined],
   // The lifecycle rule lists the three states, so an unknown state breaks it too; CHECKs run in name order.
   ['paired_devices_state_check', 'paired_devices', pairedDevice('DEV-0099', 'PCD-000001', { state: 'LOST' }), SQLSTATE.checkViolation, 'paired_devices_lifecycle_check'],
-  // v2, the same shape: every kind outside (CAMERA, MIC, POE) also breaks capture_devices_id_check,
-  // which the 0004 table creates first (its branch list names the three kinds).
-  ['capture_devices_kind_check', 'capture_devices', captureDevice('CAM-01', 'CAMERA', { kind: 'SPEAKER' }), SQLSTATE.checkViolation, 'capture_devices_id_check'],
+  // v2, the same shape: every kind outside (CAMERA, MIC, POE) also breaks capture_devices_id_check
+  // (its branch list names the three kinds) - and, since dbc-4, capture_devices_adapter_pairing_check,
+  // whose three branches name the same kinds and which comes first in name order.
+  ['capture_devices_kind_check', 'capture_devices', captureDevice('CAM-01', 'CAMERA', { kind: 'SPEAKER' }), SQLSTATE.checkViolation, 'capture_devices_adapter_pairing_check'],
   // v2 again: every kind outside (REFERENCE, ENCRYPTED) also breaks stt_config_credential_check, whose
   // three branches name the same set; that one comes first in name order.
   ['stt_config_credential_kind_check', 'stt_config', sttConfig({ credential_kind: 'PLAIN' }), SQLSTATE.checkViolation, 'stt_config_credential_check'],
+  // v3 (dbc-4 §N.3): a fifth slot is in neither branch of session_capture_sources_pairing_check,
+  // which comes first in name order.
+  ['session_capture_sources_slot_check', 'session_capture_sources', captureSource('VIDEO-03'), SQLSTATE.checkViolation, 'session_capture_sources_pairing_check'],
 ];
 
 async function insert(table: string, row: Row): Promise<void> {
@@ -263,11 +284,11 @@ async function insert(table: string, row: Row): Promise<void> {
 }
 
 describe('CL-03: one refused row per named CHECK', () => {
-  it('the list covers all 166 CHECKs of the contract: 162 directly, 4 that another rule refuses first', () => {
+  it('the list covers all 179 CHECKs of the contract: 174 directly, 5 that another rule refuses first', () => {
     const named = inventory.tables.flatMap((table) => table.constraints.filter((constraint) => constraint.kind === 'CHECK').map((constraint) => constraint.name));
     const covered = [...REFUSED_BY_CHECK.map(([name]) => name), ...SHADOWED.map(([name]) => name)];
-    expect(named).toHaveLength(166);
-    expect(REFUSED_BY_CHECK).toHaveLength(162);
+    expect(named).toHaveLength(179);
+    expect(REFUSED_BY_CHECK).toHaveLength(174);
     expect([...covered].sort()).toEqual([...named].sort());
     for (const [name, table] of [...REFUSED_BY_CHECK, ...SHADOWED]) expect(name.startsWith(`${table}_`), name).toBe(true);
   });
@@ -293,7 +314,7 @@ describe('CL-03: one refused row per named CHECK', () => {
 });
 
 describe('the valid rows are accepted: no CHECK is stricter than the contract', () => {
-  it('one valid row in each of the 40 tables', async () => {
+  it('one valid row in each of the 42 tables', async () => {
     await insertRbac(owner);
     await insertDevice(owner, 'DEV-0001', 'PCD-000001');
     await insertRow(owner, 'pairing_codes', pairingCode('PCD-000050'));
@@ -337,6 +358,8 @@ describe('the valid rows are accepted: no CHECK is stricter than the contract', 
     await insertRow(owner, 'capture_devices', captureDevice('POE-A1', 'POE', { poe_port: 'P1' }));
     await insertRow(owner, 'capture_config', captureConfig());
     await insertRow(owner, 'capture_device_credentials', captureDeviceCredential('CAM-01'));
+    // schema v3 (dbc-4 §N.3): the four source rows of the session, before its first interval.
+    for (const slot of ['VIDEO-01', 'VIDEO-02', 'MIC-PRIMARY', 'MIC-STANDBY']) await insertRow(owner, 'session_capture_sources', captureSource(slot));
     await insertRow(owner, 'session_audio_intervals', audioInterval(1));
     await insertRow(owner, 'recording_fragments', recordingFragment(SESSION_ID, 'VIDEO-01', 1));
     await insertRow(owner, 'transcript_chunks', transcriptChunk(1, { status: 'DONE', segments: json([]), computed_at: T + 60_000 }));
@@ -345,6 +368,9 @@ describe('the valid rows are accepted: no CHECK is stricter than the contract', 
     await insertRow(owner, 'sealing_jobs', sealingJob('FRAGMENTS', { status: 'DONE', progress: 100, eta_ms: null, checkpoint: json({ offset: 1 }) }));
     await insertRow(owner, 'sealing_jobs', sealingJob('MANIFEST', { status: 'DONE', progress: 100, eta_ms: null }));
     await insertRow(owner, 'stt_config', sttConfig());
+    // schema v5 (PE-129b-01): the session's STT snapshot, and one for a disabled local backend.
+    await insertRow(owner, 'session_stt_config', sessionSttSnapshot());
+    await insertRow(owner, 'session_stt_config', sessionSttSnapshot({ session_id: 'SES-20261001-0003', enabled: false, backend: 'cpu-local', endpoint: null, credential_kind: null }));
 
     const { rows } = await owner.query<{ empty: string }>(
       inventory.tables.map((table) => `SELECT '${table.name}' AS empty WHERE NOT EXISTS (SELECT 1 FROM public.${table.name})`).join(' UNION ALL '),
@@ -427,11 +453,13 @@ describe('CL-02: every reference is a foreign key with ON DELETE RESTRICT', () =
     ['transcript_revisions_evidence_id_fkey', 'transcript_revisions', transcriptRevision(1, { evidence_id: 'EV-20261001-0999' })],
     ['transcript_revisions_author_id_fkey', 'transcript_revisions', transcriptRevision(2, { author_id: 'OPR-777' })],
     ['stt_config_updated_by_fkey', 'stt_config', sttConfig({ updated_by: 'OPR-777' })],
+    // schema v3 (dbc-4 §N.3): the one new foreign key, with an unknown device.
+    ['session_capture_sources_device_id_fkey', 'session_capture_sources', captureSource('VIDEO-01', { session_id: 'SES-20261001-0777', device_id: 'CAM-99' })],
   ];
 
-  it('the list covers all 39 foreign keys of the contract', () => {
+  it('the list covers all 40 foreign keys of the contract', () => {
     const named = inventory.tables.flatMap((table) => table.constraints.filter((constraint) => constraint.kind === 'FOREIGN KEY').map((constraint) => constraint.name));
-    expect(named).toHaveLength(39);
+    expect(named).toHaveLength(40);
     expect([...UNKNOWN_PARENT.map(([name]) => name), 'audit_log_actor_id_fkey'].sort()).toEqual([...named].sort());
   });
 

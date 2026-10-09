@@ -23,6 +23,7 @@ import { dirname, join } from 'node:path';
 import { z } from 'zod';
 import { TRANSCRIBER_BACKEND_IDS, TRANSCRIBER_LANGUAGE, TranscriberError, TranscriberErrorCode, type TranscriberBackendId } from '../types';
 import { TRANSCRIPT_CHECKPOINT_FILE, TRANSCRIPT_CHECKPOINT_VERSION } from './constants';
+import { SpeakerState, SpeakerUnavailableReason } from './diarization';
 import { AudioSourceKind, type AudioTimeline } from './media-time';
 
 /** The four states of a chunk: the value set of `transcript_chunks.status` (dbc-3 §B.7). */
@@ -65,6 +66,44 @@ const ChunkSchema = z
   .refine((chunk) => chunk.status !== ChunkStatus.DONE || (chunk.segments !== null && chunk.computedAt !== null), { message: 'a DONE chunk holds its segments and its instant' })
   .refine((chunk) => chunk.status === ChunkStatus.DONE || chunk.segments === null, { message: 'only a DONE chunk holds segments' });
 
+const Hex64 = z.string().regex(/^[0-9a-f]{64}$/);
+
+/**
+ * THE LABEL MAP AND ITS STATE (§A.4 "Checkpoint"; §D.1 "labels/state once after clustering").
+ * Written ONCE by the diarization post-pass of row 78 and never changed: a resumed assembly reads
+ * it and starts no engine. `labels` has one entry per committed segment, in document order;
+ * `segments` is that count, so a map can never be applied to another set of segments.
+ */
+const DiarizationCheckpointSchema = z
+  .strictObject({
+    state: z.enum([SpeakerState.LABELLED, SpeakerState.UNAVAILABLE]),
+    reason: z.enum(Object.values(SpeakerUnavailableReason) as [SpeakerUnavailableReason, ...SpeakerUnavailableReason[]]).nullable(),
+    numSpeakers: z.number().int().nonnegative(),
+    confidence: z.number().nullable(),
+    segments: z.number().int().nonnegative(),
+    labels: z.array(z.enum(['A', 'B']).nullable()),
+    engine: z
+      .strictObject({ engine: z.string().min(1), embeddingModel: z.string().min(1), embeddingModelSha256: Hex64 })
+      .nullable(),
+  })
+  .refine((entry) => entry.labels.length === entry.segments, { message: 'one label entry per segment' })
+  .refine((entry) => (entry.state === SpeakerState.UNAVAILABLE) === (entry.reason !== null), { message: 'UNAVAILABLE carries its reason' })
+  .refine((entry) => entry.state === SpeakerState.LABELLED || entry.labels.every((label) => label === null), { message: 'an UNAVAILABLE map carries no label' });
+
+/**
+ * THE DOCUMENT-LEVEL RECORD (§D.1 `{assembled, doc_hash, speaker_state}`; §A.5 "Checkpoint").
+ * Written once, after the document and its two renderings are on the disk. From then on the
+ * machine transcript is never computed again (§D.3 "Idempotence").
+ */
+const DocumentCheckpointSchema = z.strictObject({
+  assembled: z.literal(true),
+  docSha256: Hex64,
+  srtSha256: Hex64,
+  vttSha256: Hex64,
+  speakerState: z.enum([SpeakerState.LABELLED, SpeakerState.UNAVAILABLE]),
+  state: z.enum(['ASSEMBLED', 'PARTIAL']),
+});
+
 export const CheckpointSchema = z.strictObject({
   version: z.literal(TRANSCRIPT_CHECKPOINT_VERSION),
   sessionId: z.string().min(1),
@@ -80,6 +119,12 @@ export const CheckpointSchema = z.strictObject({
   }),
   /** Source sample up to which the chunk plan is final. The next VAD pass starts here. */
   cursorSample: z.number().int().nonnegative(),
+  /**
+   * Set while `cursorSample` lies inside a speech run that a pass cut at the maximum chunk length
+   * (`chunker.ts`, N-4): the source sample up to which that run was seen to reach. The next pass
+   * treats `[cursorSample, openRunUntilSample)` as speech. Absent otherwise.
+   */
+  openRunUntilSample: z.number().int().nonnegative().optional(),
   /** True once the plan covers the whole audio: no more chunk will be added. */
   audioComplete: z.boolean(),
   qaFlags: z.array(z.string()),
@@ -92,6 +137,10 @@ export const CheckpointSchema = z.strictObject({
   /** The next unused `transcript_chunks.seq` of this session. */
   nextSeq: z.number().int().min(1),
   chunks: z.array(ChunkSchema),
+  /** Row 78: absent until the diarization post-pass has run. Written once. */
+  diarization: DiarizationCheckpointSchema.optional(),
+  /** Row 78: absent until the document is assembled and hashed. Written once. */
+  document: DocumentCheckpointSchema.optional(),
 });
 export type Checkpoint = z.output<typeof CheckpointSchema>;
 export type CheckpointChunk = Checkpoint['chunks'][number];

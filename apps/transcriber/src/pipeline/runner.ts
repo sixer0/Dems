@@ -14,6 +14,10 @@
  *           whose engine fails is tried `STT_CHUNK_RETRIES` times more, then it is FAILED and the
  *           runner goes on: one chunk never stops a transcript, and no text is made up for it.
  *
+ * A DONE CHUNK IS NEVER DECODED AGAIN, ON ANY BACKEND. Its text is what the transcript holds for
+ * good; only a chunk that was not committed (PENDING, RUNNING at a kill, or re-queued after FAILED)
+ * may come out with other text on a later attempt.
+ *
  * RESUME IS THE SAME CALL. A new runner on the same scratch directory reads the checkpoint: DONE
  * chunks are kept as they are and never decoded again; the chunk a kill interrupted (RUNNING) and
  * the ones not started (PENDING) are decoded; the plan continues at the stored cursor (§D.2).
@@ -25,9 +29,10 @@
  * Nothing here measures or records how long anything took (D230). `computedAt` is the instant of a
  * commit, as `transcript_chunks.computed_at` asks for.
  */
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { TranscriberAdapter } from '../adapter';
+import type { EngineGuard } from '../backends/cpu-local';
 import type { TranscriberLog } from '../log';
 import { TRANSCRIBER_LANGUAGE, TranscriberError, TranscriberErrorCode } from '../types';
 import { encodeWavPcm16 } from '../wav';
@@ -36,7 +41,7 @@ import { ChunkStatus, createCheckpointStore, emptyCheckpoint, type Checkpoint, t
 import { planChunks } from './chunker';
 import { clampSegments } from './clamp';
 import { QaFlag, STT_CHUNK_RETRIES, VAD_MAX_CHUNK_MS, VAD_WINDOW_MAX_MS } from './constants';
-import { msToSamples, sampleToMediaMs, type AudioTimeline, type SampleRange } from './media-time';
+import { AudioSourceKind, msToSamples, sampleToMediaMs, type AudioTimeline, type SampleRange } from './media-time';
 import { toModelCode, type ChunkMirror, type ChunkMirrorRow } from './mirror';
 import type { SpeechSpan, VoiceActivityDetector } from './silero-vad';
 
@@ -69,9 +74,24 @@ export interface TranscriptRunnerOptions {
    * session is not being written: the capture worker reports `tapActive: false` in its telemetry
    * (a restarted worker that found an existing tap file records WITHOUT a tap; a tap that failed).
    * The Core (row 115) hands the latest value in; the transcriber never reads telemetry itself.
-   * Absent: the audio is a finished file (the fixture checks), which cannot be lost.
+   *
+   * STICKY (navigator finding N-1): it is asked at EVERY step, and ONE `true` is enough — the
+   * session is then PARTIAL for good, even if a later answer is `false` (a worker that is gone
+   * after the stop has no telemetry to say `true` with).
+   *
+   * NOT OPTIONAL FOR A LIVE SESSION (N-10): with a tap timeline the runner refuses to be built
+   * without it (`CONFIG_INVALID`). A test or a development run states the explicit `NO_TAP_SIGNAL`.
+   * Absent is allowed only where the audio is a finished file (the fixture checks), which cannot
+   * be lost.
    */
   readonly tapLost?: () => boolean;
+  /**
+   * The engine guard of this session (`createEngineGuard`; navigator finding N-2). The runner
+   * reaps what a killed pipeline left running BEFORE it plans or decodes anything, so that two
+   * engines never work at the same time (§C). The composition hands the SAME guard's `record` to
+   * the adapter, the VAD and the speaker embedder as `onEngineStart`.
+   */
+  readonly engineGuard?: EngineGuard;
   /** How much new audio a pass waits for while the audio still grows. Default: one maximum chunk. */
   readonly minPlanMs?: number;
   /** Asked before every chunk; true holds the runner back until the next `step` (§C). */
@@ -117,6 +137,23 @@ export interface TranscriptRunner {
 
 const SOURCE = 'transcriber.runner';
 
+/** The explicit statement "this run has no tap signal" (a test, a development run): never lost. See `tapLost`. */
+export const NO_TAP_SIGNAL = (): boolean => false;
+/** The same, under the name the tests use. */
+export const NO_TAP = NO_TAP_SIGNAL;
+
+/**
+ * Removes the temporary audio of a session's transcript work: `work/` under the scratch directory
+ * (chunk files, the VAD window, the speaker-labelling file, the engine record) and, when named,
+ * the raw tap copy. ALL OF IT IS UNENCRYPTED SESSION AUDIO outside the sealed package (D-77-1): it
+ * is removed at the end of a run, when a session is abandoned, and before a resume after a kill.
+ * The checkpoint and the assembled transcript files are NOT touched.
+ */
+export function discardTranscriptAudio(sessionScratchDir: string, tapPath?: string): void {
+  rmSync(join(sessionScratchDir, 'work'), { recursive: true, force: true });
+  if (tapPath !== undefined) rmSync(tapPath, { force: true });
+}
+
 function mirrorRows(checkpoint: Checkpoint): ChunkMirrorRow[] {
   const modelId = toModelCode(checkpoint.model);
   const rows: ChunkMirrorRow[] = [];
@@ -140,12 +177,56 @@ export function createTranscriptRunner(options: TranscriptRunnerOptions): Transc
     throw new TranscriberError(TranscriberErrorCode.CONFIG_INVALID, 'the audio source and its timeline state different sample rates', { reason: 'SAMPLE_RATE_MISMATCH' });
   }
 
-  let checkpoint: Checkpoint = store.load(identity) ?? emptyCheckpoint(identity);
+  // A LIVE SESSION STATES ITS SIGNALS (N-10): on a tap timeline neither the tap signal nor the
+  // capture worker of the sibling rule may be missing by omission.
+  if (timeline.kind === AudioSourceKind.PCM_TAP) {
+    const refuse = (reason: string): never => {
+      throw new TranscriberError(TranscriberErrorCode.CONFIG_INVALID, 'the runner of a live session was composed without a signal it must be given', { reason });
+    };
+    if (options.tapLost === undefined) refuse('TAP_SIGNAL_NOT_STATED');
+    if (adapter.captureWorkerStated !== true) refuse('CAPTURE_WORKER_NOT_STATED');
+    if (options.vad !== null && options.vad.captureWorkerStated === false) refuse('CAPTURE_WORKER_NOT_STATED');
+  }
+
+  // AFTER A KILL (N-2): the engine the dead pipeline started may still be decoding. It is stopped
+  // before anything else happens, and the audio files it and the dead pipeline left are removed.
+  const reaped = options.engineGuard?.reap() ?? null;
+  let staleFiles: string[] = [];
+  try {
+    staleFiles = readdirSync(workDir);
+  } catch {
+    staleFiles = [];
+  }
+  for (const name of staleFiles) rmSync(join(workDir, name), { recursive: true, force: true });
+  if (reaped !== null || staleFiles.length > 0) {
+    log.warn({ source: `${SOURCE}.resume`, message: 'what a stopped pipeline left behind was cleared before the resume', context: { reason: 'STALE_WORK_CLEARED', engineStopped: reaped !== null, files: staleFiles.length }, correlationId: sessionId });
+  }
+
+  const stored = store.load(identity);
+  let checkpoint: Checkpoint = stored ?? emptyCheckpoint(identity);
+  /** True when this runner started without a checkpoint file: the mirror may still hold rows of a lost one (N-6). */
+  let startedEmpty = stored === null;
   /** What the mirror is known to hold, by `seq`. Null: not known (not read yet, or a write failed). */
   let mirrored: Map<number, string> | null = null;
 
   const save = (): void => {
     store.save(checkpoint);
+  };
+
+  /**
+   * Row 78 writes the label map and the document record into the SAME checkpoint file, after the
+   * last chunk. A runner that is still held in memory takes them over before it writes again, so
+   * a later write of this runner never drops them (they are written once and never changed).
+   */
+  const adoptPostPass = (): void => {
+    let stored: Checkpoint | null;
+    try {
+      stored = store.load(identity);
+    } catch {
+      return; // a file this runner cannot read holds nothing to take over; its own copy stays the truth, as before
+    }
+    if (stored?.diarization !== undefined) checkpoint.diarization = stored.diarization;
+    if (stored?.document !== undefined) checkpoint.document = stored.document;
   };
 
   async function syncMirror(): Promise<void> {
@@ -154,6 +235,17 @@ export function createTranscriptRunner(options: TranscriptRunnerOptions): Transc
     try {
       if (mirrored === null) mirrored = new Map((await mirror.read(sessionId)).map((row) => [row.seq, fingerprint(row)]));
       const known = mirrored;
+      if (startedEmpty) {
+        startedEmpty = false;
+        // THE CHECKPOINT FILE WAS LOST BUT THE TABLE HOLDS ROWS OF IT (N-6). The file is the only
+        // resume source: the transcript is planned and decoded again. The old rows keep their
+        // ranges and are never given new segments: the new plan takes row numbers ABOVE them.
+        if (known.size > 0 && checkpoint.chunks.length === 0) {
+          checkpoint.nextSeq = Math.max(checkpoint.nextSeq, Math.max(...known.keys()) + 1);
+          save();
+          log.warn({ source: `${SOURCE}.mirror`, message: 'no checkpoint file, but transcript_chunks holds rows of this session: the transcript is rebuilt in new rows', context: { reason: 'CHECKPOINT_REBUILT', staleRows: known.size, nextSeq: checkpoint.nextSeq }, correlationId: sessionId });
+        }
+      }
       const desired = mirrorRows(checkpoint);
       const missing = desired.filter((row) => !known.has(row.seq));
       if (missing.length > 0) {
@@ -264,7 +356,9 @@ export function createTranscriptRunner(options: TranscriptRunnerOptions): Transc
         recordAudioUnavailable(String(error.detail['reason'] ?? 'AUDIO_FILE_NOT_READABLE'));
       }
       if (final && available === 0) recordAudioUnavailable('AUDIO_EMPTY');
-      if (final && options.tapLost?.() === true) recordAudioUnavailable('TAP_NOT_ACTIVE');
+      // A tap never shrinks (`audio-source.ts`). One that holds less than was already planned was
+      // truncated or replaced: what is left is not the session's audio any more (N-9).
+      if (available < checkpoint.cursorSample) recordAudioUnavailable('AUDIO_SHRANK');
       const from = checkpoint.cursorSample;
       const to = Math.min(available, from + maxWindow);
       const last = final && to === available;
@@ -276,7 +370,8 @@ export function createTranscriptRunner(options: TranscriptRunnerOptions): Transc
 
       const window = { from, to };
       let spans = await detectSpeech(window);
-      let result = planChunks({ timeline, window, spans, final: last });
+      // A pass that cut an open run left the cursor inside it (N-4): this pass is told how far it reached.
+      let result = planChunks({ timeline, window, spans, final: last, openRunUntil: checkpoint.openRunUntilSample ?? null });
       if (!last && final && result.chunks.length === 0 && result.nextCursor === from && spans !== null) {
         // A capped window in which the VAD closed nothing: it would be asked the same question for ever.
         flag(QaFlag.VAD_FALLBACK);
@@ -286,6 +381,8 @@ export function createTranscriptRunner(options: TranscriptRunnerOptions): Transc
       planned += appendChunks(result.chunks);
       const progressed = result.chunks.length > 0 || result.nextCursor > from;
       checkpoint.cursorSample = Math.max(from, result.nextCursor);
+      if (result.openRunUntil !== null && result.openRunUntil > checkpoint.cursorSample) checkpoint.openRunUntilSample = result.openRunUntil;
+      else delete checkpoint.openRunUntilSample;
       if (last) checkpoint.audioComplete = true;
       save();
       if (!final || !progressed) break;
@@ -328,6 +425,7 @@ export function createTranscriptRunner(options: TranscriptRunnerOptions): Transc
               correlationId,
             });
           }
+          options.engineGuard?.clear();
           chunk.segments = clamped.segments;
           chunk.computedAt = now().getTime();
           chunk.status = ChunkStatus.DONE;
@@ -349,6 +447,8 @@ export function createTranscriptRunner(options: TranscriptRunnerOptions): Transc
     chunk.segments = null;
     chunk.computedAt = null;
     chunk.errorCode = lastCode;
+    // A chunk that failed because its AUDIO is gone is missing audio, not a failed engine (N-9).
+    if (lastCode === TranscriberErrorCode.TRANSCRIPT_AUDIO_UNAVAILABLE) recordAudioUnavailable('CHUNK_AUDIO_NOT_READABLE');
     save();
     await syncMirror();
     log.error({ source: `${SOURCE}.decode`, message: 'a chunk was given up after its retries; the transcript goes on without it', context: { chunkIndex: chunk.chunkIndex, seq: chunk.seq, code: lastCode, reason: 'CHUNK_FAILED' }, correlationId });
@@ -359,6 +459,12 @@ export function createTranscriptRunner(options: TranscriptRunnerOptions): Transc
   const toDecode = (): CheckpointChunk[] => checkpoint.chunks.filter((chunk) => chunk.status === ChunkStatus.PENDING || chunk.status === ChunkStatus.RUNNING);
 
   async function step(stepOptions: { readonly final: boolean }): Promise<StepReport> {
+    adoptPostPass();
+    // THE TAP SIGNAL IS STICKY (N-1): asked at every step, latched in the checkpoint file at once.
+    if (!checkpoint.audioUnavailable && options.tapLost?.() === true) {
+      recordAudioUnavailable('TAP_NOT_ACTIVE');
+      save();
+    }
     // Committed work that exists when the step starts is reused, never decoded again (§D.2).
     const committedBefore = checkpoint.chunks.filter((chunk) => chunk.status === ChunkStatus.DONE);
     for (const chunk of committedBefore) options.onChunk?.({ chunkIndex: chunk.chunkIndex, seq: chunk.seq, phase: 'reused' });
@@ -380,6 +486,8 @@ export function createTranscriptRunner(options: TranscriptRunnerOptions): Transc
     }
     const remaining = toDecode().length;
     const complete = checkpoint.audioComplete && remaining === 0;
+    // END OF A RUN: no chunk file, VAD window or engine record stays behind (unencrypted session audio).
+    if (complete) rmSync(workDir, { recursive: true, force: true });
     const anyFailed = checkpoint.chunks.some((chunk) => chunk.status === ChunkStatus.FAILED);
     const partialReason = !complete ? null : checkpoint.audioUnavailable ? ('TRANSCRIPT_AUDIO_UNAVAILABLE' as const) : anyFailed ? ('CHUNKS_FAILED' as const) : null;
     const transcriptState = !complete ? ('PENDING' as const) : partialReason === null ? ('READY' as const) : ('PARTIAL' as const);
@@ -387,6 +495,13 @@ export function createTranscriptRunner(options: TranscriptRunnerOptions): Transc
   }
 
   function retryFailed(): number {
+    adoptPostPass();
+    if (checkpoint.diarization !== undefined || checkpoint.document !== undefined) {
+      // The label map belongs to the committed segments as they are, and an assembled machine
+      // transcript is never computed again (§D.3): a FAILED chunk stays FAILED, the document is PARTIAL.
+      log.warn({ source: `${SOURCE}.retry`, message: 'failed chunks are not retried after the diarization pass or the assembly', context: { reason: 'TRANSCRIPT_ALREADY_FINALISED', assembled: checkpoint.document !== undefined }, correlationId: sessionId });
+      return 0;
+    }
     let count = 0;
     for (const chunk of checkpoint.chunks) {
       if (chunk.status !== ChunkStatus.FAILED) continue;

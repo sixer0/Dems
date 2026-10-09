@@ -16,10 +16,30 @@
  * kept in `dems.mobile.log.v1` but NOT printed to the console (no Metro or LogBox noise), and never more than
  * one record per transition, so the 200-record ring is not flooded. No fix is made here: the measurement
  * decides (a) or (b).
+ *
+ * Blueprint row 62 (B11, RK-5; prepares M5-SW-T): the late-stop WAIT POINT. The transition record above says
+ * that the stop was learnt late, not where the time went. A stop passes four points on this device, and each
+ * now carries a timestamp that can be cited next to the Core log and a screen recording:
+ *
+ *   1. `coreStoppedAt`  the Core's own stop instant (the session's `stoppedAt`, Core clock);
+ *   2. `storeAt`        the replica's store first holds "not RECORDING" for that session (a store listener,
+ *                       so it is the instant the JS thread applied the delta or the snapshot);
+ *   3. `commitAt`       React committed that state (this component's effect);
+ *   4. `handoverAt`     the `/session/live` route committed the in-place Finalizing hand-over
+ *                       (`useLateStopHandoverMark`, its own record `runtime.diag.lateStop.handover`).
+ *
+ * `runtime.diag.lateStop` holds 1-3, the two waits between them (`coreToStoreMs`, `storeToCommitMs`), the
+ * socket counters at arming and at the store instant (dropped deltas and resyncs in between = cause (b)), and
+ * the same JS-lag window as the transition record (cause (a)). `waitPoint` names the longer wait when the
+ * whole is `LATE_STOP_MS` or more. Device instants are ISO strings of the device clock; `...Core` instants are
+ * the Core clock as this client estimates it (`core-clock.ts`), so they compare with the Core log directly.
+ * No behaviour changes: one passive store listener while RECORDING, records through `reportDiagnostic`
+ * (quiet, blanked by the log's shared redaction rules).
  */
 import { useEffect, useRef } from 'react';
 import { liveOf } from '@dems/shared/live';
 import { useActiveSession } from './contract';
+import { coreClockOf } from './core-clock';
 import { useRuntimeInternals } from './internals';
 import { reportDiagnostic } from './log';
 import type { MobileLiveSim } from './sim-adapters';
@@ -133,6 +153,121 @@ export function socketDiagnosticsOf(live: Pick<MobileLiveSim, 'socketStatus'> | 
   }
 }
 
+/** From this total (Core stop to React commit, ms) a stop counts as learnt late and `waitPoint` is named. */
+export const LATE_STOP_MS = 1_000;
+
+/** Where the longer wait of a late stop was. `UNKNOWN`: late by the device's own two instants is not decidable. */
+export type LateStopWaitPoint = 'NONE' | 'BEFORE_STORE' | 'STORE_TO_COMMIT' | 'UNKNOWN';
+
+/** What the store listener keeps at the instant the replica first holds "not RECORDING". */
+export interface LateStopStoreMark {
+  /** Device clock, epoch ms. */
+  readonly atMs: number;
+  /** The Core clock as this client estimates it at that instant, or null (a simulator). */
+  readonly atCoreMs: number | null;
+  /** The session state the store then held; null = the session was gone. */
+  readonly state: string | null;
+  /** The session's `stoppedAt` in that store state (Core clock), or null when not there yet. */
+  readonly coreStoppedAtMs: number | null;
+  readonly socket: Record<string, string | number | boolean | null>;
+}
+
+export interface LateStopInput {
+  readonly sessionId: string | null;
+  /** The state React committed. */
+  readonly to: string | null;
+  /** Null when the listener saw nothing before the commit (a runtime without a store listener). */
+  readonly store: LateStopStoreMark | null;
+  readonly commitAtMs: number;
+  readonly commitAtCoreMs: number | null;
+  /** `stoppedAt` read at the commit, used when the store mark had none yet. */
+  readonly coreStoppedAtCommitMs: number | null;
+  /** The socket counters when the listener was armed (RECORDING committed). */
+  readonly armedSocket: Record<string, string | number | boolean | null>;
+  readonly lag: JsLagWindow;
+}
+
+const iso = (ms: number | null): string | null => (ms === null || !Number.isFinite(ms) ? null : new Date(ms).toISOString());
+const since = (to: unknown, from: unknown): number | null => (typeof to === 'number' && typeof from === 'number' ? to - from : null);
+
+/** The `runtime.diag.lateStop` context: the instants, the waits between them and the named wait point. Pure. */
+export function lateStopRecordOf(input: LateStopInput): Record<string, string | number | boolean | null> {
+  const { store, commitAtMs, commitAtCoreMs, lag } = input;
+  const coreStoppedAtMs = store?.coreStoppedAtMs ?? input.coreStoppedAtCommitMs;
+  // The Core clock at the store instant; without a store mark the commit is the first instant known here.
+  const firstKnownCoreMs = store === null ? commitAtCoreMs : store.atCoreMs;
+  const coreToStoreMs = store === null ? null : since(store.atCoreMs, coreStoppedAtMs);
+  const storeToCommitMs = store === null ? null : commitAtMs - store.atMs;
+  const coreToCommitMs = since(commitAtCoreMs, coreStoppedAtMs);
+  let waitPoint: LateStopWaitPoint = 'UNKNOWN';
+  if (coreToCommitMs !== null && coreToStoreMs !== null && storeToCommitMs !== null) {
+    if (coreToCommitMs < LATE_STOP_MS) waitPoint = 'NONE';
+    else waitPoint = coreToStoreMs >= storeToCommitMs ? 'BEFORE_STORE' : 'STORE_TO_COMMIT';
+  } else if (storeToCommitMs !== null && storeToCommitMs >= LATE_STOP_MS) {
+    // No Core instant (a simulator, or `stoppedAt` not replicated): the device's own wait is still decidable.
+    waitPoint = 'STORE_TO_COMMIT';
+  }
+  return {
+    sessionId: input.sessionId ?? 'none',
+    to: input.to ?? 'none',
+    storeState: store === null ? null : (store.state ?? 'none'),
+    coreStoppedAt: iso(coreStoppedAtMs),
+    storeAt: iso(store?.atMs ?? null),
+    storeAtCore: iso(store?.atCoreMs ?? null),
+    commitAt: iso(commitAtMs),
+    commitAtCore: iso(commitAtCoreMs),
+    coreToStoreMs,
+    storeToCommitMs,
+    coreToCommitMs,
+    // Kept apart from `coreToStoreMs`: with no store mark this is "Core stop to the first instant known here".
+    coreToFirstKnownMs: since(firstKnownCoreMs, coreStoppedAtMs),
+    waitPoint,
+    lateStopMs: LATE_STOP_MS,
+    droppedSinceArm: since(store?.socket['deltasDropped'], input.armedSocket['deltasDropped']),
+    staleSinceArm: since(store?.socket['deltasStale'], input.armedSocket['deltasStale']),
+    resyncsSinceArm: since(store?.socket['resyncs'], input.armedSocket['resyncs']),
+    reconnectsSinceArm: since(store?.socket['reconnects'], input.armedSocket['reconnects']),
+    resyncPendingAtStore: (store?.socket['resyncPending'] as string | null | undefined) ?? null,
+    revisionAtStore: (store?.socket['revision'] as number | null | undefined) ?? null,
+    clockSampleAgeMs: (store?.socket['clockSampleAgeMs'] as number | null | undefined) ?? null,
+    live: store?.socket['live'] ?? input.armedSocket['live'] ?? false,
+    ...lag,
+  };
+}
+
+/** The socket counters plus the age of the newest server-time sample (how fresh the Core-clock estimate is). */
+function socketAt(live: MobileLiveSim | null, atMs: number): Record<string, string | number | boolean | null> {
+  const base = socketDiagnosticsOf(live);
+  if (live === null) return base;
+  try {
+    const sample = live.socketStatus().serverTime;
+    return { ...base, clockSampleAgeMs: sample === null ? null : atMs - sample.receivedAt };
+  } catch {
+    return base;
+  }
+}
+
+/**
+ * Point 4 of the late stop (row 62): `/session/live` calls this with `true` in the render that draws the
+ * in-place Finalizing hand-over. One quiet record per hand-over with the device and Core instants of that
+ * commit; it changes nothing the route renders.
+ */
+export function useLateStopHandoverMark(handover: boolean): void {
+  const { sessionId } = useActiveSession();
+  const sim = useRuntimeInternals()?.sim ?? null;
+  useEffect(() => {
+    if (!handover) return;
+    const at = Date.now();
+    reportDiagnostic('runtime.diag.lateStop.handover', 'Monitor handed over to Finalizing in place (row 62 wait point 4)', {
+      sessionId: sessionId ?? 'none',
+      handoverAt: iso(at),
+      handoverAtCore: iso(coreClockOf(sim)?.now() ?? null),
+    });
+    // One record per hand-over: the session id is read at that commit, a later change is not a new hand-over.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [handover]);
+}
+
 /**
  * Mounted with the route sync in `(app)/_layout.tsx`: runs the sampler while a session is in its window and
  * writes one quiet record per session-state transition. Renders nothing.
@@ -142,6 +277,9 @@ export function SessionDiagnostics(): null {
   const sim = useRuntimeInternals()?.sim ?? null;
   const sampler = useRef<JsLagSampler | null>(null);
   const previous = useRef<string | null>(state);
+  // Row 62: the session the store listener is armed for, and what it saw at the stop.
+  const armed = useRef<{ sessionId: string | null; socket: Record<string, string | number | boolean | null> } | null>(null);
+  const storeMark = useRef<LateStopStoreMark | null>(null);
 
   useEffect(() => {
     sampler.current ??= createJsLagSampler();
@@ -150,16 +288,71 @@ export function SessionDiagnostics(): null {
     previous.current = state;
     if (from !== state && (WINDOW_STATES.has(String(from)) || WINDOW_STATES.has(String(state)))) {
       const live = sim === null ? null : liveOf<MobileLiveSim>(sim);
+      const lag = s.take();
       reportDiagnostic('runtime.diag.sessionWindow', 'Session state transition (W98 measurement)', {
         from: from ?? 'none',
         to: state ?? 'none',
         sessionId: sessionId ?? 'none',
-        ...s.take(),
+        ...lag,
         ...socketDiagnosticsOf(live),
       });
+      // Row 62: RECORDING left = a stop reached React. One record with the wait points of that stop.
+      if (from === 'RECORDING' && armed.current !== null) {
+        const commitAtMs = Date.now();
+        let coreStoppedAtCommitMs: number | null = null;
+        try {
+          const current = sim?.store.getState().session ?? null;
+          if (current !== null && current.id === armed.current.sessionId) coreStoppedAtCommitMs = current.stoppedAt;
+        } catch {
+          // A store that cannot be read leaves the Core instant unknown; the record still goes out.
+        }
+        reportDiagnostic(
+          'runtime.diag.lateStop',
+          'Recording stop reached this device (row 62 wait points)',
+          lateStopRecordOf({
+            sessionId: armed.current.sessionId,
+            to: state,
+            store: storeMark.current,
+            commitAtMs,
+            commitAtCoreMs: coreClockOf(sim)?.now() ?? null,
+            coreStoppedAtCommitMs,
+            armedSocket: armed.current.socket,
+            lag,
+          }),
+        );
+        armed.current = null;
+        storeMark.current = null;
+      }
     }
     if (WINDOW_STATES.has(String(state))) s.start();
     else s.stop();
+  }, [state, sessionId, sim]);
+
+  // Row 62: while RECORDING, a passive store listener keeps the first instant the replica holds "not
+  // RECORDING" for this session. Declared after the effect above on purpose: on the commit that leaves
+  // RECORDING the effect above reads the mark first, and this one does not arm again.
+  useEffect(() => {
+    if (sim === null || state !== 'RECORDING') return undefined;
+    const live = liveOf<MobileLiveSim>(sim);
+    const forSession = sessionId;
+    armed.current = { sessionId: forSession, socket: socketAt(live, Date.now()) };
+    storeMark.current = null;
+    // The selector form: the listener runs only when this session's state changes, not per store write.
+    return sim.store.subscribe(
+      (s) => (s.session !== null && s.session.id === forSession ? s.session.state : null),
+      (held) => {
+        if (storeMark.current !== null || held === 'RECORDING') return;
+        const atMs = Date.now();
+        const current = sim.store.getState().session ?? null;
+        storeMark.current = {
+          atMs,
+          atCoreMs: coreClockOf(sim)?.now() ?? null,
+          state: held,
+          coreStoppedAtMs: held !== null && current !== null ? current.stoppedAt : null,
+          socket: socketAt(live, atMs),
+        };
+      },
+    );
   }, [state, sessionId, sim]);
 
   useEffect(

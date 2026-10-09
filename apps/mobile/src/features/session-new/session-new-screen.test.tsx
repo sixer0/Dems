@@ -369,7 +369,7 @@ describe('tablet layouts (§2.4)', () => {
     expect(screen.getByTestId('pane-content')).toBeTruthy();
     expect(screen.getByTestId('pane-devices')).toBeTruthy();
     expect(screen.getByTestId('session-new-column-previews')).toBeTruthy();
-    for (const id of ['CORE', 'LENS_1', 'LENS_2', 'MIC_1', 'MIC_2', 'STORAGE', 'TIME', 'SECURITY']) {
+    for (const id of ['CORE', 'LENS_1', 'LENS_2', 'MIC_PRIMARY', 'MIC_STANDBY', 'STORAGE', 'TIME', 'SECURITY']) {
       expect(screen.getByTestId(`session-new-live-${id}`)).toBeTruthy();
     }
   });

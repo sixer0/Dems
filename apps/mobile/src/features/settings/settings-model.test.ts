@@ -19,9 +19,9 @@ import {
 import { parseSettingsPrefs } from './settings-prefs';
 
 describe('settings model', () => {
-  it('MB 10 rows: Application 3, System 5, in mockup order; System opens the existing screens', () => {
+  it('MB 10 rows: Application 3, System 7 (5 of MB 10 + Capture, row 68 + Transcription status, row 118), in mockup order; System opens the existing screens', () => {
     expect(rowsOf('application').map((row) => row.id)).toEqual(['preferences', 'notifications', 'security']);
-    expect(rowsOf('system').map((row) => row.id)).toEqual(['devices', 'storage', 'network-time', 'maintenance', 'about']);
+    expect(rowsOf('system').map((row) => row.id)).toEqual(['devices', 'storage', 'network-time', 'capture', 'transcription', 'maintenance', 'about']);
     expect(SETTINGS_ROWS.filter((row) => row.target.kind === 'route').map((row) => row.target)).toEqual([
       { kind: 'route', href: '/devices' },
       { kind: 'route', href: '/storage' },

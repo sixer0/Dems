@@ -146,9 +146,44 @@ describe('SR-04, OR-5, OR-7: no CORS, no localhost origin', () => {
 });
 
 describe('SR-03, P5, P21: nothing leaves the process, nothing comes from mock-core', () => {
-  it('the server runtime calls no global fetch and imports no outbound client', () => {
+  // M4-SEC-NET-1 (SEC35-27): the exemptions are by FILE, pinned by name, one module each. Row 131
+  // pins the datagram half; row 142 adds `onvif-session.ts` for the ONVIF client here, and nowhere else.
+  const OUTBOUND_EXEMPTIONS: Readonly<Record<string, readonly string[]>> = {
+    'src/capture/adapters/camera/ws-discovery.ts': [['node:', 'dg', 'ram'].join('')],
+    // Row 142: the read-only connection test toward a camera candidate. Its agent of the secure module is the one
+    // outbound import this pattern sees; the ONVIF client package itself is pinned to the same file by rule G-R11
+    // (`src/capture/__tests__/static.test.ts`).
+    'src/capture/adapters/camera/onvif-session.ts': [['node:', 'ht', 'tps'].join('')],
+  };
+
+  it('the server runtime calls no global fetch and imports no outbound client, except from the pinned files', () => {
     expect(occurrences(runtime, GLOBAL_FETCH)).toEqual([]);
-    expect(occurrences(runtime, OUTBOUND_MODULE)).toEqual([]);
+    expect(occurrences(runtime, OUTBOUND_MODULE, (path) => !(path in OUTBOUND_EXEMPTIONS))).toEqual([]);
+    // A pinned file imports exactly its one module, and every pinned file exists.
+    for (const [path, modules] of Object.entries(OUTBOUND_EXEMPTIONS)) {
+      const file = runtime.find((entry) => entry.path === path);
+      expect(file, path).toBeDefined();
+      expect((file?.text.match(OUTBOUND_MODULE) ?? []).map((text) => text.replace(/['"]/g, '')), path).toEqual(modules);
+    }
+  });
+
+  it('a third file that imports the datagram module, or a pinned file that imports a second outbound module, is found (positive control)', () => {
+    const datagram = ['node:', 'dg', 'ram'].join('');
+    const planted: SourceFile[] = [
+      { path: 'src/capture/adapters/camera/ws-discovery.ts', text: `import { createSocket } from '${datagram}';\nimport { request } from 'node:${'https'}';` },
+      { path: 'src/modules/capture-config/search.ts', text: `import { createSocket } from '${datagram}';` },
+      { path: 'src/capture/adapters/camera/probe-answer.ts', text: `import dgram from '${['dg', 'ram'].join('')}';` },
+    ];
+    expect(occurrences(planted, OUTBOUND_MODULE, (path) => !(path in OUTBOUND_EXEMPTIONS))).toEqual(['src/modules/capture-config/search.ts:1', 'src/capture/adapters/camera/probe-answer.ts:1']);
+    expect((planted[0]?.text.match(OUTBOUND_MODULE) ?? []).map((text) => text.replace(/['"]/g, ''))).not.toEqual(OUTBOUND_EXEMPTIONS['src/capture/adapters/camera/ws-discovery.ts']);
+    // Row 142: a second file with a secure agent is found, and the pinned file with a second outbound module is not its pin.
+    const secure = ['node:', 'ht', 'tps'].join('');
+    const session: SourceFile[] = [
+      { path: 'src/capture/adapters/camera/onvif-session.ts', text: `import { Agent } from '${secure}';\nimport { connect } from 'node:${'tls'}';` },
+      { path: 'src/modules/capture-discovery/connect/service.ts', text: `import { request } from '${secure}';` },
+    ];
+    expect(occurrences(session, OUTBOUND_MODULE, (path) => !(path in OUTBOUND_EXEMPTIONS))).toEqual(['src/modules/capture-discovery/connect/service.ts:1']);
+    expect((session[0]?.text.match(OUTBOUND_MODULE) ?? []).map((text) => text.replace(/['"]/g, ''))).not.toEqual(OUTBOUND_EXEMPTIONS['src/capture/adapters/camera/onvif-session.ts']);
   });
 
   it('nothing under apps/core-server imports from mock-core', () => {

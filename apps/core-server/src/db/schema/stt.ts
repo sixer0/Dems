@@ -27,7 +27,7 @@
 import { sql } from 'drizzle-orm';
 import { bigint, boolean, check, foreignKey, pgTable, text } from 'drizzle-orm/pg-core';
 import { bytea } from './bytea';
-import { matches, oneOf } from './checks';
+import { matches, oneOf, sessionId } from './checks';
 import { operators } from './rbac';
 import { STT_BACKEND, STT_CREDENTIAL_KIND, type SttBackendValue, type SttCredentialKindValue } from './value-sets';
 
@@ -106,3 +106,57 @@ export const sttConfig = pgTable(
 
 export type SttConfigRow = typeof sttConfig.$inferSelect;
 export type NewSttConfigRow = typeof sttConfig.$inferInsert;
+
+/**
+ * T-42 `session_stt_config` (section N erratum PE-129b-01; requirement R-8 AC-4, check
+ * `M6-STTCFG-NEXT`; controller-added row 129b, decision D109). THE STT CONFIGURATION OF ONE
+ * SESSION AS IT WAS AT ITS START: one row per session, written once by the Core when the session
+ * starts, read by everything the transcriber does for that session - after any restart of the
+ * Core, and at the seal (`FINALIZE_TRANSCRIPT`, manifest field 123).
+ *
+ * WHY A TABLE AND NOT A COLUMN OF `active_session` (the reasoning of dbc-4 §N.3, D-DB-14):
+ * the runtime role holds table-level UPDATE and DELETE on `active_session` and the engine's
+ * write-through owns that row, so "written once" would be a code promise only. Here the runtime
+ * role holds SELECT and INSERT and nothing else (`0012`): a second write, a change and a removal
+ * are refused by the database (23505 / 42501). The engine's mapping never names this table, so
+ * nothing of it is replicated to a client.
+ *
+ * NO SECRET HAS A PLACE HERE: typed columns only, no JSON, no `bytea`, and no `credential_ref` -
+ * the snapshot says how a credential was HELD (`credential_kind`), never where it is or what it
+ * is (E-31; the reference stays one of the three columns `0007` hides from the runtime role, and
+ * is read through the key-loader when the session's adapter is built).
+ *
+ * No default on any column: the writer names every value, as it stood in `stt_config`. The CHECKs
+ * are the ones of `stt_config`, so every row that table can hold has a snapshot. No foreign key:
+ * the row is written while the session exists only in `active_session` (D-DB-07, the T-41 rule).
+ * Reset: rebuilt (rows removed, table kept); not a kept table.
+ */
+export const sessionSttConfig = pgTable(
+  'session_stt_config',
+  {
+    sessionId: text('session_id').primaryKey(),
+    enabled: boolean('enabled').notNull(),
+    backend: text('backend').$type<SttBackendValue>().notNull(),
+    endpoint: text('endpoint'),
+    model: text('model').notNull(),
+    language: text('language').notNull(),
+    diarization: boolean('diarization').notNull(),
+    credentialKind: text('credential_kind').$type<SttCredentialKindValue>(),
+    /** `stt_config.revision` at the moment of the snapshot (manifest field 123 carries it). */
+    configRevision: bigint('config_revision', { mode: 'number' }).notNull(),
+    /** The Core instant the snapshot was taken (epoch milliseconds). */
+    takenAt: bigint('taken_at', { mode: 'number' }).notNull(),
+  },
+  (t) => [
+    check('session_stt_config_session_check', sessionId(t.sessionId)),
+    check('session_stt_config_backend_check', oneOf(t.backend, STT_BACKEND)),
+    check('session_stt_config_endpoint_required_check', sql`${t.backend} <> 'omlx-server' OR ${t.endpoint} IS NOT NULL`),
+    check('session_stt_config_endpoint_loopback_check', sql`${t.endpoint} IS NULL OR ${matches(t.endpoint, STT_ENDPOINT_LOOPBACK_PATTERN)}`),
+    check('session_stt_config_language_check', sql`${t.language} = ${sql.raw(`'${STT_LANGUAGE}'`)}`),
+    check('session_stt_config_credential_kind_check', sql`${t.credentialKind} IS NULL OR ${oneOf(t.credentialKind, STT_CREDENTIAL_KIND)}`),
+    check('session_stt_config_revision_check', sql`${t.configRevision} >= 1`),
+  ],
+);
+
+export type SessionSttConfigRow = typeof sessionSttConfig.$inferSelect;
+export type NewSessionSttConfigRow = typeof sessionSttConfig.$inferInsert;

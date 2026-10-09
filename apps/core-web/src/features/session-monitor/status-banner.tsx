@@ -25,6 +25,8 @@ function useBannerText(banner: BannerModel): { title: string; detail: string } {
   switch (banner.kind) {
     case 'ACTIVE':
       return { title: t('session.banner.ACTIVE.title'), detail: t('session.banner.ACTIVE.detail') }
+    case 'CONNECTING':
+      return { title: t('session.audioSource.connecting.title'), detail: t('session.audioSource.connecting.detail') }
     case 'ATTENTION':
       return { title: t('session.banner.ATTENTION.title'), detail: t('session.banner.ATTENTION.detail', { reason }) }
     case 'FAULT':

@@ -183,7 +183,9 @@ describe('R-1: the cheap, unambiguous forms', () => {
     ['apiKeyValue', `{"apiKeyValue":"${KEY}"}`, '{"apiKeyValue":"***"}'],
     ['secretKey', `secretKey: ${KEY}`, 'secretKey: ***'],
     ['token', `?access_token=${KEY}&page=2`, '?access_token=***&page=2'],
-    ['password', `{"password":"${KEY}","user":"a"}`, '{"password":"***","user":"a"}'],
+    // SEC35-36 (decision D86 C-6): the account name beside a password is credential material and is blanked with it
+    // (until task 3 row 132 `user` stayed readable here).
+    ['password', `{"password":"${KEY}","user":"a"}`, '{"password":"***","user":"***"}'],
     ['a name of two words', `API Key: ${KEY}`, 'API Key: ***'],
     ['Kind and Value in another case', `{"Kind":"SECRET","Value":"${KEY}"}`, '{"Kind":"SECRET","Value":"***"}'],
     ['upper-case keys', `{"KIND":"SECRET","VALUE":"${KEY}"}`, '{"KIND":"SECRET","VALUE":"***"}'],
@@ -243,3 +245,45 @@ describe('R-1: the cheap, unambiguous forms', () => {
   });
 });
 
+
+// Task 3 R-9, security review SEC35-36 (decision D86 C-6; requested by row 142, applied by row 132):
+// the typed camera username of operations 89, 95 and 96 is credential material beside its secret.
+describe('SEC35-36: the account name beside a credential is blanked, in object and in text form', () => {
+  const USER = 'CANARY-ACCOUNT-7f3a';
+  const PASS = 'CANARY-PASS-9c1e';
+
+  it('the three bodies as objects: op 89 `{ username, secret }`, ops 95 and 96 `{ credential: { username, secret } }`', () => {
+    expect(redactCredentialValue({ username: USER, secret: PASS })).toEqual({ username: '***', secret: '***' });
+    for (const body of [{ credential: { username: USER, secret: PASS } }, { candidateId: 'CND-4F2A91C0D377', credential: { username: USER, secret: PASS } }]) {
+      const blanked = JSON.stringify(redactCredentialValue(body));
+      expect(blanked).not.toContain(USER);
+      expect(blanked).not.toContain(PASS);
+    }
+    // The option object of a client package, and the other account names.
+    expect(redactCredentialValue({ hostname: '192.0.2.10', username: USER, password: PASS })).toEqual({ hostname: '192.0.2.10', username: '***', password: '***' });
+    for (const name of ['user', 'login', 'account', 'userName', 'onvif_username']) expect(redactCredentialValue({ [name]: USER, password: PASS }), name).toEqual({ [name]: '***', password: '***' });
+  });
+
+  it('the three bodies as text, in either member order', () => {
+    for (const text of [
+      JSON.stringify({ username: USER, secret: PASS }),
+      JSON.stringify({ secret: PASS, username: USER }),
+      JSON.stringify({ credential: { username: USER, secret: PASS } }),
+      `request failed: body={"credential":{"secret":"${PASS}","username":"${USER}"}}`,
+      `username=${USER}&password=${PASS}`,
+    ]) {
+      const blanked = redactCredentialText(text);
+      expect(blanked, text).not.toContain(USER);
+      expect(blanked, text).not.toContain(PASS);
+    }
+  });
+
+  it('control: a username ALONE, with no credential beside it, stays - in an object and in a text', () => {
+    expect(redactCredentialValue({ username: USER, attemptsRemaining: 2 })).toEqual({ username: USER, attemptsRemaining: 2 });
+    expect(redactCredentialValue({ operator: { username: USER }, role: 'TECHNICIAN' })).toEqual({ operator: { username: USER }, role: 'TECHNICIAN' });
+    const text = `sign-in refused for {"username":"${USER}","attemptsRemaining":2}`;
+    expect(redactCredentialText(text)).toBe(text);
+    // And a member that merely contains the word is not an account name: `usernameHint` beside a secret stays.
+    expect(redactCredentialValue({ usernameHint: 'first letter', secret: PASS })).toEqual({ usernameHint: 'first letter', secret: '***' });
+  });
+});

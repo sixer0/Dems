@@ -52,6 +52,16 @@ function stepLabel(index: number): string {
   return String(screen.getByTestId(`finalizing-pipeline-step-${index}`).props.accessibilityLabel);
 }
 
+/**
+ * The percent the Core's state gives (blueprint row 87; the rule of operation 83): the mean of the step
+ * percents, floored. Before row 87 the screen counted DONE steps only (0 %, 17 %, …); the two
+ * assertions below now hold the Core's own percent, and still bound it by the number of DONE steps.
+ */
+function corePercent(steps: readonly { status: string; progress?: number }[]): number {
+  const sum = steps.reduce((total, step) => total + (step.status === 'done' ? 100 : step.status === 'active' ? Math.min(99, Math.floor(step.progress ?? 0)) : 0), 0);
+  return Math.floor(sum / steps.length);
+}
+
 describe('Finalization (04 §4.6)', () => {
   it('draws the card: title, mono session ID, progress, the six steps with step 1 running, and the session card', async () => {
     const h = renderFlowApp();
@@ -59,7 +69,10 @@ describe('Finalization (04 §4.6)', () => {
     expect(screen.getByTestId('screen-session-finalizing')).toBeTruthy();
     expect(screen.getByText('Finalizing evidence')).toBeTruthy();
     expect(screen.getByTestId('finalizing-session-id')).toHaveTextContent(h.sessionId!);
-    expect(screen.getByTestId('finalizing-progress')).toHaveTextContent('0% complete');
+    const percentAtStart = corePercent(h.sim.store.getState().session!.finalization.steps);
+    // No step is DONE yet: below the 16 % of one finished step.
+    expect(percentAtStart).toBeLessThan(16);
+    expect(screen.getByTestId('finalizing-progress')).toHaveTextContent(`${percentAtStart}% complete`);
     for (const label of [
       'Close tracks',
       'Finalize hashes',
@@ -90,7 +103,11 @@ describe('Finalization (04 §4.6)', () => {
     expect(stepLabel(0)).toBe('Step 1 of 6, Close tracks, completed');
     expect(stepLabel(1)).toBe('Step 2 of 6, Finalize hashes, in progress');
     expect(screen.getByText(`${(first.durationMs! / 1000).toFixed(1)} s`)).toBeTruthy();
-    expect(screen.getByTestId('finalizing-progress')).toHaveTextContent('17% complete');
+    const percentAfterFirst = corePercent(h.sim.store.getState().session!.finalization.steps);
+    // One step is DONE and the second runs: from 16 % up to below 33 %.
+    expect(percentAfterFirst).toBeGreaterThanOrEqual(16);
+    expect(percentAfterFirst).toBeLessThan(33);
+    expect(screen.getByTestId('finalizing-progress')).toHaveTextContent(`${percentAfterFirst}% complete`);
   });
 
   it('MA-29: FINALIZING → SEALED within 10 s, then the route sync opens the Summary with the violet SEALED stamp', async () => {

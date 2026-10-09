@@ -15,6 +15,12 @@
  *   delta first, or the answer first and the delta when the test calls `sendHeldDeltas()`. The Live
  *   source holds the command's continuation until the store holds that revision (CL-16).
  * - The meters are the socket's own `meters` frames (`sendMeters`), never a request (CL-11b, I8).
+ * - Task 3 M5 (row 73; register MB-13): the mic switch. Operation 81 `switchAudioSource` is hosted
+ *   like the other session commands (the engine runs the action; the answer is the contract's
+ *   `AudioSourceState`, the delta carries `session` with the new pair), `sendMeters` names the
+ *   engine's active input (it named `MIC-01` always), and `raiseMicSilent()` / `clearMicSilent()`
+ *   are the warning raiser's two internal actions on the engine. A test that needs a refusal of
+ *   operation 81 installs its own answer with `bed.fake.answer('switchAudioSource', ...)`.
  *
  * Rules the fake's authors gave every client row (decision F59): connect scripts add up (one script
  * here, installed once); the fake clock is advanced in steps with the promise jobs in between
@@ -40,7 +46,7 @@ import {
   type PairingRedeemed,
   type ReplicatedState,
 } from '@dems/shared/api';
-import type { AudioTrackId, VideoTrackId } from '@dems/shared/domain';
+import type { AudioTrackId, MicInputId, VideoTrackId } from '@dems/shared/domain';
 import { coreActionsOf, settle } from '@dems/shared/live';
 import {
   FAKE_CREDENTIALS,
@@ -142,8 +148,12 @@ export interface LiveMonitorBed {
   runCore(ms: number): Promise<void>;
   /** Another console changes the Core (for example another operator stops the session): the engine runs `change`, the delta follows. */
   changeOnCore(change: (engine: TestSim) => void): Promise<void>;
-  /** One `meters` frame on the signed-in socket (both channels). */
+  /** One `meters` frame on the signed-in socket (both channels); it names the engine's active input. */
   sendMeters(frames: Readonly<Record<AudioTrackId, AudioFrame>>): void;
+  /** The Core's warning raiser reports `MIC_SILENT` for `inputId` (it never switches, OD-11); the delta follows. */
+  raiseMicSilent(inputId: MicInputId): Promise<void>;
+  /** The condition is over: the warning is cleared on the Core; the delta follows. */
+  clearMicSilent(inputId: MicInputId): Promise<void>;
   /**
    * The Core stops answering (requests fail, the socket drops, reconnects are refused), or answers
    * again. `'hanging'`: requests fail and a reconnect attempt is left CONNECTING (no answer at all).
@@ -270,10 +280,13 @@ export async function renderLiveMonitor({
       act(() =>
         void bed.connection().meters({
           inputs: { 'MIC-01': frames['AUDIO-01'], 'MIC-02': frames['AUDIO-02'] },
-          activeInputId: 'MIC-01',
+          // The Core's own member (row 73): `MIC-01` until the engine switched.
+          activeInputId: engine.sim.store.getState().audio.activeInputId,
         }),
       );
     },
+    raiseMicSilent: (inputId) => bed.changeOnCore((core) => core.sim.actions.raiseCaptureWarning({ code: 'MIC_SILENT', subject: inputId })),
+    clearMicSilent: (inputId) => bed.changeOnCore((core) => core.sim.actions.clearCaptureWarning({ code: 'MIC_SILENT', subject: inputId })),
     setReachable(next, { drop = true } = {}) {
       const wasUp = reachable === true;
       reachable = next;
@@ -351,6 +364,13 @@ export async function renderLiveMonitor({
   hosted('resetMicClip', (call) => {
     engine.sim.actions.resetClip(bodyOf(call).channel as AudioTrackId);
     return { status: 204 };
+  });
+  // Operation 81 (task 3 M5, row 73): the engine switches; the answer is the pair it holds now.
+  hosted('switchAudioSource', (call) => {
+    engine.sim.actions.switchAudioSource(bodyOf(call).inputId as MicInputId);
+    const pair = engine.sim.store.getState().session?.audioSource;
+    if (pair == null) return refusal(409, 'AUDIO_SOURCE_CONFLICT', 'The requested microphone cannot become the active source.');
+    return { status: 200, body: JSON.parse(JSON.stringify(pair)) as Readonly<Record<string, unknown>> };
   });
 
   fake.onConnect((connection) => {

@@ -15,11 +15,17 @@
  * the dependency order of dbc-3 §A.2 (#1 registry, #2 selector, #3 credentials).
  */
 import { sql } from 'drizzle-orm';
-import { bigint, boolean, check, foreignKey, index, jsonb, pgTable, text } from 'drizzle-orm/pg-core';
+import { bigint, boolean, check, foreignKey, index, jsonb, pgTable, text, uniqueIndex } from 'drizzle-orm/pg-core';
 import { bytea } from './bytea';
 import { code, matches, oneOf } from './checks';
 import { operators } from './rbac';
-import { CAPTURE_DEVICE_KIND, type CaptureDeviceKindValue } from './value-sets';
+import {
+  CAPTURE_ADAPTER_KIND,
+  CAPTURE_ADAPTER_KINDS_BY_DEVICE_KIND,
+  CAPTURE_DEVICE_KIND,
+  type CaptureAdapterKindValue,
+  type CaptureDeviceKindValue,
+} from './value-sets';
 
 /** The AES-256-GCM envelope v2 writes; the only value its CHECK admits (dbc-3 §B.3). */
 const CREDENTIAL_ENCRYPTION = "'AES-256-GCM'";
@@ -44,9 +50,19 @@ export const captureDevices = pgTable(
     poePort: text('poe_port'),
     enabled: boolean('enabled').notNull().default(true),
     lastSeenAt: bigint('last_seen_at', { mode: 'number' }),
+    // ── schema v3 addition (dbc-4 §N.2, D-DB-11/D-DB-12). Declared LAST: `0008_capture_sources.sql`
+    //    appends it (ALTER ADD COLUMN). `DEFAULT 'FAKE'` is permanent and errs to the safe side: a
+    //    writer that forgets the column creates a development device. Written at INSERT and never
+    //    updated - `dems_app` holds no UPDATE on it (`0009`), like `kind` (D72(f), D83). ──
+    adapterKind: text('adapter_kind').$type<CaptureAdapterKindValue>().notNull().default('FAKE'),
   },
   (t) => [
     index('capture_devices_kind_idx').on(t.kind),
+    // At most one device per ONVIF endpoint reference (dbc-4 §N.5, D-DB-15): the database's
+    // backstop for the "already registered" match of adoption.
+    uniqueIndex('capture_devices_onvif_uuid_key')
+      .on(t.onvifUuid)
+      .where(sql`${t.onvifUuid} IS NOT NULL`),
     // The id prefix is tied to the kind, so a registry row cannot claim to be a camera under a
     // `MIC-` id (dbc-3 §B.2).
     check(
@@ -61,6 +77,12 @@ export const captureDevices = pgTable(
     ),
     check('capture_devices_profiles_check', sql`jsonb_typeof(${t.profiles}) = 'array'`),
     check('capture_devices_poe_port_check', sql`${t.poePort} IS NULL OR ${code(t.poePort)}`),
+    check('capture_devices_adapter_kind_check', oneOf(t.adapterKind, CAPTURE_ADAPTER_KIND)),
+    // The adapter kind is tied to the device class, as the id prefix is (dbc-4 §N.2).
+    check(
+      'capture_devices_adapter_pairing_check',
+      sql`(${t.kind} = 'CAMERA' AND ${oneOf(t.adapterKind, CAPTURE_ADAPTER_KINDS_BY_DEVICE_KIND.CAMERA)}) OR (${t.kind} = 'MIC' AND ${oneOf(t.adapterKind, CAPTURE_ADAPTER_KINDS_BY_DEVICE_KIND.MIC)}) OR (${t.kind} = 'POE' AND ${oneOf(t.adapterKind, CAPTURE_ADAPTER_KINDS_BY_DEVICE_KIND.POE)})`,
+    ),
   ],
 );
 

@@ -6,6 +6,8 @@
  * Layout (research/04 §5.2, 12 columns at ≥ 1280 px):
  *   [Camera Devices 8] [Summary 4]
  *   [Audio Inputs 8]   [Other Devices 4]
+ *   [Camera Search 12]             (task 3 R-9 / R-10, blueprint row 137)
+ *   [Capture Device Selector 12]   (task 3 M4, blueprint row 67)
  *   [Front Panel 5]    [Port Map 7]
  * plus the device Drawer (Overview, Health, Log). Simulator gaps are handled locally in
  * `sim-adapter.ts` (the simulator's device views, W48-1..5, step 54).
@@ -22,9 +24,17 @@
  * `COMMAND_UNSUPPORTED`, rebuilt as `SimTransitionError`) keeps the existing friendly toast and one
  * record in the page's own log. In Simulated mode the command settles before the press returns:
  * nothing is ever pending and the outcome is the predecessor's.
+ *
+ * Restart of a CAMERA in Live mode (task 3, decision D100 (2); C3 §3 operation 48; OD-22): for a
+ * camera the Core's restart is a PoE power cycle that needs `{ confirm: true }` and a LOST stream. The
+ * kebab's Restart of a camera therefore asks for the confirmation here and then sends the device
+ * command `POE_CYCLE`, which the shared Live source sends as operation 48 with `{ confirm: true }` —
+ * through the same command path as every other device command (LB-1, CL-22, the presenter). A camera
+ * whose stream is not lost is refused by the Core (`409 CAMERA_NOT_LOST`) and said so.
+ * Microphones and the other devices keep the plain restart, and Simulated mode is unchanged.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { toast } from '@heroui/react'
+import { AlertDialog, Button, toast } from '@heroui/react'
 import { AudioLines, Cable, Camera, Cpu, LayoutGrid, MonitorCog, Video } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useTranslation } from 'react-i18next'
@@ -33,8 +43,14 @@ import { DeviceCommand } from '@dems/shared/sim'
 import { PageHeader } from '@/components/shell/page-header'
 import { useCoreErrorPresenter } from '@/lib/core-errors'
 import { useMotionPolicy } from '@/motion'
+import { useWebLive } from '@/runtime'
 import { AudioInputCard } from './audio-input-card'
+import { CameraSearchProvider, SearchCamerasButton } from './camera-search-context'
+import { CameraSearchPanel } from './camera-search-panel'
 import { CameraTile } from './camera-tile'
+import { CaptureNoticesStrip } from './capture-notices'
+import { CAPTURE_SELECTOR_ANCHOR } from './capture-selector'
+import { CaptureSelectorPanel } from './capture-selector-panel'
 import {
   DeviceActionsContext,
   IdentifyContext,
@@ -48,7 +64,9 @@ import { DevicesBanner } from './devices-banner'
 import { FrontPanel } from './front-panel'
 import { useDeviceLabels } from './labels'
 import { DEVICE_COMMAND_OF, useDeviceWords } from './live'
+import { MicRescan } from './mic-rescan'
 import { PANEL_BEAT_MS, ROW_STAGGER_MS, useHeroBloomDelayMs, useStaggerVariants } from './motion'
+import { COUNTED_DEVICES } from './model'
 import { OtherDevices } from './other-devices'
 import { DevicesPanel } from './panel'
 import { PortMap } from './port-map'
@@ -85,6 +103,9 @@ export function DevicesPage() {
   // LB-1: the ref answers the next press at once; the state drives the look (Live mode only).
   const inFlight = useRef(new Set<DeviceId>())
   const [pending, setPending] = useState<ReadonlySet<DeviceId>>(NO_DEVICE)
+  // D100 (2): the camera whose PoE cycle waits for the operator's confirmation (Live mode only).
+  const live = useWebLive()
+  const [cycleFor, setCycleFor] = useState<DeviceId | null>(null)
 
   // R3: the hero (the two large meters) finishes last with one glow bloom on its panel.
   const bloomDelayMs = useHeroBloomDelayMs()
@@ -105,16 +126,12 @@ export function DevicesPage() {
     return () => clearTimeout(timer)
   }, [identify, m])
 
-  const run = useCallback(
-    (deviceId: DeviceId, action: DeviceAction) => {
-      if (action === 'details') {
-        setDrawerId(deviceId)
-        return
-      }
+  /** Sends one device command and follows the Core's answer (LB-1, rule 2). One command per device at a time. */
+  const send = useCallback(
+    (deviceId: DeviceId, command: DeviceCommand) => {
       // LB-1: one command per device at a time; a press while one is out sends nothing.
       if (inFlight.current.has(deviceId)) return
       const name = labels.name(deviceId)
-      const command = DEVICE_COMMAND_OF[action]
       inFlight.current.add(deviceId)
       let settled = false
       settle(() => actions.deviceCommand(deviceId, command), {
@@ -131,11 +148,19 @@ export function DevicesPage() {
             case DeviceCommand.RESTART:
               toast.success(t(words.restarted, { name }))
               break
+            case DeviceCommand.POE_CYCLE:
+              toast.success(t('devices.selector.poe.requested', { name }))
+              break
           }
         },
         fail: (error) => {
           // Rule 2 of the page rows: the presenter first (a 403, an outage, a time-out, a 429).
           if (presentCoreError(error) !== null) return
+          // C3 §3 operation 48: a camera whose stream is not lost is not cycled. Said as what it is; nothing was changed.
+          if ((error as { readonly code?: unknown } | null)?.code === 'CAMERA_NOT_LOST') {
+            toast.info(t('devices.selector.poe.notLost'))
+            return
+          }
           // Layer 1: a friendly toast; layer 2: the structured record; layer 3: the page keeps working.
           reportDevicesError('features/devices.run', error, COMMAND_FAILED_RECORD, { deviceId, command })
           toast.danger(t('devices.actions.failed'))
@@ -151,7 +176,37 @@ export function DevicesPage() {
     },
     [actions, labels, presentCoreError, t, words],
   )
+
+  const run = useCallback(
+    (deviceId: DeviceId, action: DeviceAction) => {
+      if (action === 'details') {
+        setDrawerId(deviceId)
+        return
+      }
+      if (inFlight.current.has(deviceId)) return
+      // D100 (2): a camera's restart on a Core server is the confirmed PoE cycle; the confirmation is asked for first.
+      if (action === 'restart' && live !== null && (deviceId === 'CAM-01' || deviceId === 'CAM-02')) {
+        setCycleFor(deviceId)
+        return
+      }
+      send(deviceId, DEVICE_COMMAND_OF[action])
+    },
+    [live, send],
+  )
+
+  /** The confirmed PoE cycle of a camera: the same command path as every other device command, with `POE_CYCLE`. */
+  const confirmCycle = useCallback(() => {
+    const deviceId = cycleFor
+    setCycleFor(null)
+    if (deviceId !== null) send(deviceId, DeviceCommand.POE_CYCLE)
+  }, [cycleFor, send])
   const deviceActions = useMemo(() => ({ open: setDrawerId, run, pending }), [run, pending])
+  // "View device" of a found camera that is already registered: the drawer for a device this page
+  // draws (CAM-01, CAM-02); for an added camera (`CAM-03`), the selector, where it is an option.
+  const viewDevice = useCallback((deviceId: string) => {
+    if ((COUNTED_DEVICES as readonly string[]).includes(deviceId)) setDrawerId(deviceId as DeviceId)
+    else document.getElementById(CAPTURE_SELECTOR_ANCHOR)?.scrollIntoView?.({ block: 'start' })
+  }, [])
   const camerasStagger = useStaggerVariants(PANEL_BEAT_MS.cameras, ROW_STAGGER_MS)
   const audioStagger = useStaggerVariants(PANEL_BEAT_MS.audio, ROW_STAGGER_MS)
 
@@ -159,8 +214,23 @@ export function DevicesPage() {
     <DeviceActionsContext value={deviceActions}>
       <IdentifyContext value={identify}>
         <MicSamplerContext value={sampler}>
+          {/* Task 3 R-9 / R-10 (blueprint row 137): ONE camera search and ONE microphone re-read for the page (G13, G17). */}
+          <CameraSearchProvider>
           <div className="dems-page dev-page" data-testid="page-devices">
-            <PageHeader icon={Camera} title={t('devices.title')} subtitle={t('devices.subtitle')} status={<DevicesBanner />} />
+            <PageHeader
+              icon={Camera}
+              title={t('devices.title')}
+              subtitle={t('devices.subtitle')}
+              status={
+                <span className="dev-header-status">
+                  <SearchCamerasButton place="header" reveal />
+                  <DevicesBanner />
+                </span>
+              }
+            />
+
+            {/* Flow 11 (R-10): what the Core could not find, for everyone, each with "Search again". */}
+            <CaptureNoticesStrip />
 
             <div className="dev-grid">
               <DevicesPanel id="cameras" icon={Video} title={t('devices.cameras.title')} subtitle={t('devices.cameras.subtitle')}>
@@ -185,11 +255,19 @@ export function DevicesPage() {
                   <AudioInputCard channel="AUDIO-01" />
                   <AudioInputCard channel="AUDIO-02" />
                 </motion.div>
+                {/* Flow 13 (R-10 AC-2): "Search again" re-reads the microphones connected to the Core (operation 97). */}
+                <MicRescan />
               </DevicesPanel>
 
               <DevicesPanel id="other" icon={Cpu} title={t('devices.other.title')}>
                 <OtherDevices />
               </DevicesPanel>
+
+              {/* Task 3 R-9 (blueprint row 137; ux §8c, §8d): the camera search, its list and the connect flow (operations 93-96). */}
+              <CameraSearchPanel onViewDevice={viewDevice} />
+
+              {/* Task 3 M4 (blueprint row 67; ux §2 flow 1): the capture device selector (operations 76-80). */}
+              <CaptureSelectorPanel />
 
               <DevicesPanel id="front" icon={MonitorCog} title={t('devices.front.title')} subtitle={t('devices.front.subtitle')}>
                 <FrontPanel />
@@ -200,7 +278,29 @@ export function DevicesPage() {
               </DevicesPanel>
             </div>
           </div>
+          </CameraSearchProvider>
           <DeviceDrawer deviceId={drawerId} onClose={() => setDrawerId(null)} />
+          <AlertDialog.Backdrop isOpen={cycleFor !== null} onOpenChange={(open) => (open ? undefined : setCycleFor(null))}>
+            <AlertDialog.Container size="sm">
+              <AlertDialog.Dialog aria-label={t('devices.selector.poe.confirmTitle', { name: cycleFor === null ? '' : labels.name(cycleFor) })} data-testid="camera-restart-dialog">
+                <AlertDialog.Header>
+                  <AlertDialog.Icon status="warning" />
+                  <AlertDialog.Heading>{t('devices.selector.poe.confirmTitle', { name: cycleFor === null ? '' : labels.name(cycleFor) })}</AlertDialog.Heading>
+                </AlertDialog.Header>
+                <AlertDialog.Body>
+                  <p>{t('devices.selector.poe.confirmBody')}</p>
+                </AlertDialog.Body>
+                <AlertDialog.Footer>
+                  <Button variant="ghost" onPress={() => setCycleFor(null)}>
+                    {t('common.actions.cancel')}
+                  </Button>
+                  <Button variant="danger" onPress={confirmCycle} data-testid="camera-restart-confirm">
+                    {t('devices.selector.poe.confirm')}
+                  </Button>
+                </AlertDialog.Footer>
+              </AlertDialog.Dialog>
+            </AlertDialog.Container>
+          </AlertDialog.Backdrop>
         </MicSamplerContext>
       </IdentifyContext>
     </DeviceActionsContext>

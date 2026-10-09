@@ -31,7 +31,7 @@ export interface TableMinimum {
   readonly mix: string;
 }
 
-/** The 40 tables in the order of the contract's table: §11 revision 2, revised by dbc-3 §G. */
+/** The 42 tables in the order of the contract's table: §11 revision 2, revised by dbc-3 §G and dbc-4 §N.10. */
 export const BULK_MINIMUMS: readonly TableMinimum[] = Object.freeze([
   { table: 'roles', minimum: 3, mix: 'unchanged' },
   { table: 'permissions', minimum: 14, mix: 'the 14 seeded by schema v2 (dbc-3 §G revised): CAPTURE_CONFIG and TRANSCRIPT_REVISE joined the list' },
@@ -82,7 +82,7 @@ export const BULK_MINIMUMS: readonly TableMinimum[] = Object.freeze([
   // Schema v2 (dbc-3 §G): the capture rows (seed plus the fixture's discovered variants) and the
   // six pipeline tables the CS-20 builders of `pipeline.ts` synthesise.
   { table: 'capture_config', minimum: 1, mix: 'seed: the one default singleton' },
-  { table: 'capture_devices', minimum: 8, mix: 'dbc-3 §G: 5 built-ins (seed) plus 3 discovered variants (fixture); at least 1 dual-profile camera (OD-05)' },
+  { table: 'capture_devices', minimum: 12, mix: 'dbc-4 §N.10 (revised from 8): 5 built-ins (seed, FAKE); 3 discovered cameras (ONVIF_RTSP, distinct onvif_uuid, at least 1 dual-profile, OD-05); 1 LOCAL_DEVICE camera and 1 LOCAL_DEVICE microphone; 2 USB_AUDIO microphones' },
   { table: 'capture_device_credentials', minimum: 2, mix: "dbc-3 §G: fake devices only (the fixture's discovered cameras, never a built-in); at least 1 rotated (rotated_at later than another row)" },
   { table: 'session_audio_intervals', minimum: 720, mix: "dbc-3 §G: at least 1 per sealed session; at least 150 rows over 50 switched sessions (2-3 intervals, reason 'MANUAL', switched_by non-null); one open interval in the RECORDING variant" },
   { table: 'recording_fragments', minimum: 6_500, mix: 'dbc-3 §G: contiguous full chains for the 40 newest sessions (2 tracks; head equals fragment_chain_head); sampled rows elsewhere; no seq gap anywhere (the gap case is the negative test of M2-MT-3)' },
@@ -91,6 +91,11 @@ export const BULK_MINIMUMS: readonly TableMinimum[] = Object.freeze([
   { table: 'transcript_revisions', minimum: 30, mix: 'dbc-3 §G: at least 5 items with chained revisions (parent_sha256 links); Ed25519-shaped signature' },
   { table: 'sealing_jobs', minimum: 3_000, mix: 'dbc-3 §G: every step of every SEALED session DONE; at least 20 attempt >= 2 with status DONE (resumed via RECOVERY); one RUNNING job in the RECOVERY variant; at least 5 non-null checkpoints' },
   { table: 'stt_config', minimum: 1, mix: 'seed: the one confirmed-default row (row 112, R-8)' },
+  // Schema v3 (dbc-4 §N.10): the session-start source record (T-41).
+  { table: 'session_capture_sources', minimum: 1_600, mix: 'dbc-4 §N.10: exactly 4 per session that has an interval or a fragment row; at least 20 sessions in the development shape (LOCAL_DEVICE, FAKE, LOCAL_DEVICE, FAKE); at least 20 all-production (ONVIF_RTSP x2, USB_AUDIO x2); the rest all-FAKE; no session mixes a production kind with a development kind; every interval names one of its session\'s two mic rows (MR-S2)' },
+  // Schema v5 (erratum PE-129b-01): the per-session STT snapshot (T-42). The fixture builds none
+  // (rule S-2: a generator that writes `transcript_chunks` for a REAL session writes its snapshot).
+  { table: 'session_stt_config', minimum: 0, mix: 'PE-129b-01: none built; one row per session from the day a generator emits real transcription' },
 ] as const);
 
 /** The required mix as numbers. Every value is a minimum, except `pairingCodes.activeAtMost`. */
@@ -115,7 +120,10 @@ export const BULK_MIX = Object.freeze({
   healthSnapshots: { interval: 1_440, fault: 60 },
   activeSessionVariant: { timelineItems: 200 },
   // Schema v2 (dbc-3 §G): the mix of the CS-20 builders in `pipeline.ts`.
-  captureDevices: { builtIn: 5, discovered: 3, dualProfileCameras: 1 },
+  // dbc-4 §N.10: `discovered` counts every row the fixture adds (3 ONVIF cameras, 2 USB
+  // microphones, the local camera and the local microphone).
+  captureDevices: { builtIn: 5, discovered: 7, onvifCameras: 3, usbAudioMics: 2, localCameras: 1, localMics: 1, dualProfileCameras: 1 },
+  sessionCaptureSources: { perSession: 4, developmentSessions: 20, productionSessions: 20 },
   captureDeviceCredentials: { total: 2, rotatedAtLeast: 1 },
   sessionAudioIntervals: { minPerSealed: 1, switchedSessions: 50, manualRows: 150, openInRecordingVariant: 1 },
   recordingFragments: { fullChainSessions: 40, tracksPerChain: 2 },
@@ -140,7 +148,7 @@ export function minimumOf(table: string): number {
   return entry.minimum;
 }
 
-/** "entity, minimum, loaded" for all 40 tables, in the contract's order (§11 plus dbc-3 §G). A missing count is 0. */
+/** "entity, minimum, loaded" for all 42 tables, in the contract's order (§11 plus dbc-3 §G). A missing count is 0. */
 export function compareWithMinimums(counts: Readonly<Record<string, number>>): MinimumComparison[] {
   return BULK_MINIMUMS.map(({ table, minimum }) => {
     const loaded = counts[table] ?? 0;

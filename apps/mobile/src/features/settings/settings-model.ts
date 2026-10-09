@@ -21,7 +21,7 @@ import type { CoreLinkSource } from '@/runtime';
 
 export type SettingsGroup = 'application' | 'system';
 export type SettingsRouteHref = '/devices' | '/storage' | '/network-time';
-export type SettingsIcon = 'preferences' | 'notifications' | 'security' | 'devices' | 'storage' | 'network' | 'maintenance' | 'about';
+export type SettingsIcon = 'preferences' | 'notifications' | 'security' | 'devices' | 'storage' | 'network' | 'maintenance' | 'about' | 'transcription' | 'capture';
 
 export type SettingsRowTarget = { kind: 'section'; section: SettingsSection } | { kind: 'route'; href: SettingsRouteHref };
 
@@ -46,6 +46,9 @@ export const SETTINGS_ROWS: readonly SettingsRowDef[] = [
   { id: 'devices', group: 'system', labelKey: 'system.settings.deviceSettings', icon: 'devices', target: { kind: 'route', href: '/devices' } },
   { id: 'storage', group: 'system', labelKey: 'system.settings.storageManagement', icon: 'storage', target: { kind: 'route', href: '/storage' } },
   { id: 'network-time', group: 'system', labelKey: 'system.settings.networkTime', icon: 'network', target: { kind: 'route', href: '/network-time' } },
+  // Task 3 row 68 (MB-09; ux §2.6): the device selector. The row above it opens the Devices screen, which holds it too.
+  { id: 'capture', group: 'system', labelKey: 'features.capture-selector.settings.title', icon: 'capture', target: { kind: 'section', section: 'capture' } },
+  { id: 'transcription', group: 'system', labelKey: 'features.transcription.title', icon: 'transcription', target: { kind: 'section', section: 'transcription' } },
   { id: 'maintenance', group: 'system', labelKey: 'system.settings.systemMaintenance', icon: 'maintenance', target: { kind: 'section', section: 'maintenance' } },
   { id: 'about', group: 'system', labelKey: 'system.settings.aboutDems', icon: 'about', target: { kind: 'section', section: 'about' } },
 ];
@@ -61,6 +64,8 @@ export const SECTION_TITLE_KEYS: Readonly<Record<SettingsSection, string>> = {
   security: 'system.settings.securityPrivacy',
   maintenance: 'system.settings.systemMaintenance',
   about: 'system.settings.aboutDems',
+  transcription: 'features.transcription.title',
+  capture: 'features.capture-selector.settings.title',
 };
 
 /** Medium and expanded open a section in the right pane; with none selected it shows the first one. */

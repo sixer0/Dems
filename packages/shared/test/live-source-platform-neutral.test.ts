@@ -263,6 +263,7 @@ describe('the export subpath @dems/shared/live/source', () => {
 
   it('exports the Live source and nothing else', () => {
     expect(Object.keys(viaSubpath).sort()).toEqual([
+      'CAPTURE_CONFIG_CHANGE_OPERATION_INDEX',
       'DEVICE_COMMAND_OPERATION_INDEX',
       'ENVELOPE_SIM_CODE',
       'LIVE_BINDINGS',
@@ -390,7 +391,7 @@ describe('the export subpath @dems/shared/live/source', () => {
       'wasRestored',
     ]);
     expect(members.filter((name) => /token|credential|secret|bearer|password|cookie|header/i.test(name))).toEqual([]);
-    // The 45 actions under the simulator's names, one stable object.
+    // The 48 actions under the simulator's names, one stable object.
     expect(Object.keys(source.actions)).toEqual(viaFile.LIVE_BINDING_NAMES);
     expect(source.actions).toBe(source.actions);
     expect(source.coreMode).toBe('LIVE');

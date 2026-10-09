@@ -37,6 +37,7 @@ import { StatusChip } from '@/components/kit';
 import { Emblem } from '@/components/media/emblem';
 import type { LayoutClass } from '@/layout';
 import { useMotionPolicy, useMotionSettings, useMotionState } from '@/motion';
+import { captureNoticeTitle } from '@/features/capture-selector/capture-notices-model';
 import { useCoreLinkChip } from '@/features/more/use-core-link-chip';
 import { reportRuntimeIssue, useAuth, useCoreErrorPresenter, useCoreLink } from '@/runtime';
 import { clockText, displaySecondsOfDay, type HomeStatus } from './home-model';
@@ -231,7 +232,8 @@ function AlertsBell() {
                   <View style={[styles.alertDot, { backgroundColor: toneTextHex[SEVERITY_TONE[alert.severity]] }]} />
                   <Text style={styles.alertText} numberOfLines={2}>
                     {t('features.dashboard.alerts.line', {
-                      label: alert.kind === 'SYSTEM' ? alert.message : t(`common.faultKind.${alert.kind}`, { defaultValue: alert.message }),
+                      // Task 3 row 138 (ux §8e.1): a no-device notice is worded from `params.reason`, with the device's label.
+                      label: captureNoticeTitle(t, alert) ?? (alert.kind === 'SYSTEM' ? alert.message : t(`common.faultKind.${alert.kind}`, { defaultValue: alert.message })),
                       time: formatDate(alert.at, 'HH:mm:ss'),
                     })}
                   </Text>

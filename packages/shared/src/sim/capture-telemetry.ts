@@ -24,10 +24,11 @@
  * (FAULT_CLEARED), so the next episode is a new fault with its own alert and audit row.
  */
 import { SessionState, type MicInputId, type MicRole } from '../domain';
-import { CHANNEL_OF_MIC_INPUT, type AudioRuntime } from './audio';
+import { CHANNEL_OF_MIC_INPUT, builtInMicInputOf, channelOfMicInput, type AudioRuntime } from './audio';
 import { SimNotFoundError } from './errors';
 import { clearFaultAtKey, raiseFaultAtKey } from './faults';
 import type {
+  ActiveSession,
   CaptureConfigMic,
   CaptureIngestStateName,
   CaptureTelemetryInput,
@@ -46,9 +47,36 @@ function captureMics(state: SimState): readonly CaptureConfigMic[] {
   return state.session?.captureConfig?.mics ?? state.captureConfig.mics;
 }
 
-/** The mic input that holds `role`, or null when no row of the capture config names that role. */
+/**
+ * The METERED mic input that holds `role`, or null when no row of the capture config names that
+ * role or the row's input is a `MIC-NN` beyond the built-in pair (it has no meter channel).
+ */
 export function micInputOfCaptureRole(state: SimState, role: MicRole): MicInputId | null {
-  return captureMics(state).find((mic) => mic.role === role)?.inputId ?? null;
+  const inputId = captureMics(state).find((mic) => mic.role === role)?.inputId;
+  return inputId === undefined ? null : builtInMicInputOf(inputId);
+}
+
+/**
+ * Whether the capture of a session is durable (D84, D91 R-1 option A): everything but an explicit
+ * `false`. A session without the member - every simulated one, every one stored before the member
+ * existed - reads as durable.
+ */
+export function captureDurableOf(session: Pick<ActiveSession, 'captureDurable'> | null | undefined): boolean {
+  return session?.captureDurable !== false;
+}
+
+/**
+ * THE SEAM of `captureDurable`: what the capture supervisor reports (`status().durable`) becomes
+ * the member of the open session's payload. Returns THE SAME state when no session records or the
+ * member holds that value already, so a repeated report publishes nothing. Never moves the
+ * session state and writes no audit row. Not hosted as an action yet: row 71 calls it from the
+ * engine host with `false` at the accepted start and `true` at the first durable fragment.
+ */
+export function captureDurableTransition(state: SimState, durable: boolean): SimState {
+  const session = state.session;
+  if (session === null || session.state !== SessionState.RECORDING) return state;
+  if (session.captureDurable === durable) return state;
+  return { ...state, session: { ...session, captureDurable: durable } };
 }
 
 /**
@@ -159,7 +187,10 @@ function faultOfCaptureWarning(state: SimState, warning: CaptureWarningInput): {
     if (subject === null) return { kind: code, key: CHANNEL_OF_MIC_INPUT[state.audio.activeInputId] };
     const mic = micOfSubject(state, subject);
     if (mic === null) throw new SimNotFoundError('captureMic', subject);
-    return { kind: code, key: CHANNEL_OF_MIC_INPUT[mic.inputId] };
+    // The fault is keyed by a meter channel: an input beyond the built-in pair has none.
+    const channel = channelOfMicInput(mic.inputId);
+    if (channel === null) throw new SimNotFoundError('captureMic', subject);
+    return { kind: code, key: channel };
   }
   if (code === FaultKind.CAPTURE_FAULT) {
     if (subject === null) return { kind: code, key: null };

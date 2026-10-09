@@ -53,14 +53,15 @@ function entry(operationId: string, change: Record<string, unknown>): CoreApiOpe
 }
 
 describe('the rule book of the contract registry', () => {
-  it('compiles a rule for every one of the 92 operations: none lacks an access rule or an audit rule', () => {
+  it('compiles a rule for every one of the 97 operations: none lacks an access rule or an audit rule', () => {
     // C3 §2.5 (blueprint row 113): 89 + the STT configuration operations 90-92 = 92.
-    expect(book.operationIds).toHaveLength(92);
+    // C3 §2.6, §10.1 (blueprint row 132, decision D106): + the camera-search operations 93-97 = 97.
+    expect(book.operationIds).toHaveLength(97);
     expect(rules.filter((rule) => !isAccessRule(rule))).toEqual([]);
-    expect(new Set(compiled.map((rule) => rule.operationId)).size).toBe(92);
+    expect(new Set(compiled.map((rule) => rule.operationId)).size).toBe(97);
   });
 
-  it('holds 4 PUBLIC, 5 DEVICE, 30 AUTHENTICATED, 52 with one permission and 1 any-of (spec §7, D13; C3 §2.5)', () => {
+  it('holds 4 PUBLIC, 5 DEVICE, 30 AUTHENTICATED, 57 with one permission and 1 any-of (spec §7, D13; C3 §2.5, §2.6)', () => {
     const count = (kind: string): number => compiled.filter((rule) => rule.kind === kind).length;
     expect({
       PUBLIC: count(CoreApiAccessKind.PUBLIC),
@@ -68,7 +69,7 @@ describe('the rule book of the contract registry', () => {
       AUTHENTICATED: count(CoreApiAccessKind.AUTHENTICATED),
       PERMISSION: count(CoreApiAccessKind.PERMISSION),
       ANY_OF: count(CoreApiAccessKind.ANY_OF),
-    }).toEqual({ PUBLIC: 4, DEVICE: 5, AUTHENTICATED: 30, PERMISSION: 52, ANY_OF: 1 });
+    }).toEqual({ PUBLIC: 4, DEVICE: 5, AUTHENTICATED: 30, PERMISSION: 57, ANY_OF: 1 });
   });
 
   it('takes method, path, permissions and conditions from the registry entry, and nothing from anywhere else', () => {
@@ -115,6 +116,10 @@ describe('the rule book of the contract registry', () => {
       ['clearFault', CoreApiAccessCondition.DEMO_FLAG],
       ['resetDemo', CoreApiAccessCondition.DEMO_FLAG],
       ['switchAudioSource', CoreApiAccessCondition.SESSION_HOLDER],
+      // Task 3 R-9 (blueprint row 132, D106; C3 §0, §3.1): web console only, in registry order.
+      ['setCaptureDeviceCredential', CoreApiAccessCondition.WEB_CONSOLE_SESSION],
+      ['testCaptureCandidateConnection', CoreApiAccessCondition.WEB_CONSOLE_SESSION],
+      ['adoptCaptureCandidate', CoreApiAccessCondition.WEB_CONSOLE_SESSION],
     ]);
   });
 

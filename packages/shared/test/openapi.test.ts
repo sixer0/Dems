@@ -1,5 +1,5 @@
 // AC-56 (masterplan/01_specs.md §14.9, §14.14; blueprint step 33): the OpenAPI 3.1.0 document is
-// valid for @scalar/openapi-parser, has 26 operations (health LIVE, the 25 simulated endpoints — the
+// valid for @scalar/openapi-parser, has 31 operations (health LIVE, the 30 simulated endpoints — the
 // 9 §21.2 endpoints, the 13 capture/transcript ones added by OD-17 and the 3 STT configuration ones
 // of task 3 M6 row 113, C3 §2.5 — SIMULATED), carries only
 // allowed extensions, matches the committed openapi.json, and agrees with the simulator's handlers
@@ -62,7 +62,7 @@ import {
 
 const AT = Date.parse(OPENAPI_EXAMPLE_INSTANT);
 
-/** The components of the 26 offline operations (ten baseline + thirteen simulated capture + three STT configuration), in builder order. */
+/** The components of the 31 offline operations (ten baseline + thirteen simulated capture + three STT configuration + five of the camera search), in builder order. */
 const OFFLINE_SCHEMA_NAMES = [
   'HealthResponse',
   'SessionCreateRequest',
@@ -110,6 +110,15 @@ const OFFLINE_SCHEMA_NAMES = [
   'SttConfigUpdateRequest',
   'SttConfigUpdateResult',
   'SttConnectionTest',
+  // Task 3 R-9..R-11 (blueprint row 132, D106; C3 §2.6): the eight schemas of ops 93-97.
+  'CaptureDiscoverySearch',
+  'CaptureCandidate',
+  'CaptureDiscoveryState',
+  'CaptureConnectionTestRequest',
+  'CaptureConnectionTest',
+  'CaptureCandidateAdoptRequest',
+  'CaptureCandidateAdoption',
+  'CaptureInputScan',
 ];
 
 /** The nine book §21.2 endpoints, verbatim (research/01_explore.md §21.2). */
@@ -163,9 +172,9 @@ describe('AC-56: the OpenAPI document', () => {
     expect((await validate(serializeOpenApiDocument(broken))).valid).toBe(false);
   });
 
-  it('has 26 operations: GET /api/v1/health LIVE and the 25 simulated endpoints (9 book §21.2 + 13 capture + 3 STT configuration) SIMULATED', () => {
-    expect(operations).toHaveLength(26);
-    expect(new Set(operations.map((entry) => entry.operation.operationId)).size).toBe(26);
+  it('has 31 operations: GET /api/v1/health LIVE and the 30 simulated endpoints (9 book §21.2 + 13 capture + 3 STT configuration + 5 camera search) SIMULATED', () => {
+    expect(operations).toHaveLength(31);
+    expect(new Set(operations.map((entry) => entry.operation.operationId)).size).toBe(31);
 
     const live = operations.filter((entry) => entry.operation['x-dems-mode'] === 'live');
     expect(live.map((entry) => `${entry.method} ${entry.path}`)).toEqual([`get ${HEALTH_PATH}`]);
@@ -177,7 +186,8 @@ describe('AC-56: the OpenAPI document', () => {
     // thirteen simulated capture/transcript operations. The nine stay an independent pin; the rest is
     // pinned by count and by the badges below (their exact routes are pinned in api-registry.test.ts).
     // Task 3 M6 row 113 (C3 §2.5) adds the three STT configuration operations 90-92: 22 -> 25.
-    expect(simulatedPaths.length).toBe(25);
+    // Task 3 R-9..R-11 (row 132, D106; C3 §2.6) add the five operations 93-97: 25 -> 30.
+    expect(simulatedPaths.length).toBe(30);
     for (const endpoint of BOOK_21_2) expect(simulatedPaths, endpoint).toContain(endpoint);
     for (const entry of simulated) {
       expect(badgeNames(entry.operation)).toContain(API_BADGES.SIMULATED.name);
@@ -185,7 +195,7 @@ describe('AC-56: the OpenAPI document', () => {
     }
     const badgeCount = (name: string) => operations.filter((entry) => badgeNames(entry.operation).includes(name)).length;
     expect(badgeCount('LIVE')).toBe(1);
-    expect(badgeCount('SIMULATED')).toBe(25);
+    expect(badgeCount('SIMULATED')).toBe(30);
   });
 
   it('marks only the export RBAC + AUDIT, and every x-dems-rbac lists exactly the roles holding its permission', () => {
@@ -207,13 +217,13 @@ describe('AC-56: the OpenAPI document', () => {
   });
 
   it('the committed openapi/openapi.json matches the builder byte for byte (no drift)', () => {
-    // Changed by design (W27; AC-B-11): the committed file holds the `all` scope, 92 operations (C3 §2.5).
+    // Changed by design (W27; AC-B-11): the committed file holds the `all` scope, 97 operations (C3 §10.1).
     // The document this file describes is the offline one, which the generator still renders.
     const committed = readFileSync(OPENAPI_JSON_PATH, 'utf8');
     expect(OPENAPI_COMMITTED_SCOPE).toBe(CoreApiScope.ALL);
     expect(renderOpenApiJson()).toBe(serializeOpenApiDocument(createOpenApiDocument({ scope: OPENAPI_COMMITTED_SCOPE })));
     expect(committed).toBe(renderOpenApiJson());
-    expect(listOpenApiOperations(JSON.parse(committed) as typeof document)).toHaveLength(92);
+    expect(listOpenApiOperations(JSON.parse(committed) as typeof document)).toHaveLength(97);
     expect(renderOpenApiJson(CoreApiScope.OFFLINE)).toBe(serializeOpenApiDocument(document));
   });
 
@@ -253,7 +263,7 @@ describe('AC-56: the OpenAPI document', () => {
   });
 
   it('generates one component per contract schema of its scope, from the zod schemas', () => {
-    // Changed by design (W19; OD-17 M2; M6 row 113): the offline document holds the 45 schemas its 26 operations
+    // Changed by design (W19; OD-17 M2; M6 row 113): the offline document holds the 53 schemas its 31 operations
     // use, in registry order (a subsequence of `CORE_API_SCHEMAS`); the `all` scope holds one component
     // per entry of `CORE_API_SCHEMAS`.
     expect(Object.keys(document.components.schemas)).toEqual(OFFLINE_SCHEMA_NAMES);
@@ -403,7 +413,7 @@ async function rig(seen: Map<string, Set<number>>): Promise<SimRig> {
 const RECORDING_INPUT = CORE_API_EXAMPLES.createSession!.request!.recordingScenario!.value as Record<string, unknown>;
 
 describe('the contract matches the simulated handlers (sim/api.ts)', () => {
-  it("the simulator's route table lists exactly the simulated operations of the registry (25)", () => {
+  it("the simulator's route table lists exactly the simulated operations of the registry (30)", () => {
     const documented = CORE_API_OPERATIONS.filter((operation) => operation.mode === 'simulated').map(
       (operation) => `${operation.method.toUpperCase()} ${operation.path} ${operation.operationId}`,
     );
@@ -520,9 +530,16 @@ describe('the contract matches the simulated handlers (sim/api.ts)', () => {
     expect(d.call('setPrimaryMic', 'POST', '/api/v1/capture/mics/MIC-99/primary').status).toBe(404);
     expect(d.call('setCaptureDeviceCredential', 'POST', '/api/v1/capture/devices/GHOST/credential', { username: 'u', secret: 's' }).status).toBe(404);
     expect(d.call('updateCaptureConfig', 'POST', CFG_PATH, { cameras: [{ trackId: 'VIDEO-09', deviceId: 'CAM-01' }] }).status).toBe(422);
+    // Decision D106 (3): the facade runs the hosted action's transition, so what the selector as a
+    // whole refuses is refused here too — a line that names no registered camera, and one camera on
+    // both tracks with one profile (the built-in selector holds CAM-02 on VIDEO-02 already).
+    expect(d.call('updateCaptureConfig', 'POST', CFG_PATH, { cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-77' }] }).status).toBe(422);
+    expect(d.call('updateCaptureConfig', 'POST', CFG_PATH, { cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-02' }] }).status).toBe(422);
     expect(d.call('setCaptureCameraSource', 'POST', '/api/v1/capture/cameras/CAM-01/source', { trackId: 'VIDEO-09' }).status).toBe(422);
     expect(d.call('setCaptureDeviceCredential', 'POST', '/api/v1/capture/devices/CAM-01/credential', { username: 'only' }).status).toBe(422);
-    expect(d.call('updateCaptureConfig', 'POST', CFG_PATH, { cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-02' }] }).status).toBe(200);
+    // The two cameras swap their tracks: a whole selector that holds each source once.
+    const SWAP = { cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-02' }, { trackId: 'VIDEO-02', deviceId: 'CAM-01' }] };
+    expect(d.call('updateCaptureConfig', 'POST', CFG_PATH, SWAP).status).toBe(200);
     expect(d.call('setCaptureCameraSource', 'POST', '/api/v1/capture/cameras/CAM-01/source', { trackId: 'VIDEO-02' }).status).toBe(200);
     expect(d.call('setPrimaryMic', 'POST', '/api/v1/capture/mics/MIC-02/primary').status).toBe(200);
     expect(d.call('setCaptureDeviceCredential', 'POST', '/api/v1/capture/devices/CAM-01/credential', { username: 'u', secret: 's' }).status).toBe(200);
@@ -661,6 +678,47 @@ describe('the contract matches the simulated handlers (sim/api.ts)', () => {
     expect(l.call('getSttConfig', 'GET', STT_PATH).status).toBe(200);
     l.sim.stop();
 
+    // Flow 14 (task 3 R-9..R-11, blueprint row 132, decision D106; C3 §2.6 "Simulator"): the five
+    // operations 93-97. Signed out: 401 on all five. An INVESTIGATOR lacks CAPTURE_CONFIG: 403 on all
+    // five (the candidate read included: operation 94 is not open to every role).
+    const DISC_PATH = '/api/v1/capture/discovery';
+    const RESCAN_PATH = '/api/v1/capture/inputs/rescan';
+    const FRESH = `${DISC_PATH}/candidates/CND-000000000001`;
+    const REGISTERED = `${DISC_PATH}/candidates/CND-000000000002`;
+    const discoveryCalls = (target: SimRig): number[] => [
+      target.call('startCaptureDiscovery', 'POST', DISC_PATH).status,
+      target.call('getCaptureDiscovery', 'GET', DISC_PATH).status,
+      target.call('testCaptureCandidateConnection', 'POST', `${FRESH}/test`, {}).status,
+      target.call('adoptCaptureCandidate', 'POST', `${FRESH}/adopt`, {}).status,
+      target.call('rescanCaptureInputs', 'POST', RESCAN_PATH).status,
+    ];
+    const m = await rig(seen);
+    expect(discoveryCalls(m)).toEqual([401, 401, 401, 401, 401]);
+    m.sim.actions.signIn('budi.santoso', DEMO_OPERATOR_PASSWORD);
+    expect(discoveryCalls(m)).toEqual([403, 403, 403, 403, 403]);
+    m.sim.stop();
+    // A TECHNICIAN: no search yet (200 with `search: null`, 404 for any candidate id), then the search
+    // (202), the read (200), the test (400 / 422 / 409 for the registered candidate / 200), the adoption
+    // (409 before a test / 400 / 422 / 201 / 409 for a repeat) and the local-input re-read (200).
+    const n = await rig(seen);
+    n.sim.actions.signIn('rina.wijaya', DEMO_OPERATOR_PASSWORD);
+    expect(n.call('getCaptureDiscovery', 'GET', DISC_PATH)).toEqual({ status: 200, body: { search: null, candidates: [], truncated: false } });
+    expect(n.call('testCaptureCandidateConnection', 'POST', `${FRESH}/test`, {}).status).toBe(404);
+    expect(n.call('adoptCaptureCandidate', 'POST', `${FRESH}/adopt`, {}).status).toBe(404);
+    expect(n.call('startCaptureDiscovery', 'POST', DISC_PATH).status).toBe(202);
+    expect(n.call('getCaptureDiscovery', 'GET', DISC_PATH).status).toBe(200);
+    expect(n.call('testCaptureCandidateConnection', 'POST', `${FRESH}/test`, '[1]').status).toBe(400);
+    expect(n.call('adoptCaptureCandidate', 'POST', `${FRESH}/adopt`, '[1]').status).toBe(400);
+    expect(n.call('testCaptureCandidateConnection', 'POST', `${FRESH}/test`, { credential: { username: 'only' } }).status).toBe(422);
+    expect(n.call('testCaptureCandidateConnection', 'POST', `${REGISTERED}/test`, {}).status).toBe(409);
+    expect(n.call('adoptCaptureCandidate', 'POST', `${FRESH}/adopt`, {}).status).toBe(409);
+    expect(n.call('testCaptureCandidateConnection', 'POST', `${FRESH}/test`, {}).status).toBe(200);
+    expect(n.call('adoptCaptureCandidate', 'POST', `${FRESH}/adopt`, { address: '192.0.2.1' }).status).toBe(422);
+    expect(n.call('adoptCaptureCandidate', 'POST', `${FRESH}/adopt`, {}).status).toBe(201);
+    expect(n.call('adoptCaptureCandidate', 'POST', `${FRESH}/adopt`, {}).status).toBe(409);
+    expect(n.call('rescanCaptureInputs', 'POST', RESCAN_PATH).status).toBe(200);
+    n.sim.stop();
+
     // Every status of the simulated operations that the simulator can produce was produced by it.
     // Changed by design (W27; 01_specs §7.19): the five baseline reads document a 401 and a 403, and
     // `startSession` a 422, that only the Core server sends (`responses[status].services`). RECON-A adds
@@ -681,7 +739,10 @@ describe('the contract matches the simulated handlers (sim/api.ts)', () => {
     // getSealingProgress/getTranscript/listTranscriptRevisions (5) = 11. Total 22.
     // Task 3 M6 row 113: the 403 of getSttConfig (every role may read it; the Origin/revoked-device
     // guard is the Core server's) = 1. Total 23.
-    expect(coreServerOnly).toBe(23);
+    // Task 3 R-9 (row 132; C3 §2.6 op 93): the 200 of a search that is still RUNNING and the 409 of
+    // another session's search or of a recording — the simulator's search is COMPLETE when it is
+    // answered and it has one console = 2. Total 25.
+    expect(coreServerOnly).toBe(25);
   });
 });
 

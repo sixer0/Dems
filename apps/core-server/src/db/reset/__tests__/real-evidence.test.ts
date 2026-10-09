@@ -8,11 +8,14 @@ import {
   MAX_NAMED_SESSIONS,
   REAL_SEALED_EVIDENCE_STATEMENT,
   assertNoRealSealedEvidence,
+  clearedDevelopmentPackages,
+  developmentPackagesMessage,
   evaluateRealEvidence,
   findRealSealedEvidence,
   realEvidenceDetails,
   realEvidenceMessage,
   type RealEvidenceQueryable,
+  type SealedSourceMarkReader,
 } from '../real-evidence';
 
 const scan = (present: boolean, packages: EvidenceStoreScan['packages'] = []): EvidenceStoreScan => ({ root: '/store', present, packages });
@@ -95,6 +98,9 @@ describe('the refusal message and its log details', () => {
       storeRoot: '/store',
       storePresent: true,
       realRows: 1,
+      // dbc-4 §N.10 (row 129): the two counts of the development-package exemption.
+      developmentUnproven: 0,
+      developmentPackages: 0,
       realPackages: 1,
       unreadablePackages: 0,
       rowsWithoutPackage: 1,
@@ -147,5 +153,85 @@ describe('findRealSealedEvidence and the guard itself', () => {
     expect(error).toBeInstanceOf(ResetError);
     expect(error).toMatchObject({ code: 'RESET_BLOCKED_REAL_EVIDENCE', step: 'R-0', targetUntouched: true });
     expect((error as ResetError).message).toContain('RESET_BLOCKED_REAL_EVIDENCE');
+  });
+});
+
+// ── D98(1): the disk side follows the row side (blueprint row 141) ────────────────────────────────
+
+describe('clearedDevelopmentPackages: which folders a signed development mark clears', () => {
+  const DIGEST = 'ab'.repeat(32);
+  const item = (sessionId: string, over: Partial<{ evidenceId: string | null; manifestSha256: string | null }> = {}) => ({ sessionId, evidenceId: `EV-${sessionId}`, manifestSha256: DIGEST, ...over });
+  const development: SealedSourceMarkReader = async () => ({ signed: true, development: true });
+
+  it('asks the reader for the folder of an exempt item only, with the anchors of its row, and clears it for signed AND development', async () => {
+    const asked: { dir: string; anchors: unknown }[] = [];
+    const cleared = await clearedDevelopmentPackages(
+      '/store',
+      scan(true, [pkg('S-DEV', 'UNKNOWN'), pkg('S-DEV-REAL', 'REAL'), pkg('S-DEMO', 'DEMO'), pkg('S-STRAY', 'UNKNOWN'), pkg('S-BLOCKING', 'REAL')]),
+      { blocking: ['S-BLOCKING'], developmentItems: [item('S-DEV'), item('S-DEV-REAL'), item('S-DEMO'), item('S-BLOCKING')] },
+      async (dir, anchors) => {
+        asked.push({ dir, anchors });
+        return { signed: true, development: true };
+      },
+    );
+    expect(cleared).toEqual(['SESSION-S-DEV', 'SESSION-S-DEV-REAL']);
+    // A demo folder never blocks and is not asked; a folder no exempt row names and one a blocking row names are not asked either.
+    expect(asked).toEqual([
+      { dir: '/store/SESSION-S-DEV', anchors: { sessionId: 'S-DEV', evidenceId: 'EV-S-DEV', manifestSha256: DIGEST } },
+      { dir: '/store/SESSION-S-DEV-REAL', anchors: { sessionId: 'S-DEV-REAL', evidenceId: 'EV-S-DEV-REAL', manifestSha256: DIGEST } },
+    ]);
+  });
+
+  it('clears nothing for: not signed, signed and not development, a reader that rejects, a truthy value that is not true', async () => {
+    const one = scan(true, [pkg('S-DEV', 'UNKNOWN')]);
+    const split = { blocking: [], developmentItems: [item('S-DEV')] };
+    expect(await clearedDevelopmentPackages('/store', one, split, development)).toEqual(['SESSION-S-DEV']);
+    expect(await clearedDevelopmentPackages('/store', one, split, async () => ({ signed: false, development: true }))).toEqual([]);
+    expect(await clearedDevelopmentPackages('/store', one, split, async () => ({ signed: true, development: false }))).toEqual([]);
+    expect(await clearedDevelopmentPackages('/store', one, split, async () => Promise.reject(new Error('unreadable')))).toEqual([]);
+    expect(await clearedDevelopmentPackages('/store', one, split, async () => ({ signed: 1, development: 'yes' }) as unknown as { signed: boolean; development: boolean })).toEqual([]);
+  });
+
+  it('clears nothing without the anchors: no item ID, no digest, a digest that is not 64 hex, two exempt rows of one session, a folder without a session', async () => {
+    const one = scan(true, [pkg('S-DEV', 'UNKNOWN')]);
+    const with_ = (items: ReturnType<typeof item>[]) => clearedDevelopmentPackages('/store', one, { blocking: [], developmentItems: items }, development);
+    expect(await with_([item('S-DEV', { evidenceId: null })])).toEqual([]);
+    expect(await with_([item('S-DEV', { manifestSha256: null })])).toEqual([]);
+    expect(await with_([item('S-DEV', { manifestSha256: 'AB'.repeat(32) })])).toEqual([]);
+    expect(await with_([item('S-DEV'), item('S-DEV')])).toEqual([]);
+    expect(await with_([])).toEqual([]);
+    const nameless = scan(true, [{ sessionId: '', directory: 'SESSION-', integrity: 'UNKNOWN' }]);
+    expect(await clearedDevelopmentPackages('/store', nameless, { blocking: [], developmentItems: [item('')] }, development)).toEqual([]);
+  });
+
+  it('a cleared folder is in none of the blocking lists; every other folder still counts', () => {
+    const packages = scan(true, [pkg('S-DEV', 'UNKNOWN'), pkg('S-OTHER', 'UNKNOWN'), pkg('S-REAL', 'REAL')]);
+    const facts = evaluateRealEvidence('dems_lane_2', '/store', [], packages, { development: ['S-DEV'], clearedOnDisk: ['SESSION-S-DEV'] });
+    expect(facts).toMatchObject({ blocked: true, developmentPackagesOnDisk: ['SESSION-S-DEV'], unprovablePackages: ['SESSION-S-OTHER'], diskSessions: ['S-REAL'] });
+    const alone = evaluateRealEvidence('dems_lane_2', '/store', [], scan(true, [pkg('S-DEV', 'UNKNOWN')]), { development: ['S-DEV'], clearedOnDisk: ['SESSION-S-DEV'] });
+    expect(alone.blocked).toBe(false);
+    expect(developmentPackagesMessage(alone)).toContain('1 package folder(s) on disk carry the signed development mark');
+    // Without the cleared list the same folder blocks (the rule before row 141, and the default).
+    expect(evaluateRealEvidence('dems_lane_2', '/store', [], scan(true, [pkg('S-DEV', 'UNKNOWN')]), { development: ['S-DEV'] }).blocked).toBe(true);
+  });
+
+  it('findRealSealedEvidence hands the row\'s anchors to the reader and leaves a non-exempt row\'s folder alone', async () => {
+    const rows = [
+      { session_id: 'S-DEV', evidence_id: 'EV-1', manifest_hash: DIGEST, development_flag: true, source_rows: 4, development_rows: 4 },
+      { session_id: 'S-FLAG-ONLY', evidence_id: 'EV-2', manifest_hash: DIGEST, development_flag: true, source_rows: 4, development_rows: 3 },
+    ];
+    const asked: string[] = [];
+    const facts = await findRealSealedEvidence({ query: async () => ({ rows }) } as unknown as RealEvidenceQueryable, {
+      database: 'dems_demo',
+      storeRoot: '/store',
+      readStore: () => scan(true, [pkg('S-DEV', 'UNKNOWN'), pkg('S-FLAG-ONLY', 'UNKNOWN')]),
+      readSourceMark: async (dir) => {
+        asked.push(dir);
+        return { signed: true, development: true };
+      },
+    });
+    expect(asked).toEqual(['/store/SESSION-S-DEV']);
+    expect(facts).toMatchObject({ blocked: true, dbSessions: ['S-FLAG-ONLY'], developmentSessions: ['S-DEV'], developmentPackagesOnDisk: ['SESSION-S-DEV'], unprovablePackages: ['SESSION-S-FLAG-ONLY'] });
+    expect(REAL_SEALED_EVIDENCE_STATEMENT).toContain('e.id::text AS evidence_id, e.manifest_hash::text AS manifest_hash');
   });
 });

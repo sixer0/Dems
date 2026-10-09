@@ -1,6 +1,8 @@
 // Plan row W44 (HB-14), the 45 action bindings and error rebuilding: 04_client_integration_spec
 // §2.5 ("The 42 action bindings", CL-19 to CL-22); 01_specs §7.2, §7.17; AC-C-11. Task 3 register
-// SH-18 adds the three INTERNAL capture actions: 42 -> 45.
+// SH-18 adds the three INTERNAL capture actions: 42 -> 45, and (blueprint row 66) the hosted pair
+// `setCaptureConfig` / `switchAudioSource`: 45 -> 47; task 3 R-9 (row 132) adds the INTERNAL
+// `registerCaptureDevice`: 47 -> 48.
 //
 // The table tests are driven by the contract's own data, `SIM_ACTION_OPERATIONS`: every member of
 // `SimActions` is planned once, and the request it plans is checked against the registry (the
@@ -30,6 +32,7 @@ import {
   SimTransitionError as LiveSimTransitionError,
 } from '../src/live';
 import {
+  CAPTURE_CONFIG_CHANGE_OPERATION_INDEX,
   DEVICE_COMMAND_OPERATION_INDEX,
   ENVELOPE_SIM_CODE,
   LIVE_BINDINGS,
@@ -136,6 +139,9 @@ const ARGS: { readonly [Name in keyof SimActions]: Parameters<SimActions[Name]> 
   ],
   raiseCaptureWarning: [{ code: 'MIC_SILENT', subject: 'PRIMARY' }],
   clearCaptureWarning: [{ code: 'MIC_SILENT', subject: 'PRIMARY' }],
+  setCaptureConfig: [{ kind: 'CAMERA_SOURCE', deviceId: 'CAM-02', trackId: 'VIDEO-01' }],
+  switchAudioSource: ['MIC-02'],
+  registerCaptureDevice: [{ id: 'CAM-03', model: 'Test source', host: '127.0.0.1', adapter: 'FAKE' }],
 };
 
 /** A real state with a session that is ARMED: one engine, from sign-in through the pre-check. */
@@ -197,11 +203,11 @@ function expectContractRequest(name: string, plan: CallPlan): void {
   }
 }
 
-describe('the 45 bindings, driven by SIM_ACTION_OPERATIONS (01_specs §7.17)', () => {
+describe('the 48 bindings, driven by SIM_ACTION_OPERATIONS (01_specs §7.17)', () => {
   it('has one binding per member of SimActions: the keys of the contract table, of the bindings and of a real simulator are equal', () => {
     const sim = createSim({ clock: createManualClock(NOW), storage: null, authStorage: null });
     const simulator = Object.keys(sim.actions).sort();
-    expect(simulator).toHaveLength(45);
+    expect(simulator).toHaveLength(48);
     expect([...LIVE_BINDING_NAMES].sort()).toEqual(simulator);
     expect(Object.keys(SIM_ACTION_OPERATIONS).sort()).toEqual(simulator);
     expect(Object.keys(ARGS).sort()).toEqual(simulator);
@@ -209,16 +215,16 @@ describe('the 45 bindings, driven by SIM_ACTION_OPERATIONS (01_specs §7.17)', (
     expect(LIVE_BINDING_NAMES).toEqual(Object.keys(SIM_ACTION_OPERATIONS));
   });
 
-  it('the flows: 33 commands, 1 read, 2 sign-ins, sign-out, touch, pair, unpair, 5 local', () => {
+  it('the flows: 35 commands, 1 read, 2 sign-ins, sign-out, touch, pair, unpair, 6 local', () => {
     const count = (flow: string) => LIVE_BINDING_NAMES.filter((name) => LIVE_BINDINGS[name].flow === flow);
-    expect(count(LiveActionFlow.COMMAND)).toHaveLength(33);
+    expect(count(LiveActionFlow.COMMAND)).toHaveLength(35);
     expect(count(LiveActionFlow.READ)).toEqual(['verifyAuditChain']);
     expect(count(LiveActionFlow.SIGN_IN)).toEqual(['signIn', 'signInWithBiometric']);
     expect(count(LiveActionFlow.SIGN_OUT)).toEqual(['signOut']);
     expect(count(LiveActionFlow.TOUCH)).toEqual(['touch']);
     expect(count(LiveActionFlow.PAIR)).toEqual(['pair']);
     expect(count(LiveActionFlow.UNPAIR)).toEqual(['unpair']);
-    expect(count(LiveActionFlow.LOCAL)).toEqual(['signInWithSecurityKey', 'setTabletLink', 'applyCaptureTelemetry', 'raiseCaptureWarning', 'clearCaptureWarning']);
+    expect(count(LiveActionFlow.LOCAL)).toEqual(['signInWithSecurityKey', 'setTabletLink', 'applyCaptureTelemetry', 'raiseCaptureWarning', 'clearCaptureWarning', 'registerCaptureDevice']);
     expect(Object.values(LiveActionFlow)).toHaveLength(8);
   });
 
@@ -246,10 +252,17 @@ describe('the 45 bindings, driven by SIM_ACTION_OPERATIONS (01_specs §7.17)', (
     expect(operationOf(name, operations.indexOf(request.operationId))).toBe(request.operationId);
   });
 
-  it('together the bindings reach the 41 operations of the table, and no other', () => {
+  it('together the bindings reach the 45 operations of the table, and no other', () => {
     const reached = new Set<string>();
+    // Blueprint row 66: `setCaptureConfig` is three operations too, one per kind of change.
+    const selectorChanges: (readonly unknown[])[] = [
+      [{ kind: 'UPDATE', mics: [{ inputId: 'MIC-01', deviceId: 'MIC-01' }] }],
+      [{ kind: 'CAMERA_SOURCE', deviceId: 'CAM-02', trackId: 'VIDEO-01' }],
+      [{ kind: 'PRIMARY_MIC', inputId: 'MIC-02' }],
+    ];
     for (const name of LIVE_BINDING_NAMES) {
-      const variants: (readonly unknown[])[] = name === 'deviceCommand' ? ['RESTART', 'TEST_SIGNAL', 'IDENTIFY'].map((command) => [ARGS.deviceCommand[0], command]) : [ARGS[name]];
+      const variants: (readonly unknown[])[] =
+        name === 'deviceCommand' ? ['RESTART', 'TEST_SIGNAL', 'IDENTIFY'].map((command) => [ARGS.deviceCommand[0], command]) : name === 'setCaptureConfig' ? selectorChanges : [ARGS[name]];
       for (const args of variants) {
         const plan = planOf(name, args);
         if (plan.kind === 'call') reached.add(plan.operationId);
@@ -257,7 +270,7 @@ describe('the 45 bindings, driven by SIM_ACTION_OPERATIONS (01_specs §7.17)', (
     }
     const named = new Set(Object.values(SIM_ACTION_OPERATIONS).flatMap((entry) => [...entry.operations]));
     expect([...reached].sort()).toEqual([...named].sort());
-    expect(reached.size).toBe(41);
+    expect(reached.size).toBe(45);
     // The two reads of the bootstrap stand for no action; they are operations of the registry.
     for (const operationId of [LIVE_SESSION_OPERATION, LIVE_SIGN_IN_STATUS_OPERATION]) {
       expect(registryOperation(operationId).method).toBe('get');
@@ -273,7 +286,9 @@ describe('the 45 bindings, driven by SIM_ACTION_OPERATIONS (01_specs §7.17)', (
     for (const [command, suffix] of Object.entries(paths)) {
       const plan = planOf('deviceCommand', ['CAM-01', command]) as CallPlan;
       expect(registryOperation(plan.operationId).path.endsWith(suffix), `${command} → ${plan.operationId}`).toBe(true);
-      expect(plan.input).toEqual({ params: { id: 'CAM-01' } });
+      // Task 3, decision D100 (2) (C3 §3 op 48; OD-22): the PoE cycle — and only it — carries the
+      // operator's confirmation; RESTART and the other two commands stay bodyless.
+      expect(plan.input).toEqual(command === 'POE_CYCLE' ? { params: { id: 'CAM-01' }, body: { confirm: true } } : { params: { id: 'CAM-01' } });
       expect(plan.entity).toEqual({ kind: 'device', id: 'CAM-01' });
     }
     const unknown = planOf('deviceCommand', ['CAM-01', 'SELF_DESTRUCT']);
@@ -316,7 +331,7 @@ describe('the 45 bindings, driven by SIM_ACTION_OPERATIONS (01_specs §7.17)', (
       (LIVE_BINDINGS[name] as unknown as AnyBinding).plan(ARGS[name], view, extras);
 
     // No open session: there is no ID to send. The simulator throws an illegal transition from "no session".
-    for (const name of ['beginPrecheck', 'acknowledgePrecheckWarnings', 'retryPrecheck', 'startRecording', 'stopRecording', 'cancel', 'recover', 'addMarker', 'addNote', 'snapshot'] as const) {
+    for (const name of ['beginPrecheck', 'acknowledgePrecheckWarnings', 'retryPrecheck', 'startRecording', 'stopRecording', 'cancel', 'recover', 'addMarker', 'addNote', 'snapshot', 'switchAudioSource'] as const) {
       const refused = plan(name, idle);
       expect(refused, name).toMatchObject({ kind: 'reject', error: { name: 'SimTransitionError', code: 'ILLEGAL_STATE', from: null, event: name } });
       expect((refused as { error: unknown }).error).toBeInstanceOf(SimTransitionError);
@@ -590,7 +605,7 @@ describe('every command and read binding, called on a Live source over the fake 
       expect(sent?.headers.authorization, name).toBeUndefined();
       expect(sent?.query, name).toEqual({});
     }
-    expect(COMMANDS).toHaveLength(34);
+    expect(COMMANDS).toHaveLength(36);
     expect(reports).toEqual([]);
 
     // The values: the answer mapped to the simulator's return type.
@@ -624,6 +639,24 @@ describe('every command and read binding, called on a Live source over the fake 
     await source.actions.deviceCommand('CAM-01', 'IDENTIFY');
     await source.actions.deviceCommand('CAM-01', 'RESTART');
     expect(fake.log.operationIds().slice(-3)).toEqual(['testDeviceSignal', 'identifyDevice', 'restartDevice']);
+  });
+
+  it('the three kinds of selector change reach their three operations (task 3 row 66; C3 operations 78 to 80)', async () => {
+    const { source } = await signedIn();
+    fake.answerAllFromExamples();
+    await source.actions.setCaptureConfig({ kind: 'UPDATE', cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-02' }] });
+    await source.actions.setCaptureConfig({ kind: 'CAMERA_SOURCE', deviceId: 'CAM-01', trackId: 'VIDEO-02' });
+    await source.actions.setCaptureConfig({ kind: 'PRIMARY_MIC', inputId: 'MIC-02' });
+    expect(fake.log.operationIds().slice(-3)).toEqual(['updateCaptureConfig', 'setCaptureCameraSource', 'setPrimaryMic']);
+    const sent = (operationId: string) => fake.log.requestsOf(operationId).at(-1);
+    expect([sent('updateCaptureConfig')?.body, sent('updateCaptureConfig')?.params]).toEqual([{ cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-02' }] }, {}]);
+    expect([sent('setCaptureCameraSource')?.body, sent('setCaptureCameraSource')?.params]).toEqual([{ trackId: 'VIDEO-02' }, { id: 'CAM-01' }]);
+    expect(sent('setPrimaryMic')?.params).toEqual({ id: 'MIC-02' });
+    // A kind the contract table does not hold is refused before a request, as an unknown device command is.
+    const calls = fake.calls.length;
+    await expect(source.actions.setCaptureConfig({ kind: 'toString' } as never)).rejects.toMatchObject({ name: 'SimTransitionError', code: 'INVALID_INPUT' });
+    expect(fake.calls).toHaveLength(calls);
+    expect(Object.values(CAPTURE_CONFIG_CHANGE_OPERATION_INDEX)).toEqual([0, 1, 2]);
   });
 
   it('a local answer sends nothing', async () => {

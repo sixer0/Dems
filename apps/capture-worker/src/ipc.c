@@ -14,8 +14,9 @@
  * LOG: one JSON object per line, appended to the file named by --log. Never a URL, a path, a
  * credential or sample data: codes, counters, a camera index and a port only. Standard error is
  * not used: the supervisor closes it. THE LOG IS BOUNDED (fix round 1, finding F-2): at most
- * LOG_LINES_PER_SECOND lines a second (the rest are counted and said in one line), at most
- * LOG_RUN_BYTES per worker run (then one last line, and silence), and a file that passed
+ * LOG_LINES_PER_SECOND lines a second PER SOURCE (the rest are counted and said in one line per
+ * source; row 59, finding R-4), at most LOG_SOURCE_RUN_BYTES per source and LOG_RUN_BYTES per
+ * worker run (then one last line, and silence), and a file that passed
  * LOG_ROTATE_BYTES is moved aside when a worker starts (one generation). Nothing a library or a
  * client does can fill the data directory through this file.
  */
@@ -34,10 +35,22 @@ int64_t mono_us(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); r
 int64_t real_us(void) { struct timespec t; clock_gettime(CLOCK_REALTIME, &t); return t.tv_sec * US + t.tv_nsec / 1000; }
 
 /* ---------------------------------------------------------------- log */
+/* THE QUOTA IS COUNTED PER SOURCE (blueprint row 59; pair-58 re-check, navigator B finding R-4).
+ * With one shared quota a flood of one source - libav's messages, about 700,000 a second when an
+ * open is refused in a loop - used up every line of every second, and the lines that told what
+ * happened (the ingest that was given up, the camera summary, the exit) were not in the log.
+ * Now every source (`main`, `sink`, `ingest1`, `libav`, ...) has its own lines per second and its
+ * own share of the run's bytes, so no source can silence another. The whole log of a run is still
+ * capped (LOG_RUN_BYTES), and that cap can only be reached by several sources together. */
 #define LOG_ROTATE_BYTES (8 * 1024 * 1024)
 #define LOG_RUN_BYTES (16 * 1024 * 1024)
+#define LOG_SOURCE_RUN_BYTES (LOG_RUN_BYTES / 4)
 #define LOG_LINES_PER_SECOND 200
-static int64_t log_second, log_in_second, log_suppressed, log_bytes;
+#define LOG_SOURCES 16
+typedef struct { char name[24]; int64_t in_second, suppressed, bytes; } LogSource;
+static LogSource log_source[LOG_SOURCES];        /* the last slot is shared by every source beyond the table */
+static int log_sources;
+static int64_t log_second, log_bytes;
 static int log_capped;
 static FILE *g_log;
 static pthread_mutex_t g_log_mx = PTHREAD_MUTEX_INITIALIZER;
@@ -60,6 +73,17 @@ void log_close(void) {
     pthread_mutex_unlock(&g_log_mx);
 }
 
+static LogSource *log_source_of(const char *source) {
+#ifdef LOG_SHARED_QUOTA             /* TEST BUILD ONLY: the old rule, one quota for all (the negative control of test/log_test.c) */
+    source = "all";
+#endif
+    for (int i = 0; i < log_sources; i++) if (!strcmp(log_source[i].name, source)) return &log_source[i];
+    if (log_sources == LOG_SOURCES) return &log_source[LOG_SOURCES - 1];
+    LogSource *s = &log_source[log_sources++];
+    snprintf(s->name, sizeof s->name, "%s", log_sources == LOG_SOURCES ? "other" : source);
+    return s;
+}
+
 void logj(const char *level, const char *source, const char *msg, const char *extra, ...) {
     char buf[1024];
     va_list ap;
@@ -71,16 +95,27 @@ void logj(const char *level, const char *source, const char *msg, const char *ex
         int64_t now = real_us(), second = now / US;
         int n = 0;
         if (second != log_second) {
-            if (log_suppressed)
-                n += fprintf(g_log, "{\"ts_us\":%lld,\"level\":\"warn\",\"source\":\"capture-worker.log\",\"pid\":%d,\"sessionId\":\"%s\",\"message\":\"log_lines_suppressed\",\"lines\":%lld,\"limit_per_second\":%d}\n",
-                             (long long)now, (int)getpid(), S.id, (long long)log_suppressed, LOG_LINES_PER_SECOND);
+            for (int i = 0; i < log_sources; i++) {
+                LogSource *s = &log_source[i];
+                if (s->suppressed)
+                    n += fprintf(g_log, "{\"ts_us\":%lld,\"level\":\"warn\",\"source\":\"capture-worker.log\",\"pid\":%d,\"sessionId\":\"%s\",\"message\":\"log_lines_suppressed\",\"of\":\"%s\",\"lines\":%lld,\"limit_per_second\":%d}\n",
+                                 (long long)now, (int)getpid(), S.id, s->name, (long long)s->suppressed, LOG_LINES_PER_SECOND);
+                s->in_second = s->suppressed = 0;
+            }
             log_second = second;
-            log_in_second = log_suppressed = 0;
         }
-        if (log_in_second++ < LOG_LINES_PER_SECOND)
-            n += fprintf(g_log, "{\"ts_us\":%lld,\"level\":\"%s\",\"source\":\"capture-worker.%s\",\"pid\":%d,\"sessionId\":\"%s\",\"message\":\"%s\"%s%s}\n",
-                         (long long)now, level, source, (int)getpid(), S.id, msg, buf[0] ? "," : "", buf);
-        else log_suppressed++;
+        LogSource *s = log_source_of(source);
+        if (s->in_second++ < LOG_LINES_PER_SECOND && s->bytes <= LOG_SOURCE_RUN_BYTES) {
+            int w = fprintf(g_log, "{\"ts_us\":%lld,\"level\":\"%s\",\"source\":\"capture-worker.%s\",\"pid\":%d,\"sessionId\":\"%s\",\"message\":\"%s\"%s%s}\n",
+                            (long long)now, level, source, (int)getpid(), S.id, msg, buf[0] ? "," : "", buf);
+            if (w > 0) {
+                n += w;
+                s->bytes += w;
+                if (s->bytes > LOG_SOURCE_RUN_BYTES)
+                    n += fprintf(g_log, "{\"ts_us\":%lld,\"level\":\"error\",\"source\":\"capture-worker.log\",\"pid\":%d,\"sessionId\":\"%s\",\"message\":\"log_source_capped\",\"of\":\"%s\",\"limit_bytes\":%d}\n",
+                                 (long long)now, (int)getpid(), S.id, s->name, LOG_SOURCE_RUN_BYTES);
+            }
+        } else s->suppressed++;
         if (n > 0) log_bytes += n;
         if (log_bytes > LOG_RUN_BYTES) {
             log_capped = 1;

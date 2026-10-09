@@ -16,6 +16,8 @@ import {
   CONNECTION_FILE_KEYS,
   CONNECTION_FILE_NAME,
   ConfigError,
+  ENV_CAPTURE_DEV_SOURCES,
+  ENV_CAPTURE_HELPER_FFMPEG,
   ENV_CAPTURE_MODE,
   ENV_CAPTURE_WORKER,
   ENV_DEMO_CONTROLS,
@@ -24,6 +26,7 @@ import {
   ENV_MEDIA_DIR,
   RUNTIME_ROLE,
   createConfig,
+  parseCaptureDevSources,
   parseCaptureMode,
   parseCapturePath,
   databaseNameFor,
@@ -65,6 +68,10 @@ export function loadConfig(options: LoadConfigOptions): CoreServerConfig {
   const captureMode = parseCaptureMode(options.env[ENV_CAPTURE_MODE]);
   const captureWorkerPath = parseCapturePath(ENV_CAPTURE_WORKER, options.env[ENV_CAPTURE_WORKER]);
   const mediaStoreDir = parseCapturePath(ENV_MEDIA_DIR, options.env[ENV_MEDIA_DIR]);
+  // The two keys of the development fence (task 3 row 136, capture spec §I edits 15 to 18). Parsed
+  // here and decided nowhere here: which combination boots is the capture fence's (spec §A.1.2).
+  const captureDevSources = parseCaptureDevSources(options.env[ENV_CAPTURE_DEV_SOURCES]);
+  const captureHelperFfmpegPath = parseCapturePath(ENV_CAPTURE_HELPER_FFMPEG, options.env[ENV_CAPTURE_HELPER_FFMPEG]);
 
   const dataDir = resolve(options.dataDir ?? DEFAULT_DATA_DIR);
   const file = join(dataDir, CONNECTION_FILE_NAME);
@@ -95,5 +102,7 @@ export function loadConfig(options: LoadConfigOptions): CoreServerConfig {
     captureMode,
     captureWorkerPath,
     mediaStoreDir,
+    captureDevSources,
+    captureHelperFfmpegPath,
   });
 }

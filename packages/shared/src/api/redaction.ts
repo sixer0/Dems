@@ -30,6 +30,9 @@
  * whole value of a member whose name says credential, at ANY depth; `value` and `ref` beside a
  * credential `kind`; and anything nested deeper than the walk goes, whole.
  *
+ * SEC35-36 (task 3 R-9): the ACCOUNT NAME of a credential pair (`username`, `user`, `login`, `account`)
+ * is blanked too wherever a credential member stands beside it, in an object and in a text.
+ *
  * FIX ROUND 2 (navigator re-check R-1, R-2). One predicate, `isCredentialKeyName`, decides a name
  * for the text rule AND the object rule: any name that holds `credential` (but not the three flags
  * `credentialSet` / `credentialKind` / `credentialChanged`), `apikey`, `secret`, `password`,
@@ -116,6 +119,16 @@ const isContextName = (name: string): boolean => {
   return plain === 'value' || plain === 'ref' || plain.endsWith('credentialvalue') || plain.endsWith('credentialref');
 };
 
+/**
+ * The account name of a credential pair: credential material BESIDE a credential member (security
+ * review SEC35-36; decision D86 C-6: the typed camera username of operations 89, 95 and 96). Alone
+ * - a sign-in report with a username and no credential sibling - it is an ordinary member.
+ */
+const isAccountName = (name: string): boolean => {
+  const plain = normalised(name);
+  return plain.endsWith('username') || plain === 'user' || plain === 'login' || plain === 'account';
+};
+
 /** The part of `text` from `from` that is the value of a member: `[start, end)` without its quotes, or null when there is none. */
 function valueSpan(text: string, from: number, toLineEnd: boolean): { start: number; end: number } | null {
   const opener = /^(\\*)(["'])/.exec(text.slice(from, from + 64));
@@ -146,7 +159,7 @@ function blankedName(found: RegExpExecArray, context: boolean): string | null {
   const first = found[1] ?? '';
   const second = found[2];
   const candidates = second === undefined ? [first] : [`${first} ${second}`, second];
-  return candidates.find((name) => isCredentialKeyName(name) || (context && isContextName(name))) ?? null;
+  return candidates.find((name) => isCredentialKeyName(name) || (context && (isContextName(name) || isAccountName(name)))) ?? null;
 }
 
 /** True when a text names a credential at all: a credential member, a header tuple of one, or the kind of a credential write. */
@@ -236,8 +249,13 @@ function walk(value: unknown, depth: number, state: Walk): unknown {
     if (Array.isArray(value)) return value.map((entry) => walk(entry, depth + 1, state));
     const members = Object.entries(value as Record<string, unknown>);
     const write = members.some(([key, entry]) => key.toLowerCase() === 'kind' && isCredentialWriteKind(entry));
+    // SEC35-36: the account name beside a credential member is credential material too.
+    const beside = members.some(([key]) => isCredentialKeyName(key));
     return Object.fromEntries(
-      members.map(([key, entry]) => [key, isCredentialKeyName(key) || (write && isContextName(key)) ? CREDENTIAL_BLANK : walk(entry, depth + 1, state)]),
+      members.map(([key, entry]) => [
+        key,
+        isCredentialKeyName(key) || (write && isContextName(key)) || (beside && isAccountName(key)) ? CREDENTIAL_BLANK : walk(entry, depth + 1, state),
+      ]),
     );
   } finally {
     state.inside.delete(value);

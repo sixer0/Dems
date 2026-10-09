@@ -3,7 +3,7 @@
 // The expected matrix below is written from the table of contract §7.3, not from the migration
 // file. T-PV-1 compares it with the catalog (`has_table_privilege`, `has_column_privilege`) and
 // then with LIVE statements as `dems_app`: for every table one SELECT, INSERT, DELETE and
-// TRUNCATE, and one UPDATE for each of the 419 columns. The statements match no row
+// TRUNCATE, and one UPDATE for each of the 436 columns. The statements match no row
 // (`WHERE false`), so an allowed one changes nothing; a privilege is checked before any row is
 // looked at, so a forbidden one fails with 42501 all the same.
 import type { Pool } from 'pg';
@@ -97,6 +97,9 @@ const MATRIX: Readonly<Record<string, Grant>> = {
   },
   capture_device_credentials: {
     select: false,
+    // 0010 (row 129a, erratum PE-129a-01; finding F-84-1): the key column alone, so that a stored
+    // credential can be replaced (`WHERE device_id`, `ON CONFLICT (device_id)`). Nothing else.
+    selectColumns: ['device_id'],
     insert: true,
     update: ['username', 'encryption', 'secret_ciphertext', 'nonce', 'key_ref', 'rotated_at'],
   },
@@ -116,6 +119,13 @@ const MATRIX: Readonly<Record<string, Grant>> = {
     update: ['singleton', 'enabled', 'backend', 'endpoint', 'model', 'language', 'diarization',
       'credential_kind', 'credential_ref', 'secret_ciphertext', 'nonce', 'revision', 'updated_by', 'updated_at'],
   },
+  // ── schema v3 (dbc-4 §N.8, `0009`). T-41 is INSERT-ONLY: SELECT and INSERT, no UPDATE, no
+  //    DELETE. The two columns 0008 added join NO update list above: `capture_devices` stays at
+  //    its 10 columns (not `adapter_kind`) and `evidence_items` at its 7 (not
+  //    `development_sources`) - the per-column probes below prove both as dems_app (M4-MT-11). ──
+  session_capture_sources: { insert: true },
+  // ── schema v5 (erratum PE-129b-01, `0012`). T-42 is INSERT-ONLY too: SELECT and INSERT. ──
+  session_stt_config: { insert: true },
 };
 
 const columnsOf = (table: string): string[] => inventory.tables.find((entry) => entry.name === table)?.columns.map((column) => column.name) ?? [];
@@ -130,10 +140,10 @@ const readable = (table: string, column: string): boolean => {
 };
 
 describe('T-PV-1: the privileges of dems_app equal the matrix of contract §7.3', () => {
-  it('the matrix names all 40 tables; INSERT on 24 of them, not on audit_chain_history (D18; dbc-3 §D)', () => {
+  it('the matrix names all 42 tables; INSERT on 26 of them, not on audit_chain_history (D18; dbc-3 §D; dbc-4 §N.11; PE-129b-01)', () => {
     expect(Object.keys(MATRIX).sort()).toEqual(inventory.tables.map((table) => table.name).sort());
     const insertable = Object.entries(MATRIX).filter(([, grant]) => grant.insert === true).map(([table]) => table);
-    expect(insertable).toHaveLength(24);
+    expect(insertable).toHaveLength(26);
     expect(insertable).not.toContain('audit_chain_history');
     for (const [table, grant] of Object.entries(MATRIX)) {
       if (Array.isArray(grant.update)) for (const column of grant.update) expect(columnsOf(table), `${table}.${column}`).toContain(column);
@@ -175,7 +185,7 @@ describe('T-PV-1: the privileges of dems_app equal the matrix of contract §7.3'
     expect(rows).toEqual(expected);
   });
 
-  it('catalog: for each of the 419 columns, has_column_privilege(UPDATE) equals the matrix', async () => {
+  it('catalog: for each of the 436 columns, has_column_privilege(UPDATE) equals the matrix', async () => {
     const { rows } = await owner.query<{ table_name: string; column_name: string; can_update: boolean }>(
       `SELECT c.relname::text AS table_name, a.attname::text AS column_name,
               has_column_privilege('dems_app', c.oid, a.attnum, 'UPDATE') AS can_update
@@ -183,11 +193,11 @@ describe('T-PV-1: the privileges of dems_app equal the matrix of contract §7.3'
         WHERE c.relnamespace = 'public'::regnamespace AND c.relkind = 'r' AND a.attnum > 0 AND NOT a.attisdropped
         ORDER BY 1, a.attnum`,
     );
-    expect(rows).toHaveLength(419);
+    expect(rows).toHaveLength(436);
     const wrong = rows.filter((row) => row.can_update !== mayUpdate(row.table_name, row.column_name));
     expect(wrong).toEqual([]);
     const granted = rows.filter((row) => row.can_update).length;
-    console.info(`[w17] T-PV-1: UPDATE is granted on ${granted} of 419 columns (30 of them are every column of active_session, 14 every column of stt_config)`);
+    console.info(`[w17] T-PV-1: UPDATE is granted on ${granted} of 436 columns (30 of them are every column of active_session, 14 every column of stt_config)`);
   });
 
   it('LIVE as dems_app: SELECT, INSERT, DELETE and TRUNCATE on every table behave as the matrix says', async () => {
@@ -210,8 +220,8 @@ describe('T-PV-1: the privileges of dems_app equal the matrix of contract §7.3'
       };
       const want = {
         // A table-level SELECT is granted on every matrix table except the two secret stores. For
-        // stt_config the column-level SELECT of 0007 suffices for a `count(*)` (measured); for
-        // capture_device_credentials nothing is readable. The INSERT probe (`INSERT ... SELECT *
+        // stt_config the column-level SELECT of 0007 suffices for a `count(*)` (measured), and since
+        // 0010 so does the one key column of capture_device_credentials. The INSERT probe (`INSERT ... SELECT *
         // FROM ... WHERE false`) additionally reads every column of the source, so it is refused
         // wherever the role cannot read the table even though the INSERT grant itself exists -
         // the catalog test above pins the grants, this test pins the statement behaviour.
@@ -233,7 +243,38 @@ describe('T-PV-1: the privileges of dems_app equal the matrix of contract §7.3'
     await expectRefused(() => app.query('SELECT secret_ciphertext FROM public.capture_device_credentials'), SQLSTATE.insufficientPrivilege);
   });
 
-  it('LIVE as dems_app: one UPDATE per column, 419 statements; allowed exactly where the matrix grants it', async () => {
+  it('catalog + LIVE: has_column_privilege(SELECT) equals the matrix on all 436 columns; of the credential store only device_id is readable (0010, PE-129a-01)', async () => {
+    const { rows } = await owner.query<{ table_name: string; column_name: string; can_select: boolean }>(
+      `SELECT c.relname::text AS table_name, a.attname::text AS column_name,
+              has_column_privilege('dems_app', c.oid, a.attnum, 'SELECT') AS can_select
+         FROM pg_class c JOIN pg_attribute a ON a.attrelid = c.oid
+        WHERE c.relnamespace = 'public'::regnamespace AND c.relkind = 'r' AND a.attnum > 0 AND NOT a.attisdropped
+        ORDER BY 1, a.attnum`,
+    );
+    expect(rows).toHaveLength(436);
+    expect(rows.filter((row) => row.can_select !== readable(row.table_name, row.column_name))).toEqual([]);
+    // The unreadable columns of the whole schema are exactly these nine: six of T-33, three of T-40.
+    expect(rows.filter((row) => !row.can_select).map((row) => `${row.table_name}.${row.column_name}`).sort()).toEqual([
+      'capture_device_credentials.encryption',
+      'capture_device_credentials.key_ref',
+      'capture_device_credentials.nonce',
+      'capture_device_credentials.rotated_at',
+      'capture_device_credentials.secret_ciphertext',
+      'capture_device_credentials.username',
+      'stt_config.credential_ref',
+      'stt_config.nonce',
+      'stt_config.secret_ciphertext',
+    ]);
+    // LIVE, one statement per column of T-33, and the whole-row form.
+    for (const column of columnsOf('capture_device_credentials')) {
+      const read = app.query(`SELECT "${column}" FROM public.capture_device_credentials`);
+      if (column === 'device_id') expect((await read).rows).toEqual([]);
+      else await expectRefused(() => read, SQLSTATE.insufficientPrivilege);
+    }
+    await expectRefused(() => app.query('SELECT * FROM public.capture_device_credentials'), SQLSTATE.insufficientPrivilege);
+  });
+
+  it('LIVE as dems_app: one UPDATE per column, 436 statements; allowed exactly where the matrix grants it', async () => {
     const wrong: string[] = [];
     let allowed = 0;
     let refused = 0;
@@ -255,7 +296,7 @@ describe('T-PV-1: the privileges of dems_app equal the matrix of contract §7.3'
       }
     }
     expect(wrong).toEqual([]);
-    expect(allowed + refused).toBe(419);
+    expect(allowed + refused).toBe(436);
     console.info(`[w17] T-PV-1 live: ${allowed} column UPDATEs allowed, ${refused} refused with 42501, 0 unexpected`);
   });
 
@@ -451,8 +492,8 @@ describe('T-PV-2: roles, memberships and ownership (OW-1, OW-2, OW-9; SR-68)', (
       { kind: 'drizzle sequence', owner: 'dems_owner', total: 1 },
       { kind: 'drizzle table', owner: 'dems_owner', total: 1 },
       { kind: 'public function', owner: 'dems_owner', total: 7 },
-      { kind: 'public index', owner: 'dems_owner', total: 81 },
-      { kind: 'public table', owner: 'dems_owner', total: 40 },
+      { kind: 'public index', owner: 'dems_owner', total: 84 },
+      { kind: 'public table', owner: 'dems_owner', total: 42 },
       { kind: 'schema drizzle', owner: 'dems_owner', total: 1 },
     ]);
     // Schema public itself belongs to the pseudo-role "the owner of the database" (PG-15).

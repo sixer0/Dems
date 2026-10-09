@@ -65,16 +65,25 @@
 export { RESET_CHECKPOINTS, RESET_STEPS, ResetError, stepOf, type ResetCheckpoint, type ResetErrorCode, type ResetStep } from './errors';
 export { KEPT_TABLES, KEPT_TABLE_NAMES, CAPTURE_KEPT_TABLES, type CarryMode, type KeptTable } from './kept-tables';
 export {
+  DEVELOPMENT_ADAPTER_KINDS,
   MAX_NAMED_SESSIONS,
   REAL_SEALED_EVIDENCE_STATEMENT,
+  SOURCE_ROWS_PER_SESSION,
   assertNoRealSealedEvidence,
+  classifyRealSealedRows,
+  clearedDevelopmentPackages,
+  developmentPackagesMessage,
   evaluateRealEvidence,
   findRealSealedEvidence,
   realEvidenceDetails,
   realEvidenceMessage,
   type RealEvidenceFacts,
+  type RealSealedEvidenceRow,
+  type RealSealedRows,
   type RealEvidenceOptions,
   type RealEvidenceQueryable,
+  type DevelopmentItem,
+  type SealedSourceMarkReader,
 } from './real-evidence';
 export {
   PREVIOUS_SUFFIX,

@@ -37,6 +37,16 @@
  * `ACCESS_DENIED` row whose `details.reason` names the condition. It never replaces the permission
  * check: the marker's permission comes first, exactly like the demo flag.
  *
+ * `WEB_CONSOLE_SESSION` (task 3 R-9, blueprint row 132, decision D106; C3 §0 erratum PE-121-04,
+ * §2.6 access notes; D80(3); SEC35-45) is the sixth condition and the second whose refusal IS
+ * audited: it holds when the caller's operator session is NOT bound to a paired device. A session
+ * of a tablet or a phone is refused 403 `NOT_PERMITTED` with one `ACCESS_DENIED` row; the answer
+ * and the row carry `reason: WEB_CONSOLE_ONLY`. It is on the three operations whose body carries a
+ * camera credential (89, 95, 96) and it is decided here, in stage 6, which runs before the body is
+ * parsed: nothing of the body can reach the refusal, its log line or its row. Like SESSION_HOLDER
+ * it never replaces the permission check, which comes first. It is a policy fence that keeps the
+ * camera credential off the tablet and phone code paths, not an authentication factor.
+ *
  * `DEVICE_CREDENTIAL` (finding CPS1-3 of the security checkpoint; decisions D113, D118): the
  * request presented the device credential itself, so the caller is the DEVICE principal. The
  * session of an operator who is signed in on the device does not hold it: a session ends by
@@ -46,7 +56,7 @@
  * A condition that has no case here is never passed over: the request is refused (it throws),
  * and the type check of this file fails when the vocabulary gains a member without a case.
  */
-import { CoreApiAccessCondition, CoreApiAccessKind } from '@dems/shared/api';
+import { CoreApiAccessCondition, CoreApiAccessKind, WEB_CONSOLE_ONLY_REASON } from '@dems/shared/api';
 // The value AND the type: `@dems/shared/sim` exports both meanings of the name (vocabulary.ts).
 import { OperatorRole } from '@dems/shared/sim';
 import type { Principal } from '../authenticate';
@@ -104,9 +114,10 @@ export type AccessRefusal =
       readonly deviceId: string | null;
       readonly denial: PermissionDenial;
       /**
-       * Task 3 M2-W7 (C3 §5.3): the condition of the same rule that did not hold, when the refusal
-       * is not about the permission itself — `SESSION_HOLDER` today, the SCREAMING_SNAKE name of
-       * the condition. It joins the row's details and the answer's details as `reason`.
+       * Task 3 M2-W7 (C3 §5.3): why the rule did not hold, when the refusal is not about the
+       * permission itself: `SESSION_HOLDER` (the name of that condition) or `WEB_CONSOLE_ONLY` (the
+       * reason of the condition `WEB_CONSOLE_SESSION`, C3 §4). A SCREAMING_SNAKE code. It joins the
+       * row's details and the answer's details as `reason`.
        */
       readonly reason?: string;
     }
@@ -214,6 +225,27 @@ function decideConditions(rule: AccessRule, caller: AccessCaller): AccessDecisio
             deviceId: principal.deviceId,
             denial: rule.denial,
             reason: SESSION_HOLDER_REASON,
+          });
+        }
+        break;
+      }
+      case CoreApiAccessCondition.WEB_CONSOLE_SESSION: {
+        // D80(3); SEC35-45; C3 §0, §2.6: a web console session, which is one that is bound to no
+        // paired device. The permission of the marker has already been checked; this condition
+        // only keeps the tablet and the phone out. The principal is all that is read: stage 6 runs
+        // before the body is parsed, so nothing of a credential in the body exists here.
+        if (principal.kind !== 'OPERATOR') break; // the marker refused others before this loop
+        if (principal.deviceId !== null) {
+          if (rule.denial === null) {
+            throw new Error(`the access rule of ${rule.operationId} carries WEB_CONSOLE_SESSION without a permission to name in its refusal`);
+          }
+          return refuse({
+            kind: AccessRefusalKind.NOT_PERMITTED,
+            operatorId: principal.operatorId,
+            role: principal.role,
+            deviceId: principal.deviceId,
+            denial: rule.denial,
+            reason: WEB_CONSOLE_ONLY_REASON,
           });
         }
         break;

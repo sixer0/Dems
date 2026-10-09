@@ -16,6 +16,8 @@
 import { FINALIZATION_STEPS_V2, SessionState, type MicInputId, type TimeSource } from '../domain';
 import { DEFAULT_SESSION_ROOM, sessionCreateSchema } from '../api/session-schema';
 import { findOperatorById, requirePermission, roleHas } from './auth';
+import { builtInMicInputOf, channelOfMicInput } from './audio';
+import { captureReachabilityOf } from './capture-notices';
 import {
   FINALIZATION_STEP_MAX_MS,
   FINALIZATION_STEP_MIN_MS,
@@ -438,6 +440,25 @@ export interface PrecheckEvaluation {
 const PASSED = { reason: null, reasonCode: null, params: {} } as const;
 
 /**
+ * The check result of a configured source that does not answer, or null when it does (task 3 row
+ * 133; C3 §3.1; D80(6), D83). `slot` is a video track or a mic role. The start rule itself is
+ * `captureReachabilityOf`. No reason code of the closed set fits, so `reasonCode` is null and the
+ * row is read from `value: 'UNREACHABLE'` and `params`: `deviceId`, `deviceKind`, `rule` (the
+ * suffix of the text key `captureNotice.start.*`) and, for the active microphone, `other`.
+ */
+function unreachableSource(state: SimState, slot: string): PrecheckEvaluation | null {
+  const source = captureReachabilityOf(state).find((row) => row.slot === slot);
+  if (source === undefined || source.reachable || source.rule === null || source.status === 'PASS') return null;
+  return {
+    status: source.status,
+    value: 'UNREACHABLE',
+    reason: `${source.deviceId} is not reachable`,
+    reasonCode: null,
+    params: { deviceId: source.deviceId, deviceKind: source.deviceKind, rule: source.rule, ...(source.otherDeviceId === null ? {} : { other: source.otherDeviceId }) },
+  };
+}
+
+/**
  * One gate check against the live device state:
  * - BLOCK: Core OFFLINE (the tablet link is the Core link, MA-10), lens FAULT, storage FULL,
  *   security FAULT.
@@ -455,9 +476,29 @@ export function evaluatePrecheck(state: SimState, id: PrecheckCheckId): Precheck
     case 'LENS_2': {
       const track = id === 'LENS_1' ? 'VIDEO-01' : 'VIDEO-02';
       const camera = state.cameras.find((c) => c.id === track);
-      return !camera || camera.lens === 'FAULT' || !camera.online
-        ? { status: 'BLOCK', value: 'FAULT', reason: `${camera?.name ?? id} lens fault`, reasonCode: R.LENS_FAULT, params: { track } }
-        : { status: 'PASS', value: 'READY', ...PASSED };
+      if (!camera || camera.lens === 'FAULT' || !camera.online) {
+        return { status: 'BLOCK', value: 'FAULT', reason: `${camera?.name ?? id} lens fault`, reasonCode: R.LENS_FAULT, params: { track } };
+      }
+      // The configured capture device does not answer (row 133; D80(6)): one of two warns, both block.
+      return unreachableSource(state, track) ?? { status: 'PASS', value: 'READY', ...PASSED };
+    }
+    case 'MIC_PRIMARY':
+    case 'MIC_STANDBY': {
+      // Role-keyed (D101(2)): the input that holds the role, whichever channel it is.
+      const role = id === 'MIC_PRIMARY' ? 'PRIMARY' : 'STANDBY';
+      // An unreachable PRIMARY blocks, an unreachable STANDBY warns (D83: no switch at pre-check).
+      const unreachable = unreachableSource(state, role);
+      if (unreachable !== null) return unreachable;
+      const input = (state.session?.captureConfig?.mics ?? state.captureConfig.mics).find((line) => line.role === role)?.inputId ?? null;
+      const track = input === null ? null : channelOfMicInput(input);
+      const mic = track === null ? undefined : state.mics.find((m) => m.id === track);
+      if (!mic || track === null || mic.state === 'NO_SIGNAL') {
+        return { status: 'WARN', value: 'NO_SIGNAL', reason: `${mic?.name ?? id}: no signal`, reasonCode: R.MIC_NO_SIGNAL, params: track === null ? {} : { track } };
+      }
+      if (mic.state === 'CLIP' || mic.clipLatched) {
+        return { status: 'WARN', value: 'CLIP', reason: `${mic.name}: clipping`, reasonCode: R.MIC_CLIP, params: { track } };
+      }
+      return { status: 'PASS', value: 'READY', ...PASSED };
     }
     case 'MIC_1':
     case 'MIC_2': {
@@ -672,8 +713,18 @@ export function captureConfigSnapshot(state: SimState): ActiveSession['captureCo
  */
 export function audioSourceAtStart(state: SimState, sessionId: string): ActiveSession['audioSource'] {
   const mics = state.captureConfig.mics;
-  const primary = mics.find((mic) => mic.role === 'PRIMARY')?.inputId ?? state.audio.activeInputId;
-  const standby = mics.find((mic) => mic.role === 'STANDBY')?.inputId ?? (primary === 'MIC-01' ? 'MIC-02' : 'MIC-01');
+  // The session audio source is keyed by the two built-in inputs in this contract version. A
+  // selector input beyond them (`MIC-03`, D115 (2)) is REFUSED here by name: it is never recorded
+  // under the ID of another microphone. (To wire with row 71: widen `audioSource` and the meters.)
+  const sourceOf = (role: 'PRIMARY' | 'STANDBY'): MicInputId | undefined => {
+    const inputId = mics.find((mic) => mic.role === role)?.inputId;
+    if (inputId === undefined) return undefined;
+    const builtIn = builtInMicInputOf(inputId);
+    if (builtIn === null) throw new SimTransitionError(state.session?.state ?? null, 'startRecording', `mic input ${inputId} has no session audio source`);
+    return builtIn;
+  };
+  const primary = sourceOf('PRIMARY') ?? state.audio.activeInputId;
+  const standby = sourceOf('STANDBY') ?? (primary === 'MIC-01' ? 'MIC-02' : 'MIC-01');
   return {
     sessionId,
     activeInputId: primary,

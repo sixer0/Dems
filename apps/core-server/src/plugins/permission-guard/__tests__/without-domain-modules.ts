@@ -64,6 +64,11 @@ const stubs = vi.hoisted(() => {
 
 vi.mock('../../../modules/admin', stubs.module('adminModule'));
 vi.mock('../../../modules/alerts', stubs.module('alertsModule'));
+// Task 3: the capture selector (operations 76 to 80, row 66), the camera search (93 and 94, row 132)
+// and the local inputs (97, row 133) are domain modules too (decision D114 registers the last two).
+vi.mock('../../../modules/capture-config', stubs.module('captureConfigModule'));
+vi.mock('../../../modules/capture-discovery', stubs.module('captureDiscoveryModule'));
+vi.mock('../../../modules/capture-inputs', stubs.module('captureInputsModule'));
 vi.mock('../../../modules/demo', stubs.module('demoModule'));
 vi.mock('../../../modules/devices', stubs.module('devicesModule'));
 vi.mock('../../../modules/evidence', stubs.module('evidenceModule'));
@@ -81,6 +86,9 @@ vi.mock('../../../realtime', stubs.realtime);
 export const ROUTELESS_UNITS = [
   'modules/admin',
   'modules/alerts',
+  'modules/capture-config',
+  'modules/capture-discovery',
+  'modules/capture-inputs',
   'modules/demo',
   'modules/devices',
   'modules/evidence',

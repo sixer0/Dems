@@ -111,14 +111,15 @@ describe('MODG: the route list of the module equals the registry operations it o
     await app.close();
   });
 
-  it('the three are operations 90, 91 and 92: the last of the registry, whose totals are those of C3 §2.5', () => {
+  it('the three are operations 90, 91 and 92 of the registry, whose totals are those of C3 §10.1', () => {
     const numberOf = (operationId: string): number => Number(/operation (\d+)/.exec(CORE_API_OPERATIONS.find((operation) => operation.operationId === operationId)?.source ?? '')?.[1]);
     expect(STT_CONFIG_MODULE_OPERATIONS.map(numberOf)).toEqual([90, 91, 92]);
-    expect(CORE_API_OPERATIONS.slice(-3).map((operation) => operation.operationId)).toEqual([...STT_CONFIG_MODULE_OPERATIONS]);
+    // Entries 90 to 92; the five of the camera search (93 to 97; row 132, D106) follow them.
+    expect(CORE_API_OPERATIONS.slice(89, 92).map((operation) => operation.operationId)).toEqual([...STT_CONFIG_MODULE_OPERATIONS]);
     const gets = CORE_API_OPERATIONS.filter((operation) => operation.method === 'get').length;
     const posts = CORE_API_OPERATIONS.filter((operation) => operation.method === 'post').length;
     console.info(`[row113] registry totals | operations=${CORE_API_OPERATIONS.length} GET=${gets} POST=${posts}`);
-    expect([CORE_API_OPERATIONS.length, gets, posts]).toEqual([92, 35, 57]);
+    expect([CORE_API_OPERATIONS.length, gets, posts]).toEqual([97, 36, 61]);
   });
 
   it('the guard holds the registry rule for each: AUTHENTICATED for 90, CAPTURE_CONFIG for 91 and 92', async () => {
@@ -330,6 +331,12 @@ describe('operation 91: the refusals change nothing and write no row', () => {
     ['a host that only starts with the loopback address', 'ENDPOINT_NOT_LOOPBACK', { endpoint: 'http://127.0.0.1.evil.example:9000' }],
     ['credentials in the URL', 'ENDPOINT_NOT_LOOPBACK', { endpoint: `http://user:${SECRET}@127.0.0.1:9000` }],
     ['the wildcard address', 'ENDPOINT_NOT_LOOPBACK', { endpoint: 'http://0.0.0.0:9000' }],
+    // Row 115 (D71; pair-76 N-9): the stricter rule of the transcriber, held before anything is stored.
+    ['a loopback endpoint with a query', 'ENDPOINT_NOT_LOOPBACK', { endpoint: 'http://127.0.0.1:9000/v1?x=1', backend: 'omlx-server' }],
+    ['a loopback endpoint with a fragment', 'ENDPOINT_NOT_LOOPBACK', { endpoint: 'http://127.0.0.1:9000/v1#top' }],
+    ['a loopback endpoint with a backslash', 'ENDPOINT_NOT_LOOPBACK', { endpoint: 'http://127.0.0.1:9000/v1\\models' }],
+    ['a loopback endpoint with white space', 'ENDPOINT_NOT_LOOPBACK', { endpoint: 'http://127.0.0.1:9000/v1 models' }],
+    ['a loopback endpoint with a tab', 'ENDPOINT_NOT_LOOPBACK', { endpoint: 'http://127.0.0.1:9000/v1\tmodels' }],
     ['another language', 'LANGUAGE_NOT_SUPPORTED', { language: 'en' }],
     ['an unknown backend', 'BACKEND_UNKNOWN', { backend: 'cloud-stt' }],
   ] as const)('%s: 422 INVALID_INPUT with details.reason %s', async (_name, reason, change) => {
@@ -348,6 +355,21 @@ describe('operation 91: the refusals change nothing and write no row', () => {
     expect(auditRowsOf(stt, 'STT_CONFIG_CHANGED')).toEqual([]);
     // Refused inside the unit: the transaction was rolled back, not committed.
     expect(stt.db.standIn.statements.at(-1)).toBe('ROLLBACK');
+  });
+
+  // Row 115: a control character in the endpoint. Refused by the text rule of the body or by the
+  // endpoint rule, whichever meets it first: 422 either way, and nothing is stored.
+  it.each([['NUL', '\u0000'], ['U+0001', '\u0001'], ['a line feed', '\n'], ['DEL', '\u007f'], ['a C1 control', '\u0085']] as const)('a loopback endpoint with %s: 422 INVALID_INPUT, nothing stored', async (_name, character) => {
+    const stt = await build();
+    stt.actAs(TECHNICIAN);
+    const response = await stt.post(STT_PATH, { revision: 1, backend: 'omlx-server', endpoint: `http://127.0.0.1:9000/v1${character}models` });
+    expect(outcome(response).slice(0, 2)).toEqual([422, 'INVALID_INPUT']);
+    expect(stt.db.updates).toEqual([]);
+    expect(stt.db.row()).toEqual(SEEDED_ROW);
+    expect(auditRowsOf(stt, 'STT_CONFIG_CHANGED')).toEqual([]);
+    // Control: the same endpoint without the character is stored.
+    const accepted = await stt.post(STT_PATH, { revision: 1, backend: 'omlx-server', endpoint: 'http://127.0.0.1:9000/v1/models' });
+    expect(accepted.statusCode).toBe(200);
   });
 
   it('the server backend without an endpoint, a body without its revision, an unknown member: 422, unnamed', async () => {
@@ -498,6 +520,20 @@ describe('the credential is write-only', () => {
     expect(stt.db.row()).toEqual(SEEDED_ROW);
     expect(response.body).not.toContain(SECRET);
     expect(stt.log.text()).not.toContain(SECRET);
+  });
+
+  // Row 115, finding F-115-1: the search for the plaintext in the envelope is made from 8 bytes on.
+  // A real envelope holds any ONE given byte about once in four times; that is no unsealed secret.
+  it('an envelope that happens to hold the byte of a one-character secret is stored (200); from 8 bytes on, a plaintext inside the envelope is refused', async () => {
+    const envelopeWith = (inside: string) => ({ keyRef: 'TEST_STT_KEY_2', ciphertext: new Uint8Array(Buffer.concat([Buffer.alloc(40, 0xa5), Buffer.from(inside, 'utf8'), Buffer.alloc(40, 0x5a)])), nonce: new Uint8Array(12) });
+    for (const [value, expected] of [['k', 200], ['seven77', 200], ['eight888', 500]] as const) {
+      const stt = await build();
+      stt.control.provideCredentialSealer({ seal: async (plaintext) => envelopeWith(plaintext) });
+      stt.actAs(SUPERVISOR);
+      const response = await stt.post(STT_PATH, { revision: 1, credential: { kind: 'SECRET', value } });
+      expect(response.statusCode, value).toBe(expected);
+      expect(stt.db.updates.length, value).toBe(expected === 200 ? 1 : 0);
+    }
   });
 
   it('CLEAR removes a stored credential; a second CLEAR changes nothing', async () => {

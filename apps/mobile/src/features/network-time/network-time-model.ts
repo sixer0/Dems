@@ -166,6 +166,46 @@ export function selectTimeView(s: SimState): TimeView {
   };
 }
 
+// ── Camera clocks (task 3 row 68; register MB-10; C3 §3 op 57 `cameraOffsets`) ───────────────
+
+/** One camera clock offset record of operation 57 (`TimeStatus.cameraOffsets`). */
+export interface CameraOffsetRecord {
+  readonly deviceId: string;
+  readonly offsetMs: number;
+  readonly measuredAt: number;
+  readonly source: string;
+}
+
+export interface CameraClockRow {
+  readonly deviceId: string;
+  /** The camera clock minus the Core clock, or null while the camera has reported none. */
+  readonly offsetMs: number | null;
+  readonly measuredAt: number | null;
+  readonly source: string | null;
+}
+
+/**
+ * One row per configured camera, in selector order (a camera that feeds both tracks appears once),
+ * joined with the newest record the Core holds for it. A record of a camera the selector does not
+ * name is not shown: the screen is about the cameras of this room. A camera without a record reads
+ * "Not reported yet" — never 0 ms, which would claim a measurement.
+ */
+export function cameraClockRows(configured: readonly string[], offsets: readonly CameraOffsetRecord[]): CameraClockRow[] {
+  return [...new Set(configured)].map((deviceId) => {
+    const newest = offsets.filter((record) => record.deviceId === deviceId).sort((a, b) => b.measuredAt - a.measuredAt)[0];
+    return newest
+      ? { deviceId, offsetMs: newest.offsetMs, measuredAt: newest.measuredAt, source: newest.source }
+      : { deviceId, offsetMs: null, measuredAt: null, source: null };
+  });
+}
+
+/** `+12.0`, `-3.5`, `0.0`: one decimal with an explicit sign, so ahead and behind cannot be confused. */
+export function signedOffset(offsetMs: number): string {
+  const text = fixed1(Math.abs(offsetMs));
+  if (text === '0.0') return text;
+  return `${offsetMs < 0 ? '-' : '+'}${text}`;
+}
+
 /** Flat network view (F74-13). */
 export interface NetworkView {
   ip: string;

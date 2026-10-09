@@ -33,13 +33,50 @@ int64_t mono_us(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); r
 static void put32(uint8_t *p, uint32_t v) { p[0] = v >> 24; p[1] = v >> 16; p[2] = v >> 8; p[3] = v; }
 static size_t box(uint8_t *p, const char *type, size_t size) { put32(p, (uint32_t)size); memcpy(p + 4, type, 4); memset(p + 8, type[1], size - 8); return size; }
 
+/* Row 59: the writer reads the init segment and every `moof` (track timescale, fragment number,
+ * media time), so the boxes of this test are real ones, of the same sizes as before: a `moov` of
+ * 1203 bytes with one video track, a `moof` of 900 bytes with one run of 50 samples; the rest of
+ * each is a `free` child. */
+static size_t head(uint8_t *p, const char *type, size_t size) { put32(p, (uint32_t)size); memcpy(p + 4, type, 4); memset(p + 8, 0, size - 8); return size; }
+static size_t moov_box(uint8_t *p) {
+    size_t n = 8;
+    uint8_t *trak = p + n;
+    size_t t = 8;
+    t += head(trak + t, "tkhd", 8 + 84); put32(trak + t - 84 + 12, 1);                    /* track_ID 1 */
+    uint8_t *mdia = trak + t;
+    size_t m = 8;
+    m += head(mdia + m, "mdhd", 8 + 24); put32(mdia + m - 24 + 12, 90000);                /* timescale */
+    m += head(mdia + m, "hdlr", 8 + 25); memcpy(mdia + m - 25 + 8, "vide", 4);
+    put32(mdia, (uint32_t)m); memcpy(mdia + 4, "mdia", 4);
+    t += m;
+    put32(trak, (uint32_t)t); memcpy(trak + 4, "trak", 4);
+    n += t;
+    n += head(p + n, "free", 1203 - n);
+    put32(p, 1203); memcpy(p + 4, "moov", 4);
+    return 1203;
+}
+static size_t moof_box(uint8_t *p, uint32_t seq) {
+    size_t n = 8;
+    n += head(p + n, "mfhd", 16); put32(p + n - 4, seq);
+    uint8_t *traf = p + n;
+    size_t t = 8;
+    t += head(traf + t, "tfhd", 20); put32(traf + t - 12, 0x000008); put32(traf + t - 8, 1); put32(traf + t - 4, 1800);
+    t += head(traf + t, "tfdt", 16); put32(traf + t - 4, (seq - 1) * 90000);
+    t += head(traf + t, "trun", 16); put32(traf + t - 4, 50);
+    put32(traf, (uint32_t)t); memcpy(traf + 4, "traf", 4);
+    n += t;
+    n += head(p + n, "free", 900 - n);
+    put32(p, 900); memcpy(p + 4, "moof", 4);
+    return 900;
+}
+
 static void child(const char *path) {
     static uint8_t buf[4 * FRAG];
     Sink s;
     sink_init(&s, path);
     size_t n = box(buf, "ftyp", 28);
-    n += box(buf + n, "moov", 1203);
-    for (int f = 0; f < 3; f++) { n += box(buf + n, "moof", 900); n += box(buf + n, "mdat", FRAG); }
+    n += moov_box(buf + n);
+    for (int f = 0; f < 3; f++) { n += moof_box(buf + n, (uint32_t)f + 1); n += box(buf + n, "mdat", FRAG); }
     for (size_t off = 0; off < n; off += 65536) {                 /* the muxer's buffer size */
         int chunk = (int)(n - off < 65536 ? n - off : 65536);
         if (sink_write(&s, buf + off, chunk) < 0) _exit(3);

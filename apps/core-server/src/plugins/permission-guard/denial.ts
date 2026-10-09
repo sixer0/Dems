@@ -30,7 +30,7 @@
  * no evidence. It is what the simulator's `EXPORT_DENIED` row names, and what the custody view
  * of both clients reads.
  */
-import { ApiErrorCode, CoreApiAccessCondition, DEVICE_CREDENTIAL_REQUIRED_REASON } from '@dems/shared/api';
+import { ApiErrorCode, CoreApiAccessCondition, DEVICE_CREDENTIAL_REQUIRED_REASON, WEB_CONSOLE_ONLY_REASON } from '@dems/shared/api';
 import { AuditEventKind } from '@dems/shared/domain';
 import { AuditType, Severity, SimEventType } from '@dems/shared/sim';
 import type { AuditEntry, EventEntry } from '../../core';
@@ -43,6 +43,8 @@ import { AccessRefusalKind, type AccessRefusal } from './decision';
 export const RETIRED_DEVICE_REASON = ApiErrorCode.DEVICE_REVOKED;
 
 const NOT_PERMITTED_TEXT = 'Your role does not allow this action. The attempt was audited.';
+/** The condition `WEB_CONSOLE_SESSION` (C3 §2.6; D80(3)): the role holds the permission, the console is the wrong one. */
+const WEB_CONSOLE_ONLY_TEXT = 'This action is available on the web console only. The attempt was audited.';
 const EXPORT_FORBIDDEN_TEXT = 'Your role cannot export evidence (RBAC). The attempt was audited.';
 const DEVICE_CREDENTIAL_TEXT = 'This operation needs the credential of a paired device.';
 const DEVICE_ONLY_TEXT = 'This operation is available on a paired device only.';
@@ -61,13 +63,17 @@ export function refusalAnswer(rule: AccessRule, refusal: AccessRefusal): ApiFail
       return new ApiFailure(
         403,
         refusal.denial.errorCode,
-        refusal.denial.errorCode === ApiErrorCode.FORBIDDEN ? EXPORT_FORBIDDEN_TEXT : NOT_PERMITTED_TEXT,
+        refusal.denial.errorCode === ApiErrorCode.FORBIDDEN
+          ? EXPORT_FORBIDDEN_TEXT
+          : refusal.reason === WEB_CONSOLE_ONLY_REASON
+            ? WEB_CONSOLE_ONLY_TEXT
+            : NOT_PERMITTED_TEXT,
         {
           details: {
             operationId: rule.operationId,
             permission: refusal.denial.permission,
             role: refusal.role,
-            // C3 §5.3: the condition of the rule that refused (SESSION_HOLDER), when not the permission.
+            // C3 §5.3, §4: why the rule refused when it was not the permission (SESSION_HOLDER, WEB_CONSOLE_ONLY).
             ...(refusal.reason === undefined ? {} : { reason: refusal.reason }),
           },
         },
@@ -131,7 +137,9 @@ export function denialRecordOf(rule: AccessRule, refusal: AccessRefusal, pathId:
         message:
           refusal.reason === undefined
             ? `Access denied: role ${role} ${lacking(denial.permission)} (${rule.operationId})`
-            : `Access denied: the ${refusal.reason} condition does not hold (${rule.operationId})`,
+            : refusal.reason === WEB_CONSOLE_ONLY_REASON
+              ? `Access denied: a session of a paired device called a web-console-only operation (${rule.operationId})`
+              : `Access denied: the ${refusal.reason} condition does not hold (${rule.operationId})`,
         actorId: operatorId,
         deviceId,
         details: refusal.reason === undefined ? named : { ...named, reason: refusal.reason },

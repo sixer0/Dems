@@ -22,11 +22,44 @@
  * operation 75 and `loadScenario` calls it before it touches its pool), while the authoritative
  * run happens as `dems_owner` at the start of R-3 of the routine.
  *
+ * DEVELOPMENT PACKAGES ARE EXEMPT, NARROWLY (`dbc-4` §N.10 and §E.2 erratum PE-128-40; D83 O-5,
+ * confirmed by the user D87(3); SEC35-42). A package recorded from development sources (this
+ * Mac's camera and microphone, the fake sources) is `REAL` and yet not protected evidence. A REAL
+ * sealed item is exempt from the database side only when ALL of these hold:
+ *   (1) `development_sources IS TRUE` - the predicate is `IS TRUE`, so `NULL` (every v1 item and
+ *       every row older than migration 0008) and `false` BLOCK. A "not false" form would unprotect
+ *       every legacy item; it is the one mistake this guard must never make.
+ *   (2) the cross-check: the item's session holds EXACTLY four `session_capture_sources` rows and
+ *       every one of them is a development kind (`FAKE`, `LOCAL_DEVICE`). The count is of
+ *       development kinds, not of "non-production" ones, so an adapter kind added later blocks
+ *       until this list names it (fail closed). A single summary column never decides destruction.
+ *   (3) the reset states how many development packages it will erase (`developmentPackages`, the
+ *       routine's `RESET_DEVELOPMENT_PACKAGES` line) and runs only on the caller's existing
+ *       confirmation - the command line itself, or the confirmation of operation 75.
+ * An item that claims (1) and fails (2) blocks and is counted (`developmentUnproven`). None of the
+ * three facts is writable by the runtime role: `development_sources` and `adapter_kind` have no
+ * UPDATE grant and `session_capture_sources` is INSERT-only (`0009`).
+ *
+ * THE DISK SIDE FOLLOWS THE ROW SIDE, AND ONLY IT (decision D98(1); blueprint row 141). A package
+ * folder that would block (its integrity reads `REAL`, or cannot be read by the store scan) is
+ * cleared when BOTH hold:
+ *   (4) its session's item row is exempt by (1) and (2), and that session has exactly one such row;
+ *   (5) the folder's SIGNED manifest verifies - structure, manifest hash, signature, certificate and
+ *       the source mark (verify checks V-01, V-03, V-09, V-13, V-15) - it is the manifest of that
+ *       session and item with the digest the row recorded at the seal (`manifest_hash`), and its
+ *       mark, recomputed from the per-source classes, says development sources.
+ * Everything else on disk blocks as before: an unsigned, edited or re-hashed manifest, a manifest
+ * whose classes are all `PRODUCTION` although the row says development, a folder no exempt row
+ * names (also the folder a permitted reset left behind once its row is gone), a v1 package. The
+ * manifest is read by the verify unit (`../../evidence-verify`): this folder still opens no file.
+ *
  * WHAT A MESSAGE MAY HOLD: the database name, the store root, counts, and at most a few session
  * identifiers. Session identifiers are what the audit chain already names; no value of a kept
  * table, no credential, and nothing from a manifest beyond its integrity state reaches a message.
  */
 import type { QueryResultRow } from 'pg';
+import { join } from 'node:path';
+import { readSealedSourceMark, type SealedSourceMark, type SealedSourceMarkAnchors } from '../../evidence-verify';
 import { evidenceStoreRoot, readEvidenceStore, type EvidenceStoreScan } from '../commands/evidence-store';
 import { ResetError } from './errors';
 
@@ -35,13 +68,116 @@ export interface RealEvidenceQueryable {
   query<R extends QueryResultRow = QueryResultRow>(text: string, values?: unknown[]): Promise<{ rows: R[] }>;
 }
 
+/** The source rows a session holds, exactly (`dbc-4` MR-S1): one per slot. */
+export const SOURCE_ROWS_PER_SESSION = 4;
 /**
- * The database side of the guard, the shape `dbc-3` §E.2 fixes: a REAL item that was sealed. The
- * session id is read as well because the disk side names packages by it.
+ * The adapter kinds that make a source a DEVELOPMENT source (`dbc-4` §N.2). The cross-check counts
+ * these, never "everything that is not production": an unknown kind is not exempt.
+ */
+export const DEVELOPMENT_ADAPTER_KINDS = ['FAKE', 'LOCAL_DEVICE'] as const;
+
+/**
+ * The database side of the guard: every REAL item that was sealed (the shape `dbc-3` §E.2 fixes),
+ * with the three facts the `dbc-4` exemption reads. `development_flag` is the SQL predicate
+ * `development_sources IS TRUE` - false for `NULL` and for `false`. The session id is read because
+ * the disk side names packages by it. One statement, so both the block and the exemption are
+ * decided on one snapshot.
  */
 export const REAL_SEALED_EVIDENCE_STATEMENT =
-  "SELECT e.session_id::text AS session_id FROM public.evidence_items AS e " +
+  "SELECT e.session_id::text AS session_id, e.id::text AS evidence_id, e.manifest_hash::text AS manifest_hash, " +
+  "(e.development_sources IS TRUE) AS development_flag, " +
+  "(SELECT count(*)::int FROM public.session_capture_sources AS s WHERE s.session_id = e.session_id) AS source_rows, " +
+  "(SELECT count(*)::int FROM public.session_capture_sources AS s WHERE s.session_id = e.session_id " +
+  `AND s.adapter_kind IN (${DEVELOPMENT_ADAPTER_KINDS.map((kind) => `'${kind}'`).join(', ')})) AS development_rows ` +
+  "FROM public.evidence_items AS e " +
   "WHERE e.integrity_source = 'REAL' AND e.sealed_at IS NOT NULL ORDER BY e.session_id";
+
+/** One row of `REAL_SEALED_EVIDENCE_STATEMENT`. A member that is missing reads as "not exempt". */
+export interface RealSealedEvidenceRow {
+  readonly session_id: string;
+  /** The item and the digest recorded at its seal: the anchors of the disk side (D98(1)). */
+  readonly evidence_id?: string | null;
+  readonly manifest_hash?: string | null;
+  readonly development_flag?: boolean | null;
+  readonly source_rows?: number | null;
+  readonly development_rows?: number | null;
+}
+
+/** What the database side says, split by the exemption of `dbc-4` §N.10. */
+export interface RealSealedRows {
+  /** Sessions of the items that block: not flagged, or flagged without the proof. */
+  readonly blocking: readonly string[];
+  /** The subset of `blocking` that is flagged `development_sources` and fails the cross-check. */
+  readonly unproven: readonly string[];
+  /** Sessions of the exempt development packages: what a permitted reset erases. */
+  readonly development: readonly string[];
+  /** The exempt items with the anchors the disk side holds their package folder to. */
+  readonly developmentItems: readonly DevelopmentItem[];
+}
+
+/** One exempt item: its session, and what its signed manifest must say it is. */
+export interface DevelopmentItem {
+  readonly sessionId: string;
+  readonly evidenceId: string | null;
+  readonly manifestSha256: string | null;
+}
+
+/**
+ * The exemption, pure. Exempt only when the flag is strictly `true` AND the session holds exactly
+ * four source rows AND all four are development kinds; everything else blocks.
+ */
+export function classifyRealSealedRows(rows: readonly RealSealedEvidenceRow[]): RealSealedRows {
+  const blocking: string[] = [];
+  const unproven: string[] = [];
+  const development: string[] = [];
+  const developmentItems: DevelopmentItem[] = [];
+  for (const row of rows) {
+    const flagged = row.development_flag === true;
+    const proven = row.source_rows === SOURCE_ROWS_PER_SESSION && row.development_rows === SOURCE_ROWS_PER_SESSION;
+    if (flagged && proven) {
+      development.push(row.session_id);
+      developmentItems.push(Object.freeze({ sessionId: row.session_id, evidenceId: row.evidence_id ?? null, manifestSha256: row.manifest_hash ?? null }));
+    } else {
+      blocking.push(row.session_id);
+      if (flagged) unproven.push(row.session_id);
+    }
+  }
+  return Object.freeze({ blocking: Object.freeze(blocking), unproven: Object.freeze(unproven), development: Object.freeze(development), developmentItems: Object.freeze(developmentItems) });
+}
+
+/** Reads the signed source mark of one package folder. Default: the verify unit's reader. */
+export type SealedSourceMarkReader = (packageDir: string, anchors: SealedSourceMarkAnchors) => Promise<SealedSourceMark>;
+
+const HEX64 = /^[0-9a-f]{64}$/;
+
+/**
+ * The disk side of the exemption (D98(1)): the directories of the scan that would block and are
+ * cleared by rules (4) and (5) of the header. A folder is asked only when exactly one exempt item
+ * names its session, no blocking row does, and that item carries the digest of its seal; the
+ * answer clears it only for `signed && development`. A reader that rejects clears nothing.
+ */
+export async function clearedDevelopmentPackages(
+  storeRoot: string,
+  scan: EvidenceStoreScan,
+  split: Pick<RealSealedRows, 'blocking' | 'developmentItems'>,
+  readMark: SealedSourceMarkReader,
+): Promise<readonly string[]> {
+  const cleared: string[] = [];
+  for (const entry of scan.packages) {
+    if (entry.integrity === 'DEMO' || entry.sessionId === '' || split.blocking.includes(entry.sessionId)) continue;
+    const items = split.developmentItems.filter((item) => item.sessionId === entry.sessionId);
+    const item = items[0];
+    if (items.length !== 1 || item === undefined || item.evidenceId === null || item.manifestSha256 === null || !HEX64.test(item.manifestSha256)) continue;
+    let mark: SealedSourceMark;
+    try {
+      mark = await readMark(join(storeRoot, entry.directory), { sessionId: item.sessionId, evidenceId: item.evidenceId, manifestSha256: item.manifestSha256 });
+    } catch {
+      continue;
+    }
+    if (mark.signed === true && mark.development === true) cleared.push(entry.directory);
+  }
+  return Object.freeze(cleared);
+}
 
 /** How many identifiers a refusal names before it counts the rest. */
 export const MAX_NAMED_SESSIONS = 5;
@@ -51,8 +187,14 @@ export interface RealEvidenceFacts {
   readonly storeRoot: string;
   /** False when the store root does not exist at all. */
   readonly storePresent: boolean;
-  /** Sessions of REAL sealed rows of `evidence_items`, in id order. */
+  /** Sessions of the REAL sealed rows of `evidence_items` that BLOCK, in id order (exempt ones are not here). */
   readonly dbSessions: readonly string[];
+  /** The blocking sessions that claim `development_sources` and fail the cross-check (SEC35-42 (2)). */
+  readonly developmentUnproven: readonly string[];
+  /** Sessions of the exempt development packages: what a permitted reset erases (SEC35-42 (3)). */
+  readonly developmentSessions: readonly string[];
+  /** Package directories cleared by their signed development mark (D98(1)): they do not block and are in none of the lists below. */
+  readonly developmentPackagesOnDisk: readonly string[];
   /** Sessions of packages on disk whose manifest says `REAL`, in directory order. */
   readonly diskSessions: readonly string[];
   /** Package directories whose integrity could not be read from a manifest. */
@@ -74,6 +216,8 @@ export interface RealEvidenceOptions {
   readonly dataDir?: string | undefined;
   /** Another reader of the store, for tests. */
   readonly readStore?: ((root: string) => EvidenceStoreScan) | undefined;
+  /** Another reader of a folder's signed source mark, for tests. Default: `readSealedSourceMark` of the verify unit. */
+  readonly readSourceMark?: SealedSourceMarkReader | undefined;
 }
 
 function symmetricDifference(left: readonly string[], right: readonly string[]): string[] {
@@ -95,15 +239,22 @@ export function evaluateRealEvidence(
   storeRoot: string,
   dbSessions: readonly string[],
   scan: EvidenceStoreScan,
+  exemption: { readonly unproven?: readonly string[]; readonly development?: readonly string[]; readonly clearedOnDisk?: readonly string[] } = {},
 ): RealEvidenceFacts {
   const sorted = [...dbSessions].sort();
-  const real = scan.packages.filter((entry) => entry.integrity === 'REAL').map((entry) => entry.sessionId);
-  const unprovable = scan.packages.filter((entry) => entry.integrity === 'UNKNOWN').map((entry) => entry.directory);
+  // Only what `clearedDevelopmentPackages` cleared is left out; without it every package counts.
+  const cleared = exemption.clearedOnDisk ?? [];
+  const counted = scan.packages.filter((entry) => !cleared.includes(entry.directory));
+  const real = counted.filter((entry) => entry.integrity === 'REAL').map((entry) => entry.sessionId);
+  const unprovable = counted.filter((entry) => entry.integrity === 'UNKNOWN').map((entry) => entry.directory);
   const facts: RealEvidenceFacts = Object.freeze({
     database,
     storeRoot,
     storePresent: scan.present,
     dbSessions: Object.freeze(sorted),
+    developmentUnproven: Object.freeze([...(exemption.unproven ?? [])].sort()),
+    developmentSessions: Object.freeze([...(exemption.development ?? [])].sort()),
+    developmentPackagesOnDisk: Object.freeze([...cleared].sort()),
     diskSessions: Object.freeze(real),
     unprovablePackages: Object.freeze(unprovable),
     missingOnDisk: Object.freeze(symmetricDifference(sorted, real)),
@@ -117,7 +268,10 @@ export function evaluateRealEvidence(
 /** One sentence for a log line and for the `ResetError`: counts, then the identifiers it names. */
 export function realEvidenceMessage(facts: RealEvidenceFacts): string {
   const sides = [
-    `${facts.database}: ${String(facts.dbSessions.length)} REAL sealed item(s)`,
+    `${facts.database}: ${String(facts.dbSessions.length)} REAL sealed item(s)` +
+      (facts.developmentUnproven.length === 0
+        ? ''
+        : `, ${String(facts.developmentUnproven.length)} of them flagged as development sources without four development source rows`),
     `evidence store ${facts.storeRoot} ${facts.storePresent ? 'holds' : 'does not exist;'} ${String(facts.diskSessions.length)} REAL package(s)` +
       (facts.unprovablePackages.length === 0 ? '' : ` and ${String(facts.unprovablePackages.length)} unreadable package director(y/ies) [${named(facts.unprovablePackages)}]`),
   ];
@@ -138,6 +292,8 @@ export function realEvidenceDetails(facts: RealEvidenceFacts): Record<string, st
     storeRoot: facts.storeRoot,
     storePresent: facts.storePresent,
     realRows: facts.dbSessions.length,
+    developmentUnproven: facts.developmentUnproven.length,
+    developmentPackages: facts.developmentSessions.length,
     realPackages: facts.diskSessions.length,
     unreadablePackages: facts.unprovablePackages.length,
     rowsWithoutPackage: facts.missingOnDisk.length,
@@ -152,8 +308,11 @@ export function realEvidenceDetails(facts: RealEvidenceFacts): Record<string, st
  */
 export async function findRealSealedEvidence(client: RealEvidenceQueryable, options: RealEvidenceOptions): Promise<RealEvidenceFacts> {
   const storeRoot = options.storeRoot ?? evidenceStoreRoot(options.dataDir);
-  const { rows } = await client.query<{ session_id: string }>(REAL_SEALED_EVIDENCE_STATEMENT);
-  return evaluateRealEvidence(options.database, storeRoot, rows.map((row) => row.session_id), (options.readStore ?? readEvidenceStore)(storeRoot));
+  const { rows } = await client.query<RealSealedEvidenceRow>(REAL_SEALED_EVIDENCE_STATEMENT);
+  const split = classifyRealSealedRows(rows);
+  const scan = (options.readStore ?? readEvidenceStore)(storeRoot);
+  const clearedOnDisk = await clearedDevelopmentPackages(storeRoot, scan, split, options.readSourceMark ?? readSealedSourceMark);
+  return evaluateRealEvidence(options.database, storeRoot, split.blocking, scan, { unproven: split.unproven, development: split.development, clearedOnDisk });
 }
 
 /**
@@ -164,4 +323,18 @@ export async function assertNoRealSealedEvidence(client: RealEvidenceQueryable, 
   const facts = await findRealSealedEvidence(client, options);
   if (facts.blocked) throw new ResetError('RESET_BLOCKED_REAL_EVIDENCE', 'R-0', realEvidenceMessage(facts));
   return facts;
+}
+
+/**
+ * The sentence a permitted reset states before it erases development packages (SEC35-42 (3)):
+ * the count, and at most a few session identifiers. Empty when there is none.
+ */
+export function developmentPackagesMessage(facts: RealEvidenceFacts): string {
+  const count = facts.developmentSessions.length;
+  if (count === 0) return '';
+  const onDisk = facts.developmentPackagesOnDisk.length;
+  return (
+    `this reset erases ${String(count)} development-source package record(s) of ${facts.database} (${named(facts.developmentSessions)}): sealed from development sources only, exempt from the real-evidence guard (dbc-4 §N.10).` +
+    (onDisk === 0 ? '' : ` ${String(onDisk)} package folder(s) on disk carry the signed development mark of such a record and did not block (D98(1)); the folders themselves are not removed.`)
+  );
 }

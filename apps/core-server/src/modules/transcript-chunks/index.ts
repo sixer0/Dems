@@ -21,6 +21,7 @@
 import { INSERT_TRANSCRIPT_CHUNK, READ_TRANSCRIPT_CHUNKS, UPDATE_TRANSCRIPT_CHUNK, type Queryable, type TranscriptChunkStatusValue } from './statements';
 
 export type { Queryable, TranscriptChunkStatusValue } from './statements';
+export { failedChunkCount, summariseChunkAttempts, type ChunkAttempt, type ChunkAttemptSummary, type ChunkOutcome } from './attempts';
 
 /** One row of `transcript_chunks`: the member names of the typed schema (`db/schema/transcript.ts`). */
 export interface TranscriptChunk {

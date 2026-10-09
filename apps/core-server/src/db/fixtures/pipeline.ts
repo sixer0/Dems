@@ -48,6 +48,7 @@ import type {
   RecordingFragmentRow,
   SealingJobRow,
   SessionAudioIntervalRow,
+  SessionCaptureSourceRow,
   TranscriptChunkRow,
   TranscriptRevisionRow,
   TranscriptRow,
@@ -63,6 +64,8 @@ import { MINUTE_MS, SECOND_MS } from './world';
 export interface PipelineRows {
   readonly captureDevices: CaptureDeviceRow[];
   readonly captureDeviceCredentials: CaptureDeviceCredentialRow[];
+  /** Schema v3 (dbc-4 §N.10): four rows per session that has an interval or a fragment row. */
+  readonly sessionCaptureSources: SessionCaptureSourceRow[];
   readonly sessionAudioIntervals: SessionAudioIntervalRow[];
   readonly recordingFragments: RecordingFragmentRow[];
   readonly transcriptChunks: TranscriptChunkRow[];
@@ -70,6 +73,64 @@ export interface PipelineRows {
   readonly transcriptRevisions: TranscriptRevisionRow[];
   readonly sealingJobs: SealingJobRow[];
 }
+
+/**
+ * The source shape of one session (dbc-4 §N.10): which device feeds each of the four slots, with
+ * the adapter kind the row records. No shape mixes a production kind with a development kind
+ * (row 123 RG-3).
+ */
+export interface SourceShape {
+  readonly name: 'FAKE' | 'DEVELOPMENT' | 'PRODUCTION';
+  readonly slots: ReadonlyArray<{
+    readonly slot: SessionCaptureSourceRow['slot'];
+    readonly deviceId: string;
+    readonly adapterKind: SessionCaptureSourceRow['adapterKind'];
+  }>;
+}
+
+/** All four slots on the seed's built-ins: the shape of every demo session (D81). */
+export const FAKE_SOURCE_SHAPE: SourceShape = {
+  name: 'FAKE',
+  slots: [
+    { slot: 'VIDEO-01', deviceId: 'CAM-01', adapterKind: 'FAKE' },
+    { slot: 'VIDEO-02', deviceId: 'CAM-02', adapterKind: 'FAKE' },
+    { slot: 'MIC-PRIMARY', deviceId: 'MIC-01', adapterKind: 'FAKE' },
+    { slot: 'MIC-STANDBY', deviceId: 'MIC-02', adapterKind: 'FAKE' },
+  ],
+};
+/** The development shape of D74(2): this Mac's camera and microphone in slots 1, fakes in slots 2. */
+export const DEVELOPMENT_SOURCE_SHAPE: SourceShape = {
+  name: 'DEVELOPMENT',
+  slots: [
+    { slot: 'VIDEO-01', deviceId: 'CAM-06', adapterKind: 'LOCAL_DEVICE' },
+    { slot: 'VIDEO-02', deviceId: 'CAM-02', adapterKind: 'FAKE' },
+    { slot: 'MIC-PRIMARY', deviceId: 'MIC-05', adapterKind: 'LOCAL_DEVICE' },
+    { slot: 'MIC-STANDBY', deviceId: 'MIC-02', adapterKind: 'FAKE' },
+  ],
+};
+/** All-production: two discovered cameras and two USB microphones. */
+export const PRODUCTION_SOURCE_SHAPE: SourceShape = {
+  name: 'PRODUCTION',
+  slots: [
+    { slot: 'VIDEO-01', deviceId: 'CAM-03', adapterKind: 'ONVIF_RTSP' },
+    { slot: 'VIDEO-02', deviceId: 'CAM-04', adapterKind: 'ONVIF_RTSP' },
+    { slot: 'MIC-PRIMARY', deviceId: 'MIC-03', adapterKind: 'USB_AUDIO' },
+    { slot: 'MIC-STANDBY', deviceId: 'MIC-04', adapterKind: 'USB_AUDIO' },
+  ],
+};
+/** All-production on the dual-lens camera: one device in both VIDEO rows (OD-05). */
+export const PRODUCTION_DUAL_LENS_SOURCE_SHAPE: SourceShape = {
+  name: 'PRODUCTION',
+  slots: [
+    { slot: 'VIDEO-01', deviceId: 'CAM-03', adapterKind: 'ONVIF_RTSP' },
+    { slot: 'VIDEO-02', deviceId: 'CAM-03', adapterKind: 'ONVIF_RTSP' },
+    { slot: 'MIC-PRIMARY', deviceId: 'MIC-03', adapterKind: 'USB_AUDIO' },
+    { slot: 'MIC-STANDBY', deviceId: 'MIC-04', adapterKind: 'USB_AUDIO' },
+  ],
+};
+
+const micOf = (shape: SourceShape, slot: 'MIC-PRIMARY' | 'MIC-STANDBY'): string =>
+  (shape.slots.find((entry) => entry.slot === slot) as SourceShape['slots'][number]).deviceId;
 
 /** A sealed session with a timeline: the unit the intervals and the jobs are built on. */
 interface SealedSession {
@@ -121,11 +182,12 @@ function buildCaptureWorld(world: World): { captureDevices: CaptureDeviceRow[]; 
       firmware: '2.1.7',
       address: '127.0.0.1:8556',
       mac: '9A:1B:2C:3D:4E:03',
-      onvifUuid: null,
+      onvifUuid: rng.uuid(),
       profiles: ['H264_1080P25', 'H264_720P30'],
       poePort: 'POE_CAM_2',
       enabled: true,
       lastSeenAt: seenAgo(),
+      adapterKind: 'ONVIF_RTSP',
     },
     {
       id: 'CAM-04',
@@ -140,6 +202,40 @@ function buildCaptureWorld(world: World): { captureDevices: CaptureDeviceRow[]; 
       poePort: 'POE_CAM_2',
       enabled: true,
       lastSeenAt: seenAgo(),
+      adapterKind: 'ONVIF_RTSP',
+    },
+    {
+      // The third discovered camera of dbc-4 §N.10: three `ONVIF_RTSP` rows, three distinct
+      // endpoint references (the partial unique index `capture_devices_onvif_uuid_key`).
+      id: 'CAM-05',
+      kind: 'CAMERA',
+      transport: 'ONVIF',
+      model: 'Discovery camera DX-2',
+      firmware: '1.4.0',
+      address: '127.0.0.1:8558',
+      mac: '9A:1B:2C:3D:4E:05',
+      onvifUuid: rng.uuid(),
+      profiles: ['H264_1080P25'],
+      poePort: 'POE_CAM_3',
+      enabled: true,
+      lastSeenAt: seenAgo(),
+      adapterKind: 'ONVIF_RTSP',
+    },
+    {
+      // The Core Mac's own camera (R-11; D-DB-13: a row of its own, never a re-labelled built-in).
+      id: 'CAM-06',
+      kind: 'CAMERA',
+      transport: 'LOCAL',
+      model: 'Core Mac camera (fixture)',
+      firmware: null,
+      address: null,
+      mac: null,
+      onvifUuid: null,
+      profiles: ['H264_1080P25'],
+      poePort: null,
+      enabled: true,
+      lastSeenAt: seenAgo(),
+      adapterKind: 'LOCAL_DEVICE',
     },
     {
       id: 'MIC-03',
@@ -154,6 +250,38 @@ function buildCaptureWorld(world: World): { captureDevices: CaptureDeviceRow[]; 
       poePort: null,
       enabled: true,
       lastSeenAt: seenAgo(),
+      adapterKind: 'USB_AUDIO',
+    },
+    {
+      id: 'MIC-04',
+      kind: 'MIC',
+      transport: 'USB',
+      model: 'Discovery microphone DM-1',
+      firmware: '0.9.2',
+      address: null,
+      mac: null,
+      onvifUuid: null,
+      profiles: ['PCM_48K16'],
+      poePort: null,
+      enabled: true,
+      lastSeenAt: seenAgo(),
+      adapterKind: 'USB_AUDIO',
+    },
+    {
+      // The Core Mac's own microphone (R-11).
+      id: 'MIC-05',
+      kind: 'MIC',
+      transport: 'LOCAL',
+      model: 'Core Mac microphone (fixture)',
+      firmware: null,
+      address: null,
+      mac: null,
+      onvifUuid: null,
+      profiles: ['PCM_48K16'],
+      poePort: null,
+      enabled: true,
+      lastSeenAt: seenAgo(),
+      adapterKind: 'LOCAL_DEVICE',
     },
   ];
 
@@ -186,19 +314,29 @@ function buildCaptureWorld(world: World): { captureDevices: CaptureDeviceRow[]; 
 
 // ── session_audio_intervals (dbc-3 §G: >= 1 per sealed session, 50 switched, one open in the variant) ──
 
-function buildAudioIntervals(world: World, identity: IdentityRows, sealed: readonly SealedSession[], active: { sessionId: string; startedAt: number } | null): SessionAudioIntervalRow[] {
+function buildAudioIntervals(
+  world: World,
+  identity: IdentityRows,
+  sealed: readonly SealedSession[],
+  active: { sessionId: string; startedAt: number } | null,
+  shapeOf: (sessionId: string) => SourceShape,
+): SessionAudioIntervalRow[] {
   const rng = world.rng('pipeline:audio-intervals');
   const mix = BULK_MIX.sessionAudioIntervals;
   const rows: SessionAudioIntervalRow[] = [];
   // The switched sessions: a deterministic draw of 50 from the sealed timeline.
   const switched = new Set(rng.shuffle(sealed.map((session) => session.sessionId)).slice(0, mix.switchedSessions));
-  const mics = ['MIC-01', 'MIC-02', 'MIC-03'] as const;
   for (const session of sealed) {
+    // MR-S2 (dbc-4 §N.3): every interval of a session names one of the two mics its
+    // `session_capture_sources` rows record, so the class of an interval is read from that row.
+    const shape = shapeOf(session.sessionId);
+    const primary = micOf(shape, 'MIC-PRIMARY');
+    const standby = micOf(shape, 'MIC-STANDBY');
     const span = (fromMediaMs: number, toMediaMs: number): void => {
       rows.push({
         sessionId: session.sessionId,
         seq: rows.filter((row) => row.sessionId === session.sessionId).length + 1,
-        micDeviceId: 'MIC-01',
+        micDeviceId: primary,
         role: 'PRIMARY',
         fromMediaMs,
         toMediaMs,
@@ -212,13 +350,12 @@ function buildAudioIntervals(world: World, identity: IdentityRows, sealed: reado
       // START, three MANUAL switches (switched_by non-null, §G's 2-3), STOP: the mic moves.
       const quarter = Math.max(1, Math.floor(session.durationMs / 4));
       const bounds = [0, quarter, 2 * quarter, 3 * quarter, session.durationMs];
-      const switchers = [mics[1], mics[2], mics[0]];
       bounds.slice(0, 4).forEach((from, index) => {
         const to = bounds[index + 1] as number;
         rows.push({
           sessionId: session.sessionId,
           seq: index + 1,
-          micDeviceId: index === 0 ? 'MIC-01' : (switchers[index - 1] as string),
+          micDeviceId: index % 2 === 1 ? standby : primary,
           role: index === 0 ? 'PRIMARY' : index % 2 === 1 ? 'STANDBY' : 'PRIMARY',
           fromMediaMs: from,
           toMediaMs: to,
@@ -234,7 +371,7 @@ function buildAudioIntervals(world: World, identity: IdentityRows, sealed: reado
       rows.push({
         sessionId: session.sessionId,
         seq: 5,
-        micDeviceId: 'MIC-01',
+        micDeviceId: primary,
         role: 'PRIMARY',
         fromMediaMs: 3 * quarter,
         toMediaMs: session.durationMs,
@@ -254,7 +391,7 @@ function buildAudioIntervals(world: World, identity: IdentityRows, sealed: reado
     rows.push({
       sessionId: active.sessionId,
       seq: 1,
-      micDeviceId: 'MIC-01',
+      micDeviceId: micOf(shapeOf(active.sessionId), 'MIC-PRIMARY'),
       role: 'PRIMARY',
       fromMediaMs: 0,
       toMediaMs: null,
@@ -541,7 +678,34 @@ export function buildPipeline(world: World, identity: IdentityRows, recordings: 
 
   const active = recordings.activeSession[0];
   const activeTake = active === undefined ? null : { sessionId: active.id, startedAt: active.startedAt ?? active.createdAt };
-  const sessionAudioIntervals = buildAudioIntervals(world, identity, sealed, activeTake);
+
+  // dbc-4 §N.10: the source shape of every session that has an interval or a fragment row. The
+  // seeded history and the RECORDING variant stay all-FAKE (D81: demo packages carry class FAKE);
+  // 20 of the fixture's own recordings take the development shape and 20 the all-production one,
+  // a deterministic draw. A quarter of the production sessions sit on the dual-lens camera.
+  const mix = BULK_MIX.sessionCaptureSources;
+  const drawn = world
+    .rng('pipeline:capture-sources')
+    .shuffle(recordings.recordings.filter((plan) => plan.sealed && plan.startedAt < plan.endedAt).map((plan) => plan.sessionId))
+    .slice(0, mix.developmentSessions + mix.productionSessions);
+  if (drawn.length < mix.developmentSessions + mix.productionSessions) throw new RangeError('too few fixture recordings for the source-shape mix');
+  const shapes = new Map<string, SourceShape>();
+  drawn.forEach((sessionId, index) => {
+    if (index < mix.developmentSessions) shapes.set(sessionId, DEVELOPMENT_SOURCE_SHAPE);
+    else shapes.set(sessionId, (index - mix.developmentSessions) % 4 === 3 ? PRODUCTION_DUAL_LENS_SOURCE_SHAPE : PRODUCTION_SOURCE_SHAPE);
+  });
+  const shapeOf = (sessionId: string): SourceShape => shapes.get(sessionId) ?? FAKE_SOURCE_SHAPE;
+  const startOf = new Map<string, number>();
+  for (const session of [...sealed, ...recorded]) if (!startOf.has(session.sessionId)) startOf.set(session.sessionId, session.startedAt);
+  if (activeTake !== null && !startOf.has(activeTake.sessionId)) startOf.set(activeTake.sessionId, activeTake.startedAt);
+  const sessionCaptureSources: SessionCaptureSourceRow[] = [...startOf.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .flatMap(([sessionId, startedAt]) =>
+      // MR-S1: the four rows are written with the transition to RECORDING, i.e. at the start.
+      shapeOf(sessionId).slots.map((entry) => ({ sessionId, slot: entry.slot, deviceId: entry.deviceId, adapterKind: entry.adapterKind, recordedAt: startedAt })),
+    );
+
+  const sessionAudioIntervals = buildAudioIntervals(world, identity, sealed, activeTake, shapeOf);
   const fragments = buildFragments(recorded, fullChains);
   const sessionByEvidence = new Map(recordings.recordings.filter((plan) => plan.evidenceId !== null).map((plan) => [plan.evidenceId as string, plan.sessionId]));
   patchTrackChainHearts(recordings.evidenceTracks, sessionByEvidence, fragments.chains);
@@ -563,6 +727,7 @@ export function buildPipeline(world: World, identity: IdentityRows, recordings: 
   return {
     captureDevices,
     captureDeviceCredentials,
+    sessionCaptureSources,
     sessionAudioIntervals,
     recordingFragments: fragments.rows,
     transcriptChunks,

@@ -242,7 +242,7 @@ export const SYSTEM_EXAMPLES: Readonly<Record<string, OperationExamples>> = {
     responses: {
       200: {
         idle: {
-          summary: 'Sixteen services running, version 2.5.0 available, no diagnostics run yet',
+          summary: 'Seventeen services running, version 2.5.0 available, no diagnostics run yet',
           value: {
             device: EXAMPLE_SLICES.device,
             services: EXAMPLE_SLICES.services,
@@ -266,7 +266,7 @@ export const SYSTEM_EXAMPLES: Readonly<Record<string, OperationExamples>> = {
   },
   restartServices: {
     responses: {
-      200: { restarted: { summary: 'All sixteen services restarted', value: { restarted: 16 } satisfies ServicesRestarted } },
+      200: { restarted: { summary: 'All seventeen services restarted', value: { restarted: 17 } satisfies ServicesRestarted } },
       401: SIGNED_OUT,
       403: MAINTENANCE_DENIED('restartServices'),
       409: sessionActive('restartServices'),

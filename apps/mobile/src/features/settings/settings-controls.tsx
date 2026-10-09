@@ -7,11 +7,13 @@
 import { Description, Label, ListGroup, Separator, Switch, Tabs } from 'heroui-native';
 import {
   Bell,
+  Cctv,
   ChevronRight,
   Cog,
   Database,
   Globe,
   Info,
+  Mic,
   MonitorCog,
   Settings2,
   ShieldHalf,
@@ -33,6 +35,8 @@ export const SETTINGS_ICONS: Readonly<Record<SettingsIcon, LucideIcon>> = {
   network: Globe,
   maintenance: Cog,
   about: Info,
+  transcription: Mic,
+  capture: Cctv,
 };
 
 const ICON = 22;

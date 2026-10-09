@@ -1,0 +1,352 @@
+/**
+ * THE CORE'S TRANSCRIPTION COMPOSITION (blueprint row 115, milestone M6; requirement R-8,
+ * decisions D20, D24; transcript spec §B.4, §B.7, §C, §D; C3 §2.5; CS-22).
+ *
+ * `apps/transcriber` is a library: it knows no database, no capture supervisor and no HTTP server.
+ * This unit is where the Core puts it to work. It owns:
+ *
+ *   host.ts               what the HOST states about the engines (one file in the data directory);
+ *   credential-reveal.ts  the ONE caller of `dems_stt_credential_reveal()`;
+ *   credential-opener.ts  the ONE file that reaches the Core credential store: the opener of an
+ *                         `ENCRYPTED` credential, handed to the transcriber's key-loader;
+ *   probe.ts              the probe of operation 92 in production wiring;
+ *   snapshot.ts           the STT configuration of a session as it was at its start, stored in
+ *                         `session_stt_config` (statements.ts);
+ *   session.ts            adapter + VAD + runner of one session, built from its snapshot, with
+ *                         every value the pipeline asks a live session to state, and the rule for
+ *                         a torn checkpoint;
+ *   boot.ts               the CS-22 boot step.
+ *
+ * HOW IT IS MOUNTED. `app.ts` is frozen (P25) and is not edited: the STT configuration module
+ * (`modules/stt-config`, registered by `app.ts` since row 113) calls `mountTranscription(app, …)`
+ * in its plugin function and hands in what is its own - how the stored row is read. The opener of
+ * an `ENCRYPTED` credential is the Core credential store's, reached through this unit's one file
+ * `credential-opener.ts`. This unit imports no module's value except the store of
+ * `transcript_chunks`.
+ *
+ * MOUNTED OR NOT. An app whose data directory does not exist (every in-process test app) has NO
+ * transcriber: `mounted` is false, the boot step is inert, the service state is `NOT_CONFIGURED`
+ * and operation 92 keeps answering `503 TRANSCRIBER_NOT_READY`. The product always has a data
+ * directory (the connection file lives in it).
+ *
+ * WHAT ROW 71 CALLS (session start and stop; see "to wire" in the implementation note):
+ *   at session start   `snapshotSttConfigForSession(sessionId)` - never throws, never waits for a
+ *                      backend, never blocks a start;
+ *   for the plan       `tapPathFor(sessionId)` - the `pcmTapPath` of the capture plan, or null
+ *                      when the snapshot disables STT (no tap: no CPU taken from capture);
+ *   while recording    `openSession(sessionId)` then `step({ final: false })` as the tap grows;
+ *   after the stop     `step({ final: true })` until `complete`, then `close()`.
+ */
+import { mkdirSync, statSync } from 'node:fs';
+import { SttConnectionDetailCode } from '@dems/shared/api';
+import { SerialQueue, createEngineGuard, type ChunkMirror, type FetchLike, type TranscriberLog } from '@dems/transcriber';
+import { createTranscriptChunkStore } from '../modules/transcript-chunks';
+import type { SttConnectionProbe } from '../modules/stt-config';
+import { TRANSCRIBER_BOOT_STEP, runTranscriberBoot, type TranscriberBootOutcome } from './boot';
+import { coreSttEnvelopeOpener, type SttEnvelopeOpener } from './credential-opener';
+import { revealSttCredential, type RevealedSttCredential } from './credential-reveal';
+import { readTranscriberHost, sessionScratchDir, sessionTapPath, type TranscriberHost } from './host';
+import { createCoreTranscriberLog } from './log';
+import { createCoreSttProbe } from './probe';
+import { openSessionTranscription, type CaptureFacts, type OpenSessionOptions, type SessionTranscription } from './session';
+import { createDatabaseSnapshotStore, manifestSnapshotOf, type ManifestSttSnapshot, type SttSessionSnapshot, type SttSnapshotStore, type StoredSttSelection } from './snapshot';
+
+export { TRANSCRIBER_BOOT_STEP, TranscriberBootError, TranscriberBootFailure, runTranscriberBoot, type TranscriberBootDeps, type TranscriberBootOutcome } from './boot';
+export { SttCredentialOpenError, SttCredentialOpenFailure, coreSttEnvelopeOpener, type SttEnvelopeOpener } from './credential-opener';
+export { REVEAL_STT_CREDENTIAL, SttCredentialRevealError, revealSttCredential, type RevealedSttCredential } from './credential-reveal';
+export {
+  TRANSCRIBER_HOST_FILE,
+  TRANSCRIBER_HOST_FOLDER,
+  TRANSCRIPTION_TAP_FILE,
+  TranscriberHostError,
+  readTranscriberHost,
+  sessionScratchDir,
+  sessionTapPath,
+  type TranscriberHost,
+} from './host';
+export { createCoreTranscriberLog } from './log';
+export { GPU_BACKEND_MARKERS, SttProbeDetailCode, cpuOnlyBuildOf, createCoreSttProbe, type CoreProbeDeps, type CpuOnlyVerdict } from './probe';
+export {
+  CHECKPOINT_RECOVERY_LIMIT,
+  SessionTranscriptionCode,
+  moveCheckpointAside,
+  openSessionTranscription,
+  type CaptureFacts,
+  type EnabledSessionTranscription,
+  type OpenSessionOptions,
+  type SessionCompositionDeps,
+  type SessionTranscription,
+} from './session';
+export { MEMORY_SNAPSHOT_SESSIONS, createDatabaseSnapshotStore, createMemorySnapshotStore, manifestSnapshotOf, type ManifestSttSnapshot, type SttSessionSnapshot, type SttSnapshotStore, type StoredSttSelection } from './snapshot';
+
+/** The states `modules/system` reads (`TranscriberServiceState` there; the same four words). */
+export const TranscriptionServiceState = { NOT_CONFIGURED: 'NOT_CONFIGURED', RUNNING: 'RUNNING', DEGRADED: 'DEGRADED', STOPPED: 'STOPPED' } as const;
+export type TranscriptionServiceState = (typeof TranscriptionServiceState)[keyof typeof TranscriptionServiceState];
+
+export interface TranscriptionServiceReport {
+  readonly state: TranscriptionServiceState;
+  /** When the boot step resolved the transcriber (epoch ms on the Core clock), or null. */
+  readonly startedAt: number | null;
+}
+
+/** Raised when a session starts with STT enabled and the backend does not answer. Capture goes on. */
+export interface SttSessionWarning {
+  readonly sessionId: string;
+  readonly code: 'STT_BACKEND_UNAVAILABLE_AT_SESSION_START';
+  /** The `detailCode` of the check (`UNREACHABLE`, `TIMEOUT`, `MODEL_NOT_AVAILABLE`, …). */
+  readonly detailCode: string;
+  readonly backend: string;
+  readonly at: number;
+}
+
+export type SnapshotOutcome =
+  | { readonly ok: true; readonly snapshot: SttSessionSnapshot; /** False: the session already had its snapshot; that one is returned. */ readonly taken: boolean }
+  | { readonly ok: false; readonly code: 'STT_CONFIG_NOT_SEEDED' | 'STT_CONFIG_READ_FAILED' | 'SNAPSHOT_STORE_FAILED' };
+
+export interface TranscriptionControl {
+  /** False: the app has no data directory, so it has no transcriber. */
+  readonly mounted: boolean;
+  /** The probe of operation 92. The STT configuration module uses it when no other was provided. */
+  readonly probe: SttConnectionProbe;
+  /** THE SEAM OF `modules/system` (`TranscriberServiceSource`): a synchronous read. */
+  serviceState(): TranscriptionServiceReport;
+  /**
+   * SESSION START. Takes the snapshot of the stored configuration for the session (write-once) and
+   * returns AT ONCE. When the snapshot enables STT, the backend is asked once IN THE BACKGROUND;
+   * a backend that does not answer raises a warning (`onSessionWarning`, the log, the persistent
+   * error log) and changes nothing else: the start of the session never waits for it and never
+   * fails because of it (RK-1). Never throws.
+   */
+  snapshotSttConfigForSession(sessionId: string): Promise<SnapshotOutcome>;
+  sessionSnapshot(sessionId: string): Promise<SttSessionSnapshot | null>;
+  /** The five members the seal records (manifest field 123), or null without a snapshot. */
+  manifestSnapshot(sessionId: string): Promise<ManifestSttSnapshot | null>;
+  /** The `pcmTapPath` of the session's capture plan: null when its snapshot disables STT or is absent. */
+  tapPathFor(sessionId: string): Promise<string | null>;
+  /** Where the checkpoint and the three transcript files of a session are. */
+  scratchDirFor(sessionId: string): string;
+  openSession(sessionId: string, options?: OpenSessionOptions): Promise<SessionTranscription>;
+  /** Returns the function that removes the listener. */
+  onSessionWarning(listener: (warning: SttSessionWarning) => void): () => void;
+  /** The availability check a session start began, if it still runs. For a test and for a shutdown. */
+  settled(): Promise<void>;
+  /** Told by operation 91 after a stored change (the new `enabled`). */
+  noteConfigChange(enabled: boolean): void;
+  /** The outcome of the boot step, or null before it ran. */
+  bootOutcome(): TranscriberBootOutcome | null;
+}
+
+/** What the app must offer. Structural: the scaffold's `FastifyInstance` has all of it. */
+export interface TranscriptionHost {
+  readonly stages: object;
+  readonly config: { readonly dataDir: string; readonly captureMode: 'simulated' | 'real' };
+  readonly log: { info(fields: Record<string, unknown>, message: string): void; warn(fields: Record<string, unknown>, message: string): void; error(fields: Record<string, unknown>, message: string): void };
+  readonly errorLog: { append(entry: { level: 'error' | 'warn'; source: string; message: string; code?: string; context?: Readonly<Record<string, string | number | boolean | null>> }): void };
+  readonly clock: { now(): number };
+  readonly capture: CaptureFacts;
+  readonly db: { readonly pool: { query(text: string, values?: unknown[]): Promise<{ rows: never[]; rowCount: number | null }> } };
+  readonly readiness: { addBootStep(step: { readonly id: string; run(): Promise<void> }): void };
+}
+
+export interface MountTranscriptionDeps {
+  /** The stored row without any credential column (the STT configuration module's own read). Null: not seeded. */
+  readonly readConfig: () => Promise<StoredSttSelection | null>;
+  /** Tests: another store (the memory store, or a double), another transport, another time limit of the session-start check. */
+  readonly snapshots?: SttSnapshotStore;
+  readonly fetchImpl?: FetchLike;
+  readonly availabilityTimeoutMs?: number;
+  /** The opener of a stored `ENCRYPTED` credential. Default: the Core credential store of the app (`coreSttEnvelopeOpener`). */
+  readonly openEncrypted?: SttEnvelopeOpener;
+}
+
+/** The time limit of the one background check a session start makes. A bound, never a measurement. */
+export const SESSION_START_CHECK_TIMEOUT_MS = 3_000;
+
+const SOURCE = 'transcription';
+const WARNING = 'STT is enabled for the session but its backend did not answer at session start; capture is not affected';
+const SNAPSHOT_FAILED = 'the STT snapshot of the session could not be taken; no transcription will run for it; capture is not affected';
+
+// Keyed by the app's stage registry: one object per app (the `sttConfigControl(app)` idiom).
+const controls = new WeakMap<object, TranscriptionControl>();
+
+/** The transcription controls of an app. Available once the STT configuration module is registered. */
+export function transcriptionControl(app: { readonly stages: object }): TranscriptionControl {
+  const control = controls.get(app.stages);
+  if (control === undefined) throw new Error('the transcription composition is not mounted: the STT configuration module registers it');
+  return control;
+}
+
+/**
+ * THE SOURCE FOR `modules/system` (its option `transcriber`, a `TranscriberServiceSource`): the
+ * service state of the app's transcriber, read when it is asked. An app in which nothing is
+ * mounted (a module test without the STT configuration module) answers `NOT_CONFIGURED`; it never throws.
+ */
+export function transcriptionServiceSource(app: { readonly stages: object }): () => TranscriptionServiceReport {
+  return () => controls.get(app.stages)?.serviceState() ?? { state: TranscriptionServiceState.NOT_CONFIGURED, startedAt: null };
+}
+
+function directoryIsThere(path: string): boolean {
+  try {
+    return statSync(path).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+export function mountTranscription(app: TranscriptionHost, deps: MountTranscriptionDeps): TranscriptionControl {
+  if (controls.has(app.stages)) throw new Error('the transcription composition was mounted twice');
+  const { dataDir, captureMode } = app.config;
+  // Decided once, like the Core credential store: a data directory that appears later is not adopted.
+  const mounted = directoryIsThere(dataDir);
+  const transcriberLog: TranscriberLog = createCoreTranscriberLog({ log: app.log, errorLog: app.errorLog, now: () => app.clock.now() });
+  /** ONE queue for every oMLX call of this process: tests of the connection and transcriptions (D7(d)). */
+  const queue = new SerialQueue();
+  // The snapshot lives in the database (`session_stt_config`): it survives a restart of the Core inside an open session.
+  const snapshots = deps.snapshots ?? createDatabaseSnapshotStore({ query: (text, values) => app.db.pool.query(text, values === undefined ? [] : [...values]) });
+  const listeners = new Set<(warning: SttSessionWarning) => void>();
+  const timeoutMs = deps.availabilityTimeoutMs ?? SESSION_START_CHECK_TIMEOUT_MS;
+
+  let hostState: { readonly host: TranscriberHost } | null = null;
+  // Read at first use and kept: a host file that cannot be used throws every time, so it is never mistaken for "no file".
+  const host = (): TranscriberHost => {
+    if (hostState === null) hostState = { host: readTranscriberHost(dataDir) };
+    return hostState.host;
+  };
+  const reveal = (): Promise<RevealedSttCredential> => revealSttCredential({ query: (text) => app.db.pool.query(text) });
+  // The ONE credential store of the app, asked when a credential is opened (never at mount).
+  const openEncrypted: SttEnvelopeOpener = deps.openEncrypted ?? coreSttEnvelopeOpener(app);
+  const libraryProbe = createCoreSttProbe({ host, reveal, openEncrypted, transcriberLog, queue, fetchImpl: deps.fetchImpl });
+  const probe: SttConnectionProbe = async (target, options) => {
+    const result = await libraryProbe(target, options);
+    if (target.enabled) availability = result.reachable && result.modelAvailable;
+    return result;
+  };
+  const mirror: ChunkMirror = createTranscriptChunkStore({ query: (text, values) => app.db.pool.query(text, values === undefined ? [] : [...values]) });
+
+  let boot: TranscriberBootOutcome | null = null;
+  let startedAt: number | null = null;
+  /** The stored `enabled`, as last seen (boot, a snapshot, operation 91). Null: not seen yet. */
+  let enabled: boolean | null = null;
+  /** The last answer of the backend. Null: not asked since the configuration was last seen. */
+  let availability: boolean | null = null;
+  let pending: Promise<void> = Promise.resolve();
+
+  const checkAtSessionStart = (snapshot: SttSessionSnapshot): void => {
+    const abort = new AbortController();
+    const timer = setTimeout(() => abort.abort(), timeoutMs);
+    pending = probe({ enabled: true, backend: snapshot.backend, endpoint: snapshot.endpoint, model: snapshot.model, credentialKind: snapshot.credentialKind }, { signal: abort.signal, timeoutMs })
+      .catch(() => ({ reachable: false, modelAvailable: false, detailCode: SttConnectionDetailCode.UNREACHABLE }))
+      .then((result) => {
+        if (result.reachable && result.modelAvailable) return;
+        const warning: SttSessionWarning = { sessionId: snapshot.sessionId, code: 'STT_BACKEND_UNAVAILABLE_AT_SESSION_START', detailCode: String(result.detailCode), backend: snapshot.backend, at: app.clock.now() };
+        app.log.warn({ code: warning.code, source: `${SOURCE}.sessionStart`, sessionId: warning.sessionId, backend: warning.backend, detailCode: warning.detailCode }, WARNING);
+        app.errorLog.append({ level: 'warn', source: `${SOURCE}.sessionStart`, message: WARNING, code: warning.code, context: { correlationId: warning.sessionId, backend: warning.backend, detailCode: warning.detailCode } });
+        for (const listener of listeners) {
+          try {
+            listener(warning);
+          } catch {
+            // A listener's fault is its own: the warning is already in both logs.
+          }
+        }
+      })
+      .finally(() => clearTimeout(timer));
+  };
+
+  const control: TranscriptionControl = {
+    mounted,
+    probe,
+    serviceState() {
+      if (!mounted || captureMode !== 'real' || boot === null || boot.outcome === 'INERT') return { state: TranscriptionServiceState.NOT_CONFIGURED, startedAt: null };
+      if (enabled === false) return { state: TranscriptionServiceState.STOPPED, startedAt };
+      return { state: availability === false ? TranscriptionServiceState.DEGRADED : TranscriptionServiceState.RUNNING, startedAt };
+    },
+    async snapshotSttConfigForSession(sessionId) {
+      const fail = (code: Extract<SnapshotOutcome, { ok: false }>['code'], error?: unknown): SnapshotOutcome => {
+        const errorName = error instanceof Error ? error.name : undefined;
+        const sqlstate = typeof (error as { code?: unknown } | undefined)?.code === 'string' ? (error as { code: string }).code : undefined;
+        app.log.error({ code, source: `${SOURCE}.snapshot`, sessionId, ...(errorName === undefined ? {} : { errorName }) }, SNAPSHOT_FAILED);
+        app.errorLog.append({ level: 'error', source: `${SOURCE}.snapshot`, message: SNAPSHOT_FAILED, code, context: { correlationId: sessionId, ...(errorName === undefined ? {} : { errorName }), ...(sqlstate === undefined ? {} : { sqlstate }) } });
+        return { ok: false, code };
+      };
+      try {
+        const known = await snapshots.get(sessionId);
+        if (known !== null) return { ok: true, snapshot: known, taken: false };
+      } catch (error) {
+        return fail('SNAPSHOT_STORE_FAILED', error);
+      }
+      let stored: StoredSttSelection | null;
+      try {
+        stored = await deps.readConfig();
+      } catch (error) {
+        return fail('STT_CONFIG_READ_FAILED', error);
+      }
+      if (stored === null) return fail('STT_CONFIG_NOT_SEEDED');
+      let snapshot: SttSessionSnapshot;
+      try {
+        snapshot = await snapshots.put({
+          sessionId,
+          takenAt: app.clock.now(),
+          enabled: stored.enabled,
+          backend: stored.backend,
+          endpoint: stored.endpoint,
+          model: stored.model,
+          language: stored.language,
+          diarization: stored.diarization,
+          credentialKind: stored.credentialKind,
+          revision: stored.revision,
+        });
+      } catch (error) {
+        return fail('SNAPSHOT_STORE_FAILED', error);
+      }
+      enabled = stored.enabled;
+      app.log.info({ code: 'STT_SNAPSHOT_TAKEN', source: `${SOURCE}.snapshot`, sessionId, enabled: snapshot.enabled, backend: snapshot.backend, revision: snapshot.revision }, 'STT configuration snapshot taken for the session');
+      if (snapshot.enabled && mounted) {
+        try {
+          // The directory of the tap and of the checkpoint: private, below the git-ignored data directory.
+          mkdirSync(sessionScratchDir(dataDir, sessionId), { recursive: true, mode: 0o700 });
+        } catch {
+          // The tap then cannot be written: the capture worker records without it and says so (tapActive false).
+        }
+        checkAtSessionStart(snapshot);
+      }
+      return { ok: true, snapshot, taken: true };
+    },
+    sessionSnapshot: (sessionId) => snapshots.get(sessionId),
+    async manifestSnapshot(sessionId) {
+      const snapshot = await snapshots.get(sessionId);
+      return snapshot === null ? null : manifestSnapshotOf(snapshot);
+    },
+    async tapPathFor(sessionId) {
+      const snapshot = await snapshots.get(sessionId);
+      return snapshot === null || !snapshot.enabled || !mounted ? null : sessionTapPath(dataDir, sessionId);
+    },
+    scratchDirFor: (sessionId) => sessionScratchDir(dataDir, sessionId),
+    openSession: (sessionId, options) => openSessionTranscription({ dataDir, host, snapshots, reveal, openEncrypted, engineGuard: createEngineGuard, capture: app.capture, mirror, transcriberLog, queue, now: () => app.clock.now(), fetchImpl: deps.fetchImpl }, sessionId, options),
+    onSessionWarning(listener) {
+      listeners.add(listener);
+      return () => void listeners.delete(listener);
+    },
+    settled: () => pending,
+    noteConfigChange(next) {
+      enabled = next;
+      // What the backend last answered described the configuration before this change.
+      availability = null;
+    },
+    bootOutcome: () => boot,
+  };
+  controls.set(app.stages, control);
+
+  app.readiness.addBootStep({
+    id: TRANSCRIBER_BOOT_STEP,
+    async run() {
+      // A refusal is thrown: the readiness runner logs and persists it with this step's ID, and
+      // the entry point exits without a listener.
+      boot = await runTranscriberBoot({ captureMode, mounted, host, readConfig: deps.readConfig, transcriberLog });
+      if (boot.outcome === 'INERT') return;
+      startedAt = app.clock.now();
+      enabled = boot.outcome !== 'DISABLED';
+      app.log.info({ code: 'TRANSCRIBER_RESOLVED', source: `${SOURCE}.boot`, outcome: boot.outcome, ...(boot.outcome === 'RESOLVED' ? { backend: boot.backend, vad: boot.vad } : {}) }, 'transcriber configuration resolved at boot');
+    },
+  });
+  return control;
+}

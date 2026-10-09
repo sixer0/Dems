@@ -19,7 +19,12 @@
  *
  * THE READ (64) answers from the engine's COMMITTED state (`app.engine.state()`: no pipeline, no
  * transaction, by reference; nothing here changes it), taken once, so the five slices of an
- * answer belong to one committed state (`status.ts`).
+ * answer belong to one committed state (`status.ts`). Blueprint row 62 (CS-10): two entries of
+ * the `services` slice stand for real processes, and the read lays their state over the slice:
+ * the capture worker from `app.capture.status()`, the transcriber from the module option
+ * `transcriber` (the seam of row 115) or, without that option, from the transcription composition
+ * of the app (`transcriptionServiceSource(app)`, read at each request; an app in which no
+ * transcriber is mounted answers "not configured"). See `status.ts`.
  *
  * THE COMMANDS (65 to 68) are hosted actions of the shared simulator, each in ONE unit of work
  * of the engine host, under the caller's identity. The answer leaves after the commit; the
@@ -70,9 +75,10 @@ import {
 import type { FastifyPluginAsync } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { routeOfOperation } from '../../plugins/permission-guard';
+import { transcriptionServiceSource } from '../../transcription';
 import { SYSTEM_ACTION_OF_OPERATION, registryEntry } from './operations';
 import { SETTINGS_CHANGED_MESSAGE, SETTINGS_UNIT_LABEL, changedSettingsKeys, settingsChangeLine, settingsPatchOf } from './settings';
-import { systemStatusOf } from './status';
+import { systemStatusOf, type TranscriberServiceSource } from './status';
 
 export { SYSTEM_ACTION_OF_OPERATION, SYSTEM_MODULE_OPERATIONS, registryEntry, type SystemModuleOperation } from './operations';
 export {
@@ -83,16 +89,38 @@ export {
   settingsPatchOf,
   type SettingsChangeLine,
 } from './settings';
-export { systemStatusOf, type SystemStatusSource } from './status';
+export {
+  CAPTURE_PHASE_VERDICT,
+  CAPTURE_WORKER_SERVICE,
+  TRANSCRIBER_NOT_MOUNTED,
+  TRANSCRIBER_SERVICE,
+  TRANSCRIBER_STATE_VERDICT,
+  TranscriberServiceState,
+  serviceReportsOf,
+  servicesWithProcesses,
+  systemStatusOf,
+  type ServiceProbes,
+  type ServiceReport,
+  type SystemStatusSource,
+  type TranscriberServiceReport,
+  type TranscriberServiceSource,
+} from './status';
 
-export const systemModule: FastifyPluginAsync = async (app) => {
+/** The options of the module. `transcriber` is the seam of blueprint row 115; without it the source is the transcription composition of the app. */
+export interface SystemModuleOptions {
+  readonly transcriber?: TranscriberServiceSource;
+}
+
+export const systemModule: FastifyPluginAsync<SystemModuleOptions> = async (app, options) => {
   const routes = app.withTypeProvider<ZodTypeProvider>();
+  // `app.ts` (frozen) registers the module without options: the state is then the app's own transcriber's, read lazily.
+  const transcriber: TranscriberServiceSource = options.transcriber ?? transcriptionServiceSource(app);
 
   // 64 getSystemStatus
   routes.route({
     ...routeOfOperation(registryEntry('getSystemStatus')),
     schema: { response: { 200: SystemStatusSchema } },
-    handler: async (): Promise<SystemStatus> => systemStatusOf(app.engine.state()),
+    handler: async (): Promise<SystemStatus> => systemStatusOf(app.engine.state(), { capture: app.capture.status(), transcriber: transcriber() }),
   });
 
   // 65 runDiagnostics

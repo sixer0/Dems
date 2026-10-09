@@ -59,6 +59,7 @@ import { SESSION_EXAMPLES } from './sessions';
 import { STORAGE_EXAMPLES } from './storage';
 import { SYSTEM_EXAMPLES } from './system';
 import { STT_CONFIG_EXAMPLES } from './transcription';
+import { CAPTURE_DISCOVERY_EXAMPLES } from './capture-discovery';
 
 /** The instant every example describes: 2026-10-01 10:00:00 WIB (UTC+07:00). */
 export const OPENAPI_EXAMPLE_INSTANT = '2026-10-01T03:00:00.000Z';
@@ -266,7 +267,7 @@ const STORAGE_AT_LOAD: StorageStatusResponse = {
   retention: { policy: 'DAYS_90', days: 90, autoArchive: true },
 };
 
-/** The 16 book §6.1 Core services, in the simulator's order (`SVC-01` … `SVC-16`). */
+/** The 16 book §6.1 Core services and the transcriber service of task 3 (SH-09), in the simulator's order (`SVC-01` … `SVC-17`). */
 const CORE_SERVICE_NAMES = [
   'API Gateway',
   'Authentication Service',
@@ -284,6 +285,7 @@ const CORE_SERVICE_NAMES = [
   'LCD Display Service',
   'Health Monitor',
   'Audit Service',
+  'Transcription Service',
 ] as const;
 
 const DEVICE_HEALTH_IDLE: DeviceHealthResponse = {
@@ -550,4 +552,6 @@ export const CORE_API_EXAMPLES: Readonly<Record<string, OperationExamples>> = {
   ...DEMO_EXAMPLES,
   // Task 3 M6 (blueprint row 113; C3 §2.5): operations 90-92.
   ...STT_CONFIG_EXAMPLES,
+  // Task 3 R-9..R-11 (blueprint row 132, decision D106; C3 §2.6): operations 93-97.
+  ...CAPTURE_DISCOVERY_EXAMPLES,
 };

@@ -628,9 +628,11 @@ function SourceCheck({ row, onState }: SourceCheckProps) {
 
   const verdict = state.phase === 'running' ? 'RUNNING' : state.phase === 'error' ? 'ERROR' : (state.verdict ?? 'NOT_RUN')
   const summary = useMemo(() => {
+    // Row 87: a schema-v2 item has no v1 rows to count; its result is the Core's verdict (the chip).
+    if (state.awaitsV2 === true) return state.phase === 'running' ? t('evidence.verifyV2.waiting') : ''
     const done = state.checks.filter((check) => check.phase === 'pass' || check.phase === 'fail').length
     return t('evidence.verify.progress', { done, total: state.checks.length })
-  }, [state.checks, t])
+  }, [state.awaitsV2, state.checks, state.phase, t])
 
   return (
     <section className="evi-source-check" data-testid={`export-source-${row.id}`} data-verdict={verdict}>
@@ -639,7 +641,7 @@ function SourceCheck({ row, onState }: SourceCheckProps) {
         <span className="evi-caption">{summary}</span>
         <VerdictChip verdict={verdict} runKey={state.runId} size="sm" className="ml-auto" />
       </header>
-      <CheckList state={state} variant="compact" />
+      {state.awaitsV2 === true ? null : <CheckList state={state} variant="compact" />}
       <p className="evi-caption">
         {state.mode === 'core'
           ? t('evidence.live.verify.sourceCaption')

@@ -4,6 +4,7 @@ import { LayoutAnimationConfig } from 'react-native-reanimated';
 import { SessionFinalizingScreen } from '@/features/session-finalizing/session-finalizing-screen';
 import { SessionLiveScreen } from '@/features/session-live/session-live-screen';
 import { useSessionLiveRedirect } from '@/navigation';
+import { useLateStopHandoverMark } from '@/runtime';
 
 /**
  * Route `/session/live` (MB 4; 04_mobile_specs §4.5). Opens only while RECORDING; otherwise it goes
@@ -30,6 +31,8 @@ import { useSessionLiveRedirect } from '@/navigation';
  */
 export default function SessionLiveRoute() {
   const redirect = useSessionLiveRedirect();
+  // Row 62 (B11): the instant of the in-place hand-over, for the late-stop measurement. Renders nothing.
+  useLateStopHandoverMark(redirect === '/session/finalizing');
   if (redirect === '/session/finalizing') {
     return (
       <>

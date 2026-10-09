@@ -44,6 +44,15 @@ const char *g_mux_extra = DEMS_PROOF_MUX_EXTRA;     /* PROOF BUILD: the negative
 const char *g_mux_extra = NULL;
 #endif
 
+#ifdef DEMS_PROOF_WRITE_FAULT
+/* PROOF BUILD ONLY (never started by the Core): the write of fragment DEMS_PROOF_WRITE_FAULT of
+ * camera 1 comes back short - half of it reaches the file - and then fails with ENOSPC. With
+ * The second proof build (Makefile) also switches the truncation of sink.c off: the negative control. */
+static long proof_write_fault(Sink *s, int64_t fragment_no, size_t len) {
+    return s == &S.cam[0].sink && fragment_no == DEMS_PROOF_WRITE_FAULT ? (long)(len / 2) : -1;
+}
+#endif
+
 static atomic_int g_fatal;
 static pthread_mutex_t g_fatal_mx = PTHREAD_MUTEX_INITIALIZER;
 static char g_fatal_code[64];
@@ -62,7 +71,7 @@ void fatal(const char *source, const char *code, int averror) {
 int fatal_pending(void) { return atomic_load(&g_fatal); }
 
 void send_record(const char *fmt, ...) {
-    char body[512];
+    char body[1536];                                        /* a checkpoint carries five digests */
     va_list ap;
     va_start(ap, fmt);
     vsnprintf(body, sizeof body, fmt, ap);
@@ -209,8 +218,8 @@ static const char *session_start(const JNode *msg) {
     if (refusal) return refusal;
     int r = open_encoder(&S);
     if (r < 0) { fatal("main", "ENCODER_OPEN_FAILED", r); return "ENCODER_OPEN_FAILED"; }
-    logj("info", "main", "session_starting", "\"attempt\":%d,\"cameras\":%d,\"port1\":%d,\"port2\":%d,\"mics\":%d,\"tap\":%s,\"lavf\":\"%s\"",
-         S.attempt, S.cam[0].present + S.cam[1].present, S.cam[0].port, S.cam[1].port, S.mic[0].present + S.mic[1].present, S.tap_path[0] ? "true" : "false", av_version_info());
+    logj("info", "main", "session_starting", "\"attempt\":%d,\"cameras\":%d,\"port1\":%d,\"port2\":%d,\"mics\":%d,\"tap\":%s,\"lavf\":\"%s\",\"sync\":\"%s\",\"gop_bound_ms\":%d",
+         S.attempt, S.cam[0].present + S.cam[1].present, S.cam[0].port, S.cam[1].port, S.mic[0].present + S.mic[1].present, S.tap_path[0] ? "true" : "false", av_version_info(), sink_sync_level(), S.fragment_target_ms);
     for (int i = 0; i < NCAM; i++) {
         Cam *c = &S.cam[i];
         if (!c->present) continue;
@@ -260,8 +269,8 @@ static void session_close(void) {
         int r = cam_close(c);
         if (r < 0) fatal("main", "OUTPUT_CLOSE_FAILED", r);
         logj("info", "main", "camera_summary",
-             "\"cam\":%d,\"video_packets\":%lld,\"audio_packets\":%lld,\"fragments\":%lld,\"bytes\":%lld,\"dropped_no_pts\":%lld,\"dropped_prearm\":%lld,\"dropped_prestart\":%lld,\"dropped_unanchored\":%lld,\"first_video_pts\":%lld",
-             i + 1, (long long)atomic_load(&c->v_written), (long long)atomic_load(&c->a_written), (long long)atomic_load(&c->sink.fragments), (long long)atomic_load(&c->sink.bytes), (long long)atomic_load(&c->v_dropped_no_pts),
+             "\"cam\":%d,\"video_packets\":%lld,\"audio_packets\":%lld,\"fragments\":%lld,\"durable_fragments\":%lld,\"bytes\":%lld,\"dropped_no_pts\":%lld,\"dropped_prearm\":%lld,\"dropped_prestart\":%lld,\"dropped_unanchored\":%lld,\"first_video_pts\":%lld",
+             i + 1, (long long)atomic_load(&c->v_written), (long long)atomic_load(&c->a_written), (long long)atomic_load(&c->sink.fragments), (long long)atomic_load(&c->sink.durable_fragments), (long long)atomic_load(&c->sink.bytes), (long long)atomic_load(&c->v_dropped_no_pts),
              (long long)atomic_load(&c->v_dropped_prearm), (long long)atomic_load(&c->v_dropped_prestart), (long long)atomic_load(&c->v_dropped_unanchored), (long long)(c->started ? c->first_pts : -1));
     }
     if (S.enc) avcodec_free_context(&S.enc);
@@ -356,6 +365,9 @@ int main(int argc, char **argv) {
     signal(SIGPIPE, SIG_IGN);                               /* a broken pipe is a failed write, not a death */
     avformat_network_init();
     ingest_init();
+#ifdef DEMS_PROOF_WRITE_FAULT
+    sink_fault_hook = proof_write_fault;
+#endif
     logj("info", "main", "worker_starting", "\"version\":\"%s\",\"protocol\":%d,\"heartbeat_ms\":%d,\"proof_build\":%s", WORKER_VERSION, CAPTURE_PROTOCOL_VERSION, heartbeat_ms, g_mux_extra ? "true" : "false");
     if (ipc_start(heartbeat_ms) < 0) { logj("error", "main", "THREAD_CREATE_FAILED", "%s", ""); log_close(); return EXIT_FATAL; }
 

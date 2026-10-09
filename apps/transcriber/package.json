@@ -17,7 +17,8 @@
     "test:real:omlx-log-excerpt": "vitest run --config vitest.real.config.ts test/real/omlx-log-excerpt.real.test.ts",
     "test:real:row77:cpu-local": "vitest run --config vitest.real.config.ts test/real/row77-cpu-local.real.test.ts",
     "test:real:row77:omlx-server": "vitest run --config vitest.real.config.ts test/real/row77-omlx-server.real.test.ts",
-    "test:real:row77:df1": "vitest run --config vitest.real.config.ts test/real/row77-df1.real.test.ts"
+    "test:real:row77:df1": "vitest run --config vitest.real.config.ts test/real/row77-df1.real.test.ts",
+    "test:real:row78:labels": "vitest run --config vitest.real.config.ts test/real/row78-speaker-labels.real.test.ts"
   },
   "dependencies": {
     "@dems/shared": "*",

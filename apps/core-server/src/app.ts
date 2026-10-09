@@ -18,6 +18,7 @@
  *    fourteen: the unit `capture` (the supervisor of the capture worker) and the module
  *    `modules/capture-config`. The seam `capture` joins the list of mechanism 3.
  *    Decision D68 extends OD-14 to the registration of `modules/stt-config` (task 3 row 113): waived edits 13 and 14.
+ *    Decision D114 extends OD-14 to `modules/capture-discovery` (row 132) and `modules/capture-inputs` (row 133): waived edits 19 to 22.
  *
  * 2. REQUEST STAGES (spec §2.3). One `onRequest` hook runs five handlers in this order and
  *    stops at the first that refuses. They run before the body is read, so a refusal never
@@ -88,6 +89,8 @@ import { isTestConfiguration } from './test-configuration';
 import { adminModule } from './modules/admin';
 import { alertsModule } from './modules/alerts';
 import { captureConfigModule } from './modules/capture-config';
+import { captureDiscoveryModule } from './modules/capture-discovery';
+import { captureInputsModule } from './modules/capture-inputs';
 import { demoModule } from './modules/demo';
 import { devicesModule } from './modules/devices';
 import { evidenceModule } from './modules/evidence';
@@ -323,6 +326,8 @@ const UNITS: ReadonlyArray<readonly [name: string, plugin: FastifyPluginAsync]> 
   ['modules/stt-config', sttConfigModule],
   ['capture', captureModule],
   ['modules/capture-config', captureConfigModule],
+  ['modules/capture-discovery', captureDiscoveryModule],
+  ['modules/capture-inputs', captureInputsModule],
 ];
 
 export function buildApp(options: BuildAppOptions): FastifyInstance {

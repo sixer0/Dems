@@ -334,3 +334,36 @@ describe('the comparison can fail: one changed column in one stored row changes 
     expect(fromRows(stored())).toStrictEqual(pickDurable(state));
   });
 });
+
+// Blueprint row 129b: the two things a restart used to change (requests of rows 79 and 66).
+describe('row 129b: a restart keeps the sealed columns of a v2 item and the order of the microphones', () => {
+  const HASH = 'ef'.repeat(32);
+
+  it('a v2 item sealed with a labelled transcript, one with unlabelled speakers and one with STT disabled all come back as they were', () => {
+    const state = idleAt(FIXED_NOW);
+    const [first, second, third, ...rest] = state.evidence;
+    if (first === undefined || second === undefined || third === undefined) throw new Error('the dataset holds fewer than three items');
+    const sealed: SimState = {
+      ...state,
+      evidence: [
+        { ...first, manifestVersion: 2, transcriptSha256: HASH, labelsStatus: 'LABELLED' },
+        { ...second, manifestVersion: 2, transcriptSha256: HASH, labelsStatus: 'UNAVAILABLE' },
+        { ...third, manifestVersion: 2, transcriptSha256: null, labelsStatus: null },
+        ...rest,
+      ] as SimState['evidence'],
+    };
+    const rows = toRows(sealed, context(sealed));
+    const byId = new Map(rows.evidenceItems.map((row) => [row.id, [row.manifestVersion, row.transcriptSha256, row.labelsStatus]]));
+    expect([byId.get(first.id), byId.get(second.id), byId.get(third.id)]).toEqual([[2, HASH, 'LABELLED'], [2, HASH, 'UNAVAILABLE'], [2, null, null]]);
+    expect(roundTrip(sealed)).toStrictEqual(pickDurable(sealed));
+    // The comparison can fail: without the members the same state does not equal the sealed one.
+    expect(roundTrip(state)).not.toStrictEqual(pickDurable(sealed));
+  });
+
+  it('the selector after MIC-02 became the PRIMARY comes back in input order, equal to the state', () => {
+    const state = idleAt(FIXED_NOW);
+    const swapped = { ...state, captureConfig: { ...state.captureConfig, mics: state.captureConfig.mics.map((mic) => ({ ...mic, role: mic.role === 'PRIMARY' ? 'STANDBY' : 'PRIMARY' })) } } as SimState;
+    expect(swapped.captureConfig.mics.map((mic) => mic.inputId)).toEqual(['MIC-01', 'MIC-02']);
+    expect(roundTrip(swapped)).toStrictEqual(pickDurable(swapped));
+  });
+});

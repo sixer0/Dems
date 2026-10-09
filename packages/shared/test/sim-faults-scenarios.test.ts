@@ -166,7 +166,7 @@ describe('device effects (derived from the active faults)', () => {
     h.run(5_000);
     const items = h.state().session?.precheck.items ?? [];
     expect(items.find((item) => item.id === 'STORAGE')).toMatchObject({ status: 'BLOCK', value: 'FULL' });
-    expect(items.find((item) => item.id === 'MIC_2')).toMatchObject({ status: 'WARN', value: 'CLIP' });
+    expect(items.find((item) => item.id === 'MIC_STANDBY')).toMatchObject({ status: 'WARN', value: 'CLIP' });
     expect(h.state().session?.precheck.outcome).toBe('BLOCK');
   });
 });

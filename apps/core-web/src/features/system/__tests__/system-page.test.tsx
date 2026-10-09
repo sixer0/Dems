@@ -112,15 +112,15 @@ afterEach(() => {
 })
 
 describe('System & Maintenance page (01_specs §14.5.8)', { timeout: 30_000 }, () => {
-  it('renders page-system with the banner, every panel and the 16 services inside the shell, with 0 missing keys', async () => {
+  it('renders page-system with the banner, every panel and the 17 services inside the shell, with 0 missing keys', async () => {
     mount()
     const page = await screen.findByTestId('page-system', {}, PAGE_WAIT)
     expect(screen.getByRole('main')).toContainElement(page)
     expect(within(page).getByRole('heading', { level: 1 })).toHaveTextContent('SYSTEM & MAINTENANCE')
     for (const id of PANEL_IDS) expect(within(page).getByTestId(`system-panel-${id}`)).toBeInTheDocument()
     expect(within(page).getByTestId('system-banner')).toHaveTextContent('All core services running')
-    expect(within(page).getByTestId('system-banner')).toHaveTextContent('16 of 16 running · v2.4.1 · slot A')
-    expect(within(page).getAllByTestId(/^system-service-SVC-/)).toHaveLength(16)
+    expect(within(page).getByTestId('system-banner')).toHaveTextContent('17 of 17 running · v2.4.1 · slot A')
+    expect(within(page).getAllByTestId(/^system-service-SVC-/)).toHaveLength(17)
     expect(within(page).getByTestId('system-service-SVC-01')).toHaveTextContent('API Gateway')
     expect(within(page).getByTestId('system-uptime-SVC-01').textContent).toMatch(/^(\d+d )?\d{2}:\d{2}:\d{2}$/)
     expect(within(page).getByTestId('system-about-deviceId')).toHaveTextContent('DEMS-IR-01')

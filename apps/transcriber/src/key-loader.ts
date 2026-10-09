@@ -96,6 +96,71 @@ export function loadCredential(ref: string, options: KeyLoaderOptions = {}): Cre
   return hold(value);
 }
 
+/**
+ * THE OPENER PATH (integration pass A; SEC35-14, D68(c)): a credential the Core stores `ENCRYPTED`.
+ *
+ * This workspace knows no credential store and imports none. The COMPOSITION that builds a probe
+ * or an adapter states that the stored credential is an encrypted one by handing in an
+ * `EncryptedCredentialSource`; its `open` is a function of the composition that returns the key
+ * text (in the Core: the opener of the one credential store, over the sealed envelope it read).
+ *
+ *   - no `open`: `CREDENTIAL_UNAVAILABLE` (`NO_OPENER`) - nothing is opened, nothing is connected;
+ *   - `open` throws: `CREDENTIAL_UNAVAILABLE` (`OPEN_FAILED`). The thrown value is NOT kept as a
+ *     cause and its message is not read: only a `code` of the form of a code is passed on;
+ *   - the text it returns goes straight into the opaque holder; it is never a member of anything.
+ */
+export type CredentialOpener = () => string;
+
+export interface EncryptedCredentialSource {
+  /** Absent: the composition has no opener, and the credential is unavailable. */
+  readonly open?: CredentialOpener;
+}
+
+const CODE_FORM = /^[A-Z][A-Z0-9_]{0,63}$/;
+
+/** Opens an `ENCRYPTED` credential through the opener handed in. Never null: an encrypted credential that opens to nothing is a fault. */
+export function openCredential(source: EncryptedCredentialSource): Credential {
+  const open = source.open;
+  if (typeof open !== 'function') {
+    throw new TranscriberError(TranscriberErrorCode.CREDENTIAL_UNAVAILABLE, 'the stored credential is encrypted and no opener was handed in', { reason: 'NO_OPENER' });
+  }
+  let value: unknown;
+  try {
+    value = open();
+  } catch (error) {
+    const code = (error as { code?: unknown } | null)?.code;
+    throw new TranscriberError(TranscriberErrorCode.CREDENTIAL_UNAVAILABLE, 'the stored credential could not be opened', {
+      reason: 'OPEN_FAILED',
+      ...(typeof code === 'string' && CODE_FORM.test(code) ? { openerCode: code } : {}),
+    });
+  }
+  if (typeof value !== 'string') throw new TranscriberError(TranscriberErrorCode.CREDENTIAL_UNAVAILABLE, 'the opened credential is not text', { reason: 'NOT_TEXT' });
+  if (value === '') throw new TranscriberError(TranscriberErrorCode.CREDENTIAL_UNAVAILABLE, 'the opened credential is empty', { reason: 'EMPTY' });
+  return hold(value);
+}
+
+/**
+ * THE ONE WAY a backend or a probe gets its credential: by reference (the settings file), through
+ * the opener (an encrypted one), or none. Both at once is refused: one request has one credential.
+ */
+export function credentialOf(config: { readonly credentialRef: string | null; readonly settingsPath: string | null }, encrypted?: EncryptedCredentialSource): Credential | null {
+  if (encrypted !== undefined) {
+    if (config.credentialRef !== null) {
+      throw new TranscriberError(TranscriberErrorCode.CREDENTIAL_UNAVAILABLE, 'a credential reference and an encrypted credential were both stated', { reason: 'AMBIGUOUS' });
+    }
+    return openCredential(encrypted);
+  }
+  return config.credentialRef === null ? null : loadCredential(config.credentialRef, config.settingsPath === null ? {} : { settingsPath: config.settingsPath });
+}
+
+/**
+ * Ends the life of a holder: its text is forgotten, and it gives no header afterwards. The probe
+ * calls it for an OPENED credential when its one request is over (request scope).
+ */
+export function releaseCredential(credential: Credential | null): void {
+  if (credential !== null) values.delete(credential);
+}
+
 /** Holds a credential that did not come from a file (a test value). The same opacity applies. */
 export function credentialFromValue(value: string): Credential {
   if (value === '') throw new TranscriberError(TranscriberErrorCode.CREDENTIAL_UNAVAILABLE, 'an empty credential cannot be held', { reason: 'EMPTY' });

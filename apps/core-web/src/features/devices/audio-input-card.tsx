@@ -11,12 +11,14 @@ import { DbfsMeter, formatDbfsValue, METER_THRESHOLDS } from '@/components/compo
 import { useCoreErrorPresenter } from '@/lib/core-errors'
 import { usePendingControl } from '@/lib/pending-control'
 import { useMotionPolicy } from '@/motion'
+import { MicUnreachableMark } from './capture-notices'
 import { useDevicePending } from './context'
 import { DeviceMenu, IdentifyRing } from './device-menu'
 import { useDeviceLabels } from './labels'
 import { deviceStatus, STATUS_SEVERITY, STATUS_TONE } from './model'
 import { reportDevicesError } from './report'
 import { MIC_DEVICE, type RearPortId } from './sim-adapter'
+import { MicSourceMarks } from './source-badge'
 import { StatusChip, StatusDot } from './status-chip'
 
 const MIC_PORT: Record<AudioTrackId, RearPortId> = { 'AUDIO-01': 'MIC_IN_1', 'AUDIO-02': 'MIC_IN_2' }
@@ -105,6 +107,9 @@ export function AudioInputCard({ channel }: AudioInputCardProps) {
             </Chip>
           ) : null}
           <StatusChip tone={tone} label={t(`devices.status.${status}`)} severity={STATUS_SEVERITY[status]} testId={`audio-status-${channel}`} />
+          {/* Task 3 R-10 / R-11 (blueprint row 137): the input's device is the one the selector names for it. */}
+          <MicUnreachableMark inputId={deviceId} />
+          <MicSourceMarks inputId={deviceId} place={channel} />
         </div>
         <DeviceMenu deviceId={deviceId} name={name} />
       </header>

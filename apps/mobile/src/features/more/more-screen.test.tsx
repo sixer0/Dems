@@ -118,7 +118,7 @@ describe('More screen', () => {
     expect(label('more-dest-network-time-chip')).toBe('Synchronized');
     expect(label('more-dest-audit-chip')).toBe('Chain OK');
     expect(textOf('more-dest-audit-detail')).toMatch(/^\d+ events$/);
-    expect(label('more-dest-settings-chip')).toBe('5 sections');
+    expect(label('more-dest-settings-chip')).toBe('7 sections'); // 5 + transcription (row 118) + capture (row 68)
     // Links: Pairing, About, Developer gallery (jest runs as a debug build); no Recovery while idle.
     expect(screen.getByTestId('more-link-pairing')).toBeTruthy();
     expect(label('more-link-pairing-chip')).toBe('Paired');

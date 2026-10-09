@@ -356,6 +356,14 @@ export const RULES: readonly Rule[] = [
   // W1-C3: there is no `-otype`; and no GPU switch other than the constant `-ng`.
   { id: 'NO_OTYPE_FLAG', allowedIn: [], includesTests: false, check: text(/-otype/) },
   { id: 'NO_GPU_ENABLING_FLAG', allowedIn: [], includesTests: false, check: text(/^(--use-gpu|-ug|--gpu|-dev|--device)$|GGML_METAL|use_gpu/) },
+  // Row 78: an engine that takes an execution provider gets `cpu` and nothing else (no CoreML, no
+  // CUDA: D229 / R-7, CPU-only by decision). The embedding helper has the provider fixed in its
+  // source (`native/speaker-embed.c`); no production TypeScript file may name another one.
+  { id: 'DIARIZATION_PROVIDER_IS_CPU', allowedIn: [], includesTests: false, check: text(/coreml|cuda|provider=(?!cpu$)/i) },
+  // Row 78 (row 77 finding; ruling D90): the two segmentation assets that are not cleared (the
+  // non-production one, and the export of the gated, excluded pyannote weights) are named in no
+  // production file. Speaker labelling uses no segmentation model at all.
+  { id: 'NO_UNCLEARED_DIARIZATION_MODEL', allowedIn: [], includesTests: false, check: text(/reverb|pyannote/i) },
   // D230: nothing measures or reports a speed.
   {
     id: 'NO_TIMING_MEASUREMENT',

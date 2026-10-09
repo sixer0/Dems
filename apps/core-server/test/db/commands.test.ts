@@ -277,8 +277,9 @@ describe('the ledger comparison (D38)', () => {
 });
 
 describe('db:status reads the tables of the typed schema', () => {
-  it('40 table names, sorted, each a plain identifier', () => {
-    // 30 in the closed task-2 contract; dbc-3 adds nine (T-31..T-39) and R-8 adds T-40
+  it('42 table names, sorted, each a plain identifier', () => {
+    // 30 in the closed task-2 contract; dbc-3 adds nine (T-31..T-39), R-8 adds T-40 and dbc-4
+    // adds T-41 (`session_capture_sources`); PE-129b-01 adds T-42 (`session_stt_config`);
     // (`stt_config`). The count equals the composed inventory the contract-inventory test pins.
     expect(SCHEMA_TABLE_NAMES).toHaveLength(readInventory().counts.tables);
     expect([...SCHEMA_TABLE_NAMES]).toEqual([...SCHEMA_TABLE_NAMES].sort());

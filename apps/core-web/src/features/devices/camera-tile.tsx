@@ -5,12 +5,14 @@ import type { VideoTrackId } from '@dems/shared/domain'
 import { selectCameraById, useSim } from '@dems/shared/sim'
 import { CameraFeed } from '@/components/media'
 import { useMotionPolicy } from '@/motion'
+import { TrackUnreachableMark } from './capture-notices'
 import { useDeviceActions, useDevicePending } from './context'
 import { DeviceMenu, IdentifyRing } from './device-menu'
 import { useDeviceLabels } from './labels'
 import { useDeviceWords } from './live'
 import { deviceStatus, STATUS_SEVERITY, STATUS_TONE } from './model'
 import { CAMERA_DEVICE, CAMERA_POE_PORT } from './sim-adapter'
+import { TrackSourceMarks } from './source-badge'
 import { StatusChip, StatusDot } from './status-chip'
 
 export interface CameraTileProps {
@@ -76,6 +78,9 @@ export function CameraTile({ cameraId, lens }: CameraTileProps) {
             </Chip>
           ) : null}
           <StatusChip tone={tone} label={t(`devices.status.${status}`)} severity={STATUS_SEVERITY[status]} testId={`camera-status-${cameraId}`} />
+          {/* Task 3 R-10 / R-11 (blueprint row 137): "Not reachable" from the Core's alert; the development-source badge from the Core's `sourceClass`. */}
+          <TrackUnreachableMark trackId={cameraId} />
+          <TrackSourceMarks trackId={cameraId} place={cameraId} />
         </div>
         <DeviceMenu deviceId={deviceId} name={name} />
       </header>

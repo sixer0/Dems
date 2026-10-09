@@ -24,6 +24,21 @@
  * Hand-over from the monitor (E-fix row FX-M2; E2E-P-4, E2E-T-4): `/session/live` draws this screen
  * in place (`handover`) in the commit that drops the monitor, so a stop shows no empty frame; that
  * copy and the Finalizing route's copy right after it skip the enter motion (`handover.ts`).
+ *
+ * Blueprint row 87 (MB-04; UX spec flows 3 and 4; E-13; backlog B9 = FXR-DEV-2):
+ * - **Forward-only progress from the Core.** The percent, each step's status and the ETA come from
+ *   `useSealingProgress` (`sealing-progress.ts`): a pure function of the finalization states the Core
+ *   sent. No timer of this screen moves them; a step drawn DONE stays DONE and the percent never
+ *   falls, also when a resumed attempt rewrites a step. Without an ETA from the Core the line says
+ *   "Estimating the time left…" and gives no number. A resumed seal (a step at attempt 2 or later)
+ *   shows "Resumed after restart" and, like a hand-over, enters without the rise.
+ * - **B9: React draws the hand-over.** Every copy of this screen that is part of a hand-over (the
+ *   in-place copy on `/session/live` AND the route's copy that follows it, `still`) draws the
+ *   pipeline and the status line from React alone: no Stepper overlay, no entering fade, still
+ *   Spinners. So no Reanimated update is sent to a view that is being mounted or replaced at the
+ *   Finalizing hand-over, which is where the device logged "Unable to find SurfaceMountingManager"
+ *   (FXR-DEV-2: one new view per pipeline step, then one at the Summary). The step motion (M-C-09)
+ *   still plays when this screen is entered on its own (a deep link, a relaunch).
  */
 import { useIsFocused, useRouter, type Href } from 'expo-router';
 import { Alert, Button, Spinner, useToast } from 'heroui-native';
@@ -41,13 +56,14 @@ import { reportRuntimeIssue } from '@/runtime';
 import { FinalizationPipeline } from './finalization-pipeline';
 import {
   finalizingPhase,
+  forwardStatuses,
   isFinalizingBusy,
-  pipelinePercent,
   pipelineSeconds,
   pipelineStatuses,
   sealedAfterSeconds,
   type FinalizingPhase,
 } from './finalizing.model';
+import { etaSeconds, useSealingProgress } from './sealing-progress';
 import { FlowBoundary } from './flow-boundary';
 import { SessionSummaryScreen } from '@/features/session-summary/session-summary-screen';
 import { markSummaryHandoff } from '@/features/session-summary/summary-handoff';
@@ -78,11 +94,12 @@ export function SessionFinalizingScreen({ handover = false }: SessionFinalizingS
   const { layoutClass } = useLayoutClass();
   const session = useFinalizingSession();
   // E2E-P-4: the in-place copy, and the route's copy that replaces it, appear at once (no rise from 0).
-  const [enter] = useState(() => !handover && !isFinalizingHandover(session.id));
+  const steps = useFinalizationSteps();
+  // Row 87 (flow 4, MB-06): a resumed seal arrives from the Recovery screen; like a hand-over it is drawn at once.
+  const [enter] = useState(() => !handover && !isFinalizingHandover(session.id) && !(steps ?? []).some((step) => (step.attempt ?? 1) > 1));
   useLayoutEffect(() => {
     if (handover) markFinalizingHandover(session.id);
   }, [handover, session.id]);
-  const steps = useFinalizationSteps();
   const phase = finalizingPhase(session.state);
   // CF2-A (RF-PH-3): the Summary that replaces this screen draws in place (`summary-handoff.ts`).
   useLayoutEffect(() => {
@@ -239,10 +256,15 @@ interface PipelineCardProps {
 function PipelineCard({ enter, session, phase, steps, onOpenSummary, handover = false }: PipelineCardProps) {
   const { t } = useTranslation();
   const settings = useMotionSettings();
-  const statuses = pipelineStatuses(steps, phase);
-  const seconds = pipelineSeconds(steps);
-  const percent = pipelinePercent(statuses);
   const sealed = phase === 'sealed';
+  // Row 87 (E-13): forward-only, from the Core's states alone (no timer here).
+  const progress = useSealingProgress(session.id, steps, sealed);
+  const statuses = forwardStatuses(pipelineStatuses(steps, phase), progress.steps);
+  const seconds = pipelineSeconds(steps);
+  const percent = progress.percent;
+  const percents = progress.steps.map((step, index) => (typeof steps?.[index]?.progress === 'number' ? step.percent : null));
+  // Row 87 (B9): a copy that is part of a hand-over starts no Reanimated motion at all.
+  const still = handover || !enter;
   const sealedIn = sealedAfterSeconds(session.stoppedAt, session.sealedAt);
 
   return (
@@ -263,7 +285,7 @@ function PipelineCard({ enter, session, phase, steps, onOpenSummary, handover = 
           <View style={styles.statusLine} accessibilityLiveRegion="polite" testID="finalizing-status">
             {phase === 'stopping' ? (
               <>
-                <Spinner size="sm" color={palette.gold} />
+                <Spinner size="sm" color={palette.gold} {...(still ? { animation: 'disable-all' as const } : {})} />
                 <Text maxFontSizeMultiplier={1.2} style={styles.statusText}>
                   {t('session.finalization.stopping')}
                 </Text>
@@ -295,8 +317,19 @@ function PipelineCard({ enter, session, phase, steps, onOpenSummary, handover = 
             ) : null}
           </View>
 
+          {phase === 'finalizing' && progress.reportsProgress ? (
+            <Text maxFontSizeMultiplier={1.2} style={styles.caption} testID={`finalizing-eta-${progress.etaMs === null ? 'none' : 'core'}`}>
+              {progress.etaMs === null ? t('session.finalization.estimating') : t('session.finalization.eta', { seconds: etaSeconds(progress.etaMs) })}
+            </Text>
+          ) : null}
+          {progress.resumed && !sealed ? (
+            <Text maxFontSizeMultiplier={1.2} style={styles.caption} testID="finalizing-resumed">
+              {t('session.finalization.resumed')}
+            </Text>
+          ) : null}
+
           <View accessibilityLabel={t('features.session-finalizing.pipelineLabel')}>
-            <FinalizationPipeline statuses={statuses} seconds={seconds} animate={!handover} />
+            <FinalizationPipeline statuses={statuses} seconds={seconds} percents={percents} animate={!still} />
           </View>
 
           {isFinalizingBusy(phase) ? (

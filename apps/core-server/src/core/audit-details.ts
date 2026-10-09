@@ -1,8 +1,9 @@
 /**
- * The allow-list of audit details for the nineteen server-written types (plan row W21; spec §13.1,
+ * The allow-list of audit details for the twenty-three server-written types (plan row W21; spec §13.1,
  * §4.6 RB-4 and RB-6, §6.2, §6.3; SR-54; task 3 M2-W7 blueprint row 48 adds the nine capture-phase
  * types of `C3 §5.2` — register CS-14; task 3 M6 blueprint row 113 adds `STT_CONFIG_CHANGED` of
- * `C3 §2.5` — R-8).
+ * `C3 §2.5` — R-8; task 3 blueprint row 132 (decision D106) adds the four of the camera search,
+ * the connection test, the adoption and the no-device warning of `C3 §5.2` — R-9, R-10).
  *
  * The types of this list are written by server-native modules only (the permission guard, pairing,
  * user administration, identity, and from task 3: the capture-config store, the mic switch, the
@@ -21,11 +22,21 @@
  * in the details as `deviceId`; the list allows that for the three types that name a device.
  */
 import {
+  CAPTURE_CANDIDATE_ID_PATTERN,
+  CAPTURE_CANDIDATE_TEXT_MAX_LENGTH,
+  CAPTURE_DEVICE_UNREACHABLE_REASONS,
+  CAPTURE_HOST_LITERAL_PATTERN,
+  CAPTURE_SEARCH_ID_PATTERN,
+  CaptureConnectionOutcome,
+  CaptureDiscoveryScope,
+  CaptureDiscoveryTrigger,
+  CaptureSourceClass,
   DEVICE_ID_PATTERN,
   HARDWARE_DEVICE_ID_PATTERN,
   OPERATOR_ID_PATTERN,
   PAIRING_CODE_ID_PATTERN,
   PairingCodeCloseReason,
+  SESSION_ID_PATTERN,
   SHA256_HEX_PATTERN,
   STT_BACKENDS,
   STT_CONFIG_FIELDS,
@@ -134,6 +145,23 @@ const revisionNumber = (required: boolean): DetailRule => ({
   required,
   form: 'a whole number of 1 or more',
   accepts: (value) => typeof value === 'number' && Number.isSafeInteger(value) && value >= 1,
+});
+
+// Task 3 R-9, R-10 (blueprint row 132; C3 §5.2): the forms the four lists of the camera search name.
+const searchId = matching(CAPTURE_SEARCH_ID_PATTERN, 'a search id (DSC-NNNNNN)');
+const candidateId = matching(CAPTURE_CANDIDATE_ID_PATTERN, 'a candidate id (CND- and 12 hex digits)');
+const sessionId = matching(SESSION_ID_PATTERN, 'a session ID');
+/** The address an answer came from: an IP literal. Never a URL and never `user:password@` (C-N8; D86 C-3). */
+const hostLiteral = matching(CAPTURE_HOST_LITERAL_PATTERN, 'an IP literal (never a URL)');
+/**
+ * The announced endpoint reference of a PRODUCTION candidate (D86 C-3): 1 to 120 characters, with
+ * no `@` and no `://` — the forms of a credential-bearing address. An endpoint reference is a URN
+ * (`urn:uuid:…`); one that reads like a URL with user-info is not written.
+ */
+const endpointRef = (required: boolean): DetailRule => ({
+  required,
+  form: `an endpoint reference of 1 to ${CAPTURE_CANDIDATE_TEXT_MAX_LENGTH} characters, no URL`,
+  accepts: (value) => typeof value === 'string' && value.length >= 1 && value.length <= CAPTURE_CANDIDATE_TEXT_MAX_LENGTH && !value.includes('@') && !value.includes('://'),
 });
 
 const REQUIRED = true;
@@ -274,12 +302,66 @@ export const SERVER_AUDIT_DETAIL_RULES = {
     credentialChanged: flag(REQUIRED),
     revision: revisionNumber(REQUIRED),
   },
+  // ── Task 3 R-9, R-10 (blueprint row 132, decision D106; C3 §5.2 "the four audit types of the
+  // row-121 delta"; M4-AUD-1): exact key lists. No list holds a username, a secret, a URL, a label
+  // or any text a device announced; `host` and `endpointRef` are written for a PRODUCTION candidate
+  // only (D86 C-3) — the builders of `@dems/shared/api` drop them for any other class. The key is
+  // `endpointRef`, never `onvifUuid` (a forbidden key).
+  [AuditType.CAPTURE_DISCOVERY_SEARCHED]: {
+    searchId: searchId(REQUIRED),
+    scope: oneOf(Object.values(CaptureDiscoveryScope), 'one of CAMERA_NETWORK, MIC_LOCAL')(REQUIRED),
+    trigger: oneOf(Object.values(CaptureDiscoveryTrigger), 'one of MANUAL, PRECHECK')(REQUIRED),
+    outcome: oneOf(['COMPLETE', 'FAILED'], 'one of COMPLETE, FAILED')(REQUIRED),
+    responderCount: count(REQUIRED),
+    newCount: count(REQUIRED),
+    registeredCount: count(REQUIRED),
+    // A count of interfaces probed: never a name or an address (erratum PE-128-28; SEC35-30).
+    interfaceCount: count(REQUIRED),
+    failureReason: code(OPTIONAL),
+    sessionId: sessionId(OPTIONAL),
+    operationId: operationId(OPTIONAL),
+    permission: code(OPTIONAL),
+  },
+  [AuditType.CAPTURE_CONNECTION_TESTED]: {
+    candidateId: candidateId(REQUIRED),
+    searchId: searchId(REQUIRED),
+    outcome: oneOf(Object.values(CaptureConnectionOutcome), 'one of the five connection-test outcomes')(REQUIRED),
+    // Whether a credential was supplied: a fact, never a value.
+    authenticated: flag(REQUIRED),
+    adapter: code(REQUIRED),
+    sourceClass: oneOf(Object.values(CaptureSourceClass), 'one of PRODUCTION, DEVELOPMENT')(REQUIRED),
+    operationId: oneOf(['testCaptureCandidateConnection', 'adoptCaptureCandidate'], 'testCaptureCandidateConnection or adoptCaptureCandidate')(REQUIRED),
+    host: hostLiteral(OPTIONAL),
+    endpointRef: endpointRef(OPTIONAL),
+    guardTripped: flag(OPTIONAL),
+    permission: code(OPTIONAL),
+  },
+  [AuditType.CAPTURE_CANDIDATE_ADOPTED]: {
+    deviceId: hardwareDeviceId(REQUIRED),
+    candidateId: candidateId(REQUIRED),
+    searchId: searchId(REQUIRED),
+    adapter: code(REQUIRED),
+    sourceClass: oneOf(Object.values(CaptureSourceClass), 'one of PRODUCTION, DEVELOPMENT')(REQUIRED),
+    credentialSet: flag(REQUIRED),
+    operationId: oneOf(['adoptCaptureCandidate'], 'adoptCaptureCandidate')(REQUIRED),
+    host: hostLiteral(OPTIONAL),
+    endpointRef: endpointRef(OPTIONAL),
+    permission: code(OPTIONAL),
+  },
+  [AuditType.CAPTURE_DEVICE_UNREACHABLE]: {
+    deviceId: hardwareDeviceId(REQUIRED),
+    deviceKind: oneOf(['CAMERA', 'MIC'], 'CAMERA or MIC')(REQUIRED),
+    phase: oneOf(['PRECHECK', 'SESSION_START'], 'PRECHECK or SESSION_START')(REQUIRED),
+    reason: oneOf(CAPTURE_DEVICE_UNREACHABLE_REASONS, 'one of the eight unreachable reasons of C3 §5.2')(REQUIRED),
+    degraded: flag(REQUIRED),
+    sessionId: sessionId(REQUIRED),
+  },
 } as const satisfies Partial<Record<AuditType, Readonly<Record<string, DetailRule>>>>;
 
-/** The nineteen types that have a list (nine of the backend task, nine of the capture phase, one of R-8). */
+/** The twenty-three types that have a list (nine of the backend task, nine of the capture phase, one of R-8, four of R-9 / R-10). */
 export type ServerAuditType = keyof typeof SERVER_AUDIT_DETAIL_RULES;
 
-/** The list of `type`, or undefined for one of the simulator's 44 types (63 minus the 19 listed here). */
+/** The list of `type`, or undefined for one of the simulator's 44 types (67 minus the 23 listed here). */
 export function detailRulesOf(type: AuditType): Readonly<Record<string, DetailRule>> | undefined {
   return (SERVER_AUDIT_DETAIL_RULES as Partial<Record<AuditType, Readonly<Record<string, DetailRule>>>>)[type];
 }

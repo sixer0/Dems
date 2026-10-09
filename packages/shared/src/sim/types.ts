@@ -171,6 +171,14 @@ export interface CreateSimOptions {
    * when the worker is down. Set once by the host that creates the simulator.
    */
   capture?: CaptureLevelSource;
+  /**
+   * True when the simulator runs inside a tablet or phone app (task 3 R-9, blueprint row 132; C3
+   * §2.6 "Simulator"; D80(3)). Default false: the web console. The three operations whose body
+   * carries a camera credential (89, 95, 96) then answer `403 NOT_PERMITTED` with `details.reason:
+   * WEB_CONSOLE_ONLY`, as the Core server answers a session that is bound to a paired device. Set
+   * once by the host that creates the simulator.
+   */
+  deviceConsole?: boolean;
 }
 
 /** See `CreateSimOptions.capture`. */
@@ -462,6 +470,15 @@ export interface ActiveSession {
   captureConfig?: CaptureConfigSnapshot | null;
   /** The active/standby mic pair of this session and the last switch (op 81; OD-09). */
   audioSource?: AudioSourceState | null;
+  /**
+   * Whether the capture of this session holds its first durable fragment (decisions D84, D91 R-1
+   * option A): `false` from the accepted start until then ("connecting cameras"), `true` after.
+   * The stored session state stays RECORDING either way. ABSENT READS AS DURABLE
+   * (`captureDurableOf`): the simulator has no notion of a fragment and never writes the member,
+   * so a simulated recording is durable from RECORDING. The Core writes it from the capture
+   * supervisor's `status().durable` (`captureDurableTransition`; wired by row 71).
+   */
+  captureDurable?: boolean;
   /** Incremental transcript state of this session (op 84; R-5). */
   transcript?: TranscriptSessionState | null;
 }
@@ -570,9 +587,16 @@ export interface CaptureConfigCamera {
   streamState: CaptureStreamState;
 }
 
-/** One mic row of the `captureConfig` slice (`C3 §6` slice 29). */
+/**
+ * A microphone input of the device selector: `MIC-NN` (`MIC_INPUT_ID_PATTERN` of the contract).
+ * Wider than `MicInputId`, which stays the two built-in inputs the meters and the session audio
+ * source are keyed by (decision D115 (2)).
+ */
+export type CaptureMicInputId = string;
+
+/** One mic row of the `captureConfig` slice (`C3 §6` slice 29). A mic line's `deviceId` is its `inputId` (D106 (4)). */
 export interface CaptureConfigMic {
-  inputId: MicInputId;
+  inputId: CaptureMicInputId;
   deviceId: string;
   role: MicRole;
   /** Open set (`CODE`): USB, RTSP-embedded, ... (OD-06). */
@@ -607,6 +631,26 @@ export interface CaptureDeviceStatus {
   streamState: CaptureStreamState | null;
   /** Capability codes the adapters reported (open set). */
   capabilities: string[];
+  /**
+   * The adapter kind behind the device (C3 §2.6 "Device shapes"; `dbc-4` §N.2): `ONVIF_RTSP`,
+   * `USB_AUDIO`, `SNMP_POE`, `FAKE` or `LOCAL_DEVICE`. Present on a device that operation 96
+   * registered; the built-in devices gain it with the rows that surface it (136 / 139).
+   */
+  adapter?: string;
+  /** Derived by the Core from `adapter`: `DEVELOPMENT` exactly for `FAKE` and `LOCAL_DEVICE`. Never set by a client. */
+  sourceClass?: 'PRODUCTION' | 'DEVELOPMENT';
+}
+
+/** The input of the INTERNAL action `registerCaptureDevice` (C3 §2.6 "What adoption stores"): a camera that operation 96 adopted. */
+export interface RegisterCaptureDeviceInput {
+  /** The next free `CAM-NN`, minted by the caller (`nextCaptureCameraId`). */
+  id: string;
+  /** The announced model, as text; null when none was announced. */
+  model: string | null;
+  /** Host, or host and port. Never a URL, never `user:password@` (C-N8). */
+  host: string;
+  /** The adapter kind, e.g. `ONVIF_RTSP` or `FAKE`. */
+  adapter: string;
 }
 
 /**
@@ -667,10 +711,42 @@ export type CaptureWarningCode = Extract<FaultKind, 'MIC_SILENT' | 'CAPTURE_FAUL
  * §E.1). `subject` is what the worker's WARNING frame names: a capture-device ID, a mic input ID,
  * a mic role, or `null` when the warning is about the capture as a whole.
  */
-export interface CaptureWarningInput {
+export interface CaptureFaultWarningInput {
   code: CaptureWarningCode;
   subject: string | null;
 }
+
+/**
+ * What the INTERNAL pair `raiseCaptureWarning` / `clearCaptureWarning` takes: a capture fault, or
+ * a no-device notice (task 3 row 133; C3 §5.4: an alert of kind `SYSTEM` told apart by
+ * `params.reason`, with no fault life cycle — `capture-notices.ts`).
+ */
+export type CaptureWarningInput = CaptureFaultWarningInput | import('./capture-notices').CaptureNoticeInput;
+
+/** One camera line of a whole-selector change (operation 78): the device, and optionally the profile, of a video track. */
+export interface CaptureConfigCameraChange {
+  trackId: VideoTrackId;
+  deviceId: string;
+  profile?: string | undefined;
+}
+
+/** One mic line of a whole-selector change (operation 78): the device, and optionally the transport, behind a mic input. */
+export interface CaptureConfigMicChange {
+  inputId: CaptureMicInputId;
+  deviceId: string;
+  transport?: string | undefined;
+}
+
+/**
+ * The input of the hosted action `setCaptureConfig` (register SH-18; C3 §2.4): one edit of the
+ * device selector. Each kind is one operation of the contract: `UPDATE` is operation 78 (the whole
+ * selector, every member optional), `CAMERA_SOURCE` operation 79 (a camera device to a video
+ * track), `PRIMARY_MIC` operation 80 (a mic input becomes PRIMARY, the other STANDBY).
+ */
+export type CaptureConfigChange =
+  | { kind: 'UPDATE'; cameras?: readonly CaptureConfigCameraChange[] | undefined; mics?: readonly CaptureConfigMicChange[] | undefined }
+  | { kind: 'CAMERA_SOURCE'; deviceId: string; trackId: VideoTrackId }
+  | { kind: 'PRIMARY_MIC'; inputId: string };
 
 export interface StorageVolume {
   id: 'NVME-SYS' | 'HDD-EVIDENCE';
@@ -947,6 +1023,15 @@ export interface EvidenceItem {
   files?: EvidenceFileEntry[];
   fragmentChainHead?: string | null;
   transcriptSha256?: string | null;
+  /**
+   * The two other sealed columns of a v2 item (`dbc-3 §B.11`; the seal's `SealedItemColumns`,
+   * row 129b). `manifestVersion` is 2 for every v2 seal, also one that carries no transcript hash
+   * by design (STT disabled, no document at the seal: ev §B.7a); `labelsStatus` says whether the
+   * sealed transcript carries speaker labels. Absent on v1 items and on every item written before
+   * the seal states them.
+   */
+  manifestVersion?: 1 | 2;
+  labelsStatus?: 'LABELLED' | 'UNAVAILABLE' | null;
   /**
    * Schema v2 (register SH-14; ops 85/86; OD-15): the signed revisions appended to this item's
    * transcript, oldest first. Append-only, and the sealed `transcriptSha256` never changes. Absent
@@ -1387,6 +1472,36 @@ export interface SimActions {
    * subject `raiseCaptureWarning` would refuse.
    */
   clearCaptureWarning(warning: CaptureWarningInput): void;
+
+  // ── The capture selector and the in-session mic switch (task 3, register SH-18; C3 §2.4) ──
+  // HOSTED: the Core server runs them under the caller's identity (operations 78, 79, 80 and 81).
+  /**
+   * One edit of the device selector (`captureConfig`). Needs CAPTURE_CONFIG (SUPERVISOR or
+   * TECHNICIAN) and no open session: while a session is open it throws `SimTransitionError` and
+   * changes nothing (the Core answers `409 CAPTURE_CONFIG_LOCKED` before it calls the action). One
+   * CAPTURE_CONFIG_CHANGED audit row per line that changed; an edit that changes nothing writes
+   * nothing. Throws `SimNotFoundError` for a camera or mic input the path of operation 79 or 80
+   * names and the registry does not hold, and `SimTransitionError` with code INVALID_INPUT for a
+   * line that names an unknown device, a device of the wrong class, a profile that is no code, the
+   * same mic behind both inputs, or one camera on both tracks with one profile.
+   */
+  setCaptureConfig(change: CaptureConfigChange): void;
+  /**
+   * The operator's mic switch while RECORDING (operation 81; OD-09, never automatic: OD-11). Needs
+   * SESSION_START and a RECORDING session; the holder condition of the operation is the Core's.
+   * Does nothing when the input is already the active one.
+   */
+  switchAudioSource(inputId: MicInputId): void;
+  /**
+   * INTERNAL (task 3 R-9; C3 §2.6 "Adoption"): a camera that operation 96 adopted joins the
+   * `captureDevices` slice. No client calls it: on the Core server it runs inside the unit of work
+   * of operation 96, which has checked the access rule, the idle lock and the candidate, and
+   * writes the audit rows itself. Checks no permission, writes no audit row and no event, and
+   * leaves `captureConfig` alone. The registry entry is then in `captureDevices`. Throws
+   * `SimTransitionError` with code INVALID_INPUT for an id that is not a free `CAM-NN`, a host
+   * that is no host, or an adapter that is no code.
+   */
+  registerCaptureDevice(device: RegisterCaptureDeviceInput): void;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════

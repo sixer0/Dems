@@ -14,11 +14,11 @@ export interface BulkFixtureReport {
   readonly now: number;
   readonly seed: number;
   readonly activeSession: boolean;
-  /** The row count of each of the 40 tables after the load, by SQL name. */
+  /** The row count of each of the 42 tables after the load, by SQL name. */
   readonly counts: Readonly<Record<string, number>>;
   /** Rows the fixture inserted, by SQL name. */
   readonly added: Readonly<Record<string, number>>;
-  /** "entity, minimum, loaded" for all 40 tables. */
+  /** "entity, minimum, loaded" for all 42 tables. */
   readonly minimums: readonly MinimumComparison[];
   /** True when every table holds at least its minimum. */
   readonly met: boolean;

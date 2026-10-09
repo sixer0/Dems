@@ -7,11 +7,12 @@
 // killed with SIGKILL while that engine is running; a NEW process is started on the same scratch
 // directory. Every start of the engine writes a line into a journal, so "how often was each chunk
 // decoded" is counted from the outside, not asked of the pipeline.
-import { spawn } from 'node:child_process';
-import { readFileSync, readdirSync } from 'node:fs';
+import { spawn, spawnSync } from 'node:child_process';
+import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
+import { createEngineGuard } from '../backends/cpu-local';
 import { CheckpointSchema, type Checkpoint } from '../pipeline/checkpoint';
 import { TRANSCRIPT_CHECKPOINT_FILE } from '../pipeline/constants';
 import { tableRefusal } from '../pipeline/mirror';
@@ -30,8 +31,47 @@ interface Child {
   kill(): void;
 }
 
+// N-12 (navigator, test hygiene): every process a test of this file starts is stopped when the
+// test ends, PASSED OR FAILED — the pipeline children and every engine a journal names.
+const startedChildren: { kill(signal: NodeJS.Signals): boolean }[] = [];
+const usedHomes: ProgramHome[] = [];
+const alive = (pid: number): boolean => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
+/**
+ * Whether THIS host lets a process read the process table (`ps`). The engine guard proves that a
+ * recorded pid is still the engine it recorded by its start instant, which it reads there; a
+ * sandbox that hides the table gives it nothing to prove with, and it then stops NOTHING (it never
+ * signals a process it cannot identify). The N-2 test runs where the table can be read — every real
+ * host — and its complement runs in the sandbox.
+ */
+const HOST_READS_PROCESS_TABLE: boolean = (() => {
+  const probe = spawnSync('/bin/ps', ['-o', 'lstart=', '-p', String(process.pid)], { encoding: 'utf8' });
+  return probe.status === 0 && probe.stdout.trim() !== '';
+})();
+
+afterEach(() => {
+  for (const child of startedChildren.splice(0)) child.kill('SIGKILL');
+  for (const home of usedHomes.splice(0)) {
+    for (const entry of home.journal()) {
+      try {
+        process.kill(entry.pid, 'SIGKILL');
+      } catch {
+        // It has ended.
+      }
+    }
+  }
+});
+
 function startPipeline(home: ProgramHome, scratch: string, tap: string, reportName: string): Child {
+  if (!usedHomes.includes(home)) usedHomes.push(home);
   const child = spawn(process.execPath, ['--import', 'tsx', CHILD, home.root, scratch, tap, reportName], { cwd: WORKSPACE, stdio: 'ignore' });
+  startedChildren.push(child);
   const exit = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((done) => child.once('exit', (code, signal) => done({ code, signal })));
   return { pid: child.pid!, exit, kill: () => child.kill('SIGKILL') };
 }
@@ -130,6 +170,73 @@ describe('M6-KR-1: a kill mid-transcript, then a resume', () => {
       expect(report(scratch, 'report-3.json')).toMatchObject({ planned: 0, decoded: 0, reused: 5, complete: true });
       expect(startsPerChunk(home)).toEqual(expectedStarts);
       expect(readFileSync(join(scratch, TRANSCRIPT_CHECKPOINT_FILE), 'utf8')).toBe(`${JSON.stringify(final)}\n`);
+    },
+    120_000,
+  );
+
+  it.skipIf(HOST_READS_PROCESS_TABLE)('N-2, host hides the process table (a sandbox): the guard cannot identify a recorded engine and stops NOTHING', () => {
+    const scratch = scratchDir('guard');
+    const guard = createEngineGuard(scratch);
+    guard.record({ pid: process.pid }); // this very process: it must survive the reap
+    expect(JSON.parse(readFileSync(join(scratch, 'work', 'engine.json'), 'utf8'))).toEqual({ pid: process.pid, started: null });
+    expect(guard.reap()).toBeNull();
+    expect(existsSync(join(scratch, 'work', 'engine.json'))).toBe(false);
+  });
+
+  it.skipIf(!HOST_READS_PROCESS_TABLE)('N-2, pid reuse: a record whose start instant is not that of the process with this pid stops NOTHING; a torn record is cleared', () => {
+    const scratch = scratchDir('guard');
+    const guard = createEngineGuard(scratch);
+    guard.record({ pid: process.pid });
+    const record = JSON.parse(readFileSync(join(scratch, 'work', 'engine.json'), 'utf8')) as { pid: number; started: string };
+    expect(record.started).not.toBeNull();
+    // The same pid, "started" at another instant: another process got the number. This process must survive.
+    writeFileSync(join(scratch, 'work', 'engine.json'), JSON.stringify({ pid: process.pid, started: 'Thu Jan  1 00:00:00 1970' }));
+    expect(guard.reap()).toBeNull();
+    writeFileSync(join(scratch, 'work', 'engine.json'), '{"pid": 12');
+    expect(guard.reap()).toBeNull();
+    expect(existsSync(join(scratch, 'work', 'engine.json'))).toBe(false);
+  });
+
+  it.skipIf(!HOST_READS_PROCESS_TABLE)(
+    'N-2: the engine a killed pipeline left running is STOPPED by the resume before a second engine starts, and no chunk audio file stays behind',
+    async () => {
+      const home = createProgramHome();
+      const scratch = scratchDir('kill');
+      const tap = writeTap(scratch, tonePcm(160 * SECOND, FIVE));
+      home.control({ holdOn: 'chunk-3.wav' });
+      const first = startPipeline(home, scratch, tap, 'report-1.json');
+      await until(() => home.journal().some((entry) => entry.name === 'chunk-3.wav'), 'the engine to start on chunk-3.wav');
+      const orphan = home.journal().find((entry) => entry.name === 'chunk-3.wav')!.pid;
+      first.kill();
+      await first.exit;
+      // What the kill leaves (this is the finding): the engine lives on, with its record and the chunk's audio.
+      expect(alive(orphan)).toBe(true);
+      expect(JSON.parse(readFileSync(join(scratch, 'work', 'engine.json'), 'utf8'))).toMatchObject({ pid: orphan });
+      expect(readdirSync(join(scratch, 'work'))).toContain('chunk-3.wav');
+
+      // NOBODY stops the orphan by hand here. The engine now holds on chunk 4, so the moment the
+      // resumed pipeline has its SECOND engine running can be looked at.
+      home.control({ holdOn: 'chunk-4.wav' });
+      const second = startPipeline(home, scratch, tap, 'report-2.json');
+      await until(() => home.journal().some((entry) => entry.name === 'chunk-4.wav'), 'the resumed pipeline to reach chunk-4.wav');
+      const journal = home.journal();
+      // The orphan was stopped BEFORE the resumed pipeline started any engine: chunk 3 was started again only afterwards.
+      expect(alive(orphan)).toBe(false);
+      expect(journal.filter((entry) => entry.name === 'chunk-3.wav').map((entry) => entry.pid === orphan)).toEqual([true, false]);
+      // One engine at a time: of all the engines ever started, exactly the one on chunk 4 is alive.
+      expect(journal.filter((entry) => alive(entry.pid)).map((entry) => entry.name)).toEqual(['chunk-4.wav']);
+      // The audio of chunk 3 that the dead pipeline left was removed; only the file of the running chunk exists.
+      expect(readdirSync(join(scratch, 'work')).filter((name) => name.endsWith('.wav'))).toEqual(['chunk-4.wav']);
+      second.kill();
+      await second.exit;
+
+      // A third process reaps the engine of the second and finishes; at the end no work file is left at all.
+      home.control({});
+      const third = startPipeline(home, scratch, tap, 'report-3.json');
+      expect(await third.exit).toEqual({ code: 0, signal: null });
+      expect(home.journal().filter((entry) => alive(entry.pid))).toEqual([]);
+      expect(stored(scratch).chunks.map((chunk) => chunk.status)).toEqual(['DONE', 'DONE', 'DONE', 'DONE', 'DONE']);
+      expect(existsSync(join(scratch, 'work'))).toBe(false);
     },
     120_000,
   );

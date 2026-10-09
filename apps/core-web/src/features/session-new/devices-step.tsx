@@ -20,6 +20,9 @@ import { useTranslation } from 'react-i18next'
 import { useSim, type PrecheckCheckId, type PrecheckItem, type SimState } from '@dems/shared/sim'
 import type { VideoTrackId } from '@dems/shared/domain'
 import { CameraFeed } from '@/components/media/camera-feed'
+import { PrecheckSearchActions } from '@/features/devices/precheck-search'
+import { PrecheckSourceMarks } from '@/features/devices/source-badge'
+import { activeCaptureNotices, captureNoticeText, unreachablePrecheckOf, unreachablePrecheckText } from '@/lib/capture-notices'
 import { DbfsMeter } from '@/components/composed/dbfs-meter'
 import { tween, useMotionPolicy } from '@/motion'
 import { CHECK_DEVICE_KEY, CHECK_VALUE_ENUM, reasonKeyFor, type GateView } from './model'
@@ -30,6 +33,8 @@ const CHECK_ICON: Record<PrecheckCheckId, LucideIcon> = {
   LENS_2: Video,
   MIC_1: Mic,
   MIC_2: Mic,
+  MIC_PRIMARY: Mic,
+  MIC_STANDBY: Mic,
   STORAGE: HardDrive,
   TIME: Clock,
   SECURITY: ShieldCheck,
@@ -37,6 +42,8 @@ const CHECK_ICON: Record<PrecheckCheckId, LucideIcon> = {
 
 const EMPTY_ITEMS: PrecheckItem[] = []
 const selectItems = (s: SimState): PrecheckItem[] => s.session?.precheck.items ?? EMPTY_ITEMS
+/** The Core's alerts as the store holds them (a stable reference; the notices are derived while rendering). */
+const selectAlerts = (s: SimState) => s.alerts
 
 /** PASS check-draw (M-PG-NEW / M-C-09 literal, 300 ms). */
 const CHECK_DRAW_MS = 300
@@ -62,7 +69,17 @@ export interface DevicesStepProps {
 /** The text of a WARN or BLOCK check (i18n, never the simulator's EN `reason`; looked up from its `reasonCode`). */
 function useCheckReason() {
   const { t } = useTranslation()
+  // Flow 11, situation B: the Core's one alert per unreachable device carries the count of the one search the pre-check ran.
+  const notices = activeCaptureNotices(useSim(selectAlerts))
   return (item: PrecheckItem): string | null => {
+    // Task 3 R-10 (blueprint row 137; D114; ux §8g.3): a source that did not answer is worded by the
+    // start rule of `params.rule`, with the device named by label and id — never as a lens fault or "no signal".
+    const unreachable = unreachablePrecheckOf(item)
+    if (unreachable !== null) {
+      const rule = unreachablePrecheckText(t, unreachable)
+      const notice = notices.find((entry) => entry.kind === 'UNREACHABLE' && entry.deviceId === unreachable.deviceId)
+      return notice === undefined ? rule : `${rule} ${captureNoticeText(t, notice).body}`
+    }
     const key = reasonKeyFor(item)
     if (!key) return null
     const device = item.id in CHECK_DEVICE_KEY ? t(CHECK_DEVICE_KEY[item.id as keyof typeof CHECK_DEVICE_KEY]) : ''
@@ -85,6 +102,10 @@ export function DevicesStep({ gate, acknowledged, onAcknowledgedChange, onRetry,
   const items = useSim(selectItems)
   const reasonOf = useCheckReason()
   const blocked = items.filter((item) => item.status === 'BLOCK')
+  // Flow 11 / 13: which kinds of source did not answer, for the "Search again" of each (G13, G17).
+  const unreachable = items.map((item) => unreachablePrecheckOf(item)).filter((source) => source !== null)
+  const cameraUnreachable = unreachable.some((source) => source.deviceKind === 'CAMERA')
+  const micUnreachable = unreachable.some((source) => source.deviceKind === 'MIC')
   const blockReasons = blocked.map((item) => reasonOf(item)).filter((text): text is string => text !== null)
   // F69: in Live mode only a connected paired tablet clears this check; "Clear the fault" would mislead.
   const linkBlocked = live && blocked.some((item) => reasonKeyFor(item) === 'coreOffline')
@@ -192,6 +213,9 @@ export function DevicesStep({ gate, acknowledged, onAcknowledgedChange, onRetry,
           ) : null}
         </AnimatePresence>
 
+        {/* R-10 AC-4: "Search again" beside the pre-check's own Retry. It searches; it never switches a microphone (D83). */}
+        <PrecheckSearchActions camera={cameraUnreachable} microphone={micUnreachable} />
+
         {gate.canRetry ? (
           <div className="sn-gate-actions">
             <Button ref={retryRef} variant="outline" size="sm" onPress={onRetry} isPending={retryPending} data-testid="sn-retry">
@@ -268,12 +292,14 @@ function CheckRow({ item, reason }: { item: PrecheckItem; reason: string | null 
   const valueText = item.value ? (t(`common.enums.${enumKey}.${item.value}` as never, { defaultValue: item.value }) as string) : null
   const resolved = item.status === 'PASS' || item.status === 'WARN' || item.status === 'BLOCK'
   return (
-    <div className="sn-check" data-check={item.id} data-status={item.status} data-testid={`sn-check-${item.id}`}>
+    <div className="sn-check" data-check={item.id} data-status={item.status} data-rule={unreachablePrecheckOf(item)?.rule} data-testid={`sn-check-${item.id}`}>
       <span className="sn-check-icon" aria-hidden="true">
         <Icon className="size-4" strokeWidth={1.75} />
       </span>
       <span className="sn-check-text">
         <span className="sn-check-label">{t(`sessionNew.devices.checks.${item.id}`)}</span>
+        {/* Flow 12 (R-11): the one development-source badge, from the Core's `sourceClass` of this row's device. */}
+        <PrecheckSourceMarks checkId={item.id} />
         <span className="sn-check-detail">
           {reason ?? (resolved ? valueText : item.status === 'RUNNING' ? t('sessionNew.devices.resolving') : t('common.precheckStatus.PENDING'))}
         </span>

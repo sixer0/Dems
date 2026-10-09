@@ -11,6 +11,7 @@ import { Stepper, StepperStamp, type StepperStep } from '@/components/composed'
 import { GlowLayer, useMotionPolicy } from '@/motion'
 import { logSessionMonitorError } from './log'
 import { shortHash } from './model'
+import { etaSeconds, useSealingProgress } from './sealing-progress'
 
 export type OverlayMode = 'finalization' | 'recovery'
 
@@ -50,13 +51,29 @@ interface SealedItem {
  *
  * `recovery` mode follows FAULT → RECOVERY (RECOVERY_SCAN → INCOMPLETE_SESSION_ANALYSIS, 3 s) and
  * ends with the INCOMPLETE notice (SYS-008): the session is never sealed.
+ *
+ * Blueprint row 87 (WB-01 modal; UX spec flows 3 and 4; E-13):
+ * - **Forward-only progress.** The bar, the percent, each step's status and the ETA come from
+ *   `useSealingProgress` (`sealing-progress.ts`): a pure function of the finalization states the
+ *   Core sent. No timer of this page moves them; a step drawn DONE stays DONE and the percent never
+ *   falls, also when a resumed attempt rewrites a step on the Core. Without an ETA from the Core the
+ *   line says "estimating…" and gives no number.
+ * - **Resumed sealing, in place (OD-08).** When a RECOVERY turns into a resumed seal (the session
+ *   is FINALIZING or SEALED while this overlay is in `recovery` mode, or the page switches the mode
+ *   back to `finalization`), the SAME dialog draws the finalization body: one Modal, no close and
+ *   reopen, so nothing flickers; the note "Resumed after restart" is shown while a step is at
+ *   attempt 2 or later. A recovery that ends SEALED can be closed (before, only an INCOMPLETE end
+ *   could: the dialog would have stayed locked).
  */
 export function FinalizationModal({ mode, isOpen, sessionId, onClose }: FinalizationModalProps) {
   const { t } = useTranslation()
   const state = useSim((s) => (s.session?.id === sessionId ? s.session.state : null))
-  const sealed = mode === 'finalization' && state === SessionState.SEALED
-  const recoveryDone = mode === 'recovery' && state === null
-  const closable = sealed || recoveryDone || (mode === 'finalization' && state === null)
+  // Row 87 (flow 4): a recovery that resumed the seal shows the finalization body in this same dialog.
+  const resumedSeal = mode === 'recovery' && (state === SessionState.FINALIZING || state === SessionState.SEALED)
+  const body: OverlayMode = mode === 'finalization' || resumedSeal ? 'finalization' : 'recovery'
+  const sealed = body === 'finalization' && state === SessionState.SEALED
+  const recoveryDone = body === 'recovery' && state === null
+  const closable = sealed || recoveryDone || (body === 'finalization' && state === null)
 
   return (
     <Modal.Backdrop
@@ -70,13 +87,14 @@ export function FinalizationModal({ mode, isOpen, sessionId, onClose }: Finaliza
     >
       <Modal.Container size="md" placement="center">
         <Modal.Dialog
-          aria-label={mode === 'finalization' ? t('session.finalization.title') : t('session.recovery.title')}
+          aria-label={body === 'finalization' ? t('session.finalization.title') : t('session.recovery.title')}
           className="sm-final-dialog"
           data-testid="finalization-modal"
           data-mode={mode}
+          data-body={body}
           data-state={state ?? 'NONE'}
         >
-          {mode === 'finalization' ? (
+          {body === 'finalization' ? (
             <FinalizationBody sessionId={sessionId} state={state} onClose={onClose} />
           ) : (
             <RecoveryBody state={state} onClose={onClose} />
@@ -97,18 +115,25 @@ function FinalizationBody({ sessionId, state, onClose }: { sessionId: string; st
   const sealed = state === SessionState.SEALED
   const stopping = state === SessionState.STOPPING
 
-  const stepperSteps: StepperStep[] = (steps ?? []).map((step) => ({
-    id: step.id,
-    label: t(`common.enums.finalizationStep.${step.id}`),
-    status: step.status,
-    description:
-      step.status === 'done' && step.durationMs !== null
-        ? t('session.finalization.stepDuration', { seconds: (step.durationMs / 1000).toFixed(1) })
-        : undefined,
-  }))
-  const total = stepperSteps.length || 6
-  const done = stepperSteps.filter((step) => step.status === 'done').length
-  const percent = sealed ? 100 : Math.round((done / total) * 100)
+  // Row 87 (E-13): forward-only, from the Core's states alone (no timer here).
+  const progress = useSealingProgress(sessionId, steps, sealed)
+  const stepperSteps: StepperStep[] = (steps ?? []).map((step, index) => {
+    const drawn = progress.steps[index]
+    const status = drawn?.status ?? step.status
+    return {
+      id: step.id,
+      label: t(`common.enums.finalizationStep.${step.id}`),
+      status,
+      description:
+        status === 'done' && step.status === 'done' && step.durationMs !== null
+          ? t('session.finalization.stepDuration', { seconds: (step.durationMs / 1000).toFixed(1) })
+          : status === 'active' && typeof step.progress === 'number' && drawn !== undefined
+            ? t('session.finalization.stepProgress', { percent: drawn.percent })
+            : undefined,
+    }
+  })
+  const percent = progress.percent
+  const finalizing = state === SessionState.FINALIZING
   const caseNumber = useSim((s) => (s.session?.id === sessionId ? s.session.input.caseNumber : null))
   const subjectName = useSim((s) => (s.session?.id === sessionId ? s.session.input.subjectName : null))
   const simulatedManifestHash = useSim((s) =>
@@ -148,6 +173,17 @@ function FinalizationBody({ sessionId, state, onClose }: { sessionId: string; st
             <ProgressBar.Fill />
           </ProgressBar.Track>
         </ProgressBar>
+
+        {finalizing && progress.reportsProgress ? (
+          <p className="sm-final-package-note" role="status" data-testid="sm-final-eta" data-eta={progress.etaMs === null ? 'none' : 'core'}>
+            {progress.etaMs === null ? t('session.finalization.estimating') : t('session.finalization.eta', { seconds: etaSeconds(progress.etaMs) })}
+          </p>
+        ) : null}
+        {progress.resumed && !sealed ? (
+          <p className="sm-final-package-note" role="status" data-testid="sm-final-resumed" data-attempt={progress.attempt}>
+            {t('session.finalization.resumed')}
+          </p>
+        ) : null}
 
         <AnimatePresence initial={false}>
           {stopping ? (

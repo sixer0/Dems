@@ -18,10 +18,15 @@ import { captureDevices } from './capture';
 import { operators } from './rbac';
 import {
   AUDIO_INTERVAL_REASON,
+  CAPTURE_ADAPTER_KIND,
+  CAPTURE_ADAPTER_KINDS_BY_DEVICE_KIND,
+  CAPTURE_SOURCE_SLOT,
   MIC_ROLE,
   SEALING_JOB_STATUS,
   VIDEO_TRACK_ID,
   type AudioIntervalReasonValue,
+  type CaptureAdapterKindValue,
+  type CaptureSourceSlotValue,
   type MicRoleValue,
   type SealingJobStatusValue,
   type VideoTrackIdValue,
@@ -162,3 +167,47 @@ export type RecordingFragmentRow = typeof recordingFragments.$inferSelect;
 export type NewRecordingFragmentRow = typeof recordingFragments.$inferInsert;
 export type SealingJobRow = typeof sealingJobs.$inferSelect;
 export type NewSealingJobRow = typeof sealingJobs.$inferInsert;
+
+/**
+ * T-41 (dbc-4 §N.3, D-DB-14). The session-start record of what fed each of the four slots: four
+ * rows per session, written in ONE statement inside the transaction that persists the transition
+ * to `RECORDING` (MR-S1; rows 66 / 71), so they are durable before the first fragment row. The
+ * manifest reads the source class from these rows only (MR-S4), never from the registry, the
+ * selector or the development flag.
+ *
+ * INSERT-ONLY for the runtime role: `0009` grants SELECT and INSERT and nothing else, so "never
+ * updated" is enforced by the database (42501). No foreign key to `session_history` (D-DB-07) and
+ * no composite key to the registry: a simulated session records `FAKE` whatever the registry says
+ * (MR-S3). Rebuilt by a demo reset (rows removed, table kept).
+ */
+export const sessionCaptureSources = pgTable(
+  'session_capture_sources',
+  {
+    sessionId: text('session_id').notNull(),
+    slot: text('slot').$type<CaptureSourceSlotValue>().notNull(),
+    deviceId: text('device_id').notNull(),
+    adapterKind: text('adapter_kind').$type<CaptureAdapterKindValue>().notNull(),
+    recordedAt: bigint('recorded_at', { mode: 'number' }).notNull(),
+  },
+  (t) => [
+    primaryKey({ name: 'session_capture_sources_pkey', columns: [t.sessionId, t.slot] }),
+    foreignKey({
+      name: 'session_capture_sources_device_id_fkey',
+      columns: [t.deviceId],
+      foreignColumns: [captureDevices.id],
+    })
+      .onDelete('restrict')
+      .onUpdate('no action'),
+    check('session_capture_sources_session_check', sessionId(t.sessionId)),
+    check('session_capture_sources_slot_check', oneOf(t.slot, CAPTURE_SOURCE_SLOT)),
+    check('session_capture_sources_adapter_kind_check', oneOf(t.adapterKind, CAPTURE_ADAPTER_KIND)),
+    // A video slot is fed by a camera kind and a mic slot by a microphone kind; `SNMP_POE` feeds none.
+    check(
+      'session_capture_sources_pairing_check',
+      sql`(${t.slot} IN ('VIDEO-01', 'VIDEO-02') AND ${oneOf(t.adapterKind, CAPTURE_ADAPTER_KINDS_BY_DEVICE_KIND.CAMERA)}) OR (${t.slot} IN ('MIC-PRIMARY', 'MIC-STANDBY') AND ${oneOf(t.adapterKind, CAPTURE_ADAPTER_KINDS_BY_DEVICE_KIND.MIC)})`,
+    ),
+  ],
+);
+
+export type SessionCaptureSourceRow = typeof sessionCaptureSources.$inferSelect;
+export type NewSessionCaptureSourceRow = typeof sessionCaptureSources.$inferInsert;

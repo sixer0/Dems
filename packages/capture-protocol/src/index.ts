@@ -20,13 +20,21 @@
  * version) and `ACK` (the worker's answer to a command, matched by correlation ID); and, since
  * version 2 (blueprint row 58, spec §B.2 "REQUIRED WORK" R-1 to R-4), `RECORD`.
  *
+ * VERSION 3 (blueprint row 59; decisions D84 R-7, D59-1). Three frame changes, one version step:
+ * `WARNING.state` is a required member (it became one inside version 2, which a version exists to
+ * prevent: a worker built before it passed `HELLO` and was ended at its first warning); the
+ * `FRAGMENT_CHECKPOINT` record carries what the fMP4 writer knows about a durable fragment (both
+ * chains, media time, the keyframe flag, the instant it was synced); and the record
+ * `KEYFRAME_INTERVAL` is new. A worker of version 2 is refused at `HELLO` (`PROTOCOL_MISMATCH`,
+ * not retried), and none of its frames decodes.
+ *
  *   supervisor -> worker   START, STOP, SWITCH_AUDIO_SOURCE
  *   worker -> supervisor   HELLO, ACK, TELEMETRY, PROGRESS, HEARTBEAT, WARNING, CRASH, RECORD
  *
  * LEVELS AND RECORDS. `TELEMETRY` and `PROGRESS` are LEVELS: the supervisor hands them on through
  * a bounded queue that replaces and evicts them, and a worker `WARNING` travels the same queue.
  * A `RECORD` is the one LOSSLESS class: first video sample, first durable fragment, fragment
- * checkpoint, seal completion. The supervisor handles it the moment its line arrives, beside `ACK`, and never puts
+ * checkpoint, observed keyframe interval, seal completion. The supervisor handles it the moment its line arrives, beside `ACK`, and never puts
  * it in that queue. Every record carries `seq`: a worker counts its records from 1, by exactly 1;
  * a gap or a repeat is a protocol violation that ends the worker. A session gets a second worker
  * only while it holds no durable fragment, so the fragment records of one session are always ONE
@@ -36,8 +44,10 @@
  * Nothing may be decided from the ABSENCE of a record.
  *
  * RECORDS ARE LOW-RATE BY CONTRACT (fix round 1, navigator finding A-5). A worker writes: one
- * first-video-sample and one first-durable-fragment per camera, one checkpoint per fragment per
- * camera, one seal completion. A fragment is a camera GOP of about 2 s (never shorter than a
+ * first-video-sample, one first-durable-fragment and one keyframe-interval per camera, one
+ * checkpoint per fragment per camera, one seal completion. Checkpoints of fragments that were
+ * written while one disk sync ran leave together when the next sync returned: after a sync that
+ * took t seconds, about t / 2 checkpoints per camera arrive at once, far below the ceiling. A fragment is a camera GOP of about 2 s (never shorter than a
  * stall cut every `fragmentTargetMs`), so two cameras write about 2 records a second at most.
  * The supervisor does not queue records and waits for no listener, so a record flood would grow
  * memory in whoever consumes them: more than `recordBurstLimit` records inside `recordWindowMs`
@@ -75,8 +85,15 @@
  *     in `HELLO` proves nothing about it. The file appears under its final name only once it
  *     holds its init segment and one whole fragment (it is written under a temporary name and
  *     linked), so a file at an output path always means durable media;
- *   - it reports the first fragment of each camera file that reached the disk with a `RECORD`
- *     (`FIRST_DURABLE_FRAGMENT`), at once;
+ *   - it reports the first fragment of each camera file with a `RECORD`
+ *     (`FIRST_DURABLE_FRAGMENT`) and every fragment with a `FRAGMENT_CHECKPOINT`, and it writes
+ *     either ONLY AFTER the disk sync that covers the fragment returned (for the first fragment:
+ *     data sync, link to the final name, directory sync). A record therefore says "durable", not
+ *     "written"; a fragment that is in the file without a record was written and not yet known
+ *     durable. The numbers of the checkpoints of one camera are 1, 2, 3 ... without a gap, and
+ *     each starts at the byte the one before ended at;
+ *   - it appends whole fragments only, and a write that fails or comes back short is cut back to
+ *     the last good length before the worker ends with `CRASH`;
  *   - it owns no datagram socket, and every socket it owns is on 127.0.0.1 (SEC35-23);
  *   - it keeps writing `HEARTBEAT` whatever else it writes: the supervisor reads its output at all
  *     times and never pauses it, and it drops telemetry it cannot hand on rather than slow down.
@@ -84,7 +101,7 @@
 import { z } from 'zod';
 
 /** Version of this protocol. The worker names it in `HELLO`; a mismatch ends the worker. */
-export const CAPTURE_PROTOCOL_VERSION = 2;
+export const CAPTURE_PROTOCOL_VERSION = 3;
 
 /**
  * The loopback media ports (spec §A.8: fixture readers and the worker ingest listen only on
@@ -121,7 +138,15 @@ export type CaptureStopReason = (typeof CaptureStopReason)[keyof typeof CaptureS
 export const CaptureMicRole = { PRIMARY: 'PRIMARY', STANDBY: 'STANDBY' } as const;
 export type CaptureMicRole = (typeof CaptureMicRole)[keyof typeof CaptureMicRole];
 
-/** The warnings a worker raises (spec §B.2). Never an automatic switch (OD-11). */
+/**
+ * The warnings a worker raises (spec §B.2). Never an automatic switch (OD-11).
+ *
+ * `CAPTURE_FAULT` with a camera as its subject has three causes, all "this camera needs a look":
+ * the ingest was refused or never opened, the camera's stream ended, or - gate answer Q-GOP (a),
+ * spec §C.1 - THE OBSERVED KEYFRAME INTERVAL IS ABOVE THE TARGET (the crash-loss window of that
+ * file is one camera GOP). The existing code is used on purpose: no error or audit code joins the
+ * pinned sets. The number, and which of the causes it was, is the record `KEYFRAME_INTERVAL`.
+ */
 export const CaptureWarningCode = { MIC_SILENT: 'MIC_SILENT', CAPTURE_FAULT: 'CAPTURE_FAULT' } as const;
 export type CaptureWarningCode = (typeof CaptureWarningCode)[keyof typeof CaptureWarningCode];
 
@@ -155,8 +180,13 @@ export const CaptureRecordKind = {
   FIRST_VIDEO_SAMPLE: 'FIRST_VIDEO_SAMPLE',
   /** The first fragment of one camera file is on the disk: from here on the session holds evidence. */
   FIRST_DURABLE_FRAGMENT: 'FIRST_DURABLE_FRAGMENT',
-  /** One fragment's checkpoint (spec §A.5 `FragmentCheckpoint`). Produced by the fMP4 writer row. */
+  /** One DURABLE fragment's checkpoint (spec §A.5 `FragmentCheckpoint`), written by the fMP4 writer after its sync. */
   FRAGMENT_CHECKPOINT: 'FRAGMENT_CHECKPOINT',
+  /**
+   * The keyframe interval the worker observed on one camera's video (spec §C.1, Q-GOP): once per
+   * camera. On stream copy the camera sets it, and it IS the crash-loss window of the file.
+   */
+  KEYFRAME_INTERVAL: 'KEYFRAME_INTERVAL',
   /** Sealing finished. Never read from `PROGRESS` with progress 1, which is a level and can be evicted. */
   SEAL_COMPLETE: 'SEAL_COMPLETE',
 } as const;
@@ -443,29 +473,85 @@ export const FirstDurableFragmentRecordSchema = z.strictObject({
   /** Length of that file once the fragment was written. A hint: the file is read again at RECOVERY. */
   bytes: wholeNumber.positive(),
 });
-/** Spec §A.5 `FragmentCheckpoint`, with its `seq` named `index` (the record's own `seq` is the frame's). */
-export const FragmentCheckpointRecordSchema = z.strictObject({
-  kind: z.literal(CaptureRecordKind.FRAGMENT_CHECKPOINT),
+/**
+ * Spec §A.5 `FragmentCheckpoint`, with its `seq` named `index` (the record's own `seq` is the
+ * frame's). One per fragment per camera file, in fragment order, written AFTER the disk sync that
+ * covers the fragment returned (see the header). The chain rule (spec §C.3; S1 §3.1):
+ *
+ *   fragSha256   = SHA-256(the fragment's stored bytes `[start, start + len)`: `moof` + `mdat`)
+ *   chainSha256  = SHA-256(chainSha256 of the fragment before, 32 raw bytes || fragSha256, 32 raw bytes),
+ *                  with `CAPTURE_CHAIN_GENESIS_SHA256` (SHA-256 of nothing) before the first
+ *   prefixSha256 = SHA-256(the file from byte 0 to `start + len`): of the last fragment, the whole file
+ *
+ * and the same for the plaintext (`plaintextSha256`, `plaintextChainSha256`) over the fragment
+ * before the cipher seam. While no cipher is set (`keyId` null) stored bytes and plaintext are the
+ * same bytes, so `plaintextSha256` equals `fragSha256` and the two chains are equal.
+ */
+export const FragmentCheckpointRecordSchema = z
+  .strictObject({
+    kind: z.literal(CaptureRecordKind.FRAGMENT_CHECKPOINT),
+    deviceId: id,
+    /** `mfhd.sequence_number` of the fragment: 1, 2, 3 ... of this camera file, without a gap. */
+    index: wholeNumber.positive(),
+    /** The stored-byte range `[start, start + len)`. `start` of fragment 1 is the length of the init segment. */
+    start: wholeNumber.positive(),
+    len: wholeNumber.positive(),
+    fragSha256: sha256,
+    chainSha256: sha256,
+    prefixSha256: sha256,
+    plaintextSha256: sha256,
+    plaintextChainSha256: sha256,
+    /** Where the fragment starts on the file's media timeline, and how long it is (the span of its tracks), in ms. */
+    mediaStartMs: wholeNumber,
+    mediaDurationMs: wholeNumber.positive(),
+    /** True when the fragment has video and its first video sample is a sync sample (false: an audio-only fragment of a stalled camera). */
+    keyframe: z.boolean(),
+    /** Epoch ms, taken when the sync that covers this fragment returned (`recording_fragments.durable_at`). */
+    durableAt: wholeNumber.positive(),
+    /** The three of the per-fragment cipher (OD-03; blueprint row 84): all null until the file is encrypted. */
+    gcmIv: z.string().regex(/^[0-9a-f]{24}$/).nullable(),
+    gcmTag: z.string().regex(/^[0-9a-f]{32}$/).nullable(),
+    keyId: id.nullable(),
+  })
+  .superRefine((record, context) => {
+    const sealed = [record.gcmIv, record.gcmTag, record.keyId].filter((value) => value !== null).length;
+    if (sealed !== 0 && sealed !== 3) context.addIssue({ code: 'custom', message: 'the cipher members are all set or all null', path: ['keyId'] });
+    // Without a cipher the stored bytes ARE the plaintext: two different digests would be two different files.
+    if (sealed === 0 && (record.plaintextSha256 !== record.fragSha256 || record.plaintextChainSha256 !== record.chainSha256)) {
+      context.addIssue({ code: 'custom', message: 'without a cipher the plaintext chain equals the stored-bytes chain', path: ['plaintextSha256'] });
+    }
+  });
+/**
+ * What the worker saw of one camera's keyframe interval (spec §C.1, erratum AU2-08; gate answer
+ * Q-GOP (a)). Once per camera: after its first intervals, or - when an interval was above the
+ * bound - as soon as that interval is complete, or at the end of the ingest with what was seen.
+ * The same interval is re-derivable from the file (the sync samples of the video `trun` boxes).
+ */
+export const KeyframeIntervalRecordSchema = z.strictObject({
+  kind: z.literal(CaptureRecordKind.KEYFRAME_INTERVAL),
   deviceId: id,
-  /** `mfhd.sequence_number` of the fragment, from 1. */
-  index: wholeNumber.positive(),
-  /** The stored-byte range `[start, start + len)`. */
-  start: wholeNumber,
-  len: wholeNumber.positive(),
-  fragSha256: sha256,
-  chainSha256: sha256,
-  prefixSha256: sha256,
-  /** Null until the file is encrypted per fragment (OD-03). */
-  plaintextSha256: sha256.nullable(),
-  gcmIv: z.string().max(64).nullable(),
-  gcmTag: z.string().max(64).nullable(),
-  keyId: id.nullable(),
+  /** The longest interval between two keyframes seen so far, in ms of the file's time (an interval still open counts with its length so far). */
+  observedMs: wholeNumber,
+  /** The target it is held against: the plan's `fragmentTargetMs` (the contract's `CAPTURE_OBSERVED_GOP_MAX_MS`). */
+  boundMs: wholeNumber.positive(),
+  /** How many complete intervals were measured. */
+  intervals: wholeNumber,
+  /** False when the longest interval was still open (no later keyframe had arrived): the true interval is at least `observedMs`. */
+  complete: z.boolean(),
+  /** True when `observedMs` is above the bound by more than the worker's tolerance (5 %): the warning of the channel was raised. */
+  aboveBound: z.boolean(),
 });
 export const SealCompleteRecordSchema = z.strictObject({ kind: z.literal(CaptureRecordKind.SEAL_COMPLETE) });
-export const CaptureRecordSchema = z.discriminatedUnion('kind', [FirstVideoSampleRecordSchema, FirstDurableFragmentRecordSchema, FragmentCheckpointRecordSchema, SealCompleteRecordSchema]);
+export const CaptureRecordSchema = z.discriminatedUnion('kind', [FirstVideoSampleRecordSchema, FirstDurableFragmentRecordSchema, FragmentCheckpointRecordSchema, KeyframeIntervalRecordSchema, SealCompleteRecordSchema]);
+/** `chain_0`: SHA-256 of nothing, what the chain of the first fragment is built on (spec §C.3). */
+export const CAPTURE_CHAIN_GENESIS_SHA256 = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
+/** The records a worker writes at most once per camera: a second one is a protocol violation. */
+export const ONCE_PER_CAMERA_RECORD_KINDS: readonly CaptureRecordKind[] = [CaptureRecordKind.FIRST_VIDEO_SAMPLE, CaptureRecordKind.FIRST_DURABLE_FRAGMENT, CaptureRecordKind.KEYFRAME_INTERVAL];
 /** The record kinds that say a fragment is on the disk: from the first of them a session is durable. */
 export const DURABLE_RECORD_KINDS: readonly CaptureRecordKind[] = [CaptureRecordKind.FIRST_DURABLE_FRAGMENT, CaptureRecordKind.FRAGMENT_CHECKPOINT];
 export type CaptureRecord = z.infer<typeof CaptureRecordSchema>;
+export type FragmentCheckpointRecord = z.infer<typeof FragmentCheckpointRecordSchema>;
+export type KeyframeIntervalRecord = z.infer<typeof KeyframeIntervalRecordSchema>;
 
 /** A record: lossless, in order, never through the event queue (see the header). */
 export const RecordMessageSchema = z.strictObject({

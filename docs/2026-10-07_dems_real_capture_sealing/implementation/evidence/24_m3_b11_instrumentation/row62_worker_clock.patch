@@ -1,0 +1,221 @@
+diff -ru a/apps/capture-worker/src/anchor.c b/apps/capture-worker/src/anchor.c
+--- a/apps/capture-worker/src/anchor.c	2026-10-09 16:42:32
++++ b/apps/capture-worker/src/anchor.c	2026-10-09 16:42:32
+@@ -40,6 +40,11 @@
+     x -= t->x0;
+     t->n += 1; t->sx += x; t->sy += y; t->sxx += x * x; t->sxy += x * y;
+     t->last_x = x;
++    /* The baseline: the best arrival of the first seconds (R-2). Seconds without a packet do not count. */
++    if (t->baseline_seconds < CLOCK_BASELINE_S) {
++        if (!t->baseline_seconds || y < t->baseline_ms) t->baseline_ms = y;
++        t->baseline_seconds++;
++    }
+ }
+ 
+ void trend_add(ClockTrend *t, double x_s, double lag_ms) {
+@@ -65,7 +70,21 @@
+     return any ? best : 0;
+ }
+ 
+-int trend_near_bound(const ClockTrend *t) { return fabs(trend_window_lag_ms(t)) >= CLOCK_NEAR_BOUND_MS; }
++double trend_baseline_ms(const ClockTrend *t, int *learnt) {
++    *learnt = t->baseline_seconds >= CLOCK_BASELINE_S;
++    return *learnt ? t->baseline_ms : 0;
++}
++
++int trend_near_bound(const ClockTrend *t) {
++    int learnt;
++    double base = trend_baseline_ms(t, &learnt);
++    return learnt && fabs(trend_window_lag_ms(t) - base) >= CLOCK_NEAR_BOUND_MS;
++}
++
++int clock_lag_sane(double lag_ms, double held_ms) {
++    if (held_ms < 0) held_ms = 0;
++    return lag_ms >= -CLOCK_SANITY_MS && lag_ms <= CLOCK_SANITY_MS + held_ms;
++}
+ 
+ double trend_ppm(const ClockTrend *t, int *fitted) {
+     double den = t->n * t->sxx - t->sx * t->sx;
+diff -ru a/apps/capture-worker/src/anchor.h b/apps/capture-worker/src/anchor.h
+--- a/apps/capture-worker/src/anchor.h	2026-10-09 16:42:32
++++ b/apps/capture-worker/src/anchor.h	2026-10-09 16:42:32
+@@ -10,8 +10,15 @@
+ 
+ /* The anchor moves by at most this many microseconds per second of media time. */
+ #define SLEW_US_PER_S 500
+-/* Telemetry flag: the camera's clock is this far from the host's (three quarters of the +-40 ms product bound). */
++/* Telemetry flag: the camera's clock has MOVED this far against the host's since the session's baseline
++ * (three quarters of the +-40 ms product bound). See trend_near_bound. */
+ #define CLOCK_NEAR_BOUND_MS 30.0
++/* The first seconds of a camera's trend teach its baseline: the lag of a correct clock behind this
++ * camera's steady encode and network delay (pair-58 navigator B, R-2; D85). */
++#define CLOCK_BASELINE_S 5
++/* Sanity bound on the camera's wall clock at anchoring (navigator B, F-6): no encode or network delay is
++ * this long, so a lag beyond it is a wrong clock, and the camera is given up instead of recorded at a wrong time. */
++#define CLOCK_SANITY_MS 2000.0
+ #define CLOCK_WINDOW_S 10
+ #define CLOCK_TREND_MIN_SPAN_S 10.0
+ 
+@@ -36,6 +43,8 @@
+     int bucket_set[CLOCK_WINDOW_S];
+     int64_t bucket_index;               /* second (of media time) of the newest bucket; -1 before the first */
+     double n, sx, sy, sxx, sxy, x0, last_x, last_lag_ms;
++    double baseline_ms;                 /* best arrival of the first CLOCK_BASELINE_S seconds that had a packet */
++    int baseline_seconds;               /* how many seconds it has been learnt from; learnt at CLOCK_BASELINE_S */
+ } ClockTrend;
+ 
+ void trend_init(ClockTrend *t);
+@@ -44,8 +53,18 @@
+ /* The lag as the best arrival of the last CLOCK_WINDOW_S seconds states it: a late arrival (a
+  * network stall) can only make a lag larger, so the minimum is what the clocks differ by. */
+ double trend_window_lag_ms(const ClockTrend *t);
+-/* 1 when the clocks differ by CLOCK_NEAR_BOUND_MS or more. A stall alone never sets it. */
++/* The baseline lag of this camera, learnt at the start of the session; *learnt = 0 before it is. */
++double trend_baseline_ms(const ClockTrend *t, int *learnt);
++/* 1 when the window lag is CLOCK_NEAR_BOUND_MS or more away from the BASELINE: the camera's clock has
++ * moved against the host's since the session started (a drift, or a step), as far as arrivals can tell.
++ * 0 until the baseline is learnt. A steady delay never sets it, and a stall alone never sets it.
++ * WHAT IT CANNOT SEE: an offset that was already there at the start is part of the baseline (it cannot
++ * be told from a delay without a round trip). Gross ones are refused at anchoring: clock_lag_sane. */
+ int trend_near_bound(const ClockTrend *t);
++/* The sanity bound at anchoring. lag_ms = arrival - camera time of a packet; held_ms = how long the
++ * packet may have waited inside the receiver before it was handed over (waiting only makes a lag larger).
++ * 1 when -CLOCK_SANITY_MS <= lag_ms <= CLOCK_SANITY_MS + held_ms. */
++int clock_lag_sane(double lag_ms, double held_ms);
+ /* Fitted change of the per-second best lag in parts per million; 0 with *fitted = 0 before CLOCK_TREND_MIN_SPAN_S. */
+ double trend_ppm(const ClockTrend *t, int *fitted);
+ 
+diff -ru a/apps/capture-worker/src/audio.c b/apps/capture-worker/src/audio.c
+--- a/apps/capture-worker/src/audio.c	2026-10-09 16:42:32
++++ b/apps/capture-worker/src/audio.c	2026-10-09 16:42:32
+@@ -430,7 +430,8 @@
+         char ppm[32] = "null";
+         if (fitted) snprintf(ppm, sizeof ppm, "%.1f", trend);
+         /* lagMs: the best arrival of the last seconds minus camera time (a stall does not move it).
+-         * nearBound: the camera's clock is 30 ms or more from the host's. Telemetry only. */
++         * nearBound: the camera's clock moved 30 ms or more against the host's since the session's baseline
++         * (learnt in its first seconds; a steady delay is not a clock error: R-2). Telemetry only. */
+         if (k < sizeof clocks) k += (size_t)snprintf(clocks + k, sizeof clocks - k, "%s{\"deviceId\":\"%s\",\"lagMs\":%.3f,\"trendPpm\":%s,\"nearBound\":%s}", k ? "," : "", c->device_id, trend_window_lag_ms(&t), ppm,
+                               trend_near_bound(&t) ? "true" : "false");
+     }
+diff -ru a/apps/capture-worker/src/ingest.c b/apps/capture-worker/src/ingest.c
+--- a/apps/capture-worker/src/ingest.c	2026-10-09 16:42:32
++++ b/apps/capture-worker/src/ingest.c	2026-10-09 16:42:32
+@@ -324,10 +324,12 @@
+     atomic_store(&c->ever_connected, 1);
+     atomic_store(&c->state, ING_CONNECTED);
+ 
+-    int64_t live_after = mono_us() + US;
++    int64_t opened_mono = mono_us();     /* a packet handed over from here on waited at most since now (F-6) */
++    int64_t live_after = opened_mono + US;
++    int clock_checked_live = 0;
+     AVPacket *p = av_packet_alloc();
+     if (!p) { fatal(src, "PACKET_ALLOC_FAILED", AVERROR(ENOMEM)); atomic_store(&c->state, ING_ENDED); return NULL; }
+-    int end = 0;
++    int end = 0, clock_refused = 0;
+     while (!atomic_load(&g_stop_ingest)) {
+         r = av_read_frame(c->in, p);
+         if (r < 0) { end = r; break; }      /* the listen ingest ends on the client's TEARDOWN: one session by design (S1 G-1) */
+@@ -352,6 +354,16 @@
+                 av_packet_unref(p);
+                 continue;
+             }
++            /* F-6: a camera whose wall clock is beyond any delay is not recorded at a wrong time. The
++             * packet may have waited inside libavformat since the stream opened: that much is allowed. */
++            double lag0 = (double)(real_us() - (seen + pts_us)) / 1000.0;
++            if (!clock_lag_sane(lag0, (double)(mono_us() - opened_mono) / 1000.0)) {
++                logj("error", src, "camera_clock_out_of_bound", "\"lag_ms\":%.1f,\"bound_ms\":%.0f", lag0, CLOCK_SANITY_MS);
++                av_packet_unref(p);
++                end = AVERROR(ERANGE);
++                clock_refused = 1;
++                break;
++            }
+             c->anchored = 1;
+             anchor_start(&c->anchor, seen, pts_us);
+             logj("info", src, "video_anchored", "\"mode\":\"%s\",\"shift_us\":%lld", sd ? "prft" : "rtcp_sr", (long long)(c->anchor.anchor_us - atomic_load(&S.t0_real_us)));
+@@ -362,6 +374,19 @@
+         }
+         /* The packets that waited inside libavformat while it analysed the stream are handed over
+          * at once: their arrival says nothing. The trend starts when the ingest is live. */
++        if (mono_us() >= live_after && !clock_checked_live) {
++            /* The first packet that did not wait: the same bound without the allowance (a clock that is
++             * behind by less than the wait at anchoring is caught here, at most one second of video later). */
++            double lag1 = (double)(real_us() - (c->anchor.anchor_us + pts_us)) / 1000.0;
++            clock_checked_live = 1;
++            if (!clock_lag_sane(lag1, 0)) {
++                logj("error", src, "camera_clock_out_of_bound", "\"lag_ms\":%.1f,\"bound_ms\":%.0f", lag1, CLOCK_SANITY_MS);
++                av_packet_unref(p);
++                end = AVERROR(ERANGE);
++                clock_refused = 1;
++                break;
++            }
++        }
+         if (mono_us() >= live_after) {
+             pthread_mutex_lock(&c->trend_mx);
+             trend_add(&c->trend, (double)pts_us / US, (double)(real_us() - (c->anchor.anchor_us + pts_us)) / 1000.0);
+@@ -400,7 +425,7 @@
+         atomic_store(&c->last_video_mono_us, mono_us());
+     }
+     av_packet_free(&p);
+-    ingest_over(c, src, "INGEST_ENDED", end);
++    ingest_over(c, src, clock_refused ? "CAMERA_CLOCK_OUT_OF_BOUND" : "INGEST_ENDED", end);
+     return NULL;
+ }
+ 
+diff -ru a/apps/capture-worker/test/anchor_test.c b/apps/capture-worker/test/anchor_test.c
+--- a/apps/capture-worker/test/anchor_test.c	2026-10-09 16:42:32
++++ b/apps/capture-worker/test/anchor_test.c	2026-10-09 16:42:32
+@@ -101,18 +101,48 @@
+         if (x >= 12.0 && trend_near_bound(&t)) near++;
+     }
+     CHECK(near == 0, "a stall alone set nearBound on %d packets (window lag %.1f ms)", near, trend_window_lag_ms(&t));
+-    /* (2) a camera whose clock is 10 s ahead, and one 10 s behind: near the bound at once. */
++    /* (2) R-2: a CORRECT clock behind a steady 35 ms encode-and-network delay is never near the bound (it read
++     * true before the baseline existed), and its baseline is that delay. */
++    trend_init(&t);
++    near = 0;
++    for (int k = 0; k < 50 * 60; k++) { trend_add(&t, k * 0.02, 35.0 + (k % 7) * 0.3); near += trend_near_bound(&t); }
++    int learnt;
++    double base = trend_baseline_ms(&t, &learnt);
++    CHECK(near == 0, "a steady 35 ms delay set nearBound %d times", near);
++    CHECK(learnt && fabs(base - 35.0) < 1.0, "baseline %.2f ms (learnt=%d), expected 35", base, learnt);
++    /* (2b) the same camera, and its clock steps by +60 ms (lag -25) or -60 ms (lag +95) at second 20: near the
++     * bound afterwards. Ahead is seen at once; behind once the window holds no older second (10 s). */
+     for (int sign = -1; sign <= 1; sign += 2) {
+         trend_init(&t);
+-        for (int k = 0; k < 100; k++) trend_add(&t, k * 0.02, sign * 10000.0 + 5.0);
+-        CHECK(trend_near_bound(&t), "clock %+d s off: nearBound false (window lag %.1f ms)", sign * 10, trend_window_lag_ms(&t));
++        int first = -1, before = 0;
++        for (int k = 0; k < 50 * 40; k++) {
++            double x = k * 0.02;
++            trend_add(&t, x, 35.0 + (x >= 20.0 ? sign * 60.0 : 0.0));
++            if (x < 20.0) before += trend_near_bound(&t);
++            else if (first < 0 && trend_near_bound(&t)) first = (int)x;
++        }
++        CHECK(before == 0, "step %+d ms: nearBound before the step on %d packets", sign * 60, before);
++        CHECK(first >= 20 && first <= (sign < 0 ? 21 : 31), "step %+d ms at second 20: nearBound first at second %d", sign * 60, first);
++        CHECK(trend_near_bound(&t), "step %+d ms: not near the bound at the end", sign * 60);
+     }
+-    /* (3) a drift of 3.5 ms per second: the lag passes 30 ms at second 7; the flag follows at most one window
++    /* (2c) before the baseline is learnt the flag is false, whatever the lag. */
++    trend_init(&t);
++    near = 0;
++    for (int k = 0; k < 50 * (CLOCK_BASELINE_S - 1); k++) { trend_add(&t, k * 0.02, 500.0); near += trend_near_bound(&t); }
++    CHECK(near == 0, "nearBound before the baseline is learnt (%d packets)", near);
++    /* (2d) F-6: the sanity bound at anchoring. A clock 10 s ahead or behind is refused; a 35 ms delay and a
++     * packet that waited 900 ms inside the receiver are not; the wait is no allowance for a clock that is AHEAD. */
++    CHECK(!clock_lag_sane(-10000.0, 0) && !clock_lag_sane(10000.0, 0), "a clock 10 s off passes the sanity bound");
++    CHECK(clock_lag_sane(35.0, 0) && clock_lag_sane(-35.0, 0), "a 35 ms lag is refused");
++    CHECK(clock_lag_sane(CLOCK_SANITY_MS + 900.0, 900.0) && !clock_lag_sane(CLOCK_SANITY_MS + 901.0, 900.0), "the wait inside the receiver is not allowed for exactly");
++    CHECK(!clock_lag_sane(-CLOCK_SANITY_MS - 1.0, 5000.0), "a wait excuses a clock that is ahead");
++    CHECK(clock_lag_sane(CLOCK_SANITY_MS, 0) && clock_lag_sane(-CLOCK_SANITY_MS, 0), "the bound itself is refused");
++    /* (3) a drift of 3.5 ms per second: the lag is 30 ms above its 5 ms baseline at second 8.6; the flag follows at most one window
+      * (10 s) later, because it reads the BEST arrival of the window (what keeps a stall out). The trend says 3,500 ppm. */
+     trend_init(&t);
+     int at = -1, fitted;
+     for (int k = 0; k < 50 * 20; k++) { double x = k * 0.02; trend_add(&t, x, 5.0 + 3.5 * x); if (at < 0 && trend_near_bound(&t)) at = (int)x; }
+-    CHECK(at >= 7 && at <= 17, "drift 3.5 ms/s: nearBound first at second %d (expected 7 to 17)", at);
++    CHECK(at >= 8 && at <= 19, "drift 3.5 ms/s: nearBound first at second %d (expected 8 to 19: 30 ms above the 5 ms baseline at second 8.6)", at);
+     double ppm = trend_ppm(&t, &fitted);
+     CHECK(fitted && fabs(ppm - 3500.0) < 50.0, "fitted %.1f ppm (fitted=%d), expected 3,500", ppm, fitted);
+     /* CONTROL: a healthy camera (5 ms of network lag, 2 ms of jitter) is never near the bound. */

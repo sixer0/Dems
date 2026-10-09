@@ -46,6 +46,9 @@ export const CORE_QUERY_KEYS = {
   pairedDevices: [CORE_QUERY_ROOT, 'paired-devices'],
   /** Whether a code is active, and until when. NEVER the code itself (§10.3, AC-C-96). */
   pairingCode: [CORE_QUERY_ROOT, 'pairing-code'],
+  /** Task 3 M4 (blueprint row 67; WB-11, E-17): operations 76 and 77, the capture device selector. */
+  captureConfig: [CORE_QUERY_ROOT, 'capture-config'],
+  captureDevices: [CORE_QUERY_ROOT, 'capture-devices'],
 } as const satisfies Record<string, QueryKey>
 
 /** PG-6: the lists an `admin.changed` names. */

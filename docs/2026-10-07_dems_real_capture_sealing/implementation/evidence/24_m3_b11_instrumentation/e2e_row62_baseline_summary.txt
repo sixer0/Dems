@@ -1,0 +1,34 @@
+capture e2e series row62_baseline   ports [8559, 8561]   libav 63.1.102 63.1.102 12.1.102 7.1.102 61.1.102   heavy-host lock held (.locks/heavy-host.lock)
+
+av2c_srdrift_200ppm_r1                   expect PASS got PASS      rc 0       ok         load  4.41   43.3 s
+      cam1 mean +0.1278 ms, max err 0.1361 ms (bound 2: PASS; product 40: PASS), slope -0.22 ppm of +200; cam2 mean -0.0606 ms, max err 0.0694 ms (bound 2: PASS; product 40: PASS), slope -0.09 ppm of -200; listeners before the sources ['127.0.0.1:8559', '127.0.0.1:8561']; mid-session 4 sockets of 4 own processes, off loopback 0, UDP 0, foreign ports 0
+neg_av2c_reports_without_rate_r1         expect FAIL got FAIL      rc 0       ok         load  4.59   43.1 s
+      control: failed as required, on av_regression_2ms, drift_slope_near_zero
+      cam1 mean +3.2250 ms, max err 6.0167 ms (bound 2: FAIL; product 40: PASS), slope +199.78 ppm of +200; cam2 mean -3.5745 ms, max err 6.3792 ms (bound 2: FAIL; product 40: PASS), slope -200.09 ppm of -200; listeners before the sources ['127.0.0.1:8559', '127.0.0.1:8561']; mid-session 4 sockets of 4 own processes, off loopback 0, UDP 0, foreign ports 0; failed on: av_regression_2ms, drift_slope_near_zero
+want_r2_near_bound_steady_delay_r1       expect FAIL got FAIL      rc 0       ok         load  4.27   43.1 s
+      control: failed as required, on near_bound_false_with_a_steady_delay
+      cam1 mean +0.0292 ms, max err 0.0292 ms (bound 2: PASS; product 40: PASS); cam2 mean +0.0292 ms, max err 0.0292 ms (bound 2: PASS; product 40: PASS); listeners before the sources ['127.0.0.1:8559', '127.0.0.1:8561']; mid-session 4 sockets of 4 own processes, off loopback 0, UDP 0, foreign ports 0; failed on: near_bound_false_with_a_steady_delay
+want_r2_near_bound_clock_step_r1         expect FAIL got FAIL      rc 0       ok         load  4.27   90.1 s
+      control: failed as required, on near_bound_false_before_the_step, near_bound_false_for_the_steady_camera, near_bound_true_after_a_clock_step
+      listeners before the sources ['127.0.0.1:8559', '127.0.0.1:8561']; mid-session 4 sockets of 4 own processes, off loopback 0, UDP 0, foreign ports 0; failed on: near_bound_false_before_the_step, near_bound_false_for_the_steady_camera, near_bound_true_after_a_clock_step
+want_f6_camera_clock_sanity_bound_r1     expect FAIL got FAIL      rc 0       ok         load  2.83   42.6 s
+      control: failed as required, on camera_with_a_wrong_clock_is_given_up, no_video_recorded_at_a_wrong_time
+      cam2 mean +0.0319 ms, max err 0.0319 ms (bound 2: PASS; product 40: PASS); listeners before the sources ['127.0.0.1:8559', '127.0.0.1:8561']; mid-session 4 sockets of 4 own processes, off loopback 0, UDP 0, foreign ports 0; failed on: camera_with_a_wrong_clock_is_given_up, no_video_recorded_at_a_wrong_time
+av2c_srdrift_200ppm_r2                   expect PASS got PASS      rc 0       ok         load  4.14   43.1 s
+      cam1 mean +0.1205 ms, max err 0.1278 ms (bound 2: PASS; product 40: PASS), slope +0.03 ppm of +200; cam2 mean -0.0594 ms, max err 0.0667 ms (bound 2: PASS; product 40: PASS), slope -0.03 ppm of -200; listeners before the sources ['127.0.0.1:8559', '127.0.0.1:8561']; mid-session 4 sockets of 4 own processes, off loopback 0, UDP 0, foreign ports 0
+neg_av2c_reports_without_rate_r2         expect FAIL got FAIL      rc 0       ok         load  3.13   43.1 s
+      control: failed as required, on av_regression_2ms, drift_slope_near_zero
+      cam1 mean +3.2314 ms, max err 6.0361 ms (bound 2: FAIL; product 40: PASS), slope +200.09 ppm of +200; cam2 mean -3.5681 ms, max err 6.3597 ms (bound 2: FAIL; product 40: PASS), slope -199.78 ppm of -200; listeners before the sources ['127.0.0.1:8559', '127.0.0.1:8561']; mid-session 4 sockets of 4 own processes, off loopback 0, UDP 0, foreign ports 0; failed on: av_regression_2ms, drift_slope_near_zero
+want_r2_near_bound_steady_delay_r2       expect FAIL got FAIL      rc 0       ok         load  3.04   43.2 s
+      control: failed as required, on near_bound_false_with_a_steady_delay
+      cam1 mean +0.0139 ms, max err 0.0139 ms (bound 2: PASS; product 40: PASS); cam2 mean +0.0113 ms, max err 0.0139 ms (bound 2: PASS; product 40: PASS); listeners before the sources ['127.0.0.1:8559', '127.0.0.1:8561']; mid-session 4 sockets of 4 own processes, off loopback 0, UDP 0, foreign ports 0; failed on: near_bound_false_with_a_steady_delay
+want_r2_near_bound_clock_step_r2         expect FAIL got FAIL      rc 0       ok         load  4.22   90.0 s
+      control: failed as required, on near_bound_false_before_the_step, near_bound_false_for_the_steady_camera, near_bound_true_after_a_clock_step
+      listeners before the sources ['127.0.0.1:8559', '127.0.0.1:8561']; mid-session 4 sockets of 4 own processes, off loopback 0, UDP 0, foreign ports 0; failed on: near_bound_false_before_the_step, near_bound_false_for_the_steady_camera, near_bound_true_after_a_clock_step
+want_f6_camera_clock_sanity_bound_r2     expect FAIL got NO-RESULT rc 1       UNEXPECTED load  3.24    0.3 s
+      RuntimeError: worker exited (rc 64) while waiting for ACK cap:S-M3W-INE-WANT-F6-CAMERA-CLOCK-SANITY-BOUND-R2:1:1
+
+10 checks (2 expected PASS, 8 negative controls expected FAIL): 9 as expected, 1 unexpected: want_f6_camera_clock_sanity_bound_r2
+ports still listening after the series: none
+load at the start of the timing-sensitive checks: 2.83 .. 4.59
+AGGREGATE EXIT CODE 1

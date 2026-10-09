@@ -18,9 +18,11 @@ import { useTranslation } from 'react-i18next'
 import { useCoreActions } from '@dems/shared/live'
 import { selectOperator, useSim, type SimActions, type SimState } from '@dems/shared/sim'
 import { usePendingControl } from '@/lib/pending-control'
+import { CAPTURE_SELECTOR_ANCHOR } from '@/features/devices/capture-selector'
 import { useMotionPolicy } from '@/motion'
 import { useSystemLiveMode } from './live'
 import { SystemPanel } from './panel'
+import { SttSettingsItem } from './stt-config-section'
 import { setPresentationModeEverywhere, useConsolePrefs, usePreferenceWriteFailure, usePresentationModeSetting } from './sim-adapter'
 import { useSimCommand } from './use-sim-command'
 
@@ -240,7 +242,14 @@ export function SettingsPanel({ maintenanceAnchor, aboutAnchor }: { maintenanceA
           <Link to="/devices" className="sys-link">
             {t('system.settings.openDevices')}
           </Link>
+          {/* Task 3 row 67 (WB-07; ux §2.6): the entry to the capture device selector of Devices & Inputs. */}
+          <Link to="/devices" hash={CAPTURE_SELECTOR_ANCHOR} className="sys-link" data-testid="system-capture-selector-entry">
+            {t('devices.selector.openFromSystem')}
+          </Link>
         </Item>
+
+        {/* MOUNT POINT of row 117 (STT settings; ux §8a "next to the capture devices entry"): its one item, built in `stt-config-section.tsx`. */}
+        <SttSettingsItem />
 
         <Item id="storage" icon={Database} title={t('system.settings.storageManagement')}>
           <p>

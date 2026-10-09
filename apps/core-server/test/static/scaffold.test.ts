@@ -35,6 +35,9 @@ const UNITS: ReadonlyArray<readonly [folder: string, exportName: string, row: st
   ['modules/capture-config', 'captureConfigModule', 'task 3 row 52, registered by row 57'],
   // Task 3 M6, blueprint row 113 (R-8; C3 §2.5): operations 90 to 92.
   ['modules/stt-config', 'sttConfigModule', 'task 3 row 113'],
+  // Task 3 R-9, R-10 (decision D114: the OD-14 waiver extended): operations 93, 94 and 97.
+  ['modules/capture-discovery', 'captureDiscoveryModule', 'task 3 row 132'],
+  ['modules/capture-inputs', 'captureInputsModule', 'task 3 row 133'],
 ];
 
 /** The plugins of the scaffold itself, which `app.ts` imports as well. */
@@ -45,10 +48,10 @@ const text = (path: string): string => files.find((file) => file.path === path)?
 const factory = codeOnly([{ path: 'src/app.ts', text: text('src/app.ts') }]);
 
 describe('the units of the scaffold', () => {
-  it('are four stage plugins, core, engine, realtime, thirteen stubbed modules and health, and the two capture units and the STT configuration module of task 3', () => {
-    expect(UNITS).toHaveLength(24);
+  it('are four stage plugins, core, engine, realtime, thirteen stubbed modules and health, and the two capture units, the STT configuration module and the two modules of the camera search and the local inputs of task 3', () => {
+    expect(UNITS).toHaveLength(26);
     expect(UNITS.filter(([folder]) => folder.startsWith('plugins/'))).toHaveLength(4);
-    expect(UNITS.filter(([folder]) => folder.startsWith('modules/'))).toHaveLength(16);
+    expect(UNITS.filter(([folder]) => folder.startsWith('modules/'))).toHaveLength(18);
   });
 
   it.each(UNITS)('src/%s/index.ts exports %s (owner %s)', (folder, exportName) => {

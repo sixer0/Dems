@@ -116,8 +116,29 @@ export const CoreApiAccessCondition = {
    * whose `details.reason` names this condition (`C3 §5.3`).
    */
   SESSION_HOLDER: 'SESSION_HOLDER',
+  /**
+   * Task 3 R-9 (blueprint row 132, decision D106; `C3 §0` erratum PE-121-04, §2.6 access notes;
+   * D80(3); SEC35-45): the caller's operator session is NOT bound to a paired device — a web
+   * console session. It is the complement of `DEVICE_SESSION` and joins the `CAPTURE_CONFIG`
+   * permission on the three operations whose body carries a camera credential (89, 95, 96). A
+   * session of a tablet or a phone is refused `403 NOT_PERMITTED` with `details.reason`
+   * `WEB_CONSOLE_ONLY` (`WEB_CONSOLE_ONLY_REASON`) and one `ACCESS_DENIED` row, before the body is
+   * used: nothing of the body reaches a log, an audit row or an error.
+   *
+   * A policy fence that keeps the camera credential off the tablet and phone code paths. It is not
+   * an authentication factor: any client that signs in with an operator's password and no device
+   * credential holds it.
+   */
+  WEB_CONSOLE_SESSION: 'WEB_CONSOLE_SESSION',
 } as const;
 export type CoreApiAccessCondition = (typeof CoreApiAccessCondition)[keyof typeof CoreApiAccessCondition];
+
+/**
+ * `details.reason` of the `403 NOT_PERMITTED` that the condition `WEB_CONSOLE_SESSION` answers, and
+ * of its `ACCESS_DENIED` row (`C3 §4` erratum PE-121-08; SEC35-45 (3)). One value for the Core
+ * server and for the in-app simulator of a tablet or phone.
+ */
+export const WEB_CONSOLE_ONLY_REASON = 'WEB_CONSOLE_ONLY';
 
 /** `details.reason` of the `403 DEVICE_NOT_PAIRED` that the condition `DEVICE_CREDENTIAL` answers. */
 export const DEVICE_CREDENTIAL_REQUIRED_REASON = 'DEVICE_CREDENTIAL_REQUIRED';

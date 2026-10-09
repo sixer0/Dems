@@ -32,6 +32,7 @@ import {
   SttConnectionTestSchema,
   createOpenApiDocument,
   describeCoreApiAccess,
+  isSttConfigEndpoint,
   isSttLoopbackEndpoint,
   isSttModelId,
   planSttConfigUpdate,
@@ -98,8 +99,8 @@ describe('the registry: operations 90 to 92 as C3 §2.5 writes them', () => {
       [91, 'updateSttConfig', 'post', '/api/v1/transcription/config', 'Device', 'simulated', 'CAPTURE_CONFIG', 'STT_CONFIG_CHANGED', 'ACCESS_DENIED'],
       [92, 'testSttConnection', 'post', '/api/v1/transcription/config/test', 'Device', 'simulated', 'CAPTURE_CONFIG', CoreApiAuditNone.PARITY, 'ACCESS_DENIED'],
     ]);
-    // They are the last three entries of the table, in number order.
-    expect(CORE_API_OPERATIONS.slice(-3).map((operation) => operation.operationId)).toEqual(['getSttConfig', 'updateSttConfig', 'testSttConnection']);
+    // They are entries 90 to 92 of the table, in number order (the five of the camera search, 93-97, follow: row 132).
+    expect(CORE_API_OPERATIONS.slice(89, 92).map((operation) => operation.operationId)).toEqual(['getSttConfig', 'updateSttConfig', 'testSttConnection']);
   });
 
   it('the documented statuses are those of C3 §2.5; no operation documents a status of its own for the credential', () => {
@@ -194,6 +195,35 @@ describe('loopback only (OD-13): ENDPOINT_NOT_LOOPBACK', () => {
     }
   });
 
+  // Task 3 row 115 (D71; pair-76 N-9): the rule of the transcriber, held by operation 91 and by the simulator.
+  it('refuses a loopback endpoint that holds `?`, `#`, a backslash, white space or a control character; the simulator answers 422', async () => {
+    const refusedForms = [
+      'http://127.0.0.1:8000/v1?x=1',
+      'http://127.0.0.1:8000/v1#frag',
+      'http://127.0.0.1:8000/v1\\models',
+      'http://127.0.0.1:8000/v1 models',
+      'http://127.0.0.1:8000/v1\tmodels',
+      'http://127.0.0.1:8000/v1\nmodels',
+      'http://127.0.0.1:8000/\u0000',
+      'http://127.0.0.1:8000/\u007f',
+      'http://localhost:8000/v1 ',
+    ];
+    for (const endpoint of refusedForms) expect(isSttConfigEndpoint(endpoint), JSON.stringify(endpoint)).toBe(false);
+    // Positive control: the same address without the character is accepted, so the refusal is the character's.
+    expect(isSttConfigEndpoint('http://127.0.0.1:8000/v1')).toBe(true);
+    expect(isSttConfigEndpoint('http://localhost:8000/v1/models')).toBe(true);
+    // Never laxer than the loopback form: what that refuses, this refuses.
+    for (const endpoint of ['http://192.168.1.20:8000', 'https://127.0.0.1:8000', 'http://127.0.0.1:0', '']) expect(isSttConfigEndpoint(endpoint), endpoint).toBe(false);
+    const sim = await simAs('TECHNICIAN');
+    for (const endpoint of refusedForms) {
+      const [status] = outcome(post(sim, { revision: 1, backend: 'omlx-server', endpoint }));
+      expect(status, JSON.stringify(endpoint)).toBe(422);
+    }
+    expect(outcome(post(sim, { revision: 1, backend: 'omlx-server', endpoint: 'http://127.0.0.1:8000/v1?x=1' }))).toEqual([422, 'INVALID_INPUT', 'ENDPOINT_NOT_LOOPBACK']);
+    expect((get(sim).body as SttConfig).revision).toBe(1);
+    sim.stop();
+  });
+
   it('the pattern is, character for character, the CHECK of the table (dbc-3 §B.13)', () => {
     expect(STT_LOOPBACK_ENDPOINT_PATTERN.source.replaceAll('\\/', '/')).toBe('^http://(127\\.0\\.0\\.1|localhost)(:[0-9]{1,5})?(/.*)?$');
   });
@@ -267,8 +297,9 @@ describe('the model identifier: one shared pattern, used by operation 91', () =>
     const document = createOpenApiDocument({ scope: 'all' });
     const schema = document.components.schemas['SttConfigUpdateRequest'] as { properties: { model: { pattern?: string } } };
     expect(schema.properties.model.pattern).toBe(STT_MODEL_ID_PATTERN.source);
-    expect(Object.keys(document.components.schemas)).toHaveLength(158);
-    expect(CORE_API_OPERATIONS).toHaveLength(92);
+    // The totals after R-9..R-11 (row 132, D106; C3 §10.1): 158 -> 166 schemas, 92 -> 97 operations.
+    expect(Object.keys(document.components.schemas)).toHaveLength(166);
+    expect(CORE_API_OPERATIONS).toHaveLength(97);
   });
 });
 

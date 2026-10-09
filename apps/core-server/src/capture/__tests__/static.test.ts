@@ -23,6 +23,7 @@ import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { logCalls } from '../../../test/static/log-calls';
 import { WORKSPACE, codeOnly, isProductionSource, occurrences, readTree, under, type SourceFile } from '../../../test/static/scan';
+import { CAMERA_HELPER_TABLE, CameraHelperEncoder, LOCAL_CAMERA_DEVICE_NAME, LOCAL_MIC_DEVICE_NAME, MIC_HELPER_TABLE, MicGeneratedTone, cameraPrecheckArguments, cameraPushArguments, deviceListArguments, micPrecheckArguments, micPushArguments } from '../adapters/local';
 
 const tree = readTree(WORKSPACE);
 const production = codeOnly(tree.filter((file) => isProductionSource(file.path) && file.path.endsWith('.ts')));
@@ -59,11 +60,31 @@ const SENSITIVE_KEY = /key|secret|credential|passw|token|url|uri|address|host|pl
 /** The fields of a capture plan that hold an address or a path, and the words for a secret. */
 const SENSITIVE_NAME = new RegExp(`\\b(?:${['plan', 'ingestUrl', 'outputPath', 'credential', 'credentials', 'password', 'secret', 'token'].join('|')})\\b`, 'g');
 
+/** Row 131: the ONE file of the server that may import the datagram module (pinned; G-R9, C-N13, SEC35-27). */
+const WS_DISCOVERY = 'src/capture/adapters/camera/ws-discovery.ts';
+/** Row 83: the ONE file of the evidence signer that may import the file system and the cryptography module (pinned; G-R2, G-R8). */
+const SIGNER_HOST_KEY = 'src/capture/signer/host-key.ts';
+/** Row 142: the ONE file of the server that imports the `onvif` package and an HTTP agent (pinned; G-R10, G-R11, SEC35-27). */
+const ONVIF_SESSION = 'src/capture/adapters/camera/onvif-session.ts';
+/** Rows 134 to 136 (decision D95): the ONE door of the local-device helpers, the second file that may start a process (pinned; G-R2, G-R8, G-R12). */
+const LOCAL_HELPER_DOOR = 'src/capture/adapters/local/process-door.ts';
+/** Row 135: the ONE file that touches the named pipe of a microphone (pinned; G-R2, G-R6). */
+const LOCAL_PIPE_FILES = 'src/capture/adapters/local/pipe-files.ts';
+
 const places = (files: readonly SourceFile[], pattern: RegExp): string[] => [...new Set(occurrences(files, pattern).map((place) => place.replace(/:\d+$/, '')))];
 
 describe('the scan itself', () => {
   it('reads the production sources of the capture folder', () => {
-    expect(capture.map((file) => file.path)).toEqual(['src/capture/forwarder.ts', 'src/capture/index.ts', 'src/capture/ipc.ts', 'src/capture/supervisor.ts', 'src/capture/timers.ts', 'src/capture/types.ts']);
+    // The adapter layer (row 65) is part of `capture` for every rule below; its own file list is pinned in `adapters/__tests__/static.test.ts`.
+    const ADAPTERS = 'src/capture/adapters/';
+    // The evidence signer (row 83) is part of `capture` for every rule below as well; its files are pinned here by name.
+    const SIGNER = 'src/capture/signer/';
+    expect(capture.filter((file) => file.path.startsWith(SIGNER)).map((file) => file.path).sort()).toEqual(['src/capture/signer/der.ts', 'src/capture/signer/host-key.ts', 'src/capture/signer/index.ts', 'src/capture/signer/key-record.ts', 'src/capture/signer/seal.ts', 'src/capture/signer/types.ts']);
+    // The capture fence (row 136) is part of `capture` for every rule below too; its files are pinned here by name.
+    const FENCE = 'src/capture/fence/';
+    expect(capture.filter((file) => file.path.startsWith(FENCE)).map((file) => file.path).sort()).toEqual(['boot.ts', 'generated-sources.ts', 'index.ts', 'operation.ts', 'registration.ts', 'sources.ts', 'statements.ts'].map((name) => `${FENCE}${name}`));
+    expect(capture.filter((file) => !file.path.startsWith(ADAPTERS) && !file.path.startsWith(SIGNER) && !file.path.startsWith(FENCE)).map((file) => file.path)).toEqual(['src/capture/forwarder.ts', 'src/capture/fragments.ts', 'src/capture/index.ts', 'src/capture/ipc.ts', 'src/capture/supervisor.ts', 'src/capture/timers.ts', 'src/capture/types.ts']);
+    expect(capture.filter((file) => file.path.startsWith(ADAPTERS)).length).toBeGreaterThanOrEqual(16);
     expect(hosts.length).toBeGreaterThan(100);
   });
 
@@ -125,18 +146,24 @@ describe('G-R1: the host units open no door of their own', () => {
 
 describe('G-R2: the pinned allowlist of the capture folder (SEC35-25)', () => {
   /** The files that own the spawn and the handshake (spec §G G-R2). */
-  const ALLOWLIST = ['src/capture/supervisor.ts', 'src/capture/ipc.ts'];
+  const ALLOWLIST = ['src/capture/supervisor.ts', 'src/capture/ipc.ts', SIGNER_HOST_KEY, LOCAL_HELPER_DOOR, LOCAL_PIPE_FILES];
 
   it('the process module and the file system are imported by files of the allowlist only', () => {
     const importers = [...new Set([...places(capture, PROCESS_MODULE), ...places(capture, FILE_SYSTEM)])];
     expect(importers.filter((path) => !ALLOWLIST.includes(path))).toEqual([]);
-    // What is there today: one importer, of the process module; the file system is not imported at all.
-    expect(places(capture, PROCESS_MODULE)).toEqual(['src/capture/ipc.ts']);
-    expect(places(capture, FILE_SYSTEM)).toEqual([]);
+    // What is there today: the worker's process channel and (rows 134 to 136, decision D95) the pinned door of the local-device helpers.
+    expect(places(capture, PROCESS_MODULE).sort()).toEqual([LOCAL_HELPER_DOOR, 'src/capture/ipc.ts']);
+    // Row 83: the software signer's key at rest (evidence package spec §C.3, SEC35-07). Rows 134 / 135: the facts of a program path
+    // (the door) and the named pipe of a microphone (`pipe-files.ts`: lstat, mkdir, realpath, unlink and nothing else).
+    expect(places(capture, FILE_SYSTEM).sort()).toEqual([LOCAL_PIPE_FILES, LOCAL_HELPER_DOOR, SIGNER_HOST_KEY]);
   });
 
   it('no file of the folder opens a socket or starts a worker thread', () => {
-    expect(occurrences(capture, SOCKET_OR_THREAD)).toEqual([]);
+    // Row 131 (G-R9): the ONE datagram socket of the Core is the WS-Discovery probe; its file is pinned by name, for that one module.
+    // Row 142 (G-R10): the ONE importer of an HTTP agent is the connection test; its file is pinned by name, for those two modules.
+    expect(occurrences(capture, SOCKET_OR_THREAD, (path) => path !== WS_DISCOVERY && path !== ONVIF_SESSION)).toEqual([]);
+    expect((capture.find((file) => file.path === WS_DISCOVERY)?.text.match(SOCKET_OR_THREAD) ?? []).map((text) => text.replace(/['"]/g, ''))).toEqual([join('node:', 'dg', 'ram')]);
+    expect((capture.find((file) => file.path === ONVIF_SESSION)?.text.match(SOCKET_OR_THREAD) ?? []).map((text) => text.replace(/['"]/g, ''))).toEqual([join('node:', 'ht', 'tp'), join('node:', 'ht', 'tps')]);
   });
 
   it('no file of the folder names a credential file, a key file or the oMLX settings', () => {
@@ -188,8 +215,8 @@ describe('G-R7: the simulator is used through its public barrel only', () => {
 });
 
 describe('G-R8: process, timer, time and chance go through one named place each', () => {
-  it('only ipc.ts starts a process', () => {
-    expect(places(capture, PROCESS_START)).toEqual(['src/capture/ipc.ts']);
+  it('only ipc.ts and the pinned door of the local-device helpers start a process', () => {
+    expect(places(capture, PROCESS_START).sort()).toEqual([LOCAL_HELPER_DOOR, 'src/capture/ipc.ts']);
   });
 
   it('only timers.ts names a global timer', () => {
@@ -202,7 +229,212 @@ describe('G-R8: process, timer, time and chance go through one named place each'
   });
 
   it('no file draws a random number or imports a source of one: a correlation ID is counted, not drawn', () => {
-    expect(occurrences(capture, RANDOM)).toEqual([]);
+    // Row 83: the same one file imports the cryptography module (key generation, Ed25519 sign and verify); no other file does.
+    expect(occurrences(capture, RANDOM, (path) => path !== SIGNER_HOST_KEY)).toEqual([]);
+    expect(places(capture, RANDOM)).toEqual([SIGNER_HOST_KEY]);
+  });
+});
+
+// Row 131 (check M4-SR-1, rules G-R9 and G-R13; check M4-SEC-DISC-4, static half; capture spec §G.1,
+// §A.6.1 DS-1, DS-2, DS-5, DS-15, DS-16; specs C-N13; SEC35-27 (1), (6), SEC35-29 (2), SEC35-30 (4)).
+describe('G-R9: one datagram socket, in one file, closed on every way out, to one destination', () => {
+  const DATAGRAM = moduleImport([join('dg', 'ram')]);
+  const PARSER = new RegExp(`['"]${join('xml', '2js')}(?:/[^'"]*)?['"]`, 'g');
+  const PROBE_ANSWER = 'src/capture/adapters/camera/probe-answer.ts';
+  /** The parser ships no types: its declaration stands beside its one importer and names the module too. */
+  const PARSER_TYPES = 'src/capture/adapters/camera/xml2js.d.ts';
+  const CREATE = new RegExp(`\\b${join('create', 'Socket')}\\s*\\(`, 'g');
+  const FORBIDDEN_SOCKET_USE = new RegExp(`\\b(?:${[join('add', 'Membership'), join('addSourceSpecific', 'Membership'), join('reuse', 'Addr'), join('reuse', 'Port'), join('set', 'Broadcast'), join('udp', '6')].join('|')})\\b`, 'g');
+  const FIXTURE = new RegExp(`\\b${join('loopback', 'Fixture')}\\b`, 'g');
+  const LOG_OR_FILE = new RegExp(`\\bconsole\\s*\\.|\\b(?:write|append)File(?:Sync)?\\s*\\(|\\bcreateWriteStream\\s*\\(`, 'g');
+  const SETTLE = /\b(?:resolveSearch|rejectSearch)\s*\(/g;
+  const discovery = capture.find((file) => file.path === WS_DISCOVERY)?.text ?? '';
+
+  /** The rule as a function of a tree, so that the control can run it on planted files. */
+  const violations = (files: readonly SourceFile[]): string[] => [
+    ...occurrences(files, DATAGRAM, (path) => path !== WS_DISCOVERY).map((place) => `${place} imports the datagram module`),
+    ...occurrences(files, PARSER, (path) => path !== PROBE_ANSWER && path !== PARSER_TYPES).map((place) => `${place} imports the XML parser`),
+    ...occurrences(files, FIXTURE, (path) => path !== WS_DISCOVERY).map((place) => `${place} names the loopback test target`),
+    ...occurrences(files, FORBIDDEN_SOCKET_USE, (path) => path.startsWith('src/capture/')).map((place) => `${place} joins a group, shares a port, broadcasts or opens IPv6`),
+  ];
+
+  it('finds a second importer, a second parser, a product file that sets the test target, and a joined group (control)', () => {
+    const planted: SourceFile[] = [
+      { path: 'src/modules/capture-config/search.ts', text: `import { ${join('create', 'Socket')} } from 'node:${join('dg', 'ram')}';\nconst adapter = build({ ${join('loopback', 'Fixture')}: { address, port } });` },
+      { path: 'src/capture/adapters/camera/onvif-session.ts', text: `import xml from '${join('xml', '2js')}';\nimport dgram from '${join('dg', 'ram')}';` },
+      { path: 'src/capture/adapters/camera/other.ts', text: `socket.${join('add', 'Membership')}(group);\nconst socket = make({ type: '${join('udp', '6')}', ${join('reuse', 'Addr')}: true });` },
+    ];
+    expect(violations(planted)).toEqual([
+      'src/modules/capture-config/search.ts:1 imports the datagram module',
+      'src/capture/adapters/camera/onvif-session.ts:2 imports the datagram module',
+      'src/capture/adapters/camera/onvif-session.ts:1 imports the XML parser',
+      'src/modules/capture-config/search.ts:2 names the loopback test target',
+      'src/capture/adapters/camera/other.ts:1 joins a group, shares a port, broadcasts or opens IPv6',
+      'src/capture/adapters/camera/other.ts:2 joins a group, shares a port, broadcasts or opens IPv6',
+      'src/capture/adapters/camera/other.ts:2 joins a group, shares a port, broadcasts or opens IPv6',
+    ]);
+    const leak = `const socket = ${join('create', 'Socket')}({ type: 'udp4' });\nresolveSearch(result());\nconst second = ${join('create', 'Socket')}({ type: 'udp4' });`;
+    expect([...leak.matchAll(CREATE)]).toHaveLength(2);
+    expect([...leak.matchAll(SETTLE)]).toHaveLength(1);
+  });
+
+  it('the datagram module is imported by exactly one file of the server, the parser by exactly one, and no product file sets the loopback test target', () => {
+    expect(violations(production)).toEqual([]);
+    expect(places(production, DATAGRAM)).toEqual([WS_DISCOVERY]);
+    expect(places(production, PARSER)).toEqual([PROBE_ANSWER, PARSER_TYPES]);
+    // SEC35-27 (6): the option is declared and read in the one file; nothing else under src/ passes it.
+    expect(places(production, FIXTURE)).toEqual([WS_DISCOVERY]);
+  });
+
+  it('that file: one createSocket call site, the type literal udp4, TTL 1, no group joined, the constant group or the loopback literal as the only destinations', () => {
+    expect([...discovery.matchAll(CREATE)]).toHaveLength(1);
+    expect(discovery).toContain(`${join('create', 'Socket')}({ type: 'udp4' })`);
+    expect(discovery).toContain("export const WS_DISCOVERY_GROUP = Object.freeze({ address: '239.255.255.250', port: 3702 });");
+    expect(discovery).toContain('export const WS_DISCOVERY_TTL = 1;');
+    expect(discovery).toContain('open.setMulticastTTL(WS_DISCOVERY_TTL);');
+    // One send call site; its destination is the group constant or the injected target, which is refused unless it is the loopback literal.
+    expect([...discovery.matchAll(/\.send\s*\(/g)]).toHaveLength(1);
+    expect(discovery).toContain('open.send(probe, destination.port, destination.address, sent);');
+    expect(discovery).toContain('const destination = fixture ?? WS_DISCOVERY_GROUP;');
+    expect(discovery).toContain("const LOOPBACK = '127.0.0.1';");
+    expect(discovery).toMatch(/if \(fixture !== null && \(fixture\.address !== LOOPBACK \|\|[^\n]*\n\s*throw new CaptureAdapterError/);
+    // Every address literal of the file: the group and the loopback literal, and one documentation address for the fixture's synthetic interface.
+    expect([...new Set(discovery.match(/\b\d{1,3}(?:\.\d{1,3}){3}\b/g) ?? [])].sort()).toEqual(['127.0.0.1', '192.0.2.1', '239.255.255.250', '255.255.255.0']);
+  });
+
+  it('that file: one place closes the socket, and the search settles only through it once a socket exists', () => {
+    expect([...discovery.matchAll(/\.close\s*\(/g)]).toHaveLength(1);
+    const finish = discovery.slice(discovery.indexOf('const finish = '), discovery.indexOf('const result = '));
+    expect(finish).toContain('open.close(() => settle());');
+    // The three settles that do not pass through `finish` all stand before the socket is declared: nothing is open yet.
+    const direct = [...discovery.matchAll(SETTLE)].filter((match) => !discovery.slice(0, match.index).endsWith('finish(() => '));
+    expect(direct).toHaveLength(3);
+    expect(direct.every((match) => (match.index ?? 0) < discovery.indexOf('let socket: Socket | null = null;'))).toBe(true);
+    expect([...discovery.matchAll(SETTLE)].length - direct.length).toBe(3);
+    // The datagram handler is one try / catch (SEC35-29 (1)).
+    expect(discovery).toMatch(/const onDatagram = \(bytes: Buffer, remote: RemoteInfo\): void => \{\s*try \{[^}]*\} catch \{\s*handlerErrors \+= 1;\s*\}\s*\};/);
+  });
+
+  it('the parser options are pinned in the one file that imports it (SEC35-29 (2)): strict, arrays always, synchronous, no value or attribute processor', () => {
+    const answer = capture.find((file) => file.path === PROBE_ANSWER)?.text ?? '';
+    for (const option of ['strict: true,', 'explicitArray: true,', 'async: false,', 'ignoreAttrs: true,']) expect(answer, option).toContain(option);
+    expect([...answer.matchAll(/new xml2js\.Parser\s*\(/g)]).toHaveLength(1);
+    expect(answer).not.toMatch(/valueProcessors|attrValueProcessors|attrNameProcessors|parseStringPromise|JSON\.stringify|structuredClone/);
+  });
+
+  it('M4-SEC-DISC-4 (static half): the discovery files log nothing and write no file: counts leave through the result only', () => {
+    const camera = capture.filter((file) => file.path.startsWith('src/capture/adapters/camera/'));
+    expect(camera.length).toBeGreaterThanOrEqual(5);
+    expect(camera.filter((file) => logCalls(file.text).length > 0).map((file) => file.path)).toEqual([]);
+    expect(occurrences(camera, LOG_OR_FILE)).toEqual([]);
+    expect(occurrences([{ path: 'x.ts', text: "console.log(candidate.host);\nwriteFileSync(path, JSON.stringify(result));" }], LOG_OR_FILE)).toEqual(['x.ts:1', 'x.ts:2']);
+  });
+});
+
+describe('G-R13: a search is started by the search operation and the pre-check, and by nothing else', () => {
+  /**
+   * The production files that call `discover` (R-9 AC-1). Row 132 wired the adapter: ONE file holds
+   * the one call, and both triggers come through it - the search operation (`routes.ts`, op 93) and
+   * the pre-check's search (`index.ts`, `runPrecheckSearch`). Another entry is a decision, not a habit.
+   */
+  const DISCOVER_CALL_SITES: readonly string[] = ['src/modules/capture-discovery/search.ts'];
+  const DISCOVER_CALL = /\.\s*discover\s*\(/g;
+
+  it('finds a call from a boot hook, a timer or a read operation (control)', () => {
+    const planted: SourceFile[] = [
+      { path: 'src/capture/index.ts', text: "app.addHook('onReady', async () => {\n  await registry.cameraAdapters()[0]?.discover({ windowMs, signal });\n});" },
+      { path: 'src/modules/capture-config/list.ts', text: 'const found = await adapter.discover(search);' },
+      // Not a call: the member's definition, and another name.
+      { path: 'src/capture/adapters/fake/camera.ts', text: 'async discover(search) {}\nconst discoverAll = 1;\nrediscover(x);' },
+    ];
+    expect(places(planted, DISCOVER_CALL)).toEqual(['src/capture/index.ts', 'src/modules/capture-config/list.ts']);
+  });
+
+  it('no production file calls discover but the pinned call sites', () => {
+    expect(places(production, DISCOVER_CALL)).toEqual(DISCOVER_CALL_SITES);
+  });
+});
+
+// Row 142 (check M4-SR-1, rules G-R10 and G-R11; check M4-SEC-NET-1, the `onvif` half; capture spec
+// §G.1, §A.6.2 CT-1 to CT-4; decisions D75, D76, D82; SEC35-27, SEC35-33 (4), (5), (6), SEC35-49).
+describe('G-R10 / G-R11: one importer of the ONVIF client, five reads, no stream connection', () => {
+  const PACKAGE = new RegExp(`['"]${join('on', 'vif')}(?:/[^'"]*)?['"]`, 'g');
+  /** The package's types describe every operation of a client: the declaration beside the one importer declares the five reads only. */
+  const PACKAGE_TYPES = 'src/capture/adapters/camera/onvif-cam.d.ts';
+  const FILE_OF_THE_CLIENT = `${join('on', 'vif')}/lib/cam.js`;
+  const AGENT_IMPORT = new RegExp(`^import \\{ Agent as Https?Agent \\} from 'node:${join('ht', 'tp')}s?';$`, 'gm');
+  const STREAM_OR_SOCKET = moduleImport(['net', 'tls', join('ht', 'tp2')]);
+  const CLIENT_CALL = /\bclient\s*\.\s*([A-Za-z_$][\w$]*)\s*\(/g;
+  const NO_CERTIFICATE_CHECK = new RegExp(`${join('reject', 'Unauthorized')}\\s*:\\s*false`, 'g');
+  /** The reads of rule CT-1, as the package names them. */
+  const READS = ['getCapabilities', 'getProfiles', 'getServices', 'getStreamUri', 'getSystemDateAndTime'];
+  const session = capture.find((file) => file.path === ONVIF_SESSION)?.text ?? '';
+  const types = capture.find((file) => file.path === PACKAGE_TYPES)?.text ?? '';
+  const callsOf = (text: string): string[] => [...new Set([...text.matchAll(CLIENT_CALL)].map((match) => match[1] ?? ''))].sort();
+
+  /** The rule as a function of a tree, so that the control can run it on planted files. */
+  const violations = (files: readonly SourceFile[]): string[] => [
+    ...occurrences(files, PACKAGE, (path) => path !== ONVIF_SESSION && path !== PACKAGE_TYPES).map((place) => `${place} imports the ONVIF client`),
+    ...occurrences(files, STREAM_OR_SOCKET, (path) => path.startsWith('src/capture/')).map((place) => `${place} imports a socket, TLS or HTTP/2 module`),
+    ...occurrences(files, NO_CERTIFICATE_CHECK, (path) => path !== ONVIF_SESSION).map((place) => `${place} switches the certificate check off`),
+    ...files.filter((file) => file.path === ONVIF_SESSION).flatMap((file) => callsOf(file.text).filter((name) => !READS.includes(name)).map((name) => `${file.path} calls ${name} on the client`)),
+  ];
+
+  it('finds a second importer, the package\'s main entry, a write call, a listener and a second place without a certificate check (control)', () => {
+    const planted: SourceFile[] = [
+      { path: 'src/modules/capture-discovery/connect/service.ts', text: `import { Cam } from '${join('on', 'vif')}';\nconst agent = new Agent({ ${join('reject', 'Unauthorized')}: false });` },
+      { path: 'src/capture/adapters/camera/onvif-discovery.ts', text: `import { connect } from 'node:${'net'}';\nimport tls from '${'tls'}';` },
+      { path: ONVIF_SESSION, text: `client.getProfiles(done);\nclient.setSystemDateAndTime(options, done);\nclient.connect(done);\nclient.on('rawResponse', keep);\nclient . systemReboot(done);` },
+    ];
+    expect(violations(planted)).toEqual([
+      'src/modules/capture-discovery/connect/service.ts:1 imports the ONVIF client',
+      'src/capture/adapters/camera/onvif-discovery.ts:1 imports a socket, TLS or HTTP/2 module',
+      'src/capture/adapters/camera/onvif-discovery.ts:2 imports a socket, TLS or HTTP/2 module',
+      'src/modules/capture-discovery/connect/service.ts:2 switches the certificate check off',
+      `${ONVIF_SESSION} calls connect on the client`,
+      `${ONVIF_SESSION} calls on on the client`,
+      `${ONVIF_SESSION} calls setSystemDateAndTime on the client`,
+      `${ONVIF_SESSION} calls systemReboot on the client`,
+    ]);
+  });
+
+  it('the package is imported by exactly one file of the server, by the file of the client and never by its main entry', () => {
+    expect(violations(production)).toEqual([]);
+    expect(places(production, PACKAGE)).toEqual([PACKAGE_TYPES, ONVIF_SESSION]);
+    // The main entry would load the package's datagram code (capture spec §A.6.1a O-8): the client's own file is named.
+    expect((session.match(PACKAGE) ?? []).map((text) => text.replace(/['"]/g, ''))).toEqual([FILE_OF_THE_CLIENT]);
+    expect((types.match(PACKAGE) ?? []).map((text) => text.replace(/['"]/g, ''))).toEqual([FILE_OF_THE_CLIENT]);
+    expect(session).not.toMatch(/\bDiscovery\b/);
+  });
+
+  it('the calls on the client are the five reads, and the declaration of the client has no other member', () => {
+    expect(callsOf(session)).toEqual(READS);
+    const declared = [...types.matchAll(/^\s{4}(\w+)\(/gm)].map((match) => match[1] ?? '').filter((name) => name !== 'constructor');
+    expect(declared.sort()).toEqual(READS);
+  });
+
+  it('one constructor call: no automatic connect, the address of the constructor kept, an explicit request limit; no listener on the client', () => {
+    expect([...session.matchAll(/\bnew\s+cam\s*\.\s*Cam\s*\(/g)]).toHaveLength(1);
+    const built = session.slice(session.indexOf('new cam.Cam('), session.indexOf('new cam.Cam(') + 600);
+    for (const option of ['autoconnect: false,', 'preserveAddress: true,', 'timeout: limits.requestMs,', 'agent,']) expect(built, option).toContain(option);
+    expect(session).not.toMatch(/rawRequest|rawResponse|\.\s*(?:on|once|addListener)\s*\(\s*['"]warning['"]/);
+  });
+
+  it('the client never leaves the file: what the file exports is the facade and its vocabulary', () => {
+    const exported = [...session.matchAll(/^export\s+(?:const|function|interface|type|class)\s+(\w+)/gm)].map((match) => match[1] ?? '');
+    expect([...new Set(exported)].sort()).toEqual(['ONVIF_SESSION_LIMITS', 'ONVIF_SESSION_READS', 'OnvifConnectionTester', 'OnvifConnectionTesterOptions', 'OnvifSessionLimits', 'OnvifSessionRead', 'OnvifSessionResult', 'OnvifTestReason', 'OnvifTestWarning', 'createOnvifConnectionTester']);
+    expect(session).not.toMatch(/\breturn\s+client\b|\bexport\s+default\b|\bexport\s*\{/);
+    expect(session).toContain('return Object.freeze({ test });');
+  });
+
+  it('G-R10: an HTTP agent is imported in that one file, for the name Agent only; no socket, TLS or HTTP/2 module anywhere in the folder', () => {
+    expect(session.match(AGENT_IMPORT)).toEqual([`import { Agent as HttpAgent } from 'node:${join('ht', 'tp')}';`, `import { Agent as HttpsAgent } from 'node:${join('ht', 'tps')}';`]);
+    expect(occurrences(capture, STREAM_OR_SOCKET)).toEqual([]);
+    // SEC35-33 (6): the certificate of a camera is not checked in this one file, with TLS 1.2 as the floor beside every such place.
+    expect(places(production, NO_CERTIFICATE_CHECK)).toEqual([ONVIF_SESSION]);
+    for (const match of session.matchAll(NO_CERTIFICATE_CHECK)) expect(session.slice(match.index, (match.index ?? 0) + 60)).toContain("minVersion: 'TLSv1.2'");
+    // D82: the scheme of a stream is compared, never dialled - the folder holds no stream locator and no stream client.
+    expect(occurrences(capture, SECRET_SHAPE)).toEqual([]);
   });
 });
 
@@ -215,14 +447,20 @@ describe('P25: the edits OD-14 waives, and no other mention of capture (spec §I
       '*    WAIVED EDITS (task 3, decision OD-14; capture spec §I edits 1 to 6). Registered after the',
       '*    fourteen: the unit `capture` (the supervisor of the capture worker) and the module',
       '*    `modules/capture-config`. The seam `capture` joins the list of mechanism 3.',
+      // Decision D114 (rows 132 and 133): the two modules of the camera search and of the local inputs.
+      '*    Decision D114 extends OD-14 to `modules/capture-discovery` (row 132) and `modules/capture-inputs` (row 133): waived edits 19 to 22.',
       '*      capture                        capture                 task 3 (OD-14 waiver)',
       "import { captureModule, type CaptureSupervisor } from './capture';",
       "import { captureConfigModule } from './modules/capture-config';",
+      "import { captureDiscoveryModule } from './modules/capture-discovery';",
+      "import { captureInputsModule } from './modules/capture-inputs';",
       'capture: CaptureSupervisor;',
       "capture: 'src/capture (capture module)',",
       'readonly capture: CaptureSupervisor;',
       "['capture', captureModule],",
       "['modules/capture-config', captureConfigModule],",
+      "['modules/capture-discovery', captureDiscoveryModule],",
+      "['modules/capture-inputs', captureInputsModule],",
       "app.decorate('capture', { getter: () => seams.get('capture') });",
     ]);
   });
@@ -231,7 +469,7 @@ describe('P25: the edits OD-14 waives, and no other mention of capture (spec §I
   // that mention capture. This one sees EVERY line added to the frozen file: with the waived lines
   // taken out, in the order they stand, app.ts is byte-equal to the file of plan row W08. A line
   // nobody waived - of any module, with any wording - changes the digest and fails here.
-  it('app.ts: every added line is a waived one (capture: spec §I edits 1 to 6; STT configuration: edits 13 and 14, decision D68); without them the file is the frozen one', () => {
+  it('app.ts: every added line is a waived one (capture: spec §I edits 1 to 6; STT configuration: edits 13 and 14, decision D68; camera search and local inputs: edits 19 to 22, decision D114); without them the file is the frozen one', () => {
     /** SHA-256 of `src/app.ts` as plan row W08 froze it (commit 9d3a1ef, 398 lines). */
     const FROZEN_APP_TS = '3846e1700616410967dae0e251c07e27f98edd866f826fa549bb1a430f375db8';
     const WAIVED: readonly string[] = [
@@ -239,10 +477,13 @@ describe('P25: the edits OD-14 waives, and no other mention of capture (spec §I
       ' *    fourteen: the unit `capture` (the supervisor of the capture worker) and the module',
       ' *    `modules/capture-config`. The seam `capture` joins the list of mechanism 3.',
       ' *    Decision D68 extends OD-14 to the registration of `modules/stt-config` (task 3 row 113): waived edits 13 and 14.',
+      ' *    Decision D114 extends OD-14 to `modules/capture-discovery` (row 132) and `modules/capture-inputs` (row 133): waived edits 19 to 22.',
       ' *',
       ' *      capture                        capture                 task 3 (OD-14 waiver)',
       "import { captureModule, type CaptureSupervisor } from './capture';",
       "import { captureConfigModule } from './modules/capture-config';",
+      "import { captureDiscoveryModule } from './modules/capture-discovery';",
+      "import { captureInputsModule } from './modules/capture-inputs';",
       "import { sttConfigModule } from './modules/stt-config';",
       '  capture: CaptureSupervisor;',
       "  capture: 'src/capture (capture module)',",
@@ -250,6 +491,8 @@ describe('P25: the edits OD-14 waives, and no other mention of capture (spec §I
       "  ['modules/stt-config', sttConfigModule],",
       "  ['capture', captureModule],",
       "  ['modules/capture-config', captureConfigModule],",
+      "  ['modules/capture-discovery', captureDiscoveryModule],",
+      "  ['modules/capture-inputs', captureInputsModule],",
       "  app.decorate('capture', { getter: () => seams.get('capture') });",
     ];
     /** The file without the waived lines, each taken where it stands after the one before; null when one is missing. */
@@ -268,12 +511,12 @@ describe('P25: the edits OD-14 waives, and no other mention of capture (spec §I
     const current = raw('src/app.ts');
     expect(digest(withoutWaived(current))).toBe(FROZEN_APP_TS);
     // The two lines of the STT configuration module, exactly (edits 13 and 14).
-    expect(current.filter((line) => /stt/i.test(line))).toEqual([WAIVED[3], WAIVED[8], WAIVED[12]]);
+    expect(current.filter((line) => /stt/i.test(line))).toEqual([WAIVED[3], WAIVED[11], WAIVED[15]]);
     // Positive control: one more line, of any kind, anywhere, is seen; so is a waived line that changed.
     const at = current.indexOf("  ['modules/demo', demoModule],");
     expect(at).toBeGreaterThan(0);
     expect(digest(withoutWaived([...current.slice(0, at), "  ['modules/other', otherModule],", ...current.slice(at)]))).not.toBe(FROZEN_APP_TS);
-    expect(digest(withoutWaived(current.map((line) => (line === WAIVED[12] ? "  ['modules/stt-config', sttConfigModule, { early: true }]," : line))))).toBe('a waived line is missing');
+    expect(digest(withoutWaived(current.map((line) => (line === WAIVED[15] ? "  ['modules/stt-config', sttConfigModule, { early: true }]," : line))))).toBe('a waived line is missing');
   });
 
   it('index.ts: the supervisor boots after the boot steps and before the listener, and is shut down before the app closes', () => {
@@ -287,7 +530,9 @@ describe('P25: the edits OD-14 waives, and no other mention of capture (spec §I
   // test read "config.ts is not touched by this row". The file is pinned the way app.ts is: with
   // EVERY waived added line taken out, in the order they stand, config.ts is byte-equal to the file
   // plan row W08 froze. A line nobody waived, of any kind, changes the digest and fails here.
-  it('config.ts: every added line is one of the capture keys (spec §I edits 7 to 10); without them the file is the frozen one', () => {
+  // Row 136 (spec §I edits 15 to 18; decision D108 (b): the same category of OD-14): the two keys of
+  // the development fence stand in the same four places and are waived lines of the same list.
+  it('config.ts: every added line is one of the capture keys (spec §I edits 7 to 10 and 15 to 18); without them the file is the frozen one', () => {
     /** SHA-256 of `src/config.ts` as plan row W08 froze it (unchanged up to commit 101ce62, 271 lines). */
     const FROZEN_CONFIG_TS = 'de6f7bc958d84649aff0d8e248ef534e167f3639afd46a6f3e36c590cf7154f9';
     const WAIVED_CONFIG: readonly string[] = [
@@ -295,9 +540,15 @@ describe('P25: the edits OD-14 waives, and no other mention of capture (spec §I
       ' * `DEMS_CAPTURE_MODE` (`simulated`, the default, or `real`), `DEMS_CAPTURE_WORKER` (the worker',
       ' * program) and `DEMS_MEDIA_DIR` (the media root). Whether a start in `real` mode is refused for a',
       " * missing key is the boot checks' decision (CS-22), not this file's.",
+      ' * WAIVED EDITS (task 3, decisions OD-14 and D108; capture spec §I edits 15 to 18): the two keys of',
+      ' * the development fence. `DEMS_CAPTURE_DEV_SOURCES` (`1` or `0`, the default: development sources',
+      ' * exist) and `DEMS_CAPTURE_HELPER_FFMPEG` (the program the development helpers run). What a start',
+      " * refuses for them is the capture fence's decision (capture spec §A.1.2), not this file's.",
       "export const ENV_CAPTURE_MODE = 'DEMS_CAPTURE_MODE';",
       "export const ENV_CAPTURE_WORKER = 'DEMS_CAPTURE_WORKER';",
       "export const ENV_MEDIA_DIR = 'DEMS_MEDIA_DIR';",
+      "export const ENV_CAPTURE_DEV_SOURCES = 'DEMS_CAPTURE_DEV_SOURCES';",
+      "export const ENV_CAPTURE_HELPER_FFMPEG = 'DEMS_CAPTURE_HELPER_FFMPEG';",
       "export const CAPTURE_MODES = ['simulated', 'real'] as const;",
       'export type CaptureMode = (typeof CAPTURE_MODES)[number];',
       "export const DEFAULT_CAPTURE_MODE: CaptureMode = 'simulated';",
@@ -310,6 +561,10 @@ describe('P25: the edits OD-14 waives, and no other mention of capture (spec §I
       '  readonly captureWorkerPath: string | null;',
       '  /** Absolute path of the media root (OD-25: git-ignored, below the data directory by default). */',
       '  readonly mediaStoreDir: string;',
+      '  /** The development flag of the capture fence. Read by ONE function: `captureOperationDecisionOf` (static rule G-R15). */',
+      '  readonly captureDevSources: boolean;',
+      '  /** Absolute path of the program the development helpers run, or null when none is configured. */',
+      '  readonly captureHelperFfmpegPath: string | null;',
       '/** Unset means `simulated`. Any other value than the two modes stops the boot. */',
       'export function parseCaptureMode(raw: string | undefined): CaptureMode {',
       "  if (raw === undefined || raw === '') return DEFAULT_CAPTURE_MODE;",
@@ -325,17 +580,31 @@ describe('P25: the edits OD-14 waives, and no other mention of capture (spec §I
       '  return raw;',
       '}',
       '',
+      '/** `1` turns the development flag on; unset, empty or `0` leaves it off. Any other value stops the boot. */',
+      'export function parseCaptureDevSources(raw: string | undefined): boolean {',
+      "  if (raw === undefined || raw === '' || raw === '0') return false;",
+      "  if (raw === '1') return true;",
+      "  throw new ConfigError('CAPTURE_DEV_SOURCES_INVALID', `${ENV_CAPTURE_DEV_SOURCES} must be 1 or 0.`);",
+      '}',
+      '',
       '  /** Default: `simulated`. */',
       '  readonly captureMode?: CaptureMode;',
       '  /** Default: null (no worker program). */',
       '  readonly captureWorkerPath?: string | null;',
       '  /** Default: `<dataDir>/media/sessions`. */',
       '  readonly mediaStoreDir?: string | null;',
+      '  /** Default: false (no development source exists). */',
+      '  readonly captureDevSources?: boolean;',
+      '  /** Default: null (no helper program). */',
+      '  readonly captureHelperFfmpegPath?: string | null;',
       '  const captureWorkerPath = parseCapturePath(ENV_CAPTURE_WORKER, input.captureWorkerPath ?? undefined);',
       '  const mediaStoreDir = parseCapturePath(ENV_MEDIA_DIR, input.mediaStoreDir ?? undefined) ?? `${input.dataDir}/${MEDIA_STORE_SUBPATH}`;',
+      '  const captureHelperFfmpegPath = parseCapturePath(ENV_CAPTURE_HELPER_FFMPEG, input.captureHelperFfmpegPath ?? undefined);',
       '    captureMode: input.captureMode ?? DEFAULT_CAPTURE_MODE,',
       '    captureWorkerPath,',
       '    mediaStoreDir,',
+      '    captureDevSources: input.captureDevSources ?? false,',
+      '    captureHelperFfmpegPath,',
     ];
     const withoutWaived = (lines: readonly string[]): string | null => {
       const rest = [...lines];
@@ -354,16 +623,201 @@ describe('P25: the edits OD-14 waives, and no other mention of capture (spec §I
     // Every line of the file that mentions capture or the media root is a waived one: nothing else names them.
     expect(current.filter((line) => /capture|media/i.test(line)).filter((line) => !WAIVED_CONFIG.includes(line))).toEqual([]);
     // The three keys, by name (edit 7), and the three fields of the configuration (edit 8).
-    expect(current.filter((line) => line.startsWith('export const ENV_')).slice(-3)).toEqual([
+    expect(current.filter((line) => line.startsWith('export const ENV_')).slice(-5)).toEqual([
       "export const ENV_CAPTURE_MODE = 'DEMS_CAPTURE_MODE';",
       "export const ENV_CAPTURE_WORKER = 'DEMS_CAPTURE_WORKER';",
       "export const ENV_MEDIA_DIR = 'DEMS_MEDIA_DIR';",
+      "export const ENV_CAPTURE_DEV_SOURCES = 'DEMS_CAPTURE_DEV_SOURCES';",
+      "export const ENV_CAPTURE_HELPER_FFMPEG = 'DEMS_CAPTURE_HELPER_FFMPEG';",
     ]);
-    expect(current.filter((line) => /^ {2}readonly (captureMode|captureWorkerPath|mediaStoreDir): /.test(line))).toHaveLength(3);
+    expect(current.filter((line) => /^ {2}readonly (captureMode|captureWorkerPath|mediaStoreDir|captureDevSources|captureHelperFfmpegPath): /.test(line))).toHaveLength(5);
+    // The development flag has NO default but "off": a line that turned it on by default is not a waived one.
+    expect(digest(withoutWaived(current.map((line) => (line === '    captureDevSources: input.captureDevSources ?? false,' ? '    captureDevSources: input.captureDevSources ?? true,' : line))))).toBe('a waived line is missing');
     // Positive control: one more line, of any kind, anywhere, is seen; so is a waived line that changed.
     const at = current.indexOf("export const LISTEN_HOST = '127.0.0.1';");
     expect(at).toBeGreaterThan(0);
     expect(digest(withoutWaived([...current.slice(0, at), "export const OTHER_HOST = '0.0.0.0';", ...current.slice(at)]))).not.toBe(FROZEN_CONFIG_TS);
     expect(digest(withoutWaived(current.map((line) => (line === "export const DEFAULT_CAPTURE_MODE: CaptureMode = 'simulated';" ? "export const DEFAULT_CAPTURE_MODE: CaptureMode = 'real';" : line))))).toBe('a waived line is missing');
+  });
+});
+
+// Row 136 (check M4-SR-1, rules G-R12, G-R14, G-R15; capture spec §G.1; SEC35-41 (c), SEC35-43 (e);
+// decisions D95, D108). Each rule is a function of a tree or of an argument list, so that its
+// control can run it on planted input.
+describe('G-R12: helpers and mkfifo start through the pinned door; every argument is of a fixed table', () => {
+  const LOCAL = 'src/capture/adapters/local/';
+  const INGEST = `${join('rt', 'sp')}://127.0.0.1:8555/live/cam`;
+  const PIPE = '/data/dems/run/capture/SES-20261009-0001/MIC-03.pcm';
+  const START_MS = 1_760_000_000_123;
+  /** Every argument list the helpers can build: both cameras with both encoders, both microphones, the two pre-checks, the device list. */
+  const lists: readonly (readonly string[])[] = [
+    ...Object.values(CameraHelperEncoder).flatMap((encoder) => [
+      cameraPushArguments({ source: 'DEVICE', deviceName: LOCAL_CAMERA_DEVICE_NAME, encoder, ingestUrl: INGEST, startMs: START_MS }),
+      cameraPushArguments({ source: 'GENERATED', encoder, ingestUrl: INGEST, startMs: START_MS }),
+    ]),
+    cameraPrecheckArguments(LOCAL_CAMERA_DEVICE_NAME),
+    deviceListArguments(),
+    micPushArguments({ source: { kind: 'DEVICE', name: LOCAL_MIC_DEVICE_NAME }, pipePath: PIPE }),
+    ...Object.values(MicGeneratedTone).map((tone) => micPushArguments({ source: { kind: 'GENERATED', tone }, pipePath: PIPE })),
+    micPrecheckArguments(LOCAL_MIC_DEVICE_NAME),
+  ];
+  const literals = new Set<string>([...CAMERA_HELPER_TABLE.literals, ...MIC_HELPER_TABLE.literals]);
+  /** The computed values (spec §A.6.4 HL-3): the plan's listener, the two forms of `S`, the pipe, and the device named exactly. */
+  const computed = new Set<string>([INGEST, PIPE, `-${(START_MS / 1000).toFixed(3)}`, String(START_MS * 1000), `${LOCAL_CAMERA_DEVICE_NAME}:none`, `none:${LOCAL_MIC_DEVICE_NAME}`]);
+  const FORMATS = ['avfoundation', 'lavfi', join('rt', 'sp'), 'f32le', 'null'];
+  const FORBIDDEN = new RegExp(['0\\.0\\.0\\.0', '::', '\\budp\\b', 'listen', '@', '[;&|`$<>\\\\]', 'movie=', 'capture screen', 'desk view'].join('|'), 'i');
+  const LOOPBACK = new RegExp(`^${join('rt', 'sp')}://127\\.0\\.0\\.1:\\d{4,5}/[A-Za-z0-9/_-]+$`);
+
+  /** The rule over one argument list. */
+  const violations = (args: readonly string[]): string[] => [
+    ...args.filter((arg) => !literals.has(arg) && !computed.has(arg)).map((arg) => `not of the table: ${arg}`),
+    ...args.filter((arg) => FORBIDDEN.test(arg)).map((arg) => `forbidden: ${arg}`),
+    ...args.filter((arg) => arg.includes('://') && !LOOPBACK.test(arg)).map((arg) => `not the loopback listener: ${arg}`),
+    ...args.flatMap((arg, index) => (arg === '-f' && !FORMATS.includes(args[index + 1] ?? '') ? [`format: ${args[index + 1] ?? ''}`] : [])),
+  ];
+
+  it('finds a wildcard address, a datagram transport, a listen flag, a user part, a shell mark, a file filter, another format and a screen capture (control)', () => {
+    const planted = ['-f', 'x11grab', '-i', 'Capture screen 0:none', '-i', `a${'movie'}=/etc/hosts`, '-listen', '1', 'udp://0.0.0.0:9000', `${join('rt', 'sp')}://user:pw@127.0.0.1:8555/x`, `${join('rt', 'sp')}://10.0.0.9:8555/live`, 'x; rm -rf /'];
+    const found = violations(planted);
+    for (const text of ['format: x11grab', 'forbidden: Capture screen 0:none', `forbidden: a${'movie'}=/etc/hosts`, 'forbidden: -listen', 'forbidden: udp://0.0.0.0:9000', `forbidden: ${join('rt', 'sp')}://user:pw@127.0.0.1:8555/x`, `not the loopback listener: ${join('rt', 'sp')}://10.0.0.9:8555/live`, 'forbidden: x; rm -rf /']) expect(found, text).toContain(text);
+    // A value that is neither of the table nor computed is seen even when it looks harmless.
+    expect(violations([...(lists[0] ?? []), '-shortest'])).toEqual(['not of the table: -shortest']);
+  });
+
+  it('every argument of every helper is a literal of its table or a computed value; none is forbidden; every address is the loopback listener', () => {
+    expect(lists).toHaveLength(10);
+    for (const args of lists) expect(violations(args), args.join(' ')).toEqual([]);
+    // SEC35-43 (e): the inputs are the two devices by exact name and the generated ones of the table, and nothing else.
+    const inputs = new Set(lists.flatMap((args) => args.flatMap((arg, index) => (arg === '-i' ? [args[index + 1] ?? ''] : []))));
+    expect([...inputs].filter((input) => !literals.has(input) && input !== `${LOCAL_CAMERA_DEVICE_NAME}:none` && input !== `none:${LOCAL_MIC_DEVICE_NAME}`)).toEqual([]);
+  });
+
+  it('the door is the one file under adapters/local that starts a process: one spawn, no shell, the caller\'s environment only, nothing inherited', () => {
+    const door = capture.find((file) => file.path === LOCAL_HELPER_DOOR)?.text ?? '';
+    expect([...door.matchAll(PROCESS_START)]).toHaveLength(1);
+    expect(door).toMatch(/shell: false,/);
+    expect(door).toMatch(/detached: false,/);
+    expect(door).toMatch(/env: \{ \.\.\.options\.env \},/);
+    expect(door).toMatch(/stdio: \['ignore', 'pipe', 'pipe'\],/);
+    expect(places(capture.filter((file) => file.path.startsWith(LOCAL)), PROCESS_START)).toEqual([LOCAL_HELPER_DOOR]);
+    // `mkfifo` is a program like the helpers: it is named in the local folder only and started by no file but the door.
+    const MKFIFO = /\bmkfifo\b/g;
+    expect(places(capture, MKFIFO).every((path) => path.startsWith(LOCAL))).toBe(true);
+    expect(places(capture, MKFIFO).length).toBeGreaterThan(0);
+    // The argument tables live in one file per source class.
+    expect(places(capture, /'-list_devices'|'avfoundation'|'lavfi'/g).sort()).toEqual([`${LOCAL}camera-helper-args.ts`, `${LOCAL}mic-helper-args.ts`]);
+  });
+});
+
+describe('G-R14: no credential literal, no vendor-default table, and a local device is never replaced by a fake', () => {
+  const ADAPTERS = 'src/capture/adapters/';
+  const LOCAL = `${ADAPTERS}local/`;
+  const FENCE = 'src/capture/fence/';
+  const adapterFiles = capture.filter((file) => file.path.startsWith(ADAPTERS) || file.path.startsWith(FENCE));
+  /** A default account as a string literal, and a table keyed by a camera maker. */
+  const DEFAULT_ACCOUNT = new RegExp(`['"\`](?:${['admin', 'root', 'administrator', 'service', '12345', '123456', '888888', '666666', join('pass', 'word')].join('|')})['"\`]`, 'gi');
+  const VENDOR = new RegExp(`\\b(?:${['hikvision', 'dahua', 'uniview', 'hanwha', 'vivotek', 'reolink', 'amcrest', 'foscam', 'tp-?link'].join('|')})\\b`, 'gi');
+  /** An import of the in-memory fakes or of the generated test sources, and a call that builds one. */
+  const FAKE_IMPORT = /from\s+'(?:\.\.?\/)+(?:fake(?:\/[a-z-]+)?|fence(?:\/[a-z-]+)?|generated-sources)'/g;
+  const FAKE_BUILD = /\bcreate(?:Fake|Generated)[A-Za-z]*\s*\(/g;
+  const CATCH = /\bcatch\b/g;
+  /** The files that may build a fake or a generated source: the fakes' own registry, and the fence's registry of `REAL_DEVELOPMENT`. */
+  const FAKE_BUILDERS = [`${ADAPTERS}fake/index.ts`, `${FENCE}index.ts`];
+
+  const violations = (files: readonly SourceFile[]): string[] => [
+    ...occurrences(files, DEFAULT_ACCOUNT).map((place) => `${place} names a default account`),
+    ...occurrences(files, VENDOR).map((place) => `${place} names a camera maker`),
+    ...occurrences(files, FAKE_IMPORT, (path) => path.startsWith(LOCAL)).map((place) => `${place} imports a fake source into the local-device folder`),
+    ...occurrences(files, FAKE_BUILD, (path) => !FAKE_BUILDERS.includes(path) && !/^export function create/m.test(files.find((file) => file.path === path)?.text ?? '')).map((place) => `${place} builds a fake source`),
+    ...files.filter((file) => FAKE_BUILDERS.includes(file.path) && CATCH.test(file.text)).map((file) => `${file.path} builds fake sources and has an error path`),
+  ];
+
+  it('finds a default account, a maker table, a fake imported into the local folder, and a fake built in an error path (control)', () => {
+    const planted: SourceFile[] = [
+      { path: `${ADAPTERS}camera/defaults.ts`, text: `const DEFAULTS = { ${'hik'}vision: ['${'ad'}min', '${'123'}45'] };` },
+      { path: `${LOCAL}camera-adapter.ts`, text: "import { createFakeCameraAdapter } from '../fake';\ntry { open(); } catch { return createFakeCameraAdapter({ id }); }" },
+      { path: `${FENCE}index.ts`, text: 'try { register(local); } catch { register(createGeneratedCameraAdapter(options)); }' },
+    ];
+    expect(violations(planted)).toEqual([
+      `${ADAPTERS}camera/defaults.ts:1 names a default account`,
+      `${ADAPTERS}camera/defaults.ts:1 names a default account`,
+      `${ADAPTERS}camera/defaults.ts:1 names a camera maker`,
+      `${LOCAL}camera-adapter.ts:1 imports a fake source into the local-device folder`,
+      `${LOCAL}camera-adapter.ts:2 builds a fake source`,
+      `${FENCE}index.ts builds fake sources and has an error path`,
+    ]);
+  });
+
+  it('the adapter layer and the fence hold none of them', () => {
+    expect(adapterFiles.length).toBeGreaterThan(40);
+    expect(violations(adapterFiles)).toEqual([]);
+    // What builds a test source today, beside the files that define one: the fence's registry of `REAL_DEVELOPMENT`, and nothing else.
+    expect(places(adapterFiles, FAKE_BUILD).filter((path) => !/^export function create/m.test(adapterFiles.find((file) => file.path === path)?.text ?? ''))).toEqual([`${FENCE}index.ts`]);
+    for (const path of FAKE_BUILDERS) expect((adapterFiles.find((file) => file.path === path)?.text ?? '').match(CATCH), path).toBeNull();
+  });
+});
+
+describe('G-R15: the development flag is read in one function', () => {
+  const OPERATION = 'src/capture/fence/operation.ts';
+  const FLAG = new RegExp(`\\b${join('capture', 'DevSources')}\\b`, 'g');
+  const FLAG_READ = new RegExp(`\\.\\s*${join('capture', 'DevSources')}\\b`, 'g');
+  const FLAG_VARIABLE = new RegExp(`\\b(?:ENV_CAPTURE_DEV_SOURCES|${join('DEMS_CAPTURE_', 'DEV_SOURCES')}['"\`\\]])`, 'g');
+  /** Where the member exists at all: its declaration and the object the loader builds, and the one function that reads it. */
+  const FLAG_PLACES = [OPERATION, 'src/config.ts', 'src/plugins/config/load-config.ts'];
+
+  const violations = (files: readonly SourceFile[]): string[] => [
+    ...occurrences(files, FLAG, (path) => !FLAG_PLACES.includes(path)).map((place) => `${place} names the development flag`),
+    ...occurrences(files, FLAG_READ, (path) => path !== OPERATION && path !== 'src/config.ts').map((place) => `${place} reads the development flag`),
+    ...occurrences(files, FLAG_VARIABLE, (path) => path !== 'src/config.ts' && path !== 'src/plugins/config/load-config.ts').map((place) => `${place} names the variable of the development flag`),
+  ];
+
+  it('finds a second reader, a destructured read and a read of the variable (control)', () => {
+    const planted: SourceFile[] = [
+      { path: 'src/capture/adapters/registry.ts', text: `if (app.config.${join('capture', 'DevSources')}) registerDevelopment();` },
+      { path: 'src/modules/sessions/start.ts', text: `const { ${join('capture', 'DevSources')} } = app.config;` },
+      { path: 'src/engine/index.ts', text: `const flag = options.env[ENV_CAPTURE_DEV_SOURCES] === '1';` },
+    ];
+    expect(violations(planted)).toEqual([
+      'src/capture/adapters/registry.ts:1 names the development flag',
+      'src/modules/sessions/start.ts:1 names the development flag',
+      'src/capture/adapters/registry.ts:1 reads the development flag',
+      'src/engine/index.ts:1 names the variable of the development flag',
+    ]);
+  });
+
+  it('no production file but the one function reads it; the configuration declares and builds it, the loader parses it', () => {
+    expect(violations(production)).toEqual([]);
+    const operation = production.find((file) => file.path === OPERATION)?.text ?? '';
+    // ONE read, inside the one function; `captureOperationOf` asks that function and reads nothing.
+    expect([...operation.matchAll(FLAG_READ)]).toHaveLength(1);
+    expect(operation).toMatch(/export function captureOperationDecisionOf\(config: CaptureOperationInput\): CaptureOperationDecision \{[^}]*config\.captureDevSources === true;/);
+    expect(operation).toContain('return captureOperationDecisionOf(config).operation;');
+    // The configuration builds it from its input with the default "off", and from nothing else.
+    expect([...(production.find((file) => file.path === 'src/config.ts')?.text ?? '').matchAll(FLAG_READ)]).toHaveLength(1);
+  });
+});
+
+describe('SEC35-41 (c): every INSERT into capture_devices names adapter_kind', () => {
+  /** A statement text that inserts into the registry, with its column list. */
+  const INSERT = /INSERT\s+INTO\s+(?:public\.)?capture_devices\s*\(([^)]*)\)/gi;
+  const columnLists = (files: readonly SourceFile[]): { readonly path: string; readonly columns: string }[] =>
+    files.flatMap((file) => [...file.text.matchAll(INSERT)].map((match) => ({ path: file.path, columns: match[1] ?? '' })));
+
+  it('finds a statement that leans on the column default (control)', () => {
+    const planted: SourceFile[] = [{ path: 'src/modules/x/statements.ts', text: "const ADD = 'INSERT INTO public.capture_devices (id, kind, transport) VALUES ($1, $2, $3)';" }];
+    expect(columnLists(planted).filter((found) => !/\badapter_kind\b/.test(found.columns)).map((found) => found.path)).toEqual(['src/modules/x/statements.ts']);
+  });
+
+  it('the statements of the server name it, and the two builders of a typed row carry it', () => {
+    const statements = columnLists(production);
+    expect(statements.map((found) => found.path)).toEqual(['src/capture/fence/statements.ts']);
+    expect(statements.filter((found) => !/\badapter_kind\b/.test(found.columns))).toEqual([]);
+    // The local-device statement writes the kind as a LITERAL: no bind value can make it write another one.
+    const fence = production.find((file) => file.path === 'src/capture/fence/statements.ts')?.text ?? '';
+    expect(fence).toMatch(/\$5::boolean, 'LOCAL_DEVICE' /);
+    expect(fence).not.toMatch(/UPDATE|DELETE/i);
+    // The typed writers (drizzle): the mapping of the engine's rows and the seed each name the member.
+    expect(production.find((file) => file.path === 'src/db/mapping/rows.ts')?.text ?? '').toContain('adapterKind: adapterKindOf(device),');
+    expect(production.find((file) => file.path === 'src/db/seed/seed.ts')?.text ?? '').toMatch(/adapterKind: 'FAKE',/);
   });
 });

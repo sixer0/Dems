@@ -5,7 +5,7 @@ import { ArrowRight, Clock } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useSim, type TimelineEvent } from '@dems/shared/sim'
 import { SessionTimeline } from '@/components/composed'
-import { formatBytesParts } from './model'
+import { formatBytesParts, micInputLabelKey } from './model'
 import { Panel } from './panel'
 import { useScrollEdges } from './scroll-edges'
 import { audioPeakLevel, autosaveSegment, bytesAt } from './sim-adapter'
@@ -52,6 +52,12 @@ export function TimelinePanel({ listRef }: { listRef: RefObject<HTMLDivElement |
         if (segment === null || bytes === null) return event.detail
         const size = formatBytesParts(bytes)
         return t('session.timeline.autosaveDetail', { segment, size: t(`common.units.${size.unit}`, { value: size.value }) })
+      }
+      if (event.kind === 'AUDIO_SWITCH') {
+        // WB-10: the switch names both inputs (`params.from` / `params.to`, written by operation 81).
+        const from = micInputLabelKey(event.params?.from)
+        const to = micInputLabelKey(event.params?.to)
+        if (from !== null && to !== null) return t('session.audioSource.timelineDetail', { from: t(from), to: t(to) })
       }
       if (event.detail) return event.detail
       return event.label

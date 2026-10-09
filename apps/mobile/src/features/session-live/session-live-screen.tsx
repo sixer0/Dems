@@ -61,9 +61,10 @@ import { EndSession } from './end-session';
 import { LiveFeed } from './live-feed';
 import { MarkerFlight, type FlightRect, type MarkerFlightSpec } from './marker-flight';
 import { MicCard } from './mic-card';
+import { MicSourceControls } from './mic-source-controls';
 import { isMonitorHandoff } from './monitor-handoff';
 import { AudioMonitorSheet, MonitorSettingsSheet, TimelineSheet } from './monitor-sheets';
-import { RecDot, RecRow, RecTimer } from './rec-indicator';
+import { RecDot, RecLabel, RecRow, RecTimer } from './rec-indicator';
 import {
   monitorArrangement,
   monitorColumnWidths,
@@ -256,18 +257,22 @@ export function SessionLiveScreen() {
     />
   );
   const micCards = (direction: 'row' | 'column') => (
-    <View style={direction === 'row' ? styles.micRow : styles.micColumn}>
-      {mics.map((mic) => (
-        <MicCard
-          key={mic.id}
-          mic={mic}
-          variant={meterVariant}
-          paused={paused || sheet === 'audio' || monitoringPaused}
-          monitoringPaused={monitoringPaused}
-          onClipReset={onClipReset}
-          style={direction === 'column' ? styles.micColumnCard : undefined}
-        />
-      ))}
+    <View style={styles.micBlock}>
+      <View style={direction === 'row' ? styles.micRow : styles.micColumn}>
+        {mics.map((mic) => (
+          <MicCard
+            key={mic.id}
+            mic={mic}
+            variant={meterVariant}
+            paused={paused || sheet === 'audio' || monitoringPaused}
+            monitoringPaused={monitoringPaused}
+            onClipReset={onClipReset}
+            style={direction === 'column' ? styles.micColumnCard : undefined}
+          />
+        ))}
+      </View>
+      {/* Task 3 M5 (row 73, MB-03): the manual mic switch and the silence warning; one mount per arrangement. */}
+      <MicSourceControls />
     </View>
   );
   const tiles = (layout: 'row' | 'grid') => (
@@ -644,9 +649,7 @@ function MonitorBody({ arrangement, paused, feed, micCards, tiles, endSession, t
             <View style={styles.timerCard}>
               <View style={styles.timerHead}>
                 <RecDot paused={paused} />
-                <Text maxFontSizeMultiplier={1.2} style={styles.recLabel}>
-                  {t('common.enums.sessionState.RECORDING')}
-                </Text>
+                <RecLabel style={styles.recLabel} />
               </View>
               <RecTimer testID="monitor-timer" />
             </View>
@@ -720,6 +723,7 @@ const styles = StyleSheet.create({
   badgeText: { fontFamily: fontFamily.native.bold, fontSize: 11, lineHeight: 14, color: palette.black },
   // Phone portrait (MB 4).
   stackContent: { padding: spacing[3], gap: spacing[2] },
+  micBlock: { gap: spacing[1] },
   micRow: { flexDirection: 'row', gap: spacing[1] },
   micColumn: { gap: spacing[1] },
   micColumnCard: { flex: 0 },

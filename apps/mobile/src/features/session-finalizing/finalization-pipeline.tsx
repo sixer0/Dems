@@ -4,6 +4,13 @@
  * shows the kit Spinner, a finished one draws its check (300 ms) and fills the connector below it
  * (420 ms `luxe`) with its duration as the description. Used by the Finalization screen while it
  * runs and by the Session Summary (step 80) as the finished record.
+ *
+ * Blueprint row 87 (B9 = FXR-DEV-2 with MB-04; E-13): `animate` false draws every step from React
+ * alone (no overlay, no entering fade, a still Spinner). The screens pass it for every copy that is
+ * part of a hand-over, the in-place copy AND the route's copy that follows it, so no Reanimated
+ * update is sent at the Finalizing hand-over at all. A running step then shows the Core's own
+ * percent as its description (`percents`), which is the sign of life there: it changes when the
+ * Core reports, never by a timer of this screen.
  */
 import { useTranslation } from 'react-i18next';
 import { Stepper, type StepDef, type StepStatus, type StepStatusWords } from '@/components/composed/stepper';
@@ -14,8 +21,13 @@ export interface FinalizationPipelineProps {
   statuses: readonly StepStatus[];
   /** Seconds per finished step ("0.8"), pipeline order; null while a step runs or waits. */
   seconds: readonly (string | null)[];
-  /** False for the copy drawn in place on a hand-over (W93-7): the Stepper starts no motion. Default true. */
+  /** False for a copy that is part of a hand-over (W93-7; row 87 B9): the Stepper starts no motion. Default true. */
   animate?: boolean;
+  /**
+   * The Core's percent of each step, pipeline order (row 87; forward-only, `sealing-progress.ts`);
+   * null where the Core reports none. Shown as the description of a step that is running.
+   */
+  percents?: readonly (number | null)[];
   testID?: string;
 }
 
@@ -34,16 +46,22 @@ export function useFinalizingStepperWords(): StepStatusWords {
   };
 }
 
-export function FinalizationPipeline({ statuses, seconds, animate = true, testID = 'finalizing-pipeline' }: FinalizationPipelineProps) {
+export function FinalizationPipeline({ statuses, seconds, animate = true, percents, testID = 'finalizing-pipeline' }: FinalizationPipelineProps) {
   const { t } = useTranslation();
   const settings = useMotionSettings();
   const words = useFinalizingStepperWords();
   const steps: StepDef[] = FINALIZATION_STEPS.map((id, index) => {
     const took = seconds[index];
+    const percent = percents?.[index] ?? null;
+    const running = statuses[index] === 'running';
     return {
       key: id,
       label: t(`common.enums.finalizationStep.${id}`),
-      ...(took ? { description: t('session.finalization.stepDuration', { seconds: took }) } : {}),
+      ...(took && !running
+        ? { description: t('session.finalization.stepDuration', { seconds: took }) }
+        : running && percent !== null
+          ? { description: t('session.finalization.stepProgress', { percent }) }
+          : {}),
     };
   });
   return (

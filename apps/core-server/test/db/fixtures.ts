@@ -584,11 +584,25 @@ export function captureDevice(id: string, kind: 'CAMERA' | 'MIC' | 'POE', overri
     firmware: '1.2.3',
     address: kind === 'CAMERA' ? '127.0.0.1' : null,
     mac: '00:11:22:33:44:55',
-    onvif_uuid: kind === 'CAMERA' ? 'ONVIF-1' : null,
+    // One device per endpoint reference since dbc-4 (`capture_devices_onvif_uuid_key`).
+    onvif_uuid: kind === 'CAMERA' ? `ONVIF-${id}` : null,
     profiles: json([]),
     poe_port: null,
     enabled: true,
     last_seen_at: null,
+    adapter_kind: 'FAKE',
+    ...overrides,
+  };
+}
+
+/** One `session_capture_sources` row (T-41, dbc-4 §N.3): a slot of `SESSION_ID`, fed by a seeded-style device. */
+export function captureSource(slot: string, overrides: Row = {}): Row {
+  return {
+    session_id: SESSION_ID,
+    slot,
+    device_id: slot.startsWith('VIDEO-') ? (slot === 'VIDEO-02' ? 'CAM-02' : 'CAM-01') : slot === 'MIC-STANDBY' ? 'MIC-02' : 'MIC-01',
+    adapter_kind: 'FAKE',
+    recorded_at: T,
     ...overrides,
   };
 }
@@ -731,6 +745,23 @@ export function sttConfig(overrides: Row = {}): Row {
     revision: 1,
     updated_by: 'OPR-001',
     updated_at: T,
+    ...overrides,
+  };
+}
+
+/** One `session_stt_config` row (T-42, erratum PE-129b-01): the STT snapshot of `SESSION_ID`. */
+export function sessionSttSnapshot(overrides: Row = {}): Row {
+  return {
+    session_id: SESSION_ID,
+    enabled: true,
+    backend: 'omlx-server',
+    endpoint: 'http://127.0.0.1:8000',
+    model: 'whisper-large-v3-turbo',
+    language: 'id',
+    diarization: true,
+    credential_kind: 'REFERENCE',
+    config_revision: 1,
+    taken_at: T,
     ...overrides,
   };
 }

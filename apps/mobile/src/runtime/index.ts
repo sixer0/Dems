@@ -227,6 +227,8 @@ export {
   type ElapsedTicker,
 } from './recording-elapsed';
 export { JS_LAG_SAMPLE_MS, SessionDiagnostics, createJsLagSampler, socketDiagnosticsOf, type JsLagSampler, type JsLagWindow } from './session-diagnostics';
+// Blueprint row 62 (B11): the late-stop wait points.
+export { LATE_STOP_MS, lateStopRecordOf, useLateStopHandoverMark, type LateStopInput, type LateStopStoreMark, type LateStopWaitPoint } from './session-diagnostics';
 export { PROBE_FAILURES_BEFORE_WARN, PROBE_OPERATIONS, isRecheckable, isUnanswered, judgeLiveRejection, type JudgedReport } from './probe-failure';
 export { isPairingGateHeld, notePairingGate, releasePairingGate, resetPairingGateForTests } from './pairing-gate-snapshot';
 export { SignedOutLanding, resetToBootRouter, signedOutLandingFor, type BootResetRouter, type SignedOutLandingStep } from './signed-out-landing';

@@ -1,0 +1,17 @@
+capture e2e series row62_av2c_b   ports [8559, 8561]   libav 63.1.102 63.1.102 12.1.102 7.1.102 61.1.102   heavy-host lock held (.locks/heavy-host.lock)
+
+av2c_srdrift_200ppm_r1                   expect PASS got PASS      rc 0       ok         load  4.54   42.9 s
+      cam1 mean +0.1137 ms, max err 0.1236 ms (bound 2: PASS; product 40: PASS), slope +0.09 ppm of +200; cam2 mean -0.0635 ms, max err 0.0708 ms (bound 2: PASS; product 40: PASS), slope -0.02 ppm of -200; listeners before the sources ['127.0.0.1:8559', '127.0.0.1:8561']; mid-session 4 sockets of 4 own processes, off loopback 0, UDP 0, foreign ports 0
+neg_av2c_reports_without_rate_r1         expect FAIL got FAIL      rc 0       ok         load  3.59   42.9 s
+      control: failed as required, on av_regression_2ms, drift_slope_near_zero
+      cam1 mean +3.2172 ms, max err 6.0167 ms (bound 2: FAIL; product 40: PASS), slope +200.09 ppm of +200; cam2 mean -3.5823 ms, max err 6.3792 ms (bound 2: FAIL; product 40: PASS), slope -200.03 ppm of -200; listeners before the sources ['127.0.0.1:8559', '127.0.0.1:8561']; mid-session 4 sockets of 4 own processes, off loopback 0, UDP 0, foreign ports 0; failed on: av_regression_2ms, drift_slope_near_zero
+av2c_srdrift_200ppm_r2                   expect PASS got FAIL      rc 1       UNEXPECTED load  4.18   42.3 s
+      listeners before the sources ['127.0.0.1:8559', '127.0.0.1:8561']; mid-session 4 sockets of 4 own processes, off loopback 0, UDP 0, foreign ports 0; failed on: both_files_playable
+neg_av2c_reports_without_rate_r2         expect FAIL got FAIL      rc 0       ok         load  3.27   42.9 s
+      control: failed as required, on av_regression_2ms, drift_slope_near_zero
+      cam1 mean +3.2267 ms, max err 6.0236 ms (bound 2: FAIL; product 40: PASS), slope +200.03 ppm of +200; cam2 mean -3.5728 ms, max err 6.3722 ms (bound 2: FAIL; product 40: PASS), slope -200.09 ppm of -200; listeners before the sources ['127.0.0.1:8559', '127.0.0.1:8561']; mid-session 4 sockets of 4 own processes, off loopback 0, UDP 0, foreign ports 0; failed on: av_regression_2ms, drift_slope_near_zero
+
+4 checks (2 expected PASS, 2 negative controls expected FAIL): 3 as expected, 1 unexpected: av2c_srdrift_200ppm_r2
+ports still listening after the series: none
+load at the start of the timing-sensitive checks: 3.27 .. 4.54
+AGGREGATE EXIT CODE 1

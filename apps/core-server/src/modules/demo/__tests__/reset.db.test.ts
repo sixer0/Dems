@@ -360,11 +360,12 @@ describe('AC-B-57: resetDemo through the routine, inside the running server', ()
     const built = await digestAll(owner(), exceptLink);
     const seeded = await digestAll(reference.ownerPool(), exceptLink);
     const rebuilt = Object.keys(seeded).filter((table) => !NOT_COMPARED_WITH_SEED.has(table));
-    // 22 (was 13 in the 30-table era): the seed report of §9.4 now names all 40 tables, and the
+    // 23 (was 13 in the 30-table era, 22 in dbc-3): the seed report of §9.4 now names all 41
+    // tables - `session_capture_sources` of dbc-4 is rebuilt (emptied) by a reset - and the
     // seven v2 data tables (intervals, fragments, chunks, transcripts, revisions, sealing jobs,
     // stt_config) join the tables a reset must rebuild to the seed's shape. The per-table equality
     // loop below is the real check; this pin guards the list's size.
-    expect(rebuilt).toHaveLength(22);
+    expect(rebuilt).toHaveLength(24); // + T-42 `session_stt_config`, rebuilt (PE-129b-01, row 129b)
     for (const table of rebuilt) expect(built[table], table).toBe(seeded[table]);
     // What the two columns ARE: the link the engine held (no device socket: OFFLINE), stored as the engine holds it.
     const heldLink = server.engine.slice('tabletLink');

@@ -67,12 +67,13 @@ describe('AC-57: Scalar privacy and scope flags', () => {
 })
 
 describe('D62: the document Scalar renders', () => {
-  it('is a fresh OpenAPI 3.1.0 object with 26 operations: health LIVE, 25 SIMULATED', () => {
+  it('is a fresh OpenAPI 3.1.0 object with 31 operations: health LIVE, 30 SIMULATED', () => {
     const config = makeConfig()
     const doc = config.content
     expect(doc.openapi).toBe('3.1.0')
     // 23 until task 3 M6 row 113 added the three simulated STT configuration operations (C3 §2.5).
-    expect(countOperations(doc)).toBe(26)
+    // 26 until task 3 row 132 added the five simulated operations 93-97 of the camera search (C3 §2.6).
+    expect(countOperations(doc)).toBe(31)
     const live = listOpenApiOperations(doc).filter((e) => e.operation['x-dems-mode'] === 'live')
     expect(live.map((e) => `${e.method} ${e.path}`)).toEqual(['get /api/v1/health'])
     expect(live[0]?.operation['x-badges'].map((b) => b.name)).toEqual(['LIVE'])

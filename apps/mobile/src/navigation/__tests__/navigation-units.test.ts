@@ -196,7 +196,7 @@ describe('destinations (04 §2.3)', () => {
 describe('registries', () => {
   it('registers one i18n tree per feature folder with a screen, plus the shell copy', () => {
     const folders = [...new Set(ROUTE_SCREENS.map((r) => r.folder).filter((f) => f !== 'home'))].sort();
-    expect(Object.keys(FEATURE_RESOURCES).sort()).toEqual([...folders, 'navigation'].sort());
+    expect(Object.keys(FEATURE_RESOURCES).sort()).toEqual([...folders, 'capture-selector', 'navigation', 'transcription'].sort());
   });
 
   it('reads only its own field from the shared prefs key', () => {

@@ -103,6 +103,9 @@ describe('Evidence takes the Core through the light Live API (CLG c, AC-C-53)', 
       'use-evidence-media-ref.ts',
       'use-evidence-playback.ts',
       'use-scramble.ts',
+      // Blueprint row 87: the v2 answer of operation 41 (the one reader of this app) and its view.
+      'verify-v2-report.tsx',
+      'verify-v2.ts',
     ]);
   });
 

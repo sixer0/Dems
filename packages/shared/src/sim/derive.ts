@@ -4,7 +4,7 @@
  * Every field that follows from "which faults are active" and "is a session recording" is
  * recomputed here, in one pure function, after each fault change and session transition:
  * camera and microphone states, track REC states, the recording indicator, PoE and port
- * links, the time-source tier, the security posture and controls, the 16 services, and the
+ * links, the time-source tier, the security posture and controls, the 17 services, and the
  * storage fill that the storage faults force.
  *
  * Continuous values (CPU, temperatures, fan speed, time offset, bandwidth, bytes written)

@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next'
 import { DATE_PATTERNS, formatDate } from '@dems/shared/realtime'
 import { selectActiveAlerts, selectUnacknowledgedAlertCount, useSim, type SimState } from '@dems/shared/sim'
 import { motion as tokens } from '@dems/shared/tokens'
+import { captureNoticeLine, captureNoticeOf } from '@/lib/capture-notices'
 import { useMotionPolicy } from '@/motion'
 
 const LATEST_ALERTS = 5
@@ -71,10 +72,15 @@ export function NotificationsBell() {
             <ul className="dems-alert-list">
               {alerts.map((alert) => {
                 const Icon = SEVERITY_ICON[alert.severity] ?? Info
+                // Task 3 R-10 (blueprint row 137; ux §8e.1): a no-device notice is worded from `params.reason`,
+                // with the device by label and id; every other alert keeps the Core's text.
+                const notice = captureNoticeOf(alert)
                 return (
                   <li key={alert.id} className="dems-alert-row" data-severity={alert.severity}>
                     <Icon className="dems-alert-icon" aria-hidden="true" size={16} />
-                    <span className="dems-alert-message">{alert.message}</span>
+                    <span className="dems-alert-message" data-notice={notice?.kind}>
+                      {notice === null ? alert.message : captureNoticeLine(t, notice)}
+                    </span>
                     <time className="dems-alert-time" dateTime={new Date(alert.at).toISOString()}>
                       {formatDate(alert.at, DATE_PATTERNS.time)}
                     </time>

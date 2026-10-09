@@ -244,8 +244,8 @@ describe('Start New Session: step 2 gate (§5.3, fake timers)', () => {
     expect(resolved).toBe(true)
     expect(m.sim.store.getState().session?.precheck.outcome).toBe('WARN')
     expect(m.sim.store.getState().session?.state).toBe('PRECHECK')
-    expect(screen.getByTestId('sn-check-MIC_1')).toHaveAttribute('data-status', 'WARN')
-    expect(screen.getByTestId('sn-check-MIC_1')).toHaveTextContent('MIC 1: no signal')
+    expect(screen.getByTestId('sn-check-MIC_PRIMARY')).toHaveAttribute('data-status', 'WARN')
+    expect(screen.getByTestId('sn-check-MIC_PRIMARY')).toHaveTextContent('MIC (primary): no signal')
     const warn = screen.getByTestId('sn-gate-warn')
     expect(isDisabled(nextButton())).toBe(true)
 

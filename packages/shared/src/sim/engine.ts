@@ -350,7 +350,7 @@ export function createSim(options: CreateSimOptions = {}): Sim {
     destroy: stop,
     errors: () => errorLog.slice(),
     request(request) {
-      const response = handleSimApiRequest({ store, actions, clock }, request);
+      const response = handleSimApiRequest({ store, actions, clock, deviceConsole: options.deviceConsole === true }, request);
       if (response.status >= 500) {
         report('api', new Error(`${request.method} ${request.path} → ${response.status}`), {
           method: request.method,

@@ -25,7 +25,7 @@
  * the grid is the same shared constant. If the capture contract ever sets the origin to 0 there is
  * no step to take from it: `captureTapTimeline` then refuses instead of inventing one.
  */
-import { CAPTURE_AUDIO_SAMPLE_RATE_HZ, CAPTURE_MEDIA_TIME_ORIGIN_SAMPLES } from '@dems/shared/api';
+import { CAPTURE_AAC_FRAME_SAMPLES, CAPTURE_AUDIO_SAMPLE_RATE_HZ, CAPTURE_MEDIA_TIME_ORIGIN_SAMPLES } from '@dems/shared/api';
 import { TranscriberError, TranscriberErrorCode } from '../types';
 
 export const AudioSourceKind = { PCM_TAP: 'PCM_TAP', DECODED_FILE: 'DECODED_FILE' } as const;
@@ -49,10 +49,12 @@ function positiveInteger(value: number): boolean {
  * known-offset check can show a wrong value failing; production code calls it with no argument.
  */
 export function captureTapTimeline(originSamples: number = CAPTURE_MEDIA_TIME_ORIGIN_SAMPLES): AudioTimeline {
-  if (!positiveInteger(originSamples)) {
-    throw new TranscriberError(TranscriberErrorCode.CONFIG_INVALID, 'the media-time origin of the capture contract gives no frame grid', { reason: 'MEDIA_TIME_ORIGIN_NOT_A_FRAME' });
+  // The origin follows the mux flags and may be 0 (`delay_moov`); the grid is the AAC frame of the
+  // codec, a constant of its own (D-77-6, N-14). Only a value that is no sample count is refused.
+  if (!Number.isInteger(originSamples) || originSamples < 0) {
+    throw new TranscriberError(TranscriberErrorCode.CONFIG_INVALID, 'the media-time origin of the capture contract is not a sample count', { reason: 'MEDIA_TIME_ORIGIN_INVALID' });
   }
-  return Object.freeze({ kind: AudioSourceKind.PCM_TAP, sampleRateHz: CAPTURE_AUDIO_SAMPLE_RATE_HZ, originSamples, gridSamples: originSamples });
+  return Object.freeze({ kind: AudioSourceKind.PCM_TAP, sampleRateHz: CAPTURE_AUDIO_SAMPLE_RATE_HZ, originSamples, gridSamples: CAPTURE_AAC_FRAME_SAMPLES });
 }
 
 /** The timeline of audio decoded from a file: already in file time, every sample is a boundary. */

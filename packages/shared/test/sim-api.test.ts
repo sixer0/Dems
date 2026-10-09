@@ -37,9 +37,9 @@ const CREATE_BODY = {
 };
 
 describe('routes', () => {
-  it('lists the 25 simulated operations (9 book §21.2, the 13 of schema v2 (OD-17) and the 3 STT configuration ops 90-92, C3 §2.5)', () => {
-    expect(SIM_API_ROUTES).toHaveLength(25);
-    expect(new Set(SIM_API_ROUTES.map((route) => route.operationId)).size).toBe(25);
+  it('lists the 30 simulated operations (9 book §21.2, the 13 of schema v2 (OD-17), the 3 STT configuration ops 90-92 (C3 §2.5) and the 5 camera-search ops 93-97 (C3 §2.6))', () => {
+    expect(SIM_API_ROUTES).toHaveLength(30);
+    expect(new Set(SIM_API_ROUTES.map((route) => route.operationId)).size).toBe(30);
   });
 
   it('marks every response simulated and JSON, including errors', () => {
@@ -260,15 +260,32 @@ describe('POST /capture/* (ops 78/79/80/89): RBAC, the idle lock, the audit rows
     expect(h.sim.request({ method: 'POST', path: CAPTURE_CONFIG_PATH, body: '[1]' }).status).toBe(400);
     expect(h.sim.request({ method: 'POST', path: CAPTURE_CONFIG_PATH, body: { cameras: [{ trackId: 'VIDEO-09', deviceId: 'CAM-01' }] } }).status).toBe(422);
 
-    const updated = h.sim.request({ method: 'POST', path: CAPTURE_CONFIG_PATH, body: { cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-02' }] } });
-    expect((updated.body as CaptureConfigBody).cameras[0]?.deviceId).toBe('CAM-02');
-    expect(h.state().audit.rows.at(-1)).toMatchObject({
-      type: 'CAPTURE_CONFIG_CHANGED',
-      actorId: 'OPR-003',
-      details: { operationId: 'updateCaptureConfig', scope: 'CAMERA', field: 'SOURCE', trackId: 'VIDEO-01', from: 'CAM-01', to: 'CAM-02' },
-    });
+    // Decision D106 (3): the facade runs the transition of the hosted action `setCaptureConfig`. So it
+    // refuses what the Core server refuses (an unknown device, one camera on both tracks with one
+    // profile, one microphone behind both inputs), and a refused edit writes no row.
+    const rowsBefore = h.state().audit.rows.length;
+    expect(h.sim.request({ method: 'POST', path: CAPTURE_CONFIG_PATH, body: { cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-77' }] } }).status).toBe(422);
+    expect(h.sim.request({ method: 'POST', path: CAPTURE_CONFIG_PATH, body: { cameras: [{ trackId: 'VIDEO-01', deviceId: 'MIC-01' }] } }).status).toBe(422);
+    expect(h.sim.request({ method: 'POST', path: CAPTURE_CONFIG_PATH, body: { cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-02' }] } }).status).toBe(422);
+    expect(h.sim.request({ method: 'POST', path: CAPTURE_CONFIG_PATH, body: { mics: [{ inputId: 'MIC-01', deviceId: 'MIC-02' }] } }).status).toBe(422);
+    expect(h.state().audit.rows).toHaveLength(rowsBefore);
+    expect(h.state().captureConfig.cameras.map((camera) => camera.deviceId)).toEqual(['CAM-01', 'CAM-02']);
 
+    // The two cameras swap their tracks: one row per line that changed, with exactly the keys of C3 §5.2.
+    const updated = h.sim.request({
+      method: 'POST',
+      path: CAPTURE_CONFIG_PATH,
+      body: { cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-02' }, { trackId: 'VIDEO-02', deviceId: 'CAM-01' }] },
+    });
+    expect((updated.body as CaptureConfigBody).cameras.map((camera) => camera.deviceId)).toEqual(['CAM-02', 'CAM-01']);
+    expect(h.state().audit.rows).toHaveLength(rowsBefore + 2);
+    expect(h.state().audit.rows.slice(-2).map((row) => [row.type, row.actorId, row.details])).toEqual([
+      ['CAPTURE_CONFIG_CHANGED', 'OPR-003', { operationId: 'updateCaptureConfig', scope: 'CAMERA', field: 'SOURCE', trackId: 'VIDEO-01', deviceId: 'CAM-02', from: 'CAM-01', to: 'CAM-02', permission: 'CAPTURE_CONFIG' }],
+      ['CAPTURE_CONFIG_CHANGED', 'OPR-003', { operationId: 'updateCaptureConfig', scope: 'CAMERA', field: 'SOURCE', trackId: 'VIDEO-02', deviceId: 'CAM-01', from: 'CAM-02', to: 'CAM-01', permission: 'CAPTURE_CONFIG' }],
+    ]);
+    // An edit that changes nothing answers 200 and writes no row (the hosted action's rule).
     expect(h.sim.request({ method: 'POST', path: '/api/v1/capture/cameras/CAM-01/source', body: { trackId: 'VIDEO-02' } }).status).toBe(200);
+    expect(h.state().audit.rows).toHaveLength(rowsBefore + 2);
     expect(h.sim.request({ method: 'POST', path: '/api/v1/capture/cameras/GHOST/source', body: { trackId: 'VIDEO-02' } }).status).toBe(404);
 
     const primary = h.sim.request({ method: 'POST', path: '/api/v1/capture/mics/MIC-02/primary' });
@@ -278,8 +295,9 @@ describe('POST /capture/* (ops 78/79/80/89): RBAC, the idle lock, the audit rows
     ]);
     expect(h.state().audit.rows.at(-1)).toMatchObject({
       type: 'CAPTURE_CONFIG_CHANGED',
-      details: { operationId: 'setPrimaryMic', scope: 'MIC', field: 'ROLE', inputId: 'MIC-02', from: 'STANDBY', to: 'PRIMARY' },
+      details: { operationId: 'setPrimaryMic', scope: 'MIC', field: 'ROLE', inputId: 'MIC-02', deviceId: 'MIC-02', from: 'STANDBY', to: 'PRIMARY', permission: 'CAPTURE_CONFIG' },
     });
+    expect(Object.keys(h.state().audit.rows.at(-1)?.details ?? {}).sort()).toEqual(['deviceId', 'field', 'from', 'inputId', 'operationId', 'permission', 'scope', 'to']);
     // The health read follows the selector (op 44 v2).
     const health = h.sim.request({ method: 'GET', path: '/api/v1/device/health' }).body as ApiDeviceHealth;
     expect([health.activeInputId, health.audio[0]?.role, health.audio[1]?.role]).toEqual(['MIC-01', 'STANDBY', 'PRIMARY']);

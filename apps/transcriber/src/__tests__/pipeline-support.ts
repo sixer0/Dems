@@ -105,6 +105,8 @@ export function createStubAdapter(backend: TranscriberAdapter['backend'] = 'cpu-
     backend,
     model,
     queue,
+    // An in-process stand-in starts no engine: there is no worker to outrank, and it says so (N-10).
+    captureWorkerStated: true,
     decodedOffsets,
     answer: (chunk) => [{ id: 0, start: 0, end: chunk.durationMs / 1000, text: `ucapan pada ${chunk.offsetMs}` }],
     failChunk(offsetMs, count) {

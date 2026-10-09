@@ -1200,6 +1200,41 @@ and `details`, which the database checks for shape only.
 
 **No schema change for credentials.**
 
+**Erratum PE-129a-01 (2026-10-09; row 129a, D99; finding F-84-1 of row 84) — contract revision
+`dbc-5`, schema version 4, migration set 5.** The second row of the table above ("UPDATE of the six
+credential columns for a later rotation … nothing is missing") was wrong for the rotation: with
+INSERT + a six-column UPDATE and **no SELECT on any column**, `UPDATE … WHERE device_id = $1` and
+`INSERT … ON CONFLICT (device_id) DO UPDATE` answer `42501`, because both read `device_id`
+(measured on a `(3, 'dbc-4')` database, `test/db/set5.db.test.ts` M4A-1). Only the first INSERT
+worked. **Fix:** the hand-written file `0010_credential_replace_privileges.sql` — `GRANT SELECT
+(device_id) ON capture_device_credentials TO dems_app`, a boundary `REVOKE SELECT` of the other six
+columns (a no-op, the `0007` precedent), and the version row. `0005` is not edited (MG-4). The §D
+matrix cell for this table now reads: SELECT **`device_id` only** (no table-level SELECT; reveal
+function for everything else), INSERT yes, UPDATE 6 columns, DELETE no. **Chosen over an
+owner-owned `SECURITY DEFINER` write function:** the privilege model of §B.3 / §D expresses writes
+as grants and keeps exactly one definer function per store, for the read; a second definer would
+write with owner rights past the six-column UPDATE list, would need its own EXECUTE narrowing and
+static rule, and would hide nothing more — the role already holds EXECUTE on the reveal function,
+and what the grant opens (which device ids have a row, and their count) is the `credentialSet`
+fact of C3. `username`, `encryption`, `secret_ciphertext`, `nonce`, `key_ref` and `rotated_at`
+stay `42501` in every statement form (M4A-4). **One rule for the store of operations 89 / 96
+(rows 84, 142):** the replacing statement names bind parameters in SET — `UPDATE … SET username =
+$2, … WHERE device_id = $1`, or `INSERT … ON CONFLICT (device_id) DO UPDATE SET username = $2, …`.
+The form `SET username = EXCLUDED.username, …` proposed in F-84-1 is **still refused `42501`**:
+PostgreSQL asks for SELECT on the target column behind every `EXCLUDED` reference (measured,
+M4A-3). **Version (MG-5; N.9 / D-DB-17 reasoning):** every set's last file sets the version, and
+the `0007` exception (re-affirming the same pair) held only "before any reader existed"; here the
+reader exists, so the step is taken: `schema_meta` = `(4, 'dbc-5')`, `DB_SCHEMA_VERSION` /
+`DB_CONTRACT_REVISION` move in the same change, and B-3 refuses the replacing code on a database
+without the grant and the code of row 129 on a migrated one. **`stt_config` needs nothing:** its
+write is `UPDATE … WHERE singleton AND revision = $n`, and `0007` granted SELECT on both columns
+(two secret writes in a row measured without `0010`, M4A-7). **Totals:** 11 files, 7 hand-written;
+tables, columns, constraints, indexes and value sets unchanged (41 / 426 / 172 CHECKs / 40 FKs);
+unreadable columns for `dems_app`: 9 (6 here, 3 of `stt_config`). Applied to `dems_lane_1..3` and
+`dems_demo` by row 129a (`implementation/60a_r9_migration_credential_replace.md`). Wherever
+sections N.8 to N.12 say "ten files", "(3, 'dbc-4')" or "no SELECT on the table", read them with
+this paragraph.
+
 ### N.8 Migration set 4, exactly (question 6) — Erratum PE-122-09
 
 | Order | File | Kind | Content |
@@ -1484,6 +1519,66 @@ Pins on code and catalog that **must move in row 129's commit** (file:line at HE
 | Each of the row's questions 1-7 answered | 1: N.2; 2: N.3 (+N.4); 3: N.5; 4: N.6; 5: N.7; 6: N.8-N.12; 7: N.14 — PASS |
 | Pinned strings of this document | the §0.1 "Table count" row and the heading ``### B.13 `stt_config` (T-40)`` are unchanged — PASS (N.12) |
 | No SQL executed; one read-only command | `db:status` on `dems_demo` only — PASS |
+
+### N.17 The STT configuration of a session at its start — new table `session_stt_config` (T-42), migration set 6 — Erratum PE-129b-01
+
+**Erratum PE-129b-01 (2026-10-09; controller-added row 129b, D109; request of row 115; requirement
+R-8 AC-4, check `M6-STTCFG-NEXT`) — contract revision `dbc-6`, schema version 5.** §B.13 says the
+STT configuration is "snapshot at session start into `active_session`" and §B.10 defines no column
+for it (`transcript_status` is the engine's replicated progress object). Read that sentence as:
+**snapshot at session start into `session_stt_config`**, one row per session.
+
+| Column | Type | Null | Key / Check |
+|---|---|---|---|
+| `session_id` | text | no | PK `session_stt_config_pkey`; `^SES-[0-9]{8}-[0-9]{4}$` (`session_stt_config_session_check`); no FK (written while the session exists only in `active_session`, the T-41 rule) |
+| `enabled` | boolean | no | — |
+| `backend` | text | no | `session_stt_config_backend_check`: IN ('omlx-server','cpu-local') |
+| `endpoint` | text | yes | `session_stt_config_endpoint_required_check` (required for `omlx-server`); `session_stt_config_endpoint_loopback_check` (the §B.13 pattern) |
+| `model` | text | no | — |
+| `language` | text | no | `session_stt_config_language_check`: = 'id' |
+| `diarization` | boolean | no | — |
+| `credential_kind` | text | yes | `session_stt_config_credential_kind_check`: IN ('REFERENCE','ENCRYPTED') or null |
+| `config_revision` | bigint | no | `session_stt_config_revision_check`: >= 1; `stt_config.revision` at the snapshot |
+| `taken_at` | bigint | no | epoch-ms |
+
+No default on any column (the writer names every value). The CHECKs are those of `stt_config`, so
+every row that table can hold has a snapshot.
+
+**Why a table and not `active_session.stt_config jsonb` (the proposal of row 115).** The reasoning
+of N.3 / D-DB-14 applies unchanged: `dems_app` holds table-level UPDATE and DELETE on
+`active_session` and the engine's write-through owns that row, so "written once" would be a
+statement promise only (no trigger: §D, "no new trigger is added in v2"), on the fact that decides
+where a session's audio is sent and what manifest field 123 says; a JSON column needs a deny-list
+CHECK where typed columns need none; and the typed row of `active_session` would have to carry the
+column through the engine's mapping. **Decision D-DB-19: an INSERT-only table.**
+
+| Point | Rule |
+|---|---|
+| Privileges (`0012`) | `dems_app`: **SELECT and INSERT only**. A second snapshot of a session meets the primary key (`23505`; nothing with `ON CONFLICT (session_id) DO NOTHING`); UPDATE, DELETE, TRUNCATE answer `42501`. Write-once is held by the database, not by the statement |
+| Replication | none: the engine's mapping never names the table; nothing of it is in a slice |
+| No secret | typed columns only, no JSON, no `bytea`, **no `credential_ref`**: the snapshot says how a credential was held, never the reference target (one of the three columns `0007` hides) and never key material. This is narrower than the brief of row 129b ("kind and reference name") and equal to row 115's `StoredSttSelection` (D-115-5): the reference is read through the key-loader when the session's adapter is built. The runtime role cannot copy a hidden column of `stt_config` into a snapshot (`42501`, measured) |
+| MR-T1 | the Core writes the row once at session start (`INSERT … ON CONFLICT (session_id) DO NOTHING`, then `SELECT`), and everything the transcriber does for the session — after any restart, and `FINALIZE_TRANSCRIPT` — reads that row, never `stt_config` |
+| At the seal | the row stays (the runtime role cannot remove it); manifest field 123 is built from it. It is not a kept table: a **reset** rebuilds it (rows removed, table kept), as T-41 |
+| Seed / bulk fixture | 0 rows; minimum 0. Rule S-2: a generator that writes `transcript_chunks` of a REAL session writes that session's snapshot |
+
+**Migration set 6:** `0011_session_stt_config.sql` (generated: one CREATE TABLE) and
+`0012_session_stt_config_privileges.sql` (hand-written: `GRANT SELECT, INSERT`, a boundary `REVOKE
+UPDATE, DELETE, TRUNCATE`, the version row). 0 edits to `0000`-`0010`. **Version (MG-5, N.9
+reasoning):** `(5, 'dbc-6')`; code that keeps the snapshot fails at its first statement on a
+database without the table, so B-3 refuses it there and refuses the code of row 129a on a migrated
+one. **Totals:** 42 tables, 436 columns (+10), 179 named CHECKs (+7), 40 foreign keys, 42 primary
+keys, 84 index relations, INSERT for `dems_app` on 26 tables, value sets unchanged (44), kept
+tables unchanged (12), 13 files / 8 hand-written; unreadable columns for `dems_app` unchanged (9).
+Checks `M6S-1..8` (`apps/core-server/test/db/set6.db.test.ts`). Applied to `dems_lane_1..3` and
+`dems_demo` by row 129b (`implementation/60b_m6_snapshot_column_and_mapping.md`). Wherever sections
+N.8 to N.12 or PE-129a-01 say "41 tables", "426 columns", "172 CHECKs", "eleven files" or
+"(4, 'dbc-5')", read them with this paragraph.
+
+**Mapping errata of the same row (no DDL).** (a) §B.11: `evidence_items.manifest_version` is 2 for
+every v2 seal, also one without a transcript hash (STT disabled), and `labels_status` is the seal's
+speaker state — both from the seal's item columns, no longer derived from `transcript_sha256`
+(request of row 79). (b) §B.1: the selector's two microphone lines read back in input order,
+`MIC-01` then `MIC-02`; the role is a member of the line (D106 (1), AC-B-70).
 
 ---
 *Generated: 2026-10-07 10:05*

@@ -10,7 +10,7 @@ import { CheckpointSchema, ChunkStatus, createCheckpointStore, emptyCheckpoint, 
 import { QaFlag, STT_CHUNK_RETRIES, TRANSCRIPT_CHECKPOINT_FILE } from '../pipeline/constants';
 import { captureTapTimeline, decodedFileTimeline } from '../pipeline/media-time';
 import { createMemoryChunkMirror, tableRefusal, toModelCode, type ChunkMirrorRow, type MemoryChunkMirror } from '../pipeline/mirror';
-import { createTranscriptRunner, type TranscriptRunnerOptions } from '../pipeline/runner';
+import { NO_TAP_SIGNAL, createTranscriptRunner, type TranscriptRunnerOptions } from '../pipeline/runner';
 import { TranscriberError, TranscriberErrorCode } from '../types';
 import { encodeWavPcm16 } from '../wav';
 import { SESSION, TAP_RATE, createStubAdapter, createStubVad, growTap, tonePcm, writeTap, type StubAdapter } from './pipeline-support';
@@ -55,6 +55,7 @@ function rig(samples: Int16Array = tonePcm(TOTAL, FIVE)): Rig {
         log,
         mirror,
         now: () => new Date('2026-10-09T07:00:00.000Z'),
+        tapLost: NO_TAP_SIGNAL,
         ...overrides,
       }),
     stored: () => CheckpointSchema.parse(JSON.parse(readFileSync(join(dir, TRANSCRIPT_CHECKPOINT_FILE), 'utf8'))),

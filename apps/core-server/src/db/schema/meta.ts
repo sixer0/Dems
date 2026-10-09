@@ -10,13 +10,27 @@ import { sql } from 'drizzle-orm';
 import { boolean, check, integer, pgTable, text } from 'drizzle-orm/pg-core';
 
 /**
- * The schema version this code expects: 2 since the capture set (`0004_capture.sql` +
- * `0005_capture_privileges.sql`). A later set adds 1 in its last file, and this constant changes
- * in the same commit as that file (MG-5) - here, the `UPDATE public.schema_meta` of 0005.
+ * The schema version this code expects: 3 since migration set 4 (`0008_capture_sources.sql` +
+ * `0009_capture_sources_privileges.sql`; dbc-4 §N.8/§N.9, D-DB-17, blueprint row 129). It was 2
+ * since the capture set (`0004`/`0005`). A later set adds 1 in its last file, and this constant
+ * changes in the same commit as that file (MG-5) - here, the `UPDATE public.schema_meta` of 0009.
+ * Boot check B-3 refuses a database on either side of the step: this code on `(2, 'dbc-3')` names
+ * `db:migrate`, and code older than row 129 refuses `(3, 'dbc-4')`.
+ *
+ * 4 since migration set 5 (`0010_credential_replace_privileges.sql`; section N erratum
+ * PE-129a-01, finding F-84-1, row 129a): one column grant, `SELECT (device_id)` on
+ * `capture_device_credentials`, so that the runtime role can replace a stored camera credential.
+ * No table or column changed; the step exists because code that replaces a credential fails
+ * 42501 on a database without the grant, and B-3 is the only place that can say so at boot.
+ *
+ * 5 since migration set 6 (`0011_session_stt_config.sql` + `0012_session_stt_config_privileges.sql`;
+ * section N erratum PE-129b-01, row 129b, D109): T-42 `session_stt_config`, the STT configuration
+ * of a session as it was at its start (R-8 AC-4). Code that keeps that snapshot fails at its first
+ * statement on a database without the table, so B-3 refuses it there, and refuses older code here.
  */
-export const DB_SCHEMA_VERSION = 2;
+export const DB_SCHEMA_VERSION = 5;
 /** The revision of the database contract the migration set was written from. */
-export const DB_CONTRACT_REVISION = 'dbc-3';
+export const DB_CONTRACT_REVISION = 'dbc-6';
 
 /** T-29. One row. */
 export const schemaMeta = pgTable(

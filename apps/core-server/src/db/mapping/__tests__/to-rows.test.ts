@@ -43,6 +43,7 @@ import {
   verifyStoredAuditRows,
   type DurableSliceKey,
   type RowContext,
+  type SealedEvidenceItem,
 } from '..';
 
 const idle = (): SimState => createIdleState({ now: FIXED_NOW, seed: DEFAULT_SEED });
@@ -464,5 +465,57 @@ describe('diffSlices sees nothing between a state and itself', () => {
     const state = idle();
     expect(diffSlices(state, state, FIXED_NOW)).toEqual([]);
     expect(diffSlices(state, { ...state, settings: { ...state.settings } }, FIXED_NOW)).toEqual([]);
+  });
+});
+
+// Blueprint row 129b (request of row 79): the three sealed columns of `evidence_items` come from
+// the seal's item columns (`FinalizedTranscript.itemColumns` of src/sealing), not from the hash.
+describe('the sealed columns of a v2 item: manifest_version and labels_status (dbc-3 §B.11)', () => {
+  const HASH = 'ab'.repeat(32);
+  const base = (): EvidenceItem => {
+    const { transcriptSha256: _hash, ...item } = idle().evidence[0] as EvidenceItem;
+    return item;
+  };
+  const sealed = (members: Partial<SealedEvidenceItem>): SealedEvidenceItem => ({ ...base(), ...members });
+  const columns = (item: EvidenceItem) => {
+    const row = evidenceItemToRow(item, context);
+    return [row.manifestVersion, row.transcriptSha256, row.labelsStatus];
+  };
+
+  it('a v1 item stores (1, NULL, NULL)', () => {
+    expect(columns(base())).toEqual([1, null, null]);
+  });
+
+  it.each([
+    ['a labelled transcript', { manifestVersion: 2, transcriptSha256: HASH, labelsStatus: 'LABELLED' }, [2, HASH, 'LABELLED']],
+    ['a transcript whose speakers are not labelled', { manifestVersion: 2, transcriptSha256: HASH, labelsStatus: 'UNAVAILABLE' }, [2, HASH, 'UNAVAILABLE']],
+    ['STT DISABLED: no hash, and still version 2', { manifestVersion: 2, transcriptSha256: null, labelsStatus: null }, [2, null, null]],
+  ] as const)('the seal\'s item columns, %s', (_label, members, stored) => {
+    expect(columns(sealed(members))).toEqual(stored);
+  });
+
+  it('NEGATIVE CONTROL: the old derivation stored the DISABLED item as version 1', () => {
+    const item = sealed({ manifestVersion: 2, transcriptSha256: null, labelsStatus: null });
+    expect(item.transcriptSha256 != null ? 2 : 1).toBe(1);
+    expect(evidenceItemToRow(item, context).manifestVersion).toBe(2);
+  });
+
+  it('an item that states neither member keeps the old reading: 2 with a bound hash, NULL labels', () => {
+    expect(columns({ ...base(), transcriptSha256: HASH })).toEqual([2, HASH, null]);
+    expect(columns({ ...base(), transcriptSha256: null })).toEqual([1, null, null]);
+  });
+
+  it('refuses what no seal produces: version 1 with a hash or a speaker state, an unknown version, an unknown speaker state', () => {
+    for (const [members, column] of [
+      [{ manifestVersion: 1, transcriptSha256: HASH }, 'manifest_version'],
+      [{ manifestVersion: 1, labelsStatus: 'LABELLED' }, 'labels_status'],
+      [{ labelsStatus: 'LABELLED' }, 'labels_status'],
+      [{ manifestVersion: 3 as never }, 'manifest_version'],
+      [{ manifestVersion: 2, transcriptSha256: HASH, labelsStatus: 'PARTIAL' as never }, 'labels_status'],
+    ] as const) {
+      const error = caught(() => evidenceItemToRow(sealed(members), context));
+      expect(error.code).toBe('ROW_SHAPE');
+      expect(error.message).toContain(`evidence_items.${column}`);
+    }
   });
 });

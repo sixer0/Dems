@@ -27,7 +27,7 @@ function Reveal({ delay, children }: { delay: number; children: ReactNode }) {
 }
 
 /**
- * Services board (01_specs §14.5.8; design book §6.1 via 01_explore): the 16 Core services, names
+ * Services board (01_specs §14.5.8; design book §6.1 via 01_explore): the 17 Core services (the 16 of §6.1 and the transcriber service), names
  * verbatim, with the §6.1 responsibility, a status Chip (fault-derived by the sim) and the uptime
  * (the sim's `selectServicesSince`, 1 Hz). M-C-11: the first 10 rows stagger 30 ms; chips transition colour (400).
  */

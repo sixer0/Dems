@@ -49,7 +49,7 @@ describe('VAD chunking: from speech runs to chunks (§A.2)', () => {
   });
 
   it('no speech in complete audio: no chunk; the cursor is at the end', () => {
-    expect(planChunks({ timeline: tap, window: { from: 0, to: 10 * SECOND }, spans: [], final: true })).toEqual({ chunks: [], nextCursor: 10 * SECOND });
+    expect(planChunks({ timeline: tap, window: { from: 0, to: 10 * SECOND }, spans: [], final: true })).toEqual({ chunks: [], nextCursor: 10 * SECOND, openRunUntil: null });
   });
 
   describe('while the audio still grows (final: false)', () => {
@@ -65,7 +65,7 @@ describe('VAD chunking: from speech runs to chunks (§A.2)', () => {
 
     it('only silence so far: nothing is planned and the silence is skipped up to the guard', () => {
       const plan = planChunks({ timeline: tap, window: { from: 0, to: 40 * SECOND }, spans: [], final: false });
-      expect(plan).toEqual({ chunks: [], nextCursor: 40 * SECOND - (VAD_TAIL_GUARD_MS / 1000) * SECOND });
+      expect(plan).toEqual({ chunks: [], nextCursor: 40 * SECOND - (VAD_TAIL_GUARD_MS / 1000) * SECOND, openRunUntil: null });
     });
 
     it('fixed windows: only FULL windows are closed; the rest waits', () => {
@@ -82,6 +82,73 @@ describe('VAD chunking: from speech runs to chunks (§A.2)', () => {
       const all = [...first.chunks, ...second.chunks];
       expect(all).toHaveLength(2);
       expect(all[1]!.from).toBeGreaterThanOrEqual(all[0]!.to);
+    });
+  });
+
+  // Navigator finding pair-77 N-4 (carried to row 79): a speaker who does not pause.
+  describe('an unbroken speech run while the audio still grows (N-4): the maximum cuts during recording too', () => {
+    const MAX = (VAD_MAX_CHUNK_MS / 1000) * SECOND;
+    const OVERLAP = (VAD_OVERLAP_MS / 1000) * SECOND;
+    const GUARD = (VAD_TAIL_GUARD_MS / 1000) * SECOND;
+
+    it('a run that fills a 300 s window: its full windows are closed now, the last piece stays open, and the cursor MOVES', () => {
+      const window = { from: 0, to: 300 * SECOND };
+      const plan = planChunks({ timeline: tap, window, spans: [span(0, 300)], final: false });
+      // 298 s up to the horizon, windows of 30 s that share 100 ms: nine are full, the tenth is open.
+      expect(plan.chunks).toHaveLength(9);
+      expect(plan.nextCursor).toBe(9 * (MAX - OVERLAP));
+      expect(plan.nextCursor).toBeGreaterThan(window.from);
+      expect(plan.openRunUntil).toBe(300 * SECOND);
+      plan.chunks.forEach((chunk, index) => {
+        expect(chunk.to - chunk.from).toBeLessThanOrEqual(MAX + 2 * 1024);
+        // Every seam lies inside speech and is covered twice: nothing of the run falls between two chunks.
+        if (index > 0) expect(chunk.from).toBeLessThan(plan.chunks[index - 1]!.to);
+      });
+      expect(plan.chunks[plan.chunks.length - 1]!.to).toBeGreaterThanOrEqual(plan.nextCursor + OVERLAP);
+    });
+
+    it('a run shorter than the maximum plus the guard is left whole, as before (control)', () => {
+      const plan = planChunks({ timeline: tap, window: { from: 0, to: 31 * SECOND }, spans: [span(0, 31)], final: false });
+      expect(plan.chunks).toEqual([]);
+      expect(plan.nextCursor).toBe(0);
+      // The pass resumes AT the open run and is told how far it reached.
+      expect(plan.openRunUntil).toBe(31 * SECOND);
+    });
+
+    it('the chunk before the long run is closed with it: it could only have waited for a run it cannot take', () => {
+      const plan = planChunks({ timeline: tap, window: { from: 0, to: 80 * SECOND }, spans: [span(1, 5), span(8, 80)], final: false });
+      expect(plan.chunks.map((chunk) => [Math.round(chunk.from / SECOND), Math.round(chunk.to / SECOND)])).toEqual([[1, 5], [8, 38], [38, 68]]);
+      expect(plan.nextCursor).toBe(8 * SECOND + 2 * (MAX - OVERLAP));
+    });
+
+    it('the next pass starts inside the run: what the pass before saw as speech stays speech, though a cold VAD reports it late', () => {
+      const first = planChunks({ timeline: tap, window: { from: 0, to: 100 * SECOND }, spans: [span(0, 100)], final: false });
+      expect(first.chunks).toHaveLength(3);
+      const from = first.nextCursor;
+      // The VAD, started in the middle of a sentence, says the speech starts 400 ms into the window and ends 20 s in.
+      const cold = [{ fromMs: 400, toMs: 20_000 }];
+      const withCarry = planChunks({ timeline: tap, window: { from, to: 130 * SECOND }, spans: cold, final: true, openRunUntil: first.openRunUntil });
+      expect(withCarry.chunks[0]!.from).toBeLessThanOrEqual(from);
+      // Negative control: without the carry the same answer leaves the first 400 ms after the cut
+      // to one overlap of the chunk before — 300 ms of speech in no chunk.
+      const without = planChunks({ timeline: tap, window: { from, to: 130 * SECOND }, spans: cold, final: true });
+      expect(without.chunks[0]!.from).toBeGreaterThan(first.chunks[2]!.to);
+      expect(withCarry.chunks[0]!.from).toBeLessThan(first.chunks[2]!.to);
+    });
+
+    it('the carried stretch is speech even when the cold VAD finds none at all in it', () => {
+      const from = 3 * (MAX - OVERLAP);
+      const plan = planChunks({ timeline: tap, window: { from, to: 130 * SECOND }, spans: [], final: true, openRunUntil: 100 * SECOND });
+      expect(plan.chunks).toHaveLength(1);
+      expect(plan.chunks[0]!.from).toBeLessThanOrEqual(from);
+      expect(plan.chunks[0]!.to).toBeGreaterThanOrEqual(100 * SECOND);
+      // A carry that does not reach into the window carries nothing.
+      expect(planChunks({ timeline: tap, window: { from, to: 130 * SECOND }, spans: [], final: true, openRunUntil: from }).chunks).toEqual([]);
+    });
+
+    it('the horizon is respected: nothing is closed inside the guard at the end of growing audio', () => {
+      const plan = planChunks({ timeline: tap, window: { from: 0, to: 100 * SECOND }, spans: [span(0, 100)], final: false });
+      for (const chunk of plan.chunks) expect(chunk.to).toBeLessThanOrEqual(100 * SECOND - GUARD + 1024);
     });
   });
 });

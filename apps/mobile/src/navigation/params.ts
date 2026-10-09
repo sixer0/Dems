@@ -29,7 +29,7 @@ export const sessionStepSchema = z.coerce.number().int().min(1).max(3);
 export type SessionStep = 1 | 2 | 3;
 
 /** `/settings/[section]` (04 §4.15 "Sections"). */
-export const SETTINGS_SECTIONS = ['preferences', 'notifications', 'security', 'maintenance', 'about'] as const;
+export const SETTINGS_SECTIONS = ['preferences', 'notifications', 'security', 'maintenance', 'about', 'transcription', 'capture'] as const;
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
 export const settingsSectionSchema = z.enum(SETTINGS_SECTIONS);
 

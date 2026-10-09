@@ -140,6 +140,53 @@ export const session = {
     micIcon: '{{mic}} microphone',
   },
 
+  /**
+   * O: the mic switch, the silence warning and the audio-source band (task 3 M5, blueprint row 72;
+   * 08_client_ux_spec §3 flow 2; operations 81 and 82). One block, added whole; no other key changed.
+   */
+  audioSource: {
+    role: {
+      ACTIVE: 'Active',
+      STANDBY: 'Standby',
+    },
+    switchTo: 'Switch to {{mic}}',
+    checking: 'Checking your permissions…',
+    rolesJoin: 'or',
+    block: {
+      NOT_RECORDING: 'The microphone can be switched while a session is recording.',
+      HOLDER: 'Only the operator who opened this session or a supervisor can switch the microphone.',
+    },
+    confirm: {
+      title: 'Switch the active microphone to {{mic}}?',
+      body: 'Recording continues. {{from}} becomes the standby microphone. The switch is written to the audit log.',
+      action: 'Switch microphone',
+    },
+    switched: 'Active microphone: {{mic}}',
+    failed: 'The microphone was not switched.',
+    refusal: {
+      CONFLICT: 'The requested microphone cannot become the active source.',
+      NOT_RECORDING: 'The session is not recording. The microphone was not switched.',
+      NOT_OPEN: 'That session is not the open session.',
+    },
+    silent: {
+      title: '{{mic}} is silent',
+      body: 'Below {{dbfs}} dBFS for {{seconds}} s. Recording continues. The microphone is never switched automatically.',
+      action: 'Switch to standby',
+    },
+    band: {
+      label: 'Audio source over time',
+      caption: 'Audio source',
+      open: '{{mic}} from {{from}}',
+      closed: '{{mic}} from {{from}} to {{to}}',
+      unavailable: 'The audio source history could not be read.',
+    },
+    timelineDetail: '{{from}} to {{to}}',
+    connecting: {
+      title: 'CONNECTING CAMERAS…',
+      detail: 'Connecting cameras… Recording has not started.',
+    },
+  },
+
   /** P: action bar. */
   actions: {
     label: 'Session actions',
@@ -290,6 +337,11 @@ export const session = {
     viewEvidence: 'View in Evidence',
     stopping: 'Ending recording and closing tracks…',
     stepDuration: '{{seconds}} s',
+    // Row 87 (UX spec flows 3 and 4; E-13): the Core's own progress, ETA and resume mark, forward-only.
+    stepProgress: '{{percent}}%',
+    eta: 'About {{seconds}} s left',
+    estimating: 'Estimating the time left…',
+    resumed: 'Resumed after restart',
     sealedIn: 'Sealed {{seconds}} s after the recording ended',
     packageTitle: 'Evidence package (DEMO)',
     manifestDigest: 'Manifest SHA-256',

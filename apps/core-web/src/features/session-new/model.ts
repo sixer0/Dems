@@ -12,8 +12,9 @@
  */
 import { SessionState } from '@dems/shared/domain'
 import { SESSION_CREATE_MESSAGES } from '@dems/shared/api'
-import { SubjectType, type PrecheckItem, type PrecheckSlice } from '@dems/shared/sim'
+import { SubjectType, type PrecheckCheckId, type PrecheckItem, type PrecheckSlice } from '@dems/shared/sim'
 import type { StatusTone } from '@dems/shared/tokens'
+import { PRECHECK_UNREACHABLE_VALUE } from '@/lib/capture-notices'
 
 export type FlowStep = 1 | 2 | 3
 export const FLOW_STEPS: readonly FlowStep[] = [1, 2, 3]
@@ -124,6 +125,10 @@ export const REASON_KEY_BY_CODE: Record<NonNullable<PrecheckItem['reasonCode']>,
  */
 export function reasonKeyFor(item: Pick<PrecheckItem, 'id' | 'status' | 'value'> & Partial<Pick<PrecheckItem, 'reasonCode'>>): ReasonKey | null {
   if (item.status !== 'WARN' && item.status !== 'BLOCK') return null
+  // Task 3 R-10 (blueprint row 137; decision D114): a source that did not answer the pre-check is
+  // not a lens fault and not "no signal". It has no reason of this table: the step draws it from
+  // `params.rule` (`unreachablePrecheckOf`, `lib/capture-notices.ts`).
+  if (item.value === PRECHECK_UNREACHABLE_VALUE && !item.reasonCode) return null
   if (item.reasonCode) return REASON_KEY_BY_CODE[item.reasonCode]
   switch (item.id) {
     case 'CORE':
@@ -133,6 +138,8 @@ export function reasonKeyFor(item: Pick<PrecheckItem, 'id' | 'status' | 'value'>
       return 'lensFault'
     case 'MIC_1':
     case 'MIC_2':
+    case 'MIC_PRIMARY':
+    case 'MIC_STANDBY':
       return item.value === 'CLIP' ? 'micClip' : 'micNoSignal'
     case 'STORAGE':
       return item.status === 'BLOCK' ? 'storageFull' : 'storageLow'
@@ -151,6 +158,9 @@ export const CHECK_DEVICE_KEY = {
   LENS_2: 'common.devices.camera2',
   MIC_1: 'common.devices.mic1',
   MIC_2: 'common.devices.mic2',
+  // Schema v2 (SH-03; blueprint row 67): the role-keyed pair names the input by the role it holds.
+  MIC_PRIMARY: 'sessionNew.devices.checks.MIC_PRIMARY',
+  MIC_STANDBY: 'sessionNew.devices.checks.MIC_STANDBY',
 } as const
 
 /** The `common.enums.*` map that labels a check's `value`. */
@@ -160,10 +170,12 @@ export const CHECK_VALUE_ENUM = {
   LENS_2: 'lensState',
   MIC_1: 'micState',
   MIC_2: 'micState',
+  MIC_PRIMARY: 'micState',
+  MIC_STANDBY: 'micState',
   STORAGE: 'storageState',
   TIME: 'timeSource',
   SECURITY: 'securityState',
-} as const
+} as const satisfies Record<PrecheckCheckId, string>
 
 // ── Subject type tones (D28/Q3: Tersangka red, Saksi blue, Lainnya neutral) ─────────────
 

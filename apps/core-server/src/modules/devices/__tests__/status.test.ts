@@ -97,7 +97,7 @@ describe('operations 44, 45, 46: the answer is the in-app simulator\'s on the sa
       ['MIC-02', 'MIC-02', 'STANDBY', 'READY', null, false, false],
     ]);
     expect(idle.activeInputId).toBe('MIC-01');
-    expect(idle.services).toHaveLength(16);
+    expect(idle.services).toHaveLength(17);
 
     const recording = deviceHealthOf(committedOf(scenarioState('recording')), NOW);
     expect(recording.systemState).toBe('RECORDING');

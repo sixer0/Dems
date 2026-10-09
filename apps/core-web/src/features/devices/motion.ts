@@ -8,7 +8,7 @@ import { useRouteEnterDelay } from '@/components/shell'
 import { cappedStagger, useMotionPolicy, type MotionPolicyValue } from '@/motion'
 
 /** Panel IDs, which are also the `data-testid="panel-<id>"` suffixes (01_specs §14.5.4 regions). */
-export type DevicesPanelId = 'cameras' | 'summary' | 'audio' | 'other' | 'front' | 'ports'
+export type DevicesPanelId = 'cameras' | 'summary' | 'audio' | 'other' | 'search' | 'selector' | 'front' | 'ports'
 
 /**
  * M-PG-DEV enter order (ms after the route enter): camera tiles (media-in) 80, metric cards 160,
@@ -21,6 +21,10 @@ export const PANEL_BEAT_MS: Record<DevicesPanelId, number> = {
   summary: 160,
   audio: 240,
   other: 320,
+  // Task 3 R-9 (blueprint row 137): the camera search enters with the selector it stands above.
+  search: 340,
+  // Task 3 M4 (blueprint row 67): the capture device selector enters with the row it follows.
+  selector: 360,
   front: 400,
   ports: 460,
 }

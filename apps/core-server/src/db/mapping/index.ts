@@ -69,6 +69,9 @@ export {
   storagePolicyFromRow,
   storagePolicyToRow,
   type RowContext,
+  type SealedEvidenceItem,
+  type SealedItemMembers,
+  type SealedLabelsStatus,
 } from './rows';
 export {
   TABLE_SQL_NAMES,

@@ -29,7 +29,7 @@ import {
 } from '@dems/shared/api';
 import { FAKE_CREDENTIALS, OUTAGE, createFakeTransport, type FakeAnswer, type FakeConnection, type FakeHttpCall, type FakeReply, type FakeTransport } from '@dems/shared/live/testing';
 import type { SocketLike } from '@dems/shared/realtime';
-import { DEFAULT_SEED, createIdleState, type SimAlert, type SimState } from '@dems/shared/sim';
+import { DEFAULT_SEED, createIdleState, type AudioFrame, type SimAlert, type SimState } from '@dems/shared/sim';
 import { AppProviders } from '@/providers';
 import { createMobileLive, useAuth, useCoreLink, type AuthContract, type MobileLive } from '@/runtime';
 
@@ -110,6 +110,13 @@ export interface HomeBed {
   elapse(ms: number, step?: number, sample?: () => void): Promise<void>;
   /** The operator socket that is open now. */
   operatorSocket(): FakeConnection;
+  /**
+   * Task 3 M5 (row 73; register MB-13). The Core's state becomes `next`: every replicated slice that
+   * differs travels as ONE delta on the operator socket (as after a command of another console).
+   */
+  pushState(next: SimState): Promise<void>;
+  /** Task 3 M5 (row 73; MB-13). One `meters` frame on the operator socket, keyed by mic input. */
+  sendMeters(inputs: Readonly<Record<'MIC-01' | 'MIC-02', AudioFrame>>, activeInputId?: 'MIC-01' | 'MIC-02'): void;
   requestsOf(operationId: string): readonly FakeHttpCall[];
   stop(): void;
 }
@@ -148,6 +155,8 @@ export function createHomeBed(options: { alerts?: readonly SimAlert[] } = {}): H
     comeBack,
     elapse,
     operatorSocket,
+    pushState,
+    sendMeters,
     requestsOf: (operationId) => fake.log.requestsOf(operationId),
     stop: () => {
       mobile?.stop();
@@ -267,6 +276,21 @@ export function createHomeBed(options: { alerts?: readonly SimAlert[] } = {}): H
     const found = [...fake.connections].reverse().find((connection) => connection.principal === 'OPERATOR' && connection.state === 'OPEN');
     if (!found) throw new Error('no open OPERATOR socket');
     return found;
+  }
+
+  async function pushState(next: SimState): Promise<void> {
+    const before = wire(bed.state) as unknown as Readonly<Record<string, unknown>>;
+    const after = wire(next) as unknown as Readonly<Record<string, unknown>>;
+    bed.state = next;
+    const ops = Object.keys(after)
+      .filter((slice) => JSON.stringify(before[slice]) !== JSON.stringify(after[slice]))
+      .map((slice) => ({ op: 'replace', slice, value: after[slice] }));
+    if (ops.length > 0) act(() => void operatorSocket().delta(ops as unknown as Parameters<FakeConnection['delta']>[0]));
+    await flush();
+  }
+
+  function sendMeters(inputs: Readonly<Record<'MIC-01' | 'MIC-02', AudioFrame>>, activeInputId: 'MIC-01' | 'MIC-02' = 'MIC-01'): void {
+    act(() => void operatorSocket().meters({ inputs, activeInputId }));
   }
 
   function goDown(): void {

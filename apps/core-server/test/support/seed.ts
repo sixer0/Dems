@@ -80,6 +80,10 @@ export const EXPECTED_SEED_COUNTS: Readonly<Record<string, number>> = Object.fre
   transcript_revisions: 0,
   sealing_jobs: 0,
   stt_config: 1,
+  // Schema v3 (dbc-4 §N.10, rule S-1): no source row while the seed writes no interval.
+  session_capture_sources: 0,
+  // Schema v5 (erratum PE-129b-01, row 129b): the seed starts no session, so no STT snapshot.
+  session_stt_config: 0,
 });
 
 // ── The wire form ──────────────────────────────────────────────────────────────────────────────

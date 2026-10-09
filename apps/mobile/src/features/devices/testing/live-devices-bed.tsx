@@ -260,6 +260,9 @@ export async function renderLiveDevices({
   });
   fake.answer('signOut', () => ({ status: 204 }));
   fake.answer('touchSession', () => fake.example('touchSession'));
+  // Task 3 row 138 (ux §8c.1 "Read on entry"): the Devices screen reads the caller's own camera search once
+  // when it gains focus (operation 94, a GET that probes nothing). This Core holds none: the idle answer.
+  fake.answer('getCaptureDiscovery', () => ({ status: 200, body: { search: null, candidates: [], truncated: false } }));
 
   const bed: LiveDevicesBed = {
     fake,

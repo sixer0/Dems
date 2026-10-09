@@ -81,6 +81,19 @@ export const CAPTURE_OBSERVED_GOP_MAX_MS = 2_000;
  */
 export const CAPTURE_MEDIA_TIME_ORIGIN_SAMPLES = 1_024;
 
+/**
+ * The length of one AAC-LC frame of the session audio track, in samples at
+ * `CAPTURE_AUDIO_SAMPLE_RATE_HZ` (1024 samples = 21.333 ms; transcript spec §0.2 `AUDIO_FRAME_MS`).
+ * It is the FRAME GRID of the sealed file: what chunk boundaries of the transcript snap to.
+ *
+ * It is a different fact from `CAPTURE_MEDIA_TIME_ORIGIN_SAMPLES`, although both are 1024 today
+ * (the encoder priming of the pinned mux flags happens to be exactly one frame): the origin
+ * follows the mux flags and would be 0 under `delay_moov`, the frame length follows the codec and
+ * would not change. A reader of the grid takes this constant, never the origin (row 77 decision
+ * D-77-6, navigator finding N-14).
+ */
+export const CAPTURE_AAC_FRAME_SAMPLES = 1_024;
+
 // ── Sealing progress and meters (R-6 op 83; register NM-02) ───────────────────────────────────
 
 /** Per-step progress/ETA recompute interval of `getSealingProgress` (ms; design proposal C3 §7). */
@@ -103,3 +116,58 @@ export const EVIDENCE_MEDIA_TOKEN_PREFIX = 'mts_';
  * never the evidence `Signer` key, never in a log or an audit row.
  */
 export const MEDIA_SESSION_SIGNING_KEY_ID = 'MEDIA-KEY-EVMEDIA-01';
+
+// ── Camera search, connection test and local inputs (R-9, R-10; `C3 §7` errata PE-121-12, ─────
+// ── PE-128-17..21; decisions D86 C-2 / C-4 / C-8, D91; blueprint row 132, decision D106) ──────
+//
+// The constants of operations 93 to 97. One value each, as fixed at the spec gate (row 128). The
+// Core server enforces them; the clients read them for their texts and their polling.
+
+/** Search ids, `DSC-NNNNNN` (operation 93; the `searchId` of every audit row of a search). */
+export const CAPTURE_SEARCH_ID_PATTERN = /^DSC-[0-9]{6,}$/;
+/** Candidate ids, `CND-` and 12 upper-case hex digits: 48 random bits, minted by the Core per search. */
+export const CAPTURE_CANDIDATE_ID_PATTERN = /^CND-[0-9A-F]{12}$/;
+/** How long the one UDP socket of a search stays open (ms; C-N13; `cap` §A.6.1 DS-7; D82(c)). */
+export const CAPTURE_DISCOVERY_WINDOW_MS = 3_000;
+/** Life of a candidate list after its window closes (ms; R-9 AC-4). */
+export const CAPTURE_DISCOVERY_RESULT_TTL_MS = 600_000;
+/** Bound of the per-session candidate list; beyond it `truncated: true`. */
+export const CAPTURE_DISCOVERY_MAX_CANDIDATES = 64;
+/** Least time between two search starts of one operator session (ms; R-9 AC-11). */
+export const CAPTURE_DISCOVERY_MIN_INTERVAL_MS = 10_000;
+/** Least time between two search starts on one Core, whatever the session (ms; SEC35-39 (4)). */
+export const CAPTURE_DISCOVERY_MIN_INTERVAL_PER_CORE_MS = 5_000;
+/** Searches per minute per Core, all sessions together. The pre-check search has its own allowance. */
+export const CAPTURE_DISCOVERY_MAX_PER_MINUTE = 6;
+/** Searches per hour per operator session (SEC35-39 (2)). */
+export const CAPTURE_DISCOVERY_MAX_PER_HOUR = 30;
+/**
+ * The lift of decision D86 C-4 (SEC35-29 (6); check `M4-DISC-REC-1`). While it is `false`, operation
+ * 93 answers `409 INVALID_STATE` (`DISCOVERY_NOT_ALLOWED_WHILE_RECORDING`) during `RECORDING`: 0
+ * datagrams, no audit row, no alert.
+ *
+ * It is `true` because the two checks that gate it are recorded PASS: `M4-SEC-DISC-1` (hostile
+ * answers end no process) and `M4-SEC-DISC-3` (a hostile flood during a recording leaves the
+ * fragments contiguous), both in `docs/2026-10-07_dems_real_capture_sealing/implementation/
+ * 62_r9_onvif_discovery.md` §3 (row 131, 2 runs) and again on a booted Core in
+ * `implementation/63_r9_search_api.md` (row 132). A static test of the Core server
+ * (`modules/capture-discovery/__tests__/static.test.ts`) reads both documents and fails when this
+ * constant is on and either result is not recorded.
+ */
+export const CAPTURE_DISCOVERY_DURING_RECORDING_ENABLED = true;
+/** The whole connection test (ms): then `UNREACHABLE` (`cap` CT-4; SEC35-33 (1)). */
+export const CAPTURE_CONNECTION_TEST_TIMEOUT_MS = 15_000;
+/** How long a `REACHABLE` outcome keeps a candidate adoptable (ms). */
+export const CAPTURE_CONNECTION_TEST_VALIDITY_MS = 300_000;
+/** Least time between two attempts on one host, and between two tests of one operator session on any host (ms). */
+export const CAPTURE_CONNECTION_TEST_MIN_INTERVAL_MS = 5_000;
+/** Connection tests per minute per Core; one test at a time per Core. */
+export const CAPTURE_CONNECTION_TEST_MAX_PER_MINUTE = 6;
+/** `AUTHENTICATION_FAILED` outcomes per host inside the failure window: the lock-out guard (D86 C-2). */
+export const CAPTURE_CONNECTION_TEST_MAX_FAILURES = 2;
+/** Window of the lock-out guard (ms; 30 minutes), counted per Core by host, in memory. */
+export const CAPTURE_CONNECTION_TEST_FAILURE_WINDOW_MS = 1_800_000;
+/** Least time between two local-input re-reads per Core (ms; operation 97). */
+export const CAPTURE_INPUT_RESCAN_MIN_INTERVAL_MS = 5_000;
+/** Longest endpoint reference, hint or announced text a candidate carries (characters; D91). */
+export const CAPTURE_CANDIDATE_TEXT_MAX_LENGTH = 120;

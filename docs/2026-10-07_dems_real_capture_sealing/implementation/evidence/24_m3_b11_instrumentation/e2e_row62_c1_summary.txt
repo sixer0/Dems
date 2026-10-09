@@ -1,0 +1,25 @@
+capture e2e series row62_c1   ports [8559, 8561]   libav 63.1.102 63.1.102 12.1.102 7.1.102 61.1.102   heavy-host lock held (.locks/heavy-host.lock)
+
+av2c_srdrift_200ppm_r1                   expect PASS got NO-RESULT rc 1       UNEXPECTED load  4.12    0.7 s
+      RuntimeError: worker exited (rc 64) while waiting for ACK cap:S-M3W-E2E-ROW62-C1-AV2C-SRDRIFT-200PPM-R1:1:1
+neg_av2c_reports_without_rate_r1         expect FAIL got NO-RESULT rc 1       UNEXPECTED load  4.12    0.3 s
+      RuntimeError: worker exited (rc 64) while waiting for ACK cap:S-M3W-OW62-C1-NEG-AV2C-REPORTS-WITHOUT-RATE-R1:1:1
+want_r2_near_bound_steady_delay_r1       expect FAIL got NO-RESULT rc 1       UNEXPECTED load  4.12    0.3 s
+      RuntimeError: worker exited (rc 64) while waiting for ACK cap:S-M3W-62-C1-WANT-R2-NEAR-BOUND-STEADY-DELAY-R1:1:1
+want_r2_near_bound_clock_step_r1         expect FAIL got NO-RESULT rc 1       UNEXPECTED load  4.12    0.3 s
+      RuntimeError: worker exited (rc 64) while waiting for ACK cap:S-M3W-OW62-C1-WANT-R2-NEAR-BOUND-CLOCK-STEP-R1:1:1
+want_f6_camera_clock_sanity_bound_r1     expect FAIL got NO-RESULT rc 1       UNEXPECTED load  4.12    0.3 s
+      RuntimeError: worker exited (rc 64) while waiting for ACK cap:S-M3W-C1-WANT-F6-CAMERA-CLOCK-SANITY-BOUND-R1:1:1
+proposed_srcam_drift_r1                  expect PASS got PASS      rc 0       ok         load  4.12   43.5 s
+      cam1 mean +0.1189 ms, max err 0.1292 ms (bound 2: PASS; product 40: PASS), slope +0.19 ppm of +200; cam2 mean -0.0681 ms, max err 0.0764 ms (bound 2: PASS; product 40: PASS), slope +0.22 ppm of -200; listeners before the sources ['127.0.0.1:8559', '127.0.0.1:8561']; mid-session 4 sockets of 4 own processes, off loopback 0, UDP 0, foreign ports 0
+proposed_srcam_delay_r1                  expect PASS got PASS      rc 0       ok         load  4.53   43.2 s
+      cam1 mean +0.0278 ms, max err 0.0278 ms (bound 2: PASS; product 40: PASS); cam2 mean +0.0278 ms, max err 0.0278 ms (bound 2: PASS; product 40: PASS); listeners before the sources ['127.0.0.1:8559', '127.0.0.1:8561']; mid-session 4 sockets of 4 own processes, off loopback 0, UDP 0, foreign ports 0
+proposed_srcam_step_r1                   expect PASS got FAIL      rc 1       UNEXPECTED load  5.35   42.0 s
+      listeners before the sources ['127.0.0.1:8559', '127.0.0.1:8561']; mid-session 4 sockets of 4 own processes, off loopback 0, UDP 0, foreign ports 0; failed on: near_bound_true_after_a_clock_step
+proposed_srcam_offset_r1                 expect PASS got PASS      rc 0       ok         load  4.96   42.7 s
+      cam2 mean +0.0375 ms, max err 0.0375 ms (bound 2: PASS; product 40: PASS); listeners before the sources ['127.0.0.1:8559', '127.0.0.1:8561']; mid-session 4 sockets of 4 own processes, off loopback 0, UDP 0, foreign ports 0
+
+9 checks (5 expected PASS, 4 negative controls expected FAIL): 3 as expected, 6 unexpected: av2c_srdrift_200ppm_r1, neg_av2c_reports_without_rate_r1, want_r2_near_bound_steady_delay_r1, want_r2_near_bound_clock_step_r1, want_f6_camera_clock_sanity_bound_r1, proposed_srcam_step_r1
+ports still listening after the series: none
+load at the start of the timing-sensitive checks: 4.12 .. 5.35
+AGGREGATE EXIT CODE 1

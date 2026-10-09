@@ -35,6 +35,7 @@
 // Secrets (P19). A cookie, a session token, a device credential, a biometric token and a pairing
 // code are taken from an answer and handed on. None is printed, logged, put into a test name or
 // compared in an assertion whose failure message would show it.
+import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import {
@@ -58,6 +59,7 @@ import {
   type CoreApiRegistryOperation,
   type OpenApiDocument,
 } from '@dems/shared/api';
+import { CAPTURE_INPUT_RESCAN_MIN_INTERVAL_MS } from '@dems/shared/api';
 import { DEMO_OPERATOR_PASSWORD, OPERATORS, ROLE_PERMISSIONS, createManualClock, type ControllableClock, type OperatorRole } from '@dems/shared/sim';
 import type { FastifyInstance } from 'fastify';
 import type { Pool } from 'pg';
@@ -65,7 +67,11 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { buildApp } from '../../src/app';
 import type { DatabaseConnection } from '../../src/config';
 import { BULK_TEMPLATE_NOW } from '../../src/db/fixtures/__tests__/template-hook.bulk';
+import { createSystemTimers } from '../../src/capture';
+import { createOnvifDiscoveryAdapter, type OnvifDiscoveryAdapter, type WsDiscoveryResult } from '../../src/capture/adapters';
+import { delay, installLoopbackGuard, type LoopbackGuard } from '../../src/capture/adapters/camera/__tests__/support';
 import { engineControl } from '../../src/engine';
+import { captureDiscoveryControl } from '../../src/modules/capture-discovery';
 import { testRoutine, useRoutine } from '../../src/modules/demo/__tests__/support';
 import { identityControl } from '../../src/modules/identity';
 import { pairingControl } from '../../src/modules/pairing';
@@ -75,6 +81,7 @@ import { throttleControl } from '../../src/plugins/throttle';
 import { useTestDatabase } from '../helpers/db';
 import { captureLog, unitTestConfig } from '../support/config';
 import { FIXED_NOW, manualTimer } from '../support/engine';
+import { createFakeOnvifStub, freeFakeOnvifPorts, type FakeOnvifStub } from '../support/fake-onvif-stub';
 import { FOREIGN_ORIGIN, WEB_ORIGIN, cookieValue, type Headers } from '../support/identity';
 import { dropOwn, maintenancePool, resetApplicationName } from '../support/reset';
 import {
@@ -131,18 +138,16 @@ const CHANNEL_ROUTE = routeKey('GET', WS_PATH);
  * scope by RECON-D row 55-F3: the committed-document walk needs the same named deferral the
  * detector already holds; the list itself is unchanged.)
  */
+// Blueprint row 66 / M4-W2 landed the handlers of operations 76 to 80 (the capture-config module):
+// their five routes left this list. Task 3 R-9..R-11 (decisions D106, D114): the registry gained
+// operations 93 to 97; rows 132, 133 and 142 routed them and operation 89 (`modules/capture-discovery`
+// with its `connect` routes, `modules/capture-inputs`), so none of the six is here. The list is 8.
 const LANDED_UNROUTED: readonly string[] = [
-  'GET /api/v1/capture/config',
-  'GET /api/v1/capture/devices',
   'GET /api/v1/evidence/exports/{id}',
   'GET /api/v1/evidence/{id}/transcript',
   'GET /api/v1/evidence/{id}/transcript/revisions',
   'GET /api/v1/session/{id}/audio-source',
   'GET /api/v1/session/{id}/sealing',
-  'POST /api/v1/capture/cameras/{id}/source',
-  'POST /api/v1/capture/config',
-  'POST /api/v1/capture/devices/{id}/credential',
-  'POST /api/v1/capture/mics/{id}/primary',
   'POST /api/v1/evidence/{id}/media-sessions',
   'POST /api/v1/evidence/{id}/transcript/revisions',
   'POST /api/v1/session/{id}/audio-source',
@@ -405,18 +410,20 @@ afterAll(async () => {
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
 
 describe('AC-B-09: every registered route is an operation, every operation is registered', () => {
-  it('the registry holds exactly 92 operations, 35 GET and 57 POST, each with one access rule and one audit rule', () => {
+  it('the registry holds exactly 97 operations, 36 GET and 61 POST, each with one access rule and one audit rule', () => {
     // 75 in the closed task-2 contract; C3 grew the registry to 89 with schema v2 (ops 76 to 89:
     // the six capture-config and credential operations, the three audio-source and sealing ones,
     // the five transcript, media-session and export-job ones), and to 92 with the confirmed R-8
-    // (C3 §2.5: the STT configuration operations 90 to 92; task 3 row 113). R1 (D44): acceptance
-    // reads the CURRENT registry, the closed document never.
-    expect(CORE_API_OPERATION_TABLE).toHaveLength(92);
-    expect(OPERATIONS).toHaveLength(92);
-    expect(new Set(OPERATIONS.map((operation) => operation.operationId)).size).toBe(92);
-    expect(new Set(REGISTRY_ROUTES).size).toBe(92);
-    expect(OPERATIONS.filter((operation) => operation.method === 'get')).toHaveLength(35);
-    expect(OPERATIONS.filter((operation) => operation.method === 'post')).toHaveLength(57);
+    // (C3 §2.5: the STT configuration operations 90 to 92; task 3 row 113), and to 97 with R-9..R-11
+    // (C3 §2.6, §10.1: the camera search, the connection test, the adoption and the local-input
+    // re-read, 93 to 97; task 3 row 132, decision D106). R1 (D44): acceptance reads the CURRENT
+    // registry, the closed document never.
+    expect(CORE_API_OPERATION_TABLE).toHaveLength(97);
+    expect(OPERATIONS).toHaveLength(97);
+    expect(new Set(OPERATIONS.map((operation) => operation.operationId)).size).toBe(97);
+    expect(new Set(REGISTRY_ROUTES).size).toBe(97);
+    expect(OPERATIONS.filter((operation) => operation.method === 'get')).toHaveLength(36);
+    expect(OPERATIONS.filter((operation) => operation.method === 'post')).toHaveLength(61);
     for (const operation of OPERATIONS) {
       expect(describeCoreApiAccess(operation.access), operation.operationId).not.toBe('');
       expect(operation.audit.success, operation.operationId).toBeDefined();
@@ -461,7 +468,7 @@ describe('AC-B-09: every registered route is an operation, every operation is re
     expect(missing).toEqual([]);
   });
 
-  it('the committed openapi.json lists the same 92 operations with two security schemes, and equals what the generator produces now', () => {
+  it('the committed openapi.json lists the same 97 operations with two security schemes, and equals what the generator produces now', () => {
     const text = readFileSync(COMMITTED_OPENAPI, 'utf8');
     const committed = JSON.parse(text) as OpenApiDocument;
     const documented = listOpenApiOperations(committed).map((entry) => routeKey(entry.method, entry.path));
@@ -477,7 +484,7 @@ describe('AC-B-09: every registered route is an operation, every operation is re
     // refused outright), and unregistered must be precisely the fourteen, so one more or one less
     // unrouted operation fails here. The calls themselves stay red as their own deferrals.
     expect(comparison).toEqual({ undocumented: [], unregistered: LANDED_UNROUTED });
-    expect(documented).toHaveLength(92);
+    expect(documented).toHaveLength(97);
     expect([...documented].sort()).toEqual([...REGISTRY_ROUTES].sort());
     // The same operation ID on the same method and path.
     for (const entry of listOpenApiOperations(committed)) {
@@ -710,6 +717,189 @@ describe('AC-B-10: every operation answers what the contract documents', () => {
     await expectCall(main, 'getSttConfig', CONSOLE, 'the web console without a session', {}, 401, 'NOT_SIGNED_IN');
     await expectCall(main, 'updateSttConfig', CONSOLE, 'the web console without a session', { payload: { revision: revision + 1, enabled: false } }, 401, 'NOT_SIGNED_IN');
     await expectCall(main, 'testSttConnection', CONSOLE, 'the web console without a session', {}, 401, 'NOT_SIGNED_IN');
+    settle();
+  });
+
+  it('the capture selector (operations 76 to 80; C3 §2.4, task 3 row 66): the reads, the edits of SUPERVISOR and TECHNICIAN, their refusals', async () => {
+    fresh(main);
+    const supervisor = web.SUPERVISOR;
+    const technician = web.TECHNICIAN;
+    interface Selector { cameras: { trackId: string; deviceId: string }[]; mics: { inputId: string; role: string }[]; locked: boolean }
+    // Every role reads both slices; neither answer holds a credential member.
+    for (const caller of [web.INVESTIGATOR, supervisor, technician]) {
+      const config = await expectCall(main, 'getCaptureConfig', caller, 'every role reads the selector', {}, 200);
+      expect(bodyOf<Selector>(config)).toMatchObject({ locked: false, cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-01' }, { trackId: 'VIDEO-02', deviceId: 'CAM-02' }], mics: [{ inputId: 'MIC-01', role: 'PRIMARY' }, { inputId: 'MIC-02', role: 'STANDBY' }] });
+      const devices = await expectCall(main, 'getCaptureDevices', caller, 'every role reads the capture registry', {}, 200);
+      expect(JSON.stringify([bodyOf(config), bodyOf(devices)])).not.toMatch(/secret|password|username|credential/i);
+    }
+    // 80: a holder of CAPTURE_CONFIG makes the second input PRIMARY; the two inputs stay the ordered pair (AC-B-70).
+    const primary = await expectCall(main, 'setPrimaryMic', technician, 'a TECHNICIAN makes MIC-02 the primary input', { id: 'MIC-02' }, 200);
+    expect(bodyOf<Selector>(primary).mics).toMatchObject([{ inputId: 'MIC-01', role: 'STANDBY' }, { inputId: 'MIC-02', role: 'PRIMARY' }]);
+    await expectCall(main, 'setPrimaryMic', technician, 'an input the selector does not hold', { id: 'MIC-09' }, 404, 'NOT_FOUND');
+    await expectCall(main, 'setPrimaryMic', technician, 'a malformed {id}', { id: 'mic-02' }, 422, 'INVALID_INPUT');
+    // 78: the whole selector; here the two cameras change tracks in one edit.
+    const swapped = await expectCall(main, 'updateCaptureConfig', supervisor, 'a SUPERVISOR swaps the two cameras', { payload: { cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-02' }, { trackId: 'VIDEO-02', deviceId: 'CAM-01' }] } }, 200);
+    expect(bodyOf<Selector>(swapped).cameras).toMatchObject([{ trackId: 'VIDEO-01', deviceId: 'CAM-02' }, { trackId: 'VIDEO-02', deviceId: 'CAM-01' }]);
+    await expectCall(main, 'updateCaptureConfig', supervisor, 'a device the capture registry does not hold (a discovery candidate is never one)', { payload: { cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-77' }] } }, 422, 'INVALID_INPUT');
+    await expectCall(main, 'updateCaptureConfig', supervisor, 'a track outside the value set', { payload: { cameras: [{ trackId: 'VIDEO-09', deviceId: 'CAM-01' }] } }, 422, 'INVALID_INPUT');
+    // 79: a camera device to a video track.
+    await expectCall(main, 'setCaptureCameraSource', supervisor, 'one camera on both tracks with one profile', { id: 'CAM-01', payload: { trackId: 'VIDEO-01' } }, 422, 'INVALID_INPUT');
+    await expectCall(main, 'setCaptureCameraSource', supervisor, 'a camera the capture registry does not hold', { id: 'CAM-99', payload: { trackId: 'VIDEO-01' } }, 404, 'NOT_FOUND');
+    await expectCall(main, 'setCaptureCameraSource', supervisor, 'a track outside the value set', { id: 'CAM-01', payload: { trackId: 'VIDEO-09' } }, 422, 'INVALID_INPUT');
+    // The INVESTIGATOR lacks CAPTURE_CONFIG on all three edits.
+    for (const [operationId, options] of [
+      ['setPrimaryMic', { id: 'MIC-01' }],
+      ['setCaptureCameraSource', { id: 'CAM-01', payload: { trackId: 'VIDEO-02' } }],
+      ['updateCaptureConfig', { payload: { mics: [{ inputId: 'MIC-01', deviceId: 'MIC-01' }] } }],
+    ] as const) {
+      const denied = await expectCall(main, operationId, web.INVESTIGATOR, 'a role without CAPTURE_CONFIG', options, 403, 'NOT_PERMITTED');
+      expect(detailsOf(denied)['permission']).toBe('CAPTURE_CONFIG');
+      await expectCall(main, operationId, CONSOLE, 'the web console without a session', options, 401, 'NOT_SIGNED_IN');
+    }
+    await expectCall(main, 'getCaptureConfig', CONSOLE, 'the web console without a session', {}, 401, 'NOT_SIGNED_IN');
+    await expectCall(main, 'getCaptureDevices', CONSOLE, 'the web console without a session', {}, 401, 'NOT_SIGNED_IN');
+    // Back to the seeded selector: the walks after this one read the state the seed gave. (The 409
+    // CAPTURE_CONFIG_LOCKED of an open session is produced where a session is open: the module's
+    // own database test today, area 4 of this file once its route walk is whole again.)
+    await expectCall(main, 'updateCaptureConfig', supervisor, 'the two cameras back on their tracks', { payload: { cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-01' }, { trackId: 'VIDEO-02', deviceId: 'CAM-02' }] } }, 200);
+    const restored = await expectCall(main, 'setPrimaryMic', supervisor, 'MIC-01 is the primary input again', { id: 'MIC-01' }, 200);
+    expect(bodyOf<Selector>(restored)).toMatchObject({ cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-01' }, { trackId: 'VIDEO-02', deviceId: 'CAM-02' }], mics: [{ inputId: 'MIC-01', role: 'PRIMARY' }, { inputId: 'MIC-02', role: 'STANDBY' }] });
+    settle();
+  });
+
+  it('camera search, connect and the mic re-read (operations 89 and 93 to 97; C3 §2.6, task 3 rows 132, 133, 142): one search, one test, one adoption against the fake ONVIF stub on loopback', async () => {
+    fresh(main);
+    const supervisor = web.SUPERVISOR;
+    const technician = web.TECHNICIAN;
+    interface Discovery { search: { searchId: string; state: string; created?: boolean } | null; candidates: { candidateId: string; status: string; testable: boolean; adapter: string; sourceClass: string; deviceId: string | null }[] }
+    // THE ONLY NETWORK OF THIS AREA IS LOOPBACK. The module's own adapter (which probes the LAN of
+    // the host) is never built here: its place is taken, once, by the real adapter of row 131 on the
+    // loopback fixture of the fake ONVIF stub of row 60, and by an adapter that sends nothing once
+    // the stub is stopped. The account is made here, for this stub only, and is printed nowhere.
+    const account = { username: `fixture${randomUUID().replaceAll('-', '').slice(0, 12)}`, secret: `fixture ${randomUUID()}` };
+    let stub: FakeOnvifStub | null = createFakeOnvifStub({ ports: await freeFakeOnvifPorts(), credential: account, devices: 1 });
+    await stub.start();
+    const nothing: WsDiscoveryResult = {
+      candidates: [],
+      responderCount: 0,
+      interfaceCount: 0,
+      truncated: false,
+      counts: { datagramsReceived: 0, datagramsAccepted: 0, dropped: {}, repeats: 0, matchesSkipped: 0, respondersOverCap: 0, lookupErrors: 0, datagramsSent: 0, sendErrors: 0, handlerErrors: 0 },
+    };
+    captureDiscoveryControl(main.app).provideAdapter((lookup) =>
+      stub === null
+        ? ({ discover: async () => nothing } as unknown as OnvifDiscoveryAdapter)
+        : createOnvifDiscoveryAdapter({ timers: createSystemTimers(), newMessageId: randomUUID, registered: lookup, loopbackFixture: stub.addresses().discovery }),
+    );
+    /** Lets the end of a search window, a test or an adoption be written. */
+    const written = async (): Promise<void> => {
+      for (let turn = 0; turn < 20; turn += 1) {
+        await delay(10);
+        await main.app.pipeline.drain();
+        await engineControl(main.app).idle();
+      }
+    };
+    let guard: LoopbackGuard | null = installLoopbackGuard();
+    try {
+      // 94 before any search: nothing, for every holder of CAPTURE_CONFIG.
+      for (const caller of [supervisor, technician]) expect(bodyOf<Discovery>(await expectCall(main, 'getCaptureDiscovery', caller, 'no search was started', {}, 200))).toMatchObject({ search: null, candidates: [] });
+
+      // 93: a new search (202); the caller's own running search again (200, no second probe); another session meanwhile (409).
+      const started = await expectCall(main, 'startCaptureDiscovery', technician, 'a TECHNICIAN starts a search', {}, 202);
+      const searchId = bodyOf<{ searchId: string; created: boolean }>(started).searchId;
+      expect(bodyOf<{ created: boolean }>(started).created).toBe(true);
+      const again = await expectCall(main, 'startCaptureDiscovery', technician, 'the same session while its search runs', {}, 200);
+      expect(bodyOf<{ searchId: string; created: boolean }>(again)).toMatchObject({ searchId, created: false });
+      const busy = await expectCall(main, 'startCaptureDiscovery', supervisor, 'another session while that search runs', {}, 409, 'INVALID_STATE');
+      expect(detailsOf(busy)['reason']).toBe('DISCOVERY_IN_PROGRESS');
+      // The window is three seconds of the capture timers (real time): the one wait of this area.
+      await delay(3_400);
+      await written();
+      // Every datagram of the search went to 127.0.0.1, and the stub saw probes and nothing else.
+      expect(new Set(guard.datagrams())).toEqual(new Set(['127.0.0.1']));
+      expect(guard.refused()).toEqual([]);
+      expect(new Set(stub.requestLog().map((entry) => `${entry.channel}/${entry.operation}/${String(entry.authPresent)}`))).toEqual(new Set(['discovery/Probe/false']));
+
+      // 94: the caller's own list; another session reads none of it.
+      const listed = bodyOf<Discovery>(await expectCall(main, 'getCaptureDiscovery', technician, 'the list of the caller\'s own search', {}, 200));
+      expect(listed.search).toMatchObject({ searchId, state: 'COMPLETE' });
+      expect(listed.candidates.map((candidate) => [candidate.status, candidate.testable, candidate.adapter, candidate.sourceClass, candidate.deviceId])).toEqual([['NEW', true, 'FAKE', 'DEVELOPMENT', null]]);
+      expect(bodyOf<Discovery>(await expectCall(main, 'getCaptureDiscovery', supervisor, 'another session reads its own (empty) state', {}, 200)).candidates).toEqual([]);
+      const candidateId = listed.candidates[0]?.candidateId ?? '';
+      const unknownId = candidateId === 'CND-0000000000AA' ? 'CND-0000000000AB' : 'CND-0000000000AA';
+
+      // 95 and 96 before a test, and for an id that is unknown or another session's: one answer, no request to any device.
+      const requests = stub.requestLog().length;
+      const untested = await expectCall(main, 'adoptCaptureCandidate', technician, 'adoption before a connection test', { id: candidateId, payload: { credential: account } }, 409, 'INVALID_STATE');
+      expect(detailsOf(untested)['reason']).toBe('CANDIDATE_NOT_TESTED');
+      await expectCall(main, 'testCaptureCandidateConnection', technician, 'an id no search listed', { id: unknownId, payload: { credential: account } }, 404, 'NOT_FOUND');
+      await expectCall(main, 'adoptCaptureCandidate', technician, 'an id no search listed', { id: unknownId, payload: { credential: account } }, 404, 'NOT_FOUND');
+      await expectCall(main, 'testCaptureCandidateConnection', supervisor, 'the candidate of another session\'s search', { id: candidateId, payload: { credential: account } }, 404, 'NOT_FOUND');
+      await expectCall(main, 'testCaptureCandidateConnection', technician, 'a malformed {id}', { id: 'cnd-1', payload: { credential: account } }, 422, 'INVALID_INPUT');
+      expect(stub.requestLog().length).toBe(requests);
+
+      // The connection tester's HTTP client is refused by the guard of row 131 as it reads today
+      // (row 132's note), so it is taken off here; the one candidate is the stub on 127.0.0.1.
+      guard.restore();
+      guard = null;
+
+      // 95: one read-only attempt with the credential of this request; a failed test would be a result too.
+      const tested = await expectCall(main, 'testCaptureCandidateConnection', technician, 'the stub\'s account', { id: candidateId, payload: { credential: account } }, 200);
+      expect(bodyOf<Record<string, unknown>>(tested)).toMatchObject({ candidateId, outcome: 'REACHABLE', authenticated: true });
+
+      // 96: the device, its credential and the audit rows in one unit; a repeat, and a test after it, are refused by name.
+      main.clock.advance(30 * SECOND);
+      const adopted = await expectCall(main, 'adoptCaptureCandidate', technician, 'the tested candidate with the same account', { id: candidateId, payload: { credential: account } }, 201);
+      const adoption = bodyOf<{ deviceId: string; credentialSet: boolean; device: Record<string, unknown> }>(adopted);
+      expect(adoption).toMatchObject({ deviceId: 'CAM-03', credentialSet: true, device: { id: 'CAM-03', kind: 'CAMERA', adapter: 'FAKE', sourceClass: 'DEVELOPMENT' } });
+      await written();
+      main.clock.advance(30 * SECOND);
+      for (const operationId of ['adoptCaptureCandidate', 'testCaptureCandidateConnection'] as const) {
+        const repeat = await expectCall(main, operationId, technician, 'the candidate is a registered device now', { id: candidateId, payload: { credential: account } }, 409, 'INVALID_STATE');
+        expect(detailsOf(repeat)).toMatchObject({ reason: 'CANDIDATE_ALREADY_REGISTERED', deviceId: 'CAM-03' });
+      }
+      expect(bodyOf<Discovery>(await expectCall(main, 'getCaptureDiscovery', technician, 'the candidate reads REGISTERED', {}, 200)).candidates.map((candidate) => [candidate.status, candidate.deviceId])).toEqual([['REGISTERED', 'CAM-03']]);
+
+      // 89: the credential of a registered camera is replaced; the answer is the selector and echoes neither field.
+      const replaced = await expectCall(main, 'setCaptureDeviceCredential', supervisor, 'a SUPERVISOR replaces the credential of the adopted camera', { id: 'CAM-03', payload: account }, 200);
+      await expectCall(main, 'setCaptureDeviceCredential', supervisor, 'a device the capture registry does not hold', { id: 'CAM-99', payload: account }, 404, 'NOT_FOUND');
+      await expectCall(main, 'setCaptureDeviceCredential', supervisor, 'a malformed {id}', { id: 'cam 03', payload: account }, 422, 'INVALID_INPUT');
+      // (Its 409 CAPTURE_CONFIG_LOCKED needs an open session: produced by the connect flow's own
+      // database test today, and by area 4 of this file once its route walk is whole again - the
+      // same place the selector's 409 of operations 78 to 80 waits for.)
+
+      // 97: the registered microphones re-read; no network is involved.
+      for (const caller of [supervisor, technician]) {
+        // One accepted re-read per interval of the Core (the server clock decides).
+        main.clock.advance(CAPTURE_INPUT_RESCAN_MIN_INTERVAL_MS);
+        const rescanned = await expectCall(main, 'rescanCaptureInputs', caller, 'a holder of CAPTURE_CONFIG re-reads the local inputs', {}, 200);
+        expect(JSON.stringify(bodyOf(rescanned))).toContain('MIC-01');
+      }
+      await written();
+
+      // No answer of the area, and no line of the capture registry the clients read, holds the account.
+      const everything = JSON.stringify([bodyOf(tested), adoption, bodyOf(replaced), bodyOf(await expectCall(main, 'getCaptureDevices', technician, 'the registry after the adoption', {}, 200))]);
+      expect(everything).not.toContain(account.username);
+      expect(everything).not.toContain(account.secret);
+      // Nothing but the stub was ever dialled: its log holds the probes and the device-service calls of the two tests.
+      expect(stub.requestLog().some((entry) => entry.channel !== 'discovery')).toBe(true);
+
+      // Without a session: every one of the six.
+      for (const [operationId, options] of [
+        ['startCaptureDiscovery', {}],
+        ['getCaptureDiscovery', {}],
+        ['testCaptureCandidateConnection', { id: candidateId, payload: { credential: account } }],
+        ['adoptCaptureCandidate', { id: candidateId, payload: { credential: account } }],
+        ['setCaptureDeviceCredential', { id: 'CAM-03', payload: account }],
+        ['rescanCaptureInputs', {}],
+      ] as const) {
+        await expectCall(main, operationId, CONSOLE, 'the web console without a session', options, 401, 'NOT_SIGNED_IN');
+      }
+    } finally {
+      guard?.restore();
+      await stub.stop();
+      stub = null;
+    }
     settle();
   });
 
@@ -1648,9 +1838,10 @@ describe('SC6: what the whole file received', () => {
 
 describe('the checks of this file fail when their input departs from the contract', () => {
   it('an extra route on a scratch app is an undocumented route; an operation taken out of the expectation is an unregistered one', async () => {
-    // The module-level LANDED_UNROUTED names the 14 registry routes whose handlers land with
+    // The module-level LANDED_UNROUTED names the 8 registry routes whose handlers land with
     // later rows (R4, ruling D44); this file's own detector is checked against the landed
-    // baseline: exactly those 14 are reported unregistered, no more.
+    // baseline: exactly those 8 are reported unregistered, no more. (Rows 132, 133 and 142
+    // routed operations 89 and 93 to 97, decision D114: their six entries left the list.)
     const scratch = buildApp({ config: unitTestConfig() });
     // A route that is no operation of the registry, added by a plugin of this test. The guard
     // would stop the boot (RB-1), so its stage is taken out, as its own header says a test may.

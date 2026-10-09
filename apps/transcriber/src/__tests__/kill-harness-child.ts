@@ -6,11 +6,12 @@
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createTranscriberAdapter } from '../adapter';
+import { NO_CAPTURE_WORKER, createEngineGuard } from '../backends/cpu-local';
 import { resolveTranscriberConfig } from '../config';
 import { createFileLog } from '../log';
 import { openPcmSource } from '../pipeline/audio-source';
 import { captureTapTimeline } from '../pipeline/media-time';
-import { createTranscriptRunner } from '../pipeline/runner';
+import { NO_TAP_SIGNAL, createTranscriptRunner } from '../pipeline/runner';
 import { createSileroVad, resolveSileroVadConfig } from '../pipeline/silero-vad';
 import { SESSION, TAP_RATE, createFileChunkMirror, createProgramHome } from './pipeline-support';
 
@@ -19,15 +20,17 @@ if (homeRoot === undefined || scratch === undefined || tapPath === undefined || 
 
 const home = createProgramHome(homeRoot);
 const log = createFileLog({ dir: join(scratch, 'log') });
+// The engine guard of the session (N-2): every engine start is on the disk before the engine works.
+const guard = createEngineGuard(scratch);
 const adapter = createTranscriberAdapter(
   resolveTranscriberConfig(
     { backend: 'cpu-local', model: home.model('journal-model'), language: 'id' },
     { physicalCores: 8, cpuLocal: { binaryPath: home.engineBinary, modelDir: home.modelDir, workDir: home.workDir, priority: home.priority } },
   ),
-  { log },
+  { log, captureWorkerPid: NO_CAPTURE_WORKER, onEngineStart: guard.record },
 );
 const vadRuns: number[] = [];
-const vad = createSileroVad(resolveSileroVadConfig({ binaryPath: home.vadBinary, modelDir: home.modelDir, model: home.model('silero-ok'), priority: home.priority }), { log, onEngineRun: () => vadRuns.push(vadRuns.length) });
+const vad = createSileroVad(resolveSileroVadConfig({ binaryPath: home.vadBinary, modelDir: home.modelDir, model: home.model('silero-ok'), priority: home.priority }), { log, captureWorkerPid: NO_CAPTURE_WORKER, onEngineStart: guard.record, onEngineRun: () => vadRuns.push(vadRuns.length) });
 const runner = createTranscriptRunner({
   sessionId: SESSION,
   adapter,
@@ -37,6 +40,8 @@ const runner = createTranscriptRunner({
   sessionScratchDir: scratch,
   log,
   mirror: createFileChunkMirror(join(scratch, 'mirror.json')),
+  tapLost: NO_TAP_SIGNAL,
+  engineGuard: guard,
 });
 const report = await runner.step({ final: true });
 writeFileSync(join(scratch, reportName), JSON.stringify({ ...report, vadRuns: vadRuns.length }));

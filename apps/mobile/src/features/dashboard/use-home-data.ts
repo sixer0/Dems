@@ -8,6 +8,7 @@
  */
 import { useMemo } from 'react';
 import {
+  MIC_INPUT_OF_CHANNEL,
   selectActiveAlerts,
   selectDeviceStats,
   selectElapsedMs,
@@ -30,6 +31,7 @@ import {
   chipRowFor,
   homeStatusFor,
   micTileFor,
+  micTileSourceRole,
   primaryActionFor,
   recentRowsFor,
   storageTileFor,
@@ -178,16 +180,27 @@ export interface DeviceTileInfo {
   deviceId: string;
   /** The simulator's state word (`READY`, `FAULT`, `NO_SIGNAL`, `CLIP`, or `OFFLINE`). */
   state: string;
+  /** MIC tiles while a session records: the input is the active one or the hot standby (row 73, MB-01); else null. */
+  sourceRole: 'ACTIVE' | 'STANDBY' | null;
 }
 
 /** Tablet: the four device tiles (2 cameras, 2 mics), in dataset order. */
 export function useDeviceTiles(): DeviceTileInfo[] {
   const cams = useSim((s) => s.cameras.map((c) => `${c.id}|${c.deviceId}|${c.online ? c.lens : 'OFFLINE'}`));
-  const mics = useSim((s) => s.mics.map((m) => `${m.id}|${m.deviceId}|${m.clipLatched ? 'CLIP' : m.state}`));
+  // The pair is the session's (`audioSource`), with the meters' member behind it; primitives only, so
+  // the 20 Hz `audio` slice never re-renders the tiles.
+  const mics = useSim((s) => {
+    const recording = s.session?.state === 'RECORDING';
+    const activeInputId = s.session?.audioSource?.activeInputId ?? s.audio.activeInputId;
+    return s.mics.map((m) => {
+      const role = micTileSourceRole({ recording, inputId: MIC_INPUT_OF_CHANNEL[m.id], activeInputId });
+      return `${m.id}|${m.deviceId}|${m.clipLatched ? 'CLIP' : m.state}|${role ?? ''}`;
+    });
+  });
   return useMemo(() => {
-    const parse = (kind: DeviceTileInfo['kind']) => (entry: string) => {
-      const [trackId = '', deviceId = '', state = ''] = entry.split('|');
-      return { kind, trackId, deviceId, state };
+    const parse = (kind: DeviceTileInfo['kind']) => (entry: string): DeviceTileInfo => {
+      const [trackId = '', deviceId = '', state = '', role = ''] = entry.split('|');
+      return { kind, trackId, deviceId, state, sourceRole: role === 'ACTIVE' || role === 'STANDBY' ? role : null };
     };
     return [...cams.map(parse('camera')), ...mics.map(parse('mic'))];
   }, [cams, mics]);

@@ -221,6 +221,8 @@ export interface SttApp {
 export interface SttAppOptions {
   readonly row?: SttTableRow | null;
   readonly errorLogFile?: string;
+  /** A data directory that exists: the app then has a Core credential store under it (row 84). Default: none. */
+  readonly dataDir?: string;
 }
 
 export const ANONYMOUS: Principal = { kind: 'ANONYMOUS', retiredDeviceId: null };
@@ -238,7 +240,7 @@ export async function sttApp(options: SttAppOptions = {}): Promise<SttApp> {
   const log = captureLog();
   const app = buildApp({
     // `trace`: every line the server can write is captured, so a search of the log is a search of all of it.
-    config: unitTestConfig({ logLevel: 'trace' }),
+    config: unitTestConfig({ logLevel: 'trace', ...(options.dataDir === undefined ? {} : { dataDir: options.dataDir }) }),
     createPool: () => db.pool,
     logStream: log.stream,
     ...(options.errorLogFile === undefined ? {} : { errorLogFile: options.errorLogFile }),

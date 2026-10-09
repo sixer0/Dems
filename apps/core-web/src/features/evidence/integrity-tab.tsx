@@ -16,6 +16,7 @@ import { formatWibClockSeconds, formatWibDate, formatWibDateTime, shortHash, sto
 import { selectOperators } from './selectors'
 import { useRetryCooldown } from './use-retry-cooldown'
 import type { EvidenceVerification } from './use-verification'
+import { VerifyV2Report } from './verify-v2-report'
 
 const LIFECYCLE: EvidenceLifecycleStage[] = Object.values(EvidenceLifecycleStage)
 /** M-C-09: the lifecycle connectors fill one stage after another on mount (spec: "fill up to the current stage"). */
@@ -68,6 +69,13 @@ function breakableCode(code: string): ReactNode {
  * to the new run (CL-16) once the run has ended — while it runs the line holds the record of the
  * press (FXR-W W92-10), so the delta never shows the verdict before the run reveals it. The per-check list belongs to a run, so while the stored verdict shows, the
  * card says that Verify again lists each check instead of "0 of 6 checks".
+ *
+ * Verify v2 (blueprint row 87; evidence package spec §F.3; UX spec flow 5, P-16): for a schema-v2 item the
+ * card draws `VerifyV2Report` instead of the six v1 rows: per camera file the stored bytes, the decrypted
+ * bytes and the fragment chain, the transcript hash, the manifest, the signature, the failed fragment by
+ * name and the transcript state, each only where the Core's answer carries it. While the request is out
+ * the card says it is waiting; there is no progress bar and no count, because the Core reports none for a
+ * verification. The pinned stored-verdict line above (W92-10) is the same rule for v1 and v2.
  *
  * Custody times (E-fix FX-W, E2E-W1-7): the date and the clock are two tokens that never break inside
  * themselves; a narrow column puts the clock on a second line (`.evi-custody-time`).
@@ -211,6 +219,14 @@ export function IntegrityTab({ row, verification }: IntegrityTabProps) {
             <span className="evi-caption" data-testid="evidence-verify-stored-hint">
               {t('evidence.verify.storedHint')}
             </span>
+          ) : state.awaitsV2 === true ? (
+            // Row 87: no bar and no count for a v2 run. The Core reports no progress of a verification,
+            // so none is drawn; the result appears whole when the answer arrives.
+            state.phase === 'running' ? (
+              <span className="evi-caption" role="status" data-testid="evidence-verify-v2-waiting">
+                {t('evidence.verifyV2.waiting')}
+              </span>
+            ) : null
           ) : (
             <>
               <ProgressBar aria-label={t('evidence.verify.progress', { done, total })} value={total === 0 ? 0 : (done / total) * 100} className="evi-verify-progress" size="sm">
@@ -221,7 +237,7 @@ export function IntegrityTab({ row, verification }: IntegrityTabProps) {
               <span className="evi-caption">{t('evidence.verify.progress', { done, total })}</span>
             </>
           )}
-          <CheckList state={state} variant="full" />
+          {state.v2 != null ? <VerifyV2Report answer={state.v2} /> : state.awaitsV2 === true ? null : <CheckList state={state} variant="full" />}
           {state.bundled ? (
             <div className="evi-bundled" data-testid="evidence-bundled" data-phase={state.bundled.phase} data-verdict={state.bundled.verdict ?? undefined}>
               <PackageCheck className="size-4 text-foreground-2" aria-hidden="true" />

@@ -109,6 +109,9 @@ describe('the keys and the rule (PG-6, PG-6a)', () => {
       roleMatrix: ['core', 'role-matrix'],
       pairedDevices: ['core', 'paired-devices'],
       pairingCode: ['core', 'pairing-code'],
+      // Task 3 M4 (blueprint row 67; WB-11): operations 76 and 77.
+      captureConfig: ['core', 'capture-config'],
+      captureDevices: ['core', 'capture-devices'],
     })
     expect(ADMIN_CHANGED_QUERY_KEYS).toEqual({
       USERS: [['core', 'users']],

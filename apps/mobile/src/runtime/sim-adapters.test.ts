@@ -5,7 +5,9 @@ import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   AUTH_STORAGE_KEY,
+  DEMO_OPERATOR_PASSWORD,
   createManualClock,
+  createSim,
   ENGINE_INTERVAL_MS,
   selectElapsedMs,
   type Sim,
@@ -204,5 +206,45 @@ describe('AppState visibility (04 §5.2)', () => {
     appState.set('active');
     expect(sim.isRunning()).toBe(true);
     sim.stop();
+  });
+});
+
+// Task 3 row 138 (row 132's request; C3 §2.6 "Simulator"; D80(3)): inside a tablet or phone app the
+// simulator refuses the three credential-carrying operations as the Core server refuses a device session.
+describe('device console: operations 89, 95 and 96 are web-console-only', () => {
+  const WEB_ONLY = [
+    '/api/v1/capture/devices/CAM-01/credential',
+    '/api/v1/capture/discovery/candidates/CND-000000000001/test',
+    '/api/v1/capture/discovery/candidates/CND-000000000001/adopt',
+  ];
+  const signInSupervisor = (sim: Sim): void => {
+    expect(sim.actions.signIn('andi.pratama', DEMO_OPERATOR_PASSWORD).ok).toBe(true);
+  };
+
+  it('the mobile simulator answers 403 NOT_PERMITTED / WEB_CONSOLE_ONLY and writes nothing; search, read and re-read still answer', () => {
+    const { sim } = mobileSim();
+    signInSupervisor(sim);
+    expect(sim.request({ method: 'POST', path: '/api/v1/capture/discovery' }).status).toBe(202);
+    const devices = sim.store.getState().captureDevices.devices.length;
+    for (const path of WEB_ONLY) {
+      const answer = sim.request({ method: 'POST', path, body: {} });
+      expect([path, answer.status]).toEqual([path, 403]);
+      expect(answer.body).toMatchObject({ error: { code: 'NOT_PERMITTED', details: { reason: 'WEB_CONSOLE_ONLY' } } });
+    }
+    expect(sim.store.getState().captureDevices.devices).toHaveLength(devices);
+    expect(sim.request({ method: 'GET', path: '/api/v1/capture/discovery' }).status).toBe(200);
+    expect(sim.request({ method: 'POST', path: '/api/v1/capture/inputs/rescan' }).status).toBe(200);
+  });
+
+  it('no caller can turn it off; and the web default does not refuse (negative control)', () => {
+    const forced = createMobileSim({ clock: createManualClock(TEST_START), scheduler: createManualScheduler().scheduler, storage: null, deviceConsole: false });
+    signInSupervisor(forced);
+    forced.request({ method: 'POST', path: '/api/v1/capture/discovery' });
+    expect(forced.request({ method: 'POST', path: WEB_ONLY[1]!, body: {} }).status).toBe(403);
+
+    const web = createSim({ clock: createManualClock(TEST_START), scheduler: createManualScheduler().scheduler, storage: null, authStorage: null });
+    signInSupervisor(web);
+    web.request({ method: 'POST', path: '/api/v1/capture/discovery' });
+    expect(web.request({ method: 'POST', path: WEB_ONLY[1]!, body: {} }).status).toBe(200);
   });
 });

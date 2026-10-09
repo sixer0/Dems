@@ -47,10 +47,11 @@ const SECRET_FORMS = {
 };
 
 describe('the vocabulary', () => {
-  it('every one of the 63 shared audit types is accepted, with the category of the shared map', () => {
+  it('every one of the 67 shared audit types is accepted, with the category of the shared map', () => {
     const types = Object.values(AuditType);
-    // C3 §2.5 (blueprint row 113): 62 + STT_CONFIG_CHANGED = 63.
-    expect(types).toHaveLength(63);
+    // C3 §2.5 (blueprint row 113): 62 + STT_CONFIG_CHANGED = 63. C3 §5.2, §10.1 (blueprint row 132,
+    // decision D106): + the four of the camera search, the test, the adoption and the no-device warning = 67.
+    expect(types).toHaveLength(67);
     const typed = new Set<string>(Object.keys(SERVER_AUDIT_DETAIL_RULES));
     for (const type of types.filter((candidate) => !typed.has(candidate))) {
       const input = auditInputOf(audit({ type }));
@@ -226,7 +227,7 @@ describe('the payload map (database contract FLAT, NO_SECRET_KEYS; SR-54)', () =
   });
 });
 
-describe('the allow-list of the nineteen server-written types (spec §13.1; C3 §5.2, §2.5)', () => {
+describe('the allow-list of the twenty-three server-written types (spec §13.1; C3 §5.2, §2.5)', () => {
   const accepted: Record<string, AuditEntry[]> = {
     ACCESS_DENIED: [
       { type: 'ACCESS_DENIED', actorId: 'OPR-003', deviceId: null, message: 'Denied', details: { operationId: 'startSession', permission: 'SESSION_START', role: 'TECHNICIAN' } },
@@ -264,12 +265,31 @@ describe('the allow-list of the nineteen server-written types (spec §13.1; C3 �
       { type: 'STT_CONFIG_CHANGED', actorId: 'OPR-003', deviceId: null, message: 'STT configuration changed', details: { changedFields: 'enabled', enabled: false, backend: 'cpu-local', credentialChanged: false, revision: 2 } },
       { type: 'STT_CONFIG_CHANGED', actorId: 'OPR-002', deviceId: 'DEV-0001', message: 'STT configuration changed', details: { changedFields: 'backend,endpoint,model,credential', enabled: true, backend: 'omlx-server', credentialChanged: true, revision: 3 } },
     ],
+    // Task 3 R-9, R-10 (blueprint row 132, decision D106; C3 §5.2; M4-AUD-1): ids, counts, codes and
+    // facts. `host` and `endpointRef` only on the row of a PRODUCTION candidate (D86 C-3).
+    CAPTURE_DISCOVERY_SEARCHED: [
+      { type: 'CAPTURE_DISCOVERY_SEARCHED', actorId: 'OPR-003', deviceId: null, message: 'Camera search performed', details: { searchId: 'DSC-000012', scope: 'CAMERA_NETWORK', trigger: 'MANUAL', outcome: 'COMPLETE', responderCount: 0, newCount: 0, registeredCount: 0, interfaceCount: 1 } },
+      { type: 'CAPTURE_DISCOVERY_SEARCHED', actorId: 'OPR-002', deviceId: 'DEV-0001', message: 'Camera search could not run', details: { searchId: 'DSC-000013', scope: 'CAMERA_NETWORK', trigger: 'PRECHECK', outcome: 'FAILED', responderCount: 0, newCount: 0, registeredCount: 0, interfaceCount: 0, failureReason: 'SOCKET_ERROR', sessionId: 'SES-20261009-0003', operationId: 'startCaptureDiscovery', permission: 'CAPTURE_CONFIG' } },
+      { type: 'CAPTURE_DISCOVERY_SEARCHED', actorId: 'OPR-003', deviceId: null, message: 'Microphone inputs read again', details: { searchId: 'DSC-000014', scope: 'MIC_LOCAL', trigger: 'MANUAL', outcome: 'COMPLETE', responderCount: 2, newCount: 0, registeredCount: 2, interfaceCount: 0, operationId: 'rescanCaptureInputs' } },
+    ],
+    CAPTURE_CONNECTION_TESTED: [
+      { type: 'CAPTURE_CONNECTION_TESTED', actorId: 'OPR-003', deviceId: null, message: 'Camera connection tested', details: { candidateId: 'CND-4F2A91C0D377', searchId: 'DSC-000012', outcome: 'AUTHENTICATION_FAILED', authenticated: true, adapter: 'FAKE', sourceClass: 'DEVELOPMENT', operationId: 'testCaptureCandidateConnection' } },
+      { type: 'CAPTURE_CONNECTION_TESTED', actorId: 'OPR-002', deviceId: null, message: 'Camera connection tested', details: { candidateId: 'CND-4F2A91C0D377', searchId: 'DSC-000012', outcome: 'REACHABLE', authenticated: true, adapter: 'ONVIF_RTSP', sourceClass: 'PRODUCTION', operationId: 'adoptCaptureCandidate', host: '192.0.2.10', endpointRef: 'urn:uuid:00000000-0000-0000-0000-000000000000', guardTripped: false, permission: 'CAPTURE_CONFIG' } },
+    ],
+    CAPTURE_CANDIDATE_ADOPTED: [
+      { type: 'CAPTURE_CANDIDATE_ADOPTED', actorId: 'OPR-003', deviceId: null, message: 'Camera added', details: { deviceId: 'CAM-03', candidateId: 'CND-4F2A91C0D377', searchId: 'DSC-000012', adapter: 'FAKE', sourceClass: 'DEVELOPMENT', credentialSet: false, operationId: 'adoptCaptureCandidate' } },
+      { type: 'CAPTURE_CANDIDATE_ADOPTED', actorId: 'OPR-002', deviceId: null, message: 'Camera added', details: { deviceId: 'CAM-04', candidateId: 'CND-0000000000AB', searchId: 'DSC-000012', adapter: 'ONVIF_RTSP', sourceClass: 'PRODUCTION', credentialSet: true, operationId: 'adoptCaptureCandidate', host: '192.0.2.10', endpointRef: 'urn:uuid:00000000-0000-0000-0000-000000000000', permission: 'CAPTURE_CONFIG' } },
+    ],
+    CAPTURE_DEVICE_UNREACHABLE: [
+      { type: 'CAPTURE_DEVICE_UNREACHABLE', actorId: 'OPR-001', deviceId: null, message: 'Capture device not reachable', details: { deviceId: 'CAM-02', deviceKind: 'CAMERA', phase: 'PRECHECK', reason: 'UNREACHABLE', degraded: true, sessionId: 'SES-20261009-0003' } },
+      { type: 'CAPTURE_DEVICE_UNREACHABLE', actorId: null, deviceId: null, message: 'Capture device not reachable', details: { deviceId: 'MIC-01', deviceKind: 'MIC', phase: 'SESSION_START', reason: 'PERMISSION_DENIED', degraded: false, sessionId: 'SES-20261009-0003' } },
+    ],
   };
 
-  it('covers exactly the nineteen types the server writes; the simulator\'s 44 have no list', () => {
+  it('covers exactly the twenty-three types the server writes; the simulator\'s 44 have no list', () => {
     const typed = Object.keys(SERVER_AUDIT_DETAIL_RULES).sort();
     expect(typed).toEqual(Object.keys(accepted).sort());
-    expect(typed).toHaveLength(19);
+    expect(typed).toHaveLength(23);
     expect(Object.values(AuditType).filter((type) => detailRulesOf(type) === undefined)).toHaveLength(44);
     for (const type of typed) expect(Object.values(AuditType)).toContain(type);
   });
@@ -299,6 +319,11 @@ describe('the allow-list of the nineteen server-written types (spec §13.1; C3 �
       CAPTURE_CREDENTIAL_SET: ['deviceId', 'operationId', 'permission'],
       CAPTURE_CREDENTIAL_REVEALED: ['deviceId', 'reason'],
       STT_CONFIG_CHANGED: ['changedFields', 'enabled', 'backend', 'credentialChanged', 'revision'],
+      // C3 §5.2 (blueprint row 132): the key lists "12 + 11 + 10 + 6" of erratum PE-128-39.
+      CAPTURE_DISCOVERY_SEARCHED: ['searchId', 'scope', 'trigger', 'outcome', 'responderCount', 'newCount', 'registeredCount', 'interfaceCount', 'failureReason', 'sessionId', 'operationId', 'permission'],
+      CAPTURE_CONNECTION_TESTED: ['candidateId', 'searchId', 'outcome', 'authenticated', 'adapter', 'sourceClass', 'operationId', 'host', 'endpointRef', 'guardTripped', 'permission'],
+      CAPTURE_CANDIDATE_ADOPTED: ['deviceId', 'candidateId', 'searchId', 'adapter', 'sourceClass', 'credentialSet', 'operationId', 'host', 'endpointRef', 'permission'],
+      CAPTURE_DEVICE_UNREACHABLE: ['deviceId', 'deviceKind', 'phase', 'reason', 'degraded', 'sessionId'],
     });
     expect(required).toEqual({
       ACCESS_DENIED: ['operationId'],
@@ -320,7 +345,52 @@ describe('the allow-list of the nineteen server-written types (spec §13.1; C3 �
       CAPTURE_CREDENTIAL_SET: ['deviceId', 'operationId'],
       CAPTURE_CREDENTIAL_REVEALED: ['deviceId', 'reason'],
       STT_CONFIG_CHANGED: ['changedFields', 'enabled', 'backend', 'credentialChanged', 'revision'],
+      CAPTURE_DISCOVERY_SEARCHED: ['searchId', 'scope', 'trigger', 'outcome', 'responderCount', 'newCount', 'registeredCount', 'interfaceCount'],
+      CAPTURE_CONNECTION_TESTED: ['candidateId', 'searchId', 'outcome', 'authenticated', 'adapter', 'sourceClass', 'operationId'],
+      CAPTURE_CANDIDATE_ADOPTED: ['deviceId', 'candidateId', 'searchId', 'adapter', 'sourceClass', 'credentialSet', 'operationId'],
+      CAPTURE_DEVICE_UNREACHABLE: ['deviceId', 'deviceKind', 'phase', 'reason', 'degraded', 'sessionId'],
     });
+  });
+
+  it('M4-AUD-1: the four types of the camera search refuse a username, a secret, a URL, a label and a value outside their form', () => {
+    const searched = accepted['CAPTURE_DISCOVERY_SEARCHED']?.[0] as AuditEntry;
+    const tested = accepted['CAPTURE_CONNECTION_TESTED']?.[1] as AuditEntry;
+    const adopted = accepted['CAPTURE_CANDIDATE_ADOPTED']?.[1] as AuditEntry;
+    const unreachable = accepted['CAPTURE_DEVICE_UNREACHABLE']?.[0] as AuditEntry;
+    const withDetail = (item: AuditEntry, key: string, value: unknown): AuditEntry => ({ ...item, details: { ...item.details, [key]: value } as AuditEntry['details'] });
+    // The control of M4-AUD-1: a planted `username` (and the other credential names) is refused by the key rule.
+    for (const item of [searched, tested, adopted, unreachable]) {
+      for (const key of ['username', 'secret', 'password', 'credential', 'onvifUuid']) expect(codeOf(() => auditInputOf(withDetail(item, key, 'x'))), `${item.type}.${key}`).toBe('AUDIT_DETAIL_KEY_FORBIDDEN');
+      for (const key of ['url', 'streamUri', 'label', 'name', 'model', 'vendor', 'address', 'interfaceName', 'profile']) {
+        expect(codeOf(() => auditInputOf(withDetail(item, key, 'x'))), `${item.type}.${key}`).toBe('AUDIT_DETAIL_KEY_NOT_ALLOWED');
+      }
+    }
+    const invalid: Array<[AuditEntry, string, unknown]> = [
+      [searched, 'searchId', 'DSC-12'],
+      [searched, 'scope', 'LAN'],
+      [searched, 'responderCount', -1],
+      [searched, 'interfaceCount', 'en0'],
+      [searched, 'failureReason', 'bind EADDRINUSE 192.0.2.1:3702'],
+      [tested, 'candidateId', '192.0.2.10'],
+      [tested, 'outcome', 'TIMEOUT'],
+      [tested, 'authenticated', 'admin'],
+      [tested, 'operationId', 'setCaptureDeviceCredential'],
+      // `host` is an IP literal: never a URL, never a credential-bearing address, never a name.
+      [tested, 'host', 'http://192.0.2.10/onvif/device_service'],
+      [tested, 'host', 'admin:pass@192.0.2.10'],
+      [tested, 'host', 'camera.local'],
+      [tested, 'endpointRef', 'http://admin:pass@192.0.2.10/'],
+      [tested, 'endpointRef', 'x'.repeat(121)],
+      [tested, 'guardTripped', 1],
+      [adopted, 'deviceId', 'DEV-0001x'.toLowerCase()],
+      [adopted, 'operationId', 'testCaptureCandidateConnection'],
+      [adopted, 'credentialSet', 'yes'],
+      [unreachable, 'deviceKind', 'POE'],
+      [unreachable, 'phase', 'RECORDING'],
+      [unreachable, 'reason', 'Connection refused by 192.0.2.10'],
+      [unreachable, 'sessionId', 'the open session'],
+    ];
+    for (const [item, key, value] of invalid) expect(codeOf(() => auditInputOf(withDetail(item, key, value))), `${item.type}.${key}=${String(value)}`).toBe('AUDIT_DETAIL_VALUE_INVALID');
   });
 
   it.each(Object.entries(accepted))('%s: the rows of the specification are accepted', (_type, entries) => {

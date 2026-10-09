@@ -61,3 +61,18 @@ Controller: `master-controller` (paid-first tiering per D9). Waves W1-W12, all s
 ## Next
 
 Second BLUEPRINT_APPROVAL gate (row 40 / RF-9): blueprint rev 2.0 with the six new questions (Q-SEC-1..3, Q-INST-1, Q-SP-4, Q-D7). **No rev-2 row executes before the user approves.**
+
+## Wave C (2026-10-09) — closed at the pause point
+
+| Row / pass | Agent | Model | Status | Note | Decision |
+|---|---|---|---|---|---|
+| 59 | coder-execution | session | complete | fMP4 writer + chains; whole e2e 105 checks, exit 0 | D127 |
+| 87 | coder-execution | session | needs-review | clients verify v2; device / Core-sealed package unproven | D121 |
+| 137 | coder-execution | session | needs-review | web devices + connect flow; browser flows at gate 70 | D131 |
+| 138 | coder-execution | session | needs-review | mobile devices; device flows at gate 70 | D129 |
+| 141 | coder-execution | session | complete (server side) | V-15, `sources`, op 41 members, reset disk side | D124 |
+| C1 | coder-execution | session | complete | shared-contract seams, 7 of 7 | D123 |
+| C2 | coder-execution | session | complete | local helpers; D117 hypothesis contradicted | D126 |
+| checkpoint suites | test-expert | **sonnet (override)** | running | whole suites once, report `test/02_checkpoint_wave_c_suites.md` | D122 |
+
+Model override recorded (CLAUDE.md §11 rule 3): `test-expert` run on Sonnet for the checkpoint suite run. Reason: the user's instruction D122 (long test runs go to a separate Sonnet agent); the task is mechanical (run commands, quote output), no judgment. This departs from §11 rule 1 ("never downgrade a verification-phase agent") on the user's explicit instruction; the verification-phase rows of the final chain stay on the session model.

@@ -95,7 +95,7 @@ describe('MODG: the route list of the module equals its registry operations', ()
     console.info(`[w36] MODG registry, operations 44 to 52:  ${fromRegistry.join(' | ')}`);
   });
 
-  it('the area of the registry: these nine operations plus the six of the capture-config module (row 52/66) and the three of the STT configuration module (row 113), in registry order', () => {
+  it('the area of the registry: these nine operations plus the six of the capture-config module (row 52/66), the three of the STT configuration module (row 113) and the five of the camera search (rows 132 / 133 / 142), in registry order', () => {
     const area = CORE_API_OPERATIONS.filter((operation) => operation.tag === CoreApiTag.DEVICE);
     // Schema v2 (C3 §2.2): the Device tag grew by operations 76 to 80 and 89 - the selector and
     // the credential write, which the capture-config module answers (row 66), not this one. The
@@ -104,7 +104,10 @@ describe('MODG: the route list of the module equals its registry operations', ()
     // Blueprint row 113 (C3 §2.5): operations 90 to 92 carry the Device tag too and are answered by
     // `modules/stt-config`, not by this module.
     const STT_CONFIG_AREA = ['getSttConfig', 'updateSttConfig', 'testSttConnection'];
-    expect(area.map((operation) => operation.operationId)).toEqual([...DEVICES_OPERATIONS, ...CAPTURE_CONFIG_AREA, ...STT_CONFIG_AREA]);
+    // Blueprint row 132 (decision D106; C3 §2.6): operations 93 to 97 carry the Device tag too and are
+    // answered by `modules/capture-discovery` (93, 94) and by rows 142 (95, 96) and 133 (97).
+    const CAPTURE_DISCOVERY_AREA = ['startCaptureDiscovery', 'getCaptureDiscovery', 'testCaptureCandidateConnection', 'adoptCaptureCandidate', 'rescanCaptureInputs'];
+    expect(area.map((operation) => operation.operationId)).toEqual([...DEVICES_OPERATIONS, ...CAPTURE_CONFIG_AREA, ...STT_CONFIG_AREA, ...CAPTURE_DISCOVERY_AREA]);
     expect(area.map(operationNumber).slice(0, DEVICES_OPERATIONS.length)).toEqual([null, null, null, 47, 48, 49, 50, 51, 52]);
     expect(area.slice(0, 3).map((operation) => operation.source)).toEqual(['Design book §21.2', 'Design book §21.2', 'Design book §21.2']);
     for (const operationId of DEVICES_OPERATIONS) expect(operationOf(operationId).operationId).toBe(operationId);

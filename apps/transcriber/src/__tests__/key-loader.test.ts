@@ -7,7 +7,8 @@ import { describe, expect, it } from 'vitest';
 import { createTranscriberAdapter } from '../adapter';
 import { createOmlxHttp } from '../backends/omlx-http';
 import { resolveTranscriberConfig } from '../config';
-import { CREDENTIAL_PLACEHOLDER, OMLX_CREDENTIAL_REF, bearerHeaderValue, credentialFromValue, defaultOmlxSettingsPath, loadCredential, scrubCredential } from '../key-loader';
+import { CREDENTIAL_PLACEHOLDER, OMLX_CREDENTIAL_REF, bearerHeaderValue, credentialFromValue, credentialOf, defaultOmlxSettingsPath, loadCredential, openCredential, releaseCredential, scrubCredential } from '../key-loader';
+import { createConnectionProbe } from '../probe';
 import { CREDENTIAL_BLANK, redactCredentialText } from '@dems/shared/api';
 import { LOG_FILE_NAME, blankText, createFileLog, createMemoryLog } from '../log';
 import { TranscriberErrorCode, type EngineRunRecord } from '../types';
@@ -232,5 +233,117 @@ describe('SEC35-14 / E-31: the log-blanking rule', () => {
     expect(existsSync(`${file}.1`)).toBe(true);
     expect(readFileSync(file, 'utf8').trim().split('\n').map((line) => (JSON.parse(line) as { message: string }).message)).toEqual(['second', 'third']);
     expect((JSON.parse(readFileSync(`${file}.1`, 'utf8').trim()) as { message: string }).message).toContain('request failed');
+  });
+});
+
+// Integration pass A: the opener path of an ENCRYPTED credential. The opener is a plain function
+// of the composition; this workspace imports no credential store.
+describe('SEC35-14: an ENCRYPTED credential comes through an opener the composition hands in', () => {
+  const OPENED = ['opened', 'CANARY', 'passA', 'Qm4Zt8Rb1Ny6'].join('-');
+  const runtime = { physicalCores: 10, omlxServer: { settingsPath: writeSettingsFile(KEY) } };
+  const selection = { backend: 'omlx-server', endpoint: 'http://127.0.0.1:8000', model: 'server-model' };
+  const probeOptions = (): { signal: AbortSignal; timeoutMs: number } => ({ signal: new AbortController().signal, timeoutMs: 1_000 });
+
+  it('the opened key is held opaquely, and the same one function gives the header', () => {
+    const credential = openCredential({ open: () => OPENED });
+    for (const text of [String(credential), JSON.stringify({ credential }), inspect({ nested: { credential } }, { depth: 5 })]) expect(text).not.toContain(OPENED);
+    expect(Object.getOwnPropertyNames(credential)).toEqual([]);
+    expect(bearerHeaderValue(credential)).toBe(`Bearer ${OPENED}`);
+    // Released: the holder gives no header and scrubs nothing any more.
+    releaseCredential(credential);
+    expect(() => bearerHeaderValue(credential)).toThrowError(expect.objectContaining({ code: TranscriberErrorCode.CREDENTIAL_UNAVAILABLE }));
+  });
+
+  it('no opener, an opener that throws, and one that returns nothing are CREDENTIAL_UNAVAILABLE; a thrown message is never passed on', () => {
+    expect(() => openCredential({})).toThrowError(expect.objectContaining({ code: TranscriberErrorCode.CREDENTIAL_UNAVAILABLE, detail: { reason: 'NO_OPENER' } }));
+    let caught: unknown;
+    try {
+      openCredential({
+        open: () => {
+          throw Object.assign(new Error(`the envelope of ${OPENED} did not open`), { code: 'CREDENTIAL_OPEN_FAILED' });
+        },
+      });
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toMatchObject({ code: TranscriberErrorCode.CREDENTIAL_UNAVAILABLE, detail: { reason: 'OPEN_FAILED', openerCode: 'CREDENTIAL_OPEN_FAILED' } });
+    expect(`${(caught as Error).message} ${(caught as Error).stack} ${JSON.stringify(caught)} ${inspect(caught, { depth: 6 })}`).not.toContain(OPENED);
+    // A `code` that is not of the form of a code (it could be a value) is dropped.
+    expect(() =>
+      openCredential({
+        open: () => {
+          throw Object.assign(new Error('x'), { code: `key=${OPENED}` });
+        },
+      }),
+    ).toThrowError(expect.objectContaining({ detail: { reason: 'OPEN_FAILED' } }));
+    expect(() => openCredential({ open: () => '' })).toThrowError(expect.objectContaining({ detail: { reason: 'EMPTY' } }));
+    expect(() => openCredential({ open: () => 7 as unknown as string })).toThrowError(expect.objectContaining({ detail: { reason: 'NOT_TEXT' } }));
+    // One request has one credential: a reference AND an encrypted source is refused before the opener is asked.
+    let asked = 0;
+    expect(() => credentialOf({ credentialRef: OMLX_CREDENTIAL_REF, settingsPath: null }, { open: () => ((asked += 1), OPENED) })).toThrowError(expect.objectContaining({ detail: { reason: 'AMBIGUOUS' } }));
+    expect(asked).toBe(0);
+  });
+
+  it('the probe: ONE request with the opened key, asked once per test, in no log line; the holder is empty afterwards', async () => {
+    const omlx = createFakeOmlx({ key: OPENED, models: ['server-model'] });
+    const memory = createMemoryLog();
+    // The holders the probe hands to the log: the only way a test can reach them.
+    const held: Parameters<typeof bearerHeaderValue>[0][] = [];
+    const log = { ...memory, protect: (credential: Parameters<typeof memory.protect>[0]) => (credential === null ? undefined : void held.push(credential), memory.protect(credential)) };
+    let opened = 0;
+    const probe = createConnectionProbe({ runtime, log, credentialRef: () => null, fetchImpl: omlx.fetchImpl, encryptedCredential: { open: () => ((opened += 1), OPENED) } });
+    for (let run = 1; run <= 2; run += 1) {
+      expect(await probe({ enabled: true, ...selection }, probeOptions())).toEqual({ reachable: true, modelAvailable: true, detailCode: 'OK' });
+      expect(opened).toBe(run);
+    }
+    // Request scope: each test had its own holder, and each is empty once its request is over.
+    expect(held).toHaveLength(2);
+    for (const credential of held) expect(() => bearerHeaderValue(credential)).toThrowError(expect.objectContaining({ code: TranscriberErrorCode.CREDENTIAL_UNAVAILABLE }));
+    expect(omlx.calls.map((call) => `${call.method} ${call.path} ${call.authorization}`)).toEqual([`GET /v1/models Bearer ${OPENED}`, `GET /v1/models Bearer ${OPENED}`]);
+    expect(log.lines.join('\n')).not.toContain(OPENED);
+    // Control: the key of the settings file (the reference path) is NOT what was sent.
+    expect(JSON.stringify(omlx.calls)).not.toContain(KEY);
+  });
+
+  it('the probe without an opener, or with one that fails: no request at all, and the refusal is logged by code only', async () => {
+    const omlx = createFakeOmlx({ key: OPENED, models: ['server-model'] });
+    const log = createMemoryLog();
+    const none = createConnectionProbe({ runtime, log, credentialRef: () => null, fetchImpl: omlx.fetchImpl, encryptedCredential: {} });
+    expect(await none({ enabled: true, ...selection }, probeOptions())).toEqual({ reachable: false, modelAvailable: false, detailCode: 'CREDENTIAL_REJECTED' });
+    const failing = createConnectionProbe({
+      runtime,
+      log,
+      credentialRef: () => null,
+      fetchImpl: omlx.fetchImpl,
+      encryptedCredential: {
+        open: () => {
+          throw new Error(`cannot open ${OPENED}`);
+        },
+      },
+    });
+    expect(await failing({ enabled: true, ...selection }, probeOptions())).toMatchObject({ reachable: false });
+    expect(omlx.calls).toEqual([]);
+    expect(log.records()).toHaveLength(2);
+    expect(log.lines.join('\n')).not.toContain(OPENED);
+    // Control: without the statement "encrypted" the same probe connects (no credential: 401 from this fake).
+    const plain = createConnectionProbe({ runtime, log, credentialRef: () => null, fetchImpl: omlx.fetchImpl });
+    expect(await plain({ enabled: true, ...selection }, probeOptions())).toMatchObject({ reachable: true, detailCode: 'CREDENTIAL_REJECTED' });
+    expect(omlx.calls).toHaveLength(1);
+  });
+
+  it('the adapter: built with the opened key (asked once, kept for its lifetime), sent as the header, in no result, record or log line', async () => {
+    const omlx = createFakeOmlx({ key: OPENED, models: ['server-model'] });
+    const log = createMemoryLog();
+    const config = resolveTranscriberConfig(selection, runtime);
+    let opened = 0;
+    const adapter = createTranscriberAdapter(config, { log, fetchImpl: omlx.fetchImpl, encryptedCredential: { open: () => ((opened += 1), OPENED) } });
+    const results = [await adapter.transcribe(pcmChunk(), { language: 'id', correlationId: 'corr-e1' }), await adapter.transcribe(pcmChunk(), { language: 'id', correlationId: 'corr-e2' })];
+    expect(opened).toBe(1);
+    expect(omlx.calls.map((call) => call.authorization)).toEqual([`Bearer ${OPENED}`, `Bearer ${OPENED}`]);
+    expect(JSON.stringify({ results, config, adapter: inspect(adapter, { depth: 6 }), log: log.lines })).not.toContain(OPENED);
+    // No opener: the adapter is not built, and nothing is sent.
+    const before = omlx.calls.length;
+    expect(() => createTranscriberAdapter(config, { log, fetchImpl: omlx.fetchImpl, encryptedCredential: {} })).toThrowError(expect.objectContaining({ code: TranscriberErrorCode.CREDENTIAL_UNAVAILABLE, detail: { reason: 'NO_OPENER' } }));
+    expect(omlx.calls).toHaveLength(before);
   });
 });

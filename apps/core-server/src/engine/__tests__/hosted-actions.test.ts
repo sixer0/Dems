@@ -23,9 +23,10 @@ const NOT_HOSTED = [
 ];
 
 describe('the hosted actions', () => {
-  it('are the 31 members that contract C marks as hosted, in the order of SimActions', () => {
-    expect(HOSTED_ACTIONS).toHaveLength(31);
-    expect(Object.keys(SIM_ACTION_OPERATIONS)).toHaveLength(45);
+  it('are the 33 members that contract C marks as hosted, in the order of SimActions', () => {
+    expect(HOSTED_ACTIONS).toHaveLength(33);
+    // 47 until task 3 row 132 added the INTERNAL `registerCaptureDevice` (C3 §2.6: the adoption).
+    expect(Object.keys(SIM_ACTION_OPERATIONS)).toHaveLength(48);
     const expected = Object.entries(SIM_ACTION_OPERATIONS)
       .filter(([, binding]) => binding.execution === 'hosted')
       .map(([name]) => name);
@@ -33,6 +34,8 @@ describe('the hosted actions', () => {
     expect(HOSTED_ACTIONS).toEqual(
       expect.arrayContaining(['createSession', 'startRecording', 'stopRecording', 'recover', 'exportEvidence', 'inject', 'clearFault', 'updateSettings']),
     );
+    // Blueprint row 66 (register SH-18): the hosted pair of the capture selector and the mic switch, the last two.
+    expect(HOSTED_ACTIONS.slice(-2)).toEqual(['setCaptureConfig', 'switchAudioSource']);
   });
 
   it.each(NOT_HOSTED)('%s is not hosted: no client reaches it through the engine', (name) => {
@@ -56,11 +59,15 @@ describe('the hosted actions', () => {
     expect(hostedActionsOfOperation('signIn')).toEqual([]);
     expect(hostedActionsOfOperation('loadScenario')).toEqual([]);
     expect(hostedActionsOfOperation('getServiceHealth')).toEqual([]);
+    // Row 66: three operations for `setCaptureConfig`, one for `switchAudioSource`; the reads of the selector have none.
+    for (const operation of ['updateCaptureConfig', 'setCaptureCameraSource', 'setPrimaryMic']) expect(hostedActionsOfOperation(operation)).toEqual(['setCaptureConfig']);
+    expect(hostedActionsOfOperation('switchAudioSource')).toEqual(['switchAudioSource']);
+    expect(hostedActionsOfOperation('getCaptureConfig')).toEqual([]);
   });
 
-  it('together the hosted actions reach 32 operations', () => {
+  it('together the hosted actions reach 36 operations', () => {
     const operations = new Set(HOSTED_ACTIONS.flatMap((name) => SIM_ACTION_OPERATIONS[name].operations as readonly string[]));
-    expect(operations.size).toBe(32);
+    expect(operations.size).toBe(36);
   });
 });
 

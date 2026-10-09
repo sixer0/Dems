@@ -41,6 +41,7 @@ import {
   SERVICES_RESTART,
   SETTINGS,
   SYSTEM_STATUS,
+  servicesAsRead,
   UPDATE,
   bodyOf,
   bootedServer,
@@ -123,7 +124,7 @@ describe('the booted server', () => {
     expect(server.engine.slice('session')).toBeNull();
     expect(server.engine.slice('diagnostics')).toBeNull();
     expect(server.engine.slice('update')).toMatchObject({ state: 'IDLE', currentVersion: '2.4.1', availableVersion: '2.5.0', activeSlot: 'A' });
-    expect(server.engine.slice('services')).toHaveLength(16);
+    expect(server.engine.slice('services')).toHaveLength(17);
     expect(server.engine.slice('settings')).toEqual(DEFAULT_SETTINGS);
   });
 });
@@ -134,7 +135,8 @@ describe('operation 64 getSystemStatus', () => {
     expect(response.statusCode).toBe(200);
     // The expectation is the five slices themselves, picked here: not the module's own projection.
     const { device, services, update, diagnostics, settings } = server.engine.state();
-    expect(response.json()).toEqual(wire({ device, services, update, diagnostics, settings }));
+    // Row 62 (CS-10): two entries of `services` stand for real processes and are laid over the slice by the read.
+    expect(response.json()).toEqual(wire({ device, services: servicesAsRead(services, server.app), update, diagnostics, settings }));
     expect(validateCoreApiResponse('getSystemStatus', 200, response.json())).toEqual({ ok: true });
     expect(response.headers['set-cookie']).toBeUndefined();
   });
@@ -143,7 +145,10 @@ describe('operation 64 getSystemStatus', () => {
     await server.app.pipeline.drain();
     const stored = await storedSlices(server.owner);
     const answer = (await server.get('TECHNICIAN', SYSTEM_STATUS)).json() as Record<string, unknown>;
-    for (const slice of ['device', 'services', 'update', 'diagnostics', 'settings'] as const) expect(answer[slice], slice).toEqual(wire(stored[slice]));
+    for (const slice of ['device', 'update', 'diagnostics', 'settings'] as const) expect(answer[slice], slice).toEqual(wire(stored[slice]));
+    // Row 62 (CS-10): `services` is the stored slice with the capture worker and the transcriber laid over it; the tables keep the engine's.
+    expect(answer['services']).toEqual(wire(servicesAsRead(stored.services, server.app)));
+    expect(answer['services']).not.toEqual(wire(stored.services));
     expect(await storedSettings(server.owner)).toMatchObject(DEFAULT_SETTINGS);
   });
 
@@ -438,7 +443,7 @@ describe('operations 66 restartServices and 67 startSoftwareUpdate: who may call
     expect(server.engine.slice('update')).toBe(before.update);
   });
 
-  it('66: a TECHNICIAN restarts the services: 200 with 16; the stored DEVICE_COMMAND row is the shared transition\'s, hash for hash; every service started now, in the tables too', async () => {
+  it('66: a TECHNICIAN restarts the services: 200 with 17; the stored DEVICE_COMMAND row is the shared transition\'s, hash for hash; every service started now, in the tables too', async () => {
     server.clock.advance(5_000);
     await server.app.pipeline.drain();
     const at = server.clock.now();
@@ -453,7 +458,7 @@ describe('operations 66 restartServices and 67 startSoftwareUpdate: who may call
     const response = await server.post('TECHNICIAN', SERVICES_RESTART);
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({ restarted: built.result });
-    expect(response.json()).toEqual({ restarted: 16 });
+    expect(response.json()).toEqual({ restarted: 17 });
     expect(validateCoreApiResponse('restartServices', 200, response.json())).toEqual({ ok: true });
     expect(response.headers[REVISION_HEADER_NAME]).toBe(String(revision + 1));
     expect(response.headers[EPOCH_HEADER_NAME]).toBe(String(server.engine.epoch));
@@ -461,9 +466,9 @@ describe('operations 66 restartServices and 67 startSoftwareUpdate: who may call
 
     const stored = await server.since(trail);
     expect(stored.map(whole)).toEqual([whole(expectedRow)]);
-    expect(stored[0]).toMatchObject({ type: 'DEVICE_COMMAND', actorId: principal.operatorId, at, details: { command: 'RESTART', scope: SERVICES_RESTART_SCOPE, services: 16 } });
+    expect(stored[0]).toMatchObject({ type: 'DEVICE_COMMAND', actorId: principal.operatorId, at, details: { command: 'RESTART', scope: SERVICES_RESTART_SCOPE, services: 17 } });
     expect(server.engine.slice('services')).toEqual(built.state.services);
-    expect(server.engine.slice('services').map((service) => service.startedAt)).toEqual(Array.from({ length: 16 }, () => at));
+    expect(server.engine.slice('services').map((service) => service.startedAt)).toEqual(Array.from({ length: 17 }, () => at));
     expect((await storedSlices(server.owner)).services).toEqual(built.state.services);
     expect(denials(stored)).toEqual([]);
   });
@@ -600,7 +605,7 @@ describe('restartServices and startSoftwareUpdate while a session is open', () =
     const trail = await busy.trailLength();
     const restarted = await busy.post('TECHNICIAN', SERVICES_RESTART);
     expect(restarted.statusCode).toBe(200);
-    expect(restarted.json()).toEqual({ restarted: 16 });
+    expect(restarted.json()).toEqual({ restarted: 17 });
     const started = await busy.post('TECHNICIAN', UPDATE);
     expect(started.statusCode).toBe(202);
     await busy.app.pipeline.drain();

@@ -62,14 +62,14 @@ function strings(value: unknown, out: string[] = []): string[] {
 }
 
 describe('the minimums of contract §11 as revised by dbc-3 §G', () => {
-  it('the table has 40 entries, one per table of the typed schema', () => {
-    expect(BULK_MINIMUMS).toHaveLength(40);
-    expect(new Set(BULK_MINIMUMS.map((entry) => entry.table)).size).toBe(40);
+  it('the table has 42 entries, one per table of the typed schema', () => {
+    expect(BULK_MINIMUMS).toHaveLength(42);
+    expect(new Set(BULK_MINIMUMS.map((entry) => entry.table)).size).toBe(42);
     // Schema v2 (CS-20 of the row-55 review): §G made the v2 minimums bulk-fixture deliverables.
     // The table now covers every table `base.counts` names - nothing counted is unasserted,
     // nothing asserted is unknown to the schema.
     const counted = Object.keys(base.counts);
-    expect(counted).toHaveLength(40);
+    expect(counted).toHaveLength(42);
     for (const entry of BULK_MINIMUMS) expect(counted).toContain(entry.table);
     expect(counted.filter((table) => !BULK_MINIMUMS.some((entry) => entry.table === table))).toEqual([]);
     expect(minimumOf('audit_log')).toBe(5_000);
@@ -82,7 +82,11 @@ describe('the minimums of contract §11 as revised by dbc-3 §G', () => {
     expect(minimumOf('transcripts')).toBe(400);
     expect(minimumOf('transcript_revisions')).toBe(30);
     expect(minimumOf('sealing_jobs')).toBe(3_000);
-    expect(minimumOf('capture_devices')).toBe(8);
+    // dbc-4 §N.10: capture_devices revised 8 -> 12; T-41 joins with 1,600.
+    expect(minimumOf('capture_devices')).toBe(12);
+    expect(minimumOf('session_capture_sources')).toBe(1_600);
+    // PE-129b-01: T-42 joins with 0 - the fixture builds no STT snapshot (rule S-2 of the erratum).
+    expect(minimumOf('session_stt_config')).toBe(0);
     expect(minimumOf('capture_device_credentials')).toBe(2);
     expect(() => minimumOf('no_such_table')).toThrow(RangeError);
   });
@@ -90,7 +94,7 @@ describe('the minimums of contract §11 as revised by dbc-3 §G', () => {
   it('every table holds at least its minimum after the load (entity, minimum, loaded)', () => {
     const comparison = compareWithMinimums(fixture.expectedCounts);
     expect(comparison.filter((entry) => !entry.met)).toEqual([]);
-    expect(comparison).toHaveLength(40);
+    expect(comparison).toHaveLength(42);
     // The seed alone is far below: the comparison is able to fail.
     expect(compareWithMinimums(base.counts).filter((entry) => !entry.met).map((entry) => entry.table)).toContain('audit_log');
     // What the fixture adds is what its row lists hold.
@@ -461,17 +465,19 @@ describe('the v2 pipeline rows of dbc-3 §G (CS-20)', () => {
     ['transcripts', 400],
     ['transcript_revisions', 30],
     ['sealing_jobs', 3_000],
-    ['capture_devices', 8],
+    ['capture_devices', 12],
     ['capture_device_credentials', 2],
     ['capture_config', 1],
     ['stt_config', 1],
+    ['session_capture_sources', 1_600],
   ] as const;
 
   it('every §G table reaches its minimum in the pure build, not only in the database', () => {
     for (const [table, minimum] of tables) expect(fixture.expectedCounts[table], table).toBeGreaterThanOrEqual(minimum);
-    // The fixture's own additions: three discovered devices, two fake-device credentials, and
-    // the six pipeline tables from nothing.
-    expect(fixture.added['capture_devices']).toBe(3);
+    // The fixture's own additions: seven devices (dbc-4 §N.10: three ONVIF cameras, two USB
+    // microphones, the local camera and the local microphone), two camera credentials, and the
+    // six pipeline tables from nothing.
+    expect(fixture.added['capture_devices']).toBe(7);
     expect(fixture.added['capture_device_credentials']).toBe(2);
     for (const [table] of tables.slice(0, 6)) expect(fixture.added[table], table).toBeGreaterThan(0);
   });
@@ -559,9 +565,9 @@ describe('the v2 pipeline rows of dbc-3 §G (CS-20)', () => {
     expect(sealingJobs.filter((row) => row.status === 'RUNNING')).toEqual([]);
   });
 
-  it('the discovered capture rows: three devices over the five seeded ones, one dual-profile camera, two fake-device credentials, one rotated', () => {
+  it('the discovered capture rows: seven devices over the five seeded ones, one dual-profile camera, two camera credentials, one rotated', () => {
     const { captureDevices, captureDeviceCredentials } = fixture.rows;
-    expect(captureDevices.map((row) => row.id)).toEqual(['CAM-03', 'CAM-04', 'MIC-03']);
+    expect(captureDevices.map((row) => row.id)).toEqual(['CAM-03', 'CAM-04', 'CAM-05', 'CAM-06', 'MIC-03', 'MIC-04', 'MIC-05']);
     expect(captureDevices.filter((row) => Array.isArray(row.profiles) && (row.profiles as readonly string[]).length >= 2)).toHaveLength(1);
     expect(captureDeviceCredentials.map((row) => row.deviceId).sort()).toEqual(['CAM-03', 'CAM-04']);
     expect(captureDeviceCredentials.every((row) => row.secretCiphertext.length >= 33 && row.nonce.length === 12)).toBe(true);

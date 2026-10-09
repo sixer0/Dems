@@ -81,6 +81,7 @@ import {
   CoreApiAccessCondition,
   CoreApiAccessKind,
   DEVICE_CREDENTIAL_REQUIRED_REASON,
+  WEB_CONSOLE_ONLY_REASON,
   coreApiAccessPermissions,
   describeCoreApiAccess,
   type CoreApiEnvelopeResponse,
@@ -94,6 +95,8 @@ import { buildApp } from '../../src/app';
 import type { DatabaseConnection } from '../../src/config';
 import { BULK_TEMPLATE_NOW } from '../../src/db/fixtures/__tests__/template-hook.bulk';
 import { engineControl } from '../../src/engine';
+import type { OnvifDiscoveryAdapter, WsDiscoveryResult } from '../../src/capture/adapters';
+import { captureDiscoveryControl } from '../../src/modules/capture-discovery';
 import { sttConfigControl } from '../../src/modules/stt-config';
 import type { Principal } from '../../src/plugins/authenticate';
 import { throttleControl, type ThrottleKey } from '../../src/plugins/throttle';
@@ -155,13 +158,11 @@ function routedOperations(): CoreApiRegistryOperation[] {
 }
 
 /** The operations C3 adds whose routes land with later rows (R4): named, with their milestone. */
+// Blueprint row 66 / M4-W2 landed operations 76 to 80: their five entries left this record and
+// their cells joined every walk. Rows 132, 133 and 142 (decision D114) routed operation 89 and
+// operations 93 to 97 (`modules/capture-discovery` with its `connect` routes, `modules/capture-inputs`):
+// their six entries left it as well.
 const DEFERRED_ROUTE: Readonly<Record<string, string>> = {
-  getCaptureConfig: 'row 66 / M4-W2',
-  getCaptureDevices: 'row 66 / M4-W2',
-  updateCaptureConfig: 'row 66 / M4-W2',
-  setCaptureCameraSource: 'row 66 / M4-W2',
-  setPrimaryMic: 'row 66 / M4-W2',
-  setCaptureDeviceCredential: 'row 66 / M4-W2',
   switchAudioSource: 'M5',
   listAudioSourceIntervals: 'M5/M7',
   getSealingProgress: 'M7',
@@ -186,6 +187,7 @@ function expectationFor(operation: CoreApiRegistryOperation, caller: CallerFacts
     retiredDeviceMayCall: spec.retiredDeviceMayCall,
     denialCode: specRowOf(operation).denialCode,
     deviceCredentialReason: spec.deviceCredentialReason,
+    webConsoleOnlyReason: spec.webConsoleOnlyReason,
   });
 }
 
@@ -335,6 +337,12 @@ async function startServer(target: ServerTarget, demoFlag: boolean): Promise<Ser
   // the operation a probe that contacts nothing and answers "unreachable": a permitted cell then
   // gets its documented 200. The 503 itself is held by the module's own test.
   sttConfigControl(app).provideProbe(async () => ({ reachable: false, modelAvailable: false, detailCode: 'UNREACHABLE' }));
+  // The same for operation 93 (rows 132 / 142, D114): a Core that does not run real capture has no
+  // discovery adapter, and a permitted caller is answered the envelope's 503 `NOT_READY`, which is
+  // no documented status of the operation. The matrix gives the module an adapter that sends
+  // nothing and finds nothing: a permitted cell then gets its documented 202. The 503, the bounds
+  // and the candidates are held by the module's own tests (`capture-discovery.db.test.ts`).
+  captureDiscoveryControl(app).provideAdapter(() => ({ discover: async () => NOTHING_FOUND }) as unknown as OnvifDiscoveryAdapter);
   await app.readiness.boot();
   await settle(app);
 
@@ -365,6 +373,15 @@ async function startServer(target: ServerTarget, demoFlag: boolean): Promise<Ser
     counts: await countTables({ owner, countStatement }),
   };
 }
+
+/** What the matrix's discovery adapter answers: a search that ran and found no camera. */
+const NOTHING_FOUND: WsDiscoveryResult = {
+  candidates: [],
+  responderCount: 0,
+  interfaceCount: 1,
+  truncated: false,
+  counts: { datagramsReceived: 0, datagramsAccepted: 0, dropped: {}, repeats: 0, matchesSkipped: 0, respondersOverCap: 0, lookupErrors: 0, datagramsSent: 0, sendErrors: 0, handlerErrors: 0 },
+};
 
 /**
  * The next window of the throttle and of the denial budget: the server clock moves on by the
@@ -786,6 +803,11 @@ async function runCell(server: Server, caller: Caller, operation: CoreApiRegistr
   const request = cellRequestOf(operation, mode);
   const expectation = expectationFor(operation, caller, options.grants, server.demoFlag);
 
+  // A permitted search (operation 93) is bounded per session and per Core (C3 §5.4: 10 s, 5 s, 6 a
+  // minute). The matrix asks who may call, not how often: the search of each permitted cell runs
+  // in a window of its own, so no cell meets the bound of the cell before it (429 stays a failure).
+  if (operation.operationId === 'startCaptureDiscovery' && expectation.allowed && mode !== 'PROBE') await nextWindow(server);
+
   // The denial budget and the strict limit of the caller's key (F25): the next window first.
   const key = caller.keyFor(request.method);
   const strict = countsStrict(key, operation);
@@ -936,15 +958,16 @@ function summaryOf(column: readonly Cell[]): string {
 // The registry against the specification (an independent check of the registry itself)
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
 
-describe('the contract registry against the composed operation tables: all 92 rows, read from the documents', () => {
-  it('the composed document holds operations 1 to 92 and the registry holds the same 92, each once', () => {
+describe('the contract registry against the composed operation tables: all 97 rows, read from the documents', () => {
+  it('the composed document holds operations 1 to 97 and the registry holds the same 97, each once', () => {
     // R1 (D44): 75 rows of the closed task-2 §7 base + 14 rows of C3 §2.2 + 3 rows of C3 §2.5 (the
-    // STT configuration operations 90 to 92, task 3 row 113), composed by the reader. The total is
-    // the one C3 §2.5 states for the confirmed R-8: 92.
-    expect(spec.operations.map((operation) => operation.number)).toEqual(Array.from({ length: 92 }, (_unused, index) => index + 1));
-    expect(CORE_API_OPERATIONS).toHaveLength(92);
+    // STT configuration operations 90 to 92, task 3 row 113) + 5 rows of C3 §2.6 (the camera search,
+    // the connection test, the adoption and the local-input re-read, 93 to 97; task 3 row 132,
+    // decision D106), composed by the reader. The total is the one C3 §10.1 states: 97.
+    expect(spec.operations.map((operation) => operation.number)).toEqual(Array.from({ length: 97 }, (_unused, index) => index + 1));
+    expect(CORE_API_OPERATIONS).toHaveLength(97);
     expect(CORE_API_OPERATIONS.map((operation) => operation.operationId).sort()).toEqual(spec.operations.map((operation) => operation.operationId).sort());
-    expect(new Set(CORE_API_OPERATIONS.map((operation) => operation.operationId)).size).toBe(92);
+    expect(new Set(CORE_API_OPERATIONS.map((operation) => operation.operationId)).size).toBe(97);
   });
 
   it('every registry entry has the method, the path, the access rule, the conditions and the audit rule of its row', () => {
@@ -971,7 +994,7 @@ describe('the contract registry against the composed operation tables: all 92 ro
     expect(registry).toEqual(document);
   });
 
-  it('the access rules are 4 PUBLIC, 5 DEVICE, 30 AUTHENTICATED, 52 with one permission and 1 any-of, in the registry and in the composed document', () => {
+  it('the access rules are 4 PUBLIC, 5 DEVICE, 30 AUTHENTICATED, 57 with one permission and 1 any-of, in the registry and in the composed document', () => {
     const kindOfMarker = (marker: string): string => {
       if (marker === 'PUBLIC' || marker === 'DEVICE' || marker === 'AUTHENTICATED') return marker;
       return marker.startsWith('ANY-OF(') ? CoreApiAccessKind.ANY_OF : CoreApiAccessKind.PERMISSION;
@@ -980,7 +1003,8 @@ describe('the contract registry against the composed operation tables: all 92 ro
     const registry = tally(CORE_API_OPERATIONS.map((operation) => operation.access.kind));
     expect(registry).toEqual(tally(spec.operations.map((operation) => kindOfMarker(operation.access))));
     // C3 §2.5: operation 90 is AUTHENTICATED (29 -> 30), 91 and 92 need CAPTURE_CONFIG (50 -> 52).
-    expect(registry).toEqual({ PUBLIC: 4, DEVICE: 5, AUTHENTICATED: 30, PERMISSION: 52, ANY_OF: 1 });
+    // C3 §2.6: the five of 93 to 97 need CAPTURE_CONFIG too (52 -> 57); no new permission (R-9 AC-12).
+    expect(registry).toEqual({ PUBLIC: 4, DEVICE: 5, AUTHENTICATED: 30, PERMISSION: 57, ANY_OF: 1 });
     // Every permission a rule names is one of the fourteen of the composed matrix (C3 §2.1).
     for (const operation of CORE_API_OPERATIONS) {
       for (const permission of coreApiAccessPermissions(operation.access)) expect(spec.permissions, operation.operationId).toContain(permission);
@@ -1017,6 +1041,43 @@ describe('the contract registry against the composed operation tables: all 92 ro
     expect(differing).toEqual([]);
     expect(guarded.filter((operation) => specRowOf(operation).denialCode === 'FORBIDDEN').map((operation) => operation.operationId)).toEqual(['exportEvidence']);
     console.info(`[w47] spec §7 (revision ${spec.revision}, ${spec.lines} lines) against the registry: 75 of 75 rows equal in method, path, access rule, conditions and audit rule; exports ${exports.join(', ')}`);
+  });
+
+  it('the condition WEB_CONSOLE_SESSION (C3 §0, §2.6, §3.1, §4; D80(3)): the reason of its refusal is the same in the document and in the registry, and it stands on the three operations whose body carries a camera credential', () => {
+    expect(spec.webConsoleOnlyReason).toBe(WEB_CONSOLE_ONLY_REASON);
+    const carrying = CORE_API_OPERATIONS.filter((operation) => conditionsOf(operation).includes(CoreApiAccessCondition.WEB_CONSOLE_SESSION));
+    // From the DOCUMENT: the access cells of §2.6 (operations 95 and 96) and the changed row of §3.1 (operation 89).
+    const documented = spec.operations.filter((operation) => operation.conditions.includes(CoreApiAccessCondition.WEB_CONSOLE_SESSION));
+    expect(documented.map((operation) => [operation.number, operation.operationId])).toEqual([
+      [89, 'setCaptureDeviceCredential'],
+      [95, 'testCaptureCandidateConnection'],
+      [96, 'adoptCaptureCandidate'],
+    ]);
+    expect(carrying.map((operation) => operation.operationId).sort()).toEqual(documented.map((operation) => operation.operationId).sort());
+    // It adds to a permission (CAPTURE_CONFIG): it is defined on no marker without one.
+    expect(carrying.filter((operation) => describeCoreApiAccess(operation.access) !== 'CAPTURE_CONFIG').map((operation) => operation.operationId)).toEqual([]);
+    // The model of this file: a holder of the permission on the web console is allowed, the same holder
+    // on a paired device is refused 403 NOT_PERMITTED with the reason and one ACCESS_DENIED row.
+    const technicianWeb = world.callers['TECHNICIAN'] ?? ANONYMOUS;
+    const technicianDevice = world.callers['TECHNICIAN@DEVICE'] ?? ANONYMOUS;
+    for (const operation of carrying) {
+      expect(expectationFor(operation, technicianWeb, world.stored, true).allowed, operation.operationId).toBe(true);
+      const onDevice = expectationFor(operation, technicianDevice, world.stored, true);
+      expect(onDevice.allowed, operation.operationId).toBe(false);
+      if (onDevice.allowed) continue;
+      expect([onDevice.status, onDevice.code, onDevice.details['reason'], onDevice.row?.type, onDevice.row?.details['reason']], operation.operationId).toEqual([
+        403,
+        'NOT_PERMITTED',
+        spec.webConsoleOnlyReason,
+        'ACCESS_DENIED',
+        spec.webConsoleOnlyReason,
+      ]);
+    }
+    // Negative control: an operation of the same permission without the condition is allowed on the device.
+    const search = CORE_API_OPERATIONS.find((operation) => operation.operationId === 'startCaptureDiscovery');
+    expect(search).toBeDefined();
+    if (search !== undefined) expect(expectationFor(search, technicianDevice, world.stored, true).allowed).toBe(true);
+    console.info(`[w47] WEB_CONSOLE_SESSION (reason ${spec.webConsoleOnlyReason}) on: ${carrying.map((operation) => `${specRowOf(operation).number} ${operation.operationId}`).join(', ')}`);
   });
 
   it('the condition DEVICE_CREDENTIAL (decision D118): the reason of its refusal is the same in the document (§7.2) and in the registry, and it stands only on the marker DEVICE', () => {
@@ -1061,18 +1122,18 @@ describe('the role matrix the server decides from (spec §4.4 composed with C3 �
     const denied = Object.fromEntries(spec.roles.map((role) => [role, deniedOf(role).length]));
     // R3 (D44): AC-B-16's stated 22/31 covers the 75 operations of the closed base. The claim is
     // checked over that base with the model; the C3 rows are then counted FROM THEIR MARKERS
-    // against the composed grant table (deniedCellsFromTable over the seventeen delta rows: the
-    // fourteen of C3 §2.2 and the three of C3 §2.5) and added. No literal for the grown total - it
+    // against the composed grant table (deniedCellsFromTable over the twenty-two delta rows: the
+    // fourteen of C3 §2.2, the three of C3 §2.5 and the five of C3 §2.6) and added. No literal for the grown total - it
     // is base(stated) + delta(recomputed) per role.
     const baseOps = CORE_API_OPERATIONS.filter((operation) => !isApiContractSection(specRowOf(operation).section));
     expect(baseOps).toHaveLength(75);
     const deniedBase = Object.fromEntries(spec.roles.map((role) => [role, deniedOf(role).filter((operationId) => baseOps.some((operation) => operation.operationId === operationId)).length]));
     expect(deniedBase).toMatchObject(spec.statedDeniedCells);
     const deltaRows = spec.operations.filter((operation) => isApiContractSection(operation.section));
-    expect(deltaRows).toHaveLength(17);
+    expect(deltaRows).toHaveLength(22);
     const deniedDelta = deniedCellsFromTable(deltaRows, spec.grants, spec.roles);
     expect(denied).toEqual(Object.fromEntries(spec.roles.map((role) => [role, (deniedBase[role] ?? 0) + (deniedDelta[role] ?? 0)])));
-    console.info(`[w47] denied cells over the composed 92: ${JSON.stringify(denied)} (base ${JSON.stringify(deniedBase)} + C3 delta ${JSON.stringify(deniedDelta)})`);
+    console.info(`[w47] denied cells over the composed 97: ${JSON.stringify(denied)} (base ${JSON.stringify(deniedBase)} + C3 delta ${JSON.stringify(deniedDelta)})`);
     // The operations whose permission every role holds have no denied operator cell on stored data.
     const heldByAll = spec.permissions.filter((permission) => spec.roles.every((role) => world.stored.some((grant) => grant.role === role && grant.permission === permission)));
     const neverDenied = CORE_API_OPERATIONS.filter((operation) => {
@@ -1122,10 +1183,12 @@ describe('the matrix as a whole', () => {
     }
   });
 
-  it('78 routed cells for each of the five callers of AC-B-15, and 78 for the brief columns: each equal to the specification', () => {
+  it('89 routed cells for each of the five callers of AC-B-15, and 89 for the brief columns: each equal to the specification', () => {
     // The 75 of the closed base and the three STT configuration operations (C3 §2.5), which are
-    // routed since task 3 row 113; the fourteen of C3 §2.2 join as their rows land (DEFERRED_ROUTE).
-    expect(routedOperations()).toHaveLength(78);
+    // routed since task 3 row 113; the fourteen of C3 §2.2 join as their rows land (DEFERRED_ROUTE):
+    // blueprint row 66 landed the five selector operations 76 to 80, 78 + 5 = 83; rows 132, 133 and
+    // 142 routed operation 89 and operations 93 to 97 (C3 §2.6), 83 + 6 = 89.
+    expect(routedOperations()).toHaveLength(89);
     for (const columns of [AC_B_15_COLUMNS, BRIEF_COLUMNS]) {
       const five = of(columns);
       expect(five).toHaveLength(routedOperations().length * 5);
@@ -1144,13 +1207,25 @@ describe('the matrix as a whole', () => {
     // Per role, on each transport: the counts AC-B-16 states over the closed base, plus the cells
     // the ROUTED rows of C3 add, recomputed from their markers against the composed grant table
     // (R3, D44: no literal for the grown total). Today those are the STT configuration operations
-    // 91 and 92 (`CAPTURE_CONFIG`: denied to an INVESTIGATOR, held by SUPERVISOR and TECHNICIAN).
+    // 91 and 92 (`CAPTURE_CONFIG`: denied to an INVESTIGATOR, held by SUPERVISOR and TECHNICIAN),
+    // and since blueprint row 66 the three selector edits 78, 79 and 80 (the same permission): 2 + 3.
     const routedIds = new Set(routedOperations().map((operation) => operation.operationId));
     const routedDelta = deniedCellsFromTable(spec.operations.filter((operation) => isApiContractSection(operation.section) && routedIds.has(operation.operationId)), spec.grants, spec.roles);
-    expect(routedDelta).toEqual({ INVESTIGATOR: 2, SUPERVISOR: 0, TECHNICIAN: 0 });
+    // Rows 132, 133 and 142 routed operation 89 and operations 93 to 97, all on `CAPTURE_CONFIG`:
+    // six more cells an INVESTIGATOR is denied, 5 + 6.
+    expect(routedDelta).toEqual({ INVESTIGATOR: 11, SUPERVISOR: 0, TECHNICIAN: 0 });
+    // On a paired device the condition WEB_CONSOLE_SESSION (C3 §0; D80(3)) adds one denied cell per
+    // ROUTED operation that carries it, for a role that HOLDS its permission. None is routed today
+    // (operations 89, 95 and 96 land with row 142): the count is derived, so it follows their routes.
+    const webOnlyOnDevice = (role: string): number =>
+      routedOperations().filter(
+        (operation) =>
+          conditionsOf(operation).includes(CoreApiAccessCondition.WEB_CONSOLE_SESSION) &&
+          coreApiAccessPermissions(operation.access).some((permission) => world.stored.some((grant) => grant.role === role && grant.permission === permission)),
+      ).length;
     for (const [role, stated] of Object.entries(spec.statedDeniedCells)) {
       expect(denied.filter((cell) => cell.column === role)).toHaveLength(stated + (routedDelta[role] ?? 0));
-      expect(denied.filter((cell) => cell.column === `${role}@DEVICE`)).toHaveLength(stated + (routedDelta[role] ?? 0));
+      expect(denied.filter((cell) => cell.column === `${role}@DEVICE`)).toHaveLength(stated + (routedDelta[role] ?? 0) + webOnlyOnDevice(role));
     }
     expect(operators.filter((cell) => cell.allowed && cell.rows.some((type) => DENIAL_ROW_TYPES.includes(type)))).toEqual([]);
     // A 401 and a DEVICE_NOT_PAIRED wrote none, in any column.

@@ -4,7 +4,11 @@
  * them is a speed or an accuracy figure (D230).
  */
 
-/** §0.2 `VAD_MAX_CHUNK_MS`: no chunk is longer. */
+/**
+ * §0.2 `VAD_MAX_CHUNK_MS`: the length a chunk is PLANNED to at most. A tap chunk is then snapped
+ * outwards to the AAC frame grid of the file, so it can be up to two frames (43 ms) longer than
+ * this; both engines take that (navigator finding N-11: 30,037 ms was observed).
+ */
 export const VAD_MAX_CHUNK_MS = 30_000;
 /** §0.2 `VAD_THRESHOLD`: the speech probability above which Silero calls a frame speech. */
 export const VAD_THRESHOLD = 0.5;
@@ -45,3 +49,32 @@ export const QaFlag = {
   INTERVALS_INCOMPLETE: 'intervals_incomplete',
 } as const;
 export type QaFlag = (typeof QaFlag)[keyof typeof QaFlag];
+
+// ── Row 78 (M6-W3): diarization and assembly ───────────────────────────────────────────────
+
+/** §0.2 `DIARIZATION_MAX_SPEAKERS`: the transcript labels two speakers, or none. */
+export const DIARIZATION_MAX_SPEAKERS = 2;
+/**
+ * §0.2 `DIARIZATION_CLUSTER_THRESHOLD` (PROPOSAL of the spec). Used twice, as §A.4 uses it: the
+ * cosine distance two speaker clusters must at least lie apart to count as two speakers, and the
+ * mean cluster-assignment confidence below which the transcript is sealed unlabelled.
+ */
+export const DIARIZATION_CLUSTER_THRESHOLD = 0.5;
+/** §0.2 `DIARIZATION_MIN_SEGMENTS` (PROPOSAL of the spec): fewer transcript segments are never labelled. */
+export const DIARIZATION_MIN_SEGMENTS = 4;
+/**
+ * The shortest transcript segment that gets a speaker embedding. A shorter one ("Ya.", "Baik.")
+ * holds too little voice for a vector that means anything: it is not embedded and carries no
+ * label. PROPOSAL of row 78 (no spec value); calibration is class C.
+ */
+export const DIARIZATION_MIN_EMBED_MS = 1_500;
+
+/** §0.2 `TRANSCRIPT_DOC_VERSION`: the form of the sealed machine transcript. */
+export const TRANSCRIPT_DOC_VERSION = 'dems.transcript/1';
+/** §A.4: the exact flag text of a transcript that is sealed unlabelled. */
+export const SPEAKER_LABELS_UNAVAILABLE_FLAG = 'speaker labels unavailable';
+
+/** The files of an assembled transcript under the session scratch directory (ev §B.7 field 79 names the first). */
+export const TRANSCRIPT_DOCUMENT_FILE = 'transcript.json';
+export const TRANSCRIPT_SRT_FILE = 'transcript.srt';
+export const TRANSCRIPT_VTT_FILE = 'transcript.vtt';

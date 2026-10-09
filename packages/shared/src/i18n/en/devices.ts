@@ -300,6 +300,78 @@ export const devices = {
     },
   },
 
+  /**
+   * Task 3 M4 (blueprint row 67; ux §2 flow 1; C3 ops 76-80): the capture device selector of the web
+   * console. State is text only (OD-12: no live preview of a real camera in this phase).
+   */
+  selector: {
+    title: 'Capture Device Selector',
+    subtitle: 'Which camera feeds each video track, and which microphone is primary',
+    cameras: 'Cameras',
+    mics: 'Microphones',
+    sourceLabel: 'Camera for {{track}}',
+    notAssigned: 'Not assigned',
+    profile: 'Profile {{profile}}',
+    transport: '{{transport}} input',
+    online: 'Online',
+    offline: 'Offline',
+    stream: {
+      LIVE: 'Stream live',
+      LOST: 'Stream lost',
+    },
+    role: {
+      PRIMARY: 'Primary',
+      STANDBY: 'Standby',
+    },
+    save: 'Save',
+    makePrimary: 'Make primary',
+    saved: 'Capture configuration saved',
+    noPreview: 'Device state only: this phase shows no live preview of the cameras.',
+    locked: 'The capture configuration cannot be changed while a session is open.',
+    rolesJoin: 'or',
+    /** ux §0, §11 (E-16): what a gated control shows while the role or the link is not resolved yet. */
+    checking: 'Checking your permissions...',
+    /** The entry of System & Maintenance, Settings, Device Settings (WB-07). */
+    openFromSystem: 'Open the capture device selector',
+    waitingLink: 'Waiting for the link to the Core server.',
+    loading: 'Reading the capture configuration…',
+    forbidden: 'Your role cannot read the capture configuration.',
+    notReady: 'Capture is not ready yet',
+    readFailed: 'The capture configuration could not be read.',
+    empty: 'No capture devices configured',
+    invalid: 'This choice was not accepted. Nothing was changed.',
+    developmentOnly: 'This source can only be used in the development configuration.',
+    unknownDevice: 'This device is no longer registered. Nothing was changed.',
+    failed: 'The capture configuration could not be saved. Nothing was changed.',
+    poe: {
+      confirmTitle: 'Power-cycle {{name}}?',
+      confirmBody: 'The PoE port of this camera is switched off and on again. Use it only when the stream is lost.',
+      confirm: 'Power-cycle',
+      requested: 'Power-cycle of {{name}} requested',
+      notLost: 'The stream of this camera is not lost. Nothing was changed.',
+    },
+  },
+
+  /**
+   * Task 3, R-9 / R-10 (blueprint row 137; ux §8c, §8d, §8g): the words only the web console's
+   * Devices page needs for the camera search and the connect dialog. The sentences web and mobile
+   * share are `common.captureSearch.*`, `common.captureConnect.*` and their neighbours (ux §14.2).
+   */
+  search: {
+    title: 'Camera Search',
+    subtitle: 'Find cameras on the network and connect them',
+    tableLabel: 'Cameras found',
+    actions: 'Actions',
+    lastTest: '{{outcome}} · {{time}}',
+    notAnnounced: 'Not announced',
+    notReachable: 'Not reachable',
+    readFailed: 'The search result could not be read.',
+    requestFailed: 'The request could not be completed. Nothing was saved.',
+    rescanFailed: 'The microphones could not be re-read. Nothing was changed.',
+    lockoutNoTime: 'Testing this camera is paused so that the camera does not lock its account.',
+    openFromSystem: 'Search for cameras',
+  },
+
   actions: {
     testSignalSent: 'Test signal sent to {{name}} (simulated)',
     restarted: '{{name}} restarted (simulated)',

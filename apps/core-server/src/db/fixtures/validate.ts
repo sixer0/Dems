@@ -21,7 +21,11 @@ import {
   AUDIT_CATEGORY,
   AUDIT_DETAIL_FORBIDDEN_KEYS,
   BIO_REVOKE_REASON,
+  CAPTURE_ADAPTER_KIND,
+  CAPTURE_ADAPTER_KINDS_BY_DEVICE_KIND,
   CAPTURE_DEVICE_KIND,
+  CAPTURE_PRODUCTION_ADAPTER_KINDS,
+  CAPTURE_SOURCE_SLOT,
   CHAIN_DISCARD_REASON,
   CODE_STATE,
   DEVICE_STATE,
@@ -346,12 +350,32 @@ export function validateBulkFixture(rows: BulkFixtureRows, updates: BulkFixtureU
     must(Array.isArray(row.profiles) && profiles.every((profile) => typeof profile === 'string' && CODE.test(profile)), 'capture_devices', 'capture_devices_profiles_check');
     must(row.poePort === null || CODE.test(row.poePort), 'capture_devices', 'capture_devices_poe_port_check');
     must(row.mac === null || /^[0-9A-F:]{17}$/.test(row.mac), 'capture_devices', 'capture_devices_text_check');
+    // Schema v3 (dbc-4 §N.2): the closed adapter set and its pairing with the device class.
+    must(isIn(CAPTURE_ADAPTER_KIND, row.adapterKind), 'capture_devices', 'capture_devices_adapter_kind_check');
+    must(isIn(CAPTURE_ADAPTER_KINDS_BY_DEVICE_KIND[row.kind] ?? [], row.adapterKind), 'capture_devices', 'capture_devices_adapter_pairing_check');
     for (const text of [row.model, row.firmware, row.address, row.onvifUuid]) {
       must(text === null || (length(text.trim()) >= 1 && length(text) <= 120), 'capture_devices', 'capture_devices_text_check');
     }
   }
   const discovered = rows.captureDevices.filter((row) => row.kind === 'CAMERA' && Array.isArray(row.profiles) && (row.profiles as readonly unknown[]).length >= 2);
   must(discovered.length >= BULK_MIX.captureDevices.dualProfileCameras, 'capture_devices', 'no discovered camera carries two profiles (OD-05, dbc-3 §G)');
+  // dbc-4 §N.10: the mix of the twelve rows, and one device per ONVIF endpoint reference (§N.5).
+  const endpointRefs = rows.captureDevices.map((row) => row.onvifUuid).filter((value): value is string => value !== null);
+  unique(endpointRefs, 'capture_devices', 'capture_devices_onvif_uuid_key');
+  const devicesOf = (kind: string, adapterKind: string): number => rows.captureDevices.filter((row) => row.kind === kind && row.adapterKind === adapterKind).length;
+  const onvifCameras = rows.captureDevices.filter((row) => row.kind === 'CAMERA' && row.adapterKind === 'ONVIF_RTSP');
+  must(
+    rows.captureDevices.length >= BULK_MIX.captureDevices.discovered &&
+      onvifCameras.length >= BULK_MIX.captureDevices.onvifCameras &&
+      onvifCameras.every((row) => row.onvifUuid !== null) &&
+      devicesOf('MIC', 'USB_AUDIO') >= BULK_MIX.captureDevices.usbAudioMics &&
+      devicesOf('CAMERA', 'LOCAL_DEVICE') >= BULK_MIX.captureDevices.localCameras &&
+      devicesOf('MIC', 'LOCAL_DEVICE') >= BULK_MIX.captureDevices.localMics,
+    'capture_devices',
+    'the adapter mix of dbc-4 §N.10 is not met (3 ONVIF_RTSP cameras with an endpoint reference, 2 USB_AUDIO microphones, 1 LOCAL_DEVICE camera, 1 LOCAL_DEVICE microphone)',
+  );
+  // A discovered camera that is both dual-profile and ONVIF_RTSP holds a credential row (§N.10).
+  must(discovered.some((row) => row.adapterKind === 'ONVIF_RTSP'), 'capture_devices', 'no dual-profile camera is an ONVIF_RTSP device (dbc-4 §N.10)');
 
   unique(rows.captureDeviceCredentials.map((row) => row.deviceId), 'capture_device_credentials', 'capture_device_credentials_pkey');
   for (const row of rows.captureDeviceCredentials) {
@@ -403,6 +427,74 @@ export function validateBulkFixture(rows: BulkFixtureRows, updates: BulkFixtureU
     }
   }
   for (const id of sealedSessionIds) must((intervalSeq.get(id) ?? 0) >= 1, 'session_audio_intervals', 'a sealed session carries no interval (dbc-3 §G)');
+
+  // ── schema v3 (dbc-4 §N.3, §N.10): the session-start source record, T-41 ─────────────────────
+  // The adapter kind of every device a row may name: the seed's built-ins are FAKE (§N.10).
+  const adapterOfDevice = new Map<string, string>([
+    ...BUILT_IN_CAPTURE_DEVICE_IDS.map((id) => [id, 'FAKE'] as const),
+    ...rows.captureDevices.map((row) => [row.id, row.adapterKind] as const),
+  ]);
+  const production: readonly string[] = CAPTURE_PRODUCTION_ADAPTER_KINDS;
+  const sourcesBySession = new Map<string, typeof rows.sessionCaptureSources>();
+  unique(rows.sessionCaptureSources.map((row) => `${row.sessionId}|${row.slot}`), 'session_capture_sources', 'session_capture_sources_pkey');
+  for (const row of rows.sessionCaptureSources) {
+    must(SESSION_ID.test(row.sessionId), 'session_capture_sources', 'session_capture_sources_session_check');
+    must(isIn(CAPTURE_SOURCE_SLOT, row.slot), 'session_capture_sources', 'session_capture_sources_slot_check');
+    must(isIn(CAPTURE_ADAPTER_KIND, row.adapterKind), 'session_capture_sources', 'session_capture_sources_adapter_kind_check');
+    must(
+      isIn(row.slot.startsWith('VIDEO-') ? CAPTURE_ADAPTER_KINDS_BY_DEVICE_KIND.CAMERA : CAPTURE_ADAPTER_KINDS_BY_DEVICE_KIND.MIC, row.adapterKind),
+      'session_capture_sources',
+      'session_capture_sources_pairing_check',
+    );
+    must(captureDeviceIds.has(row.deviceId), 'session_capture_sources', 'session_capture_sources_device_id_fkey');
+    // A camera feeds a VIDEO slot and a microphone a MIC slot; in a real run the recorded kind
+    // is the registry's kind of that device (MR-S3; the fixture holds no simulated override).
+    must(row.deviceId.startsWith(row.slot.startsWith('VIDEO-') ? 'CAM-' : 'MIC-'), 'session_capture_sources', 'a slot names a device of the wrong class');
+    must(adapterOfDevice.get(row.deviceId) === row.adapterKind, 'session_capture_sources', 'the recorded adapter kind is not the kind of the device (MR-S3)');
+    must(Number.isSafeInteger(row.recordedAt) && row.recordedAt <= now, 'session_capture_sources', 'recorded_at is not an instant up to now');
+    sourcesBySession.set(row.sessionId, [...(sourcesBySession.get(row.sessionId) ?? []), row]);
+  }
+  let developmentShaped = 0;
+  let productionShaped = 0;
+  for (const [sessionId, sources] of sourcesBySession) {
+    must(sources.length === BULK_MIX.sessionCaptureSources.perSession, 'session_capture_sources', `the session ${sessionId} does not hold exactly four source rows (MR-S1)`);
+    const kinds = sources.map((row) => row.adapterKind as string);
+    const anyProduction = kinds.some((kind) => production.includes(kind));
+    const anyDevelopment = kinds.some((kind) => !production.includes(kind));
+    must(!(anyProduction && anyDevelopment), 'session_capture_sources', 'a session mixes a production kind with a development kind (row 123 RG-3)');
+    if (anyProduction) productionShaped += 1;
+    const bySlot = new Map(sources.map((row) => [row.slot as string, row.adapterKind as string] as const));
+    if (bySlot.get('VIDEO-01') === 'LOCAL_DEVICE' && bySlot.get('VIDEO-02') === 'FAKE' && bySlot.get('MIC-PRIMARY') === 'LOCAL_DEVICE' && bySlot.get('MIC-STANDBY') === 'FAKE') developmentShaped += 1;
+  }
+  must(
+    developmentShaped >= BULK_MIX.sessionCaptureSources.developmentSessions && productionShaped >= BULK_MIX.sessionCaptureSources.productionSessions,
+    'session_capture_sources',
+    'fewer than 20 sessions in the development shape or fewer than 20 all-production sessions (dbc-4 §N.10)',
+  );
+  // Exactly the sessions that have an interval or a fragment row hold source rows.
+  const sessionsWithMedia = new Set<string>([...rows.sessionAudioIntervals.map((row) => row.sessionId), ...rows.recordingFragments.map((row) => row.sessionId)]);
+  for (const sessionId of sessionsWithMedia) must(sourcesBySession.has(sessionId), 'session_capture_sources', `the session ${sessionId} has an interval or a fragment row and no source rows (dbc-4 §N.10)`);
+  for (const sessionId of sourcesBySession.keys()) must(sessionsWithMedia.has(sessionId), 'session_capture_sources', `the session ${sessionId} holds source rows and no interval or fragment row`);
+  // MR-S2: every interval names one of its session's two microphone rows.
+  for (const row of rows.sessionAudioIntervals) {
+    const mics = (sourcesBySession.get(row.sessionId) ?? []).filter((source) => source.slot.startsWith('MIC-')).map((source) => source.deviceId);
+    must(mics.includes(row.micDeviceId), 'session_audio_intervals', 'an interval names a microphone that is not one of the two source rows of its session (MR-S2)');
+  }
+  // §N.4 / §N.10 (MR-E1): `development_sources` is NULL on every v1 item and non-null on every
+  // v2 item, where it equals "some source row of the item's session is FAKE or LOCAL_DEVICE".
+  // The fixture holds v1-shape items until SH-24 regenerates the dataset (the note on
+  // `pipeline.ts`), so the "both values present" clause binds from the first v2 item on.
+  const v2Flags = new Set<boolean>();
+  for (const row of rows.evidenceItems) {
+    if (row.manifestVersion !== 2) {
+      must(row.developmentSources === null, 'evidence_items', 'a v1 item carries development_sources (dbc-4 §N.4: NULL on a v1 item)');
+      continue;
+    }
+    const kinds = (sourcesBySession.get(row.sessionId) ?? []).map((source) => source.adapterKind as string);
+    must(row.developmentSources !== null && row.developmentSources === kinds.some((kind) => !production.includes(kind)), 'evidence_items', 'development_sources of a v2 item does not equal its source rows (dbc-4 §N.10)');
+    if (row.developmentSources !== null) v2Flags.add(row.developmentSources);
+  }
+  must(v2Flags.size === 0 || v2Flags.size === 2, 'evidence_items', 'the v2 items do not carry both values of development_sources (dbc-4 §N.10)');
   must(intervalOpen.size === 0 || (variantActive && intervalOpen.size === 1 && [...intervalOpen.values()].every((n) => n === 1)), 'session_audio_intervals', 'the open interval belongs to the RECORDING variant alone (one per session)');
   must(switchedSessions.size >= BULK_MIX.sessionAudioIntervals.switchedSessions && manualRows >= BULK_MIX.sessionAudioIntervals.manualRows, 'session_audio_intervals', 'fewer switched sessions or MANUAL rows than dbc-3 §G asks');
   for (const sessionId of switchedSessions) {

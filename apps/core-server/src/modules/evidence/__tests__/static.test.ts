@@ -92,6 +92,7 @@ describe('the scan itself', () => {
       'src/modules/evidence/index.ts',
       'src/modules/evidence/media.ts',
       'src/modules/evidence/reads.ts',
+      'src/modules/evidence/real-verification.ts',
     ]);
   });
 
@@ -180,6 +181,26 @@ describe('rule 3 (M4): a command is one call of the engine host', () => {
   });
 });
 
+describe('rule 3a (task 3 row 85): operation 41 asks the provided verification first, and verifies nothing itself', () => {
+  it('the handler of verifyEvidence awaits the provided verification before the hosted action, with the principal whole', () => {
+    const index = textOf(`${FOLDER}index.ts`);
+    const asks = index.indexOf('realVerification.current()?.verify(request.principal, request.params.id)');
+    const hosted = index.indexOf("app.engine.command(request.principal, 'verify', request.params.id)");
+    expect(asks).toBeGreaterThan(0);
+    expect(hosted).toBeGreaterThan(asks);
+    expect(index.slice(asks, hosted)).toMatch(/if \(real !== null\) return real;/);
+    // One place asks, and the control is the app's own.
+    expect(index.match(/realVerification\./g)).toHaveLength(1);
+    expect(index).toMatch(/const realVerification = evidenceVerification\(app\);/);
+  });
+
+  it('the seam file holds a type and a registry: it imports types only, and no package or signer code is named in the folder', () => {
+    const seam = textOf(`${FOLDER}real-verification.ts`);
+    expect([...seam.matchAll(/^import\s+(type\s+)?/gm)].map((match) => match[1]?.trim())).toEqual(['type', 'type']);
+    expect(code.filter((file) => /evidence-verify|evidence-package|verifyPackageV2|credential-store|capture\/signer/.test(file.text)).map((file) => file.path)).toEqual([]);
+  });
+});
+
 describe('rule 4 (M5): the folder changes no row', () => {
   it('it holds no statement text that changes a row and uses no insert, update or delete of the query builder', () => {
     expect(occurrences(code, STATEMENT_TEXT)).toEqual([]);
@@ -243,6 +264,7 @@ describe('rule 7 (SR-66, MS-1 to MS-4): no file is read, sent or fetched', () =>
       './export-request',
       './media',
       './reads',
+      './real-verification',
       '@dems/shared/api',
       '@dems/shared/demo-data',
       '@dems/shared/sim',

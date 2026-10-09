@@ -4,14 +4,14 @@
  * decision D80).
  *
  * The client-side replica of the Core server's state, behind the contract the screens already
- * use: a store of `SimState` shape, the 45 actions of `SimActions` by name, a clock. It is placed
+ * use: a store of `SimState` shape, the 47 actions of `SimActions` by name, a clock. It is placed
  * in the simulator's own `SimContext`, so `useSim(selector)` and every selector work unchanged.
  *
  * | Part | File | Rule |
  * |------|------|------|
  * | The store and what a snapshot or a delta changes in it | `./replica`, `./structural-sharing` | CL-13, CL-14 |
  * | The five slices the server never sends as a slice | `./neutral-state`, `./clock` | §2.3 |
- * | The 45 bindings | `./bindings` | §2.5, CL-19 |
+ * | The 47 bindings | `./bindings` | §2.5, CL-19 |
  * | When an action settles | `./command-gate`, `./live-result` | CL-16 to CL-18, CL-24 to CL-26 |
  * | What a refused action rejects with | `./rebuild-error` | CL-20, CL-21 |
  * | `touchSession` | `./touch-throttle` | CL-27 |

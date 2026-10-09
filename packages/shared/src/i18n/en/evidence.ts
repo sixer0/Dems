@@ -257,6 +257,78 @@ export const evidence = {
     },
   },
 
+  /**
+   * Verify v2 (blueprint row 87; evidence package spec §D, §F.3; row 119's transcript states): the
+   * Core server's result for a schema-v2 item, on the web console and the mobile app. The check
+   * names are V-01 to V-14 of the spec; the transcript-state lines are the fixed lines of
+   * `TRANSCRIPT_STATE_REPORT` (`@dems/shared/evidence-verify`), held equal by a test.
+   */
+  verifyV2: {
+    waiting: 'Waiting for the verdict of the Core server…',
+    resultTitle: 'Result of this run',
+    file: '{{track}} file',
+    fileParts: 'Stored bytes {{stored}} · decrypted bytes {{plain}} · fragment chain {{chain}}',
+    fragments_one: '{{count}} fragment',
+    fragments_other: '{{count}} fragments',
+    rows: {
+      transcript: 'Transcript hash',
+      manifest: 'Manifest and package',
+      signature: 'Signature and certificate',
+    },
+    outcome: {
+      PASS: 'PASS',
+      FAIL: 'FAIL',
+      SKIPPED: 'Not run',
+    },
+    skipped: {
+      BLOCKED: 'Not run: an earlier check failed',
+      KEY_UNAVAILABLE: 'Not run: no session key',
+    },
+    failureClass: {
+      TAMPERED: 'Tampered',
+      CORRUPT: 'Corrupt',
+      MISSING: 'Missing',
+      UNREADABLE: 'Unreadable',
+    },
+    fragment: {
+      title: 'Where it failed',
+      tampered: '{{track}} fragment {{seq}} tampered (stored-bytes hash mismatch; chain broken from fragment {{from}})',
+      tamperedNoChain: '{{track}} fragment {{seq}} tampered (stored-bytes hash mismatch)',
+      tamperedOther: '{{track}} fragment {{seq}} tampered',
+      failed: '{{track}} fragment {{seq}} did not verify ({{reason}})',
+      chainOnly: '{{track}}: fragment chain broken from fragment {{from}}',
+      notNamed: 'This answer does not name the fragment. The chain of custody entry of this run names it.',
+    },
+    checksTitle: 'Checks of this run',
+    checksSummary: '{{passed}} of {{total}} checks passed',
+    checks: {
+      'V-01': 'Manifest structure',
+      'V-02': 'Manifest internal consistency',
+      'V-03': 'Manifest hash',
+      'V-04': 'Per-fragment stored-bytes hash',
+      'V-05': 'Plaintext hash after decryption',
+      'V-06': 'Chain-hash continuity',
+      'V-07': 'Sequence contiguity',
+      'V-08': 'One-fragment tamper expectation',
+      'V-09': 'Signature verification',
+      'V-10': 'Transcript hash match',
+      'V-11': 'Revision signatures',
+      'V-12': 'Interrupted-seal flag',
+      'V-13': 'Certificate validity',
+      'V-14': 'File completeness',
+    },
+    transcriptState: {
+      READY: 'Transcript sealed',
+      PARTIAL: 'Transcript partial',
+      PARTIAL_BACKEND_UNREACHABLE: 'Transcript partial — backend unreachable',
+      DISABLED_BY_CONFIGURATION: 'Transcript disabled by configuration',
+      UNAVAILABLE_AT_SEAL: 'Transcript unavailable at seal',
+      NOT_TRUSTWORTHY: 'Transcript state: not trustworthy — the manifest was altered',
+      UNKNOWN: 'Transcript state: unknown — the manifest cannot be read',
+    },
+    interrupted: 'Interrupted recording: the durable part is sealed and was verified.',
+  },
+
   integrity: {
     sealedValues: 'Sealed values',
     signatureDemo: 'Manifest signature (Ed25519, DEMO key {{key}})',

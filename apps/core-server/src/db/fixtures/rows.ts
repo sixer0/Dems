@@ -27,6 +27,7 @@ import type {
   RegistryCounterRow,
   SealingJobRow,
   SessionAudioIntervalRow,
+  SessionCaptureSourceRow,
   SessionHistoryRow,
   TranscriptChunkRow,
   TranscriptRevisionRow,
@@ -57,6 +58,8 @@ export interface BulkFixtureRows {
   // builders of `pipeline.ts` synthesise.
   readonly captureDevices: CaptureDeviceRow[];
   readonly captureDeviceCredentials: CaptureDeviceCredentialRow[];
+  /** Schema v3 (dbc-4 §N.10): T-41, four rows per session with an interval or a fragment row. */
+  readonly sessionCaptureSources: SessionCaptureSourceRow[];
   readonly sessionAudioIntervals: SessionAudioIntervalRow[];
   readonly recordingFragments: RecordingFragmentRow[];
   readonly transcriptChunks: TranscriptChunkRow[];
@@ -99,6 +102,7 @@ export const FIXTURE_TABLES = {
   events: 'events',
   captureDevices: 'capture_devices',
   captureDeviceCredentials: 'capture_device_credentials',
+  sessionCaptureSources: 'session_capture_sources',
   sessionAudioIntervals: 'session_audio_intervals',
   recordingFragments: 'recording_fragments',
   transcriptChunks: 'transcript_chunks',

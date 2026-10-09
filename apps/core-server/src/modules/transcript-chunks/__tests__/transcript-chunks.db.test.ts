@@ -17,6 +17,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
+  NO_TAP_SIGNAL,
   SerialQueue,
   TranscriberError,
   captureTapTimeline,
@@ -60,9 +61,9 @@ beforeEach(async () => {
 });
 
 describe('the database this file runs on', () => {
-  it('is at schema version 2 / dbc-3, and this row brought no migration', async () => {
+  it('is at schema version 4 / dbc-5 (sets 4 and 5), and this row brought no migration', async () => {
     const meta = (await owner.query('SELECT schema_version, contract_revision FROM public.schema_meta')).rows[0] as { schema_version: number; contract_revision: string };
-    expect([Number(meta.schema_version), meta.contract_revision]).toEqual([2, 'dbc-3']);
+    expect([Number(meta.schema_version), meta.contract_revision]).toEqual([5, 'dbc-6']); // set 6, row 129b (PE-129b-01)
   });
 });
 
@@ -185,6 +186,7 @@ function engine(): Engine {
     backend: 'cpu-local',
     model: 'ggml-large-v3-turbo',
     queue,
+    captureWorkerStated: true,
     decoded,
     failingSecond: null,
     transcribe: (chunk) =>
@@ -219,6 +221,7 @@ function pipeline(mirror: ChunkMirror, tap: { dir: string; path: string }, adapt
     log,
     mirror,
     now: () => new Date(1_791_529_000_000),
+    tapLost: NO_TAP_SIGNAL,
     intervals: () => [{ source: 'PRIMARY', fromMs: 0, toMs: null }],
   });
   return { runner, log };
@@ -319,6 +322,7 @@ describe('row 77: the transcriber pipeline writes its chunk checkpoints into tra
       timeline: captureTapTimeline(),
       source: openPcmSource({ container: 'raw', path: tap.path, sampleRateHz: RATE }),
       vad: vadFor(() => 0),
+      tapLost: NO_TAP_SIGNAL,
       sessionScratchDir: tap.dir,
       log: createMemoryLog(),
       mirror: store,

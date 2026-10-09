@@ -34,12 +34,16 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { fontFamily, palette, spacing, typography } from '@dems/shared/tokens';
 import { SectionCard } from '@/components/kit';
+import { CameraSearchPanel } from '@/features/capture-selector/camera-search-panel';
+import { CaptureNoticesBanner } from '@/features/capture-selector/capture-notices';
+import { CaptureSelector } from '@/features/capture-selector/capture-selector';
+import { CameraSearchProvider } from '@/features/capture-selector/use-camera-search';
 import { Pane, PaneLayout, SafeScreen, useLayoutClass } from '@/layout';
 import { enterRise, rowReveal, useMotionSettings } from '@/motion';
 import { useRuntimeStatus } from '@/runtime';
 import { DeviceDetail } from './device-detail';
 import { DeviceRow } from './device-row';
-import { DEVICE_SHORT_NAME_KEY, SECTIONS, STATUS_LABEL_KEY, STATUS_RANK, attentionDevices, type DeviceId, type DeviceSection, type DeviceStatus } from './devices-model';
+import { DEVICE_SHORT_NAME_KEY, SECTIONS, STATUS_LABEL_KEY, STATUS_RANK, attentionDevices, isDeviceId, type DeviceId, type DeviceSection, type DeviceStatus } from './devices-model';
 import { PanelBoundary } from './panel-boundary';
 import { useDeviceStatuses } from './use-devices-data';
 
@@ -140,6 +144,26 @@ function DevicesList({ selectedId, twoColumns, onSelect }: DevicesListProps) {
       ) : (
         <ScrollView style={styles.scroll} contentContainerStyle={styles.content} testID="devices-scroll">
           {attention.length > 0 ? <AttentionAlert devices={attention} statuses={statuses} /> : null}
+          {/* Task 3 row 138 (MB-08; ux §8c flow 9, §8e flow 11): the no-device notifications and the "Camera
+              search" panel, above the selector. One provider = one search for the banner, the panel and the
+              selector's empty state (G13). Each in its own boundary, as the selector. */}
+          <CameraSearchProvider>
+            <PanelBoundary name="capture-notices">
+              <CaptureNoticesBanner />
+            </PanelBoundary>
+            <Animated.View entering={enterRise(1, m)}>
+              <PanelBoundary name="camera-search">
+                <CameraSearchPanel viewDevice={(id) => (isDeviceId(id) ? () => onSelect(id) : null)} />
+              </PanelBoundary>
+            </Animated.View>
+            {/* Task 3 row 68 (MB-08; ux §2 flow 1): the device selector, in its own boundary so a render
+                failure of it never takes the device list with it. */}
+            <Animated.View entering={enterRise(1, m)}>
+              <PanelBoundary name="capture-selector">
+                <CaptureSelector />
+              </PanelBoundary>
+            </Animated.View>
+          </CameraSearchProvider>
           {twoColumns ? (
             <View style={styles.columns}>
               <View style={styles.col}>

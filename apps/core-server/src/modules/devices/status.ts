@@ -35,6 +35,7 @@ import {
   AUDIO_CLIP_BURST_DBFS,
   DEFAULT_CAPTURE_CONFIG,
   MIC_INPUT_OF_CHANNEL,
+  builtInMicInputOf,
   noSignalFrame,
   silentFrame,
   storageSummary,
@@ -181,7 +182,10 @@ export function activeInputOf(mics: CommittedState['mics'], frame: EngineMeterFr
   // Destructured for the same reason as in `audioChannelsOf`: the capture role of a slot is read
   // without the member token the M3 guard reserves for access control.
   const primary = slots.mics.find(({ role }) => role === 'PRIMARY');
-  if (primary !== undefined) return primary.inputId;
+  // A selector input beyond the built-in pair (`MIC-NN`, D115 (2)) has no place in the audio status
+  // of this contract version: the answer then falls to the mic slice's own capture role (pass C1).
+  const builtIn = primary === undefined ? null : builtInMicInputOf(primary.inputId);
+  if (builtIn !== null) return builtIn;
   const mic = mics.find((candidate) => candidate.micRole === 'PRIMARY') ?? mics[0];
   return mic === undefined ? 'MIC-01' : MIC_INPUT_OF_CHANNEL[mic.id];
 }

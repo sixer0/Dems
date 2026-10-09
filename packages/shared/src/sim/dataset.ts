@@ -164,7 +164,11 @@ export const NETWORK = {
   ntpServer: '192.168.10.1',
 } as const;
 
-/** The 16 §6.1 Core services, names verbatim (research/01_explore.md §6.1). */
+/**
+ * The 17 Core services: the 16 of book §6.1, names verbatim (research/01_explore.md §6.1), then the
+ * transcriber service of task 3 (register row SH-09). The transcriber is last, so `SVC-01` … `SVC-16`
+ * keep their names and it is `SVC-17`.
+ */
 export const CORE_SERVICES = [
   'API Gateway',
   'Authentication Service',
@@ -182,6 +186,7 @@ export const CORE_SERVICES = [
   'LCD Display Service',
   'Health Monitor',
   'Audit Service',
+  'Transcription Service',
 ] as const;
 
 // ── Storage (D28/Q1: 804 GB of 4.0 TB used = 20%, 3.2 TB free) ──────────────────────────

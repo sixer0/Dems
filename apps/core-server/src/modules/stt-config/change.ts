@@ -160,7 +160,19 @@ export function sttConfigOf(stored: StoredSttConfig, lastTest: SttLastTest | nul
 
 // ── The credential columns of a write ──────────────────────────────────────────────────────────
 
-const holdsPlaintext = (ciphertext: Uint8Array, plaintext: string): boolean => Buffer.from(ciphertext).includes(Buffer.from(plaintext, 'utf8'));
+/**
+ * From this length on, a plaintext found inside the envelope is a sealer that did not seal. Below
+ * it the search proves nothing and must not be made (row 115, finding F-115-1): a real AES-GCM
+ * envelope is 80 random-looking bytes, and it holds any given ONE byte with a chance of about 27%,
+ * any given two bytes with about 0.1% - a one-character secret was refused `500` that often.
+ * With 8 bytes the chance of a false refusal is below 2^-57.
+ */
+const PLAINTEXT_SEARCH_MIN_BYTES = 8;
+
+const holdsPlaintext = (ciphertext: Uint8Array, plaintext: string): boolean => {
+  const needle = Buffer.from(plaintext, 'utf8');
+  return needle.byteLength >= PLAINTEXT_SEARCH_MIN_BYTES && Buffer.from(ciphertext).includes(needle);
+};
 
 /**
  * Seals the secret of a body BEFORE the unit of work is entered (navigator finding N-7): a slow or

@@ -614,10 +614,63 @@
 }
 
 /* ── O: audio monitor ─────────────────────────────────────────────────────────────────── */
+/* Task 3 M5 (row 72): the body holds the warning, the two halves and the audio-source footer. */
+.sm-audio-wrap { gap: 6px; }
+
 .sm-audio-body {
   display: grid;
+  flex: 1 1 auto;
+  min-height: 0;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
+}
+
+.sm-audio-name-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sm-audio-role {
+  flex: none;
+  margin-left: auto;
+}
+
+.sm-audio-half[data-source='ACTIVE'] { border-color: rgb(255 200 107 / 0.38); }
+
+.sm-audio-warning { flex: none; }
+
+.sm-audio-footer {
+  display: flex;
+  flex: none;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sm-audio-band {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.sm-audio-band-caption,
+.sm-audio-band-failed,
+.sm-audio-reason {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11.5px;
+  line-height: 16px;
+  color: var(--color-foreground-2, #d8cec6);
+}
+
+.sm-audio-band-failed {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .sm-audio-half {

@@ -55,10 +55,10 @@ async function dropWhenQuiet(database: TestDatabase): Promise<void> {
 }
 
 describe('the bulk template: the minimums of contract §11 as revised by dbc-3 §G', () => {
-  it('every one of the 40 tables holds at least its minimum (entity, minimum, loaded)', async () => {
+  it('every one of the 42 tables holds at least its minimum (entity, minimum, loaded)', async () => {
     const counts = await countAllTables(drizzle(db.ownerPool()));
     const comparison = compareWithMinimums(counts);
-    expect(comparison).toHaveLength(40);
+    expect(comparison).toHaveLength(42);
     expect(Object.keys(counts).sort()).toEqual(BULK_MINIMUMS.map((entry) => entry.table).sort());
     console.log(
       [
@@ -392,10 +392,72 @@ describe('the bulk template: the v2 rows of dbc-3 §G (CS-20)', () => {
     expect(await count(pool, "SELECT count(*) FROM sealing_jobs WHERE status = 'RUNNING'")).toBe(0);
   });
 
+  it('M4-MT-15 (fixture): the adapter mix of the 12 devices and the 4-per-session source record of dbc-4 §N.10', async () => {
+    const pool = db.ownerPool();
+    const mix = await pool.query('SELECT kind, adapter_kind, count(*)::int AS n FROM capture_devices GROUP BY 1, 2 ORDER BY 1, 2');
+    expect(mix.rows).toEqual([
+      { kind: 'CAMERA', adapter_kind: 'FAKE', n: 2 },
+      { kind: 'CAMERA', adapter_kind: 'LOCAL_DEVICE', n: 1 },
+      { kind: 'CAMERA', adapter_kind: 'ONVIF_RTSP', n: 3 },
+      { kind: 'MIC', adapter_kind: 'FAKE', n: 2 },
+      { kind: 'MIC', adapter_kind: 'LOCAL_DEVICE', n: 1 },
+      { kind: 'MIC', adapter_kind: 'USB_AUDIO', n: 2 },
+      { kind: 'POE', adapter_kind: 'FAKE', n: 1 },
+    ]);
+    expect(await count(pool, "SELECT count(DISTINCT onvif_uuid) FROM capture_devices WHERE adapter_kind = 'ONVIF_RTSP'")).toBe(3);
+    expect(await count(pool, "SELECT count(*) FROM capture_device_credentials c JOIN capture_devices d ON d.id = c.device_id WHERE d.adapter_kind = 'ONVIF_RTSP'")).toBe(2);
+
+    const sources = await count(pool, 'SELECT count(*) FROM session_capture_sources');
+    expect(sources).toBeGreaterThanOrEqual(1_600);
+    // Exactly four rows per session, and exactly the sessions that have an interval or a fragment row.
+    expect(await count(pool, 'SELECT count(*) FROM (SELECT session_id FROM session_capture_sources GROUP BY 1 HAVING count(*) <> 4) AS odd')).toBe(0);
+    expect(
+      await count(
+        pool,
+        `SELECT count(*) FROM (
+           (SELECT session_id FROM session_audio_intervals UNION SELECT session_id FROM recording_fragments)
+           EXCEPT SELECT session_id FROM session_capture_sources) AS missing`,
+      ),
+    ).toBe(0);
+    expect(
+      await count(
+        pool,
+        `SELECT count(*) FROM (
+           SELECT session_id FROM session_capture_sources
+           EXCEPT (SELECT session_id FROM session_audio_intervals UNION SELECT session_id FROM recording_fragments)) AS extra`,
+      ),
+    ).toBe(0);
+    // The three shapes; no session mixes a production kind with a development kind (RG-3).
+    const shapes = await pool.query<{ shape: string; n: number }>(
+      `SELECT shape, count(*)::int AS n FROM (
+         SELECT session_id, string_agg(adapter_kind, ',' ORDER BY slot) AS shape FROM session_capture_sources GROUP BY 1) AS s
+        GROUP BY 1 ORDER BY 1`,
+    );
+    // Slot order of the aggregate: MIC-PRIMARY, MIC-STANDBY, VIDEO-01, VIDEO-02.
+    const byShape = Object.fromEntries(shapes.rows.map((row) => [row.shape, row.n]));
+    expect(Object.keys(byShape).sort()).toEqual(['FAKE,FAKE,FAKE,FAKE', 'LOCAL_DEVICE,FAKE,LOCAL_DEVICE,FAKE', 'USB_AUDIO,USB_AUDIO,ONVIF_RTSP,ONVIF_RTSP']);
+    expect(byShape['LOCAL_DEVICE,FAKE,LOCAL_DEVICE,FAKE']).toBeGreaterThanOrEqual(BULK_MIX.sessionCaptureSources.developmentSessions);
+    expect(byShape['USB_AUDIO,USB_AUDIO,ONVIF_RTSP,ONVIF_RTSP']).toBeGreaterThanOrEqual(BULK_MIX.sessionCaptureSources.productionSessions);
+    // MR-S2: every interval names one of the two microphone rows of its session.
+    expect(
+      await count(
+        pool,
+        `SELECT count(*) FROM session_audio_intervals i
+          WHERE NOT EXISTS (SELECT 1 FROM session_capture_sources s WHERE s.session_id = i.session_id AND s.slot LIKE 'MIC-%' AND s.device_id = i.mic_device_id)`,
+      ),
+    ).toBe(0);
+    // MR-S3 in a real run: the recorded kind is the registry's kind of that device.
+    expect(await count(pool, 'SELECT count(*) FROM session_capture_sources s JOIN capture_devices d ON d.id = s.device_id WHERE d.adapter_kind <> s.adapter_kind')).toBe(0);
+    // §N.4: NULL on every v1 item; the fixture holds no v2 item until SH-24 regenerates the dataset.
+    expect(await count(pool, 'SELECT count(*) FROM evidence_items WHERE manifest_version = 1 AND development_sources IS NOT NULL')).toBe(0);
+    expect(await count(pool, 'SELECT count(*) FROM evidence_items WHERE manifest_version = 2 AND development_sources IS NULL')).toBe(0);
+  });
+
   it('capture rows: the discovered devices over the seeded five, one dual-profile camera, two fake credentials with a rotation', async () => {
     const pool = db.ownerPool();
     expect(await count(pool, "SELECT count(*) FROM capture_devices WHERE id IN ('CAM-01', 'CAM-02', 'MIC-01', 'MIC-02', 'POE-SWITCH')")).toBe(5);
-    expect(await count(pool, 'SELECT count(*) FROM capture_devices')).toBe(8);
+    // dbc-4 §N.10: 12 = 5 built-ins + 3 ONVIF cameras + 2 USB microphones + the local camera and microphone.
+    expect(await count(pool, 'SELECT count(*) FROM capture_devices')).toBe(12);
     expect(await count(pool, 'SELECT count(*) FROM capture_devices WHERE jsonb_array_length(profiles) >= 2')).toBeGreaterThanOrEqual(BULK_MIX.captureDevices.dualProfileCameras);
     expect(await count(pool, 'SELECT count(*) FROM capture_device_credentials c WHERE c.device_id IN (\'CAM-01\', \'CAM-02\', \'MIC-01\', \'MIC-02\', \'POE-SWITCH\')')).toBe(0);
     const rotated = await pool.query<{ n: string }>('SELECT count(*) AS n FROM capture_device_credentials c WHERE EXISTS (SELECT 1 FROM capture_device_credentials o WHERE o.rotated_at < c.rotated_at)');
@@ -417,11 +479,11 @@ describe('the bulk template: every constraint holds, and nothing was switched of
         WHERE n.nspname = 'public' GROUP BY 1 ORDER BY 1`,
     );
     const byKind = Object.fromEntries(constraints.rows.map((row) => [row.kind, { rows: Number(row.rows), invalid: Number(row.invalid) }]));
-    // The contract's counts as landed: 166 named CHECKs, 39 foreign keys, 40 primary keys (the
-    // composed inventory; dbc-3 §0.1 + §B.13). None invalid - the loader switched nothing off.
-    expect(byKind['c']).toEqual({ rows: 166, invalid: 0 });
-    expect(byKind['f']).toEqual({ rows: 39, invalid: 0 });
-    expect(byKind['p']).toEqual({ rows: 40, invalid: 0 });
+    // The contract's counts as landed: 179 named CHECKs, 40 foreign keys, 42 primary keys (the
+    // composed inventory; dbc-3 §0.1 + §B.13 + dbc-4 §N.11). None invalid - the loader switched nothing off.
+    expect(byKind['c']).toEqual({ rows: 179, invalid: 0 });
+    expect(byKind['f']).toEqual({ rows: 40, invalid: 0 });
+    expect(byKind['p']).toEqual({ rows: 42, invalid: 0 });
     expect(constraints.rows.reduce((sum, row) => sum + Number(row.invalid), 0)).toBe(0);
 
     const triggers = await pool.query<{ name: string; mode: string; internal: boolean }>(
@@ -505,7 +567,7 @@ describe('the bulk template: the audit chain verifies over all rows (BF-6)', () 
 
 describe('the loader', () => {
   it(
-    'is deterministic: a second load on a fresh seed clone gives equal rows in every one of the 40 tables, and the pure builder announces the same digest',
+    'is deterministic: a second load on a fresh seed clone gives equal rows in every one of the 42 tables, and the pure builder announces the same digest',
     async () => {
       const second = await db.another({ template: 'seed', slug: 'bulk_second_load' });
       const lines: string[] = [];
@@ -518,18 +580,18 @@ describe('the loader', () => {
       expect(report.database).toBe(second.name);
       expect(report.role).toBe('dems_owner');
       expect(lines).toEqual(formatBulkFixtureReport(report));
-      expect(lines).toHaveLength(43);
-      expect(lines[lines.length - 1]).toContain('every minimum of the 40 tables is met');
+      expect(lines).toHaveLength(45);
+      expect(lines[lines.length - 1]).toContain('every minimum of the 42 tables is met');
       console.log(lines.map((line) => `[test:db] ${line}`).join('\n'));
 
       // Equal rows, table by table, generated identifiers and hash columns included.
       const first = await tableDigests(db.ownerPool());
       const again = await tableDigests(second.ownerPool());
-      // The digest covers every table of the schema: 40 since dbc-3; since CS-20 (row 55) the
+      // The digest covers every table of the schema: 42 since PE-129b-01 (41 since dbc-4); since CS-20 (row 55) the
       // six pipeline tables digest with the rows their §G builders synthesised.
-      expect(Object.keys(first)).toHaveLength(40);
+      expect(Object.keys(first)).toHaveLength(42);
       expect(again).toEqual(first);
-      console.log(`[test:db] bulk fixture: digest over a stable ordered dump of all 40 tables, template clone and second load: ${overallDigest(first)} = ${overallDigest(again)}`);
+      console.log(`[test:db] bulk fixture: digest over a stable ordered dump of all 42 tables, template clone and second load: ${overallDigest(first)} = ${overallDigest(again)}`);
 
       // The rows are a function of the seed, the clock and the seeded dataset alone: the builder gives the same digest with no database.
       expect(report.digest).toBe(buildBulkFixture({ now: BULK_TEMPLATE_NOW, seed: BULK_TEMPLATE_SEED }, pureBase(BULK_TEMPLATE_NOW)).digest);
@@ -619,7 +681,9 @@ describe('a clone of the bulk template, read back as the runtime role', () => {
       return [table, rows[0]?.n ?? ''] as const;
     })));
     expect(Object.fromEntries(Object.entries(asApp).map(([table, n]) => [table, Number(n)]))).toEqual(readable);
-    await expect(db.appPool().query('SELECT count(*) FROM public.capture_device_credentials')).rejects.toMatchObject({ code: '42501' });
+    // Row 129a (0010): the key column is readable, so the count answers; the credential columns do not.
+    await expect(db.appPool().query('SELECT username, secret_ciphertext, nonce, key_ref FROM public.capture_device_credentials')).rejects.toMatchObject({ code: '42501' });
+    await expect(db.appPool().query('SELECT * FROM public.capture_device_credentials')).rejects.toMatchObject({ code: '42501' });
     const who = await db.appPool().query<{ role: string; database: string }>('SELECT current_user::text AS role, current_database()::text AS database');
     expect(who.rows[0]).toEqual({ role: 'dems_app', database: db.name });
   });
@@ -637,7 +701,7 @@ describe('a clone of the bulk template, read back as the runtime role', () => {
       [ALL_TABLES.map((entry) => entry.sqlName)],
     );
     const held = Object.fromEntries(privileges.rows.map((row) => [row.table_name, row.held]));
-    expect(Object.keys(held)).toHaveLength(40);
+    expect(Object.keys(held)).toHaveLength(42);
     // Read-only for the runtime role: the RBAC tables, the chain head, the lineage, the schema version.
     for (const table of ['roles', 'permissions', 'role_permissions', 'audit_chain_head', 'audit_chain_history', 'schema_meta']) expect(held[table], table).toBe('S');
     // Append-only by privilege: insert and read, nothing else.

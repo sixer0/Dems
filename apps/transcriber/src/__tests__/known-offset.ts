@@ -15,7 +15,7 @@ import { createMemoryLog } from '../log';
 import { openPcmSource } from '../pipeline/audio-source';
 import type { AudioTimeline } from '../pipeline/media-time';
 import { createMemoryChunkMirror } from '../pipeline/mirror';
-import { createTranscriptRunner } from '../pipeline/runner';
+import { NO_TAP_SIGNAL, createTranscriptRunner } from '../pipeline/runner';
 import { SESSION, TAP_RATE, burstsOfWav, createStubAdapter, createStubVad, tonePcm, writeTap } from './pipeline-support';
 import { scratchDir } from './support';
 
@@ -70,6 +70,7 @@ export async function observeKnownOffset(timeline: AudioTimeline): Promise<Known
     sessionScratchDir: dir,
     log: createMemoryLog(),
     mirror,
+    tapLost: NO_TAP_SIGNAL,
   });
   const report = await runner.step({ final: true });
   expect(report).toMatchObject({ planned: 1, decoded: 1, failed: 0, complete: true });

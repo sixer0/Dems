@@ -139,6 +139,16 @@ export const STT_CREDENTIAL_VALUE_MAX_LENGTH = 4096;
  */
 export const STT_CREDENTIAL_REF_PATTERN = /^[a-z][a-z0-9-]{0,31}:[A-Za-z0-9_.~/-]{1,200}$/;
 
+/**
+ * What an endpoint may not hold although the loopback form allows it in its path (task 3 row 115;
+ * D71; pair-76 N-9): `?` and `#` (the request path a client appends would become part of the
+ * query or of the fragment), a backslash, white space and control characters. The transcriber
+ * refuses the same set (`assertLoopbackEndpoint`); with this, operation 91 never stores an
+ * endpoint the transcriber would refuse. The table CHECK keeps the wider loopback form.
+ */
+// eslint-disable-next-line no-control-regex -- control characters are exactly what is refused here
+export const STT_ENDPOINT_FORBIDDEN_PATTERN = /[?#\\\s\u0000-\u001f\u007f-\u009f]/;
+
 /** True for a loopback endpoint with a port inside 1 to 65535 (when one is given). */
 export function isSttLoopbackEndpoint(endpoint: string): boolean {
   const match = STT_LOOPBACK_ENDPOINT_PATTERN.exec(endpoint);
@@ -147,6 +157,15 @@ export function isSttLoopbackEndpoint(endpoint: string): boolean {
   if (port === undefined) return true;
   const value = Number(port.slice(1));
   return value >= 1 && value <= 65_535;
+}
+
+/**
+ * The endpoint rule of operation 91 and of the simulator (row 115): a loopback endpoint that holds
+ * no character of `STT_ENDPOINT_FORBIDDEN_PATTERN`. `isSttLoopbackEndpoint` keeps its meaning (the
+ * form of the table CHECK), so the transcriber still tells the two refusals apart by their reason.
+ */
+export function isSttConfigEndpoint(endpoint: string): boolean {
+  return isSttLoopbackEndpoint(endpoint) && !STT_ENDPOINT_FORBIDDEN_PATTERN.test(endpoint);
 }
 
 /**
@@ -262,7 +281,7 @@ export const SttConfigUpdateRequestSchema = z
       .min(1)
       .max(2048)
       .optional()
-      .describe('Loopback only: scheme `http`, host `127.0.0.1` or `localhost`, optional port and path; anything else: ENDPOINT_NOT_LOOPBACK.'),
+      .describe('Loopback only: scheme `http`, host `127.0.0.1` or `localhost`, optional port and path, and no `?`, `#`, backslash, white space or control character; anything else: ENDPOINT_NOT_LOOPBACK.'),
     model: z
       .string()
       .regex(STT_MODEL_ID_PATTERN)
@@ -357,7 +376,7 @@ export function planSttConfigUpdate(current: SttConfigStored, update: SttConfigU
   }
   // The schema of the body holds the same rule (stage 7); held here too, for a caller that built the update itself.
   if (update.model !== undefined && !isSttModelId(update.model)) return { ok: false, status: 422, reason: null };
-  if (update.endpoint !== undefined && !isSttLoopbackEndpoint(update.endpoint)) {
+  if (update.endpoint !== undefined && !isSttConfigEndpoint(update.endpoint)) {
     return { ok: false, status: 422, reason: SttConfigRefusalReason.ENDPOINT_NOT_LOOPBACK };
   }
   const values: SttConfigValues = {

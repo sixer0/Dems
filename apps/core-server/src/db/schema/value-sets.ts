@@ -132,6 +132,25 @@ export const CHAIN_DISCARD_REASON = ['RESET', 'SCENARIO_LOAD'] as const;
 
 /** The registry kind of `capture_devices` (T-32); the id prefix is tied to it by its own CHECK. */
 export const CAPTURE_DEVICE_KIND = ['CAMERA', 'MIC', 'POE'] as const;
+/**
+ * The adapter kind of a capture device (`capture_devices.adapter_kind`, dbc-4 §N.2, D-DB-11) and of
+ * one slot of a recorded session (`session_capture_sources.adapter_kind`, §N.3). A CLOSED set: the
+ * value decides whether a sealed package says "production", so an unknown kind is refused by the
+ * database. Written at INSERT and never updated (no UPDATE grant; D83). The source class is derived
+ * from it by one function of the Core and is not stored. Server-native until row 136 adds the
+ * shared constant (the CL-12 equality then pins this list to it).
+ */
+export const CAPTURE_ADAPTER_KIND = ['ONVIF_RTSP', 'USB_AUDIO', 'SNMP_POE', 'FAKE', 'LOCAL_DEVICE'] as const;
+/** The adapter kinds a device class may carry (`capture_devices_adapter_pairing_check`, §N.2). */
+export const CAPTURE_ADAPTER_KINDS_BY_DEVICE_KIND = {
+  CAMERA: ['ONVIF_RTSP', 'FAKE', 'LOCAL_DEVICE'],
+  MIC: ['USB_AUDIO', 'FAKE', 'LOCAL_DEVICE'],
+  POE: ['SNMP_POE', 'FAKE'],
+} as const;
+/** The four source slots of a session (`session_capture_sources.slot`, T-41; dbc-4 §N.3). */
+export const CAPTURE_SOURCE_SLOT = ['VIDEO-01', 'VIDEO-02', 'MIC-PRIMARY', 'MIC-STANDBY'] as const;
+/** The production adapter kinds: what the reset-guard cross-check refuses to exempt (§N.10). */
+export const CAPTURE_PRODUCTION_ADAPTER_KINDS = ['ONVIF_RTSP', 'USB_AUDIO', 'SNMP_POE'] as const;
 /** The role of one mic inside `AUDIO-01` (T-34; OD-01/OD-09). */
 export const MIC_ROLE = ['PRIMARY', 'STANDBY'] as const;
 /** Why a `session_audio_intervals` row opened or closed (T-34; R-3). */
@@ -242,6 +261,8 @@ export type ExportScopeValue = (typeof EXPORT_SCOPE)[number];
 export type SnapshotCauseValue = (typeof SNAPSHOT_CAUSE)[number];
 export type ChainDiscardReason = (typeof CHAIN_DISCARD_REASON)[number];
 export type CaptureDeviceKindValue = (typeof CAPTURE_DEVICE_KIND)[number];
+export type CaptureAdapterKindValue = (typeof CAPTURE_ADAPTER_KIND)[number];
+export type CaptureSourceSlotValue = (typeof CAPTURE_SOURCE_SLOT)[number];
 export type MicRoleValue = (typeof MIC_ROLE)[number];
 export type AudioIntervalReasonValue = (typeof AUDIO_INTERVAL_REASON)[number];
 export type SealingJobStatusValue = (typeof SEALING_JOB_STATUS)[number];

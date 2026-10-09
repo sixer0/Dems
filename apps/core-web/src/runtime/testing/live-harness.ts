@@ -372,6 +372,39 @@ export function createLiveTestBed(options: LiveTestBedOptions = {}): LiveTestBed
   answered('getRoleMatrix', () => (core.alive() ? fake.example('getRoleMatrix', 200, 'seeded') : fake.example('getRoleMatrix', 401, 'notSignedIn')))
   answered('listPairedDevices', () => (core.alive() ? fake.example('listPairedDevices', 200, 'registry') : fake.example('listPairedDevices', 401, 'notSignedIn')))
   answered('getPairingCodeStatus', () => (core.alive() ? fake.example('getPairingCodeStatus', 200, 'none') : fake.example('getPairingCodeStatus', 401, 'notSignedIn')))
+  // Task 3 M4 (blueprint row 67; WB-11): the two reads of the capture device selector, which Devices
+  // & Inputs asks for on mount. Answered by what the model Core holds (`core.served`, the same slices
+  // its snapshot carries), so a test that opens the page without scripting them finds the seeded
+  // selector; a page row that needs another answer scripts its own.
+  answered('getCaptureConfig', () =>
+    core.alive() ? { status: 200, body: JSON.parse(JSON.stringify(core.served.captureConfig)) } : fake.example('getCaptureConfig', 401),
+  )
+  answered('getCaptureDevices', () =>
+    core.alive() ? { status: 200, body: JSON.parse(JSON.stringify(core.served.captureDevices)) } : fake.example('getCaptureDevices', 401),
+  )
+  // Task 3 R-9 (blueprint row 137; ux §8c.1 "Read on entry"): Devices & Inputs reads the caller's own
+  // camera search once on mount, for a session that holds CAPTURE_CONFIG (operation 94; it never
+  // probes). An idle Core holds none: `search: null`. A page row that needs a search scripts its own.
+  answered('getCaptureDiscovery', () =>
+    core.alive() ? { status: 200, body: { search: null, candidates: [], truncated: false } } : fake.example('getCaptureDiscovery', 401),
+  )
+  // Task 3 M5 (blueprint row 72; WB-10): the Session Monitor asks for the audio-source intervals of
+  // the open session on mount (operation 82). Answered by what the model Core holds: the one interval
+  // the run opened, for the input its session names as active; a page row that needs a switch in the
+  // list scripts its own.
+  answered('listAudioSourceIntervals', () => {
+    if (!core.alive()) return fake.example('listAudioSourceIntervals', 401)
+    const session = core.served.session
+    if (session === null || session.startedAt === null) return { status: 200, body: { items: [], nextCursor: null } }
+    const inputId = session.audioSource?.activeInputId ?? core.served.audio.activeInputId
+    return {
+      status: 200,
+      body: {
+        items: [{ sessionId: session.id, seq: 0, inputId, role: 'PRIMARY', fromMs: 0, toMs: null, fromAt: session.startedAt, toAt: null, switchedBy: null, reason: 'START' }],
+        nextCursor: null,
+      },
+    }
+  })
   // CPW1-3: the console's health reader uses the global `fetch`, not the typed client. Answered here,
   // by what the model Core holds, so no Live test can reach a real port through it — including a test
   // that lands on `/login`, whose device strip asks for health on the page's own origin. A page row

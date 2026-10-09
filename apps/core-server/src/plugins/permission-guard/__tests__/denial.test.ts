@@ -296,8 +296,43 @@ describe('the row of an audited refusal (RB-4, RB-6; spec §13.1)', () => {
             const allowedByMarker = rule.permissions.length === 0 || rule.permissions.some((permission) => (ROLE_PERMISSIONS[role] as readonly Permission[]).includes(permission));
             return allowedByMarker && rule.conditions.includes(CoreApiAccessCondition.SESSION_HOLDER);
           }).length;
-    const expectedRows = retiredRows + Object.values(OperatorRole).reduce((sum, role) => sum + deniedByRoleTable(role) + holderRows(role), 0);
+    // Plus the WEB_CONSOLE_SESSION refusals of C3 §0, §2.6 (D80(3)): the operators of this walk are
+    // signed in on a paired device, so a HOLDER of the permission is refused on the three operations
+    // whose body carries a camera credential, and that refusal writes its row too.
+    const webOnlyRows = (role: OperatorRole): number =>
+      CORE_API_OPERATIONS.filter((operation) => {
+        const rule = ruleOf(operation.operationId);
+        const allowedByMarker = rule.permissions.some((permission) => (ROLE_PERMISSIONS[role] as readonly Permission[]).includes(permission));
+        return allowedByMarker && rule.conditions.includes(CoreApiAccessCondition.WEB_CONSOLE_SESSION);
+      }).length;
+    expect(Object.fromEntries(Object.values(OperatorRole).map((role) => [role, webOnlyRows(role)]))).toEqual({ INVESTIGATOR: 0, SUPERVISOR: 3, TECHNICIAN: 3 });
+    const expectedRows = retiredRows + Object.values(OperatorRole).reduce((sum, role) => sum + deniedByRoleTable(role) + holderRows(role) + webOnlyRows(role), 0);
     expect(rows).toBe(expectedRows);
+  });
+
+  it('WEB_CONSOLE_SESSION (C3 §0, §2.6; SEC35-45 (3)): the answer and the one ACCESS_DENIED row carry `reason: WEB_CONSOLE_ONLY`, name the session\'s device, and hold nothing of a body', () => {
+    for (const operationId of ['setCaptureDeviceCredential', 'testCaptureCandidateConnection', 'adoptCaptureCandidate']) {
+      const rule = ruleOf(operationId);
+      const refusal = refusalOf(operationId, { principal: operator('TECHNICIAN', 'DEV-0001') });
+      expect(isAudited(refusal)).toBe(true);
+      const answer = refusalAnswer(rule, refusal);
+      expect([answer.statusCode, answer.code]).toEqual([403, 'NOT_PERMITTED']);
+      expect(answer.details).toEqual({ operationId, permission: 'CAPTURE_CONFIG', role: 'TECHNICIAN', reason: 'WEB_CONSOLE_ONLY' });
+      expect(answer.message).toBe('This action is available on the web console only. The attempt was audited.');
+      // The path ID of the request is not asked for and not written: the row names the operation only.
+      const record = denialRecordOf(rule, refusal, 'CND-4F2A91C0D377');
+      expect(record?.event).toBeNull();
+      expect(record?.audit).toEqual({
+        type: AuditType.ACCESS_DENIED,
+        severity: 'WARNING',
+        message: `Access denied: a session of a paired device called a web-console-only operation (${operationId})`,
+        actorId: 'OPR-003',
+        deviceId: 'DEV-0001',
+        details: { operationId, permission: 'CAPTURE_CONFIG', role: 'TECHNICIAN', reason: 'WEB_CONSOLE_ONLY' },
+      });
+      // Negative control: the same operator on the web console is not refused at all.
+      expect(decideAccess(rule, { principal: operator('TECHNICIAN'), consoleIdentity: true, demoControls: true, sessionCreatorId: null }).allowed).toBe(true);
+    }
   });
 });
 

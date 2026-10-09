@@ -11,6 +11,8 @@ import { reportDevicesError } from './report'
 
 export interface DevicesPanelProps {
   id: DevicesPanelId
+  /** The DOM id of the panel, for an in-page link (the capture selector, WB-07). */
+  anchorId?: string
   icon: LucideIcon
   title: string
   subtitle?: string
@@ -31,6 +33,7 @@ export interface DevicesPanelProps {
  */
 export function DevicesPanel({
   id,
+  anchorId,
   icon: Icon,
   title,
   subtitle,
@@ -44,6 +47,7 @@ export function DevicesPanel({
   return (
     <motion.section
       className={cn('dev-panel', `dev-panel-${id}`, className)}
+      id={anchorId}
       data-testid={`panel-${id}`}
       aria-label={title}
       variants={variants}

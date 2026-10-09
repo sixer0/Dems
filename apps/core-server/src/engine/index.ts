@@ -83,6 +83,7 @@ export {
   type HostedActionResult,
 } from './hosted-actions';
 export { createEngineHost, isEngineControl, type EngineControl, type EngineHostDependencies } from './host';
+export { registerCaptureDeviceIn, type InternalActions } from './internal-actions';
 export {
   ENGINE_BOOT_STEP,
   ENGINE_TICK_MS,

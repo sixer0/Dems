@@ -177,6 +177,8 @@ async function writeBulkFixture(executor: RowExecutor, fixture: BulkFixture, bas
     // The v2 pipeline (CS-20): intervals and fragments and chunks hang on session ids only
     // (D-DB-07); transcripts and revisions on the evidence items inserted above; the jobs on the
     // sealed sessions. All parents exist by now; the chain rows follow, as always, last.
+    // The session-start source record first (dbc-4 MR-S1: durable before the first fragment).
+    await insertNative(executor, schema.sessionCaptureSources, 'session_capture_sources', rows.sessionCaptureSources);
     await insertNative(executor, schema.sessionAudioIntervals, 'session_audio_intervals', rows.sessionAudioIntervals);
     await insertNative(executor, schema.recordingFragments, 'recording_fragments', rows.recordingFragments);
     await insertNative(executor, schema.transcriptChunks, 'transcript_chunks', rows.transcriptChunks);
@@ -271,7 +273,7 @@ export async function loadBulkFixture(pool: Pool, options: LoadBulkFixtureOption
 }
 
 /**
- * Vacuums and analyzes the 40 tables, in one statement that names the tables of the typed schema
+ * Vacuums and analyzes the 42 tables, in one statement that names the tables of the typed schema
  * (constants). It changes no row. Two reasons:
  *
  *   - A template is locked right after its hook returns, so nothing would ever analyze it:

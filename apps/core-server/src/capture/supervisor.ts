@@ -51,8 +51,8 @@
  * `ACK`: its sequence number must be exactly one more than the last of the session (a gap or a
  * repeat is a `PROTOCOL_VIOLATION`), and it is handed to the `record` listeners at once, in
  * order, like the supervisor's own events. Records are low-rate by contract: more than
- * `recordBurstLimit` inside `recordWindowMs`, a second first-fragment or first-video record of a
- * camera, and any record after the seal completion are violations too, so a worker cannot grow
+ * `recordBurstLimit` inside `recordWindowMs`, a second first-fragment, first-video or
+ * keyframe-interval record of a camera, and any record after the seal completion are violations too, so a worker cannot grow
  * the memory of a record consumer without being ended. It never enters the queue below, so nothing a
  * listener of levels does, and no flood of levels, can lose or reorder a record.
  *
@@ -109,6 +109,7 @@ import {
   DURABLE_RECORD_KINDS,
   FINAL_CRASH_CODES,
   FINAL_START_REFUSALS,
+  ONCE_PER_CAMERA_RECORD_KINDS,
   SupervisorMessageType,
   WorkerMessageType,
   backoffDelayMs,
@@ -535,6 +536,11 @@ export function createCaptureSupervisor(options: CaptureSupervisorOptions): Capt
    * A line of a worker that is no longer the session's worker (it was ended; its last lines are
    * still read before its exit). Nothing of it is handed on. ONE fact is taken: a record of a
    * fragment means bytes are on the disk, so the restart that is waiting is called off.
+   *
+   * TWO GUARDS hold that fact to the session it belongs to (pair-58 re-check R-5; each is pinned
+   * by a test of `records.test.ts`): `from.of !== current` - the dying worker of ANOTHER session
+   * cannot mark this one durable; `!from.started` - a worker whose `START` was never acknowledged
+   * has written nothing, whatever it says.
    */
   function onLateMessage(from: Worker, message: WorkerMessage): void {
     const current = session;
@@ -664,7 +670,8 @@ export function createCaptureSupervisor(options: CaptureSupervisorOptions): Capt
     if (message.seq !== current.recordSeq + 1) return refuse('RECORD_SEQUENCE_GAP');
     // Content (finding A-10): once-only records are said once per camera, and nothing follows the seal.
     if (from.sealed) return refuse('RECORD_AFTER_SEAL');
-    if (record.kind === CaptureRecordKind.FIRST_DURABLE_FRAGMENT || record.kind === CaptureRecordKind.FIRST_VIDEO_SAMPLE) {
+    if (record.kind !== CaptureRecordKind.SEAL_COMPLETE && ONCE_PER_CAMERA_RECORD_KINDS.includes(record.kind)) {
+      // First video sample, first durable fragment, observed keyframe interval (row 59): once per camera.
       const once = `${record.kind}:${record.deviceId}`;
       if (from.reported.has(once)) return refuse('RECORD_REPEATED');
       from.reported.add(once);

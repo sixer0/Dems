@@ -129,6 +129,19 @@ export function authMethodOf(row: Pick<AuditRow, 'details' | 'category'>): strin
   return method !== null && AUTH_METHODS.has(method) ? method : null;
 }
 
+/**
+ * What a `CAPTURE_CONFIG_CHANGED` row changed (task 3 row 68; register MB-12; C3 §5.2 detail keys
+ * `scope`, `field`, `trackId` / `inputId`, `from`, `to`): the target and the two values, or null for
+ * any other row and for a row without both. Ids and role words only; the row's details never hold a
+ * credential (C3 §5.1).
+ */
+export function captureChangeOf(row: Pick<AuditRow, 'type' | 'details'>): { target: string | null; from: string | null; to: string } | null {
+  if (row.type !== 'CAPTURE_CONFIG_CHANGED') return null;
+  const to = detailString(row, 'to');
+  if (to === null) return null;
+  return { target: detailString(row, 'trackId') ?? detailString(row, 'inputId'), from: detailString(row, 'from'), to };
+}
+
 /** The short hash column: the first `length` hex digits. */
 export function shortHash(hash: string, length = 8): string {
   return hash.slice(0, length);

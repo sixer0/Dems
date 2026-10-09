@@ -28,6 +28,13 @@ import { chunkSecondsToMediaMs, type AudioTimeline, type SampleRange } from './m
  * sentence twice at the very end of a chunk keeps both. PROPOSAL (whisper time tokens step by 20 ms).
  */
 export const CLAMP_ROUNDING_MS = 20;
+/**
+ * Rule 3 judges only a REMAINDER SHORTER THAN THIS: what is left of a segment inside the audio
+ * after its end was clamped. The phantom tail of the stored engine answer leaves 181 ms; a short
+ * answer really said twice at the end of a chunk ("Ya." … "ya") leaves seconds and is kept, however
+ * far the engine's end overshoots (navigator finding N-5). PROPOSAL of the row-77 review fixes.
+ */
+export const CLAMP_MIN_REMAINDER_MS = 500;
 /** Rule 3, QA half: whisper's own no-speech and log-probability gates. PROPOSALS. */
 export const PHANTOM_NO_SPEECH_PROB = 0.6;
 export const PHANTOM_AVG_LOGPROB = -1;
@@ -83,9 +90,11 @@ export function clampSegments(segments: readonly TranscriptSegment[], timeline: 
     }
     const overshootMs = (segment.end - audioSeconds) * 1000;
     const end = overshootMs > 0 ? audioSeconds : segment.end;
+    const remainderMs = (audioSeconds - segment.start) * 1000;
     if (overshootMs > CLAMP_ROUNDING_MS) {
       const previous = kept[kept.length - 1];
-      if (previous !== undefined && comparableText(previous.text) === comparableText(segment.text)) {
+      // The text half judges only a short remainder (N-5); the QA half below is the engine's own verdict and stands for any length.
+      if (remainderMs < CLAMP_MIN_REMAINDER_MS && previous !== undefined && comparableText(previous.text) === comparableText(segment.text)) {
         dropped.push({ reason: DropReason.CLAMPED_TAIL_REPEATS_PREVIOUS, index });
         return;
       }

@@ -430,7 +430,8 @@ static void telemetry(Session *s) {
         char ppm[32] = "null";
         if (fitted) snprintf(ppm, sizeof ppm, "%.1f", trend);
         /* lagMs: the best arrival of the last seconds minus camera time (a stall does not move it).
-         * nearBound: the camera's clock is 30 ms or more from the host's. Telemetry only. */
+         * nearBound: the camera's clock moved 30 ms or more against the host's since the session's baseline
+         * (learnt in its first seconds; a steady delay is not a clock error: R-2). Telemetry only. */
         if (k < sizeof clocks) k += (size_t)snprintf(clocks + k, sizeof clocks - k, "%s{\"deviceId\":\"%s\",\"lagMs\":%.3f,\"trendPpm\":%s,\"nearBound\":%s}", k ? "," : "", c->device_id, trend_window_lag_ms(&t), ppm,
                               trend_near_bound(&t) ? "true" : "false");
     }

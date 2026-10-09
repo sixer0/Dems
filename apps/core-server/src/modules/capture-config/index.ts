@@ -14,16 +14,32 @@
  *     74, `409 RESET_BLOCKED_REAL_EVIDENCE` for op 75; OD-18, OD-19). The refusals themselves are
  *     enforced where they already live: stage 6 for the flag, row 54's guard for the reset.
  *
- * WHAT THIS MODULE DOES NOT DO YET. It registers no route: operations 76 to 80 and 89 answer from
- * this store when their live paths land (row 66 / M4-W2), and supervisor telemetry updates it when
- * the engine has the INTERNAL actions for it (SH-18). It is REGISTERED by `app.ts` since blueprint
- * row 57 (the OD-14 waiver of P25; capture spec §I edits 1 and 5): its boot step runs at every
- * start of the server, after the steps of the units registered before it.
+ * THE LIVE PATHS (blueprint row 66 / M4-W2; `routes.ts`). Operations 76 to 80 are registered
+ * here: the two reads answer from the engine's committed state, the three edits are one unit of
+ * the engine each, in which the hosted action `setCaptureConfig` runs under the caller's identity;
+ * an edit while a session is open answers `409 CAPTURE_CONFIG_LOCKED` with no audit row (OD-10).
+ * The two slices are replicated slices of the engine's state, so the engine publishes them; the
+ * store above stays what the boot step validates the stored rows with, before the listener opens.
+ *
+ * THE `CapturePlan` BUILDER (`plan.ts`): a pure function from the selector and the adapter
+ * registry to the payload of `START`; the session start (row 71) calls it.
+ *
+ * WHAT THIS MODULE DOES NOT DO. Operation 89 (the credential write) is not registered: it needs
+ * the credential store's sealer (row 84) and the access condition `WEB_CONSOLE_SESSION`, which
+ * the contract registry does not hold yet (rows 132 / 142). No adapter registry is built here:
+ * the wiring that knows the capture operation (rows 61 / 71 / 136) provides one through
+ * `captureConfigControl(app).provideDeviceRegistry`; until then no assignment is refused by
+ * source class. It is REGISTERED by `app.ts` since blueprint row 57 (the OD-14 waiver of P25;
+ * capture spec §I edits 1 and 5): its boot step runs at every start of the server, after the
+ * steps of the units registered before it.
  *
  * The plugin function opens no database connection: `buildApp()` works without PostgreSQL.
  */
 import type { FastifyPluginAsync } from 'fastify';
+import type { CaptureDeviceRegistry } from '../../capture/adapters';
+import { captureFenceControl } from '../../capture/fence';
 import { CAPTURE_CONFIG_BOOT_STEP, runCaptureConfigBoot } from './boot';
+import { registerCaptureConfigRoutes } from './routes';
 import { createCaptureConfigStore, type CaptureConfigStore, type CaptureSnapshot } from './store';
 
 export { CAPTURE_CONFIG_BOOT_STEP, runCaptureConfigBoot, type CaptureBootSinks } from './boot';
@@ -37,14 +53,46 @@ export {
   type CaptureConfigRecord,
   type CaptureDeviceRecord,
 } from './slices';
+export {
+  CapturePlanError,
+  CapturePlanReason,
+  CapturePlanRefusal,
+  assertRecordableSelector,
+  buildCapturePlan,
+  capturePlanConstants,
+  capturePlanSubjects,
+  type CapturePlanCameraSource,
+  type CapturePlanInput,
+  type CapturePlanRegistry,
+  type CapturePlanSelector,
+  type RecordableSelector,
+  type RecordableSlot,
+} from './plan';
+export {
+  CAPTURE_CONFIG_MODULE_OPERATIONS,
+  DEVELOPMENT_SOURCE_NOT_ALLOWED,
+  captureConfigAnswer,
+  captureConfigLocked,
+  captureConfigOperation,
+  type CaptureConfigModuleOperation,
+} from './routes';
 export { createCaptureConfigStore, READ_CAPTURE_STATE, type CaptureConfigStore, type CaptureSnapshot, type CaptureStateRow, type CaptureStoreReader } from './store';
 
 /** What this module offers beside its boot step: for its tests and for the rows that mount it. */
 export interface CaptureConfigControl {
   /** The store this app owns. Loaded by the boot step; `snapshot()` throws before that. */
   readonly store: CaptureConfigStore;
-  /** The current slices, by reference (the reads of row 66 answer from here). */
+  /** What the boot step loaded, by reference. The reads of operations 76 and 77 answer from the engine's committed state, not from here. */
   snapshot(): CaptureSnapshot;
+  /**
+   * Gives the module the device registry of the adapter layer (capture spec §A.1.1): from then on
+   * an edit that ASSIGNS a device asks rule RG-3 (`assertAssignable`) first. Called once, by the
+   * wiring that builds the registry for the running capture operation (rows 61 / 71 / 136). A
+   * second call is a mistake of that wiring and throws.
+   */
+  provideDeviceRegistry(registry: Pick<CaptureDeviceRegistry, 'assertAssignable'>): void;
+  /** True once a registry was provided. */
+  hasDeviceRegistry(): boolean;
 }
 
 // Keyed by the app's stage registry: one object per app, the same from every scope of it
@@ -60,7 +108,19 @@ export function captureConfigControl(app: { readonly stages: object }): CaptureC
 
 export const captureConfigModule: FastifyPluginAsync = async (app) => {
   const store = createCaptureConfigStore();
-  controls.set(app.stages, { store, snapshot: () => store.snapshot() });
+  let deviceRegistry: Pick<CaptureDeviceRegistry, 'assertAssignable'> | null = null;
+  controls.set(app.stages, {
+    store,
+    snapshot: () => store.snapshot(),
+    provideDeviceRegistry(registry) {
+      if (deviceRegistry !== null) throw new Error('the capture device registry was provided twice');
+      deviceRegistry = registry;
+    },
+    hasDeviceRegistry: () => deviceRegistry !== null,
+  });
+
+  // Operations 76 to 80 (row 66). The registry is read at every edit: it is provided after `ready()`.
+  registerCaptureConfigRoutes(app, { deviceRegistry: () => deviceRegistry });
 
   app.readiness.addBootStep({
     id: CAPTURE_CONFIG_BOOT_STEP,
@@ -73,6 +133,11 @@ export const captureConfigModule: FastifyPluginAsync = async (app) => {
         error: (fields, message) => app.log.error(fields, message),
         persist: (entry) => app.errorLog.append(entry),
       });
+      // Rule RG-3 for operations 78 / 79 (row 136, decision D115 (3); integration pass C1): the
+      // registry of the running capture operation, built by the step `capture.fence` before this
+      // one. Null in SIMULATED (no adapter is registered): no assignment is refused by source class.
+      const registry = captureFenceControl(app).registry();
+      if (registry !== null && deviceRegistry === null) deviceRegistry = registry;
     },
   });
 };

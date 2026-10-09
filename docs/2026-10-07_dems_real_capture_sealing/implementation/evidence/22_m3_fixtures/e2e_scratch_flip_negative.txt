@@ -1,0 +1,11 @@
+e2e: waiting for .locks/heavy-host.lock (up to 1800 s)
+e2e: series scratch2, 3 checks, ports 127.0.0.1:8559 and :8561, results in .cache/m3worker/e2e/scratch2; heavy-host lock held (.locks/heavy-host.lock)
+static_rules                             expect PASS got PASS      rc 0       ok          load  5.79    3.6 s
+continuity_r1                            expect PASS got NO-RESULT rc 1       UNEXPECTED  load  6.05    0.1 s
+neg_gop50_judged_as_250_r1               expect FAIL got NO-RESULT rc 1       UNEXPECTED  load  6.05    0.1 s
+3 checks (2 expected PASS, 1 negative controls expected FAIL): 1 as expected, 2 unexpected: continuity_r1, neg_gop50_judged_as_250_r1
+ports still listening after the series: none
+no timing-sensitive check
+AGGREGATE EXIT CODE 1
+make: *** [e2e] Error 1
+scratch2 (base runs missing -> no result): make exit=2

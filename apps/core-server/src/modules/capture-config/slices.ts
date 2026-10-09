@@ -13,7 +13,10 @@
  *     caller passes it in; the tables hold no lock column;
  *   - the slice field list is `C3 §2.3`: no credential member exists anywhere (RK-12), `host` is
  *     the registry's `address` only, never a `user:password@` URL (C-N8);
- *   - the mics travel PRIMARY first, then STANDBY (the slice schema's stated order);
+ *   - the mics travel in INPUT order, `MIC-01` then `MIC-02`, whichever holds the PRIMARY role: a
+ *     list of the two mic inputs is always that ordered pair (acceptance criterion AC-B-70; the
+ *     simulator's operation 76 answers the same). Until blueprint row 66 this builder put the
+ *     PRIMARY row first, which is the same list only while MIC-01 is PRIMARY;
  *   - `capabilities` are "codes the adapters reported" (telemetry, SH-18): the registry table has
  *     no capabilities column (`profiles` holds MEDIA profiles for OD-05, dbc-3 §B.2), so a row
  *     maps to an empty list until supervisor telemetry lands (row 57 `applyCaptureTelemetry`).
@@ -21,9 +24,8 @@
  *   - every answer parses with the slice's own zod schema before it leaves the builder: a table
  *     row that cannot form a valid slice is a refusal (fail closed), never a half-built slice.
  */
-import { CaptureConfigSliceSchema, CaptureDevicesSliceSchema, type CaptureConfigSliceBody, type CaptureDevicesSliceBody } from '@dems/shared/api';
+import { CaptureConfigSliceSchema, CaptureDevicesSliceSchema, MIC_INPUT_ID_PATTERN, type CaptureConfigSliceBody, type CaptureDevicesSliceBody } from '@dems/shared/api';
 import { DEFAULT_CAPTURE_CONFIG, DEFAULT_CAPTURE_DEVICES } from '@dems/shared/sim';
-import type { MicInputId } from '@dems/shared/domain';
 
 /** The selector row as the store reads it (T-31, all runtime-relevant columns). */
 export interface CaptureConfigRecord {
@@ -72,12 +74,16 @@ export function baselineCaptureDevices(): CaptureDevicesSliceBody {
   return DEFAULT_CAPTURE_DEVICES;
 }
 
-/** A mic device outside the two-input set cannot name a slice input (fail closed, identifiers only). */
-function micInputOf(deviceId: string): MicInputId {
-  if (deviceId === 'MIC-01' || deviceId === 'MIC-02') return deviceId;
+/**
+ * The input a mic device is: its own ID, of the form `MIC-NN` (decisions D106 (4), D115 (2):
+ * the built-in pair, or a microphone registered later such as the local `MIC-03`). Any other ID
+ * cannot name a slice input (fail closed, identifiers only).
+ */
+function micInputOf(deviceId: string): string {
+  if (MIC_INPUT_ID_PATTERN.test(deviceId)) return deviceId;
   throw new CaptureSliceError(
     'CAPTURE_MIC_INPUT_UNKNOWN',
-    'the selector names a mic device outside the MIC-01/MIC-02 input set',
+    'the selector names a mic device outside the MIC-NN input form',
     { deviceId },
   );
 }
@@ -98,7 +104,7 @@ export function captureConfigSliceOf(config: CaptureConfigRecord | null, devices
     }
     return { trackId, deviceId, profile, online: device.enabled, streamState: device.enabled ? ('LIVE' as const) : ('LOST' as const) };
   };
-  const mic = (inputId: MicInputId, deviceId: string, role: 'PRIMARY' | 'STANDBY') => {
+  const mic = (inputId: string, deviceId: string, role: 'PRIMARY' | 'STANDBY') => {
     const device = byId.get(deviceId);
     if (device === undefined || device.kind !== 'MIC') {
       throw new CaptureSliceError('CAPTURE_DEVICE_UNKNOWN', 'the selector names a mic the registry does not hold', { inputId, deviceId });
@@ -107,7 +113,9 @@ export function captureConfigSliceOf(config: CaptureConfigRecord | null, devices
   };
   const slice: CaptureConfigSliceBody = {
     cameras: [camera('VIDEO-01', config.video01DeviceId, config.video01Profile), camera('VIDEO-02', config.video02DeviceId, config.video02Profile)],
-    mics: [mic(micInputOf(config.micPrimaryId), config.micPrimaryId, 'PRIMARY'), mic(micInputOf(config.micStandbyId), config.micStandbyId, 'STANDBY')],
+    mics: [mic(micInputOf(config.micPrimaryId), config.micPrimaryId, 'PRIMARY'), mic(micInputOf(config.micStandbyId), config.micStandbyId, 'STANDBY')].sort((left, right) =>
+      left.inputId < right.inputId ? -1 : left.inputId > right.inputId ? 1 : 0,
+    ),
     locked,
     updatedAt: config.updatedAt,
   };

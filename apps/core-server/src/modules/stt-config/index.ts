@@ -35,6 +35,13 @@
  * result with `reachable: false`, logged and persisted by its code. The outcome of the last test
  * is kept in memory for operation 90 (`lastTest`); it is not configuration and is not stored.
  *
+ * THE TRANSCRIPTION COMPOSITION IS MOUNTED HERE (row 115; `src/transcription`). `app.ts` is frozen
+ * (P25), so the plugin function of this module calls `mountTranscription(app, …)`: it adds the
+ * CS-22 boot step of the transcriber and, in an app that has a data directory, makes the probe of
+ * operation 92. That probe is used when no other was provided; a probe handed to `provideProbe`
+ * wins over it (a test that states what a probe is given and what it answers). An app without a
+ * data directory has no transcriber and operation 92 keeps answering 503 `TRANSCRIBER_NOT_READY`.
+ *
  * The plugin function opens no database connection: `buildApp()` works without PostgreSQL.
  */
 import {
@@ -60,6 +67,8 @@ import { ApiFailure } from '../../plugins/error-envelope';
 import { describeError } from '../../plugins/logger';
 import { routeOfOperation } from '../../plugins/permission-guard';
 import { changeSttConfig, sttConfigNotSeeded, sttConfigOf, type Actor } from './change';
+import { coreCredentialStore } from '../../credential-store';
+import { mountTranscription } from '../../transcription';
 import { STT_TEST_QUEUE_LIMIT, STT_TEST_TIMEOUT_MS, type SttConnectionProbe, type SttCredentialSealer, type SttProbeResult } from './seams';
 import { readSttConfig, type StoredSttConfig } from './statements';
 
@@ -103,13 +112,24 @@ const TEST_SOURCE = 'sttConfig.testConnection';
 const CHANGE_SOURCE = 'sttConfig.update';
 const CHANGED = 'STT configuration changed';
 const PROBE_FAILED = 'the STT connection probe failed; the test is answered as unreachable';
+const STORE_SOURCE = 'sttConfig.credentialStore';
+const STORE_REFUSED = 'the Core credential store refuses to work: a SECRET credential cannot be stored';
 const NOT_SEEDED = 'the stt_config table holds no row: the seed did not write the STT configuration';
 
 /** What this module offers beside its routes: the two providers of `seams.ts`, and its last test. */
 export interface SttConfigControl {
-  /** Hands in the probe of operation 92. Once per app; the transcriber runtime does it (row 115). */
+  /**
+   * Hands in a probe of operation 92 in the place of the transcription composition's own (row
+   * 115). Once per app. The product does not call it: the module takes its probe from
+   * `src/transcription` when the app has a data directory. A probe handed in here wins over that one.
+   */
   provideProbe(probe: SttConnectionProbe): void;
-  /** Hands in the sealer of a `SECRET` credential. Once per app; the Core credential store does it. */
+  /**
+   * Hands in a sealer of a `SECRET` credential in the place of the Core credential store's own.
+   * Once per app. The product does not call it: when the app is ready the module takes its sealer
+   * from the Core credential store (`src/credential-store`, row 84). A sealer handed in here wins
+   * over that one (a test that states what a sealer is given and what it answers).
+   */
   provideCredentialSealer(sealer: SttCredentialSealer): void;
   hasProbe(): boolean;
   hasCredentialSealer(): boolean;
@@ -119,7 +139,11 @@ export interface SttConfigControl {
 
 interface ControlState extends SttConfigControl {
   probe: SttConnectionProbe | null;
+  /** The probe of the transcription composition; null while the app has no data directory (no transcriber). */
+  runtimeProbe: SttConnectionProbe | null;
   sealer: SttCredentialSealer | null;
+  /** The sealer of the Core credential store; null while the app has no store, or one it refuses. */
+  storeSealer: SttCredentialSealer | null;
   last: SttLastTest | null;
   /** The tail of the tests in flight: one test at a time. */
   queue: Promise<unknown>;
@@ -143,7 +167,9 @@ export function sttConfigControl(app: { readonly stages: object }): SttConfigCon
 function createControl(): ControlState {
   const state: ControlState = {
     probe: null,
+    runtimeProbe: null,
     sealer: null,
+    storeSealer: null,
     last: null,
     queue: Promise.resolve(),
     waiting: 0,
@@ -156,8 +182,8 @@ function createControl(): ControlState {
       if (state.sealer !== null) throw new Error('the STT credential sealer was provided twice');
       state.sealer = sealer;
     },
-    hasProbe: () => state.probe !== null,
-    hasCredentialSealer: () => state.sealer !== null,
+    hasProbe: () => (state.probe ?? state.runtimeProbe) !== null,
+    hasCredentialSealer: () => (state.sealer ?? state.storeSealer) !== null,
     lastTest: () => state.last,
   };
   return state;
@@ -219,6 +245,29 @@ export const sttConfigModule: FastifyPluginAsync = async (app) => {
   controls.set(app.stages, control);
   const routes = app.withTypeProvider<ZodTypeProvider>();
 
+  // THE TRANSCRIPTION COMPOSITION (row 115). Mounted from here because `app.ts` is frozen: its
+  // boot step joins the steps of this module's place in the registration order. It reads the
+  // stored row through this module's own statement (no credential column) and the runtime pool.
+  const transcription = mountTranscription(app, {
+    readConfig: () => readSttConfig({ query: (text, values) => app.db.pool.query(text, values === undefined ? [] : [...values]) }),
+  });
+  if (transcription.mounted) control.runtimeProbe = transcription.probe;
+
+  // THE CORE CREDENTIAL STORE (row 84; D68(c); SEC35-03). Once the app is ready the module asks
+  // the one store of the app for the sealer of a `SECRET` credential. An app without a data
+  // directory has no store, and a `SECRET` write keeps answering 503 (`CREDENTIAL_STORE_NOT_READY`).
+  // A store that refuses to work (its directory is not private) is a fault of the host: said once,
+  // in the log and in the persistent error log, by its code; the write answers the same 503.
+  app.addHook('onReady', async () => {
+    const opened = coreCredentialStore(app);
+    if (opened.status === 'READY') {
+      control.storeSealer = { seal: (plaintext) => opened.store.stt.seal(plaintext) };
+    } else if (opened.status === 'UNAVAILABLE') {
+      app.log.error({ code: opened.code, source: STORE_SOURCE }, STORE_REFUSED);
+      app.errorLog.append({ level: 'error', source: STORE_SOURCE, message: STORE_REFUSED, code: opened.code, context: { errno: opened.detail } });
+    }
+  });
+
   /**
    * The stored row through the pool. A statement that fails, and a row outside the contract
    * (`SttConfigRowError`), are faults of the store: `app.db.read` logs and persists them by their
@@ -247,7 +296,7 @@ export const sttConfigModule: FastifyPluginAsync = async (app) => {
     schema: { body: SttConfigUpdateRequestSchema, response: { 200: SttConfigUpdateResultSchema } },
     handler: async (request): Promise<SttConfigUpdateResult> => {
       const outcome = await changeSttConfig(app, actorOf(request), request.body, {
-        sealer: control.sealer,
+        sealer: control.sealer ?? control.storeSealer,
         lastTest: control.last,
         // Read only when the body carries a secret and a sealer is there (`change.ts`, `sealSecretOf`).
         preview: () => app.db.read(CHANGE_SOURCE, (pool) => readSttConfig({ query: (text, values) => pool.query(text, values === undefined ? [] : [...values]) }), request),
@@ -257,6 +306,8 @@ export const sttConfigModule: FastifyPluginAsync = async (app) => {
         control.last = null;
         control.tested += 1;
       }
+      // The service state of the transcriber follows the stored `enabled` (row 115).
+      if (outcome.changedFields.length > 0) transcription.noteConfigChange(outcome.result.enabled);
       if (outcome.changedFields.length > 0) {
         // Field NAMES and two facts. Never the body: it may hold a credential.
         request.log.info(
@@ -280,7 +331,7 @@ export const sttConfigModule: FastifyPluginAsync = async (app) => {
     ...routeOfOperation(registryEntry('testSttConnection')),
     schema: { response: { 200: SttConnectionTestSchema } },
     handler: async (request): Promise<SttConnectionTest> => {
-      const { probe } = control;
+      const probe = control.probe ?? control.runtimeProbe;
       if (probe === null) throw transcriberNotReady();
       // N-6: the tests in waiting are bounded (each may hold its turn for the whole time limit).
       // One more than the room holds is answered at once and never reaches the probe.

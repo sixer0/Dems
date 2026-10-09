@@ -45,6 +45,10 @@ export const sessionLiveEn = {
     meterLabel: '{{mic}} level',
   },
 
+  // S2, task 3 M5 (row 73; D84, erratum PE-128-79): RECORDING before the first durable fragment.
+  // The mic switch itself speaks the shared words of the web twin (`session.audioSource.*`).
+  connecting: 'Connecting cameras…',
+
   // S5 action tiles (MB 4: Snapshot, Bookmark, Audio Monitor, Settings).
   tiles: {
     label: 'Session actions',

@@ -19,3 +19,8 @@ D58-1	sink.c	static int planted_k(const char *p) { return open(p, O_WRONLY | O_C
 D58-2	audio.c	static int planted_l(const char *a, const char *b) { return link(a, b); }
 D58-1	sink.c	static void *planted_m(const char *p) { return fopen(p, "w"); }
 F-2	ingest.c	static const char *planted_n = "not on whitelist";
+D59-3	audio.c	static int planted_o(int fd) { return ftruncate(fd, 0); }
+D59-3	sink.c	static int planted_p(const char *p) { return truncate(p, 0); }
+D59-2	sink.c	static int planted_q(int fd) { return fcntl(fd, F_FULLFSYNC); }
+D59-4	audio.c	static void planted_r(void) { sink_fault_hook = NULL; }
+SR-3	ingest.c	static void planted_s(AVDictionary *o) { av_dict_set(&o, "frag_interleave", "1", 0); }

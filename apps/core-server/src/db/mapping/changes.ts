@@ -193,6 +193,14 @@ function diffCapture(previous: DurableSlices, next: DurableSlices, buckets: Buck
     for (const row of captureDevicesToRows(next.captureDevices, next.captureConfig)) {
       const old = before.get(row.id);
       before.delete(row.id);
+      // dbc-4 §N.2 / D-DB-13 (D83): a device never changes its adapter kind - a device with
+      // another adapter is another device with another id. The database would not store the
+      // change anyway (the UPSERT keeps `adapter_kind` out of its SET list and `dems_app` holds no
+      // UPDATE on it), so a slice that asks for it is refused here, loudly, instead of being
+      // dropped silently (M4-MT-12).
+      if (old !== undefined && old.adapterKind !== row.adapterKind) {
+        throw notWritable('capture_devices', `the adapter kind of ${row.id} changed; it is written at INSERT and never updated (dbc-4 §N.2).`);
+      }
       if (old === undefined || !isDeepStrictEqual(old, row)) fresh.push(row);
     }
     if (before.size > 0) throw notWritable('capture_devices', `${before.size} device(s) left the registry; discovery only adds and updates (dbc-3 §B.2).`);

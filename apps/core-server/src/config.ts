@@ -18,6 +18,10 @@
  * `DEMS_CAPTURE_MODE` (`simulated`, the default, or `real`), `DEMS_CAPTURE_WORKER` (the worker
  * program) and `DEMS_MEDIA_DIR` (the media root). Whether a start in `real` mode is refused for a
  * missing key is the boot checks' decision (CS-22), not this file's.
+ * WAIVED EDITS (task 3, decisions OD-14 and D108; capture spec §I edits 15 to 18): the two keys of
+ * the development fence. `DEMS_CAPTURE_DEV_SOURCES` (`1` or `0`, the default: development sources
+ * exist) and `DEMS_CAPTURE_HELPER_FFMPEG` (the program the development helpers run). What a start
+ * refuses for them is the capture fence's decision (capture spec §A.1.2), not this file's.
  */
 
 // ── Listener (SR-01, ADQ-5, ADQ-10) ────────────────────────────────────────────────────────────
@@ -43,6 +47,8 @@ export const ENV_LOG_LEVEL = 'DEMS_LOG_LEVEL';
 export const ENV_CAPTURE_MODE = 'DEMS_CAPTURE_MODE';
 export const ENV_CAPTURE_WORKER = 'DEMS_CAPTURE_WORKER';
 export const ENV_MEDIA_DIR = 'DEMS_MEDIA_DIR';
+export const ENV_CAPTURE_DEV_SOURCES = 'DEMS_CAPTURE_DEV_SOURCES';
+export const ENV_CAPTURE_HELPER_FFMPEG = 'DEMS_CAPTURE_HELPER_FFMPEG';
 
 export const LOG_LEVELS = ['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'] as const;
 export type LogLevel = (typeof LOG_LEVELS)[number];
@@ -179,6 +185,10 @@ export interface CoreServerConfig {
   readonly captureWorkerPath: string | null;
   /** Absolute path of the media root (OD-25: git-ignored, below the data directory by default). */
   readonly mediaStoreDir: string;
+  /** The development flag of the capture fence. Read by ONE function: `captureOperationDecisionOf` (static rule G-R15). */
+  readonly captureDevSources: boolean;
+  /** Absolute path of the program the development helpers run, or null when none is configured. */
+  readonly captureHelperFfmpegPath: string | null;
 }
 
 /** A configuration that must stop the boot. `code` is stable; `message` never holds a secret. */
@@ -245,6 +255,13 @@ export function parseCapturePath(name: string, raw: string | undefined): string 
   return raw;
 }
 
+/** `1` turns the development flag on; unset, empty or `0` leaves it off. Any other value stops the boot. */
+export function parseCaptureDevSources(raw: string | undefined): boolean {
+  if (raw === undefined || raw === '' || raw === '0') return false;
+  if (raw === '1') return true;
+  throw new ConfigError('CAPTURE_DEV_SOURCES_INVALID', `${ENV_CAPTURE_DEV_SOURCES} must be 1 or 0.`);
+}
+
 // ── Building the configuration object ──────────────────────────────────────────────────────────
 
 export interface ConfigInput {
@@ -265,6 +282,10 @@ export interface ConfigInput {
   readonly captureWorkerPath?: string | null;
   /** Default: `<dataDir>/media/sessions`. */
   readonly mediaStoreDir?: string | null;
+  /** Default: false (no development source exists). */
+  readonly captureDevSources?: boolean;
+  /** Default: null (no helper program). */
+  readonly captureHelperFfmpegPath?: string | null;
 }
 
 /**
@@ -293,6 +314,7 @@ export function createConfig(input: ConfigInput): CoreServerConfig {
   }
   const captureWorkerPath = parseCapturePath(ENV_CAPTURE_WORKER, input.captureWorkerPath ?? undefined);
   const mediaStoreDir = parseCapturePath(ENV_MEDIA_DIR, input.mediaStoreDir ?? undefined) ?? `${input.dataDir}/${MEDIA_STORE_SUBPATH}`;
+  const captureHelperFfmpegPath = parseCapturePath(ENV_CAPTURE_HELPER_FFMPEG, input.captureHelperFfmpegPath ?? undefined);
   return Object.freeze({
     host: LISTEN_HOST,
     port: input.port,
@@ -312,5 +334,7 @@ export function createConfig(input: ConfigInput): CoreServerConfig {
     captureMode: input.captureMode ?? DEFAULT_CAPTURE_MODE,
     captureWorkerPath,
     mediaStoreDir,
+    captureDevSources: input.captureDevSources ?? false,
+    captureHelperFfmpegPath,
   });
 }

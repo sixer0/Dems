@@ -88,7 +88,7 @@ import {
   VerificationStatus,
 } from '../sim/vocabulary';
 import { OperatorSchema } from './identity';
-import { EVIDENCE_ID_PATTERN, SESSION_ID_PATTERN, SHA256_HEX_PATTERN } from './patterns';
+import { EVIDENCE_ID_PATTERN, MIC_INPUT_ID_PATTERN, SESSION_ID_PATTERN, SHA256_HEX_PATTERN } from './patterns';
 import { count, epochMs, nullableEpochMs, operatorId } from './schema-parts';
 import { apiText } from './text';
 
@@ -237,8 +237,8 @@ export type CaptureConfigCameraBody = z.output<typeof CaptureConfigCameraSchema>
 /** One mic slot of the selector: which input is PRIMARY and which is the hot standby (OD-09). */
 export const CaptureConfigMicSchema = z
   .strictObject({
-    inputId: z.enum(MicInputId),
-    deviceId: label(),
+    inputId: z.string().regex(MIC_INPUT_ID_PATTERN).describe('The mic input, `MIC-NN`: the built-in `MIC-01` / `MIC-02`, or a microphone registered later (D115 (2)).'),
+    deviceId: label().describe('The microphone behind the input: the device of the same ID (D106 (4)).'),
     role: z.enum(MicRole),
     transport: label().describe('Open set (`CODE`): USB, embedded RTSP, ... (OD-06).'),
     online: z.boolean(),
@@ -344,6 +344,10 @@ export const ActiveSessionSchema = z
       .nullable()
       .optional()
       .describe('The active/standby mic pair of this session.'),
+    captureDurable: z
+      .boolean()
+      .optional()
+      .describe('False from the accepted start until the first durable fragment ("connecting cameras"), then true; the state stays RECORDING (D84, D91 R-1). Absent reads as true.'),
     /** Incremental transcript state of this session (op 84; R-5). */
     transcript: z
       .strictObject({
@@ -597,7 +601,7 @@ export const ServicesSliceSchema = z
       startedAt: nullableEpochMs().optional().describe('When the service last started; a STOPPED service shows none.'),
     }),
   )
-  .describe('Slice `services`: the 16 Core services of book §6.1.');
+  .describe('Slice `services`: the 17 Core services (the 16 of book §6.1 and the transcriber service).');
 export type ServicesSliceBody = z.output<typeof ServicesSliceSchema>;
 
 const healthReading = () => ({
@@ -728,6 +732,8 @@ export const EvidenceItemSchema = z
       .describe('Schema v2: one whole file per camera (D224/D225) with its hashes; mirrors the simulator\'s `EvidenceFileEntry` (SH-07).'),
     fragmentChainHead: sha256().nullable().optional().describe('Schema v2 item-level chain head (SH-07 preview shape): the chain the fragments of this item continue.'),
     transcriptSha256: sha256().nullable().optional().describe('Schema v2 item-level transcript hash (SH-07 preview; `evidence_items.transcript_sha256`, dbc-3 §B.11).'),
+    manifestVersion: z.union([z.literal(1), z.literal(2)]).optional().describe('Manifest version of the seal (`evidence_items.manifest_version`, dbc-3 §B.11): 2 for every v2 seal, also one without a transcript hash. Absent: derived as before.'),
+    labelsStatus: z.enum(['LABELLED', 'UNAVAILABLE']).nullable().optional().describe('Whether the sealed transcript carries speaker labels (`evidence_items.labels_status`); null or absent when the seal states none.'),
     audioSourceIntervals: z
       .array(
         z.strictObject({
@@ -748,6 +754,8 @@ export const EvidenceItemSchema = z
         machineTranscriptHash: sha256().nullable().describe('Hash of the SEALED machine transcript — byte-unchanged by any revision (OD-15).'),
         labelsStatus: z.enum(['LABELLED', 'UNAVAILABLE']).nullable().describe('Diarization state (D226); null before assembly.'),
         revision: count().describe('Current max(revision_no); 0 when no revision exists (SEC35-21).'),
+        failedChunks: count().optional().describe('Chunks (not attempts) that ended FAILED; above 0 only with state PARTIAL. No text stands in for a failed chunk (D-EV-1; manifest field 93).'),
+        backendUnreachable: z.boolean().optional().describe('True when STT was enabled but the configured backend could not be reached for one or more chunks (manifest field 122).'),
       })
       .nullable()
       .optional()
@@ -897,7 +905,7 @@ export type SettingsSliceBody = z.output<typeof SettingsSliceSchema>;
 export const CaptureConfigSliceSchema = z
   .strictObject({
     cameras: z.array(CaptureConfigCameraSchema).describe('VIDEO-01 first, then VIDEO-02.'),
-    mics: z.array(CaptureConfigMicSchema).describe('The PRIMARY input first, then the STANDBY.'),
+    mics: z.array(CaptureConfigMicSchema).describe('In input order (ascending input ID): MIC-01, then MIC-02; the role is a member of the row.'),
     locked: z.boolean().describe('True while a session is open: no edit is accepted then (OD-10).'),
     updatedAt: epochMs(),
   })
@@ -919,6 +927,15 @@ export const CaptureDeviceStatusSchema = z
     online: z.boolean(),
     streamState: z.enum(CaptureStreamState).nullable().describe('Null for a device with no stream (a mic, the PoE switch).'),
     capabilities: z.array(label()).describe('Capability codes the adapters reported; an open set.'),
+    adapter: z
+      .string()
+      .regex(/^[A-Z][A-Z0-9_]{0,63}$/)
+      .optional()
+      .describe('The adapter kind behind the device (C3 §2.6 "Device shapes"): `ONVIF_RTSP`, `USB_AUDIO`, `SNMP_POE`, `FAKE` or `LOCAL_DEVICE`. Present on a device that operation 96 registered.'),
+    sourceClass: z
+      .enum(['PRODUCTION', 'DEVELOPMENT'])
+      .optional()
+      .describe('Derived by the Core from `adapter`: `DEVELOPMENT` exactly for `FAKE` and `LOCAL_DEVICE`. Never set by a client.'),
   })
   .describe('One capture device (`dbc-3 §B.2`); carries no credential (RK-12).');
 export type CaptureDeviceStatusBody = z.output<typeof CaptureDeviceStatusSchema>;

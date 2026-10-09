@@ -20,6 +20,8 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { V2 } from './contract-v2-delta';
+import { V3 } from './contract-v3-delta';
+import { V5 } from './contract-v5-delta';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 /** The workspace root of the repository: this folder is four levels below it. */
@@ -263,9 +265,20 @@ export function parseContract(text: string): ContractInventory {
   for (const added of V2.newTables) {
     tables.push({ id: added.id, name: added.name, columns: added.columns.map((c) => ({ ...c })), constraints: added.constraints.map((c) => ({ ...c })) as ContractConstraint[] });
   }
-  for (const change of V2.changedTables) {
+  // ── Schema v3 (dbc-4 §N; blueprint row 129): T-41, two added columns, six CHECKs, one FK, one
+  // partial unique index and two value sets, composed after the dbc-3 delta (contract-v3-delta.ts).
+  Object.assign(valueSets, V3.valueSets);
+  for (const added of V3.newTables) {
+    tables.push({ id: added.id, name: added.name, columns: added.columns.map((c) => ({ ...c })), constraints: added.constraints.map((c) => ({ ...c })) as ContractConstraint[] });
+  }
+  // ── Schema v5 (section N erratum PE-129b-01; row 129b): T-42 `session_stt_config`, ten columns,
+  // seven CHECKs, one primary key (contract-v5-delta.ts). Schema v4 changed no table.
+  for (const added of V5.newTables) {
+    tables.push({ id: added.id, name: added.name, columns: added.columns.map((c) => ({ ...c })), constraints: added.constraints.map((c) => ({ ...c })) as ContractConstraint[] });
+  }
+  for (const change of [...V2.changedTables, ...V3.changedTables]) {
     const table = tables.find((candidate) => candidate.name === change.name);
-    if (table === undefined) throw new Error(`dbc-3 delta: the v1 base has no table ${change.name}`);
+    if (table === undefined) throw new Error(`dbc-3/dbc-4 delta: the composed inventory has no table ${change.name}`);
     const mutable = table as unknown as { columns: ContractColumn[]; constraints: ContractConstraint[] };
     for (const column of change.addColumns) if (!mutable.columns.some((c) => c.name === column.name)) mutable.columns.push({ ...column });
     for (const dropped of change.dropConstraints) mutable.constraints = mutable.constraints.filter((c) => c.name !== dropped);
@@ -278,7 +291,7 @@ export function parseContract(text: string): ContractInventory {
   const all = tables.flatMap((table) => table.constraints);
   const count = (kind: ConstraintKind): number => all.filter((constraint) => constraint.kind === kind).length;
   return {
-    source: 'docs/2026-10-04_dems_backend_rbac_pairing/masterplan/03_database_contract.md (sections 2.4 and 4) composed with docs/2026-10-07_dems_real_capture_sealing/masterplan/04_database_contract.md (dbc-3 sections A.2, B, C, E.3; delta module contract-v2-delta.ts)',
+    source: 'docs/2026-10-04_dems_backend_rbac_pairing/masterplan/03_database_contract.md (sections 2.4 and 4) composed with docs/2026-10-07_dems_real_capture_sealing/masterplan/04_database_contract.md (dbc-3 sections A.2, B, C, E.3; delta module contract-v2-delta.ts; dbc-4 section N; delta module contract-v3-delta.ts; erratum PE-129b-01; delta module contract-v5-delta.ts)',
     valueSets,
     formats,
     tables,

@@ -11,6 +11,7 @@ import {
   selectStoragePolicy,
   useSim,
 } from '@dems/shared/sim'
+import { CoreMode, useCoreMode } from '@dems/shared/live'
 import { AnimatedNumber } from '@/components/ui/animated-number'
 import { useMotionPolicy } from '@/motion'
 import { KPI_STEP_MS, PANEL_BEAT_MS, panelVariants, useDataReady } from './choreography'
@@ -36,6 +37,10 @@ export function KpiCards() {
   const remainingMinutes = useSim((s) => Math.floor(selectStorage(s).estimatedRemainingMs / 60_000))
   const policy = useSim(selectStoragePolicy)
   const ready = useDataReady(PANEL_BEAT_MS.kpis)
+  // Task 3 M4 (blueprint row 67; WB-06): in Live mode the caption's rate is the Core's measured write
+  // rate (`storage.writeBytesPerSec`), not the simulator's nominal 8.2 GB/h. Simulated mode is unchanged.
+  const liveMode = useCoreMode() === CoreMode.LIVE
+  const captionRate = liveMode ? fixed((writeBps * 3_600) / GB, 1) : RATE_GB_PER_HOUR
 
   // The counter spring settles on the whole-minute target; round so a settling 23384.99 reads 45 m.
   const hm = (value: number) => {
@@ -60,7 +65,7 @@ export function KpiCards() {
         unit={t('storage.units.mbPerSecond')}
         caption={
           recording
-            ? t('storage.kpi.writeSpeedRecording', { rate: RATE_GB_PER_HOUR })
+            ? t('storage.kpi.writeSpeedRecording', { rate: captionRate })
             : t('storage.kpi.writeSpeedIdle')
         }
         live={recording}

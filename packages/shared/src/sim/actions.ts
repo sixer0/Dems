@@ -23,6 +23,9 @@ import {
   touchTransition,
   type AuthTransition,
 } from './auth';
+import { setCaptureConfigTransition } from './capture-config';
+import { registerCaptureDeviceTransition } from './capture-registry';
+import { clearCaptureNoticeTransition, isCaptureNotice, raiseCaptureNoticeTransition } from './capture-notices';
 import { applyCaptureTelemetryTransition, clearCaptureWarningTransition, feedCaptureLevels, raiseCaptureWarningTransition } from './capture-telemetry';
 import { deriveDeviceState } from './derive';
 import { appendActivity, verifyAuditChain } from './events';
@@ -62,6 +65,7 @@ import {
   snapshotTransition,
   startRecordingTransition,
   stopRecordingTransition,
+  switchAudioSourceTransition,
 } from './session-machine';
 import type { SimStore } from './store';
 import type {
@@ -243,7 +247,13 @@ export function createActions(context: ActionContext): SimActions {
       const next = applyCaptureTelemetryTransition(state, telemetry);
       if (next !== state) store.setState(next);
     },
-    raiseCaptureWarning: (warning) => commit((state, now) => raiseCaptureWarningTransition(state, now, warning)),
-    clearCaptureWarning: (warning) => commit((state, now) => clearCaptureWarningTransition(state, now, warning)),
+    // A no-device notice (row 133; C3 §5.4) is an alert of kind SYSTEM with no fault life cycle: `capture-notices.ts`.
+    raiseCaptureWarning: (warning) => commit((state, now) => (isCaptureNotice(warning) ? raiseCaptureNoticeTransition(state, now, warning) : raiseCaptureWarningTransition(state, now, warning))),
+    clearCaptureWarning: (warning) => commit((state, now) => (isCaptureNotice(warning) ? clearCaptureNoticeTransition(state, now, warning) : clearCaptureWarningTransition(state, now, warning))),
+
+    // ── The capture selector and the mic switch (task 3, register SH-18): HOSTED (operations 78 to 81) ──
+    setCaptureConfig: (change) => commit((state, now) => setCaptureConfigTransition(state, now, change)),
+    switchAudioSource: (inputId) => commit((state, now) => switchAudioSourceTransition(state, now, inputId)),
+    registerCaptureDevice: (device) => commit((state) => registerCaptureDeviceTransition(state, device).state),
   };
 }

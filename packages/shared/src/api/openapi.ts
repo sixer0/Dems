@@ -3,18 +3,19 @@
  * AC-56; backend task 2026-10-04: 01_specs §7.1 API-12, §7.19; 02_plan §16; 04_client_integration_spec
  * §11 AR-1).
  *
- * The registry holds 92 operations (C3 §2.5: 89 + the STT configuration ops 90-92), and the builder
+ * The registry holds 97 operations (C3 §10.1: 89 + the STT configuration ops 90-92 + the camera-search
+ * ops 93-97), and the builder
  * writes one of two documents from it:
  *
  * | | `offline` (the default) | `all` |
  * |---|---|---|
  * | Describes | What a client can call without the Core server: Simulated mode | The API as the Core server answers it: Live mode |
- * | Operations | 26: `GET /api/v1/health` (mock-core), the 9 book §21.2 endpoints, the 13 simulated capture/transcript endpoints (the in-app simulator, OD-17) and the 3 STT configuration endpoints (ops 90-92) | 92 |
+ * | Operations | 31: `GET /api/v1/health` (mock-core), the 9 book §21.2 endpoints, the 13 simulated capture/transcript endpoints (the in-app simulator, OD-17), the 3 STT configuration endpoints (ops 90-92) and the 5 camera-search endpoints (ops 93-97) | 97 |
  * | Who reads it | The API Reference page in Simulated mode: `createOpenApiDocument()` | The committed `openapi/openapi.json`, its drift test, and the API Reference page in Live mode |
  * | `info.version` | 0.2.0 (grew from 0.1.0 at M2: OD-17 adds the simulated capture ops) | 0.3.0 (grew from 0.2.1 at M2: capture/transcript ops 76-89) |
  * | Servers | mock-core | The Core server `http://127.0.0.1:4420`, then mock-core |
  * | Security | none: the simulator acts as the operator signed in to the console | Two schemes, the session cookie and HTTP bearer; each operation states which it takes |
- * | Badges | LIVE on health, SIMULATED on the twenty-five, RBAC + AUDIT on the export | LIVE on all 92: the Core server answers each over the network |
+ * | Badges | LIVE on health, SIMULATED on the thirty, RBAC + AUDIT on the export | LIVE on all 97: the Core server answers each over the network |
  * | Per operation | `x-badges`, `x-dems-mode`, `x-dems-source`, and `x-dems-rbac` on the four simulated commands | Also `x-dems-access`, `x-dems-audit`, `x-dems-services`, `security`, the Core server's text (`coreServerDescription`) and the statuses only the Core server sends |
  * | Response headers | `x-dems-simulated` on the nine | `x-request-id` on every answer of the Core server, `x-dems-epoch` and `x-dems-revision` on a 2xx of a POST |
  * | `components.responses` | none | The answers defined once for every operation |
@@ -229,7 +230,7 @@ export interface CreateOpenApiDocumentOptions {
   /** Default true. False keeps only the LIVE operations ("Show simulated endpoints" off). */
   includeSimulated?: boolean;
   /**
-   * Default `offline`: the 26 operations a client can call without the Core server (OD-17; ops 90-92). `all`:
+   * Default `offline`: the 31 operations a client can call without the Core server (OD-17; ops 90-92, 93-97). `all`:
    * every operation of the registry, as the Core server answers it (see the file header).
    */
   scope?: CoreApiScope;

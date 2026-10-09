@@ -26,8 +26,11 @@ import { useTranslation } from 'react-i18next';
 import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import type { AudioTrackId } from '@dems/shared/domain';
 import type { MicStatus } from '@dems/shared/sim';
-import { MicStateTone, toneHex } from '@dems/shared/tokens';
+import { MicStateTone, palette, toneHex } from '@dems/shared/tokens';
 import { DbfsMeter, type MeterVariant } from '@/components/composed/dbfs-meter';
+import { ROW_CARD_BORDER, SelectionGlow } from '@/components/composed/selection-glow';
+import { StatusChip } from '@/components/kit';
+import { useMicSourceRole } from './use-mic-source';
 import { triggerHaptic, useMotionPolicy } from '@/motion';
 import { useAnimatedReaction } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
@@ -102,11 +105,22 @@ export interface MicCardProps extends Omit<MicMeterProps, 'testID'> {
   style?: StyleProp<ViewStyle>;
 }
 
-/** MB 4 MIC card: dot chip, meter bars and the dBFS readout. */
+/**
+ * MB 4 MIC card: dot chip, meter bars and the dBFS readout.
+ *
+ * Task 3 M5 (row 73; ux §3.2 step 1, register MB-03): while a session records, the card says whether
+ * its input is the one inside `AUDIO-01` ("Active") or the hot standby ("Standby"). The words are the
+ * session's pair as the store holds it (D105: not "Primary", which stays the configured role on
+ * Devices and can differ after a switch); nothing on the card flips them. The active card is
+ * outlined in gold with the always-mounted `SelectionGlow` (E-15: the border is there in both
+ * states and the glow is the card's LAST child, so a switch changes two colours and mounts nothing).
+ */
 export function MicCard({ mic, style, ...meter }: MicCardProps) {
   const { t } = useTranslation();
   const tone = MicStateTone[mic.state];
   const label = mic.channel === 2 ? t('common.devices.mic2') : t('common.devices.mic1');
+  const sourceRole = useMicSourceRole(mic.id);
+  const active = sourceRole === 'ACTIVE';
 
   // §7.6: one Warning haptic when the CLIP latch sets (never tied to the 20 Hz data).
   const wasLatched = useRef(mic.clipLatched);
@@ -116,20 +130,39 @@ export function MicCard({ mic, style, ...meter }: MicCardProps) {
   }, [mic.clipLatched]);
 
   return (
-    <Surface variant="secondary" style={[styles.card, style]} testID={`monitor-mic-${mic.channel}`}>
+    <Surface
+      variant="secondary"
+      style={[styles.card, active ? styles.cardActive : null, style]}
+      testID={`monitor-mic-${mic.channel}`}
+      accessibilityState={{ selected: active }}
+    >
       <View style={styles.header}>
         <Chip size="sm" variant="soft" color={tone === 'danger' ? 'danger' : tone === 'warning' ? 'warning' : 'success'}>
           <View style={[styles.dot, { backgroundColor: toneHex[tone] }]} />
           <Chip.Label>{label}</Chip.Label>
         </Chip>
+        {sourceRole !== null ? (
+          <StatusChip
+            size="sm"
+            tone={active ? 'success' : 'default'}
+            label={t(`session.audioSource.role.${sourceRole}`)}
+            icon={null}
+            testID={`monitor-mic-role-${mic.channel}`}
+          />
+        ) : null}
       </View>
       <MicMeter mic={mic} testID={`monitor-meter-${mic.channel}`} {...meter} />
+      {/* E-15 (W93-4): always mounted, last; React sets its opacity. */}
+      <SelectionGlow selected={active} radius={CARD_RADIUS} testID={`monitor-mic-glow-${mic.channel}`} />
     </Surface>
   );
 }
 
+const CARD_RADIUS = 12;
+
 const styles = StyleSheet.create({
-  card: { flex: 1, borderRadius: 12, padding: 12, gap: 10 },
-  header: { flexDirection: 'row', alignItems: 'center' },
+  card: { flex: 1, borderRadius: CARD_RADIUS, padding: 12, gap: 10, ...ROW_CARD_BORDER },
+  cardActive: { borderColor: palette.gold },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   dot: { width: 8, height: 8, borderRadius: 4 },
 });

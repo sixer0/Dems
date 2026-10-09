@@ -14,7 +14,7 @@ import { DATE_PATTERNS, formatDate, formatUtcOffset } from '@dems/shared/realtim
 import type { AuditRow } from '@dems/shared/sim';
 import { derived, fontFamily, palette, radius, spacing, typography } from '@dems/shared/tokens';
 import { KeyValueList, StatusChip, type KeyValueItem } from '@/components/kit';
-import { authMethodOf, eventRecordJson, faultKindOf, type ChainLink } from './audit-model';
+import { authMethodOf, captureChangeOf, eventRecordJson, faultKindOf, type ChainLink } from './audit-model';
 import { SEVERITY_TONE } from './audit-tones';
 
 export interface AuditEntryDetailProps {
@@ -47,6 +47,18 @@ export function AuditEntryDetail({ row, chain, label, actor, variant }: AuditEnt
   ];
   if (method) items.push({ id: 'method', label: t('features.audit.detail.method'), value: t(`common.authMethod.${method}`), testID: 'audit-detail-method' });
   if (fault) items.push({ id: 'fault', label: t('features.audit.detail.fault'), value: t(`common.faultKind.${fault}`) });
+  // Task 3 row 68 (MB-12): what a capture-configuration change moved, from the row's own detail keys.
+  const change = captureChangeOf(row);
+  if (change) {
+    const values = change.from === null ? change.to : t('features.capture-selector.audit.changeValue', { from: change.from, to: change.to });
+    items.push({
+      id: 'change',
+      label: t('features.capture-selector.audit.change'),
+      value: change.target === null ? values : `${change.target}: ${values}`,
+      mono: true,
+      testID: 'audit-detail-change',
+    });
+  }
   if (row.sessionId) items.push({ id: 'session', label: t('features.audit.detail.session'), value: row.sessionId, mono: true });
   if (row.evidenceId) items.push({ id: 'evidence', label: t('features.audit.detail.evidence'), value: row.evidenceId, mono: true });
   if (row.deviceId) items.push({ id: 'device', label: t('features.audit.detail.device'), value: row.deviceId, mono: true });

@@ -8,16 +8,20 @@
  *   THE CONNECTION PROBE (operation 92). The server opens no outbound connection of its own
  *   (static guard `test/static/network.test.ts`, SR-03), and the probe of each backend - the
  *   authenticated model-list request of `omlx-server` through the single key-loader, the binary
- *   and model check of `cpu-local` - is the transcriber runtime's (row 115). Until a probe is
- *   provided, operation 92 answers `503 NOT_READY` with `details.reason: TRANSCRIBER_NOT_READY`,
- *   which is the contract's own answer for exactly that (C3 §2.5).
+ *   and model check of `cpu-local` - is the transcription composition's (`src/transcription`,
+ *   row 115), which this module mounts and whose probe it uses in an app that has a data
+ *   directory. An app without one has no transcriber: operation 92 then answers `503 NOT_READY`
+ *   with `details.reason: TRANSCRIBER_NOT_READY`, the contract's own answer for exactly that
+ *   (C3 §2.5). A probe handed to `provideProbe` wins over the composition's.
  *
  *   THE CREDENTIAL SEALER (operation 91, `credential.kind: SECRET`). A secret is stored as
  *   AES-256-GCM ciphertext whose key lives in the Core credential store (dbc-3 §B.13, §B.3
- *   SEC35-03). That store is not this module's: it lands with the key-store row. Until a sealer
- *   is provided, a `SECRET` write answers `503 NOT_READY` with
+ *   SEC35-03). That store is not this module's: it is `src/credential-store` (row 84), and the
+ *   module takes its sealer from it when the app is ready. While the app has no store (no data
+ *   directory) or the store refuses to work, a `SECRET` write answers `503 NOT_READY` with
  *   `details.reason: CREDENTIAL_STORE_NOT_READY` and stores nothing - the secret is never kept in
- *   any weaker form. `REFERENCE` and `CLEAR` need no sealer.
+ *   any weaker form. `REFERENCE` and `CLEAR` need no sealer. The store's envelope is a padded
+ *   frame: its ciphertext is 80 bytes or more, whatever the length of the secret.
  *
  * A probe is given the non-secret part of the stored configuration and NOTHING of the credential
  * but how it is held: a probe that needs the credential reads it through its own key-loader.

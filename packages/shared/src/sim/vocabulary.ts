@@ -93,9 +93,9 @@ export type SessionOutcome = ValueOf<typeof SessionOutcome>;
 /**
  * The 8 §5.3 gate checks, in display order, plus the role-keyed mic pair of the v2 track model
  * (register SH-03; OD-01 T1). `MIC_PRIMARY`/`MIC_STANDBY` check the input that holds each role
- * rather than a fixed channel; `MIC_1`/`MIC_2` stay live until the client rows that render them
- * (blueprint rows 67 and 68) move to the role-keyed pair, so `PRECHECK_ORDER` — the book's eight —
- * is unchanged.
+ * rather than a fixed channel. Since blueprint row 133 (decision D101(2)) `PRECHECK_ORDER` — still
+ * eight checks — holds the role-keyed pair; `MIC_1`/`MIC_2` stay in the ID set because stored
+ * pre-check items and older clients name them, and `evaluatePrecheck` still answers them.
  */
 export const PrecheckCheckId = {
   CORE: 'CORE',
@@ -114,8 +114,9 @@ export const PRECHECK_ORDER = [
   PrecheckCheckId.CORE,
   PrecheckCheckId.LENS_1,
   PrecheckCheckId.LENS_2,
-  PrecheckCheckId.MIC_1,
-  PrecheckCheckId.MIC_2,
+  // Role-keyed since task 3 row 133 (decision D101(2)): web and mobile moved together. `MIC_1` / `MIC_2` stay valid IDs of stored items.
+  PrecheckCheckId.MIC_PRIMARY,
+  PrecheckCheckId.MIC_STANDBY,
   PrecheckCheckId.STORAGE,
   PrecheckCheckId.TIME,
   PrecheckCheckId.SECURITY,
@@ -423,6 +424,14 @@ export const AuditType = {
   // only. Its exact detail keys name the changed FIELDS plus `credentialChanged` — never a value of
   // the endpoint, the model path, the credential or its reference target (E-30/E-31; SEC35-14).
   STT_CONFIG_CHANGED: 'STT_CONFIG_CHANGED',
+  // Task 3 R-9..R-11 (blueprint rows 132 / 133 / 142; `C3 §5.2` "the four audit types of the row-121
+  // delta", decision D106): camera search, connection test, adoption, and the no-device warning.
+  // Written by Core-server modules; each has an exact detail-key list in `apps/core-server/src/core/
+  // audit-details.ts`. Never a username, a secret or a URL in any of them (C-N9; D86 C-3, C-6).
+  CAPTURE_DISCOVERY_SEARCHED: 'CAPTURE_DISCOVERY_SEARCHED',
+  CAPTURE_CONNECTION_TESTED: 'CAPTURE_CONNECTION_TESTED',
+  CAPTURE_CANDIDATE_ADOPTED: 'CAPTURE_CANDIDATE_ADOPTED',
+  CAPTURE_DEVICE_UNREACHABLE: 'CAPTURE_DEVICE_UNREACHABLE',
 } as const;
 export type AuditType = ValueOf<typeof AuditType>;
 
@@ -494,6 +503,11 @@ export const AUDIT_TYPE_CATEGORY = {
   CAPTURE_CREDENTIAL_REVEALED: 'SECURITY',
   // Task 3 M6 (row 113; `C3 §2.5`): one entry, in an EXISTING category.
   STT_CONFIG_CHANGED: 'DEVICE',
+  // Task 3 R-9..R-11 (`C3 §5.3`, erratum PE-121-09): exactly four entries, no new category.
+  CAPTURE_DISCOVERY_SEARCHED: 'DEVICE',
+  CAPTURE_CONNECTION_TESTED: 'SECURITY',
+  CAPTURE_CANDIDATE_ADOPTED: 'DEVICE',
+  CAPTURE_DEVICE_UNREACHABLE: 'DEVICE',
 } as const satisfies Record<AuditType, AuditCategory>;
 
 // ── Operational events (Recent Events, bell, timeline sources) ──────────────────────────

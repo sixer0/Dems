@@ -65,6 +65,8 @@ describe('the three folders take the Core through the light Live API (CLG c, AC-
       'session-finalizing/handover.ts',
       'session-finalizing/i18n.ts',
       'session-finalizing/sealed-stamp.tsx',
+      // Blueprint row 87 (E-13): sealing progress, forward-only, from the Core's states alone (no timer).
+      'session-finalizing/sealing-progress.ts',
       'session-finalizing/session-finalizing-screen.tsx',
       'session-finalizing/use-finalizing.ts',
       'session-summary/hash-sheet.tsx',
@@ -144,9 +146,15 @@ describe('one LIVE idiom, one pending control, one link notice (rule 5; 09b §8)
     expect(screenText.match(/\{\.\.\.busyState\((?:press|donePress|evidencePress)\.busy\)\}/g)).toHaveLength(3);
     expect(screenText.match(/\.pending \? <PendingSpinner/g)).toHaveLength(3);
     expect(matching(/function usePendingPress|function busyState|function PendingSpinner/)).toEqual([]);
-    // The two timers left are step 80's, unchanged since `acaff20`: the region boundary's retry
-    // cooldown and the sheet's exit animation. No timer paces a Core command (rule 7).
-    expect(matching(/\bsetTimeout\b|\bsetInterval\b/)).toEqual(['session-finalizing/flow-boundary.tsx', 'session-summary/use-sheet-presence.tsx']);
+    // Two timers are step 80's, unchanged since `acaff20`: the region boundary's retry cooldown and the
+    // sheet's exit animation. The third is row 87's (B9): the motion budget of the SEALED stamp, after which
+    // React draws its rest state. No timer paces a Core command or moves sealing progress (rule 7; E-13).
+    expect(matching(/\bsetTimeout\b|\bsetInterval\b/)).toEqual([
+      'session-finalizing/flow-boundary.tsx',
+      'session-finalizing/sealed-stamp.tsx',
+      'session-summary/use-sheet-presence.tsx',
+    ]);
+    expect(fileText('session-finalizing/sealing-progress.ts')).not.toMatch(/\bDate\b|\bsetTimeout\b|\bsetInterval\b|\buseEffect\b|requestAnimationFrame/);
   });
 });
 
