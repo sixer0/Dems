@@ -143,4 +143,5 @@ User: "cek dan kerjakan implementasinya dengan full paralelisasi di ijinkan tanp
 | A-2 `contract.test.ts` red until M8 | open | M4/M5/M7/M8 gates show the failing set shrinking |
 | A-3 stale ledger rows 50a/51a/56b, stale `delegation_progress_report.md` | open | Kilo reconciles on resume |
 | Checkpoint commit of M2 | done | see `git log` |
-| 56b device gate | BLOCKED ON USER | `apps/mobile/scripts/emulator-user-lock.sh unlock` |
+| 56b device gate | done, 1 carry-over (D62) | `gateway_check/08_m2_gate_device.md` — lanes 2 + 3 live PASS; lane 1 (`dems2_phone`, 5558) still locked, passes at API level |
+| M2 gate | SIGNED OFF with carry-overs A-1, A-2, lane 1 live clause | M3 (row 57) may start |
