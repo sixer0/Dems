@@ -95,10 +95,14 @@ describe('MODG: the route list of the module equals its registry operations', ()
     console.info(`[w36] MODG registry, operations 44 to 52:  ${fromRegistry.join(' | ')}`);
   });
 
-  it('the area of the registry is these nine operations: the three design-book reads, then operations 47 to 52', () => {
+  it('the area of the registry: these nine operations plus the six of the capture-config module (row 52/66), in registry order', () => {
     const area = CORE_API_OPERATIONS.filter((operation) => operation.tag === CoreApiTag.DEVICE);
-    expect(area.map((operation) => operation.operationId)).toEqual([...DEVICES_OPERATIONS]);
-    expect(area.map(operationNumber)).toEqual([null, null, null, 47, 48, 49, 50, 51, 52]);
+    // Schema v2 (C3 §2.2): the Device tag grew by operations 76 to 80 and 89 - the selector and
+    // the credential write, which the capture-config module answers (row 66), not this one. The
+    // module's nine stay the first entries of the area, in registry order.
+    const CAPTURE_CONFIG_AREA = ['getCaptureConfig', 'getCaptureDevices', 'updateCaptureConfig', 'setCaptureCameraSource', 'setPrimaryMic', 'setCaptureDeviceCredential'];
+    expect(area.map((operation) => operation.operationId)).toEqual([...DEVICES_OPERATIONS, ...CAPTURE_CONFIG_AREA]);
+    expect(area.map(operationNumber).slice(0, DEVICES_OPERATIONS.length)).toEqual([null, null, null, 47, 48, 49, 50, 51, 52]);
     expect(area.slice(0, 3).map((operation) => operation.source)).toEqual(['Design book §21.2', 'Design book §21.2', 'Design book §21.2']);
     for (const operationId of DEVICES_OPERATIONS) expect(operationOf(operationId).operationId).toBe(operationId);
   });
@@ -158,9 +162,18 @@ describe('MODG: the route list of the module equals its registry operations', ()
 describe('which device command each of the three operations runs (the contract table DEVICE_COMMAND_OPERATIONS; W83 closed the adapter of gap 3)', () => {
   it('the table has exactly the three operations the contract lists for deviceCommand, and each command exactly once', () => {
     expect(Object.keys(DEVICE_COMMAND_OF_OPERATION)).toEqual([...SIM_ACTION_OPERATIONS.deviceCommand.operations]);
-    // The server's table is the contract's, read the other way round.
-    for (const [command, operationId] of Object.entries(DEVICE_COMMAND_OPERATIONS)) expect(DEVICE_COMMAND_OF_OPERATION[operationId], operationId).toBe(command);
-    expect(Object.values(DEVICE_COMMAND_OF_OPERATION).sort()).toEqual(Object.values(DeviceCommand).sort());
+    // Schema v2 (E-12; C3 §0/§3 op 48): POE_CYCLE joins the contract's command vocabulary and reaches
+    // restartDevice too, but operation 48 decides RESTART versus PoE cycle from the body and the
+    // stream state INSIDE the server-side path - the hosted ACTION `deviceCommand` still carries three
+    // commands, so the server's per-operation map keeps them and excludes POE_CYCLE by decision
+    // (`devices/operations.ts`, row 48). The reverse lookup therefore holds for the three action
+    // commands; POE_CYCLE is asserted absent with its reason.
+    for (const [command, operationId] of Object.entries(DEVICE_COMMAND_OPERATIONS)) {
+      if (command === DeviceCommand.POE_CYCLE) continue;
+      expect(DEVICE_COMMAND_OF_OPERATION[operationId], operationId).toBe(command);
+    }
+    expect(DEVICE_COMMAND_OPERATIONS[DeviceCommand.POE_CYCLE], 'POE_CYCLE names a contract operation').toBeDefined();
+    expect(Object.values(DEVICE_COMMAND_OF_OPERATION).sort()).toEqual([DeviceCommand.IDENTIFY, DeviceCommand.RESTART, DeviceCommand.TEST_SIGNAL]);
     expect(DEVICE_COMMAND_OF_OPERATION).toEqual({ restartDevice: 'RESTART', testDeviceSignal: 'TEST_SIGNAL', identifyDevice: 'IDENTIFY' });
   });
 
@@ -222,7 +235,9 @@ describe('operations 44 to 47: a read answers from the committed state of the en
     expect(inventory.statusCode).toBe(200);
     expect(inventory.json()).toEqual(JSON.parse(JSON.stringify(deviceInventoryOf(state))));
     expect(validateCoreApiResponse('getDeviceInventory', 200, inventory.json())).toEqual({ ok: true });
-    expect(Object.keys(inventory.json() as object)).toEqual(['device', 'cameras', 'mics', 'otherDevices', 'ports', 'activeCameraId', 'tabletLink']);
+    // Schema v2 (C3 §3 op 47; SH-12): the selector snapshot joins the answer (E-04: its own slice,
+    // never the paired-client registry; RK-12: no credential member anywhere in it).
+    expect(Object.keys(inventory.json() as object)).toEqual(['device', 'cameras', 'mics', 'otherDevices', 'ports', 'activeCameraId', 'tabletLink', 'captureConfig']);
 
     expect(built.engine.reads).toBe(4);
     expect(built.engine.commands).toEqual([]);
@@ -259,16 +274,19 @@ describe('operations 44 to 47: a read answers from the committed state of the en
     expect(before).toEqual(audioStatusOf(state, 0));
 
     let asked = 0;
+    // Schema v2 (SH-17/SH-25; E-02): the engine's meter frame carries the mic INPUTS, keyed by
+    // MIC-01/MIC-02, plus the active input - the re-keyed `meters.audio` slice.
     const frame = {
       at: 1,
       seq: 1,
       audio: {
-        channels: {
-          'AUDIO-01': { seq: 1, at: 1, dbfs: -18.5, peak: -17.25, clip: false, noSignal: false },
-          'AUDIO-02': { seq: 1, at: 1, dbfs: -33.75, peak: -30.5, clip: false, noSignal: false },
+        inputs: {
+          'MIC-01': { seq: 1, at: 1, dbfs: -18.5, peak: -17.25, clip: false, noSignal: false },
+          'MIC-02': { seq: 1, at: 1, dbfs: -33.75, peak: -30.5, clip: false, noSignal: false },
         },
+        activeInputId: 'MIC-01',
       },
-    };
+    } as const;
     built.engine.host.meters = () => {
       asked += 1;
       return frame;

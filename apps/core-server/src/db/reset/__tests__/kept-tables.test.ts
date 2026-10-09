@@ -1,5 +1,7 @@
-// The eight kept tables: the list, the statements and the comparison of row images (plan row
-// W29; database contract §8.5 "Kept tables", R-5c, R-6). Database-free.
+// The twelve kept tables: the list, the statements and the comparison of row images (plan row
+// W29; database contract §8.5 "Kept tables", R-5c, R-6; dbc-3 §E.1 and blueprint row 54 add the
+// three capture tables and their `upsert` carry mode; dbc-3 §B.13 and blueprint row 114 add
+// `stt_config` as the twelfth). Database-free.
 import { getTableColumns, getTableName } from 'drizzle-orm';
 import type { PgTable } from 'drizzle-orm/pg-core';
 import { describe, expect, it } from 'vitest';
@@ -7,6 +9,7 @@ import * as schema from '../../schema';
 import {
   CANCEL_ACTIVE_CODES_STATEMENT,
   CARRY_CHUNK_ROWS,
+  CAPTURE_KEPT_TABLES,
   KEPT_TABLES,
   KEPT_TABLE_NAMES,
   LAST_SIGN_IN_STATEMENT,
@@ -21,6 +24,7 @@ import {
   keptCounts,
   readImagesStatement,
   updateCarriedStatement,
+  upsertCarriedStatement,
   type KeptImages,
   type PairingCodeImage,
 } from '../kept-tables';
@@ -32,7 +36,7 @@ const table = (name: string) => {
 };
 
 describe('the kept list', () => {
-  it('is the eight tables of the contract, in the carry-over order of R-5c', () => {
+  it('is the twelve tables of the contract, in the carry-over order of R-5c', () => {
     expect(KEPT_TABLE_NAMES).toEqual([
       'registry_counters',
       'console_settings',
@@ -41,10 +45,70 @@ describe('the kept list', () => {
       'device_credentials',
       'auth_sessions',
       'biometric_tokens',
+      'capture_devices',
+      'capture_device_credentials',
+      'capture_config',
+      'stt_config',
       'audit_chain_history',
     ]);
-    // The two tables the seed writes are updated; the six it leaves empty are inserted into.
-    expect(KEPT_TABLES.map((entry) => entry.mode)).toEqual(['update', 'update', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert']);
+    // The two tables the seed writes are updated; the six it leaves empty are inserted into; the
+    // three capture tables of OD-19 and the STT configuration of R-8 are carried by `upsert`
+    // (D-DB-08); the lineage is last.
+    expect(KEPT_TABLES.map((entry) => entry.mode)).toEqual([
+      'update',
+      'update',
+      'insert',
+      'insert',
+      'insert',
+      'insert',
+      'insert',
+      'upsert',
+      'upsert',
+      'upsert',
+      'upsert',
+      'insert',
+    ]);
+  });
+
+  it('the STT configuration singleton joins after the capture selector and before the lineage', () => {
+    const position = (name: string): number => KEPT_TABLE_NAMES.indexOf(name);
+    expect(position('capture_config')).toBeLessThan(position('stt_config'));
+    expect(position('stt_config')).toBeLessThan(position('audit_chain_history'));
+    expect(table('stt_config').mode).toBe('upsert');
+    expect(table('stt_config').key).toBe('singleton');
+    // The columns of the carried image are the table's own, in table order (dbc-3 §B.13).
+    expect(table('stt_config').columns).toEqual([
+      'singleton',
+      'enabled',
+      'backend',
+      'endpoint',
+      'model',
+      'language',
+      'diarization',
+      'credential_kind',
+      'credential_ref',
+      'secret_ciphertext',
+      'nonce',
+      'revision',
+      'updated_by',
+      'updated_at',
+    ]);
+    // The carried statement is the upsert shape: the seeded row of key true is replaced, never
+    // duplicated, and no secret column is dropped from the image.
+    const statement = upsertCarriedStatement(table('stt_config'));
+    expect(statement).toContain('ON CONFLICT ("singleton") DO UPDATE SET');
+    expect(statement).toContain('"secret_ciphertext" = EXCLUDED."secret_ciphertext"');
+    expect(statement).toContain('"nonce" = EXCLUDED."nonce"');
+  });
+
+  it('the three capture tables join in their own FK order: devices, then credentials, then the selector', () => {
+    expect(CAPTURE_KEPT_TABLES).toEqual(['capture_devices', 'capture_device_credentials', 'capture_config']);
+    const position = (name: string): number => KEPT_TABLE_NAMES.indexOf(name);
+    expect(position('capture_devices')).toBeLessThan(position('capture_device_credentials'));
+    expect(position('capture_device_credentials')).toBeLessThan(position('capture_config'));
+    // They sit between the biometric tokens and the lineage, which stays last.
+    expect(position('capture_devices')).toBeGreaterThan(position('biometric_tokens'));
+    expect(position('capture_config')).toBeLessThan(position('audit_chain_history'));
   });
 
   it('each key is the primary key of the typed schema, and each column list is the table\'s own', () => {
@@ -56,6 +120,10 @@ describe('the kept list', () => {
       device_credentials: schema.deviceCredentials,
       auth_sessions: schema.authSessions,
       biometric_tokens: schema.biometricTokens,
+      capture_devices: schema.captureDevices,
+      capture_device_credentials: schema.captureDeviceCredentials,
+      capture_config: schema.captureConfig,
+      stt_config: schema.sttConfig,
       audit_chain_history: schema.auditChainHistory,
     };
     for (const entry of KEPT_TABLES) {
@@ -118,6 +186,21 @@ describe('the statements', () => {
     );
     expect(carryStatement(table('registry_counters'))).toBe(updateCarriedStatement(table('registry_counters')));
     expect(carryStatement(table('auth_sessions'))).toBe(insertCarriedStatement(table('auth_sessions')));
+  });
+
+  it('an upsert carries every column and replaces the seeded row of the same key (D-DB-08)', () => {
+    const devices = upsertCarriedStatement(table('capture_devices'));
+    // A carried device with the id of a built-in updates that row; one the seed does not know is inserted.
+    expect(devices).toContain('INSERT INTO public.capture_devices');
+    expect(devices).toContain('ON CONFLICT ("id") DO UPDATE SET');
+    expect(devices).toContain('"kind" = EXCLUDED."kind"');
+    expect(devices).toContain('$1::jsonb');
+    // It is not an insert (no bare INSERT ... SELECT without ON CONFLICT) and not an update.
+    expect(carryStatement(table('capture_devices'))).toBe(devices);
+    expect(devices).not.toMatch(/ORDER BY/);
+    // The selector keys on its singleton boolean; the credentials key on the device id.
+    expect(upsertCarriedStatement(table('capture_config'))).toContain('ON CONFLICT ("singleton") DO UPDATE SET');
+    expect(upsertCarriedStatement(table('capture_device_credentials'))).toContain('ON CONFLICT ("device_id") DO UPDATE SET');
   });
 
   it('no statement holds a value: every one has exactly one parameter, the JSON array', () => {
@@ -265,5 +348,23 @@ describe('R-6: carried over unchanged', () => {
     // But when rows of such a table WERE read, they must be the rows in the new database.
     const other = read({ ...built.images, registry_counters: ['{"name": "device", "next_value": 9}', '{"name": "pairingCode"}'] }, [...built.pairingCodes]);
     expect(compareCarried(carried, other, expectation)).toEqual(['registry_counters: row 1 differs from the row that was read.']);
+  });
+
+  it('an upsert table: every carried row is present in the order read, and a seed row the old database did not know may sit beside them', () => {
+    // No lineage row is involved here, so the comparison must not expect the appended one.
+    const exp = { now: '5000', actorId: 'OPR-002', lineageAppended: false };
+    // A discovered device (CAM-99) plus a built-in (CAM-01) were read from the old database.
+    const carriedUpsert = read({ capture_devices: ['{"id": "CAM-01"}', '{"id": "CAM-99"}'] });
+    // The new database holds both carried rows, and a second built-in the seed wrote that the old
+    // database did not carry (D-DB-08): the carried rows are found in order among the extras.
+    const withSeedExtra = read({ capture_devices: ['{"id": "CAM-01"}', '{"id": "CAM-02"}', '{"id": "CAM-99"}'] });
+    expect(compareCarried(carriedUpsert, withSeedExtra, exp)).toEqual([]);
+    // A carried row that did not survive is named by table and position, never by value.
+    const lost = read({ capture_devices: ['{"id": "CAM-01"}'] });
+    expect(compareCarried(carriedUpsert, lost, exp)).toEqual([
+      'capture_devices: row 2 of the rows that were read is not in the new database.',
+    ]);
+    // An upsert table is never required to be empty on a first build (it is not an `insert` table).
+    expect(compareCarried(read({}), withSeedExtra, exp)).toEqual([]);
   });
 });

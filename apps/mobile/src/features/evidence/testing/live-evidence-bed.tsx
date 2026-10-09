@@ -315,7 +315,9 @@ export async function renderLiveEvidence({
   hosted('exportEvidence', (call) => {
     const id = idParam(call);
     const result = engine.sim.actions.exportEvidence(id, call.body as ExportRequest);
-    if (result.ok) return { status: 202, body: { exportId: result.exportId, evidenceId: id, status: 'EXPORTED' } };
+    // op-42's 202 body is `{ exportId, evidenceId, status: 'QUEUED' }` since SH-15 (row 48): the export
+    // is accepted as a queued job; the evidence ITEM's own lifecycle status (still EXPORTED) is separate.
+    if (result.ok) return { status: 202, body: { exportId: result.exportId, evidenceId: id, status: 'QUEUED' } };
     if (result.status === 403) return fake.example('exportEvidence', 403, 'forbidden');
     if (result.status === 422) return fake.example('exportEvidence', 422, 'invalidReason');
     if (result.status === 409) return fake.example('exportEvidence', 409, 'notSealed');

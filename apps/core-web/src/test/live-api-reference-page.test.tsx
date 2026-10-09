@@ -125,16 +125,16 @@ async function openLive() {
 }
 
 describe('Live mode: the document and Try-it (AC-C-100, AR-4, AR-6)', () => {
-  it('75 operations, every one LIVE, served from the page origin; no switch; the warning names the operator', async () => {
+  it('89 operations, every one LIVE, served from the page origin; no switch; the warning names the operator', async () => {
     const { bed: live } = await openLive()
     expect(screen.getByTestId('page-api-reference')).toHaveAttribute('data-mode', 'live')
     const document = lastConfiguration().content
-    expect(listOpenApiOperations(document)).toHaveLength(75)
+    expect(listOpenApiOperations(document)).toHaveLength(89)
     expect(new Set(badgesOf(document))).toEqual(new Set(['LIVE']))
     expect(document.servers.map((server) => server.url)).toEqual([LIVE_TEST_ORIGIN])
-    expect(screen.getByTestId('api-operation-count')).toHaveTextContent('75 operations')
+    expect(screen.getByTestId('api-operation-count')).toHaveTextContent('89 operations')
     expect(screen.getByTestId('api-base-url')).toHaveTextContent(LIVE_TEST_ORIGIN)
-    expect(screen.getByTestId('api-spec-version')).toHaveTextContent('v0.2.1')
+    expect(screen.getByTestId('api-spec-version')).toHaveTextContent('v0.3.0')
     expect(screen.queryByTestId('api-show-simulated')).toBeNull()
     expect(screen.queryByTestId('api-show-core-server')).toBeNull()
     expect(screen.queryByTestId('api-legend-SIMULATED')).toBeNull()
@@ -286,12 +286,12 @@ async function openSimulated() {
 }
 
 describe('Simulated mode (AC-C-100, AR-2)', () => {
-  it('ten operations as before; "Show Core-server endpoints" lists 75 with CORE SERVER and refuses their Try-it without a request', async () => {
+  it('23 operations as before; "Show Core-server endpoints" lists 89 with CORE SERVER and refuses their Try-it without a request', async () => {
     const { sim, fetched } = await openSimulated()
     expect(screen.getByTestId('page-api-reference')).toHaveAttribute('data-mode', 'simulated')
-    expect(listOpenApiOperations(lastConfiguration().content)).toHaveLength(10)
-    expect(screen.getByTestId('api-operation-count')).toHaveTextContent('10 operations')
-    expect(screen.getByTestId('api-spec-version')).toHaveTextContent('v0.1.0')
+    expect(listOpenApiOperations(lastConfiguration().content)).toHaveLength(23)
+    expect(screen.getByTestId('api-operation-count')).toHaveTextContent('23 operations')
+    expect(screen.getByTestId('api-spec-version')).toHaveTextContent('v0.2.0')
     expect(screen.queryByTestId('api-live-warning')).toBeNull()
     expect(screen.getByTestId('api-realtime-connect')).toBeInTheDocument()
     const coreSwitch = within(screen.getByTestId('api-show-core-server')).getByRole('switch')
@@ -299,10 +299,10 @@ describe('Simulated mode (AC-C-100, AR-2)', () => {
     expect(screen.queryByTestId('api-legend-CORE_SERVER')).toBeNull()
 
     fireEvent.click(coreSwitch)
-    await waitFor(() => expect(listOpenApiOperations(lastConfiguration().content)).toHaveLength(75))
-    expect(screen.getByTestId('api-operation-count')).toHaveTextContent('75 operations')
+    await waitFor(() => expect(listOpenApiOperations(lastConfiguration().content)).toHaveLength(89))
+    expect(screen.getByTestId('api-operation-count')).toHaveTextContent('89 operations')
     expect(screen.getByTestId('api-legend-CORE_SERVER')).toHaveTextContent(A.badges.CORE_SERVER)
-    expect(badgesOf(lastConfiguration().content).filter((name) => name === 'CORE SERVER')).toHaveLength(65)
+    expect(badgesOf(lastConfiguration().content).filter((name) => name === 'CORE SERVER')).toHaveLength(66)
 
     const request = vi.spyOn(sim, 'request')
     const before = fetched.length
@@ -319,7 +319,7 @@ describe('Simulated mode (AC-C-100, AR-2)', () => {
     expect(JSON.stringify(webErrorSink.records())).not.toContain(MARKER_PASSWORD)
 
     fireEvent.click(coreSwitch)
-    await waitFor(() => expect(listOpenApiOperations(lastConfiguration().content)).toHaveLength(10))
+    await waitFor(() => expect(listOpenApiOperations(lastConfiguration().content)).toHaveLength(23))
     expect(getMissingI18nKeys()).toEqual([])
   })
 })

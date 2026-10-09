@@ -61,17 +61,17 @@ describe('Finalization (04 §4.6)', () => {
     expect(screen.getByTestId('finalizing-session-id')).toHaveTextContent(h.sessionId!);
     expect(screen.getByTestId('finalizing-progress')).toHaveTextContent('0% complete');
     for (const label of [
-      'Finalize tracks',
-      'Calculate hashes',
+      'Close tracks',
+      'Finalize hashes',
+      'Finalize transcript',
       'Build manifest',
-      'Encrypt evidence payload',
       'Sign manifest',
       'Store sealed evidence package',
     ]) {
       expect(screen.getByText(label)).toBeTruthy();
     }
-    expect(stepLabel(0)).toBe('Step 1 of 6, Finalize tracks, in progress');
-    expect(stepLabel(1)).toBe('Step 2 of 6, Calculate hashes, waiting');
+    expect(stepLabel(0)).toBe('Step 1 of 6, Close tracks, in progress');
+    expect(stepLabel(1)).toBe('Step 2 of 6, Finalize hashes, waiting');
     expect(screen.getByTestId('finalizing-keep-open')).toBeTruthy();
     // Session card: case, subject chip (sim code → Indonesian term), evidence ID assigned at FINALIZING.
     const state = h.sim.store.getState();
@@ -87,8 +87,8 @@ describe('Finalization (04 §4.6)', () => {
     await settle();
     const first = h.sim.store.getState().session!.finalization.steps[0]!;
     h.run(first.durationMs! + 100);
-    expect(stepLabel(0)).toBe('Step 1 of 6, Finalize tracks, completed');
-    expect(stepLabel(1)).toBe('Step 2 of 6, Calculate hashes, in progress');
+    expect(stepLabel(0)).toBe('Step 1 of 6, Close tracks, completed');
+    expect(stepLabel(1)).toBe('Step 2 of 6, Finalize hashes, in progress');
     expect(screen.getByText(`${(first.durationMs! / 1000).toFixed(1)} s`)).toBeTruthy();
     expect(screen.getByTestId('finalizing-progress')).toHaveTextContent('17% complete');
   });
@@ -143,7 +143,7 @@ describe('Finalization (04 §4.6)', () => {
     expect(screen.getByTestId('finalizing-interrupted')).toBeTruthy();
     expect(screen.getByText('Finalization interrupted')).toBeTruthy();
     expect(screen.getByText(/^Power failure\. Recovery takes over/)).toBeTruthy();
-    expect(stepLabel(0)).toBe('Step 1 of 6, Finalize tracks, interrupted');
+    expect(stepLabel(0)).toBe('Step 1 of 6, Close tracks, interrupted');
     fireEvent.press(screen.getByTestId('finalizing-open-recovery'));
     expect(h.app.getPathname()).toBe('/session/recovery');
   });

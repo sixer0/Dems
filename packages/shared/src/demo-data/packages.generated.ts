@@ -3702,7 +3702,7 @@ export const DEMO_EVIDENCE_INDEX: DemoEvidenceIndex = {
       "response": {
         "exportId": "EXP-000031",
         "evidenceId": "EV-20260930-0004",
-        "status": "EXPORTED"
+        "status": "QUEUED"
       }
     }
   }

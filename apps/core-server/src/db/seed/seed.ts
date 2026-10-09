@@ -28,6 +28,14 @@
  * is refused before a row is written (SD-3). Seeding again is a reset (`db:reset`): the audit
  * table is append-only, so an in-place second seed is impossible by design.
  *
+ * THE STT CONFIGURATION ROW (blueprint row 114; R-8 of D20, confirmed as Q-STT-CFG (a) by D24).
+ * Besides the mapped dataset, the seed writes the SINGLE row of the KEPT table `stt_config` with
+ * the confirmed default of Q-STT-CFG item 11 (`STT_CONFIG_SEED_DEFAULT` below). A secret is NEVER
+ * seeded: `credential_kind`, `credential_ref`, `secret_ciphertext` and `nonce` are all null, the
+ * "none" branch of `stt_config_credential_check` — the same SD-8 rule `capture_device_credentials`
+ * follows (dbc-3 §E.3). The table is carried across a reset by `upsert` (row 114, §E.1), so this
+ * row is what a fresh lane starts with and what a permitted reset returns to if nobody edited it.
+ *
  * THE DEMO PASSWORD (SD-4, SR-63). The published demo password is read by import and handed to
  * `hashPassword`, once per operator, and to nothing else. What reaches a statement is the
  * Argon2id record (salt, hash, three cost parameters), as bind parameters. The password is in
@@ -53,7 +61,7 @@ import {
 } from '../mapping';
 import * as schema from '../schema';
 import { DB_CONTRACT_REVISION, DB_SCHEMA_VERSION } from '../schema';
-import { REGISTRY_COUNTER, type NewOperatorCredentialRow, type RegistryCounterRow } from '../schema';
+import { REGISTRY_COUNTER, type CaptureConfigRow, type CaptureDeviceRow, type NewOperatorCredentialRow, type NewSttConfigRow, type RegistryCounterRow } from '../schema';
 import { DatasetOptionError, buildSeedState, resolveDatasetOptions, type DatasetOptions, type ResolvedDatasetOptions } from './dataset';
 import { StoreError, countAllTables, insertRows, lockAuditChain, writeRbacRows, type ChainHead, type RowExecutor } from '../store';
 
@@ -80,6 +88,102 @@ export class SeedError extends Error {
 
 /** The suffix of the staging database a reset builds beside its target (contract §8.5, R-4). */
 export const STAGING_SUFFIX = '_next';
+
+/**
+ * The confirmed seed default of the STT configuration (Q-STT-CFG item 11, confirmed as (a) by D24;
+ * `stt_config` of dbc-3 §B.13; specs R-8).
+ *
+ * Item 11 names the initial value on this Mac: enabled, backend `cpu-local` because Q-D7 was
+ * answered (a), language `id` (OD-20), speaker labelling on. `endpoint` is null because it belongs
+ * to the server backend only (`stt_config_endpoint_required_check` asks for it when the backend is
+ * `omlx-server`). `model` is the NAME of the CPU engine's weights — the ggml large-v3-turbo model
+ * built and load-proven in rows 107-109 — not an absolute path: the same seeded row must be valid
+ * on a lane and on the Core, and the transcriber boot check (CS-22, row 115) resolves the name
+ * against the configured model directory. The four credential columns are null: a secret is never
+ * seeded (SD-8), and op 91 (row 113) is the only writer of them.
+ */
+export const STT_CONFIG_SEED_DEFAULT = Object.freeze({
+  singleton: true,
+  enabled: true,
+  backend: 'cpu-local',
+  endpoint: null,
+  model: 'ggml-large-v3-turbo',
+  language: 'id',
+  diarization: true,
+  credentialKind: null,
+  credentialRef: null,
+  secretCiphertext: null,
+  nonce: null,
+  revision: 1,
+  updatedBy: null,
+} as const satisfies Pick<NewSttConfigRow, 'singleton' | 'enabled' | 'backend' | 'endpoint' | 'model' | 'language' | 'diarization' | 'credentialKind' | 'credentialRef' | 'secretCiphertext' | 'nonce' | 'revision' | 'updatedBy'>);
+
+/** The one `stt_config` row of a seed: the confirmed default with `updated_at` of the seed instant. */
+export function sttConfigSeedRow(at: number): NewSttConfigRow {
+  return { ...STT_CONFIG_SEED_DEFAULT, updatedAt: at };
+}
+
+/**
+ * The five built-in `capture_devices` rows (CS-21; dbc-3 §B.2, §E.3). The IDs, kinds, models,
+ * firmware, loopback hosts and PoE port match the simulator's built-in registry; the transports
+ * are the CODE values of the built-in topology (RTSP cameras, USB mics, an SNMP switch), and no
+ * credential joins a seed statement (RK-12, SD-8: `capture_device_credentials` stays empty).
+ * Exported so the reset routine and the tests name ONE source for the built-ins.
+ */
+export function captureBuiltInDevices(): CaptureDeviceRow[] {
+  const device = (
+    id: string,
+    kind: 'CAMERA' | 'MIC' | 'POE',
+    transport: string,
+    model: string,
+    firmware: string,
+    address: string | null,
+    poePort: string | null,
+  ): CaptureDeviceRow => ({
+    id,
+    kind,
+    transport,
+    model,
+    firmware,
+    address,
+    mac: null,
+    onvifUuid: null,
+    profiles: [],
+    poePort,
+    enabled: true,
+    lastSeenAt: null,
+  });
+  return [
+    device('CAM-01', 'CAMERA', 'RTSP', 'Dual-lens IP camera DL-2', '3.8.14', '127.0.0.1:8554', 'POE_CAM_1'),
+    device('CAM-02', 'CAMERA', 'RTSP', 'Dual-lens IP camera DL-2', '3.8.14', '127.0.0.1:8555', 'POE_CAM_1'),
+    device('MIC-01', 'MIC', 'USB', 'USB condenser microphone UM-1', '1.04', null, null),
+    device('MIC-02', 'MIC', 'USB', 'USB condenser microphone UM-1', '1.04', null, null),
+    device('POE-SWITCH', 'POE', 'SNMP', 'PoE+ switch PS-8', '2.4.1', '127.0.0.1', null),
+  ];
+}
+
+/** The media profile the seeded selector names: the underscore form of the sim's code (see prepareSeed). */
+export const CAPTURE_SEED_PROFILE = 'H264_1080P25';
+
+/**
+ * The one `capture_config` row of a seed: the built-in dual-lens selector (OD-05), MIC-01 primary
+ * and MIC-02 standby (OD-09), revision 1, no editor yet (op 77 sets both), `updated_at` the seed
+ * instant.
+ */
+export function captureBuiltInConfig(at: number): CaptureConfigRow {
+  return {
+    singleton: true,
+    video01DeviceId: 'CAM-01',
+    video01Profile: CAPTURE_SEED_PROFILE,
+    video02DeviceId: 'CAM-02',
+    video02Profile: CAPTURE_SEED_PROFILE,
+    micPrimaryId: 'MIC-01',
+    micStandbyId: 'MIC-02',
+    revision: 1,
+    updatedBy: null,
+    updatedAt: at,
+  };
+}
 
 /**
  * `project`: the command line and the reset routine; the target is a project database or the
@@ -140,6 +244,13 @@ export async function prepareSeed(options: SeedOptions, dependencies: SeedDepend
     state = buildSeedState(resolved);
     // The tables keep every audit row and event: the dataset must hold its whole chain.
     assertCompleteRings(state);
+    // CS-21 / dbc-3 §E.3 "Site config" (RECON-B2a R5): the two KEPT capture tables are written as
+    // the mapping reads them - `toRows` is the ONE builder of the row shape. The built-in topology
+    // (five devices, RTSP cameras, USB mics, the SNMP switch) travels in `captureDevicesToRows`
+    // through the selector and the built-in transport table; the media profile keeps its CODE form
+    // `H264_1080P25` (§B.1 admits no hyphen; the simulator's hyphen spelling and this storage form
+    // meet only inside `db/mapping/rows.ts`). No credential joins a seed statement (RK-12, SD-8:
+    // `capture_device_credentials` stays empty).
     rows = toRows(state, { at: resolved.now, seededAt: resolved.now, lastResetAt });
   } catch (error) {
     if (error instanceof DatasetOptionError || error instanceof MappingError) throw new SeedError('DATASET_INVALID', error.message);
@@ -195,8 +306,9 @@ function writeFailure(error: unknown): unknown {
  *
  * Order: the chain lock; the "not seeded yet" check; then the tables of contract §9.5, that is
  * roles, permissions, role_permissions, operators, operator_credentials, core_device,
- * core_state, storage_policy, console_settings, engine_counters, registry_counters,
- * hardware_snapshot, session_history, evidence_items, evidence_tracks, evidence_custody,
+ * core_state, storage_policy, console_settings, stt_config (the one row of row 114),
+ * engine_counters, registry_counters, hardware_snapshot, session_history, evidence_items,
+ * evidence_tracks, evidence_custody,
  * exports, active_session and alerts (scenarios only), audit_log in ascending sequence, events.
  * `audit_chain_history` is never written here: a first seed discards nothing (LN-1).
  */
@@ -228,6 +340,15 @@ export async function writeSeed(executor: RowExecutor, prepared: PreparedSeed): 
           await executor.insert(schema.registryCounters).values(prepared.registryCounters);
         } catch {
           throw new StoreError('WRITE_FAILED', 'registry_counters', 'the statement was refused.');
+        }
+      }
+      if (table === 'consoleSettings') {
+        // Row 114: the single `stt_config` row, beside the other configuration singleton and before
+        // the audit log. It carries no credential value (SD-8), so no secret can reach a statement.
+        try {
+          await executor.insert(schema.sttConfig).values(sttConfigSeedRow(prepared.options.now));
+        } catch {
+          throw new StoreError('WRITE_FAILED', 'stt_config', 'the statement was refused.');
         }
       }
     }

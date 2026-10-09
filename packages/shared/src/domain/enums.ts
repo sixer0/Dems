@@ -128,7 +128,14 @@ export const SecurityStateLabel = { READY: 'READY', FAULT: 'FAULT' } as const sa
   string
 >;
 
-// §6.3, §11.1 (verbatim IDs)
+/**
+ * §6.3, §11.1 (verbatim IDs), track model v2 per OD-01 ruling T1 (D4; `specs §D`, register SH-01).
+ *
+ * - `VIDEO-01`/`VIDEO-02` are the two camera tracks (one whole fMP4 file each, D224/D225).
+ * - `AUDIO-01` is **the one session audio track**: it carries whichever mic input is PRIMARY.
+ * - `AUDIO-02` is **legacy v1 only**: it exists on items sealed before schema v2 and is never
+ *   produced by the v2 capture path (OD-01 T1 with OD-02 L2).
+ */
 export const TrackId = {
   VIDEO_01: 'VIDEO-01',
   VIDEO_02: 'VIDEO-02',
@@ -138,6 +145,33 @@ export const TrackId = {
 export type TrackId = ValueOf<typeof TrackId>;
 export type VideoTrackId = typeof TrackId.VIDEO_01 | typeof TrackId.VIDEO_02;
 export type AudioTrackId = typeof TrackId.AUDIO_01 | typeof TrackId.AUDIO_02;
+/** The one session audio track of a v2 recording (OD-01 T1). */
+export const SESSION_AUDIO_TRACK_ID: AudioTrackId = TrackId.AUDIO_01;
+/** Audio tracks that exist on legacy v1 items only and are never written by v2 (OD-01/OD-02). */
+export const LEGACY_AUDIO_TRACK_IDS = [TrackId.AUDIO_02] as const satisfies readonly AudioTrackId[];
+
+/**
+ * The microphone **inputs** (OD-01 T1; register SH-01). These are devices, not tracks: an input
+ * feeds `AUDIO-01` while it holds the PRIMARY role (`MicRole`). The IDs match the seeded
+ * `capture_devices` rows (`dbc-3 §B.2`: `MIC-01`, `MIC-02`).
+ */
+export const MicInputId = {
+  MIC_01: 'MIC-01',
+  MIC_02: 'MIC-02',
+} as const;
+export type MicInputId = ValueOf<typeof MicInputId>;
+export const MicInputIdLabel = {
+  'MIC-01': 'MIC 1',
+  'MIC-02': 'MIC 2',
+} as const satisfies Record<MicInputId, string>;
+
+/** The role one mic input holds inside `AUDIO-01` (OD-01/OD-09; hot standby, D4). */
+export const MicRole = { PRIMARY: 'PRIMARY', STANDBY: 'STANDBY' } as const;
+export type MicRole = ValueOf<typeof MicRole>;
+export const MicRoleLabel = {
+  PRIMARY: 'Primary',
+  STANDBY: 'Standby',
+} as const satisfies Record<MicRole, string>;
 
 // §5.4, §23.1
 export const TrackRecState = { REC: 'REC', DEGRADED: 'DEGRADED', LOST: 'LOST' } as const;
@@ -219,24 +253,50 @@ export const EvidenceLifecycleStageLabel = {
   RETENTION_ARCHIVE_DISPOSITION: 'RETENTION / ARCHIVE / DISPOSITION',
 } as const satisfies Record<EvidenceLifecycleStage, string>;
 
-// §12.2
+// §12.2, sealing pipeline v2 (`06_evidence_package_spec.md` §E; register SH-01)
+/**
+ * Sealing steps v2. The six normal-path steps run in `FINALIZATION_STEPS_V2` order; the two
+ * fallback-only members exist solely on the OD-21 fallback path (a merge pass would add them) and
+ * are never part of the normal order. This set is the closed vocabulary `sealing_jobs.step` is
+ * checked against by the shared vocabulary test — never by a DB CHECK (`dbc-3 §B.4`, MG-11).
+ */
 export const FinalizationStep = {
-  FINALIZE_TRACKS: 'FINALIZE_TRACKS',
-  CALCULATE_HASHES: 'CALCULATE_HASHES',
+  CLOSE_TRACKS: 'CLOSE_TRACKS',
+  FINALIZE_HASHES: 'FINALIZE_HASHES',
+  FINALIZE_TRANSCRIPT: 'FINALIZE_TRANSCRIPT',
   BUILD_MANIFEST: 'BUILD_MANIFEST',
-  ENCRYPT_PAYLOAD: 'ENCRYPT_PAYLOAD',
   SIGN_MANIFEST: 'SIGN_MANIFEST',
   STORE_SEALED_PACKAGE: 'STORE_SEALED_PACKAGE',
+  /** OD-21 fallback path only: never in the normal order. */
+  CONCATENATE_SEGMENTS: 'CONCATENATE_SEGMENTS',
+  /** OD-21 fallback path only: v2 encrypts while recording, so the normal path has no such step. */
+  ENCRYPT_PAYLOAD: 'ENCRYPT_PAYLOAD',
 } as const;
 export type FinalizationStep = ValueOf<typeof FinalizationStep>;
 export const FinalizationStepLabel = {
-  FINALIZE_TRACKS: 'Finalize tracks',
-  CALCULATE_HASHES: 'Calculate hashes',
+  CLOSE_TRACKS: 'Close tracks',
+  FINALIZE_HASHES: 'Finalize hashes',
+  FINALIZE_TRANSCRIPT: 'Finalize transcript',
   BUILD_MANIFEST: 'Build manifest',
-  ENCRYPT_PAYLOAD: 'Encrypt evidence payload',
   SIGN_MANIFEST: 'Sign manifest',
   STORE_SEALED_PACKAGE: 'Store sealed evidence package',
+  CONCATENATE_SEGMENTS: 'Concatenate segments',
+  ENCRYPT_PAYLOAD: 'Encrypt evidence payload',
 } as const satisfies Record<FinalizationStep, string>;
+/** The six normal-path steps, in pipeline order (`ev §E.1`; op 27 and op 83 carry them in this order). */
+export const FINALIZATION_STEPS_V2 = [
+  FinalizationStep.CLOSE_TRACKS,
+  FinalizationStep.FINALIZE_HASHES,
+  FinalizationStep.FINALIZE_TRANSCRIPT,
+  FinalizationStep.BUILD_MANIFEST,
+  FinalizationStep.SIGN_MANIFEST,
+  FinalizationStep.STORE_SEALED_PACKAGE,
+] as const satisfies readonly FinalizationStep[];
+/** The two steps that appear only when the OD-21 fallback path is taken. */
+export const FALLBACK_ONLY_FINALIZATION_STEPS = [
+  FinalizationStep.CONCATENATE_SEGMENTS,
+  FinalizationStep.ENCRYPT_PAYLOAD,
+] as const satisfies readonly FinalizationStep[];
 
 // §20.2 (labels: 01 L659)
 export const UpdateStep = {

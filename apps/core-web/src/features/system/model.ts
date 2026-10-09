@@ -166,7 +166,10 @@ export interface DemoFaultSpec {
   activeKey?: string | null
 }
 
-const CRITICAL = new Set<FaultKind>([FaultKind.STORAGE_FULL, FaultKind.TPM_FAILURE, FaultKind.POWER_FAIL, FaultKind.SECURITY_FAULT, FaultKind.CAMERA_LOSS, FaultKind.AUDIT_TAMPER])
+// Severity mirrors the shared `FAULT_SEVERITY` map (dbc-3 §C.2): CAPTURE_FAULT is CRITICAL (danger
+// toast), MIC_SILENT is a WARNING (warning toast). Neither moves the session machine to FAULT here —
+// that is SH-06 behaviour in the simulator, not a demo-panel decision.
+const CRITICAL = new Set<FaultKind>([FaultKind.STORAGE_FULL, FaultKind.TPM_FAILURE, FaultKind.POWER_FAIL, FaultKind.SECURITY_FAULT, FaultKind.CAMERA_LOSS, FaultKind.AUDIT_TAMPER, FaultKind.CAPTURE_FAULT])
 
 function spec(kind: FaultKind, extra: Partial<DemoFaultSpec> = {}): DemoFaultSpec {
   return { kind, evt: FaultEvt[kind], critical: CRITICAL.has(kind), ...extra }
@@ -181,6 +184,11 @@ export const DEMO_FAULTS: readonly DemoFaultSpec[] = [
   spec(FaultKind.CAMERA_LOSS),
   spec(FaultKind.MIC_NO_SIGNAL, { target: { channel: 'AUDIO-01' }, activeKey: 'AUDIO-01' }),
   spec(FaultKind.MIC_CLIP, { target: { channel: 'AUDIO-02' }, activeKey: 'AUDIO-02' }),
+  // SH-03 (row 47) widened FaultKind to 14; these two are the client-side catch-up of this exhaustive
+  // list. Both are injectable through the generic `actions.inject` (sim `injectFaultTransition` handles
+  // them, row 51) and their demo labels were authored in shared i18n (SH-23). MIC_SILENT keys to the
+  // channel feeding AUDIO-01 (the active input's channel), so no explicit target; CAPTURE_FAULT has none.
+  spec(FaultKind.MIC_SILENT),
   spec(FaultKind.STORAGE_LOW),
   spec(FaultKind.STORAGE_FULL),
   spec(FaultKind.FAN_STALL),
@@ -189,6 +197,7 @@ export const DEMO_FAULTS: readonly DemoFaultSpec[] = [
   spec(FaultKind.SECURITY_FAULT),
   spec(FaultKind.AUDIT_TAMPER),
   spec(FaultKind.POWER_FAIL),
+  spec(FaultKind.CAPTURE_FAULT),
 ]
 
 export type TimeSourceChoice = 'GNSS' | 'NTP' | 'RTC'

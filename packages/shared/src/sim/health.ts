@@ -27,7 +27,7 @@ import { pushRing } from './events';
 import { timeNoise } from './initial-state';
 import { RngStream, type Rng } from './rng';
 import { storageStateFor } from './selectors';
-import type { EpochMs, HealthSlice, MicLevelPoint, SimState, SimSubsystem, StorageSlice, TimeSlice } from './types';
+import type { AudioFrame, EpochMs, HealthSlice, MicLevelPoint, SimState, SimSubsystem, StorageSlice, TimeSlice } from './types';
 
 const HOUR_MS = 3_600_000;
 /** "Last sync" refreshes this often while GNSS or NTP disciplines the clock. */
@@ -155,8 +155,10 @@ function stepNetwork(network: SimState['network'], at: EpochMs, recording: boole
 
 /** The 1 Hz microphone peak sample (step 54, SIM-GAP-W48-4): the peak-hold level of each channel. */
 function micLevelPoint(state: SimState, at: EpochMs): MicLevelPoint {
-  const level = (frame: SimState['audio']['channels']['AUDIO-01']) => (frame.noSignal ? -90 : round1(Math.max(frame.dbfs, frame.peak)));
-  return { at, 'AUDIO-01': level(state.audio.channels['AUDIO-01']), 'AUDIO-02': level(state.audio.channels['AUDIO-02']) };
+  // The sample keeps its v1 channel keys (the dashboard series and its i18n read them); the frames
+  // themselves are keyed by mic input since schema v2 (SH-17).
+  const level = (frame: AudioFrame) => (frame.noSignal ? -90 : round1(Math.max(frame.dbfs, frame.peak)));
+  return { at, 'AUDIO-01': level(state.audio.inputs['MIC-01']), 'AUDIO-02': level(state.audio.inputs['MIC-02']) };
 }
 
 /** One 1 Hz health step at the whole second `at` (pure apart from the RNG draws). */

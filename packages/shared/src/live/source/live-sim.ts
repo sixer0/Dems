@@ -154,7 +154,7 @@ import {
 import { AUTH_IDLE_TIMEOUT_MS, CLOCK_TICK_MS } from '../../sim/constants';
 import { describeError } from '../../sim/errors';
 import type { Rng, RngStreams } from '../../sim/rng';
-import type { AudioSlice, DetailValue, SimErrorReport, SimState } from '../../sim/types';
+import type { DetailValue, SimErrorReport, SimState } from '../../sim/types';
 import { AuthStatus, PairingState, SignOutReason } from '../../sim/vocabulary';
 import { CoreRefusalError, LiveTransportError, LiveTransportReason } from '../errors';
 import { CoreMode, LiveLinkState } from '../mode';
@@ -902,7 +902,17 @@ export function createLiveSim<Client extends LiveClient>(options: CreateLiveSimO
   function onMeters(meters: MetersMessage): void {
     if (state.session === null) return;
     // Never held (CL-16): the latest frame wins, and no command waits behind a meter.
-    commit({ audio: meters.audio as AudioSlice });
+    // Schema v2 (register SH-25 / E-02): this is the fifth call site of the `meters.audio` re-key
+    // (SH-17). The frame is keyed by microphone INPUT (`inputs` + `activeInputId`), not the v1
+    // AUDIO-0x channels, so it is mapped field-by-field instead of blind-cast; a frame that ever
+    // arrives without an active input keeps the store's current one rather than corrupting the slice.
+    const audio = meters.audio;
+    commit({
+      audio: {
+        inputs: { 'MIC-01': audio.inputs['MIC-01'], 'MIC-02': audio.inputs['MIC-02'] },
+        activeInputId: audio.activeInputId ?? store.getState().audio.activeInputId,
+      },
+    });
   }
 
   function onLinkChange(next: LiveLinkState): void {

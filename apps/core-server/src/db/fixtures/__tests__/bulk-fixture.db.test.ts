@@ -9,12 +9,12 @@
 // no constraint, trigger or index is switched off (the load itself proves that every row passes
 // every constraint); the audit chain over ALL rows, links and digests; that a server can start on
 // the database (the boot checks, the rehydration); determinism (a second load gives equal rows in
-// all 30 tables); what the loader refuses; what the runtime role may and may not do; the variant
+// every table of the schema, 40 since dbc-3); what the loader refuses; what the runtime role may and may not do; the variant
 // with a recording session; and the build, clone and load times.
 import { asc } from 'drizzle-orm';
 import type { Pool } from 'pg';
 import { drizzle } from 'drizzle-orm/node-postgres';
-import { verifyAuditChain } from '@dems/shared/sim';
+import { AuditType, verifyAuditChain } from '@dems/shared/sim';
 import { describe, expect, it } from 'vitest';
 import { useTestDatabase, type TestDatabase } from '../../../../test/helpers/db';
 import { fromRows, verifyStoredAuditRows } from '../../mapping';
@@ -54,11 +54,11 @@ async function dropWhenQuiet(database: TestDatabase): Promise<void> {
   }
 }
 
-describe('the bulk template: the minimums of contract §11', () => {
-  it('every one of the 30 tables holds at least its minimum (entity, minimum, loaded)', async () => {
+describe('the bulk template: the minimums of contract §11 as revised by dbc-3 §G', () => {
+  it('every one of the 40 tables holds at least its minimum (entity, minimum, loaded)', async () => {
     const counts = await countAllTables(drizzle(db.ownerPool()));
     const comparison = compareWithMinimums(counts);
-    expect(comparison).toHaveLength(30);
+    expect(comparison).toHaveLength(40);
     expect(Object.keys(counts).sort()).toEqual(BULK_MINIMUMS.map((entry) => entry.table).sort());
     console.log(
       [
@@ -67,11 +67,12 @@ describe('the bulk template: the minimums of contract §11', () => {
       ].join('\n'),
     );
     expect(comparison.filter((entry) => !entry.met)).toEqual([]);
-    // The tables the contract leaves as seeded hold exactly one row; the three RBAC tables are unchanged.
-    for (const table of ['storage_policy', 'console_settings', 'core_device', 'core_state', 'hardware_snapshot', 'schema_meta', 'audit_chain_head']) {
+    // The tables the contract leaves as seeded hold exactly one row; the three RBAC tables are
+    // unchanged from the seed, which schema v2 grew to the 14/22 of dbc-3 §G.
+    for (const table of ['storage_policy', 'console_settings', 'core_device', 'core_state', 'hardware_snapshot', 'schema_meta', 'audit_chain_head', 'capture_config', 'stt_config']) {
       expect(counts[table], table).toBe(1);
     }
-    expect([counts['roles'], counts['permissions'], counts['role_permissions']]).toEqual([3, 12, 18]);
+    expect([counts['roles'], counts['permissions'], counts['role_permissions']]).toEqual([3, 14, 22]);
     expect(counts['active_session']).toBe(0);
   });
 
@@ -143,7 +144,10 @@ describe('the bulk template: the minimums of contract §11', () => {
     const pool = db.ownerPool();
     const audit = BULK_MIX.auditLog;
     expect(await count(pool, 'SELECT count(DISTINCT type) FROM audit_log')).toBeGreaterThanOrEqual(audit.types);
-    expect(await count(pool, 'SELECT count(DISTINCT type) FROM audit_log')).toBe(53);
+    // RECON-B2a R5: the fixture writes every audit type of the shared vocabulary - 62 since row
+    // 47's SH-12 landed and the extended server allow-list (audit-details, build, writers). The
+    // count is derived from that vocabulary, never written down here.
+    expect(await count(pool, 'SELECT count(DISTINCT type) FROM audit_log')).toBe(Object.values(AuditType).length);
     expect(await count(pool, 'SELECT count(DISTINCT category) FROM audit_log')).toBe(audit.categories);
     expect(await count(pool, 'SELECT max(rows) FROM (SELECT count(*) AS rows FROM audit_log WHERE session_id IS NOT NULL GROUP BY session_id) AS s')).toBeGreaterThanOrEqual(audit.rowsOfOneSession);
     expect(await count(pool, "SELECT count(*) FROM audit_log WHERE type = 'ACCESS_DENIED'")).toBeGreaterThanOrEqual(audit.accessDenied);
@@ -257,6 +261,17 @@ describe('the bulk template: the minimums of contract §11', () => {
       ['alerts', 'at'],
       ['health_snapshots', 'at'],
       ['audit_chain_history', 'reset_at'],
+      // Schema v2 (dbc-3 §G, CS-20): the instants of the pipeline rows stay on this side of the clock.
+      ['session_audio_intervals', 'from_at'],
+      ['session_audio_intervals', 'to_at'],
+      ['recording_fragments', 'durable_at'],
+      ['transcript_chunks', 'computed_at'],
+      ['transcripts', 'created_at'],
+      ['transcript_revisions', 'created_at'],
+      ['sealing_jobs', 'started_at'],
+      ['sealing_jobs', 'updated_at'],
+      ['capture_devices', 'last_seen_at'],
+      ['capture_device_credentials', 'rotated_at'],
     ] as const) {
       expect(await count(pool, `SELECT count(*) FROM ${table} WHERE ${column} > $1`, now), `${table}.${column}`).toBe(0);
     }
@@ -284,6 +299,115 @@ describe('the bulk template: the minimums of contract §11', () => {
   });
 });
 
+describe('the bulk template: the v2 rows of dbc-3 §G (CS-20)', () => {
+  it('the six pipeline tables and the capture rows reach the §G minimums as loaded', async () => {
+    const counts = await countAllTables(drizzle(db.ownerPool()));
+    const minimums: Record<string, number> = {
+      session_audio_intervals: 720,
+      recording_fragments: 6_500,
+      transcript_chunks: 2_000,
+      transcripts: 400,
+      transcript_revisions: 30,
+      sealing_jobs: 3_000,
+      capture_devices: 8,
+      capture_device_credentials: 2,
+    };
+    for (const [table, minimum] of Object.entries(minimums)) expect(counts[table], table).toBeGreaterThanOrEqual(minimum);
+  });
+
+  it('intervals: one per sealed session at least, the switched 50 with their MANUAL rows, none open in the template', async () => {
+    const pool = db.ownerPool();
+    expect(await count(pool, 'SELECT count(*) FROM session_history s WHERE s.outcome = \'SEALED\' AND NOT EXISTS (SELECT 1 FROM session_audio_intervals i WHERE i.session_id = s.id)')).toBe(0);
+    // Seeded sealed sessions too: the same rule over the union through the evidence side is
+    // enforced by the builder's validate; the DB proves the counts.
+    expect(await count(pool, "SELECT count(*) FROM session_audio_intervals WHERE reason = 'MANUAL' AND switched_by IS NULL")).toBe(0);
+    expect(await count(pool, "SELECT count(*) FROM (SELECT session_id FROM session_audio_intervals WHERE reason = 'MANUAL' GROUP BY 1 HAVING count(*) BETWEEN 2 AND 3) AS s")).toBeGreaterThanOrEqual(BULK_MIX.sessionAudioIntervals.switchedSessions);
+    expect(await count(pool, "SELECT count(*) FROM session_audio_intervals WHERE reason = 'MANUAL'")).toBeGreaterThanOrEqual(BULK_MIX.sessionAudioIntervals.manualRows);
+    expect(await count(pool, 'SELECT count(*) FROM session_audio_intervals WHERE to_media_ms IS NULL OR to_at IS NULL')).toBe(0);
+    // Every interval names a microphone that exists (the FK proves it), and the seq runs from 1.
+    expect(await count(pool, 'SELECT count(*) FROM (SELECT session_id, count(*) AS n, max(seq) AS m FROM session_audio_intervals GROUP BY 1) AS s WHERE n <> m')).toBe(0);
+  });
+
+  it('fragments: no sequence gap anywhere, and the head of the 40 newest sessions equals the track column', async () => {
+    const pool = db.ownerPool();
+    expect(await count(pool, 'SELECT count(*) FROM (SELECT session_id, track_id, count(*) AS n, max(seq) AS m FROM recording_fragments GROUP BY 1, 2) AS c WHERE n <> m')).toBe(0);
+    expect(await count(pool, "SELECT count(*) FROM recording_fragments WHERE seq = 1 AND chain_hash <> 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'")).toBe(0);
+    expect(await count(pool, 'SELECT count(*) FROM evidence_tracks WHERE fragment_chain_head IS NOT NULL')).toBe(BULK_MIX.recordingFragments.fullChainSessions * BULK_MIX.recordingFragments.tracksPerChain);
+    // "head equals fragment_chain_head": the stored head is the last chain_hash of that track's chain.
+    expect(
+      await count(
+        pool,
+        `SELECT count(*) FROM evidence_tracks t
+           JOIN evidence_items e ON e.id = t.evidence_id
+           JOIN LATERAL (SELECT f.chain_hash FROM recording_fragments f WHERE f.session_id = e.session_id AND f.track_id = t.track_id ORDER BY f.seq DESC LIMIT 1) AS last ON true
+          WHERE t.fragment_chain_head IS NOT NULL AND t.fragment_chain_head <> last.chain_hash`,
+      ),
+    ).toBe(0);
+    // And the count on the row is the number of fragments of that track.
+    expect(
+      await count(
+        pool,
+        `SELECT count(*) FROM evidence_tracks t JOIN evidence_items e ON e.id = t.evidence_id
+          WHERE t.fragment_count IS NOT NULL
+            AND t.fragment_count <> (SELECT count(*) FROM recording_fragments f WHERE f.session_id = e.session_id AND f.track_id = t.track_id)`,
+      ),
+    ).toBe(0);
+  });
+
+  it('chunks, transcripts, revisions and jobs: the §G mix, counted in SQL', async () => {
+    const pool = db.ownerPool();
+    expect(await count(pool, "SELECT count(*) FROM transcript_chunks WHERE status = 'DONE' AND (segments IS NULL OR jsonb_typeof(segments) <> 'array' OR computed_at IS NULL)")).toBe(0);
+    const chunkCounts = await pool.query<{ total: string; done: string }>('SELECT count(*) AS total, count(*) FILTER (WHERE status = \'DONE\') AS done FROM transcript_chunks');
+    expect(Number(chunkCounts.rows[0]?.done ?? 0) / Number(chunkCounts.rows[0]?.total ?? 1)).toBeGreaterThanOrEqual(BULK_MIX.transcriptChunks.doneSegmentsPercent / 100);
+    expect(
+      await count(
+        pool,
+        `SELECT count(*) FROM transcript_chunks c JOIN transcript_chunks p ON p.session_id = c.session_id AND p.seq = c.seq - 1
+          WHERE p.status = 'FAILED' AND c.audio_from_ms = p.audio_from_ms AND c.audio_to_ms = p.audio_to_ms`,
+      ),
+    ).toBeGreaterThanOrEqual(BULK_MIX.transcriptChunks.failedRerunPairs);
+    // One transcript per SEALED item, and no transcript anywhere else.
+    expect(await count(pool, "SELECT count(*) FROM evidence_items e WHERE e.status = 'SEALED' AND NOT EXISTS (SELECT 1 FROM transcripts t WHERE t.evidence_id = e.id)")).toBe(0);
+    expect(await count(pool, "SELECT count(*) FROM transcripts t JOIN evidence_items e ON e.id = t.evidence_id WHERE e.status <> 'SEALED'")).toBe(0);
+    expect(await count(pool, "SELECT count(*) FROM transcripts WHERE labels_status = 'UNAVAILABLE'")).toBeGreaterThanOrEqual(BULK_MIX.transcripts.unavailableLabels);
+    expect(await count(pool, 'SELECT count(DISTINCT labels_status) FROM transcripts')).toBe(BULK_MIX.transcripts.labelsValues);
+    // Revisions: Ed25519 form, and revision 1 of every chain hangs on the transcript's own hash.
+    expect(await count(pool, "SELECT count(*) FROM transcript_revisions WHERE signature_algorithm <> 'Ed25519' OR signature_simulated OR char_length(signature_value) <> 128")).toBe(0);
+    expect(
+      await count(
+        pool,
+        `SELECT count(*) FROM transcript_revisions r JOIN transcripts t ON t.evidence_id = r.evidence_id WHERE r.revision_no = 1 AND r.parent_sha256 <> t.json_sha256`,
+      ),
+    ).toBe(0);
+    expect(await count(pool, 'SELECT count(*) FROM (SELECT evidence_id FROM transcript_revisions GROUP BY 1 HAVING max(revision_no) >= 2) AS c')).toBeGreaterThanOrEqual(BULK_MIX.transcriptRevisions.chainedItems);
+    // Sealing jobs: every sealed session carries all six steps, every step DONE.
+    expect(
+      await count(
+        pool,
+        `SELECT count(*) FROM session_history s WHERE s.outcome = 'SEALED' AND (SELECT count(*) FROM sealing_jobs j WHERE j.session_id = s.id AND j.status = 'DONE') <> 6`,
+      ),
+    ).toBe(0);
+    expect(await count(pool, 'SELECT count(*) FROM sealing_jobs WHERE attempt >= 2 AND status = \'DONE\'')).toBeGreaterThanOrEqual(BULK_MIX.sealingJobs.resumedAtLeast);
+    expect(await count(pool, 'SELECT count(*) FROM sealing_jobs WHERE checkpoint IS NOT NULL')).toBeGreaterThanOrEqual(BULK_MIX.sealingJobs.checkpointedAtLeast);
+    expect(await count(pool, "SELECT count(*) FROM sealing_jobs WHERE status = 'RUNNING'")).toBe(0);
+  });
+
+  it('capture rows: the discovered devices over the seeded five, one dual-profile camera, two fake credentials with a rotation', async () => {
+    const pool = db.ownerPool();
+    expect(await count(pool, "SELECT count(*) FROM capture_devices WHERE id IN ('CAM-01', 'CAM-02', 'MIC-01', 'MIC-02', 'POE-SWITCH')")).toBe(5);
+    expect(await count(pool, 'SELECT count(*) FROM capture_devices')).toBe(8);
+    expect(await count(pool, 'SELECT count(*) FROM capture_devices WHERE jsonb_array_length(profiles) >= 2')).toBeGreaterThanOrEqual(BULK_MIX.captureDevices.dualProfileCameras);
+    expect(await count(pool, 'SELECT count(*) FROM capture_device_credentials c WHERE c.device_id IN (\'CAM-01\', \'CAM-02\', \'MIC-01\', \'MIC-02\', \'POE-SWITCH\')')).toBe(0);
+    const rotated = await pool.query<{ n: string }>('SELECT count(*) AS n FROM capture_device_credentials c WHERE EXISTS (SELECT 1 FROM capture_device_credentials o WHERE o.rotated_at < c.rotated_at)');
+    expect(Number(rotated.rows[0]?.n ?? 0)).toBeGreaterThanOrEqual(BULK_MIX.captureDeviceCredentials.rotatedAtLeast);
+  });
+
+  it('alerts carry every fault kind of §G with MIC_SILENT at ten', async () => {
+    const pool = db.ownerPool();
+    expect(await count(pool, "SELECT count(*) FROM alerts WHERE kind = 'MIC_SILENT'")).toBeGreaterThanOrEqual(BULK_MIX.alerts.micSilent);
+  });
+});
+
 describe('the bulk template: every constraint holds, and nothing was switched off', () => {
   it('no constraint is NOT VALID, no trigger is disabled, no index is invalid; the three audit triggers are ENABLE ALWAYS', async () => {
     const pool = db.ownerPool();
@@ -293,10 +417,11 @@ describe('the bulk template: every constraint holds, and nothing was switched of
         WHERE n.nspname = 'public' GROUP BY 1 ORDER BY 1`,
     );
     const byKind = Object.fromEntries(constraints.rows.map((row) => [row.kind, { rows: Number(row.rows), invalid: Number(row.invalid) }]));
-    // The contract's counts: 98 named CHECKs, 25 foreign keys, 30 primary keys.
-    expect(byKind['c']).toEqual({ rows: 98, invalid: 0 });
-    expect(byKind['f']).toEqual({ rows: 25, invalid: 0 });
-    expect(byKind['p']).toEqual({ rows: 30, invalid: 0 });
+    // The contract's counts as landed: 166 named CHECKs, 39 foreign keys, 40 primary keys (the
+    // composed inventory; dbc-3 §0.1 + §B.13). None invalid - the loader switched nothing off.
+    expect(byKind['c']).toEqual({ rows: 166, invalid: 0 });
+    expect(byKind['f']).toEqual({ rows: 39, invalid: 0 });
+    expect(byKind['p']).toEqual({ rows: 40, invalid: 0 });
     expect(constraints.rows.reduce((sum, row) => sum + Number(row.invalid), 0)).toBe(0);
 
     const triggers = await pool.query<{ name: string; mode: string; internal: boolean }>(
@@ -380,7 +505,7 @@ describe('the bulk template: the audit chain verifies over all rows (BF-6)', () 
 
 describe('the loader', () => {
   it(
-    'is deterministic: a second load on a fresh seed clone gives equal rows in all 30 tables, and the pure builder announces the same digest',
+    'is deterministic: a second load on a fresh seed clone gives equal rows in every one of the 40 tables, and the pure builder announces the same digest',
     async () => {
       const second = await db.another({ template: 'seed', slug: 'bulk_second_load' });
       const lines: string[] = [];
@@ -393,16 +518,18 @@ describe('the loader', () => {
       expect(report.database).toBe(second.name);
       expect(report.role).toBe('dems_owner');
       expect(lines).toEqual(formatBulkFixtureReport(report));
-      expect(lines).toHaveLength(33);
-      expect(lines[lines.length - 1]).toContain('every minimum of the 30 tables is met');
+      expect(lines).toHaveLength(43);
+      expect(lines[lines.length - 1]).toContain('every minimum of the 40 tables is met');
       console.log(lines.map((line) => `[test:db] ${line}`).join('\n'));
 
       // Equal rows, table by table, generated identifiers and hash columns included.
       const first = await tableDigests(db.ownerPool());
       const again = await tableDigests(second.ownerPool());
-      expect(Object.keys(first)).toHaveLength(30);
+      // The digest covers every table of the schema: 40 since dbc-3; since CS-20 (row 55) the
+      // six pipeline tables digest with the rows their §G builders synthesised.
+      expect(Object.keys(first)).toHaveLength(40);
       expect(again).toEqual(first);
-      console.log(`[test:db] bulk fixture: digest over a stable ordered dump of all 30 tables, template clone and second load: ${overallDigest(first)} = ${overallDigest(again)}`);
+      console.log(`[test:db] bulk fixture: digest over a stable ordered dump of all 40 tables, template clone and second load: ${overallDigest(first)} = ${overallDigest(again)}`);
 
       // The rows are a function of the seed, the clock and the seeded dataset alone: the builder gives the same digest with no database.
       expect(report.digest).toBe(buildBulkFixture({ now: BULK_TEMPLATE_NOW, seed: BULK_TEMPLATE_SEED }, pureBase(BULK_TEMPLATE_NOW)).digest);
@@ -465,6 +592,9 @@ describe('the loader', () => {
     expect(session.rows[0]).toMatchObject({ state: 'RECORDING', items: BULK_MIX.activeSessionVariant.timelineItems });
     expect(await count(pool, "SELECT next_value - (SELECT right(id, 4)::int FROM active_session) FROM engine_counters WHERE name = 'session'")).toBeGreaterThanOrEqual(1);
     expect(await count(pool, 'SELECT count(*) FROM session_history s JOIN active_session a ON a.id = s.id')).toBe(0);
+    // The two §G variant rows: the open interval of the RECORDING session and the RUNNING job.
+    expect(await count(pool, 'SELECT count(*) FROM session_audio_intervals WHERE to_media_ms IS NULL')).toBe(BULK_MIX.sessionAudioIntervals.openInRecordingVariant);
+    expect(await count(pool, "SELECT count(*) FROM sealing_jobs WHERE status = 'RUNNING'")).toBe(BULK_MIX.sealingJobs.runningInRecoveryVariant);
     // The largest row of the schema reads back through the mapping, and the chain still verifies.
     const slices = fromRows(await readStoredRows(drizzle(variant.appPool())));
     expect(slices.session?.timeline).toHaveLength(200);
@@ -479,9 +609,17 @@ describe('the loader', () => {
 });
 
 describe('a clone of the bulk template, read back as the runtime role', () => {
-  it('dems_app reads every one of the 30 tables, and the counts are the owner\'s', async () => {
-    const asApp = await countAllTables(drizzle(db.appPool()));
-    expect(asApp).toEqual(await countAllTables(drizzle(db.ownerPool())));
+  it('dems_app reads every table but the credential store (the §G fixture rows there are reveal-only), and the counts are the owner\'s', async () => {
+    // dbc-3 §D: the credential store holds no table-level SELECT for the runtime role at all -
+    // reading it is the reveal function's job (SEC35-02). All 39 other tables read equal.
+    const asOwner = await countAllTables(drizzle(db.ownerPool()));
+    const readable = Object.fromEntries(Object.entries(asOwner).filter(([table]) => table !== 'capture_device_credentials'));
+    const asApp = Object.fromEntries(await Promise.all(Object.keys(readable).map(async (table) => {
+      const { rows } = await db.appPool().query<{ n: string }>(`SELECT count(*)::text AS n FROM public.${table}`);
+      return [table, rows[0]?.n ?? ''] as const;
+    })));
+    expect(Object.fromEntries(Object.entries(asApp).map(([table, n]) => [table, Number(n)]))).toEqual(readable);
+    await expect(db.appPool().query('SELECT count(*) FROM public.capture_device_credentials')).rejects.toMatchObject({ code: '42501' });
     const who = await db.appPool().query<{ role: string; database: string }>('SELECT current_user::text AS role, current_database()::text AS database');
     expect(who.rows[0]).toEqual({ role: 'dems_app', database: db.name });
   });
@@ -499,7 +637,7 @@ describe('a clone of the bulk template, read back as the runtime role', () => {
       [ALL_TABLES.map((entry) => entry.sqlName)],
     );
     const held = Object.fromEntries(privileges.rows.map((row) => [row.table_name, row.held]));
-    expect(Object.keys(held)).toHaveLength(30);
+    expect(Object.keys(held)).toHaveLength(40);
     // Read-only for the runtime role: the RBAC tables, the chain head, the lineage, the schema version.
     for (const table of ['roles', 'permissions', 'role_permissions', 'audit_chain_head', 'audit_chain_history', 'schema_meta']) expect(held[table], table).toBe('S');
     // Append-only by privilege: insert and read, nothing else.
@@ -508,6 +646,20 @@ describe('a clone of the bulk template, read back as the runtime role', () => {
     expect(held['operators']).toBe('S,U');
     expect(held['operator_credentials']).toBe('S,U');
     expect(held['active_session']).toBe('S,I,U,D');
+    // schema v2 (dbc-3 §D): the capture selector and devices carry UPDATE only on their own
+    // columns; the credential store is INSERT+UPDATE with NO read (the reveal function serves it);
+    // stt_config likewise carries no table-level SELECT (0007's column lists) - the flags below
+    // ask has_table_privilege, so stt_config reads as column-UPDATE only.
+    expect(held['capture_config']).toBe('S,U');
+    expect(held['capture_devices']).toBe('S,I,U');
+    expect(held['capture_device_credentials']).toBe('I,U');
+    expect(held['session_audio_intervals']).toBe('S,I,U');
+    expect(held['recording_fragments']).toBe('S,I');
+    expect(held['transcript_chunks']).toBe('S,I,U');
+    expect(held['transcripts']).toBe('S,I');
+    expect(held['transcript_revisions']).toBe('S,I');
+    expect(held['sealing_jobs']).toBe('S,I,U');
+    expect(held['stt_config']).toBe('U');
     expect(Object.entries(held).filter(([, value]) => value.includes('D') || value.includes('T'))).toEqual([['active_session', 'S,I,U,D']]);
 
     // The refusals, on rows the fixture wrote. Each is refused by privilege, before any row is touched.

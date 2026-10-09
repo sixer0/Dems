@@ -129,19 +129,19 @@ function assertLogDiscipline(): void {
 }
 
 describe('AR-2: the Simulated views (AC-C-100)', () => {
-  it('the default view is the document of before: ten operations, byte-equal to `buildApiDocument(true)`', () => {
+  it('the default view is the document of before: 23 operations, byte-equal to `buildApiDocument(true)`', () => {
     const view = buildApiDocumentFor({ mode: 'simulated', includeSimulated: true, includeCoreServer: false })
-    expect(countOperations(view)).toBe(10)
+    expect(countOperations(view)).toBe(23)
     expect(serializeOpenApiDocument(view)).toBe(serializeOpenApiDocument(buildApiDocument(true)))
     expect(apiDocumentJsonFor({ mode: 'simulated', includeSimulated: true, includeCoreServer: false })).toBe(apiDocumentJson(true))
     expect(apiDocumentJsonFor({ mode: 'simulated', includeSimulated: false, includeCoreServer: false })).toBe(apiDocumentJson(false))
   })
 
-  it('"Show Core-server endpoints" lists 75: the ten unchanged, the other 65 with CORE SERVER in place of LIVE', () => {
+  it('"Show Core-server endpoints" lists 89: the 23 unchanged, the other 66 with CORE SERVER in place of LIVE', () => {
     const plain = buildApiDocument(true)
     const view = buildApiDocumentFor({ mode: 'simulated', includeSimulated: true, includeCoreServer: true })
-    expect(countOperations(view)).toBe(75)
-    expect(CORE_SERVER_ONLY_OPERATIONS).toHaveLength(65)
+    expect(countOperations(view)).toBe(89)
+    expect(CORE_SERVER_ONLY_OPERATIONS).toHaveLength(66)
     const coreOnly = new Set(CORE_SERVER_ONLY_OPERATIONS.map((operation) => operation.operationId))
     for (const [operationId, badges] of badgesOf(view)) {
       if (coreOnly.has(operationId)) {
@@ -161,9 +161,9 @@ describe('AR-2: the Simulated views (AC-C-100)', () => {
     expect(CORE_SERVER_BADGE.color).toMatch(/^#/)
   })
 
-  it('with "Show simulated endpoints" off as well: health and the 65 (66)', () => {
+  it('with "Show simulated endpoints" off as well: health and the 66 (67)', () => {
     const view = buildApiDocumentFor({ mode: 'simulated', includeSimulated: false, includeCoreServer: true })
-    expect(countOperations(view)).toBe(66)
+    expect(countOperations(view)).toBe(67)
     expect(badgesOf(view).filter(([, badges]) => badges.includes('SIMULATED'))).toEqual([])
     expect(unresolvedRefs(view)).toEqual([])
   })
@@ -193,7 +193,7 @@ describe('AR-2: Try-it in Simulated mode (AC-C-100)', () => {
     },
   )
 
-  it('the ten route as before with the switch on: health to the network, the nine to the simulator', async () => {
+  it('the 23 route as before with the switch on: health to the network, the 22 to the simulator', async () => {
     const { request, networkFetch, fetch } = await harness(CORE_ONLY)
     await fetch(`${CORE_HTTP_ORIGIN}/api/v1/health`)
     expect(networkFetch).toHaveBeenCalledTimes(1)
@@ -201,7 +201,7 @@ describe('AR-2: Try-it in Simulated mode (AC-C-100)', () => {
       const response = await fetch(new Request(`${CORE_HTTP_ORIGIN}${operation.path.replace('{id}', 'SES-20261001-0001')}`, { method: operation.method.toUpperCase(), ...(operation.method === 'post' ? { body: '{}' } : {}) }))
       expect(response.headers.get('x-dems-simulated'), operation.operationId).toBe('1')
     }
-    expect(request).toHaveBeenCalledTimes(9)
+    expect(request).toHaveBeenCalledTimes(22)
   })
 
   it('without the switch nothing changes: a Core-server path is the simulator\'s answer, as before', async () => {
@@ -229,12 +229,12 @@ describe('AR-2: Try-it in Simulated mode (AC-C-100)', () => {
 describe('AR-3: the Live document (AC-C-100)', () => {
   beforeEach(() => setCoreEndpointMode('LIVE'))
 
-  it('75 operations, every one LIVE, served from the page\'s own origin and from nowhere else', () => {
+  it('89 operations, every one LIVE, served from the page\'s own origin and from nowhere else', () => {
     const document = buildLiveApiDocument(NO_REPLICA_IDENTIFIERS)
-    expect(countOperations(document)).toBe(75)
+    expect(countOperations(document)).toBe(89)
     for (const [operationId, badges] of badgesOf(document)) expect(badges[0], operationId).toBe('LIVE')
     expect(document.servers.map((server) => server.url)).toEqual([PAGE])
-    expect(document.info.version).toBe('0.2.1')
+    expect(document.info.version).toBe('0.3.0')
     const prose = [document.info.description, ...document.tags.map((tag) => tag.description)].join('\n')
     expect(prose).not.toContain(`\`${CORE_SERVER_HTTP_ORIGIN}\``)
     expect(prose).not.toContain(`\`${CORE_SERVER_WS_URL}\``)
@@ -325,14 +325,14 @@ describe('AR-3: Try-it in Live mode (AC-C-100)', () => {
     ])
   })
 
-  it('every one of the 69 operations that are not denied goes to the network (the nine design-book ones too)', async () => {
+  it('every one of the 83 operations that are not denied goes to the network (the 22 design-book ones too)', async () => {
     const { fetch, networkFetch } = liveHarness()
     const allowed = CORE_API_OPERATIONS.filter((operation) => !(TRY_IT_DENIED_OPERATIONS as readonly string[]).includes(operation.operationId))
-    expect(allowed).toHaveLength(69)
+    expect(allowed).toHaveLength(83)
     for (const operation of allowed) {
       await fetch(new Request(`${PAGE}${operation.path.replace('{id}', 'X-1')}`, { method: operation.method.toUpperCase() }))
     }
-    expect(networkFetch).toHaveBeenCalledTimes(69)
+    expect(networkFetch).toHaveBeenCalledTimes(83)
   })
 
   it.each([

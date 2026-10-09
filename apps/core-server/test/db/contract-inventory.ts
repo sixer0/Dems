@@ -19,6 +19,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { V2 } from './contract-v2-delta';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 /** The workspace root of the repository: this folder is four levels below it. */
@@ -29,6 +30,17 @@ export const CONTRACT_FILE = resolve(
   '2026-10-04_dems_backend_rbac_pairing',
   'masterplan',
   '03_database_contract.md',
+);
+/**
+ * dbc-3, the current contract (ruling D44 R1): the CLOSED task-2 document above is never edited;
+ * the schema-v2 delta composes onto it from THIS contract, transcribed in `contract-v2-delta.ts`.
+ */
+export const DBC3_FILE = resolve(
+  REPOSITORY_ROOT,
+  'docs',
+  '2026-10-07_dems_real_capture_sealing',
+  'masterplan',
+  '04_database_contract.md',
 );
 export const INVENTORY_FILE = resolve(HERE, 'contract-inventory.json');
 
@@ -241,10 +253,32 @@ export function parseContract(text: string): ContractInventory {
     tables.push(parseTable(body[start] ?? '', body.slice(start + 1, end), valueSets, formats).table);
   });
 
+  // ── Schema v2 (ruling D44 R1): compose the dbc-3 delta onto the v1 base ──────────────────
+  // The task-2 contract stays exactly as closed; dbc-3 (`docs/2026-10-07_.../masterplan/
+  // 04_database_contract.md`) adds nine tables and an R-8 tenth (T-31..T-40), changes five, and
+  // swaps three CHECKs elsewhere. The delta module states its provenance; see contract-v2-delta.ts.
+  for (const [name, swap] of Object.entries(V2.valueSetSwaps)) valueSets[name] = [...swap];
+  Object.assign(valueSets, V2.valueSets);
+  formats['NO_SECRET_KEYS'] = V2.noSecretKeys;
+  for (const added of V2.newTables) {
+    tables.push({ id: added.id, name: added.name, columns: added.columns.map((c) => ({ ...c })), constraints: added.constraints.map((c) => ({ ...c })) as ContractConstraint[] });
+  }
+  for (const change of V2.changedTables) {
+    const table = tables.find((candidate) => candidate.name === change.name);
+    if (table === undefined) throw new Error(`dbc-3 delta: the v1 base has no table ${change.name}`);
+    const mutable = table as unknown as { columns: ContractColumn[]; constraints: ContractConstraint[] };
+    for (const column of change.addColumns) if (!mutable.columns.some((c) => c.name === column.name)) mutable.columns.push({ ...column });
+    for (const dropped of change.dropConstraints) mutable.constraints = mutable.constraints.filter((c) => c.name !== dropped);
+    for (const constraint of change.addConstraints) {
+      mutable.constraints = mutable.constraints.filter((c) => c.name !== constraint.name);
+      mutable.constraints.push({ ...constraint } as ContractConstraint);
+    }
+  }
+
   const all = tables.flatMap((table) => table.constraints);
   const count = (kind: ConstraintKind): number => all.filter((constraint) => constraint.kind === kind).length;
   return {
-    source: 'docs/2026-10-04_dems_backend_rbac_pairing/masterplan/03_database_contract.md (sections 2.4 and 4)',
+    source: 'docs/2026-10-04_dems_backend_rbac_pairing/masterplan/03_database_contract.md (sections 2.4 and 4) composed with docs/2026-10-07_dems_real_capture_sealing/masterplan/04_database_contract.md (dbc-3 sections A.2, B, C, E.3; delta module contract-v2-delta.ts)',
     valueSets,
     formats,
     tables,

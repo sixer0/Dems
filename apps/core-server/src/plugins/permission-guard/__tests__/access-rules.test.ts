@@ -53,13 +53,13 @@ function entry(operationId: string, change: Record<string, unknown>): CoreApiOpe
 }
 
 describe('the rule book of the contract registry', () => {
-  it('compiles a rule for every one of the 75 operations: none lacks an access rule or an audit rule', () => {
-    expect(book.operationIds).toHaveLength(75);
+  it('compiles a rule for every one of the 89 operations: none lacks an access rule or an audit rule', () => {
+    expect(book.operationIds).toHaveLength(89);
     expect(rules.filter((rule) => !isAccessRule(rule))).toEqual([]);
-    expect(new Set(compiled.map((rule) => rule.operationId)).size).toBe(75);
+    expect(new Set(compiled.map((rule) => rule.operationId)).size).toBe(89);
   });
 
-  it('holds 4 PUBLIC, 5 DEVICE, 25 AUTHENTICATED, 40 with one permission and 1 any-of (spec §7, D13)', () => {
+  it('holds 4 PUBLIC, 5 DEVICE, 29 AUTHENTICATED, 50 with one permission and 1 any-of (spec §7, D13)', () => {
     const count = (kind: string): number => compiled.filter((rule) => rule.kind === kind).length;
     expect({
       PUBLIC: count(CoreApiAccessKind.PUBLIC),
@@ -67,7 +67,7 @@ describe('the rule book of the contract registry', () => {
       AUTHENTICATED: count(CoreApiAccessKind.AUTHENTICATED),
       PERMISSION: count(CoreApiAccessKind.PERMISSION),
       ANY_OF: count(CoreApiAccessKind.ANY_OF),
-    }).toEqual({ PUBLIC: 4, DEVICE: 5, AUTHENTICATED: 25, PERMISSION: 40, ANY_OF: 1 });
+    }).toEqual({ PUBLIC: 4, DEVICE: 5, AUTHENTICATED: 29, PERMISSION: 50, ANY_OF: 1 });
   });
 
   it('takes method, path, permissions and conditions from the registry entry, and nothing from anywhere else', () => {
@@ -113,6 +113,7 @@ describe('the rule book of the contract registry', () => {
       ['injectFault', CoreApiAccessCondition.DEMO_FLAG],
       ['clearFault', CoreApiAccessCondition.DEMO_FLAG],
       ['resetDemo', CoreApiAccessCondition.DEMO_FLAG],
+      ['switchAudioSource', CoreApiAccessCondition.SESSION_HOLDER],
     ]);
   });
 

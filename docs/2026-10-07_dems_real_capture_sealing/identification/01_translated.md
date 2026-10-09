@@ -1,13 +1,21 @@
 ---
 task_id: 2026-10-07_dems_real_capture_sealing
 task_slug: dems_real_capture_sealing
-date: 2026-10-07
+date: 2026-10-08
 agent: request-translator
 model_tier: default
-status: translated
+status: REQUEST_TRANSLATED (execution resumption — phase C of blueprint rev 2.1)
+revision: part_2_execution_resumption
+part_1_status: retained as the planning-cycle record (A.1-A.5, 2026-10-07)
+governing_approval: D4 (first BLUEPRINT_APPROVAL) + D24 (second BLUEPRINT_APPROVAL of rev 2.1, "setuju semua")
+repository_baseline: HEAD 0024068 (local checkpoint commit; working tree clean; no git remote)
 ---
 
-# Translated Tasks: DEMS — real capture devices, sealing v2 and transcript (next phase)
+> **Read order.** Part 2 (2026-10-08) governs the current cycle: it translates the user's RESUMPTION-and-EXECUTE instruction for the already-approved blueprint rev 2.1. Part 1 (2026-10-07) is kept unchanged as the planning-cycle translation behind blueprint rev 1/2.0 and is not re-opened. The executable table itself stays `identification/02_structured.md` (rev 2.1) — this document never restates rows as a new plan.
+
+# Part 1 — Planning-Cycle Translation (2026-10-07): identification through BLUEPRINT_APPROVAL
+
+*Original title: "Translated Tasks: DEMS — real capture devices, sealing v2 and transcript (next phase)". The content below is unchanged from 2026-10-07; only this part marker was added on 2026-10-08.*
 
 ## Intent
 
@@ -259,5 +267,212 @@ Rule for any external lookup: generic queries only. Nothing from the repository,
 5. **Gate presentation.** At the gate, the user-facing summary is in Indonesian, and each OD carries a one-line plain-language consequence of the default. The user approves quickly when defaults are clear (user profile).
 
 ---
+
+# Part 2 — Execution Resumption Translation (2026-10-08): phase C of blueprint rev 2.1
+
+**Status: REQUEST_TRANSLATED.** No clarification is required — see "Ambiguity Screen" below for the points that were probed and resolved from the documents rather than asked.
+
+## Original Request (this cycle, verbatim)
+
+> "saya telah melakukan adjustment rencana berikutnya. dan sudah saya dokumentasikan di dokumen update terakhir. cek dan kerjakan implementasinya dengan full paralelisasi di ijinkan tanpa limit"
+
+Literal reading: "I have made an adjustment to the next plan and documented it in the latest update document. Check it and carry out its implementation, with full parallelization allowed without limit."
+
+## Intent (translated)
+
+The user is not asking for new planning. They are (1) pointing at the change set already written into this task's newest document, (2) instructing the controller to verify that change set against what is on disk, and (3) releasing phase C (IMPLEMENTATION) of the approved blueprint immediately, with the agent-concurrency ceiling removed. The verb pair "cek dan kerjakan" = verify-then-execute inside one instruction; "rencana berikutnya" = the next phase's plan already held in `identification/02_structured.md`.
+
+**Scale category:** Enhancement (major, contract-breaking) — execution cycle. No new scale category, no re-plan, no new blueprint revision.
+
+## Confirmed Identification of "the Adjustment to the Next Plan"
+
+The documented adjustment is **not** a fresh edit to the plan. It is the audit-driven revision round plus the new requirement plus the second approval, all recorded on 2026-10-08. Each candidate reading was checked against the artifacts:
+
+| Candidate reading of "adjustment ... documented in the latest update document" | Evidence | Verdict |
+|---|---|---|
+| The audit-driven revisions RV-CODE / RV-SPEC / RV-BP (blueprint rev 2.1) | `decisions/decisions.md` D21 (RV-CODE PASS), D22 (RV-SPEC PASS, 84 errata + 14 R-8 rows), D23 (rev 2.1 gated V1-V7 PASS, 79 rows 41-119); `implementation/09_rv_code_audit_fixes.md`, `masterplan/11_audit_errata.md`; announced in `report/report.md` §0 line 9 | **Confirmed — part of the adjustment** |
+| The new requirement R-8 (configurable STT server, activate/deactivate from a configuration menu, configuration stored in the DB) | D20 (user verbatim, mid-revision); spec sections added by RV-SPEC; blueprint rows 112-119; `masterplan/01_specs.md` R-8 | **Confirmed — part of the adjustment** |
+| The SECOND BLUEPRINT_APPROVAL of rev 2.1 rows 41-119 with all nine recommended answers | D24 (verbatim "setuju semua"): Q-SEC-1 (a), Q-SEC-2 (a), Q-INST-1 (c), Q-D7 (a), Q-STT-ROUTE (a), Q-WORKER (a), Q-GOP (a), Q-CLICK (a), Q-STT-CFG (a); Q-SP-4 and Q-SEC-3 at their defaults | **Confirmed — the approval half of the adjustment** |
+| A separate, uncommitted user edit to the plan | `git status --porcelain` is empty at HEAD `0024068`; that commit itself carries `report/report.md` (+22 lines = §0) and `decisions/decisions.md` (+32 lines = D16-D24, DR-01..DR-04); `report/report.md` is the newest file in the task folder by mtime; no other planning document changed after the checkpoint | **Excluded — no such edit exists** |
+| A request to re-plan or produce a new blueprint revision | The request says "cek dan kerjakan implementasinya"; the MAJOR gate required before implementation (D3/RF-9) was already satisfied by D24 | **Excluded — would duplicate an approval already given** |
+
+**"Dokumen update terakhir" resolves to `report/report.md` §0 "UPDATE 2026-10-08 — read this first"**, which states the same thing: Kilo resumes at phase C with rev 2.1 rows 41-119 following the wave table, plus the eight binding audit rules. Filesystem mtime (`report/report.md`, 2026-10-08 08:42) and the commit contents agree.
+
+## Goals (this cycle)
+
+1. **G8 — Verified resumption.** Confirm from artifacts, not from memory, that the adjustment equals RV-CODE + RV-SPEC + RV-BP + R-8 + D24, and that the repository holds no unrecorded user change.
+2. **G9 — Unambiguous execution scope.** Phase C = blueprint rev 2.1 scheduled rows only, in Depends-On order, ending at the single "done on this Mac with fake devices" definition (`02_structured.md` §5).
+3. **G10 — Correct reading of the parallelism instruction.** The user lifts the *count ceiling*; they do not lift dependency order, resource serialization, or any verification invariant.
+4. **G11 — Red-line continuity.** Every red line and standing invariant known to the planning documents is carried into every delegated row of this phase.
+
+## Primary Task
+
+Execute blueprint rev 2.1 rows 41-119 (phase C) in the dependency order of `02_structured.md` §10, launching every row whose dependencies are satisfied at once, with no concurrency-count ceiling, until each milestone's code-review checkpoint and gate are green — stopping only at the escalation points listed below.
+
+## Execution Scope
+
+### In scope (scheduled, phase C, this Mac)
+
+| Milestone | Rows | Nature |
+|---|---|---|
+| M0 pickups | 41, 43, 106 | test-strategy gate-file renumber; C-N4 loopback-ingest clause; spec-reconciliation check that opens M2 |
+| M1 CPU addendum | 107, 108, 109, 110 | whisper.cpp source build under `.cache/stt/` (Metal off, zero Homebrew change), ggml model conversion, CPU-only functional check 2 runs, independent +1 addendum gate |
+| M2 | 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 112, 114 → review 55 → gate 56 | contract, schema v2, migrations, seed, pins, Simulated parity, lanes, reset guard, `stt_config` |
+| M3 | 111 (proofs first), 57, 58, 59, 60, 61, 62 → review 63 → gate 64 | worker proofs H-4/H-10, supervisor + IPC, fMP4 writer, fixtures, static rules, instrumentation |
+| M4 | 65, 66, 67, 68 → review 69 → gate 70 | adapters and selector on fakes (real adapters stay class C) |
+| M5 | 71, 72, 73 → review 74 → gate 75 | manual mic switch mechanics + web/mobile UI |
+| M6 | 76, 77, 78, 79, 113, 115, 116, 117, 118 → review 80 → gate 81 | transcript on both backends + R-8 configuration |
+| M7 | 82, 83, 84, 85, 86, 87, 119 → review 88 → gate 89 | sealing v2, package/signer, encryption, verify v2, kill matrix, clients |
+| M8 | 90, 91, 92 → review 93 → gate 94 | media streaming, export/composite, playback UI |
+| M9 | 95, 96, 97 → chain 98, 99, 100, 101 | regression, docs, hygiene, final verification chain (strictly sequential) |
+
+Row 42 is `[done]` (applied in W12, D15(c)) and is never delegated.
+
+### Not scheduled in this cycle (explicitly out)
+
+| Excluded | Reason |
+|---|---|
+| Rows 102, 103, 104 (GStreamer install / prototype / memo refresh) | Conditional on `Q-INST-1 = approve`; D24 answered Q-INST-1 **(c) keep deferred**. GStreamer stays "not evaluated"; FFmpeg + libavfilter already satisfies R-3 |
+| Class-C pack §9 (C-1..C-9: real ONVIF/camera/PoE/mic adapters, physical devices on the LAN, live preview of real cameras, Core-device STT benchmark, TPM signer, long AV-drift and kill campaigns, A1-A6 pre-handover) | Q-HW: hardware unknown. Activates on arrival **without re-planning**, via row 105 |
+| Row 105 (class-C / pre-handover activation pass, task-architect) | Trigger-only: after row 101 **and** Q-HW arrival or a handover announcement (D233) |
+| Any new blueprint revision, re-approval, or re-plan | D24 already carries the MAJOR second-approval gate; a re-plan would contradict the instruction "cek dan kerjakan" |
+| OD-21 legal confirmation of fragmented MP4, AR-2 privacy/DPIA | Need an external authority; block handover only, not implementation (rows 59, 82, 86 proceed; S7/S8 kill cells stay parked) |
+
+## Executable Frontier (what can launch now)
+
+All dependencies of these three rows are satisfied by `R1` (rev-1 rows 1-39 executed, artifacts present — `status_tasks.md` row ledger), `RV` (RV-CODE gated D21, RV-SPEC gated D22) and the gate answers (D24):
+
+| Row | Task | Agent | Unblocked by | Notes for launch |
+|---|---|---|---|---|
+| 41 | Renumber gate-artifact names in `masterplan/10_test_strategy.md` (`06_m2_gate`..`13_m9_gate` → `07_..14_`); record grep evidence and edit nothing if RV-SPEC already did it | test-expert | R1, RV | Single file; diff limited to naming lines |
+| 43 | Add "RTSP ingest binds `127.0.0.1` only" to constraint C-N4 in `masterplan/01_specs.md`, citing SEC35-23; same edit-nothing rule | data-analyst | R1, RV | Constraint count otherwise unchanged |
+| 107 | whisper.cpp v1.9.5 source build under `.cache/stt/whisper.cpp/`, cmake from an isolated venv `.cache/stt/venv-build/`, Xcode clang, Metal/GPU/BLAS/CoreML off, static; `otool -L` proof + identical `brew list --formula --versions` before/after | coder-execution | R1; Q-D7 = a; Q-STT-ROUTE = a | Check `uptime` first; CPU-heavy; nothing written outside `.cache/stt/`; on build failure **stop and re-ask Q-STT-ROUTE** (RK-26), never fall back to Homebrew silently |
+
+Next wave (L1), released the moment their own dependencies land:
+
+- **106** (verifier) — spec-reconciliation check, depends on 41 + 43. It is the key that opens M2: rows 44 and 45 must not launch before 106 reports 0 open gaps (RK-31).
+- **108** (coder-execution) — model conversion for `cpu-local`, depends on 107. RAM-heavy venv work; never beside a large oMLX session; on converter failure the pre-converted ggml download under OD-20 is the **recorded** fallback, never a silent switch (RK-27).
+
+After that the frontier advances strictly by the Depends On column: 44/45/109 at L2, 46/47/110 at L3, 48/49/51/112 at L5, and so on through §10. With the ceiling lifted, "released as soon as gated" is the rule; the wave table stays the dependency proof and the resource map, not a throttle.
+
+## Parallelization Ruling — "full paralelisasi di ijinkan tanpa limit"
+
+### What the instruction lifts
+
+- **D5(c)**: "max 4 in flight per agent type and max 8 total" — **lifted by the user on 2026-10-08.**
+- **§10 "Planned maxima"** sentence (4 rows per wave, 3 of one type, "well under the 8-total ceiling") — now a scheduling hint, not a limit.
+- The global 8-agents-in-flight cap that CF-1 ratified inherits is likewise waived by the user for this task. Memory `feedback-parallelism-push-to-limit` is honored in its strongest form: push to the maximum the structure allows.
+
+### What the instruction does NOT lift
+
+**(a) The DAG.** Execution order remains the `Depends On` column (CF-9: step numbers are stable identifiers and higher-numbered dependencies such as 58 → 111 or 44 → 106 are intentional). A row never runs beside or before one of its own dependencies. §10's topological levels are the proof the graph is acyclic; they stay valid as correctness evidence even when several levels run at once.
+
+**(b) Physical single-writer and resource-serialization constraints (§10).** These protect data and shared host state; they are not concurrency ceilings:
+
+| Constraint | Rows affected | Why it cannot be relaxed |
+|---|---|---|
+| npm lockfile — one writer, under `/usr/bin/lockf -k .locks/npm.lock` | 50, 113, any `npm`/`openapi:gen` work | Two writers corrupt `package-lock.json`; D14(a) proved override edits need serialized probes |
+| Homebrew — **no writer at all** unless a gate answer allows it (`Q-INST-1 = approve` → 102, or `Q-STT-ROUTE = b` → 107 route b) | 102, 107 (route b only) | A Homebrew write upgrades shared libraries (`openssl@3` used by ffmpeg and omlx, plus `ca-certificates`, `sdl3`, `sdl2-compat`, `openjdk`) — AU2-02, D12(d). Under D24 answers, neither exception applies: **zero Homebrew writes in this cycle** |
+| core-server db runner — one migration / one DB test at a time | 44, 46, 49, 53, 54, 112, 114, gate re-runs | Concurrent `db:migrate`/seed against the same cluster races locks and makes evidence unreproducible; `/usr/bin/lockf -k .locks/db-migrate.lock` is prescribed |
+| mobile jest — sequential | 62, 68, 73, 87, 92, 97, 118 | Shared emulator/host load produced measured flakes in full parallel runs (root `npm test` with idle emulators); per-workspace runs are the reliable evidence |
+| core-web jest — sequential | 67, 72, 87, 92, 117 | Same reason; also shares the agent-browser harness |
+| oMLX — serialized, never beside a large VLM session; start/stop logged; never restarted or upgraded | 76, 77, 81, 115 | oMLX is a shared host service of another project (SMART WMS); D7 standing rule + AU2-10 |
+| CPU-heavy STT — never beside any jest suite; `uptime` check first | 107, 108, 109, 110, 77, 81 | RK-28 and D230: capture/transcription starvation is exactly what M6-DF-1 measures; contention would poison the measurement |
+| Media ports `127.0.0.1:8554-8564` — one capture/fixture at a time | 57-62, 111, 71, 82, 86, gates | Port collisions change which process fed which file, i.e. the evidence itself |
+| Emulator access — one lane / emulator pair at a time | 44, 53, 68, 72, 73, 87, 92, 118, gates | `adb reverse` rules are global per device; two rows rewriting them interleave sessions |
+
+**(c) Verification invariants.** Test depth 2 + 1 per device/browser/spike/DB check, suites once per workspace per checkpoint, `--maxWorkers=2` everywhere, kill matrix as distinct cells and never loops, per-milestone code-review checkpoint (55, 63, 69, 74, 80, 88, 93) before its gate, gates one at a time, final chain 98 → 99 → 100 → 101 strictly sequential. Parallelizing a gate defeats its purpose (independent +1).
+
+**(d) Output isolation.** Each parallel row writes only its own blueprint output path plus `delegation_progress/<agent>__row<N>.md`; `status_tasks.md` and `delegation_progress_report.md` stay controller-synthesized (D5(d)); scratch helpers are never shared between parallel agents (report.md §6 process lessons).
+
+**(e) Host capacity is physics, not policy.** Apple M5 (4 performance + 6 efficiency cores), 24 GiB RAM, CPU-only. An unbounded number of rows in flight does not create cores; the serialization table above is what keeps measurements honest on this machine. Unlimited parallelism therefore means "no artificial count limit", applied within (a)-(e).
+
+## Binding Constraints and Red Lines (every downstream row)
+
+### Red lines (report.md §6, global rules)
+
+- No git remote, no push, no publish, no deploy, no accounts, no cloud: commits are **local only**; no `sudo`, ever.
+- Never delete or rename a file the user did not ask about; large evidence is ignored, not deleted.
+- No Homebrew install or upgrade that touches shared libraries; builds happen from source under `.cache/` (audit rule 7).
+- All media and generated evidence stay out of git — `.data/` and `.cache/` only (OD-25); `docs/` carries text evidence and small stills only.
+- Listeners are loopback-only; RTSP ingest and every fixture listener bind `127.0.0.1` (SEC35-23); never bind port 8000; never contact SMART WMS ports (`[::1]:5173`, `127.0.0.1:5174`, `[::1]:5175`) or stop its processes.
+- oMLX: never restart, never upgrade, calls serialized, back up `~/.omlx/logs/omlx-serve.log` before any `start.sh`, copy quoted log lines into the task folder, and the API key is never printed, staged, or stored in the DB.
+- Emulators: no agent types a PIN or sets, changes, or clears any lock/PIN/fingerprint/security setting; a locked device is reported and the user gets `apps/mobile/scripts/emulator-user-lock.sh unlock`; biometric test skipped (D231). Launch with `demsdemo:///login?core=LIVE&motion=off`, web console at `http://127.0.0.1:<port>` only.
+- PostgreSQL: project-local only on `127.0.0.1:4432` via the repo's `scripts/pg` commands; never touch the host's `*:5432`; never print, stage, or argument-pass `.data/pg.pwfile`, `.data/pg.owner.env`, `.data/pg.env`; never connect as `dems_admin` after provisioning.
+- Tests: fake clocks only, no new wall-clock waits; `--maxWorkers=2` for every jest and vitest workspace.
+- `apps/mock-core/**` and `release/**` are read-only; the confidential design-book `.docx` is never staged.
+- P25 waiver (OD-14) covers only the listed edits in `app.ts`, `config.ts`, `index.ts`; each edit is reviewed.
+- Nothing project-related leaves the machine — external lookups are generic queries only.
+- No fabrication, no claim of completion without fresh verification evidence, no silent drop or re-scope of an approved row, no skipped approval gate; deviations go to the Drift Log the moment they happen.
+- Reports to the user in Indonesian; `/docs` in English; no emoji in deliverables.
+
+### Audit rules added by report.md §0 (binding for Kilo)
+
+1. Never silently drop or re-scope an approved row; parts a user instruction does not cancel stay as concrete rows with tests.
+2. Record every deviation in the Drift Log when it happens.
+3. Every measurement must be able to fail: negative control required; product tolerance (±40 ms) kept separate from regression tolerance (2 ms on deterministic fixtures).
+4. Never claim code exists before it does; quote file paths for every "done".
+5. Fix the recorded failure site, and re-run the original failing scenario as proof.
+6. Once the stop is known, the Core's recorded duration wins (D19(b)); forward-only display applies only while the Core reports RECORDING.
+7. No Homebrew installs that upgrade shared libraries; build from source under `.cache/`; oMLX is a shared host service.
+8. Dependency risk is measured by unique root advisories, not npm's package count.
+
+### Escalation points that survive the autonomy grant (report.md §10)
+
+A MAJOR change (new scope, different agents, effort > 30 %, contradicting D4); any install outside the Q-INSTALL blanket or needing sudo; hardware arrival (Q-HW) and the class-C rows it activates; anything outward-facing (remote, push, publish, network exposure beyond loopback); the OD-21 legal confirmation of fragmented MP4 before handover; the handover announcement that unlocks long campaigns; row 107 build failure (re-ask Q-STT-ROUTE); row 108 converter failure (record the OD-20 fallback, do not switch silently).
+
+## Output Requirements
+
+- **Format**: `md` (unchanged; D4 output format A). No format keyword appears in this cycle's request, so the Part 1 default stands.
+- **Destination**: `/Users/gsp-budi/Documents/DEMS/docs/2026-10-07_dems_real_capture_sealing/` — row artifacts to the paths named in the `02_structured.md` Expected Output column (`implementation/09_m2_lane_recreation.md` … `implementation/59_m3_worker_proofs.md`, `gateway_check/07_m2_gate.md` … `gateway_check/26_m1_cpu_stt_addendum.md`, `initialization/04_whisper_cpp_cpu_build.md`, `research/09_spike_stt_model_conversion.md`, `research/13_stt_cpu_functional_check.md`, `test/02_m9_regression.md`), plus one `delegation_progress/<agent>__row<N>.md` per parallel row.
+- **Style**: English, tables over prose, every factual claim cited (`file:line`, decision ID, or command output); user-facing reports in Indonesian; no emoji.
+
+## History Relevance Assessment (this cycle)
+
+| Reference | Relevance | Notes |
+|---|---|---|
+| `report/report.md` §0 (2026-10-08 update) | **Direct** | The "latest update document": resume point, row range, wave table, eight binding audit rules |
+| `decisions/decisions.md` D16-D24 | **Direct** | Audit findings, rulings, R-8, RV gates, second approval with the nine answers |
+| `identification/02_structured.md` rev 2.1 | **Direct** | The approved executable table, §10 waves and serialization, §9 class-C pack, Gate Questions |
+| `implementation/09_rv_code_audit_fixes.md`, `masterplan/11_audit_errata.md`, `verification/20-22` | **Direct** | The revision round (`RV` dependency token) that rows 41/43/106 consume |
+| This file, Part 1 | **Indirect** | Requirements R-1..R-7, red lines, and assumptions carried forward; superseded for scope by Part 2 |
+| `status_tasks.md`, `delegation_progress_report.md` | **Direct (state)** | Row ledger and floors the controller maintains; not written by this agent |
+| Task 2 folder (`2026-10-04_dems_backend_rbac_pairing/`) | **Indirect** | Source of R-1..R-7, test depth, ledger floors, environment gotchas; already folded into rev 2.1 |
+
+### Important Notes From History
+
+- Ledger floors to beat (D21/D15): shared 71/1,851 · core-web 117/1,495 · mobile 194 suites/1,997 · core-server unit 160/3,954 · db 124/1,751 · pg-scripts 57 · mock-core 19.
+- Registry pins: 89 operations (34 GET / 55 POST), 62 audit types, 40 error codes, offline 23 through M5; R-8 ops 90-92 re-pin in M6 by row 113 (CF-11) — expected 92 / 35 GET / 57 POST, audit types 63, asserted from `03_api_contract.md` §2.5, not from the blueprint.
+- Only `dems_demo` exists; lanes `dems_lane_1/2/3` must be recreated and devices re-paired per lane (row 44 is the first M2 row) before any lane-based gate.
+- Nothing of rev 2.1 has been executed yet: no artifact exists at `implementation/09_m2_lane_recreation.md`, `initialization/04_*`, `research/09_*`, `research/13_*`, `gateway_check/07_*`/`25_*`/`26_*`. The resumption genuinely starts at W1.
+
+## Assumptions Made (this cycle)
+
+| # | Assumption | Justification | Effect if wrong |
+|---|---|---|---|
+| AS-9 | "dokumen update terakhir" = `report/report.md` §0 | Newest file in the folder; §0 is literally titled "UPDATE 2026-10-08 — read this first" and states the resume point | None material: decisions D16-D24 and rev 2.1 say the same thing, so the scope is unchanged under any of those readings |
+| AS-10 | "adjustment rencana berikutnya" = the rev-2.1 revision round + R-8 + D24, not an unrecorded edit | Clean working tree at `0024068`; the commit carries exactly that content; no other plan document changed after the checkpoint | If the user actually has an unsaved edit elsewhere, execution would miss it — mitigated by the fact that every milestone stops at its gate, where the user can interject |
+| AS-11 | "tanpa limit" waives the concurrency *count*, not safety constraints | The constraints in §10(b)/(c) are correctness and shared-host protections; report.md §6 makes breaching several of them a red line | Interpreting it as license to break serialization would corrupt measurements and risk the shared host toolchain; the ruling is stated in writing here so the deviation is visible |
+| AS-12 | Execution continues to the §5 completion line without a new approval gate | D4 Q-AUTO grants full autonomy inside the approved scope with a decision log; D24 closed the second MAJOR gate | Only a later MAJOR change re-opens a gate |
+
+## Ambiguity Screen (checked; nothing blocking)
+
+| Probed point | Resolution |
+|---|---|
+| Which document is "the latest update"? | `report/report.md` §0 — mtime plus title plus commit content |
+| Is there a user edit outside the tracked documents? | No — `git status --porcelain` empty at `0024068` |
+| Does "kerjakan implementasinya" mean all remaining work? | Yes, bounded by the §5 completion line: scheduled rows 41-119; class C and conditional rows stay excluded |
+| Could "without limit" include skipping gates or 2+1 depth? | No — Q-AUTO explicitly keeps approval gates and the user's standing test-depth rule; the request contains no words about verification |
+| Could "without limit" include starting the deferred GStreamer install? | No — that is gated by Q-INST-1, answered (c) deferred in D24; a general parallelism phrase does not reverse a specific named answer |
+| Tier/agent-variant resolution | Unchanged and not restated here: paid-first per D9, with the non-local fallback rule for `explore` and `task-architect`; per-call model downgrade for mechanical rows 107-109 stays a controller decision recorded in `delegation_progress_report.md` |
+
+## Notes (for Master Controller)
+
+1. **Filename-prefix reuse to watch.** Row 44's artifact is `implementation/09_m2_lane_recreation.md` while `implementation/09_rv_code_audit_fixes.md` (RV-CODE) already exists; likewise `gateway_check/07_m2_gate.md` sits next to the existing `06_security_remediation.md`. Different file names, so no overwrite — but always cite artifacts by full path, never by "implementation/09".
+2. **Do not schedule 44/45 before 106 is green** (RK-31) and **do not schedule 58 before 111's H-4/H-10 proofs pass** (AU3-04). Both are dependencies, not waves.
+3. **Frontier launch note under the lifted ceiling:** rows 41, 43, 107 have no resource conflict with each other (two document files, one `.cache/stt/` build), so they may all run concurrently today; 107 needs the `uptime` check regardless.
+4. This agent wrote only its own artifact files. `status_tasks.md`, `delegation_progress_report.md` and `decisions/decisions.md` remain controller-owned; the resumption decision (recording the parallelism ruling and the confirmed adjustment identification) belongs in the Drift Log / decision log by the controller.
+
+---
 *Generated: 2026-10-07*
-*Last Updated: 2026-10-07*
+*Last Updated: 2026-10-08 09:55 (Part 2 — execution-resumption translation, phase C of blueprint rev 2.1)*

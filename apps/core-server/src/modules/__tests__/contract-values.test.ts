@@ -55,7 +55,13 @@ describe('demo rebuild and device commands: read from the contract (W92-15, W91-
       expect(contract.deviceCommandOfOperation(operationId), operationId).toBe(command);
       expect(contract.DEVICE_COMMAND_OPERATIONS[command], command).toBe(operationId);
     }
-    expect(Object.keys(DEVICE_COMMAND_OF_OPERATION)).toHaveLength(Object.keys(contract.DEVICE_COMMAND_OPERATIONS).length);
+    // R3 (ruling D44): the count comes from the landed contract. Schema v2 added POE_CYCLE to the
+    // COMMAND set (C3 §0/E-12); it reaches the SAME operation as RESTART (operation 48 decides
+    // RESTART versus PoE cycle inside one action), so the table of commands has four entries but
+    // three distinct operations - and three operations carry a command. The server map is keyed
+    // per operation: it is compared with the distinct operations of the contract table, never
+    // with the entry count and never with a hardcoded number.
+    expect(Object.keys(DEVICE_COMMAND_OF_OPERATION)).toHaveLength(new Set(Object.values(contract.DEVICE_COMMAND_OPERATIONS)).size);
     expect(Object.isFrozen(DEVICE_COMMAND_OF_OPERATION)).toBe(true);
   });
 });

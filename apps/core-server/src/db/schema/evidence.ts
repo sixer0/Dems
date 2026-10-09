@@ -1,10 +1,17 @@
 /**
  * Typed schema, group `evidence`: T-17 `evidence_items`, T-18 `evidence_tracks`,
- * T-19 `evidence_custody`, T-20 `exports` (database contract §4.17 to §4.20).
+ * T-19 `evidence_custody`, T-20 `exports` (database contract §4.17 to §4.20, and the v2 changes of
+ * `dbc-3` §B.11, §B.12, §C.4, §C.5, §C.6).
  *
  * The sealed columns of an evidence item, its tracks, its custody entries and the export records
  * are immutable for the runtime role by privilege (§7.3): only seven columns of `evidence_items`
- * may be updated.
+ * may be updated, and none of the v2 sealed columns joins that list (`dbc-3` §B.11).
+ *
+ * v2 keeps the four-value `track_id`, `position` and `tampered_track_id` sets exactly as v1 wrote
+ * them (D-DB-05): narrowing them would make 0004 fail to validate against the v1 rows that are
+ * still in the database before the re-seed. The v2 shape — exactly two file rows, positions 1..2,
+ * both hashes — is enforced by the mapping, the seed and the M2 tests (CS-18) and re-checked by
+ * verify v2 (OD-01/OD-02).
  */
 import type { EvidenceMarker, SessionNote } from '@dems/shared/sim';
 import { sql } from 'drizzle-orm';
@@ -22,27 +29,33 @@ import {
   text,
   unique,
 } from 'drizzle-orm/pg-core';
-import { caseNumber, code, evidenceId, exportId, hex64, oneOf } from './checks';
+import { caseNumber, code, evidenceId, exportId, hex64, matches, oneOf, signatureRule, signatureValue } from './checks';
 import { operators } from './rbac';
 import { sessionHistory } from './sessions';
 import {
   EVIDENCE_STATUS,
   EXPORT_SCOPE,
   INTEGRITY_SOURCE,
+  LABELS_STATUS,
   LIFECYCLE_STAGE,
   PROFILE,
+  SIGNATURE_ALGORITHM,
   SUBJECT_TYPE,
   TIME_SOURCE,
   TRACK_ID,
+  TRACK_KIND,
   VERIFICATION,
   type EvidenceStatusValue,
   type ExportScopeValue,
   type IntegritySourceValue,
+  type LabelsStatusValue,
   type LifecycleStageValue,
   type ProfileId,
+  type SignatureAlgorithmValue,
   type SubjectTypeValue,
   type TimeSourceValue,
   type TrackIdValue,
+  type TrackKindValue,
   type VerificationValue,
 } from './value-sets';
 
@@ -71,7 +84,7 @@ export const evidenceItems = pgTable(
     manifestHash: text('manifest_hash').notNull(),
     signatureValue: text('signature_value').notNull(),
     signatureKeyId: text('signature_key_id').notNull(),
-    signatureAlgorithm: text('signature_algorithm').$type<'SIMULATED-SHA256'>().notNull(),
+    signatureAlgorithm: text('signature_algorithm').$type<SignatureAlgorithmValue>().notNull(),
     signatureSimulated: boolean('signature_simulated').notNull().default(true),
     verificationStatus: text('verification_status').$type<VerificationValue>().notNull().default('NOT_RUN'),
     verificationAt: bigint('verification_at', { mode: 'number' }),
@@ -85,6 +98,14 @@ export const evidenceItems = pgTable(
     endTimeSource: text('end_time_source').$type<TimeSourceValue>(),
     createdAt: bigint('created_at', { mode: 'number' }).notNull(),
     updatedAt: bigint('updated_at', { mode: 'number' }).notNull(),
+    // ── schema v2 additions (dbc-3 §B.11). None of them joins the UPDATE grant list of `0003`:
+    //    a sealed value is written once by the seal and never edited afterwards (map §6).
+    //    Declared in the physical order `0004_capture.sql` appends them (ALTER ADD COLUMN puts a
+    //    new column at the end), so the typed schema, the contract inventory and the live
+    //    catalog agree column-by-column and position-by-position. ──
+    manifestVersion: smallint('manifest_version').notNull().default(1),
+    transcriptSha256: text('transcript_sha256'),
+    labelsStatus: text('labels_status').$type<LabelsStatusValue>(),
   },
   (t) => [
     unique('evidence_items_session_id_key').on(t.sessionId),
@@ -122,10 +143,20 @@ export const evidenceItems = pgTable(
       'evidence_items_input_check',
       sql`${oneOf(t.subjectType, SUBJECT_TYPE)} AND ${oneOf(t.profileId, PROFILE)} AND (${t.caseType} IS NULL OR ${oneOf(t.caseType, SUBJECT_TYPE)})`,
     ),
-    check('evidence_items_hashes_check', sql`${hex64(t.manifestHash)} AND ${hex64(t.signatureValue)}`),
+    // v2 (§C.5, register W1-C10): this CHECK carries the true SHA-256 digests only, all 64 hex
+    // characters. The signature encoding moved to `evidence_items_signature_value_check` because a
+    // real Ed25519 signature is 64 BYTES, i.e. 128 hex characters.
     check(
-      'evidence_items_signature_check',
-      sql`${t.signatureAlgorithm} = 'SIMULATED-SHA256' AND ${t.signatureSimulated}`,
+      'evidence_items_hashes_check',
+      sql`${hex64(t.manifestHash)} AND (${t.transcriptSha256} IS NULL OR ${hex64(t.transcriptSha256)})`,
+    ),
+    // v2 (§C.4, OD-04): the seal may carry a real signature. `Ed25519` is what v2 writes now;
+    // `ECDSA-P256-SHA256` is pre-declared for the class-C TPM adapter so no further migration is
+    // needed when hardware keys arrive (C-8).
+    check('evidence_items_signature_check', signatureRule(t.signatureAlgorithm, t.signatureSimulated, SIGNATURE_ALGORITHM)),
+    check(
+      'evidence_items_signature_value_check',
+      signatureValue(t.signatureValue, t.signatureAlgorithm, SIGNATURE_ALGORITHM),
     ),
     check(
       'evidence_items_verification_check',
@@ -139,6 +170,13 @@ export const evidenceItems = pgTable(
       'evidence_items_values_check',
       sql`${t.durationMs} >= 0 AND ${t.sizeBytes} >= 0 AND ${t.endedAt} >= ${t.recordedAt} AND (${t.sealedAt} IS NULL OR ${t.sealedAt} >= ${t.endedAt})`,
     ),
+    // v2 (§B.11, §C.6 D-DB-04): v1 rows keep 1 until the re-seed writes 2 (D-DB-01); the labels
+    // column is nullable because an item without a transcript has no label state at all (R-5).
+    check('evidence_items_manifest_version_check', sql`${t.manifestVersion} IN (1, 2)`),
+    check(
+      'evidence_items_labels_check',
+      sql`${t.labelsStatus} IS NULL OR ${oneOf(t.labelsStatus, LABELS_STATUS)}`,
+    ),
     check(
       'evidence_items_sources_check',
       sql`(${t.integritySource} IS NULL OR ${oneOf(t.integritySource, INTEGRITY_SOURCE)}) AND (${t.startTimeSource} IS NULL OR ${oneOf(t.startTimeSource, TIME_SOURCE)}) AND (${t.endTimeSource} IS NULL OR ${oneOf(t.endTimeSource, TIME_SOURCE)})`,
@@ -150,7 +188,16 @@ export const evidenceItems = pgTable(
   ],
 );
 
-/** T-18. Four rows per item; the runtime role may insert and read only. */
+/**
+ * T-18. In v2, one row per FILE of the item — the two camera files, each carrying the single
+ * `AUDIO-01` session track (OD-01 T1, R-4) — where v1 held up to four rows including separate
+ * audio rows. The runtime role may insert and read only.
+ *
+ * Two whole-file hashes per row, never renamed (`dbc-3` §B.12, D-DB-02): `sha256` is the hash of
+ * the STORED bytes (the S1 running prefix equals it at close) and `sha256_plain` is the hash of the
+ * PLAINTEXT whole file. Both are nullable-at-the-DB level so 0004 adds the column without a data
+ * rewrite (A.4); "both recorded on every v2 file" is a mapping, seed and verify rule (row 32).
+ */
 export const evidenceTracks = pgTable(
   'evidence_tracks',
   {
@@ -160,6 +207,15 @@ export const evidenceTracks = pgTable(
     label: text('label').notNull(),
     sizeBytes: bigint('size_bytes', { mode: 'number' }).notNull(),
     sha256: text('sha256').notNull(),
+    // ── schema v2 additions (dbc-3 §B.12). `kind` is the only value v2 code writes and is a
+    //    harmless label on the temporary pre-re-seed v1 rows (A.4). ──
+    kind: text('kind').$type<TrackKindValue>().notNull().default('FILE'),
+    containsAudio: boolean('contains_audio').notNull().default(true),
+    codec: text('codec'),
+    durationMs: bigint('duration_ms', { mode: 'number' }),
+    fragmentCount: integer('fragment_count'),
+    fragmentChainHead: text('fragment_chain_head'),
+    sha256Plain: text('sha256_plain'),
   },
   (t) => [
     primaryKey({ name: 'evidence_tracks_pkey', columns: [t.evidenceId, t.trackId] }),
@@ -171,8 +227,17 @@ export const evidenceTracks = pgTable(
     })
       .onDelete('restrict')
       .onUpdate('no action'),
+    // :353 stays exactly as v1 wrote it (D-DB-05); the v2 two-row shape is a mapping rule (CS-18).
     check('evidence_tracks_track_check', sql`${oneOf(t.trackId, TRACK_ID)} AND ${t.position} BETWEEN 1 AND 4`),
-    check('evidence_tracks_values_check', sql`${t.sizeBytes} >= 0 AND ${hex64(t.sha256)}`),
+    check('evidence_tracks_kind_check', oneOf(t.kind, TRACK_KIND)),
+    // R-4: both camera files carry the single session audio track, so a row without it is a bug.
+    check('evidence_tracks_audio_check', sql`${t.containsAudio}`),
+    // :354 in v2: the v1 rules plus the new-column patterns (C.6). `fragment_count` equaling the
+    // `recording_fragments` row count is an invariant of mapping and verify, not a DB CHECK (MR-V1).
+    check(
+      'evidence_tracks_values_check',
+      sql`${t.sizeBytes} >= 0 AND ${hex64(t.sha256)} AND (${t.codec} IS NULL OR ${code(t.codec)}) AND (${t.durationMs} IS NULL OR ${t.durationMs} >= 0) AND (${t.fragmentCount} IS NULL OR ${t.fragmentCount} >= 0) AND (${t.fragmentChainHead} IS NULL OR ${matches(t.fragmentChainHead, '^[0-9a-f]{64}$')}) AND (${t.sha256Plain} IS NULL OR ${matches(t.sha256Plain, '^[0-9a-f]{64}$')})`,
+    ),
   ],
 );
 

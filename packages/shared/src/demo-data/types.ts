@@ -274,7 +274,7 @@ export interface DemoApiExamplePayloads {
   evidenceExport: {
     evidenceId: string;
     request: { reason: string; destination: string };
-    response: { exportId: string; evidenceId: string; status: 'EXPORTED' };
+    response: { exportId: string; evidenceId: string; status: 'QUEUED' };
   };
 }
 

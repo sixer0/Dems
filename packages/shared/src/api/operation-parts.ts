@@ -116,3 +116,11 @@ export function exportNotPermitted(permission: Permission) {
 
 /** The demo flag, checked after the permission (DC-1, DC-2). */
 export const DEMO_FLAG_OFF = 'the demo flag of the server is off (DEMO_DISABLED; no audit row)';
+
+/**
+ * Task 3 M2-W7 (`C3 §2.2` mode column; OD-17): the note of the v2 operations the simulator
+ * emulates. OD-17 supersedes the predecessor's "simulator untouched" rule (retired by OD-23):
+ * a `simulated` operation is answered inside the app, so it belongs to the `offline` scope.
+ */
+export const SIM_V2_NOTE =
+  'Simulated: the in-app simulator emulates this operation (OD-17 supersedes the old "simulator untouched" rule, OD-23); in Simulated mode a client calls it inside its own simulator.';

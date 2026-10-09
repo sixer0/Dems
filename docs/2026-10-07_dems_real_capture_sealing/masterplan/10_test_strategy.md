@@ -53,7 +53,7 @@ section (section F.3, section K).
 **Artifact conventions** (paths numbered after the existing `gateway_check/01..05`; row 37 and row
 40 confirm the final names): M0 = `test/01_wave_a_regression.md` + `gateway_check/05_m0_spec_gate.md`;
 M1 = `gateway_check/04_m1_spike_gate.md` (row 38); M2..M9 = one gate report per milestone,
-convention `gateway_check/06_m2_gate.md` .. `gateway_check/13_m9_gate.md`, produced by the rev-2
+convention `gateway_check/07_m2_gate.md` .. `gateway_check/14_m9_gate.md`, produced by the rev-2
 verifier row; per-check command lines and outputs are recorded by the producing W-row in its own
 `implementation/` artifact and copied into the gate report; device/browser checks attach
 screenshots and console logs under `gateway_check/assets/`.
@@ -117,7 +117,7 @@ with outputs and screenshots/logs under `gateway_check/assets/`.
 Suite runs of M2 are the `M2-RG-*` family (7 workspaces, 1 per checkpoint, floors per section D.4).
 DB-backed gate checks run 2+1 per `dbc-3` §G "Run counts"; unit-style MT/catalog tests run once
 per checkpoint. MT-1..MT-8 are **re-referenced, not re-specified** — pass conditions are `dbc-3` §G.
-**Artifact of record for every M2 check** = `gateway_check/06_m2_gate.md` (rev-2 verifier row;
+**Artifact of record for every M2 check** = `gateway_check/07_m2_gate.md` (rev-2 verifier row;
 naming per section 0, confirmed by row 37), fed by each producing W-row's `implementation/` note.
 
 | Check ID | Name | Asserts (one line) | Command / workspace | Runs | Owning row | Cites |
@@ -147,7 +147,7 @@ naming per section 0, confirmed by row 37), fed by each producing W-row's `imple
 
 ### A.3 M3 — capture worker + supervisor + IPC on fake devices
 
-Artifact of record for every M3 check: `gateway_check/07_m3_gate.md` (rev-2 verifier; section 0),
+Artifact of record for every M3 check: `gateway_check/08_m3_gate.md` (rev-2 verifier; section 0),
 with producing rows' `implementation/` notes and `test/` checkpoint logs attached.
 
 | Check ID | Name | Asserts (one line) | Command / workspace | Runs | Owning row | Cites |
@@ -168,7 +168,7 @@ with producing rows' `implementation/` notes and `test/` checkpoint logs attache
 
 ### A.4 M4 — device selector + fake adapters
 
-Artifact of record for every M4 check: `gateway_check/08_m4_gate.md` + screenshots/console logs
+Artifact of record for every M4 check: `gateway_check/09_m4_gate.md` + screenshots/console logs
 under `gateway_check/assets/` (agent-browser and emulator runs), fed by the producing W-rows.
 
 Every client check runs on the **recreated lanes** (section E): web via agent-browser against the
@@ -187,7 +187,7 @@ lane Core port and re-paired per lane (`dbc-3` §F step 7).
 
 ### A.5 M5 — manual mic failover end to end
 
-Artifact of record for every M5 check: `gateway_check/09_m5_gate.md` + assets (switch-run captures
+Artifact of record for every M5 check: `gateway_check/10_m5_gate.md` + assets (switch-run captures
 obey section G capture rules), fed by the producing W-rows.
 
 | Check ID | Name | Asserts (one line) | Command / workspace | Runs | Owning row | Cites |
@@ -201,7 +201,7 @@ obey section G capture rules), fed by the producing W-rows.
 
 ### A.6 M6 — transcript pipeline
 
-Artifact of record for every M6 check: `gateway_check/10_m6_gate.md` + the transcript JSON and
+Artifact of record for every M6 check: `gateway_check/11_m6_gate.md` + the transcript JSON and
 no-throughput grep output attached (D230).
 
 | Check ID | Name | Asserts (one line) | Command / workspace | Runs | Owning row | Cites |
@@ -233,7 +233,7 @@ if rejected, they are removed with no other change. Device/browser checks follow
 
 ### A.7 M7 — sealing v2, kill matrix, verify, tamper
 
-Artifact of record for every M7 check: `gateway_check/11_m7_gate.md`, each cell logged with kill
+Artifact of record for every M7 check: `gateway_check/12_m7_gate.md`, each cell logged with kill
 signal, phase/step, RECOVERY outcome, hash comparison and `sealing_jobs.attempt` trace by the
 producing W-row.
 
@@ -261,7 +261,7 @@ produced by M7-KM-P*-0 (chain determinism rests on S1's byte-identical-chain fin
 
 ### A.8 M8 — playback, export, composite
 
-Artifact of record for every M8 check: `gateway_check/12_m8_gate.md` + `gateway_check/assets/`
+Artifact of record for every M8 check: `gateway_check/13_m8_gate.md` + `gateway_check/assets/`
 (playback captures, export destination listings, blanked-log quotes).
 
 | Check ID | Name | Asserts (one line) | Command / workspace | Runs | Owning row | Cites |
@@ -278,7 +278,7 @@ Artifact of record for every M8 check: `gateway_check/12_m8_gate.md` + `gateway_
 
 ### A.9 M9 — hardening, release, final chain (Mac part)
 
-Artifact of record for every M9 check: `gateway_check/13_m9_gate.md` (Mac part; the chain verdicts
+Artifact of record for every M9 check: `gateway_check/14_m9_gate.md` (Mac part; the chain verdicts
 CH-1..CH-4 are their own reports copied into it).
 
 | Check ID | Name | Asserts (one line) | Command / workspace | Runs | Owning row | Cites |

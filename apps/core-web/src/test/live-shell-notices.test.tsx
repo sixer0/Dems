@@ -124,9 +124,9 @@ describe('the link notice (§3.5; AC-C-26, AC-C-59)', () => {
     await screen.findByTestId('page-dashboard')
     // A meter frame arrives while the link is up: the level is a real one.
     const frame = { seq: 1, at: bed.fake.clock.now(), dbfs: -18, peak: -9, clip: false, noSignal: false }
-    page.sockets.at(-1)!.meters({ channels: { 'AUDIO-01': frame, 'AUDIO-02': frame } } as AudioSlice)
+    page.sockets.at(-1)!.meters({ inputs: { 'MIC-01': frame, 'MIC-02': frame }, activeInputId: 'MIC-01' } as AudioSlice)
     await bed.flush()
-    expect(page.live.store.getState().audio.channels['AUDIO-01'].noSignal).toBe(false)
+    expect(page.live.store.getState().audio.inputs['MIC-01'].noSignal).toBe(false)
     expect(lostToasts()).toHaveLength(0)
     const danger = vi.spyOn(toast, 'danger')
 
@@ -142,8 +142,8 @@ describe('the link notice (§3.5; AC-C-26, AC-C-59)', () => {
     expect(indicator()).toHaveTextContent(/^LIVE · OFFLINE$/)
     // Meters fall to "no signal": a meter never freezes on a stale level.
     const audio = page.live.store.getState().audio
-    expect(audio.channels['AUDIO-01'].noSignal).toBe(true)
-    expect(audio.channels['AUDIO-02'].noSignal).toBe(true)
+    expect(audio.inputs['MIC-01'].noSignal).toBe(true)
+    expect(audio.inputs['MIC-02'].noSignal).toBe(true)
     // The operator stays signed in and the page stays: nothing is inserted into it.
     expect(selectAuth(page.live.store.getState()).status).toBe(AuthStatus.SIGNED_IN)
     expect(screen.getByTestId('page-dashboard')).toBeInTheDocument()

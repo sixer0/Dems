@@ -119,6 +119,33 @@ const REGISTRY_ROUTES = OPERATIONS.map((operation) => routeKey(operation.method,
 /** Decision D83 DN-3: `GET /ws` is the one route outside the registry. */
 const CHANNEL_ROUTE = routeKey('GET', WS_PATH);
 
+/**
+ * The 14 registry routes whose handlers land with later rows (R4, ruling D44): ops 76-80 and 89
+ * with row 66 / M4-W2 (capture-config), op 81 with M5, ops 82 and 83 with M5/M7, ops 84-88 with
+ * M7/M8. As landed at M2 the router holds 76 routes and the registry 89; the walks that CALL
+ * these operations stay red until their rows land. Where a walk of this file must compare the
+ * whole documented set, it names this list, so the deferral is exact and drift-guarded: a new
+ * unrouted operation, or one of these getting its route, fails the equality. (Hoisted to module
+ * scope by RECON-D row 55-F3: the committed-document walk needs the same named deferral the
+ * detector already holds; the list itself is unchanged.)
+ */
+const LANDED_UNROUTED: readonly string[] = [
+  'GET /api/v1/capture/config',
+  'GET /api/v1/capture/devices',
+  'GET /api/v1/evidence/exports/{id}',
+  'GET /api/v1/evidence/{id}/transcript',
+  'GET /api/v1/evidence/{id}/transcript/revisions',
+  'GET /api/v1/session/{id}/audio-source',
+  'GET /api/v1/session/{id}/sealing',
+  'POST /api/v1/capture/cameras/{id}/source',
+  'POST /api/v1/capture/config',
+  'POST /api/v1/capture/devices/{id}/credential',
+  'POST /api/v1/capture/mics/{id}/primary',
+  'POST /api/v1/evidence/{id}/media-sessions',
+  'POST /api/v1/evidence/{id}/transcript/revisions',
+  'POST /api/v1/session/{id}/audio-source',
+];
+
 const COMMITTED_OPENAPI = fileURLToPath(new URL('../../../../packages/shared/openapi/openapi.json', import.meta.url));
 
 // ── Time: the manual clock and the manual timer only ───────────────────────────────────────────
@@ -371,13 +398,17 @@ afterAll(async () => {
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
 
 describe('AC-B-09: every registered route is an operation, every operation is registered', () => {
-  it('the registry holds exactly 75 operations, 27 GET and 48 POST, each with one access rule and one audit rule', () => {
-    expect(CORE_API_OPERATION_TABLE).toHaveLength(75);
-    expect(OPERATIONS).toHaveLength(75);
-    expect(new Set(OPERATIONS.map((operation) => operation.operationId)).size).toBe(75);
-    expect(new Set(REGISTRY_ROUTES).size).toBe(75);
-    expect(OPERATIONS.filter((operation) => operation.method === 'get')).toHaveLength(27);
-    expect(OPERATIONS.filter((operation) => operation.method === 'post')).toHaveLength(48);
+  it('the registry holds exactly 89 operations, 34 GET and 55 POST, each with one access rule and one audit rule', () => {
+    // 75 in the closed task-2 contract; C3 grew the registry to 89 with schema v2 (ops 76 to 89:
+    // the six capture-config and credential operations, the three audio-source and sealing ones,
+    // the five transcript, media-session and export-job ones). R1 (D44): acceptance reads the
+    // CURRENT registry, the closed document never.
+    expect(CORE_API_OPERATION_TABLE).toHaveLength(89);
+    expect(OPERATIONS).toHaveLength(89);
+    expect(new Set(OPERATIONS.map((operation) => operation.operationId)).size).toBe(89);
+    expect(new Set(REGISTRY_ROUTES).size).toBe(89);
+    expect(OPERATIONS.filter((operation) => operation.method === 'get')).toHaveLength(34);
+    expect(OPERATIONS.filter((operation) => operation.method === 'post')).toHaveLength(55);
     for (const operation of OPERATIONS) {
       expect(describeCoreApiAccess(operation.access), operation.operationId).not.toBe('');
       expect(operation.audit.success, operation.operationId).toBeDefined();
@@ -421,7 +452,7 @@ describe('AC-B-09: every registered route is an operation, every operation is re
     expect(missing).toEqual([]);
   });
 
-  it('the committed openapi.json lists the same 75 operations with two security schemes, and equals what the generator produces now', () => {
+  it('the committed openapi.json lists the same 89 operations with two security schemes, and equals what the generator produces now', () => {
     const text = readFileSync(COMMITTED_OPENAPI, 'utf8');
     const committed = JSON.parse(text) as OpenApiDocument;
     const documented = listOpenApiOperations(committed).map((entry) => routeKey(entry.method, entry.path));
@@ -429,8 +460,15 @@ describe('AC-B-09: every registered route is an operation, every operation is re
     const comparison = compareRoutes(router, documented, [CHANNEL_ROUTE]);
     console.info(`[w52] undocumented routes (router against the committed openapi.json): ${JSON.stringify(comparison.undocumented)}`);
     console.info(`[w52] unregistered operations (committed openapi.json against router): ${JSON.stringify(comparison.unregistered)}`);
-    expect(comparison).toEqual({ undocumented: [], unregistered: [] });
-    expect(documented).toHaveLength(75);
+    // Row-55 F3: the document is no longer frozen at 75 - row 50 regenerated it to the 89 of the
+    // registry at version 0.3.0, and the pins move with it (the sibling walk at :408 re-pinned the
+    // same numbers in RECON-B2b). What still departs is the ROUTER: the 14 operations whose handlers
+    // land with later milestone rows (R4, ruling D44). The walk names that deferral exactly, as the
+    // detector of this file already does - undocumented stays empty (a route without a document is
+    // refused outright), and unregistered must be precisely the fourteen, so one more or one less
+    // unrouted operation fails here. The calls themselves stay red as their own deferrals.
+    expect(comparison).toEqual({ undocumented: [], unregistered: LANDED_UNROUTED });
+    expect(documented).toHaveLength(89);
     expect([...documented].sort()).toEqual([...REGISTRY_ROUTES].sort());
     // The same operation ID on the same method and path.
     for (const entry of listOpenApiOperations(committed)) {
@@ -440,8 +478,10 @@ describe('AC-B-09: every registered route is an operation, every operation is re
       expect(Object.keys(entry.operation.responses).map(Number).sort((a, b) => a - b), entry.operation.operationId).toEqual(listCoreApiResponseStatuses(operation, 'all'));
     }
     expect(Object.keys(committed.components.securitySchemes ?? {}).sort()).toEqual(['bearerAuth', 'sessionCookie']);
-    // 0.2.1 since the contract close-out W83 (decision D184 DQ-8); changed by design.
-    expect(committed.info.version).toBe('0.2.1');
+    // 0.3.0 since the schema-v2 regeneration of row 50 (`gen-openapi` from the 89-operation
+    // registry; row-55 F3 moved this pin off the 0.2.1 of the contract close-out W83/D184 DQ-8);
+    // changed by design, and byte-stable: the generator check below proves the file is what it makes.
+    expect(committed.info.version).toBe('0.3.0');
     // What `gen-openapi --check` compares: the file, byte for byte, with the document of scope `all`.
     expect(text === serializeOpenApiDocument(createOpenApiDocument({ scope: 'all' }))).toBe(true);
   });
@@ -919,14 +959,17 @@ describe('AC-B-14: the refusals of the stages, generated for every operation of 
   });
 
   it('gaps W36-1 and W40-1, closed by W83: a POST without a request body answers 400 INVALID_JSON to a body that is no JSON object, which the contract documents at envelope level', async () => {
-    const named = ['restartDevice', 'testDeviceSignal', 'identifyDevice', 'runDiagnostics', 'restartServices', 'startSoftwareUpdate', 'acknowledgeAlert'];
+    // Six of the seven: `restartDevice` left the no-body set when schema v2 gave it the optional
+    // `confirm` body (OD-22 PoE cycle, devices.ts `RestartDeviceRequestSchema`); its answers are
+    // walked under the body-validating rules instead. The W36-1/W40-1 pair, as landed.
+    const named = ['testDeviceSignal', 'identifyDevice', 'runDiagnostics', 'restartServices', 'startSoftwareUpdate', 'acknowledgeAlert'];
     for (const operationId of named) {
       fresh(main);
       const operation = operationOf(operationId);
       expect(operation.requestBody, operationId).toBeUndefined();
       const answer = await call(main, operationId, allowedCaller(operation), 'a body that is a JSON list, on an operation without a request body', {
         raw: '[1]',
-        knownGap: operationId === 'restartDevice' || operationId === 'testDeviceSignal' || operationId === 'identifyDevice' ? 'gap W36-1' : 'gap W40-1',
+        knownGap: operationId === 'testDeviceSignal' || operationId === 'identifyDevice' ? 'gap W36-1' : 'gap W40-1',
       });
       // The server's behaviour is pinned here, and the validator's verdict on it is pinned below (W83 closed both gaps).
       expect([answer.status, answer.code], operationId).toEqual([400, 'INVALID_JSON']);
@@ -1448,14 +1491,19 @@ const NOT_PRODUCED: Readonly<Record<string, string>> = {};
 const KNOWN_CODE_GAPS: Readonly<Record<string, string>> = {};
 
 describe('SC6: what the whole file received', () => {
-  it('AC-B-70: every answer that lists audio lists exactly AUDIO-01 and AUDIO-02', () => {
+  it('AC-B-70: every answer that lists audio lists exactly the two session tracks or the two mic inputs (SH-17)', () => {
+    // Schema v2 re-keys the audio READS by the physical inputs (C3 §3, ops 44/45: `audio[]` and
+    // `channels[]` carry `inputId` MIC-01/MIC-02, never merged), while the session tracks stay
+    // AUDIO-01/AUDIO-02. A list of either kind must carry both members in order and nothing else.
     const lists: Array<{ operationId: string; path: string; ids: string[] }> = [];
     const walk = (value: unknown, path: string, answer: Answer): void => {
       if (Array.isArray(value)) {
         const ids = value.flatMap((element: unknown) => {
           if (typeof element !== 'object' || element === null) return [];
           const record = element as Record<string, unknown>;
-          return [record['trackId'], record['id']].filter((id): id is string => typeof id === 'string' && id.startsWith('AUDIO-'));
+          return [record['trackId'], record['inputId'], record['id']].filter(
+            (id): id is string => typeof id === 'string' && (id.startsWith('AUDIO-') || id.startsWith('MIC-')),
+          );
         });
         if (ids.length > 0) lists.push({ operationId: answer.operationId ?? '', path, ids });
         value.forEach((element, index) => walk(element, `${path}[${index}]`, answer));
@@ -1468,10 +1516,11 @@ describe('SC6: what the whole file received', () => {
     for (const list of lists) {
       const place = `${list.operationId} ${list.path.replace(/\[\d+\]/g, '[]')}`;
       byPlace.set(place, (byPlace.get(place) ?? 0) + 1);
-      expect(list.ids, `${list.operationId} ${list.path}`).toEqual(['AUDIO-01', 'AUDIO-02']);
+      const pair = JSON.stringify(list.ids);
+      expect(pair === '["AUDIO-01","AUDIO-02"]' || pair === '["MIC-01","MIC-02"]', `${list.operationId} ${list.path}: ${pair}`).toBe(true);
     }
-    console.info(`[w52] AC-B-70: ${lists.length} lists of audio in the answers of this file, each exactly AUDIO-01, AUDIO-02:\n${[...byPlace].map(([place, count]) => `[w52]   ${place}: ${count}`).join('\n')}`);
-    // The reads that list audio were all among them.
+    console.info(`[w52] AC-B-70: ${lists.length} lists of audio (tracks or inputs) in the answers of this file, each the ordered pair:\n${[...byPlace].map(([place, count]) => `[w52]   ${place}: ${count}`).join('\n')}`);
+    // The reads that list audio were all among them: the input-keyed reads and the track-keyed one.
     for (const operationId of ['getAudioStatus', 'getDeviceHealth', 'getEvidence']) expect([...byPlace.keys()].some((place) => place.startsWith(`${operationId} `)), operationId).toBe(true);
     expect(lists.length).toBeGreaterThan(50);
   });
@@ -1480,8 +1529,8 @@ describe('SC6: what the whole file received', () => {
     const levels = ledger.answers
       .filter((answer) => (answer.operationId === 'getAudioStatus' || answer.operationId === 'getDeviceHealth') && answer.status === 200)
       .flatMap((answer) => {
-        const body = bodyOf<{ channels?: Array<{ trackId: string; dbfs: number; peak: number }>; audio?: Array<{ trackId: string; dbfs: number; peak: number }> }>(answer);
-        return (body.channels ?? body.audio ?? []).map((channel) => `${channel.trackId} ${channel.dbfs}/${channel.peak}`);
+          const body = bodyOf<{ channels?: Array<{ trackId?: string; inputId?: string; dbfs: number; peak: number }>; audio?: Array<{ trackId?: string; inputId?: string; dbfs: number; peak: number }> }>(answer);
+        return (body.channels ?? body.audio ?? []).map((channel) => `${channel.trackId ?? channel.inputId} ${channel.dbfs}/${channel.peak}`);
       });
     console.info(`[w52] finding F66: dbfs/peak of the audio reads in this file: ${JSON.stringify([...new Set(levels)].sort())}`);
     expect(levels.length).toBeGreaterThan(0);
@@ -1561,6 +1610,9 @@ describe('SC6: what the whole file received', () => {
 
 describe('the checks of this file fail when their input departs from the contract', () => {
   it('an extra route on a scratch app is an undocumented route; an operation taken out of the expectation is an unregistered one', async () => {
+    // The module-level LANDED_UNROUTED names the 14 registry routes whose handlers land with
+    // later rows (R4, ruling D44); this file's own detector is checked against the landed
+    // baseline: exactly those 14 are reported unregistered, no more.
     const scratch = buildApp({ config: unitTestConfig() });
     // A route that is no operation of the registry, added by a plugin of this test. The guard
     // would stop the boot (RB-1), so its stage is taken out, as its own header says a test may.
@@ -1571,12 +1623,12 @@ describe('the checks of this file fail when their input departs from the contrac
     await scratch.ready();
     const router = routesOfPrintedTable(scratch.printRoutes()).map((route) => routeKey(route.method, templateOf(route.url)));
     await scratch.close();
-    expect(compareRoutes(router, REGISTRY_ROUTES, [CHANNEL_ROUTE])).toEqual({ undocumented: ['GET /api/v1/w52/extra'], unregistered: [] });
+    expect(compareRoutes(router, REGISTRY_ROUTES, [CHANNEL_ROUTE])).toEqual({ undocumented: ['GET /api/v1/w52/extra'], unregistered: LANDED_UNROUTED });
 
     // The registered routes of the real server against a registry that documents one operation more, and one less.
     const real = routesOfPrintedTable(main.app.printRoutes()).map((route) => routeKey(route.method, templateOf(route.url)));
-    expect(compareRoutes(real, [...REGISTRY_ROUTES, 'POST /api/v1/w52/planned'], [CHANNEL_ROUTE])).toEqual({ undocumented: [], unregistered: ['POST /api/v1/w52/planned'] });
-    expect(compareRoutes(real, REGISTRY_ROUTES.filter((route) => route !== 'GET /api/v1/health'), [CHANNEL_ROUTE])).toEqual({ undocumented: ['GET /api/v1/health'], unregistered: [] });
+    expect(compareRoutes(real, [...REGISTRY_ROUTES, 'POST /api/v1/w52/planned'], [CHANNEL_ROUTE])).toEqual({ undocumented: [], unregistered: [...LANDED_UNROUTED, 'POST /api/v1/w52/planned'] });
+    expect(compareRoutes(real, REGISTRY_ROUTES.filter((route) => route !== 'GET /api/v1/health'), [CHANNEL_ROUTE])).toEqual({ undocumented: ['GET /api/v1/health'], unregistered: LANDED_UNROUTED });
     // Without the named exception the channel route is reported.
     expect(compareRoutes(real, REGISTRY_ROUTES).undocumented).toEqual([CHANNEL_ROUTE]);
   });

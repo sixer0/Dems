@@ -70,6 +70,18 @@ export const activeSession = pgTable(
     fault: jsonb('fault').$type<SessionFault>(),
     recovery: jsonb('recovery').$type<RecoverySlice>(),
     updatedAt: bigint('updated_at', { mode: 'number' }).notNull(),
+    // ── schema v2 additions (dbc-3 §B.10). The two operator columns close FXC-1 (FK to
+    //    `operators.id` below); the three value objects are the session-start snapshots written
+    //    from the persistent configuration and the running capture, their wire types joining the
+    //    shared slices with SH-05 (blueprint row 47), so they carry no `$type` yet. The
+    //    `finalization` JSON gains progress/ETA fields as SHAPE ONLY: no DDL (map §6 row 1).
+    //    Declared in the physical order `0004_capture.sql` appends them (ALTER ADD COLUMN puts a
+    //    new column at the end), so schema, inventory and live catalog agree by position. ──
+    startedBy: text('started_by'),
+    stoppedBy: text('stopped_by'),
+    captureConfig: jsonb('capture_config').notNull().default({}),
+    audioSource: jsonb('audio_source').notNull().default({}),
+    transcriptStatus: jsonb('transcript_status').notNull().default({}),
   },
   (t) => [
     check('active_session_singleton_check', sql`${t.singleton}`),
@@ -83,6 +95,22 @@ export const activeSession = pgTable(
     foreignKey({
       name: 'active_session_created_by_fkey',
       columns: [t.createdBy],
+      foreignColumns: [operators.id],
+    })
+      .onDelete('restrict')
+      .onUpdate('no action'),
+    // The two actor columns close FXC-1: who started and who stopped the session, not only who
+    // created it.
+    foreignKey({
+      name: 'active_session_started_by_fkey',
+      columns: [t.startedBy],
+      foreignColumns: [operators.id],
+    })
+      .onDelete('restrict')
+      .onUpdate('no action'),
+    foreignKey({
+      name: 'active_session_stopped_by_fkey',
+      columns: [t.stoppedBy],
       foreignColumns: [operators.id],
     })
       .onDelete('restrict')
@@ -101,9 +129,10 @@ export const activeSession = pgTable(
       'active_session_counts_check',
       sql`${t.markerCount} >= 0 AND ${t.snapshotCount} >= 0 AND ${t.bytesWritten} >= 0`,
     ),
+    // v2 (§C.6, site `0001_tables.sql:260`): the three snapshot columns join the object bounds.
     check(
       'active_session_json_check',
-      sql`jsonb_typeof(${t.precheck}) = 'object' AND jsonb_typeof(${t.finalization}) = 'object' AND jsonb_typeof(${t.timeline}) = 'array' AND jsonb_array_length(${t.timeline}) <= 200 AND jsonb_typeof(${t.notes}) = 'array' AND (${t.fault} IS NULL OR jsonb_typeof(${t.fault}) = 'object') AND (${t.recovery} IS NULL OR jsonb_typeof(${t.recovery}) = 'object')`,
+      sql`jsonb_typeof(${t.precheck}) = 'object' AND jsonb_typeof(${t.finalization}) = 'object' AND jsonb_typeof(${t.timeline}) = 'array' AND jsonb_array_length(${t.timeline}) <= 200 AND jsonb_typeof(${t.notes}) = 'array' AND (${t.fault} IS NULL OR jsonb_typeof(${t.fault}) = 'object') AND (${t.recovery} IS NULL OR jsonb_typeof(${t.recovery}) = 'object') AND jsonb_typeof(${t.captureConfig}) = 'object' AND jsonb_typeof(${t.audioSource}) = 'object' AND jsonb_typeof(${t.transcriptStatus}) = 'object'`,
     ),
   ],
 );

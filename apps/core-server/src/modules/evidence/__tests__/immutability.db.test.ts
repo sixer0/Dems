@@ -221,7 +221,7 @@ function journey(item: EvidenceItem, trackId: TrackId = TrackId.AUDIO_02): Step[
     {
       label: 'export',
       run: async () => {
-        expect(await post(exportUrl(item.id), supervisor, 202, { reason: 'Prosecutor request', destination: 'Case file transfer' })).toMatchObject({ evidenceId: item.id, status: 'EXPORTED' });
+        expect(await post(exportUrl(item.id), supervisor, 202, { reason: 'Prosecutor request', destination: 'Case file transfer' })).toMatchObject({ evidenceId: item.id, status: 'QUEUED' })  // op 42 landed as a QUEUED background job (C3 §3); the item's EXPORTED stage follows the job;
         expect((await storedState(owner, item.id)).lifecycleStage).toBe(EVIDENCE_STATUS_STAGE.EXPORTED);
       },
       after: { status: 'EXPORTED', verification: 'NOT_RUN', tampered: false, custodyAction: 'EXPORTED' },

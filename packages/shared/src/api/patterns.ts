@@ -20,6 +20,12 @@ export const OPERATOR_ID_PATTERN = /^OPR-\d{3}$/;
 export const EXPORT_ID_PATTERN = /^EXP-\d{6}$/;
 
 /**
+ * Export job `EXPJ-NNNNNN`, e.g. `EXPJ-000012` (task 3 M2-W7; C3 §5.2; NM-12). The background
+ * export job of op 42, polled by op 87; distinct from the v1 `EXP-` export receipt counter.
+ */
+export const EXPORT_JOB_ID_PATTERN = /^EXPJ-\d{6,}$/;
+
+/**
  * Case reference `LP/{YYYY}/{MMDD}-NNNN`, e.g. `LP/2026/1001-0007` (book §11.3 field 5; the
  * "LP/" prefix is kept verbatim, D28/Q3). Month 01-12 and day 01-31 are checked; the rest of
  * the calendar is not.

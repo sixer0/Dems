@@ -2,10 +2,10 @@
  * Which slices of the simulator state are durable, and where each lives (plan row W20; database
  * contract §3.2; spec §3.1, §3.2).
  *
- * The simulator state has 33 slices (`packages/shared/src/sim/types.ts`, `SimState`). The
- * mapping covers 28 of them:
+ * The simulator state has 35 slices (`packages/shared/src/sim/types.ts`, `SimState`). The
+ * mapping covers 30 of them:
  *
- *   stored (13)     written with the unit of work that changed them, one or more tables each;
+ *   stored (15)     written with the unit of work that changed them, one or more tables each;
  *   snapshot (15)   simulated-hardware state, one column each of the one-row `hardware_snapshot`.
  *
  * Five slices are NOT mapped, each for a reason the specification gives:
@@ -18,7 +18,8 @@
  *   pairing      server-native: devices and codes are the pairing module's four tables. One
  *                member is stored: the Core's certificate fingerprint, a column of `core_device`.
  *
- * The 28 mapped slices are exactly the slices the realtime `state` topic replicates (spec §3.2).
+ * The 30 mapped slices are exactly the slices the realtime `state` topic replicates (spec §3.2;
+ * register SH-16 joined `captureConfig` and `captureDevices` to them in task 3 M2).
  */
 import type { SimState } from '@dems/shared/sim';
 
@@ -37,6 +38,11 @@ export const STORED_SLICE_KEYS = [
   'alerts',
   'audit',
   'settings',
+  // Schema v2 (register SH-16; D44 R5): the device selector and the capture-device registry are
+  // replicated slices with their own KEPT tables; the engine holds them and the mapping persists
+  // them (dbc-3 §B.1/§B.2). Their runtime members are derived, see rows.ts.
+  'captureConfig',
+  'captureDevices',
 ] as const satisfies readonly (keyof SimState)[];
 
 /** Class SN: one column each of `hardware_snapshot`, in the column order of the table. */
@@ -142,4 +148,6 @@ export const STORED_SLICE_TABLES = {
   alerts: ['alerts'],
   audit: ['audit_log', 'exports'],
   settings: ['console_settings'],
+  captureConfig: ['capture_config'],
+  captureDevices: ['capture_devices'],
 } as const satisfies Record<StoredSliceKey, readonly string[]>;

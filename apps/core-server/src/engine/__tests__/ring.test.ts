@@ -101,7 +101,7 @@ describe('mergeTrail', () => {
     const empty: TrailSlices = {
       audit: { rows: [], head: GENESIS_HASH, total: 0, dropped: 0 },
       events: [],
-      meta: { schemaVersion: 1, seed: 1, scenario: 'idle', epoch: 0, createdAt: AT, counters: { event: 1, session: 1, caseNumber: 1, evidence: 1, item: 1 } },
+      meta: { schemaVersion: 2, seed: 1, scenario: 'idle', epoch: 0, createdAt: AT, counters: { event: 1, session: 1, caseNumber: 1, evidence: 1, item: 1 } },
     };
     const merged = mergeTrail(empty, rows, events);
     expect(merged.audit?.rows).toHaveLength(AUDIT_RING_SIZE);

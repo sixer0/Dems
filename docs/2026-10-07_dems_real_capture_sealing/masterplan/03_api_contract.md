@@ -596,7 +596,7 @@ snapshot becomes 30 names.
 | # | New slice | Delivery | Payload (shape summary) | Published by | Read by (client) |
 |--:|---|---|---|---|---|
 | 29 | `captureConfig` | replicated | `{ cameras: [{ trackId, deviceId, profile, online, streamState }], mics: [{ inputId, deviceId, role, transport, online }], locked: boolean, updatedAt: epochMs }` | ops 78/79/80 (and 81 for `activeInputId` adjacency) | web WB-05/WB-02/WB-11; tablet/phone MB-08/MB-09 |
-| 30 | `captureDevices` | replicated | `{ devices: [{ id, kind: CAMERA\|MICROPHONE, model, firmware, host, poePort, online, streamState, capabilities }] }` | supervisor telemetry (`applyCaptureTelemetry`, `register SH-18`) | web WB-05/WB-11; mobile MB-08/MB-09 |
+| 30 | `captureDevices` | replicated | `{ devices: [{ id, kind: CAMERA\|MIC\|POE, model, firmware, host, poePort, online, streamState, capabilities }] }` | supervisor telemetry (`applyCaptureTelemetry`, `register SH-18`) | web WB-05/WB-11; mobile MB-08/MB-09 |
 
 **Own kind, never the paired-client registry (E-04).** `captureDevices` is its own slice with its own
 delta `slice` literal. `AdminResource` (`realtime-messages.ts:156`) stays the registry of **paired
@@ -612,6 +612,10 @@ slice/kind.
 show the input levels and which is active (`register SH-17`; `live-sim.ts:902-905` is the fifth call
 site, `SH-25`; coordinate with DR-1, OD-26). This is the E-02 correction. No new message type is
 added: `meters`, `state`, `delta` and the control messages are unchanged (`realtime-messages.ts`).
+
+**Erratum (capture-device kind).** The `captureDevices` kind vocabulary above previously used a
+long-form audio label outside the DB set; it now reads `CAMERA|MIC|POE`, aligned to the normative DB
+CHECK `capture_devices_kind_check` (`dbc-3 §B.2`: `CHECK IN ('CAMERA','MIC','POE')`, authored by row 45) — source: row 47 finding, D31.
 
 ---
 

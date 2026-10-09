@@ -386,6 +386,9 @@ interface Def {
   shape?: Record<string, z.ZodType>;
   innerType?: z.ZodType;
   in?: z.ZodType;
+  /** `array` in zod v4 keeps the member schema as `element` (`items` in v3 output). */
+  element?: z.ZodType;
+  items?: z.ZodType | readonly z.ZodType[];
 }
 
 const defOf = (schema: z.ZodType): Def => (schema as unknown as { _zod: { def: Def } })._zod.def;
@@ -410,6 +413,15 @@ function stringLeaves(schema: z.ZodType, path: string[], out: Array<{ path: stri
     case 'pipe':
       if (def.in !== undefined) stringLeaves(def.in, path, out);
       break;
+    case 'array': {
+      // A list member is walked at its first position: the path segment is the index, so
+      // `withMember` below replaces the member inside the example body's element 0. The request
+      // schemas of the registry gained their first lists with schema v2 (`cameras[]`, `mics[]` of
+      // op 78 and op 81), and the text rule must be claimed for their members too.
+      const element = def.element ?? (Array.isArray(def.items) ? def.items[0] : def.items);
+      if (element !== undefined) stringLeaves(element, [...path, '0'], out);
+      break;
+    }
     case 'enum':
     case 'literal':
     case 'boolean':
@@ -453,12 +465,23 @@ export function textMembers(operations: readonly CoreApiRegistryOperation[]): Te
   return members;
 }
 
-/** A copy of `base` with the member at `path` set to `value`. */
+/** A copy of `base` with the member at `path` set to `value`; a numeric segment indexes a list. */
 export function withMember(base: Readonly<Record<string, unknown>>, path: readonly string[], value: unknown): Record<string, unknown> {
   const [head, ...rest] = path;
   if (head === undefined) return { ...base };
   if (rest.length === 0) return { ...base, [head]: value };
   const inner = base[head];
+  if (Array.isArray(inner) && /^\d+$/.test(rest[0] ?? '')) {
+    const index = Number(rest[0]);
+    const copy = [...inner];
+    const element = copy[index];
+    copy[index] = rest.length === 1
+      ? value
+      : typeof element === 'object' && element !== null
+        ? withMember(element as Record<string, unknown>, rest.slice(1), value)
+        : element;
+    return { ...base, [head]: copy };
+  }
   return { ...base, [head]: withMember(typeof inner === 'object' && inner !== null ? (inner as Record<string, unknown>) : {}, rest, value) };
 }
 

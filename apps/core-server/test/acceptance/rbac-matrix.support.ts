@@ -3,7 +3,7 @@
  *
  * Nothing here builds an app, opens a connection or imports Vitest. Two things only:
  *
- *   1. THE SPECIFICATION, READ MECHANICALLY. `readSpecification()` reads
+ *   1. THE SPECIFICATION, READ MECHANICALLY - COMPOSED. `readSpecification()` reads
  *      `docs/2026-10-04_dems_backend_rbac_pairing/masterplan/01_specs.md` as text and takes from
  *      its tables what the matrix needs: the role matrix of section 4.4, the "enforced at" list
  *      of section 4.3, the 75 rows of the operation tables of section 7 (number, operation ID,
@@ -33,6 +33,7 @@ import {
   coreApiAccessPermissions,
   type CoreApiRegistryOperation,
 } from '@dems/shared/api';
+import { OperatorRole } from '@dems/shared/sim';
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
 // 1. The specification, read mechanically
@@ -41,6 +42,15 @@ import {
 /** `masterplan/01_specs.md` of the task folder, from the workspace root. */
 export const SPECIFICATION_FILE = fileURLToPath(
   new URL('../../../../docs/2026-10-04_dems_backend_rbac_pairing/masterplan/01_specs.md', import.meta.url),
+);
+/**
+ * C3, the current API contract (ruling D44 R1): the closed task-2 specification above is never
+ * edited; its 75 rows are the BASE. C3 §2.1 (the RBAC rows) and §2.2 (the identity table) add
+ * operations 76 to 89 and the two new permissions; `readApiContract()` transcribes them into
+ * `SpecOperation` / `Grant` rows and `readSpecification()` COMPOSES them onto the base.
+ */
+export const API_CONTRACT_FILE = fileURLToPath(
+  new URL('../../../../docs/2026-10-07_dems_real_capture_sealing/masterplan/03_api_contract.md', import.meta.url),
 );
 
 /** One row of an operation table of section 7, as the document writes it. */
@@ -226,13 +236,97 @@ function readOperations(lines: readonly string[]): SpecOperation[] {
   return operations.sort((a, b) => a.number - b.number);
 }
 
+/** The permission names an access marker of the document lists: `PERMISSION X` or `ANY-OF(A, B)`. */
+export function markerPermissions(access: string): string[] {
+  const decorated = /^PERMISSION +(.+)$/.exec(access);
+  if (decorated?.[1] !== undefined) return [decorated[1].trim()];
+  const anyOf = /^ANY-OF\(([^)]+)\)$/.exec(access);
+  if (anyOf?.[1] !== undefined) return anyOf[1].split(',').map((name) => name.trim()).filter((name) => name.length > 0);
+  if (access === 'PUBLIC' || access === 'DEVICE' || access === 'AUTHENTICATED') return [];
+  return [access];
+}
+
+/**
+ * R3 (D44): the denied cells of a role over a set of rows, computed FROM the document tables -
+ * the marker's permissions against the composed grant list. A row whose marker names no
+ * permission (PUBLIC, DEVICE, AUTHENTICATED) is never a denied operator cell; a row whose marker
+ * names permissions the role does not hold is one.
+ */
+export function deniedCellsFromTable(operations: readonly SpecOperation[], grants: readonly Grant[], roles: readonly string[]): Record<string, number> {
+  return Object.fromEntries(roles.map((role) => [
+    role,
+    operations.filter((operation) => {
+      // A row gated by `SESSION_HOLDER` is a denied operator cell on this fixture as well: no
+      // role created the (absent) open session, so the condition refuses the web callers before
+      // any permission question - the same cell the guard model counts (ACCESS_DENIED with the
+      // holder's reason).
+      if (operation.conditions.includes(CoreApiAccessCondition.SESSION_HOLDER) && role !== OperatorRole.SUPERVISOR) return true;
+      const needed = markerPermissions(operation.access);
+      return needed.length > 0 && !needed.every((permission) => grants.some((grant) => grant.role === role && grant.permission === permission));
+    }).length,
+  ]));
+}
+
+interface ApiContractDelta {
+  readonly operations: readonly SpecOperation[];
+  readonly newPermissions: readonly string[];
+  readonly grants: readonly Grant[];
+}
+
+/** Operations 76 to 89, the two new permissions and their grants, read from C3 §2.2 and §2.1. */
+function readApiContract(): ApiContractDelta {
+  const lines = readFileSync(API_CONTRACT_FILE, 'utf8').split('\n');
+  const operations: SpecOperation[] = [];
+  for (const { text, line } of sectionOf(lines, '### 2.2 ')) {
+    const row = /^\| (\d+) \| `([A-Za-z]+)` \| (GET|POST) \| `([^`]+)` \|/.exec(text);
+    if (row === null) continue;
+    const cells = cellsOf(text);
+    const accessCell = cells[6] ?? '';
+    const auditCell = cells[7] ?? '';
+    operations.push({
+      number: Number(row[1]),
+      operationId: row[2] ?? '',
+      method: row[3] === 'GET' ? 'GET' : 'POST',
+      path: row[4] ?? '',
+      // C3 writes the marker decorated (`PERMISSION X`); the canonical document form is the bare
+      // permission name, as the closed §7 table writes it and as describeCoreApiAccess answers.
+      access: firstCode(accessCell, `the access marker of C3 operation ${row[1]}`).replace(/^PERMISSION +/, ''),
+      conditions: /`SESSION_HOLDER`/.test(accessCell) ? [CoreApiAccessCondition.SESSION_HOLDER] : [],
+      auditSuccess: firstCode(auditCell, `the audit rule of C3 operation ${row[1]}`),
+      auditDenial: /EXPORT_DENIED/.test(auditCell) ? 'EXPORT_DENIED' : 'ACCESS_DENIED',
+      denialCode: 'NOT_PERMITTED',
+      section: 'C3 §2.2',
+      line,
+    });
+  }
+  if (operations.length !== 14) unreadable(`the identity table of C3 §2.2 (read ${operations.length} rows, expected the fourteen of operations 76 to 89)`);
+  const newPermissions: string[] = [];
+  const grants: Grant[] = [];
+  for (const { text } of sectionOf(lines, '### 2.1 ')) {
+    if (!text.startsWith('| `')) continue;
+    const cells = cellsOf(text);
+    if (!/\(new/.test(cells[0] ?? '')) continue; // existing permissions restate their holders; not a grant to add
+    const permission = firstCode(cells[0], 'a new permission of C3 §2.1');
+    if (!newPermissions.includes(permission)) newPermissions.push(permission);
+    for (const role of (cells[1] ?? '').split(',').map((name) => name.trim())) {
+      if (role.length === 0) continue;
+      if (!grants.some((grant) => grant.role === role && grant.permission === permission)) grants.push({ role, permission });
+    }
+  }
+  if (newPermissions.length !== 2) unreadable(`the new permissions of C3 §2.1 (read ${newPermissions.join(', ')})`);
+  return { operations, newPermissions, grants };
+}
+
 /** Reads the specification. Every member comes from a table or a rule of the document. */
 export function readSpecification(): Specification {
   const text = readFileSync(SPECIFICATION_FILE, 'utf8');
   const lines = text.split('\n');
   const one = (pattern: RegExp, what: string): RegExpExecArray => pattern.exec(text) ?? unreadable(what);
 
-  const operations = readOperations(lines);
+  const base = readOperations(lines);
+  const delta = readApiContract();
+  // R1 (D44): the closed task-2 §7 table is the base; C3 §2.2 composes operations 76 to 89 onto it.
+  const operations = [...base, ...delta.operations].sort((a, b) => a.number - b.number);
   const known = new Set(operations.map((operation) => operation.operationId));
   const retiredRow = lines.find((line) => line.startsWith('| Credential of a REVOKED device |')) ?? unreadable('the row of a REVOKED device (section 6.6)');
   const retiredDeviceMayCall = [...(cellsOf(retiredRow)[1] ?? '').matchAll(/`(\w+)`/g)].map((found) => found[1] ?? '').filter((name) => known.has(name));
@@ -247,12 +341,27 @@ export function readSpecification(): Specification {
   );
   if (strict[2] !== budget[2]) unreadable('one window for the throttle and the denial budget');
 
+  const roleMatrix = readRoleMatrix(lines);
+  const permissions = [...roleMatrix.permissions, ...delta.newPermissions];
+  const grants = [...roleMatrix.grants, ...delta.grants];
+  const statedGrantCounts = Object.fromEntries(roleMatrix.roles.map((role) => [role, grants.filter((grant) => grant.role === role).length]));
+  // C3 §2.1/§2.2 also grow the enforcement map: every composed row's marker names its permission
+  // at its number (SESSION_START gains operation 81, EVIDENCE_VIEW 84/86/88, EVIDENCE_EXPORT 87).
+  const enforcedAt: Record<string, number[]> = { ...readEnforcedAt(lines) };
+  for (const operation of delta.operations) {
+    for (const permission of markerPermissions(operation.access)) {
+      (enforcedAt[permission] ??= []).push(operation.number);
+    }
+  }
   return {
     revision: one(/^revision: (.+)$/m, 'the revision in the front matter')[1] ?? '',
     lines: lines.length,
     operations,
-    ...readRoleMatrix(lines),
-    enforcedAt: readEnforcedAt(lines),
+    roles: roleMatrix.roles,
+    permissions,
+    grants,
+    statedGrantCounts,
+    enforcedAt,
     retiredDeviceMayCall,
     exportOperations: numbersOf(exportRule[1] ?? ''),
     deviceStrictOperations: numbersOf(deviceKey[1] ?? ''),
@@ -295,6 +404,12 @@ export interface CallerFacts {
    * only for an operation with the condition `CONSOLE_IDENTITY`.
    */
   readonly webConsole: boolean;
+  /**
+   * D4 OD-09 (SEC35-18; C3 §2.2): the operator who CREATED the open session, or null when none is
+   * open. Read only for an operation with the condition `SESSION_HOLDER`. Optional so that the
+   * scenarios of the v1 specification (which predates the condition) need not name it.
+   */
+  readonly sessionCreatorId?: string | null;
   /** Set for a caller the Origin guard or stage 4 refuses whatever the operation. */
   readonly early: EarlyRefusal | null;
 }
@@ -444,6 +559,26 @@ export function expectationOf(input: ExpectationInput): Expectation {
       case CoreApiAccessCondition.DEMO_FLAG:
         if (!demoFlag) return DEMO_DISABLED;
         break;
+      case CoreApiAccessCondition.SESSION_HOLDER: {
+        // D4 OD-09; SEC35-18; C3 §2.2: the operator who created the open session, or a SUPERVISOR.
+        // The permission of the marker has already been checked (the order of this loop); this
+        // condition only adds the holder rule. Its refusal is audited NOT_PERMITTED with
+        // `details.reason: SESSION_HOLDER` (C3 §5.3) — the one condition whose refusal writes.
+        if (identity.kind !== 'OPERATOR') break; // the marker refused others before this loop
+        const holds =
+          identity.role === OperatorRole.SUPERVISOR || (caller.sessionCreatorId != null && identity.operatorId === caller.sessionCreatorId);
+        if (!holds) {
+          const permission = denialPermissionOf(operation);
+          const named = { operationId: operation.operationId, permission, role: identity.role, reason: CoreApiAccessCondition.SESSION_HOLDER };
+          return refused(403, input.denialCode, named, {
+            type: operation.audit.denial,
+            actorId: identity.operatorId,
+            deviceId: identity.deviceId,
+            details: named,
+          });
+        }
+        break;
+      }
       default: {
         // A condition the registry gained and this file does not know: never read as "allowed".
         const unknown: never = condition;

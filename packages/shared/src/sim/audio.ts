@@ -17,7 +17,7 @@
  * The generator keeps its speaker-turn and ballistic state in a closure (not persisted); a
  * reload restarts the conversation, which only changes what the meters show.
  */
-import { SessionState, type AudioTrackId } from '../domain';
+import { SessionState, type AudioTrackId, type MicInputId } from '../domain';
 import {
   AUDIO_CLIP_BURST_DBFS,
   AUDIO_CLIP_DBFS,
@@ -43,6 +43,23 @@ import type { AudioFrame, EpochMs, SimState, SimSubsystem } from './types';
 import { FaultKind } from './vocabulary';
 
 export const AUDIO_CHANNELS = ['AUDIO-01', 'AUDIO-02'] as const satisfies readonly AudioTrackId[];
+
+/**
+ * Which microphone **input** the v1 channel key addresses (OD-01 T1; register SH-17). The meters
+ * slice is keyed by input since schema v2; the demo controls, the CLIP fault target and the
+ * timeline still name a channel, so this map is the single place the two vocabularies meet.
+ * It is the *default* pairing: `audio.activeInputId` says which of them feeds `AUDIO-01` now.
+ */
+export const MIC_INPUT_OF_CHANNEL: Readonly<Record<AudioTrackId, MicInputId>> = {
+  'AUDIO-01': 'MIC-01',
+  'AUDIO-02': 'MIC-02',
+};
+
+/** The inverse: the channel key a mic input is addressed by in the v1-shaped APIs. */
+export const CHANNEL_OF_MIC_INPUT: Readonly<Record<MicInputId, AudioTrackId>> = {
+  'MIC-01': 'AUDIO-01',
+  'MIC-02': 'AUDIO-02',
+};
 
 // ── Meter ballistics (pure; AC-53) ───────────────────────────────────────────────────────
 
@@ -179,13 +196,16 @@ export function createAudioSubsystem(engine: EngineContext, runtime: AudioRuntim
       const peakChannel: AudioTrackId = conversation.speaker === 2 ? 'AUDIO-02' : 'AUDIO-01';
 
       let next: SimState = state;
-      const frames = { ...state.audio.channels };
+      const frames = { ...state.audio.inputs };
       let mics = state.mics;
       let peakFrame: { channel: AudioTrackId; level: number } | null = null;
 
       for (const channel of AUDIO_CHANNELS) {
+        // The frame is stored under the mic input it comes from (SH-17), while the demo controls,
+        // the CLIP latch and the timeline keep naming the channel.
+        const input = MIC_INPUT_OF_CHANNEL[channel];
         const rng = engine.rng.get(channel === 'AUDIO-01' ? 'audio:AUDIO-01' : 'audio:AUDIO-02');
-        const previous = frames[channel];
+        const previous = frames[input];
         const mic = mics.find((m) => m.id === channel);
         let current = channels.get(channel) ?? {
           meter: meterAt(previous.at, previous.noSignal ? AUDIO_NOISE_FLOOR_DBFS : previous.dbfs),
@@ -194,7 +214,7 @@ export function createAudioSubsystem(engine: EngineContext, runtime: AudioRuntim
 
         if (mic?.state === 'NO_SIGNAL') {
           channels.set(channel, { meter: meterAt(at), nextClipAt: current.nextClipAt });
-          frames[channel] = {
+          frames[input] = {
             seq: previous.seq + 1,
             at,
             dbfs: AUDIO_FLOOR_DBFS,
@@ -226,7 +246,7 @@ export function createAudioSubsystem(engine: EngineContext, runtime: AudioRuntim
         if (clipped && mic && !mic.clipLatched) {
           mics = mics.map((m) => (m.id === channel ? { ...m, clipLatched: true } : m));
         }
-        frames[channel] = {
+        frames[input] = {
           seq: previous.seq + 1,
           at,
           dbfs: round2(meter.dbfs),
@@ -237,7 +257,12 @@ export function createAudioSubsystem(engine: EngineContext, runtime: AudioRuntim
         } satisfies AudioFrame;
       }
 
-      next = { ...next, audio: { channels: frames }, ...(mics !== state.mics ? { mics } : {}) };
+      // The meters slice is keyed by mic input (SH-17); `activeInputId` is what op 81 moves.
+      next = {
+        ...next,
+        audio: { inputs: frames, activeInputId: state.audio.activeInputId },
+        ...(mics !== state.mics ? { mics } : {}),
+      };
       if (peakFrame && next.session?.state === SessionState.RECORDING) {
         const mic = next.mics.find((m) => m.id === peakFrame?.channel);
         next = addTimelineItem(next, {

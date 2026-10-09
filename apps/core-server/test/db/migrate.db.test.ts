@@ -28,10 +28,10 @@ async function publicTables(): Promise<string[]> {
 }
 
 describe('AC-B-01: the migration set on an empty database', () => {
-  it('the set is the four files of contract §8.2, in order, with rising journal times', () => {
+  it('the set is the eight files of dbc-3 §A.1 and §B.13, in order, with rising journal times', () => {
     const files = readMigrationSet();
     expect(files.map((file) => file.tag)).toEqual([...INITIAL_MIGRATION_TAGS]);
-    expect(files.map((file) => file.idx)).toEqual([0, 1, 2, 3]);
+    expect(files.map((file) => file.idx)).toEqual(Array.from({ length: INITIAL_MIGRATION_TAGS.length }, (_, index) => index));
     for (let index = 1; index < files.length; index += 1) {
       expect(files[index]?.when ?? 0).toBeGreaterThan(files[index - 1]?.when ?? 0);
     }
@@ -51,7 +51,7 @@ describe('AC-B-01: the migration set on an empty database', () => {
     expect(ledger.ok).toBe(true);
   });
 
-  it('first run, as dems_owner: applies the four files and sets schema version 1 (dbc-2)', async () => {
+  it('first run, as dems_owner: applies the eight files and sets schema version 2 (dbc-3)', async () => {
     const who = await db.ownerPool().query<{ role: string; superuser: boolean }>(
       'SELECT current_user::text AS role, (SELECT rolsuper FROM pg_roles WHERE rolname = current_user) AS superuser',
     );
@@ -64,15 +64,15 @@ describe('AC-B-01: the migration set on an empty database', () => {
     expect(result.versionBefore).toBeNull();
     expect(result.applied).toEqual([...INITIAL_MIGRATION_TAGS]);
     expect(result.versionAfter).toEqual({ schemaVersion: DB_SCHEMA_VERSION, contractRevision: DB_CONTRACT_REVISION });
-    expect(result.versionAfter).toEqual({ schemaVersion: 1, contractRevision: 'dbc-2' });
-    expect(await publicTables()).toHaveLength(30);
+    expect(result.versionAfter).toEqual({ schemaVersion: 2, contractRevision: 'dbc-3' });
+    expect(await publicTables()).toHaveLength(40);
 
     // The migrator stored each file's hash and journal time, in order.
     const files = readMigrationSet();
     const applied = await readAppliedMigrations(db.ownerPool());
     expect(applied?.map((row) => row.hash)).toEqual(files.map((file) => file.sha256));
     expect(applied?.map((row) => row.createdAt)).toEqual(files.map((file) => file.when));
-    console.info(`[w17] first migrate: applied ${result.applied.join(', ')} in ${ms.toFixed(1)} ms; 30 tables`);
+    console.info(`[w17] first migrate: applied ${result.applied.join(', ')} in ${ms.toFixed(1)} ms; 40 tables`);
   });
 
   it('second run: applies nothing and changes nothing (MG-10)', async () => {
@@ -87,14 +87,14 @@ describe('AC-B-01: the migration set on an empty database', () => {
     const ms = performance.now() - started;
 
     expect(result.applied).toEqual([]);
-    expect(result.versionBefore).toEqual({ schemaVersion: 1, contractRevision: 'dbc-2' });
-    expect(result.versionAfter).toEqual({ schemaVersion: 1, contractRevision: 'dbc-2' });
+    expect(result.versionBefore).toEqual({ schemaVersion: 2, contractRevision: 'dbc-3' });
+    expect(result.versionAfter).toEqual({ schemaVersion: 2, contractRevision: 'dbc-3' });
     expect(await readAppliedMigrations(pool)).toEqual(before);
     const catalogAfter = await pool.query(
       "SELECT count(*) AS objects, max(oid::bigint) AS newest FROM pg_class WHERE relnamespace = 'public'::regnamespace",
     );
     expect(catalogAfter.rows).toEqual(catalogBefore.rows);
-    expect(result.ledger.entries.map((entry) => entry.state)).toEqual(['applied', 'applied', 'applied', 'applied']);
+    expect(result.ledger.entries.map((entry) => entry.state)).toEqual(INITIAL_MIGRATION_TAGS.map(() => 'applied'));
     console.info(`[w17] second migrate: applied 0 migration(s) in ${ms.toFixed(1)} ms; the migrator's table still holds ${before?.length} rows`);
   });
 
@@ -103,10 +103,10 @@ describe('AC-B-01: the migration set on an empty database', () => {
     const head = await pool.query('SELECT singleton, seq::int AS seq, hash FROM audit_chain_head');
     expect(head.rows).toEqual([{ singleton: true, seq: 0, hash: '0'.repeat(64) }]);
     const meta = await pool.query('SELECT singleton, schema_version, contract_revision FROM schema_meta');
-    expect(meta.rows).toEqual([{ singleton: true, schema_version: 1, contract_revision: 'dbc-2' }]);
+    expect(meta.rows).toEqual([{ singleton: true, schema_version: 2, contract_revision: 'dbc-3' }]);
 
     const tables = (await publicTables()).filter((table) => table !== 'audit_chain_head' && table !== 'schema_meta');
-    expect(tables).toHaveLength(28);
+    expect(tables).toHaveLength(38);
     for (const table of tables) {
       const { rows } = await pool.query<{ rows: string }>(`SELECT count(*) AS rows FROM public.${table}`);
       expect(rows[0]?.rows, table).toBe('0');

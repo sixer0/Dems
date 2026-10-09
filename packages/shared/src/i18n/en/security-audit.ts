@@ -319,6 +319,9 @@ export const securityAudit = {
       PAIRING_MANAGE: 'Manage pairing and paired devices',
       USER_ADMIN: 'Manage users and roles',
       DEMO_CONTROL: 'Use the demo controls',
+      // Task 3 M2-W6 (SH-04, D4 OD-10/OD-15): the two capture-phase permissions.
+      CAPTURE_CONFIG: 'Configure capture devices',
+      TRANSCRIPT_REVISE: 'Revise transcripts',
     },
   },
 

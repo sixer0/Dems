@@ -67,11 +67,11 @@ describe('AC-57: Scalar privacy and scope flags', () => {
 })
 
 describe('D62: the document Scalar renders', () => {
-  it('is a fresh OpenAPI 3.1.0 object with 10 operations: health LIVE, 9 SIMULATED', () => {
+  it('is a fresh OpenAPI 3.1.0 object with 23 operations: health LIVE, 22 SIMULATED', () => {
     const config = makeConfig()
     const doc = config.content
     expect(doc.openapi).toBe('3.1.0')
-    expect(countOperations(doc)).toBe(10)
+    expect(countOperations(doc)).toBe(23)
     const live = listOpenApiOperations(doc).filter((e) => e.operation['x-dems-mode'] === 'live')
     expect(live.map((e) => `${e.method} ${e.path}`)).toEqual(['get /api/v1/health'])
     expect(live[0]?.operation['x-badges'].map((b) => b.name)).toEqual(['LIVE'])

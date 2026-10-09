@@ -90,8 +90,8 @@ describe('AC-C-87: a role change (operation 12)', () => {
     expect(within(dialog).getByTestId('ur-role-confirm')).toBeEnabled()
     const gains = within(dialog).getByTestId('ur-role-gains')
     const loses = within(dialog).getByTestId('ur-role-loses')
-    expect(within(gains).getAllByRole('listitem').map((item) => item.textContent)).toEqual([P.SESSION_START, P.SESSION_NOTE])
-    expect(within(loses).getAllByRole('listitem').map((item) => item.textContent)).toEqual([P.DEVICE_MANAGE, P.MAINTENANCE])
+    expect(within(gains).getAllByRole('listitem').map((item) => item.textContent)).toEqual([P.SESSION_START, P.SESSION_NOTE, P.TRANSCRIPT_REVISE])
+    expect(within(loses).getAllByRole('listitem').map((item) => item.textContent)).toEqual([P.DEVICE_MANAGE, P.MAINTENANCE, P.CAPTURE_CONFIG])
     expect(within(dialog).getByTestId('ur-role-diff')).toHaveTextContent(U.roleDialog.note)
 
     // Back to the current role: the confirm is disabled again.

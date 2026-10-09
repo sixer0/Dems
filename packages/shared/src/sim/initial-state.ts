@@ -48,6 +48,8 @@ import type {
   AudioFrame,
   AuthSlice,
   BandwidthPoint,
+  CaptureConfigSlice,
+  CaptureDevicesSlice,
   EpochMs,
   HealthPoint,
   MicLevelPoint,
@@ -64,7 +66,107 @@ export interface InitialStateInput {
   seed: number;
   pairing?: PairingState;
   auth?: AuthSlice;
+  /**
+   * Schema v2 (register SH-05): the capture selector this state starts with. A scenario may pin
+   * the device/profile/role choices; the default is `DEFAULT_CAPTURE_CONFIG` below, which matches
+   * the five built-in `capture_devices` rows the v2 seed writes (`dbc-3 §B.2`, §E.3).
+   */
+  capture?: Partial<CaptureConfigSeed>;
 }
+
+/** The selector defaults of the idle baseline (the seeded demo topology, OD-05 dual-lens). */
+export interface CaptureConfigSeed {
+  config: CaptureConfigSlice;
+  devices: CaptureDevicesSlice;
+}
+
+/**
+ * Media profile code of the seeded 1080p/25 fps H.264 stream (open `CODE` set, OD-06).
+ *
+ * Erratum RECON-F1 (row 55 §5): the spelling is the canonical underscore `CODE`. C3 §1 requires
+ * every machine code to be `SCREAMING_SNAKE_CASE` and dbc-3 §B.1 marks `video_01_profile` /
+ * `video_02_profile` as format `CODE`, which the 0004 CHECK `^[A-Z][A-Z0-9_]{0,63}$` enforces - a
+ * hyphen is not a `CODE`. The earlier spelling joined the codec to the resolution with a hyphen
+ * and was the one non-conforming value on the wire; the state slice and the stored row now hold
+ * the same string, so no bridge is needed.
+ */
+export const CAPTURE_PROFILE_1080P25 = 'H264_1080P25';
+
+/** The five built-in capture devices (`dbc-3 §E.3`); hosts are loopback, never a credential URL. */
+export const DEFAULT_CAPTURE_DEVICES: CaptureDevicesSlice = {
+  devices: [
+    {
+      id: 'CAM-01',
+      kind: 'CAMERA',
+      model: 'Dual-lens IP camera DL-2',
+      firmware: '3.8.14',
+      host: '127.0.0.1:8554',
+      poePort: 'POE_CAM_1',
+      online: true,
+      streamState: 'LIVE',
+      capabilities: ['VIDEO', 'PULL'],
+    },
+    {
+      id: 'CAM-02',
+      kind: 'CAMERA',
+      model: 'Dual-lens IP camera DL-2',
+      firmware: '3.8.14',
+      host: '127.0.0.1:8555',
+      poePort: 'POE_CAM_1',
+      online: true,
+      streamState: 'LIVE',
+      capabilities: ['VIDEO', 'PULL'],
+    },
+    {
+      id: 'MIC-01',
+      kind: 'MIC',
+      model: 'USB condenser microphone UM-1',
+      firmware: '1.04',
+      host: null,
+      poePort: null,
+      online: true,
+      streamState: null,
+      capabilities: ['AUDIO'],
+    },
+    {
+      id: 'MIC-02',
+      kind: 'MIC',
+      model: 'USB condenser microphone UM-1',
+      firmware: '1.04',
+      host: null,
+      poePort: null,
+      online: true,
+      streamState: null,
+      capabilities: ['AUDIO'],
+    },
+    {
+      id: 'POE-SWITCH',
+      kind: 'POE',
+      model: 'PoE+ switch PS-8',
+      firmware: '2.4.1',
+      host: '127.0.0.1',
+      poePort: null,
+      online: true,
+      streamState: null,
+      capabilities: ['SNMP', 'PULL'],
+    },
+  ],
+};
+
+/** The idle selector: one dual-lens camera pair, MIC-01 primary, MIC-02 hot standby (OD-05/OD-09). */
+export const DEFAULT_CAPTURE_CONFIG: CaptureConfigSlice = {
+  cameras: [
+    { trackId: 'VIDEO-01', deviceId: 'CAM-01', profile: CAPTURE_PROFILE_1080P25, online: true, streamState: 'LIVE' },
+    { trackId: 'VIDEO-02', deviceId: 'CAM-02', profile: CAPTURE_PROFILE_1080P25, online: true, streamState: 'LIVE' },
+  ],
+  mics: [
+    { inputId: 'MIC-01', deviceId: 'MIC-01', role: 'PRIMARY', transport: 'USB', online: true },
+    { inputId: 'MIC-02', deviceId: 'MIC-02', role: 'STANDBY', transport: 'USB', online: true },
+  ],
+  // Idle: nothing is open, so the selector is editable (OD-10).
+  locked: false,
+  updatedAt: 0,
+};
 
 export function silentFrame(at: EpochMs, seq = 0): AudioFrame {
   return { seq, at, dbfs: AUDIO_NOISE_FLOOR_DBFS, peak: AUDIO_NOISE_FLOOR_DBFS, clip: false, noSignal: false };
@@ -142,7 +244,7 @@ export function createIdleState(input: InitialStateInput): SimState {
 
   const base: SimState = {
     meta: {
-      schemaVersion: 1,
+      schemaVersion: 2,
       seed,
       scenario: ScenarioName.IDLE,
       epoch: 0,
@@ -224,6 +326,8 @@ export function createIdleState(input: InitialStateInput): SimState {
         deviceId: 'MIC-01',
         name: 'MIC 1 – Interviewer',
         role: 'Interviewer',
+        // OD-01 T1 / OD-09: MIC-01 is the primary input inside AUDIO-01, MIC-02 the hot standby.
+        micRole: 'PRIMARY',
         channel: 1,
         state: 'READY',
         recState: null,
@@ -236,6 +340,7 @@ export function createIdleState(input: InitialStateInput): SimState {
         deviceId: 'MIC-02',
         name: 'MIC 2 – Subject',
         role: 'Subject',
+        micRole: 'STANDBY',
         channel: 2,
         state: 'READY',
         recState: null,
@@ -244,7 +349,7 @@ export function createIdleState(input: InitialStateInput): SimState {
         clipLatched: false,
       },
     ],
-    audio: { channels: { 'AUDIO-01': silentFrame(now), 'AUDIO-02': silentFrame(now) } },
+    audio: { inputs: { 'MIC-01': silentFrame(now), 'MIC-02': silentFrame(now) }, activeInputId: 'MIC-01' },
     storage: {
       state: 'READY',
       volumes: [
@@ -406,6 +511,11 @@ export function createIdleState(input: InitialStateInput): SimState {
       completedAt: null,
     },
     settings: { ...DEFAULT_SETTINGS },
+    // Slice 29 (SH-16): the selector, editable while idle. `updatedAt` is the boot instant of this
+    // state; a scenario that pins `capture` overrides any member of the two slices.
+    captureConfig: { ...DEFAULT_CAPTURE_CONFIG, updatedAt: now, ...input.capture?.config },
+    // Slice 30 (SH-16, E-04): the capture-device registry, its own kind, never the paired clients.
+    captureDevices: input.capture?.devices ?? DEFAULT_CAPTURE_DEVICES,
   };
 
   // Replay the history rows through the real chain, one timestamp at a time.

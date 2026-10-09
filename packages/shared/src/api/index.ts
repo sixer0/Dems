@@ -35,3 +35,6 @@ export * from './system';
 export * from './alerts';
 export * from './state-examples';
 export * from './sim-actions';
+// Task 3 M2-W7 (blueprint row 48; register CS-25; C3 §7): the capture-phase constants, pinned by
+// the Core server's contract-values test.
+export * from './capture';

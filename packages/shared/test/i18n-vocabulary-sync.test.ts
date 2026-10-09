@@ -87,7 +87,7 @@ describe('i18n ↔ sim/vocabulary.ts (D52)', () => {
   });
 
   it('DeviceCommand: common.deviceMenu through the explicit camelCase map (incl. IDENTIFY, step 54)', () => {
-    const KEY = { TEST_SIGNAL: 'testSignal', RESTART: 'restart', IDENTIFY: 'identify' } as const satisfies Record<V.DeviceCommand, string>;
+    const KEY = { TEST_SIGNAL: 'testSignal', RESTART: 'restart', IDENTIFY: 'identify', POE_CYCLE: 'poeCycle' } as const satisfies Record<V.DeviceCommand, string>;
     expectExactKeys('common.deviceMenu', values(V.DeviceCommand), ['label', 'details'], (value) => KEY[value as V.DeviceCommand]);
   });
 
@@ -116,9 +116,10 @@ describe('i18n ↔ sim/vocabulary.ts (D52)', () => {
   // is labelled in `securityAudit.rbac.permissions`, the map the clients read (the web matrix and the
   // mobile Profile sheet, which lists every grant of a role). `common.rbac.permissions` repeats the
   // three new ones; a value labelled in both maps must read the same in both.
-  it('Permission: 12 values, each labelled in securityAudit.rbac.permissions; common.rbac.permissions agrees (W16)', () => {
+  it('Permission: 14 values, each labelled in securityAudit.rbac.permissions; common.rbac.permissions agrees (W16; M2-W6)', () => {
     const all = values(V.Permission);
-    expect(all).toHaveLength(12);
+    // Task 3 M2-W6 (SH-04): +CAPTURE_CONFIG, +TRANSCRIPT_REVISE on top of the twelve of W16.
+    expect(all).toHaveLength(14);
     expectExactKeys('securityAudit.rbac.permissions', all);
     const page = at('securityAudit.rbac.permissions');
     const shared = at('common.rbac.permissions');
@@ -132,20 +133,22 @@ describe('i18n ↔ sim/vocabulary.ts (D52)', () => {
 
   // Backend task W16 (GP-06; 2026-10-04 01_specs §13.1, §19.2): nine audit types the Core server
   // writes, in the existing eight categories; no event type was added.
-  it('AuditType: 53 values; the nine server-written types sit in the existing categories (W16)', () => {
-    expect(values(V.AuditType)).toHaveLength(53);
+  it('AuditType: 62 values; the nine task-3 capture types sit in the existing categories (M2-W7)', () => {
+    // Task 3 M2-W7 (blueprint row 48; C3 §5.2/§5.3): 53 -> 62. Each new type joins an EXISTING
+    // category (no new AuditCategory), and each is labelled in `common.auditType` (checked above).
+    expect(values(V.AuditType)).toHaveLength(62);
     expect(values(V.AuditCategory)).toHaveLength(8);
     expect(values(V.SimEventType)).toHaveLength(46);
     const added = {
-      ACCESS_DENIED: 'SECURITY',
-      PAIRING_CODE_ISSUED: 'PAIRING',
-      PAIRING_CODE_CLOSED: 'PAIRING',
-      DEVICE_REVOKED: 'PAIRING',
-      DEVICE_CREDENTIAL_ROTATED: 'PAIRING',
-      ROLE_CHANGED: 'SECURITY',
-      USER_ENABLED: 'SECURITY',
-      USER_DISABLED: 'SECURITY',
-      BIOMETRIC_ENROLLMENT_CHANGED: 'AUTH',
+      CAPTURE_CONFIG_CHANGED: 'DEVICE',
+      AUDIO_SOURCE_SWITCHED: 'SESSION',
+      CAMERA_POE_CYCLED: 'DEVICE',
+      TRANSCRIPT_REVISED: 'EVIDENCE',
+      MIC_SILENT: 'DEVICE',
+      EVIDENCE_MEDIA_SERVED: 'EVIDENCE',
+      EVIDENCE_EXPORT_FAILED: 'EVIDENCE',
+      CAPTURE_CREDENTIAL_SET: 'SECURITY',
+      CAPTURE_CREDENTIAL_REVEALED: 'SECURITY',
     } as const satisfies Partial<Record<V.AuditType, V.AuditCategory>>;
     for (const type of Object.keys(added) as (keyof typeof added)[]) {
       expect(V.AuditType[type]).toBe(type);

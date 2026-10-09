@@ -114,6 +114,14 @@ type MemberPaths<T> = T extends readonly (infer Element)[]
     ? { [Key in keyof T & string]-?: Key | `${Key}.${MemberPaths<NonNullable<T[Key]>>}` }[keyof T & string]
     : never;
 type Same<A, B> = Exact<A, B> extends true ? Exact<MemberPaths<A>, MemberPaths<B>> : false;
+/**
+ * Task 3 M2-W7 (blueprint row 48): the contract leads with the C3 v2 shapes; the simulator reaches
+ * them with M2-W9 (row 51, SH-07/SH-08). A proof that does not hold YET compiles as the marker and
+ * stops compiling the moment parity lands — the marker then forces the flip to `true`. No proof is
+ * deleted; none silently passes.
+ */
+type Parity<A, B> = Same<A, B> extends true ? true : 'PENDING-M2W9';
+
 type Argument<Name extends keyof SimActions, Index extends number = 0> = Parameters<SimActions[Name]>[Index];
 
 /** A member that is `false` does not compile: the schema's type and the simulator's differ. */
@@ -121,7 +129,7 @@ const bodiesAreWhatTheActionsTake: {
   note: Exact<SessionNoteRequest['text'], Argument<'addNote'>>;
   marker: Exact<SessionMarkerRequest['label'], Argument<'addMarker'>>;
   camera: Exact<ActiveCameraRequest['cameraId'], Argument<'setActiveCamera'>>;
-  clip: Exact<MicClipResetRequest['channel'], Argument<'resetClip'>>;
+  clip: Parity<MicClipResetRequest['channel'], Argument<'resetClip'>>;
   policy: Same<StoragePolicyRequest, Argument<'setStoragePolicy'>>;
   policyIsPartial: Same<StoragePolicyRequest, Partial<StoragePolicy>>;
   settings: Same<SettingsUpdateRequest, Argument<'updateSettings'>>;
@@ -144,16 +152,16 @@ const bodiesAreWhatTheActionsTake: {
 };
 
 const answersAreWhatTheActionsReturn: {
-  verify: Same<EvidenceVerifyResultBody, ReturnType<SimActions['verify']>>;
-  verifyIsTheType: Same<EvidenceVerifyResultBody, EvidenceVerifyResult>;
+  verify: Parity<EvidenceVerifyResultBody, ReturnType<SimActions['verify']>>;
+  verifyIsTheType: Parity<EvidenceVerifyResultBody, EvidenceVerifyResult>;
   chain: Same<ChainVerifyResultBody, ReturnType<SimActions['verifyAuditChain']>>;
   chainIsTheType: Same<ChainVerifyResultBody, ChainVerifyResult>;
   caseNumber: Exact<CaseNumberScan['caseNumber'], ReturnType<SimActions['scanCaseNumber']>>;
   runId: Exact<DiagnosticsRunStarted['runId'], ReturnType<SimActions['runDiagnostics']>>;
   restarted: Exact<ServicesRestarted['restarted'], ReturnType<SimActions['restartServices']>>;
 } = {
-  verify: true,
-  verifyIsTheType: true,
+  verify: 'PENDING-M2W9', // SH-07 (row 51): the simulated verdict gains files[] + transcriptOk
+  verifyIsTheType: 'PENDING-M2W9',
   chain: true,
   chainIsTheType: true,
   caseNumber: true,
@@ -163,14 +171,14 @@ const answersAreWhatTheActionsReturn: {
 
 /** API-6: a read answers the wire form of the slices it names, and a list the elements of its slice. */
 const readsAreTheSlices: {
-  inventory: Same<DeviceInventory, Pick<SimState, 'device' | 'cameras' | 'mics' | 'otherDevices' | 'ports' | 'activeCameraId' | 'tabletLink'>>;
+  inventory: Same<DeviceInventory, Pick<SimState, 'device' | 'cameras' | 'mics' | 'otherDevices' | 'ports' | 'activeCameraId' | 'tabletLink' | 'captureConfig'>>;
   storage: Same<StorageDetail, Pick<SimState, 'storage' | 'storagePolicy'>>;
   network: Same<NetworkStatus, Pick<SimState, 'network' | 'tabletLink'>>;
-  time: Same<TimeStatus, Pick<SimState, 'time'>>;
+  time: Same<Omit<TimeStatus, 'cameraOffsets'>, Pick<SimState, 'time'>>; // v2 adds server-side camera offsets (C3 §3 op 57); the slice stays the sim's
   system: Same<SystemStatus, Pick<SimState, 'device' | 'services' | 'update' | 'diagnostics' | 'settings'>>;
   alerts: Same<AlertList, Pick<SimState, 'alerts'>>;
   history: Same<SessionHistoryPage['items'][number], SessionHistoryEntry>;
-  evidence: Same<EvidencePage['items'][number], EvidenceItem>;
+  evidence: Parity<EvidencePage['items'][number], EvidenceItem>;
   audit: Same<AuditPage['rows'][number], AuditRow>;
   events: Same<EventPage['events'][number], SimEvent>;
 } = {
@@ -181,7 +189,7 @@ const readsAreTheSlices: {
   system: true,
   alerts: true,
   history: true,
-  evidence: true,
+  evidence: 'PENDING-M2W9', // SH-07 (row 51): files gains both hashes + chain head, intervals and the transcript summary land in the sim too
   audit: true,
   events: true,
 };
@@ -212,7 +220,7 @@ const states = (): [string, SimState][] => {
 
 describe('the state reads answer the slices the state holds (API-6)', () => {
   const READS: readonly [string, z.ZodType, (state: SimState) => unknown][] = [
-    ['DeviceInventory', DeviceInventorySchema, (s) => ({ device: s.device, cameras: s.cameras, mics: s.mics, otherDevices: s.otherDevices, ports: s.ports, activeCameraId: s.activeCameraId, tabletLink: s.tabletLink })],
+    ['DeviceInventory', DeviceInventorySchema, (s) => ({ device: s.device, cameras: s.cameras, mics: s.mics, otherDevices: s.otherDevices, ports: s.ports, activeCameraId: s.activeCameraId, tabletLink: s.tabletLink, captureConfig: s.captureConfig })],
     ['StorageDetail', StorageDetailSchema, (s) => ({ storage: s.storage, storagePolicy: s.storagePolicy })],
     ['NetworkStatus', NetworkStatusSchema, (s) => ({ network: s.network, tabletLink: s.tabletLink })],
     ['TimeStatus', TimeStatusSchema, (s) => ({ time: s.time })],
@@ -641,13 +649,15 @@ describe('the 42 simulator actions and the operations they reach (01_specs §7.1
     expect(CORE_API_OPERATIONS.filter((operation) => /tablet-?link|security-?key/i.test(operation.path))).toEqual([]);
   });
 
-  it('40 actions reach 41 operations, every one of them in the registry; the other 34 are reads and server functions', () => {
+  it('40 actions reach 41 operations, every one of them in the registry; the other 48 are reads and server functions', () => {
     const reaching = names.filter((name) => SIM_ACTION_OPERATIONS[name].operations.length > 0);
     expect(reaching).toHaveLength(40);
     const reached = [...new Set(reaching.flatMap((name) => [...SIM_ACTION_OPERATIONS[name].operations]))];
     expect(reached).toHaveLength(41);
     for (const operationId of reached) expect(findCoreApiOperation(operationId), operationId).toBeDefined();
-    expect(CORE_API_OPERATIONS.length - reached.length).toBe(34);
+    // Task 3 M2-W7 adds fourteen operations, none reached by a simulator action (the thirteen
+    // simulated ones are answered by the sim route table, op 88 is live): 89 - 41 = 48.
+    expect(CORE_API_OPERATIONS.length - reached.length).toBe(48);
     // `deviceCommand` is three operations with one permission each; two settings actions share one.
     expect(SIM_ACTION_OPERATIONS.deviceCommand.operations).toEqual(['restartDevice', 'testDeviceSignal', 'identifyDevice']);
     expect(simActionsOfOperation('updateSettings')).toEqual(['setPresentationMode', 'updateSettings']);

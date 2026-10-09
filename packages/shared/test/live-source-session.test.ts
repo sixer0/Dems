@@ -134,7 +134,7 @@ function expectNoCoreData(source: LiveSim): void {
   expect(state.sessionHistory).toEqual([]);
   expect(state.session).toBeNull();
   expect(state.device.id).toBe('');
-  expect(state.audio.channels['AUDIO-01'].noSignal).toBe(true);
+  expect(state.audio.inputs['MIC-01'].noSignal).toBe(true);
   expect(source.session).toBeNull();
   expect(source.auditChain).toBeNull();
 }
@@ -1017,13 +1017,13 @@ describe('the clock, the meters and the heartbeat view (§2.3; CL-7, CL-11b)', (
     source.start();
     await source.ready;
     const frame = { seq: 3, at: fake.clock.now(), dbfs: -20, peak: -14, clip: false, noSignal: false };
-    fake.connection().meters({ channels: { 'AUDIO-01': frame, 'AUDIO-02': { ...frame, dbfs: -40 } } });
-    expect(source.store.getState().audio.channels['AUDIO-01']).toEqual(frame);
+    fake.connection().meters({ inputs: { 'MIC-01': frame, 'MIC-02': { ...frame, dbfs: -40 } }, activeInputId: 'MIC-01' });
+    expect(source.store.getState().audio.inputs['MIC-01']).toEqual(frame);
     expect(source.link).toBe('ONLINE');
     fake.clock.advance(3_000);
     expect(source.link).toBe('STALE');
-    expect(source.store.getState().audio.channels['AUDIO-01']).toMatchObject({ noSignal: true, dbfs: -90 });
-    expect(source.store.getState().audio.channels['AUDIO-02']).toMatchObject({ noSignal: true, dbfs: -90 });
+    expect(source.store.getState().audio.inputs['MIC-01']).toMatchObject({ noSignal: true, dbfs: -90 });
+    expect(source.store.getState().audio.inputs['MIC-02']).toMatchObject({ noSignal: true, dbfs: -90 });
     // The rest of the screen keeps the last state received.
     expect(source.store.getState().session?.state).toBe('RECORDING');
   });

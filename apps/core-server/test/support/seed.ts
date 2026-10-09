@@ -43,6 +43,11 @@ export const EXPECTED_SEED_COUNTS: Readonly<Record<string, number>> = Object.fre
   audit_log: 82,
   auth_sessions: 0,
   biometric_tokens: 0,
+  // Schema v2 site config (CS-21): the seed writes the one selector row and the five built-in
+  // devices; the credential table stays empty (SD-8).
+  capture_config: 1,
+  capture_device_credentials: 0,
+  capture_devices: 5,
   console_settings: 1,
   core_device: 1,
   core_state: 1,
@@ -59,13 +64,22 @@ export const EXPECTED_SEED_COUNTS: Readonly<Record<string, number>> = Object.fre
   operators: 3,
   paired_devices: 0,
   pairing_codes: 0,
-  permissions: 12,
+  permissions: 14,
   registry_counters: 2,
-  role_permissions: 18,
+  role_permissions: 22,
   roles: 3,
   schema_meta: 1,
   session_history: 13,
   storage_policy: 1,
+  // Schema v2 data tables: the seed writes none of these except the `stt_config` singleton of
+  // row 114 (R-8); they fill with capture, sealing and transcription (rows 55/63/65).
+  session_audio_intervals: 0,
+  recording_fragments: 0,
+  transcript_chunks: 0,
+  transcripts: 0,
+  transcript_revisions: 0,
+  sealing_jobs: 0,
+  stt_config: 1,
 });
 
 // ── The wire form ──────────────────────────────────────────────────────────────────────────────

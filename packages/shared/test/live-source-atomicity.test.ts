@@ -279,8 +279,8 @@ describe('AC-C-10: own-command atomicity, in both arrival orders', () => {
     const result = source.actions.addMarker();
     await fake.arrived();
     const frame = { seq: 7, at: fake.clock.now(), dbfs: -18, peak: -12, clip: false, noSignal: false };
-    connection.meters({ channels: { 'AUDIO-01': frame, 'AUDIO-02': frame } });
-    expect(source.store.getState().audio.channels['AUDIO-01']).toEqual(frame);
+    connection.meters({ inputs: { 'MIC-01': frame, 'MIC-02': frame }, activeInputId: 'MIC-01' });
+    expect(source.store.getState().audio.inputs['MIC-01']).toEqual(frame);
     connection.delta(markerOps());
     answer.release();
     await result;

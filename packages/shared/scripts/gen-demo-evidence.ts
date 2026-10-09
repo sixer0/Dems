@@ -1418,7 +1418,7 @@ async function main(): Promise<void> {
       evidenceExport: {
         evidenceId: exported[0]?.evidenceId ?? '',
         request: { reason: firstExport.reason, destination: firstExport.destination },
-        response: { exportId: firstExport.exportId, evidenceId: exported[0]?.evidenceId ?? '', status: 'EXPORTED' },
+        response: { exportId: firstExport.exportId, evidenceId: exported[0]?.evidenceId ?? '', status: 'QUEUED' },
       },
     };
     const keyInfo: DemoSigningKeyInfo = {

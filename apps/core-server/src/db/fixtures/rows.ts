@@ -9,6 +9,8 @@ import type {
   AuditLogRow,
   AuthSessionRow,
   BiometricTokenRow,
+  CaptureDeviceCredentialRow,
+  CaptureDeviceRow,
   DeviceCredentialRow,
   EngineCounterRow,
   EventRow,
@@ -21,8 +23,14 @@ import type {
   OperatorRow,
   PairedDeviceRow,
   PairingCodeRow,
+  RecordingFragmentRow,
   RegistryCounterRow,
+  SealingJobRow,
+  SessionAudioIntervalRow,
   SessionHistoryRow,
+  TranscriptChunkRow,
+  TranscriptRevisionRow,
+  TranscriptRow,
 } from '../schema';
 
 /** Everything the loader writes, by table. A row is in the select shape of the typed schema. */
@@ -45,6 +53,16 @@ export interface BulkFixtureRows {
   readonly auditChainHistory: AuditChainHistoryRow[];
   readonly auditLog: AuditLogRow[];
   readonly events: EventRow[];
+  // Schema v2 (dbc-3 §G, CS-20): the discovered capture rows and the six pipeline tables the
+  // builders of `pipeline.ts` synthesise.
+  readonly captureDevices: CaptureDeviceRow[];
+  readonly captureDeviceCredentials: CaptureDeviceCredentialRow[];
+  readonly sessionAudioIntervals: SessionAudioIntervalRow[];
+  readonly recordingFragments: RecordingFragmentRow[];
+  readonly transcriptChunks: TranscriptChunkRow[];
+  readonly transcripts: TranscriptRow[];
+  readonly transcriptRevisions: TranscriptRevisionRow[];
+  readonly sealingJobs: SealingJobRow[];
 }
 
 /** The rows the fixture changes instead of inserting. */
@@ -79,4 +97,12 @@ export const FIXTURE_TABLES = {
   auditChainHistory: 'audit_chain_history',
   auditLog: 'audit_log',
   events: 'events',
+  captureDevices: 'capture_devices',
+  captureDeviceCredentials: 'capture_device_credentials',
+  sessionAudioIntervals: 'session_audio_intervals',
+  recordingFragments: 'recording_fragments',
+  transcriptChunks: 'transcript_chunks',
+  transcripts: 'transcripts',
+  transcriptRevisions: 'transcript_revisions',
+  sealingJobs: 'sealing_jobs',
 } as const satisfies Record<keyof BulkFixtureRows, string>;

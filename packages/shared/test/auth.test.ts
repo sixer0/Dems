@@ -243,7 +243,7 @@ describe('RBAC (demo roles, 01 G1)', () => {
 
   // Backend task W16 (GP-06; 2026-10-04 01_specs §4.3, §4.4, AC-B-17): the matrix the Core server
   // seeds and enforces. Three permissions and three SUPERVISOR grants were added; nothing else moved.
-  it('pins 12 permissions and 18 grants: INVESTIGATOR 4, SUPERVISOR 10, TECHNICIAN 4 (W16)', () => {
+  it('pins 14 permissions and 22 grants: INVESTIGATOR 5, SUPERVISOR 12, TECHNICIAN 5 (W16; M2-W6 SH-04)', () => {
     expect(Object.values(Permission)).toEqual([
       'SESSION_START',
       'SESSION_NOTE',
@@ -257,27 +257,33 @@ describe('RBAC (demo roles, 01 G1)', () => {
       'PAIRING_MANAGE',
       'USER_ADMIN',
       'DEMO_CONTROL',
+      // Task 3 M2-W6 (register SH-03/SH-04; D4 OD-10 and OD-15).
+      'CAPTURE_CONFIG',
+      'TRANSCRIPT_REVISE',
     ]);
     expect(Object.keys(Permission)).toEqual(Object.values(Permission));
     expect(ROLE_PERMISSIONS).toEqual({
-      INVESTIGATOR: ['SESSION_START', 'SESSION_NOTE', 'EVIDENCE_VIEW', 'DIAGNOSTICS_RUN'],
+      INVESTIGATOR: ['SESSION_START', 'SESSION_NOTE', 'EVIDENCE_VIEW', 'DIAGNOSTICS_RUN', 'TRANSCRIPT_REVISE'],
       SUPERVISOR: [
         'SESSION_START',
         'SESSION_NOTE',
         'EVIDENCE_VIEW',
         'DIAGNOSTICS_RUN',
+        'TRANSCRIPT_REVISE',
         'EVIDENCE_REVIEW',
         'EVIDENCE_EXPORT',
         'AUDIT_EXPORT',
         'PAIRING_MANAGE',
         'USER_ADMIN',
         'DEMO_CONTROL',
+        'CAPTURE_CONFIG',
       ],
-      TECHNICIAN: ['EVIDENCE_VIEW', 'DEVICE_MANAGE', 'DIAGNOSTICS_RUN', 'MAINTENANCE'],
+      TECHNICIAN: ['EVIDENCE_VIEW', 'DEVICE_MANAGE', 'DIAGNOSTICS_RUN', 'MAINTENANCE', 'CAPTURE_CONFIG'],
     });
     const grants = Object.values(ROLE_PERMISSIONS).map((list) => list.length);
-    expect(grants).toEqual([4, 10, 4]);
-    expect(grants.reduce((sum, count) => sum + count, 0)).toBe(18);
+    expect(grants).toEqual([5, 12, 5]);
+    // The same numbers the v2 seed writes (`dbc-3 §E.3`: 14 permissions, 22 grants; D88 equality).
+    expect(grants.reduce((sum, count) => sum + count, 0)).toBe(22);
     for (const list of Object.values(ROLE_PERMISSIONS)) {
       expect(new Set<string>(list).size).toBe(list.length);
     }
@@ -286,5 +292,13 @@ describe('RBAC (demo roles, 01 G1)', () => {
       expect(roleHas('INVESTIGATOR', permission)).toBe(false);
       expect(roleHas('TECHNICIAN', permission)).toBe(false);
     }
+    // OD-10: the selector is a supervisor/technician thing; an investigator never holds it.
+    expect(roleHas('SUPERVISOR', Permission.CAPTURE_CONFIG)).toBe(true);
+    expect(roleHas('TECHNICIAN', Permission.CAPTURE_CONFIG)).toBe(true);
+    expect(roleHas('INVESTIGATOR', Permission.CAPTURE_CONFIG)).toBe(false);
+    // OD-15: an investigator and a supervisor revise transcripts; a technician does not.
+    expect(roleHas('INVESTIGATOR', Permission.TRANSCRIPT_REVISE)).toBe(true);
+    expect(roleHas('SUPERVISOR', Permission.TRANSCRIPT_REVISE)).toBe(true);
+    expect(roleHas('TECHNICIAN', Permission.TRANSCRIPT_REVISE)).toBe(false);
   });
 });

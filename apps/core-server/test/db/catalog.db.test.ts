@@ -167,7 +167,7 @@ function difference(
 }
 
 describe('the live catalog equals the database contract (section 4)', () => {
-  it('30 tables, 302 columns, 98 named CHECKs, 25 foreign keys: the difference is empty', async () => {
+  it('40 tables, 419 columns, 166 named CHECKs, 39 foreign keys: the difference is empty', async () => {
     const live = await readCatalog();
     const lines = difference(inventory.tables, live);
     const count = (type: string): number => live.constraints.filter((constraint) => constraint.type === type).length;
@@ -190,7 +190,9 @@ describe('the live catalog equals the database contract (section 4)', () => {
     );
     expect(lines).toEqual([]);
     expect(counts).toEqual(inventory.counts);
-    expect(counts).toMatchObject({ tables: 30, columns: 302, checks: 98, foreignKeys: 25 });
+    // R1 (D44): the closed task-2 totals 30/302/98/25 are the v1 base of the composition; the
+    // landed dbc-3 contract is 39 tables (§0.1) plus the R-8 singleton stt_config (T-40).
+    expect(counts).toMatchObject({ tables: 40, columns: 419, checks: 166, foreignKeys: 39 });
   });
 
   it('the comparison is not vacuous: a changed inventory produces a difference of each kind', async () => {
@@ -234,7 +236,7 @@ describe('the live catalog equals the database contract (section 4)', () => {
     );
     const byType = Object.fromEntries(rows.map((row) => [row.type, Number(row.total)]));
     const notNullColumns = inventory.tables.reduce((sum, table) => sum + table.columns.filter((column) => column.notNull).length, 0);
-    expect(byType).toEqual({ c: 98, f: 25, n: notNullColumns, p: 30, u: 15 });
+    expect(byType).toEqual({ c: 166, f: 39, n: notNullColumns, p: 40, u: 15 });
     console.info(`[w17] pg_constraint in public by contype: ${JSON.stringify(byType)} (n = NOT NULL constraints of PostgreSQL 18)`);
   });
 });
@@ -273,7 +275,7 @@ describe('functions and triggers (contract §6.3, §8.3)', () => {
     return text.slice(open + 5, close);
   };
 
-  it('5 functions, each with the body of its migration file (GD-13), the language, the security mode and the settings of the contract', async () => {
+  it('7 functions, each with the body of its migration file (GD-13), the language, the security mode and the settings of the contract', async () => {
     const { rows } = await db.ownerPool().query(
       `SELECT p.proname::text AS name, pg_get_function_identity_arguments(p.oid) AS arguments,
               pg_get_function_result(p.oid) AS result, l.lanname::text AS language, p.prosecdef AS security_definer,
@@ -288,7 +290,10 @@ describe('functions and triggers (contract §6.3, §8.3)', () => {
       { name: 'audit_chain_lock', arguments: '', result: 'TABLE(seq bigint, hash text)', language: 'sql', security_definer: true, volatility: 'v', parallel: 'u', settings: pinned, owner: 'dems_owner', body: bodyOf('0002_audit_guards', 'audit_chain_lock') },
       { name: 'audit_log_guard_insert', arguments: '', result: 'trigger', language: 'plpgsql', security_definer: true, volatility: 'v', parallel: 'u', settings: pinned, owner: 'dems_owner', body: bodyOf('0002_audit_guards', 'audit_log_guard_insert') },
       { name: 'audit_log_refuse_change', arguments: '', result: 'trigger', language: 'plpgsql', security_definer: false, volatility: 'v', parallel: 'u', settings: null, owner: 'dems_owner', body: bodyOf('0002_audit_guards', 'audit_log_refuse_change') },
+      // The two write-only secret reveal functions of dbc-3 §B.3/§B.13 (SEC35-02, Q-SEC-3 default).
+      { name: 'dems_capture_credential_reveal', arguments: 'p_device_id text', result: 'TABLE(username text, encryption text, secret_ciphertext bytea, nonce bytea, key_ref text)', language: 'sql', security_definer: true, volatility: 'v', parallel: 'u', settings: pinned, owner: 'dems_owner', body: bodyOf('0005_capture_privileges', 'dems_capture_credential_reveal') },
       { name: 'dems_jsonb_is_flat', arguments: 'doc jsonb', result: 'boolean', language: 'sql', security_definer: false, volatility: 'i', parallel: 's', settings: null, owner: 'dems_owner', body: bodyOf('0000_prelude', 'dems_jsonb_is_flat') },
+      { name: 'dems_stt_credential_reveal', arguments: '', result: 'TABLE(credential_kind text, credential_ref text, secret_ciphertext bytea, nonce bytea)', language: 'sql', security_definer: true, volatility: 'v', parallel: 'u', settings: pinned, owner: 'dems_owner', body: bodyOf('0007_stt_config_privileges', 'dems_stt_credential_reveal') },
     ]);
   });
 
@@ -334,7 +339,7 @@ describe('functions and triggers (contract §6.3, §8.3)', () => {
 });
 
 describe('what the schema must not contain (CL-01, CL-07, CL-09, N-1)', () => {
-  it('schema public holds tables, their indexes and five functions: no sequence, view, enum or domain', async () => {
+  it('schema public holds tables, their indexes and seven functions: no sequence, view, enum or domain', async () => {
     const { rows } = await db.ownerPool().query<{ kind: string; total: string }>(
       `SELECT relkind::text AS kind, count(*) AS total FROM pg_class WHERE relnamespace = 'public'::regnamespace GROUP BY 1
        UNION ALL
@@ -342,21 +347,22 @@ describe('what the schema must not contain (CL-01, CL-07, CL-09, N-1)', () => {
         WHERE typnamespace = 'public'::regnamespace AND typtype IN ('e', 'd', 'r') GROUP BY 1
        ORDER BY 1`,
     );
-    // r = table; i = index (30 primary keys + 15 unique constraints + 22 indexes + 2 unique indexes);
-    // t would be TOAST (it lives in pg_toast, not here).
-    expect(Object.fromEntries(rows.map((row) => [row.kind, Number(row.total)]))).toEqual({ i: 69, r: 30 });
+    // r = table (30 v1 + 10 v2); i = index (40 primary keys + 15 unique constraints + 23 indexes
+    // + 3 unique indexes); t would be TOAST (it lives in pg_toast, not here).
+    expect(Object.fromEntries(rows.map((row) => [row.kind, Number(row.total)]))).toEqual({ i: 81, r: 40 });
   });
 
   it('every table has exactly one primary key; a single-row table has the key singleton with default true and CHECK (singleton)', async () => {
     const singletons = inventory.tables.filter((table) => table.columns[0]?.name === 'singleton').map((table) => table.name);
     expect(singletons.sort()).toEqual(
-      ['active_session', 'audit_chain_head', 'console_settings', 'core_device', 'core_state', 'hardware_snapshot', 'schema_meta', 'storage_policy'].sort(),
+      ['active_session', 'audit_chain_head', 'capture_config', 'console_settings', 'core_device', 'core_state',
+        'hardware_snapshot', 'schema_meta', 'storage_policy', 'stt_config'].sort(),
     );
     const { rows } = await db.ownerPool().query<{ table_name: string; definition: string }>(
       "SELECT conrelid::regclass::text AS table_name, pg_get_constraintdef(oid) AS definition FROM pg_constraint WHERE connamespace = 'public'::regnamespace AND contype = 'p' ORDER BY 1",
     );
-    expect(rows).toHaveLength(30);
-    expect(new Set(rows.map((row) => row.table_name)).size).toBe(30);
+    expect(rows).toHaveLength(40);
+    expect(new Set(rows.map((row) => row.table_name)).size).toBe(40);
     for (const name of singletons) {
       expect(rows.find((row) => row.table_name === name)?.definition, name).toBe('PRIMARY KEY (singleton)');
     }

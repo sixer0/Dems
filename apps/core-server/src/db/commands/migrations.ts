@@ -32,8 +32,17 @@ export const MIGRATIONS_FOLDER = resolve(dirname(fileURLToPath(import.meta.url))
 /** The migrator's default bookkeeping table: the one exception to "everything is in `public`" (D38). */
 export const MIGRATIONS_SCHEMA = 'drizzle';
 export const MIGRATIONS_TABLE = '__drizzle_migrations';
-/** The four files of schema version 1, in order (contract §8.2). */
-export const INITIAL_MIGRATION_TAGS = ['0000_prelude', '0001_tables', '0002_audit_guards', '0003_privileges'] as const;
+/** The eight files of schema version 2, in order (dbc-3 §A.1 plus the R-8 pair §B.13 / row 112). */
+export const INITIAL_MIGRATION_TAGS = [
+  '0000_prelude',
+  '0001_tables',
+  '0002_audit_guards',
+  '0003_privileges',
+  '0004_capture',
+  '0005_capture_privileges',
+  '0006_stt_config',
+  '0007_stt_config_privileges',
+] as const;
 
 export interface MigrationFile {
   readonly idx: number;

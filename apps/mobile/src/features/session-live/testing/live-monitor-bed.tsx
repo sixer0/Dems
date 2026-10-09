@@ -265,7 +265,14 @@ export async function renderLiveMonitor({
       await flushJobs();
     },
     sendMeters(frames) {
-      act(() => void bed.connection().meters({ channels: { ...frames } }));
+      // The meters slice is keyed by mic input since schema v2 (SH-17): the caller still names a
+      // channel, so map each to the input that feeds it and mark the primary input active.
+      act(() =>
+        void bed.connection().meters({
+          inputs: { 'MIC-01': frames['AUDIO-01'], 'MIC-02': frames['AUDIO-02'] },
+          activeInputId: 'MIC-01',
+        }),
+      );
     },
     setReachable(next, { drop = true } = {}) {
       const wasUp = reachable === true;

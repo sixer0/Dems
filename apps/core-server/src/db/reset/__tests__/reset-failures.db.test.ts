@@ -429,12 +429,12 @@ describe('R-3: the target is not at the schema version of this code', () => {
 
   it('a database at another schema version: RESET_SCHEMA_MISMATCH before anything is created', async () => {
     const other = await db.another({ template: 'seed', slug: 'rfver' });
-    await other.ownerPool().query('UPDATE public.schema_meta SET schema_version = 2');
+    await other.ownerPool().query('UPDATE public.schema_meta SET schema_version = 1');
     const before = await snapshot(other);
     const injected = failAt('R-9');
     const error = await failing(other, { onCheckpoint: injected.onCheckpoint });
     expect(error).toMatchObject({ code: 'RESET_SCHEMA_MISMATCH', step: 'R-3' });
-    expect(error.message).toContain('is at schema version 2 (dbc-2); this code builds version 1 (dbc-2)');
+    expect(error.message).toContain('is at schema version 1 (dbc-3); this code builds version 2 (dbc-3)');
     expect(injected.seen).toEqual(['R-0', 'R-1', 'R-2', 'R-3']);
     await expectUntouched(other, before);
     await discard(maintenance, other, db.run.identity.prefix);

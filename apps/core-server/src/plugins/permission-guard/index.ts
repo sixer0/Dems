@@ -85,6 +85,7 @@ import {
 import { AccessRefusalKind, decideAccess, type AccessCaller, type AccessRefusal } from './decision';
 import { denialRecordOf, refusalAnswer } from './denial';
 import { checkStoredMatrix, readStoredMatrix, type StoredMatrix } from './matrix';
+import { readOpenSessionCreatorId } from './session-holder';
 import { routesOfPrintedTable } from './router-table';
 
 export {
@@ -111,6 +112,7 @@ export {
 } from './access-rules';
 export {
   AccessRefusalKind,
+  SESSION_HOLDER_REASON,
   decideAccess,
   isAudited,
   type AccessCaller,
@@ -119,6 +121,7 @@ export {
 } from './decision';
 export { RETIRED_DEVICE_REASON, denialRecordOf, refusalAnswer, type DenialRecord } from './denial';
 export { routesOfPrintedTable, type RouterRoute } from './router-table';
+export { READ_OPEN_SESSION_CREATOR, readOpenSessionCreatorId, type CreatorReader } from './session-holder';
 export {
   READ_STORED_MATRIX,
   checkStoredMatrix,
@@ -256,12 +259,18 @@ export const permissionGuardPlugin: FastifyPluginAsync = async (app) => {
     return resolved;
   }
 
-  function callerOf(rule: AccessRule, request: FastifyRequest): AccessCaller {
+  async function callerOf(rule: AccessRule, request: FastifyRequest): Promise<AccessCaller> {
     return {
       principal: request.principal,
       // Asked only where the rule needs it: it reads the Origin facts of stage 3.
       consoleIdentity: rule.conditions.includes(CoreApiAccessCondition.CONSOLE_IDENTITY) && consoleIdentityOf(app, request) !== null,
       demoControls: app.config.demoControls,
+      // Task 3 M2-W7 (SEC35-18): asked only where the rule carries SESSION_HOLDER; one pool read
+      // of the open session's creator (session-holder.ts). No route carries the condition until
+      // M5-W1 registers `switchAudioSource`, so no earlier request reaches this read.
+      sessionCreatorId: rule.conditions.includes(CoreApiAccessCondition.SESSION_HOLDER)
+        ? await app.db.read('rbac.sessionHolderFact', (pool) => readOpenSessionCreatorId(pool), request)
+        : null,
     };
   }
 
@@ -293,7 +302,7 @@ export const permissionGuardPlugin: FastifyPluginAsync = async (app) => {
 
   const handler = async (request: FastifyRequest): Promise<void> => {
     const rule = ruleOf(request);
-    const decision = decideAccess(rule, callerOf(rule, request));
+    const decision = decideAccess(rule, await callerOf(rule, request));
     if (decision.allowed) return;
 
     const { refusal } = decision;

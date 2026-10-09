@@ -83,6 +83,9 @@ const FAULT_DEVICE: Readonly<Record<FaultKindValue, string>> = {
   TPM_FAILURE: 'TPM',
   SECURITY_FAULT: 'TPM',
   AUDIT_TAMPER: 'AUDIT',
+  // Schema v2 (CS-20; dbc-3 §C.1): the two new fault kinds report on the capture devices.
+  MIC_SILENT: 'MIC-01',
+  CAPTURE_FAULT: 'CAM-01',
 };
 /** Alerts that are still active at `now`: notices, not faults. */
 const ACTIVE_NOTICES = BULK_MIX.alerts.active + 2;
@@ -473,7 +476,111 @@ export function buildOperations(world: World, directory: OperatorDirectory, reco
   buildRefusals(world, directory, recordings);
   buildLogExports(world, directory);
   buildCoreActivity(world, directory);
+  buildCaptureActivity(world, directory);
   return rows;
+}
+
+/**
+ * The nine capture-phase types of task 3 (C3 §5.2; register CS-14). The fixture states ONE row of
+ * each, with details exactly in the form of the audit writer's list (`SERVER_AUDIT_DETAIL_RULES`),
+ * so that every gate over the allow-list - the writer's own `auditInputOf`, the key scan, the
+ * table of printed references - covers all 62 types from the first load. The modules that will
+ * write these rows on a live path land with their milestones (op 81 with row 71, the transcript
+ * revisions with M7/M8, the credential paths with row 66): until then the fixture is the reference
+ * holder, and each row names the actor whose permission owns the future operation. No credential,
+ * token or transcript text joins any of these details (RK-12, SEC35-01/02, SD-8).
+ */
+function buildCaptureActivity(world: World, directory: OperatorDirectory): void {
+  const rng = world.rng('capture-activity');
+  const supervisor = (at: number): string => rng.pick(directory.candidates(at, at, OperatorRole.SUPERVISOR)).operator.id;
+  const technician = (at: number): string => rng.pick(directory.candidates(at, at, OperatorRole.TECHNICIAN)).operator.id;
+  const investigator = (at: number): string => rng.pick(directory.candidates(at, at, OperatorRole.INVESTIGATOR)).operator.id;
+  /** Six evenings spread over the world, two hours apart so the nine rows never collide. */
+  const at = (index: number): number => world.dayAt(FIXTURE_WORLD_DAYS - 3 - index, 21, rng.int(0, 30), rng.int(0, 59));
+
+  world.record(at(0), {
+    audit: {
+      type: 'CAPTURE_CONFIG_CHANGED',
+      message: 'Primary microphone source set to MIC-02',
+      actorId: supervisor(at(0)),
+      deviceId: null,
+      details: { operationId: 'setPrimaryMic', scope: 'MIC', field: 'SOURCE', inputId: 'MIC-01', deviceId: 'MIC-01', from: 'MIC-01', to: 'MIC-02', permission: 'CAPTURE_CONFIG' },
+    },
+  });
+  world.record(at(1), {
+    audit: {
+      type: 'AUDIO_SOURCE_SWITCHED',
+      message: 'Audio source switched MIC-01 to MIC-02',
+      actorId: null,
+      deviceId: null,
+      details: { fromInput: 'MIC-01', toInput: 'MIC-02', fromMs: at(1), toMs: at(1) + 200 },
+    },
+  });
+  world.record(at(2), {
+    audit: {
+      type: 'CAMERA_POE_CYCLED',
+      message: 'PoE port cycled for CAM-02',
+      actorId: technician(at(2)),
+      deviceId: null,
+      details: { deviceId: 'CAM-02', poePort: 'POE_CAM_2_AUX', streamWasLost: true, confirmed: true, gapFromMs: at(2), gapToMs: at(2) + 4_000 },
+    },
+  });
+  world.record(at(3), {
+    audit: {
+      type: 'TRANSCRIPT_REVISED',
+      message: 'Transcript revision 1 recorded',
+      actorId: investigator(at(3)),
+      deviceId: null,
+      details: { revisionId: 'TRV-000001', authorId: investigator(at(3)), number: 1, baseRevision: 0, changeCount: 2, machineTranscriptHash: rng.bytes(32).toString('hex'), reason: 'Subject name corrected' },
+    },
+  });
+  world.record(at(4), {
+    audit: {
+      type: 'MIC_SILENT',
+      message: 'Microphone input silent beyond the warning threshold',
+      actorId: null,
+      deviceId: null,
+      severity: 'WARNING',
+      details: { inputId: 'MIC-01', thresholdDbfs: -60, durationMs: 5_000, sinceMs: at(4), active: true },
+    },
+  });
+  world.record(at(5), {
+    audit: {
+      type: 'EVIDENCE_MEDIA_SERVED',
+      message: 'Media range served for VIDEO-01',
+      actorId: investigator(at(5)),
+      deviceId: null,
+      details: { fileId: 'VIDEO-01', bytesServed: 4_194_304, rangeStart: 0, rangeEnd: 4_194_303, signed: true, expiresAt: at(5) + 15 * MINUTE_MS },
+    },
+  });
+  world.record(at(6), {
+    audit: {
+      type: 'EVIDENCE_EXPORT_FAILED',
+      message: 'Export job failed',
+      actorId: supervisor(at(6)),
+      deviceId: null,
+      severity: 'CRITICAL',
+      details: { jobId: 'EXPJ-000001', kind: 'PACKAGE', reason: 'DISK_FULL' },
+    },
+  });
+  world.record(at(7), {
+    audit: {
+      type: 'CAPTURE_CREDENTIAL_SET',
+      message: 'Camera credential stored',
+      actorId: supervisor(at(7)),
+      deviceId: null,
+      details: { deviceId: 'CAM-01', operationId: 'setCaptureCredential', permission: 'CAPTURE_CONFIG' },
+    },
+  });
+  world.record(at(8), {
+    audit: {
+      type: 'CAPTURE_CREDENTIAL_REVEALED',
+      message: 'Camera credential revealed for diagnostics',
+      actorId: supervisor(at(8)),
+      deviceId: null,
+      details: { deviceId: 'CAM-01', reason: 'MEDIA_DIAGNOSTICS' },
+    },
+  });
 }
 
 // ── The lineage of discarded chains ────────────────────────────────────────────────────────────

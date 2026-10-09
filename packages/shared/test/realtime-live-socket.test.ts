@@ -181,7 +181,7 @@ const HOUSEKEEPING_MS = 500;
 /** The earliest moment a second `resync` may leave. */
 const RESYNC_SPACING_MS = REALTIME_RESYNC_MIN_INTERVAL_MS + LIVE_SOCKET_RESYNC_GUARD_MS;
 
-/** A real state of the simulator in its wire form: the 28 replicated slices. */
+/** A real state of the simulator in its wire form: the 30 replicated slices. */
 const STATE: ReplicatedState = pickReplicatedState(JSON.parse(JSON.stringify(createIdleState({ now: T0, seed: DEFAULT_SEED }))) as ReplicatedState);
 
 const HELLO = REALTIME_SERVER_EXAMPLES.hello;
@@ -905,7 +905,7 @@ describe('meter frames: the latest wins, nothing is queued (RT-8, CL-11b)', () =
     h.socket().deliver(meters(102));
     expect(h.take()).toEqual([]);
     expect(h.client.getLatestMeters()?.seq).toBe(105);
-    expect(Object.keys(h.client.getLatestMeters()?.audio.channels ?? {})).toEqual(['AUDIO-01', 'AUDIO-02']);
+    expect(Object.keys(h.client.getLatestMeters()?.audio.inputs ?? {})).toEqual(['MIC-01', 'MIC-02']);
     expect(h.client.getStatus().counters).toMatchObject({ meters: 3, metersDropped: 2 });
     h.client.stop();
   });

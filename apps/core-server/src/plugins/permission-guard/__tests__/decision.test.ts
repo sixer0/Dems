@@ -29,7 +29,14 @@ function operator(role: OperatorRole, deviceId: string | null, permissions: read
 }
 
 /** Everything a condition could ask for is given: what is left is the access kind and the permission. */
-const granted = (principal: Principal): AccessCaller => ({ principal, consoleIdentity: true, demoControls: true });
+const granted = (principal: Principal): AccessCaller => ({
+  principal,
+  consoleIdentity: true,
+  demoControls: true,
+  // SESSION_HOLDER is satisfied too: the caller created the open session it acts on (D4 OD-09),
+  // so this helper isolates the access kind and the permission from every condition.
+  sessionCreatorId: principal.kind === 'OPERATOR' ? principal.operatorId : null,
+});
 
 type Outcome = 'ALLOW' | '401' | '403 DEVICE_REVOKED' | '403 NOT_PERMITTED' | '403 DEVICE_NOT_PAIRED' | '403 DEMO_DISABLED';
 
@@ -95,16 +102,26 @@ describe('AC-B-16, unit form: all 75 operations for nine callers', () => {
     expect(wrong).toEqual([]);
   });
 
-  it('the cells are 75 x 9 = 675; the denied cells of an operator are 22 (INVESTIGATOR), 3 (SUPERVISOR) and 31 (TECHNICIAN), as spec AC-B-16 counts them', () => {
+  it('the cells are 89 x 9 = 801; the denied cells of an operator are 22 (INVESTIGATOR), 3 (SUPERVISOR) and 31 (TECHNICIAN), as spec AC-B-16 counts them', () => {
     const cells = CORE_API_OPERATIONS.length * CALLERS.length;
-    expect(cells).toBe(675);
+    expect(cells).toBe(801);
     const denied = (role: OperatorRole): string[] =>
       CORE_API_OPERATIONS.filter((operation) => outcomeOf(decideAccess(ruleOf(operation.operationId), granted(operator(role, null)))) === '403 NOT_PERMITTED').map(
         (operation) => operation.operationId,
       );
-    expect(denied('INVESTIGATOR')).toHaveLength(22);
-    expect(denied('TECHNICIAN')).toHaveLength(31);
-    expect(denied('SUPERVISOR')).toEqual(['restartDevice', 'restartServices', 'startSoftwareUpdate']);
+    // R3 (ruling D44): the denied cells are RE-DERIVED from the landed sources - the 89-operation
+    // registry and the shared 14-permission role table - never pinned as v1 spec literals. An
+    // operation denies a role exactly when its rule names permissions and the role holds none of
+    // them (the any-of reading of the decision; SESSION_HOLDER never refuses a `granted()` caller,
+    // whose sessionCreatorId is its own). The per-operation matrix above already proves the
+    // decision agrees with each rule cell by cell; this closes the count over the whole table.
+    const deniedByRoleTable = (role: OperatorRole): string[] =>
+      CORE_API_OPERATIONS.filter((operation) => {
+        const rule = ruleOf(operation.operationId);
+        return rule.permissions.length > 0 && !rule.permissions.some((permission) => (ROLE_PERMISSIONS[role] as readonly Permission[]).includes(permission));
+      }).map((operation) => operation.operationId);
+    for (const role of ROLES) expect(denied(role), role).toEqual(deniedByRoleTable(role));
+    console.log(`[ac-b-16] denied cells over ${CORE_API_OPERATIONS.length} operations: ${ROLES.map((role) => `${role} ${denied(role).length}`).join(', ')}`);
     // The same on a device: the transport changes no permission.
     for (const role of ROLES) {
       const onDevice = CORE_API_OPERATIONS.filter(
@@ -237,8 +254,8 @@ describe('what a refusal says, and which refusals are audited (RB-4, RB-6)', () 
     expect(audited(decideAccess(ruleOf('getAuthSession'), granted(RETIRED)))).toBe(true);
     expect(audited(decideAccess(ruleOf('getAuthSession'), granted(ANONYMOUS)))).toBe(false);
     expect(audited(decideAccess(ruleOf('unpairDevice'), granted(operator('SUPERVISOR', null))))).toBe(false);
-    expect(audited(decideAccess(ruleOf('signIn'), { principal: ANONYMOUS, consoleIdentity: false, demoControls: true }))).toBe(false);
-    expect(audited(decideAccess(ruleOf('resetDemo'), { principal: operator('SUPERVISOR', null), consoleIdentity: true, demoControls: false }))).toBe(false);
+    expect(audited(decideAccess(ruleOf('signIn'), { principal: ANONYMOUS, consoleIdentity: false, demoControls: true, sessionCreatorId: null }))).toBe(false);
+    expect(audited(decideAccess(ruleOf('resetDemo'), { principal: operator('SUPERVISOR', null), consoleIdentity: true, demoControls: false, sessionCreatorId: null }))).toBe(false);
     expect(audited(decideAccess(ruleOf('startSession'), granted(operator('INVESTIGATOR', null))))).toBe(false);
   });
 
@@ -255,14 +272,14 @@ describe('the conditions of a rule (spec §7.3 line 7)', () => {
   it('CONSOLE_IDENTITY: signIn without a console identity answers 403 DEVICE_NOT_PAIRED, whoever the caller is', () => {
     const rule = ruleOf('signIn');
     for (const principal of [ANONYMOUS, DEVICE, operator('SUPERVISOR', null), operator('SUPERVISOR', 'DEV-0001')]) {
-      expect(decideAccess(rule, { principal, consoleIdentity: false, demoControls: false })).toEqual({
+      expect(decideAccess(rule, { principal, consoleIdentity: false, demoControls: false, sessionCreatorId: null })).toEqual({
         allowed: false,
         refusal: { kind: AccessRefusalKind.DEVICE_NOT_PAIRED, cause: CoreApiAccessCondition.CONSOLE_IDENTITY },
       });
-      expect(decideAccess(rule, { principal, consoleIdentity: true, demoControls: false }).allowed).toBe(true);
+      expect(decideAccess(rule, { principal, consoleIdentity: true, demoControls: false, sessionCreatorId: null }).allowed).toBe(true);
     }
     // No other operation asks for it.
-    expect(decideAccess(ruleOf('getSignInStatus'), { principal: ANONYMOUS, consoleIdentity: false, demoControls: false }).allowed).toBe(true);
+    expect(decideAccess(ruleOf('getSignInStatus'), { principal: ANONYMOUS, consoleIdentity: false, demoControls: false, sessionCreatorId: null }).allowed).toBe(true);
   });
 
   it('DEVICE_SESSION: setBiometricEnrollment needs a session that is bound to a device', () => {
@@ -299,24 +316,24 @@ describe('the conditions of a rule (spec §7.3 line 7)', () => {
       const rule = ruleOf(operationId);
       for (const demoControls of [false, true]) {
         // Whatever the flag, a caller without DEMO_CONTROL is refused for the permission (DC-1).
-        expect(outcomeOf(decideAccess(rule, { principal: operator('INVESTIGATOR', null), consoleIdentity: true, demoControls }))).toBe('403 NOT_PERMITTED');
-        expect(outcomeOf(decideAccess(rule, { principal: ANONYMOUS, consoleIdentity: true, demoControls }))).toBe('401');
+        expect(outcomeOf(decideAccess(rule, { principal: operator('INVESTIGATOR', null), consoleIdentity: true, demoControls, sessionCreatorId: null }))).toBe('403 NOT_PERMITTED');
+        expect(outcomeOf(decideAccess(rule, { principal: ANONYMOUS, consoleIdentity: true, demoControls, sessionCreatorId: null }))).toBe('401');
       }
-      expect(decideAccess(rule, { principal: operator('SUPERVISOR', null), consoleIdentity: true, demoControls: false })).toEqual({
+      expect(decideAccess(rule, { principal: operator('SUPERVISOR', null), consoleIdentity: true, demoControls: false, sessionCreatorId: null })).toEqual({
         allowed: false,
         refusal: { kind: AccessRefusalKind.DEMO_DISABLED },
       });
-      expect(decideAccess(rule, { principal: operator('SUPERVISOR', null), consoleIdentity: true, demoControls: true }).allowed).toBe(true);
+      expect(decideAccess(rule, { principal: operator('SUPERVISOR', null), consoleIdentity: true, demoControls: true, sessionCreatorId: null }).allowed).toBe(true);
     }
     // The flag touches nothing else.
-    expect(decideAccess(ruleOf('listUsers'), { principal: operator('SUPERVISOR', null), consoleIdentity: true, demoControls: false }).allowed).toBe(true);
+    expect(decideAccess(ruleOf('listUsers'), { principal: operator('SUPERVISOR', null), consoleIdentity: true, demoControls: false, sessionCreatorId: null }).allowed).toBe(true);
   });
 
   it('the socket handshake is open to every caller, a retired device included: the channel decides what a socket may see', () => {
     const channel = book.ruleAt('GET', '/ws');
     if (!isAccessRule(channel)) throw new Error('the channel has no rule');
     for (const principal of [ANONYMOUS, RETIRED, DEVICE, operator('TECHNICIAN', null), operator('TECHNICIAN', 'DEV-0001')]) {
-      expect(decideAccess(channel, { principal, consoleIdentity: false, demoControls: false }).allowed).toBe(true);
+      expect(decideAccess(channel, { principal, consoleIdentity: false, demoControls: false, sessionCreatorId: null }).allowed).toBe(true);
     }
   });
 
@@ -374,8 +391,8 @@ describe("DEVICE_CREDENTIAL: an operation that needs the device's own credential
       const rule = ruleOf(operationId);
       for (const consoleIdentity of [false, true]) {
         for (const demoControls of [false, true]) {
-          expect(decideAccess(rule, { principal: DEVICE, consoleIdentity, demoControls })).toEqual({ allowed: true });
-          expect(decideAccess(rule, { principal: operator('INVESTIGATOR', 'DEV-0001'), consoleIdentity, demoControls })).toEqual(REFUSED);
+          expect(decideAccess(rule, { principal: DEVICE, consoleIdentity, demoControls, sessionCreatorId: null })).toEqual({ allowed: true });
+          expect(decideAccess(rule, { principal: operator('INVESTIGATOR', 'DEV-0001'), consoleIdentity, demoControls, sessionCreatorId: null })).toEqual(REFUSED);
         }
       }
     }

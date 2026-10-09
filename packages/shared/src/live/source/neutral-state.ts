@@ -40,14 +40,18 @@ export function noSignalFrame(at: EpochMs): AudioFrame {
   return { seq: 0, at, dbfs: AUDIO_FLOOR_DBFS, peak: AUDIO_FLOOR_DBFS, clip: false, noSignal: true };
 }
 
-/** The `audio` slice with both channels on "no signal". */
+/**
+ * The `audio` slice with both mic inputs on "no signal" (SH-17: the meters slice is keyed by input
+ * since schema v2). A frame the client synthesises has no switch to report, so it names the default
+ * primary input; a frame from the server carries the real `activeInputId`.
+ */
 export function silentAudio(at: EpochMs): AudioSlice {
-  return { channels: { 'AUDIO-01': noSignalFrame(at), 'AUDIO-02': noSignalFrame(at) } };
+  return { inputs: { 'MIC-01': noSignalFrame(at), 'MIC-02': noSignalFrame(at) }, activeInputId: 'MIC-01' };
 }
 
-/** True when both channels already show "no signal": resetting them again would only change references. */
+/** True when both inputs already show "no signal": resetting them again would only change references. */
 export function isSilentAudio(audio: AudioSlice): boolean {
-  return audio.channels['AUDIO-01'].noSignal && audio.channels['AUDIO-02'].noSignal;
+  return audio.inputs['MIC-01'].noSignal && audio.inputs['MIC-02'].noSignal;
 }
 
 export function clockSliceAt(now: EpochMs): ClockSlice {
@@ -144,14 +148,14 @@ export function failedPairing(
 }
 
 /**
- * A `SimState` with no Core data in it. The 28 replicated slices are empty or hold the neutral
+ * A `SimState` with no Core data in it. The 30 replicated slices are empty or hold the neutral
  * member of their value set; the five client-built slices are signed out, unlocked, unpaired,
  * silent, and at `now`.
  */
 export function createNeutralState(now: EpochMs): SimState {
   return {
     meta: {
-      schemaVersion: 1,
+      schemaVersion: 2,
       seed: 0,
       scenario: 'idle',
       epoch: 0,
@@ -250,5 +254,10 @@ export function createNeutralState(now: EpochMs): SimState {
     diagnostics: null,
     update: { currentVersion: '', availableVersion: null, activeSlot: 'A', state: 'IDLE', steps: [], startedAt: null, completedAt: null },
     settings: { presentationMode: false, timeFormat: '24', notifyWarnings: true, notifySound: false },
+    // Slices 29 and 30 (SH-16): an empty selector and an empty registry. The Core publishes both
+    // once it has read `capture_config` / `capture_devices`; a client that sees these renders
+    // "no device configured" rather than the demo devices (ops 76/77).
+    captureConfig: { cameras: [], mics: [], locked: false, updatedAt: now },
+    captureDevices: { devices: [] },
   };
 }

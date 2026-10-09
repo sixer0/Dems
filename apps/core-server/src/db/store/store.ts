@@ -99,6 +99,8 @@ const TABLES = {
   coreState: schema.coreState,
   storagePolicy: schema.storagePolicy,
   consoleSettings: schema.consoleSettings,
+  captureDevices: schema.captureDevices,
+  captureConfig: schema.captureConfig,
   engineCounters: schema.engineCounters,
   hardwareSnapshot: schema.hardwareSnapshot,
   sessionHistory: schema.sessionHistory,
@@ -124,7 +126,7 @@ export async function insertRows<K extends WrittenTable>(executor: RowExecutor, 
   await insertInto(executor, table, rows);
 }
 
-async function insertInto(executor: RowExecutor, table: WrittenTable, rows: readonly object[]): Promise<void> {
+async function insertInto(executor: RowExecutor, table: WrittenTable, rows: readonly object[], captureDevicesAsUpsert = false): Promise<void> {
   if (rows.length === 0) return;
   const target: PgTable = TABLES[table];
   try {
@@ -133,6 +135,35 @@ async function insertInto(executor: RowExecutor, table: WrittenTable, rows: read
       // against the chain head and moves the head; a multi-row INSERT fires it in no fixed order.
       const ordered = [...(rows as MappedRows['auditLog'])].sort((a, b) => a.seq - b.seq);
       for (const row of ordered) await executor.insert(schema.auditLog).values(row);
+      return;
+    }
+    if (table === 'captureDevices' && captureDevicesAsUpsert) {
+      // dbc-3 §B.2/D: the engine's write-through adds OR updates a registry row and never deletes
+      // one; `dems_app` holds INSERT and UPDATE and no DELETE. An applied device change is
+      // therefore an UPSERT on the id key, updating every column the grant list names. The
+      // whole-state writers (seed, reset staging) keep the plain INSERT: their table is empty.
+      const d = schema.captureDevices;
+      for (const row of rows as MappedRows['captureDevices']) {
+        await executor
+          .insert(d)
+          .values(row)
+          .onConflictDoUpdate({
+            target: d.id,
+            set: {
+              kind: row.kind,
+              transport: row.transport,
+              model: row.model,
+              firmware: row.firmware,
+              address: row.address,
+              mac: row.mac,
+              onvifUuid: row.onvifUuid,
+              profiles: row.profiles,
+              poePort: row.poePort,
+              enabled: row.enabled,
+              lastSeenAt: row.lastSeenAt,
+            },
+          });
+      }
       return;
     }
     for (let start = 0; start < rows.length; start += INSERT_CHUNK_ROWS) {
@@ -217,6 +248,10 @@ export async function readStoredRows(executor: RowExecutor, options: ReadOptions
     const storagePolicy = await executor.select().from(schema.storagePolicy);
     table = 'consoleSettings';
     const consoleSettings = await executor.select().from(schema.consoleSettings);
+    table = 'captureDevices';
+    const captureDevices = await executor.select().from(schema.captureDevices).orderBy(asc(schema.captureDevices.id));
+    table = 'captureConfig';
+    const captureConfig = await executor.select().from(schema.captureConfig);
     table = 'engineCounters';
     const engineCounters = await executor.select().from(schema.engineCounters);
     table = 'hardwareSnapshot';
@@ -261,6 +296,8 @@ export async function readStoredRows(executor: RowExecutor, options: ReadOptions
       coreState,
       storagePolicy,
       consoleSettings,
+      captureDevices,
+      captureConfig,
       engineCounters,
       hardwareSnapshot,
       sessionHistory,
@@ -336,7 +373,7 @@ export async function applyChanges(executor: RowExecutor, changes: readonly RowC
   for (const change of changes) {
     const sqlName = TABLE_SQL_NAMES[change.table];
     if (change.op === 'insert') {
-      await insertInto(executor, change.table, change.rows);
+      await insertInto(executor, change.table, change.rows, true);
       continue;
     }
     try {
@@ -360,7 +397,7 @@ export async function applyChanges(executor: RowExecutor, changes: readonly RowC
 
 // ── Counts ─────────────────────────────────────────────────────────────────────────────────────
 
-/** The 30 tables of the typed schema: binding name and SQL name, sorted by SQL name. */
+/** The 40 tables of the typed schema (schema v2 + R-8): binding name and SQL name, sorted by SQL name. */
 export const ALL_TABLES: ReadonlyArray<{ readonly sqlName: string; readonly table: PgTable }> = [
   ['roles', schema.roles],
   ['permissions', schema.permissions],
@@ -392,6 +429,19 @@ export const ALL_TABLES: ReadonlyArray<{ readonly sqlName: string; readonly tabl
   ['health_snapshots', schema.healthSnapshots],
   ['schema_meta', schema.schemaMeta],
   ['audit_chain_history', schema.auditChainHistory],
+  // Schema v2 (dbc-3 §A.2) and R-8 (T-40): the nine new tables of 0004/0006 and the selector's
+  // companions. The seed writes the capture built-ins and `stt_config`; the other six are the
+  // recording/transcript/sealing homes the later milestones fill.
+  ['capture_devices', schema.captureDevices],
+  ['capture_config', schema.captureConfig],
+  ['capture_device_credentials', schema.captureDeviceCredentials],
+  ['session_audio_intervals', schema.sessionAudioIntervals],
+  ['recording_fragments', schema.recordingFragments],
+  ['transcript_chunks', schema.transcriptChunks],
+  ['transcripts', schema.transcripts],
+  ['transcript_revisions', schema.transcriptRevisions],
+  ['sealing_jobs', schema.sealingJobs],
+  ['stt_config', schema.sttConfig],
 ]
   .map(([sqlName, table]) => ({ sqlName: sqlName as string, table: table as PgTable }))
   .sort((a, b) => (a.sqlName < b.sqlName ? -1 : 1));

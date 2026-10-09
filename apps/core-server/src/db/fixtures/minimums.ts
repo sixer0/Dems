@@ -1,11 +1,23 @@
 /**
  * The minimum row counts of the bulk fixture: the table of database contract §11 (revision 2, 30
- * tables), as data (plan row W25; BF-5).
+ * tables) as revised by dbc-3 §G - the forty tables of the typed schema - as data (plan row W25;
+ * BF-5; row-55 CS-20).
  *
  * The numbers are MINIMUMS of the whole table after the load, that is the seeded rows and the
  * fixture's rows together. The loader prints the actual count beside each one, and the tests
  * compare them. `BULK_MIX` holds the required mix of the same table, also as minimums (and one
  * maximum), for the builder and for the tests that count the mix in SQL.
+ *
+ * Schema v2 (dbc-3 §G, ruling CS-20 of the row-55 review): the six pipeline tables and the three
+ * capture rows are bulk-fixture deliverables of M2, not later-milestone leftovers. The builders
+ * of `pipeline.ts` synthesise the §G minimums for `session_audio_intervals`, `recording_fragments`,
+ * `transcript_chunks`, `transcripts`, `transcript_revisions` and `sealing_jobs`, and the fixture
+ * adds the three discovered capture devices and the two fake device credentials; the seed carries
+ * the singletons of `capture_config` and `stt_config`. The three revised §G rows are carried as
+ * revised: permissions/role_permissions at the seed's 14/22, and `evidence_tracks` at the 1,010
+ * floor of exactly-two-per-item - until SH-24 regenerates the v2 evidence dataset through
+ * `packages/shared` (outside this row), the fixture still emits the v1 four-track shape the KEPT
+ * CHECKs accept (D-DB-05, M2-MT-2), whose 2,060 loaded rows meet the 1,010 floor with margin.
  *
  * Paging facts the numbers are derived from: a page has 50 rows by default and 200 at most; the
  * engine keeps the newest 1,000 audit rows, 500 events and 100 alerts.
@@ -19,11 +31,11 @@ export interface TableMinimum {
   readonly mix: string;
 }
 
-/** The 30 tables in the order of the contract's table. */
+/** The 40 tables in the order of the contract's table: §11 revision 2, revised by dbc-3 §G. */
 export const BULK_MINIMUMS: readonly TableMinimum[] = Object.freeze([
   { table: 'roles', minimum: 3, mix: 'unchanged' },
-  { table: 'permissions', minimum: 12, mix: 'unchanged' },
-  { table: 'role_permissions', minimum: 18, mix: 'unchanged' },
+  { table: 'permissions', minimum: 14, mix: 'the 14 seeded by schema v2 (dbc-3 §G revised): CAPTURE_CONFIG and TRANSCRIPT_REVISE joined the list' },
+  { table: 'role_permissions', minimum: 22, mix: 'all three roles present (dbc-3 §G revised: the seed grants 22)' },
   { table: 'operators', minimum: 12, mix: 'at least 2 enabled SUPERVISOR, at least 2 disabled, every role present' },
   { table: 'operator_credentials', minimum: 12, mix: 'one per operator' },
   {
@@ -54,7 +66,7 @@ export const BULK_MINIMUMS: readonly TableMinimum[] = Object.freeze([
     minimum: 505,
     mix: 'at least 400 SEALED, 40 EXPORTED, 30 ARCHIVED, 20 UNDER_REVIEW, 15 RECORDED; at least 10 tampered; all three case types',
   },
-  { table: 'evidence_tracks', minimum: 2_020, mix: 'exactly 4 per item, both audio tracks' },
+  { table: 'evidence_tracks', minimum: 1_010, mix: 'dbc-3 §G revised: exactly 2 per item once SH-24 lands the v2 dataset; until then the fixture emits the v1 four-track shape the KEPT CHECKs accept (D-DB-05), so its 2,060 loaded rows meet the floor; pipeline.ts carries fragment_count and fragment_chain_head on the two VIDEO rows of the 40 full-chain sessions' },
   { table: 'evidence_custody', minimum: 1_200, mix: 'at least 2 per item' },
   { table: 'exports', minimum: 60, mix: 'at least 40 EVIDENCE, 10 AUDIT, 10 LOGS' },
   { table: 'alerts', minimum: 250, mix: 'at least 10 active, 100 acknowledged; every fault kind' },
@@ -67,6 +79,18 @@ export const BULK_MINIMUMS: readonly TableMinimum[] = Object.freeze([
   { table: 'core_state', minimum: 1, mix: 'as seeded; epoch above the highest lineage epoch' },
   { table: 'hardware_snapshot', minimum: 1, mix: 'as seeded' },
   { table: 'schema_meta', minimum: 1, mix: 'as seeded' },
+  // Schema v2 (dbc-3 §G): the capture rows (seed plus the fixture's discovered variants) and the
+  // six pipeline tables the CS-20 builders of `pipeline.ts` synthesise.
+  { table: 'capture_config', minimum: 1, mix: 'seed: the one default singleton' },
+  { table: 'capture_devices', minimum: 8, mix: 'dbc-3 §G: 5 built-ins (seed) plus 3 discovered variants (fixture); at least 1 dual-profile camera (OD-05)' },
+  { table: 'capture_device_credentials', minimum: 2, mix: "dbc-3 §G: fake devices only (the fixture's discovered cameras, never a built-in); at least 1 rotated (rotated_at later than another row)" },
+  { table: 'session_audio_intervals', minimum: 720, mix: "dbc-3 §G: at least 1 per sealed session; at least 150 rows over 50 switched sessions (2-3 intervals, reason 'MANUAL', switched_by non-null); one open interval in the RECORDING variant" },
+  { table: 'recording_fragments', minimum: 6_500, mix: 'dbc-3 §G: contiguous full chains for the 40 newest sessions (2 tracks; head equals fragment_chain_head); sampled rows elsewhere; no seq gap anywhere (the gap case is the negative test of M2-MT-3)' },
+  { table: 'transcript_chunks', minimum: 2_000, mix: 'dbc-3 §G: contiguous audio ranges; at least 20 FAILED->rerun pairs; at least 95% DONE with segments arrays' },
+  { table: 'transcripts', minimum: 400, mix: "dbc-3 §G: one per SEALED; at least 30 labels_status 'UNAVAILABLE'; both labels values present" },
+  { table: 'transcript_revisions', minimum: 30, mix: 'dbc-3 §G: at least 5 items with chained revisions (parent_sha256 links); Ed25519-shaped signature' },
+  { table: 'sealing_jobs', minimum: 3_000, mix: 'dbc-3 §G: every step of every SEALED session DONE; at least 20 attempt >= 2 with status DONE (resumed via RECOVERY); one RUNNING job in the RECOVERY variant; at least 5 non-null checkpoints' },
+  { table: 'stt_config', minimum: 1, mix: 'seed: the one confirmed-default row (row 112, R-8)' },
 ] as const);
 
 /** The required mix as numbers. Every value is a minimum, except `pairingCodes.activeAtMost`. */
@@ -85,9 +109,20 @@ export const BULK_MIX = Object.freeze({
   evidenceTracks: { perItem: 4 },
   evidenceCustody: { perItem: 2 },
   exports: { evidence: 40, audit: 10, logs: 10 },
-  alerts: { active: 10, acknowledged: 100, faultKinds: 12 },
+  // Schema v2: the rotation spans the fourteen FaultKind values (MIC_SILENT, CAPTURE_FAULT);
+  // dbc-3 §G adds the MIC_SILENT floor.
+  alerts: { active: 10, acknowledged: 100, faultKinds: 14, micSilent: 10 },
   healthSnapshots: { interval: 1_440, fault: 60 },
   activeSessionVariant: { timelineItems: 200 },
+  // Schema v2 (dbc-3 §G): the mix of the CS-20 builders in `pipeline.ts`.
+  captureDevices: { builtIn: 5, discovered: 3, dualProfileCameras: 1 },
+  captureDeviceCredentials: { total: 2, rotatedAtLeast: 1 },
+  sessionAudioIntervals: { minPerSealed: 1, switchedSessions: 50, manualRows: 150, openInRecordingVariant: 1 },
+  recordingFragments: { fullChainSessions: 40, tracksPerChain: 2 },
+  transcriptChunks: { failedRerunPairs: 20, doneSegmentsPercent: 95 },
+  transcripts: { unavailableLabels: 30, labelsValues: 2 },
+  transcriptRevisions: { chainedItems: 5, signatureHexChars: 128 },
+  sealingJobs: { resumedAtLeast: 20, checkpointedAtLeast: 5, runningInRecoveryVariant: 1 },
 } as const);
 
 export interface MinimumComparison {
@@ -105,7 +140,7 @@ export function minimumOf(table: string): number {
   return entry.minimum;
 }
 
-/** "entity, minimum, loaded" for all 30 tables, in the contract's order. A missing count is 0. */
+/** "entity, minimum, loaded" for all 40 tables, in the contract's order (§11 plus dbc-3 §G). A missing count is 0. */
 export function compareWithMinimums(counts: Readonly<Record<string, number>>): MinimumComparison[] {
   return BULK_MINIMUMS.map(({ table, minimum }) => {
     const loaded = counts[table] ?? 0;

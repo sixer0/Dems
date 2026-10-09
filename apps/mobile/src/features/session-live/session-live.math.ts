@@ -164,7 +164,9 @@ export function statusStrip(input: StripInput): StripChip[] {
 // Timeline (C-3 items from the simulator's timeline, S1)
 // ---------------------------------------------------------------------------------------------
 
-export type TimelineKindName = 'START' | 'NOTE' | 'AUDIO_PEAK' | 'HEALTH' | 'AUTOSAVE' | 'CHECK' | 'MARKER' | 'SNAPSHOT' | 'FAULT';
+// Mirrors the shared `TimelineKind`. SH-03/WB-10 (row 47) added AUDIO_SWITCH (the operator switched
+// the active mic input, op 81); the client's exhaustive KIND_TONE below must carry it too.
+export type TimelineKindName = 'START' | 'NOTE' | 'AUDIO_PEAK' | 'AUDIO_SWITCH' | 'HEALTH' | 'AUTOSAVE' | 'CHECK' | 'MARKER' | 'SNAPSHOT' | 'FAULT';
 
 export interface TimelineEventInput {
   id: string;
@@ -186,6 +188,8 @@ const KIND_TONE: Record<TimelineKindName, StatusTone> = {
   START: 'success',
   NOTE: 'accent',
   AUDIO_PEAK: 'warning',
+  // A mic-input switch is a neutral operator action (op 81); informational tone, like SNAPSHOT.
+  AUDIO_SWITCH: 'info',
   HEALTH: 'success',
   AUTOSAVE: 'success',
   CHECK: 'success',

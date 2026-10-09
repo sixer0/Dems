@@ -27,9 +27,15 @@
  *
  * Then, for a caller the table allows, the conditions of the rule, in this order (spec §7.3
  * line 7): `CONSOLE_IDENTITY`, `DEVICE_SESSION` and `DEVICE_CREDENTIAL` answer 403
- * `DEVICE_NOT_PAIRED`, `DEMO_FLAG` answers 403 `DEMO_DISABLED`. None of the four writes a row.
+ * `DEVICE_NOT_PAIRED`, `DEMO_FLAG` answers 403 `DEMO_DISABLED`. None of those four writes a row.
  * The permission comes before the demo flag, so a caller without `DEMO_CONTROL` gets
  * `NOT_PERMITTED` whatever the flag (DC-1).
+ *
+ * `SESSION_HOLDER` (task 3 M2-W7; SEC35-18; D4 OD-09; C3 §2.2/§5.3) is the fifth condition and
+ * the first one whose refusal IS audited: it holds when the caller is the operator who created the
+ * open session or holds SUPERVISOR; otherwise the refusal is 403 `NOT_PERMITTED` with one
+ * `ACCESS_DENIED` row whose `details.reason` names the condition. It never replaces the permission
+ * check: the marker's permission comes first, exactly like the demo flag.
  *
  * `DEVICE_CREDENTIAL` (finding CPS1-3 of the security checkpoint; decisions D113, D118): the
  * request presented the device credential itself, so the caller is the DEVICE principal. The
@@ -41,9 +47,13 @@
  * and the type check of this file fails when the vocabulary gains a member without a case.
  */
 import { CoreApiAccessCondition, CoreApiAccessKind } from '@dems/shared/api';
-import type { OperatorRole } from '@dems/shared/sim';
+// The value AND the type: `@dems/shared/sim` exports both meanings of the name (vocabulary.ts).
+import { OperatorRole } from '@dems/shared/sim';
 import type { Principal } from '../authenticate';
 import type { AccessRule, PermissionDenial } from './access-rules';
+
+/** `details.reason` of the ACCESS_DENIED row a failed `SESSION_HOLDER` condition writes (C3 §5.3). */
+export const SESSION_HOLDER_REASON = CoreApiAccessCondition.SESSION_HOLDER;
 
 /** What the decision needs to know about the caller. Facts of stages 3 and 4, and the demo flag. */
 export interface AccessCaller {
@@ -55,6 +65,11 @@ export interface AccessCaller {
   readonly consoleIdentity: boolean;
   /** The server's demo flag (DC-2). Read only for a rule with the condition `DEMO_FLAG`. */
   readonly demoControls: boolean;
+  /**
+   * Task 3 M2-W7 (SEC35-18; D4 OD-09; C3 §0/§2.2): the operator who CREATED the open session, or
+   * null when no session is open. Read only for a rule with the condition `SESSION_HOLDER`.
+   */
+  readonly sessionCreatorId: string | null;
 }
 
 export const AccessRefusalKind = {
@@ -88,6 +103,12 @@ export type AccessRefusal =
       /** The device the operator's session is bound to; null for a web console session. */
       readonly deviceId: string | null;
       readonly denial: PermissionDenial;
+      /**
+       * Task 3 M2-W7 (C3 §5.3): the condition of the same rule that did not hold, when the refusal
+       * is not about the permission itself — `SESSION_HOLDER` today, the SCREAMING_SNAKE name of
+       * the condition. It joins the row's details and the answer's details as `reason`.
+       */
+      readonly reason?: string;
     }
   | {
       readonly kind: typeof AccessRefusalKind.DEVICE_NOT_PAIRED;
@@ -174,6 +195,29 @@ function decideConditions(rule: AccessRule, caller: AccessCaller): AccessDecisio
       case CoreApiAccessCondition.DEMO_FLAG:
         if (!caller.demoControls) return refuse({ kind: AccessRefusalKind.DEMO_DISABLED });
         break;
+      case CoreApiAccessCondition.SESSION_HOLDER: {
+        // D4 OD-09; SEC35-18; C3 §2.2: the operator who created the open session, or a SUPERVISOR.
+        // The permission of the marker has already been checked (the order of this loop); this
+        // condition only adds the holder rule. Its refusal is audited NOT_PERMITTED with
+        // `details.reason: SESSION_HOLDER` (C3 §5.3) — the one condition whose refusal writes.
+        if (principal.kind !== 'OPERATOR') break; // the marker refused others before this loop
+        const holds =
+          principal.role === OperatorRole.SUPERVISOR || (caller.sessionCreatorId !== null && principal.operatorId === caller.sessionCreatorId);
+        if (!holds) {
+          if (rule.denial === null) {
+            throw new Error(`the access rule of ${rule.operationId} carries SESSION_HOLDER without a permission to name in its refusal`);
+          }
+          return refuse({
+            kind: AccessRefusalKind.NOT_PERMITTED,
+            operatorId: principal.operatorId,
+            role: principal.role,
+            deviceId: principal.deviceId,
+            denial: rule.denial,
+            reason: SESSION_HOLDER_REASON,
+          });
+        }
+        break;
+      }
       default: {
         // A condition without a case above: nobody is let through on a rule that was not decided.
         const unevaluated: never = condition;

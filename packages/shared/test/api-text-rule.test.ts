@@ -152,9 +152,10 @@ describe('API-13 over the whole registry', () => {
       }
     }
     // Changed by design (W27): 13 operations of contract A, 4 of the existing ten and 8 of contract C
-    // take a body; 4 of contract C take a query.
-    expect(CORE_API_OPERATIONS.filter((operation) => operation.requestBody).map((operation) => operation.operationId)).toHaveLength(25);
-    expect(CORE_API_OPERATIONS.filter((operation) => operation.query).map((operation) => operation.operationId)).toHaveLength(4);
+    // take a body; 4 of contract C take a query. Task 3 M2-W7 adds six bodies (ops 78/79/81/85/89 and
+    // the new optional `{ confirm }` on op 48) and two query reads (ops 82/86): 25 -> 31 bodies, 4 -> 6 queries.
+    expect(CORE_API_OPERATIONS.filter((operation) => operation.requestBody).map((operation) => operation.operationId)).toHaveLength(31);
+    expect(CORE_API_OPERATIONS.filter((operation) => operation.query).map((operation) => operation.operationId)).toHaveLength(6);
     expect(new Set(checked).size).toBeGreaterThanOrEqual(30);
     expect(checked).toContain('SignInRequest(root).password');
     expect(checked).toContain('DeviceRevokeRequest(root).reason');
@@ -210,12 +211,13 @@ describe('API-13 over the whole registry', () => {
 
   it('API-13 holds for every string of the registry that the backend task added: the state, the socket and areas 4 to 11', () => {
     // W27: the rule is on for slice text since the engine cuts on a character boundary, so the
-    // statement of API-13 ("every string schema of the registry") holds for all 112 schemas of the
-    // backend task. The 18 schemas of the ten existing operations are the exception, by AC-B-13:
-    // their answers describe what the simulator answers, and their request texts carry the rule.
+    // statement of API-13 ("every string schema of the registry") holds for all 134 schemas of the
+    // backend task (task 3 M2-W7 adds eighteen operation/nested schemas: 114 -> 134). The 18 schemas
+    // of the ten existing operations are the exception, by AC-B-13: their answers describe what the
+    // simulator answers, and their request texts carry the rule.
     const names = Object.keys(CORE_API_SCHEMAS) as CoreApiSchemaName[];
     const added = names.slice(18);
-    expect(added).toHaveLength(112);
+    expect(added).toHaveLength(134);
     let leaves = 0;
     const open: string[] = [];
     for (const name of added) {

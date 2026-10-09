@@ -47,9 +47,9 @@ const SECRET_FORMS = {
 };
 
 describe('the vocabulary', () => {
-  it('every one of the 53 shared audit types is accepted, with the category of the shared map', () => {
+  it('every one of the 62 shared audit types is accepted, with the category of the shared map', () => {
     const types = Object.values(AuditType);
-    expect(types).toHaveLength(53);
+    expect(types).toHaveLength(62);
     const typed = new Set<string>(Object.keys(SERVER_AUDIT_DETAIL_RULES));
     for (const type of types.filter((candidate) => !typed.has(candidate))) {
       const input = auditInputOf(audit({ type }));
@@ -155,8 +155,8 @@ describe('the payload map (database contract FLAT, NO_SECRET_KEYS; SR-54)', () =
     expect(codeOf(() => eventInputOf(event({ params: { value: Number.NaN } })))).toBe('EVENT_PARAM_VALUE_INVALID');
   });
 
-  it('none of the 17 key names that may name a secret, in any letter case', () => {
-    expect(AUDIT_DETAIL_FORBIDDEN_KEYS).toHaveLength(17);
+  it('none of the 28 key names that may name a secret, in any letter case', () => {
+    expect(AUDIT_DETAIL_FORBIDDEN_KEYS).toHaveLength(28);
     for (const key of AUDIT_DETAIL_FORBIDDEN_KEYS) {
       expect(codeOf(() => auditInputOf(audit({ details: { [key]: 'x' } }))), key).toBe('AUDIT_DETAIL_KEY_FORBIDDEN');
       expect(codeOf(() => eventInputOf(event({ params: { [key]: 'x' } }))), key).toBe('EVENT_PARAM_KEY_FORBIDDEN');
@@ -225,7 +225,7 @@ describe('the payload map (database contract FLAT, NO_SECRET_KEYS; SR-54)', () =
   });
 });
 
-describe('the allow-list of the nine server-written types (spec §13.1)', () => {
+describe('the allow-list of the eighteen server-written types (spec §13.1; C3 §5.2)', () => {
   const accepted: Record<string, AuditEntry[]> = {
     ACCESS_DENIED: [
       { type: 'ACCESS_DENIED', actorId: 'OPR-003', deviceId: null, message: 'Denied', details: { operationId: 'startSession', permission: 'SESSION_START', role: 'TECHNICIAN' } },
@@ -245,12 +245,25 @@ describe('the allow-list of the nine server-written types (spec §13.1)', () => 
     USER_ENABLED: [{ type: 'USER_ENABLED', actorId: 'OPR-002', deviceId: null, message: 'Enabled', details: { targetOperatorId: 'OPR-003' } }],
     USER_DISABLED: [{ type: 'USER_DISABLED', actorId: 'OPR-002', deviceId: null, message: 'Disabled', details: { targetOperatorId: 'OPR-003', sessionsEnded: 0 } }],
     BIOMETRIC_ENROLLMENT_CHANGED: [{ type: 'BIOMETRIC_ENROLLMENT_CHANGED', actorId: 'OPR-001', deviceId: 'DEV-0001', message: 'Enrolment changed', details: { enabled: true } }],
+    // The nine capture-phase types of task 3 (C3 §5.2; row 48). Example values in each rule's form.
+    CAPTURE_CONFIG_CHANGED: [{ type: 'CAPTURE_CONFIG_CHANGED', actorId: 'OPR-002', deviceId: null, message: 'Selector changed', details: { operationId: 'setPrimaryMic', scope: 'MIC', field: 'SOURCE', inputId: 'MIC-01', deviceId: 'MIC-02', from: 'MIC-02', to: 'MIC-01', permission: 'CAPTURE_CONFIG' } }],
+    AUDIO_SOURCE_SWITCHED: [
+      { type: 'AUDIO_SOURCE_SWITCHED', actorId: 'OPR-001', deviceId: null, message: 'Switched', details: { fromInput: 'MIC-01', toInput: 'MIC-02', fromMs: 1_790_823_600_000, toMs: 1_790_823_600_200 } },
+      { type: 'AUDIO_SOURCE_SWITCHED', actorId: null, deviceId: 'DEV-0001', message: 'Switched', details: { fromInput: 'MIC-02', toInput: 'MIC-01', fromMs: 1_790_823_600_000, toMs: 1_790_823_600_200, sendingDeviceId: 'DEV-0001' } },
+    ],
+    CAMERA_POE_CYCLED: [{ type: 'CAMERA_POE_CYCLED', actorId: 'OPR-003', deviceId: null, message: 'Port cycled', details: { deviceId: 'CAM-02', poePort: 'POE_CAM_2_AUX', streamWasLost: true, confirmed: true, gapFromMs: 1_790_823_600_000, gapToMs: 1_790_823_604_000 } }],
+    TRANSCRIPT_REVISED: [{ type: 'TRANSCRIPT_REVISED', actorId: 'OPR-001', deviceId: null, message: 'Revised', details: { revisionId: 'TRV-000001', authorId: 'OPR-001', number: 1, baseRevision: 0, changeCount: 2, machineTranscriptHash: 'a'.repeat(64), reason: 'Subject name corrected' } }],
+    MIC_SILENT: [{ type: 'MIC_SILENT', actorId: null, deviceId: null, message: 'Silent', details: { inputId: 'MIC-01', thresholdDbfs: -60, durationMs: 5_000, sinceMs: 1_790_823_600_000, active: true } }],
+    EVIDENCE_MEDIA_SERVED: [{ type: 'EVIDENCE_MEDIA_SERVED', actorId: 'OPR-001', deviceId: null, message: 'Served', details: { fileId: 'VIDEO-01', bytesServed: 4_194_304, rangeStart: 0, rangeEnd: 4_194_303, signed: true, expiresAt: 1_790_823_900_000 } }],
+    EVIDENCE_EXPORT_FAILED: [{ type: 'EVIDENCE_EXPORT_FAILED', actorId: 'OPR-002', deviceId: null, message: 'Export failed', details: { jobId: 'EXPJ-000001', kind: 'PACKAGE', reason: 'DISK_FULL' } }],
+    CAPTURE_CREDENTIAL_SET: [{ type: 'CAPTURE_CREDENTIAL_SET', actorId: 'OPR-003', deviceId: null, message: 'Credential stored', details: { deviceId: 'CAM-01', operationId: 'setCaptureCredential', permission: 'CAPTURE_CONFIG' } }],
+    CAPTURE_CREDENTIAL_REVEALED: [{ type: 'CAPTURE_CREDENTIAL_REVEALED', actorId: 'OPR-002', deviceId: null, message: 'Credential revealed', details: { deviceId: 'CAM-01', reason: 'MEDIA_DIAGNOSTICS' } }],
   };
 
-  it('covers exactly the nine types the backend task added; the simulator\'s 44 have no list', () => {
+  it('covers exactly the eighteen types the server writes; the simulator\'s 44 have no list', () => {
     const typed = Object.keys(SERVER_AUDIT_DETAIL_RULES).sort();
     expect(typed).toEqual(Object.keys(accepted).sort());
-    expect(typed).toHaveLength(9);
+    expect(typed).toHaveLength(18);
     expect(Object.values(AuditType).filter((type) => detailRulesOf(type) === undefined)).toHaveLength(44);
     for (const type of typed) expect(Object.values(AuditType)).toContain(type);
   });
@@ -270,6 +283,15 @@ describe('the allow-list of the nine server-written types (spec §13.1)', () => 
       USER_ENABLED: ['targetOperatorId', 'reason'],
       USER_DISABLED: ['targetOperatorId', 'sessionsEnded', 'reason'],
       BIOMETRIC_ENROLLMENT_CHANGED: ['enabled', 'deviceId'],
+      CAPTURE_CONFIG_CHANGED: ['operationId', 'scope', 'field', 'trackId', 'inputId', 'deviceId', 'from', 'to', 'permission'],
+      AUDIO_SOURCE_SWITCHED: ['fromInput', 'toInput', 'fromMs', 'toMs', 'sendingDeviceId'],
+      CAMERA_POE_CYCLED: ['deviceId', 'poePort', 'streamWasLost', 'confirmed', 'gapFromMs', 'gapToMs'],
+      TRANSCRIPT_REVISED: ['revisionId', 'authorId', 'number', 'baseRevision', 'changeCount', 'machineTranscriptHash', 'reason', 'permission'],
+      MIC_SILENT: ['inputId', 'thresholdDbfs', 'durationMs', 'sinceMs', 'active'],
+      EVIDENCE_MEDIA_SERVED: ['fileId', 'bytesServed', 'rangeStart', 'rangeEnd', 'signed', 'expiresAt'],
+      EVIDENCE_EXPORT_FAILED: ['jobId', 'kind', 'reason'],
+      CAPTURE_CREDENTIAL_SET: ['deviceId', 'operationId', 'permission'],
+      CAPTURE_CREDENTIAL_REVEALED: ['deviceId', 'reason'],
     });
     expect(required).toEqual({
       ACCESS_DENIED: ['operationId'],
@@ -281,6 +303,15 @@ describe('the allow-list of the nine server-written types (spec §13.1)', () => 
       USER_ENABLED: ['targetOperatorId'],
       USER_DISABLED: ['targetOperatorId', 'sessionsEnded'],
       BIOMETRIC_ENROLLMENT_CHANGED: ['enabled'],
+      CAPTURE_CONFIG_CHANGED: ['operationId', 'scope', 'field'],
+      AUDIO_SOURCE_SWITCHED: ['fromInput', 'toInput', 'fromMs', 'toMs'],
+      CAMERA_POE_CYCLED: ['deviceId', 'poePort', 'streamWasLost', 'confirmed'],
+      TRANSCRIPT_REVISED: ['revisionId', 'authorId', 'number', 'baseRevision', 'changeCount', 'machineTranscriptHash'],
+      MIC_SILENT: ['inputId', 'thresholdDbfs', 'durationMs', 'sinceMs', 'active'],
+      EVIDENCE_MEDIA_SERVED: ['fileId', 'bytesServed', 'signed'],
+      EVIDENCE_EXPORT_FAILED: ['jobId', 'kind', 'reason'],
+      CAPTURE_CREDENTIAL_SET: ['deviceId', 'operationId'],
+      CAPTURE_CREDENTIAL_REVEALED: ['deviceId', 'reason'],
     });
   });
 

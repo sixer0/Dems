@@ -59,20 +59,20 @@ function caught(work: () => unknown): MappingError {
 }
 
 describe('the slices', () => {
-  it('33 slices: 13 stored, 15 in the snapshot row, 5 not mapped, and no slice twice', () => {
+  it('35 slices: 15 stored, 15 in the snapshot row, 5 not mapped, and no slice twice', () => {
     const state = idle();
-    expect(Object.keys(state)).toHaveLength(33);
-    expect(STORED_SLICE_KEYS).toHaveLength(13);
+    expect(Object.keys(state)).toHaveLength(35);
+    expect(STORED_SLICE_KEYS).toHaveLength(15);
     expect(SNAPSHOT_SLICE_KEYS).toHaveLength(15);
-    expect(DURABLE_SLICE_KEYS).toHaveLength(28);
+    expect(DURABLE_SLICE_KEYS).toHaveLength(30);
     expect(Object.keys(UNMAPPED_SLICES).sort()).toEqual(['audio', 'auth', 'authLockout', 'clock', 'pairing']);
     const all = [...DURABLE_SLICE_KEYS, ...Object.keys(UNMAPPED_SLICES)];
-    expect(new Set(all).size).toBe(33);
+    expect(new Set(all).size).toBe(35);
     expect([...all].sort()).toEqual(Object.keys(state).sort());
     expect(Object.keys(STORED_SLICE_TABLES).sort()).toEqual([...STORED_SLICE_KEYS].sort());
   });
 
-  it('the result of fromRows has exactly the 28 durable slices', () => {
+  it('the result of fromRows has exactly the 30 durable slices', () => {
     const state = idle();
     expect(Object.keys(fromRows(asStored(toRows(state, context)))).sort()).toEqual([...DURABLE_SLICE_KEYS].sort());
   });
@@ -110,6 +110,12 @@ describe('the slices', () => {
       faults: () => ({ active: [{ kind: 'GNSS_LOSS', since: FIXED_NOW, target: null }] }),
       diagnostics: () => ({ id: 'DGN-000001', startedAt: FIXED_NOW, completedAt: null, checks: [] }),
       update: (s) => ({ ...s.update, activeSlot: 'B' as const }),
+      // Register SH-16 (D44 R5): the two capture slices reach their own KEPT tables. The selector
+      // varies by a media profile (the column the DB CHECK bounds with the CODE format - the unit
+      // mapping enforces no CHECK and the value round-trips whole); the registry varies a device
+      // the selector does not name, so every FK of the round trip holds.
+      captureConfig: (s) => ({ ...s.captureConfig, cameras: s.captureConfig.cameras.map((camera) => ({ ...camera, profile: 'H264_720P50' })) }),
+      captureDevices: (s) => ({ devices: s.captureDevices.devices.map((device) => (device.id === 'POE-SWITCH' ? { ...device, model: 'PoE+ switch PS-9' } : device)) }),
     };
     const after: SimState = { ...before, [key]: variants[key](before) };
     expect(toRows(after, context)).not.toEqual(toRows(before, context));
@@ -123,7 +129,7 @@ describe('the slices', () => {
       clock: { ...before.clock, now: FIXED_NOW + 5_000 },
       auth: { status: 'SIGNED_IN', operatorId: 'OPR-001', method: 'PASSWORD', issuedAt: FIXED_NOW, lastActivityAt: FIXED_NOW },
       authLockout: { failures: [FIXED_NOW], lockedUntil: FIXED_NOW + 60_000 },
-      audio: { channels: { ...before.audio.channels, 'AUDIO-01': { ...before.audio.channels['AUDIO-01'], dbfs: -1 } } },
+      audio: { ...before.audio, inputs: { ...before.audio.inputs, 'MIC-01': { ...before.audio.inputs['MIC-01'], dbfs: -1 } } },
     };
     const after: SimState = { ...before, [key]: changed[key] };
     expect(toRows(after, context)).toStrictEqual(toRows(before, context));
@@ -142,11 +148,11 @@ describe('the slices', () => {
 describe('the rows of the idle dataset at the fixed instant (contract §9.4)', () => {
   const rows = toRows(idle(), context);
 
-  it('has the row counts of the contract for the 17 mapped tables', () => {
+  it('has the row counts of the contract for the 19 mapped tables', () => {
     const counts = countRows(rows);
     for (const [table, count] of Object.entries(counts)) expect(`${table} ${count}`).toBe(`${table} ${EXPECTED_SEED_COUNTS[table]}`);
-    expect(Object.keys(counts)).toHaveLength(17);
-    expect(WRITE_ORDER).toHaveLength(16);
+    expect(Object.keys(counts)).toHaveLength(19);
+    expect(WRITE_ORDER).toHaveLength(18);
   });
 
   it('the chain head it implies is the last audit row: sequence 82', () => {
@@ -313,8 +319,21 @@ describe('what the mapping refuses', () => {
     expect(caught(() => fromRows({ ...rows, hardwareSnapshot: [...rows.hardwareSnapshot, ...rows.hardwareSnapshot] })).code).toBe('ROW_SHAPE');
     expect(caught(() => fromRows({ ...rows, auditChainHead: [{ singleton: true, seq: 81, hash: state.audit.head }] })).place).toBe('audit_chain_head');
     expect(caught(() => fromRows({ ...rows, engineCounters: rows.engineCounters.filter((row) => row.name !== 'item') })).place).toBe('engine_counters');
-    const otherVersion = rows.coreState.map((row) => ({ ...row, simSchemaVersion: 2 }));
-    expect(caught(() => fromRows({ ...rows, coreState: otherVersion })).place).toBe('core_state.sim_schema_version');
+    // SH-10 moved the accepted version to 2, so the wrong-value injections are 1 (the version this
+    // mapping no longer reads) and 3 (a version it has never heard of), on BOTH version columns.
+    const staleVersion = rows.coreState.map((row) => ({ ...row, simSchemaVersion: 1 }));
+    expect(caught(() => fromRows({ ...rows, coreState: staleVersion })).place).toBe('core_state.sim_schema_version');
+    const futureVersion = rows.coreState.map((row) => ({ ...row, simSchemaVersion: 3 }));
+    expect(caught(() => fromRows({ ...rows, coreState: futureVersion })).place).toBe('core_state.sim_schema_version');
+    const futureSnapshot = rows.hardwareSnapshot.map((row) => ({ ...row, simSchemaVersion: 3 }));
+    expect(caught(() => fromRows({ ...rows, hardwareSnapshot: futureSnapshot })).place).toBe('hardware_snapshot.sim_schema_version');
+  });
+
+  it('SH-10: the boot check ACCEPTS the stored version 2 and reads it back as the meta schema version', () => {
+    const rows = asStored(toRows(state, context));
+    expect(rows.coreState[0]?.simSchemaVersion).toBe(2);
+    expect(rows.hardwareSnapshot[0]?.simSchemaVersion).toBe(2);
+    expect(fromRows(rows).meta.schemaVersion).toBe(2);
   });
 });
 
@@ -361,17 +380,17 @@ describe('export records are derived from audit rows (SD-7)', () => {
 describe('roles, permissions and grants come from the shared vocabulary (SD-5, AC-B-17)', () => {
   const rows = rbacRows();
 
-  it('3 roles, 12 permissions and 18 grants (4, 10, 4), in declaration order', () => {
+  it('3 roles, 14 permissions and 22 grants (5, 12, 5), in declaration order', () => {
     expect(rows.roles).toEqual([
       { id: 'INVESTIGATOR', sortOrder: 1 },
       { id: 'SUPERVISOR', sortOrder: 2 },
       { id: 'TECHNICIAN', sortOrder: 3 },
     ]);
     expect(rows.permissions.map((row) => row.id)).toEqual(Object.values(Permission));
-    expect(rows.permissions.map((row) => row.sortOrder)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
-    expect(rows.rolePermissions).toHaveLength(18);
+    expect(rows.permissions.map((row) => row.sortOrder)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]);
+    expect(rows.rolePermissions).toHaveLength(22);
     const perRole = (role: string): number => rows.rolePermissions.filter((grant) => grant.roleId === role).length;
-    expect([perRole('INVESTIGATOR'), perRole('SUPERVISOR'), perRole('TECHNICIAN')]).toEqual([4, 10, 4]);
+    expect([perRole('INVESTIGATOR'), perRole('SUPERVISOR'), perRole('TECHNICIAN')]).toEqual([5, 12, 5]);
   });
 
   it('the grants are exactly ROLE_PERMISSIONS, role by role', () => {

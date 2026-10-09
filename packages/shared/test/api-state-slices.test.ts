@@ -62,10 +62,17 @@ import {
 
 // ── Compile-time proofs: the type of each schema is the simulator's type ─────────────────────────
 type Exact<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
+/**
+ * Task 3 M2-W7 (blueprint row 48): the wire `evidence` item leads with the C3 v2 shape (files with
+ * both hashes and the chain head, audio-source intervals, transcript summary); the simulator
+ * reaches it with M2-W9 (row 51, SH-07). The marker compiles while parity is pending and stops
+ * compiling when it lands — forcing the flip to `true`. No proof is deleted.
+ */
+type PendingM2W9<T extends boolean> = T extends true ? true : 'PENDING-M2W9';
 
 /** One member per replicated slice. A schema whose type differs from `SimState[slice]` makes its member `false`, which `true` does not fit. */
 const everySliceIsTheSimulators: {
-  [Name in ReplicatedSliceName]: Exact<z.output<(typeof REPLICATED_SLICE_SCHEMAS)[Name]>, SimState[Name]>;
+  [Name in ReplicatedSliceName]: Name extends 'evidence' ? PendingM2W9<Exact<z.output<(typeof REPLICATED_SLICE_SCHEMAS)[Name]>, SimState[Name]>> : Exact<z.output<(typeof REPLICATED_SLICE_SCHEMAS)[Name]>, SimState[Name]>;
 } = {
   meta: true,
   device: true,
@@ -87,7 +94,8 @@ const everySliceIsTheSimulators: {
   health: true,
   otherDevices: true,
   ports: true,
-  evidence: true,
+  // SH-07 (row 51): the v2 item shape leads the contract; the sim reaches it in M2-W9.
+  evidence: 'PENDING-M2W9',
   events: true,
   alerts: true,
   audit: true,
@@ -95,6 +103,8 @@ const everySliceIsTheSimulators: {
   diagnostics: true,
   update: true,
   settings: true,
+  captureConfig: true,
+  captureDevices: true,
 };
 /**
  * Every member name of a type at every depth, optional ones included: `a`, `a.b`, and for a list
@@ -109,7 +119,7 @@ type MemberPaths<T> = T extends readonly (infer Element)[]
 
 /** One member per replicated slice: the schema names exactly the members the simulator's type has, no fewer and no more. */
 const everySliceHasTheSimulatorsMembers: {
-  [Name in ReplicatedSliceName]: Exact<MemberPaths<z.output<(typeof REPLICATED_SLICE_SCHEMAS)[Name]>>, MemberPaths<SimState[Name]>>;
+  [Name in ReplicatedSliceName]: Name extends 'evidence' ? PendingM2W9<Exact<MemberPaths<z.output<(typeof REPLICATED_SLICE_SCHEMAS)[Name]>>, MemberPaths<SimState[Name]>>> : Exact<MemberPaths<z.output<(typeof REPLICATED_SLICE_SCHEMAS)[Name]>>, MemberPaths<SimState[Name]>>;
 } = {
   meta: true,
   device: true,
@@ -131,7 +141,7 @@ const everySliceHasTheSimulatorsMembers: {
   health: true,
   otherDevices: true,
   ports: true,
-  evidence: true,
+  evidence: 'PENDING-M2W9', // SH-07 (row 51)
   events: true,
   alerts: true,
   audit: true,
@@ -139,13 +149,15 @@ const everySliceHasTheSimulatorsMembers: {
   diagnostics: true,
   update: true,
   settings: true,
+  captureConfig: true,
+  captureDevices: true,
 };
 const audioHasTheSimulatorsMembers: Exact<MemberPaths<AudioSliceBody>, MemberPaths<SimState['audio']>> = true;
 // The helper sees an optional member and a nested one, so the proofs above are not empty.
 const pathsSeeOptionalMembers: Exact<MemberPaths<{ a?: { b?: number }[]; c: string | null }>, 'a' | 'a.b' | 'c'> = true;
 const pathsTellTypesApart: Exact<MemberPaths<{ a: number }>, MemberPaths<{ a: number; b?: number }>> = false;
 const evidenceNamesItsOptionalMembers: 'tamperedTrackId' | 'markers.label' | 'notes.authorId' | 'signature.keyId' extends MemberPaths<SimState['evidence']> ? true : false = true;
-const stateIsThe28Slices: Exact<ReplicatedState, Pick<SimState, ReplicatedSliceName>> = true;
+const stateIsThe28Slices: PendingM2W9<Exact<ReplicatedState, Pick<SimState, ReplicatedSliceName>>> = 'PENDING-M2W9'; // via the evidence slice
 const audioIsTheSlice: Exact<AudioSliceBody, SimState['audio']> = true;
 // Every slice of `SimState` is classified, and nothing else is.
 const deliveryCoversTheState: Exact<keyof typeof STATE_SLICE_DELIVERY, keyof SimState> = true;
@@ -154,7 +166,7 @@ const operatorIsSimOperator: Exact<ReplicatedOperator, SimOperator> = true;
 const sessionIsActiveSession: Exact<ActiveSessionBody, ActiveSession> = true;
 const noteIsSessionNote: Exact<SessionNoteBody, SessionNote> = true;
 const historyEntryIsTheSimulators: Exact<SessionHistoryEntryBody, SessionHistoryEntry> = true;
-const evidenceItemIsTheSimulators: Exact<EvidenceItemBody, EvidenceItem> = true;
+const evidenceItemIsTheSimulators: PendingM2W9<Exact<EvidenceItemBody, EvidenceItem>> = 'PENDING-M2W9'; // SH-07 (row 51)
 const eventIsSimEvent: Exact<SimEventBody, SimEvent> = true;
 const alertIsSimAlert: Exact<SimAlertBody, SimAlert> = true;
 const auditRowIsTheSimulators: Exact<AuditRowBody, AuditRow> = true;
@@ -396,23 +408,23 @@ function refusals(samples: readonly Sample[]): string[] {
       }
     }
     if (!AudioSliceSchema.safeParse(sent.audio).success) out.push(`${label}: audio`);
-    if (!ReplicatedStateSchema.safeParse(pickReplicatedState(sent)).success) out.push(`${label}: the 28 slices as one state`);
+    if (!ReplicatedStateSchema.safeParse(pickReplicatedState(sent)).success) out.push(`${label}: the 30 slices as one state`);
   }
   return out;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════
 
-describe('the 28 replicated slices and the other five', () => {
+describe('the 30 replicated slices and the other five', () => {
   it('the fixed instant is the instant of the contract\'s examples', () => {
     expect(AT).toBe(Date.parse(OPENAPI_EXAMPLE_INSTANT));
     expect(AT).toBe(Date.UTC(2026, 9, 1, 3, 0, 0));
   });
 
-  it('every slice of SimState is classified: 28 replicated, audio streamed, four built by the client', () => {
+  it('every slice of SimState is classified: 30 replicated, audio streamed, four built by the client', () => {
     const state = idleState();
     expect(Object.keys(STATE_SLICE_DELIVERY)).toEqual(Object.keys(state));
-    expect(Object.keys(state)).toHaveLength(33);
+    expect(Object.keys(state)).toHaveLength(35);
     const by = (delivery: StateSliceDelivery) => Object.entries(STATE_SLICE_DELIVERY).filter(([, value]) => value === delivery).map(([name]) => name);
     expect(by(StateSliceDelivery.REPLICATED)).toEqual([...REPLICATED_SLICE_NAMES]);
     expect(by(StateSliceDelivery.STREAMED)).toEqual(['audio']);
@@ -420,15 +432,17 @@ describe('the 28 replicated slices and the other five', () => {
     expect(UNREPLICATED_SLICE_NAMES).toEqual(['clock', 'auth', 'authLockout', 'pairing', 'audio']);
   });
 
-  it('the 28 are the ones 01_specs §3.2 marks "Replicated", in state order', () => {
+  it('the 30 are the ones 01_specs §3.2 marks "Replicated", in state order', () => {
     expect([...REPLICATED_SLICE_NAMES]).toEqual([
       'meta', 'device', 'operators', 'tabletLink', 'session', 'lastSealedSessionId', 'lastSealedAcknowledged', 'sessionHistory',
       'activeCameraId', 'cameras', 'mics', 'storage', 'storagePolicy', 'time', 'network', 'security', 'services', 'health',
       'otherDevices', 'ports', 'evidence', 'events', 'alerts', 'audit', 'faults', 'diagnostics', 'update', 'settings',
+      // Slices 29 and 30 (SH-16): appended after the v1 order, each with its own delta kind (E-04).
+      'captureConfig', 'captureDevices',
     ]);
-    expect(REPLICATED_SLICE_NAMES).toHaveLength(28);
+    expect(REPLICATED_SLICE_NAMES).toHaveLength(30);
     expect(Object.keys(REPLICATED_SLICE_SCHEMAS)).toEqual([...REPLICATED_SLICE_NAMES]);
-    // The simulator persists 30 slices; the two that persist and do not replicate are server-native in Live mode.
+    // The simulator persists 32 slices; the two that persist and do not replicate are server-native in Live mode.
     expect(SNAPSHOT_KEYS.filter((key) => !(REPLICATED_SLICE_NAMES as readonly string[]).includes(key))).toEqual(['authLockout', 'pairing']);
     expect(REPLICATED_SLICE_NAMES.filter((name) => !(SNAPSHOT_KEYS as readonly string[]).includes(name))).toEqual([]);
   });
@@ -436,22 +450,22 @@ describe('the 28 replicated slices and the other five', () => {
   it('each replicated slice is a named component `<Name>Slice`; the registry holds them after the 50 of contract A', () => {
     const names = REPLICATED_SLICE_NAMES.map((name) => stateSliceSchemaName(name));
     expect(names.slice(0, 5)).toEqual(['MetaSlice', 'DeviceSlice', 'OperatorsSlice', 'TabletLinkSlice', 'SessionSlice']);
-    expect(Object.keys(STATE_SCHEMAS).slice(0, 28)).toEqual(names);
+    expect(Object.keys(STATE_SCHEMAS).slice(0, 30)).toEqual(names);
     for (const name of REPLICATED_SLICE_NAMES) {
       expect(STATE_SCHEMAS[stateSliceSchemaName(name)], name).toBe(REPLICATED_SLICE_SCHEMAS[name]);
       expect(CORE_API_SCHEMAS[stateSliceSchemaName(name)], name).toBe(REPLICATED_SLICE_SCHEMAS[name]);
     }
-    expect(Object.keys(STATE_SCHEMAS).slice(28)).toEqual([
+    expect(Object.keys(STATE_SCHEMAS).slice(30)).toEqual([
       'AudioSlice', 'ReplicatedState', 'ActiveSession', 'SessionNote', 'SessionHistoryEntry', 'EvidenceItem', 'SimEvent', 'SimAlert', 'AuditRow',
     ]);
-    expect(Object.keys(STATE_SCHEMAS)).toHaveLength(37);
+    expect(Object.keys(STATE_SCHEMAS)).toHaveLength(39);
   });
 });
 
 describe.each([
   ['createIdleState at the fixed instant', idleState],
   ['the recording scenario at the fixed instant', () => scenarioState('recording')],
-] as const)('each of the 28 slice schemas accepts its slice of %s', (_title, build) => {
+] as const)('each of the 30 slice schemas accepts its slice of %s', (_title, build) => {
   const state = build();
   const sent = wire(state);
 
@@ -468,12 +482,12 @@ describe.each([
     expect(schema.parse(state[name])).toEqual(state[name]);
   });
 
-  it('the 28 together are the `state` of a snapshot; the other five slices stay behind', () => {
+  it('the 30 together are the `state` of a snapshot; the other five slices stay behind', () => {
     const picked = pickReplicatedState(sent);
     expect(Object.keys(picked)).toEqual([...REPLICATED_SLICE_NAMES]);
     for (const name of REPLICATED_SLICE_NAMES) expect(picked[name], name).toBe(sent[name]);
     expect(ReplicatedStateSchema.parse(picked)).toStrictEqual(picked);
-    expect(Object.keys(sent)).toHaveLength(33);
+    expect(Object.keys(sent)).toHaveLength(35);
     expect(ReplicatedStateSchema.safeParse(sent).success).toBe(false);
   });
 
@@ -734,7 +748,10 @@ describe('values: time, value sets, identifiers, hashes, levels, text', () => {
     expect(refuses('activeCameraId', 'AUDIO-01')).toBe(true);
     expect(refuses('activeCameraId', 'VIDEO-02')).toBe(false);
     expect(refuses('storage', { ...state.storage, state: 'BROKEN' })).toBe(true);
-    expect(refuses('meta', { ...state.meta, schemaVersion: 2 })).toBe(true);
+    // SH-10 moved the wire literal to 2: 2 is now the accepted value, so the refusal cases are 1 and 3.
+    expect(refuses('meta', { ...state.meta, schemaVersion: 2 })).toBe(false);
+    expect(refuses('meta', { ...state.meta, schemaVersion: 1 })).toBe(true);
+    expect(refuses('meta', { ...state.meta, schemaVersion: 3 })).toBe(true);
     expect(refuses('meta', { ...state.meta, scenario: 'chaos' })).toBe(true);
     expect(refuses('settings', { ...state.settings, timeFormat: '48' })).toBe(true);
     expect(refuses('lastSealedAcknowledged', 'yes')).toBe(true);
@@ -766,15 +783,19 @@ describe('values: time, value sets, identifiers, hashes, levels, text', () => {
     expect(refuses('evidence', [{ ...item, signature: { ...item?.signature, simulated: false } }])).toBe(true);
   });
 
-  it('an audio level is between -90 and 0 dBFS, and both channels are present', () => {
+  it('an audio level is between -90 and 0 dBFS, and both mic inputs are present', () => {
     const audio = state.audio;
-    const frame = audio.channels['AUDIO-01'];
+    const frame = audio.inputs['MIC-01'];
     for (const dbfs of [0.1, -90.5, null]) {
-      expect(AudioSliceSchema.safeParse({ channels: { ...audio.channels, 'AUDIO-01': { ...frame, dbfs } } }).success, String(dbfs)).toBe(false);
+      expect(AudioSliceSchema.safeParse({ ...audio, inputs: { ...audio.inputs, 'MIC-01': { ...frame, dbfs } } }).success, String(dbfs)).toBe(false);
     }
-    expect(AudioSliceSchema.safeParse({ channels: { 'AUDIO-01': frame } }).success).toBe(false);
-    expect(AudioSliceSchema.safeParse({ channels: { ...audio.channels, 'AUDIO-03': frame } }).success).toBe(false);
-    expect(AudioSliceSchema.safeParse({ channels: { ...audio.channels, 'AUDIO-01': { ...frame, dbfs: -90, peak: 0 } } }).success).toBe(true);
+    // Schema v2 keys the meters by input and names the active one (SH-17): one input, or a third
+    // input, or the v1 `channels` shape, or a missing `activeInputId`, are all refused.
+    expect(AudioSliceSchema.safeParse({ inputs: { 'MIC-01': frame }, activeInputId: 'MIC-01' }).success).toBe(false);
+    expect(AudioSliceSchema.safeParse({ ...audio, inputs: { ...audio.inputs, 'MIC-03': frame } }).success).toBe(false);
+    expect(AudioSliceSchema.safeParse({ inputs: audio.inputs }).success).toBe(false);
+    expect(AudioSliceSchema.safeParse({ channels: audio.inputs, activeInputId: 'MIC-01' }).success).toBe(false);
+    expect(AudioSliceSchema.safeParse({ ...audio, inputs: { ...audio.inputs, 'MIC-01': { ...frame, dbfs: -90, peak: 0 } } }).success).toBe(true);
   });
 
   it('text carries the text rule API-13: what well-formed input leaves in the state is well-formed, and a slice with ill-formed text is refused', () => {
@@ -856,12 +877,16 @@ describe('values: time, value sets, identifiers, hashes, levels, text', () => {
 });
 
 describe('the OpenAPI documents', () => {
-  it('the `all` scope holds every state schema as a component, closed to unknown members; the offline scope holds none', () => {
+  it('the `all` scope holds every state schema as a component, closed to unknown members; the offline scope holds none but the two capture slices', () => {
     const all = createOpenApiDocument({ scope: 'all' }).components.schemas;
     const offline = createOpenApiDocument().components.schemas;
+    // Task 3 M2-W7 (`C3 §6`/`§8`, API-6): `captureConfig` and `captureDevices` are replicated slices
+    // that SIMULATED operations 76-80/89 answer directly, so they appear in the offline document too.
+    const offlineAnswered = new Set(['CaptureConfigSlice', 'CaptureDevicesSlice']);
     for (const name of Object.keys(STATE_SCHEMAS)) {
       expect(all[name], name).toBeDefined();
-      expect(offline[name], name).toBeUndefined();
+      if (offlineAnswered.has(name)) expect(offline[name], name).toBeDefined();
+      else expect(offline[name], name).toBeUndefined();
     }
     const state = all.ReplicatedState as { required: string[]; additionalProperties: boolean; properties: Record<string, { $ref: string }> };
     expect(state.required).toEqual([...REPLICATED_SLICE_NAMES]);

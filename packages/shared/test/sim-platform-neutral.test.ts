@@ -126,7 +126,7 @@ describe('no web globals (the React Native case)', () => {
     drive(5_000);
     sim.actions.startRecording();
     drive(20_000);
-    const frame = sim.store.getState().audio.channels['AUDIO-01'];
+    const frame = sim.store.getState().audio.inputs['MIC-01'];
     for (const value of Object.values(frame)) expect(['number', 'boolean']).toContain(typeof value);
 
     // Background: the scheduler stops and the snapshot is flushed; the Core keeps "running".

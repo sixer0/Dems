@@ -47,7 +47,11 @@ const NOISE_HIGH = AUDIO_NOISE_FLOOR_DBFS + AUDIO_NOISE_FLOOR_SPREAD_DB;
 const RELEASE_PER_FRAME_DB = (AUDIO_RELEASE_DB_PER_S * AUDIO_FRAME_MS) / 1_000;
 const atNoiseFloor = (level: number): boolean => level >= NOISE_LOW - 0.01 && level <= NOISE_HIGH + 0.01;
 
-const URL_OF: Readonly<Record<DeviceCommand, (id: string) => string>> = { RESTART: restart, TEST_SIGNAL: testSignal, IDENTIFY: identify };
+// Schema v2 (E-12; C3 §3 op 48): POE_CYCLE joins the command vocabulary but reaches restartDevice
+// through the server-side PoE path (stream LOST + confirm), never through the hosted `deviceCommand`
+// action this file drives - the action map keeps its three commands (`devices/operations.ts`).
+// The total entry exists to keep the record exhaustive; nothing here posts to it.
+const URL_OF: Readonly<Record<DeviceCommand, (id: string) => string>> = { RESTART: restart, TEST_SIGNAL: testSignal, IDENTIFY: identify, POE_CYCLE: restart };
 
 beforeAll(async () => {
   server = await devicesApp(db);
@@ -104,30 +108,30 @@ describe('testDeviceSignal: the two seconds of the tone are the simulator\'s', (
     // While the tone plays, half a second in: the newest meter frame holds it, and the read of
     // operation 45 answers the levels of that frame (`app.engine.meters()`; BE-GAP-W36-1 is closed).
     await server.drive(500);
-    const live = server.meterFrames().at(-1)?.audio.channels['AUDIO-01'];
-    const read = (await server.get('INVESTIGATOR', AUDIO)).json() as { channels: Array<{ trackId: string; dbfs: number; peak: number }> };
+    const live = server.meterFrames().at(-1)?.audio.inputs['MIC-01'];
+    const read = (await server.get('INVESTIGATOR', AUDIO)).json() as { channels: Array<{ inputId: string; dbfs: number; peak: number }> };
     expect(Math.abs((live?.dbfs ?? 0) - AUDIO_TEST_TONE_DBFS)).toBeLessThanOrEqual(1);
     expect(server.engine.meters()).toBe(server.meterFrames().at(-1));
     expect(live).toBeDefined();
-    expect(read.channels[0]).toMatchObject({ trackId: 'AUDIO-01', dbfs: live?.dbfs, peak: live?.peak });
+    expect(read.channels[0]).toMatchObject({ inputId: 'MIC-01', dbfs: live?.dbfs, peak: live?.peak });
     expect(read.channels[0]?.dbfs).not.toBe(AUDIO_NOISE_FLOOR_DBFS);
 
     const TOTAL_MS = 4_500;
     await server.drive(TOTAL_MS - 500);
     const frames = server.meterFrames().slice(framesBefore);
-    const referenceFrames: Array<Record<'AUDIO-01' | 'AUDIO-02', AudioFrame>> = [];
+    const referenceFrames: Array<Record<'MIC-01' | 'MIC-02', AudioFrame>> = [];
     for (let elapsed = 0; elapsed < TOTAL_MS; elapsed += AUDIO_FRAME_MS) {
       reference.drive(AUDIO_FRAME_MS);
-      referenceFrames.push(reference.state().audio.channels);
+      referenceFrames.push(reference.state().audio.inputs);
     }
 
     // One frame per tick, gap-free, stamped on the 50 ms grid of the server clock.
     expect(frames).toHaveLength(TOTAL_MS / AUDIO_FRAME_MS);
-    expect(frames.map((frame) => frame.audio.channels['AUDIO-01'].at)).toEqual(frames.map((_, index) => t0 + (index + 1) * AUDIO_FRAME_MS));
-    expect(referenceFrames.map((channels) => channels['AUDIO-01'].at)).toEqual(frames.map((frame) => frame.audio.channels['AUDIO-01'].at));
+    expect(frames.map((frame) => frame.audio.inputs['MIC-01'].at)).toEqual(frames.map((_, index) => t0 + (index + 1) * AUDIO_FRAME_MS));
+    expect(referenceFrames.map((inputs) => inputs['MIC-01'].at)).toEqual(frames.map((frame) => frame.audio.inputs['MIC-01'].at));
 
-    const mic1 = frames.map((frame) => frame.audio.channels['AUDIO-01']);
-    const mic2 = frames.map((frame) => frame.audio.channels['AUDIO-02']);
+    const mic1 = frames.map((frame) => frame.audio.inputs['MIC-01']);
+    const mic2 = frames.map((frame) => frame.audio.inputs['MIC-02']);
     const tone = mic1.filter((frame) => frame.at < t0 + AUDIO_TEST_TONE_MS);
     const after = mic1.filter((frame) => frame.at >= t0 + AUDIO_TEST_TONE_MS);
 
@@ -152,7 +156,7 @@ describe('testDeviceSignal: the two seconds of the tone are the simulator\'s', (
     // 4. As the simulator: the same frames carry the tone, the same frames have settled, and no
     //    frame differs by more than the two draws of noise can (the streams of the two engines
     //    are seeded apart: the server's by its epoch).
-    const referenceMic1 = referenceFrames.map((channels) => channels['AUDIO-01']);
+    const referenceMic1 = referenceFrames.map((inputs) => inputs['MIC-01']);
     const loud = (frame: AudioFrame): boolean => frame.dbfs > AUDIO_TEST_TONE_DBFS - 1;
     const loudFrames = mic1.filter(loud).length;
     expect(Math.abs(loudFrames - referenceMic1.filter(loud).length)).toBeLessThanOrEqual(1);
@@ -278,7 +282,7 @@ describe('resetMicClip: the latch over time is the simulator\'s', () => {
       ((await server.get('TECHNICIAN', AUDIO)).json() as { channels: Array<{ state: string; clip: boolean; dbfs: number; peak: number }> }).channels[0]!;
     // The two levels of a read are those of the newest meter frame (`app.engine.meters()`): the frame the socket sent last.
     const frameLevels = (): { dbfs: number; peak: number } => {
-      const frame = server.engine.meters()?.audio.channels['AUDIO-01'];
+      const frame = server.engine.meters()?.audio.inputs['MIC-01'];
       if (frame === undefined) throw new Error('the engine has produced no meter frame');
       return { dbfs: frame.dbfs, peak: frame.peak };
     };
@@ -314,7 +318,7 @@ describe('resetMicClip: the latch over time is the simulator\'s', () => {
     expect([latch(), referenceLatch()]).toEqual([true, true]);
     expect(await channel()).toMatchObject({ state: 'CLIP', clip: true, ...frameLevels() });
     // A burst was read from a frame: within 2.5 s of the fault at least one frame held the burst level.
-    expect(server.meterFrames().some((frame) => frame.audio.channels['AUDIO-01'].dbfs === AUDIO_CLIP_BURST_DBFS)).toBe(true);
+    expect(server.meterFrames().some((frame) => frame.audio.inputs['MIC-01'].dbfs === AUDIO_CLIP_BURST_DBFS)).toBe(true);
 
     // 3. The fault is cleared: the latch stays until someone resets it; then it stays clear.
     await server.engine.command(supervisor, 'clearFault', 'MIC_CLIP', { channel: 'AUDIO-01' });

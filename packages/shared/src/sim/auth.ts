@@ -43,11 +43,17 @@ import {
 } from './vocabulary';
 
 // ── RBAC (§14.7 "Roles", demo assumption 01 G1; S20) ────────────────────────────────────
+// Task 3 M2-W6 (register SH-04; D4 OD-10 and OD-15; `C3 §2.1`): the two new permissions are
+// granted here exactly as the v2 seed grants them (`rbac.matrix` boot equality, specs C-N9):
+// `TRANSCRIPT_REVISE` to INVESTIGATOR (and so to SUPERVISOR, which inherits this list) and
+// `CAPTURE_CONFIG` to SUPERVISOR and TECHNICIAN. No existing grant changed.
 const INVESTIGATOR_PERMISSIONS = [
   Permission.SESSION_START,
   Permission.SESSION_NOTE,
   Permission.EVIDENCE_VIEW,
   Permission.DIAGNOSTICS_RUN,
+  // OD-15: officers correct the transcript; the Core key signs the revision, no approval flow.
+  Permission.TRANSCRIPT_REVISE,
 ] as const;
 
 export const ROLE_PERMISSIONS = {
@@ -62,12 +68,16 @@ export const ROLE_PERMISSIONS = {
     Permission.PAIRING_MANAGE,
     Permission.USER_ADMIN,
     Permission.DEMO_CONTROL,
+    // OD-10: the device selector, editable only while no session is open.
+    Permission.CAPTURE_CONFIG,
   ],
   TECHNICIAN: [
     Permission.EVIDENCE_VIEW,
     Permission.DEVICE_MANAGE,
     Permission.DIAGNOSTICS_RUN,
     Permission.MAINTENANCE,
+    // OD-10: a technician configures the capture devices; it never starts a session.
+    Permission.CAPTURE_CONFIG,
   ],
 } as const satisfies Record<OperatorRole, readonly Permission[]>;
 

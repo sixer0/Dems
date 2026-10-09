@@ -39,6 +39,7 @@
 // Secrets (P19). A cookie, a session token, a device credential and a pairing code are taken from
 // an answer and handed on. None is printed, logged, put into a test name or into the message of an
 // assertion.
+import { REPLICATED_SLICE_NAMES } from '@dems/shared/api';
 import { DEMO_OPERATOR_PASSWORD, OPERATORS } from '@dems/shared/sim';
 import { performance } from 'node:perf_hooks';
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
@@ -199,7 +200,7 @@ async function compare(scene: Scene, step: string, clients: readonly LiveClient[
     expect(beat?.type === 'heartbeat' ? beat.sessionState : undefined, `${step}: the session state in the newest heartbeat of ${client.name}`).toBe(sessionState);
   }
   const digests = clients.map((client) => `${client.name} ${digestOf(client.replica())}`).join(', ');
-  say(scene, `${step}: engine ${positionText(position)}; digests ${digests}, engine ${digestOf(engineState)}; 28 of 28 slices equal${patient.length > 0 ? ` (waited ${turns} turn(s) for ${patient.map((client) => client.name).join(', ')})` : ''}`);
+  say(scene, `${step}: engine ${positionText(position)}; digests ${digests}, engine ${digestOf(engineState)}; ${REPLICATED_SLICE_NAMES.length} of ${REPLICATED_SLICE_NAMES.length} slices equal${patient.length > 0 ? ` (waited ${turns} turn(s) for ${patient.map((client) => client.name).join(', ')})` : ''}`);
   return position;
 }
 
@@ -582,7 +583,7 @@ describe.each([
         }
       }
       expect(NEVER_A_SLICE.filter((name) => published.has(name)), 'slices that must never travel').toEqual([]);
-      expect(published.size, 'the snapshots hold the 28 replicated slices').toBe(28);
+      expect(published.size, 'the snapshots hold the 30 replicated slices').toBe(REPLICATED_SLICE_NAMES.length);
 
       expectCleanTraffic(scene, [a, b, c]);
       sayKinds(scene);

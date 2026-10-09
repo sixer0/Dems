@@ -34,6 +34,8 @@ import {
   activeSessionToRow,
   alertToRow,
   auditRowToRow,
+  captureConfigToRow,
+  captureDevicesToRows,
   coreDeviceToRow,
   eventToRow,
   evidenceCustodyToRows,
@@ -60,6 +62,10 @@ export const RUNTIME_UPDATABLE_COLUMNS = {
   hardwareSnapshot: [...SNAPSHOT_SLICE_KEYS.map((key) => SNAPSHOT_SLICE_COLUMNS[key]), 'writtenAt'],
   evidenceItems: ['status', 'lifecycleStage', 'verificationStatus', 'verificationAt', 'tampered', 'tamperedTrackId', 'updatedAt'],
   alerts: ['active', 'acknowledged', 'resolvedAt'],
+  // dbc-3 §D (migration 0005): every column of the selector but its PK. The engine's own writes
+  // name only the four device/profile columns and `updated_at`; `revision` and `updated_by` belong
+  // to operation 77 (the module), which is why the row builder never varies them.
+  captureConfig: ['video01DeviceId', 'video01Profile', 'video02DeviceId', 'video02Profile', 'micPrimaryId', 'micStandbyId', 'revision', 'updatedBy', 'updatedAt'],
 } as const satisfies { readonly [K in WrittenTable]?: readonly (keyof MappedRow<K>)[] };
 
 export type UpdatedTable = keyof typeof RUNTIME_UPDATABLE_COLUMNS | 'activeSession';
@@ -173,6 +179,34 @@ function diffPolicyAndSettings(previous: DurableSlices, next: DurableSlices, at:
     const changed = differingColumns(before, after);
     if (changed.length > 0) {
       push(buckets, { op: 'update', table: 'consoleSettings', key: { singleton: true }, set: { ...pick(after, changed), updatedAt: at } });
+    }
+  }
+}
+
+function diffCapture(previous: DurableSlices, next: DurableSlices, buckets: Buckets): void {
+  // The registry first (the selector's FKs name it): a changed device is an UPSERT of its row,
+  // which is exactly what `dems_app` may do (INSERT + UPDATE, no DELETE, dbc-3 §D). The store
+  // applies an insert on this table as `ON CONFLICT (id) DO UPDATE`.
+  if (previous.captureDevices !== next.captureDevices) {
+    const before = new Map(captureDevicesToRows(previous.captureDevices, previous.captureConfig).map((row) => [row.id, row] as const));
+    const fresh: MappedRow<'captureDevices'>[] = [];
+    for (const row of captureDevicesToRows(next.captureDevices, next.captureConfig)) {
+      const old = before.get(row.id);
+      before.delete(row.id);
+      if (old === undefined || !isDeepStrictEqual(old, row)) fresh.push(row);
+    }
+    if (before.size > 0) throw notWritable('capture_devices', `${before.size} device(s) left the registry; discovery only adds and updates (dbc-3 §B.2).`);
+    if (fresh.length > 0) push(buckets, { op: 'insert', table: 'captureDevices', rows: fresh });
+  }
+  if (previous.captureConfig !== next.captureConfig) {
+    const before = captureConfigToRow(previous.captureConfig);
+    const after = captureConfigToRow(next.captureConfig);
+    const changed = differingColumns(before, after);
+    if (changed.length > 0) {
+      const writable: readonly (keyof MappedRow<'captureConfig'>)[] = RUNTIME_UPDATABLE_COLUMNS.captureConfig;
+      const refused = changed.filter((column) => !writable.includes(column));
+      if (refused.length > 0) throw notWritable('capture_config', `the column(s) ${refused.join(', ')} changed; the singleton key is never written.`);
+      push(buckets, { op: 'update', table: 'captureConfig', key: { singleton: true }, set: pick(after, changed) });
     }
   }
 }
@@ -362,12 +396,13 @@ function ordered(buckets: Buckets): RowChange[] {
   return WRITE_ORDER.flatMap((table) => [...(buckets[table] ?? [])].sort((a, b) => rank(a) - rank(b)));
 }
 
-/** The changes of the 12 stored slices the engine writes (every stored slice except `operators`). */
+/** The changes of the 14 stored slices the engine writes (every stored slice except `operators`). */
 export function diffStored(previous: DurableSlices, next: DurableSlices, at: number): RowChange[] {
   const buckets: Buckets = {};
   diffMeta(previous, next, at, buckets);
   diffDevice(previous, next, at, buckets);
   diffPolicyAndSettings(previous, next, at, buckets);
+  diffCapture(previous, next, buckets);
   diffSessionHistory(previous, next, buckets);
   diffEvidence(previous, next, at, buckets);
   diffSession(previous, next, at, buckets);
@@ -389,6 +424,7 @@ export function diffSlices(previous: DurableSlices, next: DurableSlices, at: num
   diffMeta(previous, next, at, buckets);
   diffDevice(previous, next, at, buckets);
   diffPolicyAndSettings(previous, next, at, buckets);
+  diffCapture(previous, next, buckets);
   diffSnapshotInto(previous, next, at, buckets);
   diffSessionHistory(previous, next, buckets);
   diffEvidence(previous, next, at, buckets);

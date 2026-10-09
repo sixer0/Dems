@@ -13,7 +13,7 @@
  * running while the page or app was hidden). Audit and event rows go through
  * `recordActivity`, which keeps them in time order.
  */
-import { FinalizationStep, SessionState, type TimeSource } from '../domain';
+import { FINALIZATION_STEPS_V2, SessionState, type MicInputId, type TimeSource } from '../domain';
 import { DEFAULT_SESSION_ROOM, sessionCreateSchema } from '../api/session-schema';
 import { findOperatorById, requirePermission, roleHas } from './auth';
 import {
@@ -24,6 +24,7 @@ import {
   PRECHECK_TOTAL_MAX_MS,
   RECOVERY_MS,
   RECOVERY_SCAN_MS,
+  SEALING_FIRST_ATTEMPT,
   STOPPING_MS,
   STOP_REASON_MIN_LENGTH,
   TIMELINE_MAX,
@@ -39,7 +40,7 @@ import {
   sessionIdFor,
 } from './dataset';
 import { deriveDeviceState } from './derive';
-import { SimErrorCode, SimTransitionError } from './errors';
+import { SimErrorCode, SimNotFoundError, SimTransitionError } from './errors';
 import { nextItemId, pushRing, recordActivity, type ActivityInput } from './events';
 import { createEvidenceItem } from './evidence';
 import { RngStream, type Rng, type RngStreams } from './rng';
@@ -96,14 +97,14 @@ export const SPEECH_STATES: readonly SessionState[] = [
   SessionState.RECORDING,
   SessionState.STOPPING,
 ];
-export const FINALIZATION_ORDER = [
-  FinalizationStep.FINALIZE_TRACKS,
-  FinalizationStep.CALCULATE_HASHES,
-  FinalizationStep.BUILD_MANIFEST,
-  FinalizationStep.ENCRYPT_PAYLOAD,
-  FinalizationStep.SIGN_MANIFEST,
-  FinalizationStep.STORE_SEALED_PACKAGE,
-] as const;
+/**
+ * The sealing steps the simulator runs, in pipeline order. Schema v2 (register SH-01): the six
+ * normal-path steps of `domain/enums.ts` `FINALIZATION_STEPS_V2` (`CLOSE_TRACKS` ..
+ * `STORE_SEALED_PACKAGE`). The v1 names (`FINALIZE_TRACKS`, `CALCULATE_HASHES`) and the v1
+ * `ENCRYPT_PAYLOAD` step are gone: v2 encrypts while recording, and the two fallback-only steps
+ * (OD-21) never appear in this order. The per-step progress/ETA fields are SH-06 (row 51).
+ */
+export const FINALIZATION_ORDER = FINALIZATION_STEPS_V2;
 
 /** A session that is not SEALED blocks `createSession` (S26). */
 export function isSessionActive(session: ActiveSession | null): session is ActiveSession {
@@ -646,26 +647,70 @@ export function acknowledgePrecheckWarningsTransition(state: SimState, now: Epoc
   return arm({ ...state, session: acknowledged }, acknowledged, now, warnings, actorId);
 }
 
+// ── Capture-config snapshot + audio-source state (schema v2, SH-06) ──────────────────────
+
+/**
+ * The selector as it stands right now, copied into a session at its start (SH-05/SH-06; OD-10).
+ * A plain structural copy: later edits to `state.captureConfig` never reach a running session.
+ * `revision` is the selector's own change stamp (`updatedAt`), the value op 78 bumps on every edit.
+ */
+export function captureConfigSnapshot(state: SimState): ActiveSession['captureConfig'] {
+  const { cameras, mics, updatedAt } = state.captureConfig;
+  return {
+    cameras: cameras.map((camera) => ({ ...camera })),
+    mics: mics.map((mic) => ({ ...mic })),
+    revision: updatedAt,
+    updatedAt,
+  };
+}
+
+/**
+ * The active/standby pair at recording start (SH-05/SH-06; OD-09). The PRIMARY input feeds
+ * `AUDIO-01`; the STANDBY is hot. `intervalFromMs` is the media-pts origin of the first interval
+ * (0 at the start of the recording — never an operator wall clock, S2 §6). Falls back to the two
+ * seeded inputs when the selector names no roles (a hand-built state).
+ */
+export function audioSourceAtStart(state: SimState, sessionId: string): ActiveSession['audioSource'] {
+  const mics = state.captureConfig.mics;
+  const primary = mics.find((mic) => mic.role === 'PRIMARY')?.inputId ?? state.audio.activeInputId;
+  const standby = mics.find((mic) => mic.role === 'STANDBY')?.inputId ?? (primary === 'MIC-01' ? 'MIC-02' : 'MIC-01');
+  return {
+    sessionId,
+    activeInputId: primary,
+    standbyInputId: standby,
+    switchedAt: null,
+    intervalFromMs: 0,
+  };
+}
+
 // ── RECORDING, STOPPING, cancel ──────────────────────────────────────────────────────────
 
 /** ARMED → RECORDING. `startedAt = now`; audit RECORDING_STARTED; timeline START. */
 export function startRecordingTransition(state: SimState, now: EpochMs): SimState {
   const actorId = requireSessionOperator(state, 'startRecording');
   const session = requireSession(state, 'startRecording', [SessionState.ARMED]);
-  let next = withSession(state, {
-    ...session,
-    state: SessionState.RECORDING,
-    startedAt: now,
-    startTimeSource: state.time.source,
-  });
-  next = addTimelineItem(next, {
-    at: now,
-    kind: 'START',
-    label: 'Recording started',
-    detail: session.id,
-    channel: null,
-    params: { sessionId: session.id, timeSource: state.time.source },
-  });
+  // Schema v2 (register SH-06; OD-10): the selector is copied into the session the instant
+  // recording starts, so a later edit never changes a running session. `audioSource` records which
+  // mic input feeds `AUDIO-01` (PRIMARY) and which is the hot standby (STANDBY); op 81 moves the
+  // active one through `switchAudioSourceTransition`.
+  const next = addTimelineItem(
+    withSession(state, {
+      ...session,
+      state: SessionState.RECORDING,
+      startedAt: now,
+      startTimeSource: state.time.source,
+      captureConfig: captureConfigSnapshot(state),
+      audioSource: audioSourceAtStart(state, session.id),
+    }),
+    {
+      at: now,
+      kind: 'START',
+      label: 'Recording started',
+      detail: session.id,
+      channel: null,
+      params: { sessionId: session.id, timeSource: state.time.source },
+    },
+  );
   return record(next, now, {
     audit: {
       type: 'RECORDING_STARTED',
@@ -723,6 +768,61 @@ export function stopRecordingTransition(state: SimState, now: EpochMs, reason: s
   });
 }
 
+/**
+ * Switches the active mic input inside `AUDIO-01` while recording (schema v2; register SH-06/SH-08;
+ * op 81; OD-09 hot standby). The Core never switches on its own — this transition is driven by the
+ * operator's toggle (the session holder or a SUPERVISOR), never by a silence warning (OD-11). It
+ * moves `audio.activeInputId`, records the new active/standby pair with the media-pts boundary of
+ * the interval it opens, and writes one timeline `AUDIO_SWITCH` plus one `AUDIO_SOURCE_SWITCHED`
+ * audit row carrying the sending device id (E-30). Idempotent when the input is already active; a
+ * recording session is required.
+ */
+export function switchAudioSourceTransition(state: SimState, now: EpochMs, inputId: MicInputId): SimState {
+  const actorId = requireSessionOperator(state, 'switchAudioSource');
+  const session = requireSession(state, 'switchAudioSource', [SessionState.RECORDING]);
+  const mic = state.captureConfig.mics.find((entry) => entry.inputId === inputId);
+  if (!mic) throw new SimNotFoundError('captureMic', inputId);
+  const previousActive = state.audio.activeInputId;
+  if (previousActive === inputId) return state;
+  const startedAt = session.startedAt ?? now;
+  const switched: ActiveSession = {
+    ...session,
+    audioSource: {
+      sessionId: session.id,
+      activeInputId: inputId,
+      standbyInputId: previousActive,
+      switchedAt: now,
+      // Media-pts start of the interval this switch opens (never the operator wall clock, S2 §6).
+      intervalFromMs: Math.max(0, now - startedAt),
+    },
+  };
+  let next: SimState = {
+    ...state,
+    session: switched,
+    audio: { inputs: state.audio.inputs, activeInputId: inputId },
+  };
+  next = addTimelineItem(next, {
+    at: now,
+    kind: 'AUDIO_SWITCH',
+    label: `Active microphone switched to ${inputId}`,
+    detail: null,
+    channel: inputId === 'MIC-01' ? 'AUDIO-01' : 'AUDIO-02',
+    params: { from: previousActive, to: inputId, deviceId: mic.deviceId },
+  });
+  return record(next, now, {
+    audit: {
+      type: 'AUDIO_SOURCE_SWITCHED',
+      message: `Audio source switched to ${inputId}`,
+      actorId,
+      sessionId: session.id,
+      // E-30: the sending device id rides the audit row so a phone-sent switch is attributable.
+      details: { fromInputId: previousActive, toInputId: inputId, deviceId: mic.deviceId },
+    },
+    // No operational event row: `SimEventType` is the book's closed 46-value set and does not name a
+    // mic switch; the switch is carried by the `AUDIO_SWITCH` timeline item and this audit row.
+  });
+}
+
 /** CREATE, PRECHECK or ARMED → no session. Audit SESSION_CANCELLED. */
 export function cancelTransition(state: SimState, now: EpochMs): SimState {
   const actorId = requireSessionOperator(state, 'cancel');
@@ -748,12 +848,20 @@ export function advanceStopping(state: SimState, now: EpochMs, rng: RngStreams):
   const at = session.stoppedAt + STOPPING_MS;
   if (now < at) return state;
   const random = rng.get(RngStream.FINALIZATION);
+  const stepDurations = FINALIZATION_ORDER.map(() => random.int(FINALIZATION_STEP_MIN_MS, FINALIZATION_STEP_MAX_MS));
+  const totalMs = stepDurations.reduce((sum, ms) => sum + ms, 0);
   const steps: FinalizationStepState[] = FINALIZATION_ORDER.map((id, index) => ({
     id,
     status: index === 0 ? 'active' : 'pending',
     startedAt: index === 0 ? at : null,
     completedAt: null,
-    durationMs: random.int(FINALIZATION_STEP_MIN_MS, FINALIZATION_STEP_MAX_MS),
+    durationMs: stepDurations[index] ?? FINALIZATION_STEP_MIN_MS,
+    // Schema v2 (SH-06; R-6 op 83): the driver reports per-step progress + ETA from Core instants.
+    // A fresh run is attempt 1; a resumed run (RECOVERY) bumps it (`dbc-3 §B.4`).
+    progress: index === 0 ? 0 : 0,
+    etaMs: totalMs,
+    detail: null,
+    attempt: SEALING_FIRST_ATTEMPT,
   }));
   const evidenceSeq = state.meta.counters.evidence;
   const evidenceId = session.evidenceId ?? evidenceIdFor(evidenceSeq, session.createdAt);
@@ -875,6 +983,9 @@ function seal(state: SimState, session: ActiveSession, at: EpochMs): SimState {
     notes: session.notes,
     startTimeSource: session.startTimeSource ?? null,
     endTimeSource: session.stopTimeSource ?? null,
+    // Schema v2 (SH-07): a live seal carries the file list, the fragment-chain head and the transcript
+    // hash; the pre-built dataset items stay on the v1 shape.
+    schemaV2: true,
   });
   const sealed: ActiveSession = { ...session, state: SessionState.SEALED, sealedAt: at, evidenceId };
   const next: SimState = {
@@ -903,6 +1014,13 @@ function seal(state: SimState, session: ActiveSession, at: EpochMs): SimState {
   });
 }
 
+/** The sealing ETA contribution of the steps from `fromIndex` on (their planned durations). */
+function remainingSealingMs(steps: readonly FinalizationStepState[], fromIndex: number): number {
+  let total = 0;
+  for (let i = fromIndex; i < steps.length; i += 1) total += steps[i]?.durationMs ?? FINALIZATION_STEP_MIN_MS;
+  return total;
+}
+
 /** Completes every finalization step whose time has come; seals after the sixth. */
 export function advanceFinalization(state: SimState, now: EpochMs): SimState {
   const session = state.session;
@@ -916,13 +1034,28 @@ export function advanceFinalization(state: SimState, now: EpochMs): SimState {
     if (!step || step.startedAt === null) break;
     const due = step.startedAt + (step.durationMs ?? FINALIZATION_STEP_MIN_MS);
     if (now < due) break;
-    steps[index] = { ...step, status: 'done', completedAt: due };
+    steps[index] = { ...step, status: 'done', completedAt: due, progress: 100, etaMs: remainingSealingMs(steps, index + 1) };
     changed = true;
     const following = steps[index + 1];
     if (following) steps[index + 1] = { ...following, status: 'active', startedAt: due };
     else {
       sealAt = due;
       break;
+    }
+  }
+  // Schema v2 (SH-06; R-6 op 83): while a step is still running, move its `progress` toward 100 and
+  // recompute the run's ETA from Core instants. The engine calls this every tick, so the client's
+  // progress line is forward-only and never derived from its own wall clock (E-13).
+  const activeIndex = steps.findIndex((step) => step.status === 'active');
+  const active = activeIndex >= 0 ? steps[activeIndex] : undefined;
+  if (active && sealAt === null && active.startedAt !== null) {
+    const durationMs = active.durationMs ?? FINALIZATION_STEP_MIN_MS;
+    const elapsed = Math.max(0, Math.min(now - active.startedAt, durationMs));
+    const progress = Math.min(99, Math.floor((elapsed / durationMs) * 100));
+    const etaMs = durationMs - elapsed + remainingSealingMs(steps, activeIndex + 1);
+    if (progress !== active.progress || etaMs !== active.etaMs) {
+      steps[activeIndex] = { ...active, progress, etaMs };
+      changed = true;
     }
   }
   if (!changed) return state;

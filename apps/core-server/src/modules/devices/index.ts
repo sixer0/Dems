@@ -66,6 +66,7 @@ import { audioStatusOf, deviceHealthOf, deviceInventoryOf, videoStatusOf } from 
 
 export { DEVICES_OPERATIONS, DEVICE_COMMAND_OF_OPERATION, operationOf, type DeviceCommandOperation, type DevicesOperation } from './operations';
 export {
+  activeInputOf,
   audioChannelsOf,
   audioStatusOf,
   deviceHealthOf,
@@ -74,6 +75,7 @@ export {
   storageStatusOf,
   videoStatusOf,
   videoTracksOf,
+  type CaptureSlots,
   type ChannelLevels,
   type CommittedState,
 } from './status';

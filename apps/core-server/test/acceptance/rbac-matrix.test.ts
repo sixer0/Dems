@@ -105,6 +105,7 @@ import {
   NOT_JSON,
   cellModeOf,
   cellRequestOf,
+  deniedCellsFromTable,
   describeExpectation,
   exampleCodesOf,
   expectationOf,
@@ -134,6 +135,40 @@ function specRowOf(operation: CoreApiRegistryOperation): SpecOperation {
   if (row === undefined) throw new Error(`spec §7 has no row for the registry operation ${operation.operationId}`);
   return row;
 }
+
+/**
+ * The operations the booted server routes: the matrix walks these. C3's fourteen new operations
+ * answer NO route until their milestone rows land (R4, ruling D44): row 66 / M4-W2 registers the
+ * six capture operations (76, 77, 78, 79, 80, 89), M5 switchAudioSource (81), M5/M7
+ * listAudioSourceIntervals (82), M7 getSealingProgress (83), M6 to M8 the five evidence operations
+ * (84, 85, 86, 87, 88). The deferral is derived from the server's own routing table, so a row
+ * that registers one of those routes adds its cells to every walk automatically - and the test
+ * that names the deferred set fails until the set is revised.
+ */
+function routedOperations(): CoreApiRegistryOperation[] {
+  return CORE_API_OPERATIONS.filter((operation) => world.server.app.hasRoute({
+    method: operation.method.toUpperCase() as 'GET' | 'POST',
+    url: operation.path.replace('{id}', ':id'),
+  }));
+}
+
+/** The operations C3 adds whose routes land with later rows (R4): named, with their milestone. */
+const DEFERRED_ROUTE: Readonly<Record<string, string>> = {
+  getCaptureConfig: 'row 66 / M4-W2',
+  getCaptureDevices: 'row 66 / M4-W2',
+  updateCaptureConfig: 'row 66 / M4-W2',
+  setCaptureCameraSource: 'row 66 / M4-W2',
+  setPrimaryMic: 'row 66 / M4-W2',
+  setCaptureDeviceCredential: 'row 66 / M4-W2',
+  switchAudioSource: 'M5',
+  listAudioSourceIntervals: 'M5/M7',
+  getSealingProgress: 'M7',
+  getTranscript: 'M6/M8',
+  createTranscriptRevision: 'M7/M8',
+  listTranscriptRevisions: 'M7/M8',
+  getEvidenceExportJob: 'M8',
+  createEvidenceMediaSession: 'M8',
+};
 
 /**
  * The answer the specification gives a caller on an operation: `expectationOf` with what it takes
@@ -893,12 +928,13 @@ function summaryOf(column: readonly Cell[]): string {
 // The registry against the specification (an independent check of the registry itself)
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
 
-describe('the contract registry against the operation tables of spec §7: all 75 rows, read from the document', () => {
-  it('the document holds operations 1 to 75 and the registry holds the same 75, each once', () => {
-    expect(spec.operations.map((operation) => operation.number)).toEqual(Array.from({ length: 75 }, (_unused, index) => index + 1));
-    expect(CORE_API_OPERATIONS).toHaveLength(75);
+describe('the contract registry against the composed operation tables: all 89 rows, read from the documents', () => {
+  it('the composed document holds operations 1 to 89 and the registry holds the same 89, each once', () => {
+    // R1 (D44): 75 rows of the closed task-2 §7 base + 14 rows of C3 §2.2, composed by the reader.
+    expect(spec.operations.map((operation) => operation.number)).toEqual(Array.from({ length: 89 }, (_unused, index) => index + 1));
+    expect(CORE_API_OPERATIONS).toHaveLength(89);
     expect(CORE_API_OPERATIONS.map((operation) => operation.operationId).sort()).toEqual(spec.operations.map((operation) => operation.operationId).sort());
-    expect(new Set(CORE_API_OPERATIONS.map((operation) => operation.operationId)).size).toBe(75);
+    expect(new Set(CORE_API_OPERATIONS.map((operation) => operation.operationId)).size).toBe(89);
   });
 
   it('every registry entry has the method, the path, the access rule, the conditions and the audit rule of its row', () => {
@@ -925,7 +961,7 @@ describe('the contract registry against the operation tables of spec §7: all 75
     expect(registry).toEqual(document);
   });
 
-  it('the access rules are 4 PUBLIC, 5 DEVICE, 25 AUTHENTICATED, 40 with one permission and 1 any-of, in the registry and in the document', () => {
+  it('the access rules are 4 PUBLIC, 5 DEVICE, 29 AUTHENTICATED, 50 with one permission and 1 any-of, in the registry and in the composed document', () => {
     const kindOfMarker = (marker: string): string => {
       if (marker === 'PUBLIC' || marker === 'DEVICE' || marker === 'AUTHENTICATED') return marker;
       return marker.startsWith('ANY-OF(') ? CoreApiAccessKind.ANY_OF : CoreApiAccessKind.PERMISSION;
@@ -933,8 +969,8 @@ describe('the contract registry against the operation tables of spec §7: all 75
     const tally = (kinds: readonly string[]): Record<string, number> => kinds.reduce<Record<string, number>>((counts, kind) => ({ ...counts, [kind]: (counts[kind] ?? 0) + 1 }), {});
     const registry = tally(CORE_API_OPERATIONS.map((operation) => operation.access.kind));
     expect(registry).toEqual(tally(spec.operations.map((operation) => kindOfMarker(operation.access))));
-    expect(registry).toEqual({ PUBLIC: 4, DEVICE: 5, AUTHENTICATED: 25, PERMISSION: 40, ANY_OF: 1 });
-    // Every permission a rule names is one of the twelve of spec §4.4.
+    expect(registry).toEqual({ PUBLIC: 4, DEVICE: 5, AUTHENTICATED: 29, PERMISSION: 50, ANY_OF: 1 });
+    // Every permission a rule names is one of the fourteen of the composed matrix (C3 §2.1).
     for (const operation of CORE_API_OPERATIONS) {
       for (const permission of coreApiAccessPermissions(operation.access)) expect(spec.permissions, operation.operationId).toContain(permission);
     }
@@ -990,8 +1026,8 @@ describe('the contract registry against the operation tables of spec §7: all 75
 // The stored role matrix
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
 
-describe('the role matrix the server decides from (spec §4.4)', () => {
-  it('the stored grants equal the table of spec §4.4 and the shared role table: 3 roles, 12 permissions, 18 grants', async () => {
+describe('the role matrix the server decides from (spec §4.4 composed with C3 §2.1)', () => {
+  it('the stored grants equal the composed table and the shared role table: 3 roles, 14 permissions, 22 grants', async () => {
     const { owner } = world.server;
     const roles = (await owner.query<{ id: string }>('SELECT id FROM public.roles ORDER BY sort_order')).rows.map((row) => row.id);
     const permissions = (await owner.query<{ id: string }>('SELECT id FROM public.permissions ORDER BY sort_order')).rows.map((row) => row.id);
@@ -1000,26 +1036,38 @@ describe('the role matrix the server decides from (spec §4.4)', () => {
     expect(grantNames(world.stored)).toEqual(grantNames(spec.grants));
     const shared: Grant[] = Object.entries(ROLE_PERMISSIONS).flatMap(([role, held]) => held.map((permission) => ({ role, permission })));
     expect(grantNames(world.stored)).toEqual(grantNames(shared));
-    expect([spec.roles.length, spec.permissions.length, world.stored.length]).toEqual([3, 12, 18]);
+    expect([spec.roles.length, spec.permissions.length, world.stored.length]).toEqual([3, 14, 22]);
     // The count the document states under its table, per role.
     expect(Object.fromEntries(spec.roles.map((role) => [role, world.stored.filter((grant) => grant.role === role).length]))).toEqual(spec.statedGrantCounts);
   });
 
-  it('the derived matrix gives the INVESTIGATOR 22 denied cells and the TECHNICIAN 31, as AC-B-16 states, and every role 6 cells without a denied one', () => {
+  it("the denied cells: AC-B-16's counts stand over the base operations, and C3's rows add exactly the recomputed cells", () => {
     const deniedOf = (role: string): string[] =>
       CORE_API_OPERATIONS.filter((operation) => {
         const expectation = expectationFor(operation, world.callers[role] ?? ANONYMOUS, world.stored, true);
         return !expectation.allowed && expectation.row !== null;
       }).map((operation) => operation.operationId);
     const denied = Object.fromEntries(spec.roles.map((role) => [role, deniedOf(role).length]));
-    expect(denied).toMatchObject(spec.statedDeniedCells);
+    // R3 (D44): AC-B-16's stated 22/31 covers the 75 operations of the closed base. The claim is
+    // checked over that base with the model; the C3 rows are then counted FROM THEIR MARKERS
+    // against the composed grant table (deniedCellsFromTable over the fourteen delta rows) and
+    // added. No literal for the grown total - it is base(stated) + delta(recomputed) per role.
+    const baseOps = CORE_API_OPERATIONS.filter((operation) => specRowOf(operation).section !== 'C3 §2.2');
+    expect(baseOps).toHaveLength(75);
+    const deniedBase = Object.fromEntries(spec.roles.map((role) => [role, deniedOf(role).filter((operationId) => baseOps.some((operation) => operation.operationId === operationId)).length]));
+    expect(deniedBase).toMatchObject(spec.statedDeniedCells);
+    const deltaRows = spec.operations.filter((operation) => operation.section === 'C3 §2.2');
+    expect(deltaRows).toHaveLength(14);
+    const deniedDelta = deniedCellsFromTable(deltaRows, spec.grants, spec.roles);
+    expect(denied).toEqual(Object.fromEntries(spec.roles.map((role) => [role, (deniedBase[role] ?? 0) + (deniedDelta[role] ?? 0)])));
+    console.info(`[w47] denied cells over the composed 89: ${JSON.stringify(denied)} (base ${JSON.stringify(deniedBase)} + C3 delta ${JSON.stringify(deniedDelta)})`);
     // The operations whose permission every role holds have no denied operator cell on stored data.
     const heldByAll = spec.permissions.filter((permission) => spec.roles.every((role) => world.stored.some((grant) => grant.role === role && grant.permission === permission)));
     const neverDenied = CORE_API_OPERATIONS.filter((operation) => {
       const needed = coreApiAccessPermissions(operation.access);
       return needed.length > 0 && needed.every((permission) => heldByAll.includes(permission));
     });
-    expect(neverDenied).toHaveLength(6);
+    expect(neverDenied).toHaveLength(9); // six of the base + the three EVIDENCE_VIEW reads C3 adds (84, 86, 88)
     console.info(`[w47] denied cells per role on the stored matrix: ${JSON.stringify(denied)}; permissions every role holds: ${heldByAll.join(', ')} (operations ${neverDenied.map((operation) => specRowOf(operation).number).sort((a, b) => a - b).join(', ')})`);
   });
 });
@@ -1033,14 +1081,14 @@ describe.each([
   ['a paired device, and the three roles signed in on it (the bearer path)', PAIRED_DEVICE_COLUMNS],
   ['a retired device: a REVOKED one by its credential and by a session on it, an UNPAIRED one by its old credential (spec §4.1, §6.6, RB-6)', RETIRED_DEVICE_COLUMNS],
   ['AC-B-81: the credential-misuse callers over every operation', MISUSE_COLUMNS],
-])('the matrix, 75 operations: %s', (_group, columns) => {
+])('the matrix, every routed operation: %s', (_group, columns) => {
   it.each(columns.map((column) => [column, COLUMN_TITLES[column] ?? column]))('%s: %s', async (column) => {
     const caller = world.callers[column];
     if (caller === undefined) throw new Error(`no caller for the column ${column}`);
-    const run = await runColumn(world.server, caller, CORE_API_OPERATIONS, { table: 'MATRIX', grants: world.stored });
+    const run = await runColumn(world.server, caller, routedOperations(), { table: 'MATRIX', grants: world.stored });
     console.info(`[w47] ${column}: ${summaryOf(run)}`);
     expect(wrongOf(run)).toEqual([]);
-    expect(run).toHaveLength(75);
+    expect(run).toHaveLength(routedOperations().length);
   });
 });
 
@@ -1048,14 +1096,28 @@ describe('the matrix as a whole', () => {
   const matrix = (): Cell[] => cells.filter((cell) => cell.table === 'MATRIX');
   const of = (columns: readonly string[]): Cell[] => matrix().filter((cell) => columns.includes(cell.column));
 
-  it('375 cells for the five callers of AC-B-15, and 375 for anonymous, a paired device and the three roles: each equal to the specification', () => {
+  it('the deferred set is named: exactly the operations whose routes land with later rows are out of every walk', () => {
+    // R4 (D44): the walk set equals the registry MINUS the fourteen later-milestone operations,
+    // named with the row that owns each route. A route landing for one of them moves it into
+    // every walk automatically and fails this naming until the set is revised.
+    const routed = new Set(routedOperations().map((operation) => operation.operationId));
+    expect([...routed].sort()).toEqual(CORE_API_OPERATIONS.filter((operation) => !Object.keys(DEFERRED_ROUTE).includes(operation.operationId)).map((operation) => operation.operationId).sort());
+    expect(Object.keys(DEFERRED_ROUTE).sort()).toEqual(CORE_API_OPERATIONS.map((operation) => operation.operationId).filter((id) => !routed.has(id)).sort());
+    for (const [operationId, milestone] of Object.entries(DEFERRED_ROUTE)) {
+      const operation = CORE_API_OPERATIONS.find((entry) => entry.operationId === operationId);
+      expect(operation, operationId).toBeDefined();
+      expect(milestone.length, operationId).toBeGreaterThan(0);
+    }
+  });
+
+  it('75 routed cells for each of the five callers of AC-B-15, and 75 for the brief columns: each equal to the specification', () => {
     for (const columns of [AC_B_15_COLUMNS, BRIEF_COLUMNS]) {
       const five = of(columns);
-      expect(five).toHaveLength(375);
-      expect(new Set(five.map((cell) => `${cell.operationId} ${cell.column}`)).size).toBe(375);
+      expect(five).toHaveLength(routedOperations().length * 5);
+      expect(new Set(five.map((cell) => `${cell.operationId} ${cell.column}`)).size).toBe(routedOperations().length * 5);
       expect(wrongOf(five)).toEqual([]);
     }
-    expect(matrix()).toHaveLength(75 * (AC_B_15_COLUMNS.length + PAIRED_DEVICE_COLUMNS.length + RETIRED_DEVICE_COLUMNS.length + MISUSE_COLUMNS.length));
+    expect(matrix()).toHaveLength(routedOperations().length * (AC_B_15_COLUMNS.length + PAIRED_DEVICE_COLUMNS.length + RETIRED_DEVICE_COLUMNS.length + MISUSE_COLUMNS.length));
   });
 
   it('AC-B-16: every denied cell of an operator wrote exactly one row, ACCESS_DENIED or EXPORT_DENIED on the three exports, and a permitted call wrote none', () => {
@@ -1099,7 +1161,9 @@ describe('the matrix as a whole', () => {
     // No misuse caller reached a handler of an operation that needs a principal, and none wrote a denial row.
     const guarded = of(MISUSE_COLUMNS).filter((cell) => specOf.get(cell.operationId)?.access !== 'PUBLIC');
     expect(guarded.filter((cell) => cell.passed || cell.rows.length > 0)).toEqual([]);
-    expect(guarded).toHaveLength(MISUSE_COLUMNS.length * spec.operations.filter((operation) => operation.access !== 'PUBLIC').length);
+    // Routed operations again (R4): the misuse columns walk the routes that exist; the eleven
+    // non-public operations of C3 join this count when their rows register their routes.
+    expect(guarded).toHaveLength(MISUSE_COLUMNS.length * routedOperations().filter((operation) => specOf.get(operation.operationId)?.access !== 'PUBLIC').length);
     // The two sessions whose tokens the misuse callers borrowed are still open, each on its own transport.
     const { app } = world.server;
     expect((await app.inject({ method: 'GET', url: AUTH_SESSION, headers: world.supervisorWeb })).statusCode).toBe(200);
@@ -1162,7 +1226,10 @@ describe('the operations whose permission every seeded role holds: their denied 
   it('a role that loses the permission is refused with 403 and exactly one ACCESS_DENIED row on each of them, at its next request, on the web and on the device', async () => {
     const { server } = world;
     const heldByAll = spec.permissions.filter((permission) => spec.roles.every((role) => world.stored.some((grant) => grant.role === role && grant.permission === permission)));
-    const operations = CORE_API_OPERATIONS.filter((operation) => {
+    // Routed only: of the operations gated solely on the permission every role holds, the three
+    // transcript/evidence reads C3 adds (84, 86, 88) answer no route until their rows land (R4);
+    // they join this block by themselves when a row registers their routes.
+    const operations = routedOperations().filter((operation) => {
       const needed = coreApiAccessPermissions(operation.access);
       return needed.length > 0 && needed.every((permission) => heldByAll.includes(permission));
     });
@@ -1249,7 +1316,13 @@ describe('can the matrix fail? The clone or the caller is changed, the expectati
     const caller = world.callers[role] ?? ANONYMOUS;
     const describeWith = (operation: CoreApiRegistryOperation, grants: readonly Grant[]): string =>
       describeExpectation(expectationFor(operation, caller, grants, true));
-    return CORE_API_OPERATIONS.filter((operation) => describeWith(operation, changed) !== describeWith(operation, spec.grants)).map((operation) => operation.operationId);
+    // Routed operations only: a cell of an operation whose route lands with a later row cannot
+    // turn red here (R4), and the walk above runs exactly this set.
+    const routed = new Set(routedOperations().map((operation) => operation.operationId));
+    return CORE_API_OPERATIONS
+      .filter((operation) => routed.has(operation.operationId))
+      .filter((operation) => describeWith(operation, changed) !== describeWith(operation, spec.grants))
+      .map((operation) => operation.operationId);
   }
 
   /** The grant change (a role and a permission, from the tables of spec §4.4) that moves the most cells. */
@@ -1275,23 +1348,23 @@ describe('can the matrix fail? The clone or the caller is changed, the expectati
     const { grant, affected } = widestChange('add');
     const caller = world.callers[grant.role];
     if (caller === undefined) throw new Error(`no caller for the role ${grant.role}`);
-    const run = await withGrantChange(world.server, { add: [grant] }, () => runColumn(world.server, caller, CORE_API_OPERATIONS, { table: 'CAN_IT_FAIL', grants: spec.grants, probeOnly: true }));
+    const run = await withGrantChange(world.server, { add: [grant] }, () => runColumn(world.server, caller, routedOperations(), { table: 'CAN_IT_FAIL', grants: spec.grants, probeOnly: true }));
     expect(affected.length).toBeGreaterThan(0);
     expect(redOperations(run)).toEqual(affected);
     // Each of them was let through where the specification refuses: no 403, no row.
     expect(run.filter((cell) => affected.includes(cell.operationId)).map((cell) => [cell.passed, cell.rows.length])).toEqual(affected.map(() => [true, 0]));
-    console.info(`[w47] can it fail, a grant added (${grant.role}: ${grant.permission}): ${affected.length} of 75 cells red (${affected.join(', ')})`);
+    console.info(`[w47] can it fail, a grant added (${grant.role}: ${grant.permission}): ${affected.length} of ${routedOperations().length} cells red (${affected.join(', ')})`);
   });
 
   it('a permission taken from a role that should have it: exactly the cells that grant opened go red', async () => {
     const { grant, affected } = widestChange('remove');
     const caller = world.callers[grant.role];
     if (caller === undefined) throw new Error(`no caller for the role ${grant.role}`);
-    const run = await withGrantChange(world.server, { remove: [grant] }, () => runColumn(world.server, caller, CORE_API_OPERATIONS, { table: 'CAN_IT_FAIL', grants: spec.grants, probeOnly: true }));
+    const run = await withGrantChange(world.server, { remove: [grant] }, () => runColumn(world.server, caller, routedOperations(), { table: 'CAN_IT_FAIL', grants: spec.grants, probeOnly: true }));
     expect(affected.length).toBeGreaterThan(0);
     expect(redOperations(run)).toEqual(affected);
     expect(run.filter((cell) => affected.includes(cell.operationId)).map((cell) => [cell.status, cell.passed])).toEqual(affected.map(() => [403, false]));
-    console.info(`[w47] can it fail, a grant removed (${grant.role}: ${grant.permission}): ${affected.length} of 75 cells red (${affected.join(', ')})`);
+    console.info(`[w47] can it fail, a grant removed (${grant.role}: ${grant.permission}): ${affected.length} of ${routedOperations().length} cells red (${affected.join(', ')})`);
   });
 
   it('a retired device presented where the cell expects a PAIRED one: every cell is red, and the device operations answer 403 DEVICE_REVOKED', async () => {
@@ -1300,11 +1373,11 @@ describe('can the matrix fail? The clone or the caller is changed, the expectati
     if (paired === undefined || retired === undefined) throw new Error('the device callers are missing');
     // The expectation of the PAIRED device, the credential and the throttle key of the retired one.
     const impostor: Caller = { ...paired, headersFor: retired.headersFor, keyFor: retired.keyFor };
-    const run = await runColumn(world.server, impostor, CORE_API_OPERATIONS, { table: 'CAN_IT_FAIL', grants: world.stored, probeOnly: true });
-    expect(redOperations(run)).toHaveLength(75);
+    const run = await runColumn(world.server, impostor, routedOperations(), { table: 'CAN_IT_FAIL', grants: world.stored, probeOnly: true });
+    expect(redOperations(run)).toHaveLength(routedOperations().length);
     const deviceOperations = CORE_API_OPERATIONS.filter((operation) => operation.access.kind === CoreApiAccessKind.DEVICE).map((operation) => operation.operationId);
     expect(run.filter((cell) => deviceOperations.includes(cell.operationId)).map((cell) => [cell.expected, cell.status, cell.code])).toEqual(deviceOperations.map(() => ['allowed', 403, 'DEVICE_REVOKED']));
-    console.info(`[w47] can it fail, a retired device in the PAIRED column: ${redOperations(run).length} of 75 cells red`);
+    console.info(`[w47] can it fail, a retired device in the PAIRED column: ${redOperations(run).length} of ${routedOperations().length} cells red`);
   });
 
   it("the session of an operator on the device presented where the cell expects the device itself: every cell is red, and an operation that needs the device's own credential answers 403 with the reason, no row and no place in the budget", async () => {
@@ -1313,8 +1386,8 @@ describe('can the matrix fail? The clone or the caller is changed, the expectati
     if (device === undefined || session === undefined) throw new Error('the callers of the paired device are missing');
     // The expectation of the DEVICE principal, the credential and the throttle key of the session.
     const impostor: Caller = { ...device, headersFor: session.headersFor, keyFor: session.keyFor };
-    const run = await runColumn(world.server, impostor, CORE_API_OPERATIONS, { table: 'CAN_IT_FAIL', grants: world.stored, probeOnly: true });
-    expect(redOperations(run)).toHaveLength(75);
+    const run = await runColumn(world.server, impostor, routedOperations(), { table: 'CAN_IT_FAIL', grants: world.stored, probeOnly: true });
+    expect(redOperations(run)).toHaveLength(routedOperations().length);
     const carrying = needDeviceCredential();
     const open = CORE_API_OPERATIONS.filter((operation) => operation.access.kind === CoreApiAccessKind.DEVICE)
       .map((operation) => operation.operationId)
@@ -1326,7 +1399,7 @@ describe('can the matrix fail? The clone or the caller is changed, the expectati
     );
     // The other operations of the marker are open to the session too: red only by who stage 4 resolved.
     expect(run.filter((cell) => open.includes(cell.operationId) && !cell.passed)).toEqual([]);
-    console.info(`[w47] can it fail, a session on the device in the column of the DEVICE: 75 of 75 cells red; refused for the device's own credential: ${carrying.join(', ')}`);
+    console.info(`[w47] can it fail, a session on the device in the column of the DEVICE: ${routedOperations().length} of ${routedOperations().length} cells red; refused for the device's own credential: ${carrying.join(', ')}`);
   });
 
   it('the session of one role presented where the cell expects another: every cell is red, and where both are refused the row names the wrong actor and the wrong role', async () => {
@@ -1347,8 +1420,8 @@ describe('can the matrix fail? The clone or the caller is changed, the expectati
     const presented = pair === undefined ? undefined : world.callers[pair.presented];
     if (pair === undefined || expected === undefined || presented === undefined) throw new Error('spec §4.4 names fewer than two roles');
     const impostor: Caller = { ...expected, headersFor: presented.headersFor, keyFor: presented.keyFor };
-    const run = await runColumn(world.server, impostor, CORE_API_OPERATIONS, { table: 'CAN_IT_FAIL', grants: world.stored, probeOnly: true });
-    expect(redOperations(run)).toHaveLength(75);
+    const run = await runColumn(world.server, impostor, routedOperations(), { table: 'CAN_IT_FAIL', grants: world.stored, probeOnly: true });
+    expect(redOperations(run)).toHaveLength(routedOperations().length);
     const refusedForBoth = run.filter((cell) => pair.both.includes(cell.operationId));
     expect(refusedForBoth.length).toBeGreaterThan(0);
     // Same status and same code as expected, and exactly one row: only what the row and the answer NAME is wrong.
@@ -1356,7 +1429,7 @@ describe('can the matrix fail? The clone or the caller is changed, the expectati
     for (const needle of ['the row names the actor', 'details.role of the row', 'error.details.role']) {
       expect(refusedForBoth.filter((cell) => !cell.problems.some((problem) => problem.includes(needle)))).toEqual([]);
     }
-    console.info(`[w47] can it fail, the session of the ${pair.presented} in the column of the ${pair.expected}: 75 of 75 cells red; ${refusedForBoth.length} of them only by the actor and the role their row and their answer name`);
+    console.info(`[w47] can it fail, the session of the ${pair.presented} in the column of the ${pair.expected}: ${routedOperations().length} of ${routedOperations().length} cells red; ${refusedForBoth.length} of them only by the actor and the role their row and their answer name`);
   });
 });
 

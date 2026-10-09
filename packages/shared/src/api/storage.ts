@@ -97,6 +97,7 @@ export const STORAGE_OPERATIONS = [
     summary: 'Storage detail',
     description: [
       'The volumes, the write rate, the usage history and the retention policy. Slices `storage` and `storagePolicy`.',
+      'Schema v2 (C3 §3 op 54; CS-09; OD-25): the evidence-store figures become the real volumes and the write rate the real capture rate when the capture store lands (M3-W5); the shape does not change.',
       'Distinct from `GET /api/v1/storage/status`, the design-book summary.',
       STATE_READ_NOTE,
     ].join('\n\n'),

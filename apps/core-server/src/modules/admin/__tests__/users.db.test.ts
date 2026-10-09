@@ -209,7 +209,7 @@ describe('operation 12 assignUserRole', () => {
     // the unit, then the mirrored `operators` slice.
     expect(publicationLines(admin.published)).toEqual([
       `state native r${before.revision + 1}: append audit[ROLE_CHANGED]`,
-      'session.updated OPR-003 INVESTIGATOR [4 permissions]',
+      `session.updated OPR-003 INVESTIGATOR [${ROLE_PERMISSIONS.INVESTIGATOR.length} permissions]`,
       'admin.changed USERS',
       `state operators r${before.revision + 2}: replace operators`,
     ]);

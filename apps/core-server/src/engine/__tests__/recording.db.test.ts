@@ -133,12 +133,13 @@ describe('AC-B-52: with a fixed seed and a manual clock the audit trail of the r
 });
 
 describe('AC-B-07: a 60 s recording stores no meter frame, and the tables grow only by what the engine wrote', () => {
-  it('the row counts of all 30 tables: 12 audit rows, the events and one health snapshot; nothing else', async () => {
+  it('the row counts of all 40 tables: 12 audit rows, the events and one health snapshot; nothing else', async () => {
     const counts = await tableCounts(owner);
     const events = host.engine.slice('events').length - start.state.events.length;
     expect(countChanges(start.counts, counts)).toEqual({ audit_log: 12, events, health_snapshots: 1 });
-    expect(Object.keys(counts)).toHaveLength(30);
-    console.info(`[w26] AC-B-07: 60 s of recording: audit_log +12, events +${events}, health_snapshots +1; the other 27 tables unchanged`);
+    // 40 tables since dbc-3; the recording still writes exactly the three it wrote in v1.
+    expect(Object.keys(counts)).toHaveLength(40);
+    console.info(`[w26] AC-B-07: 60 s of recording: audit_log +12, events +${events}, health_snapshots +1; the other 37 tables unchanged`);
   });
 
   it('1,200 meter frames were produced and handed to the realtime seam; not one member of a frame is in any row of any table', async () => {
@@ -149,7 +150,9 @@ describe('AC-B-07: a 60 s recording stores no meter frame, and the tables grow o
     // Positive control: a frame has these members.
     const frame = JSON.stringify(frames.at(-1)?.audio);
     const dump = await dumpDatabase(owner);
-    for (const member of ['"channels"', '"noSignal"']) {
+    // SH-17: the v2 frame holds its levels as `inputs` (MIC-01/MIC-02) - the positive control
+    // follows the landed shape; nothing of it may reach a stored row.
+    for (const member of ['"inputs"', '"noSignal"']) {
       expect(occurrences(frame, member), member).toBeGreaterThan(0);
       expect(occurrences(dump, member), member).toBe(0);
     }

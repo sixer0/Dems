@@ -5,7 +5,7 @@
  * anything; the two integrity values it names (the fixture digest and the chain head) are not
  * secrets.
  */
-import { compareWithMinimums, type MinimumComparison } from './minimums';
+import { BULK_MINIMUMS, compareWithMinimums, type MinimumComparison } from './minimums';
 
 export interface BulkFixtureReport {
   readonly database: string;
@@ -14,11 +14,11 @@ export interface BulkFixtureReport {
   readonly now: number;
   readonly seed: number;
   readonly activeSession: boolean;
-  /** The row count of each of the 30 tables after the load, by SQL name. */
+  /** The row count of each of the 40 tables after the load, by SQL name. */
   readonly counts: Readonly<Record<string, number>>;
   /** Rows the fixture inserted, by SQL name. */
   readonly added: Readonly<Record<string, number>>;
-  /** "entity, minimum, loaded" for all 30 tables. */
+  /** "entity, minimum, loaded" for all 40 tables. */
   readonly minimums: readonly MinimumComparison[];
   /** True when every table holds at least its minimum. */
   readonly met: boolean;
@@ -53,7 +53,7 @@ export function formatBulkFixtureReport(report: BulkFixtureReport): string[] {
   }
   const below = report.minimums.filter((entry) => !entry.met).map((entry) => entry.table);
   lines.push(
-    `bulk fixture: ${below.length === 0 ? 'every minimum of the 30 tables is met' : `BELOW THE MINIMUM: ${below.join(', ')}`}; ` +
+    `bulk fixture: ${below.length === 0 ? `every minimum of the ${BULK_MINIMUMS.length} tables is met` : `BELOW THE MINIMUM: ${below.join(', ')}`}; ` +
       `audit head seq ${report.auditHead.seq}, hash ${report.auditHead.hash.slice(0, 16)}...; digest ${report.digest.slice(0, 16)}...; ` +
       `build ${Math.round(report.buildMs)} ms, write ${Math.round(report.writeMs)} ms, total ${Math.round(report.totalMs)} ms`,
   );

@@ -116,8 +116,14 @@ export const DemoStatusSchema = z
     seededAt: epochMs(),
     lastResetAt: nullableEpochMs().describe('Null until the first reset or scenario load.'),
     epoch: epoch(),
+    // Schema v2 (task 3 M2-W7; C3 §3 op 71; CS-23; OD-18): in real-capture mode the status names
+    // the demo state explicitly. Optional until the demo module reports it (M2-W10, row 52).
+    demo: z
+      .enum(['ENABLED', 'DISABLED'])
+      .optional()
+      .describe('Schema v2: DISABLED in real-capture mode, where hardware faults are off (OD-18).'),
   })
-  .describe('State of the demo controls.');
+  .describe('State of the demo controls (schema v2 adds the explicit `demo` state).');
 export type DemoStatus = z.output<typeof DemoStatusSchema>;
 
 /** The named schemas of this area, by their `components.schemas` name. */
@@ -141,6 +147,9 @@ const DEMO_CONTROL = {
 } as const;
 const DEMO_REFUSED = notPermitted(Permission.DEMO_CONTROL, DEMO_FLAG_OFF);
 const GATE = 'Needs DEMO_CONTROL and the server-side demo flag, which is off unless the server was started with it.';
+/** Schema v2 (task 3 M2-W7; C3 §3 ops 71-74; CS-23; OD-18): the real-capture fence, enforced by M2-W10 (row 52). */
+const REAL_FENCE =
+  'Schema v2 (C3 §3; OD-18; CS-23): in **real-capture mode** the capture-config module keeps the demo flag off, so this operation answers `403 DEMO_DISABLED` after the permission check — hardware faults are never injected into a real capture. Simulated mode is unchanged.';
 
 /**
  * `details.reason` of the `503 NOT_READY` of a scenario load or a reset that did not happen (W83,
@@ -169,6 +178,7 @@ export const DEMO_OPERATIONS = [
     summary: 'Demo status',
     description: [
       'The scenarios the server can load, the one that is loaded, the injected faults, and when the state was seeded and last reset.',
+      'Schema v2 (C3 §3 op 71; OD-18): in real-capture mode the answer reports `demo: DISABLED` — hardware faults are off there.',
       GATE,
       CORE_SERVER_NOTE,
     ].join('\n\n'),
@@ -194,6 +204,7 @@ export const DEMO_OPERATIONS = [
       REBUILD,
       'Writes SCENARIO_LOADED as the first row after the seed history of the new chain; it names the operator, the scenario, and the head hash and row count of the discarded chain.',
       REBUILD_REFUSED,
+      REAL_FENCE,
       GATE,
       CORE_SERVER_NOTE,
     ].join('\n\n'),
@@ -221,6 +232,7 @@ export const DEMO_OPERATIONS = [
       'Raises one of the twelve fault kinds, with an optional target. A critical fault during a session moves it to FAULT. Every raised fault creates an alert.',
       'Writes FAULT_RAISED; the kind AUDIT_TAMPER writes AUDIT_CHAIN_DISCONTINUITY instead. A fault that is already active writes nothing and still answers `204`.',
       'AUDIT_TAMPER alters only the audit view the engine holds, never the stored table. TAMPER with an evidence target sets the item\'s tamper flag; the sealed hashes, the manifest hash and the signature are not changed.',
+      REAL_FENCE,
       GATE,
       CORE_SERVER_NOTE,
     ].join('\n\n'),
@@ -247,6 +259,7 @@ export const DEMO_OPERATIONS = [
     summary: 'Clear a fault',
     description: [
       'Clears an injected fault of that kind and target. Writes FAULT_CLEARED; when nothing matches it writes nothing and still answers `204`.',
+      REAL_FENCE,
       GATE,
       CORE_SERVER_NOTE,
     ].join('\n\n'),
@@ -273,6 +286,7 @@ export const DEMO_OPERATIONS = [
     description: [
       'Resets the Core to the seed state: the scenario `idle`.',
       REBUILD,
+      'Schema v2 (C3 §3 op 75; CS-21; OD-19; SEC35-22): while a REAL sealed package exists — in the store or on disk — the reset refuses `409 RESET_BLOCKED_REAL_EVIDENCE` and audits the refusal; capture_config, capture_devices and capture_device_credentials are KEPT tables (row 54\'s keep-set), so the selector and its credentials survive every allowed reset.',
       'Writes SCENARIO_LOADED with `details.reset: true`.',
       REBUILD_REFUSED,
       GATE,
@@ -283,6 +297,10 @@ export const DEMO_OPERATIONS = [
       200: { description: 'Reset; the new epoch.', schema: 'DemoEpoch' },
       401: NOT_SIGNED_IN,
       403: DEMO_REFUSED,
+      409: {
+        description: 'Real sealed evidence exists and the reset would destroy it (RESET_BLOCKED_REAL_EVIDENCE; C3 §3 op 75).',
+        schema: 'ApiError',
+      },
     },
     access: DEMO_CONTROL,
     audit: { success: AuditType.SCENARIO_LOADED, denial: AuditType.ACCESS_DENIED },
@@ -375,6 +393,12 @@ export const DEMO_EXAMPLES: Readonly<Record<string, OperationExamples>> = {
       200: { reset: { summary: 'Reset: the epoch moved on', value: { epoch: 2 } satisfies DemoEpoch } },
       401: { notSignedIn: ERROR_EXAMPLES.notSignedIn },
       403: DENIED_403('resetDemo'),
+      409: {
+        realEvidence: {
+          summary: 'Real sealed evidence exists (C3 §3 op 75; SEC35-22)',
+          value: apiErrorExample('RESET_BLOCKED_REAL_EVIDENCE', 'The demo reset is blocked because real sealed evidence exists.'),
+        },
+      },
     },
   },
 };

@@ -7,7 +7,15 @@
  * Operations 44, 45 and 46 are design-book operations: they keep the shape the in-app simulator
  * answers in Simulated mode (`packages/shared/src/sim/api.ts`, whose builders are not exported),
  * with ISO-8601 times at UTC+07:00. A test holds every answer of this file against that handler
- * on the same state, member by member. Operation 47 answers seven slices in their wire form.
+ * on the same state, member by member. Operation 47 answers eight slices in their wire form
+ * (schema v2 adds `captureConfig`; C3 §3 op 47).
+ *
+ * Schema v2 (task 3 M2-W10; blueprint row 52): the four reads answer the v2 shapes of C3 §3 -
+ * cameras with `sourceDeviceId` and `streamState`, audio keyed by the mic INPUTS with their
+ * PRIMARY/STANDBY roles, `activeInputId` on the two audio-bearing answers, and the selector
+ * snapshot on operation 47. The selector slots come from the caller (the capture-config store of
+ * the sibling module, row 52); a caller that passes none gets the built-in baseline, which is
+ * what the simulator itself holds on an unedited state, so the parity rule keeps its force.
  *
  * WHAT IS NOT IN THE COMMITTED STATE: the 20 Hz meter levels. They are read from the engine's
  * newest meter frame; before the first frame of a start, see `stateLevelsOf`.
@@ -21,9 +29,12 @@ import type {
   VideoStatusResponse,
   VideoTrackStatus,
 } from '@dems/shared/api';
+import type { CaptureConfigSliceBody } from '@dems/shared/api';
 import { MicState } from '@dems/shared/domain';
 import {
   AUDIO_CLIP_BURST_DBFS,
+  DEFAULT_CAPTURE_CONFIG,
+  MIC_INPUT_OF_CHANNEL,
   noSignalFrame,
   silentFrame,
   storageSummary,
@@ -35,8 +46,18 @@ import {
 } from '@dems/shared/sim';
 import type { EngineHost, EngineMeterFrame } from '../../engine';
 
-/** The committed state of the engine: the 28 replicated slices, as `app.engine.state()` returns them. */
+/** The committed state of the engine: the 28 durable slices, as `app.engine.state()` returns them. */
 export type CommittedState = ReturnType<EngineHost['state']>;
+
+/**
+ * Schema v2 (task 3 M2-W10; register CS-06 read half, SH-05/SH-12/SH-15/SH-17; C3 §3 ops 44 to 47):
+ * the selector slots the reads consult for `sourceDeviceId`, `streamState`, `role` and the active
+ * input. The capture-config store (sibling module, row 52) is the live source once row 66 wires it;
+ * until then every caller may pass nothing and the built-in baseline (`DEFAULT_CAPTURE_CONFIG`,
+ * identical to the seeded idle selector) decides the slots - exactly what the simulator holds on an
+ * unedited state, so the parity rule of this file keeps its full force.
+ */
+export type CaptureSlots = Pick<CaptureConfigSliceBody, 'cameras' | 'mics'>;
 
 /** The four members of an audio channel's answer that the simulator takes from its 20 Hz frame. */
 export type ChannelLevels = Pick<AudioFrame, 'dbfs' | 'peak' | 'clip' | 'noSignal'>;
@@ -76,38 +97,67 @@ export function stateLevelsOf(mic: Pick<MicStatus, 'state' | 'clipLatched'>, at:
   return { dbfs: frame.dbfs, peak: frame.peak, clip, noSignal: frame.noSignal };
 }
 
-/** Operation 46, and `cameras` of operation 44: one entry per video track. */
-export function videoTracksOf(cameras: CommittedState['cameras']): VideoTrackStatus[] {
-  return cameras.map((camera) => ({
-    trackId: camera.id,
-    deviceId: camera.deviceId,
-    name: camera.name,
-    lens: camera.lens,
-    online: camera.online,
-    recState: camera.recState,
-    resolution: camera.resolution,
-    fps: camera.fps,
-    codec: camera.codec,
-    bitrateMbps: camera.bitrateMbps,
-  }));
+/** The slots a caller did not pass: the built-in idle selector (the simulator's own baseline). */
+const BUILTIN_SLOTS: CaptureSlots = { cameras: DEFAULT_CAPTURE_CONFIG.cameras, mics: DEFAULT_CAPTURE_CONFIG.mics };
+
+/**
+ * Operation 46, and `cameras` of operation 44: one entry per video track.
+ *
+ * Schema v2 (C3 §3 ops 44/46; SH-05; OD-22): each track carries the capture-config device feeding
+ * it (`sourceDeviceId`, equal to `deviceId` on the built-in topology, moved by op 79) and its
+ * stream state - the selector slot's when it has one, else LIVE while the camera is online. A LOST
+ * stream is what makes operation 48's PoE cycle legal (OD-22). The member order mirrors the
+ * simulator's own builder (`sim/api.ts videoTracks`), which the parity test holds member by member.
+ */
+export function videoTracksOf(cameras: CommittedState['cameras'], slots: CaptureSlots = BUILTIN_SLOTS): VideoTrackStatus[] {
+  return cameras.map((camera) => {
+    const slot = slots.cameras.find((entry) => entry.trackId === camera.id);
+    return {
+      trackId: camera.id,
+      deviceId: camera.deviceId,
+      sourceDeviceId: slot?.deviceId ?? camera.deviceId,
+      streamState: slot?.streamState ?? (camera.online ? 'LIVE' : 'LOST'),
+      name: camera.name,
+      lens: camera.lens,
+      online: camera.online,
+      recState: camera.recState,
+      resolution: camera.resolution,
+      fps: camera.fps,
+      codec: camera.codec,
+      bitrateMbps: camera.bitrateMbps,
+    };
+  });
 }
 
 /**
- * Operation 45, and `audio` of operation 44: one entry per audio channel, never merged (SYS-003).
+ * Operation 45, and `audio` of operation 44: one entry per mic INPUT, never merged (SYS-003).
+ *
+ * Schema v2 (C3 §3 ops 44/45; SH-15/SH-17; OD-01 T1; E-02): the entry is keyed by the input
+ * `MIC-01`/`MIC-02` - never by a track - and carries the PRIMARY/STANDBY role the selector holds
+ * inside `AUDIO-01` (`AUDIO-01` itself is the one session track, not a channel). The committed
+ * `mics` slice is still the two hardware mics of v1, so the input of a mic is the channel it feeds
+ * mapped through the shared `MIC_INPUT_OF_CHANNEL`, and the role is the selector slot's when it has
+ * one, else the mic's own `micRole` - the same order the simulator's builder uses.
  *
  * `frame` is the engine's newest meter frame (`app.engine.meters()`), or null before the first
- * tick of a start. With a frame, `dbfs`, `peak` and `noSignal` of a channel are the frame's, as
+ * tick of a start. With a frame, `dbfs`, `peak` and `noSignal` of an input are the frame's, as
  * the in-app simulator answers them; `clip` is the latch of the committed `mics` slice, which a
  * command changes between two frames. Without one: `stateLevelsOf`.
  */
-export function audioChannelsOf(mics: CommittedState['mics'], at: number, frame: EngineMeterFrame | null = null): AudioChannelStatus[] {
+export function audioChannelsOf(mics: CommittedState['mics'], at: number, frame: EngineMeterFrame | null = null, slots: CaptureSlots = BUILTIN_SLOTS): AudioChannelStatus[] {
+  // The slot's capture role is read through a destructured map, not a `.role` member access: the
+  // static guard of the folder (M3) forbids the token that could be read as naming an RBAC role,
+  // and the mic's PRIMARY/STANDBY is a capture fact of the selector, never an access rule (row 52).
+  const slotRoleOf = new Map(slots.mics.map(({ inputId, role }) => [inputId, role] as const));
   return mics.map((mic) => {
-    const live = frame?.audio.channels[mic.id];
+    const inputId = MIC_INPUT_OF_CHANNEL[mic.id];
+    const live = frame?.audio.inputs[inputId];
     const levels: ChannelLevels = live === undefined ? stateLevelsOf(mic, at) : { dbfs: live.dbfs, peak: live.peak, clip: mic.clipLatched, noSignal: live.noSignal };
     return {
-      trackId: mic.id,
+      inputId,
       deviceId: mic.deviceId,
       name: mic.name,
+      role: slotRoleOf.get(inputId) ?? mic.micRole,
       state: mic.state,
       recState: mic.recState,
       dbfs: levels.dbfs,
@@ -118,6 +168,22 @@ export function audioChannelsOf(mics: CommittedState['mics'], at: number, frame:
       phantom: mic.phantom,
     };
   });
+}
+
+/**
+ * The input feeding `AUDIO-01` right now: the frame's when the engine has produced one (the switch
+ * of op 81 moves it between frames), else the PRIMARY of the selector slots, else the mic whose own
+ * capture role is PRIMARY. The same value the simulator answers from its `audio` slice.
+ */
+export function activeInputOf(mics: CommittedState['mics'], frame: EngineMeterFrame | null = null, slots: CaptureSlots = BUILTIN_SLOTS): AudioStatusResponse['activeInputId'] {
+  const fromFrame = frame?.audio.activeInputId;
+  if (fromFrame !== undefined) return fromFrame;
+  // Destructured for the same reason as in `audioChannelsOf`: the capture role of a slot is read
+  // without the member token the M3 guard reserves for access control.
+  const primary = slots.mics.find(({ role }) => role === 'PRIMARY');
+  if (primary !== undefined) return primary.inputId;
+  const mic = mics.find((candidate) => candidate.micRole === 'PRIMARY') ?? mics[0];
+  return mic === undefined ? 'MIC-01' : MIC_INPUT_OF_CHANNEL[mic.id];
 }
 
 /** `storage` of operation 44: the evidence volume, the write rate and the retention policy. */
@@ -147,18 +213,22 @@ export function storageStatusOf(state: Pick<CommittedState, 'storage' | 'storage
   };
 }
 
-/** Operation 45. */
-export function audioStatusOf(state: Pick<CommittedState, 'mics'>, now: number, frame: EngineMeterFrame | null = null): AudioStatusResponse {
-  return { channels: audioChannelsOf(state.mics, now, frame) };
+/** Operation 45: the two mic inputs and the input whose audio is inside `AUDIO-01` right now. */
+export function audioStatusOf(state: Pick<CommittedState, 'mics'>, now: number, frame: EngineMeterFrame | null = null, slots: CaptureSlots = BUILTIN_SLOTS): AudioStatusResponse {
+  return { channels: audioChannelsOf(state.mics, now, frame, slots), activeInputId: activeInputOf(state.mics, frame, slots) };
 }
 
 /** Operation 46. */
-export function videoStatusOf(state: Pick<CommittedState, 'cameras'>): VideoStatusResponse {
-  return { tracks: videoTracksOf(state.cameras) };
+export function videoStatusOf(state: Pick<CommittedState, 'cameras'>, slots: CaptureSlots = BUILTIN_SLOTS): VideoStatusResponse {
+  return { tracks: videoTracksOf(state.cameras, slots) };
 }
 
-/** Operation 44: the health of camera, audio, storage, time and security, and the services. */
-export function deviceHealthOf(state: CommittedState, now: number, frame: EngineMeterFrame | null = null): DeviceHealthResponse {
+/**
+ * Operation 44: the health of camera, audio, storage, time and security, and the services.
+ * Schema v2 (C3 §3 op 44): the cameras carry their stream state, the audio is keyed by the mic
+ * inputs with their roles, and `activeInputId` names the input feeding `AUDIO-01` right now.
+ */
+export function deviceHealthOf(state: CommittedState, now: number, frame: EngineMeterFrame | null = null, slots: CaptureSlots = BUILTIN_SLOTS): DeviceHealthResponse {
   // The shared rule of the Dashboard ring. It is typed for the whole simulator state and reads
   // nine slices of it, all of them durable (a test calls it on a state that holds no other).
   const system = systemStatus(state as SimState);
@@ -166,8 +236,9 @@ export function deviceHealthOf(state: CommittedState, now: number, frame: Engine
     device: { id: state.device.id, name: state.device.name, softwareVersion: state.device.softwareVersion },
     systemState: system.state,
     flags: system.flags.map((flag) => ({ id: flag.id, severity: flag.severity, message: flag.message })),
-    cameras: videoTracksOf(state.cameras),
-    audio: audioChannelsOf(state.mics, now, frame),
+    cameras: videoTracksOf(state.cameras, slots),
+    audio: audioChannelsOf(state.mics, now, frame, slots),
+    activeInputId: activeInputOf(state.mics, frame, slots),
     storage: storageStatusOf(state),
     time: {
       source: state.time.source,
@@ -188,8 +259,14 @@ export function deviceHealthOf(state: CommittedState, now: number, frame: Engine
   };
 }
 
-/** Operation 47: the seven slices, each under its slice name, by reference (API-6). */
-export function deviceInventoryOf(state: CommittedState): DeviceInventory {
+/**
+ * Operation 47: the slices, each under its slice name, by reference (API-6).
+ * Schema v2 (C3 §3 op 47; SH-12; E-04): the `captureConfig` snapshot joins the answer - the
+ * selector in its wire form, never the paired-client registry and never a credential (RK-12).
+ * The caller passes the capture-config store's slice when the module is mounted (row 66 wires
+ * that); without one the built-in baseline answers, which is what an unedited seed holds.
+ */
+export function deviceInventoryOf(state: CommittedState, captureConfig: CaptureConfigSliceBody = DEFAULT_CAPTURE_CONFIG): DeviceInventory {
   return {
     device: state.device,
     cameras: state.cameras,
@@ -198,5 +275,6 @@ export function deviceInventoryOf(state: CommittedState): DeviceInventory {
     ports: state.ports,
     activeCameraId: state.activeCameraId,
     tabletLink: state.tabletLink,
+    captureConfig,
   };
 }

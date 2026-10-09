@@ -14,8 +14,9 @@
  * resolves the matching alerts and writes FAULT_CLEARED. A session in FAULT stays there
  * until `recover()`.
  */
-import { AuditEventKind, type AudioTrackId, type TrackId } from '../domain';
-import { ALERT_RING_SIZE, AUDIO_CLIP_BURST_DBFS } from './constants';
+import { AuditEventKind, SessionState, type AudioTrackId, type TrackId } from '../domain';
+import { MIC_INPUT_OF_CHANNEL } from './audio';
+import { ALERT_RING_SIZE, AUDIO_CLIP_BURST_DBFS, MIC_SILENCE_DBFS, MIC_SILENCE_DURATION_MS } from './constants';
 import { DEVICE_ID } from './dataset';
 import { deriveDeviceState, EVIDENCE_TAMPER_PREFIX, isFaultActive } from './derive';
 import { SimNotFoundError } from './errors';
@@ -23,7 +24,7 @@ import { nextItemId, pushRing, recordActivity, tamperAuditRow } from './events';
 import { DEFAULT_TAMPER_TRACK, restoreEvidenceItem, tamperEvidenceItem } from './evidence';
 import { noSignalFrame } from './initial-state';
 import { addTimelineItem, enterFault, isCriticalFault } from './session-machine';
-import type { AuditLogSlice, EpochMs, FaultTarget, SimAlert, SimState } from './types';
+import type { AuditLogSlice, AudioFrame, EpochMs, FaultTarget, SimAlert, SimState } from './types';
 import { FaultEvt, FaultKind, type Severity } from './vocabulary';
 
 /** Book audit-event kind (§21.3, 01 L665) each fault is reported as (AC-65 "audit AUDIO_CLIP"). */
@@ -40,6 +41,9 @@ export const FAULT_EVENT_KIND = {
   TPM_FAILURE: AuditEventKind.SOURCE_FAULT,
   SECURITY_FAULT: AuditEventKind.SOURCE_FAULT,
   AUDIT_TAMPER: AuditEventKind.AUDIT_CHAIN_DISCONTINUITY,
+  // Schema v2 (register SH-03): both are source faults of the capture path (§21.3 SOURCE_FAULT).
+  MIC_SILENT: AuditEventKind.SOURCE_FAULT,
+  CAPTURE_FAULT: AuditEventKind.SOURCE_FAULT,
 } as const satisfies Record<FaultKind, AuditEventKind>;
 
 /** Alert severity per fault (camera loss is critical, matching the GlowRing flags). */
@@ -56,6 +60,11 @@ export const FAULT_SEVERITY = {
   TPM_FAILURE: 'CRITICAL',
   SECURITY_FAULT: 'CRITICAL',
   AUDIT_TAMPER: 'CRITICAL',
+  // `dbc-3 §C.2` fixes both: the silence warning never blocks (OD-11), a stalled file is critical.
+  // Neither joins `CRITICAL_FAULTS` here: whether CAPTURE_FAULT moves the session machine to FAULT
+  // is SH-06 behaviour (blueprint row 51), not a vocabulary decision.
+  MIC_SILENT: 'WARNING',
+  CAPTURE_FAULT: 'CRITICAL',
 } as const satisfies Record<FaultKind, Severity>;
 
 const ALTERED_SUFFIX = ' [altered]';
@@ -81,6 +90,10 @@ export function faultTargetKey(state: SimState, kind: FaultKind, target?: FaultT
       return target?.channel ?? 'AUDIO-01';
     case FaultKind.MIC_CLIP:
       return target?.channel ?? 'AUDIO-02';
+    // Schema v2 (SH-08): the silence warning is keyed to the channel that feeds AUDIO-01 right now,
+    // so `describeFault` finds the active microphone and clearing it resolves exactly that alert.
+    case FaultKind.MIC_SILENT:
+      return target?.channel ?? (state.audio.activeInputId === 'MIC-01' ? 'AUDIO-01' : 'AUDIO-02');
     case FaultKind.GNSS_LOSS:
       return target?.fallback ?? 'NTP';
     case FaultKind.TAMPER:
@@ -143,6 +156,16 @@ function describeFault(state: SimState, kind: FaultKind, key: string | null): { 
       const row = state.audit.rows.find((r) => r.seq === seq);
       return { message: `Audit chain discontinuity at ${row?.id ?? 'unknown row'}`, deviceId: DEVICE_ID };
     }
+    // Schema v2 (register SH-03/SH-08; OD-11): the active microphone fell silent. A warning, never a
+    // switch — the operator decides (D220). Keyed by the mic channel that feeds AUDIO-01.
+    case FaultKind.MIC_SILENT:
+      return {
+        message: `${mic?.name ?? 'Microphone'}: silent below ${MIC_SILENCE_DBFS} dBFS for ${MIC_SILENCE_DURATION_MS / 1000} s`,
+        deviceId: mic?.deviceId ?? DEVICE_ID,
+      };
+    // Schema v2 (register NM-07): a recording file stopped growing. Critical (`dbc-3 §C.2`).
+    case FaultKind.CAPTURE_FAULT:
+      return { message: `Capture fault: a recording file stopped growing (${key ?? 'unknown'})`, deviceId: key ?? DEVICE_ID };
     default:
       return { message: 'Fault', deviceId: DEVICE_ID };
   }
@@ -183,11 +206,20 @@ function resolveAlerts(state: SimState, at: EpochMs, kind: FaultKind, target: st
   return changed ? { ...state, alerts } : state;
 }
 
-function setAudioFrame(state: SimState, channel: AudioTrackId, patch: Partial<SimState['audio']['channels'][AudioTrackId]>): SimState {
-  const frame = state.audio.channels[channel];
+/**
+ * Writes one frame of the meters slice. The fault target is still a **channel** (the demo control
+ * panel and `FaultTarget.channel` name one); the slice itself is keyed by mic input (SH-17), so the
+ * write goes through `MIC_INPUT_OF_CHANNEL`.
+ */
+function setAudioFrame(state: SimState, channel: AudioTrackId, patch: Partial<AudioFrame>): SimState {
+  const input = MIC_INPUT_OF_CHANNEL[channel];
+  const frame = state.audio.inputs[input];
   return {
     ...state,
-    audio: { channels: { ...state.audio.channels, [channel]: { ...frame, ...patch } } },
+    audio: {
+      inputs: { ...state.audio.inputs, [input]: { ...frame, ...patch } },
+      activeInputId: state.audio.activeInputId,
+    },
   };
 }
 
@@ -248,7 +280,11 @@ export function injectFaultTransition(state: SimState, now: EpochMs, kind: Fault
     });
   } else if (kind === FaultKind.MIC_NO_SIGNAL && key) {
     const channel = key as AudioTrackId;
-    next = setAudioFrame(next, channel, noSignalFrame(now, next.audio.channels[channel].seq));
+    next = setAudioFrame(
+      next,
+      channel,
+      noSignalFrame(now, next.audio.inputs[MIC_INPUT_OF_CHANNEL[channel]].seq),
+    );
   } else if (kind === FaultKind.AUDIT_TAMPER) {
     auditIndex = auditTamperIndex(next.audit, target);
     auditSeq = auditIndex === null ? null : (next.audit.rows[auditIndex]?.seq ?? null);
@@ -402,4 +438,26 @@ export function acknowledgeAlertTransition(state: SimState, alertId: string): Si
   const alert = state.alerts.find((a) => a.id === alertId);
   if (!alert || alert.acknowledged) return state;
   return { ...state, alerts: state.alerts.map((a) => (a.id === alertId ? { ...a, acknowledged: true } : a)) };
+}
+
+/**
+ * The OD-11 microphone-silence warning (schema v2, register SH-08). When the ACTIVE mic input inside
+ * `AUDIO-01` has been silent (its frame reads `noSignal`, i.e. a dead or disconnected input) since
+ * `activeSilentSince` for at least `MIC_SILENCE_DURATION_MS` while a session is RECORDING, raise one
+ * `MIC_SILENT` warning. It NEVER switches the active input and never moves the session to FAULT
+ * (`MIC_SILENT` is a WARNING, not in `CRITICAL_FAULTS`; D220/OD-11 — the Core never auto-switches, the
+ * operator decides). Idempotent: once raised it stays until cleared, so repeated calls are no-ops.
+ *
+ * The raiser keys on `noSignal` rather than a raw dBFS dip because the demo's conversational noise
+ * floor (-52 dBFS) sits just under the -50 dBFS threshold; a genuine silence warning means a DEAD
+ * input (e.g. after a `MIC_NO_SIGNAL` fault on the active channel), not a pause between sentences.
+ */
+export function maybeRaiseMicSilentWarning(state: SimState, now: EpochMs, activeSilentSince: EpochMs): SimState {
+  if (state.session?.state !== SessionState.RECORDING) return state;
+  const activeChannel: AudioTrackId = state.audio.activeInputId === 'MIC-01' ? 'AUDIO-01' : 'AUDIO-02';
+  const activeFrame = state.audio.inputs[MIC_INPUT_OF_CHANNEL[activeChannel]];
+  if (!activeFrame?.noSignal) return state;
+  if (now - activeSilentSince < MIC_SILENCE_DURATION_MS) return state;
+  // Never switch: assert the active input is unchanged before and after the inject below.
+  return injectFaultTransition(state, now, FaultKind.MIC_SILENT, { channel: activeChannel });
 }

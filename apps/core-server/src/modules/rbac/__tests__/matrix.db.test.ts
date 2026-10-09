@@ -11,7 +11,7 @@
 // operations a test calls get a stand-in route built from their registry entry. Nothing here
 // pins the list of boot steps either: a later row may add one.
 import '../../../plugins/permission-guard/__tests__/without-domain-modules';
-import { ADMINISTRATION_EXAMPLES, CORE_API_OPERATIONS, CoreApiAccessCondition, CoreApiAccessKind, validateCoreApiResponse, type CoreApiRegistryOperation } from '@dems/shared/api';
+import { ADMINISTRATION_EXAMPLES, CORE_API_OPERATIONS, CoreApiAccessCondition, CoreApiAccessKind, coreApiAccessPermissions, validateCoreApiResponse, type CoreApiRegistryOperation } from '@dems/shared/api';
 import { OPERATORS, OperatorRole, Permission, ROLE_PERMISSIONS } from '@dems/shared/sim';
 import type { Pool } from 'pg';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -51,6 +51,8 @@ const TECHNICIAN = OPERATORS[2]!;
 const MATRIX = '/api/v1/rbac/matrix';
 const ROLES = Object.values(OperatorRole);
 const PERMISSIONS = Object.values(Permission);
+/** R3 (D44): the grant total is recomputed from the shared role table, never hardcoded. */
+const GRANT_TOTAL = Object.values(ROLE_PERMISSIONS).reduce((sum, grants) => sum + grants.length, 0);
 /** The steps this row's step comes after: the nine database checks and the engine's. */
 const STEPS_BEFORE = ['B-1', 'B-2', 'B-3', 'B-4', 'B-5', 'B-6', 'B-7', 'B-8', 'B-9', 'engine.rehydrate'];
 
@@ -110,11 +112,11 @@ describe('the boot step rbac.matrix on a seeded database', () => {
     expect(guard.log.lines().filter((line) => Number(line['level']) >= 50)).toEqual([]);
   });
 
-  it('loaded the stored matrix: 3 roles, 12 permissions and 18 grants, in the stored order, stamped by the server clock', () => {
+  it('loaded the stored matrix: 3 roles, 14 permissions and 22 grants, in the stored order, stamped by the server clock', () => {
     const loaded = permissionGuard(guard.app).matrix();
     expect(loaded?.roles).toEqual(ROLES);
     expect(loaded?.permissions).toEqual(PERMISSIONS);
-    expect(loaded?.grants).toHaveLength(18);
+    expect(loaded?.grants).toHaveLength(GRANT_TOTAL);
     expect(loaded?.loadedAt).toBe(guard.clock.now());
     expect(permissionGuard(guard.app).routeProblems()).toEqual([]);
   });
@@ -127,7 +129,7 @@ describe('the boot step rbac.matrix on a seeded database', () => {
       // By permission order within the role.
       expect(held).toEqual(PERMISSIONS.filter((permission) => held.includes(permission)));
     }
-    expect(ROLES.map((role) => stored.grants.filter((grant) => grant.role === role).length)).toEqual([4, 10, 4]);
+    expect(ROLES.map((role) => stored.grants.filter((grant) => grant.role === role).length)).toEqual(ROLES.map((role) => ROLE_PERMISSIONS[role].length));
     // By role order across the list.
     const inRoleOrder = stored.grants.map((grant) => grant.role).sort((a, b) => ROLES.indexOf(a as OperatorRole) - ROLES.indexOf(b as OperatorRole));
     expect(stored.grants.map((grant) => grant.role)).toEqual(inRoleOrder);
@@ -177,7 +179,7 @@ describe('AC-B-16, unit form: the decision for all 75 operations with a principa
     const principal = operator(role, deviceId) as Extract<Principal, { kind: 'OPERATOR' }>;
     const wrong: string[] = [];
     for (const operation of CORE_API_OPERATIONS) {
-      const decision = decideAccess(ruleOf(operation.operationId), { principal, consoleIdentity: true, demoControls: true });
+      const decision = decideAccess(ruleOf(operation.operationId), { principal, consoleIdentity: true, demoControls: true, sessionCreatorId: principal.operatorId });
       const got = decision.allowed ? 'ALLOW' : decision.refusal.kind;
       const want = expected(operation, principal);
       if (got !== want) wrong.push(`${operation.operationId}: ${got}, expected ${want}`);
@@ -185,13 +187,24 @@ describe('AC-B-16, unit form: the decision for all 75 operations with a principa
     expect(wrong).toEqual([]);
   });
 
-  it('the denied cells of an operator are 22 (INVESTIGATOR), 3 (SUPERVISOR) and 31 (TECHNICIAN): the numbers of spec AC-B-16', () => {
+  it('the denied cells of each role: what the guard refuses equals, cell for cell, what the shared role table says the role lacks', () => {
     const denied = (role: OperatorRole): number =>
       CORE_API_OPERATIONS.filter((operation) => {
-        const decision = decideAccess(ruleOf(operation.operationId), { principal: operator(role, null), consoleIdentity: true, demoControls: true });
+        const principal = operator(role, null) as Extract<Principal, { kind: 'OPERATOR' }>;
+        const decision = decideAccess(ruleOf(operation.operationId), { principal, consoleIdentity: true, demoControls: true, sessionCreatorId: principal.operatorId });
         return !decision.allowed && decision.refusal.kind === 'NOT_PERMITTED';
       }).length;
-    expect(ROLES.map(denied)).toEqual([22, 3, 31]);
+    // R3 (D44): AC-B-16's stated 22/3/31 counted the 75 operations of the closed contract. The
+    // matrix now spans the 89-op registry; the count is RECOMPUTED FROM SOURCE - the registry's
+    // own access rules against the shared role table - instead of pinning a stale number. The
+    // two derivations are independent: this one reads the registry marker's permission list and
+    // the shared table, the guard above runs the rule book the server decides from.
+    const deniedFromSource = (role: OperatorRole): number =>
+      CORE_API_OPERATIONS.filter((operation) => {
+        const required = coreApiAccessPermissions(operation.access);
+        return required.length > 0 && !required.some((permission) => (ROLE_PERMISSIONS[role] as readonly string[]).includes(permission));
+      }).length;
+    expect(ROLES.map(denied)).toEqual(ROLES.map(deniedFromSource));
   });
 
   it('every permission a registry rule names is stored, and every stored permission is named by at least one rule', () => {
@@ -220,15 +233,15 @@ describe('operation 10 getRoleMatrix (MODG: success and refusal; it has no body 
     expect(body).toEqual({ ...(await readStoredMatrix(owner)), editable: false });
     expect(body.roles).toEqual(ROLES);
     expect(body.permissions).toEqual(PERMISSIONS);
-    expect(body.grants).toHaveLength(18);
-    // The contract example holds the same roles, permissions and 18 grants. Within SUPERVISOR it
+    expect(body.grants).toHaveLength(GRANT_TOTAL);
+    // The contract example holds the same roles, permissions and grants. Within SUPERVISOR it
     // lists them in the order of the shared ROLE_PERMISSIONS array; the server answers in the
     // stored order (role, then permission, each by its sort_order).
     const example = ADMINISTRATION_EXAMPLES['getRoleMatrix']?.responses?.[200]?.['seeded']?.value as typeof body;
     const byName = (a: { role: string; permission: string }, b: { role: string; permission: string }): number =>
       `${a.role} ${a.permission}`.localeCompare(`${b.role} ${b.permission}`);
     expect({ ...body, grants: [...body.grants].sort(byName) }).toEqual({ ...example, grants: [...example.grants].sort(byName) });
-    expect(body.grants.map((grant) => grant.role)).toEqual([...Array<string>(4).fill('INVESTIGATOR'), ...Array<string>(10).fill('SUPERVISOR'), ...Array<string>(4).fill('TECHNICIAN')]);
+    expect(body.grants.map((grant) => grant.role)).toEqual(ROLES.flatMap((held) => Array<string>(ROLE_PERMISSIONS[held].length).fill(held)));
     for (const granted of ROLES.map((held) => body.grants.filter((grant) => grant.role === held).map((grant) => grant.permission))) {
       expect(granted).toEqual(PERMISSIONS.filter((permission) => granted.includes(permission)));
     }
@@ -243,7 +256,7 @@ describe('operation 10 getRoleMatrix (MODG: success and refusal; it has no body 
     const onDevice = await deviceOperator(guard, guard.devices.pair('DEV-0001'), TECHNICIAN.username);
     const response = await guard.app.inject({ method: 'GET', url: MATRIX, headers: onDevice });
     expect(response.statusCode).toBe(200);
-    expect((response.json() as { grants: unknown[] }).grants).toHaveLength(18);
+    expect((response.json() as { grants: unknown[] }).grants).toHaveLength(GRANT_TOTAL);
   });
 
   it('refusals are the guard\'s: nobody without a session (401, no row), a paired device without an operator (401), a retired device (403 with its row), a foreign Origin (403)', async () => {
@@ -280,16 +293,16 @@ describe('operation 10 getRoleMatrix (MODG: success and refusal; it has no body 
 
   it('answers what is stored at the moment of the call: a grant that is taken away is gone from the next answer, and back in the one after it is restored', async () => {
     const grants = async (): Promise<number> => ((await guard.app.inject({ method: 'GET', url: MATRIX, headers: sessions.INVESTIGATOR })).json() as { grants: unknown[] }).grants.length;
-    expect(await grants()).toBe(18);
+    expect(await grants()).toBe(GRANT_TOTAL);
     await owner.query("DELETE FROM public.role_permissions WHERE role_id = 'TECHNICIAN' AND permission_id = 'MAINTENANCE'");
     try {
-      expect(await grants()).toBe(17);
+      expect(await grants()).toBe(GRANT_TOTAL - 1);
       // The guard decides on the same tables with the same request: the TECHNICIAN lost the any-of operation.
       expect(outcome(await guard.app.inject({ method: 'POST', url: '/api/v1/storage/policy', headers: { ...sessions.TECHNICIAN, origin: WEB_ORIGIN } }))).toEqual([403, 'NOT_PERMITTED']);
     } finally {
       await owner.query("INSERT INTO public.role_permissions (role_id, permission_id) VALUES ('TECHNICIAN', 'MAINTENANCE')");
     }
-    expect(await grants()).toBe(18);
+    expect(await grants()).toBe(GRANT_TOTAL);
     expect((await guard.app.inject({ method: 'POST', url: '/api/v1/storage/policy', headers: { ...sessions.TECHNICIAN, origin: WEB_ORIGIN } })).statusCode).toBe(200);
   });
 
@@ -396,7 +409,7 @@ describe('reloadMatrix: the stored matrix read again', () => {
     const restored = await control.reloadMatrix();
 
     // A permission the server does not know.
-    await owner.query("INSERT INTO public.permissions (id, sort_order) VALUES ('WARP_DRIVE', 13)");
+    await owner.query("INSERT INTO public.permissions (id, sort_order) VALUES ('WARP_DRIVE', 15)");
     try {
       const error = await control.reloadMatrix().then(
         () => null,

@@ -91,16 +91,22 @@ const threeClientMessages: Exact<WsClientMessage['type'], 'subscribe' | 'unsubsc
 const heartbeatMemberIsTheInterface: Exact<Extract<WsServerMessage, { type: 'heartbeat' }>, Heartbeat> = true;
 const unionIsTheSchema: Exact<z.output<typeof WsServerMessageSchema>, WsServerMessage> = true;
 const tokenReuseIsAReason: 'TOKEN_REUSE' extends SessionEndedMessage['reason'] ? true : false = true;
-const snapshotStateIsThe28Slices: Exact<SnapshotMessage['state'], Pick<SimState, ReplicatedSliceName>> = true;
+// Task 3 M2-W7 (row 48): the wire EvidenceItem leads with the C3 v2 shape; the sim follows in M2-W9
+// (row 51, SH-07). The marker stops compiling when parity lands and forces the flip to `true`.
+type PendingM2W9<T extends boolean> = T extends true ? true : 'PENDING-M2W9';
+const snapshotStateIsThe28Slices: PendingM2W9<Exact<SnapshotMessage['state'], Pick<SimState, ReplicatedSliceName>>> = 'PENDING-M2W9';
 const metersCarryTheAudioSlice: Exact<MetersMessage['audio'], SimState['audio']> = true;
 /** A `replace` of a slice carries exactly the simulator's type of that slice. */
 const everyReplaceCarriesItsSlice: {
-  [Name in ReplicatedSliceName]: Exact<Extract<DeltaReplaceOp, { slice: Name }>['value'], SimState[Name]>;
+  [Name in ReplicatedSliceName]: Name extends 'evidence' ? PendingM2W9<Exact<Extract<DeltaReplaceOp, { slice: Name }>['value'], SimState[Name]>> : Exact<Extract<DeltaReplaceOp, { slice: Name }>['value'], SimState[Name]>;
 } = {
   meta: true, device: true, operators: true, tabletLink: true, session: true, lastSealedSessionId: true, lastSealedAcknowledged: true,
   sessionHistory: true, activeCameraId: true, cameras: true, mics: true, storage: true, storagePolicy: true, time: true, network: true,
-  security: true, services: true, health: true, otherDevices: true, ports: true, evidence: true, events: true, alerts: true, audit: true,
+  security: true, services: true, health: true, otherDevices: true, ports: true, events: true, alerts: true, audit: true,
   faults: true, diagnostics: true, update: true, settings: true,
+  captureConfig: true, captureDevices: true,
+  // SH-07 (row 51): the delta value of `evidence` carries the v2 item shape the sim reaches in M2-W9.
+  evidence: 'PENDING-M2W9',
 };
 void [
   nineServerMessages,
@@ -337,7 +343,7 @@ describe('the union: one example of every message of 01_specs §9.4', () => {
     expect(sent.v).toBe(1);
   });
 
-  it('the snapshot example is the real idle state: 28 slices, about 120 kB', () => {
+  it('the snapshot example is the real idle state: 30 slices, about 120 kB', () => {
     const snapshot = idleSnapshot();
     expect(Object.keys(snapshot.state)).toEqual([...REPLICATED_SLICE_NAMES]);
     expect(SnapshotMessageSchema.parse(snapshot)).toStrictEqual(snapshot);
@@ -480,7 +486,7 @@ describe('the control and admin messages', () => {
 });
 
 describe('state: snapshot, then deltas of the real engine', () => {
-  it('a `replace` of each of the 28 slices carries the real slice; a value of another slice is refused', () => {
+  it('a `replace` of each of the 30 slices carries the real slice; a value of another slice is refused', () => {
     const state = wire(buildScenarioState('recording', createIdleState({ now: AT, seed: DEFAULT_SEED })));
     for (const name of REPLICATED_SLICE_NAMES) {
       const op = { op: 'replace', slice: name, value: state[name] };
@@ -597,11 +603,11 @@ describe('state: snapshot, then deltas of the real engine', () => {
     const h = harness();
     h.run(1_000);
     const audio = wire(h.state().audio);
-    const frame = { type: 'meters', v: 1, at: h.state().clock.now, seq: audio.channels['AUDIO-01'].seq, audio };
+    const frame = { type: 'meters', v: 1, at: h.state().clock.now, seq: audio.inputs['MIC-01'].seq, audio };
     expect(WsServerMessageSchema.parse(frame)).toStrictEqual(frame);
-    expect(audio.channels['AUDIO-01'].seq).toBeGreaterThan(10);
+    expect(audio.inputs['MIC-01'].seq).toBeGreaterThan(10);
     expect(MetersMessageSchema.safeParse({ ...frame, revision: 3 }).success).toBe(false);
-    expect(MetersMessageSchema.safeParse({ ...frame, audio: { channels: { 'AUDIO-01': audio.channels['AUDIO-01'] } } }).success).toBe(false);
+    expect(MetersMessageSchema.safeParse({ ...frame, audio: { inputs: { 'MIC-01': audio.inputs['MIC-01'] }, activeInputId: 'MIC-01' } }).success).toBe(false);
   });
 });
 

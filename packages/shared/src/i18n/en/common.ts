@@ -212,6 +212,9 @@ export const common = {
     TPM_FAILURE: 'TPM failure',
     SECURITY_FAULT: 'Security fault',
     AUDIT_TAMPER: 'Audit log tampered',
+    // Schema v2 (register SH-03/SH-23): the OD-11 silence warning and the stalled-file fault.
+    MIC_SILENT: 'Microphone silent',
+    CAPTURE_FAULT: 'Capture fault',
   },
 
   /** Enum display labels, keyed by `src/domain/enums.ts` wire values. */
@@ -290,12 +293,15 @@ export const common = {
       RETENTION_ARCHIVE_DISPOSITION: 'Retention / archive / disposition',
     },
     finalizationStep: {
-      FINALIZE_TRACKS: 'Finalize tracks',
-      CALCULATE_HASHES: 'Calculate hashes',
+      CLOSE_TRACKS: 'Close tracks',
+      FINALIZE_HASHES: 'Finalize hashes',
+      FINALIZE_TRANSCRIPT: 'Finalize transcript',
       BUILD_MANIFEST: 'Build manifest',
-      ENCRYPT_PAYLOAD: 'Encrypt evidence payload',
       SIGN_MANIFEST: 'Sign manifest',
       STORE_SEALED_PACKAGE: 'Store sealed evidence package',
+      // OD-21 fallback path only; the normal pipeline never shows these two.
+      CONCATENATE_SEGMENTS: 'Concatenate segments',
+      ENCRYPT_PAYLOAD: 'Encrypt evidence payload',
     },
     updateStep: {
       SIGNATURE_VERIFICATION: 'Signature Verification',
@@ -408,6 +414,16 @@ export const common = {
     USER_ENABLED: 'User enabled',
     USER_DISABLED: 'User disabled',
     BIOMETRIC_ENROLLMENT_CHANGED: 'Biometric sign-in changed',
+    // Task 3 M2-W7 (blueprint row 48; C3 §5.2): the nine capture-phase types.
+    CAPTURE_CONFIG_CHANGED: 'Capture configuration changed',
+    AUDIO_SOURCE_SWITCHED: 'Microphone source switched',
+    CAMERA_POE_CYCLED: 'Camera power-cycled',
+    TRANSCRIPT_REVISED: 'Transcript revised',
+    MIC_SILENT: 'Microphone silent',
+    EVIDENCE_MEDIA_SERVED: 'Evidence media served',
+    EVIDENCE_EXPORT_FAILED: 'Evidence export failed',
+    CAPTURE_CREDENTIAL_SET: 'Camera credential set',
+    CAPTURE_CREDENTIAL_REVEALED: 'Camera credential revealed',
   },
 
   /** Audit filter categories (sim `AuditCategory`). */
@@ -493,6 +509,8 @@ export const common = {
     testSignal: 'Test signal (simulated)',
     identify: 'Identify (blink)',
     restart: 'Restart (simulated)',
+    // Task 3 M2-W7 (C3 §0; E-12): the PoE cycle of a lost-stream camera (op 48, OD-22).
+    poeCycle: 'Power-cycle (PoE)',
   },
 
   /** Storage vocabulary shared by Dashboard F, Session Monitor S and the Storage page (D28/Q1). */
@@ -573,6 +591,9 @@ export const common = {
       PAIRING_MANAGE: 'Manage pairing and paired devices',
       USER_ADMIN: 'Manage users and roles',
       DEMO_CONTROL: 'Use the demo controls',
+      // Task 3 M2-W6 (SH-04): the two capture-phase permissions.
+      CAPTURE_CONFIG: 'Configure capture devices',
+      TRANSCRIPT_REVISE: 'Revise transcripts',
     },
   },
 

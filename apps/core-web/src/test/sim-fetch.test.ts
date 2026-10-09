@@ -132,7 +132,7 @@ describe('simAwareFetch: SIMULATED answers', () => {
     expect(response.status).toBe(202)
     const body = (await response.json()) as { exportId: string; evidenceId: string; status: string }
     expect(validateCoreApiResponse('exportEvidence', 202, body)).toEqual({ ok: true })
-    expect(body).toMatchObject({ evidenceId: evidenceExport.evidenceId, status: 'EXPORTED' })
+    expect(body).toMatchObject({ evidenceId: evidenceExport.evidenceId, status: 'QUEUED' })
     expect(sim.store.getState().audit.rows.at(-1)).toMatchObject({ type: 'EVIDENCE_EXPORTED', actorId: OPERATOR_IDS.ANDI })
   })
 

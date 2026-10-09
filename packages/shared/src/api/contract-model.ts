@@ -108,6 +108,14 @@ export const CoreApiAccessCondition = {
   DEVICE_CREDENTIAL: 'DEVICE_CREDENTIAL',
   /** The server-side demo flag must be on (DC-2). Otherwise `DEMO_DISABLED`, after the permission check. */
   DEMO_FLAG: 'DEMO_FLAG',
+  /**
+   * Task 3 M2-W7 (`C3 §0`, D4 OD-09; SEC35-18, deferred to M2 by row 29 and materialised here):
+   * the caller is the operator who created the open session, **or** holds `SUPERVISOR`. It joins
+   * the `SESSION_START` permission on `switchAudioSource` (op 81): an operator who holds
+   * `SESSION_START` but is neither is refused `403 NOT_PERMITTED` with one `ACCESS_DENIED` row
+   * whose `details.reason` names this condition (`C3 §5.3`).
+   */
+  SESSION_HOLDER: 'SESSION_HOLDER',
 } as const;
 export type CoreApiAccessCondition = (typeof CoreApiAccessCondition)[keyof typeof CoreApiAccessCondition];
 

@@ -14,10 +14,12 @@
 export { DatasetOptionError, buildSeedState, resolveDatasetOptions, type DatasetOptions, type ResolvedDatasetOptions } from './dataset';
 export {
   STAGING_SUFFIX,
+  STT_CONFIG_SEED_DEFAULT,
   SeedError,
   assertSeedTarget,
   prepareSeed,
   seedDatabase,
+  sttConfigSeedRow,
   writeSeed,
   type PreparedSeed,
   type SeedDatabaseOptions,

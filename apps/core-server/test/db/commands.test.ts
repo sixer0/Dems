@@ -12,6 +12,7 @@ import { createDatabaseStatement, runCreate } from '../../src/db/commands/create
 import { PROJECT_DATABASES, guardTargetDatabase } from '../../src/db/commands/database-names';
 import { runMigrate } from '../../src/db/commands/migrate';
 import { compareLedger, type AppliedMigration, type MigrationFile } from '../../src/db/commands/migrations';
+import { readInventory } from './contract-inventory';
 import {
   DbCommandError,
   OWNER_FILE_KEYS,
@@ -276,8 +277,10 @@ describe('the ledger comparison (D38)', () => {
 });
 
 describe('db:status reads the tables of the typed schema', () => {
-  it('30 table names, sorted, each a plain identifier', () => {
-    expect(SCHEMA_TABLE_NAMES).toHaveLength(30);
+  it('40 table names, sorted, each a plain identifier', () => {
+    // 30 in the closed task-2 contract; dbc-3 adds nine (T-31..T-39) and R-8 adds T-40
+    // (`stt_config`). The count equals the composed inventory the contract-inventory test pins.
+    expect(SCHEMA_TABLE_NAMES).toHaveLength(readInventory().counts.tables);
     expect([...SCHEMA_TABLE_NAMES]).toEqual([...SCHEMA_TABLE_NAMES].sort());
     for (const name of SCHEMA_TABLE_NAMES) expect(name).toMatch(/^[a-z][a-z_]*$/);
   });

@@ -32,11 +32,14 @@
  * The shared code reads every one of these with `?? null` or `?? []`, so the two empty forms
  * behave alike; the table only decides which one a rehydrated state holds.
  */
-import { eventCategory } from '@dems/shared/sim';
+import { DEFAULT_CAPTURE_DEVICES, EVIDENCE_FILE_TRACKS, SIM_SNAPSHOT_VERSION, eventCategory } from '@dems/shared/sim';
 import type {
   ActiveSession,
   AuditRow,
+  CaptureConfigSlice,
+  CaptureDevicesSlice,
   CustodyEntry,
+  EvidenceFileEntry,
   EvidenceItem,
   EvidenceTrack,
   SessionHistoryEntry,
@@ -52,6 +55,8 @@ import type {
   ActiveSessionRow,
   AlertRow,
   AuditLogRow,
+  CaptureConfigRow,
+  CaptureDeviceRow,
   ConsoleSettingsRow,
   CoreDeviceRow,
   CoreStateRow,
@@ -228,15 +233,15 @@ export function countersFromRows(rows: readonly EngineCounterRow[]): SimCounters
 }
 
 export function metaFromRows(state: CoreStateRow, counters: readonly EngineCounterRow[]): SimState['meta'] {
-  if (state.simSchemaVersion !== 1) {
+  if (state.simSchemaVersion !== SIM_SNAPSHOT_VERSION) {
     throw new MappingError(
       'ROW_SHAPE',
       'core_state.sim_schema_version',
-      `the stored state has shape version ${state.simSchemaVersion}; this mapping reads version 1.`,
+      `the stored state has shape version ${state.simSchemaVersion}; this mapping reads version ${SIM_SNAPSHOT_VERSION}.`,
     );
   }
   return {
-    schemaVersion: 1,
+    schemaVersion: SIM_SNAPSHOT_VERSION,
     seed: state.seed,
     scenario: state.scenario,
     epoch: state.epoch,
@@ -309,11 +314,11 @@ export function hardwareSnapshotToRow(state: Pick<MappableState, 'meta' | (typeo
 }
 
 export function snapshotSlicesFromRow(row: HardwareSnapshotRow): Pick<DurableSlices, (typeof SNAPSHOT_SLICE_KEYS)[number]> {
-  if (row.simSchemaVersion !== 1) {
+  if (row.simSchemaVersion !== SIM_SNAPSHOT_VERSION) {
     throw new MappingError(
       'ROW_SHAPE',
       'hardware_snapshot.sim_schema_version',
-      `the stored snapshot has shape version ${row.simSchemaVersion}; this mapping reads version 1.`,
+      `the stored snapshot has shape version ${row.simSchemaVersion}; this mapping reads version ${SIM_SNAPSHOT_VERSION}.`,
     );
   }
   return {
@@ -417,6 +422,14 @@ export function evidenceItemToRow(item: EvidenceItem, context: RowContext): Evid
     integritySource: item.integritySource ?? null,
     startTimeSource: item.startTimeSource ?? null,
     endTimeSource: item.endTimeSource ?? null,
+    // Schema v2 (CS-18; dbc-3 §B.11). `manifest_version` is derived, never a state member: a v2
+    // sealed item binds its transcript (`transcript_sha256` non-null, D-DB-01/MT-7), so it reads 2;
+    // a v1 item (no bound transcript) keeps 1. Deriving from `transcriptSha256` — a field the way
+    // back restores — keeps `toRow(fromRow(row))` byte-stable. `labels_status` has no sim home on
+    // the item (it lives on `transcripts`), so the mapping stores NULL and the way back ignores it.
+    manifestVersion: item.transcriptSha256 != null ? 2 : 1,
+    transcriptSha256: item.transcriptSha256 ?? null,
+    labelsStatus: null,
     createdAt: safeInteger(context.at, place('created_at')),
     updatedAt: safeInteger(context.at, place('updated_at')),
   };
@@ -424,14 +437,39 @@ export function evidenceItemToRow(item: EvidenceItem, context: RowContext): Evid
 
 /** `position` is the 1-based place in the item's track list (the order of the shared `TRACK_ORDER`). */
 export function evidenceTracksToRows(item: EvidenceItem): EvidenceTrackRow[] {
-  return item.tracks.map((track, index) => ({
-    evidenceId: item.id,
-    trackId: track.trackId,
-    position: index + 1,
-    label: storableText(track.label, `evidence_tracks.label (${item.id})`),
-    sizeBytes: safeInteger(track.sizeBytes, `evidence_tracks.size_bytes (${item.id})`),
-    sha256: storableText(track.sha256, `evidence_tracks.sha256 (${item.id})`),
-  }));
+  // Schema v2 (D44 R5): a v2 sealed item carries one entry per sealed FILE (`files`, SH-07). The
+  // file's fragment count rides on the track row of its own track (`fragment_count`, dbc-3 §B.12),
+  // the recording duration on `duration_ms`, and the item-level running chain head - which the sim
+  // models once per item, not per file - on every file row's `fragment_chain_head`. The way back
+  // restores `files` and `fragmentChainHead` from those columns; a v1 item keeps them NULL and the
+  // byte-stable v1 read-back it had before. `codec` and `sha256_plain` stay NULL: the sim shape
+  // does not model them (the SH-24 dataset writer supplies its own).
+  const fileOf = new Map((item.files ?? []).map((file) => [file.trackId, file] as const));
+  const v2 = item.files !== undefined && item.files.length > 0;
+  return item.tracks.map((track, index) => {
+    const file = fileOf.get(track.trackId);
+    return {
+      evidenceId: item.id,
+      trackId: track.trackId,
+      position: index + 1,
+      label: storableText(track.label, `evidence_tracks.label (${item.id})`),
+      sizeBytes: safeInteger(track.sizeBytes, `evidence_tracks.size_bytes (${item.id})`),
+      sha256: storableText(track.sha256, `evidence_tracks.sha256 (${item.id})`),
+      // The sim `EvidenceTrack` carries only the four v1 members, so `kind` is the sole value the
+      // CHECK admits (`'FILE'`) and `contains_audio` is required true (R-4).
+      kind: 'FILE',
+      containsAudio: true,
+      codec: null,
+      durationMs: v2 ? safeInteger(item.durationMs, `evidence_tracks.duration_ms (${item.id})`) : null,
+      fragmentCount: file === undefined ? null : safeInteger(file.fragmentCount, `evidence_tracks.fragment_count (${item.id})`),
+      fragmentChainHead: !v2 || item.fragmentChainHead === undefined || item.fragmentChainHead === null ? null : storableText(item.fragmentChainHead, `evidence_tracks.fragment_chain_head (${item.id})`),
+      // The file's OWN whole-file hash. For a SIMULATED item it equals the track's `sha256` (both
+      // are `computeTrackHash`); for a DEMO_PACKAGE item the track hash is the frozen package's
+      // (`demoTrackHash`) and the file hash stays the synthetic descriptor hash - two families, two
+      // columns (D-DB-02 keeps `sha256` the stored-bytes hash of the track row).
+      sha256Plain: file === undefined ? null : storableText(file.sha256, `evidence_tracks.sha256_plain (${item.id})`),
+    };
+  });
 }
 
 /** `seq` is the 1-based place in the item's custody list. `from` skips the entries already stored. */
@@ -458,7 +496,20 @@ export function evidenceItemFromRows(
   custody: readonly EvidenceCustodyRow[],
 ): EvidenceItem {
   if (row.signatureSimulated !== true) {
-    throw new MappingError('ROW_SHAPE', `evidence_items.signature_simulated (${row.id})`, 'a stored signature is always a simulated one.');
+    throw new MappingError(
+      'ROW_SHAPE',
+      `evidence_items.signature_simulated (${row.id})`,
+      'a stored signature rehydrated into the simulator state is always a simulated one; a real (Ed25519/ECDSA) seal is read through the evidence module, not the state.',
+    );
+  }
+  // C.4 ties `simulated = true` to `algorithm = 'SIMULATED-SHA256'`; the sim `EvidenceSignature`
+  // type carries only that literal, so the way back narrows the stored union to it (CS-18).
+  if (row.signatureAlgorithm !== 'SIMULATED-SHA256') {
+    throw new MappingError(
+      'ROW_SHAPE',
+      `evidence_items.signature_algorithm (${row.id})`,
+      `a simulated signature must carry algorithm SIMULATED-SHA256; the row holds ${row.signatureAlgorithm}.`,
+    );
   }
   const orderedTracks: EvidenceTrack[] = [...tracks]
     .sort((a, b) => a.position - b.position)
@@ -466,6 +517,27 @@ export function evidenceItemFromRows(
   const orderedCustody: CustodyEntry[] = [...custody]
     .sort((a, b) => a.seq - b.seq)
     .map((entry) => ({ at: entry.at, action: entry.action, actorId: entry.actorId, detail: entry.detail }));
+  // Schema v2 (D44 R5): a track row that carries its fragment count and chain head is a sealed
+  // FILE row. The file list comes back in the order of `EVIDENCE_FILE_TRACKS`; its `fileName` is
+  // the seal's own convention (`buildEvidenceFilesV2`: `<item>/<track>.m4v|.m4a`), which the sim
+  // derives from the item id and the track id and never varies; its size and hash are the track's
+  // (the seal writes the same value into both - `trackSize` and `computeTrackHash`). The item's
+  // chain head is the one every file row carries. A v1 item has no such rows and stays v1-shaped.
+  const fileRows = [...tracks]
+    .sort((a, b) => a.position - b.position)
+    .filter((track) => track.fragmentCount !== null && track.fragmentChainHead !== null && track.sha256Plain !== null);
+  const files: EvidenceFileEntry[] | null =
+    fileRows.length === 0
+      ? null
+      : [...fileRows]
+          .sort((a, b) => EVIDENCE_FILE_TRACKS.indexOf(a.trackId as (typeof EVIDENCE_FILE_TRACKS)[number]) - EVIDENCE_FILE_TRACKS.indexOf(b.trackId as (typeof EVIDENCE_FILE_TRACKS)[number]))
+          .map((track) => ({
+            trackId: track.trackId,
+            fileName: `${row.id.toLowerCase()}/${track.trackId.toLowerCase()}.m4${track.trackId.startsWith('VIDEO') ? 'v' : 'a'}`,
+            sizeBytes: track.sizeBytes,
+            sha256: track.sha256Plain as string,
+            fragmentCount: track.fragmentCount as number,
+          }));
   return {
     id: row.id,
     sessionId: row.sessionId,
@@ -487,7 +559,7 @@ export function evidenceItemFromRows(
     signature: {
       value: row.signatureValue,
       keyId: row.signatureKeyId,
-      algorithm: row.signatureAlgorithm,
+      algorithm: 'SIMULATED-SHA256',
       simulated: true,
     },
     custody: orderedCustody,
@@ -498,12 +570,209 @@ export function evidenceItemFromRows(
     markers: row.markers,
     notes: row.notes,
     ...(row.integritySource === null ? {} : { integritySource: row.integritySource }),
+    // Schema v2 (CS-18): a bound transcript hash round-trips; absent stays absent (MR-2).
+    ...(row.transcriptSha256 === null ? {} : { transcriptSha256: row.transcriptSha256 }),
+    // Schema v2 (D44 R5): the sealed file list and the running chain head round-trip through the
+    // file rows of `evidence_tracks`; a v1 item gets neither key back.
+    ...(files === null ? {} : { files, fragmentChainHead: fileRows[0]?.fragmentChainHead ?? null }),
     startTimeSource: row.startTimeSource,
     endTimeSource: row.endTimeSource,
   };
 }
 
+// ── capture_config, capture_devices (register SH-16; D44 R5) ──────────────────────────────────
+
+/**
+ * The transport a registry row carries for a device the selector's mic list does not name. The
+ * column is NOT NULL with the `CODE` format; the sim registry has no transport member, so the
+ * mapping writes the built-in's own code for the five known devices and this neutral code for a
+ * discovered one until supervisor telemetry (row 57) names it. It is never read back into a slice.
+ */
+const NEUTRAL_TRANSPORT = 'UNKNOWN';
+
+/**
+ * The five built-ins' transport codes (RECON-B2a R5; dbc-3 §B.2, §E.3; D-52-3). The device slice
+ * carries no transport - the state's only home for one is a selector mic slot - so a row for a
+ * built-in device takes its transport from the selector slot naming the same device, then from
+ * this topology table, and only for a discovered device nothing is known: `UNKNOWN`. Without the
+ * table the engine's own write of CAM-01 would clobber the seeded `RTSP` with `UNKNOWN`; ST-3
+ * pins the stored rows to exactly what `toRows` gives, so this builder is the ONE writer of the
+ * shape in both directions.
+ */
+const BUILT_IN_TRANSPORTS: ReadonlyMap<string, string> = new Map<string, string>([
+  ['CAM-01', 'RTSP'],
+  ['CAM-02', 'RTSP'],
+  ['MIC-01', 'USB'],
+  ['MIC-02', 'USB'],
+  ['POE-SWITCH', 'SNMP'],
+]);
+
+/**
+ * The media profile CODE, state form to row form and back (RECON-F1 erratum; row 55 §5, C3 §1,
+ * dbc-3 §B.1). The simulator used to name its profiles with a hyphen between the codec and the
+ * resolution while the column's `CODE` format (`^[A-Z][A-Z0-9_]{0,63}$`) admits none, so this seam
+ * held a two-way
+ * spelling table and a blanket `replace(/-/g,'_')` fallback that silently normalised ANY hyphenated
+ * value rather than refusing it (finding F8). C3 §1 requires `SCREAMING_SNAKE_CASE` machine codes,
+ * so the shared constant now holds the canonical underscore form and the two spellings are one:
+ * what follows is a validated identity in both directions. Anything outside the `CODE` format - the
+ * retired hyphenated spelling, a lowercase or empty value, a row written by other software - is
+ * refused here as `ROW_SHAPE`, before a statement can reach the CHECK and before a bad code can
+ * reach the wire. An open-set CODE operation 77 may write (e.g. `H264_720P30`) still travels both
+ * ways unchanged.
+ */
+const PROFILE_CODE_FORM = /^[A-Z][A-Z0-9_]{0,63}$/;
+
+function profileToCode(profile: string, place: string): string {
+  if (!PROFILE_CODE_FORM.test(profile)) {
+    throw new MappingError('ROW_SHAPE', place, `the media profile "${profile}" is not a CODE: SCREAMING_SNAKE_CASE only (dbc-3 §B.1).`);
+  }
+  return profile;
+}
+
+function codeToProfile(code: string, place: string): string {
+  if (!PROFILE_CODE_FORM.test(code)) {
+    throw new MappingError('ROW_SHAPE', place, `the stored media profile "${code}" is not a CODE: SCREAMING_SNAKE_CASE only (dbc-3 §B.1).`);
+  }
+  return code;
+}
+
+/** The five built-in devices' capability codes, derived from the shared baseline (D-52-3). The
+ * registry table holds no capabilities column (dbc-3 §B.2); a discovered device answers `[]`. */
+const BUILT_IN_CAPABILITIES: ReadonlyMap<string, readonly string[]> = new Map(
+  DEFAULT_CAPTURE_DEVICES.devices.map((device) => [device.id, device.capabilities] as const),
+);
+
+/**
+ * Slice 29 to its one row (T-31). Only the selector travels: `online`/`streamState` of the camera
+ * slots and `transport`/`online` of the mic slots are facts of the registry (read back from the
+ * T-32 rows), `locked` is a fact of the live session that the sim itself never stores in the slice
+ * (op 76 recomputes it per answer, api.ts:550), and `revision`/`updated_by` belong to operation 77
+ * and the module, not to the engine state - the row carries the seed's values unchanged.
+ */
+export function captureConfigToRow(slice: CaptureConfigSlice): CaptureConfigRow {
+  const place = (column: string): string => `capture_config.${column}`;
+  const [camera01, camera02] = slice.cameras;
+  const primary = slice.mics.find((mic) => mic.role === 'PRIMARY') ?? slice.mics[0];
+  const standby = slice.mics.find((mic) => mic.role === 'STANDBY') ?? slice.mics[1];
+  if (camera01 === undefined || camera02 === undefined || primary === undefined || standby === undefined) {
+    throw new MappingError('ROW_SHAPE', 'capture_config', 'the selector slice must name two cameras and a PRIMARY and a STANDBY mic.');
+  }
+  return {
+    singleton: true,
+    video01DeviceId: storableText(camera01.deviceId, place('video_01_device_id')),
+    video01Profile: profileToCode(camera01.profile, place('video_01_profile')),
+    video02DeviceId: storableText(camera02.deviceId, place('video_02_device_id')),
+    video02Profile: profileToCode(camera02.profile, place('video_02_profile')),
+    micPrimaryId: storableText(primary.deviceId, place('mic_primary_id')),
+    micStandbyId: storableText(standby.deviceId, place('mic_standby_id')),
+    revision: 1,
+    updatedBy: null,
+    // The selector's instant is the slice's own `updated_at`; `revision` and `updated_by` belong
+    // to operation 77 and the module, never to an engine write (dbc-3 §B.1).
+    updatedAt: safeInteger(slice.updatedAt, place('updated_at')),
+  };
+}
+
+/**
+ * Slice 30 to its registry rows (T-32), in id order. `enabled` carries the slice's `online`; the
+ * mic rows take their `transport` from the selector slot that names the same device (the only
+ * home the state has for it); `address` is the slice's `host`, never a credential URL (C-N8).
+ * `profiles`, `mac`, `onvif_uuid` and `last_seen_at` are discovery/telemetry columns the engine
+ * state does not model; they read back as the empty forms the builders use.
+ */
+export function captureDevicesToRows(slice: CaptureDevicesSlice, config: CaptureConfigSlice): CaptureDeviceRow[] {
+  const transportOf = (deviceId: string): string =>
+    config.mics.find((mic) => mic.deviceId === deviceId)?.transport ?? BUILT_IN_TRANSPORTS.get(deviceId) ?? NEUTRAL_TRANSPORT;
+  return [...slice.devices]
+    .sort((left, right) => (left.id < right.id ? -1 : left.id > right.id ? 1 : 0))
+    .map((device) => ({
+      id: storableText(device.id, `capture_devices.id (${device.id})`),
+      kind: device.kind,
+      transport: storableText(transportOf(device.id), `capture_devices.transport (${device.id})`),
+      model: storableTextOrNull(device.model, `capture_devices.model (${device.id})`),
+      firmware: storableTextOrNull(device.firmware, `capture_devices.firmware (${device.id})`),
+      address: storableTextOrNull(device.host, `capture_devices.address (${device.id})`),
+      mac: null,
+      onvifUuid: null,
+      profiles: [],
+      poePort: storableTextOrNull(device.poePort, `capture_devices.poe_port (${device.id})`),
+      enabled: device.online,
+      lastSeenAt: null,
+    }));
+}
+
+/** One registry row plus the selector fact it needs, back to a slice device (SH-18 keeps the order). */
+function captureDeviceFromRow(row: CaptureDeviceRow): Omit<CaptureDevicesSlice['devices'][number], never> {
+  return {
+    id: row.id,
+    kind: row.kind,
+    model: row.model,
+    firmware: row.firmware,
+    host: row.address,
+    poePort: row.poePort,
+    online: row.enabled,
+    streamState: row.kind === 'CAMERA' ? (row.enabled ? 'LIVE' : 'LOST') : null,
+    capabilities: [...(BUILT_IN_CAPABILITIES.get(row.id) ?? [])],
+  };
+}
+
+/**
+ * Slice 29 back from its row and the registry rows (the same derivations the capture-config
+ * module's builders state, `modules/capture-config/slices.ts`, which this mapping mirrors at the
+ * row layer to keep `db/mapping` free of module imports): the camera slots' `online`/`streamState`
+ * and the mic slots' `transport`/`online` come from the registry row the selector names; `locked`
+ * is false because the sim never stores the lock in the slice (op 76 recomputes it per answer).
+ * A named device the registry does not hold is a refusal, never an invented row (fail closed).
+ */
+export function captureConfigFromRow(row: CaptureConfigRow, devices: readonly CaptureDeviceRow[]): CaptureConfigSlice {
+  const byId = new Map(devices.map((device) => [device.id, device] as const));
+  const named = (column: string, deviceId: string): CaptureDeviceRow => {
+    const device = byId.get(deviceId);
+    if (device === undefined) {
+      throw new MappingError('ROW_SHAPE', `capture_config.${column}`, `the selector names ${deviceId}, which capture_devices does not hold.`);
+    }
+    return device;
+  };
+  const camera = (trackId: 'VIDEO-01' | 'VIDEO-02', deviceId: string, profile: string) => {
+    const device = named(trackId === 'VIDEO-01' ? 'video_01_device_id' : 'video_02_device_id', deviceId);
+    return { trackId, deviceId, profile, online: device.enabled, streamState: (device.enabled ? 'LIVE' : 'LOST') as CaptureConfigSlice['cameras'][number]['streamState'] };
+  };
+  const mic = (inputId: CaptureConfigSlice['mics'][number]['inputId'], deviceId: string, role: 'PRIMARY' | 'STANDBY') => {
+    const device = named(role === 'PRIMARY' ? 'mic_primary_id' : 'mic_standby_id', deviceId);
+    return { inputId, deviceId, role, transport: device.transport, online: device.enabled };
+  };
+  return {
+    cameras: [camera('VIDEO-01', row.video01DeviceId, codeToProfile(row.video01Profile, 'capture_config.video_01_profile')), camera('VIDEO-02', row.video02DeviceId, codeToProfile(row.video02Profile, 'capture_config.video_02_profile'))],
+    mics: [mic(row.micPrimaryId as 'MIC-01' | 'MIC-02', row.micPrimaryId, 'PRIMARY'), mic(row.micStandbyId as 'MIC-01' | 'MIC-02', row.micStandbyId, 'STANDBY')],
+    locked: false,
+    updatedAt: row.updatedAt,
+  };
+}
+
+/** Slice 30 back from the registry rows, in id order (MR-3). */
+export function captureDevicesFromRows(rows: readonly CaptureDeviceRow[]): CaptureDevicesSlice {
+  return { devices: [...rows].sort((left, right) => compareIds(left.id, right.id)).map(captureDeviceFromRow) };
+}
+
+function compareIds(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
 // ── active_session ─────────────────────────────────────────────────────────────────────────────
+
+/** True when a stored v2 snapshot object holds at least one member (an absent snapshot stores `{}`). */
+function hasMembers(value: unknown): boolean {
+  return typeof value === 'object' && value !== null && Object.keys(value).length > 0;
+}
+
+/**
+ * The empty form of an absent v2 snapshot column, ONE frozen object (D44 R5). The write-through
+ * tells a changed column by REFERENCE (ENG-4); a fresh `{}` literal per build would make every
+ * session UPDATE name the absent snapshots - `transcript_status` above all, which no M2 command
+ * ever fills. The way back reads `{}` as "absent" (`hasMembers`), so the round trip is unchanged.
+ */
+const EMPTY_SNAPSHOT_JSON = Object.freeze({}) as Record<string, never>;
 
 export function activeSessionToRow(session: ActiveSession, context: RowContext): ActiveSessionRow {
   const place = (column: string): string => `active_session.${column}`;
@@ -537,6 +806,16 @@ export function activeSessionToRow(session: ActiveSession, context: RowContext):
     notes: storableJson(session.notes, place('notes')),
     fault: session.fault === null ? null : storableJson(session.fault, place('fault')),
     recovery: session.recovery === null ? null : storableJson(session.recovery, place('recovery')),
+    // Schema v2 (CS-18; dbc-3 §B.10). The three snapshots are optional on the state; the columns are
+    // NOT NULL with an object CHECK, so an absent snapshot stores `{}` and the way back reads an
+    // empty object as "absent" (MR-2), keeping a v1 session byte-stable across the round trip.
+    // `started_by`/`stopped_by` have no member on the sim `ActiveSession`; they are recorded in
+    // session history / audit, so the mapping stores NULL and the way back ignores them.
+    captureConfig: storableJson(session.captureConfig ?? EMPTY_SNAPSHOT_JSON, place('capture_config')),
+    audioSource: storableJson(session.audioSource ?? EMPTY_SNAPSHOT_JSON, place('audio_source')),
+    transcriptStatus: storableJson(session.transcript ?? EMPTY_SNAPSHOT_JSON, place('transcript_status')),
+    startedBy: null,
+    stoppedBy: null,
     updatedAt: safeInteger(context.at, place('updated_at')),
   };
 }
@@ -575,6 +854,11 @@ export function activeSessionFromRow(row: ActiveSessionRow): ActiveSession {
     // stops; it never sets them to null. NULL is therefore read back as "absent".
     ...(row.startTimeSource === null ? {} : { startTimeSource: row.startTimeSource }),
     ...(row.stopTimeSource === null ? {} : { stopTimeSource: row.stopTimeSource }),
+    // Schema v2 (CS-18): a non-empty snapshot reads back; the `{}` an absent snapshot stored reads
+    // back as absent, so a v1 session is byte-stable across the round trip (MR-2).
+    ...(hasMembers(row.captureConfig) ? { captureConfig: row.captureConfig as ActiveSession['captureConfig'] } : {}),
+    ...(hasMembers(row.audioSource) ? { audioSource: row.audioSource as ActiveSession['audioSource'] } : {}),
+    ...(hasMembers(row.transcriptStatus) ? { transcript: row.transcriptStatus as ActiveSession['transcript'] } : {}),
   };
 }
 

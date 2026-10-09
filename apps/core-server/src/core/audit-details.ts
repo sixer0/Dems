@@ -1,13 +1,16 @@
 /**
- * The allow-list of audit details for the nine server-written types (plan row W21; spec §13.1,
- * §4.6 RB-4 and RB-6, §6.2, §6.3; SR-54).
+ * The allow-list of audit details for the eighteen server-written types (plan row W21; spec §13.1,
+ * §4.6 RB-4 and RB-6, §6.2, §6.3; SR-54; task 3 M2-W7 blueprint row 48 adds the nine capture-phase
+ * types of `C3 §5.2` — register CS-14).
  *
- * The nine types of the backend task are written by server-native modules only (the permission
- * guard, pairing, user administration, identity). The specification names the details of each
- * one. For these types the audit writer accepts EXACTLY those keys, with the value form given
- * here, and refuses everything else before a statement is sent. So a module cannot put a code,
- * a token, a credential or a typed username into such a row by adding a key: no such key
- * exists.
+ * The types of this list are written by server-native modules only (the permission guard, pairing,
+ * user administration, identity, and from task 3: the capture-config store, the mic switch, the
+ * sealing/export jobs, the transcript revision path and the credential store). The specification
+ * names the details of each one. For these types the audit writer accepts EXACTLY those keys, with
+ * the value form given here, and refuses everything else before a statement is sent. So a module
+ * cannot put a code, a token, a credential or a typed username into such a row by adding a key: no
+ * such key exists (`C3 §5.1`; E-30/E-31 — no secret value ever appears in an audit detail key or
+ * value; a signed URL or any prefix of it least of all).
  *
  * The other 44 types are the simulator's. Their details are whatever the shared code writes
  * (54 distinct key names); they get the general rules of `payload-rules.ts` and no list, so
@@ -16,7 +19,7 @@
  * "Device ID" in the specification's table is the row's own `deviceId`. A module may repeat it
  * in the details as `deviceId`; the list allows that for the three types that name a device.
  */
-import { DEVICE_ID_PATTERN, OPERATOR_ID_PATTERN, PAIRING_CODE_ID_PATTERN, PairingCodeCloseReason } from '@dems/shared/api';
+import { DEVICE_ID_PATTERN, HARDWARE_DEVICE_ID_PATTERN, OPERATOR_ID_PATTERN, PAIRING_CODE_ID_PATTERN, PairingCodeCloseReason, SHA256_HEX_PATTERN } from '@dems/shared/api';
 import { AuditType, OperatorRole, type DetailValue } from '@dems/shared/sim';
 import { NATIVE_TEXT_MAX_LENGTH } from './limits';
 
@@ -51,6 +54,28 @@ const code = matching(/^[A-Z][A-Z0-9_]{0,63}$/, 'a SCREAMING_SNAKE_CASE code');
 const operatorId = matching(OPERATOR_ID_PATTERN, 'an operator ID');
 const deviceId = matching(DEVICE_ID_PATTERN, 'a registry device ID');
 const pairingCodeId = matching(PAIRING_CODE_ID_PATTERN, 'a pairing code ID (never the code)');
+// Task 3 M2-W7 (C3 §5.2): the forms the nine capture-phase lists name.
+const hardwareDeviceId = matching(HARDWARE_DEVICE_ID_PATTERN, 'a Core hardware device id (CAM-01, MIC-02, POE-SWITCH)');
+const sha256Hex = matching(SHA256_HEX_PATTERN, 'a SHA-256 as 64 lower-case hex characters');
+const revisionId = matching(/^TRV-\d{6,}$/, 'a transcript revision id (TRV-NNNNNN)');
+const jobId = matching(/^EXPJ-\d{6,}$/, 'an export job id (EXPJ-NNNNNN)');
+/** A closed word list, e.g. the scopes of CAPTURE_CONFIG_CHANGED. Membership only; never free text. */
+const oneOf = (values: readonly string[], form: string) => (required: boolean): DetailRule => {
+  const set: ReadonlySet<string> = new Set(values);
+  return { required, form, accepts: (value) => typeof value === 'string' && set.has(value) };
+};
+/** Any finite number (dBFS may be negative; media pts and durations are counts). */
+const finiteNumber = (required: boolean): DetailRule => ({
+  required,
+  form: 'a finite number',
+  accepts: (value) => typeof value === 'number' && Number.isFinite(value),
+});
+/** The `from`/`to` of CAPTURE_CONFIG_CHANGED: the previous/new value — a mic role or a capture device id (C3 §5.2). */
+const configValue = (required: boolean): DetailRule => ({
+  required,
+  form: 'the previous or new value: PRIMARY, STANDBY, or a Core hardware device id',
+  accepts: (value) => typeof value === 'string' && (value === 'PRIMARY' || value === 'STANDBY' || HARDWARE_DEVICE_ID_PATTERN.test(value)),
+});
 
 const role = (required: boolean): DetailRule => ({
   required,
@@ -129,12 +154,91 @@ export const SERVER_AUDIT_DETAIL_RULES = {
     enabled: flag(REQUIRED),
     deviceId: deviceId(OPTIONAL),
   },
+  // ── Task 3 M2-W7 (blueprint row 48; register CS-14; C3 §5.2): the nine capture-phase types ──
+  // Exact key lists, no secret keys: no list holds a credential, token, key, password, pairing
+  // code, typed username, raw camera credential value or signed URL (§5.1; E-30/E-31; M2-AUD-1).
+  // The hardware device ids are the capture registry ids (CAM-nn / MIC-nn / POE-…); C3 §5.2's
+  // "(DEVICE_ID_PATTERN)" note is an erratum — DEVICE_ID_PATTERN is the PAIRED-client form
+  // (DEV-NNNN), which only sendingDeviceId uses here (row-47 D-c-2 idiom: pattern follows truth).
+  [AuditType.CAPTURE_CONFIG_CHANGED]: {
+    operationId: operationId(REQUIRED),
+    scope: oneOf(['CONFIG', 'CAMERA', 'MIC'], 'one of CONFIG, CAMERA, MIC')(REQUIRED),
+    field: oneOf(['CAMERAS', 'MICS', 'SOURCE', 'ROLE'], 'one of CAMERAS, MICS, SOURCE, ROLE')(REQUIRED),
+    trackId: oneOf(['VIDEO-01', 'VIDEO-02'], 'VIDEO-01 or VIDEO-02')(OPTIONAL),
+    inputId: oneOf(['MIC-01', 'MIC-02'], 'MIC-01 or MIC-02')(OPTIONAL),
+    deviceId: hardwareDeviceId(OPTIONAL),
+    from: configValue(OPTIONAL),
+    to: configValue(OPTIONAL),
+    permission: code(OPTIONAL),
+  },
+  [AuditType.AUDIO_SOURCE_SWITCHED]: {
+    fromInput: oneOf(['MIC-01', 'MIC-02'], 'MIC-01 or MIC-02')(REQUIRED),
+    toInput: oneOf(['MIC-01', 'MIC-02'], 'MIC-01 or MIC-02')(REQUIRED),
+    fromMs: count(REQUIRED),
+    toMs: count(REQUIRED),
+    // SEC35-17: REQUIRED when the actor is a paired device (B15/OD-09); the writer cannot see the
+    // actor, so the key is optional here and the switch module enforces presence for a device
+    // actor — a web operator session may omit it (C3 §5.2).
+    sendingDeviceId: deviceId(OPTIONAL),
+  },
+  [AuditType.CAMERA_POE_CYCLED]: {
+    deviceId: hardwareDeviceId(REQUIRED),
+    poePort: oneOf(['POE_CAM_1', 'POE_CAM_2_AUX'], 'one of POE_CAM_1, POE_CAM_2_AUX')(REQUIRED),
+    streamWasLost: flag(REQUIRED),
+    confirmed: flag(REQUIRED),
+    gapFromMs: count(OPTIONAL),
+    gapToMs: count(OPTIONAL),
+  },
+  [AuditType.TRANSCRIPT_REVISED]: {
+    revisionId: revisionId(REQUIRED),
+    authorId: operatorId(REQUIRED),
+    number: count(REQUIRED),
+    baseRevision: count(REQUIRED),
+    changeCount: count(REQUIRED),
+    machineTranscriptHash: sha256Hex(REQUIRED),
+    // The operator's note (C3 §5.2 "reason?: text"): free text of the typed-text bound; the
+    // general rules still refuse any secret form. NEVER the transcript body or segment text.
+    reason: reasonText(OPTIONAL),
+    permission: code(OPTIONAL),
+  },
+  [AuditType.MIC_SILENT]: {
+    inputId: oneOf(['MIC-01', 'MIC-02'], 'MIC-01 or MIC-02')(REQUIRED),
+    thresholdDbfs: finiteNumber(REQUIRED),
+    durationMs: count(REQUIRED),
+    sinceMs: count(REQUIRED),
+    active: flag(REQUIRED),
+  },
+  [AuditType.EVIDENCE_MEDIA_SERVED]: {
+    fileId: oneOf(['VIDEO-01', 'VIDEO-02'], 'VIDEO-01 or VIDEO-02')(REQUIRED),
+    bytesServed: count(REQUIRED),
+    rangeStart: count(OPTIONAL),
+    rangeEnd: count(OPTIONAL),
+    signed: flag(REQUIRED),
+    expiresAt: count(OPTIONAL),
+  },
+  [AuditType.EVIDENCE_EXPORT_FAILED]: {
+    jobId: jobId(REQUIRED),
+    kind: oneOf(['PACKAGE', 'COMPOSITE'], 'one of PACKAGE, COMPOSITE')(REQUIRED),
+    reason: code(REQUIRED),
+  },
+  [AuditType.CAPTURE_CREDENTIAL_SET]: {
+    // RK-12 / SEC35-01 / M2-CRD-1: the FACT of the write only. Never the username, the secret,
+    // the ciphertext, the nonce or the key.
+    deviceId: hardwareDeviceId(REQUIRED),
+    operationId: operationId(REQUIRED),
+    permission: code(OPTIONAL),
+  },
+  [AuditType.CAPTURE_CREDENTIAL_REVEALED]: {
+    // SEC35-02: the supervisor reveal path writes the fact only.
+    deviceId: hardwareDeviceId(REQUIRED),
+    reason: code(REQUIRED),
+  },
 } as const satisfies Partial<Record<AuditType, Readonly<Record<string, DetailRule>>>>;
 
-/** The nine types that have a list. */
+/** The eighteen types that have a list (nine of the backend task, nine of the capture phase). */
 export type ServerAuditType = keyof typeof SERVER_AUDIT_DETAIL_RULES;
 
-/** The list of `type`, or undefined for one of the simulator's 44 types. */
+/** The list of `type`, or undefined for one of the simulator's 44 types (62 minus the 18 listed here). */
 export function detailRulesOf(type: AuditType): Readonly<Record<string, DetailRule>> | undefined {
   return (SERVER_AUDIT_DETAIL_RULES as Partial<Record<AuditType, Readonly<Record<string, DetailRule>>>>)[type];
 }

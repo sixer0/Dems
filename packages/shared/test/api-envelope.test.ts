@@ -37,14 +37,19 @@ const NEW_CODES = [
   'INVALID_PATH', 'INVALID_CREDENTIALS', 'INVALID_CODE', 'ORIGIN_NOT_ALLOWED', 'DEVICE_NOT_PAIRED', 'DEVICE_REVOKED', 'DEMO_DISABLED',
   'RECORDING_ACTIVE', 'COMMAND_UNSUPPORTED', 'LAST_ADMIN', 'PAYLOAD_TOO_LARGE', 'LOCKED', 'RATE_LIMITED', 'INTERNAL_ERROR', 'NOT_READY',
 ];
+/** Task 3 M2-W7 (blueprint row 48; C3 §4): the nine capture-phase codes, 31 -> 40 (SEC35-22). */
+const CAPTURE_CODES = [
+  'CAPTURE_CONFIG_LOCKED', 'AUDIO_SOURCE_CONFLICT', 'CAMERA_NOT_LOST', 'TRANSCRIPT_NOT_READY', 'TRANSCRIPT_REVISION_CONFLICT',
+  'EXPORT_IN_PROGRESS', 'MEDIA_NOT_AVAILABLE', 'RESET_BLOCKED_REAL_EVIDENCE', 'TRANSCRIPT_AUDIO_UNAVAILABLE',
+];
 
 const envelope = (code: string, extra: Partial<ApiError['error']> = {}): ApiError => ({ error: { code, message: 'refused', ...extra } });
 
-describe('the code list grows from 16 to 31', () => {
-  it('the 16 baseline codes come first and unchanged, then the 15 of the Core server', () => {
-    expect(API_ERROR_CODES).toEqual([...BASELINE_CODES, ...NEW_CODES]);
-    expect(API_ERROR_CODES).toHaveLength(31);
-    expect(new Set(API_ERROR_CODES).size).toBe(31);
+describe('the code list grows from 16 to 40', () => {
+  it('the 16 baseline codes come first and unchanged, then the 15 of the Core server, then the 9 of task 3', () => {
+    expect(API_ERROR_CODES).toEqual([...BASELINE_CODES, ...NEW_CODES, ...CAPTURE_CODES]);
+    expect(API_ERROR_CODES).toHaveLength(40);
+    expect(new Set(API_ERROR_CODES).size).toBe(40);
     for (const [key, code] of Object.entries(ApiErrorCode)) {
       expect(key).toBe(code);
       expect(code).toMatch(API_ERROR_CODE_PATTERN);

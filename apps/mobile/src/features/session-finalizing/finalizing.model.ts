@@ -3,19 +3,17 @@
  * instance. The screens read the simulator through `use-finalizing.ts` and turn it into these
  * values; the tests check them directly.
  */
-import { FinalizationStep, type SessionState } from '@dems/shared/domain';
+import { FINALIZATION_STEPS_V2, FinalizationStep, type SessionState } from '@dems/shared/domain';
 import type { FinalizationStepState } from '@dems/shared/sim';
 import type { StepStatus } from '@/components/composed/stepper';
 
-/** The six §12.2 steps in pipeline order (01S §2.3 `FinalizationStep`). */
-export const FINALIZATION_STEPS: readonly FinalizationStep[] = [
-  FinalizationStep.FINALIZE_TRACKS,
-  FinalizationStep.CALCULATE_HASHES,
-  FinalizationStep.BUILD_MANIFEST,
-  FinalizationStep.ENCRYPT_PAYLOAD,
-  FinalizationStep.SIGN_MANIFEST,
-  FinalizationStep.STORE_SEALED_PACKAGE,
-];
+/**
+ * The six §12.2 steps in pipeline order. SH-01 (row 47) renamed FINALIZE_TRACKS→CLOSE_TRACKS and
+ * CALCULATE_HASHES→FINALIZE_HASHES and inserted FINALIZE_TRANSCRIPT (ENCRYPT_PAYLOAD became
+ * fallback-only), so the client mirrors the single shared source `FINALIZATION_STEPS_V2` — which is
+ * also what the simulator emits as its finalization order — rather than restating the names here.
+ */
+export const FINALIZATION_STEPS: readonly FinalizationStep[] = FINALIZATION_STEPS_V2;
 
 /** 04 §4.6: "After 1.2 s, route-sync opens the Summary" (measured on the simulator clock). */
 export const SEALED_HANDOFF_MS = 1_200;

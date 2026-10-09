@@ -165,7 +165,7 @@ function compareSelectors(label: string, sim: Sim, source: LiveSim): void {
     expect(selectors.selectIsFaultActive(actual, fault), `${label}: selectIsFaultActive(${fault})`).toBe(selectors.selectIsFaultActive(expected, fault));
   }
   expect(selectors.selectStorageActivity(actual), `${label}: selectStorageActivity`).toEqual(selectors.selectStorageActivity(expected));
-  // The 28 replicated slices, and the web's own chain check over the server's rows (CL-14).
+  // The 30 replicated slices, and the web's own chain check over the server's rows (CL-14).
   expect(wire(actual), `${label}: the replicated slices`).toEqual(wire(expected));
   expect(verifyAuditChain(actual.audit), `${label}: the chain check`).toEqual(verifyAuditChain(expected.audit));
   // The streamed slice and the clock.
@@ -326,7 +326,7 @@ describe('AC-C-07: a snapshot and the deltas of the recording scenario drive the
     const kinds = new Set(sentOps.map((op) => `${op.op} ${op.slice}`));
     expect([...kinds]).toEqual(expect.arrayContaining(['append audit', 'append events', 'replace audit', 'replace session', 'replace evidence', 'replace health']));
     expect(sentOps.filter((op) => op.op === 'append' && op.slice === 'audit').length).toBeGreaterThan(10);
-    // 28 replicated slices: the five others never travel as a slice.
+    // 30 replicated slices: the five others never travel as a slice.
     expect(new Set(sentOps.map((op) => op.slice)).size).toBeLessThanOrEqual(REPLICATED_SLICE_NAMES.length);
     for (const name of UNREPLICATED_SLICE_NAMES) expect(sentOps.some((op) => (op.slice as string) === name)).toBe(false);
     // The socket handed on every delta in order: no gap, no resync, nothing dropped, nothing reported.
@@ -555,7 +555,7 @@ describe('the neutral state: what a client holds while it holds no Core data (§
     expect(neutral.device.id).toBe('');
     expect(neutral.auth).toEqual({ status: 'SIGNED_OUT', operatorId: null, method: null, issuedAt: null, lastActivityAt: null });
     expect(neutral.pairing.state).toBe('UNPAIRED');
-    expect(neutral.audio.channels['AUDIO-01']).toMatchObject({ noSignal: true, dbfs: -90 });
+    expect(neutral.audio.inputs['MIC-01']).toMatchObject({ noSignal: true, dbfs: -90 });
     expect(selectors.selectIsSignedIn(neutral)).toBe(false);
     expect(selectors.selectLockout(neutral)).toEqual({ locked: false, lockedUntil: null, retryInMs: 0, attemptsRemaining: 5 });
   });

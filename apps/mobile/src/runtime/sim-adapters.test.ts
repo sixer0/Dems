@@ -74,7 +74,8 @@ describe('AsyncStorage persistence (04 §5.3 key dems.sim.v1)', () => {
     first.sim.flush();
 
     const snapshot = await storedSnapshot();
-    expect(snapshot?.version).toBe(1);
+    // SH-10: SIM_SNAPSHOT_VERSION is 2 since RECON-F2a; the envelope carries that version.
+    expect(snapshot?.version).toBe(2);
     expect((snapshot?.state.session as { id: string; state: string }).state).toBe('RECORDING');
     // The audio, clock and auth slices are never persisted; neither is an operator record (§6.4).
     expect(snapshot?.state).not.toHaveProperty('audio');

@@ -3,7 +3,7 @@ import '@/i18n'
 import { createElement, useLayoutEffect, type ReactNode } from 'react'
 import { act } from '@testing-library/react'
 import type { AudioTrackId } from '@dems/shared/domain'
-import { ALWAYS_VISIBLE, createSim, SimProvider, type AudioFrame, type ScenarioName, type Sim } from '@dems/shared/sim'
+import { ALWAYS_VISIBLE, createSim, MIC_INPUT_OF_CHANNEL, SimProvider, type AudioFrame, type ScenarioName, type Sim } from '@dems/shared/sim'
 import {
   MotionPolicyProvider,
   useAmbientSnapshot,
@@ -27,9 +27,12 @@ export function createTestSim(scenario: ScenarioName = 'idle'): Sim {
 export function pushAudioFrame(sim: Sim, channel: AudioTrackId, frame: Partial<AudioFrame>) {
   act(() => {
     sim.store.setState((state) => {
-      const previous = state.audio.channels[channel]
+      // The meters slice is keyed by mic input since schema v2 (SH-17); the channel a caller names
+      // writes the input that feeds it. The rest of the slice (activeInputId) is preserved.
+      const input = MIC_INPUT_OF_CHANNEL[channel]
+      const previous = state.audio.inputs[input]
       const next: AudioFrame = { ...previous, seq: previous.seq + 1, ...frame }
-      return { audio: { channels: { ...state.audio.channels, [channel]: next } } }
+      return { audio: { ...state.audio, inputs: { ...state.audio.inputs, [input]: next } } }
     })
   })
 }

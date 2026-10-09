@@ -81,6 +81,12 @@ export type ResetErrorCode =
   | 'RESET_ROLE_PRIVILEGED'
   /** R-0: another reset of this target holds the advisory lock. */
   | 'RESET_ALREADY_RUNNING'
+  /**
+   * R-0: real sealed evidence exists, in the database, on disk, or in both (`dbc-3` §E.2; OD-19,
+   * RK-16, SEC35-22). A precondition of the routine: it refuses before R-1, so nothing was
+   * quiesced and the target is exactly what it was.
+   */
+  | 'RESET_BLOCKED_REAL_EVIDENCE'
   /** R-1: the caller's quiesce hook failed. */
   | 'RESET_QUIESCE_FAILED'
   /** R-1, R-7: a session is open on the target (or on the staging database). Nobody's session is ended. */

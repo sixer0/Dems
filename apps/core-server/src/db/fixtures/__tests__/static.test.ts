@@ -47,6 +47,7 @@ describe('the folder of the bulk fixture', () => {
       'load.ts',
       'minimums.ts',
       'operations.ts',
+      'pipeline.ts',
       'recordings.ts',
       'report.ts',
       'rng.ts',

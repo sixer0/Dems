@@ -86,6 +86,9 @@ export const sessionNew = {
       LENS_2: 'Video Lens 2',
       MIC_1: 'MIC 1',
       MIC_2: 'MIC 2',
+      // Schema v2 (SH-03): the role-keyed pair — the input that is PRIMARY / STANDBY right now.
+      MIC_PRIMARY: 'MIC (primary)',
+      MIC_STANDBY: 'MIC (standby)',
       STORAGE: 'Storage',
       TIME: 'Time Sync',
       SECURITY: 'Security',

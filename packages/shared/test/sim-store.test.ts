@@ -62,7 +62,7 @@ function storedSnapshot(seed = 20261001): string {
 describe('persisted snapshot (dems.sim.v1)', () => {
   it('excludes the audio, clock and auth slices and keeps everything else', () => {
     const parsed = JSON.parse(storedSnapshot()) as { state: Record<string, unknown>; version: number };
-    expect(parsed.version).toBe(1);
+    expect(parsed.version).toBe(2);
     const keys = Object.keys(parsed.state);
     expect(keys).not.toContain('audio');
     expect(keys).not.toContain('clock');
@@ -110,7 +110,7 @@ describe('ready resolves after hydration (injected async storage)', () => {
     // Transient slices come from the live store, never from storage.
     expect(state.auth.status).toBe('SIGNED_OUT');
     expect(state.clock.now).toBe(START + 60_000);
-    expect(state.audio.channels['AUDIO-01'].noSignal).toBe(false);
+    expect(state.audio.inputs['MIC-01'].noSignal).toBe(false);
     expect(sim.errors()).toEqual([]);
   });
 
@@ -314,7 +314,7 @@ describe('transient audio subscription (the useAudioChannel path)', () => {
     const sim = createSim({ clock: createManualClock(START), storage: null, authStorage: null });
     const frames: number[] = [];
     const unsubscribe = sim.store.subscribe(
-      (state) => state.audio.channels['AUDIO-02'],
+      (state) => state.audio.inputs['MIC-02'],
       (frame) => frames.push(frame.dbfs),
       { fireImmediately: true },
     );
@@ -322,11 +322,11 @@ describe('transient audio subscription (the useAudioChannel path)', () => {
 
     const { audio } = sim.store.getState();
     sim.store.setState({
-      audio: { channels: { ...audio.channels, 'AUDIO-02': { ...audio.channels['AUDIO-02'], seq: 1, dbfs: -18 } } },
+      audio: { inputs: { ...audio.inputs, 'MIC-02': { ...audio.inputs['MIC-02'], seq: 1, dbfs: -18 } }, activeInputId: audio.activeInputId },
     });
     const after = sim.store.getState().audio;
     sim.store.setState({
-      audio: { channels: { ...after.channels, 'AUDIO-01': { ...after.channels['AUDIO-01'], seq: 1, dbfs: -20 } } },
+      audio: { inputs: { ...after.inputs, 'MIC-01': { ...after.inputs['MIC-01'], seq: 1, dbfs: -20 } }, activeInputId: after.activeInputId },
     });
     sim.actions.setTabletLink('OFFLINE');
     expect(frames).toEqual([-52, -18]);
@@ -367,7 +367,7 @@ describe('platform defaults outside a browser', () => {
       sim.flush();
       const dump = memory.dump();
       expect(JSON.parse(dump['dems.auth'] ?? 'null')).toEqual({ operatorId: 'OPR-002', issuedAt: START });
-      expect(dump[SIM_STORAGE_KEY]).toContain('"schemaVersion":1');
+      expect(dump[SIM_STORAGE_KEY]).toContain('"schemaVersion":2');
     } finally {
       vi.unstubAllGlobals();
     }

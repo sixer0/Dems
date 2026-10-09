@@ -37,9 +37,9 @@ const CREATE_BODY = {
 };
 
 describe('routes', () => {
-  it('lists the 9 simulated §21.2 operations', () => {
-    expect(SIM_API_ROUTES).toHaveLength(9);
-    expect(new Set(SIM_API_ROUTES.map((route) => route.operationId)).size).toBe(9);
+  it('lists the 22 simulated operations (9 book §21.2 plus the 13 of schema v2, OD-17)', () => {
+    expect(SIM_API_ROUTES).toHaveLength(22);
+    expect(new Set(SIM_API_ROUTES.map((route) => route.operationId)).size).toBe(22);
   });
 
   it('marks every response simulated and JSON, including errors', () => {
@@ -145,8 +145,21 @@ describe('status endpoints', () => {
     expect(health.systemState).toBe('CRITICAL');
     expect(health.time.source).toBe('NTP');
     expect(health.services.find((service) => service.name === 'Video Management Service')?.status).toBe('DEGRADED');
-    const audio = h.sim.request({ method: 'GET', path: '/api/v1/audio/status' }).body as { channels: { trackId: string; clip: boolean }[] };
-    expect(audio.channels.map((channel) => [channel.trackId, channel.clip])).toEqual([['AUDIO-01', false], ['AUDIO-02', true]]);
+    // Schema v2 (SH-15/SH-17): the read is keyed by the microphone INPUT, plus the active one.
+    const audio = h.sim.request({ method: 'GET', path: '/api/v1/audio/status' }).body as {
+      channels: { inputId: string; role: string; clip: boolean }[];
+      activeInputId: string;
+    };
+    expect(audio.channels.map((channel) => [channel.inputId, channel.role, channel.clip])).toEqual([
+      ['MIC-01', 'PRIMARY', false],
+      ['MIC-02', 'STANDBY', true],
+    ]);
+    expect(audio.activeInputId).toBe('MIC-01');
+    const healthAudio = (h.sim.request({ method: 'GET', path: '/api/v1/device/health' }).body as ApiDeviceHealth).audio;
+    expect(healthAudio.map((input) => [input.inputId, input.role])).toEqual([
+      ['MIC-01', 'PRIMARY'],
+      ['MIC-02', 'STANDBY'],
+    ]);
     const video = h.sim.request({ method: 'GET', path: '/api/v1/video/status' }).body as { tracks: { trackId: string; recState: string | null }[] };
     expect(video.tracks.map((track) => [track.trackId, track.recState])).toEqual([['VIDEO-01', 'REC'], ['VIDEO-02', 'LOST']]);
   });
@@ -174,7 +187,8 @@ describe('POST /evidence/{id}/export (RBAC + audit, S20)', () => {
     h.sim.actions.signOut();
     h.sim.actions.signIn('andi.pratama', 'demo-2026');
     const accepted = h.sim.request({ method: 'POST', path: path(id), body });
-    expect(accepted).toMatchObject({ status: 202, body: { evidenceId: id, status: 'EXPORTED' } });
+    // Schema v2 (C3 §3 op 42): the answer is the queue receipt; the item's lifecycle is separate.
+    expect(accepted).toMatchObject({ status: 202, body: { evidenceId: id, status: 'QUEUED' } });
     expect(h.state().evidence[0]).toMatchObject({ status: 'EXPORTED', lifecycleStage: 'AUTHORIZED_EXPORT_TRANSFER' });
     expect(h.state().audit.rows.at(-1)).toMatchObject({ type: 'EVIDENCE_EXPORTED', actorId: 'OPR-002', details: { destination: body.destination } });
   });
@@ -189,5 +203,305 @@ describe('POST /evidence/{id}/export (RBAC + audit, S20)', () => {
     expect(h.sim.request({ method: 'POST', path: path(sealed), body: { reason: 'no' } }).status).toBe(422);
     h.sim.actions.inject('TPM_FAILURE');
     expect(h.sim.request({ method: 'POST', path: path(sealed), body })).toMatchObject({ status: 409, body: { error: { code: 'SECURITY_FAULT' } } });
+  });
+});
+
+// ── Schema v2 capture paths (task 3 M2-W9b, blueprint row 51a; OD-17; C3 §2 ops 76-87, 89) ──────
+
+interface CaptureConfigBody {
+  cameras: { trackId: string; deviceId: string; streamState: string }[];
+  mics: { inputId: string; deviceId: string; role: string }[];
+  locked: boolean;
+  updatedAt: number;
+}
+
+const CAPTURE_CONFIG_PATH = '/api/v1/capture/config';
+const CAPTURE_DEVICES_PATH = '/api/v1/capture/devices';
+
+describe('GET /capture/config and /capture/devices (ops 76/77)', () => {
+  it('answers a signed-in operator with the two slices and nothing that reads like a credential', () => {
+    const h = harness();
+    expect(h.sim.request({ method: 'GET', path: CAPTURE_CONFIG_PATH }).status).toBe(401);
+    expect(h.sim.request({ method: 'GET', path: CAPTURE_DEVICES_PATH }).status).toBe(401);
+    h.sim.actions.signIn('budi.santoso', 'demo-2026');
+    const config = h.sim.request({ method: 'GET', path: CAPTURE_CONFIG_PATH }).body as CaptureConfigBody;
+    expect(config.cameras.map((camera) => [camera.trackId, camera.deviceId, camera.streamState])).toEqual([
+      ['VIDEO-01', 'CAM-01', 'LIVE'],
+      ['VIDEO-02', 'CAM-02', 'LIVE'],
+    ]);
+    expect(config.mics.map((mic) => [mic.inputId, mic.role])).toEqual([
+      ['MIC-01', 'PRIMARY'],
+      ['MIC-02', 'STANDBY'],
+    ]);
+    expect(config.locked).toBe(false);
+    const devices = h.sim.request({ method: 'GET', path: CAPTURE_DEVICES_PATH }).body as { devices: { id: string; kind: string }[] };
+    expect(devices.devices.map((device) => [device.id, device.kind])).toEqual([
+      ['CAM-01', 'CAMERA'],
+      ['CAM-02', 'CAMERA'],
+      ['MIC-01', 'MIC'],
+      ['MIC-02', 'MIC'],
+      ['POE-SWITCH', 'POE'],
+    ]);
+    // RK-12: no member of any capture answer is a credential.
+    expect(JSON.stringify(devices)).not.toMatch(/secret|password|username/i);
+  });
+});
+
+describe('POST /capture/* (ops 78/79/80/89): RBAC, the idle lock, the audit rows', () => {
+  it('refuses INVESTIGATOR, validates the body, edits while idle and audits every change', () => {
+    const h = harness();
+    h.sim.actions.signIn('budi.santoso', 'demo-2026');
+    expect(
+      h.sim.request({ method: 'POST', path: CAPTURE_CONFIG_PATH, body: { mics: [{ inputId: 'MIC-02', deviceId: 'MIC-02' }] } }),
+    ).toMatchObject({ status: 403, body: { error: { code: 'NOT_PERMITTED' } } });
+
+    h.sim.actions.signOut();
+    h.sim.actions.signIn('rina.wijaya', 'demo-2026');
+    expect(h.sim.request({ method: 'POST', path: CAPTURE_CONFIG_PATH, body: '[1]' }).status).toBe(400);
+    expect(h.sim.request({ method: 'POST', path: CAPTURE_CONFIG_PATH, body: { cameras: [{ trackId: 'VIDEO-09', deviceId: 'CAM-01' }] } }).status).toBe(422);
+
+    const updated = h.sim.request({ method: 'POST', path: CAPTURE_CONFIG_PATH, body: { cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-02' }] } });
+    expect((updated.body as CaptureConfigBody).cameras[0]?.deviceId).toBe('CAM-02');
+    expect(h.state().audit.rows.at(-1)).toMatchObject({
+      type: 'CAPTURE_CONFIG_CHANGED',
+      actorId: 'OPR-003',
+      details: { operationId: 'updateCaptureConfig', scope: 'CAMERA', field: 'SOURCE', trackId: 'VIDEO-01', from: 'CAM-01', to: 'CAM-02' },
+    });
+
+    expect(h.sim.request({ method: 'POST', path: '/api/v1/capture/cameras/CAM-01/source', body: { trackId: 'VIDEO-02' } }).status).toBe(200);
+    expect(h.sim.request({ method: 'POST', path: '/api/v1/capture/cameras/GHOST/source', body: { trackId: 'VIDEO-02' } }).status).toBe(404);
+
+    const primary = h.sim.request({ method: 'POST', path: '/api/v1/capture/mics/MIC-02/primary' });
+    expect((primary.body as CaptureConfigBody).mics.map((mic) => [mic.inputId, mic.role])).toEqual([
+      ['MIC-01', 'STANDBY'],
+      ['MIC-02', 'PRIMARY'],
+    ]);
+    expect(h.state().audit.rows.at(-1)).toMatchObject({
+      type: 'CAPTURE_CONFIG_CHANGED',
+      details: { operationId: 'setPrimaryMic', scope: 'MIC', field: 'ROLE', inputId: 'MIC-02', from: 'STANDBY', to: 'PRIMARY' },
+    });
+    // The health read follows the selector (op 44 v2).
+    const health = h.sim.request({ method: 'GET', path: '/api/v1/device/health' }).body as ApiDeviceHealth;
+    expect([health.activeInputId, health.audio[0]?.role, health.audio[1]?.role]).toEqual(['MIC-01', 'STANDBY', 'PRIMARY']);
+  });
+
+  it('stores a credential write-only: the answer is the selector and the row names the device (RK-12)', () => {
+    const h = harness();
+    h.sim.actions.signIn('rina.wijaya', 'demo-2026');
+    expect(h.sim.request({ method: 'POST', path: '/api/v1/capture/devices/CAM-01/credential', body: { username: 'admin' } }).status).toBe(422);
+    const accepted = h.sim.request({
+      method: 'POST',
+      path: '/api/v1/capture/devices/CAM-01/credential',
+      body: { username: 'operator-onvif', secret: 'never-echoed-value' },
+    });
+    expect(accepted.status).toBe(200);
+    expect(JSON.stringify(accepted.body)).not.toMatch(/operator-onvif|never-echoed-value/);
+    expect(h.state().audit.rows.at(-1)).toMatchObject({
+      type: 'CAPTURE_CREDENTIAL_SET',
+      actorId: 'OPR-003',
+      deviceId: 'CAM-01',
+      details: { operationId: 'setCaptureDeviceCredential', deviceId: 'CAM-01' },
+    });
+    expect(JSON.stringify(h.state().audit.rows)).not.toMatch(/never-echoed-value/);
+  });
+});
+
+describe('POST+GET /session/{id}/audio-source and GET /session/{id}/sealing (ops 81/82/83)', () => {
+  function recording() {
+    const h = harness();
+    h.sim.actions.signIn('budi.santoso', 'demo-2026');
+    h.sim.request({ method: 'POST', path: '/api/v1/session', body: CREATE_BODY });
+    const id = h.state().session?.id ?? '';
+    h.sim.request({ method: 'POST', path: `/api/v1/session/${id}/start` });
+    h.run(5_000);
+    h.sim.request({ method: 'POST', path: `/api/v1/session/${id}/start` });
+    h.run(2_000);
+    return { h, id };
+  }
+
+  it('switches the active input, records the interval, and locks the capture selector (OD-09/OD-10)', () => {
+    const { h, id } = recording();
+    expect(h.sim.request({ method: 'POST', path: `/api/v1/session/${id}/audio-source`, body: '[1]' }).status).toBe(400);
+    expect(h.sim.request({ method: 'POST', path: `/api/v1/session/${id}/audio-source`, body: { inputId: 'MIC-09' } }).status).toBe(422);
+    expect(h.sim.request({ method: 'POST', path: '/api/v1/session/SES-20261001-9999/audio-source', body: { inputId: 'MIC-02' } }).status).toBe(404);
+
+    const switched = h.sim.request({
+      method: 'POST',
+      path: `/api/v1/session/${id}/audio-source`,
+      body: { inputId: 'MIC-02', reason: 'Subject answers' },
+    });
+    expect(switched).toMatchObject({ status: 200, body: { sessionId: id, activeInputId: 'MIC-02', standbyInputId: 'MIC-01' } });
+    expect(h.state().audio.activeInputId).toBe('MIC-02');
+    expect(h.state().audit.rows.at(-1)).toMatchObject({ type: 'AUDIO_SOURCE_SWITCHED', actorId: 'OPR-001', sessionId: id });
+
+    const intervals = h.sim.request({ method: 'GET', path: `/api/v1/session/${id}/audio-source` }).body as {
+      items: { seq: number; inputId: string; reason: string; toMs: number | null }[];
+      nextCursor: string | null;
+    };
+    expect(intervals.nextCursor).toBeNull();
+    expect(intervals.items.map((item) => [item.seq, item.inputId, item.reason])).toEqual([
+      [1, 'MIC-02', 'MANUAL'],
+      [0, 'MIC-01', 'START'],
+    ]);
+    expect(intervals.items[0]?.toMs).toBeNull();
+    expect(intervals.items[1]?.toMs).not.toBeNull();
+
+    // RBAC before the lock: an INVESTIGATOR cannot edit the selector even while it is unlocked.
+    expect(
+      h.sim.request({ method: 'POST', path: CAPTURE_CONFIG_PATH, body: { mics: [{ inputId: 'MIC-01', deviceId: 'MIC-01' }] } }),
+    ).toMatchObject({ status: 403, body: { error: { code: 'NOT_PERMITTED' } } });
+    expect((h.sim.request({ method: 'GET', path: CAPTURE_CONFIG_PATH }).body as CaptureConfigBody).locked).toBe(true);
+  });
+
+  it('refuses a capture edit with 409 CAPTURE_CONFIG_LOCKED and writes no audit row (SEC35-19)', () => {
+    const h = harness();
+    // A SUPERVISOR holds both SESSION_START and CAPTURE_CONFIG, so only the lock can refuse here.
+    h.sim.actions.signIn('andi.pratama', 'demo-2026');
+    h.sim.request({ method: 'POST', path: '/api/v1/session', body: CREATE_BODY });
+    const id = h.state().session?.id ?? '';
+    h.sim.request({ method: 'POST', path: `/api/v1/session/${id}/start` });
+    h.run(5_000);
+    h.sim.request({ method: 'POST', path: `/api/v1/session/${id}/start` });
+    const before = h.state().audit.rows.length;
+    for (const request of [
+      { method: 'POST' as const, path: CAPTURE_CONFIG_PATH, body: { mics: [{ inputId: 'MIC-01', deviceId: 'MIC-01' }] } },
+      { method: 'POST' as const, path: '/api/v1/capture/cameras/CAM-01/source', body: { trackId: 'VIDEO-02' } },
+      { method: 'POST' as const, path: '/api/v1/capture/mics/MIC-02/primary' },
+      { method: 'POST' as const, path: '/api/v1/capture/devices/CAM-01/credential', body: { username: 'u', secret: 's' } },
+    ]) {
+      expect(h.sim.request(request)).toMatchObject({ status: 409, body: { error: { code: 'CAPTURE_CONFIG_LOCKED' } } });
+    }
+    expect(h.state().audit.rows.length).toBe(before);
+  });
+
+  it('reports the v2 sealing steps once sealing starts, and 409 before it does', () => {
+    const { h, id } = recording();
+    expect(h.sim.request({ method: 'GET', path: `/api/v1/session/${id}/sealing` })).toMatchObject({
+      status: 409,
+      body: { error: { code: 'INVALID_STATE' } },
+    });
+    h.sim.request({ method: 'POST', path: `/api/v1/session/${id}/stop`, body: { reason: 'Interview completed' } });
+    h.run(6_000);
+    const progress = h.sim.request({ method: 'GET', path: `/api/v1/session/${id}/sealing` }).body as {
+      state: string;
+      steps: { id: string; status: string }[];
+      progressPct: number;
+      etaMs: number | null;
+      resumed: boolean;
+    };
+    expect(progress.steps.map((step) => step.id)).toEqual([
+      'CLOSE_TRACKS',
+      'FINALIZE_HASHES',
+      'FINALIZE_TRANSCRIPT',
+      'BUILD_MANIFEST',
+      'SIGN_MANIFEST',
+      'STORE_SEALED_PACKAGE',
+    ]);
+    expect(progress.progressPct).toBeGreaterThan(0);
+    expect(progress.progressPct).toBeLessThanOrEqual(100);
+    expect(progress.resumed).toBe(false);
+    h.run(20_000);
+    const sealed = h.sim.request({ method: 'GET', path: `/api/v1/session/${id}/sealing` }).body as { progressPct: number; etaMs: number | null };
+    expect(sealed).toMatchObject({ progressPct: 100, etaMs: 0 });
+  });
+});
+
+describe('transcript and export-job endpoints (ops 84/85/86/87)', () => {
+  it('409 for an item without a transcript, the stub for one that has, then a signed revision', () => {
+    const h = harness();
+    h.sim.actions.signIn('budi.santoso', 'demo-2026');
+    const legacy = h.state().evidence.find((item) => !item.transcriptSha256)?.id ?? '';
+    expect(h.sim.request({ method: 'GET', path: `/api/v1/evidence/${legacy}/transcript` })).toMatchObject({
+      status: 409,
+      body: { error: { code: 'TRANSCRIPT_NOT_READY' } },
+    });
+    expect(h.sim.request({ method: 'GET', path: '/api/v1/evidence/EV-19700101-9999/transcript' }).status).toBe(404);
+
+    // Seal a session live: the v2 seal binds a transcript hash (SH-07), which op 84 then serves.
+    h.sim.request({ method: 'POST', path: '/api/v1/session', body: CREATE_BODY });
+    const id = h.state().session?.id ?? '';
+    h.sim.request({ method: 'POST', path: `/api/v1/session/${id}/start` });
+    h.run(5_000);
+    h.sim.request({ method: 'POST', path: `/api/v1/session/${id}/start` });
+    h.run(2_000);
+    h.sim.request({ method: 'POST', path: `/api/v1/session/${id}/stop`, body: { reason: 'Interview completed' } });
+    h.run(20_000);
+    const sealedItem = h.state().evidence.find((item) => item.sessionId === id && item.transcriptSha256);
+    expect(sealedItem?.transcriptSha256).toMatch(/^[0-9a-f]{64}$/);
+    const evidencePath = `/api/v1/evidence/${sealedItem?.id ?? ''}`;
+
+    const document = h.sim.request({ method: 'GET', path: `${evidencePath}/transcript` }).body as {
+      documentVersion: string;
+      language: string;
+      segments: unknown[];
+      machineTranscriptHash: string;
+      revision: number;
+    };
+    expect(document).toMatchObject({
+      documentVersion: 'dems.transcript/1',
+      language: 'id',
+      machineTranscriptHash: sealedItem?.transcriptSha256,
+      revision: 0,
+    });
+    // D-EV-1: the simulator never invents segment text.
+    expect(document.segments).toEqual([]);
+
+    expect(
+      h.sim.request({
+        method: 'POST',
+        path: `${evidencePath}/transcript/revisions`,
+        body: { baseRevision: 7, changes: [{ segmentIndex: 0, from: 'a', to: 'b' }] },
+      }),
+    ).toMatchObject({ status: 409, body: { error: { code: 'TRANSCRIPT_REVISION_CONFLICT' } } });
+
+    const created = h.sim.request({
+      method: 'POST',
+      path: `${evidencePath}/transcript/revisions`,
+      body: { baseRevision: 0, changes: [{ segmentIndex: 0, from: 'selamat pagi', to: 'Selamat pagi.' }], note: 'Punctuation' },
+    });
+    expect(created).toMatchObject({
+      status: 201,
+      body: { revisionId: 'TRV-000001', number: 1, authorId: 'OPR-001', baseRevision: 0, machineTranscriptHash: sealedItem?.transcriptSha256 },
+    });
+    expect((created.body as { signature: { algorithm: string; simulated: boolean } }).signature).toMatchObject({
+      algorithm: 'SIMULATED-SHA256',
+      simulated: true,
+    });
+    const listed = h.sim.request({ method: 'GET', path: `${evidencePath}/transcript/revisions` }).body as { items: { number: number }[] };
+    expect(listed.items.map((item) => item.number)).toEqual([1]);
+    // The sealed hash is byte-unchanged by the revision (OD-15).
+    expect(h.state().evidence.find((item) => item.id === sealedItem?.id)?.transcriptSha256).toBe(sealedItem?.transcriptSha256);
+    expect(h.state().audit.rows.at(-1)).toMatchObject({
+      type: 'TRANSCRIPT_REVISED',
+      actorId: 'OPR-001',
+      details: { revisionId: 'TRV-000001', number: 1, baseRevision: 0, changeCount: 1 },
+    });
+  });
+
+  it('polls the export job op 42 queued to COMPLETE (op 87)', () => {
+    const h = harness();
+    h.sim.actions.signIn('andi.pratama', 'demo-2026');
+    const sealed = h.state().evidence.find((item) => item.status === 'SEALED')?.id ?? '';
+    const accepted = h.sim.request({
+      method: 'POST',
+      path: `/api/v1/evidence/${sealed}/export`,
+      body: { reason: 'Case file handover for prosecutor review', destination: 'Case file transfer (simulated)' },
+    });
+    expect(accepted).toMatchObject({ status: 202, body: { status: 'QUEUED' } });
+    const exportId = (accepted.body as { exportId: string }).exportId;
+    const jobId = `EXPJ-${exportId.slice('EXP-'.length)}`;
+    expect(h.sim.request({ method: 'GET', path: `/api/v1/evidence/exports/${jobId}` }).body).toMatchObject({
+      jobId,
+      evidenceId: sealed,
+      kind: 'PACKAGE',
+      status: 'COMPLETE',
+      progressPct: 100,
+      derived: false,
+    });
+    expect(h.sim.request({ method: 'GET', path: '/api/v1/evidence/exports/EXPJ-000001' }).status).toBe(404);
+    expect(h.sim.request({ method: 'GET', path: '/api/v1/evidence/exports/not-a-job' }).status).toBe(422);
+    h.sim.actions.signOut();
+    h.sim.actions.signIn('budi.santoso', 'demo-2026');
+    expect(h.sim.request({ method: 'GET', path: `/api/v1/evidence/exports/${jobId}` }).status).toBe(403);
   });
 });

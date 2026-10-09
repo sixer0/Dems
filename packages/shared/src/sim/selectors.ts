@@ -332,6 +332,10 @@ export const SYSTEM_FLAG_IDS = [
   'TAMPER',
   'TABLET_OFFLINE',
   'RECOVERY',
+  // Schema v2 (task 3 M2-W6, register SH-03): the two capture-path faults. `MIC_SILENT` warns and
+  // never switches anything (OD-11); `CAPTURE_FAULT` is critical (`dbc-3 §C.2`).
+  'MIC_SILENT',
+  'CAPTURE_FAULT',
 ] as const;
 export type SystemFlagId = (typeof SYSTEM_FLAG_IDS)[number];
 
@@ -347,6 +351,14 @@ export function systemStatus(s: SimState): SystemStatusDetail {
   if (s.faults.active.some((fault) => fault.kind === 'POWER_FAIL')) critical('POWER_FAIL', 'Power fail');
   if (s.faults.active.some((fault) => fault.kind === 'AUDIT_TAMPER')) {
     critical('AUDIT_CHAIN', 'Audit chain discontinuity');
+  }
+  // Schema v2 (SH-03): a stalled capture file is critical; a silent mic only warns and the operator
+  // decides (OD-11 — the Core never switches on its own).
+  if (s.faults.active.some((fault) => fault.kind === 'CAPTURE_FAULT')) {
+    critical('CAPTURE_FAULT', 'Capture fault: a recording file stopped growing');
+  }
+  if (s.faults.active.some((fault) => fault.kind === 'MIC_SILENT')) {
+    warning('MIC_SILENT', 'Microphone silent: below the silence level for 10 s');
   }
   if (s.storage.state === 'FULL') critical('STORAGE_FULL', 'Evidence storage full');
   if (s.security.state === 'FAULT') critical('SECURITY_FAULT', 'Security fault');
@@ -441,6 +453,10 @@ export const FLAG_CHECKLIST_ROW = {
   TAMPER: 'tamper',
   TABLET_OFFLINE: 'tablet',
   RECOVERY: 'recording',
+  // Schema v2 (SH-03): a silent mic is an input problem; a file that stopped growing is a
+  // recording problem (`dbc-3 §C.2` severities; OD-11 never blocks the input row alone).
+  MIC_SILENT: 'inputs',
+  CAPTURE_FAULT: 'recording',
 } as const satisfies Record<SystemFlagId, IntegrityChecklistId>;
 
 const CHECK_RANK = { OK: 0, ATTENTION: 1, CRITICAL: 2 } as const satisfies Record<IntegrityCheckStatus, number>;

@@ -1,6 +1,8 @@
 /**
- * The eight kept tables and how their rows cross a reset (plan row W29; database contract §8.5
- * "Kept tables", R-3, R-5c, R-5d, R-5e, R-6; spec §12.4; SA-08).
+ * The twelve kept tables and how their rows cross a reset (plan row W29; database contract §8.5
+ * "Kept tables", R-3, R-5c, R-5d, R-5e, R-6; spec §12.4; SA-08; the three capture tables and the
+ * `upsert` mode are dbc-3 §E.1 / blueprint row 54, OD-19, D-DB-08; `stt_config` joins the same set
+ * as the twelfth by dbc-3 §B.13/§E.1 and blueprint row 114, R-8 of D20 confirmed at D24).
  *
  * Pure: this file builds statement text from the typed schema and compares row images. It opens
  * nothing and sends nothing.
@@ -35,9 +37,13 @@ import * as schema from '../schema';
 /**
  * `update`: the seed has already written the table's rows (the two registry counters, the one
  * settings row); the carried values replace the seeded ones. `insert`: the seed leaves the table
- * empty; the carried rows are inserted with their primary keys.
+ * empty; the carried rows are inserted with their primary keys. `upsert` (D-DB-08, the three
+ * capture tables of dbc-3 §E.1 plus `stt_config` of §B.13): the seed writes the built-ins by key
+ * and the runtime may have added or edited rows of its own, so a carried row replaces the seeded
+ * row it names and is inserted when the seed does not know it — a real discovered device survives,
+ * an edited STT configuration survives, and a built-in the seed adds later still arrives.
  */
-export type CarryMode = 'update' | 'insert';
+export type CarryMode = 'update' | 'insert' | 'upsert';
 
 export interface KeptTable {
   /** SQL name, in schema `public`. */
@@ -56,8 +62,12 @@ function kept(table: PgTable, mode: CarryMode, key: string): KeptTable {
 }
 
 /**
- * The eight kept tables, in the carry-over order of R-5c: parents before the rows that name
- * them (a device names its pairing code; a session and a token name a device).
+ * The twelve kept tables, in the carry-over order of R-5c: parents before the rows that name
+ * them (a device names its pairing code; a session and a token name a device). The three capture
+ * tables of OD-19 join it in their own FK order — devices, then credentials, then the selector
+ * that names a device (dbc-3 §E.1) — followed by the STT configuration singleton of R-8 (its one
+ * foreign key names an operator, a table the seed has already written), and the lineage stays
+ * last.
  */
 export const KEPT_TABLES: readonly KeptTable[] = Object.freeze([
   kept(schema.registryCounters, 'update', 'name'),
@@ -67,12 +77,22 @@ export const KEPT_TABLES: readonly KeptTable[] = Object.freeze([
   kept(schema.deviceCredentials, 'insert', 'device_id'),
   kept(schema.authSessions, 'insert', 'id'),
   kept(schema.biometricTokens, 'insert', 'id'),
+  kept(schema.captureDevices, 'upsert', 'id'),
+  kept(schema.captureDeviceCredentials, 'upsert', 'device_id'),
+  kept(schema.captureConfig, 'upsert', 'singleton'),
+  kept(schema.sttConfig, 'upsert', 'singleton'),
   kept(schema.auditChainHistory, 'insert', 'reset_no'),
 ]);
 
 export const KEPT_TABLE_NAMES: readonly string[] = Object.freeze(KEPT_TABLES.map((table) => table.name));
 export const PAIRING_CODES = 'pairing_codes';
 export const LINEAGE = 'audit_chain_history';
+/** The three KEPT capture tables of OD-19, in carry order (dbc-3 §E.1; blueprint row 54). */
+export const CAPTURE_KEPT_TABLES: readonly string[] = Object.freeze([
+  'capture_devices',
+  'capture_device_credentials',
+  'capture_config',
+]);
 
 /** Rows per carried statement: one JSON array parameter each. */
 export const CARRY_CHUNK_ROWS = 500;
@@ -121,8 +141,25 @@ export function updateCarriedStatement(table: KeptTable): string {
   );
 }
 
+/** R-5c, `upsert` tables (D-DB-08): a carried row replaces the seeded row of the same key and is
+ * inserted when the seed does not know it. The images arrive in primary-key order, so the
+ * statement needs no ORDER BY: `ON CONFLICT` follows the source query, and the chunks preserve the
+ * order in which R-3 read the rows. */
+export function upsertCarriedStatement(table: KeptTable): string {
+  const columns = table.columns.map(quoted).join(', ');
+  const values = table.columns.map((column) => `c.${quoted(column)}`).join(', ');
+  const carried = table.columns.filter((column) => column !== table.key);
+  // A key-only table cannot be updated; its carried rows are then simply kept as they are.
+  const conflict =
+    carried.length === 0
+      ? 'ON CONFLICT DO NOTHING'
+      : `ON CONFLICT (${quoted(table.key)}) DO UPDATE SET ${carried.map((column) => `${quoted(column)} = EXCLUDED.${quoted(column)}`).join(', ')}`;
+  return `INSERT INTO public.${table.name} (${columns}) SELECT ${values} FROM jsonb_populate_recordset(NULL::public.${table.name}, $1::jsonb) AS c ${conflict}`;
+}
+
 /** The statement of R-5c for a table. */
 export function carryStatement(table: KeptTable): string {
+  if (table.mode === 'upsert') return upsertCarriedStatement(table);
   return table.mode === 'insert' ? insertCarriedStatement(table) : updateCarriedStatement(table);
 }
 
@@ -179,7 +216,7 @@ export interface PairingCodeImage {
   readonly closedBy: string | null;
 }
 
-/** What the routine read from one database: the images of the eight kept tables. */
+/** What the routine read from one database: the images of the twelve kept tables. */
 export interface KeptImages {
   /** By SQL table name; each list is in primary-key order. */
   readonly images: Readonly<Record<string, readonly string[]>>;
@@ -205,6 +242,8 @@ export interface CarryExpectation {
  *   insert tables   same number of rows, and each image equal;
  *   update tables   the same, when the old database held rows of the table; a database that was
  *                   never seeded has none, and the seed's rows then stay;
+ *   upsert tables   every carried image is present, in the order it was read; a row the seed wrote
+ *                   and the old database did not know may be there besides them (D-DB-08);
  *   pairing codes   a code that was ACTIVE is CANCELLED, closed at `now` by the actor, and equal
  *                   in every other column; every other code is equal as a whole;
  *   lineage         the carried rows equal and first, then exactly one more when a chain was
@@ -234,6 +273,19 @@ export function compareCarried(carried: KeptImages, built: KeptImages, expectati
           if (!closed) problems.push(`${table.name}: the code that was ACTIVE (row ${index + 1}) is not closed as CANCELLED by this reset.`);
         } else if (now.image !== old.image) {
           problems.push(`${table.name}: row ${index + 1} differs from the row that was read.`);
+        }
+      });
+      continue;
+    }
+
+    if (table.mode === 'upsert') {
+      let cursor = 0;
+      before.forEach((image, index) => {
+        while (cursor < after.length && after[cursor] !== image) cursor += 1;
+        if (cursor >= after.length) {
+          problems.push(`${table.name}: row ${index + 1} of the rows that were read is not in the new database.`);
+        } else {
+          cursor += 1;
         }
       });
       continue;

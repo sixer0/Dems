@@ -9,7 +9,12 @@
  *                   the role check; the advisory lock (442001, slot)
  *   R-1  quiesce    the caller's hook (the server closes its pool); no session on the target
  *   R-2  leftovers  `<t>_next`, `<t>_prev` of an earlier run
- *   R-3  read       the kept data of `<t>`, one REPEATABLE READ, READ ONLY transaction
+ *   R-3  read       the kept data of `<t>`, one REPEATABLE READ, READ ONLY transaction; the
+ *                   real-evidence guard of `dbc-3` §E.2 runs here as `dems_owner` (a REAL sealed
+ *                   package in the database or on disk refuses with `RESET_BLOCKED_REAL_EVIDENCE`,
+ *                   before R-4 creates anything, so the target is untouched). The server-side
+ *                   caller refuses earlier still — before it quiesces — through
+ *                   `assertNoRealSealedEvidence` on its own pool (operation 75 / `loadScenario`)
  *   R-4  create     `<t>_next`
  *   R-5  build      migrations; then ONE transaction: seed, carry-over, ACTIVE code closed,
  *                   last sign-in, lineage row, SCENARIO_LOADED
@@ -44,6 +49,7 @@ import { recordActivity } from '@dems/shared/sim';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import type { Pool, PoolClient, QueryResult, QueryResultRow } from 'pg';
 import type { DatabaseConnection } from '../../config';
+import { evidenceStoreRoot, type EvidenceStoreScan } from '../commands/evidence-store';
 import { applyMigrations, readSchemaVersion } from '../commands/migrations';
 import {
   DbCommandError,
@@ -96,6 +102,7 @@ import {
 } from './kept-tables';
 import { RESET_LOCK_CLASS, createStagingStatement, dropStatement, guardResetTarget, recoverStatement, swapStatements, type DisposableDatabase, type ResetTarget } from './names';
 import { assertNow, planReset, resolveRequest, scenarioLoadedActivity, type LineageRow, type ResetPlan, type ResetRequest, type SourceFacts } from './plan';
+import { findRealSealedEvidence, realEvidenceDetails, realEvidenceMessage } from './real-evidence';
 
 /** `application_name` of every connection of the routine, unless the caller names another. */
 export const RESET_APPLICATION_NAME = 'dems-db-reset';
@@ -205,6 +212,11 @@ export interface ResetOptions {
    * environment (review findings CPB1-22, W91-7). Omitted: nothing is removed.
    */
   readonly driverEnvironment?: Record<string, string | undefined> | undefined;
+  /**
+   * The evidence-store package directory the real-evidence guard of R-0 reads (`dbc-3` §E.2).
+   * Default: `<dataDir>/media/sessions`, the media root of `cap` §H.
+   */
+  readonly evidenceStoreDir?: string | undefined;
 }
 
 /** Seams for tests. No entry point sets any of them, and no argument or environment variable reaches them. */
@@ -217,6 +229,8 @@ export interface ResetInternals {
   readonly migrationsFolder?: string | undefined;
   /** Another password hasher for the seed. */
   readonly seedDependencies?: SeedDependencies | undefined;
+  /** Another reader of the evidence-store directory, for the disk side of the R-0 guard. */
+  readonly readEvidenceStore?: ((root: string) => EvidenceStoreScan) | undefined;
 }
 
 export interface ResetReport {
@@ -508,6 +522,15 @@ export async function resetDatabase(options: ResetOptions, internals: ResetInter
     const version = await main.query<{ version: string }>(SERVER_VERSION_STATEMENT);
     const serverVersion = version.rows[0]?.version ?? 'unknown';
 
+    // The real-evidence guard of `dbc-3` §E.2 is authoritative here as `dems_owner`, but it runs at
+    // the start of R-3 (inside the one read-only pass over the target), not on a separate R-0
+    // connection: the routine touches the target exactly once, after R-1 quieted it, and a refusal
+    // still happens before R-4 creates any staging database, so the target is left untouched. The
+    // server-side caller refuses BEFORE it quiesces (operation 75 / `loadScenario` call
+    // `assertNoRealSealedEvidence` on its own pool; C3 §4 answers 409), which is where the audited
+    // pre-quiesce refusal lives (`OD-19`, RK-16). A database that was never migrated reports
+    // `RESET_SCHEMA_MISMATCH` first, because that check precedes the guard inside R-3.
+
     // ── R-1 Quiesce ────────────────────────────────────────────────────────────────────────────
     await enter('R-1');
     if (options.quiesce !== undefined) {
@@ -596,7 +619,11 @@ export async function resetDatabase(options: ResetOptions, internals: ResetInter
     if (targetExists) {
       sideDatabase = target.name;
       side = openPool(target.name);
-      const read = await readSource(side, target, assertOwnerRole);
+      const read = await readSource(side, target, assertOwnerRole, {
+        log,
+        storeRoot: options.evidenceStoreDir ?? evidenceStoreRoot(options.dataDir),
+        readStore: internals.readEvidenceStore,
+      });
       carried = read.kept;
       facts = read.facts;
       await closeSide();
@@ -880,13 +907,14 @@ async function readKept(client: Queryable): Promise<KeptImages> {
 
 /**
  * R-3: everything the routine needs of the old database, in ONE transaction at REPEATABLE READ,
- * READ ONLY: the eight kept tables, the epoch, and the facts of the chain being discarded. The
+ * READ ONLY: the twelve kept tables, the epoch, and the facts of the chain being discarded. The
  * transaction changes nothing; the connection is released before the function returns.
  */
 async function readSource(
   pool: Pool,
   target: ResetTarget,
   assertOwnerRole: (client: Queryable) => Promise<void>,
+  guard: { log: (entry: ResetLogEntry) => void; storeRoot: string; readStore: ((root: string) => EvidenceStoreScan) | undefined },
 ): Promise<{ kept: KeptImages; facts: SourceFacts }> {
   const client = await pool.connect();
   client.on('error', noop);
@@ -907,6 +935,16 @@ async function readSource(
           'R-3',
           `refused: ${target.name} ${state}; this code builds version ${DB_SCHEMA_VERSION} (${DB_CONTRACT_REVISION}). Migrate first: npm run db:migrate -w @dems/core-server -- --database ${target.name}. Nothing was changed.`,
         );
+      }
+      // The authoritative real-evidence guard of `dbc-3` §E.2, as `dems_owner`, inside this one
+      // read-only pass and before R-4 creates any staging database: a REAL sealed item in the
+      // database or on disk refuses with the target untouched. It runs after the schema-version
+      // check above, so an unmigrated database still reports `RESET_SCHEMA_MISMATCH` first.
+      const evidence = await findRealSealedEvidence(client, { database: target.name, storeRoot: guard.storeRoot, readStore: guard.readStore });
+      if (evidence.blocked) {
+        const refusal = realEvidenceMessage(evidence);
+        guard.log({ level: 'warn', code: 'RESET_BLOCKED_REAL_EVIDENCE', message: refusal, details: realEvidenceDetails(evidence) });
+        throw new ResetError('RESET_BLOCKED_REAL_EVIDENCE', 'R-3', refusal);
       }
       const kept = await readKept(client);
       const read = await client.query<{

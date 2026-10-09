@@ -17,6 +17,8 @@ import type {
   EvidenceLifecycleStage,
   FinalizationStep,
   LensState,
+  MicInputId,
+  MicRole,
   MicState,
   NetworkDomain,
   SecurityState,
@@ -34,6 +36,8 @@ import type {
   AuditType,
   AuthMethod,
   AuthStatus,
+  CaptureDeviceKind,
+  CaptureStreamState,
   CaseType,
   DeviceCommand,
   DiagnosticStatus,
@@ -185,7 +189,8 @@ export interface SimCounters {
 }
 
 export interface MetaSlice {
-  schemaVersion: 1;
+  /** Snapshot/wire schema version; the literal of `SIM_SNAPSHOT_VERSION` (SH-10, register SH-16). */
+  schemaVersion: 2;
   seed: number;
   scenario: ScenarioName;
   /** 0 for a fresh store; +1 on every hydration, so re-derived RNG streams never repeat. */
@@ -321,6 +326,53 @@ export interface FinalizationStepState {
   startedAt: EpochMs | null;
   completedAt: EpochMs | null;
   durationMs: number | null;
+  /**
+   * Schema v2 (register SH-05; R-6; op 83): per-step progress 0..100 and the ETA in ms, both
+   * written by the Core (`sealing_jobs.progress` / `eta_ms`, `dbc-3 §B.4`). Optional: the v1
+   * simulator and every state written before M2 carry neither. Clients render them forward-only
+   * from Core instants (E-13), never from the client wall clock.
+   */
+  progress?: number;
+  etaMs?: number | null;
+  /** Step detail the progress line shows (fragment count, chunk counters); free text. */
+  detail?: string | null;
+  /** The attempt of this step (>= 1): a resumed sealing run increments it (`dbc-3 §B.4`). */
+  attempt?: number;
+}
+
+/**
+ * The capture-config snapshot taken when a session started (register SH-05; SH-06 writes it,
+ * `dbc-3 §B.10` stores it in `active_session.capture_config`). A copy of the selector at that
+ * instant: later edits never change a running session (OD-10).
+ */
+export interface CaptureConfigSnapshot {
+  cameras: CaptureConfigCamera[];
+  mics: CaptureConfigMic[];
+  /** Selector revision the snapshot was taken at. */
+  revision: number;
+  updatedAt: EpochMs;
+}
+
+/** Which mic input is active inside `AUDIO-01` right now (SH-05; op 81; `dbc-3 §B.10`). */
+export interface AudioSourceState {
+  sessionId: string;
+  activeInputId: MicInputId;
+  standbyInputId: MicInputId;
+  /** When the last switch took effect (Core instant). */
+  switchedAt: EpochMs | null;
+  /** Media-pts start of the interval the switch opened (never operator wall clock, S2 §6). */
+  intervalFromMs: number;
+}
+
+/** Transcript progress of the open session (SH-05; op 84; `ev §D`). */
+export interface TranscriptSessionState {
+  /** PARTIAL while chunks are still processing; READY once every chunk is terminal. */
+  state: 'PENDING' | 'PARTIAL' | 'READY' | 'FAILED';
+  chunksTotal: number;
+  chunksDone: number;
+  chunksFailed: number;
+  /** Null until the transcript is assembled and hashed. */
+  sha256: string | null;
 }
 
 export interface FinalizationSlice {
@@ -392,6 +444,15 @@ export interface ActiveSession {
   startTimeSource?: TimeSource | null;
   /** Time source when the recording stopped or faulted (step 54, SIM-GAP-M80-1). */
   stopTimeSource?: TimeSource | null;
+  /**
+   * Schema v2 (register SH-05; SH-06 writes it at start): the selector as it was when recording
+   * began. Optional: a session created before M2 has none, and the wire schema keeps it optional.
+   */
+  captureConfig?: CaptureConfigSnapshot | null;
+  /** The active/standby mic pair of this session and the last switch (op 81; OD-09). */
+  audioSource?: AudioSourceState | null;
+  /** Incremental transcript state of this session (op 84; R-5). */
+  transcript?: TranscriptSessionState | null;
 }
 
 /** A finished session (Sessions hub, Recent Sessions, past-session summary). */
@@ -441,6 +502,12 @@ export interface MicStatus {
   /** e.g. "MIC 1 – Interviewer" (04 §9 #8). */
   name: string;
   role: 'Interviewer' | 'Subject';
+  /**
+   * Schema v2 (register SH-05; OD-01 T1 / OD-09): the role this input holds inside `AUDIO-01`.
+   * `role` above stays the interview role the screens show until SH-08 (blueprint row 51) moves
+   * the copy; `micRole` is the capture role the selector and the toggle work with.
+   */
+  micRole: MicRole;
   channel: 1 | 2;
   state: MicState;
   recState: TrackRecState | null;
@@ -469,8 +536,76 @@ export interface AudioFrame {
 }
 
 /** High-frequency slice: never persisted; read through `useAudioChannel`. */
+/**
+ * The streamed meters slice (register SH-17; E-02; `C3 §6`). Schema v2 re-keys it from the v1
+ * `AUDIO-01`/`AUDIO-02` **channels** to the two microphone **inputs** `MIC-01`/`MIC-02`, and adds
+ * `activeInputId`: the input whose level is the one inside `AUDIO-01` right now. The meters show
+ * both input levels and mark which one is active (OD-01 T1, OD-09).
+ */
 export interface AudioSlice {
-  channels: Record<AudioTrackId, AudioFrame>;
+  inputs: Record<MicInputId, AudioFrame>;
+  /** Which input currently feeds `AUDIO-01` (op 81 updates it with the switch). */
+  activeInputId: MicInputId;
+}
+
+/** One camera row of the `captureConfig` slice (`C3 §6` slice 29). */
+export interface CaptureConfigCamera {
+  trackId: VideoTrackId;
+  /** The capture device feeding this track (`CAM-01`/`CAM-02`, `dbc-3 §B.2`). */
+  deviceId: string;
+  /** Media profile (open `CODE` set, OD-05/OD-06). */
+  profile: string;
+  online: boolean;
+  streamState: CaptureStreamState;
+}
+
+/** One mic row of the `captureConfig` slice (`C3 §6` slice 29). */
+export interface CaptureConfigMic {
+  inputId: MicInputId;
+  deviceId: string;
+  role: MicRole;
+  /** Open set (`CODE`): USB, RTSP-embedded, ... (OD-06). */
+  transport: string;
+  online: boolean;
+}
+
+/**
+ * The `captureConfig` slice (SH-16, slice 29): the device selector as a replicated slice.
+ * `locked` is true while a session is open — the server refuses an edit then (OD-10) and the
+ * clients grey the controls out before they even ask.
+ */
+export interface CaptureConfigSlice {
+  cameras: CaptureConfigCamera[];
+  mics: CaptureConfigMic[];
+  locked: boolean;
+  updatedAt: EpochMs;
+}
+
+/** One device of the `captureDevices` slice (`C3 §6` slice 30; `dbc-3 §B.2`). */
+export interface CaptureDeviceStatus {
+  id: string;
+  /** The `capture_devices.kind` value set (`dbc-3 §B.2`): CAMERA, MIC, POE. */
+  kind: CaptureDeviceKind;
+  model: string | null;
+  firmware: string | null;
+  /** Host or address only, never a `user:password@` URL (RK-12, specs C-N8). */
+  host: string | null;
+  poePort: string | null;
+  online: boolean;
+  /** Null for a device that carries no stream (the PoE switch, a mic). */
+  streamState: CaptureStreamState | null;
+  /** Capability codes the adapters reported (open set). */
+  capabilities: string[];
+}
+
+/**
+ * The `captureDevices` slice (SH-16, slice 30; E-04). This is the capture-device registry fed by
+ * supervisor telemetry (`applyCaptureTelemetry`, SH-18). It is **not** the paired-client registry:
+ * `AdminResource.DEVICES` (`api/realtime-messages.ts`) stays what it was and no capture code uses it.
+ * Carries no credential, ever (RK-12).
+ */
+export interface CaptureDevicesSlice {
+  devices: CaptureDeviceStatus[];
 }
 
 export interface StorageVolume {
@@ -736,6 +871,65 @@ export interface EvidenceItem {
   /** Time source at the start and end of the recording (step 54, SIM-GAP-M80-1). */
   startTimeSource?: TimeSource | null;
   endTimeSource?: TimeSource | null;
+  /**
+   * Schema v2 (register SH-07; OD-02 L2; `ev §A/§B`). Present on items sealed after M2:
+   * - `files` is one entry per sealed FILE (the two camera files and the single session audio
+   *   track `AUDIO-01`), each with its own SHA-256 — D224/D225 "one whole file per camera";
+   * - `fragmentChainHead` is the running SHA-256 head over the fragment checkpoints of the append-only
+   *   files (`ev §B.6`; the S1 running-hash pattern), not a per-file hash;
+   * - `transcriptSha256` binds the canonical transcript document inside the seal (D222; null until a
+   *   transcript exists). Legacy v1 items carry none of these and verify on their `tracks`.
+   */
+  files?: EvidenceFileEntry[];
+  fragmentChainHead?: string | null;
+  transcriptSha256?: string | null;
+  /**
+   * Schema v2 (register SH-14; ops 85/86; OD-15): the signed revisions appended to this item's
+   * transcript, oldest first. Append-only, and the sealed `transcriptSha256` never changes. Absent
+   * on every item written before a revision exists, so v1 snapshots keep restoring (row 51a).
+   */
+  transcriptRevisions?: TranscriptRevisionRecord[];
+}
+
+/** One correction inside a transcript revision (`changes` of op 85/86). */
+export interface TranscriptRevisionChange {
+  segmentIndex: number;
+  from: string;
+  to: string;
+}
+
+/** The simulated signature over one transcript revision (OD-04: software key, never a real claim). */
+export interface TranscriptRevisionSignature {
+  value: string;
+  keyId: string;
+  algorithm: 'SIMULATED-SHA256';
+  simulated: true;
+}
+
+/** One appended transcript revision as the simulator stores and reports it (op 85/86; SEC35-21). */
+export interface TranscriptRevisionRecord {
+  revisionId: string;
+  number: number;
+  authorId: string;
+  baseRevision: number;
+  machineTranscriptHash: string;
+  signedBy: string;
+  signature: TranscriptRevisionSignature;
+  createdAt: EpochMs;
+  changes: TranscriptRevisionChange[];
+}
+
+/** One sealed file of a v2 evidence item (register SH-07; `ev §A`). */
+export interface EvidenceFileEntry {
+  /** The track the file carries (`VIDEO-01`, `VIDEO-02`, `AUDIO-01`). */
+  trackId: TrackId;
+  /** Relative path inside the package (never an absolute or credential-bearing path). */
+  fileName: string;
+  sizeBytes: number;
+  /** SHA-256 of the whole file's stored bytes. */
+  sha256: string;
+  /** Number of fragments the append-only file was written in (0 for the synthetic legacy shape). */
+  fragmentCount: number;
 }
 
 export interface SimEvent {
@@ -882,6 +1076,16 @@ export interface SimState {
   update: UpdateSlice;
   /** Console preferences (step 54). */
   settings: SettingsSlice;
+  /**
+   * Slice 29 of the replicated state (SH-16): the device selector (ops 76-80, OD-10).
+   * Its own slice — capture never reuses the paired-client registry (E-04).
+   */
+  captureConfig: CaptureConfigSlice;
+  /**
+   * Slice 30 of the replicated state (SH-16): the capture-device registry fed by supervisor
+   * telemetry (SH-18). Never `AdminResource.DEVICES` (E-04) and never a credential (RK-12).
+   */
+  captureDevices: CaptureDevicesSlice;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════

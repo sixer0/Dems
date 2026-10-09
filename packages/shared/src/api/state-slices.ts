@@ -3,16 +3,16 @@
  * (backend task: 2026-10-04 01_specs §3.2, §7.1 API-5 and API-6, §7.18, §9.3, §9.5; plan row W22,
  * contract B).
  *
- * The simulator's state has 33 slices (`sim/types.ts` `SimState`). In Live mode they reach a
+ * The simulator's state has 35 slices (`sim/types.ts` `SimState`). In Live mode they reach a
  * client in three ways (`STATE_SLICE_DELIVERY`):
  *
  * | Delivery | Slices | How |
  * |----------|--------|-----|
- * | `replicated` | 28 (`REPLICATED_SLICE_NAMES`) | The `state` topic of the socket: one `snapshot`, then `delta` messages (`realtime-messages.ts`). A read of contract C returns the same wire form (API-6) |
+ * | `replicated` | 30 (`REPLICATED_SLICE_NAMES`) | The `state` topic of the socket: one `snapshot`, then `delta` messages (`realtime-messages.ts`). A read of contract C returns the same wire form (API-6) |
  * | `streamed` | `audio` | The `meters` topic, 20 Hz, never stored |
  * | `client` | `clock`, `auth`, `authLockout`, `pairing` | Never sent as a slice. Each client builds them: the clock from `serverTime`, the other three from the answers of the identity and pairing operations |
  *
- * So a snapshot holds exactly the 28 names and nothing else: `ReplicatedStateSchema` refuses a
+ * So a snapshot holds exactly the 30 names and nothing else: `ReplicatedStateSchema` refuses a
  * state that carries `auth`, `authLockout`, `pairing`, `clock` or `audio`, or any other member.
  *
  * Rules every schema here follows:
@@ -46,6 +46,8 @@ import {
   EvidenceLifecycleStage,
   FinalizationStep,
   LensState,
+  MicInputId,
+  MicRole,
   MicState,
   NetworkDomain,
   SecurityState,
@@ -60,6 +62,8 @@ import {
 import {
   AuditCategory,
   AuditType,
+  CaptureDeviceKind,
+  CaptureStreamState,
   CaseType,
   DiagnosticStatus,
   EvidenceStatus,
@@ -117,7 +121,9 @@ const details = () => z.record(text(), z.union([text(), z.number(), z.boolean(),
 
 export const MetaSliceSchema = z
   .strictObject({
-    schemaVersion: z.literal(1),
+    // SH-10: the wire value of `SIM_SNAPSHOT_VERSION` (sim/constants.ts) and of the
+    // `MetaSlice.schemaVersion` literal (sim/types.ts); the Core boot check accepts this value.
+    schemaVersion: z.literal(2),
     seed: z.int().describe('Seed of the engine\'s random streams (20261001 unless a test sets another).'),
     scenario: z.enum(ScenarioName).describe('The scenario the state was built from.'),
     epoch: count().describe('The engine\'s own epoch. A client follows the `epoch` of the socket messages, not this value.'),
@@ -214,6 +220,32 @@ const PrecheckItemStateSchema = z.strictObject({
 
 const stepTimes = () => ({ startedAt: nullableEpochMs(), completedAt: nullableEpochMs() });
 
+// ── Selector rows, declared here because the session snapshot reuses them (SH-05) ──
+
+/** One camera row of the selector: which device feeds which video track (`C3 §6` slice 29). */
+export const CaptureConfigCameraSchema = z
+  .strictObject({
+    trackId: videoTrackId(),
+    deviceId: label().describe('The capture device feeding this track (`CAM-01`/`CAM-02`).'),
+    profile: label().describe('Media profile code; an open set (OD-05/OD-06).'),
+    online: z.boolean(),
+    streamState: z.enum(CaptureStreamState).describe('A lost stream is what makes a PoE cycle legal (OD-22).'),
+  })
+  .describe('One video slot of the device selector.');
+export type CaptureConfigCameraBody = z.output<typeof CaptureConfigCameraSchema>;
+
+/** One mic slot of the selector: which input is PRIMARY and which is the hot standby (OD-09). */
+export const CaptureConfigMicSchema = z
+  .strictObject({
+    inputId: z.enum(MicInputId),
+    deviceId: label(),
+    role: z.enum(MicRole),
+    transport: label().describe('Open set (`CODE`): USB, embedded RTSP, ... (OD-06).'),
+    online: z.boolean(),
+  })
+  .describe('One microphone slot of the device selector.');
+export type CaptureConfigMicBody = z.output<typeof CaptureConfigMicSchema>;
+
 export const ActiveSessionSchema = z
   .strictObject({
     id: sessionId(),
@@ -252,11 +284,17 @@ export const ActiveSessionSchema = z
             status: z.enum(StepStatus),
             ...stepTimes(),
             durationMs: count().nullable(),
+            // Schema v2 (SH-05; op 83; `dbc-3 §B.4`): per-step progress and ETA, written by the
+            // Core and rendered forward-only by clients. Optional: a v1 state carries neither.
+            progress: count().optional().describe('Sealing progress of this step, 0..100.'),
+            etaMs: nullableEpochMs().optional().describe('Estimated milliseconds left for this step.'),
+            detail: text().nullable().optional().describe('What the progress line shows (fragment count, chunk counters).'),
+            attempt: count().optional().describe('Attempt of this step, >= 1; a resumed run increments it.'),
           }),
         ),
         ...stepTimes(),
       })
-      .describe('The six finalization steps (book §12.2).'),
+      .describe('The sealing steps v2 (`CLOSE_TRACKS` .. `STORE_SEALED_PACKAGE`; book §12.2, `ev §E`).'),
     timeline: z.array(
       z.strictObject({
         id: label(),
@@ -282,6 +320,42 @@ export const ActiveSessionSchema = z
     evidenceId: evidenceId().nullable(),
     startTimeSource: timeSource().nullable().optional().describe('Time source when the recording started.'),
     stopTimeSource: timeSource().nullable().optional().describe('Time source when the recording stopped or faulted.'),
+    // ── Schema v2 (register SH-05; op 27 carries all three; `dbc-3 §B.10`) ──────────────────
+    /** The selector as it was when recording started; a later edit never changes this session. */
+    captureConfig: z
+      .strictObject({
+        cameras: z.array(CaptureConfigCameraSchema),
+        mics: z.array(CaptureConfigMicSchema),
+        revision: count().describe('Selector revision the snapshot was taken at.'),
+        updatedAt: epochMs(),
+      })
+      .nullable()
+      .optional()
+      .describe('Capture-config snapshot of this session (SH-06 writes it at start).'),
+    /** Which mic input feeds `AUDIO-01` right now and which is the hot standby (op 81; OD-09). */
+    audioSource: z
+      .strictObject({
+        sessionId: sessionId(),
+        activeInputId: z.enum(MicInputId),
+        standbyInputId: z.enum(MicInputId),
+        switchedAt: nullableEpochMs().describe('When the last switch took effect; null before the first.'),
+        intervalFromMs: count().describe('Media-pts start of the interval the switch opened (never wall clock).'),
+      })
+      .nullable()
+      .optional()
+      .describe('The active/standby mic pair of this session.'),
+    /** Incremental transcript state of this session (op 84; R-5). */
+    transcript: z
+      .strictObject({
+        state: z.enum(['PENDING', 'PARTIAL', 'READY', 'FAILED']),
+        chunksTotal: count(),
+        chunksDone: count(),
+        chunksFailed: count(),
+        sha256: text().nullable().describe('Null until the transcript is assembled and hashed.'),
+      })
+      .nullable()
+      .optional()
+      .describe('Transcript progress of the open session.'),
   })
   .describe('The open session with its pre-check, timeline, notes and finalization.');
 export type ActiveSessionBody = z.output<typeof ActiveSessionSchema>;
@@ -361,6 +435,8 @@ export const MicsSliceSchema = z
       deviceId: label().describe('e.g. MIC-01.'),
       name: text().describe('e.g. "MIC 1 – Interviewer".'),
       role: z.enum(['Interviewer', 'Subject']),
+      /** Schema v2 (SH-05): the capture role inside AUDIO-01 (OD-01 T1, OD-09). */
+      micRole: z.enum(MicRole),
       channel: z.union([z.literal(1), z.literal(2)]),
       state: z.enum(MicState),
       recState: z.enum(TrackRecState).nullable(),
@@ -384,14 +460,21 @@ const AudioFrameSchema = z
   .describe('One 20 Hz audio frame: numbers and booleans only.');
 
 /**
- * The wire form of the `audio` slice. It is **not** one of the 28 replicated slices: it travels
- * only in `meters` frames, to connections that subscribed, and is never stored (class X).
+ * The wire form of the `audio` slice (register SH-17; E-02; `C3 §6`). Schema v2 re-keys it from the
+ * v1 `AUDIO-01`/`AUDIO-02` **channels** to the two microphone **inputs** `MIC-01`/`MIC-02` and adds
+ * `activeInputId`, so the meters show both input levels and which one feeds `AUDIO-01` (OD-01 T1,
+ * OD-09). This is the E-02 correction: the change is here and in `realtime-messages.ts`, and the
+ * fifth call site is `live/source/live-sim.ts` (`onMeters`).
+ *
+ * It is **not** one of the 30 replicated slices: it travels only in `meters` frames, to connections
+ * that subscribed, and is never stored (class X).
  */
 export const AudioSliceSchema = z
   .strictObject({
-    channels: z.strictObject({ [TrackId.AUDIO_01]: AudioFrameSchema, [TrackId.AUDIO_02]: AudioFrameSchema }),
+    inputs: z.strictObject({ [MicInputId.MIC_01]: AudioFrameSchema, [MicInputId.MIC_02]: AudioFrameSchema }),
+    activeInputId: z.enum(MicInputId).describe('The input whose level is the one inside AUDIO-01 right now (op 81 moves it).'),
   })
-  .describe('Slice `audio`: the newest frame of each channel. Streamed in `meters` messages only; not part of a snapshot.');
+  .describe('Slice `audio`: the newest frame of each mic input plus the active one. Streamed in `meters` messages only; not part of a snapshot.');
 export type AudioSliceBody = z.output<typeof AudioSliceSchema>;
 
 // ═══════════════════════════════════════════════════════════════════════════════════════
@@ -589,12 +672,29 @@ export const EvidenceItemSchema = z
     manifestHash: sha256(),
     signature: z
       .strictObject({
-        value: sha256().describe('sha256(manifestHash and keyId): a simulated signature, never a real one.'),
+        // Schema v2 (C3 §3 op 39/41; register W1-C10; `dbc-3 §C.4/§C.5`): a real Ed25519 signature
+        // is 64 BYTES (128 lower-case hex characters); the SIMULATED-SHA256 stand-in stays 64 hex
+        // characters so every v1 row keeps parsing. The pair rule below mirrors the DB CHECK.
+        value: z
+          .string()
+          .regex(/^(?:[0-9a-f]{64}|[0-9a-f]{128})$/)
+          .describe('sha256(manifestHash and keyId) for the simulated stand-in; the Ed25519 signature of the manifest hash for a real one.'),
         keyId: text(),
-        algorithm: z.literal('SIMULATED-SHA256'),
-        simulated: z.literal(true),
+        algorithm: z.enum(['Ed25519', 'SIMULATED-SHA256']).describe('Schema v2: real seals sign with Ed25519 (OD-02); the stand-in remains for v1 rows.'),
+        simulated: z.boolean(),
       })
-      .describe('The simulated signature of the manifest.'),
+      .superRefine((signature, report) => {
+        const simulatedPair = signature.algorithm === 'SIMULATED-SHA256' && signature.simulated && signature.value.length === 64;
+        const realPair = signature.algorithm === 'Ed25519' && !signature.simulated && signature.value.length === 128;
+        if (!simulatedPair && !realPair) {
+          report.addIssue({
+            code: 'custom',
+            message: 'algorithm, simulated and the value length must form one of the two pairs of dbc-3 §C.4/§C.5.',
+            path: ['algorithm'],
+          });
+        }
+      })
+      .describe('The signature of the manifest: the simulated stand-in (v1) or a real Ed25519 (schema v2).'),
     custody: z.array(z.strictObject({ at: epochMs(), action: text(), actorId: operatorId().nullable(), detail: text().nullable() })),
     verification: z.strictObject({ status: z.enum(VerificationStatus), at: nullableEpochMs() }),
     tampered: z.boolean().describe('Set by the evidence tamper demo fault; verification then fails.'),
@@ -605,8 +705,55 @@ export const EvidenceItemSchema = z
     integritySource: z.enum(IntegritySource).optional(),
     startTimeSource: timeSource().nullable().optional(),
     endTimeSource: timeSource().nullable().optional(),
+    // ── Schema v2 (task 3 M2-W7; register SH-07/SH-14; `C3 §3` op 39; `dbc-3 §B.12`) ──────────
+    // Optional until the producers land (sim parity M2-W9 row 51; mapping M2-W4 row 49): a v1 item
+    // still parses, a v2 item carries all three. One whole fMP4 per camera with BOTH hashes and the
+    // fragment-chain head (D224/D225); the audio-source intervals (media pts); the transcript
+    // summary — never the transcript body (the body travels through op 84).
+    files: z
+      .array(
+        z.strictObject({
+          trackId: z.enum(TrackId).describe('The track the file carries (VIDEO-01, VIDEO-02, AUDIO-01).'),
+          fileName: text().describe('Relative path inside the package; never absolute or credential-bearing.'),
+          sizeBytes: count(),
+          sha256: sha256().describe('SHA-256 of the whole file\'s stored bytes.'),
+          fragmentCount: count().describe('Fragments the append-only file was written in (0 for the synthetic legacy shape).'),
+          // Schema v2 additions the DB mapping fills (`dbc-3 §B.12`; D-DB-02): optional so every
+          // producer that still writes the SH-07 preview shape keeps parsing.
+          sha256Plain: sha256().optional().describe('SHA-256 of the plaintext bytes (stored-bytes vs plaintext: both hashes verify).'),
+          fragmentChainHead: sha256().nullable().optional().describe('Head of this file\'s per-fragment hash chain (`dbc-3 §B.12`).'),
+        }),
+      )
+      .optional()
+      .describe('Schema v2: one whole file per camera (D224/D225) with its hashes; mirrors the simulator\'s `EvidenceFileEntry` (SH-07).'),
+    fragmentChainHead: sha256().nullable().optional().describe('Schema v2 item-level chain head (SH-07 preview shape): the chain the fragments of this item continue.'),
+    transcriptSha256: sha256().nullable().optional().describe('Schema v2 item-level transcript hash (SH-07 preview; `evidence_items.transcript_sha256`, dbc-3 §B.11).'),
+    audioSourceIntervals: z
+      .array(
+        z.strictObject({
+          seq: count(),
+          inputId: z.enum(MicInputId),
+          role: z.enum(MicRole),
+          fromMs: count().describe('Media-pts start (S2 §6 finding 3).'),
+          toMs: nullableEpochMs().describe('Media-pts end; null for the open interval of a live session.'),
+          reason: z.enum(['START', 'MANUAL', 'STOP']),
+        }),
+      )
+      .optional()
+      .describe('Schema v2: which mic input fed AUDIO-01 over which media-pts spans (op 82 serves the full rows).'),
+    transcript: z
+      .strictObject({
+        state: z.enum(['PENDING', 'PARTIAL', 'READY', 'FAILED', 'DISABLED']).describe('DISABLED only when R-8 turns STT off (D20; lands with M6).'),
+        sha256: sha256().nullable().describe('Hash of the canonical transcript document; null until assembled.'),
+        machineTranscriptHash: sha256().nullable().describe('Hash of the SEALED machine transcript — byte-unchanged by any revision (OD-15).'),
+        labelsStatus: z.enum(['LABELLED', 'UNAVAILABLE']).nullable().describe('Diarization state (D226); null before assembly.'),
+        revision: count().describe('Current max(revision_no); 0 when no revision exists (SEC35-21).'),
+      })
+      .nullable()
+      .optional()
+      .describe('Schema v2: the transcript summary inside the item; the body arrives through op 84.'),
   })
-  .describe('One evidence item with its tracks, hashes, custody chain and verification state.');
+  .describe('One evidence item (schema v2 adds files, audio-source intervals and the transcript summary).');
 export type EvidenceItemBody = z.output<typeof EvidenceItemSchema>;
 
 export const EvidenceSliceSchema = z.array(EvidenceItemSchema).describe('Slice `evidence`: every evidence item.');
@@ -738,14 +885,65 @@ export const SettingsSliceSchema = z
 export type SettingsSliceBody = z.output<typeof SettingsSliceSchema>;
 
 // ═══════════════════════════════════════════════════════════════════════════════════════
-// The 33 slices and the replicated state
+// captureConfig, captureDevices — slices 29 and 30 (SH-16; C3 §6; E-04)
+// ═══════════════════════════════════════════════════════════════════════════════════════
+
+
+/**
+ * Slice 29, `captureConfig` (register SH-16; ops 76/78/79/80/89 publish it): the device selector as
+ * a replicated slice. `locked` is true while a session is open — the server refuses every edit then
+ * with `409 CAPTURE_CONFIG_LOCKED` (OD-10), and clients grey the controls out from this flag.
+ */
+export const CaptureConfigSliceSchema = z
+  .strictObject({
+    cameras: z.array(CaptureConfigCameraSchema).describe('VIDEO-01 first, then VIDEO-02.'),
+    mics: z.array(CaptureConfigMicSchema).describe('The PRIMARY input first, then the STANDBY.'),
+    locked: z.boolean().describe('True while a session is open: no edit is accepted then (OD-10).'),
+    updatedAt: epochMs(),
+  })
+  .describe('Slice `captureConfig`: the device selector (ops 76-80, 89). Its own slice, never the paired-client registry (E-04).');
+export type CaptureConfigSliceBody = z.output<typeof CaptureConfigSliceSchema>;
+
+/**
+ * One device of the capture registry. The field list is `C3 §2.3`: **no credential** member exists
+ * here at all (RK-12), and `host` is a host or address only, never a `user:password@` URL (C-N8).
+ */
+export const CaptureDeviceStatusSchema = z
+  .strictObject({
+    id: label().describe('`CAM-nn`, `MIC-nn` or `POE-…` (`dbc-3 §B.2` id CHECK).'),
+    kind: z.enum(CaptureDeviceKind).describe('The `capture_devices.kind` value set: CAMERA, MIC, POE.'),
+    model: text().nullable(),
+    firmware: text().nullable(),
+    host: text().nullable().describe('Host or address only; never a credential URL (C-N8).'),
+    poePort: text().nullable(),
+    online: z.boolean(),
+    streamState: z.enum(CaptureStreamState).nullable().describe('Null for a device with no stream (a mic, the PoE switch).'),
+    capabilities: z.array(label()).describe('Capability codes the adapters reported; an open set.'),
+  })
+  .describe('One capture device (`dbc-3 §B.2`); carries no credential (RK-12).');
+export type CaptureDeviceStatusBody = z.output<typeof CaptureDeviceStatusSchema>;
+
+/**
+ * Slice 30, `captureDevices` (register SH-16; E-04): the capture-device registry, fed by supervisor
+ * telemetry (`applyCaptureTelemetry`, SH-18). This slice is its own kind precisely so that capture
+ * never reuses `AdminResource.DEVICES`, which stays the paired-client registry event.
+ */
+export const CaptureDevicesSliceSchema = z
+  .strictObject({
+    devices: z.array(CaptureDeviceStatusSchema),
+  })
+  .describe('Slice `captureDevices`: the capture-device registry (op 77). Never `AdminResource.DEVICE[S]` (E-04).');
+export type CaptureDevicesSliceBody = z.output<typeof CaptureDevicesSliceSchema>;
+
+// ═══════════════════════════════════════════════════════════════════════════════════════
+// The 35 slices and the replicated state
 // ═══════════════════════════════════════════════════════════════════════════════════════
 
 export const StateSliceDelivery = { REPLICATED: 'replicated', STREAMED: 'streamed', CLIENT: 'client' } as const;
 export type StateSliceDelivery = (typeof StateSliceDelivery)[keyof typeof StateSliceDelivery];
 
 /**
- * How each of the 33 slices of `SimState` reaches a client in Live mode (01_specs §3.2), in state
+ * How each of the 35 slices of `SimState` reaches a client in Live mode (01_specs §3.2), in state
  * order. The test holds the keys equal to `keyof SimState`, so a new slice must be classified here
  * before it compiles.
  */
@@ -788,6 +986,10 @@ export const STATE_SLICE_DELIVERY = {
   diagnostics: StateSliceDelivery.REPLICATED,
   update: StateSliceDelivery.REPLICATED,
   settings: StateSliceDelivery.REPLICATED,
+  /** Slice 29 (SH-16): the device selector, published by ops 78/79/80/89. */
+  captureConfig: StateSliceDelivery.REPLICATED,
+  /** Slice 30 (SH-16, E-04): the capture-device registry; its own kind, never `AdminResource.DEVICES`. */
+  captureDevices: StateSliceDelivery.REPLICATED,
 } as const;
 
 /** The schema of each replicated slice, keyed by its name in `SimState`, in state order. */
@@ -820,10 +1022,13 @@ export const REPLICATED_SLICE_SCHEMAS = {
   diagnostics: DiagnosticsSliceSchema,
   update: UpdateSliceSchema,
   settings: SettingsSliceSchema,
+  // Slices 29 and 30 (SH-16): appended at the end so the v1 order stays a prefix of the v1 order.
+  captureConfig: CaptureConfigSliceSchema,
+  captureDevices: CaptureDevicesSliceSchema,
 } as const;
 export type ReplicatedSliceName = keyof typeof REPLICATED_SLICE_SCHEMAS;
 
-/** The 28 replicated slice names, in state order. */
+/** The 30 replicated slice names, in state order. */
 export const REPLICATED_SLICE_NAMES = Object.keys(REPLICATED_SLICE_SCHEMAS) as readonly ReplicatedSliceName[];
 
 /**
@@ -835,16 +1040,16 @@ export const UNREPLICATED_SLICE_NAMES = (Object.keys(STATE_SLICE_DELIVERY) as (k
 );
 
 /**
- * `state` of a `snapshot`: exactly the 28 replicated slices. Strict: a 29th member is refused,
+ * `state` of a `snapshot`: exactly the 30 replicated slices. Strict: a 31st member is refused,
  * whatever its name.
  */
 export const ReplicatedStateSchema = z
   .strictObject(REPLICATED_SLICE_SCHEMAS)
-  .describe('The 28 replicated slices of the Core state. No `auth`, `authLockout`, `pairing`, `clock` or `audio`, and no other member.');
+  .describe('The 30 replicated slices of the Core state. No `auth`, `authLockout`, `pairing`, `clock` or `audio`, and no other member.');
 export type ReplicatedState = z.output<typeof ReplicatedStateSchema>;
 
 /**
- * The 28 replicated slices of a state, by reference: nothing is copied or changed, so a slice that
+ * The 30 replicated slices of a state, by reference: nothing is copied or changed, so a slice that
  * did not change keeps its identity. Use it to build `snapshot.state` from the engine's state; the
  * other five slices of `SimState` stay behind.
  */
@@ -861,7 +1066,7 @@ export function stateSliceSchemaName<Name extends ReplicatedSliceName>(name: Nam
 }
 
 /**
- * The named schemas of this module, by their `components.schemas` name: the 28 replicated slices
+ * The named schemas of this module, by their `components.schemas` name: the 30 replicated slices
  * (`<Name>Slice`, in state order), then `AudioSlice` and `ReplicatedState`, then the schemas of
  * one element: the open session, a note (a session and an evidence item both hold notes), and the
  * rows a list read of contract C returns one by one (01_specs §7.8, §7.9, §7.13, §7.15).
@@ -895,6 +1100,8 @@ export const STATE_SCHEMAS = {
   DiagnosticsSlice: DiagnosticsSliceSchema,
   UpdateSlice: UpdateSliceSchema,
   SettingsSlice: SettingsSliceSchema,
+  CaptureConfigSlice: CaptureConfigSliceSchema,
+  CaptureDevicesSlice: CaptureDevicesSliceSchema,
   AudioSlice: AudioSliceSchema,
   ReplicatedState: ReplicatedStateSchema,
   ActiveSession: ActiveSessionSchema,

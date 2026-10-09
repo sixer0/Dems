@@ -146,7 +146,7 @@ function plantedEvents(type: SimEventType, change: (event: SimEvent) => FixtureE
 const HEX64 = /^[0-9a-f]{64}$/;
 
 describe('where each audit type is written', () => {
-  it('the fixture writes all 53 types, and each has exactly one reference: the list, a module builder, or the simulator', () => {
+  it('the fixture writes all 62 types, and each has exactly one reference: the list, a module builder, or the simulator', () => {
     const written = [...new Set(rows.map((row) => row.type))].sort();
     expect(written).toEqual(Object.values(AuditType).sort());
     expect(written.filter((type) => sourceOf(type, shapes) === null)).toEqual([]);
@@ -156,10 +156,29 @@ describe('where each audit type is written', () => {
       const source = sourceOf(type, shapes) ?? 'none';
       bySource[source] = (bySource[source] ?? 0) + 1;
     }
-    expect(bySource).toEqual({ 'ALLOW-LIST': 9, MODULE: 11, SIMULATOR: 33 });
-    // The nine of the list are the nine the audit writer names, and six of them have a builder too.
+    expect(bySource).toEqual({ 'ALLOW-LIST': 18, MODULE: 11, SIMULATOR: 33 });
+    // The eighteen of the list are the eighteen the audit writer names (nine of the backend task,
+    // nine of the capture phase), and the nine older ones mostly have a builder too. A listed type
+    // with no pure builder is one whose live writer lands with a later milestone: the three of the
+    // administration module (rows built inside their unit) and the nine capture types (op 81 with
+    // row 71, the transcript revisions with M7/M8, the credential paths with row 66) - the fixture
+    // states their rows until their owners exist (D44 R4/R5).
     expect([...ALLOW_LISTED_TYPES].sort()).toEqual(written.filter((type) => sourceOf(type, shapes) === 'ALLOW-LIST'));
-    expect(written.filter((type) => ALLOW_LISTED_TYPES.has(type) && MODULE_WRITERS[type] === undefined)).toEqual([...ADMINISTRATION_TYPES]);
+    const noBuilder = written.filter((type) => ALLOW_LISTED_TYPES.has(type) && MODULE_WRITERS[type] === undefined);
+    expect(noBuilder.sort()).toEqual(
+      [
+        ...ADMINISTRATION_TYPES,
+        'AUDIO_SOURCE_SWITCHED',
+        'CAMERA_POE_CYCLED',
+        'CAPTURE_CONFIG_CHANGED',
+        'CAPTURE_CREDENTIAL_REVEALED',
+        'CAPTURE_CREDENTIAL_SET',
+        'EVIDENCE_EXPORT_FAILED',
+        'EVIDENCE_MEDIA_SERVED',
+        'MIC_SILENT',
+        'TRANSCRIPT_REVISED',
+      ].sort(),
+    );
   });
 
   it('the simulator was driven: every engine-written type came from a row it wrote, several of them in more than one form', () => {
@@ -240,7 +259,7 @@ describe('every audit row of the fixture', () => {
             : `simulator: ${braces(shapes.get(type)?.signatures ?? [])}`;
       return `| ${type} | ${source ?? 'none'} | ${expected} | ${counted(ofType(type).map((row) => `{${signatureOf(row.details)}}`))} |`;
     });
-    expect(lines).toHaveLength(53);
+    expect(lines).toHaveLength(62);
     console.log(['[w25] audit detail keys per type: | type | written by | keys expected | keys written (rows) |', ...lines].join('\n'));
   });
 
@@ -253,7 +272,7 @@ describe('every audit row of the fixture', () => {
       const expected = builder ?? (administration.has(type) ? [administration.get(type) ?? ''] : (shapes.get(type)?.severities ?? []));
       return `| ${type} | ${AUDIT_TYPE_CATEGORY[type]} | ${source} | ${[...expected].sort().join(' or ')} | ${counted(ofType(type).map((row) => row.severity))} |`;
     });
-    expect(lines).toHaveLength(53);
+    expect(lines).toHaveLength(62);
     console.log(['[w25] audit severity per type: | type | category | severity from | severity expected | severity written (rows) |', ...lines].join('\n'));
   });
 });
@@ -345,7 +364,9 @@ describe('a fault alert, and the row and the event of its fault', () => {
     const extra = ofType('FAULT_RAISED').filter((row) => row.details['kind'] === FaultKind.AUDIT_TAMPER);
     const tampered = alerts.filter((alert) => alert.kind === FaultKind.AUDIT_TAMPER);
     expect(extra).toHaveLength(tampered.length);
-    expect(extra).toHaveLength(17);
+    // Measured: the fixture's fault mix spreads over the fourteen FaultKind values of schema v2
+    // (MIC_SILENT and CAPTURE_FAULT joined in task 3), so the audit-tamper share is 14, not 17.
+    expect(extra).toHaveLength(14);
     expect(extra.map((row) => row.at)).toEqual(tampered.map((alert) => alert.at + 1_000));
     for (const alert of tampered) expect(extra.filter((row) => row.message === alert.message)).toEqual([]);
   });
@@ -357,7 +378,7 @@ describe('a fault alert, and the row and the event of its fault', () => {
       const simulated = runs.flatMap((run) => run.alerts.filter((alert) => alert.kind === kind).map((alert) => rowsOfAlert(alert, run.audit).length === 1 && eventsOfAlert(alert, run.events).length === 1));
       return `| ${kind} | ${FAULT_SEVERITY[kind]} | ${first === undefined ? '-' : rowTypeOfAlert(first)} | ${of.length} | ${of.filter((alert) => rowsOfAlert(alert, rows).length === 1).length} | ${of.filter((alert) => eventsOfAlert(alert, events).length === 1).length} | ${simulated.filter(Boolean).length} of ${simulated.length} |`;
     });
-    expect(lines).toHaveLength(12);
+    expect(lines).toHaveLength(14);
     console.log(['[w25] fault alerts and their rows: | kind | severity | row type | fixture alerts | with exactly one row | with exactly one event | simulator: alerts with one row and one event |', ...lines].join('\n'));
   });
 });

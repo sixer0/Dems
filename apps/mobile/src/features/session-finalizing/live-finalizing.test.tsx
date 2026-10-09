@@ -108,7 +108,7 @@ describe('Finalization in LIVE mode follows the Core', () => {
     const evidenceId = b.state().session!.evidenceId!;
     expect(evidenceId).toBe(b.engine.sim.store.getState().session!.evidenceId);
     expect(within(screen.getByTestId('finalizing-evidence')).getByText(evidenceId)).toBeTruthy();
-    expect(stepLabel(0)).toMatch(/^Step 1 of 6, Finalize tracks, (in progress|completed)$/);
+    expect(stepLabel(0)).toMatch(/^Step 1 of 6, Close tracks, (in progress|completed)$/);
 
     // A step resolves on the Core, then the progress line follows the replica.
     await b.elapse(2_000);

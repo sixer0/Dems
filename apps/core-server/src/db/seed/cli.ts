@@ -70,8 +70,14 @@ export async function runSeed(argv: readonly string[], options: SeedCommandOptio
         `The database ${target} belongs to ${facts.owner}, not to ${OWNER_ROLE}. The seed writes a database of the owner role only.`,
       );
     }
+    // B16 erratum (iii) (W90 F-6; dbc-3 §H row iii): same wording fix as `db:migrate`, which the
+    // original finding named together with this command. The rule stands (P16: the caller holds the
+    // migrate lock over a dems_demo seed); the line stops reading as a warning on a command that
+    // exits 0 and cannot see the lock.
     if (target === MIGRATE_LOCK_DATABASE) {
-      io.out(`${COMMAND}: ${target} is seeded under the migrate lock: this command must be run as "${MIGRATE_LOCK_HINT} npm run ${COMMAND} ...".`);
+      io.out(
+        `${COMMAND}: note - ${target} is shared with db:reset, so its caller runs this command under ${MIGRATE_LOCK_HINT}. This command takes no lock of its own and never checks for one; it prints this note on every ${target} run.`,
+      );
     }
 
     return withPool(target, async (pool) => {

@@ -209,7 +209,7 @@ describe('ADQ-2: the Live source in the existing SimContext', () => {
     const rendered = renders;
     const frame = { seq: 9, at: fake.clock.now(), dbfs: -21, peak: -15, clip: false, noSignal: false };
     act(() => {
-      connection.meters({ channels: { 'AUDIO-01': frame, 'AUDIO-02': { ...frame, dbfs: -44 } } });
+      connection.meters({ inputs: { 'MIC-01': frame, 'MIC-02': { ...frame, dbfs: -44 } }, activeInputId: 'MIC-01' });
     });
     // The frame on subscribe (no signal yet), then the one of the socket.
     expect(frames).toHaveLength(2);

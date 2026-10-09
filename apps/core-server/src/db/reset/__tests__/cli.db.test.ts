@@ -46,9 +46,9 @@ const SEED_COUNTS: Readonly<Record<string, number>> = {
   operators: 3,
   paired_devices: 0,
   pairing_codes: 0,
-  permissions: 12,
+  permissions: 14,
   registry_counters: 2,
-  role_permissions: 18,
+  role_permissions: 22,
   roles: 3,
   schema_meta: 1,
   session_history: 13,
@@ -104,7 +104,7 @@ describe('db:reset --database <a name that does not exist yet>: how a lane datab
     expect(out[0]).toBe(`db:reset: ${name} on PostgreSQL 18.4 as dems_owner`);
     expect(out[1]).toBe('db:reset: dataset as of 2026-10-04T04:00:00.000Z (1791086400000); scenario idle; reason RESET; actor none (command line)');
     expect(out[2]).toBe(`db:reset: first build: ${name} did not exist. Nothing was carried over and no chain was discarded; epoch 0.`);
-    expect(out[3]).toMatch(/^db:reset: done in \d+ ms \(R-0 \d+, R-1 \d+, R-2 \d+, R-3 \d+, R-4 \d+, R-5 \d+, R-6 \d+, R-7 \d+, R-8 \d+, R-9 \d+\); the database now holds 301 row\(s\) in 21 of 30 table\(s\)$/);
+    expect(out[3]).toMatch(/^db:reset: done in \d+ ms \(R-0 \d+, R-1 \d+, R-2 \d+, R-3 \d+, R-4 \d+, R-5 \d+, R-6 \d+, R-7 \d+, R-8 \d+, R-9 \d+\); the database now holds 314 row\(s\) in 24 of 40 table\(s\)$/);
     for (const [table, rows] of Object.entries(SEED_COUNTS)) expect(out).toContain(`  ${table.padEnd(24)} ${rows}`);
     expect(out.at(-3)).toMatch(/^audit head       seq 82; hash [0-9a-f]{16}\.\.\.$/);
     expect(out.at(-2)).toBe('lineage          0 row(s); 0 carried over, 0 appended');
@@ -158,7 +158,7 @@ describe('db:reset on a used database', () => {
     expect(done.err).toEqual([]);
     expect(done.out).toContain('db:reset: epoch 0 -> 1');
     expect(done.out).toContain(
-      'db:reset: kept tables carried over unchanged (rows): registry_counters 2, console_settings 1, pairing_codes 5, paired_devices 2, device_credentials 2, auth_sessions 3, biometric_tokens 3, audit_chain_history 0',
+      'db:reset: kept tables carried over unchanged (rows): registry_counters 2, console_settings 1, pairing_codes 5, paired_devices 2, device_credentials 2, auth_sessions 3, biometric_tokens 3, capture_devices 5, capture_device_credentials 0, capture_config 1, stt_config 1, audit_chain_history 0',
     );
     expect(done.out).toContain('db:reset: pairing codes that were ACTIVE, now CANCELLED: 1; operators with a last sign-in from a kept session: 2');
     expect(done.out).toContain('db:reset: SCENARIO_LOADED is audit row 83 of the new chain');

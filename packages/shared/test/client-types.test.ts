@@ -206,7 +206,7 @@ describe('the default client: typed by the registry (contract A, `CoreApiOperati
   });
 
   it('the input type of the full registry can be evaluated: one intersection per operation, not a cross product (TS2590)', () => {
-    // Regression for contract C (75 operations). Written as `ParamsOf<U> & BodyOf<U> & QueryOf<U>` over
+    // Regression for contract C (89 operations). Written as `ParamsOf<U> & BodyOf<U> & QueryOf<U>` over
     // the union U of all operations, the input type is a cross product of n * n * n members, and the
     // compiler refuses a union above 100,000 (n = 47): the first typed `client.call` of a program
     // then fails with TS2590 and NO later call is type-checked (the `misuse` lines below were reported

@@ -179,11 +179,14 @@ describe('allowed transitions (§14.7 table)', () => {
     h.run(100);
     expect(sessionState(h.state())).toBe('FINALIZING');
     const steps = h.state().session?.finalization.steps ?? [];
+    // Sealing steps v2 (SH-01; `ev §E.1`): CLOSE_TRACKS .. STORE_SEALED_PACKAGE. The v1 pair
+    // FINALIZE_TRACKS/CALCULATE_HASHES is renamed, and ENCRYPT_PAYLOAD is fallback-only (OD-21),
+    // so it no longer runs in the normal pipeline.
     expect(steps.map((step) => step.id)).toEqual([
-      'FINALIZE_TRACKS',
-      'CALCULATE_HASHES',
+      'CLOSE_TRACKS',
+      'FINALIZE_HASHES',
+      'FINALIZE_TRANSCRIPT',
       'BUILD_MANIFEST',
-      'ENCRYPT_PAYLOAD',
       'SIGN_MANIFEST',
       'STORE_SEALED_PACKAGE',
     ]);

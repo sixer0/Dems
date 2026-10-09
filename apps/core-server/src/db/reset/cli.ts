@@ -5,9 +5,10 @@
  *   npm run db:reset -w @dems/core-server -- --database <name> [--scenario <name>]
  *
  * It builds a new database beside the named one (migrations, the seed as of the server clock at
- * this moment), copies the eight kept tables into it unchanged, swaps the two names and drops
+ * this moment), copies the twelve kept tables into it unchanged, swaps the two names and drops
  * the old database last. Sessions, paired devices, device credentials, biometric tokens,
- * settings, pairing codes, the two registry counters and the lineage of discarded audit chains
+ * settings, pairing codes, the two registry counters, the capture configuration with its devices
+ * and credentials, the STT configuration row and the lineage of discarded audit chains
  * survive; everything else is the seed. A database that does not exist yet is created (a first
  * build): that is how the lane databases come into being.
  *

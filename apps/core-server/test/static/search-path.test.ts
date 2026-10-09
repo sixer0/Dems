@@ -46,6 +46,10 @@ const ALLOWED: Readonly<Record<string, string>> = {
   'src/plugins/db/index.ts': 'pins the path on every connection of the runtime pool (a start-up option) and reads it back in boot step B-1',
   'src/core/unit-of-work.ts': 'pins the path, with the statement limit, for the transaction of every unit of work',
   'src/db/migrations/0002_audit_guards.sql': 'the two SECURITY DEFINER functions of the audit chain pin their own path (migration, owner role)',
+  // R2 (D44): the two privilege migrations of schema v2 follow the 0002 pattern exactly - each
+  // SECURITY DEFINER reveal function pins its own search_path (dbc-3 §D, MG-5; rows 46 and 112).
+  'src/db/migrations/0005_capture_privileges.sql': 'the capture credential reveal function pins its own path (migration, owner role)',
+  'src/db/migrations/0007_stt_config_privileges.sql': 'the STT credential reveal function pins its own path (migration, owner role)',
 };
 
 // TypeScript without its comments; an SQL file as it is (its comments are not TypeScript's).

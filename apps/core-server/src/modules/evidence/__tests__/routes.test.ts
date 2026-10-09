@@ -544,7 +544,7 @@ describe('operation 43 archiveEvidence: the hosted action `archiveEvidence`', ()
 describe('operation 42 exportEvidence: the hosted action `exportEvidence`', () => {
   const ACCEPTED: ExportResult = { ok: true, status: 202, exportId: 'EXP-000032' };
 
-  it('an accepted export answers 202 with the export ID, the ID of the path and EXPORTED, and the state position', async () => {
+  it('an accepted export answers 202 with the export ID, the ID of the path and QUEUED, and the state position', async () => {
     const built = await build();
     const caller = operator('SUPERVISOR');
     built.actAs(caller);
@@ -552,7 +552,9 @@ describe('operation 42 exportEvidence: the hosted action `exportEvidence`', () =
     const response = await built.post(exportUrl(ID), { reason: '  Prosecutor request  ', destination: 'Case file transfer' });
 
     expect(response.statusCode).toBe(202);
-    expect(response.json()).toEqual({ exportId: 'EXP-000032', evidenceId: ID, status: 'EXPORTED' });
+    // The landed schema is `EvidenceExportAcceptedSchema` (op-42, C3 §2.4): the export is QUEUED
+    // for the packaging worker, not EXPORTED at answer time (rows 48/51a re-pinned the literal).
+    expect(response.json()).toEqual({ exportId: 'EXP-000032', evidenceId: ID, status: 'QUEUED' });
     expect(validateCoreApiResponse('exportEvidence', 202, response.json())).toEqual({ ok: true });
     expect(response.headers[EPOCH_HEADER_NAME]).toBe(String(EPOCH));
     expect(response.headers[REVISION_HEADER_NAME]).toBe(String(REVISION));

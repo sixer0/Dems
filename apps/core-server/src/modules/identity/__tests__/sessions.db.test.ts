@@ -2,7 +2,7 @@
 // ID-P4 to ID-P9, §5.2 ID-8, ID-9, §5.4, §4.7; SR-11 to SR-13, SR-17; AC-B-26, AC-B-27). A clone
 // of the seed template, the code under test as `dems_app`, a manual clock: no test waits.
 import { validateCoreApiResponse } from '@dems/shared/api';
-import { OPERATOR_IDS, OPERATORS, ROLE_PERMISSIONS, type AuditRow } from '@dems/shared/sim';
+import { OPERATOR_IDS, OPERATORS, Permission, ROLE_PERMISSIONS, type AuditRow } from '@dems/shared/sim';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import type { Pool } from 'pg';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -157,22 +157,14 @@ describe('operation 4, getAuthSession', () => {
   });
 });
 
-/** The place of a permission in the permission table (its `sort_order`): the shared declaration order. */
+/**
+ * The place of a permission in the permission table (its `sort_order`): the shared declaration
+ * order. Derived from the enum, never re-listed: schema v2 grew the vocabulary to 14 (CAPTURE_CONFIG,
+ * TRANSCRIPT_REVISE) and a re-listed array would put the new names at -1.
+ */
+const PERMISSION_ORDER: readonly string[] = Object.values(Permission);
 function permissionOrder(permission: string): number {
-  return [
-    'SESSION_START',
-    'SESSION_NOTE',
-    'EVIDENCE_VIEW',
-    'EVIDENCE_REVIEW',
-    'EVIDENCE_EXPORT',
-    'AUDIT_EXPORT',
-    'DEVICE_MANAGE',
-    'DIAGNOSTICS_RUN',
-    'MAINTENANCE',
-    'PAIRING_MANAGE',
-    'USER_ADMIN',
-    'DEMO_CONTROL',
-  ].indexOf(permission);
+  return PERMISSION_ORDER.indexOf(permission);
 }
 
 describe('AC-B-26: idle expiry at 15 minutes, absolute expiry at 8 hours, on the server clock', () => {

@@ -12,7 +12,7 @@ import { afterAll, describe, expect, it } from 'vitest';
 import type { CommandOptions } from '../../src/db/commands/cli';
 import { runCreate } from '../../src/db/commands/create';
 import { runMigrate } from '../../src/db/commands/migrate';
-import { MIGRATIONS_FOLDER, assertLedgerCurrent, readMigrationSet } from '../../src/db/commands/migrations';
+import { INITIAL_MIGRATION_TAGS, MIGRATIONS_FOLDER, assertLedgerCurrent, readMigrationSet } from '../../src/db/commands/migrations';
 import { runStatus } from '../../src/db/commands/status';
 import { useTestDatabase } from '../helpers/db';
 import { coreState, insertRbac, insertRow, lineageRow } from './fixtures';
@@ -84,15 +84,15 @@ describe('db:migrate (AC-B-01)', () => {
     ]);
   });
 
-  it('first run on the empty database: applies the four files; prints the version before and after', async () => {
+  it('first run on the empty database: applies the eight files; prints the version before and after', async () => {
     const result = await run(runMigrate, ['--database', created()]);
     expect(result.err).toEqual([]);
     expect(result.exitCode).toBe(0);
     expect(result.out).toEqual([
       `db:migrate: ${created()} on PostgreSQL 18.4 as dems_owner`,
       'db:migrate: schema version before: none (not migrated)',
-      'db:migrate: applied 4 migration(s): 0000_prelude, 0001_tables, 0002_audit_guards, 0003_privileges',
-      'db:migrate: schema version after: 1 (dbc-2)',
+      `db:migrate: applied ${INITIAL_MIGRATION_TAGS.length} migration(s): ${INITIAL_MIGRATION_TAGS.join(', ')}`,
+      'db:migrate: schema version after: 2 (dbc-3)',
     ]);
   });
 
@@ -101,24 +101,24 @@ describe('db:migrate (AC-B-01)', () => {
     expect(result.exitCode).toBe(0);
     expect(result.out).toEqual([
       `db:migrate: ${created()} on PostgreSQL 18.4 as dems_owner`,
-      'db:migrate: schema version before: 1 (dbc-2)',
+      'db:migrate: schema version before: 2 (dbc-3)',
       'db:migrate: no pending migration; nothing was applied.',
-      'db:migrate: schema version after: 1 (dbc-2)',
+      'db:migrate: schema version after: 2 (dbc-3)',
     ]);
   });
 });
 
 describe('db:status', () => {
-  it('a migrated, unseeded database: exit 0; prints version, ledger, owner, triggers, head, lineage and 30 row counts', async () => {
+  it('a migrated, unseeded database: exit 0; prints version, ledger, owner, triggers, head, lineage and 40 row counts', async () => {
     const result = await run(runStatus, ['--database', created()]);
     expect(result.err).toEqual([]);
     expect(result.exitCode).toBe(0);
     const files = readMigrationSet();
-    expect(result.out.slice(0, 8)).toEqual([
+    expect(result.out.slice(0, 12)).toEqual([
       `database         ${created()} on PostgreSQL 18.4`,
       'owner            dems_owner; encoding UTF8; locale C',
-      'schema version   1; contract revision dbc-2; this code expects 1 (dbc-2)',
-      'migrations       4 file(s); ledger matches',
+      'schema version   2; contract revision dbc-3; this code expects 2 (dbc-3)',
+      'migrations       8 file(s); ledger matches',
       ...files.map((file) => `  ${file.tag.padEnd(20)} applied  file sha256 ${file.sha256}  stored ${file.sha256}`),
     ]);
     expect(result.out).toContain('seeded_at        not seeded');
@@ -126,8 +126,8 @@ describe('db:status', () => {
     expect(result.out).toContain('audit head       seq 0; hash 0000000000000000...');
     expect(result.out).toContain('audit triggers   audit_chain_history_append_only=A, audit_log_append_only=A, audit_log_chain_guard=A');
     expect(result.out).toContain('lineage          0 row(s)');
-    expect(result.out).toContain('row counts       30 table(s)');
-    expect(result.out.filter((line) => /^ {2}[a-z_]+ +\d+$/.test(line))).toHaveLength(30);
+    expect(result.out).toContain('row counts       40 table(s)');
+    expect(result.out.filter((line) => /^ {2}[a-z_]+ +\d+$/.test(line))).toHaveLength(40);
     expect(result.out).toContain('  audit_chain_head         1');
     expect(result.out).toContain('  schema_meta              1');
     expect(result.out.at(-1)).toBe(`db:status: OK: ${created()} is at the schema version this code expects and the ledger matches the files.`);
@@ -153,14 +153,14 @@ describe('db:status', () => {
     expect(result.out).toContain('  audit_chain_history      2');
   });
 
-  it('a database that exists and is not migrated: exit 1, four pending migrations', async () => {
+  it('a database that exists and is not migrated: exit 1, eight pending migrations', async () => {
     const empty = await db.another({ template: EMPTY_DATABASE, slug: 'cmd_empty' });
     const result = await run(runStatus, ['--database', empty.name]);
     expect(result.exitCode).toBe(1);
-    expect(result.out).toContain('schema version   none (not migrated); this code expects 1 (dbc-2)');
-    expect(result.out.filter((line) => / pending /.test(line))).toHaveLength(4);
+    expect(result.out).toContain('schema version   none (not migrated); this code expects 2 (dbc-3)');
+    expect(result.out.filter((line) => / pending /.test(line))).toHaveLength(8);
     expect(result.err).toEqual([
-      'db:status: 4 migration(s) are not applied: 0000_prelude, 0001_tables, 0002_audit_guards, 0003_privileges. Run "npm run db:migrate".',
+      `db:status: ${INITIAL_MIGRATION_TAGS.length} migration(s) are not applied: ${INITIAL_MIGRATION_TAGS.join(', ')}. Run "npm run db:migrate".`,
       `db:status: NOT OK: 1 problem(s) on ${empty.name}.`,
     ]);
   });
@@ -183,9 +183,9 @@ describe('D38: an applied migration file that was edited is noticed by db:status
 
     const status = await run(runStatus, ['--database', created()], { migrationsFolder: folder });
     expect(status.exitCode).toBe(1);
-    expect(status.out).toContain('migrations       4 file(s); ledger DOES NOT MATCH');
+    expect(status.out).toContain('migrations       8 file(s); ledger DOES NOT MATCH');
     expect(status.out).toContain(`  ${'0001_tables'.padEnd(20)} edited   file sha256 ${edited?.sha256}  stored ${original?.sha256}`);
-    expect(status.out.filter((line) => / applied {2}file sha256 /.test(line))).toHaveLength(3);
+    expect(status.out.filter((line) => / applied {2}file sha256 /.test(line))).toHaveLength(7);
     expect(status.err).toEqual([
       `db:status: 0001_tables.sql was edited after it was applied: the file's SHA-256 is ${edited?.sha256.slice(0, 16)}..., the stored hash is ${original?.sha256.slice(0, 16)}.... An applied file is never edited; a correction is a new file (MG-4).`,
       `db:status: NOT OK: 1 problem(s) on ${created()}.`,
@@ -280,7 +280,7 @@ describe('a failing migration set leaves nothing behind (one transaction, D38)',
 
     const ok = await run(runMigrate, ['--database', empty.name]);
     expect(ok.exitCode).toBe(0);
-    expect(ok.out[2]).toBe('db:migrate: applied 4 migration(s): 0000_prelude, 0001_tables, 0002_audit_guards, 0003_privileges');
+    expect(ok.out[2]).toBe(`db:migrate: applied ${INITIAL_MIGRATION_TAGS.length} migration(s): ${INITIAL_MIGRATION_TAGS.join(', ')}`);
   });
 });
 

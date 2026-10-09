@@ -48,7 +48,7 @@ const ANONYMOUS: Principal = { kind: 'ANONYMOUS', retiredDeviceId: null };
 const RETIRED: Principal = { kind: 'ANONYMOUS', retiredDeviceId: 'DEV-0007' };
 
 function refusalOf(operationId: string, caller: Partial<AccessCaller> & { principal: Principal }): AccessRefusal {
-  const decision = decideAccess(ruleOf(operationId), { consoleIdentity: true, demoControls: true, ...caller });
+  const decision = decideAccess(ruleOf(operationId), { consoleIdentity: true, demoControls: true, sessionCreatorId: null, ...caller });
   if (decision.allowed) throw new Error(`${operationId} was allowed`);
   return decision.refusal;
 }
@@ -160,7 +160,7 @@ describe('the answer of a refusal (spec §7.2)', () => {
     let refusals = 0;
     for (const operation of CORE_API_OPERATIONS) {
       for (const caller of callers) {
-        const decision = decideAccess(ruleOf(operation.operationId), { consoleIdentity: true, demoControls: true, ...caller });
+        const decision = decideAccess(ruleOf(operation.operationId), { consoleIdentity: true, demoControls: true, sessionCreatorId: null, ...caller });
         if (decision.allowed) continue;
         refusals += 1;
         const answer = refusalAnswer(ruleOf(operation.operationId), decision.refusal);
@@ -252,7 +252,7 @@ describe('the row of an audited refusal (RB-4, RB-6; spec §13.1)', () => {
       const rule = ruleOf(operation.operationId);
       const principals = [RETIRED, ...Object.values(OperatorRole).map((role) => operator(role, 'DEV-0001'))];
       for (const principal of principals) {
-        const decision = decideAccess(rule, { principal, consoleIdentity: true, demoControls: true });
+        const decision = decideAccess(rule, { principal, consoleIdentity: true, demoControls: true, sessionCreatorId: null });
         if (decision.allowed) continue;
         const record = denialRecordOf(rule, decision.refusal, null);
         expect(record !== null).toBe(isAudited(decision.refusal));
@@ -275,8 +275,29 @@ describe('the row of an audited refusal (RB-4, RB-6; spec §13.1)', () => {
         }
       }
     }
-    // 75 for the retired device minus the two it may call, and 22 + 3 + 31 for the three roles.
-    expect(rows).toBe(73 + 22 + 3 + 31);
+    // R3 (ruling D44): the total is RE-DERIVED from the landed sources, not a v1 spec formula.
+    // From the registry: every operation a retired device may not call writes its ACCESS_DENIED
+    // row. From the shared role table: an operation denies a role when the rule names permissions
+    // the role holds none of, and every such refusal is audited under the rule's denial. Plus the
+    // SESSION_HOLDER refusals of C3 §5.3: this caller states `sessionCreatorId: null`, so every
+    // holder-conditioned operation the role is otherwise allowed to call still writes its row -
+    // for a SUPERVISOR never, since the holder rule names it as a holder (SEC35-18).
+    const retiredRows = CORE_API_OPERATIONS.filter((operation) => ruleOf(operation.operationId).refusesRetiredDevice).length;
+    const deniedByRoleTable = (role: OperatorRole): number =>
+      CORE_API_OPERATIONS.filter((operation) => {
+        const rule = ruleOf(operation.operationId);
+        return rule.permissions.length > 0 && !rule.permissions.some((permission) => (ROLE_PERMISSIONS[role] as readonly Permission[]).includes(permission));
+      }).length;
+    const holderRows = (role: OperatorRole): number =>
+      role === OperatorRole.SUPERVISOR
+        ? 0
+        : CORE_API_OPERATIONS.filter((operation) => {
+            const rule = ruleOf(operation.operationId);
+            const allowedByMarker = rule.permissions.length === 0 || rule.permissions.some((permission) => (ROLE_PERMISSIONS[role] as readonly Permission[]).includes(permission));
+            return allowedByMarker && rule.conditions.includes(CoreApiAccessCondition.SESSION_HOLDER);
+          }).length;
+    const expectedRows = retiredRows + Object.values(OperatorRole).reduce((sum, role) => sum + deniedByRoleTable(role) + holderRows(role), 0);
+    expect(rows).toBe(expectedRows);
   });
 });
 

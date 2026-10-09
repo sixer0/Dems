@@ -1,5 +1,6 @@
 /**
- * Core API v1 contract: the registry of its 75 REST operations, and the zod schemas of the ten
+ * Core API v1 contract: the registry of its 89 REST operations (75 through task 2; operations
+ * 76-89 added by task 3 M2-W7, blueprint row 48, `C3 §2.2`), and the zod schemas of the ten
  * operations the demo documented first (masterplan/01_specs.md §14.9; book §21.2; D26, D31).
  *
  * The ten operations of this file, and who answers each:
@@ -54,7 +55,10 @@
  */
 import { z } from 'zod';
 import {
+  FinalizationStep,
   LensState,
+  MicInputId,
+  MicRole,
   MicState,
   SecurityState,
   SessionState,
@@ -66,6 +70,7 @@ import {
 import { EXPORT_REASON_MIN_LENGTH, STOP_REASON_MIN_LENGTH } from '../sim/constants';
 import {
   AuditType,
+  CaptureStreamState,
   FaultKind,
   OperatorRole,
   Permission,
@@ -76,6 +81,7 @@ import {
   SecurityPosture,
   ServiceStatus,
   Severity,
+  StepStatus,
   SubjectType,
   SystemState,
 } from '../sim/vocabulary';
@@ -95,8 +101,14 @@ import {
   type CoreApiResponseSpec,
 } from './contract-model';
 import { DEMO_OPERATIONS, DEMO_SCHEMAS } from './demo-controls';
-import { DEVICE_OPERATIONS, DEVICE_SCHEMAS } from './devices';
-import { EVIDENCE_OPERATIONS, EVIDENCE_SCHEMAS } from './evidence';
+import {
+  CAPTURE_CONFIG_OPERATIONS,
+  CAPTURE_CONFIG_SCHEMAS,
+  CAPTURE_CREDENTIAL_OPERATION,
+  DEVICE_OPERATIONS,
+  DEVICE_SCHEMAS,
+} from './devices';
+import { EVIDENCE_OPERATIONS, EVIDENCE_SCHEMAS, TRANSCRIPT_MEDIA_OPERATIONS, TRANSCRIPT_MEDIA_SCHEMAS } from './evidence';
 import { HealthResponseSchema } from './health';
 import { IDENTITY_OPERATIONS, IDENTITY_SCHEMAS } from './identity';
 import { NETWORK_TIME_OPERATIONS, NETWORK_TIME_SCHEMAS } from './network-time';
@@ -113,8 +125,12 @@ import {
 import { codeUnitBoundMessage } from './schema-parts';
 import { SECURITY_AUDIT_OPERATIONS, SECURITY_AUDIT_SCHEMAS } from './security-audit';
 import { sessionCreateSchema } from './session-schema';
-import { SESSION_OPERATIONS, SESSION_SCHEMAS } from './sessions';
-import { STATE_SCHEMAS } from './state-slices';
+import { AUDIO_SOURCE_OPERATIONS, AUDIO_SOURCE_SCHEMAS, SESSION_OPERATIONS, SESSION_SCHEMAS } from './sessions';
+import {
+  CaptureConfigCameraSchema,
+  CaptureConfigMicSchema,
+  STATE_SCHEMAS,
+} from './state-slices';
 import { STORAGE_OPERATIONS, STORAGE_SCHEMAS } from './storage';
 import { SYSTEM_OPERATIONS, SYSTEM_SCHEMAS } from './system';
 import { apiText } from './text';
@@ -147,8 +163,9 @@ const dbfs = () => z.number().min(-90).max(0);
 
 /**
  * Every code the document lists: the 16 the simulator's REST layer answers with, then the 15 the
- * Core server adds (backend task 01_specs §7.2). `code` stays a pattern-checked string, so a code
- * added later still parses.
+ * Core server adds (backend task 01_specs §7.2), then the 9 of the capture phase (task 3 M2-W7;
+ * C3 §4; SH-15) — 40 in all. `code` stays a pattern-checked string, so a code added later still
+ * parses.
  */
 export const ApiErrorCode = {
   INVALID_JSON: 'INVALID_JSON',
@@ -183,6 +200,20 @@ export const ApiErrorCode = {
   RATE_LIMITED: 'RATE_LIMITED',
   INTERNAL_ERROR: 'INTERNAL_ERROR',
   NOT_READY: 'NOT_READY',
+  // Task 3 M2-W7 (blueprint row 48; register SH-15; C3 §4): the nine capture-phase codes, in the
+  // order of the C3 §4 table. 31 -> 40 (SEC35-22 reconciles the union across rows 29/30/33).
+  // Every code is SCREAMING_SNAKE_CASE (API_ERROR_CODE_PATTERN), so the audit writer's `code()`
+  // rule accepts it in a detail (audit-details.ts). A failed export JOB is not an HTTP error: it
+  // is the job's `status: FAILED` in the 200 body of operation 87 (audited EVIDENCE_EXPORT_FAILED).
+  CAPTURE_CONFIG_LOCKED: 'CAPTURE_CONFIG_LOCKED',
+  AUDIO_SOURCE_CONFLICT: 'AUDIO_SOURCE_CONFLICT',
+  CAMERA_NOT_LOST: 'CAMERA_NOT_LOST',
+  TRANSCRIPT_NOT_READY: 'TRANSCRIPT_NOT_READY',
+  TRANSCRIPT_REVISION_CONFLICT: 'TRANSCRIPT_REVISION_CONFLICT',
+  EXPORT_IN_PROGRESS: 'EXPORT_IN_PROGRESS',
+  MEDIA_NOT_AVAILABLE: 'MEDIA_NOT_AVAILABLE',
+  RESET_BLOCKED_REAL_EVIDENCE: 'RESET_BLOCKED_REAL_EVIDENCE',
+  TRANSCRIPT_AUDIO_UNAVAILABLE: 'TRANSCRIPT_AUDIO_UNAVAILABLE',
 } as const;
 export type ApiErrorCode = (typeof ApiErrorCode)[keyof typeof ApiErrorCode];
 /** The codes in document order. */
@@ -287,8 +318,53 @@ export const SessionResourceSchema = z
       .object({ kind: z.enum(FaultKind), at: isoTime(), fromState: z.enum(SessionState) })
       .nullable()
       .describe('The critical fault that moved the session to FAULT, if any.'),
+    // ── Schema v2 (task 3 M2-W7; C3 §3 op 27; register SH-05/SH-06; `dbc-3 §B.10`) ──────────
+    // Optional: a v1 answer carries none of the three, so every pre-v2 producer still parses. The
+    // three carry epoch milliseconds like the slices they mirror (API-6: one wire form for the
+    // socket and REST); the Core writes them from Core instants only (E-13).
+    captureConfig: z
+      .strictObject({
+        cameras: z.array(CaptureConfigCameraSchema),
+        mics: z.array(CaptureConfigMicSchema),
+        revision: count().describe('Selector revision the snapshot was taken at.'),
+        updatedAt: z.int().nonnegative(),
+      })
+      .optional()
+      .describe('The capture-config snapshot taken when recording started; a later edit never changes it (OD-10).'),
+    audioSource: z
+      .strictObject({
+        activeInputId: z.enum(MicInputId),
+        standbyInputId: z.enum(MicInputId),
+        switchedAt: z.int().nonnegative().nullable().describe('When the last switch took effect; null before the first.'),
+        intervalFromMs: count().describe('Media-pts start of the interval the switch opened (never wall clock).'),
+      })
+      .nullable()
+      .optional()
+      .describe('The active/standby mic pair of this session (op 81 moves it).'),
+    finalization: z
+      .strictObject({
+        steps: z
+          .array(
+            z.strictObject({
+              id: z.enum(FinalizationStep).describe('v2 step names: CLOSE_TRACKS .. STORE_SEALED_PACKAGE (SH-01; `ev §E`).'),
+              status: z.enum(StepStatus),
+              startedAt: z.int().nonnegative().nullable(),
+              completedAt: z.int().nonnegative().nullable(),
+              durationMs: count().nullable(),
+              progress: count().optional().describe('Sealing progress of this step, 0..100 (E-13: Core instants only).'),
+              etaMs: z.int().nonnegative().nullable().optional(),
+              detail: z.string().nullable().optional(),
+              attempt: count().optional().describe('Attempt of this step, >= 1; a resumed run increments it (OD-08).'),
+            }),
+          )
+          .describe('The v2 sealing steps, in pipeline order.'),
+        startedAt: z.int().nonnegative().nullable(),
+        completedAt: z.int().nonnegative().nullable(),
+      })
+      .optional()
+      .describe('Finalization v2 of this session; absent before sealing starts.'),
   })
-  .describe('The open session.');
+  .describe('The open session (schema v2: capture-config snapshot, audio source, v2 finalization).');
 export type SessionResource = z.output<typeof SessionResourceSchema>;
 
 export const CurrentSessionResponseSchema = z
@@ -307,6 +383,14 @@ export const VideoTrackStatusSchema = z
   .object({
     trackId: z.enum([TrackId.VIDEO_01, TrackId.VIDEO_02]),
     deviceId: z.string().min(1).describe('e.g. CAM-01.'),
+    /**
+     * Schema v2 (task 3 M2-W7; register SH-05; C3 §3 op 46): the capture-config device feeding
+     * this track. It equals `deviceId` in the built-in topology and may differ once the selector
+     * maps another device onto the track (OD-05).
+     */
+    sourceDeviceId: z.string().min(1).describe('The capture device assigned to this track by the selector (op 79 moves it).'),
+    /** Schema v2 (C3 §3 ops 44/46; OD-22): LIVE or LOST; a LOST stream is what makes op 48's PoE cycle legal. */
+    streamState: z.enum(CaptureStreamState),
     name: z.string().min(1),
     lens: z.enum(LensState),
     online: z.boolean(),
@@ -316,14 +400,22 @@ export const VideoTrackStatusSchema = z
     codec: z.literal('H.264'),
     bitrateMbps: z.number().nonnegative(),
   })
-  .describe('One video track (VIDEO-01 or VIDEO-02).');
+  .describe('One video track (VIDEO-01 or VIDEO-02), its source device and its stream state (schema v2).');
 export type VideoTrackStatus = z.output<typeof VideoTrackStatusSchema>;
 
+/**
+ * One microphone INPUT (schema v2; task 3 M2-W7; register SH-15/SH-17; C3 §3 op 45; E-02). The
+ * v1 entry was keyed by the channel `AUDIO-01`/`AUDIO-02`; v2 keys it by the input `MIC-01`/
+ * `MIC-02` and carries the capture role inside `AUDIO-01` (OD-01 T1: `AUDIO-01` is the one
+ * session audio track, `AUDIO-02` is legacy v1 only). The components name stays for wire
+ * stability of the array member.
+ */
 export const AudioChannelStatusSchema = z
   .object({
-    trackId: z.enum([TrackId.AUDIO_01, TrackId.AUDIO_02]),
+    inputId: z.enum(MicInputId).describe('The physical input: MIC-01 or MIC-02 (never a track).'),
     deviceId: z.string().min(1).describe('e.g. MIC-01.'),
     name: z.string().min(1).describe('e.g. "MIC 1 – Interviewer".'),
+    role: z.enum(MicRole).describe('PRIMARY feeds AUDIO-01; STANDBY is the hot failover (OD-09).'),
     state: z.enum(MicState),
     recState: z.enum(TrackRecState).nullable(),
     dbfs: dbfs().describe('Ballistic level in dBFS; -90 means no signal.'),
@@ -333,7 +425,7 @@ export const AudioChannelStatusSchema = z
     gainDb: z.number().describe('Read-only in the UI (G13).'),
     phantom: z.boolean(),
   })
-  .describe('One audio channel (AUDIO-01 = MIC 1, AUDIO-02 = MIC 2).');
+  .describe('One mic input keyed by MIC-01/MIC-02 with its PRIMARY/STANDBY role (schema v2).');
 export type AudioChannelStatus = z.output<typeof AudioChannelStatusSchema>;
 
 export const VideoStatusResponseSchema = z
@@ -343,9 +435,10 @@ export type VideoStatusResponse = z.output<typeof VideoStatusResponseSchema>;
 
 export const AudioStatusResponseSchema = z
   .object({
-    channels: z.array(AudioChannelStatusSchema).length(2).describe('AUDIO-01 and AUDIO-02, never merged (SYS-003).'),
+    channels: z.array(AudioChannelStatusSchema).length(2).describe('The two mic inputs MIC-01 and MIC-02, never merged (SYS-003).'),
+    activeInputId: z.enum(MicInputId).describe('The input whose audio is inside AUDIO-01 right now (op 81 moves it; SH-15).'),
   })
-  .describe('Per-channel audio snapshot. Meters use it as their initial value; live levels run at 20 Hz in-process.');
+  .describe('Per-input audio snapshot with the active/standby pair. Meters use it as their initial value; live levels run at 20 Hz in-process.');
 export type AudioStatusResponse = z.output<typeof AudioStatusResponseSchema>;
 
 export const StorageStatusResponseSchema = z
@@ -389,8 +482,9 @@ export const DeviceHealthResponseSchema = z
     flags: z
       .array(z.object({ id: z.string().min(1), severity: z.enum(Severity), message: z.string().min(1) }))
       .describe('What makes the state ATTENTION or CRITICAL.'),
-    cameras: z.array(VideoTrackStatusSchema).length(2),
-    audio: z.array(AudioChannelStatusSchema).length(2),
+    cameras: z.array(VideoTrackStatusSchema).length(2).describe('Schema v2: each camera carries `streamState` (C3 §3 op 44; OD-22).'),
+    audio: z.array(AudioChannelStatusSchema).length(2).describe('Schema v2: keyed by the mic inputs MIC-01/MIC-02 with their roles.'),
+    activeInputId: z.enum(MicInputId).describe('Schema v2 (C3 §3 op 44): the input feeding AUDIO-01 right now.'),
     storage: StorageStatusResponseSchema,
     time: z.object({
       source: z.enum(TimeSource).describe('Active source, priority GNSS → NTP → RTC.'),
@@ -418,6 +512,24 @@ export type DeviceHealthResponse = z.output<typeof DeviceHealthResponseSchema>;
 // Evidence export (book §19.2, §19.3)
 // ═══════════════════════════════════════════════════════════════════════════════════════
 
+/**
+ * The kind of an export (task 3 M2-W7; register SH-14/NM-12; OD-16; C3 §3 op 42). PACKAGE is the
+ * decrypted copy + manifest + signature; COMPOSITE additionally renders the side-by-side video,
+ * marked `derived` and hashed into the export manifest.
+ */
+export const EvidenceExportKind = { PACKAGE: 'PACKAGE', COMPOSITE: 'COMPOSITE' } as const;
+export type EvidenceExportKind = (typeof EvidenceExportKind)[keyof typeof EvidenceExportKind];
+
+/**
+ * Options of the composite render. Empty today: the composite encoder is picked only after the
+ * M8 licence check (blueprint row 91/D228; NM-12), which will give this object its members.
+ * Sending `{}` with `kind: COMPOSITE` asks for the side-by-side video.
+ */
+export const EvidenceExportCompositeOptionsSchema = z
+  .strictObject({})
+  .describe('Composite render options; reserved for the M8 encoder parameters (NM-12).');
+export type EvidenceExportCompositeOptions = z.output<typeof EvidenceExportCompositeOptionsSchema>;
+
 export const EvidenceExportRequestSchema = z
   .object({
     reason: apiText()
@@ -435,18 +547,28 @@ export const EvidenceExportRequestSchema = z
       .describe(
         `Destination or approved media identifier (book §19.2 item 6). Empty means "Case file transfer (simulated)"; text beyond ${EXPORT_DESTINATION_MAX_LENGTH} characters is cut.`,
       ),
+    // Schema v2 (C3 §3 op 42): the request names the kind; absent means PACKAGE, so every v1 caller still parses.
+    kind: z.enum(EvidenceExportKind).optional().describe('PACKAGE (the default when absent) or COMPOSITE (OD-16; NM-12).'),
+    composite: EvidenceExportCompositeOptionsSchema
+      .optional()
+      .describe('Set with `kind: COMPOSITE`; ignored otherwise. The job marks its output `derived` (OD-16).'),
   })
-  .describe('Request body of `POST /api/v1/evidence/{id}/export`.');
+  .describe('Request body of `POST /api/v1/evidence/{id}/export` (schema v2: kind + composite).');
 export type EvidenceExportRequest = z.output<typeof EvidenceExportRequestSchema>;
 
 export const EvidenceExportAcceptedSchema = z
   .object({
     exportId: z.string().regex(EXPORT_ID_PATTERN),
     evidenceId: evidenceId(),
-    status: z.literal('EXPORTED'),
+    /**
+     * Schema v2 (C3 §3 op 42): the answer means "the job is queued", not "the file exists" — the
+     * background job runs on the Core and op 87 polls it to completion. The EVIDENCE_EXPORTED row
+     * is the REQUEST row; a failing job writes EVIDENCE_EXPORT_FAILED (§5.2).
+     */
+    status: z.literal('QUEUED'),
   })
   .describe(
-    'Export accepted. The ExportEvent (book §19.2: operator, time, destination, reason) is the EVIDENCE_EXPORTED audit row it wrote.',
+    'Export accepted and queued (schema v2). The ExportEvent (book §19.2: operator, time, destination, reason) is the EVIDENCE_EXPORTED audit row it wrote; completion arrives through operation 87.',
   );
 export type EvidenceExportAccepted = z.output<typeof EvidenceExportAcceptedSchema>;
 
@@ -483,6 +605,7 @@ export const CORE_API_SCHEMAS = {
   DeviceHealthResponse: DeviceHealthResponseSchema,
   EvidenceExportRequest: EvidenceExportRequestSchema,
   EvidenceExportAccepted: EvidenceExportAcceptedSchema,
+  EvidenceExportCompositeOptions: EvidenceExportCompositeOptionsSchema,
   ApiError: ApiErrorSchema,
   Heartbeat: HeartbeatSchema,
   ...IDENTITY_SCHEMAS,
@@ -499,6 +622,11 @@ export const CORE_API_SCHEMAS = {
   ...SECURITY_AUDIT_SCHEMAS,
   ...SYSTEM_SCHEMAS,
   ...ALERT_SCHEMAS,
+  // Task 3 M2-W7 (blueprint row 48; C3 §2): the capture-config, audio-source, sealing-progress,
+  // transcript, export-job and media-session schemas of operations 76-89.
+  ...CAPTURE_CONFIG_SCHEMAS,
+  ...AUDIO_SOURCE_SCHEMAS,
+  ...TRANSCRIPT_MEDIA_SCHEMAS,
 } as const;
 export type CoreApiSchemaName = keyof typeof CORE_API_SCHEMAS;
 
@@ -893,6 +1021,13 @@ const OPERATION_TABLE = [
   ...SYSTEM_OPERATIONS,
   ...ALERT_OPERATIONS,
   ...DEMO_OPERATIONS,
+  // Task 3 M2-W7 (blueprint row 48; C3 §2.2): operations 76-89, appended in number order so the
+  // table order and the contract numbering agree. 75 + 14 = 89 operations, 34 GET / 55 POST.
+  // Ops 90-92 (R-8) are NOT here: proposed only until Q-STT-CFG is confirmed (C3 §2.5; CF-11).
+  ...CAPTURE_CONFIG_OPERATIONS, // 76-80
+  ...AUDIO_SOURCE_OPERATIONS, // 81-83
+  ...TRANSCRIPT_MEDIA_OPERATIONS, // 84-88
+  CAPTURE_CREDENTIAL_OPERATION, // 89
 ] as const satisfies readonly CoreApiRegistryOperation[];
 
 /** The type of the table with literal operation IDs and schema names (`CORE_API_OPERATION_TABLE`). */

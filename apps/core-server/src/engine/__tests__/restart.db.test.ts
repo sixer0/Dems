@@ -111,14 +111,16 @@ describe('the boot step (decision D40) and the epoch (spec §8.6, D14)', () => {
     expect(await storedEpoch(owner)).toBe(3);
     expect((await readHead(owner)).seq).toBe(before.seq + 1);
     expect(second.log.lines().find((line) => line['msg'] === 'engine started')).toMatchObject({ epoch: 3, tabletLinkReset: false, auditRows: 0 });
-    // The rehydration is one unit: the unit's three statements, 16 reads, the writes, the commit.
+    // The rehydration is one unit: the unit's three statements, 18 reads, the writes, the commit.
+    // (RECON-B2a R5: the 16 reads of the dataset plus `capture_config` and `capture_devices` -
+    // the two durable slices that joined the replicated set with rows 47 and 52.)
     expect(rehydration[0]).toBe('BEGIN ISOLATION LEVEL READ COMMITTED');
     expect(rehydration.at(-1)).toBe('COMMIT');
     expect(rehydration.filter((text) => text.startsWith('BEGIN'))).toHaveLength(1);
-    expect(rehydration.filter((text) => text.startsWith('select '))).toHaveLength(16);
+    expect(rehydration.filter((text) => text.startsWith('select '))).toHaveLength(18);
     console.info(
       `[w26] boot on a seeded clone: B-1 to B-9, engine.rehydrate; epoch 0 -> 1 (start), -> 2 (stop + start), -> 3 (new process); ` +
-        `the whole boot ${bootMs.toFixed(0)} ms, the rehydration unit ${rehydration.length} statements (16 reads; writes: ${rehydration
+        `the whole boot ${bootMs.toFixed(0)} ms, the rehydration unit ${rehydration.length} statements (18 reads; writes: ${rehydration
           .filter((text) => /^(insert|update|UPDATE)/.test(text))
           .map((text) => text.split('"')[1] ?? 'engine_counters')
           .join(', ')})`,
@@ -174,7 +176,7 @@ describe('a database the engine cannot start from: the server does not come up o
     // What the fixtures of the boot-check tests hold: enough for B-6, not a seeded state.
     await target.ownerPool().query(
       `INSERT INTO public.core_state (seed, sim_schema_version, scenario, epoch, created_at, seeded_at, last_sealed_acknowledged, updated_at)
-       VALUES (20261001, 1, 'idle', 0, $1, $1, true, $1)`,
+       VALUES (20261001, 2, 'idle', 0, $1, $1, true, $1)`,
       [FIXED_NOW],
     );
     const host = await engineApp(target, db.run.dataDir);

@@ -186,6 +186,8 @@ function videoTracks(recState: VideoTrackStatus['recState']): VideoTrackStatus[]
     {
       trackId: 'VIDEO-01',
       deviceId: 'CAM-01',
+      sourceDeviceId: 'CAM-01',
+      streamState: 'LIVE',
       name: 'Camera 1',
       lens: 'READY',
       online: true,
@@ -198,6 +200,8 @@ function videoTracks(recState: VideoTrackStatus['recState']): VideoTrackStatus[]
     {
       trackId: 'VIDEO-02',
       deviceId: 'CAM-02',
+      sourceDeviceId: 'CAM-02',
+      streamState: 'LIVE',
       name: 'Camera 2',
       lens: 'READY',
       online: true,
@@ -213,8 +217,9 @@ function videoTracks(recState: VideoTrackStatus['recState']): VideoTrackStatus[]
 const AUDIO_RECORDING: AudioStatusResponse = {
   channels: [
     {
-      trackId: 'AUDIO-01',
+      inputId: 'MIC-01',
       deviceId: 'MIC-01',
+      role: 'PRIMARY',
       name: 'MIC 1 – Interviewer',
       state: 'READY',
       recState: 'REC',
@@ -226,8 +231,9 @@ const AUDIO_RECORDING: AudioStatusResponse = {
       phantom: true,
     },
     {
-      trackId: 'AUDIO-02',
+      inputId: 'MIC-02',
       deviceId: 'MIC-02',
+      role: 'STANDBY',
       name: 'MIC 2 – Subject',
       state: 'READY',
       recState: 'REC',
@@ -239,6 +245,7 @@ const AUDIO_RECORDING: AudioStatusResponse = {
       phantom: true,
     },
   ],
+  activeInputId: 'MIC-01',
 };
 
 /** The idle store at the example instant: 804 GB of 4 TB = 20 % used, 3.2 TB free (D28/Q1). */
@@ -285,8 +292,9 @@ const DEVICE_HEALTH_IDLE: DeviceHealthResponse = {
   cameras: videoTracks(null),
   audio: [
     {
-      trackId: 'AUDIO-01',
+      inputId: 'MIC-01',
       deviceId: 'MIC-01',
+      role: 'PRIMARY',
       name: 'MIC 1 – Interviewer',
       state: 'READY',
       recState: null,
@@ -298,8 +306,9 @@ const DEVICE_HEALTH_IDLE: DeviceHealthResponse = {
       phantom: true,
     },
     {
-      trackId: 'AUDIO-02',
+      inputId: 'MIC-02',
       deviceId: 'MIC-02',
+      role: 'STANDBY',
       name: 'MIC 2 – Subject',
       state: 'READY',
       recState: null,
@@ -311,6 +320,7 @@ const DEVICE_HEALTH_IDLE: DeviceHealthResponse = {
       phantom: true,
     },
   ],
+  activeInputId: 'MIC-01',
   storage: STORAGE_AT_LOAD,
   time: { source: 'GNSS', locked: true, stratum: 1, offsetMs: 3, lastSyncAt: '2026-10-01T09:59:48.000+07:00' },
   security: { state: 'READY', posture: 'SECURE', tpmOk: true, secureBoot: true, tamper: false },
@@ -332,7 +342,8 @@ const EXPORT_REQUEST: EvidenceExportRequest = {
 const EXPORT_ACCEPTED: EvidenceExportAccepted = {
   exportId: 'EXP-000031',
   evidenceId: EXAMPLE_IDS.exportedEvidenceId,
-  status: 'EXPORTED',
+  // Schema v2 (C3 §3 op 42): the answer means "the job is queued"; op 87 polls it to completion.
+  status: 'QUEUED',
 };
 
 function apiError(code: string, message: string): ApiError {

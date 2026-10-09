@@ -68,7 +68,7 @@ export interface BulkBase {
   readonly certificateFingerprint: string;
   /** `registry_counters.next_value` of the two counters. */
   readonly registryCounters: { readonly device: number; readonly pairingCode: number };
-  /** The row count of each of the 30 tables before the load, by SQL name. */
+  /** The row count of each of the 40 tables before the load, by SQL name. */
   readonly counts: Readonly<Record<string, number>>;
 }
 

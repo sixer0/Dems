@@ -42,6 +42,8 @@ const PRIMARY_KEYS: { readonly [K in keyof MappedRows]: readonly string[] } = {
   coreState: ['singleton'],
   storagePolicy: ['singleton'],
   consoleSettings: ['singleton'],
+  captureDevices: ['id'],
+  captureConfig: ['singleton'],
   engineCounters: ['name'],
   hardwareSnapshot: ['singleton'],
   sessionHistory: ['id'],

@@ -398,7 +398,9 @@ describe('operation 42 exportEvidence: the hosted action `exportEvidence`', () =
     expect(response.statusCode).toBe(202);
     expect(validateCoreApiResponse('exportEvidence', 202, response.json())).toEqual({ ok: true });
     const body = response.json() as { exportId: string; evidenceId: string; status: string };
-    expect(body).toEqual({ exportId: 'EXP-000032', evidenceId: item.id, status: 'EXPORTED' });
+    // The answer of the LANDED op 42 (C3 §3, row 48): the job is QUEUED; the item itself moves to
+    // the EXPORTED stage in the same transaction, as the state expectations below pin.
+    expect(body).toEqual({ exportId: 'EXP-000032', evidenceId: item.id, status: 'QUEUED' });
     expect(body.exportId).toMatch(EXPORT_ID_PATTERN);
     expectStatePosition(response, host);
     expect(host.engine.revision).toBe(effect.revisionBefore + 1);

@@ -205,7 +205,7 @@ describe('area 13: demo controls', () => {
     for (const name of Object.values(ScenarioName)) expect(ScenarioLoadRequestSchema.safeParse({ name }).success, name).toBe(true);
     expect(ScenarioLoadRequestSchema.safeParse({ name: 'chaos' }).success).toBe(false);
     for (const kind of Object.values(FaultKind)) expect(DemoFaultRequestSchema.safeParse({ kind }).success, kind).toBe(true);
-    expect(Object.values(FaultKind)).toHaveLength(12);
+    expect(Object.values(FaultKind)).toHaveLength(14);
     expect(DemoFaultRequestSchema.safeParse({ kind: 'METEOR' }).success).toBe(false);
   });
 

@@ -13,7 +13,7 @@ import type { TFunction } from 'i18next'
 import { useTranslation } from 'react-i18next'
 import type { AudioTrackId } from '@dems/shared/domain'
 import { settle, useCoreActions, type CoreActions } from '@dems/shared/live'
-import { useAudioChannel, useSimInstance, type AudioFrame } from '@dems/shared/sim'
+import { MIC_INPUT_OF_CHANNEL, useAudioChannel, useSimInstance, type AudioFrame } from '@dems/shared/sim'
 import { motion as tokens } from '@dems/shared/tokens'
 import { reportMeterFrame, tween, useMotionPolicy } from '@/motion'
 import { useCoreErrorPresenter } from '@/lib/core-errors'
@@ -189,7 +189,9 @@ export function DbfsMeter({
   const layout = LAYOUT[variant]
 
   // The frame at mount seeds the attributes React renders; later values go straight to the DOM.
-  const initial = useMemo(() => sim.store.getState().audio.channels[channel], [sim, channel])
+  // The meters slice is keyed by mic input since schema v2 (SH-17); the channel a caller names maps
+  // to the input that feeds it, the same input `useAudioChannel` subscribes below.
+  const initial = useMemo(() => sim.store.getState().audio.inputs[MIC_INPUT_OF_CHANNEL[channel]], [sim, channel])
   const initialDb = initial.noSignal ? NO_SIGNAL_DB : initial.dbfs
 
   const level = useMotionValue(initialDb)

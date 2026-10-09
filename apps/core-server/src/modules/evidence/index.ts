@@ -237,7 +237,7 @@ export const evidenceModule: FastifyPluginAsync = async (app) => {
       const result = outcome.value;
       if (!result.ok) throw exportRefused(result);
       void reply.code(202);
-      return { exportId: result.exportId, evidenceId, status: 'EXPORTED' };
+      return { exportId: result.exportId, evidenceId, status: 'QUEUED' };
     },
   });
 

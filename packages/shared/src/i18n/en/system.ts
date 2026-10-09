@@ -240,11 +240,16 @@ export const system = {
       TPM_FAILURE: 'TPM failure',
       SECURITY_FAULT: 'Security fault',
       AUDIT_TAMPER: 'Audit tamper',
+      // Schema v2 (SH-03/SH-23). Both are simulated warnings of the capture path.
+      MIC_SILENT: 'MIC silent',
+      CAPTURE_FAULT: 'Capture fault',
     },
     faultHints: {
       CAMERA_LOSS: 'Live camera lens FAULT, track LOST',
       MIC_CLIP: 'CLIP latch, audit AUDIO_CLIP',
       MIC_NO_SIGNAL: 'Flat −90 dBFS, NO SIGNAL',
+      MIC_SILENT: 'Below −50 dBFS for 10 s; warns, never switches (OD-11)',
+      CAPTURE_FAULT: 'A camera file stopped growing (NM-07)',
       STORAGE_LOW: 'Fill to 86%, pre-check WARN',
       STORAGE_FULL: 'Fill to 98.6%, pre-check BLOCK',
       GNSS_LOSS: 'Time from NTP or RTC',

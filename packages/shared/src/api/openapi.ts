@@ -3,25 +3,28 @@
  * AC-56; backend task 2026-10-04: 01_specs §7.1 API-12, §7.19; 02_plan §16; 04_client_integration_spec
  * §11 AR-1).
  *
- * The registry holds 75 operations, and the builder writes one of two documents from it:
+ * The registry holds 89 operations, and the builder writes one of two documents from it:
  *
  * | | `offline` (the default) | `all` |
  * |---|---|---|
  * | Describes | What a client can call without the Core server: Simulated mode | The API as the Core server answers it: Live mode |
- * | Operations | 10: `GET /api/v1/health` (mock-core) and the 9 book §21.2 endpoints (the in-app simulator) | 75 |
+ * | Operations | 23: `GET /api/v1/health` (mock-core), the 9 book §21.2 endpoints and the 13 simulated capture/transcript endpoints (the in-app simulator, OD-17) | 89 |
  * | Who reads it | The API Reference page in Simulated mode: `createOpenApiDocument()` | The committed `openapi/openapi.json`, its drift test, and the API Reference page in Live mode |
- * | `info.version` | 0.1.0 | 0.2.1 (0.2.0 until the contract close-out W83) |
+ * | `info.version` | 0.2.0 (grew from 0.1.0 at M2: OD-17 adds the simulated capture ops) | 0.3.0 (grew from 0.2.1 at M2: capture/transcript ops 76-89) |
  * | Servers | mock-core | The Core server `http://127.0.0.1:4420`, then mock-core |
  * | Security | none: the simulator acts as the operator signed in to the console | Two schemes, the session cookie and HTTP bearer; each operation states which it takes |
- * | Badges | LIVE on health, SIMULATED on the nine, RBAC + AUDIT on the export | LIVE on all 75: the Core server answers each over the network |
+ * | Badges | LIVE on health, SIMULATED on the twenty-two, RBAC + AUDIT on the export | LIVE on all 89: the Core server answers each over the network |
  * | Per operation | `x-badges`, `x-dems-mode`, `x-dems-source`, and `x-dems-rbac` on the four simulated commands | Also `x-dems-access`, `x-dems-audit`, `x-dems-services`, `security`, the Core server's text (`coreServerDescription`) and the statuses only the Core server sends |
  * | Response headers | `x-dems-simulated` on the nine | `x-request-id` on every answer of the Core server, `x-dems-epoch` and `x-dems-revision` on a 2xx of a POST |
  * | `components.responses` | none | The answers defined once for every operation |
  * | Realtime tag | mock-core's heartbeat socket | Both sockets; the Core server's protocol in full |
  *
- * The `offline` document is, byte for byte, the document of the baseline commit, except the two
- * components the specification widened (`HealthResponse`, `ApiError`); test/api-openapi-scope.test.ts
- * holds every section of it to that commit. Nothing this file does for the `all` scope may change it.
+ * The `offline` document was, byte for byte, the document of the baseline commit `acaff20` until M2.
+ * OD-17 (D4) supersedes that pin: the in-app simulator now emulates v2, so the 13 simulated capture
+ * and transcript operations join the ten baseline operations (offline grows 10 -> 23, `info.version`
+ * 0.1.0 -> 0.2.0). test/api-openapi-scope.test.ts holds every section of it to the OD-17 scope and to
+ * the baseline commit only where a section is unchanged. Nothing this file does for the `all` scope
+ * may change it.
  *
  * - No vendor extension beyond `x-badges` (Scalar's native badge extension) and `x-dems-*`: no
  *   `x-scalar-*`, no `x-pre-request` / `x-post-response` scripts, no code-sample extension, so a
@@ -99,11 +102,15 @@ import { REPLICATED_SLICE_NAMES, UNREPLICATED_SLICE_NAMES } from './state-slices
 
 export const OPENAPI_VERSION = '3.1.0';
 /** `info.version` of the `offline` scope: the version of that API description (the server strip's "Spec version"). */
-export const OPENAPI_DOCUMENT_VERSION = '0.1.0';
+// 0.2.0 since M2 (blueprint row 50; OD-17 D4): the in-app simulator emulates v2, so the 13 simulated
+// capture/transcript operations join the ten baseline operations (offline grows 10 -> 23).
+export const OPENAPI_DOCUMENT_VERSION = '0.2.0';
 /** `info.version` of the `all` scope (API-12): the version of the Core server, which answers it. */
-// 0.2.1 since the contract close-out W83 (decision D184 DQ-8): a documented envelope 400, the all-scope
-// texts of two statuses, the strict answers of contract A.
-export const OPENAPI_CORE_SERVER_DOCUMENT_VERSION = '0.2.1';
+// 0.3.0 since M2 (blueprint row 50; C3 §8): the capture/transcript operations 76-89, the nine new
+// error codes and audit types, and the modified operations of C3 §3. Was 0.2.1 since the contract
+// close-out W83 (decision D184 DQ-8): a documented envelope 400, the all-scope texts of two statuses,
+// the strict answers of contract A.
+export const OPENAPI_CORE_SERVER_DOCUMENT_VERSION = '0.3.0';
 export const OPENAPI_TITLE = 'DEMS Core API';
 
 /**
@@ -221,7 +228,7 @@ export interface CreateOpenApiDocumentOptions {
   /** Default true. False keeps only the LIVE operations ("Show simulated endpoints" off). */
   includeSimulated?: boolean;
   /**
-   * Default `offline`: the ten operations a client can call without the Core server. `all`:
+   * Default `offline`: the 23 operations a client can call without the Core server (OD-17). `all`:
    * every operation of the registry, as the Core server answers it (see the file header).
    */
   scope?: CoreApiScope;

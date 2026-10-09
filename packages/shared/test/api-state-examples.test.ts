@@ -63,7 +63,7 @@ function rig(username?: string) {
 }
 
 describe('the example slices are the idle simulator\'s at the example instant', () => {
-  it('sixteen slices equal the state, with the four long series cut to their newest points', () => {
+  it('eighteen slices equal the state, with the four long series cut to their newest points', () => {
     const state = idle();
     expect(STATE_EXAMPLE_SERIES_POINTS).toBe(2);
     // What the simulator holds, with the same cut the examples document.
@@ -84,6 +84,9 @@ describe('the example slices are the idle simulator\'s at the example instant', 
       update: state.update,
       diagnostics: state.diagnostics,
       settings: state.settings,
+      // Task 3 M2-W6 (SH-16): the two capture slices ops 76/77 answer.
+      captureConfig: state.captureConfig,
+      captureDevices: state.captureDevices,
     };
     expect(Object.keys(EXAMPLE_SLICES)).toEqual(Object.keys(expected));
     for (const [name, value] of Object.entries(expected)) {
@@ -190,7 +193,7 @@ describe('the examples of the hosted actions are the simulator\'s answers at the
   });
 });
 
-describe('the examples of all 75 operations', () => {
+describe('the examples of all 89 operations', () => {
   it('every operation has an example for every status with a body, and for no status it does not document', () => {
     let pairs = 0;
     for (const operation of CORE_API_OPERATIONS) {
@@ -251,6 +254,14 @@ describe('the examples of all 75 operations', () => {
       COMMAND_UNSUPPORTED: [409, 'COMMAND_UNSUPPORTED'],
       UNSEALED_EVIDENCE: [409, 'NOT_SEALED'],
       REASON_TOO_SHORT: [422, 'INVALID_REASON'],
+      // Task 3 M2-W7 (C3 §4): the capture-phase codes the simulator emulates repeat the machine code
+      // in details.simCode for parity; every one is a 409. These are the codes that actually appear
+      // in an example (CAMERA_NOT_LOST and EXPORT_IN_PROGRESS have no example row, so they stay out).
+      CAPTURE_CONFIG_LOCKED: [409, 'CAPTURE_CONFIG_LOCKED'],
+      AUDIO_SOURCE_CONFLICT: [409, 'AUDIO_SOURCE_CONFLICT'],
+      TRANSCRIPT_NOT_READY: [409, 'TRANSCRIPT_NOT_READY'],
+      TRANSCRIPT_REVISION_CONFLICT: [409, 'TRANSCRIPT_REVISION_CONFLICT'],
+      MEDIA_NOT_AVAILABLE: [409, 'MEDIA_NOT_AVAILABLE'],
     };
     const seen = new Set<string>();
     for (const [operationId, examples] of Object.entries(CORE_API_EXAMPLES)) {

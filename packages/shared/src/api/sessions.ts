@@ -26,11 +26,13 @@
  * here; `addMarker`, `addNote` and `snapshot` take SESSION_NOTE (01_specs §7.8).
  */
 import { z } from 'zod';
-import { AuditType, Permission } from '../sim/vocabulary';
+import { FinalizationStep, MicInputId, MicRole, SessionState } from '../domain/enums';
+import { AuditType, Permission, StepStatus } from '../sim/vocabulary';
 import { API_BASE_PATH, API_PAGE_LIMIT_DEFAULT } from './constants';
 import {
   AUTHENTICATED_ACCESS,
   CORE_SERVER_ONLY,
+  CoreApiAccessCondition,
   CoreApiAuditNone,
   CoreApiMode,
   CoreApiTag,
@@ -47,13 +49,14 @@ import {
   INVALID_QUERY,
   LIST_READ_NOTE,
   NOT_SIGNED_IN,
+  SIM_V2_NOTE,
   backendSource,
   forbidden,
   hostedNote,
   notPermitted,
 } from './operation-parts';
 import { CASE_NUMBER_PATTERN, SESSION_ID_PATTERN } from './patterns';
-import { boundedText, nextCursor, pageCursor, pageLimit } from './schema-parts';
+import { boundedText, count, epochMs, nextCursor, nullableEpochMs, operatorId, pageCursor, pageLimit, sessionId } from './schema-parts';
 import { EXAMPLE_SESSION_HISTORY, STATE_EXAMPLE_IDS } from './state-examples';
 import { SessionHistoryEntrySchema } from './state-slices';
 
@@ -122,6 +125,98 @@ export const SESSION_SCHEMAS = {
   CaseNumberScan: CaseNumberScanSchema,
   PageQuery: PageQuerySchema,
   SessionHistoryPage: SessionHistoryPageSchema,
+} as const;
+
+// ── Operations 81-83: mic switch and sealing progress (task 3 M2-W7; register SH-13; C3 §2) ────
+
+/** Request body of op 81: the input to make active, with an optional operator reason. */
+export const AudioSourceSwitchRequestSchema = z
+  .strictObject({
+    inputId: z.enum(MicInputId).describe('The mic input to move behind AUDIO-01 (the other becomes STANDBY).'),
+    reason: boundedText(500).optional().describe('Why the operator switched; audited as text, never as a secret.'),
+  })
+  .describe('Request body of `POST /api/v1/session/{id}/audio-source` (C3 §2.3 op 81).');
+export type AudioSourceSwitchRequest = z.output<typeof AudioSourceSwitchRequestSchema>;
+
+/** Success of op 81: the new active/standby state, in Core instants and media pts (E-13). */
+export const AudioSourceStateSchema = z
+  .strictObject({
+    sessionId: sessionId(),
+    activeInputId: z.enum(MicInputId),
+    standbyInputId: z.enum(MicInputId),
+    switchedAt: epochMs().describe('Core instant the switch took effect (never the client clock, E-13).'),
+    intervalFromMs: count().describe('Media-pts start of the interval the switch opened.'),
+  })
+  .describe('The active/standby pair after a switch (`C3 §2.3` op 81); mirrors the session slice member.');
+export type AudioSourceStateBody = z.output<typeof AudioSourceStateSchema>;
+
+/**
+ * One audio-source interval of op 82's page. `fromMs`/`toMs` are **media pts** derived capture-side
+ * (S2 §6 finding 3; capture-spec §E), so playback can draw the audio-source band (WB-04/MB-07);
+ * `fromAt`/`toAt` are the UTC-ms record. The open interval has `toMs: null`.
+ */
+export const AudioSourceIntervalEntrySchema = z
+  .strictObject({
+    sessionId: sessionId(),
+    seq: count().describe('Interval number within the session, from 0.'),
+    inputId: z.enum(MicInputId).describe('The mic device of this interval.'),
+    role: z.enum(MicRole),
+    fromMs: count().describe('Media-pts start (ms).'),
+    toMs: nullableEpochMs().describe('Media-pts end (ms); null while the interval is open.'),
+    fromAt: epochMs().describe('UTC-ms record of the start.'),
+    toAt: nullableEpochMs().describe('UTC-ms record of the end; null while open.'),
+    switchedBy: operatorId().nullable().describe('The operator of the manual toggle that opened it; null when the run opened it.'),
+    reason: z.enum(['START', 'MANUAL', 'STOP']).describe('What opened the interval (OD-09/OD-11: every switch is operator-initiated).'),
+  })
+  .describe('One interval of one mic input inside AUDIO-01 (`session_audio_intervals`, `dbc-3 §B.5`).');
+export type AudioSourceIntervalEntry = z.output<typeof AudioSourceIntervalEntrySchema>;
+
+export const AudioSourceIntervalPageSchema = z
+  .strictObject({
+    items: z.array(AudioSourceIntervalEntrySchema),
+    nextCursor: nextCursor(),
+  })
+  .describe('One page of audio-source intervals (op 82; API-9).');
+export type AudioSourceIntervalPage = z.output<typeof AudioSourceIntervalPageSchema>;
+
+/** One v2 sealing step as op 83 reports it. */
+export const SealingProgressStepSchema = z
+  .strictObject({
+    id: z.enum(FinalizationStep).describe('v2 step names CLOSE_TRACKS .. STORE_SEALED_PACKAGE (SH-01; `ev §E`).'),
+    status: z.enum(StepStatus),
+    startedAt: nullableEpochMs(),
+    completedAt: nullableEpochMs(),
+    durationMs: nullableEpochMs(),
+  })
+  .describe('One sealing step of `SealingProgress.steps`.');
+export type SealingProgressStep = z.output<typeof SealingProgressStepSchema>;
+
+/**
+ * Success of op 83. Progress is forward-only and derived from Core instants (`coreClockOf`;
+ * register E-13; OD-08), never from the client clock; `resumed: true` marks a RECOVERY resume
+ * (register MB-06). Recomputed at `SEALING_PROGRESS_INTERVAL_MS` (`@dems/shared/api` capture.ts).
+ */
+export const SealingProgressSchema = z
+  .strictObject({
+    sessionId: sessionId(),
+    state: z.enum(SessionState).describe('The session state while sealing (FINALIZING, or SEALED/RECOVERY around it).'),
+    steps: z.array(SealingProgressStepSchema),
+    progressPct: z.int().min(0).max(100).describe('Whole-percent progress over the v2 steps, forward-only (E-13).'),
+    etaMs: nullableEpochMs().describe('Estimated milliseconds left; null before the estimate holds.'),
+    resumed: z.boolean().describe('True when this seal is a RECOVERY resume from a checkpoint (MB-06; OD-08).'),
+    updatedAt: epochMs().describe('Core instant of the last recompute.'),
+  })
+  .describe('Sealing progress v2 (`C3 §2.3` op 83); mirrors the session `finalization` slice with the v2 steps.');
+export type SealingProgressBody = z.output<typeof SealingProgressSchema>;
+
+/** The schemas operations 81-83 add (merged into `CORE_API_SCHEMAS`). */
+export const AUDIO_SOURCE_SCHEMAS = {
+  AudioSourceSwitchRequest: AudioSourceSwitchRequestSchema,
+  AudioSourceState: AudioSourceStateSchema,
+  AudioSourceIntervalEntry: AudioSourceIntervalEntrySchema,
+  AudioSourceIntervalPage: AudioSourceIntervalPageSchema,
+  SealingProgressStep: SealingProgressStepSchema,
+  SealingProgress: SealingProgressSchema,
 } as const;
 
 // ═══════════════════════════════════════════════════════════════════════════════════════
@@ -433,6 +528,113 @@ export const SESSION_OPERATIONS = [
 ] as const satisfies readonly CoreApiRegistryOperation[];
 
 // ═══════════════════════════════════════════════════════════════════════════════════════
+// Operations 81-83: the in-session mic switch and sealing progress
+// (task 3 M2-W7, blueprint row 48; register SH-13; C3 §2.2/§2.3/§2.4; OD-09/OD-11)
+// ═══════════════════════════════════════════════════════════════════════════════════════
+
+/** Op 81 needs SESSION_START **and** the `SESSION_HOLDER` condition (D4 OD-09; SEC35-18, materialised by this row). */
+const SESSION_HOLDER_ACCESS = { ...SESSION_START, conditions: [CoreApiAccessCondition.SESSION_HOLDER] } as const;
+const SESSION_HOLDER_REFUSED =
+  'the caller holds SESSION_START but is neither the operator who created the open session nor a SUPERVISOR (NOT_PERMITTED; one ACCESS_DENIED row whose `details.reason` is `SESSION_HOLDER`; C3 §5.3)';
+
+export const AUDIO_SOURCE_OPERATIONS = [
+  {
+    operationId: 'switchAudioSource',
+    method: 'post',
+    path: `${SESSION_PATH}/{id}/audio-source`,
+    tag: CoreApiTag.SESSION,
+    mode: CoreApiMode.SIMULATED,
+    summary: 'Switch the active microphone',
+    description: [
+      'The in-session toggle (OD-09): moves the active source behind AUDIO-01 to the named input at the next worker input-chunk boundary — one worker input chunk plus IPC latency, at most 21.333 ms with 1024-sample frames (erratum AU2-07; capture-spec §E). It records one audio-source interval and answers the new active/standby state.',
+      'It **never** auto-switches: sustained silence raises the MIC_SILENT warning and the operator decides (OD-11). Refused when the session is not RECORDING (`409 INVALID_STATE`). Access: SESSION_START **and** the `SESSION_HOLDER` condition — the operator who created the open session, or any SUPERVISOR (D4 OD-09; SEC35-18).',
+      'Writes AUDIO_SOURCE_SWITCHED: fromInput, toInput, the media-pts fromMs/toMs of the closed interval, and `sendingDeviceId` — **required when the caller is a paired mobile device** (B15; SEC35-17), optional only for a web operator session. There is no `trigger` key: every switch is operator-initiated.',
+      SIM_V2_NOTE,
+    ].join('\n\n'),
+    source: 'Task 3 M2-W7; C3 §2.2 operation 81; register SH-13/CS-07/NM-10 (not in the design book)',
+    pathParam: SESSION_PARAM,
+    requestBody: { schema: 'AudioSourceSwitchRequest', required: true },
+    responses: {
+      200: { description: 'The new active/standby state.', schema: 'AudioSourceState' },
+      400: INVALID_JSON,
+      401: NOT_SIGNED_IN,
+      403: notPermitted(Permission.SESSION_START, SESSION_HOLDER_REFUSED),
+      404: NOT_OPEN_SESSION,
+      409: {
+        description:
+          'The requested microphone cannot become the active source (AUDIO_SOURCE_CONFLICT: e.g. it is offline), or the session is not RECORDING (INVALID_STATE).',
+        schema: 'ApiError',
+      },
+      422: INVALID_INPUT,
+    },
+    access: SESSION_HOLDER_ACCESS,
+    audit: { success: AuditType.AUDIO_SOURCE_SWITCHED, ...DENIED },
+    services: CORE_SERVER_ONLY,
+  },
+  {
+    operationId: 'listAudioSourceIntervals',
+    method: 'get',
+    path: `${SESSION_PATH}/{id}/audio-source`,
+    tag: CoreApiTag.SESSION,
+    mode: CoreApiMode.SIMULATED,
+    summary: 'Microphone intervals of a session',
+    description: [
+      'The audio-source intervals of the session, newest first, paged (API-9): which mic input fed AUDIO-01 between which media-pts marks, who switched it and why it changed. Playback draws the audio-source band from these rows (WB-04/MB-07).',
+      '`fromMs`/`toMs` are media pts derived capture-side (S2 §6 finding 3; capture-spec §E), never operator wall clock.',
+      'Needs a signed-in operator; every role may read it.',
+      SIM_V2_NOTE,
+    ].join('\n\n'),
+    source: 'Task 3 M2-W7; C3 §2.2 operation 82; register SH-02/SH-05/NM-10 (not in the design book)',
+    pathParam: SESSION_PARAM,
+    query: { schema: 'PageQuery' },
+    responses: {
+      200: { description: 'One page of intervals.', schema: 'AudioSourceIntervalPage' },
+      401: NOT_SIGNED_IN,
+      // RECON-A (row 51a §5 B2b): every role may read these intervals, so no seeded role can be refused;
+      // the 403 is the Origin / revoked-device guard only the Core server sends (01_specs §7.19). The
+      // simulator ignores the query entirely, so the paged-read 422 is likewise Core-server-only (SR-64).
+      403: { ...forbidden(), services: CORE_SERVER_ONLY },
+      404: NOT_OPEN_SESSION,
+      422: { ...INVALID_QUERY, services: CORE_SERVER_ONLY },
+    },
+    access: AUTHENTICATED_ACCESS,
+    audit: { success: CoreApiAuditNone.READ, ...DENIED },
+    services: CORE_SERVER_ONLY,
+  },
+  {
+    operationId: 'getSealingProgress',
+    method: 'get',
+    path: `${SESSION_PATH}/{id}/sealing`,
+    tag: CoreApiTag.SESSION,
+    mode: CoreApiMode.SIMULATED,
+    summary: 'Sealing progress',
+    description: [
+      'The v2 finalization steps of the session with per-step status, duration, a whole-percent progress and an etaMs, recomputed every SEALING_PROGRESS_INTERVAL_MS. Progress is forward-only and derived from Core instants only (register E-13; OD-08); `resumed: true` marks a seal that RECOVERY resumed from its last checkpoint (register MB-06).',
+      'Reads the session slice `finalization`; refuses `409 INVALID_STATE` when sealing has not started (C3 §4).',
+      'Needs a signed-in operator; every role may read it.',
+      SIM_V2_NOTE,
+    ].join('\n\n'),
+    source: 'Task 3 M2-W7; C3 §2.2 operation 83; register SH-05/SH-06/CS-04/NM-07 (not in the design book)',
+    pathParam: SESSION_PARAM,
+    responses: {
+      200: { description: 'The sealing progress.', schema: 'SealingProgress' },
+      401: NOT_SIGNED_IN,
+      // RECON-A (row 51a §5 B2b): every role may read the sealing progress, so no seeded role can be
+      // refused; the 403 is the Origin / revoked-device guard only the Core server sends (01_specs §7.19).
+      // The simulator answers an unknown `{id}` with 404 and does no path-parameter format check
+      // (D-51a-6), so this 422 is produced only by the Core server's schema validation.
+      403: { ...forbidden(), services: CORE_SERVER_ONLY },
+      404: NOT_OPEN_SESSION,
+      409: { description: 'Sealing has not started for this session (INVALID_STATE).', schema: 'ApiError' },
+      422: { ...INVALID_PATH_PARAMETER, services: CORE_SERVER_ONLY },
+    },
+    access: AUTHENTICATED_ACCESS,
+    audit: { success: CoreApiAuditNone.READ, ...DENIED },
+    services: CORE_SERVER_ONLY,
+  },
+] as const satisfies readonly CoreApiRegistryOperation[];
+
+// ═══════════════════════════════════════════════════════════════════════════════════════
 // Examples
 // ═══════════════════════════════════════════════════════════════════════════════════════
 
@@ -587,6 +789,118 @@ export const SESSION_EXAMPLES: Readonly<Record<string, OperationExamples>> = {
       401: SIGNED_OUT,
       403: BASIC_403_EXAMPLES,
       422: { invalidQuery: ERROR_EXAMPLES.invalidQuery },
+    },
+  },
+  // ── Operations 81-83 (task 3 M2-W7; C3 §2.2) ────────────────────────────────────────────────
+  switchAudioSource: {
+    pathParams: OPEN,
+    request: {
+      standby: {
+        summary: 'Move AUDIO-01 to MIC-02 (the phone-sent form carries no extra member; the row names the device)',
+        value: { inputId: 'MIC-02', reason: 'Mic 1 cable suspected loose' } satisfies AudioSourceSwitchRequest,
+      },
+    },
+    responses: {
+      200: {
+        switched: {
+          summary: 'MIC-02 is active from media-pts 5324 ms',
+          value: {
+            sessionId: STATE_EXAMPLE_IDS.openSessionId,
+            activeInputId: 'MIC-02',
+            standbyInputId: 'MIC-01',
+            switchedAt: 1_790_823_600_000,
+            intervalFromMs: 5_324,
+          } satisfies AudioSourceStateBody,
+        },
+      },
+      400: { invalidJson: ERROR_EXAMPLES.invalidJson },
+      401: SIGNED_OUT,
+      403: deniedExamples('switchAudioSource', 'SESSION_START', 'TECHNICIAN'),
+      404: NOT_OPEN,
+      409: {
+        conflict: simRefusalExample(
+          'MIC-02 is offline',
+          'AUDIO_SOURCE_CONFLICT',
+          'The requested microphone cannot become the active source.',
+          'AUDIO_SOURCE_CONFLICT',
+        ),
+        ...wrongState('ARMED', 'switchAudioSource'),
+      },
+      422: { invalidInput: ERROR_EXAMPLES.invalidInput },
+    },
+  },
+  listAudioSourceIntervals: {
+    pathParams: OPEN,
+    responses: {
+      200: {
+        one: {
+          summary: 'Two intervals: the run opened the first, the toggle opened the second',
+          value: {
+            items: [
+              {
+                sessionId: STATE_EXAMPLE_IDS.openSessionId,
+                seq: 1,
+                inputId: 'MIC-02',
+                role: 'PRIMARY',
+                fromMs: 5_324,
+                toMs: null,
+                fromAt: 1_790_823_600_000,
+                toAt: null,
+                switchedBy: 'OPR-001',
+                reason: 'MANUAL',
+              },
+              {
+                sessionId: STATE_EXAMPLE_IDS.openSessionId,
+                seq: 0,
+                inputId: 'MIC-01',
+                role: 'PRIMARY',
+                fromMs: 0,
+                toMs: 5_303,
+                fromAt: 1_790_823_594_676,
+                toAt: 1_790_823_600_000,
+                switchedBy: null,
+                reason: 'START',
+              },
+            ],
+            nextCursor: null,
+          } satisfies AudioSourceIntervalPage,
+        },
+      },
+      401: SIGNED_OUT,
+      403: BASIC_403_EXAMPLES,
+      404: NOT_OPEN,
+      422: { invalidQuery: ERROR_EXAMPLES.invalidQuery },
+    },
+  },
+  getSealingProgress: {
+    pathParams: OPEN,
+    responses: {
+      200: {
+        sealing: {
+          summary: 'FINALIZING: building the manifest, not resumed',
+          value: {
+            sessionId: STATE_EXAMPLE_IDS.openSessionId,
+            state: 'FINALIZING',
+            steps: [
+              { id: 'CLOSE_TRACKS', status: 'done', startedAt: 1_790_823_600_000, completedAt: 1_790_823_601_200, durationMs: 1_200 },
+              { id: 'FINALIZE_HASHES', status: 'done', startedAt: 1_790_823_601_200, completedAt: 1_790_823_603_400, durationMs: 2_200 },
+              { id: 'FINALIZE_TRANSCRIPT', status: 'done', startedAt: 1_790_823_603_400, completedAt: 1_790_823_604_100, durationMs: 700 },
+              { id: 'BUILD_MANIFEST', status: 'active', startedAt: 1_790_823_604_100, completedAt: null, durationMs: null },
+              { id: 'SIGN_MANIFEST', status: 'pending', startedAt: null, completedAt: null, durationMs: null },
+              { id: 'STORE_SEALED_PACKAGE', status: 'pending', startedAt: null, completedAt: null, durationMs: null },
+            ],
+            progressPct: 62,
+            etaMs: 4_000,
+            resumed: false,
+            updatedAt: 1_790_823_605_000,
+          } satisfies SealingProgressBody,
+        },
+      },
+      401: SIGNED_OUT,
+      403: BASIC_403_EXAMPLES,
+      404: NOT_OPEN,
+      409: wrongState('RECORDING', 'getSealingProgress'),
+      422: BAD_PATH,
     },
   },
 };

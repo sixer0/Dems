@@ -324,7 +324,9 @@ describe('meters(): the newest meter frame, by reference, never stored (decision
     expect(JSON.stringify(meters()?.audio)).not.toBe(firstLevels);
     // An earlier frame is not changed by a later one: each is its own object.
     expect(JSON.stringify(first[0]?.audio)).toBe(firstLevels);
-    expect(Object.keys(meters()?.audio.channels ?? {}).sort()).toEqual(host.engine.slice('mics').map((mic) => mic.id).sort());
+    // SH-17 (C3 §3, ops 44/45): the meter frame's audio is keyed by INPUT, MIC-01/MIC-02 - the
+    // session tracks AUDIO-01/02 are the other axis (sim/audio.ts maps one onto the other).
+    expect(Object.keys(meters()?.audio.inputs ?? {}).sort()).toEqual(['MIC-01', 'MIC-02']);
 
     // Never stored: the committed state has no such slice, and reading the frame sends no statement.
     expect(Object.keys(host.engine.state())).not.toContain('audio');
@@ -332,7 +334,7 @@ describe('meters(): the newest meter frame, by reference, never stored (decision
     for (let read = 0; read < 100; read += 1) meters();
     expect(host.database.statements).toHaveLength(sent);
     const dump = await owner.query<{ line: string }>('SELECT to_jsonb(t)::text AS line FROM public.hardware_snapshot AS t');
-    for (const member of ['"channels"', '"noSignal"']) expect(dump.rows[0]?.line, member).not.toContain(member);
+    for (const member of ['"inputs"', '"noSignal"']) expect(dump.rows[0]?.line, member).not.toContain(member);
 
     // A tick whose unit is not committed produces no frame: the newest one stays the committed tick's.
     const before = meters();

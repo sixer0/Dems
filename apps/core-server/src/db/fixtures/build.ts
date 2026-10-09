@@ -35,6 +35,7 @@ import { auditRowToRow, countersToRows, eventToRow, exportRowsFromAudit } from '
 import { buildIdentity } from './identity';
 import { minimumOf } from './minimums';
 import { buildLineage, buildOperations, padAuditLog, padEvents } from './operations';
+import { buildPipeline } from './pipeline';
 import { buildActiveSession, buildRecordings } from './recordings';
 import { FIXTURE_TABLES, type BulkFixtureRows, type BulkFixtureUpdates } from './rows';
 import { BulkFixtureError } from './target';
@@ -51,14 +52,32 @@ export interface BulkFixture {
   readonly expectedHead: { readonly seq: number; readonly hash: string };
   /** Rows inserted per table, by SQL name. */
   readonly added: Readonly<Record<string, number>>;
-  /** The row count of each of the 30 tables after the load, by SQL name. */
+  /** The row count of each of the 40 tables after the load, by SQL name. */
   readonly expectedCounts: Readonly<Record<string, number>>;
   /** SHA-256 of a stable dump of `rows` and `updates`. */
   readonly digest: string;
 }
 
 /** Tables that must be empty in the base: the fixture loads once, on a database fresh from the seed. */
-const EMPTY_IN_BASE = ['pairing_codes', 'paired_devices', 'device_credentials', 'auth_sessions', 'biometric_tokens', 'alerts', 'health_snapshots', 'audit_chain_history', 'active_session'] as const;
+const EMPTY_IN_BASE = [
+  'pairing_codes',
+  'paired_devices',
+  'device_credentials',
+  'auth_sessions',
+  'biometric_tokens',
+  'alerts',
+  'health_snapshots',
+  'audit_chain_history',
+  'active_session',
+  // Schema v2 (dbc-3 §G): the seed writes no credential and no pipeline row; the fixture does.
+  'capture_device_credentials',
+  'session_audio_intervals',
+  'recording_fragments',
+  'transcript_chunks',
+  'transcripts',
+  'transcript_revisions',
+  'sealing_jobs',
+] as const;
 
 const need = (minimum: number, have: number): number => Math.max(0, minimum - have);
 
@@ -108,6 +127,9 @@ export function buildBulkFixture(options: BulkFixtureOptions, base: BulkBase): B
   const recordings = buildRecordings(world, identity.directory);
   const operations = buildOperations(world, identity.directory, recordings.recordings);
   const activeSession = options.activeSession === true ? buildActiveSession(world) : [];
+  // The v2 rows of dbc-3 §G (CS-20): built on the recordings it patches with the fragment chain
+  // heads of the 40 newest sessions, and on the sealed items and sessions of the base and the fixture.
+  const pipeline = buildPipeline(world, identity, { ...recordings, activeSession });
   const lineage = buildLineage(world, identity.directory);
   world.mintExports(exportIdFor);
 
@@ -165,6 +187,15 @@ export function buildBulkFixture(options: BulkFixtureOptions, base: BulkBase): B
     auditChainHistory: lineage.rows,
     auditLog: auditRows.map(auditRowToRow),
     events: events.map(eventToRow),
+    // Schema v2 (dbc-3 §G): the capture variants and the six pipeline tables (CS-20).
+    captureDevices: pipeline.captureDevices,
+    captureDeviceCredentials: pipeline.captureDeviceCredentials,
+    sessionAudioIntervals: pipeline.sessionAudioIntervals,
+    recordingFragments: pipeline.recordingFragments,
+    transcriptChunks: pipeline.transcriptChunks,
+    transcripts: pipeline.transcripts,
+    transcriptRevisions: pipeline.transcriptRevisions,
+    sealingJobs: pipeline.sealingJobs,
   };
   const updates: BulkFixtureUpdates = {
     operatorSignIns: identity.operatorSignIns,

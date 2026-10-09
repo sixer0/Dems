@@ -48,6 +48,55 @@ export const caseNumber = (column: AnyPgColumn): SQL => matches(column, '^LP/[0-
 /** `FLAT(c)`: the function of migration `0000_prelude`. */
 export const flat = (column: AnyPgColumn): SQL => sql`public.dems_jsonb_is_flat(${column})`;
 
-/** `NO_SECRET_KEYS(c)`: the map has none of the 17 denied key names (`?|` is "has any of these keys"). */
+/** `NO_SECRET_KEYS(c)`: the map has none of the 28 denied key names (`?|` is "has any of these keys"). */
 export const noSecretKeys = (column: AnyPgColumn): SQL =>
   sql`NOT (${column} ?| ARRAY[${sql.raw(AUDIT_DETAIL_FORBIDDEN_KEYS.map(quoted).join(','))}])`;
+
+/**
+ * The signature encoding each algorithm may hold (database contract dbc-3 §C.5, register W1-C10).
+ * A real Ed25519 signature is 64 BYTES (128 lower-case hex characters), not 64 hex characters, so
+ * the alternations count whole bytes. The `SIMULATED-SHA256` branch keeps every v1 row valid
+ * (a 64-hex-char digest stand-in) so 0004 validates against existing data (dbc-3 §A.4).
+ */
+const SIGNATURE_HEX_BY_ALGORITHM: Readonly<Record<string, string>> = {
+  'SIMULATED-SHA256': '^([0-9a-f]{2}){32}$',
+  Ed25519: '^([0-9a-f]{2}){64}$',
+  'ECDSA-P256-SHA256': '^([0-9a-f]{2}){64,72}$',
+};
+
+/** The one algorithm that is a stand-in and therefore must be flagged simulated. */
+const SIMULATED_SIGNATURE_ALGORITHM = 'SIMULATED-SHA256';
+
+/**
+ * `SIGNATURE_RULE(alg, simulated)`: the algorithm/simulated-flag pair of dbc-3 §C.4, mirrored into
+ * the transcript-revision CHECK (B.9). A real algorithm is never flagged simulated and the
+ * simulated stand-in always is.
+ */
+export function signatureRule(
+  algorithm: AnyPgColumn,
+  simulated: AnyPgColumn,
+  algorithms: readonly string[],
+): SQL {
+  const real = algorithms.filter((name) => name !== SIMULATED_SIGNATURE_ALGORITHM);
+  if (real.length === 0) throw new Error('signatureRule needs at least one real algorithm');
+  return sql`${oneOf(algorithm, algorithms)} AND ((${algorithm} = ${sql.raw(quoted(SIMULATED_SIGNATURE_ALGORITHM))} AND ${simulated}) OR (${oneOf(algorithm, real)} AND NOT ${simulated}))`;
+}
+
+/**
+ * `SIGNATURE_VALUE(col, alg)`: the per-algorithm encoding of dbc-3 §C.5, as its own constraint so
+ * the hash CHECK next to it carries hash columns only (W1-C10).
+ */
+export function signatureValue(
+  value: AnyPgColumn,
+  algorithm: AnyPgColumn,
+  algorithms: readonly string[],
+): SQL {
+  return sql.join(
+    algorithms.map((name) => {
+      const pattern = SIGNATURE_HEX_BY_ALGORITHM[name];
+      if (pattern === undefined) throw new Error(`no signature encoding declared for ${name}`);
+      return sql`(${algorithm} = ${sql.raw(quoted(name))} AND ${matches(value, pattern)})`;
+    }),
+    sql` OR `,
+  );
+}

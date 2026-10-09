@@ -4,6 +4,13 @@
  * Exported ONLY through this subpath. The root barrel (`@dems/shared`) does not re-export
  * it, so mock-core never loads the simulator or React. Every module except `react.ts` is
  * framework-free; only `platform.ts` names web globals, and only behind guards.
+ *
+ * Change rule (task 3 OD-23, blueprint row 51): **simulator changes only through blueprint rows.**
+ * This RETIRES task 2's SC8 "simulator untouched / additions only" rule and its `acaff20` diff gate
+ * (predecessor AC-B-59..62, DR-14). The simulator is now extended for schema v2 by named blueprint
+ * rows; Simulated-mode behaviour is guarded by a regression against the new baseline `c2c983b` at M2
+ * (M2-SIM-1) and M9 (M9-SIM-1), and the diff audit (M2-SIM-2) checks that every changed file under
+ * `packages/shared/src/sim/` is owned by a blueprint row — not that the folder is frozen.
  */
 export * from './constants';
 export * from './vocabulary';

@@ -22,6 +22,7 @@ import {
   type AuditRow,
 } from '@dems/shared/sim';
 import { beforeAll, describe, expect, it } from 'vitest';
+import { FINALIZATION_STEPS_V2 } from '@dems/shared/domain';
 import { auditRowFromRow, evidenceItemFromRows } from '../../mapping';
 import { FIXTURE_TABLES, buildBulkFixture, fixtureDigest, type BulkFixture } from '../build';
 import { BULK_MINIMUMS, BULK_MIX, compareWithMinimums, minimumOf } from '../minimums';
@@ -60,21 +61,36 @@ function strings(value: unknown, out: string[] = []): string[] {
   return out;
 }
 
-describe('the minimums of contract §11', () => {
-  it('the table has 30 entries, one per table of the schema', () => {
-    expect(BULK_MINIMUMS).toHaveLength(30);
-    expect(new Set(BULK_MINIMUMS.map((entry) => entry.table)).size).toBe(30);
-    expect(Object.keys(base.counts).sort()).toEqual(BULK_MINIMUMS.map((entry) => entry.table).sort());
+describe('the minimums of contract §11 as revised by dbc-3 §G', () => {
+  it('the table has 40 entries, one per table of the typed schema', () => {
+    expect(BULK_MINIMUMS).toHaveLength(40);
+    expect(new Set(BULK_MINIMUMS.map((entry) => entry.table)).size).toBe(40);
+    // Schema v2 (CS-20 of the row-55 review): §G made the v2 minimums bulk-fixture deliverables.
+    // The table now covers every table `base.counts` names - nothing counted is unasserted,
+    // nothing asserted is unknown to the schema.
+    const counted = Object.keys(base.counts);
+    expect(counted).toHaveLength(40);
+    for (const entry of BULK_MINIMUMS) expect(counted).toContain(entry.table);
+    expect(counted.filter((table) => !BULK_MINIMUMS.some((entry) => entry.table === table))).toEqual([]);
     expect(minimumOf('audit_log')).toBe(5_000);
     expect(minimumOf('events')).toBe(2_500);
     expect(minimumOf('evidence_items')).toBe(505);
+    // The §G numbers, pinned as the contract states them.
+    expect(minimumOf('session_audio_intervals')).toBe(720);
+    expect(minimumOf('recording_fragments')).toBe(6_500);
+    expect(minimumOf('transcript_chunks')).toBe(2_000);
+    expect(minimumOf('transcripts')).toBe(400);
+    expect(minimumOf('transcript_revisions')).toBe(30);
+    expect(minimumOf('sealing_jobs')).toBe(3_000);
+    expect(minimumOf('capture_devices')).toBe(8);
+    expect(minimumOf('capture_device_credentials')).toBe(2);
     expect(() => minimumOf('no_such_table')).toThrow(RangeError);
   });
 
   it('every table holds at least its minimum after the load (entity, minimum, loaded)', () => {
     const comparison = compareWithMinimums(fixture.expectedCounts);
     expect(comparison.filter((entry) => !entry.met)).toEqual([]);
-    expect(comparison).toHaveLength(30);
+    expect(comparison).toHaveLength(40);
     // The seed alone is far below: the comparison is able to fail.
     expect(compareWithMinimums(base.counts).filter((entry) => !entry.met).map((entry) => entry.table)).toContain('audit_log');
     // What the fixture adds is what its row lists hold.
@@ -437,6 +453,130 @@ function matchesNoSecretKey(keys: readonly string[]): string[] {
   return keys.filter((key) => forbidden.includes(key.toLowerCase()));
 }
 
+describe('the v2 pipeline rows of dbc-3 §G (CS-20)', () => {
+  const tables = [
+    ['session_audio_intervals', 720],
+    ['recording_fragments', 6_500],
+    ['transcript_chunks', 2_000],
+    ['transcripts', 400],
+    ['transcript_revisions', 30],
+    ['sealing_jobs', 3_000],
+    ['capture_devices', 8],
+    ['capture_device_credentials', 2],
+    ['capture_config', 1],
+    ['stt_config', 1],
+  ] as const;
+
+  it('every §G table reaches its minimum in the pure build, not only in the database', () => {
+    for (const [table, minimum] of tables) expect(fixture.expectedCounts[table], table).toBeGreaterThanOrEqual(minimum);
+    // The fixture's own additions: three discovered devices, two fake-device credentials, and
+    // the six pipeline tables from nothing.
+    expect(fixture.added['capture_devices']).toBe(3);
+    expect(fixture.added['capture_device_credentials']).toBe(2);
+    for (const [table] of tables.slice(0, 6)) expect(fixture.added[table], table).toBeGreaterThan(0);
+  });
+
+  it('intervals: at least one per sealed session; 50 switched with their MANUAL rows; none open without the variant', () => {
+    const { sessionAudioIntervals } = fixture.rows;
+    const sealed = new Set([
+      ...base.slices.sessionHistory.filter((entry) => entry.outcome === 'SEALED').map((entry) => entry.id),
+      ...fixture.rows.sessionHistory.filter((row) => row.outcome === 'SEALED').map((row) => row.id),
+    ]);
+    const perSession = countBy(sessionAudioIntervals, (row) => row.sessionId);
+    for (const id of sealed) expect(perSession[id] ?? 0, id).toBeGreaterThanOrEqual(1);
+    const manual = sessionAudioIntervals.filter((row) => row.reason === 'MANUAL');
+    expect(manual.length).toBeGreaterThanOrEqual(BULK_MIX.sessionAudioIntervals.manualRows);
+    expect(manual.every((row) => row.switchedBy !== null)).toBe(true);
+    expect(new Set(manual.map((row) => row.sessionId)).size).toBeGreaterThanOrEqual(BULK_MIX.sessionAudioIntervals.switchedSessions);
+    expect(sessionAudioIntervals.filter((row) => row.toMediaMs === null)).toEqual([]);
+  });
+
+  it('fragments: gaps in no sequence, the chain recomputes, and the head of the 40 newest sits on their tracks', () => {
+    const { recordingFragments, evidenceTracks } = fixture.rows;
+    expect(recordingFragments.length).toBeGreaterThanOrEqual(minimumOf('recording_fragments'));
+    const byTrack = new Map<string, number>();
+    for (const row of recordingFragments) {
+      const key = `${row.sessionId}|${row.trackId}`;
+      expect(row.seq).toBe((byTrack.get(key) ?? 0) + 1);
+      byTrack.set(key, row.seq);
+    }
+    const patched = evidenceTracks.filter((row) => row.fragmentChainHead !== null);
+    expect(patched).toHaveLength(BULK_MIX.recordingFragments.fullChainSessions * BULK_MIX.recordingFragments.tracksPerChain);
+    expect(patched.every((row) => row.trackId === 'VIDEO-01' || row.trackId === 'VIDEO-02')).toBe(true);
+    // sha256_plain stays NULL: the mapping keeps reading these items in their v1 four-track shape
+    // until SH-24 regenerates the dataset (decision logged in 67_recon_cs20_pins.md).
+    expect(patched.every((row) => row.sha256Plain === null)).toBe(true);
+  });
+
+  it('chunks: contiguous audio with the rerun exception; 24 FAILED->rerun pairs; 95 percent DONE', () => {
+    const { transcriptChunks } = fixture.rows;
+    expect(transcriptChunks.length).toBeGreaterThanOrEqual(minimumOf('transcript_chunks'));
+    expect(transcriptChunks.filter((row) => row.status === 'FAILED').length).toBeGreaterThanOrEqual(BULK_MIX.transcriptChunks.failedRerunPairs);
+    expect(transcriptChunks.filter((row) => row.status === 'DONE').length / transcriptChunks.length).toBeGreaterThanOrEqual(BULK_MIX.transcriptChunks.doneSegmentsPercent / 100);
+    expect(transcriptChunks.filter((row) => row.status === 'DONE').every((row) => Array.isArray(row.segments) && row.computedAt !== null)).toBe(true);
+    expect(transcriptChunks.filter((row) => row.status === 'FAILED').every((row) => row.segments === null)).toBe(true);
+    // A rerun re-covers the span of the FAILED row it follows; the timeline then continues.
+    const reruns = transcriptChunks.filter((row, index) => {
+      const previous = transcriptChunks[index - 1];
+      return previous !== undefined && previous.sessionId === row.sessionId && previous.status === 'FAILED' && row.audioFromMs === previous.audioFromMs;
+    });
+    expect(reruns.length).toBeGreaterThanOrEqual(BULK_MIX.transcriptChunks.failedRerunPairs);
+  });
+
+  it('transcripts and revisions: one transcript per SEALED, both labels values, chained Ed25519 revisions', () => {
+    const { transcripts, transcriptRevisions } = fixture.rows;
+    const sealed = new Set([
+      ...base.slices.evidence.filter((item) => item.status === 'SEALED').map((item) => item.id),
+      ...fixture.rows.evidenceItems.filter((row) => row.status === 'SEALED').map((row) => row.id),
+    ]);
+    expect(transcripts).toHaveLength(sealed.size);
+    expect(new Set(transcripts.map((row) => row.evidenceId))).toEqual(sealed);
+    expect(new Set(transcripts.map((row) => row.labelsStatus))).toEqual(new Set(['LABELLED', 'UNAVAILABLE']));
+    expect(transcripts.filter((row) => row.labelsStatus === 'UNAVAILABLE').length).toBeGreaterThanOrEqual(BULK_MIX.transcripts.unavailableLabels);
+    expect(transcriptRevisions).toHaveLength(minimumOf('transcript_revisions'));
+    expect(transcriptRevisions.every((row) => row.signatureAlgorithm === 'Ed25519' && row.signatureSimulated === false && /^[0-9a-f]{128}$/.test(row.signatureValue))).toBe(true);
+    const chained = Object.values(countBy(transcriptRevisions, (row) => row.evidenceId)).filter((count) => count >= 2).length;
+    expect(chained).toBeGreaterThanOrEqual(BULK_MIX.transcriptRevisions.chainedItems);
+    // Every chain starts at the transcript's own hash.
+    for (const evidenceId of new Set(transcriptRevisions.map((row) => row.evidenceId))) {
+      const transcript = transcripts.find((row) => row.evidenceId === evidenceId);
+      expect(transcriptRevisions.find((row) => row.evidenceId === evidenceId && row.revisionNo === 1)?.parentSha256).toBe(transcript?.jsonSha256);
+    }
+  });
+
+  it('sealing jobs: all six steps DONE for every sealed session; resumed and checkpointed rows; no RUNNING without the variant', () => {
+    const { sealingJobs } = fixture.rows;
+    expect(sealingJobs.length).toBeGreaterThanOrEqual(minimumOf('sealing_jobs'));
+    const sealed = new Set([
+      ...base.slices.sessionHistory.filter((entry) => entry.outcome === 'SEALED').map((entry) => entry.id),
+      ...fixture.rows.sessionHistory.filter((row) => row.outcome === 'SEALED').map((row) => row.id),
+    ]);
+    const stepsOf = new Map<string, Set<string>>();
+    for (const row of sealingJobs) stepsOf.set(row.sessionId, new Set([...(stepsOf.get(row.sessionId) ?? []), row.step]));
+    for (const id of sealed) expect([...FINALIZATION_STEPS_V2].every((step) => stepsOf.get(id)?.has(step)), id).toBe(true);
+    expect(sealingJobs.filter((row) => row.attempt >= 2 && row.status === 'DONE').length).toBeGreaterThanOrEqual(BULK_MIX.sealingJobs.resumedAtLeast);
+    expect(sealingJobs.filter((row) => row.checkpoint !== null).length).toBeGreaterThanOrEqual(BULK_MIX.sealingJobs.checkpointedAtLeast);
+    expect(sealingJobs.filter((row) => row.status === 'RUNNING')).toEqual([]);
+  });
+
+  it('the discovered capture rows: three devices over the five seeded ones, one dual-profile camera, two fake-device credentials, one rotated', () => {
+    const { captureDevices, captureDeviceCredentials } = fixture.rows;
+    expect(captureDevices.map((row) => row.id)).toEqual(['CAM-03', 'CAM-04', 'MIC-03']);
+    expect(captureDevices.filter((row) => Array.isArray(row.profiles) && (row.profiles as readonly string[]).length >= 2)).toHaveLength(1);
+    expect(captureDeviceCredentials.map((row) => row.deviceId).sort()).toEqual(['CAM-03', 'CAM-04']);
+    expect(captureDeviceCredentials.every((row) => row.secretCiphertext.length >= 33 && row.nonce.length === 12)).toBe(true);
+    const rotated = captureDeviceCredentials.map((row) => row.rotatedAt).sort((a, b) => a - b);
+    expect(rotated[1]).toBeGreaterThan(rotated[0] ?? 0);
+  });
+
+  it('the variant adds exactly the two §G variant rows', () => {
+    const variant = buildBulkFixture({ now: FIXED_NOW, activeSession: true }, base);
+    expect(variant.rows.sessionAudioIntervals.filter((row) => row.toMediaMs === null)).toHaveLength(1);
+    expect(variant.rows.sealingJobs.filter((row) => row.status === 'RUNNING')).toHaveLength(1);
+    expect(compareWithMinimums(variant.expectedCounts).filter((entry) => !entry.met)).toEqual([]);
+  });
+});
+
 describe('what the builder refuses', () => {
   it('a clock before the seed instant', () => {
     expect(() => buildBulkFixture({ now: FIXED_NOW - 1 }, base)).toThrow(BulkFixtureError);
@@ -509,6 +649,19 @@ describe('the constraint guard in front of the database', () => {
     ['a lineage row with a gap', (rows) => ({ auditChainHistory: rows.auditChainHistory.slice(1) }), /audit_chain_history: reset_no does not run from 1 without a gap/],
     ['an export without its evidence item', (rows) => ({ exportRecords: first(rows.exportRecords, (row) => ({ ...row, scope: 'EVIDENCE' as const, evidenceId: 'EV-20200101-9999' })) }), /exports: exports_evidence_id_fkey/],
     ['an operator that does not exist', (rows) => ({ sessionHistory: first(rows.sessionHistory, (row) => ({ ...row, investigatorId: 'OPR-999' })) }), /session_history: names an operator that does not exist/],
+    ['a fragment sequence with a gap', (rows) => ({ recordingFragments: rows.recordingFragments.filter((row, index) => !(row.trackId === rows.recordingFragments[1]?.trackId && index === 20)) }), /recording_fragments: seq does not run from 1 without a gap/],
+    ['a fragment chain that does not recompute', (rows) => ({ recordingFragments: first(rows.recordingFragments, (row) => ({ ...row, chainHash: 'f'.repeat(64) })) }), /recording_fragments: the chain hash does not recompute/],
+    ['a transcript on an item that is not SEALED', (rows) => {
+      const index = rows.evidenceItems.findIndex((row) => row.status === 'SEALED');
+      return { evidenceItems: rows.evidenceItems.map((row, position) => (position === index ? { ...row, status: 'UNDER_REVIEW' as never } : row)) };
+    }, /transcripts: a transcript hangs on an item that is not SEALED/],
+    ['a revision that breaks its parent link', (rows) => ({ transcriptRevisions: first(rows.transcriptRevisions, (row) => ({ ...row, parentSha256: 'a'.repeat(64) })) }), /transcript_revisions: parent_sha256 does not link/],
+    ['a revision signed in the simulated form', (rows) => ({ transcriptRevisions: first(rows.transcriptRevisions, (row) => ({ ...row, signatureAlgorithm: 'SIMULATED-SHA256' as never, signatureSimulated: true, signatureValue: row.signatureValue.slice(0, 64) })) }), /transcript_revisions: the §G revisions sign in the Ed25519 form/],
+    ['a sealed session missing its finalization steps', (rows) => ({ sealingJobs: rows.sealingJobs.filter((row) => row.step !== FINALIZATION_STEPS_V2[0]) }), /sealing_jobs: the sealed session .* does not carry every finalization step/],
+    ['a sealed session whose step is not DONE', (rows) => ({ sealingJobs: first(rows.sealingJobs, (row) => ({ ...row, status: 'FAILED' as never, errorCode: 'FIXTURE_STEP_FAILED' })) }), /sealing_jobs: a step of a sealed session is not DONE/],
+    ['an interval with an unknown microphone', (rows) => ({ sessionAudioIntervals: first(rows.sessionAudioIntervals, (row) => ({ ...row, micDeviceId: 'MIC-99' })) }), /session_audio_intervals: session_audio_intervals_mic_device_id_fkey/],
+    ['a credential on a built-in camera', (rows) => ({ captureDeviceCredentials: first(rows.captureDeviceCredentials, (row) => ({ ...row, deviceId: 'CAM-01' })) }), /capture_device_credentials: capture_device_credentials_device_id_fkey/],
+    ['a chunk whose rerun breaks the audio line', (rows) => ({ transcriptChunks: first(rows.transcriptChunks, (row) => ({ ...row, audioToMs: row.audioToMs + 1 })) }), /transcript_chunks: the audio ranges are not contiguous/],
   ])('refuses %s, naming the table and the rule and no value', (_label, change, expected) => {
     const message = invalid(change);
     expect(message).toMatch(/^BUILD_INVALID: /);

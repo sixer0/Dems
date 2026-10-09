@@ -35,6 +35,12 @@ export const Permission = {
   PAIRING_MANAGE: 'PAIRING_MANAGE',
   USER_ADMIN: 'USER_ADMIN',
   DEMO_CONTROL: 'DEMO_CONTROL',
+  // Task 3 M2-W6 (register SH-03/SH-04; D4 OD-10 and OD-15; `C3 §0`/`§2.1`): additive. The Core
+  // server enforces both; the simulator grants them the same way (`auth.ts` ROLE_PERMISSIONS).
+  // `CAPTURE_CONFIG` is SUPERVISOR + TECHNICIAN and is editable only while idle (OD-10);
+  // `TRANSCRIPT_REVISE` is INVESTIGATOR + SUPERVISOR (OD-15).
+  CAPTURE_CONFIG: 'CAPTURE_CONFIG',
+  TRANSCRIPT_REVISE: 'TRANSCRIPT_REVISE',
 } as const;
 export type Permission = ValueOf<typeof Permission>;
 
@@ -84,13 +90,21 @@ export type RecordingProfileId = ValueOf<typeof RecordingProfileId>;
 export const SessionOutcome = { SEALED: 'SEALED', INCOMPLETE: 'INCOMPLETE' } as const;
 export type SessionOutcome = ValueOf<typeof SessionOutcome>;
 
-/** The 8 §5.3 gate checks, in display order. */
+/**
+ * The 8 §5.3 gate checks, in display order, plus the role-keyed mic pair of the v2 track model
+ * (register SH-03; OD-01 T1). `MIC_PRIMARY`/`MIC_STANDBY` check the input that holds each role
+ * rather than a fixed channel; `MIC_1`/`MIC_2` stay live until the client rows that render them
+ * (blueprint rows 67 and 68) move to the role-keyed pair, so `PRECHECK_ORDER` — the book's eight —
+ * is unchanged.
+ */
 export const PrecheckCheckId = {
   CORE: 'CORE',
   LENS_1: 'LENS_1',
   LENS_2: 'LENS_2',
   MIC_1: 'MIC_1',
   MIC_2: 'MIC_2',
+  MIC_PRIMARY: 'MIC_PRIMARY',
+  MIC_STANDBY: 'MIC_STANDBY',
   STORAGE: 'STORAGE',
   TIME: 'TIME',
   SECURITY: 'SECURITY',
@@ -132,6 +146,8 @@ export const TimelineKind = {
   START: 'START',
   NOTE: 'NOTE',
   AUDIO_PEAK: 'AUDIO_PEAK',
+  /** Task 3 (register SH-03, WB-10): the operator switched the active mic input (op 81; OD-09). */
+  AUDIO_SWITCH: 'AUDIO_SWITCH',
   HEALTH: 'HEALTH',
   AUTOSAVE: 'AUTOSAVE',
   CHECK: 'CHECK',
@@ -190,6 +206,15 @@ export const SecurityPosture = {
 export type SecurityPosture = ValueOf<typeof SecurityPosture>;
 
 // ── Faults (§14.7 `faults.ts`; EVT and FMEA keyed) ──────────────────────────────────────
+/**
+ * The fourteen fault kinds of schema v2. The first twelve are the book's set; `MIC_SILENT` and
+ * `CAPTURE_FAULT` are appended **in the order `dbc-3 §C.1` writes them** (decision D-b, binding),
+ * so the vocabulary pin CL-12 / M2-MT-8 compares two equal ordered lists: this enum and
+ * `apps/core-server/src/db/schema/value-sets.ts` `FAULT_KIND`. Do not reorder either side.
+ *
+ * `MIC_SILENT` is the OD-11 warning (below −50 dBFS for 10 s, never an automatic switch);
+ * `CAPTURE_FAULT` is the file-stopped-growing fault surfaced by sealing (`register NM-07`).
+ */
 export const FaultKind = {
   CAMERA_LOSS: 'CAMERA_LOSS',
   MIC_NO_SIGNAL: 'MIC_NO_SIGNAL',
@@ -203,6 +228,10 @@ export const FaultKind = {
   TPM_FAILURE: 'TPM_FAILURE',
   SECURITY_FAULT: 'SECURITY_FAULT',
   AUDIT_TAMPER: 'AUDIT_TAMPER',
+  // Appended in contract order (D-b). The book's EVT table stops at EVT-30, so these two carry
+  // their gate/register authority instead of an invented EVT ID (see `FaultEvt`).
+  MIC_SILENT: 'MIC_SILENT',
+  CAPTURE_FAULT: 'CAPTURE_FAULT',
 } as const;
 export type FaultKind = ValueOf<typeof FaultKind>;
 /** Faults that move PRECHECK, ARMED, RECORDING or FINALIZING to FAULT (§14.7 machine table). */
@@ -226,6 +255,10 @@ export const FaultEvt = {
   TPM_FAILURE: 'EVT-12',
   SECURITY_FAULT: 'EVT-12',
   AUDIT_TAMPER: 'EVT-30',
+  // No book EVT ID exists for the two v2 kinds (the table stops at EVT-30): they are keyed to the
+  // gate answer and the register row that created them.
+  MIC_SILENT: 'OD-11',
+  CAPTURE_FAULT: 'NM-07',
 } as const satisfies Record<FaultKind, string>;
 
 // ── Scenarios (§14.7 `scenarios.ts`) ────────────────────────────────────────────────────
@@ -257,8 +290,24 @@ export type ServiceStatus = ValueOf<typeof ServiceStatus>;
  * writes a DEVICE_COMMAND audit row; it is accepted by every device, including the derived
  * platform devices (GNSS, TPM, FRONT-PANEL).
  */
-export const DeviceCommand = { TEST_SIGNAL: 'TEST_SIGNAL', RESTART: 'RESTART', IDENTIFY: 'IDENTIFY' } as const;
+export const DeviceCommand = { TEST_SIGNAL: 'TEST_SIGNAL', RESTART: 'RESTART', IDENTIFY: 'IDENTIFY', POE_CYCLE: 'POE_CYCLE' } as const;
 export type DeviceCommand = ValueOf<typeof DeviceCommand>;
+
+/**
+ * Kind of a row of the capture-device registry (`dbc-3 §B.2` `capture_devices.kind`, the value
+ * set the DB CHECK enforces; register SH-03). The IDs are tied to the kind by the same table's
+ * id CHECK (`CAM-nn`, `MIC-nn`, `POE-…`). `C3 §6` writes the mic kind as "MICROPHONE" in its shape
+ * summary; the DB set is normative, so this enum says `MIC`.
+ */
+export const CaptureDeviceKind = { CAMERA: 'CAMERA', MIC: 'MIC', POE: 'POE' } as const;
+export type CaptureDeviceKind = ValueOf<typeof CaptureDeviceKind>;
+
+/**
+ * Stream state of a capture device (register SH-16; op 44 `cameras[].streamState`). A lost stream
+ * is what makes a PoE cycle legal at all (OD-22), so it is a contract value, not a UI detail.
+ */
+export const CaptureStreamState = { LIVE: 'LIVE', LOST: 'LOST' } as const;
+export type CaptureStreamState = ValueOf<typeof CaptureStreamState>;
 
 export const DiagnosticStatus = {
   PENDING: 'PENDING',
@@ -357,6 +406,19 @@ export const AuditType = {
   USER_ENABLED: 'USER_ENABLED',
   USER_DISABLED: 'USER_DISABLED',
   BIOMETRIC_ENROLLMENT_CHANGED: 'BIOMETRIC_ENROLLMENT_CHANGED',
+  // Task 3 M2-W7 (blueprint row 48; `C3 §5.2`; SEC35-01/02/16/17/22): the nine capture-phase
+  // types, in the order of `C3 §5.2`. Written by Core-server modules only (the simulator emits
+  // none of them); every one has an exact detail-key list in `apps/core-server/src/core/
+  // audit-details.ts`, and no key of any list may hold a secret (`C3 §5.1`; E-30/E-31).
+  CAPTURE_CONFIG_CHANGED: 'CAPTURE_CONFIG_CHANGED',
+  AUDIO_SOURCE_SWITCHED: 'AUDIO_SOURCE_SWITCHED',
+  CAMERA_POE_CYCLED: 'CAMERA_POE_CYCLED',
+  TRANSCRIPT_REVISED: 'TRANSCRIPT_REVISED',
+  MIC_SILENT: 'MIC_SILENT',
+  EVIDENCE_MEDIA_SERVED: 'EVIDENCE_MEDIA_SERVED',
+  EVIDENCE_EXPORT_FAILED: 'EVIDENCE_EXPORT_FAILED',
+  CAPTURE_CREDENTIAL_SET: 'CAPTURE_CREDENTIAL_SET',
+  CAPTURE_CREDENTIAL_REVEALED: 'CAPTURE_CREDENTIAL_REVEALED',
 } as const;
 export type AuditType = ValueOf<typeof AuditType>;
 
@@ -416,6 +478,16 @@ export const AUDIT_TYPE_CATEGORY = {
   USER_ENABLED: 'SECURITY',
   USER_DISABLED: 'SECURITY',
   BIOMETRIC_ENROLLMENT_CHANGED: 'AUTH',
+  // Task 3 M2-W7 (`C3 §5.3`): exactly nine entries, each in an EXISTING category.
+  CAPTURE_CONFIG_CHANGED: 'DEVICE',
+  AUDIO_SOURCE_SWITCHED: 'SESSION',
+  CAMERA_POE_CYCLED: 'DEVICE',
+  TRANSCRIPT_REVISED: 'EVIDENCE',
+  MIC_SILENT: 'DEVICE',
+  EVIDENCE_MEDIA_SERVED: 'EVIDENCE',
+  EVIDENCE_EXPORT_FAILED: 'EVIDENCE',
+  CAPTURE_CREDENTIAL_SET: 'SECURITY',
+  CAPTURE_CREDENTIAL_REVEALED: 'SECURITY',
 } as const satisfies Record<AuditType, AuditCategory>;
 
 // ── Operational events (Recent Events, bell, timeline sources) ──────────────────────────
@@ -575,6 +647,9 @@ export const FAULT_EVENT_CATEGORY = {
   TPM_FAILURE: 'SECURITY',
   SECURITY_FAULT: 'SECURITY',
   AUDIT_TAMPER: 'SECURITY',
+  // Both are capture-path faults of a device (register SH-03; `dbc-3 §C.2`).
+  MIC_SILENT: 'DEVICE',
+  CAPTURE_FAULT: 'DEVICE',
 } as const satisfies Record<FaultKind, SimEventCategory>;
 
 /** Live state of a §21.1 network domain (SIM-GAP-W50-1). */
@@ -593,8 +668,16 @@ export type NetworkDomainState = ValueOf<typeof NetworkDomainState>;
 export const AvSyncState = { HEALTHY: 'HEALTHY', DEGRADED: 'DEGRADED' } as const;
 export type AvSyncState = ValueOf<typeof AvSyncState>;
 
-/** Where an evidence item's displayed hashes come from (review 40 §5.c; SIM-GAP-W1). */
-export const IntegritySource = { DEMO_PACKAGE: 'DEMO_PACKAGE', SIMULATED: 'SIMULATED' } as const;
+/**
+ * Where an evidence item's displayed hashes come from (review 40 §5.c; SIM-GAP-W1). `REAL` is the
+ * third value of schema v2 (`dbc-3 §B.11`, INTEGRITY_SOURCE value set; OD-02): the item was
+ * captured and sealed from real media. The DB CHECK and this enum hold the same three values.
+ */
+export const IntegritySource = {
+  DEMO_PACKAGE: 'DEMO_PACKAGE',
+  SIMULATED: 'SIMULATED',
+  REAL: 'REAL',
+} as const;
 export type IntegritySource = ValueOf<typeof IntegritySource>;
 
 /** Front-panel LEDs (book §4.2; SIM-GAP-W48-3) and their states (a demo assumption, 01_explore A.34). */

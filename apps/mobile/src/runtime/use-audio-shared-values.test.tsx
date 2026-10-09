@@ -44,7 +44,7 @@ describe('useAudioSharedValues', () => {
     );
     await flushAsync();
     const rendersAfterMount = renders;
-    expect(values!.level.value).toBe(sim.store.getState().audio.channels['AUDIO-01'].dbfs); // fired on subscribe
+    expect(values!.level.value).toBe(sim.store.getState().audio.inputs['MIC-01'].dbfs); // fired on subscribe
 
     setMeterFrameCounting(true);
     act(() => {
@@ -52,7 +52,7 @@ describe('useAudioSharedValues', () => {
       advance(2_000, 50); // 40 frames
     });
     expect(renders).toBe(rendersAfterMount);
-    const frame = sim.store.getState().audio.channels['AUDIO-01'];
+    const frame = sim.store.getState().audio.inputs['MIC-01'];
     expect(values!.level.value).toBe(frame.dbfs);
     expect(values!.peak.value).toBe(frame.peak);
     expect(values!.level.value).toBeGreaterThan(AUDIO_FLOOR_DBFS);
@@ -101,6 +101,6 @@ describe('accessible meter value (01_specs §14.6)', () => {
       jest.advanceTimersByTime(100);
     });
     expect(seen.length).toBeLessThanOrEqual(before + 1);
-    expect(seen.at(-1)).toBe(audioAccessibilityValue(sim.store.getState().audio.channels['AUDIO-01'].dbfs).now);
+    expect(seen.at(-1)).toBe(audioAccessibilityValue(sim.store.getState().audio.inputs['MIC-01'].dbfs).now);
   });
 });

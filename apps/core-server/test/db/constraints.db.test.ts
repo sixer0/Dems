@@ -17,8 +17,12 @@ import {
   T,
   activeSession,
   alert,
+  audioInterval,
   authSession,
   biometricToken,
+  captureConfig,
+  captureDevice,
+  captureDeviceCredential,
   consoleSettings,
   coreDevice,
   coreState,
@@ -41,8 +45,14 @@ import {
   operatorCredential,
   pairedDevice,
   pairingCode,
+  recordingFragment,
+  sealingJob,
   sessionHistory,
   storagePolicy,
+  sttConfig,
+  transcript,
+  transcriptChunk,
+  transcriptRevision,
   type Row,
 } from './fixtures';
 import { SQLSTATE, expectRefused } from './support';
@@ -127,7 +137,9 @@ const REFUSED_BY_CHECK: ReadonlyArray<readonly [string, string, Row]> = [
   ['evidence_items_verification_check', 'evidence_items', evidenceItem({ verification_status: 'PASS', verification_at: null })],
   ['evidence_items_tamper_check', 'evidence_items', evidenceItem({ tampered_track_id: 'VIDEO-09' })],
   ['evidence_items_values_check', 'evidence_items', evidenceItem({ size_bytes: -1 })],
-  ['evidence_items_sources_check', 'evidence_items', evidenceItem({ integrity_source: 'REAL' })],
+  // dbc-3 §C.4 swapped this CHECK: 'REAL' is a valid integrity source since schema v2, so the
+  // refusing value is one of neither set ('GHOST') - the probe breaks the rule as landed.
+  ['evidence_items_sources_check', 'evidence_items', evidenceItem({ integrity_source: 'GHOST' })],
   ['evidence_items_json_check', 'evidence_items', evidenceItem({ markers: json({}) })],
   ['evidence_tracks_track_check', 'evidence_tracks', evidenceTrack('VIDEO-01', 5)],
   ['evidence_tracks_values_check', 'evidence_tracks', evidenceTrack('VIDEO-01', 1, { sha256: 'nothex' })],
@@ -157,6 +169,74 @@ const REFUSED_BY_CHECK: ReadonlyArray<readonly [string, string, Row]> = [
   ['audit_chain_history_head_hash_check', 'audit_chain_history', lineageRow(1, { head_hash: 'zz' })],
   ['audit_chain_history_values_check', 'audit_chain_history', lineageRow(1, { row_count: 0 })],
   ['audit_chain_history_reason_check', 'audit_chain_history', lineageRow(1, { reason: 'MANUAL' })],
+  // ── schema v2 (dbc-3 §B): one refused row per named CHECK of the ten new tables and of the
+  //    five CHECKs the changed tables gained (§C.4). R1/R3: transcribed from the contract text ──
+  ['capture_devices_id_check', 'capture_devices', captureDevice('CAM1', 'CAMERA')],
+  ['capture_devices_transport_check', 'capture_devices', captureDevice('CAM-01', 'CAMERA', { transport: 'usb' })],
+  ['capture_devices_text_check', 'capture_devices', captureDevice('CAM-01', 'CAMERA', { model: '' })],
+  ['capture_devices_profiles_check', 'capture_devices', captureDevice('CAM-01', 'CAMERA', { profiles: json({}) })],
+  ['capture_devices_poe_port_check', 'capture_devices', captureDevice('CAM-01', 'CAMERA', { poe_port: 'eth0' })],
+  ['capture_config_singleton_check', 'capture_config', captureConfig({ singleton: false })],
+  ['capture_config_profile_check', 'capture_config', captureConfig({ video_01_profile: 'uhd' })],
+  ['capture_config_mic_check', 'capture_config', captureConfig({ mic_standby_id: 'MIC-01' })],
+  ['capture_config_selector_check', 'capture_config', captureConfig({ video_02_device_id: 'CAM-01', video_02_profile: 'UHD' })],
+  ['capture_config_revision_check', 'capture_config', captureConfig({ revision: 0 })],
+  ['capture_device_credentials_username_check', 'capture_device_credentials', captureDeviceCredential('CAM-01', { username: '' })],
+  ['capture_device_credentials_encryption_check', 'capture_device_credentials', captureDeviceCredential('CAM-01', { encryption: 'AES-128-GCM' })],
+  ['capture_device_credentials_secret_check', 'capture_device_credentials', captureDeviceCredential('CAM-01', { secret_ciphertext: Buffer.alloc(32, 9) })],
+  ['capture_device_credentials_nonce_check', 'capture_device_credentials', captureDeviceCredential('CAM-01', { nonce: Buffer.alloc(11, 3) })],
+  ['capture_device_credentials_key_ref_check', 'capture_device_credentials', captureDeviceCredential('CAM-01', { key_ref: 'key-01' })],
+  ['session_audio_intervals_session_check', 'session_audio_intervals', audioInterval(1, { session_id: 'SES-1' })],
+  ['session_audio_intervals_seq_check', 'session_audio_intervals', audioInterval(0)],
+  ['session_audio_intervals_role_check', 'session_audio_intervals', audioInterval(1, { role: 'MAIN' })],
+  ['session_audio_intervals_reason_check', 'session_audio_intervals', audioInterval(1, { reason: 'SWITCH' })],
+  ['session_audio_intervals_media_check', 'session_audio_intervals', audioInterval(1, { from_media_ms: 10, to_media_ms: 5, to_at: T + 5 })],
+  ['session_audio_intervals_open_check', 'session_audio_intervals', audioInterval(1, { to_at: T + 5 })],
+  ['recording_fragments_session_check', 'recording_fragments', recordingFragment('SES-1', 'VIDEO-01', 1)],
+  ['recording_fragments_track_check', 'recording_fragments', recordingFragment(SESSION_ID, 'AUDIO-01' as 'VIDEO-01', 1)],
+  ['recording_fragments_seq_check', 'recording_fragments', recordingFragment(SESSION_ID, 'VIDEO-01', 0)],
+  ['recording_fragments_bytes_check', 'recording_fragments', recordingFragment(SESSION_ID, 'VIDEO-01', 1, { byte_length: 0 })],
+  ['recording_fragments_media_check', 'recording_fragments', recordingFragment(SESSION_ID, 'VIDEO-01', 1, { media_duration_ms: 0 })],
+  ['recording_fragments_hashes_check', 'recording_fragments', recordingFragment(SESSION_ID, 'VIDEO-01', 1, { chain_hash: 'zz' })],
+  ['transcript_chunks_session_check', 'transcript_chunks', transcriptChunk(1, { session_id: 'SES-1' })],
+  ['transcript_chunks_seq_check', 'transcript_chunks', transcriptChunk(0)],
+  ['transcript_chunks_audio_check', 'transcript_chunks', transcriptChunk(1, { audio_to_ms: 0 })],
+  ['transcript_chunks_status_check', 'transcript_chunks', transcriptChunk(1, { status: 'QUEUED' })],
+  ['transcript_chunks_segments_check', 'transcript_chunks', transcriptChunk(1, { segments: json({}) })],
+  ['transcript_chunks_done_check', 'transcript_chunks', transcriptChunk(1, { status: 'DONE' })],
+  ['transcript_chunks_ref_check', 'transcript_chunks', transcriptChunk(1, { embedding_ref: 'ref-1' })],
+  ['transcripts_hashes_check', 'transcripts', transcript({ srt_sha256: 'zz' })],
+  ['transcripts_json_check', 'transcripts', transcript({ model: json([]) })],
+  ['transcripts_labels_check', 'transcripts', transcript({ labels_status: 'PARTIAL' })],
+  ['transcript_revisions_revision_no_check', 'transcript_revisions', transcriptRevision(0)],
+  ['transcript_revisions_hashes_check', 'transcript_revisions', transcriptRevision(1, { sha256: 'zz' })],
+  ['transcript_revisions_reason_check', 'transcript_revisions', transcriptRevision(1, { reason: 'no' })],
+  ['transcript_revisions_key_id_check', 'transcript_revisions', transcriptRevision(1, { signature_key_id: 'key_1' })],
+  ['transcript_revisions_certificate_check', 'transcript_revisions', transcriptRevision(1, { signature_certificate_sha256: 'zz' })],
+  ['transcript_revisions_signature_check', 'transcript_revisions', transcriptRevision(1, { signature_algorithm: 'Ed25519', signature_simulated: true, signature_value: 'ab'.repeat(64) })],
+  ['transcript_revisions_signature_value_check', 'transcript_revisions', transcriptRevision(1, { signature_value: 'ab'.repeat(64) })],
+  ['sealing_jobs_session_check', 'sealing_jobs', sealingJob('FRAGMENTS', { session_id: 'SES-1' })],
+  ['sealing_jobs_step_check', 'sealing_jobs', sealingJob('step-1')],
+  ['sealing_jobs_status_check', 'sealing_jobs', sealingJob('FRAGMENTS', { status: 'QUEUED' })],
+  ['sealing_jobs_progress_check', 'sealing_jobs', sealingJob('FRAGMENTS', { progress: 101 })],
+  ['sealing_jobs_eta_check', 'sealing_jobs', sealingJob('FRAGMENTS', { eta_ms: -1 })],
+  ['sealing_jobs_attempt_check', 'sealing_jobs', sealingJob('FRAGMENTS', { attempt: 0 })],
+  ['sealing_jobs_checkpoint_check', 'sealing_jobs', sealingJob('FRAGMENTS', { checkpoint: json([]) })],
+  ['sealing_jobs_error_code_check', 'sealing_jobs', sealingJob('FRAGMENTS', { error_code: 'err' })],
+  ['stt_config_singleton_check', 'stt_config', sttConfig({ singleton: false })],
+  ['stt_config_backend_check', 'stt_config', sttConfig({ backend: 'gpu' })],
+  ['stt_config_endpoint_required_check', 'stt_config', sttConfig({ backend: 'omlx-server', endpoint: null })],
+  ['stt_config_endpoint_loopback_check', 'stt_config', sttConfig({ backend: 'omlx-server', endpoint: 'http://example.com' })],
+  ['stt_config_language_check', 'stt_config', sttConfig({ language: 'en' })],
+  ['stt_config_secret_check', 'stt_config', sttConfig({ backend: 'omlx-server', endpoint: 'http://localhost:8000', credential_kind: 'ENCRYPTED', credential_ref: 'KEY_1', secret_ciphertext: Buffer.alloc(16, 9), nonce: Buffer.alloc(12, 3) })],
+  ['stt_config_nonce_check', 'stt_config', sttConfig({ backend: 'omlx-server', endpoint: 'http://localhost:8000', credential_kind: 'ENCRYPTED', credential_ref: 'KEY_1', secret_ciphertext: Buffer.alloc(17, 9), nonce: Buffer.alloc(11, 3) })],
+  ['stt_config_credential_check', 'stt_config', sttConfig({ credential_kind: 'REFERENCE' })],
+  ['stt_config_revision_check', 'stt_config', sttConfig({ revision: 0 })],
+  ['evidence_items_manifest_version_check', 'evidence_items', evidenceItem({ manifest_version: 3 })],
+  ['evidence_items_labels_check', 'evidence_items', evidenceItem({ labels_status: 'PARTIAL' })],
+  ['evidence_items_signature_value_check', 'evidence_items', evidenceItem({ signature_value: 'ab'.repeat(64) })],
+  ['evidence_tracks_kind_check', 'evidence_tracks', evidenceTrack('VIDEO-01', 1, { kind: 'STREAM' })],
+  ['evidence_tracks_audio_check', 'evidence_tracks', evidenceTrack('VIDEO-01', 1, { contains_audio: false })],
 ];
 
 /**
@@ -169,6 +249,12 @@ const SHADOWED: ReadonlyArray<readonly [string, string, Row, string, string | un
   ['audit_log_seq_check', 'audit_log', auditRow({ seq: 0, id: 'AUD-000000' }), SQLSTATE.chainDiscontinuity, undefined],
   // The lifecycle rule lists the three states, so an unknown state breaks it too; CHECKs run in name order.
   ['paired_devices_state_check', 'paired_devices', pairedDevice('DEV-0099', 'PCD-000001', { state: 'LOST' }), SQLSTATE.checkViolation, 'paired_devices_lifecycle_check'],
+  // v2, the same shape: every kind outside (CAMERA, MIC, POE) also breaks capture_devices_id_check,
+  // which the 0004 table creates first (its branch list names the three kinds).
+  ['capture_devices_kind_check', 'capture_devices', captureDevice('CAM-01', 'CAMERA', { kind: 'SPEAKER' }), SQLSTATE.checkViolation, 'capture_devices_id_check'],
+  // v2 again: every kind outside (REFERENCE, ENCRYPTED) also breaks stt_config_credential_check, whose
+  // three branches name the same set; that one comes first in name order.
+  ['stt_config_credential_kind_check', 'stt_config', sttConfig({ credential_kind: 'PLAIN' }), SQLSTATE.checkViolation, 'stt_config_credential_check'],
 ];
 
 async function insert(table: string, row: Row): Promise<void> {
@@ -177,11 +263,11 @@ async function insert(table: string, row: Row): Promise<void> {
 }
 
 describe('CL-03: one refused row per named CHECK', () => {
-  it('the list covers all 98 CHECKs of the contract: 96 directly, 2 that another rule refuses first', () => {
+  it('the list covers all 166 CHECKs of the contract: 162 directly, 4 that another rule refuses first', () => {
     const named = inventory.tables.flatMap((table) => table.constraints.filter((constraint) => constraint.kind === 'CHECK').map((constraint) => constraint.name));
     const covered = [...REFUSED_BY_CHECK.map(([name]) => name), ...SHADOWED.map(([name]) => name)];
-    expect(named).toHaveLength(98);
-    expect(REFUSED_BY_CHECK).toHaveLength(96);
+    expect(named).toHaveLength(166);
+    expect(REFUSED_BY_CHECK).toHaveLength(162);
     expect([...covered].sort()).toEqual([...named].sort());
     for (const [name, table] of [...REFUSED_BY_CHECK, ...SHADOWED]) expect(name.startsWith(`${table}_`), name).toBe(true);
   });
@@ -207,7 +293,7 @@ describe('CL-03: one refused row per named CHECK', () => {
 });
 
 describe('the valid rows are accepted: no CHECK is stricter than the contract', () => {
-  it('one valid row in each of the 30 tables', async () => {
+  it('one valid row in each of the 40 tables', async () => {
     await insertRbac(owner);
     await insertDevice(owner, 'DEV-0001', 'PCD-000001');
     await insertRow(owner, 'pairing_codes', pairingCode('PCD-000050'));
@@ -242,6 +328,23 @@ describe('the valid rows are accepted: no CHECK is stricter than the contract', 
     await insertRow(owner, 'health_snapshots', healthSnapshot({ cause: 'FAULT_RAISED', fault_kind: 'TAMPER', session_state: 'RECORDING', active_faults: 1 }));
     await insertRow(owner, 'active_session', activeSession());
     await insertRow(owner, 'audit_chain_history', lineageRow(1, { actor_id: 'OPR-002' }));
+    // ── schema v2 (dbc-3 §B): one valid row for each of the ten new tables. Devices first — the
+    //    capture configuration and the intervals point at them. ──
+    await insertRow(owner, 'capture_devices', captureDevice('CAM-01', 'CAMERA'));
+    await insertRow(owner, 'capture_devices', captureDevice('CAM-02', 'CAMERA'));
+    await insertRow(owner, 'capture_devices', captureDevice('MIC-01', 'MIC'));
+    await insertRow(owner, 'capture_devices', captureDevice('MIC-02', 'MIC'));
+    await insertRow(owner, 'capture_devices', captureDevice('POE-A1', 'POE', { poe_port: 'P1' }));
+    await insertRow(owner, 'capture_config', captureConfig());
+    await insertRow(owner, 'capture_device_credentials', captureDeviceCredential('CAM-01'));
+    await insertRow(owner, 'session_audio_intervals', audioInterval(1));
+    await insertRow(owner, 'recording_fragments', recordingFragment(SESSION_ID, 'VIDEO-01', 1));
+    await insertRow(owner, 'transcript_chunks', transcriptChunk(1, { status: 'DONE', segments: json([]), computed_at: T + 60_000 }));
+    await insertRow(owner, 'transcripts', transcript());
+    await insertRow(owner, 'transcript_revisions', transcriptRevision(1));
+    await insertRow(owner, 'sealing_jobs', sealingJob('FRAGMENTS', { status: 'DONE', progress: 100, eta_ms: null, checkpoint: json({ offset: 1 }) }));
+    await insertRow(owner, 'sealing_jobs', sealingJob('MANIFEST', { status: 'DONE', progress: 100, eta_ms: null }));
+    await insertRow(owner, 'stt_config', sttConfig());
 
     const { rows } = await owner.query<{ empty: string }>(
       inventory.tables.map((table) => `SELECT '${table.name}' AS empty WHERE NOT EXISTS (SELECT 1 FROM public.${table.name})`).join(' UNION ALL '),
@@ -308,22 +411,41 @@ describe('CL-02: every reference is a foreign key with ON DELETE RESTRICT', () =
     ['exports_evidence_id_fkey', 'exports', exportRecord('EXP-000777', { evidence_id: 'EV-20261001-0999' })],
     ['exports_operator_id_fkey', 'exports', exportRecord('EXP-000778', { operator_id: 'OPR-777' })],
     ['audit_chain_history_actor_id_fkey', 'audit_chain_history', lineageRow(9, { actor_id: 'OPR-777' })],
+    // ── schema v2 (dbc-3 §B): every new foreign key, with the parent missing. The rows break no
+    //    CHECK, so the foreign key is what refuses them. ──
+    ['active_session_started_by_fkey', 'active_session', activeSession({ started_by: 'OPR-777' })],
+    ['active_session_stopped_by_fkey', 'active_session', activeSession({ stopped_by: 'OPR-777' })],
+    ['capture_config_video_01_device_id_fkey', 'capture_config', captureConfig({ video_01_device_id: 'CAM-99' })],
+    ['capture_config_video_02_device_id_fkey', 'capture_config', captureConfig({ video_02_device_id: 'CAM-99' })],
+    ['capture_config_mic_primary_id_fkey', 'capture_config', captureConfig({ mic_primary_id: 'MIC-99' })],
+    ['capture_config_mic_standby_id_fkey', 'capture_config', captureConfig({ mic_standby_id: 'MIC-99' })],
+    ['capture_config_updated_by_fkey', 'capture_config', captureConfig({ updated_by: 'OPR-777' })],
+    ['capture_device_credentials_device_id_fkey', 'capture_device_credentials', captureDeviceCredential('CAM-99')],
+    ['session_audio_intervals_mic_device_id_fkey', 'session_audio_intervals', audioInterval(2, { mic_device_id: 'MIC-99', from_media_ms: 100, to_media_ms: 200, from_at: T + 100, to_at: T + 200, reason: 'MANUAL' })],
+    ['session_audio_intervals_switched_by_fkey', 'session_audio_intervals', audioInterval(3, { switched_by: 'OPR-777', from_media_ms: 200, to_media_ms: 300, from_at: T + 200, to_at: T + 300, reason: 'MANUAL' })],
+    ['transcripts_evidence_id_fkey', 'transcripts', transcript({ evidence_id: 'EV-20261001-0999' })],
+    ['transcript_revisions_evidence_id_fkey', 'transcript_revisions', transcriptRevision(1, { evidence_id: 'EV-20261001-0999' })],
+    ['transcript_revisions_author_id_fkey', 'transcript_revisions', transcriptRevision(2, { author_id: 'OPR-777' })],
+    ['stt_config_updated_by_fkey', 'stt_config', sttConfig({ updated_by: 'OPR-777' })],
   ];
 
-  it('the list covers all 25 foreign keys of the contract', () => {
+  it('the list covers all 39 foreign keys of the contract', () => {
     const named = inventory.tables.flatMap((table) => table.constraints.filter((constraint) => constraint.kind === 'FOREIGN KEY').map((constraint) => constraint.name));
-    expect(named).toHaveLength(25);
+    expect(named).toHaveLength(39);
     expect([...UNKNOWN_PARENT.map(([name]) => name), 'audit_log_actor_id_fkey'].sort()).toEqual([...named].sort());
   });
 
   it.each(UNKNOWN_PARENT.map(([name, table, row]) => [name, table, row] as const))('%s refuses a row whose parent does not exist (23503)', async (name, table, row) => {
     // `active_session` holds its one row already; the foreign key is still what refuses first? No:
     // the primary key would. The test therefore removes that row for the two active_session cases.
-    if (table === 'active_session') await owner.query('DELETE FROM active_session');
+    // Schema v2 adds the same single-row shape to `capture_config` and `stt_config`.
+    if (['active_session', 'capture_config', 'stt_config'].includes(table)) await owner.query(`DELETE FROM public.${table}`);
     try {
       await expectRefused(() => insert(table, row), SQLSTATE.foreignKeyViolation, name);
     } finally {
       if (table === 'active_session') await insertRow(owner, 'active_session', activeSession());
+      if (table === 'capture_config') await insertRow(owner, 'capture_config', captureConfig());
+      if (table === 'stt_config') await insertRow(owner, 'stt_config', sttConfig());
     }
   });
 

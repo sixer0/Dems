@@ -111,7 +111,8 @@ export const SYSTEM_OPERATIONS = [
     mode: CoreApiMode.LIVE,
     summary: 'System status',
     description: [
-      'The Core device, its sixteen services, the software update, the newest diagnostics run and the display preferences. Slices `device`, `services`, `update`, `diagnostics` and `settings`.',
+      'The Core device, its services, the software update, the newest diagnostics run and the display preferences. Slices `device`, `services`, `update`, `diagnostics` and `settings`.',
+      'Schema v2 (C3 §3 op 64; CS-10; NM-02; OD-24): the services slice adds `capture-worker` and `transcriber`, and capture telemetry feeds their health (the dataset list grows with M2-W9; the B11 surfacing is M3-W6).',
       STATE_READ_NOTE,
     ].join('\n\n'),
     source: backendSource(SECTION, 64),
@@ -155,6 +156,7 @@ export const SYSTEM_OPERATIONS = [
     summary: 'Restart the Core services',
     description: [
       'Restarts the Core services (simulated): every service that is not stopped starts again now. It is refused while a session is open. The Core server process itself is not restarted.',
+      'Schema v2 (C3 §3 op 66; CS-10; OD-24): the restart also covers the capture worker and the transcriber.',
       'Writes DEVICE_COMMAND with `details.scope: CORE_SERVICES`.',
       hostedNote('restartServices'),
     ].join('\n\n'),

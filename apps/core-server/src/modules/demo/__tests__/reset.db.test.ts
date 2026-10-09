@@ -191,7 +191,7 @@ describe('AC-B-72: the roles of the running server', () => {
 });
 
 describe('AC-B-57: resetDemo through the routine, inside the running server', () => {
-  it('rebuilds the database, keeps the eight kept tables, closes the ACTIVE code, raises the epoch by exactly 1, publishes the new epoch, and answers 200 to the same request', async () => {
+  it('rebuilds the database, keeps the twelve kept tables, closes the ACTIVE code, raises the epoch by exactly 1, publishes the new epoch, and answers 200 to the same request', async () => {
     // ── A used Core. Kept rows: two devices, credentials, five pairing codes of which one is
     // ACTIVE, sessions, biometric tokens, changed settings, moved counters. Not kept: OPR-003 is
     // made a SUPERVISOR and disabled; a fault is raised, so the chain is not the seed's any more.
@@ -360,7 +360,11 @@ describe('AC-B-57: resetDemo through the routine, inside the running server', ()
     const built = await digestAll(owner(), exceptLink);
     const seeded = await digestAll(reference.ownerPool(), exceptLink);
     const rebuilt = Object.keys(seeded).filter((table) => !NOT_COMPARED_WITH_SEED.has(table));
-    expect(rebuilt).toHaveLength(16);
+    // 22 (was 13 in the 30-table era): the seed report of §9.4 now names all 40 tables, and the
+    // seven v2 data tables (intervals, fragments, chunks, transcripts, revisions, sealing jobs,
+    // stt_config) join the tables a reset must rebuild to the seed's shape. The per-table equality
+    // loop below is the real check; this pin guards the list's size.
+    expect(rebuilt).toHaveLength(22);
     for (const table of rebuilt) expect(built[table], table).toBe(seeded[table]);
     // What the two columns ARE: the link the engine held (no device socket: OFFLINE), stored as the engine holds it.
     const heldLink = server.engine.slice('tabletLink');

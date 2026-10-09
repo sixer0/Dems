@@ -657,7 +657,8 @@ describe('the default client: the registry with its literal types', () => {
     const health = await client.call('getServiceHealth');
     expect(health.ok && health.data.status).toBe('ok');
     const exported = await client.call('exportEvidence', EXPORT_INPUT);
-    expect(exported.ok && exported.data.status).toBe('EXPORTED');
+    // Task 3 M2-W7 (C3 §3 op 42): the synchronous 'EXPORTED' became an async job that answers 'QUEUED'.
+    expect(exported.ok && exported.data.status).toBe('QUEUED');
     const signedOut = await client.call('signOut');
     expect(signedOut.ok && signedOut.status).toBe(204);
     expect(transport.calls.map((call) => `${call.init.method} ${call.url}`)).toEqual([

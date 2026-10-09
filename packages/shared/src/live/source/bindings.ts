@@ -162,6 +162,9 @@ export const DEVICE_COMMAND_OPERATION_INDEX: Readonly<Record<DeviceCommand, numb
   [DeviceCommand.RESTART]: DEVICE_COMMAND_OPERATION_LIST.indexOf(DEVICE_COMMAND_OPERATIONS.RESTART),
   [DeviceCommand.TEST_SIGNAL]: DEVICE_COMMAND_OPERATION_LIST.indexOf(DEVICE_COMMAND_OPERATIONS.TEST_SIGNAL),
   [DeviceCommand.IDENTIFY]: DEVICE_COMMAND_OPERATION_LIST.indexOf(DEVICE_COMMAND_OPERATIONS.IDENTIFY),
+  // Task 3 M2-W7 (E-12; C3 §0): the PoE cycle reaches operation 48 too — the same index as RESTART;
+  // the server decides the mode from the body and the camera's stream state (C3 §3 op 48).
+  [DeviceCommand.POE_CYCLE]: DEVICE_COMMAND_OPERATION_LIST.indexOf(DEVICE_COMMAND_OPERATIONS.POE_CYCLE),
 };
 
 /** The operation index of a device command. Own keys only: a text that names an inherited member is no command. */

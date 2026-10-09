@@ -31,6 +31,8 @@ export function pureBase(now: number = FIXED_NOW): BulkBase {
     permissions: rbac.permissions.length,
     role_permissions: rbac.rolePermissions.length,
     schema_meta: 1,
+    // Row 112 (R-8): the one confirmed-default `stt_config` row is seed-side and server-native.
+    stt_config: 1,
   });
   const core = rows.coreDevice[0];
   if (core === undefined) throw new Error('the shared dataset maps to no core_device row');
@@ -69,10 +71,22 @@ const DUMP_ORDER: Readonly<Record<string, string>> = {
   schema_meta: 'singleton',
   session_history: 'id',
   storage_policy: 'singleton',
+  // schema v2 (dbc-3 §B): the ten new tables, keyed by their primary columns. The digest covers
+  // them as they are - the CS-20 fixture-v2 builder fills them later, empty tables digest equal.
+  capture_config: 'singleton',
+  capture_devices: 'id',
+  capture_device_credentials: 'device_id',
+  session_audio_intervals: 'session_id, seq',
+  recording_fragments: 'session_id, track_id, seq',
+  transcript_chunks: 'session_id, seq',
+  transcripts: 'evidence_id',
+  transcript_revisions: 'evidence_id, revision_no',
+  sealing_jobs: 'session_id, step',
+  stt_config: 'singleton',
 };
 
 /**
- * A digest of each of the 30 tables over a stable, ordered dump (the recipe of contract §9.6,
+ * A digest of each of the 40 tables over a stable, ordered dump (the recipe of contract §9.6,
  * with SHA-256): `to_jsonb` of every row, in key order. Every column is part of it, the generated
  * identifiers and the hash columns included, so two databases with equal digests hold equal rows.
  */
@@ -89,7 +103,7 @@ export async function tableDigests(pool: Pool): Promise<Record<string, string>> 
   return digests;
 }
 
-/** One digest over the 30 table digests. */
+/** One digest over the 40 table digests. */
 export function overallDigest(digests: Readonly<Record<string, string>>): string {
   const text = Object.keys(digests)
     .sort()

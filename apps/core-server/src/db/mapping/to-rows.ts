@@ -17,6 +17,8 @@ import {
   activeSessionToRow,
   alertToRow,
   auditRowToRow,
+  captureConfigToRow,
+  captureDevicesToRows,
   coreDeviceToRow,
   coreStateToRow,
   countersToRows,
@@ -36,6 +38,8 @@ import type {
   ActiveSessionRow,
   AlertRow,
   AuditLogRow,
+  CaptureConfigRow,
+  CaptureDeviceRow,
   ConsoleSettingsRow,
   CoreDeviceRow,
   CoreStateRow,
@@ -66,6 +70,10 @@ export interface MappedRows {
   coreState: CoreStateRow[];
   storagePolicy: StoragePolicyRow[];
   consoleSettings: ConsoleSettingsRow[];
+  // Register SH-16 (D44 R5): the two capture slices, registry before selector (the FK order of
+  // dbc-3 §A.2 #1/#2); the selector's `updated_by` FK also names `operators`, first of all.
+  captureDevices: CaptureDeviceRow[];
+  captureConfig: CaptureConfigRow[];
   engineCounters: EngineCounterRow[];
   hardwareSnapshot: HardwareSnapshotRow[];
   sessionHistory: SessionHistoryRow[];
@@ -93,6 +101,8 @@ export const WRITE_ORDER = [
   'coreState',
   'storagePolicy',
   'consoleSettings',
+  'captureDevices',
+  'captureConfig',
   'engineCounters',
   'hardwareSnapshot',
   'sessionHistory',
@@ -115,6 +125,8 @@ export const TABLE_SQL_NAMES = {
   coreState: 'core_state',
   storagePolicy: 'storage_policy',
   consoleSettings: 'console_settings',
+  captureDevices: 'capture_devices',
+  captureConfig: 'capture_config',
   engineCounters: 'engine_counters',
   hardwareSnapshot: 'hardware_snapshot',
   sessionHistory: 'session_history',
@@ -137,6 +149,8 @@ export function toRows(state: MappableState, context: RowContext): MappedRows {
     coreState: [coreStateToRow(state, context)],
     storagePolicy: [storagePolicyToRow(state.storagePolicy, context)],
     consoleSettings: [settingsToRow(state.settings, context)],
+    captureDevices: captureDevicesToRows(state.captureDevices, state.captureConfig),
+    captureConfig: [captureConfigToRow(state.captureConfig)],
     engineCounters: countersToRows(state.meta.counters),
     hardwareSnapshot: [hardwareSnapshotToRow(state, context)],
     sessionHistory: state.sessionHistory.map(sessionHistoryToRow),

@@ -57,6 +57,8 @@ describe('the scan itself', () => {
       'src/plugins/permission-guard/index.ts',
       'src/plugins/permission-guard/matrix.ts',
       'src/plugins/permission-guard/router-table.ts',
+      // SEC35-18 (row 48; ruling D44 R2): the holder reader of the guard - one parameterless read.
+      'src/plugins/permission-guard/session-holder.ts',
     ]);
     expect(production.length).toBeGreaterThan(100);
   });
@@ -134,10 +136,15 @@ describe('the guard and the RBAC module', () => {
 
   it('send one statement to the database, a read with no parameter: the three tables of the matrix', () => {
     expect(places(WRITE_STATEMENT)).toEqual([]);
-    expect(files(/\bSELECT\b/g)).toEqual(['src/plugins/permission-guard/matrix.ts']);
+    // Ruling D44 R2: `session-holder.ts` joined the list - the SEC35-18 holder read, one SELECT of
+    // `active_session.started_by` with no parameter, exactly the idiom of the matrix read.
+    expect(files(/\bSELECT\b/g).sort()).toEqual(['src/plugins/permission-guard/matrix.ts', 'src/plugins/permission-guard/session-holder.ts']);
     const matrix = own.find((file) => file.path === 'src/plugins/permission-guard/matrix.ts')?.text ?? '';
     for (const table of ['public.roles', 'public.permissions', 'public.role_permissions']) expect(matrix).toContain(table);
     expect(matrix).not.toMatch(/\$\d/);
+    const holder = own.find((file) => file.path === 'src/plugins/permission-guard/session-holder.ts')?.text ?? '';
+    expect(holder).toContain('SELECT started_by FROM public.active_session LIMIT 1');
+    expect(holder).not.toMatch(/\$\d/);
   });
 
   it('decision D88: the grants the stored matrix is compared with have ONE source, the shared role table, and are typed nowhere in the two folders', () => {
@@ -146,7 +153,22 @@ describe('the guard and the RBAC module', () => {
     const matrix = own.find((file) => file.path === 'src/plugins/permission-guard/matrix.ts')?.text ?? '';
     expect(matrix).toMatch(new RegExp(`import \\{[^}]*\\b${['ROLE', 'PERMISSIONS'].join('_')}\\b[^}]*\\} from '@dems/shared/sim';`));
     // No role is named in the code of the two folders: a table of role and permission cannot be typed without one.
-    expect(places(ROLE_NAME)).toEqual([]);
+    // Ruling D44 R2: the ONE sanctioned exception is the SESSION_HOLDER case of `decision.ts` - the
+    // holder rule names SUPERVISOR as a holder (SEC35-18, OD-09), it is not a grant and joins no
+    // table. Every other occurrence of a role name stays forbidden.
+    const holderLine = /principal\.role === OperatorRole\.SUPERVISOR/;
+    const roleWord = new RegExp(ROLE_NAME.source, 'g'); // ROLE_NAME itself keeps its /g cursor for the scanner
+    const namedLines = ownCode.flatMap((file) =>
+      file.text
+        .split('\n')
+        .map((line, index) => ({ line: `${file.path}:${index + 1}`, text: line }))
+        .filter((entry) => {
+          roleWord.lastIndex = 0;
+          return roleWord.test(entry.text) && !holderLine.test(entry.text);
+        }),
+    );
+    expect(namedLines.map((entry) => entry.line)).toEqual([]);
+    expect(places(ROLE_NAME).every((place) => place.startsWith('src/plugins/permission-guard/decision.ts:'))).toBe(true);
     // Positive control.
     const sample: SourceFile[] = [{ path: 'src/sample.ts', text: `const GRANTS = { ${'TECHNICIAN'}: ['MAINTENANCE'] }; const t = ${['ROLE', 'PERMISSIONS'].join('_')}.X;` }];
     expect([occurrences(sample, ROLE_NAME).length, occurrences(sample, SHARED_TABLE).length]).toEqual([1, 1]);

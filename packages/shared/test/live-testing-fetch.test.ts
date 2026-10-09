@@ -148,7 +148,8 @@ describe('scripted answers reach the real typed client', () => {
     const fake = createFakeTransport();
     fake.answer('exportEvidence', (call) => ({
       status: 202,
-      body: { exportId: 'EXP-000031', evidenceId: call.params.id, status: 'EXPORTED' },
+      // Task 3 M2-W7 (C3 §3 op 42): the accepted answer is a QUEUED job, not a finished export.
+      body: { exportId: 'EXP-000031', evidenceId: call.params.id, status: 'QUEUED' },
     }));
     const result = await clientOn(fake).call('exportEvidence', { params: { id: 'EV-20260930-0004' }, body: { reason: 'Prosecutor review' } });
     expect(result).toMatchObject({ ok: true, data: { evidenceId: 'EV-20260930-0004' } });

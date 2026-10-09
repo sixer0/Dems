@@ -14,11 +14,11 @@
  * `--check` writes nothing and exits 1 when the file is missing or stale (for CI).
  *
  * Scopes (backend task: 2026-10-04 02_plan §16 CO-3, CO-4; 04_client_integration_spec §11 AR-1).
- * The builder knows two scopes, `offline` (the ten operations a client can call without the Core
+ * The builder knows two scopes, `offline` (the 23 operations a client can call without the Core
  * server) and `all` (every operation of the registry, as the Core server answers it). The
  * committed file holds `OPENAPI_COMMITTED_SCOPE`, which is `all` since the registry is complete
- * (plan row W27, contract C): 75 operations, two security schemes, the server 127.0.0.1:4420,
- * version 0.2.1 (0.2.0 until the contract close-out W83).
+ * (plan row W27, contract C): 89 operations, two security schemes, the server 127.0.0.1:4420,
+ * version 0.3.0 (0.2.1 until M2 row 50; 0.2.0 until the contract close-out W83).
  *
  * The `offline` document is not a file. It is what `createOpenApiDocument()` returns by default,
  * and the web API Reference builds it in the browser from the registry; no app reads

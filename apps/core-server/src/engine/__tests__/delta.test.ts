@@ -41,9 +41,9 @@ describe('appendedRows: what a ring holds beyond the ring before', () => {
 });
 
 describe('deltaOps: one unit of work as operations', () => {
-  it('the durable slices are exactly the 28 replicated slices of the contract', () => {
+  it('the durable slices are exactly the 30 replicated slices of the contract', () => {
     expect([...DURABLE_SLICE_KEYS].sort()).toEqual([...REPLICATED_SLICE_NAMES].sort());
-    expect(STORED_SLICE_KEYS).toHaveLength(13);
+    expect(STORED_SLICE_KEYS).toHaveLength(15);
     expect(SNAPSHOT_SLICE_KEYS).toHaveLength(15);
   });
 

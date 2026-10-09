@@ -23,6 +23,8 @@ const DAY = 24 * HOUR;
 /** A `jsonb` value as a bind parameter: the driver would turn a JavaScript array into an array literal. */
 export const json = (value: unknown): string => JSON.stringify(value);
 export const hash32 = (marker: string): Buffer => sha256(`fixture:${marker}`);
+/** A 128-hex-character value (64 raw bytes): the Ed25519 signature shape. */
+export const hex128 = (marker: string): string => sha256Hex(`fixture:${marker}`) + sha256Hex(`fixture2:${marker}`);
 export const hex64 = (marker: string): string => sha256Hex(`fixture:${marker}`);
 
 /** `INSERT INTO public.<table> (...) VALUES ($1, ...)`. Table and column names are constants of this file. */
@@ -380,7 +382,7 @@ export function coreState(overrides: Row = {}): Row {
   return {
     singleton: true,
     seed: 20_261_001,
-    sim_schema_version: 1,
+    sim_schema_version: 2,
     scenario: 'idle',
     epoch: 0,
     created_at: T,
@@ -396,7 +398,7 @@ export function coreState(overrides: Row = {}): Row {
 export function hardwareSnapshot(overrides: Row = {}): Row {
   return {
     singleton: true,
-    sim_schema_version: 1,
+    sim_schema_version: 2,
     tablet_link: json({ state: 'OFFLINE' }),
     active_camera_id: 'VIDEO-01',
     cameras: json([]),
@@ -568,4 +570,167 @@ export async function appendAuditRows(pool: Pool, count: number, input: AuditInp
   } finally {
     client.release();
   }
+}
+
+// ── schema v2 builders (dbc-3 §A; RECON-B2b). One VALID row per new table, in the order of the
+//    contract; every column a CHECK inspects holds a value that satisfies the rule. ──
+
+export function captureDevice(id: string, kind: 'CAMERA' | 'MIC' | 'POE', overrides: Row = {}): Row {
+  return {
+    id,
+    kind,
+    transport: kind === 'CAMERA' ? 'ONVIF' : kind === 'MIC' ? 'USB' : 'POE',
+    model: 'Fixture model',
+    firmware: '1.2.3',
+    address: kind === 'CAMERA' ? '127.0.0.1' : null,
+    mac: '00:11:22:33:44:55',
+    onvif_uuid: kind === 'CAMERA' ? 'ONVIF-1' : null,
+    profiles: json([]),
+    poe_port: null,
+    enabled: true,
+    last_seen_at: null,
+    ...overrides,
+  };
+}
+
+export function captureConfig(overrides: Row = {}): Row {
+  return {
+    video_01_device_id: 'CAM-01',
+    video_01_profile: 'UHD',
+    video_02_device_id: 'CAM-02',
+    video_02_profile: 'HD',
+    mic_primary_id: 'MIC-01',
+    mic_standby_id: 'MIC-02',
+    revision: 1,
+    updated_by: 'OPR-001',
+    updated_at: T,
+    ...overrides,
+  };
+}
+
+export function captureDeviceCredential(deviceId: string, overrides: Row = {}): Row {
+  return {
+    device_id: deviceId,
+    username: 'fixture.user',
+    encryption: 'AES-256-GCM',
+    secret_ciphertext: Buffer.alloc(33, 9),
+    nonce: Buffer.alloc(12, 3),
+    key_ref: 'KEY_01',
+    rotated_at: T,
+    ...overrides,
+  };
+}
+
+export function audioInterval(seq: number, overrides: Row = {}): Row {
+  return {
+    session_id: SESSION_ID,
+    seq,
+    mic_device_id: 'MIC-01',
+    role: 'PRIMARY',
+    from_media_ms: 0,
+    to_media_ms: null,
+    from_at: T,
+    to_at: null,
+    switched_by: 'OPR-001',
+    reason: 'START',
+    ...overrides,
+  };
+}
+
+export function recordingFragment(sessionId: string, trackId: 'VIDEO-01' | 'VIDEO-02', seq: number, overrides: Row = {}): Row {
+  return {
+    session_id: sessionId,
+    track_id: trackId,
+    seq,
+    byte_offset: 0,
+    byte_length: 1_048_576,
+    media_start_ms: 0,
+    media_duration_ms: 4_000,
+    sha256: hex64(`fragment:${sessionId}:${trackId}:${seq}`),
+    chain_hash: hex64(`fragment-chain:${sessionId}:${trackId}:${seq}`),
+    durable_at: T,
+    ...overrides,
+  };
+}
+
+export function transcriptChunk(seq: number, overrides: Row = {}): Row {
+  return {
+    session_id: SESSION_ID,
+    seq,
+    audio_from_ms: 0,
+    audio_to_ms: 5_000,
+    status: 'PENDING',
+    segments: null,
+    embedding_ref: null,
+    model_id: null,
+    computed_at: null,
+    ...overrides,
+  };
+}
+
+export function transcript(overrides: Row = {}): Row {
+  return {
+    evidence_id: EVIDENCE_ID,
+    json_sha256: hex64('transcript-json'),
+    srt_sha256: hex64('transcript-srt'),
+    vtt_sha256: hex64('transcript-vtt'),
+    model: json({ id: 'fixture-model' }),
+    diarization: json({ enabled: true }),
+    labels_status: 'UNAVAILABLE',
+    created_at: T,
+    ...overrides,
+  };
+}
+
+export function transcriptRevision(revisionNo: number, overrides: Row = {}): Row {
+  return {
+    evidence_id: EVIDENCE_ID,
+    revision_no: revisionNo,
+    parent_sha256: revisionNo === 1 ? '0'.repeat(64) : hex64(`transcript-rev:${revisionNo - 1}`),
+    sha256: hex64(`transcript-rev:${revisionNo}`),
+    author_id: 'OPR-001',
+    reason: 'Fixture revision reason',
+    signature_value: hex64(`transcript-signature:${revisionNo}`),
+    signature_key_id: 'KEY_01',
+    signature_algorithm: 'SIMULATED-SHA256',
+    signature_simulated: true,
+    signature_certificate_sha256: null,
+    created_at: T,
+    ...overrides,
+  };
+}
+
+export function sealingJob(step: string, overrides: Row = {}): Row {
+  return {
+    session_id: SESSION_ID,
+    step,
+    status: 'RUNNING',
+    progress: 50,
+    eta_ms: 1_200,
+    attempt: 1,
+    checkpoint: null,
+    error_code: null,
+    started_at: T,
+    updated_at: T,
+    ...overrides,
+  };
+}
+
+export function sttConfig(overrides: Row = {}): Row {
+  return {
+    enabled: true,
+    backend: 'cpu-local',
+    endpoint: null,
+    model: 'vosk-id-small',
+    language: 'id',
+    diarization: true,
+    credential_kind: null,
+    credential_ref: null,
+    secret_ciphertext: null,
+    nonce: null,
+    revision: 1,
+    updated_by: 'OPR-001',
+    updated_at: T,
+    ...overrides,
+  };
 }

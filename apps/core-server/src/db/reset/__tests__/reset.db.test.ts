@@ -103,7 +103,7 @@ function show(label: string, report: ResetReport): void {
 describe('T-RS-1: two resets of a used database', () => {
   let afterFirst: { lineage: string[]; kept: Record<string, string[]>; checksums: Record<string, string> };
 
-  it('the first reset keeps the eight kept tables byte-equal, closes the ACTIVE code, rebuilds the rest, and records the discarded chain', async () => {
+  it('the first reset keeps the twelve kept tables byte-equal, closes the ACTIVE code, rebuilds the rest, and records the discarded chain', async () => {
     // A used Core: devices, credentials, codes (one ACTIVE), sessions, tokens, settings, a changed
     // role, and a chain that is no longer the seed's.
     await plantKeptRows(db.ownerPool());
@@ -234,7 +234,10 @@ describe('T-RS-1: two resets of a used database', () => {
     const built = await digestAll(owner);
     const seeded = await digestAll(reference.ownerPool());
     const rebuilt = Object.keys(seeded).filter((table) => !NOT_COMPARED_WITH_SEED.has(table));
-    expect(rebuilt).toHaveLength(16);
+    // 22 (was 16 on the 30-table schema): the six v2 data tables - intervals, fragments, chunks,
+    // transcripts, revisions, sealing jobs - join the rebuilt set; stt_config is KEPT (§B.13) and
+    // the capture trio is upsert-kept (§E.1), so they stay out of this list.
+    expect(rebuilt).toHaveLength(22);
     for (const table of rebuilt) expect(built[table], table).toBe(seeded[table]);
     const withoutSignIn = { without: { operators: ['last_sign_in_at'] } };
     expect((await digestAll(owner, withoutSignIn))['operators']).toBe((await digestAll(reference.ownerPool(), withoutSignIn))['operators']);

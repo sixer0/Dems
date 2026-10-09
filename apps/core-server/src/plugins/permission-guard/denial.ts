@@ -62,7 +62,15 @@ export function refusalAnswer(rule: AccessRule, refusal: AccessRefusal): ApiFail
         403,
         refusal.denial.errorCode,
         refusal.denial.errorCode === ApiErrorCode.FORBIDDEN ? EXPORT_FORBIDDEN_TEXT : NOT_PERMITTED_TEXT,
-        { details: { operationId: rule.operationId, permission: refusal.denial.permission, role: refusal.role } },
+        {
+          details: {
+            operationId: rule.operationId,
+            permission: refusal.denial.permission,
+            role: refusal.role,
+            // C3 §5.3: the condition of the rule that refused (SESSION_HOLDER), when not the permission.
+            ...(refusal.reason === undefined ? {} : { reason: refusal.reason }),
+          },
+        },
       );
     case AccessRefusalKind.DEVICE_NOT_PAIRED:
       if (refusal.cause === CoreApiAccessCondition.CONSOLE_IDENTITY) return deviceNotPaired();
@@ -110,6 +118,9 @@ export function denialRecordOf(rule: AccessRule, refusal: AccessRefusal, pathId:
   if (refusal.kind !== AccessRefusalKind.NOT_PERMITTED) return null;
 
   const { denial, role, operatorId, deviceId } = refusal;
+  // C3 §5.1: a camera-credential-style refusal audits the FACT with `details.reason` only. The
+  // SESSION_HOLDER refusal (C3 §5.3) names the condition as reason; the permission and role stay
+  // in the row because the rule's permission was held — the CONDITION refused, not the permission.
   const named = { operationId: rule.operationId, permission: denial.permission, role };
 
   if (denial.export === null) {
@@ -117,10 +128,13 @@ export function denialRecordOf(rule: AccessRule, refusal: AccessRefusal, pathId:
       audit: {
         type: AuditType.ACCESS_DENIED,
         severity: Severity.WARNING,
-        message: `Access denied: role ${role} ${lacking(denial.permission)} (${rule.operationId})`,
+        message:
+          refusal.reason === undefined
+            ? `Access denied: role ${role} ${lacking(denial.permission)} (${rule.operationId})`
+            : `Access denied: the ${refusal.reason} condition does not hold (${rule.operationId})`,
         actorId: operatorId,
         deviceId,
-        details: named,
+        details: refusal.reason === undefined ? named : { ...named, reason: refusal.reason },
       },
       event: null,
     };

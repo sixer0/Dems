@@ -80,17 +80,23 @@ describe('the lines of a finished seed', () => {
     expect(lines.slice(0, 4)).toEqual([
       'db:seed: dems_demo on PostgreSQL 18.4 as dems_owner',
       'db:seed: dataset as of 2026-10-01T03:00:00.000Z (1790823600000); scenario idle; seed 20261001; epoch 0',
-      'db:seed: seeded in 105 ms (dataset and hashes 61 ms, transaction 38 ms); the database now holds 301 row(s) in 21 of 30 table(s)',
-      'row counts       30 table(s)',
+      'db:seed: seeded in 105 ms (dataset and hashes 61 ms, transaction 38 ms); the database now holds 314 row(s) in 24 of 40 table(s)',
+      'row counts       40 table(s)',
     ]);
-    expect(lines).toHaveLength(4 + 30 + 1);
+    // Four header lines, one line per table in the counts map (30 in v1; the map now names all 40:
+    // dbc-3's three capture tables and the seven v2 data tables, the last holding the single
+    // stt_config row of R-8), then the audit-head line.
+    expect(lines).toHaveLength(4 + Object.keys(EXPECTED_SEED_COUNTS).length + 1);
     expect(lines).toContain('  audit_log                82');
     expect(lines).toContain('  events                   59');
     expect(lines).toContain('  audit_chain_history      0');
     expect(lines.at(-1)).toBe('audit head       seq 82; hash abababababababab...');
-    // 301 rows: the sum of contract §9.4. The seed writes 299 of them; the row of
-    // audit_chain_head and the row of schema_meta are written by the migrations.
-    expect(Object.values(EXPECTED_SEED_COUNTS).reduce((sum, rows) => sum + rows, 0)).toBe(301);
+    // 314 rows: the landed seed total (was 301 in contract §9.4 of the closed task-2 docs; the
+    // v2 additions are +2 permissions, +4 grants — rows 47/49 — the capture selector row and the
+    // five built-in devices — rows 49/52 — and the stt_config singleton — row 114). The cli.db
+    // suite measures exactly this total on a throw-away first build; 312 are written by the seed
+    // and the rows of audit_chain_head and schema_meta come from the migrations.
+    expect(Object.values(EXPECTED_SEED_COUNTS).reduce((sum, rows) => sum + rows, 0)).toBe(314);
   });
 });
 

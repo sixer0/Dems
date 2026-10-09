@@ -230,6 +230,8 @@ export const session = {
       /** Neutral: a note whose author's role is not on the item (E2E-T-5); `noteBy` names the role. */
       NOTE: 'Note Added',
       AUDIO_PEAK: 'Audio Peak Detected',
+      /** Schema v2 (SH-03, WB-10): the operator switched the active mic input (op 81). */
+      AUDIO_SWITCH: 'Microphone Switched',
       HEALTH: 'Device Health Normal',
       AUTOSAVE: 'Evidence Auto-Save',
       CHECK: 'System Check',

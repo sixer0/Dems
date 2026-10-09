@@ -52,14 +52,19 @@ export const SNAPSHOT_KEYS = [
   'diagnostics',
   'update',
   'settings',
+  'captureConfig',
+  'captureDevices',
 ] as const satisfies readonly (keyof SimSnapshot)[];
 
 /**
  * Keys a stored snapshot must have to be usable. Slices added after the first release (step 54:
- * `settings`) are optional in a stored snapshot: the merge takes them from the fresh state, so a
- * reload after an upgrade resumes instead of starting over.
+ * `settings`; task 3 M2: `captureConfig`, `captureDevices`) are optional in a stored snapshot: the
+ * merge takes them from the fresh state, so a reload after an upgrade resumes instead of starting
+ * over.
  */
-export const ADDED_SNAPSHOT_KEYS = ['settings'] as const satisfies readonly (keyof SimSnapshot)[];
+export const ADDED_SNAPSHOT_KEYS = ['settings', 'captureConfig', 'captureDevices'] as const satisfies readonly (
+  keyof SimSnapshot
+)[];
 export const REQUIRED_SNAPSHOT_KEYS: readonly (keyof SimSnapshot)[] = SNAPSHOT_KEYS.filter(
   (key) => !(ADDED_SNAPSHOT_KEYS as readonly string[]).includes(key),
 );

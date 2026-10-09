@@ -97,13 +97,18 @@ export type SimActionName = keyof typeof SIM_ACTION_OPERATIONS;
 
 /**
  * Which operation each `DeviceCommand` reaches (01_specs §7.10, operations 48 to 50; W83,
- * gap 3). The one table for both sides: the Live source reads the operation of a command,
+ * gap 3; E-12). The one table for both sides: the Live source reads the operation of a command,
  * the Core server the command of an operation. The values are `deviceCommand`'s three operations.
+ *
+ * Task 3 M2-W7 (C3 §0; E-12 "a new device command is a contract-table entry"): `POE_CYCLE` joins
+ * the enum and reaches `restartDevice` — operation 48 decides RESTART versus PoE cycle from the
+ * body and the camera's stream state (C3 §3 op 48), so the action's operation list does not grow.
  */
 export const DEVICE_COMMAND_OPERATIONS = {
   RESTART: 'restartDevice',
   TEST_SIGNAL: 'testDeviceSignal',
   IDENTIFY: 'identifyDevice',
+  POE_CYCLE: 'restartDevice',
 } as const satisfies Record<DeviceCommand, (typeof SIM_ACTION_OPERATIONS)['deviceCommand']['operations'][number]>;
 
 /** The command an operation runs, or undefined for an operation that is not one of the three. */

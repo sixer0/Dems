@@ -533,12 +533,16 @@ const WEB_SESSION: AuthSessionInfo = {
     'SESSION_NOTE',
     'EVIDENCE_VIEW',
     'DIAGNOSTICS_RUN',
+    // OD-15 (SH-04): a supervisor inherits the investigator's revise grant.
+    'TRANSCRIPT_REVISE',
     'EVIDENCE_REVIEW',
     'EVIDENCE_EXPORT',
     'AUDIT_EXPORT',
     'PAIRING_MANAGE',
     'USER_ADMIN',
     'DEMO_CONTROL',
+    // OD-10 (SH-04): the device selector.
+    'CAPTURE_CONFIG',
   ],
   method: 'PASSWORD',
   issuedAt: exampleTime(-5),
@@ -553,7 +557,8 @@ const WEB_SESSION: AuthSessionInfo = {
 /** A session of the INVESTIGATOR on the paired tablet, signed in at the example instant. */
 const DEVICE_SESSION: AuthSessionInfo = {
   operator: EXAMPLE_INVESTIGATOR,
-  permissions: ['SESSION_START', 'SESSION_NOTE', 'EVIDENCE_VIEW', 'DIAGNOSTICS_RUN'],
+  // OD-15 (SH-04): an investigator holds TRANSCRIPT_REVISE.
+  permissions: ['SESSION_START', 'SESSION_NOTE', 'EVIDENCE_VIEW', 'DIAGNOSTICS_RUN', 'TRANSCRIPT_REVISE'],
   method: 'PASSWORD',
   issuedAt: EXAMPLE_INSTANT_MS,
   lastActivityAt: EXAMPLE_INSTANT_MS,

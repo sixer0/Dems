@@ -10,6 +10,9 @@
  *   identity.ts     operators, pairing codes, devices, tokens, auth sessions;
  *   recordings.ts   sessions, evidence, tracks, custody; the variant with a recording session;
  *   operations.ts   alerts, health snapshots, refusals, exports, the lineage, the padding;
+ *   pipeline.ts     the dbc-3 §G v2 rows: the discovered capture devices and credentials and the
+ *                   six pipeline tables (intervals, fragments, chunks, transcripts, revisions,
+ *                   sealing jobs) that CS-20 made an M2 bulk-fixture deliverable;
  *   rows.ts         the shape of the fixture: the rows by table, and the table names;
  *   build.ts        `buildBulkFixture`: the rows, pure and deterministic;
  *   validate.ts     the schema's constraints, checked before a statement is sent;

@@ -141,17 +141,19 @@ export const REALTIME_SERVER_EXAMPLES = {
   } satisfies Named<DeltaMessage>,
   meters: {
     speaking: {
-      summary: 'The interviewer speaks, the subject is silent',
+      summary: 'The interviewer speaks on the active input; the standby input is quiet',
       value: {
         type: 'meters',
         v: 1,
         at: EXAMPLE_INSTANT_MS,
         seq: 22_440,
         audio: {
-          channels: {
-            'AUDIO-01': { seq: 22_440, at: EXAMPLE_INSTANT_MS, dbfs: -18.4, peak: -12.1, clip: false, noSignal: false },
-            'AUDIO-02': { seq: 22_440, at: EXAMPLE_INSTANT_MS, dbfs: -51.7, peak: -50.9, clip: false, noSignal: false },
+          // Schema v2 keys the meters by mic input and names the active one (SH-17; E-02).
+          inputs: {
+            'MIC-01': { seq: 22_440, at: EXAMPLE_INSTANT_MS, dbfs: -18.4, peak: -12.1, clip: false, noSignal: false },
+            'MIC-02': { seq: 22_440, at: EXAMPLE_INSTANT_MS, dbfs: -51.7, peak: -50.9, clip: false, noSignal: false },
           },
+          activeInputId: 'MIC-01',
         },
       },
     },
@@ -163,7 +165,7 @@ export const REALTIME_SERVER_EXAMPLES = {
         type: 'session.updated',
         v: 1,
         operator: { id: EXAMPLE_IDS.investigatorId, role: 'TECHNICIAN' },
-        permissions: ['EVIDENCE_VIEW', 'DEVICE_MANAGE', 'DIAGNOSTICS_RUN', 'MAINTENANCE'],
+        permissions: ['EVIDENCE_VIEW', 'DEVICE_MANAGE', 'DIAGNOSTICS_RUN', 'MAINTENANCE', 'CAPTURE_CONFIG'],
         reason: 'ROLE_CHANGED',
       },
     },

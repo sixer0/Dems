@@ -25,6 +25,7 @@ import {
 import { BASIC_403_EXAMPLES, ERROR_EXAMPLES } from './example-parts';
 import type { OperationExamples } from './examples';
 import { NOT_SIGNED_IN, STATE_READ_NOTE, backendSource, forbidden } from './operation-parts';
+import { epochMs, trimmedText } from './schema-parts';
 import { EXAMPLE_SLICES } from './state-examples';
 import { REPLICATED_SLICE_SCHEMAS } from './state-slices';
 
@@ -43,8 +44,21 @@ export type NetworkStatus = z.output<typeof NetworkStatusSchema>;
 export const TimeStatusSchema = z
   .strictObject({
     time: REPLICATED_SLICE_SCHEMAS.time,
+    // Schema v2 (task 3 M2-W7; C3 §3 op 57; CS-11; NM-01; OD-05): per-camera NTP offset records,
+    // fed through adapter telemetry (the real feed lands with the M4 adapters). Optional until then.
+    cameraOffsets: z
+      .array(
+        z.strictObject({
+          deviceId: trimmedText(64).describe('The camera device, e.g. CAM-01.'),
+          offsetMs: z.number().describe('The camera clock minus the Core clock, as the telemetry reported it.'),
+          measuredAt: epochMs().describe('Core instant of the measurement.'),
+          source: trimmedText(64).describe('How it was measured (open code, e.g. NTP_ONVIF, RTCP_TELEMETRY).'),
+        }),
+      )
+      .optional()
+      .describe('Schema v2: camera clock offsets via telemetry; absent while no camera has reported one.'),
   })
-  .describe('The time service of the Core device: one slice of the Core state in its wire form, under its slice name.');
+  .describe('The time service of the Core device and, from schema v2, the camera clock offsets.');
 export type TimeStatus = z.output<typeof TimeStatusSchema>;
 
 /** The named schemas of this area, by their `components.schemas` name. */
@@ -92,6 +106,7 @@ export const NETWORK_TIME_OPERATIONS = [
     summary: 'Time status',
     description: [
       'The time service of the Core device: the active source (GNSS, then NTP, then RTC), the lock, the offset and its history. Slice `time`.',
+      'Schema v2 (C3 §3 op 57; CS-11; NM-01; OD-05): per-camera NTP offset records via telemetry join the answer under `cameraOffsets` once the adapters report them (M4); absent until then.',
       'These are simulated signals of the device. Every timestamp of a record comes from the server clock, not from this slice.',
       STATE_READ_NOTE,
     ].join('\n\n'),

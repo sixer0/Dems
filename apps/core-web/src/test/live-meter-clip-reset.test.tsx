@@ -63,7 +63,7 @@ async function liveMeterClipped(): Promise<{ bed: LiveTestBed; page: LivePage; r
   if (!socket) throw new Error('the page holds no open operator socket')
   const t0 = created.fake.clock.now()
   act(() => {
-    socket.meters({ channels: { 'AUDIO-01': frame(t0, true), 'AUDIO-02': frame(t0, false) } })
+    socket.meters({ inputs: { 'MIC-01': frame(t0, true), 'MIC-02': frame(t0, false) }, activeInputId: 'MIC-01' })
   })
   const card = await screen.findByTestId('audio-input-AUDIO-01')
   const meter = within(card).getByTestId('dbfs-meter')

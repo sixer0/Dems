@@ -17,7 +17,8 @@
  * and nothing about them.
  */
 import { CORE_API_OPERATIONS, DEVICE_COMMAND_OPERATIONS, SIM_ACTION_OPERATIONS, type CoreApiRegistryOperation } from '@dems/shared/api';
-import type { DeviceCommand } from '@dems/shared/sim';
+// Value and type: the PoE-cycle filter below reads the enum's member.
+import { DeviceCommand } from '@dems/shared/sim';
 
 /** The operations this module answers, in registry order (operations 44 to 52). */
 export const DEVICES_OPERATIONS = [
@@ -46,8 +47,15 @@ export type DeviceCommandOperation = (typeof SIM_ACTION_OPERATIONS)['deviceComma
  * holds each value to the path of its operation and to the action the registry entry names.
  */
 export const DEVICE_COMMAND_OF_OPERATION: Readonly<Record<DeviceCommandOperation, DeviceCommand>> = Object.freeze(
+  // Task 3 M2-W7 (E-12; C3 §0): POE_CYCLE joins the contract table and reaches restartDevice too —
+  // operation 48 decides RESTART versus PoE cycle from the body and the stream state, so the
+  // per-operation command of the ACTION stays RESTART. The inversion keeps the three commands the
+  // deviceCommand action itself carries; the PoE-cycle audit value is written by the server-side
+  // path that performs the cycle (details.command: POE_CYCLE, C3 §5.3), not by this map.
   Object.fromEntries(
-    (Object.entries(DEVICE_COMMAND_OPERATIONS) as [DeviceCommand, DeviceCommandOperation][]).map(([command, operationId]) => [operationId, command]),
+    (Object.entries(DEVICE_COMMAND_OPERATIONS) as [DeviceCommand, DeviceCommandOperation][])
+      .filter(([command]) => command !== DeviceCommand.POE_CYCLE)
+      .map(([command, operationId]) => [operationId, command]),
   ) as Record<DeviceCommandOperation, DeviceCommand>,
 );
 

@@ -49,8 +49,15 @@ export async function runMigrate(argv: readonly string[], options: CommandOption
       }
     });
 
+    // B16 erratum (iii) (W90 F-6; dbc-3 §H row iii): the old line read "this command must be run
+    // as ..." and looked like a warning on a command that exits 0, even when the caller WAS holding
+    // the lock. The rule it points at is unchanged (P16, MG-9: the caller wraps a dems_demo
+    // migration in the migrate lock); only the message is fixed. It is a note, the lock belongs to
+    // the caller, and this command takes no lock and tests for none, so it prints on every run.
     if (target === MIGRATE_LOCK_DATABASE) {
-      io.out(`${COMMAND}: ${target} is migrated under the migrate lock: this command must be run as "${MIGRATE_LOCK_HINT} npm run ${COMMAND} ...".`);
+      io.out(
+        `${COMMAND}: note - ${target} is shared with db:reset, so its caller runs this command under ${MIGRATE_LOCK_HINT}. This command takes no lock of its own and never checks for one; it prints this note on every ${target} run.`,
+      );
     }
 
     return withPool(target, async (pool, session) => {

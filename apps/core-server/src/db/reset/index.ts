@@ -4,7 +4,9 @@
  *
  *   routine.ts      `resetDatabase`: steps R-0 to R-9, every database step as `dems_owner`;
  *   names.ts        which databases a reset may touch, and its database-level statements;
- *   kept-tables.ts  the eight kept tables: how a row is read, written and compared, unchanged;
+ *   kept-tables.ts  the twelve kept tables: how a row is read, written and compared, unchanged;
+ *   real-evidence.ts the R-0 guard: real sealed evidence in the database or on disk refuses the
+ *                   reset (`RESET_BLOCKED_REAL_EVIDENCE`; dbc-3 §E.2, OD-19, RK-16);
  *   plan.ts         the epoch, the lineage row and the SCENARIO_LOADED row, from what R-3 read;
  *   errors.ts       `ResetError`: the code, the step, and whether the target is untouched;
  *   cli.ts          `db:reset` (not re-exported here: it is an entry file).
@@ -33,6 +35,13 @@
  *            The routine ends nobody's session. If the runtime pool is still open when `quiesce`
  *            returns, it waits `sessionDrainMs` and then refuses with `RESET_TARGET_IN_USE`.
  *
+ *   guard    BEFORE it quiesces, the server-side caller asks `assertNoRealSealedEvidence(client,
+ *            { database })` (operation 75 and `loadScenario`; C3 §4 answers 409
+ *            `RESET_BLOCKED_REAL_EVIDENCE`). It is the same SELECT-only question the routine asks
+ *            at R-3 as `dems_owner`, so the refusal and the audit of the refusal happen while the
+ *            server is still serving; the routine's own R-3 run stays authoritative for the
+ *            command line, which has no hook to call first (`dbc-3` §E.2; OD-19; RK-16).
+ *
  *   resolve  the database behind the name is the NEW one. The routine has released its lock and
  *            closed its connections: the promise settles, resolved or rejected, only after the
  *            driver has closed the owner connection (the server drops the backend from
@@ -54,7 +63,19 @@
  * starts no child process. What it takes itself is the advisory lock (442001, slot).
  */
 export { RESET_CHECKPOINTS, RESET_STEPS, ResetError, stepOf, type ResetCheckpoint, type ResetErrorCode, type ResetStep } from './errors';
-export { KEPT_TABLES, KEPT_TABLE_NAMES, type CarryMode, type KeptTable } from './kept-tables';
+export { KEPT_TABLES, KEPT_TABLE_NAMES, CAPTURE_KEPT_TABLES, type CarryMode, type KeptTable } from './kept-tables';
+export {
+  MAX_NAMED_SESSIONS,
+  REAL_SEALED_EVIDENCE_STATEMENT,
+  assertNoRealSealedEvidence,
+  evaluateRealEvidence,
+  findRealSealedEvidence,
+  realEvidenceDetails,
+  realEvidenceMessage,
+  type RealEvidenceFacts,
+  type RealEvidenceOptions,
+  type RealEvidenceQueryable,
+} from './real-evidence';
 export {
   PREVIOUS_SUFFIX,
   PROTECTED_DATABASES,

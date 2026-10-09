@@ -47,6 +47,7 @@ describe('the scan itself', () => {
       'src/db/reset/kept-tables.ts',
       'src/db/reset/names.ts',
       'src/db/reset/plan.ts',
+      'src/db/reset/real-evidence.ts',
       'src/db/reset/routine.ts',
     ]);
     expect(all.filter((file) => isTestFile(file.path)).length).toBeGreaterThan(5);

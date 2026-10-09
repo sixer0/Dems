@@ -92,10 +92,11 @@ describe('operations 44, 45, 46: the answer is the in-app simulator\'s on the sa
       ['VIDEO-01', 'CAM-01', 'READY', true, null],
       ['VIDEO-02', 'CAM-02', 'READY', true, null],
     ]);
-    expect(idle.audio.map((channel) => [channel.trackId, channel.deviceId, channel.state, channel.recState, channel.clip, channel.noSignal])).toEqual([
-      ['AUDIO-01', 'MIC-01', 'READY', null, false, false],
-      ['AUDIO-02', 'MIC-02', 'READY', null, false, false],
+    expect(idle.audio.map((channel) => [channel.inputId, channel.deviceId, channel.role, channel.state, channel.recState, channel.clip, channel.noSignal])).toEqual([
+      ['MIC-01', 'MIC-01', 'PRIMARY', 'READY', null, false, false],
+      ['MIC-02', 'MIC-02', 'STANDBY', 'READY', null, false, false],
     ]);
+    expect(idle.activeInputId).toBe('MIC-01');
     expect(idle.services).toHaveLength(16);
 
     const recording = deviceHealthOf(committedOf(scenarioState('recording')), NOW);
@@ -107,7 +108,7 @@ describe('operations 44, 45, 46: the answer is the in-app simulator\'s on the sa
     expect(faults.systemState).toBe('CRITICAL');
     expect(faults.flags.map((flag) => flag.id)).toEqual(expect.arrayContaining(['CAMERA_VIDEO-02', 'MIC_AUDIO-02_CLIP', 'TIME_FALLBACK']));
     expect(faults.cameras[1]).toMatchObject({ trackId: 'VIDEO-02', lens: 'FAULT', online: false, recState: 'LOST' });
-    expect(faults.audio[1]).toMatchObject({ trackId: 'AUDIO-02', state: 'CLIP', recState: 'DEGRADED', clip: true, noSignal: false });
+    expect(faults.audio[1]).toMatchObject({ inputId: 'MIC-02', state: 'CLIP', recState: 'DEGRADED', clip: true, noSignal: false });
     expect(faults.time.source).not.toBe('GNSS');
   });
 
@@ -148,8 +149,8 @@ describe('operations 44, 45, 46: the answer is the in-app simulator\'s on the sa
     const state = injectFaultTransition(scenarioState('idle'), FIXED_NOW, 'MIC_NO_SIGNAL', { channel: 'AUDIO-01' });
     const audio = audioStatusOf(committedOf(state), NOW);
     expect(audio).toEqual(simulatorAnswer(state, AUDIO));
-    expect(audio.channels[0]).toMatchObject({ trackId: 'AUDIO-01', state: 'NO_SIGNAL', dbfs: AUDIO_FLOOR_DBFS, peak: AUDIO_FLOOR_DBFS, noSignal: true });
-    expect(audio.channels[1]).toMatchObject({ trackId: 'AUDIO-02', state: 'READY', dbfs: AUDIO_NOISE_FLOOR_DBFS, noSignal: false });
+    expect(audio.channels[0]).toMatchObject({ inputId: 'MIC-01', state: 'NO_SIGNAL', dbfs: AUDIO_FLOOR_DBFS, peak: AUDIO_FLOOR_DBFS, noSignal: true });
+    expect(audio.channels[1]).toMatchObject({ inputId: 'MIC-02', state: 'READY', dbfs: AUDIO_NOISE_FLOOR_DBFS, noSignal: false });
     expect(deviceHealthOf(committedOf(state), NOW)).toEqual(simulatorAnswer(state, HEALTH));
   });
 
@@ -197,7 +198,7 @@ describe('the recorded difference of D89 (formerly BE-GAP-W36-1): the 20 Hz mete
     const mine = audioStatusOf(committedOf(state), NOW);
     const simulators = simulatorAnswer(state, AUDIO) as typeof mine;
 
-    expect(mine.channels[1]).toMatchObject({ trackId: 'AUDIO-02', state: 'READY', clip: true, noSignal: false, dbfs: AUDIO_NOISE_FLOOR_DBFS, peak: AUDIO_NOISE_FLOOR_DBFS });
+    expect(mine.channels[1]).toMatchObject({ inputId: 'MIC-02', state: 'READY', clip: true, noSignal: false, dbfs: AUDIO_NOISE_FLOOR_DBFS, peak: AUDIO_NOISE_FLOOR_DBFS });
     expect(simulators.channels[1]).toMatchObject({ state: 'READY', clip: true, dbfs: AUDIO_CLIP_BURST_DBFS, peak: AUDIO_CLIP_BURST_DBFS });
     expect(withoutLevels(mine)).toEqual(withoutLevels(simulators));
   });
@@ -223,8 +224,8 @@ describe('the recorded difference of D89 (formerly BE-GAP-W36-1): the 20 Hz mete
     expect(withoutLevels(deviceHealthOf(committed, now))).toEqual(withoutLevels(simulatorAnswer(state, HEALTH, now)));
     expect(videoStatusOf(committed)).toEqual(simulatorAnswer(state, VIDEO, now));
     console.info(
-      `[w36] D89 difference (formerly BE-GAP-W36-1): after 3 s of the recording scenario the simulator answers ${simulators.channels.map((channel) => `${channel.trackId} ${channel.dbfs}/${channel.peak}`).join(', ')} dBFS; ` +
-        `the module answers ${mine.channels.map((channel) => `${channel.trackId} ${channel.dbfs}/${channel.peak}`).join(', ')}; every other member is equal`,
+      `[w36] D89 difference (formerly BE-GAP-W36-1): after 3 s of the recording scenario the simulator answers ${simulators.channels.map((channel) => `${channel.inputId} ${channel.dbfs}/${channel.peak}`).join(', ')} dBFS; ` +
+        `the module answers ${mine.channels.map((channel) => `${channel.inputId} ${channel.dbfs}/${channel.peak}`).join(', ')}; every other member is equal`,
     );
   });
 });
@@ -250,23 +251,25 @@ describe('the newest meter frame of the engine (decisions D89, D122): with it, t
     expect(deviceHealthOf(committed, now, null)).toEqual(deviceHealthOf(committed, now));
   });
 
-  it('dbfs, peak and noSignal of a channel are the frame\'s; clip is the latch of the committed state, which a command changes between two frames', () => {
+  it('dbfs, peak and noSignal of an input are the frame\'s; clip is the latch of the committed state, which a command changes between two frames', () => {
     const state = scenarioState('idle');
     const committed = committedOf(state);
+    // Schema v2 (SH-17/SH-25; E-02): the engine's meter frame carries the mic INPUTS and the active input.
     const frame = {
       at: NOW,
       seq: 7,
       audio: {
-        channels: {
-          'AUDIO-01': { seq: 7, at: NOW, dbfs: -18.25, peak: -12.5, clip: true, noSignal: false },
-          'AUDIO-02': { seq: 7, at: NOW, dbfs: -90, peak: -90, clip: false, noSignal: true },
+        inputs: {
+          'MIC-01': { seq: 7, at: NOW, dbfs: -18.25, peak: -12.5, clip: true, noSignal: false },
+          'MIC-02': { seq: 7, at: NOW, dbfs: -90, peak: -90, clip: false, noSignal: true },
         },
+        activeInputId: 'MIC-01',
       },
-    };
+    } as const;
     const channels = audioStatusOf(committed, NOW, frame).channels;
-    expect(channels.map((channel) => [channel.trackId, channel.dbfs, channel.peak, channel.clip, channel.noSignal])).toEqual([
-      ['AUDIO-01', -18.25, -12.5, false, false],
-      ['AUDIO-02', -90, -90, false, true],
+    expect(channels.map((channel) => [channel.inputId, channel.dbfs, channel.peak, channel.clip, channel.noSignal])).toEqual([
+      ['MIC-01', -18.25, -12.5, false, false],
+      ['MIC-02', -90, -90, false, true],
     ]);
     // Every other member is the committed state's, with and without a frame.
     expect(withoutLevels(audioStatusOf(committed, NOW, frame)).channels.map(({ noSignal: _noSignal, ...rest }) => rest)).toEqual(
@@ -276,12 +279,14 @@ describe('the newest meter frame of the engine (decisions D89, D122): with it, t
   });
 });
 
-describe('operation 47: the seven slices in their wire form (API-6)', () => {
+describe('operation 47: the slices in their wire form (API-6), schema v2 with the selector snapshot', () => {
   it.each(SCENARIOS)('scenario %s: each slice under its slice name, by reference, and the answer parses with the contract\'s strict schema', (name) => {
     const state = scenarioState(name);
-    const inventory = deviceInventoryOf(committedOf(state));
+    const inventory = deviceInventoryOf(committedOf(state), state.captureConfig);
 
-    expect(Object.keys(inventory)).toEqual(['device', 'cameras', 'mics', 'otherDevices', 'ports', 'activeCameraId', 'tabletLink']);
+    // Schema v2 (C3 §3 op 47; SH-12; E-04): `captureConfig` joins the answer - the selector in its
+    // wire form, its own slice, never the paired-client registry and never a credential (RK-12).
+    expect(Object.keys(inventory)).toEqual(['device', 'cameras', 'mics', 'otherDevices', 'ports', 'activeCameraId', 'tabletLink', 'captureConfig']);
     expect(inventory.device).toBe(state.device);
     expect(inventory.cameras).toBe(state.cameras);
     expect(inventory.mics).toBe(state.mics);
@@ -289,17 +294,20 @@ describe('operation 47: the seven slices in their wire form (API-6)', () => {
     expect(inventory.ports).toBe(state.ports);
     expect(inventory.activeCameraId).toBe(state.activeCameraId);
     expect(inventory.tabletLink).toBe(state.tabletLink);
+    expect(inventory.captureConfig).toBe(state.captureConfig);
 
     const wire: unknown = JSON.parse(JSON.stringify(inventory));
     expect(DeviceInventorySchema.parse(wire)).toEqual(wire);
     expect(validateCoreApiResponse('getDeviceInventory', 200, wire)).toEqual({ ok: true });
   });
 
-  it('the strict schema refuses an eighth slice and a member a slice does not have: nothing else can leave with the answer', () => {
+  it('the strict schema refuses an eighth slice, a missing captureConfig and a member a slice does not have: nothing else can leave with the answer', () => {
     const state = scenarioState('idle');
-    const wire = JSON.parse(JSON.stringify(deviceInventoryOf(committedOf(state)))) as Record<string, unknown>;
+    const wire = JSON.parse(JSON.stringify(deviceInventoryOf(committedOf(state), state.captureConfig))) as Record<string, unknown>;
     expect(DeviceInventorySchema.safeParse({ ...wire, audit: state.audit }).success).toBe(false);
     expect(DeviceInventorySchema.safeParse({ ...wire, device: { ...(wire['device'] as object), secret: 'x' } }).success).toBe(false);
+    const { captureConfig: _captureConfig, ...withoutSelector } = wire;
+    expect(DeviceInventorySchema.safeParse(withoutSelector).success).toBe(false);
   });
 });
 
@@ -329,8 +337,10 @@ describe('the reads use the committed state and nothing else', () => {
       { method: 'GET', path: AUDIO },
     );
     expect(response.status).toBe(500);
+    // Schema v2 (D44 R5): the two capture slices are DURABLE stored slices of the engine mapping;
+    // the not-durable set is the five of spec §3.1 again.
     expect(Object.keys(UNMAPPED_SLICES).sort()).toEqual(['audio', 'auth', 'authLockout', 'clock', 'pairing']);
-    expect(DURABLE_SLICE_KEYS).toHaveLength(28);
+    expect(DURABLE_SLICE_KEYS).toHaveLength(30);
   });
 
   it('nothing is changed: every function works on a deeply frozen state', () => {

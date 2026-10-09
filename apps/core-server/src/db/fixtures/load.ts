@@ -144,6 +144,10 @@ async function writeBulkFixture(executor: RowExecutor, fixture: BulkFixture, bas
     await insertNative(executor, schema.deviceCredentials, 'device_credentials', rows.deviceCredentials);
     await insertNative(executor, schema.authSessions, 'auth_sessions', rows.authSessions);
     await insertNative(executor, schema.biometricTokens, 'biometric_tokens', rows.biometricTokens);
+    // Schema v2 (dbc-3 §G): the discovered capture devices before any row that names a mic, and
+    // their write-only credentials (the fake cameras only; the reveal path is the reader).
+    await insertNative(executor, schema.captureDevices, 'capture_devices', rows.captureDevices);
+    await insertNative(executor, schema.captureDeviceCredentials, 'capture_device_credentials', rows.captureDeviceCredentials);
     for (const row of updates.registryCounters) {
       try {
         await executor.update(schema.registryCounters).set({ nextValue: row.nextValue }).where(eq(schema.registryCounters.name, row.name));
@@ -170,6 +174,15 @@ async function writeBulkFixture(executor: RowExecutor, fixture: BulkFixture, bas
     await insertRows(executor, 'evidenceCustody', rows.evidenceCustody);
     await insertRows(executor, 'exportRecords', rows.exportRecords);
     await insertRows(executor, 'activeSession', rows.activeSession);
+    // The v2 pipeline (CS-20): intervals and fragments and chunks hang on session ids only
+    // (D-DB-07); transcripts and revisions on the evidence items inserted above; the jobs on the
+    // sealed sessions. All parents exist by now; the chain rows follow, as always, last.
+    await insertNative(executor, schema.sessionAudioIntervals, 'session_audio_intervals', rows.sessionAudioIntervals);
+    await insertNative(executor, schema.recordingFragments, 'recording_fragments', rows.recordingFragments);
+    await insertNative(executor, schema.transcriptChunks, 'transcript_chunks', rows.transcriptChunks);
+    await insertNative(executor, schema.transcripts, 'transcripts', rows.transcripts);
+    await insertNative(executor, schema.transcriptRevisions, 'transcript_revisions', rows.transcriptRevisions);
+    await insertNative(executor, schema.sealingJobs, 'sealing_jobs', rows.sealingJobs);
     await insertRows(executor, 'alerts', rows.alerts);
     await insertNative(executor, schema.healthSnapshots, 'health_snapshots', rows.healthSnapshots);
     // The lineage is append-only for every role: these are plain INSERTs, as the reset routine issues them.
@@ -258,7 +271,7 @@ export async function loadBulkFixture(pool: Pool, options: LoadBulkFixtureOption
 }
 
 /**
- * Vacuums and analyzes the 30 tables, in one statement that names the tables of the typed schema
+ * Vacuums and analyzes the 40 tables, in one statement that names the tables of the typed schema
  * (constants). It changes no row. Two reasons:
  *
  *   - A template is locked right after its hook returns, so nothing would ever analyze it:

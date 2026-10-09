@@ -17,6 +17,8 @@ import type {
   ActiveCameraIdSliceBody,
   AuditRowBody,
   CamerasSliceBody,
+  CaptureConfigSliceBody,
+  CaptureDevicesSliceBody,
   DeviceSliceBody,
   DiagnosticsSliceBody,
   EvidenceItemBody,
@@ -138,6 +140,7 @@ const MICS: MicsSliceBody = [
     deviceId: 'MIC-01',
     name: 'MIC 1 – Interviewer',
     role: 'Interviewer',
+    micRole: 'PRIMARY',
     channel: 1,
     state: 'READY',
     recState: null,
@@ -150,6 +153,7 @@ const MICS: MicsSliceBody = [
     deviceId: 'MIC-02',
     name: 'MIC 2 – Subject',
     role: 'Subject',
+    micRole: 'STANDBY',
     channel: 2,
     state: 'READY',
     recState: null,
@@ -321,6 +325,89 @@ const DIAGNOSTICS: DiagnosticsSliceBody = null;
 /** Slice `settings`. */
 const SETTINGS: SettingsSliceBody = { presentationMode: false, timeFormat: '24', notifyWarnings: true, notifySound: false };
 
+/**
+ * Slice 29 `captureConfig` (SH-16; ops 76/78/79/80/89). The idle selector of the seeded topology:
+ * one dual-lens camera pair and MIC-01 PRIMARY with MIC-02 as the hot standby (OD-05, OD-09).
+ * `locked` is false because no session is open (OD-10).
+ */
+const CAPTURE_CONFIG: CaptureConfigSliceBody = {
+  cameras: [
+    { trackId: 'VIDEO-01', deviceId: 'CAM-01', profile: 'H264_1080P25', online: true, streamState: 'LIVE' },
+    { trackId: 'VIDEO-02', deviceId: 'CAM-02', profile: 'H264_1080P25', online: true, streamState: 'LIVE' },
+  ],
+  mics: [
+    { inputId: 'MIC-01', deviceId: 'MIC-01', role: 'PRIMARY', transport: 'USB', online: true },
+    { inputId: 'MIC-02', deviceId: 'MIC-02', role: 'STANDBY', transport: 'USB', online: true },
+  ],
+  locked: false,
+  updatedAt: 1_790_823_600_000,
+};
+
+/**
+ * Slice 30 `captureDevices` (SH-16, E-04): the five built-in capture devices of the seeded registry
+ * (`dbc-3 §E.3`). Hosts are loopback addresses of the fake sources; **no** credential appears here
+ * (RK-12) and this slice is not the paired-client registry (E-04).
+ */
+const CAPTURE_DEVICES: CaptureDevicesSliceBody = {
+  devices: [
+    {
+      id: 'CAM-01',
+      kind: 'CAMERA',
+      model: 'Dual-lens IP camera DL-2',
+      firmware: '3.8.14',
+      host: '127.0.0.1:8554',
+      poePort: 'POE_CAM_1',
+      online: true,
+      streamState: 'LIVE',
+      capabilities: ['VIDEO', 'PULL'],
+    },
+    {
+      id: 'CAM-02',
+      kind: 'CAMERA',
+      model: 'Dual-lens IP camera DL-2',
+      firmware: '3.8.14',
+      host: '127.0.0.1:8555',
+      poePort: 'POE_CAM_1',
+      online: true,
+      streamState: 'LIVE',
+      capabilities: ['VIDEO', 'PULL'],
+    },
+    {
+      id: 'MIC-01',
+      kind: 'MIC',
+      model: 'USB condenser microphone UM-1',
+      firmware: '1.04',
+      host: null,
+      poePort: null,
+      online: true,
+      streamState: null,
+      capabilities: ['AUDIO'],
+    },
+    {
+      id: 'MIC-02',
+      kind: 'MIC',
+      model: 'USB condenser microphone UM-1',
+      firmware: '1.04',
+      host: null,
+      poePort: null,
+      online: true,
+      streamState: null,
+      capabilities: ['AUDIO'],
+    },
+    {
+      id: 'POE-SWITCH',
+      kind: 'POE',
+      model: 'PoE+ switch PS-8',
+      firmware: '2.4.1',
+      host: '127.0.0.1',
+      poePort: null,
+      online: true,
+      streamState: null,
+      capabilities: ['SNMP', 'PULL'],
+    },
+  ],
+};
+
 /** The slices of the idle state that the reads of areas 6 to 10 answer, by slice name. */
 export const EXAMPLE_SLICES = {
   device: DEVICE,
@@ -339,6 +426,9 @@ export const EXAMPLE_SLICES = {
   update: UPDATE,
   diagnostics: DIAGNOSTICS,
   settings: SETTINGS,
+  // Task 3 M2-W6 (SH-16): the two capture slices ops 76/77 answer.
+  captureConfig: CAPTURE_CONFIG,
+  captureDevices: CAPTURE_DEVICES,
 } as const;
 
 /** The two newest entries of `sessionHistory` (the slice holds 13; newest first). */

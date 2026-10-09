@@ -307,6 +307,7 @@ export const SECURITY_AUDIT_OPERATIONS = [
     description: [
       `The rows of the audit chain in pages of ${API_PAGE_LIMIT_DEFAULT} unless \`limit\` says otherwise, ordered by \`seq\`: oldest first, or newest first with \`order=DESC\`. Five filters narrow the list.`,
       'Each row carries `seq`, `prevHash`, `hash` and its full hashed body, so a client can verify the chain over the rows it received. Every signed-in role may read the audit log.',
+      'Schema v2 (C3 §3 op 59; CS-14; E-30): the `type` filter enumerates the shared AuditType, which grew from 53 to 62 with the nine capture-phase types — no shape change, the enum follows the vocabulary.',
       LIST_READ_NOTE,
     ].join('\n\n'),
     source: backendSource(SECTION, 59),

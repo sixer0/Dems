@@ -322,7 +322,7 @@ describe('the meters (I8; [LS] §4 slice `audio`)', () => {
 
     const t0 = bed.fake.clock.now()
     act(() => {
-      socket.meters({ channels: { 'AUDIO-01': frame(t0, -18.2), 'AUDIO-02': frame(t0, -31.6) } })
+      socket.meters({ inputs: { 'MIC-01': frame(t0, -18.2), 'MIC-02': frame(t0, -31.6) }, activeInputId: 'MIC-01' })
     })
     await waitFor(() => expect(panelMeter('AUDIO-01')).not.toHaveAttribute('data-no-signal'))
     expect(meterValue('AUDIO-01')).toHaveAttribute('aria-valuetext', DBFS(-18.2))
@@ -333,11 +333,11 @@ describe('the meters (I8; [LS] §4 slice `audio`)', () => {
     await bed.elapse(1_000)
     const t1 = bed.fake.clock.now()
     act(() => {
-      socket.meters({ channels: { 'AUDIO-01': frame(t1, -9.4), 'AUDIO-02': frame(t1, -24.1) } })
+      socket.meters({ inputs: { 'MIC-01': frame(t1, -9.4), 'MIC-02': frame(t1, -24.1) }, activeInputId: 'MIC-01' })
     })
     await waitFor(() => expect(meterValue('AUDIO-01')).toHaveAttribute('aria-valuetext', DBFS(-9.4)))
     expect(meterValue('AUDIO-02')).toHaveAttribute('aria-valuetext', DBFS(-24.1))
-    expect(page.live.store.getState().audio.channels['AUDIO-01'].dbfs).toBe(-9.4)
+    expect(page.live.store.getState().audio.inputs['MIC-01'].dbfs).toBe(-9.4)
 
     // The frames are pushed: no request was sent for them, and none in five quiet seconds either.
     await bed.elapse(5_000, 500)

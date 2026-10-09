@@ -51,18 +51,22 @@ describe('ST-1: row counts after a first seed at the fixed instant (contract §9
     expect(new Date(FIXED_NOW).toISOString()).toBe('2026-10-01T03:00:00.000Z');
   });
 
-  it('all 30 tables hold what the contract states: 21 with rows, 9 empty', async () => {
+  it('all 40 tables hold what the seed of the landed contract states: 24 with rows, 16 empty', async () => {
     const counts = await countAllTables(drizzle(db.ownerPool()));
     console.log(`[w20] ST-1 row counts of ${db.name}:\n${Object.entries(counts).map(([table, rows]) => `  ${table.padEnd(24)} ${rows}`).join('\n')}`);
     expect(counts).toEqual(EXPECTED_SEED_COUNTS);
-    expect(Object.keys(counts)).toHaveLength(30);
-    expect(Object.values(counts).filter((rows) => rows > 0)).toHaveLength(21);
-    expect(Object.values(counts).filter((rows) => rows === 0)).toHaveLength(9);
+    expect(Object.keys(counts)).toHaveLength(40);
+    expect(Object.values(counts).filter((rows) => rows > 0)).toHaveLength(24);
+    expect(Object.values(counts).filter((rows) => rows === 0)).toHaveLength(16);
   });
 
-  it('AC-B-02: 3 operators, 3 roles, 12 permissions, 18 grants, 1 Core device, 13 items with 52 tracks, 13 history entries', async () => {
+  it('AC-B-02: 3 operators, 3 roles, 14 permissions, 22 grants, 1 Core device, 13 items with 52 tracks, 13 history entries', async () => {
     const counts = await countAllTables(drizzle(db.ownerPool()));
-    expect([counts['operators'], counts['roles'], counts['permissions'], counts['role_permissions']]).toEqual([3, 3, 12, 18]);
+    // R3 (D44): the vocabulary counts are recomputed FROM SOURCE, never hardcoded: the shared
+    // permission enum and the shared role table (rows 47/49 grew them 12->14 and 18->22).
+    expect([counts['operators'], counts['roles']]).toEqual([3, 3]);
+    expect(counts['permissions']).toBe(Object.values(Permission).length);
+    expect(counts['role_permissions']).toBe(Object.values(ROLE_PERMISSIONS).reduce((sum, grants) => sum + grants.length, 0));
     expect([counts['core_device'], counts['evidence_items'], counts['evidence_tracks'], counts['session_history']]).toEqual([1, 13, 52, 13]);
   });
 
@@ -86,12 +90,12 @@ describe('ST-1: row counts after a first seed at the fixed instant (contract §9
   it('the two mechanism rows and the seed bookkeeping are as the contract says', async () => {
     const pool = db.ownerPool();
     const meta = await pool.query('SELECT schema_version, contract_revision FROM schema_meta');
-    expect(meta.rows).toEqual([{ schema_version: 1, contract_revision: 'dbc-2' }]);
+    expect(meta.rows).toEqual([{ schema_version: 2, contract_revision: 'dbc-3' }]);
     const state = await pool.query('SELECT seed, sim_schema_version, scenario, epoch, created_at, seeded_at, last_reset_at, last_sealed_session_id, last_sealed_acknowledged, updated_at FROM core_state');
     expect(state.rows).toEqual([
       {
         seed: String(DEFAULT_SEED),
-        sim_schema_version: 1,
+        sim_schema_version: 2,
         scenario: 'idle',
         epoch: '0',
         created_at: String(FIXED_NOW),
@@ -187,21 +191,21 @@ describe('ST-3: what is stored equals what the shared builders made, member by m
 });
 
 describe('ST-4, AC-B-17: the seeded matrix equals the shared ROLE_PERMISSIONS', () => {
-  it('3 roles and 12 permissions in declaration order, 18 grants (4, 10, 4), role by role equal', async () => {
+  it('3 roles and 14 permissions in declaration order, 22 grants (5, 12, 5), role by role equal', async () => {
     const stored = await readRbacRows(drizzle(db.ownerPool()));
     expect(stored.roles.map((role) => role.id)).toEqual(Object.values(OperatorRole));
     expect(stored.permissions.map((permission) => permission.id)).toEqual(Object.values(Permission));
-    expect(stored.rolePermissions).toHaveLength(18);
+    expect(stored.rolePermissions).toHaveLength(Object.values(ROLE_PERMISSIONS).reduce((sum, grants) => sum + grants.length, 0));
     for (const role of Object.values(OperatorRole)) {
       const granted = stored.rolePermissions.filter((grant) => grant.roleId === role).map((grant) => grant.permissionId);
       expect([...granted].sort(), role).toEqual([...ROLE_PERMISSIONS[role]].sort());
     }
     const matrix = matrixFromRows(stored);
-    expect(Object.fromEntries(Object.entries(matrix).map(([role, permissions]) => [role, permissions.length]))).toEqual({
-      INVESTIGATOR: 4,
-      SUPERVISOR: 10,
-      TECHNICIAN: 4,
-    });
+    // R3: the per-role counts come from the shared role table itself (5 / 12 / 5 with the v2
+    // grants of rows 47/49); the role-by-role equality below is the real check.
+    expect(Object.fromEntries(Object.entries(matrix).map(([role, permissions]) => [role, permissions.length]))).toEqual(
+      Object.fromEntries(Object.entries(ROLE_PERMISSIONS).map(([role, grants]) => [role, grants.length])),
+    );
     // The runtime role reads the same matrix and cannot change it (the matrix is read-only, RB-9).
     const asRuntime = await readRbacRows(drizzle(db.appPool()));
     expect(matrixFromRows(asRuntime)).toEqual(matrix);

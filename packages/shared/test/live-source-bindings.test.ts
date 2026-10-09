@@ -255,8 +255,10 @@ describe('the 42 bindings, driven by SIM_ACTION_OPERATIONS (01_specs §7.17)', (
     }
   });
 
-  it('deviceCommand picks operation 48, 49 or 50 by its command, and refuses a command that is none of the three', () => {
-    const paths = { RESTART: '/restart', TEST_SIGNAL: '/test-signal', IDENTIFY: '/identify' } as const;
+  it('deviceCommand picks operation 48, 49 or 50 by its command, and refuses a command that is none of them', () => {
+    // Task 3 M2-W7 (E-12; C3 §0): POE_CYCLE joins the enum and rides operation 48 (`/restart`), the
+    // same endpoint as RESTART; op 48 decides the cycle from the body + stream state (C3 §3 op 48).
+    const paths = { RESTART: '/restart', TEST_SIGNAL: '/test-signal', IDENTIFY: '/identify', POE_CYCLE: '/restart' } as const;
     expect(Object.keys(DEVICE_COMMAND_OPERATION_INDEX).sort()).toEqual(Object.keys(paths).sort());
     for (const [command, suffix] of Object.entries(paths)) {
       const plan = planOf('deviceCommand', ['CAM-01', command]) as CallPlan;

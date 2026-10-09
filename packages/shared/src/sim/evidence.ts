@@ -15,6 +15,7 @@ import { canonicalJSON, sha256Hex } from './events';
 import type {
   CustodyEntry,
   EpochMs,
+  EvidenceFileEntry,
   EvidenceItem,
   EvidenceMarker,
   EvidenceSignature,
@@ -169,6 +170,81 @@ export function buildItemIntegrity(input: EvidenceIntegrityInput & { subjectName
   };
 }
 
+/**
+ * The sealed FILES of a v2 item (register SH-07; D224/D225): one whole file per camera plus the
+ * single session audio track `AUDIO-01`. `AUDIO-02` is legacy v1 only and never gets a file here.
+ */
+export const EVIDENCE_FILE_TRACKS = [TrackId.VIDEO_01, TrackId.VIDEO_02, TrackId.AUDIO_01] as const satisfies readonly TrackId[];
+
+/** The fragment quantum used to derive a synthetic fragment count for the running chain. */
+const FRAGMENT_MS = 2_000;
+
+/** One fragment descriptor of a file's append-only chain (stands in for the stored fragment bytes). */
+function fragmentDescriptor(input: EvidenceIntegrityInput, trackId: TrackId, index: number) {
+  return {
+    kind: 'dems.fragment.v1',
+    evidenceId: input.evidenceId,
+    sessionId: input.sessionId,
+    trackId,
+    index,
+    startedAt: input.recordedAt + index * FRAGMENT_MS,
+  };
+}
+
+/**
+ * The running SHA-256 head over a file's fragment checkpoints (register SH-07; `ev §B.6`; the S1
+ * append-only-hash pattern). Each fragment folds into the running value: `h = sha256(h ‖ fragment)`.
+ * Deterministic from the integrity input alone, so a re-seal of the same session yields the same head.
+ */
+export function fragmentChainHead(input: EvidenceIntegrityInput, trackId: TrackId): string {
+  const durationMs = Math.max(0, input.endedAt - input.recordedAt);
+  const fragments = Math.max(1, Math.ceil(durationMs / FRAGMENT_MS));
+  let head = sha256Hex(canonicalJSON({ kind: 'dems.chain.genesis', trackId }));
+  for (let index = 0; index < fragments; index += 1) {
+    head = sha256Hex(head + sha256Hex(canonicalJSON(fragmentDescriptor(input, trackId, index))));
+  }
+  return head;
+}
+
+/** The synthetic canonical transcript document hash bound inside the seal (SH-07; D222). */
+export function transcriptSha256(input: EvidenceIntegrityInput): string {
+  return sha256Hex(
+    canonicalJSON({
+      kind: 'dems.transcript/1',
+      evidenceId: input.evidenceId,
+      sessionId: input.sessionId,
+      language: 'id',
+      state: 'READY',
+    }),
+  );
+}
+
+/**
+ * The package-level fragment-chain head (register SH-07): the running fold of the per-file heads in
+ * file order. Each camera file keeps its own append-only chain (`fragmentChainHead` above); this is
+ * the single value the manifest records so a verifier can recompute every file's chain from one head.
+ */
+export function packageFragmentChainHead(input: EvidenceIntegrityInput): string {
+  return EVIDENCE_FILE_TRACKS.reduce(
+    (head, trackId) => sha256Hex(head + fragmentChainHead(input, trackId)),
+    sha256Hex(canonicalJSON({ kind: 'dems.chain.package.genesis', evidenceId: input.evidenceId })),
+  );
+}
+
+/** The per-file entries of a v2 item (whole-file SHA-256 + fragment count + chain head). */
+export function buildEvidenceFilesV2(input: EvidenceIntegrityInput): EvidenceFileEntry[] {
+  return EVIDENCE_FILE_TRACKS.map((trackId) => {
+    const durationMs = Math.max(0, input.endedAt - input.recordedAt);
+    return {
+      trackId,
+      fileName: `${input.evidenceId.toLowerCase()}/${trackId.toLowerCase()}.m4${trackId.startsWith('VIDEO') ? 'v' : 'a'}`,
+      sizeBytes: trackSize(input.sizeBytes, trackId),
+      sha256: computeTrackHash(input, trackId),
+      fragmentCount: Math.max(1, Math.ceil(durationMs / FRAGMENT_MS)),
+    };
+  });
+}
+
 /** §19.1 lifecycle stage shown for each status (demo mapping). */
 export const EVIDENCE_STATUS_STAGE = {
   RECORDED: 'RECORDING',
@@ -211,6 +287,12 @@ export interface SealEvidenceInput extends EvidenceIntegrityInput {
   /** Step 54 (SIM-GAP-M80-1): time source at the start and end of the recording. */
   startTimeSource?: TimeSource | null;
   endTimeSource?: TimeSource | null;
+  /**
+   * Schema v2 (register SH-07; OD-02 L2): when true, the item also carries the v2 file list, the
+   * fragment-chain head and a transcript hash. The live seal sets it; the pre-built dataset items
+   * stay on the v1 shape so their sealed hashes remain byte-identical.
+   */
+  schemaV2?: boolean;
 }
 
 /**
@@ -219,6 +301,7 @@ export interface SealEvidenceInput extends EvidenceIntegrityInput {
  */
 export function createEvidenceItem(input: SealEvidenceInput): EvidenceItem {
   const integrity = buildItemIntegrity(input);
+  const v2 = input.schemaV2 === true;
   return {
     id: input.evidenceId,
     sessionId: input.sessionId,
@@ -248,6 +331,15 @@ export function createEvidenceItem(input: SealEvidenceInput): EvidenceItem {
     integritySource: integrity.integritySource,
     startTimeSource: input.startTimeSource ?? null,
     endTimeSource: input.endTimeSource ?? null,
+    // Schema v2 (SH-07): only a live seal carries the file list, the fragment-chain head and the
+    // transcript hash; the pre-built dataset items keep their byte-identical v1 shape.
+    ...(v2
+      ? {
+          files: buildEvidenceFilesV2(input),
+          fragmentChainHead: packageFragmentChainHead(input),
+          transcriptSha256: transcriptSha256(input),
+        }
+      : {}),
   };
 }
 

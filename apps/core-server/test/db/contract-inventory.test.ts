@@ -1,17 +1,19 @@
 // Database-free checks of plan row W17 (project `unit`, so they run in every gate):
 //
-//   1. the checked-in inventory `contract-inventory.json` IS what sections 2.4 and 4 of the
-//      database contract say today, with the contract's own counts: 30 tables, 302 columns,
-//      98 named CHECKs, 25 foreign keys;
+//   1. the checked-in inventory `contract-inventory.json` IS what the database contract says
+//      today: sections 2.4 and 4 of the closed task-2 contract (30 tables, 302 columns, 98 named
+//      CHECKs, 25 foreign keys) COMPOSED with the schema-v2 delta of dbc-3 (ruling D44 R1: the
+//      closed document is never edited; `contract-v2-delta.ts` carries dbc-3 §A/§B/§C/§B.13).
+//      Together: 40 tables, 419 columns, 166 named CHECKs, 39 foreign keys;
 //   2. the typed schema declares the same tables, columns, types, nullability and defaults;
-//   3. the three hand-written migration files are the statements of contract §6.3 and §8.3;
+//   3. the hand-written migration files are the statements of contract §6.3 and §8.3;
 //   4. CL-12: every closed value set of the contract equals the shared constant it cites, and
 //      the key deny list equals the server constant;
 //   5. the migration files hold nothing the migrator would mis-split.
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { AuthMethod, AuditCategory, AuditType, EvidenceStatus, FaultKind, IntegritySource, OperatorRole, Permission, RecordingProfileId, RetentionPolicyId, ScenarioName, SessionOutcome, Severity, SimEventCategory, SimEventType, SubjectType, VerificationStatus } from '@dems/shared/sim';
-import { EvidenceLifecycleStage, SecurityState, SessionState, StorageState, TimeSource, TrackId } from '@dems/shared/domain';
+import { AuthMethod, AuditCategory, AuditType, CaptureDeviceKind, EvidenceStatus, FaultKind, IntegritySource, OperatorRole, Permission, RecordingProfileId, ROLE_PERMISSIONS, RetentionPolicyId, ScenarioName, SessionOutcome, Severity, SimEventCategory, SimEventType, SubjectType, VerificationStatus } from '@dems/shared/sim';
+import { EvidenceLifecycleStage, MicRole, SecurityState, SessionState, StorageState, TimeSource, TrackId } from '@dems/shared/domain';
 import { getTableColumns, getTableName, is } from 'drizzle-orm';
 import { PgTable, getTableConfig } from 'drizzle-orm/pg-core';
 import { describe, expect, it } from 'vitest';
@@ -25,10 +27,11 @@ import {
   pairedDevicePublicColumns,
   pairingCodePublicColumns,
 } from '../../src/db/schema/public-columns';
-import { CONTRACT_FILE, parseContract, readInventory, serialise } from './contract-inventory';
+import { CONTRACT_FILE, DBC3_FILE, parseContract, readInventory, serialise } from './contract-inventory';
 
 const inventory = readInventory();
 const contractText = readFileSync(CONTRACT_FILE, 'utf8');
+const dbc3Text = readFileSync(DBC3_FILE, 'utf8');
 const tables = (Object.values(schema) as unknown[]).filter((value): value is PgTable => is(value, PgTable));
 
 describe('the inventory is the contract (sections 2.4 and 4)', () => {
@@ -38,22 +41,31 @@ describe('the inventory is the contract (sections 2.4 and 4)', () => {
     expect(serialise(parseContract(contractText))).toBe(serialise(inventory));
   });
 
-  it("holds the contract's own counts: 30 tables, 302 columns, 98 CHECKs, 25 foreign keys", () => {
+  it("holds the composed counts: the closed §4 base plus the dbc-3 delta = 40 tables, 419 columns, 166 CHECKs, 39 foreign keys", () => {
+    // The base is the CLOSED task-2 contract (§15.6 states its own totals — re-pinned in
+    // contract-inventory.ts's composition header); the delta is dbc-3 §A/§B/§B.13/§C transcribed
+    // in contract-v2-delta.ts. The per-kind totals below are the composition's measured output;
+    // `catalog.db.test.ts` re-checks them against the LIVE catalog built by 0000..0007, so the
+    // composition is verified by two separately authored transcriptions, as it was in v1.
     expect(inventory.counts).toEqual({
-      tables: 30,
-      columns: 302,
-      primaryKeys: 30,
-      foreignKeys: 25,
+      tables: 40,
+      columns: 419,
+      primaryKeys: 40,
+      foreignKeys: 39,
       uniques: 15,
-      uniqueIndexes: 2,
-      indexes: 22,
-      checks: 98,
+      uniqueIndexes: 3,
+      indexes: 23,
+      checks: 166,
     });
-    expect(inventory.tables.map((table) => table.id)).toEqual(
-      Array.from({ length: 30 }, (_, index) => `T-${String(index + 1).padStart(2, '0')}`),
+    expect(inventory.tables.map((table) => table.id).sort()).toEqual(
+      Array.from({ length: 40 }, (_, index) => `T-${String(index + 1).padStart(2, '0')}`),
     );
-    // The counts the contract states in its own text (§15.6).
+    // The counts the closed contract states in its own text (§15.6), and the ones dbc-3 claims:
+    // 30 -> 39 tables (§0.1, the 9-new/5-changed reconciliation) plus the R-8 singleton T-40
+    // (§B.13, confirmed by decision D24) = the 40 pinned above.
     expect(contractText).toContain('30 tables; boot checks B-1 to B-9; PostgreSQL behaviours PG-01 to PG-28; 98 named CHECKs; 25 foreign keys; 302 columns');
+    expect(dbc3Text).toContain('| Table count | 30 -> 39 |');
+    expect(dbc3Text).toContain('### B.13 `stt_config` (proposed T-40)');
   });
 
   it('every name is lower-case snake_case, at most 63 bytes, with the suffix of its kind (N-1 to N-4, CL-06)', () => {
@@ -75,8 +87,8 @@ describe('the inventory is the contract (sections 2.4 and 4)', () => {
 });
 
 describe('the typed schema declares what the contract lists', () => {
-  it('30 tables with the same names', () => {
-    expect(tables).toHaveLength(30);
+  it('the 40 tables with the same names', () => {
+    expect(tables).toHaveLength(inventory.counts.tables);
     expect([...SCHEMA_TABLE_NAMES]).toEqual(inventory.tables.map((table) => table.name).sort());
   });
 
@@ -162,20 +174,30 @@ describe('the typed schema declares what the contract lists', () => {
     }
   });
 
-  it('one bytea type, used by exactly the seven hash and salt columns (TY-5, D38)', () => {
+  it('one bytea type, used by exactly the hash, salt and write-only secret columns the contract declares (TY-5, D38; dbc-3 §B.3, §B.13)', () => {
     const custom = tables.flatMap((table) =>
       Object.values(getTableColumns(table))
         .filter((column) => column.columnType === 'PgCustomColumn')
         .map((column) => `${getTableName(table)}.${column.name}:${column.getSQLType()}`),
     );
-    expect(custom.sort()).toEqual([
+    // Derived from the contract first, then pinned: the seven v1 hash/salt columns plus the two
+    // write-only secret pairs of `capture_device_credentials` (T-33) and `stt_config` (T-40).
+    const declaredByContract = inventory.tables
+      .flatMap((table) => table.columns.filter((column) => column.type === 'bytea').map((column) => `${table.name}.${column.name}:bytea`))
+      .sort();
+    expect(custom.sort()).toEqual(declaredByContract);
+    expect(declaredByContract).toEqual([
       'auth_sessions.token_hash:bytea',
       'biometric_tokens.token_hash:bytea',
+      'capture_device_credentials.nonce:bytea',
+      'capture_device_credentials.secret_ciphertext:bytea',
       'device_credentials.current_hash:bytea',
       'device_credentials.next_hash:bytea',
       'operator_credentials.hash:bytea',
       'operator_credentials.salt:bytea',
       'pairing_codes.code_hash:bytea',
+      'stt_config.nonce:bytea',
+      'stt_config.secret_ciphertext:bytea',
     ]);
   });
 
@@ -224,10 +246,12 @@ describe('the hand-written migration files are the statements of the contract', 
     expect(text).toContain("VALUES (true, 1, 'dbc-2')");
   });
 
-  it('the set is four files; the three hand-written ones never hold the marker inside a comment or a string (D38)', () => {
+  it('the set is eight files; the five hand-written ones never hold the marker inside a comment or a string (D38; dbc-3 §A.1)', () => {
     expect(readMigrationSet().map((entry) => entry.tag)).toEqual([...INITIAL_MIGRATION_TAGS]);
     const marker = ['-->', 'statement-breakpoint'].join(' ');
-    for (const tag of ['0000_prelude', '0002_audit_guards', '0003_privileges']) {
+    // Hand-written: the v1 trio plus the two privilege migrations row 46/row 112 wrote by hand
+    // (0004 and 0006 are drizzle-generated and legitimately carry the marker as lines).
+    for (const tag of ['0000_prelude', '0002_audit_guards', '0003_privileges', '0005_capture_privileges', '0007_stt_config_privileges']) {
       for (const line of file(tag).split('\n')) {
         if (line.includes(marker)) expect(line, `${tag}: the marker must be a line of its own`).toBe(marker);
       }
@@ -262,6 +286,10 @@ describe('CL-12: the closed value sets equal the shared vocabulary', () => {
     SECURITY_STATE: Object.values(SecurityState),
     // The shared set also has SECURITY_KEY; no Live session can have it (spec §7.17 X-1).
     AUTH_METHOD: Object.values(AuthMethod).filter((method) => method !== 'SECURITY_KEY'),
+    // dbc-3 §B.2 sets that joined the shared vocabulary with rows 45/47 (CL-12 stays equality in
+    // both directions: the contract's lists and the shared constants must agree, element-wise).
+    CAPTURE_DEVICE_KIND: Object.values(CaptureDeviceKind),
+    MIC_ROLE: Object.values(MicRole),
   };
 
   it.each(Object.keys(shared))('%s: contract list = shared constant', (name) => {
@@ -270,22 +298,33 @@ describe('CL-12: the closed value sets equal the shared vocabulary', () => {
 
   it('every value set of the contract is a constant of the typed schema, with the same values in the same order', () => {
     const declared = schema as unknown as Record<string, unknown>;
-    expect(Object.keys(inventory.valueSets)).toHaveLength(28);
+    // 28 sets in §2.4 of the closed contract + 14 added or swapped by dbc-3 §C.6/§E.3/§B (R1).
+    expect(Object.keys(inventory.valueSets)).toHaveLength(42);
     for (const [name, values] of Object.entries(inventory.valueSets)) {
       expect(declared[name], name).toEqual(values);
     }
   });
 
-  it('the seven server-native sets have no shared constant yet; they are the lists of §2.4', () => {
-    const serverNative = ['SESSION_END_REASON', 'DEVICE_STATE', 'CODE_STATE', 'BIO_REVOKE_REASON', 'EXPORT_SCOPE', 'SNAPSHOT_CAUSE', 'CHAIN_DISCARD_REASON'];
+  it('the nineteen server-native sets have no shared constant yet; they are the lists of the contract', () => {
+    const serverNative = [
+      'SESSION_END_REASON', 'DEVICE_STATE', 'CODE_STATE', 'BIO_REVOKE_REASON', 'EXPORT_SCOPE',
+      'SNAPSHOT_CAUSE', 'CHAIN_DISCARD_REASON',
+      // Added with schema v2 (dbc-3 §B/§C.6/§E.3 and §B.13); CAPTURE_DEVICE_KIND and MIC_ROLE are
+      // NOT here: they joined the shared vocabulary with rows 45/47 and sit in `shared` above.
+      'TRACK_KIND', 'LABELS_STATUS', 'SEALING_JOB_STATUS', 'TRANSCRIPT_CHUNK_STATUS',
+      'SIGNATURE_ALGORITHM', 'TRANSCRIPT_SIGNATURE_ALGORITHM', 'STT_BACKEND', 'STT_CREDENTIAL_KIND',
+      'AUDIO_INTERVAL_REASON', 'TIME_FORMAT', 'ENGINE_COUNTER', 'REGISTRY_COUNTER',
+    ];
     expect(Object.keys(inventory.valueSets).filter((name) => !(name in shared)).sort()).toEqual([...serverNative].sort());
     expect(inventory.valueSets['SESSION_END_REASON']).toHaveLength(8);
     expect(inventory.valueSets['SESSION_END_REASON']).toContain('TOKEN_REUSE');
   });
 
-  it('the 17 denied key names: the CHECK text of the contract = the server constant', () => {
+  it('the 28 denied key names: the CHECK text of the contract = the server constant', () => {
     const denied = [...(inventory.formats['NO_SECRET_KEYS'] ?? '').matchAll(/'([^']+)'/g)].map((match) => match[1]);
-    expect(denied).toHaveLength(17);
+    // 17 in the closed contract; dbc-3 §C.6 grew it and row 112 added credentialRef,
+    // credentialValue and apiKey for stt_config (AUDIT_DETAIL_FORBIDDEN_KEYS = 28).
+    expect(denied).toHaveLength(28);
     expect(denied).toEqual([...schema.AUDIT_DETAIL_FORBIDDEN_KEYS]);
   });
 
@@ -294,6 +333,8 @@ describe('CL-12: the closed value sets equal the shared vocabulary', () => {
     for (const value of [...Object.values(AuditType), ...Object.values(SimEventType), ...Object.values(Permission)]) {
       expect(code.test(value), value).toBe(true);
     }
-    expect(Object.values(Permission)).toHaveLength(12);
+    // R3 (D44): the permission count is recomputed from the landed role table, never hardcoded —
+    // every declared permission must be granted to at least one role, and none may be missing.
+    expect(new Set(Object.values(ROLE_PERMISSIONS).flat()).size).toBe(Object.values(Permission).length);
   });
 });

@@ -25,6 +25,8 @@ import {
   activeSessionFromRow,
   alertFromRow,
   auditRowFromRow,
+  captureConfigFromRow,
+  captureDevicesFromRows,
   coreDeviceFromRow,
   eventFromRow,
   evidenceItemFromRows,
@@ -137,6 +139,12 @@ export function fromRows(rows: StoredRows): DurableSlices {
     ).map(alertFromRow),
     audit: { rows: auditRows, head: head.hash, total: head.seq, dropped: head.seq - auditRows.length },
     settings: settingsFromRow(single(rows.consoleSettings, 'console_settings')),
+    // Register SH-16 (D44 R5): the selector is the one row of its KEPT table and the registry at
+    // least one row; a database that holds neither was never seeded (the boot refuses it the same
+    // way it refuses a missing core_device). The derivations are rows.ts's, mirroring the
+    // capture-config module's builders.
+    captureConfig: captureConfigFromRow(single(rows.captureConfig, 'capture_config'), rows.captureDevices),
+    captureDevices: captureDevicesFromRows(rows.captureDevices),
     // Snapshot slices.
     ...snapshotSlicesFromRow(single(rows.hardwareSnapshot, 'hardware_snapshot')),
   };

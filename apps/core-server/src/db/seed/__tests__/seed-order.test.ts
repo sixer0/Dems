@@ -68,7 +68,7 @@ function tablesInOrder(log: readonly Recorded[]): string[] {
 describe('the write order of the seed is the contract\'s (§9.5)', () => {
   let prepared: PreparedSeed;
 
-  it('scenario idle: 19 tables, in order; active_session and alerts are not written', async () => {
+  it('scenario idle: 22 tables, in order; active_session and alerts are not written', async () => {
     prepared = await prepareSeed({ now: FIXED_NOW }, { hashPassword: fastHasher });
     const { executor, log } = recorder();
     await writeSeed(executor, prepared);
@@ -82,6 +82,9 @@ describe('the write order of the seed is the contract\'s (§9.5)', () => {
       'core_state',
       'storage_policy',
       'console_settings',
+      'stt_config',
+      'capture_devices',
+      'capture_config',
       'engine_counters',
       'registry_counters',
       'hardware_snapshot',
@@ -93,8 +96,11 @@ describe('the write order of the seed is the contract\'s (§9.5)', () => {
       'audit_log',
       'events',
     ]);
-    // 299 rows: the 301 of contract §9.4 less the two rows the migrations wrote.
-    expect(log.filter((entry) => entry.statement === 'insert').reduce((sum, entry) => sum + entry.rows, 0)).toBe(299);
+    // 312 rows: the 299 of contract §9.4 (v1 vocabulary) less the two rows the migrations wrote,
+    // plus the 6 rows of the v2 RBAC vocabulary (14 permissions + 22 grants, dbc-3 §E.3; row 49),
+    // the one `stt_config` row of row 114, and the six site-config rows of CS-21 (five built-in
+    // devices and the one selector, dbc-3 §E.3).
+    expect(log.filter((entry) => entry.statement === 'insert').reduce((sum, entry) => sum + entry.rows, 0)).toBe(312);
   });
 
   it('the chain lock is the first statement (AP-2), before the "not seeded yet" check and before any write (AP-7)', async () => {

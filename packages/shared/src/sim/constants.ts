@@ -10,8 +10,20 @@ export const DEFAULT_SEED = 20261001;
 
 /** Persisted snapshot key (web session storage, mobile AsyncStorage; 01_specs §14.7, 04 §5.3). */
 export const SIM_STORAGE_KEY = 'dems.sim.v1';
-/** Persisted snapshot schema version. Bump it when the snapshot shape changes. */
-export const SIM_SNAPSHOT_VERSION = 1;
+/**
+ * Persisted snapshot schema version. Register SH-10 asked for `1 -> 2` for schema v2; dbc-3 §0.1
+ * requires the bump in one commit with its coupled sites, and all of them are at 2 now: the static
+ * type of every `SimState['meta']` (`sim/types.ts` `MetaSlice.schemaVersion`), the WIRE literal of
+ * the API contract's MetaSlice (`api/state-slices.ts`, register SH-16), the idle/neutral state
+ * builders (`sim/initial-state.ts`, `live/source/neutral-state.ts`) and the Core boot check that
+ * reads the value back from `core_state.sim_schema_version` / `hardware_snapshot.sim_schema_version`
+ * (`db/mapping/rows.ts`). The committed `openapi/openapi.json` embeds the wire literal as
+ * `"const": 2`, so it is regenerated whenever this number moves.
+ * A snapshot written under an older version is dropped, never migrated (`store.ts` `migrate`), and
+ * the slices that joined the snapshot later stay OPTIONAL keys (`store.ts` `ADDED_SNAPSHOT_KEYS`),
+ * so a state written before they existed still merges from the fresh state at the current version.
+ */
+export const SIM_SNAPSHOT_VERSION = 2;
 /** Signed-in operator record key (`{ operatorId, issuedAt }`, never a password; §14.8). */
 export const AUTH_STORAGE_KEY = 'dems.auth';
 /** Snapshot writes are coalesced to at most one per second (§14.7 `store.ts`). */
@@ -66,6 +78,18 @@ export const PRECHECK_CHECK_MAX_MS = 700;
 export const STOPPING_MS = 1_500;
 export const FINALIZATION_STEP_MIN_MS = 600;
 export const FINALIZATION_STEP_MAX_MS = 1_200;
+/**
+ * Sealing-driver step timing (schema v2, register SH-10; R-6 op 83). The simulated driver reports
+ * per-step progress in this cadence so the clients render a forward-only progress line and an ETA
+ * from Core instants (E-13), never from the client wall clock: `progress` advances in
+ * `SEALING_PROGRESS_TICK_MS` increments across a step's `durationMs`, and the ETA of the whole run
+ * is the remaining steps times `SEALING_ETA_STEP_MS`. The real Core writes the same fields from
+ * `sealing_jobs.progress` / `eta_ms` (`dbc-3 §B.4`).
+ */
+export const SEALING_PROGRESS_TICK_MS = 100;
+export const SEALING_ETA_STEP_MS = 900;
+/** The attempt a resumed sealing run starts at (a fresh run is attempt 1; `dbc-3 §B.4`). */
+export const SEALING_FIRST_ATTEMPT = 1;
 export const RECOVERY_MS = 3_000;
 /** `stopRecording(reason)` needs a reason of at least 5 characters (§14.7, S21). */
 export const STOP_REASON_MIN_LENGTH = 5;
@@ -95,6 +119,16 @@ export const AUDIO_CLIP_BURST_DBFS = -0.2;
 /** A TEST_SIGNAL device command plays a steady tone at this level for this long. */
 export const AUDIO_TEST_TONE_DBFS = -18;
 export const AUDIO_TEST_TONE_MS = 2_000;
+/**
+ * The OD-11 microphone-silence warning (schema v2, register SH-08). When the ACTIVE mic input inside
+ * `AUDIO-01` stays below `MIC_SILENCE_DBFS` for `MIC_SILENCE_DURATION_MS` during a recording, the
+ * simulator raises a `MIC_SILENT` warning. It NEVER switches the active input (OD-11 / D220: the Core
+ * never auto-switches; the operator decides). These mirror the contract constants of `@dems/shared/api`
+ * (`MIC_SILENCE_DBFS` / `MIC_SILENCE_DURATION_MS`, register SH-15) by value; the simulator keeps its
+ * own copy so the engine has no dependency on the API module.
+ */
+export const MIC_SILENCE_DBFS = -50;
+export const MIC_SILENCE_DURATION_MS = 10_000;
 
 // ── Diagnostics and software update (step 32) ───────────────────────────────────────────
 export const DIAGNOSTIC_CHECK_MIN_MS = 300;

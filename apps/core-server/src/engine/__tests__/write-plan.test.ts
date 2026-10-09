@@ -10,7 +10,7 @@ import { durableOf, faultCauses, planWrite } from '../write-plan';
  * Member names that only a meter frame has (`AudioSlice.channels`, `AudioFrame.noSignal`). A level
  * in dBFS is not among them: an AUDIO_PEAK item of a session's timeline holds one, by design.
  */
-const METER_FRAME_MEMBERS = ['"channels"', '"noSignal"'];
+const METER_FRAME_MEMBERS = ['"inputs"', '"noSignal"'];
 
 /** The plan of a unit that writes now: ALWAYS the whole durable state (ONE CUT; finding F71). */
 const planOf = (host: Host, flushed = pickDurable(host.state())) => {

@@ -49,7 +49,7 @@ function firstResponse<T>(operationId: string, status: number, name: string): T 
   return example!.value as T;
 }
 
-describe('the examples of the 65 operations that only the Core server answers', () => {
+describe('the examples of the 79 operations that only the Core server answers', () => {
   it('every operation has examples: a request for each body, an ID for each path parameter, a body for each answer that has one', () => {
     let responses = 0;
     for (const operation of NEW_OPERATIONS) {
@@ -72,7 +72,7 @@ describe('the examples of the 65 operations that only the Core server answers', 
         }
       }
     }
-    expect(NEW_OPERATIONS).toHaveLength(65);
+    expect(NEW_OPERATIONS).toHaveLength(79);
     expect(responses).toBeGreaterThan(300);
   });
 
@@ -97,7 +97,8 @@ describe('the examples of the 65 operations that only the Core server answers', 
     const matrix = firstResponse<RoleMatrix>('getRoleMatrix', 200, 'seeded');
     expect(matrix.roles).toEqual(Object.values(OperatorRole));
     expect(matrix.permissions).toEqual(Object.values(Permission));
-    expect(matrix.grants).toHaveLength(18);
+    // Task 3 M2-W6 (SH-04; `dbc-3 §E.3`): 22 grants over 14 permissions.
+    expect(matrix.grants).toHaveLength(22);
     for (const role of Object.values(OperatorRole)) {
       expect(matrix.grants.filter((grant) => grant.role === role).map((grant) => grant.permission)).toEqual([...ROLE_PERMISSIONS[role]]);
     }

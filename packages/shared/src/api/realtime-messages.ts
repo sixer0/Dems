@@ -296,6 +296,11 @@ export const DeltaReplaceOpSchema = z.discriminatedUnion('slice', [
   replaceOp('diagnostics'),
   replaceOp('update'),
   replaceOp('settings'),
+  // Slices 29 and 30 (SH-16): capture has its own delta `slice` literals. A capture change is a
+  // `delta` `replace` of one of these two slices — never an `admin.changed` notification, and never
+  // `AdminResource.DEVICE[S]`, which stays the paired-client registry (E-04).
+  replaceOp('captureConfig'),
+  replaceOp('captureDevices'),
 ]);
 export type DeltaReplaceOp = z.output<typeof DeltaReplaceOpSchema>;
 
@@ -346,7 +351,7 @@ export const MetersMessageSchema = z
     seq: count().describe('Counts the frames the server produced; a skipped frame leaves a gap, by design. It never goes back on a connection, also across a new epoch.'),
     audio: AudioSliceSchema,
   })
-  .describe('One audio frame of both channels. Sent only after `subscribe`; it carries no revision, and the latest value wins.');
+  .describe('One meter frame of both mic inputs, with the active one (SH-17). Sent only after `subscribe`; it carries no revision, and the latest value wins.');
 export type MetersMessage = z.output<typeof MetersMessageSchema>;
 
 export const SessionUpdatedMessageSchema = z

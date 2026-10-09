@@ -219,7 +219,9 @@ describe('W83 ledger rows 6, 21 to 23, 26, 33 to 35, 75: description texts', () 
 describe('W83 ledger rows 18, 25, 32: the envelope 400 and the close code 1009', () => {
   it('a body-less POST answering 400 INVALID_JSON validates; the routing 400 is still found by status alone (gap W36-1, gap W40-1)', () => {
     const invalidJson = { error: { code: 'INVALID_JSON', message: 'The request body must be a JSON object.', requestId: 'req-1' } };
-    for (const operationId of ['restartDevice', 'testDeviceSignal', 'identifyDevice', 'runDiagnostics', 'restartServices', 'startSoftwareUpdate', 'acknowledgeAlert', 'resetDemo', 'touchSession']) {
+    // Task 3 M2-W7 (C3 §3 op 48): restartDevice gained the optional `{ confirm }` body, so it is no
+    // longer body-less; every other command here still answers 400 INVALID_JSON with no request body.
+    for (const operationId of ['testDeviceSignal', 'identifyDevice', 'runDiagnostics', 'restartServices', 'startSoftwareUpdate', 'acknowledgeAlert', 'resetDemo', 'touchSession']) {
       expect(operation(operationId).requestBody, operationId).toBeUndefined();
       expect(validateCoreApiResponse(operationId, 400, invalidJson), operationId).toEqual({ ok: true });
       // Another code on that 400 is still refused.
@@ -257,12 +259,20 @@ describe('W83 ledger rows 13 and 17: the all-scope text of a status (decision D1
 });
 
 describe('W83 ledger row 3: which device command reaches which operation (gap 3)', () => {
-  it('the table maps each command once onto deviceCommand\'s three operations, in their order, and the path names the command', () => {
-    expect(Object.values(DEVICE_COMMAND_OPERATIONS)).toEqual([...SIM_ACTION_OPERATIONS.deviceCommand.operations]);
+  it('the table maps each of the four commands onto one of deviceCommand\'s three operations (POE_CYCLE rides restartDevice)', () => {
+    // Task 3 M2-W7 (C3 §0; E-12): POE_CYCLE joins the enum and reaches restartDevice too — op 48
+    // decides RESTART versus PoE cycle from the body and the camera's stream state (C3 §3 op 48).
+    // Four commands, three operations: the value list holds restartDevice twice, so compare distinct.
+    expect([...new Set(Object.values(DEVICE_COMMAND_OPERATIONS))].sort()).toEqual([...SIM_ACTION_OPERATIONS.deviceCommand.operations].sort());
     for (const [command, operationId] of Object.entries(DEVICE_COMMAND_OPERATIONS)) {
-      expect(operation(operationId).path.split('/').at(-1)?.toUpperCase().replaceAll('-', '_'), operationId).toBe(command);
-      expect(deviceCommandOfOperation(operationId)).toBe(command);
+      const last = operation(operationId).path.split('/').at(-1)!.toUpperCase().replaceAll('-', '_');
+      // Every command but POE_CYCLE has its own endpoint named after it; POE_CYCLE rides /restart.
+      expect(last, command).toBe(command === 'POE_CYCLE' ? 'RESTART' : command);
     }
+    // The reverse lookup returns the canonical command of an operation (RESTART for restartDevice).
+    expect(deviceCommandOfOperation('restartDevice')).toBe('RESTART');
+    expect(deviceCommandOfOperation('testDeviceSignal')).toBe('TEST_SIGNAL');
+    expect(deviceCommandOfOperation('identifyDevice')).toBe('IDENTIFY');
     expect(deviceCommandOfOperation('getDeviceHealth')).toBeUndefined();
     expect(deviceCommandOfOperation('toString')).toBeUndefined();
   });
