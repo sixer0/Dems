@@ -25,7 +25,7 @@ source_capture_spec: /Users/gsp-budi/Documents/DEMS/docs/2026-10-07_dems_real_ca
 source_transcript_spec: /Users/gsp-budi/Documents/DEMS/docs/2026-10-07_dems_real_capture_sealing/masterplan/07_transcript_spec.md
 source_predecessor_drift: /Users/gsp-budi/Documents/DEMS/docs/2026-10-04_dems_backend_rbac_pairing/research/11_next_phase_drift_check.md
 decisions: /Users/gsp-budi/Documents/DEMS/docs/2026-10-07_dems_real_capture_sealing/decisions/decisions.md (D4, D8, D10, D12)
-last_updated: 2026-10-08 (RV-SPEC: D19(b) recording-duration refinement; proposed §8a Flow 8 STT configuration, R-8/D20; 2026-10-07 row-35 cross-refs SEC35-12/13)
+last_updated: 2026-10-09 (status sweep PE-R8-12..13: §8a Flow 8 CONFIRMED by D24, Q-STT-CFG answer (a); status wording only); 2026-10-08 (RV-SPEC: D19(b) recording-duration refinement; §8a Flow 8 STT configuration added as a proposal, R-8/D20; 2026-10-07 row-35 cross-refs SEC35-12/13)
 ---
 
 # Client UX Spec — web, tablet and phone (blueprint row 34, M0)
@@ -580,11 +580,12 @@ client timer decides the unblock.
 
 ---
 
-## 8a. Flow 8 (PROPOSED) — STT configuration menu (R-8; pending Q-STT-CFG confirmation at the second gate)
+## 8a. Flow 8 (CONFIRMED) — STT configuration menu (R-8; D24, Q-STT-CFG answer (a)) **Erratum PE-R8-13 (D24)**
 
-> **Status: proposed (D20).** Not counted in the 7/7 flows, the 10/10 gated controls or the self-gate
-> until the user confirms Q-STT-CFG. If confirmed: flows 8/8 (24 client definitions), gated controls
-> G11-G12 added. Operations 90-92 (`C3 §2.5`), audit `STT_CONFIG_CHANGED`; no new slice.
+> **Status: confirmed (D24, 2026-10-08: Q-STT-CFG answered (a), all 13 defaults; D20).** With it: flows
+> 8/8 (24 client definitions), gated controls G11-G12 added. The 7/7 flow and 10/10 gated-control figures
+> and the self-gate elsewhere in this file were not restated by the status sweep (**Erratum PE-R8-13**,
+> status wording only). Operations 90-92 (`C3 §2.5`), audit `STT_CONFIG_CHANGED`; no new slice.
 
 | Aspect | Web console (edit) | Tablet | Phone |
 |---|---|---|---|
@@ -713,4 +714,4 @@ transport host, the auth preconditions and the device adapters change.
 ---
 
 *Generated: 2026-10-07 17:30*
-*Last Updated: 2026-10-08 (RV-SPEC: D19(b) refinement in §0/§3.7/§9 P-01; proposed §8a Flow 8, R-8/D20; earlier: row-35 cross-refs SEC35-12/SEC35-13)*
+*Last Updated: 2026-10-09 (status sweep PE-R8-12..13: §8a Flow 8 confirmed by D24); 2026-10-08 (RV-SPEC: D19(b) refinement in §0/§3.7/§9 P-01; §8a Flow 8 added as a proposal, R-8/D20; earlier: row-35 cross-refs SEC35-12/SEC35-13)*

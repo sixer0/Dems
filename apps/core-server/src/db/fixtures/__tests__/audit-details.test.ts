@@ -146,7 +146,7 @@ function plantedEvents(type: SimEventType, change: (event: SimEvent) => FixtureE
 const HEX64 = /^[0-9a-f]{64}$/;
 
 describe('where each audit type is written', () => {
-  it('the fixture writes all 62 types, and each has exactly one reference: the list, a module builder, or the simulator', () => {
+  it('the fixture writes all 63 types, and each has exactly one reference: the list, a module builder, or the simulator', () => {
     const written = [...new Set(rows.map((row) => row.type))].sort();
     expect(written).toEqual(Object.values(AuditType).sort());
     expect(written.filter((type) => sourceOf(type, shapes) === null)).toEqual([]);
@@ -156,9 +156,10 @@ describe('where each audit type is written', () => {
       const source = sourceOf(type, shapes) ?? 'none';
       bySource[source] = (bySource[source] ?? 0) + 1;
     }
-    expect(bySource).toEqual({ 'ALLOW-LIST': 18, MODULE: 11, SIMULATOR: 33 });
-    // The eighteen of the list are the eighteen the audit writer names (nine of the backend task,
-    // nine of the capture phase), and the nine older ones mostly have a builder too. A listed type
+    expect(bySource).toEqual({ 'ALLOW-LIST': 19, MODULE: 11, SIMULATOR: 33 });
+    // The nineteen of the list are the nineteen the audit writer names (nine of the backend task,
+    // nine of the capture phase, and STT_CONFIG_CHANGED of blueprint row 113, which has a builder:
+    // `modules/stt-config`), and the nine older ones mostly have a builder too. A listed type
     // with no pure builder is one whose live writer lands with a later milestone: the three of the
     // administration module (rows built inside their unit) and the nine capture types (op 81 with
     // row 71, the transcript revisions with M7/M8, the credential paths with row 66) - the fixture
@@ -259,7 +260,7 @@ describe('every audit row of the fixture', () => {
             : `simulator: ${braces(shapes.get(type)?.signatures ?? [])}`;
       return `| ${type} | ${source ?? 'none'} | ${expected} | ${counted(ofType(type).map((row) => `{${signatureOf(row.details)}}`))} |`;
     });
-    expect(lines).toHaveLength(62);
+    expect(lines).toHaveLength(63);
     console.log(['[w25] audit detail keys per type: | type | written by | keys expected | keys written (rows) |', ...lines].join('\n'));
   });
 
@@ -272,7 +273,7 @@ describe('every audit row of the fixture', () => {
       const expected = builder ?? (administration.has(type) ? [administration.get(type) ?? ''] : (shapes.get(type)?.severities ?? []));
       return `| ${type} | ${AUDIT_TYPE_CATEGORY[type]} | ${source} | ${[...expected].sort().join(' or ')} | ${counted(ofType(type).map((row) => row.severity))} |`;
     });
-    expect(lines).toHaveLength(62);
+    expect(lines).toHaveLength(63);
     console.log(['[w25] audit severity per type: | type | category | severity from | severity expected | severity written (rows) |', ...lines].join('\n'));
   });
 });

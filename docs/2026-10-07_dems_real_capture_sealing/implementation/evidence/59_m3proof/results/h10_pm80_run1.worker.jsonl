@@ -1,0 +1,14 @@
+{"ts_us":1791513803712747,"level":"info","source":"capture-worker.main","pid":63100,"message":"worker_starting","lavf":"9.0.2","port1":8555,"port2":8557,"duration_s":20.500,"encoders":1}
+{"ts_us":1791513810254243,"level":"info","source":"capture-worker.ingest2","pid":63100,"message":"ingest_connected","port":8557,"codec":"h264","width":320,"height":240,"extradata":33}
+{"ts_us":1791513810254273,"level":"info","source":"capture-worker.ingest1","pid":63100,"message":"ingest_connected","port":8555,"codec":"h264","width":320,"height":240,"extradata":33}
+{"ts_us":1791513810266335,"level":"info","source":"capture-worker.filter","pid":63100,"message":"audio_started","t0_real_us":1791513810266312,"encoders":1,"quantum_samples":480,"beeps":6}
+{"ts_us":1791513810274234,"level":"info","source":"capture-worker.ingest1","pid":63100,"message":"video_anchored","mode":"rtcp_sr","anchor_us":1791513809690000,"shift_us":-576312}
+{"ts_us":1791513810274248,"level":"info","source":"capture-worker.ingest2","pid":63100,"message":"video_anchored","mode":"rtcp_sr","anchor_us":1791513809690000,"shift_us":-576312}
+{"ts_us":1791513810712668,"level":"info","source":"capture-worker.ingest1","pid":63100,"message":"video_started","first_pts":30932,"time_base_den":90000}
+{"ts_us":1791513810713638,"level":"info","source":"capture-worker.ingest2","pid":63100,"message":"video_started","first_pts":45332,"time_base_den":90000}
+{"ts_us":1791513822672891,"level":"warn","source":"capture-worker.ingest2","pid":63100,"message":"ingest_ended","av_error":"End of file"}
+{"ts_us":1791513822672919,"level":"warn","source":"capture-worker.ingest1","pid":63100,"message":"ingest_ended","av_error":"End of file"}
+{"ts_us":1791513830769187,"level":"info","source":"capture-worker.filter","pid":63100,"message":"audio_finished","samples_in":984000,"wall_ms":20502,"stopped_early":false}
+{"ts_us":1791513830770142,"level":"info","source":"capture-worker.main","pid":63100,"message":"camera_summary","cam":1,"video_packets":600,"audio_packets":962,"dropped_prearm":27,"dropped_prestart":22,"dropped_unanchored":0,"shift_us":-576312}
+{"ts_us":1791513830770482,"level":"info","source":"capture-worker.main","pid":63100,"message":"camera_summary","cam":2,"video_packets":600,"audio_packets":962,"dropped_prearm":27,"dropped_prestart":22,"dropped_unanchored":0,"shift_us":-576312}
+{"ts_us":1791513830770647,"level":"info","source":"capture-worker.main","pid":63100,"message":"worker_exit","rc":0,"encoders":1,"encoder_packets":962}

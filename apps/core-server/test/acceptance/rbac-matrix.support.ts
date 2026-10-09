@@ -45,8 +45,9 @@ export const SPECIFICATION_FILE = fileURLToPath(
 );
 /**
  * C3, the current API contract (ruling D44 R1): the closed task-2 specification above is never
- * edited; its 75 rows are the BASE. C3 §2.1 (the RBAC rows) and §2.2 (the identity table) add
- * operations 76 to 89 and the two new permissions; `readApiContract()` transcribes them into
+ * edited; its 75 rows are the BASE. C3 §2.1 (the RBAC rows), §2.2 (the identity table) and §2.5
+ * (the STT configuration table) add operations 76 to 92 and the two new permissions;
+ * `readApiContract()` transcribes them into
  * `SpecOperation` / `Grant` rows and `readSpecification()` COMPOSES them onto the base.
  */
 export const API_CONTRACT_FILE = fileURLToPath(
@@ -273,11 +274,45 @@ interface ApiContractDelta {
   readonly grants: readonly Grant[];
 }
 
-/** Operations 76 to 89, the two new permissions and their grants, read from C3 §2.2 and §2.1. */
+/**
+ * The identity tables of C3 that add operations to the closed base, each with the rows it must
+ * hold: §2.2 (operations 76 to 89) and §2.5 (the STT configuration operations 90 to 92 of task 3
+ * row 113; R-8, confirmed as Q-STT-CFG at the second gate, decision D24). Both tables have the
+ * same columns.
+ */
+export const API_CONTRACT_SECTIONS: ReadonlyArray<{ readonly heading: string; readonly section: string; readonly rows: number; readonly what: string }> = [
+  { heading: '### 2.2 ', section: 'C3 §2.2', rows: 14, what: 'the fourteen of operations 76 to 89' },
+  { heading: '### 2.5 ', section: 'C3 §2.5', rows: 3, what: 'the three of operations 90 to 92' },
+];
+
+/** True for a row the composed table takes from C3, not from the closed task-2 base. */
+export const isApiContractSection = (section: string): boolean => API_CONTRACT_SECTIONS.some((entry) => entry.section === section);
+
+/**
+ * The audit rule of a C3 row. The table writes a marker or a type in code form; for a command that
+ * writes no row it says so in words ("none on success (no state change)", operation 92), which is
+ * the registry's marker `NONE-P`: a command whose success writes no audit row.
+ */
+function auditSuccessOf(auditCell: string, number: string): string {
+  if (/^none on success\b/i.test(auditCell.trim())) return 'NONE-P';
+  return firstCode(auditCell, `the audit rule of C3 operation ${number}`);
+}
+
+/** Operations 76 to 92, the two new permissions and their grants, read from C3 §2.2, §2.5 and §2.1. */
 function readApiContract(): ApiContractDelta {
   const lines = readFileSync(API_CONTRACT_FILE, 'utf8').split('\n');
   const operations: SpecOperation[] = [];
-  for (const { text, line } of sectionOf(lines, '### 2.2 ')) {
+  for (const table of API_CONTRACT_SECTIONS) {
+    const before = operations.length;
+    readContractTable(lines, table.heading, table.section, operations);
+    if (operations.length - before !== table.rows) unreadable(`the identity table of ${table.section} (read ${operations.length - before} rows, expected ${table.what})`);
+  }
+  return { operations, ...readNewPermissions(lines) };
+}
+
+/** The rows of one identity table of C3, appended to `operations`. */
+function readContractTable(lines: readonly string[], heading: string, section: string, operations: SpecOperation[]): void {
+  for (const { text, line } of sectionOf(lines, heading)) {
     const row = /^\| (\d+) \| `([A-Za-z]+)` \| (GET|POST) \| `([^`]+)` \|/.exec(text);
     if (row === null) continue;
     const cells = cellsOf(text);
@@ -292,14 +327,17 @@ function readApiContract(): ApiContractDelta {
       // permission name, as the closed §7 table writes it and as describeCoreApiAccess answers.
       access: firstCode(accessCell, `the access marker of C3 operation ${row[1]}`).replace(/^PERMISSION +/, ''),
       conditions: /`SESSION_HOLDER`/.test(accessCell) ? [CoreApiAccessCondition.SESSION_HOLDER] : [],
-      auditSuccess: firstCode(auditCell, `the audit rule of C3 operation ${row[1]}`),
+      auditSuccess: auditSuccessOf(auditCell, row[1] ?? ''),
       auditDenial: /EXPORT_DENIED/.test(auditCell) ? 'EXPORT_DENIED' : 'ACCESS_DENIED',
       denialCode: 'NOT_PERMITTED',
-      section: 'C3 §2.2',
+      section,
       line,
     });
   }
-  if (operations.length !== 14) unreadable(`the identity table of C3 §2.2 (read ${operations.length} rows, expected the fourteen of operations 76 to 89)`);
+}
+
+/** The two new permissions of C3 §2.1 and the roles that hold them. */
+function readNewPermissions(lines: readonly string[]): Pick<ApiContractDelta, 'newPermissions' | 'grants'> {
   const newPermissions: string[] = [];
   const grants: Grant[] = [];
   for (const { text } of sectionOf(lines, '### 2.1 ')) {
@@ -314,7 +352,7 @@ function readApiContract(): ApiContractDelta {
     }
   }
   if (newPermissions.length !== 2) unreadable(`the new permissions of C3 §2.1 (read ${newPermissions.join(', ')})`);
-  return { operations, newPermissions, grants };
+  return { newPermissions, grants };
 }
 
 /** Reads the specification. Every member comes from a table or a rule of the document. */
@@ -325,7 +363,8 @@ export function readSpecification(): Specification {
 
   const base = readOperations(lines);
   const delta = readApiContract();
-  // R1 (D44): the closed task-2 §7 table is the base; C3 §2.2 composes operations 76 to 89 onto it.
+  // R1 (D44): the closed task-2 §7 table is the base; C3 §2.2 composes operations 76 to 89 onto it,
+  // and C3 §2.5 the STT configuration operations 90 to 92 (task 3 row 113).
   const operations = [...base, ...delta.operations].sort((a, b) => a.number - b.number);
   const known = new Set(operations.map((operation) => operation.operationId));
   const retiredRow = lines.find((line) => line.startsWith('| Credential of a REVOKED device |')) ?? unreadable('the row of a REVOKED device (section 6.6)');

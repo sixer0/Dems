@@ -145,3 +145,19 @@ User: "cek dan kerjakan implementasinya dengan full paralelisasi di ijinkan tanp
 | Checkpoint commit of M2 | done | see `git log` |
 | 56b device gate | done, 1 carry-over (D62) | `gateway_check/08_m2_gate_device.md` — lanes 2 + 3 live PASS; lane 1 (`dems2_phone`, 5558) still locked, passes at API level |
 | M2 gate | SIGNED OFF with carry-overs A-1, A-2, lane 1 live clause | M3 (row 57) may start |
+
+## Phase C execution — Claude Code controller, pair programming (2026-10-09, D63)
+
+Row 56 = satisfied by D61 + D62. Stale rows 50a/51a above are closed (scope done by RECON-B2b / 51a W7). Pair = driver + navigator per row; verdict files `delegation_progress/pair_<row>_navigator.md`.
+
+| Row | Driver | Navigator | Status |
+|---|---|---|---|
+| 57 | coder-execution | senior-code-reviewer | **done** — fix round 1 re-checked, ACCEPT-WITH-FINDINGS 0 blocker/0 major (D65, D67); closes NM-03, CS-01, CS-03 |
+| 111 | coder-execution | verifier | **done** — proofs reproduced by navigator, ACCEPT-WITH-FINDINGS, findings carried to row 58 (D66) |
+| 113 | coder-execution | senior-code-reviewer | **done** — fix round 1 re-checked, ACCEPT-WITH-FINDINGS 0 blocker/0 major (D68, D70); small fix round 2 (redaction walk bound) in flight |
+| 76 | coder-execution | verifier | navigator ACCEPT-WITH-FINDINGS (D70) -> fix round 1 done -> re-check in flight |
+| pair errata (C3, specs, spec 05, plan row 84), R-8 status sweep, catalogue T-1..T-10, blueprint rev 2.2 | data-analyst x2, test-expert, task-architect | - (checked by controller) | **done** (D69) — 219 active checks |
+| 58 | coder-execution | senior-code-reviewer + verifier | launching (CW3) |
+| G-1/G-3/G-4/G-5 pickups (10_test_strategy.md) | test-expert | - (checked by controller) | **done** — 218 active checks (D64) |
+| G-2/G-6 pickups (01_specs.md, 05) | data-analyst | - (checked by controller) | **done** (D64) |
+

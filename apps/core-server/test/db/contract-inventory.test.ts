@@ -65,7 +65,9 @@ describe('the inventory is the contract (sections 2.4 and 4)', () => {
     // (§B.13, confirmed by decision D24) = the 40 pinned above.
     expect(contractText).toContain('30 tables; boot checks B-1 to B-9; PostgreSQL behaviours PG-01 to PG-28; 98 named CHECKs; 25 foreign keys; 302 columns');
     expect(dbc3Text).toContain('| Table count | 30 -> 39 |');
-    expect(dbc3Text).toContain('### B.13 `stt_config` (proposed T-40)');
+    // The stable prefix only: the status wording after it is documentation (it moved from "proposed"
+    // to "CONFIRMED - D24" with erratum PE-R8-02 and may move again). Controller ruling, row 113 fix round 1.
+    expect(dbc3Text).toContain('### B.13 `stt_config` (T-40)');
   });
 
   it('every name is lower-case snake_case, at most 63 bytes, with the suffix of its kind (N-1 to N-4, CL-06)', () => {

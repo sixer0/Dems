@@ -1,9 +1,10 @@
 /**
- * Simulated REST handlers for the 22 simulated operations: the 9 §21.2 endpoints
+ * Simulated REST handlers for the 25 simulated operations: the 9 §21.2 endpoints
  * (masterplan/01_specs.md §14.7 `api.ts`, §14.9 `simAwareFetch`; AC-58) plus the 13 capture,
  * audio-source, sealing and transcript operations of schema v2 (task 3 M2-W9b, blueprint row 51a;
  * OD-17 "the simulator emulates v2" supersedes the old "simulator untouched" rule, OD-23;
- * `masterplan/03_api_contract.md` (C3) §2).
+ * `masterplan/03_api_contract.md` (C3) §2) plus the 3 STT configuration operations 90-92 (task 3 M6,
+ * blueprint row 113; C3 §2.5; R-8).
  *
  * `handleSimApiRequest(sim, { method, path, body })` → `{ status, headers, body }`:
  * - every response carries `x-dems-simulated: 1` and `content-type: application/json`;
@@ -17,6 +18,24 @@
  * The body types below are the contract for step 33's OpenAPI schemas.
  */
 import { EXPORT_JOB_ID_PATTERN, HARDWARE_DEVICE_ID_PATTERN } from '../api/patterns';
+import {
+  STT_CONFIG_CHANGED_MESSAGE,
+  STT_CONFIG_DEFAULT,
+  STT_REVISION_CONFLICT_REASON,
+  SttAppliesFrom,
+  SttConfigUpdateRequestSchema,
+  SttConnectionDetailCode,
+  planSttConfigUpdate,
+  sttChangeInvalidatesLastTest,
+  sttConfigChangedDetails,
+  sttCredentialKindAfter,
+  type SttConfig,
+  type SttConfigUpdateResult,
+  type SttConfigValues,
+  type SttConnectionTest,
+  type SttCredentialKind,
+  type SttLastTest,
+} from '../api/transcription';
 import { FINALIZATION_STEPS_V2, MicInputId, MicRole, SessionState, TrackId, type VideoTrackId } from '../domain';
 import { MIC_INPUT_OF_CHANNEL } from './audio';
 import { SEALING_ETA_STEP_MS, SEALING_FIRST_ATTEMPT } from './constants';
@@ -90,6 +109,10 @@ export const SIM_API_ROUTES: readonly SimApiRoute[] = [
   { method: 'GET', path: '/api/v1/evidence/{id}/transcript/revisions', operationId: 'listTranscriptRevisions' },
   { method: 'GET', path: '/api/v1/evidence/exports/{id}', operationId: 'getEvidenceExportJob' },
   { method: 'POST', path: '/api/v1/capture/devices/{id}/credential', operationId: 'setCaptureDeviceCredential' },
+  // ── STT configuration (task 3 M6, blueprint row 113; C3 §2.5 ops 90-92; R-8) ──
+  { method: 'GET', path: '/api/v1/transcription/config', operationId: 'getSttConfig' },
+  { method: 'POST', path: '/api/v1/transcription/config', operationId: 'updateSttConfig' },
+  { method: 'POST', path: '/api/v1/transcription/config/test', operationId: 'testSttConnection' },
 ];
 
 
@@ -939,6 +962,159 @@ const EXPORT_JOB_DENIED = 'Your role cannot read export jobs (RBAC).';
 const NOT_OPEN = 'This session is not the open session.';
 const TRANSCRIPT_NOT_READY_BODY = () => fail(409, 'TRANSCRIPT_NOT_READY', 'The transcript of this item is not ready yet.');
 
+// ── STT configuration (task 3 M6, blueprint row 113; C3 §2.5 ops 90-92; R-8, D20/D24) ──────────
+
+/**
+ * The simulator's STT configuration. C3 §2.5 fixes "no new realtime slice (keeps 30)", so this is
+ * NOT a member of `SimState`: it is held beside the store that owns the simulated Core, starts at
+ * the seeded default (Q-STT-CFG item 11) and lives as long as that store. It never holds a
+ * credential — a `SECRET` or `REFERENCE` write leaves only the kind behind (E-30/E-31): the
+ * simulator accepts the write opaquely, exactly as it does for op 89.
+ */
+interface SimSttConfig {
+  values: SttConfigValues;
+  credentialKind: SttCredentialKind | null;
+  revision: number;
+  updatedBy: string | null;
+  updatedAt: EpochMs;
+  /** The session that was open when the configuration last changed; null when it changed while idle. */
+  changedDuringSessionId: string | null;
+  lastTest: SttLastTest | null;
+}
+
+const SIM_STT_CONFIG = new WeakMap<SimStore, SimSttConfig>();
+const STT_DENIED = 'Your role cannot change or test the transcription configuration (RBAC).';
+
+function simSttConfig(store: SimStore, now: EpochMs): SimSttConfig {
+  let held = SIM_STT_CONFIG.get(store);
+  if (held === undefined) {
+    held = { values: { ...STT_CONFIG_DEFAULT }, credentialKind: null, revision: 1, updatedBy: null, updatedAt: now, changedDuringSessionId: null, lastTest: null };
+    SIM_STT_CONFIG.set(store, held);
+  }
+  return held;
+}
+
+/** The body of op 90: `credentialSet`/`credentialKind` only — the shape has no member for a credential. */
+function sttConfigBody(state: SimState, held: SimSttConfig): SttConfig {
+  const open = hasActiveSession(state) ? (state.session?.id ?? null) : null;
+  return {
+    enabled: held.values.enabled,
+    backend: held.values.backend,
+    ...(held.values.endpoint === null ? {} : { endpoint: held.values.endpoint }),
+    model: held.values.model,
+    language: 'id',
+    diarization: held.values.diarization,
+    credentialSet: held.credentialKind !== null,
+    ...(held.credentialKind === null ? {} : { credentialKind: held.credentialKind }),
+    revision: held.revision,
+    ...(held.updatedBy === null ? {} : { updatedBy: held.updatedBy }),
+    updatedAt: held.updatedAt,
+    pendingForNextSession: open !== null && held.changedDuringSessionId === open,
+    ...(held.lastTest === null ? {} : { lastTest: held.lastTest }),
+  };
+}
+
+/** An error body with `details`: the named reasons of op 91 (C3 §2.5). Never a part of the input. */
+function failWith(status: number, code: string, message: string, details: Record<string, string | number>): SimApiResponse {
+  return respond(status, { error: { code, message, details } });
+}
+
+const STT_ROUTES: readonly Route[] = [
+  {
+    method: 'GET',
+    pattern: /^\/api\/v1\/transcription\/config$/,
+    handle: ({ store, clock }) => {
+      const state = store.getState();
+      const refused = requireOperator(state);
+      if (refused) return refused;
+      return respond(200, sttConfigBody(state, simSttConfig(store, clock.now())));
+    },
+  },
+  {
+    method: 'POST',
+    pattern: /^\/api\/v1\/transcription\/config$/,
+    handle: ({ store, clock }, _params, body) => {
+      const state = store.getState();
+      const refused = capabilityRefusal(state, Permission.CAPTURE_CONFIG, STT_DENIED);
+      if (refused) return refused;
+      const parsed = SttConfigUpdateRequestSchema.safeParse(body);
+      // E-30: the refusal names where, never what — the body may hold a credential.
+      if (!parsed.success) return failWith(422, 'INVALID_INPUT', 'The request does not match the expected input.', { in: 'body' });
+      const now = clock.now();
+      const held = simSttConfig(store, now);
+      const plan = planSttConfigUpdate({ ...held.values, credentialKind: held.credentialKind, revision: held.revision }, parsed.data);
+      if (!plan.ok) {
+        if (plan.status === 409) {
+          return failWith(409, 'INVALID_STATE', 'The STT configuration changed since it was read. Read it again.', {
+            reason: STT_REVISION_CONFLICT_REASON,
+            currentRevision: plan.currentRevision,
+          });
+        }
+        return failWith(422, 'INVALID_INPUT', 'The STT configuration value is not accepted.', {
+          in: 'body',
+          ...(plan.reason === null ? {} : { reason: plan.reason }),
+        });
+      }
+      const open = hasActiveSession(state) ? (state.session?.id ?? null) : null;
+      const appliesFrom = open === null ? SttAppliesFrom.NOW : SttAppliesFrom.NEXT_SESSION;
+      if (plan.changedFields.length === 0) {
+        // Nothing changed: no row, the revision stays (the precedent of `setStoragePolicy`).
+        return respond(200, { ...sttConfigBody(state, held), appliesFrom } satisfies SttConfigUpdateResult);
+      }
+      const actorId = signedInOperatorId(state);
+      const next: SimSttConfig = {
+        values: plan.values,
+        credentialKind: sttCredentialKindAfter(held.credentialKind, plan.credential),
+        revision: held.revision + 1,
+        updatedBy: actorId,
+        updatedAt: now,
+        changedDuringSessionId: open,
+        // N-5: the outcome of a test of another backend, endpoint, model or credential is not this one's.
+        lastTest: sttChangeInvalidatesLastTest(plan.changedFields) ? null : held.lastTest,
+      };
+      SIM_STT_CONFIG.set(store, next);
+      const audited: SimState = {
+        ...state,
+        ...recordActivity(state, now, {
+          audit: {
+            type: AuditType.STT_CONFIG_CHANGED,
+            message: STT_CONFIG_CHANGED_MESSAGE,
+            actorId,
+            // C3 §2.5: field NAMES and `credentialChanged` only — never the endpoint, the model, the
+            // credential or its reference target.
+            details: sttConfigChangedDetails({
+              changedFields: plan.changedFields,
+              enabled: next.values.enabled,
+              backend: next.values.backend,
+              credentialChanged: plan.credentialChanged,
+              revision: next.revision,
+            }),
+          },
+        }),
+      };
+      store.setState(audited);
+      return respond(200, { ...sttConfigBody(audited, next), appliesFrom } satisfies SttConfigUpdateResult);
+    },
+  },
+  {
+    method: 'POST',
+    pattern: /^\/api\/v1\/transcription\/config\/test$/,
+    handle: ({ store, clock }) => {
+      const state = store.getState();
+      const refused = capabilityRefusal(state, Permission.CAPTURE_CONFIG, STT_DENIED);
+      if (refused) return refused;
+      const now = clock.now();
+      const held = simSttConfig(store, now);
+      // The simulator contacts nothing: an enabled configuration "answers", a disabled one does not.
+      const result: SttConnectionTest = held.values.enabled
+        ? { reachable: true, modelAvailable: true, backend: held.values.backend, detailCode: SttConnectionDetailCode.OK }
+        : { reachable: false, modelAvailable: false, backend: held.values.backend, detailCode: SttConnectionDetailCode.DISABLED };
+      SIM_STT_CONFIG.set(store, { ...held, lastTest: { reachable: result.reachable, modelAvailable: result.modelAvailable, testedAt: now } });
+      return respond(200, result);
+    },
+  },
+];
+
 const CAPTURE_ROUTES: readonly Route[] = [
   {
     method: 'GET',
@@ -1205,6 +1381,7 @@ const CAPTURE_ROUTES: readonly Route[] = [
 
 const ROUTES: readonly Route[] = [
   ...CAPTURE_ROUTES,
+  ...STT_ROUTES,
   {
     method: 'POST',
     pattern: /^\/api\/v1\/session$/,    handle: ({ store, actions }, _params, body) => {

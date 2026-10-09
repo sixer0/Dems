@@ -38,3 +38,9 @@ export * from './sim-actions';
 // Task 3 M2-W7 (blueprint row 48; register CS-25; C3 §7): the capture-phase constants, pinned by
 // the Core server's contract-values test.
 export * from './capture';
+// Task 3 M6 (blueprint row 113; C3 §2.5; R-8, D20/D24): the STT configuration of operations 90-92
+// (schemas, operations, examples) and the one rule of an update the simulator and the server share.
+export * from './transcription';
+// Task 3 row 113, fix round 1 (navigator finding N-1): the one rule set of the two client
+// log-blanking lists (web error sink, mobile runtime log). Dependency-free.
+export * from './redaction';

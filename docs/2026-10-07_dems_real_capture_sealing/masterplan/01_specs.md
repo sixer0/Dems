@@ -14,7 +14,7 @@ source_translated_task: /Users/gsp-budi/Documents/DEMS/docs/2026-10-07_dems_real
 source_structured_task: /Users/gsp-budi/Documents/DEMS/docs/2026-10-07_dems_real_capture_sealing/identification/02_structured.md
 source_analysis: /Users/gsp-budi/Documents/DEMS/docs/2026-10-07_dems_real_capture_sealing/research/03_analysis.md
 decisions: /Users/gsp-budi/Documents/DEMS/docs/2026-10-07_dems_real_capture_sealing/decisions/decisions.md (D1-D12)
-last_updated: 2026-10-08 (RV-SPEC: AU-1/AU-2/AU-3 errata + proposed R-8 (D20); see masterplan/11_audit_errata.md)
+last_updated: 2026-10-09 (status sweep PE-R8-22: Q-D7 and Q-WORKER answered by D24); 2026-10-09 (pair-review errata PE-113-15/PE-113-16: R-8 CONFIRMED by D24, credential-store owner D68; see masterplan/11_audit_errata.md §5; earlier: 2026-10-08 RV-SPEC AU-1/AU-2/AU-3 errata + R-8 added as a proposal, D20)
 ---
 
 # Phase Spec — DEMS real capture devices, sealing v2 and transcript
@@ -180,7 +180,7 @@ D232/D233; `structured` §Verification).
 
 ### R-5 — Transcript inside the seal; CPU + RAM STT; incremental; labels when possible; signed revisions
 
-- **Narrative:** A machine transcript is produced incrementally during recording on CPU-only, placed inside the sealed package. Two speakers are labelled when possible; otherwise the transcript is sealed unlabelled with the flag "speaker labels unavailable". Corrections exist only as signed revisions; the sealed machine transcript never changes. On this Mac the development engine is the installed oMLX server (Apple GPU); the shipped production engine is CPU-only whisper.cpp (`cpu-local`) on the Core, which is also built GPU-off and proven on this Mac in M6 (erratum AU3-01). If the proposed R-8 is confirmed, "inside the sealed package" applies only while STT is enabled by configuration (D20).
+- **Narrative:** A machine transcript is produced incrementally during recording on CPU-only, placed inside the sealed package. Two speakers are labelled when possible; otherwise the transcript is sealed unlabelled with the flag "speaker labels unavailable". Corrections exist only as signed revisions; the sealed machine transcript never changes. On this Mac the development engine is the installed oMLX server (Apple GPU); the shipped production engine is CPU-only whisper.cpp (`cpu-local`) on the Core, which is also built GPU-off and proven on this Mac in M6 (erratum AU3-01). R-8 is confirmed (D24; erratum PE-113-15), so "inside the sealed package" applies only while STT is enabled by configuration (D20).
 - **Decisions:** D4 OD-15 (`TRANSCRIPT_REVISE` for INVESTIGATOR + SUPERVISOR; Core key signs; author recorded; no approval flow), OD-20 (Indonesian only; diarization + VAD downloads after the licence check), OD-24 (whisper.cpp; D7 re-scope: Mac reuses installed oMLX, `cpu-local` later).
 - **Register rows:** SH-09, SH-14, NM-06, NM-13, DOC-05; blueprint rows 4, 10, 11, 12, 33 (register §D R-5).
 - **Measurable acceptance criteria:**
@@ -211,24 +211,28 @@ D232/D233; `structured` §Verification).
   2. The functional STT check runs with a **configurable model path** and produces a transcript (same evidence as R-5 AC-1); the benchmark harness `NM-13` is **not executed** on this Mac and is deferred to C-7. Cites D230; register §A E-22; `coll4` G-1/G-3.
   3. The production engine is CPU-only (`-ng`, no `--enable-*GPU` backends), while the Mac-side `omlx-server` engine uses the Apple GPU/Metal by design and is **not the shipped engine**; verified by the boot-check/model-path test and by the licence/portability record (DOC-05). Cites D7(b),(c); `coll4` F-10/F-11; `stt-install` §4.
 
-### R-8 — STT server configurable, activated/deactivated from a configuration menu, stored in the database (PROPOSED — pending Q-STT-CFG confirmation at the second gate)
+### R-8 — STT server configurable, activated/deactivated from a configuration menu, stored in the database (CONFIRMED — D24, Q-STT-CFG answer (a))
 
-> **Status: proposed (D20).** New user requirement recorded as D20 (verbatim: "tambahkan, server STT
-> configurable dan active/deactivate via config menu. konfigurasinya disimpan ke DB"). The defaults
-> below are the controller's reading in D20 and are **pending Q-STT-CFG confirmation at the second
-> blueprint gate**. Until then R-8 is not counted in the R-1..R-7 trace and no pinned count changes.
+> **Status: confirmed (erratum PE-113-15; D24).** New user requirement recorded as D20 (verbatim:
+> "tambahkan, server STT configurable dan active/deactivate via config menu. konfigurasinya disimpan
+> ke DB"). The defaults below were the controller's reading in D20; the user **confirmed all 13 of
+> them at the second blueprint gate** (D24: "Q-STT-CFG (a) all 13 proposed R-8 defaults confirmed").
+> R-8 is a requirement of this phase beside R-1..R-7 (the "R-1..R-7 7/7" self-gate rows of this file
+> describe the M0 gate and are history). The pinned counts changed with row 113 and are **counted**:
+> 92 operations (35 GET / 57 POST), 63 audit types, `offline` 26 (`03_api_contract.md` §1, §2.5, §8).
 > Sibling sections: `03_api_contract.md` §2.5, `04_database_contract.md` §B.13, `06_evidence_package_spec.md`
 > §B.7a, `07_transcript_spec.md` §B.7, `08_client_ux_spec.md` §8a, `10_test_strategy.md` §A.6a.
 
 - **Narrative:** The Core holds one STT configuration: enabled/disabled, backend (`omlx-server` on this Mac for development, `cpu-local` whisper.cpp for the Core), server endpoint (loopback URL, server backend only), model, language (Indonesian, OD-20), speaker labelling on/off. A SUPERVISOR or TECHNICIAN edits it from a configuration menu on the web console; tablets and phones show read-only status. The configuration is persisted in PostgreSQL in a **kept** table that survives the demo reset (OD-19 pattern). A change applies to the **next** session — the open session keeps the snapshot taken at its start (OD-10 pattern). Any server credential (for example the oMLX API key) is stored only as a **secret reference** (the oMLX key stays in `~/.omlx/settings.json`, SEC35-14) or encrypted in the Core credential store — never returned by the API, never in a slice, a log or an audit row. A "test connection" action checks the backend. When STT is **disabled**, no transcript work runs during recording and the sealed package records "transcript disabled by configuration"; R-5's "transcript inside the sealed package" applies only when STT is enabled. When STT is **enabled but the backend is unreachable**, sealing proceeds under the transcript failure rule (D-EV-1) and the package flags it.
-- **Decisions:** D20 (requirement; pending Q-STT-CFG); D4 OD-10 (idle-only/next-session pattern, `CAPTURE_CONFIG` for SUPERVISOR + TECHNICIAN), OD-19 (kept tables), OD-20 (Indonesian only), OD-24 + D7 (backends), OD-13 (loopback only); SEC35-14 (oMLX key by reference only); D-EV-1 (seal with an explicit transcript state, never fabricate).
+- **Decisions:** D20 (requirement); D24 (Q-STT-CFG (a): confirmed with all defaults); D68 (credential-store owner, see the interim note below); D4 OD-10 (idle-only/next-session pattern, `CAPTURE_CONFIG` for SUPERVISOR + TECHNICIAN), OD-19 (kept tables), OD-20 (Indonesian only), OD-24 + D7 (backends), OD-13 (loopback only); SEC35-14 (oMLX key by reference only); D-EV-1 (seal with an explicit transcript state, never fabricate).
 - **Register rows:** none yet (new requirement after the register); proposed owners NM-06 (transcript pipeline), NM-09 pattern (config store + API), CS-21 (kept set), WB-07 (web System entry), MB-09 (settings), E-30/E-31 (audit/credential rules).
-- **Measurable acceptance criteria (proposed):**
+- **Credential store, interim (erratum PE-113-16; D68(c)):** the encrypted form needs the Core credential store, which is built by **blueprint row 84** (M7-W3 key store, SEC35-03): row 84 owns `provideCredentialSealer` and the matching opener. Until row 84 lands, a `SECRET` write to operation 91 answers `503 NOT_READY` (`details.reason: CREDENTIAL_STORE_NOT_READY`) and stores nothing; the **secret reference** form works now. Row 115 treats a stored `ENCRYPTED` kind as "credential unavailable"; row 117's menu offers the reference form only. AC-3 below does not require the encrypted form. Source: `apps/core-server/src/modules/stt-config/seams.ts:15-20`, `change.ts:96-100,173`; `delegation_progress/pair_113_navigator.md:213-223`.
+- **Measurable acceptance criteria (confirmed, D24):**
   1. The STT configuration is stored in the kept table `stt_config` and is image-equal after `db:reset`; the secret column is never selectable by the runtime role and no API response carries it; DB check `M2-STTCFG-DB` (1). Cites D20; OD-19; `04_database_contract.md` §B.13.
   2. An edit from the web configuration menu by SUPERVISOR or TECHNICIAN (`CAPTURE_CONFIG`) writes exactly **one** `STT_CONFIG_CHANGED` audit row whose detail carries the changed field **names** only (and `credentialChanged: true|false`, never a value); an INVESTIGATOR is refused (`403 NOT_PERMITTED`, "Checking your permissions..." state); tablet and phone show the status read-only; `M6-STTCFG-WEB`/`-TAB`/`-PHONE` **2 + 1 each**.
   3. The credential is never returned (responses carry `credentialSet: boolean` and `credentialKind` only), never in a slice, log or audit row; the test-connection action reports reachable/unreachable and model availability without echoing it; `M6-STTCFG-API` (1).
   4. A change while a session is open is stored and applies to the next session; the open session's transcript uses its start snapshot; `M6-STTCFG-NEXT` (1, fake clock).
-  5. With STT **disabled**: a recorded session runs no transcriber work, seals with `transcript.state = 'DISABLED'` and the reason "transcript disabled by configuration" in the manifest, and v2 verify passes; `M6-STTCFG-OFF` **2 + 1**.
+  5. With STT **disabled**: a recorded session runs no transcriber work, seals with `transcript.state = 'DISABLED'` and the reason "transcript disabled by configuration" in the manifest, and v2 verify passes (verify clause proven at M7 by `M7-VV-SRV` / the CF-12 split check, blueprint row 119); seal-state clause `M6-STTCFG-OFF` **2 + 1**.
   6. With STT **enabled but unreachable**: sealing proceeds per D-EV-1 (`transcript.state = 'PARTIAL'`, failed chunks counted, no fabricated text) and the package flags the unreachable backend; `M6-STTCFG-UNREACH` **2 + 1**.
   7. The server endpoint accepts loopback hosts only (`127.0.0.1`/`localhost`); any other host is refused `422 INVALID_INPUT` (`details.reason: ENDPOINT_NOT_LOOPBACK`) — LAN is class C (OD-13); covered by `M6-STTCFG-API`.
 
@@ -307,8 +311,8 @@ own plain-language column. Milestones/blocking per `structured` Gate Questions a
 | Q-HW | unknown: class C deferred; task completes at the "done on this Mac with fake devices" line | D4 | Work is not held up by hardware; real-device proof comes later | Class C (§9), M4 real, M9 benchmark |
 
 **Second-gate items that touch this spec (not D4 answers; added by the RV-SPEC revision, D17-D20).**
-Q-STT-CFG (R-8 defaults, D20) — **pending**; Q-D7 reframed with the CPU-runtime route (OD-24 text
-above, AU3-02/AU2-02) — **pending**; Q-WORKER (capture-worker build form, AU3-04) — **pending**. Each
+Q-STT-CFG (R-8 defaults, D20) — **answered (a), all 13 defaults confirmed (D24; erratum PE-113-15)**; Q-D7 reframed with the CPU-runtime route (OD-24 text
+above, AU3-02/AU2-02) — **answered (a), D24: oMLX for development plus the whisper.cpp CPU path proven on this Mac (erratum PE-R8-22)**; Q-WORKER (capture-worker build form, AU3-04) — **answered (a), D24: a small C program against libavfilter/libavformat of the installed FFmpeg, spawned and supervised by the Core (erratum PE-R8-22)**. Each
 is owned by the blueprint revision (RV-BP); this spec records only the consequence.
 
 **Superseded items (history only; never live requirements).** These appear **only** in this subsection
@@ -522,4 +526,4 @@ gst §0/§10).
 ---
 
 *Generated: 2026-10-07 09:24*
-*Last Updated: 2026-10-07 09:24*
+*Last Updated: 2026-10-09 (status sweep PE-R8-22: Q-D7 and Q-WORKER answered by D24); 2026-10-09 (pair-review errata PE-113-15/PE-113-16: R-8 confirmed by D24; credential-store owner row 84, D68; `masterplan/11_audit_errata.md` §5)*

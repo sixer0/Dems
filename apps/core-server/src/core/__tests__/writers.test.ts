@@ -47,9 +47,10 @@ const SECRET_FORMS = {
 };
 
 describe('the vocabulary', () => {
-  it('every one of the 62 shared audit types is accepted, with the category of the shared map', () => {
+  it('every one of the 63 shared audit types is accepted, with the category of the shared map', () => {
     const types = Object.values(AuditType);
-    expect(types).toHaveLength(62);
+    // C3 §2.5 (blueprint row 113): 62 + STT_CONFIG_CHANGED = 63.
+    expect(types).toHaveLength(63);
     const typed = new Set<string>(Object.keys(SERVER_AUDIT_DETAIL_RULES));
     for (const type of types.filter((candidate) => !typed.has(candidate))) {
       const input = auditInputOf(audit({ type }));
@@ -225,7 +226,7 @@ describe('the payload map (database contract FLAT, NO_SECRET_KEYS; SR-54)', () =
   });
 });
 
-describe('the allow-list of the eighteen server-written types (spec §13.1; C3 §5.2)', () => {
+describe('the allow-list of the nineteen server-written types (spec §13.1; C3 §5.2, §2.5)', () => {
   const accepted: Record<string, AuditEntry[]> = {
     ACCESS_DENIED: [
       { type: 'ACCESS_DENIED', actorId: 'OPR-003', deviceId: null, message: 'Denied', details: { operationId: 'startSession', permission: 'SESSION_START', role: 'TECHNICIAN' } },
@@ -258,12 +259,17 @@ describe('the allow-list of the eighteen server-written types (spec §13.1; C3 �
     EVIDENCE_EXPORT_FAILED: [{ type: 'EVIDENCE_EXPORT_FAILED', actorId: 'OPR-002', deviceId: null, message: 'Export failed', details: { jobId: 'EXPJ-000001', kind: 'PACKAGE', reason: 'DISK_FULL' } }],
     CAPTURE_CREDENTIAL_SET: [{ type: 'CAPTURE_CREDENTIAL_SET', actorId: 'OPR-003', deviceId: null, message: 'Credential stored', details: { deviceId: 'CAM-01', operationId: 'setCaptureCredential', permission: 'CAPTURE_CONFIG' } }],
     CAPTURE_CREDENTIAL_REVEALED: [{ type: 'CAPTURE_CREDENTIAL_REVEALED', actorId: 'OPR-002', deviceId: null, message: 'Credential revealed', details: { deviceId: 'CAM-01', reason: 'MEDIA_DIAGNOSTICS' } }],
+    // Task 3 M6 (blueprint row 113; C3 §2.5): field NAMES and two flags, never a value.
+    STT_CONFIG_CHANGED: [
+      { type: 'STT_CONFIG_CHANGED', actorId: 'OPR-003', deviceId: null, message: 'STT configuration changed', details: { changedFields: 'enabled', enabled: false, backend: 'cpu-local', credentialChanged: false, revision: 2 } },
+      { type: 'STT_CONFIG_CHANGED', actorId: 'OPR-002', deviceId: 'DEV-0001', message: 'STT configuration changed', details: { changedFields: 'backend,endpoint,model,credential', enabled: true, backend: 'omlx-server', credentialChanged: true, revision: 3 } },
+    ],
   };
 
-  it('covers exactly the eighteen types the server writes; the simulator\'s 44 have no list', () => {
+  it('covers exactly the nineteen types the server writes; the simulator\'s 44 have no list', () => {
     const typed = Object.keys(SERVER_AUDIT_DETAIL_RULES).sort();
     expect(typed).toEqual(Object.keys(accepted).sort());
-    expect(typed).toHaveLength(18);
+    expect(typed).toHaveLength(19);
     expect(Object.values(AuditType).filter((type) => detailRulesOf(type) === undefined)).toHaveLength(44);
     for (const type of typed) expect(Object.values(AuditType)).toContain(type);
   });
@@ -292,6 +298,7 @@ describe('the allow-list of the eighteen server-written types (spec §13.1; C3 �
       EVIDENCE_EXPORT_FAILED: ['jobId', 'kind', 'reason'],
       CAPTURE_CREDENTIAL_SET: ['deviceId', 'operationId', 'permission'],
       CAPTURE_CREDENTIAL_REVEALED: ['deviceId', 'reason'],
+      STT_CONFIG_CHANGED: ['changedFields', 'enabled', 'backend', 'credentialChanged', 'revision'],
     });
     expect(required).toEqual({
       ACCESS_DENIED: ['operationId'],
@@ -312,6 +319,7 @@ describe('the allow-list of the eighteen server-written types (spec §13.1; C3 �
       EVIDENCE_EXPORT_FAILED: ['jobId', 'kind', 'reason'],
       CAPTURE_CREDENTIAL_SET: ['deviceId', 'operationId'],
       CAPTURE_CREDENTIAL_REVEALED: ['deviceId', 'reason'],
+      STT_CONFIG_CHANGED: ['changedFields', 'enabled', 'backend', 'credentialChanged', 'revision'],
     });
   });
 

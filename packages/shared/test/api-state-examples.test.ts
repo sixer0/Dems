@@ -193,7 +193,7 @@ describe('the examples of the hosted actions are the simulator\'s answers at the
   });
 });
 
-describe('the examples of all 89 operations', () => {
+describe('the examples of all 92 operations', () => {
   it('every operation has an example for every status with a body, and for no status it does not document', () => {
     let pairs = 0;
     for (const operation of CORE_API_OPERATIONS) {

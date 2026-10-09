@@ -32,6 +32,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { STT_BACKENDS, STT_CONFIG_FIELDS } from '@dems/shared/api';
 import {
   AuthMethod,
   DEFAULT_SEED,
@@ -72,6 +73,7 @@ import {
   redeemFailed,
   redeemLocked,
 } from '../../../modules/pairing/activity';
+import { sttConfigChanged } from '../../../modules/stt-config/change';
 import { createRuleBook, isAccessRule } from '../../../plugins/permission-guard/access-rules';
 import { AccessRefusalKind } from '../../../plugins/permission-guard/decision';
 import { denialRecordOf } from '../../../plugins/permission-guard/denial';
@@ -260,6 +262,25 @@ export const MODULE_WRITERS: Readonly<Partial<Record<AuditType, (row: FixtureAud
     if (written.audit === undefined) throw new Error('the reset routine wrote no audit row');
     return { audit: written.audit, event: written.event ?? null };
   },
+  // The STT configuration module (blueprint row 113; C3 §2.5): operation 91's row, and no event.
+  STT_CONFIG_CHANGED: (row) => ({
+    audit: sttConfigChanged({
+      operatorId: actorOf(row),
+      deviceId: row.deviceId,
+      changedFields: text(row, 'changedFields')
+        .split(',')
+        .map((name) => {
+          const field = STT_CONFIG_FIELDS.find((candidate) => candidate === name);
+          if (field === undefined) throw new Error(`${place(row, 'changedFields')} names ${name}, which is no field of the STT configuration`);
+          return field;
+        }),
+      enabled: detail(row, 'enabled') === true,
+      backend: oneOf(row, 'backend', STT_BACKENDS),
+      credentialChanged: detail(row, 'credentialChanged') === true,
+      revision: whole(row, 'revision'),
+    }),
+    event: null,
+  }),
 };
 
 // ── The administration module: no builder ──────────────────────────────────────────────────────

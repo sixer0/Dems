@@ -98,9 +98,17 @@ describe('T-CR-2 (b), AC-B-86: no secret outside the connection file', () => {
     expect(suspicious).toEqual([]);
   });
 
-  it('the server runtime starts no child process, so no secret can become a process argument', () => {
+  it('the server runtime starts no child process but the capture worker, so no secret can become a process argument', () => {
+    // ONE file may import the process module: the process channel of the capture supervisor
+    // (task 3 row 57; capture spec §G G-R2, SEC35-25). Its own guard,
+    // `src/capture/__tests__/static.test.ts`, holds what makes that safe: one spawn, no shell,
+    // never the server's environment, fixed arguments. Every other runtime source is refused here
+    // as before.
+    const CAPTURE_PROCESS_CHANNEL = 'src/capture/ipc.ts';
     const childProcess = new RegExp(`['"](?:node:)?${['child', 'process'].join('_')}['"]`, 'g');
-    expect(occurrences(server, childProcess, (path) => isProductionSource(path) && !path.startsWith('src/db/'))).toEqual([]);
+    const runtime = (path: string): boolean => isProductionSource(path) && !path.startsWith('src/db/');
+    expect(occurrences(server, childProcess, (path) => runtime(path) && path !== CAPTURE_PROCESS_CHANNEL)).toEqual([]);
+    expect([...new Set(occurrences(server, childProcess, runtime).map((place) => place.replace(/:\d+$/, '')))]).toEqual([CAPTURE_PROCESS_CHANNEL]);
   });
 });
 

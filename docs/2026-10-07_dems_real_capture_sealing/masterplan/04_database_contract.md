@@ -18,7 +18,7 @@ binding_decisions: D4 (OD-01 T1, OD-02 L2, OD-03 (a) both hashes, OD-19), D7 (ST
 impact_map_input: docs/2026-10-04_dems_backend_rbac_pairing/research/10_next_phase_impact_map.md §6 (T-31..T-39)
 b16_errata: docs/2026-10-04_dems_backend_rbac_pairing/report/01_report_inputs.md §4 B16 items (i)-(v) — applied/carried in section H
 implemented_by: M2 rows of blueprint rev 2 (row 40); this row writes the plan only
-last_updated: 2026-10-08 (RV-SPEC: proposed §B.13 `stt_config` for R-8 pending Q-STT-CFG, D20 — counts unchanged until confirmed; 2026-10-07 row-35 remediation SEC35-02/03/20/21/22)
+last_updated: 2026-10-09 (status sweep PE-R8-01..05: §B.13 `stt_config` CONFIRMED by D24, Q-STT-CFG answer (a); status wording only); 2026-10-08 (RV-SPEC: §B.13 `stt_config` for R-8 added as a proposal, D20; 2026-10-07 row-35 remediation SEC35-02/03/20/21/22)
 ---
 
 # Database Contract dbc-3: schema v2, migrations 0004/0005, privileges, kept-on-reset, lane re-creation
@@ -466,12 +466,12 @@ by mapping (CS-18), seed and the M2 tests, and re-checked by verify v2 (row 32).
 (`:354`) is replaced by the same rule plus the new-column patterns (C.6). Privileges unchanged:
 SELECT + INSERT only (map §6 "INSERT only"). Reset: rebuilt.
 
-### B.13 `stt_config` (proposed T-40) — STT configuration singleton (PROPOSED — pending Q-STT-CFG confirmation at the second gate; R-8, D20)
+### B.13 `stt_config` (T-40) — STT configuration singleton (CONFIRMED — D24, Q-STT-CFG answer (a); R-8, D20) **Erratum PE-R8-02 (D24)**
 
-> **Status: proposed, not counted.** This table implements R-8 (`01_specs.md` R-8; D20). It is **not**
-> in migration 0004/0005, the 39-table count or the 11-table kept set until the user confirms
-> Q-STT-CFG. If confirmed: tables **39 -> 40**, kept set **11 -> 12**, and the DDL joins 0004 (table)
-> and 0005 (privileges). If rejected: delete this section.
+> **Status: confirmed (D24, 2026-10-08: Q-STT-CFG answered (a), all 13 defaults).** This table implements
+> R-8 (`01_specs.md` R-8; D20). With it: tables **39 -> 40**, kept set **11 -> 12**, and the DDL joins
+> 0004 (table) and 0005 (privileges). The 39-table and 11-table figures elsewhere in this file were not
+> restated by the status sweep (**Erratum PE-R8-02 (D24)**, status wording only).
 
 Purpose: the persistent STT configuration edited from the web configuration menu (op 91,
 `03_api_contract.md §2.5`): enabled/disabled, backend, loopback endpoint, model, language, speaker
@@ -481,7 +481,7 @@ labelling, and a **secret held only as a reference or as ciphertext**. Snapshot 
 | Column | Type | Null | Default | Key/Check |
 |---|---|---|---|---|
 | `singleton` | boolean | no | true | PK; CHECK `singleton` (`stt_config_singleton_check`) |
-| `enabled` | boolean | no | seed value per Q-STT-CFG (proposed `true`) | — |
+| `enabled` | boolean | no | seed value `true` (Q-STT-CFG item 11, confirmed D24; **Erratum PE-R8-03**) | — |
 | `backend` | text | no | — | CHECK IN ('omlx-server','cpu-local') |
 | `endpoint` | text | yes | null | required when `backend = 'omlx-server'`; CHECK `endpoint IS NULL OR endpoint ~ '^http://(127\.0\.0\.1\|localhost)(:[0-9]{1,5})?(/.*)?$'` (`stt_config_endpoint_loopback_check`; OD-13) |
 | `model` | text | no | — | model id (server) or model path reference (`cpu-local`); format checked by the mapping, never a secret |
@@ -500,14 +500,14 @@ secret_ciphertext IS NULL AND nonce IS NULL) OR (credential_kind = 'REFERENCE' A
 NOT NULL AND secret_ciphertext IS NULL AND nonce IS NULL) OR (credential_kind = 'ENCRYPTED' AND
 credential_ref IS NOT NULL AND secret_ciphertext IS NOT NULL AND nonce IS NOT NULL)`.
 
-Privileges (`0005`, if confirmed): column-level SELECT on every column **except**
+Privileges (`0005`; confirmed, D24; **Erratum PE-R8-04**): column-level SELECT on every column **except**
 `secret_ciphertext` and `nonce` (and `credential_ref`, whose target is sensitive); UPDATE on all
 columns; **no INSERT, no DELETE** for `dems_app` (row created by the seed, carried by reset). The
 secret columns are read only by the single transcriber key-loader module (`07_transcript_spec.md
 §B.2` SEC35-14 rule), mirroring the B.3 reveal control; the exact reveal mechanism follows the D-DB-07
 "no new DB roles" rule. Never in a slice, a log or an audit row (`STT_CONFIG_CHANGED` carries field
 names only). Reset: **KEPT**, mode `upsert` (D-DB-08) — the configuration survives a demo reset
-(OD-19 pattern). Check: `M2-STTCFG-DB` (conditional, `10_test_strategy.md §A.6a`).
+(OD-19 pattern). Check: `M2-STTCFG-DB` (active, D24/D64; `10_test_strategy.md §A.6a`; **Erratum PE-R8-04**).
 
 ## C. CHECK changes in 0004 (task item C)
 
@@ -677,7 +677,7 @@ privileges but bound by the append-only triggers precedent — no new trigger is
 | Group | Tables | Carry mode (dbc-2 §8.5) |
 |---|---|---|
 | Unchanged from dbc-2 | `registry_counters` (update), `console_settings` (update), `pairing_codes`, `paired_devices`, `device_credentials`, `auth_sessions`, `biometric_tokens`, `audit_chain_history` (insert; + lineage append) | `src/db/reset/kept-tables.ts:62-71` |
-| Proposed by R-8 (D20; pending Q-STT-CFG — not counted) | `stt_config` (§B.13) | mode `upsert`; would make the kept set **12** |
+| Added by R-8 (D20; confirmed, D24, Q-STT-CFG (a); **Erratum PE-R8-05**) | `stt_config` (§B.13) | mode `upsert`; makes the kept set **12** |
 | Added by OD-19 | `capture_config`, `capture_devices`, `capture_device_credentials` | **new mode `upsert`** (D-DB-08): UPDATE the seeded built-ins by key, INSERT carried rows the seed does not know (a real discovered device must survive; the seed writes the 5 built-ins `CAM-01/CAM-02/MIC-01/MIC-02/POE-SWITCH`, no credentials). Order: devices -> credentials -> config (FK order). Code lands in CS-21 (M2) |
 
 Everything else is rebuilt from the seed; `core_state.epoch` continues (SPEC-GAP-5 unchanged).
@@ -891,4 +891,4 @@ the proposal texts at `gateway_check/10b_closing_fixes_c2.md` §2.6 and the W90 
 
 ---
 *Generated: 2026-10-07 10:05*
-*Last Updated: 2026-10-08 (RV-SPEC: proposed §B.13 `stt_config`, R-8/D20; earlier: row-35 security remediation SEC35-02/03/20/21/22)*
+*Last Updated: 2026-10-09 (status sweep PE-R8-01..05: §B.13 confirmed by D24); 2026-10-08 (RV-SPEC: §B.13 `stt_config`, R-8/D20, added as a proposal; earlier: row-35 security remediation SEC35-02/03/20/21/22)*

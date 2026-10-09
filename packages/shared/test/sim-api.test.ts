@@ -37,9 +37,9 @@ const CREATE_BODY = {
 };
 
 describe('routes', () => {
-  it('lists the 22 simulated operations (9 book §21.2 plus the 13 of schema v2, OD-17)', () => {
-    expect(SIM_API_ROUTES).toHaveLength(22);
-    expect(new Set(SIM_API_ROUTES.map((route) => route.operationId)).size).toBe(22);
+  it('lists the 25 simulated operations (9 book §21.2, the 13 of schema v2 (OD-17) and the 3 STT configuration ops 90-92, C3 §2.5)', () => {
+    expect(SIM_API_ROUTES).toHaveLength(25);
+    expect(new Set(SIM_API_ROUTES.map((route) => route.operationId)).size).toBe(25);
   });
 
   it('marks every response simulated and JSON, including errors', () => {

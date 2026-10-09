@@ -58,6 +58,7 @@ import type { SessionCreateRequest } from './session-schema';
 import { SESSION_EXAMPLES } from './sessions';
 import { STORAGE_EXAMPLES } from './storage';
 import { SYSTEM_EXAMPLES } from './system';
+import { STT_CONFIG_EXAMPLES } from './transcription';
 
 /** The instant every example describes: 2026-10-01 10:00:00 WIB (UTC+07:00). */
 export const OPENAPI_EXAMPLE_INSTANT = '2026-10-01T03:00:00.000Z';
@@ -547,4 +548,6 @@ export const CORE_API_EXAMPLES: Readonly<Record<string, OperationExamples>> = {
   ...SYSTEM_EXAMPLES,
   ...ALERT_EXAMPLES,
   ...DEMO_EXAMPLES,
+  // Task 3 M6 (blueprint row 113; C3 §2.5): operations 90-92.
+  ...STT_CONFIG_EXAMPLES,
 };

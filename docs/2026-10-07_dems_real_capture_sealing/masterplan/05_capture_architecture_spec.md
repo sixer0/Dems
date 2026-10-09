@@ -28,7 +28,7 @@ inputs_read:
   - decisions/decisions.md D4 (gate answers), D7, D10, D12
   - apps/core-server/src/engine/host.ts:897-902, engine/types.ts:205-209, engine/__tests__/static.test.ts (integration precedent)
   - research/01_explore.md §2.4 (the 21 src static guards)
-last_updated: 2026-10-08 (RV-SPEC: AU-2 errata AU2-03..AU2-08 applied, see masterplan/11_audit_errata.md; 2026-10-07 row-35 security remediation SEC35-04/08/09/10/23/25)
+last_updated: 2026-10-09 (pair-review errata PE-57-01..PE-57-10 and PE-111-01..PE-111-07 applied, decisions D65-D68, see masterplan/11_audit_errata.md §5; earlier: 2026-10-08 RV-SPEC AU-2 errata AU2-03..AU2-08; 2026-10-07 row-35 security remediation SEC35-04/08/09/10/23/25)
 ---
 
 # Capture Architecture Spec (blueprint row 31, M0)
@@ -53,6 +53,9 @@ A mechanism with no such citation is labelled **HYPOTHESIS** and collected in se
 | D10 (row 8 S2) | Operator switch works only through the libavfilter API; realised boundary = the next worker input quantum (≤ 10 ms with 10 ms push chunks; ≤ 1 AAC frame = 21.333 ms only in a 1024-sample pull loop) — **erratum AU2-07** (D18) | Section E |
 | D12 (row 9 S4) | Aligned AV relative offset **0.00 ms** (sample-exact: +0.021 ms = one sample); injected +80 ms measures 80.021 ms, −80 ms measures −80.052 ms — **erratum AU2-03** (D18): the earlier "−1.333 ms / 78.667 ms" were 10 ms analysis-window artefacts of row 9's analyser | Sections A (NM-14), F |
 | D18 (AU-2 audit) | AU2-03..AU2-08 errata applied in sections C.1, C.5, E, F, J (H-10); `masterplan/11_audit_errata.md` | Sections C, E, F, J |
+| D65 / D67 (row 57 pair) | Protocol has `HELLO` and `ACK`; `CaptureSupervisor` has `boot()`/`shutdown()`; the worker's output is never paused; the worker-event queue is hard-bounded and **lossy**; a lossless record frame class is required work for row 58; restart rule = option C per OD-08 (no respawn into an existing evidence file); row 57 closes NM-03, CS-01, CS-03 only — **errata PE-57-01..PE-57-10** (`masterplan/11_audit_errata.md` §5) | Sections A.3, B.1, B.2, G, I |
+| D66 (row 111 pair) | Video anchored on the per-packet PRFT wall clock with a slew limit (not "re-anchor on later sender reports"); `delay_moov` evaluated by row 58 with a pinned-flags fallback; three mux options forbidden with `empty_moov`; worker required work for row 58 (no UDP sockets, `flush_packets`, audio keeps fragmenting, non-zero exit on a fatal error, mics from a separate process) — **errata PE-111-01..PE-111-07** | Sections A.2, A.4, A.8, C.2, C.4, F, J |
+| D68 (row 113 pair) | OD-14's module-registration category is extended to `modules/stt-config`: P25 edits 13-14 — **erratum PE-57-08** | Section I |
 | D12 (row 15) | Engine pick = FFmpeg 9.0.2 with an **embedded libavfilter** capture worker; GCM/manifest/signer engine-independent | Sections B, C, D |
 
 **Register re-slicing note.** The register (`research/03_analysis.md` §B.6) defines NM-01 as the
@@ -125,6 +128,22 @@ Failure modes: ingest exits on client `TEARDOWN` — the process is single-sessi
 CPU starvation while STT runs (RK-1); a crashed worker leaves a truncated fMP4 (section C.5); **the
 RTSP ingest listener binding to anything other than loopback (SEC35-23; §A.4/§A.8).**
 
+**Required work for row 58, carried from the row-111 skeleton (errata PE-111-03, PE-111-04, PE-111-05, PE-111-07 and PE-57-10; D66, D67).**
+Row 111 was accepted as a PROOF row (H-4, H-10); the skeleton `apps/capture-worker/src/capture_worker.c`
+is not the worker. Row 58 must not start from it unchanged:
+
+| # | Requirement (normative for row 58) | What the skeleton does today | Evidence |
+|---|---|---|---|
+| W-1 (PE-111-03) | **The worker owns no datagram socket.** A camera/client that asks for RTP over UDP must not make the worker open `*:5000` / `*:5001` (all interfaces). `rtsp_transport=tcp` on the listen ingest does **not** prevent it. Either refuse a non-interleaved session in the worker, or keep listen ingest for fixtures only and pull cameras with `rtsp_transport=tcp`. The bind check covers **UDP as well as TCP** (§A.4) | listen options are `rtsp_flags` and `listen_timeout` only (`capture_worker.c:330-335`); with a UDP client `lsof` shows `UDP *:5000`, `UDP *:5001` and the session records | pair-111 N-1 (`delegation_progress/pair_111_navigator.md:152-177`); SEC35-23 |
+| W-2 (PE-111-04) | **Bytes reach the disk during a session:** the muxer option `flush_packets=1` is set on both outputs (§C.2) | no `flush_packets`, no `avio_flush` (`capture_worker.c:451-455`): both files stay at 28 bytes (the `ftyp`) until close | pair-111 N-2 (`pair_111_navigator.md:179-187`); S1 trap 4 (§A.4) |
+| W-3 (PE-111-04) | **Audio keeps fragmenting after a camera stops:** a stalled or dead camera must not stop the audio of its own file from becoming durable. A bounded cut is made when no keyframe arrives (mechanism is row 58's; `frag_duration` as an upper bound above the GOP, or a timed `av_write_frame(ctx, NULL)`, are HYPOTHESES, not tested) | `frag_keyframe` cuts only on a video keyframe: with camera 2 killed at 4.18 s its file ended with one fragment holding **801 audio packets (17.1 s)** | pair-111 N-2 (`pair_111_navigator.md:188-199`); AU2-08 crash-loss window (§C.1) |
+| W-4 (PE-111-07) | **A fatal error exits non-zero.** `fatal()` sets a sticky error flag that forces a non-zero exit code; a mux write failure, an encoder failure or a failed selector command mid-session must never look like a clean stop | `fatal()` sets only the stop flags (`capture_worker.c:128-133`) and `main` returns `rc = w->samples_in ? 0 : 1` (`:540`): exit 0 after the first quantum (by inspection, not reproduced) | pair-111 N-5 (`pair_111_navigator.md:205-213`) |
+| W-5 (PE-111-05) | **In the AV check the mics are fed from a separate process** timed by its own wall-clock reads (§A.8), so that an error in T0 or a real capture latency cannot cancel on both sides | the beep is synthesised inside the worker from the same `t0_real` that shifts the video (`capture_worker.c:142`, `:269-272`, `:373`) | pair-111 N-8 and §3 item 2 (`pair_111_navigator.md:144-148`, `:221`) |
+| W-6 (PE-57-10) | **The worker speaks `packages/capture-protocol`** (§B.2): NDJSON commands on stdin, frames on stdout and nothing else there, the plan from `START` (not argv), exit at end of stdin, one session per process, logs not on the closed stderr, empty environment, port range aligned with the protocol | plain-text `switch <n>` / `stop`, no frame written, session in argv, end of stdin does not stop it | pair-57 nine-point gap list (`delegation_progress/pair_57_navigator.md:172-189`) |
+
+The minor findings N-6, N-7 and N-9..N-14 of the same review also ride with row 58 / row 62
+(`pair_111_navigator.md:217-227`).
+
 Test hook: NM-14 fake RTSP sources + fake mics; the worker is started by the supervisor under a
 test configuration and driven by injected IPC messages; the engine can be replaced by a fake
 engine implementing NM-04.
@@ -133,7 +152,7 @@ engine implementing NM-04.
 
 | Field | Content |
 |---|---|
-| Purpose | Spawn, stop, heart-beat and restart the worker with back-off; carry correlation IDs; apply back-pressure; map worker events to the shared simulator's INTERNAL actions |
+| Purpose | Spawn, stop, heart-beat and restart the worker with back-off; carry correlation IDs; bound the command window (the only back-pressure — **erratum PE-57-04:** there is **no** back-pressure toward the worker's output, which is never paused, §B.2); map worker events to the shared simulator's INTERNAL actions (the forwarder does not exist yet — §B.1, erratum PE-57-09) |
 | Authority | Register NM-03; S1 G-1/SP-5 (restart the ingest **process** per session, not just the pusher); `setTabletLink` INTERNAL-action precedent (`engine/types.ts:205-209`, `host.ts:897-902`, `sim-actions.ts:93`) |
 | Target | `apps/core-server/src/capture/*`; `packages/capture-protocol/NM-03` (register: `packages/capture-protocol`) |
 
@@ -141,6 +160,8 @@ Interface sketch:
 
 ```ts
 interface CaptureSupervisor {
+  boot(): Promise<void>;     // erratum PE-57-01 (D65): opens the supervisor for sessions; starts no worker (§I edit 11)
+  shutdown(): Promise<void>; // erratum PE-57-01 (D65): stops the open session's worker (reason SHUTDOWN), waits for its exit; safe to call twice (§I edit 12)
   start(sessionId: string, plan: CapturePlan): Promise<void>; // one session = one worker + one file per camera
   stop(sessionId: string, reason: 'STOPPED' | 'CRASH' | 'SHUTDOWN'): Promise<void>;
   switchAudioSource(sessionId: string, to: MicRole): Promise<void>;
@@ -148,6 +169,11 @@ interface CaptureSupervisor {
   on(event: CaptureEventName, listener: (event: CaptureEvent) => void): () => void;
 }
 ```
+
+**Erratum PE-57-01 (D65).** `boot()` and `shutdown()` are what the entry point calls (§I edits 11
+and 12); the seam as built is `apps/core-server/src/capture/types.ts:118-129`
+(`supervisor.ts:553-557`). `status()` also reports `queuedEvents`, `droppedEvents` and
+`droppedTelemetry` (`types.ts:90-95`); the former `inputPaused` does not exist.
 
 Failure modes: worker crash loop (back-off exhaustion → `CAPTURE_FAULT`); missing heartbeat beyond
 the timeout; orphaned worker after a supervisor crash; broken IPC channel; a second start while a
@@ -163,7 +189,7 @@ kills it and asserts restart, back-off and the emitted INTERNAL action.
 | Purpose | The engine seam and its FFmpeg implementation: RTSP listen/pull ingest, codec copy, fragmented-MP4 output. FFmpeg 9.0.2 behind an interface so a future engine swap does not rewrite the worker |
 | Authority | Row 15 §1/§3.1 (binding pick); row 15 §5 item 1 (engine seam); S1 §2–§3 (four traps); S1 §4.6 (G-2) |
 | Target | `apps/capture-worker/src/engine/` |
-| Bind address (SEC35-23) | the **RTSP listen ingest** input URL host literal MUST be **`127.0.0.1`**; FFmpeg `-rtsp_flags listen -listen 1` defaults to `0.0.0.0`, so the command is built as `-rtsp_flags listen -listen 1 -listen_timeout <ms> -i rtsp://127.0.0.1:<port>/<name>` and **never** with a wildcard (`0.0.0.0`, `::`, a LAN address or a bare `rtsp://:<port>`). LAN binding is class C, opened only after OD-13's preconditions (demo-password replacement, B3, TLS/origin rules) | OD-13 (D4); S1 §2 (SP-1); SEC35-23; `specs C-N4` |
+| Bind address (SEC35-23) | the **RTSP listen ingest** input URL host literal MUST be **`127.0.0.1`**; FFmpeg `-rtsp_flags listen -listen 1` defaults to `0.0.0.0`, so the command is built as `-rtsp_flags listen -listen 1 -listen_timeout <ms> -i rtsp://127.0.0.1:<port>/<name>` and **never** with a wildcard (`0.0.0.0`, `::`, a LAN address or a bare `rtsp://:<port>`). LAN binding is class C, opened only after OD-13's preconditions (demo-password replacement, B3, TLS/origin rules). **Erratum PE-111-03 (D66):** the rule covers **every socket of the worker process, UDP included** — pinning the listen URL to `127.0.0.1` is not enough, because a client that asks for RTP over UDP makes libavformat open `UDP *:5000` / `*:5001` on all interfaces, and `rtsp_transport=tcp` on the listen ingest does not prevent it (§A.2 W-1) | OD-13 (D4); S1 §2 (SP-1); SEC35-23; `specs C-N4`; pair-111 N-1 |
 
 Interface sketch:
 
@@ -186,7 +212,11 @@ Test hook: an `InMemoryEngine` implementing the same interface for unit tests; t
 `M3-RTSP-BIND-1` (proposed addition for row 36/37, sibling of `M3-WI-1`) starts the ingest and
 asserts with `lsof -nP -iTCP:<port>` / `netstat -an` that the listening socket is bound to
 `127.0.0.1` (loopback) only and **never** `0.0.0.0`/`*`; the static rule G-R4/SEC35-25 also forbids a
-wildcard literal in the worker command.
+wildcard literal in the worker command. **Erratum PE-111-03 (D66):** as written the check cannot fail
+on anything that is not a TCP listener on the two ports. Row 58 widens it to `lsof -nP -a -p <worker
+pid> -i` = **every** socket the worker owns (TCP and UDP) is on `127.0.0.1`, with a client that
+requests RTP over UDP as the negative control (`delegation_progress/pair_111_navigator.md:130`,
+`:173-177`).
 
 ### A.5 NM-05 — fMP4 writer + fragment chain + encryption (OD-03)
 
@@ -306,7 +336,19 @@ Failure modes: a reused RTSP listener silently records only the first session (S
 collision on 8554–8564 (S1 guard rail); an off-by-one flash width (S4 §2 poka-yoke); **a fixture
 listener bound outside loopback (SEC35-23).** The fake RTSP fixture readers **and** the worker ingest
 listen only on `127.0.0.1:8554-8564`; the fixture's listen address is the same loopback literal as
-§A.4, and the same check `M3-RTSP-BIND-1` asserts it (`nm-14`; SEC35-23).
+§A.4, and the same check `M3-RTSP-BIND-1` asserts it (`nm-14`; SEC35-23) — for TCP **and UDP**
+sockets (erratum PE-111-03).
+
+**Fixture requirements added by the row-111 pair review (erratum PE-111-05; D66).** (1) In the AV
+checks (`M3-AV-1`, `M3-AV-2`) the **fake mics are a separate process** timed by its own wall-clock
+reads, not a generator inside the worker: with the beep synthesised in the worker from the same T0
+that shifts the video, a T0 error or a capture latency cancels and cannot be seen (§A.2 W-5). (2) Row
+62 adds a fake camera whose RTCP sender reports pair a true wall clock with a **drifting media
+clock** (hand-written RTCP or another sender; libavformat's `rtpenc` derives the SR timestamp linearly
+from the host NTP time and cannot express drift). Only that case may expect a drift slope near 0; the
+present ±200 ppm case keeps its present expectation (the injected slope within the 2 ms regression
+bound), see §F. (3) A "camera stops, audio keeps landing on disk" case (§A.2 W-3). (4) One of the
+three forbidden mux options of §C.4 is kept as a **negative control** for `M3-AV-1/2`.
 
 Test hook: the fixture is the hook; M3's worker integration drives it end to end.
 
@@ -334,9 +376,25 @@ The `capture` seam itself is provided by the capture module and read by the sess
 modules; the interface is the `CaptureSupervisor` of section A.3. This is the seam OD-14's waiver
 covers (section I).
 
+**Closure status of the table above (erratum PE-57-09; D65(b), D67).** Row 57 (M3-W1) closes
+**NM-03, CS-01 and CS-03 only**. **SH-18 and CS-04 remain open** — none of the six actions exists
+yet: `packages/shared/src/api/sim-actions.ts` still lists `setTabletLink` as its only INTERNAL
+action, and nothing forwards a supervisor event to the engine
+(`delegation_progress/pair_57_navigator.md:35`, `:147-165`; `implementation/19_m3_supervisor_ipc.md:40-60`).
+The claim of row 48 that SH-18 was closed was false. Owners:
+
+| Open part | Owner row |
+|---|---|
+| `applyCaptureTelemetry`, `raiseCaptureWarning` + the forwarder that subscribes `app.capture.on('telemetry' \| 'progress' \| 'warning')` and calls the engine (it must never block the queue, §B.2) | **row 58** (M3-W2) |
+| `applySealingProgress`, `completeSeal` (and the trigger for `completeSeal`: no message of §B.2 carries it; it must not be read from `PROGRESS` with progress 1 — it is a lossless record, §B.2) | **row 82** |
+| the hosted pair `switchAudioSource`, `setCaptureConfig` | **row 66** (M4-W2, the row that makes operations 76-80 and 89 live) |
+
+SH-18 and CS-04 close when row 82 is done. Each supervisor event already names the INTERNAL action
+it is meant for (`CaptureEvent.action`, `apps/core-server/src/capture/types.ts`).
+
 | Interface | Failure modes | Test hook |
 |---|---|---|
-| `CaptureSupervisor` (`start`/`stop`/`switchAudioSource`/`status`/`on`) | worker crash loop; heartbeat timeout; orphan; second start while open; broken IPC | `FakeWorkerProcess` + `app.seams.replace('capture', fake)` on a test configuration (`app.ts:54` "replace IS TEST-ONLY") |
+| `CaptureSupervisor` (`boot`/`shutdown`/`start`/`stop`/`switchAudioSource`/`status`/`on` — erratum PE-57-01) | worker crash loop; heartbeat timeout; orphan; second start while open; broken IPC | `FakeWorkerProcess` + `app.seams.replace('capture', fake)` on a test configuration (`app.ts:54` "replace IS TEST-ONLY") |
 
 ### B.2 Worker topology and IPC protocol
 
@@ -347,19 +405,80 @@ SP-5; D10(b)).
 
 | Message | Direction | Payload | Notes |
 |---|---|---|---|
+| `HELLO` | worker → supervisor | protocol version | **erratum PE-57-02 (D65):** the handshake the worker opens with, before anything else; a version mismatch ends the worker; the only place a version can be refused before a `START` with a plan is sent |
 | `START` | supervisor → worker | `CapturePlan` (devices, profiles, outputs, constants) | one session |
 | `STOP` | supervisor → worker | reason | flush + close |
 | `SWITCH_AUDIO_SOURCE` | supervisor → worker | `MicRole`, correlation id | E (mic switch) |
+| `ACK` | worker → supervisor | correlation id, `ok` | **erratum PE-57-02 (D65):** the worker's answer to a command, matched by the correlation ID the command carried |
 | `TELEMETRY` | worker → supervisor | levels, ingest state, fragment counters | ~20 Hz |
 | `PROGRESS` | worker → supervisor | step, `progress`, `etaMs` | sealing v2 |
 | `HEARTBEAT` | worker → supervisor | monotonic counter | liveness |
 | `WARNING` | worker → supervisor | `MIC_SILENT`, `CAPTURE_FAULT` | never an auto-switch |
 | `CRASH` | worker → supervisor (or exit code) | signal / exit code | triggers back-off |
 
+**Erratum PE-57-02 (D65).** The protocol as built (`packages/capture-protocol/src/index.ts:14-27`,
+`:62-63`) has ten messages: the eight of the 2026-10-07 table plus `HELLO` and `ACK` (both now in the table above). Transport: NDJSON over the
+worker's standard input and output — no socket, no port; a line longer than 65 536 characters, a
+line that is not JSON and a JSON value that is no message are protocol violations that end the
+worker. `HELLO`, `HEARTBEAT` and `ACK` carry no session; `TELEMETRY`, `PROGRESS` and `WARNING` carry
+the `sessionId`. The message set is a strict union: an unknown `type` ends the worker, so a new
+message lands in the package and the worker together.
+
 Who starts/stops it: the supervisor is started at boot and stopped at shutdown (OD-14's
-"supervisor start/stop"; CS-03 `apps/core-server/src/index.ts:16`). Crash handling: restart with
-exponential back-off; a worker that cannot start emits `CAPTURE_FAULT` and fails the session
-start; an interrupted recording seals the durable prefix flagged `interrupted` (OD-08).
+"supervisor start/stop"; CS-03 `apps/core-server/src/index.ts:16`) through `boot()` and `shutdown()`
+(§A.3, erratum PE-57-01). Crash handling: restart with exponential back-off **within the scope of
+the restart rule below (erratum PE-57-06)**; a worker that cannot start emits `CAPTURE_FAULT` and
+fails the session start; an interrupted recording seals the durable prefix flagged `interrupted`
+(OD-08).
+
+**Delivery contract (errata PE-57-03 and PE-57-04; D67, supersedes the driver's D57-9).**
+
+| Rule | Contract | Evidence |
+|---|---|---|
+| The worker's output is never paused | The supervisor reads the worker's output at all times; `HEARTBEAT` and `ACK` are handled the moment their line arrives, apart from any queue. There is **no back-pressure toward the worker**: a pause cannot be told from a dead worker, and holding a real-time recorder back can only make it block in a write. A worker that floods costs the Core CPU, not memory; the worker keeps its telemetry near 20 Hz | `apps/core-server/src/capture/supervisor.ts:30-34`; `packages/capture-protocol/src/index.ts:45-46`; pair-57 re-check RC-3 (3.0 M frames in 10 s: queue <= 256, RSS flat, heartbeat age < 78 ms) |
+| Two delivery paths | The supervisor's **own** events (`workerDown`, `phase`, the `CAPTURE_FAULT` it raises itself) go to their listeners at once, in order, never queued, never lost. The **worker's** events (`telemetry`, `progress`, worker warnings) go through one queue. The two paths are not ordered against each other | `supervisor.ts:36-43`, `:230`, `:262` |
+| The worker-event queue is **hard-bounded and LOSSY** | Never more than `eventQueueLimit` (default 256) events wait. `TELEMETRY` and `PROGRESS` are **levels, not records**: a waiting telemetry frame is replaced by a newer one; a waiting progress value is replaced by a newer value of the same step; at the bound the oldest telemetry, then the oldest progress, is evicted. A warning that still waits is not queued twice (same code and subject) and **is never evicted for a level**; only a queue full of distinct warnings drops a new event. Losses are counted (`droppedTelemetry`, `droppedEvents`) and the first loss of an episode is reported as `CAPTURE_EVENT_OVERFLOW` | `supervisor.ts:45-55`, `:225-244`; `capture/types.ts:90-95`; `packages/capture-protocol/src/index.ts:128-129`; pair-57 re-check RC-3, RC-5 |
+| **Nothing that must never be lost may travel through this queue** | An intermediate or even a finished progress step can be evicted (`SEAL:1` was, in the navigator's run); a worker warning can be reordered after phase changes. A fragment checkpoint, "first durable fragment" and seal completion therefore do **not** belong in it, and completion of sealing must not be read from `PROGRESS` with progress 1 | `supervisor.ts:55-57`; `delegation_progress/pair_57_navigator.md:304-327`, `:344` |
+| Commands | written at once; the bound is the window of commands awaiting their `ACK` (default 16). `STOP` is written outside that window, always | `supervisor.ts:59-61`; pair-57 F-3, F-11 |
+| Defaults are HYPOTHESES | heartbeat 500 ms / timeout 2 500 ms, back-off 250 ms x 2 up to 8 s, 5 restarts, stable after 30 s, queues 256 / 16, frame 65 536 characters: row 57's choices, measured by no spike, until row 58 runs the real worker | `packages/capture-protocol/src/index.ts:101-133`; D57-4 |
+
+**REQUIRED WORK for row 58 — a lossless record frame class (erratum PE-57-05; D67).** The protocol
+has no lossless path today: every worker message that carries content goes through the lossy queue.
+Row 58 adds, in the package and the worker together:
+
+| # | Requirement | Source |
+|---|---|---|
+| R-1 | A new worker message class for **records**, handled inline in the supervisor beside `ACK` and never passed to the lossy queue. At least three records: **first durable fragment**, **fragment checkpoint** (index, bytes, chain values — row 59's `FragmentCheckpoint`, §A.5) and **seal completion** | `pair_57_navigator.md:329-332` |
+| R-2 | A **sequence number per session** on every record; a gap is a `PROTOCOL_VIOLATION` | `pair_57_navigator.md:333` |
+| R-3 | **"The file is the truth, the frame is a hint."** The record frame is not the authority: the box walk of §C.5 rebuilds the checkpoints from the camera file at RECOVERY. (Chosen over a supervisor-to-worker acknowledgement of the highest persisted sequence; cheaper, and it matches AU2-08) | D67; `pair_57_navigator.md:334-339` |
+| R-4 | Raise `CAPTURE_PROTOCOL_VERSION` if a worker of version 1 exists by then (the message set is a strict union) | `pair_57_navigator.md:340-343`; `packages/capture-protocol/src/index.ts:51`, `:283` |
+| R-5 | Row 58 also inherits: a listener that calls `stop()` from inside one of the supervisor's own events leaves a wrong phase (finish the transition first, then hand out the events); worker events of an ended session are dropped at session end, not delivered into the next one; a warning `subject` is restricted to the device IDs and mic roles of the plan (else `PROTOCOL_VIOLATION`) | pair-57 re-check N-1, N-2, N-3 (`pair_57_navigator.md:350-352`) |
+
+**Restart rule (erratum PE-57-06; D67 = option C per OD-08).**
+
+| Situation | Rule |
+|---|---|
+| Worker crash **before the first durable fragment** of a session | respawn with exponential back-off (the back-off budget above); after the budget `CAPTURE_FAULT` |
+| Worker crash **once the session has a durable fragment** | **no respawn.** The session goes to `FAULTED` and to the OD-08 interrupted seal of the durable prefix. **No respawned worker ever writes into an existing evidence file** |
+| Between sessions | a fresh worker per session, as before (S1 G-1, D10(b)) |
+| Until the worker reports durability (the lossless "first durable fragment" record, R-1) | **"`START` acknowledged" counts as "may be durable"**: no respawn after `RECORDING` |
+| Scope of the row-57 gate sentence "a killed worker respawns under the supervisor" | true before the first durable fragment and between sessions only |
+
+Why: a restarted worker gets the same output paths (`attempt >= 2`), and nothing in this spec says
+append or new segment; a truncating worker would destroy the durable prefix OD-08 wants sealed.
+Option A (attempt-suffixed segments joined at sealing) is OD-21's fallback path, reserved for a
+legal "no" to one whole file; option B (resume in the same file) needs a way to continue an fMP4 and
+its hash chain after a dropped tail, which no spike measured
+(`implementation/19_m3_supervisor_ipc.md:425-444`; `pair_57_navigator.md:380-404`). **State of the
+code today:** the supervisor still restarts inside a session and re-sends the same paths
+(`apps/core-server/src/capture/__tests__/liveness.test.ts:168`); the protocol header binds the worker
+never to truncate or overwrite an existing output file (`packages/capture-protocol/src/index.ts:39-44`).
+Row 58 implements the rule (one flag on the session set by the durable record, one more term in the
+give-up branch at `supervisor.ts:384-391`), renames that pin to "before the first durable fragment",
+adds its sibling test (after the durable record a crash goes to `FAULTED`, the launcher is not
+called again, `CAPTURE_FAULT` is raised once) and decides what a respawned worker does with a file
+that holds an init segment only (create the file at the first fragment, or allow replacing a file
+that holds no fragment). `stableAfterMs` (30 s) becomes close to unreachable inside a session.
 
 ---
 
@@ -386,14 +505,14 @@ item 4) and is recorded as a contract constant (CS-25).
 | Measured worst case | camera-like 10 s GOP (`-g 250 @ 25 fps`) killed at 7.0 s → file 1,248 B (`ftyp`+`moov` only), **0 s of durable media** | AU-2 §1 (`gop250_kill/`) |
 | Camera configuration requirement | at session start the Core sets the camera GOP (ONVIF `GovLength`) to the target (≤ 2.0 s) through `CameraAdapter` (class C, H-7), and the worker **verifies the observed keyframe interval** from the first fragments | AU2-08 |
 | When the observed GOP is too long | **OPEN (OP-GOP, routed to the M3 design row):** either (a) a `WARNING` on the existing capture-warning channel (a dedicated `CAPTURE_GOP_TOO_LONG` code would change the pinned error/audit counts and needs a contract row), or (b) a hard ceiling via `-frag_duration` (max fragment length) that accepts a mid-GOP cut (fragments without a keyframe, see the table above). Not decided here | AU2-08 |
-| Fake-camera fixture | M3 adds a long-GOP fake camera (`-g 250`) and kills it mid-GOP (check `M3-KC-4`, `10_test_strategy.md` §A.4) | AU2-08 |
+| Fake-camera fixture | M3 adds a long-GOP fake camera (`-g 250`) and kills it mid-GOP (check `M3-KC-4`, `10_test_strategy.md` §A.3) | AU2-08 |
 
 ### C.2 Flush vs fsync (SP-2) — what each level guarantees
 
 | Level | Guarantee | What the manifest may claim |
 |---|---|---|
 | Output buffering off, no flush | bytes appear only at writer close | nothing (S1 first smoke) |
-| `-flush_packets 1` | bytes visible per box-write to **other processes on the same OS**; probe size always equaled a fragment end (S1 §4.3) | "playable while growing" (M3); **not** crash-durability |
+| `-flush_packets 1` | bytes visible per box-write to **other processes on the same OS**; probe size always equaled a fragment end (S1 §4.3). **Erratum PE-111-04 (D66):** in the embedded worker this is the **muxer option `flush_packets=1`** set on each output context — it is REQUIRED WORK for row 58 (§A.2 W-2): the row-111 skeleton does not set it and both files stayed at 28 bytes (the `ftyp`, behind the 256 KB write buffer of the file protocol) from 1.2 s to 20.3 s, i.e. the crash-loss window was the whole session; with the option the files grow every second (`1231, 5131, 9725, 13104, ...`). Flushing alone is not enough when a camera stalls: see §A.2 W-3 (audio keeps fragmenting) | "playable while growing" (M3); **not** crash-durability |
 | per-fragment `fcntl(F_FULLFSYNC)` after each fragment hash record | survives an OS/power loss at the fragment boundary | durable-prefix claims; class-C OS-crash test |
 
 The default is: `-flush_packets 1` for the live-growth property, plus a per-fragment fsync policy
@@ -434,6 +553,22 @@ literal — the idiom is taken from `apps/core-server/src/engine/__tests__/stati
 forbidden text is built from fragments, so that this file does not contain it"). They are recorded
 by name as confirmed absences in `initialization/01_env_check.md:79` (and register W1-C1,
 `03_analysis.md` §F) and must never appear in a worker command.
+
+**`movflags` for the camera files — evaluation and forbidden options (erratum PE-111-02; D66).**
+The S1-pinned flags are `frag_keyframe+empty_moov+default_base_moof` (§C.1; `+skip_trailer`
+recommended, §C.6). With them the mov muxer deliberately moves each track's first sample to time 0
+and stretches its duration: the first video frame is placed at 0 and **held until the first
+keyframe after T0 — up to one GOP** (0.395 s and 0.555 s measured; up to 2 s at the S1 anchor, up
+to 10 s with the AU2-08 long-GOP camera). Every later sample is exact, so the AV offsets of §F are
+unaffected. Nothing in this spec pinned edit-list or negative-timestamp handling before this
+erratum.
+
+| Item | Rule for row 58 | Evidence |
+|---|---|---|
+| Evaluate `delay_moov` | Row 58 evaluates `+frag_keyframe+delay_moov+default_base_moof` — the only tested variant that times the first sample correctly (first video packet pts 31359, duration 1800; AAC priming trimmed by an edit list; offsets 80.0045 / −79.9955 ms; audio still byte-identical in both files; decode rc 0) — **against the S1 checks**: the file shape (the file is 0 bytes until the first fragment is cut, the `moov` depends on the first fragment, edit lists are present and readers must honour them, a camera that never sends a keyframe leaves no `moov` until close), the **running hash / fragment chain** (§C.3) and the **tail validation** (§C.5, AU2-08) | pair-111 §6 (`delegation_progress/pair_111_navigator.md:308-330`); D66 |
+| Fallback if any of those three checks fails | keep the **pinned flags**; document the **held first frame (up to one GOP)** as known muxer behaviour; record the **true first video pts** per camera file in the manifest (the worker already logs it as `video_started.first_pts`); exclude the first sample from the AV checks | `pair_111_navigator.md:331-333`; D66 |
+| **FORBIDDEN** with `empty_moov` | `use_editlist=1`, `negative_cts_offsets` and `avoid_negative_ts=disabled`. Each shifts the whole video track by about 450 ms (measured **446.58 / 454.35 / 452.52 ms** where +80 / −80 ms was injected) **while the file still decodes with rc 0**. A static rule in the worker (beside the AU2-07 rule) forbids the three; one of them is kept as a negative control for `M3-AV-1/2` | `pair_111_navigator.md:310-317`, `:334-337`; D66 |
+| Not available | "start the file on a keyframe with an aligned first dts": the one audio track is shared and the two cameras have different keyframe phases, so at most one file could start aligned | `pair_111_navigator.md:319-321` |
 
 ### C.5 Truncation / crash handling (drop-fragment rule)
 
@@ -544,6 +679,8 @@ The contract-value test (`contract-values.test.ts`, CS-25) pins them.
 | AV timeline | one timeline per file; assert the **relative** flash-to-beep offset, never absolute stream start times (the copy path shifts **both** streams by one AAC priming frame, 21.333 ms, which cancels); sample-exact measurement: aligned **0.00 ms** (+0.021 ms = one sample), +80 ms injection 80.021 ms, −80 ms injection −80.052 ms | AU-2 §3 (AU2-03); S4 §5 S4-1; S4 §0 |
 | AV tolerances (split, erratum AU2-04) | **Regression bound** (deterministic synthetic fixture, sample-exact analyser): \|measured − truth\| ≤ **2 ms** (≤ 1 AAC frame only if an analyser stays window-based, and then its resolution is reported next to every anchor). **Product / class-C bound**: ±40 ms stays the tolerance in force (row 9); an asymmetric bound from a published standard (EBU R37 / ITU-R BT.1359, audio-early tighter than audio-late) is **OPEN** until the documentation row verifies the standard text — the figures quoted by AU-2 were not re-verified online | AU-2 §3 ("Is the ±40 ms target logic sound?") |
 | Analyser resolution | the NM-14 analyser detects audio onset at **sample** resolution (first sample with \|x\| > threshold) and video onset on the frame pts; window-based onset detection is not allowed for anchors | AU2-03 |
+| Video anchoring and drift (**erratum PE-111-01**, D66) | Row 58 anchors **each video packet on its PRFT wall clock** (`AV_PKT_DATA_PRFT`, which libavformat attaches per packet from the latest RTCP sender report) instead of `start_time_realtime + pts`, with a **slew limit** and a monotonic-dts guard. It is identical to today's anchoring on the present fixtures and follows later reports automatically. **NOT adopted:** "re-anchor on later sender reports" as a drift fix with the present drift case expected to show a slope near 0 — the fixture's sender reports carry **no rate information** (`rtpenc` derives the SR RTP timestamp linearly from the host NTP time; `PRFT − pts` stayed constant within 1 µs over 31 s at ±200 ppm), so that test could never pass. The **arrival-vs-camera trend** (`arrival − PRFT`; fitted +165 / −217 ppm against a true ±200 on a loaded host, residuals up to 7.5 ms) is emitted as **telemetry only**, with a warning before the product bound; nothing is corrected from it. The present ±200 ppm case keeps its present expectation (the injected slope within the 2 ms regression bound: 2.0 ms at 10 s, about 6 ms at 30 s); a fixture whose sender reports express drift is added at row 62 (§A.8). **Long-session drift stays class C (C-9).** ASSUMPTION recorded: PRFT anchoring bounds drift only for a camera whose wall clock is disciplined against the Core (H-7 becomes a correctness dependency). HYPOTHESIS (not measured): with real devices the microphone sample clock is a third oscillator; any correction moves video timestamps only and never resamples the evidentiary audio | pair-111 §5 (`delegation_progress/pair_111_navigator.md:241-277`); `implementation/59_m3_worker_proofs.md:233-239` |
+| File time 0 (**erratum PE-111-06**, D66) | With the pinned flags, **file time 0 = T0 minus the AAC priming = T0 − 21.333 ms** (1,024 samples at 48 kHz): the priming samples are presented (no edit list) and the muxer shifts both tracks by the same amount. The AV offset is unaffected (the row above "AV timeline"). **Anything that maps file time to host time — the PCM tap, STT timestamps, R-8 — must add 1024/48000 s** (`07_transcript_spec.md` §A.2 "Timeline mapping"). Under `delay_moov` (§C.4) the priming is trimmed by an edit list and the term disappears, so the mapping constant must follow the flags row 58 adopts | pair-111 N-12 (`pair_111_navigator.md:225`): manifest onset sample 68,799 decodes at sample 69,823; decoded − input = 1,088 |
 
 The former statement "the measured pipeline skew of −1.333 ms is a bias of the copy path" is
 **withdrawn** (erratum AU2-03, D18): −1.333 ms was the 10 ms analysis-window quantisation of an
@@ -563,7 +700,7 @@ The new `capture/` module needs its own static guard, mirroring the 21 src guard
 
 | # | Rule | Rationale |
 |---|---|---|
-| G-R1 | Host modules (`src/modules/**`, `src/engine/**`, `src/plugins/**`, `src/core/**`) must not import `node:fs`, `node:child_process`, `node:net` or `node:worker_threads`; the worker boundary is the only door | preserves the engine's existing `OUTSIDE_WORLD` rule (`engine/__tests__/static.test.ts:29`) |
+| G-R1 | Host modules (`src/modules/**`, `src/engine/**`, `src/plugins/**`, `src/core/**`) must not import `node:fs`, `node:child_process`, `node:net` or `node:worker_threads`; the worker boundary is the only door. **Erratum PE-57-07 (D65(d)):** for `node:fs` the rule holds for every host file **except two that imported it before the capture layer existed** — `src/plugins/config/connection-file.ts` (the loader of the connection file; `:12`) and `src/plugins/logger/error-log.ts` (the persistent error log; `:26`). The guard pins **exactly those two** by name (`apps/core-server/src/capture/__tests__/static.test.ts:113`, `:120-122`); a third entry is a decision, not a habit. The two files are not refactored. No host file imports `node:child_process`, `node:net` or `node:worker_threads` (`static.test.ts:115-118`) | preserves the engine's existing `OUTSIDE_WORLD` rule (`engine/__tests__/static.test.ts:29`); pair-57 §8(c) |
 | G-R2 | `src/capture/**` may import `node:fs`/`node:child_process` **only in the pinned allowlist** `apps/core-server/src/capture/supervisor.ts` and `apps/core-server/src/capture/ipc.ts` (the files that own the supervisor spawn/handshake); every other file under `src/capture/**` — and any path that reads a signer key, `~/.omlx/settings.json`, `.data/pg.*` or a credential/key/env file — is denied; a test asserts no other `src/capture/**` file imports them | confines the OS side-effects to one reviewed, enumerated boundary (SEC35-25) |
 | G-R3 | `apps/capture-worker/**` may import `node:fs`/`node:child_process` freely; it must not import `@dems/shared/sim/**` beyond the public barrel | the worker is the one place that touches the OS |
 | G-R4 | No file may name a capture **key**, a key id, a credential or a signed-URL prefix in a log/audit call; the blanked forms are the credential-shaped values of §A.6 (camera credential `rtsp://user:pass@host`), the media token prefix `mts_` (`03_api_contract.md §7`) and the oMLX API key at `~/.omlx/settings.json` (SEC35-04/SEC35-13/SEC35-14) | E-31; CS-14 exact detail-key lists (no secret keys) |
@@ -602,27 +739,52 @@ The three frozen files are `apps/core-server/src/app.ts`, `apps/core-server/src/
 edits **only** in four categories: module registration, the `capture` seam, capture config keys,
 supervisor start/stop. Every covered edit:
 
-| # | File:line (anchor) | Category | Change |
-|---|---|---|---|
-| 1 | `apps/core-server/src/app.ts:93` | module registration | add `import { captureModule } from './capture';` and `import { captureConfigModule } from './modules/capture-config';` alongside the existing module imports (`app.ts:81-94`) |
-| 2 | `apps/core-server/src/app.ts:129` | the `capture` seam | add `capture: CaptureSupervisor;` to `interface Seams` (`app.ts:122-132`) |
-| 3 | `apps/core-server/src/app.ts:145` | the `capture` seam | add `capture: 'src/capture (capture module)',` to `SEAM_PROVIDERS` (`app.ts:136-146`) |
-| 4 | `apps/core-server/src/app.ts:245` | the `capture` seam | add `readonly capture: CaptureSupervisor;` to the `declare module 'fastify'` block (`app.ts:238-246`) |
-| 5 | `apps/core-server/src/app.ts:310` | module registration | add `['capture', captureModule],` and `['modules/capture-config', captureConfigModule],` to `UNITS` (`app.ts:289-311`) |
-| 6 | `apps/core-server/src/app.ts:354` | the `capture` seam | add `app.decorate('capture', { getter: () => seams.get('capture') });` to the decorator block (`app.ts:347-355`) |
-| 7 | `apps/core-server/src/config.ts:38` | capture config keys | add `ENV_CAPTURE_MODE = 'DEMS_CAPTURE_MODE'`, the worker command path key and the media-dir key next to the existing `ENV_*` (`config.ts:36-38`); E-05 path correction applies to `index.ts`, not here |
-| 8 | `apps/core-server/src/config.ts:162` | capture config keys | add `captureMode`, `captureWorkerPath`, `mediaStoreDir` to `CoreServerConfig` (`config.ts:147-163`) |
-| 9 | `apps/core-server/src/config.ts:227` | capture config keys | add the three capture fields to `ConfigInput` (`config.ts:216-228`) and validate/parse them |
-| 10 | `apps/core-server/src/config.ts:268` | capture config keys | set the three capture fields in the frozen object returned by `createConfig` (`config.ts:237-270`) |
-| 11 | `apps/core-server/src/index.ts:106` | supervisor start | start the supervisor after `await app.readiness.boot()` (`index.ts:106`) and before `await app.listen(...)` (`index.ts:107`) |
-| 12 | `apps/core-server/src/index.ts:83` | supervisor stop | stop the supervisor inside `shutdown()` before `await app.close()` (`index.ts:82-83`) |
+**Erratum PE-57-08 (D65, D68(b)).** The table below is the waived edit set **as it stands on
+2026-10-09**. Edits 1-6 and 11-12 are listed as landed by row 57, with the line numbers of the
+working tree at write time (the anchors of the 2026-10-07 text were pre-edit positions and are kept
+in `masterplan/11_audit_errata.md` §5). Edits 7-10 are not landed: `config.ts` has no diff, and
+their anchors are still the planned ones. **Edits 13 and 14 are new:** the import and the
+registration of `sttConfigModule`, written by row 113 and **waived by decision D68, which extends
+OD-14's module-registration category to `modules/stt-config`** (R-8 confirmed by D24; reviewed by
+the row-113 navigator: an import and one `UNITS` entry, no stage, seam, decorator or boot-order
+change). The line numbers move when a later waived edit lands above them; the authority for the set
+is the pin, not the number.
 
-**P25 edit count: 12 (6 in `app.ts`, 4 in `config.ts`, 2 in `index.ts`).**
+| # | File:line (as landed; planned for 7-10) | Category | Change | Landed by |
+|---|---|---|---|---|
+| 1 | `apps/core-server/src/app.ts:83` and `:90` | module registration | `import { captureModule, type CaptureSupervisor } from './capture';` (also names the type that edits 2 and 4 need) and `import { captureConfigModule } from './modules/capture-config';` | row 57 |
+| 2 | `apps/core-server/src/app.ts:141` | the `capture` seam | `capture: CaptureSupervisor;` in `interface Seams` | row 57 |
+| 3 | `apps/core-server/src/app.ts:156` | the `capture` seam | `capture: 'src/capture (capture module)',` in `SEAM_PROVIDERS` | row 57 |
+| 4 | `apps/core-server/src/app.ts:258` | the `capture` seam | `readonly capture: CaptureSupervisor;` in the `declare module 'fastify'` block | row 57 |
+| 5 | `apps/core-server/src/app.ts:324` and `:325` | module registration | `['capture', captureModule],` and `['modules/capture-config', captureConfigModule],` in `UNITS` | row 57 |
+| 6 | `apps/core-server/src/app.ts:371` | the `capture` seam | `app.decorate('capture', { getter: () => seams.get('capture') });` in the decorator block | row 57 |
+| 7 | `apps/core-server/src/config.ts:38` (planned) | capture config keys | add `ENV_CAPTURE_MODE = 'DEMS_CAPTURE_MODE'`, the worker command path key and the media-dir key next to the existing `ENV_*` (`config.ts:36-38`); E-05 path correction applies to `index.ts`, not here | row 58 (not landed) |
+| 8 | `apps/core-server/src/config.ts:162` (planned) | capture config keys | add `captureMode`, `captureWorkerPath`, `mediaStoreDir` to `CoreServerConfig` (`config.ts:147-163`) | row 58 (not landed) |
+| 9 | `apps/core-server/src/config.ts:227` (planned) | capture config keys | add the three capture fields to `ConfigInput` (`config.ts:216-228`) and validate/parse them | row 58 (not landed) |
+| 10 | `apps/core-server/src/config.ts:268` (planned) | capture config keys | set the three capture fields in the frozen object returned by `createConfig` (`config.ts:237-270`) | row 58 (not landed) |
+| 11 | `apps/core-server/src/index.ts:108` | supervisor start | `await app.capture.boot();` after `await app.readiness.boot()` (`index.ts:107`) and before `await app.listen(...)` (`index.ts:109`) | row 57 |
+| 12 | `apps/core-server/src/index.ts:83` | supervisor stop | `if (app.seams.has('capture')) await app.capture.shutdown();` inside `shutdown()` before `await app.close()` (`index.ts:84`); the guard covers a signal that arrives before `app.ready()` finished | row 57 |
+| 13 | `apps/core-server/src/app.ts:102` | module registration (OD-14 extended by **D68**) | `import { sttConfigModule } from './modules/stt-config';` | row 113 |
+| 14 | `apps/core-server/src/app.ts:323` | module registration (OD-14 extended by **D68**) | `['modules/stt-config', sttConfigModule],` in `UNITS` (before `capture`; the plugin opens no connection) | row 113 |
+
+**P25 edit count: 14 (8 in `app.ts`, 4 in `config.ts`, 2 in `index.ts`); 10 landed (1-6, 11-14), 4
+pending with row 58 (7-10).** Until 2026-10-09 this line read "12 (6 in `app.ts`, 4 in `config.ts`,
+2 in `index.ts`)".
 
 **Nothing else in those files changes.** No request stage, no route, no existing seam, no listener
 constant, no cookie name, no database field, no boot order, and no P25 header comment is touched
 except to record the waived edit set. Any other change to these three files is a `needs-review`
 against OD-14 and is out of scope for M3.
+
+The header of `app.ts` records the waived set, as the paragraph above permits: `app.ts:17-21` (the
+capture edits and, at `:20`, "Decision D68 extends OD-14 to the registration of
+`modules/stt-config` (task 3 row 113): waived edits 13 and 14") and the seam-table line `app.ts:50`.
+`git diff HEAD --numstat` on the three files: `app.ts` 16 added / 0 removed (10 code lines of edits
+1-6, 13, 14 and 6 header lines), `index.ts` 2 / 0, `config.ts` no diff. The pin is
+`apps/core-server/src/capture/__tests__/static.test.ts:208` (every line that mentions capture is one
+of the waived ones) and `:233` (with **every** waived added line taken out, `app.ts` is byte-equal to
+the file plan row W08 froze — a line nobody waived, of any module, fails there). Row 58 replaces the
+assertion that `config.ts` mentions capture nowhere when it lands edits 7-10.
 
 ---
 
@@ -643,7 +805,7 @@ falsify it.
 | H-7 | ONVIF discovery / profile listing / NTP set work against the target camera | Q-INSTALL item 6 permits an ONVIF npm after B2; no spike; class C-1 | class-C discovery lists no camera or NTP set is refused |
 | H-8 | USB is the correct microphone transport | OD-06 "USB working assumption"; transport fixed when mics are known | C-4 with the real mic shows a different transport |
 | H-9 | the four S1 command-shape traps are sufficient for a **pull** camera (S1 used listen/push) | RF-2: pull fixtures need MediaMTX (Q-INSTALL item 4); class C-2 | a real camera pull fails on a trap the synthetic push did not exercise |
-| H-10 | camera **video clock** (camera encoder / RTP timestamps, copied) and **host audio clock** (mic captured, selected and encoded on the Core) stay aligned at session start and do not drift beyond the AV tolerance within a session, in **both** camera files (added by AU2-06, D18) | S4 used one pusher and one clock for audio and video, so the two-clock DEMS topology was never measured; H-4 covers only the two-file fan-out | M3 check `M3-AV-2` (fake camera in a separate process with its own clock, injected ±80 ms and a slow drift, host-fed audio through the selector; flash/beep analysed per camera file) fails the regression bound; long-session drift stays class C-9 (pre-handover, D233) |
+| H-10 | camera **video clock** (camera encoder / RTP timestamps, copied) and **host audio clock** (mic captured, selected and encoded on the Core) stay aligned at session start and do not drift beyond the AV tolerance within a session, in **both** camera files (added by AU2-06, D18) | S4 used one pusher and one clock for audio and video, so the two-clock DEMS topology was never measured; H-4 covers only the two-file fan-out | M3 check `M3-AV-2` (fake camera in a separate process with its own clock, injected ±80 ms and a slow drift, host-fed audio through the selector; flash/beep analysed per camera file) fails the regression bound; long-session drift stays class C-9 (pre-handover, D233). **Erratum PE-111-01 / PE-111-05 (D66):** row 111 proved the timestamp path (sample-exact offsets, drift reported, negative controls fail) but two limits remain for `M3-AV-2`: the fake mics must be a **separate process** (§A.8), and the present fixture cannot express a second oscillator through its sender reports, so a slope near 0 may be expected only from the row-62 fixture (§F) |
 
 The MVP recommendation of section C.1 (keyframe-aligned fragments) is **not** a hypothesis: it is
 measured (S1 §6.5). The *choice* of which pairing becomes the contract constant is a decision
@@ -657,11 +819,12 @@ reserved for the M0 spec gate.
 |---|---|
 | NM-01..NM-05, NM-09, NM-10, NM-14 each have **interface + failure modes + test hook** | **9/9** (A.1–A.8 = 8 module IDs; section B = the ninth interface, `CaptureSupervisor`, with its own interface/failure/test hook) |
 | Every mechanism cites **row 7 / 8 / 9 / 15 or is labelled hypothesis** | **PASS** — no uncited mechanism; the ten items that could not be cited are in section J with falsifiers (H-10 added by the AU-2 errata, D18) |
-| Every P25 edit listed by **file:line** | **12/12** (section I: 6 × `app.ts`, 4 × `config.ts`, 2 × `index.ts`), each in one of OD-14's four categories |
+| Every P25 edit listed by **file:line** | **14/14** (section I: 8 × `app.ts`, 4 × `config.ts`, 2 × `index.ts`), each in one of OD-14's four categories — **erratum PE-57-08:** 12/12 (6 × `app.ts`) until 2026-10-09; edits 13-14 are the `modules/stt-config` registration waived by D68 |
 | No non-existent muxer option appears anywhere in the document | **PASS (empty)** — section C.4 writes the three absent names only in bracketed form (`frag_typ[e]`, `default_prf[t]`, `frag_start_numbe[r]`, the repo's own guard idiom at `engine/__tests__/static.test.ts:15`); `grep` of this file returns nothing (see below) |
 | Every design choice cites a file:line / spike section / decision ID / register row | **PASS** — section 0, sections A–J |
 | Row-35 security remediation applied (SEC35-04/08/09/10/23/25) | §A.2/§A.4/§A.8 (RTSP ingest + fixture bind pinned to `127.0.0.1`, check `M3-RTSP-BIND-1`), §A.6 (credential-URL handling), §D.1 (GCM AAD), §D.2 (key store + key-loss decision), §G (G-R2 pinned allowlist, G-R4 blanked forms) — **PASS**; NM 9/9, P25 12/12 and H-1..H-9 counts unchanged (H-10 added later by the AU-2 errata) |
 | AU-2 errata applied (AU2-03/04/05/06/07/08; D18; `masterplan/11_audit_errata.md`) | §0, §A.7, §A.8, §C.1, §C.5, §E, §F, §J — **PASS**; NM 9/9 and P25 12/12 unchanged; hypotheses **H-1..H-10**; open points OP-GOP (§C.1) and OP-CLICK (§E) routed |
+| Pair-review errata applied (rows 57, 111, 113; PE-57-01..10, PE-111-01..07; D65-D68; `masterplan/11_audit_errata.md` §5) | §0, §A.2, §A.3, §A.4, §A.8, §B.1, §B.2, §C.2, §C.4, §F, §G, §I, §J — **PASS**; NM 9/9 unchanged; P25 **14/14** (was 12/12); hypotheses H-1..H-10 unchanged in number; forbidden-muxer grep still empty |
 | No emoji; English; tables over prose; no files edited outside the task folder | **PASS** |
 
 Self-gate grep (run against this file, bracketed pattern so the pattern text is itself not a
@@ -678,4 +841,4 @@ non-matching text in section C.4; no command, option table or interface in this 
 
 ---
 
-*Generated: 2026-10-07 · Last Updated: 2026-10-08 (RV-SPEC audit errata AU2-03..AU2-08, D18; earlier: row-35 security remediation SEC35-04/08/09/10/23/25)*
+*Generated: 2026-10-07 · Last Updated: 2026-10-09 (pair-review errata PE-57-01..10 and PE-111-01..07, D65-D68; earlier: 2026-10-08 RV-SPEC audit errata AU2-03..AU2-08, D18; row-35 security remediation SEC35-04/08/09/10/23/25)*

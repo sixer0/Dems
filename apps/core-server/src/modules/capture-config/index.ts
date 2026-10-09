@@ -16,11 +16,9 @@
  *
  * WHAT THIS MODULE DOES NOT DO YET. It registers no route: operations 76 to 80 and 89 answer from
  * this store when their live paths land (row 66 / M4-W2), and supervisor telemetry updates it when
- * the capture seam lands (row 57 / M3-W1, SH-18). Like every unit here it is registered by
- * `app.ts`, which is frozen under P25: the row that adds the registration is the row that owns the
- * edit (row 57's P25 waiver covers the `app.ts`/`index.ts` edits). Until then the plugin is
- * exported ready to mount and the module's code is exercised directly by its tests - which is also
- * exactly how this row's Verification asks for it: "boot with FAKES/in-memory".
+ * the engine has the INTERNAL actions for it (SH-18). It is REGISTERED by `app.ts` since blueprint
+ * row 57 (the OD-14 waiver of P25; capture spec §I edits 1 and 5): its boot step runs at every
+ * start of the server, after the steps of the units registered before it.
  *
  * The plugin function opens no database connection: `buildApp()` works without PostgreSQL.
  */

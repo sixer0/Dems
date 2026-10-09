@@ -95,13 +95,16 @@ describe('MODG: the route list of the module equals its registry operations', ()
     console.info(`[w36] MODG registry, operations 44 to 52:  ${fromRegistry.join(' | ')}`);
   });
 
-  it('the area of the registry: these nine operations plus the six of the capture-config module (row 52/66), in registry order', () => {
+  it('the area of the registry: these nine operations plus the six of the capture-config module (row 52/66) and the three of the STT configuration module (row 113), in registry order', () => {
     const area = CORE_API_OPERATIONS.filter((operation) => operation.tag === CoreApiTag.DEVICE);
     // Schema v2 (C3 §2.2): the Device tag grew by operations 76 to 80 and 89 - the selector and
     // the credential write, which the capture-config module answers (row 66), not this one. The
     // module's nine stay the first entries of the area, in registry order.
     const CAPTURE_CONFIG_AREA = ['getCaptureConfig', 'getCaptureDevices', 'updateCaptureConfig', 'setCaptureCameraSource', 'setPrimaryMic', 'setCaptureDeviceCredential'];
-    expect(area.map((operation) => operation.operationId)).toEqual([...DEVICES_OPERATIONS, ...CAPTURE_CONFIG_AREA]);
+    // Blueprint row 113 (C3 §2.5): operations 90 to 92 carry the Device tag too and are answered by
+    // `modules/stt-config`, not by this module.
+    const STT_CONFIG_AREA = ['getSttConfig', 'updateSttConfig', 'testSttConnection'];
+    expect(area.map((operation) => operation.operationId)).toEqual([...DEVICES_OPERATIONS, ...CAPTURE_CONFIG_AREA, ...STT_CONFIG_AREA]);
     expect(area.map(operationNumber).slice(0, DEVICES_OPERATIONS.length)).toEqual([null, null, null, 47, 48, 49, 50, 51, 52]);
     expect(area.slice(0, 3).map((operation) => operation.source)).toEqual(['Design book §21.2', 'Design book §21.2', 'Design book §21.2']);
     for (const operationId of DEVICES_OPERATIONS) expect(operationOf(operationId).operationId).toBe(operationId);

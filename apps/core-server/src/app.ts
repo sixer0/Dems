@@ -14,6 +14,11 @@
  *    A unit's plugin function opens no database connection; work that needs the database at
  *    start is a boot step (`app.readiness.addBootStep`).
  *
+ *    WAIVED EDITS (task 3, decision OD-14; capture spec §I edits 1 to 6). Registered after the
+ *    fourteen: the unit `capture` (the supervisor of the capture worker) and the module
+ *    `modules/capture-config`. The seam `capture` joins the list of mechanism 3.
+ *    Decision D68 extends OD-14 to the registration of `modules/stt-config` (task 3 row 113): waived edits 13 and 14.
+ *
  * 2. REQUEST STAGES (spec §2.3). One `onRequest` hook runs five handlers in this order and
  *    stops at the first that refuses. They run before the body is read, so a refusal never
  *    depends on request data and wins over a malformed body.
@@ -42,6 +47,7 @@
  *      engine                         engine                  W26
  *      deviceResolver                 modules/pairing         W32
  *      publish                        realtime                W42
+ *      capture                        capture                 task 3 (OD-14 waiver)
  *      readiness                      plugins/readiness       W08 (decorated directly)
  *
  *    The types live in the owning unit's `index.ts`, so the owner can extend them without an
@@ -74,12 +80,14 @@ import Fastify, {
   type FastifyRequest,
 } from 'fastify';
 import { serializerCompiler, validatorCompiler } from 'fastify-type-provider-zod';
+import { captureModule, type CaptureSupervisor } from './capture';
 import { BODY_LIMIT_BYTES, type CoreServerConfig } from './config';
 import { corePlugin, type AuditWriter, type Clock, type Pipeline } from './core';
 import { enginePlugin, type EngineHost } from './engine';
 import { isTestConfiguration } from './test-configuration';
 import { adminModule } from './modules/admin';
 import { alertsModule } from './modules/alerts';
+import { captureConfigModule } from './modules/capture-config';
 import { demoModule } from './modules/demo';
 import { devicesModule } from './modules/devices';
 import { evidenceModule } from './modules/evidence';
@@ -91,6 +99,7 @@ import { rbacModule } from './modules/rbac';
 import { securityAuditModule } from './modules/security-audit';
 import { sessionsModule } from './modules/sessions';
 import { storageModule } from './modules/storage';
+import { sttConfigModule } from './modules/stt-config';
 import { systemModule } from './modules/system';
 import { ANONYMOUS_PRINCIPAL, authenticatePlugin, type Principal } from './plugins/authenticate';
 import { dbPlugin, type Database, type PoolFactory } from './plugins/db';
@@ -129,6 +138,7 @@ export interface Seams {
   engine: EngineHost;
   deviceResolver: DeviceResolver;
   publish: Publish;
+  capture: CaptureSupervisor;
 }
 export type SeamName = keyof Seams;
 
@@ -143,6 +153,7 @@ export const SEAM_PROVIDERS = {
   engine: 'src/engine (W26)',
   deviceResolver: 'src/modules/pairing (W32)',
   publish: 'src/realtime (W42)',
+  capture: 'src/capture (capture module)',
 } as const;
 
 // ── Request stages ─────────────────────────────────────────────────────────────────────────────
@@ -244,6 +255,7 @@ declare module 'fastify' {
     readonly engine: EngineHost;
     readonly deviceResolver: DeviceResolver;
     readonly publish: Publish;
+    readonly capture: CaptureSupervisor;
   }
 
   interface FastifyRequest {
@@ -308,6 +320,9 @@ const UNITS: ReadonlyArray<readonly [name: string, plugin: FastifyPluginAsync]> 
   ['modules/system', systemModule],
   ['modules/alerts', alertsModule],
   ['modules/demo', demoModule],
+  ['modules/stt-config', sttConfigModule],
+  ['capture', captureModule],
+  ['modules/capture-config', captureConfigModule],
 ];
 
 export function buildApp(options: BuildAppOptions): FastifyInstance {
@@ -353,6 +368,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   app.decorate('engine', { getter: () => seams.get('engine') });
   app.decorate('deviceResolver', { getter: () => seams.get('deviceResolver') });
   app.decorate('publish', { getter: () => seams.get('publish') });
+  app.decorate('capture', { getter: () => seams.get('capture') });
   // A request decorator cannot start as an object; the first hook below sets the real value.
   app.decorateRequest<Principal, 'principal'>('principal', null as unknown as Principal);
 

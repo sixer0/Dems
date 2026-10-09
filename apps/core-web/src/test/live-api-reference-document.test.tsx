@@ -13,7 +13,7 @@
 // | AR-3, AC-C-100 Live: 75 operations, every one LIVE, served from the page origin only | "AR-3: the Live document" |
 // | AR-5 Live examples take the session and evidence identifiers from the replica | "AR-5" |
 // | AR-3, AC-C-100 Live Try-it: `{page origin}/api/v1/*` to the network with the cookie, never the simulator; a URL outside it rejected | "AR-3: Try-it in Live mode" |
-// | AR-3a, AC-C-103 the six operations rejected before a request, also when spelled otherwise | "AR-3a" |
+// | AR-3a, AC-C-103 the eight operations (six of 01_specs §7.7, ops 89 and 91 of task 3) rejected before a request, also when spelled otherwise | "AR-3a" |
 // | AR-9, AC-C-103, AC-C-107 the page's log holds method, path and status only; no marker password, pairing code or bearer value | "AR-9" |
 // | AR-7 the Realtime panel's Live entries: by type, no payload, meters as a rate | "AR-7: the Live frame tap" |
 import { act, renderHook } from '@testing-library/react'
@@ -129,18 +129,20 @@ function assertLogDiscipline(): void {
 }
 
 describe('AR-2: the Simulated views (AC-C-100)', () => {
-  it('the default view is the document of before: 23 operations, byte-equal to `buildApiDocument(true)`', () => {
+  it('the default view is the document of before: 26 operations, byte-equal to `buildApiDocument(true)`', () => {
     const view = buildApiDocumentFor({ mode: 'simulated', includeSimulated: true, includeCoreServer: false })
-    expect(countOperations(view)).toBe(23)
+    // Task 3 M6 row 113 (C3 §2.5): the three simulated STT configuration operations 90-92 join the offline scope, 23 -> 26.
+    expect(countOperations(view)).toBe(26)
     expect(serializeOpenApiDocument(view)).toBe(serializeOpenApiDocument(buildApiDocument(true)))
     expect(apiDocumentJsonFor({ mode: 'simulated', includeSimulated: true, includeCoreServer: false })).toBe(apiDocumentJson(true))
     expect(apiDocumentJsonFor({ mode: 'simulated', includeSimulated: false, includeCoreServer: false })).toBe(apiDocumentJson(false))
   })
 
-  it('"Show Core-server endpoints" lists 89: the 23 unchanged, the other 66 with CORE SERVER in place of LIVE', () => {
+  it('"Show Core-server endpoints" lists 92: the 26 unchanged, the other 66 with CORE SERVER in place of LIVE', () => {
     const plain = buildApiDocument(true)
     const view = buildApiDocumentFor({ mode: 'simulated', includeSimulated: true, includeCoreServer: true })
-    expect(countOperations(view)).toBe(89)
+    // The registry total of C3 §2.5 (89 + ops 90-92); the Core-server-only count stays 66.
+    expect(countOperations(view)).toBe(92)
     expect(CORE_SERVER_ONLY_OPERATIONS).toHaveLength(66)
     const coreOnly = new Set(CORE_SERVER_ONLY_OPERATIONS.map((operation) => operation.operationId))
     for (const [operationId, badges] of badgesOf(view)) {
@@ -193,7 +195,7 @@ describe('AR-2: Try-it in Simulated mode (AC-C-100)', () => {
     },
   )
 
-  it('the 23 route as before with the switch on: health to the network, the 22 to the simulator', async () => {
+  it('the 26 route as before with the switch on: health to the network, the 25 to the simulator', async () => {
     const { request, networkFetch, fetch } = await harness(CORE_ONLY)
     await fetch(`${CORE_HTTP_ORIGIN}/api/v1/health`)
     expect(networkFetch).toHaveBeenCalledTimes(1)
@@ -201,7 +203,7 @@ describe('AR-2: Try-it in Simulated mode (AC-C-100)', () => {
       const response = await fetch(new Request(`${CORE_HTTP_ORIGIN}${operation.path.replace('{id}', 'SES-20261001-0001')}`, { method: operation.method.toUpperCase(), ...(operation.method === 'post' ? { body: '{}' } : {}) }))
       expect(response.headers.get('x-dems-simulated'), operation.operationId).toBe('1')
     }
-    expect(request).toHaveBeenCalledTimes(22)
+    expect(request).toHaveBeenCalledTimes(25)
   })
 
   it('without the switch nothing changes: a Core-server path is the simulator\'s answer, as before', async () => {
@@ -229,9 +231,9 @@ describe('AR-2: Try-it in Simulated mode (AC-C-100)', () => {
 describe('AR-3: the Live document (AC-C-100)', () => {
   beforeEach(() => setCoreEndpointMode('LIVE'))
 
-  it('89 operations, every one LIVE, served from the page\'s own origin and from nowhere else', () => {
+  it('92 operations, every one LIVE, served from the page\'s own origin and from nowhere else', () => {
     const document = buildLiveApiDocument(NO_REPLICA_IDENTIFIERS)
-    expect(countOperations(document)).toBe(89)
+    expect(countOperations(document)).toBe(92)
     for (const [operationId, badges] of badgesOf(document)) expect(badges[0], operationId).toBe('LIVE')
     expect(document.servers.map((server) => server.url)).toEqual([PAGE])
     expect(document.info.version).toBe('0.3.0')
@@ -325,14 +327,16 @@ describe('AR-3: Try-it in Live mode (AC-C-100)', () => {
     ])
   })
 
-  it('every one of the 83 operations that are not denied goes to the network (the 22 design-book ones too)', async () => {
+  it('every one of the 84 operations that are not denied goes to the network (the simulated ones too)', async () => {
     const { fetch, networkFetch } = liveHarness()
     const allowed = CORE_API_OPERATIONS.filter((operation) => !(TRY_IT_DENIED_OPERATIONS as readonly string[]).includes(operation.operationId))
-    expect(allowed).toHaveLength(83)
+    // 92 of the registry (C3 §2.5) minus the eight of AR-3a (six of 01_specs §7.7, and operations 89
+    // and 91 of task 3: row 113 fix round 1, navigator finding N-2).
+    expect(allowed).toHaveLength(84)
     for (const operation of allowed) {
       await fetch(new Request(`${PAGE}${operation.path.replace('{id}', 'X-1')}`, { method: operation.method.toUpperCase() }))
     }
-    expect(networkFetch).toHaveBeenCalledTimes(83)
+    expect(networkFetch).toHaveBeenCalledTimes(84)
   })
 
   it.each([
@@ -375,7 +379,7 @@ describe('AR-3: Try-it in Live mode (AC-C-100)', () => {
 
 const HEALTH_RELATIVE = '/api/v1/health'
 
-describe('AR-3a: the six operations are rejected before a request (AC-C-103)', () => {
+describe('AR-3a: the eight operations are rejected before a request (AC-C-103)', () => {
   beforeEach(() => setCoreEndpointMode('LIVE'))
 
   /** A body that carries every marker of AC-C-107. */
@@ -390,6 +394,34 @@ describe('AR-3a: the six operations are rejected before a request (AC-C-103)', (
     expect(networkFetch).not.toHaveBeenCalled()
     expect(webErrorSink.records().at(-1)).toMatchObject({ source: 'ApiReference.liveTryIt.denied', context: { method: 'POST', path: pathOf(operationId) } })
     assertLogDiscipline()
+  })
+
+  // Task 3 row 113, fix round 1 (navigator finding N-2; decision AR-3a 6 -> 8): the two operations of
+  // task 3 whose request body holds a credential. Their registry texts say "no Try it"; this is the control.
+  it.each([
+    ['updateSttConfig', '/api/v1/transcription/config', { revision: 1, credential: { kind: 'SECRET', value: MARKER_PASSWORD } }],
+    ['setCaptureDeviceCredential', '/api/v1/capture/devices/CAM-01/credential', { username: 'onvif', secret: MARKER_PASSWORD }],
+  ] as const)('N-2: %s (a credential in the body) never reaches the network', async (operationId, path, body) => {
+    expect(TRY_IT_DENIED_OPERATIONS as readonly string[]).toContain(operationId)
+    const networkFetch = vi.fn<FetchLike>(async () => new Response('{}'))
+    const fetch = createLiveTryItFetch({ secretRefusal: SECRET, networkFetch })
+    for (const spelling of [path, `${path}/`, path.toUpperCase().replace('/API/V1', '/api/v1')]) {
+      const call = fetch(new Request(`${PAGE}${spelling}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }))
+      await expect(call, spelling).rejects.toBeInstanceOf(TryItRefusedError)
+      await expect(call, spelling).rejects.toMatchObject({ message: SECRET, reason: 'SECRET' })
+    }
+    expect(networkFetch).not.toHaveBeenCalled()
+    assertLogDiscipline()
+  })
+
+  it('N-2: the deny list holds eight; the read and the test of the STT configuration, which carry no credential, still go to the network', async () => {
+    expect(TRY_IT_DENIED_OPERATIONS).toHaveLength(8)
+    const networkFetch = vi.fn<FetchLike>(async () => new Response('{}'))
+    const fetch = createLiveTryItFetch({ secretRefusal: SECRET, networkFetch })
+    await fetch(new Request(`${PAGE}/api/v1/transcription/config`))
+    await fetch(new Request(`${PAGE}/api/v1/transcription/config/test`, { method: 'POST' }))
+    await fetch(new Request(`${PAGE}/api/v1/capture/config`))
+    expect(networkFetch).toHaveBeenCalledTimes(3)
   })
 
   it.each([

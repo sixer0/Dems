@@ -419,6 +419,10 @@ export const AuditType = {
   EVIDENCE_EXPORT_FAILED: 'EVIDENCE_EXPORT_FAILED',
   CAPTURE_CREDENTIAL_SET: 'CAPTURE_CREDENTIAL_SET',
   CAPTURE_CREDENTIAL_REVEALED: 'CAPTURE_CREDENTIAL_REVEALED',
+  // Task 3 M6 (blueprint row 113; `C3 §2.5`; R-8, D20/D24): written by operation 91 on success
+  // only. Its exact detail keys name the changed FIELDS plus `credentialChanged` — never a value of
+  // the endpoint, the model path, the credential or its reference target (E-30/E-31; SEC35-14).
+  STT_CONFIG_CHANGED: 'STT_CONFIG_CHANGED',
 } as const;
 export type AuditType = ValueOf<typeof AuditType>;
 
@@ -488,6 +492,8 @@ export const AUDIT_TYPE_CATEGORY = {
   EVIDENCE_EXPORT_FAILED: 'EVIDENCE',
   CAPTURE_CREDENTIAL_SET: 'SECURITY',
   CAPTURE_CREDENTIAL_REVEALED: 'SECURITY',
+  // Task 3 M6 (row 113; `C3 §2.5`): one entry, in an EXISTING category.
+  STT_CONFIG_CHANGED: 'DEVICE',
 } as const satisfies Record<AuditType, AuditCategory>;
 
 // ── Operational events (Recent Events, bell, timeline sources) ──────────────────────────

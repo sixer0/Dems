@@ -16,7 +16,7 @@ source_analysis: /Users/gsp-budi/Documents/DEMS/docs/2026-10-07_dems_real_captur
 source_functional_check: /Users/gsp-budi/Documents/DEMS/docs/2026-10-07_dems_real_capture_sealing/research/10_spike_stt_functional_check.md
 source_spec: /Users/gsp-budi/Documents/DEMS/docs/2026-10-07_dems_real_capture_sealing/masterplan/01_specs.md
 decisions: /Users/gsp-budi/Documents/DEMS/docs/2026-10-07_dems_real_capture_sealing/decisions/decisions.md (D4, D7, D10, D12)
-last_updated: 2026-10-08 (RV-SPEC: errata AU3-01/AU2-01/AU2-02 on the cpu-local path; proposed §B.7 R-8 STT configuration, D20; 2026-10-07 row-35 remediation SEC35-14/22)
+last_updated: 2026-10-09 (status sweep PE-R8-09..11: §B.7 R-8 CONFIRMED by D24, Q-STT-CFG answer (a)); 2026-10-09 (pair-review erratum PE-111-08: pointer in §A.2 to the file-time-0 rule of the capture spec, D66); 2026-10-08 (RV-SPEC: errata AU3-01/AU2-01/AU2-02 on the cpu-local path; §B.7 R-8 STT configuration added as a proposal, D20; 2026-10-07 row-35 remediation SEC35-14/22)
 ---
 
 # Transcript Spec — VAD chunking, CPU STT, 2-speaker diarization, signed revisions
@@ -35,8 +35,8 @@ last_updated: 2026-10-08 (RV-SPEC: errata AU3-01/AU2-01/AU2-02 on the cpu-local 
 > AU-3/AU-2): the CPU-only path is **not** proven by row 12 (row 12 ran on the Apple GPU,
 > `Device(gpu, 0)`); `cpu-local` is now specified as built from source under `.cache/` with GPU
 > backends off, the model converted in the isolated `.cache/` venv, and proven on this Mac 2 + 1
-> (§B.3). **Nothing of either backend is coded yet.** D20: R-8 STT configuration (§B.7, proposed,
-> pending Q-STT-CFG).
+> (§B.3). **Nothing of either backend is coded yet.** D20: R-8 STT configuration (§B.7, confirmed by
+> D24, Q-STT-CFG answer (a); Erratum PE-R8-10).
 > This spec is row 33 of the M0 masterplan; it is checked against `research/03_analysis.md` (the
 > register) and `masterplan/01_specs.md`. It **consumes** the audio-source intervals defined by
 > blueprint rows 29/31 (§E.2, §E.4) and the sealing pipeline of row 32; it does not redefine them.
@@ -129,7 +129,7 @@ Cross-ref only (not duplicated here): the mic-switch mechanism and interval rows
 | Runtime | ONNX route runs on `onnxruntime` + `numpy`, no torch; ggml route runs inside whisper.cpp | `coll4` F-92 |
 | Chunk boundaries | Speech intervals from Silero; long speech auto-split at silence above 98 ms; consecutive chunks overlap 0.10 s; padding 30 ms | `coll4` F-132, F-22 |
 | Max chunk length | `VAD_MAX_CHUNK_MS` = 30 s window | `coll4` F-127, F-133 |
-| Timeline mapping | Chunk `start_ms`/`end_ms` are media-pts offsets relative to `AUDIO-01`, so a transcript segment replays against the video; boundaries snap to the **AAC frame grid** (>= 1 frame = 21.333 ms) | `coll3` F-44 (1024/48000 s), F-46; S2 §0; row12 §6 (timestamps track the turn structure within +/-0.5 s) |
+| Timeline mapping | Chunk `start_ms`/`end_ms` are media-pts offsets relative to `AUDIO-01`, so a transcript segment replays against the video; boundaries snap to the **AAC frame grid** (>= 1 frame = 21.333 ms). **Pointer (erratum PE-111-08, D66):** the PCM tap counts samples from the host instant T0, but with the pinned fMP4 flags **file time 0 = T0 − 21.333 ms** (the 1,024 AAC priming samples are presented), so a tap sample index `n` lies at media time `(n + 1024) / 48000` s — the mapping adds 1024/48000 s, or 0 if row 58 adopts `delay_moov`; rule and evidence in `05_capture_architecture_spec.md` §F "File time 0" and §C.4 | `coll3` F-44 (1024/48000 s), F-46; S2 §0; row12 §6 (timestamps track the turn structure within +/-0.5 s); pair-111 N-12 |
 | Why VAD owns granularity on the Mac path | The `qwen3-asr` engine returns **one segment for the whole file**; per-turn timestamps therefore require pre-chunking upstream | row12 §4.3, §8.2 |
 | Output | Ordered chunk list `{chunk_index, start_ms, end_ms}`, each carrying its audio-source interval | A.1 |
 | Checkpoint | The chunk-boundary table is persisted **before** the chunk is decoded (boundaries are deterministic given sealed audio) | `coll4` F-131; row12 §9.2 (re-run must anchor on the sealed fixture bytes) |
@@ -261,12 +261,12 @@ reuse the **sealed fixture bytes** (generation is non-deterministic per request)
 (GPL-3) fixture is a fallback generator only (see F). Citations: row12 §2.1-2.4, §8.7, §9.2; `coll4`
 licence table; `specs` §E.3.
 
-### B.7 STT configuration — enable/disable, backend, endpoint (PROPOSED — pending Q-STT-CFG confirmation at the second gate; R-8, D20)
+### B.7 STT configuration — enable/disable, backend, endpoint (CONFIRMED — D24, Q-STT-CFG answer (a); R-8, D20) **Erratum PE-R8-11 (D24)**
 
-> **Status: proposed.** Implements R-8 (`specs` R-8; D20). Operations 90-92 (`03_api_contract.md
+> **Status: confirmed (D24, 2026-10-08: Q-STT-CFG answered (a), all 13 defaults).** Implements R-8 (`specs` R-8; D20). Operations 90-92 (`03_api_contract.md
 > §2.5`), table `stt_config` (`04_database_contract.md §B.13`), manifest fields (`06_evidence_package_spec.md
 > §B.7a`), web menu and read-only mobile status (`08_client_ux_spec.md §8a`), conditional checks
-> (`10_test_strategy.md §A.6a`). Nothing here is counted or scheduled until Q-STT-CFG is confirmed.
+> (`10_test_strategy.md §A.6a`). Counted and scheduled as the R-8 rows of blueprint rev 2.1 (D24; **Erratum PE-R8-11**, status wording only).
 
 | Rule | Contract | Citation |
 |---|---|---|
@@ -453,4 +453,4 @@ self-gate table's own quotation of the pattern. No match asserts a figure.
 ---
 
 *Generated: 2026-10-07 17:05*
-*Last Updated: 2026-10-08 (RV-SPEC errata AU3-01/AU2-01/AU2-02 + proposed §B.7 R-8; earlier: row-35 security remediation SEC35-14; SEC35-22 cross-ref)*
+*Last Updated: 2026-10-09 (status sweep PE-R8-09..11: §B.7 R-8 confirmed by D24); 2026-10-09 (pair-review erratum PE-111-08, pointer only, §A.2); 2026-10-08 (RV-SPEC errata AU3-01/AU2-01/AU2-02 + §B.7 R-8 added as a proposal; earlier: row-35 security remediation SEC35-14; SEC35-22 cross-ref)*

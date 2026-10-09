@@ -15,10 +15,10 @@ source_structured_task: /Users/gsp-budi/Documents/DEMS/docs/2026-10-07_dems_real
 source_analysis: /Users/gsp-budi/Documents/DEMS/docs/2026-10-07_dems_real_capture_sealing/research/03_analysis.md
 source_phase_spec: /Users/gsp-budi/Documents/DEMS/docs/2026-10-07_dems_real_capture_sealing/masterplan/01_specs.md
 decisions: /Users/gsp-budi/Documents/DEMS/docs/2026-10-07_dems_real_capture_sealing/decisions/decisions.md (D4-D12)
-last_updated: 2026-10-08 (RV-SPEC: errata AU2-07/AU2-08; proposed ops 90-92 for R-8 pending Q-STT-CFG, §2.5 — registry stays 89 until confirmed; 2026-10-07 row-35 remediation, op 89 added)
+last_updated: 2026-10-09 (pair-review errata PE-113-01..PE-113-14, `masterplan/11_audit_errata.md` §5: R-8 ops 90-92 CONFIRMED by D24 and COUNTED — registry 92, 35 GET / 57 POST, audit types 63, offline 26; row-113 driver choices recorded, D68; earlier: 2026-10-08 RV-SPEC errata AU2-07/AU2-08 and §2.5 added as a proposal; 2026-10-07 row-35 remediation, op 89 added)
 ---
 
-# API Contract C3 — operations 76-89, modified operations, error codes, audit types, slices and constants
+# API Contract C3 — operations 76-92, modified operations, error codes, audit types, slices and constants
 
 > **This is the contract, not the code change.** It names what M2 must build in
 > `packages/shared/src/api/*`, `packages/shared/openapi/openapi.json` and the pinned-count tests.
@@ -101,10 +101,10 @@ new audit type (§5), as the predecessor required (`specs` §13.1 idiom).
 | Item | Value |
 |---|---|
 | Existing registry (all scope) | **75 operations**, 27 GET / 48 POST (`core-api.ts:51`; `apps/core-server/test/acceptance/contract.test.ts:374-380`) |
-| New operations this phase | **14**, numbered **76-89** (13 from the blueprint + op 89 added by the SEC35-01 remediation) |
+| New operations this phase | **14**, numbered **76-89** (13 from the blueprint + op 89 added by the SEC35-01 remediation), **plus 3**, numbered **90-92** (R-8, §2.5; confirmed D24) = **17** — **erratum PE-113-02** |
 | Modified operations (of the 75) | **24** substantive (§3, 22 table rows; the `72/73/74` row modifies three), each with before/after |
-| New registry total | **89 operations**; projected **34 GET / 55 POST** |
-| Proposed, not counted (R-8, D20) | ops **90-92** (§2.5) pending Q-STT-CFG at the second gate; if confirmed the total becomes **92 (35 GET / 57 POST)** and audit types **63** |
+| New registry total | **92 operations**, **35 GET / 57 POST** — **erratum PE-113-02 (D24):** 89 (34 GET / 55 POST) was the M2 total for ops 76-89; ops 90-92 (1 GET + 2 POST) joined it at M6 row 113. Pinned by `packages/shared/test/api-registry.test.ts:285` (92) and `packages/shared/test/api-openapi-scope.test.ts:297-299` (35 GET / 57 POST) |
+| R-8 operations (D20) — **CONFIRMED (D24), COUNTED; erratum PE-113-02** | ops **90-92** (§2.5), built by row 113. Counted facts: registry **92 (35 GET / 57 POST)**; audit types **63** (`STT_CONFIG_CHANGED`; `api-registry.test.ts:470`); error codes stay **40** (`packages/shared/test/api-envelope.test.ts:51`); replicated slices stay **30** (`packages/shared/test/api-state-slices.test.ts:443`); `offline` scope **26** (`api-registry.test.ts:692`; §8). The former wording "proposed, not counted ... if confirmed" is withdrawn |
 | Register row that fixes numbers | `register §B.6 NM-09` fixes **ops 76-80** (the five capture-config operations). No other row numbers an operation, so ops 81-89 are assigned here |
 | Register row that requires the 13th operation | `register §B.6 NM-11` (evidence media streaming) requires one operation the predecessor contract explicitly forbade (media not served, `specs` §A.3/§11 MS-1). It is op 88 |
 | Register row that requires the 14th operation (SEC35-01) | `register RK-12` + `T-33` (map §6 `capture_device_credentials`) + `E-30` (audited refusals): the write-only credential store had **no** write operation, so op 89 `setCaptureDeviceCredential` is added and `CAPTURE_CREDENTIAL_SET` with it (§2.2, §5.2) |
@@ -298,13 +298,21 @@ logs or audits the credential value; the `CAPTURE_CREDENTIAL_SET` audit detail i
 owning module + supervisor reveal path fixed in `04_database_contract.md §B.3/§D` (SEC35-02); no
 other operation reveals a credential.
 
-### 2.5 STT configuration operations 90-92 (PROPOSED — pending Q-STT-CFG confirmation at the second gate; R-8, D20)
+### 2.5 STT configuration operations 90-92 (CONFIRMED — D24, Q-STT-CFG answer (a); R-8, D20; built by row 113)
 
-> **Status: proposed, not counted.** These three operations implement R-8 (`specs` R-8; D20). They
-> are **not** part of the 89-operation registry, the pinned counts or the OpenAPI plan until the user
-> confirms Q-STT-CFG. If confirmed: registry **92 operations, 35 GET / 57 POST**, audit types **63**
-> (`STT_CONFIG_CHANGED`), error codes unchanged at **40** (existing codes only), slices unchanged at
-> 30 (no new slice; see "Slice" below). If rejected: delete this section; nothing else changes.
+> **Status: confirmed and counted (erratum PE-113-03; D24).** These three operations implement R-8
+> (`specs` R-8; D20). The user confirmed Q-STT-CFG with all 13 proposed defaults at the second gate
+> (D24: "Q-STT-CFG (a) all 13 proposed R-8 defaults confirmed") and row 113 built them
+> (`packages/shared/src/api/transcription.ts:384-471`; `apps/core-server/src/modules/stt-config/`).
+> They **are** part of the registry and of every pinned count: **92 operations, 35 GET / 57 POST**,
+> audit types **63** (`STT_CONFIG_CHANGED`), error codes unchanged at **40** (existing codes only;
+> the new `details.reason` values are listed in §4), slices unchanged at 30 (no new slice; see
+> "Slice" below). All three are `mode: simulated`, so the `offline` scope grows **23 -> 26** (§8).
+> The OpenAPI `info.version` values stay as built — `0.3.0` (`all`) / `0.2.0` (`offline`),
+> `packages/shared/src/api/openapi.ts:108,114`; whether a version step is wanted is an open
+> controller item (pair-113 navigator N-12), not decided here. Where a cell below differs from the
+> proposal of 2026-10-08 it is marked **Erratum PE-113-nn**; the reason for each is in
+> `masterplan/11_audit_errata.md` §5.
 
 | # | operationId | Method | Path | Tag | Mode | Access (marker) | Audit success / denial | Register rows / class |
 |--:|---|---|---|---|---|---|---|---|
@@ -314,25 +322,31 @@ other operation reveals a credential.
 
 | # | Request | Success | Realtime | Errors |
 |--:|---|---|---|---|
-| 90 | none | 200 `SttConfig { enabled, backend: 'omlx-server'\|'cpu-local', endpoint?, model, language: 'id', diarization: boolean, credentialSet: boolean, credentialKind?: 'REFERENCE'\|'ENCRYPTED', revision, updatedBy?, updatedAt, pendingForNextSession: boolean, lastTest? { reachable, modelAvailable, testedAt } }` | none | 401 |
-| 91 | `SttConfigUpdate { revision, enabled?, backend?, endpoint?, model?, diarization?, credential?: { kind: 'REFERENCE', ref } \| { kind: 'SECRET', value } \| { kind: 'CLEAR' } }` | 200 `SttConfig` + `appliesFrom: 'NOW'\|'NEXT_SESSION'` | none (clients re-read op 90) | 401, 403 `NOT_PERMITTED`, 409 (the same optimistic-revision refusal as op 78), 422 `INVALID_INPUT` (`details.reason`: `ENDPOINT_NOT_LOOPBACK`, `LANGUAGE_NOT_SUPPORTED`, `BACKEND_UNKNOWN`) |
-| 92 | none (tests the **stored** configuration) | 200 `SttConnectionTest { reachable, modelAvailable, backend, detailCode }` — `reachable: false` is a 200 result, not an HTTP error | none | 401, 403 `NOT_PERMITTED`, 503 `NOT_READY` (`details.reason: TRANSCRIBER_NOT_READY`; existing code, new reason value) |
+| 90 | none | 200 `SttConfig { enabled, backend: 'omlx-server'\|'cpu-local', endpoint?, model, language: 'id', diarization: boolean, credentialSet: boolean, credentialKind?: 'REFERENCE'\|'ENCRYPTED', revision, updatedBy?, updatedAt, pendingForNextSession: boolean, lastTest? { reachable, modelAvailable, testedAt } }` | none | 401; 403 `ORIGIN_NOT_ALLOWED` / revoked device (the request-stage guard, Core server only — every role may read, so no role is refused; `transcription.ts:403-405`); 503 `NOT_READY` (`details.reason: STT_CONFIG_NOT_SEEDED`) when the singleton row is missing (`modules/stt-config/index.ts:219-225`) — **erratum PE-113-04** |
+| 91 | `SttConfigUpdate { revision, enabled?, backend?, endpoint?, model?, language?, diarization?, credential?: { kind: 'REFERENCE'\|'SECRET'\|'CLEAR', ref?, value? } }`. **Erratum PE-113-05:** the optional member `language` is part of the body (only `id` is accepted, OD-20; any other value is `LANGUAGE_NOT_SUPPORTED`, which was unreachable without the member). **Erratum PE-113-06:** `credential` is **one closed object with a cross-member rule**, not a union — a `REFERENCE` carries `ref` only, a `SECRET` carries `value` only, `CLEAR` carries neither; the accepted set is exactly the three forms formerly written as a union (wire-compatible), anything else (extra member, both members, wrong kind) is `422` | 200 `SttConfig` + `appliesFrom: 'NOW'\|'NEXT_SESSION'` | none (clients re-read op 90) | 400 `INVALID_JSON`, 401, 403 `NOT_PERMITTED`, **409 `INVALID_STATE` with `details.reason: REVISION_CONFLICT` and `details.currentRevision`** (a stale `revision`; nothing stored, no audit row — **erratum PE-113-07:** the former pointer "the same optimistic-revision refusal as op 78" dangled, op 78 defines only `409 CAPTURE_CONFIG_LOCKED`, §2.2), 422 `INVALID_INPUT` (`details.reason`: `ENDPOINT_NOT_LOOPBACK`, `LANGUAGE_NOT_SUPPORTED`, `BACKEND_UNKNOWN`), **503 `NOT_READY` with `details.reason: CREDENTIAL_STORE_NOT_READY`** for a `SECRET` write while the Core credential sealer is not provided (nothing stored; `REFERENCE` and `CLEAR` need no sealer — **erratum PE-113-08**, see the rule "Credential store (interim)" below), 503 `NOT_READY` (`STT_CONFIG_NOT_SEEDED`) when the singleton row is missing |
+| 92 | none (tests the **stored** configuration) | 200 `SttConnectionTest { reachable, modelAvailable, backend, detailCode }` — `reachable: false` is a 200 result, not an HTTP error | none | 401, 403 `NOT_PERMITTED`, 503 `NOT_READY` (`details.reason: TRANSCRIBER_NOT_READY`; existing code, new reason value). **Erratum PE-113-08 (D68(d)):** the module opens no connection itself; it runs a **provided** probe, and until row 115 provides it the Core server answers this 503 on every call (`modules/stt-config/index.ts:175-180,264-266`). Row 115 must prove a 200 on a booted server |
 
 **Rules.**
 
 | Rule | Contract | Authority |
 |---|---|---|
 | RBAC | reads (90) for every role — tablets/phones show read-only status; writes and the test (91, 92) need `CAPTURE_CONFIG` (SUPERVISOR + TECHNICIAN), the same permission as the device selector | D20; OD-10; §2.1 |
-| When a change applies | 91 is **accepted while a session is open** and stored; it applies to the **next** session (`appliesFrom: 'NEXT_SESSION'`, `pendingForNextSession: true`); the open session keeps the snapshot taken at its start. The alternative (refuse while open, like 78-80 with `409 CAPTURE_CONFIG_LOCKED`) is listed under Q-STT-CFG | D20; OD-10 pattern; `transcript-spec §B.7` |
+| When a change applies | 91 is **accepted while a session is open** and stored; it applies to the **next** session (`appliesFrom: 'NEXT_SESSION'`, `pendingForNextSession: true`); the open session keeps the snapshot taken at its start. The alternative (refuse while open, like 78-80 with `409 CAPTURE_CONFIG_LOCKED`) was **not chosen**: Q-STT-CFG was answered (a), D24 — **erratum PE-113-09**. When idle the answer carries `appliesFrom: 'NOW'` | D20; D24; OD-10 pattern; `transcript-spec §B.7` |
 | Credential never returned | no response, slice, log line or audit detail carries the credential or the reference target's contents. A `REFERENCE` (default for `omlx-server`: the oMLX key stays in `~/.omlx/settings.json`, referenced by path only — SEC35-14) or a `SECRET` stored encrypted in the Core credential store (`04_database_contract.md §B.13`); responses carry only `credentialSet` and `credentialKind`; the `value` field is write-only and never pre-filled | D20; E-31; SEC35-14; RK-12 pattern (op 89) |
 | Loopback only | `endpoint` must resolve to `127.0.0.1`/`localhost` in this phase; anything else is `422 INVALID_INPUT` (`ENDPOINT_NOT_LOOPBACK`); LAN is class C | OD-13 (D4); `specs` C-N4 |
 | Test connection | 92 performs one loopback request to the configured backend (model list / health) with a short timeout and reports `reachable`/`modelAvailable`; it never sends audio, never starts or restarts oMLX (D7(d)), never reports a speed figure (D230), and is serialised with other oMLX calls | D7(d); D230 |
 | Disabled / unreachable effect | `enabled: false` → no transcriber work in the next session; the package records `transcript.state = 'DISABLED'` (`06_evidence_package_spec.md §B.7a`). Enabled but unreachable at run time → D-EV-1 failure rule | D20; D-EV-1 |
-| Slice | no new realtime slice (keeps 30); clients re-read op 90 on screen entry and after 91. A `sttConfig` slice is an alternative left to Q-STT-CFG | D20 |
+| Slice | no new realtime slice (keeps 30); clients re-read op 90 on screen entry and after 91. **No `sttConfig` slice** — the alternative is closed by D24 (**erratum PE-113-09**) | D20; D24 |
+| Stale revision (**erratum PE-113-07**) | `revision` is an optimistic lock. A body made from an older revision answers `409 INVALID_STATE`, `details.reason: REVISION_CONFLICT`, `details.currentRevision` (a counter, not a secret); nothing is stored and no audit row is written. The stale revision is refused **before** the named 422 values. An update that changes nothing writes no audit row and keeps the revision | D68; `transcription.ts:76-77,282-283,307,432-436`; `modules/stt-config/change.ts:82-86,196-199` |
+| Credential store (interim; **erratum PE-113-08**, D68(c)) | a `SECRET` is stored only as ciphertext produced by a **provided** credential sealer. No Core credential store exists yet, so a `SECRET` write answers `503 NOT_READY` (`CREDENTIAL_STORE_NOT_READY`) and stores nothing — the secret is never kept in a weaker form. **Row 84 (M7-W3 key store, SEC35-03) owns `provideCredentialSealer` and the matching opener** for the key-loader. Until row 84: row 115 treats a stored `ENCRYPTED` kind as "credential unavailable", and row 117 offers the reference form only and shows the 503 reason plainly | D68(c); `modules/stt-config/seams.ts:12-20`; `modules/stt-config/index.ts:110-111,147-149`; `modules/stt-config/change.ts:96-100,173`; `transcription.ts:80-81` |
 
-**`STT_CONFIG_CHANGED`** (proposed audit type, category `DEVICE`, written by op 91 on success only).
-Exact detail keys: `changedFields: string[]` (field **names** from the `SttConfigUpdate` set, never
-values), `enabled: boolean` (the new value — not a secret), `backend: string`, `credentialChanged:
+**`STT_CONFIG_CHANGED`** (audit type, **confirmed D24**; category `DEVICE`, written by op 91 on
+success only). Exact detail keys: `changedFields: string` — **erratum PE-113-10:** the changed field
+**names** joined with a comma (for example `enabled,model,credential`), in the fixed order `enabled,
+backend, endpoint, model, language, diarization, credential`, **not** a `string[]`: an audit detail
+is a flat map and cannot store a list value (`transcription.ts:114-117,353-365`;
+`apps/core-server/src/core/audit-details.ts:118,268-271`); a name of this closed set holds no comma;
+never values; `enabled: boolean` (the new value — not a secret), `backend: string`, `credentialChanged:
 boolean`, `revision: number`. The endpoint, model path, credential and reference target are **never**
 in the detail (E-30/E-31). No row on refusal.
 
@@ -409,7 +423,7 @@ forward-only progress read shows its last Core-instant value, never a rewind (E-
 
 | Code | Change | Returned by | Authority |
 |---|---|---|---|
-| `NOT_READY` (503) | gains `details.reason: CAPTURE_NOT_READY` when the capture worker/binary/store is not ready (boot checks) | all capture ops + boot | CS-22; `specs B AC-3`; `core-api.ts:185` |
+| `NOT_READY` (503) | gains `details.reason: CAPTURE_NOT_READY` when the capture worker/binary/store is not ready (boot checks). **Erratum PE-113-11 (D68):** three more reason values on the same code, no new code — `TRANSCRIBER_NOT_READY` (op 92: no transcriber probe can run), `CREDENTIAL_STORE_NOT_READY` (op 91: a `SECRET` write while no credential sealer is provided), `STT_CONFIG_NOT_SEEDED` (ops 90-92: the singleton `stt_config` row is missing) | all capture ops + boot; 90, 91, 92 | CS-22; `specs B AC-3`; `core-api.ts:185`; `transcription.ts:78-81`; `modules/stt-config/change.ts:57-58,75-79` |
 | `RECORDING_ACTIVE` (409) | unchanged meaning; also raised when a PoE cycle is attempted during RECORDING | 48 | OD-22; `devices.ts:150` |
 | `INVALID_STATE` (409) | 81 raises it when the session is not RECORDING; 83 when sealing has not started | 81, 83 | `sessions.ts:451` idiom |
 | `NOT_FOUND` (404) | 79/80 for an unknown `{id}`; 81/82 for an ID that is not the open session (the existing rule, `sessions.ts:9`) | 79, 80, 81, 82 | existing |
@@ -432,7 +446,9 @@ writes gets an **exact detail-key list** in `SERVER_AUDIT_DETAIL_RULES`
 (`apps/core-server/src/core/audit-details.ts:90-132`), so a module cannot add a key that could carry
 a secret (`audit-details.ts:1-18`; register E-10). The **9 new types** bring the total from 53
 (predecessor `specs §13.1`) to **62** (the original 7 plus `CAPTURE_CREDENTIAL_SET` from SEC35-01 and
-`CAPTURE_CREDENTIAL_REVEALED` from SEC35-02; SEC35-22).
+`CAPTURE_CREDENTIAL_REVEALED` from SEC35-02; SEC35-22). **Erratum PE-113-12 (D24):** with
+`STT_CONFIG_CHANGED` (§2.5, category `DEVICE`, row 113) there are **10** new types and the total is
+**63** (`packages/shared/test/api-registry.test.ts:470`; `packages/shared/src/sim/vocabulary.ts:425,496`).
 
 ### 5.1 The hard rule (E-30 / E-31)
 
@@ -677,11 +693,11 @@ and therefore belong to the `offline` scope (`openApi` `isOfflineCoreApiOperatio
 (`openapi.ts:22-24`, held by `test/api-openapi-scope.test.ts`); M2 updates that test to the OD-17
 scope instead of the baseline commit.
 
-**Which of the 14 are visible in `offline`.**
+**Which of the 17 are visible in `offline`** (14 of §2.2 + 3 of §2.5 — **erratum PE-113-13**).
 
-| Visible in `offline` (mode `simulated`; 13 ops) | `all`-only (mode `live`; 1 op) |
+| Visible in `offline` (mode `simulated`; 16 ops) | `all`-only (mode `live`; 1 op) |
 |---|---|
-| 76 `getCaptureConfig`, 77 `getCaptureDevices`, 78 `updateCaptureConfig`, 79 `setCaptureCameraSource`, 80 `setPrimaryMic`, 81 `switchAudioSource`, 82 `listAudioSourceIntervals`, 83 `getSealingProgress`, 84 `getTranscript`, 85 `createTranscriptRevision`, 86 `listTranscriptRevisions`, 87 `getEvidenceExportJob`, **89 `setCaptureDeviceCredential`** | 88 `createEvidenceMediaSession` |
+| 76 `getCaptureConfig`, 77 `getCaptureDevices`, 78 `updateCaptureConfig`, 79 `setCaptureCameraSource`, 80 `setPrimaryMic`, 81 `switchAudioSource`, 82 `listAudioSourceIntervals`, 83 `getSealingProgress`, 84 `getTranscript`, 85 `createTranscriptRevision`, 86 `listTranscriptRevisions`, 87 `getEvidenceExportJob`, **89 `setCaptureDeviceCredential`**, **90 `getSttConfig`, 91 `updateSttConfig`, 92 `testSttConnection`** (R-8; D24) | 88 `createEvidenceMediaSession` |
 
 88 is `live` only: Simulated mode plays the bundled demo media and opens no signed media session
 (`register NM-11`; predecessor `specs §11` MS-1 still true for Simulated mode). 87 is `simulated`
@@ -690,15 +706,20 @@ row 39. 89 is `simulated` (the simulator accepts the write opaquely and never st
 credential), so OD-17's "simulator emulates v2" stays true; its `mode` is re-checked at row 39.
 
 **Projected pinned counts (M2 owns the edit).** The `offline` document grows from **10** operations
-(health + 9 design-book, `openapi.ts:11`) to **23** (10 + the 13 simulated above). The `all` document
-grows from **75** to **89** and from `27 GET / 48 POST` to **`34 GET / 55 POST`** (§2.2). The edits
+(health + 9 design-book, `openapi.ts:11`) to **23** (10 + the 13 simulated of §2.2) at M2 and to
+**26** with ops 90-92 at M6 row 113. The `all` document grows from **75** to **89** (`34 GET / 55 POST`,
+§2.2) at M2 and to **92** (**`35 GET / 57 POST`**) at M6. **Erratum PE-113-13 (D24):** 26 and 92 are
+counted facts, pinned by `packages/shared/test/api-registry.test.ts:690-692`,
+`packages/shared/test/openapi.test.ts:167,216` and `packages/shared/test/api-openapi-scope.test.ts:247,291-299`;
+the `info.version` values did not change at M6 (0.3.0 / 0.2.0; see the §2.5 status note). The edits
 are in `apps/core-server/test/acceptance/contract.test.ts:374-380` (the `75`/`27`/`48` literals) and
 `packages/shared/openapi/openapi.json` (regenerated by `npm run openapi:gen -w @dems/shared`). The
 `rbac-matrix.test.ts` loops over the registry (`rbac-matrix.test.ts:5-8`, "the registry's 75
 entries"), so it follows the new count with no literal edit. **These are M2 implementation steps
 (register SH-19, WB-09, CS-25; `structured §6 M2` "OpenAPI drift test at 0.3.0"); this row is the
-contract.** The op-count change (89) and the offline count (23) are additions for row 36/37 to fold
-into M2-API-1/M2-API-2 and the section-C pin family.
+contract.** The op-count change (89, then 92) and the offline count (23, then 26) are additions for
+row 36/37 to fold into M2-API-1/M2-API-2 and the section-C pin family; the M6 step was folded by row
+113 (`implementation/52_m6_stt_config_api.md` §3).
 
 ---
 
@@ -721,10 +742,10 @@ into M2-API-1/M2-API-2 and the section-C pin family.
 
 | Gate check (from `structured row 29` Verification) | Result |
 |---|---|
-| **Every new or modified operation has method, path, access, audit type** | **14/14 new** (`§2.2`); **24/24 modified** (`§3`, 22 rows). Each new row carries method, path, tag, mode, access marker, audit success/denial and error codes. |
-| **Total operation count stated** | **75 + 14 = 89** operations (projected 34 GET / 55 POST), `§1`. `offline` grows 10 → 23; `all` 0.2.1 → 0.3.0, `offline` 0.1.0 → 0.2.0 (`§8`). |
+| **Every new or modified operation has method, path, access, audit type** | **17/17 new** (`§2.2` 14 + `§2.5` 3 — erratum PE-113-14); **24/24 modified** (`§3`, 22 rows). Each new row carries method, path, tag, mode, access marker, audit success/denial and error codes. |
+| **Total operation count stated** | **75 + 14 + 3 = 92** operations (35 GET / 57 POST), `§1` — **erratum PE-113-14 (D24):** 89 (34 GET / 55 POST) was the M2 figure. `offline` grows 10 → 23 → **26**; `all` 0.2.1 → 0.3.0, `offline` 0.1.0 → 0.2.0 (`§8`; no version step at M6). |
 | **0 uses of `AdminResource.DEVICE[S]` for capture** (E-04) | `grep -n "AdminResource\.DEVICES" masterplan/03_api_contract.md` → **0 matches**. The prohibition uses the bracketed `AdminResource.DEVICE[S]` form (the repo's own forbidden-literal idiom, `capture-spec §C.4`); `grep -c "AdminResource.DEVICE[S]"` → the prohibition rows only (`§6`, `§9 N-2`). The capture kinds are `captureConfig`/`captureDevices` (`§6`). |
-| **Every new audit type has an exact detail-key list with 0 secret keys** | **9/9** (`§5.2`): `CAPTURE_CONFIG_CHANGED`, `AUDIO_SOURCE_SWITCHED`, `CAMERA_POE_CYCLED`, `TRANSCRIPT_REVISED`, `MIC_SILENT`, `EVIDENCE_MEDIA_SERVED`, `EVIDENCE_EXPORT_FAILED`, `CAPTURE_CREDENTIAL_SET`, `CAPTURE_CREDENTIAL_REVEALED`. No key holds a credential, token, key, password, pairing code, typed username or signed URL (`§5.1`). `TRANSCRIPT_REVISED` carries the revision id + author + hash, **never the body**; `CAPTURE_CREDENTIAL_*` carry `deviceId` only. |
+| **Every new audit type has an exact detail-key list with 0 secret keys** | **10/10** (`§5.2` 9 + `STT_CONFIG_CHANGED` in `§2.5`, five keys, field names only — erratum PE-113-14): `CAPTURE_CONFIG_CHANGED`, `AUDIO_SOURCE_SWITCHED`, `CAMERA_POE_CYCLED`, `TRANSCRIPT_REVISED`, `MIC_SILENT`, `EVIDENCE_MEDIA_SERVED`, `EVIDENCE_EXPORT_FAILED`, `CAPTURE_CREDENTIAL_SET`, `CAPTURE_CREDENTIAL_REVEALED`. No key holds a credential, token, key, password, pairing code, typed username or signed URL (`§5.1`). `TRANSCRIPT_REVISED` carries the revision id + author + hash, **never the body**; `CAPTURE_CREDENTIAL_*` carry `deviceId` only. |
 | **All six gate answers cited by decision ID** | **6/6** — OD-01, OD-09, OD-10, OD-15, OD-17, OD-22, each `D4` (`§0`). D7/D8/D10/D12 folded as binding corrections (`§0`). |
 | **Every design choice cited** (`file:line`, decision ID, or register row) | Yes — every table row and every shape note carries a citation (`§2-§8`). |
 | **Register rows required by this row are satisfied** | SH-03/SH-04/SH-12/SH-13/SH-14/SH-16/SH-19/SH-25, CS-04/CS-06/CS-07/CS-12/CS-14/CS-22/CS-25, NM-06/NM-07/NM-09/NM-10/NM-11/NM-12, WB-04/WB-09/WB-11, MB-07/MB-09, E-04/E-12/E-30/E-31, RK-12/T-33, W1-C1/W1-C7/W1-C9/W1-C10. |
@@ -741,8 +762,10 @@ ops 76-87 depends on the simulator actually emulating them in M2 (OD-17); row 39
 narrows the pre-existing all-roles `EVIDENCE_VIEW` reach beyond OD-10/OD-15. (6) The op-count change
 (88 → 89), the offline count (22 → 23), the audit-type count (60 → 62) and the error-code count
 (38 → 40) are row 36/37 pick-ups for M2-API-1/M2-API-2/M2-AUD-1 and the section-C pin family.
+**Erratum PE-113-14 (D24):** after row 113 the counted values are operations **92**, offline **26**,
+audit types **63**; error codes stay **40**.
 
 ---
 
 *Generated: 2026-10-07 16:55*
-*Last Updated: 2026-10-08 (RV-SPEC errata AU2-07/AU2-08 + proposed §2.5 R-8 ops 90-92; earlier: row-35 security remediation SEC35-01/12/13/16/17/19/21/22)*
+*Last Updated: 2026-10-09 (pair-review errata PE-113-01..PE-113-14: §2.5 R-8 ops 90-92 confirmed by D24 and counted, row-113 driver choices recorded, D68; earlier: 2026-10-08 RV-SPEC errata AU2-07/AU2-08 + §2.5 as a proposal; row-35 security remediation SEC35-01/12/13/16/17/19/21/22)*

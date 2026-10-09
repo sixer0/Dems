@@ -80,6 +80,7 @@ async function shutdown(signal: NodeJS.Signals): Promise<void> {
   timer.unref();
 
   try {
+    if (app.seams.has('capture')) await app.capture.shutdown();
     await app.close();
     app.log.info('shutdown complete');
     // Let standard output drain and exit naturally; the timer only fires if something hangs.
@@ -104,6 +105,7 @@ try {
     'configuration loaded',
   );
   await app.readiness.boot();
+  await app.capture.boot();
   await app.listen({ host: LISTEN_HOST, port: config.port });
 } catch (error) {
   if (error instanceof BootError) fatal('boot', error.cause, { check: error.stepId });

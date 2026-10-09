@@ -484,7 +484,8 @@ export function buildOperations(world: World, directory: OperatorDirectory, reco
  * The nine capture-phase types of task 3 (C3 §5.2; register CS-14). The fixture states ONE row of
  * each, with details exactly in the form of the audit writer's list (`SERVER_AUDIT_DETAIL_RULES`),
  * so that every gate over the allow-list - the writer's own `auditInputOf`, the key scan, the
- * table of printed references - covers all 62 types from the first load. The modules that will
+ * table of printed references - covers all 63 types from the first load (the 63rd, STT_CONFIG_CHANGED
+ * of row 113, is the last row below). The modules that will
  * write these rows on a live path land with their milestones (op 81 with row 71, the transcript
  * revisions with M7/M8, the credential paths with row 66): until then the fixture is the reference
  * holder, and each row names the actor whose permission owns the future operation. No credential,
@@ -579,6 +580,19 @@ function buildCaptureActivity(world: World, directory: OperatorDirectory): void 
       actorId: supervisor(at(8)),
       deviceId: null,
       details: { deviceId: 'CAM-01', reason: 'MEDIA_DIAGNOSTICS' },
+    },
+  });
+  // Task 3 M6 (blueprint row 113; C3 §2.5; R-8): the one type of the STT configuration. Unlike the
+  // nine above its live writer exists (`modules/stt-config`, operation 91), so the row is held
+  // against that module's own builder as well as against the list (`audit-reference.ts`). Field
+  // NAMES and two flags: no endpoint, no model, no credential (E-30/E-31; SEC35-14; SD-8).
+  world.record(at(9), {
+    audit: {
+      type: 'STT_CONFIG_CHANGED',
+      message: 'STT configuration changed',
+      actorId: technician(at(9)),
+      deviceId: null,
+      details: { changedFields: 'backend,endpoint,credential', enabled: true, backend: 'omlx-server', credentialChanged: true, revision: 2 },
     },
   });
 }

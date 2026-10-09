@@ -102,9 +102,10 @@ describe('AC-B-16, unit form: all 75 operations for nine callers', () => {
     expect(wrong).toEqual([]);
   });
 
-  it('the cells are 89 x 9 = 801; the denied cells of an operator are 22 (INVESTIGATOR), 3 (SUPERVISOR) and 31 (TECHNICIAN), as spec AC-B-16 counts them', () => {
+  it('the cells are 92 x 9 = 828; the denied cells of an operator are re-derived from the registry and the role table (29 INVESTIGATOR, 3 SUPERVISOR, 34 TECHNICIAN at 92 operations), as spec AC-B-16 counts them', () => {
     const cells = CORE_API_OPERATIONS.length * CALLERS.length;
-    expect(cells).toBe(801);
+    // C3 §2.5 (blueprint row 113): 92 operations x 9 callers.
+    expect(cells).toBe(828);
     const denied = (role: OperatorRole): string[] =>
       CORE_API_OPERATIONS.filter((operation) => outcomeOf(decideAccess(ruleOf(operation.operationId), granted(operator(role, null)))) === '403 NOT_PERMITTED').map(
         (operation) => operation.operationId,

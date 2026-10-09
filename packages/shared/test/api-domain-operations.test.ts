@@ -649,15 +649,17 @@ describe('the 42 simulator actions and the operations they reach (01_specs §7.1
     expect(CORE_API_OPERATIONS.filter((operation) => /tablet-?link|security-?key/i.test(operation.path))).toEqual([]);
   });
 
-  it('40 actions reach 41 operations, every one of them in the registry; the other 48 are reads and server functions', () => {
+  it('40 actions reach 41 operations, every one of them in the registry; the other 51 are reads and server functions', () => {
     const reaching = names.filter((name) => SIM_ACTION_OPERATIONS[name].operations.length > 0);
     expect(reaching).toHaveLength(40);
     const reached = [...new Set(reaching.flatMap((name) => [...SIM_ACTION_OPERATIONS[name].operations]))];
     expect(reached).toHaveLength(41);
     for (const operationId of reached) expect(findCoreApiOperation(operationId), operationId).toBeDefined();
     // Task 3 M2-W7 adds fourteen operations, none reached by a simulator action (the thirteen
-    // simulated ones are answered by the sim route table, op 88 is live): 89 - 41 = 48.
-    expect(CORE_API_OPERATIONS.length - reached.length).toBe(48);
+    // simulated ones are answered by the sim route table, op 88 is live): 89 - 41 = 48. Task 3 M6 row
+    // 113 adds the three STT configuration operations 90-92, also answered by the sim route table and
+    // reached by no simulator action: 92 - 41 = 51.
+    expect(CORE_API_OPERATIONS.length - reached.length).toBe(51);
     // `deviceCommand` is three operations with one permission each; two settings actions share one.
     expect(SIM_ACTION_OPERATIONS.deviceCommand.operations).toEqual(['restartDevice', 'testDeviceSignal', 'identifyDevice']);
     expect(simActionsOfOperation('updateSettings')).toEqual(['setPresentationMode', 'updateSettings']);

@@ -125,7 +125,17 @@ describe('the heavy modules have one way in (MD-6; brief list rows 1, 21)', () =
     // CPW1-7: the sink is loaded before the call, so it must load no module that could build a schema.
     const sink = PRODUCTION.find(({ file }) => file === 'runtime/error-sink.ts')?.text ?? ''
     expect(sink).not.toBe('')
-    expect(importsOf(sink).filter((use) => use.kind !== 'type')).toEqual([])
+    // Task 3 row 113, fix round 1 (navigator finding N-1): the sink takes the ONE rule set of the two
+    // client blanking lists from `@dems/shared/redaction`. That is its only value import, and the rule
+    // of CPW1-7 is held for it in full: the module imports NOTHING (no schema library, no other file
+    // of the package), so loading it before `z.config` can build no schema.
+    expect(importsOf(sink).filter((use) => use.kind !== 'type')).toEqual([{ kind: 'value', specifier: '@dems/shared/redaction' }])
+    const redaction = readFileSync(resolve(WEB, '../../packages/shared/src/api/redaction.ts'), 'utf8')
+    expect(redaction.length).toBeGreaterThan(1_000)
+    expect(importsOf(redaction)).toEqual([])
+    expect(redaction).not.toMatch(/\bzod\b|\brequire\s*\(/)
+    const sharedManifest = JSON.parse(readFileSync(resolve(WEB, '../../packages/shared/package.json'), 'utf8')) as { exports: Record<string, string> }
+    expect(sharedManifest.exports['./redaction']).toBe('./src/api/redaction.ts')
     const afterConfig = code(main).split('z.config({ jitless: true })')[1] ?? ''
     expect(importsOf(main).filter((use) => use.kind === 'dynamic').map((use) => use.specifier)).toEqual([
       './runtime/boot',

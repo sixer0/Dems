@@ -28,6 +28,7 @@
  * step 70) route their records here through `installRuntimeLogSinks()` (called by AppProviders).
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { isCredentialKeyName, isCredentialWriteKind, redactCredentialText } from '@dems/shared/redaction';
 import { setMotionLogSink, type MotionLogRecord } from '@/motion/log';
 import { setNavigationLogSink, type NavigationLogRecord } from '@/navigation/log';
 
@@ -40,14 +41,18 @@ export const RUNTIME_LOG_FLUSH_MS = 2000;
 const MAX_MESSAGE = 500;
 const MAX_STACK = 2000;
 const MAX_CONTEXT_VALUE = 200;
-/** Context keys never stored (credentials, codes, identities). */
-const SENSITIVE_KEY = /(pass|pin$|^pin|token|secret|credential|user(name)?$|^code$|pairingcode|otp)/i;
-/** A session token, a device credential and a biometric token start with these (01_specs §5.3); same rule as the web sink. */
-const CREDENTIAL = /\b(ses|dvc|bio)_[A-Za-z0-9_-]+/g;
-
-/** Blanks every value that carries a credential prefix (row PT, W100-1). */
+/** Context keys never stored (credentials, codes, identities). `api key` and `authorization` joined with the STT configuration (task 3 row 113; SEC35-14). */
+const SENSITIVE_KEY = /(pass|pin$|^pin|token|secret|credential|user(name)?$|^code$|pairingcode|otp|api[-_]?key|authorization)/i;
+/**
+ * Blanks every credential form in a text (row PT, W100-1; task 3 row 113). The rules are NOT this
+ * file's: they are the one rule set of `@dems/shared/api` (`redaction.ts`), which the web error sink
+ * applies too (fix round 1, navigator finding N-1): a token of this server by its prefix
+ * (`ses_***`), whatever follows `Bearer`, the value of every member whose name says credential (in
+ * any order, quoting or escaping), and `value` / `ref` in a text that mentions a credential. It
+ * fails closed.
+ */
 export function redactCredentials(text: string): string {
-  return text.replace(CREDENTIAL, '$1_***');
+  return redactCredentialText(text);
 }
 
 export type RuntimeLogLevel = 'error' | 'warn' | 'info';
@@ -88,8 +93,11 @@ function keepText(text: string, max: number): string {
 export function sanitizeLogContext(context: Readonly<Record<string, unknown>> | undefined): Record<string, RuntimeLogValue> | undefined {
   if (!context) return undefined;
   const out: Record<string, RuntimeLogValue> = {};
+  const credentialWrite = isCredentialWriteKind(context['kind']);
   for (const [key, value] of Object.entries(context)) {
-    if (SENSITIVE_KEY.test(key)) continue;
+    if (SENSITIVE_KEY.test(key) || isCredentialKeyName(key)) continue;
+    // N-16: beside the kind of a credential write, `value` and `ref` ARE the credential.
+    if (credentialWrite && (key === 'value' || key === 'ref')) continue;
     if (value === null || typeof value === 'number' || typeof value === 'boolean') out[key] = value;
     else if (typeof value === 'string') out[key] = keepText(value, MAX_CONTEXT_VALUE);
   }

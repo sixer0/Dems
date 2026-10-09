@@ -12,7 +12,7 @@
 // | Criterion | Where it is proven here |
 // |-----------|-------------------------|
 // | AC-C-100 Live: 75 operations, all `LIVE`, the page origin as the one server; a Try-it of `getServiceHealth` answered by `dems-core-server`; a URL outside `{page origin}/api/v1` rejected | "Live mode: the document and Try-it" |
-// | AC-C-103 Live: Try-it of the six operations sends no request (the fake transport's log); after one GET and one POST no web-storage value holds a request body or an answer; the page's log holds method, path and status only | "AC-C-103" |
+// | AC-C-103 Live: Try-it of the eight operations (six of 01_specs §7.7, ops 89 and 91 of task 3) sends no request (the fake transport's log); after one GET and one POST no web-storage value holds a request body or an answer; the page's log holds method, path and status only | "AC-C-103" |
 // | AC-C-107 no marker password, no pairing code, no `ses_`/`dvc_`/`bio_` value in the error sink or the page's log | "AC-C-103" (the marked bodies) |
 // | AC-C-18 with the page open, no second socket: one connection, the global `WebSocket` never constructed; the Realtime panel lists the one socket's messages by type, prints no payload and has no Connect switch | "AC-C-18" |
 // | AR-4, AR-6 the warning names the signed-in operator; the banner names `dems-core-server`, its version and its readiness | "Live mode: the document and Try-it" |
@@ -59,7 +59,8 @@ function lastConfiguration(): DemsScalarConfiguration {
   return configuration as DemsScalarConfiguration
 }
 
-const pathOf = (operationId: string): string => CORE_API_OPERATIONS.find((operation) => operation.operationId === operationId)?.path ?? ''
+// A `{id}` is given a concrete value (op 89 is on the deny list since task 3 row 113, fix round 1): a request carries a path, not a template.
+const pathOf = (operationId: string): string => (CORE_API_OPERATIONS.find((operation) => operation.operationId === operationId)?.path ?? '').replace('{id}', 'CAM-01')
 const badgesOf = (document: OpenApiDocument) => listOpenApiOperations(document).map(({ operation }) => operation['x-badges'][0]?.name)
 
 /** Every value of every web storage the page can reach. */
@@ -125,14 +126,14 @@ async function openLive() {
 }
 
 describe('Live mode: the document and Try-it (AC-C-100, AR-4, AR-6)', () => {
-  it('89 operations, every one LIVE, served from the page origin; no switch; the warning names the operator', async () => {
+  it('92 operations, every one LIVE, served from the page origin; no switch; the warning names the operator', async () => {
     const { bed: live } = await openLive()
     expect(screen.getByTestId('page-api-reference')).toHaveAttribute('data-mode', 'live')
     const document = lastConfiguration().content
-    expect(listOpenApiOperations(document)).toHaveLength(89)
+    expect(listOpenApiOperations(document)).toHaveLength(92)
     expect(new Set(badgesOf(document))).toEqual(new Set(['LIVE']))
     expect(document.servers.map((server) => server.url)).toEqual([LIVE_TEST_ORIGIN])
-    expect(screen.getByTestId('api-operation-count')).toHaveTextContent('89 operations')
+    expect(screen.getByTestId('api-operation-count')).toHaveTextContent('92 operations')
     expect(screen.getByTestId('api-base-url')).toHaveTextContent(LIVE_TEST_ORIGIN)
     expect(screen.getByTestId('api-spec-version')).toHaveTextContent('v0.3.0')
     expect(screen.queryByTestId('api-show-simulated')).toBeNull()
@@ -171,7 +172,7 @@ describe('Live mode: the document and Try-it (AC-C-100, AR-4, AR-6)', () => {
 })
 
 describe('AC-C-103 and AC-C-107: the deny list, web storage and the page\'s log', () => {
-  it('Try-it of the six operations sends no request: the fake transport\'s log holds none of them', async () => {
+  it('Try-it of the eight operations sends no request: the fake transport\'s log holds none of them', async () => {
     const { bed: live } = await openLive()
     const before = live.fake.log.requests.length
     const marked = JSON.stringify({ username: 'andi.pratama', password: MARKER_PASSWORD, code: MARKER_CODE, token: MARKER_BEARERS[2], deviceName: MARKER_BEARERS[1], platform: MARKER_BEARERS[0] })
@@ -184,7 +185,7 @@ describe('AC-C-103 and AC-C-107: the deny list, web storage and the page\'s log'
       expect(live.fake.log.requestsOf(operationId), operationId).toEqual([])
     }
     expect(live.fake.log.requests).toHaveLength(before)
-    // Six records, each with the method and the path only.
+    // Eight records, each with the method and the path only.
     const records = webErrorSink.records().filter((record) => record.source === 'ApiReference.liveTryIt.denied')
     expect(records.map((record) => record.context?.path)).toEqual(TRY_IT_DENIED_OPERATIONS.map(pathOf))
     const sink = JSON.stringify(webErrorSink.records())
@@ -286,11 +287,11 @@ async function openSimulated() {
 }
 
 describe('Simulated mode (AC-C-100, AR-2)', () => {
-  it('23 operations as before; "Show Core-server endpoints" lists 89 with CORE SERVER and refuses their Try-it without a request', async () => {
+  it('26 operations as before; "Show Core-server endpoints" lists 92 with CORE SERVER and refuses their Try-it without a request', async () => {
     const { sim, fetched } = await openSimulated()
     expect(screen.getByTestId('page-api-reference')).toHaveAttribute('data-mode', 'simulated')
-    expect(listOpenApiOperations(lastConfiguration().content)).toHaveLength(23)
-    expect(screen.getByTestId('api-operation-count')).toHaveTextContent('23 operations')
+    expect(listOpenApiOperations(lastConfiguration().content)).toHaveLength(26)
+    expect(screen.getByTestId('api-operation-count')).toHaveTextContent('26 operations')
     expect(screen.getByTestId('api-spec-version')).toHaveTextContent('v0.2.0')
     expect(screen.queryByTestId('api-live-warning')).toBeNull()
     expect(screen.getByTestId('api-realtime-connect')).toBeInTheDocument()
@@ -299,8 +300,8 @@ describe('Simulated mode (AC-C-100, AR-2)', () => {
     expect(screen.queryByTestId('api-legend-CORE_SERVER')).toBeNull()
 
     fireEvent.click(coreSwitch)
-    await waitFor(() => expect(listOpenApiOperations(lastConfiguration().content)).toHaveLength(89))
-    expect(screen.getByTestId('api-operation-count')).toHaveTextContent('89 operations')
+    await waitFor(() => expect(listOpenApiOperations(lastConfiguration().content)).toHaveLength(92))
+    expect(screen.getByTestId('api-operation-count')).toHaveTextContent('92 operations')
     expect(screen.getByTestId('api-legend-CORE_SERVER')).toHaveTextContent(A.badges.CORE_SERVER)
     expect(badgesOf(lastConfiguration().content).filter((name) => name === 'CORE SERVER')).toHaveLength(66)
 
@@ -319,7 +320,7 @@ describe('Simulated mode (AC-C-100, AR-2)', () => {
     expect(JSON.stringify(webErrorSink.records())).not.toContain(MARKER_PASSWORD)
 
     fireEvent.click(coreSwitch)
-    await waitFor(() => expect(listOpenApiOperations(lastConfiguration().content)).toHaveLength(23))
+    await waitFor(() => expect(listOpenApiOperations(lastConfiguration().content)).toHaveLength(26))
     expect(getMissingI18nKeys()).toEqual([])
   })
 })

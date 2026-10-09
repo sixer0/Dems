@@ -424,6 +424,8 @@ export const common = {
     EVIDENCE_EXPORT_FAILED: 'Evidence export failed',
     CAPTURE_CREDENTIAL_SET: 'Camera credential set',
     CAPTURE_CREDENTIAL_REVEALED: 'Camera credential revealed',
+    // Task 3 M6 (blueprint row 113; C3 §2.5; R-8).
+    STT_CONFIG_CHANGED: 'Transcription configuration changed',
   },
 
   /** Audit filter categories (sim `AuditCategory`). */

@@ -20,6 +20,7 @@
     "db:generate": "drizzle-kit generate"
   },
   "dependencies": {
+    "@dems/capture-protocol": "*",
     "@dems/shared": "*",
     "@fastify/cookie": "11.1.2",
     "@fastify/helmet": "13.1.1",

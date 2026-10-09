@@ -231,10 +231,11 @@ describe('the request stages (spec §2.3)', () => {
 });
 
 describe('the seams (P25)', () => {
-  it('are these nine besides readiness, each with a named provider', () => {
+  it('are these ten besides readiness, each with a named provider: the nine of the scaffold and `capture` (task 3 row 57, OD-14 waiver)', () => {
     expect(Object.keys(SEAM_PROVIDERS).sort()).toEqual(
       [
         'auditWriter',
+        'capture',
         'clock',
         'denialBudget',
         'deviceResolver',

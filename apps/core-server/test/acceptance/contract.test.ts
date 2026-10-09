@@ -69,6 +69,7 @@ import { engineControl } from '../../src/engine';
 import { testRoutine, useRoutine } from '../../src/modules/demo/__tests__/support';
 import { identityControl } from '../../src/modules/identity';
 import { pairingControl } from '../../src/modules/pairing';
+import { sttConfigControl } from '../../src/modules/stt-config';
 import { permissionGuard, routesOfPrintedTable } from '../../src/plugins/permission-guard';
 import { throttleControl } from '../../src/plugins/throttle';
 import { useTestDatabase } from '../helpers/db';
@@ -122,7 +123,8 @@ const CHANNEL_ROUTE = routeKey('GET', WS_PATH);
 /**
  * The 14 registry routes whose handlers land with later rows (R4, ruling D44): ops 76-80 and 89
  * with row 66 / M4-W2 (capture-config), op 81 with M5, ops 82 and 83 with M5/M7, ops 84-88 with
- * M7/M8. As landed at M2 the router holds 76 routes and the registry 89; the walks that CALL
+ * M7/M8. As landed at M2 the router held 76 routes and the registry 89; since task 3 row 113 (the
+ * STT configuration operations 90 to 92, which ARE routed) it is 79 and 92; the walks that CALL
  * these operations stay red until their rows land. Where a walk of this file must compare the
  * whole documented set, it names this list, so the deferral is exact and drift-guarded: a new
  * unrouted operation, or one of these getting its route, fails the equality. (Hoisted to module
@@ -180,6 +182,11 @@ async function startServer(name: string, target: Target, options: { demoControls
   await app.ready();
   const clock = createManualClock(options.at ?? FIXED_NOW);
   app.seams.replace('clock', clock);
+  // Operation 92 tests the STT connection through a PROVIDED probe (the transcriber runtime's, row
+  // 115); without one a permitted caller gets the envelope's 503 `TRANSCRIBER_NOT_READY`. This
+  // file asks what a permitted call is answered with, so it hands in a probe that contacts
+  // nothing and says "unreachable" - a documented 200. The 503 is held by the module's own test.
+  sttConfigControl(app).provideProbe(async () => ({ reachable: false, modelAvailable: false, detailCode: 'UNREACHABLE' }));
   const timer = manualTimer();
   const engine = engineControl(app);
   // Gate rule M9: the manual timer is in place before the boot.
@@ -398,17 +405,18 @@ afterAll(async () => {
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
 
 describe('AC-B-09: every registered route is an operation, every operation is registered', () => {
-  it('the registry holds exactly 89 operations, 34 GET and 55 POST, each with one access rule and one audit rule', () => {
+  it('the registry holds exactly 92 operations, 35 GET and 57 POST, each with one access rule and one audit rule', () => {
     // 75 in the closed task-2 contract; C3 grew the registry to 89 with schema v2 (ops 76 to 89:
     // the six capture-config and credential operations, the three audio-source and sealing ones,
-    // the five transcript, media-session and export-job ones). R1 (D44): acceptance reads the
-    // CURRENT registry, the closed document never.
-    expect(CORE_API_OPERATION_TABLE).toHaveLength(89);
-    expect(OPERATIONS).toHaveLength(89);
-    expect(new Set(OPERATIONS.map((operation) => operation.operationId)).size).toBe(89);
-    expect(new Set(REGISTRY_ROUTES).size).toBe(89);
-    expect(OPERATIONS.filter((operation) => operation.method === 'get')).toHaveLength(34);
-    expect(OPERATIONS.filter((operation) => operation.method === 'post')).toHaveLength(55);
+    // the five transcript, media-session and export-job ones), and to 92 with the confirmed R-8
+    // (C3 §2.5: the STT configuration operations 90 to 92; task 3 row 113). R1 (D44): acceptance
+    // reads the CURRENT registry, the closed document never.
+    expect(CORE_API_OPERATION_TABLE).toHaveLength(92);
+    expect(OPERATIONS).toHaveLength(92);
+    expect(new Set(OPERATIONS.map((operation) => operation.operationId)).size).toBe(92);
+    expect(new Set(REGISTRY_ROUTES).size).toBe(92);
+    expect(OPERATIONS.filter((operation) => operation.method === 'get')).toHaveLength(35);
+    expect(OPERATIONS.filter((operation) => operation.method === 'post')).toHaveLength(57);
     for (const operation of OPERATIONS) {
       expect(describeCoreApiAccess(operation.access), operation.operationId).not.toBe('');
       expect(operation.audit.success, operation.operationId).toBeDefined();
@@ -433,9 +441,10 @@ describe('AC-B-09: every registered route is an operation, every operation is re
     console.info(`[w52] the one route outside the registry: ${router.filter((route) => !REGISTRY_ROUTES.includes(route)).join(', ')}`);
     expect(byRouter).toEqual({ undocumented: [], unregistered: [] });
     expect(byGuard).toEqual({ undocumented: [], unregistered: [] });
-    // 75 operations and the channel, each once; the exception is there and is the only one.
-    expect(router).toHaveLength(76);
-    expect(new Set(router).size).toBe(76);
+    // 75 operations of the base, the three STT configuration operations 90 to 92 (task 3 row 113)
+    // and the channel, each once; the exception is there and is the only one.
+    expect(router).toHaveLength(79);
+    expect(new Set(router).size).toBe(79);
     expect(router.filter((route) => !REGISTRY_ROUTES.includes(route))).toEqual([CHANNEL_ROUTE]);
     expect([...guarded].sort()).toEqual([...router].sort());
     expect(permissionGuard(main.app).routeProblems()).toEqual([]);
@@ -452,7 +461,7 @@ describe('AC-B-09: every registered route is an operation, every operation is re
     expect(missing).toEqual([]);
   });
 
-  it('the committed openapi.json lists the same 89 operations with two security schemes, and equals what the generator produces now', () => {
+  it('the committed openapi.json lists the same 92 operations with two security schemes, and equals what the generator produces now', () => {
     const text = readFileSync(COMMITTED_OPENAPI, 'utf8');
     const committed = JSON.parse(text) as OpenApiDocument;
     const documented = listOpenApiOperations(committed).map((entry) => routeKey(entry.method, entry.path));
@@ -468,7 +477,7 @@ describe('AC-B-09: every registered route is an operation, every operation is re
     // refused outright), and unregistered must be precisely the fourteen, so one more or one less
     // unrouted operation fails here. The calls themselves stay red as their own deferrals.
     expect(comparison).toEqual({ undocumented: [], unregistered: LANDED_UNROUTED });
-    expect(documented).toHaveLength(89);
+    expect(documented).toHaveLength(92);
     expect([...documented].sort()).toEqual([...REGISTRY_ROUTES].sort());
     // The same operation ID on the same method and path.
     for (const entry of listOpenApiOperations(committed)) {
@@ -672,6 +681,35 @@ describe('AC-B-10: every operation answers what the contract documents', () => {
     await expectCall(main, 'updateSettings', supervisor, 'a value outside the set', { payload: { timeFormat: '13' } }, 422, 'INVALID_INPUT');
     await expectCall(main, 'acknowledgeAlert', supervisor, 'an alert is acknowledged', { id: 'ALR-000001' }, 204);
     await expectCall(main, 'acknowledgeAlert', supervisor, 'a malformed {id}', { id: 'x' }, 422, 'INVALID_INPUT');
+    settle();
+  });
+
+  it('the STT configuration (operations 90 to 92; C3 §2.5, task 3 row 113): the read, the change, its refusals, the test', async () => {
+    fresh(main);
+    const supervisor = web.SUPERVISOR;
+    const technician = web.TECHNICIAN;
+    // Every role reads it; the answer says whether a credential is set and never holds one.
+    const read = await expectCall(main, 'getSttConfig', web.INVESTIGATOR, 'every role reads the STT configuration', {}, 200);
+    const { revision } = bodyOf<{ revision: number }>(read);
+    expect(Object.keys(bodyOf<Record<string, unknown>>(read)).filter((key) => /credential/i.test(key) && key !== 'credentialSet' && key !== 'credentialKind')).toEqual([]);
+    const changed = await expectCall(main, 'updateSttConfig', technician, 'a holder of CAPTURE_CONFIG turns speaker labelling off', { payload: { revision, diarization: false } }, 200);
+    // No session is open in this file at this point: the change applies at once.
+    expect(bodyOf<{ appliesFrom?: string; revision?: number }>(changed)).toMatchObject({ appliesFrom: 'NOW', revision: revision + 1 });
+    const stale = await expectCall(main, 'updateSttConfig', supervisor, 'the revision of the body is the one before', { payload: { revision, enabled: false } }, 409, 'INVALID_STATE');
+    expect(detailsOf(stale)['reason']).toBe('REVISION_CONFLICT');
+    const lan = await expectCall(main, 'updateSttConfig', supervisor, 'an endpoint that is not on loopback', { payload: { revision: revision + 1, backend: 'omlx-server', endpoint: 'http://192.168.1.20:8000' } }, 422, 'INVALID_INPUT');
+    expect(detailsOf(lan)['reason']).toBe('ENDPOINT_NOT_LOOPBACK');
+    await expectCall(main, 'updateSttConfig', supervisor, 'a body without its revision', { payload: { enabled: false } }, 422, 'INVALID_INPUT');
+    const denied = await expectCall(main, 'updateSttConfig', web.INVESTIGATOR, 'a role without CAPTURE_CONFIG', { payload: { revision: revision + 1, enabled: false } }, 403, 'NOT_PERMITTED');
+    expect(detailsOf(denied)['permission']).toBe('CAPTURE_CONFIG');
+    await expectCall(main, 'testSttConnection', technician, 'a test of the stored configuration (a stand-in probe: nothing is contacted)', {}, 200);
+    await expectCall(main, 'testSttConnection', web.INVESTIGATOR, 'a role without CAPTURE_CONFIG', {}, 403, 'NOT_PERMITTED');
+    await expectCall(main, 'getSttConfig', supervisor, 'the read after the change and the test', {}, 200);
+    // Without a credential: 401 on all three (also produced by the generated walk of AC-B-14, which
+    // stops at the first unrouted operation until the rows of DEFERRED routes land).
+    await expectCall(main, 'getSttConfig', CONSOLE, 'the web console without a session', {}, 401, 'NOT_SIGNED_IN');
+    await expectCall(main, 'updateSttConfig', CONSOLE, 'the web console without a session', { payload: { revision: revision + 1, enabled: false } }, 401, 'NOT_SIGNED_IN');
+    await expectCall(main, 'testSttConnection', CONSOLE, 'the web console without a session', {}, 401, 'NOT_SIGNED_IN');
     settle();
   });
 

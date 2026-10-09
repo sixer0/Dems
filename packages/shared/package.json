@@ -17,6 +17,7 @@
     "./live": "./src/live/index.ts",
     "./live/source": "./src/live/source/index.ts",
     "./live/testing": "./src/live/testing/index.ts",
+    "./redaction": "./src/api/redaction.ts",
     "./assets/*": "./assets/*",
     "./theme/heroui-web.css": "./theme/heroui-web.css",
     "./theme/heroui-native.css": "./theme/heroui-native.css",

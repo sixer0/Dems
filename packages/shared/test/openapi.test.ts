@@ -1,6 +1,7 @@
 // AC-56 (masterplan/01_specs.md §14.9, §14.14; blueprint step 33): the OpenAPI 3.1.0 document is
-// valid for @scalar/openapi-parser, has 23 operations (health LIVE, the 22 simulated endpoints — the
-// 9 §21.2 endpoints plus the 13 capture/transcript ones added by OD-17 — SIMULATED), carries only
+// valid for @scalar/openapi-parser, has 26 operations (health LIVE, the 25 simulated endpoints — the
+// 9 §21.2 endpoints, the 13 capture/transcript ones added by OD-17 and the 3 STT configuration ones
+// of task 3 M6 row 113, C3 §2.5 — SIMULATED), carries only
 // allowed extensions, matches the committed openapi.json, and agrees with the simulator's handlers
 // (sim/api.ts) and canonical dataset.
 //
@@ -10,7 +11,7 @@
 // registry is narrowed to the scope by design; test/api-openapi-scope.test.ts covers the `all` scope.
 //
 // Plan row W27 (contract C; 01_specs §7.19, AC-B-11): the registry is complete, and two assertions
-// changed by design. The committed openapi.json now holds the `all` scope (89 operations, two
+// changed by design. The committed openapi.json now holds the `all` scope (92 operations, two
 // security schemes), so the drift check compares the file with that scope. And the five simulated
 // reads and `startSession` document statuses that only the Core server sends, so the comparison
 // with the simulator covers the statuses the simulator can produce. The `x-` check below still runs
@@ -61,7 +62,7 @@ import {
 
 const AT = Date.parse(OPENAPI_EXAMPLE_INSTANT);
 
-/** The components of the 23 OD-17 offline operations (ten baseline + thirteen simulated capture), in builder order. */
+/** The components of the 26 offline operations (ten baseline + thirteen simulated capture + three STT configuration), in builder order. */
 const OFFLINE_SCHEMA_NAMES = [
   'HealthResponse',
   'SessionCreateRequest',
@@ -102,6 +103,13 @@ const OFFLINE_SCHEMA_NAMES = [
   'TranscriptRevision',
   'TranscriptRevisionPage',
   'EvidenceExportJob',
+  // Task 3 M6 (blueprint row 113; C3 §2.5): the six STT configuration schemas of ops 90-92.
+  'SttLastTest',
+  'SttConfig',
+  'SttCredentialWrite',
+  'SttConfigUpdateRequest',
+  'SttConfigUpdateResult',
+  'SttConnectionTest',
 ];
 
 /** The nine book §21.2 endpoints, verbatim (research/01_explore.md §21.2). */
@@ -155,9 +163,9 @@ describe('AC-56: the OpenAPI document', () => {
     expect((await validate(serializeOpenApiDocument(broken))).valid).toBe(false);
   });
 
-  it('has 23 operations: GET /api/v1/health LIVE and the 22 simulated endpoints (9 book §21.2 + 13 capture) SIMULATED', () => {
-    expect(operations).toHaveLength(23);
-    expect(new Set(operations.map((entry) => entry.operation.operationId)).size).toBe(23);
+  it('has 26 operations: GET /api/v1/health LIVE and the 25 simulated endpoints (9 book §21.2 + 13 capture + 3 STT configuration) SIMULATED', () => {
+    expect(operations).toHaveLength(26);
+    expect(new Set(operations.map((entry) => entry.operation.operationId)).size).toBe(26);
 
     const live = operations.filter((entry) => entry.operation['x-dems-mode'] === 'live');
     expect(live.map((entry) => `${entry.method} ${entry.path}`)).toEqual([`get ${HEALTH_PATH}`]);
@@ -168,7 +176,8 @@ describe('AC-56: the OpenAPI document', () => {
     // OD-17 (D4): the offline scope grows from the nine design-book endpoints to those nine plus the
     // thirteen simulated capture/transcript operations. The nine stay an independent pin; the rest is
     // pinned by count and by the badges below (their exact routes are pinned in api-registry.test.ts).
-    expect(simulatedPaths.length).toBe(22);
+    // Task 3 M6 row 113 (C3 §2.5) adds the three STT configuration operations 90-92: 22 -> 25.
+    expect(simulatedPaths.length).toBe(25);
     for (const endpoint of BOOK_21_2) expect(simulatedPaths, endpoint).toContain(endpoint);
     for (const entry of simulated) {
       expect(badgeNames(entry.operation)).toContain(API_BADGES.SIMULATED.name);
@@ -176,7 +185,7 @@ describe('AC-56: the OpenAPI document', () => {
     }
     const badgeCount = (name: string) => operations.filter((entry) => badgeNames(entry.operation).includes(name)).length;
     expect(badgeCount('LIVE')).toBe(1);
-    expect(badgeCount('SIMULATED')).toBe(22);
+    expect(badgeCount('SIMULATED')).toBe(25);
   });
 
   it('marks only the export RBAC + AUDIT, and every x-dems-rbac lists exactly the roles holding its permission', () => {
@@ -198,13 +207,13 @@ describe('AC-56: the OpenAPI document', () => {
   });
 
   it('the committed openapi/openapi.json matches the builder byte for byte (no drift)', () => {
-    // Changed by design (W27; AC-B-11): the committed file holds the `all` scope, 89 operations.
+    // Changed by design (W27; AC-B-11): the committed file holds the `all` scope, 92 operations (C3 §2.5).
     // The document this file describes is the offline one, which the generator still renders.
     const committed = readFileSync(OPENAPI_JSON_PATH, 'utf8');
     expect(OPENAPI_COMMITTED_SCOPE).toBe(CoreApiScope.ALL);
     expect(renderOpenApiJson()).toBe(serializeOpenApiDocument(createOpenApiDocument({ scope: OPENAPI_COMMITTED_SCOPE })));
     expect(committed).toBe(renderOpenApiJson());
-    expect(listOpenApiOperations(JSON.parse(committed) as typeof document)).toHaveLength(89);
+    expect(listOpenApiOperations(JSON.parse(committed) as typeof document)).toHaveLength(92);
     expect(renderOpenApiJson(CoreApiScope.OFFLINE)).toBe(serializeOpenApiDocument(document));
   });
 
@@ -244,7 +253,7 @@ describe('AC-56: the OpenAPI document', () => {
   });
 
   it('generates one component per contract schema of its scope, from the zod schemas', () => {
-    // Changed by design (W19; OD-17 M2): the offline document holds the 39 schemas its 23 operations
+    // Changed by design (W19; OD-17 M2; M6 row 113): the offline document holds the 45 schemas its 26 operations
     // use, in registry order (a subsequence of `CORE_API_SCHEMAS`); the `all` scope holds one component
     // per entry of `CORE_API_SCHEMAS`.
     expect(Object.keys(document.components.schemas)).toEqual(OFFLINE_SCHEMA_NAMES);
@@ -394,7 +403,7 @@ async function rig(seen: Map<string, Set<number>>): Promise<SimRig> {
 const RECORDING_INPUT = CORE_API_EXAMPLES.createSession!.request!.recordingScenario!.value as Record<string, unknown>;
 
 describe('the contract matches the simulated handlers (sim/api.ts)', () => {
-  it("the simulator's route table lists exactly the 9 simulated operations", () => {
+  it("the simulator's route table lists exactly the simulated operations of the registry (25)", () => {
     const documented = CORE_API_OPERATIONS.filter((operation) => operation.mode === 'simulated').map(
       (operation) => `${operation.method.toUpperCase()} ${operation.path} ${operation.operationId}`,
     );
@@ -624,6 +633,34 @@ describe('the contract matches the simulated handlers (sim/api.ts)', () => {
     expect(j.call('getEvidenceExportJob', 'GET', `${EBASE}/exports/${jobId}`).status).toBe(403);
     j.sim.stop();
 
+    // Flow 13 (task 3 M6, blueprint row 113; C3 §2.5): the three STT configuration operations 90-92.
+    // Signed out: 401 on all three. An INVESTIGATOR reads the configuration (200, every role) and is
+    // refused the write and the test (403: CAPTURE_CONFIG is SUPERVISOR + TECHNICIAN only).
+    const STT_PATH = '/api/v1/transcription/config';
+    const STT_TEST_PATH = `${STT_PATH}/test`;
+    const k = await rig(seen);
+    expect(k.call('getSttConfig', 'GET', STT_PATH).status).toBe(401);
+    expect(k.call('updateSttConfig', 'POST', STT_PATH, { revision: 1, enabled: false }).status).toBe(401);
+    expect(k.call('testSttConnection', 'POST', STT_TEST_PATH).status).toBe(401);
+    k.sim.actions.signIn('budi.santoso', DEMO_OPERATOR_PASSWORD);
+    expect(k.call('getSttConfig', 'GET', STT_PATH).status).toBe(200);
+    expect(k.call('updateSttConfig', 'POST', STT_PATH, { revision: 1, enabled: false }).status).toBe(403);
+    expect(k.call('testSttConnection', 'POST', STT_TEST_PATH).status).toBe(403);
+    k.sim.stop();
+    // A TECHNICIAN drives the write to 400 (not a JSON object), 422 (schema, and the named loopback
+    // refusal), 409 (stale revision) and 200; the test answers 200.
+    const l = await rig(seen);
+    l.sim.actions.signIn('rina.wijaya', DEMO_OPERATOR_PASSWORD);
+    expect(l.call('updateSttConfig', 'POST', STT_PATH, '[1]').status).toBe(400);
+    expect(l.call('updateSttConfig', 'POST', STT_PATH, { enabled: false }).status).toBe(422);
+    const lan = l.call('updateSttConfig', 'POST', STT_PATH, { revision: 1, backend: 'omlx-server', endpoint: 'http://192.168.1.20:8000' });
+    expect([lan.status, (lan.body as { error: { details?: { reason?: string } } }).error.details?.reason]).toEqual([422, 'ENDPOINT_NOT_LOOPBACK']);
+    expect(l.call('updateSttConfig', 'POST', STT_PATH, { revision: 7, enabled: false }).status).toBe(409);
+    expect(l.call('updateSttConfig', 'POST', STT_PATH, { revision: 1, enabled: false }).status).toBe(200);
+    expect(l.call('testSttConnection', 'POST', STT_TEST_PATH).status).toBe(200);
+    expect(l.call('getSttConfig', 'GET', STT_PATH).status).toBe(200);
+    l.sim.stop();
+
     // Every status of the simulated operations that the simulator can produce was produced by it.
     // Changed by design (W27; 01_specs §7.19): the five baseline reads document a 401 and a 403, and
     // `startSession` a 422, that only the Core server sends (`responses[status].services`). RECON-A adds
@@ -642,7 +679,9 @@ describe('the contract matches the simulated handlers (sim/api.ts)', () => {
     // Baseline: 401+403 on five reads (10) and 422 on startSession (1) = 11.
     // Capture (RECON-A): 403 on six reads (6) and 422 on setPrimaryMic/listAudioSourceIntervals/
     // getSealingProgress/getTranscript/listTranscriptRevisions (5) = 11. Total 22.
-    expect(coreServerOnly).toBe(22);
+    // Task 3 M6 row 113: the 403 of getSttConfig (every role may read it; the Origin/revoked-device
+    // guard is the Core server's) = 1. Total 23.
+    expect(coreServerOnly).toBe(23);
   });
 });
 

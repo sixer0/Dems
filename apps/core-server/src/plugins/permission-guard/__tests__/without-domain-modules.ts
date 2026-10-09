@@ -6,7 +6,8 @@
  *
  *     import './without-domain-modules';          // before anything that imports `app.ts`
  *
- * The real app factory then registers the eleven domain modules and the realtime channel as
+ * The real app factory then registers the twelve domain modules (the eleven of the backend task and
+ * the STT configuration module of task 3 row 113) and the realtime channel as
  * units that add NO route: each keeps its place, its name and every other export, and provides
  * the seam it owns with the scaffold's "nothing there" answer (`deviceResolver`: no device is
  * known; `publish`: nobody is connected). Everything the guard is built on stays real: the core,
@@ -71,6 +72,8 @@ vi.mock('../../../modules/pairing', stubs.pairing);
 vi.mock('../../../modules/security-audit', stubs.module('securityAuditModule'));
 vi.mock('../../../modules/sessions', stubs.module('sessionsModule'));
 vi.mock('../../../modules/storage', stubs.module('storageModule'));
+// Task 3 M6, blueprint row 113: the STT configuration module (operations 90 to 92) is a domain module too.
+vi.mock('../../../modules/stt-config', stubs.module('sttConfigModule'));
 vi.mock('../../../modules/system', stubs.module('systemModule'));
 vi.mock('../../../realtime', stubs.realtime);
 
@@ -86,6 +89,7 @@ export const ROUTELESS_UNITS = [
   'modules/security-audit',
   'modules/sessions',
   'modules/storage',
+  'modules/stt-config',
   'modules/system',
   'realtime',
 ] as const;

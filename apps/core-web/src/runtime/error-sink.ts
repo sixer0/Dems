@@ -15,8 +15,14 @@
  * A record holds what the reporter gave: level, source, message, an optional stack and context.
  * The Live source and the typed client never put a credential into a report (they report the
  * method, the path, the status and the request ID). As a second line, every text is passed
- * through `redactCredentials`, which blanks a value with one of the three token prefixes.
+ * through `redactCredentials`, which blanks a value with one of the three token prefixes and the
+ * forms of the STT server credential (task 3 row 113: after `Bearer`, under a credential-named
+ * member, and the write-only `credential` member of `updateSttConfig`).
  */
+// The ONE value import of this file, and a dependency-free one: the sink is loaded before
+// `z.config` (CPW1-7), so it may load no module that could build a schema. `@dems/shared/redaction`
+// imports nothing at all (`live-runtime-static.test.tsx` holds both facts).
+import { redactCredentialText, redactCredentialValue } from '@dems/shared/redaction'
 import type { SimErrorReport } from '@dems/shared/sim'
 
 /** How many records the page's own log keeps. Older ones are dropped. */
@@ -48,19 +54,20 @@ export interface ErrorSinkOptions {
   readonly capacity?: number
 }
 
-/** A session token, a device credential and a biometric token start with these (01_specs §5.3). */
-const CREDENTIAL = /\b(ses|dvc|bio)_[A-Za-z0-9_-]+/g
-
-/** Blanks every value that carries a credential prefix. */
+/**
+ * Blanks every credential form in a text. The rules are NOT this file's: they are the one rule set
+ * of `@dems/shared/api` (`redaction.ts`), which the mobile runtime log applies too (task 3 row 113,
+ * fix round 1, navigator finding N-1): a token of this server by its prefix, whatever follows
+ * `Bearer`, the value of every member whose name says credential (in any order, quoting or
+ * escaping), and `value` / `ref` in a text that mentions a credential. It fails closed.
+ */
 export function redactCredentials(text: string): string {
-  return text.replace(CREDENTIAL, '$1_***')
+  return redactCredentialText(text)
 }
 
-function redactValue(value: unknown, depth: number): unknown {
-  if (typeof value === 'string') return redactCredentials(value)
-  if (value === null || typeof value !== 'object' || depth > 4) return value
-  if (Array.isArray(value)) return value.map((entry) => redactValue(entry, depth + 1))
-  return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, redactValue(entry, depth + 1)]))
+/** A context as the sink keeps it: by member name at any depth; what is too deep to walk is blanked whole. */
+function redactValue(value: unknown): unknown {
+  return redactCredentialValue(value)
 }
 
 export function createErrorSink(options: ErrorSinkOptions = {}): ErrorSink {
@@ -76,7 +83,7 @@ export function createErrorSink(options: ErrorSinkOptions = {}): ErrorSink {
           source: report.source,
           message: redactCredentials(report.message),
           ...(report.stack === undefined ? {} : { stack: redactCredentials(report.stack) }),
-          ...(report.context === undefined ? {} : { context: redactValue(report.context, 0) as Record<string, unknown> }),
+          ...(report.context === undefined ? {} : { context: redactValue(report.context) as Record<string, unknown> }),
           at: report.at,
         }
         kept = kept.length >= capacity ? [...kept.slice(kept.length - capacity + 1), record] : [...kept, record]

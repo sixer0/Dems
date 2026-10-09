@@ -37,8 +37,11 @@ export interface CaptureStateRow {
 /**
  * One statement, three aggregates: the selector row (or null when the seed has not written it),
  * the registry rows in id order, and whether a session is open (the lock of OD-10 is a fact about
- * the live session, never a column). The `::int` casts keep `revision` and `updated_at` JSON
- * numbers within the safe range (both are far below 2^53 by CHECK and by construction).
+ * the live session, never a column). `revision` is cast to `int` (a count of edits, far below
+ * 2^31). `updated_at` is NOT cast: it is an instant in epoch milliseconds (about 1.76e12), which
+ * no 32-bit integer holds - the cast this statement had until blueprint row 57 mounted the module
+ * failed on the first real row with `integer out of range` and stopped the boot. As a `bigint` in
+ * `json_build_object` it is written as a JSON number, exact for every instant below 2^53.
  */
 export const READ_CAPTURE_STATE =
   'SELECT ' +
@@ -46,7 +49,7 @@ export const READ_CAPTURE_STATE =
   "'video01DeviceId', c.video_01_device_id, 'video01Profile', c.video_01_profile, " +
   "'video02DeviceId', c.video_02_device_id, 'video02Profile', c.video_02_profile, " +
   "'micPrimaryId', c.mic_primary_id, 'micStandbyId', c.mic_standby_id, " +
-  "'revision', c.revision::int, 'updatedAt', c.updated_at::int) " +
+  "'revision', c.revision::int, 'updatedAt', c.updated_at) " +
   'FROM public.capture_config c LIMIT 1) AS config, ' +
   "(SELECT COALESCE(json_agg(json_build_object(" +
   "'id', d.id, 'kind', d.kind, 'transport', d.transport, 'model', d.model, 'firmware', d.firmware, " +

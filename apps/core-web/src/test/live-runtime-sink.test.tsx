@@ -133,6 +133,122 @@ describe('credentials', () => {
       context: { header: 'ses_***', nested: { list: ['bio_***', 7, null] }, status: 401 },
     })
   })
+
+  // Task 3 blueprint row 113 (C3 §2.5; SEC35-14; E-31): the STT server credential has no prefix of
+  // this product, so the list blanks it by where it stands. One of the two log-blanking lists; the
+  // other is the mobile runtime log, which holds the same forms.
+  it('the STT credential forms are blanked: after Bearer, under a credential-named member, and the write-only credential of updateSttConfig', () => {
+    // Synthetic markers, built from parts: nothing here is a real key.
+    const KEY = ['sk', 'MARKER', 'stt', 'K3y.9f8e/7d='].join('-')
+    const REF = ['omlx-settings', 'auth.MARKER_ref'].join(':')
+    expect(redactCredentials(`Authorization: Bearer ${KEY}`)).not.toContain('MARKER')
+    expect(redactCredentials(`Bearer ${KEY} was refused`)).toBe('Bearer *** was refused')
+    expect(redactCredentials(`{"apiKey":"${KEY}","model":"m"}`)).toBe('{"apiKey":"***","model":"m"}')
+    expect(redactCredentials(`api_key=${KEY}&x=1`)).toBe('api_key=***&x=1')
+    expect(redactCredentials(`credentialRef: ${REF}, next`)).toBe('credentialRef: ***, next')
+    expect(redactCredentials(`{"revision":1,"credential":{"kind":"SECRET","value":"${KEY} with spaces"}}`)).toBe('{"revision":1,"credential":{"kind":"SECRET","value":"***"}}')
+    expect(redactCredentials(`{"credential":{"kind":"REFERENCE","ref":"${REF}"}}`)).toBe('{"credential":{"kind":"REFERENCE","ref":"***"}}')
+    // A token of this server keeps its own rule, and prose is left alone.
+    expect(redactCredentials('Bearer ses_Abc-123_xyz')).toBe('Bearer ses_***')
+    expect(redactCredentials('a bearer of news; the secret of success; credentialSet: true, credentialKind: REFERENCE')).toBe(
+      'a bearer of news; the secret of success; credentialSet: true, credentialKind: REFERENCE',
+    )
+
+    const log = quietConsole()
+    const sink = createErrorSink({ dev: true, console: log })
+    sink.report({
+      level: 'error',
+      source: 'live.action.updateSttConfig',
+      message: `refused: {"credential":{"kind":"SECRET","value":"${KEY}"}}`,
+      stack: `Error: fetch failed with Authorization: Bearer ${KEY}\n    at call`,
+      at: 1,
+      context: { apiKey: KEY, credential: { kind: 'SECRET', value: KEY }, authorization: `Bearer ${KEY}`, nested: { credentialRef: REF, note: `api_key=${KEY}` }, status: 503 },
+    })
+    const text = JSON.stringify([sink.records(), log.error.mock.calls])
+    expect(text).not.toContain('MARKER')
+    expect(sink.records()[0]?.context).toEqual({ apiKey: '***', credential: '***', authorization: '***', nested: { credentialRef: '***', note: 'api_key=***' }, status: 503 })
+    // Negative control: the same search finds the marker in what was GIVEN to the sink.
+    expect(JSON.stringify({ apiKey: KEY })).toContain('MARKER')
+  })
+
+  // Fix round 1, navigator finding N-1: the forms the first list let through. Every one of them
+  // must lose the marker; none may throw.
+  const N1_KEY = ['NAV', 'MARKER', '7f3a', 'Zq9Lm2Xw8Rt5'].join('-')
+  const N1_REF = ['navstore', 'MARKER/zz9.key'].join(':')
+  const N1_FORMS: ReadonlyArray<readonly [string, string]> = [
+    ['members in the other order (SECRET)', `{"revision":1,"credential":{"value":"${N1_KEY}","kind":"SECRET"}}`],
+    ['members in the other order (REFERENCE)', `{"revision":1,"credential":{"ref":"${N1_REF}","kind":"REFERENCE"}}`],
+    ['bare object in the other order', `sent {"value":"${N1_KEY}","kind":"SECRET"} to the Core`],
+    ['JSON inside a JSON string', JSON.stringify(JSON.stringify({ credential: { kind: 'SECRET', value: N1_KEY } }))],
+    ['JSON inside a JSON string, twice', JSON.stringify(JSON.stringify(JSON.stringify({ credential: { kind: 'REFERENCE', ref: N1_REF } })))],
+    ['a value holding a double quote', `{"credential":{"kind":"SECRET","value":"pre\\"${N1_KEY}"}}`],
+    ['a value holding an apostrophe', `{"credential":{"kind":"SECRET","value":"it's ${N1_KEY}"}}`],
+    ['an apostrophe-quoted value holding a double quote', `{ kind: 'SECRET', value: 'a"${N1_KEY}' }`],
+    ['credential as a text member', `{"credential":"${N1_KEY}"}`],
+    ['credential=', `credential=${N1_KEY}`],
+    ['a dotted path to the member', `body.credential.value=${N1_KEY}`],
+    ['a query string', `kind=SECRET&value=${N1_KEY}`],
+    ['a query string in the other order', `value=${N1_KEY}&kind=SECRET`],
+    ['value: beside its kind', `kind: SECRET, value: ${N1_KEY}`],
+    ['a secret of two words', `{"secret":"two words ${N1_KEY}"}`],
+    ['authorization with another scheme', `authorization: Basic ${N1_KEY}`],
+    ['authorization in JSON with another scheme', `{"authorization":"Basic ${N1_KEY}"}`],
+    ['x-api-key header', `x-api-key: ${N1_KEY}`],
+    ['an unterminated value', `{"credential":{"kind":"SECRET","value":"${N1_KEY}`],
+  ]
+
+  it.each(N1_FORMS)('N-1: %s is blanked', (_name, text) => {
+    const blanked = redactCredentials(text)
+    expect(blanked).not.toContain('MARKER')
+    expect(blanked).not.toContain('Zq9Lm2Xw8Rt5')
+    expect(blanked).toContain('***')
+  })
+
+  it('N-1: text that only looks alike is left alone', () => {
+    for (const text of [
+      'credentialSet: true, credentialKind: REFERENCE',
+      'the kind of value we expect; a reference value: 42',
+      'credentials: same-origin',
+      'the secretary said so; a secret of success',
+      'value: 42, ref: main',
+      '{"kind":"PACKAGE","value":"EXPJ-000001"}',
+    ]) expect(redactCredentials(text)).toBe(text)
+  })
+
+  it('N-1: a context is blanked by key name at ANY depth, a value or ref beside a credential kind too, and what is too deep to walk is blanked whole', () => {
+    const deep = { a: { b: { c: { d: { e: { f: { g: { credential: N1_KEY, note: 'kept' } } } } } } } }
+    // Deeper than the walk goes (CREDENTIAL_WALK_DEPTH): never returned as it came, whatever its members are called.
+    let abyss: Record<string, unknown> = { plain: N1_KEY }
+    for (let level = 0; level < 20; level += 1) abyss = { next: abyss }
+    const sink = createErrorSink({ dev: true, console: quietConsole() })
+    sink.report({
+      level: 'error',
+      source: 'test',
+      message: 'refused',
+      at: 1,
+      context: {
+        deep,
+        abyss,
+        write: { kind: 'SECRET', value: N1_KEY },
+        pointer: { ref: N1_REF, kind: 'REFERENCE' },
+        list: [{ value: N1_KEY, kind: 'SECRET' }],
+        headers: { 'X-Api-Key': N1_KEY, Authorization: `Basic ${N1_KEY}` },
+        job: { kind: 'PACKAGE', value: 'EXPJ-000001' },
+        status: 503,
+      },
+    })
+    const text = JSON.stringify(sink.records())
+    expect(text).not.toContain('MARKER')
+    const context = sink.records()[0]?.context as Record<string, unknown>
+    expect(JSON.stringify(context['deep'])).toBe('{"a":{"b":{"c":{"d":{"e":{"f":{"g":{"credential":"***","note":"kept"}}}}}}}}')
+    expect(JSON.stringify(context['abyss'])).toMatch(/"next":"\*\*\*"\}+$/)
+    expect(context['write']).toEqual({ kind: 'SECRET', value: '***' })
+    expect(context['pointer']).toEqual({ ref: '***', kind: 'REFERENCE' })
+    expect(context['headers']).toEqual({ 'X-Api-Key': '***', Authorization: '***' })
+    // A value beside a kind that is no credential kind, and a plain member, are kept.
+    expect(context['job']).toEqual({ kind: 'PACKAGE', value: 'EXPJ-000001' })
+    expect(context['status']).toBe(503)
+  })
 })
 
 describe('the Live source\'s own reports reach the sink (brief list rows 5 and 6)', () => {

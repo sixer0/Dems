@@ -24,7 +24,7 @@ predecessor: docs/2026-10-04_dems_backend_rbac_pairing/gateway_check/03_security
 finding_counts: {Critical: 0, High: 4, Medium: 15, Low: 4}
 surfaces: 10
 surfaces_fail: 0
-last_updated: 2026-10-07 17:40
+last_updated: 2026-10-09 (status sweep PE-R8-14..15: §10 R-8 addendum, Q-STT-CFG answered (a) by D24; status wording only); 2026-10-07 17:40
 ---
 
 # Security Design Review — real capture, sealing v2 and transcript (phase rows 29-33)
@@ -411,13 +411,13 @@ bind (SEC35-23).
 **Blocker: none.** The review is complete; every finding is design-level and actionable without new
 hardware or a new decision beyond the privacy note (SEC35-26) that row 40 can carry.
 
-## 10. Addendum — proposed R-8 STT configuration surface (RV-SPEC, 2026-10-08; pending Q-STT-CFG, D20)
+## 10. Addendum — R-8 STT configuration surface (RV-SPEC, 2026-10-08; CONFIRMED by D24, Q-STT-CFG answer (a); D20) **Erratum PE-R8-15 (D24)**
 
 Not reviewed by row 35 (R-8 did not exist then). Recorded here so the second-gate reader sees the new
-surface; the formal review belongs to the security row of the milestone that implements R-8, if the
-user confirms Q-STT-CFG. No finding is closed or added to the 23 counted above.
+surface; the formal review belongs to the security row of the milestone that implements R-8; the
+user confirmed Q-STT-CFG on 2026-10-08 (D24). No finding is closed or added to the 23 counted above.
 
-| Surface | Design in the proposed sections | Security expectation to verify at implementation |
+| Surface | Design in the R-8 sections | Security expectation to verify at implementation |
 |---|---|---|
 | STT credential at rest | `stt_config` holds a REFERENCE (oMLX key stays in `~/.omlx/settings.json`, consistent with SEC35-14 "referenced by path only") or AES-256-GCM ciphertext with a `key_ref` into the Core credential store (`04 §B.13`) | column-level SELECT excludes the secret columns for `dems_app`; one reading module; never in slices/logs/audit; the D-DB-07 "no new DB roles" rule holds |
 | API | ops 90-92 (`03 §2.5`): credential write-only, responses carry `credentialSet`/`credentialKind` only; `STT_CONFIG_CHANGED` carries field names only | exact detail-key list; both log-blanking lists cover the credential form; secret sweep `X-SEC-1` |
@@ -426,4 +426,4 @@ user confirms Q-STT-CFG. No finding is closed or added to the 23 counted above.
 
 ---
 *Generated: 2026-10-07 17:40*
-*Last Updated: 2026-10-08 (RV-SPEC: §10 addendum for the proposed R-8 STT configuration surface, D20)*
+*Last Updated: 2026-10-09 (status sweep PE-R8-14..15: §10 confirmed by D24); 2026-10-08 (RV-SPEC: §10 addendum for the R-8 STT configuration surface, added as a proposal, D20)*

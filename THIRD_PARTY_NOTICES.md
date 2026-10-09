@@ -303,3 +303,17 @@ PROVIDE MAINTENANCE, SUPPORT, UPDATES, ENHANCEMENTS, OR MODIFICATIONS.
 ```
 
 The fetched file gives the end year 2026 in its PostgreSQL Global Development Group line (1996-2026), while the five text files shipped with the binaries (listed above) end in 2025 (2003-2025, 2007-2025 and 1996-2025); both are kept as found. As checked on 2026-10-04 (85), this repository does not contain the PostgreSQL binaries and does not, by that check, redistribute them: `git ls-files` lists no path with `embedded-postgres/` in it, the binaries sit in the git-ignored `node_modules/`, and the entry names of the seven archives in the git-ignored `release/` (six web packages and the Android APK, listed without extracting them) include no file named for PostgreSQL; the check of the archives is by entry name only, and their contents were not opened.
+
+---
+
+## Speech-to-text engines used by `@dems/transcriber` (task 3, row 76; register DOC-05, first part)
+
+Nothing in this section is copied into the repository or listed in `package.json`: the engine, its model and the development server live outside git (`.cache/`, git-ignored, and the host). They are listed because `apps/transcriber` starts or calls them. Licence facts are the row-4 findings of `docs/2026-10-07_dems_real_capture_sealing/research/04_collection_stt.md` (F numbers) as carried by `masterplan/07_transcript_spec.md` section F; licence texts are not reproduced here because no copy is distributed from this repository yet. The entries for Silero VAD, sherpa-onnx and the diarization assets are added by the rows that first use them (77, 78); the full DOC-05 list of 15 components is section F of the transcript spec.
+
+| Component | Used as | Code licence | Model-weight licence | Where it lives | Source of the licence fact | Note |
+|---|---|---|---|---|---|---|
+| whisper.cpp 1.9.5 (`whisper-cli`) | backend `cpu-local`, the product path; built from source with every GPU backend off (row 107) | MIT | n/a | `.cache/stt/whisper.cpp/` (git-ignored) | F-19 | Keep the copyright notice in any distributed copy |
+| ggml (inside the whisper.cpp source tree) | tensor library of whisper.cpp | MIT | n/a | same build tree | F-20 | Permissive |
+| Whisper large-v3-turbo weights, ggml format | model of backend `cpu-local` (row 108) | n/a | MIT | `.cache/stt/models/` (git-ignored); SHA-256 recorded in `.cache/stt/ggml_expected.sha256` | F-78, F-70, F-71 | A converted ggml derivative inherits the MIT terms |
+| oMLX server with `whisper-large-v3-turbo` | backend `omlx-server`: development and functional checks on this Mac only (D7) | not distributed with DEMS | MIT (same checkpoint class, F-78) | host install, shared with another project | D7; `initialization/02_stt_runtime_install.md` | Not shipped: it runs on the Apple GPU. DEMS calls it on loopback and never installs, upgrades or starts it |
+| OmniVoice (`omnivoice-bfloat16`) | speech synthesis for the test fixture only (`TtsFixtureProvider`) | n/a | Apache-2.0; the HiggsAudio tokenizer carries an extended licence above 100k monthly users | host install | `initialization/02_stt_runtime_install.md` section 4; transcript spec section F | Development-side fixture only; must not ship in the Core product |

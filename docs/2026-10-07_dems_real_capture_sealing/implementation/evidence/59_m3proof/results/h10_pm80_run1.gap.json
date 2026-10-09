@@ -1,0 +1,55 @@
+{
+ "check": "gap (AU2-05)",
+ "run": "h10_pm80_run1",
+ "files": {
+  "cam1.mp4": {
+   "decoded_samples": 985088,
+   "encoder_input_samples": 984000,
+   "decoded_minus_input": 1088,
+   "count_check_alone": "PASS",
+   "beeps_decoded": 6,
+   "beeps_manifest": 6,
+   "spacing_error_samples": [
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "abs_position_error_samples": [
+    1024,
+    1024,
+    1024,
+    1024,
+    1024,
+    1024
+   ],
+   "spacing_check": "PASS"
+  },
+  "cam2.mp4": {
+   "decoded_samples": 985088,
+   "encoder_input_samples": 984000,
+   "decoded_minus_input": 1088,
+   "count_check_alone": "PASS",
+   "beeps_decoded": 6,
+   "beeps_manifest": 6,
+   "spacing_error_samples": [
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "abs_position_error_samples": [
+    1024,
+    1024,
+    1024,
+    1024,
+    1024,
+    1024
+   ],
+   "spacing_check": "PASS"
+  }
+ },
+ "verdict": "PASS"
+}

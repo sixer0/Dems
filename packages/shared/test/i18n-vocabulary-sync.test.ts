@@ -133,10 +133,11 @@ describe('i18n ↔ sim/vocabulary.ts (D52)', () => {
 
   // Backend task W16 (GP-06; 2026-10-04 01_specs §13.1, §19.2): nine audit types the Core server
   // writes, in the existing eight categories; no event type was added.
-  it('AuditType: 62 values; the nine task-3 capture types sit in the existing categories (M2-W7)', () => {
+  it('AuditType: 63 values; the nine task-3 capture types and STT_CONFIG_CHANGED sit in the existing categories (M2-W7, M6 row 113)', () => {
     // Task 3 M2-W7 (blueprint row 48; C3 §5.2/§5.3): 53 -> 62. Each new type joins an EXISTING
     // category (no new AuditCategory), and each is labelled in `common.auditType` (checked above).
-    expect(values(V.AuditType)).toHaveLength(62);
+    // Task 3 M6 (blueprint row 113; C3 §2.5): 62 -> 63 with STT_CONFIG_CHANGED, category DEVICE.
+    expect(values(V.AuditType)).toHaveLength(63);
     expect(values(V.AuditCategory)).toHaveLength(8);
     expect(values(V.SimEventType)).toHaveLength(46);
     const added = {
@@ -154,6 +155,8 @@ describe('i18n ↔ sim/vocabulary.ts (D52)', () => {
       expect(V.AuditType[type]).toBe(type);
       expect(V.AUDIT_TYPE_CATEGORY[type]).toBe(added[type]);
     }
-    expect(values(V.AuditType).slice(-9)).toEqual(Object.keys(added));
+    expect(values(V.AuditType).slice(-10, -1)).toEqual(Object.keys(added));
+    expect(values(V.AuditType).at(-1)).toBe('STT_CONFIG_CHANGED');
+    expect(V.AUDIT_TYPE_CATEGORY.STT_CONFIG_CHANGED).toBe('DEVICE');
   });
 });

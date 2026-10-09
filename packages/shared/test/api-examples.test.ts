@@ -49,7 +49,7 @@ function firstResponse<T>(operationId: string, status: number, name: string): T 
   return example!.value as T;
 }
 
-describe('the examples of the 79 operations that only the Core server answers', () => {
+describe('the examples of the 82 operations that only the Core server answers', () => {
   it('every operation has examples: a request for each body, an ID for each path parameter, a body for each answer that has one', () => {
     let responses = 0;
     for (const operation of NEW_OPERATIONS) {
@@ -72,7 +72,8 @@ describe('the examples of the 79 operations that only the Core server answers', 
         }
       }
     }
-    expect(NEW_OPERATIONS).toHaveLength(79);
+    // 65 of the backend task, 14 of task 3 M2-W7 and the 3 STT configuration operations of M6 row 113 (C3 §2.5).
+    expect(NEW_OPERATIONS).toHaveLength(82);
     expect(responses).toBeGreaterThan(300);
   });
 

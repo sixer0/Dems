@@ -1,7 +1,8 @@
 /**
- * The allow-list of audit details for the eighteen server-written types (plan row W21; spec §13.1,
+ * The allow-list of audit details for the nineteen server-written types (plan row W21; spec §13.1,
  * §4.6 RB-4 and RB-6, §6.2, §6.3; SR-54; task 3 M2-W7 blueprint row 48 adds the nine capture-phase
- * types of `C3 §5.2` — register CS-14).
+ * types of `C3 §5.2` — register CS-14; task 3 M6 blueprint row 113 adds `STT_CONFIG_CHANGED` of
+ * `C3 §2.5` — R-8).
  *
  * The types of this list are written by server-native modules only (the permission guard, pairing,
  * user administration, identity, and from task 3: the capture-config store, the mic switch, the
@@ -19,7 +20,16 @@
  * "Device ID" in the specification's table is the row's own `deviceId`. A module may repeat it
  * in the details as `deviceId`; the list allows that for the three types that name a device.
  */
-import { DEVICE_ID_PATTERN, HARDWARE_DEVICE_ID_PATTERN, OPERATOR_ID_PATTERN, PAIRING_CODE_ID_PATTERN, PairingCodeCloseReason, SHA256_HEX_PATTERN } from '@dems/shared/api';
+import {
+  DEVICE_ID_PATTERN,
+  HARDWARE_DEVICE_ID_PATTERN,
+  OPERATOR_ID_PATTERN,
+  PAIRING_CODE_ID_PATTERN,
+  PairingCodeCloseReason,
+  SHA256_HEX_PATTERN,
+  STT_BACKENDS,
+  STT_CONFIG_FIELDS,
+} from '@dems/shared/api';
 import { AuditType, OperatorRole, type DetailValue } from '@dems/shared/sim';
 import { NATIVE_TEXT_MAX_LENGTH } from './limits';
 
@@ -102,6 +112,28 @@ const flag = (required: boolean): DetailRule => ({
   required,
   form: 'true or false',
   accepts: (value) => typeof value === 'boolean',
+});
+
+/**
+ * `changedFields` of STT_CONFIG_CHANGED (C3 §2.5): field NAMES of the closed set `STT_CONFIG_FIELDS`,
+ * joined with a comma, each at most once. Membership only: the rule has no room for a value of the
+ * endpoint, the model, the credential or its reference target (E-30/E-31; SEC35-14).
+ */
+const STT_FIELD_NAMES: ReadonlySet<string> = new Set(STT_CONFIG_FIELDS);
+const sttFieldNames = (required: boolean): DetailRule => ({
+  required,
+  form: `one or more of ${STT_CONFIG_FIELDS.join(', ')}, comma-separated, each once`,
+  accepts: (value) => {
+    if (typeof value !== 'string' || value === '') return false;
+    const names = value.split(',');
+    return names.every((name) => STT_FIELD_NAMES.has(name)) && new Set(names).size === names.length;
+  },
+});
+/** A revision of an optimistic lock: a whole number of 1 or more. */
+const revisionNumber = (required: boolean): DetailRule => ({
+  required,
+  form: 'a whole number of 1 or more',
+  accepts: (value) => typeof value === 'number' && Number.isSafeInteger(value) && value >= 1,
 });
 
 const REQUIRED = true;
@@ -233,12 +265,21 @@ export const SERVER_AUDIT_DETAIL_RULES = {
     deviceId: hardwareDeviceId(REQUIRED),
     reason: code(REQUIRED),
   },
+  [AuditType.STT_CONFIG_CHANGED]: {
+    // C3 §2.5 (blueprint row 113; R-8): exactly these five keys. Field NAMES and two flags; never
+    // the endpoint, the model path, the credential or its reference target.
+    changedFields: sttFieldNames(REQUIRED),
+    enabled: flag(REQUIRED),
+    backend: oneOf(STT_BACKENDS, `one of ${STT_BACKENDS.join(', ')}`)(REQUIRED),
+    credentialChanged: flag(REQUIRED),
+    revision: revisionNumber(REQUIRED),
+  },
 } as const satisfies Partial<Record<AuditType, Readonly<Record<string, DetailRule>>>>;
 
-/** The eighteen types that have a list (nine of the backend task, nine of the capture phase). */
+/** The nineteen types that have a list (nine of the backend task, nine of the capture phase, one of R-8). */
 export type ServerAuditType = keyof typeof SERVER_AUDIT_DETAIL_RULES;
 
-/** The list of `type`, or undefined for one of the simulator's 44 types (62 minus the 18 listed here). */
+/** The list of `type`, or undefined for one of the simulator's 44 types (63 minus the 19 listed here). */
 export function detailRulesOf(type: AuditType): Readonly<Record<string, DetailRule>> | undefined {
   return (SERVER_AUDIT_DETAIL_RULES as Partial<Record<AuditType, Readonly<Record<string, DetailRule>>>>)[type];
 }

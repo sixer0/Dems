@@ -49,7 +49,7 @@
  * - `mode` keeps its two values: `simulated` for the nine design-book operations (the in-app
  *   simulator can answer them), `live` for every other one (only a service answers it).
  *   `listCoreApiOperations('offline')` is what a client can call without the Core server (the
- *   ten above); `'all'` is every entry: 75 operations, 27 GET and 48 POST.
+ *   ten above); `'all'` is every entry: 92 operations, 35 GET and 57 POST.
  * - `CORE_API_OPERATION_TABLE` (`operation-table.ts`) is the same table with literal types;
  *   `CORE_API_OPERATIONS` is the widened view.
  */
@@ -133,6 +133,7 @@ import {
 } from './state-slices';
 import { STORAGE_OPERATIONS, STORAGE_SCHEMAS } from './storage';
 import { SYSTEM_OPERATIONS, SYSTEM_SCHEMAS } from './system';
+import { STT_CONFIG_OPERATIONS, STT_CONFIG_SCHEMAS } from './transcription';
 import { apiText } from './text';
 
 export * from './contract-model';
@@ -627,6 +628,8 @@ export const CORE_API_SCHEMAS = {
   ...CAPTURE_CONFIG_SCHEMAS,
   ...AUDIO_SOURCE_SCHEMAS,
   ...TRANSCRIPT_MEDIA_SCHEMAS,
+  // Task 3 M6 (blueprint row 113; C3 §2.5; R-8): the STT configuration schemas of operations 90-92.
+  ...STT_CONFIG_SCHEMAS,
 } as const;
 export type CoreApiSchemaName = keyof typeof CORE_API_SCHEMAS;
 
@@ -1023,11 +1026,13 @@ const OPERATION_TABLE = [
   ...DEMO_OPERATIONS,
   // Task 3 M2-W7 (blueprint row 48; C3 §2.2): operations 76-89, appended in number order so the
   // table order and the contract numbering agree. 75 + 14 = 89 operations, 34 GET / 55 POST.
-  // Ops 90-92 (R-8) are NOT here: proposed only until Q-STT-CFG is confirmed (C3 §2.5; CF-11).
   ...CAPTURE_CONFIG_OPERATIONS, // 76-80
   ...AUDIO_SOURCE_OPERATIONS, // 81-83
   ...TRANSCRIPT_MEDIA_OPERATIONS, // 84-88
   CAPTURE_CREDENTIAL_OPERATION, // 89
+  // Task 3 M6 (blueprint row 113; C3 §2.5; R-8): Q-STT-CFG was confirmed at the second gate (D24),
+  // so operations 90-92 join the table: 89 + 3 = 92 operations, 35 GET / 57 POST (CF-11).
+  ...STT_CONFIG_OPERATIONS, // 90-92
 ] as const satisfies readonly CoreApiRegistryOperation[];
 
 /** The type of the table with literal operation IDs and schema names (`CORE_API_OPERATION_TABLE`). */

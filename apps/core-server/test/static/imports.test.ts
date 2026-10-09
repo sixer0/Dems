@@ -56,6 +56,8 @@ const CLOSED_UNITS: readonly string[] = [
   'src/core',
   'src/engine',
   'src/realtime',
+  // The capture supervisor (task 3 row 57): closed from its first day.
+  'src/capture',
   'src/plugins/',
   'src/modules/',
   'src/db/mapping',

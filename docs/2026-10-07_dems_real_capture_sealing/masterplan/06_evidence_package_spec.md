@@ -23,7 +23,7 @@ source_database_contract: /Users/gsp-budi/Documents/DEMS/docs/2026-10-07_dems_re
 source_capture_spec: /Users/gsp-budi/Documents/DEMS/docs/2026-10-07_dems_real_capture_sealing/masterplan/05_capture_architecture_spec.md
 source_transcript_spec: /Users/gsp-budi/Documents/DEMS/docs/2026-10-07_dems_real_capture_sealing/masterplan/07_transcript_spec.md
 decisions: /Users/gsp-budi/Documents/DEMS/docs/2026-10-07_dems_real_capture_sealing/decisions/decisions.md (D4, D7, D8, D10, D12)
-last_updated: 2026-10-08 (RV-SPEC: proposed §B.7a R-8 transcript configuration state, D20 — field count stays 120 until Q-STT-CFG; erratum AU2-03 on field 51)
+last_updated: 2026-10-09 (status sweep PE-R8-06..08: §B.7a and the §E.5 R-8 extension CONFIRMED by D24, Q-STT-CFG answer (a); status wording only); 2026-10-08 (RV-SPEC: §B.7a R-8 transcript configuration state added as a proposal, D20; erratum AU2-03 on field 51)
 ---
 
 # Evidence Package Spec — layout, manifest v2, signer, verify v2, sealing pipeline v2, tamper demo
@@ -313,11 +313,12 @@ Machine transcript revision 0 is byte-unchanged forever (OD-15). The document fo
 | 93 | `transcript.failedChunks` | n, not null (>= 0) | Core seal from `transcript_chunks.status='FAILED'`; `dbc-3 §B.7`; §E.5 |
 | 94 | `transcript.revisionHead` | n, not null (>= 0; 0 = no revision) | revisions store; `transcript_revisions.revision_no` max; OD-15 |
 
-### B.7a Transcript configuration state (PROPOSED — pending Q-STT-CFG confirmation at the second gate; R-8, D20)
+### B.7a Transcript configuration state (CONFIRMED — D24, Q-STT-CFG answer (a); R-8, D20) **Erratum PE-R8-07 (D24)**
 
-> **Status: proposed, not counted.** These fields implement R-8 (`01_specs.md` R-8; D20). They are
-> **not** in the 120-field count or the self-gate until the user confirms Q-STT-CFG; if confirmed the
-> manifest has **123** fields and field 92's enum gains `DISABLED`. If rejected: delete this section.
+> **Status: confirmed (D24, 2026-10-08: Q-STT-CFG answered (a), all 13 defaults).** These fields implement
+> R-8 (`01_specs.md` R-8; D20). With them the manifest has **123** fields and field 92's enum gains
+> `DISABLED`. The 120-field figures elsewhere in this file were not restated by the status sweep
+> (**Erratum PE-R8-07 (D24)**, status wording only).
 
 | # | Field | Type (nullable) | Source (component; authority) |
 |--:|---|---|---|
@@ -572,11 +573,11 @@ source + failure path.
 | Idempotence | a resumed seal consumes the committed transcript + hash and never recomputes or rewrites the machine transcript | OD-15; `tx §D.3` |
 | **Row-33 open point 2 (resolved)** | When STT **hard-fails** (all chunk retries exhausted, `transcript_chunks.status='FAILED'`), the package **still seals**: the transcript step is marked with an explicit state **`transcript.state='PARTIAL'`** and the failed-chunk count `transcript.failedChunks`, **no text is fabricated** for a failed chunk (it is simply absent), and the sealed machine transcript is assembled from committed chunks only. The step is `DONE` (not `FAILED`) so sealing proceeds; the state rides in the manifest and the transcript document. `state='ASSEMBLED'` means all chunks are `DONE`. | Blueprint row 33 idea carries the transcript side (`07_transcript_spec.md`; `delegation_progress/data-analyst__row33.md:69-73`); this spec (the sealing owner) **confirms** it and **refines** it with the two-state enum + count; `tx §A.3` (retry then mark FAILED and continue); `dbc-3 §B.7` (`transcript_chunks_done_check`) |
 
-**Proposed extension (R-8, D20; pending Q-STT-CFG).** STT **disabled** by configuration → the
+**Extension (R-8, D20; confirmed, D24, Q-STT-CFG (a); Erratum PE-R8-08).** STT **disabled** by configuration → the
 transcript step completes immediately with `transcript.state = 'DISABLED'` (§B.7a), no transcriber
 work runs during recording, and sealing does not wait. STT **enabled but the backend unreachable** →
 the D-EV-1 rule below applies unchanged (`PARTIAL`, `failedChunks`, no fabricated text) and
-`transcript.backendUnreachable = true`. Checks `M6-STTCFG-OFF` / `M6-STTCFG-UNREACH` (conditional).
+`transcript.backendUnreachable = true`. Checks `M6-STTCFG-OFF` / `M6-STTCFG-UNREACH` (active, D24/D64; Erratum PE-R8-08).
 
 **Choice recorded (D-EV-1):** a hard STT failure does not block sealing; sealed evidence keeps its
 integrity independent of transcript completeness; the incompleteness is explicit
@@ -745,4 +746,4 @@ integrity independent of transcript completeness; the incompleteness is explicit
 ---
 
 *Generated: 2026-10-07 10:20*
-*Last Updated: 2026-10-08 (RV-SPEC: proposed §B.7a + §E.5 R-8 extension, D20; erratum AU2-03 field 51; earlier: row-35 security remediation SEC35-06/07/10/11/13/20)*
+*Last Updated: 2026-10-09 (status sweep PE-R8-06..08: §B.7a + §E.5 R-8 extension confirmed by D24); 2026-10-08 (RV-SPEC: §B.7a + §E.5 R-8 extension added as a proposal, D20; erratum AU2-03 field 51; earlier: row-35 security remediation SEC35-06/07/10/11/13/20)*
