@@ -19,7 +19,7 @@ binding_decisions: D4 (OD-01 T1, OD-02 L2, OD-03 (a) both hashes, OD-19), D7 (ST
 impact_map_input: docs/2026-10-04_dems_backend_rbac_pairing/research/10_next_phase_impact_map.md §6 (T-31..T-39)
 b16_errata: docs/2026-10-04_dems_backend_rbac_pairing/report/01_report_inputs.md §4 B16 items (i)-(v) — applied/carried in section H
 implemented_by: M2 rows of blueprint rev 2 (row 40); this row writes the plan only
-last_updated: 2026-10-09 (row 122, errata PE-122-01..15: section N — delta dbc-4 for R-9..R-11, migration set `0008`/`0009` specified, nothing written or applied); 2026-10-09 (status sweep PE-R8-01..05: §B.13 `stt_config` CONFIRMED by D24, Q-STT-CFG answer (a); status wording only); 2026-10-08 (RV-SPEC: §B.13 `stt_config` for R-8 added as a proposal, D20; 2026-10-07 row-35 remediation SEC35-02/03/20/21/22)
+last_updated: 2026-10-09 (row-128 spec-gate fix pass PE-128-40..45 (D89, D91; `gateway_check/27_r9_r11_spec_gate.md`); row 122, errata PE-122-01..15: section N — delta dbc-4 for R-9..R-11, migration set `0008`/`0009` specified, nothing written or applied); 2026-10-09 (status sweep PE-R8-01..05: §B.13 `stt_config` CONFIRMED by D24, Q-STT-CFG answer (a); status wording only); 2026-10-08 (RV-SPEC: §B.13 `stt_config` for R-8 added as a proposal, D20; 2026-10-07 row-35 remediation SEC35-02/03/20/21/22)
 ---
 
 # Database Contract dbc-3: schema v2, migrations 0004/0005, privileges, kept-on-reset, lane re-creation
@@ -335,7 +335,7 @@ UPDATE (`status, progress, eta_ms, attempt, checkpoint, error_code, updated_at`)
 
 Purpose: each interval of one mic (`MIC-01`/`MIC-02` in PRIMARY/STANDBY role) inside `AUDIO-01`;
 `from_media_ms`/`to_media_ms` are **media-pts domain** (S2 §6 finding 3; specs E.2 — never operator
-wall clock). Rows feed the manifest v2 `audio.sourceIntervals` and the playback band.
+wall clock). Origin: FILE (media) time of the sealed file — file time 0 = T0 − 1024/48000 s (`CAPTURE_MEDIA_TIME_ORIGIN_SAMPLES`), the same origin as the fragment times and as the chunk offsets of row 77 (D81). **Erratum PE-128-44 (D81; D72(d)).** Rows feed the manifest v2 `audio.sourceIntervals` and the playback band.
 
 | Column | Type | Null | Default | Key/Check |
 |---|---|---|---|---|
@@ -749,6 +749,8 @@ SELECT 1 FROM evidence_items
 - The check is SELECT-only, so `dems_app` could run a pre-flight preview; the authoritative run
   happens as `dems_owner` inside R-0.
 
+**Erratum PE-128-40 (D83 O-5; D87(3); D86 SEC35-42; D89(c)(d)) — development packages.** The shape above is the dbc-3 shape. In dbc-4 a sealed `REAL` item blocks the reset unless `development_sources IS TRUE` **and** the cross-check passes — its session has exactly four `session_capture_sources` rows and none of a production kind. `NULL` and `false` block. Shape: `SELECT 1 FROM evidence_items WHERE integrity_source = 'REAL' AND sealed_at IS NOT NULL AND development_sources IS NOT TRUE LIMIT 1;` then the cross-check over the exempted items; any mismatch blocks with the item count. The reset states how many development packages it will erase and proceeds only on the existing confirmation (SEC35-42). Owner: row 129 (`M4-SEC-RESET-1`). The disk side is unchanged.
+
 ### E.3 What reseeding `dems_demo` does (OD-02 L2; E-20)
 
 | Rule | Content |
@@ -1023,7 +1025,7 @@ Stored spelling and classes (this row fixes the spelling row 123 proposed; value
 | `USB_AUDIO` | MIC | `PRODUCTION` | `PRODUCTION` | nobody in this phase (class C; a production site seed) |
 | `SNMP_POE` | POE | `PRODUCTION` | `PRODUCTION` | nobody in this phase (class C) |
 | `FAKE` | CAMERA, MIC, POE | `DEVELOPMENT` | `FAKE` | the seed (5 built-ins); operation 96 for a loopback fixture candidate |
-| `LOCAL_DEVICE` | CAMERA, MIC | `DEVELOPMENT` | `LOCAL_DEVICE` | the local-device registration of row 136 (and operation 96 if row 128 keeps the local camera as a candidate) |
+| `LOCAL_DEVICE` | CAMERA, MIC | `DEVELOPMENT` | `LOCAL_DEVICE` | the local-device registration of row 136 only (D83 O-8). **Erratum PE-128-41** |
 
 Why each property:
 
@@ -1052,10 +1054,7 @@ every database and whose kind cannot change. Under this contract the local devic
 rows** — the next free `CAM-NN` / `MIC-NN` (`CAM-03` and `MIC-03` on a fresh seed), registered by
 row 136 — and development mode assigns them in the selector (`video_01_device_id`, `mic_primary_id`)
 through the existing UPDATE of `capture_config`; `CAM-02` and `MIC-02` stay the fake sources of
-slots 2. D74(2) fixes which source fills which **slot**, not which id it carries. If the controller
-rules that the ids of row 123 stand, the only change to this delta is one grant line
-(`GRANT UPDATE (adapter_kind)`) and the loss of the immutability rule above; no table, column or
-CHECK changes.
+slots 2. D74(2) fixes which source fills which **slot**, not which id it carries. **Ruled (D83):** D-DB-13 is accepted; `cap` §A.1.1 is corrected at row 128. **Erratum PE-128-41.**
 
 ### N.3 The per-session record of each slot's source — new table `session_capture_sources` (T-41) (question 2) — Erratum PE-122-04
 
@@ -1089,11 +1088,12 @@ Mapping rules (code rules the database cannot hold):
 
 | # | Rule |
 |---|---|
-| MR-S1 | **Exactly four rows per session, in one statement, in the database transaction that persists the transition to `RECORDING`** — before the Core asks the supervisor to start capture. So the rows are durable before the first `recording_fragments` row can exist. Rows 66 / 71 own the write |
+| MR-S1 | **Exactly four rows per session, in one statement, in the database transaction that persists the transition to `RECORDING`** — before the Core asks the supervisor to start capture. So the rows are durable before the first `recording_fragments` row can exist. Rows 66 / 71 own the write. '`RECORDING`' here is the stored state the session takes when the plan is accepted; the clients present it as 'connecting cameras' until the first durable fragment (D84; the session payload member is `captureDurable`, ruling R-1 option A, D91). A failed start leaves the four rows and no evidence item; a reset removes them. **Erratum PE-128-42** |
 | MR-S2 | Every `session_audio_intervals.mic_device_id` of a session equals the `device_id` of one of its two `MIC-` rows, and every `recording_fragments.track_id` of a session has its `VIDEO-` row. The class of an interval (manifest field 125) is the kind of that `MIC-` row; the class of a camera file (field 124) is the kind of its `VIDEO-` row. `session_audio_intervals` therefore needs **no new column** |
 | MR-S3 | `adapter_kind` is the adapter that really feeds the slot in this run: in `REAL_PRODUCTION` and `REAL_DEVELOPMENT` it equals `capture_devices.adapter_kind` of `device_id` at that moment; in `SIMULATED` it is `FAKE` for all four rows whatever the registry says (the simulator generates the media). This is why the table has no composite foreign key to (`id`, `adapter_kind`) of the registry |
 | MR-S4 | `BUILD_MANIFEST` (rows 82 / 83 / 141) reads the class **from these rows only** — never from `capture_devices`, `capture_config`, `active_session.capture_config` or the development flag. A session without exactly four rows fails the step (`sealing_jobs.status = 'FAILED'`, `error_code` proposed `SOURCE_RECORD_MISSING`), nothing is signed (row 124 §B.12 rule 2, §E.6) |
 | MR-S5 | A resumed seal (RECOVERY, `sealing_jobs.attempt >= 2`) reads the same immutable rows, so it writes the same classes after any restart; the classes need no place in `sealing_jobs.checkpoint` |
+| MR-S6 | **Erratum PE-128-42 (D86 SEC35-40 (4)):** session start re-reads the four rows it wrote and refuses the start when their class is not the class of the running capture operation |
 
 Relation to the neighbouring tables: `recording_fragments` (`session_id`, `track_id`) joins the
 `VIDEO-` rows by value and `session_audio_intervals` joins the `MIC-` rows through `mic_device_id`
@@ -1139,8 +1139,8 @@ no requirement of R-9 needs them to outlive that session (R-9 AC-3: "after a sea
 | Consequence | Statement |
 |---|---|
 | A Core restart forgets | the live search, its candidates, their test results and the in-memory rate-limit counters. The operator searches again. (The counter reset is a point for row 126, not a schema matter) |
-| No audit of candidate contents | the database holds, per search, one `CAPTURE_DISCOVERY_SEARCHED` row with **counts only** (`responderCount`, `newCount`, `registeredCount`); per test one `CAPTURE_CONNECTION_TESTED` row with the candidate id and the outcome, never a host. Which devices answered a search cannot be reconstructed from the database afterwards |
-| Identifying data | an address, a MAC, an ONVIF endpoint reference or a model string reaches PostgreSQL **only** in the `capture_devices` row of an adopted device (`address`, `mac`, `onvif_uuid`, `model`), inside the git-ignored cluster under `.data/`. `db:status` prints row counts only. No committed document may quote those values (D75) |
+| No audit of candidate contents | the database holds, per search, one `CAPTURE_DISCOVERY_SEARCHED` row with **counts only** (`responderCount`, `newCount`, `registeredCount`); per test one `CAPTURE_CONNECTION_TESTED` row with the candidate id and the outcome; `host` and `endpointRef` only for `PRODUCTION` candidates (D86 C-3; **erratum PE-128-43**). Which devices answered a search cannot be reconstructed from the database afterwards |
+| Identifying data | an address, a MAC, an ONVIF endpoint reference or a model string reaches PostgreSQL **only** in the `capture_devices` row of an adopted device (`address`, `mac`, `onvif_uuid`, `model`) and in those two audit types for `PRODUCTION` candidates (the audit table is in the git-ignored cluster), inside the git-ignored cluster under `.data/` (**erratum PE-128-43**, D86 C-3). `db:status` prints row counts only. No committed document may quote those values (D75) |
 | One row, one moment | a `capture_devices` row comes into being only in the commit of operation 96, in one transaction with the credential row (when a credential is present) and the audit rows; every failure before or inside it leaves 0 rows in both tables |
 | Argument for persistence, considered | a stored candidate list would give a forensic record of what was seen on the network and would survive a restart; it would also put the identifying data of **non-adopted** third-party devices into a kept table and into every backup — against D75 and with no acceptance criterion asking for it. Rejected |
 
@@ -1178,7 +1178,7 @@ the three alerts, inspected in the migration text:
 | `audit_log_category_check` (`:195`) | closed list of 8 | `DEVICE` (3 types), `SECURITY` (1 type) | both in the list; no new category |
 | `audit_log_severity_check` (`:196`) | closed list of 4 | the existing severities | unchanged |
 | `audit_log_details_flat_check` (`:198`) | no object or array value | every key of `03_api_contract.md` §5.2 is a string, number or boolean; `evidenceFiles: 0` is a number | admitted |
-| `audit_log_details_no_secret_keys_check` (as swapped by `0006`: 28 keys) | none of 28 top-level keys | `searchId`, `scope`, `trigger`, `outcome`, `responderCount`, `newCount`, `registeredCount`, `failureReason`, `sessionId`, `operationId`, `permission`, `candidateId`, `authenticated`, `adapter`, `sourceClass`, `deviceId`, `credentialSet`, `deviceKind`, `phase`, `reason`, `degraded` | none is a denied key (`credentialSet` is not `credential`; the check matches whole key names). The rule "never the host" is the application's: `host` is **not** a denied key. If row 126 wants the database to refuse it, that is a CHECK swap in a later set — not asked for here |
+| `audit_log_details_no_secret_keys_check` (as swapped by `0006`: 28 keys) | none of 28 top-level keys | `searchId`, `scope`, `trigger`, `outcome`, `responderCount`, `newCount`, `registeredCount`, `failureReason`, `sessionId`, `operationId`, `permission`, `candidateId`, `authenticated`, `adapter`, `sourceClass`, `deviceId`, `credentialSet`, `deviceKind`, `phase`, `reason`, `degraded`, and (**erratum PE-128-43**, D86 C-3) `host`, `endpointRef`, `guardTripped`, `interfaceCount`, `captureOperation` | none is a denied key (`credentialSet` is not `credential`; the check matches whole key names). `username`, `password`, `credential`, `secret` and `onvifUuid` are denied keys already (`0006_stt_config.sql:33-34`); `host` and `endpointRef` are not, and are used per C-3 for `PRODUCTION` candidates only |
 | `events_type_check`, `events_params_*` (`:216`, `:219`, `:220`) | format; flat; the same 28 keys | as above | admitted |
 | `alerts_kind_check` (`0004_capture.sql:227`) | `kind = 'SYSTEM' OR kind IN (14 fault kinds)`; severity list of 4 | situations A and B and the degraded C: `SYSTEM` / WARNING; situation C: `CAPTURE_FAULT` / CRITICAL | both admitted; **no fifteenth fault kind** |
 | `alerts_params_check` (`0001_tables.sql:383`) | flat object or NULL | `reason`, `searchId`, `trigger`, `deviceId`, `deviceKind`, `phase`, `cause`, `searchResponderCount`, `evidenceFiles` | admitted; `params.reason` is free text to the database |
@@ -1340,7 +1340,7 @@ What the database contract asks of the fence (the decision table itself is row 1
 | Kept set | **12 tables, unchanged**; no new carry mode | `capture_devices` stays kept, mode `upsert`: the carried image is built from the typed schema's column list (`reset/kept-tables.ts:58-62`), so `adapter_kind` is carried once the schema declares it |
 | Does a reset keep adopted devices | **yes** — an adopted camera and a registered local device are carried with their kind; their credential rows too | D-DB-08; OD-19 |
 | `session_capture_sources` at a reset | rebuilt: rows removed, table kept. Its FK names a kept table, never the other way round | §B.0 pattern |
-| Reset guard (OD-19, §E.2) | unchanged: keyed on `integrity_source = 'REAL'`. A package sealed in development mode is `REAL` and therefore blocks every later reset of that database (N.15 O-5) | §E.2 |
+| Reset guard (OD-19, §E.2) | **changed (D83 O-5, confirmed by the user, D87(3)):** a sealed `REAL` item blocks the reset unless `development_sources IS TRUE` **and** the cross-check passes — its session has exactly four `session_capture_sources` rows and none of a production kind. `NULL` and `false` block. Shape: `SELECT 1 FROM evidence_items WHERE integrity_source = 'REAL' AND sealed_at IS NOT NULL AND development_sources IS NOT TRUE LIMIT 1;` then the cross-check over the exempted items; any mismatch blocks with the item count. The reset states how many development packages it will erase and proceeds only on the existing confirmation (SEC35-42). Owner: row 129 (`M4-SEC-RESET-1`). **Erratum PE-128-40** | §E.2 |
 | Seed: `capture_devices` | still **5** built-ins; each written with `adapter_kind = 'FAKE'` explicitly (the seed names the value, it does not lean on the default) | `seed/seed.ts:133-163` |
 | Seed: `session_capture_sources` | **0 rows today** — the seed writes no interval and no fragment row (N.1: both tables hold 0 rows). Rule S-1: from the day the seed or a generator writes interval or fragment rows for a session, it writes that session's four source rows, all `FAKE` (D81: demo packages carry class `FAKE`) | N.1 |
 | Seed: `evidence_items.development_sources` | NULL on the 13 v1-shaped items of today; `true` on every demo item from the day SH-24 regenerates them as v2 | row 124 A-4; D81 |
@@ -1422,13 +1422,15 @@ Pins on code and catalog that **must move in row 129's commit** (file:line at HE
 | `KEPT_TABLE_NAMES` has 12 | `src/db/reset/__tests__/m2-sttcfg-seed-kept.db.test.ts:122` | **stays 12** |
 | `BOOT_CHECK_IDS` `B-2`..`B-9` | `src/db/schema/boot-checks.ts:36` | **stays** (D-DB-18) |
 
+**Erratum PE-128-42 (D86 SEC35-41 (c)) — new static pin in N.12:** every INSERT into `capture_devices` names `adapter_kind`. It moves with row 129 and is not counted among the 15 groups above.
+
 ### N.13 Decisions of the delta — Erratum PE-122-14
 
 | ID | Decision | Alternative rejected | Why |
 |---|---|---|---|
 | D-DB-11 | The adapter kind is the column `capture_devices.adapter_kind`, a closed set of five (`ONVIF_RTSP`, `USB_AUDIO`, `SNMP_POE`, `FAKE`, `LOCAL_DEVICE`) with a pairing CHECK to `kind`; no UPDATE grant; the source class is not stored | derive from configuration; snapshot only; an open `CODE` set; reuse `transport`; a stored `source_class` | N.2: the fence must read a stored fact; the value decides "production" on a signed package |
 | D-DB-12 | `DEFAULT 'FAKE'`, permanent | backfill statement; production default | true for every existing row; errs to the safe side; keeps `0008` purely generated (MG-2, MG-8) |
-| D-DB-13 | A device never changes its adapter kind; the local devices of development mode are rows of their own with the next free ids; the seeded built-ins are `FAKE` | re-label `CAM-01` / `MIC-01` in development mode (row 123's slot table); an owner command that switches kinds | `03_api_contract.md` §2.6 "another device with another id"; a stable `device id -> kind` keeps old intervals and sessions truthful. **Conflicts with row 123's device-id column — for row 128** |
+| D-DB-13 | A device never changes its adapter kind; the local devices of development mode are rows of their own with the next free ids; the seeded built-ins are `FAKE` | re-label `CAM-01` / `MIC-01` in development mode (row 123's slot table); an owner command that switches kinds | `03_api_contract.md` §2.6 "another device with another id"; a stable `device id -> kind` keeps old intervals and sessions truthful. accepted by D83 (**erratum PE-128-41**) |
 | D-DB-14 | The session-start record is the INSERT-only table `session_capture_sources` (T-41), four rows per session | JSON inside `active_session.capture_config`; columns on interval / fragment / track rows; a composite FK to the registry | N.3: immutability by privilege on the one fact behind the manifest mark; MR-S3 for simulated sessions |
 | D-DB-15 | Discovery candidates are never stored; the matching key is `onvif_uuid`, else the whole `address`; one partial unique index on `onvif_uuid` | a candidate table; a pending device row; host-only matching; a table lock for adoption | R-9 AC-3 / AC-4 / AC-8, D75, D76(1); the seeded cameras share the host `127.0.0.1` |
 | D-DB-16 | `evidence_items.development_sources boolean NULL`, written at INSERT, no UPDATE grant; nothing on `evidence_tracks` | read every manifest for a list; a per-track column | R-11 AC-6 lists need one flag per item; the manifest stays the authority for the per-track class |
@@ -1443,7 +1445,7 @@ Pins on code and catalog that **must move in row 129's commit** (file:line at HE
 | **130** (apply) | **Needed.** The order table of N.8 (stop the Cores; lanes 1, 2, 3; `dems_demo` last; each under `lockf`; `db:status` before and after; second run applies nothing). No reseed, no reset. Check A-122-1 at step 1 (each lane: version 2 / `dbc-3`, 5 device rows). Report the kept-table row counts before and after |
 | **132** (search API) | A search, a candidate and a connection test write **no** row in `capture_devices` or anywhere but `audit_log` / `events` / `alerts`. `status: REGISTERED` by `onvif_uuid`, else by the whole `address` (N.5; divergence from row 121 noted for row 128). Operations 76 / 77 read `adapter` from `capture_devices.adapter_kind` and derive `sourceClass`; the mapping `captureDeviceFromRow` / `captureDevicesToRows` carries the adapter and refuses a change of it. Widen `HARDWARE_DEVICE_ID_PATTERN` / `CAPTURE_DEVICE_PARAM` for `CAM-NN` beyond the seeded ids. Depends on 130 |
 | **142** (connect flow / adoption) | One transaction: INSERT `capture_devices` (id = highest `CAM` number + 1 read in the transaction; `kind = 'CAMERA'`; `adapter_kind` from the Core's own search state), INSERT `capture_device_credentials` when a credential is present, the audit rows. Map `23505` on the primary key or on `capture_devices_onvif_uuid_key` to `409 CANDIDATE_ALREADY_REGISTERED`. Never name `adapter_kind` or `kind` in an UPDATE |
-| **136** (`LOCAL_DEVICE` kind) | The shared constant of the five kinds in the stored spelling (the CL-12 equality then pins the CHECK to it). Local devices are registered by INSERT as new rows (`LOCAL_DEVICE`, next free `CAM-NN` / `MIC-NN`) and assigned through `capture_config`; the built-ins stay `FAKE` (D-DB-13, pending row 128). The fence reads Q-SRC (N.9). Depends on 130 |
+| **136** (`LOCAL_DEVICE` kind) | The shared constant of the five kinds in the stored spelling (the CL-12 equality then pins the CHECK to it). Local devices are registered by INSERT as new rows (`LOCAL_DEVICE`, next free `CAM-NN` / `MIC-NN`) and assigned through `capture_config`; the built-ins stay `FAKE` (D-DB-13, accepted D83). The fence reads Q-SRC (N.9). Depends on 130 |
 | **61** (capture mode, boot checks) | The fence is a CS-22 capture boot check, not a B-check; the four rules of N.9, above all "inert in `SIMULATED`" |
 | **65, 66, 71** (selector, plan, session start) | Row 65: the upsert keeps `adapter_kind` out of the SET list with `kind`, and stops nulling `mac` / `onvif_uuid` / `profiles` / `last_seen_at` (D72 A-11) — a nulled `onvif_uuid` would also defeat the matching key. Rows 66 / 71: MR-S1 — the four `session_capture_sources` rows in the transaction that persists `RECORDING`, before capture starts; MR-S3 for the value |
 | **82 / 83** (sealing, manifest) | MR-S4 / MR-S5: `BUILD_MANIFEST` reads fields 124 / 125 from `session_capture_sources` only; fewer or more than four rows fails the step, nothing signed; a resumed attempt reads the same rows. The item INSERT writes `development_sources` (= field 126); it is never updated |
@@ -1454,6 +1456,8 @@ Pins on code and catalog that **must move in row 129's commit** (file:line at HE
 
 ### N.15 Assumptions, gaps and open points — Erratum PE-122-15
 
+**Status after the spec gate (row 128):** O-1 closed (D83, D-DB-13 accepted); O-2 closed (`cap` §A.1.2 row 1 widened); O-3 stated to the user (D82); O-4 closed (D83, D-DB-15; C3 §2.6 corrected); O-5 closed (D83, D87(3)); O-6 closed (D83, D-DB-17; blueprint wording); O-7 the controller picks the moment (D83); O-8 closed (D83: registration by row 136); F-122-2 -> row 84. **Erratum PE-128-45 (D82, D83, D87).**
+
 | # | Item | Kind | Detail |
 |--:|---|---|---|
 | A-122-1 | The three lane databases are at `(2, 'dbc-3')` with the 5 seeded device rows and no other `capture_devices` row | assumption | only `dems_demo` was read (N.1). If a lane holds a row whose `onvif_uuid` duplicates another, `0008` fails there on the unique index and leaves that lane untouched — row 130 step 1 checks first |
@@ -1463,12 +1467,12 @@ Pins on code and catalog that **must move in row 129's commit** (file:line at HE
 | O-2 | **Row 123 §A.1.2 row 1** must say that stored kinds are inert in `SIMULATED` whatever they are; as written ("none, or production kinds") the four development databases, which hold assigned `FAKE` devices after `0008`, are not covered | for row 128 | N.9 |
 | O-3 | **No path from the demo seed to `REAL_PRODUCTION`.** The seed assigns four `FAKE` devices; a production boot refuses them (R-11 AC-1 (a)); in `REAL_DEVELOPMENT` an adopted real camera cannot be assigned (row 123 RG-3). So on this Mac a real camera can be found, tested and adopted but never recorded, until a production site seed exists (class C). R-9's "assignable in the R-1 selector" is then not reachable in this phase | gap — for the controller, likely for the user | the schema allows any assignment; the limit is the fence |
 | O-4 | **Matching key:** whole `address`, not host alone | divergence from row 121 | N.5 |
-| O-5 | **Reset guard and development packages.** A package sealed in development mode is `integrity_source = 'REAL'` and blocks every later reset (OD-19). With the new column the guard could exempt `development_sources IS TRUE`. OD-19 is a user-approved answer (D4): not changed here | open — controller / user | §E.2; N.10 |
+| O-5 | **Reset guard and development packages.** Closed: D83, D87(3) (the user confirmed the narrowing); the guard exempts `development_sources IS TRUE` under the cross-check of N.10. **Erratum PE-128-40** | closed: D83, D87(3) | §E.2; N.10 |
 | O-6 | **"Migration `0008`" is two files** (`0008` + `0009`) | wording of blueprint rows 129, 130, 132, 136 | N.8 |
 | O-7 | **Coordination of the step.** After row 130, code without row 129's commit cannot boot on any of the four databases, and the reverse | for the controller (parallel agents on the lanes) | N.8 step 0 |
 | O-8 | **How the local camera enters the registry:** as a candidate adopted by operation 96 (row 121 assumption A-2) or by row 136's registration. Both are an INSERT by `dems_app` with `LOCAL_DEVICE`; the microphone has only the second way. One of the two should be named | for row 128 | N.2 writers table |
 | G-1 | Removing or disabling an adopted device is not designed (row 121 gap). The database offers `enabled = false`; the runtime role has no DELETE | gap, unchanged | §B.2 |
-| G-2 | `host` is not a denied audit key in the database; "never the host" is an application rule | note for row 126 | N.6 |
+| G-2 | `host` is not a denied audit key in the database; it is used per D86 C-3 (`PRODUCTION` candidates only) | closed: D86 C-3 (**erratum PE-128-43**) | N.6 |
 
 ### N.16 Self-gate of the delta (row-122 verification text)
 
@@ -1483,4 +1487,4 @@ Pins on code and catalog that **must move in row 129's commit** (file:line at HE
 
 ---
 *Generated: 2026-10-07 10:05*
-*Last Updated: 2026-10-09 (row 122, errata PE-122-01..15: section N — delta dbc-4 for R-9..R-11; migration set `0008` + `0009` specified, not written, not applied; new totals 41 tables / 426 columns / 172 CHECKs / 40 foreign keys in N.11); 2026-10-09 (status sweep PE-R8-01..05: §B.13 confirmed by D24); 2026-10-08 (RV-SPEC: §B.13 `stt_config`, R-8/D20, added as a proposal; earlier: row-35 security remediation SEC35-02/03/20/21/22)*
+*Last Updated: 2026-10-09 (row-128 spec-gate fix pass PE-128-40..45 (D89, D91; `gateway_check/27_r9_r11_spec_gate.md`); row 122, errata PE-122-01..15: section N — delta dbc-4 for R-9..R-11; migration set `0008` + `0009` specified, not written, not applied; new totals 41 tables / 426 columns / 172 CHECKs / 40 foreign keys in N.11); 2026-10-09 (status sweep PE-R8-01..05: §B.13 confirmed by D24); 2026-10-08 (RV-SPEC: §B.13 `stt_config`, R-8/D20, added as a proposal; earlier: row-35 security remediation SEC35-02/03/20/21/22)*

@@ -25,7 +25,7 @@ source_capture_spec: /Users/gsp-budi/Documents/DEMS/docs/2026-10-07_dems_real_ca
 source_transcript_spec: /Users/gsp-budi/Documents/DEMS/docs/2026-10-07_dems_real_capture_sealing/masterplan/07_transcript_spec.md
 source_predecessor_drift: /Users/gsp-budi/Documents/DEMS/docs/2026-10-04_dems_backend_rbac_pairing/research/11_next_phase_drift_check.md
 decisions: /Users/gsp-budi/Documents/DEMS/docs/2026-10-07_dems_real_capture_sealing/decisions/decisions.md (D4, D8, D10, D12; rev 2.3 client delta: D72(k), D73-D78, D80, D81)
-last_updated: 2026-10-09 (row 125, PE-125-01..19: client delta for R-9..R-11 — flows 9-13, gated controls G13-G18, sections 8b-8g, 14, 15; D73-D81); 2026-10-09 (status sweep PE-R8-12..13: §8a Flow 8 CONFIRMED by D24, Q-STT-CFG answer (a); status wording only); 2026-10-08 (RV-SPEC: D19(b) recording-duration refinement; §8a Flow 8 STT configuration added as a proposal, R-8/D20; 2026-10-07 row-35 cross-refs SEC35-12/13)
+last_updated: 2026-10-09 (row-128 spec-gate fix pass PE-128-72..83 (D89, D91; `gateway_check/27_r9_r11_spec_gate.md`); row 125, PE-125-01..19: client delta for R-9..R-11 — flows 9-13, gated controls G13-G18, sections 8b-8g, 14, 15; D73-D81); 2026-10-09 (status sweep PE-R8-12..13: §8a Flow 8 CONFIRMED by D24, Q-STT-CFG answer (a); status wording only); 2026-10-08 (RV-SPEC: D19(b) recording-duration refinement; §8a Flow 8 STT configuration added as a proposal, R-8/D20; 2026-10-07 row-35 cross-refs SEC35-12/13)
 ---
 
 # Client UX Spec — web, tablet and phone (blueprint row 34, M0)
@@ -574,6 +574,7 @@ number is monotonic and append-only (op 86); the pane never hides a newer revisi
 | 2 | Blocked | Blocking presentation: "A session is still being sealed"; the Seal progress is linked | `C3 §4` (`78-80 vs 24` note); op 27 |
 | 3 | Sealed reached | The blocker clears; the new-session action enables | op 27 |
 | 4 | Start checks | `startSession` precheck states (existing). **PE-125-07:** each run also checks every configured camera and microphone for reachability; the camera and microphone rows follow the start rule of §8g.3 (blocked / warning with acknowledgement / the active-microphone rule), and an unreachable device raises the notification of flow 11 (situation B) | op 25; `beginPrecheck` / `retryPrecheck` (`C3 §3.1`); D80(6), D81 |
+| 5 | Accepted start, before the first durable fragment | **Erratum PE-128-79:** Session Monitor (WB-01) and Session Live (MB-03) read **"Connecting cameras…"** — no recording timer, no recording indicator, no meter presented as recording; "Recording" appears only from the first durable fragment (D84) | the session payload member `captureDurable` (ruling R-1 option A, D91); D84; D82(f) |
 
 ### 8.3 Operations, slices, audit
 
@@ -652,7 +653,7 @@ client timer decides the unblock.
 | Scope — out | Typed-address entry (D80(10)); network microphone discovery (D80(5)); removing an adopted camera (D81 gap); a camera password on tablet or phone (D80(3)); live preview of a real camera (OD-12); code, the i18n file itself, any other spec |
 | Rationale | D73 -> `specs` §B.2 (R-9 16 AC, R-10 6 AC, R-11 10 AC) -> D80 / D81 rulings -> `C3 §2.6, §3.1, §5.4` (row 121) and `06_evidence_package_spec.md` §B.12, §D.1 (row 124) -> this delta |
 | Method | Read this file whole, `specs` §B.2, `C3 §2.6, §3.1, §4, §5.2, §5.4, §7`, the records of rows 121 and 124, D72-D81; read the client sources named in the tables below (read-only, working tree of 2026-10-09, HEAD `101ce62`) to name existing building blocks; every state is mapped to a contract answer |
-| Alternatives not chosen | (1) Camera password on tablet / phone — overruled by D80(3). (2) Ask for the password twice (once for the test, once for adding) — rejected: two typings double the chance of a typo against a guard of 3 failures per camera; the form keeps the typed values until the dialog closes instead (§8d.3). (3) A numeric countdown during a search or after a rate limit — rejected by R-10 AC-4 and §2.7. (4) A second badge wording per source kind — rejected: one badge everywhere (R-11 AC-6), the kind is a secondary text. (5) An error toast for "session open" or "web console only" — rejected by the ruling: both are disabled, explained states |
+| Alternatives not chosen | (1) Camera password on tablet / phone — overruled by D80(3). (2) Ask for the password twice (once for the test, once for adding) — rejected: two typings double the chance of a typo against a guard of 2 failures per camera in 30 minutes (**erratum PE-128-74**, D86 C-2); the form keeps the typed values until the dialog closes instead (§8d.3). (3) A numeric countdown during a search or after a rate limit — rejected by R-10 AC-4 and §2.7. (4) A second badge wording per source kind — rejected: one badge everywhere (R-11 AC-6), the kind is a secondary text. (5) An error toast for "session open" or "web console only" — rejected by the ruling: both are disabled, explained states |
 | Assumptions | A-1: `captureConfig.locked` (`packages/shared/src/api/state-slices.ts:894-901`) is the flag the clients read to grey the connect controls. A-2: the session's `captureConfig` snapshot (op 27, `C3 §3`) carries `sourceClass` per line like op 76. A-3: an alert reaches every client through the `alerts` slice with `params.reason` (`C3 §5.4`) |
 | Gaps | Open items OP-125-1..7 in §15.3 — four of them are members or operations the contract does not carry yet |
 
@@ -700,16 +701,17 @@ Every state is drawn from an answer of op 93 / op 94; none is inferred by the cl
 | S1 | Checking | role or link unresolved | Search button disabled with "Checking your permissions…"; panel body is a `Skeleton` | same; `SkeletonGroup` | same |
 | S2 | Idle | op 94: `search: null` | Panel with one sentence ("Search the network for cameras. Searching connects to nothing.") and the enabled **Search for cameras** button | same in a `SectionCard` | same, compact |
 | S3 | Searching (bounded) | op 93 `202` (or `200`, `created: false`); op 94: `state: RUNNING` | Button pending (`Spinner`, disabled); a kit `ProgressBar` whose value is `(Core now − startedAt) / windowMs`, clamped to 0..100 and never lowered; text "Searching the network for cameras…" and "This takes up to {{seconds}} seconds." (`windowMs / 1000`, a fixed number, **not** a countdown); the list area is empty. op 94 is polled no faster than once per second. At 100 % the text becomes "Finishing the search…" until op 94 answers `COMPLETE` or `FAILED` — the bar never decides the end | same; the bar inside the `SectionCard` | same |
-| S4 | Results | op 94: `state: COMPLETE`, `candidates.length ≥ 1` | Summary line "{{count}} found · {{newCount}} new · {{registeredCount}} already registered"; kit `Table` (§8c.3); the freshness line (§8c.4); **Search again** | `ListGroup` rows with the constant border; same summary and freshness line | compact rows; same |
+| S4 | Results | op 94: `state: COMPLETE`, `candidates.length ≥ 1` | Summary line "{{count}} found · {{newCount}} new · {{registeredCount}} already registered"; "Searched {{count}} network(s)." from `interfaceCount` (**erratum PE-128-77**); kit `Table` (§8c.3); the freshness line (§8c.4); **Search again** | `ListGroup` rows with the constant border; same summary and freshness line | compact rows; same |
 | S5 | Empty | `COMPLETE`, `responderCount: 0` | kit `EmptyState`: title "No camera answered the search", body "Check that each camera is powered and on the same network as the Core, then search again.", action **Search again**. The situation-A alert of flow 11 is raised by the Core, not by this screen | `SectionCard` with the same title, body and action | same |
 | S6 | Only registered cameras | `COMPLETE`, `newCount: 0`, `registeredCount ≥ 1` | The list as S4 with every row "Already registered"; **no** empty state and no alert (R-10 AC-1) | same | same |
-| S7 | Truncated | op 94: `truncated: true` | A line above the list: "More than {{max}} devices answered. The first {{max}} are listed." (`CAPTURE_DISCOVERY_MAX_CANDIDATES`) | same | same |
+| S7 | Truncated | op 94: `truncated: true` | A line above the list, drawn as a warning (**erratum PE-128-77**): "More than {{max}} devices answered. The first {{max}} are listed." (`CAPTURE_DISCOVERY_MAX_CANDIDATES`) | same | same |
 | S8 | Error | op 94: `state: FAILED` (`failureReason` is a code and is not shown as text); or the request failed | kit `Alert` (danger): "The search could not be completed. Nothing was changed." + **Search again**. A link outage uses the existing presenter sentences (`common.coreErrors.offline`, `…timedOut`) | same | same |
 | S9 | Search unavailable | op 93: `503 NOT_READY` (`DISCOVERY_NOT_READY`) | kit `Alert` (warning): "Camera search is not available on this Core yet." with **Retry** that repeats the call once per press (the §2.5 `503` pattern); no automatic retry | same | same |
 | S10 | Another search is running | op 93: `409 INVALID_STATE` (`DISCOVERY_IN_PROGRESS`) | Inline note (not a toast): "Another operator is searching right now. Search again when their search has finished." The button stays enabled; nothing is polled for the other search | same | same |
 | S11 | Too many searches | op 93: `429 RATE_LIMITED` (`DISCOVERY_RATE_LIMITED`, `retry-after`) | The existing sentence `common.coreErrors.limited` with the seconds value of the answer as a fixed number; the button is disabled until that instant and re-enables by itself; **no ticking label, no automatic search** (R-10 AC-4) | same | same |
 | S12 | Result no longer kept | op 94 answers `search: null` after a result was drawn (expiry, sign-out, Core restart, replaced by the owner's new search) | The list is removed and the panel reads "This search result is no longer kept. Search again to see the cameras." + **Search again** | same | same |
 | S13 | Not permitted | role without `CAPTURE_CONFIG` (op 93 / op 94 `403 NOT_PERMITTED`) | Button disabled with `common.rbac.requiresRole` ("Requires the SUPERVISOR or TECHNICIAN role"); **no list is requested or drawn**; the notifications of flow 11 are still shown | same | same |
+| S14 | Search not available while recording | op 93 `409 INVALID_STATE` (`DISCOVERY_NOT_ALLOWED_WHILE_RECORDING`), or the session state is `RECORDING` before the lift | The Search button is disabled with "Camera search is not available while a session is recording." (drawn from the session state; never a toast). **Erratum PE-128-80 (D86 C-4)** | same | same |
 
 ### 8c.3 Candidate row content
 
@@ -724,8 +726,10 @@ re-sorts, filters or merges (the list is forward-only during its life).
 | Trust note | — | one caption per list, not per row: "Make, model and name are what each device announced. They are not checked." | the three texts are **untrusted device text**: drawn as text nodes only (never as markup, never as a link), one line with an ellipsis, bidirectional text isolated (`<bdi>` on web), the full text in the accessible label; maximum 120 characters by contract |
 | Registered or new | `status`, `deviceId` | chip **"New"**, or chip **"Already registered"** followed by the device label (for example "CAM-01 · Camera 1") | a registered row offers "View device" (web: opens `DeviceDrawer`; mobile: opens `DeviceDetail`) and no Connect |
 | Cannot be connected | `testable: false` | chip "Cannot be connected" + "This device announced an address that is not its own." | listed, never connectable (D80(11)) |
+| Two devices, one identity | `conflict: true` | chip "Cannot be connected" + "Two devices announce the same identity. Neither can be connected." | listed, never connectable (D86 SEC35-28; **erratum PE-128-77**) |
+| Address changed | `addressChanged: true` | "This camera now answers from another address than the registered one." | a registered row; the registered address is not overwritten (D86 SEC35-30; **erratum PE-128-77**) |
 | Last test | `lastTest` | web only: chip with the outcome word of §8d.4 and the time | always null on tablet and phone: a test can only be run by the web session that owns the list, and each client session has its own list |
-| Development source | `sourceClass: DEVELOPMENT`, `adapter` | the row sits in a **separate group "Development sources"** under the network cameras, with the one badge of flow 12 and the kind text ("This Mac's camera" for `LOCAL_DEVICE`, "Test source" for `FAKE`) | the group and its header are drawn only when op 94 lists at least one such candidate; with the development flag off the Core lists none (R-11 AC-2) and the client has no switch or filter of its own |
+| Development source | `sourceClass: DEVELOPMENT`, `adapter` | the row sits in a **separate group "Development sources"** under the network cameras, with the one badge of flow 12 and the kind text "Test source" (`adapter: FAKE`) | the group and its header are drawn only when op 94 lists at least one such candidate (a `FAKE` candidate; a `LOCAL_DEVICE` source is never a candidate: it is a registered device row, D83 O-8 — **erratum PE-128-76**); with the development flag off the Core lists none (R-11 AC-2) and the client has no switch or filter of its own |
 | Action — web | — | **Connect** (G14) on a row that is `NEW` and `testable` | flow 10 |
 | Action — tablet, phone | — | **Connect** drawn disabled with the sentence "Connect this camera from the web console." | flow 10, §8d.7 |
 | Never drawn | `candidateId`, `searchId`, `endpointRef` (row), `failureReason` | — | ids are keys and test ids only; `endpointRef` appears once, in the connect dialog header on web |
@@ -753,7 +757,7 @@ re-sorts, filters or merges (the list is forward-only during its life).
 
 | Control | Permission / condition | Checking state | Allowed | Refused |
 |---|---|---|---|---|
-| G13 Search for cameras / Search again | `CAPTURE_CONFIG` (SUPERVISOR + TECHNICIAN); any session state | "Checking your permissions…" until the role and link resolve | starts a search (S3) | not permitted -> disabled + the role sentence (S13); `409` S10; `429` S11; `503` S9 |
+| G13 Search for cameras / Search again | `CAPTURE_CONFIG` (SUPERVISOR + TECHNICIAN); any session state except `RECORDING` until the lift of D86 C-4 (**erratum PE-128-80**) | "Checking your permissions…" until the role and link resolve | starts a search (S3) | not permitted -> disabled + the role sentence (S13); `409` S10; `429` S11; `503` S9 |
 | Candidate list (gated read, op 94) | `CAPTURE_CONFIG`; owner session | the panel shows the Checking state, then S2 / S4 | the caller's own list | `403`: no list, role sentence |
 
 ### 8c.7 Per-client definition
@@ -782,7 +786,7 @@ nothing retries by itself (R-10 AC-4; §2.7).
 | Client | May enter a camera user name and password | Source |
 |---|---|---|
 | **Web console** | **Yes** — the only client | **D80(3)** (`decisions/decisions.md:93`): "credential entry for a camera is WEB CONSOLE ONLY in this phase"; enforced by the server through the access condition `WEB_CONSOLE_SESSION` on operations 89, 95, 96 (`C3 §2.6` access notes; D81) |
-| Tablet | **No** — search, list, statuses, notifications, label; a pointer to the web console | D80(3); a forced call answers `403 NOT_PERMITTED` (`WEB_CONSOLE_ONLY`) before the body is read |
+| Tablet | **No** — search, list, statuses, notifications, label; a pointer to the web console | D80(3); a forced call answers `403 NOT_PERMITTED` (`WEB_CONSOLE_ONLY`) before the body is used (**erratum PE-128-29**, SEC35-45) |
 | Phone | **No** — as the tablet | D80(3) |
 
 This overrides the wording of blueprint row 125 ("web System/Devices and tablet/phone Devices") and the
@@ -794,16 +798,16 @@ proposal in `specs` R-9 AC-12. Precedent: the R-8 secret field of §8a is web-on
 |---|---|
 | Trigger | **Connect** (G14) on a row of the caller's own live result that is `NEW` and `testable` |
 | Entry state | `CAPTURE_CONFIG`; a web console session; **no session open** (`captureConfig.locked: false`); the result not expired (op 94 is re-read before the dialog opens) |
-| Surface | kit `Modal` titled "Connect {{name}}" (the announced name, else the address). Header lines: address, make and model, device reference (`endpointRef`) — all as plain text |
-| Order | Connect -> user name and password -> **Test connection** (op 95) -> outcome -> **Add as camera** (op 96) -> result -> assign in the selector (flow 1). No step can be skipped: Add as camera exists only after a *reachable* outcome (`adoptable: true`) |
+| Surface | kit `Modal` titled "Connect {{name}}" (the announced name, else the address). Header lines: address, make and model, hardware hint, device reference (`endpointRef`) — all as plain text — and "This device has not been verified. Its name and model are what it announced." **Erratum PE-128-77 (D86 SEC35-31, SEC35-37).** |
+| Order | Connect -> user name and password -> the operator ticks "I have checked that {{address}} is this camera" (**Test connection is enabled only after the tick**) -> **Test connection** (op 95) -> outcome -> **Add as camera** (op 96) -> result -> assign in the selector (flow 1). No step can be skipped: Add as camera exists only after a *reachable* outcome (`adoptable: true`) |
 
 ### 8d.3 The password prompt
 
 | Rule | Definition | Source |
 |---|---|---|
-| Fields | "Camera user name" (kit `TextField`, 1..255 characters) and "Camera password" (kit `TextField` with `type="password"`, 1..1024 characters), each with a kit `Label`; a `Description`: "Enter the user name and password set on this camera. They are used for this connection only and are never shown again." | op 95 `CaptureConnectionTestRequest`; `devices.ts:149-156` |
-| Always empty | Both fields are empty every time the dialog opens. Nothing is pre-filled: no stored value exists on the client, the Core returns none (0 response shapes carry a credential, `C3 §2.6`), and the browser is told not to fill them (`autocomplete="off"` on the user name, `autocomplete="new-password"` on the password, no `name` a password manager would match) | R-9 AC-7; §8a "Secrecy" |
-| No "show stored" | There is no control that shows a stored password, a stored user name, a hint, a length or a last-changed value — on any client. This phase also has **no** reveal toggle for the value being typed (as §8a); see OP-125-6 | row 125 verification; C-N15 |
+| Fields | "Camera user name" (kit `TextField`, 1..255 characters) and "Camera password" (kit `TextField` with `type="password"`, 1..1024 characters), each with a kit `Label`; a `Description`: "Enter the user name and password set on this camera. They are used for this connection only and are never shown again." The description gains: "Sent as a digest: not readable in transit, but a device that receives it can test guesses against it. Use a password that is used for this camera only." A field message names the accepted characters (printable ASCII; `422 INVALID_INPUT`). **Erratum PE-128-77** | op 95 `CaptureConnectionTestRequest`; `devices.ts:149-156`; D86 SEC35-31, SEC35-35 |
+| Always empty | Both fields are empty every time the dialog opens. Nothing is pre-filled: no stored value exists on the client, the Core returns none (0 response shapes carry a credential, `C3 §2.6`), and the browser is told not to fill them (`autocomplete="off"` on the user name, `autocomplete="new-password"` on the password, no `name` a password manager would match); the fields carry a neutral `name` / `id`, `spellcheck="false"`, `autocapitalize="off"`, `autocorrect="off"`, and no native form submission (**erratum PE-128-77**, D86 SEC35-37) | R-9 AC-7; §8a "Secrecy" |
+| No "show stored" | There is no control that shows a stored password, a stored user name, a hint, a length or a last-changed value — on any client. A reveal control for the value being typed is allowed (D86 C-1): off by default; back to hidden on blur, on submit and on close; never for a stored value (none exists); never on in a gate capture. **Erratum PE-128-73** | row 125 verification; C-N15 |
 | Where the typed values live | In the form state of the open dialog only (`react-hook-form`, local to the `Modal`). They are sent in the body of op 95 and, unchanged, in the body of op 96, through `useCoreActions` + `settle` — not through a query or mutation cache. They are never written to the URL, router state, browser storage, a toast, a log line or the error sink | `C3 §2.6` "Credential in memory"; P-07 |
 | Kept for two requests, not asked twice | After a *reachable* outcome the two fields become read-only and keep their values so that **Add as camera** sends exactly what was tested. "Change" re-enables them and removes the outcome (a new test is needed) | row 121 hand-over ("decide whether the form keeps it"); frame, alternative (2) |
 | Cleared | The password is cleared after an *authentication failed* outcome (the user name is kept). **Both fields are cleared when the dialog closes** — by Close, by Escape, by a completed adoption, by navigation, by sign-out — and the form unmounts | R-9 AC-8 |
@@ -926,7 +930,9 @@ from `adoptable: false` at the next op 94 read or from `409 CANDIDATE_NOT_TESTED
 | **A — a search found nothing** (`SYSTEM`, `reason: CAPTURE_DISCOVERY_EMPTY`) | WARNING | (1) the searching operator: the empty state S5 in the search panel; (2) everyone: `DevicesBanner` on the Devices page; (3) alert centre item in `NotificationsBell` | (1) empty state S5 on the Devices screen; (2) the `devices-attention` `Alert` on the Devices screen; (3) Home header bell | (1) and (2) in Settings -> Devices; (3) Home header bell | `captureNotice.discoveryEmpty.*` | **Search again** (G13) |
 | **B — a configured camera or microphone is unreachable at pre-check** (`SYSTEM`, `reason: CAPTURE_DEVICE_UNREACHABLE`, `phase: PRECHECK`; one alert per device) | WARNING (the pre-check item itself is WARN or BLOCK by the start rule of §8g.3) | (1) **Session New** (WB-03): the item's row in `DevicesStep` names the device and, for a camera, the count of the one search the pre-check ran; the blocked or warning `Alert` of that step lists the devices; (2) Devices page: the device row reads "Not reachable" and the banner names it; (3) alert centre item | (1) **Session New** (MB-02): the row in `DevicesCheckStep` and its blocked / warning `Alert`; (2) Devices screen row + `devices-attention`; (3) Home header bell | same as the tablet, compact | `captureNotice.unreachable.precheck.*`, `captureNotice.cause.*` | Camera: **Search again** (G13). Microphone: **Search again** = re-read of the local inputs (G17, flow 13). In Session New also the existing **Retry** of the pre-check (`retryPrecheck`, `SESSION_START`) |
 | **C — no camera connected at session start** (`CAPTURE_FAULT`, `reason: NO_CAMERA_CONNECTED`, `evidenceFiles: 0`) | **CRITICAL** | (1) **Session Monitor** (WB-01): the fault presentation of `StatusBanner` — "No camera connected. Nothing was recorded."; (2) Dashboard (WB-02): the session tile shows the fault, both camera tiles NO SIGNAL; (3) alert centre item; (4) Devices banner | (1) **Session Live** (MB-03) fault presentation, then the existing fault hand-off; (2) Home (MB-01) session and camera tiles; (3) Home header bell; (4) Devices `devices-attention` | (1) Session Live; (3) Home header bell; (4) Settings -> Devices | `captureNotice.noCamera.*` | **Search again** (G13; it works while the faulted session is still open, D80(4)). Connecting is refused while a session is open (flow 10) |
-| **C, degraded — one camera of two connected** (`SYSTEM`, `reason: CAPTURE_DEVICE_UNREACHABLE`, `phase: SESSION_START`) | WARNING | Session Monitor: a warning banner naming the missing camera; that camera's tile reads NO SIGNAL; the recording timer and the other tile run normally; alert centre item | Session Live: warning banner + NO SIGNAL tile; Home header bell | same | `captureNotice.unreachable.sessionStart.*` | **Search again** (G13); no connect while the session is open |
+| **C, degraded — one camera of two connected** (`SYSTEM`, `reason: CAPTURE_DEVICE_UNREACHABLE`, `phase: SESSION_START`) | WARNING | Session Monitor: a warning banner naming the missing camera; that camera's tile reads NO SIGNAL; the recording timer and the other tile run normally; alert centre item | Session Live: warning banner + NO SIGNAL tile; Home header bell | same | `captureNotice.unreachable.sessionStart.*` | **Search again** (G13) — disabled with the S14 sentence while the session records, until the lift (**erratum PE-128-80**); no connect while the session is open |
+
+**Between the accepted start and the first durable fragment (D84; erratum PE-128-79).** Session Monitor (WB-01) and Session Live (MB-03) read **"Connecting cameras…"** — no recording timer, no recording indicator, no meter presented as recording; "Recording" appears only from the first durable fragment (D84; the session payload member `captureDurable` is `false` until then, ruling R-1 option A, D91).
 
 What situation C must **not** draw (D72(i), D72(k), R-10 AC-3): a running recording timer, a recording
 indicator, generated audio meters, a camera loop presented as live, or any wording that suggests
@@ -1023,6 +1029,9 @@ device row with the badge and one of these states:
 | Permission needed | `PERMISSION_DENIED` (op 97 `errorCode` for a microphone; `params.cause` of the active situation-B alert for a camera) | "Permission needed" (warning) | Camera: "macOS has not allowed camera access for the Core. On the Mac that runs the Core, open System Settings > Privacy & Security > Camera, allow it, then search again." Microphone: the same with "Microphone" | **Search again** (G13 camera / G17 microphone). **No control opens or changes a system setting** — allowing access is the user's own action on the Mac (R-11 AC-9) |
 | Busy | `DEVICE_BUSY` | "In use" (warning) | "Another application is using this camera (microphone). Close that application, then search again." | Search again |
 | Not connected | `DEVICE_NOT_FOUND` | "Not found" (danger) | "This Mac's camera (microphone) was not found." | Search again |
+| Could not be opened | `OPEN_FAILED` or `HELPER_EXITED` | chip "Could not be opened" (warning) | "This Mac's camera (microphone) could not be opened. Check its permission on the Mac that runs the Core, then search again." | Search again (**erratum PE-128-81**, cap HL-10) |
+
+**'Is on' indicator (SEC35-44 (4); erratum PE-128-78).** Whenever a `LOCAL_DEVICE` camera or microphone is open (`sourceOpen: true`; the short pre-check open included) every client shows a fixed, non-dismissable state: "This Mac's microphone is on" / "This Mac's camera is on" on the web console, "Core Mac's …" on tablet and phone. Checks `M5-SEC-PRIV-2-W/T/P`.
 
 **Never silently replaced (D80(11); R-11 AC-5).** A local device in any state but Ready stays the same
 row with the same name and the same badge, reads as not reachable, and ends in the notification of
@@ -1030,16 +1039,14 @@ flow 11 (situation B at pre-check; the degraded warning or situation C at sessio
 never shows a test source in its place, never renames the row, and offers no "use a test source
 instead" shortcut; choosing another source is an ordinary selector edit (flow 1) by an operator.
 
-**Not in the production configuration (R-11 AC-2).** With the development flag off, ops 76 / 77 list 0
+**Not in the production configuration (R-11 AC-2).** In `REAL_PRODUCTION`, ops 76 / 77 list 0
 development devices and a search lists 0 development candidates, so: 0 badges, no "Development sources"
 group and header, no local-device rows, no option in any select. An assignment that names one answers
 `422 INVALID_INPUT` (`DEVELOPMENT_SOURCE_NOT_ALLOWED`), shown as the field message "This source can
 only be used in the development configuration."
 
-**Simulated mode (row 121 asked).** The in-app simulator's devices are `adapter: FAKE`,
-`sourceClass: DEVELOPMENT` (`C3 §2.6` "Simulator"), so in Simulated mode every device, tile and demo
-package carries the badge. This is kept — one rule, drawn from the data, and D81 rules demo packages
-`FAKE` "(truthful)". The empty state S5 is not reachable in Simulated mode (the simulator always
+**Simulated client mode (row 121 asked; D83).** The in-app simulator's devices are `adapter: FAKE`,
+`sourceClass: DEVELOPMENT` (`C3 §2.6` "Simulator"), so the data alone would badge every device. **Simulated client mode (D83):** the badge is NOT shown on devices and demo items — the mode banner says it; the mark stays in the manifest and in the verify result. **Ruling R-2 option A (D91):** the development / test-source badge is drawn only in real capture — the client knows the mode from the demo status (op 71 answers `demo: 'DISABLED'` in real-capture mode) — and never when the Core runs `SIMULATED`; on a sealed item the badge follows `developmentSources = true` and `demo = false`. **Erratum PE-128-75.** The empty state S5 is not reachable in Simulated mode (the simulator always
 answers two candidates); it is covered by component tests and by the Core with the fake stub set empty.
 
 **Privacy (D80(11); R-11 AC-8).** No frame and no audio excerpt of a local-device recording appears
@@ -1096,28 +1103,21 @@ existing blocked (`PRECHECK_BLOCKED`) and warning (`PRECHECK_WARNINGS` + acknowl
 | Both cameras unreachable | both camera rows BLOCK | **Blocked** | "No camera is reachable. A session cannot start." + the search count; Search again (G13); Retry |
 | One camera unreachable | that row WARN | **Allowed, degraded** after acknowledging | "Camera 2 (CAM-02) is not reachable. The session will record one camera only." Acknowledge; Search again; Retry |
 | Both microphones unreachable | both microphone rows BLOCK | **Blocked** | "No microphone is reachable. A session cannot start." Search again (G17); Retry |
-| **The selected ACTIVE microphone unreachable, the other reachable** | active-microphone row BLOCK | **Blocked until the operator makes the reachable microphone active**; then **allowed, degraded**, with a warning | "MIC 1 (MIC-01) is the active microphone and is not reachable. Make MIC 2 the active microphone to continue." Action **Use MIC 2 as the active microphone** (G18). After it and a re-check the old active microphone is the unreachable standby: WARN "MIC 1 (MIC-01) is not reachable. The session will record with one microphone and no standby." Acknowledge to start |
+| **The selected ACTIVE microphone unreachable, the other reachable** | active-microphone row BLOCK | **Blocked.** | "MIC 1 (MIC-01) is the active microphone and is not reachable. Cancel this session, make MIC 2 the primary microphone on Devices, then start again." No control switches the microphone at pre-check (D83; **erratum PE-128-72**) |
+| An assigned device of a kind that cannot be recorded in this phase | that row BLOCK | **Blocked** | "{{device}} cannot be recorded by this version of the system." (`SOURCE_KIND_NOT_RECORDABLE`; D82, D86 C-5; **erratum PE-128-81**) |
 | The standby microphone unreachable | that row WARN | **Allowed, degraded** after acknowledging | "MIC 2 (MIC-02) is not reachable. The session will record with no standby microphone." Acknowledge; Search again (G17); Retry |
 | At session start: no camera connects within the ingest-open window | — | the session **FAULTS**, reason `NO_CAMERA_CONNECTED` | flow 11, situation C: "No camera connected. Nothing was recorded." Nothing claims to record |
 
 The client never switches the active microphone by itself (OD-11) and never starts a degraded session
 without the operator's acknowledgement.
 
-**G18 has no operation in the contract yet (OP-125-1).** D81 rules the behaviour; `C3 §3.1` still
-proposes "blocked, with a sentence telling the operator to make the other microphone primary before
-starting", because op 80 (`setPrimaryMic`) answers `409 CAPTURE_CONFIG_LOCKED` once a session exists —
-and the pre-check runs on a session in `PRECHECK` (`packages/shared/src/api/sessions.ts:248`) — while
-op 81 (`switchAudioSource`) is valid only in `RECORDING`. Until rows 121 / 128 name the operation, the
-row is drawn with the blocked sentence and the path that works today: "Cancel this session, make MIC 2
-the primary microphone on Devices, then start again." (op 80 while idle, `CAPTURE_CONFIG`). This spec
-fixes the control, its place and its texts; it does not invent the operation.
+**Ruled (D83):** no operation and no control G18; the row is drawn with the blocked sentence above. **Erratum PE-128-72 (D83, OP-125-1).**
 
 ### 8g.4 Permissions and per-client definition
 
 | Control | Permission / condition | Checking state | Allowed | Refused |
 |---|---|---|---|---|
 | G17 Search again (microphones) | `CAPTURE_CONFIG` | "Checking your permissions…" | re-reads the inputs | role sentence; `429`; `503` |
-| G18 Use the other microphone as active (pre-check) | proposed: `SESSION_START` + session holder, as G4 — to be fixed with the operation (OP-125-1) | "Checking your permissions…" | makes the reachable microphone active, then the pre-check runs again | role sentence; until the operation exists: the fallback sentence above |
 
 | Aspect | Web | Tablet | Phone |
 |---|---|---|---|
@@ -1144,7 +1144,7 @@ Each pattern from `drift §2.1` is applied to this UX spec or marked NOT APPLICA
 | P-10 `selection-glow.tsx` constant border | 1, 5, 6 | **Applied** — new tablet list rows (selector, intervals, revisions) use `ROW_CARD_BORDER` (`selection-glow.tsx:40`). **PE-125-14:** the search-list rows of flow 9 too |
 | P-11 in-place hand-offs, `animation:'none'` | 3, 4, 7 | **Applied** — mobile uses `monitor-handoff.ts`, `summary-handoff.ts`, `stacks.tsx:59` |
 | P-12 session diagnostics for sealing progress / mic-switch latency | 2, 3 | **Applied** — `session-diagnostics.ts` is the instrumentation for the tablet gates; named for row 36 |
-| P-13 "Checking your permissions..." on every gated control; web waits for the link | all flows | **Applied** — section 5 inventory (10 controls + 6 reads). **PE-125-14:** with flow 8 and flows 9-13 the inventory of section 11 holds 18 controls + 8 reads |
+| P-13 "Checking your permissions..." on every gated control; web waits for the link | all flows | **Applied** — section 5 inventory (10 controls + 6 reads). **PE-125-14:** with flow 8 and flows 9-13 the inventory of section 11 holds 17 controls + 8 reads (G18 removed, D83) |
 | P-14 `sweeper.ts` core-timer template | 3 | **Applied** — the 1 Hz progress recompute (`SEALING_PROGRESS_INTERVAL_MS`) is the server-side source; the UI consumes the slice |
 | P-15 `statements.ts` one `CREATE DATABASE` text | — | **NOT APPLICABLE** — a database-command rule with no client surface (row 30 owns it) |
 | P-16 pinned verify verdict (web) / FAIL wording (mobile) | 5, 6 | **Applied** — the v2 verify verdict is pinned per run; export-failure and revision-conflict wording is fixed (`drift §1.4 WB-04`, E-11) |
@@ -1186,12 +1186,11 @@ never a silent hide, never an instant enable (`drift §2.1 P-13`, `drift §6 E-1
 | G10 | Session start | 7 | `SESSION_START` | web, tablet, phone |
 | G11 | Save STT configuration (section 8a; restated, **PE-125-15**) | 8 | `CAPTURE_CONFIG` | web (tablet and phone are read-only) |
 | G12 | Test STT connection (section 8a; restated, **PE-125-15**) | 8 | `CAPTURE_CONFIG` | web |
-| G13 | Search for cameras / Search again **PE-125-15** | 9, 11 | `CAPTURE_CONFIG`; any session state | web, tablet, phone |
+| G13 | Search for cameras / Search again **PE-125-15** | 9, 11 | `CAPTURE_CONFIG`; any session state except `RECORDING` until the lift of D86 C-4 (**erratum PE-128-80**) | web, tablet, phone |
 | G14 | Connect (opens the password prompt) **PE-125-15** | 10 | `CAPTURE_CONFIG` + web console + idle | web (active); tablet, phone (always disabled with the web-console sentence) |
 | G15 | Test connection (op 95) **PE-125-15** | 10 | `CAPTURE_CONFIG` + web console + idle | web |
 | G16 | Add as camera (op 96) **PE-125-15** | 10 | `CAPTURE_CONFIG` + web console + idle + a reachable test | web |
 | G17 | Search again for microphones (op 97) **PE-125-15** | 13, 11 | `CAPTURE_CONFIG` | web, tablet, phone |
-| G18 | Use the other microphone as active, at pre-check **PE-125-15** | 13 | proposed `SESSION_START` + session holder; operation open (OP-125-1) | web, tablet, phone |
 
 **Gated interactive controls: 10/10** — each of the 30 client instances shows the state. **Gated reads
 that also render the state: 6/6** — capture config (76), capture devices (77), sealing progress (83),
@@ -1199,9 +1198,9 @@ transcript (84), revisions (86), evidence item/media (39/40). Every one transiti
 `Checking → allowed` or `Checking → refused-with-reason`; none hides or enables instantly.
 
 **Restated for flow 8 (D24) and flows 9-13 (erratum PE-125-15).** Gated interactive controls:
-10 (G1-G10) + 2 (G11-G12, flow 8) + 6 (G13-G18, flows 9-13) = **18/18**. Client instances:
-30 (G1-G10 on three clients) + 2 (G11, G12: web only) + 14 (G13: 3, G14: 3, G15: 1, G16: 1,
-G17: 3, G18: 3) = **46**. Gated reads that render the state: 6 + 1 (STT configuration, op 90 —
+10 (G1-G10) + 2 (G11-G12, flow 8) + 5 (G13-G17, flows 9-13) = **17/17** (G18 removed, D83; **erratum PE-128-72**). Client instances:
+30 (G1-G10 on three clients) + 2 (G11, G12: web only) + 11 (G13: 3, G14: 3, G15: 1, G16: 1,
+G17: 3) = **43**. Gated reads that render the state: 6 + 1 (STT configuration, op 90 —
 flow 8, not counted before) + 1 (the search list, op 94 — `CAPTURE_CONFIG`, owner session) = **8/8**.
 The "10/10" and "6/6" figures above are the row-34 baseline and stay as written.
 
@@ -1247,11 +1246,11 @@ transport host, the auth preconditions and the device adapters change.
 
 | Gate check (row 125 as amended by D80 / D81) | Result |
 |---|---|
-| **Each flow has its states listed for web, tablet and phone** | **5/5 new flows** — flow 9: §8c.2 (13 states × 3 clients); flow 10: §8d.4-§8d.7 (web) and §8d.10 (the tablet and phone state: Connect disabled with the web-console sentence); flow 11: §8e.2 (4 notifications × 3 clients), §8e.3; flow 12: §8f.2 (7 surfaces × 3 clients), §8f.3 (4 local-device states); flow 13: §8g.1 (8 states × 3 clients), §8g.3 (6 start-rule cases) |
+| **Each flow has its states listed for web, tablet and phone** | **5/5 new flows** — flow 9: §8c.2 (14 states × 3 clients; S14 added, **erratum PE-128-80**); flow 10: §8d.4-§8d.7 (web) and §8d.10 (the tablet and phone state: Connect disabled with the web-console sentence); flow 11: §8e.2 (4 notifications × 3 clients), §8e.3; flow 12: §8f.2 (7 surfaces × 3 clients), §8f.3 (5 local-device states); flow 13: §8g.1 (8 states × 3 clients), §8g.3 (7 start-rule cases) |
 | **The client set allowed to write a camera password is stated with its source** | **Web console only** — §8d.1, source **D80(3)** (`decisions/decisions.md:93`), enforced by `WEB_CONSOLE_SESSION` on operations 89, 95, 96 (`C3 §2.6`; D81) |
 | **0 flows show a stored credential** | **0/13** — table below |
-| Every flow maps to operations of the contract | 5/5 — F9: 93, 94; F10: 95, 96, 78 / 79, 89; F11: `alerts` + pre-check + 93 / 97; F12: reads 76, 77, 94, 27, 39 / 40, 41; F13: 97 + pre-check (one control, G18, has no operation yet — OP-125-1) |
-| Every gated control has the "Checking your permissions…" state | 18/18 controls, 46 client instances, 8/8 gated reads (section 11) |
+| Every flow maps to operations of the contract | 5/5 — F9: 93, 94; F10: 95, 96, 78 / 79, 89; F11: `alerts` + pre-check + 93 / 97; F12: reads 76, 77, 94, 27, 39 / 40, 41; F13: 97 + pre-check |
+| Every gated control has the "Checking your permissions…" state | 17/17 controls, 43 client instances, 8/8 gated reads (section 11) |
 | Rulings applied | D80(2), (3), (4), (5), (6), (7), (9), (10), (11) and D81 — table in section 0 |
 | Specified with the apps' existing kit | PASS — table in §8b; no hand-built component is introduced |
 | No emoji; English; tables over prose; every choice cited | PASS |
@@ -1281,11 +1280,11 @@ transport host, the auth preconditions and the device adapters change.
 |---|--:|--:|--:|--:|
 | Flows | 7 | 1 | 5 | **13** |
 | Client definitions (flows × 3) | 21 | 3 | 15 | **39** |
-| Gated interactive controls | 10 (G1-G10) | 2 (G11-G12) | 6 (G13-G18) | **18** |
-| Client instances of those controls | 30 | 2 | 14 | **46** |
+| Gated interactive controls | 10 (G1-G10) | 2 (G11-G12) | 5 (G13-G17) | **17** |
+| Client instances of those controls | 30 | 2 | 11 | **43** |
 | Gated reads | 6 | 1 (op 90) | 1 (op 94) | **8** |
 | Flows that show a stored credential | 0 | 0 | 0 | **0** |
-| Proposed i18n keys (§14.2) | — | — | 120 | **120** |
+| Proposed i18n keys (§14.2) | — | — | 120 − 1 + 18 = **137** | **137** |
 
 **Register items touched (`research/03_analysis.md` §B.3, §B.4; no new id is minted here).**
 Web, by screen: WB-01 (monitor: situation C, degraded warning, badge), WB-02 (dashboard tiles),
@@ -1312,7 +1311,7 @@ label only: MB-12. The alert centre (web `components/shell/notifications-bell.ts
 | Flow 5 — §6.2 step 6, §6.6 | verify line first; badge on the item and files | PE-125-06 |
 | Flow 7 — §8.2 step 4, §8.5 | reachability, start rule, two new situations | PE-125-07 |
 | Section 9 — P-04, P-07, P-10, P-13 | one sentence each | PE-125-14 |
-| Section 11 | rows G11-G18; restated counts | PE-125-15 |
+| Section 11 | rows G11-G17; restated counts | PE-125-15 |
 | Section 12 | one row | PE-125-16 |
 | Flows 3, 4, 6, 8 (§4, §5, §7, §8a) and controls G4-G8, G10-G12 | **0 changes** | — |
 
@@ -1346,6 +1345,7 @@ The UI uses the product's English vocabulary (`packages/shared/src/i18n/en/commo
 | `sourceClass` not `PRODUCTION` | "Development source" | "sourceClass", "DEVELOPMENT" as a raw code |
 | `adapter: LOCAL_DEVICE` | "This Mac's camera", "This Mac's microphone" | "LOCAL_DEVICE", "helper", "loopback" |
 | `adapter: FAKE` | "Test source" (not "Simulated": that word names the Simulated mode of the clients) | "fake", "stub", "fixture" — except in the verify report line, whose text is fixed by `06` §D.1 |
+| development configuration / production configuration | "development configuration" = capture operation `REAL_DEVELOPMENT`; "production configuration" = `REAL_PRODUCTION` (**erratum PE-128-81**, D82(e)) | the operation names as raw codes |
 | `CAPTURE_CONFIG_LOCKED` | "…while a session is open." | the code |
 | `WEB_CONSOLE_ONLY` | "…from the web console." | the code |
 | `CREDENTIAL_STORE_NOT_READY` | "This Core cannot store camera passwords yet…" | "sealer", "credential store", "row 84" |
@@ -1452,9 +1452,8 @@ mobile and by more than one feature (Devices, Session New, Monitor, Evidence). P
 | `common.captureNotice.start.noCamera` | No camera is reachable. A session cannot start. |
 | `common.captureNotice.start.oneCamera` | {{device}} is not reachable. The session will record one camera only. |
 | `common.captureNotice.start.noMicrophone` | No microphone is reachable. A session cannot start. |
-| `common.captureNotice.start.activeMicrophone` | {{device}} is the active microphone and is not reachable. Make {{other}} the active microphone to continue. |
+| `common.captureNotice.start.activeMicrophone` | {{device}} is the active microphone and is not reachable. Cancel this session, make {{other}} the primary microphone on Devices, then start again. |
 | `common.captureNotice.start.activeMicrophoneFallback` | Cancel this session, make {{other}} the primary microphone on Devices, then start again. |
-| `common.captureNotice.start.useOther` | Use {{other}} as the active microphone |
 | `common.captureNotice.start.noStandby` | {{device}} is not reachable. The session will record with no standby microphone. |
 | `common.captureNotice.start.oneMicrophone` | {{device}} is not reachable. The session will record with one microphone and no standby. |
 | `common.sourceClass.badge` | Development source |
@@ -1481,6 +1480,26 @@ mobile and by more than one feature (Devices, Session New, Monitor, Evidence). P
 | `common.captureInputs.checkedAt` | Checked at {{time}} |
 | `common.captureInputs.unregistered` | {{count}} other microphone(s) are connected to the Core but not registered. |
 | `common.rbac.checking` | Checking your permissions… |
+| `common.captureConnect.reveal.show` | Show password |
+| `common.captureConnect.reveal.hide` | Hide password |
+| `common.captureConnect.confirmDevice` | I have checked that {{address}} is this camera |
+| `common.captureConnect.unverified` | This device has not been verified. Its name and model are what it announced. |
+| `common.captureConnect.digestNote` | Sent as a digest: not readable in transit, but a device that receives it can test guesses against it. Use a password that is used for this camera only. |
+| `common.captureConnect.charset` | Use letters, digits and common symbols only (printable ASCII). |
+| `common.captureSearch.conflict` | Two devices announce the same identity. Neither can be connected. |
+| `common.captureSearch.addressChanged` | This camera now answers from another address than the registered one. |
+| `common.captureSearch.networksSearched` | Searched {{count}} network(s). |
+| `common.captureSearch.recordingLocked` | Camera search is not available while a session is recording. |
+| `common.sourceClass.microphoneOn.web` | This Mac's microphone is on |
+| `common.sourceClass.cameraOn.web` | This Mac's camera is on |
+| `common.sourceClass.microphoneOn.mobile` | Core Mac's microphone is on |
+| `common.sourceClass.cameraOn.mobile` | Core Mac's camera is on |
+| `common.session.connectingCameras` | Connecting cameras… |
+| `common.localDevice.openFailed.chip` | Could not be opened |
+| `common.localDevice.openFailed.body` | This Mac's camera (microphone) could not be opened. Check its permission on the Mac that runs the Core, then search again. |
+| `common.captureNotice.start.notRecordable` | {{device}} cannot be recorded by this version of the system. |
+
+Keys added by the spec gate (**erratum PE-128-82**, row 128): the 18 rows above, from `common.captureConnect.reveal.show` to `common.captureNotice.start.notRecordable`; `common.captureNotice.start.useOther` is removed (G18, D83). Count: 120 − 1 + 18 = **137**.
 
 Notes. (1) `common.rbac.checking` exists today only in the mobile file
 (`apps/mobile/src/i18n/en.mobile.ts:35`); the web sources and the shared i18n tree contain no such
@@ -1504,7 +1523,7 @@ microphone" (OP-125-7).
 | Search progress | the status text is `role="status"`, `aria-live="polite"` (the pattern of `devices-banner.tsx:46`, `session-new/devices-step.tsx:154`); the `ProgressBar` has the label `captureSearch.a11y.progress` and no spoken seconds; the end is announced once with `captureSearch.a11y.done` | `accessibilityLiveRegion="polite"`; `accessibilityState={{ busy: true }}` through `busyState` |
 | Disabled with a reason | the reason is **visible text** beside the control and is tied to it with `aria-describedby`; never a tooltip only | the reason is visible text in the row and part of the `accessibilityLabel`; `accessibilityState={{ disabled: true }}` |
 | Connect dialog | kit `Modal` focus trap; first focus on the user-name field; each field has a `Label`; errors through `FieldError`; the outcome `Alert` is `role="status"` for *reachable* and `role="alert"` otherwise and receives focus; Escape closes except while a request is pending; closing returns focus to the row's Connect button | not applicable (no dialog) |
-| Password field | `type="password"`; no reveal control; no value in any attribute, title or label | not applicable |
+| Password field | `type="password"` with a reveal button that has an accessible name and state; no value in any attribute, title or label (**erratum PE-128-73**, D86 C-1) | not applicable |
 | Device text | one line with an ellipsis; the full text in the accessible name; `<bdi>` isolation | `numberOfLines={1}`; full text in `accessibilityLabel` |
 | Badge | icon + text; the text is the accessible name; contrast from the shared tone tokens (`toneChipProps`, `@dems/shared/tokens`) | same through the kit `StatusChip` |
 | Notifications | WARNING banners `role="status"`; the CRITICAL "nothing was recorded" presentation `role="alert"`; the alert-centre popover keeps its heading (`notifications-bell.tsx:66-67`) | polite / assertive live regions; touch targets of the actions at least 44 pt |
@@ -1522,7 +1541,7 @@ microphone" (OP-125-7).
 | **126 security review** | (1) §8d.3: the typed user name and password live in the dialog's form state for two requests (95, then 96) and are cleared on close — judge against "in memory for that request"; the command path must not keep request variables in a query or mutation cache. (2) OP-125-6: no reveal control for the typed password, against a guard of 3 failed tests per camera in 15 minutes. (3) Browser autofill: the `autocomplete` values of §8d.3 and the check that a saved login of the console origin is not offered. (4) Untrusted device text (§8c.3): text nodes only, bidirectional isolation, 120 characters. (5) The address of a found camera is shown to the searching `CAPTURE_CONFIG` operator and to nobody else; alert texts carry no address. (6) Both log-blanking lists (P-07) must cover the members `username`, `secret` and the nested `credential` object of ops 95 / 96 on the web console. (7) The verify report must never print an edited source class as fact (§8f.2 rule 4). (8) The macOS permission sentence only tells the user what to do; no control opens or edits a system setting |
 | **127 test catalogue** | The named checks of §15.2 with method, depth and owning row; the two depths of the connect check (before and after row 84); R-9 AC-5 "2 + 1 on each client that row 125 allows" = **the web console only**, with the tablet and phone pointer checks in its place |
 | **133 server notifications (A, B)** | The alert `params` the texts need: A `reason`, `searchId`, `trigger`; B `reason`, `deviceId`, `deviceKind`, `phase`, `cause`, `searchResponderCount` (camera). The device **label** is resolved by the client from the id — the alert carries no label text and no address. One active alert per (`reason`, `target`), so five empty searches give one banner. Resolution must republish `alerts` so that 0 stale banners remain (§8e.4) |
-| **137 web Devices** | Flows 9, 10 (whole), 11, 12, 13 on the web console with the building blocks of §8b; the factory `captureDiscoveryQueryOptions` (WB-11); G13-G18 with the Checking state; the keys of §14.2; the System entry link (WB-07); badge on WB-01..WB-05; Try-it stays denied for 95 / 96 (row 142). Its own acceptance "the credential is never rendered" = §8d.3 |
+| **137 web Devices** | Flows 9, 10 (whole), 11, 12, 13 on the web console with the building blocks of §8b; the factory `captureDiscoveryQueryOptions` (WB-11); G13-G17 with the Checking state; the keys of §14.2; the System entry link (WB-07); badge on WB-01..WB-05; Try-it stays denied for 95 / 96 (row 142). Its own acceptance "the credential is never rendered" = §8d.3 |
 | **138 tablet and phone Devices** | Flows 9, 11, 12, 13; from flow 10 **only** the disabled Connect with the web-console sentence and the panel note (§8d.10) — **no password field, no call of 95 / 96 / 89**. The blueprint wording "the connect flow for the roles and clients row 125 allows" therefore means: none on these clients (D80(3)). The mobile overrides of the two local-device names (OP-125-7) |
 | **139 session-start notification** | Situation C and the degraded warning of §8e.2: the fault presentation must show no timer, no recording indicator and no generated meters; `params.reason: NO_CAMERA_CONNECTED`, `evidenceFiles: 0`; the degraded alert names the missing camera's device id. OP-125-5: which state follows the fault when nothing is durable, so that the tablet hand-off is defined |
 | 128 spec gate | OP-125-1..5 (contract members and one operation); the wording of blueprint rows 125, 137, 138 and of `specs` R-9 AC-5 / AC-12 against D80(3) |
@@ -1545,12 +1564,12 @@ No agent types a device PIN; every check uses the fake ONVIF stub and fixture ca
 | `M7-CONN-W-CRED` | web | after row 84: add with a password succeeds, "Password stored." and no value anywhere | agent-browser | 2 + 1 | 137 (re-run at M7) |
 | `M4-CONN-ABANDON-W` | web | each exit of §8d.7: the UI state described there and 0 new rows in `capture_devices` / `capture_device_credentials` | agent-browser + row count | 2 + 1 | 137 |
 | `M4-CONN-LOCK-W` | web | with a session open: Connect disabled with its sentence, 0 toasts, search still works | agent-browser | 2 + 1 | 137 |
-| `M4-CONN-GUARD-W` | web | three refused passwords: attempts-left text counts down by the server's value, then the lock-out sentence and a disabled Test | agent-browser, fake clock on the Core | 2 + 1 | 137 |
+| `M4-CONN-GUARD-W` | web | two refused passwords: the attempts-left text follows the server's value, then the lock-out sentence and a disabled Test (D86 C-2; **erratum PE-128-74**); no client-side countdown | agent-browser, fake clock on the Core | 2 + 1 | 137 |
 | `M4-CONN-PTR-T` / `-P` | tablet / phone | Connect disabled with the web-console sentence; **0 password fields in the view tree**; 0 calls of 95 / 96 / 89 | emulator + static test over `apps/mobile/src` | 2 + 1 each | 138 |
 | `M4-NODEV-B-W` / `-T` / `-P` | all three | pre-check with one fake camera stopped: warning row naming the device with the search count, start allowed after acknowledging; both stopped: blocked; a later reachable run leaves 0 banners | agent-browser / emulator | 2 + 1 each | 133, 137, 138 |
 | `M4-NODEV-NOCFG-T` | tablet | an operator with `SESSION_START` and without `CAPTURE_CONFIG`: the notification only, Search again disabled, Retry works, no list | emulator | 2 + 1 | 138 |
 | `M4-MIC-RESCAN-W` / `-T` / `-P` | all three | Search again on a microphone: one request, per-microphone result, 0 network probes | agent-browser / emulator | 2 + 1 each | 137, 138 |
-| `M4-MIC-ACTIVE-W` / `-T` / `-P` | all three | active microphone unreachable: blocked with its sentence; after the other microphone is made active: warning, degraded start (depends on OP-125-1) | agent-browser / emulator | 2 + 1 each | 137, 138 |
+| `M4-MIC-ACTIVE-W` / `-T` / `-P` | all three | active microphone unreachable: blocked with its sentence; no toggle control exists at pre-check; after the operator cancels, makes the other microphone primary on Devices and starts again: a warning and a degraded start (D83) | agent-browser / emulator | 2 + 1 each | 137, 138 |
 | `M5-NODEV-C-W` / `-T` / `-P` | all three | no camera at start: fault presentation "Nothing was recorded.", 0 timer, 0 recording indicator, 0 meters; one camera: warning banner and a NO SIGNAL tile | agent-browser / emulator | 2 + 1 each | 139 |
 | `M4-DEVSRC-LABEL-W` / `-T` / `-P` | all three | the badge on Devices rows, selector, search list, pre-check and monitor tiles in the development configuration; with the flag off 0 badges, 0 local rows, no group header | agent-browser / emulator | 2 + 1 each | 137, 138 |
 | `M7-DEVSRC-EVID-W` / `-T` / `-P` | all three | sealed development package: badge on the item, the verify line first with a PASS verdict; an edited mark reads "not trustworthy" | agent-browser / emulator | 2 + 1 each | 141 with 137 / 138 |
@@ -1559,17 +1578,19 @@ No agent types a device PIN; every check uses the fake ONVIF stub and fixture ca
 
 ### 15.3 Open items (none decided silently)
 
+**Closed at the spec gate (row 128):** OP-125-1 (D83: no operation, no G18); OP-125-2 (not carried in this phase, C3 §2.6); OP-125-3 (carried, C3 §3.1); OP-125-4 (accepted limit: the situation-B alert only); OP-125-5 (D84); OP-125-6 (D86 C-1); OP-125-7 (D83). **Erratum PE-128-83.**
+
 | ID | Open item | Why it matters for the UI | Owner |
 |---|---|---|---|
 | OP-125-1 | **No operation exists for "make the other microphone active" at pre-check.** D81 rules the behaviour; op 80 is locked once a session exists, op 81 is valid only in RECORDING; `C3 §3.1` still carries the older proposal | G18 cannot be built as a one-press action until the contract names it; the fallback path of §8g.3 works today | rows 121 / 128; controller |
 | OP-125-2 | `CaptureDevice` (op 77) has no `credentialSet` member; only the answer of op 96 has | a registered camera row cannot say "Password set" after the dialog closed; nothing is inferred client-side | row 128 |
 | OP-125-3 | `03_api_contract.md` carries neither the package mark on ops 39 / 40 nor the `sources` block on op 41 (0 matches of `developmentSources` in that file on 2026-10-09; row 124 A-2 and its hand-over) | the evidence-list badge and the verify line have no response member yet | rows 121 / 128; row 122 for a column |
 | OP-125-4 | The named cause for a **local camera** (`PERMISSION_DENIED`, `DEVICE_BUSY`) reaches the client only inside the situation-B alert of a pre-check; op 97 reports microphones only | on the Devices page a local camera reads "Not reachable" without its reason until a pre-check ran | rows 123 / 128 |
-| OP-125-5 | Which session state follows the situation-C fault when nothing is durable | the tablet's fault hand-off (MB-03 -> MB-06) must not show a recovery of evidence that does not exist | rows 71 / 139 |
-| OP-125-6 | No reveal control for the typed password (kept as §8a) against a guard of 3 failures per camera | a typing mistake costs one of three attempts | row 126 |
-| OP-125-7 | Two presentation choices of this row: (a) on tablet and phone the local devices read "Core Mac's camera / microphone", because "This Mac" would name the wrong device there; (b) in Simulated mode every device and demo package carries the badge | (a) departs from the wording in the row brief; (b) changes the look of the demo | controller / user |
+| OP-125-5 | closed (D84): after situation C with nothing durable there is no Recovery hand-off — the fault presentation, then the idle state; no evidence item is shown. **Erratum PE-128-79** — was: which session state follows the situation-C fault when nothing is durable | the tablet's fault hand-off (MB-03 -> MB-06) must not show a recovery of evidence that does not exist | rows 71 / 139 |
+| OP-125-6 | closed: D86 C-1 — a reveal control for the typed password is allowed (§8d.3); the guard is 2 failures per camera in 30 minutes (D86 C-2). **Erratum PE-128-73** | a typing mistake costs one of two attempts | closed |
+| OP-125-7 | closed: (a) "Core Mac's camera / microphone" on tablet and phone accepted (D83); (b) overruled (D83): no badge in Simulated client mode. **Erratum PE-128-75** | (a) departs from the wording in the row brief; (b) the look of the demo is unchanged | closed |
 
 ---
 
 *Generated: 2026-10-07 17:30*
-*Last Updated: 2026-10-09 (row 125, PE-125-01..19: client delta for R-9..R-11 — flows 9-13, sections 8b-8g, 14, 15; D73-D81); 2026-10-09 (status sweep PE-R8-12..13: §8a Flow 8 confirmed by D24); 2026-10-08 (RV-SPEC: D19(b) refinement in §0/§3.7/§9 P-01; §8a Flow 8 added as a proposal, R-8/D20; earlier: row-35 cross-refs SEC35-12/SEC35-13)*
+*Last Updated: 2026-10-09 (row-128 spec-gate fix pass PE-128-72..83 (D89, D91; `gateway_check/27_r9_r11_spec_gate.md`); row 125, PE-125-01..19: client delta for R-9..R-11 — flows 9-13, sections 8b-8g, 14, 15; D73-D81); 2026-10-09 (status sweep PE-R8-12..13: §8a Flow 8 confirmed by D24); 2026-10-08 (RV-SPEC: D19(b) refinement in §0/§3.7/§9 P-01; §8a Flow 8 added as a proposal, R-8/D20; earlier: row-35 cross-refs SEC35-12/SEC35-13)*
