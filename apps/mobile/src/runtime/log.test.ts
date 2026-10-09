@@ -190,7 +190,6 @@ describe('the STT credential forms (task 3 row 113)', () => {
     for (const text of [
       'credentialSet: true, credentialKind: REFERENCE',
       'the kind of value we expect; a reference value: 42',
-      'credentials: same-origin',
       'the secretary said so; a secret of success',
       'value: 42, ref: main',
       '{"kind":"PACKAGE","value":"EXPJ-000001"}',

@@ -50,7 +50,7 @@ describe('a session', () => {
     const { supervisor, fake, named } = await recording();
     expect(fake.workers).toHaveLength(1);
     const [start] = fake.last().commands(SupervisorMessageType.START);
-    expect(start).toMatchObject({ v: 1, sessionId: SESSION, attempt: 1, plan: capturePlan(SESSION) });
+    expect(start).toMatchObject({ v: 2, sessionId: SESSION, attempt: 1, plan: capturePlan(SESSION) });
     expect(supervisor.status()).toMatchObject({ phase: CapturePhase.RECORDING, sessionId: SESSION, workerPid: fake.last().pid, attempt: 1, restarts: 0, heartbeatAgeMs: 0, lastCrash: null });
     expect(named('phase').map((event) => `${event.previous}>${event.phase}`)).toEqual(['IDLE>STARTING', 'STARTING>RECORDING']);
   });
@@ -262,7 +262,7 @@ describe('M3-KC-3: heartbeat and back-off', () => {
   });
 
   it('a failure that another try cannot change is not retried: no launcher configured, another protocol version', async () => {
-    const mismatch = await setup({}, { protocolVersion: 2 });
+    const mismatch = await setup({}, { protocolVersion: 1 });
     expect(await refusalOf(mismatch.supervisor.start(SESSION, capturePlan()))).toBe(`${CaptureRefusal.FAULT}/${WorkerDownCode.PROTOCOL_MISMATCH}`);
     expect(mismatch.fake.calls()).toBe(1);
     expect(mismatch.fake.last().kills).toEqual(['SIGKILL']);
@@ -309,7 +309,7 @@ describe('M3-KC-3: heartbeat and back-off', () => {
       [FrameViolation.NOT_JSON, (worker) => worker.violate(FrameViolation.NOT_JSON)],
       [FrameViolation.TOO_LONG, (worker) => worker.violate(FrameViolation.TOO_LONG)],
       ['HELLO_TWICE', (worker) => worker.hello()],
-      ['SESSION_MISMATCH', (worker) => worker.say({ type: 'WARNING', code: 'MIC_SILENT', subject: null }, 'S-ANOTHER')],
+      ['SESSION_MISMATCH', (worker) => worker.say({ type: 'WARNING', code: 'MIC_SILENT', state: 'ACTIVE', subject: null }, 'S-ANOTHER')],
     ];
     for (const [detail, act] of cases) {
       const { supervisor, fake } = await recording();
@@ -476,7 +476,7 @@ describe('switchAudioSource (the operator\'s switch; never automatic, OD-11)', (
 });
 
 describe('back-pressure', () => {
-  it('telemetry a listener has not taken yet is replaced by the newest frame; progress and warnings are never dropped', async () => {
+  it('telemetry a listener has not taken yet is replaced by the newest frame; below the limit, progress of different steps is kept in order (the queue is lossy by contract: liveness.test.ts F-4)', async () => {
     const clock = manualCaptureTimers();
     const fake = fakeLauncher();
     const supervisor = createCaptureSupervisor({ now: clock.now, timers: clock.timers, launcher: fake.launcher });

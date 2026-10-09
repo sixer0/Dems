@@ -14,6 +14,10 @@
  *   - the session cookie name, derived from the listen port (ID-P7);
  *   - the database that belongs to a listen port (one process per database, DA-07).
  * Configurable, at start only: the listen port within 4420 to 4423, the demo flag, the log level.
+ * WAIVED EDITS (task 3, decision OD-14; capture spec §I edits 7 to 10): the three capture keys.
+ * `DEMS_CAPTURE_MODE` (`simulated`, the default, or `real`), `DEMS_CAPTURE_WORKER` (the worker
+ * program) and `DEMS_MEDIA_DIR` (the media root). Whether a start in `real` mode is refused for a
+ * missing key is the boot checks' decision (CS-22), not this file's.
  */
 
 // ── Listener (SR-01, ADQ-5, ADQ-10) ────────────────────────────────────────────────────────────
@@ -36,10 +40,19 @@ export const SERVICE_NAME = 'dems-core-server';
 export const ENV_LISTEN_PORT = 'DEMS_CORE_PORT';
 export const ENV_DEMO_CONTROLS = 'DEMS_DEMO_CONTROLS';
 export const ENV_LOG_LEVEL = 'DEMS_LOG_LEVEL';
+export const ENV_CAPTURE_MODE = 'DEMS_CAPTURE_MODE';
+export const ENV_CAPTURE_WORKER = 'DEMS_CAPTURE_WORKER';
+export const ENV_MEDIA_DIR = 'DEMS_MEDIA_DIR';
 
 export const LOG_LEVELS = ['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'] as const;
 export type LogLevel = (typeof LOG_LEVELS)[number];
 export const DEFAULT_LOG_LEVEL: LogLevel = 'info';
+
+export const CAPTURE_MODES = ['simulated', 'real'] as const;
+export type CaptureMode = (typeof CAPTURE_MODES)[number];
+export const DEFAULT_CAPTURE_MODE: CaptureMode = 'simulated';
+/** Where the camera files live below the data directory when `DEMS_MEDIA_DIR` is unset (capture spec §H). */
+export const MEDIA_STORE_SUBPATH = 'media/sessions';
 
 // ── Requests (API-4, SR-64) ────────────────────────────────────────────────────────────────────
 
@@ -160,6 +173,12 @@ export interface CoreServerConfig {
   readonly dataDir: string;
   /** The runtime connection (role `dems_app`). */
   readonly database: DatabaseConnection;
+  /** `real`: sessions record through the capture worker. `simulated`: no worker is ever started. */
+  readonly captureMode: CaptureMode;
+  /** Absolute path of the capture worker program, or null when none is configured. */
+  readonly captureWorkerPath: string | null;
+  /** Absolute path of the media root (OD-25: git-ignored, below the data directory by default). */
+  readonly mediaStoreDir: string;
 }
 
 /** A configuration that must stop the boot. `code` is stable; `message` never holds a secret. */
@@ -211,6 +230,21 @@ export function parseLogLevel(raw: string | undefined): LogLevel {
   return raw;
 }
 
+/** Unset means `simulated`. Any other value than the two modes stops the boot. */
+export function parseCaptureMode(raw: string | undefined): CaptureMode {
+  if (raw === undefined || raw === '') return DEFAULT_CAPTURE_MODE;
+  const mode = CAPTURE_MODES.find((known) => known === raw);
+  if (mode === undefined) throw new ConfigError('CAPTURE_MODE_INVALID', `${ENV_CAPTURE_MODE} must be one of ${CAPTURE_MODES.join(', ')}.`);
+  return mode;
+}
+
+/** An absolute path, or null when the variable is unset. The value itself is never put in a message. */
+export function parseCapturePath(name: string, raw: string | undefined): string | null {
+  if (raw === undefined || raw === '') return null;
+  if (!raw.startsWith('/') || raw.includes('\0')) throw new ConfigError('CAPTURE_PATH_NOT_ABSOLUTE', `${name} must be an absolute path.`);
+  return raw;
+}
+
 // ── Building the configuration object ──────────────────────────────────────────────────────────
 
 export interface ConfigInput {
@@ -225,6 +259,12 @@ export interface ConfigInput {
     readonly user: string;
     readonly password: Secret;
   };
+  /** Default: `simulated`. */
+  readonly captureMode?: CaptureMode;
+  /** Default: null (no worker program). */
+  readonly captureWorkerPath?: string | null;
+  /** Default: `<dataDir>/media/sessions`. */
+  readonly mediaStoreDir?: string | null;
 }
 
 /**
@@ -251,6 +291,8 @@ export function createConfig(input: ConfigInput): CoreServerConfig {
   if (database.database === '' || database.user === '') {
     throw new ConfigError('DATABASE_FIELD_EMPTY', 'The database name and the role must not be empty.');
   }
+  const captureWorkerPath = parseCapturePath(ENV_CAPTURE_WORKER, input.captureWorkerPath ?? undefined);
+  const mediaStoreDir = parseCapturePath(ENV_MEDIA_DIR, input.mediaStoreDir ?? undefined) ?? `${input.dataDir}/${MEDIA_STORE_SUBPATH}`;
   return Object.freeze({
     host: LISTEN_HOST,
     port: input.port,
@@ -267,5 +309,8 @@ export function createConfig(input: ConfigInput): CoreServerConfig {
       user: database.user,
       password: database.password,
     }),
+    captureMode: input.captureMode ?? DEFAULT_CAPTURE_MODE,
+    captureWorkerPath,
+    mediaStoreDir,
   });
 }

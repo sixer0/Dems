@@ -1,17 +1,20 @@
 // M6-CP-1 — the CPU priority rule (test strategy §A.6; transcript spec §C; specs C-N2; D7(d)):
 // the bounded thread product is at most the physical cores, and calls are serialised. A
 // configuration assertion, not a measurement: nothing here times anything (D230).
+import { chmodSync, writeFileSync } from 'node:fs';
+import { getPriority } from 'node:os';
+import { join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
 import { describe, expect, it } from 'vitest';
 import { createTranscriberAdapter } from '../adapter';
-import { ENGINE_ENVIRONMENT, buildWhisperCliArgs, hostLowersPriority } from '../backends/cpu-local';
+import { ENGINE_ENVIRONMENT, buildWhisperCliArgs, hostLowersPriority, probeEngineNice } from '../backends/cpu-local';
 import { resolveTranscriberConfig, type CpuLocalConfig, type TranscriberRuntime } from '../config';
-import { CAPTURE_RESERVED_CORES, STT_NICE, SerialQueue, defaultSttThreadPlan, planSttThreads, threadPlanHolds } from '../cpu-priority';
+import { CAPTURE_RESERVED_CORES, LOWEST_NICE, STT_NICE, SerialQueue, engineIsLowered, expectedEngineNice, defaultSttThreadPlan, planSttThreads, threadPlanHolds } from '../cpu-priority';
 import { countCpuinfoCores, detectPhysicalCores, halfOfLogical } from '../host/physical-cores';
 import { OMLX_CREDENTIAL_REF } from '../key-loader';
 import { createMemoryLog } from '../log';
 import { TranscriberErrorCode, type EngineRunRecord } from '../types';
-import { HOST_LOWERS_PRIORITY, createFakeEngine, createFakeOmlx, pcmChunk, writeSettingsFile } from './support';
+import { EXPECTED_ENGINE_NICE, HOST_LOWERS_PRIORITY, OWN_NICE, createFakeEngine, createFakeOmlx, pcmChunk, scratchDir, writeSettingsFile } from './support';
 
 describe('M6-CP-1: the bounded thread product is at most the physical cores', () => {
   it('holds for every accepted plan of every host size from 1 to 64 cores, and every refused plan breaks it', () => {
@@ -130,12 +133,14 @@ describe('M6-CP-1: the bounded thread product is at most the physical cores', ()
     // (`HOST_LOWERS_PRIORITY`, an observation made without the product code). Each block is strict:
     // on a host that lowers priorities, a niceness other than 10 FAILS; on a host that does not,
     // an engine that was started in `required` mode FAILS.
-    it.runIf(HOST_LOWERS_PRIORITY)('host lowers priorities: the engine process itself observes niceness 10, in both modes, with no refusal logged', async () => {
+    it.runIf(HOST_LOWERS_PRIORITY)('host lowers priorities: the engine process itself observes the niceness of its parent + 10, in both modes, with no refusal logged', async () => {
       for (const mode of ['required', 'best-effort'] as const) {
         const { engine, runs, starts, outcome, refusals } = await run(mode);
         expect(outcome.ok).toBe(true);
-        expect(engine.lastNice()).toBe(STT_NICE);
-        expect(runs[0]!.nice).toBe(STT_NICE);
+        // What the engine process observes about itself: the niceness of this process plus the increment.
+        expect(engine.lastNice()).toBe(EXPECTED_ENGINE_NICE);
+        expect(engine.lastNice()).toBe(getPriority() + STT_NICE);
+        expect(runs[0]!.nice).toBe(EXPECTED_ENGINE_NICE);
         expect(runs[0]!.argv.slice(0, 4)).toEqual(['/usr/bin/nice', '-n', '10', engine.binaryPath]);
         expect(starts).toHaveLength(1);
         expect(refusals).toEqual([]);
@@ -152,7 +157,7 @@ describe('M6-CP-1: the bounded thread product is at most the physical cores', ()
 
       const bestEffort = await run('best-effort');
       expect(bestEffort.outcome.ok).toBe(true);
-      expect(bestEffort.engine.lastNice()).toBe(0);
+      expect(bestEffort.engine.lastNice()).toBe(OWN_NICE);
       expect(bestEffort.runs[0]!.nice).toBeNull();
       expect(bestEffort.refusals.map((record) => record.level)).toEqual(['warn']);
     });
@@ -193,6 +198,61 @@ describe('M6-CP-1: the bounded thread product is at most the physical cores', ()
     } finally {
       delete process.env['DEMS_ROW76_CANARY_TOKEN'];
     }
+  });
+});
+
+describe('M6-CP-1 / fix round 2, R-1: `nice -n 10` is RELATIVE to the process that starts the engine', () => {
+  it('the rule: the engine is at least STT_NICE below the niceness of its parent (parent 0 -> 10, parent 5 -> 15)', () => {
+    expect(engineIsLowered(0, 10)).toBe(true);
+    expect(engineIsLowered(5, 15)).toBe(true);
+    expect(engineIsLowered(-5, 5)).toBe(true);
+    expect(engineIsLowered(0, 15)).toBe(true); // lower than asked is still lowered
+    expect(expectedEngineNice(0)).toBe(10);
+    expect(expectedEngineNice(5)).toBe(15);
+    expect(expectedEngineNice(-5)).toBe(5);
+  });
+
+  it('negative controls: nice not applied (parent 5, child 5), and an absolute 10 under a parent at 5, are refused', () => {
+    expect(engineIsLowered(5, 5)).toBe(false);
+    expect(engineIsLowered(5, 10)).toBe(false);
+    expect(engineIsLowered(0, 0)).toBe(false);
+    expect(engineIsLowered(0, 9)).toBe(false);
+    expect(engineIsLowered(5, 14)).toBe(false);
+    expect(engineIsLowered(0, Number.NaN)).toBe(false);
+    expect(engineIsLowered(0, 10.5)).toBe(false);
+  });
+
+  it('at the floor of the scale the operating system clamps: a parent at 12 or lower still gets the lowest niceness, and that is accepted', () => {
+    expect(LOWEST_NICE).toBe(19);
+    expect(expectedEngineNice(12)).toBe(19);
+    expect(engineIsLowered(12, 19)).toBe(true);
+    expect(engineIsLowered(12, 20)).toBe(true); // macOS goes to 20
+    expect(engineIsLowered(12, 18)).toBe(false);
+    expect(engineIsLowered(19, 19)).toBe(true);
+  });
+
+  it('the host probe judges against the niceness of THIS process, whatever it is', () => {
+    const own = getPriority();
+    const child = probeEngineNice('/usr/bin/nice');
+    expect(child).not.toBeNull();
+    expect(hostLowersPriority('/usr/bin/nice')).toBe(engineIsLowered(own, child!));
+    expect(hostLowersPriority('/usr/bin/nice')).toBe(HOST_LOWERS_PRIORITY);
+    // The same measured child against another parent: a parent 5 above what it really is must refuse it.
+    if (HOST_LOWERS_PRIORITY) {
+      expect(child).toBe(expectedEngineNice(own));
+      expect(hostLowersPriority('/usr/bin/nice', own + 5)).toBe(child! >= LOWEST_NICE);
+      expect(hostLowersPriority('/usr/bin/nice', own - 5)).toBe(true);
+    }
+  });
+
+  it('a nice program that starts the command WITHOUT lowering it is found out by the probe, at any parent niceness', () => {
+    const dir = scratchDir('nice');
+    const fake = join(dir, 'nice-that-does-nothing');
+    // Takes `-n <k> <command> <args…>` and runs the command at the niceness it has itself.
+    writeFileSync(fake, `#!${process.execPath}\nconst { spawnSync } = require('node:child_process');\nconst r = spawnSync(process.argv[4], process.argv.slice(5), { stdio: 'inherit' });\nprocess.exit(r.status ?? 1);\n`);
+    chmodSync(fake, 0o755);
+    expect(probeEngineNice(fake)).toBe(getPriority());
+    expect(hostLowersPriority(fake)).toBe(false);
   });
 });
 

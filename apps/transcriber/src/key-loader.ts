@@ -6,7 +6,7 @@
  *
  *   - referenced by a pointer (`omlx-settings:auth.api_key`), never copied into DEMS configuration;
  *   - read into memory only, when a backend is built;
- *   - handed out as an opaque `Credential` that prints as `[credential]` under `String()`,
+ *   - handed out as an opaque `Credential` that prints as `***` under `String()`,
  *     `JSON.stringify`, template text and `util.inspect`;
  *   - turned into text in exactly one function, `bearerHeaderValue`, which the HTTP client of the
  *     `omlx-server` backend calls to build the `Authorization` header of a loopback request;
@@ -18,10 +18,15 @@ import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { inspect } from 'node:util';
+import { CREDENTIAL_BLANK } from '@dems/shared/api';
 import { TranscriberError, TranscriberErrorCode } from './types';
 
-/** What every rendering of a credential shows. */
-export const CREDENTIAL_PLACEHOLDER = '[credential]';
+/**
+ * What every rendering of a credential shows: the one blank of the shared rule set
+ * (`CREDENTIAL_BLANK` of `@dems/shared/api`), so that a line blanked by value and then read by the
+ * by-position rules holds nothing those rules could take for a member name.
+ */
+export const CREDENTIAL_PLACEHOLDER: string = CREDENTIAL_BLANK;
 
 /** The one store this loader reads, and the one member of it. */
 export const OMLX_SETTINGS_STORE = 'omlx-settings';

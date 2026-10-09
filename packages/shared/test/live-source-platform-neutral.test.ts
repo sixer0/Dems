@@ -390,7 +390,7 @@ describe('the export subpath @dems/shared/live/source', () => {
       'wasRestored',
     ]);
     expect(members.filter((name) => /token|credential|secret|bearer|password|cookie|header/i.test(name))).toEqual([]);
-    // The 42 actions under the simulator's names, one stable object.
+    // The 45 actions under the simulator's names, one stable object.
     expect(Object.keys(source.actions)).toEqual(viaFile.LIVE_BINDING_NAMES);
     expect(source.actions).toBe(source.actions);
     expect(source.coreMode).toBe('LIVE');

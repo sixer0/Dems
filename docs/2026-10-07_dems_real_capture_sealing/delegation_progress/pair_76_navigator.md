@@ -37,7 +37,7 @@ One side effect to know: the real-run tests write to a fixed directory (`apps/tr
 | static rule on the driver's planted file | 3 failed, rules `KEY_FILE_ONLY_IN_KEY_LOADER`, `AUTHORIZATION_HEADER_ONLY_IN_HTTP_CLIENT`, `NO_CONSOLE` | the same 3 failed, the same 3 rules; 33 passed after removal | yes |
 | `cpu-local` real run through the adapter | 4 passed; raw SHA-256 `6039a944...cab94439`, 3717 B, 14 segments, `id`, exit 0 | 4 passed; `6039a9447ed165b94d01cfff94ae7c4d17e034f2366e4af4c0c0d4e7cab94439`, 3717 B, 14 segments, `id`, exit 0 | yes |
 | the same command WITHOUT the adapter (binary called directly, output hashed by `shasum`) | not done | `6039a9447ed165b94d01cfff94ae7c4d17e034f2366e4af4c0c0d4e7cab94439`, 3717 B, 14 entries, `id`, exit 0; stderr: `use gpu = 0`, `whisper_backend_init_gpu: no GPU found`, `n_threads = 8 / 10` | matches |
-| niceness of the real `whisper-cli` process | 10 (value the adapter recorded) | **observed with `ps -o pid,ppid,ni,command`: 246 samples over both engine processes, 246 show `ni=10`** | yes |
+| niceness of the real `whisper-cli` process | 10 (value the adapter recorded) | **observed with `ps -o pid,ppid,ni,command`: every sample of both engine processes shows `ni=10` (sample count removed in the re-check: a count at a fixed interval is a duration, D230)** | yes |
 | `cpu-local` negative control, fixture cut to 12 s | `5d09469d...060b5e41`, 3 segments | `5d09469d7e4064b8248c304c5e5c4c122b4892f1cad2a21b759f55cc060b5e41`, 3 segments | yes |
 | `cpu-local` negative control, wrong model name | `MODEL_NOT_FOUND`, 0 runs | passed (same test) | yes |
 | `omlx-server` real run | 6 passed; raw `08900b7c...f3da6998`, 6801 B, 17 segments, HTTP 200 | 6 passed; `08900b7c5eb97d8364aa3df55bb3036a4c14f7d9924ec17023f0eb69f3da6998`, 6801 B, 17 segments, HTTP 200, `maxCallsInFlight: 1` | yes |
@@ -90,7 +90,7 @@ Definition, `10_test_strategy.md:216`: "capture outranks STT: bounded thread pro
 | Question | Answer | Evidence |
 |---|---|---|
 | Does the test assert the real rule or only a computed plan? | Both, with one gap. The plan is asserted over 1..64 cores (`cpu-priority.test.ts:17-41`); the bound reaches the real command (`-t 8` asserted on the real argv, `test/real/cpu-local.real.test.ts:47`); serialisation is observed at the fake server and at the queue (`:173-213`). **Gap:** the niceness of the real engine is recorded but never asserted in the real test (`cpu-local.real.test.ts:77` writes `nice`, no `expect`), and the unit test passes on either branch (`cpu-priority.test.ts:110-118`: when the host refuses, it only expects a warning). Inside the sandbox the refused branch runs, so the unit suite never proves the niceness there | finding N-5 |
-| Is the niceness really applied? | **Yes on this Mac.** My own observation during the real run: 246 of 246 `ps` samples of the two `whisper-cli` processes show `ni=10` | `.cache/stt/checks/row76_nav/ps_samples.txt` |
+| Is the niceness really applied? | **Yes on this Mac.** My own observation during the real run: every `ps` sample of the two `whisper-cli` processes shows `ni=10` | `.cache/stt/checks/row76_nav/ps_distinct.txt` |
 | How it is applied | after the `spawn` event, with `setPriority(child.pid, STT_NICE)` (`cpu-local.ts:116-125`). The engine starts at niceness 0 and is lowered a moment later. On Linux (the Core) niceness is a per-thread value and `setpriority` on a pid changes the main thread only; threads created after the call inherit it, threads created before do not. Not proven on Linux | finding N-5 |
 | D-76-2, refuse instead of clamp | **Acceptable, needs an erratum.** tx §C says "the adapter clamps"; the code refuses at configuration time (`cpu-priority.ts:56-63`) and re-checks before each run (`cpu-local.ts:149`). The invariant of M6-CP-1 (product <= physical cores) holds either way and refusal is the stricter reading. The default plan always holds the bound. The cost: a wrong host value stops the transcript of a session instead of running it with fewer threads | recommendation in 3.7 |
 | D-76-3, where the spec fixes the constants | **Nowhere.** `grep -niE "nice|niceness|reserved core|setpriority"` over tx, specs, spec 05 and the test strategy: no hit. tx §0.2 only says `STT_MAX_THREADS` is "bounded"; specs §E.3 (`01_specs.md:367`) says "STT runs below capture priority" without a value. `CAPTURE_RESERVED_CORES = 2` and `STT_NICE = 10` are the driver's proposals; calibration is class C (C-7) | `cpu-priority.ts:19-21` |
@@ -115,7 +115,7 @@ Definition, `10_test_strategy.md:216`: "capture outranks STT: bounded thread pro
 | `implementation/33_m6_transcriber_adapter.md`, `delegation_progress/coder_execution_row76.md` | 2 | 0 |
 | all of `implementation/` and `delegation_progress/` | 178 | 0 |
 | `apps/transcriber/`, `THIRD_PARTY_NOTICES.md`, `package-lock.json` | 32 | 0 |
-| `ps` argv of the test runner and the server, sampled every 0.5 s during the real oMLX run (353 lines) | 1 | 0 |
+| `ps` argv of the test runner and the server, sampled during the real oMLX run | 1 | 0 |
 | environment of the real `whisper-cli` child (`ps eww`) | 1 | 0 |
 | `~/.omlx/logs/omlx-serve.log` after the run | 1 | 0 |
 
@@ -239,7 +239,197 @@ Also for row 77: engine times are floats (the tail above ends at `95.52000000000
 
 Created: `docs/2026-10-07_dems_real_capture_sealing/delegation_progress/pair_76_navigator.md` (this file).
 Not edited: `masterplan/02_plan.md`, `status_tasks.md`, `delegation_progress_report.md`, any file under `apps/` or `packages/`.
-Git-ignored scratch: `.cache/stt/checks/row76_nav/` (probe results `nav_*.json`, `ps_samples.txt`, direct engine output, oMLX times and log backup, a copy of the driver's evidence).
+Git-ignored scratch: `.cache/stt/checks/row76_nav/` (probe results `nav_*.json`, `ps_distinct.txt`, direct engine output, oMLX times and log backup, a copy of the driver's evidence).
 
 ---
 *Generated: 2026-10-09 11:20 (+07:00)*
+
+---
+
+# Re-check of fix round 1 — 2026-10-09
+
+Reviewed: the driver's "Fix round 1" (`implementation/33_m6_transcriber_adapter.md` F1-F11) and the code as committed in `101ce62` (34 files under `apps/transcriber`). Same rules as before: report only; my scratch test (`apps/transcriber/test/real/nav2-scratch.real.test.ts`) is deleted and was never committed (`git ls-files | grep -iE "nav2|nav-scratch"`: no hit); the oMLX key was never read or printed in this round. Probe results: `.cache/stt/checks/row76_nav/fix1/` (git-ignored).
+
+## R1. Final verdict for row 76
+
+**ACCEPT-WITH-FINDINGS.** All fourteen findings of the first review are fixed or correctly handed over, and each fix is covered by a test that goes red when the fix is removed. One new finding (R-1, major) must be fixed before any row runs `cpu-local` from a Core process; four small residuals are listed with their heirs in R5.
+
+| New finding | One line |
+|---|---|
+| **R-1 (major)** | `nice -n 10` ADDS 10 to the niceness of the starting process, but the host probe demands exactly 10. A Core that is itself not at niceness 0 gets `PRIORITY_NOT_APPLIED` for every transcription. This happened to my first real run |
+
+## R2. Suites, re-run by me
+
+| Check | Driver | Navigator | Same |
+|---|---|---|---|
+| typecheck / lint | exit 0 / 0 | exit 0 / 0 | yes |
+| transcriber suite, inside the sandbox | 8 files, 239 passed, 1 skipped | 8 files, 239 passed, 1 skipped (skipped: the "host lowers priorities" block) | yes |
+| transcriber suite, outside the sandbox | 239 passed, 1 skipped | 239 passed, 1 skipped (skipped: the "host forbids it" block) | yes |
+| `M6-AD-1` / `M6-CP-1` named tests | 11 / 20 | 11 / 20 | yes |
+| static rule test | 82 passed | 82 passed | yes |
+| mutation script, outside the sandbox | 12 of 13 red | 12 of 13 red; not red: "N-5 required mode refuses" | yes |
+| mutation script, inside the sandbox | that line is red there | red there (failed 1); "N-5 started through nice" is NOT red there | yes |
+| core-server static guards | 13 files, 137 passed | 13 files, 137 passed | yes |
+| `cpu-local` real run, seeded id | 5 passed, `6039a944…cab94439`, 3717 B, 14 segments | 5 passed, `6039a9447ed165b94d01cfff94ae7c4d17e034f2366e4af4c0c0d4e7cab94439`, 3717 B, 14 segments, model id `ggml-large-v3-turbo`, cut-fixture control `5d09469d…060b5e41` with 3 segments | yes |
+| `Host` probe | received `127.0.0.1:<port>` | `{"status":200,"sentHost":"localhost:<port>","receivedHost":"127.0.0.1:<port>","remote":"127.0.0.1"}` | yes |
+| real `omlx-server` run | 7 passed | **not re-run** (see R3.7) | — |
+
+The mutation script writes its result over the driver's `fix1/mutation-red.json`; I saved the driver's file first and put it back (same SHA-256 before and after). My results: `row76_nav/fix1/nav_mutation-red.json` and `nav_mutation-red_in_sandbox.json`.
+
+## R3. The eight items
+
+### R3.1 N-1, static rule on the compiler API — fixed; residual acceptable, three cheap additions recommended
+
+My six violations of round 0, fed as one source text: all reported (`AUTHORIZATION_HEADER_ONLY_IN_HTTP_CLIENT`, `NO_CONSOLE`, `STDERR_ONLY_IN_LOG`, `FETCH_ONLY_IN_HTTP_CLIENT`, `NO_NETWORK_MODULE`, `NO_ENVIRONMENT_READ`, `CHILD_PROCESS_ONLY_IN_ENGINE_MODULES`, `NO_SHELL`). The same lines appended to the real `src/log.ts` are reported too. The five real production files alone give no violation.
+
+39 new evasions (`nav2_static_probe.json`):
+
+| Group | Cases | Result |
+|---|---|---|
+| Caught | namespace import, `require`, dynamic `import()` with fixed, folded and variable text, re-export, `const { env } = process`, `globalThis.process.env`, computed header key `['Author' + 'ization']`, header name held in a variable built with `+`, template settings path, `fs/promises` reader of a template path, `String.raw` path, console alias, console destructured, `globalThis['pro' + 'cess']['en' + 'v']`, `fetch` by folded bracket, `stderr` destructured, `os['home' + 'dir']()`, `new Function`, `spawn('/bin/sh', ['-c', …])` | 21 of 21 reported |
+| Not caught, built at run time | header name by `[...].join('')` or from base64; settings path from character codes or `[...].join`; `process[key]` with a variable key; `globalThis[name]` with a variable name; `Object.entries(process)`; a path inside a regular-expression literal | **acceptable residual.** No static reading can follow a value made at run time; the rule file says so. A reviewer sees such code at once |
+| Not caught, plain code | (a) `const p = process; p.env.X` and `Reflect.get(process, 'env')`; (b) `createRequire(import.meta.url)('http')` and `process.mainModule.require('http')`; (c) `writeSync(1, token)` / `writeSync(2, token)`, `process.emitWarning(token)`; (d) `node:inspector` `open()` (a listening port) | **minor, R-2.** These are ordinary one-liners, not obfuscation. Cheap to close: report `process` used as a value (anything but the object of a member access); add `module` and `inspector` to the module rules; report `writeSync`/`write` with a numeric first argument 1 or 2 outside `log.ts` |
+| Not caught, by nature | `throw new Error(headerValue)` | acceptable; the thrown text is what the log blanks |
+
+### R3.2 N-2 and N-7, model identifier — fixed
+
+`config.ts:138` and `:145` call `isSttModelId` from `@dems/shared/api`; no local pattern is left in `apps/transcriber/src` (grep: only the two calls and a comment). 32 attacks through the adapter with the stand-in engine (`nav2_model_probe.json`):
+
+| Attack | Result |
+|---|---|
+| id ending `.bin`, `.BIN`, `.Bin` | refused, `MODEL_ID_INVALID`, both backends |
+| `..`, `a..b`, `../x`, `/`, `\`, absolute path, leading `-` or `.`, NUL, newline, leading or trailing space, empty, 129 characters, non-ASCII | refused, both backends |
+| 128 characters; `x.bin.bak`; `x.bin.` (trailing dot) | accepted as ids; no such file, `MODEL_NOT_FOUND`, no engine |
+| `<id>.bin` is a link to a file outside the directory | `MODEL_OUTSIDE_MODEL_DIR`, no engine |
+| link into a sibling directory whose name starts like the model directory | `MODEL_OUTSIDE_MODEL_DIR` |
+| `<id>.bin` is a directory | `MODEL_NOT_FOUND` |
+| link that stays inside | runs |
+| the model DIRECTORY itself is a link to a real directory | runs; a link out of it is still refused. Acceptable: the directory is host configuration, and both paths are resolved before they are compared (`cpu-local.ts:150`) |
+
+Shared validator and transcriber agree on every candidate. Note for row 115: on this Mac the file system ignores case, so the id `MODEL-OK` opens `model-ok.bin`; on the Linux Core it will not.
+
+### R3.3 N-5, niceness — fixed at niceness 0; new finding R-1
+
+Mechanism: `spawn(config.nicePath, ['-n', '10', binary, …], { shell: false, env: ENGINE_ENVIRONMENT })` (`cpu-local.ts:195`). My own observation in the one real run (a `ps -Ao pid,ppid,ni,comm,args` loop in a separate shell job): the engine process shows `ni=10` in its first sample and in every later one, for both engine processes of the test file; no sample at another value. SHA and segments as in R2, with the seeded default id.
+
+Modes, as described: inside the sandbox `required` starts no engine and `best-effort` runs with a `warn` (the "host forbids" block, passing); outside it the engine observes 10 in both modes.
+
+**R-1 (major).** `nice -n 10` is an increment. Measured:
+
+```
+foreground:          own=0  through nice -n 10 = 10
+zsh background job:  own=5  through nice -n 10 = 15
+started at 12:       through nice -n 10 = 20
+```
+
+`hostLowersPriority` accepts only the text `10` (`cpu-local.ts:84`). So when the process that hosts the transcriber is not at niceness 0, the probe answers false and the default mode refuses every transcription, although the engine would run lower than asked. It happened here: I first started the real test as a zsh background job (zsh lowers those by 5); result `PRIORITY_NOT_APPLIED`, 2 of 5 tests failed, no engine started (`row76_nav/fix1/cpu_real_vitest_attempt1_bgnice_refused.out`; the empty run directory `runs/20261009T044010521Z-8142-cpu-local/` is from that attempt). Run in the foreground it passed. A Core started by a script with `&`, or a service with a niceness setting (also a negative one, to favour capture), meets the same refusal. The same test for exactly 10 is in the unit helper (`src/__tests__/support.ts:25-28`) and in the real test (`cpu-local.real.test.ts:96`).
+
+Fix: compare with the niceness of the host process. The probe passes when the value it reports is higher than `os.getPriority()` of the parent (or equals parent + 10, capped at the system maximum); record the observed value in `EngineRunRecord.nice`; add a test that starts the suite's stand-in from a parent at niceness 5.
+
+**The complementary-skip design.** Sound, on one condition. Sound because the selector is an independent question to the operating system, the third test fails if neither or both blocks ran, and a product that stopped using `nice` fails the "host lowers" block. The condition: inside the sandbox the strong block never runs, and there the mutation "started through nice removed" stays green (my in-sandbox mutation run shows exactly that). So a green suite proves the niceness only when the skipped test is the "host forbids" one. The gate run must be made outside the sandbox and must show that name as the skipped one; I recommend the suite print which block ran, or a gate script assert it. With R-1 the same hiding can also happen outside a sandbox (a parent at niceness 5 selects the weak block).
+
+Linux per-thread niceness stays unproven; the driver says so and puts it in the class-C pack. Agreed.
+
+### R3.4 N-6, N-9, N-10, N-11, N-13, N-14
+
+| Finding | Result | Evidence |
+|---|---|---|
+| N-6 environment | **fixed.** The real `whisper-cli` child holds exactly `PATH=/usr/bin:/bin`, `LANG=C`, `LC_ALL=C` (`ps eww` on the running engine; names listed, then the capture deleted). The stand-in engine sees the same three plus `__CF_USER_TEXT_ENCODING`, which macOS adds | my real run; `nav2_model_probe.json` `.env` |
+| N-9 endpoint | **fixed locally.** `?`, `#`, backslash, space, tab, NUL, DEL, no-break space: refused by `assertLoopbackEndpoint` (`config.ts:115-127`), by the configuration and by the HTTP client; a plain path prefix keeps the request path. Difference to the shared validator: R3.8 | `nav2_endpoint_probe.json` |
+| N-10 blanking | **fixed for the stated forms.** By value, plain key: raw, JSON once, twice and three times, URL-encoded (also `+` for space, lower-case hex, double), base64 with and without padding, base64url: all blanked. Awkward key (quote, backslash, non-ASCII, tab, `+/=&`): raw, JSON once and twice, URL-encoded, base64 blanked. By position without any protected value (`Bearer`, a credential-named member, nested JSON): blanked by the shared rule set | `nav2_blanking_probe.json` |
+| N-10 residual | not blanked by value, both keys: **hex** (also upper case and the spaced form a buffer dump prints), base64 of `Bearer <key>` or `user:<key>`. Awkward key only: JSON three times, lower-case-hex URL encoding, double URL encoding, base64 without padding, base64url. Also, by nature: reversed, upper-cased, half a key | **acceptable residual, R-3 (minor).** Blanking by value cannot cover every encoding. The key in use today has a plain character set, so only hex and the two embedded base64 forms apply to it. Add hex and unpadded/url-safe base64 when the `ENCRYPTED` branch arrives (arbitrary secrets) |
+| N-11 shape | **fixed.** `documentShape` is gone; `resultShape` returns the union of segment keys (`types.ts:89-93`) and differs on the real results (4 keys against 10); the proof is the strict schema, shown rejecting. Mutation red | R2 |
+| N-13 audio | **fixed.** Mutation: 10 tests red when the check is removed | R2 |
+| N-14 run directories | **fixed.** Same stamp and kind twice: `EEXIST`; second write of a file: `EEXIST`, first content kept. Info only: `writeEvidence` joins the name without a check, so a name with `../` writes outside the run directory (test-side helper, constant names today) | `nav2_rundir_probe.json` |
+
+### R3.5 N-4 / D230 — clean; keep the two backups, do not cite them
+
+Grep over all 32 non-audio files of `.cache/stt/checks/row76/` (with `runs/` and `fix1/`) for a number with a time unit, `rtf`, `wer`, throughput, tokens per second, elapsed, `Duration`, timing lines:
+
+| Where | Hits |
+|---|---|
+| the rewritten excerpt and the two excerpts under `runs/` | 0; no clock time and no duration left on any line |
+| every evidence JSON, old and under `runs/` | 0; no sample count (`grep -E "[sS]amples?\"?: ?[0-9]"`: only `bitsPerSample`) |
+| `fix1/red_static_old_engine.txt` line 629 | 1: the test runner's own `Duration` line of a static unit test. Not an engine figure; delete the line for tidiness |
+| `omlx-serve.log.bak-20261009T105413`, `fix1/omlx-serve.log.bak-20261009T113252` | 2 and 3: the server's own timing lines |
+| the two row documents | no throughput or speed figure. They hold clock times of the oMLX start/stop log (required by D7(d)) and "Up for 25 seconds" (how long the shared server was up, not an engine speed) |
+
+Removing the `ps` sample counts was the right call: a count taken at a fixed interval is a duration. I did the same to my own first report (the counts are replaced by "every sample") and reduced my sample file to its distinct lines.
+
+**Backups: keep, cite nowhere.** They are the only copy of the part of the shared service's log that the start script truncated; they are git-ignored and quoted in no document. Deleting them cannot be undone and nobody asked for it (red line on deletions). Recommendation for the controller: record in the decision log that the `omlx-serve.log.bak-*` files (the driver's two and my one under `row76_nav/`) are restore copies and not evidence, and let the user decide at handover whether they go. If the controller wants them out of the evidence tree sooner, that is the user's deletion to approve.
+
+D-76-11 (run directories named by a UTC stamp): accepted; a clock time of a check is not an engine figure.
+
+### R3.6 N-8 / D-76-8 — confirmed
+
+| Check | Result |
+|---|---|
+| requested address, capturing transport | `http://localhost:8000` → `http://127.0.0.1:8000/v1/models`; `http://localhost` → `http://127.0.0.1/v1/models`; with a path prefix the prefix is kept |
+| real `fetch`, listener bound to `127.0.0.1` only, endpoint `http://localhost:<port>` | status 200; the server saw `Host: 127.0.0.1:<port>`, remote `127.0.0.1`, the header present |
+| real `fetch`, listener bound to `::1` only, same endpoint form | `UNREACHABLE` / `ECONNREFUSED`, 0 requests: the name is never resolved, so the first address of this host for `localhost` (`::1`) is never tried |
+| driver's probe | caller set `Host: localhost:<port>`, server received `127.0.0.1:<port>` |
+
+The name `localhost` never reaches DNS: the text handed to `fetch` holds the address literal. The ruling ACCEPTED (no custom dispatcher, no `node:http` client) fits the measured behaviour. Left for row 115: "never sends the bearer key to an arbitrary loopback port" (the client still sends the header to whatever loopback port the stored endpoint names).
+
+### R3.7 Real `omlx-server` run — not repeated
+
+Nothing in this round needs it again. The request the server receives changed in one respect only, the address for `localhost`, which I proved with a real `fetch` against scratch listeners (R3.6); the default test endpoint is `http://127.0.0.1:8000` and is untouched by the rewrite. Model id, credential path, form members and parsing are covered by the 239 unit tests and the mutation runs. The driver's own real run after the change is in `runs/20261009T043256807Z-2868-omlx-server/` with the row-12 hash. Port 8000 had no listener before and after my work; `omlx serve` was never started by me in this round; the content hash of `~/.omlx/settings.json` still begins `334d13f7a322`.
+
+### R3.8 The two endpoint validators — what differs now
+
+Shared (`packages/shared/src/api/transcription.ts:108`, unchanged): `^http://(127\.0\.0\.1|localhost)(:[0-9]{1,5})?(/.*)?$`, at most 512 characters, port 1 to 65535. Transcriber: the shared check first, then two more (`config.ts:120`, `:124`).
+
+| Endpoint (after the port) | Shared, so op 91 and the table CHECK | Transcriber |
+|---|---|---|
+| `/?x=1`, `/a?b` | accepted | refused, `ENDPOINT_HAS_QUERY_OR_FRAGMENT` |
+| `/#f`, `/a#b` | accepted | refused, same reason |
+| `/\@evil.example` (backslash) | accepted | refused, `ENDPOINT_MALFORMED` |
+| `/a b` (space), tab, NUL, DEL, no-break space in the path | accepted | refused, `ENDPOINT_MALFORMED` |
+| line separator U+2028, newline | refused | refused |
+| `/%3Fx`, `/%23`, `/%5C`, `//x`, `/..`, `/@x`, `/;x`, port `00080` | accepted | accepted |
+| any host but the two, user part, upper case, IPv6 | refused | refused |
+
+So an operator can store ten kinds of endpoint through op 91 that the transcriber refuses at session start (of my 29 candidates 14 are accepted by both, 10 by the shared one only, 5 by neither). No security gap: the stricter side is the one that connects. It is a consistency gap: op 91 answers 200 and the next session has no transcript. The driver is right that the three refusals belong in `STT_LOOPBACK_ENDPOINT_PATTERN` (and in the table CHECK, which mirrors it). Owner: row 113, whose re-check is in flight; I edited nothing there.
+
+## R4. Status of the first review's findings
+
+| ID | Status after fix round 1 |
+|---|---|
+| N-1 | fixed; residual R-2 |
+| N-2 | fixed (controller ruling: identifier, `<id>.bin`, one shared pattern) |
+| N-3 | not the driver's; re-assignment recorded by the controller |
+| N-4 | fixed; backups kept by design (R3.5) |
+| N-5 | fixed at niceness 0; **R-1 open**; Linux part is class C |
+| N-6 | fixed |
+| N-7 | fixed |
+| N-8 | fixed; D-76-8 accepted |
+| N-9 | fixed in the transcriber; shared pattern is row 113's (R3.8) |
+| N-10 | fixed; residual R-3 |
+| N-11 | fixed |
+| N-12 | not the driver's; erratum by the controller |
+| N-13 | fixed |
+| N-14 | fixed |
+
+## R5. Who inherits what
+
+| Item | Severity | Heir |
+|---|---|---|
+| R-1 niceness compared with exactly 10 instead of with the host process (`cpu-local.ts:75-88`, `support.ts:25-28`, `cpu-local.real.test.ts:96`) | major | **row 76 driver, a short fix round 2**, or row 77 as its first step (row 77 also lists M6-CP-1). In either case before row 115 mounts the transcriber and before any `cpu-local` run from a Core process |
+| The gate run of the suite is made outside the sandbox and shows "host forbids it" as the skipped test | condition | every row that quotes the transcriber suite as proof of M6-CP-1 (77, 115) |
+| R-2 static rule: `process` as a value, `module`/`createRequire`, `inspector`, writes to descriptor 1 or 2 | minor | row 77 (it adds files to this workspace and will touch the pinned file list anyway) |
+| R-3 blanking by value: hex, unpadded and url-safe base64 | minor | the row that adds the `ENCRYPTED` loader branch (after row 84) |
+| Shared endpoint pattern and table CHECK take the `?` / `#` / stray-character refusals | minor | row 113 |
+| "never sends the bearer key to an arbitrary loopback port"; id case on a case-sensitive file system; boot-time resolve of the configuration | — | row 115 |
+| Linux: per-thread niceness through `nice`, `/proc/cpuinfo` counting | class C | class-C pack (real Core device) |
+| Clamp of the phantom tail; the media-time constant from row 58 | — | row 77 (unchanged from section 3.7 and 3.8) |
+| `omlx-serve.log.bak-*` files: restore copies, not evidence; keep or delete | decision | controller records; the user decides at handover |
+| `fix1/red_static_old_engine.txt` line 629 (test runner duration line) | tidy | row 76 driver |
+
+## R6. Files of the re-check
+
+Updated: this file (section appended; in the first report the `ps` sample counts were replaced by "every sample", for D230).
+Not edited: anything under `apps/`, `packages/`, `masterplan/`, `status_tasks.md`, `delegation_progress_report.md`.
+Git-ignored scratch: `.cache/stt/checks/row76_nav/fix1/` (`nav2_*.json`, the two real-run outputs, my mutation results, the driver's mutation result as I found it). Left in the driver's tree by my runs: two new run directories under `.cache/stt/checks/row76/runs/` (`…044010521Z-8142-cpu-local`, the refused attempt; `…044043136Z-8333-cpu-local`, the passing run).
+
+---
+*Re-check appended: 2026-10-09 11:55 (+07:00)*

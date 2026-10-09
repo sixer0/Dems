@@ -150,6 +150,9 @@ export async function memoryEngine(): Promise<MemoryEngine> {
         return work(scope);
       }),
     setTabletLink: unsupported('setTabletLink'),
+    applyCaptureTelemetry: unsupported('applyCaptureTelemetry'),
+    raiseCaptureWarning: unsupported('raiseCaptureWarning'),
+    clearCaptureWarning: unsupported('clearCaptureWarning'),
     mirrorOperators: unsupported('mirrorOperators'),
     state,
     slice: <Key extends DurableSliceKey>(name: Key): DurableSlices[Key] => state()[name],

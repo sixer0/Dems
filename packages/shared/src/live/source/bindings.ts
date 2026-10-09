@@ -1,6 +1,6 @@
 /**
- * The 42 action bindings (HB-14; backend task 04_client_integration_spec §2.5 "The 42 action
- * bindings", CL-19; 01_specs §7.17).
+ * The 45 action bindings (HB-14; backend task 04_client_integration_spec §2.5 "The 42 action
+ * bindings", CL-19; 01_specs §7.17; task 3 register SH-18 adds the three capture actions).
  *
  * Every member of the simulator's `SimActions` has one entry here: which operation the Live
  * action calls, how its arguments become the request, what it resolves with, and which refusals
@@ -18,7 +18,7 @@
  * | `sign-out` | 1 | `signOut`: the answer ends the session and drops the Core data (WS-12) |
  * | `touch` | 1 | Throttled (CL-27) |
  * | `pair`, `unpair` | 2 | The device credential goes to, and is deleted by, the app's own storage (MP-6, MP-7) |
- * | `local` | 2 | No operation exists: `signInWithSecurityKey` is refused (X-1), `setTabletLink` resolves (X-2) |
+ * | `local` | 5 | No operation exists: `signInWithSecurityKey` is refused (X-1); `setTabletLink` (X-2), `applyCaptureTelemetry`, `raiseCaptureWarning` and `clearCaptureWarning` (SH-18) resolve |
  *
  * A binding of any flow may also answer by itself, without a request, where the simulator's action
  * changes nothing or throws before it looks at anything the server holds: `startRecording` outside
@@ -531,9 +531,27 @@ export const LIVE_BINDINGS: LiveBindings = {
     plan: () => resolve(undefined),
     result: nothing,
   },
+  applyCaptureTelemetry: {
+    flow: LiveActionFlow.LOCAL,
+    // SH-18: no client feeds telemetry; the server takes it from its own capture supervisor.
+    plan: () => resolve(undefined),
+    result: nothing,
+  },
+  raiseCaptureWarning: {
+    flow: LiveActionFlow.LOCAL,
+    // SH-18: no client raises a capture warning; it arrives as an alert of the replicated state.
+    plan: () => resolve(undefined),
+    result: nothing,
+  },
+  clearCaptureWarning: {
+    flow: LiveActionFlow.LOCAL,
+    // SH-18: nor clears one. Operation 74 (`clearFault`) stays the demo control it was.
+    plan: () => resolve(undefined),
+    result: nothing,
+  },
 };
 
-/** The names of the 42 bindings, in the order of `SimActions`. */
+/** The names of the 45 bindings, in the order of `SimActions`. */
 export const LIVE_BINDING_NAMES = Object.keys(LIVE_BINDINGS) as readonly SimActionName[];
 
 /** The actions whose simulator signature returns a value: the other ones return nothing. */

@@ -23,7 +23,7 @@
  * |------|-------|
  * | `live-sim.ts` | `createLiveSim`: the store, the socket handlers, the session, the action runners |
  * | `types.ts` | `LiveSim`, `CreateLiveSimOptions`, `LiveSecretsPort`, `LiveSessionEnd` |
- * | `bindings.ts` | The 42 action bindings, as data |
+ * | `bindings.ts` | The 45 action bindings, as data |
  * | `command-gate.ts` | Own-command atomicity (CL-16 to CL-18) |
  * | `live-result.ts` | The result of a Live action: a thenable that calls back in the turn of its settlement |
  * | `replica.ts`, `structural-sharing.ts` | What a snapshot and a delta change in the store (CL-13, CL-14) |

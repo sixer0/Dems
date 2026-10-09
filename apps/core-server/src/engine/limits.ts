@@ -40,5 +40,8 @@ export const ENGINE_UNIT_LABEL = {
   probe: 'engine.probe',
   stop: 'engine.stop',
   tabletLink: 'engine.setTabletLink',
+  captureTelemetry: 'engine.applyCaptureTelemetry',
+  captureWarning: 'engine.raiseCaptureWarning',
+  captureWarningClear: 'engine.clearCaptureWarning',
   operators: 'engine.mirrorOperators',
 } as const;

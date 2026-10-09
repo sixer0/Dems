@@ -163,7 +163,18 @@ export interface CreateSimOptions {
   initialPairing?: PairingState;
   /** Receives every caught error. The default keeps the last 50 in `Sim.errors()`. */
   onError?: (report: SimErrorReport) => void;
+  /**
+   * Where the meter levels come from (task 3, register CS-04). Default `'simulated'`: the audio
+   * subsystem generates them, and a level fed by `applyCaptureTelemetry` takes their place while it
+   * is fresh. `'external'`: a real capture worker measures them and NOTHING is generated: an input
+   * without a fresh measured level reads NO SIGNAL, before the first frame, after the last one and
+   * when the worker is down. Set once by the host that creates the simulator.
+   */
+  capture?: CaptureLevelSource;
 }
+
+/** See `CreateSimOptions.capture`. */
+export type CaptureLevelSource = 'simulated' | 'external';
 
 // ═══════════════════════════════════════════════════════════════════════════════════════
 // State slices
@@ -606,6 +617,59 @@ export interface CaptureDeviceStatus {
  */
 export interface CaptureDevicesSlice {
   devices: CaptureDeviceStatus[];
+}
+
+/**
+ * What one RTSP ingest of the capture worker says about itself (`capture-spec §B.2` TELEMETRY
+ * `ingest[].state`). The three values are the worker protocol's; `@dems/shared` does not depend on
+ * that package, so they are written here as a type only (no runtime value set, no new vocabulary).
+ */
+export type CaptureIngestStateName = 'WAITING' | 'CONNECTED' | 'ENDED';
+
+/** The level of one mic input, by the role it holds in the capture config (`capture-spec §B.2`). */
+export interface CaptureTelemetryLevel {
+  role: MicRole;
+  /** dBFS, at most 0. `null`: the input delivers no samples (the meter shows NO SIGNAL). */
+  dbfs: number | null;
+  /** The worker saw a clipped sample in this frame. */
+  clipped: boolean;
+}
+
+/** The ingest of one camera, by its capture-device ID (`captureDevices.devices[].id`). */
+export interface CaptureTelemetryIngest {
+  deviceId: string;
+  state: CaptureIngestStateName;
+}
+
+/** Fragments written so far for one camera file. Carried, not applied: see `applyCaptureTelemetry`. */
+export interface CaptureTelemetryFragments {
+  deviceId: string;
+  count: number;
+  bytes: number;
+}
+
+/**
+ * The input of the INTERNAL action `applyCaptureTelemetry` (register SH-18, CS-04; `capture-spec
+ * §B.1`). It has exactly the three lists of the worker's TELEMETRY frame, so the server's
+ * translation is a copy: nothing is dropped and nothing is invented on the way.
+ */
+export interface CaptureTelemetryInput {
+  levels: readonly CaptureTelemetryLevel[];
+  ingest: readonly CaptureTelemetryIngest[];
+  fragments: readonly CaptureTelemetryFragments[];
+}
+
+/** The two warnings the capture layer raises: the two capture-path values of `FaultKind`. */
+export type CaptureWarningCode = Extract<FaultKind, 'MIC_SILENT' | 'CAPTURE_FAULT'>;
+
+/**
+ * The input of the INTERNAL action `raiseCaptureWarning` (register SH-18; `capture-spec §B.1`,
+ * §E.1). `subject` is what the worker's WARNING frame names: a capture-device ID, a mic input ID,
+ * a mic role, or `null` when the warning is about the capture as a whole.
+ */
+export interface CaptureWarningInput {
+  code: CaptureWarningCode;
+  subject: string | null;
 }
 
 export interface StorageVolume {
@@ -1296,6 +1360,33 @@ export interface SimActions {
   unpair(): void;
   /** Driven by the app (mobile: its own Core link). Health and Devices read it. */
   setTabletLink(state: TabletLinkState): void;
+
+  // ── Capture telemetry and warnings (task 3, register SH-18 / CS-04; `capture-spec §B.1`) ──
+  // INTERNAL like `setTabletLink`: the Core server calls them from the capture supervisor's events,
+  // no client may. They take no actor and need no sign-in.
+  /**
+   * One TELEMETRY frame of the capture worker (about 20 Hz). The levels go to the meters through
+   * the audio subsystem and are never stored. The ingest states set `online` and `streamState` of
+   * the camera in `captureDevices` and `captureConfig`; a frame that changes neither commits
+   * nothing. Unknown device IDs and roles are ignored (`captureTelemetryIgnored` names them, and
+   * the Core server logs each once). Writes no audit row and no event.
+   */
+  applyCaptureTelemetry(telemetry: CaptureTelemetryInput): void;
+  /**
+   * Raises the fault `MIC_SILENT` or `CAPTURE_FAULT` for the subject: one alert, one FAULT_RAISED
+   * audit row and event, as `inject` does. Does nothing while that fault is active for the same
+   * subject. It NEVER changes the active mic input (OD-11). Throws `SimNotFoundError` for a
+   * subject that names no capture device, mic input or mic role.
+   */
+  raiseCaptureWarning(warning: CaptureWarningInput): void;
+  /**
+   * The condition a capture warning named is over: clears the fault `MIC_SILENT` or `CAPTURE_FAULT`
+   * of that subject as `clearFault` does (the alert is resolved, one FAULT_CLEARED audit row and
+   * event). Does nothing when that fault is not active. A later `raiseCaptureWarning` for the same
+   * subject is then a NEW fault with its own alert and audit row. Throws `SimNotFoundError` for a
+   * subject `raiseCaptureWarning` would refuse.
+   */
+  clearCaptureWarning(warning: CaptureWarningInput): void;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════

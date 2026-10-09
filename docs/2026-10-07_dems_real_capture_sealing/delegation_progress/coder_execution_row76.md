@@ -87,3 +87,19 @@ oMLX (second and last sanctioned session): pre-check 11:32:52, log backed up 11:
 Decisions to record: D-76-8 (Host header, ruling needed), D-76-9 (`nicePath`, `priority` host options), D-76-10 (accepted audio forms), D-76-11 (run-directory stamps are not figures). D-76-1 is superseded by the ruling.
 
 Honest notes: (1) only N-1 was red-first in the strict sense; the other fixes were shown red by removing each fix in a scratch copy (13 mutations, all red in the condition they apply to). (2) The first real CPU run of this round wrote `ps` sample COUNTS into its evidence file; I removed them (a fixed-interval count is a duration in disguise) and the test now writes booleans. (3) `shared` and `core-server` unit suites were not re-run (other rows are editing them).
+
+---
+
+# Fix round 2 (navigator re-check) — 2026-10-09
+
+Status: `complete`. Detail: `implementation/33_m6_transcriber_adapter.md`, section "Fix round 2" (G1-G9). Not committed; no lockfile write; no oMLX run; only `apps/transcriber/**` and the evidence folder touched.
+
+| Finding | Outcome |
+|---|---|
+| R-1 (major) | fixed: the rule is `engine niceness >= min(parent niceness + 10, 19)` against this process's own `os.getPriority()`, in the host probe, the unit helper and the real test. Real run in the foreground (parent 0 → engine 10) and as a zsh background job (parent 5 → engine 15): both 5 passed, both `6039a944…cab94439`, 14 segments |
+| R-2 (minor) | fixed: 14 in-memory fixtures for the four evasions; two new rules (`PROCESS_OBJECT_IS_NOT_PASSED_AROUND`, `NO_DIRECT_OUTPUT`), two extended (`NO_DYNAMIC_CODE`, `NO_NETWORK_MODULE`). Run-time-built names and a descriptor held in a variable stay documented residuals |
+| Evidence hygiene | fixed: runner `Start at`/`Duration` lines and per-test millisecond suffixes removed from the stored outputs; capture steps strip them |
+
+Numbers: 8 files / 259 passed / 1 skipped (the complementary niceness block); static 97; M6-AD-1 11; M6-CP-1 25; typecheck and lint exit 0.
+
+Notes for the record: (1) "engine lower than the CAPTURE WORKER" is a rule between sibling processes for rows 77/115; not built, stated in the code comment. (2) Two of my tests broke when the parallel row-113 round changed `packages/shared` (the model-id pattern was tightened; the blanking rules read my `[credential]:` as a member name). Fixed on my side: the pattern text is no longer pinned, and the transcriber's placeholder is now the shared `CREDENTIAL_BLANK`. (3) The R-1 unit tests were red before the fix only because their functions did not exist; the behavioural red is the navigator's refused background run and a mutation back to the absolute rule (3 tests fail).

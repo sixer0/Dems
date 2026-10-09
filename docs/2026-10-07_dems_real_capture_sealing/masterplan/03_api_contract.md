@@ -15,11 +15,16 @@ source_structured_task: /Users/gsp-budi/Documents/DEMS/docs/2026-10-07_dems_real
 source_analysis: /Users/gsp-budi/Documents/DEMS/docs/2026-10-07_dems_real_capture_sealing/research/03_analysis.md
 source_phase_spec: /Users/gsp-budi/Documents/DEMS/docs/2026-10-07_dems_real_capture_sealing/masterplan/01_specs.md
 decisions: /Users/gsp-budi/Documents/DEMS/docs/2026-10-07_dems_real_capture_sealing/decisions/decisions.md (D4-D12)
-last_updated: 2026-10-09 (pair-review errata PE-113-01..PE-113-14, `masterplan/11_audit_errata.md` §5: R-8 ops 90-92 CONFIRMED by D24 and COUNTED — registry 92, 35 GET / 57 POST, audit types 63, offline 26; row-113 driver choices recorded, D68; earlier: 2026-10-08 RV-SPEC errata AU2-07/AU2-08 and §2.5 added as a proposal; 2026-10-07 row-35 remediation, op 89 added)
+last_updated: 2026-10-09 (row 121 contract delta PE-121-01..PE-121-16, `masterplan/11_audit_errata.md` §5.8: R-9..R-11 operations 93-97 in §2.6 as a TARGET for rows 132-142, new totals stated once in §10.1 — the registry as built is still 92; D73-D78, D80; earlier the same day: pair-review errata PE-113-01..PE-113-14, `masterplan/11_audit_errata.md` §5: R-8 ops 90-92 CONFIRMED by D24 and COUNTED — registry 92, 35 GET / 57 POST, audit types 63, offline 26; row-113 driver choices recorded, D68; earlier: 2026-10-08 RV-SPEC errata AU2-07/AU2-08 and §2.5 added as a proposal; 2026-10-07 row-35 remediation, op 89 added)
 ---
 
-# API Contract C3 — operations 76-92, modified operations, error codes, audit types, slices and constants
+# API Contract C3 — operations 76-97, modified operations, error codes, audit types, slices and constants
 
+> **Erratum PE-121-01 (D73, D78, D80).** The title range is 76-97 since blueprint row 121: operations
+> 93-97 (§2.6) are the contract for R-9, R-10 and R-11. They are a **target** — rows 132, 133, 136,
+> 139 and 142 build them. Figures in this file that say 92 / 35 / 57 / 63 / 26 are the registry **as
+> built** by row 113; the totals after the delta are stated once, in §10.1.
+>
 > **This is the contract, not the code change.** It names what M2 must build in
 > `packages/shared/src/api/*`, `packages/shared/openapi/openapi.json` and the pinned-count tests.
 > No file outside this task folder is edited by this row (blueprint row 29, red line). The shared
@@ -89,6 +94,7 @@ hardening are owned by row 30 (`04_database_contract.md`).
 | `TRANSCRIPT_REVISE` | `Permission` (existing enum, additive) | grant to `INVESTIGATOR`, `SUPERVISOR` | D4 OD-15; register SH-03/SH-04/CS-12 |
 | `SESSION_HOLDER` | `CoreApiAccessCondition` (new) | the caller is the operator who created the open session, **or** holds `SUPERVISOR` | D4 OD-09; `contract-model.ts:88-112` (condition list grows by one) |
 | `POE_CYCLE` | `DeviceCommand` (existing enum, additive) | a device command whose contract entry is op 48 | E-12; `vocabulary.ts:260`; register §A E-12 |
+| `WEB_CONSOLE_SESSION` — **erratum PE-121-04** | `CoreApiAccessCondition` (new, proposed; rows 132 / 142 materialise) | the caller's operator session is **not** bound to a paired device (a web console session). Otherwise `403 NOT_PERMITTED` with `details.reason: WEB_CONSOLE_ONLY` and one `ACCESS_DENIED` row, before the body is read. On ops 89, 95, 96 — every operation whose body carries a camera credential | D80(3); `contract-model.ts:89-120` (the condition list grows by one, §10.1; it is the complement of `DEVICE_SESSION`) |
 
 The four additions are additive to closed value sets (`auth.ts`, `vocabulary.ts`,
 `contract-model.ts`); no existing value changes meaning. `AUDIT_TYPE_CATEGORY` gains one entry per
@@ -105,6 +111,7 @@ new audit type (§5), as the predecessor required (`specs` §13.1 idiom).
 | Modified operations (of the 75) | **24** substantive (§3, 22 table rows; the `72/73/74` row modifies three), each with before/after |
 | New registry total | **92 operations**, **35 GET / 57 POST** — **erratum PE-113-02 (D24):** 89 (34 GET / 55 POST) was the M2 total for ops 76-89; ops 90-92 (1 GET + 2 POST) joined it at M6 row 113. Pinned by `packages/shared/test/api-registry.test.ts:285` (92) and `packages/shared/test/api-openapi-scope.test.ts:297-299` (35 GET / 57 POST) |
 | R-8 operations (D20) — **CONFIRMED (D24), COUNTED; erratum PE-113-02** | ops **90-92** (§2.5), built by row 113. Counted facts: registry **92 (35 GET / 57 POST)**; audit types **63** (`STT_CONFIG_CHANGED`; `api-registry.test.ts:470`); error codes stay **40** (`packages/shared/test/api-envelope.test.ts:51`); replicated slices stay **30** (`packages/shared/test/api-state-slices.test.ts:443`); `offline` scope **26** (`api-registry.test.ts:692`; §8). The former wording "proposed, not counted ... if confirmed" is withdrawn |
+| R-9..R-11 operations (D73, D78, D80) — **erratum PE-121-02** | ops **93-97** (§2.6): search, read of the search state and candidate list, connection test, adoption, local-input re-read. **Target, not built** (rows 132, 142). Every "92", "35 GET / 57 POST", "63" and "26" in this table is the as-built figure of row 113; the R-9..R-11 delta of row 121 moves this figure — the new target is stated once, in §10.1 |
 | Register row that fixes numbers | `register §B.6 NM-09` fixes **ops 76-80** (the five capture-config operations). No other row numbers an operation, so ops 81-89 are assigned here |
 | Register row that requires the 13th operation | `register §B.6 NM-11` (evidence media streaming) requires one operation the predecessor contract explicitly forbade (media not served, `specs` §A.3/§11 MS-1). It is op 88 |
 | Register row that requires the 14th operation (SEC35-01) | `register RK-12` + `T-33` (map §6 `capture_device_credentials`) + `E-30` (audited refusals): the write-only credential store had **no** write operation, so op 89 `setCaptureDeviceCredential` is added and `CAPTURE_CREDENTIAL_SET` with it (§2.2, §5.2) |
@@ -147,6 +154,7 @@ or `EXPORT_DENIED` on the export command, `contract-model.ts:200-211`).
 | `SESSION_START` (existing) | INVESTIGATOR, SUPERVISOR | `sessions.ts:133`; predecessor `specs §4.4` | op 81 adds the `SESSION_HOLDER` condition |
 | `EVIDENCE_VIEW` (existing) | every role | `evidence.ts:147`; `evidence.ts` (VIEW_DENIED note) | reads 84/86/88; **REAL evidence additionally needs case/session scope (SEC35-16, §2.4) — flagged for the second blueprint gate** |
 | `CAPTURE_CONFIG` (new; credential custody) | SUPERVISOR, TECHNICIAN | D4 OD-10; `04_database_contract.md §B.3/§D` | op 89 writes the credential store; the store is read only through the single owning module + the supervisor reveal path (SEC35-02) |
+| `CAPTURE_CONFIG` (discovery and connect flow) — **erratum PE-121-04** | SUPERVISOR, TECHNICIAN | R-9 AC-12; D80(2)-(4) | ops 93-97 (§2.6); **no new permission**. 93 / 94 / 97 on web, tablet and phone and while a session is open; 95 / 96 (and 89) web console only (`WEB_CONSOLE_SESSION`) and idle only |
 | `EVIDENCE_EXPORT` (existing) | SUPERVISOR | `core-api.ts:872-877`; RB-5 | modified op 42 |
 | `DEVICE_MANAGE` (existing) | TECHNICIAN | `devices.ts:155`; predecessor `specs §4.4` | modified op 48 (PoE cycle) |
 | `AUTHENTICATED` (any role) | every role | `contract-model.ts:133` | captures, sealing progress, intervals |
@@ -183,7 +191,11 @@ session, or any SUPERVISOR (OD-09); an operator who holds `SESSION_START` but is
 `live` only: Simulated mode plays the bundled demo media and opens no media session
 (`register NM-11`; predecessor `specs §11` MS-1 stays true for Simulated mode). 89 needs
 `CAPTURE_CONFIG`, is idle-only (`409 CAPTURE_CONFIG_LOCKED`), and is **write-only**: the response
-never echoes the credential and the audit detail carries `deviceId` only (§5.2; RK-12). **Access
+never echoes the credential and the audit detail carries `deviceId` only (§5.2; RK-12). **Erratum PE-121-05 (D80(3), D80(7)):** op 89 additionally
+carries the condition `WEB_CONSOLE_SESSION` (a tablet or phone session is refused `403 NOT_PERMITTED`,
+`WEB_CONSOLE_ONLY`), and until the credential sealer of row 84 is provided it answers `503 NOT_READY`
+(`CREDENTIAL_STORE_NOT_READY`) and stores nothing; its `{id}` is always a registered device (§2.4,
+§2.6). **Access
 correction for REAL evidence (SEC35-16):** op 88 and the `EVIDENCE_VIEW` reads (84/86) are scoped to
 the caller's own case/session for items whose `integrity_source = 'REAL'` — `EVIDENCE_VIEW` alone is
 **not** sufficient (see §2.1 and §2.4); this is a pre-existing-permission correction and **needs user
@@ -206,7 +218,7 @@ confirmation at the second blueprint gate** before M8.
 | 86 | query `cursor`, `limit` | 200 `{ items: TranscriptRevision[], nextCursor }` | reads `evidence` | 401, 403, 404, 409 `TRANSCRIPT_NOT_READY`, 422 `INVALID_QUERY` |
 | 87 | none | 200 `EvidenceExportJob { jobId, evidenceId, kind: PACKAGE\|COMPOSITE, status: QUEUED\|RUNNING\|COMPLETE\|FAILED, progressPct, etaMs, manifestHash?, signature?, derived, createdAt, completedAt }` | reads `evidence` (`exportJob`) | 401, 403, 404, 422 `INVALID_PATH_PARAMETER` |
 | 88 | none | 201 `EvidenceMediaSession { evidenceId, fileId: VIDEO-01\|VIDEO-02, url, expiresAt, ranges: true }` | none (not replicated) | 401, 403, 404, 409 `MEDIA_NOT_AVAILABLE`, 422 `INVALID_PATH_PARAMETER` |
-| 89 | `CaptureCredentialWrite { username, secret }` (path `{id}` = the camera device; both fields **write-only**) | 200 `CaptureConfig` (the credential is **never** echoed) | publishes `captureConfig` | 400, 401, 403, 404 unknown `{id}`, 409 `CAPTURE_CONFIG_LOCKED`, 422 `INVALID_INPUT`, 503 `NOT_READY` |
+| 89 | `CaptureCredentialWrite { username, secret }` (path `{id}` = the camera device; both fields **write-only**) | 200 `CaptureConfig` (the credential is **never** echoed) | publishes `captureConfig` | 400, 401, 403 (**erratum PE-121-05:** also `NOT_PERMITTED` / `WEB_CONSOLE_ONLY` for a device-bound session), 404 unknown `{id}` (a candidate id is never a device id), 409 `CAPTURE_CONFIG_LOCKED`, 422 `INVALID_INPUT`, 503 `NOT_READY` (**erratum PE-121-05:** `CREDENTIAL_STORE_NOT_READY` until row 84) |
 
 Shape sources. `CaptureConfig`, `CaptureDevice`, `TranscriptDocument` and `TranscriptRevision`
 are the **wire form of the new/changed replicated slices** (`state-slices.ts` idiom API-6: one zod
@@ -220,7 +232,9 @@ v2 steps (`register SH-05/SH-06`); `EvidenceExportJob` is `register NM-12`. Ever
 model, firmware, host, poePort, online, streamState, capabilities`. A camera URL is host/path only and
 **never** `user:password@` (camera credentials are write-only, `register RK-12`; `specs C-N8`).
 `EvidenceMediaSession.url` is a signed, loopback-only URL (E-31) and is **the one field that must
-never be logged or audited** (§5).
+never be logged or audited** (§5). **Erratum PE-121-06 (R-11; D80(9)):** the `CaptureDevice` field
+list gains `adapter` and `sourceClass` (§2.6 "Device shapes"); neither is a secret, and the list
+still holds no credential member.
 
 ### 2.4 Per-area notes
 
@@ -296,10 +310,18 @@ rest (`04_database_contract.md §B.3`), returns the `CaptureConfig` snapshot, an
 logs or audits the credential value; the `CAPTURE_CREDENTIAL_SET` audit detail is `deviceId` only
 (§5.2). It is idle-only and requires `CAPTURE_CONFIG`. The store is read only through the single
 owning module + supervisor reveal path fixed in `04_database_contract.md §B.3/§D` (SEC35-02); no
-other operation reveals a credential.
+other operation reveals a credential. **Erratum PE-121-05 (open point 3 of `specs` §B.2.6; D80(7)):**
+the path names a **registered** device only — op 89 never creates a `capture_devices` row and never
+addresses a discovery candidate. A candidate becomes a device only in the commit of op 96, whose
+credential leg runs this same write (same schema, module, sealer, store and audit type) inside the
+adoption transaction (§2.6 "Adoption and operation 89"). Op 89 remains the way to **replace** the
+credential of a registered camera. It is web console only (`WEB_CONSOLE_SESSION`), and before row 84
+it answers `503 NOT_READY` (`CREDENTIAL_STORE_NOT_READY`) — no second store exists in the interim.
 
 ### 2.5 STT configuration operations 90-92 (CONFIRMED — D24, Q-STT-CFG answer (a); R-8, D20; built by row 113)
 
+> **Erratum PE-121-02:** the counts in this block are the as-built figures of row 113; the R-9..R-11 delta of row 121 moves this figure — the new target is stated once, in §10.1.
+>
 > **Status: confirmed and counted (erratum PE-113-03; D24).** These three operations implement R-8
 > (`specs` R-8; D20). The user confirmed Q-STT-CFG with all 13 proposed defaults at the second gate
 > (D24: "Q-STT-CFG (a) all 13 proposed R-8 defaults confirmed") and row 113 built them
@@ -350,6 +372,136 @@ never values; `enabled: boolean` (the new value — not a secret), `backend: str
 boolean`, `revision: number`. The endpoint, model path, credential and reference target are **never**
 in the detail (E-30/E-31). No row on refusal.
 
+### 2.6 Discovery, connect flow and local inputs — operations 93-97 (R-9, R-10, R-11; NEW SCOPE D73, approved D78; rulings D80)
+
+> **Status: contract delta of blueprint row 121 (erratum PE-121-03).** Target for rows 132, 133,
+> 136, 139 and 142; **nothing here is built yet** — the registry holds 92 operations until row 132
+> lands. Inputs: `specs` §B.2 (R-9 16 AC, R-10 6 AC, R-11 10 AC; C-N13..C-N15), the controller
+> rulings D80 (1)-(11), D72(g)(h)(k), D73-D78. The pinned totals this section moves are stated
+> **once**, in §10.1. Values marked *(proposed)* are confirmed or changed by the row named beside
+> them; everything else is normative for rows 132-142.
+
+**Identity.**
+
+| # | operationId | Method | Path | Tag | Mode | Access (marker + condition) | Audit success / denial | Requirement |
+|--:|---|---|---|---|---|---|---|---|
+| 93 | `startCaptureDiscovery` | POST | `/api/v1/capture/discovery` | Device | simulated | `PERMISSION CAPTURE_CONFIG` (web, tablet, phone) | `CAPTURE_DISCOVERY_SEARCHED`, written once when the search window closes / `ACCESS_DENIED` | R-9 AC-1(a), AC-2..AC-4, AC-11..AC-13; R-10 AC-1, AC-4 |
+| 94 | `getCaptureDiscovery` | GET | `/api/v1/capture/discovery` | Device | simulated | `PERMISSION CAPTURE_CONFIG` (web, tablet, phone); **owner session only** | `NONE-R` / `ACCESS_DENIED` | R-9 AC-2, AC-4, AC-12 |
+| 95 | `testCaptureCandidateConnection` | POST | `/api/v1/capture/discovery/candidates/{id}/test` | Device | simulated | `PERMISSION CAPTURE_CONFIG` + `WEB_CONSOLE_SESSION` (**web console only**, D80(3)) | `CAPTURE_CONNECTION_TESTED`, one row per attempt, every outcome / `ACCESS_DENIED` | R-9 AC-5..AC-7, AC-10, AC-11, AC-13 |
+| 96 | `adoptCaptureCandidate` | POST | `/api/v1/capture/discovery/candidates/{id}/adopt` | Device | simulated | `PERMISSION CAPTURE_CONFIG` + `WEB_CONSOLE_SESSION` (**web console only**) | `CAPTURE_CANDIDATE_ADOPTED` (+ `CAPTURE_CONNECTION_TESTED` for its re-verification; + `CAPTURE_CREDENTIAL_SET` when a credential is stored) / `ACCESS_DENIED` | R-9 AC-5, AC-8, AC-9; open point 3 |
+| 97 | `rescanCaptureInputs` | POST | `/api/v1/capture/inputs/rescan` | Device | simulated | `PERMISSION CAPTURE_CONFIG` (web, tablet, phone) | `CAPTURE_DISCOVERY_SEARCHED` with `scope: MIC_LOCAL` / `ACCESS_DENIED` | R-10 AC-2, AC-4; D80(5) |
+
+Access notes. No new permission (R-9 AC-12): every operation needs `CAPTURE_CONFIG` (SUPERVISOR +
+TECHNICIAN, §2.1); any other role is refused `403 NOT_PERMITTED` with one `ACCESS_DENIED` row. An
+operator signed in on a paired tablet or phone (a device-bound session) may call 93, 94 and 97. The
+two operations that carry a camera credential in the body — 95 and 96 — and operation 89 carry the
+new condition `WEB_CONSOLE_SESSION` (§0): a device-bound session is refused `403 NOT_PERMITTED`,
+`details.reason: WEB_CONSOLE_ONLY`, with one `ACCESS_DENIED` row, **before the body is read**
+(D80(3); the R-8 precedent was a UI rule only — here the server enforces it). The search that a
+pre-check runs (below) is not an API operation and needs no `CAPTURE_CONFIG` of its starter
+(D80(2)).
+
+**Shapes.** Every request schema is a `z.strictObject` (an unknown member is `422 INVALID_INPUT`).
+`epochMs` = Core clock, integer milliseconds.
+
+| # | Request | Success | Realtime | Statuses and error codes (`details.reason`) |
+|--:|---|---|---|---|
+| 93 | **none.** The body is absent or `{}`. No address, subnet, interface, port, timeout or filter member exists — a search always probes the fixed WS-Discovery multicast group (in development mode it also lists the loopback development sources) | `202 CaptureDiscoverySearch` for a new search; `200` with the same object and `created: false` when the caller's own search is still `RUNNING` (no second probe). `CaptureDiscoverySearch { searchId: string /^DSC-[0-9]{6,}$/, scope: 'CAMERA_NETWORK', trigger: 'MANUAL'\|'PRECHECK', state: 'RUNNING'\|'COMPLETE'\|'FAILED', startedAt: epochMs, windowMs: number, completesAt: epochMs, expiresAt: epochMs, responderCount: number, newCount: number, registeredCount: number, failureReason: string\|null, created: boolean }` (the three counts are `0` while `RUNNING`) | none; raises or resolves the situation-A alert in the `alerts` slice when the window closes (§5.4) | 401; 403 `NOT_PERMITTED`; **409 `INVALID_STATE`** (`DISCOVERY_IN_PROGRESS`: another operator session's search is running — one socket per Core, C-N13); **429 `RATE_LIMITED`** (`DISCOVERY_RATE_LIMITED`, `retry-after`); **503 `NOT_READY`** (`DISCOVERY_NOT_READY`: no discovery adapter is provided, or capture is not ready). **Never `409 CAPTURE_CONFIG_LOCKED`** — a search is allowed while a session is open (D80(4)) |
+| 94 | none | `200 CaptureDiscoveryState { search: CaptureDiscoverySearch \| null, candidates: CaptureCandidate[], truncated: boolean }`. `search: null` and `candidates: []` when the caller's session has no live search (never started, expired, replaced). `candidates` is empty while `RUNNING` and complete once `COMPLETE` (forward-only: the list never shrinks or reorders during its life). `truncated: true` when more than `CAPTURE_DISCOVERY_MAX_CANDIDATES` devices answered | none — **no slice** (see "Why no slice") | 401; 403 `NOT_PERMITTED` |
+| 95 | `CaptureConnectionTestRequest { credential?: { username: text 1..255, secret: text 1..1024 } }`. **The target is the candidate in the path and nothing else: the body has no address, host, port, URL, path or profile member** (R-9 AC-10). `credential` is **required** for a candidate of `sourceClass: PRODUCTION` and optional for `DEVELOPMENT` (loopback fixtures and local devices). Both fields are write-only and live in the request scope only (rule "Credential in memory") | `200 CaptureConnectionTest { candidateId, outcome: 'REACHABLE'\|'AUTHENTICATION_FAILED'\|'WRONG_PROFILE'\|'NOT_H264'\|'UNREACHABLE', authenticated: boolean, testedAt: epochMs, usableProfileCount: number, failedAttemptsRemaining: number }`. **A failed test is a `200` result, not an HTTP error** (the op 92 idiom). `authenticated` says whether a credential was supplied — a fact, never a value. No device error text, no URL, no credential member | none | 400 `INVALID_JSON`; 401; 403 `NOT_PERMITTED` (role, or `WEB_CONSOLE_ONLY`); **404 `NOT_FOUND`** (the id is unknown, expired, or belongs to another session's search — one answer for all three); **409 `CAPTURE_CONFIG_LOCKED`** (a session is open; no audit row, SEC35-19); **409 `INVALID_STATE`** (`CANDIDATE_ALREADY_REGISTERED`, `CANDIDATE_NOT_TESTABLE`, `CONNECTION_TEST_IN_PROGRESS`); **422 `INVALID_INPUT`** (`CREDENTIAL_REQUIRED`; schema); **429 `RATE_LIMITED`** (`CONNECTION_TEST_RATE_LIMITED`, `CONNECTION_TEST_LOCKOUT_GUARD`; `retry-after`); 503 `NOT_READY` (`DISCOVERY_NOT_READY`). **Every refusal in this cell happens before any network request (0 outbound requests)** |
+| 96 | `CaptureCandidateAdoptRequest { credential?: CaptureCredentialWrite }` — the member is the **same schema as the body of op 89** (`{ username, secret }`, `devices.ts:149-156`). It must be present exactly when the candidate's last passing test was authenticated. No other member: the adoption decides no track, no role and no address | `201 CaptureCandidateAdoption { deviceId: string, device: CaptureDevice, credentialSet: boolean }` (`CaptureDevice` as in op 77; the credential is **never** echoed) | publishes `captureDevices` (the new device); `captureConfig` is **not** changed | 400 `INVALID_JSON`; 401; 403 `NOT_PERMITTED` (role, or `WEB_CONSOLE_ONLY`); 404 `NOT_FOUND` (as 95); **409 `CAPTURE_CONFIG_LOCKED`**; **409 `INVALID_STATE`** (`CANDIDATE_ALREADY_REGISTERED` with `details.deviceId`; `CANDIDATE_NOT_TESTED` — no `REACHABLE` outcome younger than `CAPTURE_CONNECTION_TEST_VALIDITY_MS`; `CONNECTION_TEST_FAILED` with `details.outcome` — the re-verification did not answer `REACHABLE`; `CONNECTION_TEST_IN_PROGRESS`); **422 `INVALID_INPUT`** (`CREDENTIAL_REQUIRED`, `CREDENTIAL_NOT_EXPECTED`; schema); 429 `RATE_LIMITED` (as 95); **503 `NOT_READY`** (`CREDENTIAL_STORE_NOT_READY` — a credential is in the body and the Core credential sealer of row 84 is not provided; `DISCOVERY_NOT_READY`). **Every refusal stores nothing** |
+| 97 | none | `200 CaptureInputScan { scannedAt: epochMs, inputs: [{ deviceId: string, inputId: 'MIC-01'\|'MIC-02'\|null, present: boolean, adapter: string, sourceClass: 'PRODUCTION'\|'DEVELOPMENT', errorCode: 'PERMISSION_DENIED'\|'DEVICE_BUSY'\|'DEVICE_NOT_FOUND'\|null }], unregisteredCount: number }` — one entry per **registered** microphone; local inputs that are not registered are counted only | publishes `captureDevices` (`online` of the microphones) | 401; 403 `NOT_PERMITTED`; 429 `RATE_LIMITED` (`INPUT_RESCAN_RATE_LIMITED`); 503 `NOT_READY` (`CAPTURE_NOT_READY`) |
+
+`CaptureCandidate` (op 94) — built from the probe answer only (D80(1): no follow-up read of device
+information; R-9 AC-2):
+
+| Field | Type | Meaning |
+|---|---|---|
+| `candidateId` | string, `/^CND-[0-9A-F]{12}$/` | minted by the Core at random per search; meaningful only inside the owner session |
+| `adapter` | string code (`^[A-Z][A-Z0-9_]{0,63}$`) | the adapter kind that found it: the network camera adapter, or `FAKE` / `LOCAL_DEVICE` (see "Device shapes") |
+| `sourceClass` | `'PRODUCTION'` \| `'DEVELOPMENT'` | derived by the Core from `adapter`; never set by a client |
+| `host` | string, an IP literal | the address **the answer came from** — never a URL, never `user:password@` (C-N8) |
+| `endpointRef` | string 1..120 \| null | the announced endpoint reference |
+| `vendor`, `model`, `name` | string 1..120 \| null | announced scopes. **Untrusted device text**: stored and returned under the API-13 text rule, drawn as text only |
+| `status` | `'NEW'` \| `'REGISTERED'` | `REGISTERED` when it matches a `capture_devices` row: by `endpointRef` = `onvif_uuid`, else by `host` = the host of `address` (both existing columns; row 122 confirms the key) |
+| `deviceId` | string \| null | the registered device when `status: REGISTERED` |
+| `testable` | boolean | `false` when the responder announced a service address whose host is not `host` (D80(11)); such a candidate is listed and can never be tested (`409 CANDIDATE_NOT_TESTABLE`) |
+| `lastTest` | `{ outcome, authenticated: boolean, testedAt: epochMs }` \| null | the last connection-test outcome in this search's life; no credential, no profile name |
+| `adoptable` | boolean | `status: NEW`, and `lastTest.outcome = REACHABLE` younger than `CAPTURE_CONNECTION_TEST_VALIDITY_MS` |
+
+**No secret in any shape (row 121 gate: 0 response shapes carry a credential).** The seven response
+shapes of this section — `CaptureDiscoverySearch`, `CaptureDiscoveryState`, `CaptureCandidate`,
+`CaptureConnectionTest`, `CaptureCandidateAdoption`, `CaptureInputScan`, and the changed
+`CaptureDevice` — hold no `username`, no `secret`, no credential-bearing URL and no member derived
+from either. The only credential-carrying members are the **request** member `credential` of 95 and
+96 (and the body of op 89).
+
+**Rules.**
+
+| Rule | Contract | Authority |
+|---|---|---|
+| Search trigger | A search runs (a) by op 93, or (b) **once per pre-check run** inside `beginPrecheck` / `retryPrecheck` when a configured camera is unreachable — owned by the session of the operator who started the pre-check, `trigger: PRECHECK`, same audit row, same rate limit (a pre-check search refused by the limit is skipped and the pre-check result says so; the pre-check itself is not failed by it). Never at boot, on a timer, or as a side effect of a read (op 94 never probes) | R-9 AC-1; D74(1); D80(2) |
+| Candidate state: where it lives | In the Core's memory only, as data of **one operator session** (the authenticated session that started the search). **No table, no slice, no file.** Candidates never appear in op 77 or in the `captureDevices` slice | R-9 AC-3, AC-4; D76(1) |
+| Candidate state: ownership | Only the owner session reads it (op 94) or acts on it (95, 96). No role — not SUPERVISOR either — reads another session's search: for a foreign candidate id the answer is `404 NOT_FOUND`, and op 94 answers the caller's own state only (there is no search id in any path). The same operator on another client has another session and runs their own search. What everyone sees is the outcome as an alert (§5.4), never the list | R-9 AC-4, AC-10; D80(2), D80(3) |
+| Candidate state: lifetime | Discarded at `expiresAt` = `completesAt` + `CAPTURE_DISCOVERY_RESULT_TTL_MS`; at sign-out or expiry of the owner session; at a Core restart; and when the owner starts a new search (the new list replaces the old one and the old candidate ids die with their test results). At most one live search per session and at most one `RUNNING` search per Core | R-9 AC-4; C-N13 |
+| Not an SSRF or port-scan primitive | The target of 95 and 96 is a **candidate id** resolved inside the caller's own live search. The Core takes the address from its own search state (`host`, and a service address only when its host equals `host`); a client never supplies one. In development mode a search also lists the loopback development sources (fixtures, the R-11 helper) as candidates of `sourceClass: DEVELOPMENT`, so the loopback case is reached through a candidate id too — no caller-supplied address exists in any mode. A foreign id, an expired id, another session's id and a `testable: false` candidate are refused with 0 outbound requests | R-9 AC-10; D80(11); D80(10) (typed-address entry is not in scope) |
+| Connection test: what it does | One read-only attempt, at most `CAPTURE_CONNECTION_TEST_TIMEOUT_MS`, against the candidate: authenticate, list the media profiles, check for a usable H.264 profile. It changes no setting on the camera (no NTP, GOP, profile or PoE action — class C) and is never repeated without a new operator action | R-9 AC-6, AC-7; D75; D76(2) |
+| Connection test: outcomes | `REACHABLE` (answered; with a credential: authenticated; a usable H.264 profile exists) · `AUTHENTICATION_FAILED` (the camera refused the credential) · `WRONG_PROFILE` (no usable media profile) · `NOT_H264` (profiles exist, none is H.264) · `UNREACHABLE` (no answer within the timeout; D80(11)). Exactly these five; each is reachable on fixtures | R-9 AC-6; D80(11) |
+| Credential in memory | The `credential` member of 95 and 96 is held in the memory of that one request and is gone when its answer is written: it is not kept in the candidate state, not cached for a later request, not written to a log line, an audit row, an error detail or a file, and not passed to another process on a command line or in an environment variable. A retry is a new request with a newly sent credential (R-9 AC-8). The Core holds **no** camera credential between requests anywhere except the one Core credential store | D80(7); R-9 AC-7, AC-8; C-N15 |
+| Credential required | A `PRODUCTION` candidate is never contacted without an operator-entered credential (`422 CREDENTIAL_REQUIRED`, 0 outbound requests): "no credential means no connection attempt". A `DEVELOPMENT` candidate (loopback only, development flag on) may be tested and adopted without one; fixture cameras with fixture credentials exercise the authenticated outcomes | D76(2); D80(7); R-9 AC-7, AC-10(ii) |
+| Adoption: when a `capture_devices` row comes into being (**open point 3**) | **Exactly once: in the commit of op 96.** Order inside op 96: access → idle check → candidate resolved in the caller's search → `status: NEW` → a fresh `REACHABLE` test → credential presence matches that test → the sealer is provided if a credential is present → **re-verification** (one read-only attempt with the credential of *this* request; not `REACHABLE` → `409 CONNECTION_TEST_FAILED`) → **one database transaction**: INSERT the `capture_devices` row, INSERT the `capture_device_credentials` row when a credential is present, and the audit rows. Any failure before or inside the transaction leaves **0** rows in both tables. Searches, tests, refused adoptions, closed prompts, sign-out and a Core restart write no row at all — there is no pending row and nothing to clean up | open point 3 of `specs` §B.2.6; R-9 AC-8; D76(2)-(3) |
+| Adoption and operation 89 | Op 89 is **unchanged in path and body**: its `{id}` is always a **registered** capture device (`HARDWARE_DEVICE_ID_PATTERN`, `404` otherwise), so it can never address a candidate. The credential leg of op 96 **is the op-89 write**: the same request schema, the same single owning credential module, the same sealer seam, the same store, the same `CAPTURE_CREDENTIAL_SET` row (`deviceId` only; `operationId: adoptCaptureCandidate`) — run inside the adoption transaction so that a camera is never registered without the credential it was verified with. There is one store and one write path; op 96 adds no second one. After adoption, replacing the credential of that device is op 89 | D80(7); D76(3); D68(c); C-N15 |
+| Before row 84 (sealer) | Op 89 and the credential leg of op 96 answer `503 NOT_READY` (`CREDENTIAL_STORE_NOT_READY`) and store nothing — the op 91 rule (§2.5 "Credential store (interim)"). So from M4: search, list, **every** test outcome (the test stores nothing, so it also runs with a credential), and adoption of `DEVELOPMENT` candidates **without** a credential. After row 84: adoption with a credential, hence of every `PRODUCTION` camera. No second credential store, no plaintext or weaker interim form | D80(7); D68(c); PE-113-08 |
+| What adoption stores | `id` = the next free `CAM-NN` (the highest existing number + 1, two digits minimum, never reused — minted by the Core); `kind = 'CAMERA'` (written once, never updated, D72(f)); `transport = 'RTSP'`; `model` (announced, text rule); `address` (host or host:port, never a credential URL); `onvif_uuid` (= `endpointRef`); `profiles` (the usable H.264 profile codes the re-verification read); `enabled = true`; `last_seen_at`; and the adapter kind where row 122 places it. Not stored: the candidate id, the search id, the test history | open point 5 (row 122 owns the columns) |
+| Adoption is not assignment | Op 96 changes no track. Assigning the new device to `VIDEO-01` / `VIDEO-02` is op 78 / 79 (R-1), which accept **registered** device ids only — so "assignable only after a successful test" holds by construction: a registered row exists only through the seed or op 96. Ops 78 / 79 never accept a candidate id (`422` by pattern) | R-9 AC-5 |
+| Config lock | 93, 94 and 97 are allowed while a session is open. 95, 96 and 89 answer `409 CAPTURE_CONFIG_LOCKED` with no state change and **no** audit row | D80(4); OD-10; SEC35-19 |
+| Idempotency | 93: idempotent while the caller's search is `RUNNING` (`200`, `created: false`); afterwards a new call is a new search. 94: a read. 95: **not** idempotent — each accepted call is one attempt and one audit row. 96: at most one device per candidate and per `endpointRef` — a repeat answers `409 CANDIDATE_ALREADY_REGISTERED` with the `deviceId`; two concurrent adoptions yield one row. 97: idempotent in effect | R-9 AC-8 |
+| Rate limits *(values proposed; rows 126 and 123 confirm)* | Searches: one `RUNNING` per Core; per session at least `CAPTURE_DISCOVERY_MIN_INTERVAL_MS` between starts; per Core at most `CAPTURE_DISCOVERY_MAX_PER_MINUTE`. Tests (95 and the re-verification of 96 count alike): at least `CAPTURE_CONNECTION_TEST_MIN_INTERVAL_MS` between attempts on one `host`; at most `CAPTURE_CONNECTION_TEST_MAX_PER_MINUTE` per Core; and the **lock-out guard**: at most `CAPTURE_CONNECTION_TEST_MAX_FAILURES` `AUTHENTICATION_FAILED` outcomes per `host` in `CAPTURE_CONNECTION_TEST_FAILURE_WINDOW_MS`, counted per Core **by host** (a new search, another session or another operator does not reset it). Over a bound: `429 RATE_LIMITED` with `retry-after`, 0 outbound requests, no audit row. Fake clock in tests (C-N5) | R-9 AC-11; D80(11) |
+| Microphones | No network microphone discovery and no microphone adoption. Op 97 re-reads the local inputs (`AudioInputAdapter.enumerate()`) and reports each registered microphone as present or not, with the helper's named error for a local device (R-11 AC-5). It registers nothing and never replaces a local device by a fake | D80(5); OD-06; D80(11) |
+| Why no slice | A replicated slice is one state for every client of the Core; the candidate list belongs to one session. Keeping it out of the slices keeps the slice count at 30 and makes "another operator cannot read it" structural. Clients poll op 94 while a search is `RUNNING` (not faster than once per second) | §6; R-9 AC-4 |
+| Web Try-it | 95 and 96 carry a credential in the body and **join `TRY_IT_DENIED_OPERATIONS`** (`apps/core-web/src/features/api-reference/try-it.ts:39-48`), beside op 89 (the new list length is in §10.1). 93, 94 and 97 carry none and stay allowed in Simulated mode | row 121 requirement; D68(a) N-2 |
+
+**Device shapes: adapter kind and development class (R-11; D80(9)).** `CaptureDevice` (op 77, slice
+`captureDevices`) gains two members, and each camera and mic line of `CaptureConfig` (op 76, slice
+`captureConfig`) gains `sourceClass`:
+
+| Member | Type | Rule |
+|---|---|---|
+| `adapter` | string code | the adapter kind behind the device. Two values are fixed here: **`LOCAL_DEVICE`** (this Mac's camera or microphone behind a loopback helper; development only) and **`FAKE`** (a fixture source). The production value names are fixed by row 123 |
+| `sourceClass` | `'PRODUCTION'` \| `'DEVELOPMENT'` | `DEVELOPMENT` exactly when `adapter` is `LOCAL_DEVICE` or `FAKE`. A per-source class (D80(9)): clients draw the "development source" label from it and row 124 marks the manifest per track from the same value |
+
+How the kinds map. `capture_devices.kind` stays the **device class** `CAMERA` \| `MIC` \| `POE`
+(`capture_devices_kind_check`, `0004_capture.sql:48`) and is immutable (no UPDATE grant, D72(f)).
+The adapter kind is a **second axis** and never a new value of `kind`: a `LOCAL_DEVICE` camera is
+`kind: CAMERA, adapter: LOCAL_DEVICE`; a `LOCAL_DEVICE` microphone is `kind: MIC, adapter:
+LOCAL_DEVICE`. Like `kind`, the adapter of a row is written at INSERT and never updated: a device
+that changes its adapter is another device with another id. With the development flag off, ops 76 /
+77 list **0** `DEVELOPMENT` devices, a search lists 0 `DEVELOPMENT` candidates, and op 78 / 79
+refuse an assignment that names one (`422 INVALID_INPUT`, `DEVELOPMENT_SOURCE_NOT_ALLOWED`) — R-11
+AC-2. Where the adapter kind is recorded is row 122's decision (open point 5).
+
+**What R-10 reads — no new read operation.** The three notifications are Core state that every
+client already receives: the replicated **`alerts`** slice (`state-slices.ts:800`; the alert rows
+of §5.4), the **`captureDevices`** and **`captureConfig`** slices (`online`, `streamState`), and
+the **`session`** slice (the pre-check result and the fault of a FAULTED session). The empty
+candidate list itself is op 94. Nothing else is needed.
+
+**Simulator (Simulated mode; the `offline` scope).** All five operations are `mode: simulated`. The
+in-app simulator opens no socket, waits on no timer and answers deterministically, so parity tests
+compare fixed values:
+
+| # | The simulator answers |
+|--:|---|
+| 93 | `202` with a search that is already `COMPLETE` (`windowMs: 0`, `created: true`), two fixed candidates, one `CAPTURE_DISCOVERY_SEARCHED` row (`responderCount: 2`). It never answers 409, 429 or 503 and raises no alert (the list is not empty) |
+| 94 | the state of that search: `CND-000000000001` (`NEW`, `adapter: FAKE`, `sourceClass: DEVELOPMENT`, `host: 127.0.0.1`, `testable: true`) and `CND-000000000002` (`REGISTERED`, `deviceId: CAM-01`); `search: null` before the first search and after a demo reset |
+| 95 | for `…0001`: `200`, `outcome: REACHABLE`, `authenticated` = whether `credential` was sent; the body is accepted **opaquely** — never stored, never inspected, never echoed (the op 89 rule, §8). `…0002`: `409 CANDIDATE_ALREADY_REGISTERED`. Any other id: `404`. Open session: `409 CAPTURE_CONFIG_LOCKED` |
+| 96 | for `…0001` after a `REACHABLE` test: `201`, registers `CAM-03` (`adapter: FAKE`) in the simulator's `captureDevices`, `credentialSet` = whether `credential` was sent, nothing stored; it never answers `503` (the simulator has no sealer, as for op 89). Without a test: `409 CANDIDATE_NOT_TESTED`. A demo reset removes `CAM-03` |
+| 97 | `200` with the simulator's two microphones, `present` from its device state |
+
+The simulator's devices carry `adapter: FAKE`, `sourceClass: DEVELOPMENT` (they are not production
+devices). On a tablet or phone the in-app simulator refuses 95, 96 and 89 with the same
+`403 NOT_PERMITTED` (`WEB_CONSOLE_ONLY`) as the Core server.
+
 ---
 
 ## 3. Modified operations (of the existing 75)
@@ -388,6 +540,27 @@ contract (statuses, headers) is unchanged. `getAuthSession`/`hasPairing…` are 
 `finalization` step enum change (op 27) is the one DB-coupled contract change and is shared with
 row 30 (`dbc-3`), not owned here.
 
+### 3.1 Changes made by R-9..R-11 (erratum PE-121-07; D72(k), D80)
+
+Target for rows 132, 133, 136, 139 and 142. No row below adds a status or an error **code**; new
+`details.reason` values are in §4.
+
+| # | operationId | Before | After | Authority |
+|--:|---|---|---|---|
+| — | `beginPrecheck`, `retryPrecheck` (of the existing 75; `sessions.ts:241,267`) | the predecessor's pre-check items | each run also checks every configured camera and microphone for reachability and names each unreachable device by device id and label (never an address with a credential). **Start rule (D80(6), mirroring D72(k)):** both cameras unreachable, or both microphones unreachable → blocked (the existing `PRECHECK_BLOCKED` path); one camera of two, or the standby microphone, unreachable → a warning the operator acknowledges (the existing `PRECHECK_WARNINGS` path, `acknowledgePrecheckWarnings`) and a degraded session may start. When a configured camera is unreachable the run performs **one** search (§2.6 "Search trigger") and reports its responder count. Each unreachable device raises the situation-B alert once (§5.4). A later run in which the device is reachable resolves it | R-10 AC-2, AC-5; R-9 AC-1(b); D80(2), D80(6) |
+| — | recording start (session machine; no operation changes shape) | a start with no camera was not ruled | no camera connects within the ingest-open window → the session is FAULTED, nothing claims to record, 0 evidence files; `session.fault` carries `CAPTURE_FAULT` with the reason `NO_CAMERA_CONNECTED` (§5.4 situation C). One camera of two → the session records, with the degraded warning naming the missing camera. `getCurrentSession` (27) keeps its shape | D72(k), D72(i); R-10 AC-3 |
+| 76 / 77 | `getCaptureConfig` / `getCaptureDevices` | `CaptureDevice` = `id, kind, model, firmware, host, poePort, online, streamState, capabilities` | `CaptureDevice` gains `adapter` and `sourceClass`; each camera and mic line of `CaptureConfig` gains `sourceClass` (§2.6 "Device shapes"). With the development flag off both list 0 `DEVELOPMENT` devices. Discovery candidates never appear in either | R-11 AC-2, AC-6; D80(9); R-9 AC-4 |
+| 78 / 79 | `updateCaptureConfig` / `setCaptureCameraSource` | accept the seeded device ids | accept **any registered** device of the right kind, including an adopted `CAM-NN` (the description of `CAPTURE_DEVICE_PARAM`, `devices.ts:365-369`, names five ids and must be widened); refuse a `DEVELOPMENT` device while the development flag is off (`422 INVALID_INPUT`, `DEVELOPMENT_SOURCE_NOT_ALLOWED`); never accept a candidate id | R-9 AC-5; R-11 AC-2 |
+| 89 | `setCaptureDeviceCredential` | any `CAPTURE_CONFIG` session; `503 NOT_READY` unspecified | web console only (`WEB_CONSOLE_SESSION`); `503 NOT_READY` (`CREDENTIAL_STORE_NOT_READY`) until row 84; registered devices only (PE-121-05) | D80(3), D80(7) |
+| — | `signOut` and session expiry (of the existing 75) | end the operator session | also discard that session's discovery state (§2.6 "lifetime"); no shape change | R-9 AC-4 |
+
+Count: of the existing 75 operations two more change behaviour (`beginPrecheck`, `retryPrecheck`), so
+the modified set is 24 + 2 = **26**; `signOut` and the recording start are behaviour notes with no
+contract change. **Not ruled by D80(6) — put to the controller:** the **primary** microphone
+unreachable while the standby is reachable. This contract's proposal is "blocked, with a sentence
+telling the operator to make the other microphone primary before starting" (the switch of op 81
+exists only while RECORDING, and op 80 is locked while a session is open).
+
 ---
 
 ## 4. Error codes
@@ -400,6 +573,13 @@ Every machine code is `SCREAMING_SNAKE_CASE`
 (`audit-details.ts:50`). A failed export job is **not** an HTTP error: it is the job's `status:
 FAILED` in the `200` body of op 87 (audited as `EVIDENCE_EXPORT_FAILED`, §5.2).
 
+**Erratum PE-121-08 (R-9..R-11).** The delta of row 121 adds **no error code** (the count stays 40,
+§10.1): every new refusal is an existing code with a new `details.reason` value, the pattern of
+PE-113-07 / PE-113-11. A failed connection test is **not** an HTTP error — it is the `outcome` of a
+`200` body (op 95). The reasons are in the table "New reason values of the row-121 delta" below. The
+alternative (five new codes such as a discovery-in-progress or a candidate-not-tested code) was
+not chosen: it would move the pinned count without telling a client anything the reason does not.
+
 **Client-facing message rule.** Every `message` is fixed, operator-safe English; it quotes **no part
 of the request**, names no ID the caller did not prove it may see, and carries no credential, token,
 key, password or signed URL (`ApiErrorSchema`, `core-api.ts:194-216`; predecessor `specs §7.2`). The
@@ -409,7 +589,7 @@ forward-only progress read shows its last Core-instant value, never a rewind (E-
 
 | Code | HTTP | Message (rule) | Returned by | Register + decision |
 |---|--:|---|---|---|
-| `CAPTURE_CONFIG_LOCKED` | 409 | "The capture configuration cannot be changed while a session is open." | 78, 79, 80 | OD-10; SH-04/CS-12; register E-30 (no audit row on this refusal) |
+| `CAPTURE_CONFIG_LOCKED` | 409 | "The capture configuration cannot be changed while a session is open." | 78, 79, 80, 89; **erratum PE-121-08:** also 95, 96 (never 93, 94, 97 — D80(4)) | OD-10; SH-04/CS-12; register E-30 (no audit row on this refusal) |
 | `AUDIO_SOURCE_CONFLICT` | 409 | "The requested microphone cannot become the active source." | 81 | OD-09/OD-11; SH-13/NM-10 |
 | `CAMERA_NOT_LOST` | 409 | "Only a camera whose stream is lost can be power-cycled." | 48 | OD-22; CS-06; `details.streamState: LIVE` |
 | `TRANSCRIPT_NOT_READY` | 409 | "The transcript is not available yet." | 84, 85, 86 | OD-15; NM-06; M6 timing (`transcript-spec §A.5`) |
@@ -431,6 +611,28 @@ forward-only progress read shows its last Core-instant value, never a rewind (E-
 | `DEMO_DISABLED` (403) | widened to real-capture mode for 72/73/74/71 | 71-74 | OD-18; CS-23 |
 | `SESSION_ACTIVE` (409) | **not** reused for the idle-only config lock; `CAPTURE_CONFIG_LOCKED` is distinct so a client can tell "another session is open" from "the config is read-only now" | 78-80 vs 24 | OD-10 |
 
+**New reason values of the row-121 delta (erratum PE-121-08; no new code).**
+
+| Code (existing) | HTTP | New `details.reason` | Returned by | Meaning; what was done |
+|---|--:|---|---|---|
+| `INVALID_STATE` | 409 | `DISCOVERY_IN_PROGRESS` | 93 | another session's search is running; no probe sent |
+| `INVALID_STATE` | 409 | `CANDIDATE_ALREADY_REGISTERED` (+ `details.deviceId`) | 95, 96 | the candidate matches a registered device; nothing done |
+| `INVALID_STATE` | 409 | `CANDIDATE_NOT_TESTABLE` | 95 | announced service host ≠ answering host (D80(11)); 0 outbound requests |
+| `INVALID_STATE` | 409 | `CANDIDATE_NOT_TESTED` | 96 | no `REACHABLE` outcome inside `CAPTURE_CONNECTION_TEST_VALIDITY_MS`; nothing stored |
+| `INVALID_STATE` | 409 | `CONNECTION_TEST_FAILED` (+ `details.outcome`) | 96 | the re-verification did not answer `REACHABLE`; nothing stored |
+| `INVALID_STATE` | 409 | `CONNECTION_TEST_IN_PROGRESS` | 95, 96 | a test of this candidate is running; no second attempt |
+| `INVALID_INPUT` | 422 | `CREDENTIAL_REQUIRED` | 95, 96 | a `PRODUCTION` candidate, or an adoption after an authenticated test, without `credential`; 0 outbound requests |
+| `INVALID_INPUT` | 422 | `CREDENTIAL_NOT_EXPECTED` | 96 | `credential` sent although the passing test was unauthenticated; nothing stored |
+| `INVALID_INPUT` | 422 | `DEVELOPMENT_SOURCE_NOT_ALLOWED` | 78, 79 | a `DEVELOPMENT` device named while the development flag is off |
+| `RATE_LIMITED` | 429 | `DISCOVERY_RATE_LIMITED`, `CONNECTION_TEST_RATE_LIMITED`, `CONNECTION_TEST_LOCKOUT_GUARD`, `INPUT_RESCAN_RATE_LIMITED` | 93; 95, 96; 95, 96; 97 | over a bound of §7; `retry-after` set; 0 outbound requests; no audit row |
+| `NOT_READY` | 503 | `DISCOVERY_NOT_READY` | 93, 95, 96 | no discovery adapter provided, or capture not ready |
+| `NOT_READY` | 503 | `CREDENTIAL_STORE_NOT_READY` (existing value, PE-113-11) | now also 89, 96 | a credential would be stored and no sealer is provided (until row 84); nothing stored |
+| `NOT_PERMITTED` | 403 | `WEB_CONSOLE_ONLY` | 89, 95, 96 | a device-bound session on a credential-carrying operation (`WEB_CONSOLE_SESSION`); one `ACCESS_DENIED` row |
+| `NOT_FOUND` | 404 | — | 95, 96 | candidate id unknown, expired or of another session — one answer, no hint which |
+
+Message rule: the fixed messages of the existing codes are used unchanged; no message quotes a host,
+a candidate id the caller did not own, or any part of a credential.
+
 The predecessor's mapping table (`specs §7.2`; `sim/api.ts:481-495`) still governs the
 `SimErrorCode → status+code` conversion; the new codes are returned directly by the Core server and
 carry no `simCode` except where the simulator emulates them (ops 76-87), where `details.simCode`
@@ -449,6 +651,8 @@ a secret (`audit-details.ts:1-18`; register E-10). The **9 new types** bring the
 `CAPTURE_CREDENTIAL_REVEALED` from SEC35-02; SEC35-22). **Erratum PE-113-12 (D24):** with
 `STT_CONFIG_CHANGED` (§2.5, category `DEVICE`, row 113) there are **10** new types and the total is
 **63** (`packages/shared/test/api-registry.test.ts:470`; `packages/shared/src/sim/vocabulary.ts:425,496`).
+**Erratum PE-121-09:** 63 is the as-built figure; the row-121 delta adds four types (§5.2, the last
+four entries) — the R-9..R-11 delta of row 121 moves this figure — the new target is stated once, in §10.1.
 
 ### 5.1 The hard rule (E-30 / E-31)
 
@@ -465,6 +669,12 @@ a secret (`audit-details.ts:1-18`; register E-10). The **9 new types** bring the
 > `CAPTURE_CREDENTIAL_REVEALED` carries `deviceId` and never the username, ciphertext, nonce or key
 > (SEC35-02). The media-session token (prefix `mts_`) and the oMLX API key at
 > `~/.omlx/settings.json` are forbidden in every detail key and value (SEC35-13/SEC35-14).
+> **Erratum PE-121-09 (R-9 AC-9; D76(3)):** the `credential` member of ops 95 and 96 — username,
+> secret and anything derived from them — is forbidden in every detail key and value, exactly like
+> the body of op 89. A connection test records its **outcome name** and the fact that a credential
+> was supplied (`authenticated: boolean`), never what was supplied. No row of the delta carries a
+> credential-bearing URL. Network identifiers of a probed device (address, endpoint reference, MAC,
+> serial) are **not** in any detail of the delta either: rows carry ids and counts (D75).
 
 `DEVICE_CREDENTIAL_REQUIRED` refusals write **no** audit row (B4); **camera** credential refusals
 **do** (E-30). Both stay true here.
@@ -582,6 +792,73 @@ username, the secret, the ciphertext, the nonce or the key.**
 | `deviceId` | string, a Core hardware device id (`DEVICE_ID_PATTERN`) | `CAM-01` |
 | `reason` | string, a SCREAMING_SNAKE code | `CAPTURE_PLAN_COMPOSE` |
 
+**The four audit types of the row-121 delta (erratum PE-121-09).** Target for rows 132, 133, 139,
+142. None is written on a refusal (lock, rate limit, validation, not found): those write no row,
+and an access refusal writes `ACCESS_DENIED` as everywhere.
+
+**`CAPTURE_DISCOVERY_SEARCHED`** — category `DEVICE` — written **once per search**, when its window
+closes or fails: by op 93, by the pre-check search, and by op 97 (`scope: MIC_LOCAL`). **An empty
+search writes this one row and no other** (D80(8)); the alert of §5.4 is not a second audit row.
+
+| Key | Type | Example |
+|---|---|---|
+| `searchId` | string, `^DSC-[0-9]{6,}$` | `DSC-000012` |
+| `scope` | string, one of `CAMERA_NETWORK`/`MIC_LOCAL` | `CAMERA_NETWORK` |
+| `trigger` | string, one of `MANUAL`/`PRECHECK` | `MANUAL` |
+| `outcome` | string, one of `COMPLETE`/`FAILED` | `COMPLETE` |
+| `responderCount` | number | `0` |
+| `newCount` | number | `0` |
+| `registeredCount` | number | `0` |
+| `failureReason`? | string, a SCREAMING_SNAKE code | `SOCKET_ERROR` |
+| `sessionId`? | string, the recording session when one is open | `SES-20261009-0003` |
+| `operationId`? | string, `^[a-z][A-Za-z0-9]{0,63}$` | `startCaptureDiscovery` |
+| `permission`? | string, a SCREAMING_SNAKE code | `CAPTURE_CONFIG` |
+
+**`CAPTURE_CONNECTION_TESTED`** — category `SECURITY` — written once per attempt, **for every
+outcome**, by op 95 and by the re-verification of op 96. An `AUTHENTICATION_FAILED` outcome is
+audited as a fact (camera-credential refusals are audited, C-N9). **Never the username, the secret,
+a URL or the host.**
+
+| Key | Type | Example |
+|---|---|---|
+| `candidateId` | string, `^CND-[0-9A-F]{12}$` | `CND-4F2A91C0D377` |
+| `searchId` | string | `DSC-000012` |
+| `outcome` | string, one of `REACHABLE`/`AUTHENTICATION_FAILED`/`WRONG_PROFILE`/`NOT_H264`/`UNREACHABLE` | `AUTHENTICATION_FAILED` |
+| `authenticated` | boolean — a credential was supplied (a fact, not a value) | `true` |
+| `adapter` | string, a SCREAMING_SNAKE code | `FAKE` |
+| `sourceClass` | string, one of `PRODUCTION`/`DEVELOPMENT` | `DEVELOPMENT` |
+| `operationId` | string, `testCaptureCandidateConnection` or `adoptCaptureCandidate` | `testCaptureCandidateConnection` |
+| `permission`? | string, a SCREAMING_SNAKE code | `CAPTURE_CONFIG` |
+
+**`CAPTURE_CANDIDATE_ADOPTED`** — category `DEVICE` — written by op 96 inside the adoption
+transaction. When a credential is stored, the same transaction also writes one
+`CAPTURE_CREDENTIAL_SET` row (`deviceId`, `operationId: adoptCaptureCandidate`) — "credential set,
+by name only".
+
+| Key | Type | Example |
+|---|---|---|
+| `deviceId` | string, a Core hardware device id (the new row) | `CAM-03` |
+| `candidateId` | string | `CND-4F2A91C0D377` |
+| `searchId` | string | `DSC-000012` |
+| `adapter` | string, a SCREAMING_SNAKE code | `FAKE` |
+| `sourceClass` | string, one of `PRODUCTION`/`DEVELOPMENT` | `DEVELOPMENT` |
+| `credentialSet` | boolean | `false` |
+| `operationId` | string | `adoptCaptureCandidate` |
+| `permission`? | string, a SCREAMING_SNAKE code | `CAPTURE_CONFIG` |
+
+**`CAPTURE_DEVICE_UNREACHABLE`** — category `DEVICE` — written by the Core capture side **once per
+occurrence, when the alert is raised** (§5.4 situation B, and the degraded warning of situation C).
+Resolving the alert writes no row; a later occurrence is a new alert with a new row (D72(h)).
+
+| Key | Type | Example |
+|---|---|---|
+| `deviceId` | string, a Core hardware device id | `CAM-02` |
+| `deviceKind` | string, one of `CAMERA`/`MIC` | `CAMERA` |
+| `phase` | string, one of `PRECHECK`/`SESSION_START` | `PRECHECK` |
+| `reason` | string, one of `UNREACHABLE`/`AUTHENTICATION_FAILED`/`NOT_CONNECTED`/`PERMISSION_DENIED`/`DEVICE_BUSY`/`DEVICE_NOT_FOUND` | `UNREACHABLE` |
+| `degraded` | boolean — the session may start, or started, without this device | `true` |
+| `sessionId` | string | `SES-20261009-0003` |
+
 ### 5.3 Changed audit rows (existing types)
 
 | Type | Change | Authority |
@@ -591,11 +868,61 @@ username, the secret, the ciphertext, the nonce or the key.**
 | `ACCESS_DENIED` | unchanged keys (`operationId`, `permission`, `role`, `reason?`); the new permissions and the `SESSION_HOLDER` condition feed `reason` | `audit-details.ts:91-96`; OD-09/OD-10/OD-15 |
 | `EVIDENCE_SEALED` | unchanged; the v2 seal writes it once per session with both files and the transcript | OD-02/OD-03 |
 | `RECOVERY_STARTED`/`RECOVERY_COMPLETED` | unchanged; a resumed seal sets `SealingProgress.resumed` (op 83) | OD-08; `specs E.5` |
+| `CAPTURE_CREDENTIAL_SET` — **erratum PE-121-09** | unchanged keys; `operationId` may now read `adoptCaptureCandidate` (the credential leg of op 96) | D80(7); §2.6 |
+| `ACCESS_DENIED` — **erratum PE-121-09** | unchanged keys; `reason` may now name the condition `WEB_CONSOLE_SESSION` (ops 89, 95, 96) | D80(3) |
+| `FAULT_RAISED` / `FAULT_CLEARED` — **erratum PE-121-09** | for the kind `CAPTURE_FAULT` raised at session start with no camera, the row carries the optional `reason: NO_CAMERA_CONNECTED` and `evidenceFiles: 0` — the one row "stating that nothing was recorded" (R-10 AC-3). **Confidence MEDIUM:** this analyst found the row's composition in the simulator (`packages/shared/src/sim/faults.ts:343,358`) but no entry for it in `SERVER_AUDIT_DETAIL_RULES`; rows 133 / 139 check where the key list lives before adding the two keys | D72(k), D72(h); R-10 AC-3 |
+| `PRECHECK_BLOCKED` — **erratum PE-121-09** | unchanged type; written as today when both cameras or both microphones are unreachable (§3.1) | D80(6) |
 
 `AUDIT_TYPE_CATEGORY` gains exactly nine entries (`CAPTURE_CONFIG_CHANGED`→`DEVICE`,
 `AUDIO_SOURCE_SWITCHED`→`SESSION`, `CAMERA_POE_CYCLED`→`DEVICE`, `TRANSCRIPT_REVISED`→`EVIDENCE`,
 `MIC_SILENT`→`DEVICE`, `EVIDENCE_MEDIA_SERVED`→`EVIDENCE`, `EVIDENCE_EXPORT_FAILED`→`EVIDENCE`,
 `CAPTURE_CREDENTIAL_SET`→`SECURITY`, `CAPTURE_CREDENTIAL_REVEALED`→`SECURITY`). SEC35-01/SEC35-22.
+**Erratum PE-121-09:** the row-121 delta adds four entries: `CAPTURE_DISCOVERY_SEARCHED`→`DEVICE`,
+`CAPTURE_CONNECTION_TESTED`→`SECURITY`, `CAPTURE_CANDIDATE_ADOPTED`→`DEVICE`,
+`CAPTURE_DEVICE_UNREACHABLE`→`DEVICE`. No new category.
+
+### 5.4 Alerts of R-10 — no new fault kind, no CHECK change (erratum PE-121-10)
+
+**Decision.** The three no-device notifications use the alert kinds that exist: **`SYSTEM`** for the
+three WARNING cases and **`CAPTURE_FAULT`** for the one CRITICAL case. `FaultKind` keeps its **14**
+values (`packages/shared/src/sim/vocabulary.ts:218-235`), and the three database CHECKs that list
+them — `alerts_kind_check`, `session_history_outcome_check`, `health_snapshots_cause_check`
+(`0004_capture.sql:227,217,228`) — are **not** changed. Each case is told apart by `params.reason`
+(`alerts.params` is a flat map, `alerts_params_check`).
+
+Why this is right and not only cheap. (1) `alerts.kind` already admits `SYSTEM` beside the fault
+kinds (`SimAlert.kind: FaultKind | 'SYSTEM'`, `types.ts:1016`), and "a search found nothing" or "a
+device did not answer the pre-check" is a statement about an absence at an operator action — it has
+no fault life cycle, never belongs in `session_history.fault_kind` or a health snapshot, and must
+not be injectable or clearable by the demo fault operations (D72(h)). (2) The existing kinds do not
+fit the WARNING cases: `FAULT_SEVERITY` fixes `CAMERA_LOSS` and `CAPTURE_FAULT` as CRITICAL
+(`faults.ts:51,67`), while D80(6) wants one unreachable camera to warn and allow a degraded session.
+(3) The CRITICAL case **is** a capture fault of the session as a whole, which `CAPTURE_FAULT` with
+no subject already means (`capture-telemetry.ts:149`). The alternative — three new kinds — would
+need migration `0008` on three CHECKs and a `FaultKind` / `FaultEvt` / severity-map change for no
+gain in what a client can show.
+
+| Situation | Alert `kind` | Severity | `target` | `params` (flat; ids, counts and codes only) | Audit row | Resolved by |
+|---|---|---|---|---|---|---|
+| **A** — a search returned no responder | `SYSTEM` | WARNING | `CAPTURE_DISCOVERY` | `reason: CAPTURE_DISCOVERY_EMPTY`, `searchId`, `trigger` | none of its own — the search's `CAPTURE_DISCOVERY_SEARCHED` row with `responderCount: 0` (D80(8)) | the next search of any session with `responderCount ≥ 1` |
+| **B** — a configured camera or microphone is unreachable at pre-check | `SYSTEM` | WARNING | the device id | `reason: CAPTURE_DEVICE_UNREACHABLE`, `deviceId`, `deviceKind`, `phase: PRECHECK`, `cause` (the audit `reason` code), `searchResponderCount`? | one `CAPTURE_DEVICE_UNREACHABLE` per device per occurrence | a later pre-check run in which that device is reachable |
+| **C** — no camera connected at session start | `CAPTURE_FAULT` (subject none) | CRITICAL | none | `reason: NO_CAMERA_CONNECTED`, `evidenceFiles: 0` | the existing `FAULT_RAISED` row of that fault (§5.3) | the capture side, when a camera connects in a later session (`FAULT_CLEARED`); never demo op 74 |
+| **C, degraded** — one camera of two connected | `SYSTEM` | WARNING | the missing device id | `reason: CAPTURE_DEVICE_UNREACHABLE`, `deviceId`, `deviceKind: CAMERA`, `phase: SESSION_START`, `cause: NOT_CONNECTED` | one `CAPTURE_DEVICE_UNREACHABLE` | the capture side, when that camera connects in a later session |
+
+Rules. **Raised once, by the Core** (R-10 AC-6): at most one active alert per (`reason`, `target`);
+raising it again while it is active changes nothing and writes nothing (the `raiseCaptureWarning`
+rule, `capture-telemetry.ts:176-177`) — so pressing "Search again" five times with no responder
+leaves one alert and five search rows. A search that finds only already-registered cameras is not
+empty and raises nothing (R-10 AC-1). **Cleared by the capture side only** (D72(h)); a later
+occurrence is a new alert with its own audit row. Alert text and `params` carry device ids, labels,
+counts and codes — no credential, no username, no credential-bearing URL, no address. A client
+never raises its own copy; all three clients draw the alert from the `alerts` slice.
+
+What the implementing rows must add (not a schema change): the existing INTERNAL warning action
+takes the codes `MIC_SILENT` and `CAPTURE_FAULT` only (`capture-telemetry.ts:156-173`), so the
+`SYSTEM`-kind alerts need an INTERNAL raise / resolve path of their own, and the `CAPTURE_FAULT`
+raise needs an optional reason. An added INTERNAL action moves the pinned sim-action count
+(`sim-actions.ts:13`, "internal 4") — a pin for rows 133 / 139, outside the totals of §10.1.
 
 ---
 
@@ -613,6 +940,14 @@ snapshot becomes 30 names.
 |--:|---|---|---|---|---|
 | 29 | `captureConfig` | replicated | `{ cameras: [{ trackId, deviceId, profile, online, streamState }], mics: [{ inputId, deviceId, role, transport, online }], locked: boolean, updatedAt: epochMs }` | ops 78/79/80 (and 81 for `activeInputId` adjacency) | web WB-05/WB-02/WB-11; tablet/phone MB-08/MB-09 |
 | 30 | `captureDevices` | replicated | `{ devices: [{ id, kind: CAMERA\|MIC\|POE, model, firmware, host, poePort, online, streamState, capabilities }] }` | supervisor telemetry (`applyCaptureTelemetry`, `register SH-18`) | web WB-05/WB-11; mobile MB-08/MB-09 |
+
+**Erratum PE-121-11 (R-9, R-11).** The slice count **stays 30**: the row-121 delta adds no slice.
+(1) Discovery candidates are session-scoped and are deliberately **not** replicated (§2.6 "Why no
+slice"); a client reads them with op 94. (2) Two payloads gain members: each item of
+`captureDevices.devices` gains `adapter` and `sourceClass`, and each item of `captureConfig.cameras`
+and `captureConfig.mics` gains `sourceClass` (§2.6 "Device shapes"). `kind` keeps the set
+`CAMERA|MIC|POE`. (3) Op 96 publishes `captureDevices` (one more device); op 97 and the pre-check
+publish `online`. (4) The R-10 alerts travel in the existing `alerts` slice (§5.4).
 
 **Own kind, never the paired-client registry (E-04).** `captureDevices` is its own slice with its own
 delta `slice` literal. `AdminResource` (`realtime-messages.ts:156`) stays the registry of **paired
@@ -659,6 +994,29 @@ The sibling `capture-spec §E.1` already names `MIC_SILENCE_DBFS`, `MIC_SILENCE_
 | `EVIDENCE_MEDIA_TOKEN_PREFIX` | `'mts_'` | — | string | SEC35-13; the signed-URL prefix added to both blanking lists (E-31) |
 | `MEDIA_SESSION_SIGNING_KEY_ID` | `'MEDIA-KEY-EVMEDIA-01'` | — | string | SEC35-12; the separate media-session signing key id (never the evidence `Signer` key) |
 
+**Constants of the row-121 delta (erratum PE-121-12).** Same module, same pin test. Every value is
+**proposed by this row**: row 123 confirms the search window, row 126 the limits. The lock-out
+figure rests on a **hypothesis** — that cameras lock an account after about five failed logins;
+no source for it is in this repository, so row 126 checks it against the target camera's manual
+before the value is pinned.
+
+| Constant | Value (proposed) | Unit | Type | Authority / note |
+|---|---|---|---|---|
+| `CAPTURE_DISCOVERY_WINDOW_MS` | `5_000` | ms | number | how long the one UDP socket of a search stays open (C-N13); row 123 confirms |
+| `CAPTURE_DISCOVERY_RESULT_TTL_MS` | `600_000` | ms | number | life of a candidate list after its window closes (R-9 AC-4) |
+| `CAPTURE_DISCOVERY_MAX_CANDIDATES` | `64` | candidates | number | bound of the per-session state; beyond it `truncated: true` |
+| `CAPTURE_DISCOVERY_MIN_INTERVAL_MS` | `10_000` | ms | number | between two search starts of one session (R-9 AC-11) |
+| `CAPTURE_DISCOVERY_MAX_PER_MINUTE` | `6` | searches | number | per Core, all sessions and the pre-check together |
+| `CAPTURE_CONNECTION_TEST_TIMEOUT_MS` | `10_000` | ms | number | one attempt; then `UNREACHABLE` |
+| `CAPTURE_CONNECTION_TEST_VALIDITY_MS` | `300_000` | ms | number | how long a `REACHABLE` outcome keeps a candidate adoptable |
+| `CAPTURE_CONNECTION_TEST_MIN_INTERVAL_MS` | `5_000` | ms | number | between two attempts on one host |
+| `CAPTURE_CONNECTION_TEST_MAX_PER_MINUTE` | `6` | attempts | number | per Core |
+| `CAPTURE_CONNECTION_TEST_MAX_FAILURES` | `3` | outcomes | number | `AUTHENTICATION_FAILED` per host inside the window below — below a camera's own lock-out (D80(11); hypothesis above) |
+| `CAPTURE_CONNECTION_TEST_FAILURE_WINDOW_MS` | `900_000` | ms | number | window of the lock-out guard; counted per Core by host, in memory (a Core restart resets it — row 126 judges whether that is acceptable) |
+| `CAPTURE_INPUT_RESCAN_MIN_INTERVAL_MS` | `5_000` | ms | number | between two local-input re-reads per Core |
+| `CAPTURE_CANDIDATE_ID_PATTERN` | `/^CND-[0-9A-F]{12}$/` | — | RegExp | candidate ids (48 random bits) |
+| `CAPTURE_SEARCH_ID_PATTERN` | `/^DSC-[0-9]{6,}$/` | — | RegExp | search ids |
+
 **Fragment-quantum decision flagged as OPEN.** The pair `CAPTURE_GOP_FRAMES` = 50 and
 `CAPTURE_FRAGMENT_TARGET_MS`/`CAPTURE_MIN_FRAG_DURATION_MS` = 2_000 encodes the S1 finding that
 `frag_keyframe + min_frag_duration` cuts keyframe-aligned on the **GOP grid** (the GOP is the
@@ -694,6 +1052,8 @@ and therefore belong to the `offline` scope (`openApi` `isOfflineCoreApiOperatio
 scope instead of the baseline commit.
 
 **Which of the 17 are visible in `offline`** (14 of §2.2 + 3 of §2.5 — **erratum PE-113-13**).
+**Erratum PE-121-13:** the five operations of §2.6 (93-97) are all `mode: simulated` and join the
+visible column when rows 132 / 142 build them; the table below is the as-built set of 17 — the R-9..R-11 delta of row 121 moves this figure — the new target is stated once, in §10.1.
 
 | Visible in `offline` (mode `simulated`; 16 ops) | `all`-only (mode `live`; 1 op) |
 |---|---|
@@ -704,6 +1064,18 @@ scope instead of the baseline commit.
 because OD-17 says the simulator emulates the new sealing/export steps; its `mode` is re-checked at
 row 39. 89 is `simulated` (the simulator accepts the write opaquely and never stores or echoes a
 credential), so OD-17's "simulator emulates v2" stays true; its `mode` is re-checked at row 39.
+
+**Operations 93-97 in Simulated mode (erratum PE-121-13).** All five are `simulated`: OD-17 says
+the simulator emulates v2, and the web console must be able to show the search and connect flow
+without a Core. The simulator's fixed answers are in §2.6 "Simulator" — no socket, no timer, two
+fixed candidates, a credential body accepted opaquely and never stored (the rule of op 89 above).
+Parity tests therefore compare exact values, and the states the simulator never reaches (`409
+DISCOVERY_IN_PROGRESS`, every `429`, every `503`, the four failing test outcomes) are Core-server
+tests on the fake stub and fixtures. **Web Try-it:** `testCaptureCandidateConnection` (95) and
+`adoptCaptureCandidate` (96) join `TRY_IT_DENIED_OPERATIONS` because their bodies carry a
+camera credential; the list decides by method + path (D70). **Version:** whether five added
+operations want an `info.version` step is the same open controller item as at M6 (pair-113 N-12);
+this row assumes none.
 
 **Projected pinned counts (M2 owns the edit).** The `offline` document grows from **10** operations
 (health + 9 design-book, `openapi.ts:11`) to **23** (10 + the 13 simulated of §2.2) at M2 and to
@@ -735,6 +1107,11 @@ row 36/37 to fold into M2-API-1/M2-API-2 and the section-C pin family; the M6 st
 | N-6 | **No media and no evidence file in git or `docs/`** (OD-25); this document cites no media. | OD-25; `specs C-N3` |
 | N-7 | **No benchmark and no RTF/WER figure** anywhere in this contract (D230). | D230; `structured §6 M1` |
 | N-8 | **Superseded items stay superseded**: no multi-track master (D223→D224/D225), no benchmark plan (D226→D230), no `MIC 1`/`MIC 2` mapping (D219→D220/D221), no AUDIO-MIX/channel attribution (D220), no MLX fp16 copy (D229). | `specs §D "Superseded"`; `register §E` |
+| N-9 | **No caller-supplied network target (erratum PE-121-14).** No operation of §2.6 takes an address, host, port, URL or subnet; typed-address entry is not in scope and a camera that does not answer the multicast probe cannot be found — a recorded gap, such a camera stays class C. | D80(10); R-9 AC-10 |
+| N-10 | **No second credential store and no credential kept in memory between requests (erratum PE-121-14).** The one store is the Core credential store behind the op-89 write; before row 84 nothing is stored in any form. | D80(7); D68(c); C-N15 |
+| N-11 | **A search authenticates, registers and configures nothing (erratum PE-121-14)**, and reads nothing beyond the probe answer; no operation of §2.6 changes a setting on a camera. | D76(1); D80(1); D75 |
+| N-12 | **No network microphone discovery, no microphone adoption, no removal of an adopted device (erratum PE-121-14).** Op 97 re-reads local inputs only. Unregistering a camera is not designed in this phase (the capture tables are kept tables) — a gap for the controller. | D80(5); OD-06 |
+| N-13 | **No new fault kind and no new error code (erratum PE-121-14)**: §5.4 and §4 use the existing sets. | §5.4; §4 |
 
 ---
 
@@ -750,6 +1127,63 @@ row 36/37 to fold into M2-API-1/M2-API-2 and the section-C pin family; the M6 st
 | **Every design choice cited** (`file:line`, decision ID, or register row) | Yes — every table row and every shape note carries a citation (`§2-§8`). |
 | **Register rows required by this row are satisfied** | SH-03/SH-04/SH-12/SH-13/SH-14/SH-16/SH-19/SH-25, CS-04/CS-06/CS-07/CS-12/CS-14/CS-22/CS-25, NM-06/NM-07/NM-09/NM-10/NM-11/NM-12, WB-04/WB-09/WB-11, MB-07/MB-09, E-04/E-12/E-30/E-31, RK-12/T-33, W1-C1/W1-C7/W1-C9/W1-C10. |
 | **W1-C7 not repeated** | No `--maxWorkers`/`--poolOptions` claim appears in this document. |
+| **Row 121: every new or extended operation states method, permission, request and response shape and error codes** (erratum PE-121-15) | **5/5 new** (93-97, §2.6: identity, shape, rules, simulator) and **7 extended** (76, 77, 78, 79, 89, `beginPrecheck`, `retryPrecheck`; §3.1). |
+| **Row 121: 0 response shapes carry a credential** | **0 of 7** (§2.6 "No secret in any shape"). The only credential members are the request member `credential` of 95 / 96 and the body of 89; all three are web console only and on the Try-it deny list. |
+| **Row 121: new audit types have exact key lists with 0 secret keys** | **4/4** (§5.2): 11 + 8 + 8 + 6 keys; none holds a username, secret, URL, address, endpoint reference, MAC or serial. |
+| **Row 121: the new totals are stated once** | §10.1 — and nowhere else in this file. |
+
+### 10.1 Pinned totals after the row-121 delta — stated once (erratum PE-121-15)
+
+These are the **targets** for rows 132 and 142 (the registry and the pin tests still hold the
+"today" column until those rows land). Arithmetic from the as-built figures of row 113.
+
+| Pinned total | Today (as built, row 113) | Delta of row 121 | **Target** | What moves it |
+|---|--:|--:|--:|---|
+| Operations (`all` scope) | 92 | + 5 | **97** | ops 93, 94, 95, 96, 97 |
+| GET | 35 | + 1 | **36** | op 94 |
+| POST | 57 | + 4 | **61** | ops 93, 95, 96, 97 |
+| Audit types | 63 | + 4 | **67** | `CAPTURE_DISCOVERY_SEARCHED`, `CAPTURE_CONNECTION_TESTED`, `CAPTURE_CANDIDATE_ADOPTED`, `CAPTURE_DEVICE_UNREACHABLE` |
+| Error codes | 40 | + 0 | **40** | new `details.reason` values only (§4) |
+| Replicated slices | 30 | + 0 | **30** | no discovery slice; two payloads gain members (§6) |
+| `offline` scope operations | 26 | + 5 | **31** | all five are `simulated` (§8) |
+| `FaultKind` values / fault-kind CHECKs | 14 / 3 | + 0 / 0 changed | **14 / 3 unchanged** | §5.4 |
+| `CoreApiAccessCondition` values | 5 | + 1 | **6** | `WEB_CONSOLE_SESSION` (§0) |
+| Web Try-it denied operations | 8 | + 2 | **10** | ops 95, 96 |
+| Modified operations of the original 75 (a document count, not a test pin) | 24 | + 2 | **26** | `beginPrecheck`, `retryPrecheck` (§3.1) |
+
+Checks: 36 + 61 = 97; 92 + 5 = 97; 31 = 97 − the one `live` operation (88) − the 65 operations of
+the original 75 that are outside the `offline` scope (75 − 10).
+
+**Every place in this file that quotes a total, and what was done to it (PE-121-02 unless noted).**
+Front matter `last_updated` and the PE-121-01 note under the title (say "as built 92" and point
+here); §1 table rows "New operations this phase", "New registry total", "R-8 operations" (kept as
+the as-built figures; the new row "R-9..R-11 operations" points here); §2.5 status block (pointer
+added); §4 intro "31 … 9 new codes → 40" (unchanged and still true; PE-121-08 says no code is
+added); §5 intro "53 → 62 … 63" (pointer added, PE-121-09); §5.3 `AUDIT_TYPE_CATEGORY` "exactly
+nine entries" (four more named, PE-121-09); §6 title and intro "28 → 30" (still true; PE-121-11);
+§8 "Which of the 17", "16 ops", "10 → 23 → 26", "75 → 89 → 92" (as built; pointer added,
+PE-121-13); §10 rows "17/17 new", "75 + 14 + 3 = 92", "10/10" and the open-items paragraph "92 /
+26 / 63 / 40" (as built; the four row-121 gate rows above point here); the footer. The titles "## 2.
+New operations 76-89" and "§2.5 … 90-92" are ranges of their own sections and stay.
+
+**Open items of the row-121 delta (erratum PE-121-16) — for the controller and rows 122-128.**
+(1) **Wire carriage of the credential.** Row 121's blueprint text says the credential "travels only
+through operation 89"; D80(7) and the row order put it in the body of the connection test (95, in
+memory only), and this contract also puts it in the body of the adoption (96), where it is the
+op-89 write run inside the adoption transaction. Reason: op 89's path cannot name an unregistered
+device, and a two-step "adopt, then op 89" would leave a registered camera with no credential when
+the second step fails or is abandoned (R-9 AC-8). The alternative — let op 89's path accept a
+candidate id and perform the adoption — was not chosen: it changes the path pattern, the 404 rule
+and the meaning of an operation that is already built in the simulator. **Needs the controller's
+confirmation** (and row 126's view). (2) **Re-verification inside op 96** is this row's addition: it
+guarantees that the stored credential is one that authenticated, at the cost of one more attempt;
+row 126 confirms or drops it. (3) R-9 AC-5 and AC-7 of `specs` §B.2 and the text of blueprint row
+142 still say the test takes its credential "from operation 89"; D80(7) overrides them — row 128
+reconciles the wording (this row edits neither file). (4) The primary-microphone case of §3.1.
+(5) All values of §7. (6) Whether `host` should join the `CAPTURE_CONNECTION_TESTED` detail for
+forensics (left out here because of D75). (7) Whether Simulated mode shows the "development source"
+label on its `FAKE` devices (row 125). (8) Where the adapter kind is stored (row 122) — the only
+point of this contract that may need a column; nothing here needs a CHECK change.
 
 **Open items carried to the M0 gate (row 39) — no blocker.** (1) The register/sibling plural path
 `/api/v1/sessions/{id}/audio-source` vs the area-4 singular convention (§1) — normalized here,
@@ -768,4 +1202,4 @@ audit types **63**; error codes stay **40**.
 ---
 
 *Generated: 2026-10-07 16:55*
-*Last Updated: 2026-10-09 (pair-review errata PE-113-01..PE-113-14: §2.5 R-8 ops 90-92 confirmed by D24 and counted, row-113 driver choices recorded, D68; earlier: 2026-10-08 RV-SPEC errata AU2-07/AU2-08 + §2.5 as a proposal; row-35 security remediation SEC35-01/12/13/16/17/19/21/22)*
+*Last Updated: 2026-10-09 (row 121 contract delta PE-121-01..PE-121-16: §2.6 operations 93-97 for R-9..R-11, §3.1, §5.4, §10.1 — target totals stated once in §10.1, D73-D78, D80; earlier the same day: pair-review errata PE-113-01..PE-113-14: §2.5 R-8 ops 90-92 confirmed by D24 and counted, row-113 driver choices recorded, D68; earlier: 2026-10-08 RV-SPEC errata AU2-07/AU2-08 + §2.5 as a proposal; row-35 security remediation SEC35-01/12/13/16/17/19/21/22)*

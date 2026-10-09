@@ -180,6 +180,8 @@ export interface EngineAppOptions {
   /** Where the manual clock starts. Default: the fixed instant. */
   readonly startAt?: number;
   readonly logLevel?: LogLevel;
+  /** Capture mode of the app's configuration. Default: the configuration's own (`simulated`). */
+  readonly captureMode?: 'simulated' | 'real';
 }
 
 /**
@@ -191,7 +193,12 @@ export async function engineApp(target: EngineAppTarget, dataDir: string, option
   const log = captureLog();
   const database = countingPool();
   const app = buildApp({
-    config: unitTestConfig({ database: target.runtime, dataDir, logLevel: options.logLevel ?? 'debug' }),
+    config: unitTestConfig({
+      database: target.runtime,
+      dataDir,
+      logLevel: options.logLevel ?? 'debug',
+      ...(options.captureMode === undefined ? {} : { captureMode: options.captureMode }),
+    }),
     logStream: log.stream,
     createPool: database.factory,
   });

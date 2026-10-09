@@ -556,3 +556,134 @@ lsof -nP -iTCP:8000 -sTCP:LISTEN                                  # no listener
 
 ---
 *Fix round 1 appended: 2026-10-09 11:45 (+07:00)*
+
+---
+
+# Fix round 2 (navigator re-check) — 2026-10-09
+
+Source: "Re-check of fix round 1" in `delegation_progress/pair_76_navigator.md` (row 76 ACCEPTED; one new major R-1, one minor R-2, one evidence-hygiene item). Files touched: `apps/transcriber/**` and `.cache/stt/checks/row76/` only. No lockfile write, no dependency change, no oMLX run, nothing committed.
+
+## G1. Per finding
+
+| Finding | Outcome | Where | Proof |
+|---|---|---|---|
+| **R-1** (major) niceness judged against exactly 10 | **Fixed.** `nice -n 10` adds to the niceness of the process that starts it. The rule is now `engine niceness >= min(parent niceness + STT_NICE, 19)`, judged against this process's own `os.getPriority()`: in the host probe, in the unit helper and in the real test. The run record carries the niceness the engine really runs at (15 under a parent at 5), not the constant | rule `apps/transcriber/src/cpu-priority.ts:24`, `:31`, `:42`; probe `src/backends/cpu-local.ts:79`, `:100`, `:267`; unit helper `src/__tests__/support.ts:28-29`; real test `test/real/cpu-local.real.test.ts:100` | G2, G4 |
+| **R-2** (minor) four plain evasions of the static rule | **Fixed**, 14 in-memory fixtures. (a) `process` used as a value (alias, `Reflect.get(process, …)`, `globalThis['process']`, in an object or a list) → new rule `PROCESS_OBJECT_IS_NOT_PASSED_AROUND`; (b) `createRequire`, `node:module` with or without the prefix, `process.mainModule` → `NO_DYNAMIC_CODE`; (c) `write`/`writeSync`/… with a literal 0, 1 or 2 as descriptor, `{ fd: 0|1|2 }`, `process.emitWarning`, `process.report` → new rule `NO_DIRECT_OUTPUT`; (d) `inspector`, `inspector/promises` → `NO_NETWORK_MODULE` | `src/__tests__/static-rules.ts:277`, `:327`, `:329`, `:372` | G3 |
+| R-2 residual | **Stated, not closed:** a name built at run time (character codes, a computed member with a non-constant key) is outside a static reading. Also: a descriptor held in a variable (`const fd = 2; writeSync(fd, …)`) is not seen; only a literal is | header of `static-rules.ts` | — |
+| Evidence hygiene | **Fixed.** `Start at` and `Duration` removed from `.cache/stt/checks/row76/fix1/red_static_old_engine.txt` (were lines 628-629); per-test millisecond suffixes removed from the three captured runner outputs. Every capture step of this round pipes the runner output through `grep -vE '^\s*(Start at\|Duration)'` and `sed -E 's/ [0-9]+ms$//'` before it is stored | evidence folder | `grep -rlE '^\s*Duration\|Start at  \|[0-9]ms$'` over the folder (log backups aside) → 0 files |
+
+Note asked for by the brief: `engineIsLowered` is a rule about the engine and ITS PARENT process. "The engine must be lower than the CAPTURE WORKER" is a different rule, between two sibling processes that rows 77/115 start; it is not built here and the function's comment says so (`cpu-priority.ts:34-41`).
+
+## G2. R-1 — red first, then green
+
+Tests written before the fix (`src/__tests__/cpu-priority.test.ts`, group "fix round 2, R-1"), captured red in `.cache/stt/checks/row76/fix2/red_before_fix.txt` (19 failed: 14 static fixtures + 5 niceness tests). Honest note on what that red means for R-1: the five niceness tests name two functions that did not exist yet, so they failed for that reason. The BEHAVIOURAL red is the navigator's own failed background run (`PRIORITY_NOT_APPLIED`, 2 of 5 real tests failed) and this mutation, run after the fix on a scratch copy with the old absolute rule put back (`engineNice === STT_NICE`):
+
+```
+     × the rule: the engine is at least STT_NICE below the niceness of its parent (parent 0 -> 10, parent 5 -> 15)
+     × negative controls: nice not applied (parent 5, child 5), and an absolute 10 under a parent at 5, are refused
+     × at the floor of the scale the operating system clamps: a parent at 12 or lower still gets the lowest niceness, and that is accepted
+      Tests  3 failed | 2 passed | 21 skipped (26)
+```
+
+The four cases of the brief, now green:
+
+| Parent | Engine | Verdict | Test |
+|---|---|---|---|
+| 0 | 10 | accepted | `engineIsLowered(0, 10)`; real foreground run |
+| 5 | 15 | accepted | `engineIsLowered(5, 15)`; real background-job run |
+| 5 | 5 (nice not applied) | refused | `engineIsLowered(5, 5)`; and a stand-in `nice` program that starts the command without lowering it is found out by the real probe (`hostLowersPriority` → false) |
+| 5 | 10 | refused | `engineIsLowered(5, 10)`; and the real probe's measured child judged against a parent 5 above the real one → false |
+
+Also covered: a negative parent (-5 → 5), lower than asked (0 → 15 accepted), and the floor of the scale (a parent at 12 or lower can only get 19; accepted; macOS's 20 accepted).
+
+## G3. R-2 fixtures
+
+| Evasion | Rule reported |
+|---|---|
+| `const p = process; p.env.X` | `PROCESS_OBJECT_IS_NOT_PASSED_AROUND` |
+| `Reflect.get(process, 'env')` | `PROCESS_OBJECT_IS_NOT_PASSED_AROUND` |
+| `const p = globalThis['process']` | `PROCESS_OBJECT_IS_NOT_PASSED_AROUND` |
+| `{ process }`, `[process]` | `PROCESS_OBJECT_IS_NOT_PASSED_AROUND` |
+| `createRequire(import.meta.url)('http')` | `NO_DYNAMIC_CODE` |
+| `process.mainModule.require('http')` | `NO_DYNAMIC_CODE` |
+| `require('module')` | `NO_DYNAMIC_CODE` |
+| `writeSync(1, token)`, `fs.writeSync(2, token)`, `fs.write(2, …)`, `fs['writeSync'](1, …)` | `NO_DIRECT_OUTPUT` |
+| `process.emitWarning(token)` | `NO_DIRECT_OUTPUT` |
+| `createWriteStream('', { fd: 2 })` | `NO_DIRECT_OUTPUT` |
+| `import { open } from 'node:inspector'`, `import('inspector/promises')` | `NO_NETWORK_MODULE` |
+
+Negative control: `process.execPath`, `process.version`, `process.stderr.write` in `log.ts`, and `writeSync(fd, bytes)` on an opened file are not violations. The real tree has no violation. The priority probe's one-line script is a text handed to a child process, not code of this workspace; it is the only place the text `writeSync(1, …)` appears.
+
+Rule count: 23 rules + `UNPARSEABLE_SOURCE` + 6 required-structure rules (was 21 + 1 + 6). `static.test.ts`: 97 passed (was 82).
+
+## G4. Real run: foreground AND as a background job
+
+Outside the sandbox, alone (port 8000 free; no `omlx serve`, no other `whisper-cli`), the same command twice: `npm run test:real:cpu-local -w @dems/transcriber`, the second time as a zsh background job (`( … ) & wait`), which zsh starts 5 lower. Both: 5 passed.
+
+| | Foreground | Background job |
+|---|---|---|
+| run directory | `runs/20261009T044719633Z-11811-cpu-local/` | `runs/20261009T044824177Z-12336-cpu-local/` |
+| `parentNice` (this process, `os.getPriority()`) | 0 | 5 |
+| `expectedEngineNice` | 10 | 15 |
+| `nice` in the run record | 10 | 15 |
+| every `ps -o ni=,comm=` sample of the engine at the expected niceness | true | true |
+| command | `/usr/bin/nice -n 10 …/whisper-cli -m …/ggml-large-v3-turbo.bin -ng -t 8 -l id -oj -of … -f …/fixture-two-speaker-id.wav` | the same |
+| model id | `ggml-large-v3-turbo` (seeded default) | the same |
+| raw SHA-256 | `6039a9447ed165b94d01cfff94ae7c4d17e034f2366e4af4c0c0d4e7cab94439` | `6039a9447ed165b94d01cfff94ae7c4d17e034f2366e4af4c0c0d4e7cab94439` |
+| raw bytes / segments | 3717 / 14 | 3717 / 14 |
+
+Before the fix the background start was refused with `PRIORITY_NOT_APPLIED` (the navigator's first attempt). After it: an engine at 15, the row-109 bytes.
+
+## G5. Suite totals
+
+```
+$ npm run typecheck -w @dems/transcriber      # exit 0
+$ npm run lint -w @dems/transcriber           # exit 0
+$ npm run test -w @dems/transcriber
+ Test Files  8 passed (8)
+      Tests  259 passed | 1 skipped (260)
+```
+
+Was 239 / 1. Same totals inside and outside the sandbox; the one skip is the complementary niceness block (outside the sandbox the skipped one is "host forbids it", which is the condition under which green proves the niceness). M6-AD-1: 11 pass. M6-CP-1: 25 pass (20 + the 5 R-1 tests) plus the complementary skip.
+
+## G6. Two changes forced by the row-113 round running beside this one
+
+Both showed up as failing tests of mine when `packages/shared` changed under me, and both are fixed on my side only:
+
+1. **`STT_MODEL_ID_PATTERN` was tightened** (a trailing `.` is now refused too). My test had pinned the TEXT of the pattern; that was my mistake — it is row 113's constant. The test now pins what matters: the transcriber and `isSttModelId` give the same verdict on every candidate, and none of the 17 refused ids is accepted.
+2. **The shared blanking rules changed** so that my own placeholder `[credential]` followed by `:` was read as a member name and the text after it was blanked. The transcriber's placeholder is now the shared `CREDENTIAL_BLANK` (`***`) itself (`src/key-loader.ts:24-29`), so a line blanked by value holds nothing the by-position rules could take for a name.
+
+## G7. Carried by the controller, not done here
+
+R-3 (hex / unpadded-base64 forms of a credential) → the row that adds the ENCRYPTED loader branch. Shared endpoint pattern alignment (N-9) → a row-113 follow-up. Gate runs outside the sandbox that show which niceness block ran → rows 77/115. Linux per-thread niceness → class C. D-76-8 (`Host` header) still awaits a ruling.
+
+## G8. Files of this round
+
+Updated: `apps/transcriber/src/cpu-priority.ts`, `src/backends/cpu-local.ts`, `src/key-loader.ts`, `src/types.ts` (one comment), `src/__tests__/static-rules.ts`, `static.test.ts`, `cpu-priority.test.ts`, `backends.test.ts`, `support.ts`, `test/real/cpu-local.real.test.ts`; this document; `delegation_progress/coder_execution_row76.md`. Created: none in the workspace (still 34 files).
+
+Git-ignored evidence: `.cache/stt/checks/row76/fix2/` (`red_before_fix.txt`, `mutation-red-r1-absolute-ten.txt`), two new run directories under `runs/`, and the cleaned `fix1/red_static_old_engine.txt`.
+
+## G9. Commands for the navigator (fix round 2)
+
+```
+npm run typecheck -w @dems/transcriber && npm run lint -w @dems/transcriber
+npm run test -w @dems/transcriber                                   # 8 files, 259 passed, 1 skipped
+npx -w @dems/transcriber vitest run src/__tests__/static.test.ts    # 97 passed
+npx -w @dems/transcriber vitest run src/__tests__/cpu-priority.test.ts -t 'R-1'   # 5 passed
+npm run test -w @dems/transcriber -- --reporter=verbose | grep -cE '✓.*M6-AD-1'   # 11
+npm run test -w @dems/transcriber -- --reporter=verbose | grep -cE '✓.*M6-CP-1'   # 25
+
+# real, alone, outside the sandbox: foreground, then as a background job (parent niceness 5)
+npm run test:real:cpu-local -w @dems/transcriber                     # 5 passed
+( npm run test:real:cpu-local -w @dems/transcriber ) & wait           # 5 passed
+for R in $(ls -d .cache/stt/checks/row76/runs/*-cpu-local | tail -2); do
+  jq -c '{parentNice, expectedEngineNice, nice, everyPsSampleOfTheEngineAtTheExpectedNice, rawSha256, segments}' $R/cpu-local.evidence.json
+done
+# expect parentNice 0 -> nice 10 and parentNice 5 -> nice 15, both with 6039a944…cab94439, 14 segments
+
+grep -rlE '^\s*Duration|Start at  |[0-9]ms$' .cache/stt/checks/row76 --include='*.txt' --include='*.json' --include='*.log' | grep -v 'bak-'   # no file
+lsof -nP -iTCP:8000 -sTCP:LISTEN                                     # no listener
+```
+
+---
+*Fix round 2 appended: 2026-10-09 11:55 (+07:00)*

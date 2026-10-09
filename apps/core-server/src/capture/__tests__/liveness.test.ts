@@ -164,8 +164,12 @@ describe('F-4: eventQueueLimit is a hard bound', () => {
   });
 });
 
-describe('F-7: a restart inside a session (what the worker is told; what it does with the file is not decided)', () => {
-  it('the restarted worker gets the SAME output paths with a higher attempt, so it can tell a restart from a first start', async () => {
+// Blueprint row 58 (decision D67, option C per OD-08; spec §B.2 "Restart rule"). Until row 58 this
+// block was titled "a restart inside a session (what the worker is told; what it does with the
+// file is not decided)". It is decided now, and this pin holds for its real scope only: BEFORE the
+// first durable fragment. Its sibling, after the durable record, stands below it.
+describe('F-7 / M3-KC-3: a restart inside a session, BEFORE the first durable fragment', () => {
+  it('the restarted worker gets the SAME output paths with a higher attempt, so it can tell a restart from a first start (the fake reported no fragment)', async () => {
     const { fake, clock } = await recording();
     const first = fake.last().commands(SupervisorMessageType.START)[0];
     fake.last().exit(null, 'SIGSEGV');
@@ -174,6 +178,81 @@ describe('F-7: a restart inside a session (what the worker is told; what it does
     const second = fake.last().commands(SupervisorMessageType.START)[0];
     expect([first?.attempt, second?.attempt]).toEqual([1, 2]);
     expect(second?.plan.cameras.map((camera) => camera.outputPath)).toEqual(first?.plan.cameras.map((camera) => camera.outputPath));
+  });
+});
+
+describe('F-7 / M3-KC-3 sibling: a crash AFTER the durable record (option C)', () => {
+  it('the session goes to FAULTED, the launcher is NOT called again, CAPTURE_FAULT is raised once, and the session stays open for the interrupted seal', async () => {
+    const { supervisor, fake, clock } = await recording();
+    const seen: string[] = [];
+    supervisor.on('workerDown', (event) => void seen.push(`down ${event.down.code} ${event.restartInMs}`));
+    supervisor.on('warning', (event) => void seen.push(`warning ${event.code} ${event.source}`));
+    supervisor.on('phase', (event) => void seen.push(`phase ${event.phase}`));
+    fake.last().firstDurableFragment('CAM-01');
+    expect(supervisor.status()).toMatchObject({ durable: true, lastRecordSeq: 1, phase: CapturePhase.RECORDING });
+
+    fake.last().exit(null, 'SIGSEGV');
+    // Every back-off there could be, and more: nothing is armed and nothing starts.
+    expect(clock.armed()).toEqual([]);
+    clock.advance(LIMITS.backoffMaxMs * 10);
+    await flush();
+    expect(fake.calls()).toBe(1);
+    expect(fake.workers).toHaveLength(1);
+    expect(seen).toEqual(['down EXITED null', 'warning CAPTURE_FAULT supervisor', 'phase FAULTED']);
+    expect(supervisor.status()).toMatchObject({ phase: CapturePhase.FAULTED, sessionId: SESSION, workerPid: null, restarts: 0, attempt: 1, durable: true });
+    await supervisor.stop(SESSION, 'CRASH');
+    expect(supervisor.status()).toMatchObject({ phase: CapturePhase.IDLE, sessionId: null, durable: false, lastRecordSeq: 0 });
+  });
+
+  it('CONTROL: the same crash WITHOUT a durable record is restarted, so the test above measures the record', async () => {
+    const { supervisor, fake, clock } = await recording();
+    fake.last().exit(null, 'SIGSEGV');
+    clock.advance(LIMITS.backoffBaseMs);
+    await flush();
+    expect(fake.calls()).toBe(2);
+    expect(supervisor.status()).toMatchObject({ phase: CapturePhase.RECORDING, attempt: 2, durable: false });
+  });
+
+  it('a heartbeat timeout and a protocol violation after the durable record end FAULTED as well: no cause restarts into an evidence file', async () => {
+    for (const act of [
+      (context: Awaited<ReturnType<typeof recording>>) => context.clock.advance(LIMITS.heartbeatTimeoutMs),
+      (context: Awaited<ReturnType<typeof recording>>) => context.fake.last().violate('FRAME_NOT_JSON'),
+    ]) {
+      const context = await recording();
+      context.fake.last().firstDurableFragment('CAM-02');
+      act(context);
+      context.clock.advance(LIMITS.backoffMaxMs * 10);
+      await flush();
+      expect(context.fake.calls()).toBe(1);
+      expect(context.supervisor.status().phase).toBe(CapturePhase.FAULTED);
+    }
+  });
+
+  it('the file is the truth: a restarted worker that finds a file at its output path refuses START with OUTPUT_EXISTS; the session is durable, FAULTED, and no third worker starts', async () => {
+    const { supervisor, fake, clock } = await recording();
+    const faults: string[] = [];
+    supervisor.on('warning', (event) => void faults.push(event.code));
+    // The first worker wrote a fragment and died before its record reached the supervisor.
+    fake.last().exit(null, 'SIGKILL');
+    fake.behaviour.ackStart = 'OUTPUT_EXISTS';
+    clock.advance(LIMITS.backoffBaseMs);
+    await flush();
+    expect(fake.calls()).toBe(2);
+    expect(supervisor.status()).toMatchObject({ phase: CapturePhase.FAULTED, durable: true, sessionId: SESSION });
+    expect(supervisor.status().lastCrash).toMatchObject({ code: WorkerDownCode.START_REFUSED, detail: 'OUTPUT_EXISTS', attempt: 2 });
+    clock.advance(LIMITS.backoffMaxMs * 10);
+    await flush();
+    expect(fake.calls()).toBe(2);
+    expect(faults).toEqual(['CAPTURE_FAULT']);
+  });
+
+  it('CONTROL: any other refusal of START by a restarted worker IS retried', async () => {
+    const { supervisor, fake, clock } = await recording();
+    fake.last().exit(1);
+    fake.behaviour.ackStart = 'NO_DEVICE';
+    clock.advance(LIMITS.backoffBaseMs);
+    await flush();
+    expect(supervisor.status()).toMatchObject({ phase: CapturePhase.RESTARTING, durable: false, restarts: 2 });
   });
 });
 

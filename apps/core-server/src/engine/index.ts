@@ -129,6 +129,8 @@ export const enginePlugin: FastifyPluginAsync = async (app) => {
     log: app.log,
     errorLog: app.errorLog,
     noteOutcome: positions.note,
+    // Capture mode `real`: a worker measures the levels, the simulator generates none (CS-04, A-4).
+    captureLevels: app.config.captureMode === 'real' ? 'external' : 'simulated',
   });
   app.seams.provide('engine', host);
 

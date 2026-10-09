@@ -118,12 +118,13 @@ export const STT_MODEL_MAX_LENGTH = 255;
  *
  * 1 to 128 characters of `A-Z a-z 0-9 . _ -`, the first a letter or a digit. So: no path
  * separator of either kind, no leading `/` or `-`, no white space, no NUL or control character;
- * and by the two look-aheads no `..` anywhere and no trailing `.bin` (the id is not the file).
+ * and by the three look-aheads no `..` anywhere, no trailing `.` (`model.` would name the file
+ * `model..bin`; navigator re-check R-4) and no trailing `.bin` (the id is not the file).
  * The one pattern is what operation 91 validates with, what the OpenAPI document shows and what
  * the transcriber imports.
  */
 export const STT_MODEL_ID_MAX_LENGTH = 128;
-export const STT_MODEL_ID_PATTERN = /^(?!.*\.\.)(?!.*\.[bB][iI][nN]$)[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+export const STT_MODEL_ID_PATTERN = /^(?!.*\.\.)(?!.*\.$)(?!.*\.[bB][iI][nN]$)[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 
 /** True for a model identifier of the contract. Never throws; anything that is no text is none. */
 export function isSttModelId(model: unknown): model is string {

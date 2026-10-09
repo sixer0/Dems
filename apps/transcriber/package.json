@@ -14,7 +14,10 @@
     "test:real:cpu-local": "vitest run --config vitest.real.config.ts test/real/cpu-local.real.test.ts",
     "test:real:omlx-server": "vitest run --config vitest.real.config.ts test/real/omlx-server.real.test.ts",
     "test:real:shape": "vitest run --config vitest.real.config.ts test/real/shape.real.test.ts",
-    "test:real:omlx-log-excerpt": "vitest run --config vitest.real.config.ts test/real/omlx-log-excerpt.real.test.ts"
+    "test:real:omlx-log-excerpt": "vitest run --config vitest.real.config.ts test/real/omlx-log-excerpt.real.test.ts",
+    "test:real:row77:cpu-local": "vitest run --config vitest.real.config.ts test/real/row77-cpu-local.real.test.ts",
+    "test:real:row77:omlx-server": "vitest run --config vitest.real.config.ts test/real/row77-omlx-server.real.test.ts",
+    "test:real:row77:df1": "vitest run --config vitest.real.config.ts test/real/row77-df1.real.test.ts"
   },
   "dependencies": {
     "@dems/shared": "*",

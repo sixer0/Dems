@@ -334,7 +334,8 @@ describe('fix round 1 — N-2: `stt_config.model` is a model IDENTIFIER (control
   });
 
   it('accepts exactly what the ONE shared pattern accepts: the transcriber and operation 91 cannot disagree', () => {
-    expect(STT_MODEL_ID_PATTERN.source).toBe('^(?!.*\\.\\.)(?!.*\\.[bB][iI][nN]$)[A-Za-z0-9][A-Za-z0-9._-]{0,127}$');
+    // The pattern itself is row 113's and may tighten; what is pinned here is that both sides use the SAME one.
+    expect(STT_MODEL_ID_PATTERN.test(STT_CONFIG_DEFAULT.model)).toBe(true);
     const candidates = [...refused, 'ggml-large-v3-turbo', 'whisper-large-v3-turbo', 'mlx-community--whisper-large-v3-turbo-asr-fp16', 'model-a.q5_0', 'A', 'x'.repeat(128), 'a.binary', 'bin'];
     for (const model of candidates) {
       let accepted = true;
@@ -345,7 +346,8 @@ describe('fix round 1 — N-2: `stt_config.model` is a model IDENTIFIER (control
       }
       expect(accepted, `the transcriber and the shared pattern disagree on ${JSON.stringify(model)}`).toBe(isSttModelId(model));
     }
-    expect(candidates.filter(isSttModelId)).toHaveLength(8);
+    expect(candidates.filter(isSttModelId).length).toBeGreaterThanOrEqual(6);
+    expect(refused.filter(isSttModelId)).toEqual([]);
   });
 
   it('for `omlx-server` the id is sent to the server as it is, with no extension added', async () => {

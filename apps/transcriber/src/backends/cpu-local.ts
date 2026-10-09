@@ -16,7 +16,9 @@
  * LOWER PRIORITY FROM THE FIRST INSTRUCTION (fix round 1, N-5). The engine is started THROUGH the
  * `nice` program, with no shell: `nice` lowers its own priority and then becomes the engine (the
  * same process), so there is no moment in which the engine runs at the priority of capture. `nice`
- * goes on when the host refuses the call, so the host is asked first, once per backend: when it
+ * goes on when the host refuses the call, so the host is asked first, once per backend. `nice -n`
+ * is RELATIVE to the process that starts it, so the answer is judged against the niceness of this
+ * process (a Core at 5 gets an engine at 15), never against a fixed number. When the host
  * cannot lower a priority, a `required` configuration (the default) starts NO engine
  * (`PRIORITY_NOT_APPLIED`). On Linux a niceness belongs to a thread; a process that starts already
  * lowered hands the value to every thread it creates, but that is NOT proven here: it is a class-C
@@ -35,10 +37,11 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { accessSync, closeSync, constants, mkdirSync, openSync, readFileSync, readSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { getPriority } from 'node:os';
 import { join, sep } from 'node:path';
 import { z } from 'zod';
 import type { CpuLocalConfig } from '../config';
-import { STT_NICE, threadPlanHolds } from '../cpu-priority';
+import { STT_NICE, engineIsBelowCaptureWorker, engineIsLowered, threadPlanHolds } from '../cpu-priority';
 import { blankText, type TranscriberLog } from '../log';
 import {
   TRANSCRIBER_LANGUAGE,
@@ -69,10 +72,11 @@ const NICE_PROBE = "require('node:fs').writeSync(1, String(require('node:os').ge
 const NICE_PROBE_TIMEOUT_MS = 10_000;
 
 /**
- * True when this host lowers the priority of a process started through `nicePath`: a probe process
- * started the same way as the engine reports the niceness it runs at. No engine is involved.
+ * The niceness a process started through `nicePath -n STT_NICE` finds itself at, or null when the
+ * probe could not be run. A probe process started the same way as the engine reports it. No engine
+ * is involved.
  */
-export function hostLowersPriority(nicePath: string): boolean {
+export function probeEngineNice(nicePath: string): number | null {
   try {
     const probe = spawnSync(nicePath, ['-n', String(STT_NICE), process.execPath, '-e', NICE_PROBE], {
       stdio: ['ignore', 'pipe', 'ignore'],
@@ -81,10 +85,21 @@ export function hostLowersPriority(nicePath: string): boolean {
       encoding: 'utf8',
       timeout: NICE_PROBE_TIMEOUT_MS,
     });
-    return probe.status === 0 && probe.stdout.trim() === String(STT_NICE);
+    const answer = probe.stdout.trim();
+    return probe.status === 0 && /^-?[0-9]+$/.test(answer) ? Number(answer) : null;
   } catch {
-    return false; // The probe could not be started: the host has not shown that it lowers a priority.
+    return null; // The probe could not be started: the host has not shown that it lowers a priority.
   }
+}
+
+/**
+ * True when this host lowers the priority of a process started through `nicePath`. `nice -n` is
+ * relative, so the answer of the probe is judged against the niceness of the process that starts
+ * the engine, THIS one (`engineIsLowered`), never against a fixed number (fix round 2, R-1).
+ */
+export function hostLowersPriority(nicePath: string, parentNice: number = getPriority()): boolean {
+  const engineNice = probeEngineNice(nicePath);
+  return engineNice !== null && engineIsLowered(parentNice, engineNice);
 }
 
 const SOURCE = 'transcriber.cpuLocal';
@@ -101,8 +116,39 @@ const WhisperCliOutputSchema = z.looseObject({
   ),
 });
 
+/**
+ * The process id of the capture worker while one runs, or null. Given by the row that starts both
+ * (the Core, row 115): the transcriber never looks a worker up by name.
+ */
+export type CaptureWorkerPid = () => number | null;
+
+export type CaptureWorkerVerdict =
+  | { readonly ok: true; readonly workerNice: number | null }
+  | { readonly ok: false; readonly workerNice: number; readonly engineNice: number | null };
+
+/**
+ * The sibling rule, from OBSERVATION: the niceness the operating system reports for the capture
+ * worker against the niceness an engine started through `nice` gets on this host (`engineNice`,
+ * the answer of the probe; null when the host does not lower a priority). No worker, or a worker
+ * that has ended, leaves nothing to outrank.
+ */
+export function judgeAgainstCaptureWorker(captureWorkerPid: CaptureWorkerPid | undefined, engineNice: number | null): CaptureWorkerVerdict {
+  const pid = captureWorkerPid?.() ?? null;
+  if (pid === null) return { ok: true, workerNice: null };
+  let workerNice: number;
+  try {
+    workerNice = getPriority(pid);
+  } catch {
+    return { ok: true, workerNice: null }; // The worker has ended between the question and the answer.
+  }
+  if (engineNice !== null && engineIsBelowCaptureWorker(workerNice, engineNice)) return { ok: true, workerNice };
+  return { ok: false, workerNice, engineNice };
+}
+
 export interface CpuLocalDeps {
   readonly log: TranscriberLog;
+  /** The capture worker to stay below (§C). Absent: no capture runs beside this transcriber. */
+  readonly captureWorkerPid?: CaptureWorkerPid;
   /** Told about every finished engine run: the arguments and the hash of the raw output. No time. */
   readonly onEngineRun?: (record: EngineRunRecord) => void;
   /** Told the process id of an engine the moment it exists, so that a check can watch it from outside. */
@@ -119,7 +165,7 @@ export function buildWhisperCliArgs(config: CpuLocalConfig, audioPath: string, o
   return args;
 }
 
-function executableFile(path: string): boolean {
+export function executableFile(path: string): boolean {
   try {
     accessSync(path, constants.X_OK);
     return statSync(path).isFile();
@@ -132,7 +178,7 @@ function executableFile(path: string): boolean {
  * The boot-check half of CS-22 for this backend: `nice` and the engine can be run, the model file
  * is there, and it does not lead outside the model directory.
  */
-export function checkCpuLocalFiles(config: CpuLocalConfig): void {
+export function checkCpuLocalFiles(config: Pick<CpuLocalConfig, 'nicePath' | 'binaryPath' | 'modelPath' | 'modelDir' | 'model'>): void {
   if (!executableFile(config.nicePath)) {
     throw new TranscriberError(TranscriberErrorCode.ENGINE_NOT_FOUND, 'the nice program the engine is started through is absent or not executable', { reason: 'NICE_NOT_FOUND' });
   }
@@ -181,27 +227,52 @@ function readHead(path: string): Uint8Array | null {
   }
 }
 
-interface EngineExit {
+export interface EngineExit {
   readonly code: number | null;
   readonly signal: NodeJS.Signals | null;
   readonly timedOut: boolean;
   readonly stderrTail: string;
+  /** What the process wrote to its standard output; empty unless `captureStdout` was asked for. */
+  readonly captured: string;
 }
 
-function runEngine(config: CpuLocalConfig, args: readonly string[], onStart: ((engine: { readonly pid: number }) => void) | undefined): Promise<EngineExit> {
+/** What `runLoweredProcess` needs to know of a host: where `nice` and the program are, and the bound of one run. */
+export interface LoweredProcessHost {
+  readonly nicePath: string;
+  readonly binaryPath: string;
+  readonly timeoutMs: number;
+}
+
+const STDOUT_CAPTURE_BYTES = 4_000_000;
+
+/**
+ * THE ONE PLACE THAT STARTS AN ENGINE PROCESS (the STT engine here, the VAD engine of
+ * `pipeline/silero-vad.ts`). Through `nice`, which lowers itself and then BECOMES the program: one
+ * process, never un-lowered. No shell; the fixed environment; stdin closed. The standard output is
+ * dropped unless the caller reads its result from it; the standard error is kept as a short tail.
+ */
+export function runLoweredProcess(
+  host: LoweredProcessHost,
+  args: readonly string[],
+  onStart: ((engine: { readonly pid: number }) => void) | undefined,
+  captureStdout = false,
+): Promise<EngineExit> {
   return new Promise((resolve, reject) => {
-    // Through `nice`, which lowers itself and then BECOMES the engine: one process, never un-lowered.
-    // No shell. stdin closed, stdout dropped (the result is the -oj file), stderr kept as a short tail.
-    const child = spawn(config.nicePath, ['-n', String(STT_NICE), config.binaryPath, ...args], { stdio: ['ignore', 'ignore', 'pipe'], shell: false, env: ENGINE_ENVIRONMENT });
+    const child = spawn(host.nicePath, ['-n', String(STT_NICE), host.binaryPath, ...args], { stdio: ['ignore', captureStdout ? 'pipe' : 'ignore', 'pipe'], shell: false, env: ENGINE_ENVIRONMENT });
     let stderrTail = '';
+    let captured = '';
     let timedOut = false;
     const timer = setTimeout(() => {
       timedOut = true;
       child.kill('SIGKILL');
-    }, config.timeoutMs);
-    child.stderr.setEncoding('utf8');
-    child.stderr.on('data', (text: string) => {
+    }, host.timeoutMs);
+    child.stderr?.setEncoding('utf8');
+    child.stderr?.on('data', (text: string) => {
       stderrTail = (stderrTail + text).slice(-STDERR_TAIL_BYTES);
+    });
+    child.stdout?.setEncoding('utf8');
+    child.stdout?.on('data', (text: string) => {
+      if (captured.length < STDOUT_CAPTURE_BYTES) captured += text;
     });
     child.once('spawn', () => {
       if (child.pid !== undefined) onStart?.({ pid: child.pid });
@@ -212,15 +283,20 @@ function runEngine(config: CpuLocalConfig, args: readonly string[], onStart: ((e
     });
     child.once('close', (code, signal) => {
       clearTimeout(timer);
-      resolve({ code, signal, timedOut, stderrTail });
+      resolve({ code, signal, timedOut, stderrTail, captured });
     });
   });
 }
 
+function runEngine(config: CpuLocalConfig, args: readonly string[], onStart: ((engine: { readonly pid: number }) => void) | undefined): Promise<EngineExit> {
+  return runLoweredProcess(config, args, onStart);
+}
+
 export function createCpuLocalBackend(config: CpuLocalConfig, deps: CpuLocalDeps): TranscriberBackend {
   const { log } = deps;
-  /** Whether this host lowers a priority: asked once, before the first engine. */
+  /** Whether this host lowers a priority, and to what: asked once, before the first engine. */
   let lowers: boolean | null = null;
+  let engineNice: number | null = null;
 
   async function transcribe(chunk: TranscriberChunk, options: TranscribeOptions): Promise<TranscribeResult> {
     const correlationId = options.correlationId;
@@ -246,12 +322,25 @@ export function createCpuLocalBackend(config: CpuLocalConfig, deps: CpuLocalDeps
       throw error;
     }
 
-    if (lowers === null) lowers = hostLowersPriority(config.nicePath);
+    if (lowers === null) {
+      engineNice = probeEngineNice(config.nicePath);
+      lowers = engineNice !== null && engineIsLowered(getPriority(), engineNice);
+    }
     if (!lowers) {
       if (config.priority === 'required') {
         throw fail(TranscriberErrorCode.PRIORITY_NOT_APPLIED, 'this host cannot lower the priority of the engine, so no engine is started', { reason: 'PRIORITY_NOT_APPLIED' });
       }
       log.warn({ source: SOURCE, message: 'the engine priority could not be lowered', context: { reason: 'PRIORITY_NOT_APPLIED', mode: config.priority }, correlationId });
+    }
+
+    // The sibling rule (§C): asked before EVERY engine, because a worker starts and ends with a session.
+    const verdict = judgeAgainstCaptureWorker(deps.captureWorkerPid, lowers ? engineNice : null);
+    if (!verdict.ok) {
+      throw fail(TranscriberErrorCode.ENGINE_NOT_BELOW_CAPTURE_WORKER, 'the engine would not run below the capture worker, so no engine is started', {
+        reason: 'ENGINE_NOT_BELOW_CAPTURE_WORKER',
+        workerNice: verdict.workerNice,
+        engineNice: verdict.engineNice,
+      });
     }
 
     const runId = randomUUID();
@@ -305,7 +394,7 @@ export function createCpuLocalBackend(config: CpuLocalConfig, deps: CpuLocalDeps
         status: exit.code,
         rawSha256: createHash('sha256').update(raw).digest('hex'),
         rawBytes: raw.length,
-        nice: lowers ? STT_NICE : null,
+        nice: lowers ? engineNice : null,
       });
 
       let json: unknown;

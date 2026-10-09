@@ -155,9 +155,13 @@ Row 56 = satisfied by D61 + D62. Stale rows 50a/51a above are closed (scope done
 | 57 | coder-execution | senior-code-reviewer | **done** — fix round 1 re-checked, ACCEPT-WITH-FINDINGS 0 blocker/0 major (D65, D67); closes NM-03, CS-01, CS-03 |
 | 111 | coder-execution | verifier | **done** — proofs reproduced by navigator, ACCEPT-WITH-FINDINGS, findings carried to row 58 (D66) |
 | 113 | coder-execution | senior-code-reviewer | **done** — fix round 1 re-checked, ACCEPT-WITH-FINDINGS 0 blocker/0 major (D68, D70); small fix round 2 (redaction walk bound) in flight |
-| 76 | coder-execution | verifier | navigator ACCEPT-WITH-FINDINGS (D70) -> fix round 1 done -> re-check in flight |
+| 76 | coder-execution | verifier | **done** — fix rounds 1 + 2, navigator ACCEPT-WITH-FINDINGS, relative-niceness major fixed (D70, D71) |
 | pair errata (C3, specs, spec 05, plan row 84), R-8 status sweep, catalogue T-1..T-10, blueprint rev 2.2 | data-analyst x2, test-expert, task-architect | - (checked by controller) | **done** (D69) — 219 active checks |
-| 58 | coder-execution | senior-code-reviewer + verifier | launching (CW3) |
+| 58 | coder-execution | senior-code-reviewer (A) + verifier (B) | **done** — fix round 1 re-checked by both navigators, 0 blocker / 0 major (D72, D84, D85) |
 | G-1/G-3/G-4/G-5 pickups (10_test_strategy.md) | test-expert | - (checked by controller) | **done** — 218 active checks (D64) |
 | G-2/G-6 pickups (01_specs.md, 05) | data-analyst | - (checked by controller) | **done** (D64) |
-
+| Blueprint rev 2.3 Part A (routing) | task-architect | controller V1-V7 | **done**, MINOR (D77) |
+| Blueprint rev 2.3 Part B (R-9..R-11, rows 120-142) | task-architect | controller V1-V7 PASS | **APPROVED (D78)** — rows 120-142 released; row 120 launched |
+| 120, 121, 122, 123, 124, 125 | data-analyst / database-specialist | spec gate 128 | **done** (D80-D83); 126 in flight; schema change -> rows 129, 130 run |
+| 60 | coder-execution | verifier | launched |
+| 77 | coder-execution | verifier | driver launched early (D79) |

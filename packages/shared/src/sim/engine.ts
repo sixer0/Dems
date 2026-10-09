@@ -251,7 +251,7 @@ export function createSim(options: CreateSimOptions = {}): Sim {
   });
 
   const engine: EngineContext = { store, clock, rng, report };
-  const audio = createAudioRuntime();
+  const audio = createAudioRuntime(options.capture);
   const subsystems = createSubsystems(engine, audio);
   const actions = createActions({ store, clock, authStorage, rng, audio });
 

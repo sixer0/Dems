@@ -32073,7 +32073,7 @@
           "model": {
             "description": "A model IDENTIFIER, never a file name or a path: 1 to 128 of `A-Z a-z 0-9 . _ -`, starting with a letter or a digit, without `..` and without a trailing `.bin`. Anything else: 422 INVALID_INPUT.",
             "type": "string",
-            "pattern": "^(?!.*\\.\\.)(?!.*\\.[bB][iI][nN]$)[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+            "pattern": "^(?!.*\\.\\.)(?!.*\\.$)(?!.*\\.[bB][iI][nN]$)[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
           },
           "language": {
             "description": "Only `id` (OD-20); anything else: LANGUAGE_NOT_SUPPORTED.",

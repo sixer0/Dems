@@ -28,7 +28,7 @@ inputs_read:
   - decisions/decisions.md D4 (gate answers), D7, D10, D12
   - apps/core-server/src/engine/host.ts:897-902, engine/types.ts:205-209, engine/__tests__/static.test.ts (integration precedent)
   - research/01_explore.md §2.4 (the 21 src static guards)
-last_updated: 2026-10-09 (pair-review errata PE-57-01..PE-57-10 and PE-111-01..PE-111-07 applied, decisions D65-D68, see masterplan/11_audit_errata.md §5; earlier: 2026-10-08 RV-SPEC AU-2 errata AU2-03..AU2-08; 2026-10-07 row-35 security remediation SEC35-04/08/09/10/23/25)
+last_updated: 2026-10-09 14:35 (blueprint row 123, capture architecture delta for R-9..R-11, marks PE-123-01..PE-123-15, decisions D72(k), D73-D78, D80 — sections 0, A.1, A.6, A.7, A.8, G, I, J and the self-gate; sections A.2, A.4 and B.2 unchanged; earlier the same day: pair-review errata PE-57-01..PE-57-10 and PE-111-01..PE-111-07 applied, decisions D65-D68, see masterplan/11_audit_errata.md §5; earlier: 2026-10-08 RV-SPEC AU-2 errata AU2-03..AU2-08; 2026-10-07 row-35 security remediation SEC35-04/08/09/10/23/25)
 ---
 
 # Capture Architecture Spec (blueprint row 31, M0)
@@ -57,6 +57,7 @@ A mechanism with no such citation is labelled **HYPOTHESIS** and collected in se
 | D66 (row 111 pair) | Video anchored on the per-packet PRFT wall clock with a slew limit (not "re-anchor on later sender reports"); `delay_moov` evaluated by row 58 with a pinned-flags fallback; three mux options forbidden with `empty_moov`; worker required work for row 58 (no UDP sockets, `flush_packets`, audio keeps fragmenting, non-zero exit on a fatal error, mics from a separate process) — **errata PE-111-01..PE-111-07** | Sections A.2, A.4, A.8, C.2, C.4, F, J |
 | D68 (row 113 pair) | OD-14's module-registration category is extended to `modules/stt-config`: P25 edits 13-14 — **erratum PE-57-08** | Section I |
 | D12 (row 15) | Engine pick = FFmpeg 9.0.2 with an **embedded libavfilter** capture worker; GCM/manifest/signer engine-independent | Sections B, C, D |
+| D72(k), D73-D78, D80 (row 123; **delta PE-123-01**, 2026-10-09) | NEW SCOPE R-9..R-11 (`01_specs.md` §B.2): `CameraAdapter.discover()` becomes a real, **probe-only** WS-Discovery search owned by the Core process (one UDP socket for the duration of a search; probe-answer data only, no follow-up TCP read — D80(1)); every connectivity action is a separate operator action with an operator-typed credential held in memory for the connection test only (D76, D80(7)); adapter kind `LOCAL_DEVICE` (development only) puts two loopback helper processes in front of the **unchanged** worker paths (D73, D74); one development flag joined to row 61's single capture-mode definition with boot refusals (D72(l)); no camera within the ingest-open window = the session FAULTS with an operator notification (D72(k), R-10) | Sections A.1, A.6, A.7, A.8, G, I, J (deltas dated 2026-10-09). **Sections A.2, A.4 and B.2 are not changed by this delta** |
 
 **Register re-slicing note.** The register (`research/03_analysis.md` §B.6) defines NM-01 as the
 adapter layer, NM-09 as the config store + API, NM-10 as the mic-switch API. The row-31 brief
@@ -110,6 +111,122 @@ selector expects one; fake/real adapter mismatch (class-C adapters must never lo
 Test hook: `createFakeRegistry()` built from NM-14 descriptors with `FakeCameraAdapter`,
 `FakeAudioInputAdapter`, `FakePoeController`. Real adapters are class C and are injected only from
 the supervisor in `DEMS_CAPTURE_MODE=real`.
+
+#### A.1.1 Delta 2026-10-09 (row 123) — adapter kinds, source classes, where the adapters live (PE-123-02; D73, D74, D75, D76, D80)
+
+**Why.** R-9 and R-11 (`01_specs.md` §B.2) need three things the registry did not say: which
+process the adapters run in, which **kind** of adapter stands behind a device, and which kinds are
+development-only. Decisions: D73 (requirement and constraints), D74 (which device fills which slot),
+D75 (the real-network search is an operator action that goes through this registry's camera adapter and nothing else), D76 (a search registers nothing), D80(9) (the development mark is a per-source class), D80(11) (the
+discovery socket is not the worker's; a local device is never silently replaced by a fake).
+
+**Where the adapters live (correction of the "Target" cells of §A.1, §A.6 and §A.7).** The table
+above names `apps/capture-worker/src/adapters/`. That was written before the worker's build form was
+fixed. As built, the worker is a C program that speaks only `packages/capture-protocol`
+(`implementation/20_m3_worker_engine.md` §0; §A.2 W-6), listens for an RTSP push on loopback and
+reads microphones from named pipes; it has no device adapter and must own no datagram socket (§A.2
+W-1). The adapters are therefore **Core-process TypeScript**:
+`apps/core-server/src/capture/adapters/{registry.ts, camera/, audio/, poe/, local-device/}`. Nothing
+of an adapter is compiled into or loaded by the worker.
+
+| Alternative | Verdict | Why |
+|---|---|---|
+| Adapters inside the worker (the 2026-10-07 text) | rejected | the worker would own the discovery socket (against §A.2 W-1 and D80(11)) and would have to change for R-11 (against D73, R-11 AC-4) |
+| Adapters in a third process | rejected | a second supervised process and a second IPC protocol for work that is a few requests per operator action |
+| **Adapters in the Core process, OS doors pinned file by file (§G.1)** | **chosen** | the Core already owns the credential path (operation 89), the audit trail and the session machine; the doors it opens are enumerated in §G.1 |
+
+**Adapter kind and source class.** Every adapter and every descriptor carries a kind; the kind
+decides the source class. Names are proposals of this row; row 122 fixes the stored spelling and the
+column, row 124 the manifest value.
+
+```ts
+type CaptureAdapterKind = 'ONVIF_RTSP' | 'USB_AUDIO' | 'SNMP_POE' | 'FAKE' | 'LOCAL_DEVICE';
+type CaptureSourceClass = 'PRODUCTION' | 'DEVELOPMENT';
+// PRODUCTION: ONVIF_RTSP, USB_AUDIO, SNMP_POE.   DEVELOPMENT: FAKE, LOCAL_DEVICE (D80(9)).
+interface CaptureDeviceDescriptor {            // additions to the sketch above
+  adapterKind: CaptureAdapterKind;
+  sourceClass: CaptureSourceClass;             // derived from adapterKind by ONE function, never stored twice
+}
+```
+
+Registry rules added (each is a refusal with a typed error, never a fallback):
+
+| # | Rule | Authority |
+|---|---|---|
+| RG-1 | The registry is built once at boot from the capture operation of §A.1.2: in `REAL_PRODUCTION` only `PRODUCTION` kinds are registered; in `REAL_DEVELOPMENT` only `DEVELOPMENT` kinds plus the discovery / connection-test half of `ONVIF_RTSP` (so that the search and the connect flow can be exercised on fixtures and, by the user, on a real camera); in `SIMULATED` no adapter is registered | D73; R-11 AC-2; C-N14 |
+| RG-2 | `list()` never returns a `DEVELOPMENT` descriptor outside `REAL_DEVELOPMENT` (operations 76/77 list 0 development sources with the flag off) | R-11 AC-2 |
+| RG-3 | An assignment to `VIDEO-01` / `VIDEO-02` / a mic role is refused when the device's source class is not the class of the running operation (no mixed configuration: a production camera is never recorded beside a fake microphone) | R-11 AC-1; this row (alternative "mix freely, mark per track" rejected: the manifest mark is per track, D80(9), but one session with both classes cannot be called either production or development evidence) |
+| RG-4 | A candidate of a search (§A.6.1) is **not** a descriptor and never enters the registry; only a successful connection test followed by the adoption of row 142 creates one | D76 (1); R-9 AC-4, AC-8 |
+| RG-5 | `resolve()` of a `LOCAL_DEVICE` source that cannot be opened returns the named error of §A.6.4; no code path substitutes a `FAKE` adapter for it | D80(11); R-11 AC-5 |
+
+**Development slots (D74 (2)).** In `REAL_DEVELOPMENT` the plan builder (row 66) names exactly these
+four sources; Desk View and the two "Capture screen" entries that avfoundation also lists on this
+Mac (probe P-1, `delegation_progress/data_analyst_row123.md` §3) are never selectable:
+
+| Slot | Device ID | Adapter kind | Source | Process in front of the worker |
+|---|---|---|---|---|
+| Camera 1 | `CAM-01` -> `VIDEO-01` | `LOCAL_DEVICE` | avfoundation video device named exactly `MacBook Air Camera` | camera helper (§A.6.4) |
+| Camera 2 | `CAM-02` -> `VIDEO-02` | `FAKE` | generated test picture | fake camera source (§A.6.4) |
+| Mic 1 (primary) | `MIC-01` | `LOCAL_DEVICE` | avfoundation audio device named exactly `MacBook Air Microphone` | mic helper (§A.7.1) |
+| Mic 2 (standby) | `MIC-02` | `FAKE` | generated 880 Hz tone | fake mic source (§A.7.1) |
+
+Device IDs are the wire subjects (D72(g)); `VIDEO-0x` is the output name only.
+
+#### A.1.2 Delta 2026-10-09 (row 123) — the development flag and what boot refuses (PE-123-03; D72(l), D73, D80(9))
+
+**One definition.** Row 61 owns the single definition of capture mode (pair-58 finding A-3,
+`delegation_progress/pair_58_navigator_a.md:40`: today `captureModeOf(config)` in
+`apps/core-server/src/modules/capture-config/fencing.ts:55-57` reads the demo flag and
+`config.captureMode` reads `DEMS_CAPTURE_MODE`, independently). This delta adds **no second
+definition**: it adds one input and one output value to that same function. The function is the only
+reader of the development flag (static rule G-R15).
+
+| Key (environment) | Values | Default | Meaning | Owner |
+|---|---|---|---|---|
+| `DEMS_CAPTURE_MODE` (exists, `config.ts:43`) | `simulated` \| `real` | `simulated` | whether a capture worker may be started | row 58 (landed) / row 61 (relation) |
+| `DEMS_DEMO_CONTROLS` (exists, `config.ts:41`) | `1` \| `0` | — | fault injection, scenario load, reset | task 2 / row 61 (relation) |
+| **`DEMS_CAPTURE_DEV_SOURCES`** (new, proposed name) | `1` \| `0` | `0` | the development flag: development sources (`FAKE`, `LOCAL_DEVICE`) exist | row 136 (lands), row 61 (reads it in the one function) |
+| **`DEMS_CAPTURE_HELPER_FFMPEG`** (new, proposed name) | absolute path | none | the FFmpeg program the development helpers run (§A.6.4); required when the flag is `1` | row 136 |
+
+The one function returns a closed union (name proposed; row 61 fixes it):
+
+```ts
+type CaptureOperation = 'SIMULATED' | 'REAL_PRODUCTION' | 'REAL_DEVELOPMENT';
+function captureOperationOf(config): CaptureOperation;  // the ONLY place that reads the three flags together
+```
+
+Allowed combinations and boot refusals. "Stored sources" = the adapter kinds of the devices
+assigned in the selector (`capture_devices`, read by the CS-22 boot checks of row 61).
+
+| # | `DEMS_CAPTURE_MODE` | `DEMS_DEMO_CONTROLS` | `DEMS_CAPTURE_DEV_SOURCES` | Stored sources | Boot | Operation / refusal code (codes proposed) |
+|--:|---|---|---|---|---|---|
+| 1 | `simulated` | `1` | `0` | none, or production kinds (inert) | boots | `SIMULATED` — today's demo; no worker, no adapter, generated levels |
+| 2 | `real` | `0` | `0` | production kinds only (or none) | boots | `REAL_PRODUCTION` — real devices only; a search and the connect flow are available; on this Mac nothing is recordable until a real camera is adopted |
+| 3 | `real` | `0` | `1` | development kinds only (or none) | boots | `REAL_DEVELOPMENT` — the four slots of §A.1.1; every list, session and package carries the development label and mark (R-11 AC-6, AC-7) |
+| 4 | `real` | `1` | any | any | **refused** | row 61's refusal of capture mode `real` with demo controls on (blueprint row 61 verification text); unchanged in development: a capture-originated fault is the capture side's (D72(h)), so demo fault injection has no place beside a real worker in either class |
+| 5 | `simulated` | `0` | `0` | any | row 61 decides (refused or labelled, A-3) | not this row's; this delta only requires that row 61 states it |
+| 6 | `simulated` | any | `1` | any | **refused** | `DEV_SOURCES_NEED_REAL_CAPTURE` — the flag promises sources that no worker would ever record |
+| 7 | `real` | `0` | `0` | **any development kind** | **refused** | `DEV_SOURCE_WITHOUT_FLAG` — R-11 AC-1 (a). The message names the device IDs and the remedy (boot once with the flag, unassign, boot without) |
+| 8 | `real` | `0` | `1` | **any production kind** | **refused** | `DEV_FLAG_WITH_PRODUCTION_SOURCE` — R-11 AC-1 (b) |
+| 9 | `real` | `0` | `1` | — , and `DEMS_CAPTURE_HELPER_FFMPEG` unset or failing the path check | **refused** | `DEV_HELPER_PROGRAM_UNUSABLE` — same check as the worker path of row 61 (absolute, resolves to a regular executable file, not writable by group or others) |
+| 10 | any | any | `1` | — , and a listener outside loopback configured | **refused** | `DEV_FLAG_WITH_LAN_LISTENER` — cannot occur today (OD-13: no LAN listener exists, C-5 is class C); stated so that the fence exists before the listener does |
+
+**"Production configuration" defined (answers `01_specs.md` B.2.7 item 7).** A configuration is a
+production configuration when at least one device assigned in the selector has source class
+`PRODUCTION`, or when a listener outside loopback is configured. The development flag is refused
+with either (rows 8 and 10).
+
+| Alternative for the fence | Verdict | Why |
+|---|---|---|
+| A second mode value `DEMS_CAPTURE_MODE=development` | rejected | it would make "is the worker real?" a three-way question in every reader of `captureMode`; the worker, the supervisor and the fencing of M2 only need `real` / `simulated` |
+| Decide per session, not at boot | rejected | R-11 AC-1 asks for a boot refusal; a per-session decision leaves a production Core that can be talked into a development session |
+| Allow the flag with demo controls on | rejected | row 4: two owners of faults in one run |
+| **One extra boolean read inside row 61's one function, with rows 6-10 refused at boot** | **chosen** | three operations, one reader, every unsafe pair refused before a listener opens |
+
+Hand-over: rows 61 and 136 implement the table; the configuration keys are P25 edits 15-18 (§I
+delta). **Assumption:** row 61 keeps the relation "capture mode `real` requires demo controls off"
+that its verification text names; if row 61 decides row 5 differently, only row 5 of this table
+changes.
 
 ### A.2 NM-02 — Capture worker process
 
@@ -284,6 +401,336 @@ profile list changed since configuration; clock drift / NTP set refused; PoE cyc
 Test hook: `FakeOnvifStub` (NM-14) for discovery/profiles/NTP; `FakePoeController` records cycles;
 real adapters are class C (C-1/C-3).
 
+#### A.6.0 Delta 2026-10-09 (row 123) — what changes in this section (D73, D74, D75, D76, D80)
+
+The sketch above stays the seam; five things are added or narrowed. **Class boundary after this
+delta:** unauthenticated discovery (§A.6.1) and the read-only connection test (§A.6.2) are scheduled
+work (rows 131, 142); `ntpOffsetMs` as a *set*, GOP set, profile change, PoE cycle and the RTSP
+session that records a real camera stay class C (C-1, C-2, C-3).
+
+```ts
+interface CameraAdapter {                                  // delta: members added or narrowed
+  readonly kind: CaptureAdapterKind;                       // §A.1.1
+  discover(search: DiscoverySearch): Promise<DiscoveryResult>;                 // §A.6.1 — probe only
+  testConnection(candidate: CameraCandidate, credential: CameraCredential | null,
+                 signal: AbortSignal): Promise<ConnectionTestResult>;           // §A.6.2 — reads only
+  openSource(deviceId: string, target: { ingestUrl: string }, signal: AbortSignal): Promise<SourceHandle>; // §A.6.4 — FAKE / LOCAL_DEVICE; ONVIF_RTSP = class C-2
+  profiles(deviceId: string): Promise<MediaProfile[]>;     // unchanged; for ONVIF_RTSP it returns what the last successful test read, it makes no request of its own
+  pullUrl(deviceId: string, profile: string): string;      // unchanged: host/path form, never a credential (SEC35-04)
+  ntpOffsetMs(deviceId: string): Promise<number>;          // unchanged; a read; setting the clock is class C
+}
+```
+
+#### A.6.1 `discover()` — probe-only WS-Discovery (PE-123-04; D74 (1), D75, D76 (1), D80(1), D80(11); C-N13)
+
+**Subject.** How the Core finds cameras on the network it is attached to, without connecting to any
+of them. **Stakeholders:** the operator with `CAPTURE_CONFIG` who presses "Search for cameras"; the
+owner of the network (a probe is multicast traffic on it); rows 131, 132, 126, 127.
+
+**What the protocol gives (verified against the specification text; anything not verified is
+labelled).**
+
+| # | Fact | Source |
+|--:|---|---|
+| V-1 | Probe goes to UDP port 3702, IPv4 multicast `239.255.255.250`; IPv6 `FF02::C` (link-local scope) | OASIS WS-Discovery 1.1 §3.1.1 (fetched 2026-10-09) |
+| V-2 | A `ProbeMatch` carries `EndpointReference` (required), `Types`, `Scopes`, `XAddrs` (each optional in WS-Discovery) and `MetadataVersion` (required) | WS-Discovery 1.1 §5.3 outline |
+| V-3 | A `ProbeMatches` message carries `RelatesTo` equal to the message ID of the Probe, and is sent unicast to the source address and port of the Probe | WS-Discovery 1.1 §5.3, §5.3.1, §1.7 |
+| V-4 | A target service waits a random time between 0 and `APP_MAX_DELAY` (default 500 ms) before it answers | WS-Discovery 1.1 §3.1.3, Table 5 |
+| V-5 | A target service answers with one `ProbeMatch`; a discovery proxy may send zero or several in one message | WS-Discovery 1.1 §5.3 |
+| V-6 | Discovery messages need not be secured ("does not require that endpoints participating in the discovery process be secure"): **an answer is an unauthenticated claim** | WS-Discovery 1.1 §8.1 |
+| V-7 | An ONVIF device implements the target-service role, uses the 2005/04 discovery namespace and a `urn:uuid:` endpoint reference that is stable and "constant across network interfaces" | ONVIF Core Specification 26.06 §7.1, §7.3.1, namespace table (prefix `d`) |
+| V-8 | An ONVIF device "shall include" `tds:Device` in `Types`; the text of version 26.06 does not contain the older `NetworkVideoTransmitter` type at all (0 matches in the extracted text) | ONVIF Core 26.06 §7.3.2.1 |
+| V-9 | Scopes have the form `onvif://www.onvif.org/<path>`; categories: Profile, Location, Hardware, Name, MacAddress, SerialNumber; a device "shall include at least one fixed entry ... of the profile, hardware and name categories". **There is no vendor / manufacturer category** | ONVIF Core 26.06 §7.3.2.2.1, Table 8 |
+| V-10 | A device "shall include the `<d:XAddrs>` element with the addresses for the device service in a matching probe match message" | ONVIF Core 26.06 §7.3.3 |
+| V-11 | A device can be set non-discoverable; it then does not answer | ONVIF Core 26.06 §7.2 |
+| V-12 | `GetDeviceInformation` (manufacturer, model, serial number) has access class `READ_SYSTEM` — not available to an anonymous user under the default policy; `GetSystemDateAndTime` and `GetServices` are `PRE_AUTH` | ONVIF Core 26.06 §8.3.1, §8.3.6, §8.1.2, §5.9.4.3 Table 7 |
+
+Consequences for `01_specs.md` B.2.0: assumption A-2 holds for address, endpoint reference, name
+and hardware (model) hint and is **wrong for "vendor"** (V-9: no such category — a vendor hint
+exists only when a device adds a non-standard scope); assumption A-3 is confirmed by V-12 for the
+default access policy. D80(1) costs nothing the specification promised: the manufacturer and the
+serial number are behind authentication by default anyway.
+
+**Message flow.**
+
+```text
+operator action (operation of row 121)            Core process                         network
+  "Search for cameras"  ───────────────►  rate limit, single-flight check
+                                          select interface(s)                (os.networkInterfaces, no process, no socket)
+                                          open ONE udp4 socket, port 0       ──┐
+                                          t = 0 ms     Probe A (Types tds:Device)               ──► 239.255.255.250:3702
+                                                       Probe B (Types dn:NetworkVideoTransmitter) ─► 239.255.255.250:3702
+                                          t = 250 ms   the same two datagrams once more (same MessageIDs)
+                                          t <= 3000 ms ProbeMatches  ◄── unicast, from each responder's own address
+                                          t = 3000 ms  close the socket      ──┘  (also on every error path and on abort)
+  candidate list (session-scoped)  ◄────  DiscoveryResult { candidates, counts }      nothing registered, nothing connected
+```
+
+**Design decisions.**
+
+| # | Topic | Decision | Alternatives and why not |
+|--:|---|---|---|
+| DS-1 | Who owns the socket | The **Core process**, in exactly one file, `apps/core-server/src/capture/adapters/camera/ws-discovery.ts` (the only importer of `node:dgram`, §G.1 G-R9). The capture worker owns no datagram socket (§A.2 W-1) and is not involved in a search | the worker (rejected: W-1, D80(11)); a helper process (rejected: a process to send four datagrams) |
+| DS-2 | How many sockets | **One** `udp4` socket per search, created when the search starts, closed when the window ends, on every error and on abort; none before or after (C-N13 bounds 1-3). `reuseAddr` is **not** set | a socket kept open between searches (rejected: C-N13); a listener for `Hello` announcements (rejected: it would be a background receiver, D74 (1)) |
+| DS-3 | IPv4 or also IPv6 | **IPv4 only.** | IPv6 link-local (`FF02::C`, V-1) rejected for this phase: the plan, the anti-steering rule and the fixtures are IPv4 literals; a link-local IPv6 service address needs a zone index inside a URL, which widens the address-parsing surface of the connection test. **Gap recorded:** a camera reachable over IPv6 only is not found (same class as D80(10)) |
+| DS-4 | Which local interfaces | Eligible = every interface entry of `os.networkInterfaces()` that is IPv4, not internal, has a netmask other than `255.255.255.255` and a non-zero hardware address. Link-local `169.254.0.0/16` **is** eligible (ONVIF Core §6: devices should support link-local addressing — a camera on a switch with no DHCP server). **One eligible interface:** the socket is bound to that interface's address, port 0. **Several:** still one socket, bound to `0.0.0.0` port 0, and the two probes are sent once per interface with `setMulticastInterface`; at most 4 interfaces. **None:** the search does not run (`NO_ELIGIBLE_INTERFACE`) | bind `0.0.0.0` always (rejected: "never bind beyond what is needed"); one bound socket per interface (rejected: C-N13 says one socket per search); a configuration key naming the interface (rejected for now: one more frozen-file key; revisit if the Core device has a dedicated camera network and the rule above picks wrongly). On this Mac the interface list holds tunnel, bridge and peer-to-peer entries besides the Ethernet / Wi-Fi ones (probe P-6: name classes only) — hence the property test, not a name list |
+| DS-5 | Multicast reach | `setMulticastTTL(1)`: the probe does not leave the local segment | a larger TTL (rejected: searching other people's segments) |
+| DS-6 | Probe content | SOAP 1.2 envelope, WS-Addressing 2004/08, action `http://schemas.xmlsoap.org/ws/2005/04/discovery/Probe`, `To` `urn:schemas-xmlsoap-org:ws:2005:04:discovery`, a fresh `urn:uuid:` message ID per probe from the platform's random UUID. **Two probes:** Types `tds:Device` (V-8) and Types `dn:NetworkVideoTransmitter` (the type older devices announce — **hypothesis** from the analyst's recall of earlier Core versions; it is what the `onvif` package probes for, `lib/discovery.js` of 0.8.3). No `Scopes` filter. Nothing about this product is in the message | one probe with empty Types (rejected: every WS-Discovery device on the segment answers — printers, PCs — more device data than needed); only `dn:NetworkVideoTransmitter` (rejected: V-8 — a device following 26.06 to the letter need not announce it) |
+| DS-7 | Window and repeats | Window **3,000 ms** from the first datagram (proposed contract constant `CAPTURE_DISCOVERY_WINDOW_MS`; row 121 fixes it). Each probe is sent twice, 250 ms apart. Floor: 250 ms + `APP_MAX_DELAY` 500 ms + 100 ms = 850 ms (V-4; WS-Discovery Table 12 `MATCH_TIMEOUT`); the rest is margin for Wi-Fi and slow devices. No further retry: "Search again" is the operator's | 5,000 ms (the package default; rejected: no evidence it finds more, and the operator waits); adaptive extension while answers arrive (rejected: unbounded) |
+| DS-8 | What is accepted | A datagram is used only if **all** hold: source is IPv4 and on-link for a probed interface (`(source & mask) == (interface & mask)`); size <= 16 KiB; it parses as a SOAP envelope; `Action` is the ProbeMatches action; **`RelatesTo` equals one of this search's two message IDs** (V-3); it holds >= 1 `ProbeMatch` with a non-empty endpoint reference of <= 256 characters. Everything else is dropped and **counted**, never logged with content. Caps: 256 datagrams processed and 64 distinct responders per search, then the result is marked `truncated` | accept without `RelatesTo` (rejected: any host could push "cameras" into the list at any time during the window; the message ID is the only secret a responder must have seen) |
+| DS-9 | **Anti-steering rule** (D80(11); R-9 AC-10) | The candidate's `sourceAddress` is the address the datagram came from (the kernel's, not the message's). From `XAddrs` (V-10; a space-separated list) the **service address** is the first `http:` or `https:` URI whose host is an IPv4 literal **equal to `sourceAddress`**, with no user-info part. If no entry qualifies the device is still listed (it did answer) with `connectable: false` and the reason `NO_SERVICE_ADDRESS` or `ADDRESS_MISMATCH`; no later step may contact a host that a message named and the kernel did not | take the first XAddr (what `lib/discovery.js` `matchXAddr` falls back to — rejected: a responder could aim the operator's credential at a third host); resolve host names (rejected: DNS on a claim) |
+| DS-10 | What a candidate is | `{ candidateId (random, per search), endpointRef, sourceAddress, serviceAddress \| null, connectable, types[], nameHint, hardwareHint, vendorHint (null unless a non-standard scope states it), profileHints[], locationHints[], macHint, serialHint }` — every field is read from the answer; **no field needs a request to the device** (D80(1); R-9 AC-2). The mark new / already registered and the matching key are rows 121 / 122 (the stable identifier the protocol offers is the endpoint reference, V-7) | reading `GetDeviceInformation` / `GetScopes` over TCP (rejected by D80(1); and V-12 says it would mostly be refused) |
+| DS-11 | Rate limit | Single-flight: one search at a time per Core; a second request while one runs gets the running search's result or a typed refusal (row 121 chooses). Minimum 5 s between two searches per Core (proposed; rows 121 / 126 fix the constants). An attempt over the bound sends nothing | per operator only (rejected: two operators could double the traffic) |
+| DS-12 | What is logged and stored | The Core log gets **counts only**: interfaces probed, datagrams sent, received, accepted, dropped per reason, candidates, duration, `truncated`. No address, endpoint reference, MAC, serial, name or scope in any log, audit detail or error text (R-9 AC-16; C-N15). Candidates live in the operator session's memory (row 132) and nowhere else: product code has **no file writer for candidates**. The real-LAN check of row 131 writes its raw result only from the test harness, to git-ignored `.data/discovery/` (`.gitignore:70`); committed files quote counts and model class | a debug log of answers (rejected: device-identifying data in a file that is not git-ignored by construction) |
+| DS-13 | Zero responders | `{ candidates: [], counts }` is a **successful** result; the API layer (rows 132, 133) writes the one audit row with count 0 and raises the one R-10 alert (D80(8)). Distinct from it: `NO_ELIGIBLE_INTERFACE` and `SOCKET_ERROR` (bind or send refused) are "the search could not run" — reported as such, **never as "no camera found"** (R-9 AC-15 "not run") | fold both into an empty list (rejected: the operator would be told the network is empty when nothing was sent) |
+| DS-14 | Time | Every timer goes through the capture timer seam (`apps/core-server/src/capture/timers.ts`); tests run on a fake clock (C-N5) | wall-clock waits in tests (forbidden) |
+| DS-15 | Tests | The automated suite sends the two probes **unicast to the fake stub on `127.0.0.1`** (§A.8.1): the target `{ address, port }` is a constructor argument that only the fake registry may set — no configuration key, no environment variable. Production code has the multicast target as a constant (D74 (1); R-9 AC-14) | multicast on the loopback interface in tests (rejected: it leaves the process boundary on some hosts and depends on the machine's multicast routing) |
+
+**Failure modes added:** no eligible interface; bind or send refused (also what a host firewall or
+the operating system's local-network privacy control produces — H-13); an answer with a foreign
+`RelatesTo`, an off-link source, several `ProbeMatch` children, an oversized or malformed body
+(dropped and counted; the Core must survive each — check by row 131 on the stub); two interfaces on
+the same segment (the same device answers twice: de-duplicated by endpoint reference, the first
+source address is kept); a non-discoverable device (V-11: not found; gap).
+
+#### A.6.1a The dependency decision (PE-123-05; Q-INSTALL item 6, DP-13; the user's ready-made-frameworks rule)
+
+**Approval text.** `report/report.md:72`: "Q-INSTALL | Blanket approval for: ... (6) an ONVIF client
+npm package after B2. Each install is logged with version, size and its uninstall command; no
+sudo"; `identification/02_structured.md:606` (DP-13): "pre-approved; the package is named and
+checked for licence and maintenance in row 123 before row 131 installs it". Candidates were
+collected earlier (`research/02_collection.md` F-81..F-83, F-87).
+
+**Package named: `onvif` 0.8.3** (repository `github.com/agsh/onvif`, licence MIT, one runtime
+dependency `xml2js ^0.6.2`, `engines.node >= 14`, 20 files, 283,576 bytes unpacked, published with
+registry provenance by the repository's CI; registry document fetched 2026-10-09; publish date
+2026-09-07 per F-81; no conformance statement exists for any candidate, F-87).
+
+What its discovery does, **read in the source** of 0.8.3 (`lib/discovery.js`, 6,840 bytes,
+SHA-256 `9370a677...27f6a5`; by inspection, not executed):
+
+| # | Observation | Effect here |
+|--:|---|---|
+| O-1 | `resolve` defaults to true: every answer becomes a `Cam` object, and `Cam` connects by itself unless `autoconnect: false` (`lib/cam.js:121-123`; its `connect()` calls `getSystemDateAndTime`, `getServices` / `getCapabilities`, `getProfiles`, `getVideoSources`) | the default breaks D76 (1) and D80(1); `resolve: false` avoids it |
+| O-2 | "`// TODO check for matching RelatesTo field and messageId`" — answers are not matched to the probe | DS-8 cannot be met |
+| O-3 | `matchXAddr` returns `ipMatch[0] \|\| xaddrs[0]` | in `resolve` mode the anti-steering rule DS-9 is not applied; with `resolve: false` the rule would be ours anyway |
+| O-4 | Probes for `dn:NetworkVideoTransmitter` only | V-8: a device announcing only `tds:Device` is not found |
+| O-5 | Without the `device` option the socket is bound to all interfaces; `reuseAddr: true` | DS-2 / DS-4 not met without extra care |
+| O-6 | The window is a real `setTimeout`; the socket is closed only there. On a socket or bind error the callback fires and the socket stays open until the timer; no abort | C-N13 bound 2 ("closed on every error path") not met |
+| O-7 | A malformed datagram makes the module `emit('error', ...)` on a shared singleton emitter; an emitter with no `error` listener throws | a listener must always be attached |
+| O-8 | After a successful parse it reads `data.probeMatches.probeMatch.endpointReference.address`. With two `ProbeMatch` children (V-5 allows it) `probeMatch` is an array (`lib/utils.js` `linerase`) and the read throws a `TypeError` **inside a `setImmediate` callback** — an uncaught exception of the process | **one crafted datagram to the open port ends the Core process.** Searching is allowed while a session is open (D80(4)), so this is a way to stop a recording from the network. Not containable from outside the package |
+
+| Option | Ready-made rule | Constraints C-N13, D80(1), DS-8, DS-9 | Static guards | Cost | Verdict |
+|---|---|---|---|---|---|
+| (a) `onvif` package for discovery **and** for the connection test | best fit | discovery fails O-2, O-4, O-6 and O-8; O-8 is a process crash on hostile input | no `node:dgram` import of ours, but a socket we do not control | lowest | **rejected for discovery** |
+| (b) own WS-Discovery probe over `node:dgram`, **and** own SOAP / WS-Security client for the test | hand-built twice | meets all | two doors of ours | highest; hand-written digest authentication is the kind of code this project should not write | rejected |
+| **(c) own probe over `node:dgram` (one file, about 200 lines, parsing with `xml2js`) + the `onvif` package for the authenticated connection test only (§A.6.2)** | the kit is used where it covers the need (ONVIF SOAP, WS-Security digest, HTTP digest, `GetProfiles`, `GetStreamUri`); the hand-written part is the piece the kit gets wrong, and is recorded here as the decision the rule asks for | meets all | one pinned `node:dgram` file, one pinned importer of `onvif` (§G.1) | medium | **recommended** |
+
+WS-Discovery is not ONVIF-specific; the probe is two fixed SOAP strings, one socket and a filter.
+The parser is `xml2js` (MIT; it arrives with `onvif` and is declared as a direct dependency so that
+the probe does not rely on a transitive one), configured so that repeated elements are always
+arrays (the cause of O-8) — **hypothesis H-14:** it rejects entity-expansion input in bounded time;
+row 131 proves it with a hostile-datagram test before the real-LAN check.
+
+**Licence entries for row 96 (DOC-05):** `onvif` 0.8.3 — MIT, "Copyright (c) 2018 Andrew Laptev"
+(the package's `LICENSE`); `xml2js` — MIT; its dependencies `sax` (the lockfile records
+`BlueOak-1.0.0` for the 1.6.1 already present) and `xmlbuilder` (MIT). Exact versions are whatever
+row 131 pins; core-server pins exact versions (`apps/core-server/package.json:25-34`), so `onvif`
+is pinned `0.8.3` and `xml2js` exactly. Row 131 stays the sole lockfile writer and logs version,
+size and the uninstall command (Q-INSTALL). **No install was made by this row.**
+
+**Effect on blueprint row 131 (for the controller).** Its text says "plus reading the responders'
+unauthenticated device information and scopes" — after D80(1) only the scopes **in the answer** are
+read. Its dependency clause stands (it installs `onvif` and `xml2js`), but its own code uses the
+package for nothing: the first user of `onvif` is row 142.
+
+#### A.6.2 Candidate -> operator action -> credential -> connection test -> adopt -> assign (PE-123-06; D76, D80(1), D80(4), D80(7), D80(11); C-N15)
+
+| Step | Who acts | Adapter method | Network traffic | What exists afterwards |
+|--:|---|---|---|---|
+| 1 Search | operator (or once inside an operator-started pre-check) | `discover()` | 4 datagrams out per interface; answers in | a candidate list in the operator session; 0 rows anywhere |
+| 2 "Connect" on one candidate | operator | none | none | the web console shows the credential prompt (D80(3): web only) |
+| 3 Credential typed | operator | none | none | the credential is in the request to the connection-test operation (row 121), nowhere else |
+| 4 Connection test | the Core, for that operator | `testConnection(candidate, credential, signal)` | reads only, to the candidate's own address (below) | one outcome + one audit row with the outcome name; the credential is gone (§A.6.3) |
+| 5 Adopt | operator, only after `REACHABLE` | none (row 142: `capture_devices` row with the adapter kind, endpoint reference, service address, the profile read by the test) | none | a registered device |
+| 6 Persist the credential | operator action through **operation 89** | none | none | available once row 84's sealer exists; until then `503 CREDENTIAL_STORE_NOT_READY` (D80(7)), so an **authenticated** camera is adoptable after row 84, an unauthenticated / fixture / local-device source from M4 |
+| 7 Assign | operator, operations 78 / 79 | none | none | the selector names the device; refused for a candidate that did not pass step 4 (R-9 AC-5) |
+
+`testConnection` refuses **before any network request** (0 outbound requests, asserted on the stub
+log) when: the candidate is not of the calling operator session or has expired; `connectable` is
+false; `credential` is null and the target is not a loopback fixture (`CREDENTIAL_REQUIRED` — no
+default, no stored-for-another-device, no guessed value, C-N15); a session is open
+(`409 CAPTURE_CONFIG_LOCKED`, D80(4)); the rate limit is exceeded. The operator cannot type a host,
+a port or a URL (D80(10)).
+
+**The five outcomes, each defined by what is observed.** Order of evaluation is top to bottom; the
+first that applies is the outcome.
+
+| Outcome | Observed | Requests made |
+|---|---|---|
+| `UNREACHABLE` | the TCP connection to the candidate's service address is refused or times out; or no HTTP answer to `GetSystemDateAndTime`; or (later) the RTSP port does not accept a TCP connection | <= 1 HTTP attempt, or the RTSP connect |
+| `AUTHENTICATION_FAILED` | `GetProfiles` with the operator's credential is answered HTTP 401 / a SOAP `NotAuthorized` fault; or RTSP `DESCRIBE` answers 401 again after one digest round; or the device accepts only an authentication scheme that would send the password in clear (HTTP Basic, WS-Security `PasswordText`) — reason `SCHEME_NOT_ALLOWED`, **the password is not sent** | `GetSystemDateAndTime`, `GetServices`, `GetProfiles` |
+| `WRONG_PROFILE` | authenticated, but: `GetProfiles` returns no profile, or none with a video source and a video encoder configuration; or `GetStreamUri` for RTSP returns no URI, a URI that is not `rtsp:`, a URI with a user-info part, or a URI whose host is not the candidate's `sourceAddress` (reason `STREAM_HOST_MISMATCH`: the foreign host is **not** contacted) | + `GetStreamUri` |
+| `NOT_H264` | a usable profile exists but no profile's video encoder is H.264 (ONVIF answer); or the RTSP `DESCRIBE` answer's SDP has no `m=video` line whose `a=rtpmap` names `H264/90000` | + RTSP `DESCRIBE` |
+| `REACHABLE` | authenticated; an H.264 profile; `GetStreamUri` on the candidate's own address; RTSP `DESCRIBE` **over TCP** answers 200 with an H.264 video line. Result carries: profile token, resolution, frame rate and GOP length **as announced**, and warnings — `GOP_ABOVE_BOUND` when the announced GOP is longer than 2 s (Q-GOP; changing it is class C), `NO_PARAMETER_SETS_IN_SDP` (S1 SP-6 risk for the later ingest) | all of the above |
+
+Rules of the test:
+
+| # | Rule | Why |
+|--:|---|---|
+| CT-1 | **Reads only.** The complete list of device operations the test may call is: `GetSystemDateAndTime` (`PRE_AUTH`, V-12; the WS-Security digest needs the device's clock), `GetServices` (`PRE_AUTH`; `GetCapabilities` only if a device lacks it), `GetProfiles`, `GetStreamUri`, and RTSP `OPTIONS` / `DESCRIBE`. No `Set*`, `Create*`, `Add*`, `Remove*`, `Delete*`, no PTZ, no reboot, no NTP, GOP or profile change, no PoE action — **class C** (D75, D76; C-1). Enforced by a pinned call list (§G.1 G-R11) and by the stub's request log (R-9 AC-3, AC-6) | D75 bounds; `01_specs.md` R-9 AC-6 |
+| CT-2 | **No media session.** RTSP stops after `DESCRIBE`: no `SETUP`, no `PLAY`, so no RTP flows and no datagram socket is opened by the test. TCP only. The Core never opens the stream it will record: that is the worker's (§A.6.3) | W-1 spirit; D76 (2) "test with a clear result", not a preview (OD-12) |
+| CT-3 | **Address pinning.** Every request goes to `sourceAddress`. The `onvif` client is created with `autoconnect: false` (O-1) and `preserveAddress: true` (`lib/cam.js:106`: "force using hostname and port from constructor for the services"), so a service address announced inside `GetServices` cannot move the next request; the RTSP URI is checked as in `WRONG_PROFILE` | DS-9; R-9 AC-10 (not an SSRF or port-scan primitive: the only reachable hosts are devices that answered this operator's search from their own address) |
+| CT-4 | **Timeouts.** TCP connect 3 s; each request 5 s (the package default is 120 s, `lib/cam.js:94` — it must be set); the whole test 15 s, enforced by the `AbortSignal`; no retry inside a test except the single digest round of a 401. A second attempt is a new operator action with a newly typed credential (R-9 AC-7, AC-8) | bounded operator wait; a camera's own lock-out counter |
+| CT-5 | **Rate.** One test at a time per Core; failed tests per device bounded below a camera's lock-out threshold (proposal: 3 per 10 minutes per candidate; constants by rows 121 / 126) | D80(11) |
+| CT-6 | **TLS.** An `https:` service address is used as announced; a camera's self-signed certificate cannot be validated, so the certificate is not checked and **the test's result is not evidence of the device's identity**. The password still never travels in clear (CT-1 digest-only rule) | honesty about what the test proves; hardening (certificate pinning at adoption) is class C |
+| CT-7 | **Errors are mapped, never passed on.** The package's error objects and the device's fault text are reduced to the outcome and a reason code from a closed list; the original object is not logged, not returned and not audited (it can contain the request envelope) | SEC35-04; E-31 |
+
+**Gap for the controller.** The RTSP `DESCRIBE` needs a TCP client in the Core: about 150 lines over
+`node:net` in one pinned file (§G.1 G-R10). The ready-made alternatives were rejected for a stated
+reason: running `ffprobe` puts the credential in the argument list (forbidden, §A.6.3), and no
+RTSP-client package is pre-approved (Q-INSTALL names an ONVIF client only). If the controller prefers
+no hand-written RTSP at all, the codec check can rest on the ONVIF answer alone and `NOT_H264` /
+`REACHABLE` lose their RTSP half — weaker: the device's claim is not checked against its RTSP server.
+
+#### A.6.3 Credential handling in memory, and what the recording process later receives (PE-123-07; D76, D80(7); SEC35-04; C-N8, C-N15)
+
+| # | Rule | Detail |
+|--:|---|---|
+| CR-1 | Lifetime | The credential exists from the arrival of the connection-test request to the return of `testConnection` — one call. It is a parameter, never a field of the candidate, of the operator session, of the adapter or of the registry; nothing caches it for a retry |
+| CR-2 | Form | `CameraCredential { username: string; secret: Buffer }`. The route converts the typed secret to a `Buffer` once and passes that |
+| CR-3 | Zeroing | `secret.fill(0)` in a `finally` of the route, and the `onvif` client object is dropped. **Stated limit:** JavaScript strings cannot be overwritten — the parsed request body and the copy the package holds while it computes digests live until the garbage collector frees them. The guarantee is therefore "bounded lifetime, never serialised", not "erased from memory" |
+| CR-4 | Never in | a log line, an audit detail, an error text, a thrown object that leaves the adapter, a URL, an argument list, an environment variable, a file, the candidate list, a WebSocket frame, a response body. The request body field is excluded from request logging by the route's schema (row 121) and is in both blanking lists (§G G-R4) |
+| CR-5 | On the wire | Only as a digest: WS-Security `PasswordDigest` or HTTP Digest toward the device service, RTSP Digest toward the RTSP server. Never Basic, never `PasswordText` (CT-1) |
+| CR-6 | Persistence | Not by the test. Storing a credential is operation 89 into the one Core credential store, available after row 84 (D80(7)). No second store, no interim file |
+| CR-7 | Tests and agents | Fixture credentials exist only in the stub's test set-up; an agent never types, stores or receives a real camera credential (D76 (4)). A check that needs a real connection stops and hands over to the user |
+
+**What the recording process receives (consistent with SEC35-04 and row 65).** The rule of the table
+at the top of §A.6 stands: `pullUrl` returns `rtsp://host:port/path` without a credential, and the
+credential joins it only at the point where the process that opens the RTSP session is started.
+Stated precisely for the protocol as built:
+
+- The credential travels as **separate fields beside the URL** in the start message on that
+  process's standard input (the channel the plan already uses, §A.2 W-6 "the plan from `START`, not
+  argv"); never in the argument list, never in the environment, never as `rtsp://user:pass@host`
+  in any string that is stored or logged. The process builds the authentication in memory.
+- **As built, no such process exists for a real camera**: the plan knows one camera input, a
+  loopback **listen** address (`packages/capture-protocol/src/index.ts:264-265`,
+  `LOOPBACK_RTSP_URL` `:245`), and the worker never dials out. Recording a real camera needs either
+  a pull input kind in the plan (a protocol and worker change) or a pull relay in front of the
+  unchanged worker that takes its credential on standard input — the FFmpeg command-line program
+  cannot be that relay, because it takes the URL in its argument list. **This choice is class C-2
+  and is not made here**; it is recorded as a blueprint gap (no row builds it; H-9 already says a
+  real pull was never exercised). Nothing in R-9..R-11 needs it: the connect flow ends at
+  "assignable", and the development path has no credential.
+
+#### A.6.4 Adapter kind `LOCAL_DEVICE` — the camera helper, and the fake camera of slot 2 (PE-123-08; D73, D74, D80(11); R-11)
+
+**The worker is the RTSP listener; a source is an RTSP client that pushes.** This is how row 58
+built it and how every fixture feeds it (`apps/capture-worker/src/ingest.c:281`, listen ingest;
+`implementation/20_m3_worker_engine.md` §0 "RTSP push over TCP"; the plan's `ingestUrl` is "where
+the worker listens for this camera's RTSP push"). So a local-device source needs **no RTSP server**:
+neither FFmpeg's listen mode nor MediaMTX. No MediaMTX binary exists on this machine (probe P-5:
+0 files, not on the `PATH`; `research/06_spike_s1_fmp4_running_hash.md` does not mention it — the
+S1 spike used FFmpeg listen/push). The helper **binds no port**: it makes one outbound TCP connection
+to `127.0.0.1:<port of the plan>`.
+
+| Alternative | Verdict | Why |
+|---|---|---|
+| Helper serves RTSP (`-rtsp_flags listen`) and the worker pulls | rejected | the worker would need a pull input: a worker change (against D73, R-11 AC-4) |
+| MediaMTX between helper and worker | rejected | not installed, a second listener, and the worker would still have to pull |
+| The worker opens avfoundation itself | rejected by D73 | "worker unchanged" |
+| A small C program linking libavdevice / libavcodec / libavformat (sibling of the row-111 `fake_cam.c`) | **fallback** (see H-15, H-17) | exact control of the wall clock of the first frame (`fake_cam.c:65`, `start_time_realtime`) and an exact permission state; but it is hand-built where a ready program exists |
+| **The FFmpeg 9.0.2 command-line program as the helper, with a fixed argument table** | **chosen first** | ready-made, already on this Mac with `h264_videotoolbox`, `libx264` and the avfoundation input (probes P-2, P-3); the same program serves all four development sources |
+
+**Camera helper — exact pipeline shape** (one process; `<S>` is the Core's wall clock at the moment
+it starts the helper, written twice; `<url>` is the camera's `ingestUrl` from the plan):
+
+```text
+<DEMS_CAPTURE_HELPER_FFMPEG> -hide_banner -nostdin -nostats -loglevel warning
+  -f avfoundation -use_wallclock_as_timestamps 1 -framerate 30 -video_size 1280x720 -pixel_format nv12
+  -i "MacBook Air Camera:none"
+  -an -c:v h264_videotoolbox -realtime 1 -profile:v main -bf 0 -g 30 -b:v 4M -flags +global_header
+  -copyts -output_ts_offset -<S in seconds, 3 decimals> -start_time_realtime <S in microseconds>
+  -f rtsp -rtsp_transport tcp <url>
+```
+
+| Element | Value | Reason | Verified? |
+|---|---|---|---|
+| Device selection | by **exact name** `MacBook Air Camera`, audio `none`; never by index | the list also holds `MacBook Air Desk View Camera` and two `Capture screen` entries (P-1); Desk View is excluded by D74 (2), a screen grab would record the developer's screen | names measured (P-1); that the demuxer's name match cannot pick another entry is checked by row 134 on the list before every open |
+| Frame size and rate | 1280x720 at 30 frames per second | a mode a built-in camera normally offers; keeps the development file near 2 GB per hour at 4 Mbit/s | **HYPOTHESIS H-16** — the supported modes are only shown by opening the device, which this row may not do |
+| Encoder | `h264_videotoolbox`, `-realtime 1`, no B-frames (`-bf 0`), profile main | hardware encoder present (P-2); B-frames would reorder and delay; the worker stream-copies H.264 | options exist (P-4); behaviour is H-15 |
+| Fallback encoder | `-c:v libx264 -preset ultrafast -tune zerolatency -pix_fmt yuv420p -g 30 -bf 0` | the shape `apps/capture-worker/test/m3worker.py:777` already feeds the worker with | measured by row 58 for that shape |
+| **GOP** | `-g 30` = one keyframe per second | the worker's observed-keyframe-interval rule is <= 2 s (Q-GOP default; a fragment is one camera GOP, §C.1); 1 s halves the crash-loss window and leaves margin | that VideoToolbox never exceeds the requested interval is **H-15** |
+| Parameter sets in the SDP | `-flags +global_header` | the worker fails loudly without extradata (`ingest.c:304`, `INGEST_NO_EXTRADATA`; S1 SP-6) | to be confirmed by row 134 (first check of the row) |
+| Transport | RTSP push, `-rtsp_transport tcp`, to the loopback listen address | the worker refuses anything but TCP (D58-16) and owns the listener | row 58 |
+| **Wall clock / sender reports** | `-use_wallclock_as_timestamps 1` stamps each frame with the host wall clock when it is read; `-copyts` keeps those stamps; `-output_ts_offset -S` and `-start_time_realtime S` make "timestamp 0" mean the instant `S`, so the RTCP sender reports of FFmpeg's RTSP output (sent unless `skip_rtcp` is set, P-4) pair each frame's RTP time with the wall-clock time it was read. The worker anchors video on exactly that (`ingest.c:335-340`, PRFT side data from the sender report; no report = the packet is not placed, `no_camera_wall_clock`) | without the three options the report would pair timestamp 0 with the moment the output was opened, and every frame would be placed late by the device and encoder start-up time — a constant audio/video error of unknown size | the three options exist in FFmpeg 9.0.2 (P-4); **that they combine as described is HYPOTHESIS H-17**, measurable without the camera (a generated picture through the same options into the row-60 harness) before the camera is ever opened |
+| Residual offset | each frame is stamped when the host reads it, not when the sensor exposed it | a constant delay of about one frame period plus delivery remains on the video side; the microphone path has its own delay; R-11 AC-10 bounds the sum at +-40 ms | **H-17**; development results close no class-C item (D80(11)) |
+
+**Fake camera of slot 2 (`FAKE`, D74 (2)).** The same program, the same last three lines, input
+`-re -f lavfi -use_wallclock_as_timestamps 1 -i testsrc2=size=1280x720:rate=30` and
+`-c:v libx264 -preset ultrafast -tune zerolatency -pix_fmt yuv420p -g 30 -bf 0`. One program and one
+argument table for both camera slots; the row-60 fixture programs stay test fixtures and are not
+shipped as product sources.
+
+**Lifecycle and rules.**
+
+| # | Rule | Detail |
+|--:|---|---|
+| HL-1 | Owner | The adapter (`adapters/local-device/`) owns its helper: `openSource()` starts it, the returned `SourceHandle.close()` stops it. The session wiring of row 71 calls `openSource` for each camera of the plan after `app.capture.start` and closes every handle when the session ends, faults or the Core shuts down |
+| HL-2 | Process door | Helpers are started through the **existing** process door `apps/core-server/src/capture/ipc.ts` (`spawn` with `shell: false`, `detached: false`, an explicit environment — `ipc.ts:56-62`), which gains one variant with standard error captured. No second file imports `node:child_process`; the allowlist of G-R2 does not grow (§G.1 G-R12) |
+| HL-3 | Arguments | A fixed table per source kind in one file; the only variable values are the port inside the plan's `ingestUrl` (already validated loopback, 8554-8564), the number `S`, and for microphones the FIFO path under the data directory. No value typed by an operator, read from the database or taken from the network reaches an argument |
+| HL-4 | Environment | Empty except what the program needs to start (`PATH` is not needed: the program is an absolute path). Nothing of the server's environment is inherited (same rule as the worker, `implementation/20_m3_worker_engine.md` §5.2) |
+| HL-5 | Start order | A camera helper is started when the worker reports that camera's ingest `WAITING` (the listener is up). A connection refused before that is one bounded retry (2 attempts, 500 ms apart), then the named error |
+| HL-6 | Ports | None bound by a helper. The worker's listen ports come from the plan (row 66), inside `127.0.0.1:8554-8564` next to the fixtures; in development mode the plan uses two of them and the test fixtures must not run at the same time on the same ports (port collision is an existing failure mode, §A.8) |
+| HL-7 | Standard error | Captured by code into a bounded buffer (64 KiB), parsed for the failure class, **never logged raw** (the SEC35-04 rule for FFmpeg output); the log gets the error name only |
+| HL-8 | Stop | Normal: close the helper's standard input is not available (`-nostdin`), so `SIGTERM` (FFmpeg ends the RTSP session with `TEARDOWN`, which the worker treats as the end of that camera — S1 G-1), then `SIGKILL` after 3 s. A helper never outlives its session: the handle is closed on every exit path and the Core's shutdown hook closes all handles; a leftover check (`pgrep` of the helper program started by this Core) joins the row-60 harness |
+| HL-9 | Health | The helper has no telemetry channel of its own. Health = the worker's ingest state and fragment counters for that camera (existing telemetry) + the helper's exit. A helper that exits during a session = that camera is lost: the existing capture warning / `CAMERA_LOSS` path, no automatic restart inside the session (one session per worker process, S1 G-1) |
+| HL-10 | **Named errors** (R-11 AC-5) | `DEVICE_NOT_FOUND` — the exact name is not in the device list, decided **before** any open from `-list_devices` output (enumeration opens no device; P-1). `PERMISSION_DENIED` and `DEVICE_BUSY` — the open failed and the captured output matches a pinned pattern for that cause. `OPEN_FAILED` — the open failed and no pattern matches (added by this row: an unknown failure is never guessed into one of the three). `HELPER_EXITED` — it started and ended early. The patterns are **H-18**: this row may not open or be refused by the device, so the exact text is recorded by row 134 if and when the user chooses to deny |
+| HL-11 | **Never a silent fake** (D80(11)) | Each named error makes the adapter report the source unreachable; the pre-check shows R-10 situation B, a session start with only the fake camera connected is the degraded session of §A.6.5 with its warning naming `CAM-01`. No code path replaces `LOCAL_DEVICE` by `FAKE`; static rule G-R14 |
+| HL-12 | Pre-check | The pre-check of a `LOCAL_DEVICE` camera is the same program with `-t 0.2 ... -f null -` (one short open, bounded at 5 s). It is the first open after boot, so **it is where macOS asks for permission**; the question is answered by the user (D74 (3); DP-12). The permission belongs to the application that started the Core (terminal or development environment), not to the helper — **H-19**. An agent that finds the permission missing stops and hands the user a one-click command; it never touches the permission database or system settings |
+| HL-13 | Sandbox note for the implementation rows | Inside the agents' command sandbox the device list is **empty** (P-1: 0 video and 0 audio devices listed; outside it, 4 and 1). A helper started from a sandboxed command therefore reports `DEVICE_NOT_FOUND` although the device exists; rows 134, 135 and 140 must run their device checks outside the sandbox, through the permission gate |
+| HL-14 | Privacy | Local-device recordings are the developer's face and voice: only under git-ignored `/.data/` (`.gitignore:70`), no frame or audio excerpt in `docs/` (D80(11); R-11 AC-8) |
+
+#### A.6.5 Session start with no camera — D72(k) joined to R-10 (PE-123-09; D72(g), D72(h), D72(i), D72(k), D80(6), D80(8))
+
+**The rule.** The ingest-open window is the worker's listen timeout (`--listen-timeout-s`, default
+15 s, `apps/capture-worker/src/capture_worker.c:40`; a camera still opening 10 s after it is given
+up individually, `:378`). Within it:
+
+| Cameras connected when the window closes | Session | Evidence files | Operator sees |
+|---|---|---|---|
+| 0 of 2 (or 0 of 1) | **FAULTED** — nothing claims to record, no audio-only session | 0 | R-10 situation C: one CRITICAL alert "no camera connected, nothing was recorded" + "Search again" |
+| 1 of 2 | valid **degraded** session, recording | 1 camera file with the audio track | one WARNING naming the missing camera's device ID |
+| 2 of 2 | normal | 2 | nothing |
+
+**Who raises what.** Wire subjects are device IDs (`CAM-01`, `CAM-02`; D72(g)).
+
+| # | Component | What it does | Evidence that it exists / owner |
+|--:|---|---|---|
+| 1 | Capture worker (unchanged) | 0 cameras: fatal `NO_CAMERA_CONNECTED`, exit code 70, no file. 1 camera: reports the other camera's ingest as ended with a `CAPTURE_FAULT` warning whose subject is that device ID (`apps/capture-worker/src/ingest.c:88-94`), and records | built: `implementation/20_m3_worker_engine.md` FR-1 row "D72(k) no camera" |
+| 2 | Supervisor (unchanged) | treats `NO_CAMERA_CONNECTED` as a final crash code: no restart, phase `FAULTED`, exactly one `CAPTURE_FAULT` event | built: `packages/capture-protocol/src/index.ts:142` (`FINAL_CRASH_CODES`) |
+| 3 | Forwarder -> engine | turns the event into the INTERNAL action that faults the session; in mode `real` a missing feed reads NO SIGNAL and no generated meter replaces telemetry (D72(i)) | built for the fault path; row 71 wires session start/stop |
+| 4 | **Session-start notifier (new, row 139)** | on the fault with reason `NO_CAMERA_CONNECTED`: raises exactly **one** CRITICAL alert and writes exactly **one** audit row stating that nothing was recorded; on a degraded start: exactly one WARNING naming the missing device ID and its audit row. Names, severities and detail keys are row 121's (proposal of row 120: `CAPTURE_FAULT` with reason `NO_CAMERA_CONNECTED`) | row 139; depends on rows 71, 133 |
+| 5 | Adapters | do **not** raise alerts. An adapter returns results and named errors (§A.6.4 HL-10); the layer above decides | this delta |
+| 6 | Search API (rows 132, 133) | situation A (a search found nothing: one audit row with count 0 + one alert, D80(8)) and situation B (a configured device unreachable at pre-check: one alert per device per occurrence) | rows 132, 133 |
+| 7 | Clients | draw the alert from Core state; never raise a copy (R-10 AC-6) | rows 137, 138 |
+| 8 | Clearing | by the capture side when a camera connects in a later session; never by demo operation 74; a later occurrence is a new alert with its own audit row (D72(h)) | row 139 |
+
+**One thing the implementation rows must not get wrong.** Today `RECORDING` means "the worker
+accepted the plan": with no camera that phase lasts until the window closes — 15 s by default —
+before `FAULTED` (`20_m3_worker_engine.md`, "Limits stated"). R-10 AC-3 forbids a running timer or a
+recording indicator for a session in which nothing is recorded. So between the accepted plan and the
+first durable fragment of any camera (the `RECORD` frame that makes the session durable, D58-1) the
+session machine must present **"connecting cameras"**, not "recording". Owner: row 71 (session
+wiring) with the UX of row 125. This delta changes no worker frame and no protocol field for it.
+
+**Local-device consequence.** In `REAL_DEVELOPMENT` the camera helper must be pushing before the
+window closes. A first-ever open waits for the user's answer to the macOS prompt, which can take
+longer than 15 s; hence HL-12: the permission is settled at pre-check, not at session start. If the
+helper fails at session start, slot 2 (fake) still connects: the session is the degraded case above
+with the warning naming `CAM-01` — visible, never silent (HL-11).
+
 ### A.7 NM-10 — Audio input adapter + switch controller
 
 | Field | Content |
@@ -314,6 +761,57 @@ thread other than the filtering thread (forbidden, section E); both inputs down 
 
 Test hook: two fake mics with a level separation (S2 used `volume=0.3`, S2 §2); inject a switch
 and assert `AudioSourceInterval` records and the warning — never an automatic switch.
+
+#### A.7.1 Delta 2026-10-09 (row 123) — the local microphone helper and the fake microphone of slot 2 (PE-123-10; D73, D74, D75, D76, D80(5), D80(11); R-11, R-10 AC-2)
+
+**Where the audio adapter lives and what it hands over.** As for cameras (§A.1.1), the adapter is
+Core-process code under `apps/core-server/src/capture/adapters/audio/`. `open(inputId)` returns an
+`AudioStreamHandle` that names a **transport the worker already reads**. One transport exists: the
+row-58 kind `PCM_FIFO` — a named pipe carrying raw PCM, 32-bit float, little-endian, at the plan's
+sample rate and channel count (48,000 Hz, mono), written by another process
+(`packages/capture-protocol/src/index.ts:165-172`; decision D58-6, accepted for the fixture
+transport, D72(e)). Blueprint row 65 lets the adapter layer replace that transport for real
+devices (class C-4); **for the development sources this delta keeps it**, because it is the only
+transport the unchanged worker has. D75 and D76 speak of cameras: no microphone is searched for,
+probed or connected over the network in this phase (D80(5)), and the agent rule of D76 (4) applies
+to the local microphone as the permission rule of D74 (3).
+
+```ts
+interface AudioStreamHandle {                       // delta: made concrete for DEVELOPMENT kinds
+  readonly deviceId: string;                        // 'MIC-01' | 'MIC-02' — the wire subject (D72(g))
+  readonly input: { kind: 'PCM_FIFO'; path: string };   // goes into the plan unchanged
+  close(): Promise<void>;                           // stops the helper, removes the pipe
+}
+```
+
+**Mic helper — exact pipeline shape** (one process per microphone; `<fifo>` is created by the
+adapter, see ML-2):
+
+```text
+<DEMS_CAPTURE_HELPER_FFMPEG> -hide_banner -nostdin -nostats -loglevel warning
+  -f avfoundation -i "none:MacBook Air Microphone"
+  -vn -ac 1 -ar 48000 -c:a pcm_f32le -f f32le -flush_packets 1 -y <fifo>
+```
+
+**Fake microphone of slot 2 (`FAKE`):** the same program with the input
+`-re -f lavfi -i sine=frequency=880:sample_rate=48000` and the same output line (880 Hz, the
+standby tone of the row-58 fixture, audibly different from a voice).
+
+| # | Rule | Detail |
+|--:|---|---|
+| ML-1 | Device selection | by exact name `MacBook Air Microphone`, video `none` (the only audio device listed on this Mac, probe P-1); never by index |
+| ML-2 | The pipe | Node has no call that creates a named pipe. The adapter creates it with `/usr/bin/mkfifo -m 600 <path>` through the same process door as the helpers (HL-2), at `<dataDir>/run/capture/<sessionId>/<deviceId>.pcm` — under git-ignored `/.data/`, mode 0600, removed when the handle closes; a leftover path from a crashed run is removed only if it is a pipe owned by the server's user, otherwise the open fails with a named error. The worker refuses a path that is not a pipe (`MIC_INPUT_NOT_FIFO`, `packages/capture-protocol/src/index.ts:137`) |
+| ML-3 | Format | 48 kHz mono float in the pipe; the worker resamples each microphone onto the host clock by itself (D58-14: +-5,000 ppm, D72(j) F-4), so the helper does no clock correction |
+| ML-4 | Timing | The worker places a microphone by **arrival** (D58-6: T0 from the first 300 ms of chunks, 40 ms latency). The helper therefore must not buffer: `-flush_packets 1`, no filter that collects samples. The size of the chunks the device hands over is not known — **H-20** |
+| ML-5 | Lifecycle, door, arguments, environment, standard error, stop, named errors, never a silent fake, sandbox note, privacy | exactly HL-1..HL-4, HL-7, HL-8, HL-10, HL-11, HL-13, HL-14 of §A.6.4, with "microphone" for "camera". Start order: the helper is started when the worker has accepted the plan; opening the pipe for writing waits until the worker has it open for reading |
+| ML-6 | Health | the worker's telemetry for that device ID: a microphone that delivers nothing reads `dbfs: null` = NO SIGNAL (D72(i), D72(j)); the `MIC_SILENT` warning stays NM-10's and is never an automatic switch (OD-11) |
+| ML-7 | A local microphone that cannot be opened | named error -> the source is unreachable -> pre-check: R-10 situation B naming `MIC-01`; D80(6): both microphones unreachable blocks the start, the standby alone unreachable warns. The fake microphone is **not** promoted to primary by the Core; the operator may switch by hand (the ordinary audited switch) |
+| ML-8 | "Search again" for a microphone (D80(5)) | re-runs `enumerate()`. For `LOCAL_DEVICE`, `enumerate()` is the device-list call of HL-10 (it opens no device and asks for no permission); there is no network microphone discovery in this phase |
+
+Alternatives for the microphone path: a new worker input kind for avfoundation (rejected: worker
+change, D73); a loopback RTSP audio source (rejected: the worker takes audio from microphone inputs,
+not from the camera ingests — it would be a worker change too); a small native capture program
+(fallback, same reasoning as §A.6.4, if H-20 fails).
 
 ### A.8 NM-14 — Fixture set
 
@@ -351,6 +849,25 @@ bound), see §F. (3) A "camera stops, audio keeps landing on disk" case (§A.2 W
 three forbidden mux options of §C.4 is kept as a **negative control** for `M3-AV-1/2`.
 
 Test hook: the fixture is the hook; M3's worker integration drives it end to end.
+
+#### A.8.1 Delta 2026-10-09 (row 123) — what the fake ONVIF stub must be able to do (PE-123-11; D74 (1), D76, D80)
+
+The stub is the only "network" the automated suite ever searches or connects to (R-9 AC-14). Rows
+131 and 142 need these behaviours from it; all listeners on `127.0.0.1` (TCP ports inside
+8554-8564; its UDP responder on a loopback port of the same range — UDP and TCP port numbers do not
+collide):
+
+| # | Behaviour | Used by |
+|--:|---|---|
+| ST-1 | Answers a **unicast** Probe on loopback with N configurable `ProbeMatches` (N = 0 for the empty case): endpoint reference, `Types`, the three mandatory scope categories, `XAddrs` | DS-13, DS-15; R-9 AC-2; R-10 AC-1 |
+| ST-2 | Hostile and odd answers, one switch each: wrong `RelatesTo`; an answer nobody asked for; `XAddrs` naming another host; no `XAddrs`; two `ProbeMatch` children in one message; an empty `ProbeMatches`; a 60 KiB body; an entity-expansion body; bytes that are not XML; 300 answers | DS-8, DS-9, O-8, H-14 |
+| ST-3 | A device service over HTTP with one fixture account: `GetSystemDateAndTime`, `GetServices`, `GetProfiles`, `GetStreamUri`; modes: wrong credential -> 401; no profile; H.265-only profile; a stream address on another host; Basic-only authentication; no answer (timeout) | §A.6.2 outcomes, CT-1..CT-4 |
+| ST-4 | An RTSP responder that answers `OPTIONS` / `DESCRIBE` only (H.264 SDP, H.265 SDP, 401 with digest challenge) and **fails the test if it ever receives `SETUP` or `PLAY`** | CT-2 |
+| ST-5 | A **request log** (method, operation name, whether an authentication header was present — never its value) that tests read to assert "0 authenticated, 0 configuration requests" after a search and "only the CT-1 list" after a test; any operation outside the CT-1 list is answered with a fault **and** recorded as a violation | R-9 AC-3, AC-6, AC-7 |
+
+The stub's fixture credential exists only in test set-up code; it is not a default of the product
+(C-N15). Owner: row 60 builds the stub; rows 131 / 142 extend it where the list above goes beyond
+what row 60 delivered.
 
 ---
 
@@ -715,6 +1232,39 @@ The new `capture/` module needs its own static guard, mirroring the 21 src guard
 `test/static/scan` helpers so they join the existing guard suite. The rules are not written here
 into code; M3 writes them (OD-26: minimal targeted edits, today's scanner form).
 
+### G.1 Delta 2026-10-09 (row 123) — rules for the adapters, the discovery socket and the helpers (PE-123-12; D73, D74, D75, D76, D80; SEC35-23, SEC35-25; C-N13..C-N15)
+
+**The SEC35-23 exception, stated once.** SEC35-23 pins every capture listener to `127.0.0.1`
+(§A.2, §A.4, §A.8). Decision D75 grants one exception — "one UDP socket for the duration of a
+search" — which `01_specs.md` C-N13 bounds in seven points. It is **not** a listener: the socket
+accepts no connection and serves no request. Everything else in this delta stays inside SEC35-23:
+the helpers bind nothing, the worker's listeners are unchanged, and the connection test opens
+outbound TCP connections only to a device that answered the operator's own search from its own
+address (§A.6.1 DS-9, §A.6.2 CT-3).
+
+Today's guard forbids sockets and processes in the host units and pins `node:child_process` inside
+`src/capture/**` to one file (`apps/core-server/src/capture/__tests__/static.test.ts:38`, `:128`,
+`:134`); it says nothing about sockets inside `src/capture/**`, because there were none. New rules
+(row 131 writes G-R9, G-R13; row 142 writes G-R10, G-R11; row 136 writes G-R12, G-R14, G-R15; row
+61 keeps the family count):
+
+| # | Rule | Rationale |
+|---|---|---|
+| G-R9 | `node:dgram` is imported by **exactly one** file, `apps/core-server/src/capture/adapters/camera/ws-discovery.ts`, pinned by name like the `node:child_process` entry; in that file: one `createSocket` call site, a `close` on every exit path, no `addMembership` (the Core never joins the group: it only sends to it and receives unicast answers), the destination is the constant `239.255.255.250:3702` or the injected loopback test target. No file under `apps/capture-worker/**` and no helper argument table mentions a datagram transport | C-N13; §A.2 W-1; D80(11) |
+| G-R10 | `node:net` is imported by **exactly one** file under `src/capture/**`, `adapters/camera/rtsp-describe.ts`; it contains the method names `OPTIONS` and `DESCRIBE` and **no** `SETUP`, `PLAY`, `RECORD`, `ANNOUNCE`, `SET_PARAMETER`; no `node:http`, `node:https`, `node:tls`, `node:http2` import anywhere under `src/capture/**` (HTTP toward a camera goes through the package of G-R11) | §A.6.2 CT-2; R-9 AC-3 |
+| G-R11 | The package `onvif` is imported by **exactly one** file, `adapters/camera/onvif-session.ts`; the methods it calls on the client object are a **pinned list** — `getSystemDateAndTime`, `getServices`, `getCapabilities`, `getProfiles`, `getStreamUri` — and the test fails on any other member call; `connect` is not called and `autoconnect: false`, `preserveAddress: true` and an explicit `timeout` appear in the one constructor call; `Discovery` of the package is never referenced (§A.6.1a O-8) | §A.6.2 CT-1, CT-3, CT-4; D75, D76; class C boundary |
+| G-R12 | Helpers and `mkfifo` are started only through the process door `src/capture/ipc.ts`; the G-R2 allowlist and the pin "`node:child_process` is imported by `ipc.ts` only" stay as they are. The helper argument tables live in one file under `adapters/local-device/`; a test asserts that every argument is a literal of the table or one of the three computed values of §A.6.4 HL-3, that no argument contains `0.0.0.0`, `::`, `udp`, `listen`, a user-info `@` or a shell metacharacter, and that every `rtsp://` argument matches `LOOPBACK_RTSP_URL` | SEC35-23, SEC35-25; R-11 AC-4 |
+| G-R13 | `CameraAdapter.discover` has exactly the call sites R-9 AC-1 allows (the search operation and the pre-check); no call from a boot path, a timer, a plugin `onReady` hook or a read operation | D74 (1); R-9 AC-1 |
+| G-R14 | No credential literal and no vendor-default table anywhere under `src/capture/adapters/**` (no string pair that looks like an account, no map keyed by manufacturer); no file under `adapters/local-device/` imports the `FAKE` adapter and no `catch` path in `adapters/**` constructs one (a local device is never replaced by a fake) | C-N15; R-9 AC-7; D80(11); R-11 AC-5 |
+| G-R15 | The development flag (`captureDevSources` / `DEMS_CAPTURE_DEV_SOURCES`) is read in exactly one function, the one that defines the capture operation (§A.1.2); every other file asks that function | D72(l); R-11 AC-1 |
+| G-R4 (extended) | The key names `credential`, `secret`, `username`, `password` and the forms `rtsp://user:pass@host` and `http(s)://user:pass@host` are sensitive in every log / audit call of `src/capture/**` and `modules/capture-config/**`; in addition **device-identifying keys** — `address`, `sourceAddress`, `serviceAddress`, `xaddrs`, `endpointRef`, `mac`, `serial`, `scopes` — may not appear in a log call of `adapters/**` (counts only, §A.6.1 DS-12) | SEC35-04; C-N15; R-9 AC-16 |
+| G-R6 (extended) | The only writers of files under `adapters/**` are the pipe creation of §A.7.1 ML-2 (through the door) — no candidate, probe answer or helper output is written to a file by product code | OD-25; R-9 AC-16; R-11 AC-8 |
+
+Run-time checks that complete the static ones (named and placed by row 127): a socket snapshot of
+the Core process before, during and after a search — 0 / 1 / 0 datagram sockets (C-N13; R-9 AC-15);
+a snapshot of each helper — 0 listening sockets, one TCP connection to `127.0.0.1`; `git diff` of
+`apps/capture-worker/src` over rows 134-136 and 140 = 0 changed lines (R-11 AC-4).
+
 ---
 
 ## H. Storage paths (OD-25)
@@ -786,6 +1336,22 @@ of the waived ones) and `:233` (with **every** waived added line taken out, `app
 the file plan row W08 froze — a line nobody waived, of any module, fails there). Row 58 replaces the
 assertion that `config.ts` mentions capture nowhere when it lands edits 7-10.
 
+**Delta 2026-10-09 (row 123; PE-123-13; D73, D72(l)) — planned edits 15-18.** The two
+configuration keys of §A.1.2 (`DEMS_CAPTURE_DEV_SOURCES`, `DEMS_CAPTURE_HELPER_FFMPEG`) are
+**capture config keys**, the third of OD-14's four categories, and land in `config.ts` in the same
+four places as edits 7-10: the `ENV_*` constants (edit 15), the fields of `CoreServerConfig`
+(edit 16), `ConfigInput` with parsing and validation (edit 17) and the frozen object of
+`createConfig` (edit 18). Owner: row 136, with row 61 reading the flag in the one function. They are
+**planned, not landed**; the line numbers are fixed when they land, and the pin of `config.ts`
+(`apps/core-server/src/capture/__tests__/static.test.ts:290`, a digest of the file without the
+waived lines, `implementation/20_m3_worker_engine.md` §5.1) is re-computed by the row that lands
+them. `app.ts` and `index.ts` get **no** edit from R-9..R-11: the adapters are registered inside the
+existing `capture` unit, and the search, connect and notification operations live in the already
+registered `modules/capture-config`. **Planned P25 edit count after this delta: 18** (8 `app.ts`,
+8 `config.ts`, 2 `index.ts`). *Note for the reader:* the table above still lists edits 7-10 as "not
+landed"; row 58's report says they landed (45 added lines, `20_m3_worker_engine.md` §5.1). That
+status line is not this row's to change and is reported to the controller.
+
 ---
 
 ## J. Hypotheses register
@@ -802,10 +1368,22 @@ falsify it.
 | H-4 | the worker can run one audio encoder and mux the single `AUDIO-01` track into **both** camera files with no re-encode | register NM-02 states this; S1 muxed one video+audio into one file, S2 produced one audio track — the two-file sharing was not spiked. The worker's build form (a small C program linking libav* vs a Node native binding) is undecided — question Q-WORKER, routed to the blueprint by AU3-04 | M3 worker integration produces two files whose audio differs or re-encodes |
 | H-5 | ~20 Hz meter telemetry is sufficient and affordable alongside capture | the rate is a register constant, not measured; S1 measured fragment cadence, not meter frames | M3/M5 shows meter starvation or capture jitter under telemetry load |
 | H-6 | SNMP (RFC 3621) PoE control works against the target switch | OD-07 external evidence only; no spike (register NM-01, class C-3) | class-C PoE cycle on the real switch fails or needs a vendor API |
-| H-7 | ONVIF discovery / profile listing / NTP set work against the target camera | Q-INSTALL item 6 permits an ONVIF npm after B2; no spike; class C-1 | class-C discovery lists no camera or NTP set is refused |
+| H-7a | **(split of H-7 by row 123, PE-123-14; D75, D76, D80(1))** Unauthenticated WS-Discovery finds an ONVIF camera on the segment the Core is attached to and its answer carries enough to draw a candidate row (address, endpoint reference, name and hardware hint) | the protocol side is now cited (§A.6.1 V-1..V-12); what real devices on a real network do is not measured. **Scheduled, no longer class C:** row 131 (fake stub; real-LAN check 2 runs + 1 at row 70) | on the stub: a candidate lacks an announced field, or a hostile answer of §A.8.1 ST-2 is accepted or stops the Core. On the real network: a camera known to be present and discoverable is not listed. **Zero responders on a network with no camera is a valid result and falsifies nothing** (D75) |
+| H-7b | **(split of H-7)** Authenticated ONVIF actions work against the target camera: profile listing and stream address with the operator's account, NTP offset read; and the configuration actions NTP set, GOP set, profile change | the read half is exercised on the stub by row 142 only; `GetProfiles` / `GetStreamUri` access classes are in the ONVIF Media specification, which this row did not fetch; no real camera, no account. **Class C-1 / C-2 unchanged** for every action on a real camera — the connection test on a real camera runs only when the user types the credential (D76 (4)) | the user's connection test on a real camera ends in an outcome that contradicts what the camera's own interface shows; a class-C set action is refused |
 | H-8 | USB is the correct microphone transport | OD-06 "USB working assumption"; transport fixed when mics are known | C-4 with the real mic shows a different transport |
 | H-9 | the four S1 command-shape traps are sufficient for a **pull** camera (S1 used listen/push) | RF-2: pull fixtures need MediaMTX (Q-INSTALL item 4); class C-2 | a real camera pull fails on a trap the synthetic push did not exercise |
 | H-10 | camera **video clock** (camera encoder / RTP timestamps, copied) and **host audio clock** (mic captured, selected and encoded on the Core) stay aligned at session start and do not drift beyond the AV tolerance within a session, in **both** camera files (added by AU2-06, D18) | S4 used one pusher and one clock for audio and video, so the two-clock DEMS topology was never measured; H-4 covers only the two-file fan-out | M3 check `M3-AV-2` (fake camera in a separate process with its own clock, injected ±80 ms and a slow drift, host-fed audio through the selector; flash/beep analysed per camera file) fails the regression bound; long-session drift stays class C-9 (pre-handover, D233). **Erratum PE-111-01 / PE-111-05 (D66):** row 111 proved the timestamp path (sample-exact offsets, drift reported, negative controls fail) but two limits remain for `M3-AV-2`: the fake mics must be a **separate process** (§A.8), and the present fixture cannot express a second oscillator through its sender reports, so a slope near 0 may be expected only from the row-62 fixture (§F) |
+| H-11 | Older ONVIF devices announce the type `dn:NetworkVideoTransmitter` and not `tds:Device`, so the second probe of §A.6.1 DS-6 finds devices the first does not; and a responder ignores the repeated datagram that carries the same message ID (added by row 123, PE-123-14) | analyst's recall of earlier Core versions and of SOAP-over-UDP; version 26.06 names only `tds:Device` (V-8); the repeat rule was not fetched | on the stub or the real network the second probe never adds a device (then it is dropped), or a device answers each repeat (harmless: de-duplicated by endpoint reference, but counted) |
+| H-12 | macOS lets more than one process use the built-in camera at once, so `DEVICE_BUSY` is rare and the short pre-check open (§A.6.4 HL-12) does not disturb another application's use — "single-process camera exclusivity" does **not** hold | not measured: this row may not open the camera | row 134: the helper's open fails, or another application loses its picture, while the camera is in use elsewhere — then `DEVICE_BUSY` is a normal outcome and the pre-check must say so |
+| H-13 | A multicast probe sent by the Core process actually leaves this Mac: neither the host firewall nor the operating system's local-network privacy control drops it without an error | not measured; a silent drop is indistinguishable from "no camera on the network" | row 131's real-LAN check sees the probe datagrams leave on the interface (a packet count on the interface, no content) — if none leaves while the send call succeeded, "0 responders" must be reported as **not run**, not as an empty network (§A.6.1 DS-13) |
+| H-14 | `xml2js`, configured for §A.6.1, rejects entity-expansion and oversized input in bounded time and never throws outside the parse call | library behaviour not read in source by this row | the hostile-datagram cases of §A.8.1 ST-2 make the Core slow, grow memory or raise an uncaught exception |
+| H-15 | `h264_videotoolbox` honours `-g 30` as an upper bound on the keyframe interval, emits no B-frames with `-bf 0`, and with `-flags +global_header` puts the parameter sets where the worker's ingest finds them | the options exist (probe P-4); their effect on this encoder was not run | row 134: the worker's observed keyframe interval exceeds 2 s, or the ingest ends with `INGEST_NO_EXTRADATA` -> use the `libx264` line of §A.6.4 |
+| H-16 | The camera named `MacBook Air Camera` offers 1280x720 at 30 frames per second in a pixel format the encoder takes (`nv12`) | the mode list is only shown by opening the device | row 134: the open is refused with a list of supported modes -> pick the nearest listed mode at or below 1280x720, 25-30 frames per second, and record it |
+| H-17 | **avfoundation timestamps and the wall clock.** With `-use_wallclock_as_timestamps 1 -copyts -output_ts_offset -S -start_time_realtime S` the sender reports pair each frame with the host wall-clock time at which it was read, so the worker's PRFT anchoring places local video within the +-40 ms product bound against the local microphone (the remaining delay being about one frame period on the video side) | the three options exist in FFmpeg 9.0.2 (P-4) and `start_time_realtime` is the mechanism the row-111 fake camera uses from code (`fake_cam.c:65`); their combination on the command line, and how the program treats `start_time_realtime` together with `-copyts`, were not run | step 1 (no camera): the same options with a generated picture through the row-60 harness — the worker's `video_anchored` shift is not within a few milliseconds of 0, or `no_camera_wall_clock` appears -> the command-line helper is replaced by the small native helper of §A.6.4 (fallback). Step 2 (camera, user present): a hand clap recorded in a development session shows an audio/video offset outside +-40 ms |
+| H-18 | The helper's failure output distinguishes "permission denied" from "device busy" by stable text | never observed: this row may not be refused by the device | row 134 records the real text if the user chooses to deny; if the two cannot be told apart both are reported as `OPEN_FAILED` with the advice to check the permission — never a guess |
+| H-19 | The macOS camera / microphone permission is attributed to the application that started the Core (terminal or development environment), not to the helper program; granted once, it holds for later runs from the same application | operating-system behaviour as the analyst recalls it; no agent may read or touch the permission database (D74 (3)) | the prompt names another program, or reappears on every start -> hand-over text of DP-12 is corrected |
+| H-20 | The microphone helper delivers PCM to the pipe in chunks of 20 ms or less with no added buffering, so the worker's arrival-based placement (D58-6) and its 40 ms latency hold | device buffer size unknown; `-flush_packets 1` on a raw output not measured | row 135: telemetry shows gaps (`dbfs: null`) or underrun fill for `MIC-01`, or the clap test of H-17 is outside the bound -> the small native helper |
+| H-21 | The `onvif` package, used as §G.1 G-R11 pins it, authenticates with digests only (WS-Security `PasswordDigest`, HTTP Digest) and never sends the password in clear, also when a device asks for Basic | `lib/cam.js` 0.8.3 shows `PasswordDigest` (`:1248`) and a digest handler (`:437`); the absence of a Basic path was not proven by reading the whole file | row 142: the stub's Basic-only mode (§A.8.1 ST-3) receives a request that contains the fixture password or its base64 form |
 
 The MVP recommendation of section C.1 (keyframe-aligned fragments) is **not** a hypothesis: it is
 measured (S1 §6.5). The *choice* of which pairing becomes the contract constant is a decision
@@ -825,6 +1403,7 @@ reserved for the M0 spec gate.
 | Row-35 security remediation applied (SEC35-04/08/09/10/23/25) | §A.2/§A.4/§A.8 (RTSP ingest + fixture bind pinned to `127.0.0.1`, check `M3-RTSP-BIND-1`), §A.6 (credential-URL handling), §D.1 (GCM AAD), §D.2 (key store + key-loss decision), §G (G-R2 pinned allowlist, G-R4 blanked forms) — **PASS**; NM 9/9, P25 12/12 and H-1..H-9 counts unchanged (H-10 added later by the AU-2 errata) |
 | AU-2 errata applied (AU2-03/04/05/06/07/08; D18; `masterplan/11_audit_errata.md`) | §0, §A.7, §A.8, §C.1, §C.5, §E, §F, §J — **PASS**; NM 9/9 and P25 12/12 unchanged; hypotheses **H-1..H-10**; open points OP-GOP (§C.1) and OP-CLICK (§E) routed |
 | Pair-review errata applied (rows 57, 111, 113; PE-57-01..10, PE-111-01..07; D65-D68; `masterplan/11_audit_errata.md` §5) | §0, §A.2, §A.3, §A.4, §A.8, §B.1, §B.2, §C.2, §C.4, §F, §G, §I, §J — **PASS**; NM 9/9 unchanged; P25 **14/14** (was 12/12); hypotheses H-1..H-10 unchanged in number; forbidden-muxer grep still empty |
+| Row-123 delta applied (R-9..R-11; PE-123-01..PE-123-15; D72(k), D73-D78, D80) | §0, §A.1.1, §A.1.2, §A.6.0-§A.6.5, §A.7.1, §A.8.1, §G.1, §I (planned edits 15-18), §J — each of §A.1, §A.6, §A.7 and §G carries a delta dated 2026-10-09 citing D73-D76; **§A.2, §A.4 and §B.2 have no changed line** (hunk list in `delegation_progress/data_analyst_row123.md` §4). NM 9/9 unchanged; P25 landed set unchanged, **18 planned** (was 14); hypotheses **22** (H-7 split into H-7a / H-7b; H-11..H-21 added); every protocol statement of §A.6.1 cites the WS-Discovery 1.1 or ONVIF Core 26.06 section it was read in, the rest is labelled hypothesis; forbidden-muxer grep still empty; no install, no port bound, no camera or microphone opened by this row |
 | No emoji; English; tables over prose; no files edited outside the task folder | **PASS** |
 
 Self-gate grep (run against this file, bracketed pattern so the pattern text is itself not a
@@ -841,4 +1420,4 @@ non-matching text in section C.4; no command, option table or interface in this 
 
 ---
 
-*Generated: 2026-10-07 · Last Updated: 2026-10-09 (pair-review errata PE-57-01..10 and PE-111-01..07, D65-D68; earlier: 2026-10-08 RV-SPEC audit errata AU2-03..AU2-08, D18; row-35 security remediation SEC35-04/08/09/10/23/25)*
+*Generated: 2026-10-07 · Last Updated: 2026-10-09 14:35 (blueprint row 123: capture architecture delta for R-9..R-11, PE-123-01..PE-123-15, D72(k), D73-D78, D80; earlier the same day: pair-review errata PE-57-01..10 and PE-111-01..07, D65-D68; earlier: 2026-10-08 RV-SPEC audit errata AU2-03..AU2-08, D18; row-35 security remediation SEC35-04/08/09/10/23/25)*

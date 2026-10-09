@@ -44,7 +44,19 @@
  */
 import { isDeepStrictEqual } from 'node:util';
 import { stampOf, PipelineFailure, PipelineRefusal, type Clock, type CommittedUnit, type Pipeline, type UnitContext } from '../core';
-import type { AudioSlice, Sim, SimClock, SimErrorReport, SimState, TabletLinkState } from '@dems/shared/sim';
+import {
+  captureTelemetryChangesState,
+  captureTelemetryIgnored,
+  type CaptureLevelSource,
+  type AudioSlice,
+  type CaptureTelemetryInput,
+  type CaptureWarningInput,
+  type Sim,
+  type SimClock,
+  type SimErrorReport,
+  type SimState,
+  type TabletLinkState,
+} from '@dems/shared/sim';
 import { asc } from 'drizzle-orm';
 import type { FastifyBaseLogger } from 'fastify';
 import {
@@ -124,6 +136,11 @@ export interface EngineHostDependencies {
    * ran it (`api-headers.ts`).
    */
   readonly noteOutcome?: (position: { readonly epoch: number; readonly revision: number }) => void;
+  /**
+   * Where the meter levels come from (register CS-04; decision D72, finding A-4): `'external'`
+   * in capture mode `real`, where the simulator must generate none. Default `'simulated'`.
+   */
+  readonly captureLevels?: CaptureLevelSource;
 }
 
 /**
@@ -161,6 +178,12 @@ interface Live {
 
 /** What a unit of the engine is: the cause of the change it publishes, or a probe, which changes nothing. */
 type UnitKind = Exclude<EngineChangeCause, 'start' | 'native'> | 'probe';
+
+/** A capture telemetry frame whose unit waits for its turn: later frames replace `telemetry`. */
+interface TelemetrySlot {
+  readonly live: Live;
+  telemetry: CaptureTelemetryInput;
+}
 
 /** One unit of work of the engine. */
 interface Scope {
@@ -239,6 +262,11 @@ export function createEngineHost(dependencies: EngineHostDependencies): EngineHo
   let lastAudio: AudioSlice | null = null;
   /** The newest meter frame of this start: the object that was published. Never stored (decision D89). */
   let lastFrame: EngineMeterFrame | null = null;
+  // The one capture telemetry unit that waits for its turn, and what its callers were promised.
+  let telemetrySlot: TelemetrySlot | null = null;
+  let telemetryOutcome: Promise<EngineOutcome<void>> | null = null;
+  /** What telemetry named that the Core does not know, said once per engine run (`noteIgnoredTelemetry`). */
+  const ignoredTelemetry = new Set<string>();
   /**
    * The tablet link the engine had committed when it last ended a run in THIS process; null
    * while it never ran. It outlives a stop: the sockets of the process do (finding F78).
@@ -298,6 +326,21 @@ export function createEngineHost(dependencies: EngineHostDependencies): EngineHo
     // Kept for `meters()` before it is handed on: a reader that the publication wakes sees it.
     lastFrame = frame;
     publish({ kind: 'meters', frame });
+  }
+
+  /**
+   * `applyCaptureTelemetry` ignores an ID or a role the Core does not know (one bad entry must not
+   * drop a 20 Hz frame). It is said here once per engine run and value, so a worker that speaks
+   * the wrong vocabulary (a track ID where a capture-device ID belongs) is seen in the error log.
+   */
+  function noteIgnoredTelemetry(current: Live, telemetry: CaptureTelemetryInput): void {
+    for (const ignored of captureTelemetryIgnored(current.sim.store.getState(), telemetry)) {
+      // Bounded: a worker cannot grow the set with invented names.
+      if (ignoredTelemetry.has(ignored) || ignoredTelemetry.size >= 64) continue;
+      ignoredTelemetry.add(ignored);
+      log.warn({ ignored }, 'capture telemetry names what the Core does not know; it is ignored');
+      persist('warn', 'capture telemetry names what the Core does not know; it is ignored', null, { ignored: ignored.slice(0, 96), label: ENGINE_UNIT_LABEL.captureTelemetry });
+    }
   }
 
   // ── The simulator's own error sink ───────────────────────────────────────────────────────────
@@ -737,7 +780,8 @@ export function createEngineHost(dependencies: EngineHostDependencies): EngineHo
         const now = stampOf(clock);
 
         reportedSources.clear();
-        const sim = await createHeadlessSim({ seed: stored.slices.meta.seed, clock, onError: reportSimError });
+        const sim = await createHeadlessSim({ seed: stored.slices.meta.seed, clock, onError: reportSimError, capture: dependencies.captureLevels ?? 'simulated' });
+        ignoredTelemetry.clear();
         const nextEpoch = mode === 'reset' ? stored.slices.meta.epoch : stored.slices.meta.epoch + 1;
         adoptStoredState(sim, stored, nextEpoch);
         // A process start faults a session that was in flight and takes the tablet link down. EVERY
@@ -897,6 +941,56 @@ export function createEngineHost(dependencies: EngineHostDependencies): EngineHo
     setTabletLink(state: TabletLinkState) {
       return inUnit(ENGINE_UNIT_LABEL.tabletLink, 'command', async (scope) => {
         scope.live.sim.actions.setTabletLink(state);
+        await flush(scope);
+      });
+    },
+
+    applyCaptureTelemetry(telemetry: CaptureTelemetryInput) {
+      const current = live;
+      if (current === null || committed === null || phase !== 'running') return Promise.reject(engineNotReady());
+      // A unit of an earlier frame still waits for its turn: this frame takes its place in it.
+      if (telemetrySlot !== null && telemetrySlot.live === current && telemetryOutcome !== null) {
+        telemetrySlot.telemetry = telemetry;
+        return telemetryOutcome;
+      }
+      try {
+        noteIgnoredTelemetry(current, telemetry);
+        if (!captureTelemetryChangesState(current.sim.store.getState(), telemetry)) {
+          // Nothing the tables hold would change: the action sets the levels of the meters and
+          // leaves the store alone, so there is nothing to commit and no unit is opened.
+          current.sim.actions.applyCaptureTelemetry(telemetry);
+          return Promise.resolve({ value: undefined, epoch, revision });
+        }
+      } catch (error) {
+        // A frame the simulator could not read. Nothing was stored; the next frame is tried anew.
+        log.error({ code: codeOf(error) }, 'a capture telemetry frame was not applied');
+        persist('error', 'a capture telemetry frame was not applied', error, { label: ENGINE_UNIT_LABEL.captureTelemetry });
+        return Promise.reject(error instanceof Error ? error : new Error('a capture telemetry frame was not applied'));
+      }
+      const slot: TelemetrySlot = { live: current, telemetry };
+      telemetrySlot = slot;
+      const outcome = inUnit(ENGINE_UNIT_LABEL.captureTelemetry, 'command', async (scope) => {
+        // From here on a new frame opens a unit of its own: this one applies the frame it holds now.
+        if (telemetrySlot === slot) telemetrySlot = null;
+        scope.live.sim.actions.applyCaptureTelemetry(slot.telemetry);
+        await flush(scope);
+      }).finally(() => {
+        if (telemetrySlot === slot) telemetrySlot = null;
+      });
+      telemetryOutcome = outcome;
+      return outcome;
+    },
+
+    raiseCaptureWarning(warning: CaptureWarningInput) {
+      return inUnit(ENGINE_UNIT_LABEL.captureWarning, 'command', async (scope) => {
+        scope.live.sim.actions.raiseCaptureWarning(warning);
+        await flush(scope);
+      });
+    },
+
+    clearCaptureWarning(warning: CaptureWarningInput) {
+      return inUnit(ENGINE_UNIT_LABEL.captureWarningClear, 'command', async (scope) => {
+        scope.live.sim.actions.clearCaptureWarning(warning);
         await flush(scope);
       });
     },

@@ -10,8 +10,10 @@ import type {
   CaptureIpcLimits,
   CaptureMicRole,
   CapturePlan,
+  CaptureRecord,
   CaptureStopReason,
   CaptureWarningCode,
+  CaptureWarningState,
   FrameViolation,
   ProgressMessage,
   SupervisorMessage,
@@ -33,7 +35,11 @@ export const CapturePhase = {
   RESTARTING: 'RESTARTING',
   /** `stop` is waiting for the worker to flush and exit. */
   STOPPING: 'STOPPING',
-  /** The restarts are exhausted while a session is open: only `stop` leaves this phase. */
+  /**
+   * The session's worker is down for good while the session is open: the restarts are exhausted,
+   * or the session may hold a durable fragment (no worker is started into an existing evidence
+   * file: decision D67, option C). Only `stop` leaves this phase.
+   */
   FAULTED: 'FAULTED',
 } as const;
 export type CapturePhase = (typeof CapturePhase)[keyof typeof CapturePhase];
@@ -93,6 +99,14 @@ export interface CaptureStatus {
   readonly droppedTelemetry: number;
   /** Progress values and warnings superseded or evicted before a listener took them. */
   readonly droppedEvents: number;
+  /**
+   * True once the open session may hold a fragment on the disk (its first fragment record arrived, or a
+   * worker found a file at an output path). False does NOT prove the disk is empty: the record is
+   * a hint, the file is the truth.
+   */
+  readonly durable: boolean;
+  /** Sequence number of the last record of the open session; 0 before the first. */
+  readonly lastRecordSeq: number;
 }
 
 interface EventBase {
@@ -105,16 +119,18 @@ interface EventBase {
 export type CaptureEvent =
   | (EventBase & { readonly name: 'telemetry'; readonly action: 'applyCaptureTelemetry'; readonly frame: TelemetryMessage })
   | (EventBase & { readonly name: 'progress'; readonly action: 'applySealingProgress'; readonly frame: ProgressMessage })
-  | (EventBase & { readonly name: 'warning'; readonly action: 'raiseCaptureWarning'; readonly code: CaptureWarningCode; readonly subject: string | null; readonly source: 'worker' | 'supervisor' })
+  | (EventBase & { readonly name: 'warning'; readonly action: 'raiseCaptureWarning'; readonly code: CaptureWarningCode; readonly state: CaptureWarningState; readonly subject: string | null; readonly source: 'worker' | 'supervisor' })
   | (EventBase & { readonly name: 'phase'; readonly phase: CapturePhase; readonly previous: CapturePhase })
-  | (EventBase & { readonly name: 'workerDown'; readonly down: WorkerDown; readonly restartInMs: number | null });
+  | (EventBase & { readonly name: 'workerDown'; readonly down: WorkerDown; readonly restartInMs: number | null })
+  /** A lossless record of the worker (spec §B.2 R-1), in the order of `seq`, never through the queue of levels. */
+  | (EventBase & { readonly name: 'record'; /** Which worker of the session wrote it (1 for the first): `seq` counts per worker. */ readonly attempt: number; readonly seq: number; readonly record: CaptureRecord });
 export type CaptureEventName = CaptureEvent['name'];
 export type CaptureEventOf<Name extends CaptureEventName> = Extract<CaptureEvent, { name: Name }>;
 
 /**
  * A listener may return a promise. For the worker's events (`telemetry`, `progress`, a worker's
  * `warning`) the next of them is delivered after it settled; the supervisor's own events
- * (`workerDown`, `phase`, its `CAPTURE_FAULT` warning) wait for no listener.
+ * (`workerDown`, `phase`, its `CAPTURE_FAULT` warning) and `record` wait for no listener.
  */
 export type CaptureListener<Name extends CaptureEventName = CaptureEventName> = (event: CaptureEventOf<Name>) => void | Promise<void>;
 

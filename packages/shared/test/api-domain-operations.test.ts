@@ -629,24 +629,25 @@ describe('the list queries (API-9; decision D51)', () => {
   });
 });
 
-describe('the 42 simulator actions and the operations they reach (01_specs §7.17)', () => {
+describe('the 45 simulator actions and the operations they reach (01_specs §7.17; task 3 SH-18)', () => {
   const names = Object.keys(SIM_ACTION_OPERATIONS) as (keyof typeof SIM_ACTION_OPERATIONS)[];
   const byExecution = (execution: string) => names.filter((name) => SIM_ACTION_OPERATIONS[name].execution === execution);
 
   it('names exactly the actions of the real simulator', () => {
     const { actions } = rig('idle');
     expect([...names].sort()).toEqual(Object.keys(actions).sort());
-    expect(names).toHaveLength(42);
+    expect(names).toHaveLength(45);
   });
 
-  it('31 are hosted, 9 server-native, 1 is not available and 1 is internal', () => {
-    expect([SimActionExecution.HOSTED, SimActionExecution.SERVER_NATIVE, SimActionExecution.NOT_AVAILABLE, SimActionExecution.INTERNAL].map((execution) => byExecution(execution).length)).toEqual([31, 9, 1, 1]);
+  it('31 are hosted, 9 server-native, 1 is not available and 4 are internal', () => {
+    expect([SimActionExecution.HOSTED, SimActionExecution.SERVER_NATIVE, SimActionExecution.NOT_AVAILABLE, SimActionExecution.INTERNAL].map((execution) => byExecution(execution).length)).toEqual([31, 9, 1, 4]);
     expect(byExecution('server-native')).toEqual(['signIn', 'signInWithBiometric', 'recordBiometricFailure', 'signOut', 'touch', 'loadScenario', 'resetDemo', 'pair', 'unpair']);
     // X-1 and X-2: no operation issues a session without a credential, and no client sets the tablet link.
     expect(byExecution('not-available')).toEqual(['signInWithSecurityKey']);
-    expect(byExecution('internal')).toEqual(['setTabletLink']);
+    // SH-18: the capture supervisor's three actions join the tablet link; no client reaches any of the four.
+    expect(byExecution('internal')).toEqual(['setTabletLink', 'applyCaptureTelemetry', 'raiseCaptureWarning', 'clearCaptureWarning']);
     for (const name of [...byExecution('not-available'), ...byExecution('internal')]) expect(SIM_ACTION_OPERATIONS[name].operations, name).toEqual([]);
-    expect(CORE_API_OPERATIONS.filter((operation) => /tablet-?link|security-?key/i.test(operation.path))).toEqual([]);
+    expect(CORE_API_OPERATIONS.filter((operation) => /tablet-?link|security-?key|telemetry|capture-?warning/i.test(operation.path))).toEqual([]);
   });
 
   it('40 actions reach 41 operations, every one of them in the registry; the other 51 are reads and server functions', () => {

@@ -299,7 +299,7 @@ describe('a command that the simulator refuses (ENG-7, SR-79, spec §7.2)', () =
       expect(await rejection(host.engine.command(principal, 'addMarker', 'x'))).toMatchObject({ statusCode: 401, code: 'NOT_SIGNED_IN' });
     }
     const supervisor = host.principal('SUPERVISOR');
-    for (const name of ['signIn', 'signOut', 'loadScenario', 'resetDemo', 'pair', 'setTabletLink', 'toString']) {
+    for (const name of ['signIn', 'signOut', 'loadScenario', 'resetDemo', 'pair', 'setTabletLink', 'applyCaptureTelemetry', 'raiseCaptureWarning', 'clearCaptureWarning', 'toString']) {
       const error = await rejection(host.engine.command(supervisor, name as 'addMarker'));
       expect(error, name).toBeInstanceOf(EngineError);
       expect(error, name).toMatchObject({ code: 'ENGINE_ACTION_NOT_HOSTED' });

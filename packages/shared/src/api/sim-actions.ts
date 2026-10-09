@@ -1,5 +1,5 @@
 /**
- * The 42 actions of the shared simulator and the operation each one reaches in Live mode
+ * The 45 actions of the shared simulator and the operation each one reaches in Live mode
  * (backend task: 2026-10-04 01_specs §7.17; plan row W27, contract C).
  *
  * 01_specs §7.17 maps every member of `SimActions` to an operation. This module is that table as
@@ -10,7 +10,7 @@
  * | `hosted` | 31 | The Core server calls the shared action under the caller's identity |
  * | `server-native` | 9 | The shared action is not called: a server module does the work (identity, pairing, the reset routine) |
  * | `not-available` | 1 | No operation exists in Live mode (`signInWithSecurityKey`, X-1: no session without a credential) |
- * | `internal` | 1 | Hosted, but no client may call it (`setTabletLink`, X-2: the server sets the link from real connections) |
+ * | `internal` | 4 | Hosted, but no client may call it: `setTabletLink` (X-2: the server sets the link from real connections), and `applyCaptureTelemetry`, `raiseCaptureWarning` and `clearCaptureWarning` (task 3, register SH-18: the server calls them from the capture supervisor's events) |
  *
  * 40 members reach an operation and together they reach 41 operations: `deviceCommand` is three
  * (one permission each), and `setPresentationMode` and `updateSettings` share one. The other 34
@@ -91,6 +91,10 @@ export const SIM_ACTION_OPERATIONS = {
   pair: serverNative('redeemPairingCode'),
   unpair: serverNative('unpairDevice'),
   setTabletLink: { operations: [], execution: SimActionExecution.INTERNAL },
+  // Capture telemetry and warnings (task 3, register SH-18 / CS-04): the supervisor's events, never a client.
+  applyCaptureTelemetry: { operations: [], execution: SimActionExecution.INTERNAL },
+  raiseCaptureWarning: { operations: [], execution: SimActionExecution.INTERNAL },
+  clearCaptureWarning: { operations: [], execution: SimActionExecution.INTERNAL },
 } as const satisfies Record<keyof SimActions, SimActionBinding>;
 
 export type SimActionName = keyof typeof SIM_ACTION_OPERATIONS;

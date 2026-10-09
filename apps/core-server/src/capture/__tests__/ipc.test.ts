@@ -107,6 +107,24 @@ describe('a real worker process under the supervisor', () => {
     await supervisor.stop(SESSION, 'STOPPED');
   }, TEST_TIMEOUT_MS);
 
+  // Blueprint row 58 (decision D67, option C): the same kill, on a real process that reported a
+  // durable fragment. The "KILLED worker is started again" above holds BEFORE that report only.
+  it('a KILLED worker that reported its first durable fragment is NOT started again: FAULTED, one CAPTURE_FAULT, no process, restarts allowed or not', async () => {
+    const { supervisor, events, downs } = await realSupervisor({}, { args: [STUB_WORKER, '--durable'] });
+    await supervisor.start(SESSION, capturePlan(SESSION));
+    await vi.waitFor(() => expect(supervisor.status()).toMatchObject({ durable: true, lastRecordSeq: 1 }), WAIT);
+    const first = pidOf(supervisor);
+    process.kill(first, 'SIGKILL');
+    await vi.waitFor(() => expect(supervisor.status().phase).toBe(CapturePhase.FAULTED), WAIT);
+    // Longer than any back-off of this test (50 to 200 ms): nothing comes back.
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    expect(supervisor.status()).toMatchObject({ phase: CapturePhase.FAULTED, workerPid: null, attempt: 1, restarts: 0, durable: true });
+    expect(alive(first)).toBe(false);
+    expect(downs()).toMatchObject([{ down: { code: WorkerDownCode.EXITED, signal: 'SIGKILL', attempt: 1 }, restartInMs: null }]);
+    expect(events.filter((event) => event.name === 'warning')).toMatchObject([{ code: CaptureWarningCode.CAPTURE_FAULT, source: 'supervisor' }]);
+    await supervisor.stop(SESSION, 'CRASH');
+  }, TEST_TIMEOUT_MS);
+
   it('CONTROL: with no restart allowed, a killed worker is NOT started again: FAULTED, CAPTURE_FAULT, no process', async () => {
     const { supervisor, events, downs } = await realSupervisor({ maxRestarts: 0 });
     await supervisor.start(SESSION, capturePlan(SESSION));
@@ -220,7 +238,7 @@ describe('no orphan', () => {
 
   it('a worker ends by itself when its input ends', async () => {
     const { channel, messages, exit } = rawChannel();
-    await vi.waitFor(() => expect(messages[0]).toMatchObject({ type: 'HELLO', protocolVersion: 1 }), WAIT);
+    await vi.waitFor(() => expect(messages[0]).toMatchObject({ type: 'HELLO', protocolVersion: 2 }), WAIT);
     const pid = channel.pid ?? -1;
     expect(alive(pid)).toBe(true);
     channel.closeInput();

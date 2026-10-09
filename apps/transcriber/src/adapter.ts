@@ -11,7 +11,7 @@
  * ONE CALL AT A TIME (§C). Every call passes the adapter's queue, so one chunk is decoded at a
  * time and calls to the shared oMLX server are serialised (D7(d)).
  */
-import { createCpuLocalBackend } from './backends/cpu-local';
+import { createCpuLocalBackend, type CaptureWorkerPid } from './backends/cpu-local';
 import { createOmlxHttp, type FetchLike } from './backends/omlx-http';
 import { createOmlxServerBackend } from './backends/omlx-server';
 import type { TranscriberConfig } from './config';
@@ -32,6 +32,12 @@ export interface TranscriberAdapterDeps {
   readonly onEngineRun?: (record: EngineRunRecord) => void;
   /** `cpu-local`: told the process id of an engine the moment it exists. */
   readonly onEngineStart?: (engine: { readonly pid: number }) => void;
+  /**
+   * `cpu-local`: the capture worker the engine must stay below (§C). The `omlx-server` backend
+   * starts no process (the server is a host service DEMS never starts, D7(d)), so it has no use
+   * for it: that backend is a development tool and gives no evidence about CPU priority (AU3-01).
+   */
+  readonly captureWorkerPid?: CaptureWorkerPid;
   /** The transport of the `omlx-server` backend. Default: the global `fetch`. */
   readonly fetchImpl?: FetchLike;
   /** One queue may be shared by every adapter of a process that talks to the same server. */
@@ -48,7 +54,7 @@ export interface TranscriberAdapter {
 
 function buildBackend(config: TranscriberConfig, deps: TranscriberAdapterDeps): TranscriberBackend {
   if (config.backend === TranscriberBackendId.CPU_LOCAL) {
-    return createCpuLocalBackend(config, { log: deps.log, onEngineRun: deps.onEngineRun, onEngineStart: deps.onEngineStart });
+    return createCpuLocalBackend(config, { log: deps.log, onEngineRun: deps.onEngineRun, onEngineStart: deps.onEngineStart, captureWorkerPid: deps.captureWorkerPid });
   }
   // The key is read here, once, through the single key-loader, into memory only.
   const credential = config.credentialRef === null ? null : loadCredential(config.credentialRef, config.settingsPath === null ? {} : { settingsPath: config.settingsPath });

@@ -34,6 +34,7 @@ export * from './derive';
 export * from './session-machine';
 export * from './faults';
 export * from './audio';
+export * from './capture-telemetry';
 export * from './health';
 export * from './generator';
 export * from './maintenance';

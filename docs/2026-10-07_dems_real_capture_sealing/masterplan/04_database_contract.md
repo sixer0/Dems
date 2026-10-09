@@ -11,6 +11,7 @@ type: database-contract (PostgreSQL 18 on 127.0.0.1:4432; drizzle-orm 0.45.3 ove
 status: draft-for-M0-gate (design document; nothing installed, nothing executed, no file under `apps/core-server/` changed)
 contract_revision: dbc-3
 schema_version: 2 (from 1)
+pending_revision: dbc-4, schema_version 3 — the row-122 delta of section N (R-9..R-11; D73, D78, D80, D81). In force when blueprint row 129 lands migration set 4 (`0008` + `0009`); until then the code constants and the four development databases stay at 2 / `dbc-3` (Erratum PE-122-01)
 based_on: masterplan/01_specs.md (row 28, spec line 28-29 names this file)
 register: research/03_analysis.md (row 6; errata E-01/E-19/E-20/E-24/E-30, corrections W1-C7/W1-C10, CS-16..CS-21/CS-24, SH-01/SH-02, DOC-03)
 predecessor: docs/2026-10-04_dems_backend_rbac_pairing/masterplan/03_database_contract.md (dbc-2, rev 2.2, 30 tables)
@@ -18,7 +19,7 @@ binding_decisions: D4 (OD-01 T1, OD-02 L2, OD-03 (a) both hashes, OD-19), D7 (ST
 impact_map_input: docs/2026-10-04_dems_backend_rbac_pairing/research/10_next_phase_impact_map.md §6 (T-31..T-39)
 b16_errata: docs/2026-10-04_dems_backend_rbac_pairing/report/01_report_inputs.md §4 B16 items (i)-(v) — applied/carried in section H
 implemented_by: M2 rows of blueprint rev 2 (row 40); this row writes the plan only
-last_updated: 2026-10-09 (status sweep PE-R8-01..05: §B.13 `stt_config` CONFIRMED by D24, Q-STT-CFG answer (a); status wording only); 2026-10-08 (RV-SPEC: §B.13 `stt_config` for R-8 added as a proposal, D20; 2026-10-07 row-35 remediation SEC35-02/03/20/21/22)
+last_updated: 2026-10-09 (row 122, errata PE-122-01..15: section N — delta dbc-4 for R-9..R-11, migration set `0008`/`0009` specified, nothing written or applied); 2026-10-09 (status sweep PE-R8-01..05: §B.13 `stt_config` CONFIRMED by D24, Q-STT-CFG answer (a); status wording only); 2026-10-08 (RV-SPEC: §B.13 `stt_config` for R-8 added as a proposal, D20; 2026-10-07 row-35 remediation SEC35-02/03/20/21/22)
 ---
 
 # Database Contract dbc-3: schema v2, migrations 0004/0005, privileges, kept-on-reset, lane re-creation
@@ -28,6 +29,16 @@ last_updated: 2026-10-09 (status sweep PE-R8-01..05: §B.13 `stt_config` CONFIRM
 > M2 implementation rows own writing the migration files, the typed-schema edits and the code.
 > **The register is the contract** (`masterplan/01_specs.md` header; D10(a)): where the raw impact
 > map and the errata-applied register (`research/03_analysis.md`) disagree, the register wins.
+>
+> **Erratum PE-122-01 (row 122; D73, D78, D80, D81).** Sections 0 to M describe `dbc-3` (schema
+> version 2) as designed by row 30 and as built by rows 45, 46 and 112. **Section N is the delta
+> `dbc-4` (schema version 3) for R-9, R-10 and R-11: verdict "schema change — yes", migration set 4 =
+> `0008_capture_sources.sql` + `0009_capture_sources_privileges.sql`.** Section N is a
+> specification only: no migration file was written, no SQL was run and no file under
+> `apps/core-server/` was changed by row 122. Where section N and an earlier section disagree,
+> section N wins from the moment row 129 lands; the earlier sections carry a pointer where that
+> happens. Every figure of sections 0 to M (39 / 40 tables, 11 / 12 kept tables) stays as written —
+> the new totals are stated once, in N.11.
 
 **Citation short forms used throughout**
 
@@ -239,6 +250,14 @@ Indexes: `capture_devices_kind_idx` on (`kind`). Privileges: SELECT, INSERT, UPD
 model, firmware, address, mac, onvif_uuid, profiles, poe_port, enabled, last_seen_at`); **no DELETE**
 (discovery only adds/updates; removal is a reset, owner). Reset: **KEPT**, mode `upsert`.
 
+**Erratum PE-122-03 (row 122; D73, D80(9), D81).** With `dbc-4` the table gains a thirteenth
+column, **`adapter_kind`** (closed set of five; `NOT NULL DEFAULT 'FAKE'`; written at INSERT, **no
+UPDATE grant**, so the UPDATE list above stays at 10 columns), two CHECKs and one partial unique
+index on `onvif_uuid` (N.2, N.5). `kind` keeps `CAMERA` | `MIC` | `POE`; the adapter kind is a
+second axis. "Discovery only adds/updates" is narrowed: a **search** adds nothing — a row is added
+only by the adoption of operation 96, by the local-device registration of row 136, or by the seed
+(N.2 writers table).
+
 ### B.3 `capture_device_credentials` (T-33) — write-only camera secrets (RK-12)
 
 Purpose: per-camera ONVIF/RTSP credentials, encrypted at rest, written only through operation **89**
@@ -284,6 +303,13 @@ than a second role. The function returns NULL and writes no row for an unknown d
 verification: `M2-MT-4` asserts `SELECT capture_device_credentials` fails 42501 for `dems_app` and the
 static rule asserts the single calling module.
 
+**Erratum PE-122-08 (row 122; D80(7), D81).** Operation 96 (`adoptCaptureCandidate`) writes a row
+of this table inside the adoption transaction, through the same store as operation 89. The table,
+its privileges and the reveal function cover that **without change** (N.7). One rule for the sealer
+of row 84 follows from `capture_device_credentials_secret_check` (`octet_length >= 33`): the
+plaintext must be framed to at least 17 bytes before sealing, or a short camera password fails
+`23514` inside the adoption transaction (N.7 finding F-122-2).
+
 ### B.4 `sealing_jobs` (T-39) — sealing progress checkpoints (NM-07, R-6)
 
 Purpose: one row per sealing step of one session; per-step progress/ETA source for all clients;
@@ -328,6 +354,10 @@ enforce without a partial unique index on a moving target — the open row is th
 (`session_id`) `WHERE to_media_ms IS NULL` enforces it, PG-08). Privileges: SELECT, INSERT,
 UPDATE (`to_media_ms, to_at`) only (map §6 "UPDATE of `to_*` on the open row only"); no DELETE.
 Reset: rebuilt.
+
+**Erratum PE-122-04 (row 122; D81).** This table gets **no new column** for manifest field 125
+(`audio.sourceIntervals[].sourceClass`): the class of an interval follows from its `mic_device_id`
+through the session-start record `session_capture_sources` (T-41, N.3), mapping rule MR-S2.
 
 ### B.6 `recording_fragments` (T-35) — fragment checkpoints (NM-04, OD-03)
 
@@ -447,6 +477,12 @@ the existing UPDATE list (`0003_privileges.sql:47`: status, lifecycle_stage, ver
 verification_at, tampered, tampered_track_id, updated_at) stays exactly as is. `integrity_source`
 stays outside that list (immutable at seal). v1 items are unreachable under L2 but the columns
 remain readable (D-DB-05). Reset: rebuilt.
+
+**Erratum PE-122-05 (row 122; D78(2), D81).** With `dbc-4` the table gains one more sealed column,
+**`development_sources boolean NULL`** — the list-pane copy of manifest field 126
+(`developmentSources`), written in the item's INSERT and never updated (no UPDATE grant; the
+7-column list above is unchanged). NULL means "not recorded" (a v1 item, or a row older than
+`0008`), never "production" (N.4).
 
 ### B.12 `evidence_tracks` (changed) — one row per FILE in v2 (OD-01/OD-03)
 
@@ -684,6 +720,12 @@ Everything else is rebuilt from the seed; `core_state.epoch` continues (SPEC-GAP
 `session_audio_intervals`, `recording_fragments`, `transcript_*`, `sealing_jobs` are data of demo
 sessions: **rows removed, tables kept** (rebuilt by seed/fixture — no DDL at reset).
 
+**Erratum PE-122-11 (row 122).** `dbc-4` leaves the kept set at **12 tables** and adds no carry
+mode. An adopted camera and a registered local device are rows of `capture_devices`, so they
+survive a reset under the existing mode `upsert`, with their `adapter_kind` (the carried image
+holds every column). The new table `session_capture_sources` (T-41) is session data: rows removed,
+table kept. Seed and fixture delta: N.10.
+
 ### E.2 Guard: reset blocked while real sealed packages exist (OD-19; RK-16)
 
 Precondition of R-0 (before any quiesce), checked on BOTH sides — DB and disk (fail-safe: any
@@ -793,6 +835,11 @@ the unchanged tables keep their dbc-2 numbers, three are revised):
 | `sealing_jobs` | 3,000 | every step of every SEALED session DONE; ≥20 `attempt >= 2` with `status='DONE'` (resumed via RECOVERY); one RUNNING job in the RECOVERY variant; ≥5 non-null checkpoints |
 | `alerts` | 250 (mix revised) | every fault kind **of 14** present; `MIC_SILENT` ≥10 rows |
 
+**Erratum PE-122-11 (row 122).** `dbc-4` revises two rows of this table and adds one
+(`capture_devices` 8 -> 12 with four adapter kinds present; `evidence_items` mix gains
+`development_sources`; new `session_capture_sources` 1,600) — N.10. The checks MT-9..MT-15 of the
+delta are in N.12.
+
 Run counts: the blueprint's rule applies — **2 + 1 for the DB-backed gate checks** where the
 milestone gate asks for a device/DB-backed verification (M2 gate: "migrations 0004/0005 on a
 throw-away copy of `dems_demo` and on fresh lanes" runs 2 + 1, `structured` §6 M2), and
@@ -863,6 +910,7 @@ the proposal texts at `gateway_check/10b_closing_fixes_c2.md` §2.6 and the W90 
 | D-DB-08 | kept-mode `upsert` for the three kept capture tables | pure insert/update | the seed writes built-ins (collision on insert) while runtime-added real devices must survive (loss on update) |
 | D-DB-09 | permission/grant rows arrive by the seed only; **no permission inserts in 0004** | map §6 "in 0004 for live databases" | MG-8 (a migration holds no dataset rows) and E-19/E-20 removed the "live lane database" that needed them: lanes are fresh create+migrate+seed; `dems_demo` is reset (E.3). This overrides that map cell — recorded as an errata application |
 | D-DB-10 | `capture_config` selector CHECK allows one device in both video slots only with distinct profiles | require distinct device IDs | OD-05 supports the dual-lens topology |
+| D-DB-11..D-DB-18 | **Erratum PE-122-14 (row 122).** The decisions of the `dbc-4` delta — adapter kind as an immutable closed-set column, the INSERT-only session-start record, no candidate table, the matching key, the list-pane flag, the version step, the fence as a capture boot check — are in N.13 with their rejected alternatives | N.13 | N.13 |
 
 ## L. Self-gate (row-30 Verification, stated explicitly)
 
@@ -889,6 +937,550 @@ the proposal texts at `gateway_check/10b_closing_fixes_c2.md` §2.6 and the W90 
 | 6 | Pinned run counts of MT checks in the gate table | row 36 (test strategy) |
 | 7 | W-rows implementing 0004/0005 + kept-tables.ts + reveal function; lane re-creation as first M2 row | row 37 (plan) and row 40 (rev-2 rows) |
 
+## N. Delta dbc-4 (schema version 3) for R-9, R-10, R-11 — blueprint row 122 (NEW SCOPE D73; approved D78)
+
+> **Verdict: schema change — YES.** Migration set 4 = `0008_capture_sources.sql` (generated) +
+> `0009_capture_sources_privileges.sql` (hand-written). One new table, two new columns, six new
+> CHECKs, one new foreign key, one new partial unique index, one grant line, schema version 2 -> 3,
+> contract revision `dbc-3` -> `dbc-4`. **Three of the five questions of the row answer "no schema
+> change"** (discovery candidates, audit / alert storage, credential rows); two answer "change"
+> (adapter kind, session-start record). Nothing of this section is built: blueprint row 129 writes
+> the files, row 130 applies them. Migrations `0004`-`0007` are not edited (MG-4).
+
+### N.0 Frame (CLAUDE §8, tier 1)
+
+| Axis | Content |
+|---|---|
+| Subject | The database side of R-9 (camera search, credential-gated connect flow), R-10 (no-device notifications) and R-11 (development sources): where the adapter kind of a capture device is stored, where the source class a recorded session really had is kept, where search candidates live, and what the four new audit types and the alerts need from the schema |
+| Stakeholders | The user (D73-D78); the controller (D80, D81); the spec gate row 128; builders: rows 129, 130 (migration), 61, 136 (boot fence, local devices), 65, 66, 71 (selector, plan, session start), 132, 142 (search, adoption), 82, 83, 141 (seal, manifest, mark), 84 (sealer), 127 (test catalogue) |
+| Timeline | Spec row of 2026-10-09. Files written in M4 by row 129; applied to the four development databases by row 130; first reader of the new table is M7 (rows 82 / 83 / 141) |
+| Scope — in | `capture_devices`, `evidence_items`, one new table, the CHECK inventory for audit and alerts, the credential store, privileges, kept set, seed and bulk-fixture minimums, version and boot checks, totals, test pins |
+| Scope — out | Operation shapes (row 121), adapter and helper design and the definition of the development flag (row 123), manifest fields (row 124), screens (row 125), security findings (row 126), named checks (row 127). No code, no migration file, no test edit |
+| Rationale | D73 (requirement and constraints: `LOCAL_DEVICE` development-only, boot fence, manifest mark) -> `01_specs.md` §B.2 (R-9 AC-3 / AC-4 / AC-8; R-11 AC-1 / AC-2 / AC-7; open points 3 and 5) -> `03_api_contract.md` §2.6 "Device shapes" and "Adoption" (row 121) -> `06_evidence_package_spec.md` §B.12 rule 3 and §E.6 (row 124: a session-start record, durable before the first fragment) -> this delta |
+| Methodology | Read the contract whole, `01_specs.md` §B.2, `03_api_contract.md` §2.6 / §3.1 / §5.2 / §5.4 / §10.1, the records of rows 121 and 124, D72-D81, and the row-123 delta of `05_capture_architecture_spec.md` §A.1.1 / §A.1.2 as it stood at 14:40 (that file was still being edited). Code read-only: `apps/core-server/src/db/schema/{capture,recording,sessions,meta,value-sets}.ts`, `migrations/0001`, `0003`-`0007` and `meta/_journal.json`, `seed/seed.ts`, `store/store.ts`, `reset/kept-tables.ts`, `mapping/rows.ts`, `schema/boot-checks.ts`, and every `test/db/contract-*.ts`. One read-only command against the database (N.1). No SQL of this section was run |
+| Alternatives | Per decision, in N.2-N.5 and N.13 |
+| Assumptions and gaps | N.15 |
+
+### N.1 Baseline as built (what the delta starts from) — Erratum PE-122-02
+
+| Fact | Value | Evidence |
+|---|---|---|
+| Migration files | 8: `0000`-`0007`. The R-8 table landed as its **own** pair `0006_stt_config.sql` + `0007_stt_config_privileges.sql`, not inside `0004` / `0005` as §B.13 line "the DDL joins 0004 (table) and 0005 (privileges)" still says. The next free numbers are **`0008` and `0009`** | `apps/core-server/src/db/migrations/meta/_journal.json` (idx 0-7); `src/db/commands/migrations.ts:36-45` |
+| Version written by the last file | `(2, 'dbc-3')` — `0007` re-affirms the pair of `0005` with the same values and does not step it | `0007_stt_config_privileges.sql:61`; `0005_capture_privileges.sql:80` |
+| Code constants | `DB_SCHEMA_VERSION = 2`, `DB_CONTRACT_REVISION = 'dbc-3'` | `src/db/schema/meta.ts:17,19` |
+| `dems_demo` today | schema version 2, `dbc-3`, 8 files, ledger matches, 40 tables. Rows: `capture_devices` 5, `capture_device_credentials` 0, `capture_config` 1, `active_session` 0, `evidence_items` 13, `evidence_tracks` 52, `session_audio_intervals` 0, `recording_fragments` 0, `sealing_jobs` 0 | `npm run db:status -w @dems/core-server -- --database dems_demo`, run 2026-10-09 (read-only; output quoted in `delegation_progress/database_specialist_row122.md` §3) |
+| `dems_lane_1..3` | **not read by this row** (the row was allowed the one command above). Assumed to be at the same version with the 5 seeded device rows — A-122-1 | — |
+| Composed inventory | 40 tables, 419 columns, 166 named CHECKs, 39 foreign keys, 40 primary keys, 15 UNIQUE, 3 unique indexes, 23 indexes, 42 value sets | `apps/core-server/test/db/contract-inventory.test.ts:50-59,304` |
+| `capture_devices` as built | 12 columns, `kind IN ('CAMERA','MIC','POE')`, id prefix tied to kind; `dems_app`: SELECT, INSERT, UPDATE of 10 columns (not `id`, not `kind`), no DELETE | `0004_capture.sql:34-52`; `0005_capture_privileges.sql:24-28,39-40` |
+| Seeded devices | `CAM-01`, `CAM-02` (transport `RTSP`, `127.0.0.1:8554` / `:8555`), `MIC-01`, `MIC-02` (`USB`), `POE-SWITCH` (`SNMP`); the selector names `CAM-01`, `CAM-02`, `MIC-01`, `MIC-02` | `src/db/seed/seed.ts:157-161,176-181` |
+| The engine's device write | an UPSERT on `id` whose SET list is exactly the 10 granted columns; `kind` is left out because naming it failed `42501` on every update (D72(f)) | `src/db/store/store.ts:140-166` |
+
+### N.2 Where a capture device records its adapter kind — `capture_devices.adapter_kind` (question 1) — Erratum PE-122-03
+
+**Decision D-DB-11: a new column `adapter_kind` on `capture_devices`, a closed set of five values,
+written at INSERT and never updated by the runtime role.** The source class is **not** stored: it
+is derived from the adapter kind by one function in the Core (`05_capture_architecture_spec.md`
+§A.1.1 "derived from adapterKind by ONE function, never stored twice").
+
+Options weighed (the three the row names):
+
+| Criterion | (a) column on `capture_devices` | (b) derive from configuration, store nothing | (c) per-session snapshot only |
+|---|---|---|---|
+| Manifest needs the class each recorded slot really had (row 124, §B.12 rule 3) | needs (c) beside it — see N.3 | fails: the configuration at sealing time may differ from the one at session start | meets it |
+| RECOVERY seal after a restart | needs (c) beside it | fails: the class would be re-derived from the flag of the **later** boot — exactly the fault row 124 (A-3) names | meets it |
+| Boot fence: a development source present in the database while the Core runs a production configuration (R-11 AC-1; row 123 §A.1.2 rows 7 and 8, "stored sources") | **meets it**: the fence reads the kind of the assigned devices (N.9) | **fails**: with nothing stored, a fixture camera adopted in development mode is an ordinary camera row once the flag is off — the development source is laundered into production | fails: a snapshot exists only for sessions already recorded |
+| Operations 76 / 77 list `adapter` and `sourceClass` per device; with the flag off they list 0 development devices (R-11 AC-2) | meets it (one column read) | meets it only for the built-in slots, not for adopted devices | fails |
+| Immutability and grants | a column without an UPDATE grant: the precedent of `kind` (D72(f)) | nothing to guard | INSERT-only table |
+| Kept tables, seed, fixtures | one more column in the carried image; seed writes it | none | none |
+
+Result: **(a) and (c) together.** (a) answers "what is this device", for the lists, the selector and
+the fence; (c) answers "what fed this session", for the manifest. (b) is rejected because the fence
+of R-11 AC-1 would have nothing to read.
+
+Column:
+
+| Column | Type | Null | Default | Key / Check |
+|---|---|---|---|---|
+| `adapter_kind` | text | no | `'FAKE'` | `capture_devices_adapter_kind_check`: `adapter_kind IN ('ONVIF_RTSP','USB_AUDIO','SNMP_POE','FAKE','LOCAL_DEVICE')`; `capture_devices_adapter_pairing_check` (below). Physically the last column (ALTER ADD COLUMN appends; the typed schema declares it last) |
+
+`capture_devices_adapter_pairing_check` ties the adapter kind to the device class, as
+`capture_devices_id_check` ties the id prefix to it:
+
+```sql
+CHECK (
+     (kind = 'CAMERA' AND adapter_kind IN ('ONVIF_RTSP', 'FAKE', 'LOCAL_DEVICE'))
+  OR (kind = 'MIC'    AND adapter_kind IN ('USB_AUDIO',  'FAKE', 'LOCAL_DEVICE'))
+  OR (kind = 'POE'    AND adapter_kind IN ('SNMP_POE',   'FAKE'))
+)
+```
+
+Stored spelling and classes (this row fixes the spelling row 123 proposed; value set
+`CAPTURE_ADAPTER_KIND`, pinned to the shared constant by the CL-12 equality once row 136 adds it):
+
+| `adapter_kind` | Device class | API `sourceClass` (row 121) | Manifest class (row 124, fields 124 / 125) | Who writes a row with it |
+|---|---|---|---|---|
+| `ONVIF_RTSP` | CAMERA | `PRODUCTION` | `PRODUCTION` | operation 96 for a network responder |
+| `USB_AUDIO` | MIC | `PRODUCTION` | `PRODUCTION` | nobody in this phase (class C; a production site seed) |
+| `SNMP_POE` | POE | `PRODUCTION` | `PRODUCTION` | nobody in this phase (class C) |
+| `FAKE` | CAMERA, MIC, POE | `DEVELOPMENT` | `FAKE` | the seed (5 built-ins); operation 96 for a loopback fixture candidate |
+| `LOCAL_DEVICE` | CAMERA, MIC | `DEVELOPMENT` | `LOCAL_DEVICE` | the local-device registration of row 136 (and operation 96 if row 128 keeps the local camera as a candidate) |
+
+Why each property:
+
+| Property | Choice | Alternative rejected | Why |
+|---|---|---|---|
+| Closed set by CHECK | closed, 5 values | open `CODE` set like `transport` (MG-11) | the value decides whether a sealed package says "production": a misspelt or unknown kind must be refused by the database, not mapped by code after the fact. A new adapter kind is new code and deserves a migration, as a new fault kind does (E-01). `transport` stays open and is **not** reused: it means `RTSP` / `USB` / `SNMP` and is true for a fake camera too (`seed.ts:157`) |
+| Default for existing rows | `DEFAULT 'FAKE'`, kept permanently (**D-DB-12**) | no default with a backfill `UPDATE`; a production default | every row in the four databases is a seeded built-in on loopback (N.1) — `FAKE` is the truth for them (`03_api_contract.md` §2.6: the simulator's devices carry `adapter: FAKE`; D81: demo packages regenerate with class `FAKE`). A backfill is a hand statement in a generated file (MG-2) and a data rewrite (MG-8). The default errs to the safe side: a writer that forgets the column creates a development device, which a production boot then refuses, never a production device by accident (the reasoning of D-DB-01). It also keeps every existing INSERT of the code working unchanged on the day the migration lands |
+| Immutability | **no UPDATE grant** for `dems_app`; the UPDATE list stays at 10 columns | an UPDATE grant so that development mode can re-label `CAM-01` | `03_api_contract.md` §2.6: "the adapter of a row is written at INSERT and never updated: a device that changes its adapter is another device with another id". With it, `device id -> adapter kind` never changes at run time, so an old interval or session that names `MIC-01` can never be re-read as another class |
+| Source class column | none | a second column `source_class` | two stored facts that must agree; the mapping is one closed function (row 124 §B.12 rule 2, fails closed) |
+| Index | none | index on `adapter_kind` | the table holds a handful of rows; `capture_devices_kind_idx` already exists |
+
+Who may write the column:
+
+| Writer | DB role | Statement | Value |
+|---|---|---|---|
+| Seed, and the seed step of a reset | `dems_owner` | INSERT of the 5 built-ins | the literal `FAKE` for all five (N.10) |
+| Reset carry-over (kept, mode `upsert`) | `dems_owner` | the carried image of every column replaces the seeded row or is inserted | whatever the old database held (an adopted camera keeps `ONVIF_RTSP`) |
+| Operation 96, adoption | `dems_app` | `INSERT` inside the adoption transaction (N.5) | the adapter kind the Core holds for the candidate in its own search state — never a request member |
+| Local-device registration (row 136) | `dems_app` | `INSERT` of a new row with the next free id | the literal `LOCAL_DEVICE` |
+| The engine's write-through UPSERT (`store.ts:140-166`) | `dems_app` | `INSERT ... ON CONFLICT (id) DO UPDATE SET <the 10 granted columns>` | in the VALUES list only. **`adapter_kind` must never enter the SET list** — it would fail `42501` on every update of an existing row, the defect of D72(f) again. The mapping (`captureDevicesToRows`, `mapping/rows.ts:684`) must carry the device's adapter into the row and must refuse a slice that changes the adapter of an existing id, as `changes.ts:198` refuses a device that leaves the registry |
+
+**Consequence that row 128 must reconcile (D-DB-13).** The row-123 delta
+(`05_capture_architecture_spec.md` §A.1.1 "Development slots") gives the local camera and the local
+microphone the ids `CAM-01` and `MIC-01`. Those ids are the seeded built-ins, which are `FAKE` in
+every database and whose kind cannot change. Under this contract the local devices are **their own
+rows** — the next free `CAM-NN` / `MIC-NN` (`CAM-03` and `MIC-03` on a fresh seed), registered by
+row 136 — and development mode assigns them in the selector (`video_01_device_id`, `mic_primary_id`)
+through the existing UPDATE of `capture_config`; `CAM-02` and `MIC-02` stay the fake sources of
+slots 2. D74(2) fixes which source fills which **slot**, not which id it carries. If the controller
+rules that the ids of row 123 stand, the only change to this delta is one grant line
+(`GRANT UPDATE (adapter_kind)`) and the loss of the immutability rule above; no table, column or
+CHECK changes.
+
+### N.3 The per-session record of each slot's source — new table `session_capture_sources` (T-41) (question 2) — Erratum PE-122-04
+
+**Decision D-DB-14: a small INSERT-only table, four rows per session, written at session start.**
+It is requirement (a) of the row-124 hand-over (`06_evidence_package_spec.md` §E.6: "durable before
+the first fragment and … not re-read from the device registry or the development flag at sealing
+time").
+
+| Column | Type | Null | Default | Key / Check |
+|---|---|---|---|---|
+| `session_id` | text | no | — | PK part; `^SES-[0-9]{8}-[0-9]{4}$` (`session_capture_sources_session_check`); **no FK** to `session_history` (written while the session exists only in `active_session`, D-DB-07) |
+| `slot` | text | no | — | PK part; `session_capture_sources_slot_check`: `slot IN ('VIDEO-01','VIDEO-02','MIC-PRIMARY','MIC-STANDBY')` (value set `CAPTURE_SOURCE_SLOT`) |
+| `device_id` | text | no | — | FK `capture_devices.id` RESTRICT (`session_capture_sources_device_id_fkey`); a dual-lens camera stands in both `VIDEO` rows (OD-05) |
+| `adapter_kind` | text | no | — | `session_capture_sources_adapter_kind_check`: the five values of N.2; `session_capture_sources_pairing_check` (below) |
+| `recorded_at` | bigint | no | — | epoch-ms of the write |
+
+```sql
+-- session_capture_sources_pairing_check
+CHECK (
+     (slot IN ('VIDEO-01', 'VIDEO-02')         AND adapter_kind IN ('ONVIF_RTSP', 'FAKE', 'LOCAL_DEVICE'))
+  OR (slot IN ('MIC-PRIMARY', 'MIC-STANDBY')   AND adapter_kind IN ('USB_AUDIO',  'FAKE', 'LOCAL_DEVICE'))
+)
+```
+
+Primary key `session_capture_sources_pkey` (`session_id`, `slot`); no other index (reads are by
+session). Privileges: **SELECT and INSERT only** for `dems_app` — no UPDATE, no DELETE, so "never
+updated" is enforced by the database (`42501`), the pattern of `recording_fragments` (§B.6) and
+`transcripts` (§B.8). Reset: rebuilt (rows removed, table kept).
+
+Mapping rules (code rules the database cannot hold):
+
+| # | Rule |
+|---|---|
+| MR-S1 | **Exactly four rows per session, in one statement, in the database transaction that persists the transition to `RECORDING`** — before the Core asks the supervisor to start capture. So the rows are durable before the first `recording_fragments` row can exist. Rows 66 / 71 own the write |
+| MR-S2 | Every `session_audio_intervals.mic_device_id` of a session equals the `device_id` of one of its two `MIC-` rows, and every `recording_fragments.track_id` of a session has its `VIDEO-` row. The class of an interval (manifest field 125) is the kind of that `MIC-` row; the class of a camera file (field 124) is the kind of its `VIDEO-` row. `session_audio_intervals` therefore needs **no new column** |
+| MR-S3 | `adapter_kind` is the adapter that really feeds the slot in this run: in `REAL_PRODUCTION` and `REAL_DEVELOPMENT` it equals `capture_devices.adapter_kind` of `device_id` at that moment; in `SIMULATED` it is `FAKE` for all four rows whatever the registry says (the simulator generates the media). This is why the table has no composite foreign key to (`id`, `adapter_kind`) of the registry |
+| MR-S4 | `BUILD_MANIFEST` (rows 82 / 83 / 141) reads the class **from these rows only** — never from `capture_devices`, `capture_config`, `active_session.capture_config` or the development flag. A session without exactly four rows fails the step (`sealing_jobs.status = 'FAILED'`, `error_code` proposed `SOURCE_RECORD_MISSING`), nothing is signed (row 124 §B.12 rule 2, §E.6) |
+| MR-S5 | A resumed seal (RECOVERY, `sealing_jobs.attempt >= 2`) reads the same immutable rows, so it writes the same classes after any restart; the classes need no place in `sealing_jobs.checkpoint` |
+
+Relation to the neighbouring tables: `recording_fragments` (`session_id`, `track_id`) joins the
+`VIDEO-` rows by value and `session_audio_intervals` joins the `MIC-` rows through `mic_device_id`
+— both by mapping rule, without a foreign key, because the seeded and fixture fragment rows of
+today have no source rows and an added FK would have to rewrite data inside `0008` (MG-8, the
+argument of §A.4). `sealing_jobs` gains nothing: it is the reader's progress record.
+
+Alternatives:
+
+| Alternative | Verdict | Why |
+|---|---|---|
+| The adapter kind inside `active_session.capture_config` (a JSON shape change, no DDL — the precedent of the `finalization` fields, §B.10) | rejected | `dems_app` holds table-level UPDATE and DELETE on `active_session` (`0003_privileges.sql:45`) and the write-through rewrites its JSON columns; "written once, never updated" would be a code promise only, on the one fact that decides whether a signed package says "production". The JSON has no CHECK on the value, and the row is gone when the session leaves `active_session` |
+| A column on `session_audio_intervals` and one on `recording_fragments` | rejected | one fact repeated on thousands of fragment rows; nothing for a camera before its first fragment; row 124 itself asks for no interval column |
+| A column on `evidence_tracks` | rejected | that row is written at the seal — too late to be the session-start record |
+| Composite FK (`device_id`, `adapter_kind`) -> `capture_devices` | rejected | MR-S3: a simulated session over a registry that holds production devices must record `FAKE` |
+| **INSERT-only table, PK (`session_id`, `slot`)** | **chosen** | immutable by privilege, closed by CHECK, four rows per session, readable after any restart |
+
+### N.4 The list-pane flag on a sealed item — `evidence_items.development_sources` — Erratum PE-122-05
+
+Hand-over (b) of row 124 asks whether evidence lists can show the "development source" label
+(R-11 AC-6) without opening each manifest. **Decision D-DB-16: one nullable boolean on
+`evidence_items`; no column on `evidence_tracks`.**
+
+| Column | Type | Null | Default | Rule |
+|---|---|---|---|---|
+| `development_sources` | boolean | yes | none | the copy of manifest field 126 `developmentSources`. Mapping rule MR-E1: non-null on every v2 item sealed by rows 83 / 141, equal to the manifest value; NULL on a v1 item and on any row that existed before `0008` — the clients read NULL as "not recorded", never as "production" (`06_evidence_package_spec.md` compatibility table). No CHECK |
+
+Written in the item's INSERT; **no UPDATE grant** (the list of `0003_privileges.sql:47` stays at 7
+columns), like `manifest_version`, `transcript_sha256` and `labels_status` (§B.11). The table-level
+SELECT and INSERT that `dems_app` already holds cover a column added later, so `0009` grants nothing
+for it. The per-track class is not copied into `evidence_tracks`: a detail view reads it from the
+manifest or from the `sources` block of the verify result (row 124 §D.1), and the manifest stays the
+only authority. `integrity_source = 'REAL'` with `development_sources = true` is a legal row (a real
+recording from this Mac's camera) — "REAL" alone does not mean "production".
+
+### N.5 Discovery candidates — Core memory only, nothing in PostgreSQL (question 3) — Erratum PE-122-06
+
+**Confirmed (D-DB-15): no table, no column, no row for a candidate, a search or a connection test.**
+`03_api_contract.md` §2.6 keeps candidates as data of one operator session in the Core's memory;
+no requirement of R-9 needs them to outlive that session (R-9 AC-3: "after a search
+`capture_devices` has 0 new rows"; AC-4; AC-8).
+
+| Consequence | Statement |
+|---|---|
+| A Core restart forgets | the live search, its candidates, their test results and the in-memory rate-limit counters. The operator searches again. (The counter reset is a point for row 126, not a schema matter) |
+| No audit of candidate contents | the database holds, per search, one `CAPTURE_DISCOVERY_SEARCHED` row with **counts only** (`responderCount`, `newCount`, `registeredCount`); per test one `CAPTURE_CONNECTION_TESTED` row with the candidate id and the outcome, never a host. Which devices answered a search cannot be reconstructed from the database afterwards |
+| Identifying data | an address, a MAC, an ONVIF endpoint reference or a model string reaches PostgreSQL **only** in the `capture_devices` row of an adopted device (`address`, `mac`, `onvif_uuid`, `model`), inside the git-ignored cluster under `.data/`. `db:status` prints row counts only. No committed document may quote those values (D75) |
+| One row, one moment | a `capture_devices` row comes into being only in the commit of operation 96, in one transaction with the credential row (when a credential is present) and the audit rows; every failure before or inside it leaves 0 rows in both tables |
+| Argument for persistence, considered | a stored candidate list would give a forensic record of what was seen on the network and would survive a restart; it would also put the identifying data of **non-adopted** third-party devices into a kept table and into every backup — against D75 and with no acceptance criterion asking for it. Rejected |
+
+Matching key ("is this candidate already registered", `status: REGISTERED`):
+
+1. `capture_devices.onvif_uuid = endpointRef` when the candidate announces one;
+2. otherwise **the whole stored `address`** (host, or host and port, as adoption would store it) —
+   not the host alone. **Divergence from row 121** (§2.6 candidate table: "by `host` = the host of
+   `address`"): the two seeded cameras sit on `127.0.0.1:8554` and `127.0.0.1:8555`
+   (`seed.ts:157-158`), so a host-only match would report every loopback development candidate as
+   already registered, and a dual-lens camera has one host for two devices. For row 128.
+
+One new index: **`capture_devices_onvif_uuid_key`**, a partial unique index on (`onvif_uuid`)
+`WHERE onvif_uuid IS NOT NULL` — the database's backstop for "at most one device per `endpointRef`"
+(§2.6 Idempotency). Valid on existing data: every seeded row has `onvif_uuid` NULL
+(`seed.ts:150`), and the bulk fixture draws a fresh UUID per discovered camera
+(`fixtures/pipeline.ts:138`). Two concurrent adoptions of one endpoint: both mint the same next id,
+so the second INSERT fails `23505` on the primary key, or on this index when the ids differ; the
+module answers `409 CANDIDATE_ALREADY_REGISTERED`. No table lock is needed (and `dems_app` could
+not take one stronger than ROW EXCLUSIVE without a table-level UPDATE).
+
+Id minting: `CAM-NN` = the highest existing number + 1, read inside the adoption transaction,
+two digits minimum. `capture_devices_id_check` (`^CAM-[0-9]{2,}$`) admits it past `CAM-99`. "Never
+reused" holds because the runtime role cannot delete a row and a reset keeps the table. The shared
+`HARDWARE_DEVICE_ID_PATTERN` and the description of `CAPTURE_DEVICE_PARAM` are row 132's.
+
+### N.6 Audit and alert storage — no CHECK change (question 4) — Erratum PE-122-07
+
+Every constraint that could bind the four new audit types, their categories, their detail keys or
+the three alerts, inspected in the migration text:
+
+| Constraint | Text (abridged) | New vocabulary | Result |
+|---|---|---|---|
+| `audit_log_type_check` (`0001_tables.sql:194`) | format `^[A-Z][A-Z0-9_]{0,63}$` — **not a list** | `CAPTURE_DISCOVERY_SEARCHED`, `CAPTURE_CONNECTION_TESTED`, `CAPTURE_CANDIDATE_ADOPTED`, `CAPTURE_DEVICE_UNREACHABLE` (26, 25, 25, 26 characters) | admitted; MG-11 |
+| `audit_log_category_check` (`:195`) | closed list of 8 | `DEVICE` (3 types), `SECURITY` (1 type) | both in the list; no new category |
+| `audit_log_severity_check` (`:196`) | closed list of 4 | the existing severities | unchanged |
+| `audit_log_details_flat_check` (`:198`) | no object or array value | every key of `03_api_contract.md` §5.2 is a string, number or boolean; `evidenceFiles: 0` is a number | admitted |
+| `audit_log_details_no_secret_keys_check` (as swapped by `0006`: 28 keys) | none of 28 top-level keys | `searchId`, `scope`, `trigger`, `outcome`, `responderCount`, `newCount`, `registeredCount`, `failureReason`, `sessionId`, `operationId`, `permission`, `candidateId`, `authenticated`, `adapter`, `sourceClass`, `deviceId`, `credentialSet`, `deviceKind`, `phase`, `reason`, `degraded` | none is a denied key (`credentialSet` is not `credential`; the check matches whole key names). The rule "never the host" is the application's: `host` is **not** a denied key. If row 126 wants the database to refuse it, that is a CHECK swap in a later set — not asked for here |
+| `events_type_check`, `events_params_*` (`:216`, `:219`, `:220`) | format; flat; the same 28 keys | as above | admitted |
+| `alerts_kind_check` (`0004_capture.sql:227`) | `kind = 'SYSTEM' OR kind IN (14 fault kinds)`; severity list of 4 | situations A and B and the degraded C: `SYSTEM` / WARNING; situation C: `CAPTURE_FAULT` / CRITICAL | both admitted; **no fifteenth fault kind** |
+| `alerts_params_check` (`0001_tables.sql:383`) | flat object or NULL | `reason`, `searchId`, `trigger`, `deviceId`, `deviceKind`, `phase`, `cause`, `searchResponderCount`, `evidenceFiles` | admitted; `params.reason` is free text to the database |
+| `session_history_outcome_check`, `health_snapshots_cause_check` (`0004_capture.sql:217,228`) | the same 14 fault kinds | no new kind | unchanged |
+
+**No schema change for audit or alerts.** No CHECK lists audit types; the reasons live in `params`
+and `details`, which the database checks for shape only.
+
+### N.7 Credential rows — no change (question 5) — Erratum PE-122-08
+
+| Point | Finding | Evidence |
+|---|---|---|
+| Table | operation 96 writes `capture_device_credentials` (T-33) through the store of operation 89; one row per device, PK `device_id`, FK to `capture_devices.id` RESTRICT. Inside the adoption transaction the device row is inserted first, then the credential row | §B.3; `0004_capture.sql` (T-33); `03_api_contract.md` §2.6 "Adoption" |
+| Privileges for the adoption transaction | `dems_app` holds INSERT on `capture_devices` and on `capture_device_credentials`, INSERT on `audit_log`, and UPDATE of the six credential columns for a later rotation by operation 89. Nothing is missing for the INSERT path (the D72(f) question of row 121) | `0005_capture_privileges.sql:24-28,44-45`; `0003_privileges.sql:22` |
+| The secret is not readable | `dems_app` has **no SELECT** on the table (revoked at `0005:21`); the only read path is `dems_capture_credential_reveal(text)`, one calling module, every call audited — the same shape as the three hidden columns of `stt_config` (`0007`). `0009` must not re-issue a blanket `GRANT SELECT ON ALL TABLES`: it would re-open both carve-outs (N.8) | `0005:17-21,60-75`; `0007:14-18` |
+| Sealer dependency | the row cannot be written before row 84 provides the sealer: `encryption = 'AES-256-GCM'`, `nonce` 12 bytes, `key_ref` a `CODE`, `secret_ciphertext >= 33` bytes are all NOT NULL / CHECKed, so no placeholder row is possible. Until then the credential leg answers `503 CREDENTIAL_STORE_NOT_READY` and adoption without a credential (development candidates) inserts the device row alone (D80(7)) | `0004_capture.sql:29`; D68(c); D80(7) |
+| **F-122-2** (finding for rows 84 and 126) | `capture_device_credentials_secret_check` asks for at least 33 bytes = 17 bytes of plaintext + the 16-byte tag. The API accepts a secret of 1 to 1024 characters (`03_api_contract.md` §2.6, op 95 / 96). **A camera password shorter than 17 bytes fails `23514` unless the sealer frames the plaintext** (a length prefix and padding to a fixed block, which also hides the length). The schema is not changed for this; the sealer of row 84 must frame, and row 127 needs a check with a one-character secret | `0004_capture.sql:29`; §B.3 column table |
+| A camera adopted without a credential | legal in the schema (no credential row); the reveal function returns no row for it | `0005:60-69` |
+
+**No schema change for credentials.**
+
+### N.8 Migration set 4, exactly (question 6) — Erratum PE-122-09
+
+| Order | File | Kind | Content |
+|--:|---|---|---|
+| 9 | `0008_capture_sources.sql` | generated (`npm run db:generate -w @dems/core-server`, `drizzle-kit generate --name=capture_sources`) from the typed-schema edit below; snapshot `meta/0008_snapshot.json`; journal entry idx 8 | 1 CREATE TABLE, 2 ADD COLUMN, 1 FK, 1 partial unique index, 2 ADD CONSTRAINT on `capture_devices` |
+| 10 | `0009_capture_sources_privileges.sql` | hand-written (`generate --custom --name=capture_sources_privileges`); snapshot `meta/0009_snapshot.json`; journal entry idx 9 | the grant for the new table, two boundary REVOKEs, the version row |
+
+**The blueprint says "migration `0008`"; by MG-2, MG-5 and MG-6 it is a set of two files** (a
+generated file never holds a grant or the version row). Rows 129 and 130 read "`0008`" as "set 4 =
+`0008` + `0009`". Both files are applied in one transaction by the migrator (§A.3).
+
+Expected statements of `0008` (plan form; the generator decides the formatting and the order, row
+129 compares statement by statement; every statement is additive and validates against the rows of
+N.1 without a data rewrite — the five device rows receive `FAKE`, which the pairing CHECK admits for
+all three device classes):
+
+```sql
+CREATE TABLE "session_capture_sources" (
+	"session_id" text NOT NULL,
+	"slot" text NOT NULL,
+	"device_id" text NOT NULL,
+	"adapter_kind" text NOT NULL,
+	"recorded_at" bigint NOT NULL,
+	CONSTRAINT "session_capture_sources_pkey" PRIMARY KEY("session_id","slot"),
+	CONSTRAINT "session_capture_sources_session_check" CHECK ("session_capture_sources"."session_id" ~ '^SES-[0-9]{8}-[0-9]{4}$'),
+	CONSTRAINT "session_capture_sources_slot_check" CHECK ("session_capture_sources"."slot" IN ('VIDEO-01', 'VIDEO-02', 'MIC-PRIMARY', 'MIC-STANDBY')),
+	CONSTRAINT "session_capture_sources_adapter_kind_check" CHECK ("session_capture_sources"."adapter_kind" IN ('ONVIF_RTSP', 'USB_AUDIO', 'SNMP_POE', 'FAKE', 'LOCAL_DEVICE')),
+	CONSTRAINT "session_capture_sources_pairing_check" CHECK (("session_capture_sources"."slot" IN ('VIDEO-01', 'VIDEO-02') AND "session_capture_sources"."adapter_kind" IN ('ONVIF_RTSP', 'FAKE', 'LOCAL_DEVICE')) OR ("session_capture_sources"."slot" IN ('MIC-PRIMARY', 'MIC-STANDBY') AND "session_capture_sources"."adapter_kind" IN ('USB_AUDIO', 'FAKE', 'LOCAL_DEVICE')))
+);
+ALTER TABLE "capture_devices" ADD COLUMN "adapter_kind" text DEFAULT 'FAKE' NOT NULL;
+ALTER TABLE "evidence_items" ADD COLUMN "development_sources" boolean;
+ALTER TABLE "session_capture_sources" ADD CONSTRAINT "session_capture_sources_device_id_fkey" FOREIGN KEY ("device_id") REFERENCES "public"."capture_devices"("id") ON DELETE restrict ON UPDATE no action;
+CREATE UNIQUE INDEX "capture_devices_onvif_uuid_key" ON "capture_devices" USING btree ("onvif_uuid") WHERE "capture_devices"."onvif_uuid" IS NOT NULL;
+ALTER TABLE "capture_devices" ADD CONSTRAINT "capture_devices_adapter_kind_check" CHECK ("capture_devices"."adapter_kind" IN ('ONVIF_RTSP', 'USB_AUDIO', 'SNMP_POE', 'FAKE', 'LOCAL_DEVICE'));
+ALTER TABLE "capture_devices" ADD CONSTRAINT "capture_devices_adapter_pairing_check" CHECK (("capture_devices"."kind" = 'CAMERA' AND "capture_devices"."adapter_kind" IN ('ONVIF_RTSP', 'FAKE', 'LOCAL_DEVICE')) OR ("capture_devices"."kind" = 'MIC' AND "capture_devices"."adapter_kind" IN ('USB_AUDIO', 'FAKE', 'LOCAL_DEVICE')) OR ("capture_devices"."kind" = 'POE' AND "capture_devices"."adapter_kind" IN ('SNMP_POE', 'FAKE')));
+```
+
+Names follow N-4 (`<table>_pkey`, `<table>_<columns>_fkey`, `<table>_<columns>_key`,
+`<table>_<rule>_check`); the longest, `session_capture_sources_adapter_kind_check`, is 42 bytes
+(limit 63). No sequence, no trigger, no function, no new DB role (D-DB-07).
+
+Statements of `0009` (the text row 129 writes; comment wording is free, the statements are not):
+
+```sql
+-- 0009_capture_sources_privileges (hand-written; database contract dbc-4 section N.8; the 0005
+-- pattern; MG-2, MG-5, MG-6). R-9..R-11 (D73, D78); blueprint row 129.
+-- No statement names the owner role or the provisioning superuser (MG-9, OW-9). dems_app exists
+-- before this file runs (OW-8). The table exists (0008).
+-- NO blanket "GRANT SELECT ON ALL TABLES": it would re-open the SELECT carve-outs of
+-- capture_device_credentials (0005) and of the three hidden columns of stt_config (0007).
+GRANT SELECT, INSERT ON session_capture_sources TO dems_app;
+--> statement-breakpoint
+-- Boundary pins (no-ops today, the 0007 precedent): the two new columns are written once.
+REVOKE UPDATE (adapter_kind) ON capture_devices FROM dems_app;
+--> statement-breakpoint
+REVOKE UPDATE (development_sources) ON evidence_items FROM dems_app;
+--> statement-breakpoint
+-- MG-5: the last file of the set carries the version; DB_SCHEMA_VERSION / DB_CONTRACT_REVISION
+-- in src/db/schema/meta.ts change in the same commit (boot check B-3 compares them).
+UPDATE public.schema_meta SET schema_version = 3, contract_revision = 'dbc-4' WHERE singleton;
+```
+
+Privilege matrix after set 4 (runtime role; `dems_owner` owns everything and applies the set):
+
+| Table | dems_app SELECT | INSERT | UPDATE | DELETE | Granted by |
+|---|:-:|:-:|:-:|:-:|---|
+| `session_capture_sources` (new) | yes | yes | **no** | no | `0009` |
+| `capture_devices` | yes (unchanged; table-level, covers `adapter_kind`) | yes (unchanged; covers `adapter_kind`) | the same 10 columns; **not `adapter_kind`**, not `kind`, not `id` | no | `0005` |
+| `evidence_items` | yes (unchanged; covers `development_sources`) | yes (unchanged) | the same 7 columns; **not `development_sources`** | no | `0003` |
+| `capture_device_credentials` | no (unchanged) | yes (unchanged) | 6 columns (unchanged) | no | `0005` |
+| every other table | unchanged | unchanged | unchanged | unchanged | — |
+
+Typed-schema and code edits that belong to the same commit as the two files (row 129; MG-5):
+`schema/value-sets.ts` (`CAPTURE_ADAPTER_KIND`, `CAPTURE_SOURCE_SLOT`), `schema/capture.ts`
+(`adapterKind` declared last, two checks, the partial unique index), `schema/recording.ts`
+(`sessionCaptureSources`), `schema/evidence.ts` (`developmentSources` declared last),
+`schema/meta.ts` (`3`, `'dbc-4'`), `schema/index.ts`, `commands/migrations.ts`
+(`INITIAL_MIGRATION_TAGS`: ten tags), the seed (N.10), `fixtures/minimums.ts` (41 entries), and the
+test inventory of N.12.
+
+Down path: **none.** Migrations are roll-forward only (MG-4; dbc-2 decision 6): an applied file is
+never edited and a correction is a new file (`0010`). The pending set runs in one transaction, so a
+failure leaves a database at `(2, 'dbc-3')` with nothing applied. After a successful apply there is
+no way back to version 2: code older than row 129 is refused at boot by B-3 on a migrated database
+(N.9). For a lane the last resort is re-creation by §F; for `dems_demo` it is a fix-forward file.
+
+Order of application on the four databases (row 130), after row 129's own run on a throw-away copy
+of `dems_demo` has passed twice:
+
+| # | Step | Note |
+|--:|---|---|
+| 0 | Every Core process that uses the four databases is stopped (ports 4420-4423), and **every working tree that will start a Core afterwards holds row 129's commit** | B-3: old code refuses a migrated database; new code refuses an unmigrated one. With several agents running in parallel this is a coordination point for the controller |
+| 1 | `npm run db:status -- --database <name>` on all four; note the row counts of the kept tables | expect schema version 2, contract revision `dbc-3`, 8 files, ledger matches |
+| 2 | `/usr/bin/lockf -k .locks/db-migrate.lock npm run db:migrate -- --database dems_lane_1` | the canary: a lane can be re-created by §F |
+| 3 | the same for `dems_lane_2`, then `dems_lane_3` | one database at a time, each under the lock |
+| 4 | the same for `dems_demo`, last | the main instance holds the pairings of the three emulators |
+| 5 | `db:status` on all four | expect schema version 3, contract revision `dbc-4`, "this code expects 3 (dbc-4)", **10 files, ledger matches**, 41 tables, `capture_devices` and every kept table with the row counts of step 1, `session_capture_sources 0` |
+| 6 | second `db:migrate` on each (the "2 runs" of the row) | applies nothing (MG-10) |
+
+No reseed and no reset is needed (N.10): after the migration the five device rows already equal
+what the new seed writes.
+
+### N.9 Schema version, contract revision, boot checks and the fence — Erratum PE-122-10
+
+| Item | Value | Why |
+|---|---|---|
+| Schema version | **2 -> 3**; contract revision **`dbc-3` -> `dbc-4`** (**D-DB-17**) | code after row 129 writes and reads `adapter_kind` and `session_capture_sources`; without a step, new code on an unmigrated database would pass B-3 and fail at its first query, and old code would boot on a migrated one. `0007` kept `(2, 'dbc-3')` because R-8 was folded into `dbc-3` before any reader existed; that reasoning does not hold here |
+| Boot check B-3 | expects `(3, 'dbc-4')`; unchanged in mechanism | `schema/boot-checks.ts` (`checkSchemaVersion`); `schema/meta.ts` |
+| Boot checks B-1, B-2, B-4..B-9 | unchanged | they state that the database is sound, whatever the configuration is |
+| A new database boot check B-10 | **not added** (**D-DB-18**) | the fence needs the capture configuration (three environment keys through row 61's one function); the B-checks are pure functions over a pool. The fence is a **capture boot check** (register CS-22; rows 61 and 136) that reads the query below. `BOOT_CHECK_IDS` stays `B-2`..`B-9` |
+
+The query the fence reads (shape, not executed; `dems_app`, SELECT only):
+
+```sql
+-- Q-SRC: the stored sources = the devices the selector assigns, with their adapter kind.
+SELECT d.id, d.kind, d.adapter_kind
+  FROM capture_config AS c
+  JOIN capture_devices AS d
+    ON d.id IN (c.video_01_device_id, c.video_02_device_id, c.mic_primary_id, c.mic_standby_id)
+ ORDER BY d.id;
+```
+
+What the database contract asks of the fence (the decision table itself is row 123's, §A.1.2):
+
+| Case | Rule | Authority |
+|---|---|---|
+| Capture operation `REAL_PRODUCTION`, an **assigned** device of kind `FAKE` or `LOCAL_DEVICE` | **refused at boot**, naming the device ids | R-11 AC-1 (a); row 123 row 7 |
+| Capture operation `REAL_DEVELOPMENT`, an assigned device of a production kind | **refused at boot** | R-11 AC-1 (b); row 123 row 8 |
+| A development-kind row that is registered but **not assigned**, development flag off | **ignored**: not refused at boot, not listed by operations 76 / 77, refused on assignment by 78 / 79 (`DEVELOPMENT_SOURCE_NOT_ALLOWED`). The row stays in the table; nothing deletes it | R-11 AC-2; `03_api_contract.md` §3.1; row 123 RG-2 |
+| Capture operation `SIMULATED` | **the stored kinds are inert, whatever they are.** After `0008` all four development databases hold four assigned `FAKE` devices and must keep booting in simulated mode. Row 123's row 1 names only "none, or production kinds (inert)" — to be widened at row 128 (N.15 O-2) | N.1; this row |
+| A session open at boot (RECOVERY) | the fence reads the selector, which cannot change while a session is open (`409 CAPTURE_CONFIG_LOCKED`); the seal reads `session_capture_sources`, not the selector (MR-S4) | N.3 |
+| The PoE switch | not an assigned source; outside Q-SRC | §B.1 |
+
+### N.10 Kept tables, reset, seed and bulk fixture — Erratum PE-122-11
+
+| Item | dbc-4 | Note |
+|---|---|---|
+| Kept set | **12 tables, unchanged**; no new carry mode | `capture_devices` stays kept, mode `upsert`: the carried image is built from the typed schema's column list (`reset/kept-tables.ts:58-62`), so `adapter_kind` is carried once the schema declares it |
+| Does a reset keep adopted devices | **yes** — an adopted camera and a registered local device are carried with their kind; their credential rows too | D-DB-08; OD-19 |
+| `session_capture_sources` at a reset | rebuilt: rows removed, table kept. Its FK names a kept table, never the other way round | §B.0 pattern |
+| Reset guard (OD-19, §E.2) | unchanged: keyed on `integrity_source = 'REAL'`. A package sealed in development mode is `REAL` and therefore blocks every later reset of that database (N.15 O-5) | §E.2 |
+| Seed: `capture_devices` | still **5** built-ins; each written with `adapter_kind = 'FAKE'` explicitly (the seed names the value, it does not lean on the default) | `seed/seed.ts:133-163` |
+| Seed: `session_capture_sources` | **0 rows today** — the seed writes no interval and no fragment row (N.1: both tables hold 0 rows). Rule S-1: from the day the seed or a generator writes interval or fragment rows for a session, it writes that session's four source rows, all `FAKE` (D81: demo packages carry class `FAKE`) | N.1 |
+| Seed: `evidence_items.development_sources` | NULL on the 13 v1-shaped items of today; `true` on every demo item from the day SH-24 regenerates them as v2 | row 124 A-4; D81 |
+| Seed row total | unchanged (314 rows; "24 of **41** table(s)") | `seed/__tests__/cli.test.ts:83` |
+| The four development databases after `0008` | image-equal to a fresh seed for `capture_devices` (5 rows, `FAKE` by the column default); **no reseed needed** | N.1; A-122-1 for the lanes |
+
+Bulk-fixture minimums (revision of the §G table):
+
+| Table | Minimum | Mix |
+|---|--:|---|
+| `capture_devices` | **12 (revised from 8)** | 5 built-ins (`FAKE`); 3 discovered cameras (`ONVIF_RTSP`, distinct `onvif_uuid`, ≥1 dual-profile — the two credential rows are theirs); 1 `LOCAL_DEVICE` camera and 1 `LOCAL_DEVICE` microphone; 2 `USB_AUDIO` microphones. Four of the five kinds present; `SNMP_POE` is exercised by MT-10 only (no production PoE adapter exists in this phase) |
+| `session_capture_sources` | **1,600 (new)** | exactly 4 per session that has an interval or a fragment row; ≥20 sessions in the development shape of D74(2) (`LOCAL_DEVICE`, `FAKE`, `LOCAL_DEVICE`, `FAKE`); ≥20 sessions all-production (`ONVIF_RTSP` x2, `USB_AUDIO` x2); the rest all-`FAKE`; no session mixes a production kind with a development kind (row 123 RG-3); MR-S2 holds for every interval row |
+| `evidence_items` | 505 (**mix revised**) | `development_sources` non-null on every `manifest_version = 2` row and NULL on every v1 row; both `true` and `false` present; equal to "some source row of the item's session is `FAKE` or `LOCAL_DEVICE`" |
+
+### N.11 Totals after set 4, with the arithmetic — Erratum PE-122-12
+
+| Total | dbc-3 as built | Delta | dbc-4 | Arithmetic |
+|---|--:|--:|--:|---|
+| Tables | 40 | +1 | **41** | T-41 `session_capture_sources` |
+| Columns | 419 | +7 | **426** | 5 (T-41) + 1 (`capture_devices.adapter_kind`) + 1 (`evidence_items.development_sources`) |
+| Named CHECKs | 166 | +6 | **172** | 4 (T-41: session, slot, adapter_kind, pairing) + 2 (`capture_devices`: adapter_kind, adapter_pairing) |
+| Foreign keys | 39 | +1 | **40** | `session_capture_sources_device_id_fkey` |
+| Primary keys | 40 | +1 | **41** | `session_capture_sources_pkey` |
+| UNIQUE constraints | 15 | 0 | 15 | — |
+| Unique indexes | 3 | +1 | **4** | `capture_devices_onvif_uuid_key` (partial) |
+| Plain indexes | 23 | 0 | 23 | — |
+| Index relations in the catalog | 81 | +2 | **83** | the new primary key and the new partial unique index |
+| Value sets | 42 | +2 | **44** | `CAPTURE_ADAPTER_KIND` (5), `CAPTURE_SOURCE_SLOT` (4) |
+| Tables with INSERT for `dems_app` | 24 | +1 | **25** | `session_capture_sources` |
+| Columns with an UPDATE grant | unchanged count | 0 | unchanged, of 426 | neither new column is granted |
+| Kept tables | 12 | 0 | 12 | — |
+| Migration files / hand-written | 8 / 5 | +2 / +1 | **10 / 6** | `0008` generated, `0009` hand-written |
+| Schema version / revision | 2 / `dbc-3` | — | **3 / `dbc-4`** | `0009` |
+| Fault kinds / fault-kind CHECKs | 14 / 3 | 0 | 14 / 3 | N.6 |
+| Seeded `capture_devices` rows | 5 | 0 | 5 | N.10 |
+
+### N.12 Checks of the delta, and the pins it touches — Erratum PE-122-13
+
+Named checks (continuing MT-1..MT-8 of §G; row 127 places them in the catalogue with method, depth
+and owning row):
+
+| # | Check | Pass condition |
+|--:|---|---|
+| MT-9 | Set 4 applies | on a throw-away copy of `dems_demo` and on a fresh database: `db:migrate` exit 0; ledger current with 10 files; `schema_meta = (3,'dbc-4')`; a second run applies nothing; on the copy the 5 device rows read `FAKE`, the 13 items read `development_sources IS NULL`, `session_capture_sources` holds 0 rows. 2 runs |
+| MT-10 | CHECKs accept the legal and refuse the rest | `capture_devices`: the 8 legal (kind, adapter) pairs accepted, the 7 illegal pairs refused by `capture_devices_adapter_pairing_check`, a sixth kind and NULL refused; a second row with the same non-null `onvif_uuid` refused `23505` on `capture_devices_onvif_uuid_key`, two NULLs accepted. `session_capture_sources`: a fifth slot refused; `USB_AUDIO` in a `VIDEO` slot, `ONVIF_RTSP` in a `MIC` slot and `SNMP_POE` in any slot refused; a second row for one (session, slot) refused; an unknown `device_id` refused `23503` |
+| MT-11 | Privileges | as `dems_app`: `UPDATE capture_devices SET adapter_kind` fails `42501`; UPDATE and DELETE on `session_capture_sources` fail `42501`, INSERT and SELECT succeed; `UPDATE evidence_items SET development_sources` fails `42501`; **`SELECT` on `capture_device_credentials` and on `stt_config.secret_ciphertext` still fails `42501`** (set 4 re-opened nothing); the matrix covers 41 tables and 426 columns |
+| MT-12 | The device upsert | the engine's UPSERT on an existing id succeeds and leaves `adapter_kind` unchanged; the mapping refuses a slice that changes the adapter of an existing id (the D72(f) class) |
+| MT-13 | Adoption transaction | as `dems_app`: device row + credential row + audit rows commit together; a failure injected after the device INSERT leaves 0 rows in both tables; two concurrent adoptions of one `endpointRef` leave one row |
+| MT-14 | Reset | an adopted `ONVIF_RTSP` row and a `LOCAL_DEVICE` row survive a reset with their kind (kept images equal); `session_capture_sources` is emptied; the version stays `(3,'dbc-4')` |
+| MT-15 | Seed and fixture | seed: 5 built-ins all `FAKE`, 0 source rows, NULL flags on v1 items; the bulk fixture meets N.10 |
+| MT-16 | B-3 across the step | new code on a database at `(2,'dbc-3')` is refused with the message that names `db:migrate`; old code on `(3,'dbc-4')` is refused |
+
+Pins. **Row 122 edited no test.** The tests that read this document pin two strings:
+
+| Pin | Where | Touched by this edit | Moves when row 129 lands |
+|---|---|---|---|
+| the §0.1 row "Table count" with the cell `30 -> 39` (the test looks for that table row as text, pipes included) | `test/db/contract-inventory.test.ts:67` | no — §0.1 is byte-identical | no (history of dbc-3) |
+| ``### B.13 `stt_config` (T-40)`` | `test/db/contract-inventory.test.ts:70` | no — the heading is byte-identical | no |
+
+Pins on code and catalog that **must move in row 129's commit** (file:line at HEAD `101ce62`):
+
+| Pin today | Where | New value |
+|---|---|---|
+| counts `tables 40, columns 419, primaryKeys 40, foreignKeys 39, uniques 15, uniqueIndexes 3, indexes 23, checks 166` | `test/db/contract-inventory.test.ts:50-59` (+ title `:44`) | 41, 426, 41, 40, 15, **4**, 23, 172 |
+| table ids `T-01`..`T-40` (`length: 40`) | `contract-inventory.test.ts:61`; "the 40 tables" `:92` | `T-01`..`T-41` |
+| value sets `toHaveLength(42)` and the server-native list | `contract-inventory.test.ts:304,310-320` | 44; `CAPTURE_SOURCE_SLOT` joins the server-native list, `CAPTURE_ADAPTER_KIND` joins it too unless row 136 has already made it a shared constant |
+| "the set is eight files", five hand-written tags | `contract-inventory.test.ts:251-256`; `src/db/commands/migrations.ts:36-45` | ten files; six hand-written (`0009_capture_sources_privileges` joins) |
+| the composed inventory itself | `test/db/contract-v2-delta.ts` (or a new delta module beside it) and `test/db/contract-inventory.json` (regenerated by `--write`) | T-41, the two columns, six CHECKs, one FK, one unique index, two value sets |
+| `40 tables, 419 columns, 166 named CHECKs, 39 foreign keys`; `{ c: 166, f: 39, p: 40, u: 15 }`; `{ i: 81, r: 40 }`; 40 rows | `test/db/catalog.db.test.ts:170,195,239,352,364-365` | 41 / 426 / 172 / 40; `{ c: 172, f: 40, p: 41, u: 15 }`; `{ i: 83, r: 41 }`; 41 |
+| "all 166 CHECKs … 162 directly, 4 …"; "each of the 40 tables"; "all 39 foreign keys" | `test/db/constraints.db.test.ts:266-269,296,432-434` | 172 (168 directly if the four indirect ones stay); 41; 40 |
+| "all 40 tables; INSERT on 24"; 419 columns (four places); "public table … total: 40" | `test/db/privileges.db.test.ts:133,178,186,190,236,258,455` | 41; 25; 426; 41 |
+| `DB_SCHEMA_VERSION: 2, DB_CONTRACT_REVISION: 'dbc-3'` and the B-3 messages; the "newer database" example already uses `3 (dbc-4)` | `test/db/boot-checks.db.test.ts:110-137` | `3` / `'dbc-4'`; the newer example becomes `4 (dbc-5)` |
+| "applies the eight files", `2 (dbc-3)`, "40 row counts", `40 table(s)` | `test/db/commands.db.test.ts:87-130,160`; `test/db/commands.test.ts:280` | ten files; `3 (dbc-4)`; 41 |
+| "eight files", `{ schemaVersion: 2, contractRevision: 'dbc-3' }`, `toHaveLength(40)` | `test/db/migrate.db.test.ts:31,54,67-68,90-91,106` | ten; `3` / `'dbc-4'`; 41 |
+| `{ schema_version: 2, contract_revision: 'dbc-3' }` | `src/db/seed/__tests__/seed.db.test.ts:93` | `3` / `'dbc-4'` |
+| "is at schema version 1 (dbc-3); this code builds version 2 (dbc-3)" | `src/db/reset/__tests__/reset-failures.db.test.ts:437` | "… version 2 (dbc-3); this code builds version 3 (dbc-4)" or the test's own lowered value |
+| "314 row(s) in 24 of 40 table(s)", `40 table(s)` | `src/db/seed/__tests__/cli.test.ts:83-84`; `src/db/reset/__tests__/cli.db.test.ts:107` | "24 of 41"; 41 |
+| `BULK_MINIMUMS` has 40 entries | `src/db/fixtures/__tests__/build.test.ts:65-66`; `src/db/fixtures/minimums.ts:34,85` | 41; `capture_devices` 12 |
+| `KEPT_TABLE_NAMES` has 12 | `src/db/reset/__tests__/m2-sttcfg-seed-kept.db.test.ts:122` | **stays 12** |
+| `BOOT_CHECK_IDS` `B-2`..`B-9` | `src/db/schema/boot-checks.ts:36` | **stays** (D-DB-18) |
+
+### N.13 Decisions of the delta — Erratum PE-122-14
+
+| ID | Decision | Alternative rejected | Why |
+|---|---|---|---|
+| D-DB-11 | The adapter kind is the column `capture_devices.adapter_kind`, a closed set of five (`ONVIF_RTSP`, `USB_AUDIO`, `SNMP_POE`, `FAKE`, `LOCAL_DEVICE`) with a pairing CHECK to `kind`; no UPDATE grant; the source class is not stored | derive from configuration; snapshot only; an open `CODE` set; reuse `transport`; a stored `source_class` | N.2: the fence must read a stored fact; the value decides "production" on a signed package |
+| D-DB-12 | `DEFAULT 'FAKE'`, permanent | backfill statement; production default | true for every existing row; errs to the safe side; keeps `0008` purely generated (MG-2, MG-8) |
+| D-DB-13 | A device never changes its adapter kind; the local devices of development mode are rows of their own with the next free ids; the seeded built-ins are `FAKE` | re-label `CAM-01` / `MIC-01` in development mode (row 123's slot table); an owner command that switches kinds | `03_api_contract.md` §2.6 "another device with another id"; a stable `device id -> kind` keeps old intervals and sessions truthful. **Conflicts with row 123's device-id column — for row 128** |
+| D-DB-14 | The session-start record is the INSERT-only table `session_capture_sources` (T-41), four rows per session | JSON inside `active_session.capture_config`; columns on interval / fragment / track rows; a composite FK to the registry | N.3: immutability by privilege on the one fact behind the manifest mark; MR-S3 for simulated sessions |
+| D-DB-15 | Discovery candidates are never stored; the matching key is `onvif_uuid`, else the whole `address`; one partial unique index on `onvif_uuid` | a candidate table; a pending device row; host-only matching; a table lock for adoption | R-9 AC-3 / AC-4 / AC-8, D75, D76(1); the seeded cameras share the host `127.0.0.1` |
+| D-DB-16 | `evidence_items.development_sources boolean NULL`, written at INSERT, no UPDATE grant; nothing on `evidence_tracks` | read every manifest for a list; a per-track column | R-11 AC-6 lists need one flag per item; the manifest stays the authority for the per-track class |
+| D-DB-17 | Set 4 is two files and steps the version to `(3, 'dbc-4')` | one file; the `0007` pattern of re-affirming `(2, 'dbc-3')` | MG-2 / MG-5 / MG-6; B-3 must tell old code from new on either side of the step |
+| D-DB-18 | No database boot check B-10; the fence is a capture boot check reading Q-SRC; assigned development sources are refused in production, unassigned ones ignored, all inert in `SIMULATED` | a B-10 inside `boot-checks.ts`; refusing on any registered development row | the fence needs configuration the B-checks do not take; an adopted fixture row left unassigned must not brick a production boot |
+
+### N.14 Hand-over (question 7) — Erratum PE-122-15
+
+| Row | What it takes from this delta |
+|---|---|
+| **129** (migration) | **Needed — it does not drop out.** Writes set 4: `0008_capture_sources.sql` generated from the typed-schema edit of N.8, `0009_capture_sources_privileges.sql` with the four statements of N.8, snapshots, journal idx 8 and 9. Same commit: `meta.ts` to `3` / `'dbc-4'`, ten tags, the seed writing `FAKE` explicitly, `fixtures/minimums.ts` (41 entries), every pin of N.12. Proof: MT-9..MT-12, MT-14..MT-16 on throw-away databases, 2 runs; `dems_demo` and the lanes untouched. No blanket SELECT grant |
+| **130** (apply) | **Needed.** The order table of N.8 (stop the Cores; lanes 1, 2, 3; `dems_demo` last; each under `lockf`; `db:status` before and after; second run applies nothing). No reseed, no reset. Check A-122-1 at step 1 (each lane: version 2 / `dbc-3`, 5 device rows). Report the kept-table row counts before and after |
+| **132** (search API) | A search, a candidate and a connection test write **no** row in `capture_devices` or anywhere but `audit_log` / `events` / `alerts`. `status: REGISTERED` by `onvif_uuid`, else by the whole `address` (N.5; divergence from row 121 noted for row 128). Operations 76 / 77 read `adapter` from `capture_devices.adapter_kind` and derive `sourceClass`; the mapping `captureDeviceFromRow` / `captureDevicesToRows` carries the adapter and refuses a change of it. Widen `HARDWARE_DEVICE_ID_PATTERN` / `CAPTURE_DEVICE_PARAM` for `CAM-NN` beyond the seeded ids. Depends on 130 |
+| **142** (connect flow / adoption) | One transaction: INSERT `capture_devices` (id = highest `CAM` number + 1 read in the transaction; `kind = 'CAMERA'`; `adapter_kind` from the Core's own search state), INSERT `capture_device_credentials` when a credential is present, the audit rows. Map `23505` on the primary key or on `capture_devices_onvif_uuid_key` to `409 CANDIDATE_ALREADY_REGISTERED`. Never name `adapter_kind` or `kind` in an UPDATE |
+| **136** (`LOCAL_DEVICE` kind) | The shared constant of the five kinds in the stored spelling (the CL-12 equality then pins the CHECK to it). Local devices are registered by INSERT as new rows (`LOCAL_DEVICE`, next free `CAM-NN` / `MIC-NN`) and assigned through `capture_config`; the built-ins stay `FAKE` (D-DB-13, pending row 128). The fence reads Q-SRC (N.9). Depends on 130 |
+| **61** (capture mode, boot checks) | The fence is a CS-22 capture boot check, not a B-check; the four rules of N.9, above all "inert in `SIMULATED`" |
+| **65, 66, 71** (selector, plan, session start) | Row 65: the upsert keeps `adapter_kind` out of the SET list with `kind`, and stops nulling `mac` / `onvif_uuid` / `profiles` / `last_seen_at` (D72 A-11) — a nulled `onvif_uuid` would also defeat the matching key. Rows 66 / 71: MR-S1 — the four `session_capture_sources` rows in the transaction that persists `RECORDING`, before capture starts; MR-S3 for the value |
+| **82 / 83** (sealing, manifest) | MR-S4 / MR-S5: `BUILD_MANIFEST` reads fields 124 / 125 from `session_capture_sources` only; fewer or more than four rows fails the step, nothing signed; a resumed attempt reads the same rows. The item INSERT writes `development_sources` (= field 126); it is never updated |
+| **141** (mark + verify) | The kind -> class mapping of N.2 (three production kinds -> `PRODUCTION`; `FAKE` -> `FAKE`; `LOCAL_DEVICE` -> `LOCAL_DEVICE`), exhaustive at compile time over `CAPTURE_ADAPTER_KIND`. The evidence-list label reads `evidence_items.development_sources`; NULL reads "not recorded" |
+| **84** (sealer) | F-122-2: frame the plaintext to at least 17 bytes (recommended: a fixed block) so that a short camera password passes `capture_device_credentials_secret_check` |
+| **127** (test catalogue) | MT-9..MT-16 with method, depth and owner; the D72(f)-class check MT-12; a one-character camera secret through adoption after row 84; "0 rows after a search" as a count of `capture_devices` before and after; the catalogue totals |
+| **128** (spec gate) | N.15 O-1..O-8 |
+
+### N.15 Assumptions, gaps and open points — Erratum PE-122-15
+
+| # | Item | Kind | Detail |
+|--:|---|---|---|
+| A-122-1 | The three lane databases are at `(2, 'dbc-3')` with the 5 seeded device rows and no other `capture_devices` row | assumption | only `dems_demo` was read (N.1). If a lane holds a row whose `onvif_uuid` duplicates another, `0008` fails there on the unique index and leaves that lane untouched — row 130 step 1 checks first |
+| A-122-2 | No production device exists in any of the four databases, so `DEFAULT 'FAKE'` labels nothing falsely | assumption with evidence | no code path adopts a device (operation 96 is unbuilt; the real ONVIF adapter is class C); `dems_demo` holds exactly the 5 seeded rows |
+| A-122-3 | The five kind names of row 123 stand | assumption | `05_capture_architecture_spec.md` §A.1.1 calls them proposals and hands the spelling to this row; they are fixed here. A rename before row 129 changes two CHECK texts and one constant, nothing else |
+| O-1 | **Device ids of the development slots.** Row 123 names `CAM-01` / `MIC-01` as the local devices; this contract makes them new rows (D-DB-13) | for row 128 | N.2 last paragraph states what changes either way |
+| O-2 | **Row 123 §A.1.2 row 1** must say that stored kinds are inert in `SIMULATED` whatever they are; as written ("none, or production kinds") the four development databases, which hold assigned `FAKE` devices after `0008`, are not covered | for row 128 | N.9 |
+| O-3 | **No path from the demo seed to `REAL_PRODUCTION`.** The seed assigns four `FAKE` devices; a production boot refuses them (R-11 AC-1 (a)); in `REAL_DEVELOPMENT` an adopted real camera cannot be assigned (row 123 RG-3). So on this Mac a real camera can be found, tested and adopted but never recorded, until a production site seed exists (class C). R-9's "assignable in the R-1 selector" is then not reachable in this phase | gap — for the controller, likely for the user | the schema allows any assignment; the limit is the fence |
+| O-4 | **Matching key:** whole `address`, not host alone | divergence from row 121 | N.5 |
+| O-5 | **Reset guard and development packages.** A package sealed in development mode is `integrity_source = 'REAL'` and blocks every later reset (OD-19). With the new column the guard could exempt `development_sources IS TRUE`. OD-19 is a user-approved answer (D4): not changed here | open — controller / user | §E.2; N.10 |
+| O-6 | **"Migration `0008`" is two files** (`0008` + `0009`) | wording of blueprint rows 129, 130, 132, 136 | N.8 |
+| O-7 | **Coordination of the step.** After row 130, code without row 129's commit cannot boot on any of the four databases, and the reverse | for the controller (parallel agents on the lanes) | N.8 step 0 |
+| O-8 | **How the local camera enters the registry:** as a candidate adopted by operation 96 (row 121 assumption A-2) or by row 136's registration. Both are an INSERT by `dems_app` with `LOCAL_DEVICE`; the microphone has only the second way. One of the two should be named | for row 128 | N.2 writers table |
+| G-1 | Removing or disabling an adopted device is not designed (row 121 gap). The database offers `enabled = false`; the runtime role has no DELETE | gap, unchanged | §B.2 |
+| G-2 | `host` is not a denied audit key in the database; "never the host" is an application rule | note for row 126 | N.6 |
+
+### N.16 Self-gate of the delta (row-122 verification text)
+
+| Gate item | Result |
+|---|---|
+| "The delta section names each changed table, column, CHECK and grant with the migration number `0008`" | N.2-N.4 (2 columns, 1 table), N.8 (statements of `0008` and `0009`, matrix), N.11 (totals) — PASS; the set is `0008` + `0009` (O-6) |
+| "or states 'no schema change' with the reason" | stated per question where it applies: candidates N.5, audit / alerts N.6, credentials N.7 — PASS |
+| "0 edits to migrations 0004-0007" | no file under `apps/core-server/` was written by this row — PASS |
+| Each of the row's questions 1-7 answered | 1: N.2; 2: N.3 (+N.4); 3: N.5; 4: N.6; 5: N.7; 6: N.8-N.12; 7: N.14 — PASS |
+| Pinned strings of this document | the §0.1 "Table count" row and the heading ``### B.13 `stt_config` (T-40)`` are unchanged — PASS (N.12) |
+| No SQL executed; one read-only command | `db:status` on `dems_demo` only — PASS |
+
 ---
 *Generated: 2026-10-07 10:05*
-*Last Updated: 2026-10-09 (status sweep PE-R8-01..05: §B.13 confirmed by D24); 2026-10-08 (RV-SPEC: §B.13 `stt_config`, R-8/D20, added as a proposal; earlier: row-35 security remediation SEC35-02/03/20/21/22)*
+*Last Updated: 2026-10-09 (row 122, errata PE-122-01..15: section N — delta dbc-4 for R-9..R-11; migration set `0008` + `0009` specified, not written, not applied; new totals 41 tables / 426 columns / 172 CHECKs / 40 foreign keys in N.11); 2026-10-09 (status sweep PE-R8-01..05: §B.13 confirmed by D24); 2026-10-08 (RV-SPEC: §B.13 `stt_config`, R-8/D20, added as a proposal; earlier: row-35 security remediation SEC35-02/03/20/21/22)*

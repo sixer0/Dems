@@ -16,11 +16,16 @@ import {
   CONNECTION_FILE_KEYS,
   CONNECTION_FILE_NAME,
   ConfigError,
+  ENV_CAPTURE_MODE,
+  ENV_CAPTURE_WORKER,
   ENV_DEMO_CONTROLS,
   ENV_LISTEN_PORT,
   ENV_LOG_LEVEL,
+  ENV_MEDIA_DIR,
   RUNTIME_ROLE,
   createConfig,
+  parseCaptureMode,
+  parseCapturePath,
   databaseNameFor,
   parseDemoControls,
   parseListenPort,
@@ -55,6 +60,11 @@ export function loadConfig(options: LoadConfigOptions): CoreServerConfig {
   const port = parseListenPort(options.env[ENV_LISTEN_PORT]);
   const demoControls = parseDemoControls(options.env[ENV_DEMO_CONTROLS]);
   const logLevel = parseLogLevel(options.env[ENV_LOG_LEVEL]);
+  // The three capture keys (task 3, capture spec §I edits 7 to 10). Checked with the others,
+  // before any file is opened. Nothing here says that `real` needs a worker: the boot checks do.
+  const captureMode = parseCaptureMode(options.env[ENV_CAPTURE_MODE]);
+  const captureWorkerPath = parseCapturePath(ENV_CAPTURE_WORKER, options.env[ENV_CAPTURE_WORKER]);
+  const mediaStoreDir = parseCapturePath(ENV_MEDIA_DIR, options.env[ENV_MEDIA_DIR]);
 
   const dataDir = resolve(options.dataDir ?? DEFAULT_DATA_DIR);
   const file = join(dataDir, CONNECTION_FILE_NAME);
@@ -82,5 +92,8 @@ export function loadConfig(options: LoadConfigOptions): CoreServerConfig {
       user: fields.user,
       password: fields.password,
     },
+    captureMode,
+    captureWorkerPath,
+    mediaStoreDir,
   });
 }

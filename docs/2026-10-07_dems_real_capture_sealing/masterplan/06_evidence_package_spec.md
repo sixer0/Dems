@@ -22,8 +22,8 @@ last_updated: 2026-10-07 17:45 (row-35 security remediation: SEC35-06/07/10/11/1
 source_database_contract: /Users/gsp-budi/Documents/DEMS/docs/2026-10-07_dems_real_capture_sealing/masterplan/04_database_contract.md
 source_capture_spec: /Users/gsp-budi/Documents/DEMS/docs/2026-10-07_dems_real_capture_sealing/masterplan/05_capture_architecture_spec.md
 source_transcript_spec: /Users/gsp-budi/Documents/DEMS/docs/2026-10-07_dems_real_capture_sealing/masterplan/07_transcript_spec.md
-decisions: /Users/gsp-budi/Documents/DEMS/docs/2026-10-07_dems_real_capture_sealing/decisions/decisions.md (D4, D7, D8, D10, D12)
-last_updated: 2026-10-09 (status sweep PE-R8-06..08: §B.7a and the §E.5 R-8 extension CONFIRMED by D24, Q-STT-CFG answer (a); status wording only); 2026-10-08 (RV-SPEC: §B.7a R-8 transcript configuration state added as a proposal, D20; erratum AU2-03 on field 51)
+decisions: /Users/gsp-budi/Documents/DEMS/docs/2026-10-07_dems_real_capture_sealing/decisions/decisions.md (D4, D7, D8, D10, D12; rev 2.3: D66, D72, D73, D74, D78, D80)
+last_updated: 2026-10-09 (row 124, errata PE-124-01..PE-124-15: development-source mark, fields 124-126, verify V-15, first video sample fields 127-128, media-time origin; manifest fields 128, verify checks 15); 2026-10-09 (status sweep PE-R8-06..08: §B.7a and the §E.5 R-8 extension CONFIRMED by D24, Q-STT-CFG answer (a); status wording only); 2026-10-08 (RV-SPEC: §B.7a R-8 transcript configuration state added as a proposal, D20; erratum AU2-03 on field 51)
 ---
 
 # Evidence Package Spec — layout, manifest v2, signer, verify v2, sealing pipeline v2, tamper demo
@@ -73,6 +73,8 @@ last_updated: 2026-10-09 (status sweep PE-R8-06..08: §B.7a and the §E.5 R-8 ex
 | OD-15 (D4) | Core key signs revisions; author recorded; no approval flow; machine transcript byte-unchanged | Sections B.7, C.4; `tx §A.6` |
 | OD-16 (D4) | Export = decrypted copy + manifest + signature, audited; composite on demand marked derived | Section G; register NM-11/NM-12 |
 | OD-21 (D4) | fMP4 as "one whole file"; segments + one lossless concat fallback stays designed; **legal confirmation outstanding** | Sections E.3 (fallback step), H.1; coll3 F-97..F-102; W1-C8 |
+| D73, D74 (2), D78 (2), D80 (9) — **Erratum PE-124-01** | R-11: a development source (this computer's own camera or microphone, or a fake source) is marked in the manifest; the mark is a **per-source class**; it covers every package whose sources are not production devices; such a package may be sealed and verifies PASS with the mark reported | Sections B.12 (fields 124-126), C.1, D (V-15), E.6, G.2, H.5; `specs` R-11 AC-7, C-N14 |
+| D66 (4b), D72 (d), D72 (e) — **Erratum PE-124-01** | pinned mux flags kept, `delay_moov` rejected; the first video frame is held from file time 0; the worker states the true first video sample once, in the `FIRST_VIDEO_SAMPLE` record; file time 0 = T0 − 1024/48000 s | Section B.12 (fields 127-128, media-time origin); `cap §C.4`, `cap §F` |
 
 ### 0.2 The v1 shape (baseline this spec evolves)
 
@@ -176,6 +178,8 @@ writing component and the authority.
 | 7 | `demo` | boolean, not null | demo generator (SH-24) / Core (real); v1 `manifest.json:3` |
 | 8 | `notice` | string, not null | demo generator / Core; v1 `manifest.json:4` |
 
+**Erratum PE-124-03 (D73, D80 (9)).** One more top-level field belongs here: **126 `developmentSources`** (§B.12). It is independent of `integrity` (field 6) and `demo` (field 7): those describe how the hashes and the signature were made and whether the item belongs to the demo dataset; field 126 describes **where the pictures and the sound came from**. A development-mode package has real hashes and a real signature **and** `developmentSources = true`.
+
 ### B.2 Timeline (11 fields)
 
 | # | Field | Type (nullable) | Source (component; authority) |
@@ -238,6 +242,8 @@ carry the single `AUDIO-01` session track (`evidence_tracks.contains_audio`, R-4
 | 50 | `tracks[].keyframeAligned` | boolean, not null | writer; **SP-4 fragment quantum** (`cap §C.1`); S1 §6.5 |
 | 51 | `tracks[].avOffsetMs` | number, nullable | S4 relative flash-to-beep offset, measured sample-exact (erratum AU2-03: the aligned copy path is 0.00 ms, not −1.333 ms); S4 §5; `cap §F` |
 
+**Erratum PE-124-03 (D73, D80 (9); D66, D72 (e)).** Three more fields belong to each `tracks[]` record: **124 `tracks[].sourceClass`**, **127 `tracks[].firstVideoSamplePts`** and **128 `tracks[].firstVideoSampleTimescale`** (§B.12).
+
 ### B.5 Session audio track and source intervals (10 fields)
 
 `AUDIO-01` is the one session audio track inside both camera files; `MIC-01`/`MIC-02` are inputs
@@ -256,6 +262,8 @@ the playback band (register SH-02/SH-06; `session_audio_intervals`).
 | 59 | `audio.sourceIntervals[].toMs` | bigint, **nullable** (open interval) | capture worker; `session_audio_intervals.to_media_ms`; S2 §6 finding 3 |
 | 60 | `audio.sourceIntervals[].reason` | enum `START`\|`MANUAL`\|`STOP`, not null | capture worker; `session_audio_intervals.reason`; OD-09 |
 | 61 | `audio.sourceIntervals[].switchedBy` | string operator id, nullable | sessions module actor; `session_audio_intervals.switched_by`; OD-09 |
+
+**Erratum PE-124-03 (D73, D80 (9)).** One more field belongs to each interval record: **125 `audio.sourceIntervals[].sourceClass`** (§B.12). `AUDIO-01` is one track fed by whichever microphone is selected, so the track has no single class: the class is carried **per interval**.
 
 ### B.6 Fragment records — one array per camera file (17 fields)
 
@@ -318,7 +326,8 @@ Machine transcript revision 0 is byte-unchanged forever (OD-15). The document fo
 > **Status: confirmed (D24, 2026-10-08: Q-STT-CFG answered (a), all 13 defaults).** These fields implement
 > R-8 (`01_specs.md` R-8; D20). With them the manifest has **123** fields and field 92's enum gains
 > `DISABLED`. The 120-field figures elsewhere in this file were not restated by the status sweep
-> (**Erratum PE-R8-07 (D24)**, status wording only).
+> (**Erratum PE-R8-07 (D24)**, status wording only). **Erratum PE-124-05:** they are restated now —
+> 123 was the count before row 124; with §B.12 the manifest has **128** fields (arithmetic below §B.12).
 
 | # | Field | Type (nullable) | Source (component; authority) |
 |--:|---|---|---|
@@ -371,7 +380,14 @@ sorted and the encoding is UTF-8. It is written both into the manifest and into 
 `demo-evidence/README.md:17`). The exclusion-of-length/self fields pattern is citable from C2PA
 (`coll3 F-58`: exclusion ranges never overlap headers/length fields).
 
-Example (fields elided with `…`; a demo item):
+**What the canonical body contains (Erratum PE-124-04; D73, D78 (2)).** The two exclusions above are
+the **only** ones. Fields 124-128 of §B.12 — the source class of every camera file and of every audio
+interval, the package flag `developmentSources`, and the first video sample — are ordinary members of
+the canonical body. They are therefore inside `manifestSha256` and under the signature: changing,
+adding or removing any of them changes the digest (§C.1; verify V-03 and V-09).
+
+Example (fields elided with `…`; a demo item; the three `sourceClass` values, `developmentSources` and
+the two first-video-sample members were added by **Erratum PE-124-04**):
 
 ```json
 {
@@ -380,13 +396,17 @@ Example (fields elided with `…`; a demo item):
   "sessionId": "SES-20261007-0015",
   "manifestVersion": 2,
   "integrity": "DEMO_PACKAGE",
+  "developmentSources": true,
   "tracks": [{ "trackId": "VIDEO-01", "sha256": "…stored…", "sha256Plain": "…plain…",
-               "fragmentChainHead": "…", "fragmentCount": 8, "keyframeAligned": true },
+               "fragmentChainHead": "…", "fragmentCount": 8, "keyframeAligned": true,
+               "sourceClass": "FAKE", "firstVideoSamplePts": null, "firstVideoSampleTimescale": null },
              { "trackId": "VIDEO-02", "sha256": "…", "sha256Plain": "…",
-               "fragmentChainHead": "…", "fragmentCount": 8, "keyframeAligned": true }],
+               "fragmentChainHead": "…", "fragmentCount": 8, "keyframeAligned": true,
+               "sourceClass": "FAKE", "firstVideoSamplePts": null, "firstVideoSampleTimescale": null }],
   "audio": { "trackId": "AUDIO-01", "containsIn": ["VIDEO-01", "VIDEO-02"],
              "sourceIntervals": [{ "seq": 1, "micDeviceId": "MIC-01", "role": "PRIMARY",
-                                   "fromMs": 0, "toMs": 4202, "reason": "START", "switchedBy": null }] },
+                                   "fromMs": 0, "toMs": 4202, "reason": "START", "switchedBy": null,
+                                   "sourceClass": "FAKE" }] },
   "files": [{ "trackId": "VIDEO-01", "fragments": [{ "seq": 1, "byteOffset": 1259,
              "byteLength": 41482, "sha256": "…", "chainHash": "…", "keyframe": true,
              "interrupted": false, "truncated": false, "gcmIv": "…", "gcmTag": "…",
@@ -413,9 +433,115 @@ Example (fields elided with `…`; a demo item):
 | 119 | `export.composite.sha256` | hex64, nullable | composite job (hashed into the export manifest); OD-16 |
 | 120 | `export.manifestSha256` | hex64, not null | export module (SHA-256 of `export-manifest.json`); v1 `demo-data/types.ts:196-197` |
 
-**Field count: 120 field definitions** across B.1-B.11 (B.1 8 + B.2 11 + B.3 14 + B.4 18 + B.5 10 +
-B.6 17 + B.7 16 + B.8 7 + B.9 10 + B.11 9 = 120 manifest fields; B.10 adds no field, it defines the
-self-hash rule for field 111). Self-gate records **120/120** manifest fields with a type and a source.
+### B.12 Source class of every recorded source, and the first video sample (rev 2.3; fields 124-128) **Erratum PE-124-02 (D73, D78, D80 (9))**
+
+> **Status: specified by blueprint row 124 (rev 2.3, approved by D78).** Checked at the spec gate
+> (row 128). Built by row 141 (fields 124-126 and verify V-15) and row 83 (fields 127-128). It
+> answers `specs` R-11 AC-7, open point 7 of `specs` §B.2.6 and ambiguity 9 of `specs` §B.2.7.
+
+| Frame | Content |
+|---|---|
+| Subject | How a sealed package says that its pictures or sound did not come from production devices, and what verify does with that statement |
+| Stakeholders | Whoever reads a verify report or opens an export (investigator, supervisor, a receiver outside the Core); the builders (rows 83, 85, 141); the specs that must agree with this one (rows 121, 122, 125, 127) |
+| Timeline | Specified now (rev 2.3 spec delta); built at M7 by row 141, after rows 83, 85 and 136 |
+| Scope in | Three manifest fields for the source class; the signing statement; one verify check; the limitation; two fields and one statement already decided for the first video sample (D66, D72) |
+| Scope out | The adapter-kind names and device shapes (row 121); where the adapter kind is stored (row 122); the helpers and the boot fence (rows 123, 136); the label on the clients (row 125) |
+| Rationale | D73 asked for a development fallback with a manifest mark; D78 (2) allowed such a package to be sealed and to verify PASS with the mark reported; D80 (9) ruled that the mark is a per-source class and covers every package whose sources are not production devices |
+| Method | Read this file whole, `specs` §B.2, `decisions` D66, D72-D80, `cap §C.4` and `§F`, `packages/capture-protocol/src/index.ts:148-163,427-438`, `packages/shared/src/api/capture.ts:61-82`; searched the code for an existing v2 manifest (none, see "Compatibility") |
+
+**Fields.**
+
+| # | Field | Type (nullable) | Source (component; authority) |
+|--:|---|---|---|
+| 124 | `tracks[].sourceClass` | enum `PRODUCTION`\|`LOCAL_DEVICE`\|`FAKE`, not null | Core seal (`BUILD_MANIFEST`), from the adapter kind of that camera slot as recorded for the session at its start (plan builder row 66; kind registry row 136); **never from a request body**; D73, D80 (9); R-11 AC-7 |
+| 125 | `audio.sourceIntervals[].sourceClass` | enum `PRODUCTION`\|`LOCAL_DEVICE`\|`FAKE`, not null | Core seal (`BUILD_MANIFEST`), from the adapter kind of the interval's `micDeviceId` (field 56) in the same session-start record; never from a request body; D73, D80 (9) |
+| 126 | `developmentSources` | boolean, not null | Core seal (`BUILD_MANIFEST`); **derived**: `true` when at least one value of field 124 or field 125 in this manifest is not `PRODUCTION`, otherwise `false`; D80 (9) |
+| 127 | `tracks[].firstVideoSamplePts` | n (whole number, >= 0), **nullable** | capture worker, the `pts` of the `FIRST_VIDEO_SAMPLE` record for that camera (`packages/capture-protocol/src/index.ts:427-438`), joined on `tracks[].deviceId` (field 35; D72 (g)); `null` when no such record exists for the file; **Erratum PE-124-12 (D66 (4b), D72 (e))** |
+| 128 | `tracks[].firstVideoSampleTimescale` | n (>= 1), **nullable** (`null` exactly when field 127 is `null`) | capture worker, the `timescale` of the same record (ticks per second of the video track); **Erratum PE-124-12 (D66 (4b), D72 (e))** |
+
+**Values of the source class.**
+
+| Value | Meaning | Where it occurs |
+|---|---|---|
+| `PRODUCTION` | A network camera or a product microphone reached through a production adapter | A real device adopted through the R-9 connect flow; the product adapters themselves are class C (`cap §A.1` "Real adapters are class C") |
+| `LOCAL_DEVICE` | This computer's own camera or microphone behind the R-11 helper (adapter kind `LOCAL_DEVICE`, row 136) | Development mode, camera 1 and microphone 1 (D74 (2)) |
+| `FAKE` | Any synthetic source: a fake adapter or fixture stream (register NM-14), and the generated media of a demo package (SH-24 generators) | Development mode, camera 2 and microphone 2 (D74 (2)); every test session on fixtures; every regenerated demo package (§F.4) |
+
+**Rules.**
+
+| # | Rule | Authority |
+|--:|---|---|
+| 1 | **The Core writes the class; nobody else can.** It is computed from the adapter kind by one closed mapping in the Core. No operation accepts a source class, and no client value reaches fields 124-126 | D73 (boot fence and manifest mark as one design constraint); R-11 AC-1, AC-2 |
+| 2 | **The mapping is exhaustive and fails closed.** Every adapter kind has exactly one class, checked at compile time. A kind without a class is never written as `PRODUCTION`: `BUILD_MANIFEST` fails and nothing is signed (§E.1 failure path "unserialisable field") | this row (design); gate row 128 |
+| 3 | **The class is the one of the session's start.** It is read from what was recorded for the session when it started, not from the device registry or the development flag at sealing time: a seal resumed by RECOVERY after a restart writes the same bytes (§E.1 `BUILD_MANIFEST` "the hash is deterministic") | §E.1; OD-08; OD-10 (configuration locked while a session is open) |
+| 4 | **Audio: per interval, following `session_audio_intervals`.** Each `audio.sourceIntervals[]` record mirrors one `session_audio_intervals` row (§B.5); field 125 is the class of that row's microphone. When the operator switches from a local microphone to a fake one, the intervals before and after the switch carry different classes. Within one manifest the same `micDeviceId` always has the same class. A standby microphone that was never selected has no interval, contributed no sample and therefore has no mark | D80 (9) "per-source class"; `dbc-3 §B.5`; OD-09 |
+| 5 | **The package flag is a summary, not a second source of truth.** Field 126 is recomputed by verify from fields 124 and 125 (V-15) | this row (design) |
+| 6 | **Demo packages carry the mark.** A generated demo package has `FAKE` on every source and `developmentSources = true`, in addition to `demo = true` and `integrity = 'DEMO_PACKAGE'` | D80 (9) "covers every package whose sources are not production devices" |
+| 7 | **Interrupted and fallback seals carry it unchanged.** The OD-08 interrupted seal (§E.4) and the OD-21 fallback path (§E.3) write fields 124-126 by the same rules | OD-08; OD-21 |
+
+**Dependency on row 121 (stated so that row 128 can reconcile).** `03_api_contract.md` had no
+adapter-kind vocabulary when this was written (`grep -n -i "LOCAL_DEVICE\|adapterKind"
+masterplan/03_api_contract.md` returned 0 lines on 2026-10-09; row 121 is writing it). This spec
+assumes exactly this: (a) every capture device has one adapter kind; (b) one kind is named
+`LOCAL_DEVICE` (the name used by blueprint rows 124, 136 and 141); (c) fake sources have a kind of
+their own, assumed to be named `FAKE`; (d) every other kind is a production adapter. The three
+**manifest** values `PRODUCTION` / `LOCAL_DEVICE` / `FAKE` are fixed by this spec and do not change if
+row 121 names its kinds differently or has several production or several fake kinds — only the
+mapping of rule 2 changes. If row 121 shows a source class on a device shape, it must use these three
+names.
+
+**Alternatives considered.**
+
+| Alternative | Why not |
+|---|---|
+| A package flag only | Row 124 asks for a mark on every track; with the microphone changing during a session a flag cannot say which part came from which source |
+| A boolean per source | D80 (9) calls it a class; a reader has a real interest in telling the developer's own face and voice (`LOCAL_DEVICE`, R-11 AC-8) from synthetic media (`FAKE`) |
+| Writing the adapter kind itself into the manifest | It would tie the signed format to an enum that row 121 owns and that will grow with every new adapter; the class has three stable values |
+| Reusing `integrity` or `demo` | They answer other questions (how hashes and signature were made; demo dataset membership). A development package has real hashes and a real signature |
+| Marking the configured microphones instead of the intervals | A configured but never selected microphone is in no recorded sample; row 124 says "every track recorded from" |
+| Extending V-01 and V-02 instead of a new check | Row 85 builds "14 checks V-01..V-14" and row 141 builds the mark; one new check keeps the two rows apart |
+
+**Compatibility (Erratum PE-124-14).**
+
+| Package | Treatment | Evidence |
+|---|---|---|
+| v2 (`dems.evidence-manifest/2`) | Fields 124-126 are **required** in every v2 manifest; fields 127-128 are required as keys and may be `null`. A v2 manifest without field 124, 125 or 126 fails V-15 as MISSING. Absence is **never** read as `PRODUCTION` | No v2 manifest exists yet: `grep -rl "dems.evidence-manifest/2" packages apps` returned 0 files on 2026-10-09, and row 83, which builds the manifest, has not started |
+| Schema or version step | **None needed.** The schema id stays `dems.evidence-manifest/2`, `manifestVersion` stays `2`, `evidence_items.manifest_version` is untouched. Condition: no v2 package is kept that was sealed without the fields — see the hand-over to rows 83 and 141 in `delegation_progress/data_analyst_row124.md` | same |
+| v1 (`dems.evidence-manifest/1`) | Unchanged. The 14 frozen demo packages have no such field and are not rewritten; the v1 verifier is not touched; verify v2 does not apply to them (V-01 requires the v2 schema id). Where a client shows a v1 item, the source class reads "not recorded (v1 package)", never "production". When the demo evidence is regenerated as v2 (OD-02, §F.4) the new packages follow rule 6 | 14 packages under `packages/shared/assets/demo-evidence/`; §F.4 "v1 items remain readable but unreachable" |
+
+**First video sample (Erratum PE-124-12; D66 (4b), D72 (d), D72 (e)).** With the pinned mux flags the
+first video frame of a camera file is placed at file time 0 and held until the first keyframe after
+T0, up to one GOP (`cap §C.4`). D66 (4b) ruled that in this case "the true first video pts" is
+recorded in the manifest; D72 (d) made it the case (`delay_moov` rejected); D72 (e) accepted the
+worker's `FIRST_VIDEO_SAMPLE` record that delivers it. Nothing in §B.4 or §B.6 carried it:
+`files[].fragments[].mediaStartMs` (field 66) is the fragment's start in the file, where the held
+frame begins at 0. Fields 127 and 128 keep the record's two numbers exactly as delivered, so no
+rounding to milliseconds enters the signed manifest. `pts` counts from T0; the time of that sample in
+the file is `pts / timescale + 1024 / 48000` s. A file whose first fragment was cut before any video
+sample arrived, and a generated demo package, have `null` in both.
+
+**Media-time origin (Erratum PE-124-13; D72 (d)).** Under the pinned mux flags
+(`+frag_keyframe+empty_moov+default_base_moof+skip_trailer`) **file time 0 = T0 − 1024/48000 s**
+(21.333 ms), where T0 is the host instant of audio sample 0: the 1,024 AAC priming samples are
+presented because no edit list is written, and both tracks of both files sit that much later
+(`cap §F` "File time 0"; the one constant `CAPTURE_MEDIA_TIME_ORIGIN_SAMPLES = 1024`,
+`packages/shared/src/api/capture.ts:82`). A reader that maps a media time of this manifest to the
+host clock or to a sample index of the PCM tap uses that constant and no other. **Open, not decided
+by this row:** which origin each `…Ms` media-time field uses. `files[].fragments[].mediaStartMs` and
+`mediaDurationMs` (fields 66-67) come from the writer and are file time; whether
+`audio.sourceIntervals[].fromMs` / `toMs` (fields 58-59, `session_audio_intervals.from_media_ms`,
+"pre-encode") count from T0 or from file time 0 is not stated in `dbc-3 §B.5` or `cap §E`. Rows 82
+and 83 must state it before the manifest builder is written; the difference is 21.333 ms.
+
+**Field count: 128 field definitions (Erratum PE-124-05).** Arithmetic from the row-32 figure:
+**120** (row 32: B.1 8 + B.2 11 + B.3 14 + B.4 18 + B.5 10 + B.6 17 + B.7 16 + B.8 7 + B.9 10 +
+B.11 9) **+ 3** (B.7a fields 121-123; D24) **= 123** before row 124; **+ 3** (fields 124-126, the
+source class; D73, D80 (9)) **= 126**; **+ 2** (fields 127-128, the first video sample; D66, D72 (e))
+**= 128**. By where the fields live: top level and identity 8 + 1 = 9; timeline 11; device, operator,
+subject 14; `tracks[]` 18 + 3 = 21; audio 10 + 1 = 11; fragments 17; transcript 16 + 3 = 19; sealing
+steps 7; signatures 10; export 9; 9 + 11 + 14 + 21 + 11 + 17 + 19 + 7 + 10 + 9 = **128**. B.10 adds no
+field (it defines the self-hash rule for field 111). Every one of the 128 has a type and a source.
+Blueprint row 83 still says "120-field manifest": that text predates D24 and this row.
 
 ---
 
@@ -438,6 +564,7 @@ interface Signer {
 |---|---|---|
 | Signed message (seal) | the **32-byte digest** `manifestSha256` (SHA-256 of the canonical manifest body, §B.10) — byte-identical to the v1 rule ("the SHA-256 digest (32 raw bytes) of this manifest.json file") | v1 `manifest.json:137`; `demo-data/verify.ts:13` |
 | Signed message (revision) | the 32-byte digest of the canonical revision body (OD-15) | OD-15 (D4); `tx §A.6` |
+| Covered by the seal signature: the development-source mark (**Erratum PE-124-06**) | fields 124-126 (and 127-128) are inside the canonical manifest body (§B.10), so inside `manifestSha256` and under the signature. Changing a `sourceClass`, changing `developmentSources` or removing any of them after sealing makes V-03 fail (manifest hash) — the report says TAMPERED, manifest altered. Recomputing `manifestSha256` to hide the change makes V-09 fail, because the signature was made over the old digest. Forging both needs the Core signing key (threat model, §C.3 SEC35-06). There is no separate signature for the mark | D73; D78 (2); R-11 AC-7; §B.10; §D V-03, V-09 |
 | Key (this Mac) | one Core Ed25519 key, key id `CORE-KEY-EVSIGN-01` (the v1 demo key is `DEMO-KEY-EVSIGN-01`, `demo-alignment.ts:34`) | OD-04 (D4) |
 | Returned | 64 raw signature bytes; stored as 128 lowercase hex (`D-DB-03`; `dbc-3 §C.5`) | OD-04; `D-DB-03` |
 | Manifest fields produced | `signature.{algorithm,keyId,value,simulated,signedAt,covers}` (§B.9) | `dbc-3 §C.4/§C.5` |
@@ -494,8 +621,9 @@ unreadable / a box or range malformed), **MISSING** (a declared file or field ab
 | V-12 | Interrupted-seal flag interpretation | manifest + camera file | if `timeline.interrupted`: the durable prefix verifies (V-04/V-06 pass for `seq 1..durableN`) and the flag is surfaced as a distinct state; an interrupted package is **still verifiable and clearly marked** (OD-08) | (informational) | `interrupted:true` alongside `ok:true`; UI label "interrupted" |
 | V-13 | Certificate validity | `device-certificate.pem` | self-signature verifies; its sha256 matches the manifest; validity covers `signature.signedAt` | TAMPERED / MISSING / UNREADABLE | `certificate.ok` |
 | V-14 | File completeness | package directory | every declared file exists and is readable (`VIDEO-0n.mp4`, manifest, signature, certificate, transcript) | MISSING / UNREADABLE | `files.ok`; names the absent file |
+| V-15 | **Source class (development-source mark)** — **Erratum PE-124-07 (D78 (2), D80 (9))** | manifest fields 124-126 | (a) well-formed: every `tracks[]` record and every `audio.sourceIntervals[]` record has a `sourceClass` out of the three values, and `developmentSources` is a boolean; (b) consistent: `developmentSources` equals "some source is not `PRODUCTION`", and one `micDeviceId` has one class. **A class other than `PRODUCTION` is not a failure: the check passes and reports it** | (a) MISSING; (b) CORRUPT. The mark itself: none (informational) | `sources.ok`; `sources.development` (boolean); `sources.tracks[]` and `sources.audioIntervals[]` with the class of each; the report line below; top-level `ok` unchanged |
 
-**Verify count: 14 checks.** V-08 is the one-fragment tamper expectation, quoted: *"tampering exactly
+**Verify count: 15 checks** (14 from row 32, built by row 85; V-15 added by **Erratum PE-124-07**, built by row 141). V-08 is the one-fragment tamper expectation, quoted: *"tampering exactly
 one fragment's stored bytes must fail exactly that fragment (V-04) and the chain from that fragment on
 (V-06), and must be classified TAMPERED, not generic CORRUPT."* This is the M7 gate criterion
 *"tampering one fragment fails exactly that fragment"* (`structured` §6 M7) and the row-32 gate phrase
@@ -505,6 +633,19 @@ one fragment's stored bytes must fail exactly that fragment (V-04) and the chain
 key; V-05 (plaintext) and the decrypted export path require decryption first but still need no signing
 key. V-09's with-key/without-key split is exactly OD-03's "integrity can be checked without the key"
 and OD-16's "the receiver can verify the package without the Core's key".
+
+### D.1 The development-source mark in verify (V-15) **Erratum PE-124-07 (D78 (2), D80 (9))**
+
+| Aspect | Rule | Authority |
+|---|---|---|
+| Result | A package with one or more sources of class `LOCAL_DEVICE` or `FAKE` **verifies PASS** when every other check passes. The mark never turns a pass into a failure and never hides a failure: a tampered development package fails exactly as a production one does | D78 (2); R-11 AC-7 |
+| Status | Top-level `ok` is the conjunction of the checks as before; V-15 contributes `false` only for a missing or inconsistent mark, never for its value. Operation 41 answers as for any verified package. A command-line wrapper of verify, if one is built, exits with the same status as for a package without the mark (0 on pass) | §D intro; D78 (2) |
+| Machine-readable result | `sources: { ok: boolean, development: boolean, tracks: [{ trackId, deviceId, sourceClass }], audioIntervals: [{ seq, micDeviceId, sourceClass }] }`. `development` is recomputed by the verifier, not copied from field 126. **The response shape of operation 41 is owned by `03_api_contract.md` (row 121 / gate row 128): this block must be carried there under these names** | this row (design); row 128 reconciles |
+| Report line, development package | Placed **first** in the report, before the per-check results, and never collapsed: **"DEVELOPMENT SOURCES — this package was not recorded from production devices."** followed by one entry per source, e.g. "VIDEO-01: CAM-01, this computer's camera (LOCAL_DEVICE). VIDEO-02: CAM-02, fake source (FAKE). AUDIO-01: interval 1 MIC-01, this computer's microphone (LOCAL_DEVICE); interval 2 MIC-02, fake source (FAKE)." The integrity result follows unchanged, e.g. "Integrity: PASS" | D78 (2) "with the development mark reported"; R-11 AC-7 |
+| Report line, all `PRODUCTION` | "Sources: declared as production devices by the Core that sealed this package." The word **declared** is required: see §H.5 | §H.5 |
+| Tampering with the mark | Editing a `sourceClass` or `developmentSources`, or deleting one, fails **V-03** (TAMPERED, manifest altered). If the editor also recomputes `manifestSha256` and the digest in `signature.sig`, **V-09** fails (TAMPERED). If the edit also leaves the mark malformed or inconsistent, V-15 fails as well. In each case the report must not print the edited class as fact: when V-03 or V-09 fails, the source line reads "Sources: not trustworthy — the manifest was altered" | R-11 AC-7 "a package whose mark was edited after signing fails verification"; §C.1 |
+| Key availability | V-15 reads the manifest only: it runs without the session key and without the signing key, also on an export (§G.2) | OD-03; OD-16 |
+| Display | Where the clients show the mark is owned by blueprint row 125 (`masterplan/08_client_ux_spec.md`; R-11 AC-6). This spec fixes only the data: a label on a **sealed** item is derived from the `sources` block of V-15 or from manifest fields 124-126, never from client-side state or from the current device list. The verify results of §F.3 (web `WB-04`, mobile `MB-07`, `MB-05`) are the existing places a verify report appears (**Erratum PE-124-11**) | row 125; R-11 AC-6; `specs` C-N14 |
 
 ---
 
@@ -530,7 +671,7 @@ completion uses `recording-elapsed.ts` (monotonic; R-6 AC-2, `specs §E.5`).
 | `CLOSE_TRACKS` | `evidence_tracks` rows created from the closed camera files; `sealing_jobs` row `RUNNING` at 0; the last open `session_audio_intervals` row closed (`to_media_ms`/`to_at`) | rows exist; re-run is idempotent (upsert by `(session_id, track_id)`) | `sealing_jobs.progress` step 0->100; forward-only | a file not closed -> stop, `CAPTURE_FAULT` surfaced (register NM-07) |
 | `FINALIZE_HASHES` | per-track `sha256` (stored) and `sha256_plain`; `fragment_chain_head`; `fragment_count`; `recording_fragments` rows are already appended during RECORDING (`dbc-3 §B.6`, INSERT-only) | re-read the camera file and recompute; the running prefix (S1 §3.1) makes this deterministic; a truncated tail applies the drop-fragment rule (E.4) | `sealing_jobs.progress`; fragment count as detail | hash mismatch vs the live chain -> CORRUPT, step FAILED |
 | `FINALIZE_TRANSCRIPT` | consume the assembled transcript + `transcripts` row; set `transcript.state`/`failedChunks`; the step completes only after all chunks are terminal (D223) | if the transcript is already committed, **do not re-run STT** (`tx §D.3`); if not, resume from the last committed chunk (`tx §D.2`) | `sealing_jobs.progress`; transcript chunk counters (SH-05) | STT hard-fails -> §E.5 (package still seals, `state='PARTIAL'`) |
-| `BUILD_MANIFEST` | `session-manifest.json` written; `manifestSha256` computed (§B.10); `manifest_version`/`transcript_sha256`/`labels_status` set on `evidence_items` (`dbc-3 §B.11`) | rebuild the manifest from the committed rows; the hash is deterministic | `sealing_jobs.progress` | unserialisable field -> FAILED, no signature written |
+| `BUILD_MANIFEST` | `session-manifest.json` written; `manifestSha256` computed (§B.10); `manifest_version`/`transcript_sha256`/`labels_status` set on `evidence_items` (`dbc-3 §B.11`) | rebuild the manifest from the committed rows; the hash is deterministic | `sealing_jobs.progress` | unserialisable field -> FAILED, no signature written (**Erratum PE-124-08**: also an adapter kind with no source class, §B.12 rule 2, §E.6) |
 | `SIGN_MANIFEST` | `signature.sig` written; `evidence_items.signature_*` set | re-sign the **same** `manifestSha256` via the `Signer`; signature is idempotent for one key | `sealing_jobs.progress` | `Signer` error -> FAILED, DB stays unsigned, retry per attempt |
 | `STORE_SEALED_PACKAGE` | the package directory made durable; `evidence_items.status='SEALED'`, `sealed_at`; `session_history` outcome `SEALED`; audit `EVIDENCE_SEALED` | finished -> session ends SEALED; if interrupted before the DB commit, re-commit (idempotent) | `sealing_jobs.progress` reaches 100; session state SEALED | disk error -> FAILED, resumable once storage returns |
 
@@ -564,6 +705,7 @@ source + failure path.
 | Seal | run `CLOSE_TRACKS`..`STORE_SEALED_PACKAGE` on the **durable prefix**, set `timeline.interrupted=true`, `timeline.durableEndMs`, `tracks[].sha256` = durable-prefix hash, `files[].fragments[].interrupted=true` on the durable set | OD-08 (D4); S1 §5.4; `cap §C.5` |
 | Transcript | the transcript covers the durable timeline; if the interval map is truncated, record `intervals_incomplete` (state `PARTIAL`) | `tx §D.2`; OD-08 |
 | Verify | an interrupted package is **still verifiable** (V-04/V-06 pass on the durable set) and clearly marked (V-12) | OD-08; blue-print M7 |
+| Development-source mark (**Erratum PE-124-08**) | an interrupted seal writes fields 124-126 by the same rules as a normal seal (§B.12 rule 7); the two marks are independent — a package can be both interrupted (V-12) and from development sources (V-15) | OD-08; D78 (2) |
 
 ### E.5 Transcript-wait interaction (D223) and the row-33 open point resolution
 
@@ -582,6 +724,16 @@ the D-EV-1 rule below applies unchanged (`PARTIAL`, `failedChunks`, no fabricate
 **Choice recorded (D-EV-1):** a hard STT failure does not block sealing; sealed evidence keeps its
 integrity independent of transcript completeness; the incompleteness is explicit
 (`state='PARTIAL'`, `failedChunks`) and never fabricated.
+
+### E.6 The development-source mark in the pipeline **Erratum PE-124-08 (D73, D78 (2))**
+
+| Aspect | Contract | Source |
+|---|---|---|
+| Step | Fields 124-126 are written in `BUILD_MANIFEST`. No new step: sealing steps stay **8/8** | §E.1; §B.12 |
+| Input | The adapter kind of each camera slot and of each microphone, **as recorded for the session at its start**. Where that record lives is for row 122 (`04_database_contract.md`); the requirement of this spec is that it is durable before the first fragment and is not re-read from the device registry or the development flag at sealing time | §B.12 rule 3; hand-over to row 122 |
+| Resume | A resumed `BUILD_MANIFEST` rebuilds the same bytes; `SIGN_MANIFEST` re-signs the same `manifestSha256` (§E.1) | §E.1 |
+| Failure | An adapter kind without a class, or a session with no start record of its kinds: step FAILED, nothing signed. The Core never writes `PRODUCTION` by default | §B.12 rule 2 |
+| A development package may be sealed | Nothing in the pipeline refuses a session because of its source class | D78 (2) |
 
 ---
 
@@ -645,6 +797,7 @@ integrity independent of transcript completeness; the incompleteness is explicit
 | Signature | certificate public key | Ed25519/ECDSA over `manifestSha256` verifies | v1 `demo-data/verify.ts:287-291` |
 | Plaintext file hash | decrypted copy + manifest | `SHA-256(decrypted file) == tracks[].sha256Plain` | OD-03/RF-6; §D V-05 |
 | Transcript/revisions | transcript + revisions | §D V-10/V-11 | OD-15 |
+| Source class (**Erratum PE-124-09**) | manifest | §D V-15: the export carries `session-manifest.json` unchanged, so the development-source mark travels with every export and the receiver's verify reports it; an export of a development package is not refused for that reason | D78 (2); §D.1 |
 | **Not** checkable | stored-bytes hash (the copy is decrypted) | the stored-bytes hash chain is verified at the Core before export; the export carries the recorded chain so a re-encrypt comparison is possible | OD-03; §D V-04 |
 
 ### G.3 Composite (on demand, derived)
@@ -707,21 +860,33 @@ integrity independent of transcript completeness; the incompleteness is explicit
 | Composite encoder licence | chosen in M8 after a licence check | OD-16; §G.3 |
 | In-file GCM layout / Range-decrypt latency | HYPOTHESIS until M7/M8 | `cap §J` H-2/H-3 |
 
+### H.5 What the development-source mark cannot prove **Erratum PE-124-10 (D73, D78 (2))**
+
+| Aspect | State | Source |
+|---|---|---|
+| The limit, plainly | **The verifier cannot tell a package whose manifest says `PRODUCTION` for every source from a package that truly came from production devices.** The class is a statement made by the Core that sealed the package and covered by that Core's signature. Verify proves that the statement has not been changed since sealing; it does not prove that the statement was true when it was written. Nothing in the media bytes distinguishes a network camera from a local or a fake source | §C.3 threat model (SEC35-06: the signer defends integrity); §D.1 |
+| What guards it | (1) **The boot fence** (`specs` R-11 AC-1, C-N14; blueprint row 136): the Core refuses to boot with a development source while the development flag is off, and refuses the flag together with a production configuration — a production configuration cannot select a development source. (2) **The Core writes the class from the adapter kind** (§B.12 rules 1-3): no operation and no client can supply or change it. (3) **The signature** (§C.1): the class cannot be changed after sealing without the Core signing key | D73; D72 (l); R-11 AC-1, AC-2, AC-7 |
+| What does not guard it | A person who can change the Core's code or configuration and holds its signing key can seal a package that says `PRODUCTION` for any input. That is the same adversary as in §C.3 and is outside what a manifest field can defend | §C.3 (SEC35-06) |
+| Open with the fence | "Production configuration" has no written definition yet (`specs` §B.2.7 item 7; rows 61 and 123). Until it has one, guard (1) is only as exact as that definition. For the security review, row 126 | `specs` §B.2.7 item 7 |
+| Consequence for wording | A report or a client never states "recorded from production devices" as a verified fact; it states "declared as production devices by the Core that sealed this package" (§D.1) | this row |
+| On this computer | A development-mode session (D74 (2)) and every session on fixtures seal with `developmentSources = true`. `false` is possible here only when every recorded source is a real network device adopted through the R-9 connect flow. Proposed to row 127: a check that a development-mode session can never seal with `false` | `cap §A.1`; D74 (2); `specs` R-9 |
+
 ---
 
 ## I. Self-gate (row-32 Verification, stated explicitly)
 
 | Gate item | Result |
 |---|---|
-| **Every manifest v2 field has type plus source** | **120/120** — sections B.1-B.9 and B.11 (8+11+14+18+10+17+16+7+10+9 = 120 manifest fields; B.10 defines the self-hash rule for field 111). Every row carries a type (with nullability) and a source (component + authority/decision/DB column/spike) |
+| **Every manifest v2 field has type plus source** | **128/128** (**Erratum PE-124-15**; row 32 recorded 120/120) — sections B.1-B.9 and B.11 (8+11+14+18+10+17+16+7+10+9 = 120), plus B.7a fields 121-123 (D24) = 123, plus B.12 fields 124-126 (source class) and 127-128 (first video sample) = 128; B.10 defines the self-hash rule for field 111. Every row carries a type (with nullability) and a source (component + authority/decision/DB column/spike) |
 | **Every sealing step has checkpoint + resume rule + progress source** | **8/8** — E.1 six normal steps + E.3 two fallback steps; each row has checkpoint, resume rule, progress source and failure path; E.4 adds the OD-08 crash path; E.5 the transcript-wait |
-| **Verify checks enumerated incl. the one-fragment tamper expectation** | **14 checks** — V-01..V-14; the tamper one is V-08, quoted: *"tampering exactly one fragment's stored bytes must fail exactly that fragment (V-04) and the chain from that fragment on (V-06), and must be classified TAMPERED, not generic CORRUPT."* |
+| **Verify checks enumerated incl. the one-fragment tamper expectation** | **15 checks** (**Erratum PE-124-15**; row 32 recorded 14) — V-01..V-14 and V-15 (source class, §D.1); the tamper one is V-08, quoted: *"tampering exactly one fragment's stored bytes must fail exactly that fragment (V-04) and the chain from that fragment on (V-06), and must be classified TAMPERED, not generic CORRUPT."* |
 | **OD-02/03/04/08/15/16/21 each cited by decision ID** | **7/7** — OD-02 (§0.1, §F.4), OD-03 (§0.1, §A.3, §B.4/§B.6, §D V-04/V-05/V-09, §C), OD-04 (§0.1, §C, §B.9), OD-08 (§0.1, §E.4, §D V-12), OD-15 (§0.1, §B.7, §C.4, §D V-11), OD-16 (§0.1, §G), OD-21 (§0.1, §E.3, §H.1) |
 | **Row-33 open point resolved with a stated choice** | **PASS** — §E.5 records **D-EV-1**: a hard STT failure does not block sealing; `transcript.state='PARTIAL'` + `failedChunks`, no fabricated text; confirmed and refined from `delegation_progress/data-analyst__row33.md:69-73` |
 | **Alignment with row 30's column names** | **PASS** — quoted cross-references: `recording_fragments` (`session_id,track_id,seq,byte_offset,byte_length,media_start_ms,media_duration_ms,sha256,chain_hash,durable_at` → §B.6 fields 62-68,70,78); `sealing_jobs` (`session_id,step,status,progress,eta_ms,attempt,checkpoint,error_code,started_at,updated_at` → §B.8, §E.1); `transcripts` (`json_sha256,srt_sha256,vtt_sha256,model,diarization,labels_status` → §B.7); `transcript_revisions` (`parent_sha256,sha256,author_id,signature_*` → §B.7/§D V-11); `evidence_items` (`manifest_version,transcript_sha256,labels_status`, `integrity_source` `REAL`; `:335` hashes / `:336` signature / `:338` tamper → §B.1, §B.9, §F.2); `evidence_tracks` (`sha256`=stored, `sha256_plain`, `fragment_count`, `fragment_chain_head`, `contains_audio` → §B.4) |
 | **Alignment with row 31's writer facts** | **PASS** — quoted: fragment quantum SP-4 keyframe-aligned (`cap §C.1` → §B.4 field 50, §B.6 field 72, §H.2); flush ≠ fsync SP-2 (`cap §C.2` → §B.6 field 78, §H.3); running SHA-256 chain S1 (`cap §C.3`; S1 §3.1 → §B.6, §D V-06); drop-fragment after truncation (`cap §C.5` → §E.4); per-fragment GCM **outside** the muxer (coll3 F-47/F-52; `cap §D.1` → §A.3); restart-per-session supervisor (`cap §B.2` → §E.4); storage path `media/sessions/<sessionId>/` (OD-25; `cap §H` → §A.1) |
 | **Register rows cited (evidence/package/signature/export)** | **PASS** — SH-06, SH-07, SH-09, SH-11, SH-14, SH-24; CS-08, CS-13, CS-21; NM-04, NM-05, NM-07, NM-08, NM-11, NM-12 (sections A-G) |
-| **Row-35 security remediation applied (SEC35-06/07/10/11/13/20)** | **PASS** — §A.1 (fragments.json equality), §B.6 (derived GCM AAD), §C.3 (threat model + at-rest key hardening + compromise runbook + retained certificate set), §D V-02/V-11 (fragments equality + per-revision certificate), §G.1/§G.4 (export key requirement; pinned `mts_` prefix + both insertion points). Manifest field count stays **120/120**, sealing steps **8/8**, verify checks **14** |
+| **Row-35 security remediation applied (SEC35-06/07/10/11/13/20)** | **PASS** — §A.1 (fragments.json equality), §B.6 (derived GCM AAD), §C.3 (threat model + at-rest key hardening + compromise runbook + retained certificate set), §D V-02/V-11 (fragments equality + per-revision certificate), §G.1/§G.4 (export key requirement; pinned `mts_` prefix + both insertion points). Manifest field count stays **120/120**, sealing steps **8/8**, verify checks **14** (the figures of the row-35 remediation; today 128 fields, 8 steps, 15 checks — **Erratum PE-124-15**) |
+| **Row 124 (rev 2.3): development-source mark named with type and values; verify rule stated (reported; tampering fails)** | **PASS** — fields 124 `tracks[].sourceClass`, 125 `audio.sourceIntervals[].sourceClass` (enum `PRODUCTION`\|`LOCAL_DEVICE`\|`FAKE`, not null) and 126 `developmentSources` (boolean, not null) in §B.12; signing in §B.10 and §C.1; verify V-15 and §D.1 (PASS with the mark reported first; an edited mark fails V-03 or V-09); limitation in §H.5; compatibility in §B.12; D66 / D72 items placed as fields 127-128 and the media-time origin statement |
 | No emoji; English; tables over prose; no file outside the task folder touched; no DB connection / code change / external service | **PASS** — this document and `delegation_progress/data-analyst__row32.md` are the only writes |
 
 ---
@@ -741,9 +906,10 @@ integrity independent of transcript completeness; the incompleteness is explicit
 | Spike S4 | `research/08_spike_s4_av_sync_fixture.md` — §5 relative AV offset ±40 ms |
 | Collection | `research/02_collection.md` — F-47/F-52/F-53, F-58..F-61/F-62, F-97..F-102 |
 | v1 implementation | `packages/shared/src/sim/evidence.ts`, `session-machine.ts:99-106,851-934`, `demo-alignment.ts`, `demo-data/verify.ts`, `assets/demo-evidence/README.md`, `.../SESSION-SES-20260930-0015/manifest.json`; `apps/core-server/src/modules/evidence/index.ts`; `apps/core-server/src/db/migrations/0001_tables.sql:314-340`; `apps/mobile/src/runtime/{recording-elapsed,core-clock}.ts` |
-| Decisions | `decisions/decisions.md` — D4 (gate answers), D7, D8, D10, D12 |
+| Decisions | `decisions/decisions.md` — D4 (gate answers), D7, D8, D10, D12; rev 2.3 (**Erratum PE-124-15**): D66 (4b), D72 (d), (e), (g), (l), D73, D74 (2), D78 (2), D80 (9) |
+| Rev 2.3 delta | `masterplan/01_specs.md` §B.2 (R-11 AC-1, AC-2, AC-6, AC-7; open point 7; ambiguities 7 and 9), C-N14; `identification/02_structured.md` rows 124, 136, 141; `packages/capture-protocol/src/index.ts:148-163,427-438`; `packages/shared/src/api/capture.ts:61-82`; working record `delegation_progress/data_analyst_row124.md` |
 
 ---
 
 *Generated: 2026-10-07 10:20*
-*Last Updated: 2026-10-09 (status sweep PE-R8-06..08: §B.7a + §E.5 R-8 extension confirmed by D24); 2026-10-08 (RV-SPEC: §B.7a + §E.5 R-8 extension added as a proposal, D20; erratum AU2-03 field 51; earlier: row-35 security remediation SEC35-06/07/10/11/13/20)*
+*Last Updated: 2026-10-09 (row 124, errata PE-124-01..PE-124-15: development-source mark — fields 124-126, V-15, §D.1, §E.6, §H.5; first video sample fields 127-128 and media-time origin, D66 / D72; manifest fields 128, verify checks 15); 2026-10-09 (status sweep PE-R8-06..08: §B.7a + §E.5 R-8 extension confirmed by D24); 2026-10-08 (RV-SPEC: §B.7a + §E.5 R-8 extension added as a proposal, D20; erratum AU2-03 field 51; earlier: row-35 security remediation SEC35-06/07/10/11/13/20)*

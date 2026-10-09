@@ -43,7 +43,7 @@ describe('the capture seam', () => {
     await app.close();
   });
 
-  it('this build has no worker command: a start fails at once with CAPTURE_FAULT, is not retried, and both logs say so without the plan', async () => {
+  it('capture mode simulated (the default) has no worker command: a start fails at once with CAPTURE_FAULT, is not retried, and both logs say so without the plan', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'dems-row57-'));
     scratch.push(directory);
     const errorLogFile = join(directory, 'errors.log');
@@ -59,6 +59,9 @@ describe('the capture seam', () => {
     expect(lines.map((line) => [line['level'], line['code'], line['sessionId'], line['correlationId']])).toEqual([
       [40, 'CAPTURE_WORKER_DOWN', SESSION, `cap:${SESSION}:1`],
       [50, 'CAPTURE_FAULT', SESSION, `cap:${SESSION}:1`],
+      // Row 58: the fault is handed to the engine (`raiseCaptureWarning`). This app has no running
+      // engine (no database), so the engine refuses, and THAT is written down too: never silent.
+      [50, 'CAPTURE_WARNING_NOT_RAISED', SESSION, `cap:${SESSION}:1`],
     ]);
     expect(lines[0]).toMatchObject({ downCode: WorkerDownCode.NOT_CONFIGURED, attempt: 1, restartInMs: null });
 
@@ -67,6 +70,7 @@ describe('the capture seam', () => {
     expect(persisted.map((entry) => [entry['level'], entry['source'], entry['code']])).toEqual([
       ['warn', 'capture.supervisor', 'CAPTURE_WORKER_DOWN'],
       ['error', 'capture.supervisor', 'CAPTURE_FAULT'],
+      ['error', 'capture.forwarder', 'CAPTURE_WARNING_NOT_RAISED'],
     ]);
     expect(persisted[1]?.['context']).toEqual({ sessionId: SESSION, correlationId: `cap:${SESSION}:1` });
 

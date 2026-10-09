@@ -142,6 +142,9 @@ async function insertInto(executor: RowExecutor, table: WrittenTable, rows: read
       // one; `dems_app` holds INSERT and UPDATE and no DELETE. An applied device change is
       // therefore an UPSERT on the id key, updating every column the grant list names. The
       // whole-state writers (seed, reset staging) keep the plain INSERT: their table is empty.
+      // `kind` is NOT in the SET list: migration 0005 grants `dems_app` no UPDATE on it (a
+      // device's kind never changes under its id), and naming it made every update of an
+      // existing row fail with 42501 (found by blueprint row 58, the first writer of this path).
       const d = schema.captureDevices;
       for (const row of rows as MappedRows['captureDevices']) {
         await executor
@@ -150,7 +153,6 @@ async function insertInto(executor: RowExecutor, table: WrittenTable, rows: read
           .onConflictDoUpdate({
             target: d.id,
             set: {
-              kind: row.kind,
               transport: row.transport,
               model: row.model,
               firmware: row.firmware,

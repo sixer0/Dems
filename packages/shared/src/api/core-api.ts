@@ -31,7 +31,7 @@
  * | The model of an entry: `mode`, `services`, `access`, `audit`, `query` | `contract-model.ts` |
  * | Area 1 identity, area 2 administration, area 3 pairing, area 13 demo controls: schemas, operations, examples | `identity.ts`, `administration.ts`, `pairing.ts`, `demo-controls.ts` |
  * | Areas 4 to 11 (plan row W27, contract C): sessions, evidence, devices, storage, network and time, security and audit, system, alerts | `sessions.ts`, `evidence.ts`, `devices.ts`, `storage.ts`, `network-time.ts`, `security-audit.ts`, `system.ts`, `alerts.ts`; their state examples in `state-examples.ts` |
- * | The 42 simulator actions and the operation each one reaches (01_specs §7.17) | `sim-actions.ts` |
+ * | The 45 simulator actions and the operation each one reaches (01_specs §7.17) | `sim-actions.ts` |
  * | The text rule API-13 | `text.ts` |
  * | The Core state on the wire: one schema per replicated slice (plan row W22, contract B) | `state-slices.ts` |
  * | The messages of WS `/ws`: the union the Core server sends, the client messages, close codes | `realtime-messages.ts`, `realtime-examples.ts` |

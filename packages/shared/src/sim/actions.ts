@@ -23,6 +23,7 @@ import {
   touchTransition,
   type AuthTransition,
 } from './auth';
+import { applyCaptureTelemetryTransition, clearCaptureWarningTransition, feedCaptureLevels, raiseCaptureWarningTransition } from './capture-telemetry';
 import { deriveDeviceState } from './derive';
 import { appendActivity, verifyAuditChain } from './events';
 import {
@@ -233,5 +234,16 @@ export function createActions(context: ActionContext): SimActions {
         }),
       );
     },
+
+    // ── Capture telemetry and warnings (task 3, register SH-18): INTERNAL, as `setTabletLink` ──
+    applyCaptureTelemetry: (telemetry) => {
+      const state = store.getState();
+      // The levels are transient: they reach the meters through the audio subsystem, not the store.
+      feedCaptureLevels(audio, state, clock.now(), telemetry.levels);
+      const next = applyCaptureTelemetryTransition(state, telemetry);
+      if (next !== state) store.setState(next);
+    },
+    raiseCaptureWarning: (warning) => commit((state, now) => raiseCaptureWarningTransition(state, now, warning)),
+    clearCaptureWarning: (warning) => commit((state, now) => clearCaptureWarningTransition(state, now, warning)),
   };
 }

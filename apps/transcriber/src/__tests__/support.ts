@@ -4,7 +4,7 @@
 // an in-process answerer at the `fetch` seam that speaks the server's HTTP API.
 import { spawnSync } from 'node:child_process';
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { getPriority, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
 import type { FetchLike } from '../backends/omlx-http';
@@ -20,11 +20,15 @@ export function errorRecords(log: MemoryLog): LogRecord[] {
 
 /**
  * Whether THIS host lowers the priority of a process started through `nice`: asked of the operating
- * system by a process that reports its own niceness. False inside a sandbox that forbids the call.
+ * system by a process that reports its own niceness, and judged against the niceness of THIS
+ * process (`nice -n` is relative). False inside a sandbox that forbids the call.
  */
+export const OWN_NICE: number = getPriority();
+/** What `nice -n 10` gives a child of THIS process: relative to its own niceness, clamped at the floor. */
+export const EXPECTED_ENGINE_NICE: number = Math.min(OWN_NICE + 10, 19);
 export const HOST_LOWERS_PRIORITY: boolean = (() => {
   const probe = spawnSync('/usr/bin/nice', ['-n', '10', process.execPath, '-e', "require('node:fs').writeSync(1, String(require('node:os').getPriority()))"], { encoding: 'utf8' });
-  return probe.status === 0 && probe.stdout.trim() === '10';
+  return probe.status === 0 && /^-?[0-9]+$/.test(probe.stdout.trim()) && Number(probe.stdout.trim()) >= EXPECTED_ENGINE_NICE;
 })();
 
 /**

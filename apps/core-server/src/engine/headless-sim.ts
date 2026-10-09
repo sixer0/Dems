@@ -22,6 +22,7 @@ import {
   SIM_TZ,
   SIM_TZ_OFFSET_MINUTES,
   createSim,
+  type CaptureLevelSource,
   type Sim,
   type SimClock,
   type SimErrorReport,
@@ -68,6 +69,11 @@ export interface HeadlessSimOptions {
   readonly clock: SimClock;
   /** Receives what a subsystem threw (the simulator catches it and goes on). */
   readonly onError: (report: SimErrorReport) => void;
+  /**
+   * Where the meter levels come from (register CS-04): `'external'` when a real capture worker
+   * measures them, so the simulator generates none. Default `'simulated'`.
+   */
+  readonly capture?: CaptureLevelSource;
 }
 
 /** A fresh `Sim` on the host's adapters. Its state is the idle dataset until the host sets the stored one. */
@@ -81,6 +87,7 @@ export async function createHeadlessSim(options: HeadlessSimOptions): Promise<Si
     authStorage: null,
     visibility: ALWAYS_VISIBLE,
     onError: options.onError,
+    capture: options.capture ?? 'simulated',
   });
   // With a storage that answers at once, hydration has ended before `createSim` returns.
   await sim.ready;

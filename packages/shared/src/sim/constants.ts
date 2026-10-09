@@ -129,6 +129,15 @@ export const AUDIO_TEST_TONE_MS = 2_000;
  */
 export const MIC_SILENCE_DBFS = -50;
 export const MIC_SILENCE_DURATION_MS = 10_000;
+/**
+ * How long a level measured by the capture worker (`applyCaptureTelemetry`, register SH-18) is
+ * shown by the meters after the Core took it. The worker sends about 20 frames a second; when it
+ * stops (the session ended, the worker went down) the level is dropped after this time: the meter
+ * then reads NO SIGNAL when the levels are external (`CreateSimOptions.capture`, real capture), and
+ * goes back to the generated level in a simulated one. Twenty missed frames: a choice of blueprint
+ * row 58, measured by no spike.
+ */
+export const CAPTURE_LEVEL_HOLD_MS = 1_000;
 
 // ── Diagnostics and software update (step 32) ───────────────────────────────────────────
 export const DIAGNOSTIC_CHECK_MIN_MS = 300;

@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { HOSTED_ACTIONS, hostedActionsOfOperation, isHostedAction } from '../hosted-actions';
 import { createSystemTimer } from '../timer';
 
-/** Spec §8.1 "Not called": the ten members that are never called on the engine, and the internal one. */
+/** Spec §8.1 "Not called": the ten members that are never called on the engine, and the four internal ones. */
 const NOT_HOSTED = [
   'signIn',
   'signInWithBiometric',
@@ -17,12 +17,15 @@ const NOT_HOSTED = [
   'pair',
   'unpair',
   'setTabletLink',
+  'applyCaptureTelemetry',
+  'raiseCaptureWarning',
+  'clearCaptureWarning',
 ];
 
 describe('the hosted actions', () => {
   it('are the 31 members that contract C marks as hosted, in the order of SimActions', () => {
     expect(HOSTED_ACTIONS).toHaveLength(31);
-    expect(Object.keys(SIM_ACTION_OPERATIONS)).toHaveLength(42);
+    expect(Object.keys(SIM_ACTION_OPERATIONS)).toHaveLength(45);
     const expected = Object.entries(SIM_ACTION_OPERATIONS)
       .filter(([, binding]) => binding.execution === 'hosted')
       .map(([name]) => name);

@@ -30,8 +30,20 @@
  * whole value of a member whose name says credential, at ANY depth; `value` and `ref` beside a
  * credential `kind`; and anything nested deeper than the walk goes, whole.
  *
- * What it does not do: guess that a bare `value: x` in a text that names no credential is one.
- * `value` is the name of ordinary members too, and a rule that blanked them all would leave no log.
+ * FIX ROUND 2 (navigator re-check R-1, R-2). One predicate, `isCredentialKeyName`, decides a name
+ * for the text rule AND the object rule: any name that holds `credential` (but not the three flags
+ * `credentialSet` / `credentialKind` / `credentialChanged`), `apikey`, `secret`, `password`,
+ * `passphrase`, `authorization`, or that ends in `token`. A scheme `Bearer` / `Basic` in any case,
+ * with a quoted value or a token of any characters; a header written as a tuple
+ * (`["authorization","…"]`); `kind` / `value` / `ref` in any case; a URL-encoded body (judged, and
+ * returned, decoded). The object walk is BOUNDED: a reference back to an object the walk is inside
+ * of is blanked, and after `CREDENTIAL_WALK_NODE_BUDGET` nodes everything not yet reached is
+ * blanked whole.
+ *
+ * What it does not do: guess that a bare `value: x` in a text that names no credential is one, or
+ * that `key: x` is a secret (`key` names storage keys and list keys in every log), or read prose
+ * (`Basic authentication`, `the credential x was rejected`). An unquoted value ends at the next
+ * `,` `;` `&`: one that holds such a character is cut there.
  */
 
 /** What a blanked value becomes. */
@@ -40,27 +52,69 @@ export const CREDENTIAL_BLANK = '***';
 /** A session token, a device credential and a biometric token start with these (01_specs §5.3). */
 const TOKEN = /\b(ses|dvc|bio)_[A-Za-z0-9_-]+/g;
 
-// `Bearer` as a header writes it takes any value; in lower case (the scheme is case-insensitive)
-// it must look like a token (8 characters or more, one of them not a letter), so that prose such
-// as "a bearer of news" stays as it is. A token of this server keeps rule 1.
-const BEARER_VALUE =
-  /\b(Bearer|BEARER)\s+(?!(?:ses|dvc|bio)_)[A-Za-z0-9._~+/=-]+|\b(bearer)\s+(?!(?:ses|dvc|bio)_)(?=[A-Za-z0-9._~+/=-]*[0-9._~+/=-])[A-Za-z0-9._~+/=-]{8,}/g;
+/**
+ * An authentication scheme and what follows it. Written as a header writes it (`Bearer`, `Basic`,
+ * or all capitals) it takes any value. In any other case (`bearer`, `BeArEr`, `basic`) the value
+ * must look like a token, so that prose ("a bearer of news", "basic information") stays as it is.
+ * `Basic` is held to the token test in every case: "Basic authentication" is a phrase. A token of
+ * this server after the scheme keeps rule 1 (`Bearer ses_***`).
+ */
+const SCHEME = /\b(bearer|basic)(\s+)(?!(?:ses|dvc|bio)_)(?:(["'])([^"'\n]*)\3|([^\s"',;)\]}]+))/gi;
+/** Looks like a token, not a word: 8 characters or more, with a character that is no letter or a capital after the first. */
+const tokenLike = (value: string): boolean => value.length >= 8 && (/[^A-Za-z]/.test(value) || /[A-Z]/.test(value.slice(1)));
 
-/** The names of rule 3. No look-behind: a name that ENDS in one of them is one of them. */
-const CREDENTIAL_NAME = 'api[-_]?key|authorization|credential(?:Value|Ref|_ref|\\.value|\\.ref)?|secret(?:_ciphertext)?';
-/** The names of rule 4, which count only in a text that mentions a credential. */
-const CONTEXT_NAME = 'value|ref';
-/** After a name: its closing quote (escaped or not), then `:` or `=`. */
-const SEPARATOR = '\\\\*["\']?\\s*[:=]\\s*';
+function blankSchemes(text: string): string {
+  return text.replace(SCHEME, (whole: string, scheme: string, gap: string, quote: string | undefined, quoted: string | undefined, bare: string | undefined) => {
+    const asHeader = scheme === 'Bearer' || scheme === 'BEARER';
+    const value = quoted ?? bare ?? '';
+    if (!asHeader && !tokenLike(value)) return whole;
+    if (bare === CREDENTIAL_BLANK) return whole;
+    return quote === undefined ? `${scheme}${gap}${CREDENTIAL_BLANK}` : `${scheme}${gap}${quote}${CREDENTIAL_BLANK}${quote}`;
+  });
+}
 
-const mention = (names: string): RegExp => new RegExp(`(${names})(?![A-Za-z0-9])${SEPARATOR}`, 'gi');
-const CREDENTIAL_MENTION = mention(CREDENTIAL_NAME);
-const ANY_MENTION = new RegExp(`(?:(${CREDENTIAL_NAME})|(?<![A-Za-z0-9_-])(${CONTEXT_NAME}))(?![A-Za-z0-9])${SEPARATOR}`, 'gi');
-/** The `kind` of a credential write, in any quoting. Case-sensitive: `credentialKind` is not it. */
-const CREDENTIAL_KIND = /(?<![A-Za-z0-9_])kind\\*["']?\s*[:=]\s*\\*["']?(?:SECRET|REFERENCE)\b/;
-const AUTHORIZATION = /^authorization$/i;
+/**
+ * A member name and its separator: `name:` or `name=`, the name of one word or two (`API Key`),
+ * with dots, dashes and brackets (`body.credential.value`, `credential[value]`), its closing quote
+ * escaped or not. Which names count is `isCredentialKeyName`'s decision, not this pattern's.
+ */
+const MEMBER = /([A-Za-z_][A-Za-z0-9_.[\]-]{0,63})(?: ([A-Za-z_][A-Za-z0-9_.[\]-]{0,31}))?\\*["']?\s*[:=]\s*/g;
+/**
+ * A header written as a tuple: `["authorization","…"]`. The name is the first text, the value the
+ * second. Header names only (`isHeaderName`): in `"kind":"SECRET","value":…` the text `SECRET`
+ * is followed by a comma and a quoted text too, and is no name.
+ */
+const TUPLE = /(\\*["'])([A-Za-z][A-Za-z0-9_-]{0,63})\1(\s*,\s*)(?=\\*["'])/g;
+/** The `kind` of a credential write, in any quoting and any case. `credentialKind` is not it. */
+const CREDENTIAL_KIND = /(?<![A-Za-z0-9_])kind\\*["']?\s*[:=]\s*\\*["']?(?:secret|reference)\b/i;
+const AUTHORIZATION = /authorization$/;
 /** Where an unquoted value ends. */
 const UNQUOTED_END = /[,;&})\]\n"']/;
+
+const normalised = (name: string): string => name.toLowerCase().replace(/[-_.\s[\]]/g, '');
+
+/**
+ * True for a member name that says credential. THE predicate of both rules (text and object), in
+ * any case and with `-`, `_`, `.`, a space or brackets in it.
+ */
+export function isCredentialKeyName(key: string): boolean {
+  const name = normalised(key);
+  if (name.includes('credential')) return !/credential(?:set|kind|changed)$/.test(name);
+  if (name.includes('secret')) return !name.includes('secretar');
+  return name.includes('apikey') || name.includes('authorization') || name.includes('password') || name.includes('passphrase') || name.endsWith('token');
+}
+
+/** The header names a tuple may carry: an authorization header or an API-key header. */
+const isHeaderName = (name: string): boolean => {
+  const plain = normalised(name);
+  return plain.includes('authorization') || plain.includes('apikey');
+};
+
+/** `value` and `ref`: the credential itself beside a credential `kind`, ordinary members anywhere else. */
+const isContextName = (name: string): boolean => {
+  const plain = normalised(name);
+  return plain === 'value' || plain === 'ref' || plain.endsWith('credentialvalue') || plain.endsWith('credentialref');
+};
 
 /** The part of `text` from `from` that is the value of a member: `[start, end)` without its quotes, or null when there is none. */
 function valueSpan(text: string, from: number, toLineEnd: boolean): { start: number; end: number } | null {
@@ -87,13 +141,33 @@ function valueSpan(text: string, from: number, toLineEnd: boolean): { start: num
   return end > from ? { start: from, end } : null;
 }
 
-function blankMembers(text: string, pattern: RegExp): string {
+/** The name a member match stands for, when it is one to blank: the two words together, or the last one alone. */
+function blankedName(found: RegExpExecArray, context: boolean): string | null {
+  const first = found[1] ?? '';
+  const second = found[2];
+  const candidates = second === undefined ? [first] : [`${first} ${second}`, second];
+  return candidates.find((name) => isCredentialKeyName(name) || (context && isContextName(name))) ?? null;
+}
+
+/** True when a text names a credential at all: a credential member, a header tuple of one, or the kind of a credential write. */
+function mentionsCredential(text: string): boolean {
+  if (CREDENTIAL_KIND.test(text)) return true;
+  MEMBER.lastIndex = 0;
+  for (let found = MEMBER.exec(text); found !== null; found = MEMBER.exec(text)) if (blankedName(found, false) !== null) return true;
+  TUPLE.lastIndex = 0;
+  for (let found = TUPLE.exec(text); found !== null; found = TUPLE.exec(text)) if (isHeaderName(found[2] ?? '')) return true;
+  return false;
+}
+
+function blankSpans(text: string, pattern: RegExp, toBlank: (found: RegExpExecArray) => { from: number; toLineEnd: boolean } | null): string {
   let out = '';
   let cursor = 0;
   pattern.lastIndex = 0;
   for (let found = pattern.exec(text); found !== null; found = pattern.exec(text)) {
-    const span = valueSpan(text, found.index + found[0].length, AUTHORIZATION.test(found[1] ?? ''));
-    if (span === null) continue;
+    const target = toBlank(found);
+    if (target === null) continue;
+    const span = valueSpan(text, target.from, target.toLineEnd);
+    if (span === null || span.start < cursor) continue;
     out += text.slice(cursor, span.start) + CREDENTIAL_BLANK;
     cursor = span.end;
     // Nothing inside a blanked value is read as a member.
@@ -102,52 +176,75 @@ function blankMembers(text: string, pattern: RegExp): string {
   return out + text.slice(cursor);
 }
 
-/** A text as a log may keep it: rules 1 to 4 of this file. Never throws; a text that is none comes back as it is. */
+/** A URL-encoded text, decoded; the text itself when it holds no escape or cannot be decoded. */
+function urlDecoded(text: string): string {
+  if (!/%[0-9A-Fa-f]{2}/.test(text)) return text;
+  try {
+    return decodeURIComponent(text);
+  } catch {
+    // Not valid percent-encoding as a whole: decode the escapes that are (ASCII only), leave the rest.
+    return text.replace(/%([0-7][0-9A-Fa-f])/g, (_match, hex: string) => String.fromCharCode(Number.parseInt(hex, 16)));
+  }
+}
+
+/** A text as a log may keep it: the rules of this file. Never throws; a text that is none comes back as it is. */
 export function redactCredentialText(text: string): string {
   if (typeof text !== 'string' || text === '') return text;
-  const tokens = text
-    .replace(TOKEN, `$1_${CREDENTIAL_BLANK}`)
-    .replace(BEARER_VALUE, (_match, upper: string | undefined, lower: string | undefined) => `${upper ?? lower ?? 'Bearer'} ${CREDENTIAL_BLANK}`);
-  CREDENTIAL_MENTION.lastIndex = 0;
-  const mentionsCredential = CREDENTIAL_MENTION.test(tokens) || CREDENTIAL_KIND.test(tokens);
-  if (!mentionsCredential) return tokens;
-  return blankMembers(tokens, ANY_MENTION);
+  // A URL-encoded body hides its member names: when the decoded text names a credential, the
+  // decoded text is what is judged and returned. Otherwise the text stays byte for byte.
+  const decoded = urlDecoded(text);
+  const source = decoded !== text && mentionsCredential(decoded) ? decoded : text;
+  const schemes = blankSchemes(source.replace(TOKEN, `$1_${CREDENTIAL_BLANK}`));
+  if (!mentionsCredential(schemes)) return schemes;
+  const members = blankSpans(schemes, MEMBER, (found) => {
+    const name = blankedName(found, true);
+    return name === null ? null : { from: found.index + found[0].length, toLineEnd: AUTHORIZATION.test(normalised(name)) };
+  });
+  return blankSpans(members, TUPLE, (found) => (isHeaderName(found[2] ?? '') ? { from: found.index + found[0].length, toLineEnd: false } : null));
 }
 
-/** True for a member name that says credential: the names of rule 3, in any case and with `-`, `_`, `.` or none. */
-export function isCredentialKeyName(key: string): boolean {
-  const name = key.toLowerCase().replace(/[-_.\s]/g, '');
-  return (
-    name.endsWith('apikey') ||
-    name.endsWith('authorization') ||
-    name.endsWith('secret') ||
-    name === 'secretciphertext' ||
-    name === 'credential' ||
-    name === 'credentialvalue' ||
-    name === 'credentialref'
-  );
-}
-
-/** True for the `kind` of a credential write (`updateSttConfig`): beside it, `value` and `ref` are the credential. */
+/** True for the `kind` of a credential write (`updateSttConfig`), in any case: beside it, `value` and `ref` are the credential. */
 export function isCredentialWriteKind(kind: unknown): boolean {
-  return kind === 'SECRET' || kind === 'REFERENCE';
+  if (typeof kind !== 'string') return false;
+  const upper = kind.toUpperCase();
+  return upper === 'SECRET' || upper === 'REFERENCE';
 }
 
 /** How deep an object is walked. What lies deeper is blanked whole: never returned as it came. */
 export const CREDENTIAL_WALK_DEPTH = 12;
+/**
+ * How many objects and lists one walk enters (navigator re-check R-2). What the walk has not
+ * reached by then - object, list or text - is blanked whole: an object too large to judge is not
+ * returned as it came, and a log call cannot hold its caller up.
+ */
+export const CREDENTIAL_WALK_NODE_BUDGET = 2_000;
 
-/** A value as a log may keep it: texts by `redactCredentialText`, members by name at any depth. */
-export function redactCredentialValue(value: unknown, depth = 0): unknown {
-  if (typeof value === 'string') return redactCredentialText(value);
+interface Walk {
+  /** The objects the walk is inside of: a reference back to one of them is a cycle. */
+  readonly inside: Set<object>;
+  entered: number;
+}
+
+function walk(value: unknown, depth: number, state: Walk): unknown {
+  const spent = state.entered >= CREDENTIAL_WALK_NODE_BUDGET;
+  if (typeof value === 'string') return spent ? CREDENTIAL_BLANK : redactCredentialText(value);
   if (value === null || typeof value !== 'object') return value;
-  if (depth >= CREDENTIAL_WALK_DEPTH) return CREDENTIAL_BLANK;
-  if (Array.isArray(value)) return value.map((entry) => redactCredentialValue(entry, depth + 1));
-  const members = value as Record<string, unknown>;
-  const write = isCredentialWriteKind(members['kind']);
-  return Object.fromEntries(
-    Object.entries(members).map(([key, entry]) => [
-      key,
-      isCredentialKeyName(key) || (write && (key === 'value' || key === 'ref')) ? CREDENTIAL_BLANK : redactCredentialValue(entry, depth + 1),
-    ]),
-  );
+  if (spent || depth >= CREDENTIAL_WALK_DEPTH || state.inside.has(value)) return CREDENTIAL_BLANK;
+  state.entered += 1;
+  state.inside.add(value);
+  try {
+    if (Array.isArray(value)) return value.map((entry) => walk(entry, depth + 1, state));
+    const members = Object.entries(value as Record<string, unknown>);
+    const write = members.some(([key, entry]) => key.toLowerCase() === 'kind' && isCredentialWriteKind(entry));
+    return Object.fromEntries(
+      members.map(([key, entry]) => [key, isCredentialKeyName(key) || (write && isContextName(key)) ? CREDENTIAL_BLANK : walk(entry, depth + 1, state)]),
+    );
+  } finally {
+    state.inside.delete(value);
+  }
+}
+
+/** A value as a log may keep it: texts by `redactCredentialText`, members by name at any depth, within a bounded walk. */
+export function redactCredentialValue(value: unknown, depth = 0): unknown {
+  return walk(value, depth, { inside: new Set<object>(), entered: 0 });
 }

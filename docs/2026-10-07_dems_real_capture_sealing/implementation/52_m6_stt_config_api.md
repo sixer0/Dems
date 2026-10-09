@@ -347,6 +347,25 @@ Totals: shared 74 files / **1936 passed**; core-web **1523**; mobile **2020**; c
 
 Files of the continuation: `packages/shared/src/api/transcription.ts`, `packages/shared/openapi/openapi.json`, `packages/shared/test/api-stt-config.test.ts`, `apps/core-server/src/modules/stt-config/__tests__/{routes.test,support}.ts`, `apps/core-server/test/db/contract-inventory.test.ts` (one line, by ruling).
 
+## Fix round 2 (navigator re-check) — 2026-10-09
+
+Scope: `packages/shared/src/api/redaction.ts`, one pattern detail in `transcription.ts`, their tests. No exported name or signature changed (`apps/transcriber` imports both). One export added: `CREDENTIAL_WALK_NODE_BUDGET`.
+
+| # | Outcome |
+|---|---|
+| R-2 | **fixed.** The object walk keeps the set of objects it is INSIDE of (a reference back to one is blanked: a cycle costs one visit, not branching^12) and a node budget `CREDENTIAL_WALK_NODE_BUDGET` = 2000; past it every object, list and text not yet reached is `***`. An object used twice without a cycle is still walked both times. Tests assert structure, not time: an object with 2 / 3 / 4 / 8 references to itself has each reference READ exactly once; a diamond 2^11 wide stays within `2 x budget` member reads; a list of budget + 500 items keeps item 0 as it came, answers `***` for the last, and blanks a text past the budget |
+| R-1 | **fixed for the listed forms.** `Bearer` / `Basic` with a quoted value, in any case, with tokens holding `:` or `%`; a header tuple `["authorization","…"]` / `["X-Api-Key","…"]`; ONE predicate `isCredentialKeyName` for the text rule and the object rule (a name holding `credential` except the three flags, `apikey`, `secret`, `password`, `passphrase`, `authorization`, or ending in `token`), so `credentials`, `sttCredential`, `apiKeyValue`, `secretKey`, `token`, `access_token`, `password`, `API Key` are blanked by both; `kind` / `value` / `ref` in any case in text and object; a URL-encoded body (judged and returned decoded when it names a credential) |
+| R-1, declined with boundary tests | `key` alone (storage keys and list keys in every log; an existing mobile test logs `key: 'dems.sim.v1'`); prose after a scheme (`Basic authentication`, `a bearer of news`); an unquoted value that itself holds `,` `;` `&` (the value ends there — the canonical `credentialRef: x, next` needs it); unicode-escaped names and free prose (not attempted) |
+| R-1, behaviour changes to know | `credentials: same-origin` (the fetch option) now reads `credentials: ***` — the earlier boundary case was removed from three tests; the tuple rule is limited to header names, because in `"kind":"SECRET","value":…` the text `SECRET` is also "a quoted text, a comma, a quoted text" |
+| R-4 | **fixed.** `STT_MODEL_ID_PATTERN` refuses a trailing `.` (`model.`, `ggml-large-v3.`); OpenAPI regenerated under `lockf -k .locks/npm.lock`, `--check` up to date, 92 operations / offline 26 |
+| R-3 | carried to row 117 (not attempted) |
+
+Red first: the R-1 / R-2 tests ran red before the change (`3 failed | 20 passed (51)`, the run stopping on the 4- and 8-reference objects, which is finding R-2 itself). The two R-4 cases were added in the same edit as the look-ahead and were not shown red in a run of their own.
+
+Totals (each `--maxWorkers=2 </dev/null`): shared 74 files / **1969 passed**; core-web 117 / **1523**; mobile 194 suites / **2020**; transcriber (`npm run test -w @dems/transcriber`) 8 files / **259 passed, 1 skipped**; core-server `src/modules/stt-config` unit 2 files / 69 passed; typecheck + lint shared exit 0. One `tsc` run of shared answered exit 2 while another row was editing `packages/shared/src/**` in the same tree; the two runs after it answered 0 with my files unchanged.
+
+Files: `packages/shared/src/api/redaction.ts`, `packages/shared/src/api/transcription.ts` (one pattern + its comment), `packages/shared/openapi/openapi.json`, `packages/shared/test/redaction.test.ts`, `packages/shared/test/api-stt-config.test.ts`; one removed boundary line each in `apps/core-web/src/test/live-runtime-sink.test.tsx` and `apps/mobile/src/runtime/log.test.ts`.
+
 ---
 *Generated: 2026-10-09*
 *Last Updated: 2026-10-09 (fix round 1)*

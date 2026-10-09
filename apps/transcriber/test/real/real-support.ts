@@ -30,7 +30,7 @@ export const OMLX_TTS_MODEL = 'omnivoice-bfloat16';
 export const ROW_12_ANSWER = join(REPO, '.cache/spikes/stt-check/runs/whisper-run1.json');
 export const ROW_12_SEGMENTS = 17;
 
-export type RunKind = 'cpu-local' | 'omlx-server' | 'shape' | 'omlx-log-excerpt';
+export type RunKind = 'cpu-local' | 'omlx-server' | 'shape' | 'omlx-log-excerpt' | 'row77-cpu-local' | 'row77-omlx-server' | 'row77-df1';
 
 /** A NEW directory for one run. Throws when it already exists: an earlier run is never written into. */
 export function createRunDir(kind: RunKind, root: string = RUNS_DIR, now: Date = new Date()): string {
@@ -65,3 +65,17 @@ export function latestRunWith(file: string, root: string = RUNS_DIR): string | n
   }
   return null;
 }
+
+// ── Row 77 (M6-W2): the pipeline on the real engines ─────────────────────────────────────────
+
+/** whisper.cpp's own `vad-speech-segments`, built in the row-107 GPU-off build tree by row 77. */
+export const VAD_BINARY = join(REPO, '.cache/stt/whisper.cpp/build/bin/whisper-vad-speech-segments');
+/** The Silero VAD model IDENTIFIER; its file is `<MODEL_DIR>/<id>.bin` (OD-20; Q-INSTALL item 5). */
+export const VAD_MODEL_ID = 'ggml-silero-v6.2.0';
+export const VAD_MODEL_SHA256 = '2aa269b785eeb53a82983a20501ddf7c1d9c48e33ab63a41391ac6c9f7fb6987';
+export const ROW77_RUNS_DIR = join(REPO, '.cache/stt/checks/row77/runs');
+/** The sealed fixture: 1,577,297 samples at 24 kHz. Its last sample is at 65.7207… s: 65,721 ms rounded. */
+export const FIXTURE_SAMPLES = 1_577_297;
+export const FIXTURE_RATE = 24_000;
+export const FIXTURE_END_MS = 65_721;
+export const SCRIPTED_SENTENCES = 13;

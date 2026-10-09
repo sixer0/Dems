@@ -225,6 +225,8 @@ describe('the model identifier: one shared pattern, used by operation 91', () =>
     ['a parent path', '../../etc/passwd'],
     ['a leading dash (an option)', '-ng'],
     ['a leading dot', '.hidden'],
+    ['a trailing dot (R-4: it would name the file `model..bin`)', 'model.'],
+    ['a trailing dot after a version', 'ggml-large-v3.'],
     ['a file name', 'ggml-large-v3-turbo.bin'],
     ['a file name in capitals', 'ggml-large-v3-turbo.BIN'],
     ['white space inside', 'ggml large'],

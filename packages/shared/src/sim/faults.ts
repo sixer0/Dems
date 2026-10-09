@@ -242,6 +242,15 @@ export function injectFaultTransition(state: SimState, now: EpochMs, kind: Fault
   }
   const key = faultTargetKey(state, kind, target);
   if (kind === FaultKind.AUDIT_TAMPER && key === null) return state; // nothing to tamper with
+  return raiseFaultAtKey(state, now, kind, key, target);
+}
+
+/**
+ * Raises `kind` under the target key `key`: the body of `inject`, for a caller that already knows
+ * the key. `raiseCaptureWarning` uses it for `CAPTURE_FAULT`, whose key is a capture-device ID that
+ * `FaultTarget` has no member for. Returns the same state while that fault is active for that key.
+ */
+export function raiseFaultAtKey(state: SimState, now: EpochMs, kind: FaultKind, key: string | null, target?: FaultTarget): SimState {
   if (isFaultActive(state.faults, kind, key)) return state;
 
   let next: SimState = state;
@@ -377,6 +386,15 @@ export function clearFaultTransition(state: SimState, now: EpochMs, kind: FaultK
   if (target === undefined) key = undefined;
   else if (kind === FaultKind.AUDIT_TAMPER && target.auditIndex === undefined) key = undefined;
   else key = faultTargetKey(state, kind, target);
+  return clearFaultAtKey(state, now, kind, key);
+}
+
+/**
+ * Clears `kind` under the target key `key` (`undefined`: every active fault of that kind): the body
+ * of `clearFault`, for a caller that already knows the key. `clearCaptureWarning` uses it, as
+ * `raiseCaptureWarning` uses `raiseFaultAtKey`. Returns the same state when no such fault is active.
+ */
+export function clearFaultAtKey(state: SimState, now: EpochMs, kind: FaultKind, key: string | null | undefined): SimState {
   const matches = state.faults.active.filter((fault) => fault.kind === kind && (key === undefined || fault.target === key));
   if (matches.length === 0) return state;
 

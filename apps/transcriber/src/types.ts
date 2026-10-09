@@ -109,7 +109,7 @@ export interface EngineRunRecord {
   /** SHA-256 of the bytes the engine answered with, before any normalisation. */
   readonly rawSha256: string;
   readonly rawBytes: number;
-  /** `cpu-local`: the niceness the engine was started at (through `nice`), or null when the host cannot lower it. */
+  /** `cpu-local`: the niceness the engine runs at (the starter's own + the increment), or null when the host cannot lower it. */
   readonly nice: number | null;
 }
 
@@ -153,6 +153,14 @@ export const TranscriberErrorCode = {
   /** The fixture bytes are not the sealed ones. */
   FIXTURE_CORRUPT: 'FIXTURE_CORRUPT',
   FIXTURE_NOT_FOUND: 'FIXTURE_NOT_FOUND',
+  /** The session audio is missing or unreadable (transcript spec §A.1; C3 §4). No transcript is made up. */
+  TRANSCRIPT_AUDIO_UNAVAILABLE: 'TRANSCRIPT_AUDIO_UNAVAILABLE',
+  /** The VAD engine or its model is absent, or it ended with an error. The pipeline falls back to fixed windows (§A.2). */
+  VAD_FAILED: 'VAD_FAILED',
+  /** The checkpoint file is not a checkpoint of this form, or it belongs to another session, backend, model or audio (§D). */
+  CHECKPOINT_INVALID: 'CHECKPOINT_INVALID',
+  /** The engine would not run at a lower priority than the capture worker, so no engine is started (§C). */
+  ENGINE_NOT_BELOW_CAPTURE_WORKER: 'ENGINE_NOT_BELOW_CAPTURE_WORKER',
 } as const;
 export type TranscriberErrorCode = (typeof TranscriberErrorCode)[keyof typeof TranscriberErrorCode];
 

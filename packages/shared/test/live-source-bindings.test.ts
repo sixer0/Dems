@@ -1,9 +1,10 @@
-// Plan row W44 (HB-14), the 42 action bindings and error rebuilding: 04_client_integration_spec
-// §2.5 ("The 42 action bindings", CL-19 to CL-22); 01_specs §7.2, §7.17; AC-C-11.
+// Plan row W44 (HB-14), the 45 action bindings and error rebuilding: 04_client_integration_spec
+// §2.5 ("The 42 action bindings", CL-19 to CL-22); 01_specs §7.2, §7.17; AC-C-11. Task 3 register
+// SH-18 adds the three INTERNAL capture actions: 42 -> 45.
 //
 // The table tests are driven by the contract's own data, `SIM_ACTION_OPERATIONS`: every member of
 // `SimActions` is planned once, and the request it plans is checked against the registry (the
-// operation the table names, its method, its path parameter, its body schema). A 43rd action, a
+// operation the table names, its method, its path parameter, its body schema). A 46th action, a
 // renamed operation or a body the contract refuses fails here.
 import { afterEach, describe, expect, it } from 'vitest';
 import {
@@ -80,7 +81,7 @@ const examplePathId = (operationId: string): string => {
   return id;
 };
 
-/** One valid call of every member of `SimActions`. Typed by the simulator: a 43rd member does not compile until it has a line. */
+/** One valid call of every member of `SimActions`. Typed by the simulator: a 46th member does not compile until it has a line. */
 const ARGS: { readonly [Name in keyof SimActions]: Parameters<SimActions[Name]> } = {
   signIn: ['andi.pratama', 'not-a-real-password'],
   signInWithBiometric: ['OPR-002'],
@@ -126,6 +127,15 @@ const ARGS: { readonly [Name in keyof SimActions]: Parameters<SimActions[Name]> 
   pair: ['123456'],
   unpair: [],
   setTabletLink: ['CONNECTED'],
+  applyCaptureTelemetry: [
+    {
+      levels: [{ role: 'PRIMARY', dbfs: -18, clipped: false }, { role: 'STANDBY', dbfs: null, clipped: false }],
+      ingest: [{ deviceId: 'CAM-01', state: 'WAITING' }],
+      fragments: [{ deviceId: 'CAM-01', count: 3, bytes: 4096 }],
+    },
+  ],
+  raiseCaptureWarning: [{ code: 'MIC_SILENT', subject: 'PRIMARY' }],
+  clearCaptureWarning: [{ code: 'MIC_SILENT', subject: 'PRIMARY' }],
 };
 
 /** A real state with a session that is ARMED: one engine, from sign-in through the pre-check. */
@@ -187,11 +197,11 @@ function expectContractRequest(name: string, plan: CallPlan): void {
   }
 }
 
-describe('the 42 bindings, driven by SIM_ACTION_OPERATIONS (01_specs §7.17)', () => {
+describe('the 45 bindings, driven by SIM_ACTION_OPERATIONS (01_specs §7.17)', () => {
   it('has one binding per member of SimActions: the keys of the contract table, of the bindings and of a real simulator are equal', () => {
     const sim = createSim({ clock: createManualClock(NOW), storage: null, authStorage: null });
     const simulator = Object.keys(sim.actions).sort();
-    expect(simulator).toHaveLength(42);
+    expect(simulator).toHaveLength(45);
     expect([...LIVE_BINDING_NAMES].sort()).toEqual(simulator);
     expect(Object.keys(SIM_ACTION_OPERATIONS).sort()).toEqual(simulator);
     expect(Object.keys(ARGS).sort()).toEqual(simulator);
@@ -199,7 +209,7 @@ describe('the 42 bindings, driven by SIM_ACTION_OPERATIONS (01_specs §7.17)', (
     expect(LIVE_BINDING_NAMES).toEqual(Object.keys(SIM_ACTION_OPERATIONS));
   });
 
-  it('the flows: 33 commands, 1 read, 2 sign-ins, sign-out, touch, pair, unpair, 2 local', () => {
+  it('the flows: 33 commands, 1 read, 2 sign-ins, sign-out, touch, pair, unpair, 5 local', () => {
     const count = (flow: string) => LIVE_BINDING_NAMES.filter((name) => LIVE_BINDINGS[name].flow === flow);
     expect(count(LiveActionFlow.COMMAND)).toHaveLength(33);
     expect(count(LiveActionFlow.READ)).toEqual(['verifyAuditChain']);
@@ -208,7 +218,7 @@ describe('the 42 bindings, driven by SIM_ACTION_OPERATIONS (01_specs §7.17)', (
     expect(count(LiveActionFlow.TOUCH)).toEqual(['touch']);
     expect(count(LiveActionFlow.PAIR)).toEqual(['pair']);
     expect(count(LiveActionFlow.UNPAIR)).toEqual(['unpair']);
-    expect(count(LiveActionFlow.LOCAL)).toEqual(['signInWithSecurityKey', 'setTabletLink']);
+    expect(count(LiveActionFlow.LOCAL)).toEqual(['signInWithSecurityKey', 'setTabletLink', 'applyCaptureTelemetry', 'raiseCaptureWarning', 'clearCaptureWarning']);
     expect(Object.values(LiveActionFlow)).toHaveLength(8);
   });
 
@@ -317,6 +327,10 @@ describe('the 42 bindings, driven by SIM_ACTION_OPERATIONS (01_specs §7.17)', (
     // No operation in Live mode.
     expect(plan('signInWithSecurityKey', idle)).toMatchObject({ kind: 'reject', error: { name: 'CoreRefusalError', code: 'NOT_AVAILABLE' } });
     expect(plan('setTabletLink', idle)).toEqual({ kind: 'resolve', value: undefined });
+    // SH-18: the two capture actions are the server's own; a client's call resolves and sends nothing.
+    expect(plan('applyCaptureTelemetry', idle)).toEqual({ kind: 'resolve', value: undefined });
+    expect(plan('raiseCaptureWarning', idle)).toEqual({ kind: 'resolve', value: undefined });
+    expect(plan('clearCaptureWarning', idle)).toEqual({ kind: 'resolve', value: undefined });
     // Without the app's ports the two mobile actions cannot run.
     expect(plan('signInWithBiometric', idle, {})).toMatchObject({ kind: 'reject', error: { name: 'CoreRefusalError', code: 'NOT_AVAILABLE' } });
     expect(plan('pair', { state: UNPAIRED, now: NOW }, {})).toMatchObject({ kind: 'reject', error: { name: 'CoreRefusalError', code: 'NOT_AVAILABLE' } });
@@ -616,6 +630,9 @@ describe('every command and read binding, called on a Live source over the fake 
     const { source, reports } = await signedIn();
     const calls = fake.calls.length;
     await expect(source.actions.setTabletLink('OFFLINE')).resolves.toBeUndefined();
+    await expect(source.actions.applyCaptureTelemetry(...ARGS.applyCaptureTelemetry)).resolves.toBeUndefined();
+    await expect(source.actions.raiseCaptureWarning(...ARGS.raiseCaptureWarning)).resolves.toBeUndefined();
+    await expect(source.actions.clearCaptureWarning(...ARGS.clearCaptureWarning)).resolves.toBeUndefined();
     await expect(source.actions.setActiveCamera(ARMED.activeCameraId)).resolves.toBeUndefined();
     await expect(source.actions.signInWithSecurityKey()).rejects.toMatchObject({ name: 'CoreRefusalError', code: 'NOT_AVAILABLE' });
     await expect(source.actions.signInWithBiometric('OPR-002')).rejects.toMatchObject({ name: 'CoreRefusalError', code: 'NOT_AVAILABLE' });

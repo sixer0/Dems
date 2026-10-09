@@ -320,6 +320,9 @@ export async function engineDouble(clock: ControllableClock, scenario?: Scenario
         return committed()[name];
       },
       setTabletLink: notUsed('setTabletLink'),
+      applyCaptureTelemetry: notUsed('applyCaptureTelemetry'),
+      raiseCaptureWarning: notUsed('raiseCaptureWarning'),
+      clearCaptureWarning: notUsed('clearCaptureWarning'),
       mirrorOperators: notUsed('mirrorOperators'),
       start: notUsed('start'),
       reload: notUsed('reload'),

@@ -16,9 +16,12 @@ import { detectPhysicalCores } from '../../src/host/physical-cores';
 import { createMemoryLog } from '../../src/log';
 import { TranscribeResultSchema, TranscriberErrorCode, type EngineRunRecord, type TranscriberChunk } from '../../src/types';
 import { readWavFacts } from '../../src/wav';
-import { STT_NICE } from '../../src/cpu-priority';
+import { getPriority } from 'node:os';
+import { engineIsLowered, expectedEngineNice } from '../../src/cpu-priority';
 import { CPU_MODEL_ID, MODEL_DIR, ROW_109_RAW_BYTES, ROW_109_RAW_SHA256, ROW_109_SEGMENTS, SEALED_FIXTURE, WHISPER_CLI, createRunDir, writeEvidence } from './real-support';
 
+/** The niceness of THIS process: 0 in the foreground, 5 as a zsh background job. */
+const PARENT_NICE = getPriority();
 const THREADS = 8; // the rows 109/110 command: `-t 8` on the 10-core host
 const cores = detectPhysicalCores();
 const EVIDENCE_DIR = createRunDir('cpu-local');
@@ -88,13 +91,15 @@ describe('cpu-local, real engine: the sealed fixture reproduces the row-109 resu
     const outputBase = run.argv[run.argv.indexOf('-of') + 1]!;
     expect(run.argv).toEqual(['/usr/bin/nice', '-n', '10', WHISPER_CLI, '-m', join(MODEL_DIR, 'ggml-large-v3-turbo.bin'), '-ng', '-t', '8', '-l', 'id', '-oj', '-of', outputBase, '-f', SEALED_FIXTURE]);
 
-    // N-5: the niceness, from an observation that does not come from the adapter. Every sample in
-    // which the process IS the engine shows 10; the engine was never seen at another value.
+    // N-5 / R-1: the niceness, from an observation that does not come from the adapter. `nice -n 10`
+    // is relative, so the engine must show the niceness of THIS process plus 10 (foreground: 10; as
+    // a shell background job, where this process is at 5: 15). Never another value.
     expect(watches).toHaveLength(1);
     const engineSamples = watches[0]!.samples.filter((sample) => sample.command.endsWith('whisper-cli'));
     expect(engineSamples.length).toBeGreaterThan(0);
-    expect(engineSamples.filter((sample) => sample.nice !== STT_NICE)).toEqual([]);
-    expect(run.nice).toBe(STT_NICE);
+    expect(engineSamples.filter((sample) => sample.nice !== expectedEngineNice(PARENT_NICE))).toEqual([]);
+    expect(run.nice).toBe(expectedEngineNice(PARENT_NICE));
+    expect(engineIsLowered(PARENT_NICE, run.nice ?? Number.NaN)).toBe(true);
     expect(run.status).toBe(0);
     expect(run.rawBytes).toBe(ROW_109_RAW_BYTES);
     expect(run.rawSha256).toBe(ROW_109_RAW_SHA256);
@@ -128,7 +133,9 @@ describe('cpu-local, real engine: the sealed fixture reproduces the row-109 resu
       nice: run.nice,
       // Booleans only: a count of samples taken at a fixed interval would be a duration in disguise (D230).
       engineObservedFromOutsideWithPs: engineSamples.length > 0,
-      everyPsSampleOfTheEngineAtNice10: engineSamples.every((sample) => sample.nice === STT_NICE),
+      parentNice: PARENT_NICE,
+      expectedEngineNice: expectedEngineNice(PARENT_NICE),
+      everyPsSampleOfTheEngineAtTheExpectedNice: engineSamples.every((sample) => sample.nice === expectedEngineNice(PARENT_NICE)),
       logLevels: log.records().map((record) => `${record.level}:${record.message}`),
     });
   });

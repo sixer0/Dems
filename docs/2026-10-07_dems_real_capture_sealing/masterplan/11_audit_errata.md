@@ -377,6 +377,48 @@ active per D64); `07_transcript_spec.md:38` still says "Nothing of either backen
 (a status statement from 2026-10-08 that is not an R-8 / Q-D7 / Q-WORKER item); `06_evidence_package_spec.md`
 carries a second front-matter key `last_updated` at line 21 (pre-existing duplicate).
 
+### 5.8 Row 121 — API contract delta for R-9..R-11 (PE-121-01..16)
+
+Placed by `data-analyst` on 2026-10-09 for blueprint row 121 (`identification/02_structured.md:373`).
+Sources: `masterplan/01_specs.md` §B.2 (R-9, R-10, R-11; C-N13..C-N15; open points B.2.6; ambiguities
+B.2.7), the controller rulings `decisions/decisions.md` D80 (1)-(11), D72(f)(g)(h)(k), D73-D78.
+Working record: `delegation_progress/data_analyst_row121.md`. Only `masterplan/03_api_contract.md`
+and this subsection were edited. Unlike §5.1 these marks are a **requirements delta**, not
+corrections of a wrong sentence: "old text" is what the contract said before the new scope. Line
+numbers are after the edit (`grep -n "PE-121-"`). Code facts were read on the working tree of
+2026-10-09 (HEAD `101ce62`, rows 58 and 77 uncommitted); nothing in this delta is built yet.
+
+| ID | `03_api_contract.md` line (after the edit) | old text (abridged) | new text | source | decision |
+|---|---|---|---|---|---|
+| **PE-121-01** | 18, 21, 23-27, 1205 (front matter, title, note under the title, footer) | title "operations 76-92" | title "76-97"; note: 93-97 are a target, figures 92 / 35 / 57 / 63 / 26 are as built, new totals in §10.1 | `identification/02_structured.md:373` | D73, D78, D80 |
+| **PE-121-02** | 114 (§1), 323 (§2.5 status) | totals quoted as the only figures | new §1 row "R-9..R-11 operations"; pointer to §10.1 at every place that quotes a total (list in §10.1) | row 121 "totals stated once" | D80 |
+| **PE-121-03** | 375-505 (new §2.6) | (no discovery or connect operation) | ops 93 `startCaptureDiscovery`, 94 `getCaptureDiscovery`, 95 `testCaptureCandidateConnection`, 96 `adoptCaptureCandidate`, 97 `rescanCaptureInputs`: identity, shapes, `CaptureCandidate`, rules (state lifetime and ownership, non-SSRF target, five outcomes, credential in memory, when a `capture_devices` row comes into being, relation to op 89, before row 84, idempotency, rate limits, Try-it), device shapes, what R-10 reads, simulator answers | `01_specs.md` §B.2 R-9 AC-1..AC-13, R-10 AC-1..AC-6, R-11 AC-2, AC-5, AC-6; `packages/shared/src/api/devices.ts:149-156,365-369,518-543` | D76, D80(1)-(11) |
+| **PE-121-04** | 97 (§0 additions), 157 (§2.1) | four additions; no web-only rule | fifth addition: access condition `WEB_CONSOLE_SESSION` (ops 89, 95, 96; `403 NOT_PERMITTED` / `WEB_CONSOLE_ONLY`); RBAC row for ops 93-97, no new permission | `packages/shared/src/api/contract-model.ts:89-120` | D80(3), D80(2) |
+| **PE-121-05** | 194 (§2.2 access notes), 221 (§2.3 row 89), 313 (§2.4 "Credential (89)"), 554 (§3.1) | op 89: any `CAPTURE_CONFIG` session; "503 `NOT_READY`" with no reason; nothing on candidates | op 89 web console only; `503 CREDENTIAL_STORE_NOT_READY` until row 84; `{id}` is always a registered device — a candidate becomes a device only in the commit of op 96, whose credential leg is the op-89 write (open point 3 of `01_specs.md` §B.2.6) | `01_specs.md:350-351`; `devices.ts:518-543` | D80(7), D80(3) |
+| **PE-121-06** | 235 (§2.3 "No secret in any shape") | `CaptureDevice` = nine fields | plus `adapter` and `sourceClass`; still no credential member | `01_specs.md` R-11 AC-2, AC-6 | D80(9), D73 |
+| **PE-121-07** | 543-564 (new §3.1) | (pre-check and capture reads unchanged by R-9..R-11) | `beginPrecheck` / `retryPrecheck`: reachability of configured devices, start rule, one search; recording start with no camera; 76 / 77 shapes; 78 / 79 accept any registered device and refuse a development source with the flag off; `signOut` discards the discovery state; modified count 24 -> 26; open: primary microphone unreachable | `packages/shared/src/api/sessions.ts:241,267`; `01_specs.md` R-10 AC-2, AC-3 | D80(6), D72(k) |
+| **PE-121-08** | 576-581, 592, 614-634 (§4) | (no reason values for discovery); `CAPTURE_CONFIG_LOCKED` "returned by 78, 79, 80" | **no new error code** (40 stays); 15 new `details.reason` values on `INVALID_STATE`, `INVALID_INPUT`, `RATE_LIMITED`, `NOT_READY`, `NOT_PERMITTED`; `NOT_FOUND` for a foreign or expired candidate; `CAPTURE_CONFIG_LOCKED` also 89 (already in §2.3, missing in the §4 cell), 95, 96 | PE-113-07 / PE-113-11 pattern; `packages/shared/src/api/core-api.ts` (`ApiErrorCode`, 40 values) | D80(4), D80(11) |
+| **PE-121-09** | 654-656 (§5 intro), 672-677 (§5.1), 795-860 (§5.2), 871-874, 880-882 (§5.3) | 63 audit types; hard rule without the test / adopt bodies | four types with exact keys: `CAPTURE_DISCOVERY_SEARCHED` (11 keys), `CAPTURE_CONNECTION_TESTED` (8), `CAPTURE_CANDIDATE_ADOPTED` (8), `CAPTURE_DEVICE_UNREACHABLE` (6); hard rule extended to the `credential` member of 95 / 96 and to network identifiers; changed rows `CAPTURE_CREDENTIAL_SET`, `ACCESS_DENIED`, `FAULT_RAISED` (MEDIUM), `PRECHECK_BLOCKED`; four category entries | `01_specs.md` R-9 AC-9, R-10 AC-1..AC-3 | D76(3), D80(8), D72(h) |
+| **PE-121-10** | 884-927 (new §5.4) | (no alert rule for "no device") | alerts of R-10 on existing kinds: `SYSTEM` (WARNING; situations A, B, degraded C) and `CAPTURE_FAULT` (CRITICAL; C) told apart by `params.reason`; `FaultKind` stays 14, the three fault-kind CHECKs unchanged; raise-once and capture-side clearing | `apps/core-server/src/db/migrations/0004_capture.sql:217,227,228`; `packages/shared/src/sim/vocabulary.ts:218-235`; `packages/shared/src/sim/faults.ts:51,67`; `packages/shared/src/sim/types.ts:1016`; `packages/shared/src/sim/capture-telemetry.ts:149,156-177` | D72(h), D72(k), D80(6), D80(8) |
+| **PE-121-11** | 944-950 (§6) | 30 slices; payloads without adapter / class | still 30, no discovery slice; `captureDevices.devices[]` gains `adapter`, `sourceClass`; `captureConfig.cameras[]` / `mics[]` gain `sourceClass` | `01_specs.md` R-9 AC-4 | D80(9) |
+| **PE-121-12** | 997-1019 (§7) | (no discovery constants) | 14 proposed constants: search window, result lifetime, candidate bound, search limits, test timeout / validity / limits, lock-out guard, re-read interval, two id patterns; the lock-out figure labelled a hypothesis | `01_specs.md` R-9 AC-4, AC-11; C-N13 | D80(11) |
+| **PE-121-13** | 1055-1057, 1068-1078 (§8) | 17 operations, 16 simulated | 93-97 all `simulated`; fixed simulator answers; 95 / 96 on the web Try-it deny list; no version step assumed | `apps/core-web/src/features/api-reference/try-it.ts:39-48` | D80, D68(a), D70 |
+| **PE-121-14** | 1110-1114 (§9) | N-1..N-8 | N-9 no caller-supplied network target; N-10 no second credential store, no credential in memory between requests; N-11 a search authenticates, registers and configures nothing; N-12 no network microphone discovery, no microphone adoption, no removal of an adopted device; N-13 no new fault kind, no new error code | — | D80(1), (5), (7), (10) |
+| **PE-121-15** | 1130-1133 (§10 gate rows), 1135-1167 (new §10.1) | (totals quoted in §1, §2.5, §5, §8, §10) | the new totals stated once: operations 92 + 5 = **97**; GET 35 + 1 = **36**; POST 57 + 4 = **61**; audit types 63 + 4 = **67**; error codes **40** (+ 0); slices **30** (+ 0); `offline` 26 + 5 = **31**; `FaultKind` 14, CHECKs unchanged; access conditions 5 + 1 = 6; Try-it denied 8 + 2 = 10; the list of every place that quotes a total | `packages/shared/test/api-registry.test.ts:285,470,692` (as-built pins quoted by the contract) | D80 |
+| **PE-121-16** | 1169-1187 (§10.1 open items) | — | eight open items: the credential in the body of 95 and 96 against the blueprint wording; the re-verification in op 96; `01_specs.md` R-9 AC-5 / AC-7 and blueprint row 142 wording against D80(7); the primary-microphone case; the §7 values; `host` in the test audit row; the label in Simulated mode; where the adapter kind is stored | — | D80(7), D80(6) |
+
+Counts: 16 marks, all in `masterplan/03_api_contract.md`. New operations 5 (1 GET, 4 POST); extended
+operations 7; new audit types 4; new error codes 0; new fault kinds 0; new access conditions 1;
+new constants 14. Sweep after the edit: the figures 97, 36 / 61, 67 and 31 occur in §10.1 only
+(`grep -n -E` over the file; the other hits of those digits are operation numbers and line
+references).
+
+Not edited, for their owners: `masterplan/01_specs.md` R-9 AC-5 and AC-7 ("the credential is written
+through operation 89 ... the connection test takes its credential from the operation-89 entry") and
+`identification/02_structured.md` rows 121 and 142 carry the wording that D80(7) overrides; row 128
+reconciles. `masterplan/10_test_strategy.md` (row 127) takes the checks; `04_database_contract.md`
+(row 122) the storage of the adapter kind.
+
 ---
 *Generated: 2026-10-08*
-*Last Updated: 2026-10-09 (section 5: pair-review errata PE-57-01..10, PE-111-01..08, PE-113-01..16; D24, D65-D68; section 5.7: status sweep PE-R8-01..22, D24/D64)*
+*Last Updated: 2026-10-09 (section 5.8: row 121 API contract delta PE-121-01..16, D73-D78, D80; section 5: pair-review errata PE-57-01..10, PE-111-01..08, PE-113-01..16; D24, D65-D68; section 5.7: status sweep PE-R8-01..22, D24/D64)*

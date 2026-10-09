@@ -13,11 +13,13 @@
 //   --no-hello           never say HELLO
 //   --garbage            write a line that is no frame, right after HELLO
 //   --flood=<n>          after START is acknowledged, write n PROGRESS frames of n different steps at once
+//   --durable            after START is acknowledged, write the record FIRST_DURABLE_FRAGMENT (row 58:
+//                        the stub still writes no file; it only says what a recording worker says)
 //   --ignore-eof         do NOT exit when the input ends, and survive a broken output pipe
 //                        (a worker that breaks both rules: only a signal ends it)
 import { createInterface } from 'node:readline';
 
-const PROTOCOL_VERSION = 1;
+const PROTOCOL_VERSION = 2;
 const args = process.argv.slice(2);
 const option = (name, fallback) => {
   const found = args.find((arg) => arg.startsWith(`--${name}=`));
@@ -58,6 +60,9 @@ lines.on('line', (line) => {
     else if (served > 1) ack(false, 'SESSION_ALREADY_SERVED');
     else {
       ack(true);
+      if (args.includes('--durable')) {
+        write({ type: 'RECORD', sessionId: command.sessionId, seq: 1, record: { kind: 'FIRST_DURABLE_FRAGMENT', deviceId: command.plan.cameras[0].deviceId, bytes: 1 } });
+      }
       const flood = Number(option('flood', '0'));
       for (let step = 0; step < flood; step += 1) write({ type: 'PROGRESS', sessionId: command.sessionId, step: `S${step}`, progress: 0, etaMs: null });
     }

@@ -12,15 +12,23 @@
  *   - the persistence of what goes wrong: a worker that went down and a `CAPTURE_FAULT` are
  *     written to the log and to the persistent error log, with the session and correlation IDs.
  *
+ * THE WORKER COMMAND (blueprint row 58; spec §I edits 7 to 10). In capture mode `real` with a
+ * worker program configured (`config.captureWorkerPath`), the supervisor starts that program, one
+ * process per session, with fixed arguments (where it logs, how often it beats) and an empty
+ * environment. In every other case (mode `simulated`, the default; or `real` without a program)
+ * the server is built with `unconfiguredLauncher`: every `start` fails at once and cleanly with
+ * `CAPTURE_FAULT`, and no process is ever started. Whether a boot in `real` mode without a worker
+ * is refused is the boot checks' decision (CS-22), not this unit's.
+ *
+ * THE ENGINE (row 58; register SH-18 / CS-04, telemetry part). `forwarder.ts` hands the
+ * supervisor's telemetry and warnings to the engine's INTERNAL actions `applyCaptureTelemetry`
+ * and `raiseCaptureWarning`, without ever holding the supervisor's queue.
+ *
  * WHAT IT DOES NOT DO YET (stated so nobody reads more into it than is there).
- *   - It has NO WORKER COMMAND: the capture configuration keys are the next row's (spec §I edits
- *     7 to 10), so the server is built with `unconfiguredLauncher` and every `start` on it fails
- *     at once with `CAPTURE_FAULT`. The supervisor itself is complete and is exercised with a
- *     launcher by its tests.
- *   - It calls NO ENGINE ACTION. The supervisor's events name the INTERNAL action each is meant
- *     for (`applyCaptureTelemetry`, `applySealingProgress`, `raiseCaptureWarning`; spec §B.1), but
- *     the shared simulator and the engine host do not have those actions yet: the unit that adds
- *     them subscribes here with `app.capture.on(...)`.
+ *   - Sealing progress and seal completion reach no engine action: `applySealingProgress` and
+ *     `completeSeal` are the sealing row's. The lossless records (`record` events) are handed to
+ *     whoever subscribes; no unit persists them yet (the fMP4 writer row does).
+ *   - It builds no capture plan: the sessions module does, when it starts a real recording.
  *   - It registers no route.
  *
  * The plugin function starts no process and opens no connection: `buildApp()` works without a
@@ -30,13 +38,16 @@
  */
 import type { FastifyPluginAsync } from 'fastify';
 import { describeError } from '../plugins/logger';
-import { unconfiguredLauncher } from './ipc';
+import { CAPTURE_IPC_DEFAULTS } from '@dems/capture-protocol';
+import { forwardCaptureEvents } from './forwarder';
+import { createProcessLauncher, unconfiguredLauncher } from './ipc';
 import { createCaptureSupervisor } from './supervisor';
 import { createSystemTimers } from './timers';
-import type { CaptureSupervisor } from './types';
+import type { CaptureReport, CaptureSupervisor } from './types';
 
+export { CAPTURE_WARNING_CLEAR_HOLD_MS, ForwarderReportCode, forwardCaptureEvents, type CaptureEngine, type CaptureForwarderOptions } from './forwarder';
 export { createProcessLauncher, unconfiguredLauncher, type ProcessLauncherOptions } from './ipc';
-export { MAX_SESSION_ID_CHARS, createCaptureSupervisor } from './supervisor';
+export { MAX_SESSION_ID_CHARS, OUTPUT_EXISTS, createCaptureSupervisor } from './supervisor';
 export { createSystemTimers } from './timers';
 export {
   CapturePhase,
@@ -66,19 +77,37 @@ const FAULT = 'capture fault: the capture worker cannot be kept running';
 const FAILED = 'the capture supervisor could not finish a step';
 const BOOTED = 'capture supervisor booted';
 const STOPPED = 'capture supervisor stopped';
+const RECOVERED = 'the capture supervisor finished a step that had failed';
+
+/** The worker's own log: one JSON object per line, beside the connection files of the data directory. */
+const WORKER_LOG_NAME = 'capture-worker.jsonl';
 
 export const captureModule: FastifyPluginAsync = async (app) => {
+  const { captureMode, captureWorkerPath, dataDir } = app.config;
+  const configured = captureMode === 'real' && captureWorkerPath !== null;
+  const report = (failure: CaptureReport): void => {
+    const context = { sessionId: failure.sessionId, correlationId: failure.correlationId };
+    if (failure.err === null) {
+      // Something that had failed works again: said once, so the error log shows the end of the episode.
+      app.log.info({ code: failure.code, ...context }, RECOVERED);
+      // The persistent error log has no level below `warn`: the end of an episode is written at that level.
+      app.errorLog.append({ level: 'warn', source: failure.source, message: RECOVERED, code: failure.code, context });
+      return;
+    }
+    app.log.error({ err: failure.err, code: failure.code, ...context }, FAILED);
+    app.errorLog.append({ level: 'error', source: failure.source, message: FAILED, ...describeError(failure.err), code: failure.code, context });
+  };
   const supervisor = createCaptureSupervisor({
     // Read at every call: the clock is a seam, and a test replaces it after `ready()`.
     now: () => app.clock.now(),
     timers: createSystemTimers(),
-    launcher: unconfiguredLauncher,
-    report(failure) {
-      const context = { sessionId: failure.sessionId, correlationId: failure.correlationId };
-      app.log.error({ err: failure.err, code: failure.code, ...context }, FAILED);
-      app.errorLog.append({ level: 'error', source: failure.source, message: FAILED, ...describeError(failure.err), code: failure.code, context });
-    },
+    launcher: configured
+      ? createProcessLauncher({ command: captureWorkerPath, args: ['--log', `${dataDir}/${WORKER_LOG_NAME}`, '--heartbeat-ms', String(CAPTURE_IPC_DEFAULTS.heartbeatIntervalMs)] })
+      : unconfiguredLauncher,
+    report,
   });
+  // The telemetry and the warnings of a recording go to the engine (SH-18 / CS-04, telemetry part).
+  const stopForwarding = forwardCaptureEvents({ capture: supervisor, engine: () => (app.seams.has('engine') ? app.engine : null), report, now: () => app.clock.now() });
 
   supervisor.on('workerDown', (event) => {
     const context = {
@@ -111,7 +140,7 @@ export const captureModule: FastifyPluginAsync = async (app) => {
       await supervisor.boot();
       if (booted) return;
       booted = true;
-      app.log.info({ code: 'CAPTURE_SUPERVISOR_BOOTED', worker: 'not-configured' }, BOOTED);
+      app.log.info({ code: 'CAPTURE_SUPERVISOR_BOOTED', mode: captureMode, worker: configured ? 'configured' : 'not-configured' }, BOOTED);
     },
     async shutdown() {
       await supervisor.shutdown();
@@ -124,5 +153,6 @@ export const captureModule: FastifyPluginAsync = async (app) => {
 
   app.addHook('onClose', async () => {
     await seam.shutdown();
+    stopForwarding();
   });
 };

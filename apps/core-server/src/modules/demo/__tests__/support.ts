@@ -405,6 +405,9 @@ export function engineDouble(state: DurableSlices, onLifecycle: (name: string) =
       }) as EngineHost['command'],
       run: unused('run'),
       setTabletLink: unused('setTabletLink'),
+      applyCaptureTelemetry: unused('applyCaptureTelemetry'),
+      raiseCaptureWarning: unused('raiseCaptureWarning'),
+      clearCaptureWarning: unused('clearCaptureWarning'),
       mirrorOperators: unused('mirrorOperators'),
       start: async (mode) => {
         // The one start a reset may ask for: a resync, the stored epoch plus 1. Never a process start.

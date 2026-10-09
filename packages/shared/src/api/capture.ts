@@ -58,6 +58,29 @@ export const CAPTURE_MIN_FRAG_DURATION_MS = 2_000;
  */
 export const CAPTURE_OBSERVED_GOP_MAX_MS = 2_000;
 
+// ── File time and host time (capture spec §C.4, §F; errata PE-111-02, PE-111-06; row 58 part P4) ──
+
+/**
+ * THE media-time origin of a camera file, in audio samples at `CAPTURE_AUDIO_SAMPLE_RATE_HZ`:
+ * **file time 0 = T0 − 1024 samples = T0 − 21.333 ms**, where T0 is the host instant of audio
+ * sample 0 (the capture worker's T0; sample `n` of the PCM tap was captured at T0 + n / 48000 s).
+ *
+ * Why 1024: row 58 keeps the S1-pinned mux flags (`frag_keyframe+empty_moov+default_base_moof`),
+ * which write no edit list, so the 1,024 AAC priming samples are presented and BOTH tracks sit
+ * 1024 samples later in the file. Every mapping between file time and host time uses this one
+ * constant (transcript spec §A.2 "Timeline mapping", the PCM tap, STT timestamps, R-8):
+ *
+ *   file time of tap sample n          = (n + CAPTURE_MEDIA_TIME_ORIGIN_SAMPLES) / 48000  s
+ *   file time of a `FIRST_VIDEO_SAMPLE` record (pts, timescale; `@dems/capture-protocol`)
+ *                                      = pts / timescale + CAPTURE_MEDIA_TIME_ORIGIN_SAMPLES / 48000  s
+ *
+ * It is 0 only under `delay_moov`, which row 58 measured and rejected (the video track of a
+ * file whose first fragment was cut before its first video sample moves to time 0, and correct
+ * timing would depend on every reader honouring edit lists). The value follows the mux flags:
+ * `apps/capture-worker/check.sh` holds the flags, and a Core test holds this constant to them.
+ */
+export const CAPTURE_MEDIA_TIME_ORIGIN_SAMPLES = 1_024;
+
 // ── Sealing progress and meters (R-6 op 83; register NM-02) ───────────────────────────────────
 
 /** Per-step progress/ETA recompute interval of `getSealingProgress` (ms; design proposal C3 §7). */

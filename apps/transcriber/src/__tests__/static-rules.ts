@@ -18,7 +18,8 @@
 //
 // WHAT THIS IS NOT. It is a guard against a careless or convenient change, read by a reviewer; it
 // is not a sandbox. Code that builds a name at run time from character codes is outside any static
-// reading. The rule `NO_DYNAMIC_CODE` closes the two doors that make that easy (`eval`, `Function`).
+// reading, and stays a documented residual. The rule `NO_DYNAMIC_CODE` closes the doors that make
+// that easy (`eval`, `Function`, `createRequire`, `process.mainModule`, `node:vm`, `node:module`).
 import ts from 'typescript';
 
 export interface SourceFile {
@@ -39,6 +40,7 @@ export const CPU_LOCAL = 'src/backends/cpu-local.ts';
 export const PHYSICAL_CORES = 'src/host/physical-cores.ts';
 export const CONFIG = 'src/config.ts';
 export const LOG = 'src/log.ts';
+export const MEDIA_TIME = 'src/pipeline/media-time.ts';
 /** The two files that hold the patterns and the planted cases themselves. */
 export const RULE_FILES = ['src/__tests__/static-rules.ts', 'src/__tests__/static.test.ts'] as const;
 
@@ -70,11 +72,17 @@ interface Facts {
   readonly numbers: number[];
   /** `shell` members of object literals: the text of their value. */
   readonly shellValues: string[];
+  /** `process` used as a VALUE (assigned, passed, listed): anything but the object of a member access. */
+  readonly processValues: string[];
+  /** Writes aimed at a standard descriptor: `write*(0|1|2, …)` and `{ fd: 0|1|2 }`. */
+  readonly descriptorWrites: string[];
   readonly syntaxErrors: number;
   readonly source: ts.SourceFile;
 }
 
 const GLOBAL_OBJECTS = new Set(['globalThis', 'global', 'window', 'self']);
+const DESCRIPTOR_WRITERS = ['write', 'writeSync', 'writev', 'writevSync', 'appendFileSync', 'appendFile', 'writeFileSync', 'writeFile'];
+const STANDARD_DESCRIPTORS = [0, 1, 2];
 
 function textOf(node: ts.Node): string | null {
   if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) return node.text;
@@ -122,6 +130,8 @@ function collect(file: SourceFile): Facts {
     texts: [],
     numbers: [],
     shellValues: [],
+    processValues: [],
+    descriptorWrites: [],
     syntaxErrors: (source as unknown as { parseDiagnostics?: readonly unknown[] }).parseDiagnostics?.length ?? 0,
     source,
   };
@@ -158,8 +168,32 @@ function collect(file: SourceFile): Facts {
       }
     }
 
+    if (ts.isCallExpression(node)) {
+      const callee = node.expression;
+      const called = ts.isIdentifier(callee) ? callee.text : ts.isPropertyAccessExpression(callee) ? callee.name.text : ts.isElementAccessExpression(callee) ? (foldText(callee.argumentExpression) ?? '') : '';
+      const first = node.arguments[0];
+      if (DESCRIPTOR_WRITERS.includes(called) && first !== undefined && ts.isNumericLiteral(first) && STANDARD_DESCRIPTORS.includes(Number(first.text))) {
+        facts.descriptorWrites.push(`${called}(${first.text}, …)`);
+      }
+    }
+    if (ts.isPropertyAssignment(node) && ts.isIdentifier(node.name) && node.name.text === 'fd' && ts.isNumericLiteral(node.initializer) && STANDARD_DESCRIPTORS.includes(Number(node.initializer.text))) {
+      facts.descriptorWrites.push(`fd: ${node.initializer.text}`);
+    }
+    if (ts.isIdentifier(node) && node.text === 'process') {
+      const parent = node.parent;
+      const isObjectOfAccess = (ts.isPropertyAccessExpression(parent) || ts.isElementAccessExpression(parent)) && parent.expression === node;
+      const isMemberName = ts.isPropertyAccessExpression(parent) && parent.name === node;
+      const isDestructured = ts.isVariableDeclaration(parent) && parent.initializer === node && ts.isObjectBindingPattern(parent.name);
+      if (!isObjectOfAccess && !isMemberName && !isDestructured) facts.processValues.push(parent.getText(source).slice(0, 60));
+    }
+
     if (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) {
-      if (!insideAccess) facts.accesses.push(stripGlobal(chainOf(node)));
+      if (!insideAccess) {
+        const chain = stripGlobal(chainOf(node));
+        facts.accesses.push(chain);
+        // `globalThis.process` as a whole expression is the process object handed on as a value.
+        if (chain === 'process') facts.processValues.push(node.getText(source));
+      }
       if (ts.isElementAccessExpression(node)) {
         const key = foldText(node.argumentExpression);
         if (key !== null) facts.keys.push(key);
@@ -240,7 +274,8 @@ const any = (...checks: Check[]): Check => (facts, path) => {
   return null;
 };
 
-const NETWORK_MODULES = ['http', 'https', 'http2', 'net', 'tls', 'dgram', 'dns', 'undici', 'axios', 'node-fetch', 'ws', 'got', 'superagent'];
+// `inspector` opens a listening port; the rest open or accept connections.
+const NETWORK_MODULES = ['http', 'https', 'http2', 'net', 'tls', 'dgram', 'dns', 'inspector', 'inspector/promises', 'undici', 'axios', 'node-fetch', 'ws', 'got', 'superagent'];
 const HEADER_NAMES = ['authorization', 'proxy-authorization', 'x-api-key', 'api-key'];
 /** What a file may take from `child_process`: nothing that goes through a shell. */
 const PROCESS_STARTERS: Readonly<Record<string, readonly string[]>> = { [CPU_LOCAL]: ['spawn', 'spawnSync'], [PHYSICAL_CORES]: ['execFileSync'] };
@@ -288,6 +323,11 @@ export const RULES: readonly Rule[] = [
     includesTests: false,
     check: any(access(/(^|\.)process\.(env|loadEnvFile)(\.|$)/), module('process'), (facts) => facts.imports.find((entry) => entry.module === 'os' && entry.names.includes('userInfo'))?.module ?? null),
   },
+  // The process object is used in place, member by member, so that every use can be read here:
+  // an alias (`const p = process`) or a hand-over (`Reflect.get(process, 'env')`) hides the member.
+  { id: 'PROCESS_OBJECT_IS_NOT_PASSED_AROUND', allowedIn: [], includesTests: false, check: (facts) => facts.processValues[0] ?? null },
+  // Output goes through the log: no write to a standard descriptor, no warning channel, no report.
+  { id: 'NO_DIRECT_OUTPUT', allowedIn: [], includesTests: true, check: any((facts) => facts.descriptorWrites[0] ?? null, access(/(^|\.)process\.(emitWarning|report|_rawDebug)(\.|$)/)) },
   // No runtime download or install.
   { id: 'NO_DOWNLOAD_OR_INSTALL', allowedIn: [], includesTests: true, check: text(/^(brew|pip3?|npm|npx|curl|wget|git|apt|apt-get)$|\b(brew|pip3?|npm) install\b|huggingface|hf_hub/i) },
   // The engine is started as a process in one module, with no shell in between.
@@ -328,8 +368,21 @@ export const RULES: readonly Rule[] = [
       text(/throughput|real[- ]time factor|\bRTF\b|\bWER\b/i),
     ),
   },
+  // Row 77 / D72(d): the media-time origin of the capture contract (the AAC priming, in samples) and
+  // the frame length in milliseconds are IMPORTED, never written. `log.ts` holds a byte size that
+  // happens to use the same number.
+  {
+    id: 'MEDIA_TIME_ORIGIN_NEVER_WRITTEN',
+    allowedIn: [LOG],
+    includesTests: false,
+    check: (facts) => {
+      const found = facts.numbers.find((value) => value === 1024 || (value > 21.3 && value < 21.4));
+      return found === undefined ? null : String(found);
+    },
+  },
   // The two doors past a static reading.
-  { id: 'NO_DYNAMIC_CODE', allowedIn: [], includesTests: true, check: any(name('eval', 'Function'), module('vm')) },
+  // …and the loaders that take a module name at run time, past the import rules.
+  { id: 'NO_DYNAMIC_CODE', allowedIn: [], includesTests: true, check: any(name('eval', 'Function', 'createRequire'), module('vm', 'module'), access(/(^|\.)process\.mainModule(\.|$)|(^|\.)module\.(require|createRequire)$/)) },
 ];
 
 // ───────────────────────────────────────────────────────────────────────────────────────
@@ -448,9 +501,28 @@ export const REQUIRED: readonly Required[] = [
   },
 ];
 
+// Appended by row 77.
+const ROW_77_REQUIRED: readonly Required[] = [
+  {
+    // `media-time.ts` takes CAPTURE_MEDIA_TIME_ORIGIN_SAMPLES from the shared package, by name.
+    id: 'MEDIA_TIME_ORIGIN_IS_IMPORTED',
+    path: MEDIA_TIME,
+    holds: (source) =>
+      findAll(source, ts.isImportDeclaration).some(
+        (declaration) =>
+          ts.isStringLiteral(declaration.moduleSpecifier) &&
+          ['@dems/shared', '@dems/shared/api'].includes(declaration.moduleSpecifier.text) &&
+          declaration.importClause?.namedBindings !== undefined &&
+          ts.isNamedImports(declaration.importClause.namedBindings) &&
+          declaration.importClause.namedBindings.elements.some((element) => (element.propertyName ?? element.name).text === 'CAPTURE_MEDIA_TIME_ORIGIN_SAMPLES'),
+      ),
+  },
+];
+
 export const UNPARSEABLE = 'UNPARSEABLE_SOURCE';
 export const RULE_IDS: readonly string[] = [...RULES.map((rule) => rule.id), UNPARSEABLE];
-export const REQUIRED_IDS: readonly string[] = REQUIRED.map((required) => required.id);
+const ALL_REQUIRED: readonly Required[] = [...REQUIRED, ...ROW_77_REQUIRED];
+export const REQUIRED_IDS: readonly string[] = ALL_REQUIRED.map((required) => required.id);
 
 export function scanSources(files: readonly SourceFile[]): Violation[] {
   const violations: Violation[] = [];
@@ -467,7 +539,7 @@ export function scanSources(files: readonly SourceFile[]): Violation[] {
       if (match !== null) violations.push({ rule: rule.id, path: file.path, match: match.slice(0, 80) });
     }
   }
-  for (const required of REQUIRED) {
+  for (const required of ALL_REQUIRED) {
     const facts = parsed.get(required.path);
     if (facts === undefined || !required.holds(facts.source)) violations.push({ rule: required.id, path: required.path, match: '(absent)' });
   }

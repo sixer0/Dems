@@ -1,0 +1,21 @@
+# Planted violations for `sh check.sh --selftest` (blueprint row 58; M3-SR-2 negative controls).
+# rule<TAB>file the line is appended to<TAB>the line. Each one, added to a copy of src/, MUST make the rules fail with that rule's tag.
+# This file is the only place under apps/capture-worker (beside the one proof line of the Makefile) that holds a forbidden mux option.
+AU2-07	ingest.c	static void second(void *g) { avfilter_graph_send_command(g, "astreamselect@asel", "map", "1", NULL, 0, 0); }
+N-10	capture_worker.c	#include <libavfilter/avfilter.h>
+N-10	ingest.c	static int other(void *f) { return av_opt_set(f, "map", "1", 1); }
+C.4	ingest.c	static const char *planted_a = "use_editlist=1";
+C.4	ingest.c	static const char *planted_b = "+negative_cts_offsets";
+C.4	ingest.c	static const char *planted_c = "avoid_negative_ts=disabled";
+W1-C1	ingest.c	static const char *planted_d = "frag_type=every_frame";
+H-4	audio.c	static const void *second_encoder(void) { return avcodec_find_encoder_by_name("aac"); }
+SEC35-23	ingest.c	static const char *planted_e = "rtsp://0.0.0.0:8555/cam";
+W-1	ingest.c	static const char *planted_f = "rtsp_transport";
+W-4	audio.c	static void planted_g(void) { exit(0); }
+B.2	audio.c	static void planted_h(void) { printf("hello\n"); }
+B.2	sink.c	static const char *planted_i(void) { return getenv("HOME"); }
+D58-1	sink.c	static int planted_j(const char *p) { return open(p, O_WRONLY | O_TRUNC); }
+D58-1	sink.c	static int planted_k(const char *p) { return open(p, O_WRONLY | O_CREAT, 0600); }
+D58-2	audio.c	static int planted_l(const char *a, const char *b) { return link(a, b); }
+D58-1	sink.c	static void *planted_m(const char *p) { return fopen(p, "w"); }
+F-2	ingest.c	static const char *planted_n = "not on whitelist";

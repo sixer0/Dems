@@ -36,6 +36,8 @@ export interface WavFacts {
   readonly bitsPerSample: number;
   readonly dataOffset: number;
   readonly dataBytes: number;
+  /** The size the `data` chunk STATES. `dataBytes` is what of it lies inside the bytes that were handed in. */
+  readonly declaredDataBytes: number;
   readonly durationMs: number;
 }
 
@@ -60,7 +62,7 @@ export function readWavFacts(bytes: Uint8Array): WavFacts {
       const dataBytes = Math.min(size, buffer.length - body);
       const bytesPerSecond = format.sampleRateHz * format.channels * (format.bitsPerSample / 8);
       if (bytesPerSecond <= 0) return bad('FMT_ZERO_RATE');
-      return { ...format, dataOffset: body, dataBytes, durationMs: Math.round((dataBytes / bytesPerSecond) * 1000) };
+      return { ...format, dataOffset: body, dataBytes, declaredDataBytes: size, durationMs: Math.round((dataBytes / bytesPerSecond) * 1000) };
     }
     offset = body + size + (size % 2);
   }

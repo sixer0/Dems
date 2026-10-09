@@ -305,7 +305,7 @@ export interface CreateLiveSimOptions<Client extends LiveClient = LiveClient> {
 export interface LiveSim<Client extends LiveClient = LiveClient> extends LiveHandle {
   // ── The members of `Sim` ──
   readonly store: LiveStore;
-  /** The 42 actions: the names and parameters of the simulator's, each returning a Live result. One stable object. */
+  /** The 45 actions: the names and parameters of the simulator's, each returning a Live result. One stable object. */
   readonly actions: LiveActions;
   /** The server's clock as this client knows it; it never moves backwards. */
   readonly clock: SimClock;

@@ -2,7 +2,7 @@
  * The types of the engine host (plan row W26). Types only; `index.ts` re-exports them, and that
  * is where other units import from.
  */
-import type { AudioSlice, AuditRow, SimEvent, TabletLinkState } from '@dems/shared/sim';
+import type { AudioSlice, AuditRow, CaptureTelemetryInput, CaptureWarningInput, SimEvent, TabletLinkState } from '@dems/shared/sim';
 import type { UnitContext } from '../core';
 import type { DurableSliceKey, DurableSlices } from '../db/mapping';
 import type { Principal } from '../plugins/authenticate';
@@ -207,6 +207,49 @@ export interface EngineHost {
    * `setTabletLink` with no actor. Writes `TABLET_LINK_CHANGED` when the state changes.
    */
   setTabletLink(state: TabletLinkState): Promise<EngineOutcome<void>>;
+
+  /**
+   * One TELEMETRY frame of the capture worker (task 3, register SH-18 / CS-04; `capture-spec
+   * §B.1`): the INTERNAL `applyCaptureTelemetry` with no actor. The worker sends about 20 a second,
+   * so the host looks before it opens a unit:
+   *
+   *   - a frame that changes no stored slice (the usual one: levels, and ingest states the state
+   *     already holds) runs NO unit. The levels go to the meters, which the next tick publishes;
+   *     no statement is sent and the revision does not move. Resolves at once with the current
+   *     position;
+   *   - a frame that changes `captureDevices` or `captureConfig` is one unit, committed and
+   *     published like `setTabletLink`. While such a unit waits for its turn, later frames join it
+   *     (the newest frame is the one applied) and resolve with its outcome: at most one telemetry
+   *     unit is ever queued.
+   *
+   * An ID or role of the frame that the Core does not know is ignored, and the host says so ONCE
+   * per engine run and value: a warn line and an error-log entry (`context.ignored`).
+   *
+   * Writes no audit row and no event. Rejects with 503 `NOT_READY` when the engine is not running
+   * or the unit was not committed.
+   */
+  applyCaptureTelemetry(telemetry: CaptureTelemetryInput): Promise<EngineOutcome<void>>;
+
+  /**
+   * A warning of the capture layer (register SH-18; `capture-spec §E.1`): the INTERNAL
+   * `raiseCaptureWarning` with no actor, one unit. Writes the alert, the FAULT_RAISED audit row
+   * and the event of the fault `MIC_SILENT` or `CAPTURE_FAULT`; while that fault is active for the
+   * same subject it writes no statement and the revision does not move. It NEVER switches the
+   * audio source (OD-11). Rejects with the simulator's `SimNotFoundError` for a subject the Core
+   * does not know (nothing is stored; the failure is in the error log), and with 503 `NOT_READY`
+   * as above.
+   */
+  raiseCaptureWarning(warning: CaptureWarningInput): Promise<EngineOutcome<void>>;
+
+  /**
+   * The condition of a capture warning is over (register SH-18; decision D72, finding A-2): the
+   * INTERNAL `clearCaptureWarning` with no actor, one unit. Clears that fault as operation 74 does
+   * (alert resolved, FAULT_CLEARED audit row and event) but is reachable from the capture side
+   * only; operation 74 stays the demo control. When that fault is not active it writes no
+   * statement and the revision does not move. A later `raiseCaptureWarning` for the same subject
+   * is a NEW fault. Rejects as `raiseCaptureWarning` does.
+   */
+  clearCaptureWarning(warning: CaptureWarningInput): Promise<EngineOutcome<void>>;
 
   /**
    * Mirrors the operators table into the engine and publishes the slice when it changed (ENG-3).

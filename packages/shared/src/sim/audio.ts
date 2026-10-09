@@ -34,12 +34,13 @@ import {
   AUDIO_SPEECH_MAX_DBFS,
   AUDIO_SPEECH_MIN_DBFS,
   AUDIO_TEST_TONE_DBFS,
+  CAPTURE_LEVEL_HOLD_MS,
 } from './constants';
 import type { EngineContext } from './engine';
 import { isFaultActive } from './derive';
 import type { Rng } from './rng';
 import { addTimelineItem, SPEECH_STATES } from './session-machine';
-import type { AudioFrame, EpochMs, SimState, SimSubsystem } from './types';
+import type { AudioFrame, CaptureLevelSource, EpochMs, SimState, SimSubsystem } from './types';
 import { FaultKind } from './vocabulary';
 
 export const AUDIO_CHANNELS = ['AUDIO-01', 'AUDIO-02'] as const satisfies readonly AudioTrackId[];
@@ -152,10 +153,36 @@ function noiseFloor(rng: Rng): number {
 export interface AudioRuntime {
   /** `deviceCommand(MIC-0x, 'TEST_SIGNAL')` plays a steady tone until this time. */
   testToneUntil: Partial<Record<AudioTrackId, EpochMs>>;
+  /**
+   * The newest level the capture worker measured per mic input (`applyCaptureTelemetry`, register
+   * SH-18). While an entry is younger than `CAPTURE_LEVEL_HOLD_MS` the next frame of that input
+   * shows it in place of the generated conversation. Transient like the test tone: never stored.
+   */
+  captureLevels: Partial<Record<MicInputId, CaptureLevelFeed>>;
+  /**
+   * `'external'` (`CreateSimOptions.capture`, register CS-04): a real worker measures the levels
+   * and nothing is generated. An input without a fresh measured level reads NO SIGNAL.
+   */
+  levelSource: CaptureLevelSource;
 }
 
-export function createAudioRuntime(): AudioRuntime {
-  return { testToneUntil: {} };
+/** One measured level: what the worker's TELEMETRY frame said, and when the Core took it. */
+export interface CaptureLevelFeed {
+  /** dBFS; `null` when the input delivers no samples. */
+  dbfs: number | null;
+  clipped: boolean;
+  at: EpochMs;
+}
+
+export function createAudioRuntime(levelSource: CaptureLevelSource = 'simulated'): AudioRuntime {
+  return { testToneUntil: {}, captureLevels: {}, levelSource };
+}
+
+/** The measured level of `input` that the frame at `at` shows, or null when none is fresh enough. */
+export function captureLevelAt(runtime: AudioRuntime, input: MicInputId, at: EpochMs): CaptureLevelFeed | null {
+  const fed = runtime.captureLevels[input];
+  if (fed === undefined || at - fed.at > CAPTURE_LEVEL_HOLD_MS) return null;
+  return fed;
 }
 
 interface ChannelState {
@@ -225,12 +252,29 @@ export function createAudioSubsystem(engine: EngineContext, runtime: AudioRuntim
           continue;
         }
 
+        // A level the capture worker measured (register SH-18) is shown as it is: it takes the
+        // place of everything generated below. No samples at all reads NO SIGNAL.
+        // With an external source nothing is generated at all: no fresh level is NO SIGNAL too.
+        const fed = captureLevelAt(runtime, input, at);
+        if (fed === null ? runtime.levelSource === 'external' : fed.dbfs === null) {
+          channels.set(channel, { meter: meterAt(at), nextClipAt: current.nextClipAt });
+          frames[input] = {
+            seq: previous.seq + 1,
+            at,
+            dbfs: AUDIO_FLOOR_DBFS,
+            peak: AUDIO_FLOOR_DBFS,
+            clip: mic?.clipLatched ?? false,
+            noSignal: true,
+          };
+          continue;
+        }
+
         let target = noiseFloor(rng);
         const index = channel === 'AUDIO-01' ? 1 : 2;
         if (speaking && conversation.speaker === index) target = speechLevel(conversation, at, rng);
         const toneUntil = runtime.testToneUntil[channel];
         if (toneUntil !== undefined && at < toneUntil) target = AUDIO_TEST_TONE_DBFS + rng.gauss(0, 0.2);
-        if (peakNow && channel === peakChannel) {
+        if (peakNow && channel === peakChannel && fed === null) {
           target = Math.min(AUDIO_PEAK_DBFS + 0.4, AUDIO_PEAK_DBFS + rng.gauss(0, 0.15));
           peakFrame = { channel, level: round2(target) };
         }
@@ -240,9 +284,11 @@ export function createAudioSubsystem(engine: EngineContext, runtime: AudioRuntim
           current = { ...current, nextClipAt: at + rng.int(400, 1_200) };
         }
 
+        if (fed !== null && fed.dbfs !== null) target = fed.dbfs;
+
         const meter = stepMeter(current.meter, target, at);
         channels.set(channel, { ...current, meter });
-        const clipped = meter.dbfs >= AUDIO_CLIP_DBFS;
+        const clipped = meter.dbfs >= AUDIO_CLIP_DBFS || fed?.clipped === true;
         if (clipped && mic && !mic.clipLatched) {
           mics = mics.map((m) => (m.id === channel ? { ...m, clipLatched: true } : m));
         }

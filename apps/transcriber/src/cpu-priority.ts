@@ -11,14 +11,52 @@
  *   3. ONE AT A TIME. Every engine call of an adapter passes one queue (`SerialQueue`): one chunk
  *      is decoded at a time, and calls to the shared oMLX server are serialised (D7(d)).
  *
- * The `cpu-local` engine is additionally started at a lower scheduling priority (`STT_NICE`).
+ * The `cpu-local` engine and the VAD engine are additionally started at a lower scheduling priority
+ * (`STT_NICE`), and never at or above the priority of a running capture worker
+ * (`engineIsBelowCaptureWorker`).
  */
 import { TranscriberError, TranscriberErrorCode } from './types';
 
 /** Physical cores left to capture by the DEFAULT plan (PROPOSAL; calibrated on the Core, class C). */
 export const CAPTURE_RESERVED_CORES = 2;
-/** The niceness of the `cpu-local` engine process: below the capture worker, which runs at 0. */
+/** How far below the process that starts it the `cpu-local` engine runs: the increment given to `nice -n`. */
 export const STT_NICE = 10;
+
+/** The lowest priority both macOS and Linux have. The operating system clamps a niceness there. */
+export const LOWEST_NICE = 19;
+
+/**
+ * The niceness an engine started through `nice -n STT_NICE` runs at. `nice -n` is RELATIVE: it adds
+ * to the niceness of the process that starts it (fix round 2, R-1). A Core that itself runs at 5
+ * (a shell background job) gets its engine at 15, not at 10.
+ */
+export function expectedEngineNice(parentNice: number): number {
+  return Math.min(parentNice + STT_NICE, LOWEST_NICE);
+}
+
+/**
+ * THE RULE OF THE LOWERED ENGINE: its niceness is at least `STT_NICE` above the niceness of the
+ * process that started it (or at the floor of the scale). It is a rule about the engine and ITS
+ * PARENT. It says nothing about the engine and the capture worker, which is another process with
+ * its own niceness: "the engine is lower than the capture worker" is `engineIsBelowCaptureWorker`
+ * below (row 77), checked by the engine modules against the OBSERVED niceness of the worker.
+ */
+export function engineIsLowered(parentNice: number, engineNice: number): boolean {
+  return Number.isInteger(parentNice) && Number.isInteger(engineNice) && engineNice >= expectedEngineNice(parentNice);
+}
+
+/**
+ * THE SIBLING RULE (transcript spec §C "Priority direction"; row 77): the engine runs at a LOWER
+ * priority than the capture worker, that is at a strictly HIGHER niceness. It is a rule between two
+ * processes that have different parents' histories: the worker is started by the Core's capture
+ * supervisor (not lowered there, so it runs at the niceness of the Core), the engine through
+ * `nice -n STT_NICE`. Both values are OBSERVED from the operating system, never assumed. A worker
+ * that already sits at the floor of the scale leaves no room below it: the rule then fails, and no
+ * engine is started (fail closed; such a worker is a host misconfiguration).
+ */
+export function engineIsBelowCaptureWorker(workerNice: number, engineNice: number): boolean {
+  return Number.isInteger(workerNice) && Number.isInteger(engineNice) && engineNice > workerNice;
+}
 
 export interface SttThreadPlan {
   /** `whisper-cli -t`. */

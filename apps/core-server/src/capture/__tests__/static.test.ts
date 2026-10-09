@@ -16,8 +16,9 @@
 // Every forbidden text is built from fragments, so that this file does not contain it. Each rule
 // has a positive control: the same pattern on a planted source must FIND the text.
 //
-// The last block pins the edits of the three frozen files (P25) that OD-14's waiver grants this
-// row (spec §I edits 1 to 6, 11 and 12).
+// The last block pins the edits of the three frozen files (P25) that OD-14's waiver grants (spec
+// §I): edits 1 to 6, 11 and 12 (row 57), 13 and 14 (row 113, decision D68), and 7 to 10, the
+// capture keys of config.ts (row 58).
 import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { logCalls } from '../../../test/static/log-calls';
@@ -62,7 +63,7 @@ const places = (files: readonly SourceFile[], pattern: RegExp): string[] => [...
 
 describe('the scan itself', () => {
   it('reads the production sources of the capture folder', () => {
-    expect(capture.map((file) => file.path)).toEqual(['src/capture/index.ts', 'src/capture/ipc.ts', 'src/capture/supervisor.ts', 'src/capture/timers.ts', 'src/capture/types.ts']);
+    expect(capture.map((file) => file.path)).toEqual(['src/capture/forwarder.ts', 'src/capture/index.ts', 'src/capture/ipc.ts', 'src/capture/supervisor.ts', 'src/capture/timers.ts', 'src/capture/types.ts']);
     expect(hosts.length).toBeGreaterThan(100);
   });
 
@@ -205,7 +206,7 @@ describe('G-R8: process, timer, time and chance go through one named place each'
   });
 });
 
-describe('P25: the edits OD-14 waives for this row, and no other mention of capture (spec §I edits 1-6, 11, 12)', () => {
+describe('P25: the edits OD-14 waives, and no other mention of capture (spec §I edits 1 to 14)', () => {
   const raw = (path: string): string[] => (tree.find((file) => file.path === path)?.text ?? '').split('\n');
   const mentions = (path: string): string[] => raw(path).filter((line) => /capture/i.test(line)).map((line) => line.trim());
 
@@ -282,7 +283,87 @@ describe('P25: the edits OD-14 waives for this row, and no other mention of capt
     expect(entry).toMatch(/try \{\n {4}if \(app\.seams\.has\('capture'\)\) await app\.capture\.shutdown\(\);\n {4}await app\.close\(\);/);
   });
 
-  it('config.ts is not touched by this row: its capture keys are the next row\'s (spec §I edits 7 to 10)', () => {
-    expect(mentions('src/config.ts')).toEqual([]);
+  // Row 58 (spec §I edits 7 to 10; category "capture config keys" of OD-14). Until row 58 this
+  // test read "config.ts is not touched by this row". The file is pinned the way app.ts is: with
+  // EVERY waived added line taken out, in the order they stand, config.ts is byte-equal to the file
+  // plan row W08 froze. A line nobody waived, of any kind, changes the digest and fails here.
+  it('config.ts: every added line is one of the capture keys (spec §I edits 7 to 10); without them the file is the frozen one', () => {
+    /** SHA-256 of `src/config.ts` as plan row W08 froze it (unchanged up to commit 101ce62, 271 lines). */
+    const FROZEN_CONFIG_TS = 'de6f7bc958d84649aff0d8e248ef534e167f3639afd46a6f3e36c590cf7154f9';
+    const WAIVED_CONFIG: readonly string[] = [
+      ' * WAIVED EDITS (task 3, decision OD-14; capture spec §I edits 7 to 10): the three capture keys.',
+      ' * `DEMS_CAPTURE_MODE` (`simulated`, the default, or `real`), `DEMS_CAPTURE_WORKER` (the worker',
+      ' * program) and `DEMS_MEDIA_DIR` (the media root). Whether a start in `real` mode is refused for a',
+      " * missing key is the boot checks' decision (CS-22), not this file's.",
+      "export const ENV_CAPTURE_MODE = 'DEMS_CAPTURE_MODE';",
+      "export const ENV_CAPTURE_WORKER = 'DEMS_CAPTURE_WORKER';",
+      "export const ENV_MEDIA_DIR = 'DEMS_MEDIA_DIR';",
+      "export const CAPTURE_MODES = ['simulated', 'real'] as const;",
+      'export type CaptureMode = (typeof CAPTURE_MODES)[number];',
+      "export const DEFAULT_CAPTURE_MODE: CaptureMode = 'simulated';",
+      '/** Where the camera files live below the data directory when `DEMS_MEDIA_DIR` is unset (capture spec §H). */',
+      "export const MEDIA_STORE_SUBPATH = 'media/sessions';",
+      '',
+      '  /** `real`: sessions record through the capture worker. `simulated`: no worker is ever started. */',
+      '  readonly captureMode: CaptureMode;',
+      '  /** Absolute path of the capture worker program, or null when none is configured. */',
+      '  readonly captureWorkerPath: string | null;',
+      '  /** Absolute path of the media root (OD-25: git-ignored, below the data directory by default). */',
+      '  readonly mediaStoreDir: string;',
+      '/** Unset means `simulated`. Any other value than the two modes stops the boot. */',
+      'export function parseCaptureMode(raw: string | undefined): CaptureMode {',
+      "  if (raw === undefined || raw === '') return DEFAULT_CAPTURE_MODE;",
+      '  const mode = CAPTURE_MODES.find((known) => known === raw);',
+      "  if (mode === undefined) throw new ConfigError('CAPTURE_MODE_INVALID', `${ENV_CAPTURE_MODE} must be one of ${CAPTURE_MODES.join(', ')}.`);",
+      '  return mode;',
+      '}',
+      '',
+      '/** An absolute path, or null when the variable is unset. The value itself is never put in a message. */',
+      'export function parseCapturePath(name: string, raw: string | undefined): string | null {',
+      "  if (raw === undefined || raw === '') return null;",
+      "  if (!raw.startsWith('/') || raw.includes('\\0')) throw new ConfigError('CAPTURE_PATH_NOT_ABSOLUTE', `${name} must be an absolute path.`);",
+      '  return raw;',
+      '}',
+      '',
+      '  /** Default: `simulated`. */',
+      '  readonly captureMode?: CaptureMode;',
+      '  /** Default: null (no worker program). */',
+      '  readonly captureWorkerPath?: string | null;',
+      '  /** Default: `<dataDir>/media/sessions`. */',
+      '  readonly mediaStoreDir?: string | null;',
+      '  const captureWorkerPath = parseCapturePath(ENV_CAPTURE_WORKER, input.captureWorkerPath ?? undefined);',
+      '  const mediaStoreDir = parseCapturePath(ENV_MEDIA_DIR, input.mediaStoreDir ?? undefined) ?? `${input.dataDir}/${MEDIA_STORE_SUBPATH}`;',
+      '    captureMode: input.captureMode ?? DEFAULT_CAPTURE_MODE,',
+      '    captureWorkerPath,',
+      '    mediaStoreDir,',
+    ];
+    const withoutWaived = (lines: readonly string[]): string | null => {
+      const rest = [...lines];
+      let cursor = 0;
+      for (const line of WAIVED_CONFIG) {
+        const at = rest.indexOf(line, cursor);
+        if (at === -1) return null;
+        rest.splice(at, 1);
+        cursor = at;
+      }
+      return rest.join('\n');
+    };
+    const digest = (text: string | null): string => (text === null ? 'a waived line is missing' : createHash('sha256').update(text).digest('hex'));
+    const current = raw('src/config.ts');
+    expect(digest(withoutWaived(current))).toBe(FROZEN_CONFIG_TS);
+    // Every line of the file that mentions capture or the media root is a waived one: nothing else names them.
+    expect(current.filter((line) => /capture|media/i.test(line)).filter((line) => !WAIVED_CONFIG.includes(line))).toEqual([]);
+    // The three keys, by name (edit 7), and the three fields of the configuration (edit 8).
+    expect(current.filter((line) => line.startsWith('export const ENV_')).slice(-3)).toEqual([
+      "export const ENV_CAPTURE_MODE = 'DEMS_CAPTURE_MODE';",
+      "export const ENV_CAPTURE_WORKER = 'DEMS_CAPTURE_WORKER';",
+      "export const ENV_MEDIA_DIR = 'DEMS_MEDIA_DIR';",
+    ]);
+    expect(current.filter((line) => /^ {2}readonly (captureMode|captureWorkerPath|mediaStoreDir): /.test(line))).toHaveLength(3);
+    // Positive control: one more line, of any kind, anywhere, is seen; so is a waived line that changed.
+    const at = current.indexOf("export const LISTEN_HOST = '127.0.0.1';");
+    expect(at).toBeGreaterThan(0);
+    expect(digest(withoutWaived([...current.slice(0, at), "export const OTHER_HOST = '0.0.0.0';", ...current.slice(at)]))).not.toBe(FROZEN_CONFIG_TS);
+    expect(digest(withoutWaived(current.map((line) => (line === "export const DEFAULT_CAPTURE_MODE: CaptureMode = 'simulated';" ? "export const DEFAULT_CAPTURE_MODE: CaptureMode = 'real';" : line))))).toBe('a waived line is missing');
   });
 });

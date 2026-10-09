@@ -5,7 +5,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, resolve, sep } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { CPU_LOCAL, KEY_LOADER, OMLX_HTTP, PHYSICAL_CORES, REQUIRED_IDS, RULE_IDS, isTestFile, scanSources, type SourceFile } from './static-rules';
+import { CPU_LOCAL, KEY_LOADER, MEDIA_TIME, OMLX_HTTP, PHYSICAL_CORES, REQUIRED_IDS, RULE_IDS, isTestFile, scanSources, type SourceFile } from './static-rules';
 
 const WORKSPACE = resolve(import.meta.dirname, '..', '..');
 
@@ -38,7 +38,9 @@ const CLEAN_CPU_LOCAL = [
   '',
 ].join('\n');
 const CLEAN_OMLX_HTTP = ['export function createOmlxHttp(options: O): void {', '  assertLoopbackEndpoint(options.endpoint);', "  const init = { redirect: 'error' };", '}', ''].join('\n');
+const CLEAN_MEDIA_TIME = ["import { CAPTURE_AUDIO_SAMPLE_RATE_HZ, CAPTURE_MEDIA_TIME_ORIGIN_SAMPLES } from '@dems/shared/api';", 'export const origin = CAPTURE_MEDIA_TIME_ORIGIN_SAMPLES;', ''].join('\n');
 const CLEAN: SourceFile[] = [
+  { path: MEDIA_TIME, text: CLEAN_MEDIA_TIME },
   { path: CPU_LOCAL, text: CLEAN_CPU_LOCAL },
   { path: OMLX_HTTP, text: CLEAN_OMLX_HTTP },
   { path: KEY_LOADER, text: 'export const x = 1;\n' },
@@ -68,6 +70,15 @@ describe('static rule: the real tree', () => {
       'src/index.ts',
       'src/key-loader.ts',
       'src/log.ts',
+      'src/pipeline/audio-source.ts',
+      'src/pipeline/checkpoint.ts',
+      'src/pipeline/chunker.ts',
+      'src/pipeline/clamp.ts',
+      'src/pipeline/constants.ts',
+      'src/pipeline/media-time.ts',
+      'src/pipeline/mirror.ts',
+      'src/pipeline/runner.ts',
+      'src/pipeline/silero-vad.ts',
       'src/probe.ts',
       'src/types.ts',
       'src/wav.ts',
@@ -144,6 +155,35 @@ describe('static rule: the navigator probes of fix round 1 (N-1), each one red',
   });
 });
 
+describe('static rule: the four plain evasions of the navigator re-check (fix round 2, R-2), each one red', () => {
+  const evasions: readonly (readonly [string, string, string, readonly string[]])[] = [
+    ['a1: an alias of process, then .env', 'src/config.ts', 'const p = process; const k = p.env.OMLX_API_KEY;', ['PROCESS_OBJECT_IS_NOT_PASSED_AROUND']],
+    ['a2: Reflect.get(process, "env")', 'src/config.ts', "const k = Reflect.get(process, 'env');", ['PROCESS_OBJECT_IS_NOT_PASSED_AROUND']],
+    ['a3: an alias through globalThis', 'src/config.ts', "const p = globalThis['process']; const k = p.env;", ['PROCESS_OBJECT_IS_NOT_PASSED_AROUND']],
+    ['a4: process in an object or a list', 'src/config.ts', 'const box = { process }; const list = [process];', ['PROCESS_OBJECT_IS_NOT_PASSED_AROUND']],
+    ['b1: createRequire(...)("http")', 'src/probe.ts', "import { createRequire } from 'node:module'; const http = createRequire(import.meta.url)('http');", ['NO_DYNAMIC_CODE']],
+    ['b2: process.mainModule.require', 'src/probe.ts', "const http = process.mainModule.require('http');", ['NO_DYNAMIC_CODE']],
+    ['b3: module without the prefix', 'src/probe.ts', "const m = require('module');", ['NO_DYNAMIC_CODE']],
+    ['c1: writeSync(1, token)', 'src/adapter.ts', "import { writeSync } from 'node:fs'; writeSync(1, token);", ['NO_DIRECT_OUTPUT']],
+    ['c2: fs.writeSync(2, token)', 'src/adapter.ts', "import * as fs from 'node:fs'; fs.writeSync(2, token);", ['NO_DIRECT_OUTPUT']],
+    ['c3: fs.write(2, …) and a bracket call', 'src/adapter.ts', "fs.write(2, token, done); fs['writeSync'](1, token);", ['NO_DIRECT_OUTPUT']],
+    ['c4: process.emitWarning(token)', 'src/adapter.ts', 'process.emitWarning(token);', ['NO_DIRECT_OUTPUT']],
+    ['c5: a write stream on a standard descriptor', 'src/adapter.ts', "createWriteStream('', { fd: 2 }).write(token);", ['NO_DIRECT_OUTPUT']],
+    ['d1: node:inspector open()', 'src/probe.ts', "import { open } from 'node:inspector'; open(0);", ['NO_NETWORK_MODULE']],
+    ['d2: inspector/promises without the prefix', 'src/probe.ts', "const i = await import('inspector/promises');", ['NO_NETWORK_MODULE']],
+  ];
+
+  it.each(evasions)('%s', (_name, path, text, rules) => {
+    expect(planted(path, text)).toEqual([...rules].sort());
+  });
+
+  it('negative control: the uses this workspace does make are not violations', () => {
+    expect(planted('src/backends/omlx-server.ts', 'const node = process.execPath; const v = process.version;')).toEqual([]);
+    expect(planted('src/log.ts', 'process.stderr.write(line);')).toEqual([]);
+    expect(planted('src/wav.ts', "import { writeSync, openSync } from 'node:fs'; const fd = openSync(path, 'w'); writeSync(fd, bytes); out.write(bytes);")).toEqual([]);
+  });
+});
+
 describe('static rule: other ways round a text pattern, each one red', () => {
   const cases: readonly (readonly [string, string, string])[] = [
     ['KEY_FILE_ONLY_IN_KEY_LOADER', 'src/__tests__/some.test.ts', "readFileSync(home + '/.omlx/settings.json');"],
@@ -200,6 +240,10 @@ describe('static rule: other ways round a text pattern, each one red', () => {
     ['NO_TIMING_MEASUREMENT', CPU_LOCAL, "const started = Date['now']();"],
     ['NO_TIMING_MEASUREMENT', CPU_LOCAL, 'const t = process.hrtime.bigint();'],
     ['NO_TIMING_MEASUREMENT', 'src/__tests__/some.test.ts', 'const rtf = elapsed / audio;'],
+    ['MEDIA_TIME_ORIGIN_NEVER_WRITTEN', MEDIA_TIME, 'export const origin = 1024;'],
+    ['MEDIA_TIME_ORIGIN_NEVER_WRITTEN', 'src/pipeline/chunker.ts', 'const fileSample = tapSample + 1_024;'],
+    ['MEDIA_TIME_ORIGIN_NEVER_WRITTEN', 'src/pipeline/runner.ts', 'const startMs = tapMs + 21.333;'],
+    ['MEDIA_TIME_ORIGIN_NEVER_WRITTEN', 'src/pipeline/clamp.ts', 'const frame = 0x400;'],
     ['NO_DYNAMIC_CODE', 'src/adapter.ts', "eval('con' + 'sole.log(key)');"],
     ['NO_DYNAMIC_CODE', 'src/adapter.ts', "const f = new Function('return process');"],
   ];
@@ -210,7 +254,7 @@ describe('static rule: other ways round a text pattern, each one red', () => {
 
   it('every rule has a planted case', () => {
     const covered = new Set<string>(cases.map(([rule]) => rule));
-    covered.add('NO_NETWORK_MODULE').add('STDERR_ONLY_IN_LOG').add('UNPARSEABLE_SOURCE');
+    covered.add('NO_NETWORK_MODULE').add('STDERR_ONLY_IN_LOG').add('UNPARSEABLE_SOURCE').add('PROCESS_OBJECT_IS_NOT_PASSED_AROUND').add('NO_DIRECT_OUTPUT');
     expect([...covered].sort()).toEqual([...RULE_IDS].sort());
   });
 });
@@ -239,7 +283,25 @@ describe('static rule: what a named file must contain, each one red when it is g
     expect(only(OMLX_HTTP, CLEAN_OMLX_HTTP.replace("  const init = { redirect: 'error' };\n", ''))).toEqual(['REDIRECTS_ARE_ERRORS']);
     expect(only(OMLX_HTTP, CLEAN_OMLX_HTTP.replace('  assertLoopbackEndpoint(options.endpoint);\n', ''))).toEqual(['HTTP_CLIENT_RECHECKS_LOOPBACK']);
     expect(only(OMLX_HTTP, `${CLEAN_OMLX_HTTP.replace('  assertLoopbackEndpoint(options.endpoint);\n', '')}function other(): void { assertLoopbackEndpoint(x); }\n`)).toEqual(['HTTP_CLIENT_RECHECKS_LOOPBACK']);
-    expect([...REQUIRED_IDS].sort()).toEqual(['ENGINE_ENVIRONMENT_IS_ALLOW_LISTED', 'ENGINE_STARTS_WITHOUT_A_SHELL', 'HTTP_CLIENT_RECHECKS_LOOPBACK', 'NO_GPU_FLAG_IS_A_CONSTANT', 'NO_GPU_FLAG_IS_IN_EVERY_COMMAND', 'REDIRECTS_ARE_ERRORS']);
+    expect([...REQUIRED_IDS].sort()).toEqual([
+      'ENGINE_ENVIRONMENT_IS_ALLOW_LISTED',
+      'ENGINE_STARTS_WITHOUT_A_SHELL',
+      'HTTP_CLIENT_RECHECKS_LOOPBACK',
+      'MEDIA_TIME_ORIGIN_IS_IMPORTED',
+      'NO_GPU_FLAG_IS_A_CONSTANT',
+      'NO_GPU_FLAG_IS_IN_EVERY_COMMAND',
+      'REDIRECTS_ARE_ERRORS',
+    ]);
+  });
+
+  it('row 77: a media-time module that writes its own origin instead of importing the shared constant', () => {
+    expect(only(MEDIA_TIME, 'const CAPTURE_MEDIA_TIME_ORIGIN_SAMPLES = 512 * 2;\nexport const origin = CAPTURE_MEDIA_TIME_ORIGIN_SAMPLES;\n')).toEqual(['MEDIA_TIME_ORIGIN_IS_IMPORTED']);
+    expect(only(MEDIA_TIME, "import { CAPTURE_MEDIA_TIME_ORIGIN_SAMPLES } from './constants';\nexport const origin = CAPTURE_MEDIA_TIME_ORIGIN_SAMPLES;\n")).toEqual(['MEDIA_TIME_ORIGIN_IS_IMPORTED']);
+    expect(only(MEDIA_TIME, "import { CAPTURE_AUDIO_SAMPLE_RATE_HZ } from '@dems/shared/api';\nexport const origin = 1024;\n").sort()).toEqual(['MEDIA_TIME_ORIGIN_IS_IMPORTED', 'MEDIA_TIME_ORIGIN_NEVER_WRITTEN']);
+    // The control: the real file of the tree holds the import and no such number.
+    const real = readTree().find((file) => file.path === MEDIA_TIME);
+    expect(real).toBeDefined();
+    expect(scanSources([...CLEAN.filter((file) => file.path !== MEDIA_TIME), real!])).toEqual([]);
   });
 });
 

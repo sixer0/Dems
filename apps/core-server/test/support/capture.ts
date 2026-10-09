@@ -24,6 +24,7 @@ import {
   SupervisorMessageType,
   WorkerMessageType,
   type CapturePlan,
+  type CaptureRecord,
   type CaptureWarningCode,
   type SupervisorMessage,
   type WorkerMessage,
@@ -150,6 +151,7 @@ export class FakeWorkerProcess implements WorkerChannel {
   private readonly heldSends: Array<() => void> = [];
   private startsServed = 0;
   private counter = 0;
+  private recordSeq = 0;
 
   constructor(launch: WorkerLaunch, handlers: WorkerChannelHandlers, behaviour: FakeWorkerBehaviour) {
     this.pid = nextPid += 1;
@@ -203,8 +205,10 @@ export class FakeWorkerProcess implements WorkerChannel {
     this.say({
       type: WorkerMessageType.TELEMETRY,
       levels: [{ role: CaptureMicRole.PRIMARY, dbfs: -20, clipped: false }],
-      ingest: [{ deviceId: 'VIDEO-01', state: CaptureIngestState.CONNECTED }],
-      fragments: [{ deviceId: 'VIDEO-01', count, bytes: count * 1_000 }],
+      ingest: [{ deviceId: 'CAM-01', state: CaptureIngestState.CONNECTED }],
+      fragments: [{ deviceId: 'CAM-01', count, bytes: count * 1_000 }],
+      clocks: [],
+      tapActive: false,
     });
   }
 
@@ -212,8 +216,19 @@ export class FakeWorkerProcess implements WorkerChannel {
     this.say({ type: WorkerMessageType.PROGRESS, step, progress, etaMs: null });
   }
 
-  warning(code: CaptureWarningCode, subject: string | null = null): void {
-    this.say({ type: WorkerMessageType.WARNING, code, subject });
+  warning(code: CaptureWarningCode, subject: string | null = null, state: 'ACTIVE' | 'CLEARED' = 'ACTIVE'): void {
+    this.say({ type: WorkerMessageType.WARNING, code, state, subject });
+  }
+
+  /** A record with the next sequence number of this process, or with the one given (a gap, a repeat). */
+  record(record: CaptureRecord, seq?: number): void {
+    if (seq === undefined) this.recordSeq += 1;
+    this.say({ type: WorkerMessageType.RECORD, seq: seq ?? this.recordSeq, record });
+  }
+
+  /** The first fragment of a camera file reached the disk. */
+  firstDurableFragment(deviceId = 'CAM-01', bytes = 5_131): void {
+    this.record({ kind: 'FIRST_DURABLE_FRAGMENT', deviceId, bytes });
   }
 
   /** Answers a command. Default: the last one received. */
@@ -320,14 +335,15 @@ export function capturePlan(sessionId = 'S-TEST-0001', overrides: Partial<Captur
   const root = `/nonexistent/dems-unit-test-data/media/sessions/${sessionId}`;
   return {
     cameras: [
-      { deviceId: 'VIDEO-01', profile: null, ingestUrl: 'rtsp://127.0.0.1:8554/video01', outputPath: `${root}/VIDEO-01.mp4` },
-      { deviceId: 'VIDEO-02', profile: null, ingestUrl: 'rtsp://127.0.0.1:8555/video02', outputPath: `${root}/VIDEO-02.mp4` },
+      { deviceId: 'CAM-01', trackId: 'VIDEO-01', profile: null, ingestUrl: 'rtsp://127.0.0.1:8554/video01', outputPath: `${root}/VIDEO-01.mp4` },
+      { deviceId: 'CAM-02', trackId: 'VIDEO-02', profile: null, ingestUrl: 'rtsp://127.0.0.1:8555/video02', outputPath: `${root}/VIDEO-02.mp4` },
     ],
     mics: [
-      { deviceId: 'MIC-01', role: CaptureMicRole.PRIMARY },
-      { deviceId: 'MIC-02', role: CaptureMicRole.STANDBY },
+      { deviceId: 'MIC-01', role: CaptureMicRole.PRIMARY, input: { kind: 'PCM_FIFO', path: `${root}/MIC-01.pcm` } },
+      { deviceId: 'MIC-02', role: CaptureMicRole.STANDBY, input: { kind: 'PCM_FIFO', path: `${root}/MIC-02.pcm` } },
     ],
     activeMic: CaptureMicRole.PRIMARY,
+    pcmTapPath: null,
     constants: {
       fragmentTargetMs: CAPTURE_FRAGMENT_TARGET_MS,
       minFragDurationMs: CAPTURE_MIN_FRAG_DURATION_MS,
